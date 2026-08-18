@@ -11,6 +11,7 @@ import (
 	"fmt"
 
 	"github.com/PRO-Robotech/kacho/pkg/peer"
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 
@@ -50,6 +51,13 @@ type AccountLocator interface {
 type QuotaStore interface {
 	Admit(ctx context.Context, carrierType, carrierID, kind string) error
 	Materialize(ctx context.Context, rows []ports.QuotaRow) (int64, error)
+	// ListStates отдаёт строки учёта носителя — то, что арендатор читает как свои
+	// квоты.
+	//
+	// Пустой срез означает «строк учёта ещё нет», а НЕ «квот нет»: различать эти
+	// два состояния обязан вызывающий, и он же обязан ответить арендатору полным
+	// набором видов с нулевым потреблением.
+	ListStates(ctx context.Context, carrierType, carrierID string) ([]quotaread.State, error)
 }
 
 // Guard — совещательная полоса плюс материализация по промаху.

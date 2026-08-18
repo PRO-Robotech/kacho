@@ -119,6 +119,7 @@ import (
 	// geo.v1 — Region/Zone leaf-сервис kacho-geo.
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	iampb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	quotapb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
 
 	// kacho-nlb (loadbalancer.v1) — public RPC под /nlb/v1/*.
 	lbpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
@@ -541,6 +542,16 @@ func NewMux(
 		if err := computepb.RegisterInstanceServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
 			return nil, fmt.Errorf("register compute InstanceService: %w", err)
 		}
+		// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
+		// уже занято. Публичная поверхность и ТОЛЬКО чтение: величины меняет
+		// администратор облака через iam.v1.InternalLimitService на внутреннем
+		// слушателе. До этого сервиса вся поверхность квот домена была
+		// административной, и арендатор, встретив отказ на пределе, не мог узнать
+		// ни своего потолка, ни своего расхода — работающий предел был неотличим
+		// от сбоя.
+		if err := computepb.RegisterQuotaServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
+			return nil, fmt.Errorf("register compute QuotaService: %w", err)
+		}
 		// MachineTypeService — public read-only sizing catalog (GET /compute/v1/machineTypes[/{id}]);
 		// cluster-viewer, parity с geo Region/Zone. Admin CRUD — InternalMachineTypeService
 		// (internal-port block ниже; НЕ на external, ban #6).
@@ -582,6 +593,16 @@ func NewMux(
 		if storageAddr != "" {
 			if err := storagepb.RegisterVolumeServiceHandlerFromEndpoint(ctx, mux, storageAddr, optsFor("storage")); err != nil {
 				return nil, fmt.Errorf("register storage VolumeService: %w", err)
+			}
+			// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
+			// уже занято. Публичная поверхность и ТОЛЬКО чтение: величины меняет
+			// администратор облака через iam.v1.InternalLimitService на внутреннем
+			// слушателе. До этого сервиса вся поверхность квот домена была
+			// административной, и арендатор, встретив отказ на пределе, не мог узнать
+			// ни своего потолка, ни своего расхода — работающий предел был неотличим
+			// от сбоя.
+			if err := storagepb.RegisterQuotaServiceHandlerFromEndpoint(ctx, mux, storageAddr, optsFor("storage")); err != nil {
+				return nil, fmt.Errorf("register storage QuotaService: %w", err)
 			}
 			if err := storagepb.RegisterSnapshotServiceHandlerFromEndpoint(ctx, mux, storageAddr, optsFor("storage")); err != nil {
 				return nil, fmt.Errorf("register storage SnapshotService: %w", err)
@@ -685,6 +706,13 @@ func NewMux(
 		// InternalUserService.UpsertFromIdentity (OIDC-callback в api-gateway);
 		// display_name/email берётся от поставщика личности при следующем UpsertFromIdentity.
 		if iamAddr != "" {
+			// Квоты личности — сколько аккаунтов вызывающему позволено и сколько
+			// уже занято. Публичная поверхность и ТОЛЬКО чтение о себе: величину
+			// меняет администратор облака через iam.v1.InternalLimitService на
+			// внутреннем слушателе. Обслуживает её kacho-iam, поэтому адрес тот же.
+			if err := quotapb.RegisterIdentityQuotaServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+				return nil, fmt.Errorf("register iam IdentityQuotaService: %w", err)
+			}
 			if err := iampb.RegisterAccountServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam AccountService: %w", err)
 			}
@@ -834,6 +862,16 @@ func NewMux(
 			if err := lbpb.RegisterNetworkLoadBalancerServiceHandlerFromEndpoint(ctx, mux, lbAddr, optsFor("loadbalancer")); err != nil {
 				return nil, fmt.Errorf("register loadbalancer NetworkLoadBalancerService: %w", err)
 			}
+			// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
+			// уже занято. Публичная поверхность и ТОЛЬКО чтение: величины меняет
+			// администратор облака через iam.v1.InternalLimitService на внутреннем
+			// слушателе. До этого сервиса вся поверхность квот домена была
+			// административной, и арендатор, встретив отказ на пределе, не мог узнать
+			// ни своего потолка, ни своего расхода — работающий предел был неотличим
+			// от сбоя.
+			if err := lbpb.RegisterQuotaServiceHandlerFromEndpoint(ctx, mux, lbAddr, optsFor("loadbalancer")); err != nil {
+				return nil, fmt.Errorf("register loadbalancer QuotaService: %w", err)
+			}
 			if err := lbpb.RegisterListenerServiceHandlerFromEndpoint(ctx, mux, lbAddr, optsFor("loadbalancer")); err != nil {
 				return nil, fmt.Errorf("register loadbalancer ListenerService: %w", err)
 			}
@@ -866,6 +904,16 @@ func NewMux(
 		// симметрично lbAddr / geoAddr выше). Data-plane OCI v2 (/v2/*) — отдельный
 		// ingress, НЕ через api-gateway.
 		if registryAddr != "" {
+			// Quota — сколько ресурсов каждого вида арендатору позволено и сколько
+			// уже занято. Публичная поверхность и ТОЛЬКО чтение: величины меняет
+			// администратор облака через iam.v1.InternalLimitService на внутреннем
+			// слушателе. До этого сервиса вся поверхность квот домена была
+			// административной, и арендатор, встретив отказ на пределе, не мог узнать
+			// ни своего потолка, ни своего расхода — работающий предел был неотличим
+			// от сбоя.
+			if err := registrypb.RegisterQuotaServiceHandlerFromEndpoint(ctx, mux, registryAddr, optsFor("registry")); err != nil {
+				return nil, fmt.Errorf("register registry QuotaService: %w", err)
+			}
 			if err := registrypb.RegisterRegistryServiceHandlerFromEndpoint(ctx, mux, registryAddr, optsFor("registry")); err != nil {
 				return nil, fmt.Errorf("register registry RegistryService: %w", err)
 			}

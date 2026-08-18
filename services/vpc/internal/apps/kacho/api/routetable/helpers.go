@@ -38,9 +38,11 @@ func marshalRouteTableRecord(rec *kacho.RouteTableRecord) (*anypb.Any, error) {
 // этой длине. Проверка, ограничивающая стоимость, не может сама её платить.
 //
 // Проверяется набор, который БУДЕТ записан, — Create и Update несут итог
-// целиком, аддитивного глагола у маршрутов нет (см. Handler.AddRoutes: отказ по
-// имени). DB-CHECK route_tables_static_routes_cardinality (миграция 0028) —
-// атомарный backstop на саму строку, независимо от writer'а.
+// целиком: аддитивного глагола у маршрутов нет вовсе. Здесь стояла ссылка на
+// хендлер такого глагола («отказ по имени»), но глагол снят вместе со своим
+// хендлером, и отказывать стало нечему — набор заменяется целиком. DB-CHECK
+// route_tables_static_routes_cardinality (миграция 0028) — атомарный backstop
+// на саму строку, независимо от writer'а.
 func validateStaticRoutesCardinality(routes []domain.StaticRoute) error {
 	if len(routes) > domain.MaxStaticRoutes {
 		return serviceerr.InvalidArg("static_routes",

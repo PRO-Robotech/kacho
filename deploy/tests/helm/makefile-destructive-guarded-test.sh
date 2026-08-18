@@ -315,7 +315,7 @@ if [ "${1:-}" = "--self-test" ]; then
 injected-unguarded:
 	@kubectl -n kacho delete secret some-secret --ignore-not-found'
   out="$(run_gate "$tmp/Makefile" 2>&1)"; st=$?
-  if [ $st -ne 0 ] && printf '%s' "$out" | grep -q "injected-unguarded"; then
+  if [ $st -ne 0 ] && [[ "$out" == *"injected-unguarded"* ]]; then
     echo "  ОК  (A) незащищённая цель → красное, координата названа"
   else
     echo "  ПРОВАЛ (A) незащищённая цель прошла (exit=$st)"; echo "$out" | sed 's/^/      /'; rc=1
@@ -380,7 +380,7 @@ injected-creator:
 injected-guard-before-create: guard-kind-context injected-creator
 	@kubectl -n kacho apply -f manifest.yaml'
   out="$(run_gate "$tmp/Makefile" 2>&1)"; st=$?
-  if [ $st -ne 0 ] && printf '%s' "$out" | grep -q "injected-guard-before-create"; then
+  if [ $st -ne 0 ] && [[ "$out" == *"injected-guard-before-create"* ]]; then
     echo "  ОК  (E) страж раньше создания кластера → красное, координата названа"
   else
     echo "  ПРОВАЛ (E) страж перед созданием кластера прошёл (exit=$st)"; echo "$out" | sed 's/^/      /'; rc=1
@@ -420,7 +420,7 @@ injected-guard-no-create: guard-kind-context
   #      порядка осталась без предмета и обязана объявить себя невыполнимой.
   sed 's|\./kind/create-cluster\.sh|./kind/bring-up.sh|' "$MAKEFILE" >"$tmp/Makefile"
   out="$(run_gate "$tmp/Makefile" 2>&1)"; st=$?
-  if [ $st -ne 0 ] && printf '%s' "$out" | grep -q "без предмета"; then
+  if [ $st -ne 0 ] && [[ "$out" == *"без предмета"* ]]; then
     echo "  ОК  (E4) исчезло создание кластера → проверка порядка объявлена невыполнимой"
   else
     echo "  ПРОВАЛ (E4) без создающей цели проверка порядка осталась зелёной (exit=$st)"; rc=1
@@ -430,7 +430,7 @@ injected-guard-no-create: guard-kind-context
   #     невыполнимой, а не сообщить «нарушений нет».
   sed 's/^guard-kind-context:/guard-kind-context-renamed:/' "$MAKEFILE" >"$tmp/Makefile"
   out="$(run_gate "$tmp/Makefile" 2>&1)"; st=$?
-  if [ $st -ne 0 ] && printf '%s' "$out" | grep -q "Предпосылка"; then
+  if [ $st -ne 0 ] && [[ "$out" == *"Предпосылка"* ]]; then
     echo "  ОК  (D) исчезнувший гейт → проверка объявлена невыполнимой"
   else
     echo "  ПРОВАЛ (D) без цели-гейта проверка осталась зелёной (exit=$st)"; rc=1

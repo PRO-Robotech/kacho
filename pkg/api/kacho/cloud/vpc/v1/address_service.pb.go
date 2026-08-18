@@ -77,121 +77,6 @@ func (x *GetAddressRequest) GetAddressId() string {
 	return ""
 }
 
-type GetAddressByValueRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Address:
-	//
-	//	*GetAddressByValueRequest_ExternalIpv4Address
-	//	*GetAddressByValueRequest_InternalIpv4Address
-	Address isGetAddressByValueRequest_Address `protobuf_oneof:"address"`
-	// Types that are valid to be assigned to Scope:
-	//
-	//	*GetAddressByValueRequest_SubnetId
-	Scope         isGetAddressByValueRequest_Scope `protobuf_oneof:"scope"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetAddressByValueRequest) Reset() {
-	*x = GetAddressByValueRequest{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[1]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetAddressByValueRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetAddressByValueRequest) ProtoMessage() {}
-
-func (x *GetAddressByValueRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[1]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetAddressByValueRequest.ProtoReflect.Descriptor instead.
-func (*GetAddressByValueRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *GetAddressByValueRequest) GetAddress() isGetAddressByValueRequest_Address {
-	if x != nil {
-		return x.Address
-	}
-	return nil
-}
-
-func (x *GetAddressByValueRequest) GetExternalIpv4Address() string {
-	if x != nil {
-		if x, ok := x.Address.(*GetAddressByValueRequest_ExternalIpv4Address); ok {
-			return x.ExternalIpv4Address
-		}
-	}
-	return ""
-}
-
-func (x *GetAddressByValueRequest) GetInternalIpv4Address() string {
-	if x != nil {
-		if x, ok := x.Address.(*GetAddressByValueRequest_InternalIpv4Address); ok {
-			return x.InternalIpv4Address
-		}
-	}
-	return ""
-}
-
-func (x *GetAddressByValueRequest) GetScope() isGetAddressByValueRequest_Scope {
-	if x != nil {
-		return x.Scope
-	}
-	return nil
-}
-
-func (x *GetAddressByValueRequest) GetSubnetId() string {
-	if x != nil {
-		if x, ok := x.Scope.(*GetAddressByValueRequest_SubnetId); ok {
-			return x.SubnetId
-		}
-	}
-	return ""
-}
-
-type isGetAddressByValueRequest_Address interface {
-	isGetAddressByValueRequest_Address()
-}
-
-type GetAddressByValueRequest_ExternalIpv4Address struct {
-	// External ipv4 address specification.
-	ExternalIpv4Address string `protobuf:"bytes,1,opt,name=external_ipv4_address,json=externalIpv4Address,proto3,oneof"`
-}
-
-type GetAddressByValueRequest_InternalIpv4Address struct {
-	// Internal ipv4 address specification.
-	InternalIpv4Address string `protobuf:"bytes,2,opt,name=internal_ipv4_address,json=internalIpv4Address,proto3,oneof"`
-}
-
-func (*GetAddressByValueRequest_ExternalIpv4Address) isGetAddressByValueRequest_Address() {}
-
-func (*GetAddressByValueRequest_InternalIpv4Address) isGetAddressByValueRequest_Address() {}
-
-type isGetAddressByValueRequest_Scope interface {
-	isGetAddressByValueRequest_Scope()
-}
-
-type GetAddressByValueRequest_SubnetId struct {
-	// subnet where address was allocated
-	SubnetId string `protobuf:"bytes,5,opt,name=subnet_id,json=subnetId,proto3,oneof"`
-}
-
-func (*GetAddressByValueRequest_SubnetId) isGetAddressByValueRequest_Scope() {}
-
 type ListAddressesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the project to list addresses in.
@@ -236,7 +121,7 @@ type ListAddressesRequest struct {
 
 func (x *ListAddressesRequest) Reset() {
 	*x = ListAddressesRequest{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[2]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -248,7 +133,7 @@ func (x *ListAddressesRequest) String() string {
 func (*ListAddressesRequest) ProtoMessage() {}
 
 func (x *ListAddressesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[2]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -261,7 +146,7 @@ func (x *ListAddressesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAddressesRequest.ProtoReflect.Descriptor instead.
 func (*ListAddressesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{2}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *ListAddressesRequest) GetProjectId() string {
@@ -322,7 +207,7 @@ type ListAddressesResponse struct {
 
 func (x *ListAddressesResponse) Reset() {
 	*x = ListAddressesResponse{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[3]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -334,7 +219,7 @@ func (x *ListAddressesResponse) String() string {
 func (*ListAddressesResponse) ProtoMessage() {}
 
 func (x *ListAddressesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[3]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -347,7 +232,7 @@ func (x *ListAddressesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAddressesResponse.ProtoReflect.Descriptor instead.
 func (*ListAddressesResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{3}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ListAddressesResponse) GetAddresses() []*Address {
@@ -358,131 +243,6 @@ func (x *ListAddressesResponse) GetAddresses() []*Address {
 }
 
 func (x *ListAddressesResponse) GetNextPageToken() string {
-	if x != nil {
-		return x.NextPageToken
-	}
-	return ""
-}
-
-type ListAddressesBySubnetRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the subnet to list addresses in.
-	SubnetId string `protobuf:"bytes,1,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
-	// The maximum number of results per page to return. If the number of available
-	// results is larger than `page_size`, the service returns a [ListAddressesBySubnetResponse.next_page_token]
-	// that can be used to get the next page of results in subsequent list requests.
-	// Default value: 100.
-	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	// Page token. To get the next page of results, set `page_token` to the
-	// [ListAddressesBySubnetResponse.next_page_token] returned by a previous list request.
-	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListAddressesBySubnetRequest) Reset() {
-	*x = ListAddressesBySubnetRequest{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListAddressesBySubnetRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListAddressesBySubnetRequest) ProtoMessage() {}
-
-func (x *ListAddressesBySubnetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListAddressesBySubnetRequest.ProtoReflect.Descriptor instead.
-func (*ListAddressesBySubnetRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *ListAddressesBySubnetRequest) GetSubnetId() string {
-	if x != nil {
-		return x.SubnetId
-	}
-	return ""
-}
-
-func (x *ListAddressesBySubnetRequest) GetPageSize() int64 {
-	if x != nil {
-		return x.PageSize
-	}
-	return 0
-}
-
-func (x *ListAddressesBySubnetRequest) GetPageToken() string {
-	if x != nil {
-		return x.PageToken
-	}
-	return ""
-}
-
-type ListAddressesBySubnetResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// List of addresses.
-	Addresses []*Address `protobuf:"bytes,1,rep,name=addresses,proto3" json:"addresses,omitempty"`
-	// Token for getting the next page of the list. If the number of results is greater than
-	// the specified [ListAddressesBySubnetRequest.page_size], use `next_page_token` as the value
-	// for the [ListAddressesBySubnetRequest.page_token] parameter in the next list request.
-	//
-	// Each subsequent page will have its own `next_page_token` to continue paging through the results.
-	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListAddressesBySubnetResponse) Reset() {
-	*x = ListAddressesBySubnetResponse{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListAddressesBySubnetResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListAddressesBySubnetResponse) ProtoMessage() {}
-
-func (x *ListAddressesBySubnetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListAddressesBySubnetResponse.ProtoReflect.Descriptor instead.
-func (*ListAddressesBySubnetResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *ListAddressesBySubnetResponse) GetAddresses() []*Address {
-	if x != nil {
-		return x.Addresses
-	}
-	return nil
-}
-
-func (x *ListAddressesBySubnetResponse) GetNextPageToken() string {
 	if x != nil {
 		return x.NextPageToken
 	}
@@ -517,7 +277,7 @@ type CreateAddressRequest struct {
 
 func (x *CreateAddressRequest) Reset() {
 	*x = CreateAddressRequest{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -529,7 +289,7 @@ func (x *CreateAddressRequest) String() string {
 func (*CreateAddressRequest) ProtoMessage() {}
 
 func (x *CreateAddressRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -542,7 +302,7 @@ func (x *CreateAddressRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAddressRequest.ProtoReflect.Descriptor instead.
 func (*CreateAddressRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{6}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CreateAddressRequest) GetProjectId() string {
@@ -667,7 +427,7 @@ type ExternalIpv4AddressSpec struct {
 
 func (x *ExternalIpv4AddressSpec) Reset() {
 	*x = ExternalIpv4AddressSpec{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -679,7 +439,7 @@ func (x *ExternalIpv4AddressSpec) String() string {
 func (*ExternalIpv4AddressSpec) ProtoMessage() {}
 
 func (x *ExternalIpv4AddressSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -692,7 +452,7 @@ func (x *ExternalIpv4AddressSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExternalIpv4AddressSpec.ProtoReflect.Descriptor instead.
 func (*ExternalIpv4AddressSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{7}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ExternalIpv4AddressSpec) GetAddress() string {
@@ -723,7 +483,7 @@ type InternalIpv4AddressSpec struct {
 
 func (x *InternalIpv4AddressSpec) Reset() {
 	*x = InternalIpv4AddressSpec{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -735,7 +495,7 @@ func (x *InternalIpv4AddressSpec) String() string {
 func (*InternalIpv4AddressSpec) ProtoMessage() {}
 
 func (x *InternalIpv4AddressSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -748,7 +508,7 @@ func (x *InternalIpv4AddressSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InternalIpv4AddressSpec.ProtoReflect.Descriptor instead.
 func (*InternalIpv4AddressSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{8}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *InternalIpv4AddressSpec) GetAddress() string {
@@ -799,7 +559,7 @@ type InternalIpv6AddressSpec struct {
 
 func (x *InternalIpv6AddressSpec) Reset() {
 	*x = InternalIpv6AddressSpec{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -811,7 +571,7 @@ func (x *InternalIpv6AddressSpec) String() string {
 func (*InternalIpv6AddressSpec) ProtoMessage() {}
 
 func (x *InternalIpv6AddressSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -824,7 +584,7 @@ func (x *InternalIpv6AddressSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InternalIpv6AddressSpec.ProtoReflect.Descriptor instead.
 func (*InternalIpv6AddressSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{9}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *InternalIpv6AddressSpec) GetAddress() string {
@@ -877,7 +637,7 @@ type ExternalIpv6AddressSpec struct {
 
 func (x *ExternalIpv6AddressSpec) Reset() {
 	*x = ExternalIpv6AddressSpec{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -889,7 +649,7 @@ func (x *ExternalIpv6AddressSpec) String() string {
 func (*ExternalIpv6AddressSpec) ProtoMessage() {}
 
 func (x *ExternalIpv6AddressSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -902,7 +662,7 @@ func (x *ExternalIpv6AddressSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExternalIpv6AddressSpec.ProtoReflect.Descriptor instead.
 func (*ExternalIpv6AddressSpec) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{10}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ExternalIpv6AddressSpec) GetAddress() string {
@@ -929,7 +689,7 @@ type CreateAddressMetadata struct {
 
 func (x *CreateAddressMetadata) Reset() {
 	*x = CreateAddressMetadata{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[11]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -941,7 +701,7 @@ func (x *CreateAddressMetadata) String() string {
 func (*CreateAddressMetadata) ProtoMessage() {}
 
 func (x *CreateAddressMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[11]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -954,7 +714,7 @@ func (x *CreateAddressMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAddressMetadata.ProtoReflect.Descriptor instead.
 func (*CreateAddressMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{11}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CreateAddressMetadata) GetAddressId() string {
@@ -1001,7 +761,7 @@ type UpdateAddressRequest struct {
 
 func (x *UpdateAddressRequest) Reset() {
 	*x = UpdateAddressRequest{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[12]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1013,7 +773,7 @@ func (x *UpdateAddressRequest) String() string {
 func (*UpdateAddressRequest) ProtoMessage() {}
 
 func (x *UpdateAddressRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[12]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1026,7 +786,7 @@ func (x *UpdateAddressRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAddressRequest.ProtoReflect.Descriptor instead.
 func (*UpdateAddressRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{12}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *UpdateAddressRequest) GetAddressId() string {
@@ -1088,7 +848,7 @@ type UpdateAddressMetadata struct {
 
 func (x *UpdateAddressMetadata) Reset() {
 	*x = UpdateAddressMetadata{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[13]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1100,7 +860,7 @@ func (x *UpdateAddressMetadata) String() string {
 func (*UpdateAddressMetadata) ProtoMessage() {}
 
 func (x *UpdateAddressMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[13]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1113,7 +873,7 @@ func (x *UpdateAddressMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAddressMetadata.ProtoReflect.Descriptor instead.
 func (*UpdateAddressMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{13}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UpdateAddressMetadata) GetAddressId() string {
@@ -1135,7 +895,7 @@ type DeleteAddressRequest struct {
 
 func (x *DeleteAddressRequest) Reset() {
 	*x = DeleteAddressRequest{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[14]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1147,7 +907,7 @@ func (x *DeleteAddressRequest) String() string {
 func (*DeleteAddressRequest) ProtoMessage() {}
 
 func (x *DeleteAddressRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[14]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1160,7 +920,7 @@ func (x *DeleteAddressRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAddressRequest.ProtoReflect.Descriptor instead.
 func (*DeleteAddressRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{14}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DeleteAddressRequest) GetAddressId() string {
@@ -1180,7 +940,7 @@ type DeleteAddressMetadata struct {
 
 func (x *DeleteAddressMetadata) Reset() {
 	*x = DeleteAddressMetadata{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[15]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1192,7 +952,7 @@ func (x *DeleteAddressMetadata) String() string {
 func (*DeleteAddressMetadata) ProtoMessage() {}
 
 func (x *DeleteAddressMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[15]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1205,7 +965,7 @@ func (x *DeleteAddressMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAddressMetadata.ProtoReflect.Descriptor instead.
 func (*DeleteAddressMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{15}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DeleteAddressMetadata) GetAddressId() string {
@@ -1235,7 +995,7 @@ type ListAddressOperationsRequest struct {
 
 func (x *ListAddressOperationsRequest) Reset() {
 	*x = ListAddressOperationsRequest{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[16]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1247,7 +1007,7 @@ func (x *ListAddressOperationsRequest) String() string {
 func (*ListAddressOperationsRequest) ProtoMessage() {}
 
 func (x *ListAddressOperationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[16]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1260,7 +1020,7 @@ func (x *ListAddressOperationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAddressOperationsRequest.ProtoReflect.Descriptor instead.
 func (*ListAddressOperationsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{16}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListAddressOperationsRequest) GetAddressId() string {
@@ -1300,7 +1060,7 @@ type ListAddressOperationsResponse struct {
 
 func (x *ListAddressOperationsResponse) Reset() {
 	*x = ListAddressOperationsResponse{}
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[17]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1312,7 +1072,7 @@ func (x *ListAddressOperationsResponse) String() string {
 func (*ListAddressOperationsResponse) ProtoMessage() {}
 
 func (x *ListAddressOperationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[17]
+	mi := &file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1325,7 +1085,7 @@ func (x *ListAddressOperationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAddressOperationsResponse.ProtoReflect.Descriptor instead.
 func (*ListAddressOperationsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{17}
+	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListAddressOperationsResponse) GetOperations() []*operation.Operation {
@@ -1349,13 +1109,7 @@ const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"(kacho/cloud/vpc/v1/address_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a kacho/cloud/vpc/v1/address.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"@\n" +
 	"\x11GetAddressRequest\x12+\n" +
 	"\n" +
-	"address_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\taddressId\"\xc9\x01\n" +
-	"\x18GetAddressByValueRequest\x124\n" +
-	"\x15external_ipv4_address\x18\x01 \x01(\tH\x00R\x13externalIpv4Address\x124\n" +
-	"\x15internal_ipv4_address\x18\x02 \x01(\tH\x00R\x13internalIpv4Address\x12'\n" +
-	"\tsubnet_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=50H\x01R\bsubnetIdB\t\n" +
-	"\aaddressB\a\n" +
-	"\x05scopeJ\x04\b\x03\x10\x05\"\xfe\x01\n" +
+	"address_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\taddressId\"\xfe\x01\n" +
 	"\x14ListAddressesRequest\x12+\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
@@ -1368,15 +1122,6 @@ const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"\n" +
 	"ip_address\x18\x06 \x01(\tB\b\x8a\xc81\x04<=45R\tipAddress\"z\n" +
 	"\x15ListAddressesResponse\x129\n" +
-	"\taddresses\x18\x01 \x03(\v2\x1b.kacho.cloud.vpc.v1.AddressR\taddresses\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x9c\x01\n" +
-	"\x1cListAddressesBySubnetRequest\x12)\n" +
-	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
-	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x82\x01\n" +
-	"\x1dListAddressesBySubnetResponse\x129\n" +
 	"\taddresses\x18\x01 \x03(\v2\x1b.kacho.cloud.vpc.v1.AddressR\taddresses\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x8a\a\n" +
 	"\x14CreateAddressRequest\x12+\n" +
@@ -1483,60 +1228,56 @@ func file_kacho_cloud_vpc_v1_address_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_vpc_v1_address_service_proto_rawDescData
 }
 
-var file_kacho_cloud_vpc_v1_address_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_kacho_cloud_vpc_v1_address_service_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_kacho_cloud_vpc_v1_address_service_proto_goTypes = []any{
 	(*GetAddressRequest)(nil),             // 0: kacho.cloud.vpc.v1.GetAddressRequest
-	(*GetAddressByValueRequest)(nil),      // 1: kacho.cloud.vpc.v1.GetAddressByValueRequest
-	(*ListAddressesRequest)(nil),          // 2: kacho.cloud.vpc.v1.ListAddressesRequest
-	(*ListAddressesResponse)(nil),         // 3: kacho.cloud.vpc.v1.ListAddressesResponse
-	(*ListAddressesBySubnetRequest)(nil),  // 4: kacho.cloud.vpc.v1.ListAddressesBySubnetRequest
-	(*ListAddressesBySubnetResponse)(nil), // 5: kacho.cloud.vpc.v1.ListAddressesBySubnetResponse
-	(*CreateAddressRequest)(nil),          // 6: kacho.cloud.vpc.v1.CreateAddressRequest
-	(*ExternalIpv4AddressSpec)(nil),       // 7: kacho.cloud.vpc.v1.ExternalIpv4AddressSpec
-	(*InternalIpv4AddressSpec)(nil),       // 8: kacho.cloud.vpc.v1.InternalIpv4AddressSpec
-	(*InternalIpv6AddressSpec)(nil),       // 9: kacho.cloud.vpc.v1.InternalIpv6AddressSpec
-	(*ExternalIpv6AddressSpec)(nil),       // 10: kacho.cloud.vpc.v1.ExternalIpv6AddressSpec
-	(*CreateAddressMetadata)(nil),         // 11: kacho.cloud.vpc.v1.CreateAddressMetadata
-	(*UpdateAddressRequest)(nil),          // 12: kacho.cloud.vpc.v1.UpdateAddressRequest
-	(*UpdateAddressMetadata)(nil),         // 13: kacho.cloud.vpc.v1.UpdateAddressMetadata
-	(*DeleteAddressRequest)(nil),          // 14: kacho.cloud.vpc.v1.DeleteAddressRequest
-	(*DeleteAddressMetadata)(nil),         // 15: kacho.cloud.vpc.v1.DeleteAddressMetadata
-	(*ListAddressOperationsRequest)(nil),  // 16: kacho.cloud.vpc.v1.ListAddressOperationsRequest
-	(*ListAddressOperationsResponse)(nil), // 17: kacho.cloud.vpc.v1.ListAddressOperationsResponse
-	nil,                                   // 18: kacho.cloud.vpc.v1.CreateAddressRequest.LabelsEntry
-	nil,                                   // 19: kacho.cloud.vpc.v1.UpdateAddressRequest.LabelsEntry
-	(*Address)(nil),                       // 20: kacho.cloud.vpc.v1.Address
-	(*fieldmaskpb.FieldMask)(nil),         // 21: google.protobuf.FieldMask
-	(*operation.Operation)(nil),           // 22: kacho.cloud.operation.Operation
+	(*ListAddressesRequest)(nil),          // 1: kacho.cloud.vpc.v1.ListAddressesRequest
+	(*ListAddressesResponse)(nil),         // 2: kacho.cloud.vpc.v1.ListAddressesResponse
+	(*CreateAddressRequest)(nil),          // 3: kacho.cloud.vpc.v1.CreateAddressRequest
+	(*ExternalIpv4AddressSpec)(nil),       // 4: kacho.cloud.vpc.v1.ExternalIpv4AddressSpec
+	(*InternalIpv4AddressSpec)(nil),       // 5: kacho.cloud.vpc.v1.InternalIpv4AddressSpec
+	(*InternalIpv6AddressSpec)(nil),       // 6: kacho.cloud.vpc.v1.InternalIpv6AddressSpec
+	(*ExternalIpv6AddressSpec)(nil),       // 7: kacho.cloud.vpc.v1.ExternalIpv6AddressSpec
+	(*CreateAddressMetadata)(nil),         // 8: kacho.cloud.vpc.v1.CreateAddressMetadata
+	(*UpdateAddressRequest)(nil),          // 9: kacho.cloud.vpc.v1.UpdateAddressRequest
+	(*UpdateAddressMetadata)(nil),         // 10: kacho.cloud.vpc.v1.UpdateAddressMetadata
+	(*DeleteAddressRequest)(nil),          // 11: kacho.cloud.vpc.v1.DeleteAddressRequest
+	(*DeleteAddressMetadata)(nil),         // 12: kacho.cloud.vpc.v1.DeleteAddressMetadata
+	(*ListAddressOperationsRequest)(nil),  // 13: kacho.cloud.vpc.v1.ListAddressOperationsRequest
+	(*ListAddressOperationsResponse)(nil), // 14: kacho.cloud.vpc.v1.ListAddressOperationsResponse
+	nil,                                   // 15: kacho.cloud.vpc.v1.CreateAddressRequest.LabelsEntry
+	nil,                                   // 16: kacho.cloud.vpc.v1.UpdateAddressRequest.LabelsEntry
+	(*Address)(nil),                       // 17: kacho.cloud.vpc.v1.Address
+	(*fieldmaskpb.FieldMask)(nil),         // 18: google.protobuf.FieldMask
+	(*operation.Operation)(nil),           // 19: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_vpc_v1_address_service_proto_depIdxs = []int32{
-	20, // 0: kacho.cloud.vpc.v1.ListAddressesResponse.addresses:type_name -> kacho.cloud.vpc.v1.Address
-	20, // 1: kacho.cloud.vpc.v1.ListAddressesBySubnetResponse.addresses:type_name -> kacho.cloud.vpc.v1.Address
-	18, // 2: kacho.cloud.vpc.v1.CreateAddressRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateAddressRequest.LabelsEntry
-	7,  // 3: kacho.cloud.vpc.v1.CreateAddressRequest.external_ipv4_address_spec:type_name -> kacho.cloud.vpc.v1.ExternalIpv4AddressSpec
-	8,  // 4: kacho.cloud.vpc.v1.CreateAddressRequest.internal_ipv4_address_spec:type_name -> kacho.cloud.vpc.v1.InternalIpv4AddressSpec
-	9,  // 5: kacho.cloud.vpc.v1.CreateAddressRequest.internal_ipv6_address_spec:type_name -> kacho.cloud.vpc.v1.InternalIpv6AddressSpec
-	10, // 6: kacho.cloud.vpc.v1.CreateAddressRequest.external_ipv6_address_spec:type_name -> kacho.cloud.vpc.v1.ExternalIpv6AddressSpec
-	21, // 7: kacho.cloud.vpc.v1.UpdateAddressRequest.update_mask:type_name -> google.protobuf.FieldMask
-	19, // 8: kacho.cloud.vpc.v1.UpdateAddressRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateAddressRequest.LabelsEntry
-	22, // 9: kacho.cloud.vpc.v1.ListAddressOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	0,  // 10: kacho.cloud.vpc.v1.AddressService.Get:input_type -> kacho.cloud.vpc.v1.GetAddressRequest
-	2,  // 11: kacho.cloud.vpc.v1.AddressService.List:input_type -> kacho.cloud.vpc.v1.ListAddressesRequest
-	6,  // 12: kacho.cloud.vpc.v1.AddressService.Create:input_type -> kacho.cloud.vpc.v1.CreateAddressRequest
-	12, // 13: kacho.cloud.vpc.v1.AddressService.Update:input_type -> kacho.cloud.vpc.v1.UpdateAddressRequest
-	14, // 14: kacho.cloud.vpc.v1.AddressService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteAddressRequest
-	16, // 15: kacho.cloud.vpc.v1.AddressService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListAddressOperationsRequest
-	20, // 16: kacho.cloud.vpc.v1.AddressService.Get:output_type -> kacho.cloud.vpc.v1.Address
-	3,  // 17: kacho.cloud.vpc.v1.AddressService.List:output_type -> kacho.cloud.vpc.v1.ListAddressesResponse
-	22, // 18: kacho.cloud.vpc.v1.AddressService.Create:output_type -> kacho.cloud.operation.Operation
-	22, // 19: kacho.cloud.vpc.v1.AddressService.Update:output_type -> kacho.cloud.operation.Operation
-	22, // 20: kacho.cloud.vpc.v1.AddressService.Delete:output_type -> kacho.cloud.operation.Operation
-	17, // 21: kacho.cloud.vpc.v1.AddressService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListAddressOperationsResponse
-	16, // [16:22] is the sub-list for method output_type
-	10, // [10:16] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	17, // 0: kacho.cloud.vpc.v1.ListAddressesResponse.addresses:type_name -> kacho.cloud.vpc.v1.Address
+	15, // 1: kacho.cloud.vpc.v1.CreateAddressRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateAddressRequest.LabelsEntry
+	4,  // 2: kacho.cloud.vpc.v1.CreateAddressRequest.external_ipv4_address_spec:type_name -> kacho.cloud.vpc.v1.ExternalIpv4AddressSpec
+	5,  // 3: kacho.cloud.vpc.v1.CreateAddressRequest.internal_ipv4_address_spec:type_name -> kacho.cloud.vpc.v1.InternalIpv4AddressSpec
+	6,  // 4: kacho.cloud.vpc.v1.CreateAddressRequest.internal_ipv6_address_spec:type_name -> kacho.cloud.vpc.v1.InternalIpv6AddressSpec
+	7,  // 5: kacho.cloud.vpc.v1.CreateAddressRequest.external_ipv6_address_spec:type_name -> kacho.cloud.vpc.v1.ExternalIpv6AddressSpec
+	18, // 6: kacho.cloud.vpc.v1.UpdateAddressRequest.update_mask:type_name -> google.protobuf.FieldMask
+	16, // 7: kacho.cloud.vpc.v1.UpdateAddressRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateAddressRequest.LabelsEntry
+	19, // 8: kacho.cloud.vpc.v1.ListAddressOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	0,  // 9: kacho.cloud.vpc.v1.AddressService.Get:input_type -> kacho.cloud.vpc.v1.GetAddressRequest
+	1,  // 10: kacho.cloud.vpc.v1.AddressService.List:input_type -> kacho.cloud.vpc.v1.ListAddressesRequest
+	3,  // 11: kacho.cloud.vpc.v1.AddressService.Create:input_type -> kacho.cloud.vpc.v1.CreateAddressRequest
+	9,  // 12: kacho.cloud.vpc.v1.AddressService.Update:input_type -> kacho.cloud.vpc.v1.UpdateAddressRequest
+	11, // 13: kacho.cloud.vpc.v1.AddressService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteAddressRequest
+	13, // 14: kacho.cloud.vpc.v1.AddressService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListAddressOperationsRequest
+	17, // 15: kacho.cloud.vpc.v1.AddressService.Get:output_type -> kacho.cloud.vpc.v1.Address
+	2,  // 16: kacho.cloud.vpc.v1.AddressService.List:output_type -> kacho.cloud.vpc.v1.ListAddressesResponse
+	19, // 17: kacho.cloud.vpc.v1.AddressService.Create:output_type -> kacho.cloud.operation.Operation
+	19, // 18: kacho.cloud.vpc.v1.AddressService.Update:output_type -> kacho.cloud.operation.Operation
+	19, // 19: kacho.cloud.vpc.v1.AddressService.Delete:output_type -> kacho.cloud.operation.Operation
+	14, // 20: kacho.cloud.vpc.v1.AddressService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListAddressOperationsResponse
+	15, // [15:21] is the sub-list for method output_type
+	9,  // [9:15] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_vpc_v1_address_service_proto_init() }
@@ -1545,21 +1286,16 @@ func file_kacho_cloud_vpc_v1_address_service_proto_init() {
 		return
 	}
 	file_kacho_cloud_vpc_v1_address_proto_init()
-	file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[1].OneofWrappers = []any{
-		(*GetAddressByValueRequest_ExternalIpv4Address)(nil),
-		(*GetAddressByValueRequest_InternalIpv4Address)(nil),
-		(*GetAddressByValueRequest_SubnetId)(nil),
-	}
-	file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[6].OneofWrappers = []any{
+	file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[3].OneofWrappers = []any{
 		(*CreateAddressRequest_ExternalIpv4AddressSpec)(nil),
 		(*CreateAddressRequest_InternalIpv4AddressSpec)(nil),
 		(*CreateAddressRequest_InternalIpv6AddressSpec)(nil),
 		(*CreateAddressRequest_ExternalIpv6AddressSpec)(nil),
 	}
-	file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[8].OneofWrappers = []any{
+	file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[5].OneofWrappers = []any{
 		(*InternalIpv4AddressSpec_SubnetId)(nil),
 	}
-	file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[9].OneofWrappers = []any{
+	file_kacho_cloud_vpc_v1_address_service_proto_msgTypes[6].OneofWrappers = []any{
 		(*InternalIpv6AddressSpec_SubnetId)(nil),
 	}
 	type x struct{}
@@ -1568,7 +1304,7 @@ func file_kacho_cloud_vpc_v1_address_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_vpc_v1_address_service_proto_rawDesc), len(file_kacho_cloud_vpc_v1_address_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

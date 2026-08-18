@@ -34,6 +34,17 @@
 #
 # Offline manifest-assertion harness (no kind cluster). Mirrors tests/helm/*.
 set -euo pipefail
+# any_line_matches <многострочное значение> <ERE> — как `grep -qE`: истинно, если
+# ХОТЬ ОДНА строка значения совпадает с выражением. Построчность важна: у `grep`
+# точка не переходит через перевод строки, а у `[[ =~ ]]` на всём значении —
+# переходит. Труба убрана из-за ложного отказа на совпадении (задача #658).
+any_line_matches() {
+  local _l
+  while IFS= read -r _l; do
+    if [[ "$_l" =~ $2 ]]; then return 0; fi
+  done <<<"$1"
+  return 1
+}
 
 SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -54,7 +65,11 @@ ok() { N=$((N + 1)); }
 # false-green is precisely the class this gate exists to prevent, so detect the
 # impostor explicitly rather than trusting `command -v`.
 command -v yq >/dev/null 2>&1 || fail "yq not installed (mikefarah yq v4 required)"
-yq --version 2>&1 | grep -qi mikefarah || fail \
+# Сравнение — БЕЗ трубы: `… | grep -q` под `set -o pipefail` возвращает ОТКАЗ
+# НА СОВПАДЕНИИ (grep выходит по первому попаданию, писатель получает SIGPIPE,
+# и `pipefail` поднимает ЕГО статус до статуса конвейера). Задача #658.
+YQ_VER="$(yq --version 2>&1 || true)"
+[[ "${YQ_VER,,}" == *mikefarah* ]] || fail \
   "wrong 'yq' on PATH ($(command -v yq)): '$(yq --version 2>&1 | head -1)'. \
 mikefarah yq v4 is required — the python-yq jq wrapper's output would make the \
 assertions below pass without checking anything."
@@ -80,7 +95,7 @@ case "$prod_at" in
 esac
 HYDRA_CM_PROD="$(render_only "$PROD" charts/hydra/templates/configmap.yaml)"
 [ -n "$HYDRA_CM_PROD" ] || fail "hydra configmap did not render in prod profile"
-echo "$HYDRA_CM_PROD" | grep -Eq "access_token: *$prod_at" \
+any_line_matches "$HYDRA_CM_PROD" "access_token: *$prod_at" \
   || fail "prod: the rendered Hydra config does not carry access_token: $prod_at"
 ok
 
@@ -89,9 +104,9 @@ ok
 # step-up, which holds only while the credential is time-bounded.
 IAM_PROD="$(render_only "$PROD" charts/kacho-iam/templates/deployment.yaml)"
 [ -n "$IAM_PROD" ] || fail "kacho-iam deployment did not render in prod profile"
-echo "$IAM_PROD" | grep -q 'KACHO_IAM_SAKEY_DEFAULT_TTL' \
+[[ "$IAM_PROD" == *'KACHO_IAM_SAKEY_DEFAULT_TTL'* ]] \
   || fail "prod: KACHO_IAM_SAKEY_DEFAULT_TTL absent — an omitted ttl_seconds would mint a never-expiring key"
-echo "$IAM_PROD" | grep -q 'KACHO_IAM_SAKEY_MAX_TTL' \
+[[ "$IAM_PROD" == *'KACHO_IAM_SAKEY_MAX_TTL'* ]] \
   || fail "prod: KACHO_IAM_SAKEY_MAX_TTL absent — no ceiling on how long a machine credential may live"
 prod_atl="$(yq '.["kacho-iam"].kacho.iam.saKey.accessTokenTtl // ""' "$PROD")"
 [ -n "$prod_atl" ] \
@@ -101,7 +116,7 @@ ok
 # ── 3. DEV keeps bounded keys but does NOT pin the per-client token lifespan ──
 IAM_DEV="$(render_only "$DEV" charts/kacho-iam/templates/deployment.yaml)"
 [ -n "$IAM_DEV" ] || fail "kacho-iam deployment did not render in dev profile"
-echo "$IAM_DEV" | grep -q 'KACHO_IAM_SAKEY_MAX_TTL' \
+[[ "$IAM_DEV" == *'KACHO_IAM_SAKEY_MAX_TTL'* ]] \
   || fail "dev: the SA-key ceiling must apply on the local stand too"
 dev_atl="$(yq '.["kacho-iam"].kacho.iam.saKey.accessTokenTtl // ""' "$DEV")"
 [ -z "$dev_atl" ] \

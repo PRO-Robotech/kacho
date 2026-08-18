@@ -48,6 +48,11 @@ type RefusalOwner struct {
 // файл миграции рендером. Своего текста отказа он не пишет — и написать не
 // может, не покраснев на гейте.
 var refusalOwners = []RefusalOwner{
+	// iam — владелец ВЕЛИЧИН, и он же владелец типа «аккаунт». Единственный, у
+	// кого совпало и то и другое; отказ от этого не становится особенным —
+	// именно поэтому он рендерится тем же шаблоном, что у остальных, а не
+	// пишется здесь своими словами.
+	{Service: "iam", Schema: "kacho_iam", Migration: "484001_quota_refusal_single_source.sql"},
 	{Service: "vpc", Schema: "kacho_vpc", Migration: "0044_quota_refusal_single_source.sql"},
 	{Service: "compute", Schema: "public", Migration: "0038_quota_refusal_single_source.sql"},
 	{Service: "storage", Schema: "kacho_storage", Migration: "0025_quota_refusal_single_source.sql"},

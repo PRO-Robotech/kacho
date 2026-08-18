@@ -71,7 +71,7 @@ provisioned_by() {
   # `dev-prod-up: dev-up` — цель исполняет рецепты своих make-предусловий.
   deps="$(printf '%s\n' "$body" | head -1 | sed -E 's/^[^:]*:[[:space:]]*//')"
   for d in $deps; do body="$body"$'\n'"$(target_body "$d")"; done
-  printf '%s\n' "$body" | grep -q "$SECRETS_SH" || return 0
+  [[ "$body" == *"$SECRETS_SH"* ]] || return 0
   # Скрипт заводит ровно те секреты, которые в нём создаются `create secret generic`.
   grep -oE 'create secret generic +[a-z0-9-]+' "$REPO_ROOT/$SECRETS_SH" | awk '{print $4}'
 }
@@ -115,7 +115,7 @@ self_test() {
 
   # (A) ИНЪЕКЦИЯ: цель перестала звать скрипт секретов (ровно исходный дефект)
   local out; out="$(unmet "$render" "")"
-  if printf '%s' "$out" | grep -q 'kacho-iam-hook-token'; then
+  if [[ "$out" == *'kacho-iam-hook-token'* ]]; then
     echo "  (A) цель не зовёт scripts/dev-prod-secrets.sh → КРАСНЫЙ с координатой: $(printf '%s' "$out" | tr '\n' ';')"
   else
     echo "  (A) цель не зовёт scripts/dev-prod-secrets.sh → ПРОПУСТИЛ"; rc=1
@@ -153,7 +153,7 @@ YAML
   # (D) ИНЪЕКЦИЯ: та же ссылка БЕЗ optional и без создателя — обязан краснеть
   sed 's/, optional: true//' "$optr" > "$optr.hard"
   out="$(unmet "$optr.hard" "")"
-  if printf '%s' "$out" | grep -q 'secret-which-nobody-creates'; then
+  if [[ "$out" == *'secret-which-nobody-creates'* ]]; then
     echo "  (D) та же ссылка обязательной формой    → КРАСНЫЙ с координатой"
   else echo "  (D) та же ссылка обязательной формой    → ПРОПУСТИЛ"; rc=1; fi
 

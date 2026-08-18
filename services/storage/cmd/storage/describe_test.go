@@ -433,10 +433,15 @@ func registrarsOfBothListeners() []func(grpc.ServiceRegistrar) {
 	imageUC := image.New(nil, nil, nil, nil, nil, nil)
 	diskTypeUC := disktype.New(nil)
 	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_storage"))
+	// Чтение квот — с НЕнулевым обработчиком: на поднятом стенде оно
+	// зарегистрировано, и перепись обслуживаемого обязана описывать стенд, а не
+	// вырожденную сборку. Нулевой указатель здесь молча вывел бы сервис из-под
+	// каждой пробы, которая выводит поверхность из этой сборки.
+	quotaHandler := handler.NewQuotaHandler(nil)
 
 	return []func(grpc.ServiceRegistrar){
 		func(r grpc.ServiceRegistrar) {
-			registerPublic(r, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
+			registerPublic(r, volumeUC, snapshotUC, imageUC, diskTypeUC, quotaHandler, opHandler)
 		},
 		func(r grpc.ServiceRegistrar) {
 			registerInternal(r, volumeUC, imageUC, diskTypeUC,

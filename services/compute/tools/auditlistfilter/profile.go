@@ -53,6 +53,26 @@ package auditlistfilter
 
 import "github.com/PRO-Robotech/kacho/tools/listfiltergate"
 
+// quotaIsAProjectProperty — почему у чтения квот сужать НЕЧЕГО.
+//
+// Сужение отвечает на вопрос «какие из этих объектов доступны вызывающему», и он
+// осмыслен, пока у строк ответа есть ИНДИВИДУАЛЬНЫЕ владельцы. У квоты их нет:
+// это свойство проекта, как его имя или метки. Проект либо читаем этим
+// вызывающим, либо нет — ровно один вопрос, и его решает `viewer` на проекте
+// через извлечение области действия на крае, а не построчная проверка.
+//
+// Форма названа `ClusterScoped` потому, что других у гейта подходящих нет, а
+// вторая (`RowFilter`) описывала бы проверку, которая ничего не отсекает. Имя
+// формы здесь шире её смысла: ответ project-scoped, cluster-scoped он не
+// становится — и это сказано вслух, чтобы следующий читатель не вывел из имени,
+// будто квоты видны всему кластеру.
+//
+// Запись истекает со своим методом: снимите RPC — и она станет находкой.
+const quotaIsAProjectProperty = "Quota rows are a property of the project, not objects with " +
+	"individual owners: there is nothing to narrow to. The project-scope Check at the edge " +
+	"(viewer on project_id) is what settles access, and the proto carries it. Named " +
+	"ClusterScoped only because the gate has no third shape — the answer stays project-scoped."
+
 // Profile describes kacho-compute to the analyser.
 var Profile = listfiltergate.Profile{
 	Service:    "compute",
@@ -96,6 +116,8 @@ var Profile = listfiltergate.Profile{
 			Shape: listfiltergate.ParentGate,
 			Gate:  "svc.Get",
 		},
+		"quota.List": {Shape: listfiltergate.ClusterScoped, Reason: quotaIsAProjectProperty},
+
 		"machine_type.List": {
 			Shape: listfiltergate.ClusterScoped,
 			Reason: "cluster-wide sizing catalog (COMP-1 F7): every authenticated caller reads " +

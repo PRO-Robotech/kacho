@@ -29,6 +29,22 @@ type RegistryHandler struct {
 	uc    *registry.UseCase
 	authz repoAuthz
 }
+
+type QuotaHandler struct {
+	band *quotaband.Guard
+}
+
+// Чтение квот проекта: строка квоты — свойство проекта, а не объект с
+// владельцем, поэтому построчного вопроса здесь нет by construction. Метод
+// присутствует в КАЖДОМ синтетическом дереве потому, что он присутствует в
+// настоящем: дерево, где его нет, объявило бы истёкшей запись, которая жива.
+func (h *QuotaHandler) List(ctx context.Context, req *registryv1.ListQuotasRequest) (*registryv1.ListQuotasResponse, error) {
+	quotas, err := quotapb.ListQuotas(ctx, req.GetProjectId(), h.band.States)
+	if err != nil {
+		return nil, err
+	}
+	return &registryv1.ListQuotasResponse{Quotas: quotas}, nil
+}
 `
 
 // Compliant handler methods — the five List-shaped RPCs of RegistryService, in the

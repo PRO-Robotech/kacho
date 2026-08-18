@@ -37,6 +37,17 @@
 #
 # Offline manifest-assertion harness (no kind cluster). Mirrors tests/helm/*.
 set -euo pipefail
+# any_line_matches <многострочное значение> <ERE> — как `grep -qE`: истинно, если
+# ХОТЬ ОДНА строка значения совпадает с выражением. Построчность важна: у `grep`
+# точка не переходит через перевод строки, а у `[[ =~ ]]` на всём значении —
+# переходит. Труба убрана из-за ложного отказа на совпадении (задача #658).
+any_line_matches() {
+  local _l
+  while IFS= read -r _l; do
+    if [[ "$_l" =~ $2 ]]; then return 0; fi
+  done <<<"$1"
+  return 1
+}
 
 SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -46,8 +57,15 @@ UMBRELLA="$REPO_ROOT/helm/umbrella"
 # шлюза жил соседним репозиторием, тут стояло `../kacho-api-gateway/deploy`, и
 # после переезда в монорепу проверка падала первой же строкой. Читаем ОБЪЯВЛЕННЫЙ
 # источник — тогда следующий переезд чинит сам себя.
-AGW="$(sed -nE 's#^[[:space:]]*repository:[[:space:]]*file://\.\./\.\./\.\./(.*)$#\1#p' \
-        "$UMBRELLA/Chart.yaml" | grep -m1 'gateway')"
+# Значение берётся ЦЕЛИКОМ, первая подходящая строка выбирается уже в bash:
+  # `… | grep -m1` выходит по первому совпадению, писатель получает SIGPIPE, и под
+  # `pipefail` статус подстановки становится ненулевым (задача #658).
+AGW_CANDIDATES="$(sed -nE 's#^[[:space:]]*repository:[[:space:]]*file://\.\./\.\./\.\./(.*)$#\1#p' \
+        "$UMBRELLA/Chart.yaml")"
+AGW=""
+while IFS= read -r _cand; do
+  if [[ "$_cand" == *gateway* ]]; then AGW="$_cand"; break; fi
+done <<<"$AGW_CANDIDATES"
 AGW="$MONOREPO/$AGW"
 WANT="http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
 # Боевой профиль забирает ключи через зеркало iam — единственный фасад к
@@ -123,12 +141,12 @@ case "$pjw" in
   https://*) ;;
   *) fail "prod JWKS URL is not TLS ($pjw) — the material that verifies every bearer's signature travels this hop" ;;
 esac
-if printf '%s' "$pjw" | grep -qE "$PROVIDER_SPELLING"; then
+if any_line_matches "$pjw" "$PROVIDER_SPELLING"; then
   fail "prod JWKS URL addresses the provider directly ($pjw) — that bypasses the iam facade (core #16), a hop already found and closed once"
 fi
 # Якорь доверия обязан быть смонтирован: TLS без проверки сертификата на этом хопе
 # читается как настроенная защита, ничего не проверяя.
-printf '%s\n' "$PROD" | grep -q 'hydra-jwks-ca' \
+[[ "$PROD" == *'hydra-jwks-ca'* ]] \
   || fail "prod api-gateway pod carries no trust anchor for the JWKS hop — TLS whose certificate nobody checks leaves substitution open"
 pis="$(env_val KACHO_HYDRA_ISSUER "$PROD")"
 [ "$pis" = "https://hydra.api.kacho.cloud" ] || fail "prod KACHO_HYDRA_ISSUER=$pis (want public issuer https://hydra.api.kacho.cloud)"; ok

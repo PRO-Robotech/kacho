@@ -32,6 +32,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/listener"
 	lbhandler "github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/loadbalancer"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/operation"
+	quotaapi "github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/quota"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/targetgroup"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/jobs"
@@ -166,6 +167,15 @@ func registerPublic(reg grpc.ServiceRegistrar, w grpcWiring) {
 		w.logger,
 	).WithRegistrar(w.syncRegistrar).WithQuotaGuard(w.quotaGuard)
 	lbv1.RegisterTargetGroupServiceServer(reg, tgHandler)
+
+	// QuotaService — чтение квот арендатором. Выставляется, ТОЛЬКО когда полоса
+	// учёта собрана: иначе метод отвечал бы пустым набором на каждый запрос — то
+	// есть «квот нет», ровно то утверждение, которое контракт запрещает делать.
+	// Незарегистрированный метод отвечает `Unimplemented`, и это честно:
+	// возможности здесь действительно нет.
+	if w.quotaGuard != nil {
+		lbv1.RegisterQuotaServiceServer(reg, quotaapi.NewHandler(w.quotaGuard))
+	}
 }
 
 // registerInternal регистрирует обработчики ВНУТРЕННЕГО слушателя :9091.

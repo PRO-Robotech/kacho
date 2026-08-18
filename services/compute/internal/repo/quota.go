@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 
@@ -131,6 +133,29 @@ func (r *QuotaRepo) Admit(ctx context.Context, carrierType, carrierID, kind stri
 		return wrapPgErr(err, "Quota", "")
 	}
 	return nil
+}
+
+// QuotaSchema — схема, в которой у этого владельца лежит таблица учёта.
+//
+// `public`, а не `kacho_compute`: миграции этого сервиса создают таблицы БЕЗ
+// квалификации, а DSN идёт без `search_path` (см. `cmd/compute/recovery.go` и
+// `operations.NewRepo(pool, "public")`). Имя названо ЯВНО, а не оставлено на
+// `search_path`, потому что общий оператор чтения принимает схему параметром: у
+// оператора, собираемого из имени, умолчание означало бы молчаливую правку чужой
+// таблицы, если соединение однажды придёт с другим путём поиска.
+const QuotaSchema = "public"
+
+// ListStates отдаёт строки учёта носителя — то, что арендатор читает как свои
+// квоты.
+//
+// Оператор ОБЩИЙ (`pkg/quota.ListStates`): таблица у всех владельцев одна и та
+// же с точностью до имени схемы, и своя копия здесь разошлась бы с соседями на
+// составе столбцов или на порядке — то есть там, где расхождение не ломает
+// сборку и не видно глазом.
+func (r *QuotaRepo) ListStates(
+	ctx context.Context, carrierType, carrierID string,
+) ([]quotaread.State, error) {
+	return corequota.ListStates(ctx, r.pool, QuotaSchema, carrierType, carrierID)
 }
 
 // Materialize заводит строки учёта по всем видам разом.

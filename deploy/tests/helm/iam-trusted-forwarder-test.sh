@@ -29,6 +29,13 @@
 # здесь — копия разъехалась бы с оригиналом и снова ничего не проверяла).
 set -euo pipefail
 
+# line_in <многострочное значение> <строка> — есть ли СТРОКА ЦЕЛИКОМ в значении.
+# Замена `grep -qx`/`grep -qxF`: под `pipefail` труба даёт ложный отказ НА
+# СОВПАДЕНИИ, потому что писатель получает SIGPIPE (задача #658). Сравнение
+# буквальное — там, где раньше стоял `-x` без `-F`, это СТРОЖЕ, то есть ложного
+# зелёного добавить не может.
+line_in() { [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]; }
+
 SCRIPT="$(basename "$0")"
 DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
@@ -101,7 +108,7 @@ for chart in "$REPO_ROOT/gateway/deploy" "$REPO_ROOT/services/vpc/deploy" \
              "$DEPLOY_ROOT/helm/umbrella/charts/kacho-geo"; do
   san="$(peer_san_or_empty "$chart")"
   [ -n "$san" ] || fail "чарт $chart не отрендерил сертификат — тест разошёлся с деревом, обнови его"
-  printf '%s\n' "$def_list" | grep -qxF "$san" \
+  line_in "$def_list" "$san" \
     || fail "дефолт iam не содержит $san (чарт $chart) — этот пир перестал бы говорить за пользователя, и его путь под личностью тенанта молча отвечал бы как неаутентифицированный"
   EXPECTED_SANS="$EXPECTED_SANS$san
 "
@@ -121,7 +128,7 @@ done
 # его сертификат отрендерится, попадёт в EXPECTED и проверка пройдёт сама:
 # послабление истекает от появления предмета, а не от чьей-то памяти.
 for san in $def_list; do
-  printf '%s\n' "$EXPECTED_SANS" | grep -qxF "$san" \
+  line_in "$EXPECTED_SANS" "$san" \
     || fail "круг доверенных отправителей содержит $san, которому в дереве не соответствует ни один чарт: круг обязан совпадать с фактическими отправителями, иначе он разрешает говорить за пользователя предъявителю сертификата, которого мы не выпускаем"
 done
 ok
@@ -141,10 +148,27 @@ ok
 # привязки шаблона пода к содержимому конфига правка не перекатила бы под, процесс
 # жил бы со старой посадкой, а стража старта молчала бы — потому что старта не
 # было. Ровно этот класс однажды дал ложный зелёный на storage.
-POD_ANNOT_A="$(helm template iam "$CHART" --show-only templates/deployment.yaml 2>/dev/null \
-  | grep -m1 'kacho.cloud/config-checksum:')" || fail "deployment does not render"
-POD_ANNOT_B="$(helm template iam "$CHART" --set 'config.authn.trustedForwarderSANs[0]=spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway' \
-  --show-only templates/deployment.yaml 2>/dev/null | grep -m1 'kacho.cloud/config-checksum:')"
+# Первая подходящая строка выбирается в bash, а не `grep -m1`: тот выходит по
+# первому совпадению, helm получает SIGPIPE, и под `pipefail` подстановка
+# объявляла бы отказ рендера на успешном рендере (задача #658).
+#
+# «Не нашлось» — НЕ отказ этой функции, и `return 0` внизу намеренный: судит об
+# этом вызывающий, проверяя значение на пустоту. Так отсутствующая аннотация
+# получает СВОЁ сообщение («у пода нет аннотации с хешем конфига»), а не общее
+# «deployment does not render», которым `grep -m1` накрывал оба случая сразу.
+first_matching() {
+  local _l
+  while IFS= read -r _l; do
+    if [[ "$_l" == *"$2"* ]]; then printf '%s' "$_l"; return 0; fi
+  done <<<"$1"
+  return 0
+}
+RENDER_A="$(helm template iam "$CHART" --show-only templates/deployment.yaml 2>/dev/null)" \
+  || fail "deployment does not render"
+POD_ANNOT_A="$(first_matching "$RENDER_A" 'kacho.cloud/config-checksum:')"
+RENDER_B="$(helm template iam "$CHART" --set 'config.authn.trustedForwarderSANs[0]=spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway' \
+  --show-only templates/deployment.yaml 2>/dev/null)"
+POD_ANNOT_B="$(first_matching "$RENDER_B" 'kacho.cloud/config-checksum:')"
 [ -n "$POD_ANNOT_A" ] \
   || fail "у пода нет аннотации с хешем конфига — правка списка не перекатит его, и процесс останется со старой посадкой"
 [ "$POD_ANNOT_A" != "$POD_ANNOT_B" ] \
@@ -165,7 +189,7 @@ prod_list="$(rendered_list "$PROD_RENDER")"
 # Здесь стояло требование держать в профиле запись под компонент вне дерева; предмета
 # у него нет (см. разбор в блоке 1).
 for san in $prod_list; do
-  printf '%s\n' "$EXPECTED_SANS" | grep -qxF "$san" \
+  line_in "$EXPECTED_SANS" "$san" \
     || fail "боевой профиль держит в круге $san, которому в дереве не соответствует ни один чарт — круг обязан совпадать с фактическими отправителями"
 done
 for chart in "$REPO_ROOT/gateway/deploy" "$REPO_ROOT/services/vpc/deploy" \
@@ -173,7 +197,7 @@ for chart in "$REPO_ROOT/gateway/deploy" "$REPO_ROOT/services/vpc/deploy" \
              "$REPO_ROOT/services/storage/deploy" "$REPO_ROOT/services/registry/deploy" \
              "$DEPLOY_ROOT/helm/umbrella/charts/kacho-geo"; do
   san="$(peer_san_or_empty "$chart")"
-  printf '%s\n' "$prod_list" | grep -qxF "$san" \
+  line_in "$prod_list" "$san" \
     || fail "боевой профиль потерял отправителя $san (чарт $chart) — его путь под личностью пользователя встанет"
 done
 ok
