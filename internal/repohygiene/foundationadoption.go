@@ -32,6 +32,19 @@ import (
 // слушателя либо его собственной проводкой, либо через посредника, которого он
 // зовёт, — транзитивно, с проверкой того, что посредник и правда её несёт.
 
+// FoundationUnit — единица счёта возможности: чему принадлежит одна клетка.
+type FoundationUnit string
+
+// Единиц ровно две, и обе объявляются ЯВНО: умолчание сделало бы выбор за
+// автора набора молча, а выбран он был бы тем, что удобнее гейту.
+const (
+	// FoundationUnitListener — клетка на КАЖДОЕ место сборки сервера.
+	FoundationUnitListener FoundationUnit = "слушатель"
+	// FoundationUnitProcess — клетка на каталог: возможность заводится раз на
+	// процесс и мест сборки не имеет.
+	FoundationUnitProcess FoundationUnit = "процесс"
+)
+
 // FoundationCapability — возможность фундамента, объявленная обязательной для
 // слушателей платформы.
 //
@@ -46,6 +59,17 @@ import (
 type FoundationCapability struct {
 	// Name — имя возможности в переписи и в ведомости.
 	Name string
+	// Unit — ЕДИНИЦА СЧЁТА: чему принадлежит возможность.
+	//
+	// Различие не стилистическое, и первая редакция гейта на нём и ошиблась.
+	// Возможность, которую провязывают В СЕРВЕР (звено цепочки, пределы
+	// транспорта, ограничитель допуска), принадлежит МЕСТУ СБОРКИ: их в каталоге
+	// бывает несколько, и снятие у одного из них — ровно тот дефект, который
+	// счёт по каталогу не видит, потому что второй сервер отвечает за оба.
+	// Возможность, которую заводят РАЗ НА ПРОЦЕСС (сужатель списочной выдачи,
+	// трассировка), принадлежит КАТАЛОГУ: мест сборки у неё нет, и требовать её
+	// у каждого значило бы задавать вопрос, у которого нет предмета.
+	Unit FoundationUnit
 	// Pkg — координата в дереве (`pkg/<имя>`). Гейт проверяет, что она
 	// существует: возможность, объявленная обязательной и отсутствующая в
 	// фундаменте, — находка, а не пустая клетка у всех слушателей.
@@ -144,40 +168,61 @@ func ScanGoTree(dir string) (*FoundationScan, error) {
 			return strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go")
 		},
 		func(abs string, body []byte) error {
-			// ParseComments не запрашиваем намеренно: комментарии в разбор не
-			// попадают вовсе, поэтому «упомянул в объяснении» физически не может
-			// стать «провязал».
-			f, perr := parser.ParseFile(fset, abs, body, parser.SkipObjectResolution)
-			if perr != nil {
-				return fmt.Errorf("%s: разбор не удался: %w", abs, perr)
-			}
-			s.Files++
-			for _, imp := range f.Imports {
-				p, uerr := strconv.Unquote(imp.Path.Value)
-				if uerr != nil {
-					return fmt.Errorf("%s: путь импорта %s не читается: %w", abs, imp.Path.Value, uerr)
-				}
-				s.Imports[p] = true
-			}
-			ast.Inspect(f, func(n ast.Node) bool {
-				switch v := n.(type) {
-				case *ast.SelectorExpr:
-					if id, ok := v.X.(*ast.Ident); ok {
-						s.Selects[id.Name+"."+v.Sel.Name] = true
-					}
-				case *ast.CallExpr:
-					if id, ok := v.Fun.(*ast.Ident); ok {
-						s.Calls[id.Name] = true
-					}
-				}
-				return true
-			})
-			return nil
+			return absorbGoFile(fset, abs, body, s)
 		})
 	if err != nil {
 		return nil, err
 	}
 	return s, nil
+}
+
+// scanGoFile — тот же разбор для ОДНОГО файла.
+//
+// Нужен пробе, которая ищет производителя входа по дереву: «упоминает текстом,
+// но не вызывает» — вопрос о файле, а не о каталоге, и заданный каталогу он
+// сливает упоминание одного файла с вызовом соседнего.
+func scanGoFile(abs string, body []byte) (*FoundationScan, error) {
+	s := &FoundationScan{Imports: map[string]bool{}, Selects: map[string]bool{}, Calls: map[string]bool{}}
+	if err := absorbGoFile(token.NewFileSet(), abs, body, s); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// absorbGoFile — единственное место, где исходник превращается в признаки.
+//
+// Один разбор на обе стороны (каталог и файл): две копии разошлись бы молча, и
+// разошлись бы они именно там, где проба доказывает, что комментарий провязкой
+// не считается, — то есть контроль перестал бы контролировать.
+func absorbGoFile(fset *token.FileSet, abs string, body []byte, s *FoundationScan) error {
+	// ParseComments не запрашиваем намеренно: комментарии в разбор не попадают
+	// вовсе, поэтому «упомянул в объяснении» физически не может стать «провязал».
+	f, perr := parser.ParseFile(fset, abs, body, parser.SkipObjectResolution)
+	if perr != nil {
+		return fmt.Errorf("%s: разбор не удался: %w", abs, perr)
+	}
+	s.Files++
+	for _, imp := range f.Imports {
+		p, uerr := strconv.Unquote(imp.Path.Value)
+		if uerr != nil {
+			return fmt.Errorf("%s: путь импорта %s не читается: %w", abs, imp.Path.Value, uerr)
+		}
+		s.Imports[p] = true
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch v := n.(type) {
+		case *ast.SelectorExpr:
+			if id, ok := v.X.(*ast.Ident); ok {
+				s.Selects[id.Name+"."+v.Sel.Name] = true
+			}
+		case *ast.CallExpr:
+			if id, ok := v.Fun.(*ast.Ident); ok {
+				s.Calls[id.Name] = true
+			}
+		}
+		return true
+	})
+	return nil
 }
 
 // Direct — видна ли возможность в этом каталоге СВОЕЙ проводкой, без посредника.
@@ -221,8 +266,11 @@ func (s *FoundationScan) DirectInOwnPackage(c FoundationCapability) bool {
 type FoundationRoster struct {
 	Capabilities []FoundationCapability
 	Providers    []FoundationProvider
-	Ledger       []FoundationLedgerEntry
-	NoSubject    []FoundationNoSubject
+	// Wrappers — каталоги, оборачивающие сборку сервера. Из них ВЫВОДИТСЯ
+	// перечень точек входа, и по ним же исключаются внутренности обёрток.
+	Wrappers  []FoundationWrapper
+	Ledger    []FoundationLedgerEntry
+	NoSubject []FoundationNoSubject
 }
 
 // Reach — какие возможности доезжают до каталога с этим разбором.
@@ -323,13 +371,95 @@ func (r FoundationRoster) VerifyCapabilities(root string) []string {
 			bad = append(bad, fmt.Sprintf("у возможности %q нет ни одного признака усыновления: "+
 				"она была бы не усыновлена никем и никогда, а перепись — вечно красной", c.Name))
 		}
+		switch c.Unit {
+		case FoundationUnitListener:
+			// Импорт — свойство ФАЙЛА, а срез провязки берётся у ВЫЗОВА. Признак
+			// «пакет где-то в каталоге импортирован» до места сборки не доезжает
+			// вовсе, поэтому возможность, объявленная персональной для слушателя
+			// и опознаваемая только импортом, не была бы усыновлена ни одним
+			// местом и никогда — перепись стала бы вечно красной, а причина
+			// лежала бы не в дереве, а в наборе.
+			if len(c.Symbols) == 0 {
+				bad = append(bad, fmt.Sprintf("возможность %q считается по месту сборки сервера, "+
+					"а опознаётся только импортом: импорт — свойство файла, до места сборки он не "+
+					"доезжает, и ни одно место её не усыновит никогда", c.Name))
+			}
+		case FoundationUnitProcess:
+		default:
+			bad = append(bad, fmt.Sprintf("у возможности %q не объявлена единица счёта (%q): "+
+				"умолчание выбрало бы её за автора набора — и выбрало бы ту, что удобнее гейту, "+
+				"а не ту, которой возможность принадлежит", c.Name, string(c.Unit)))
+		}
 	}
 	sort.Strings(bad)
 	return bad
 }
 
-// FoundationCell — вердикт по одной клетке (слушатель × возможность).
+// VerifyWrappers — предпосылка объявления обёрток.
+//
+// Объявление обёртки — ПОСЛАБЛЕНИЕ: оно выводит вызовы конструктора внутри её
+// каталога из числа мест сборки. Послабление обязано истекать само, поэтому
+// проверяется двумя вопросами, и оба — о дереве, а не о намерении:
+//
+//  1. обёртка и правда оборачивает сборку сервера — в её каталоге есть вызов
+//     хоть одной точки входа. Иначе исключать в ней нечего, и объявление
+//     превращается в способ вывести из переписи произвольный каталог;
+//  2. обёртку и правда зовут СНАРУЖИ. У обёртки, которую никто не зовёт,
+//     послабление лишено предмета: её внутренности исключены, а взамен не
+//     посчитано ничего.
+func (r FoundationRoster) VerifyWrappers(markers []string,
+	listenerScans, wrapperScans map[string]*FoundationScan) []string {
+
+	var bad []string
+	for _, w := range r.Wrappers {
+		s := wrapperScans[w.Dir]
+		switch {
+		case s == nil:
+			bad = append(bad, fmt.Sprintf("обёртка %q объявлена, а её каталога в дереве нет", w.Dir))
+			continue
+		case s.Files == 0:
+			bad = append(bad, fmt.Sprintf("обёртка %q объявлена, а прод-исходников в её каталоге ноль", w.Dir))
+			continue
+		}
+		wraps := false
+		for _, m := range markers {
+			if m != w.Entry && s.Selects[m] {
+				wraps = true
+				break
+			}
+		}
+		if !wraps {
+			bad = append(bad, fmt.Sprintf("обёртка %q объявлена, а сборки сервера в её каталоге нет: "+
+				"исключать в ней нечего, и объявление работает как способ вывести каталог из переписи", w.Dir))
+		}
+		called := false
+		for name, sc := range listenerScans {
+			if sc != nil && sc.Selects[w.Entry] && !wrapperOwns(name, r.Wrappers) {
+				called = true
+				break
+			}
+		}
+		if !called {
+			for dir, sc := range wrapperScans {
+				if dir != w.Dir && sc != nil && sc.Selects[w.Entry] {
+					called = true
+					break
+				}
+			}
+		}
+		if !called {
+			bad = append(bad, fmt.Sprintf("обёртку %q (%s) не зовёт никто: послабление, выводящее её "+
+				"внутренности из числа мест сборки, лишилось предмета", w.Dir, w.Entry))
+		}
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// FoundationCell — вердикт по одной клетке (единица счёта × возможность).
 type FoundationCell struct {
+	// Listener — ИМЯ ЕДИНИЦЫ: место сборки сервера либо каталог, смотря чему
+	// возможность принадлежит.
 	Listener   string
 	Capability string
 	Verdict    string // "несёт" | "нет предмета" | "записанный пропуск" | "НАХОДКА"
@@ -346,7 +476,12 @@ const (
 
 // FoundationCensus — объём осмотренного и итог по клеткам.
 type FoundationCensus struct {
+	// Listeners — каталоги-слушатели, Sites — места сборки сервера в них.
+	// Печатаются ОБА: их расхождение (8 против 10) и есть то, ради чего единица
+	// счёта переделана, и оно обязано быть видно в выводе, а не выводиться из
+	// чтения кода.
 	Listeners    []string
+	Sites        []string
 	Capabilities []string
 	Files        int
 	Carried      int
@@ -354,60 +489,100 @@ type FoundationCensus struct {
 	Excused      int
 	Findings     []FoundationCell
 	Stale        []string
+	cells        int
 }
 
 func (c FoundationCensus) String() string {
-	return fmt.Sprintf("перепись: возможностей %d · слушателей %d · клеток %d · прод-файлов разобрано %d · "+
-		"несут %d · нет предмета %d · записанных пропусков %d · находок %d · истёкших записей %d",
-		len(c.Capabilities), len(c.Listeners), len(c.Capabilities)*len(c.Listeners), c.Files,
+	return fmt.Sprintf("перепись: возможностей %d · каталогов-слушателей %d · мест сборки сервера %d · "+
+		"клеток %d · прод-файлов разобрано %d · несут %d · нет предмета %d · записанных пропусков %d · "+
+		"находок %d · истёкших записей %d",
+		len(c.Capabilities), len(c.Listeners), len(c.Sites), c.cells, c.Files,
 		c.Carried, c.NoSubject, c.Excused, len(c.Findings), len(c.Stale))
+}
+
+// foundationUnit — одна единица счёта с уже посчитанной достижимостью.
+type foundationUnit struct {
+	// ID — как единица называется в переписи и в находке.
+	ID string
+	// Aliases — имена, которыми запись ведомости вправе её назвать. У места
+	// сборки их два: собственное имя и КАТАЛОГ. Запись, названная каталогом,
+	// покрывает все его места — иначе каждый пропуск пришлось бы выписывать
+	// по разу на сервер, и перечень стал бы нечитаемым там, где долг общий.
+	Aliases []string
+	// Where — координата для текста находки; у каталога пуста.
+	Where string
+	Reach map[string]bool
+}
+
+func (u foundationUnit) named(name string) bool {
+	for _, a := range u.Aliases {
+		if a == name {
+			return true
+		}
+	}
+	return false
 }
 
 // Adjudicate раскладывает клетки по четырём исходам и отдельно называет записи
 // обеих ведомостей, которым больше нечего исключать.
-func (r FoundationRoster) Adjudicate(listeners []string, scans map[string]*FoundationScan,
-	providerScans map[string]*FoundationScan) FoundationCensus {
+//
+// Единица клетки берётся У ВОЗМОЖНОСТИ, а не одна на всю перепись: возможность,
+// провязываемую в сервер, спрашивают с КАЖДОГО места сборки, а заводимую раз на
+// процесс — с каталога. Единая единица была бы неверна в обе стороны сразу —
+// либо частичная потеря провязки невидима, либо у сужателя списочной выдачи
+// спрашивают с места, где его нет и быть не может.
+func (r FoundationRoster) Adjudicate(dirs []string, scans map[string]*FoundationScan,
+	sites []FoundationSite, providerScans map[string]*FoundationScan) FoundationCensus {
 
-	cen := FoundationCensus{Listeners: append([]string(nil), listeners...)}
+	cen := FoundationCensus{Listeners: append([]string(nil), dirs...)}
 	for _, c := range r.Capabilities {
 		cen.Capabilities = append(cen.Capabilities, c.Name)
 	}
 	sort.Strings(cen.Listeners)
 
-	capNames := map[string]bool{}
-	for _, c := range r.Capabilities {
-		capNames[c.Name] = true
+	// Достижимость считается ОДИН раз на единицу и переиспользуется вердиктом и
+	// обеими ведомостями: иначе «несёт» у клетки и «несёт» у самоистечения стали
+	// бы двумя предикатами об одном предмете и разошлись бы молча.
+	var procUnits []foundationUnit
+	for _, d := range cen.Listeners {
+		u := foundationUnit{ID: d, Aliases: []string{d}, Reach: map[string]bool{}}
+		if s := scans[d]; s != nil {
+			cen.Files += s.Files
+			u.Reach = r.Reach(s, providerScans)
+		}
+		procUnits = append(procUnits, u)
 	}
-	listenerSet := map[string]bool{}
-	for _, l := range listeners {
-		listenerSet[l] = true
+	var siteUnits []foundationUnit
+	for _, s := range sites {
+		cen.Sites = append(cen.Sites, s.ID)
+		siteUnits = append(siteUnits, foundationUnit{
+			ID:      s.ID,
+			Aliases: []string{s.ID, s.Dir},
+			Where:   fmt.Sprintf("%s:%d", s.File, s.Line),
+			Reach:   r.Reach(s.Slice, providerScans),
+		})
 	}
 
-	// Достижимость по каждому слушателю — считается ОДИН раз и переиспользуется
-	// обеими ведомостями: иначе «несёт» у вердикта и «несёт» у самоистечения
-	// стали бы двумя предикатами об одном предмете и разошлись бы молча.
-	reach := map[string]map[string]bool{}
-	for _, l := range listeners {
-		if s := scans[l]; s != nil {
-			cen.Files += s.Files
-			reach[l] = r.Reach(s, providerScans)
-		} else {
-			reach[l] = map[string]bool{}
+	unitsFor := func(c FoundationCapability) []foundationUnit {
+		if c.Unit == FoundationUnitListener {
+			return siteUnits
 		}
+		return procUnits
+	}
+
+	byName := map[string]FoundationCapability{}
+	for _, c := range r.Capabilities {
+		byName[c.Name] = c
 	}
 
 	excusedWhole := map[string]FoundationLedgerEntry{}
 	excusedCell := map[string]FoundationLedgerEntry{}
 	for _, e := range r.Ledger {
+		c, known := byName[e.Capability]
 		switch {
-		case !capNames[e.Capability]:
+		case !known:
 			cen.Stale = append(cen.Stale, fmt.Sprintf(
 				"ведомость пропусков называет возможность %q — такой в наборе нет", e.Capability))
-			continue
-		case e.Listener != "" && !listenerSet[e.Listener]:
-			cen.Stale = append(cen.Stale, fmt.Sprintf(
-				"ведомость пропусков называет слушателя %q (возможность %q) — такого в дереве нет",
-				e.Listener, e.Capability))
 			continue
 		case e.Issue <= 0:
 			cen.Stale = append(cen.Stale, fmt.Sprintf(
@@ -415,39 +590,60 @@ func (r FoundationRoster) Adjudicate(listeners []string, scans map[string]*Found
 				e.Capability, listenerOrAll(e.Listener)))
 			continue
 		}
+		units := unitsFor(c)
 		if e.Listener == "" {
 			// Запись «не несёт ни один» истекает на ПЕРВОМ усыновившем.
-			for _, l := range listeners {
-				if reach[l][e.Capability] {
+			for _, u := range units {
+				if u.Reach[e.Capability] {
 					cen.Stale = append(cen.Stale, fmt.Sprintf(
-						"пропуск %q объявлен целиком (задача #%d), а слушатель %q её уже несёт: "+
-							"запись обязана стать пообъектной либо уйти", e.Capability, e.Issue, l))
+						"пропуск %q объявлен целиком (задача #%d), а %q её уже несёт: "+
+							"запись обязана стать пообъектной либо уйти", e.Capability, e.Issue, u.ID))
 					break
 				}
 			}
 			excusedWhole[e.Capability] = e
 			continue
 		}
-		if reach[e.Listener][e.Capability] {
+		var matched, live []foundationUnit
+		for _, u := range units {
+			if !u.named(e.Listener) {
+				continue
+			}
+			matched = append(matched, u)
+			if !u.Reach[e.Capability] {
+				live = append(live, u)
+			}
+		}
+		if len(matched) == 0 {
 			cen.Stale = append(cen.Stale, fmt.Sprintf(
-				"пропуску %q у %q (задача #%d) больше нечего исключать — возможность усыновлена",
-				e.Capability, e.Listener, e.Issue))
+				"ведомость пропусков называет слушателя %q (возможность %q) — такого в дереве нет",
+				e.Listener, e.Capability))
 			continue
 		}
-		excusedCell[e.Listener+"\x00"+e.Capability] = e
+		// Запись истекает, когда ВСЕ названные ею единицы возможность усыновили:
+		// пока хоть одна не усыновила, ей ещё есть что исключать. Именно поэтому
+		// запись, названная каталогом с двумя серверами, не истекает от того, что
+		// провязку получил один из них, — и именно поэтому число «несут» в
+		// переписи при этом растёт, а «записанных пропусков» падает.
+		if len(live) == 0 {
+			cen.Stale = append(cen.Stale, fmt.Sprintf(
+				"пропуску %q у %q (задача #%d) больше нечего исключать — возможность усыновлена "+
+					"всеми %d единицами, которые запись называет",
+				e.Capability, e.Listener, e.Issue, len(matched)))
+			continue
+		}
+		for _, u := range live {
+			excusedCell[u.ID+"\x00"+e.Capability] = e
+		}
 	}
 
 	noSubj := map[string]FoundationNoSubject{}
 	for _, n := range r.NoSubject {
+		c, known := byName[n.Capability]
 		switch {
-		case !capNames[n.Capability]:
+		case !known:
 			cen.Stale = append(cen.Stale, fmt.Sprintf(
 				"ведомость отсутствия предмета называет возможность %q — такой в наборе нет", n.Capability))
-			continue
-		case !listenerSet[n.Listener]:
-			cen.Stale = append(cen.Stale, fmt.Sprintf(
-				"ведомость отсутствия предмета называет слушателя %q (возможность %q) — такого в дереве нет",
-				n.Listener, n.Capability))
 			continue
 		case strings.TrimSpace(n.Why) == "":
 			cen.Stale = append(cen.Stale, fmt.Sprintf(
@@ -455,20 +651,44 @@ func (r FoundationRoster) Adjudicate(listeners []string, scans map[string]*Found
 				n.Capability, n.Listener))
 			continue
 		}
-		if reach[n.Listener][n.Capability] {
+		var matched []foundationUnit
+		refuted := false
+		for _, u := range unitsFor(c) {
+			if !u.named(n.Listener) {
+				continue
+			}
+			matched = append(matched, u)
+			if u.Reach[n.Capability] {
+				refuted = true
+			}
+		}
+		switch {
+		case len(matched) == 0:
+			cen.Stale = append(cen.Stale, fmt.Sprintf(
+				"ведомость отсутствия предмета называет слушателя %q (возможность %q) — такого в дереве нет",
+				n.Listener, n.Capability))
+			continue
+		case refuted:
+			// Здесь достаточно ОДНОЙ усыновившей единицы, и это не та же мерка,
+			// что у пропуска: пропуск говорит «работы ещё нет», а эта запись —
+			// «работы не предвидится, предмета нет». Единица, возможность
+			// усыновившая, опровергает ВТОРОЕ целиком.
 			cen.Stale = append(cen.Stale, fmt.Sprintf(
 				"запись «у %s нет предмета для %q» опровергнута деревом: возможность усыновлена",
 				n.Listener, n.Capability))
 			continue
 		}
-		noSubj[n.Listener+"\x00"+n.Capability] = n
+		for _, u := range matched {
+			noSubj[u.ID+"\x00"+n.Capability] = n
+		}
 	}
 
-	for _, l := range cen.Listeners {
-		for _, c := range r.Capabilities {
-			key := l + "\x00" + c.Name
+	for _, c := range r.Capabilities {
+		for _, u := range unitsFor(c) {
+			cen.cells++
+			key := u.ID + "\x00" + c.Name
 			switch {
-			case reach[l][c.Name]:
+			case u.Reach[c.Name]:
 				cen.Carried++
 			case noSubj[key].Why != "":
 				cen.NoSubject++
@@ -477,10 +697,14 @@ func (r FoundationRoster) Adjudicate(listeners []string, scans map[string]*Found
 			case excusedWhole[c.Name].Issue > 0:
 				cen.Excused++
 			default:
+				where := ""
+				if u.Where != "" {
+					where = " (" + u.Where + ")"
+				}
 				cen.Findings = append(cen.Findings, FoundationCell{
-					Listener: l, Capability: c.Name, Verdict: FoundationFinding,
-					Detail: fmt.Sprintf("слушатель %s не несёт возможность %q (%s) и не объяснил почему",
-						l, c.Name, c.Pkg),
+					Listener: u.ID, Capability: c.Name, Verdict: FoundationFinding,
+					Detail: fmt.Sprintf("%s%s не несёт возможность %q (%s) и не объяснил почему",
+						u.ID, where, c.Name, c.Pkg),
 				})
 			}
 		}
@@ -488,7 +712,6 @@ func (r FoundationRoster) Adjudicate(listeners []string, scans map[string]*Found
 	sort.Strings(cen.Stale)
 	return cen
 }
-
 func listenerOrAll(l string) string {
 	if l == "" {
 		return "всех слушателей"
@@ -567,4 +790,47 @@ func DiscoverListeners(root string, serverMarkers []string) ([]string, map[strin
 		scans[c] = s
 	}
 	return listeners, scans, candidates, nil
+}
+
+// LedgerRecordsWhoseIssueIsClosed — записи, чья задача закрыта.
+//
+// Вторая ось самоистечения ведомости, и она НЕ выводится из первой. Запись
+// снимается с прогона, когда возможность усыновлена, — это про дерево. Но
+// запись держится ЗАДАЧЕЙ, а задачу закрывают отдельно от кода: закрыли #693,
+// не провязав пределы у края, — и запись извиняет его дальше, вечно и молча.
+// Ровно этот класс уже случился с прежней редакцией набора (две записи ссылались
+// на задачи, закрытые за неделю до), и нашёлся он не гейтом, а перемером руками.
+//
+// Состояния подаются картой, а не берутся отсюда: измерение СЕТЕВОЕ, вердикт
+// гейта не вправе быть функцией доступности трекера, а решение обязано быть
+// проверяемо инъекцией без сети.
+func (r FoundationRoster) LedgerRecordsWhoseIssueIsClosed(states map[int]string) []string {
+	var bad []string
+	for _, e := range r.Ledger {
+		state, known := states[e.Issue]
+		if !known || !strings.EqualFold(state, "CLOSED") {
+			continue
+		}
+		bad = append(bad, fmt.Sprintf(
+			"пропуск %q у %q держится задачей #%d, а она ЗАКРЫТА: запись пережила своё "+
+				"основание и будет извинять пропуск вечно — либо возможность усыновлена и запись "+
+				"уходит, либо задачу закрыли рано и её открывают обратно",
+			e.Capability, listenerOrAll(e.Listener), e.Issue))
+	}
+	sort.Strings(bad)
+	return bad
+}
+
+// LedgerIssues — различные номера задач ведомости, по возрастанию.
+func (r FoundationRoster) LedgerIssues() []int {
+	seen := map[int]bool{}
+	var out []int
+	for _, e := range r.Ledger {
+		if e.Issue > 0 && !seen[e.Issue] {
+			seen[e.Issue] = true
+			out = append(out, e.Issue)
+		}
+	}
+	sort.Ints(out)
+	return out
 }
