@@ -2393,7 +2393,7 @@
       ]
     },
     {
-      "name": "REG-LSTTAGS-NEG-BAD-TOKEN — ListTags garbage page_token → 400 (visible repo) or 404 (existence-hiding preempts on absent repo), never 200",
+      "name": "REG-LSTTAGS-NEG-BAD-TOKEN — ListTags garbage page_token → 400 INVALID_ARGUMENT (формат судится до гейта доступа)",
       "description": "class:NEG | class:VAL | priority:P2",
       "item": [
         {
@@ -2428,9 +2428,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected: 400 (bad token) or 404 (existence-hiding), never 200', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                  "const j = pm.response.json();",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT) or 5 (NOT_FOUND)', () => pm.expect(j.code).to.be.oneOf([3, 5]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2439,7 +2441,7 @@
       ]
     },
     {
-      "name": "REG-LSTTAGS-AZ-NOTFOUND — ListTags by non-member (stranger) → 404 or 200-EMPTY (existence-hidden), never 403, never any tag",
+      "name": "REG-LSTTAGS-AZ-NOTFOUND — ListTags by non-member (stranger) → 404 `repository not found` (existence-hidden), никакого иного исхода",
       "description": "class:NEG | class:AZ | priority:P1",
       "item": [
         {
@@ -2492,15 +2494,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('unauthorized -> 401/404/200-empty (existence-hidden), never 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 404]));",
-                  "pm.test('never 403 (deny -> 404 no-leak)', () => pm.expect(pm.response.code).to.not.eql(403));",
-                  "if (pm.response.code === 200) {",
-                  "  const _t = pm.response.json().tags || [];",
-                  "  pm.test('tags is array', () => pm.expect(_t).to.be.an('array'));",
-                  "  pm.test('stranger receives NO tags of a foreign repository', () => pm.expect(_t.length).to.eql(0));",
-                  "  pm.test('no tag payload leaked (digest/size)', () => pm.expect(pm.response.text()).to.not.include('digest'));",
-                  "}",
-                  "if (pm.response.code !== 401) { pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons')); }"
+                  "pm.test('[REG-LSTTAGS-AZ-NOTFOUND] existence-hidden: HTTP 404', () => pm.expect(pm.response.code, pm.response.text()).to.eql(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[REG-LSTTAGS-AZ-NOTFOUND] grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.eql(5));",
+                  "pm.test('[REG-LSTTAGS-AZ-NOTFOUND] контрактный тон отказа владельца', () => pm.expect(j && j.message, JSON.stringify(j)).to.eql('repository not found'));",
+                  "pm.test('[REG-LSTTAGS-AZ-NOTFOUND] отказ не несёт ни выдачи, ни причины отказа', () => {",
+                  "  pm.expect(Object.keys(j || {}).filter(k => ['code','message','details'].indexOf(k) < 0), 'посторонний груз в конверте отказа: ' + pm.response.text()).to.eql([]);",
+                  "  pm.expect(JSON.stringify(j), 'причина отказа раскрывает модель прав').to.not.match(/deny_reasons|direct relations|lacks relation/);",
+                  "  pm.expect(pm.response.text(), 'полезная нагрузка тега в теле отказа').to.not.include('digest');",
+                  "});"
                 ]
               }
             }
@@ -2509,7 +2511,7 @@
       ]
     },
     {
-      "name": "REG-LSTTAGS-NEG-PAGESIZE-OVERMAX — ListTags pageSize=1001 (>max) → 400 (visible repo) or 404 (existence-hiding preempts), never clamped to 200",
+      "name": "REG-LSTTAGS-NEG-PAGESIZE-OVERMAX — ListTags pageSize=1001 (>max) → 400 INVALID_ARGUMENT, никогда не clamp в 200",
       "description": "class:NEG | class:BVA | class:VAL | priority:P2",
       "item": [
         {
@@ -2544,9 +2546,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected: 400 (over-max) or 404 (existence-hiding), never 200', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
-                  "const j = pm.response.json();",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT) or 5 (NOT_FOUND)', () => pm.expect(j.code).to.be.oneOf([3, 5]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -3404,7 +3408,7 @@
       ]
     },
     {
-      "name": "REG-DEL-IDEM-DOUBLE — Double Delete → first OK, second idempotent (200/404/409)",
+      "name": "REG-DEL-IDEM-DOUBLE — Double Delete → first OK, second idempotent (200 Operation или 404 после снятия кортежа)",
       "description": "class:IDEM | priority:P2",
       "item": [
         {
@@ -3901,8 +3905,18 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('second delete idempotent (200/404/409)', () => pm.expect(pm.response.code).to.be.oneOf([200, 404, 409]));",
-                  "pm.test('never 403 (deny→404 no-leak)', () => pm.expect(pm.response.code).to.not.eql(403));"
+                  "pm.test('[REG-DEL-IDEM-DOUBLE] повторное удаление: 200 (идемпотентная Operation) ИЛИ 404 (кортеж снят)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 404]));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[REG-DEL-IDEM-DOUBLE] исход названной ветки утверждён, а не принят', () => {",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.expect(j && j.id, 'конверт Operation: ' + pm.response.text()).to.match(/^(rop|reo)[a-z0-9]+$/);",
+                  "    pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "    return;",
+                  "  }",
+                  "  pm.expect(j && j.code, JSON.stringify(j)).to.eql(5);",
+                  "  pm.expect(j && j.message, 'текст владельца, байт в байт: ' + JSON.stringify(j))",
+                  "    .to.eql('Registry ' + pm.environment.get('ddRegId') + ' not found');",
+                  "});"
                 ]
               }
             }
