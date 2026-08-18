@@ -16,6 +16,7 @@ package listvisibility_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
@@ -196,9 +197,22 @@ func accountSurface() surface {
 	return surface{
 		name: "account", fgaType: "account", pageRelation: "v_get",
 		seedForeign: func(t *testing.T, e *env, n int) []string {
+			// КАЖДЫЙ ЗАПОЛНИТЕЛЬ — СВОЕЙ ЛИЧНОСТИ, и это не косметика.
+			//
+			// Число аккаунтов на одну личность ограничено потолком продукта (5),
+			// поэтому прежняя редакция, сеявшая всех заполнителей одному
+			// `foreignUser`, упиралась в него на шестом: фикстура требовала от
+			// платформы того, чего платформа не позволяет, — то есть была
+			// СНИСХОДИТЕЛЬНЕЕ продукта в одну сторону и невыполнима в другую.
+			//
+			// Предмет пробы от этого не меняется: заполнителям важно лишь занять
+			// страницу впереди своего объекта. Владение своим объектом остаётся за
+			// `foreignUser` ровно потому, что видимость обязана приходить от гранта,
+			// а не от владения (см. seedOwn ниже).
 			out := make([]string, 0, n)
 			for i := 0; i < n; i++ {
-				out = append(out, e.seedAccount(t, e.foreignUser, "fgn"))
+				owner, _ := e.seedUserWithAccount(t, fmt.Sprintf("fgn%d", i))
+				out = append(out, e.seedAccount(t, owner, "fgn"))
 			}
 			return out
 		},
