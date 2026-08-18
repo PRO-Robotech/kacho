@@ -167,7 +167,42 @@ type Profile struct {
 
 	// Banned are the call names that ask the authorization store to enumerate
 	// everything a subject may see.
+	//
+	// This is a hand-written FLOOR, kept for forms whose declaration is not in the
+	// service's own tree (`ListAllowedIDs` is another service's vocabulary and has no
+	// declaration in iam at all). It is not the whole ban: a list of names grows one
+	// incident at a time, and the incident that grows it is the one that already
+	// happened. EnumerationSources is where the ban comes FROM.
 	Banned []string
+
+	// EnumerationSources name the DECLARED TYPES through which this service asks the
+	// authorization question. The gate reads their method sets and DERIVES which
+	// methods enumerate; those names are banned inside every narrowing listing
+	// exactly as Banned's are.
+	//
+	// # Why derived rather than listed
+	//
+	// `security.md` refuses "enumerate the universe → filter" by its SUBSTANCE, not
+	// by the name of the call that does it: the enumeration has a ceiling and no
+	// continuation, so rows past the ceiling become invisible to their own owner at
+	// live rights. Two names were banned here — the store's `ListObjects` and another
+	// service's `ListAllowedIDs` — and a THIRD form existed the whole time, in iam's
+	// own database: a paged verdict resolution over the service's own tables. The
+	// gate did not see it, because a name it was never told about is a name it cannot
+	// refuse. A fourth would have passed the same way (#651).
+	//
+	// # The property
+	//
+	// A verdict is asked ABOUT identifiers the caller already holds: it answers
+	// `bool`, `[]bool`, `map[string]bool`. An enumeration PRODUCES the identifiers:
+	// its first non-error result is a set of them, `[]string`. That difference is the
+	// whole of the security rule — "page → check the page" versus "which objects →
+	// intersect" — and it is a fact about the DECLARATION, so the gate reads it
+	// instead of being told.
+	//
+	// Adding a method to a named source therefore extends the ban by itself. That is
+	// the point: the next form does not wait for an incident to be noticed.
+	EnumerationSources []EnumerationSource
 
 	// SubjectScopers are the call names that narrow a page by the AUTHENTICATED
 	// caller taken from the context — not by an id the request supplied. The
@@ -194,6 +229,21 @@ type Profile struct {
 	// such a scope narrows anything depends entirely on whether a wildcard tuple
 	// satisfies the relation, and that is a fact about the model, not a guess.
 	FGAModel string
+}
+
+// EnumerationSource is one declared type whose method set the gate reads to derive
+// the enumerating call names (see Profile.EnumerationSources).
+//
+// Both fields name something DECLARED — a directory in the tree and a type in it —
+// never a naming habit, so the derivation cannot be changed by renaming a variable
+// or a file. An entry that resolves to nothing is a FINDING: a source that stopped
+// existing takes its whole derived ban with it, silently, and the ban is the thing
+// this field exists to produce.
+type EnumerationSource struct {
+	// Dir holds the declaration, relative to Options.Root.
+	Dir string
+	// Type is the declared interface or receiver type name.
+	Type string
 }
 
 // Shape is how one listing method's visibility is decided.
@@ -242,11 +292,17 @@ const (
 	SubjectScoped
 
 	// StoreQuery — the response IS the authorization store's answer, not a page
-	// narrowed by it. iam's AuthorizeService.ListObjects is the only such RPC: asking
-	// the store to enumerate is what the caller came for, so the enumeration ban is
-	// inapplicable by construction rather than waived. The caller is instead gated on
-	// the subject or resource they named, so the evidence is ParentGate's: reach
-	// Listing.Gate and act on its verdict.
+	// narrowed by it. iam's AuthorizeService.ListObjects and .ListSubjects are the
+	// RPCs of this shape: asking the store to enumerate is what the caller came for,
+	// so the enumeration ban is inapplicable by construction rather than waived. The
+	// caller is instead gated on the subject or resource they named, so the evidence
+	// is ParentGate's: reach Listing.Gate and act on its verdict.
+	//
+	// "ListObjects is the only such RPC" stood here until #651. ListSubjects was
+	// declared ParentGate and nothing could tell, because the ban held two names and
+	// `ListSubjects` was not one of them — a wrong shape costs nothing while the ban
+	// it exempts you from does not apply anyway. Deriving the ban from the store's
+	// declared method set surfaced it on the first run.
 	StoreQuery
 
 	// ClusterScoped — a cluster-wide catalog or an admin-only internal surface with
@@ -363,7 +419,20 @@ type Report struct {
 	// each one is also a finding. Kept in the census so a passing run can state
 	// that the number is zero, rather than leaving it unsaid.
 	Unattributed []string
-	Findings     []string // one line per finding; non-empty ⇒ the gate fails
+
+	// BannedCalls is the EFFECTIVE ban applied to every narrowing listing: the
+	// profile's hand-written floor plus the names derived from its declared
+	// enumeration sources, de-duplicated and sorted.
+	BannedCalls []string
+	// DerivedEnumerations are the names that came from the sources, and
+	// EnumerationSources is one census line per source. Both are printed on every
+	// path: a run that derived nothing must not read like a run that derived and
+	// found nothing to ban, and a profile that declares no source at all must say
+	// so out loud rather than look identical to one whose derivation is working.
+	DerivedEnumerations []string
+	EnumerationSources  []string
+
+	Findings []string // one line per finding; non-empty ⇒ the gate fails
 }
 
 // Audit runs the gate against o.Root, writes its census and findings to out, and
@@ -376,6 +445,17 @@ func Audit(p Profile, o Options, out io.Writer) (Report, error) {
 		root = "."
 	}
 	anchor := filepath.Join(root, p.AnchorRoot)
+
+	// The ban is assembled BEFORE anything is judged, and its own failures are
+	// findings in their own right: a derivation that quietly produced nothing would
+	// leave every listing judged against a narrower ban than the profile declares,
+	// and the run would still say OK.
+	enum := deriveEnumerations(root, p.EnumerationSources)
+	rep.EnumerationSources = enum.Sources
+	rep.DerivedEnumerations = enum.Names
+	rep.Findings = append(rep.Findings, enum.Findings...)
+	banned := mergeSorted(p.Banned, enum.Names)
+	rep.BannedCalls = banned
 
 	units, err := loadUnits(p, anchor)
 	for _, u := range units {
@@ -519,7 +599,7 @@ func Audit(p Profile, o Options, out io.Writer) (Report, error) {
 			if l.Shape == ClusterScoped {
 				rep.ClusterScoped = append(rep.ClusterScoped, key)
 			}
-			rep.Findings = append(rep.Findings, checkListing(p, key, l, a, protos)...)
+			rep.Findings = append(rep.Findings, checkListing(p, banned, enum.Origin, key, l, a, protos)...)
 		}
 	}
 
@@ -545,7 +625,14 @@ type anchorDecl struct {
 }
 
 // checkListing judges one listing declaration against the shape it declares.
-func checkListing(p Profile, key string, l Listing, a anchorDecl, protos *protoOptions) []string {
+//
+// banned is the EFFECTIVE ban — the profile's floor plus what was derived from its
+// declared enumeration sources — and origin says which source produced a derived
+// name, so a finding can point at the declaration that made the call a ban.
+func checkListing(
+	p Profile, banned []string, origin map[string]string,
+	key string, l Listing, a anchorDecl, protos *protoOptions,
+) []string {
 	called := a.unit.reachableCalls(a.fn)
 
 	var findings []string
@@ -553,14 +640,25 @@ func checkListing(p Profile, key string, l Listing, a anchorDecl, protos *protoO
 	// The enumerate-then-narrow ban applies to every shape that narrows at all: it
 	// is about HOW a page is narrowed, not about which shape does it.
 	if l.Shape != ClusterScoped && l.Shape != StoreQuery && l.Shape != NeverServes {
-		for _, b := range p.Banned {
-			if called[b] {
-				findings = append(findings, fmt.Sprintf(
-					"%s — reaches %s: enumerating every allowed id is capped server-side with no "+
-						"continuation token, so the caller's own rows fall outside the cap and disappear; "+
-						"check the page that was read instead\n  declared: %s",
-					key, b, a.pos))
+		for _, b := range banned {
+			if !called[b] {
+				continue
 			}
+			// The ceiling is written in a different place for each form, and naming
+			// the right one matters: the store caps its own answer, iam's own tables
+			// cap theirs by page size. Both lose the same thing — the rows past the
+			// ceiling, for their own owner, at live rights.
+			where := "the authorization store caps this answer server-side with no continuation token"
+			if src, ok := origin[b]; ok {
+				where = fmt.Sprintf(
+					"derived from %s: its answer is a SET OF IDENTIFIERS, so the page is being taken "+
+						"from the enumeration rather than judged after it is read", src)
+			}
+			findings = append(findings, fmt.Sprintf(
+				"%s — reaches %s: %s, so the caller's own rows fall outside the answer and disappear "+
+					"while its rights are live; read the page from this service's own tables and put "+
+					"THAT page to the model, one batched question per page\n  declared: %s",
+				key, b, where, a.pos))
 		}
 	}
 
@@ -1426,6 +1524,25 @@ func finish(p Profile, rep Report, out io.Writer) (Report, error) {
 	if len(rep.ClusterScoped) > 0 {
 		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]: cluster-scoped by declaration %s\n",
 			p.Service, strings.Join(rep.ClusterScoped, ", "))
+	}
+	// The ban is printed on EVERY path, including the passing one. It is the part of
+	// this gate that is derived from the tree rather than written down, so "derived
+	// nothing" and "derived, and nothing matched" have to be told apart from the
+	// output alone — otherwise a source that silently stopped resolving looks exactly
+	// like a clean run.
+	_, _ = fmt.Fprintf(out,
+		"audit-list-filter[%s]: enumerate-then-narrow ban — %d call(s) [%s]; %d declared, "+
+			"%d derived from %d source(s)\n",
+		p.Service, len(rep.BannedCalls), strings.Join(rep.BannedCalls, ", "),
+		len(p.Banned), len(rep.DerivedEnumerations), len(p.EnumerationSources))
+	for _, line := range rep.EnumerationSources {
+		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]:   source %s\n", p.Service, line)
+	}
+	if len(p.EnumerationSources) == 0 {
+		_, _ = fmt.Fprintf(out,
+			"audit-list-filter[%s]:   no enumeration source declared — the ban above is the "+
+				"hand-written list ONLY, and a form this service invents in its own tables would "+
+				"pass unnoticed (see Profile.EnumerationSources)\n", p.Service)
 	}
 	if len(rep.Findings) == 0 {
 		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]: OK\n", p.Service)
