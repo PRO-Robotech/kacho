@@ -84,6 +84,16 @@ var paginationValidatorNames = map[string]string{
 	"ValidatePageToken":      "проверка только курсора (iam shared)",
 	"DecodePageToken":        "разбор курсора: неудача даёт InvalidArgument — сам по себе является проверкой",
 	"PageSize":               "corevalidate.PageSize — отвергает значение вне [0..1000], не зажимает",
+	// Форма токена списка, чья страница есть страница ВИДИМОГО (задача #645): у
+	// него своя граница обхода (последняя ОТДАННАЯ строка, а не последняя
+	// прочитанная) и потому свой кодек с признаком формы. Имена новые, и пока их
+	// здесь не было, гейт не признавал проверку, стоявшую первым стейтментом, —
+	// то есть докладывал о нарушении порядка там, где порядок соблюдён. Словарь —
+	// это ОБЪЁМ гейта в обе стороны: и то, что он считает замыканием, и то, что
+	// он считает проверкой.
+	"ValidateVisiblePagination":    "iam shared: page_token новой формы + page_size, в use-case-слое",
+	"ValidateRawVisiblePagination": "то же по СЫРОМУ запросу на границе транспорта (int64 до насыщающего сужения)",
+	"DecodeVisiblePageToken":       "разбор курсора видимой страницы: чужая форма отвергается InvalidArgument",
 }
 
 // listPaginationScanRoots — где ищем.
@@ -732,11 +742,35 @@ func directEmptyPageReturn(b *ast.BlockStmt) *ast.ReturnStmt {
 		if !ok || len(ret.Results) != 3 {
 			continue
 		}
-		if isNilIdent(ret.Results[0]) && isEmptyStringLit(ret.Results[1]) && isNilIdent(ret.Results[2]) {
+		if isEmptyPageResult(ret.Results[0]) && isEmptyStringLit(ret.Results[1]) && isNilIdent(ret.Results[2]) {
 			return ret
 		}
 	}
 	return nil
+}
+
+// isEmptyPageResult — «страница пуста» в ОБЕИХ формах, которыми это пишется в
+// дереве: `nil` и пустой литерал среза (`[]domain.Project{}`).
+//
+// Вторая форма — не косметика и не вкус автора: она отличает «пустой список» от
+// «поля нет» на проводе и потому предпочтительна в списочных ответах. Пока
+// распознавался только `nil`, переход поверхности на литерал уводил её замыкание
+// ИЗ-ПОД НАБЛЮДЕНИЯ — гейт продолжал зеленеть, а мест, которые он держит,
+// становилось меньше. Ровно это и произошло: шесть поверхностей iam сменили форму
+// возврата, и счётчик упал с 15 до 9, не покраснев ни на одной из них по существу.
+//
+// Нижняя граница по числу замыканий поймала усадку — но поймала бы её и на любом
+// другом переименовании, поэтому чинится ПРИЧИНА (словарь форм), а не граница.
+func isEmptyPageResult(e ast.Expr) bool {
+	if isNilIdent(e) {
+		return true
+	}
+	lit, ok := e.(*ast.CompositeLit)
+	if !ok || len(lit.Elts) != 0 {
+		return false
+	}
+	_, isSlice := lit.Type.(*ast.ArrayType)
+	return isSlice
 }
 
 // directRefusalReturn — `return nil, "", <err>` немедленно в теле ветки: списочный

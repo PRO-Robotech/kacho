@@ -621,51 +621,6 @@ func (x *AddSubnetCidrBlocksRequest) GetIpv6CidrBlocks() []string {
 	return nil
 }
 
-type AddSubnetCidrBlocksMetadata struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the Subnet resource that is being updated.
-	SubnetId      string `protobuf:"bytes,1,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *AddSubnetCidrBlocksMetadata) Reset() {
-	*x = AddSubnetCidrBlocksMetadata{}
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[8]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *AddSubnetCidrBlocksMetadata) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*AddSubnetCidrBlocksMetadata) ProtoMessage() {}
-
-func (x *AddSubnetCidrBlocksMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[8]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use AddSubnetCidrBlocksMetadata.ProtoReflect.Descriptor instead.
-func (*AddSubnetCidrBlocksMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{8}
-}
-
-func (x *AddSubnetCidrBlocksMetadata) GetSubnetId() string {
-	if x != nil {
-		return x.SubnetId
-	}
-	return ""
-}
-
 type RemoveSubnetCidrBlocksRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the Subnet resource that is being updated.
@@ -681,7 +636,7 @@ type RemoveSubnetCidrBlocksRequest struct {
 
 func (x *RemoveSubnetCidrBlocksRequest) Reset() {
 	*x = RemoveSubnetCidrBlocksRequest{}
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -693,7 +648,7 @@ func (x *RemoveSubnetCidrBlocksRequest) String() string {
 func (*RemoveSubnetCidrBlocksRequest) ProtoMessage() {}
 
 func (x *RemoveSubnetCidrBlocksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -706,7 +661,7 @@ func (x *RemoveSubnetCidrBlocksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveSubnetCidrBlocksRequest.ProtoReflect.Descriptor instead.
 func (*RemoveSubnetCidrBlocksRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{9}
+	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RemoveSubnetCidrBlocksRequest) GetSubnetId() string {
@@ -730,51 +685,6 @@ func (x *RemoveSubnetCidrBlocksRequest) GetIpv6CidrBlocks() []string {
 	return nil
 }
 
-type RemoveSubnetCidrBlocksMetadata struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// ID of the Subnet resource that is being updated.
-	SubnetId      string `protobuf:"bytes,1,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *RemoveSubnetCidrBlocksMetadata) Reset() {
-	*x = RemoveSubnetCidrBlocksMetadata{}
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *RemoveSubnetCidrBlocksMetadata) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*RemoveSubnetCidrBlocksMetadata) ProtoMessage() {}
-
-func (x *RemoveSubnetCidrBlocksMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use RemoveSubnetCidrBlocksMetadata.ProtoReflect.Descriptor instead.
-func (*RemoveSubnetCidrBlocksMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *RemoveSubnetCidrBlocksMetadata) GetSubnetId() string {
-	if x != nil {
-		return x.SubnetId
-	}
-	return ""
-}
-
 type DeleteSubnetRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the subnet to delete.
@@ -786,7 +696,7 @@ type DeleteSubnetRequest struct {
 
 func (x *DeleteSubnetRequest) Reset() {
 	*x = DeleteSubnetRequest{}
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[11]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -798,7 +708,7 @@ func (x *DeleteSubnetRequest) String() string {
 func (*DeleteSubnetRequest) ProtoMessage() {}
 
 func (x *DeleteSubnetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[11]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -811,7 +721,7 @@ func (x *DeleteSubnetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSubnetRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSubnetRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{11}
+	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DeleteSubnetRequest) GetSubnetId() string {
@@ -831,7 +741,7 @@ type DeleteSubnetMetadata struct {
 
 func (x *DeleteSubnetMetadata) Reset() {
 	*x = DeleteSubnetMetadata{}
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[12]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -843,7 +753,7 @@ func (x *DeleteSubnetMetadata) String() string {
 func (*DeleteSubnetMetadata) ProtoMessage() {}
 
 func (x *DeleteSubnetMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[12]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -856,7 +766,7 @@ func (x *DeleteSubnetMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSubnetMetadata.ProtoReflect.Descriptor instead.
 func (*DeleteSubnetMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{12}
+	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DeleteSubnetMetadata) GetSubnetId() string {
@@ -883,7 +793,7 @@ type ListSubnetOperationsRequest struct {
 
 func (x *ListSubnetOperationsRequest) Reset() {
 	*x = ListSubnetOperationsRequest{}
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[13]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -895,7 +805,7 @@ func (x *ListSubnetOperationsRequest) String() string {
 func (*ListSubnetOperationsRequest) ProtoMessage() {}
 
 func (x *ListSubnetOperationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[13]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -908,7 +818,7 @@ func (x *ListSubnetOperationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSubnetOperationsRequest.ProtoReflect.Descriptor instead.
 func (*ListSubnetOperationsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{13}
+	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListSubnetOperationsRequest) GetSubnetId() string {
@@ -947,7 +857,7 @@ type ListSubnetOperationsResponse struct {
 
 func (x *ListSubnetOperationsResponse) Reset() {
 	*x = ListSubnetOperationsResponse{}
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[14]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -959,7 +869,7 @@ func (x *ListSubnetOperationsResponse) String() string {
 func (*ListSubnetOperationsResponse) ProtoMessage() {}
 
 func (x *ListSubnetOperationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[14]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -972,7 +882,7 @@ func (x *ListSubnetOperationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSubnetOperationsResponse.ProtoReflect.Descriptor instead.
 func (*ListSubnetOperationsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{14}
+	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListSubnetOperationsResponse) GetOperations() []*operation.Operation {
@@ -1008,7 +918,7 @@ type ListUsedAddressesRequest struct {
 
 func (x *ListUsedAddressesRequest) Reset() {
 	*x = ListUsedAddressesRequest{}
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[15]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1020,7 +930,7 @@ func (x *ListUsedAddressesRequest) String() string {
 func (*ListUsedAddressesRequest) ProtoMessage() {}
 
 func (x *ListUsedAddressesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[15]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1033,7 +943,7 @@ func (x *ListUsedAddressesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsedAddressesRequest.ProtoReflect.Descriptor instead.
 func (*ListUsedAddressesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{15}
+	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListUsedAddressesRequest) GetSubnetId() string {
@@ -1074,7 +984,7 @@ type ListUsedAddressesResponse struct {
 
 func (x *ListUsedAddressesResponse) Reset() {
 	*x = ListUsedAddressesResponse{}
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[16]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1086,7 +996,7 @@ func (x *ListUsedAddressesResponse) String() string {
 func (*ListUsedAddressesResponse) ProtoMessage() {}
 
 func (x *ListUsedAddressesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[16]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1099,7 +1009,7 @@ func (x *ListUsedAddressesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsedAddressesResponse.ProtoReflect.Descriptor instead.
 func (*ListUsedAddressesResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{16}
+	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListUsedAddressesResponse) GetAddresses() []*UsedAddress {
@@ -1127,7 +1037,7 @@ type UsedAddress struct {
 
 func (x *UsedAddress) Reset() {
 	*x = UsedAddress{}
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[17]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1139,7 +1049,7 @@ func (x *UsedAddress) String() string {
 func (*UsedAddress) ProtoMessage() {}
 
 func (x *UsedAddress) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[17]
+	mi := &file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1152,7 +1062,7 @@ func (x *UsedAddress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsedAddress.ProtoReflect.Descriptor instead.
 func (*UsedAddress) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{17}
+	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *UsedAddress) GetAddress() string {
@@ -1232,15 +1142,11 @@ const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"\x1aAddSubnetCidrBlocksRequest\x12)\n" +
 	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12(\n" +
 	"\x10ipv4_cidr_blocks\x18\x02 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
-	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\":\n" +
-	"\x1bAddSubnetCidrBlocksMetadata\x12\x1b\n" +
-	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x9e\x01\n" +
+	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"\x9e\x01\n" +
 	"\x1dRemoveSubnetCidrBlocksRequest\x12)\n" +
 	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12(\n" +
 	"\x10ipv4_cidr_blocks\x18\x02 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
-	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"=\n" +
-	"\x1eRemoveSubnetCidrBlocksMetadata\x12\x1b\n" +
-	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"@\n" +
+	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"@\n" +
 	"\x13DeleteSubnetRequest\x12)\n" +
 	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\"3\n" +
 	"\x14DeleteSubnetMetadata\x12\x1b\n" +
@@ -1319,63 +1225,61 @@ func file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_vpc_v1_subnet_service_proto_rawDescData
 }
 
-var file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_kacho_cloud_vpc_v1_subnet_service_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_kacho_cloud_vpc_v1_subnet_service_proto_goTypes = []any{
-	(*GetSubnetRequest)(nil),               // 0: kacho.cloud.vpc.v1.GetSubnetRequest
-	(*ListSubnetsRequest)(nil),             // 1: kacho.cloud.vpc.v1.ListSubnetsRequest
-	(*ListSubnetsResponse)(nil),            // 2: kacho.cloud.vpc.v1.ListSubnetsResponse
-	(*CreateSubnetRequest)(nil),            // 3: kacho.cloud.vpc.v1.CreateSubnetRequest
-	(*CreateSubnetMetadata)(nil),           // 4: kacho.cloud.vpc.v1.CreateSubnetMetadata
-	(*UpdateSubnetRequest)(nil),            // 5: kacho.cloud.vpc.v1.UpdateSubnetRequest
-	(*UpdateSubnetMetadata)(nil),           // 6: kacho.cloud.vpc.v1.UpdateSubnetMetadata
-	(*AddSubnetCidrBlocksRequest)(nil),     // 7: kacho.cloud.vpc.v1.AddSubnetCidrBlocksRequest
-	(*AddSubnetCidrBlocksMetadata)(nil),    // 8: kacho.cloud.vpc.v1.AddSubnetCidrBlocksMetadata
-	(*RemoveSubnetCidrBlocksRequest)(nil),  // 9: kacho.cloud.vpc.v1.RemoveSubnetCidrBlocksRequest
-	(*RemoveSubnetCidrBlocksMetadata)(nil), // 10: kacho.cloud.vpc.v1.RemoveSubnetCidrBlocksMetadata
-	(*DeleteSubnetRequest)(nil),            // 11: kacho.cloud.vpc.v1.DeleteSubnetRequest
-	(*DeleteSubnetMetadata)(nil),           // 12: kacho.cloud.vpc.v1.DeleteSubnetMetadata
-	(*ListSubnetOperationsRequest)(nil),    // 13: kacho.cloud.vpc.v1.ListSubnetOperationsRequest
-	(*ListSubnetOperationsResponse)(nil),   // 14: kacho.cloud.vpc.v1.ListSubnetOperationsResponse
-	(*ListUsedAddressesRequest)(nil),       // 15: kacho.cloud.vpc.v1.ListUsedAddressesRequest
-	(*ListUsedAddressesResponse)(nil),      // 16: kacho.cloud.vpc.v1.ListUsedAddressesResponse
-	(*UsedAddress)(nil),                    // 17: kacho.cloud.vpc.v1.UsedAddress
-	nil,                                    // 18: kacho.cloud.vpc.v1.CreateSubnetRequest.LabelsEntry
-	nil,                                    // 19: kacho.cloud.vpc.v1.UpdateSubnetRequest.LabelsEntry
-	(*Subnet)(nil),                         // 20: kacho.cloud.vpc.v1.Subnet
-	(SubnetPlacementType)(0),               // 21: kacho.cloud.vpc.v1.SubnetPlacementType
-	(*fieldmaskpb.FieldMask)(nil),          // 22: google.protobuf.FieldMask
-	(*operation.Operation)(nil),            // 23: kacho.cloud.operation.Operation
-	(IpVersion)(0),                         // 24: kacho.cloud.vpc.v1.IpVersion
-	(*reference.Reference)(nil),            // 25: kacho.cloud.reference.Reference
+	(*GetSubnetRequest)(nil),              // 0: kacho.cloud.vpc.v1.GetSubnetRequest
+	(*ListSubnetsRequest)(nil),            // 1: kacho.cloud.vpc.v1.ListSubnetsRequest
+	(*ListSubnetsResponse)(nil),           // 2: kacho.cloud.vpc.v1.ListSubnetsResponse
+	(*CreateSubnetRequest)(nil),           // 3: kacho.cloud.vpc.v1.CreateSubnetRequest
+	(*CreateSubnetMetadata)(nil),          // 4: kacho.cloud.vpc.v1.CreateSubnetMetadata
+	(*UpdateSubnetRequest)(nil),           // 5: kacho.cloud.vpc.v1.UpdateSubnetRequest
+	(*UpdateSubnetMetadata)(nil),          // 6: kacho.cloud.vpc.v1.UpdateSubnetMetadata
+	(*AddSubnetCidrBlocksRequest)(nil),    // 7: kacho.cloud.vpc.v1.AddSubnetCidrBlocksRequest
+	(*RemoveSubnetCidrBlocksRequest)(nil), // 8: kacho.cloud.vpc.v1.RemoveSubnetCidrBlocksRequest
+	(*DeleteSubnetRequest)(nil),           // 9: kacho.cloud.vpc.v1.DeleteSubnetRequest
+	(*DeleteSubnetMetadata)(nil),          // 10: kacho.cloud.vpc.v1.DeleteSubnetMetadata
+	(*ListSubnetOperationsRequest)(nil),   // 11: kacho.cloud.vpc.v1.ListSubnetOperationsRequest
+	(*ListSubnetOperationsResponse)(nil),  // 12: kacho.cloud.vpc.v1.ListSubnetOperationsResponse
+	(*ListUsedAddressesRequest)(nil),      // 13: kacho.cloud.vpc.v1.ListUsedAddressesRequest
+	(*ListUsedAddressesResponse)(nil),     // 14: kacho.cloud.vpc.v1.ListUsedAddressesResponse
+	(*UsedAddress)(nil),                   // 15: kacho.cloud.vpc.v1.UsedAddress
+	nil,                                   // 16: kacho.cloud.vpc.v1.CreateSubnetRequest.LabelsEntry
+	nil,                                   // 17: kacho.cloud.vpc.v1.UpdateSubnetRequest.LabelsEntry
+	(*Subnet)(nil),                        // 18: kacho.cloud.vpc.v1.Subnet
+	(SubnetPlacementType)(0),              // 19: kacho.cloud.vpc.v1.SubnetPlacementType
+	(*fieldmaskpb.FieldMask)(nil),         // 20: google.protobuf.FieldMask
+	(*operation.Operation)(nil),           // 21: kacho.cloud.operation.Operation
+	(IpVersion)(0),                        // 22: kacho.cloud.vpc.v1.IpVersion
+	(*reference.Reference)(nil),           // 23: kacho.cloud.reference.Reference
 }
 var file_kacho_cloud_vpc_v1_subnet_service_proto_depIdxs = []int32{
-	20, // 0: kacho.cloud.vpc.v1.ListSubnetsResponse.subnets:type_name -> kacho.cloud.vpc.v1.Subnet
-	18, // 1: kacho.cloud.vpc.v1.CreateSubnetRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateSubnetRequest.LabelsEntry
-	21, // 2: kacho.cloud.vpc.v1.CreateSubnetRequest.placement_type:type_name -> kacho.cloud.vpc.v1.SubnetPlacementType
-	22, // 3: kacho.cloud.vpc.v1.UpdateSubnetRequest.update_mask:type_name -> google.protobuf.FieldMask
-	19, // 4: kacho.cloud.vpc.v1.UpdateSubnetRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateSubnetRequest.LabelsEntry
-	23, // 5: kacho.cloud.vpc.v1.ListSubnetOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
-	17, // 6: kacho.cloud.vpc.v1.ListUsedAddressesResponse.addresses:type_name -> kacho.cloud.vpc.v1.UsedAddress
-	24, // 7: kacho.cloud.vpc.v1.UsedAddress.ip_version:type_name -> kacho.cloud.vpc.v1.IpVersion
-	25, // 8: kacho.cloud.vpc.v1.UsedAddress.references:type_name -> kacho.cloud.reference.Reference
+	18, // 0: kacho.cloud.vpc.v1.ListSubnetsResponse.subnets:type_name -> kacho.cloud.vpc.v1.Subnet
+	16, // 1: kacho.cloud.vpc.v1.CreateSubnetRequest.labels:type_name -> kacho.cloud.vpc.v1.CreateSubnetRequest.LabelsEntry
+	19, // 2: kacho.cloud.vpc.v1.CreateSubnetRequest.placement_type:type_name -> kacho.cloud.vpc.v1.SubnetPlacementType
+	20, // 3: kacho.cloud.vpc.v1.UpdateSubnetRequest.update_mask:type_name -> google.protobuf.FieldMask
+	17, // 4: kacho.cloud.vpc.v1.UpdateSubnetRequest.labels:type_name -> kacho.cloud.vpc.v1.UpdateSubnetRequest.LabelsEntry
+	21, // 5: kacho.cloud.vpc.v1.ListSubnetOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	15, // 6: kacho.cloud.vpc.v1.ListUsedAddressesResponse.addresses:type_name -> kacho.cloud.vpc.v1.UsedAddress
+	22, // 7: kacho.cloud.vpc.v1.UsedAddress.ip_version:type_name -> kacho.cloud.vpc.v1.IpVersion
+	23, // 8: kacho.cloud.vpc.v1.UsedAddress.references:type_name -> kacho.cloud.reference.Reference
 	0,  // 9: kacho.cloud.vpc.v1.SubnetService.Get:input_type -> kacho.cloud.vpc.v1.GetSubnetRequest
 	1,  // 10: kacho.cloud.vpc.v1.SubnetService.List:input_type -> kacho.cloud.vpc.v1.ListSubnetsRequest
 	3,  // 11: kacho.cloud.vpc.v1.SubnetService.Create:input_type -> kacho.cloud.vpc.v1.CreateSubnetRequest
 	5,  // 12: kacho.cloud.vpc.v1.SubnetService.Update:input_type -> kacho.cloud.vpc.v1.UpdateSubnetRequest
 	7,  // 13: kacho.cloud.vpc.v1.SubnetService.AddCidrBlocks:input_type -> kacho.cloud.vpc.v1.AddSubnetCidrBlocksRequest
-	9,  // 14: kacho.cloud.vpc.v1.SubnetService.RemoveCidrBlocks:input_type -> kacho.cloud.vpc.v1.RemoveSubnetCidrBlocksRequest
-	11, // 15: kacho.cloud.vpc.v1.SubnetService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteSubnetRequest
-	13, // 16: kacho.cloud.vpc.v1.SubnetService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListSubnetOperationsRequest
-	15, // 17: kacho.cloud.vpc.v1.SubnetService.ListUsedAddresses:input_type -> kacho.cloud.vpc.v1.ListUsedAddressesRequest
-	20, // 18: kacho.cloud.vpc.v1.SubnetService.Get:output_type -> kacho.cloud.vpc.v1.Subnet
+	8,  // 14: kacho.cloud.vpc.v1.SubnetService.RemoveCidrBlocks:input_type -> kacho.cloud.vpc.v1.RemoveSubnetCidrBlocksRequest
+	9,  // 15: kacho.cloud.vpc.v1.SubnetService.Delete:input_type -> kacho.cloud.vpc.v1.DeleteSubnetRequest
+	11, // 16: kacho.cloud.vpc.v1.SubnetService.ListOperations:input_type -> kacho.cloud.vpc.v1.ListSubnetOperationsRequest
+	13, // 17: kacho.cloud.vpc.v1.SubnetService.ListUsedAddresses:input_type -> kacho.cloud.vpc.v1.ListUsedAddressesRequest
+	18, // 18: kacho.cloud.vpc.v1.SubnetService.Get:output_type -> kacho.cloud.vpc.v1.Subnet
 	2,  // 19: kacho.cloud.vpc.v1.SubnetService.List:output_type -> kacho.cloud.vpc.v1.ListSubnetsResponse
-	23, // 20: kacho.cloud.vpc.v1.SubnetService.Create:output_type -> kacho.cloud.operation.Operation
-	23, // 21: kacho.cloud.vpc.v1.SubnetService.Update:output_type -> kacho.cloud.operation.Operation
-	23, // 22: kacho.cloud.vpc.v1.SubnetService.AddCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	23, // 23: kacho.cloud.vpc.v1.SubnetService.RemoveCidrBlocks:output_type -> kacho.cloud.operation.Operation
-	23, // 24: kacho.cloud.vpc.v1.SubnetService.Delete:output_type -> kacho.cloud.operation.Operation
-	14, // 25: kacho.cloud.vpc.v1.SubnetService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListSubnetOperationsResponse
-	16, // 26: kacho.cloud.vpc.v1.SubnetService.ListUsedAddresses:output_type -> kacho.cloud.vpc.v1.ListUsedAddressesResponse
+	21, // 20: kacho.cloud.vpc.v1.SubnetService.Create:output_type -> kacho.cloud.operation.Operation
+	21, // 21: kacho.cloud.vpc.v1.SubnetService.Update:output_type -> kacho.cloud.operation.Operation
+	21, // 22: kacho.cloud.vpc.v1.SubnetService.AddCidrBlocks:output_type -> kacho.cloud.operation.Operation
+	21, // 23: kacho.cloud.vpc.v1.SubnetService.RemoveCidrBlocks:output_type -> kacho.cloud.operation.Operation
+	21, // 24: kacho.cloud.vpc.v1.SubnetService.Delete:output_type -> kacho.cloud.operation.Operation
+	12, // 25: kacho.cloud.vpc.v1.SubnetService.ListOperations:output_type -> kacho.cloud.vpc.v1.ListSubnetOperationsResponse
+	14, // 26: kacho.cloud.vpc.v1.SubnetService.ListUsedAddresses:output_type -> kacho.cloud.vpc.v1.ListUsedAddressesResponse
 	18, // [18:27] is the sub-list for method output_type
 	9,  // [9:18] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
@@ -1395,7 +1299,7 @@ func file_kacho_cloud_vpc_v1_subnet_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc), len(file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -21,39 +21,23 @@ import (
 // Запись живёт, пока у неё есть предмет: послабление, которому больше нечего
 // исключать, роняет гейт (`stale-allowance`).
 var transportMessageAllow = []TransportMessageAllowance{
-	// kacho#580 — файл домена доступа не обслуживается ни одним сервисом: в нём
-	// нет ни одного `service`, и ни один контракт его не импортирует. Глаголов у
-	// этих сообщений не было НИКОГДА, поэтому это не недочищенное снятие.
-	{Message: "BindAccessPolicyRequest", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "BindAccessPolicyResponse", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "BindAccessPolicyMetadata", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "UnbindAccessPolicyRequest", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "UnbindAccessPolicyResponse", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "UnbindAccessPolicyMetadata", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "ListAccessPolicyBindingsRequest", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "ListAccessPolicyBindingsResponse", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "SetAccessBindingsRequest", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "SetAccessBindingsMetadata", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "UpdateAccessBindingsRequest", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "UpdateAccessBindingsMetadata", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "UpdateAccessPolicyBindingParametersRequest", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "UpdateAccessPolicyBindingParametersResponse", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-	{Message: "UpdateAccessPolicyBindingParametersMetadata", Issue: "kacho#580", Reason: "домен доступа без сервиса"},
-
-	// kacho#581 — метаданные, не названные ни одной операцией. Глагол у них ЖИВ,
-	// но объявляет своими метаданными другое сообщение, поэтому эти в
-	// `Operation.metadata` не попадут никогда.
-	{Message: "AddInstanceOneToOneNatMetadata", Issue: "kacho#581", Reason: "операция объявляет другие метаданные"},
-	{Message: "RemoveInstanceOneToOneNatMetadata", Issue: "kacho#581", Reason: "операция объявляет другие метаданные"},
-	{Message: "UpdateInstanceMetadataMetadata", Issue: "kacho#581", Reason: "операция объявляет другие метаданные"},
-	{Message: "CreateGuestAccessKeyMetadata", Issue: "kacho#581", Reason: "операция объявляет другие метаданные"},
-	{Message: "UpdateGuestAccessKeyMetadata", Issue: "kacho#581", Reason: "операция объявляет другие метаданные"},
-	{Message: "DeleteGuestAccessKeyMetadata", Issue: "kacho#581", Reason: "операция объявляет другие метаданные"},
-	{Message: "CreatePlacementGroupMetadata", Issue: "kacho#581", Reason: "операция объявляет другие метаданные"},
-	{Message: "UpdatePlacementGroupMetadata", Issue: "kacho#581", Reason: "операция объявляет другие метаданные"},
-	{Message: "DeletePlacementGroupMetadata", Issue: "kacho#581", Reason: "операция объявляет другие метаданные"},
-	{Message: "AddSubnetCidrBlocksMetadata", Issue: "kacho#581", Reason: "операция объявляет другие метаданные"},
-	{Message: "RemoveSubnetCidrBlocksMetadata", Issue: "kacho#581", Reason: "операция объявляет другие метаданные"},
+	// ПУСТО, И ЭТО ИСХОД, А НЕ УПУЩЕНИЕ.
+	//
+	// Здесь стояли 26 записей двух задач, и обе истекли ровно тем способом, ради
+	// которого механизм и написан: их предмет закрыли, гейт назвал каждую
+	// поимённо (`stale-allowance`), и снимает их та линия, что догоняет ствол
+	// второй, — тем же изменением, которым догоняет.
+	//
+	// Двумя РАЗНЫМИ способами, и различие видно в самом выводе гейта:
+	//   * kacho#580 (15 записей) и пять метаданных kacho#581 — «сообщения нет в
+	//     дереве»: сняты с контракта, разрывы объявлены в proto/declared-breaks.yaml;
+	//   * шесть метаданных kacho#581 — гейт называет их КООРДИНАТОЙ ФАЙЛА: сами
+	//     сообщения на месте, у них появился глагол. Их писал прод-код, а контракт
+	//     о них молчал, поэтому исход был обратный — не снять, а объявить.
+	//
+	// Пустой перечень означает «сообщений без глагола в дереве нет». Появится
+	// класс, который нельзя закрыть сразу, — его имена встанут сюда с причиной и
+	// задачей, и та же механика снимет их снова.
 }
 
 func transportMessageOptions(t *testing.T, allow []TransportMessageAllowance) TransportMessageOptions {

@@ -187,10 +187,13 @@ SERVICES ?= iam vpc compute geo nlb storage registry
 # не названный здесь, — находка; названный здесь без такого импорта — тоже.
 AUTHZ_FGA_PKGS ?= \
 	./services/iam/internal/apps/kacho/api/access_binding \
+	./services/iam/internal/apps/kacho/api/listvisibility \
+	./services/iam/internal/apps/kacho/api/user \
 	./services/iam/internal/apps/kacho/api/readauthz \
 	./services/iam/internal/authzcascade \
 	./services/iam/internal/authzmap \
 	./services/iam/internal/service \
+	./services/iam/internal/testsupport/accesssnapshot \
 	./services/iam/internal/testsupport/fgatest
 
 # PG_OUTSIDE_SELECTION_PKGS — пакеты, которым нужен НАСТОЯЩИЙ Postgres, но

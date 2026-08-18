@@ -360,11 +360,6 @@ message AddSubnetCidrBlocksRequest {
   repeated string ipv6_cidr_blocks = 3;
 }
 
-message AddSubnetCidrBlocksMetadata {
-  // ID of the Subnet resource that is being updated.
-  string subnet_id = 1;
-}
-
 message RemoveSubnetCidrBlocksRequest {
   // ID of the Subnet resource that is being updated.
   string subnet_id = 1 [
@@ -378,11 +373,6 @@ message RemoveSubnetCidrBlocksRequest {
 
   // IPv6 CIDR block(s) to remove from this subnet. (IPv6 vertical.)
   repeated string ipv6_cidr_blocks = 3;
-}
-
-message RemoveSubnetCidrBlocksMetadata {
-  // ID of the Subnet resource that is being updated.
-  string subnet_id = 1;
 }
 
 message DeleteSubnetRequest {
