@@ -37,6 +37,17 @@
 #
 # Offline manifest-assertion harness (no kind cluster). Mirrors tests/helm/*.
 set -euo pipefail
+# any_line_matches <многострочное значение> <ERE> — как `grep -qE`: истинно, если
+# ХОТЬ ОДНА строка значения совпадает с выражением. Построчность важна: у `grep`
+# точка не переходит через перевод строки, а у `[[ =~ ]]` на всём значении —
+# переходит. Труба убрана из-за ложного отказа на совпадении (задача #658).
+any_line_matches() {
+  local _l
+  while IFS= read -r _l; do
+    if [[ "$_l" =~ $2 ]]; then return 0; fi
+  done <<<"$1"
+  return 1
+}
 
 SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -90,23 +101,23 @@ ok
 # ── 2. PROD Hydra — token/refresh webhook URLs https://…:9092 + HMAC kept ────
 HYDRA_CM_PROD="$(render_only "$PROD" charts/hydra/templates/configmap.yaml)"
 [ -n "$HYDRA_CM_PROD" ] || fail "hydra configmap did not render in prod profile"
-echo "$HYDRA_CM_PROD" | grep -Eq 'https://[^"]*:9092/iam/v1/hooks/token' \
+any_line_matches "$HYDRA_CM_PROD" 'https://[^"]*:9092/iam/v1/hooks/token' \
   || fail "prod: Hydra token_hook URL must be https://…:9092/iam/v1/hooks/token (got plaintext or missing)"
-echo "$HYDRA_CM_PROD" | grep -Eq 'https://[^"]*:9092/iam/v1/hooks/refresh' \
+any_line_matches "$HYDRA_CM_PROD" 'https://[^"]*:9092/iam/v1/hooks/refresh' \
   || fail "prod: Hydra refresh_token_hook URL must be https://…:9092/iam/v1/hooks/refresh"
-if echo "$HYDRA_CM_PROD" | grep -Eq 'http://[^"]*:9092/iam/v1/hooks/'; then
+if any_line_matches "$HYDRA_CM_PROD" 'http://[^"]*:9092/iam/v1/hooks/'; then
   fail "prod: Hydra hook URL still uses plaintext http://…:9092 (must be https for server-tls-only)"
 fi
-echo "$HYDRA_CM_PROD" | grep -q 'X-Kacho-Hook-Token' \
+[[ "$HYDRA_CM_PROD" == *'X-Kacho-Hook-Token'* ]] \
   || fail "prod: Hydra webhook must still carry the HMAC header X-Kacho-Hook-Token (caller-auth unchanged)"
 ok
 
 # ── 3. PROD Hydra pod mounts the internal-CA bundle (trusts kacho-iam server cert) ─
 HYDRA_DEPLOY_PROD="$(render_only "$PROD" charts/hydra/templates/deployment.yaml)"
 [ -n "$HYDRA_DEPLOY_PROD" ] || fail "hydra deployment did not render in prod profile"
-echo "$HYDRA_DEPLOY_PROD" | grep -q 'kacho-iam-server-tls' \
+[[ "$HYDRA_DEPLOY_PROD" == *'kacho-iam-server-tls'* ]] \
   || fail "prod: Hydra pod must mount the SEC-F internal-CA bundle (kacho-iam-server-tls) for webhook CA-trust"
-echo "$HYDRA_DEPLOY_PROD" | grep -qE 'name: SSL_CERT_FILE|name: SSL_CERT_DIR' \
+any_line_matches "$HYDRA_DEPLOY_PROD" 'name: SSL_CERT_FILE|name: SSL_CERT_DIR' \
   || fail "prod: Hydra must set SSL_CERT_FILE/SSL_CERT_DIR so its webhook client trusts the internal-CA server cert"
 ok
 
@@ -115,7 +126,7 @@ dev_http="$(yq '.["kacho-iam"].mtls.httpListeners // false' "$DEV")"
 [ "$dev_http" != "true" ] \
   || fail "dev: kacho-iam.mtls.httpListeners=$dev_http (dev hooks/metrics listener must stay PLAINTEXT — regression!)"
 HYDRA_CM_DEV="$(render_only "$DEV" charts/hydra/templates/configmap.yaml)"
-echo "$HYDRA_CM_DEV" | grep -Eq 'http://[^"]*:9092/iam/v1/hooks/token' \
+any_line_matches "$HYDRA_CM_DEV" 'http://[^"]*:9092/iam/v1/hooks/token' \
   || fail "dev: Hydra token_hook URL must stay plaintext http://…:9092 (newman stand unchanged)"
 ok
 
@@ -136,9 +147,9 @@ gate_render() { helm template iam "$UMBRELLA/charts/kacho-iam" --set mtls.enable
 GATE_ON="$(gate_render --set mtls.httpListeners=true)"
 GATE_OFF="$(gate_render)"
 for name in KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE KACHO_IAM_METRICS_SERVER_MTLS_ENABLE; do
-  printf '%s\n' "$GATE_ON" | grep -q "name: $name" \
+  [[ "$GATE_ON" == *"name: $name"* ]] \
     || fail "capability: mtls.httpListeners=true НЕ включает $name — способность потеряна, боевой профиль отгрузил бы открытый листенер"
-  if printf '%s\n' "$GATE_OFF" | grep -q "name: $name"; then
+  if [[ "$GATE_OFF" == *"name: $name"* ]]; then
     fail "capability: $name эмитируется и БЕЗ mtls.httpListeners — гейта нет, значение ручки исхода не меняет"
   fi
 done
@@ -147,12 +158,12 @@ for name in "${HOOKS_METRICS_ENV[@]}"; do
     || fail "capability: env $name missing from template — server-side TLS support / CLIENTAUTHMODE not emitted"
 done
 # Both CLIENTAUTHMODE env default to server-tls-only in the template.
-grep -A1 'KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE' "$TPL" | grep -q 'hooksClientAuthMode' \
+[[ "$(grep -A1 'KACHO_IAM_HOOKS_SERVER_MTLS_CLIENTAUTHMODE' "$TPL")" == *'hooksClientAuthMode'* ]] \
   || fail "capability: hooks CLIENTAUTHMODE must derive from .Values.mtls.hooksClientAuthMode"
-grep -A1 'KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE' "$TPL" | grep -q 'metricsClientAuthMode' \
+[[ "$(grep -A1 'KACHO_IAM_METRICS_SERVER_MTLS_CLIENTAUTHMODE' "$TPL")" == *'metricsClientAuthMode'* ]] \
   || fail "capability: metrics CLIENTAUTHMODE must derive from .Values.mtls.metricsClientAuthMode"
 # The hooks/metrics block must REUSE the mounted server cert-trio (no new PKI).
-grep -A1 'KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE' "$TPL" | grep -q 'tls.crt' \
+[[ "$(grep -A1 'KACHO_IAM_HOOKS_SERVER_MTLS_CERTFILE' "$TPL")" == *'tls.crt'* ]] \
   || fail "capability: hooks certfile must reuse the mounted server tls.crt (SEC-F)"
 ok
 

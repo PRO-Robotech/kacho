@@ -19,6 +19,12 @@
 #
 # Offline; contracts unchanged (helm-only). Mirrors tests/helm/*-test.sh.
 set -euo pipefail
+# line_in <многострочное значение> <строка> — есть ли СТРОКА ЦЕЛИКОМ в значении.
+# Замена `grep -qx`/`grep -qxF`: под `pipefail` труба даёт ложный отказ НА
+# СОВПАДЕНИИ, потому что писатель получает SIGPIPE (задача #658). Сравнение
+# буквальное — там, где раньше стоял `-x` без `-F`, это СТРОЖЕ, то есть ложного
+# зелёного добавить не может.
+line_in() { [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]; }
 
 SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -36,7 +42,11 @@ ok() { N=$((N + 1)); }
 # That false-green is the exact class these hardening tests exist to prevent, so
 # detect the impostor explicitly instead of trusting `command -v`.
 command -v yq >/dev/null 2>&1 || fail "yq not installed (mikefarah yq v4 required)"
-yq --version 2>&1 | grep -qi mikefarah || fail \
+# Сравнение — БЕЗ трубы: `… | grep -q` под `set -o pipefail` возвращает ОТКАЗ
+# НА СОВПАДЕНИИ (grep выходит по первому попаданию, писатель получает SIGPIPE,
+# и `pipefail` поднимает ЕГО статус до статуса конвейера). Задача #658.
+YQ_VER="$(yq --version 2>&1 || true)"
+[[ "${YQ_VER,,}" == *mikefarah* ]] || fail \
   "wrong 'yq' on PATH ($(command -v yq)): '$(yq --version 2>&1 | head -1)'. \
 mikefarah yq v4 is required — the python-yq jq wrapper emits empty output on these \
 filters, which would make the assertions below pass without checking anything."
@@ -74,8 +84,9 @@ check_instance() {
     || fail "$pg: policyTypes must be Ingress-only"
   [ "$(echo "$doc" | yq '.spec.ingress[0].ports[0].port')" = "5432" ] \
     || fail "$pg: ingress port != 5432"
-  echo "$doc" | yq '.spec.ingress[0].from[].podSelector.matchLabels | to_entries | .[] | .key + "=" + .value' \
-    | grep -qx "$want_from" \
+  local from_labels
+  from_labels="$(echo "$doc" | yq '.spec.ingress[0].from[].podSelector.matchLabels | to_entries | .[] | .key + "=" + .value')"
+  line_in "$from_labels" "$want_from" \
     || fail "$pg: ingress from does not include $want_from"
   ok
 }

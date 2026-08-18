@@ -18,6 +18,23 @@
 # обязан ЗАГОВОРИТЬ. Иначе «молчит» неотличимо от «не работает вовсе».
 
 set -uo pipefail
+# line_in <многострочное значение> <строка> — есть ли СТРОКА ЦЕЛИКОМ в значении.
+# Замена `grep -qx`/`grep -qxF`: под `pipefail` труба даёт ложный отказ НА
+# СОВПАДЕНИИ, потому что писатель получает SIGPIPE (задача #658). Сравнение
+# буквальное — там, где раньше стоял `-x` без `-F`, это СТРОЖЕ, то есть ложного
+# зелёного добавить не может.
+line_in() { [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]; }
+# any_line_matches <многострочное значение> <ERE> — как `grep -qE`: истинно, если
+# ХОТЬ ОДНА строка значения совпадает с выражением. Построчность важна: у `grep`
+# точка не переходит через перевод строки, а у `[[ =~ ]]` на всём значении —
+# переходит. Труба убрана из-за ложного отказа на совпадении (задача #658).
+any_line_matches() {
+  local _l
+  while IFS= read -r _l; do
+    if [[ "$_l" =~ $2 ]]; then return 0; fi
+  done <<<"$1"
+  return 1
+}
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 DRIFT="$HERE/drift.sh"
@@ -85,7 +102,7 @@ case_real_rollback() {
 
   local out rc
   out=$(cd "$r" && DRIFT_DECLARED_REV=HEAD bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
-  if [ "$rc" -ne 0 ] && echo "$out" | grep -q "ОТКАТ: shared.txt"; then
+  if [ "$rc" -ne 0 ] && [[ "$out" == *"ОТКАТ: shared.txt"* ]]; then
     ok "настоящий откат назван, и координата напечатана"
   else
     no "настоящий откат НЕ пойман (rc=$rc) — гейт не способен упасть" "$out"
@@ -116,7 +133,7 @@ case_branch_owns_file() {
 
   local out rc
   out=$(cd "$r" && bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
-  if [ "$rc" -eq 0 ] && ! echo "$out" | grep -q "ОТКАТ"; then
+  if [ "$rc" -eq 0 ] && [[ "$out" != *"ОТКАТ"* ]]; then
     ok "файл, который правила сама ветка, находкой не назван"
   else
     no "ложная находка на файле ветки (rc=$rc)" "$out"
@@ -150,7 +167,7 @@ case_content_moved() {
 
   local out rc
   out=$(cd "$r" && bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
-  if [ "$rc" -eq 0 ] && ! echo "$out" | grep -q "ОТКАТ"; then
+  if [ "$rc" -eq 0 ] && [[ "$out" != *"ОТКАТ"* ]]; then
     ok "переезд содержимого под другим именем находкой не назван"
   else
     no "перенумерация прочитана как откат — утраты нет, а гейт краснеет (rc=$rc)" "$out"
@@ -181,7 +198,7 @@ case_content_truly_gone() {
 
   local out rc
   out=$(cd "$r" && bash "$DRIFT" "$base" "$br" "$trunk" "$landed" 2>&1); rc=$?
-  if [ "$rc" -ne 0 ] && echo "$out" | grep -q "0087.sql"; then
+  if [ "$rc" -ne 0 ] && [[ "$out" == *"0087.sql"* ]]; then
     ok "исчезнувшее содержимое названо находкой (послабление переезда не всеразрешающее)"
   else
     no "утрата файла НЕ поймана (rc=$rc)" "$out"
@@ -274,15 +291,15 @@ case_trunk_is_second_parent() {
   read -r _ p1 p2 <<<"$(git -C "$r" rev-list --parents -n1 "$inner")"
   chain=$(git -C "$r" rev-list --first-parent origin/main)
   if [ "$p2" != "$trunk_before" ] \
-     || ! echo "$chain" | grep -q "^${p2}$" \
-     || echo "$chain" | grep -q "^${p1}$"; then
+     || ! line_in "$chain" "$p2" \
+     || line_in "$chain" "$p1"; then
     no "предпосылка случая не выполнена: стороны не в нужной форме (p1=$p1 p2=$p2)" ""
     rm -rf "$r"; return
   fi
 
   local out rc
   out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
-  if echo "$out" | grep -q "drift: посадок в прогоне"; then
+  if [[ "$out" == *"drift: посадок в прогоне"* ]]; then
     ok "судья дошёл до переписи на слиянии, где ствол — второй родитель"
   else
     no "судья умер, не напечатав переписи (rc=$rc): «находки» неотличимы от «не дошли»" "$out"
@@ -356,7 +373,7 @@ case_empty_surface_is_not_blindness() {
 
   local out rc
   out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
-  if [ "$rc" -eq 0 ] && ! echo "$out" | grep -q "не сверил НИ ОДНОГО"; then
+  if [ "$rc" -eq 0 ] && [[ "$out" != *"не сверил НИ ОДНОГО"* ]]; then
     ok "пустая область гейта не выдана за слепоту"
   else
     no "пустая область прочитана как слепота (rc=$rc) — гейт краснеет там, где судить нечего" "$out"
@@ -398,7 +415,7 @@ case_rollback_survives_the_empty_surface_relief() {
 
   local out rc
   out=$(cd "$r" && BEFORE="$base" HEAD_SHA="$head" bash -e -o pipefail "$JUDGE" 2>&1); rc=$?
-  if [ "$rc" -ne 0 ] && echo "$out" | grep -q "ОТКАТ: lone.txt"; then
+  if [ "$rc" -ne 0 ] && [[ "$out" == *"ОТКАТ: lone.txt"* ]]; then
     ok "откат рядом с файлом ветки по-прежнему назван, и координата напечатана"
   else
     no "послабление пустой области съело настоящий откат (rc=$rc)" "$out"
@@ -426,7 +443,7 @@ case_blindness_is_still_reachable() {
 
   local out rc
   out=$(cd "$r" && bash "$DRIFT" "$base" "$br" "$trunk" 0000000000000000000000000000000000000000 2>&1); rc=$?
-  if [ "$rc" -eq 2 ] && ! echo "$out" | grep -q '^no-surface:'; then
+  if [ "$rc" -eq 2 ] && ! any_line_matches "$out" '^no-surface:'; then
     ok "отказ не по беспредметности заявления о пустой области не несёт"
   else
     no "гейт заявил пустую область там, где он просто не смог посмотреть (rc=$rc)" "$out"

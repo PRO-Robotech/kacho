@@ -359,7 +359,7 @@ done
 # a projection change on a resource nobody listed would sail straight through.
 if [[ -n "$SEED_VOL_ID" ]]; then
   b=$(body "$BASE_URL/storage/v1/volumes?projectId=$PROJECT_ID")
-  if printf '%s' "$b" | grep -q -- "$SEED_VOL_ID"; then
+  if [[ "$b" == *"$SEED_VOL_ID"* ]]; then
     ok "storage volume audit is non-vacuous (seeded volume present in the audited payload)"
   else
     bad "storage volume audit is VACUOUS: seeded volume $SEED_VOL_ID absent from /storage/v1/volumes — the leak walk had no resource projection to inspect"
