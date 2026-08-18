@@ -57,7 +57,7 @@ func TestInjection_FormCopyIsFound(t *testing.T) {
 		"services/vpc/internal/domain/types.go": "package domain\n\n" +
 			"var nameVPCRe = `^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`\n",
 	})
-	_, copies, scanned := scanNameFormDecls(t, root)
+	_, copies, scanned := scanNameFormDecls(t, newSyntheticTree(t, root))
 	if len(copies) != 1 {
 		t.Fatalf("подложенная копия формы обязана быть найдена: найдено %d (осмотрено %d файлов)",
 			len(copies), scanned)
@@ -74,7 +74,7 @@ func TestInjection_FormCopyIsFound(t *testing.T) {
 			"var roleNameSystemRe = `^roles/[a-z]+\\.[a-z]+$`\n\n" +
 			"var repoNameRe = `^[a-z0-9]+(?:(?:[._]|__|-+|/)[a-z0-9]+)*$`\n",
 	})
-	canon, copies, scanned := scanNameFormDecls(t, clean)
+	canon, copies, scanned := scanNameFormDecls(t, newSyntheticTree(t, clean))
 	if len(copies) != 0 {
 		t.Fatalf("регулярки другого референта находками НЕ являются: получено %d (%v)", len(copies), copies)
 	}
@@ -90,7 +90,7 @@ func TestInjection_SecondDerivationIsFound(t *testing.T) {
 		"services/compute/internal/apps/naming.go": "package apps\n\n" +
 			"func defaultNameForID(id string) string { return \"vm-\" + id }\n",
 	})
-	decls, scanned := scanDerivationDecls(t, root)
+	decls, scanned := scanDerivationDecls(t, newSyntheticTree(t, root))
 	if got := len(decls[canonDerivationFunc]); got != 2 {
 		t.Fatalf("второе производство умолчания обязано быть найдено: объявлений %d (осмотрено %d)",
 			got, scanned)
@@ -98,7 +98,7 @@ func TestInjection_SecondDerivationIsFound(t *testing.T) {
 
 	// Сторона «должен молчать»: чистое дерево — ровно по одному объявлению.
 	clean := nameFormSynthTree(t, nil)
-	decls, _ = scanDerivationDecls(t, clean)
+	decls, _ = scanDerivationDecls(t, newSyntheticTree(t, clean))
 	if got := len(decls[canonDerivationFunc]); got != 1 {
 		t.Fatalf("на чистом дереве производство объявлено один раз, получено %d", got)
 	}

@@ -84,17 +84,18 @@ type nameFormFinding struct {
 // TestResourceNameFormIsDeclaredOnce — форма имени объявлена ровно один раз, в
 // общем фундаменте, и её байт-идентичной копии в дереве нет.
 func TestResourceNameFormIsDeclaredOnce(t *testing.T) {
-	root := repoRoot(t)
-	canonDecls, copies, scanned := scanNameFormDecls(t, root)
+	tt := newTrackedTree(t, repoRoot(t))
+	canonDecls, copies, scanned := scanNameFormDecls(t, tt)
 	assertNameFormSingle(t, canonDecls, copies, scanned)
 }
 
 // scanNameFormDecls — обход дерева по корню. Вынесен, чтобы инъекция могла
 // натравить гейт на синтетическое дерево: проверка, которую нельзя навести на
 // подложенный дефект, о своей способности упасть не свидетельствует.
-func scanNameFormDecls(t *testing.T, root string) (canonDecls, copies []nameFormFinding, scanned int) {
+func scanNameFormDecls(t *testing.T, tt *trackedTree) (canonDecls, copies []nameFormFinding, scanned int) {
 	t.Helper()
-	files := goFilesForNameFormGate(t, root)
+	root := tt.root
+	files := goFilesForNameFormGate(tt)
 	if len(files) == 0 {
 		t.Fatalf("осмотрено 0 файлов Go — гейту нечего рассматривать; " +
 			"молчаливый зелёный здесь означал бы «проверено»")
@@ -164,14 +165,14 @@ func assertNameFormSingle(t *testing.T, canonDecls, copies []nameFormFinding, sc
 // TestDefaultNameDerivationIsDeclaredOnce — производство имени по умолчанию и
 // точка его подстановки объявлены ровно по одному разу на всё дерево.
 func TestDefaultNameDerivationIsDeclaredOnce(t *testing.T) {
-	root := repoRoot(t)
-	decls, scanned := scanDerivationDecls(t, root)
+	tt := newTrackedTree(t, repoRoot(t))
+	decls, scanned := scanDerivationDecls(t, tt)
 	assertDerivationSingle(t, decls, scanned)
 }
 
-func scanDerivationDecls(t *testing.T, root string) (map[string][]nameFormFinding, int) {
+func scanDerivationDecls(t *testing.T, tt *trackedTree) (map[string][]nameFormFinding, int) {
 	t.Helper()
-	files := goFilesForNameFormGate(t, root)
+	files := goFilesForNameFormGate(tt)
 	if len(files) == 0 {
 		t.Fatalf("осмотрено 0 файлов Go — гейту нечего рассматривать")
 	}
@@ -234,44 +235,32 @@ type nameFormFile struct {
 	rel string
 }
 
-// goFilesForNameFormGate — файлы Go, подлежащие осмотру. Сгенерированные стабы
-// исключены: их пишет buf, а не человек, и правкой они не бывают.
-func goFilesForNameFormGate(t *testing.T, root string) []nameFormFile {
-	t.Helper()
+// goFilesForNameFormGate — файлы Go, подлежащие осмотру.
+//
+// Состав берётся у ДЕРЕВА (индекс git), а не обходом диска. Под корнем лежат
+// каталоги, которых в репозитории нет — рабочие копии агентов, отчёты прогонов,
+// сборочные и сгенерированные каталоги, — и прочитав их, гейт сделал бы свой
+// вердикт свойством ЧУЖОГО рабочего каталога, а не коммита. Ошибка при этом
+// работает в обе стороны: красное на файле, которого в репозитории нет, и
+// молчание в свежем checkout там, где гейт обязан говорить. Поймано мета-гейтом
+// TestTreeWalkersAskTheIndex — эта проверка сама была его находкой.
+//
+// Сгенерированные стабы исключены: их пишет buf, а не человек.
+func goFilesForNameFormGate(tt *trackedTree) []nameFormFile {
 	var out []nameFormFile
-	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	for rel := range tt.files {
+		if !strings.HasSuffix(rel, ".go") {
+			continue
 		}
-		rel, relErr := filepath.Rel(root, p)
-		if relErr != nil {
-			return relErr
+		if strings.HasPrefix(rel, "pkg/api/") {
+			continue
 		}
-		slash := filepath.ToSlash(rel)
-		if info.IsDir() {
-			base := info.Name()
-			if base == ".git" || base == "node_modules" || base == "vendor" ||
-				slash == "pkg/api" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if strings.HasSuffix(p, ".go") {
-			out = append(out, nameFormFile{abs: p, rel: slash})
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход дерева: %v", err)
+		out = append(out, nameFormFile{abs: filepath.Join(tt.root, filepath.FromSlash(rel)), rel: rel})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].rel < out[j].rel })
 	return out
 }
 
-// readCanonPattern читает саму форму из константы канона.
-//
-// Читается ИЗ ДЕРЕВА, а не выписывается сюда литералом: выписанная копия и есть
-// то, что гейт запрещает, и она разошлась бы с каноном первой.
 func readCanonPattern(t *testing.T, root string) string {
 	t.Helper()
 	pat, err := findCanonPattern(root)
