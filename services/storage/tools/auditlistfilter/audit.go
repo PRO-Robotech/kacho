@@ -86,6 +86,8 @@ const (
 	adapterRoot = "internal/repo/pg"
 	// useCaseRoot holds the use-case packages, relative to the service root.
 	useCaseRoot = "internal/apps/kacho/api"
+	// transportRoot holds the gRPC handlers — the surface a caller actually reaches.
+	transportRoot = "internal/handler"
 )
 
 // projectNarrowRe matches a `project_id = $…` predicate, with or without a table
@@ -160,6 +162,26 @@ var listings = map[string]Listing{
 			"expires with its method — retire the RPC and this entry becomes a finding.",
 	},
 
+	// Чтение квот арендатором. Сужать НЕЧЕГО: сужение отвечает на вопрос «какие из
+	// этих объектов доступны вызывающему», и он осмыслен, пока у строк ответа есть
+	// ИНДИВИДУАЛЬНЫЕ владельцы. У квоты их нет — это свойство проекта, как его имя
+	// или метки. Проект либо читаем этим вызывающим, либо нет: ровно один вопрос,
+	// и его решает `viewer` на проекте через извлечение области действия на крае.
+	//
+	// Имя формы здесь ШИРЕ её смысла: ответ остаётся project-scoped и
+	// cluster-scoped не становится. Сказано вслух, чтобы следующий читатель не
+	// вывел из имени, будто квоты видны всему кластеру. Текст и обоснование те же,
+	// что у compute/nlb/vpc, — один ответ на один предмет у всех владельцев учёта.
+	"quota.List": {
+		Shape: ClusterScoped,
+		Reason: "Quota rows are a property of the project, not objects with individual owners: " +
+			"there is nothing to narrow to. The project-scope Check at the edge (viewer on " +
+			"project_id) is what settles access, and the proto carries it. Named ClusterScoped " +
+			"only because the gate has no third shape — the answer stays project-scoped. The " +
+			"exclusion expires with its method — retire QuotaHandler.List and this entry " +
+			"becomes a finding.",
+	},
+
 	// Operation histories are narrowed by the caller in the context, not by the
 	// resource id the request names.
 	"image.ListOperations":    {Shape: SubjectScoped},
@@ -207,6 +229,8 @@ type Options struct {
 // Report is the census of one audit run: what was examined, and what was found.
 type Report struct {
 	AdapterFiles  int      // adapter files parsed under internal/repo/pg
+	HandlerFiles  int      // transport files parsed under internal/handler
+	Declared      []string // listing methods DECLARED on the transport surface, sorted
 	Resources     []string // resources discovered (snake_case), sorted
 	Checked       []string // resources actually judged
 	Listings      []string // listing methods discovered, "<resource>.<Method>", sorted
@@ -267,6 +291,39 @@ func Audit(o Options, out io.Writer) (Report, error) {
 			found[res+"."+name] = m
 		}
 	}
+	// ВТОРАЯ ПОЛОСА ОБНАРУЖЕНИЯ — по ОБЪЯВЛЕНИЮ НА ТРАНСПОРТЕ, а не по имени
+	// метода репозитория.
+	//
+	// Полоса выше находит ресурс по форме `func (*<X>Repo) List(`, и это её
+	// слепота: страница, чей репозиторий назвал метод иначе (`ListStates`,
+	// `ListPage`) либо у которой репозитория нет вовсе, не попадает в поле зрения
+	// НИ ОДНОЙ проверки, а перепись при этом печатает число, выглядящее полным —
+	// она не умеет сообщить о том, чего не видела.
+	//
+	// Транспортная поверхность от имён репозитория не зависит: страница, которую
+	// вызывающий может запросить, объявлена методом `List…` на `*<X>Handler`, и
+	// другого способа до неё дойти нет. Поэтому объединение двух полос равно тому,
+	// что видит независимая перепись дерева (`tools/listfiltergate`), — а
+	// равенство этих двух чисел и есть проверяемое свойство.
+	//
+	// Приставка `Internal` у типа обработчика снимается: `InternalVolumeHandler` —
+	// второй слушатель ТОГО ЖЕ ресурса, а не отдельный ресурс. Не снять её значило
+	// бы завести второе пространство имён для одного предмета, и объявление
+	// пришлось бы писать дважды.
+	handlerLists, handlerFiles, herr := findHandlerLists(filepath.Join(root, transportRoot))
+	rep.HandlerFiles = handlerFiles
+	if herr != nil {
+		rep.Findings = append(rep.Findings, herr.Error())
+		return finish(rep, out)
+	}
+	for k := range handlerLists {
+		rep.Declared = append(rep.Declared, k)
+		if _, seen := found[k]; !seen {
+			found[k] = handlerLists[k]
+		}
+	}
+	sort.Strings(rep.Declared)
+
 	for k := range found {
 		rep.Listings = append(rep.Listings, k)
 	}
@@ -492,6 +549,56 @@ func findRepoLists(dir string) (map[string]listMethod, int, error) {
 	return out, parsed, nil
 }
 
+// findHandlerLists sweeps the transport package for listing methods declared on a
+// `*<X>Handler` receiver, keyed "<resource>.<Method>" in the SAME namespace the
+// declaration table uses.
+//
+// Отсутствие каталога — НЕ ошибка: фикстуры гейта транспорта не несут, и требовать
+// его от них значило бы проверять форму фикстуры, а не свойство дерева. Зато
+// «прочитано ноль файлов» уходит в перепись отдельным числом, поэтому «ноль
+// находок» остаётся отличимым от «ноль прочитанного», а равенство объявленного и
+// судимого на НАСТОЯЩЕМ дереве держит независимая перепись `tools/listfiltergate`.
+func findHandlerLists(dir string) (map[string]useCaseMethod, int, error) {
+	out := map[string]useCaseMethod{}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return out, 0, nil
+	}
+	entries, rerr := os.ReadDir(dir)
+	if rerr != nil {
+		return nil, 0, fmt.Errorf("read %s: %w", dir, rerr)
+	}
+	parsed := 0
+	fset := token.NewFileSet()
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		f, perr := parser.ParseFile(fset, path, nil, 0)
+		if perr != nil {
+			return nil, parsed, fmt.Errorf("parse %s: %w", path, perr)
+		}
+		parsed++
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Body == nil || !strings.HasPrefix(fn.Name.Name, "List") {
+				continue
+			}
+			recv := receiverTypeName(fn)
+			if !strings.HasSuffix(recv, "Handler") || recv == "Handler" {
+				continue
+			}
+			res := strings.TrimPrefix(strings.TrimSuffix(recv, "Handler"), "Internal")
+			if res == "" {
+				continue
+			}
+			out[toSnake(res)+"."+fn.Name.Name] = useCaseMethod{file: path, fn: fn}
+		}
+	}
+	return out, parsed, nil
+}
+
 // findUseCaseList locates `func (*UseCase) List` anywhere in the package at dir.
 func findUseCaseList(dir string) (listMethod, error) {
 	entries, err := os.ReadDir(dir)
@@ -667,10 +774,15 @@ func finish(rep Report, out io.Writer) (Report, error) {
 	// used to report resources only, so "4 resources" read the same whether those 4
 	// resources held 4 listing methods or 7, and the 3 it was not looking at were
 	// invisible in the very line meant to state what had been examined.
+	//
+	// ОБЕ СТОРОНЫ ПЕЧАТАЮТСЯ РЯДОМ: сколько страниц ОБЪЯВЛЕНО на транспорте и
+	// сколько СУДИМО. Пока это одно число, расхождение видно только отказом —
+	// то есть тогда, когда оно уже стоило прогона; двумя числами оно видно всегда.
 	_, _ = fmt.Fprintf(out,
-		"audit-list-filter: examined %d adapter file(s), %d resource(s), %d listing method(s) "+
+		"audit-list-filter: examined %d adapter file(s) and %d transport file(s), %d resource(s), "+
+			"%d listing method(s) declared on the transport surface, %d judged "+
 			"(%d undeclared, %d cluster-scoped)\n",
-		rep.AdapterFiles, len(rep.Resources), len(rep.Listings),
+		rep.AdapterFiles, rep.HandlerFiles, len(rep.Resources), len(rep.Declared), len(rep.Listings),
 		len(rep.Undeclared), len(rep.ClusterScoped))
 	if len(rep.Listings) > 0 {
 		_, _ = fmt.Fprintf(out, "audit-list-filter: judged %s\n", strings.Join(rep.Listings, ", "))
