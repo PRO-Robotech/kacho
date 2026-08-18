@@ -36,7 +36,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { ESLint } from "eslint";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 
 const uiRoot = process.cwd();
 const sharedDir = path.join(uiRoot, "shared");
@@ -48,8 +49,34 @@ if (!fs.existsSync(path.join(sharedDir, "eslint.config.js"))) {
   process.exit(1);
 }
 
+// ESLint берётся ОТ КАТАЛОГА shared, а не подъёмом от scripts/ (#572). Успех этого
+// гейта прямо указывает на `npm run lint:js --prefix shared` как на своего преемника,
+// поэтому судить он обязан ТЕМ ЖЕ инструментом, который эта команда запускает: npm
+// ставит в PATH сперва `shared/node_modules/.bin`, и вложенная копия выигрывает у
+// корневой. Пока здесь стоял корневой экземпляр, гейт был зелён на дереве, где
+// объявленная команда падала на загрузке правила, — то есть предикат снятия долга вёл
+// к команде, которая не запускалась. Порядок поиска тот же, что у
+// scripts/check-lint-coverage.mjs и scripts/check-eslint-shim-still-needed.mjs.
+const eslintEntry = createRequire(path.join(sharedDir, "package.json")).resolve("eslint");
+const eslintMod = await import(pathToFileURL(eslintEntry).href);
+const ESLint = eslintMod.ESLint ?? eslintMod.default?.ESLint;
+if (typeof ESLint !== "function") {
+  console.error(`::error::предпосылка гейта не выполнена: в ${eslintEntry} нет класса ESLint — судить нечем`);
+  process.exit(1);
+}
 const eslint = new ESLint({ cwd: sharedDir });
-const results = await eslint.lintFiles(["."]);
+let results;
+try {
+  results = await eslint.lintFiles(["."]);
+} catch (e) {
+  // Отказ ЗАПУСКА — не «ноль находок»: команда неисполнима, и молчание здесь
+  // читалось бы как чистый долг.
+  console.error(
+    `::error::объявленная команда линта shared НЕИСПОЛНИМА собственным ESLint пакета ` +
+      `(${eslintEntry}): «${String(e?.message ?? e).split("\n")[0]}» — долг не измерен`,
+  );
+  process.exit(1);
+}
 
 const actual = {};
 // КООРДИНАТЫ СОХРАНЯЮТСЯ, А НЕ ВЫБРАСЫВАЮТСЯ (#643).
