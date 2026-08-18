@@ -46,99 +46,13 @@
 # «adjudicate breaking (vs main)».
 
 declared:
-  # Двенадцать сообщений, переживших СВОИ ГЛАГОЛЫ. Восемь методов сняты коммитом
-  # 7675925f (задачи 10, 12, 13, 45): он убрал глаголы, хендлеры, строки каталога
-  # прав, маршруты края, кейсы и пробы — и оставил их сообщения запроса и ответа.
-  # Имена самих методов уже стоят в перечне снятой поверхности
-  # (internal/repohygiene/retiredrpcsurface_test.go), поэтому вернуться молча они
-  # не могут; здесь снимается то, что от них осталось в контракте.
+  # ПУСТО, И ЭТО НОРМАЛЬНОЕ СОСТОЯНИЕ СТВОЛА — см. шапку выше.
   #
-  # Почему это ЗАВЕРШЕНИЕ снятия, а не новое решение: причина, по которой сняты
-  # глаголы правки маршрутов, названа тем коммитом дословно — идентичности
-  # маршрута в модели нет, адресовать правку было нечем. Сообщения, требующие
-  # такой идентификатор, ей и остались надгробием.
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/route_table_service.proto
-    symbol: AddRouteTableRoutesRequest
-    reason: сообщение снятого глагола RouteTableService/AddRoutes — вход без глагола
-    issue: kacho#499
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/route_table_service.proto
-    symbol: RemoveRouteTableRoutesRequest
-    reason: сообщение снятого глагола RouteTableService/RemoveRoutes — вход без глагола
-    issue: kacho#499
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/route_table_service.proto
-    symbol: UpdateRouteTableRouteRequest
-    reason: сообщение снятого глагола RouteTableService/UpdateRoute — вход без глагола
-    issue: kacho#499
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/address_service.proto
-    symbol: GetAddressByValueRequest
-    reason: сообщение снятого глагола AddressService/GetByValue — вход без глагола
-    issue: kacho#499
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/address_service.proto
-    symbol: ListAddressesBySubnetRequest
-    reason: сообщение снятого глагола AddressService/ListBySubnet — вход без глагола
-    issue: kacho#499
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/address_service.proto
-    symbol: ListAddressesBySubnetResponse
-    reason: сообщение снятого глагола AddressService/ListBySubnet — выход без глагола
-    issue: kacho#499
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/network_service.proto
-    symbol: ListNetworkSubnetsRequest
-    reason: сообщение снятого глагола NetworkService/ListSubnets — вход без глагола
-    issue: kacho#499
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/network_service.proto
-    symbol: ListNetworkSubnetsResponse
-    reason: сообщение снятого глагола NetworkService/ListSubnets — выход без глагола
-    issue: kacho#499
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/network_service.proto
-    symbol: ListNetworkSecurityGroupsRequest
-    reason: сообщение снятого глагола NetworkService/ListSecurityGroups — вход без глагола
-    issue: kacho#499
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/network_service.proto
-    symbol: ListNetworkSecurityGroupsResponse
-    reason: сообщение снятого глагола NetworkService/ListSecurityGroups — выход без глагола
-    issue: kacho#499
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/network_service.proto
-    symbol: ListNetworkRouteTablesRequest
-    reason: сообщение снятого глагола NetworkService/ListRouteTables — вход без глагола
-    issue: kacho#499
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/vpc/v1/network_service.proto
-    symbol: ListNetworkRouteTablesResponse
-    reason: сообщение снятого глагола NetworkService/ListRouteTables — выход без глагола
-    issue: kacho#499
-
-# ИСТОРИЯ ПЕРЕЧНЯ — почему его нормальное состояние ПУСТО.
-#
-# Девять записей (kacho#400 — снятие шва исполнителя датаплейна vpc: два файла и
-# семь полей `apply_state`) сняты вслед за вливанием `29ad7b78` в ствол. База
-# сравнения поднялась, `buf breaking` их больше не показывает — находок 0, — и
-# адъюдикация обязана краснеть исходом «послабление истекло».
-#
-# КЛАСС ПОВТОРЯЛСЯ ЧЕТЫРЕ РАЗА: 21 запись (kacho#246), 2 (kacho#231), 4 (kacho#296),
-# 9 (kacho#400). Каждый раз предмет истекал в момент ВЛИВАНИЯ накопительной ветки в
-# ствол, а не в момент правки контракта, — поэтому прежнее требование шапки «снимать
-# запись ТЕМ ЖЕ изменением, которое поднимает базу» было буквально невыполнимо:
-# изменение контракта и подъём базы разнесены во времени и делаются разными
-# изменениями. Правило существовало, было записано здесь и не выполнилось ни разу.
-#
-# ПОЧЕМУ ЭТО НЕ ЛОВИЛОСЬ НА СТВОЛЕ, а доставалось постороннему PR: шаг адъюдикации был
-# объявлен `if: github.event_name == 'pull_request'`, поэтому push в ствол его не
-# исполнял вовсе. Цена названа числом: 2026-08-16 девять записей снимали ДВЕ линии
-# независимо (kacho#488 и соседняя), потому что обе наткнулись на одно и то же и ни
-# одна не видела другую.
-#
-# ЗАКРЫТО В kacho#490: условие снято, шаг идёт и на push в ствол. Теперь истечение
-# обнаруживается там, где происходит, и чинится один раз в стволе, а не каждым PR по
-# очереди. Предикат, по которому это проверяется наблюдением: пять последовательных
-# вливаний, и ни один PR не получает красное «послабление истекло» по чужому предмету.
+  # Двенадцать записей #499 истекли ровно тем способом, ради которого механизм и
+  # написан: их разрывы уехали в ствол вместе с R6 (#598), база сравнения
+  # поднялась, и на первом же прогоне ствола адъюдикация назвала каждую поимённо
+  # («ПОСЛАБЛЕНИЕ ИСТЕКЛО … разрыва больше нет»).
+  #
+  # Снимает их прогон, который их и обнаружил, — а не память исполнителя: запись
+  # живёт ровно от объявления разрыва в ветке до вливания этой ветки, и держит
+  # это сам конвейер.
