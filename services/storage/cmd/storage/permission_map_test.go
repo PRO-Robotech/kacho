@@ -626,7 +626,7 @@ func TestPublicListenerServesNoInternalService(t *testing.T) {
 	}
 
 	public := names(func(r grpc.ServiceRegistrar) {
-		registerPublic(r, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
+		registerPublic(r, volumeUC, snapshotUC, imageUC, diskTypeUC, handler.NewQuotaHandler(nil), opHandler)
 	})
 	internal := names(func(r grpc.ServiceRegistrar) {
 		registerInternal(r, volumeUC, imageUC, diskTypeUC,

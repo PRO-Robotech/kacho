@@ -61,6 +61,7 @@ import (
 	// Импортируется здесь (composition root), чтобы registry был полон до старта
 	// gRPC server'ов; handler'ы вызывают dto.Transfer и предполагают, что
 	// каждая зарегистрированная пара уже в map'е.
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	_ "github.com/PRO-Robotech/kacho/services/nlb/internal/dto/type2pb"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 )
@@ -216,6 +217,27 @@ func runServe(configPath string) error {
 	// `operations.Run(ctx, opsRepo, opID, fn)` (kacho-corelib pattern) и
 	// напрямую — OperationService.Get/Cancel (см. ниже).
 	opsRepo := operations.NewRepo(pool, "kacho_nlb")
+
+	// Снимок величины квоты обязан ДОГОНЯТЬ авторитет: без тянущего строка учёта,
+	// заведённая один раз, живёт со своей величиной вечно, и смена предела
+	// администратором не доезжает до проекта никогда. Показывать арендатору такой
+	// снимок значило бы громко назвать число, которое не догонит назначенное, —
+	// поэтому чтение квот и тянущий едут вместе.
+	//
+	// Без соседа величин тянущий НЕ собирается, и это названо вслух: «полосы нет»
+	// обязано быть отличимо от «полоса есть и молчит».
+	if peers.Limit != nil {
+		stopQuotaSync, qerr := corequota.StartLimitSyncer(
+			ctx, pool, peers.Limit, kachopg.QuotaSchema, corequota.Config{}, logger)
+		if qerr != nil {
+			return fmt.Errorf("start quota limit syncer: %w", qerr)
+		}
+		defer stopQuotaSync()
+	} else {
+		logger.Warn("resource-count quota: no internal iam endpoint, the limit snapshot will " +
+			"NEVER catch up with the authority — the charging trigger still enforces, but an " +
+			"administrator raising or lowering a ceiling has no effect on this process")
+	}
 
 	// peers — типизированные clients потребляются handler'ами. Композиционный root
 	// владеет gRPC-conn'ами и закрывает их через defer выше — peers держит ссылки

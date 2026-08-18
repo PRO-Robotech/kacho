@@ -6,12 +6,8 @@ package quota
 import (
 	"context"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
-	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
-	quotav1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotapb"
 
 	quotaband "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/quota"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -41,55 +37,28 @@ func NewHandler(band *quotaband.Guard) *Handler {
 // Пагинации нет осознанно: словарь видов закрыт и мал, и ограничен он миграцией,
 // а не поведением арендатора. Курсор здесь добавил бы отказ (арендатор читает
 // вторую страницу своих восьми потолков) и не купил бы ничего.
+//
+// Тело — ОБЩЕЕ (`quotapb.ListQuotas`): обязательность проекта, обращение к
+// полосе и перевод в контракт одинаковы у всех владельцев, и пять копий этих
+// решений разошлись бы текстом отказа. Своё здесь — только тип ответа.
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListQuotasRequest) (*vpcv1.ListQuotasResponse, error) {
-	// Обязательность проверяется ПЕРВЫМ стейтментом и своим отказом. Оставленная
-	// краю, пустая строка дошла бы до извлечения области действия, не
-	// разрешилась бы там и вернулась отказом в правах — то есть утверждением о
-	// доступе на вопрос, который никогда не был корректным
-	// (`api-conventions.md`: `corevalidate.ResourceID` пустую строку ПРОПУСКАЕТ,
-	// required — отдельная ответственность вызывающего).
-	if req.GetProjectId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "project_id: required")
-	}
-
-	states, err := h.band.States(ctx, req.GetProjectId())
+	quotas, err := quotapb.ListQuotas(ctx, req.GetProjectId(), h.states())
 	if err != nil {
 		return nil, err
 	}
-
-	out := make([]*quotav1.Quota, 0, len(states))
-	for _, st := range states {
-		out = append(out, &quotav1.Quota{
-			Kind:          st.Kind,
-			Limit:         st.Limit,
-			Used:          st.Used,
-			SourceScope:   scopeToProto(st.SourceScope),
-			SourceScopeId: st.SourceScopeID,
-			CarrierType:   st.CarrierType,
-			CarrierId:     st.CarrierID,
-		})
-	}
-	return &vpcv1.ListQuotasResponse{Quotas: out}, nil
+	return &vpcv1.ListQuotasResponse{Quotas: quotas}, nil
 }
 
-// scopeToProto переводит область из строки хранения в перечисление контракта.
+// states отдаёт глагол полосы ЛИБО настоящий nil.
 //
-// Неопознанное значение отображается в `SCOPE_UNSPECIFIED`, а НЕ в `DEFAULT`:
-// умолчание — это утверждение «величина платформенная», и делать его на строке,
-// которую мы не смогли прочитать, значит выдавать незнание за факт. Пустой
-// перечислитель виден арендатору как «источник не назван» и отличим от всех
-// трёх законных областей.
-func scopeToProto(s string) iamv1.Limit_Scope {
-	switch s {
-	case "DEFAULT":
-		return iamv1.Limit_DEFAULT
-	case "ACCOUNT":
-		return iamv1.Limit_ACCOUNT
-	case "PROJECT":
-		return iamv1.Limit_PROJECT
-	default:
-		return iamv1.Limit_SCOPE_UNSPECIFIED
+// Метод типизированного nil-указателя вызвать можно, и он упал бы паникой уже
+// внутри общего тела; здесь решение принимается там, где тип ещё конкретен, и
+// непровязанная полоса отвечает названным отказом, а не падением.
+func (h *Handler) states() quotapb.StatesFunc {
+	if h == nil || h.band == nil {
+		return nil
 	}
+	return h.band.States
 }
 
 // Гарантия соответствия контракту на этапе сборки.

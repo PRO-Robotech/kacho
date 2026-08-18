@@ -7,11 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"testing"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 
@@ -23,12 +25,15 @@ import (
 // подставляют.
 type fakeStore struct {
 	rows      map[string]int64 // kind → предел
+	used      map[string]int64 // kind → занято
 	admits    []string
 	materials [][]ports.QuotaRow
 	admitErr  error
 }
 
-func newFakeStore() *fakeStore { return &fakeStore{rows: map[string]int64{}} }
+func newFakeStore() *fakeStore {
+	return &fakeStore{rows: map[string]int64{}, used: map[string]int64{}}
+}
 
 func (f *fakeStore) Admit(_ context.Context, _, _, kind string) error {
 	f.admits = append(f.admits, kind)
@@ -55,6 +60,28 @@ func (f *fakeStore) Materialize(_ context.Context, rows []ports.QuotaRow) (int64
 		}
 	}
 	return int64(len(rows)), nil
+}
+
+// ListStates отдаёт те строки, которые у подставного учёта ЕСТЬ, — и в том же
+// порядке, что настоящий (`ORDER BY kind`).
+//
+// Порядок здесь не косметика: полоса чтения обещает его контракту, и дублёр,
+// отдающий что попало, сделал бы невидимым ровно тот дефект, ради которого
+// порядок и закреплён.
+func (f *fakeStore) ListStates(_ context.Context, carrierType, carrierID string) ([]quotaread.State, error) {
+	kinds := make([]string, 0, len(f.rows))
+	for k := range f.rows {
+		kinds = append(kinds, k)
+	}
+	sort.Strings(kinds)
+	out := make([]quotaread.State, 0, len(kinds))
+	for _, k := range kinds {
+		out = append(out, quotaread.State{
+			Kind: k, Limit: f.rows[k], Used: f.used[k],
+			CarrierType: carrierType, CarrierID: carrierID,
+		})
+	}
+	return out, nil
 }
 
 type fakeResolver struct {

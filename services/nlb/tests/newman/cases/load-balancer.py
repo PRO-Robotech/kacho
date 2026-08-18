@@ -363,12 +363,52 @@ def _setup_lb(name_suffix: str, body_extra: dict = None):
     ]
 
 
-def _cleanup_lb():
+def _reclaim_setup_subnet(id_var: str = "vpcSubnetId"):
+    # Best-effort снятие подсети, которую выделила подготовка, — ПОСЛЕ того как снят
+    # её единственный потребитель (балансировщик, чей VIP из неё аллоцирован). Обратный
+    # порядок отвечает `subnet not empty`: VIP держит подсеть занятой, пока жив LB.
+    #
+    # Уборка НИКОГДА не роняет кейс (`oneOf`): остаточный лаг возврата VIP — законный
+    # исход этого шага, а предмет утверждения кейса им не затронут. Чего она больше не
+    # делает — так это не исполняется без предмета (см. `_cleanup_lb`).
     return [
+        Step(name="cleanup-setup-subnet", method="DELETE",
+             path=f"{_VPC_SUBNETS}/{{{{{id_var}}}}}",
+             test_script=[
+                 "pm.test('subnet reclaim best-effort (never fails the case)', () => "
+                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
+                 "pm.environment.set('opId', '');",
+                 "if (pm.response.code === 200) { try { const j = pm.response.json();"
+                 " if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
+                 f"pm.environment.unset('{id_var}');",
+             ]),
+        poll_operation_until_done(),
+    ]
+
+
+def _cleanup_lb(reclaim_subnet: bool = True):
+    # `reclaim_subnet` ЗЕРКАЛИТ ТО, ЧТО ПОДГОТОВКА ДЕЙСТВИТЕЛЬНО ВЫДЕЛИЛА.
+    #
+    # `_setup_lb` ВСЕГДА нарезает свою ZONAL-подсеть в ОБЩЕЙ посеянной сети
+    # (`existingNetworkId`), а уборка снимала только сам балансировщик — подсеть
+    # оставалась в сети навсегда. При вложенном потолке «сколько подсетей помещается в
+    # одной сети» (`vpc.network.subnet`, умолчание 16) набор упирался в предел
+    # by construction, а не по стечению обстоятельств: отказ приходил прямым
+    # `QUOTA_EXCEEDED`, а красным становилось всё, что стояло на несозданной подсети.
+    #
+    # Условие тут СТРУКТУРНОЕ, а не рантаймовое: провизионила подсеть парная подготовка
+    # или нет, известно на генерации. Поэтому шаг не «терпит отсутствие предмета», а
+    # просто не появляется там, где предмета нет — у шести кейсов, которые зовут уборку
+    # без `_setup_lb` и ведут собственную подсеть своим же `_cleanup_vpc` (пять) либо не
+    # заводят подсети вовсе (NLB-CR-CRUD-EXTERNAL-LINK — внешний адрес).
+    steps = [
         Step(name="cleanup-del-lb", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
     ]
+    if not reclaim_subnet:
+        return steps
+    return steps + _reclaim_setup_subnet()
 
 
 CASES.append(Case(
@@ -471,6 +511,11 @@ CASES.append(Case(
         poll_operation_until_done(),
         Step(name="get-after-delete", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+        # Балансировщик здесь — ПРЕДМЕТ кейса, поэтому его снимает сам кейс, а не
+        # `_cleanup_lb`. Подсеть при этом выделила подготовка, и без этого шага она
+        # оставалась в общей сети — тот же вклад во вложенный потолок, что и уборка
+        # без реклейма. Предмет снят выше, значит подсеть свободна.
+        *_reclaim_setup_subnet(),
     ],
 ))
 
@@ -2717,7 +2762,9 @@ CASES.append(Case(
              test_script=[*_internal_happy_get_asserts("REGIONAL"),
                           "pm.test('disabledAnnounceZones empty (announced from all healthy zones)', () => "
                           "  pm.expect(pm.response.json().disabledAnnounceZones || []).to.be.an('array').that.is.empty);"])),
-        *_cleanup_lb(),
+        # Подсеть этого кейса ведёт его собственный `_cleanup_vpc` (либо её нет вовсе —
+        # внешний адрес), поэтому уборка LB её не касается: снимать невыделенное нечего.
+        *_cleanup_lb(reclaim_subnet=False),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
     ],
 ))
@@ -2739,7 +2786,9 @@ CASES.append(Case(
                  "pm.test('disabledAnnounceZones persisted as the drain intent', () => "
                  "  pm.expect(j.disabledAnnounceZones || []).to.include(pm.environment.get('existingZoneAltId')));",
              ])),
-        *_cleanup_lb(),
+        # Подсеть этого кейса ведёт его собственный `_cleanup_vpc` (либо её нет вовсе —
+        # внешний адрес), поэтому уборка LB её не касается: снимать невыделенное нечего.
+        *_cleanup_lb(reclaim_subnet=False),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
     ],
 ))
@@ -2775,7 +2824,9 @@ CASES.append(Case(
                  "pm.test('v4AddressId equals the linked address', () => "
                  "  pm.expect(pm.response.json().v4AddressId).to.eql(pm.environment.get('vpcAddrId')));",
              ])),
-        *_cleanup_lb(),
+        # Подсеть этого кейса ведёт его собственный `_cleanup_vpc` (либо её нет вовсе —
+        # внешний адрес), поэтому уборка LB её не касается: снимать невыделенное нечего.
+        *_cleanup_lb(reclaim_subnet=False),
         # tenant-owned linked address survives LB deletion → cleaned up here
         *_cleanup_vpc(_VPC_ADDRESSES, "vpcAddrId"),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
@@ -2812,7 +2863,9 @@ CASES.append(Case(
                  "pm.test('v4AddressId equals the linked public address', () => "
                  "  pm.expect(j.v4AddressId).to.eql(pm.environment.get('vpcAddrId')));",
              ])),
-        *_cleanup_lb(),
+        # Подсеть этого кейса ведёт его собственный `_cleanup_vpc` (либо её нет вовсе —
+        # внешний адрес), поэтому уборка LB её не касается: снимать невыделенное нечего.
+        *_cleanup_lb(reclaim_subnet=False),
         *_cleanup_vpc(_VPC_ADDRESSES, "vpcAddrId"),
     ],
 ))
@@ -2863,7 +2916,9 @@ CASES.append(Case(
                  "pm.test('v4AddressId set (auto from subnet)', () => pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
                  "pm.test('v6AddressId set (linked)', () => pm.expect(j.v6AddressId).to.eql(pm.environment.get('vpcAddr6Id')));",
              ])),
-        *_cleanup_lb(),
+        # Подсеть этого кейса ведёт его собственный `_cleanup_vpc` (либо её нет вовсе —
+        # внешний адрес), поэтому уборка LB её не касается: снимать невыделенное нечего.
+        *_cleanup_lb(reclaim_subnet=False),
         # The linked BYO address survives the LB delete (only the reference is cleared), so
         # it is reclaimed here, before the subnet it was drawn from.
         *_cleanup_vpc(_VPC_ADDRESSES, "vpcAddr6Id"),
@@ -2936,7 +2991,9 @@ CASES.append(Case(
                  "const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
              ]),
         poll_operation_until_done(must_succeed=True),
-        *_cleanup_lb(),
+        # Подсеть этого кейса ведёт его собственный `_cleanup_vpc` (либо её нет вовсе —
+        # внешний адрес), поэтому уборка LB её не касается: снимать невыделенное нечего.
+        *_cleanup_lb(reclaim_subnet=False),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
     ],
 ))
