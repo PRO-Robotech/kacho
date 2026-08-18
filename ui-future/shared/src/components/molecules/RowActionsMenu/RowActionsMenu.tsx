@@ -30,39 +30,23 @@ interface Props {
 }
 
 /**
- * Resources with no cross-project "move" semantics.
+ * Ресурсы, у которых перемещение ОБЪЯВЛЕНО контрактом.
  *
- * The move dialog is a stub that prints the REST call it would make; offering it
- * for a resource whose API has no such verb advertises an operation that does
- * not exist. Every domain declared its own resources here — geo (regions/zones)
- * and iam (accounts/projects) and vpc address pools were already in the shared
- * copy; compute (instances), storage (volumes/snapshots/disk types) and registry
- * (registries/repositories/tags) each declared theirs in its own fork of this
- * file. One closed list means a resource cannot be movable in one app and not in
- * another.
+ * Перечень — РАЗРЕШАЮЩИЙ, и это существо правила, а не стиль. Прежде здесь стоял
+ * перечень исключений («перемещать нечем»), тогда как перемещаемых ресурсов во
+ * всём продукте два: при таком умолчании каждый новый ресурс получал заглушку
+ * перемещения САМ, и автор ресурса о списке не знал. #561 (пользователь) был не
+ * пропуском одной записи, а первым замеченным экземпляром класса — перепись
+ * нашла 21 ресурс, которому меню предлагало несуществующую операцию.
+ *
+ * Истина — у контракта: `:move` объявлен ровно на двух REST-адресах nlb
+ * (`/nlb/v1/networkLoadBalancers`, `/nlb/v1/targetGroups`). Сходимость этого
+ * перечня с контрактом держит гейт `lib/move-verb-contract-parity.test.ts`: он
+ * ВЫВОДИТ перечень из `proto/`, поэтому новый глагол включает пункт сам, а
+ * снятый — выключает. Дописывать сюда ресурс, у которого глагола нет, гейт не
+ * даст.
  */
-const MOVE_INCAPABLE = [
-  "accounts",
-  "projects",
-  // Пользователь — членство в аккаунте, а не проектный ресурс: глагола
-  // перемещения у него нет ни на контракте, ни на крае. Соседи по домену выше
-  // стояли здесь с самого начала, а он был пропущен, и его строка предлагала
-  // заглушку рядом с настоящим действием-глаголом («Запретить участие»).
-  "users",
-  "regions",
-  "zones",
-  "address-pools",
-  // compute
-  "compute-instances",
-  // storage
-  "volumes",
-  "snapshots",
-  "disk-types",
-  // registry (OCI entities)
-  "registries",
-  "repositories",
-  "tags",
-];
+const MOVE_CAPABLE = ["load-balancers", "target-groups"];
 
 /**
  * Has this resource any row action at all?
@@ -81,7 +65,7 @@ export function resourceHasRowActions(spec: ResourceSpec): boolean {
     // не получил бы столбца действий вовсе, и объявление осталось бы формой
     // без содержания: спека его несёт, а на экране его нет.
     (spec.rowVerbs?.length ?? 0) > 0 ||
-    !MOVE_INCAPABLE.includes(spec.id) ||
+    MOVE_CAPABLE.includes(spec.id) ||
     spec.id === "networks"
   );
 }
@@ -107,7 +91,7 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
   const isDefaultSg = spec.id === "security-groups" && Boolean(getByPath<boolean>(row, "default_for_network"));
   const showDelete = spec.ops.delete && !isDefaultSg;
 
-  const moveCapable = !MOVE_INCAPABLE.includes(spec.id);
+  const moveCapable = MOVE_CAPABLE.includes(spec.id);
 
   const isNetwork = spec.id === "networks";
   const currentProjectId = params.projectId ?? projectId ?? null;

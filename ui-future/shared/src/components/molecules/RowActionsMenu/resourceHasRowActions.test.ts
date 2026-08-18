@@ -24,14 +24,27 @@ describe("resourceHasRowActions", () => {
   });
 
   it("is true for a move-capable resource even without update or delete", () => {
-    const readOnlyButMovable = { ...REGISTRY["disk-types"], id: "some-movable-thing" };
+    // Ресурс берётся НАСТОЯЩИЙ — тот, чей глагол объявлен контрактом
+    // (`/nlb/v1/targetGroups/{id}:move`). Прежде здесь стоял выдуманный id, и
+    // он проходил лишь потому, что перечень был устроен ИСКЛЮЧЕНИЯМИ: движимым
+    // считался всякий, кого не назвали. После разворота признака (#583)
+    // выдуманный id движимым не является — что и есть смысл разворота.
+    const readOnlyButMovable = { ...REGISTRY["disk-types"], id: "target-groups" };
     expect(resourceHasRowActions(readOnlyButMovable)).toBe(true);
   });
 
+  it("выдуманный ресурс перемещаемым НЕ считается — умолчание запрещающее", () => {
+    // Отрицательный близнец к предыдущему: пара ловит возврат прежнего
+    // умолчания, при котором новый ресурс получал заглушку перемещения сам.
+    const unknown = { ...REGISTRY["disk-types"], id: "some-movable-thing" };
+    expect(resourceHasRowActions(unknown)).toBe(false);
+  });
+
   it("counts the domain-declared move-incapable resources", () => {
-    // Each remote declared its own domain's resources move-incapable; the list
-    // is one closed set here, so a resource is not move-capable in one app and
-    // move-incapable in another.
+    // Перечень перемещаемых — РАЗРЕШАЮЩИЙ и выводится из контрактов (#583),
+    // поэтому ни один из этих ресурсов пункта не получает: глагол `:move`
+    // объявлен только у балансировщика и целевой группы. Прежде здесь стоял
+    // перечень исключений, и каждое из этих имён приходилось выписывать руками.
     for (const id of [
       "compute-instances",
       "volumes",
