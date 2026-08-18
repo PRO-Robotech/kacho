@@ -68,7 +68,8 @@ func TestIntegration_InstancesCursorIndex_PageDoesNotReadTheWholeProject(t *test
 		projects = append(projects, prj)
 		_, err = pool.Exec(ctx, `
 			INSERT INTO instances (id, project_id, zone_id, name, machine_type_id, status, created_at)
-			SELECT 'ins-' || $1 || lpad(g::text, 8, '0'), $1, 'ru-central1-a', '', 'mt-std2', 1,
+			SELECT 'ins-' || $1 || lpad(g::text, 8, '0'), $1, 'ru-central1-a',
+			       'ins-' || $1 || lpad(g::text, 8, '0'), 'mt-std2', 1,
 			       TIMESTAMPTZ '2020-01-01 00:00:00Z' + (g || ' seconds')::interval
 			  FROM generate_series(0, $2::int - 1) g`, prj, insCursorRows)
 		require.NoError(t, err)

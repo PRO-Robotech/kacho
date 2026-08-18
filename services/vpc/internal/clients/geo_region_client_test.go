@@ -52,7 +52,7 @@ func newTestGeoRegionClient(fake geov1.RegionServiceClient) *GeoRegionClient {
 // региона (ID+Name), что и cache-miss, а не усечённый {ID}. Иначе caller,
 // читающий .Name, молча получает ” на весь TTL — latent foot-gun.
 func TestGeoRegionClient_Get_CacheHitReturnsFullStruct(t *testing.T) {
-	fake := &fakeGeoRegionClient{getResp: &geov1.Region{Id: "reg-a", Name: "RU Central"}}
+	fake := &fakeGeoRegionClient{getResp: &geov1.Region{Id: "reg-a", Name: "ru-central"}}
 	c := newTestGeoRegionClient(fake)
 
 	first, err := c.Get(context.Background(), "reg-a")

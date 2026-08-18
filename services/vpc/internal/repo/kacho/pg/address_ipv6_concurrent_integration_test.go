@@ -52,8 +52,8 @@ func insertV6Address(t testing.TB, ctx context.Context, pool *pgxpool.Pool) stri
 	t.Helper()
 	addrID := ids.NewID(ids.PrefixAddress)
 	_, err := pool.Exec(ctx, `
-        INSERT INTO addresses (id, project_id, addr_type, ip_version, reserved)
-        VALUES ($1, 'b1gtestproject00000', 1, 1, true)
+        INSERT INTO addresses (id, name, project_id, addr_type, ip_version, reserved)
+        VALUES ($1, $1, 'b1gtestproject00000', 1, 1, true)
     `, addrID)
 	require.NoError(t, err)
 	return addrID

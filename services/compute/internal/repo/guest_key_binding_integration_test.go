@@ -39,7 +39,7 @@ func seedInstanceWithKeys(t *testing.T, ctx context.Context, r *repo.InstanceRep
 	t.Helper()
 	inID := ids.NewID(ids.PrefixInstance)
 	in, _, err := r.Insert(ctx, &domain.Instance{
-		ID: inID, ProjectID: projectID, CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		ID: inID, Name: inID, ProjectID: projectID, CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		ZoneID: "ru-central1-a", Status: domain.InstanceStatusRunning, FQDN: inID + ".auto.internal",
 		InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
@@ -146,7 +146,7 @@ func TestGuestKeyDelete_RefusesWithTheInstancesNamed(t *testing.T) {
 	})
 
 	t.Run("после снятия ключа с машины он снимается", func(t *testing.T) {
-		_, _, uerr := instRepo.Update(ctx, &domain.Instance{ID: in.ID, ProjectID: "proj-del"},
+		_, _, uerr := instRepo.Update(ctx, &domain.Instance{ID: in.ID, Name: in.ID, ProjectID: "proj-del"},
 			false, []string{"guest_access_key_ids"})
 		require.NoError(t, uerr, "пустой набор при названной маске — законное «снять все»")
 		require.NoError(t, keyRepo.Delete(ctx, held))

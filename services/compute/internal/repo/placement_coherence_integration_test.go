@@ -50,7 +50,7 @@ func seedInstanceInGroup(t *testing.T, ctx context.Context, r *repo.InstanceRepo
 	t.Helper()
 	inID := ids.NewID(ids.PrefixInstance)
 	in, _, err := r.Insert(ctx, &domain.Instance{
-		ID: inID, ProjectID: projectID, CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		ID: inID, Name: inID, ProjectID: projectID, CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		ZoneID: zone, RegionID: region, Status: domain.InstanceStatusRunning,
 		FQDN: inID + ".auto.internal", InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},

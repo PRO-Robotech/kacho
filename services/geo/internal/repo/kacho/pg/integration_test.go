@@ -71,7 +71,7 @@ func TestRegionList(t *testing.T) {
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
 
 	regions, _, err := rr.List(ctx, region.Pagination{PageSize: 50})
@@ -85,10 +85,10 @@ func TestZoneList(t *testing.T) {
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
 	for _, z := range []string{"region-1-a", "region-1-b"} {
-		_, zerr := zr.Insert(ctx, &domain.Zone{ID: z, RegionID: "region-1", Name: "Zone " + z, Status: domain.ZoneStatusUp})
+		_, zerr := zr.Insert(ctx, &domain.Zone{ID: z, RegionID: "region-1", Name: "zone-" + z, Status: domain.ZoneStatusUp})
 		require.NoError(t, zerr)
 	}
 
@@ -102,16 +102,16 @@ func TestRegionCRUDAndOutbox(t *testing.T) {
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 
-	created, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	created, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
 	require.Equal(t, "region-1", created.ID)
 
 	// Строка outbox CREATED записана атомарно.
 	require.Equal(t, 1, outboxCount(t, pool, "Region", "region-1", "CREATED"))
 
-	updated, err := rr.Update(ctx, "region-1", region.UpdateParams{Name: strPtr("Region One")})
+	updated, err := rr.Update(ctx, "region-1", region.UpdateParams{Name: strPtr("region-one")})
 	require.NoError(t, err)
-	require.Equal(t, "Region One", updated.Name)
+	require.Equal(t, "region-one", updated.Name)
 	require.Equal(t, 1, outboxCount(t, pool, "Region", "region-1", "UPDATED"))
 
 	require.NoError(t, rr.Delete(ctx, "region-1"))
@@ -124,7 +124,7 @@ func TestRegionInsertDuplicate(t *testing.T) {
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
 	_, err = rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "dup"})
 	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
@@ -143,10 +143,10 @@ func TestRegionInsertDuplicateName_reportsTheName(t *testing.T) {
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region One"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-one"})
 	require.NoError(t, err)
 
-	_, err = rr.Insert(ctx, &domain.Region{ID: "region-2", Name: "Region One"})
+	_, err = rr.Insert(ctx, &domain.Region{ID: "region-2", Name: "region-one"})
 	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
 	require.Contains(t, err.Error(), "Region with name Region One already exists",
 		"конфликт по имени обязан называть имя")
@@ -162,12 +162,12 @@ func TestRegionUpdateToTakenName_reportsTheName(t *testing.T) {
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Taken"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "taken"})
 	require.NoError(t, err)
-	_, err = rr.Insert(ctx, &domain.Region{ID: "region-2", Name: "Free"})
+	_, err = rr.Insert(ctx, &domain.Region{ID: "region-2", Name: "free"})
 	require.NoError(t, err)
 
-	taken := "Taken"
+	taken := "taken"
 	_, err = rr.Update(ctx, "region-2", region.UpdateParams{Name: &taken})
 	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
 	require.Contains(t, err.Error(), "Region with name Taken already exists")
@@ -182,12 +182,12 @@ func TestZoneInsertDuplicateName_reportsTheName(t *testing.T) {
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "Zone One", Status: domain.ZoneStatusUp})
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "zone-one", Status: domain.ZoneStatusUp})
 	require.NoError(t, err)
 
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-b", RegionID: "region-1", Name: "Zone One", Status: domain.ZoneStatusUp})
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-b", RegionID: "region-1", Name: "zone-one", Status: domain.ZoneStatusUp})
 	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
 	require.Contains(t, err.Error(), "Zone with name Zone One already exists")
 	require.NotContains(t, err.Error(), "region-1-b")
@@ -202,9 +202,9 @@ func TestZoneFKRestrict_DeleteRegionWithZones(t *testing.T) {
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "Zone A", Status: domain.ZoneStatusUp})
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "zone-a", Status: domain.ZoneStatusUp})
 	require.NoError(t, err)
 
 	err = rr.Delete(ctx, "region-1")
@@ -225,9 +225,9 @@ func TestRegionDeleteThenZoneDelete_FKLifecycle(t *testing.T) {
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Status: domain.ZoneStatusUp, Name: "Region 1 A"})
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Status: domain.ZoneStatusUp, Name: "region-1-a"})
 	require.NoError(t, err)
 
 	// Удаление региона заблокировано, пока существует зона.
@@ -253,7 +253,7 @@ func TestConcurrentRegionInsert_OneWins(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			_, err := rr.Insert(ctx, &domain.Region{ID: "race-region", Name: "Race"})
+			_, err := rr.Insert(ctx, &domain.Region{ID: "race-region", Name: "race"})
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
@@ -293,7 +293,7 @@ func TestConcurrentZoneInsertVsRegionDelete_NoOrphan(t *testing.T) {
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
 
 	var (
@@ -306,7 +306,7 @@ func TestConcurrentZoneInsertVsRegionDelete_NoOrphan(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		<-start
-		_, insertErr = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "Zone A", Status: domain.ZoneStatusUp})
+		_, insertErr = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "zone-a", Status: domain.ZoneStatusUp})
 	}()
 	go func() {
 		defer wg.Done()
@@ -348,25 +348,25 @@ func TestZoneUpdateAndOutbox(t *testing.T) {
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "Zone A", Status: domain.ZoneStatusUp})
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "zone-a", Status: domain.ZoneStatusUp})
 	require.NoError(t, err)
 
 	down := domain.ZoneStatusDown
 	updated, err := zr.Update(ctx, "region-1-a", zone.UpdateParams{
-		Name:   strPtr("Zone A renamed"),
+		Name:   strPtr("zone-a-renamed"),
 		Status: &down,
 	})
 	require.NoError(t, err)
-	require.Equal(t, "Zone A renamed", updated.Name)
+	require.Equal(t, "zone-a-renamed", updated.Name)
 	require.Equal(t, domain.ZoneStatusDown, updated.Status)
 	require.Equal(t, "region-1", updated.RegionID, "region_id must be unchanged (not zeroed)")
 
 	// re-Get видит обновленное состояние.
 	got, err := zr.Get(ctx, "region-1-a")
 	require.NoError(t, err)
-	require.Equal(t, "Zone A renamed", got.Name)
+	require.Equal(t, "zone-a-renamed", got.Name)
 	require.Equal(t, domain.ZoneStatusDown, got.Status)
 
 	require.Equal(t, 1, outboxCount(t, pool, "Zone", "region-1-a", "UPDATED"))
@@ -407,10 +407,10 @@ func TestZoneListPagination(t *testing.T) {
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
 	for _, id := range []string{"region-1-a", "region-1-b", "region-1-c"} {
-		_, zerr := zr.Insert(ctx, &domain.Zone{ID: id, RegionID: "region-1", Name: "Zone " + id, Status: domain.ZoneStatusUp})
+		_, zerr := zr.Insert(ctx, &domain.Zone{ID: id, RegionID: "region-1", Name: "zone-" + id, Status: domain.ZoneStatusUp})
 		require.NoError(t, zerr)
 	}
 
@@ -436,11 +436,11 @@ func TestZoneInsertDuplicate(t *testing.T) {
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "Zone A", Status: domain.ZoneStatusUp})
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "zone-a", Status: domain.ZoneStatusUp})
 	require.NoError(t, err)
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "Zone A dup", Status: domain.ZoneStatusUp})
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "zone-a-dup", Status: domain.ZoneStatusUp})
 	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
 }
 
@@ -453,7 +453,7 @@ func TestConcurrentZoneInsert_OneWins(t *testing.T) {
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
 
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
 
 	const n = 8

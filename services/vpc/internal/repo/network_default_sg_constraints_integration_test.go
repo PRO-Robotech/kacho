@@ -101,7 +101,7 @@ func TestIntegration_OneDefaultSGPerNetwork(t *testing.T) {
 	}))
 	// Вторая default-SG в той же сети → partial UNIQUE violation.
 	_, err = pgPool.Exec(ctx,
-		`INSERT INTO security_groups (id, project_id, network_id, default_for_network) VALUES ($1, 'f-dsg', $2, true)`,
+		`INSERT INTO security_groups (id, name, project_id, network_id, default_for_network) VALUES ($1, $1, 'f-dsg', $2, true)`,
 		ids.NewID(ids.PrefixSecurityGroup), netID)
 	require.Error(t, err, "a network must have at most one default security group")
 }

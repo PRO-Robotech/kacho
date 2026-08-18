@@ -95,14 +95,14 @@ func TestGeoZoneClient_Get_PerCallDeadlineOnHungPeer(t *testing.T) {
 }
 
 func TestGeoZoneClient_Get_FoundOK(t *testing.T) {
-	fake := &fakeGeoZoneClient{getResp: &geov1.Zone{Id: "zone-a", RegionId: "zone", Name: "RU Central A"}}
+	fake := &fakeGeoZoneClient{getResp: &geov1.Zone{Id: "zone-a", RegionId: "zone", Name: "ru-central-a"}}
 	c := newTestGeoZoneClient(fake)
 
 	z, err := c.Get(context.Background(), "zone-a")
 	if err != nil {
 		t.Fatalf("expected ok, got err: %v", err)
 	}
-	if z.ID != "zone-a" || z.RegionID != "zone" || z.Name != "RU Central A" {
+	if z.ID != "zone-a" || z.RegionID != "zone" || z.Name != "ru-central-a" {
 		t.Fatalf("unexpected zone: %+v", z)
 	}
 }
@@ -160,7 +160,7 @@ func TestGeoZoneClient_Get_RetriesUnavailableThenSucceeds(t *testing.T) {
 // зоны (ID+RegionID+Name), что и cache-miss, а не усечённый {ID}. Иначе caller,
 // читающий .RegionID/.Name, молча получает ” на весь TTL — latent foot-gun.
 func TestGeoZoneClient_Get_CacheHitReturnsFullStruct(t *testing.T) {
-	fake := &fakeGeoZoneClient{getResp: &geov1.Zone{Id: "zone-a", RegionId: "reg-x", Name: "RU Central A"}}
+	fake := &fakeGeoZoneClient{getResp: &geov1.Zone{Id: "zone-a", RegionId: "reg-x", Name: "ru-central-a"}}
 	c := newTestGeoZoneClient(fake)
 
 	first, err := c.Get(context.Background(), "zone-a")

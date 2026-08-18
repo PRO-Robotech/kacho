@@ -43,7 +43,7 @@ func TestGuestKey_ConcurrentSameNameAndSameMaterialLeaveExactlyOne(t *testing.T)
 	r := repo.NewGuestAccessKeyRepo(pool)
 
 	t.Run("одно имя — ровно один ключ", func(t *testing.T) {
-		const project, name = "proj-race-name", "одно-имя"
+		const project, name = "proj-race-name", "one-name"
 		const n = 8
 		var wg sync.WaitGroup
 		okCount := make([]bool, n)
@@ -90,7 +90,7 @@ func TestGuestKey_ConcurrentSameNameAndSameMaterialLeaveExactlyOne(t *testing.T)
 				_, _, ierr := r.Insert(ctx, &domain.GuestAccessKey{
 					ID: ids.NewHyphenID("gak"), ProjectID: project,
 					// Имя РАЗНОЕ: предмет этой пробы — отпечаток.
-					Name:        "имя-" + ids.NewHyphenID("gak"),
+					Name:        "key-" + ids.NewHyphenID("gak"),
 					PublicKey:   "ssh-ed25519 AAAAcommon",
 					Fingerprint: fp,
 				})
@@ -121,7 +121,7 @@ func TestGuestKey_ConcurrentSameNameAndSameMaterialLeaveExactlyOne(t *testing.T)
 		fp := "SHA256:" + ids.NewHyphenID("gak")
 		for _, p := range []string{"proj-x", "proj-y"} {
 			_, _, ierr := r.Insert(ctx, &domain.GuestAccessKey{
-				ID: ids.NewHyphenID("gak"), ProjectID: p, Name: "общий",
+				ID: ids.NewHyphenID("gak"), ProjectID: p, Name: "shared",
 				PublicKey: "ssh-ed25519 AAAAshared", Fingerprint: fp,
 			})
 			require.NoError(t, ierr, "проект %s обязан завести свой ключ с тем же материалом", p)
@@ -141,7 +141,7 @@ func TestPlacementGroup_ConcurrentSameNameLeavesExactlyOne(t *testing.T) {
 	pgtest.ClosePoolAtEnd(t, pool)
 	r := repo.NewPlacementGroupRepo(pool)
 
-	const project, name = "proj-plg-race", "одна-группа"
+	const project, name = "proj-plg-race", "one-group"
 	const n = 8
 	var wg sync.WaitGroup
 	okCount := make([]bool, n)
@@ -178,7 +178,7 @@ func TestPlacementGroup_ConcurrentSameNameLeavesExactlyOne(t *testing.T) {
 	// Положительный контроль: другое имя в том же проекте проходит — иначе
 	// «ровно одна» зеленела бы на вставке, сломанной для всех групп сразу.
 	_, _, ierr := r.Insert(ctx, &domain.PlacementGroup{
-		ID: ids.NewHyphenID("plg"), ProjectID: project, Name: "другая-группа",
+		ID: ids.NewHyphenID("plg"), ProjectID: project, Name: "other-group",
 		Strategy: domain.PlacementStrategyPack, PlacementType: domain.PlacementTypeRegional,
 		RegionID: "ru-central1",
 	})

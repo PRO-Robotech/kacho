@@ -25,7 +25,7 @@ import (
 // newRunningInstance is a small helper for the Update-vs-lifecycle tests.
 func newRunningInstance(id string) *domain.Instance {
 	return &domain.Instance{
-		ID: id, ProjectID: "f-upd-status-race", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		ID: id, Name: id, ProjectID: "f-upd-status-race", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		ZoneID: "ru-central1-a", InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
 		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},

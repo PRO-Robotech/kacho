@@ -103,12 +103,12 @@ func TestWrapUnique_unknownConstraint_fallsBackToId(t *testing.T) {
 // TestWrapUnique_nonUniqueErrors_delegateToWrap — WrapUnique отличается от Wrap
 // ТОЛЬКО на 23505; всё прочее обязано идти тем же маппингом.
 func TestWrapUnique_nonUniqueErrors_delegateToWrap(t *testing.T) {
-	err := dberr.WrapUnique(pgx.ErrNoRows, "Zone", "ru-central1-a", "Zone A")
+	err := dberr.WrapUnique(pgx.ErrNoRows, "Zone", "ru-central1-a", "zone-a")
 	if !stderrors.Is(err, geoerrors.ErrNotFound) {
 		t.Fatalf("WrapUnique(ErrNoRows) = %v, want ErrNotFound", err)
 	}
 	fkErr := &pgconn.PgError{Code: "23503", ConstraintName: "zones_region_id_fkey"}
-	if err := dberr.WrapUnique(fkErr, "Zone", "ru-central1-a", "Zone A"); !stderrors.Is(err, geoerrors.ErrFailedPrecondition) {
+	if err := dberr.WrapUnique(fkErr, "Zone", "ru-central1-a", "zone-a"); !stderrors.Is(err, geoerrors.ErrFailedPrecondition) {
 		t.Fatalf("WrapUnique(23503) = %v, want ErrFailedPrecondition", err)
 	}
 }

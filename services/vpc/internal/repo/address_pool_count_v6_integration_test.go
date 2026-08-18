@@ -35,14 +35,14 @@ func TestAddressPool_CountIncludesV6(t *testing.T) {
 	poolID := ids.NewID("apl")
 	_, err = pgPool.Exec(ctx, `
         INSERT INTO address_pools (id, name, v6_cidr_blocks, kind)
-        VALUES ($1, $2, ARRAY['2001:db8:abcd::/48']::text[], 1)`, poolID, t.Name())
+        VALUES ($1, $2, ARRAY['2001:db8:abcd::/48']::text[], 1)`, poolID, "pool-count")
 	require.NoError(t, err)
 
 	// Адрес с выделенным external IPv6 из этого пула.
 	addrID := ids.NewID(ids.PrefixAddress)
 	_, err = pgPool.Exec(ctx, `
-        INSERT INTO addresses (id, project_id, addr_type, ip_version, reserved, external_ipv6)
-        VALUES ($1, 'b1gtestproject00000', 1, 2, true,
+        INSERT INTO addresses (id, name, project_id, addr_type, ip_version, reserved, external_ipv6)
+        VALUES ($1, $1, 'b1gtestproject00000', 1, 2, true,
                 jsonb_build_object('address', '2001:db8:abcd::5', 'address_pool_id', $2::text))`,
 		addrID, poolID)
 	require.NoError(t, err)
@@ -70,7 +70,7 @@ func TestAddressPool_CountZeroWhenEmpty(t *testing.T) {
 	poolID := ids.NewID("apl")
 	_, err = pgPool.Exec(ctx, `
         INSERT INTO address_pools (id, name, v4_cidr_blocks, kind)
-        VALUES ($1, $2, ARRAY['198.51.100.0/24']::text[], 1)`, poolID, t.Name())
+        VALUES ($1, $2, ARRAY['198.51.100.0/24']::text[], 1)`, poolID, "pool-count")
 	require.NoError(t, err)
 
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
