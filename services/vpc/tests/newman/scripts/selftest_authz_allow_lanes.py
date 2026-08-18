@@ -114,6 +114,11 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             return self._send(200, OK_SUBNET_OP)
         return self._send(404, {"code": 5, "message": "not found"})
 
+    def do_DELETE(self):  # noqa: N802
+        # Уборка созданного: снятие подсети и её сети-якоря. Отвечаем конвертом
+        # Operation — так же, как отвечает край на асинхронную мутацию.
+        return self._send(200, OK_OP)
+
 
 def _case_folder_name() -> str:
     coll = json.loads(COLLECTION.read_text())
