@@ -77,6 +77,34 @@ var Profile = listfiltergate.Profile{
 	ReceiverSuffix: "Handler",
 	Filters:        []string{"listnarrow.Page", "listnarrow.IDs"},
 	Banned:         []string{"ListAllowedIDs", "ListObjects"},
+	// Where the ban actually comes FROM (#684). Until this was declared the ban was
+	// the two hand-written names and nothing else, and the gate said so on every run:
+	// "no enumeration source declared". That line was not a warning about a defect —
+	// it was a statement that the service was UNWATCHED for the form that lived in
+	// iam for months before #651 found it.
+	//
+	// Neither surface named here enumerates today, and that is the point: a list of
+	// names refuses only the forms someone has already met, so the ban has to arrive
+	// BEFORE the first caller. The method set of each is read on every run; the first
+	// method added to either that answers with a set of identifiers is banned inside
+	// every narrowing listing the day it is written, without anyone editing a list.
+	//
+	// Copying iam's answer here would have been wrong twice over: iam's sources are
+	// its own — the store's port and a paged verdict resolver over its own tables —
+	// and kacho-nlb has neither. It holds grants nowhere; every authorization
+	// question it asks goes to kacho-iam, through the ports below.
+	EnumerationSources: []listfiltergate.EnumerationSource{
+		// The peer port to kacho-iam — where a new authorization RPC would land —
+		// and the adapter service code actually holds. Both are named because a
+		// widening could be written at either, and each expires with its own subject.
+		{Dir: "internal/clients/iam", Type: "CheckClient", Role: listfiltergate.AsksVerdicts},
+		{Dir: "internal/check", Type: "IAMCheckClient", Role: listfiltergate.AsksVerdicts},
+		// The SHARED narrow port to kacho-iam's AuthorizeService, resolved from the
+		// module root because it is foundation rather than service code. It is the
+		// shortest path from "narrow this page" to "enumerate the universe": the RPC
+		// it fronts is the one that enumerates (AuthorizeService.ListObjects).
+		{Dir: "pkg/listnarrow", Type: "AuthorizeClient", Role: listfiltergate.AsksVerdicts, Shared: true},
+	},
 	SubjectScopers: []string{"ListForCaller"},
 
 	Listings: map[string]listfiltergate.Listing{

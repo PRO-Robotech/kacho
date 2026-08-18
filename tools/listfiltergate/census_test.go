@@ -84,7 +84,13 @@ func analyserListingCount(t *testing.T, root, svc string) int {
 			"measurement:\n%s", svc, out)
 	}
 	total := 0
-	re := regexp.MustCompile(`(\d+) listing method\(s\)`)
+	// The count is read from the CENSUS SENTENCE, not from anywhere the words
+	// happen to appear: the census is the only line that follows the number with the
+	// breakdown in brackets. An unanchored match summed every sentence in the
+	// output, so a service that merely MENTIONED its listing methods in a second line
+	// scored twice — and the failure read "the tree declares 2 but the analyser
+	// judged 4", which points at the analyser rather than at this regexp.
+	re := regexp.MustCompile(`(\d+) listing method\(s\) \(`)
 	for _, m := range re.FindAllStringSubmatch(string(out), -1) {
 		n := 0
 		for _, c := range m[1] {

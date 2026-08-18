@@ -106,6 +106,27 @@ const quotaIsAProjectProperty = "Quota rows are a property of the project, not o
 	"(viewer on project_id) is what settles access, and the proto carries it. Named " +
 	"ClusterScoped only because the gate has no third shape — the answer stays project-scoped."
 
+// vpcEnumerationSources names the DECLARED types through which kacho-vpc asks the
+// authorization question, so that the enumerate-then-narrow ban is read off their
+// method sets instead of being a hand-written list of the forms someone already met.
+//
+// Neither enumerates today. That is what the declaration is for: the first method
+// added to either that answers with a set of identifiers ([]string) is banned inside
+// every narrowing listing the day it is written, rather than after the incident that
+// revealed it (#651, #684).
+var vpcEnumerationSources = []listfiltergate.EnumerationSource{
+	// vpc's own client to kacho-iam: "may this subject act on this object"
+	// (InternalIAMService.Check). One method along from it is "which objects may this
+	// subject act on" — the form the ban must already refuse when it is written.
+	{Dir: "internal/check", Type: "IAMCheckClient", Role: listfiltergate.AsksVerdicts},
+	// The SHARED narrow port to kacho-iam's AuthorizeService, resolved from the
+	// module root because it is foundation rather than service code. It is the
+	// shortest path from "narrow this page" to "enumerate the universe": the RPC it
+	// fronts is the one that enumerates (AuthorizeService.ListObjects), so a profile
+	// watching only its own client would leave the likelier door unwatched.
+	{Dir: "pkg/listnarrow", Type: "AuthorizeClient", Role: listfiltergate.AsksVerdicts, Shared: true},
+}
+
 // Profile describes kacho-vpc to the analyser.
 var Profile = listfiltergate.Profile{
 	Service:    "vpc",
@@ -123,9 +144,26 @@ var Profile = listfiltergate.Profile{
 	ExtraReceivers: []string{"PublicHandler"},
 	Filters:        []string{"listnarrow.Page", "listnarrow.IDs"},
 	Banned:         []string{"ListAllowedIDs", "ListObjects"},
-	SubjectScopers: []string{"ListForCaller"},
-	ProtoFiles:     []string{"kacho/cloud/vpc/v1/address_service.proto"},
-	FGAModel:       "kacho/cloud/iam/v1/fga_model.fga",
+	// Where the ban actually comes FROM (#684). Until this was declared the ban was
+	// the two hand-written names and nothing else, and the gate said so on every run:
+	// "no enumeration source declared". That line was not a warning about a defect —
+	// it was a statement that the service was UNWATCHED for the form that lived in
+	// iam for months before #651 found it.
+	//
+	// Neither surface named here enumerates today, and that is the point: a list of
+	// names refuses only the forms someone has already met, so the ban has to arrive
+	// BEFORE the first caller. The method set of each is read on every run; the first
+	// method added to either that answers with a set of identifiers is banned inside
+	// every narrowing listing the day it is written, without anyone editing a list.
+	//
+	// Copying iam's answer here would have been wrong twice over: iam's sources are
+	// its own — the store's port and a paged verdict resolver over its own tables —
+	// and kacho-vpc has neither. It holds grants nowhere; every authorization
+	// question it asks goes to kacho-iam, through the ports below.
+	EnumerationSources: vpcEnumerationSources,
+	SubjectScopers:     []string{"ListForCaller"},
+	ProtoFiles:         []string{"kacho/cloud/vpc/v1/address_service.proto"},
+	FGAModel:           "kacho/cloud/iam/v1/fga_model.fga",
 
 	Listings: map[string]listfiltergate.Listing{
 		"address.List":          {Shape: listfiltergate.RowFilter},
@@ -192,9 +230,14 @@ var InternalProfile = listfiltergate.Profile{
 	// the same two reasons: renaming the field turns the gate RED rather than quiet,
 	// and the far side is asserted by internal_nic_test.go in this package instead of
 	// being assumed.
-	Filters:        []string{"listnarrow.Page", "listnarrow.IDs", "svc.ListByInstance"},
-	Banned:         []string{"ListAllowedIDs", "ListObjects"},
-	SubjectScopers: []string{"ListForCaller"},
+	Filters: []string{"listnarrow.Page", "listnarrow.IDs", "svc.ListByInstance"},
+	Banned:  []string{"ListAllowedIDs", "ListObjects"},
+	// The SAME sources as the public profile, and deliberately the same value rather
+	// than a second copy: both profiles are audited against the SAME tree in one run
+	// (see the command), so two lists here would be two statements about one tree —
+	// and the one that stopped being edited would be the one still believed.
+	EnumerationSources: vpcEnumerationSources,
+	SubjectScopers:     []string{"ListForCaller"},
 
 	Listings: map[string]listfiltergate.Listing{
 		"internal_network_interface.ListByInstance": {Shape: listfiltergate.RowFilter},
