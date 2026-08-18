@@ -259,10 +259,33 @@ var shortGatedRunByOwnCIStep = map[string]string{
 
 	"services/iam/internal/apps/kacho/api/access_binding": "make test-authz-fga",
 	"services/iam/internal/apps/kacho/api/readauthz":      "make test-authz-fga",
-	"services/iam/internal/authzcascade":                  "make test-authz-fga",
-	"services/iam/internal/authzmap":                      "make test-authz-fga",
-	"services/iam/internal/service":                       "make test-authz-fga",
-	"services/iam/internal/testsupport/fgatest":           "make test-authz-fga",
+
+	// Пробы «страница списка есть страница ВИДИМОГО» (задача #645) — настоящий
+	// Postgres И настоящий OpenFGA сразу, по всем семи списочным поверхностям.
+	// Снисходительного дублёра здесь нет ни с одной стороны намеренно: предмет —
+	// ПОРЯДОК между страницей и сужением, а дублёр, игнорирующий размер страницы,
+	// скрывает этот дефект by construction.
+	//
+	// Отсюда и запись: пакет лежит в apps/, отбор интеграционной джобы идёт по
+	// пути и до него не достаёт, а под кратким он пропускает себя целиком. Без
+	// этой строки шестьдесят проб печатали бы `ok`, не исполнившись ни разу, —
+	// ровно тот исход, ради предотвращения которого и заведён этот перечень.
+	"services/iam/internal/apps/kacho/api/listvisibility": "make test-authz-fga",
+	// Снятие кортежей объекта личности вместе со строкой человека (IAM-ID-1-61):
+	// проба спрашивает НАСТОЯЩИЙ движок прав о том, исчезли ли кортежи, — форму
+	// снятия, которую принимающая сторона молча не применяет, иначе не отличить
+	// от применённой. Остальные пробы пакета — юниты по фейкам и идут в быстрой
+	// джобе.
+	"services/iam/internal/apps/kacho/api/user": "make test-authz-fga",
+	"services/iam/internal/authzcascade":        "make test-authz-fga",
+	// Снимок множества доступа (IAM-ID-1-28/29/30): страницы объектов берутся
+	// курсором из своей базы, а вопрос о доступе задаётся НАСТОЯЩЕМУ движку
+	// продовым клиентом — подменив второе, инструмент утверждал бы про свою
+	// копию правил. Юнит-пробы компаратора идут в быстрой джобе.
+	"services/iam/internal/testsupport/accesssnapshot": "make test-authz-fga",
+	"services/iam/internal/authzmap":                   "make test-authz-fga",
+	"services/iam/internal/service":                    "make test-authz-fga",
+	"services/iam/internal/testsupport/fgatest":        "make test-authz-fga",
 }
 
 // TestShortGatedPackagesAreEitherSelectedOrCounted — сам гейт против дерева.
