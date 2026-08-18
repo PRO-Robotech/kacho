@@ -52,6 +52,13 @@
 # Самопроверка: --self-test (гейт обязан краснеть на внесённом дефекте и молчать
 # на законной конструкции той же формы).
 set -uo pipefail
+
+# line_in <многострочное значение> <строка> — есть ли СТРОКА ЦЕЛИКОМ в значении.
+# Замена `grep -qx`/`grep -qxF`: под `pipefail` труба даёт ложный отказ НА
+# СОВПАДЕНИИ, потому что писатель получает SIGPIPE (задача #658). Сравнение
+# буквальное — там, где раньше стоял `-x` без `-F`, это СТРОЖЕ, то есть ложного
+# зелёного добавить не может.
+line_in() { [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]; }
 # Состав стендов — из ЕДИНСТВЕННОЙ таблицы дерева (deploy/stacks.txt).
 # Своей копии цепочек здесь нет: копии разъезжались молча.
 . "$(dirname "$0")/stacks.sh"
@@ -83,7 +90,11 @@ fatal() { echo "FATAL: $1"; exit 2; }
 # над jq (python-yq) на них молча отдаёт ПУСТО — и тогда «ноль находок» означает
 # «ничего не прочитано», а гейт выходит зелёным, ничего не сверив.
 command -v yq >/dev/null 2>&1 || fatal "yq не найден — нужен mikefarah yq v4"
-yq --version 2>&1 | grep -q "mikefarah" \
+# Сравнение — БЕЗ трубы: `… | grep -q` под `set -o pipefail` возвращает ОТКАЗ
+# НА СОВПАДЕНИИ (grep выходит по первому попаданию, писатель получает SIGPIPE,
+# и `pipefail` поднимает ЕГО статус до статуса конвейера). Задача #658.
+YQ_VER="$(yq --version 2>&1 || true)"
+[[ "${YQ_VER,,}" == *mikefarah* ]] \
   || fatal "в PATH не тот yq: $(yq --version 2>&1 | head -1) — нужен mikefarah yq v4, не обёртка над jq"
 command -v helm >/dev/null 2>&1 || fatal "helm не найден"
 
@@ -145,7 +156,7 @@ judge() {
   fi
 
   # (3) движок = postgres ⇒ адрес хранилища провязан.
-  if printf '%s\n' $eng | grep -qx postgres && [ -z "$uri" ]; then
+  if line_in "$(printf '%s\n' $eng)" postgres && [ -z "$uri" ]; then
     violation "профиль $name: движок = postgres, но OPENFGA_DATASTORE_URI не провязан — движок называет хранилище, до которого не дотянуться (отказ старта, а не долговечность)"
   fi
 }
@@ -205,7 +216,7 @@ self_test() {
   VIOLATIONS=0
   r="$(render "values.prod.yaml" --set openfga.datastore.engine=memory)"
   out="$(judge prod "$r" 2>&1)"
-  if printf '%s' "$out" | grep -q 'memory' && printf '%s' "$out" | grep -q 'профиль prod'; then
+  if [[ "$out" == *'memory'* ]] && [[ "$out" == *'профиль prod'* ]]; then
     echo "  (A) движок возвращён на memory (prod)                 → КРАСНЫЙ с координатой: $(printf '%s' "$out" | head -1)"
   else
     echo "  (A) движок возвращён на memory (prod)                 → ПРОПУСТИЛ (вывод: ${out:-<пусто>})"; rc=1
@@ -237,7 +248,7 @@ self_test() {
   r="$(render "values.prod.yaml" --set openfga.datastore.uri=null --set openfga.datastore.uriSecret=null \
         --set openfga.datastore.existingSecret=null)"
   out="$(judge c "$r" 2>&1)"
-  if printf '%s' "$out" | grep -q 'OPENFGA_DATASTORE_URI'; then
+  if [[ "$out" == *'OPENFGA_DATASTORE_URI'* ]]; then
     echo "  (C) postgres без провязанного адреса хранилища        → КРАСНЫЙ: $(printf '%s' "$out" | head -1)"
   else
     echo "  (C) postgres без провязанного адреса хранилища        → ПРОПУСТИЛ (вывод: ${out:-<пусто>})"; rc=1

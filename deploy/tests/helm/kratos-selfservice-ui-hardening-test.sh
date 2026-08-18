@@ -37,7 +37,11 @@ ok() { N=$((N + 1)); }
 # That false-green is the exact class these hardening tests exist to prevent, so
 # detect the impostor explicitly instead of trusting `command -v`.
 command -v yq >/dev/null 2>&1 || fail "yq not installed (mikefarah yq v4 required)"
-yq --version 2>&1 | grep -qi mikefarah || fail \
+# Сравнение — БЕЗ трубы: `… | grep -q` под `set -o pipefail` возвращает ОТКАЗ
+# НА СОВПАДЕНИИ (grep выходит по первому попаданию, писатель получает SIGPIPE,
+# и `pipefail` поднимает ЕГО статус до статуса конвейера). Задача #658.
+YQ_VER="$(yq --version 2>&1 || true)"
+[[ "${YQ_VER,,}" == *mikefarah* ]] || fail \
   "wrong 'yq' on PATH ($(command -v yq)): '$(yq --version 2>&1 | head -1)'. \
 mikefarah yq v4 is required — the python-yq jq wrapper emits empty output on these \
 filters, which would make the assertions below pass without checking anything."
@@ -105,7 +109,7 @@ CSRF_REF=$(env_secret_ref "$UI_PROD" ui CSRF_COOKIE_SECRET)
 [ -n "$CS_REF" ] && [ "$CS_REF" != "null" ] || fail "kratos-ui/prod: COOKIE_SECRET not via secretKeyRef"
 [ -n "$CSRF_REF" ] && [ "$CSRF_REF" != "null" ] || fail "kratos-ui/prod: CSRF_COOKIE_SECRET not via secretKeyRef"
 # No committed literal cookie secret must survive in the prod render.
-echo "$UI_PROD" | grep -q "please-change-this-32-bytes" \
+[[ "$UI_PROD" == *"please-change-this-32-bytes"* ]] \
   && fail "kratos-ui/prod: committed default cookie secret still present"
 ok
 

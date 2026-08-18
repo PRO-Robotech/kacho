@@ -285,7 +285,15 @@ terraform_group() {
     local bin="$WORK/tofu-bin" tofu
     tofu="$bin/tofu"
 
-    if [ ! -x "$tofu" ] || ! "$tofu" version 2>/dev/null | head -1 | grep -qF "v$TOFU_VERSION"; then
+    # Версия читается подстановкой, первая строка берётся раскрытием параметра:
+    # `… | head -1 | grep -qF` под `pipefail` даёт отказ на СОВПАДЕНИИ (оба звена
+    # выходят до конца входа, писатель получает SIGPIPE) — задача #658.
+    local tofu_ver=""
+    if [ -x "$tofu" ]; then
+        tofu_ver="$("$tofu" version 2>/dev/null || true)"
+        tofu_ver="${tofu_ver%%$'\n'*}"
+    fi
+    if [ ! -x "$tofu" ] || [[ "$tofu_ver" != *"v$TOFU_VERSION"* ]]; then
         local os arch
         case "$(uname -s)" in
             Linux)  os=linux ;;

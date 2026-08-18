@@ -58,6 +58,24 @@
 # проверка этого не заметит.
 set -uo pipefail
 
+# line_in <многострочное значение> <строка> — есть ли СТРОКА ЦЕЛИКОМ в значении.
+# Замена `grep -qx`/`grep -qxF`: под `pipefail` труба даёт ложный отказ НА
+# СОВПАДЕНИИ, потому что писатель получает SIGPIPE (задача #658). Сравнение
+# буквальное — там, где раньше стоял `-x` без `-F`, это СТРОЖЕ, то есть ложного
+# зелёного добавить не может.
+line_in() { [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]; }
+# any_line_matches <многострочное значение> <ERE> — как `grep -qE`: истинно, если
+# ХОТЬ ОДНА строка значения совпадает с выражением. Построчность важна: у `grep`
+# точка не переходит через перевод строки, а у `[[ =~ ]]` на всём значении —
+# переходит. Труба убрана из-за ложного отказа на совпадении (задача #658).
+any_line_matches() {
+  local _l
+  while IFS= read -r _l; do
+    if [[ "$_l" =~ $2 ]]; then return 0; fi
+  done <<<"$1"
+  return 1
+}
+
 DEPLOY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 
@@ -116,7 +134,7 @@ exempt_of() {
 
 # is_exempt <образ> <файл>
 is_exempt() {
-  exempt_of "$2" | grep -qxF "$1"
+  line_in "$(exempt_of "$2")" "$1"
 }
 
 # pins_of <файл> — печатает «<образ> <тег>» по каждому пину образа продукта,
@@ -276,7 +294,7 @@ EOF
   write_fixture
   sed -i 's|kacho-vpc:main-01234567|kacho-vpc:main-deadbeef|' "$f"
   out="$(check_profile "$f")"; rc=$?
-  if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "kacho-vpc"; then
+  if [ "$rc" -eq 1 ] && [[ "$out" == *"kacho-vpc"* ]]; then
     ok "код 1 и координата названа"
   else
     bad "код $rc, вывод: $out"
@@ -286,7 +304,7 @@ EOF
   write_fixture
   sed -i "s|kacho-ui-future-host:main-$sha40|kacho-ui-future-host:main-01234567|" "$f"
   out="$(check_profile "$f")"; rc=$?
-  if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "kacho-ui-future-host"; then
+  if [ "$rc" -eq 1 ] && [[ "$out" == *"kacho-ui-future-host"* ]]; then
     ok "код 1 и координата названа"
   else
     bad "код $rc, вывод: $out"
@@ -347,7 +365,7 @@ EOF
   sed -i "s|kacho-ui-future-host:main-$sha40|kacho-ui-future-host:master-deadbeef|" "$f"
   printf '# без-вывода: kacho-ui-future-host — коммит прежнего репозитория консоли\n' >> "$f"
   out="$(check_profile "$f")"; rc=$?
-  if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "невыводимыми 1"; then
+  if [ "$rc" -eq 0 ] && [[ "$out" == *"невыводимыми 1"* ]]; then
     ok "код 0, невыводимый пересчитан отдельно"
   else
     bad "код $rc, вывод: $out"
@@ -359,8 +377,8 @@ EOF
   sed -i 's|kacho-vpc:main-01234567|kacho-vpc:main-deadbeef|' "$f"
   printf '# без-вывода: kacho-ui-future-host — коммит прежнего репозитория консоли\n' >> "$f"
   out="$(check_profile "$f")"; rc=$?
-  if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "kacho-vpc" \
-     && ! printf '%s' "$out" | grep -q "НАХОДКА.*kacho-ui-future-host"; then
+  if [ "$rc" -eq 1 ] && [[ "$out" == *"kacho-vpc"* ]] \
+     && ! any_line_matches "$out" 'НАХОДКА.*kacho-ui-future-host'; then
     ok "объявление сужает ровно до названного образа"
   else
     bad "код $rc, вывод: $out"

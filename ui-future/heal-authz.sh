@@ -64,11 +64,16 @@ fga_check() {
   local body="$1"
   local url="${OPENFGA_URL}/stores/${STORE_ID}/check"
 
-  kubectl -n "$NAMESPACE" exec deploy/kacho-iam -- \
+  # Ответ забирается подстановкой: `… | grep -q` под `pipefail` даёт ОТКАЗ НА
+  # СОВПАДЕНИИ — wget получает SIGPIPE, и «доступ разрешён» читалось бы как
+  # «запрещён» (задача #658).
+  local resp
+  resp="$(kubectl -n "$NAMESPACE" exec deploy/kacho-iam -- \
     wget -q -O - \
       --header 'content-type: application/json' \
       --post-data "$body" \
-      "$url" 2>/dev/null | grep -q '"allowed"[[:space:]]*:[[:space:]]*true'
+      "$url" 2>/dev/null || true)"
+  [[ "$resp" =~ \"allowed\"[[:space:]]*:[[:space:]]*true ]]
 }
 
 fga_ensure() {
