@@ -37,6 +37,24 @@ union/1000 символов) и до issue #670 утверждал ОДНО:
      утверждение о поле. Без этой стороны третье утверждение было бы украшением —
      нельзя показать, что у него есть собственный производитель.
 
+# ШЕСТАЯ сторона: нагрузка ДОШЛА до сервера ровно той, что лежит в коллекции
+
+Пять сторон выше судят об УТВЕРЖДЕНИЯХ. Они остались бы зелёными и в том случае,
+если бы newman исказил или потерял саму нагрузку по дороге, — а для нулевого байта
+это не праздный вопрос: в JSON он выразим только экранирующей последовательностью,
+и на пути «коллекция → newman → HTTP → разбор» его теряет любое звено, читающее
+строку как C-строку.
+
+Поэтому подставной сервер ЗАПОМИНАЕТ тело запроса, и проба сверяет полученное с
+тем, что стоит в коллекции, ПОБАЙТНО — для кейса `NET-CR-SEC-NULLBYTE` отдельно
+(#701: до фикса нагрузка с этим именем несла `x`, ПРОБЕЛ, `y`, и исход совпадал,
+поэтому подмена не краснела нигде).
+
+Соответствие ИМЕНИ вида его БАЙТАМ во всех наборах держит гейт по дереву
+`internal/repohygiene/artifactgates`
+`TestInjectionPayloadCarriesWhatItsNamePromises`; здесь проверяется другое —
+что нагрузка доезжает до сервера неискажённой.
+
 # Чем это слабее прогона против стенда — названо прямо
 
 Здесь исполняется НАСТОЯЩИЙ newman и НАСТОЯЩАЯ сгенерированная коллекция, но
@@ -64,6 +82,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 COLLECTION = ROOT / "collections" / "network.postman_collection.json"
 CASE_PREFIX = "NET-CR-SEC-SQLI"
+# Кейс, чья нагрузка проверяется ПОБАЙТНО (шестая сторона выше).
+BYTEWISE_CASE_PREFIX = "NET-CR-SEC-NULLBYTE"
 
 # Объявленный отказ: пара «400 ↔ INVALID_ARGUMENT» + имя поля. Форма детали —
 # `google.rpc.BadRequest`, её строит `serviceerr.FromValidation` (пять ресурсов)
@@ -105,6 +125,8 @@ LEGACY_ASSERTS = [
 
 class _Handler(http.server.BaseHTTPRequestHandler):
     mode = "refuse"
+    # Тела POST-запросов к создающему пути, в порядке поступления.
+    received: list[bytes] = []
 
     def log_message(self, *_args):  # тишина: вывод пробы — её собственный
         return
@@ -126,9 +148,12 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802
         length = int(self.headers.get("Content-Length") or 0)
-        if length:
-            self.rfile.read(length)
+        raw = self.rfile.read(length) if length else b""
         if self.path.endswith("/vpc/v1/networks"):
+            # Тело запоминается ЦЕЛИКОМ и в байтах: шестая сторона инъекции
+            # сверяет дошедшую нагрузку с той, что лежит в коллекции, а разница
+            # между пробелом и нулевым байтом видна только побайтно.
+            _Handler.received.append(raw)
             return self._send(*MODES[_Handler.mode])
         return self._send(404, {"code": 5, "message": "not found"})
 
@@ -136,13 +161,33 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         return self._send(200, ACCEPTED_OP)
 
 
-def _case_folder_name() -> str:
+def _case_folder_name(prefix: str = CASE_PREFIX) -> str:
     coll = json.loads(COLLECTION.read_text())
     for item in coll["item"]:
-        if item["name"].startswith(CASE_PREFIX):
+        if item["name"].startswith(prefix):
             return item["name"]
-    sys.exit(f"selftest: кейса {CASE_PREFIX} нет в коллекции — предпосылка пробы сломана, "
+    sys.exit(f"selftest: кейса {prefix} нет в коллекции — предпосылка пробы сломана, "
              f"молчание ничего не доказывает")
+
+
+def _collection_payload(folder: str) -> bytes:
+    """Нагрузка, ЛЕЖАЩАЯ в коллекции: поле `name` тела создающего шага, в байтах.
+
+    Читается тем же порядком, каким её читает край: сперва коллекция, затем строка
+    `raw` как JSON. Иначе сверять было бы не с чем — экранирующая запись и байт это
+    разные вещи, и предмет #701 ровно в их различении.
+    """
+    coll = json.loads(COLLECTION.read_text())
+    for item in coll["item"]:
+        if item["name"] != folder:
+            continue
+        for step in item.get("item", []):
+            req = step.get("request") or {}
+            url = (req.get("url") or {}).get("raw", "")
+            raw = (req.get("body") or {}).get("raw")
+            if req.get("method") == "POST" and url.endswith("/vpc/v1/networks") and raw:
+                return json.loads(raw)["name"].encode()
+    sys.exit(f"selftest: в кейсе {folder} нет создающего шага с телом — сверять нечего")
 
 
 def _legacy_collection(dst: Path, folder: str) -> Path:
@@ -252,6 +297,37 @@ def main() -> int:
                             f"({runs['no_detail']['failures']}) — у него нет собственного "
                             f"производителя, то есть оно украшение")
 
+        # (6) НАГРУЗКА ДОШЛА ДО СЕРВЕРА НЕИСКАЖЁННОЙ — кейс с нулевым байтом.
+        #
+        # Пять сторон выше судят об утверждениях и остались бы зелёными, потеряй
+        # newman саму нагрузку. Здесь сверяется то, что ПОЛУЧИЛ сервер, с тем, что
+        # ЛЕЖИТ в коллекции, — побайтно.
+        nul_folder = _case_folder_name(BYTEWISE_CASE_PREFIX)
+        expected = _collection_payload(nul_folder)
+        if b"\x00" not in expected:
+            problems.append(
+                f"в коллекции у кейса {BYTEWISE_CASE_PREFIX} нагрузка БЕЗ нулевого байта "
+                f"({expected!r}) — это и есть дефект #701: имя вида обещает одно, "
+                f"а на край уходит другое")
+        _Handler.mode = "refuse"
+        _Handler.received.clear()
+        runs["bytewise"] = _run_newman(COLLECTION, nul_folder, base_url, tmpd / "bytewise.json")
+        if runs["bytewise"]["assertions"]["failed"] != 0:
+            problems.append(f"кейс {BYTEWISE_CASE_PREFIX} краснеет на ОБЪЯВЛЕННОМ отказе "
+                            f"({runs['bytewise']['failures']}) — законный исход у него тот же, "
+                            f"что и у остальных нагрузок, и смена байтов его не меняет")
+        if not _Handler.received:
+            problems.append(f"сервер не получил ни одного создающего запроса от кейса "
+                            f"{nul_folder!r} — это «не выполнилось», а не вердикт")
+        else:
+            got = json.loads(_Handler.received[-1].decode()).get("name", "").encode()
+            if got != expected:
+                problems.append(f"нагрузка исказилась по дороге: в коллекции {expected!r} "
+                                f"({expected.hex()}), до сервера дошло {got!r} ({got.hex()})")
+            elif b"\x00" not in got:
+                problems.append(f"до сервера дошла нагрузка БЕЗ нулевого байта: {got.hex()} — "
+                                f"значит звено тракта его теряет, и проба этого класса пуста")
+
     server.shutdown()
 
     print(f"selftest пробы внедрения в имя: кейс {folder!r}")
@@ -259,7 +335,8 @@ def main() -> int:
              ("accept", "имя ПРИНЯТО (200)          "),
              ("legacy", "прежняя форма на нём       "),
              ("wrong_code", "400, но код 9              "),
-             ("no_detail", "400/3 без BadRequest       ")]
+             ("no_detail", "400/3 без BadRequest       "),
+             ("bytewise", f"{BYTEWISE_CASE_PREFIX}, побайтно")]
     for key, label in order:
         r = runs.get(key)
         if r is None:
@@ -276,7 +353,8 @@ def main() -> int:
             print(f"  - {p}")
         return 1
     print("\nselftest: OK — утверждения различают отказ и приём, называют статус в тексте "
-          "падения, каждое из трёх имеет своего производителя, а прежняя форма дефекта не видела")
+          "падения, каждое из трёх имеет своего производителя, прежняя форма дефекта не видела, "
+          f"а нагрузка {BYTEWISE_CASE_PREFIX} дошла до сервера побайтно той же")
     return 0
 
 

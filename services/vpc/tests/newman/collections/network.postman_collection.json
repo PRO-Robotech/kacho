@@ -14976,7 +14976,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"x y\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"x\\u0000y\"}",
               "options": {
                 "raw": {
                   "language": "json"
