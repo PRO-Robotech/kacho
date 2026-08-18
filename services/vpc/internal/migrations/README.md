@@ -134,17 +134,31 @@ NetworkInterface, AddressPool и связные таблицы):
 
 ## Правило 4 — UNIQUE для имен
 
-Все 7 пользовательских ресурсов VPC (Network, Subnet, Address, RouteTable,
-SecurityGroup, Gateway, NetworkInterface) — project-level, и
+Все 8 пользовательских ресурсов VPC (Network, Subnet, Address, RouteTable,
+SecurityGroup, Gateway, NetworkInterface, CidrGroup) — project-level, и
 для каждого действует **`(project_id, name)` UNIQUE** в пределах project.
 
-Семантика:
+Семантика — **одна на все восемь**, исключений нет:
 
-- **Network** (исторический baseline) — non-partial `UNIQUE (project_id, name)`
-  (`networks_project_id_name_key`), name никогда не пустое.
-- Остальные ресурсы — **partial** `UNIQUE (project_id, name) WHERE name <> ''`
-  (имя опционально; пустые имена дубликатов не образуют). Задается inline в
-  `0001_initial.sql` — реализует контракт Kachō `ALREADY_EXISTS` на дубль имени.
+- **partial** `UNIQUE (project_id, name) WHERE name <> ''` (имя опционально;
+  пустые имена дубликатов не образуют). Задается inline в той же миграции, что
+  `CREATE TABLE` (`0001_initial.sql`; `cidr_groups` — `0035`) — реализует контракт
+  Kachō `ALREADY_EXISTS` на дубль имени.
+
+Предикат переписи (сверяй им, а не этим абзацем):
+
+```sh
+grep -rn "project_id, name" internal/migrations/*.sql
+```
+
+> [!note] До `669001` у сети форма была полной — и объяснение было фольклором
+> `networks_project_id_name_key` создавался как non-partial, а здесь стояло
+> обоснование «name никогда не пустое». Утверждение неверно и было неверно
+> всегда: пустое имя разрешает и `nameReVPC` (текст отказа говорит «empty
+> allowed»), и CHECK `networks_name_check` на той же таблице. Следствие —
+> вторая сеть без имени в проекте получала `ALREADY_EXISTS`, тогда как второй
+> адрес или подсеть — нет: один контракт исполнялся по-разному в зависимости от
+> ресурса. Приведено к общей форме миграцией `669001` (задача #669).
 
 Для **нового** ресурса этого сервиса — partial-UNIQUE добавляется в том же
 файле, что `CREATE TABLE` (правило 1).

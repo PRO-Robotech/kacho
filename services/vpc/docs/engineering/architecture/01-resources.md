@@ -40,7 +40,7 @@ erDiagram
 | Поле | Тип | Замечания |
 |---|---|---|
 | `id` | text PK, prefix `net` | |
-| `project_id` | text NOT NULL | `networks_project_id_name_key` UNIQUE(project_id, name) |
+| `project_id` | text NOT NULL | `networks_project_id_name_key` UNIQUE(project_id, name) WHERE `name <> ''` (669001) |
 | `name` | text | NameVPC permissive |
 | `description` | text | ≤256 |
 | `labels` | jsonb | ≤64 пар |

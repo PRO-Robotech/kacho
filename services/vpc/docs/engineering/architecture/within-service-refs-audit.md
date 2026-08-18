@@ -72,7 +72,7 @@
 |---|---|---|---|---|
 | `id` PK | уникальный | `networks_pkey` ✅ | n/a | OK |
 | `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
-| `(project_id, name)` | уникальный name на project | `networks_project_id_name_key` UNIQUE ✅ | redundant List+name check (для UX) | OK |
+| `(project_id, name)` | уникальный **непустой** name на project | `networks_project_id_name_key` partial UNIQUE `WHERE name <> ''` ✅ (669001) | redundant List+name check (для UX; пропускает пустое имя) | OK |
 | `default_security_group_id` | если не пустой — указывает на существующий SG | `networks_default_security_group_fk` FK ON DELETE SET NULL ✅ (0005) | inline в `internal/apps/kacho/api/network/create.go`.`doCreate` | OK |
 | `vrf_id` | уникальный per-network | `networks_vrf_id_key` UNIQUE ✅ (0007) + sequence-backed | n/a (DB-allocated) | OK |
 

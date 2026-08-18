@@ -60,7 +60,7 @@ EXCLUDE / generated-колонки / индексы / триггеры — inlin
     <tr><th>Таблица</th><th>Ресурс / назначение</th><th>PK</th><th>Уникальность</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>networks</code></td><td>Network (VPC-контейнер)</td><td><code>id</code></td><td>non-partial <code>UNIQUE (project\_id, name)</code></td></tr>
+    <tr><td><code>networks</code></td><td>Network (VPC-контейнер)</td><td><code>id</code></td><td>partial <code>UNIQUE … WHERE name&lt;&gt;''</code></td></tr>
     <tr><td><code>subnets</code></td><td>Subnet (подсеть в зоне)</td><td><code>id</code></td><td>partial <code>UNIQUE … WHERE name&lt;&gt;''</code></td></tr>
     <tr><td><code>addresses</code></td><td>Address (internal / external IP)</td><td><code>id</code></td><td>partial <code>UNIQUE</code> + per-pool/subnet IP-dedup</td></tr>
     <tr><td><code>address\_references</code></td><td>1↔1 backref «кто использует адрес»</td><td><code>address\_id</code></td><td>—</td></tr>
@@ -126,7 +126,7 @@ service-валидации.
   <tbody>
     <tr>
       <td>Имя уникально в проекте</td>
-      <td><code>UNIQUE (project\_id, name)</code> — для <code>networks</code> non-partial; для остальных 6 — partial <code>WHERE name&lt;&gt;''</code></td>
+      <td><code>UNIQUE (project\_id, name)</code> — partial <code>WHERE name&lt;&gt;''</code> у всех восьми ресурсов: пустое имя законно по контракту и слот не занимает</td>
       <td><code>23505</code> → ALREADY_EXISTS</td>
     </tr>
     <tr>
