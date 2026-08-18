@@ -14437,7 +14437,7 @@
       ]
     },
     {
-      "name": "NET-CR-SEC-SQLI — Security probe: sqli in name → handled, no 500",
+      "name": "NET-CR-SEC-SQLI — Security probe: sqli in name → 400 InvalidArgument 'name', без утечки",
       "description": "class:VAL | class:NEG | priority:P0",
       "item": [
         {
@@ -14478,7 +14478,18 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                  "pm.test('handled 2xx/4xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 413]));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"name\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'name');",
+                  "  pm.expect(fv, 'fieldViolation for name').to.be.an('object');",
+                  "});",
                   "const body = JSON.stringify(pm.response.json() || {});",
                   "pm.test('no panic/sqlstate/stacktrace leak', () => {",
                   "  const low = body.toLowerCase();",
@@ -14494,7 +14505,7 @@
       ]
     },
     {
-      "name": "NET-CR-SEC-UNION — Security probe: union in name → handled, no 500",
+      "name": "NET-CR-SEC-UNION — Security probe: union in name → 400 InvalidArgument 'name', без утечки",
       "description": "class:VAL | class:NEG | priority:P0",
       "item": [
         {
@@ -14535,7 +14546,18 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                  "pm.test('handled 2xx/4xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 413]));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"name\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'name');",
+                  "  pm.expect(fv, 'fieldViolation for name').to.be.an('object');",
+                  "});",
                   "const body = JSON.stringify(pm.response.json() || {});",
                   "pm.test('no panic/sqlstate/stacktrace leak', () => {",
                   "  const low = body.toLowerCase();",
@@ -14551,7 +14573,7 @@
       ]
     },
     {
-      "name": "NET-CR-SEC-XSS — Security probe: xss in name → handled, no 500",
+      "name": "NET-CR-SEC-XSS — Security probe: xss in name → 400 InvalidArgument 'name', без утечки",
       "description": "class:VAL | class:NEG | priority:P0",
       "item": [
         {
@@ -14592,7 +14614,18 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                  "pm.test('handled 2xx/4xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 413]));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"name\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'name');",
+                  "  pm.expect(fv, 'fieldViolation for name').to.be.an('object');",
+                  "});",
                   "const body = JSON.stringify(pm.response.json() || {});",
                   "pm.test('no panic/sqlstate/stacktrace leak', () => {",
                   "  const low = body.toLowerCase();",
@@ -14608,7 +14641,7 @@
       ]
     },
     {
-      "name": "NET-CR-SEC-CMD — Security probe: cmd in name → handled, no 500",
+      "name": "NET-CR-SEC-CMD — Security probe: cmd in name → 400 InvalidArgument 'name', без утечки",
       "description": "class:VAL | class:NEG | priority:P0",
       "item": [
         {
@@ -14649,7 +14682,18 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                  "pm.test('handled 2xx/4xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 413]));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"name\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'name');",
+                  "  pm.expect(fv, 'fieldViolation for name').to.be.an('object');",
+                  "});",
                   "const body = JSON.stringify(pm.response.json() || {});",
                   "pm.test('no panic/sqlstate/stacktrace leak', () => {",
                   "  const low = body.toLowerCase();",
@@ -14665,7 +14709,7 @@
       ]
     },
     {
-      "name": "NET-CR-SEC-PATH — Security probe: path in name → handled, no 500",
+      "name": "NET-CR-SEC-PATH — Security probe: path in name → 400 InvalidArgument 'name', без утечки",
       "description": "class:VAL | class:NEG | priority:P0",
       "item": [
         {
@@ -14706,7 +14750,18 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                  "pm.test('handled 2xx/4xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 413]));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"name\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'name');",
+                  "  pm.expect(fv, 'fieldViolation for name').to.be.an('object');",
+                  "});",
                   "const body = JSON.stringify(pm.response.json() || {});",
                   "pm.test('no panic/sqlstate/stacktrace leak', () => {",
                   "  const low = body.toLowerCase();",
@@ -14722,7 +14777,7 @@
       ]
     },
     {
-      "name": "NET-CR-SEC-NULLBYTE — Security probe: nullbyte in name → handled, no 500",
+      "name": "NET-CR-SEC-NULLBYTE — Security probe: nullbyte in name → 400 InvalidArgument 'name', без утечки",
       "description": "class:VAL | class:NEG | priority:P0",
       "item": [
         {
@@ -14763,7 +14818,18 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                  "pm.test('handled 2xx/4xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 413]));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"name\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'name');",
+                  "  pm.expect(fv, 'fieldViolation for name').to.be.an('object');",
+                  "});",
                   "const body = JSON.stringify(pm.response.json() || {});",
                   "pm.test('no panic/sqlstate/stacktrace leak', () => {",
                   "  const low = body.toLowerCase();",
@@ -14779,7 +14845,7 @@
       ]
     },
     {
-      "name": "NET-CR-SEC-LONGPAYLOAD — Security probe: longpayload in name → handled, no 500",
+      "name": "NET-CR-SEC-LONGPAYLOAD — Security probe: longpayload in name → 400 InvalidArgument 'name', без утечки",
       "description": "class:VAL | class:NEG | priority:P0",
       "item": [
         {
@@ -14820,7 +14886,18 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                  "pm.test('handled 2xx/4xx', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 413]));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"name\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'name');",
+                  "  pm.expect(fv, 'fieldViolation for name').to.be.an('object');",
+                  "});",
                   "const body = JSON.stringify(pm.response.json() || {});",
                   "pm.test('no panic/sqlstate/stacktrace leak', () => {",
                   "  const low = body.toLowerCase();",
