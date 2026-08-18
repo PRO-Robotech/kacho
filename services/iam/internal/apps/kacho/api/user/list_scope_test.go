@@ -14,7 +14,8 @@ package user
 // аккаунта) устранена (T3.3 D-5): видны только user'ы с per-object viewer/v_list
 // грантом (включая self через self-tuple → viewer-ветку). Инварианты:
 // anonymous → empty (до FGA); FGA-ошибка → Unavailable (fail-closed); cluster-admin/
-// operator/owner покрыты веткой viewer (tier-cascade); system bootstrap → unfiltered.
+// operator/owner покрыты веткой viewer (tier-cascade); не-forwarded principal
+// (system/bootstrap fallback) — тоже anonymous → empty.
 
 import (
 	"context"
@@ -290,6 +291,28 @@ func TestListUsers_AnonymousEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, out)
 	assert.Zero(t, fga.calls["viewer"], "anonymous short-circuits before FGA")
+}
+
+// Не-переданная личность (край не передал заголовки `x-kacho-principal-*` →
+// PrincipalFromContext отдаёт запасного system/bootstrap) относится
+// authzguard.IsAnonymous к анонимным → пустая страница ДО любого обращения к
+// модели. Паритет с group/service_account.
+//
+// Проба заведена задачей #648 и на момент заведения была ЗЕЛЁНОЙ на неизменённом
+// коде — это и есть доказательство того, что стоявшая ниже по функции ветка
+// «системный бутстрап → несужённая страница» не исполнялась ни при каком входе:
+// замыкание по личности стоит выше и относит бутстрап к анонимным. Ветка снята,
+// проба осталась — она держит инвариант вперёд.
+func TestListUsers_SystemBootstrapFallback_FailClosed(t *testing.T) {
+	repo := &scopeUserRepo{users: seedListUsers()}
+	fga := newUserUnionFGAStub()
+	ctx := operations.WithPrincipal(context.Background(),
+		operations.Principal{Type: domain.PrincipalTypeSystem, ID: domain.PrincipalIDBootstrap})
+	uc := NewListUsersUseCase(repo).WithRelationStore(fga)
+	out, _, err := uc.Execute(ctx, repouser.ListFilter{AccountID: listAcctA})
+	require.NoError(t, err)
+	assert.Empty(t, out, "system/bootstrap fallback → anonymous → empty (fail-closed)")
+	assert.Zero(t, fga.calls["viewer"], "short-circuits before FGA")
 }
 
 // T3.3-AUTHZ-02 — FGA-ошибка на любой relation → Unavailable (fail-closed).

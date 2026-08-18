@@ -783,8 +783,10 @@ func runServe(cfg config.Config) error {
 	// pending tuples at startup, and applies each row to OpenFGA via
 	// clients.NewFGAApplier (Write/Delete tuples; idempotent on 400-already-
 	// exists / 400-cannot-delete; retry on 5xx; poison on validation_error).
-	// OpenFGA is required in production (composition root fails fast above
-	// when KACHO_IAM_OPENFGA_STORE_ID is empty) — the drainer always runs.
+	// The drainer always runs. It does NOT depend on the store id being provisioned:
+	// before the openfga-bootstrap Job writes KACHO_IAM_OPENFGA_STORE_ID the client
+	// fails closed (ErrNotConfigured), the applier retries, and rows stay unsent —
+	// which is the intended first-boot state, not a reason to refuse to start (#654).
 	fgaDrainerLogger := logger.With(slog.String("component", "fga_outbox_drainer"))
 	fgaDrainer, derr := drainer.New[clients.FGAOutboxEvent](
 		pool,
