@@ -199,8 +199,15 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('ambient read: zero-binding principal is NOT denied (no 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
-                  "pm.test('regions is an array', () => pm.expect(pm.response.json().regions).to.be.an('array'));"
+                  "pm.test('regions is an array', () => pm.expect(pm.response.json().regions).to.be.an('array'));",
+                  "pm.test('[GEO-REG-GT-AUTHZ-AMBIENT-OK] публичная проекция: ни status, ни infra', () => {",
+                  "  (pm.response.json()['regions'] || []).forEach(o => {",
+                  "    pm.expect(Object.keys(o || {}), 'внутренняя проекция утекла на публичный маршрут: '",
+                  "      + JSON.stringify(o)).to.not.include('status');",
+                  "    pm.expect(Object.keys(o || {}), 'внутренняя проекция утекла на публичный маршрут: '",
+                  "      + JSON.stringify(o)).to.not.include('infra');",
+                  "  });",
+                  "});"
                 ]
               }
             }
@@ -515,8 +522,15 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('a zero-binding principal is not denied (never 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
-                  "pm.test('zones is an array', () => pm.expect(pm.response.json().zones).to.be.an('array'));"
+                  "pm.test('zones is an array', () => pm.expect(pm.response.json().zones).to.be.an('array'));",
+                  "pm.test('[GEO-ZON-GT-AUTHZ-AMBIENT-OK] публичная проекция: ни status, ни infra', () => {",
+                  "  (pm.response.json()['zones'] || []).forEach(o => {",
+                  "    pm.expect(Object.keys(o || {}), 'внутренняя проекция утекла на публичный маршрут: '",
+                  "      + JSON.stringify(o)).to.not.include('status');",
+                  "    pm.expect(Object.keys(o || {}), 'внутренняя проекция утекла на публичный маршрут: '",
+                  "      + JSON.stringify(o)).to.not.include('infra');",
+                  "  });",
+                  "});"
                 ]
               }
             }
@@ -634,8 +648,15 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('a zero-binding principal is not denied (never 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
-                  "pm.test('id echoes the requested region', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('ambientPickRegionId')));"
+                  "pm.test('id echoes the requested region', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('ambientPickRegionId')));",
+                  "pm.test('[GEO-REG-GET-AUTHZ-AMBIENT-OK] публичная проекция: ни status, ни infra', () => {",
+                  "  [pm.response.json()].forEach(o => {",
+                  "    pm.expect(Object.keys(o || {}), 'внутренняя проекция утекла на публичный маршрут: '",
+                  "      + JSON.stringify(o)).to.not.include('status');",
+                  "    pm.expect(Object.keys(o || {}), 'внутренняя проекция утекла на публичный маршрут: '",
+                  "      + JSON.stringify(o)).to.not.include('infra');",
+                  "  });",
+                  "});"
                 ]
               }
             }
@@ -753,8 +774,15 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('a zero-binding principal is not denied (never 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
-                  "pm.test('id echoes the requested zone', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('ambientPickZoneId')));"
+                  "pm.test('id echoes the requested zone', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('ambientPickZoneId')));",
+                  "pm.test('[GEO-ZON-GET-AUTHZ-AMBIENT-OK] публичная проекция: ни status, ни infra', () => {",
+                  "  [pm.response.json()].forEach(o => {",
+                  "    pm.expect(Object.keys(o || {}), 'внутренняя проекция утекла на публичный маршрут: '",
+                  "      + JSON.stringify(o)).to.not.include('status');",
+                  "    pm.expect(Object.keys(o || {}), 'внутренняя проекция утекла на публичный маршрут: '",
+                  "      + JSON.stringify(o)).to.not.include('infra');",
+                  "  });",
+                  "});"
                 ]
               }
             }

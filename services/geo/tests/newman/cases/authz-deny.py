@@ -25,6 +25,51 @@ CASES = []
 
 
 # ---------------------------------------------------------------------------
+# ПОЛОСА РАЗРЕШЁННОГО ЧТЕНИЯ — ПАРА «СТАТУС + ФОРМА», а не отрицание отказа
+#
+# Здесь у каждого из четырёх ambient-шагов рядом с `assert_status(200)` стояла
+# строка «a zero-binding principal is not denied (never 403)». Она не могла упасть
+# ОТДЕЛЬНО: 403 ≠ 200, поэтому утверждение о статусе краснело первым и всегда, а
+# отрицание лишь повторяло его более слабым способом. Хуже: такое отрицание
+# проходит на 400, 500 и 503 — то есть само по себе не отличает исправную систему
+# ни от одной поломки. verifies #668.
+#
+# ПАРА ДЛЯ УСПЕШНОГО ЧТЕНИЯ — ЭТО СТАТУС И ФОРМА. `google.rpc.Status` успешный
+# ответ не несёт (его место занимает сам ресурс), поэтому вторым членом пары
+# служит форма тела. Взята не произвольная: ровно тот инвариант, ради которого
+# публичная поверхность geo и объявлена исключением из project-scope authZ —
+# ДВЕ ПРОЕКЦИИ. Публичные `Region`/`Zone` (proto/kacho/cloud/geo/v1/{region,zone}.proto)
+# сырого `status` и `infra` НЕ несут; их несут `InternalRegion`/`InternalZone` на
+# :9091. Снятый authZ означает, что публичный каталог читает КАЖДЫЙ
+# аутентифицированный арендатор, — значит утечка внутренней проекции на этот
+# маршрут раздаёт инфраструктурные поля всем сразу.
+#
+# Проверяются ИМЕННО эти два поля, а не «набор ключей целиком»: строгая сверка
+# всего набора краснела бы на законном добавлении публичного поля, то есть
+# ловила бы форму, а не существо.
+_INTERNAL_ONLY_FIELDS = ("status", "infra")
+
+
+def two_projection_asserts(case_id, list_key=None):
+    """Публичное чтение не несёт внутренней проекции (`status` / `infra`).
+
+    `list_key` задан → проверяется каждый элемент страницы; не задан → сам объект.
+    """
+    subject = f"(pm.response.json()['{list_key}'] || [])" if list_key else "[pm.response.json()]"
+    return [
+        f"pm.test('[{case_id}] публичная проекция: ни status, ни infra', () => {{",
+        f"  {subject}.forEach(o => {{",
+        "    pm.expect(Object.keys(o || {}), 'внутренняя проекция утекла на публичный маршрут: '",
+        "      + JSON.stringify(o)).to.not.include('status');",
+        "    pm.expect(Object.keys(o || {}), 'внутренняя проекция утекла на публичный маршрут: '",
+        "      + JSON.stringify(o)).to.not.include('infra');",
+        "  });",
+        "});",
+    ]
+
+
+
+# ---------------------------------------------------------------------------
 # anonymous public read → 401 UNAUTHENTICATED (authN required on every listener).
 # verifies GEO-1-21
 # ---------------------------------------------------------------------------
@@ -67,8 +112,8 @@ CASES.append(Case(
         Step(name="list-regions-noviewer", method="GET", path="/geo/v1/regions", auth="jwtNoBindings",
              test_script=[
                  *assert_status(200),
-                 "pm.test('ambient read: zero-binding principal is NOT denied (no 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
                  "pm.test('regions is an array', () => pm.expect(pm.response.json().regions).to.be.an('array'));",
+                 *two_projection_asserts("GEO-REG-GT-AUTHZ-AMBIENT-OK", "regions"),
              ]),
     ],
 ))
@@ -181,8 +226,8 @@ CASES.append(Case(
         Step(name="list-zones-purenobindings", method="GET", path="/geo/v1/zones", auth="jwtPureNoBindings",
              test_script=[
                  *assert_status(200),
-                 "pm.test('a zero-binding principal is not denied (never 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
                  "pm.test('zones is an array', () => pm.expect(pm.response.json().zones).to.be.an('array'));",
+                 *two_projection_asserts("GEO-ZON-GT-AUTHZ-AMBIENT-OK", "zones"),
              ]),
     ],
 ))
@@ -203,8 +248,8 @@ CASES.append(Case(
              auth="jwtPureNoBindings",
              test_script=[
                  *assert_status(200),
-                 "pm.test('a zero-binding principal is not denied (never 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
                  "pm.test('id echoes the requested region', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('ambientPickRegionId')));",
+                 *two_projection_asserts("GEO-REG-GET-AUTHZ-AMBIENT-OK"),
              ]),
     ],
 ))
@@ -224,8 +269,8 @@ CASES.append(Case(
              auth="jwtPureNoBindings",
              test_script=[
                  *assert_status(200),
-                 "pm.test('a zero-binding principal is not denied (never 403)', () => pm.expect(pm.response.code).to.not.eql(403));",
                  "pm.test('id echoes the requested zone', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('ambientPickZoneId')));",
+                 *two_projection_asserts("GEO-ZON-GET-AUTHZ-AMBIENT-OK"),
              ]),
     ],
 ))
