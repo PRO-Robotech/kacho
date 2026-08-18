@@ -29,7 +29,7 @@ sequenceDiagram
 
   U->>H: Create(project_id, name, …)
   H->>S: Create
-  S->>S: sync validate (NameVPC, labels, mask)
+  S->>S: sync validate (Name, labels, mask)
   S->>S: ids.NewID(PrefixNetwork) → "net..."
   S->>DB: INSERT operation (sync, done=false)
   S-->>H: Operation{id, metadata:{networkId}}
@@ -78,7 +78,7 @@ sequenceDiagram
   participant DB as pg-vpc
 
   U->>S: Create(project_id, network_id, placement_type, zone_id|region_id, ipv4_cidr_primary?, …)
-  S->>S: sync validate:<br/>  NameVPC, placement_type (обязателен, immutable),<br/>  zone_id|region_id — existence через ZoneRegistry/RegionRegistry (peer geo),<br/>  CIDR host-bits=0 (netip.Masked),<br/>  CIDR ⊆ супернета сети (validateSubnetWithinSupernet)
+  S->>S: sync validate:<br/>  Name, placement_type (обязателен, immutable),<br/>  zone_id|region_id — existence через ZoneRegistry/RegionRegistry (peer geo),<br/>  CIDR host-bits=0 (netip.Masked),<br/>  CIDR ⊆ супернета сети (validateSubnetWithinSupernet)
   S-->>U: Operation{subnetId}
 
   rect rgb(255,247,230)

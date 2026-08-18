@@ -9,7 +9,10 @@ VPC-specific правила, error mapping, уроки из истории фи�
 - Required: `project_id`, `network_id` (для дочерних, включая SecurityGroup), `name`
   (где обязательно), `placement_type` + соответствующий ему `zone_id`/`region_id`.
 - Format:
-  - `corevalidate.NameVPC` — permissive (`^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$`, разрешает empty/uppercase/underscore).
+  - `corevalidate.Name` — единственная форма дерева, DNS label RFC 1123
+    (`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`). Заглавные и подчёркивание отвергаются,
+    цифра первым символом принимается. На создании зовётся `NameOnCreate` (пустое
+    законно и означает «назови сам»), на правке — `NameOnUpdate` (#715).
   - `Description` ≤ 256.
   - `Labels` ≤ 64 пар, key regex.
   - `ZoneId` — required-only в `pkg/validate`.
@@ -178,7 +181,10 @@ NIC `used_by` (кто использует NIC) — денормализован
 ## Gotchas (из истории фиксов)
 
 1. **id sync-валидация** — malformed / нераспознанный resource-id (нет известного 3-char prefix `net/sub/adr/rtb/sgr/gtw/nic/apl/enp`) → sync `InvalidArgument "invalid <res> id '<X>'"` (`corevalidate.ResourceID`, первым стейтментом в каждом id-берущем RPC). Well-formed-но-несуществующий id (известный prefix) → `NotFound` через `repo.Get`. Семантика family-agnostic — `enp...`, переданный как subnet-id, проходит prefix-check, затем `repo.Get` → `NotFound`.
-2. **NameVPC permissive, не strict** — empty/uppercase/underscore разрешены для Network/Subnet/Address/RouteTable/SG. Gateway — strict (`corevalidate.NameGateway`: lowercase, без uppercase/underscore).
+2. **Форма имени ОДНА на все девять ресурсов** — DNS label RFC 1123. Отдельных
+   permissive/strict полос нет: они были двумя правилами об одном поле и разошлись
+   (#715). Пустого имени не существует: на создании сервер подставляет имя от `id`,
+   на правке маска, назвавшая `name` с пустым значением, отвергается.
 3. **CIDR overlap** = `FailedPrecondition`, не `InvalidArgument`.
 4. **CIDR host-bits=0** обязательно, sync через `netip.Prefix.Masked`.
 5. **Subnet immutable**: `network_id`, `placement_type`, `zone_id`/`region_id` — reject в mask, silent ignore в full-PATCH. CIDR-полей в `Update` нет вовсе.

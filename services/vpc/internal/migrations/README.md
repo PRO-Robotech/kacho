@@ -90,8 +90,7 @@ CREATE INDEX my_resource_parent_id_idx ON my_resource (parent_id);
 
 | Domain rule                              | DB CHECK                                                                        |
 | ---------------------------------------- | ------------------------------------------------------------------------------- |
-| `NameVPC` (permissive regex)             | `CHECK (name ~ '^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$')`               |
-| `NameGateway` (strict — на service-слое)  | `CHECK (name ~ '^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$')` (permissive DB-regex; строгая проверка lowercase — в service-слое) |
+| `Name` (единственная форма дерева)        | `CHECK (name ~ '^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$')` — приведено миграцией `715001`. До неё база отвергала имя с цифры, которое сервис принимает, и принимала заглавные с подчёркиванием, которые он отвергает |
 | `Description ≤ 256`                      | `CHECK (length(description) <= 256)`                                            |
 | `Labels` (≤64 пар + key regex + length)  | `CHECK (kacho_labels_valid(labels))` (общая функция в схеме `kacho_vpc`)        |
 | `Status` (enum-set)                      | `CHECK (status IN ('PROVISIONING', 'ACTIVE', ...))`                             |
