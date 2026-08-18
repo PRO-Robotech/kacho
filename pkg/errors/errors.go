@@ -45,21 +45,6 @@ func (b *Builder) WithLocale(locale string) *Builder {
 func (b *Builder) Err() error {
 	st := b.st
 	if len(b.violations) > 0 {
-		// ВЕРХНЕЕ СООБЩЕНИЕ НАЗЫВАЕТ ПРЕДМЕТ, когда нарушение ровно одно.
-		//
-		// Тон сообщений — часть контракта (`api-conventions.md`), и остальные
-		// конструкторы его держат: `NotFound` говорит «<Kind> '<id>' was not
-		// found», `AlreadyExists` — «<Kind> <id> already exists». Один
-		// `InvalidArgument` отвечал неизменным «invalid argument», унося
-		// предмет в детали: вызывающий, читающий только `message`, узнавал,
-		// что ввод плох, но не узнавал ЧЕМ.
-		//
-		// Поднимается только ЕДИНСТВЕННОЕ нарушение: при нескольких выбор
-		// одного из них наверх был бы произволом, и там перечень в деталях
-		// остаётся единственным честным ответом.
-		if len(b.violations) == 1 && b.violations[0].GetDescription() != "" {
-			st = status.New(st.Code(), b.violations[0].GetDescription())
-		}
 		if next, derr := st.WithDetails(&errdetails.BadRequest{FieldViolations: b.violations}); derr == nil {
 			st = next
 		}
