@@ -26,7 +26,7 @@
 YAML и имя в прогоне НЕ СОВПАДАЮТ, поэтому набор, собранный из YAML, не сошёлся
 бы с производимым ни при каком прогоне — и гейт сам стал бы источником запирания.
 Поэтому обе стороны берутся из API: набор — из защиты ветки, произведённое — из
-проверок последнего прогона ствола.
+проверок УСТОЯВШЕГОСЯ прогона ствола (см. read_produced).
 
 ИСКЛЮЧЕНИЯ ВЕДУТСЯ ДВУМЯ СПОСОБАМИ, И ПЕРВЫЙ ПРЕДПОЧТИТЕЛЕН
 -----------------------------------------------------------
@@ -122,19 +122,51 @@ def read_required(repo: str, branch: str) -> list[str]:
     return sorted({x.strip() for x in out.splitlines() if x.strip()})
 
 
-def read_produced(repo: str, branch: str) -> list[str]:
-    sha = _gh(["api", f"repos/{repo}/commits/{branch}", "-q", ".sha"]).strip()
-    if not sha:
+# Сколько коммитов ствола просмотреть в поисках УСТОЯВШЕГОСЯ.
+SETTLED_LOOKBACK = 12
+
+
+def read_produced(repo: str, branch: str) -> tuple[list[str], str]:
+    """Произведённые контексты — с УСТОЯВШЕЙСЯ вершины, а не с новейшей.
+
+    «НЕ ПРОИЗВЕДЕНО» И «НЕ ПРОИЗВОДИТСЯ» — РАЗНЫЕ ВЕЩИ, и на их смешении гейт уже
+    ошибся. Свежий коммит ствола, чей прогон ещё стоит в очереди, отдаёт неполный
+    набор проверок: у него нет ни шардов сквозных проб, ни их сводного вердикта.
+    Судя по такому коммиту, гейт объявляет «запирание» на контексте, который
+    прекрасно производится, и «исключению нечего исключать» на живых шардах —
+    шесть находок, все ложные. Замер: на `b7e17f86` произведено 45 контекстов из
+    51, и недостающие шесть — ровно те, чей workflow не начинался.
+
+    Поэтому берётся первый коммит, у которого проверки github-actions есть И НИ
+    ОДНА не в очереди и не в работе. Судимая вершина НАЗЫВАЕТСЯ в переписи:
+    вердикт о другом коммите обязан быть отличим от вердикта о вершине.
+    """
+    out = _gh(["api", f"repos/{repo}/commits?sha={branch}&per_page={SETTLED_LOOKBACK}",
+               "-q", ".[].sha"])
+    shas = [x.strip() for x in out.splitlines() if x.strip()]
+    if not shas:
         raise Unavailable("не удалось разрешить вершину ствола")
-    out = _gh(["api", f"repos/{repo}/commits/{sha}/check-runs?per_page=100",
-               "--paginate", "-q",
-               '.check_runs[] | select(.app.slug=="github-actions") | .name'])
-    names = sorted({x.strip() for x in out.splitlines() if x.strip()})
-    if not names:
-        raise Unavailable(
-            f"у вершины ствола ({sha[:8]}) нет ни одной проверки github-actions — "
-            f"прогона не было либо он ещё идёт; сверять не с чем")
-    return names
+
+    unsettled: list[str] = []
+    for sha in shas:
+        raw = _gh(["api", f"repos/{repo}/commits/{sha}/check-runs?per_page=100",
+                   "--paginate", "-q",
+                   '.check_runs[] | select(.app.slug=="github-actions") | '
+                   '"\\(.status)\\t\\(.name)"'])
+        rows = [x.split("\t", 1) for x in raw.splitlines() if "\t" in x]
+        if not rows:
+            unsettled.append(f"{sha[:8]}: проверок нет")
+            continue
+        pending = [n for st, n in rows if st != "completed"]
+        if pending:
+            unsettled.append(f"{sha[:8]}: не завершено {len(pending)} из {len(rows)}")
+            continue
+        return sorted({n for _st, n in rows}), sha
+
+    raise Unavailable(
+        "среди последних " + str(len(shas)) + " коммитов ствола нет ни одного с "
+        "ЗАВЕРШЁННЫМ прогоном, поэтому произведённое неизвестно: " +
+        "; ".join(unsettled[:4]) + ". Это НЕ «расхождений нет»")
 
 
 # ── ВЫВОДИМЫЕ исключения ────────────────────────────────────────────────────
@@ -201,7 +233,8 @@ def derived_exclusions(root: Path) -> tuple[list[str], str]:
 def adjudicate(required: list[str], produced: list[str],
                derived: list[str], derived_src: str,
                declared: list[dict[str, str]],
-               job_names: set[str] | None = None) -> tuple[int, str]:
+               job_names: set[str] | None = None,
+               judged_sha: str = "") -> tuple[int, str]:
     log = io.StringIO()
     w = log.write
 
@@ -210,6 +243,8 @@ def adjudicate(required: list[str], produced: list[str],
     excluded = excl_derived | excl_declared
 
     w("===== защита ствола против имён джоб: перепись =====\n")
+    if judged_sha:
+        w(f"произведённое взято с УСТОЯВШЕЙСЯ вершины {judged_sha[:8]} (прогон завершён)\n")
     w(f"контекстов в обязательном наборе: {len(req)}\n")
     w(f"произведено проверок github-actions: {len(prod)}\n")
     w(f"исключений выводимых (из {derived_src}): {len(excl_derived)}\n")
@@ -272,7 +307,7 @@ def adjudicate(required: list[str], produced: list[str],
 def execute(repo: str, branch: str, root: Path) -> int:
     try:
         required = read_required(repo, branch)
-        produced = read_produced(repo, branch)
+        produced, judged_sha = read_produced(repo, branch)
         derived, src = derived_exclusions(root)
     except Unavailable as e:
         # ТРЕТИЙ ИСХОД. Не зелёный и не красный: измерение не сделано.
@@ -291,7 +326,7 @@ def execute(repo: str, branch: str, root: Path) -> int:
         return 2
 
     rc, out = adjudicate(required, produced, derived, src, DECLARED_EXCLUSIONS,
-                         literal_job_names(root))
+                         literal_job_names(root), judged_sha)
     (sys.stdout if rc == 0 else sys.stderr).write(out)
     return rc
 
@@ -378,6 +413,59 @@ def self_test() -> int:
     rc, out = run([*_REQ_OK, "образы"], _PROD_OK)
     check("краснеет на излишнем исключении", rc == 1, out)
     check("говорит, что исключать больше нечего", "ИЗЛИШНЕ" in out, out)
+
+    print("(g2) провенанс: судимая вершина названа в переписи")
+    # Вердикт о другом коммите обязан быть отличим от вердикта о вершине.
+    rc, out = adjudicate(sorted(_REQ_OK), sorted(_PROD_OK), sorted(_DERIVED), _SRC,
+                         _DECL, set(), "b7e17f86ffff")
+    check("называет коммит, по которому судил", "b7e17f86" in out, out)
+    check("говорит, что вершина устоявшаяся", "УСТОЯВШЕЙСЯ" in out, out)
+
+    print("(g3) неполный прогон НЕ выдаётся за отсутствие производителя")
+    # Тот самый ложный вердикт: на коммите с прогоном в очереди недостают ровно
+    # шардовые контексты и их сводный вердикт. Судить по такому нельзя —
+    # read_produced обязан пройти мимо него и взять устоявшийся ниже.
+    calls = {"n": 0}
+    def fake_gh(args):
+        q = " ".join(args)
+        if "/commits?sha=" in q:
+            return "aaaaaaaa\nbbbbbbbb\n"
+        if "/commits/aaaaaaaa/check-runs" in q:
+            calls["n"] += 1
+            return "queued\tсводный вердикт (все шарды)\ncompleted\tbuild · vet\n"
+        if "/commits/bbbbbbbb/check-runs" in q:
+            return ("completed\tbuild · vet\ncompleted\tсводный вердикт (все шарды)\n"
+                    "completed\te2e vpc (vpc)\n")
+        raise AssertionError(q)
+    mod = sys.modules[__name__]
+    orig = mod._gh
+    try:
+        mod._gh = fake_gh
+        names, sha = read_produced("o/r", "main")
+    finally:
+        mod._gh = orig
+    check("пропускает коммит с незавершённым прогоном", sha == "bbbbbbbb", sha)
+    check("берёт полный набор с устоявшегося",
+          "сводный вердикт (все шарды)" in names and "e2e vpc (vpc)" in names, names)
+    check("незавершённый коммит всё же был осмотрен", calls["n"] == 1, calls)
+
+    print("(g4) ни одного устоявшегося коммита — ИЗМЕРЕНИЕ НЕ СДЕЛАНО")
+    def all_pending(args):
+        q = " ".join(args)
+        if "/commits?sha=" in q:
+            return "aaaaaaaa\n"
+        return "queued\tbuild · vet\n"
+    try:
+        mod._gh = all_pending
+        try:
+            read_produced("o/r", "main")
+            check("отвергает дерево без устоявшегося прогона", False, "не подняло")
+        except Unavailable as e:
+            check("отвергает дерево без устоявшегося прогона", True)
+            check("говорит, что это не «расхождений нет»",
+                  "НЕ «расхождений нет»" in str(e), str(e))
+    finally:
+        mod._gh = orig
 
     print("(h) пустой набор — ИЗМЕРЕНИЕ НЕ СДЕЛАНО, а не «сошлось»")
     buf = io.StringIO()
