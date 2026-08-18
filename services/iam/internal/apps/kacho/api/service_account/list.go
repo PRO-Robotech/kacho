@@ -43,7 +43,7 @@ package service_account
 // Устраняет прежнюю membership-over-show модель (любой член аккаунта видел ВСЕ SA
 // аккаунта без per-object грантов). Инварианты сохранены:
 //   - anonymous → empty ДО любого FGA-вызова (fail-closed, не Unavailable);
-//   - system bootstrap → unfiltered (admin tooling, internal-only listener);
+//     не-forwarded principal (включая system/bootstrap fallback) — тоже anonymous;
 //   - FGA-ошибка на любой relation → Unavailable (никогда partial/owner-only);
 //   - cluster-admin/operator покрыты той же веткой `viewer` (system_viewer floor).
 
@@ -97,24 +97,13 @@ func (u *ListServiceAccountsUseCase) Execute(ctx context.Context, f reposa.ListF
 	if err != nil {
 		return nil, "", err
 	}
-	// Anonymous → empty (default-deny) ДО любого FGA-вызова.
+	// Anonymous → empty (default-deny) ДО любого FGA-вызова. authzguard.IsAnonymous
+	// относит сюда и не-forwarded principal (api-gateway не передал заголовки →
+	// system/bootstrap fallback) — fail-closed, без unfiltered-обхода.
 	if authzguard.IsAnonymous(ctx) {
 		return []domain.ServiceAccount{}, "", nil
 	}
 	principal := operations.PrincipalFromContext(ctx)
-
-	// System bootstrap → unfiltered (admin tooling, internal-only). It walks the
-	// SAME loop as everyone else, with no narrowing and no verdict: a second
-	// traversal here would mean a second token form on one RPC, and the two would
-	// be told apart by nothing but who happened to ask.
-	if principal.Type == domain.PrincipalTypeSystem && principal.ID == domain.PrincipalIDBootstrap {
-		rd, rerr := u.repo.Reader(ctx)
-		if rerr != nil {
-			return nil, "", shared.MapRepoErr(rerr)
-		}
-		defer func() { _ = rd.Rollback(ctx) }()
-		return u.collectVisiblePage(ctx, rd, "", visibility.Scope{Unrestricted: true}, f, after, true)
-	}
 
 	subject := principalSubject(principal)
 	if subject == "" {
@@ -142,7 +131,7 @@ func (u *ListServiceAccountsUseCase) Execute(ctx context.Context, f reposa.ListF
 	if err != nil {
 		return nil, "", err
 	}
-	return u.collectVisiblePage(ctx, rd, subject, scope, f, after, false)
+	return u.collectVisiblePage(ctx, rd, subject, scope, f, after)
 }
 
 // subjectScope resolves the structural facts of the caller once per request.
@@ -173,12 +162,15 @@ func (u *ListServiceAccountsUseCase) subjectScope(
 // collectVisiblePage fills one page with visible rows, reading candidates until
 // the page is full or the caller's own candidates are exhausted.
 //
-// `unfiltered` is the bootstrap identity's path: no narrowing, no verdict. It is
-// a parameter rather than a separate traversal so that both callers produce and
-// consume the SAME token form.
+// Каждый кандидат ставится модели: полосы «без вердикта» здесь нет ни у кого.
+// Прежде она была — параметром `unfiltered` под системный бутстрап, — и не
+// исполнялась НИ ПРИ КАКОМ входе: замыкание по личности выше по Execute относит
+// бутстрап к анонимным (authzguard.IsAnonymous). Ветка снята вместе с параметром
+// (#648); несужённая страница администратору облака остаётся достижимой, но по
+// структурному пути — scope.Unrestricted из subjectScope.
 func (u *ListServiceAccountsUseCase) collectVisiblePage(
 	ctx context.Context, rd kachorepo.Reader, subject string,
-	scope visibility.Scope, f reposa.ListFilter, after *shared.VisibleCursor, unfiltered bool,
+	scope visibility.Scope, f reposa.ListFilter, after *shared.VisibleCursor,
 ) ([]domain.ServiceAccount, string, error) {
 	want := shared.EffectiveListPageSize(f.PageSize)
 	// One row beyond the page: a non-empty token is issued only when a visible row
@@ -220,15 +212,11 @@ func (u *ListServiceAccountsUseCase) collectVisiblePage(
 		last := rows[len(rows)-1]
 		cursor = &reposa.Cursor{CreatedAt: last.CreatedAt, ID: string(last.ID)}
 
-		if unfiltered {
-			visible = append(visible, rows...)
-		} else {
-			judged, err := u.judge(ctx, subject, rows)
-			if err != nil {
-				return nil, "", err
-			}
-			visible = append(visible, judged...)
+		judged, err := u.judge(ctx, subject, rows)
+		if err != nil {
+			return nil, "", err
 		}
+		visible = append(visible, judged...)
 
 		if len(rows) < int(chunk) {
 			break // кандидаты исчерпаны

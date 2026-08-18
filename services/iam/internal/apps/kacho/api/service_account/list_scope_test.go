@@ -221,6 +221,30 @@ func TestListServiceAccounts_AnonymousEmpty(t *testing.T) {
 	assert.Zero(t, fga.calls["viewer"], "anonymous short-circuits before FGA")
 }
 
+// Не-переданная личность (край не передал заголовки `x-kacho-principal-*` →
+// PrincipalFromContext отдаёт запасного system/bootstrap) относится
+// authzguard.IsAnonymous к анонимным → пустая страница ДО любого обращения к
+// модели. Паритет с group/user.
+//
+// Проба заведена задачей #648 и на момент заведения была ЗЕЛЁНОЙ на неизменённом
+// коде — это и есть доказательство того, что стоявшая ниже по функции ветка
+// «системный бутстрап → несужённая страница» не исполнялась ни при каком входе:
+// замыкание по личности стоит выше и относит бутстрап к анонимным. Ветка снята,
+// проба осталась — она держит инвариант вперёд.
+func TestListServiceAccounts_SystemBootstrapFallback_FailClosed(t *testing.T) {
+	repo := &scopeSARepo{sas: []domain.ServiceAccount{
+		{ID: "sva0000000000000xxxx", AccountID: scopeAcctA},
+	}}
+	fga := newSAUnionFGAStub()
+	ctx := operations.WithPrincipal(context.Background(),
+		operations.Principal{Type: domain.PrincipalTypeSystem, ID: domain.PrincipalIDBootstrap})
+	uc := NewListServiceAccountsUseCase(repo).WithRelationStore(fga)
+	out, _, err := uc.Execute(ctx, reposa.ListFilter{AccountID: scopeAcctA})
+	require.NoError(t, err)
+	assert.Empty(t, out, "system/bootstrap fallback → anonymous → empty (fail-closed)")
+	assert.Zero(t, fga.calls["viewer"], "short-circuits before FGA")
+}
+
 // T3.3 — FGA-ошибка на любой relation → Unavailable (fail-closed, INV-7).
 func TestListServiceAccounts_FGAUnavailable_FailClosed(t *testing.T) {
 	repo := &scopeSARepo{sas: []domain.ServiceAccount{

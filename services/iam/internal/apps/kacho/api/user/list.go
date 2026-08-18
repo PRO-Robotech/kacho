@@ -45,7 +45,7 @@ package user
 // Устраняет прежнюю membership-over-show модель (любой член аккаунта видел ВСЕХ
 // user'ов аккаунта без per-object грантов, T3.3 D-5). Инварианты сохранены:
 //   - anonymous → empty ДО любого FGA-вызова (fail-closed, не Unavailable);
-//   - system bootstrap → unfiltered (admin tooling, internal-only listener);
+//     не-forwarded principal (включая system/bootstrap fallback) — тоже anonymous;
 //   - FGA-ошибка на любой relation → Unavailable (никогда partial/owner-only);
 //   - cluster-admin/operator/owner покрыты той же веткой `viewer` (tier-cascade).
 
@@ -99,24 +99,13 @@ func (uc *ListUsersUseCase) Execute(ctx context.Context, f user.ListFilter) ([]d
 	if err != nil {
 		return nil, "", err
 	}
-	// Anonymous → empty (default-deny) ДО любого FGA-вызова.
+	// Anonymous → empty (default-deny) ДО любого FGA-вызова. authzguard.IsAnonymous
+	// относит сюда и не-forwarded principal (api-gateway не передал заголовки →
+	// system/bootstrap fallback) — fail-closed, без unfiltered-обхода.
 	if authzguard.IsAnonymous(ctx) {
 		return []domain.User{}, "", nil
 	}
 	principal := operations.PrincipalFromContext(ctx)
-
-	// System bootstrap → unfiltered (admin tooling, internal-only). It walks the
-	// SAME loop as everyone else, with no narrowing and no verdict: a second
-	// traversal here would mean a second token form on one RPC, and the two would
-	// be told apart by nothing but who happened to ask.
-	if principal.Type == domain.PrincipalTypeSystem && principal.ID == domain.PrincipalIDBootstrap {
-		rd, rerr := uc.repo.Reader(ctx)
-		if rerr != nil {
-			return nil, "", shared.MapRepoErr(rerr)
-		}
-		defer func() { _ = rd.Rollback(ctx) }()
-		return uc.collectVisiblePage(ctx, rd, "", "", visibility.Scope{Unrestricted: true}, f, after, true)
-	}
 
 	subject := userPrincipalSubject(principal)
 	if subject == "" {
@@ -156,7 +145,7 @@ func (uc *ListUsersUseCase) Execute(ctx context.Context, f user.ListFilter) ([]d
 	if principal.Type == domain.PrincipalTypeUser && principal.ID != "" {
 		self = principal.ID
 	}
-	return uc.collectVisiblePage(ctx, rd, subject, self, scope, f, after, false)
+	return uc.collectVisiblePage(ctx, rd, subject, self, scope, f, after)
 }
 
 // subjectScope resolves the structural facts of the caller once per request.
@@ -192,10 +181,15 @@ func (uc *ListUsersUseCase) subjectScope(
 // arbitrarily far past a raw window: a floor applied to an already-taken page is
 // the original defect wearing a floor's name.
 //
-// `unfiltered` is the bootstrap identity's path: no narrowing, no verdict.
+// Каждый кандидат ставится модели: полосы «без вердикта» здесь нет ни у кого.
+// Прежде она была — параметром `unfiltered` под системный бутстрап, — и не
+// исполнялась НИ ПРИ КАКОМ входе: замыкание по личности выше по Execute относит
+// бутстрап к анонимным (authzguard.IsAnonymous). Ветка снята вместе с параметром
+// (#648); несужённая страница администратору облака остаётся достижимой, но по
+// структурному пути — scope.Unrestricted из subjectScope.
 func (uc *ListUsersUseCase) collectVisiblePage(
 	ctx context.Context, rd kachorepo.Reader, subject, self string,
-	scope visibility.Scope, f user.ListFilter, after *shared.VisibleCursor, unfiltered bool,
+	scope visibility.Scope, f user.ListFilter, after *shared.VisibleCursor,
 ) ([]domain.User, string, error) {
 	want := shared.EffectiveListPageSize(f.PageSize)
 	// One row beyond the page: a non-empty token is issued only when a visible row
@@ -249,15 +243,11 @@ func (uc *ListUsersUseCase) collectVisiblePage(
 		last := rows[len(rows)-1]
 		cursor = &user.Cursor{CreatedAt: last.CreatedAt, ID: string(last.ID)}
 
-		if unfiltered {
-			visible = append(visible, rows...)
-		} else {
-			judged, err := uc.judge(ctx, subject, self, rows)
-			if err != nil {
-				return nil, "", err
-			}
-			visible = append(visible, judged...)
+		judged, err := uc.judge(ctx, subject, self, rows)
+		if err != nil {
+			return nil, "", err
 		}
+		visible = append(visible, judged...)
 
 		if len(rows) < int(chunk) {
 			break // кандидаты исчерпаны
