@@ -592,7 +592,7 @@ CASES.append(Case(
 #     принимал открытый гейт как норму.
 #   * «never 403» отдельной строкой ничего не добавляло: `oneOf` уже исключал 403, а
 #     утверждение отрицанием проходит на любом другом ответе — на 400, 500, 503.
-# verifies #668.
+# Полоса переведена на утверждение-пару задачей kacho#668.
 CASES.append(Case(
     id="REG-LSTTAGS-AZ-NOTFOUND",  # index: REG-24
     title="ListTags by non-member (stranger) → 404 `repository not found` (existence-hidden), никакого иного исхода",
