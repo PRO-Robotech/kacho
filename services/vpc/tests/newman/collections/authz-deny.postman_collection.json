@@ -9556,94 +9556,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-PA1] ALLOW: HTTP 200 (мутация принята)', () => pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
-                  "pm.test('Operation envelope returned', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.id, 'operation.id').to.match(/^[a-z0-9]+$/);",
-                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
-                  "});",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-23",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// authz-deny: bearer from env 'jwtProjectAdminA1'",
-                  "const __t = pm.environment.get('jwtProjectAdminA1') || pm.variables.get('jwtProjectAdminA1') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtProjectAdminA1 is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtProjectAdminA1 is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.execution.skipRequest();",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
-                  "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-PA1] ALLOW→miss: HTTP 404', () => pm.expect(pm.response.code, pm.response.text()).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-PA1] ALLOW→miss: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-PA1] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'subnonexistent000001' + ' not found'));"
                 ]
               }
             }
@@ -10112,94 +10028,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-AAA] ALLOW: HTTP 200 (мутация принята)', () => pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
-                  "pm.test('Operation envelope returned', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.id, 'operation.id').to.match(/^[a-z0-9]+$/);",
-                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
-                  "});",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-24",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// authz-deny: bearer from env 'jwtAccountAdminA'",
-                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtAccountAdminA is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtAccountAdminA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.execution.skipRequest();",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
-                  "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-AAA] ALLOW→miss: HTTP 404', () => pm.expect(pm.response.code, pm.response.text()).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-AAA] ALLOW→miss: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-AAA] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'subnonexistent000001' + ' not found'));"
                 ]
               }
             }
@@ -10738,94 +10570,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ADDRESS-CR-CROSS-AAB] ALLOW: HTTP 200 (мутация принята)', () => pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
-                  "pm.test('Operation envelope returned', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.id, 'operation.id').to.match(/^[a-z0-9]+$/);",
-                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
-                  "});",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-25",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// authz-deny: bearer from env 'jwtAccountAdminB'",
-                  "const __t = pm.environment.get('jwtAccountAdminB') || pm.variables.get('jwtAccountAdminB') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtAccountAdminB is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtAccountAdminB is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.execution.skipRequest();",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
-                  "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('[AUTHZ-ADDRESS-CR-CROSS-AAB] ALLOW→miss: HTTP 404', () => pm.expect(pm.response.code, pm.response.text()).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ADDRESS-CR-CROSS-AAB] ALLOW→miss: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-ADDRESS-CR-CROSS-AAB] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'subnonexistent000001' + ' not found'));"
                 ]
               }
             }
@@ -11224,94 +10972,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-INV] ALLOW: HTTP 200 (мутация принята)', () => pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
-                  "pm.test('Operation envelope returned', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.id, 'operation.id').to.match(/^[a-z0-9]+$/);",
-                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
-                  "});",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-26",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// authz-deny: bearer from env 'jwtInvitee'",
-                  "const __t = pm.environment.get('jwtInvitee') || pm.variables.get('jwtInvitee') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtInvitee is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtInvitee is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.execution.skipRequest();",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
-                  "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-INV] ALLOW→miss: HTTP 404', () => pm.expect(pm.response.code, pm.response.text()).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-INV] ALLOW→miss: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-ADDRESS-CR-OWN-INV] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'subnonexistent000001' + ' not found'));"
                 ]
               }
             }
@@ -11378,94 +11042,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ADDRESS-CR-CROSS-INV] ALLOW: HTTP 200 (мутация принята)', () => pm.expect(pm.response.code, pm.response.text()).to.equal(200));",
-                  "pm.test('Operation envelope returned', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.id, 'operation.id').to.match(/^[a-z0-9]+$/);",
-                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
-                  "});",
-                  "pm.environment.set('opId', '');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-27",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// authz-deny: bearer from env 'jwtInvitee'",
-                  "const __t = pm.environment.get('jwtInvitee') || pm.variables.get('jwtInvitee') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtInvitee is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtInvitee is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.execution.skipRequest();",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
-                  "pm.test('refusal carries gRPC code 5', () =>   pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('refusal keeps the contract tone', () =>   pm.expect(j.error && j.error.message, JSON.stringify(j))    .to.eql(\"Subnet subnonexistent000001 not found\"));"
+                  "pm.test('[AUTHZ-ADDRESS-CR-CROSS-INV] ALLOW→miss: HTTP 404', () => pm.expect(pm.response.code, pm.response.text()).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ADDRESS-CR-CROSS-INV] ALLOW→miss: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-ADDRESS-CR-CROSS-INV] ALLOW→miss: контрактный тон отказа', () => pm.expect(j && j.message, JSON.stringify(j)).to.equal('Subnet ' + 'subnonexistent000001' + ' not found'));"
                 ]
               }
             }
@@ -12748,7 +12328,7 @@
           ]
         },
         {
-          "name": "poll-op-28",
+          "name": "poll-op-23",
           "request": {
             "method": "GET",
             "header": [
@@ -12907,7 +12487,7 @@
           ]
         },
         {
-          "name": "poll-op-29",
+          "name": "poll-op-24",
           "request": {
             "method": "GET",
             "header": [
@@ -13469,7 +13049,7 @@
           ]
         },
         {
-          "name": "poll-op-30",
+          "name": "poll-op-25",
           "request": {
             "method": "GET",
             "header": [
@@ -13628,7 +13208,7 @@
           ]
         },
         {
-          "name": "poll-op-31",
+          "name": "poll-op-26",
           "request": {
             "method": "GET",
             "header": [
@@ -14662,7 +14242,7 @@
           ]
         },
         {
-          "name": "poll-op-32",
+          "name": "poll-op-27",
           "request": {
             "method": "GET",
             "header": [
@@ -14821,7 +14401,7 @@
           ]
         },
         {
-          "name": "poll-op-33",
+          "name": "poll-op-28",
           "request": {
             "method": "GET",
             "header": [
@@ -16249,7 +15829,7 @@
           ]
         },
         {
-          "name": "poll-op-34",
+          "name": "poll-op-29",
           "request": {
             "method": "GET",
             "header": [
@@ -16408,7 +15988,7 @@
           ]
         },
         {
-          "name": "poll-op-35",
+          "name": "poll-op-30",
           "request": {
             "method": "GET",
             "header": [
@@ -16970,7 +16550,7 @@
           ]
         },
         {
-          "name": "poll-op-36",
+          "name": "poll-op-31",
           "request": {
             "method": "GET",
             "header": [
@@ -17129,7 +16709,7 @@
           ]
         },
         {
-          "name": "poll-op-37",
+          "name": "poll-op-32",
           "request": {
             "method": "GET",
             "header": [
@@ -18163,7 +17743,7 @@
           ]
         },
         {
-          "name": "poll-op-38",
+          "name": "poll-op-33",
           "request": {
             "method": "GET",
             "header": [
@@ -18322,7 +17902,7 @@
           ]
         },
         {
-          "name": "poll-op-39",
+          "name": "poll-op-34",
           "request": {
             "method": "GET",
             "header": [
@@ -19750,7 +19330,7 @@
           ]
         },
         {
-          "name": "poll-op-40",
+          "name": "poll-op-35",
           "request": {
             "method": "GET",
             "header": [
@@ -20306,7 +19886,7 @@
           ]
         },
         {
-          "name": "poll-op-41",
+          "name": "poll-op-36",
           "request": {
             "method": "GET",
             "header": [
@@ -20932,7 +20512,7 @@
           ]
         },
         {
-          "name": "poll-op-42",
+          "name": "poll-op-37",
           "request": {
             "method": "GET",
             "header": [
@@ -21418,7 +20998,7 @@
           ]
         },
         {
-          "name": "poll-op-43",
+          "name": "poll-op-38",
           "request": {
             "method": "GET",
             "header": [
@@ -21572,7 +21152,7 @@
           ]
         },
         {
-          "name": "poll-op-44",
+          "name": "poll-op-39",
           "request": {
             "method": "GET",
             "header": [
@@ -22924,7 +22504,7 @@
           ]
         },
         {
-          "name": "poll-op-45",
+          "name": "poll-op-40",
           "request": {
             "method": "GET",
             "header": [
@@ -23480,7 +23060,7 @@
           ]
         },
         {
-          "name": "poll-op-46",
+          "name": "poll-op-41",
           "request": {
             "method": "GET",
             "header": [
@@ -24106,7 +23686,7 @@
           ]
         },
         {
-          "name": "poll-op-47",
+          "name": "poll-op-42",
           "request": {
             "method": "GET",
             "header": [
@@ -24592,7 +24172,7 @@
           ]
         },
         {
-          "name": "poll-op-48",
+          "name": "poll-op-43",
           "request": {
             "method": "GET",
             "header": [
@@ -24746,7 +24326,7 @@
           ]
         },
         {
-          "name": "poll-op-49",
+          "name": "poll-op-44",
           "request": {
             "method": "GET",
             "header": [

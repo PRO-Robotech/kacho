@@ -56,9 +56,16 @@ ALLOW-полоса утверждает ПАРУ, а не отрицание (is
 
   - `created`        → `200` + конверт Operation, завершившаяся БЕЗ ошибки;
   - `carve`          → то же, но подсеть режется в сети, созданной ЭТИМ ЖЕ кейсом;
-  - `peer_missing`   → синхронный `404` + `code 5` + `"Network <id> not found"`;
+  - `peer_missing`   → синхронный `404` + `code 5` + `"<Вид> <id> not found"`, где вид
+                       называет ресурс, чья ссылка не резолвится (сеть у подсети,
+                       таблицы и группы; подсеть у адреса);
   - `anchor_missing` → `200` + Operation, завершившаяся `code 5` +
                        `"Subnet <id> not found"`.
+
+Полоса выбирается ПО ТОМУ, ГДЕ ВЛАДЕЛЕЦ ЧИТАЕТ ССЫЛКУ, — до создания операции или
+внутри неё. Разница не выводится из вида ресурса и не угадывается: у шлюза и
+интерфейса подсеть читается в `doCreate`, у адреса — в `Execute`. Ошибка на этом
+месте стоила прогона и была названа ТЕКСТОМ отказа (см. комментарий у адреса).
 
 Это НЕ толерантность: полосы принадлежат разным кейсам, а не одному, и внутри
 кейса выбор исхода не оставлен открытым. Прежнее «код не 403 и не 401» принимало
@@ -332,7 +339,8 @@ def _reclaim(resource_path, id_var, auth, name="reclaim"):
 
 
 def allow_steps(cid, method, path, body, auth, lane, anchor_project_var=None,
-                anchor_name=None, anchor_var=None, peer_ref_expr=None):
+                anchor_name=None, anchor_var=None, peer_ref_expr=None,
+                peer_ref_resource="Network"):
     """Шаги ALLOW-полосы. ТРИ полосы, у каждой ОДИН исход и СВОЙ производитель.
 
     Разные полосы — не «разные статусы одного исхода»: у каждой свой код-производитель
@@ -358,7 +366,8 @@ def allow_steps(cid, method, path, body, auth, lane, anchor_project_var=None,
     """
     if lane == "peer_missing":
         return [Step(name=method.lower(), method=method, path=path, body=body, auth=auth,
-                     test_script=allow_peer_missing_asserts(cid, peer_ref_expr))]
+                     test_script=allow_peer_missing_asserts(cid, peer_ref_expr,
+                                                            resource=peer_ref_resource))]
     if lane == "anchor_missing":
         return [
             Step(name=method.lower(), method=method, path=path, body=body, auth=auth,
@@ -423,7 +432,7 @@ def allow_steps(cid, method, path, body, auth, lane, anchor_project_var=None,
 
 def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate", list_key=None,
          allow_lane="created", allow_body=None, anchor_project_var=None, anchor_name=None,
-         anchor_var=None, peer_ref_expr=None):
+         anchor_var=None, peer_ref_expr=None, peer_ref_resource="Network"):
     """mode:
         gate — стандартный ALLOW/DENY по EXPECT[scope][code] (Create / admin-only).
         list — scope-filtered List: ANON→401; иначе has-access→200, no-access→403|200+empty.
@@ -460,7 +469,8 @@ def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate",
             steps = allow_steps(cid, method, path, allow_body if allow_body is not None else body,
                                 auth, allow_lane, anchor_project_var=anchor_project_var,
                                 anchor_name=anchor_name, anchor_var=anchor_var,
-                                peer_ref_expr=peer_ref_expr)
+                                peer_ref_expr=peer_ref_expr,
+                                peer_ref_resource=peer_ref_resource)
             CASES.append(Case(
                 id=cid,
                 title=f"[ALLOW] {title} as {label} ({scope})",
@@ -505,7 +515,8 @@ GARBAGE_ID = "enpnonexistent000001"
 
 def define_resource_cases(resource_name, plural, create_body_extra=None, supports_update=True,
                           cross_body_extra=None, own_lane="created", cross_lane="created",
-                          own_peer_ref_expr=None, cross_peer_ref_expr=None):
+                          own_peer_ref_expr=None, cross_peer_ref_expr=None,
+                          peer_ref_resource="Network"):
     """Генерирует authz-проверки для одного project-scoped VPC ресурса.
 
     `own_lane`/`cross_lane` объявляют ЕДИНСТВЕННЫЙ законный исход ALLOW-полосы для
@@ -536,7 +547,7 @@ def define_resource_cases(resource_name, plural, create_body_extra=None, support
              "POST", plural_path, body_own, subj, mode="gate",
              allow_lane=own_lane, allow_body=allow_body_own,
              anchor_project_var="projectA1Id", anchor_name=anchor_name, anchor_var=anchor_var,
-             peer_ref_expr=own_peer_ref_expr)
+             peer_ref_expr=own_peer_ref_expr, peer_ref_resource=peer_ref_resource)
 
         # === Create в cross-account project B1 ===
         body_cross = {"projectId": "{{projectB1Id}}", "name": f"authz-{resource_name}-{code.lower()}-cross-{{{{runId}}}}", **cross_body_extra}
@@ -544,7 +555,7 @@ def define_resource_cases(resource_name, plural, create_body_extra=None, support
              "POST", plural_path, body_cross, subj, mode="gate",
              allow_lane=cross_lane, anchor_project_var="projectB1Id",
              anchor_name=anchor_name, anchor_var=anchor_var,
-             peer_ref_expr=cross_peer_ref_expr)
+             peer_ref_expr=cross_peer_ref_expr, peer_ref_resource=peer_ref_resource)
 
         # === List в own project (scope-filtered) ===
         emit(f"{resource_name.upper()}-LS-OWN", f"List {plural} в project-A1", "project-A1",
@@ -590,11 +601,25 @@ define_resource_cases(
 # аренда из ОБЩЕГО умолчательного пула, который эта суита не сеет и не убирает:
 # ALLOW-полоса зависела от того, кто прогонялся раньше, и утекало пять адресов за
 # прогон из пула на 256. Внутренняя область с заведомо нерезолвящейся подсетью даёт
-# ОДИН установленный исход (`assertSubnetOwned` → `NOT_FOUND "Subnet <id> not found"`
-# внутри операции), ничего не занимает и ничего не оставляет.
+# ОДИН установленный исход, ничего не занимает и ничего не оставляет.
+#
+# ПОЛОСА СИНХРОННАЯ, А НЕ ВНУТРИ ОПЕРАЦИИ — И УСТАНОВИЛ ЭТО ПРОГОН, А НЕ ЧТЕНИЕ.
+# Здесь стояло `anchor_missing` (200 + операция с ошибкой) по аналогии со шлюзом и
+# интерфейсом: у обоих подсеть читается в `doCreate`. У адреса — нет.
+# `assertSubnetOwned` зовётся ДВАЖДЫ: из `applyAddressSpec` (внутри операции) и,
+# РАНЬШЕ, прямо из `Execute` (`address/create.go:221`) — до создания Operation.
+# Первое чтение кода нашло только вызов из `applyAddressSpec`, потому что искало
+# место вызова `applyAddressSpec`, а не самой проверки; вторая координата в поиск не
+# попала. Ошибку назвал сквозной прогон, и назвал ТЕКСТОМ отказа, а не именем шага:
+# `{"code":5,"message":"Subnet subnonexistent000001 not found"}: expected 404 to
+# equal 200` — ровно пять кейсов, ровно этот ресурс. Утверждение сделало то, ради
+# чего заведено: разошлось с продуктом и назвало, в чём.
 define_resource_cases("address", "addresses", create_body_extra={
     "internalIpv4AddressSpec": {"subnetId": NONEXISTENT_SUBNET_ID}
-}, own_lane="anchor_missing", cross_lane="anchor_missing")
+}, own_lane="peer_missing", cross_lane="peer_missing",
+    own_peer_ref_expr=f"'{NONEXISTENT_SUBNET_ID}'",
+    cross_peer_ref_expr=f"'{NONEXISTENT_SUBNET_ID}'",
+    peer_ref_resource="Subnet")
 
 # RouteTable / SecurityGroup — CIDR не несут, имена несут токен прогона, поэтому
 # OWN-полоса создаёт по-настоящему в посевной сети проекта A1. CROSS-полоса ссылается
