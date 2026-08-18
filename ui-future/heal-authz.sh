@@ -3,15 +3,40 @@
 # SPDX-License-Identifier: BUSL-1.1
 set -euo pipefail
 
+usage() {
+  cat >&2 <<'USAGE'
+heal-authz.sh — восстановление owner-иерархии прав на поднятом стенде.
+
+  heal-authz.sh            выполнить восстановление (нужен доступ к кластеру)
+  heal-authz.sh --check    только разрешить настройки и каталог развёртывания,
+                           кластера не касаться, ничего не писать
+  heal-authz.sh --help     эта справка
+
+Переменные: KACHO_NAMESPACE KACHO_DEPLOY_DIR KACHO_PG_IAM_POD KACHO_PG_IAM_USER
+            KACHO_PG_IAM_DB KACHO_PG_IAM_PASSWORD KACHO_OPENFGA_URL
+            KACHO_OPENFGA_STORE_SECRET KACHO_OPENFGA_MODEL_SECRET KACHO_CLUSTER_ID
+USAGE
+}
+
+MODE="run"
+for arg in "$@"; do
+  case "$arg" in
+    --check|--dry-run) MODE="check" ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "ERROR: неизвестный аргумент: $arg" >&2; usage; exit 2 ;;
+  esac
+done
+
 NAMESPACE="${KACHO_NAMESPACE:-kacho}"
 DEPLOY_DIR="${KACHO_DEPLOY_DIR:-}"
 PG_IAM_POD="${KACHO_PG_IAM_POD:-kacho-umbrella-pg-iam-0}"
 PG_IAM_USER="${KACHO_PG_IAM_USER:-iam}"
 PG_IAM_DB="${KACHO_PG_IAM_DB:-kacho_iam}"
-# No hard-coded credential default: the kacho_iam Postgres password must be
-# supplied explicitly so this script can never silently authenticate with a
-# baked-in dev password against a non-dev cluster.
-PG_IAM_PASSWORD="${KACHO_PG_IAM_PASSWORD:?KACHO_PG_IAM_PASSWORD must be set (export the kacho_iam Postgres password before running heal-authz.sh)}"
+# Умолчания у пароля НЕТ и быть не может: с зашитым dev-паролем скрипт молча
+# аутентифицировался бы в не-dev кластере. Требование проверяется в момент, когда
+# пароль действительно нужен, — иначе `--check` (кластера не касается) не смог бы
+# разрешить каталог развёртывания, ради чего он и заведён.
+PG_IAM_PASSWORD="${KACHO_PG_IAM_PASSWORD:-}"
 OPENFGA_URL="${KACHO_OPENFGA_URL:-http://kacho-umbrella-openfga:8080}"
 OPENFGA_STORE_SECRET="${KACHO_OPENFGA_STORE_SECRET:-kacho-iam-openfga-store}"
 OPENFGA_MODEL_SECRET="${KACHO_OPENFGA_MODEL_SECRET:-openfga-model-id}"
@@ -19,7 +44,25 @@ CLUSTER_ID="${KACHO_CLUSTER_ID:-cluster_kacho_root}"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -z "$DEPLOY_DIR" ]]; then
-  DEPLOY_DIR="$(cd -- "$SCRIPT_DIR/../kacho-deploy" && pwd)"
+  # Умолчание ВЫВОДИТСЯ из дерева: корень репозитория + `deploy`. Прежняя редакция
+  # искала `../kacho-deploy` — раскладку полирепо, снятую при переезде в монорепо, —
+  # и `cd` в несуществующий каталог под `set -e` ронял скрипт первой же строкой.
+  # То есть умолчание не работало НИ ПРИ КАКОМ состоянии стенда, а восстановление
+  # выполнялось только при явно заданном KACHO_DEPLOY_DIR (задача #644).
+  REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+  [[ -n "$REPO_ROOT" ]] || REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+  DEPLOY_DIR="$REPO_ROOT/deploy"
+fi
+if [[ ! -d "$DEPLOY_DIR" ]]; then
+  echo "ERROR: каталог развёртывания не найден: $DEPLOY_DIR" >&2
+  echo "       задайте KACHO_DEPLOY_DIR — это путь к каталогу deploy/ монорепо" >&2
+  exit 1
+fi
+DEPLOY_DIR="$(cd -- "$DEPLOY_DIR" && pwd)"
+if [[ ! -f "$DEPLOY_DIR/Makefile" ]]; then
+  echo "ERROR: в каталоге развёртывания нет Makefile: $DEPLOY_DIR" >&2
+  echo "       восстановление зовёт цель fga-bootstrap — без Makefile звать нечего" >&2
+  exit 1
 fi
 
 require_cmd() {
@@ -94,6 +137,17 @@ require_cmd make
 echo "Using namespace: ${NAMESPACE}"
 echo "Using deploy dir: ${DEPLOY_DIR}"
 echo
+
+if [[ "$MODE" == "check" ]]; then
+  echo "--check: настройки и каталог развёртывания разрешены, кластер не затронут."
+  exit 0
+fi
+
+if [[ -z "$PG_IAM_PASSWORD" ]]; then
+  echo "ERROR: KACHO_PG_IAM_PASSWORD не задан" >&2
+  echo "       экспортируйте пароль kacho_iam перед запуском heal-authz.sh" >&2
+  exit 1
+fi
 
 echo "Checking cluster access..."
 kubectl -n "$NAMESPACE" get pod "$PG_IAM_POD" >/dev/null
