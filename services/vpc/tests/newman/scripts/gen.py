@@ -926,9 +926,23 @@ def update_happy_per_field(prefix, create_path, update_base_path, body_create):
                 poll_operation_until_done(),
             ],
         )
+    # ЦЕЛЬ ПЕРЕИМЕНОВАНИЯ НЕСЁТ ТОКЕН ПРОГОНА — как и всякое имя под UNIQUE(project,name).
+    #
+    # Здесь стоял фиксированный литерал. Проект суиты (`_suiteProjectId`) переживает
+    # прогон, поэтому вторая правка того же имени упирается в `409 AlreadyExists` —
+    # и не упиралась она лишь потому, что предыдущий прогон ДОШЁЛ ДО УБОРКИ. Прогон,
+    # снятый по времени или по исчерпанию ресурса, оставлял за собой занятое имя, и
+    # следующий читал его как нарушение согласованности, хотя это заселённый слот.
+    # Замер по дереву на день правки: таких целей в наборах vpc — 18 (шесть ресурсов
+    # × три помощника), сравнений с литералом в утверждениях — столько же.
+    #
+    # Подстановка `{{runId}}` в СКРИПТЕ не работает (newman разрешает её в теле и
+    # адресе), поэтому ожидаемое имя собирается из окружения тем же выражением.
     return [
-        case_for("NAME", "name", {"updateMask": "name", "name": f"{prefix.lower()}-renamed-x"},
-                 ["pm.test('name updated', () => pm.expect(pm.response.json().name).to.eql('" + prefix.lower() + "-renamed-x'));"]),
+        case_for("NAME", "name",
+                 {"updateMask": "name", "name": f"{prefix.lower()}-renamed-x-{{{{runId}}}}"},
+                 ["pm.test('name updated', () => pm.expect(pm.response.json().name).to.eql('"
+                  + prefix.lower() + "-renamed-x-' + pm.environment.get('runId')));"]),
         case_for("DESC", "description", {"updateMask": "description", "description": "updated-desc-newman"},
                  ["pm.test('description updated', () => pm.expect(pm.response.json().description).to.eql('updated-desc-newman'));"]),
         case_for("LABELS", "labels", {"updateMask": "labels", "labels": {"env": "prod", "team": "net"}},
@@ -1047,8 +1061,10 @@ def update_happy_multi_field(prefix, create_path, update_base_path, body_create)
             poll_operation_until_done(capture_id_to="createdId"),
             retry_until_authorized(Step(name="patch-multi", method="PATCH",
                  path=f"{update_base_path}/{{{{createdId}}}}",
+                 # Цель переименования — с токеном прогона: имя под UNIQUE(project,name)
+                 # в переживающем прогон проекте (разбор — в `update_happy_per_field`).
                  body={"updateMask": "name,description,labels",
-                       "name": f"{prefix.lower()}-multi-new",
+                       "name": f"{prefix.lower()}-multi-new-{{{{runId}}}}",
                        "description": "multi-desc",
                        "labels": {"a": "1", "b": "2"}},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
@@ -1057,7 +1073,8 @@ def update_happy_multi_field(prefix, create_path, update_base_path, body_create)
                  path=f"{update_base_path}/{{{{createdId}}}}",
                  test_script=[*assert_status(200),
                               "const j = pm.response.json();",
-                              "pm.test('name updated', () => pm.expect(j.name).to.eql('" + prefix.lower() + "-multi-new'));",
+                              "pm.test('name updated', () => pm.expect(j.name).to.eql('"
+                              + prefix.lower() + "-multi-new-' + pm.environment.get('runId')));",
                               "pm.test('description updated', () => pm.expect(j.description).to.eql('multi-desc'));",
                               "pm.test('labels a', () => pm.expect((j.labels || {}).a).to.eql('1'));",
                               "pm.test('labels b', () => pm.expect((j.labels || {}).b).to.eql('2'));"])),
@@ -1244,7 +1261,9 @@ def update_mask_partial_block(prefix, create_path, update_base_path, body_create
                 poll_operation_until_done(capture_id_to="createdId"),
                 retry_until_authorized(Step(name="patch-name-only", method="PATCH",
                      path=f"{update_base_path}/{{{{createdId}}}}",
-                     body={"updateMask": "name", "name": f"{prefix.lower()}-mnnew",
+                     # Цель переименования — с токеном прогона (разбор — в
+                     # `update_happy_per_field`).
+                     body={"updateMask": "name", "name": f"{prefix.lower()}-mnnew-{{{{runId}}}}",
                            "description": "should-be-ignored", "labels": {"ignored": "y"}},
                      test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
                 poll_operation_until_done(),
@@ -1254,7 +1273,8 @@ def update_mask_partial_block(prefix, create_path, update_base_path, body_create
                      path=f"{update_base_path}/{{{{createdId}}}}",
                      test_script=[*assert_status(200),
                                   "const j = pm.response.json();",
-                                  "pm.test('name updated', () => pm.expect(j.name).to.eql('" + prefix.lower() + "-mnnew'));",
+                                  "pm.test('name updated', () => pm.expect(j.name).to.eql('"
+                                  + prefix.lower() + "-mnnew-' + pm.environment.get('runId')));",
                                   "pm.test('description preserved', () => pm.expect(j.description).to.eql('init'));",
                                   "pm.test('labels preserved', () => pm.expect((j.labels || {}).orig).to.eql('1'));"])),
                 retry_until_authorized(Step(name="cleanup", method="DELETE",
