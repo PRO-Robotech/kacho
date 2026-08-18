@@ -46,10 +46,26 @@ func bootForTest(ctx context.Context, t *testing.T) (*Stack, string) {
 //
 // The control is a doubling of N against the SHAPE THAT MUST SCALE WITH IT: form A
 // materializes N·M·S tuples, so twice the objects is twice the tuples and twice the
-// round trips. The assertion is on the round-trip count (exact, deterministic,
-// immune to a loaded machine) AND on the direction of the duration; asserting only
-// duration would make this proof itself flaky, and asserting only the count would
-// prove the arithmetic rather than the instrument.
+// round trips. Everything asserted here is COUNTED — round trips, tuple rows,
+// sample count — because a counted quantity is the same number on an idle machine
+// and on a runner this test does not have all to itself (#713).
+//
+// Здесь стояло ещё и «вдвое большая работа обязана быть медленнее» (#713). Мысль
+// верна, способ проверки — нет: он сравнивал два ЗАМЕРА, то есть спрашивал про
+// свойство машины, а отвечал как про свойство дерева, и в конвейере уже
+// перевернулся — N=20 p50=315.1мс против N=40 p50=188.1мс на дереве, где ствол в
+// тот же час был зелёным. Замер 2026-08-19 (один и тот же вход, 30 снятий, три
+// условия: вхолостую · 36 занятых петель на 12 ядрах · четыре параллельных стека):
+// p50 при N=20 гулял 85.1…148.8мс (×1.75), при N=40 — 171.8…387.5мс (×2.25), а
+// счётная величина тех же тридцати снятий дала 4 и 8 без единого отклонения. Полоса
+// шума НЕПОДВИЖНОГО входа шире удвоения, о котором утверждение спрашивало, и это
+// не про среднее: в одном из прогонов повторы N=20 дали медиану 98.7мс при максимуме
+// 739.5мс — на трёх выборках один такой выброс СТАНОВИТСЯ медианой.
+//
+// Вопрос «доносит ли канал длительностей разницу» этим не снят, он ПЕРЕНЕСЁН туда,
+// где на него можно ответить детерминированно, — `durationchannel_test.go`: те же
+// проценты вычисляются на известных выборках, без часов и без стека. Здесь остаётся
+// то, что можно утверждать о живом замере, не спрашивая машину о её загрузке.
 func TestHarnessDiscriminatesOnDeliberatelyDifferentInput(t *testing.T) {
 	if testing.Short() {
 		t.Skip("real-OpenFGA proof; -short")
@@ -87,18 +103,46 @@ func TestHarnessDiscriminatesOnDeliberatelyDifferentInput(t *testing.T) {
 		"doubling N did not double the round trips of the shape whose cost IS N·M·S — "+
 			"the harness is not seeing its own input")
 
-	// (c) duration moves in the same direction. A weaker claim than the two above on
-	// purpose: it is the noisy signal, so it is asserted as a direction and never as
-	// a ratio.
-	require.Greaterf(t, cl[OpGrant].P50, cs[OpGrant].P50,
-		"twice the work was not slower (N=20 p50=%.1fms, N=40 p50=%.1fms) — "+
-			"a harness whose duration does not move on knowingly different input "+
-			"cannot be used to say two shapes are equal", cs[OpGrant].P50, cl[OpGrant].P50)
+	// (c) канал длительностей ЖИВ и снят с ЭТОЙ операции: число повторов · ненулевая
+	// длительность · непустой разброс, плюс порядок величин между собой. Загрузка
+	// машины не двигает ни одну из них.
+	//
+	// «Разброс непустой» — единственная здесь не счётная величина, и она названа
+	// вслух: две отдельные записи в движок не занимают одинакового числа микросекунд,
+	// а занятая машина делает разброс БОЛЬШЕ, не меньше. То есть направление её
+	// отказа противоположно тому, из-за которого снято прежнее утверждение: она
+	// краснеет на сломанном приборе (подставленная константа вместо замера), а не на
+	// занятом ранере. Предпосылку — что повторов больше одного — устанавливает первое
+	// утверждение цикла, а не допущение.
+	for _, c := range []struct {
+		name string
+		cell Cell
+	}{{"N=20", cs[OpGrant]}, {"N=40", cl[OpGrant]}} {
+		require.Equalf(t, cfg.WriteRepeats, c.cell.Repeats,
+			"%s: измеренных повторов %d при заказанных %d — выборка снята не с того числа "+
+				"прогонов, каким объявлена (нулевой повтор — разогрев и в счёт не идёт)",
+			c.name, c.cell.Repeats, cfg.WriteRepeats)
+		require.Greaterf(t, c.cell.Min, 0.0,
+			"%s: самый быстрый повтор занял ровно ноль — часы не пошли, и колонка времени "+
+				"в отчёте была бы нулями, неотличимыми от мгновенного ответа", c.name)
+		require.Greaterf(t, c.cell.Max, c.cell.Min,
+			"%s: все повторы одного входа заняли одинаковое время до микросекунды "+
+				"(min=max=%.3fмс) — так отвечает не измерение, а подставленная константа",
+			c.name, c.cell.Min)
+		require.LessOrEqualf(t, c.cell.Min, c.cell.P50, "%s: min выше p50", c.name)
+		require.LessOrEqualf(t, c.cell.P50, c.cell.P95, "%s: p50 выше p95", c.name)
+		require.LessOrEqualf(t, c.cell.P95, c.cell.Max, "%s: p95 выше max", c.name)
+	}
 
-	// (d) and the spread is reported, not collapsed: a p50 with no p95 cannot tell a
-	// real difference from noise.
-	require.GreaterOrEqual(t, cl[OpGrant].P95, cl[OpGrant].P50)
-	require.GreaterOrEqual(t, cs[OpGrant].Repeats, 3)
+	// (d) направление длительности — НАБЛЮДЕНИЕ, а не вердикт. Печатается, чтобы
+	// его можно было прочесть в логе прогона рядом со счётными величинами, и
+	// никогда не роняет прогон: величина, которую двигают соседи по машине, не
+	// может быть условием посадки (#713).
+	t.Logf("наблюдение, не вердикт: grant p50 N=20 %.1fмс (min %.1f, max %.1f) против "+
+		"N=40 %.1fмс (min %.1f, max %.1f), отношение ×%.2f; счётные обращения к движку %d → %d",
+		cs[OpGrant].P50, cs[OpGrant].Min, cs[OpGrant].Max,
+		cl[OpGrant].P50, cl[OpGrant].Min, cl[OpGrant].Max,
+		cl[OpGrant].P50/cs[OpGrant].P50, cs[OpGrant].ReqEngine, cl[OpGrant].ReqEngine)
 }
 
 // TestHarnessDiscriminatesBetweenShapes is the same proof on the other axis: two
