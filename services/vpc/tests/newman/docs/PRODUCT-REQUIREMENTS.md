@@ -161,12 +161,18 @@ RouteTable `static_routes[]`: непустой `destination_prefix` (валид�
 - Validated-by: `*-CR-BVA-NAME-OVER-64`, `*-CR-VAL-NAME-DIGIT-START`, `*-CR-VAL-NAME-HYPHEN-START`, `*-CR-VAL-NAME-SPECIAL-CHARS`
 - Проверка: regex'ы в `pkg/validate/validate.go`.
 
-### REQ-NAME-04 — UNIQUE (project_id, name) — все 7 ресурсов [P1]
+### REQ-NAME-04 — UNIQUE (project_id, name) [P1]
 В пределах project не может быть двух ресурсов одного типа с одинаковым непустым `name` →
-async `ALREADY_EXISTS`. Пустое `name` от уникальности освобождено (partial UNIQUE `WHERE name <> ''`,
-кроме Network — там non-partial).
+async `ALREADY_EXISTS`. Пустое `name` от уникальности освобождено (partial UNIQUE `WHERE name <> ''`)
+— **кроме Network: там индекс полный**, поэтому ВТОРАЯ сеть с пустым именем в одном проекте
+получает `ALREADY_EXISTS` (расхождение с соседями; предмет отдельной задачи, не этой).
 - Validated-by: `*-CR-NEG-DUP-NAME`, `*-CR-NEG-DUP-NAME-CHECK`
-- Проверка: `internal/migrations/0001_initial.sql` (`networks_project_id_name_key` и одноимённые индексы прочих ресурсов — вся name-уникальность живёт в начальной миграции); `serviceerr.MapRepoErr` (`23505` → `ErrAlreadyExists`).
+- Проверка: `serviceerr.MapRepoErr` (`23505` → `ErrAlreadyExists`) плюс сами индексы. Число
+  ресурсов в заголовке НЕ стоит намеренно: оно росло молча (запись «все 7» пережила восьмой
+  индекс, заведённый миграцией `0035_cidr_groups.sql`). Считать предикатом:
+  `grep -rn "project_id, name" services/vpc/internal/migrations/*.sql` — на 2026-08-18 он даёт
+  **8** индексов: семь в `0001_initial.sql` (шесть частичных + полный `networks_project_id_name_key`)
+  и один частичный в `0035_cidr_groups.sql`. Число — ориентир с датой, а не гейт.
 
 ---
 
