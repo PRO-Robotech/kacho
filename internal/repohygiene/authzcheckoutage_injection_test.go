@@ -16,6 +16,7 @@ package repohygiene
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -38,7 +39,16 @@ func injectAuthzTree(t *testing.T, files map[string]string) AuthzCheckCensus {
 			t.Fatalf("write %s: %v", name, err)
 		}
 	}
-	c, err := ScanAuthzCheckOutage(root)
+	// Список подаётся ЯВНО — как его подал бы индекс. Синтетика репозиторием не
+	// является, спрашивать у неё индекс нечего, и обход диска здесь был бы не
+	// откатом, а единственным авторитетом; явный список честнее обоих.
+	rels := make([]string, 0, len(files))
+	for name := range files {
+		rels = append(rels, name)
+	}
+	sort.Strings(rels)
+
+	c, err := ScanAuthzCheckOutage(root, rels)
 	if err != nil {
 		t.Fatalf("разбор синтетики: %v", err)
 	}

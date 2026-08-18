@@ -88,50 +88,44 @@ type AuthzCheckCensus struct {
 	Findings  []AuthzCheckSite
 }
 
-// ScanAuthzCheckOutage обходит непробное дерево и разбирает вызовы проверки прав.
+// ScanAuthzCheckOutage разбирает вызовы проверки прав в НАЗВАННЫХ файлах.
+//
+// Состав дерева приходит АРГУМЕНТОМ, а не берётся обходом диска, и это не стиль.
+// Под корнем репозитория лежат каталоги, которых в репозитории нет — рабочие
+// копии агентов, отчёты прогонов, локальные оверлеи, сборочные каталоги, — и
+// прочитав их, гейт сделал бы свой вердикт свойством ЧУЖОГО рабочего каталога, а
+// не коммита. Врёт это в обе стороны: красное на файле, которого в репозитории
+// нет, и молчание в свежем клоне там, где гейт обязан говорить. Первая редакция
+// обходила диск и была на этом справедливо поймана гейтом `TestTreeWalkersAskTheIndex`.
 //
 // Пробные файлы исключены НАМЕРЕННО: дублёр, отвечающий отказом на любой вход, —
 // законная фикстура, и требовать от неё различения исходов значило бы требовать
 // свойство от того, что свойством не обладает. Сгенерированные стабы исключены
 // по той же причине, по какой они не правятся руками.
-func ScanAuthzCheckOutage(root string) (AuthzCheckCensus, error) {
+func ScanAuthzCheckOutage(root string, rels []string) (AuthzCheckCensus, error) {
 	var c AuthzCheckCensus
 	fset := token.NewFileSet()
 
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "node_modules", "vendor", "testdata":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		rel, rerr := filepath.Rel(root, path)
-		if rerr != nil {
-			return rerr
-		}
+	for _, rel := range rels {
 		rel = filepath.ToSlash(rel)
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
 		// `pkg/api` — сгенерённые стабы; `internal/repohygiene` — сам разбор и его
 		// синтетика, иначе гейт судил бы собственные фикстуры.
 		if strings.HasPrefix(rel, "pkg/api/") || strings.HasPrefix(rel, "internal/repohygiene/") {
-			return nil
+			continue
 		}
 
-		src, rerr := os.ReadFile(path)
+		src, rerr := os.ReadFile(filepath.Join(root, rel))
 		if rerr != nil {
-			return rerr
+			return c, rerr
 		}
-		file, perr := parser.ParseFile(fset, path, src, 0)
+		file, perr := parser.ParseFile(fset, rel, src, 0)
 		if perr != nil {
 			// Неразбираемый файл НЕ пропускается молча: молчание здесь
 			// неотличимо от чистоты.
-			return perr
+			return c, perr
 		}
 		c.FilesRead++
 
@@ -147,9 +141,8 @@ func ScanAuthzCheckOutage(root string) (AuthzCheckCensus, error) {
 				}
 			}
 		}
-		return nil
-	})
-	return c, err
+	}
+	return c, nil
 }
 
 // scanFuncForAuthzCheck разбирает ОДНУ функцию: находит вызовы проверки прав и

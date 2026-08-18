@@ -12,7 +12,10 @@
 package repohygiene
 
 import (
+	"path/filepath"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // TestAuthzCheckOutageIsNotADenial — ни один страж прав в непробном дереве не
@@ -30,9 +33,25 @@ import (
 func TestAuthzCheckOutageIsNotADenial(t *testing.T) {
 	root := repoRoot(t)
 
-	c, err := ScanAuthzCheckOutage(root)
+	// Состав дерева берётся У ИНДЕКСА, а не обходом диска: под корнем лежат
+	// каталоги, которых в репозитории нет, и вердикт стал бы свойством рабочего
+	// каталога, а не коммита.
+	abs, err := treecorpus.UnderWithSuffix(root, ".go")
 	if err != nil {
-		t.Fatalf("обход дерева: %v", err)
+		t.Fatalf("состав дерева взять неоткуда: %v", err)
+	}
+	rels := make([]string, 0, len(abs))
+	for _, a := range abs {
+		rel, rerr := filepath.Rel(root, a)
+		if rerr != nil {
+			t.Fatalf("относительный путь для %s: %v", a, rerr)
+		}
+		rels = append(rels, filepath.ToSlash(rel))
+	}
+
+	c, err := ScanAuthzCheckOutage(root, rels)
+	if err != nil {
+		t.Fatalf("разбор дерева: %v", err)
 	}
 
 	// ПЕРЕПИСЬ — печатается ВСЕГДА. «Ноль находок» обязано быть отличимо от
