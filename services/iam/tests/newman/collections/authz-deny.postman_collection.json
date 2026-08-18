@@ -24064,7 +24064,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"hack_role_anon\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\", \"project\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\", \"securityGroup\"], \"verbs\": [\"*\"]}, {\"module\": \"compute\", \"resources\": [\"instance\", \"disk\"], \"verbs\": [\"*\"]}]}",
+              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"hack_role_anon\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\", \"project\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\", \"securityGroup\"], \"verbs\": [\"*\"]}, {\"module\": \"compute\", \"resources\": [\"instance\"], \"verbs\": [\"*\"]}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -24144,7 +24144,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"hack_role_nob\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\", \"project\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\", \"securityGroup\"], \"verbs\": [\"*\"]}, {\"module\": \"compute\", \"resources\": [\"instance\", \"disk\"], \"verbs\": [\"*\"]}]}",
+              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"hack_role_nob\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\", \"project\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\", \"securityGroup\"], \"verbs\": [\"*\"]}, {\"module\": \"compute\", \"resources\": [\"instance\"], \"verbs\": [\"*\"]}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -24233,7 +24233,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"hack_role_pa1\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\", \"project\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\", \"securityGroup\"], \"verbs\": [\"*\"]}, {\"module\": \"compute\", \"resources\": [\"instance\", \"disk\"], \"verbs\": [\"*\"]}]}",
+              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"hack_role_pa1\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\", \"project\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\", \"securityGroup\"], \"verbs\": [\"*\"]}, {\"module\": \"compute\", \"resources\": [\"instance\"], \"verbs\": [\"*\"]}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -24322,7 +24322,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"hack_role_aaa\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\", \"project\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\", \"securityGroup\"], \"verbs\": [\"*\"]}, {\"module\": \"compute\", \"resources\": [\"instance\", \"disk\"], \"verbs\": [\"*\"]}]}",
+              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"hack_role_aaa\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\", \"project\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\", \"securityGroup\"], \"verbs\": [\"*\"]}, {\"module\": \"compute\", \"resources\": [\"instance\"], \"verbs\": [\"*\"]}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -24413,7 +24413,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"hack_role_aab\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\", \"project\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\", \"securityGroup\"], \"verbs\": [\"*\"]}, {\"module\": \"compute\", \"resources\": [\"instance\", \"disk\"], \"verbs\": [\"*\"]}]}",
+              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"hack_role_aab\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\", \"project\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\", \"securityGroup\"], \"verbs\": [\"*\"]}, {\"module\": \"compute\", \"resources\": [\"instance\"], \"verbs\": [\"*\"]}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -24502,7 +24502,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"hack_role_inv\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\", \"project\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\", \"securityGroup\"], \"verbs\": [\"*\"]}, {\"module\": \"compute\", \"resources\": [\"instance\", \"disk\"], \"verbs\": [\"*\"]}]}",
+              "raw": "{\"accountId\": \"{{accountAId}}\", \"name\": \"hack_role_inv\", \"rules\": [{\"module\": \"iam\", \"resources\": [\"user\", \"role\", \"account\", \"project\"], \"verbs\": [\"*\"]}, {\"module\": \"vpc\", \"resources\": [\"network\", \"subnet\", \"securityGroup\"], \"verbs\": [\"*\"]}, {\"module\": \"compute\", \"resources\": [\"instance\"], \"verbs\": [\"*\"]}]}",
               "options": {
                 "raw": {
                   "language": "json"

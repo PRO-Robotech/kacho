@@ -945,7 +945,14 @@ for subj in SUBJECTS:
           "rules": [
               {"module": "iam", "resources": ["user", "role", "account", "project"], "verbs": ["*"]},
               {"module": "vpc", "resources": ["network", "subnet", "securityGroup"], "verbs": ["*"]},
-              {"module": "compute", "resources": ["instance", "disk"], "verbs": ["*"]},
+              # `disk` здесь стоял до раскола блочного хранения и пережил его: тип
+              # `compute.disk` отставлен (владелец — storage), и iam отвергает
+              # правило, называющее снятый ресурс, — `domain.validateRetirementGate`.
+              # Отказ приходил на ALLOW-полосу как 400, то есть кейс проверял не
+              # эскалацию прав, а собственную несвежесть. Гейт верен, фикстура была
+              # мертва: перепись по дереву дала ровно одно такое место из 13 правил
+              # с `"module": "compute"`.
+              {"module": "compute", "resources": ["instance"], "verbs": ["*"]},
           ]}, subj)
 
 # HIGH-1: User.List unqualified (без accountId) — scope-filter RPC: 200 со
