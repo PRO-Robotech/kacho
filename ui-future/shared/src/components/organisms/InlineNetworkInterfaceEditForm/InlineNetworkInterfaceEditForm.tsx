@@ -166,7 +166,7 @@ export function InlineNetworkInterfaceEditForm({ projectId, nicId, onCancel, onS
         colon={false}
         size="middle"
       >
-        <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах фолдера. Можно изменять.")} required>
+        <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах фолдера. Можно изменять.")}>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Form.Item>
 

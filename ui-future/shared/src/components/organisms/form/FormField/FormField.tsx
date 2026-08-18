@@ -23,6 +23,11 @@ interface Props {
   // рендерится снаружи, например в AntD Form.Item). Используется для
   // горизонтального label-left layout, где label слева, input справа.
   hideLabel?: boolean;
+  // Идентификатор контрола, назначенный СНАРУЖИ. Нужен там, где подпись рисует
+  // не сам renderer, а его вызывающий, и обязан связать её со своим вводом
+  // (`<label for>`): строка составного списка (ArrayItemField). Не задан —
+  // renderer чеканит свой, как и раньше.
+  controlId?: string;
 }
 
 function fullPath(prefix: string, name: string): string {
@@ -30,7 +35,21 @@ function fullPath(prefix: string, name: string): string {
   return `${prefix}.${name}`;
 }
 
-export function FormFieldRenderer({ field, pathPrefix, value, onChange, editMode, hideLabel }: Props) {
+// Виды полей, чей ввод — ОДИН элемент, принимающий назначенный снаружи
+// идентификатор (`ScalarFieldRenderer` ставит его на сам контрол). Только их
+// подпись вправе быть `<label for>`.
+//
+// Снаружи оставлены две группы, и обе намеренно:
+//  • `custom` / `array` / `labels` / `sg-rules` — своё поддерево, одного ввода нет;
+//  • `bool` — переключатель антд, то есть `<button>`: подпись не вправе именовать
+//    через `for` элемент, который подписи не принимает.
+const НАЗЫВАЕМЫЕ_ПОДПИСЬЮ = new Set(["string", "text", "int", "enum", "ref"]);
+
+function называетсяПодписью(field: FF): boolean {
+  return НАЗЫВАЕМЫЕ_ПОДПИСЬЮ.has(field.type);
+}
+
+export function FormFieldRenderer({ field, pathPrefix, value, onChange, editMode, hideLabel, controlId }: Props) {
   if (field.hidden) return null;
   if (editMode && field.editHidden) return null;
   if (field.visibleWhen) {
@@ -99,6 +118,7 @@ export function FormFieldRenderer({ field, pathPrefix, value, onChange, editMode
       onChange={onChange}
       disabled={disabled}
       hideLabel={hideLabel}
+      controlId={controlId}
     />
   );
 }
@@ -110,8 +130,13 @@ function ScalarFieldRenderer({
   onChange,
   disabled,
   hideLabel,
+  controlId,
 }: Props & { disabled?: boolean }) {
-  const id = useId();
+  const ownId = useId();
+  // Идентификатор снаружи сильнее собственного: подпись рисует вызывающий, и
+  // связать её со своим вводом он может только тем идентификатором, который сам
+  // и назначил.
+  const id = controlId ?? ownId;
   const path = fullPath(pathPrefix, field.name);
   const cur = getByPath(value, path);
 
@@ -209,12 +234,33 @@ function ScalarFieldRenderer({
 // ArrayItemField — компактная обёртка для поля внутри array-item:
 // mini-label сверху (11px, серый), * для required справа, ⓘ-tooltip если есть
 // description. Input снизу через children (hideLabel=true в FormFieldRenderer).
+//
+// ПОДПИСЬ — НАСТОЯЩИЙ `<label for>` ТАМ, ГДЕ ЕЙ ЕСТЬ ЧТО ИМЕНОВАТЬ.
+//
+// Прежде это был `<span>`: у ввода внутри строки не было доступного имени
+// ВООБЩЕ — ни `label for`, ни `aria-label`. Читающий с экрана слышал «поле
+// ввода» без единого слова о том, что вводить, а адресовать такое подполе можно
+// было только через соседнюю разметку («первый такой-то», «внутри обёртки»).
+// Обёртки формы (`.ant-form-item`) у подполя нет by construction — строка
+// рисуется обычными `div`, — поэтому сквозная проба целилась во ВНЕШНЕЕ поле
+// составного виджета и не находила ничего (#600).
+//
+// `htmlFor` НЕОБЯЗАТЕЛЕН, и это не послабление. Подполе, рисующее собственное
+// поддерево (`custom`, вложенный список, редактор меток), одного ввода не имеет
+// — `for` указывал бы в пустоту, то есть подпись утверждала бы, что именует
+// контрол, которого по этому адресу нет. Там остаётся текст, как и было.
+//
+// Звёздочка обязательности и ⓘ стоят ВНЕ `<label>` намеренно: иконка антд несёт
+// своё `aria-label`, и внутри подписи она стала бы частью доступного имени
+// («Внешний адрес question-circle»).
 function ArrayItemField({
+  htmlFor,
   label,
   required,
   description,
   children,
 }: {
+  htmlFor?: string;
   label: string;
   required?: boolean;
   description?: string;
@@ -233,7 +279,13 @@ function ArrayItemField({
           whiteSpace: "nowrap",
         }}
       >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+        {htmlFor ? (
+          <label htmlFor={htmlFor} style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+            {label}
+          </label>
+        ) : (
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+        )}
         {required && (
           <span style={{ color: "#ff4d4f" }} aria-hidden>
             *
@@ -259,6 +311,11 @@ function ArrayFieldRenderer({
   disabled,
   hideLabel,
 }: { field: ArrayField; disabled?: boolean } & Omit<Props, "field">) {
+  // Основа идентификаторов подполей строки. Каждое подполе получает свой
+  // (`<основа>-<строка>-<имя подполя>`), иначе одна подпись связалась бы со
+  // ВСЕМИ вводами того же имени — и правка «второй» строки молча уходила бы в
+  // первую.
+  const uid = useId();
   const path = fullPath(pathPrefix, field.name);
   const items = (getByPath(value, path) as Record<string, unknown>[] | undefined) ?? [];
 
@@ -325,6 +382,7 @@ function ArrayFieldRenderer({
             }}
           >
             {visible.map((sub) => {
+              const subId = `${uid}-${idx}-${sub.name}`;
               const input = (
                 <FormFieldRenderer
                   field={sub}
@@ -333,11 +391,18 @@ function ArrayFieldRenderer({
                   onChange={onChange}
                   editMode={editMode}
                   hideLabel
+                  controlId={subId}
                 />
               );
               if (soleItemField) return <div key={sub.name}>{input}</div>;
               return (
-                <ArrayItemField key={sub.name} label={sub.label} required={!!sub.required} description={sub.description}>
+                <ArrayItemField
+                  key={sub.name}
+                  htmlFor={называетсяПодписью(sub) ? subId : undefined}
+                  label={sub.label}
+                  required={!!sub.required}
+                  description={sub.description}
+                >
                   {input}
                 </ArrayItemField>
               );
