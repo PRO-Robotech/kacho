@@ -60,25 +60,41 @@ const APPS = discoverApps();
 const EDIT_PATHS = [
   ["shared", "shared/src/components/organisms/ResourceEditPage/ResourceEditPage.tsx"],
   ["shared", "shared/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx"],
-  ["compute", "compute/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx"],
-  ["nlb", "nlb/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx"],
-  ["registry", "registry/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx"],
-  ["storage", "storage/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx"],
 ] as const;
 
-// ResourceCreatePage is no longer listed per remote: the four vendored copies
-// were folded into the shared one (see shared-organisms-single-source.test.ts),
-// so the shared entry below covers every app that renders it.
+// Neither ResourceCreatePage nor the two inline forms are listed per remote any
+// more: the vendored copies were folded into the shared ones (see
+// shared-organisms-single-source.test.ts), so the shared entries below cover
+// every app that renders them.
 const CREATE_PATHS = [
   ["shared", "shared/src/components/organisms/ResourceCreatePage/ResourceCreatePage.tsx"],
   ["shared", "shared/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx"],
-  ["compute", "compute/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx"],
-  ["nlb", "nlb/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx"],
-  ["registry", "registry/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx"],
-  ["storage", "storage/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx"],
 ] as const;
 
 const read = (rel: string) => readFileSync(path.join(uiRoot, rel), "utf8");
+
+/**
+ * A shim is not a copy — and telling them apart is the whole reason this guard
+ * can shrink instead of breaking.
+ *
+ * A file that only re-exports declares no submit path: it has no body to build,
+ * so asserting `buildCreateBody(` against it would be asserting about the wrong
+ * file. Folding a copy into `shared/` therefore REMOVES its entry above, and the
+ * census below stops counting it — exactly as happened to the four
+ * `ResourceCreatePage` copies before it.
+ *
+ * What must NOT weaken: a module that stops delegating and grows its own body
+ * again is a copy once more, so the census sees it, finds it unlisted, and goes
+ * red. Recognition is by CONTENT, not by name or line count — a copy that merely
+ * happens to be short must not pass as a shim.
+ */
+function isShim(src: string): boolean {
+  const code = src
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "" && !l.startsWith("//") && !l.startsWith("*") && !l.startsWith("/*"));
+  return code.length > 0 && code.every((l) => /^export\s+(\*|\{[^}]*\})\s+from\s+["']/.test(l));
+}
 
 describe("generic submit paths build the request body", () => {
   it("lists nothing that no longer exists — a stale entry covers nothing", () => {
@@ -112,6 +128,7 @@ describe("generic submit paths build the request body", () => {
   it("covers every copy that exists on disk — a new remote must be listed here", () => {
     const listed = new Set<string>([...EDIT_PATHS, ...CREATE_PATHS].map(([, rel]) => rel));
     const found: string[] = [];
+    const shims: string[] = [];
     for (const app of APPS) {
       for (const comp of [
         "ResourceEditPage/ResourceEditPage",
@@ -120,17 +137,26 @@ describe("generic submit paths build the request body", () => {
         "InlineResourceCreateForm/InlineResourceCreateForm",
       ]) {
         const rel = `${app}/src/components/organisms/${comp}.tsx`;
-        if (existsSync(path.join(uiRoot, rel))) found.push(rel);
+        if (!existsSync(path.join(uiRoot, rel))) continue;
+        (isShim(read(rel)) ? shims : found).push(rel);
       }
     }
-    // Census in the message: the number of apps swept and copies found, so a
-    // green run states what it looked at rather than only that it passed.
+    // Census in the message: apps swept, real copies found, and delegating shims
+    // — so a green run states what it looked at rather than only that it passed.
+    // Shims are reported, not hidden: "no copies left" and "nothing scanned" must
+    // stay distinguishable, and a shim count that silently fell to zero would
+    // mean the recognition above stopped working, not that the tree changed.
     expect({
       apps: APPS.length,
       copiesFound: found.length,
+      shims: shims.length,
       unlisted: found.filter((rel) => !listed.has(rel)),
-    }).toEqual({ apps: APPS.length, copiesFound: found.length, unlisted: [] });
+    }).toEqual({ apps: APPS.length, copiesFound: found.length, shims: shims.length, unlisted: [] });
     expect(found.length).toBeGreaterThan(0);
+    // Own premise: the four inline forms folded into `shared/` still delegate.
+    // Without this the guard would go quietly vacuous the day a fold is reverted
+    // by deleting the shim rather than by restoring a copy.
+    expect(shims.length).toBeGreaterThan(0);
   });
 
   for (const [app, rel] of EDIT_PATHS) {

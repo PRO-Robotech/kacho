@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url";
 
 import ts from "typescript";
 
-import { hasDependencyResolver } from "@/lib/dependency-graph";
+import { hasDependencyResolver } from "@shared/lib/dependency-graph";
 import { REGISTRY } from "@/lib/resource-registry";
 
 const SRC_DIR = fileURLToPath(new URL("..", import.meta.url));
@@ -175,7 +175,12 @@ describe("шапка client.ts перечисляет ровно те эндпо
   it("прочитан непустой объём: файлы, объявленные и адресуемые токены", () => {
     // Положительный контроль объёма — без него «множества совпали» неотличимо от
     // «оба пусты, потому что предикат ничего не нашёл».
-    expect(files.length).toBeGreaterThan(100);
+    // Порог — защита от «прочитано ноль», а НЕ пин сегодняшнего размера дерева.
+    // Прежние 100 были ровно текущим числом файлов и стали ложью в тот день,
+    // когда сведение форков к прослойкам удалило из приложения 16 недостижимых
+    // модулей: тест покраснел на УМЕНЬШЕНИИ копий, то есть на достижении своей
+    // же цели. Порог отвязан от размера и держит только непустоту обхода.
+    expect(files.length).toBeGreaterThan(50);
     expect(behindShims.length).toBeGreaterThan(0);
     expect(declared.size).toBeGreaterThan(5);
     expect(addressed.size).toBeGreaterThan(5);
