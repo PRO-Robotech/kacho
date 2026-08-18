@@ -164,15 +164,34 @@ RouteTable `static_routes[]`: непустой `destination_prefix` (валид�
 ### REQ-NAME-04 — UNIQUE (project_id, name) [P1]
 В пределах project не может быть двух ресурсов одного типа с одинаковым непустым `name` →
 async `ALREADY_EXISTS`. Пустое `name` от уникальности освобождено (partial UNIQUE `WHERE name <> ''`)
-— **кроме Network: там индекс полный**, поэтому ВТОРАЯ сеть с пустым именем в одном проекте
-получает `ALREADY_EXISTS` (расхождение с соседями; предмет отдельной задачи, не этой).
+— **у всех ресурсов без исключений**: расхождение Network (полный индекс, из-за которого вторая
+сеть с пустым именем получала `ALREADY_EXISTS`) снято миграцией
+`669001_networks_empty_name_partial_unique.sql`, задача #669.
 - Validated-by: `*-CR-NEG-DUP-NAME`, `*-CR-NEG-DUP-NAME-CHECK`
 - Проверка: `serviceerr.MapRepoErr` (`23505` → `ErrAlreadyExists`) плюс сами индексы. Число
   ресурсов в заголовке НЕ стоит намеренно: оно росло молча (запись «все 7» пережила восьмой
   индекс, заведённый миграцией `0035_cidr_groups.sql`). Считать предикатом:
-  `grep -rn "project_id, name" services/vpc/internal/migrations/*.sql` — на 2026-08-18 он даёт
-  **8** индексов: семь в `0001_initial.sql` (шесть частичных + полный `networks_project_id_name_key`)
-  и один частичный в `0035_cidr_groups.sql`. Число — ориентир с датой, а не гейт.
+  предикатом ниже. Простой `grep` для этого НЕ годится и даёт неверное число: он
+  считает и комментарии, и определения из `-- +goose Down`, и ОТМЕНЁННУЮ форму —
+  `0001` держит `networks` полным, а `669001` пересоздаёт его частичным, поэтому
+  читать надо ПОСЛЕДНЕЕ определение каждого индекса, а не первое вхождение строки.
+
+  ```sh
+  python3 - <<'EOF'
+  import glob,re,os
+  eff={}
+  for f in sorted(glob.glob("services/vpc/internal/migrations/*.sql")):
+      up=open(f,encoding="utf-8").read().split("-- +goose Down")[0]
+      src=re.sub(r"--[^\n]*","",up)
+      for m in re.finditer(r"CREATE UNIQUE INDEX(?:\s+IF NOT EXISTS)?\s+(\w+)\s+ON\s+[\w.]*?(\w+)\s*\(project_id,\s*name\)([^;]*);",src,re.S):
+          eff[m.group(1)]=(m.group(2),"частичный" if "WHERE" in m.group(3).upper() else "ПОЛНЫЙ")
+  for n,(t,form) in sorted(eff.items(),key=lambda kv:kv[1][0]): print(f"{t:22}{form}")
+  print("индексов:",len(eff),"полных:",sum(1 for v in eff.values() if v[1]=="ПОЛНЫЙ"))
+  EOF
+  ```
+
+  На 2026-08-18 (после #669): **8 индексов, полных 0**. Число — ориентир с датой,
+  а «полных 0» — то свойство, ради которого предикат здесь и стоит.
 
 ---
 
