@@ -31,6 +31,7 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 
+	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
@@ -268,15 +269,34 @@ func runServe(cfg config.Config) error {
 	// вставка, поэтому исчерпание приезжает отказом операции, а «потолок не
 	// назван» остаётся отказом. Молча снять учёт отсутствием соседа нельзя: ровно
 	// так контроль и становится мёртвым, оставаясь на вид работающим.
+	var quotaHandler *handler.QuotaHandler
 	if authzConn != nil {
-		quotaGuard := quota.NewGuard(pg.NewQuotaRepo(pool), clients.NewLimitClient(authzConn), iamClient)
+		limitClient := clients.NewLimitClient(authzConn)
+		quotaGuard := quota.NewGuard(pg.NewQuotaRepo(pool), limitClient, iamClient)
 		volumeUC.WithQuota(quotaGuard)
 		snapshotUC.WithQuota(quotaGuard)
 		imageUC.WithQuota(quotaGuard)
+		// Чтение квот арендатором — та же полоса, что и ранний отказ: у чтения и
+		// у полосы ровно два источника, и они одни и те же.
+		quotaHandler = handler.NewQuotaHandler(quotaGuard)
+
+		// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка,
+		// заведённая один раз, живёт со своей величиной вечно, и смена предела
+		// администратором не доезжает до проекта никогда. Показывать арендатору
+		// такой снимок значило бы громко назвать число, которое не догонит
+		// назначенное, — поэтому чтение и тянущий едут вместе.
+		stopQuotaSync, qerr := corequota.StartLimitSyncer(
+			ctx, pool, limitClient, pg.QuotaSchema, corequota.Config{}, logger)
+		if qerr != nil {
+			return fmt.Errorf("start quota limit syncer: %w", qerr)
+		}
+		defer stopQuotaSync()
 	} else {
 		logger.Warn("resource-count quota advisory band NOT wired (authz.iam-addr empty) — " +
 			"the charging trigger still holds the ceiling, but the tenant learns of exhaustion " +
-			"from the operation instead of a synchronous refusal")
+			"from the operation instead of a synchronous refusal, and the limit snapshot will " +
+			"NEVER catch up with the authority: an administrator raising or lowering a ceiling " +
+			"has no effect on this process")
 	}
 
 	// ── FGA owner-tuple register-drainer + sync-registrar (SEC-D, анти-BOLA) ──
@@ -384,7 +404,7 @@ func runServe(cfg config.Config) error {
 	opHandler := handler.NewOperationHandler(opsRepo)
 	serveErr := servicehost.Serve(ctx, desc,
 		func(reg grpc.ServiceRegistrar) {
-			registerPublic(reg, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
+			registerPublic(reg, volumeUC, snapshotUC, imageUC, diskTypeUC, quotaHandler, opHandler)
 		},
 		func(reg grpc.ServiceRegistrar) {
 			registerInternal(reg, volumeUC, imageUC, diskTypeUC, storageBackendUC, diskTypeBindingUC, opHandler)
@@ -618,12 +638,20 @@ func registerPublic(
 	snapshotUC *snapshot.UseCase,
 	imageUC *image.UseCase,
 	diskTypeUC *disktype.UseCase,
+	quotaHandler *handler.QuotaHandler,
 	opHandler operationpb.OperationServiceServer,
 ) {
 	storagev1.RegisterVolumeServiceServer(reg, handler.NewVolumeHandler(volumeUC))
 	storagev1.RegisterSnapshotServiceServer(reg, handler.NewSnapshotHandler(snapshotUC))
 	storagev1.RegisterImageServiceServer(reg, handler.NewImageHandler(imageUC))
 	storagev1.RegisterDiskTypeServiceServer(reg, handler.NewDiskTypeHandler(diskTypeUC))
+	// Чтение квот выставляется, ТОЛЬКО когда полоса учёта собрана. Иначе метод
+	// отвечал бы пустым набором на каждый запрос — то есть «квот нет», ровно то
+	// утверждение, которое контракт запрещает делать. Незарегистрированный метод
+	// отвечает `Unimplemented`, и это честно: возможности здесь действительно нет.
+	if quotaHandler != nil {
+		storagev1.RegisterQuotaServiceServer(reg, quotaHandler)
+	}
 	operationpb.RegisterOperationServiceServer(reg, opHandler)
 }
 

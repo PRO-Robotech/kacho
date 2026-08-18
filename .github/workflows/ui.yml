@@ -350,10 +350,13 @@ jobs:
           tag="$safe-${{ github.sha }}"
           # Проверка ровно та, что применяет сам buildx. Без неё отказ приезжает из
           # глубины сборки чужим сообщением, а место, которое его породило, молчит.
-          printf '%s' "$tag" | grep -Eq '^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$' || {
+          # Сверка — БЕЗ трубы. `defaults.run.shell: bash` включает `pipefail`, а
+          # `… | grep -Eq` возвращает ОТКАЗ НА СОВПАДЕНИИ: grep выходит по первому
+          # попаданию, printf получает SIGPIPE, и статус берётся от него (#658).
+          if ! [[ "$tag" =~ ^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$ ]]; then
             echo "::error::негодный тег образа «$tag» (ref_name=«$raw») — перевод не дал валидной формы"
             exit 1
-          }
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: login to Docker Hub

@@ -6,12 +6,14 @@ package quota
 import (
 	"context"
 	stderrors "errors"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/pkg/quota/quotaread"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
@@ -47,6 +49,28 @@ type fakeQuotaRepo struct {
 
 func newFakeRepo() *fakeQuotaRepo {
 	return &fakeQuotaRepo{rows: map[string]int64{}, used: map[string]int64{}}
+}
+
+// ListStates отдаёт те строки, которые у подставного учёта ЕСТЬ, — и в том же
+// порядке, что настоящий (`ORDER BY kind`).
+//
+// Порядок здесь не косметика: полоса чтения обещает его контракту, и дублёр,
+// отдающий что попало, сделал бы невидимым ровно тот дефект, ради которого
+// порядок и закреплён.
+func (f *fakeQuotaRepo) ListStates(_ context.Context, carrierType, carrierID string) ([]quotaread.State, error) {
+	kinds := make([]string, 0, len(f.rows))
+	for k := range f.rows {
+		kinds = append(kinds, k)
+	}
+	sort.Strings(kinds)
+	out := make([]quotaread.State, 0, len(kinds))
+	for _, k := range kinds {
+		out = append(out, quotaread.State{
+			Kind: k, Limit: f.rows[k], Used: f.used[k],
+			CarrierType: carrierType, CarrierID: carrierID,
+		})
+	}
+	return out, nil
 }
 
 func (f *fakeQuotaRepo) Admit(_ context.Context, _, _, kind string) error {

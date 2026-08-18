@@ -97,10 +97,6 @@ var kindsWithoutADebitProducer = map[string]string{
 	// четыре ПРИТВОРЯЛИСЬ списываемыми: строка заводилась с носителем `project`,
 	// показывала арендатору потребление 0 и не наполнялась никогда. Теперь их
 	// просто нет у владельца — и это состояние наблюдаемо, а не замаскировано.
-	"vpc.network.subnet":          "#414: у vpc нет механизма носителя вложенности",
-	"vpc.network.routeTable":      "#414: у vpc нет механизма носителя вложенности",
-	"vpc.network.securityGroup":   "#414: у vpc нет механизма носителя вложенности",
-	"vpc.subnet.networkInterface": "#414: у vpc нет механизма носителя вложенности",
 }
 
 // TestEveryCatalogueKindHasADebitProducer — у каждого вида каталога есть тот,
