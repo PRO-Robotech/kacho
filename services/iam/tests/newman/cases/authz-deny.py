@@ -110,11 +110,39 @@ EXPECT = {
     # of the caller's account/project role. DENY for all (the request never
     # reaches the repo to return 404).
     "garbage-perresource":    {"ANON":"DENY","NOB":"DENY","PA1":"DENY","AAA":"DENY","AAB":"DENY","INV":"DENY"},
-    # UserService.Get of a specific user — only that user
-    # themselves resolves (`iam_user.viewer` includes `subject`); each base
-    # test-user owns their own home account so no cross-user admin path exists.
-    "user-get-nob":           {"ANON":"DENY","NOB":"ALLOW","PA1":"DENY","AAA":"DENY","AAB":"DENY","INV":"DENY"},
-    "user-get-inv":           {"ANON":"DENY","NOB":"DENY","PA1":"DENY","AAA":"DENY","AAB":"DENY","INV":"ALLOW"},
+    # UserService.Get записи пользователя — читать её вправе САМ пользователь
+    # (`iam_user.v_get` содержит `subject`); каждый базовый тест-пользователь
+    # владеет своим домашним аккаунтом, поэтому пути «через администратора» нет.
+    #
+    # НО НИ ОДИН СУБЪЕКТ ЭТОЙ МАТРИЦЫ САМИМ ПОЛЬЗОВАТЕЛЕМ НЕ ЯВЛЯЕТСЯ, И БЫТЬ ИМ
+    # НЕ МОЖЕТ — поэтому здесь DENY по всей строке, а не ALLOW на «своей» клетке.
+    # Основание структурное, а не «не хватает выдачи»:
+    #
+    #   * `define subject: [user]` (proto/kacho/cloud/iam/v1/fga_model.fga, тип
+    #     `iam_user`) — отношение принимает ТОЛЬКО тип `user`;
+    #   * каждый предъявитель этой матрицы аутентифицируется как
+    #     `service_account` — объявлено данными в
+    #     tests/authz-fixtures/principal_pairings.py, где прямо сказано, что
+    #     `userNOBId` / `userINVId` / `userPureNoBindingsId` — ТОЛЬКО цели
+    #     привязки, и «ни один выдаваемый токен ими не аутентифицируется и не
+    #     может»: машинный посев добывает `client_credentials`, то есть
+    #     служебную учётку (почему именно так — tests/authz-fixtures/mint_rs256.py,
+    #     раздел `user_rs256`: у пользовательского токена `aud` жёстко
+    #     kacho-внутренний и не совпадает с ExpectedAudience края, плюс он не
+    #     несёт `acr` и не проходит порог повышения, от которого машина
+    #     освобождена, а человек — нет).
+    #
+    # Значит `service_account` не удовлетворяет `subject` НИ ПРИ КАКОЙ выдаче, и
+    # прежняя клетка ALLOW не имела производителя: 404 (скрытие существования) —
+    # правильный ответ продукта на запрос, который шаг РЕАЛЬНО делает. Клетка была
+    # ALLOW с 2026-07-26 (c4960673, «self всё ещё значит self»), где цель
+    # переставили вслед за субъектом; переставили ЦЕЛЬ, но принципал остался
+    # служебной учёткой, поэтому самочтением строка так и не стала ни разу.
+    #
+    # ALLOW-полоса самочтения НЕ потеряна — она вынесена туда, где у неё есть
+    # производитель: AUTHZ-USR-GT-SELF-CEREMONY ниже, человеческим предъявителем.
+    "user-get-nob":           {"ANON":"DENY","NOB":"DENY","PA1":"DENY","AAA":"DENY","AAB":"DENY","INV":"DENY"},
+    "user-get-inv":           {"ANON":"DENY","NOB":"DENY","PA1":"DENY","AAA":"DENY","AAB":"DENY","INV":"DENY"},
 }
 
 
@@ -845,18 +873,23 @@ for subj in SUBJECTS:
 
 for subj in SUBJECTS:
     # UserService.Get is per-resource-gated on `iam_user:<id>`.
-    # The `iam_user.viewer` cascade is `subject or editor or viewer from
-    # account` — i.e. the user themselves, or someone with viewer on the
-    # user's HOME account. Each base test-user owns their own bootstrap
-    # (home) account, so only the target user themselves can Get their own
-    # record; no cross-user account-admin path exists (AAA is admin of
-    # account-A, not of NOB's home account). USR-GT-A targets userNOB →
-    # ALLOW only for NOB; USR-GT-B targets userINV → ALLOW only for INV.
-    # The target follows the SUBJECT: the row is "only the user themselves may Get
-    # their own record", so it must point at the record of the acting NOB principal
-    # — which is now userPureNoBindingsId (see the SUBJECTS note above). Left on
-    # userNOBId it would have asserted self-access for a DIFFERENT user.
-    emit("USR-GT-A", "Get own user record (self-viewable only)", "user-get-nob",
+    # Читать запись пользователя вправе САМ пользователь (`iam_user.v_get`
+    # содержит `subject`) либо носитель прямой выдачи на этот объект. Каждый
+    # базовый тест-пользователь владеет своим домашним аккаунтом, поэтому пути
+    # «через администратора чужого аккаунта» нет (AAA — админ account-A, а не
+    # домашнего аккаунта NOB).
+    #
+    # ОБЕ СТРОКИ — СПЛОШНОЙ DENY, и это не ослабление, а исправление ложного
+    # ожидания: субъекты матрицы — служебные учётки, а `define subject: [user]`
+    # принимает только тип `user` (разбор и предикаты — у EXPECT выше). Прежняя
+    # клетка ALLOW описывала запрос, которого шаг не делает, и производителя не
+    # имела; 404 здесь — правильный ответ продукта, и он утверждается СТРОГО
+    # (read_deny_asserts: скрытие существования, дословный контракт-тон).
+    #
+    # Ценность строки от этого не падает — она остаётся анти-BOLA утверждением:
+    # НИ администратор соседнего аккаунта, НИ администратор проекта, НИ
+    # приглашённый не читают чужую запись пользователя.
+    emit("USR-GT-A", "Get user record (self-viewable only)", "user-get-nob",
          "GET", "/iam/v1/users/{{userPureNoBindingsId}}", None, subj)
     emit("USR-GT-B", "Get userINV (self-viewable only)", "user-get-inv",
          "GET", "/iam/v1/users/{{userINVId}}", None, subj)
@@ -869,6 +902,67 @@ for subj in SUBJECTS:
     # `iam_user:<garbage>` → `no path` → 403 for all subjects.
     emit("USR-DL-A", "Delete user (garbage id — no FGA path)", "garbage-perresource",
          "DELETE", f"/iam/v1/users/{GARBAGE_USER}", None, subj)
+
+
+# ---------------------------------------------------------------------------
+# ALLOW-полоса самочтения — ЧЕЛОВЕЧЕСКИМ предъявителем (её производитель)
+# ---------------------------------------------------------------------------
+# Строки USR-GT-* выше — сплошной DENY, и это верно: их субъекты суть служебные
+# учётки, а `define subject: [user]` принимает только тип `user`. Но отрицание без
+# положительного контроля не отличает «читать чужое нельзя» от «UserService.Get
+# сломан для ВСЕХ»: полностью отказавший глагол оставил бы матрицу зелёной.
+#
+# Поэтому положительный контроль стоит ЗДЕСЬ, а не подразумевается: предъявителем,
+# который действительно принадлежит человеку. Он добывается настоящим входом
+# паролем у провайдера личности (волна церемонии), и коллекция authz-deny в эту
+# волну уже входит — проверяется машинно:
+#     python3 tests/authz-fixtures/ceremony_credentials.py --stems \
+#         --suite services/iam/tests/newman
+# то есть credential здесь доступен, а не заведён «на будущее».
+#
+# ПОЧЕМУ ВТОРОЙ ЧЕЛОВЕК, А НЕ ГЛАВНЫЙ. `ceremonyNoBindingsUserId` не является целью
+# привязки НИ В ОДНОЙ суите дерева, поэтому его 200 не может прийти от чужой выдачи,
+# залетевшей из соседней коллекции, и не зависит от порядка прогона. Главный человек
+# церемонии — владелец своего аккаунта и цель выдач, на нём тот же ответ был бы
+# слабее ровно на эту величину. (Его собственный положительный контроль живёт в
+# наборе iam-user, IAM-USR-GT-CRUD-OK.)
+#
+# ЧТО ИМЕННО УТВЕРЖДАЕТСЯ: человек читает СВОЮ запись и получает её. Отношение, по
+# которому это разрешено, — `iam_user.v_get ⊇ subject`; кортеж `iam_user:<usr>#subject
+# @ user:<usr>` пишется на заведении пользователя (bootstrapTuples в
+# services/iam/internal/apps/kacho/api/user/internal_upsert.go, ветка ownedAccounts==0
+# — то есть у КАЖДОГО пользователя). До восстановления `subject` в читающем глаголе
+# самочтение не работало ни у кого, и отказ был неотличим от «пользователя нет»:
+# скрытие существования отвечает тем же текстом, что и настоящее отсутствие. Здесь
+# это отличимо — предъявитель и цель названы, а ответ обязан НЕСТИ id.
+#
+# Проба не оборачивается ожиданием: запись пользователя и её кортеж существуют с
+# момента посева волны, а не создаются этим кейсом, — read-your-writes окна здесь нет.
+CASES.append(Case(
+    id="AUTHZ-USR-GT-SELF-CEREMONY",
+    title="[ALLOW] Get own user record as human ceremony principal (self via iam_user.v_get ⊇ subject)",
+    classes=["AUTHZ", "POS"],
+    priority="P1",
+    steps=[
+        Step(
+            name="get-self",
+            method="GET",
+            path="/iam/v1/users/{{ceremonyNoBindingsUserId}}",
+            auth="jwtHumanCeremonyNoBindings",
+            test_script=[
+                *assert_status(200),
+                # Ответ обязан быть ИМЕННО той записью, которую спрашивали. Без этого
+                # утверждения кейс зеленел бы на любом 200 — в том числе на чужой
+                # записи, а это ровно та ошибка, которую он призван исключать.
+                "pm.test('AUTHZ-USR-GT-SELF-CEREMONY: вернулась СВОЯ запись', () => {",
+                "  const j = pm.response.json();",
+                "  pm.expect(j.id, JSON.stringify(j)).to.eql(",
+                "    pm.environment.get('ceremonyNoBindingsUserId'));",
+                "});",
+            ],
+        ),
+    ],
+))
 
 
 # ---------------------------------------------------------------------------
