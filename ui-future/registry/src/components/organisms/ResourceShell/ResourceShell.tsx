@@ -45,6 +45,13 @@ import { noMatchesText, rowsAreComplete, type NarrowingScope } from "@shared/lib
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { DetailOverviewActions } from "@/components/molecules/DetailOverviewActions";
 import { RepositoryTagsPanel } from "@/components/organisms/RepositoryTagsPanel";
+// Решения об адресе — ОДНО объявление на консоль: что такое подстановка, чем
+// она закрывается из маршрута и чем сужается дочерний список.
+import {
+  childListPathScope,
+  fillPathFromParams,
+  hasUnresolvedPathSegment,
+} from "@shared/lib/related-list-query";
 import { createActionLabel } from "@shared/lib/resource-label";
 
 export type ResourceShellMode = "edit" | "child-create";
@@ -59,12 +66,18 @@ function RelatedTable({
   childSpec,
   filterFields,
   parentId,
+  parentRow,
+  routeParams,
   projectId,
   detailBase,
 }: {
   childSpec: ResourceSpec;
   filterFields: string[];
   parentId: string;
+  /** Строка родителя: из неё берутся сегменты адреса, которых нет в маршруте. */
+  parentRow?: Record<string, unknown>;
+  /** Параметры адреса страницы — первый и самый надёжный источник сегментов. */
+  routeParams: Record<string, string | undefined>;
   projectId: string;
   detailBase: string;
 }) {
@@ -74,14 +87,21 @@ function RelatedTable({
   // Открытый образ для боковой панели тегов (repositories → Drawer, без перехода).
   const [tagsRepo, setTagsRepo] = useState<string | null>(null);
   const [hidden, toggleHidden] = useHiddenColumns(`cols:${childSpec.id}`);
-  // Path-scoped child: apiPath с ЕДИНСТВЕННЫМ `{param}`-плейсхолдером (напр.
-  // `/registry/v1/registries/{registryId}/repositories`) фетчится по PATH-параметру
-  // родителя, а не project_id-query — ListRepositories берёт registryId из пути.
-  // Интерполируем плейсхолдер parentId'ом и не шлём project_id (path уже скоупит).
-  const pathParams = childSpec.apiPath.match(/\{[^}]+\}/g) ?? [];
-  const pathScoped = pathParams.length === 1 && !!parentId;
+  // Ребёнок, адресуемый ПУТЁМ (`/registry/v1/registries/{registryId}/repositories`,
+  // `.../{registryId}/repositories/{repository}/tags`), сужается самим адресом:
+  // владелец берёт родителя из сегментов, и параметр в запросе не нужен вовсе.
+  //
+  // Здесь стояла своя ветка `плейсхолдеров ровно ОДИН`. У тегов их два, поэтому
+  // она отвечала «не по пути» и отправляла запрос по адресу с литералом — то
+  // есть вкладка не оживала ни при каком входе (#627). Сужение считает общая
+  // функция: два решения об одном предмете расходятся молча, и разошлись.
+  //
+  // Порядок источников: сначала АДРЕС СТРАНИЦЫ (что знает маршрут — то знает
+  // точно), затем поля родительской строки и его идентичность.
+  const childFromRoute = fillPathFromParams(childSpec.apiPath, routeParams);
+  const { pathParams, pathScoped } = childListPathScope(childFromRoute, filterFields, parentRow, parentId);
   const childSpecResolved = pathScoped
-    ? { ...childSpec, apiPath: childSpec.apiPath.replace(pathParams[0], parentId) }
+    ? { ...childSpec, apiPath: fillPathFromParams(childFromRoute, pathParams) }
     : childSpec;
   // loadAllPages (напр. образы): грузим ВСЕ страницы, чтобы facet видел полный
   // набор. Оба хука зовём безусловно (стабильный порядок), гейтим через enabled.
@@ -102,7 +122,13 @@ function RelatedTable({
   const scope: NarrowingScope = wantAll ? "whole" : "loaded";
   const all = (data?.[childSpec.payloadKey] as Record<string, unknown>[] | undefined) ?? [];
   // Фильтр по родителю (OR по нескольким полям — напр. subnet→addresses v4∪v6).
-  const ownRows = all.filter((r) => filterFields.some((ff) => getByPath<string>(r, ff) === parentId));
+  // Ребёнок, сужённый АДРЕСОМ, клиентского фильтра не получает вовсе: страница
+  // уже состоит из детей этого родителя, а сверять её ещё раз пришлось бы по
+  // полю, которого в строке может не быть (тег несёт имя репозитория, но не
+  // идентификатор реестра) — и тогда фильтр вырезал бы законные строки.
+  const ownRows = pathScoped
+    ? all
+    : all.filter((r) => filterFields.some((ff) => getByPath<string>(r, ff) === parentId));
 
   // Поиск по имени или идентификатору (client-side).
   const q = search.trim().toLowerCase();
@@ -127,7 +153,13 @@ function RelatedTable({
   // child-create — панель в зоне 3 shell РОДИТЕЛЯ (URI вложен под родителя).
   const createPath = `${detailBase}/${childSpec.route}/create`;
   // drill в ребёнка — на его собственный flat-URL (родитель → в хлебных крошках).
-  const flatChildBase = resourceProjectPath(childSpec.id, projectId) ?? `${detailBase}/${childSpec.route}`;
+  // Где живёт КАРТОЧКА ребёнка. Ребёнок, адресуемый через родителя, существует
+  // только в его области — репозиторий в своём реестре, — поэтому и карточка его
+  // лежит под родителем. Плоский адрес такую карточку не открывает by
+  // construction: он не называет реестр, а без реестра адрес чтения не собрать.
+  const childBase = pathScoped
+    ? `${detailBase}/${childSpec.route}`
+    : (resourceProjectPath(childSpec.id, projectId) ?? `${detailBase}/${childSpec.route}`);
   const createLabel = createActionLabel(childSpec);
 
   // Колонки: spec.columns без столбцов-ссылок на родителя (filterFields).
@@ -142,7 +174,12 @@ function RelatedTable({
     // Тот же адрес, каким прежде был переход по клику на строку.
     nameHref: (r) => {
       const rid = getByPath<string>(r, "id");
-      return rid ? `${flatChildBase}/${rid}` : null;
+      // Идентичность в адресе — та же, которой ребёнок адресуется у владельца:
+      // у репозитория собственного идентификатора НЕТ, его натуральный ключ —
+      // имя внутри реестра. Нечем адресовать — ссылки не рисуем: ссылка в никуда
+      // хуже её отсутствия, она обещает страницу, которой нет.
+      const key = rid ?? getByPath<string>(r, "name");
+      return key ? `${childBase}/${key}` : null;
     },
   }).filter((c) => !hidden.has(c.header));
   // Столбец действий — только когда у ресурса есть строчные действия. Для read-only
@@ -152,7 +189,7 @@ function RelatedTable({
       header: "",
       className: "text-right whitespace-nowrap",
       cell: (row) => (
-        <RowActionsMenu spec={childSpec} row={row} basePath={flatChildBase} projectId={projectId || null} editAsPanel />
+        <RowActionsMenu spec={childSpec} row={row} basePath={childBase} projectId={projectId || null} editAsPanel />
       ),
     });
   }
@@ -237,7 +274,18 @@ export function ResourceShell({
   // «Обзора», перед связанными табами.
   extraTabs?: (ctx: DetailExtCtx) => DetailTab[];
 }) {
-  const { projectId, uid, childRoute } = useParams();
+  const routeParams = useParams();
+  const { projectId, uid, childRoute } = routeParams;
+  // Адрес ресурса, адресуемого через родителя, закрывается ПАРАМЕТРАМИ МАРШРУТА:
+  // репозиторий существует в своём реестре, и реестр называет адрес страницы, а
+  // не догадка. Пока сегмент закрыть нечем, запрос не уходит — иначе он уезжает
+  // с литералом `{registryId}`, а отказ края неотличим от «ресурса нет».
+  //
+  // Выражение адреса остаётся ЦЕЛЬНЫМ, а подстановка применяется снаружи:
+  // перепись поверхности API резолвит голову по имени `spec.apiPath`, и путь,
+  // спрятанный за промежуточную переменную, из-под её наблюдения выпадает.
+  const detailPath = fillPathFromParams(`${spec.apiPath}/${uid}`, routeParams);
+  const specAddressable = !hasUnresolvedPathSegment(detailPath);
   const navigate = useNavigate();
   const location = useLocation();
   const invalidate = useInvalidateResourceList();
@@ -251,9 +299,12 @@ export function ResourceShell({
       : `${resourceProjectPath(spec.id, projectId) ?? `/${spec.route}`}/${uid}`;
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: [spec.id, "shell-detail", uid],
-    queryFn: () => api.get<Record<string, unknown>>(`${spec.apiPath}/${uid}`),
-    enabled: !!uid,
+    // Разрешённый путь — часть ключа: у ресурса под родителем имя уникально
+    // только внутри родителя, и два репозитория `nginx` в разных реестрах без
+    // него делили бы один кэш, показывая друг друга.
+    queryKey: [spec.id, "shell-detail", detailPath],
+    queryFn: () => api.get<Record<string, unknown>>(detailPath),
+    enabled: !!uid && specAddressable,
     refetchInterval: 5_000,
     staleTime: 0,
   });
@@ -412,6 +463,8 @@ export function ResourceShell({
           childSpec={childSpec}
           filterFields={filterFields}
           parentId={getByPath<string>(data, "id") ?? uid ?? ""}
+          parentRow={data}
+          routeParams={routeParams}
           projectId={projectId ?? ""}
           detailBase={detailBase}
         />
@@ -426,7 +479,10 @@ export function ResourceShell({
   // Прежде решала ручка `hideOperations` расширения, которую не выставлял никто,
   // — то есть вкладка появлялась у всех, включая вложенные и каталожные ресурсы
   // без подмаршрута. Здесь решает контракт: нет пути — нет вкладки.
-  const operationsPath = operationsListPath(spec.apiPath, getByPath<string>(data, "id") ?? uid ?? "");
+  // `operationsListPath` отвечает `null` там, где подмаршрута операций у ресурса
+  // нет, и это законный исход — подставлять в него нечего.
+  const operationsBase = operationsListPath(spec.apiPath, getByPath<string>(data, "id") ?? uid ?? "");
+  const operationsPath = operationsBase === null ? null : fillPathFromParams(operationsBase, routeParams);
   if (operationsPath) {
     tabs.push({
       id: "operations",

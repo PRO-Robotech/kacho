@@ -298,7 +298,7 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
           />
         </Form.Item>
 
-        <Form.Item label="Имя" required>
+        <Form.Item label="Имя">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="subnet-..." />
         </Form.Item>
 

@@ -6,6 +6,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ConfigProvider } from "antd";
 import { buildTheme, type ThemeMode } from "@shared/lib/theme";
+import { requiredMarkAfterLabel } from "@shared/lib/required-mark";
 
 const STORAGE_KEY = "kacho-theme";
 
@@ -89,9 +90,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // host-ConfigProvider задаёт лишь colorPrimary/fontFamily без fontSize, поэтому
   // без этого remote-контент рендерился бы в дефолтном AntD-размере (14), а не в
   // эталонном 13 kacho-ui. Nested ConfigProvider переопределяет тему для remote.
+  // `form.requiredMark` задаётся ЗДЕСЬ, потому что это единственная оболочка, через
+  // которую проходит КАЖДАЯ форма арендатора: страницы всех модулей обёрнуты
+  // ThemeProvider'ом, а host и dashboard своих форм не рисуют вовсе. Прежняя
+  // настройка стояла в дереве маршрутов vpc с нулём прод-импортёров — то есть
+  // решение владельца было записано и не исполнено ни на одной живой поверхности
+  // (#562).
   return (
     <ThemeContext.Provider value={value}>
-      <ConfigProvider theme={buildTheme(mode)}>{children}</ConfigProvider>
+      <ConfigProvider theme={buildTheme(mode)} form={{ requiredMark: requiredMarkAfterLabel }}>
+        {children}
+      </ConfigProvider>
     </ThemeContext.Provider>
   );
 }

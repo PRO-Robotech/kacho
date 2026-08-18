@@ -63,14 +63,21 @@ export function ResourceEmptyState({ spec, onCreate, createLabel }: Props) {
           {copy.body}
         </Typography.Paragraph>
       )}
-      <Button
-        type="primary"
-        icon={<PlusOutlined />}
-        onClick={onCreate}
-        style={{ marginBottom: copy?.docs?.length ? 28 : 0 }}
-      >
-        {label}
-      </Button>
+      {/* Призыв создать — только там, где глагол создания есть. Репозиторий
+          материализуется `docker push`, тип диска и тип машины заводит
+          администратор облака: у восьми ресурсов общего реестра объявлено
+          `ops.create:false`, и кнопка над ними обещала возможность, которой нет
+          — нажавший получал отказ края там, где консоль позвала его сама. */}
+      {spec.ops.create && (
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={onCreate}
+          style={{ marginBottom: copy?.docs?.length ? 28 : 0 }}
+        >
+          {label}
+        </Button>
+      )}
       {copy?.docs && copy.docs.length > 0 && (
         <div
           style={{

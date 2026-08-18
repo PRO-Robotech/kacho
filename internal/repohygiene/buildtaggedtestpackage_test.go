@@ -34,9 +34,11 @@
 //
 // # Чего гейт НЕ утверждает
 //
-// Он утверждает СОБИРАЕМОСТЬ, а не ИСПОЛНЕНИЕ. «Пакет собирается под тегом» и
-// «пробы под тегом кто-то запускает» — разные свойства; второе держит
-// `make test-integration`, передающий тег (см. корневой Makefile).
+// Он утверждает СОБИРАЕМОСТЬ, а не ДОСТИЖИМОСТЬ. «Пакет собирается под тегом» и
+// «пакет попадает в отбор прогона, который этот тег передаёт» — разные свойства.
+// Второе держит соседний гейт `buildtagrunreach_test.go` (#579); до него оно
+// держалось строкой в цели `test-integration`, то есть вниманием, и выполнялось
+// случайно — пакет с признаком был ровно один и в отбор попал.
 package repohygiene
 
 import (
@@ -45,12 +47,9 @@ import (
 	"go/build/constraint"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // buildTagFinding — пакет, не собравшийся под своим признаком сборки.
@@ -197,49 +196,21 @@ func buildTagLine(path string) (string, error) {
 func auditBuildTaggedTestPackages(root string) ([]buildTagFinding, buildTagCensus, error) {
 	var census buildTagCensus
 
-	files, err := treecorpus.UnderWithSuffix(root, "_test.go")
+	// Обход — ОБЩИЙ с гейтом достижимости прогоном (`buildtagrunreach_test.go`).
+	// Своя копия цикла означала бы два места об одном предмете: отбор включающих
+	// признаков достаточно тонок (`integration || !short` даёт один тег, а не два),
+	// чтобы копии разошлись незаметно.
+	scan, err := collectTaggedTestPackages(root)
 	if err != nil {
-		return nil, census, fmt.Errorf("перечень файлов проб: %w", err)
+		return nil, census, err
 	}
-	census.TestFilesScanned = len(files)
+	census.TestFilesScanned = scan.FilesScanned
+	census.FilesWithBuildTag = scan.FilesWithTag
 
-	// пакет -> набор признаков
-	byPkg := map[string]map[string]bool{}
+	byPkg := scan.ByPkg
 	allTags := map[string]bool{}
-
-	for _, abs := range files {
-		// `treecorpus.Under` отдаёт АБСОЛЮТНЫЕ пути (так объявлено в её godoc);
-		// пакет же именуется относительно корня, потому что именно в этой форме
-		// он уезжает операндом в `go vet`.
-		rel, err := filepath.Rel(root, abs)
-		if err != nil {
-			return nil, census, fmt.Errorf("путь %s относительно корня: %w", abs, err)
-		}
-		rel = filepath.ToSlash(rel)
-
-		line, err := buildTagLine(abs)
-		if err != nil {
-			return nil, census, fmt.Errorf("чтение %s: %w", rel, err)
-		}
-		if line == "" {
-			continue
-		}
-		expr, err := constraint.Parse(line)
-		if err != nil {
-			return nil, census, fmt.Errorf("разбор признака сборки в %s: %w", rel, err)
-		}
-		kept := enablingTags(expr)
-		if len(kept) == 0 {
-			continue
-		}
-		census.FilesWithBuildTag++
-
-		pkg := filepath.ToSlash(filepath.Dir(rel))
-		if byPkg[pkg] == nil {
-			byPkg[pkg] = map[string]bool{}
-		}
-		for _, tag := range kept {
-			byPkg[pkg][tag] = true
+	for _, tags := range byPkg {
+		for tag := range tags {
 			allTags[tag] = true
 		}
 	}

@@ -252,12 +252,12 @@ jobs:
       - name: браузер — сам chromium
         id: install-browser
         working-directory: ui-future/e2e
-        timeout-minutes: 6
+        timeout-minutes: 3
         env:
           DEBUG: pw:install
         run: |
           set -u
-          if npx playwright install chromium; then
+          if timeout 60 npx playwright install chromium; then
             echo "complete=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi

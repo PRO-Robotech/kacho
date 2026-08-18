@@ -5,7 +5,7 @@
 //   │  RESOURCE LABEL (caps)  │  [secondary action row]                    │
 //   │  Name + status badges   │                                            │
 //   │  ──────                 │  Active tab content (Обзор / IP-адреса …)  │
-//   │  Tabs (vertical menu)   │                                            │
+//   │  Вкладки (верт. рейл)   │                                            │
 //   │                         │                                            │
 //   │  ──────                 │                                            │
 //   │  ДОКУМЕНТАЦИЯ           │                                            │
@@ -14,10 +14,11 @@
 //
 // Tab выбирается через ?tab=<id>. Дефолт — первый tab.
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router";
 import { Menu, Typography, Badge } from "antd";
+import type { GetProp, MenuProps } from "antd";
 import { useDetailHeaderIcon } from "@shared/components/molecules/PanelHeader";
 
 // Слот в правой части строки-имени (зона 3): активный таб может «поднять» свой
@@ -99,6 +100,21 @@ interface Props {
 // ширина рейла «прыгала» при смене таба (KAC-246).
 const SUB_PANE_WIDTH = 288;
 
+/** Пункт рейла — ВКЛАДКА, а не пункт меню.
+ *
+ *  `role`/`id`/`aria-*` объявление `items` у antd не описывает (там `key`,
+ *  `label`, `disabled`, `data-*`), однако пункт кладёт остаток props на свой
+ *  `<li>` — то есть поведение есть, а типа под него нет. Тип дополняется здесь и
+ *  ровно на те атрибуты, которыми пользуется рейл: приведение всего набора
+ *  (`as MenuProps["items"]`) сняло бы проверку заодно с `key` и `label`, и
+ *  опечатка в имени атрибута уехала бы молча — вместе с ролью вкладки. */
+type RailTab = GetProp<MenuProps, "items">[number] & {
+  role: "tab";
+  id: string;
+  "aria-selected": boolean;
+  "aria-controls"?: string;
+};
+
 export function DetailShell({
   resourceName,
   badges,
@@ -120,6 +136,13 @@ export function DetailShell({
   const controlled = onTabSelect !== undefined;
   const activeId = controlled ? (activeTabId ?? fallback) : (params.get("tab") ?? fallback);
   const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
+
+  // Связь «вкладка ↔ её панель» — по идентификаторам узлов. Префикс уникален на
+  // экземпляр оболочки: карточка на странице одна, но в пробах их рисуют рядом, и
+  // совпавшие идентификаторы связали бы вкладку с чужой панелью.
+  const domPrefix = useId();
+  const tabDomId = (id: string) => `${domPrefix}tab-${id}`;
+  const panelDomId = `${domPrefix}panel`;
 
   const setTab = (id: string) => {
     if (controlled) {
@@ -240,14 +263,36 @@ export function DetailShell({
           </div>
         </div>
 
+        {/* Рейл — НАБОР ВКЛАДОК, и объявлен он именно так (#627).
+            Рисует его меню antd (ради вида: классы `ant-menu-*` и токены темы), но
+            наружу уходит роль набора вкладок: рейл ПЕРЕКЛЮЧАЕТ ВИД в зоне 3, а не
+            запускает команды, и выбранный вид обязан быть помечен состоянием, а не
+            только классом подсветки. Пока роли не было, тот, кто читает страницу не
+            глазами, получал список команд без единого признака открытого вида, а
+            сквозная проба не находила на карточке ни одной вкладки — при том что
+            вкладка строилась и рисовалась.
+            Меню это доносит by construction: свою `role` оно кладёт ДО остатка
+            props, а пункт вычисляет роль как `role || "menuitem"` и спреадит
+            остаток на `<li>`. Проверено рендером собранного antd 6.5.4, и то же
+            поведение несёт стенд-заменитель проб (`shared/src/test/antd-stub.ts`,
+            там же — проба его контракта). */}
         <Menu
           mode="inline"
+          role="tablist"
+          aria-orientation="vertical"
           selectedKeys={active ? [active.id] : []}
           onClick={({ key }) => setTab(key)}
           className="kc-detail-rail-menu"
           style={{ borderRight: "none", background: "transparent" }}
-          items={tabs.map((t) => ({
+          items={tabs.map((t): RailTab => ({
             key: t.id,
+            role: "tab",
+            id: tabDomId(t.id),
+            "aria-selected": t.id === active?.id,
+            // Панель есть только тогда, когда зона 3 показывает содержимое
+            // вкладки: в режиме формы её не существует, и ссылка на неё была бы
+            // висячей — связью на вид, а не по существу.
+            ...(mainOverride ? {} : { "aria-controls": panelDomId }),
             label: (
               <span
                 style={{
@@ -388,6 +433,14 @@ export function DetailShell({
             скроллится целиком. Внешний контейнер overflow:hidden + flex-column,
             скролл живёт во внутренней обёртке per-case. */}
         <div
+          // Панель активной вкладки — и названа она своей вкладкой, чтобы
+          // «что я сейчас читаю» отвечалось без разглядывания подсветки.
+          // В режиме формы зона 3 занята НЕ содержимым вкладки: роли панели у неё
+          // нет (иначе форма выдавала бы себя за вид вкладки), и ссылки на панель
+          // у вкладок в этом режиме тоже нет — см. `aria-controls` выше.
+          {...(mainOverride
+            ? {}
+            : { role: "tabpanel", id: panelDomId, "aria-labelledby": active ? tabDomId(active.id) : undefined })}
           style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}
         >
           {mainOverride ? (
