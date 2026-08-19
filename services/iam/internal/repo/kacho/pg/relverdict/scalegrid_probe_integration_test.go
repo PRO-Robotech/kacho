@@ -168,9 +168,15 @@ type gridFixture struct {
 	seedN int
 	seedB int
 	seedR int
-	seedF int
-	recR  scalegrid.Recruit
-	recF  scalegrid.Recruit
+	// seedRoles — сколько ролей заведено. Считается ОТДЕЛЬНО от выдач и
+	// НИКОГДА не сбрасывается: смена способа набора переписывает выдачи, а роли
+	// остаются, и повторная их вставка была бы нарушением первичного ключа.
+	// Первая редакция считала их одним счётчиком с выдачами и падала на первой
+	// же точке оси R, набранной через группы.
+	seedRoles int
+	seedF     int
+	recR      scalegrid.Recruit
+	recF      scalegrid.Recruit
 }
 
 // newGridFixture — база оси: обвязка аренды, роль, цепь областей.
@@ -314,9 +320,9 @@ func (f *gridFixture) setR(t *testing.T, ctx context.Context, target int, rec sc
 		subjType, subjID = "group", probeGroupID
 	}
 	s := scalegrid.NewSeeder(f.tx)
-	for i := f.seedR; i < target; i++ {
+	// Роли — до нужного числа, считая от УЖЕ заведённых.
+	for i := f.seedRoles; i < target; i++ {
 		roleID := fmt.Sprintf("rol-r%05d", i)
-		bid := fmt.Sprintf("acb-r%05d", i)
 		must(t, s.QueueRaw(ctx,
 			`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
 			 VALUES ($1, $2, '[]'::jsonb,
@@ -330,6 +336,14 @@ func (f *gridFixture) setR(t *testing.T, ctx context.Context, target int, rec sc
 		must(t, s.QueueRaw(ctx,
 			`INSERT INTO kacho_iam.role_rule_selectors (role_id, rule_fp, arm, object_types, match_labels)
 			 VALUES ($1, 'fp-1', 'anchor', ARRAY[$2::text], '{}'::jsonb)`, roleID, probeCatalogType))
+	}
+	if target > f.seedRoles {
+		f.seedRoles = target
+	}
+	// Выдачи — своим счётчиком: их смена способа набора переписывает.
+	for i := f.seedR; i < target; i++ {
+		roleID := fmt.Sprintf("rol-r%05d", i)
+		bid := fmt.Sprintf("acb-r%05d", i)
 		must(t, s.QueueRaw(ctx,
 			`INSERT INTO kacho_iam.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
@@ -1035,5 +1049,84 @@ func TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed(t *testing.T) {
 	if shallow == deep {
 		t.Errorf("вырожденная цепь дала ту же мощность (%d), что глубокая: значит проба не "+
 			"различает глубины вовсе, и её зелёное на глубокой фикстуре ничего не значит", shallow)
+	}
+}
+
+// ── КОНСТРУИРУЕМОСТЬ ТОЧЕК: ОГРАНИЧЕНИЯ СХЕМЫ ЧИТАЮТСЯ, А НЕ ОБХОДЯТСЯ ──────
+
+// TestScaleGrid_EveryRecruitVariantIsConstructible — оси R и F полной сетки
+// целиком, со ВСЕМИ способами набора.
+//
+// # Зачем отдельная проба, если те же точки идут в полном прогоне
+//
+// Полный прогон стоит десятки минут и начинается с самых дорогих осей, поэтому
+// неконструируемая точка на оси R обнаруживалась бы ПОСЛЕ них — то есть ценой
+// всего прогона. Здесь те же точки берутся из ТОЙ ЖЕ константы сетки, но оси N
+// и B стоят на своих неподвижных значениях (10³), и проба укладывается в
+// секунды.
+//
+// # Что именно она утверждает
+//
+// Что каждая точка сетки СУЩЕСТВУЕТ как состояние базы. Схема этого не обещает:
+//
+//   - `access_binding_subjects_pk` и уникальность действующей выдачи по пятёрке
+//     (субъект, роль, область) означают, что сто выдач одному субъекту на одной
+//     области набираются только СТА РОЛЯМИ;
+//   - `relation_fact_pkey` — четвёрка (тип, объект, отношение, субъект), поэтому
+//     при одном написании субъекта число фактов ограничено сверху произведением
+//     «объектов цепи × отношений»;
+//   - смена способа набора переписывает выдачи, но НЕ роли: повторная вставка
+//     роли была бы нарушением первичного ключа. Первая редакция фикстуры считала
+//     их одним счётчиком и падала на первой же точке, набранной через группы, —
+//     ровно этот класс проба и сторожит.
+func TestScaleGrid_EveryRecruitVariantIsConstructible(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
+	ctx := context.Background()
+
+	full := scalegrid.Full()
+	// Оси R и F берутся ИЗ ТОЙ ЖЕ константы, что и полный прогон: своя копия
+	// точек была бы вторым объявлением сетки и разошлась бы с первым молча.
+	var axes [][]scalegrid.Point
+	for _, axis := range full {
+		if len(axis) > 0 && (axis[0].Axis == scalegrid.AxisR || axis[0].Axis == scalegrid.AxisF) {
+			axes = append(axes, axis)
+		}
+	}
+	if len(axes) != 2 {
+		t.Fatalf("в полной сетке найдено %d осей R/F, ожидалось 2: проба целится не туда", len(axes))
+	}
+
+	seenRecruits := map[scalegrid.Recruit]int{}
+	pointsRun := 0
+	for _, axis := range axes {
+		tx, capture := openProbeTx(t, ctx)
+		f := newGridFixture(t, ctx, tx)
+		for _, p := range axis {
+			f.seedPoint(t, ctx, p)
+			r := measurePoint(t, ctx, tx, capture, p)
+			pointsRun++
+			seenRecruits[p.Recruit]++
+			t.Logf("точка %s: строк %d, тронуто %d, сверочная %d, вердикт %s, "+
+				"выдач на субъекта по факту %d, фактов на субъекта по факту %d",
+				p, r.rows, r.touched, r.tuples, r.verdict,
+				r.census.BindingsNamingSubject, r.census.FactsNamingSubject)
+		}
+	}
+
+	t.Logf("ОБЪЁМ ОСМОТРЕННОГО: точек исполнено %d, способов набора различных %d",
+		pointsRun, len(seenRecruits))
+	if pointsRun == 0 {
+		t.Fatalf("исполнено ноль точек: проба беспредметна")
+	}
+	for _, want := range []scalegrid.Recruit{
+		scalegrid.RecruitDirect, scalegrid.RecruitViaGroup,
+		scalegrid.RecruitFactSelf, scalegrid.RecruitFactGroup, scalegrid.RecruitFactWildcard,
+	} {
+		if seenRecruits[want] == 0 {
+			t.Errorf("способ набора %q не исполнен ни разу: его конструируемость не проверена, "+
+				"и полный прогон упрётся в него после самых дорогих осей", want)
+		}
 	}
 }
