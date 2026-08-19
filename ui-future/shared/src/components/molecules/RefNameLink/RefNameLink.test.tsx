@@ -85,8 +85,8 @@ describe("RefNameLink", () => {
   // называет свой регион), поэтому проект в контексте есть — и запрос всё равно
   // не вправе его нести: у geo такого измерения нет.
   it("глобальный справочник спрашивается без project_id, хотя проект в контексте есть", async () => {
-    stubList({ regions: [{ id: "reg-1", name: "ru-central1" }] });
-    renderLink({ specId: "regions", refId: "reg-1" });
+    stubList({ regions: [{ id: "ru-central1" }] });
+    renderLink({ specId: "regions", refId: "ru-central1" });
 
     await screen.findByRole("link", { name: "ru-central1" });
     expect(asked).not.toHaveLength(0);
@@ -94,11 +94,11 @@ describe("RefNameLink", () => {
   });
 
   it("глобальный справочник резолвится и ведёт на карточку каталога", async () => {
-    stubList({ regions: [{ id: "reg-1", name: "ru-central1" }] });
-    renderLink({ specId: "regions", refId: "reg-1" });
+    stubList({ regions: [{ id: "ru-central1" }] });
+    renderLink({ specId: "regions", refId: "ru-central1" });
 
     const link = await screen.findByRole("link", { name: "ru-central1" });
-    expect(link).toHaveAttribute("href", "/system/regions/reg-1");
+    expect(link).toHaveAttribute("href", "/system/regions/ru-central1");
   });
 
   it("ресурс проекта по-прежнему спрашивается С project_id", async () => {

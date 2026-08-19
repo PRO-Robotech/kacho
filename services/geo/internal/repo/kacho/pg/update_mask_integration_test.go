@@ -54,10 +54,10 @@ func seedZoneWithInfra(t *testing.T, pool *pgxpool.Pool) (*pg.ZoneRepo, string) 
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1"})
 	require.NoError(t, err)
 	_, err = zr.Insert(ctx, &domain.Zone{
-		ID: "region-1-a", RegionID: "region-1", Name: "zone-a", Status: domain.GeoStatusUp,
+		ID: "region-1-a", RegionID: "region-1", Status: domain.GeoStatusUp,
 		Infra: domain.ZoneInfra{
 			NumericInfraID:     7,
 			HostClasses:        []string{"std-v3", "mem-v2"},
@@ -98,18 +98,21 @@ func TestZoneUpdateOmittedHostClassesUntouched(t *testing.T) {
 }
 
 // TestZoneEmptyMaskDoesNotWipeUnsentInfra — a PATCH with an empty mask carrying only
-// a new name must leave every field the caller did not send exactly as it was. The
-// name was already protected from this; the infra columns were not, so a rename
-// silently erased the underlay anchor, the capacity hint and the failure-domain
-// count.
+// one field must leave every field the caller did not send exactly as it was:
+// the infra columns were not protected, so such a PATCH silently erased the
+// underlay anchor, the capacity hint and the failure-domain count.
+//
+// The carried field used to be the display name; it was removed with the field
+// itself (#716), and `status` now plays that part — the property under test is
+// about the fields that were NOT sent, so any single carried field serves.
 func TestZoneEmptyMaskDoesNotWipeUnsentInfra(t *testing.T) {
 	pool := newTestPool(t)
 	zr, id := seedZoneWithInfra(t, pool)
 	uc := zone.New(zr, zr, repomock.NewOpsRepo(), serviceerr.ToStatus)
 
-	op, err := uc.Update(context.Background(), zone.UpdateInput{ID: id, Name: "zone-a-renamed"})
+	op, err := uc.Update(context.Background(), zone.UpdateInput{ID: id, Status: domain.GeoStatusDown})
 	require.NoError(t, err)
-	require.Nil(t, op.Error, "the rename itself must succeed")
+	require.Nil(t, op.Error, "the carried field itself must be applied")
 
 	got := zoneInfraRow(t, pool, id)
 	require.Equal(t, []string{"std-v3", "mem-v2"}, got.HostClasses, "host classes were not sent")
@@ -175,7 +178,7 @@ func TestZoneCannotBeReparented(t *testing.T) {
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 	zr, id := seedZoneWithInfra(t, pool)
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-2", Name: "region-2"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-2"})
 	require.NoError(t, err)
 
 	uc := zone.New(zr, zr, repomock.NewOpsRepo(), serviceerr.ToStatus)
@@ -189,7 +192,7 @@ func TestZoneCannotBeReparented(t *testing.T) {
 
 	// Full PATCH with no mask at all: nothing in the request can carry a new parent,
 	// and the stored parent must be untouched.
-	_, err = uc.Update(ctx, zone.UpdateInput{ID: id, Name: "zone-a-renamed"})
+	_, err = uc.Update(ctx, zone.UpdateInput{ID: id, Status: domain.GeoStatusDown})
 	require.NoError(t, err)
 	var regionID string
 	require.NoError(t, pool.QueryRow(ctx, `SELECT region_id FROM zones WHERE id = $1`, id).Scan(&regionID))
@@ -197,29 +200,30 @@ func TestZoneCannotBeReparented(t *testing.T) {
 
 	// The id is not a naming convention either — creating a zone whose id is not
 	// prefixed by its region is refused before any FK is consulted.
-	_, err = uc.Create(ctx, zone.CreateInput{ID: "region-1-x", RegionID: "region-2", Name: "mismatched"})
+	_, err = uc.Create(ctx, zone.CreateInput{ID: "region-1-x", RegionID: "region-2"})
 	require.Error(t, err)
 	require.Contains(t, serviceerr.ToStatus(err).Error(),
 		"zone id 'region-1-x' must be prefixed by its regionId 'region-2'")
 }
 
 // TestRegionEmptyMaskDoesNotWipeCountryCode — the same class on the sibling
-// resource: an empty-mask rename must not erase the country code the caller did not
-// send, while naming it in the mask still clears it.
+// resource: an empty-mask PATCH carrying one field must not erase the country code
+// the caller did not send, while naming it in the mask still clears it. The
+// carried field is `status` (it used to be the display name, removed in #716).
 func TestRegionEmptyMaskDoesNotWipeCountryCode(t *testing.T) {
 	pool := newTestPool(t)
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1", CountryCode: "RU"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", CountryCode: "RU"})
 	require.NoError(t, err)
 
 	uc := region.New(rr, rr, repomock.NewOpsRepo(), serviceerr.ToStatus)
-	_, err = uc.Update(ctx, region.UpdateInput{ID: "region-1", Name: "region-one"})
+	_, err = uc.Update(ctx, region.UpdateInput{ID: "region-1", Status: domain.GeoStatusUp})
 	require.NoError(t, err)
 
 	var cc string
 	require.NoError(t, pool.QueryRow(ctx, `SELECT country_code FROM regions WHERE id = $1`, "region-1").Scan(&cc))
-	require.Equal(t, "RU", cc, "a country code that was not sent must not be erased by a rename")
+	require.Equal(t, "RU", cc, "a country code that was not sent must not be erased by an unrelated PATCH")
 
 	_, err = uc.Update(ctx, region.UpdateInput{ID: "region-1", Mask: []string{"countryCode"}})
 	require.NoError(t, err)

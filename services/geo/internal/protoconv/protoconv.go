@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package protoconv — ЕДИНЫЙ источник конверсии domain→proto для kacho-geo.
-// Two-projection: публичные Region/Zone (LEAN — id/name/derived-signals, БЕЗ
-// сырого status и infra°) vs Internal{Region,Zone} (FULL — status + infra°,
-// только :9091). Публичная проекция используется и тонким handler (Get/List), и
+// Two-projection: публичные Region/Zone (LEAN — id + derived-signals, БЕЗ сырого
+// status и infra°; подписи-дубля у каталога больше нет, #716) vs
+// Internal{Region,Zone} (FULL — status + infra°, только :9091). Публичная проекция используется и тонким handler (Get/List), и
 // use-case marshaller (Operation.response). Централизация убирает риск дрейфа:
 // новое поле добавляется в ОДНОМ месте, и сырой admin-флаг/инфра физически не
 // попадают в public-message (two-projection через РАЗНЫЕ messages — security.md).
@@ -25,7 +25,6 @@ import (
 func Region(r *domain.Region) *geov1.Region {
 	return &geov1.Region{
 		Id:                r.ID,
-		Name:              r.Name,
 		CountryCode:       r.CountryCode,
 		OpenForPlacement:  r.OpenForPlacement(),
 		OpenZoneCountHint: r.OpenZoneCount,
@@ -39,7 +38,6 @@ func Zone(z *domain.Zone) *geov1.Zone {
 	return &geov1.Zone{
 		Id:                     z.ID,
 		RegionId:               z.RegionID,
-		Name:                   z.Name,
 		OpenForPlacement:       z.OpenForPlacement(),
 		PlacementBlockedReason: geov1.PlacementBlockedReason(z.PlacementBlockedReason()),
 		CreatedAt:              ts(z.CreatedAt),
@@ -51,7 +49,6 @@ func Zone(z *domain.Zone) *geov1.Zone {
 func InternalRegion(r *domain.Region) *geov1.InternalRegion {
 	return &geov1.InternalRegion{
 		Id:          r.ID,
-		Name:        r.Name,
 		CountryCode: r.CountryCode,
 		Status:      geov1.GeoStatus(r.Status),
 		Infra: &geov1.RegionInfra{
@@ -68,7 +65,6 @@ func InternalZone(z *domain.Zone) *geov1.InternalZone {
 	return &geov1.InternalZone{
 		Id:       z.ID,
 		RegionId: z.RegionID,
-		Name:     z.Name,
 		Status:   geov1.GeoStatus(z.Status),
 		Infra: &geov1.ZoneInfra{
 			NumericInfraId:     z.Infra.NumericInfraID,

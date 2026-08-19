@@ -129,7 +129,7 @@ CASES.append(Case(
     classes=["AUTHZ", "NEG"], priority="P0",
     steps=[
         Step(name="create-region-nonadmin", method="POST", path="/geo/v1/internal/regions", internal=True, auth="jwtNoBindings",
-             body={"id": "qa-deny-reg-{{runId}}", "name": "qa-deny-region-{{runId}}"},
+             body={"id": "qa-deny-reg-{{runId}}"},
              test_script=[
                  *assert_status(403),
                  *assert_grpc_code(7, "PERMISSION_DENIED"),
@@ -143,7 +143,7 @@ CASES.append(Case(
     classes=["AUTHZ", "NEG"], priority="P0",
     steps=[
         Step(name="create-zone-nonadmin", method="POST", path="/geo/v1/internal/zones", internal=True, auth="jwtNoBindings",
-             body={"id": "qa-any-{{runId}}-a", "regionId": "qa-any-{{runId}}", "name": "qa-deny-zone-{{runId}}", "status": "UP"},
+             body={"id": "qa-any-{{runId}}-a", "regionId": "qa-any-{{runId}}", "status": "UP"},
              test_script=[
                  *assert_status(403),
                  *assert_grpc_code(7, "PERMISSION_DENIED"),
@@ -289,7 +289,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-region-anon", method="POST", path="/geo/v1/internal/regions", internal=True,
              auth="anonymous",
-             body={"id": "qa-anon-reg-{{runId}}", "name": "qa-anon-region-{{runId}}"},
+             body={"id": "qa-anon-reg-{{runId}}"},
              test_script=[
                  *assert_status(401),
                  *assert_grpc_code(16, "UNAUTHENTICATED"),
@@ -310,7 +310,7 @@ CASES.append(Case(
     steps=[
         Step(name="update-region-nonadmin", method="PATCH", path="/geo/v1/internal/regions/qa-deny-upd-reg-{{runId}}",
              internal=True, auth="jwtPureNoBindings",
-             body={"name": "qa-denied-rename-{{runId}}"},
+             body={"countryCode": "NL", "updateMask": "countryCode"},
              test_script=[
                  *assert_status(403),
                  *assert_grpc_code(7, "PERMISSION_DENIED"),

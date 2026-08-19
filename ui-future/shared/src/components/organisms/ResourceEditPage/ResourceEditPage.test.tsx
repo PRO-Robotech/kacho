@@ -71,25 +71,29 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
+// Правимым полем фикстуры служит `countryCode` региона. Прежде им была подпись
+// `name`; её сняли вместе с полем у владельца (#716), и предмет этих проб —
+// СТРАНИЦА ПРАВКИ, а не geo, поэтому фикстура переведена на живое поле, а не
+// проба удалена.
 describe("ResourceEditPage", () => {
   it("начальное состояние читается с проекции, где живут правимые поля", async () => {
     // У региона правимые поля объявлены на внутренней проекции — читать надо
     // оттуда, а не с публичной.
     const spec = REGISTRY.regions;
-    stubFetch({ id: "reg-1", name: "было", description: "" });
+    stubFetch({ id: "reg-1", country_code: "RU", description: "" });
     renderEdit(spec);
 
-    expect(await screen.findByDisplayValue("было")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("RU")).toBeInTheDocument();
     const expected = spec.admin?.readForEdit ? spec.admin.basePath : spec.apiPath;
     await waitFor(() => expect(reads().length).toBeGreaterThan(0));
     expect(reads()[0].url).toContain(`${expected}/reg-1`);
   });
 
   it("правка без изменений запроса не делает и возвращает на карточку", async () => {
-    stubFetch({ id: "reg-1", name: "было", description: "" });
+    stubFetch({ id: "reg-1", country_code: "RU", description: "" });
     renderEdit(REGISTRY.regions);
 
-    await screen.findByDisplayValue("было");
+    await screen.findByDisplayValue("RU");
     await save();
 
     expect(await screen.findByText("карточка региона")).toBeInTheDocument();
@@ -99,22 +103,25 @@ describe("ResourceEditPage", () => {
   it("в тело уходит только тронутое — ни id, ни зеркал чтения", async () => {
     stubFetch({
       id: "reg-1",
-      name: "было",
+      country_code: "RU",
       description: "",
       createdAt: "2026-08-01T00:00:00Z",
       status: "ACTIVE",
     });
     renderEdit(REGISTRY.regions);
 
-    const nameInput = await screen.findByDisplayValue("было");
-    await userEvent.clear(nameInput);
-    await userEvent.type(nameInput, "стало");
+    const editable = await screen.findByDisplayValue("RU");
+    await userEvent.clear(editable);
+    await userEvent.type(editable, "NL");
     await save();
 
     await waitFor(() => expect(patches().length).toBe(1));
     const body = patches()[0].body!;
-    expect(body.name).toBe("стало");
-    expect(String(body.update_mask ?? body.updateMask)).toContain("name");
+    // Ключ тела читается в обоих написаниях: транспортный шов переводит
+    // snake_case формы в camelCase провода, и проба не вправе закреплять сторону
+    // шва — её предмет в том, ЧТО ушло, а не в том, как оно названо на проводе.
+    expect(body.countryCode ?? body.country_code).toBe("NL");
+    expect(String(body.update_mask ?? body.updateMask)).toContain("countryCode");
     // Поля ответа чтения полями сообщения правки не являются: досланные, они
     // отвергают всю правку.
     for (const alien of ["id", "createdAt", "created_at", "status"]) {
@@ -123,7 +130,7 @@ describe("ResourceEditPage", () => {
   });
 
   it("ресурс без описания формы правится через API, и об этом сказано", async () => {
-    stubFetch({ id: "reg-1", name: "было" });
+    stubFetch({ id: "reg-1", country_code: "RU" });
     renderEdit({ ...REGISTRY.regions, fields: undefined });
 
     expect(await screen.findByText(/нет form-schema/)).toBeInTheDocument();

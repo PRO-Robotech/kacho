@@ -31,13 +31,16 @@ func fieldNames(m proto.Message) map[string]struct{} {
 func TestPublicZone_TwoProjection_NoStatusNoInfra(t *testing.T) {
 	names := fieldNames(&geov1.Zone{})
 	// Обязаны присутствовать (lean public-проекция).
-	for _, must := range []string{"id", "region_id", "name", "open_for_placement", "placement_blocked_reason", "created_at"} {
+	for _, must := range []string{"id", "region_id", "open_for_placement", "placement_blocked_reason", "created_at"} {
 		if _, ok := names[must]; !ok {
 			t.Errorf("public Zone missing required field %q", must)
 		}
 	}
 	// Обязаны ОТСУТСТВОВАТЬ (admin-plane / infra / ось).
-	for _, absent := range []string{"status", "infra", "numeric_infra_id", "host_classes", "failure_domain_count", "underlay_anchor", "capacity_hint", "placement_type", "placement_scope"} {
+	// `name` — снятое поле-дубль (#716). Оно стоит здесь, а не просто отсутствует
+	// в перечне обязательных: номер и имя зарезервированы, и утверждение о
+	// ОТСУТСТВИИ — единственное, что покраснеет, если поле заведут заново.
+	for _, absent := range []string{"name", "status", "infra", "numeric_infra_id", "host_classes", "failure_domain_count", "underlay_anchor", "capacity_hint", "placement_type", "placement_scope"} {
 		if _, ok := names[absent]; ok {
 			t.Errorf("public Zone MUST NOT carry field %q (two-projection leak)", absent)
 		}
@@ -47,14 +50,32 @@ func TestPublicZone_TwoProjection_NoStatusNoInfra(t *testing.T) {
 // TestPublicRegion_TwoProjection_NoStatusNoInfra — GEO-1-03/33.
 func TestPublicRegion_TwoProjection_NoStatusNoInfra(t *testing.T) {
 	names := fieldNames(&geov1.Region{})
-	for _, must := range []string{"id", "name", "country_code", "open_for_placement", "open_zone_count_hint", "created_at"} {
+	for _, must := range []string{"id", "country_code", "open_for_placement", "open_zone_count_hint", "created_at"} {
 		if _, ok := names[must]; !ok {
 			t.Errorf("public Region missing required field %q", must)
 		}
 	}
-	for _, absent := range []string{"status", "infra", "numeric_infra_id", "capacity_hint", "placement_blocked_reason", "placement_type", "placement_scope"} {
+	for _, absent := range []string{"name", "status", "infra", "numeric_infra_id", "capacity_hint", "placement_blocked_reason", "placement_type", "placement_scope"} {
 		if _, ok := names[absent]; ok {
 			t.Errorf("public Region MUST NOT carry field %q (two-projection leak)", absent)
+		}
+	}
+}
+
+// TestInternalProjections_HaveNoNameEither — снятие поля-дубля касается ОБЕИХ
+// проекций (#716). Утверждение отдельное, потому что дубль жил и на админской
+// плоскости: снять его на публичной и оставить на внутренней значило бы оставить
+// два написания одного предмета там, где их и правят.
+func TestInternalProjections_HaveNoNameEither(t *testing.T) {
+	for _, m := range []struct {
+		what string
+		msg  proto.Message
+	}{
+		{"InternalZone", &geov1.InternalZone{}},
+		{"InternalRegion", &geov1.InternalRegion{}},
+	} {
+		if _, ok := fieldNames(m.msg)["name"]; ok {
+			t.Errorf("%s снова несёт поле name — идентичность каталога размещения одна: id", m.what)
 		}
 	}
 }
@@ -64,10 +85,10 @@ func TestPublicRegion_TwoProjection_NoStatusNoInfra(t *testing.T) {
 func TestZone_Derived(t *testing.T) {
 	created := time.Date(2026, 7, 5, 12, 30, 45, 500000000, time.UTC)
 	got := protoconv.Zone(&domain.Zone{
-		ID: "ru-central1-a", RegionID: "ru-central1", Name: "zone-a",
+		ID: "ru-central1-a", RegionID: "ru-central1",
 		Status: domain.GeoStatusUp, RegionStatus: domain.GeoStatusUp, CreatedAt: created,
 	})
-	if got.GetId() != "ru-central1-a" || got.GetRegionId() != "ru-central1" || got.GetName() != "zone-a" {
+	if got.GetId() != "ru-central1-a" || got.GetRegionId() != "ru-central1" {
 		t.Fatalf("field mismatch: %+v", got)
 	}
 	if !got.GetOpenForPlacement() {
@@ -90,7 +111,7 @@ func TestZone_Derived(t *testing.T) {
 // openZoneCountHint° rollup; created_at усечён.
 func TestRegion_Derived(t *testing.T) {
 	created := time.Date(2026, 7, 5, 12, 30, 45, 987654321, time.UTC)
-	got := protoconv.Region(&domain.Region{ID: "ru-central1", Name: "ru-central-1", CountryCode: "RU", Status: domain.GeoStatusUp, OpenZoneCount: 2, CreatedAt: created})
+	got := protoconv.Region(&domain.Region{ID: "ru-central1", CountryCode: "RU", Status: domain.GeoStatusUp, OpenZoneCount: 2, CreatedAt: created})
 	if got.GetCountryCode() != "RU" || !got.GetOpenForPlacement() || got.GetOpenZoneCountHint() != 2 {
 		t.Fatalf("region projection mismatch: %+v", got)
 	}
@@ -103,14 +124,14 @@ func TestRegion_Derived(t *testing.T) {
 // status + полный infra° (readable-плоскость).
 func TestInternalProjections_CarryStatusInfra(t *testing.T) {
 	iz := protoconv.InternalZone(&domain.Zone{
-		ID: "ru-central1-a", RegionID: "ru-central1", Name: "zone-a", Status: domain.GeoStatusUp,
+		ID: "ru-central1-a", RegionID: "ru-central1", Status: domain.GeoStatusUp,
 		Infra: domain.ZoneInfra{NumericInfraID: 10402, HostClasses: []string{"std-v3", "mem-v2"}, FailureDomainCount: 3, UnderlayAnchor: "fd00:ru1a::/48", CapacityHint: "AMPLE"},
 	})
 	if iz.GetStatus() != geov1.GeoStatus_UP || iz.GetInfra().GetNumericInfraId() != 10402 ||
 		len(iz.GetInfra().GetHostClasses()) != 2 || iz.GetInfra().GetCapacityHint() != "AMPLE" {
 		t.Fatalf("InternalZone projection mismatch: %+v", iz)
 	}
-	ir := protoconv.InternalRegion(&domain.Region{ID: "ru-central1", Name: "ru-central-1", CountryCode: "RU", Status: domain.GeoStatusUp, Infra: domain.RegionInfra{NumericInfraID: 900}})
+	ir := protoconv.InternalRegion(&domain.Region{ID: "ru-central1", CountryCode: "RU", Status: domain.GeoStatusUp, Infra: domain.RegionInfra{NumericInfraID: 900}})
 	if ir.GetStatus() != geov1.GeoStatus_UP || ir.GetInfra().GetNumericInfraId() != 900 {
 		t.Fatalf("InternalRegion projection mismatch: %+v", ir)
 	}

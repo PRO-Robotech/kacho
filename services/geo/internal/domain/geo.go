@@ -144,9 +144,13 @@ type ZoneInfra struct {
 }
 
 // Region — глобальная placement-координата (REGIONAL/anycast). Домен kacho-geo.
+//
+// Идентичность у региона ОДНА — ID (#716). Он назначается администратором и
+// человекочитаем by construction («ru-central1»), поэтому отдельного поля-подписи
+// у ресурса нет: второе поле того же назначения давало только место, где два
+// написания расходятся.
 type Region struct {
 	ID          string
-	Name        string
 	CountryCode string
 	Status      GeoStatus
 	Infra       RegionInfra
@@ -166,7 +170,6 @@ func (r Region) OpenForPlacement() bool { return r.Status == GeoStatusUp }
 type Zone struct {
 	ID        string
 	RegionID  string
-	Name      string
 	Status    GeoStatus
 	Infra     ZoneInfra
 	CreatedAt time.Time

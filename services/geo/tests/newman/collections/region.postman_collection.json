@@ -194,7 +194,7 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('id matches resolved', () => pm.expect(j.id).to.eql(pm.environment.get('pickRegionId')));",
-                  "pm.test('name is a string', () => pm.expect(j.name).to.be.a('string'));",
+                  "pm.test('no display name on the public projection', () => pm.expect(j).to.not.have.property('name'));",
                   "pm.test('createdAt truncated to seconds (no sub-second digits)', () => {",
                   "  const ts = String(pm.response.json().createdAt);",
                   "  pm.expect(ts, 'RFC3339 seconds ' + ts).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(Z|[+-]\\d{2}:\\d{2})$/);",

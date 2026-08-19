@@ -42,7 +42,6 @@ type Pagination struct {
 // меняется (repo COALESCE, single-statement, без TOCTOU). region_id НЕ входит —
 // immutable после Create.
 type UpdateParams struct {
-	Name               *string
 	Status             *domain.GeoStatus
 	HostClasses        *[]string
 	FailureDomainCount *int32
@@ -54,7 +53,6 @@ type UpdateParams struct {
 type CreateInput struct {
 	ID       string
 	RegionID string
-	Name     string
 	Status   domain.GeoStatus
 	Infra    domain.ZoneInfra
 }
@@ -63,7 +61,6 @@ type CreateInput struct {
 type UpdateInput struct {
 	ID     string
 	Mask   []string
-	Name   string
 	Status domain.GeoStatus
 	Infra  domain.ZoneInfra
 }
@@ -93,8 +90,8 @@ type ErrToStatus func(error) error
 
 // zoneUpdatable — known-set update_mask (mutable-поля). Immutable (id, regionId,
 // infra.numericInfraId) НЕ входят — отвергаются immutable-switch ДО UpdateMask.
+// `name` в набор НЕ входит и не может: поля у ресурса больше нет (#716).
 var zoneUpdatable = map[string]struct{}{
-	"name":                     {},
 	"status":                   {},
 	"infra.hostClasses":        {},
 	"infra.failureDomainCount": {},
@@ -145,7 +142,7 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Zone, strin
 }
 
 // Create — admin-создание зоны, возвращает синхронно-завершённый Operation.
-// Порядок sync-валидации (первым стейтментом): malformed id → coupling → name.
+// Порядок sync-валидации (первым стейтментом): malformed id → coupling.
 // Fresh-default fail-safe: омитнутый status → DOWN. Несуществующий region_id →
 // FK 23503 → op.error FailedPrecondition (DB-backstop; см. PHASE-0-gate ниже).
 func (u *UseCase) Create(ctx context.Context, in CreateInput) (*operations.Operation, error) {
@@ -155,23 +152,8 @@ func (u *UseCase) Create(ctx context.Context, in CreateInput) (*operations.Opera
 	if err := domain.ValidateZoneCoupling(in.ID, in.RegionID); err != nil {
 		return nil, invalidArg(err.Error())
 	}
-	if in.Name == "" {
-		return nil, invalidArg("zone name is required")
-	}
-	// Форма имени судится КАНОНОМ ДЕРЕВА, а не только длиной (задача #718).
-	//
-	// Миграция 715001 поставила ограничение формы `zones_name_check`, но парной
-	// проверки в geo не было: доменная проверка сторожила ДЛИНУ (253 знака —
-	// вчетверо шире формы). Имя `Zone_A` проходило проверку сервиса и умирало на
-	// ограничении таблицы: БАЗА оказывалась первым читателем ввода, а вызывающий
-	// получал отказ, не называющий ни поля, ни формы. Ограничение таблицы обязано
-	// оставаться защитой последнего рубежа.
-	//
-	// Статус канона отдаётся КАК ЕСТЬ: он несёт `FieldViolation` с именем поля и
-	// формой, а `serviceerr.ToStatus` пробрасывает готовый статус первой веткой.
-	if err := validate.Name("name", in.Name); err != nil {
-		return nil, err
-	}
+	// Проверка имени стояла ЗДЕСЬ и снята вместе с полем (#716): идентичность у
+	// зоны одна — идентификатор, и его форму судят две проверки выше.
 	if err := in.Status.Validate(); err != nil {
 		return nil, invalidArg(err.Error())
 	}
@@ -179,7 +161,7 @@ func (u *UseCase) Create(ctx context.Context, in CreateInput) (*operations.Opera
 	if st == domain.GeoStatusUnspecified {
 		st = domain.GeoStatusDown // fail-safe: fresh zone поднимается DOWN
 	}
-	z := domain.Zone{ID: in.ID, RegionID: in.RegionID, Name: in.Name, Status: st, Infra: in.Infra}
+	z := domain.Zone{ID: in.ID, RegionID: in.RegionID, Status: st, Infra: in.Infra}
 
 	// Строка операции — ДО INSERT'а. Warnings° вычисляются по СОЗДАННОЙ строке и на
 	// этот момент неизвестны, поэтому metadata здесь минимальна и уточняется
@@ -213,7 +195,7 @@ func (u *UseCase) Create(ctx context.Context, in CreateInput) (*operations.Opera
 	return syncop.Commit(ctx, u.ops, op, meta, resp)
 }
 
-// Update — admin partial-смена зоны (name/status/infra-subset). Immutable-поля
+// Update — admin partial-смена зоны (status/infra-subset). Immutable-поля
 // (id, regionId, infra.numericInfraId) в update_mask → синхронный InvalidArgument
 // ДО UpdateMask. not-found → op.error.
 func (u *UseCase) Update(ctx context.Context, in UpdateInput) (*operations.Operation, error) {
@@ -277,8 +259,8 @@ func (u *UseCase) Update(ctx context.Context, in UpdateInput) (*operations.Opera
 // очистка любого из них делается явно — через маску.
 //
 // Поле, названное маской, но пришедшее пустым там, где ресурс пустоту хранить не
-// может (name — required + globally UNIQUE; status — CHECK IN ('UP','DOWN')),
-// отвергается СИНХРОННО тем же текстом, что на Create. Молча принять и выбросить
+// может (status — CHECK IN ('UP','DOWN')), отвергается СИНХРОННО тем же текстом,
+// что на Create. Молча принять и выбросить
 // такое поле нельзя (api-conventions.md §«принято-и-проигнорировано»): вызывающий
 // получил бы успех и уверенность, что очистил поле, которого сервис не трогал.
 func (u *UseCase) buildUpdateParams(in UpdateInput) (UpdateParams, error) {
@@ -291,18 +273,6 @@ func (u *UseCase) buildUpdateParams(in UpdateInput) (UpdateParams, error) {
 			return carried
 		}
 		return named(field)
-	}
-	if apply("name", in.Name != "") {
-		if in.Name == "" {
-			return p, invalidArg("zone name is required")
-		}
-		// Та же форма, что на создании: правка не вправе завести имя, которого
-		// создание не приняло бы (#718).
-		if err := validate.Name("name", in.Name); err != nil {
-			return p, err
-		}
-		name := in.Name
-		p.Name = &name
 	}
 	if apply("status", in.Status != domain.GeoStatusUnspecified) {
 		if err := in.Status.Validate(); err != nil {

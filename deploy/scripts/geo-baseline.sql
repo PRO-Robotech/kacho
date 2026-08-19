@@ -28,8 +28,9 @@
 -- же операторе, ровно той формы, что пишет репозиторий
 -- (services/geo/internal/repo/kacho/pg/{region,zone}.go, outbox.Emit).
 --
--- ИДЕМПОТЕНТНОСТЬ. `ON CONFLICT DO NOTHING` БЕЗ указания цели — накрывает и PK
--- id, и глобальную UNIQUE(name) (обе завёл 0004). Audit-строка привязана к
+-- ИДЕМПОТЕНТНОСТЬ. `ON CONFLICT DO NOTHING` БЕЗ указания цели — накрывает любой
+-- уникальный ключ таблицы. Сегодня он ровно один — первичный: глобальная
+-- UNIQUE(name) снята вместе с полем-дублём (#716). Audit-строка привязана к
 -- RETURNING вставки, поэтому повторный прогон не пишет ни ресурсной, ни
 -- audit-строки: число строк geo_outbox после N прогонов равно числу после
 -- первого. Это и есть проверяемый предикат идемпотентности — он в
@@ -50,39 +51,39 @@ SET search_path TO kacho_geo, public;
 -- Регионы. status='UP' — каталог заводится ОТКРЫТЫМ намеренно: стенд поднимают,
 -- чтобы на нём размещать. Боевой каталог открывает администратор явным Update
 -- (fail-safe DEFAULT 'DOWN' в 0004 остаётся для строк, заведённых не отсюда).
-WITH seed(id, name) AS (
-    VALUES ('ru-central1', 'ru-central1'),
-           ('ru-central2', 'ru-central2')
+WITH seed(id) AS (
+    VALUES ('ru-central1'),
+           ('ru-central2')
 ), ins AS (
-    INSERT INTO regions (id, name, country_code, status, numeric_infra_id, created_at)
-    SELECT id, name, '', 'UP', 0, now() FROM seed
+    INSERT INTO regions (id, country_code, status, numeric_infra_id, created_at)
+    SELECT id, '', 'UP', 0, now() FROM seed
     ON CONFLICT DO NOTHING
-    RETURNING id, name, country_code, status
+    RETURNING id, country_code, status
 )
 INSERT INTO geo_outbox (resource_kind, resource_id, event_type, payload)
 SELECT 'Region', id, 'CREATED',
-       jsonb_build_object('id', id, 'name', name, 'country_code', country_code,
+       jsonb_build_object('id', id, 'country_code', country_code,
                           'status', status, 'actor', 'stand_seed:make-seed-geo')
 FROM ins;
 
 -- Зоны. Порядок обязателен: FK RESTRICT zones.region_id → regions(id).
-WITH seed(id, region_id, name) AS (
-    VALUES ('ru-central1-a', 'ru-central1', 'ru-central1-a'),
-           ('ru-central1-b', 'ru-central1', 'ru-central1-b'),
-           ('ru-central1-c', 'ru-central1', 'ru-central1-c'),
-           ('ru-central1-d', 'ru-central1', 'ru-central1-d'),
-           ('ru-central1-e', 'ru-central1', 'ru-central1-e'),
-           ('ru-central2-a', 'ru-central2', 'ru-central2-a')
+WITH seed(id, region_id) AS (
+    VALUES ('ru-central1-a', 'ru-central1'),
+           ('ru-central1-b', 'ru-central1'),
+           ('ru-central1-c', 'ru-central1'),
+           ('ru-central1-d', 'ru-central1'),
+           ('ru-central1-e', 'ru-central1'),
+           ('ru-central2-a', 'ru-central2')
 ), ins AS (
-    INSERT INTO zones (id, region_id, name, status,
+    INSERT INTO zones (id, region_id, status,
                        numeric_infra_id, host_classes, failure_domain_count,
                        underlay_anchor, capacity_hint, created_at)
-    SELECT id, region_id, name, 'UP', 0, '{}'::text[], 0, '', '', now() FROM seed
+    SELECT id, region_id, 'UP', 0, '{}'::text[], 0, '', '', now() FROM seed
     ON CONFLICT DO NOTHING
-    RETURNING id, region_id, name, status
+    RETURNING id, region_id, status
 )
 INSERT INTO geo_outbox (resource_kind, resource_id, event_type, payload)
 SELECT 'Zone', id, 'CREATED',
-       jsonb_build_object('id', id, 'region_id', region_id, 'name', name,
+       jsonb_build_object('id', id, 'region_id', region_id,
                           'status', status, 'actor', 'stand_seed:make-seed-geo')
 FROM ins;

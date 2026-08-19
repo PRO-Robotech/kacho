@@ -374,7 +374,7 @@ def _seed_geo_catalog():
     tolerated; the confirm-loops pass immediately when already seeded. `existingZoneId`
     etc. in the fixtures dict below already name these ids."""
     _curl("POST", "/geo/v1/internal/regions", boot,
-          {"id": "ru-central1", "name": "ru-central1", "status": "UP"}, base=INTERNAL)
+          {"id": "ru-central1", "status": "UP"}, base=INTERNAL)
     for _ in range(20):  # region durable before zones (zones.region_id FK RESTRICT -> regions.id)
         if _curl("GET", "/geo/v1/regions/ru-central1", boot).get("id") == "ru-central1":
             break
@@ -382,7 +382,7 @@ def _seed_geo_catalog():
     for z in ZONE_SUFFIXES:
         _curl("POST", "/geo/v1/internal/zones", boot,
               {"id": f"ru-central1-{z}", "regionId": "ru-central1",
-               "name": f"ru-central1-{z}", "status": "UP"}, base=INTERNAL)
+               "status": "UP"}, base=INTERNAL)
     for _ in range(30):  # zones durable (peer-validate consumers read them on request-path)
         if len((_curl("GET", "/geo/v1/zones", boot).get("zones") or [])) >= len(ZONE_SUFFIXES):
             break
@@ -403,14 +403,14 @@ def _seed_geo_catalog():
     # is seeded here — nothing allocates a VIP in this region, and a pool that nobody
     # draws from is exactly the kind of fixture that outlives its subject.
     _curl("POST", "/geo/v1/internal/regions", boot,
-          {"id": ALT_REGION, "name": ALT_REGION, "status": "UP"}, base=INTERNAL)
+          {"id": ALT_REGION, "status": "UP"}, base=INTERNAL)
     for _ in range(20):
         if _curl("GET", f"/geo/v1/regions/{ALT_REGION}", boot).get("id") == ALT_REGION:
             break
         time.sleep(0.5)
     _curl("POST", "/geo/v1/internal/zones", boot,
           {"id": f"{ALT_REGION}-a", "regionId": ALT_REGION,
-           "name": f"{ALT_REGION}-a", "status": "UP"}, base=INTERNAL)
+           "status": "UP"}, base=INTERNAL)
     for _ in range(20):
         if _curl("GET", f"/geo/v1/zones/{ALT_REGION}-a", boot).get("id") == f"{ALT_REGION}-a":
             break

@@ -131,7 +131,7 @@ func TestRegionCreate_OperationRowPrecedesTheMutation(t *testing.T) {
 	ops := operations.NewRepo(pool, "kacho_geo")
 	repo := pg.NewRegionRepo(pool)
 
-	const id, name = "ru-ord-a", "ordering-a"
+	const id = "ru-ord-a"
 	var seenRows int
 	var seenDone bool
 	spy := &regionWriterSpy{Writer: repo, onInsert: func() {
@@ -139,7 +139,7 @@ func TestRegionCreate_OperationRowPrecedesTheMutation(t *testing.T) {
 	}}
 
 	uc := region.New(repo, spy, ops, serviceerr.ToStatus)
-	op, err := uc.Create(context.Background(), region.CreateInput{ID: id, Name: name, Status: domain.GeoStatusUp})
+	op, err := uc.Create(context.Background(), region.CreateInput{ID: id, Status: domain.GeoStatusUp})
 	require.NoError(t, err)
 	require.Nil(t, op.Error)
 
@@ -165,7 +165,7 @@ func TestRegionCreate_OperationPersistFailureLeavesNoCommittedMutation(t *testin
 	ops := &errOpsRepo{Repo: base, createErr: errors.New("operations table unavailable")}
 	uc := region.New(repo, repo, ops, serviceerr.ToStatus)
 
-	_, err := uc.Create(context.Background(), region.CreateInput{ID: id, Name: "ordering-b", Status: domain.GeoStatusUp})
+	_, err := uc.Create(context.Background(), region.CreateInput{ID: id, Status: domain.GeoStatusUp})
 	require.Error(t, err, "a region whose operation cannot be persisted must not be reported as created")
 	require.True(t, ops.created, "the use-case must have tried to persist the operation")
 
@@ -180,7 +180,7 @@ func TestRegionUpdate_OperationRowPrecedesTheMutation(t *testing.T) {
 	repo := pg.NewRegionRepo(pool)
 
 	const id = "ru-ord-c"
-	seedRegion(t, ops, region.New(repo, repo, ops, serviceerr.ToStatus), id, "ordering-c")
+	seedRegion(t, ops, region.New(repo, repo, ops, serviceerr.ToStatus), id)
 
 	var seenRows int
 	var seenDone bool
@@ -188,7 +188,7 @@ func TestRegionUpdate_OperationRowPrecedesTheMutation(t *testing.T) {
 		seenRows, seenDone = opRowsFor(t, pool, "Update region "+id)
 	}}
 	uc := region.New(repo, spy, ops, serviceerr.ToStatus)
-	op, err := uc.Update(context.Background(), region.UpdateInput{ID: id, Mask: []string{"name"}, Name: "ordering-c2"})
+	op, err := uc.Update(context.Background(), region.UpdateInput{ID: id, Mask: []string{"countryCode"}, CountryCode: "NL"})
 	require.NoError(t, err)
 	require.Nil(t, op.Error)
 
@@ -202,7 +202,7 @@ func TestRegionDelete_OperationRowPrecedesTheMutation(t *testing.T) {
 	repo := pg.NewRegionRepo(pool)
 
 	const id = "ru-ord-d"
-	seedRegion(t, ops, region.New(repo, repo, ops, serviceerr.ToStatus), id, "ordering-d")
+	seedRegion(t, ops, region.New(repo, repo, ops, serviceerr.ToStatus), id)
 
 	var seenRows int
 	var seenDone bool
@@ -227,9 +227,9 @@ func TestRegionCreate_DbRefusalLandsAsTerminalErrorRow(t *testing.T) {
 	uc := region.New(repo, repo, ops, serviceerr.ToStatus)
 
 	const id = "ru-ord-e"
-	seedRegion(t, ops, uc, id, "ordering-e")
+	seedRegion(t, ops, uc, id)
 
-	op, err := uc.Create(context.Background(), region.CreateInput{ID: id, Name: "ordering-e-dup", Status: domain.GeoStatusUp})
+	op, err := uc.Create(context.Background(), region.CreateInput{ID: id, Status: domain.GeoStatusUp})
 	require.NoError(t, err, "a duplicate lands on the operation, not as a sync gRPC error")
 	require.NotNil(t, op.Error)
 
@@ -250,7 +250,7 @@ func TestZoneCreate_OperationRowPrecedesTheMutation(t *testing.T) {
 	zrepo := pg.NewZoneRepo(pool)
 
 	const rid, zid = "ru-ord-z", "ru-ord-z-a"
-	seedRegion(t, ops, region.New(rrepo, rrepo, ops, serviceerr.ToStatus), rid, "ordering-z")
+	seedRegion(t, ops, region.New(rrepo, rrepo, ops, serviceerr.ToStatus), rid)
 
 	var seenRows int
 	var seenDone bool
@@ -258,7 +258,7 @@ func TestZoneCreate_OperationRowPrecedesTheMutation(t *testing.T) {
 		seenRows, seenDone = opRowsFor(t, pool, "Create zone "+zid)
 	}}
 	uc := zone.New(zrepo, spy, ops, serviceerr.ToStatus)
-	op, err := uc.Create(context.Background(), zone.CreateInput{ID: zid, RegionID: rid, Name: "ordering-z-a", Status: domain.GeoStatusUp})
+	op, err := uc.Create(context.Background(), zone.CreateInput{ID: zid, RegionID: rid, Status: domain.GeoStatusUp})
 	require.NoError(t, err)
 	require.Nil(t, op.Error)
 
@@ -273,12 +273,12 @@ func TestZoneCreate_OperationPersistFailureLeavesNoCommittedMutation(t *testing.
 	zrepo := pg.NewZoneRepo(pool)
 
 	const rid, zid = "ru-ord-y", "ru-ord-y-a"
-	seedRegion(t, base, region.New(rrepo, rrepo, base, serviceerr.ToStatus), rid, "ordering-y")
+	seedRegion(t, base, region.New(rrepo, rrepo, base, serviceerr.ToStatus), rid)
 
 	ops := &errOpsRepo{Repo: base, createErr: errors.New("operations table unavailable")}
 	uc := zone.New(zrepo, zrepo, ops, serviceerr.ToStatus)
 
-	_, err := uc.Create(context.Background(), zone.CreateInput{ID: zid, RegionID: rid, Name: "ordering-y-a", Status: domain.GeoStatusUp})
+	_, err := uc.Create(context.Background(), zone.CreateInput{ID: zid, RegionID: rid, Status: domain.GeoStatusUp})
 	require.Error(t, err)
 	require.Equal(t, 0, rowCount(t, pool, `SELECT count(*) FROM kacho_geo.zones WHERE id = $1`, zid),
 		"the zone must NOT be committed when its operation could not be persisted")

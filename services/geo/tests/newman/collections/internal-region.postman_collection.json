@@ -68,7 +68,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-crud-{{runId}}\", \"name\": \"qa-region-crud-{{runId}}\", \"countryCode\": \"RU\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-reg-crud-{{runId}}\", \"countryCode\": \"RU\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -153,7 +153,6 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('region id materialized', () => pm.expect(j.id).to.eql('qa-reg-crud-' + pm.environment.get('runId')));",
-                  "pm.test('name persisted', () => pm.expect(j.name).to.eql('qa-region-crud-' + pm.environment.get('runId')));",
                   "pm.test('countryCode persisted', () => pm.expect(j.countryCode).to.eql('RU'));",
                   "pm.test('openForPlacement true (region status UP)', () => pm.expect(j.openForPlacement).to.eql(true));"
                 ]
@@ -240,7 +239,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"9-Bad_Id!\", \"name\": \"qa-malformed\"}",
+              "raw": "{\"id\": \"9-Bad_Id!\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -295,7 +294,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"\", \"name\": \"qa-empty-id\"}",
+              "raw": "{\"id\": \"\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -350,7 +349,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-dup-{{runId}}\", \"name\": \"qa-region-dup-{{runId}}\"}",
+              "raw": "{\"id\": \"qa-reg-dup-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -457,7 +456,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-dup-{{runId}}\", \"name\": \"qa-region-dup-again-{{runId}}\"}",
+              "raw": "{\"id\": \"qa-reg-dup-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -608,7 +607,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-del-{{runId}}\", \"name\": \"qa-region-del-{{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-reg-del-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -715,7 +714,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-del-{{runId}}-z\", \"regionId\": \"qa-reg-del-{{runId}}\", \"name\": \"qa-child-zone-{{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-reg-del-{{runId}}-z\", \"regionId\": \"qa-reg-del-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -987,7 +986,7 @@
       ]
     },
     {
-      "name": "IRG-UPD-CRUD-OK — InternalRegionService.Update name → 200 Operation; new name materializes (public Get)",
+      "name": "IRG-UPD-CRUD-OK — InternalRegionService.Update countryCode → 200 Operation; новое значение видно публичным Get",
       "description": "class:CRUD | class:STATE | priority:P1",
       "item": [
         {
@@ -1014,7 +1013,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-upd-{{runId}}\", \"name\": \"qa-region-before-{{runId}}\"}",
+              "raw": "{\"id\": \"qa-reg-upd-{{runId}}\", \"countryCode\": \"RU\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1098,7 +1097,7 @@
           ]
         },
         {
-          "name": "update-name",
+          "name": "update-country",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1122,7 +1121,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"qa-region-after-{{runId}}\", \"updateMask\": \"name\"}",
+              "raw": "{\"countryCode\": \"NL\", \"updateMask\": \"countryCode\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1156,7 +1155,7 @@
           ]
         },
         {
-          "name": "verify-name",
+          "name": "verify-country",
           "request": {
             "method": "GET",
             "header": [
@@ -1185,17 +1184,16 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "const want = 'qa-region-after-' + pm.environment.get('runId');",
-                  "const cur = pm.response.json().name;",
+                  "const cur = pm.response.json().countryCode;",
                   "const uc = parseInt(pm.environment.get('_updRetry') || '0', 10);",
-                  "if (cur !== want && uc < 20) {",
+                  "if (cur !== 'NL' && uc < 20) {",
                   "  pm.environment.set('_updRetry', String(uc + 1));",
                   "  const _d = Date.now(); while (Date.now() - _d < 500) { /* update-commit wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
                   "pm.environment.unset('_updRetry');",
-                  "pm.test('name updated', () => pm.expect(cur).to.eql(want));"
+                  "pm.test('countryCode updated', () => pm.expect(cur).to.eql('NL'));"
                 ]
               }
             }
@@ -1222,6 +1220,217 @@
                 "internal",
                 "regions",
                 "qa-reg-upd-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRG-UPD-NEG-NAME-IN-MASK — InternalRegionService.Update с updateMask=name → 400 INVALID_ARGUMENT: поля больше нет (#716)",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "create-region",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "regions"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"qa-reg-nomask-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "confirm-created-rgf6",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/geo/v1/regions/qa-reg-nomask-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "regions",
+                "qa-reg-nomask-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+                  "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_rgfCount', '0');",
+                  "  pm.environment.set('_rgfStarted', pm.info.requestName);",
+                  "}",
+                  "const _rc = parseInt(pm.environment.get('_rgfCount') || '0', 10);",
+                  "if (pm.response.code === 404 && _rc < 20) {",
+                  "  pm.environment.set('_rgfCount', String(_rc + 1));",
+                  "  const _d = Date.now(); while (Date.now() - _d < 500) { /* commit wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_rgfCount');",
+                  "pm.environment.unset('_rgfStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "update-with-removed-field",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-reg-nomask-{{runId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "regions",
+                "qa-reg-nomask-{{runId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"name\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/geo/v1/internal/regions/qa-reg-nomask-{{runId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "geo",
+                "v1",
+                "internal",
+                "regions",
+                "qa-reg-nomask-{{runId}}"
               ]
             }
           },

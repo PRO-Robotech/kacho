@@ -76,7 +76,7 @@ func (c *GeoZoneClient) Get(ctx context.Context, id string) (*domain.Zone, error
 			}
 			return rerr
 		}
-		z = &domain.Zone{ID: resp.GetId(), RegionID: resp.GetRegionId(), Name: resp.GetName()}
+		z = &domain.Zone{ID: resp.GetId(), RegionID: resp.GetRegionId()}
 		return nil
 	})
 	if err != nil {
