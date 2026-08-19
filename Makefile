@@ -252,7 +252,7 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 # ЧЕМ ПРОВЯЗЫВАЕТСЯ И ПОЧЕМУ НЕ `core.hooksPath` — в шапке scripts/hooks/install.sh
 # (короткий ответ: он перебивает `.git/hooks` целиком и молча выключает всё, что
 # там уже лежало).
-.PHONY: test test-unit test-integration test-authz-fga test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full
+.PHONY: test test-unit test-integration test-authz-fga test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full
 
 ## install-hooks — провязать хуки git из scripts/hooks в этот клон (один раз на клон).
 install-hooks:
@@ -489,3 +489,35 @@ scale-grid-small:
 scale-grid-full:
 	KACHO_SCALEGRID_FULL=1 $(GO) test ./services/iam/internal/repo/kacho/pg/relverdict/ \
 	  -run TestScaleGrid_FullGridReport -count=1 -v -timeout 120m
+
+## ── ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НАЛИТОЙ МАТРИЦЫ (R7-3) ──────────────
+##
+## Предмет ДРУГОЙ, чем у сетки порядков выше, и это не оттенок. Сетка варьирует
+## ОДНУ ось при неподвижных остальных: её точка N = 10⁶ держит выдач тысячу, а
+## точка B = 10⁶ держит объектов тысячу — то есть база в ней никогда не бывала
+## полной. Здесь матрица наливается ЦЕЛИКОМ (объекты и выдачи растут вместе), а
+## операций делается ПО ОДНОЙ: запись выдачи · вердикт (allow) · отзыв ·
+## вердикт после отзыва (deny). Вопрос не «сколько в секунду», а «меняется ли
+## стоимость ОДНОЙ операции от того, сколько всего лежит в базе».
+##
+##   matrix-volume-small — идёт в конвейере вместе с прочими интеграционными.
+##                         Утверждение ДВУХОСЕВОЕ: база обязана вырасти и прибор
+##                         обязан отчитаться ненулевой работой (положительный
+##                         контроль), а стоимость операции — не вырасти
+##                         (предмет). Односторонняя проба «ничего не растёт»
+##                         зеленела бы на приборе, докладывающем ноль.
+##
+##   matrix-volume-full  — РУЧНОЙ прогон до 10⁶ объектов И 10⁶ выдач
+##                         ОДНОВРЕМЕННО (≈6·10⁶ строк в таблицах), пишет отчёт
+##                         артефактом дерева. В конвейере не идёт и не должна.
+##
+## Свежесть отчёта сторожит `TestMatrixVolumeReportIsFreshAndItsSubjectHasNotMoved`
+## в том же пакете; отсутствие отчёта для него — ОТКАЗ, а не пропуск.
+matrix-volume-small:
+	$(GO) test ./services/iam/internal/repo/kacho/pg/relverdict/ \
+	  -run 'TestMatrixVolume_SmallGridMeasuresSomethingAndStaysFlat|TestMatrixVolumeFreshnessGateCanFailAndCanStaySilent' \
+	  -count=1 -v -timeout $(INTEGRATION_TIMEOUT)
+
+matrix-volume-full:
+	KACHO_MATRIX_VOLUME=1 $(GO) test ./services/iam/internal/repo/kacho/pg/relverdict/ \
+	  -run TestMatrixVolume_Report -count=1 -v -timeout 120m
