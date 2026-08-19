@@ -55,7 +55,10 @@ const TAG_ROW = {
   tag: "v1",
   registry_id: "reg-1",
   repository: "nginx",
-  digest: "sha256:abc",
+  // Дайджест настоящей длины: на «sha256:abc» сокращённая и полная формы
+  // совпадали бы, и утверждение о сокращении стало бы истинным при любом
+  // поведении — то есть не различало бы ничего.
+  digest: "sha256:793a57cec5ee88d1c38575cefc16cc6512f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0",
   size_bytes: "1048576",
   media_type: "application/vnd.oci.image.manifest.v1+json",
   created_at: "2026-08-03T10:00:00Z",
@@ -86,6 +89,9 @@ function stubApi(): string[] {
     "/registry/v1/registries/reg-1/repositories": { repositories: [REPOSITORY_ROW], nextPageToken: "" },
     "/registry/v1/registries/reg-1/repositories/nginx": REPOSITORY_ROW,
     "/registry/v1/registries/reg-1/repositories/nginx/tags": { tags: [TAG_ROW], nextPageToken: "" },
+    // Удаление тега — единственная мутация тега. Пустой объект: операции в
+    // ответе нет, поэтому путь завершается синхронно и поллер не заводится.
+    "/registry/v1/registries/reg-1/repositories/nginx/tags/v1": {},
   };
   const stub: typeof globalThis.fetch = (input) => {
     const u = new URL(requestUrl(input), "http://console.test");
@@ -257,5 +263,93 @@ describe("объявленная связь доезжает до рейла В�
     const теги = await screen.findByRole("tab", { name: /Теги/ });
     expect(теги).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: /Обзор/ })).toHaveAttribute("aria-selected", "false");
+  });
+});
+
+/**
+ * Возможности тега живут на ВКЛАДКЕ, а не в недостижимой панели (#633).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ПРЕДМЕТ
+ *
+ * Боковая панель тегов существовала, но открыть её было нечем: состояние
+ * выбранного репозитория не выставлял никто, поэтому панель не отрисовывалась
+ * НИ РАЗУ. После #627 вкладка тегов работает, и панель стала вторым видом одного
+ * предмета (правило 3 `ui.md`) — притом недостижимым.
+ *
+ * Панель снята, а то, что несла только она, перенесено на строку тега: команда
+ * `docker pull`, сокращённый дайджест и удаление тега. Снять компонент, не
+ * перенеся возможности, было бы потерей функциональности (LEAN запрещает её
+ * прямо), а оставить недостижимый — тем самым мёртвым кодом, который выглядит
+ * работающим.
+ *
+ * ПОЧЕМУ УДАЛЕНИЕ ПРОВЕРЯЕТСЯ АДРЕСОМ, А НЕ НАЛИЧИЕМ КНОПКИ
+ *
+ * Кнопка «удалить» на строке тега БЫЛА и до этой правки — её рисовало общее
+ * меню действий строки. Она не работала: общий строитель адреса берёт
+ * `spec.apiPath` НЕПОДСТАВЛЕННЫМ и опознаёт строку по полю `id`, которого у тега
+ * нет вовсе (его натуральный ключ — сам тег). Получался запрос по адресу с
+ * литералом `{registryId}` и пустым последним сегментом. Поэтому утверждается
+ * УШЕДШИЙ ЗАПРОС: наличие кнопки было истинным и на сломанном.
+ */
+describe("возможности тега живут на вкладке, а не в недостижимой панели", () => {
+  /** Открывает вкладку тегов и дожидается строки тега. */
+  async function откудаВидноТег() {
+    const calls = stubApi();
+    mountAt("/projects/prj-1/registry/registries/reg-1/repositories/nginx/tags");
+    await waitFor(() => expect(calls).toContain(TAGS_PATH));
+    expect(await screen.findByText("v1")).toBeInTheDocument();
+    return calls;
+  }
+
+  it("строка тега предлагает скопировать команду docker pull", async () => {
+    await откудаВидноТег();
+
+    // Команда pull — то, ради чего в реестр и ходят. Она была только в панели,
+    // которой никто не мог открыть, то есть возможность существовала лишь в коде.
+    expect(await screen.findByRole("button", { name: "Копировать docker pull" })).toBeInTheDocument();
+  });
+
+  it("дайджест показан СОКРАЩЁННО, а не целиком", async () => {
+    await откудаВидноТег();
+
+    // Полный дайджест — 71 символ; в ячейке таблицы он распирает строку и
+    // вытесняет всё остальное. Сокращение было только в панели.
+    expect(await screen.findByText(/793a57cec…/)).toBeInTheDocument();
+    expect(screen.queryByText(TAG_ROW.digest)).not.toBeInTheDocument();
+  });
+
+  it("удаление тега уходит по адресу, в котором подставлены ОБА родителя и сам тег", async () => {
+    const calls = await откудаВидноТег();
+
+    // Нажатие + подтверждение: удаление необратимо, поэтому спрашивается.
+    fireEvent.click(await screen.findByRole("button", { name: "Удалить тег" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Удалить" }));
+
+    await waitFor(() => expect(calls).toContain(`${TAGS_PATH}/v1`));
+    // Ни один запрос не ушёл с литералом: именно так выглядел общий путь
+    // удаления, и «кнопка есть» об этом не говорило ничего.
+    expect(calls.filter((p) => p.includes("{"))).toEqual([]);
+  });
+
+  it("панель тегов не рисуется и открыть её нечем — второго вида у списка нет", async () => {
+    // Отрицание к утверждениям выше: они выполнялись бы и тогда, когда рядом с
+    // вкладкой остался бы второй список тех же тегов.
+    await откудаВидноТег();
+
+    expect(screen.queryByRole("button", { name: "Закрыть теги" })).not.toBeInTheDocument();
+  });
+
+  it("у соседа — репозиториев — строка по-прежнему без действий: контроль", async () => {
+    // Парный положительный контроль: правка могла бы снять действия строки у
+    // ВСЕХ дочерних вкладок, и утверждения выше остались бы зелёными.
+    const calls = stubApi();
+    mountAt("/projects/prj-1/registry/registries/reg-1/repositories");
+
+    await waitFor(() => expect(calls).toContain("/registry/v1/registries/reg-1/repositories"));
+    expect(await screen.findByText("nginx")).toBeInTheDocument();
+    // Репозиторий read-only (появляется от docker push) — своих действий строки
+    // у него нет и быть не должно.
+    expect(screen.queryByRole("button", { name: "Удалить тег" })).not.toBeInTheDocument();
   });
 });

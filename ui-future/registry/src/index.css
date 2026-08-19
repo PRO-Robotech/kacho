@@ -237,50 +237,8 @@ body.ant-modal-open {
   box-shadow: var(--kc-shadow-sm);
 }
 
-/* Боковая панель тегов образа (RepositoryTagsPanel) — самостоятельный слой над
- * таблицей образов: рецессивный фон-«лоток» (page-уровень) + мягкая тень, чтобы
- * панель не сливалась с поверхностью таблицы, а читалась отдельным слоем. */
-.kc-tags-panel {
-  background: var(--kc-page);
-  border: 1px solid var(--kc-border);
-  border-radius: 12px;
-  box-shadow: var(--kc-shadow-md);
-}
-
-/* Карточка тега — приподнятый блок на «лотке» панели: контрастная elevated-
- * поверхность + тень + лёгкий lift на hover (глубина «одно над другим»). */
-.kc-tag-card {
-  background: var(--kc-elevated);
-  border: 1px solid var(--kc-border-secondary);
-  border-radius: 12px;
-  padding: 12px 14px;
-  box-shadow: var(--kc-shadow-sm);
-  transition:
-    transform 0.16s ease,
-    box-shadow 0.16s ease,
-    border-color 0.16s ease;
-}
-.kc-tag-card:hover {
-  transform: translateY(-1px);
-  border-color: var(--kc-primary);
-  box-shadow: var(--kc-shadow-md);
-}
-
-/* Команда docker pull внутри карточки — «утопленное» code-поле (page-уровень
- * внутри elevated-карточки даёт inset-эффект). */
-.kc-pull-field {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 10px;
-  padding: 2px 2px 2px 10px;
-  background: var(--kc-page);
-  border: 1px solid var(--kc-border-secondary);
-  border-radius: 8px;
-}
-
-/* Подсветка выбранной строки таблицы образов — когда её теги открыты в боковой
- * панели (связь панель↔строка). Перебивает zebra-striping + красит sticky-ячейку. */
+/* Подсветка выбранной строки таблицы — для таблиц, которые её просят через
+ * `selectedRowKey`. Перебивает zebra-striping + красит sticky-ячейку. */
 .kc-table .ant-table-row.kc-row-selected > .ant-table-cell,
 .kc-table .ant-table-row.kc-row-selected > .ant-table-cell-fix-left {
   background: var(--kc-primary-bg, rgb(64 128 255 / 0.16)) !important;

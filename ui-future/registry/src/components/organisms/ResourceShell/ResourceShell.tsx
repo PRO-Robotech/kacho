@@ -44,7 +44,7 @@ import { useResourceList, useResourceListAllPages } from "@/lib/use-resource-lis
 import { noMatchesText, rowsAreComplete, type NarrowingScope } from "@shared/lib/list-scope";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { DetailOverviewActions } from "@/components/molecules/DetailOverviewActions";
-import { RepositoryTagsPanel } from "@/components/organisms/RepositoryTagsPanel";
+import { TagRowActions } from "@/components/molecules/TagRowActions";
 // Решения об адресе — ОДНО объявление на консоль: что такое подстановка, чем
 // она закрывается из маршрута и чем сужается дочерний список.
 import {
@@ -84,9 +84,11 @@ function RelatedTable({
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [facetVal, setFacetVal] = useState("");
-  // Открытый образ для боковой панели тегов (repositories → Drawer, без перехода).
-  const [tagsRepo, setTagsRepo] = useState<string | null>(null);
   const [hidden, toggleHidden] = useHiddenColumns(`cols:${childSpec.id}`);
+  // Обновление списка после мутации строки (удаление тега). Тот же путь, каким
+  // обновляются списки после любой другой мутации, — своей копии здесь не
+  // заводим.
+  const invalidateList = useInvalidateResourceList();
   // Ребёнок, адресуемый ПУТЁМ (`/registry/v1/registries/{registryId}/repositories`,
   // `.../{registryId}/repositories/{repository}/tags`), сужается самим адресом:
   // владелец берёт родителя из сегментов, и параметр в запросе не нужен вовсе.
@@ -184,7 +186,36 @@ function RelatedTable({
   }).filter((c) => !hidden.has(c.header));
   // Столбец действий — только когда у ресурса есть строчные действия. Для read-only
   // (напр. образы) не рисуем пустой столбец.
-  if (resourceHasRowActions(childSpec)) {
+  //
+  // У ТЕГА действия свои (#633). Общее меню строит адрес как `spec.apiPath` +
+  // поле `id` строки, а тегу не годится ни то, ни другое: его адрес несёт ДВЕ
+  // подстановки, а поля `id` у него нет — натуральный ключ тега это сам тег.
+  // Кнопка от общего меню поэтому отправляла запрос по адресу с литералом
+  // `{registryId}` и пустым последним сегментом: выглядела работающей и не
+  // работала. Здесь же живёт копирование `docker pull` — единственное, ради
+  // чего в реестр и ходят; прежде оно было в боковой панели, которую нельзя
+  // было открыть.
+  if (childSpec.id === "tags") {
+    columns.push({
+      header: "",
+      className: "text-right whitespace-nowrap",
+      cell: (row) => (
+        <TagRowActions
+          // Родители берутся ИЗ ТЕХ ЖЕ ДВУХ источников, из которых собран адрес
+          // СПИСКА, и в том же порядке: `{registryId}` закрывает параметр
+          // маршрута (это делает `fillPathFromParams` выше), `{repository}` —
+          // идентичность родительской карточки (это делает `childListPathScope`).
+          // Из строки тега их брать нельзя: `registry_id`/`repository` в ответе
+          // необязательные, и на ответе без них удаление ушло бы по неполному
+          // адресу — что и произошло в первой редакции, поймано пробой.
+          registryId={routeParams.registryId ?? ""}
+          repository={pathParams.repository ?? parentId}
+          tag={getByPath<string>(row, "tag") ?? ""}
+          onDone={() => invalidateList(childSpec.id, projectId || null)}
+        />
+      ),
+    });
+  } else if (resourceHasRowActions(childSpec)) {
     columns.push({
       header: "",
       className: "text-right whitespace-nowrap",
@@ -223,17 +254,16 @@ function RelatedTable({
         <TableSearch value={search} onChange={setSearch} scope={scope} />
         <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
       </HeaderSlotPortal>
-      {/* Split-зона: таблица (сжимается) слева + встроенная панель тегов справа.
-          Панель раздвигает таблицу вбок (не оверлей), живёт внутри лайаута. При
-          сжатии у таблицы появляется h-скролл, а начальный отрезок до колонки
-          идентичности залипает — общая таблица делает это безусловно. */}
+      {/* Таблица занимает зону целиком. Здесь стояла split-зона под боковую
+          панель тегов: панель раздвигала таблицу вбок, но открыть её было
+          нечем, поэтому ширина всегда оставалась нулевой, а сама панель не
+          рисовалась ни разу (#633). Теги показывает своя вкладка (#627). */}
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex" }}>
         <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
           <ResourceTable
             rows={rows}
             columns={columns}
             loading={isLoading}
-            selectedRowKey={tagsRepo}
             rowKey={(r) => getByPath<string>(r, "id") ?? getByPath<string>(r, "name") ?? Math.random().toString()}
             // Сужение здесь клиентское, поэтому порядок законен ровно тогда,
             // когда прочитан весь набор.
@@ -241,22 +271,6 @@ function RelatedTable({
             empty={q || facetVal ? noMatchesText(scope) : undefined}
           />
         </div>
-        {childSpec.id === "repositories" && (
-          <div
-            style={{
-              width: tagsRepo ? 360 : 0,
-              flexShrink: 0,
-              minHeight: 0,
-              overflow: "hidden",
-              transition: "width .2s ease",
-              marginLeft: tagsRepo ? 12 : 0,
-            }}
-          >
-            {tagsRepo && (
-              <RepositoryTagsPanel registryId={parentId} repository={tagsRepo} onClose={() => setTagsRepo(null)} />
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

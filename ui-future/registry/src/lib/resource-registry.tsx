@@ -9,6 +9,7 @@ import { Typography } from "antd";
 import type { FormField } from "@shared/lib/form-schema";
 import { setByPath } from "./path";
 import { formatBytes } from "./bytes";
+import { shortDigest } from "./short-digest";
 import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
@@ -75,6 +76,23 @@ const FIELD_LABELS: FormField = {
 function SizeCell({ value }: { value: unknown }): ReactNode {
   const s = formatBytes(value);
   return s === "—" ? <Typography.Text type="secondary">—</Typography.Text> : <>{s}</>;
+}
+
+/** Дайджест тега — сокращённо на экране, целиком в буфер обмена.
+ *
+ *  Полный OCI-дайджест это 71 символ. В ячейке он распирает строку и вытесняет
+ *  остальные колонки, а опознают образ по первым символам. Копируется при этом
+ *  ПОЛНОЕ значение: сокращённое ни на что не годится, и отдать его вместо
+ *  настоящего значило бы молча подсунуть непригодное. */
+function DigestCell({ value }: { value: unknown }): ReactNode {
+  const full = typeof value === "string" ? value : "";
+  const short = shortDigest(full);
+  if (!short) return <Typography.Text type="secondary">—</Typography.Text>;
+  return (
+    <Typography.Text code copyable={{ text: full, tooltips: ["Копировать дайджест", "Скопировано"] }}>
+      sha256:{short}…
+    </Typography.Text>
+  );
 }
 
 export const REGISTRY: Record<string, ResourceSpec> = {
@@ -269,7 +287,15 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ops: { create: false, update: false, delete: true },
     columns: [
       { header: "Тег", path: "tag", format: "text" },
-      { header: "Дайджест", path: "digest", format: "code" },
+      // Дайджест — СОКРАЩЁННО, копируется целиком. Полный OCI-дайджест это 71
+      // символ: в ячейке он распирает строку и вытесняет всё остальное, а
+      // человеку нужны первые символы (по ним образ и опознают). Такой вид
+      // нёс только боковой список тегов, снятый в #633.
+      {
+        header: "Дайджест",
+        path: "digest",
+        render: (row) => <DigestCell value={row.digest} />,
+      },
       { header: "Размер", path: "size_bytes", format: "text" },
       { header: "Тип содержимого", path: "media_type", format: "text" },
       { header: "Дата создания", path: "created_at", format: "datetime" },
