@@ -199,7 +199,8 @@ func Digest(grid [][]Point) string {
 	h := sha256.New()
 	for _, axis := range grid {
 		for _, p := range axis {
-			fmt.Fprintf(h, "%s|%d|%d|%d|%d|%s\n", p.Axis, p.N, p.B, p.R, p.F, p.Recruit)
+			h.Write([]byte(fmt.Sprintf("%s|%d|%d|%d|%d|%s\n",
+				p.Axis, p.N, p.B, p.R, p.F, p.Recruit)))
 		}
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]

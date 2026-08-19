@@ -114,9 +114,11 @@ func ComputeFingerprint(root string) (Fingerprint, error) {
 	sort.Strings(files)
 	fp.Files = files
 
+	// `hash.Hash.Write` не возвращает ошибки by construction (это записано в его
+	// контракте), но линтер дерева читает возвращаемое значение, а не контракт.
 	ch := sha256.New()
 	for _, rel := range files {
-		fmt.Fprintln(ch, rel)
+		ch.Write([]byte(rel + "\n"))
 	}
 	fp.Composition = hex.EncodeToString(ch.Sum(nil))[:16]
 
