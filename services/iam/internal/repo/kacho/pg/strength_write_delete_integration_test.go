@@ -53,6 +53,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/scalegrid"
@@ -655,7 +656,11 @@ func TestWDPoolCarriesTheProductsTimeouts(t *testing.T) {
 	}
 	ctx := context.Background()
 	pool := wdPool(t, ctx, newStmtCounter())
-	defer pool.Close()
+	// Закрытие С ПРЕДЕЛОМ: отложенное `pool.Close()` ждёт соединение, которого
+	// проба, упавшая внутри открытой транзакции, не вернёт никогда, — и уносит
+	// с собой вердикт всего пакета. Гейт дерева `TestPoolCloseInTestsIsBounded`
+	// это и поймал на первой редакции файла.
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	var stmt, idle string
 	require.NoError(t, pool.QueryRow(ctx, "SHOW statement_timeout").Scan(&stmt))
@@ -675,7 +680,7 @@ func TestWDPoolCarriesTheProductsTimeouts(t *testing.T) {
 	other.ConnConfig.RuntimeParams = map[string]string{"statement_timeout": "7000"}
 	op, err := pgxpool.NewWithConfig(ctx, other)
 	require.NoError(t, err)
-	defer op.Close()
+	pgtest.ClosePoolAtEnd(t, op)
 	var control string
 	require.NoError(t, op.QueryRow(ctx, "SHOW statement_timeout").Scan(&control))
 	if control != "7s" {
@@ -690,7 +695,7 @@ func wdPostgresVersion(t *testing.T, ctx context.Context) string {
 	if err != nil {
 		return "не установлена"
 	}
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	var v string
 	if err := pool.QueryRow(ctx, "SHOW server_version").Scan(&v); err != nil {
 		return "не установлена"
