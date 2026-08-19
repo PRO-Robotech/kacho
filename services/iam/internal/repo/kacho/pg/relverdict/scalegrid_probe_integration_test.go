@@ -636,13 +636,19 @@ func observedScope(t *testing.T, ctx context.Context, tx pgx.Tx) int {
 	t.Helper()
 	var n int
 	if err := tx.QueryRow(ctx, `
-		WITH scope(s_type, s_id, depth) AS (
+		WITH RECURSIVE scope(s_type, s_id, depth) AS (
 		    SELECT $1::text, $2::text, 0
-		  UNION ALL
-		    SELECT e.parent_type, e.parent_id, e.depth
-		      FROM kacho_iam.resource_parent_edge e
-		     WHERE e.object_type = $1::text AND e.object_id = $2::text
-		       AND e.depth <= $3::int
+		  UNION
+		    SELECT e.parent_type, e.parent_id, s.depth + 1
+		      FROM scope s
+		      CROSS JOIN LATERAL (
+		             SELECT pe.parent_type, pe.parent_id
+		               FROM kacho_iam.resource_parent_edge pe
+		              WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
+		              ORDER BY pe.depth
+		              LIMIT $3::int
+		           ) e
+		     WHERE s.depth < $3::int
 		)
 		SELECT count(*)::int FROM scope`,
 		probeModelType, "repo-0000000", 4).Scan(&n); err != nil {
@@ -656,13 +662,19 @@ func distinctScope(t *testing.T, ctx context.Context, tx pgx.Tx) int {
 	t.Helper()
 	var n int
 	if err := tx.QueryRow(ctx, `
-		WITH scope(s_type, s_id, depth) AS (
+		WITH RECURSIVE scope(s_type, s_id, depth) AS (
 		    SELECT $1::text, $2::text, 0
-		  UNION ALL
-		    SELECT e.parent_type, e.parent_id, e.depth
-		      FROM kacho_iam.resource_parent_edge e
-		     WHERE e.object_type = $1::text AND e.object_id = $2::text
-		       AND e.depth <= $3::int
+		  UNION
+		    SELECT e.parent_type, e.parent_id, s.depth + 1
+		      FROM scope s
+		      CROSS JOIN LATERAL (
+		             SELECT pe.parent_type, pe.parent_id
+		               FROM kacho_iam.resource_parent_edge pe
+		              WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
+		              ORDER BY pe.depth
+		              LIMIT $3::int
+		           ) e
+		     WHERE s.depth < $3::int
 		)
 		SELECT count(DISTINCT (s_type, s_id))::int FROM scope`,
 		probeModelType, "repo-0000000", 4).Scan(&n); err != nil {
@@ -1085,13 +1097,16 @@ func TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed(t *testing.T) {
 	deep := observedScope(t, ctx, tx)
 	deepDistinct := distinctScope(t, ctx, tx)
 
-	// Замкнутая форма ПОСЛЕ R7-1-18: замыкание читается ОДНИМ обращением, и
-	// цепь есть сам объект плюс его предки — 1 + d. Прежняя форма обходила
-	// замыкание рекурсивно и давала 1 + d·(d+1)/2, находя каждого предка
-	// заново на каждом шаге; пара «до/после» на цепи d=3 — это 7 → 4.
+	// Замкнутая форма при согласованных замыканиях: 1 + d·(d+1)/2.
+	//
+	// Свести её к 1 + d одним чтением таблицы рёбер НЕЛЬЗЯ, и это перемерено, а
+	// не предположено: таблица хранит цепь, ПРИСЛАННУЮ производителем, а не
+	// замыкание, и производители дерева шлют короткую. Одно чтение схлопнуло бы
+	// область до «объект + его непосредственный предок» — см.
+	// TestScopeReachesTheRootOnTheChainProducersActuallyWrite.
 	const d = probeChainDepth
-	wantClosed := 1 + d
-	t.Logf("цепь глубины d=%d: S_набл=%d (замкнутая форма 1+d = %d), "+
+	wantClosed := 1 + d*(d+1)/2
+	t.Logf("цепь глубины d=%d: S_набл=%d (замкнутая форма 1+d(d+1)/2 = %d), "+
 		"различных сущностей на цепи=%d (1+d = %d)",
 		d, deep, wantClosed, deepDistinct, 1+d)
 
@@ -1105,26 +1120,16 @@ func TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed(t *testing.T) {
 			deepDistinct, 1+d)
 	}
 	// Граница схемы: глубина ограничена четырьмя (CHECK depth BETWEEN 1 AND 4),
-	// значит S_гран = 1 + D = 5. До R7-1-18 та же граница читалась как
-	// 1 + D(D+1)/2 = 11 — перевычисление замыкания более чем удваивало её.
+	// значит S_гран = 1 + D(D+1)/2 = 11 при согласованных замыканиях.
 	//
-	// ПЛЕЧО, РАЗЛИЧАВШЕЕ ГРАНИЦУ И ВЫВОД «D + 1», ЗДЕСЬ БОЛЬШЕ НЕ СТОИТ — и это
-	// снятие с названной причиной, а не пропуск. До R7-1-18 подстановка D + 1
-	// вместо 1 + D(D+1)/2 была ошибкой и подлежала различению. После неё верная
-	// граница есть 1 + D, а вывод — D + 1, и это ОДНО И ТО ЖЕ выражение при
-	// любом D: проверка, обязанная краснеть на первом и молчать на втором, не
-	// может ни упасть, ни смолчать законно. Предмет исчерпан — различать больше
-	// нечего, потому что различия нет.
-	//
-	// Предикат ВОЗВРАТА плеча назван, иначе снятие необратимо втихую: оно
-	// возвращается тем изменением, после которого S_гран перестаёт равняться
-	// D + 1 (иная форма обхода, третья ветвь источников, иной предел глубины) —
-	// тогда вывод и граница снова расходятся, и различать снова есть что.
-	//
-	// Что держит класс в промежутке: два утверждения ниже и выше — замер не
-	// подставляется на место границы (S_набл сверяется с замкнутой формой, а не
-	// объявляется ею) и печатается РЯДОМ со своей глубиной d.
-	const sGran = 5
+	// ПЛЕЧО, РАЗЛИЧАВШЕЕ ГРАНИЦУ И ВЫВОД «D + 1», ОСТАЁТСЯ ДЕЙСТВУЮЩИМ. Приёмка
+	// снимала его вместе с переходом на одно чтение — там 1 + D и D + 1
+	// становятся одним выражением, и различать нечего. Перехода не будет:
+	// предпосылка ложна (таблица не замыкание). Предикат возврата плеча,
+	// названный приёмкой, сработал в обратную сторону — S_гран равна
+	// 1 + D(D+1)/2, а не D + 1, и подстановка вывода вместо границы более чем
+	// вдвое занизила бы потолок, из которого выбираются L и L_m.
+	const sGran = 11
 	if deep > sGran {
 		t.Errorf("S_набл=%d превысила ОБЪЯВЛЕННУЮ границу S_гран=%d: граница выведена из схемы "+
 			"(глубина 1..4), и её превышение означает, что цепь длиннее, чем схема допускает",
@@ -1144,13 +1149,19 @@ func TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed(t *testing.T) {
 
 	var shallow, shallowDistinct int
 	if err := tx.QueryRow(ctx, `
-		WITH scope(s_type, s_id, depth) AS (
+		WITH RECURSIVE scope(s_type, s_id, depth) AS (
 		    SELECT $1::text, $2::text, 0
-		  UNION ALL
-		    SELECT e.parent_type, e.parent_id, e.depth
-		      FROM kacho_iam.resource_parent_edge e
-		     WHERE e.object_type = $1::text AND e.object_id = $2::text
-		       AND e.depth <= 4
+		  UNION
+		    SELECT e.parent_type, e.parent_id, s.depth + 1
+		      FROM scope s
+		      CROSS JOIN LATERAL (
+		             SELECT pe.parent_type, pe.parent_id
+		               FROM kacho_iam.resource_parent_edge pe
+		              WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
+		              ORDER BY pe.depth
+		              LIMIT 4
+		           ) e
+		     WHERE s.depth < 4
 		)
 		SELECT count(*)::int, count(DISTINCT (s_type, s_id))::int FROM scope`,
 		probeModelType, "repo-shallow").Scan(&shallow, &shallowDistinct); err != nil {

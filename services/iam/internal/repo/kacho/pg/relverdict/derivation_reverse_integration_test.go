@@ -64,18 +64,15 @@ func seedTwoAccountsChain(t *testing.T, ctx context.Context, tx pgx.Tx, nets []s
 		 VALUES ('usr-admin',    'ext-admin', 'admin@kacho.local', 'acc-1'),
 		        ('usr-outsider', 'ext-out',   'out@kacho.local',   'acc-2')
 		 ON CONFLICT DO NOTHING`)
-	// Каждый объект несёт СВОЁ ЗАМЫКАНИЕ — строку на каждого предка, а не только
-	// на непосредственного: ровно то, что кладёт единственный производитель
-	// рёбер в дереве. Цепочка «по ребру на звено» — форма, которой продукт не
-	// производит, и опираться на её транзитивную сборку значило бы проверять
-	// запрос на данных, которых не бывает.
+	// ПО ОДНОМУ РЕБРУ НА ЗВЕНО — форма, которую производят производители дерева.
+	// Цепь до корня собирается ОБХОДОМ, и фикстура обязана оставлять его
+	// наблюдаемым: положи она замыкание, различить обход и одно чтение стало бы
+	// нечем.
 	exec(t, ctx, tx,
 		`INSERT INTO kacho_iam.resource_parent_edge
 		   (object_type, object_id, parent_type, parent_id, depth)
-		 VALUES ('project', 'prj-1', 'account', 'acc-1',              1),
-		        ('project', 'prj-1', 'cluster', 'cluster_kacho_root', 2),
-		        ('project', 'prj-9', 'account', 'acc-2',              1),
-		        ('project', 'prj-9', 'cluster', 'cluster_kacho_root', 2),
+		 VALUES ('project', 'prj-1', 'account', 'acc-1', 1),
+		        ('project', 'prj-9', 'account', 'acc-2', 1),
 		        ('account', 'acc-1', 'cluster', 'cluster_kacho_root', 1),
 		        ('account', 'acc-2', 'cluster', 'cluster_kacho_root', 1)`)
 	for _, id := range nets {
@@ -85,9 +82,7 @@ func seedTwoAccountsChain(t *testing.T, ctx context.Context, tx pgx.Tx, nets []s
 		exec(t, ctx, tx,
 			`INSERT INTO kacho_iam.resource_parent_edge
 			   (object_type, object_id, parent_type, parent_id, depth)
-			 VALUES ('vpc_network', $1, 'project', 'prj-1',              1),
-			        ('vpc_network', $1, 'account', 'acc-1',              2),
-			        ('vpc_network', $1, 'cluster', 'cluster_kacho_root', 3)`, id)
+			 VALUES ('vpc_network', $1, 'project', 'prj-1', 1)`, id)
 	}
 	// Сеть ЧУЖОГО аккаунта — та же форма, другая область.
 	exec(t, ctx, tx,
@@ -96,9 +91,7 @@ func seedTwoAccountsChain(t *testing.T, ctx context.Context, tx pgx.Tx, nets []s
 	exec(t, ctx, tx,
 		`INSERT INTO kacho_iam.resource_parent_edge
 		   (object_type, object_id, parent_type, parent_id, depth)
-		 VALUES ('vpc_network', 'net-99', 'project', 'prj-9',              1),
-		        ('vpc_network', 'net-99', 'account', 'acc-2',              2),
-		        ('vpc_network', 'net-99', 'cluster', 'cluster_kacho_root', 3)`)
+		 VALUES ('vpc_network', 'net-99', 'project', 'prj-9', 1)`)
 }
 
 // seedCloudAdminAndForeignOwner кладёт два источника ОДНОГО вида на разной

@@ -83,79 +83,92 @@ func rowsOf(m planrows.Measurement, relation string) int64 {
 
 // ── R7-1-18: ОБХОД ЦЕПИ ОБЛАСТЕЙ ПЕРЕСТАЁТ ПЕРЕВЫЧИСЛЯТЬ ЗАМЫКАНИЕ ──────────
 
-// TestR7_1_18_ScopeChainIsReadOnceNotRecomputed — R7-1-18, задача #732.
+// TestR7_1_18_ScopeWalkCostsTheRequestNotTheCloud — R7-1-18, задача #732.
 //
-// `resource_parent_edge` хранит ЗАМЫКАНИЕ: у объекта лежит строка на КАЖДОГО
-// предка, а не только на непосредственного (первичный ключ уникален по глубине,
-// сама глубина ограничена схемой). Рекурсивный обход по этой таблице читает
-// замыкание ЗАНОВО на каждом шаге и тем самым перевычисляет уже известное:
-// строк выходит `1 + d(d+1)/2` там, где различных сущностей на цепи `1 + d`.
+// # Сценарий утверждал НЕ ТО, и предпосылка его была ложной
 //
-// Утверждается ИСХОД: строк, прочитанных из таблицы рёбер за один вердикт,
-// не больше, чем строк замыкания у самого объекта. Это и есть «одно обращение».
-func TestR7_1_18_ScopeChainIsReadOnceNotRecomputed(t *testing.T) {
+// R7-1-18 требовал свести обход цепи к ОДНОМУ обращению к таблице рёбер, считая
+// её замыканием. Замыканием она не является: ключ (объект, глубина) и проверка
+// глубины 1..4 допускают обе формы, а производители дерева шлют КОРОТКУЮ цепь —
+// vpc, storage и compute по одному звену, реестр два, кластер никто. Проба
+// `TestScopeReachesTheRootOnTheChainProducersActuallyWrite` показывает цену
+// ошибки прямо: на одном чтении выдача на аккаунт и факт администратора облака
+// на кластере перестают действовать.
+//
+// Поэтому обход остаётся, а утверждается то, что было настоящим дефектом и
+// осталось исправимым: **обход не платит за размер облака**. Рекурсивная ветвь с
+// обычным соединением давала планировщику право прочитать таблицу рёбер целиком
+// на каждом шаге — 2412 строк за один вердикт при трёх рёбрах у объекта.
+// Соединение вбок с пределом заставляет ходить указателем по ключу.
+//
+// Утверждается ИСХОД — строк прочитано, — и утверждается он ДВАЖДЫ: величина не
+// растёт с числом объектов в облаке, и на каждом узле она не больше цепи самого
+// объекта. Одного первого мало: плоскость выполнена и у прибора, дающего ноль.
+func TestR7_1_18_ScopeWalkCostsTheRequestNotTheCloud(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration")
 	}
+	// Потолок роста, объявленный ДО прогона: цепь объекта от размера облака не
+	// зависит вовсе, поэтому идеальный рост — ноль. Восемь — запас на дребезг.
+	const walkCeiling = 8
+	const few, many = 200, 2000
+
 	ctx := context.Background()
 	tx, cap := openProbeTx(t, ctx)
 	f := newGridFixture(t, ctx, tx)
-	f.growN(t, ctx, 200)
+	f.growN(t, ctx, few)
 	f.setR(t, ctx, 1, scalegrid.RecruitDirect)
 	f.analyze(t, ctx)
 
-	// ПРЕДПОСЫЛКА: цепь объекта полна и глубока. На вырожденной цепи (d = 1)
-	// перевычисление ненаблюдаемо by construction — обе величины совпадают.
-	var closure, distinctAncestors int
+	// ПРЕДПОСЫЛКА: цепь объекта глубока и коротка по звеньям — то есть та самая,
+	// на которой обход обязан подниматься транзитивно.
+	var links int
 	if err := tx.QueryRow(ctx, `
-		SELECT count(*)::int, count(DISTINCT (parent_type, parent_id))::int
-		  FROM kacho_iam.resource_parent_edge
+		SELECT count(*)::int FROM kacho_iam.resource_parent_edge
 		 WHERE object_type = $1 AND object_id = $2`,
-		probeModelType, probeObjectID).Scan(&closure, &distinctAncestors); err != nil {
+		probeModelType, probeObjectID).Scan(&links); err != nil {
 		t.Fatalf("замыкание объекта: %v", err)
 	}
-	if closure != probeChainDepth || distinctAncestors != probeChainDepth {
-		t.Fatalf("предпосылка не выполнена: строк замыкания %d, различных предков %d, "+
-			"ожидалось по %d. На вырожденной цепи проба мерила бы случай, в котором "+
-			"перевычисления не бывает вовсе", closure, distinctAncestors, probeChainDepth)
+	if links == 0 {
+		t.Fatalf("у объекта ноль рёбер: обход мерил бы вырожденный случай")
 	}
 
-	v, m := askAndExplain(t, ctx, tx, cap, probeObjectID)
+	vFew, mFew := askAndExplain(t, ctx, tx, cap, probeObjectID)
+	edgeFew := rowsOf(mFew, "resource_parent_edge")
 
-	// Положительный контроль: мерится ВЕРНО отвеченный вопрос. Иначе «дёшево»
-	// означало бы «не сработало».
-	if v != relverdict.Allow {
-		t.Fatalf("вердикт %s там, где право выдано ролью на проекте цепи", v)
+	f.growN(t, ctx, many)
+	f.analyze(t, ctx)
+	vMany, mMany := askAndExplain(t, ctx, tx, cap, probeObjectID)
+	edgeMany := rowsOf(mMany, "resource_parent_edge")
+
+	t.Logf("рёбер у объекта %d · объектов в облаке %d → строк из таблицы рёбер %d · "+
+		"объектов %d → %d (перевычисляющая форма читала бы таблицу целиком: измерено 2412)",
+		links, few, edgeFew, many, edgeMany)
+
+	if vFew != relverdict.Allow || vMany != relverdict.Allow {
+		t.Fatalf("вердикты %s и %s: мерилась бы стоимость неверного ответа", vFew, vMany)
 	}
-
-	// Утверждение НА УЗЕЛ, а не на сумму: прибор намеренно НЕ схлопывает пару
-	// «Bitmap Heap Scan + Bitmap Index Scan» по имени отношения (иначе он скрыл
-	// бы два ДЕЙСТВИТЕЛЬНО разных скана), поэтому одно обращение читается в
-	// сумме как удвоенное. Свойство же требуется от обращения: замыкание берётся
-	// ОДНИМ проходом (циклов один) и отдаёт не больше строк, чем у объекта их
-	// есть.
-	var edge []planrows.Access
-	for _, a := range m.Accesses {
-		if a.Relation == "resource_parent_edge" {
-			edge = append(edge, a)
+	if d := edgeMany - edgeFew; d > walkCeiling {
+		t.Errorf("строк из таблицы рёбер за вердикт: %d при %d объектах против %d при %d, "+
+			"прирост %d при потолке %d. Обход платит за размер облака — значит рекурсивная "+
+			"ветвь достаёт таблицу обычным соединением, а не указателем по ключу",
+			edgeMany, many, edgeFew, few, d, walkCeiling)
+	}
+	if edgeFew == 0 || edgeMany == 0 {
+		t.Fatalf("из таблицы рёбер прочитано 0 строк при непустой цепи: прибор смотрел не туда, "+
+			"и плоскость тождественно верна.\n%s", mMany.Census)
+	}
+	// ВТОРОЕ утверждение: на КАЖДОМ узле величина ограничена цепью объекта,
+	// умноженной на число уровней обхода, — а не числом строк таблицы.
+	for _, a := range mMany.Accesses {
+		if a.Relation != "resource_parent_edge" {
+			continue
 		}
-	}
-	if len(edge) == 0 {
-		t.Fatalf("в плане нет ни одного узла по таблице рёбер при непустом замыкании: прибор смотрел "+
-			"не туда, и «дёшево» здесь означало бы «не измерено».\n%s", m.Census)
-	}
-	total := rowsOf(m, "resource_parent_edge")
-	t.Logf("цепь d=%d: строк замыкания у объекта %d · узлов по таблице рёбер %d · "+
-		"строк за вердикт всего %d", probeChainDepth, closure, len(edge), total)
-	for _, a := range edge {
 		t.Logf("  %s: строк %d, циклов %d", a.NodeType, a.Rows, a.Loops)
-		if a.Loops != 1 {
-			t.Errorf("узел %s по таблице рёбер идёт в %d циклов: замыкание перевычисляется, "+
-				"а не читается один раз", a.NodeType, a.Loops)
-		}
-		if a.Rows > int64(closure) {
-			t.Errorf("узел %s по таблице рёбер отдал %d строк при %d строках замыкания у объекта: "+
-				"обход читает не цепь объекта, а таблицу", a.NodeType, a.Rows, closure)
+		if a.Rows > int64(links*relverdict.MaxAncestorDepth) {
+			t.Errorf("узел %s отдал %d строк при %d рёбрах у объекта и пределе обхода %d: "+
+				"чтение не привязано к предмету запроса", a.NodeType, a.Rows, links,
+				relverdict.MaxAncestorDepth)
 		}
 	}
 }
@@ -618,4 +631,81 @@ func max64Rows(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+// ── В3: ПОРЯДОК ВЕТВЕЙ ОБЪЯВЛЕН УСТРОЙСТВОМ — ЗНАЧИТ УТВЕРЖДАЕТСЯ ПРОБОЙ ────
+
+// TestVerdictBindingArmIsBoundedAndRunsFirst — форма плана, и это ЕДИНСТВЕННОЕ
+// место файла, где предмет утверждения — план, а не исход.
+//
+// # Почему здесь можно то, что везде нельзя
+//
+// Правило «утверждай исход, а не форму плана» защищает от подмены свойства
+// продукта выбором планировщика на удобной статистике. Здесь предмет ОБРАТНЫЙ:
+// раннее замыкание держится ровно тем, что узел объединения исполняет потомков
+// ПО ПОРЯДКУ и что ветвь выдач ограничена одной строкой. SQL порядка не
+// гарантирует, параллельная форма — тем более. При перестановке ветвей ответ
+// останется верным, а стоимость — нет: заявленное «замыкание на сервере» тихо
+// исчезнет, и ни одна проба исхода этого не заметит, потому что исход тот же.
+//
+// Комментарий запроса объявляет порядок частью устройства. Объявление, за
+// которым не стоит проверки, переживает то, что им обозначалось.
+func TestVerdictBindingArmIsBoundedAndRunsFirst(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
+	ctx := context.Background()
+	tx, cap := openProbeTx(t, ctx)
+	f := newGridFixture(t, ctx, tx)
+	f.growN(t, ctx, 200)
+	f.setR(t, ctx, 50, scalegrid.RecruitDirect)
+	f.analyze(t, ctx)
+
+	cap.reset()
+	if _, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
+		Subject: probeSubject, ObjectType: probeModelType, ObjectID: probeObjectID,
+		Relation: probeRelation,
+	}); err != nil {
+		t.Fatalf("вопрос вердикта: %v", err)
+	}
+	axis, err := relverdict.LabelAxisForTest(probeModelType)
+	if err != nil {
+		t.Fatalf("ось меток: %v", err)
+	}
+	stmts := cap.matching(relverdict.VerdictQuerySQLForTest(axis))
+	if len(stmts) != 1 {
+		t.Fatalf("захвачено %d операторов, ожидался один", len(stmts))
+	}
+
+	var raw []byte
+	if err := tx.QueryRow(ctx,
+		"EXPLAIN (ANALYZE, VERBOSE, FORMAT JSON) "+stmts[0].sql, stmts[0].args...).Scan(&raw); err != nil {
+		t.Fatalf("снятие плана: %v", err)
+	}
+	plan := string(raw)
+
+	// (1) Ветвь выдач ограничена. Предел выражен в плане узлом Limit; его
+	// отсутствие означает, что ветвь читается целиком.
+	if !strings.Contains(plan, `"Node Type": "Limit"`) {
+		t.Errorf("в плане нет узла предела: ветвь выдач читается целиком, и «замыкание на "+
+			"сервере» перестало быть свойством запроса.\nПлан: %s", firstLineOf(plan))
+	}
+
+	// (2) Ветвь выдач исполняется ПЕРВОЙ. Порядок читается по тому, какое из
+	// двух отношений-дискриминаторов встречается в плане раньше: строки
+	// субъектов выдач принадлежат только первой ветви, прямые факты — только
+	// второй.
+	iBind := strings.Index(plan, "access_binding_subjects")
+	iFact := strings.Index(plan, "relation_fact")
+	if iBind < 0 || iFact < 0 {
+		t.Fatalf("в плане нет одной из двух ветвей (выдачи %d, факты %d): порядок утверждать "+
+			"не о чем", iBind, iFact)
+	}
+	if iBind > iFact {
+		t.Errorf("ветвь фактов стоит в плане РАНЬШЕ ветви выдач: раннее замыкание держится " +
+			"тем, что первая же строка ветви выдач безусловна. Перестановка ответ не меняет, " +
+			"а стоимость — меняет, и ни одна проба исхода этого не заметит")
+	}
+	t.Logf("порядок ветвей утверждён планом: выдачи на позиции %d, факты на %d; предел ветви "+
+		"выдач присутствует", iBind, iFact)
 }
