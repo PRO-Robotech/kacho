@@ -822,10 +822,14 @@ func TestScaleGrid_FullGridReport(t *testing.T) {
 		t.Fatalf("шапка отчёта: %v", err)
 	}
 	body := renderReport(results, time.Since(started))
-	if err := os.WriteFile(scalegrid.ReportPath, []byte(header+body), 0o644); err != nil {
+	path, err := scalegrid.ReportAbsPath()
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if err := os.WriteFile(path, []byte(header+body), 0o644); err != nil {
 		t.Fatalf("запись отчёта: %v", err)
 	}
-	t.Logf("отчёт записан: %s\n\n%s%s", scalegrid.ReportPath, header, body)
+	t.Logf("отчёт записан: %s\n\n%s%s", path, header, body)
 }
 
 // postgresVersion — версия сервера; замер без неё — число без сервера.
