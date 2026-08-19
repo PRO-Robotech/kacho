@@ -252,7 +252,7 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 # ЧЕМ ПРОВЯЗЫВАЕТСЯ И ПОЧЕМУ НЕ `core.hooksPath` — в шапке scripts/hooks/install.sh
 # (короткий ответ: он перебивает `.git/hooks` целиком и молча выключает всё, что
 # там уже лежало).
-.PHONY: test test-unit test-integration test-authz-fga test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice
+.PHONY: test test-unit test-integration test-authz-fga test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full
 
 ## install-hooks — провязать хуки git из scripts/hooks в этот клон (один раз на клон).
 install-hooks:
@@ -450,3 +450,42 @@ SVC_PATH = $(if $(filter gateway,$(SVC)),gateway,services/$(SVC))
 
 help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/^## //'
+
+## ── ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ (R7-1 · S1) ────────────────────────
+##
+## Две цели, потому что предметы РАЗНЫЕ, а не потому что «одна большая, другая
+## маленькая»:
+##
+##   scale-grid-small — идёт в конвейере на каждом прогоне. Утверждает не форму
+##                      кривой, а ОТСУТСТВИЕ ДЕГРАДАЦИИ: отношение верхней точки
+##                      к нижней против потолка, объявленного константой ДО
+##                      прогона, плюс положительный контроль по оси R (она
+##                      обязана расти — иначе плоскость получена сломанным
+##                      прибором, а не свойством запроса);
+##
+##   scale-grid-full  — РУЧНОЙ прогон до 10⁶ по четырём осям. Сажает миллион
+##                      объектов и миллион выдач, пишет отчёт артефактом дерева.
+##                      В конвейере не идёт и не должна: её место — перед
+##                      правкой и после неё, парой «до/после».
+##
+## Сетка живёт КОНСТАНТОЙ в services/iam/internal/repo/kacho/pg/scalegrid и
+## ниоткуда не переопределяется. Переменная ниже решает, ЗАПУСКАТЬ ли полный
+## прогон, и НИКОГДА — что мерить: отчёт, снятый на сокращённой сетке,
+## неотличим от полного и читается как полный.
+##
+## ПОЛНЫЙ ПРОГОН ИДЁТ ПОСЛЕДНИМ, НА ОКОНЧАТЕЛЬНОМ ДЕРЕВЕ. Отпечаток предмета
+## снимается в НАЧАЛЕ прогона, поэтому правка любого файла под отпечатком после
+## его старта делает отчёт несвежим В МОМЕНТ РОЖДЕНИЯ: гейт свежести покраснеет
+## на только что снятом замере. Под отпечатком — все не-тестовые .go каталогов
+## relverdict и scalegrid плюс миграции, называющие читаемые вердиктом таблицы;
+## тестовые файлы и Makefile в него не входят и правятся свободно.
+##
+## Стоило трёх перезапусков за одну сессию, каждый — потерянные минуты прогона.
+scale-grid-small:
+	$(GO) test ./services/iam/internal/repo/kacho/pg/relverdict/ \
+	  -run 'TestScaleGrid_SmallGridStaysFlatAndTheControlGrows|TestScaleGrid_StatisticsArePartOfThePointNotHygiene|TestScaleGridSeeder_RowForRowMatchesTheProducer' \
+	  -count=1 -v -timeout $(INTEGRATION_TIMEOUT)
+
+scale-grid-full:
+	KACHO_SCALEGRID_FULL=1 $(GO) test ./services/iam/internal/repo/kacho/pg/relverdict/ \
+	  -run TestScaleGrid_FullGridReport -count=1 -v -timeout 120m
