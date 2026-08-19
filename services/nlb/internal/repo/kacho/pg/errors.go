@@ -4,7 +4,8 @@
 package pg
 
 import (
-	"encoding/base64"
+	"github.com/PRO-Robotech/kacho/pkg/pagetoken"
+
 	"errors"
 	"fmt"
 	"strings"
@@ -122,35 +123,32 @@ type pageCursor struct {
 	ID        string
 }
 
-// encodePageToken — base64-encoded "RFC3339Nano\x00id". Skill workspace CLAUDE.md
-// opaque cursor: не показываем внутренности клиенту.
+// encodePageToken собирает опаковый курсор (created_at, id).
+//
+// Форма объявлена ОДИН раз — в pkg/pagetoken; здесь её не воспроизводят. Прежняя
+// редакция возила отметку времени ТЕКСТОМ (RFC3339Nano) и разделяла поля нулевым
+// байтом — собственная, ни с чем не совместимая форма, которую вдобавок построчно
+// повторяла проверка на пути запроса.
 func encodePageToken(t time.Time, id string) string {
 	if t.IsZero() && id == "" {
 		return ""
 	}
-	raw := t.UTC().Format(time.RFC3339Nano) + "\x00" + id
-	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+	return pagetoken.EncodeKeysetTime(pagetoken.DefaultOrder, t, id)
 }
 
-// decodePageToken — обратное преобразование. Malformed token →
-// invalidArg("page_token",...) (ErrInvalidArg → gRPC InvalidArgument).
+// decodePageToken — обратное преобразование. Негодный токен →
+// invalidArg("page_token", …) (ErrInvalidArg → gRPC InvalidArgument).
+//
+// Причина разбора наружу не течёт: она называла бы внутреннюю форму токена.
 func decodePageToken(token string) (pageCursor, error) {
 	if token == "" {
 		return pageCursor{}, nil
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(token)
+	t, id, err := pagetoken.DecodeKeysetTime(token, pagetoken.DefaultOrder)
 	if err != nil {
-		return pageCursor{}, invalidArg("page_token", "malformed base64")
+		return pageCursor{}, invalidArg("page_token", "malformed page_token")
 	}
-	parts := strings.SplitN(string(raw), "\x00", 2)
-	if len(parts) != 2 {
-		return pageCursor{}, invalidArg("page_token", "malformed payload")
-	}
-	t, err := time.Parse(time.RFC3339Nano, parts[0])
-	if err != nil {
-		return pageCursor{}, invalidArg("page_token", "malformed timestamp")
-	}
-	return pageCursor{CreatedAt: t, ID: parts[1]}, nil
+	return pageCursor{CreatedAt: t, ID: id}, nil
 }
 
 // pageSizeOrDefault — clamp page_size в [1, MaxPageSize]; 0 → DefaultPageSize=50.

@@ -14,16 +14,24 @@
 // Почему не своя реализация. Обе половины взяты у того кода, который уже
 // исполняется на пути чтения: `validate.PageSize` (общая для платформы граница
 // [0..1000], значение вне диапазона отвергается, а не зажимается) и
-// `helpers.DecodePageToken` (кодек курсора vpc). Собственный разбор здесь
-// означал бы второй кодек, который разъедется с первым молча.
+// `pagetoken.Decode` (единственное объявление формата курсора на дерево).
+// Собственный разбор здесь означал бы второй кодек, который разъедется с первым
+// молча.
+//
+// Кодек живёт в pkg/, а не в слое репозитория, ровно затем, чтобы эта проверка
+// могла звать ИСПОЛНЯЕМЫЙ разбор, не импортируя адаптер: у соседних сервисов
+// рукописные зеркала формата завелись именно из-за того, что звать было нечего.
 //
 // Репозиторий остаётся авторитетным: он повторяет обе проверки на служимом
 // пути, поэтому вызывающий, минующий этот пакет, не остаётся без них.
 package listpage
 
 import (
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/PRO-Robotech/kacho/pkg/pagetoken"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 )
 
 // ValidatePagination — sync-проверка формата пагинации: page_size вне [0..1000]
@@ -34,11 +42,8 @@ func ValidatePagination(pageToken string, pageSize int64) error {
 	if _, err := corevalidate.PageSize("page_size", pageSize); err != nil {
 		return err
 	}
-	if pageToken == "" {
-		return nil
-	}
-	if _, _, err := helpers.DecodePageToken(pageToken); err != nil {
-		return helpers.InvalidPageTokenErr(err)
+	if _, err := pagetoken.Decode(pageToken); err != nil {
+		return status.Error(codes.InvalidArgument, "page_token is invalid")
 	}
 	return nil
 }

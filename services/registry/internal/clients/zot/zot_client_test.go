@@ -11,7 +11,6 @@
 package zot_test
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -26,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
+	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/shared/namepage"
 	zotclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/zot"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
@@ -470,13 +470,21 @@ func TestZot_REG22_ListRepositories_NextTokenIsOpaqueOffset(t *testing.T) {
 	require.Len(t, repos, 1)
 	require.NotEmpty(t, next, "есть ещё репо → next-token")
 
-	raw, derr := base64.StdEncoding.DecodeString(next)
-	require.NoError(t, derr, "token — base64")
-	// Курсор — опаковый offset (целое), не имя граничного репо: name-курсор течёт
-	// existence-oracle после per-repo фильтра handler'а.
-	_, aerr := strconv.Atoi(string(raw))
-	require.NoError(t, aerr, "cursor must be an opaque offset, not a raw repo name (leak)")
-	require.NotContains(t, string(raw), "alpha", "cursor must not echo a raw repo name")
+	// Токен разбирается ПРОИЗВОДИТЕЛЕМ, а не собственной копией формата: прежняя
+	// редакция раскладывала его здесь руками (base64 + Atoi) и была ещё одним
+	// объявлением формата — она зеленела ровно до тех пор, пока копия совпадала
+	// с кодеком.
+	_, oerr := namepage.DecodeOffset(next)
+	require.NoError(t, oerr, "курсор обязан быть опаковой ПОЗИЦИЕЙ этого контракта")
+
+	// И он обязан НЕ разбираться как курсор по ИМЕНИ. Прежде это утверждение было
+	// невыразимо: оба курсора кодировали голую строку одинаково, поэтому позиция и
+	// имя давали байт-в-байт равные токены (`5` ↔ offset 5). Теперь смысл едет в
+	// самом токене, и подмена одного другим — отказ.
+	_, nerr := namepage.Decode(next)
+	require.Error(t, nerr, "offset-курсор не может читаться как курсор по имени (existence-oracle)")
+
+	require.NotContains(t, next, "alpha", "курсор не вправе эхо'ить имя репозитория")
 }
 
 // REG-22 — ListRepositories агрегирует размер/last-update/download-count из GlobalSearch,

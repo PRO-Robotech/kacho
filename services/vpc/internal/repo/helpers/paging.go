@@ -4,21 +4,23 @@
 package helpers
 
 import (
-	"encoding/base64"
-	"errors"
-	"strconv"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/PRO-Robotech/kacho/pkg/pagetoken"
 )
 
-// InvalidPageTokenErr оборачивает ошибку DecodePageToken в gRPC InvalidArgument.
-// Raw repo-error наружу не утекает — page_token это клиентский input, а не
-// domain-state.
+// InvalidPageTokenErr оборачивает отказ разбора курсора в gRPC InvalidArgument.
+//
+// Причина разбора наружу НЕ течёт: page_token — клиентский вход, а не состояние
+// домена, и внутренняя форма токена вызывающего не касается. Прежняя редакция
+// подставляла причину в текст (`%v`) — тогда проверка на пути запроса и разбор на
+// пути чтения описывали один и тот же дефект двумя разными сообщениями.
 func InvalidPageTokenErr(err error) error {
-	return status.Errorf(codes.InvalidArgument, "page_token is invalid: %v", err)
+	_ = err
+	return status.Error(codes.InvalidArgument, "page_token is invalid")
 }
 
 // InvalidFilterErr оборачивает ParseError из filter.Parse в gRPC InvalidArgument
@@ -27,25 +29,14 @@ func InvalidFilterErr(err error) error {
 	return status.Error(codes.InvalidArgument, err.Error())
 }
 
-// EncodePageToken кодирует created_at + id в непрозрачный page_token.
+// EncodePageToken кодирует (created_at, id) в опаковый курсор.
+//
+// Форма объявлена ОДИН раз — в pkg/pagetoken; здесь её не воспроизводят.
 func EncodePageToken(createdAt time.Time, id string) string {
-	raw := strconv.FormatInt(createdAt.UnixNano(), 10) + ":" + id
-	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+	return pagetoken.EncodeKeysetTime(pagetoken.DefaultOrder, createdAt, id)
 }
 
-// DecodePageToken декодирует page_token обратно в (created_at, id).
+// DecodePageToken разбирает опаковый курсор обратно в (created_at, id).
 func DecodePageToken(token string) (time.Time, string, error) {
-	b, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return time.Time{}, "", err
-	}
-	parts := strings.SplitN(string(b), ":", 2)
-	if len(parts) != 2 {
-		return time.Time{}, "", errors.New("malformed token")
-	}
-	ns, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return time.Time{}, "", err
-	}
-	return time.Unix(0, ns).UTC(), parts[1], nil
+	return pagetoken.DecodeKeysetTime(token, pagetoken.DefaultOrder)
 }

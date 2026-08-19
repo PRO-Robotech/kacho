@@ -970,24 +970,34 @@ CASES.append(conformance_lifecycle_pack("ADR", "/vpc/v1/addresses",
 # = try pop released SKIP LOCKED → fallback bump cursor; ip = pool_base + offset.
 # Эти кейсы — black-box проверка через api-gateway, не знают про SQL.
 #
-# Изоляция: каждый case создает свой v6-pool в {{zoneD}} (нет seeded-default
-# v4-pool там — не пересекается с ADR-CR-CRUD-EXT). Cleanup в обратном порядке:
-# address → pool. Pool DELETE проходит (зависимостей через FK нет;
+# Изоляция: каждый case создает свой v6-pool в зоне, объявленной за этим набором
+# (`scripts/pool_bands.py`, `DEFAULT_POOL_ZONE['address']`). Cleanup в обратном
+# порядке: address → pool. Pool DELETE проходит (зависимостей через FK нет;
 # ipv6_allocated_ips → address_pools CASCADE).
 #
-# Parallel-safety: EXTERNAL_PUBLIC pool namespaces are GLOBAL. The v4 fall-through
-# pool below uses the address-suite block 100.101.0.0/16 (NOT the nlb seed's
-# a zone-derived 100.102.<octet>.0/24, live for the whole umbrella run, nor the internal-pool suite's
-# 100.100.0.0/16). Only 3 geo zones exist so {{zoneD}}≡{{zoneC}}≡ru-central1-d;
-# the is_default pools here therefore share ONE (zone,kind) partition with the
-# internal-pool suite → run.sh serial-collections.txt keeps the two collections
-# from running concurrently (else 409 AlreadyExists on the default partition).
+# Параллельная безопасность — две ГЛОБАЛЬНЫЕ оси, и обе разведены объявлением,
+# а не расписанием:
+#
+#   * CIDR. `address_pool_cidrs` несёт EXCLUDE `(kind WITH =, block WITH &&)` —
+#     ни зоны, ни проекта в нём нет, значит блок пула это глобальное имя. Полоса
+#     набора объявлена ОДИН раз, в `scripts/pool_bands.py` (набор `address`), и
+#     числом здесь не повторяется. Вхождение каждого блока в свою полосу держит
+#     `deploy/scripts/assert-pool-bands-are-disjoint.py`.
+#   * умолчательный пул. `(zone_id, kind) WHERE is_default` — партишн; зона
+#     набора объявлена там же, у набора internal-pool она ДРУГАЯ, поэтому 409
+#     между наборами невозможен by construction.
+#
+# Зон в посеве шесть (`deploy/scripts/geo-baseline.sql`), из них резолвер берёт
+# семейство `ru-central1-` — пять, и раздаёт zoneA..zoneD = a, b, c, d. Предикат:
+# `grep -c "'ru-central1-" deploy/scripts/geo-baseline.sql`. Схлопывания
+# {{zoneC}}≡{{zoneD}} НЕТ — прежняя редакция этого абзаца утверждала обратное и
+# выводила из него необходимость последовательного расписания.
 
 POOLS = "/vpc/v1/addressPools"
 ADDRS = "/vpc/v1/addresses"
 
 
-def _make_v6_pool(suffix="v6", zone="{{zoneD}}", cidr="2001:db8:cafe::/64",
+def _make_v6_pool(suffix="v6", zone="{{zoneD}}", cidr="2001:db8:101::/64",
                   is_default=True):
     """Создать v6-pool для конкретного case + забрать id в poolId.
 
@@ -1069,7 +1079,7 @@ CASES.append(Case(
                  "pm.expect(JSON.stringify(pm.response.json()).toLowerCase()).to.not.contain('not found'));",
              ]), "addrX4"),
         # ── форма 4: внешний IPv6 (свой пул суиты в {{zoneD}}) ────────────────────
-        *_make_v6_pool("lbvx", zone="{{zoneD}}", cidr="2001:db8:1b7::/64"),
+        *_make_v6_pool("lbvx", zone="{{zoneD}}", cidr="2001:db8:101:1::/64"),
         Step(name="cr-ext-v6", method="POST", path="/vpc/v1/addresses",
              body={"projectId": "{{_suiteProjectId}}", "name": "adr-lbvx6-{{runId}}",
                    "externalIpv6AddressSpec": {"zoneId": "{{zoneD}}"}},
@@ -1112,7 +1122,7 @@ CASES.append(Case(
     title="Create external_ipv6 Address → IP из default v6 pool",
     classes=["CRUD"], priority="P1",
     steps=[
-        *_make_v6_pool("crv6", zone="{{zoneD}}", cidr="2001:db8:cafe::/64"),
+        *_make_v6_pool("crv6", zone="{{zoneD}}", cidr="2001:db8:101:2::/64"),
         Step(name="create", method="POST", path=ADDRS,
              body={"projectId": "{{_suiteProjectId}}", "name": "adr-crv6-{{runId}}",
                    "externalIpv6AddressSpec": {"zoneId": "{{zoneD}}"}},
@@ -1124,7 +1134,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "pm.test('has external ipv6', () => pm.expect(pm.response.json().externalIpv6Address).to.be.an('object'));",
                           "pm.test('v6 address looks like ipv6 hex', () => pm.expect(pm.response.json().externalIpv6Address.address).to.match(/^[0-9a-fA-F:]+$/));",
-                          "pm.test('v6 ip starts with pool prefix 2001:db8:cafe', () => pm.expect(pm.response.json().externalIpv6Address.address).to.match(/^2001:db8:cafe:/));"])),
+                          "pm.test('v6 ip starts with pool prefix 2001:db8:101:2', () => pm.expect(pm.response.json().externalIpv6Address.address).to.match(/^2001:db8:101:2:/));"])),
         retry_until_authorized(Step(name="cleanup-addr", method="DELETE", path=ADDRS + "/{{addrId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
@@ -1171,7 +1181,7 @@ CASES.append(Case(
     title="Delete v6 Address → offset возвращается в released, Reuse выдает тот же IP",
     classes=["STATE", "CONF"], priority="P1",
     steps=[
-        *_make_v6_pool("rru", zone="{{zoneD}}", cidr="2001:db8:bee::/64"),
+        *_make_v6_pool("rru", zone="{{zoneD}}", cidr="2001:db8:101:3::/64"),
         # 1) Create + remember the IP.
         Step(name="cr-1", method="POST", path=ADDRS,
              body={"projectId": "{{_suiteProjectId}}", "name": "adr-rru1-{{runId}}",
@@ -1252,7 +1262,7 @@ CASES.append(Case(
              auth="jwtBootstrap",  # InternalAddressPoolService — system_admin gated
              body={"name": "adr-falv4-pool-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneD}}",
-                   "v4CidrBlocks": [], "v6CidrBlocks": ["2001:db8:b0b::/64"],
+                   "v4CidrBlocks": [], "v6CidrBlocks": ["2001:db8:101:4::/64"],
                    "isDefault": True},
              test_script=[*assert_status(200),
                           *save_from_response("j.id", "falV4PoolId")]),
@@ -1289,11 +1299,10 @@ CASES.append(Case(
              auth="jwtBootstrap",  # InternalAddressPoolService — system_admin gated
              body={"name": "adr-falv6-pool-{{runId}}", "kind": "EXTERNAL_PUBLIC",
                    "zoneId": "{{zoneD}}",
-                   # Dedicated address-suite v4 block (100.101.0.0/16): the
-                   # address_pool_cidrs EXCLUDE is GLOBAL per-kind, so this must not
-                   # overlap the persistent nlb seed pool (zone-derived 100.102.<octet>.0/24) nor the
-                   # internal-pool suite's block (100.100.0.0/16). See address.py
-                   # header note + internal-pool.py parallel-safety docstring.
+                   # Блок из полосы набора: EXCLUDE `address_pool_cidrs`
+                   # глобален на вид пула, поэтому чужую полосу накрывать нельзя.
+                   # Полоса объявлена в `scripts/pool_bands.py`; вхождение держит
+                   # `deploy/scripts/assert-pool-bands-are-disjoint.py`.
                    "v4CidrBlocks": ["100.101.0.0/24"], "v6CidrBlocks": [],
                    "isDefault": True},
              test_script=[*assert_status(200),

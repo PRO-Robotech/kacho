@@ -10,10 +10,10 @@
 package namepage
 
 import (
-	"encoding/base64"
 	"fmt"
 	"strconv"
 
+	"github.com/PRO-Robotech/kacho/pkg/pagetoken"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
@@ -79,16 +79,41 @@ func WindowByOffset[T any](items []T, pageSize int64, pageToken string) ([]T, st
 	return items[start:end], encodeOffset(end), nil
 }
 
-// Encode кодирует имя в opaque base64-курсор.
+// Курсоры этого пакета разного СМЫСЛА — по имени и по позиции — прежде кодировали
+// голую строку одной и той же кодировкой. Тег с цифровым именем давал токен,
+// БАЙТ-В-БАЙТ равный offset-курсору (`Encode("5") == EncodeOffset(5) == "NQ=="`), и оба
+// окна принимали чужой токен без ошибки, отдавая не ту страницу. Цифровые имена тегов —
+// обычный случай, поэтому это был не теоретический, а рабочий отказ.
+//
+// Теперь оба курсора собирает общий кодек `pkg/pagetoken`, и смысл едет В ТОКЕНЕ
+// отдельным полем порядка: разбор чужого курсора — отказ, а не случайный успех.
+// Разбор мусора тоже стал отказом: прежде любой валидный base64 был валидным «именем».
+const (
+	orderByName   = "name asc"
+	orderByOffset = "offset"
+)
+
+// Encode кодирует имя в опаковый курсор.
 func Encode(name string) string {
-	return base64.StdEncoding.EncodeToString([]byte(name))
+	return pagetoken.Encode(pagetoken.Cursor{Order: orderByName, Keys: []string{name}})
 }
 
-// encodeOffset кодирует позицию в опаковый base64-курсор (не несёт имён).
-// EncodeOffset/DecodeOffset — тот же опаковый offset-курсор для источников, которые
-// режут окно У СЕБЯ (движок с server-side пагинацией), а не отдают весь набор в
-// WindowByOffset. Форма курсора обязана совпадать: иначе один и тот же контракт
-// пагинации имел бы две несовместимые кодировки.
+// Decode разбирает опаковый курсор в имя. Курсор позиции и мусор — отказ.
+func Decode(token string) (string, error) {
+	c, err := pagetoken.DecodeInOrder(token, orderByName)
+	if err != nil {
+		return "", err
+	}
+	if len(c.Keys) != 1 {
+		return "", fmt.Errorf("%w: name cursor names no single key", pagetoken.ErrInvalid)
+	}
+	return c.Keys[0], nil
+}
+
+// EncodeOffset/DecodeOffset — опаковый offset-курсор для источников, которые режут окно
+// У СЕБЯ (движок с server-side пагинацией), а не отдают весь набор в WindowByOffset.
+// Позиция, а не имя: name-курсор эхо'ил бы имя отфильтрованного (скрытого) элемента →
+// existence-oracle.
 func EncodeOffset(offset int) string { return encodeOffset(offset) }
 
 // DecodeOffset разбирает опаковый offset-курсор (пустой → 0).
@@ -100,23 +125,25 @@ func DecodeOffset(token string) (int, error) {
 }
 
 func encodeOffset(offset int) string {
-	return base64.StdEncoding.EncodeToString([]byte(strconv.Itoa(offset)))
+	return pagetoken.Encode(pagetoken.Cursor{
+		Order: orderByOffset,
+		Keys:  []string{strconv.Itoa(offset)},
+	})
 }
 
-// decodeOffset разбирает опаковый offset-курсор обратно в позицию.
+// decodeOffset разбирает опаковый offset-курсор обратно в позицию. Курсор имени и
+// мусор — отказ.
 func decodeOffset(token string) (int, error) {
-	b, err := base64.StdEncoding.DecodeString(token)
+	c, err := pagetoken.DecodeInOrder(token, orderByOffset)
 	if err != nil {
 		return 0, err
 	}
-	return strconv.Atoi(string(b))
-}
-
-// Decode разбирает opaque base64-курсор в имя.
-func Decode(token string) (string, error) {
-	b, err := base64.StdEncoding.DecodeString(token)
-	if err != nil {
-		return "", err
+	if len(c.Keys) != 1 {
+		return 0, fmt.Errorf("%w: offset cursor names no single key", pagetoken.ErrInvalid)
 	}
-	return string(b), nil
+	n, cerr := strconv.Atoi(c.Keys[0])
+	if cerr != nil {
+		return 0, fmt.Errorf("%w: offset cursor is not a position", pagetoken.ErrInvalid)
+	}
+	return n, nil
 }

@@ -4,20 +4,23 @@
 package repo
 
 import (
-	"encoding/base64"
-	"errors"
-	"strconv"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/PRO-Robotech/kacho/pkg/pagetoken"
 )
 
-// invalidPageTokenErr оборачивает ошибку decodePageToken в gRPC InvalidArgument
-// (page_token — клиентский input, не leak'ать raw repo-error).
+// invalidPageTokenErr оборачивает отказ разбора курсора в контрактный InvalidArgument.
+//
+// Причина разбора НАРУЖУ НЕ ТЕЧЁТ. Прежняя редакция подставляла её в текст (`%v`), и
+// клиент получал внутреннюю форму токена — а проверка того же входа на пути запроса
+// давала ДРУГОЙ текст. Один и тот же дефект описывался двумя сообщениями, и то, какое
+// из них увидит вызывающий, зависело от того, дошёл ли запрос до базы.
 func invalidPageTokenErr(err error) error {
-	return status.Errorf(codes.InvalidArgument, "page_token is invalid: %v", err)
+	_ = err
+	return status.Error(codes.InvalidArgument, "page_token is invalid")
 }
 
 // invalidFilterErr оборачивает ParseError из filter.Parse в gRPC InvalidArgument.
@@ -25,25 +28,16 @@ func invalidFilterErr(err error) error {
 	return status.Error(codes.InvalidArgument, err.Error())
 }
 
-// encodePageToken кодирует created_at + id в непрозрачный page_token.
+// encodePageToken кодирует (created_at, id) в опаковый курсор.
+//
+// Форма объявлена ОДИН раз — в pkg/pagetoken. Здесь её не воспроизводят: копия
+// разошлась бы с проверкой формата молча, потому что обе возвращают «валидно» на
+// валидном входе.
 func encodePageToken(createdAt time.Time, id string) string {
-	raw := strconv.FormatInt(createdAt.UnixNano(), 10) + ":" + id
-	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+	return pagetoken.EncodeKeysetTime(pagetoken.DefaultOrder, createdAt, id)
 }
 
-// decodePageToken декодирует page_token обратно в (created_at, id).
+// decodePageToken разбирает опаковый курсор обратно в (created_at, id).
 func decodePageToken(token string) (time.Time, string, error) {
-	b, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return time.Time{}, "", err
-	}
-	parts := strings.SplitN(string(b), ":", 2)
-	if len(parts) != 2 {
-		return time.Time{}, "", errors.New("malformed token")
-	}
-	ns, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return time.Time{}, "", err
-	}
-	return time.Unix(0, ns).UTC(), parts[1], nil
+	return pagetoken.DecodeKeysetTime(token, pagetoken.DefaultOrder)
 }

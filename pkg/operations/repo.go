@@ -5,10 +5,8 @@ package operations
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +17,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	"github.com/PRO-Robotech/kacho/pkg/pagetoken"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 )
 
@@ -886,25 +885,16 @@ func invalidPageTokenErr() error {
 		Err()
 }
 
-// encodePageToken кодирует created_at + id в непрозрачный page_token.
+// encodePageToken кодирует (created_at, id) в опаковый курсор.
+//
+// Форма объявлена ОДИН раз — в pkg/pagetoken. Прежде она была записана здесь и
+// ПОСИМВОЛЬНО скопирована в compute и vpc: приватность этого кодека и была причиной
+// копий — импортировать было нечего.
 func encodePageToken(createdAt time.Time, id string) string {
-	raw := strconv.FormatInt(createdAt.UnixNano(), 10) + ":" + id
-	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+	return pagetoken.EncodeKeysetTime(pagetoken.DefaultOrder, createdAt, id)
 }
 
-// decodePageToken декодирует page_token обратно в (created_at, id).
+// decodePageToken разбирает опаковый курсор обратно в (created_at, id).
 func decodePageToken(token string) (time.Time, string, error) {
-	b, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return time.Time{}, "", err
-	}
-	parts := strings.SplitN(string(b), ":", 2)
-	if len(parts) != 2 {
-		return time.Time{}, "", errors.New("malformed token")
-	}
-	ns, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return time.Time{}, "", err
-	}
-	return time.Unix(0, ns).UTC(), parts[1], nil
+	return pagetoken.DecodeKeysetTime(token, pagetoken.DefaultOrder)
 }

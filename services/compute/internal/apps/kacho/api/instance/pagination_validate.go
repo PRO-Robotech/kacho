@@ -4,40 +4,33 @@
 package instance
 
 import (
-	"bytes"
-	"encoding/base64"
-
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/pkg/pagetoken"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 )
 
-// ValidateListPagination validates the List pagination inputs (page_size + page_token)
-// as a SYNC, request-shape guard the handler can run BEFORE the listauthz empty-grant
-// short-circuit.
+// ValidateListPagination проверяет вход пагинации СИНХРОННО — до короткого замыкания
+// пустого гранта.
 //
-// Why here (not only in the repo): every compute List handler returns an empty page
-// early when the caller's per-object grant resolves to zero ids — without ever calling
-// the repo. The repo IS where page_size (validate.PageSize) + page_token (decode) are
-// validated, so a malformed page_token / out-of-range page_size on an empty-grant List
-// used to fall through to `200 {[]}` instead of `400 InvalidArgument`, diverging from
-// the api-convention ("garbage token → InvalidArgument", "page_size max 1000") and from
-// the sibling vpc service. Validating here makes the 400 deterministic regardless of
-// grant state, and the repo keeps its own validation as the authoritative backstop.
+// Зачем здесь, а не только в репозитории: каждый список compute отдаёт пустую страницу
+// РАНО, когда пообъектный грант вызывающего резолвится в ноль идентификаторов, — не
+// дойдя до репозитория вовсе. Тогда мусорный курсор и размер вне диапазона уезжали бы
+// в `200 {[]}` вместо `400`, и ответ на один и тот же некорректный ввод зависел бы от
+// того, что вызывающему выдано.
 //
-// Token shape mirrors repo.decodePageToken: base64 RawURLEncoding of "<unixnano>:<id>".
-// We only assert well-formedness (decodable + contains the ':' separator) — the repo
-// re-parses the fields. Empty token = first page (valid).
+// Проверка зовёт ТОТ ЖЕ разбор, что и путь чтения (pkg/pagetoken), а не описывает его.
+// Прежняя редакция воспроизводила форму токена рукописно — «декодируется и содержит
+// двоеточие», — и это ровно тот второй кодек, который расходится с первым молча: смена
+// формы у владельца не ломала компиляцию зеркала. Общий дом кодека лежит в pkg/,
+// поэтому use-case зовёт его, не импортируя адаптер, — слои не нарушены.
 func ValidateListPagination(p Pagination) error {
 	if _, err := validate.PageSize("page_size", p.PageSize); err != nil {
 		return err
 	}
-	if p.PageToken != "" {
-		b, err := base64.RawURLEncoding.DecodeString(p.PageToken)
-		if err != nil || !bytes.Contains(b, []byte(":")) {
-			return status.Error(codes.InvalidArgument, "page_token is invalid")
-		}
+	if _, err := pagetoken.Decode(p.PageToken); err != nil {
+		return status.Error(codes.InvalidArgument, "page_token is invalid")
 	}
 	return nil
 }
