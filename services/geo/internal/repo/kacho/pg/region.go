@@ -44,16 +44,6 @@ func actorFromCtx(ctx context.Context) string {
 	return p.Type + ":" + p.ID
 }
 
-// derefString разыменовывает partial-update указатель: nil означает «поле не
-// меняется», и тогда конфликт по имени возникнуть не может (COALESCE оставляет
-// прежнее значение) — пустая строка сюда просто не доедет до сообщения.
-func derefString(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
 // openZoneCountExpr — read-time rollup числа зон региона с openForPlacement°=true
 // (advisory-hint, НЕ persisted). Зона open ⟺ zone.status='UP' И region.status='UP',
 // поэтому для DOWN-региона hint=0 by construction.
@@ -76,9 +66,9 @@ func (r *RegionRepo) Get(ctx context.Context, id string) (*domain.Region, error)
 	var rg domain.Region
 	var statusName string
 	err := r.pool.QueryRow(ctx,
-		`SELECT r.id, r.name, r.country_code, r.status, r.created_at, `+openZoneCountExpr+`
+		`SELECT r.id, r.country_code, r.status, r.created_at, `+openZoneCountExpr+`
 		   FROM regions r WHERE r.id = $1`, id).
-		Scan(&rg.ID, &rg.Name, &rg.CountryCode, &statusName, &rg.CreatedAt, &rg.OpenZoneCount)
+		Scan(&rg.ID, &rg.CountryCode, &statusName, &rg.CreatedAt, &rg.OpenZoneCount)
 	if err != nil {
 		return nil, dberr.Wrap(err, "Region", id)
 	}
@@ -93,9 +83,9 @@ func (r *RegionRepo) GetInternal(ctx context.Context, id string) (*domain.Region
 	var rg domain.Region
 	var statusName string
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, name, country_code, status, numeric_infra_id, created_at
+		`SELECT id, country_code, status, numeric_infra_id, created_at
 		   FROM regions WHERE id = $1`, id).
-		Scan(&rg.ID, &rg.Name, &rg.CountryCode, &statusName, &rg.Infra.NumericInfraID, &rg.CreatedAt)
+		Scan(&rg.ID, &rg.CountryCode, &statusName, &rg.Infra.NumericInfraID, &rg.CreatedAt)
 	if err != nil {
 		return nil, dberr.Wrap(err, "Region", id)
 	}
@@ -126,7 +116,7 @@ func (r *RegionRepo) List(ctx context.Context, p region.Pagination) ([]*domain.R
 	}
 	args = append(args, pageSize+1)
 	q := fmt.Sprintf(
-		`SELECT r.id, r.name, r.country_code, r.status, r.created_at, %s
+		`SELECT r.id, r.country_code, r.status, r.created_at, %s
 		   FROM regions r %s ORDER BY r.id ASC LIMIT $%d`,
 		openZoneCountExpr, where, len(args))
 	rows, err := r.pool.Query(ctx, q, args...)
@@ -138,7 +128,7 @@ func (r *RegionRepo) List(ctx context.Context, p region.Pagination) ([]*domain.R
 	for rows.Next() {
 		var rg domain.Region
 		var statusName string
-		if err := rows.Scan(&rg.ID, &rg.Name, &rg.CountryCode, &statusName, &rg.CreatedAt, &rg.OpenZoneCount); err != nil {
+		if err := rows.Scan(&rg.ID, &rg.CountryCode, &statusName, &rg.CreatedAt, &rg.OpenZoneCount); err != nil {
 			return nil, "", dberr.Wrap(err, "Region", "")
 		}
 		rg.Status = geoStatusFromName(statusName)
@@ -156,26 +146,26 @@ func (r *RegionRepo) List(ctx context.Context, p region.Pagination) ([]*domain.R
 }
 
 // Insert создает регион (admin-only) + пишет geo_outbox CREATED атомарно в той
-// же tx. Дубль id/name → 23505 → ErrAlreadyExists.
+// же tx. Дубль id → 23505 → ErrAlreadyExists (иных уникальных ключей у каталога
+// нет: глобальная UNIQUE(name) снята вместе с полем, #716).
 func (r *RegionRepo) Insert(ctx context.Context, rg *domain.Region) (*domain.Region, error) {
 	actor := actorFromCtx(ctx)
 	var created domain.Region
 	var statusName string
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		serr := tx.QueryRow(ctx,
-			`INSERT INTO regions (id, name, country_code, status, numeric_infra_id, created_at)
-			 VALUES ($1,$2,$3,$4,$5,$6)
-			 RETURNING id, name, country_code, status, numeric_infra_id, created_at`,
-			rg.ID, rg.Name, rg.CountryCode, geoStatusName(rg.Status), rg.Infra.NumericInfraID, time.Now().UTC()).
-			Scan(&created.ID, &created.Name, &created.CountryCode, &statusName, &created.Infra.NumericInfraID, &created.CreatedAt)
+			`INSERT INTO regions (id, country_code, status, numeric_infra_id, created_at)
+			 VALUES ($1,$2,$3,$4,$5)
+			 RETURNING id, country_code, status, numeric_infra_id, created_at`,
+			rg.ID, rg.CountryCode, geoStatusName(rg.Status), rg.Infra.NumericInfraID, time.Now().UTC()).
+			Scan(&created.ID, &created.CountryCode, &statusName, &created.Infra.NumericInfraID, &created.CreatedAt)
 		if serr != nil {
-			// WrapUnique: 23505 приходит по двум разным ключам (PK id и
-			// глобальная UNIQUE(name)) — сообщение обязано назвать занятый.
-			return dberr.WrapUnique(serr, "Region", rg.ID, rg.Name)
+			// Единственный уникальный ключ таблицы — первичный, поэтому 23505
+			// говорит ровно об id, и разбирать имя ограничения больше не на что.
+			return dberr.Wrap(serr, "Region", rg.ID)
 		}
 		return outbox.Emit(ctx, tx, outboxTable, "Region", created.ID, "CREATED", map[string]any{
 			"id":           created.ID,
-			"name":         created.Name,
 			"country_code": created.CountryCode,
 			"status":       statusName,
 			"actor":        actor,
@@ -188,9 +178,9 @@ func (r *RegionRepo) Insert(ctx context.Context, rg *domain.Region) (*domain.Reg
 	return &created, nil
 }
 
-// Update — атомарный partial-update региона (name/status/country_code) одним
+// Update — атомарный partial-update региона (status/country_code) одним
 // statement (COALESCE, без TOCTOU) + geo_outbox UPDATED. nil-поля не меняются.
-// 0 rows из RETURNING → ErrNotFound. Дубль name → 23505 → ErrAlreadyExists.
+// 0 rows из RETURNING → ErrNotFound.
 func (r *RegionRepo) Update(ctx context.Context, id string, p region.UpdateParams) (*domain.Region, error) {
 	actor := actorFromCtx(ctx)
 	var statusName *string
@@ -203,21 +193,17 @@ func (r *RegionRepo) Update(ctx context.Context, id string, p region.UpdateParam
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		serr := tx.QueryRow(ctx,
 			`UPDATE regions
-			    SET name         = COALESCE($2, name),
-			        status       = COALESCE($3, status),
-			        country_code = COALESCE($4, country_code)
+			    SET status       = COALESCE($2, status),
+			        country_code = COALESCE($3, country_code)
 			  WHERE id = $1
-			RETURNING id, name, country_code, status, numeric_infra_id, created_at`,
-			id, p.Name, statusName, p.CountryCode).
-			Scan(&updated.ID, &updated.Name, &updated.CountryCode, &outStatus, &updated.Infra.NumericInfraID, &updated.CreatedAt)
+			RETURNING id, country_code, status, numeric_infra_id, created_at`,
+			id, statusName, p.CountryCode).
+			Scan(&updated.ID, &updated.CountryCode, &outStatus, &updated.Infra.NumericInfraID, &updated.CreatedAt)
 		if serr != nil {
-			// Занятое ИМЯ на Update особенно важно назвать именем: строка с
-			// этим id существует по построению — её и правят.
-			return dberr.WrapUnique(serr, "Region", id, derefString(p.Name))
+			return dberr.Wrap(serr, "Region", id)
 		}
 		return outbox.Emit(ctx, tx, outboxTable, "Region", updated.ID, "UPDATED", map[string]any{
 			"id":           updated.ID,
-			"name":         updated.Name,
 			"country_code": updated.CountryCode,
 			"status":       outStatus,
 			"actor":        actor,

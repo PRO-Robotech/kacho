@@ -180,8 +180,9 @@ func openZoneIDs(t *testing.T, pool *pgxpool.Pool) []string {
 // ⟺ zone.status='UP' И region.status='UP'. Значит статус региона обязан быть
 // выведен из перенесённых зон, а не взят из fail-safe умолчания.
 //
-// Красная форма (вернуть в шаблон `INSERT INTO regions (id, name, created_at)`):
-// регион садится 'DOWN' → набор открытых зон ПУСТ вместо {r-open-a}.
+// Красная форма (снять из шаблона выведение статуса — оставить `INSERT INTO
+// regions (id, created_at)`): регион садится 'DOWN' по fail-safe умолчанию →
+// набор открытых зон ПУСТ вместо {r-open-a}.
 func TestGeoCarryPreservesThePlaceableZoneSet(t *testing.T) {
 	pool := newTestPool(t)
 

@@ -46,9 +46,15 @@ export type PlacementBlockedReason = "PLACEMENT_BLOCKED_REASON_UNSPECIFIED" | "N
 // ── Public projections ───────────────────────────────────────────────────────
 
 export interface Region {
-  /** Admin-assigned immutable slug PK, e.g. "region-1". */
+  /**
+   * Admin-assigned immutable slug PK, e.g. "region-1".
+   *
+   * This is the ONLY identity a Region has. There is no separate display name:
+   * the id is written by hand by the cloud administrator and is human-readable
+   * by construction, so a second label carried nothing the id did not, and gave
+   * the two spellings somewhere to drift apart (#716).
+   */
   id: string;
-  name: string;
   created_at?: string;
   /** ISO-3166 alpha-2, optional. */
   country_code?: string;
@@ -59,10 +65,10 @@ export interface Region {
 }
 
 export interface Zone {
-  /** Admin-assigned immutable slug PK; coupled as regionId + "-" + suffix. */
+  /** Admin-assigned immutable slug PK; coupled as regionId + "-" + suffix.
+   *  The only identity a Zone has — see Region above (#716). */
   id: string;
   region_id: string;
-  name: string;
   created_at?: string;
   /** Derived (= zone.status==UP && region.status==UP). */
   open_for_placement?: boolean;
@@ -90,7 +96,6 @@ export interface ZoneInfra {
 
 export interface InternalRegion {
   id: string;
-  name: string;
   created_at?: string;
   country_code?: string;
   status?: GeoStatus;
@@ -100,7 +105,6 @@ export interface InternalRegion {
 export interface InternalZone {
   id: string;
   region_id: string;
-  name: string;
   created_at?: string;
   status?: GeoStatus;
   infra?: ZoneInfra;

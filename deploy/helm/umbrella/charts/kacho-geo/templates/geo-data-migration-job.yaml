@@ -6,9 +6,12 @@
 {{/*
 S3 compute→geo data-migration (epic kacho-geo S3). Post-install/post-upgrade
 Helm-hook Job: copies regions/zones rows from the kacho_compute DB → kacho_geo
-DB PRESERVING ids/region_id/status/name/created_at, so existing references
+DB PRESERVING ids/region_id/status/created_at, so existing references
 (Instance.zone_id, Subnet.zone_id, address_pools.zone_id, NLB region_id) stay
-valid through the cutover.
+valid through the cutover. `name` is NOT among them: the geo catalog dropped
+that column (#716) because the admin-assigned id already IS the name. The
+staging tables below still declare `name` — they mirror the SOURCE schema, and
+narrowing them there would make the two \copy shapes disagree.
 
 Mechanism (chosen: psql \copy stream → staging tables → INSERT … ON CONFLICT):
   1. dump regions/zones from kacho_compute as CSV via `psql \copy … TO STDOUT`;
@@ -191,8 +194,14 @@ spec:
               #    которое пригодным никогда не было, а CHECK 0004 его запрещает —
               #    перенос такой строки как есть роняет весь Job на 23514.
               psql "$DST" -v ON_ERROR_STOP=1 <<'SQL'
-              INSERT INTO regions (id, name, status, created_at)
-              SELECT r.id, r.name,
+              -- `name` is NOT carried: the geo catalog no longer has that column
+              -- (#716). Its id is admin-assigned and human-readable by
+              -- construction, so the label duplicated the id and was removed on
+              -- both projections. The source column is still staged above — the
+              -- staging table mirrors the SOURCE, and dropping it there would
+              -- make the \copy shapes disagree.
+              INSERT INTO regions (id, status, created_at)
+              SELECT r.id,
                      CASE WHEN EXISTS (SELECT 1 FROM _geo_stg_zones z
                                         WHERE z.region_id = r.id AND z.status = 'UP')
                           THEN 'UP' ELSE 'DOWN' END,
@@ -200,10 +209,10 @@ spec:
               FROM _geo_stg_regions r
               ON CONFLICT (id) DO NOTHING;
 
-              INSERT INTO zones (id, region_id, status, name, created_at)
+              INSERT INTO zones (id, region_id, status, created_at)
               SELECT id, region_id,
                      CASE WHEN status = 'UP' THEN 'UP' ELSE 'DOWN' END,
-                     name, created_at
+                     created_at
               FROM _geo_stg_zones
               ON CONFLICT (id) DO NOTHING;
 

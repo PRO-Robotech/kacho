@@ -284,6 +284,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   // apiPath/payloadKey/имени в dropdown'е (не навигируется как реестр-ресурс).
   regions: {
     id: "regions",
+    // Идентификатор и есть имя: подписи у каталога размещения нет (#716).
+    idIsTheName: true,
     route: "regions",
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",

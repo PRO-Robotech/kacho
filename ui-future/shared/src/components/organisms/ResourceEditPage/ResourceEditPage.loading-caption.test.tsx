@@ -70,10 +70,10 @@ describe("ResourceEditPage — подпись ожидания", () => {
   it("после ответа подписи ожидания на экране НЕТ", async () => {
     // Парный контроль: без него утверждение выше зеленело бы на странице,
     // которая показывает «Загрузка…» и после прихода данных.
-    stubAnswered({ id: "reg-1", name: "было", description: "" });
+    stubAnswered({ id: "reg-1", country_code: "RU", description: "" });
     renderEdit();
 
-    expect(await screen.findByDisplayValue("было")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("RU")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText("Загрузка…")).not.toBeInTheDocument());
   });
 });

@@ -35,10 +35,10 @@ func (r *ZoneRepo) Get(ctx context.Context, id string) (*domain.Zone, error) {
 	var z domain.Zone
 	var statusName, regionStatusName string
 	err := r.pool.QueryRow(ctx,
-		`SELECT z.id, z.region_id, z.name, z.status, z.created_at, r.status
+		`SELECT z.id, z.region_id, z.status, z.created_at, r.status
 		   FROM zones z JOIN regions r ON r.id = z.region_id
 		  WHERE z.id = $1`, id).
-		Scan(&z.ID, &z.RegionID, &z.Name, &statusName, &z.CreatedAt, &regionStatusName)
+		Scan(&z.ID, &z.RegionID, &statusName, &z.CreatedAt, &regionStatusName)
 	if err != nil {
 		return nil, dberr.Wrap(err, "Zone", id)
 	}
@@ -52,11 +52,11 @@ func (r *ZoneRepo) GetInternal(ctx context.Context, id string) (*domain.Zone, er
 	var z domain.Zone
 	var statusName string
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, region_id, name, status,
+		`SELECT id, region_id, status,
 		        numeric_infra_id, host_classes, failure_domain_count, underlay_anchor, capacity_hint,
 		        created_at
 		   FROM zones WHERE id = $1`, id).
-		Scan(&z.ID, &z.RegionID, &z.Name, &statusName,
+		Scan(&z.ID, &z.RegionID, &statusName,
 			&z.Infra.NumericInfraID, &z.Infra.HostClasses, &z.Infra.FailureDomainCount, &z.Infra.UnderlayAnchor, &z.Infra.CapacityHint,
 			&z.CreatedAt)
 	if err != nil {
@@ -94,7 +94,7 @@ func (r *ZoneRepo) List(ctx context.Context, p zone.Pagination) ([]*domain.Zone,
 	}
 	args = append(args, pageSize+1)
 	q := fmt.Sprintf(
-		`SELECT z.id, z.region_id, z.name, z.status, z.created_at, r.status
+		`SELECT z.id, z.region_id, z.status, z.created_at, r.status
 		   FROM zones z JOIN regions r ON r.id = z.region_id
 		   %s ORDER BY z.id ASC LIMIT $%d`, where, len(args))
 	rows, err := r.pool.Query(ctx, q, args...)
@@ -106,7 +106,7 @@ func (r *ZoneRepo) List(ctx context.Context, p zone.Pagination) ([]*domain.Zone,
 	for rows.Next() {
 		var z domain.Zone
 		var statusName, regionStatusName string
-		if err := rows.Scan(&z.ID, &z.RegionID, &z.Name, &statusName, &z.CreatedAt, &regionStatusName); err != nil {
+		if err := rows.Scan(&z.ID, &z.RegionID, &statusName, &z.CreatedAt, &regionStatusName); err != nil {
 			return nil, "", dberr.Wrap(err, "Zone", "")
 		}
 		z.Status = geoStatusFromName(statusName)
@@ -140,23 +140,23 @@ func (r *ZoneRepo) Insert(ctx context.Context, z *domain.Zone) (*domain.Zone, er
 	var statusName, regionStatusName string
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		serr := tx.QueryRow(ctx,
-			`INSERT INTO zones (id, region_id, name, status,
+			`INSERT INTO zones (id, region_id, status,
 			                    numeric_infra_id, host_classes, failure_domain_count, underlay_anchor, capacity_hint,
 			                    created_at)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-			 RETURNING id, region_id, name, status,
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			 RETURNING id, region_id, status,
 			           numeric_infra_id, host_classes, failure_domain_count, underlay_anchor, capacity_hint,
 			           created_at`,
-			z.ID, z.RegionID, z.Name, geoStatusName(z.Status),
+			z.ID, z.RegionID, geoStatusName(z.Status),
 			z.Infra.NumericInfraID, hostClasses, z.Infra.FailureDomainCount, z.Infra.UnderlayAnchor, z.Infra.CapacityHint,
 			time.Now().UTC()).
-			Scan(&created.ID, &created.RegionID, &created.Name, &statusName,
+			Scan(&created.ID, &created.RegionID, &statusName,
 				&created.Infra.NumericInfraID, &created.Infra.HostClasses, &created.Infra.FailureDomainCount, &created.Infra.UnderlayAnchor, &created.Infra.CapacityHint,
 				&created.CreatedAt)
 		if serr != nil {
-			// WrapUnique: 23505 приходит по двум разным ключам (PK id и
-			// глобальная UNIQUE(name)) — сообщение обязано назвать занятый.
-			return dberr.WrapUnique(serr, "Zone", z.ID, z.Name)
+			// Единственный уникальный ключ таблицы — первичный, поэтому 23505
+			// говорит ровно об id (#716).
+			return dberr.Wrap(serr, "Zone", z.ID)
 		}
 		// FK гарантирует существование региона → SELECT вернёт ровно строку.
 		if serr := tx.QueryRow(ctx, `SELECT status FROM regions WHERE id = $1`, created.RegionID).
@@ -166,7 +166,6 @@ func (r *ZoneRepo) Insert(ctx context.Context, z *domain.Zone) (*domain.Zone, er
 		return outbox.Emit(ctx, tx, outboxTable, "Zone", created.ID, "CREATED", map[string]any{
 			"id":        created.ID,
 			"region_id": created.RegionID,
-			"name":      created.Name,
 			"status":    statusName,
 			"actor":     actor,
 		})
@@ -179,7 +178,7 @@ func (r *ZoneRepo) Insert(ctx context.Context, z *domain.Zone) (*domain.Zone, er
 	return &created, nil
 }
 
-// Update — атомарный partial-update зоны (name/status/infra-subset) одним
+// Update — атомарный partial-update зоны (status/infra-subset) одним
 // statement (COALESCE, без TOCTOU) + geo_outbox UPDATED. region_id НЕ меняется
 // (immutable — поля в UpdateParams нет). nil-поля не меняются. 0 rows → ErrNotFound.
 // Подтягивает region_status для деривации openForPlacement° в Operation.response.
@@ -206,24 +205,21 @@ func (r *ZoneRepo) Update(ctx context.Context, id string, p zone.UpdateParams) (
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		serr := tx.QueryRow(ctx,
 			`UPDATE zones
-			    SET name                 = COALESCE($2, name),
-			        status               = COALESCE($3, status),
-			        host_classes         = COALESCE($4, host_classes),
-			        failure_domain_count = COALESCE($5, failure_domain_count),
-			        underlay_anchor      = COALESCE($6, underlay_anchor),
-			        capacity_hint        = COALESCE($7, capacity_hint)
+			    SET status               = COALESCE($2, status),
+			        host_classes         = COALESCE($3, host_classes),
+			        failure_domain_count = COALESCE($4, failure_domain_count),
+			        underlay_anchor      = COALESCE($5, underlay_anchor),
+			        capacity_hint        = COALESCE($6, capacity_hint)
 			  WHERE id = $1
-			RETURNING id, region_id, name, status,
+			RETURNING id, region_id, status,
 			          numeric_infra_id, host_classes, failure_domain_count, underlay_anchor, capacity_hint,
 			          created_at`,
-			id, p.Name, statusName, hostClasses, p.FailureDomainCount, p.UnderlayAnchor, p.CapacityHint).
-			Scan(&updated.ID, &updated.RegionID, &updated.Name, &outStatus,
+			id, statusName, hostClasses, p.FailureDomainCount, p.UnderlayAnchor, p.CapacityHint).
+			Scan(&updated.ID, &updated.RegionID, &outStatus,
 				&updated.Infra.NumericInfraID, &updated.Infra.HostClasses, &updated.Infra.FailureDomainCount, &updated.Infra.UnderlayAnchor, &updated.Infra.CapacityHint,
 				&updated.CreatedAt)
 		if serr != nil {
-			// Занятое ИМЯ на Update особенно важно назвать именем: строка с
-			// этим id существует по построению — её и правят.
-			return dberr.WrapUnique(serr, "Zone", id, derefString(p.Name))
+			return dberr.Wrap(serr, "Zone", id)
 		}
 		if serr := tx.QueryRow(ctx, `SELECT status FROM regions WHERE id = $1`, updated.RegionID).
 			Scan(&regionStatusName); serr != nil {
@@ -232,7 +228,6 @@ func (r *ZoneRepo) Update(ctx context.Context, id string, p zone.UpdateParams) (
 		return outbox.Emit(ctx, tx, outboxTable, "Zone", updated.ID, "UPDATED", map[string]any{
 			"id":        updated.ID,
 			"region_id": updated.RegionID,
-			"name":      updated.Name,
 			"status":    outStatus,
 			"actor":     actor,
 		})

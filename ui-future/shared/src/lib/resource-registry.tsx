@@ -2564,6 +2564,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   // несёт производный openForPlacement° — как в записях `zones` / `regions`.
   "compute-zones": {
     id: "compute-zones",
+    // Идентификатор и есть имя: подписи у каталога размещения нет (#716).
+    idIsTheName: true,
     route: "compute-zones",
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
@@ -2601,6 +2603,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
 
   "compute-regions": {
     id: "compute-regions",
+    // Идентификатор и есть имя: подписи у каталога размещения нет (#716).
+    idIsTheName: true,
     route: "compute-regions",
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",
@@ -2617,7 +2621,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         format: "text",
         className: "font-mono",
       },
-      { header: "Название", path: "name", format: "text" },
       {
         header: "Размещение",
         path: "open_for_placement",
@@ -3388,6 +3391,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
 
   regions: {
     id: "regions",
+    // Идентификатор и есть имя: подписи у каталога размещения нет (#716).
+    idIsTheName: true,
     route: "regions",
     apiPath: GEO_REGIONS_PATH,
     admin: { basePath: GEO_INTERNAL_REGIONS_PATH, readForEdit: true },
@@ -3412,8 +3417,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           "Серверный фильтр по производному openForPlacement° — единственный фильтр размещения на публичной поверхности.",
       },
     ],
+    // Колонка идентичности — `id`: подписи-дубля у каталога размещения нет (#716).
+    // Идентификатор назначает администратор, он человекочитаем by construction,
+    // и по нему же строится переход на карточку (первая колонка становится
+    // колонкой идентичности, см. buildSpecColumns).
     columns: [
-      { header: "Имя", path: "name", format: "text", className: "font-medium" },
       { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
       { header: "Страна", path: "country_code", format: "text" },
       {
@@ -3439,14 +3447,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description:
           "Назначается администратором и неизменяем: он попадает в каждый размещаемый ресурс как координата. Строчные буквы и цифры, сегменты через дефис.",
         pattern: REGION_ZONE_ID_PATTERN,
-      },
-      {
-        name: "name",
-        label: "Название",
-        type: "string",
-        required: true,
-        placeholder: "Центральная Россия",
-        description: "Человекочитаемая подпись. Глобально уникальна, менять можно свободно.",
       },
       {
         name: "country_code",
@@ -3476,7 +3476,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     // Свежий регион поднимается закрытым — тот же fail-safe, что и на сервере.
-    template: () => ({ id: "", name: "", country_code: "", status: "DOWN", infra: { numeric_infra_id: "" } }),
+    template: () => ({ id: "", country_code: "", status: "DOWN", infra: { numeric_infra_id: "" } }),
     sanitize: (obj) => sanitizeGeoCommon(obj),
     hydrate: (obj) => obj,
     emptyState: {
@@ -3487,6 +3487,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
 
   zones: {
     id: "zones",
+    // Идентификатор и есть имя: подписи у каталога размещения нет (#716).
+    idIsTheName: true,
     route: "zones",
     apiPath: GEO_ZONES_PATH,
     admin: { basePath: GEO_INTERNAL_ZONES_PATH, readForEdit: true },
@@ -3517,8 +3519,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description: "Серверный фильтр по производному openForPlacement° (зона UP и её регион UP).",
       },
     ],
+    // Колонка идентичности — `id` (#716, см. регионы выше).
     columns: [
-      { header: "Имя", path: "name", format: "text", className: "font-medium" },
       { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
       {
         header: "Регион",
@@ -3568,14 +3570,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         immutable: true,
         description:
           "Регион зоны. Неизменяем: перенос зоны между регионами разошёлся бы с размещением каждого уже созданного в ней ресурса.",
-      },
-      {
-        name: "name",
-        label: "Название",
-        type: "string",
-        required: true,
-        placeholder: "Зона A",
-        description: "Человекочитаемая подпись. Глобально уникальна, менять можно свободно.",
       },
       {
         name: "status",
@@ -3634,7 +3628,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     template: () => ({
       id: "",
       region_id: "",
-      name: "",
       status: "DOWN",
       infra: {
         numeric_infra_id: "",

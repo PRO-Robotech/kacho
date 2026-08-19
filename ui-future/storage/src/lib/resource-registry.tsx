@@ -596,6 +596,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   // registry-запись нужна RefSelect'у для резолва apiPath/payloadKey/имени в dropdown'е.
   zones: {
     id: "zones",
+    // Идентификатор и есть имя: подписи у каталога размещения нет (#716).
+    idIsTheName: true,
     route: "zones",
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",
@@ -612,6 +614,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   // Region — cross-service ref-цель (owner geo) для Image.region_id (REGIONAL/anycast).
   regions: {
     id: "regions",
+    // Идентификатор и есть имя: подписи у каталога размещения нет (#716).
+    idIsTheName: true,
     route: "regions",
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",

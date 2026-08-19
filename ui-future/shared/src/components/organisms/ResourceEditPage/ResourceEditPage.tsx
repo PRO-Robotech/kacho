@@ -14,7 +14,7 @@ import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/Page
 import { api } from "@shared/api/client";
 import { applyFieldDefaults, editReadPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
-import { subjectOfSpec } from "@shared/lib/mutation-signal";
+import { subjectNameOf, subjectOfSpec } from "@shared/lib/mutation-signal";
 import { useSignalledMutation } from "@shared/lib/use-signalled-mutation";
 import { useProjectStore } from "@shared/lib/context-store";
 import { useNestedBreadcrumb } from "@shared/lib/use-nested-breadcrumb";
@@ -119,7 +119,7 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
   // Исход — через единый механизм (`use-signalled-mutation`).
   const mutation = useSignalledMutation<Record<string, unknown>>({
     verb: "update",
-    subject: () => subjectOfSpec(spec, typeof obj.name === "string" ? obj.name : null),
+    subject: () => subjectOfSpec(spec, subjectNameOf(obj)),
     expectOperation: spec.mutationsReturnOperation !== false,
     mutationFn: (item) => api.update(`${mutationBasePath(spec)}/${uid}`, item),
     onSucceeded: () => {

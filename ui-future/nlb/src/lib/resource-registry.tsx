@@ -104,6 +104,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   // нужна RefSelect'у для резолва apiPath/payloadKey/имени в dropdown'ах.
   "compute-regions": {
     id: "compute-regions",
+    // Идентификатор и есть имя: подписи у каталога размещения нет (#716).
+    idIsTheName: true,
     route: "compute-regions",
     apiPath: "/geo/v1/regions",
     payloadKey: "regions",
@@ -188,6 +190,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   },
   zones: {
     id: "zones",
+    // Идентификатор и есть имя: подписи у каталога размещения нет (#716).
+    idIsTheName: true,
     route: "zones",
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",

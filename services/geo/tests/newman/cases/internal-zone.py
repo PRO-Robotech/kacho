@@ -41,7 +41,7 @@ CASES.append(Case(
     classes=["CRUD"], priority="P0",
     steps=[
         Step(name="create-region", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-zr-crud-{{runId}}", "name": "qa-zone-region-crud-{{runId}}", "status": "UP"},
+             body={"id": "qa-zr-crud-{{runId}}", "status": "UP"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="confirm-region", method="GET",
              path="/geo/v1/regions/qa-zr-crud-{{runId}}",
@@ -49,7 +49,7 @@ CASES.append(Case(
         # coupling: zone.id == regionId + "-a" (GEO-1-29 strict startsWith(regionId+"-")).
         Step(name="create-zone", method="POST", path="/geo/v1/internal/zones", internal=True,
              body={"id": "qa-zr-crud-{{runId}}-a", "regionId": "qa-zr-crud-{{runId}}",
-                   "name": "qa-zone-crud-{{runId}}", "status": "UP"},
+                   "status": "UP"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="get-zone", method="GET",
              path="/geo/v1/zones/qa-zr-crud-{{runId}}-a",
@@ -80,7 +80,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P1",
     steps=[
         Step(name="create-malformed", method="POST", path="/geo/v1/internal/zones", internal=True,
-             body={"id": "9-Bad_Zone!", "regionId": "qa-any", "name": "qa-malformed-zone", "status": "UP"},
+             body={"id": "9-Bad_Zone!", "regionId": "qa-any", "status": "UP"},
              test_script=[
                  *assert_status(400),
                  *assert_grpc_code(3, "INVALID_ARGUMENT"),
@@ -101,7 +101,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-uncoupled", method="POST", path="/geo/v1/internal/zones", internal=True,
              body={"id": "qa-other-{{runId}}-a", "regionId": "qa-zr-x-{{runId}}",
-                   "name": "qa-uncoupled-zone-{{runId}}", "status": "UP"},
+                   "status": "UP"},
              test_script=[
                  *assert_status(400),
                  *assert_grpc_code(3, "INVALID_ARGUMENT"),
@@ -125,7 +125,7 @@ CASES.append(Case(
         # FK 23503 rejects the write; the async Operation.error carries the failure.
         Step(name="create-ghost", method="POST", path="/geo/v1/internal/zones", internal=True,
              body={"id": "qa-ghost-{{runId}}-a", "regionId": "qa-ghost-{{runId}}",
-                   "name": "qa-ghost-zone-{{runId}}", "status": "UP"},
+                   "status": "UP"},
              test_script=[*assert_operation_failed(9, "FAILED_PRECONDITION", "reference constraint")]),
         # The zone is never committed (FK deterministically rejects), so public Get is a
         # stable 404 — no retry (retry_until_found would wrongly wait for a row that never appears).
@@ -149,14 +149,14 @@ CASES.append(Case(
     classes=["CONF", "CRUD"], priority="P1",
     steps=[
         Step(name="create-region", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-zr-down-{{runId}}", "name": "qa-zone-region-down-{{runId}}", "status": "UP"},
+             body={"id": "qa-zr-down-{{runId}}", "status": "UP"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="confirm-region", method="GET",
              path="/geo/v1/regions/qa-zr-down-{{runId}}",
              test_script=[*assert_status(200)])),
         Step(name="create-zone-down", method="POST", path="/geo/v1/internal/zones", internal=True,
              body={"id": "qa-zr-down-{{runId}}-a", "regionId": "qa-zr-down-{{runId}}",
-                   "name": "qa-zone-down-{{runId}}", "status": "DOWN"},
+                   "status": "DOWN"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="get-zone-down", method="GET",
              path="/geo/v1/zones/qa-zr-down-{{runId}}-a",
@@ -186,14 +186,13 @@ CASES.append(Case(
     classes=["CONF", "CRUD"], priority="P1",
     steps=[
         Step(name="create-region", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-zr-dflt-{{runId}}", "name": "qa-zone-region-dflt-{{runId}}", "status": "UP"},
+             body={"id": "qa-zr-dflt-{{runId}}", "status": "UP"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="confirm-region", method="GET",
              path="/geo/v1/regions/qa-zr-dflt-{{runId}}",
              test_script=[*assert_status(200)])),
         Step(name="create-zone-nostatus", method="POST", path="/geo/v1/internal/zones", internal=True,
-             body={"id": "qa-zr-dflt-{{runId}}-a", "regionId": "qa-zr-dflt-{{runId}}",
-                   "name": "qa-zone-default-status-{{runId}}"},
+             body={"id": "qa-zr-dflt-{{runId}}-a", "regionId": "qa-zr-dflt-{{runId}}"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="get-zone-dflt", method="GET",
              path="/geo/v1/zones/qa-zr-dflt-{{runId}}-a",
@@ -219,14 +218,14 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         Step(name="create-region", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-zr-upd-{{runId}}", "name": "qa-zone-region-upd-{{runId}}", "status": "UP"},
+             body={"id": "qa-zr-upd-{{runId}}", "status": "UP"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="confirm-region", method="GET",
              path="/geo/v1/regions/qa-zr-upd-{{runId}}",
              test_script=[*assert_status(200)])),
         Step(name="create-zone-up", method="POST", path="/geo/v1/internal/zones", internal=True,
              body={"id": "qa-zr-upd-{{runId}}-a", "regionId": "qa-zr-upd-{{runId}}",
-                   "name": "qa-zone-upd-{{runId}}", "status": "UP"},
+                   "status": "UP"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="confirm-zone-up", method="GET",
              path="/geo/v1/zones/qa-zr-upd-{{runId}}-a",

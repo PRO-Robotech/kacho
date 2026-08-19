@@ -41,9 +41,6 @@ type Zone struct {
 	// ID of the region this zone belongs to (class-A within-service FK →
 	// regions(id) ON DELETE RESTRICT). IMMUTABLE after create.
 	RegionId string `protobuf:"bytes,2,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
-	// Human-readable label; LIVE-mutable via InternalZoneService.Update. Globally
-	// UNIQUE, required.
-	Name string `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	// Creation timestamp (truncated to seconds on the wire).
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// Derived: the SINGLE actionable placement signal.
@@ -97,13 +94,6 @@ func (x *Zone) GetId() string {
 func (x *Zone) GetRegionId() string {
 	if x != nil {
 		return x.RegionId
-	}
-	return ""
-}
-
-func (x *Zone) GetName() string {
-	if x != nil {
-		return x.Name
 	}
 	return ""
 }
@@ -222,7 +212,6 @@ type InternalZone struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Id        string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	RegionId  string                 `protobuf:"bytes,2,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
-	Name      string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// Raw admin maintenance flag (UP/DOWN). LIVE-mutable via Internal Update.
 	Status GeoStatus `protobuf:"varint,5,opt,name=status,proto3,enum=kacho.cloud.geo.v1.GeoStatus" json:"status,omitempty"`
@@ -276,13 +265,6 @@ func (x *InternalZone) GetRegionId() string {
 	return ""
 }
 
-func (x *InternalZone) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
 func (x *InternalZone) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
@@ -308,29 +290,27 @@ var File_kacho_cloud_geo_v1_zone_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_geo_v1_zone_proto_rawDesc = "" +
 	"\n" +
-	"\x1dkacho/cloud/geo/v1/zone.proto\x12\x12kacho.cloud.geo.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\"\xa4\x02\n" +
+	"\x1dkacho/cloud/geo/v1/zone.proto\x12\x12kacho.cloud.geo.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\"\x9c\x02\n" +
 	"\x04Zone\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
-	"\tregion_id\x18\x02 \x01(\tR\bregionId\x12\x12\n" +
-	"\x04name\x18\x04 \x01(\tR\x04name\x129\n" +
+	"\tregion_id\x18\x02 \x01(\tR\bregionId\x129\n" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12,\n" +
 	"\x12open_for_placement\x18\x06 \x01(\bR\x10openForPlacement\x12d\n" +
-	"\x18placement_blocked_reason\x18\a \x01(\x0e2*.kacho.cloud.geo.v1.PlacementBlockedReasonR\x16placementBlockedReasonJ\x04\b\x03\x10\x04R\x06status\"\xd8\x01\n" +
+	"\x18placement_blocked_reason\x18\a \x01(\x0e2*.kacho.cloud.geo.v1.PlacementBlockedReasonR\x16placementBlockedReasonJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\x06statusR\x04name\"\xd8\x01\n" +
 	"\tZoneInfra\x12(\n" +
 	"\x10numeric_infra_id\x18\x01 \x01(\x03R\x0enumericInfraId\x12!\n" +
 	"\fhost_classes\x18\x02 \x03(\tR\vhostClasses\x120\n" +
 	"\x14failure_domain_count\x18\x03 \x01(\x05R\x12failureDomainCount\x12'\n" +
 	"\x0funderlay_anchor\x18\x04 \x01(\tR\x0eunderlayAnchor\x12#\n" +
-	"\rcapacity_hint\x18\x05 \x01(\tR\fcapacityHint\"\xf6\x01\n" +
+	"\rcapacity_hint\x18\x05 \x01(\tR\fcapacityHint\"\xee\x01\n" +
 	"\fInternalZone\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
-	"\tregion_id\x18\x02 \x01(\tR\bregionId\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\x129\n" +
+	"\tregion_id\x18\x02 \x01(\tR\bregionId\x129\n" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x125\n" +
 	"\x06status\x18\x05 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\x123\n" +
-	"\x05infra\x18\x06 \x01(\v2\x1d.kacho.cloud.geo.v1.ZoneInfraR\x05infraB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
+	"\x05infra\x18\x06 \x01(\v2\x1d.kacho.cloud.geo.v1.ZoneInfraR\x05infraJ\x04\b\x03\x10\x04R\x04nameB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
 
 var (
 	file_kacho_cloud_geo_v1_zone_proto_rawDescOnce sync.Once

@@ -41,7 +41,6 @@ func NewInternalRegionHandler(uc *region.UseCase) *InternalRegionHandler {
 func (h *InternalRegionHandler) Create(ctx context.Context, req *geov1.CreateRegionRequest) (*operationpb.Operation, error) {
 	op, err := h.uc.Create(ctx, region.CreateInput{
 		ID:          req.GetId(),
-		Name:        req.GetName(),
 		CountryCode: req.GetCountryCode(),
 		Status:      domain.GeoStatus(req.GetStatus()),
 		Infra:       domain.RegionInfra{NumericInfraID: req.GetInfra().GetNumericInfraId()},
@@ -57,7 +56,6 @@ func (h *InternalRegionHandler) Update(ctx context.Context, req *geov1.UpdateReg
 	op, err := h.uc.Update(ctx, region.UpdateInput{
 		ID:          req.GetRegionId(),
 		Mask:        req.GetUpdateMask().GetPaths(),
-		Name:        req.GetName(),
 		CountryCode: req.GetCountryCode(),
 		Status:      domain.GeoStatus(req.GetStatus()),
 	})
@@ -102,7 +100,6 @@ func (h *InternalZoneHandler) Create(ctx context.Context, req *geov1.CreateZoneR
 	op, err := h.uc.Create(ctx, zone.CreateInput{
 		ID:       req.GetId(),
 		RegionID: req.GetRegionId(),
-		Name:     req.GetName(),
 		Status:   domain.GeoStatus(req.GetStatus()),
 		Infra:    zoneInfraFromProto(req.GetInfra()),
 	})
@@ -117,7 +114,6 @@ func (h *InternalZoneHandler) Update(ctx context.Context, req *geov1.UpdateZoneR
 	op, err := h.uc.Update(ctx, zone.UpdateInput{
 		ID:     req.GetZoneId(),
 		Mask:   req.GetUpdateMask().GetPaths(),
-		Name:   req.GetName(),
 		Status: domain.GeoStatus(req.GetStatus()),
 		Infra:  zoneInfraFromProto(req.GetInfra()),
 	})

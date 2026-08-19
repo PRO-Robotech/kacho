@@ -468,6 +468,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   // geo.Zone — zone_id при Create.
   zones: {
     id: "zones",
+    // Идентификатор и есть имя: подписи у каталога размещения нет (#716).
+    idIsTheName: true,
     route: "zones",
     apiPath: "/geo/v1/zones",
     payloadKey: "zones",

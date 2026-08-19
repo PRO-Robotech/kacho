@@ -9408,7 +9408,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-stor-{{runId}}\", \"name\": \"qa-storage-alt-region-{{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-stor-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9504,7 +9504,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-stor-{{runId}}-a\", \"regionId\": \"qa-stor-{{runId}}\", \"name\": \"qa-storage-alt-zone-{{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-stor-{{runId}}-a\", \"regionId\": \"qa-stor-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15297,7 +15297,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-cpy-{{runId}}\", \"name\": \"qa-storage-cpy-region-{{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-cpy-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15393,7 +15393,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-cpy-{{runId}}-a\", \"regionId\": \"qa-cpy-{{runId}}\", \"name\": \"qa-storage-cpy-zone-{{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-cpy-{{runId}}-a\", \"regionId\": \"qa-cpy-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"

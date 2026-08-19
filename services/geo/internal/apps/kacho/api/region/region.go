@@ -42,7 +42,6 @@ type Pagination struct {
 // UpdateParams — опциональные mutable-поля partial-Update региона. nil → поле не
 // меняется (repo COALESCE, single-statement, без TOCTOU).
 type UpdateParams struct {
-	Name        *string
 	Status      *domain.GeoStatus
 	CountryCode *string
 }
@@ -50,7 +49,6 @@ type UpdateParams struct {
 // CreateInput — вход InternalRegionService.Create (transport-neutral).
 type CreateInput struct {
 	ID          string
-	Name        string
 	CountryCode string
 	Status      domain.GeoStatus
 	Infra       domain.RegionInfra
@@ -60,7 +58,6 @@ type CreateInput struct {
 type UpdateInput struct {
 	ID          string
 	Mask        []string
-	Name        string
 	CountryCode string
 	Status      domain.GeoStatus
 }
@@ -92,10 +89,19 @@ type ErrToStatus func(error) error
 // regionUpdatable — known-set update_mask (mutable-поля). Immutable (id,
 // infra.numericInfraId) в набор НЕ входят — отвергаются отдельным immutable-switch
 // ДО UpdateMask (конвенционный текст вместо generic "unknown field").
+// `name` в набор НЕ входит и не может: поля у ресурса больше нет (#716).
+// Маска, назвавшая его, получает generic «unknown field» — тот же исход, что у
+// любого другого несуществующего поля, и это верно: переименовывать нечего.
+// ОБЕ формы имени многословного поля — намеренно, как у registry (единственного,
+// кто это уже держал). Край разбирает `updateMask` через protojson, а тот приводит
+// lowerCamelCase к именам полей контракта, то есть в сервис приходит `country_code`.
+// Набор из одной camelCase-формы означал бы поле, которое объявлено изменяемым и не
+// изменяется НИ ПРИ КАКОМ входе через край. Односложные поля (`status`) совпадают в
+// обеих формах, поэтому класс не вскрывался, пока не появилось первое многословное.
 var regionUpdatable = map[string]struct{}{
-	"name":        {},
-	"status":      {},
-	"countryCode": {},
+	"status":       {},
+	"countryCode":  {},
+	"country_code": {},
 }
 
 // UseCase — бизнес-логика Region поверх Reader/Writer, LRO-стека и errStatus.
@@ -141,32 +147,17 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Region, str
 }
 
 // Create — admin-создание региона, возвращает синхронно-завершённый Operation.
-// Малформ id / пустой name / невалидный countryCode отвергаются СИНХРОННО
-// (InvalidArgument, операция не пишется). Fresh-default fail-safe: омитнутый
-// status → DOWN (module-geo rule 16). DB-ошибки (дубль id/name) → op.error.
+// Малформ id / невалидный countryCode отвергаются СИНХРОННО (InvalidArgument,
+// операция не пишется). Fresh-default fail-safe: омитнутый status → DOWN
+// (module-geo rule 16). DB-ошибка (дубль id) → op.error.
 func (u *UseCase) Create(ctx context.Context, in CreateInput) (*operations.Operation, error) {
 	if err := domain.ValidateID("region", in.ID); err != nil {
 		return nil, invalidArg(err.Error())
 	}
-	if in.Name == "" {
-		return nil, invalidArg("region name is required")
-	}
-	// Форма имени судится КАНОНОМ ДЕРЕВА, а не только длиной (задача #718).
-	//
-	// Миграция 715001 поставила ограничение формы `regions_name_check` во всех
-	// пяти схемах, но парной проверки в geo не было: доменная проверка сторожила
-	// ДЛИНУ, и притом 253 знака — вчетверо шире формы. Из-за этого `Region_One`
-	// проходило проверку сервиса и умирало на ограничении таблицы: БАЗА оказывалась первым
-	// читателем ввода, а вызывающий получал отказ, не называющий ни поля, ни
-	// формы. Ограничение таблицы обязано оставаться защитой последнего рубежа.
-	//
-	// Отдаётся статус канона КАК ЕСТЬ: он несёт `FieldViolation` с именем поля и
-	// самой формой, а `serviceerr.ToStatus` пробрасывает готовый статус первой
-	// же веткой — тем же путём, что `validate.PageSize` в List. Обёртка в
-	// sentinel эту деталь потеряла бы при пересборке статуса.
-	if err := validate.Name("name", in.Name); err != nil {
-		return nil, err
-	}
+	// Проверка имени стояла ЗДЕСЬ и снята вместе с полем (#716). Форму
+	// идентификатора судит `domain.ValidateID` выше — она и есть единственная
+	// проверка идентичности региона: назначает её администратор, и она
+	// человекочитаема by construction.
 	if err := domain.ValidateCountryCode(in.CountryCode); err != nil {
 		return nil, invalidArg(err.Error())
 	}
@@ -177,7 +168,7 @@ func (u *UseCase) Create(ctx context.Context, in CreateInput) (*operations.Opera
 	if st == domain.GeoStatusUnspecified {
 		st = domain.GeoStatusDown // fail-safe: fresh region поднимается DOWN, admin явно открывает
 	}
-	r := domain.Region{ID: in.ID, Name: in.Name, CountryCode: in.CountryCode, Status: st, Infra: in.Infra}
+	r := domain.Region{ID: in.ID, CountryCode: in.CountryCode, Status: st, Infra: in.Infra}
 
 	// Строка операции — ДО INSERT'а. Warnings° вычисляются по СОЗДАННОЙ строке и на
 	// этот момент неизвестны, поэтому metadata здесь минимальна и уточняется
@@ -207,9 +198,9 @@ func (u *UseCase) Create(ctx context.Context, in CreateInput) (*operations.Opera
 	return syncop.Commit(ctx, u.ops, op, meta, resp)
 }
 
-// Update — admin partial-смена региона (name/status/countryCode). Immutable-поля
+// Update — admin partial-смена региона (status/countryCode). Immutable-поля
 // (id, infra.numericInfraId) в update_mask → синхронный InvalidArgument ДО
-// UpdateMask. not-found/дубль-name → op.error.
+// UpdateMask. not-found → op.error.
 func (u *UseCase) Update(ctx context.Context, in UpdateInput) (*operations.Operation, error) {
 	if err := domain.ValidateID("region", in.ID); err != nil {
 		return nil, invalidArg(err.Error())
@@ -263,10 +254,9 @@ func (u *UseCase) Update(ctx context.Context, in UpdateInput) (*operations.Opera
 //     потому что proto3 не отличает неприсланный скаляр от нуля и «обнулить всё,
 //     чего в теле нет» стирало у региона код страны при обычном переименовании.
 //
-// Поле, названное маской, но пустое там, где ресурс пустоту хранить не может (name —
-// required + globally UNIQUE; status — CHECK IN ('UP','DOWN')), отвергается
-// СИНХРОННО тем же текстом, что на Create: молчаливое «принял и выбросил» запрещено
-// (api-conventions.md).
+// Поле, названное маской, но пустое там, где ресурс пустоту хранить не может
+// (status — CHECK IN ('UP','DOWN')), отвергается СИНХРОННО тем же текстом, что на
+// Create: молчаливое «принял и выбросил» запрещено (api-conventions.md).
 func (u *UseCase) buildUpdateParams(in UpdateInput) (UpdateParams, error) {
 	var p UpdateParams
 	named := func(field string) bool { return len(in.Mask) > 0 && maskHas(in.Mask, field) }
@@ -275,18 +265,6 @@ func (u *UseCase) buildUpdateParams(in UpdateInput) (UpdateParams, error) {
 			return carried
 		}
 		return named(field)
-	}
-	if apply("name", in.Name != "") {
-		if in.Name == "" {
-			return p, invalidArg("region name is required")
-		}
-		// Та же форма, что на создании: правка не вправе завести имя, которого
-		// создание не приняло бы (#718).
-		if err := validate.Name("name", in.Name); err != nil {
-			return p, err
-		}
-		name := in.Name
-		p.Name = &name
 	}
 	if apply("countryCode", in.CountryCode != "") {
 		if err := domain.ValidateCountryCode(in.CountryCode); err != nil {
@@ -370,7 +348,10 @@ func failedPrecondition(msg string) error {
 // maskHas — содержит ли update_mask поле (camelCase путь).
 func maskHas(mask []string, field string) bool {
 	for _, f := range mask {
-		if f == field {
+		// Сравнение по форме имени контракта, а не дословно: форму выбирает край,
+		// и на пути ЗАПИСИ дословное сравнение отвечает «нет» на верном входе —
+		// тихо, потому что запрос при этом успешен. Разбор — у validate.FieldNameEq.
+		if validate.FieldNameEq(f, field) {
 			return true
 		}
 	}

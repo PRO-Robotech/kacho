@@ -119,17 +119,18 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
   const { data: zoneData } = useQuery({
     queryKey: ["zones", "list"],
     queryFn: () =>
-      api.list<{ zones: Array<{ id: string; name?: string }> }>(zoneSpec.apiPath, {
+      api.list<{ zones: Array<{ id: string }> }>(zoneSpec.apiPath, {
         pageSize: "500",
       }),
     staleTime: 60_000,
   });
+  // Подписью служит сам идентификатор: у каталога размещения отдельного имени
+  // нет (#716) — его назначает администратор, и он читаем by construction.
+  // Прежний запасной путь (`z.name || z.id`) после снятия поля не выбирался бы
+  // НИКОГДА, а тип обещал поле, которого в ответе нет: мёртвая ветка плюс
+  // ложное объявление формы ответа.
   const zoneOptions = useMemo(
-    () =>
-      (zoneData?.zones ?? []).map((z) => ({
-        value: z.id,
-        label: z.name || z.id,
-      })),
+    () => (zoneData?.zones ?? []).map((z) => ({ value: z.id, label: z.id })),
     [zoneData],
   );
   // Default-zone — первая по списку.
@@ -143,13 +144,14 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
   const { data: regionData } = useQuery({
     queryKey: ["regions", "list"],
     queryFn: () =>
-      api.list<{ regions: Array<{ id: string; name?: string }> }>(regionSpec.apiPath, {
+      api.list<{ regions: Array<{ id: string }> }>(regionSpec.apiPath, {
         pageSize: "500",
       }),
     staleTime: 60_000,
   });
   const regionOptions = useMemo(
-    () => (regionData?.regions ?? []).map((r) => ({ value: r.id, label: r.name || r.id })),
+    // См. зоны выше: подпись региона снята вместе с полем (#716).
+    () => (regionData?.regions ?? []).map((r) => ({ value: r.id, label: r.id })),
     [regionData],
   );
   useEffect(() => {

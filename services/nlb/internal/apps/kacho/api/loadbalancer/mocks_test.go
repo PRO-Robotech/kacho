@@ -620,7 +620,7 @@ func (f *fakeRegionClient) Get(ctx context.Context, regionID string) (*geo.Regio
 	if f.getFunc != nil {
 		return f.getFunc(ctx, regionID)
 	}
-	return &geo.Region{ID: regionID, Name: "fake-region"}, nil
+	return &geo.Region{ID: regionID}, nil
 }
 
 // fakeZoneClient — двойник geo.ZoneClient для валидации disabled_announce_zones

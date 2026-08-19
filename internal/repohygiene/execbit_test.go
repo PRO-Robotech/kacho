@@ -32,6 +32,22 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
+// isProbeFixture — файл под `testdata/` есть ВХОД пробы, а не исполняемый файл
+// дерева.
+//
+// `go test` в этот каталог не заходит by construction, и ничто содержимое
+// фикстуры не запускает: фикстурой бывает и ЗАВЕДОМО ДЕФЕКТНЫЙ скрипт — прежняя
+// редакция суиты, на которой доказывают, что гейт умеет краснеть. Требовать от
+// такого файла бита исполнения значило бы требовать, чтобы дефект можно было
+// запустить одной командой.
+//
+// Послабление не молчаливое: сколько записей оно вывело из-под гейта, печатается
+// в переписи каждого прогона. Заведено 2026-08-19 вместе с фикстурами гейта
+// изоляции shell-суит (#724) — до них предмета у него не было.
+func isProbeFixture(rel string) bool {
+	return strings.HasPrefix(rel, "testdata/") || strings.Contains(rel, "/testdata/")
+}
+
 // gitLsFiles возвращает `git ls-files -s`-строки: "<mode> <oid> <stage>\t<path>".
 func gitLsFiles(t *testing.T, root string) []string {
 	t.Helper()
@@ -80,13 +96,17 @@ func findShebangLine(t *testing.T, path string) int {
 func TestShebangScriptsAreExecutable(t *testing.T) {
 	root := repoRoot(t)
 	var broken []string
-	indexed, withShebang := 0, 0
+	indexed, withShebang, fixtures := 0, 0, 0
 	for _, line := range gitLsFiles(t, root) {
 		mode, path, ok := parseLsFiles(line)
 		if !ok {
 			continue
 		}
 		indexed++
+		if isProbeFixture(path) {
+			fixtures++
+			continue
+		}
 		abs := filepath.Join(root, path)
 		if !hasShebang(t, abs) {
 			continue
@@ -99,8 +119,8 @@ func TestShebangScriptsAreExecutable(t *testing.T) {
 
 	// «Ноль находок» обязано быть отличимо от «ноль прочитанного»: без переписи
 	// пустой индекс и чистое дерево читаются одинаково.
-	t.Logf("осмотрено: записей индекса %d, из них с shebang'ом %d; неисполняемых %d",
-		indexed, withShebang, len(broken))
+	t.Logf("осмотрено: записей индекса %d, из них фикстур проб %d (вне гейта), "+
+		"с shebang'ом %d; неисполняемых %d", indexed, fixtures, withShebang, len(broken))
 	if indexed == 0 {
 		t.Fatal("индекс git пуст — обход не дошёл ни до одного файла. Это отказ, а не чистота")
 	}
@@ -121,10 +141,14 @@ func TestShebangScriptsAreExecutable(t *testing.T) {
 func TestShebangIsFirstLine(t *testing.T) {
 	root := repoRoot(t)
 	var broken []string
-	scripts, withShebang := 0, 0
+	scripts, withShebang, fixtures := 0, 0, 0
 	for _, line := range gitLsFiles(t, root) {
 		_, path, ok := parseLsFiles(line)
 		if !ok {
+			continue
+		}
+		if isProbeFixture(path) {
+			fixtures++
 			continue
 		}
 		switch filepath.Ext(path) {
@@ -143,8 +167,8 @@ func TestShebangIsFirstLine(t *testing.T) {
 		}
 	}
 
-	t.Logf("осмотрено: сценариев в индексе %d, из них с shebang'ом %d; не на первой строке %d",
-		scripts, withShebang, len(broken))
+	t.Logf("осмотрено: сценариев в индексе %d, фикстур проб вне гейта %d, из них "+
+		"с shebang'ом %d; не на первой строке %d", scripts, fixtures, withShebang, len(broken))
 	if scripts == 0 {
 		t.Fatal("в индексе нет ни одного .sh/.py/.bash — обход не дошёл до предмета. " +
 			"Это отказ, а не чистота")

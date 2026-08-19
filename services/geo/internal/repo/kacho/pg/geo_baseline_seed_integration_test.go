@@ -169,12 +169,12 @@ func TestStandGeoBaselineSeedDoesNotClobberExistingRows(t *testing.T) {
 	//  (2) зона посева, снятая с размещения на обслуживание;
 	//  (3) регион и зона, которых в посеве нет вовсе (чужая запись).
 	_, err := pool.Exec(ctx, `
-		INSERT INTO regions (id, name, country_code, status, numeric_infra_id)
-		     VALUES ('ru-central1', 'ru-central1', 'RU', 'DOWN', 77),
-		            ('ru-central9', 'ru-central9', 'ZZ', 'UP',   99);
-		INSERT INTO zones (id, region_id, name, status, numeric_infra_id)
-		     VALUES ('ru-central1-a', 'ru-central1', 'ru-central1-a', 'DOWN', 11),
-		            ('ru-central9-a', 'ru-central9', 'ru-central9-a', 'UP',   99);`)
+		INSERT INTO regions (id, country_code, status, numeric_infra_id)
+		     VALUES ('ru-central1', 'RU', 'DOWN', 77),
+		            ('ru-central9', 'ZZ', 'UP',   99);
+		INSERT INTO zones (id, region_id, status, numeric_infra_id)
+		     VALUES ('ru-central1-a', 'ru-central1', 'DOWN', 11),
+		            ('ru-central9-a', 'ru-central9', 'UP',   99);`)
 	require.NoError(t, err, "не удалось подготовить непустую базу")
 
 	var auditBefore int

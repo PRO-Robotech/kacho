@@ -67,7 +67,7 @@ func (c *GeoRegionClient) Get(ctx context.Context, id string) (*domain.Region, e
 			}
 			return rerr
 		}
-		r = &domain.Region{ID: resp.GetId(), Name: resp.GetName()}
+		r = &domain.Region{ID: resp.GetId()}
 		return nil
 	})
 	if err != nil {
