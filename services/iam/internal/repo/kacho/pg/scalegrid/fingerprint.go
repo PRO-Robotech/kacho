@@ -92,7 +92,7 @@ func ComputeFingerprint(root string) (Fingerprint, error) {
 	// бы от новой таблицы в запросе и продолжал бы сторожить прежние.
 	tables := map[string]bool{}
 	for _, rel := range code {
-		body, rerr := os.ReadFile(filepath.Join(root, rel))
+		body, rerr := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- rel получен обходом СОБСТВЕННОГО дерева репозитория (git ls-files под корнем root), не из запроса и не от пользователя; прибор читает свои же файлы, чтобы взять их отпечаток
 		if rerr != nil {
 			return fp, fmt.Errorf("scalegrid: чтение %s: %w", rel, rerr)
 		}
@@ -124,7 +124,7 @@ func ComputeFingerprint(root string) (Fingerprint, error) {
 
 	bh := sha256.New()
 	for _, rel := range files {
-		body, rerr := os.ReadFile(filepath.Join(root, rel))
+		body, rerr := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- rel получен обходом СОБСТВЕННОГО дерева репозитория (git ls-files под корнем root), не из запроса и не от пользователя; прибор читает свои же файлы, чтобы взять их отпечаток
 		if rerr != nil {
 			return fp, fmt.Errorf("scalegrid: чтение %s: %w", rel, rerr)
 		}
@@ -136,7 +136,7 @@ func ComputeFingerprint(root string) (Fingerprint, error) {
 
 // ContentOf — отпечаток содержимого ОДНОГО файла; гейт называет им виновника.
 func ContentOf(root, rel string) string {
-	body, err := os.ReadFile(filepath.Join(root, rel))
+	body, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- rel получен обходом СОБСТВЕННОГО дерева репозитория (git ls-files под корнем root), не из запроса и не от пользователя; прибор читает свои же файлы, чтобы взять их отпечаток
 	if err != nil {
 		return "нечитаем"
 	}
