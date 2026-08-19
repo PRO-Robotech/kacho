@@ -168,13 +168,14 @@ func (c *OpenFGAHTTPClient) BatchCheckItems(
 		return nil, fmt.Errorf("openfga batch-check encode: %w", err)
 	}
 
-	cctx, cancel := context.WithTimeout(ctx, c.batchCheckTimeout())
-	defer cancel()
-	resp, err := c.do(cctx, "POST",
-		fmt.Sprintf("http://%s/stores/%s/batch-check", c.Endpoint, c.StoreID), body)
+	// Тот же разбор, что у одиночного вопроса (#720): бюджет принадлежит
+	// попытке. Цена отказа здесь выше — не один ресурс, а вся страница.
+	resp, cancel, err := c.doHotRead(ctx,
+		fmt.Sprintf("http://%s/stores/%s/batch-check", c.Endpoint, c.StoreID), body, c.batchCheckTimeout())
 	if err != nil {
 		return nil, fmt.Errorf("openfga batch-check: %w", err)
 	}
+	defer cancel()
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {

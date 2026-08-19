@@ -89,13 +89,15 @@ func (c *OpenFGAHTTPClient) checkWithContext(
 		}{TupleKeys: keys}
 	}
 	body, _ := json.Marshal(req)
-	cctx, cancel := context.WithTimeout(ctx, c.checkTimeout())
-	defer cancel()
-	resp, err := c.do(cctx, "POST",
-		fmt.Sprintf("http://%s/stores/%s/check", c.Endpoint, c.StoreID), body)
+	// Бюджет принадлежит ПОПЫТКЕ, а не всей петле повтора: иначе повтор не
+	// переживает исчерпания срока — ту самую форму перебоя, что дала отказ
+	// арендатору в #720. Отмену откладываем до закрытия тела (см. doHotRead).
+	resp, cancel, err := c.doHotRead(ctx,
+		fmt.Sprintf("http://%s/stores/%s/check", c.Endpoint, c.StoreID), body, c.checkTimeout())
 	if err != nil {
 		return false, fmt.Errorf("openfga check: %w", err)
 	}
+	defer cancel()
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusBadRequest {
 		//: a 400 is a client-side validation error — the relation
