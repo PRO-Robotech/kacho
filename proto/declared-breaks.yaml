@@ -54,47 +54,7 @@
 #
 # Записи живут от объявления до вливания этой ветки в ствол: после него база сравнения
 # поднимется, находок не станет, и адъюдикация назовёт их истёкшими поимённо.
-declared:
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/geo/v1/region.proto
-    symbol: Region
-    reason: "имя дублировало admin-назначаемый человекочитаемый id региона"
-    issue: kacho#716
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/geo/v1/region.proto
-    symbol: InternalRegion
-    reason: "тот же дубль на админской проекции региона"
-    issue: kacho#716
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/geo/v1/zone.proto
-    symbol: Zone
-    reason: "имя дублировало admin-назначаемый человекочитаемый id зоны"
-    issue: kacho#716
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/geo/v1/zone.proto
-    symbol: InternalZone
-    reason: "тот же дубль на админской проекции зоны"
-    issue: kacho#716
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/geo/v1/internal_catalog_service.proto
-    symbol: CreateRegionRequest
-    reason: "принимать имя больше нечем: у региона его нет"
-    issue: kacho#716
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/geo/v1/internal_catalog_service.proto
-    symbol: UpdateRegionRequest
-    reason: "переименовывать нечего: идентификатор региона неизменяем"
-    issue: kacho#716
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/geo/v1/internal_catalog_service.proto
-    symbol: CreateZoneRequest
-    reason: "принимать имя больше нечем: у зоны его нет"
-    issue: kacho#716
-  - rule: FIELD_NO_DELETE
-    path: kacho/cloud/geo/v1/internal_catalog_service.proto
-    symbol: UpdateZoneRequest
-    reason: "переименовывать нечего: идентификатор зоны неизменяем"
-    issue: kacho#716
+declared: []
 
 # ИСТОРИЯ ПЕРЕЧНЯ — почему его нормальное состояние ПУСТО.
 #
@@ -103,8 +63,8 @@ declared:
 # сравнения поднялась, `buf breaking` их больше не показывает — находок 0, — и
 # адъюдикация обязана краснеть исходом «послабление истекло».
 #
-# КЛАСС ПОВТОРЯЛСЯ ЧЕТЫРЕ РАЗА: 21 запись (kacho#246), 2 (kacho#231), 4 (kacho#296),
-# 9 (kacho#400). Каждый раз предмет истекал в момент ВЛИВАНИЯ накопительной ветки в
+# КЛАСС ПОВТОРЯЛСЯ ПЯТЬ РАЗ: 21 запись (kacho#246), 2 (kacho#231), 4 (kacho#296),
+# 9 (kacho#400), 8 (kacho#716). Каждый раз предмет истекал в момент ВЛИВАНИЯ накопительной ветки в
 # ствол, а не в момент правки контракта, — поэтому прежнее требование шапки «снимать
 # запись ТЕМ ЖЕ изменением, которое поднимает базу» было буквально невыполнимо:
 # изменение контракта и подъём базы разнесены во времени и делаются разными
