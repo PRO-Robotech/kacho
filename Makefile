@@ -325,7 +325,10 @@ ifdef SVC
 	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler)(/|$$)'); \
 	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) — пропуск (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l))"; exit 0; fi; \
 	echo "пакетов: $$(echo "$$pkgs" | wc -l) (из осмотренных $$(printf '%s\n' "$$all" | wc -l))"; \
-	echo "$$pkgs" | xargs $(GO) test -tags=integration -race -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1
+	log=$$(mktemp); rc=0; \
+	echo "$$pkgs" | xargs $(GO) test -tags=integration -race -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1 2>&1 | tee "$$log" || rc=$$?; \
+	out=0; deploy/scripts/classify-integration-outcome.sh "$$rc" "$$log" || out=$$?; \
+	rm -f "$$log"; exit $$out
 else
 	@set -e; for svc in $(SERVICES); do \
 		echo "=== integration: $$svc ==="; \
