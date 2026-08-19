@@ -102,7 +102,7 @@ kacho-iam для per-RPC authz и непустой allow-list доверенны
   {dedent`
     {
       "regions": [
-        { "id": "region-1", "name": "Region 1", "createdAt": "2026-06-24T10:00:00Z" }
+        { "id": "ru-central1", "createdAt": "2026-06-24T10:00:00Z" }
       ],
       "nextPageToken": ""
     }
@@ -113,7 +113,7 @@ kacho-iam для per-RPC authz и непустой allow-list доверенны
 
 <CodeBlock language="bash">
   {dedent`
-    curl 'http://localhost:18080/geo/v1/zones/region-1-a' \\
+    curl 'http://localhost:18080/geo/v1/zones/ru-central1-a' \\
       -H 'Authorization: Bearer <JWT>'
   `}
 </CodeBlock>
@@ -121,10 +121,9 @@ kacho-iam для per-RPC authz и непустой allow-list доверенны
 <CodeBlock language="json">
   {dedent`
     {
-      "id": "region-1-a",
-      "regionId": "region-1",
+      "id": "ru-central1-a",
+      "regionId": "ru-central1",
       "status": "UP",
-      "name": "Region 1, zone A",
       "createdAt": "2026-06-24T10:00:00Z"
     }
   `}
@@ -153,10 +152,9 @@ cluster-internal listener (`InternalZoneService`, порт `:9091`), не на �
       -H 'Authorization: Bearer <admin-JWT>' \\
       -H 'Content-Type: application/json' \\
       -d '{
-            "id": "region-1-c",
-            "regionId": "region-1",
+            "id": "ru-central1-c",
+            "regionId": "ru-central1",
             "status": "UP",
-            "name": "Region 1, zone C"
           }'
   `}
 </CodeBlock>
@@ -164,10 +162,9 @@ cluster-internal listener (`InternalZoneService`, порт `:9091`), не на �
 <CodeBlock language="json">
   {dedent`
     {
-      "id": "region-1-c",
-      "regionId": "region-1",
+      "id": "ru-central1-c",
+      "regionId": "ru-central1",
       "status": "UP",
-      "name": "Region 1, zone C",
       "createdAt": "2026-06-24T10:05:00Z"
     }
   `}

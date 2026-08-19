@@ -19,18 +19,15 @@
 
 import { REGISTRY } from "./resource-registry";
 
+// `name` из ОБОИХ перечней снят вместе с полем (#716): подпись дублировала
+// admin-назначаемый идентификатор, и её номер с именем зарезервированы. Держать
+// её здесь значило бы разрешить столбец, привязанный к несуществующему полю, —
+// то есть перечень перестал бы сужать ровно там, где он и заведён сужать.
 /** Поля публичного geo.Region (region.proto, message Region). */
-const PUBLIC_REGION_FIELDS = [
-  "id",
-  "name",
-  "created_at",
-  "country_code",
-  "open_for_placement",
-  "open_zone_count_hint",
-];
+const PUBLIC_REGION_FIELDS = ["id", "created_at", "country_code", "open_for_placement", "open_zone_count_hint"];
 
 /** Поля публичного geo.Zone (zone.proto, message Zone). */
-const PUBLIC_ZONE_FIELDS = ["id", "region_id", "name", "created_at", "open_for_placement", "placement_blocked_reason"];
+const PUBLIC_ZONE_FIELDS = ["id", "region_id", "created_at", "open_for_placement", "placement_blocked_reason"];
 
 describe("справочники geo в реестре nlb", () => {
   it("колонки регионов адресуют только поля публичного Region", () => {

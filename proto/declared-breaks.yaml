@@ -45,17 +45,56 @@
 # Проверяет: tools/declaredbreak (cmd/adjudicate-declared-breaks), шаг конвейера
 # «adjudicate breaking (vs main)».
 
-declared: []
-  # ПУСТО — и это НОРМАЛЬНОЕ состояние ствола, а не недосмотр: на стволе база
-  # сравнения есть сам ствол, находок 0 по построению, значит предмета не может
-  # быть ни у одной записи. Шапка выше объявляет это прямо.
-  #
-  # Здесь стояли шесть записей kacho#580 (снятие access.proto целиком) и kacho#581
-  # (пять сообщений метаданных без операции). Их предмет истёк ровно тем способом,
-  # ради которого механизм и написан: линия контрактной гигиены вошла в ствол, база
-  # сравнения поднялась, и `buf breaking` этих разрывов больше не показывает.
-  # Адъюдикация назвала все шесть поимённо — «разрыва больше нет, запись обязана
-  # быть удалена», — и снимаются они здесь.
+# Восемь записей kacho#716 — снятие поля-дубля с каталога размещения geo.
+#
+# Предмет один на все восемь: у Region и Zone идентификатор назначает администратор,
+# и он человекочитаем ПО ПОСТРОЕНИЮ («ru-central1»). Второе поле того же назначения
+# не добавляло ничего, кроме места, где два написания расходятся. Разрыв снимает его
+# из обеих проекций (публичной и админской) и из обоих запросов каждого ресурса.
+#
+# Записи живут от объявления до вливания этой ветки в ствол: после него база сравнения
+# поднимется, находок не станет, и адъюдикация назовёт их истёкшими поимённо.
+declared:
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/geo/v1/region.proto
+    symbol: Region
+    reason: "имя дублировало admin-назначаемый человекочитаемый id региона"
+    issue: kacho#716
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/geo/v1/region.proto
+    symbol: InternalRegion
+    reason: "тот же дубль на админской проекции региона"
+    issue: kacho#716
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/geo/v1/zone.proto
+    symbol: Zone
+    reason: "имя дублировало admin-назначаемый человекочитаемый id зоны"
+    issue: kacho#716
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/geo/v1/zone.proto
+    symbol: InternalZone
+    reason: "тот же дубль на админской проекции зоны"
+    issue: kacho#716
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/geo/v1/internal_catalog_service.proto
+    symbol: CreateRegionRequest
+    reason: "принимать имя больше нечем: у региона его нет"
+    issue: kacho#716
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/geo/v1/internal_catalog_service.proto
+    symbol: UpdateRegionRequest
+    reason: "переименовывать нечего: идентификатор региона неизменяем"
+    issue: kacho#716
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/geo/v1/internal_catalog_service.proto
+    symbol: CreateZoneRequest
+    reason: "принимать имя больше нечем: у зоны его нет"
+    issue: kacho#716
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/geo/v1/internal_catalog_service.proto
+    symbol: UpdateZoneRequest
+    reason: "переименовывать нечего: идентификатор зоны неизменяем"
+    issue: kacho#716
 
 # ИСТОРИЯ ПЕРЕЧНЯ — почему его нормальное состояние ПУСТО.
 #

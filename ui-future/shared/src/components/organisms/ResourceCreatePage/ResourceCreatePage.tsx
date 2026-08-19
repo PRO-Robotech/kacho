@@ -14,7 +14,7 @@ import { buildCreateBody } from "@shared/lib/update-mask";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
 import { createActionLabel } from "@shared/lib/resource-label";
-import { mutationFailureText, subjectOfSpec } from "@shared/lib/mutation-signal";
+import { mutationFailureText, subjectNameOf, subjectOfSpec } from "@shared/lib/mutation-signal";
 import { useSignalledMutation } from "@shared/lib/use-signalled-mutation";
 
 interface Props {
@@ -152,7 +152,7 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
   // смаршрутизирован никем).
   const mutation = useSignalledMutation<Record<string, unknown>>({
     verb: "create",
-    subject: (body) => subjectOfSpec(spec, typeof body.name === "string" ? body.name : null),
+    subject: (body) => subjectOfSpec(spec, subjectNameOf(body)),
     expectOperation: spec.mutationsReturnOperation !== false,
     mutationFn: (item) => api.create(mutationBasePath(spec), item),
     onSucceeded: () => {
@@ -173,7 +173,7 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
         // Отказ собственной проверки — тот же исход «не создан», что и отказ
         // края: пользователю важно, что ресурс не создан и почему, а не то,
         // на чьей стороне это выяснилось.
-        toast.error(mutationFailureText("create", subjectOfSpec(spec, obj.name as string), err));
+        toast.error(mutationFailureText("create", subjectOfSpec(spec, subjectNameOf(obj)), err));
         return;
       }
     }

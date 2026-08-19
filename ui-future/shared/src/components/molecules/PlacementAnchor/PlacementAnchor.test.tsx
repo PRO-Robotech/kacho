@@ -36,29 +36,35 @@ function show(row: Record<string, unknown>) {
   );
 }
 
+// Фикстуры отвечают ТАК, КАК ОТВЕЧАЕТ КРАЙ после #716: у региона и зоны одно
+// поле идентичности — `id`, подписи нет. Прежние фикстуры давали короткий
+// служебный id и красивую подпись рядом, из-за чего подпись бралась готовой и
+// путь «идентификатор и есть имя» не исполнялся ни разу. Заодно `ru-central1-a`
+// длиннее двенадцати знаков — то есть эти пробы теперь стерегут и обрезку,
+// которая съедала букву зоны (см. ResourceLink.test.tsx).
 describe("PlacementAnchor", () => {
   it("зональный ресурс ведёт на карточку СВОЕЙ зоны", async () => {
-    stubList({ zones: [{ id: "zone-a", name: "ru-central1-a" }] });
-    show({ placement_type: "ZONAL", zone_id: "zone-a", region_id: "" });
+    stubList({ zones: [{ id: "ru-central1-a" }] });
+    show({ placement_type: "ZONAL", zone_id: "ru-central1-a", region_id: "" });
 
     const link = await screen.findByRole("link", { name: "ru-central1-a" });
-    expect(link).toHaveAttribute("href", "/system/zones/zone-a");
+    expect(link).toHaveAttribute("href", "/system/zones/ru-central1-a");
   });
 
   it("региональный ресурс ведёт на карточку СВОЕГО региона", async () => {
-    stubList({ regions: [{ id: "reg-1", name: "ru-central1" }] });
-    show({ placement_type: "REGIONAL", zone_id: "", region_id: "reg-1" });
+    stubList({ regions: [{ id: "ru-central1" }] });
+    show({ placement_type: "REGIONAL", zone_id: "", region_id: "ru-central1" });
 
     const link = await screen.findByRole("link", { name: "ru-central1" });
-    expect(link).toHaveAttribute("href", "/system/regions/reg-1");
+    expect(link).toHaveAttribute("href", "/system/regions/ru-central1");
   });
 
   it("вид размещения СЛОВОМ не называется — его несёт тип ресурса ссылки", async () => {
     // Решение владельца 2026-08-12: тег «REGIONAL»/«ZONAL» рядом с именем зоны
     // повторял машинным словарём то, что уже сказано иконкой и адресом
     // перехода. Различие видов держится глифом (см. пробу карты иконок).
-    stubList({ regions: [{ id: "reg-1", name: "ru-central1" }] });
-    show({ placement_type: "REGIONAL", zone_id: "", region_id: "reg-1" });
+    stubList({ regions: [{ id: "ru-central1" }] });
+    show({ placement_type: "REGIONAL", zone_id: "", region_id: "ru-central1" });
 
     await screen.findByRole("link", { name: "ru-central1" });
     expect(screen.queryByText("REGIONAL")).not.toBeInTheDocument();
@@ -69,11 +75,11 @@ describe("PlacementAnchor", () => {
     // `placement_type` — производное поле; на старых записях его может не быть,
     // и тогда единственный признак — какой из двух якорей заполнен. Наружу это
     // видно по тому, на КАКОЙ ресурс ведёт ссылка.
-    stubList({ zones: [{ id: "zone-a", name: "ru-central1-a" }] });
-    show({ zone_id: "zone-a", region_id: "" });
+    stubList({ zones: [{ id: "ru-central1-a" }] });
+    show({ zone_id: "ru-central1-a", region_id: "" });
 
     const link = await screen.findByRole("link", { name: "ru-central1-a" });
-    expect(link).toHaveAttribute("href", "/system/zones/zone-a");
+    expect(link).toHaveAttribute("href", "/system/zones/ru-central1-a");
   });
 
   it("без якоря рисует прочерк, а не пустое место", () => {

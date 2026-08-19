@@ -87,9 +87,15 @@ service InternalRegionService {
 }
 
 message CreateRegionRequest {
+  // Reserved: was field 2, `name` (#716). The catalog no longer carries a
+  // label beside the id — the id IS the name. An id-only Create is the only
+  // shape there is; sending `name` now fails as an unknown field rather than
+  // being accepted and dropped.
+  reserved 2;
+  reserved "name";
+
   // Region ID — admin-assigned immutable slug PK (e.g. "ru-central1").
   string id = 1;
-  string name = 2;
   // ISO-3166 alpha-2 country code (validated on input if non-empty).
   string country_code = 3;
   // Optional; DEFAULT DOWN (fail-safe) if omitted → region stays CLOSED.
@@ -109,8 +115,12 @@ message CreateRegionMetadata {
 }
 
 message UpdateRegionRequest {
+  // Reserved: was field 2, `name` (#716). Nothing to rename: the id is the
+  // name and it is immutable.
+  reserved 2;
+  reserved "name";
+
   string region_id = 1;
-  string name = 2;
   string country_code = 3;
   GeoStatus status = 4;
   RegionInfra infra = 5;
@@ -190,13 +200,17 @@ service InternalZoneService {
 }
 
 message CreateZoneRequest {
+  // Reserved: was field 4, `name` (#716). The zone id is admin-assigned and
+  // human-readable by construction; a second label only duplicated it.
+  reserved 4;
+  reserved "name";
+
   // Zone ID — admin-assigned immutable slug PK (e.g. "ru-central1-a");
   // coupling id == regionId + "-" + <zoneSuffix>.
   string id = 1;
   string region_id = 2;
   // Optional; DEFAULT DOWN (fail-safe) if omitted → zone stays CLOSED.
   GeoStatus status = 3;
-  string name = 4;
   // Zone infra accepted whole (numeric_infra_id° immutable after create).
   ZoneInfra infra = 5;
 }
@@ -210,6 +224,10 @@ message CreateZoneMetadata {
 }
 
 message UpdateZoneRequest {
+  // Reserved: was field 4, `name` (#716) — see CreateZoneRequest.
+  reserved 4;
+  reserved "name";
+
   // Reserved: was `region_id = 2`. regionId is IMMUTABLE after Zone.Create
   // (moving a zone between regions would break coherence of every placed
   // resource). An attempt to set it via update_mask=["regionId"] is rejected
@@ -218,7 +236,6 @@ message UpdateZoneRequest {
   reserved "region_id";
   string zone_id = 1;
   GeoStatus status = 3;
-  string name = 4;
   ZoneInfra infra = 5;
   google.protobuf.FieldMask update_mask = 6;
 }

@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -275,7 +276,20 @@ func TestJWKS_Verify_BadSignature(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
 	v := New(js.srv.URL, testAud, testHydraIss)
 	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
-	tampered := tok[:len(tok)-2] + "AA"
+
+	// Подмена обязана ДЕЙСТВИТЕЛЬНО менять токен. Прежняя редакция дописывала
+	// «AA» вслепую: подпись кончается на эти два знака примерно раз на 4096
+	// прогонов (base64url, 64 знака в алфавите), и тогда «испорченный» токен
+	// побайтово равен исходному — проверка законно принимала его, а кейс падал
+	// с «ожидалась ошибка, получено nil». Читалось это как принятая подделка,
+	// то есть предельно тревожно, и не воспроизводилось поштучно.
+	repl := "AA"
+	if strings.HasSuffix(tok, repl) {
+		repl = "BB"
+	}
+	tampered := tok[:len(tok)-2] + repl
+	require.NotEqual(t, tok, tampered, "предпосылка кейса: подменённый токен обязан отличаться от исходного")
+
 	_, err := v.Verify(context.Background(), tampered)
 	require.Error(t, err)
 }

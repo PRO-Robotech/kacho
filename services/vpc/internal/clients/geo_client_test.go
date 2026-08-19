@@ -95,14 +95,14 @@ func TestGeoZoneClient_Get_PerCallDeadlineOnHungPeer(t *testing.T) {
 }
 
 func TestGeoZoneClient_Get_FoundOK(t *testing.T) {
-	fake := &fakeGeoZoneClient{getResp: &geov1.Zone{Id: "zone-a", RegionId: "zone", Name: "ru-central-a"}}
+	fake := &fakeGeoZoneClient{getResp: &geov1.Zone{Id: "zone-a", RegionId: "zone"}}
 	c := newTestGeoZoneClient(fake)
 
 	z, err := c.Get(context.Background(), "zone-a")
 	if err != nil {
 		t.Fatalf("expected ok, got err: %v", err)
 	}
-	if z.ID != "zone-a" || z.RegionID != "zone" || z.Name != "ru-central-a" {
+	if z.ID != "zone-a" || z.RegionID != "zone" {
 		t.Fatalf("unexpected zone: %+v", z)
 	}
 }
@@ -157,10 +157,12 @@ func TestGeoZoneClient_Get_RetriesUnavailableThenSucceeds(t *testing.T) {
 
 // TestGeoZoneClient_Get_CacheHitReturnsFullStruct — regression под audit-находку
 // (readability): положительный cache-hit обязан вернуть ТУ ЖЕ полную проекцию
-// зоны (ID+RegionID+Name), что и cache-miss, а не усечённый {ID}. Иначе caller,
-// читающий .RegionID/.Name, молча получает ” на весь TTL — latent foot-gun.
+// зоны (ID+RegionID), что и cache-miss, а не усечённый {ID}. Иначе caller,
+// читающий .RegionID, молча получает ” на весь TTL — latent foot-gun.
+// Подпись зоны из перечня ушла вместе с полем у владельца (#716); дискриминатор
+// у пробы остался — им служит RegionID.
 func TestGeoZoneClient_Get_CacheHitReturnsFullStruct(t *testing.T) {
-	fake := &fakeGeoZoneClient{getResp: &geov1.Zone{Id: "zone-a", RegionId: "reg-x", Name: "ru-central-a"}}
+	fake := &fakeGeoZoneClient{getResp: &geov1.Zone{Id: "zone-a", RegionId: "reg-x"}}
 	c := newTestGeoZoneClient(fake)
 
 	first, err := c.Get(context.Background(), "zone-a")
@@ -174,11 +176,11 @@ func TestGeoZoneClient_Get_CacheHitReturnsFullStruct(t *testing.T) {
 	if fake.getCalls != 1 {
 		t.Fatalf("expected cache hit on 2nd Get (1 upstream call), got %d", fake.getCalls)
 	}
-	if second.ID != first.ID || second.RegionID != first.RegionID || second.Name != first.Name {
+	if second.ID != first.ID || second.RegionID != first.RegionID {
 		t.Fatalf("cache-hit struct != cache-miss struct: got %+v, want %+v", second, first)
 	}
-	if second.RegionID == "" || second.Name == "" {
-		t.Fatalf("cache-hit returned partial struct (RegionID/Name empty): %+v", second)
+	if second.RegionID == "" {
+		t.Fatalf("cache-hit returned partial struct (RegionID empty): %+v", second)
 	}
 }
 

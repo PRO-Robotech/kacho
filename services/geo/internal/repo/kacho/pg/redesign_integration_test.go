@@ -27,11 +27,16 @@ import (
 	"github.com/PRO-Robotech/kacho/services/geo/internal/repo/kacho/pg"
 )
 
-// TestGEO1_UniqueName_ConcurrentRace — GEO-1-36 + data-integrity.md п.5: global
-// UNIQUE(name) под concurrency. N goroutine вставляют регионы с ОДИНАКОВЫМ name и
-// РАЗНЫМИ id → ровно один INSERT проходит, остальные ErrAlreadyExists (23505,
-// DB-backstop, без software-precheck). Без этого теста инвариант не мёржим.
-func TestGEO1_UniqueName_ConcurrentRace(t *testing.T) {
+// TestGEO1_UniqueID_ConcurrentRace — data-integrity.md п.5: единственный
+// уникальный ключ каталога под конкуренцией.
+//
+// Здесь стояла пара проб на глобальную `UNIQUE (name)`. Её предмета больше нет
+// (#716): поле-дубль снято, ограничение ушло вместе с ним. Класс при этом
+// остался и обязан проверяться — «ровно один писатель выигрывает слот» держится
+// теперь первичным ключом, и путь до него ТОТ ЖЕ: репозиторий, INSERT, отображение
+// 23505 в sentinel. N goroutine вставляют регион с ОДНИМ id → ровно один проходит,
+// остальные получают ErrAlreadyExists (без software-precheck).
+func TestGEO1_UniqueID_ConcurrentRace(t *testing.T) {
 	pool := newTestPool(t)
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
@@ -42,11 +47,10 @@ func TestGEO1_UniqueName_ConcurrentRace(t *testing.T) {
 	var mu sync.Mutex
 	ok, dup := 0, 0
 	for i := 0; i < n; i++ {
-		go func(i int) {
+		go func() {
 			defer wg.Done()
 			_, err := rr.Insert(ctx, &domain.Region{
-				ID:     "region-name-race-" + string(rune('a'+i)), // разные id
-				Name:   "colliding-name",                          // одинаковое name
+				ID:     "region-id-race", // ОДИН id на всех writer'ов
 				Status: domain.GeoStatusUp,
 			})
 			mu.Lock()
@@ -59,21 +63,21 @@ func TestGEO1_UniqueName_ConcurrentRace(t *testing.T) {
 			default:
 				t.Errorf("unexpected err: %v", err)
 			}
-		}(i)
+		}()
 	}
 	wg.Wait()
-	require.Equal(t, 1, ok, "exactly one INSERT must win the UNIQUE(name) race")
-	require.Equal(t, n-1, dup, "the rest must get ErrAlreadyExists")
+	require.Equal(t, 1, ok, "ровно один INSERT обязан выиграть слот первичного ключа")
+	require.Equal(t, n-1, dup, "остальные обязаны получить ErrAlreadyExists")
 }
 
-// TestGEO1_ZoneUniqueName_ConcurrentRace — тот же инвариант на zones (отдельный
-// код-путь: свой outbox-emit + region-status подтягивание).
-func TestGEO1_ZoneUniqueName_ConcurrentRace(t *testing.T) {
+// TestGEO1_ZoneUniqueID_ConcurrentRace — тот же инвариант на zones (отдельный
+// код-путь: свой outbox-emit + подтягивание статуса региона).
+func TestGEO1_ZoneUniqueID_ConcurrentRace(t *testing.T) {
 	pool := newTestPool(t)
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
-	_, err := rr.Insert(ctx, &domain.Region{ID: "ru-central1", Name: "ru-central-1", Status: domain.GeoStatusUp})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "ru-central1", Status: domain.GeoStatusUp})
 	require.NoError(t, err)
 
 	const n = 8
@@ -82,11 +86,10 @@ func TestGEO1_ZoneUniqueName_ConcurrentRace(t *testing.T) {
 	var mu sync.Mutex
 	ok, dup := 0, 0
 	for i := 0; i < n; i++ {
-		go func(i int) {
+		go func() {
 			defer wg.Done()
 			_, ierr := zr.Insert(ctx, &domain.Zone{
-				ID: "ru-central1-" + string(rune('a'+i)), RegionID: "ru-central1",
-				Name: "colliding-zone-name", Status: domain.GeoStatusUp,
+				ID: "ru-central1-a", RegionID: "ru-central1", Status: domain.GeoStatusUp,
 			})
 			mu.Lock()
 			defer mu.Unlock()
@@ -98,7 +101,7 @@ func TestGEO1_ZoneUniqueName_ConcurrentRace(t *testing.T) {
 			default:
 				t.Errorf("unexpected err: %v", ierr)
 			}
-		}(i)
+		}()
 	}
 	wg.Wait()
 	require.Equal(t, 1, ok)
@@ -113,9 +116,9 @@ func TestGEO1_TwoProjection_InfraOnlyInternal(t *testing.T) {
 	ctx := context.Background()
 	ruc, zuc, _ := newUseCases(pool)
 
-	seedRegion(t, nil, ruc, "ru-central1", "ru-central-1") // UP
+	seedRegion(t, nil, ruc, "ru-central1") // UP
 	_, err := zuc.Create(ctx, zone.CreateInput{
-		ID: "ru-central1-a", RegionID: "ru-central1", Name: "zone-a", Status: domain.GeoStatusUp,
+		ID: "ru-central1-a", RegionID: "ru-central1", Status: domain.GeoStatusUp,
 		Infra: domain.ZoneInfra{NumericInfraID: 10402, HostClasses: []string{"std-v3", "mem-v2"}, FailureDomainCount: 3, UnderlayAnchor: "fd00:ru1a::/48", CapacityHint: "AMPLE"},
 	})
 	require.NoError(t, err)
@@ -148,7 +151,7 @@ func TestGEO1_FreshDOWN_Persisted(t *testing.T) {
 	ctx := context.Background()
 	ruc, _, _ := newUseCases(pool)
 
-	op, err := ruc.Create(ctx, region.CreateInput{ID: "eu-west1", Name: "eu-west-1", CountryCode: "NL"}) // no status
+	op, err := ruc.Create(ctx, region.CreateInput{ID: "eu-west1", CountryCode: "NL"}) // no status
 	require.NoError(t, err)
 	require.True(t, op.Done)
 	require.Nil(t, op.Error)
@@ -174,9 +177,9 @@ func TestGEO1_ZoneOpenForPlacement_DependsOnRegion(t *testing.T) {
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
 	// Регион DOWN, зона UP.
-	_, err := rr.Insert(ctx, &domain.Region{ID: "ru-central1", Name: "ru-central-1", Status: domain.GeoStatusDown})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "ru-central1", Status: domain.GeoStatusDown})
 	require.NoError(t, err)
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "ru-central1-a", RegionID: "ru-central1", Name: "zone-a", Status: domain.GeoStatusUp})
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "ru-central1-a", RegionID: "ru-central1", Status: domain.GeoStatusUp})
 	require.NoError(t, err)
 
 	z, err := zr.Get(ctx, "ru-central1-a")
@@ -197,13 +200,13 @@ func TestGEO1_OpenZoneCountHint_Rollup(t *testing.T) {
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
-	_, err := rr.Insert(ctx, &domain.Region{ID: "ru-central1", Name: "ru-central-1", Status: domain.GeoStatusUp})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "ru-central1", Status: domain.GeoStatusUp})
 	require.NoError(t, err)
 	for _, z := range []struct {
 		id string
 		st domain.GeoStatus
 	}{{"ru-central1-a", domain.GeoStatusUp}, {"ru-central1-b", domain.GeoStatusUp}, {"ru-central1-d", domain.GeoStatusDown}} {
-		_, zerr := zr.Insert(ctx, &domain.Zone{ID: z.id, RegionID: "ru-central1", Name: "zone-" + z.id, Status: z.st})
+		_, zerr := zr.Insert(ctx, &domain.Zone{ID: z.id, RegionID: "ru-central1", Status: z.st})
 		require.NoError(t, zerr)
 	}
 
@@ -226,8 +229,8 @@ func TestGEO1_InfraMutable_NumericImmutable(t *testing.T) {
 	pool := newTestPool(t)
 	ctx := context.Background()
 	ruc, zuc, _ := newUseCases(pool)
-	seedRegion(t, nil, ruc, "ru-central1", "ru-central-1")
-	_, err := zuc.Create(ctx, zone.CreateInput{ID: "ru-central1-a", RegionID: "ru-central1", Name: "zone-a", Status: domain.GeoStatusUp,
+	seedRegion(t, nil, ruc, "ru-central1")
+	_, err := zuc.Create(ctx, zone.CreateInput{ID: "ru-central1-a", RegionID: "ru-central1", Status: domain.GeoStatusUp,
 		Infra: domain.ZoneInfra{NumericInfraID: 10402, CapacityHint: "AMPLE", HostClasses: []string{"std-v3", "mem-v2"}}})
 	require.NoError(t, err)
 

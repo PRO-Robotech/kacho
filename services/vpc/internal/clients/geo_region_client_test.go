@@ -47,12 +47,17 @@ func newTestGeoRegionClient(fake geov1.RegionServiceClient) *GeoRegionClient {
 	return &GeoRegionClient{regions: fake, cache: newValueCache[*domain.Region](geoRegionExistsTTL), timeout: defaultPeerCallTimeout}
 }
 
-// TestGeoRegionClient_Get_CacheHitReturnsFullStruct — regression под audit-находку
-// (readability): положительный cache-hit обязан вернуть ТУ ЖЕ полную проекцию
-// региона (ID+Name), что и cache-miss, а не усечённый {ID}. Иначе caller,
-// читающий .Name, молча получает ” на весь TTL — latent foot-gun.
-func TestGeoRegionClient_Get_CacheHitReturnsFullStruct(t *testing.T) {
-	fake := &fakeGeoRegionClient{getResp: &geov1.Region{Id: "reg-a", Name: "ru-central"}}
+// TestGeoRegionClient_Get_CacheHitAnswersFromCache — положительный cache-hit не
+// ходит к соседу второй раз и отдаёт то же значение.
+//
+// Заголовок сужен вместе с предметом (#716). Прежде проба звалась
+// «...ReturnsFullStruct» и стерегла усечение проекции: клиент мог вернуть {ID}
+// вместо ID+Name, и вызывающий получал пустую подпись на весь TTL. У региона
+// осталось одно поле идентичности, и усечь одно поле нельзя by construction —
+// дискриминатора у прежнего утверждения не существует. Оставлять заголовок шире
+// тела нельзя: он зеленел бы, ничего не проверяя.
+func TestGeoRegionClient_Get_CacheHitAnswersFromCache(t *testing.T) {
+	fake := &fakeGeoRegionClient{getResp: &geov1.Region{Id: "reg-a"}}
 	c := newTestGeoRegionClient(fake)
 
 	first, err := c.Get(context.Background(), "reg-a")
@@ -66,11 +71,11 @@ func TestGeoRegionClient_Get_CacheHitReturnsFullStruct(t *testing.T) {
 	if fake.getCalls != 1 {
 		t.Fatalf("expected cache hit on 2nd Get (1 upstream call), got %d", fake.getCalls)
 	}
-	if second.ID != first.ID || second.Name != first.Name {
+	if second.ID != first.ID {
 		t.Fatalf("cache-hit struct != cache-miss struct: got %+v, want %+v", second, first)
 	}
-	if second.Name == "" {
-		t.Fatalf("cache-hit returned partial struct (Name empty): %+v", second)
+	if second.ID == "" {
+		t.Fatalf("cache-hit returned an empty struct: %+v", second)
 	}
 }
 

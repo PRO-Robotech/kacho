@@ -59,7 +59,7 @@ describe("RowActionsMenu — состав меню", () => {
   it("ресурсу без семантики перемещения пункт «Переместить» не обещается", () => {
     // Диалог перемещения печатает REST-вызов; предлагать его там, где глагола
     // нет, значит обещать операцию, которой не существует.
-    renderMenu("regions", { id: "ru-central1", name: "ru-central1" });
+    renderMenu("regions", { id: "ru-central1" });
     expect(menuLabels()).not.toContain("Переместить");
   });
 

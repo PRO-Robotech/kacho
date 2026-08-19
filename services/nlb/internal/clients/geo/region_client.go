@@ -29,9 +29,11 @@ const DefaultRegionGetTimeout = 5 * time.Second
 // Region — lean projection ресурса kacho-geo.Region. Используется sync-валидацией
 // NetworkLoadBalancer.region_id / TargetGroup.region_id. Зоны региона не
 // перечисляются — kacho-nlb region-precheck зоны не использует (см. doc.go).
+// Поле-подпись снято вместе с полем у владельца (#716): идентичность региона —
+// его идентификатор. Зеркало было односторонним — сюда писали, отсюда не читал
+// никто.
 type Region struct {
-	ID   string
-	Name string
+	ID string
 }
 
 // RegionClient — port-интерфейс для service-слоя.
@@ -117,7 +119,7 @@ func (c *regionClient) Get(ctx context.Context, regionID string) (*Region, error
 		return nil, mapRegionErr(regionID, err)
 	}
 
-	return &Region{ID: resp.GetId(), Name: resp.GetName()}, nil
+	return &Region{ID: resp.GetId()}, nil
 }
 
 // mapRegionErr транслирует ответ владельца Geography в полосу резолва.

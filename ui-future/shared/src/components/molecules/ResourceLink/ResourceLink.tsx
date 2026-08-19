@@ -66,7 +66,12 @@ export function ResourceLink({
   const rid = typeof id === "string" ? id : "";
   if (!rid && !name) return <Typography.Text type="secondary">—</Typography.Text>;
 
-  const full = name || (rid.length > 12 ? `${rid.slice(0, 12)}…` : rid);
+  // Обрезка запасного идентификатора — приём против ДЛИННОГО МАШИННОГО id, чей
+  // хвост читателю ничего не говорит. Там, где идентификатор и есть имя
+  // (каталог размещения geo, #716), значение несёт как раз хвост: `ru-central1-a`
+  // превращалось в `ru-central1-…`, и все зоны региона выглядели одинаково.
+  const idIsTheName = REGISTRY[specId]?.idIsTheName === true;
+  const full = name || (!idIsTheName && rid.length > 12 ? `${rid.slice(0, 12)}…` : rid);
   const shown = maxChars && full.length > maxChars ? `${full.slice(0, maxChars)}…` : full;
   const target = href ?? resourceDetailHref(specId, rid, projectId);
 

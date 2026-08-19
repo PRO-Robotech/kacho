@@ -28,18 +28,18 @@ func geoZoneStatusDown() domain.GeoStatus { return domain.GeoStatusDown }
 
 // seedRegion создаёт OPEN (status=UP) регион через use-case и проверяет успех.
 // Каталог-мутации синхронно-завершены (Operation{done:true} сразу).
-func seedRegion(t *testing.T, _ operations.Repo, uc *region.UseCase, id, name string) {
+func seedRegion(t *testing.T, _ operations.Repo, uc *region.UseCase, id string) {
 	t.Helper()
-	op, err := uc.Create(context.Background(), region.CreateInput{ID: id, Name: name, Status: domain.GeoStatusUp})
+	op, err := uc.Create(context.Background(), region.CreateInput{ID: id, Status: domain.GeoStatusUp})
 	require.NoError(t, err)
 	require.True(t, op.Done)
 	require.Nil(t, op.Error)
 }
 
 // seedZone создаёт зону через use-case с явным статусом и проверяет успех.
-func seedZone(t *testing.T, _ operations.Repo, uc *zone.UseCase, id, regionID, name string, st domain.GeoStatus) {
+func seedZone(t *testing.T, _ operations.Repo, uc *zone.UseCase, id, regionID string, st domain.GeoStatus) {
 	t.Helper()
-	op, err := uc.Create(context.Background(), zone.CreateInput{ID: id, RegionID: regionID, Name: name, Status: st})
+	op, err := uc.Create(context.Background(), zone.CreateInput{ID: id, RegionID: regionID, Status: st})
 	require.NoError(t, err)
 	require.True(t, op.Done)
 	require.Nil(t, op.Error)
@@ -99,7 +99,7 @@ func TestSyncRegionCreate_Operation(t *testing.T) {
 	ops := operations.NewRepo(pool, "kacho_geo")
 	uc := region.New(pg.NewRegionRepo(pool), pg.NewRegionRepo(pool), ops, serviceerr.ToStatus)
 
-	op, err := uc.Create(ctx, region.CreateInput{ID: "region-sync-1", Name: "region-sync-one", CountryCode: "RU", Status: domain.GeoStatusUp})
+	op, err := uc.Create(ctx, region.CreateInput{ID: "region-sync-1", CountryCode: "RU", Status: domain.GeoStatusUp})
 	require.NoError(t, err)
 	require.NotEmpty(t, op.ID)
 	require.True(t, op.Done, "catalog Create returns done=true synchronously")
@@ -116,22 +116,25 @@ func TestSyncRegionCreate_Operation(t *testing.T) {
 
 	got, err := pg.NewRegionRepo(pool).Get(ctx, "region-sync-1")
 	require.NoError(t, err)
-	require.Equal(t, "region-sync-one", got.Name)
+	require.Equal(t, "region-sync-1", got.ID)
 }
 
-// geo-sync-02: Region.Update(name) → done:true → обновлённый Region.
+// geo-sync-02: Region.Update(countryCode) → done:true → обновлённый Region.
+//
+// Прежде правился `name`. Поля больше нет (#716), и предметом правки стало
+// единственное оставшееся изменяемое описательное поле региона.
 func TestSyncRegionUpdate_Operation(t *testing.T) {
 	pool := newTestPool(t)
 	ctx := context.Background()
 	ops := operations.NewRepo(pool, "kacho_geo")
 	uc := region.New(pg.NewRegionRepo(pool), pg.NewRegionRepo(pool), ops, serviceerr.ToStatus)
 
-	seedRegion(t, ops, uc, "region-sync-1", "region-sync-one")
-	op2, err := uc.Update(ctx, region.UpdateInput{ID: "region-sync-1", Mask: []string{"name"}, Name: "region-sync-one-renamed"})
+	seedRegion(t, ops, uc, "region-sync-1")
+	op2, err := uc.Update(ctx, region.UpdateInput{ID: "region-sync-1", Mask: []string{"countryCode"}, CountryCode: "NL"})
 	require.NoError(t, err)
 	require.True(t, op2.Done)
 	require.Nil(t, op2.Error)
-	require.Equal(t, "region-sync-one-renamed", unmarshalRegion(t, op2).GetName())
+	require.Equal(t, "NL", unmarshalRegion(t, op2).GetCountryCode())
 }
 
 // geo-sync-03: Region.Delete → done:true, response=Empty; затем Get → NotFound.
@@ -141,7 +144,7 @@ func TestSyncRegionDelete_Operation(t *testing.T) {
 	ops := operations.NewRepo(pool, "kacho_geo")
 	uc := region.New(pg.NewRegionRepo(pool), pg.NewRegionRepo(pool), ops, serviceerr.ToStatus)
 
-	seedRegion(t, ops, uc, "region-sync-del", "to-be-deleted")
+	seedRegion(t, ops, uc, "region-sync-del")
 	op2, err := uc.Delete(ctx, "region-sync-del")
 	require.NoError(t, err)
 	require.True(t, op2.Done)
@@ -160,8 +163,8 @@ func TestSyncZoneCreate_Operation(t *testing.T) {
 	ruc := region.New(pg.NewRegionRepo(pool), pg.NewRegionRepo(pool), ops, serviceerr.ToStatus)
 	zuc := zone.New(pg.NewZoneRepo(pool), pg.NewZoneRepo(pool), ops, serviceerr.ToStatus)
 
-	seedRegion(t, ops, ruc, "region-sync-1", "region-sync-one")
-	zop, err := zuc.Create(ctx, zone.CreateInput{ID: "region-sync-1-a", RegionID: "region-sync-1", Name: "zone-sync-one-a", Status: geoZoneStatusUp()})
+	seedRegion(t, ops, ruc, "region-sync-1")
+	zop, err := zuc.Create(ctx, zone.CreateInput{ID: "region-sync-1-a", RegionID: "region-sync-1", Status: geoZoneStatusUp()})
 	require.NoError(t, err)
 	require.True(t, zop.Done)
 	require.Nil(t, zop.Error)
@@ -180,15 +183,15 @@ func TestSyncZoneUpdateDelete_Operation(t *testing.T) {
 	ruc := region.New(pg.NewRegionRepo(pool), pg.NewRegionRepo(pool), ops, serviceerr.ToStatus)
 	zuc := zone.New(pg.NewZoneRepo(pool), pg.NewZoneRepo(pool), ops, serviceerr.ToStatus)
 
-	seedRegion(t, ops, ruc, "region-sync-1", "region-sync-1")
-	seedZone(t, ops, zuc, "region-sync-1-a", "region-sync-1", "zone-sync-one-a", geoZoneStatusUp())
+	seedRegion(t, ops, ruc, "region-sync-1")
+	seedZone(t, ops, zuc, "region-sync-1-a", "region-sync-1", geoZoneStatusUp())
 
-	uop, err := zuc.Update(ctx, zone.UpdateInput{ID: "region-sync-1-a", Mask: []string{"name", "status"}, Name: "zone-sync-one-a-renamed", Status: geoZoneStatusDown()})
+	uop, err := zuc.Update(ctx, zone.UpdateInput{ID: "region-sync-1-a", Mask: []string{"status"}, Status: geoZoneStatusDown()})
 	require.NoError(t, err)
 	require.True(t, uop.Done)
 	require.Nil(t, uop.Error)
 	z := unmarshalZone(t, uop)
-	require.Equal(t, "zone-sync-one-a-renamed", z.GetName())
+	require.Equal(t, "region-sync-1-a", z.GetId())
 	require.False(t, z.GetOpenForPlacement(), "zone DOWN → not open")
 
 	dop, err := zuc.Delete(ctx, "region-sync-1-a")
@@ -209,13 +212,13 @@ func TestSyncMalformedID_SyncInvalidArgument(t *testing.T) {
 	ruc := region.New(pg.NewRegionRepo(pool), pg.NewRegionRepo(pool), ops, serviceerr.ToStatus)
 	zuc := zone.New(pg.NewZoneRepo(pool), pg.NewZoneRepo(pool), ops, serviceerr.ToStatus)
 
-	_, err := ruc.Update(ctx, region.UpdateInput{ID: "", Name: "x", Mask: []string{"name"}})
+	_, err := ruc.Update(ctx, region.UpdateInput{ID: "", Mask: []string{"status"}, Status: domain.GeoStatusUp})
 	require.Error(t, err, "empty region id must fail synchronously")
 	_, err = ruc.Delete(ctx, "")
 	require.Error(t, err)
-	_, err = ruc.Create(ctx, region.CreateInput{ID: "", Name: "x"})
+	_, err = ruc.Create(ctx, region.CreateInput{ID: ""})
 	require.Error(t, err)
-	_, err = zuc.Create(ctx, zone.CreateInput{ID: "", RegionID: "region-1", Name: "z"})
+	_, err = zuc.Create(ctx, zone.CreateInput{ID: "", RegionID: "region-1"})
 	require.Error(t, err)
 }
 
@@ -227,7 +230,7 @@ func TestSyncNotFound_OperationError(t *testing.T) {
 	ruc := region.New(pg.NewRegionRepo(pool), pg.NewRegionRepo(pool), ops, serviceerr.ToStatus)
 	zuc := zone.New(pg.NewZoneRepo(pool), pg.NewZoneRepo(pool), ops, serviceerr.ToStatus)
 
-	uop, err := ruc.Update(ctx, region.UpdateInput{ID: "region-absent", Name: "x", Mask: []string{"name"}})
+	uop, err := ruc.Update(ctx, region.UpdateInput{ID: "region-absent", Mask: []string{"countryCode"}, CountryCode: "NL"})
 	require.NoError(t, err, "well-formed id accepted; failure in op.error")
 	require.True(t, uop.Done)
 	require.NotNil(t, uop.Error)
@@ -237,7 +240,7 @@ func TestSyncNotFound_OperationError(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int32(codes.NotFound), dop.Error.GetCode())
 
-	zop, err := zuc.Update(ctx, zone.UpdateInput{ID: "region-1-x", Name: "x", Mask: []string{"name"}})
+	zop, err := zuc.Update(ctx, zone.UpdateInput{ID: "region-1-x", Mask: []string{"status"}, Status: domain.GeoStatusUp})
 	require.NoError(t, err)
 	require.Equal(t, int32(codes.NotFound), zop.Error.GetCode())
 }
@@ -251,8 +254,8 @@ func TestSyncRegionDeleteWithZones_FailedPrecondition(t *testing.T) {
 	ruc := region.New(pg.NewRegionRepo(pool), pg.NewRegionRepo(pool), ops, serviceerr.ToStatus)
 	zuc := zone.New(pg.NewZoneRepo(pool), pg.NewZoneRepo(pool), ops, serviceerr.ToStatus)
 
-	seedRegion(t, ops, ruc, "region-sync-busy", "region-sync-busy")
-	seedZone(t, ops, zuc, "region-sync-busy-a", "region-sync-busy", "region-sync-busy-a", geoZoneStatusUp())
+	seedRegion(t, ops, ruc, "region-sync-busy")
+	seedZone(t, ops, zuc, "region-sync-busy-a", "region-sync-busy", geoZoneStatusUp())
 
 	dop, err := ruc.Delete(ctx, "region-sync-busy")
 	require.NoError(t, err)
@@ -273,7 +276,7 @@ func TestSyncZoneCreateBadRegion_FailedPrecondition(t *testing.T) {
 	ops := operations.NewRepo(pool, "kacho_geo")
 	zuc := zone.New(pg.NewZoneRepo(pool), pg.NewZoneRepo(pool), ops, serviceerr.ToStatus)
 
-	zop, err := zuc.Create(ctx, zone.CreateInput{ID: "region-ghost-a", RegionID: "region-ghost", Name: "ghost-zone", Status: geoZoneStatusUp()})
+	zop, err := zuc.Create(ctx, zone.CreateInput{ID: "region-ghost-a", RegionID: "region-ghost", Status: geoZoneStatusUp()})
 	require.NoError(t, err)
 	require.True(t, zop.Done)
 	require.NotNil(t, zop.Error)
@@ -297,8 +300,9 @@ func TestSyncConcurrentRegionCreate_OneWinner(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func(i int) {
 			defer wg.Done()
-			// одинаковый id, но уникальные name (иначе UNIQUE(name) вместо PK-гонки).
-			op, err := uc.Create(ctx, region.CreateInput{ID: "region-sync-race", Name: sprintfName(i), Status: domain.GeoStatusUp})
+			// Одинаковый id: гонка идёт за слот первичного ключа — единственного
+			// уникального ключа каталога после #716.
+			op, err := uc.Create(ctx, region.CreateInput{ID: "region-sync-race", Status: domain.GeoStatusUp})
 			require.NoError(t, err)
 			opsOut[i] = op
 		}(i)
@@ -323,5 +327,3 @@ func TestSyncConcurrentRegionCreate_OneWinner(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "region-sync-race", got.ID)
 }
-
-func sprintfName(i int) string { return "race-region-" + string(rune('a'+i)) }
