@@ -527,3 +527,95 @@ func firstLineOf(s string) string {
 	}
 	return s
 }
+
+// ── R7-1-15: ГИПОТЕЗА И9 ПРОВЕРЕНА НА ОДНОЙ РЕВИЗИИ ─────────────────────────
+
+// TestR7_1_15_LabelArmShareIsMeasuredNotAssumed — R7-1-15.
+//
+// Прежние числа удорожания сняты на РАЗНЫХ фикстурах и РАЗНЫХ ревизиях, поэтому
+// «меточная ветвь дороже во столько-то раз» было гипотезой с предикатом, а не
+// выводом. Предикат исполняется здесь: две фикстуры отличаются ТОЛЬКО ветвью
+// правила, всё прочее — число объектов, ширина страницы, число субъектов,
+// глаголов, роль и глубина цепи — совпадает, и обе меряются на ОДНОЙ ревизии
+// одним прибором.
+//
+// Проба ничего не «улучшает» и порога не вводит: она отделяет долю, которую
+// вносит ветвь, от доли, которую вносило различие фикстур. Число печатается
+// вместе с тем, чем оно получено; порог, назначенный по полученному числу,
+// описывал бы это число, а не свойство.
+func TestR7_1_15_LabelArmShareIsMeasuredNotAssumed(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
+	ctx := context.Background()
+
+	measure := func(arm string) (int64, relverdict.Verdict, int) {
+		t.Helper()
+		tx, cap := openProbeTx(t, ctx)
+		f := newGridFixture(t, ctx, tx)
+		f.growN(t, ctx, 200)
+
+		// Роль отличается ТОЛЬКО ветвью правила: тот же тип, тот же глагол.
+		must(t, execErr(ctx, tx,
+			`UPDATE kacho_iam.role_rule_selectors SET arm = $1,
+			        match_labels = CASE WHEN $1 = 'labels' THEN '{"env":"prod"}'::jsonb ELSE '{}'::jsonb END
+			  WHERE role_id = 'rol-anchor'`, arm))
+		f.setR(t, ctx, 1, scalegrid.RecruitDirect)
+		must(t, execErr(ctx, tx,
+			`UPDATE kacho_iam.role_rule_selectors SET arm = $1,
+			        match_labels = CASE WHEN $1 = 'labels' THEN '{"env":"prod"}'::jsonb ELSE '{}'::jsonb END
+			  WHERE role_id LIKE 'rol-r%'`, arm))
+		f.analyze(t, ctx)
+
+		v, m := askAndExplain(t, ctx, tx, cap, probeObjectID)
+		var objects int
+		if err := tx.QueryRow(ctx,
+			`SELECT count(*)::int FROM kacho_iam.resource_mirror`).Scan(&objects); err != nil {
+			t.Fatalf("перепись объектов: %v", err)
+		}
+		return m.Rows, v, objects
+	}
+
+	anchorRows, anchorVerdict, anchorObjects := measure("anchor")
+	labelRows, labelVerdict, labelObjects := measure("labels")
+
+	// Фикстуры обязаны совпасть по всему, кроме ветви: иначе сравниваются не
+	// ветви, а фикстуры — ровно та ошибка, ради которой сценарий и написан.
+	if anchorObjects != labelObjects {
+		t.Fatalf("фикстуры разошлись по числу объектов (%d против %d): сравнивались бы "+
+			"не ветви правила, а фикстуры", anchorObjects, labelObjects)
+	}
+	if anchorVerdict != relverdict.Allow || labelVerdict != relverdict.Allow {
+		t.Fatalf("ветвь якоря дала %s, ветвь меток — %s: сравнивалась бы стоимость "+
+			"разных ответов", anchorVerdict, labelVerdict)
+	}
+
+	ratio := float64(labelRows) / float64(max64Rows(anchorRows, 1))
+	t.Logf("И9 на ОДНОЙ ревизии, фикстуры различаются ТОЛЬКО ветвью правила "+
+		"(объектов %d, субъект один, глагол один, роль одна, цепь d=%d):\n"+
+		"  ветвь якоря  — строк за вердикт %d (%s)\n"+
+		"  ветвь меток  — строк за вердикт %d (%s)\n"+
+		"  отношение меток к якорю %.2f\n"+
+		"  ВНИМАНИЕ: число описывает ЭТУ фикстуру на ЭТОЙ ревизии и верхней оценкой "+
+		"не является. Прежние числа удорожания снимались на разных фикстурах и разных "+
+		"ревизиях, поэтому сравнивать их с этим напрямую нельзя — сопоставима только "+
+		"пара, снятая так же.",
+		anchorObjects, probeChainDepth, anchorRows, anchorVerdict, labelRows, labelVerdict, ratio)
+
+	if anchorRows <= 0 || labelRows <= 0 {
+		t.Fatalf("прибор дал %d и %d строк: на нуле всякое суждение об отношении "+
+			"тождественно верно", anchorRows, labelRows)
+	}
+}
+
+func execErr(ctx context.Context, tx pgx.Tx, sql string, args ...any) error {
+	_, err := tx.Exec(ctx, sql, args...)
+	return err
+}
+
+func max64Rows(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
