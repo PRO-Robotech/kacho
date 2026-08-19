@@ -32,8 +32,7 @@ const (
 type CreateRegionRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Region ID — admin-assigned immutable slug PK (e.g. "ru-central1").
-	Id   string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// ISO-3166 alpha-2 country code (validated on input if non-empty).
 	CountryCode string `protobuf:"bytes,3,opt,name=country_code,json=countryCode,proto3" json:"country_code,omitempty"`
 	// Optional; DEFAULT DOWN (fail-safe) if omitted → region stays CLOSED.
@@ -77,13 +76,6 @@ func (*CreateRegionRequest) Descriptor() ([]byte, []int) {
 func (x *CreateRegionRequest) GetId() string {
 	if x != nil {
 		return x.Id
-	}
-	return ""
-}
-
-func (x *CreateRegionRequest) GetName() string {
-	if x != nil {
-		return x.Name
 	}
 	return ""
 }
@@ -169,7 +161,6 @@ func (x *CreateRegionMetadata) GetWarnings() []string {
 type UpdateRegionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RegionId      string                 `protobuf:"bytes,1,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	CountryCode   string                 `protobuf:"bytes,3,opt,name=country_code,json=countryCode,proto3" json:"country_code,omitempty"`
 	Status        GeoStatus              `protobuf:"varint,4,opt,name=status,proto3,enum=kacho.cloud.geo.v1.GeoStatus" json:"status,omitempty"`
 	Infra         *RegionInfra           `protobuf:"bytes,5,opt,name=infra,proto3" json:"infra,omitempty"`
@@ -211,13 +202,6 @@ func (*UpdateRegionRequest) Descriptor() ([]byte, []int) {
 func (x *UpdateRegionRequest) GetRegionId() string {
 	if x != nil {
 		return x.RegionId
-	}
-	return ""
-}
-
-func (x *UpdateRegionRequest) GetName() string {
-	if x != nil {
-		return x.Name
 	}
 	return ""
 }
@@ -436,7 +420,6 @@ type CreateZoneRequest struct {
 	RegionId string `protobuf:"bytes,2,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
 	// Optional; DEFAULT DOWN (fail-safe) if omitted → zone stays CLOSED.
 	Status GeoStatus `protobuf:"varint,3,opt,name=status,proto3,enum=kacho.cloud.geo.v1.GeoStatus" json:"status,omitempty"`
-	Name   string    `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	// Zone infra accepted whole (numeric_infra_id° immutable after create).
 	Infra         *ZoneInfra `protobuf:"bytes,5,opt,name=infra,proto3" json:"infra,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -492,13 +475,6 @@ func (x *CreateZoneRequest) GetStatus() GeoStatus {
 		return x.Status
 	}
 	return GeoStatus_GEO_STATUS_UNSPECIFIED
-}
-
-func (x *CreateZoneRequest) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
 }
 
 func (x *CreateZoneRequest) GetInfra() *ZoneInfra {
@@ -567,7 +543,6 @@ type UpdateZoneRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ZoneId        string                 `protobuf:"bytes,1,opt,name=zone_id,json=zoneId,proto3" json:"zone_id,omitempty"`
 	Status        GeoStatus              `protobuf:"varint,3,opt,name=status,proto3,enum=kacho.cloud.geo.v1.GeoStatus" json:"status,omitempty"`
-	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
 	Infra         *ZoneInfra             `protobuf:"bytes,5,opt,name=infra,proto3" json:"infra,omitempty"`
 	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,6,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -616,13 +591,6 @@ func (x *UpdateZoneRequest) GetStatus() GeoStatus {
 		return x.Status
 	}
 	return GeoStatus_GEO_STATUS_UNSPECIFIED
-}
-
-func (x *UpdateZoneRequest) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
 }
 
 func (x *UpdateZoneRequest) GetInfra() *ZoneInfra {
@@ -821,24 +789,22 @@ var File_kacho_cloud_geo_v1_internal_catalog_service_proto protoreflect.FileDesc
 
 const file_kacho_cloud_geo_v1_internal_catalog_service_proto_rawDesc = "" +
 	"\n" +
-	"1kacho/cloud/geo/v1/internal_catalog_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xca\x01\n" +
+	"1kacho/cloud/geo/v1/internal_catalog_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xc2\x01\n" +
 	"\x13CreateRegionRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fcountry_code\x18\x03 \x01(\tR\vcountryCode\x125\n" +
 	"\x06status\x18\x04 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\x125\n" +
-	"\x05infra\x18\x05 \x01(\v2\x1f.kacho.cloud.geo.v1.RegionInfraR\x05infra\"O\n" +
+	"\x05infra\x18\x05 \x01(\v2\x1f.kacho.cloud.geo.v1.RegionInfraR\x05infraJ\x04\b\x02\x10\x03R\x04name\"O\n" +
 	"\x14CreateRegionMetadata\x12\x1b\n" +
 	"\tregion_id\x18\x01 \x01(\tR\bregionId\x12\x1a\n" +
-	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"\x94\x02\n" +
+	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"\x8c\x02\n" +
 	"\x13UpdateRegionRequest\x12\x1b\n" +
-	"\tregion_id\x18\x01 \x01(\tR\bregionId\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
+	"\tregion_id\x18\x01 \x01(\tR\bregionId\x12!\n" +
 	"\fcountry_code\x18\x03 \x01(\tR\vcountryCode\x125\n" +
 	"\x06status\x18\x04 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\x125\n" +
 	"\x05infra\x18\x05 \x01(\v2\x1f.kacho.cloud.geo.v1.RegionInfraR\x05infra\x12;\n" +
 	"\vupdate_mask\x18\x06 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\"3\n" +
+	"updateMaskJ\x04\b\x02\x10\x03R\x04name\"3\n" +
 	"\x14UpdateRegionMetadata\x12\x1b\n" +
 	"\tregion_id\x18\x01 \x01(\tR\bregionId\"2\n" +
 	"\x13DeleteRegionRequest\x12\x1b\n" +
@@ -846,23 +812,21 @@ const file_kacho_cloud_geo_v1_internal_catalog_service_proto_rawDesc = "" +
 	"\x14DeleteRegionMetadata\x12\x1b\n" +
 	"\tregion_id\x18\x01 \x01(\tR\bregionId\"7\n" +
 	"\x18GetInternalRegionRequest\x12\x1b\n" +
-	"\tregion_id\x18\x01 \x01(\tR\bregionId\"\xc0\x01\n" +
+	"\tregion_id\x18\x01 \x01(\tR\bregionId\"\xb8\x01\n" +
 	"\x11CreateZoneRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tregion_id\x18\x02 \x01(\tR\bregionId\x125\n" +
-	"\x06status\x18\x03 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\x12\x12\n" +
-	"\x04name\x18\x04 \x01(\tR\x04name\x123\n" +
-	"\x05infra\x18\x05 \x01(\v2\x1d.kacho.cloud.geo.v1.ZoneInfraR\x05infra\"I\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\x123\n" +
+	"\x05infra\x18\x05 \x01(\v2\x1d.kacho.cloud.geo.v1.ZoneInfraR\x05infraJ\x04\b\x04\x10\x05R\x04name\"I\n" +
 	"\x12CreateZoneMetadata\x12\x17\n" +
 	"\azone_id\x18\x01 \x01(\tR\x06zoneId\x12\x1a\n" +
-	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"\xfa\x01\n" +
+	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"\xf2\x01\n" +
 	"\x11UpdateZoneRequest\x12\x17\n" +
 	"\azone_id\x18\x01 \x01(\tR\x06zoneId\x125\n" +
-	"\x06status\x18\x03 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\x12\x12\n" +
-	"\x04name\x18\x04 \x01(\tR\x04name\x123\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\x123\n" +
 	"\x05infra\x18\x05 \x01(\v2\x1d.kacho.cloud.geo.v1.ZoneInfraR\x05infra\x12;\n" +
 	"\vupdate_mask\x18\x06 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMaskJ\x04\b\x02\x10\x03R\tregion_id\"-\n" +
+	"updateMaskJ\x04\b\x04\x10\x05J\x04\b\x02\x10\x03R\x04nameR\tregion_id\"-\n" +
 	"\x12UpdateZoneMetadata\x12\x17\n" +
 	"\azone_id\x18\x01 \x01(\tR\x06zoneId\",\n" +
 	"\x11DeleteZoneRequest\x12\x17\n" +

@@ -24,6 +24,13 @@ message Zone {
   reserved 3;
   reserved "status";
 
+  // Reserved: was field 4, `name`. Removed by #716 — it duplicated `id`.
+  // A Zone id is admin-assigned and human-readable BY CONSTRUCTION
+  // ("ru-central1-a"); the second field only gave the two spellings somewhere to
+  // drift. Both number AND name are reserved.
+  reserved 4;
+  reserved "name";
+
   // ID of the zone (e.g. "ru-central1-a"). Admin-assigned immutable slug PK;
   // coupling: id == regionId + "-" + <zoneSuffix> (strict startsWith).
   string id = 1;
@@ -31,10 +38,6 @@ message Zone {
   // ID of the region this zone belongs to (class-A within-service FK →
   // regions(id) ON DELETE RESTRICT). IMMUTABLE after create.
   string region_id = 2;
-
-  // Human-readable label; LIVE-mutable via InternalZoneService.Update. Globally
-  // UNIQUE, required.
-  string name = 4;
 
   // Creation timestamp (truncated to seconds on the wire).
   google.protobuf.Timestamp created_at = 5;
@@ -75,9 +78,12 @@ message ZoneInfra {
 // :9091 only). Carries the raw admin `status` and the infra° block; NEVER routed
 // to the external TLS endpoint (ban #6).
 message InternalZone {
+  // Reserved: was field 3, `name` (#716, see Zone above).
+  reserved 3;
+  reserved "name";
+
   string id = 1;
   string region_id = 2;
-  string name = 3;
   google.protobuf.Timestamp created_at = 4;
 
   // Raw admin maintenance flag (UP/DOWN). LIVE-mutable via Internal Update.

@@ -101,21 +101,23 @@ describe("группа размещения объявлена ресурсом 
     expect(regional).not.toHaveProperty("zone_id");
   });
 
-  it("в списке якорь показан ссылкой на свою зону, а не идентификатором", async () => {
+  it("в списке якорь показан ССЫЛКОЙ на свою зону, а не простым текстом", async () => {
     const col = REGISTRY["placement-groups"].columns.find((c) => c.path === "placement_type");
     expect(col?.render).toBeDefined();
 
-    stubList({ zones: [{ id: "zone-a", name: "ru-central1-a" }] });
+    // Каталог размещения отвечает одним полем идентичности (#716): подпись
+    // рядом сделала бы фикстуру снисходительнее продукта.
+    stubList({ zones: [{ id: "ru-central1-a" }] });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={["/projects/prj-1/compute/placement-groups"]}>
-          {col!.render!({ placement_type: "ZONAL", zone_id: "zone-a", region_id: "" })}
+          {col!.render!({ placement_type: "ZONAL", zone_id: "ru-central1-a", region_id: "" })}
         </MemoryRouter>
       </QueryClientProvider>,
     );
 
     const link = await screen.findByRole("link", { name: "ru-central1-a" });
-    expect(link).toHaveAttribute("href", "/system/zones/zone-a");
+    expect(link).toHaveAttribute("href", "/system/zones/ru-central1-a");
   });
 });

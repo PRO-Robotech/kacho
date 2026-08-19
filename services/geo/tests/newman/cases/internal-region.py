@@ -46,7 +46,7 @@ CASES.append(Case(
     classes=["CRUD"], priority="P0",
     steps=[
         Step(name="create-region", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-reg-crud-{{runId}}", "name": "qa-region-crud-{{runId}}", "countryCode": "RU", "status": "UP"},
+             body={"id": "qa-reg-crud-{{runId}}", "countryCode": "RU", "status": "UP"},
              test_script=[
                  *assert_operation_envelope(),
                  *save_from_response("j.metadata && j.metadata.regionId", "irgCrudRegionId"),
@@ -57,7 +57,6 @@ CASES.append(Case(
                  *assert_status(200),
                  "const j = pm.response.json();",
                  "pm.test('region id materialized', () => pm.expect(j.id).to.eql('qa-reg-crud-' + pm.environment.get('runId')));",
-                 "pm.test('name persisted', () => pm.expect(j.name).to.eql('qa-region-crud-' + pm.environment.get('runId')));",
                  "pm.test('countryCode persisted', () => pm.expect(j.countryCode).to.eql('RU'));",
                  "pm.test('openForPlacement true (region status UP)', () => pm.expect(j.openForPlacement).to.eql(true));",
              ])),
@@ -77,7 +76,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P1",
     steps=[
         Step(name="create-malformed", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "9-Bad_Id!", "name": "qa-malformed"},
+             body={"id": "9-Bad_Id!"},
              test_script=[
                  *assert_status(400),
                  *assert_grpc_code(3, "INVALID_ARGUMENT"),
@@ -97,7 +96,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P1",
     steps=[
         Step(name="create-empty-id", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "", "name": "qa-empty-id"},
+             body={"id": ""},
              test_script=[
                  *assert_status(400),
                  *assert_grpc_code(3, "INVALID_ARGUMENT"),
@@ -120,13 +119,13 @@ CASES.append(Case(
     classes=["NEG", "IDM"], priority="P1",
     steps=[
         Step(name="create-first", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-reg-dup-{{runId}}", "name": "qa-region-dup-{{runId}}"},
+             body={"id": "qa-reg-dup-{{runId}}"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="get-after-first", method="GET",
              path="/geo/v1/regions/qa-reg-dup-{{runId}}",
              test_script=[*assert_status(200)])),
         Step(name="create-dup", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-reg-dup-{{runId}}", "name": "qa-region-dup-again-{{runId}}"},
+             body={"id": "qa-reg-dup-{{runId}}"},
              test_script=[*assert_operation_failed(6, "ALREADY_EXISTS", "already exists")]),
         Step(name="get-still-present", method="GET", path="/geo/v1/regions/qa-reg-dup-{{runId}}",
              test_script=[
@@ -152,7 +151,7 @@ CASES.append(Case(
     classes=["NEG", "STATE"], priority="P0",
     steps=[
         Step(name="create-region", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-reg-del-{{runId}}", "name": "qa-region-del-{{runId}}", "status": "UP"},
+             body={"id": "qa-reg-del-{{runId}}", "status": "UP"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="confirm-region", method="GET",
              path="/geo/v1/regions/qa-reg-del-{{runId}}",
@@ -160,7 +159,7 @@ CASES.append(Case(
         # zone id MUST be coupling-valid: zone.id == regionId + "-" + <suffix> (GEO-1-29).
         Step(name="create-child-zone", method="POST", path="/geo/v1/internal/zones", internal=True,
              body={"id": "qa-reg-del-{{runId}}-z", "regionId": "qa-reg-del-{{runId}}",
-                   "name": "qa-child-zone-{{runId}}", "status": "UP"},
+                   "status": "UP"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="confirm-zone", method="GET",
              path="/geo/v1/zones/qa-reg-del-{{runId}}-z",
@@ -191,41 +190,79 @@ CASES.append(Case(
 
 
 # ---------------------------------------------------------------------------
-# IRG-UPD-CRUD-OK — Update region name → Operation envelope; new name via public Get.
+# IRG-UPD-CRUD-OK — Update региона → Operation; изменение видно публичным Get.
+#
+# Правился `name`, пока он был. Поля больше нет (#716) — идентичность региона
+# одна и она неизменяема, — поэтому предметом правки стал `countryCode`:
+# единственное оставшееся изменяемое описательное поле на публичной проекции.
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="IRG-UPD-CRUD-OK",
-    title="InternalRegionService.Update name → 200 Operation; new name materializes (public Get)",
+    title="InternalRegionService.Update countryCode → 200 Operation; новое значение видно публичным Get",
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         Step(name="create-region", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-reg-upd-{{runId}}", "name": "qa-region-before-{{runId}}"},
+             body={"id": "qa-reg-upd-{{runId}}", "countryCode": "RU"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="confirm-created", method="GET",
              path="/geo/v1/regions/qa-reg-upd-{{runId}}",
              test_script=[*assert_status(200)])),
-        Step(name="update-name", method="PATCH", path="/geo/v1/internal/regions/qa-reg-upd-{{runId}}", internal=True,
-             body={"name": "qa-region-after-{{runId}}", "updateMask": "name"},
+        Step(name="update-country", method="PATCH", path="/geo/v1/internal/regions/qa-reg-upd-{{runId}}", internal=True,
+             body={"countryCode": "NL", "updateMask": "countryCode"},
              test_script=[*assert_operation_envelope()]),
-        # re-read until the Update commit is visible: the name flips from
-        # "QA Region Before" to "QA Region After ...". retry on the STALE name via a
-        # 200-scoped self-retry (bounded; fail-open at budget → real assert runs).
-        Step(name="verify-name", method="GET", path="/geo/v1/regions/qa-reg-upd-{{runId}}",
+        # re-read until the Update commit is visible: countryCode flips RU → NL.
+        # retry on the STALE value via a 200-scoped self-retry (bounded; fail-open
+        # at budget → real assert runs).
+        Step(name="verify-country", method="GET", path="/geo/v1/regions/qa-reg-upd-{{runId}}",
              test_script=[
                  *assert_status(200),
-                 "const want = 'qa-region-after-' + pm.environment.get('runId');",
-                 "const cur = pm.response.json().name;",
+                 "const cur = pm.response.json().countryCode;",
                  "const uc = parseInt(pm.environment.get('_updRetry') || '0', 10);",
-                 "if (cur !== want && uc < 20) {",
+                 "if (cur !== 'NL' && uc < 20) {",
                  "  pm.environment.set('_updRetry', String(uc + 1));",
                  "  const _d = Date.now(); while (Date.now() - _d < 500) { /* update-commit wait */ }",
                  "  pm.execution.setNextRequest(pm.info.requestName);",
                  "  return;",
                  "}",
                  "pm.environment.unset('_updRetry');",
-                 "pm.test('name updated', () => pm.expect(cur).to.eql(want));",
+                 "pm.test('countryCode updated', () => pm.expect(cur).to.eql('NL'));",
              ]),
         Step(name="cleanup", method="DELETE", path="/geo/v1/internal/regions/qa-reg-upd-{{runId}}", internal=True,
+             test_script=[*assert_operation_envelope()]),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# IRG-UPD-NEG-NAME-IN-MASK — маска, назвавшая СНЯТОЕ поле, отвергается краем.
+#
+# Отрицание к правке выше и единственный сквозной замок снятия (#716): тело
+# запроса с ключом `name` край отбрасывает молча (DiscardUnknown), поэтому
+# «прислал имя — получил отказ» не производится ни при каком входе, а вот
+# ЗНАЧЕНИЕ маски доезжает до сервиса и судится известным набором полей.
+#
+# Положительный контроль — правка выше: она называет маской живое поле и
+# проходит. Без него это отрицание зеленело бы и на «отвергаем любую маску».
+# ---------------------------------------------------------------------------
+CASES.append(Case(
+    id="IRG-UPD-NEG-NAME-IN-MASK",
+    title="InternalRegionService.Update с updateMask=name → 400 INVALID_ARGUMENT: поля больше нет (#716)",
+    classes=["VAL", "NEG"], priority="P1",
+    steps=[
+        Step(name="create-region", method="POST", path="/geo/v1/internal/regions", internal=True,
+             body={"id": "qa-reg-nomask-{{runId}}"},
+             test_script=[*assert_operation_envelope()]),
+        retry_get_until_found(Step(name="confirm-created", method="GET",
+             path="/geo/v1/regions/qa-reg-nomask-{{runId}}",
+             test_script=[*assert_status(200)])),
+        Step(name="update-with-removed-field", method="PATCH",
+             path="/geo/v1/internal/regions/qa-reg-nomask-{{runId}}", internal=True,
+             body={"updateMask": "name"},
+             test_script=[
+                 *assert_status(400),
+                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
+             ]),
+        Step(name="cleanup", method="DELETE", path="/geo/v1/internal/regions/qa-reg-nomask-{{runId}}", internal=True,
              test_script=[*assert_operation_envelope()]),
     ],
 ))

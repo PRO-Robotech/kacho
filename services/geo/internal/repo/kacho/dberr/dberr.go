@@ -12,12 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
 	geoerrors "github.com/PRO-Robotech/kacho/services/geo/internal/errors"
 )
 
@@ -27,7 +25,7 @@ import (
 //	pgx.ErrNoRows            → ErrNotFound
 //	23505 UNIQUE             → ErrAlreadyExists
 //	23503 FK                 → ErrFailedPrecondition
-//	23514 CHECK              → ErrInternal (форма имени) | ErrInvalidArg
+//	23514 CHECK              → ErrInvalidArg
 //	context.Canceled         → ErrCanceled          (client-cancel, не серверный сбой)
 //	context.DeadlineExceeded → ErrDeadlineExceeded  (истёкший per-call timeout)
 //	все остальное            → ErrInternal
@@ -84,63 +82,28 @@ func Wrap(err error, resource, id string) error {
 	return geoerrors.ErrInternal
 }
 
-// nameConstraintSuffix — суффикс имени ограничения, которым Postgres называет
-// `ADD CONSTRAINT <table>_name_key UNIQUE (name)` из миграции 0004 (regions_name_key /
-// zones_name_key). По нему WrapUnique отличает конфликт по ИМЕНИ от конфликта по id.
+// Здесь жили `nameConstraintSuffix` и `WrapUnique` — разбор 23505 по имени
+// ограничения, чтобы отличить конфликт по ИМЕНИ от конфликта по id.
 //
-// Предпосылка («ограничение зовётся так») проверяется тестом, читающим сами
-// миграции: переименуют — тест покраснеет, а не маршрутизация тихо вернётся к
-// id-тону.
-const nameConstraintSuffix = "_name_key"
+// Предмета у них больше нет (#716): у каталога размещения снято поле-дубль, и
+// вместе с ним ушла глобальная `UNIQUE (name)`. Единственный уникальный ключ
+// обеих таблиц — первичный, поэтому 23505 говорит ровно об id, и разбирать
+// нечего. Сняты вместе с вызовами, а не оставлены «на всякий случай»: ветка,
+// которая не может сработать, читается следующим как действующая маршрутизация.
 
-// WrapUnique — Wrap для путей ЗАПИСИ каталога, где 23505 прилетает по ДВУМ
-// разным ключам: первичному `id` и глобальной `UNIQUE (name)` (миграция 0004).
-// Ключи различаются по имени ограничения, и сообщение называет тот, который
-// действительно занят:
+// checkViolation отображает 23514 в отказ по вводу.
 //
-//	<table>_name_key → ErrAlreadyExists "<Resource> with name <name> already exists"
-//	иначе (pkey/…)   → ErrAlreadyExists "<Resource> <id> already exists"
+// Полосы «наш дефект против ввода вызывающего» здесь БОЛЬШЕ НЕТ, и это следствие
+// #716, а не упрощение. Разделяла полосы принадлежность ограничения форме имени
+// (`nameform.IsConstraint`), а формы имени у каталога размещения не осталось: поле
+// снято, `<t>_name_check` снят вместе с ним миграцией 716001. Ветка, которую
+// нельзя достичь ни при каком входе, снята вместе со своим предметом — оставленная,
+// она читалась бы следующим как действующая маршрутизация (у vpc/compute/storage/
+// nlb предмет на месте, и разбор полос там остаётся).
 //
-// Всё, что не 23505, делегируется в Wrap без изменений.
-//
-// Зачем разделение: единый id-тон на оба ключа утверждает то, чего вызывающий не
-// присылал. На Update он к тому же самоопровергается — строка с этим id
-// существует по построению (её и правят), а занято другим ЧУЖОЕ имя, поэтому
-// «Region <id> already exists» отправляет читателя искать несуществующий
-// конфликт по id. Тон name-ветки — общий для дома (vpc/iam/nlb/storage:
-// «<Resource> with name %s already exists»).
-func WrapUnique(err error, resource, id, name string) error {
-	if err == nil {
-		return nil
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" &&
-		strings.HasSuffix(pgErr.ConstraintName, nameConstraintSuffix) {
-		return fmt.Errorf("%w: %s with name %s already exists", geoerrors.ErrAlreadyExists, resource, name)
-	}
-	return Wrap(err, resource, id)
-}
-
-// checkViolation разбирает 23514 на две полосы по вопросу «чьё это значение»
-// (задача #718; тот же разбор, что в vpc, nlb, storage и compute).
-//
-// Форму имени Region/Zone geo теперь судит САМ, на пути запроса (`validate.Name`
-// в use-case). До этого парной проверки не было — она и была предметом задачи:
-// база оказывалась первым читателем ввода. Теперь ограничение таблицы есть
-// защита последнего рубежа, и его срабатывание означает, что негодное значение
-// прошло МИМО проверки: наш дефект, а не ввод вызывающего.
-//
-// Прочие ограничения остаются отказом по вводу. Имя ограничения наружу не идёт
-// ни в одной полосе — оно идёт в журнал: ERROR для нашего дефекта, WARN для
-// ввода, чтобы «ограничение ловит ввод регулярно» было счётно и попадало в
-// синхронную проверку.
+// Имя ограничения наружу не идёт: оно идёт в журнал, чтобы «ограничение ловит ввод
+// регулярно» было счётно.
 func checkViolation(pgErr *pgconn.PgError, resource, id string) error {
-	if nameform.IsConstraint(pgErr.TableName, pgErr.ConstraintName) {
-		slog.Error("name form backstop fired: service admitted a name it validates itself",
-			"sqlstate", pgErr.Code, "table", pgErr.TableName,
-			"constraint", pgErr.ConstraintName, "resource", resource, "id", id)
-		return geoerrors.ErrInternal
-	}
 	slog.Warn("check constraint rejected caller input",
 		"sqlstate", pgErr.Code, "table", pgErr.TableName,
 		"constraint", pgErr.ConstraintName, "resource", resource, "id", id)

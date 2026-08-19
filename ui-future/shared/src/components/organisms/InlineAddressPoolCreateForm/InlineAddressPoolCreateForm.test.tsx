@@ -62,7 +62,8 @@ function addCidr(family: 0 | 1, value: string) {
 beforeEach(() => {
   jest.clearAllMocks();
   create.mockResolvedValue({});
-  list.mockResolvedValue({ zones: [{ id: "zone-a", name: "ru-central1-a" }] });
+  // Каталог размещения отвечает одним полем идентичности (#716).
+  list.mockResolvedValue({ zones: [{ id: "ru-central1-a" }] });
 });
 
 describe("InlineAddressPoolCreateForm", () => {
@@ -111,12 +112,12 @@ describe("InlineAddressPoolCreateForm", () => {
 
     const zone = within(underLabel("Зона")).getByRole("combobox");
     await waitFor(() => expect(within(zone).getByText("ru-central1-a")).toBeInTheDocument());
-    fireEvent.change(zone, { target: { value: "zone-a" } });
+    fireEvent.change(zone, { target: { value: "ru-central1-a" } });
     addCidr(0, "198.51.100.0/24");
     submit();
 
     await waitFor(() => expect(create).toHaveBeenCalled());
-    expect(body().zone_id).toBe("zone-a");
+    expect(body().zone_id).toBe("ru-central1-a");
   });
 
   it("безымянный пул уезжает без имени — пустая строка была бы именем", async () => {

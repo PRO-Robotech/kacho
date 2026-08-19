@@ -106,7 +106,11 @@ CASES.append(Case(
                  *assert_status(200),
                  "const j = pm.response.json();",
                  "pm.test('id matches resolved', () => pm.expect(j.id).to.eql(pm.environment.get('pickRegionId')));",
-                 "pm.test('name is a string', () => pm.expect(j.name).to.be.a('string'));",
+                 # Публичная проекция каталога размещения НЕ несёт подписи (#716):
+                 # идентичность одна — id, и он человекочитаем by construction.
+                 # Утверждение об ОТСУТСТВИИ — единственное, что покраснеет, если
+                 # поле заведут заново; про его наличие здесь стояло обратное.
+                 "pm.test('no display name on the public projection', () => pm.expect(j).to.not.have.property('name'));",
                  *assert_createdat_truncated(),
              ]),
     ],

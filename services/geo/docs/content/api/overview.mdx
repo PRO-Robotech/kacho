@@ -94,10 +94,9 @@ RFC 3339 (`2026-06-24T10:00:00Z`).
 <CodeBlock language="json">
   {dedent`
     {
-      "id": "region-1-a",
-      "regionId": "region-1",
+      "id": "ru-central1-a",
+      "regionId": "ru-central1",
       "status": "UP",
-      "name": "Region 1, zone A",
       "createdAt": "2026-06-24T10:00:00Z"
     }
   `}
@@ -112,7 +111,7 @@ RFC 3339 (`2026-06-24T10:00:00Z`).
 
 <CodeBlock language="bash">
   {dedent`
-    curl 'http://localhost:18080/geo/v1/regions/region-1' \\
+    curl 'http://localhost:18080/geo/v1/regions/ru-central1' \\
       -H 'Authorization: Bearer <JWT>'
   `}
 </CodeBlock>
@@ -165,7 +164,7 @@ flowchart LR
   <tbody>
     <tr><td><code>INVALID_ARGUMENT</code></td><td>400</td><td>Нарушение формата / валидации (например, пустой id)</td></tr>
     <tr><td><code>NOT_FOUND</code></td><td>404</td><td>Корректный по формату, но несуществующий регион/зона</td></tr>
-    <tr><td><code>ALREADY_EXISTS</code></td><td>409</td><td>Занят <code>id</code> (PK) либо <code>name</code> (глобальный UNIQUE) — сообщение называет занятый ключ</td></tr>
+    <tr><td><code>ALREADY_EXISTS</code></td><td>409</td><td>Занят <code>id</code> — единственный уникальный ключ каталога (PK). Глобальной уникальности имени больше нет: поле снято вместе с дублем (#716)</td></tr>
     <tr><td><code>FAILED_PRECONDITION</code></td><td>409</td><td>Состояние не позволяет (например, удаление региона с зонами — FK <code>RESTRICT</code>)</td></tr>
     <tr><td><code>UNAVAILABLE</code></td><td>503</td><td>Peer (kacho-iam) недоступен — fail-closed</td></tr>
     <tr><td><code>UNAUTHENTICATED</code></td><td>401</td><td>Нет / невалиден JWT</td></tr>

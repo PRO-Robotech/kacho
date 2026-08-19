@@ -191,8 +191,14 @@ spec:
               #    которое пригодным никогда не было, а CHECK 0004 его запрещает —
               #    перенос такой строки как есть роняет весь Job на 23514.
               psql "$DST" -v ON_ERROR_STOP=1 <<'SQL'
-              INSERT INTO regions (id, name, status, created_at)
-              SELECT r.id, r.name,
+              -- `name` is NOT carried: the geo catalog no longer has that column
+              -- (#716). Its id is admin-assigned and human-readable by
+              -- construction, so the label duplicated the id and was removed on
+              -- both projections. The source column is still staged above — the
+              -- staging table mirrors the SOURCE, and dropping it there would
+              -- make the \copy shapes disagree.
+              INSERT INTO regions (id, status, created_at)
+              SELECT r.id,
                      CASE WHEN EXISTS (SELECT 1 FROM _geo_stg_zones z
                                         WHERE z.region_id = r.id AND z.status = 'UP')
                           THEN 'UP' ELSE 'DOWN' END,
@@ -200,10 +206,10 @@ spec:
               FROM _geo_stg_regions r
               ON CONFLICT (id) DO NOTHING;
 
-              INSERT INTO zones (id, region_id, status, name, created_at)
+              INSERT INTO zones (id, region_id, status, created_at)
               SELECT id, region_id,
                      CASE WHEN status = 'UP' THEN 'UP' ELSE 'DOWN' END,
-                     name, created_at
+                     created_at
               FROM _geo_stg_zones
               ON CONFLICT (id) DO NOTHING;
 

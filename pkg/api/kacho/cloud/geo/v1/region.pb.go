@@ -39,9 +39,6 @@ type Region struct {
 	// THE ONE carve-out from the 3-char-prefix+crockford-base32 id convention
 	// (it IS a coordinate, written by hand into every placement Create).
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// Human-readable label; LIVE-mutable via InternalRegionService.Update.
-	// Globally UNIQUE, required.
-	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Creation timestamp (truncated to seconds on the wire).
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// ISO-3166 alpha-2 country code (output-only descriptor, non-sensitive → on
@@ -94,13 +91,6 @@ func (*Region) Descriptor() ([]byte, []int) {
 func (x *Region) GetId() string {
 	if x != nil {
 		return x.Id
-	}
-	return ""
-}
-
-func (x *Region) GetName() string {
-	if x != nil {
-		return x.Name
 	}
 	return ""
 }
@@ -197,7 +187,6 @@ func (x *RegionInfra) GetCapacityHint() string {
 type InternalRegion struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	CreatedAt   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	CountryCode string                 `protobuf:"bytes,4,opt,name=country_code,json=countryCode,proto3" json:"country_code,omitempty"`
 	// Raw admin maintenance flag (UP/DOWN). LIVE-mutable via Internal Update.
@@ -245,13 +234,6 @@ func (x *InternalRegion) GetId() string {
 	return ""
 }
 
-func (x *InternalRegion) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
 func (x *InternalRegion) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
@@ -284,26 +266,24 @@ var File_kacho_cloud_geo_v1_region_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_geo_v1_region_proto_rawDesc = "" +
 	"\n" +
-	"\x1fkacho/cloud/geo/v1/region.proto\x12\x12kacho.cloud.geo.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\"\xe9\x01\n" +
+	"\x1fkacho/cloud/geo/v1/region.proto\x12\x12kacho.cloud.geo.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#kacho/cloud/geo/v1/geo_common.proto\"\xe1\x01\n" +
 	"\x06Region\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x129\n" +
 	"\n" +
 	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12!\n" +
 	"\fcountry_code\x18\x04 \x01(\tR\vcountryCode\x12,\n" +
 	"\x12open_for_placement\x18\x05 \x01(\bR\x10openForPlacement\x12/\n" +
-	"\x14open_zone_count_hint\x18\x06 \x01(\x03R\x11openZoneCountHint\"\\\n" +
+	"\x14open_zone_count_hint\x18\x06 \x01(\x03R\x11openZoneCountHintJ\x04\b\x02\x10\x03R\x04name\"\\\n" +
 	"\vRegionInfra\x12(\n" +
 	"\x10numeric_infra_id\x18\x01 \x01(\x03R\x0enumericInfraId\x12#\n" +
-	"\rcapacity_hint\x18\x02 \x01(\tR\fcapacityHint\"\x80\x02\n" +
+	"\rcapacity_hint\x18\x02 \x01(\tR\fcapacityHint\"\xf8\x01\n" +
 	"\x0eInternalRegion\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x129\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x129\n" +
 	"\n" +
 	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12!\n" +
 	"\fcountry_code\x18\x04 \x01(\tR\vcountryCode\x125\n" +
 	"\x06status\x18\x05 \x01(\x0e2\x1d.kacho.cloud.geo.v1.GeoStatusR\x06status\x125\n" +
-	"\x05infra\x18\x06 \x01(\v2\x1f.kacho.cloud.geo.v1.RegionInfraR\x05infraB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
+	"\x05infra\x18\x06 \x01(\v2\x1f.kacho.cloud.geo.v1.RegionInfraR\x05infraJ\x04\b\x02\x10\x03R\x04nameB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1b\x06proto3"
 
 var (
 	file_kacho_cloud_geo_v1_region_proto_rawDescOnce sync.Once

@@ -69,8 +69,11 @@ beforeEach(() => {
   // ответ известен сразу. `async` без `await` обещало ожидание, которого нет.
   list.mockImplementation((path: string) => {
     if (path.includes("/networks")) return Promise.resolve({ networks: [{ id: "net-1", name: "основная" }] });
-    if (path.includes("/zones")) return Promise.resolve({ zones: [{ id: "ru-central1-a", name: "зона A" }] });
-    if (path.includes("/regions")) return Promise.resolve({ regions: [{ id: "ru-central1", name: "регион" }] });
+    // Каталог размещения отвечает ОДНИМ полем идентичности: подписи у региона и
+    // зоны нет (#716). Фикстура, дописывающая её, была бы снисходительнее
+    // продукта и прятала бы ровно тот путь, по которому подпись берётся теперь.
+    if (path.includes("/zones")) return Promise.resolve({ zones: [{ id: "ru-central1-a" }] });
+    if (path.includes("/regions")) return Promise.resolve({ regions: [{ id: "ru-central1" }] });
     return Promise.resolve({ route_tables: [] });
   });
   create.mockResolvedValue({});
@@ -80,8 +83,8 @@ describe("InlineSubnetCreateForm", () => {
   it("зональная подсеть уходит с зоной и БЕЗ вывода из неё", async () => {
     show({ networkId: "net-1" });
 
-    await waitFor(() => expect(selectShowing("зона A")).toBeDefined());
-    pick("зона A", "ru-central1-a");
+    await waitFor(() => expect(selectShowing("ru-central1-a")).toBeDefined());
+    pick("ru-central1-a", "ru-central1-a");
     typeIn("10.20.0.0/24", "10.20.0.0/24");
     save();
 
@@ -97,8 +100,8 @@ describe("InlineSubnetCreateForm", () => {
     show({ networkId: "net-1" });
 
     pick("REGIONAL — во всём регионе", "REGIONAL");
-    await waitFor(() => expect(selectShowing("регион")).toBeDefined());
-    pick("регион", "ru-central1");
+    await waitFor(() => expect(selectShowing("ru-central1")).toBeDefined());
+    pick("ru-central1", "ru-central1");
     typeIn("10.20.0.0/24", "10.20.0.0/24");
     save();
 
@@ -111,8 +114,8 @@ describe("InlineSubnetCreateForm", () => {
   it("без основного диапазона запрос не уходит, и человеку сказано почему", async () => {
     show({ networkId: "net-1" });
 
-    await waitFor(() => expect(selectShowing("зона A")).toBeDefined());
-    pick("зона A", "ru-central1-a");
+    await waitFor(() => expect(selectShowing("ru-central1-a")).toBeDefined());
+    pick("ru-central1-a", "ru-central1-a");
     save();
 
     expect(toastError).toHaveBeenCalledWith("Укажите основной CIDR (IPv4 или IPv6).");
@@ -122,8 +125,8 @@ describe("InlineSubnetCreateForm", () => {
   it("диапазон без длины префикса отвергается на месте", async () => {
     show({ networkId: "net-1" });
 
-    await waitFor(() => expect(selectShowing("зона A")).toBeDefined());
-    pick("зона A", "ru-central1-a");
+    await waitFor(() => expect(selectShowing("ru-central1-a")).toBeDefined());
+    pick("ru-central1-a", "ru-central1-a");
     typeIn("10.20.0.0/24", "10.20.0.0");
     save();
 

@@ -98,7 +98,8 @@ DB-detected op.error асертится по observable side-effect (public read
 (sync 400 "invalid region id"), `IRG-CR-VAL-EMPTY-ID` (sync 400 "invalid region id
 ''"), `IRG-CR-NEG-DUP-INVARIANT` (no-phantom; dup→Operation.error ALREADY_EXISTS),
 `IRG-DEL-NEG-HASZONES-INVARIANT` (FK RESTRICT keeps region; Operation.error
-FAILED_PRECONDITION, GEO-1-18), `IRG-UPD-CRUD-OK` (name update→public-Get).
+FAILED_PRECONDITION, GEO-1-18), `IRG-UPD-CRUD-OK` (countryCode update→public-Get),
+`IRG-UPD-NEG-NAME-IN-MASK` (маска называет снятое поле → 400 INVALID_ARGUMENT, #716).
 
 **`internal-zone.py`** (InternalZoneService, `/geo/v1/internal/zones`):
 `IZN-CR-CRUD-OK` (create→public-Get, openForPlacement=true GEO-1-06),

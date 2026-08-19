@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -158,6 +159,11 @@ func analyseNameFormDBCoverage(files map[string]string, canonPattern string, ent
 	// лежать в соседнем файле того же каталога.
 	testsByDir := map[string][]string{}
 
+	// Миграции собираются отдельно и судятся В ПОРЯДКЕ ПРИМЕНЕНИЯ: форму можно не
+	// только поставить, но и снять, а «поставлена» и «стоит сейчас» — разные
+	// утверждения (см. nameFormWithdrawnRe).
+	migrationsBySvc := map[string][]string{}
+
 	for _, p := range paths {
 		rel := filepath.ToSlash(p)
 		svc, ok := nameFormServiceOf(rel)
@@ -170,18 +176,20 @@ func analyseNameFormDBCoverage(files map[string]string, canonPattern string, ent
 		case strings.HasSuffix(rel, ".sql") &&
 			strings.Contains(rel, "/internal/migrations/"):
 			cov.MigrationsRead++
-			// Канон ищется в тексте миграции. Форма приезжает параметром из
-			// единственного объявления в дереве, поэтому выписанной копии здесь
-			// нет и разойтись с каноном гейту не на чем.
-			if canonPattern != "" && strings.Contains(body, canonPattern) {
-				cov.Constrained[svc] = append(cov.Constrained[svc], rel)
-			}
+			migrationsBySvc[svc] = append(migrationsBySvc[svc], rel)
 		case strings.HasSuffix(rel, "_test.go"):
 			cov.TestsRead++
 			testsByDir[path.Dir(rel)] = append(testsByDir[path.Dir(rel)], rel)
 			if strings.Contains(body, nameFormProbeMention) {
 				cov.Mentioned[svc] = append(cov.Mentioned[svc], rel)
 			}
+		}
+	}
+
+	// Состояние формы у сервиса — исход применения его миграций ПО ПОРЯДКУ.
+	for svc, rels := range migrationsBySvc {
+		if declaring := nameFormDeclaringMigrations(files, rels, canonPattern); len(declaring) > 0 {
+			cov.Constrained[svc] = declaring
 		}
 	}
 
@@ -525,4 +533,108 @@ func nameFormServiceOf(rel string) (string, bool) {
 		return "", false
 	}
 	return parts[1], true
+}
+
+// nameFormWithdrawnRe — оператор, которым форма СНИМАЕТСЯ вместе со своей
+// колонкой. Читается только из исполняемой части (см. nameFormUpSection): в
+// комментарии, объясняющем снятие, тот же текст стоит законно.
+//
+// Признак выбран по существу, а не по имени ограничения: `ALTER TABLE … DROP
+// CONSTRAINT <t>_name_check` встречается и в ОТКАТЕ самой миграции 715001 —
+// то есть в том же файле, который форму ставит, — и по нему форма выглядела бы
+// снятой сразу же. Снятие колонки такой двусмысленности не имеет: `name` больше
+// нет, значит и формы на нём нет.
+var nameFormWithdrawnRe = regexp.MustCompile(`(?i)DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?name\b`)
+
+// nameFormMigrationVersionRe — числовой префикс имени файла миграции. Порядок
+// применения ЧИСЛОВОЙ (его так берёт мигратор), и лексикографический с ним
+// расходится: `1000001` меньше `539001` как строка и больше как число.
+var nameFormMigrationVersionRe = regexp.MustCompile(`^(\d+)_`)
+
+// nameFormDeclaringMigrations — файлы, которыми форма имени стоит У СЕРВИСА
+// СЕЙЧАС; пусто, если её сняли и не вернули.
+//
+// Почему состояние, а не «встречается в тексте». Текст применённой миграции не
+// меняется никогда: сняв колонку, мы не можем убрать канон из файла, который её
+// заводил (ban #5). Гейт, читающий одно лишь присутствие канона, продолжал бы
+// требовать доказательства ограничения, которого в схеме уже нет, — то самое
+// «утверждение, пережившее свой предмет», от которого гейты и защищают.
+//
+// Порядок разрешения — порядок применения: побеждает ПОСЛЕДНЕЕ решение. Значит
+// возвращение формы новой миграцией снова включает требование само, без правки
+// гейта и без перечня исключений.
+//
+// Внутри ОДНОЙ миграции, объявляющей и то и другое, побеждает объявление формы:
+// вопрос «в каком порядке идут операторы» гейт не решает, и осторожная сторона
+// здесь — потребовать доказательство.
+func nameFormDeclaringMigrations(files map[string]string, rels []string, canonPattern string) []string {
+	ordered := append([]string(nil), rels...)
+	sort.Slice(ordered, func(i, j int) bool {
+		vi, vj := nameFormMigrationVersion(ordered[i]), nameFormMigrationVersion(ordered[j])
+		if vi != vj {
+			return vi < vj
+		}
+		return ordered[i] < ordered[j]
+	})
+
+	var declaring []string
+	for _, rel := range ordered {
+		up := nameFormUpSection(files[rel])
+		declares := canonPattern != "" && strings.Contains(up, canonPattern)
+		switch {
+		case declares:
+			declaring = append(declaring, rel)
+		case nameFormWithdrawnRe.MatchString(up):
+			declaring = nil
+		}
+	}
+	return declaring
+}
+
+// nameFormMigrationVersion — числовой префикс имени файла; 0, если префикса нет
+// (такой файл сортируется первым и на исход не влияет: решает последнее решение).
+func nameFormMigrationVersion(rel string) int64 {
+	m := nameFormMigrationVersionRe.FindStringSubmatch(path.Base(rel))
+	if m == nil {
+		return 0
+	}
+	v, err := strconv.ParseInt(m[1], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return v
+}
+
+// nameFormUpSection — исполняемая часть миграции: секция `-- +goose Up` без
+// комментариев.
+//
+// Две причины читать именно её. ОТКАТ — не действующее состояние схемы: секция
+// `Down` описывает возвращение того, что сейчас снято, и принимать её за
+// объявление значило бы считать снятое поставленным. КОММЕНТАРИЙ — не оператор:
+// разбор, ловящий объяснение защиты, — ровно тот класс, который гейты и ловят
+// (`testing.md` §«Гейт на класс», п. 4).
+//
+// Файл без маркера `Up` читается целиком: это не форма goose, и молча объявлять
+// такой файл пустым нельзя — «не разобрали» не может означать «ничего нет».
+func nameFormUpSection(body string) string {
+	const upMarker = "-- +goose Up"
+	const downMarker = "-- +goose Down"
+
+	up := body
+	if i := strings.Index(up, upMarker); i >= 0 {
+		up = up[i+len(upMarker):]
+	}
+	if i := strings.Index(up, downMarker); i >= 0 {
+		up = up[:i]
+	}
+
+	var b strings.Builder
+	for _, line := range strings.Split(up, "\n") {
+		if i := strings.Index(line, "--"); i >= 0 {
+			line = line[:i]
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }

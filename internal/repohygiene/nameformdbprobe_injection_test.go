@@ -340,6 +340,115 @@ func TestIntegration_NameForm(t *testing.T) {
 		}
 	})
 
+	// --- снятие формы (#716) ------------------------------------------------
+	//
+	// Форму можно не только поставить, но и снять вместе с её колонкой. Текст
+	// поставившей миграции при этом не меняется никогда (применённую не правят),
+	// поэтому «канон встречается в дереве» перестаёт означать «форма стоит».
+	// Подслучаи ниже проверяют ИСХОД применения по порядку, и каждый идёт с
+	// законным близнецом ДРУГОЙ конструкции, а не с копией предыдущего.
+
+	t.Run("форма ПОСТАВЛЕНА и СНЯТА позже — доказывать нечего", func(t *testing.T) {
+		mig, body := injMigration("xi", true)
+		files := map[string]string{
+			mig: body,
+			"services/xi/internal/migrations/716001_drop.sql": "-- +goose Up\nALTER TABLE t DROP COLUMN name;\n",
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		if len(cov.Constrained) != 0 {
+			t.Errorf("сервис со снятой формой остался под гейтом: %v", cov.Services())
+		}
+		if cov.MigrationsRead != 2 {
+			t.Errorf("перепись: прочитано миграций %d, ожидалось 2 — «формы нет» стало бы "+
+				"неотличимо от «файлы не читали»", cov.MigrationsRead)
+		}
+	})
+
+	t.Run("законный близнец: снятие РАНЬШЕ постановки — форма стоит", func(t *testing.T) {
+		// Другая конструкция, а не копия: те же два оператора в обратном
+		// порядке версий. Без этого подслучая гейт ловил бы «в дереве есть
+		// DROP COLUMN name», а не исход применения, и объявлял бы форму снятой
+		// у compute, чья ранняя миграция снимает name у своей таблицы зон.
+		mig, body := injMigration("omicron", true)
+		files := map[string]string{
+			"services/omicron/internal/migrations/0003_drop.sql": "-- +goose Up\nALTER TABLE t DROP COLUMN name;\n",
+			mig: body,
+			"services/omicron/internal/repo/name_form_constraint_integration_test.go": injProbeSource("repo_test"),
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		if len(cov.Constrained) != 1 {
+			t.Fatalf("форма, поставленная ПОСЛЕ снятия, не учтена: %v", cov.Services())
+		}
+		if got := cov.Unproven(); len(got) != 0 {
+			t.Errorf("сервис с доказательством объявлен недоказанным: %v", got)
+		}
+	})
+
+	t.Run("снятие в КОММЕНТАРИИ снятием не является", func(t *testing.T) {
+		// Тот же класс, что «имя двигателя в комментарии»: гейт обязан читать
+		// оператор, а не объяснение. Иначе миграция, ОБЪЯСНЯЮЩАЯ форму словами
+		// «здесь мог бы стоять DROP COLUMN name», выключала бы требование.
+		mig, body := injMigration("pi", true)
+		files := map[string]string{
+			mig: body,
+			"services/pi/internal/migrations/716001_note.sql": "-- +goose Up\n-- ALTER TABLE t DROP COLUMN name; -- так делать не стали\nSELECT 1;\n",
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		if len(cov.Constrained) != 1 {
+			t.Errorf("комментарий принят за снятие: под гейтом %v", cov.Services())
+		}
+	})
+
+	t.Run("снятие в ОТКАТЕ снятием не является", func(t *testing.T) {
+		// Секция Down описывает возвращение прежнего состояния, а не текущее.
+		// Считать её объявлением значило бы принимать откат за применение.
+		mig, body := injMigration("rho", true)
+		files := map[string]string{
+			mig: body,
+			"services/rho/internal/migrations/716001_other.sql": "-- +goose Up\nSELECT 1;\n-- +goose Down\nALTER TABLE t DROP COLUMN name;\n",
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		if len(cov.Constrained) != 1 {
+			t.Errorf("откат принят за снятие: под гейтом %v", cov.Services())
+		}
+	})
+
+	t.Run("форма ВЕРНУЛАСЬ новой миграцией — требование включается само", func(t *testing.T) {
+		// Самоистечение послабления: перечня исключений нет, и снятие не
+		// становится вечным. Третья миграция снова ставит форму — гейт снова
+		// требует доказательства, без правки своего кода.
+		mig, body := injMigration("sigma", true)
+		back := strings.Replace(mig, "715001_resource_name_single_form.sql", "717001_back.sql", 1)
+		files := map[string]string{
+			mig: body,
+			"services/sigma/internal/migrations/716001_drop.sql": "-- +goose Up\nALTER TABLE t DROP COLUMN name;\n",
+			back: "-- +goose Up\n" + body,
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		got := cov.Unproven()
+		if len(got) != 1 || got[0] != "sigma" {
+			t.Fatalf("вернувшаяся форма не потребовала доказательства: %v (под гейтом %v)", got, cov.Services())
+		}
+		if fs := cov.Constrained["sigma"]; len(fs) != 1 || !strings.HasSuffix(fs[0], "717001_back.sql") {
+			t.Errorf("находка обязана называть ДЕЙСТВУЮЩУЮ миграцию формы, а не снятую: %v", fs)
+		}
+	})
+
+	t.Run("порядок миграций ЧИСЛОВОЙ, а не лексикографический", func(t *testing.T) {
+		// `1000001` меньше `715001` как строка и больше как число. При
+		// лексикографическом порядке снятие оказалось бы «раньше» постановки, и
+		// гейт объявил бы форму действующей там, где её сняли.
+		mig, body := injMigration("tau", true)
+		files := map[string]string{
+			mig: body,
+			"services/tau/internal/migrations/1000001_drop.sql": "-- +goose Up\nALTER TABLE t DROP COLUMN name;\n",
+		}
+		cov := analyseNameFormDBCoverage(files, injCanon, injEntry)
+		if len(cov.Constrained) != 0 {
+			t.Errorf("снятие с бо́льшим номером не учтено как более позднее: под гейтом %v", cov.Services())
+		}
+	})
+
 	t.Run("путь ВНЕ services/ сервисом не считается", func(t *testing.T) {
 		// Иначе перепись завела бы фантомный «сервис» с именем каталога, и
 		// гейт потребовал бы пробу у того, у кого схемы нет.

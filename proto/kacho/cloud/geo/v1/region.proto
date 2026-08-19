@@ -24,9 +24,14 @@ message Region {
   // (it IS a coordinate, written by hand into every placement Create).
   string id = 1;
 
-  // Human-readable label; LIVE-mutable via InternalRegionService.Update.
-  // Globally UNIQUE, required.
-  string name = 2;
+  // Reserved: was field 2, `name`. Removed by #716 — it duplicated `id`.
+  // A Region id is admin-assigned and human-readable BY CONSTRUCTION
+  // ("ru-central1"), so a second human-readable field carried no information the
+  // id did not already carry, and gave the two spellings a place to drift apart.
+  // Both number AND name are reserved: a future field must not silently reuse
+  // either, or an old client would read a new meaning off a familiar key.
+  reserved 2;
+  reserved "name";
 
   // Creation timestamp (truncated to seconds on the wire).
   google.protobuf.Timestamp created_at = 3;
@@ -64,8 +69,12 @@ message RegionInfra {
 // :9091 only). Carries the raw admin `status` and the infra° block; NEVER routed
 // to the external TLS endpoint (ban #6).
 message InternalRegion {
+  // Reserved: was field 2, `name` (#716, see Region above — the admin
+  // projection carried the same duplicate).
+  reserved 2;
+  reserved "name";
+
   string id = 1;
-  string name = 2;
   google.protobuf.Timestamp created_at = 3;
   string country_code = 4;
 

@@ -76,6 +76,15 @@ describe("geo registry — two-projection", () => {
     expect(paths).not.toContain("status");
   });
 
+  it.each(geoPublicSpecs)("%s carries no display name — the id is the identity (#716)", (id) => {
+    // Утверждение об ОТСУТСТВИИ, и оно нужно отдельно от перечня полей формы:
+    // читающие спеки (`compute-regions`/`compute-zones`) формы не имеют вовсе,
+    // а колонку, привязанную к снятому полю, рисовали бы вечным прочерком —
+    // ровно то, что `ui.md` §Правило 9 запрещает («поле без источника не
+    // показывается»).
+    expect(columnPaths(REGISTRY[id])).not.toContain("name");
+  });
+
   it.each(geoPublicSpecs)("%s surfaces the placement signal that replaced the status", (id) => {
     // Not the mirror image of the assertion above: dropping the dead column is
     // only half the fix. What the operator needs is the field the trunk actually
@@ -95,7 +104,7 @@ describe("geo registry — Region", () => {
   });
 
   it("accepts exactly the fields the admin Create takes", () => {
-    expect(fieldNames(regions)).toEqual(["id", "name", "country_code", "status", "infra.numeric_infra_id"]);
+    expect(fieldNames(regions)).toEqual(["id", "country_code", "status", "infra.numeric_infra_id"]);
   });
 
   it("pins the id as an immutable admin-assigned slug", () => {
@@ -125,7 +134,6 @@ describe("geo registry — Region", () => {
     const t = asObj(regions.template({}));
     expect(t.status).toBe("DOWN");
     expect(t.id).toBe("");
-    expect(t.name).toBe("");
   });
 
   it("keeps numericInfraId settable once and never editable", () => {
@@ -140,7 +148,6 @@ describe("geo registry — Region", () => {
   it("drops the empty optionals instead of sending blanks", () => {
     const out = regions.sanitize!({
       id: "ru-central1",
-      name: "Central Russia",
       country_code: "",
       status: "DOWN",
       infra: { numeric_infra_id: "" },
@@ -153,7 +160,6 @@ describe("geo registry — Region", () => {
   it("keeps the optionals it was given", () => {
     const out = regions.sanitize!({
       id: "ru-central1",
-      name: "Central Russia",
       country_code: "RU",
       status: "UP",
       infra: { numeric_infra_id: "42" },
@@ -182,7 +188,6 @@ describe("geo registry — Zone", () => {
     expect(fieldNames(zones)).toEqual([
       "id",
       "region_id",
-      "name",
       "status",
       "infra.numeric_infra_id",
       "infra.host_classes",
