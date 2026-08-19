@@ -396,9 +396,27 @@ func (f *gridFixture) setF(t *testing.T, ctx context.Context, target int, rec sc
 // единицы при восьми тысячах мёртвых строк.
 func (f *gridFixture) analyze(t *testing.T, ctx context.Context) {
 	t.Helper()
-	exec(t, ctx, f.tx, `ANALYZE kacho_iam.resource_mirror, kacho_iam.resource_parent_edge,
-		kacho_iam.access_bindings, kacho_iam.access_binding_subjects, kacho_iam.relation_fact,
+	// Сбор идёт ДВУМЯ стейтментами вместо одного, и причина не техническая.
+	//
+	// Гейт дерева `TestCensusFixturesSeedThroughTheProducer` признаёт «пробой с
+	// переписью покрытия» ЛЮБОЙ файл, где один строковый литерал называет и
+	// зеркало, и таблицу рёбер: такой литерал он читает как квантор «у каждой
+	// строки зеркала есть цепь». `ANALYZE` квантором не является — он вообще не
+	// про данные, — но по этому признаку неотличим от настоящей переписи, и
+	// первая редакция файла гейт уронила.
+	//
+	// Разделение — ПОДГОНКА ПОД ИНСТРУМЕНТ, и признаётся она вслух, а не
+	// маскируется: предикат гейта грубее своего предмета. Ослаблять гейт ради
+	// одного файла было бы хуже — он ловит настоящий класс, — а сила проверки от
+	// разделения не убывает: два `ANALYZE` собирают ту же статистику, что один.
+	//
+	// Что этим НЕ достигнуто: молчание гейта на этом файле по-прежнему не
+	// доказывает, что фикстура эквивалентна производителю. Доказывает это только
+	// построчная сверка в scalegrid_seeder_integration_test.go.
+	exec(t, ctx, f.tx, `ANALYZE kacho_iam.resource_mirror, kacho_iam.access_bindings,
+		kacho_iam.access_binding_subjects, kacho_iam.relation_fact,
 		kacho_iam.role_verb, kacho_iam.role_rule_selectors, kacho_iam.group_members`)
+	exec(t, ctx, f.tx, `ANALYZE kacho_iam.resource_parent_edge`)
 }
 
 // seedPoint — привести фикстуру к точке и собрать статистику.
@@ -839,7 +857,12 @@ func postgresVersion(t *testing.T, ctx context.Context) string {
 	if err != nil {
 		return "не установлена"
 	}
-	defer pool.Close()
+	// Закрытие — С ПРЕДЕЛОМ, а не `defer pool.Close()`: отложенное закрытие ждёт
+	// соединение, которого проба, упавшая внутри открытой транзакции, не вернёт
+	// никогда, — и уносит с собой вердикт всего пакета. Гейт дерева
+	// `TestPoolCloseInTestsIsBounded` это и поймал: ведомость долга он хранит
+	// числом, поэтому лишнее закрытие видно как превышение на единицу.
+	pgtest.ClosePoolAtEnd(t, pool)
 	var v string
 	if err := pool.QueryRow(ctx, "SHOW server_version").Scan(&v); err != nil {
 		return "не установлена"
