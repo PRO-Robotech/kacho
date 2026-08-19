@@ -44,16 +44,6 @@ func actorFromCtx(ctx context.Context) string {
 	return p.Type + ":" + p.ID
 }
 
-// derefString разыменовывает partial-update указатель: nil означает «поле не
-// меняется», и тогда конфликт по имени возникнуть не может (COALESCE оставляет
-// прежнее значение) — пустая строка сюда просто не доедет до сообщения.
-func derefString(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
 // openZoneCountExpr — read-time rollup числа зон региона с openForPlacement°=true
 // (advisory-hint, НЕ persisted). Зона open ⟺ zone.status='UP' И region.status='UP',
 // поэтому для DOWN-региона hint=0 by construction.
