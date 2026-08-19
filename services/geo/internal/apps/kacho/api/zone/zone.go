@@ -357,7 +357,10 @@ func invalidArg(msg string) error {
 // maskHas — содержит ли update_mask поле (camelCase путь).
 func maskHas(mask []string, field string) bool {
 	for _, f := range mask {
-		if f == field {
+		// Сравнение по форме имени контракта, а не дословно: форму выбирает край,
+		// и на пути ЗАПИСИ дословное сравнение отвечает «нет» на верном входе —
+		// тихо, потому что запрос при этом успешен. Разбор — у validate.FieldNameEq.
+		if validate.FieldNameEq(f, field) {
 			return true
 		}
 	}
