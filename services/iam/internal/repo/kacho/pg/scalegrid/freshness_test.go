@@ -89,12 +89,12 @@ func judgeReport(text string, fp scalegrid.Fingerprint,
 	if len(fp.Files) == 0 {
 		return append(findings, "множество файлов под отпечатком ПУСТО — у предиката исчез "+
 			"предмет; «совпало» здесь означает «не с чем сравнивать», и гейт сторожил бы пустоту.\n"+
-			"  предикат: "+scalegrid.FingerprintPredicate)
+			"  предикат: "+predicateOf(fp))
 	}
 	if len(fp.Tables) == 0 {
 		return append(findings, "из кода вердикта не выведено НИ ОДНОГО имени таблицы — "+
 			"множество миграций под отпечатком пусто by construction.\n"+
-			"  предикат: "+scalegrid.FingerprintPredicate)
+			"  предикат: "+predicateOf(fp))
 	}
 
 	recordedComposition := valueAfter(text, scalegrid.MarkerComposition)
@@ -153,42 +153,86 @@ func judgeReport(text string, fp scalegrid.Fingerprint,
 
 // ── ГЕЙТ НАД НАСТОЯЩИМ ОТЧЁТОМ ──────────────────────────────────────────────
 
+// guardedReport — отчёт под гейтом ВМЕСТЕ СО СВОИМ предметом.
+//
+// Отчётов стало ТРИ, и предмет у них не один: два читающих прибора сторожатся
+// отпечатком кода вердикта, отчёт о записи — отпечатком материализатора. Свести
+// их к одному отпечатку значило бы завести гейт, который краснеет на чужой
+// правке и молчит на своей, — форму проверки без содержания.
+type guardedReport struct {
+	path string
+	// subject — чем считается отпечаток ЭТОГО отчёта.
+	subject func(root string) (scalegrid.Fingerprint, error)
+	// hint — как переснять именно его.
+	hint string
+}
+
+func guardedReports() []guardedReport {
+	return []guardedReport{
+		{path: scalegrid.ReportPath, subject: scalegrid.ComputeFingerprint, hint: scaleGridRunHint},
+		{path: scalegrid.StrengthReportPath, subject: scalegrid.ComputeFingerprint,
+			hint: "KACHO_STRENGTH_FULL=1 go test ./services/iam/internal/repo/kacho/pg/relverdict/ " +
+				"-run TestStrengthGrid_Report -count=1 -v -timeout 120m"},
+		{path: scalegrid.WriteDeleteReportPath, subject: scalegrid.ComputeWriteDeleteFingerprint,
+			hint: "KACHO_STRENGTH_WRITE=1 go test ./services/iam/internal/repo/kacho/pg/ " +
+				"-run TestStrengthWriteDelete_Report -count=1 -v -timeout 120m"},
+	}
+}
+
 // TestScaleGridFullReportIsFreshAndItsSubjectHasNotMoved — гейт свежести.
 func TestScaleGridFullReportIsFreshAndItsSubjectHasNotMoved(t *testing.T) {
 	root := repoRoot(t)
-	reportPath := filepath.Join(root, scalegrid.ReportPath)
 
-	body, err := os.ReadFile(reportPath)
-	if err != nil {
-		t.Fatalf("полного отчёта нет по пути %s (%v).\n"+
-			"Малая сетка в конвейере утверждает отсутствие ДЕГРАДАЦИИ на двух точках; "+
-			"утверждение о порядках до 10⁶ держит ТОЛЬКО полный отчёт, и без него его не "+
-			"делает никто.\nСнять: %s", scalegrid.ReportPath, err, scaleGridRunHint)
+	reports := guardedReports()
+	if len(reports) == 0 {
+		t.Fatalf("под гейтом НОЛЬ отчётов: перечень пуст, и молчание гейта означало бы " +
+			"свежесть, которой никто не проверял")
 	}
-	text := string(body)
+	for _, gr := range reports {
+		t.Run(gr.path, func(t *testing.T) {
+			body, err := os.ReadFile(filepath.Join(root, gr.path))
+			if err != nil {
+				t.Fatalf("отчёта нет по пути %s (%v).\n"+
+					"Малая сетка в конвейере утверждает отсутствие ДЕГРАДАЦИИ на двух точках; "+
+					"утверждение о порядках держит ТОЛЬКО полный отчёт, и без него его не "+
+					"делает никто.\nСнять: %s", gr.path, err, gr.hint)
+			}
+			text := string(body)
 
-	fp, err := scalegrid.ComputeFingerprint(root)
-	if err != nil {
-		t.Fatalf("отпечаток по текущему дереву не вычислен: %v", err)
-	}
+			fp, err := gr.subject(root)
+			if err != nil {
+				t.Fatalf("отпечаток по текущему дереву не вычислен: %v", err)
+			}
 
-	// ОБЪЁМ ОСМОТРЕННОГО — отдельное утверждение, печатается ВСЕГДА.
-	age := "не установлен"
-	if when, derr := reportDate(text); derr == nil {
-		age = fmt.Sprintf("%.0f дней", time.Since(when).Hours()/24)
-	}
-	t.Logf("полная сетка в ЭТОМ прогоне не исполнялась; последний полный отчёт — %s, "+
-		"ревизия %s, возраст %s, файлов под отпечатком %d (в шапке записано %d), "+
-		"таблиц выведено %d",
-		scalegrid.ReportPath, valueAfter(text, "  ревизия дерева      "), age,
-		len(fp.Files), len(recordedFileHashes(text)), len(fp.Tables))
+			// ОБЪЁМ ОСМОТРЕННОГО — отдельное утверждение, печатается ВСЕГДА.
+			age := "не установлен"
+			if when, derr := reportDate(text); derr == nil {
+				age = fmt.Sprintf("%.0f дней", time.Since(when).Hours()/24)
+			}
+			t.Logf("прогон отчёта не исполнял; последний отчёт — %s, ревизия %s, возраст %s, "+
+				"файлов под отпечатком %d (в шапке записано %d), таблиц выведено %d",
+				gr.path, valueAfter(text, "  ревизия дерева      "), age,
+				len(fp.Files), len(recordedFileHashes(text)), len(fp.Tables))
 
-	findings := judgeReport(text, fp, func(rel string) string {
-		return scalegrid.ContentOf(root, rel)
-	}, time.Now())
-	for _, f := range findings {
-		t.Errorf("%s\n  Пересними: %s", f, scaleGridRunHint)
+			findings := judgeReport(text, fp, func(rel string) string {
+				return scalegrid.ContentOf(root, rel)
+			}, time.Now())
+			for _, f := range findings {
+				t.Errorf("%s\n  Пересними: %s", f, gr.hint)
+			}
+		})
 	}
+}
+
+// predicateOf — предикат отпечатка, названный им самим.
+//
+// Пустой означает прибор чтения: так его печатает и писатель шапки. Второго
+// умолчания здесь не заводится — оно разошлось бы с первым молча.
+func predicateOf(fp scalegrid.Fingerprint) string {
+	if fp.Predicate == "" {
+		return scalegrid.FingerprintPredicate
+	}
+	return fp.Predicate
 }
 
 // ── ИНЪЕКЦИЯ: ГЕЙТ СПОСОБЕН УПАСТЬ И СПОСОБЕН СМОЛЧАТЬ ──────────────────────
