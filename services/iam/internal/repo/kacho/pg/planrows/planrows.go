@@ -165,8 +165,14 @@ type Access struct {
 	// Rows — Actual Rows × Loops. У схлопнутого узла величина СНЯТА и видима,
 	// но в сумму отношения не входит.
 	Rows int64
-	// Removed — отброшенное этим узлом (фильтр + перепроверка), × Loops.
+	// Removed — отброшенное этим узлом, × Loops: сумма двух ниже.
 	Removed int64
+	// RemovedByFilter / RemovedByRecheck — те же строки ПОРОЗНЬ, потому что
+	// означают они разное: фильтр — предикат, который индекс не обслуживает;
+	// перепроверка — потерявший точность bitmap. Слитое число не различает
+	// «нужен индекс» и «не хватило памяти под bitmap», а лечится это по-разному.
+	RemovedByFilter  int64
+	RemovedByRecheck int64
 	// Collapsed — узел даёт вход своему предку, а не отдельную работу.
 	Collapsed bool
 }
@@ -209,6 +215,10 @@ type Measurement struct {
 	Rows int64
 	// Removed — сумма отброшенного: фильтр, перепроверка, соединение.
 	Removed int64
+	// RemovedByFilter / RemovedByRecheck — слагаемые Removed порознь. Третье
+	// слагаемое — JoinFilterRemoved: оно живёт на узлах, а не на отношениях.
+	RemovedByFilter  int64
+	RemovedByRecheck int64
 	// Touched — Rows + Removed. Вердикт о стоимости выносится по ней.
 	Touched int64
 	// AllRows — сумма по ВСЕМ узлам плана, включая необтесённые. Третья ось
@@ -345,14 +355,17 @@ func Extract(planJSON []byte, want []string) (Measurement, error) {
 			m.JoinFilterRemoved += jf
 			m.Removed += jf
 		}
-		removed := (int64(math.Round(n.RowsRemovedByFilter)) +
-			int64(math.Round(n.RowsRemovedByIndexRecheck))) * int64(loops)
+		removedByFilter := int64(math.Round(n.RowsRemovedByFilter)) * int64(loops)
+		removedByRecheck := int64(math.Round(n.RowsRemovedByIndexRecheck)) * int64(loops)
+		removed := removedByFilter + removedByRecheck
 
 		// Отброшенное учитывается БЕЗУСЛОВНО и до всякого разбора: оно не
 		// участвует в схлопывании (см. пункт 3 правила) и не зависит от того,
 		// удалось ли отнести узел к отношению. Условная ветка здесь означала бы
 		// работу, исчезающую тем тише, чем труднее узел разобрать.
 		m.Removed += removed
+		m.RemovedByFilter += removedByFilter
+		m.RemovedByRecheck += removedByRecheck
 
 		relation, key := attribute(n, indexOwner, bitmapHeapAncestor)
 		switch {
@@ -364,7 +377,9 @@ func Extract(planJSON []byte, want []string) (Measurement, error) {
 			collapsed := n.NodeType == "Bitmap Index Scan" && bitmapHeapAncestor != ""
 			m.Accesses = append(m.Accesses, Access{
 				Relation: relation, NodeType: n.NodeType, IndexName: n.IndexName,
-				Key: key, Loops: loops, Rows: rows, Removed: removed, Collapsed: collapsed,
+				Key: key, Loops: loops, Rows: rows, Removed: removed,
+				RemovedByFilter: removedByFilter, RemovedByRecheck: removedByRecheck,
+				Collapsed: collapsed,
 			})
 			rc := byRelation[relation]
 			if rc == nil {
@@ -468,7 +483,10 @@ func census(m Measurement, want []string) string {
 
 	p("\nВЕЛИЧИНЫ\n")
 	p("  отдано узлами (несущая, с множителем циклов)   %d\n", m.Rows)
-	p("  отброшено (фильтр + перепроверка + соединение) %d\n", m.Removed)
+	p("  отброшено всего                                %d\n", m.Removed)
+	p("    из них фильтром                              %d\n", m.RemovedByFilter)
+	p("    из них перепроверкой потерявшего точность bitmap %d\n", m.RemovedByRecheck)
+	p("    из них соединением (по узлам)                %d\n", m.JoinFilterRemoved)
 	p("  тронуто (отдано + отброшено)                   %d\n", m.Touched)
 	p("  по всем узлам плана, включая неотнесённые      %d\n", m.AllRows)
 	p("  строк на неотнесённых узлах                    %d\n", m.UnattributedRows)
@@ -490,8 +508,9 @@ func census(m Measurement, want []string) string {
 		if a.Collapsed {
 			note = "  [схлопнут по родству: вход предка, не отдельная работа]"
 		}
-		p("  %-24s %-20s циклов %d, отдано %d, отброшено %d, ключ: %s%s\n",
-			a.Relation, a.NodeType, a.Loops, a.Rows, a.Removed, a.Key, note)
+		p("  %-24s %-20s циклов %d, отдано %d, отброшено %d (фильтр %d, перепроверка %d), ключ: %s%s\n",
+			a.Relation, a.NodeType, a.Loops, a.Rows, a.Removed,
+			a.RemovedByFilter, a.RemovedByRecheck, a.Key, note)
 	}
 
 	p("\nОТБРОШЕНО СОЕДИНЕНИЕМ — ПО УЗЛАМ (относить к отношению не к чему)\n")

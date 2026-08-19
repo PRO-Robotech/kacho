@@ -408,6 +408,17 @@ func TestExtract_JoinFilterIsReadByNodeAndHeapFetchesAndWorkersArePrinted(t *tes
 		t.Fatalf("отброшенное перепроверкой на bitmap-паре потеряно: у role_rule_selectors %d, "+
 			"ожидалось 3.\nПерепись:\n%s", rrsRemoved, m.Census)
 	}
+	// Слагаемые ПОРОЗНЬ: слитое число не различает «нужен индекс» (фильтр) и
+	// «не хватило памяти под bitmap» (перепроверка), а лечится это по-разному.
+	if m.RemovedByFilter != 20 || m.RemovedByRecheck != 3 {
+		t.Fatalf("слагаемые отброшенного слиты: фильтром %d (ожидалось 20), "+
+			"перепроверкой %d (ожидалось 3).\nПерепись:\n%s",
+			m.RemovedByFilter, m.RemovedByRecheck, m.Census)
+	}
+	if m.RemovedByFilter+m.RemovedByRecheck+m.JoinFilterRemoved != m.Removed {
+		t.Fatalf("слагаемые не сходятся с суммой: %d + %d + %d != %d",
+			m.RemovedByFilter, m.RemovedByRecheck, m.JoinFilterRemoved, m.Removed)
+	}
 	if m.Touched != m.Rows+m.Removed {
 		t.Fatalf("тронутое %d не равно отданному %d плюс отброшенному %d",
 			m.Touched, m.Rows, m.Removed)
