@@ -919,3 +919,98 @@ func renderReport(results [][]pointResult, wall time.Duration) string {
 	}
 	return b.String()
 }
+
+// ── S_набл: МОЩНОСТЬ ЦЕПИ ИЗМЕРЕНА, И РЯДОМ НАПЕЧАТАНА ГЛУБИНА ──────────────
+
+// TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed — R7-1-09.
+//
+// Мощность CTE `scope` — это НЕ число различных областей: форма обхода даёт
+// больше строк, чем глубин, и разница видна ТОЛЬКО замером. Обе величины
+// печатаются порознь именно затем, чтобы их больше нельзя было перепутать.
+//
+// Проба границы НЕ устанавливает и не подтверждает: `S_гран` предъявляется
+// схемой (глубина ограничена четырьмя), а `S_набл` — фикстурой. Замер верхней
+// оценкой не бывает: он свидетельствует о своей фикстуре.
+func TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
+	ctx := context.Background()
+	tx, _ := openProbeTx(t, ctx)
+	newGridFixture(t, ctx, tx)
+
+	// Цепь глубины 3, каждое звено СО СВОЕЙ цепью (звенья положил newGridFixture).
+	s := scalegrid.NewSeeder(tx)
+	must(t, s.Queue(ctx, scalegrid.MirrorRow{
+		ObjectType: probeCatalogType, ObjectID: "repo-0000000",
+		ParentProjectID: "prj-1", ParentAccountID: "acc-1",
+		ParentChain: []string{"registry_registry:reg-1", "project:prj-1", "account:acc-1"},
+	}))
+	must(t, s.Flush(ctx))
+
+	deep := observedScope(t, ctx, tx)
+	deepDistinct := distinctScope(t, ctx, tx)
+
+	// Замкнутая форма при согласованных замыканиях: 1 + d·(d+1)/2.
+	const d = probeChainDepth
+	wantClosed := 1 + d*(d+1)/2
+	t.Logf("цепь глубины d=%d: S_набл=%d (замкнутая форма 1+d(d+1)/2 = %d), "+
+		"различных сущностей на цепи=%d (1+d = %d)",
+		d, deep, wantClosed, deepDistinct, 1+d)
+
+	if deep != wantClosed {
+		t.Errorf("S_набл=%d, замкнутая форма даёт %d при d=%d. Расхождение означает, что форма "+
+			"данных НЕ ТА, которую проба думала посадить, — и это красное осмысленное, а не "+
+			"придирка к арифметике", deep, wantClosed, d)
+	}
+	if deepDistinct != 1+d {
+		t.Errorf("различных сущностей на цепи %d, ожидалось %d (сам объект плюс d предков)",
+			deepDistinct, 1+d)
+	}
+	// Граница схемы: глубина ограничена четырьмя (CHECK depth BETWEEN 1 AND 4),
+	// значит S_гран = 1 + D(D+1)/2 = 11 при согласованных замыканиях.
+	const sGran = 11
+	if deep > sGran {
+		t.Errorf("S_набл=%d превысила ОБЪЯВЛЕННУЮ границу S_гран=%d: граница выведена из схемы "+
+			"(глубина 1..4), и её превышение означает, что цепь длиннее, чем схема допускает",
+			deep, sGran)
+	}
+
+	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ на вырожденной цепи: при d = 1 обе величины равны 2,
+	// то есть разница между ними НЕ НАБЛЮДАЕМА. Ради этого контроль и стоит:
+	// он показывает, почему вырожденная фикстура не могла найти класс, и почему
+	// требование «d ≥ 3, каждое звено со своей цепью» — не педантизм.
+	must(t, s.Queue(ctx, scalegrid.MirrorRow{
+		ObjectType: probeCatalogType, ObjectID: "repo-shallow",
+		ParentProjectID: "prj-1", ParentAccountID: "acc-1",
+		ParentChain: []string{"account:acc-1"},
+	}))
+	must(t, s.Flush(ctx))
+
+	var shallow, shallowDistinct int
+	if err := tx.QueryRow(ctx, `
+		WITH RECURSIVE scope(s_type, s_id, depth) AS (
+		    SELECT $1::text, $2::text, 0
+		  UNION
+		    SELECT e.parent_type, e.parent_id, s.depth + 1
+		      FROM scope s
+		      JOIN kacho_iam.resource_parent_edge e
+		        ON e.object_type = s.s_type AND e.object_id = s.s_id
+		     WHERE s.depth < 4
+		)
+		SELECT count(*)::int, count(DISTINCT (s_type, s_id))::int FROM scope`,
+		probeModelType, "repo-shallow").Scan(&shallow, &shallowDistinct); err != nil {
+		t.Fatalf("мощность вырожденной цепи: %v", err)
+	}
+	t.Logf("вырожденная цепь d=1: S_набл=%d, различных=%d — на ней две величины СОВПАДАЮТ, "+
+		"и потому фикстура глубины 1 не может найти их расхождение", shallow, shallowDistinct)
+	if shallow != 2 || shallowDistinct != 2 {
+		t.Errorf("на цепи d=1 ожидалось S_набл=2 и различных=2, получено %d и %d: контроль "+
+			"не воспроизвёл вырожденный случай, и вывод «глубокая фикстура необходима» повисает",
+			shallow, shallowDistinct)
+	}
+	if shallow == deep {
+		t.Errorf("вырожденная цепь дала ту же мощность (%d), что глубокая: значит проба не "+
+			"различает глубины вовсе, и её зелёное на глубокой фикстуре ничего не значит", shallow)
+	}
+}
