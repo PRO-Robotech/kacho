@@ -172,7 +172,7 @@ func migrationsNaming(root string, tables []string) ([]string, error) {
 		if e.IsDir() || !strings.HasSuffix(name, ".sql") {
 			continue
 		}
-		body, rerr := os.ReadFile(filepath.Join(root, migrateDir, name))
+		body, rerr := os.ReadFile(filepath.Join(root, migrateDir, name)) // #nosec G304 -- name получено обходом СОБСТВЕННОГО каталога миграций репозитория, не из запроса и не от пользователя; прибор читает свои же файлы, чтобы взять их отпечаток
 		if rerr != nil {
 			return nil, fmt.Errorf("scalegrid: чтение миграции %s: %w", name, rerr)
 		}
