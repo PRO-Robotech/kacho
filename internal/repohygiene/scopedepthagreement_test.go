@@ -32,6 +32,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 const (
@@ -109,26 +111,35 @@ func singleNumber(t *testing.T, re *regexp.Regexp, body, what string) int {
 	return n
 }
 
+// findPlanDepth — предел компилятора модели, если он в дереве объявлен.
+//
+// Состав берётся У ИНДЕКСА РЕПОЗИТОРИЯ, а не обходом диска. Под services/ на
+// машине, где поднимали стенд или собирали фронтенд, лежит игнорируемое —
+// распаковки чартов, сборочные каталоги, отчёты прогонов, — и обход по диску
+// судил бы дерево, которого в репозитории нет. Два обхода поддерева уже
+// оказались дефектными ровно по этой причине.
 func findPlanDepth(t *testing.T, root string) (int, bool) {
 	t.Helper()
-	var found int
-	var ok bool
-	_ = filepath.Walk(filepath.Join(root, "services/iam/internal"), func(p string, _ os.FileInfo, err error) error {
-		if err != nil || ok || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
-			return nil
+	files, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services/iam/internal"), ".go")
+	if err != nil {
+		t.Fatalf("состав поддерева у индекса репозитория: %v — гейт не может судить дерево, "+
+			"которого не может назвать", err)
+	}
+	for _, abs := range files {
+		if strings.HasSuffix(abs, "_test.go") {
+			continue
 		}
-		body, rerr := os.ReadFile(p)
+		body, rerr := os.ReadFile(abs)
 		if rerr != nil {
-			return nil
+			continue
 		}
 		if m := rePlanDepth.FindStringSubmatch(string(body)); m != nil {
 			if n, cerr := strconv.Atoi(m[1]); cerr == nil {
-				found, ok = n, true
+				return n, true
 			}
 		}
-		return nil
-	})
-	return found, ok
+	}
+	return 0, false
 }
 
 func planDepthText(n int, ok bool) string {
