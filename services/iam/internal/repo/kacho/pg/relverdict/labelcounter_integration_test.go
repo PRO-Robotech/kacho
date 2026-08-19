@@ -48,7 +48,7 @@ func TestAskerCountsLabelArmGroundsPerAxis(t *testing.T) {
 	})
 	asker := relverdict.NewAsker(pool)
 
-	mirror, iamDirect := asker.LabelArmGrounds()
+	mirror, iamDirect, _ := asker.LabelArmGrounds()
 	if mirror != 0 || iamDirect != 0 {
 		t.Fatalf("свежий источник обязан начинать с нуля, а начал с (%d, %d)", mirror, iamDirect)
 	}
@@ -60,7 +60,7 @@ func TestAskerCountsLabelArmGroundsPerAxis(t *testing.T) {
 	if !allowed {
 		t.Fatalf("меточная выдача не достала iam_group:grp-9")
 	}
-	mirror, iamDirect = asker.LabelArmGrounds()
+	mirror, iamDirect, _ = asker.LabelArmGrounds()
 	t.Logf("после вопроса на оси собственных таблиц: зеркало %d, iam-direct %d", mirror, iamDirect)
 	if iamDirect != 1 {
 		t.Errorf("основание меточной ветви на оси собственных таблиц не засчитано: %d — "+
@@ -98,7 +98,7 @@ func TestAskerCountsLabelArmGroundsOnTheMirrorAxis(t *testing.T) {
 	if !allowed {
 		t.Fatalf("меточная выдача не достала vpc_network:net-9")
 	}
-	mirror, iamDirect := asker.LabelArmGrounds()
+	mirror, iamDirect, _ := asker.LabelArmGrounds()
 	t.Logf("после вопроса на оси зеркала: зеркало %d, iam-direct %d", mirror, iamDirect)
 	if mirror != 1 {
 		t.Errorf("основание меточной ветви на оси зеркала не засчитано: %d", mirror)
@@ -143,7 +143,7 @@ func TestAskerDoesNotCountWhenTheLabelArmGaveNothing(t *testing.T) {
 	if !allowed {
 		t.Fatalf("якорная выдача не достала iam_group:grp-9 — сломана фикстура, а не предмет")
 	}
-	mirror, iamDirect := asker.LabelArmGrounds()
+	mirror, iamDirect, _ := asker.LabelArmGrounds()
 	if mirror != 0 || iamDirect != 0 {
 		t.Errorf("основание якорной ветви засчитано как меточное: (%d, %d)", mirror, iamDirect)
 	}

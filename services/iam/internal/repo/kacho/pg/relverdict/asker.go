@@ -57,6 +57,14 @@ type Asker struct {
 	// labelMirror / labelIAMDirect — основания меточной ветви по осям.
 	labelMirror    atomic.Int64
 	labelIAMDirect atomic.Int64
+	// earlyStops — вердиктов, ответивших ДО того, как набор источников дочитан.
+	//
+	// Знаменатель к двум числам выше. Ранний выход прекращает чтение на первом
+	// безусловном основании, поэтому ноль оснований меточной ветви означает либо
+	// «ветвь молчала», либо «до неё не дочитали», и без этого числа две причины
+	// неразличимы. Печатается рядом, а не вместо: скрыть неопределённость было
+	// бы хуже, чем назвать её.
+	earlyStops atomic.Int64
 }
 
 // LabelArmGrounds отдаёт накопленные числа: сколько оснований дала меточная
@@ -64,15 +72,19 @@ type Asker struct {
 //
 // Читается наблюдателем (сравнитель кладёт их в каждую свою запись), а не
 // пробой: счётчик, у которого читатель только в тесте, наблюдаемым не является.
-func (a *Asker) LabelArmGrounds() (mirror, iamDirect int64) {
+func (a *Asker) LabelArmGrounds() (mirror, iamDirect, earlyStops int64) {
 	if a == nil {
-		return 0, 0
+		return 0, 0, 0
 	}
-	return a.labelMirror.Load(), a.labelIAMDirect.Load()
+	return a.labelMirror.Load(), a.labelIAMDirect.Load(), a.earlyStops.Load()
 }
 
-// observe засчитывает основание меточной ветви на ту ось, у которой спрашивали.
+// observe засчитывает основание меточной ветви на ту ось, у которой спрашивали,
+// и отдельно — вердикты, ответившие до того, как набор дочитан.
 func (a *Asker) observe(g Grounds) {
+	if !g.SetExhausted {
+		a.earlyStops.Add(1)
+	}
 	if !g.LabelArm {
 		return
 	}

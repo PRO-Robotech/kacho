@@ -18,6 +18,7 @@ package relverdict_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -101,7 +102,7 @@ func TestR7_1_18_ScopeChainIsReadOnceNotRecomputed(t *testing.T) {
 	f := newGridFixture(t, ctx, tx)
 	f.growN(t, ctx, 200)
 	f.setR(t, ctx, 1, scalegrid.RecruitDirect)
-	analyze(t, ctx, tx)
+	f.analyze(t, ctx)
 
 	// ПРЕДПОСЫЛКА: цепь объекта полна и глубока. На вырожденной цепи (d = 1)
 	// перевычисление ненаблюдаемо by construction — обе величины совпадают.
@@ -194,7 +195,7 @@ func TestR7_1_10_ForeignBindingsDoNotEnterVerdictCost(t *testing.T) {
 	f := newGridFixture(t, ctx, tx)
 	f.growN(t, ctx, 200)
 	f.setR(t, ctx, 1, scalegrid.RecruitDirect)
-	analyze(t, ctx, tx)
+	f.analyze(t, ctx)
 
 	vCtl, mCtl := askAndExplain(t, ctx, tx, cap, probeObjectID)
 	ctl := mCtl.Rows
@@ -203,14 +204,14 @@ func TestR7_1_10_ForeignBindingsDoNotEnterVerdictCost(t *testing.T) {
 
 	// ── сторона-1: чужие выдачи НА ТОЙ ЖЕ области ────────────────────────────
 	f.growB(t, ctx, foreign)
-	analyze(t, ctx, tx)
+	f.analyze(t, ctx)
 	v1, m1 := askAndExplain(t, ctx, tx, cap, probeObjectID)
 	t.Logf("сторона-1 (%d чужих выдач на цепи областей): вердикт %s · строк %d · прирост %d",
 		foreign, v1, m1.Rows, m1.Rows-ctl)
 
 	// ── сторона-2: выдачи ТОМУ ЖЕ субъекту в ДРУГИХ областях ────────────────
 	seedElsewhereBindings(t, ctx, tx, f, foreign)
-	analyze(t, ctx, tx)
+	f.analyze(t, ctx)
 	v2, m2 := askAndExplain(t, ctx, tx, cap, probeObjectID)
 	t.Logf("сторона-2 (%d выдач спрашиваемому ВНЕ цепи областей): вердикт %s · строк %d · прирост %d",
 		foreign, v2, m2.Rows, m2.Rows-ctl)
@@ -266,19 +267,6 @@ func seedElsewhereBindings(t *testing.T, ctx context.Context, tx pgx.Tx, f *grid
 	must(t, s.Flush(ctx))
 }
 
-// analyze — собрать статистику ВНУТРИ посева точки.
-//
-// Без неё планировщик выбирает план по оценкам пустой таблицы, и разбирался бы
-// план, которого на развёрнутой базе не бывает.
-func analyze(t *testing.T, ctx context.Context, tx pgx.Tx) {
-	t.Helper()
-	if _, err := tx.Exec(ctx, `ANALYZE kacho_iam.access_bindings, kacho_iam.access_binding_subjects,
-		kacho_iam.resource_mirror, kacho_iam.resource_parent_edge, kacho_iam.relation_fact,
-		kacho_iam.role_verb, kacho_iam.role_rule_selectors, kacho_iam.group_members`); err != nil {
-		t.Fatalf("сбор статистики: %v", err)
-	}
-}
-
 // ── R7-1-12: ИНДЕКС СУЩЕСТВУЕТ, ПРИМЕНЁН И ОБСЛУЖИВАЕТ ВЕРДИКТ ──────────────
 
 // TestR7_1_12_SubjectAndScopeResolveOnOneIndex — R7-1-12.
@@ -305,7 +293,7 @@ func TestR7_1_12_SubjectAndScopeResolveOnOneIndex(t *testing.T) {
 	f.growN(t, ctx, 200)
 	f.setR(t, ctx, 1, scalegrid.RecruitDirect)
 	f.growB(t, ctx, foreign)
-	analyze(t, ctx, tx)
+	f.analyze(t, ctx)
 
 	// ПРЕДПОСЫЛКА: оба предиката стоят на ОДНОМ отношении. Иначе одного индекса,
 	// обслуживающего оба, не существует by construction, и «свойство есть»
@@ -336,7 +324,7 @@ func TestR7_1_12_SubjectAndScopeResolveOnOneIndex(t *testing.T) {
 		t.Fatalf("снятие индекса: имя изменилось или индекса нет — инъекция не воспроизводит "+
 			"состояние «объявлен, но не применяется»: %v", err)
 	}
-	analyze(t, ctx, tx)
+	f.analyze(t, ctx)
 	vNo, mNo := askAndExplain(t, ctx, tx, cap, probeObjectID)
 	subjNo := rowsOf(mNo, "access_binding_subjects")
 	t.Logf("без индекса: строк за вердикт %d, из них по строкам субъектов выдач %d", mNo.Rows, subjNo)
@@ -355,4 +343,187 @@ func TestR7_1_12_SubjectAndScopeResolveOnOneIndex(t *testing.T) {
 		t.Errorf("с индексом по строкам субъектов выдач прочитано %d при потолке %d: "+
 			"индекс объявлен, но набор им не сужается", subjWith, foreignBindingsCeiling)
 	}
+}
+
+// ── R7-1-13 / R7-1-14: РАННИЙ ВЫХОД И УСЕЧЕНИЕ ──────────────────────────────
+
+// TestR7_1_13_EarlyExitIsObservable — R7-1-13.
+//
+// # Что утверждается и почему НЕ дословная формулировка сценария
+//
+// Сценарий требует: строк на разрешающем вопросе МЕНЬШЕ, чем на отказном при той
+// же раскладке. Эта пара была осмысленной ДО починок 11–12, когда отказной
+// вопрос обязан был прочитать все основания области. После них отказ сам стал
+// дёшев — пара «субъект + область» отсекает чужие выдачи до чтения строк, — и
+// сравнение двух дешёвых величин перестало говорить о замыкании: измерено 25
+// против 19, причём меньшее принадлежит отказу просто потому, что до оснований
+// он не доходит вовсе.
+//
+// Поэтому утверждается ПОСЛЕДСТВИЕ замыкания, наблюдаемое и не зависящее от
+// того, какой из двух вопросов дешевле: стоимость РАЗРЕШЁННОГО вердикта не
+// растёт с числом оснований, лежащих сверх первого. Пока над союзом стоял хоть
+// один блокирующий узел — оконная функция по строкам до отбора различных, отбор
+// различных над союзом, сортировка над ним же — она росла: измерено 1222 строки
+// при трёхстах основаниях против 25 после починки.
+//
+// Отдельно названо то, чего эта проба НЕ утверждает: ветвь условных фактов
+// исполняется внешним пределом независимо от того, что отдала ветвь выдач, —
+// одним оператором «не спрашивать вторую ветвь, если первая ответила» не
+// выражается. Пропустить её можно либо вторым обращением, либо повторением
+// предиката выдач внутри ветви фактов (два места об одном предмете). Ни то ни
+// другое здесь не сделано, и это записано как остаток, а не как сделанное.
+func TestR7_1_13_EarlyExitIsObservable(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
+	// Потолок роста, объявленный ДО прогона. Постоянная часть вердикта от числа
+	// оснований не зависит вовсе, поэтому идеальный рост — ноль; шестнадцать —
+	// запас на дребезг статистики. Деградация этого класса даёт порядки
+	// (измерено: 1222 против 25), и запас отделяет её от дребезга.
+	const groundsCeiling = 16
+	const few, many = 3, 300
+
+	ctx := context.Background()
+	tx, cap := openProbeTx(t, ctx)
+	f := newGridFixture(t, ctx, tx)
+	f.growN(t, ctx, 200)
+
+	f.setR(t, ctx, few, scalegrid.RecruitDirect)
+	f.analyze(t, ctx)
+	vFew, mFew := askAndExplain(t, ctx, tx, cap, probeObjectID)
+
+	f.setR(t, ctx, many, scalegrid.RecruitDirect)
+	f.analyze(t, ctx)
+	vMany, mMany := askAndExplain(t, ctx, tx, cap, probeObjectID)
+
+	// Отказной вопрос при той же раскладке — печатается для сведения: он и есть
+	// та величина, ради которой сценарий писал своё сравнение, и её изменение
+	// после починок 11–12 надо видеть, а не выводить.
+	cap.reset()
+	vDeny, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
+		Subject: probeSubject, ObjectType: probeModelType, ObjectID: probeObjectID,
+		Relation: "v_delete",
+	})
+	if err != nil {
+		t.Fatalf("отказной вопрос: %v", err)
+	}
+
+	t.Logf("оснований %d → строк %d (%s); оснований %d → строк %d (%s); "+
+		"отказной вопрос при той же раскладке — %s",
+		few, mFew.Rows, vFew, many, mMany.Rows, vMany, vDeny)
+
+	if vFew != relverdict.Allow || vMany != relverdict.Allow {
+		t.Fatalf("раскладки дали %s и %s: сравнивались бы разные вопросы", vFew, vMany)
+	}
+	if vDeny != relverdict.Deny {
+		t.Fatalf("отказная раскладка дала %s: контроль не воспроизвёл отказ", vDeny)
+	}
+	if d := mMany.Rows - mFew.Rows; d > groundsCeiling {
+		t.Errorf("строк за РАЗРЕШЁННЫЙ вердикт: %d при %d основаниях против %d при %d, "+
+			"прирост %d при потолке %d. Стоимость разрешения растёт с числом оснований, "+
+			"лежащих сверх первого, — значит над союзом остался блокирующий узел либо "+
+			"ветвь выдач читается целиком", mMany.Rows, many, mFew.Rows, few, d, groundsCeiling)
+	}
+}
+
+// TestR7_1_14_TruncationIsStillARefusal — R7-1-14, в паре с 13.
+//
+// Короткое замыкание не смеет превратить усечение в разрешение, а усечение —
+// остаться неотличимым от «мы перестали читать». Первое достаточное основание,
+// найденное раньше переполнения набора, — законный исход; набор переполнился, а
+// вердикт всё же выдан — дефект.
+func TestR7_1_14_TruncationIsStillARefusal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
+	ctx := context.Background()
+	tx, _ := openProbeTx(t, ctx)
+	f := newGridFixture(t, ctx, tx)
+	f.growN(t, ctx, 20)
+	f.analyze(t, ctx)
+
+	// (а) БЕЗУСЛОВНОЕ основание найдено рано, а оснований сверх него — сотни.
+	// Ответ обязан быть разрешением, а НЕ ошибкой усечения.
+	f.setR(t, ctx, relverdict.MaxConditionRowsForTest+64, scalegrid.RecruitDirect)
+	v, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
+		Subject: probeSubject, ObjectType: probeModelType, ObjectID: probeObjectID,
+		Relation: probeRelation,
+	})
+	if err != nil {
+		t.Fatalf("оснований больше предела, но среди них есть безусловное — ожидалось "+
+			"разрешение, получена ошибка: %v", err)
+	}
+	if v != relverdict.Allow {
+		t.Errorf("оснований %d при пределе %d, первое из них безусловно: ожидалось разрешение, "+
+			"получено %s", relverdict.MaxConditionRowsForTest+64, relverdict.MaxConditionRowsForTest, v)
+	}
+	t.Logf("(а) оснований %d при пределе %d, безусловное среди них: %s — усечение НЕ подменило "+
+		"разрешения", relverdict.MaxConditionRowsForTest+64, relverdict.MaxConditionRowsForTest, v)
+
+	// (б) РАЗЛИЧНЫХ УСЛОВИЙ больше предела, и безусловного среди них нет. Ответ
+	// обязан быть ошибкой усечения, а не вердиктом по усечённому набору.
+	seedConditionedFacts(t, ctx, tx, relverdict.MaxConditionRowsForTest+8)
+	f.analyze(t, ctx)
+	vTrunc, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
+		Subject: probeSubject, ObjectType: probeModelType, ObjectID: "repo-truncate",
+		Relation: probeRelation,
+	})
+	if err == nil {
+		t.Fatalf("различных условий больше предела, безусловного среди них нет — ожидалась "+
+			"ошибка усечения, получен вердикт %s. Усечённый набор не даёт права судить", vTrunc)
+	}
+	if !strings.Contains(err.Error(), "усеч") {
+		t.Errorf("ошибка не называет усечения: %v", err)
+	}
+	t.Logf("(б) различных условий больше предела, безусловного нет: %s", firstLineOf(err.Error()))
+}
+
+// seedConditionedFacts — объект, на который набирается n РАЗЛИЧНЫХ условий и ни
+// одного безусловного основания.
+//
+// Условия приходят ПРЯМЫМИ ФАКТАМИ: выдача условия не несёт вовсе (роль раздаёт
+// глаголы, а условие в модели стоит на отношениях, глаголами не являющихся),
+// поэтому набрать усечение выдачами нельзя by construction.
+//
+// Ключ факта — четвёрка (тип, объект, отношение, субъект), а отношение обязано
+// стоять в плане вопроса, иначе факт до вердикта не доедет. Различать строки
+// остаётся СУБЪЕКТОМ, и он берётся тем же способом, каким его берёт продукт:
+// вызывающий состоит в n группах, за каждую из которых говорит. Так фикстура
+// не изображает состояния, которого схема не допускает.
+func seedConditionedFacts(t *testing.T, ctx context.Context, tx pgx.Tx, n int) {
+	t.Helper()
+	s := scalegrid.NewSeeder(tx)
+	// Свой проект, которого не покрывает НИ ОДНА выдача: иначе безусловное
+	// основание находится раньше усечения — и это верный исход, а не дефект
+	// (ровно та пара, ради которой сценарии 13 и 14 стоят рядом).
+	must(t, s.QueueRaw(ctx,
+		`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ('prj-trunc', 'acc-1', 'prj-trunc')`))
+	must(t, s.Flush(ctx))
+	must(t, s.Queue(ctx, scalegrid.MirrorRow{
+		ObjectType: probeCatalogType, ObjectID: "repo-truncate",
+		ParentProjectID: "prj-trunc", ParentAccountID: "acc-1",
+		ParentChain: []string{"project:prj-trunc", "account:acc-1"},
+	}))
+	must(t, s.Flush(ctx))
+	for i := 0; i < n; i++ {
+		gid := fmt.Sprintf("grp-t%05d", i)
+		must(t, s.QueueRaw(ctx,
+			`INSERT INTO kacho_iam.groups (id, account_id, name) VALUES ($1, 'acc-1', $1)`, gid))
+		must(t, s.QueueRaw(ctx,
+			`INSERT INTO kacho_iam.group_members (group_id, member_type, member_id)
+			 VALUES ($1, 'user', 'usr-1')`, gid))
+		must(t, s.QueueRaw(ctx,
+			`INSERT INTO kacho_iam.relation_fact
+			   (object_type, object_id, relation, subject, condition_name, condition_params)
+			 VALUES ($1, 'repo-truncate', $2, $3, $4, '{}'::jsonb)`,
+			probeModelType, probeRelation, "group:"+gid+"#member", fmt.Sprintf("cond_%04d", i)))
+	}
+	must(t, s.Flush(ctx))
+}
+
+func firstLineOf(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
 }

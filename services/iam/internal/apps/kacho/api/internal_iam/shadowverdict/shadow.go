@@ -114,7 +114,12 @@ type Asker interface {
 // них означает не согласие, а то, что ось не спрашивали. Одно число на обе оси
 // эту разницу скрыло бы — потому их два.
 type LabelArmObserver interface {
-	LabelArmGrounds() (mirror, iamDirect int64)
+	// Третье число — вердиктов, ответивших ДО того, как набор источников
+	// дочитан (ранний выход на первом безусловном основании). Без него ноль
+	// оснований меточной ветви одинаково читается и как «ветвь молчала», и как
+	// «до неё не дочитали»; печатать первые два и умолчать о третьем значило бы
+	// выдать неопределённость за наблюдение.
+	LabelArmGrounds() (mirror, iamDirect, earlyStops int64)
 }
 
 // Counters — то, что сравнение обязано уметь предъявить.
@@ -571,8 +576,10 @@ func (c *Comparator) coverage() []any {
 	// конъюнкт однажды оказался тождественно ложным: ноль там читался бы как
 	// согласие форм.
 	if o, ok := c.form.(LabelArmObserver); ok {
-		mirror, iamDirect := o.LabelArmGrounds()
-		out = append(out, "label_grounds_mirror", mirror, "label_grounds_iam_direct", iamDirect)
+		mirror, iamDirect, earlyStops := o.LabelArmGrounds()
+		out = append(out, "label_grounds_mirror", mirror,
+			"label_grounds_iam_direct", iamDirect,
+			"verdicts_short_circuited", earlyStops)
 	}
 	return out
 }
