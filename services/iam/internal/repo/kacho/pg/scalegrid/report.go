@@ -46,6 +46,11 @@ type Provenance struct {
 	// GridDigest / GridText — сетка, на которой снято.
 	GridDigest string
 	GridText   string
+	// Fingerprint — отпечаток ПРЕДМЕТА замера: то, изменение чего делает отчёт
+	// утверждением о прошлом, поданным как утверждение о настоящем.
+	Fingerprint Fingerprint
+	// treeRoot — корень, от которого считан отпечаток.
+	treeRoot string
 }
 
 // TakeProvenance — провенанс из окружения прогона.
@@ -83,6 +88,16 @@ func TakeProvenance(runCommand string, grid [][]Point) Provenance {
 	} else {
 		p.DirtyPaths = -1
 		p.TreeDirty = true
+	}
+	// Отпечаток предмета берётся ТОЙ ЖЕ функцией, какой его пересчитает гейт:
+	// вторая реализация разошлась бы с первой молча — и разошлась бы там, где
+	// обе печатают «совпало».
+	if top, err := gitenv.Command("", "rev-parse", "--show-toplevel").Output(); err == nil {
+		root := strings.TrimSpace(string(top))
+		p.treeRoot = root
+		if fp, ferr := ComputeFingerprint(root); ferr == nil {
+			p.Fingerprint = fp
+		}
 	}
 	return p
 }
@@ -155,6 +170,8 @@ func (p Provenance) Header(title string) (string, error) {
 	}
 	w("  машина              %s, ядер %d\n", p.CPUModel, p.CPUCores)
 	w("  Postgres            %s\n", p.Postgres)
+	w("\nОТПЕЧАТОК ПРЕДМЕТА ЗАМЕРА (гейт свежести сверяет его с текущим деревом)\n")
+	w("%s", p.Fingerprint.FingerprintLines(p.treeRoot))
 	w("\nСЕТКА (константа в коде, ниоткуда не переопределяется)\n%s", p.GridText)
 	w("\nВОСПРОИЗВЕДЕНИЕ (дословно)\n  %s\n", p.RunCommand)
 	return b.String(), nil
