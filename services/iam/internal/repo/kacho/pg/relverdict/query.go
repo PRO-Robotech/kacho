@@ -223,34 +223,49 @@ scope(s_type, s_id, depth) AS (
      WHERE e.object_type = $2::text AND e.object_id = $3::text
        AND e.depth <= $7::int
 ),
+speaker_pair(s_type, s_id, via) AS (
+    -- СУБЪЕКТ ВЫДАЧИ — ПАРОЙ КОЛОНОК, а не склейкой.
+    --
+    -- Склейка subject_type || ':' || subject_id выводит колонки из-под любого
+    -- индекса: сравнивать приходится вычисленное значение, а вычисленное
+    -- значение отбирает строки только ПОСЛЕ того, как они прочитаны. Пара
+    -- колонок сужает набор ДО чтения. Паритет, а не новое устройство: соседнее
+    -- соединение того же запроса читает членство парой колонок и обслуживается
+    -- индексом (member_type, member_id) с самого начала.
+    --
+    -- Колонка via называет, ОТКУДА взялась пара, и существует ради текстовой
+    -- формы ниже: хвост #member раскрывает ЧЛЕНСТВО, и приписать его группе,
+    -- которая сама является вызывающим, значило бы расширить ответ на факты,
+    -- которых вызывающему не выдавали.
+    SELECT split_part($1::text, ':', 1),
+           substr($1::text, length(split_part($1::text, ':', 1)) + 2),
+           'self'
+  UNION ALL
+    SELECT 'group', gm.group_id, 'member'
+      FROM kacho_iam.group_members gm
+     WHERE gm.member_type = split_part($1::text, ':', 1)
+       AND gm.member_id   = substr($1::text, length(split_part($1::text, ':', 1)) + 2)
+  UNION ALL
+    -- Подстановка объявлена НАМЕРЕННО (глобальный справочник читает всякий
+    -- аутентифицированный) и потому перечислена явно, а не выведена из формы
+    -- имени.
+    SELECT 'user', '*', 'wildcard'
+),
 speaker(subject) AS (
-    -- За вызывающего говорит он сам…
+    -- ТЕКСТОВАЯ форма — для прямых фактов: их субъект хранится строкой, и она
+    -- не разбирается на пару нигде в дереве. Обе формы имени группы, и это не
+    -- перестраховка: канонический производитель кортежей пишет
+    -- group:<id>#member (хвост раскрывает членство на стороне модели), а голой
+    -- формой group:<id> адресуется сама группа как субъект. Признать одну и
+    -- промолчать о другой значит НЕДОотвечать ровно на права, выданные
+    -- каноническим путём, — тихо, потому что неполный ответ выглядит как
+    -- честное «ничего нет».
     SELECT $1::text
   UNION
-    -- …его группы (членство — источник, а не отдельное право). Член группы
-    -- бывает и служебной учётной записью, поэтому сравнение идёт по ПАРЕ
-    -- (тип, идентификатор), а не по одному лишь пользователю: сузить до
-    -- пользователя значило бы терять права машинных принципалов молча.
-    -- Форма имени группы — ОБЕ, и это не перестраховка.
-    -- Канонический производитель кортежей (domain.FGASubjectRef) пишет
-    -- group:<id>#member: хвост отношения раскрывает членство на стороне
-    -- модели. Голая форма group:<id> тоже встречается — ею адресуется сама
-    -- группа как субъект выдачи. Признать одну и промолчать о другой значит
-    -- НЕДОотвечать ровно на права, выданные каноническим путём, — тихо, потому
-    -- что неполный ответ выглядит как честное «ничего нет».
-    SELECT 'group:' || gm.group_id
-      FROM kacho_iam.group_members gm
-     WHERE gm.member_type = split_part($1::text, ':', 1)
-			   AND gm.member_id   = substr($1::text, length(split_part($1::text, ':', 1)) + 2)
+    SELECT 'group:' || sp.s_id FROM speaker_pair sp WHERE sp.via = 'member'
   UNION
-    SELECT 'group:' || gm.group_id || '#member'
-      FROM kacho_iam.group_members gm
-     WHERE gm.member_type = split_part($1::text, ':', 1)
-			   AND gm.member_id   = substr($1::text, length(split_part($1::text, ':', 1)) + 2)
+    SELECT 'group:' || sp.s_id || '#member' FROM speaker_pair sp WHERE sp.via = 'member'
   UNION
-    -- …и подстановка, если модель её принимает на этом отношении. Она объявлена
-    -- НАМЕРЕННО (глобальный справочник читает всякий аутентифицированный), и
-    -- потому перечислена здесь явно, а не выведена из формы имени.
     SELECT 'user:*'
 ),
 fact_atom(parent_type, relation) AS (
@@ -291,16 +306,29 @@ SELECT DISTINCT cond_name, cond_params, bool_or(arm = 'labels') OVER () AS label
     -- Пустое имя здесь — утверждение «действует всегда», проверяемое гейтом
     -- TestNoConditionedRelationIsAVerb: появится глагол с условием — гейт
     -- покраснеет, потому что вот эта строка молча потеряла бы его условие.
+    -- ЗАХОД — С ПАРЫ «СУБЪЕКТ + ОБЛАСТЬ», и оба предиката сужают набор ДО
+    -- чтения строк. Пока субъект жил на дочерней таблице, а область — на
+    -- родительской, одного индекса, обслуживающего оба, не существовало by
+    -- construction: заход со стороны области читал ВСЕ выдачи области, заход со
+    -- стороны субъекта — ВСЕ выдачи субъекта в облаке. Первое ограничено
+    -- размером облака, второе не ограничено ничем. Область перенесена на строку
+    -- субъекта (миграция 732001), согласованность держит составной внешний ключ
+    -- с каскадом правки, а не синхронизация в коде.
+    --
+    -- Обращений — не больше, чем произведение мощностей speaker_pair и scope,
+    -- и каждое возвращает выдачи ровно этого субъекта ровно в этой области.
     SELECT ''::text AS cond_name, '{}'::jsonb AS cond_params, rs.arm AS arm
-      FROM kacho_iam.access_bindings b
-      JOIN kacho_iam.access_binding_subjects bs ON bs.binding_id = b.id
-      JOIN speaker sp ON sp.subject = bs.subject_type || ':' || bs.subject_id
+      FROM speaker_pair sp
+      CROSS JOIN scope sc
+      JOIN kacho_iam.access_binding_subjects bs
+        ON bs.subject_type  = sp.s_type AND bs.subject_id  = sp.s_id
+       AND bs.resource_type = sc.s_type AND bs.resource_id = sc.s_id
+      JOIN kacho_iam.access_bindings b ON b.id = bs.binding_id
       JOIN kacho_iam.role_verb rv
         ON rv.role_id = b.role_id AND rv.object_type = $9::text
        AND rv.verb = ANY ($6::text[])
       JOIN kacho_iam.role_rule_selectors rs
         ON rs.role_id = b.role_id AND $9::text = ANY (rs.object_types)
-      JOIN scope sc ON sc.s_type = b.resource_type AND sc.s_id = b.resource_id
       -- Метки нужны только ветви меток, и лежат они там, где велит ТИП: у чужого
       -- ресурса — в зеркале, у собственного объекта iam — в его таблице.
       -- Соединение ЛЕВОЕ на обеих осях, чтобы объект без меток не выпадал из

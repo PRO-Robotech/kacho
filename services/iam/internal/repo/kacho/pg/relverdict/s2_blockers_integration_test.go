@@ -278,3 +278,81 @@ func analyze(t *testing.T, ctx context.Context, tx pgx.Tx) {
 		t.Fatalf("сбор статистики: %v", err)
 	}
 }
+
+// ── R7-1-12: ИНДЕКС СУЩЕСТВУЕТ, ПРИМЕНЁН И ОБСЛУЖИВАЕТ ВЕРДИКТ ──────────────
+
+// TestR7_1_12_SubjectAndScopeResolveOnOneIndex — R7-1-12.
+//
+// Утверждается СВОЙСТВО — «пара субъект + область разрешается одним индексом на
+// одном отношении», — а не раскладка колонок: любая другая, дающая то же
+// свойство, ему удовлетворяет, и пинить порядок значило бы краснеть на верной
+// правке.
+//
+// Свойство предъявляется ИСХОДОМ и ИНЪЕКЦИЕЙ. Объявленный, но не применяемый
+// индекс — тот же «объявленный и никем не читаемый страж»: проба обязана уметь
+// отличить его от работающего, поэтому индекс снимается прямо в транзакции, и
+// та же раскладка обязана стать дороже. Без этого плеча зелёное означало бы
+// лишь «строк мало», а не «мало ИЗ-ЗА индекса».
+func TestR7_1_12_SubjectAndScopeResolveOnOneIndex(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
+	const foreign = 10000
+
+	ctx := context.Background()
+	tx, cap := openProbeTx(t, ctx)
+	f := newGridFixture(t, ctx, tx)
+	f.growN(t, ctx, 200)
+	f.setR(t, ctx, 1, scalegrid.RecruitDirect)
+	f.growB(t, ctx, foreign)
+	analyze(t, ctx, tx)
+
+	// ПРЕДПОСЫЛКА: оба предиката стоят на ОДНОМ отношении. Иначе одного индекса,
+	// обслуживающего оба, не существует by construction, и «свойство есть»
+	// означало бы «план сегодня удобен».
+	var carried int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*)::int FROM information_schema.columns
+		 WHERE table_schema = 'kacho_iam' AND table_name = 'access_binding_subjects'
+		   AND column_name IN ('subject_type','subject_id','resource_type','resource_id')`).Scan(&carried); err != nil {
+		t.Fatalf("состав колонок: %v", err)
+	}
+	if carried != 4 {
+		t.Fatalf("на строке субъекта выдачи %d из четырёх колонок пары «субъект + область»: "+
+			"предикаты стоят на разных отношениях, и утверждать свойство не о чем", carried)
+	}
+
+	vWith, mWith := askAndExplain(t, ctx, tx, cap, probeObjectID)
+	if vWith != relverdict.Allow {
+		t.Fatalf("вердикт %s: мерилась бы стоимость неверного ответа", vWith)
+	}
+	subjWith := rowsOf(mWith, "access_binding_subjects")
+	t.Logf("с индексом: строк за вердикт %d, из них по строкам субъектов выдач %d "+
+		"(в облаке %d чужих выдач)", mWith.Rows, subjWith, foreign)
+
+	// ── ИНЪЕКЦИЯ: индекс снят, всё прочее не тронуто ─────────────────────────
+	if _, err := tx.Exec(ctx,
+		`DROP INDEX kacho_iam.access_binding_subjects_subject_scope_idx`); err != nil {
+		t.Fatalf("снятие индекса: имя изменилось или индекса нет — инъекция не воспроизводит "+
+			"состояние «объявлен, но не применяется»: %v", err)
+	}
+	analyze(t, ctx, tx)
+	vNo, mNo := askAndExplain(t, ctx, tx, cap, probeObjectID)
+	subjNo := rowsOf(mNo, "access_binding_subjects")
+	t.Logf("без индекса: строк за вердикт %d, из них по строкам субъектов выдач %d", mNo.Rows, subjNo)
+
+	// Ответ обязан совпасть: инъекция меняет СТОИМОСТЬ, а не смысл.
+	if vNo != vWith {
+		t.Errorf("снятие индекса изменило ответ (%s против %s): инъекция сравнивала бы "+
+			"разные вопросы", vNo, vWith)
+	}
+	if subjNo <= subjWith {
+		t.Errorf("без индекса по строкам субъектов выдач прочитано %d, с индексом %d — "+
+			"инъекция не воспроизвела дефекта, и зелёное с индексом ничего не доказывает: "+
+			"оно означало бы «строк мало», а не «мало ИЗ-ЗА индекса»", subjNo, subjWith)
+	}
+	if subjWith > foreignBindingsCeiling {
+		t.Errorf("с индексом по строкам субъектов выдач прочитано %d при потолке %d: "+
+			"индекс объявлен, но набор им не сужается", subjWith, foreignBindingsCeiling)
+	}
+}
