@@ -73,11 +73,19 @@ type Fingerprint struct {
 	// Tables — выведенные имена таблиц; печатаются, чтобы «ноль находок» было
 	// отличимо от «ноль прочитанного».
 	Tables []string
+	// Predicate — ЧТО именно взято под отпечаток, словами.
+	//
+	// Поле, а не константа пакета: приборов стало два, и предметы у них РАЗНЫЕ —
+	// у читающего это код вердикта, у пишущего материализатор. Печатать обоим
+	// один предикат значило бы написать в шапке второго отчёта неправду о том,
+	// что он сторожит. Пусто — предикат прибора чтения.
+	Predicate string
 }
 
 // ComputeFingerprint — отпечаток по ТЕКУЩЕМУ дереву.
 func ComputeFingerprint(root string) (Fingerprint, error) {
 	var fp Fingerprint
+	fp.Predicate = FingerprintPredicate
 
 	code, err := nonTestGoFiles(root, verdictDir)
 	if err != nil {
@@ -234,7 +242,11 @@ func (fp Fingerprint) FingerprintLines(root string) string {
 	fmt.Fprintf(&b, "%s%s\n", MarkerContent, fp.Content)
 	fmt.Fprintf(&b, "  файлов под отпечатком %d, таблиц выведено %d (%s)\n",
 		len(fp.Files), len(fp.Tables), strings.Join(fp.Tables, ", "))
-	fmt.Fprintf(&b, "  предикат отпечатка    %s\n", FingerprintPredicate)
+	predicate := fp.Predicate
+	if predicate == "" {
+		predicate = FingerprintPredicate
+	}
+	fmt.Fprintf(&b, "  предикат отпечатка    %s\n", predicate)
 	fmt.Fprintf(&b, "%s\n", MarkerFileList)
 	for _, rel := range fp.Files {
 		fmt.Fprintf(&b, "%s%s  %s\n", MarkerFile, ContentOf(root, rel), rel)
