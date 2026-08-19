@@ -108,6 +108,41 @@ describe("InlineSubnetCreateForm", () => {
     expect(body()).not.toHaveProperty("placement_type");
   });
 
+  it("только-IPv6 подсеть уходит на край — и IPv4 в теле нет", async () => {
+    // Пара к первому кейсу (только-IPv4): обязанность здесь ДИЗЪЮНКЦИЯ, и обе
+    // её ветви обязаны работать. Проверять одну значит не отличить «хотя бы
+    // одно из двух» от «IPv4 обязателен» — ровно ту неправду, которую форма
+    // рисовала звёздочкой (#609).
+    show({ networkId: "net-1" });
+
+    await waitFor(() => expect(selectShowing("зона A")).toBeDefined());
+    pick("зона A", "ru-central1-a");
+    typeIn("fd00:20::/64", "fd00:20::/64");
+    save();
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith("/vpc/v1/subnets", expect.anything()));
+    expect(body().ipv6_cidr_primary).toBe("fd00:20::/64");
+    expect(body().ipv4_cidr_primary).toBeUndefined();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("форма НАЗЫВАЕТ дизъюнкцию словами, а не только отказом после отправки", async () => {
+    // Значок обязательности снят с IPv4 (#609) — обязанность-то есть, но она на
+    // ПАРЕ. Если её не назвать, форма перестаёт сообщать единственное настоящее
+    // требование, и человек узнаёт о нём только отказом на «Создать».
+    //
+    // Утверждается ТЕКСТ, который читает человек. Про звёздочку здесь
+    // утверждать нельзя ни при каком написании пробы: заменитель `antd` рисует
+    // `Form.Item` без разметки библиотеки, и узла значка в jsdom нет вовсе. Его
+    // положение проверяет проба браузером (`e2e/specs/findings.spec.ts`), а
+    // сходимость объявления с контрактом владельца — гейт
+    // `lib/required-mark-contract-parity`.
+    show({ networkId: "net-1" });
+
+    await waitFor(() => expect(selectShowing("зона A")).toBeDefined());
+    expect(screen.getByText(/хотя бы одно из двух/i)).toBeDefined();
+  });
+
   it("без основного диапазона запрос не уходит, и человеку сказано почему", async () => {
     show({ networkId: "net-1" });
 

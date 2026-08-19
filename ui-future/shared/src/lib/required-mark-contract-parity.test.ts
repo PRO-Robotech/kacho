@@ -26,21 +26,45 @@
 // разборщиком `stripComments`, иначе гейт нашёл бы `required` в абзаце, который
 // сам же и объясняет запрет.
 //
-// ОБЛАСТЬ — поле `name`, и это сказано прямо. Общее отображение «подпись формы →
-// поле контракта» в дереве не объявлено, поэтому гейт судит ровно то поле, чья
-// подпись выводится из реестра (`REGISTRY[specId].fields`, элемент `name`), и
-// печатает, сколько объявлений он рассудить не смог. Расширять область — работа
-// со своим предметом, а не молчаливое умолчание этой.
+// ОБЛАСТЬ — ВСЕ поля, которые гейт способен рассудить (расширено #609; прежде
+// судилось одно поле `name`). Отображение «подпись формы → поле контракта»
+// выводится из реестра целиком: `REGISTRY[specId].fields` объявляет и `label`, и
+// `name`, то есть обе стороны сопоставления уже лежат в дереве — выписывать их
+// рядом с гейтом значило бы завести второе место об одном предмете. Пока область
+// была сужена до `name`, поле `ipv4_cidr_primary` не держалось ничем: его
+// звёздочка утверждала обязанность, которой контракт не объявляет, и гейт про
+// это молчал по построению.
+//
+// ЧТО ГЕЙТ РАССУДИТЬ НЕ БЕРЁТСЯ — названо и посчитано, а не умолчано:
+//
+//   • поле формы (`_placement` и подобные) — у него нет соответствия в контракте
+//     вовсе, спрашивать не о чем;
+//   • вложенный путь (`spec.rules[0].x`) — обязательность родителя не есть
+//     обязательность части;
+//   • поле ЗА ДИСКРИМИНАТОРОМ (`visibleWhen`) — его обязанность УСЛОВНА, а
+//     `(required)` безусловен, то есть инструмент не той меры. Зона доступности
+//     и регион подсети именно таковы: показывается ровно один из двух, и
+//     показанный обязателен — при том что контракт не объявляет обязательным ни
+//     один. Вынести по ним вердикт значило бы потребовать снять звёздочку с
+//     поля, которое край без значения не примет;
+//   • подпись, которую не называет ни одно поле реестра, — форма назвала ряд
+//     по-своему либо ряд вообще не поле ресурса (заголовок группы). Это не
+//     «законно», это «вне инструмента», и счёт печатается отдельно.
+//
+// Исключение по дискриминатору САМОИСТЕКАЕТ: снимут `visibleWhen` — поле снова
+// попадёт под суд, и звёздочка на нём будет сверена с контрактом.
 //
 // ЧЕМ ОГРАНИЧЕН ВЕРДИКТ (названо, чтобы не читалось шире). Обязательность
 // берётся объединением по ВСЕМ путям записи ресурса (`post`/`put`/`patch` его
-// REST-адреса): если контракт требует `name` на создании, гейт молчит и о форме
+// REST-адреса): если контракт требует поле на создании, гейт молчит и о форме
 // правки. Это делает его консервативным — он пропускает, но не выдумывает.
 //
 // СПОСОБНОСТЬ УПАСТЬ доказана инъекцией в обе стороны (describe ниже): дефект
-// краснеет с координатой, а законный близнец ТОЙ ЖЕ ФОРМЫ — подпись «Имя» со
-// звёздочкой у ресурса, чей контракт её требует (группа IAM), — молчит.
-// Дискриминатор держится одним именем с обеих сторон.
+// краснеет с координатой, а законный близнец ТОЙ ЖЕ ФОРМЫ — подпись со
+// звёздочкой у поля, чей контракт её требует, — молчит. Дискриминатор держится
+// одним именем с обеих сторон, и близнец берётся у ТОГО ЖЕ ресурса там, где это
+// возможно: пара из разных ресурсов молчала бы и по причине, к предмету
+// отношения не имеющей.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -298,58 +322,90 @@ function readForms(sources: Array<{ rel: string; raw: string }>): FormsRead {
   return { filesRead: sources.length, itemsParsed, claims };
 }
 
-/** Подпись поля `name` у ресурса — берётся из реестра, а не выписывается. */
-function nameLabelOf(specId: string): string | null {
-  const spec = REGISTRY[specId];
-  const field = spec?.fields?.find((f) => f.name === "name");
-  return field?.label ?? null;
+/** Поля ресурса, объявленные реестром: подпись ↔ имя поля контракта. */
+function fieldsOf(specId: string): Array<{ name: string; label: string; branched: boolean }> {
+  return (REGISTRY[specId]?.fields ?? []).map((f) => ({
+    name: f.name,
+    label: f.label,
+    branched: f.visibleWhen !== undefined,
+  }));
 }
 
-/** Подпись формы называет поле `name` этого ресурса? */
+/** Подпись формы называет это поле ресурса? */
 function labelNamesField(labelExpr: string, fieldLabel: string): boolean {
+  const norm = labelExpr.replace(/>\s+/g, ">").replace(/\s+</g, "<").trim();
   return (
-    labelExpr.trim() === fieldLabel ||
-    labelExpr.includes(`"${fieldLabel}"`) ||
-    labelExpr.includes(`'${fieldLabel}'`) ||
-    labelExpr.includes(`>${fieldLabel}<`)
+    norm === fieldLabel ||
+    norm.includes(`"${fieldLabel}"`) ||
+    norm.includes(`'${fieldLabel}'`) ||
+    norm.includes(`>${fieldLabel}<`)
   );
+}
+
+function unjudgeable(field: { name: string; branched: boolean }): string | null {
+  if (field.name.startsWith("_")) return "поле формы — соответствия в контракте нет";
+  if (/[.[]/.test(field.name)) return "вложенный путь";
+  if (field.branched) return "поле за дискриминатором: обязанность условна, а «(required)» безусловен";
+  return null;
 }
 
 interface Verdict {
   findings: string[];
-  /** Объявлений про поле `name`, сопоставленных с контрактом. */
   judged: number;
-  /** Объявлений, которые гейт рассудить не смог (ресурс или контракт не найден). */
   unresolved: number;
+  unmapped: number;
+  why: Map<string, number>;
+  /** Что именно рассужено — иначе «рассужено N» неотличимо от «рассужено не то». */
+  judgedLines: string[];
 }
 
 function adjudicate(forms: FormsRead): Verdict {
   const findings: string[] = [];
+  const why = new Map<string, number>();
+  const judgedLines: string[] = [];
   let judged = 0;
   let unresolved = 0;
+  let unmapped = 0;
+
+  const note = (reason: string) => why.set(reason, (why.get(reason) ?? 0) + 1);
 
   for (const claim of forms.claims) {
+    let judgedHere = false;
+    let reason: string | null = null;
+
     for (const specId of claim.specIds) {
-      const fieldLabel = nameLabelOf(specId);
-      if (fieldLabel === null || !labelNamesField(claim.label, fieldLabel)) continue;
       const apiPath = REGISTRY[specId]?.apiPath;
-      const requires = apiPath ? contractRequires(apiPath, "name") : null;
-      if (requires === null) {
-        unresolved++;
-        continue;
-      }
-      judged++;
-      if (requires === false) {
-        findings.push(
-          `${claim.rel}:${claim.line} — подпись «${fieldLabel}» объявлена обязательной, но контракт ` +
-            `владельца (${apiPath}) поле «name» обязательным не делает. Значок утверждает обязанность, ` +
-            `которой нет: арендатор перестаёт различать по нему, что заполнить обязан`,
-        );
+      for (const field of fieldsOf(specId)) {
+        if (!labelNamesField(claim.label, field.label)) continue;
+        const bad = unjudgeable(field);
+        if (bad !== null) {
+          reason ??= bad;
+          continue;
+        }
+        const requires = apiPath ? contractRequires(apiPath, field.name) : null;
+        if (requires === null) {
+          reason ??= "путь записи ресурса в контракте не найден";
+          continue;
+        }
+        judgedHere = true;
+        judgedLines.push(`${claim.rel}:${claim.line} ${specId}.${field.name} — контракт требует: ${requires}`);
+        if (requires === false) {
+          findings.push(
+            `${claim.rel}:${claim.line} — подпись «${field.label}» объявлена обязательной, но контракт ` +
+              `владельца (${apiPath}) поле «${field.name}» обязательным не делает`,
+          );
+        }
       }
     }
+
+    if (judgedHere) judged++;
+    else if (reason !== null) {
+      unresolved++;
+      note(reason);
+    } else unmapped++;
   }
 
-  return { findings, judged, unresolved };
+  return { findings, judged, unresolved, unmapped, why, judgedLines };
 }
 
 // ── перепись дерева ──────────────────────────────────────────────────────────
@@ -382,16 +438,25 @@ describe("объём осмотренного — «ноль находок» о
     // ориентиром, который устаревает молча.
     // eslint-disable-next-line no-console
     console.log(
-      `[#608] форм прочитано ${treeForms.filesRead} · Form.Item разобрано ${treeForms.itemsParsed} · ` +
-        `объявили обязательность ${treeForms.claims.length} · из них про поле «name» рассужено ` +
-        `${treeVerdict.judged}, не рассужено ${treeVerdict.unresolved} · находок ${treeVerdict.findings.length}`,
+      `[#609] форм прочитано ${treeForms.filesRead} · Form.Item разобрано ${treeForms.itemsParsed} · ` +
+        `объявили обязательность ${treeForms.claims.length} = рассужено ${treeVerdict.judged} + ` +
+        `не рассужено ${treeVerdict.unresolved} + подпись вне реестра ${treeVerdict.unmapped} · ` +
+        `находок ${treeVerdict.findings.length}\n` +
+        [...treeVerdict.why].map(([reason, n]) => `    не рассужено, ${reason}: ${n}`).join("\n") +
+        `\n    подпись вне реестра — форма назвала ряд по-своему либо ряд вообще не поле ресурса\n` +
+        treeVerdict.judgedLines.map((line) => `    рассужено: ${line}`).join("\n"),
     );
     expect(treeVerdict.judged).toBeGreaterThan(0);
+
+    // Перепись обязана СХОДИТЬСЯ: три корзины в сумме дают все объявления.
+    // Не сойдясь, она перестаёт быть переписью и становится тремя числами,
+    // из которых каждое по отдельности ни о чём не говорит.
+    expect(treeVerdict.judged + treeVerdict.unresolved + treeVerdict.unmapped).toBe(treeForms.claims.length);
   });
 });
 
 describe("звёздочка обязательности сходится с контрактом владельца", () => {
-  it("ни одна форма не объявляет «Имя» обязательным вопреки контракту", () => {
+  it("ни одно поле не объявлено обязательным вопреки контракту владельца", () => {
     expect(treeVerdict.findings).toEqual([]);
   });
 });
@@ -452,14 +517,17 @@ describe("инъекция: гейт краснеет на дефекте и м�
     expect(verdict.judged).toBe(1);
   });
 
-  it("БЛИЗНЕЦ: звёздочка у ДРУГОГО поля — вне области гейта, и он это не скрывает", () => {
-    // Гейт судит поле `name`. Обязательность «Сети» он не рассматривает вовсе —
-    // и не объявляет её законной: она просто не попадает в счёт рассуженного.
+  it("подпись, которой реестр не знает, — ВНЕ инструмента, и это не выдаётся за законность", () => {
+    // Форма назвала ряд «Сеть», реестр называет то же поле «Облачная сеть».
+    // Сопоставить нечем — значит вердикта нет: ни находки, ни оправдания.
+    // Молчание такого рода обязано быть отличимо от разобранного молчания,
+    // поэтому оно считается в свою корзину.
     const verdict = защёлка(
       `<FormShell specId="subnets" mode="create">\n  <Form.Item label="Сеть" required>\n    <Select />\n  </Form.Item>\n</FormShell>\n`,
     );
     expect(verdict.findings).toEqual([]);
     expect(verdict.judged).toBe(0);
+    expect(verdict.unmapped).toBe(1);
   });
 
   it("разбор тега переживает `>` внутри выражения подписи", () => {
@@ -471,5 +539,87 @@ describe("инъекция: гейт краснеет на дефекте и м�
         `    <Input />\n  </Form.Item>\n</FormShell>\n`,
     );
     expect(verdict.findings).toHaveLength(1);
+  });
+
+  // ── область шире поля `name` (#609) ───────────────────────────────────────
+
+  it("контракт различает два поля ОДНОГО ресурса — иначе дискриминатор мнимый", () => {
+    // Пара внутри одного ресурса сильнее пары из двух: она исключает объяснение
+    // «молчит, потому что про этот ресурс ничего не прочитал».
+    expect(contractRequires("/vpc/v1/subnets", "network_id")).toBe(true);
+    expect(contractRequires("/vpc/v1/subnets", "ipv4_cidr_primary")).toBe(false);
+  });
+
+  it("ДЕФЕКТ #609: «Основной IPv4 CIDR» со звёздочкой — находка с координатой", () => {
+    // Ровно то, что стояло в дереве до #609. Пока область гейта была сужена до
+    // поля `name`, это объявление не рассматривалось вовсе.
+    const verdict = защёлка(
+      `<FormShell specId="subnets" mode="create">\n` +
+        `  <Form.Item label="Основной IPv4 CIDR" required>\n    <Input />\n  </Form.Item>\n</FormShell>\n`,
+    );
+    expect(verdict.findings).toHaveLength(1);
+    expect(verdict.findings[0]).toContain("synthetic.tsx:2");
+    expect(verdict.findings[0]).toContain("ipv4_cidr_primary");
+  });
+
+  it("ДЕФЕКТ #609 в ТОЙ ФОРМЕ ЗАПИСИ, в какой он и жил — подпись выражением на нескольких строках", () => {
+    // Подпись в дереве стояла многострочным JSX, и `>Основной IPv4 CIDR<`
+    // буквально в тексте не встречалось: между `>` и словами стоял перенос
+    // строки с отступом. Сравнение без приведения пробелов молчало бы на
+    // настоящем дефекте, находя лишь его выпрямленную копию, — то есть гейт был
+    // бы доказан на входе, которого дерево не производит.
+    const verdict = защёлка(
+      `<FormShell specId="subnets" mode="create">\n` +
+        `  <Form.Item\n    label={\n      <Space size={4}>\n        Основной IPv4 CIDR\n` +
+        `        <Tooltip title="Неизменяемый основной IPv4 CIDR подсети.">\n` +
+        `          <QuestionCircleOutlined />\n        </Tooltip>\n      </Space>\n    }\n    required\n  >\n` +
+        `    <Input />\n  </Form.Item>\n</FormShell>\n`,
+    );
+    expect(verdict.findings).toHaveLength(1);
+    expect(verdict.findings[0]).toContain("ipv4_cidr_primary");
+  });
+
+  it("БЛИЗНЕЦ #609: та же подпись без звёздочки — молчание", () => {
+    const verdict = защёлка(
+      `<FormShell specId="subnets" mode="create">\n` +
+        `  <Form.Item label="Основной IPv4 CIDR">\n    <Input />\n  </Form.Item>\n</FormShell>\n`,
+    );
+    expect(verdict.findings).toEqual([]);
+  });
+
+  it("БЛИЗНЕЦ #609: звёздочка у поля ТОГО ЖЕ ресурса, которого контракт требует — молчание, и оно РАЗОБРАНО", () => {
+    // Ключевой близнец: та же форма, тот же ресурс, та же запись — и молчание
+    // не оттого, что гейт не разобрал, а оттого, что `network_id` объявлен
+    // `(required) = true`. Без проверки `judged` молчание означало бы «не читал».
+    const verdict = защёлка(
+      `<FormShell specId="subnets" mode="create">\n` +
+        `  <Form.Item label="Облачная сеть" required>\n    <Select />\n  </Form.Item>\n</FormShell>\n`,
+    );
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.judged).toBe(1);
+  });
+
+  it("поле ЗА ДИСКРИМИНАТОРОМ не судится — и гейт называет это причиной, а не молчит", () => {
+    // Зона показывается только в ветви ZONAL и в ней обязательна, при том что
+    // контракт не объявляет её обязательной безусловно: инструмент не той меры.
+    // Требование снять с неё звёздочку было бы требованием солгать в другую
+    // сторону — край подсеть без зоны не примет.
+    const verdict = защёлка(
+      `<FormShell specId="subnets" mode="create">\n` +
+        `  <Form.Item label="Зона доступности" required>\n    <Select />\n  </Form.Item>\n</FormShell>\n`,
+    );
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.judged).toBe(0);
+    expect(verdict.unresolved).toBe(1);
+    expect([...verdict.why.keys()].join(" ")).toContain("дискриминатор");
+  });
+
+  it("поле ФОРМЫ не судится: у него нет соответствия в контракте", () => {
+    const verdict = защёлка(
+      `<FormShell specId="subnets" mode="create">\n` +
+        `  <Form.Item label="Размещение" required>\n    <Select />\n  </Form.Item>\n</FormShell>\n`,
+    );
+    expect(verdict.findings).toEqual([]);
+    expect(verdict.unresolved).toBe(1);
   });
 });
