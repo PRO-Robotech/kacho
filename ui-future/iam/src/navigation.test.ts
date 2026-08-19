@@ -8,6 +8,7 @@ describe("IAM navigation", () => {
     expect(section.landingPath).toBe("/iam/accounts");
     expect(section.items.map((item) => item.path)).toEqual([
       "/iam/accounts",
+      "/iam/quotas",
       "/iam/projects",
       "/iam/users",
       "/iam/service-accounts",

@@ -20,6 +20,7 @@ import { AccessGrantPage, AccessPage } from "@/pages/iam/AccessPage";
 import { GroupCreatePage } from "@/pages/iam/GroupsPage";
 import { RoleCreatePage } from "@/pages/iam/RolesPage";
 import { IamOperationsPage } from "@/pages/iam/IamOperationsPage";
+import { IdentityQuotasPage } from "@shared/pages/IdentityQuotasPage";
 import { InviteUserPage } from "@/pages/iam/InviteUserPage";
 import { contextApi, useContext as useIamContext } from "@shared/lib/context-store";
 import { REGISTRY } from "@shared/lib/resource-registry";
@@ -143,6 +144,12 @@ export const IamPage: FC<IamPageProps> = ({ context }) => {
                     path="access-bindings/:uid/:tab"
                     element={<ResourceShell spec={REGISTRY["access-bindings"]} />}
                   />
+                  {/* Пределы ЛИЧНОСТИ (#622). Стоят в разделе IAM, а не под
+                      проектом: носитель — человек, предел одинаков во всех его
+                      аккаунтах и существует, когда проектов нет ни одного, —
+                      а именно у упёршегося в потолок аккаунтов открыть может
+                      быть нечего. Обоснование места — в шапке страницы. */}
+                  <Route path="quotas" element={<IdentityQuotasPage />} />
                   <Route path="operations" element={<IamOperationsPage />} />
                   <Route path="access" element={<AccessPage />} />
                   <Route path="access/grant" element={<AccessGrantPage />} />

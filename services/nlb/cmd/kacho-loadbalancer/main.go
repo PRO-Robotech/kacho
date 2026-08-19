@@ -228,7 +228,7 @@ func runServe(configPath string) error {
 	// обязано быть отличимо от «полоса есть и молчит».
 	if peers.Limit != nil {
 		stopQuotaSync, qerr := corequota.StartLimitSyncer(
-			ctx, pool, peers.Limit, kachopg.QuotaSchema, corequota.Config{}, logger)
+			ctx, pool, peers.Limit, kachopg.QuotaSchema, nil, corequota.Config{}, logger)
 		if qerr != nil {
 			return fmt.Errorf("start quota limit syncer: %w", qerr)
 		}

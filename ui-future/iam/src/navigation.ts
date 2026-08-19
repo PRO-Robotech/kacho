@@ -48,6 +48,16 @@ export const IAM_NAVIGATION: RemoteNavSection[] = [
     landingPath: "/iam/accounts",
     items: [
       { key: "iam-accounts", icon: "layers", label: ENTITIES.accounts.plural, path: "/iam/accounts" },
+      // «Мои квоты» — пределы, носителем которых является ЛИЧНОСТЬ (#622).
+      //
+      // Стоит сразу за аккаунтами, потому что единственный сегодняшний вид —
+      // потолок НАД аккаунтами: человек тянется к кнопке «создать аккаунт»
+      // именно отсюда, и предел обязан попадаться на глаза раньше отказа.
+      //
+      // Подпись — литерал, а не `ENTITIES`: квота не ресурс консоли, своей
+      // спеки в общем реестре у неё нет, и заводить её ради одной подписи
+      // значило бы объявить сущность, которой не существует.
+      { key: "iam-quotas", icon: "scale", label: "Мои квоты", path: "/iam/quotas" },
       { key: "iam-projects", icon: "folder", label: ENTITIES.projects.plural, path: "/iam/projects" },
       { key: "iam-users", icon: "users", label: ENTITIES.users.plural, path: "/iam/users" },
       {

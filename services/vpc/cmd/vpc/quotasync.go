@@ -35,7 +35,8 @@ func startQuotaLimitSyncer(
 	pool *pgxpool.Pool,
 	src limitDeltaSource,
 	schema string,
+	rec corequota.Recorder,
 	logger *slog.Logger,
 ) (func(), error) {
-	return corequota.StartLimitSyncer(ctx, pool, src, schema, corequota.Config{}, logger)
+	return corequota.StartLimitSyncer(ctx, pool, src, schema, rec, corequota.Config{}, logger)
 }

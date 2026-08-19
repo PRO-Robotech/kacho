@@ -19,19 +19,27 @@
 // ЧТО СТРАНИЦА НЕ ДЕЛАЕТ. Величины отсюда не меняются: их меняет администратор
 // облака своим разделом. Тенантская страница этой ручки не несёт — иначе она
 // предлагала бы действие, которое у арендатора отказом и закончится.
+//
+// И ЧЕГО ЗДЕСЬ НЕТ НАМЕРЕННО (#622). Пределы, носителем которых является
+// ЛИЧНОСТЬ, — сколько аккаунтов человеку позволено завести — на этой странице не
+// показываются и строкой сюда не добавляются. Они к проекту не относятся вовсе:
+// одинаковы во всех аккаунтах человека и существуют, когда у него нет ни одного
+// проекта. Строка в этой таблице приписала бы проекту число, от него не
+// зависящее, и оказалась бы недостижима ровно для того, кто в предел упёрся, —
+// упёршемуся нечего открыть. Их витрина — `IdentityQuotasPage` (`/iam/quotas`).
 
 import { useMemo } from "react";
 import { useParams } from "react-router";
 import { useQueries } from "@tanstack/react-query";
-import { Alert, Tooltip, Typography } from "antd";
+import { Alert, Typography } from "antd";
 import { DashboardOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { PanelHeader } from "@shared/components/molecules/PanelHeader";
 import { ProjectRequiredEmpty } from "@shared/components/molecules/ProjectRequiredEmpty";
 import { useBreadcrumb } from "@shared/components/molecules/PageHeaderSlot";
-import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
-import { quotaRows, type Quota, type QuotaRow } from "@shared/lib/quota-view";
+import { QuotaTable } from "@shared/components/organisms/QuotaTable";
+import { quotaRows, type Quota } from "@shared/lib/quota-view";
 
 /**
  * Владельцы, подающие чтение квот.
@@ -109,32 +117,6 @@ export function QuotasPage() {
   const failed = results.filter((r) => r.isError);
   const answered = results.filter((r) => r.isSuccess);
 
-  const columns: Column<QuotaRow>[] = [
-    {
-      header: "Ресурс",
-      className: "font-medium",
-      cell: (r) => (
-        <Tooltip title={r.kind}>
-          <span>{r.label}</span>
-        </Tooltip>
-      ),
-    },
-    { header: "Предел", cell: (r) => <span style={{ fontVariantNumeric: "tabular-nums" }}>{r.limit}</span> },
-    {
-      header: "Занято",
-      // Значения нет — называем НОСИТЕЛЯ, а не рисуем прочерк: прочерк на месте
-      // живого факта утверждает о ресурсе неправду, а ноль читался бы как
-      // «ничего не создано», хотя счёт просто ведётся не здесь.
-      cell: (r) =>
-        r.used === null ? (
-          <Typography.Text type="secondary">{r.carrierLabel}</Typography.Text>
-        ) : (
-          <span style={{ fontVariantNumeric: "tabular-nums" }}>{r.used}</span>
-        ),
-    },
-    { header: "Кто задал предел", cell: (r) => <Typography.Text type="secondary">{r.source}</Typography.Text> },
-  ];
-
   return (
     <div
       className="kc-surface"
@@ -185,19 +167,7 @@ export function QuotasPage() {
       )}
 
       <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
-        <ResourceTable
-          rows={rows}
-          loading={loading && rows.length === 0}
-          rowKey={(r) => r.kind}
-          columns={columns}
-          // Квоты приезжают целиком одним ответом (курсора у него нет), поэтому
-          // порядок здесь честен.
-          complete
-          // Порядок задан здесь (по имени вида) и устойчив: ответ порядка не
-          // обещает, а страница поллится — показанный «как пришёл» список
-          // переставлялся бы под курсором читателя.
-          empty="Ограничения не прочитаны"
-        />
+        <QuotaTable rows={rows} loading={loading} empty="Ограничения не прочитаны" />
       </div>
     </div>
   );

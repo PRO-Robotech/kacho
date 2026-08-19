@@ -49,6 +49,7 @@ func StartLimitSyncer(
 	db Execer,
 	src Source,
 	schema string,
+	rec Recorder,
 	cfg Config,
 	logger *slog.Logger,
 ) (func(), error) {
@@ -65,6 +66,27 @@ func StartLimitSyncer(
 		logger.With(slog.String("component", "quota-limit-syncer")))
 	if err != nil {
 		return nil, fmt.Errorf("quota limit syncer: %w", err)
+	}
+
+	// Сток — ОБЯЗАТЕЛЬНЫЙ параметр, а не вариативная настройка. Причина не в
+	// стиле: пять владельцев уже подняли тянущего, и опция дала бы всем пятерым
+	// молчаливое умолчание «стока нет». Обязательный параметр ломает сборку у
+	// каждого, то есть заставляет ПРИНЯТЬ РЕШЕНИЕ, а шестому владельцу не даёт
+	// не заметить, что решение вообще есть.
+	//
+	// Нулевой сток остаётся законным — наблюдение не вправе ронять доставку
+	// величин, — но молчать о себе он не будет: слепой тянущий снаружи
+	// неотличим от живого (на неизменной конфигурации живой правит ноль строк),
+	// поэтому единственное место, где эта разница ещё видна, — журнал подъёма.
+	// Что «ни один вызов не поднимает тянущего вслепую», держит гейт дерева
+	// `TestEveryLimitSyncerCarriesItsObservabilitySink`: nil компилируется.
+	if rec == nil {
+		logger.Warn("resource-count quota: limit syncer started WITHOUT an observability sink — "+
+			"pulls, failures, applied rows and the moment of the last success are not published, "+
+			"so a dead syncer is indistinguishable from a live one on an unchanged configuration",
+			slog.String("schema", schema))
+	} else {
+		syncer.WithObserver(schema, rec)
 	}
 
 	// Догоняющий проход — ОДИН, синхронный и ПОД СВОИМ сроком. Цикл ниже ждёт

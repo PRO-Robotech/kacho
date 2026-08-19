@@ -438,7 +438,7 @@ func runServe(cfg config.Config) error {
 		// Снимок величины обязан ДОГОНЯТЬ авторитет: без тянущего строка,
 		// заведённая один раз, живёт со своей величиной вечно, и смена предела
 		// администратором не доезжает до проекта никогда.
-		stopQuotaSync, qerr := startQuotaLimitSyncer(ctx, pool, limitClient, "kacho_vpc", logger)
+		stopQuotaSync, qerr := startQuotaLimitSyncer(ctx, pool, limitClient, "kacho_vpc", nil, logger)
 		if qerr != nil {
 			return fmt.Errorf("start quota limit syncer: %w", qerr)
 		}

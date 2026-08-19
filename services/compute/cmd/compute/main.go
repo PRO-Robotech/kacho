@@ -223,7 +223,7 @@ func runServe(cfg config.Config) error {
 		// такой снимок значило бы громко назвать число, которое не догонит
 		// назначенное, — поэтому чтение и тянущий едут вместе.
 		stopQuotaSync, qerr := corequota.StartLimitSyncer(
-			ctx, pool, limitClient, repo.QuotaSchema, corequota.Config{}, logger)
+			ctx, pool, limitClient, repo.QuotaSchema, nil, corequota.Config{}, logger)
 		if qerr != nil {
 			return fmt.Errorf("start quota limit syncer: %w", qerr)
 		}

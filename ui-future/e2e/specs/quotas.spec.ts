@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { test, expect, type Page, type Locator } from "@playwright/test";
-import { registerAndSignIn } from "./fixtures";
+import { test, expect } from "@playwright/test";
+import { dataTable, registerAndSignIn } from "./fixtures";
 
 /**
  * Арендатор видит свои пределы — без обращения в поддержку.
@@ -18,21 +18,9 @@ import { registerAndSignIn } from "./fixtures";
  * Поэтому здесь утверждается пара: край отвечает успехом — и витрина показывает
  * то, что он назвал.
  *
- * ─────────────────────────────────────────────────────────────────────────────
- * ПОЧЕМУ `table` НЕ АДРЕСУЕТ СТРОКУ ОДНОЗНАЧНО
- *
- * Общая таблица консоли (`ResourceTable`) держит фиксированную шапку колонок
- * над скроллящимся телом (`ui.md`, правило 10) — библиотека реализует это ДВУМЯ
- * `<table>`: один несёт `<thead>` без строк, другой — `<tbody>` со строками.
- * Оба видимы, `page.locator("table")` резолвит два элемента, и `.first()` не
- * годится: у заголовочной таблицы строк нет, и следующее утверждение о
- * содержимом било бы мимо предмета. Таблица со строками — та, у которой ЕСТЬ
- * `tbody`; это верно и в режиме БЕЗ фиксированной шапки, где обе части живут в
- * одном `<table>` (`:has(tbody)` матчит и его).
+ * Таблицу с данными адресует общий помощник `dataTable` (см. `fixtures.ts`):
+ * шапка и тело — два разных `<table>`, и `.first()` попал бы в пустую шапку.
  */
-function таблицаДанных(page: Page): Locator {
-  return page.locator("table").filter({ has: page.locator("tbody") });
-}
 
 test("витрина квот показывает пределы проекта", async ({ page }) => {
   // verifies #364
@@ -50,7 +38,7 @@ test("витрина квот показывает пределы проекта
   // Пустой ответ означал бы, что витрине нечего показать не по своей вине.
   expect(тело.quotas?.length ?? 0, "край вернул пустой набор пределов").toBeGreaterThan(0);
 
-  await expect(таблицаДанных(page)).toBeVisible({ timeout: 20_000 });
+  await expect(dataTable(page)).toBeVisible({ timeout: 20_000 });
   // Источник значения обязателен: без него упёршийся не знает, куда идти.
   await expect(page.getByText(/умолчание|Аккаунт |Проект /).first()).toBeVisible({ timeout: 20_000 });
 });
@@ -66,7 +54,7 @@ test("витрина квот не предлагает арендатору м�
   // verifies #364
   const { projectId } = await registerAndSignIn(page);
   await page.goto(`/projects/${projectId}/quotas`, { waitUntil: "domcontentloaded" });
-  await expect(таблицаДанных(page)).toBeVisible({ timeout: 30_000 });
+  await expect(dataTable(page)).toBeVisible({ timeout: 30_000 });
 
   for (const подпись of [/Изменить предел/i, /Поднять квоту/i, /Редактировать/i]) {
     expect(await page.getByRole("button", { name: подпись }).count()).toBe(0);

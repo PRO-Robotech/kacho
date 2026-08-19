@@ -16,7 +16,15 @@
 // три части в имени означают вложенный вид по построению — это свойство
 // контракта, закреплённое ограничением его хранилища.
 
-import { countedInProject, kindLabel, quotaRows, sourceLabel, type Quota } from "./quota-view";
+import {
+  CARRIER_IDENTITY,
+  CARRIER_PROJECT,
+  countedAgainst,
+  kindLabel,
+  quotaRows,
+  sourceLabel,
+  type Quota,
+} from "./quota-view";
 
 const плоский: Quota = {
   kind: "vpc.network",
@@ -40,24 +48,88 @@ const вложенный: Quota = {
 
 describe("что считается в проекте, а что внутри носителя", () => {
   it("плоский вид с носителем-проектом считается в проекте", () => {
-    expect(countedInProject(плоский)).toBe(true);
+    expect(countedAgainst(плоский)).toBe(true);
   });
 
   it("вид, названный носителем чужого типа, — не считается", () => {
-    expect(countedInProject(вложенный)).toBe(false);
+    expect(countedAgainst(вложенный)).toBe(false);
   });
 
   it("вложенный вид не считается в проекте, даже когда носитель назван проектом", () => {
     // Ровно то состояние, в котором владелец находится сегодня: носитель
     // проставлен константой и говорит «проект» про все виды. Признак формы имени
     // не зависит от этой ошибки и не даёт показать 0 как факт.
-    expect(countedInProject({ ...вложенный, carrier_type: "project" })).toBe(false);
+    expect(countedAgainst({ ...вложенный, carrier_type: "project" })).toBe(false);
   });
 
   it("оба признака требуются вместе — контроль в обе стороны", () => {
-    expect(countedInProject({ ...плоский, carrier_type: "vpc.network" })).toBe(false);
-    expect(countedInProject({ ...плоский, kind: "vpc.subnet.networkInterface" })).toBe(false);
-    expect(countedInProject(плоский)).toBe(true);
+    expect(countedAgainst({ ...плоский, carrier_type: "vpc.network" })).toBe(false);
+    expect(countedAgainst({ ...плоский, kind: "vpc.subnet.networkInterface" })).toBe(false);
+    expect(countedAgainst(плоский)).toBe(true);
+  });
+});
+
+/**
+ * Предмет страницы решает, чьё «занято» показано (#622).
+ *
+ * Пределы, носителем которых является ЛИЧНОСТЬ (сколько аккаунтов человеку
+ * позволено завести), приезжают тем же контрактом и той же формой, что
+ * проектные. Отличает их ровно `carrier_type` — и, значит, страница, на которой
+ * число «занято» относится к читателю.
+ */
+const личный: Quota = {
+  kind: "iam.account",
+  limit: 5,
+  used: 2,
+  source_scope: "DEFAULT",
+  source_scope_id: "",
+  carrier_type: "identity",
+  carrier_id: "ory-subject-1",
+};
+
+describe("предмет страницы решает, чьё потребление показано", () => {
+  it("на своей странице личный предел показывает потребление", () => {
+    expect(countedAgainst(личный, CARRIER_IDENTITY)).toBe(true);
+    const rows = quotaRows([личный], CARRIER_IDENTITY);
+    expect(rows[0].used).toBe(2);
+    expect(rows[0].carrierLabel).toBeNull();
+  });
+
+  it("на ЧУЖОЙ странице то же число молчит и называет носителя", () => {
+    // Контроль в обратную сторону: без него «показывает потребление» означало бы
+    // «показывает всегда», и число, относящееся к человеку, читалось бы на
+    // проектной странице как свойство проекта.
+    expect(countedAgainst(личный, CARRIER_PROJECT)).toBe(false);
+    const rows = quotaRows([личный], CARRIER_PROJECT);
+    expect(rows[0].used).toBeNull();
+    expect(rows[0].carrierLabel).toMatch(/аккаунт/i);
+  });
+
+  it("проектный предел на странице личности потребления не показывает", () => {
+    // Та же несимметричность с другой стороны — иначе предмет страницы был бы
+    // объявлен, но ни на что не влиял в одном из двух направлений.
+    const rows = quotaRows([плоский], CARRIER_IDENTITY);
+    expect(rows[0].used).toBeNull();
+    expect(rows[0].carrierLabel).toMatch(/проект/i);
+  });
+
+  it("умолчание предмета — проект: прежние вызывающие не меняют поведения", () => {
+    expect(quotaRows([плоский])).toEqual(quotaRows([плоский], CARRIER_PROJECT));
+  });
+
+  it("уровень аренды назван уровнем, а не «каждым ресурсом»", () => {
+    // «Считается в каждом: identity» подставило бы уровень аренды в оборот,
+    // предназначенный для родительского РЕСУРСА, и человек прочитал бы, что у
+    // него много личностей.
+    const rows = quotaRows([личный], CARRIER_PROJECT);
+    expect(rows[0].carrierLabel).not.toMatch(/в каждом/i);
+    expect(rows[0].carrierLabel).not.toContain("identity");
+  });
+
+  it("вид «аккаунты» назван по-человечески, а не токеном контракта", () => {
+    // Токен остаётся в подсказке (он нужен, чтобы попросить поднять предел), но
+    // в столбце ресурса человек читает имя.
+    expect(kindLabel("iam.account")).toBe("Аккаунты");
   });
 });
 

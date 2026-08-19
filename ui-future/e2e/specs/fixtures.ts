@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
  * Общая фикстура проб консоли: завести арендатора и войти под ним.
@@ -222,4 +222,22 @@ export function apiCalls(page: Page): string[] {
     if (/\/v1\//.test(u)) seen.push(`${r.status()} ${u}`);
   });
   return seen;
+}
+
+/**
+ * Таблица С ДАННЫМИ на странице — та, у которой есть `tbody`.
+ *
+ * Общая таблица консоли (`ResourceTable`) держит фиксированную шапку колонок над
+ * скроллящимся телом (`ui.md`, правило 10) — библиотека реализует это ДВУМЯ
+ * `<table>`: один несёт `<thead>` без строк, другой — `<tbody>` со строками. Оба
+ * видимы, `page.locator("table")` резолвит два элемента, и `.first()` не годится:
+ * у заголовочной таблицы строк нет, и следующее утверждение о содержимом било бы
+ * мимо предмета. `:has(tbody)` верен и в режиме БЕЗ фиксированной шапки, где обе
+ * части живут в одном `<table>`.
+ *
+ * Живёт здесь, а не в спеке: витрин, показывающих эту таблицу, больше одной, и
+ * вторая копия объяснения разошлась бы с первой молча.
+ */
+export function dataTable(page: Page): Locator {
+  return page.locator("table").filter({ has: page.locator("tbody") });
 }
