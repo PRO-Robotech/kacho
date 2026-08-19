@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // TestAuthzStoreCallsClassifyTheirOutcome — каждое обращение к общему транспорту
@@ -20,32 +22,25 @@ func TestAuthzStoreCallsClassifyTheirOutcome(t *testing.T) {
 	root := repoRoot(t)
 	sources := map[string]string{}
 
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	// Состав дерева спрашивается У ИНДЕКСА, а не у диска: обход диска не знает
+	// правил игнорирования и потому судит чужой рабочий каталог — произведённые
+	// файлы, чужие копии, остатки прогонов. Требование держит гейт
+	// `TestTreeWalkersAskTheIndex`; его перечень долга закрыт для пополнения,
+	// поэтому новый обход переводится сразу, а не вписывается исключением.
+	out, err := gitenv.Command(root, "ls-files", "-z", "--", "*.go").Output()
+	if err != nil {
+		t.Fatalf("git ls-files: %v — состав дерева не установлен, и «ноль находок» "+
+			"здесь означало бы «ноль прочитанного»", err)
+	}
+	for _, rel := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
+		if rel == "" || skipPath(rel) {
+			continue
 		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return relErr
-		}
-		if info.IsDir() {
-			if skipPath(rel) || info.Name() == ".git" || info.Name() == "node_modules" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		b, readErr := os.ReadFile(path) // #nosec G304 -- обход собственного дерева
+		b, readErr := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса своего дерева
 		if readErr != nil {
-			return readErr
+			t.Fatalf("чтение %s: %v", rel, readErr)
 		}
 		sources[rel] = string(b)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход дерева: %v", err)
 	}
 
 	findings, census, err := FindUnclassifiedAuthzStoreCalls(sources)
