@@ -58,7 +58,10 @@ func newScopeCarrierFixture(t *testing.T, ctx context.Context) *scopeCarrierFixt
 	t.Helper()
 	pool, err := pgxpool.New(ctx, appendSearchPathOptions(pgtest.NewDB(t)))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	// Закрытие пула С ПРЕДЕЛОМ: голое pool.Close ждёт занятые соединения без
+	// срока, и проба, уронившая транзакцию, вешает прогон вместо того чтобы
+	// покраснеть.
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	// Обвязка сеется ОДНОЙ транзакцией: связь аккаунта с владельцем и
 	// пользователя с аккаунтом взаимна, и её внешние ключи ОТЛОЖЕНЫ — то есть
