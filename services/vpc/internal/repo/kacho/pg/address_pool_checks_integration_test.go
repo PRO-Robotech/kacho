@@ -51,7 +51,7 @@ func TestAddressPoolChecks_vpc8G_C1_ConstraintsPresent(t *testing.T) {
 	}
 	require.NoError(t, rows.Err())
 	for _, want := range []string{
-		"address_pools_name_chk",
+		"address_pools_name_check",
 		"address_pools_description_len_chk",
 		"address_pools_kind_chk",
 		"address_pools_selector_priority_chk",
@@ -83,7 +83,14 @@ func mustPgError(t *testing.T, err error) *pgconn.PgError {
 	return pgErr
 }
 
-// vpc8G-C2 — прямой INSERT с невалидным name → 23514; repo-маппинг → ErrInvalidArg без leak.
+// vpc8G-C2 — прямой INSERT с невалидным name → 23514; repo-маппинг → ErrInternal без leak.
+//
+// Полоса сменилась с ErrInvalidArg на ErrInternal осознанно (задача #718), и
+// именно ЭТА проба и показывает, почему: она бьёт writer'ом МИМО use-case, то
+// есть воспроизводит ровно тот случай, ради которого ограничение таблицы и
+// стоит, — «сервис пропустил негодное имя». Обвинять в этом вызывающего
+// (`INVALID_ARGUMENT`) значит утверждать неправду: настоящий вызывающий этого
+// пути не проходит, его имя судит `domain.RcNameVPC` до вставки.
 func TestAddressPoolChecks_vpc8G_C2_BadName(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -93,14 +100,14 @@ func TestAddressPoolChecks_vpc8G_C2_BadName(t *testing.T) {
 	require.NoError(t, err)
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	// (а) прямой SQL → 23514 на address_pools_name_chk.
+	// (а) прямой SQL → 23514 на address_pools_name_check.
 	_, err = pool.Exec(ctx, `
 		INSERT INTO address_pools (id, name, kind) VALUES ($1, '1bad!', 1)`, ids.NewID("apl"))
 	pgErr := mustPgError(t, err)
 	assert.Equal(t, "23514", pgErr.Code)
-	assert.Contains(t, pgErr.ConstraintName, "name_chk")
+	assert.Contains(t, pgErr.ConstraintName, "name_check")
 
-	// (б) repo writer Insert (минуя use-case Validate) → ErrInvalidArg, без leak'а SQL.
+	// (б) repo writer Insert (минуя use-case Validate) → ErrInternal, без leak'а SQL.
 	r := kachopg.New(pool, nil)
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
@@ -110,8 +117,20 @@ func TestAddressPoolChecks_vpc8G_C2_BadName(t *testing.T) {
 		V4CIDRBlocks: []string{"203.0.113.0/24"},
 	})
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, repo.ErrInvalidArg), "23514 → repo.ErrInvalidArg, got %v", err)
-	assertNoSQLLeak(t, err)
+	assert.True(t, errors.Is(err, repo.ErrInternal), "23514 на форме имени → repo.ErrInternal, got %v", err)
+	assert.False(t, errors.Is(err, repo.ErrInvalidArg), "дефект сервиса не обвиняет вызывающего: %v", err)
+
+	// `assertNoSQLLeak` здесь НЕ зовётся, и это решение, а не пропуск.
+	//
+	// Полоса внутреннего дефекта НАМЕРЕННО сохраняет исходную ошибку в цепочке —
+	// она и есть единственное, что связывает инцидент с SQLSTATE и именем
+	// ограничения в журнале оператора. Наружу её сворачивает отображение в
+	// статус (`serviceerr.MapRepoErr` → фиксированный «internal database
+	// error»), и чистота ПРОВОДА утверждается там, где она и решается:
+	// `apps/kacho/shared/serviceerr/checkviolation_test.go`. Проба, запретившая
+	// бы сохранение здесь, потребовала бы выбросить причину.
+	assert.Contains(t, err.Error(), "23514",
+		"причина обязана дожить до журнала оператора — иначе инцидент нечем привязать к базе")
 }
 
 // vpc8G-C3 — description > 256 → 23514.

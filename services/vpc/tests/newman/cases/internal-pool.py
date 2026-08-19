@@ -219,7 +219,7 @@ CASES.append(Case(
     # каком из двух ответов, — а ветка `else` подставляла заведомо несуществующий
     # идентификатор, чтобы последующая уборка «тоже прошла». Кейс шёл дальше по
     # несозданному ресурсу и зеленел на промахе.
-    title="Create без name → 200 (имя не обязательно; пустое имя разрешено контрактом)",
+    title="Create без name → 200, имя проставляется от id (пустого имени не существует)",
     classes=["VAL", "CONF"], priority="P2",
     steps=[
         Step(name="cr-no-name", method="POST", path=POOLS, internal=True,
@@ -229,7 +229,12 @@ CASES.append(Case(
                  *assert_status(200),
                  "pm.test('pool id returned', () => pm.expect(pm.response.json().id, JSON.stringify(pm.response.json())).to.be.a('string').and.not.empty);",
                  *save_from_response("j.id", "_noNamePoolId"),
-                 "pm.test('name comes back empty', () => pm.expect(pm.response.json().name || '').to.eql(''));",
+                 # Здесь утверждалось «имя вернулось пустым». Пустого имени больше нет
+                 # (#715): не приславшему имя оно проставляется от id (NameOrDefault),
+                 # и это ровно то, что кейс обязан закреплять — иначе умолчание могло
+                 # бы молча смениться на любое другое и никто бы не заметил.
+                 "pm.test('name defaults to the id', () => { const j = pm.response.json();",
+                 "  pm.expect(j.name, pm.response.text()).to.eql(j.id); });",
              ]),
         Step(name="cleanup", method="DELETE", path=POOLS + "/{{_noNamePoolId}}", internal=True,
              test_script=[*assert_status(200)]),
@@ -905,11 +910,11 @@ CASES.append(Case(
              ]),
         # Cleanup (releases free up the pool).
         Step(name="del-1", method="DELETE", path="/vpc/v1/addresses/{{addrIdE1}}",
-             test_script=["pm.test('del 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("адрес", "адрес занят интерфейсом либо защищён от удаления"),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="del-2", method="DELETE", path="/vpc/v1/addresses/{{addrIdE2}}",
-             test_script=["pm.test('del 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("адрес", "адрес занят интерфейсом либо защищён от удаления"),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="unbind", method="DELETE", path="/vpc/v1/networks/{{exhNetId}}/addressPoolBinding", internal=True,
@@ -917,7 +922,7 @@ CASES.append(Case(
         Step(name="del-pool", method="DELETE", path=POOLS + "/{{exhPoolId}}", internal=True,
              test_script=["pm.test('del pool', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"]),
         Step(name="del-net", method="DELETE", path="/vpc/v1/networks/{{exhNetId}}",
-             test_script=["pm.test('del net 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("сеть", "в сети остались подсети, таблицы маршрутизации или группы"),
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
     ],

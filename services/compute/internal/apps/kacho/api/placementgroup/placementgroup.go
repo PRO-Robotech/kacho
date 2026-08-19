@@ -147,7 +147,7 @@ func (s *Service) Create(ctx context.Context, req CreateReq) (*operations.Operat
 	if req.ProjectID == "" {
 		return nil, serviceerr.InvalidArg("project_id", "projectId is required")
 	}
-	if err := corevalidate.NameCompute("name", req.Name); err != nil {
+	if err := corevalidate.NameOnCreate("name", req.Name); err != nil {
 		return nil, err
 	}
 	if err := corevalidate.Description("description", req.Description); err != nil {
@@ -206,10 +206,12 @@ func (s *Service) Create(ctx context.Context, req CreateReq) (*operations.Operat
 		}
 	}
 
+	groupID := ids.NewHyphenID(groupPrefix)
 	g := &domain.PlacementGroup{
-		ID:            ids.NewHyphenID(groupPrefix),
-		ProjectID:     req.ProjectID,
-		Name:          req.Name,
+		ID:        groupID,
+		ProjectID: req.ProjectID,
+		// Пустое имя не доживает до записи: ресурса без имени не бывает.
+		Name:          corevalidate.NameOrDefault(req.Name, groupID),
 		Description:   req.Description,
 		Labels:        req.Labels,
 		Strategy:      req.Strategy,
@@ -269,8 +271,15 @@ func (s *Service) Update(ctx context.Context, req UpdateReq) (*operations.Operat
 	for _, f := range applied {
 		switch f {
 		case "name":
-			if err := corevalidate.NameCompute("name", req.Name); err != nil {
-				return nil, err
+			// Решение об имени принимает ЕДИНСТВЕННАЯ функция дерева: пять исходов
+			// маски и значения. Пустое имя при ПУСТОЙ маске означает «не прислали»,
+			// при названной маске — «сними имя», а снять его нельзя.
+			applyName, nerr := corevalidate.NameOnUpdate("name", req.UpdateMask, req.Name)
+			if nerr != nil {
+				return nil, nerr
+			}
+			if !applyName {
+				continue
 			}
 			name := req.Name
 			upd.Name = &name

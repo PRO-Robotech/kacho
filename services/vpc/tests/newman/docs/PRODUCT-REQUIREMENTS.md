@@ -144,29 +144,76 @@ RouteTable `static_routes[]`: непустой `destination_prefix` (валид�
 
 ## C. Имена ресурсов (контракт Kachō name policy)
 
-### REQ-NAME-01 — NameVPC permissive для Network/Subnet/Address/RouteTable/SecurityGroup [P1]
-`name` этих ресурсов — **необязателен** и валидируется permissive-regex `^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$`
-(пустое / UPPERCASE / underscore — разрешены). НЕ возвращать `"name is required"`.
-- Validated-by: `*-CR-BVA-NAME-EMPTY`, `*-CR-VAL-NAME-UPPERCASE`, `*-CR-BVA-NAME-MAX-63`
-- Проверка: `RcNameVPC.Validate` в `internal/domain/types.go` (регекс имени) + поле `Name` этого типа у Network / Subnet / Address / RouteTable / SecurityGroup в `internal/domain/`.
+### REQ-NAME-01 — ОДНА форма имени на все ресурсы сервиса [P1]
+`name` любого ресурса подчиняется единственной форме дерева — DNS label по RFC 1123,
+`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$` (строчные буквы, цифры, дефис; первый и последний
+символ — буква или цифра; 1..63). Отдельных «permissive»/«strict» полос больше нет:
+заглавные и подчёркивание отвергаются ВЕЗДЕ, цифра первым символом принимается ВЕЗДЕ.
+- Validated-by: `*-CR-VAL-NAME-UPPERCASE`, `*-CR-BVA-NAME-MAX-63`, `*-CR-BVA-NAME-OVER-64`
+- Проверка: `corevalidate.NameForm` — единственное объявление формы в дереве
+  (`pkg/validate/validate.go`); единственность держит гейт
+  `internal/repohygiene` `TestResourceNameFormIsDeclaredOnce`.
 
-### REQ-NAME-02 — Gateway: strict NameGateway [P1]
-`Gateway.name` — strict: `^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$` (lowercase, без uppercase/underscore).
-- Validated-by: `GW-CR-VAL-NAME-*` (см. паттерны `*-CR-VAL-NAME-DIGIT-START`/`-HYPHEN-START`/`-SPECIAL-CHARS`/`-UPPERCASE` на app `gat`)
-- Проверка: `corevalidate.NameGateway` в `internal/apps/kacho/api/gateway/`.
+> [!note] Здесь стояли ДВЕ формы — permissive для пяти ресурсов и strict для Gateway
+> Прежние REQ-NAME-01/02 описывали `NameVPC` (пустое / UPPERCASE / underscore разрешены)
+> и `NameGateway` (strict) как два действующих контракта. Обеих функций в дереве нет:
+> четыре валидатора имени сведены к одному решением владельца #715. Заодно снято
+> утверждение «`name` необязателен»: пустая строка остаётся законным ВХОДОМ создания, но
+> ресурсом с пустым именем не становится — см. REQ-NAME-04.
 
-### REQ-NAME-03 — name boundary & format [P1]
-`name` len > 63 → `InvalidArgument`. Начинается с цифры/дефиса, содержит спец-символы → `400`
-(для strict-ресурсов; для permissive — UPPERCASE/underscore допустимы, остальное по regex).
-- Validated-by: `*-CR-BVA-NAME-OVER-64`, `*-CR-VAL-NAME-DIGIT-START`, `*-CR-VAL-NAME-HYPHEN-START`, `*-CR-VAL-NAME-SPECIAL-CHARS`
-- Проверка: regex'ы в `pkg/validate/validate.go`.
+### REQ-NAME-02 — пустого имени не существует [P1]
+Пустая строка на **создании** законна и означает «назови сам»: сервер подставляет имя,
+производное от `id`, и возвращает его в ответе. Ресурса с пустым `name` не бывает.
+Правка на пустое имя (маска НАЗЫВАЕТ поле `name`, значение пустое) → `INVALID_ARGUMENT`
+с именем поля: снять имя нельзя, его не бывает.
+- Validated-by: `*-CR-BVA-NAME-EMPTY` (создание без имени → ресурс с НЕПУСТЫМ именем),
+  `*-UPD-NEG-NAME-EMPTY`
+- Проверка: `corevalidate.NameOnCreate` (форма входа) + `corevalidate.NameOrDefault`
+  (что записывается) — производство умолчания объявлено в дереве один раз, держит гейт
+  `TestDefaultNameDerivationIsDeclaredOnce`.
 
-### REQ-NAME-04 — UNIQUE (project_id, name) — все 7 ресурсов [P1]
-В пределах project не может быть двух ресурсов одного типа с одинаковым непустым `name` →
-async `ALREADY_EXISTS`. Пустое `name` от уникальности освобождено (partial UNIQUE `WHERE name <> ''`,
-кроме Network — там non-partial).
+### REQ-NAME-03 — границы формы [P1]
+`name` длиной > 63 → `InvalidArgument`. Заглавные, подчёркивание, точка, слэш, пробел,
+краевой дефис → `400`. **Цифра первым символом — ПРИНИМАЕТСЯ** (RFC 1123); прежние
+валидаторы её отвергали, и кейс, утверждающий отказ на `1bad`, теперь неверен.
+- Validated-by: `*-CR-BVA-NAME-OVER-64`, `*-CR-VAL-NAME-HYPHEN-START`,
+  `*-CR-VAL-NAME-SPECIAL-CHARS`, `*-CR-VAL-NAME-UPPERCASE`
+- Проверка: `pkg/validate/validate.go` (`Name`), плюс DB-CHECK `<таблица>_name_check`,
+  приведённый к той же форме миграцией `715001` — до неё база отвергала цифру первой,
+  которую сервис уже принимал.
+
+### REQ-NAME-04 — UNIQUE (project_id, name), индекс ПОЛНЫЙ [P1]
+В пределах project не может быть двух ресурсов одного типа с одинаковым `name` →
+async `ALREADY_EXISTS`. Освобождать пустое имя от уникальности больше не от чего:
+пустого имени не бывает, поэтому частичный предикат `WHERE name <> ''` снят миграцией
+`715001` у всех ресурсов сервиса.
 - Validated-by: `*-CR-NEG-DUP-NAME`, `*-CR-NEG-DUP-NAME-CHECK`
-- Проверка: `internal/migrations/0001_initial.sql` (`networks_project_id_name_key` и одноимённые индексы прочих ресурсов — вся name-уникальность живёт в начальной миграции); `serviceerr.MapRepoErr` (`23505` → `ErrAlreadyExists`).
+- Проверка: `serviceerr.MapRepoErr` (`23505` → `ErrAlreadyExists`) плюс сами индексы. Число
+  ресурсов в заголовке НЕ стоит намеренно: оно росло молча (запись «все 7» пережила восьмой
+  индекс, заведённый миграцией `0035_cidr_groups.sql`). Считать предикатом ниже. Простой
+  `grep` для этого НЕ годится: он считает и комментарии, и определения из `-- +goose Down`,
+  поэтому читать надо ПОСЛЕДНЕЕ определение каждого индекса, а не первое вхождение строки.
+
+  ```sh
+  python3 - <<'EOF'
+  import glob,re,os
+  eff={}
+  for f in sorted(glob.glob("services/vpc/internal/migrations/*.sql")):
+      up=open(f,encoding="utf-8").read().split("-- +goose Down")[0]
+      src=re.sub(r"--[^\n]*","",up)
+      for m in re.finditer(r"CREATE UNIQUE INDEX(?:\s+IF NOT EXISTS)?\s+(\w+)\s+ON\s+[\w.]*?(\w+)\s*\(project_id,\s*name\)([^;]*);",src,re.S):
+          eff[m.group(1)]=(m.group(2),"частичный" if "WHERE" in m.group(3).upper() else "ПОЛНЫЙ")
+  for n,(t,form) in sorted(eff.items(),key=lambda kv:kv[1][0]): print(f"{t:22}{form}")
+  print("индексов:",len(eff),"полных:",sum(1 for v in eff.values() if v[1]=="ПОЛНЫЙ"))
+  EOF
+  ```
+
+  Предикат читает только выписанные `CREATE UNIQUE INDEX`; семь индексов приводит к полной
+  форме миграция `715001` циклом (`EXECUTE format(...)`), поэтому её результат этим
+  предикатом НЕ виден — свойство «частичных не осталось» проверяется на поднятой базе:
+  `SELECT count(*) FROM pg_indexes WHERE schemaname='kacho_vpc' AND indexdef LIKE '%, name)%'
+  AND indexdef LIKE '%WHERE%'` → **0**. Это ограничение предиката названо здесь намеренно:
+  иначе его «полных 0» читалось бы как действующее свойство дерева.
 
 ---
 
@@ -683,9 +730,19 @@ RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ 
 
 ## K. Security probes (resilience)
 
-### REQ-SEC-01 — injection-payloads в полях не вызывают 5xx [P0]
+### REQ-SEC-01 — injection-payloads в полях не вызывают 5xx, и исход КАЖДОЙ полосы назван [P0]
 `name`/`description`/`labels`/`filter` с SQLi / XSS / cmd-injection / path-traversal / null-byte / union / long-payload →
-обработано (`InvalidArgument`/`200`), **никогда** `500`/`Internal` с утечкой стектрейса/SQLSTATE.
+**никогда** `500`/`Internal` с утечкой стектрейса/SQLSTATE. Исход при этом не «какой-нибудь 2xx/4xx», а определён полосой:
+
+- **`name`** — все семь нагрузок лежат вне класса символов единственной формы имени
+  (`corevalidate.NameForm`; она одна на все ресурсы дерева, отдельного разрешительного
+  контракта больше нет — #715), поэтому отказ синхронный и один:
+  `400` + `INVALID_ARGUMENT` (code `3`) + `BadRequest.fieldViolations[].field == "name"`.
+  `200` недостижим ни для одной нагрузки; `413` край не производит ни для одного кода
+  (`api-conventions.md` §«gRPC-код → HTTP-статус»);
+- **`filter`** — разбор идёт по whitelist полей, значение берётся в двойных кавычках и уезжает
+  ПАРАМЕТРОМ запроса (`pkg/filter`.`ToSQL` → `$N`), поэтому синтаксически годное выражение
+  принимается и отдаёт пустую страницу: `200`. Отказ (`400`) даёт только негодный СИНТАКСИС.
 - Validated-by: `*-CR-SEC-SQLI`/`-XSS`/`-CMD`/`-PATH`/`-NULLBYTE`/`-UNION`/`-LONGPAYLOAD`, `*-LST-SEC-FILTER-SQLI`
 - Проверка: параметризованные запросы (pgx) во всех `internal/repo/kacho/pg/*.go`; `serviceerr.MapRepoErr` — generic `"internal database error"`, без сырого pgx-текста; то же для Internal handlers (`internalMapErr`).
 

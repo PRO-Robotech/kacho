@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
@@ -186,7 +187,7 @@ func mapVolumeErr(err error, c volErrCtx) error {
 			}
 			return fmt.Errorf("%w: volume violates a reference constraint", storageerr.ErrFailedPrecondition)
 		case "23514": // check_violation (size_bytes>0 / block_size>0 / name / labels)
-			return fmt.Errorf("%w: Illegal argument", storageerr.ErrInvalidArg)
+			return checkViolation(pgErr, "volume", c.volumeID)
 		case "23P01": // exclusion_violation (EXCLUDE … WHERE is_boot)
 			if pgErr.ConstraintName == cnAttachOneBoot {
 				return fmt.Errorf("%w: Instance %s already has a boot volume", storageerr.ErrFailedPrecondition, c.instanceID)
@@ -249,7 +250,7 @@ func mapSnapshotErr(err error, c snapErrCtx) error {
 		case "23503": // foreign_key_violation — source_volume_id → volumes
 			return fmt.Errorf("%w: Volume %s not found", storageerr.ErrFailedPrecondition, c.sourceVolumeID)
 		case "23514": // check_violation (name / description / size / labels)
-			return fmt.Errorf("%w: Illegal argument", storageerr.ErrInvalidArg)
+			return checkViolation(pgErr, "snapshot", c.snapshotID)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
 			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "snapshot_id", c.snapshotID)
@@ -318,7 +319,7 @@ func mapImageErr(err error, c imgErrCtx) error {
 			}
 			return fmt.Errorf("%w: image violates a reference constraint", storageerr.ErrFailedPrecondition)
 		case "23514": // check_violation (source at-most-one mutual-exclusion / name / description / format / size / labels)
-			return fmt.Errorf("%w: Illegal argument", storageerr.ErrInvalidArg)
+			return checkViolation(pgErr, "image", c.imageID)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
 			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "image_id", c.imageID)
@@ -360,7 +361,7 @@ func mapDiskTypeErr(err error, c dtErrCtx) error {
 			}
 			return fmt.Errorf("%w: disk type violates a reference constraint", storageerr.ErrFailedPrecondition)
 		case "23514": // check_violation (description length / zone_ids array)
-			return fmt.Errorf("%w: Illegal argument", storageerr.ErrInvalidArg)
+			return checkViolation(pgErr, "disk type", c.diskTypeID)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
 			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "disk_type_id", c.diskTypeID)
@@ -368,4 +369,32 @@ func mapDiskTypeErr(err error, c dtErrCtx) error {
 	}
 	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "disk_type_id", c.diskTypeID)
 	return storageerr.ErrInternal
+}
+
+// checkViolation разбирает 23514 на две полосы по вопросу «чьё это значение»
+// (задача #718; тот же разбор, что в vpc и nlb — класс, а не экземпляр).
+//
+// Форму имени storage проверяет сам — `validate.Name` / `validate.NameOrDefault`
+// на всех трёх ресурсах (том, снимок, образ), на обоих путях записи. Значит
+// ограничение таблицы, поставленное миграцией 715001, есть защита последнего
+// рубежа, и его срабатывание означает, что негодное значение прошло МИМО
+// проверки: дефект сервиса, а не ввода. `INVALID_ARGUMENT` здесь обвинял бы
+// вызывающего в нашей ошибке и не давал бы ему ничего, что можно исправить.
+//
+// Прочие ограничения остаются отказом по вводу с прежним контрактным тоном
+// («Illegal argument»). Имя ограничения наружу не идёт ни в одной из полос — оно
+// идёт в журнал: ERROR для нашего дефекта, WARN для ввода. Ограничение, которое
+// ловит ввод регулярно, — кандидат в синхронную проверку, и его частота обязана
+// быть счётной.
+func checkViolation(pgErr *pgconn.PgError, kind, id string) error {
+	if nameform.IsConstraint(pgErr.TableName, pgErr.ConstraintName) {
+		slog.Error("name form backstop fired: service admitted a name it validates itself",
+			"sqlstate", pgErr.Code, "table", pgErr.TableName,
+			"constraint", pgErr.ConstraintName, "kind", kind, "id", id)
+		return storageerr.ErrInternal
+	}
+	slog.Warn("check constraint rejected caller input",
+		"sqlstate", pgErr.Code, "table", pgErr.TableName,
+		"constraint", pgErr.ConstraintName, "kind", kind, "id", id)
+	return fmt.Errorf("%w: Illegal argument", storageerr.ErrInvalidArg)
 }

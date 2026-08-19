@@ -167,7 +167,64 @@ type Profile struct {
 
 	// Banned are the call names that ask the authorization store to enumerate
 	// everything a subject may see.
+	//
+	// This is a hand-written FLOOR, kept for forms whose declaration is not in the
+	// service's own tree (`ListAllowedIDs` is another service's vocabulary and has no
+	// declaration in iam at all). It is not the whole ban: a list of names grows one
+	// incident at a time, and the incident that grows it is the one that already
+	// happened. EnumerationSources is where the ban comes FROM.
 	Banned []string
+
+	// EnumerationSources name the DECLARED TYPES through which this service asks the
+	// authorization question. The gate reads their method sets and DERIVES which
+	// methods enumerate; those names are banned inside every narrowing listing
+	// exactly as Banned's are.
+	//
+	// # Why derived rather than listed
+	//
+	// `security.md` refuses "enumerate the universe → filter" by its SUBSTANCE, not
+	// by the name of the call that does it: the enumeration has a ceiling and no
+	// continuation, so rows past the ceiling become invisible to their own owner at
+	// live rights. Two names were banned here — the store's `ListObjects` and another
+	// service's `ListAllowedIDs` — and a THIRD form existed the whole time, in iam's
+	// own database: a paged verdict resolution over the service's own tables. The
+	// gate did not see it, because a name it was never told about is a name it cannot
+	// refuse. A fourth would have passed the same way (#651).
+	//
+	// # The property
+	//
+	// A verdict is asked ABOUT identifiers the caller already holds: it answers
+	// `bool`, `[]bool`, `map[string]bool`. An enumeration PRODUCES the identifiers:
+	// its first non-error result is a set of them, `[]string`. That difference is the
+	// whole of the security rule — "page → check the page" versus "which objects →
+	// intersect" — and it is a fact about the DECLARATION, so the gate reads it
+	// instead of being told.
+	//
+	// Adding a method to a named source therefore extends the ban by itself. That is
+	// the point: the next form does not wait for an incident to be noticed.
+	EnumerationSources []EnumerationSource
+
+	// EnumerationInapplicable states why the enumerate-then-narrow ban has nothing
+	// to apply to in this service — for the one case where that is PROVABLE rather
+	// than asserted: no listing this profile declares narrows at all.
+	//
+	// The ban is about how a page is narrowed. A service whose every listing is
+	// answered without narrowing (a global catalog, a store query whose enumeration
+	// IS the response, a surface that never serves) has no page that could be taken
+	// from an enumeration, and naming an enumeration source there would be a
+	// declaration with nothing behind it — the copied-from-a-neighbour answer this
+	// gate exists to refuse.
+	//
+	// The gate PROVES the premise: if any listing it judges carries a narrowing
+	// shape, this entry is a FINDING. So the exemption expires with its subject —
+	// the first listing that narrows takes it away — and it cannot be used to
+	// silence a service that does narrow.
+	//
+	// What it does NOT claim, said so nobody reads more into it: not that the
+	// service has no authorization surface at all, only that no page here is
+	// narrowed. Declare it together with EnumerationSources and that is a finding
+	// too: two declarations of one thing, of which one is wrong.
+	EnumerationInapplicable string
 
 	// SubjectScopers are the call names that narrow a page by the AUTHENTICATED
 	// caller taken from the context — not by an id the request supplied. The
@@ -195,6 +252,76 @@ type Profile struct {
 	// satisfies the relation, and that is a fact about the model, not a guess.
 	FGAModel string
 }
+
+// EnumerationSource is one declared type whose method set the gate reads to derive
+// the enumerating call names (see Profile.EnumerationSources).
+//
+// Both fields name something DECLARED — a directory in the tree and a type in it —
+// never a naming habit, so the derivation cannot be changed by renaming a variable
+// or a file. An entry that resolves to nothing is a FINDING: a source that stopped
+// existing takes its whole derived ban with it, silently, and the ban is the thing
+// this field exists to produce.
+type EnumerationSource struct {
+	// Dir holds the declaration, relative to Options.Root — or, when Shared is set,
+	// relative to the MODULE root.
+	Dir string
+	// Type is the declared interface or receiver type name.
+	Type string
+
+	// Role says what this source's method set holds TODAY, so that the premise of
+	// the derivation is checked instead of assumed. The zero value is the strict
+	// one: an author who forgets the field gets the premise that fails closed.
+	Role SourceRole
+
+	// Shared marks a declaration that is NOT service code — the shared foundation
+	// under pkg/, resolved from the module root instead of Options.Root.
+	//
+	// Every consumer service asks kacho-iam through the same narrow port, and that
+	// port fronts the RPC that enumerates. Leaving it out would mean each consumer
+	// watched only the client it declares itself, while the shortest path from
+	// "narrow this page" to "enumerate the universe" ran through a package no
+	// profile named.
+	//
+	// What a shared source must NOT be, recorded because it was considered and
+	// rejected rather than overlooked: the NARROWER itself. Its narrowing entry
+	// point takes the page's identifiers and answers with the visible subset, and
+	// its page-predicate lookup answers with the relations of a type — both
+	// []string, both correct, neither an enumeration. Naming it would derive a ban on
+	// the very call that does the narrowing, and a gate that fires on correct code is
+	// a gate somebody switches off. The shape rule reads RESULTS only, so it cannot
+	// tell those apart by itself; what keeps it honest is naming the port through
+	// which the question is ASKED, not the machinery that asks it.
+	Shared bool
+}
+
+// SourceRole is which of the two premises a declared source stands on.
+//
+// The distinction is not decoration: it decides what an EMPTY derivation means, and
+// the two kinds mean opposite things by it (see the package comment of
+// enumeration.go).
+type SourceRole int
+
+const (
+	// Enumerates — the source answers "which objects may this subject act on"
+	// TODAY. A method set that holds no such shape means the shape rule stopped
+	// matching the tree: the ban this source produces went empty in silence, which
+	// is worse than a wrong ban because nothing says it happened. That is a finding.
+	//
+	// This is the zero value deliberately. A forgotten field must land on the
+	// premise that can fail, not on the one that cannot.
+	Enumerates SourceRole = iota
+
+	// AsksVerdicts — the source answers ABOUT identifiers the caller already holds
+	// and enumerates NOTHING today. It is named so that the FIRST method added to it
+	// that answers with a set of identifiers is banned inside every narrowing
+	// listing the day it is written — the ban arriving before the first caller
+	// rather than after the incident that revealed one (#684).
+	//
+	// An empty derivation here is the declared state, not a finding; the census says
+	// so on every run, so "watched, nothing to ban" stays distinguishable from
+	// "not watched".
+	AsksVerdicts
+)
 
 // Shape is how one listing method's visibility is decided.
 //
@@ -242,11 +369,17 @@ const (
 	SubjectScoped
 
 	// StoreQuery — the response IS the authorization store's answer, not a page
-	// narrowed by it. iam's AuthorizeService.ListObjects is the only such RPC: asking
-	// the store to enumerate is what the caller came for, so the enumeration ban is
-	// inapplicable by construction rather than waived. The caller is instead gated on
-	// the subject or resource they named, so the evidence is ParentGate's: reach
-	// Listing.Gate and act on its verdict.
+	// narrowed by it. iam's AuthorizeService.ListObjects and .ListSubjects are the
+	// RPCs of this shape: asking the store to enumerate is what the caller came for,
+	// so the enumeration ban is inapplicable by construction rather than waived. The
+	// caller is instead gated on the subject or resource they named, so the evidence
+	// is ParentGate's: reach Listing.Gate and act on its verdict.
+	//
+	// "ListObjects is the only such RPC" stood here until #651. ListSubjects was
+	// declared ParentGate and nothing could tell, because the ban held two names and
+	// `ListSubjects` was not one of them — a wrong shape costs nothing while the ban
+	// it exempts you from does not apply anyway. Deriving the ban from the store's
+	// declared method set surfaced it on the first run.
 	StoreQuery
 
 	// ClusterScoped — a cluster-wide catalog or an admin-only internal surface with
@@ -357,13 +490,31 @@ type Report struct {
 	Listings []string
 	// ClusterScoped are the listing methods declared as needing no narrowing.
 	ClusterScoped []string
+	// Narrowing are the listing methods the enumerate-then-narrow ban applies to.
+	// Kept in the census because it is the premise of EnumerationInapplicable: a
+	// service claiming the ban cannot apply must be able to show the number is zero,
+	// and a reader must be able to see that it was counted rather than assumed.
+	Narrowing []string
 	// Undeclared are listing methods with no Profile entry — each is also a finding.
 	Undeclared []string
 	// Unattributed are public List declarations that resolved to no resource —
 	// each one is also a finding. Kept in the census so a passing run can state
 	// that the number is zero, rather than leaving it unsaid.
 	Unattributed []string
-	Findings     []string // one line per finding; non-empty ⇒ the gate fails
+
+	// BannedCalls is the EFFECTIVE ban applied to every narrowing listing: the
+	// profile's hand-written floor plus the names derived from its declared
+	// enumeration sources, de-duplicated and sorted.
+	BannedCalls []string
+	// DerivedEnumerations are the names that came from the sources, and
+	// EnumerationSources is one census line per source. Both are printed on every
+	// path: a run that derived nothing must not read like a run that derived and
+	// found nothing to ban, and a profile that declares no source at all must say
+	// so out loud rather than look identical to one whose derivation is working.
+	DerivedEnumerations []string
+	EnumerationSources  []string
+
+	Findings []string // one line per finding; non-empty ⇒ the gate fails
 }
 
 // Audit runs the gate against o.Root, writes its census and findings to out, and
@@ -376,6 +527,24 @@ func Audit(p Profile, o Options, out io.Writer) (Report, error) {
 		root = "."
 	}
 	anchor := filepath.Join(root, p.AnchorRoot)
+
+	// The ban is assembled BEFORE anything is judged, and its own failures are
+	// findings in their own right: a derivation that quietly produced nothing would
+	// leave every listing judged against a narrower ban than the profile declares,
+	// and the run would still say OK.
+	enum := deriveEnumerations(root, p.EnumerationSources)
+	if p.EnumerationInapplicable != "" && len(p.EnumerationSources) > 0 {
+		rep.Findings = append(rep.Findings, fmt.Sprintf(
+			"Profile declares BOTH EnumerationInapplicable and %d EnumerationSource(s) — two "+
+				"statements about one thing, of which one is wrong: either the ban has nothing to "+
+				"apply to here, or these sources derive it. Keep the one that is true",
+			len(p.EnumerationSources)))
+	}
+	rep.EnumerationSources = enum.Sources
+	rep.DerivedEnumerations = enum.Names
+	rep.Findings = append(rep.Findings, enum.Findings...)
+	banned := mergeSorted(p.Banned, enum.Names)
+	rep.BannedCalls = banned
 
 	units, err := loadUnits(p, anchor)
 	for _, u := range units {
@@ -519,8 +688,28 @@ func Audit(p Profile, o Options, out io.Writer) (Report, error) {
 			if l.Shape == ClusterScoped {
 				rep.ClusterScoped = append(rep.ClusterScoped, key)
 			}
-			rep.Findings = append(rep.Findings, checkListing(p, key, l, a, protos)...)
+			// The same predicate checkListing applies the ban under, counted here so
+			// EnumerationInapplicable is judged against what was actually seen rather
+			// than against what the profile says about itself.
+			if banApplies(l.Shape) {
+				rep.Narrowing = append(rep.Narrowing, key)
+			}
+			rep.Findings = append(rep.Findings, checkListing(p, banned, enum.Origin, key, l, a, protos)...)
 		}
+	}
+
+	sort.Strings(rep.Narrowing)
+	// The premise of EnumerationInapplicable, proved rather than taken: the ban is
+	// inapplicable only while nothing here narrows. The first listing that does takes
+	// the exemption away, so it cannot outlive its subject — and it cannot be reached
+	// for by a service that simply has not declared a source.
+	if p.EnumerationInapplicable != "" && len(rep.Narrowing) > 0 {
+		rep.Findings = append(rep.Findings, fmt.Sprintf(
+			"Profile.EnumerationInapplicable says the enumerate-then-narrow ban has nothing to "+
+				"apply to here, but %d listing method(s) narrow: %s. The premise is gone — either "+
+				"declare the authorization surfaces the ban is derived from (EnumerationSources), "+
+				"or state why these pages are not narrowed after all",
+			len(rep.Narrowing), strings.Join(rep.Narrowing, ", ")))
 	}
 
 	return finish(p, rep, out)
@@ -544,23 +733,52 @@ type anchorDecl struct {
 	unit   *unit
 }
 
+// banApplies reports whether the enumerate-then-narrow ban has anything to say
+// about a listing of this shape.
+//
+// It is one function rather than the same condition written twice because the
+// census of narrowing listings is the PREMISE of Profile.EnumerationInapplicable:
+// were the two to drift, a service could be excused by a count taken under one rule
+// while its listings were judged under another.
+func banApplies(sh Shape) bool {
+	return sh != ClusterScoped && sh != StoreQuery && sh != NeverServes
+}
+
 // checkListing judges one listing declaration against the shape it declares.
-func checkListing(p Profile, key string, l Listing, a anchorDecl, protos *protoOptions) []string {
+//
+// banned is the EFFECTIVE ban — the profile's floor plus what was derived from its
+// declared enumeration sources — and origin says which source produced a derived
+// name, so a finding can point at the declaration that made the call a ban.
+func checkListing(
+	p Profile, banned []string, origin map[string]string,
+	key string, l Listing, a anchorDecl, protos *protoOptions,
+) []string {
 	called := a.unit.reachableCalls(a.fn)
 
 	var findings []string
 
 	// The enumerate-then-narrow ban applies to every shape that narrows at all: it
 	// is about HOW a page is narrowed, not about which shape does it.
-	if l.Shape != ClusterScoped && l.Shape != StoreQuery && l.Shape != NeverServes {
-		for _, b := range p.Banned {
-			if called[b] {
-				findings = append(findings, fmt.Sprintf(
-					"%s — reaches %s: enumerating every allowed id is capped server-side with no "+
-						"continuation token, so the caller's own rows fall outside the cap and disappear; "+
-						"check the page that was read instead\n  declared: %s",
-					key, b, a.pos))
+	if banApplies(l.Shape) {
+		for _, b := range banned {
+			if !called[b] {
+				continue
 			}
+			// The ceiling is written in a different place for each form, and naming
+			// the right one matters: the store caps its own answer, iam's own tables
+			// cap theirs by page size. Both lose the same thing — the rows past the
+			// ceiling, for their own owner, at live rights.
+			where := "the authorization store caps this answer server-side with no continuation token"
+			if src, ok := origin[b]; ok {
+				where = fmt.Sprintf(
+					"derived from %s: its answer is a SET OF IDENTIFIERS, so the page is being taken "+
+						"from the enumeration rather than judged after it is read", src)
+			}
+			findings = append(findings, fmt.Sprintf(
+				"%s — reaches %s: %s, so the caller's own rows fall outside the answer and disappear "+
+					"while its rights are live; read the page from this service's own tables and put "+
+					"THAT page to the model, one batched question per page\n  declared: %s",
+				key, b, where, a.pos))
 		}
 	}
 
@@ -1426,6 +1644,36 @@ func finish(p Profile, rep Report, out io.Writer) (Report, error) {
 	if len(rep.ClusterScoped) > 0 {
 		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]: cluster-scoped by declaration %s\n",
 			p.Service, strings.Join(rep.ClusterScoped, ", "))
+	}
+	// The ban is printed on EVERY path, including the passing one. It is the part of
+	// this gate that is derived from the tree rather than written down, so "derived
+	// nothing" and "derived, and nothing matched" have to be told apart from the
+	// output alone — otherwise a source that silently stopped resolving looks exactly
+	// like a clean run.
+	_, _ = fmt.Fprintf(out,
+		"audit-list-filter[%s]: enumerate-then-narrow ban — %d call(s) [%s]; %d declared, "+
+			"%d derived from %d source(s)\n",
+		p.Service, len(rep.BannedCalls), strings.Join(rep.BannedCalls, ", "),
+		len(p.Banned), len(rep.DerivedEnumerations), len(p.EnumerationSources))
+	for _, line := range rep.EnumerationSources {
+		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]:   source %s\n", p.Service, line)
+	}
+	switch {
+	case len(p.EnumerationSources) > 0:
+		// already stated, one line per source, above
+	case p.EnumerationInapplicable != "":
+		// A declared absence is NOT the same output as an undeclared one, and the
+		// difference is the whole of #684: one says "nothing to apply, and here is
+		// the count that proves it", the other says "nobody looked".
+		_, _ = fmt.Fprintf(out,
+			"audit-list-filter[%s]:   no enumeration source, and none can apply: %d of %d "+
+				"declared listing(s) narrow — %s\n",
+			p.Service, len(rep.Narrowing), len(rep.Listings), p.EnumerationInapplicable)
+	default:
+		_, _ = fmt.Fprintf(out,
+			"audit-list-filter[%s]:   no enumeration source declared — the ban above is the "+
+				"hand-written list ONLY, and a form this service invents in its own tables would "+
+				"pass unnoticed (see Profile.EnumerationSources)\n", p.Service)
 	}
 	if len(rep.Findings) == 0 {
 		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]: OK\n", p.Service)

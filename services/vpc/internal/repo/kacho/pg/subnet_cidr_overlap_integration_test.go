@@ -228,8 +228,8 @@ func TestIntegration_SecondaryCidrOverlap_CrossNetwork_OK(t *testing.T) {
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
-	_, _ = seedNetworkSubnet(t, ctx, r, "proj-sec-12", "net-A-12", "sub-1", []string{"10.0.0.0/24"})
-	_, subB1 := seedNetworkSubnet(t, ctx, r, "proj-sec-12", "net-B-12", "sub-b1", []string{"192.168.0.0/24"})
+	_, _ = seedNetworkSubnet(t, ctx, r, "proj-sec-12", "net-a-12", "sub-1", []string{"10.0.0.0/24"})
+	_, subB1 := seedNetworkSubnet(t, ctx, r, "proj-sec-12", "net-b-12", "sub-b1", []string{"192.168.0.0/24"})
 
 	// sub-B1 (net-B) берет 10.0.0.0/24 — занят sub-1, но в ДРУГОЙ сети → OK.
 	require.NoError(t, addSecondaryCidr(t, ctx, r, subB1, []string{"10.0.0.0/24"}, nil),

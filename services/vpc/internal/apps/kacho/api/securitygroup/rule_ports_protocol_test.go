@@ -212,7 +212,7 @@ func TestCreate_UnknownProtocolRefusedBeforeOperation(t *testing.T) {
 	ops := repomock.NewOpsRepo()
 	nr := repomock.NewNetworkRepo()
 	netA := ids.NewID(ids.PrefixNetwork)
-	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-A"})
+	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-a"})
 
 	bad := ruleWithPorts(80, 80)
 	bad.ProtocolName = "klingon"

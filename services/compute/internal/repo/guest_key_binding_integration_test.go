@@ -39,7 +39,7 @@ func seedInstanceWithKeys(t *testing.T, ctx context.Context, r *repo.InstanceRep
 	t.Helper()
 	inID := ids.NewID(ids.PrefixInstance)
 	in, _, err := r.Insert(ctx, &domain.Instance{
-		ID: inID, ProjectID: projectID, CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		ID: inID, Name: inID, ProjectID: projectID, CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
 		ZoneID: "ru-central1-a", Status: domain.InstanceStatusRunning, FQDN: inID + ".auto.internal",
 		InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
@@ -66,8 +66,8 @@ func TestGuestKeyBinding_ForeignKeyNeverAttaches(t *testing.T) {
 	instRepo := repo.NewInstanceRepo(pool)
 	keyRepo := repo.NewGuestAccessKeyRepo(pool)
 
-	own := seedGuestKey(t, ctx, keyRepo, "proj-own", "свой")
-	foreign := seedGuestKey(t, ctx, keyRepo, "proj-other", "чужой")
+	own := seedGuestKey(t, ctx, keyRepo, "proj-own", "key-own")
+	foreign := seedGuestKey(t, ctx, keyRepo, "proj-other", "key-foreign")
 
 	t.Run("свой ключ привязывается и виден в ответе", func(t *testing.T) {
 		in, ierr := seedInstanceWithKeys(t, ctx, instRepo, "proj-own", []string{own})
@@ -122,8 +122,8 @@ func TestGuestKeyDelete_RefusesWithTheInstancesNamed(t *testing.T) {
 	instRepo := repo.NewInstanceRepo(pool)
 	keyRepo := repo.NewGuestAccessKeyRepo(pool)
 
-	held := seedGuestKey(t, ctx, keyRepo, "proj-del", "занятый")
-	free := seedGuestKey(t, ctx, keyRepo, "proj-del", "свободный")
+	held := seedGuestKey(t, ctx, keyRepo, "proj-del", "key-held")
+	free := seedGuestKey(t, ctx, keyRepo, "proj-del", "key-free")
 
 	in, ierr := seedInstanceWithKeys(t, ctx, instRepo, "proj-del", []string{held})
 	require.NoError(t, ierr)
@@ -146,7 +146,7 @@ func TestGuestKeyDelete_RefusesWithTheInstancesNamed(t *testing.T) {
 	})
 
 	t.Run("после снятия ключа с машины он снимается", func(t *testing.T) {
-		_, _, uerr := instRepo.Update(ctx, &domain.Instance{ID: in.ID, ProjectID: "proj-del"},
+		_, _, uerr := instRepo.Update(ctx, &domain.Instance{ID: in.ID, Name: in.ID, ProjectID: "proj-del"},
 			false, []string{"guest_access_key_ids"})
 		require.NoError(t, uerr, "пустой набор при названной маске — законное «снять все»")
 		require.NoError(t, keyRepo.Delete(ctx, held))

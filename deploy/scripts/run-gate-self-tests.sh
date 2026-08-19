@@ -61,6 +61,25 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
+# any_line_matches <многострочное значение> <ERE> — как `grep -qE`: истинно, если
+# ХОТЬ ОДНА строка значения совпадает с выражением. Построчность важна: у `grep`
+# точка не переходит через перевод строки, а у `[[ =~ ]]` на всём значении —
+# переходит. Труба убрана из-за ложного отказа на совпадении (задача #658).
+any_line_matches() {
+  local _l
+  while IFS= read -r _l; do
+    if [[ "$_l" =~ $2 ]]; then return 0; fi
+  done <<<"$1"
+  return 1
+}
+
+# line_in <многострочное значение> <строка> — есть ли СТРОКА ЦЕЛИКОМ в значении.
+# Замена `grep -qx`/`grep -qxF`: под `pipefail` труба даёт ложный отказ НА
+# СОВПАДЕНИИ, потому что писатель получает SIGPIPE (задача #658). Сравнение
+# буквальное — там, где раньше стоял `-x` без `-F`, это СТРОЖЕ, то есть ложного
+# зелёного добавить не может.
+line_in() { [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]; }
+
 DEPLOY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 cd "$REPO_ROOT" || exit 2
@@ -69,7 +88,10 @@ cd "$REPO_ROOT" || exit 2
 # находкой ниже — расхождение в любую сторону роняет проверку.
 DECLARED="
 .github/scripts/aggregate-shard-verdicts.py
+.github/scripts/assert-build-fetch-matches-imports.py
 .github/scripts/assert-console-probes-verdict.py
+.github/scripts/assert-default-branch-workflows-can-run.py
+.github/scripts/assert-required-contexts-match-jobs.py
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-pinned-tools.sh
 .github/scripts/check-volume-mounts.py
@@ -90,6 +112,7 @@ deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-refusal-lane-has-a-reader.py
 deploy/scripts/assert-report-readers-use-the-summary.py
 deploy/scripts/assert-shard-coverage.py
+deploy/scripts/assert-stand-precondition-wiring.py
 deploy/scripts/assert-step-up-bearer-matches-catalog.py
 deploy/scripts/assert-teardown-frees-parent.py
 deploy/scripts/assert-verdict-aggregators-honest.sh
@@ -291,7 +314,7 @@ services/x/tools/argparse-form.py"
   fi
   for f in deploy/scripts/prose-only.sh deploy/scripts/comment-only.sh \
            deploy/scripts/js-comment-only.js; do
-    if printf '%s\n' "$found" | grep -qx "$f"; then
+    if line_in "$found" "$f"; then
       echo "  ПРОВАЛ $f принят за самопроверку — предикат читает текст, а не разбор"; rc=1
     else
       echo "  ОК  $f не принят: слово есть, исполняемой ветки нет"
@@ -300,7 +323,7 @@ services/x/tools/argparse-form.py"
 
   # ЭТОТ ФАЙЛ обязан остаться вне состава: он содержит слово в прозе, в
   # регулярном выражении и в строке запуска — но ветки `--self-test` не несёт.
-  if discover | grep -qx "deploy/scripts/$(basename "$0")"; then
+  if line_in "$(discover)" "deploy/scripts/$(basename "$0")"; then
     echo "  ПРОВАЛ прогонщик нашёл САМ СЕБЯ — состав стал бы рекурсивным"; rc=1
   else
     echo "  ОК  прогонщик себя не находит"
@@ -356,7 +379,11 @@ if ! command -v yq >/dev/null 2>&1; then
   echo "FATAL: нужен yq (mikefarah v4) — фильтры проверок написаны под него."
   exit 2
 fi
-if ! yq --version 2>&1 | grep -qE 'mikefarah|version v?4'; then
+# Сравнение — БЕЗ трубы: `… | grep -q` под `set -o pipefail` возвращает ОТКАЗ
+# НА СОВПАДЕНИИ (grep выходит по первому попаданию, писатель получает SIGPIPE,
+# и `pipefail` поднимает ЕГО статус до статуса конвейера). Задача #658.
+YQ_VER="$(yq --version 2>&1 || true)"
+if ! any_line_matches "$YQ_VER" 'mikefarah|version v?4'; then
   echo "FATAL: в PATH не тот yq: $(command -v yq) → $(yq --version 2>&1)"
   echo "       Нужен mikefarah yq v4. python-yq (обёртка над jq) на этих фильтрах"
   echo "       молча отдаёт ПУСТО — утверждения пройдут, ничего не сверив."

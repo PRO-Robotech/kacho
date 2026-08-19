@@ -88,7 +88,11 @@ fatal() { echo "FATAL: $1"; exit 2; }
 
 command -v helm >/dev/null 2>&1 || fatal "helm не найден"
 command -v yq >/dev/null 2>&1 || fatal "нужен yq (mikefarah v4)"
-yq --version 2>&1 | grep -q mikefarah || fatal "нужен mikefarah yq v4, а не python-обёртка над jq"
+# Сравнение — БЕЗ трубы: `… | grep -q` под `set -o pipefail` возвращает ОТКАЗ
+# НА СОВПАДЕНИИ (grep выходит по первому попаданию, писатель получает SIGPIPE,
+# и `pipefail` поднимает ЕГО статус до статуса конвейера). Задача #658.
+YQ_VER="$(yq --version 2>&1 || true)"
+[[ "${YQ_VER,,}" == *mikefarah* ]] || fatal "нужен mikefarah yq v4, а не python-обёртка над jq"
 [ -d "$GW_CHART" ] || fatal "чарт шлюза не найден: $GW_CHART"
 
 # hop_host <url> — host:port из адреса ("" если адрес пуст).

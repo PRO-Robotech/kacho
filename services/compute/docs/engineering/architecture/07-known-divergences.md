@@ -32,7 +32,9 @@ Compute-ресурсы project-scoped; `metadata` омитится из `Instanc
 >
 > **§2 (валидация имени)** был снят раньше: его единственным содержанием была
 > несверенность с чужим API, то есть предмета у записи не было. Собственный контракт
-> имени задан proto-pattern'ом и `corevalidate.NameCompute`.
+> имени задан единственной формой имени ресурса — `pkg/validate.NameForm`
+> (прежде здесь назывался `corevalidate.NameCompute`; такой функции в дереве нет,
+> она снята вместе с расхождением форм).
 >
 > **§3 (тексты предусловий «ещё не закреплены»)** — **предмета нет**. Тексты
 > закреплены на трёх уровнях: в прод-коде (`instance.go`, `instance_nic.go`,
@@ -591,6 +593,12 @@ sentinel→code в отдельный слой (если когда-либо) �
   `ErrInternal` → `codes.Internal`, из-за чего user-reachable CHECK/EXCLUDE выглядел
   бы транзиентным серверным сбоем. Фиксированный текст (без leak'а pg-detail).
   Тест: `internal/repo/unique_test.go` (RED→GREEN).
+  **Уточнено позже:** 23514 разбирается на ДВЕ полосы. Форму имени compute
+  проверяет сам (`corevalidate.Name`/`NameOrDefault` на всех четырёх ресурсах,
+  несущих ограничение формы), поэтому срабатывание `<таблица>_name_check` есть
+  дефект сервиса, а не ввода: наружу фиксированный `Internal`, в журнал `ERROR` с
+  именем ограничения. Прочие CHECK по-прежнему `InvalidArgument`. Тест:
+  `internal/repo/checkviolation_test.go`.
 - **`InternalWatchService.Watch` streaming покрыт integration-тестами.**
   `internal/handler/internal_watch_stream_integration_test.go` (testcontainers):
   catchup-cursor через границу батча (250 > catchupBatchSize), `kinds`-фильтр,

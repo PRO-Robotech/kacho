@@ -17,9 +17,8 @@ import (
 // `repository.go` отдельно — parity с `address.go` / `route_table.go`.
 //
 // Gateway — project-level CRUD-ресурс без специфичных domain-операций (нет
-// AddCidrBlocks / Attach / etc.). Strict name-validation `corevalidate.NameGateway`
-// (lowercase, без uppercase/underscore) — это sync-side в handler'е, в mock'е не
-// повторяется.
+// AddCidrBlocks / Attach / etc.). Проверка имени — sync-side в use-case'е
+// (единственная форма дерева `validate.NameForm`), в mock'е не повторяется.
 
 // ---- Gateway reader ----
 

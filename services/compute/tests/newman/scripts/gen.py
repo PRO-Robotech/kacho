@@ -705,14 +705,26 @@ def list_page_block(prefix, list_path, project_param=True):
 
 
 def name_validation_block(prefix, create_path, body_extra=None, wrap=None):
-    """ECP/BVA по полю name для compute (lowercase-only regex `|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?`):
-      - empty name → 200 (proto pattern допускает пустую строку)
+    """ECP/BVA по полю name (единая форма дерева — DNS label по RFC 1123,
+    `pkg/validate.NameForm` `^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`):
+      - empty name → 200, имя подставляется идентификатором ресурса (NameOrDefault)
       - len=63 (max) → 200
       - len=64 (over) → 400
-      - UPPERCASE → 400  (compute lowercase-only — НЕ как VPC)
-      - начинается с цифры → 400
+      - UPPERCASE → 400
+      - подчёркивание → 400
       - начинается с дефиса → 400
       - спец-символы → 400
+
+    ЦИФРА ПЕРВЫМ СИМВОЛОМ БОЛЬШЕ НЕ ОТВЕРГАЕТСЯ — RFC 1123 её разрешает; кейс,
+    утверждавший обратное, переведён на подчёркивание (см. комментарий у него).
+
+    ВНИМАНИЕ: у этого блока СЕЙЧАС НЕТ НИ ОДНОГО ВЫЗЫВАЮЩЕГО в `cases/*.py`, то
+    есть ни один из перечисленных кейсов не попадает в коллекции и не исполняется
+    (предикат: `grep -rn name_validation_block services/compute/tests/newman/cases/`
+    → пусто; в `collections/` нет ни одного `*-CR-VAL-NAME-*` из этого блока).
+    Исходов два, и оба требуют решения владельца суиты: провязать блок к ресурсам
+    либо снять его вместе с этим комментарием. Держать его дальше «как есть»
+    значит держать проверку, которая ничего не проверяет.
 
     body_extra — обязательные поля кроме projectId/name.
     wrap(case) — опциональный декоратор (для Image/Snapshot/Instance которым нужен pre-disk и т.п.);
@@ -747,10 +759,14 @@ def name_validation_block(prefix, create_path, body_extra=None, wrap=None):
         classes=["VAL"], priority="P1",
         steps=[Step(name="cr-upper", method="POST", path=create_path, body=base("InvalidUpper-{{runId}}"),
                     test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])]))
-    out.append(Case(id=f"{prefix}-CR-VAL-NAME-DIGIT-START",
-        title="Create с name начинающимся с цифры → 400 (verbatim YC regex)",
+    # ЗДЕСЬ БЫЛ КЕЙС «имя начинается с цифры → 400». Его предмета больше нет:
+    # единая форма имени (DNS label по RFC 1123, `pkg/validate.NameForm`) разрешает
+    # цифру первым символом, и `9invalid-…` теперь ЗАКОННОЕ имя. Кейс не удалён, а
+    # переведён на ось, которая у формы действительно сузилась, — подчёркивание.
+    out.append(Case(id=f"{prefix}-CR-VAL-NAME-UNDERSCORE",
+        title="Create с подчёркиванием в name → 400 (форма имени: буквы, цифры, дефис)",
         classes=["VAL"], priority="P1",
-        steps=[Step(name="cr-digit", method="POST", path=create_path, body=base("9invalid-{{runId}}"),
+        steps=[Step(name="cr-underscore", method="POST", path=create_path, body=base("bad_name-{{runId}}"),
                     test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])]))
     out.append(Case(id=f"{prefix}-CR-VAL-NAME-HYPHEN-START",
         title="Create с name начинающимся с дефиса → 400",
@@ -822,7 +838,16 @@ def description_validation_block(prefix, create_path, body_extra=None, wrap=None
 
 
 def filter_block(prefix, list_path):
-    """Filter syntax: name="X" → 200; garbage → 200|400; unknown field → 200|400."""
+    """Filter syntax: name="X" → 200; мусор и неизвестное поле → 400 InvalidArgument.
+
+    Исход у обоих отрицаний УСТАНОВЛЕН разборщиком `pkg/filter`.`Parse`, а не
+    «как получится»: имя поля берётся из белого списка вызывающего, и `this` из
+    «this is not valid syntax» ровно так же не в списке, как и `nonexistent_field`.
+    Оба дают `ParseError` → `InvalidArgument` с текстом «Bad expression at column N.».
+    Прежнее `oneOf([200, 400])` перечисляло исход, которого на этих входах нет, и
+    тем же утверждением приняло бы регрессию: разборщик, ПРОГЛОТИВШИЙ неизвестное
+    поле, зеленел бы наравне с исправным.
+    """
     sep = "&"
     return [
         Case(id=f"{prefix}-LST-FILTER-NAME-OK",
@@ -832,17 +857,17 @@ def filter_block(prefix, list_path):
                          path=f"{list_path}?projectId={{{{_suiteProjectId}}}}{sep}filter=name%3D%22foo%22",
                          test_script=[*assert_status(200)])]),
         Case(id=f"{prefix}-LST-FILTER-GARBAGE",
-             title="List с garbage filter syntax → 200 или 400",
+             title="List с garbage filter syntax → 400 InvalidArgument",
              classes=["FILTER", "VAL"], priority="P2",
              steps=[Step(name="flt-bad", method="GET",
                          path=f"{list_path}?projectId={{{{_suiteProjectId}}}}{sep}filter=this%20is%20not%20valid%20syntax",
-                         test_script=["pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])]),
+                         test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])]),
         Case(id=f"{prefix}-LST-FILTER-UNKNOWN-FIELD",
-             title="List с filter на unsupported field → 200 или 400",
+             title="List с filter на unsupported field → 400 InvalidArgument",
              classes=["FILTER", "VAL"], priority="P2",
              steps=[Step(name="flt-unk", method="GET",
                          path=f"{list_path}?projectId={{{{_suiteProjectId}}}}{sep}filter=nonexistent_field%3D%22x%22",
-                         test_script=["pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])]),
+                         test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])]),
     ]
 
 
@@ -876,7 +901,13 @@ def security_injection_block(prefix, create_path, list_path, body_extra=None):
         steps=[Step(name="lst-sqli", method="GET",
                     path=f"{list_path}?projectId={{{{_suiteProjectId}}}}&filter=name%3D%22a%27%20OR%201%3D1--%22",
                     test_script=["pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                                 "pm.test('handled', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])]))
+                                 "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                                 "pm.test('страница пуста: такого имени нет ни у кого', () => {",
+                                 "  const j = pm.response.json();",
+                                 "  const keys = Object.keys(j).filter(k => Array.isArray(j[k]));",
+                                 "  pm.expect(keys, JSON.stringify(j)).to.have.lengthOf(1);",
+                                 "  pm.expect(j[keys[0]], JSON.stringify(j)).to.have.lengthOf(0);",
+                                 "});"])]))
     return out
 
 

@@ -5,6 +5,7 @@ package repo_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -98,6 +99,7 @@ func (f *sgNetFixture) seedSG(t *testing.T, projectID, networkID, name string) s
 	require.NoError(t, legacyWithTx(t, f.ctx, f.r, func(w kacho.RepositoryWriter) error {
 		_, e := w.SecurityGroups().Insert(f.ctx, &domain.SecurityGroup{
 			ID:        id,
+			Name:      domain.RcNameVPC(name),
 			ProjectID: projectID,
 			NetworkID: networkID,
 		})
@@ -196,7 +198,7 @@ func TestIntegration_SGNet_CreateWithValidNetwork_OK(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	f := newSGNetFixture(t)
-	netA := f.seedNetwork(t, "P", "net-A")
+	netA := f.seedNetwork(t, "P", "net-a")
 
 	op, err := f.create.Execute(f.ctx, domain.SecurityGroup{
 		ProjectID: "P",
@@ -247,9 +249,9 @@ func TestIntegration_SGNet_CreateCrossNetworkRule_InvalidArgument(t *testing.T) 
 		t.Skip("skipping integration test")
 	}
 	f := newSGNetFixture(t)
-	netA := f.seedNetwork(t, "P", "net-A")
-	netB := f.seedNetwork(t, "P", "net-B")
-	sgB := f.seedSG(t, "P", netB, "sg-target-B")
+	netA := f.seedNetwork(t, "P", "net-a")
+	netB := f.seedNetwork(t, "P", "net-b")
+	sgB := f.seedSG(t, "P", netB, "sg-target-b")
 
 	_, err := f.create.Execute(f.ctx, domain.SecurityGroup{
 		ProjectID: "P",
@@ -279,8 +281,8 @@ func TestIntegration_SGNet_CreateSameNetworkRule_OK(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	f := newSGNetFixture(t)
-	netA := f.seedNetwork(t, "P", "net-A")
-	sgA := f.seedSG(t, "P", netA, "sg-target-A")
+	netA := f.seedNetwork(t, "P", "net-a")
+	sgA := f.seedSG(t, "P", netA, "sg-target-a")
 
 	op, err := f.create.Execute(f.ctx, domain.SecurityGroup{
 		ProjectID: "P",
@@ -298,10 +300,10 @@ func TestIntegration_SGNet_UpdateRulesCrossNetwork_InvalidArgument(t *testing.T)
 		t.Skip("skipping integration test")
 	}
 	f := newSGNetFixture(t)
-	netA := f.seedNetwork(t, "P", "net-A")
-	netB := f.seedNetwork(t, "P", "net-B")
+	netA := f.seedNetwork(t, "P", "net-a")
+	netB := f.seedNetwork(t, "P", "net-b")
 	sg8 := f.seedSG(t, "P", netA, "sg-8")
-	sgB := f.seedSG(t, "P", netB, "sg-target-B")
+	sgB := f.seedSG(t, "P", netB, "sg-target-b")
 
 	_, err := f.updateRules.Execute(f.ctx, sgapp.UpdateRulesInput{
 		SecurityGroupID:   sg8,
@@ -322,9 +324,9 @@ func TestIntegration_SGNet_UpdateRulesSameNetwork_OK(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	f := newSGNetFixture(t)
-	netA := f.seedNetwork(t, "P", "net-A")
+	netA := f.seedNetwork(t, "P", "net-a")
 	sg8 := f.seedSG(t, "P", netA, "sg-8")
-	sgA := f.seedSG(t, "P", netA, "sg-target-A")
+	sgA := f.seedSG(t, "P", netA, "sg-target-a")
 
 	op, err := f.updateRules.Execute(f.ctx, sgapp.UpdateRulesInput{
 		SecurityGroupID:   sg8,
@@ -350,9 +352,9 @@ func TestIntegration_SGNet_UpdateRuleCrossNetworkTarget_InvalidArgument(t *testi
 		t.Skip("skipping integration test")
 	}
 	f := newSGNetFixture(t)
-	netA := f.seedNetwork(t, "P", "net-A")
-	netB := f.seedNetwork(t, "P", "net-B")
-	sgB := f.seedSG(t, "P", netB, "sg-target-B")
+	netA := f.seedNetwork(t, "P", "net-a")
+	netB := f.seedNetwork(t, "P", "net-b")
+	sgB := f.seedSG(t, "P", netB, "sg-target-b")
 
 	// Сидируем sg-8 в net-A с правилом, держащим cross-network SG-target. Id
 	// правила обязан быть well-formed resource id (в проде его выдает ids.NewID;
@@ -361,7 +363,7 @@ func TestIntegration_SGNet_UpdateRuleCrossNetworkTarget_InvalidArgument(t *testi
 	ruleID := ids.NewID(ids.PrefixSecurityGroup)
 	require.NoError(t, legacyWithTx(t, f.ctx, f.r, func(w kacho.RepositoryWriter) error {
 		_, e := w.SecurityGroups().Insert(f.ctx, &domain.SecurityGroup{
-			ID: sg8, ProjectID: "P", NetworkID: netA,
+			ID: sg8, Name: domain.RcNameVPC(sg8), ProjectID: "P", NetworkID: netA,
 			Rules: []domain.SecurityGroupRule{{
 				ID: ruleID, Direction: domain.SecurityGroupRuleDirectionIngress,
 				FromPort: -1, ToPort: -1, SecurityGroupID: sgB, // cross-network target
@@ -389,14 +391,14 @@ func TestIntegration_SGNet_UpdateRuleSameNetworkTarget_OK(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	f := newSGNetFixture(t)
-	netA := f.seedNetwork(t, "P", "net-A")
-	sgA := f.seedSG(t, "P", netA, "sg-target-A")
+	netA := f.seedNetwork(t, "P", "net-a")
+	sgA := f.seedSG(t, "P", netA, "sg-target-a")
 
 	sg8 := ids.NewID(ids.PrefixSecurityGroup)
 	ruleID := ids.NewID(ids.PrefixSecurityGroup)
 	require.NoError(t, legacyWithTx(t, f.ctx, f.r, func(w kacho.RepositoryWriter) error {
 		_, e := w.SecurityGroups().Insert(f.ctx, &domain.SecurityGroup{
-			ID: sg8, ProjectID: "P", NetworkID: netA,
+			ID: sg8, Name: domain.RcNameVPC(sg8), ProjectID: "P", NetworkID: netA,
 			Rules: []domain.SecurityGroupRule{{
 				ID: ruleID, Direction: domain.SecurityGroupRuleDirectionIngress,
 				FromPort: -1, ToPort: -1, SecurityGroupID: sgA, // same-network target
@@ -421,7 +423,7 @@ func TestIntegration_SGNet_UpdateRulesTargetNotFound_InvalidArgument(t *testing.
 		t.Skip("skipping integration test")
 	}
 	f := newSGNetFixture(t)
-	netA := f.seedNetwork(t, "P", "net-A")
+	netA := f.seedNetwork(t, "P", "net-a")
 	sg8 := f.seedSG(t, "P", netA, "sg-8")
 	missing := "enp11111111111111111"
 
@@ -443,12 +445,12 @@ func TestIntegration_SGNet_ConcurrentTargetDelete(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	f := newSGNetFixture(t)
-	netA := f.seedNetwork(t, "P", "net-A")
+	netA := f.seedNetwork(t, "P", "net-a")
 
 	const iterations = 20
 	for i := 0; i < iterations; i++ {
-		sg8 := f.seedSG(t, "P", netA, "")
-		sgA := f.seedSG(t, "P", netA, "")
+		sg8 := f.seedSG(t, "P", netA, fmt.Sprintf("sg-8-%d", i))
+		sgA := f.seedSG(t, "P", netA, fmt.Sprintf("sg-a-%d", i))
 
 		var wg sync.WaitGroup
 		var updErr error
@@ -509,7 +511,7 @@ func TestIntegration_SGNet_CidrAndPredefinedRulesUnaffected(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	f := newSGNetFixture(t)
-	netA := f.seedNetwork(t, "P", "net-A")
+	netA := f.seedNetwork(t, "P", "net-a")
 	sg2 := f.seedSG(t, "P", netA, "sg-2")
 
 	op, err := f.updateRules.Execute(f.ctx, sgapp.UpdateRulesInput{
@@ -538,8 +540,8 @@ func TestIntegration_SGNet_UpdateMaskNetwork_InvalidArgument(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	f := newSGNetFixture(t)
-	netA := f.seedNetwork(t, "P", "net-A")
-	netB := f.seedNetwork(t, "P", "net-B")
+	netA := f.seedNetwork(t, "P", "net-a")
+	netB := f.seedNetwork(t, "P", "net-b")
 	sg2 := f.seedSG(t, "P", netA, "sg-2")
 
 	_, err := f.update.Execute(f.ctx, sgapp.UpdateInput{

@@ -54,13 +54,13 @@ func TestInternalDiskTypeUpdateForwardsMask(t *testing.T) {
 
 	if _, err := h.Update(context.Background(), &storagev1.UpdateDiskTypeRequest{
 		DiskTypeId: "block-mask",
-		Name:       "переименованный",
+		Name:       "block-renamed",
 		ZoneIds:    []string{"ru-central1-c"},
 		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"name"}},
 	}); err != nil {
 		t.Fatalf("Update err = %v", err)
 	}
-	if repo.got.Name == nil || *repo.got.Name != "переименованный" {
+	if repo.got.Name == nil || *repo.got.Name != "block-renamed" {
 		t.Fatalf("названное маской имя не доехало: %v", repo.got.Name)
 	}
 	if repo.got.ZoneIDs != nil {

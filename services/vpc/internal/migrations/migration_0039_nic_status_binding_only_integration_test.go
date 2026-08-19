@@ -71,8 +71,8 @@ func seedNICParentSubnet(t *testing.T, db *sql.DB, tag string) string {
 func insertNICWithStatus(db *sql.DB, subnetID, status, usedByID string, macTail int) (string, error) {
 	id := ids.NewID(ids.PrefixNetworkInterface)
 	_, err := db.Exec(`
-		INSERT INTO network_interfaces (id, project_id, subnet_id, mac_address, status, used_by_id, used_by_type)
-		VALUES ($1, 'prj-39', $2, $3, $4, $5, $6)`,
+		INSERT INTO network_interfaces (id, name, project_id, subnet_id, mac_address, status, used_by_id, used_by_type)
+		VALUES ($1, $1, 'prj-39', $2, $3, $4, $5, $6)`,
 		id, subnetID, fmt.Sprintf("0e:39:00:00:00:%02x", macTail), status, usedByID,
 		map[bool]string{true: "compute_instance", false: ""}[usedByID != ""])
 	return id, err

@@ -63,7 +63,7 @@ func TestIntegration_AddressPoolCIDR_AddCidrBlocks_PopulatesFreelist(t *testing.
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
-	p := mkCidrPool(t, ctx, r, t.Name(), []string{"198.51.100.0/28"})
+	p := mkCidrPool(t, ctx, r, "pool-cidr", []string{"198.51.100.0/28"})
 	require.Equal(t, 14, countFreeIPs(t, ctx, pgPool, p.ID), "create /28 → 14 free")
 
 	addUC := addresspool.NewAddCidrBlocksUseCase(r)
@@ -93,7 +93,7 @@ func TestIntegration_AddressPoolCIDR_RemoveInUse_FailedPrecondition(t *testing.T
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
-	p := mkCidrPool(t, ctx, r, t.Name(), []string{"198.51.100.0/28", "203.0.113.0/28"})
+	p := mkCidrPool(t, ctx, r, "pool-cidr", []string{"198.51.100.0/28", "203.0.113.0/28"})
 
 	// Аллоцируем external-IP из CIDR 198.51.100.0/28.
 	addrID := insertTestAddressFreelist(t, ctx, pgPool)
@@ -141,7 +141,7 @@ func TestIntegration_AddressPoolCIDR_RemoveClean_DeletesFreeIPs(t *testing.T) {
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
-	p := mkCidrPool(t, ctx, r, t.Name(), []string{"198.51.100.0/28", "203.0.113.0/28"})
+	p := mkCidrPool(t, ctx, r, "pool-cidr", []string{"198.51.100.0/28", "203.0.113.0/28"})
 	require.Equal(t, 28, countFreeIPs(t, ctx, pgPool, p.ID))
 
 	rmUC := addresspool.NewRemoveCidrBlocksUseCase(r)
@@ -175,7 +175,7 @@ func TestIntegration_AddressPoolCIDR_ConcurrentAllocVsRemove(t *testing.T) {
 	defer r.Close()
 
 	// Один CIDR + второй, чтобы remove не опустошал пул.
-	p := mkCidrPool(t, ctx, r, t.Name(), []string{"198.51.100.0/30", "203.0.113.0/28"})
+	p := mkCidrPool(t, ctx, r, "pool-cidr", []string{"198.51.100.0/30", "203.0.113.0/28"})
 	addrID := insertTestAddressFreelist(t, ctx, pgPool)
 
 	rmUC := addresspool.NewRemoveCidrBlocksUseCase(r)
@@ -276,7 +276,7 @@ func TestIntegration_AddressPoolCIDR_ConcurrentAddArrayConverges(t *testing.T) {
 		"203.0.113.0/28", "203.0.113.16/28", "203.0.113.32/28",
 		"203.0.113.48/28", "203.0.113.64/28", "203.0.113.80/28",
 	}
-	p := mkCidrPool(t, ctx, r, t.Name(), []string{base})
+	p := mkCidrPool(t, ctx, r, "pool-cidr", []string{base})
 
 	addUC := addresspool.NewAddCidrBlocksUseCase(r)
 

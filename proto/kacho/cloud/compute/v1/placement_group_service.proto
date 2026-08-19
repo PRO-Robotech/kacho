@@ -7,6 +7,7 @@ package kacho.cloud.compute.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
+import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/compute/v1/placement_group.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
@@ -47,6 +48,10 @@ service PlacementGroupService {
       post: "/compute/v1/placementGroups"
       body: "*"
     };
+    option (kacho.cloud.api.operation) = {
+      metadata: "CreatePlacementGroupMetadata"
+      response: "PlacementGroup"
+    };
     option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.create";
     option (kacho.iam.authz.v1.required_relation) = "editor";
     option (kacho.iam.authz.v1.scope_extractor)   = {
@@ -66,6 +71,10 @@ service PlacementGroupService {
       patch: "/compute/v1/placementGroups/{placement_group_id}"
       body: "*"
     };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdatePlacementGroupMetadata"
+      response: "PlacementGroup"
+    };
     option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.update";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
     option (kacho.iam.authz.v1.scope_extractor)   = {
@@ -83,6 +92,10 @@ service PlacementGroupService {
   rpc Delete(DeletePlacementGroupRequest) returns (operation.Operation) {
     option (google.api.http) = {
       delete: "/compute/v1/placementGroups/{placement_group_id}"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "DeletePlacementGroupMetadata"
+      response: "google.protobuf.Empty"
     };
     option (kacho.iam.authz.v1.permission)        = "compute.placement_groups.delete";
     option (kacho.iam.authz.v1.required_relation) = "v_delete";

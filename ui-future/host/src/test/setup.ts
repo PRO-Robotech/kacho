@@ -1,47 +1,25 @@
-import "@testing-library/jest-dom";
-import { TextDecoder, TextEncoder } from "node:util";
+// Окружение проб host — НАДСТРОЙКА над общим, а не третья посадка (#626).
+//
+// ПРЕДМЕТ. Окружений проб консоли было три: семь пакетов брали
+// `shared/src/test/setup.ts`, а `host` и `dashboard` держали свои — и подмены
+// общего заменителя виджетов в них не было вовсе. Цена та же, что у снятого
+// второго дублёра: правка общего заменителя до этих двух НЕ ДОЕЗЖАЛА, а
+// поведение их проб определялось тем, чего в остальных семи пакетах нет.
+// Разойтись это могло молча — прогон обоих пакетов был зелёным и до, и после
+// любой правки общего заменителя.
+//
+// Свойство «посадка одна» держит `scripts/check-single-test-landing.mjs`, а не
+// эта записка: комментарий переживёт то, что им обозначено.
+//
+// Теперь общий импортируется целиком, а здесь остаётся ТОЛЬКО то, чего в общем
+// нет и быть не должно: заглушка сети. Она пакетная намеренно — общий модуль её
+// не ставит, и семь пакетов, которые подменяют `fetch` пообъектно, получили бы
+// от неё чужое умолчание.
+import "@shared/test/setup";
 
-// @ant-design/icons мокается через jest.config moduleNameMapper (стаб
-// src/test/antd-icons-stub.tsx с реальными статическими named-экспортами), НЕ через
-// jest.unstable_mockModule: Proxy-мок не давал статических named-экспортов и ESM-линкер
-// `import { XOutlined }` висел вечно под --experimental-vm-modules (kacho#7, DIAG6).
-
-Object.defineProperty(global, "TextEncoder", {
-  writable: true,
-  value: TextEncoder,
-});
-
-Object.defineProperty(global, "TextDecoder", {
-  writable: true,
-  value: TextDecoder,
-});
-
+// Сеть в пробах host не ходит никуда: невыполненный запрос обязан ОТКАЗАТЬ, а не
+// повиснуть, иначе проба умирает по времени и вердикта не оставляет.
 Object.defineProperty(global, "fetch", {
   writable: true,
   value: () => Promise.reject(new Error("fetch mock not implemented")),
-});
-
-Object.defineProperty(window, "matchMedia", {
-  writable: true,
-  value: (query: string): MediaQueryList => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: () => undefined,
-    removeListener: () => undefined,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-    dispatchEvent: () => false,
-  }),
-});
-
-class ResizeObserverMock {
-  observe = () => undefined;
-  unobserve = () => undefined;
-  disconnect = () => undefined;
-}
-
-Object.defineProperty(window, "ResizeObserver", {
-  writable: true,
-  value: ResizeObserverMock,
 });

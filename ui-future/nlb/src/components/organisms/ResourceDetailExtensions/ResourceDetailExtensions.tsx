@@ -17,6 +17,12 @@ import { TargetsManager, type Target } from "@/components/organisms/TargetsManag
 import { StatusBadge } from "@/components/atoms/StatusBadge";
 import { NlbVipCell } from "@/components/molecules/NlbVipCell";
 import { getByPath } from "@/lib/resource-registry";
+// Логическое свойство — ОДНИМ рендером на всю консоль. Здесь стоял свой
+// `boolTag(v, "Да", "Нет")`: он отвечал на вопрос, которого пользователь не
+// задавал (правило 6 `ui.md`, где «Защита от удаления: Да» приведена дословным
+// примером нарушения). Собственный рендер держался тем, что общий словарь
+// логического варианта не нёс, — предмет исчез вместе с `format:"bool"`.
+import { BoolFact } from "@shared/components/atoms/BoolFact";
 
 export interface DescItem {
   /** ReactNode, а не string: строке обзора бывает нужна подсказка ⓘ рядом с
@@ -68,9 +74,6 @@ function code(v: unknown): ReactNode {
   );
 }
 
-function boolTag(v: unknown, yes = "Да", no = "Нет"): ReactNode {
-  return v ? <Tag color="green">{yes}</Tag> : <Tag>{no}</Tag>;
-}
 
 /**
  * Административное состояние балансировщика — словом, а не именем константы.
@@ -203,7 +206,16 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
       if (placement !== "ZONAL") {
         items.push({
           label: "Балансировка между зонами",
-          value: boolTag(getByPath<boolean>(data, "cross_zone_enabled")),
+          // Следствие, а не ответ: читателю важно, КУДА уходит трафик, а не то,
+          // что где-то поднят флаг. Цветом не выделяется — свойство нейтральное,
+          // и акцент на нём обесценил бы акцент там, где он значит опасность.
+          value: (
+            <BoolFact
+              value={getByPath<boolean>(data, "cross_zone_enabled")}
+              yes="Трафик уходит во все зоны региона"
+              no="Трафик остаётся в своей зоне"
+            />
+          ),
         });
       }
       if (type === "INTERNAL") {
@@ -214,7 +226,20 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
       }
       items.push(
         { label: "Статус", value: <StatusBadge state={getByPath<string>(data, "status")} /> },
-        { label: "Защита от удаления", value: boolTag(getByPath<boolean>(data, "deletion_protection")) },
+        {
+          label: "Защита от удаления",
+          // Дословный пример правила 6: «Да» здесь не говорит ни что защита
+          // включена, ни что удалить нельзя. Акцент — потому что это ровно то
+          // свойство, о котором стоит знать до попытки удаления.
+          value: (
+            <BoolFact
+              value={getByPath<boolean>(data, "deletion_protection")}
+              yes="Удаление запрещено"
+              no="Удаление разрешено"
+              accent
+            />
+          ),
+        },
       );
       return items;
     },

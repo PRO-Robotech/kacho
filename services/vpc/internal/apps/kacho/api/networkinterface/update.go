@@ -88,6 +88,17 @@ func (u *UpdateNetworkInterfaceUseCase) Execute(ctx context.Context, in UpdateIn
 	if err := corevalidate.UpdateMask("update_mask", in.UpdateMask, known); err != nil {
 		return nil, err
 	}
+	// Решение об имени принимает ЕДИНСТВЕННАЯ функция дерева: она читает форму
+	// запроса (маска × значение) и отвечает сразу на два вопроса — законен ли
+	// ввод и следует ли имя применять. Ту же функцию зовёт применение маски,
+	// поэтому проверка и запись разойтись не могут.
+	//
+	// Пять исходов и их причина — в godoc `validate.NameOnUpdate`. Коротко о том,
+	// что здесь неочевидно: при ПУСТОЙ маске пустое имя законно и означает «не
+	// прислано» — в proto3 это неотличимо от отсутствия поля.
+	if _, err := corevalidate.NameOnUpdate("name", in.UpdateMask, string(in.NetworkInterface.Name)); err != nil {
+		return nil, err
+	}
 	// Domain self-validation: name/description/labels через newtype.Validate() —
 	// для полей, которые клиент мог прислать; mask-aware применение — в worker'е.
 	if err := serviceerr.FromValidation(in.NetworkInterface.Validate()); err != nil {
@@ -320,8 +331,26 @@ func strSetEqual(a, b []string) bool {
 // Пустой mask = full-PATCH (применяются все mutable-поля).
 func applyNICMask(n *domain.NetworkInterface, in UpdateInput) {
 	src := in.NetworkInterface
-	if len(in.UpdateMask) == 0 {
+	// Применять ли имя, решает ТА ЖЕ функция, что вынесла приговор на проверке
+	// входа, — поэтому проверка и запись разойтись не могут by construction.
+	// Здесь читается только её булева половина: отказ уже случился бы синхронно,
+	// до создания операции.
+	//
+	// Решение вынесено ИЗ ОБЕИХ ветвей маски намеренно. Прежде ветвь полной
+	// правки присваивала имя безусловно, и пустое значение уезжало в строку: в
+	// proto3 «поле не прислано» неотличимо от «поле пусто», поэтому полная
+	// правка, НЕ ТРОГАВШАЯ имя, имя стирала. После миграции 715001, поставившей
+	// на столбец ограничение формы, это перестало быть «странным именем» и стало
+	// отказом БАЗЫ на пути, где вызывающий не сделал ничего неверного.
+	//
+	// Ошибка здесь отбрасывается сознательно: на ней функция возвращает false,
+	// то есть путь, почему-либо миновавший проверку входа, тоже НЕ запишет
+	// негодное имя — отказ направлен в безопасную сторону.
+	applyName, _ := corevalidate.NameOnUpdate("name", in.UpdateMask, string(src.Name))
+	if applyName {
 		n.Name = src.Name
+	}
+	if len(in.UpdateMask) == 0 {
 		n.Description = src.Description
 		n.Labels = src.Labels
 		n.SecurityGroupIDs = src.SecurityGroupIDs
@@ -331,8 +360,6 @@ func applyNICMask(n *domain.NetworkInterface, in UpdateInput) {
 	}
 	for _, f := range in.UpdateMask {
 		switch f {
-		case "name":
-			n.Name = src.Name
 		case "description":
 			n.Description = src.Description
 		case "labels":

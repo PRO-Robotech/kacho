@@ -23,6 +23,20 @@
 // утверждающий успех либо не утверждающий статуса вовсе, — фикстура: на её успех
 // опираются соседние шаги.
 //
+// Утверждением считается то, что newman ИСПОЛНИТ, и то, что называет ДОПУЩЕННЫЕ
+// коды. Поэтому не являются утверждением: отрицание («не 403» — оно запрещает один
+// исход из пятисот и о коде не говорит ничего), ветвление петли ожидания
+// (`if (pm.response.code === 200 && c < 50)`), число в тексте подписи к падению
+// («unexpected 200: …») и закомментированная строка. Разбор — по вызовам
+// `pm.expect(`, а не по упоминаниям кода; каждую ось держит в обе стороны
+// `newmanrefusalpolarity_injection_test.go`.
+//
+// Прежняя редакция брала любое трёхзначное число рядом с упоминанием кода ответа и
+// потому читала все пять форм одинаково. Следствие двустороннее: шаг, ничего не
+// утверждающий, ВЫВОДИЛСЯ из-под наблюдения обоих гейтов, а шаг, приведённый в
+// порядок, ПОПАДАЛ под него и мог дать красное, читаемое как регресс, — механизм
+// наказывал за починку.
+//
 // # План может быть объявлен позже создания сети
 //
 // `:add-cidr-blocks` — законный и named-в-самом-отказе путь вперёд, поэтому кейс,
@@ -106,6 +120,8 @@ type subnetSupernetScan struct {
 	carvesV4        int // из них режущих адрес семейства v4
 	carvesV6        int // из них режущих адрес семейства v6 (шаг может резать оба)
 	refusalProbes   int // шагов, чей предмет — отказ (утверждают 4xx/5xx)
+	negationOnly    int // шагов, чьи утверждения о коде — ТОЛЬКО отрицания («не 403»)
+	noStatusAssert  int // шагов, не утверждающих о коде ничего
 	declaredPlans   int // объявлений плана (создание с блоками либо :add-cidr-blocks)
 	declaredV4      int // из них объявивших план семейства v4
 	declaredV6      int // из них объявивших план семейства v6
@@ -166,6 +182,8 @@ func TestSubnetFixtureNeverCarvesFromAPlanlessNetwork(t *testing.T) {
 		total.carvesV4 += res.carvesV4
 		total.carvesV6 += res.carvesV6
 		total.refusalProbes += res.refusalProbes
+		total.negationOnly += res.negationOnly
+		total.noStatusAssert += res.noStatusAssert
 		total.declaredPlans += res.declaredPlans
 		total.declaredV4 += res.declaredV4
 		total.declaredV6 += res.declaredV6
@@ -211,10 +229,15 @@ func TestSubnetFixtureNeverCarvesFromAPlanlessNetwork(t *testing.T) {
 		"(из них семейства v4: %d, семейства v6: %d); "+
 		"из них с родителем ИЗВНЕ кейса (посев/окружение — этим гейтом НЕ покрыты, их "+
 		"держит TestOutOfCaseCarveTakesItsCidrFromThePublishedPlan): %d; "+
-		"объявлений плана: %d (v4: %d, v6: %d); шагов, утверждающих отказ: %d",
+		"объявлений плана: %d (v4: %d, v6: %d); "+
+		"шагов, УТВЕРЖДАЮЩИХ отказ (из-под наблюдения выведены — их предмет и есть "+
+		"отказ): %d; шагов, чьи утверждения о коде — ТОЛЬКО отрицания («не 403»): %d "+
+		"(о коде не утверждают ничего ⇒ судятся как фикстуры; их переписывание в "+
+		"утверждения-пары — предмет отдельной задачи, и НОЛЬ здесь законен); шагов "+
+		"без утверждений о коде вовсе: %d",
 		files, total.cases, total.subnetFixtures, total.carvesV4, total.carvesV6,
 		total.parentOutOfCase, total.declaredPlans, total.declaredV4, total.declaredV6,
-		total.refusalProbes)
+		total.refusalProbes, total.negationOnly, total.noStatusAssert)
 
 	if len(total.hits) > 0 {
 		sort.Strings(total.hits)
@@ -238,7 +261,6 @@ var (
 	reNetCreate    = regexp.MustCompile(`/vpc/v1/networks\s*$`)
 	reAddBlocks    = regexp.MustCompile(`/vpc/v1/networks/[^/]+:add-cidr-blocks\s*$`)
 	reNetworkIDRef = regexp.MustCompile(`"networkId"\s*:\s*"\{\{([^}]+)\}\}"`)
-	reStatusAssert = regexp.MustCompile(`pm\.response\.code[^;\n]*`)
 	reThreeDigit   = regexp.MustCompile(`\b([1-5]\d{2})\b`)
 
 	// Две формы нарезки, которые первая редакция гейта НЕ видела, — обе найдены
@@ -325,9 +347,19 @@ func analyzeSubnetSupernetFixtures(t *testing.T, rel string, body []byte) subnet
 				raw = step.Request.Body.Raw
 			}
 			method := step.Request.Method
-			refusal := expectsRefusal(step)
-			if refusal {
+			// Перепись по КЛАССАМ, а не по одному флагу: «шаг ждёт отказа»,
+			// «шаг утверждает только отрицанием» и «шаг не утверждает о коде
+			// ничего» — три разных состояния, и слипшись они дают ровно тот
+			// дефект, ради которого различитель переписан. Числа печатает гейт.
+			class := classifyStepStatus(step)
+			refusal := class == stepSaysRefusal
+			switch class {
+			case stepSaysRefusal:
 				out.refusalProbes++
+			case stepSaysNegationOnly:
+				out.negationOnly++
+			case stepSaysNothing:
+				out.noStatusAssert++
 			}
 
 			switch {
@@ -482,29 +514,250 @@ func stepScript(it pmItem, listen string) string {
 	return b.String()
 }
 
-// expectsRefusal — шаг УТВЕРЖДАЕТ отказ: среди статусов, которые он допускает,
-// нет ни одного успешного. Шаг, не утверждающий статуса вовсе, отказом не считается
-// — на его успех опираются соседи.
-func expectsRefusal(it pmItem) bool {
-	script := stepScript(it, "test")
-	stmts := reStatusAssert.FindAllString(script, -1)
-	if len(stmts) == 0 {
-		return false
-	}
-	sawStatus := false
-	for _, s := range stmts {
-		for _, m := range reThreeDigit.FindAllStringSubmatch(s, -1) {
-			n, err := strconv.Atoi(m[1])
-			if err != nil {
-				continue
+// ---- различитель «проба отказа против фикстуры» ----
+//
+// Шаг относится к пробам отказа по тому, что он УТВЕРЖДАЕТ, а не по тому, какие
+// числа встречаются в его тексте. Прежняя редакция брала любое трёхзначное число
+// рядом с упоминанием кода ответа, поэтому читала одинаково три разные вещи:
+// утверждение отказа (`.to.equal(403)`), его ОТРИЦАНИЕ (`.to.not.equal(403)`,
+// ALLOW-полоса — она о коде не утверждает ничего) и управляющий поток петли
+// ожидания (`if (pm.response.code === 200 && c < 50)`). Плюс числа из текста
+// сообщения («unexpected 200: …») и из закомментированных строк.
+//
+// Следствие было двусторонним, и вторая сторона хуже первой: шаг, ничего не
+// утверждающий, ВЫВОДИЛСЯ из-под наблюдения обоих гейтов, а шаг, приведённый в
+// порядок, ПОПАДАЛ под него и мог дать красное, читаемое как регресс. То есть
+// механизм наказывал за починку и учил возвращать слабую форму.
+//
+// Каждая ось разбора — полярность, комментарий, строковый литерал, управляющий
+// поток, перенос строки в цепочке — закреплена В ОБЕ СТОРОНЫ отдельным файлом
+// `newmanrefusalpolarity_injection_test.go`: без красной стороны различитель
+// ничего не требует, без зелёной он снимается первым ложным срабатыванием.
+
+// jsExecutablePart — исходник шага без комментариев и без СОДЕРЖИМОГО строковых
+// литералов (кавычки остаются, чтобы форма выражения не поехала).
+//
+// Отличается от `stripJSComments` предметом, а не аккуратностью: тому нужен текст
+// ВНУТРИ кавычек (он ищет имя переменной плана), а этому нужно, чтобы числа из
+// подписи к падению не читались как допущенные коды. Поэтому это две функции, а не
+// одна с флагом.
+func jsExecutablePart(src string) string {
+	var b strings.Builder
+	b.Grow(len(src))
+	for i := 0; i < len(src); {
+		c := src[i]
+		switch {
+		case c == '/' && i+1 < len(src) && src[i+1] == '/':
+			for i < len(src) && src[i] != '\n' {
+				i++
 			}
-			sawStatus = true
-			if n >= 200 && n < 300 {
-				return false
+		case c == '/' && i+1 < len(src) && src[i+1] == '*':
+			i += 2
+			for i+1 < len(src) && !(src[i] == '*' && src[i+1] == '/') {
+				i++
+			}
+			if i+1 < len(src) {
+				i += 2
+			} else {
+				i = len(src)
+			}
+		case c == '\'' || c == '"' || c == '`':
+			q := c
+			b.WriteByte(q)
+			i++
+			for i < len(src) {
+				if src[i] == '\\' {
+					i += 2
+					continue
+				}
+				if src[i] == q || (q != '`' && src[i] == '\n') {
+					break
+				}
+				i++
+			}
+			b.WriteByte(q)
+			if i < len(src) && src[i] == q {
+				i++
+			}
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return b.String()
+}
+
+// matchingParen — индекс закрывающей скобки к открывающей в позиции open.
+func matchingParen(s string, open int) int {
+	depth := 0
+	for i := open; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i
 			}
 		}
 	}
-	return sawStatus
+	return -1
+}
+
+// firstTopLevelArg — первый аргумент вызова (текст до запятой ВЕРХНЕГО уровня).
+func firstTopLevelArg(args string) string {
+	depth := 0
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+		case ',':
+			if depth == 0 {
+				return args[:i]
+			}
+		}
+	}
+	return args
+}
+
+// assertionChain — цепочка утверждения, стоящая после `pm.expect(…)`: до конца
+// выражения (`;`), до закрывающей скобки объемлющего вызова или до конца строки.
+//
+// Пробелы и переносы ПЕРЕД цепочкой пропускаются: в дереве есть вызовы, у которых
+// аргументы заняли две строки, а `.to.…` встал на третьей. Разбор, начинавший счёт
+// с переноса, такое утверждение не читал вовсе — и молча возвращал пробу отказа в
+// фикстуры. Свойство держит `TestRefusalDiscriminatorReadsChainsBrokenAcrossLines`;
+// без пропуска оно краснеет.
+func assertionChain(s string, from int) string {
+	for from < len(s) && (s[from] == ' ' || s[from] == '\t' || s[from] == '\n' || s[from] == '\r') {
+		from++
+	}
+	depth := 0
+	for i := from; i < len(s); i++ {
+		switch s[i] {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth == 0 {
+				return s[from:i]
+			}
+			depth--
+		case ';', '\n':
+			if depth == 0 {
+				return s[from:i]
+			}
+		}
+	}
+	return s[from:]
+}
+
+// statusAssertion — одно утверждение шага о коде ответа.
+type statusAssertion struct {
+	negated bool  // в цепочке есть `.not.` — сказано, каким код НЕ бывает
+	codes   []int // коды-литералы, которые утверждение называет
+}
+
+var (
+	reExpectCall = regexp.MustCompile(`pm\.expect\s*\(`)
+	reCodeToken  = regexp.MustCompile(`pm\.response\.code\b`)
+)
+
+func threeDigitCodes(s string) []int {
+	var out []int
+	for _, m := range reThreeDigit.FindAllStringSubmatch(s, -1) {
+		n, err := strconv.Atoi(m[1])
+		if err != nil {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+// statusAssertionsIn — утверждения шага о коде ответа.
+//
+// Читается ровно то, что newman исполнит: разбор идёт по вызовам `pm.expect(`, а не
+// по упоминаниям кода, поэтому петля ожидания и любая другая ветвь управляющего
+// потока сюда не попадают by construction — они о коде НЕ УТВЕРЖДАЮТ, они по нему
+// ветвятся.
+//
+// Две формы записи, обе живут в дереве: субъект — код (`pm.expect(code).to.eql(404)`)
+// и субъект — набор (`pm.expect([403,404]).to.include(code)`). Утверждение, чьи коды
+// названы не литералом (переменной), допущенных кодов не сообщает и в разбор не идёт.
+func statusAssertionsIn(script string) []statusAssertion {
+	code := jsExecutablePart(script)
+	var out []statusAssertion
+	for _, loc := range reExpectCall.FindAllStringIndex(code, -1) {
+		open := loc[1] - 1
+		closing := matchingParen(code, open)
+		if closing < 0 {
+			continue
+		}
+		subject := firstTopLevelArg(code[open+1 : closing])
+		chain := assertionChain(code, closing+1)
+		var lits []int
+		switch {
+		case reCodeToken.MatchString(subject):
+			lits = threeDigitCodes(chain)
+		case reCodeToken.MatchString(chain):
+			lits = threeDigitCodes(subject)
+		default:
+			continue
+		}
+		if len(lits) == 0 {
+			continue
+		}
+		out = append(out, statusAssertion{negated: strings.Contains(chain, ".not."), codes: lits})
+	}
+	return out
+}
+
+// stepStatusClass — чем шаг является для гейта.
+type stepStatusClass int
+
+const (
+	// stepSaysNothing — шаг о коде не утверждает ничего (либо утверждает только
+	// отрицанием). Соседи опираются на его успех ⇒ он фикстура и судится по существу.
+	stepSaysNothing stepStatusClass = iota
+	// stepSaysNegationOnly — все утверждения шага о коде отрицательные.
+	stepSaysNegationOnly
+	// stepSaysSuccess — среди допущенных кодов есть успешный.
+	stepSaysSuccess
+	// stepSaysRefusal — шаг утверждает отказ: допущенные коды названы и успешного
+	// среди них нет. Предмет такого шага — сам отказ, фикстурой он не является.
+	stepSaysRefusal
+)
+
+func classifyStepStatus(it pmItem) stepStatusClass {
+	as := statusAssertionsIn(stepScript(it, "test"))
+	if len(as) == 0 {
+		return stepSaysNothing
+	}
+	sawPositive := false
+	for _, a := range as {
+		if a.negated {
+			continue
+		}
+		sawPositive = true
+		for _, n := range a.codes {
+			if n >= 200 && n < 300 {
+				return stepSaysSuccess
+			}
+		}
+	}
+	if !sawPositive {
+		return stepSaysNegationOnly
+	}
+	return stepSaysRefusal
+}
+
+// expectsRefusal — шаг УТВЕРЖДАЕТ отказ: среди кодов, которые он допускает, нет ни
+// одного успешного. Шаг, не утверждающий статуса вовсе, и шаг, утверждающий только
+// отрицанием («не 403»), отказом не считаются — на их успех опираются соседи.
+func expectsRefusal(it pmItem) bool {
+	return classifyStepStatus(it) == stepSaysRefusal
 }
 
 // publishedVars — имена переменных окружения, в которые шаг публикует свой ответ.

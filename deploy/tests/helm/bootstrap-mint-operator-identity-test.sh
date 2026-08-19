@@ -42,6 +42,16 @@ IAM_CM_TPL="charts/kacho-iam/templates/configmap.yaml"
 GATEWAY_SAN="spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 N=0
 fail() { echo "FAIL: $1"; exit 1; }
+# line_in <многострочное значение> <строка> — есть ли СТРОКА ЦЕЛИКОМ в значении.
+#
+# Замена `grep -qx`: под `set -o pipefail` конвейер `echo … | grep -qx` возвращает
+# ОТКАЗ НА СОВПАДЕНИИ — grep выходит по первому попаданию, писатель получает
+# SIGPIPE, и статус берётся от него (задача #658). Сравнение здесь БУКВАЛЬНОЕ,
+# тогда как `grep -x` трактовал образец как BRE; для SPIFFE-SAN это СТРОЖЕ
+# (точка перестаёт значить «любой символ»), то есть ложного зелёного добавить
+# не может.
+line_in() { [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]; }
+
 ok() { N=$((N + 1)); }
 
 [ -f "$DEV" ] || fail "values.dev.yaml not found at $DEV"
@@ -70,11 +80,11 @@ allowlist_of() {
 # This profile ENABLES the mint (bootstrapToken.signingKeySecretName is set), so a
 # missing/uncallable caller identity is a boot failure, not a cosmetic gap.
 CERT="$(render "$CERT_TPL" "$DEV" "$DEVPROD")"
-echo "$CERT" | grep -q "kind: Certificate" \
+[[ "$CERT" == *"kind: Certificate"* ]] \
   || fail "values.dev-prod renders no bootstrap-operator Certificate — the mint would have no caller identity"; ok
-echo "$CERT" | grep -q "client auth" \
+[[ "$CERT" == *"client auth"* ]] \
   || fail "bootstrap-operator leaf is not a CLIENT cert (usages must be 'client auth')"; ok
-echo "$CERT" | grep -q "kind: ClusterIssuer" \
+[[ "$CERT" == *"kind: ClusterIssuer"* ]] \
   || fail "bootstrap-operator leaf is not issued by the internal-CA ClusterIssuer"; ok
 
 CERT_SAN="$(spiffe_uris "$CERT")"
@@ -88,21 +98,21 @@ CERT_SAN="$(spiffe_uris "$CERT")"
 
 # ── 3. kacho-iam allow-lists EXACTLY that SAN (dev-prod) ─────────────────────
 IAM_CM="$(render "$IAM_CM_TPL" "$DEV" "$DEVPROD")"
-echo "$IAM_CM" | grep -q "allowed-client-sans" \
+[[ "$IAM_CM" == *"allowed-client-sans"* ]] \
   || fail "kacho-iam config.yaml has no authn.bootstrap-mint.allowed-client-sans — the mint gate is unconfigurable"; ok
 ALLOWED="$(allowlist_of "$IAM_CM")"
 [ -n "$ALLOWED" ] \
   || fail "values.dev-prod leaves the bootstrap-mint allow-list EMPTY while the mint is enabled — kacho-iam refuses to boot (core rule #16)"; ok
-echo "$ALLOWED" | grep -qx "$CERT_SAN" \
+line_in "$ALLOWED" "$CERT_SAN" \
   || fail "allow-list ($ALLOWED) does not contain the issued operator SAN ($CERT_SAN) — the mint would deny its own operator"; ok
-if echo "$ALLOWED" | grep -qx "$GATEWAY_SAN"; then
+if line_in "$ALLOWED" "$GATEWAY_SAN"; then
   fail "the api-gateway SAN is allow-listed for the cluster-admin mint — the gateway must not be a minter"
 fi; ok
 
 # ── 4. dev stand — arm 3 is enforced in EVERY mode, so dev needs it too ──────
 DEV_CM="$(render "$IAM_CM_TPL" "$DEV")"
 DEV_ALLOWED="$(allowlist_of "$DEV_CM")"
-echo "$DEV_ALLOWED" | grep -qx "$CERT_SAN" \
+line_in "$DEV_ALLOWED" "$CERT_SAN" \
   || fail "values.dev.yaml does not allow-list the operator SAN — the SAN gate is enforced in dev too, so the dev mint would deny everyone"; ok
 DEV_CERT_SAN="$(spiffe_uris "$(render "$CERT_TPL" "$DEV")")"
 [ "$DEV_CERT_SAN" = "$CERT_SAN" ] \
@@ -119,7 +129,7 @@ EMPTY_CM="$(helm template kacho-umbrella "$UMBRELLA" -f "$DEV" \
 EMPTY_ALLOWED="$(allowlist_of "$EMPTY_CM")"
 [ -z "$EMPTY_ALLOWED" ] \
   || fail "an empty allowedClientSANs still renders callers ($EMPTY_ALLOWED) — the mint must have no default caller"; ok
-echo "$EMPTY_CM" | grep -q "allowed-client-sans" \
+[[ "$EMPTY_CM" == *"allowed-client-sans"* ]] \
   || fail "empty allow-list drops the key entirely — the fail-closed setting must stay visible in the rendered config"; ok
 
 # ── 6. mTLS off → no operator identity is minted ─────────────────────────────
@@ -128,7 +138,7 @@ echo "$EMPTY_CM" | grep -q "allowed-client-sans" \
 NOMTLS="$(helm template kacho-umbrella "$UMBRELLA" -f "$DEV" \
   --set mtls.enabled=false --set cert-manager.enabled=false \
   --show-only "$CERT_TPL" 2>/dev/null || true)"
-if echo "$NOMTLS" | grep -q "kind: Certificate"; then
+if [[ "$NOMTLS" == *"kind: Certificate"* ]]; then
   fail "bootstrap-operator Certificate renders with mtls.enabled=false — there is no internal CA to sign it"
 fi; ok
 

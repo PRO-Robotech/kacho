@@ -137,9 +137,9 @@ func insertVolume(t *testing.T, pool *pgxpool.Pool, bindingID string, loc blockb
 	id = ids.NewID(domain.PrefixVolume)
 	object = blockbackend.ObjectName("kctest", id)
 	_, err := pool.Exec(context.Background(), `
-		INSERT INTO volumes (id, project_id, zone_id, disk_type_id, size_bytes, state,
+		INSERT INTO volumes (id, project_id, zone_id, name, disk_type_id, size_bytes, state,
 		                     binding_id, backend_object, backend_namespace, observed_state)
-		VALUES ($1, 'prj-cycle', 'ru-central1-a', 'block-cycle', $2, 'CREATING',
+		VALUES ($1, 'prj-cycle', 'ru-central1-a', $1, 'block-cycle', $2, 'CREATING',
 		        $3, $4, $5, 'ABSENT')`,
 		id, size, bindingID, object, loc.Namespace)
 	require.NoError(t, err)

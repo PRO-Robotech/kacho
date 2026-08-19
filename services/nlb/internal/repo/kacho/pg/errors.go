@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
@@ -34,7 +36,7 @@ var _ *pgconn.PgError = nil
 //
 //	23505 unique_violation             → ErrAlreadyExists
 //	23503 foreign_key_violation        → ErrFailedPrecondition
-//	23514 check_violation              → ErrInvalidArg
+//	23514 check_violation              → ErrInternal (форма имени) | ErrInvalidArg
 //	23P01 exclusion_violation          → ErrFailedPrecondition
 //	22P02 invalid_text_representation  → ErrInvalidArg (malformed cast)
 //
@@ -100,7 +102,7 @@ func mapPgErr(err error, kind, id string) error {
 			}
 			return fmt.Errorf("%w: %s has dependent resources", kacho.ErrFailedPrecondition, kind)
 		case "23514":
-			return fmt.Errorf("%w: %s violates check constraint", kacho.ErrInvalidArg, kind)
+			return wrapCheckViolation(pgErr, kind)
 		case "23P01":
 			return fmt.Errorf("%w: %s value conflicts", kacho.ErrFailedPrecondition, kind)
 		case "22P02":
@@ -169,4 +171,35 @@ func pageSizeOrDefault(p int64) (int64, error) {
 			Err()
 	}
 	return p, nil
+}
+
+// wrapCheckViolation разбирает 23514 на две полосы по вопросу «чьё это
+// значение» (задача #718; тот же разбор, что в vpc — класс, а не экземпляр).
+//
+// Имя ресурса nlb судит сам: `domain.LbName.Validate` зовёт `corevalidate.Name`,
+// то есть единую форму дерева, и делает это на обоих путях записи. Ограничение
+// таблицы, поставленное миграцией 715001, — защита последнего рубежа; её
+// срабатывание означает, что негодное имя прошло МИМО проверки, то есть дефект
+// сервиса. Отвечать на него `INVALID_ARGUMENT` значит обвинять вызывающего в
+// нашей ошибке и не давать ему ничего, что можно исправить.
+//
+// Прочие ограничения остаются отказом по вводу, но говорят тоном контракта:
+// «violates check constraint» — формулировка Postgres, а не Kachō. Исходная
+// ошибка сохраняется в цепочке для журнала оператора; наружу её сворачивает
+// отображение в статус.
+func wrapCheckViolation(pgErr *pgconn.PgError, kind string) error {
+	if nameform.IsConstraint(pgErr.TableName, pgErr.ConstraintName) {
+		slog.Error("name form backstop fired: service admitted a name it validates itself",
+			"sqlstate", pgErr.Code,
+			"table", pgErr.TableName,
+			"constraint", pgErr.ConstraintName,
+			"kind", kind)
+		return fmt.Errorf("%w: %v", kacho.ErrInternal, pgErr)
+	}
+	slog.Warn("check constraint rejected caller input",
+		"sqlstate", pgErr.Code,
+		"table", pgErr.TableName,
+		"constraint", pgErr.ConstraintName,
+		"kind", kind)
+	return fmt.Errorf("%w: Illegal argument", kacho.ErrInvalidArg)
 }

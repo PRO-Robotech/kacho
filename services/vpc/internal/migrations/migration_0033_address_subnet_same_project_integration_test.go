@@ -46,8 +46,8 @@ func seedSubnetAt(t *testing.T, db *sql.DB, projectID, zone string) string {
 // 0033 такая вставка ПРОХОДИТ, вторая — что после она отвергнута.
 func seedInternalAddress(db *sql.DB, projectID, subnetID string) error {
 	_, err := db.Exec(`
-		INSERT INTO addresses (id, project_id, addr_type, ip_version, internal_ipv4)
-		VALUES ($1, $2, 1, 1, jsonb_build_object('address', '', 'subnet_id', $3::text))`,
+		INSERT INTO addresses (id, name, project_id, addr_type, ip_version, internal_ipv4)
+		VALUES ($1, $1, $2, 1, 1, jsonb_build_object('address', '', 'subnet_id', $3::text))`,
 		ids.NewID(ids.PrefixAddress), projectID, subnetID)
 	return err
 }

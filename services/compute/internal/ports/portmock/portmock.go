@@ -95,11 +95,15 @@ func (r *InstanceRepo) List(_ context.Context, f ports.InstanceFilter, _ ports.P
 func (r *InstanceRepo) Insert(_ context.Context, in *domain.Instance) (*domain.Instance, []ownerregister.Registration, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if in.Name != "" {
-		for _, x := range r.data {
-			if x.ProjectID == in.ProjectID && x.Name == in.Name {
-				return nil, nil, ports.ErrAlreadyExists
-			}
+	// UNIQUE(project_id, name) — БЕЗУСЛОВНО, как в схеме. Здесь стоял предикат
+	// `if in.Name != ""` — копия частичного индекса `WHERE name <> ''`, который
+	// миграция 715001 сняла вместе с его предметом: пустых имён больше не бывает.
+	// Дублёр, переживший это ограничение, принимал бы две безымянные строки в один
+	// проект там, где база отвергает вторую, — то есть был бы снисходительнее
+	// продукта ровно в том месте, где проба про имена и смотрит.
+	for _, x := range r.data {
+		if x.ProjectID == in.ProjectID && x.Name == in.Name {
+			return nil, nil, ports.ErrAlreadyExists
 		}
 	}
 	r.data[in.ID] = in

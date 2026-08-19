@@ -163,10 +163,10 @@ func (u *CreateAddressUseCase) Execute(ctx context.Context, in CreateInput) (*op
 		return nil, status.Error(codes.InvalidArgument, "address_spec required")
 	}
 
-	// Domain self-validation: NameVPC / Description / Labels через newtypes —
-	// use-case не зовет corevalidate.* напрямую, все проходит через
-	// Address.Validate(). VPC Address: пустое name допустимо (разрешительная
-	// политика валидации).
+	// Domain self-validation: Name / Description / Labels через newtypes —
+	// всё проходит через Address.Validate(). Пустое имя здесь законно и означает
+	// «назови сам»: оно заменяется умолчанием ниже, когда идентификатор уже
+	// сгенерирован.
 	addrForValidate := domain.Address{
 		Name:        domain.RcNameVPC(in.Name),
 		Description: domain.RcDescription(in.Description),
@@ -260,6 +260,12 @@ func (u *CreateAddressUseCase) Execute(ctx context.Context, in CreateInput) (*op
 	}
 
 	addrID := ids.NewID(ids.PrefixAddress)
+	// Пустое имя не доживает до записи: ресурса без имени не бывает (#715).
+	// Подстановка стоит ПОСЛЕ чеканки идентификатора (умолчание производно от
+	// него) и ДО сборки строки — и она же снимает нужду в проверке «а не занято
+	// ли»: идентификатор глобально уникален by construction, поэтому уникальность
+	// имени остаётся за индексом БД, а не за чтением-перед-вставкой (ban #10).
+	in.Name = corevalidate.NameOrDefault(in.Name, addrID)
 	// Учёт числа ресурсов: ранний отказ ДО создания операции.
 	//
 	// Здесь же материализуются строки учёта, если проект их ещё не имеет, —

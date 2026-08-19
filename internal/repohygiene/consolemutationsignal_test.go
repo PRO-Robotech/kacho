@@ -115,18 +115,9 @@ const consoleMutationTransportDir = "/src/api/"
 // Ровно тот исход, ради которого ведомость обязана истекать: долг закрылся не
 // работой по нему, и заметил это гейт, а не читатель.
 var consoleMutationLedger = []string{
-	"compute/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
-	"compute/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
-	"compute/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
 	"iam/src/components/organisms/iam/AccessBindingCreateForm/AccessBindingCreateForm.tsx",
 	"iam/src/pages/iam/AccessPage/AccessPage.tsx",
-	"nlb/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
-	"nlb/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
-	"nlb/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
 	"nlb/src/components/organisms/TargetsManager/TargetsManager.tsx",
-	"registry/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
-	"registry/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
-	"registry/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
 	"shared/src/components/organisms/AddressPoolCidrManager/AddressPoolCidrManager.tsx",
 	"shared/src/components/organisms/CidrTableSection/CidrTableSection.tsx",
 	"shared/src/components/organisms/InlineAddressPoolCreateForm/InlineAddressPoolCreateForm.tsx",
@@ -146,10 +137,6 @@ var consoleMutationLedger = []string{
 	"shared/src/pages/InstanceDetailPage.tsx",
 	"shared/src/pages/TargetGroupDetailPage.tsx",
 	"shared/src/pages/system/LimitsPage.tsx",
-	"storage/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
-	"storage/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
-	"storage/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
-	"vpc/src/components/molecules/DeleteButton/DeleteButton.tsx",
 }
 
 // consoleMutationSite — место мутации: координата и текст вызова.

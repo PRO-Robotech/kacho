@@ -34,10 +34,10 @@ func allocTestFixture(t *testing.T, ctx context.Context, r *kachopg.Repository, 
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	defer w.Abort()
-	net := newNetwork("project-alloc", "net-alloc-"+t.Name())
+	net := newNetwork("project-alloc", "net-alloc")
 	_, err = w.Networks().Insert(ctx, net)
 	require.NoError(t, err)
-	sub := newSubnet("project-alloc", "sub-alloc-"+t.Name(), net.ID, "zone-a", v4)
+	sub := newSubnet("project-alloc", "sub-alloc", net.ID, "zone-a", v4)
 	sub.V6CidrBlocks = v6
 	created, err := w.Subnets().Insert(ctx, sub)
 	require.NoError(t, err)

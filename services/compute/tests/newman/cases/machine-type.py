@@ -109,8 +109,18 @@ CASES.append(Case(
     steps=[Step(name="cr-no-name", method="POST", path=MT_INT, internal=True, auth=ADMIN_AUTH,
                 body={"name": "", "family": "STANDARD",
                       "effectiveResources": {"vCpu": 2, "memoryMib": 8192}},
+                # ИМЯ ПОЛЯ УТВЕРЖДАЕТСЯ В ДЕТАЛЯХ, А НЕ В ТЕКСТЕ. Здесь стояла
+                # проверка верхнего `message` на «name is required». Она
+                # противоречила контракту: текст отказа — стабильная обобщённая
+                # строка, машиночитаемое живёт в `details`. Замок на это стоит
+                # в самом продукте (`UnsupportedFieldMessageStaysGeneric`), и
+                # попытка поднять предмет в текст его немедленно роняет.
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text mentions name required', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('name is required'));"])],
+                             "pm.test('field violation names name', () => {"
+                             "  const d = (pm.response.json().details||[]);"
+                             "  const v = d.flatMap(x => x.fieldViolations || x.field_violations || []);"
+                             "  pm.expect(v.map(f => f.field)).to.include('name');"
+                             "});"])],
 ))
 
 

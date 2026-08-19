@@ -59,7 +59,11 @@ func setFields(u disktype.DiskTypeUpdate) map[string]bool {
 // доезжает — иначе проба зеленела бы на правке, не делающей вообще ничего.
 func TestUpdateAdminAppliesOnlyMaskedFields(t *testing.T) {
 	const (
-		newName  = "переименованный"
+		// Имя латиницей и строчными: имя класса судится единой формой имени
+		// ресурса (#715), а кириллица ей не отвечает. Прежнее значение было
+		// законно, пока имя проверялось только длиной, — и уронило бы эти пробы
+		// по причине, к их предмету (доставке маски) отношения не имеющей.
+		newName  = "block-renamed"
 		bodyDesc = "тело несёт описание, маска его не называет"
 	)
 	bodyZones := []string{"ru-central1-c"}
@@ -109,7 +113,8 @@ func TestUpdateAdminAppliesOnlyMaskedFields(t *testing.T) {
 func TestUpdateAdminEmptyMaskPatchesAllMutable(t *testing.T) {
 	repo := newRecordingRepo()
 	if _, err := disktype.New(repo).UpdateAdmin(context.Background(), "block-mask",
-		nil, "имя", "описание", []string{"ru-central1-a"},
+		// Имя латиницей и строчными — по той же причине, что в пробе выше.
+		nil, "block-name", "описание", []string{"ru-central1-a"},
 		domain.TierBalanced, domain.SizeLimits{MinSizeBytes: 1 << 30, MaxSizeBytes: 16 << 40, SizeStepBytes: 1 << 30}); err != nil {
 		t.Fatalf("UpdateAdmin mask=[] err = %v", err)
 	}

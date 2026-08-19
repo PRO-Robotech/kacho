@@ -265,7 +265,8 @@ erDiagram
 ### Public ресурсы (project-scoped)
 
 #### `networks`
-Контейнер VPC. PK `id` (`net…`). UNIQUE `(project_id, name)` non-partial.
+Контейнер VPC. PK `id` (`net…`). UNIQUE `(project_id, name)` — **полный** (миграция `715001`):
+пустого имени не существует, поэтому частичный предикат `WHERE name <> ''` потерял предмет.
 `default_security_group_id` — FK → `security_groups(id) ON DELETE SET NULL` (миграция 0005;
 ранее без FK, nullable после 0005); выставляется inline в `internal/apps/kacho/api/network/create.go`.`doCreate` при
 безусловно, в той же транзакции. `vrf_id` (миграция 0007) — sequence-backed уникальный
@@ -273,7 +274,7 @@ per-network VRF id data-plane; инфра-чувствительное поле,
 `InternalNetworkService.GetNetwork`.
 
 #### `subnets`
-Подсеть в Network. UNIQUE `(project_id, name) WHERE name<>''`. FK `network_id → networks(id)`
+Подсеть в Network. UNIQUE `(project_id, name)` — полный (`715001`). FK `network_id → networks(id)`
 (NO ACTION = блокирует удаление Network с детьми). FK `route_table_id → route_tables(id)
 ON DELETE SET NULL`. **EXCLUDE-constraints**:
 - `subnets_no_overlap_v4`: `EXCLUDE USING gist (network_id WITH =, v4_cidr_primary inet_ops WITH &&) WHERE (v4_cidr_primary IS NOT NULL)`.
@@ -447,8 +448,11 @@ inline в `CREATE TABLE` базовой схемы:
   `kacho_vpc.kacho_labels_valid(jsonb) IMMUTABLE` проверяет cardinality ≤ 64,
   key regex `^[a-z][-_./\\@a-z0-9]{0,62}$`, value length ≤ 63.
 
-Эти constraint'ы маппятся через `wrapPgErr` (SQLSTATE `23514`) в `service.ErrInvalidArg` →
-gRPC `INVALID_ARGUMENT`.
+Эти constraint'ы маппятся через `wrapPgErr` (SQLSTATE `23514`) в `service.ErrInvalidArg`
+→ gRPC `INVALID_ARGUMENT` — **кроме формы имени**. Её проверяет сам сервис
+(`domain.RcNameVPC` → единственная форма дерева), поэтому ограничение
+`<таблица>_name_check` есть защита последнего рубежа: его срабатывание означает
+дефект сервиса и отдаётся фиксированным `INTERNAL` с записью `ERROR` в журнал.
 
 ---
 

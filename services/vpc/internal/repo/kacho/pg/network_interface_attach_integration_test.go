@@ -71,7 +71,7 @@ func (e *nicAttachEnv) makeZonalSubnet(t *testing.T, projectID, netID, zone, cid
 	_, err := e.pool.Exec(e.ctx,
 		`INSERT INTO subnets(id, project_id, network_id, zone_id, region_id, placement_type, name, description, labels, v4_cidr_blocks, v6_cidr_blocks)
 		 VALUES ($1,$2,$3,$4,'', 'ZONAL', $5,'','{}'::jsonb, ARRAY[$6]::text[], ARRAY[]::text[])`,
-		subnetID, projectID, netID, zone, "", cidr)
+		subnetID, projectID, netID, zone, subnetID, cidr)
 	require.NoError(t, err)
 	return subnetID
 }
@@ -83,7 +83,7 @@ func (e *nicAttachEnv) makeRegionalSubnet(t *testing.T, projectID, netID, region
 	_, err := e.pool.Exec(e.ctx,
 		`INSERT INTO subnets(id, project_id, network_id, zone_id, region_id, placement_type, name, description, labels, v4_cidr_blocks, v6_cidr_blocks)
 		 VALUES ($1,$2,$3,'', $4, 'REGIONAL', $5,'','{}'::jsonb, ARRAY[$6]::text[], ARRAY[]::text[])`,
-		subnetID, projectID, netID, region, "", cidr)
+		subnetID, projectID, netID, region, subnetID, cidr)
 	require.NoError(t, err)
 	return subnetID
 }
@@ -94,7 +94,7 @@ func (e *nicAttachEnv) makeFreeNIC(t *testing.T, projectID, subnetID, mac string
 	nicID := ids.NewID(ids.PrefixNetworkInterface)
 	_, err := e.pool.Exec(e.ctx,
 		`INSERT INTO network_interfaces(id, project_id, name, description, labels, subnet_id, security_group_ids, v4_address_ids, v6_address_ids, status, mac_address, used_by_type, used_by_id, used_by_name)
-		 VALUES ($1,$2,'','','{}'::jsonb,$3,'[]'::jsonb,'[]'::jsonb,'[]'::jsonb,'AVAILABLE',$4,'','','')`,
+		 VALUES ($1,$2,$1,'','{}'::jsonb,$3,'[]'::jsonb,'[]'::jsonb,'[]'::jsonb,'AVAILABLE',$4,'','','')`,
 		nicID, projectID, subnetID, mac)
 	require.NoError(t, err)
 	return nicID

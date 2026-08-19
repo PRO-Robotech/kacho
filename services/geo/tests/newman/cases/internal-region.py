@@ -46,7 +46,7 @@ CASES.append(Case(
     classes=["CRUD"], priority="P0",
     steps=[
         Step(name="create-region", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-reg-crud-{{runId}}", "name": "QA Region CRUD {{runId}}", "countryCode": "RU", "status": "UP"},
+             body={"id": "qa-reg-crud-{{runId}}", "name": "qa-region-crud-{{runId}}", "countryCode": "RU", "status": "UP"},
              test_script=[
                  *assert_operation_envelope(),
                  *save_from_response("j.metadata && j.metadata.regionId", "irgCrudRegionId"),
@@ -57,7 +57,7 @@ CASES.append(Case(
                  *assert_status(200),
                  "const j = pm.response.json();",
                  "pm.test('region id materialized', () => pm.expect(j.id).to.eql('qa-reg-crud-' + pm.environment.get('runId')));",
-                 "pm.test('name persisted', () => pm.expect(j.name).to.eql('QA Region CRUD ' + pm.environment.get('runId')));",
+                 "pm.test('name persisted', () => pm.expect(j.name).to.eql('qa-region-crud-' + pm.environment.get('runId')));",
                  "pm.test('countryCode persisted', () => pm.expect(j.countryCode).to.eql('RU'));",
                  "pm.test('openForPlacement true (region status UP)', () => pm.expect(j.openForPlacement).to.eql(true));",
              ])),
@@ -77,7 +77,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P1",
     steps=[
         Step(name="create-malformed", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "9-Bad_Id!", "name": "QA Malformed"},
+             body={"id": "9-Bad_Id!", "name": "qa-malformed"},
              test_script=[
                  *assert_status(400),
                  *assert_grpc_code(3, "INVALID_ARGUMENT"),
@@ -97,7 +97,7 @@ CASES.append(Case(
     classes=["VAL", "NEG"], priority="P1",
     steps=[
         Step(name="create-empty-id", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "", "name": "QA Empty Id"},
+             body={"id": "", "name": "qa-empty-id"},
              test_script=[
                  *assert_status(400),
                  *assert_grpc_code(3, "INVALID_ARGUMENT"),
@@ -120,13 +120,13 @@ CASES.append(Case(
     classes=["NEG", "IDM"], priority="P1",
     steps=[
         Step(name="create-first", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-reg-dup-{{runId}}", "name": "QA Region Dup {{runId}}"},
+             body={"id": "qa-reg-dup-{{runId}}", "name": "qa-region-dup-{{runId}}"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="get-after-first", method="GET",
              path="/geo/v1/regions/qa-reg-dup-{{runId}}",
              test_script=[*assert_status(200)])),
         Step(name="create-dup", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-reg-dup-{{runId}}", "name": "QA Region Dup Again {{runId}}"},
+             body={"id": "qa-reg-dup-{{runId}}", "name": "qa-region-dup-again-{{runId}}"},
              test_script=[*assert_operation_failed(6, "ALREADY_EXISTS", "already exists")]),
         Step(name="get-still-present", method="GET", path="/geo/v1/regions/qa-reg-dup-{{runId}}",
              test_script=[
@@ -152,7 +152,7 @@ CASES.append(Case(
     classes=["NEG", "STATE"], priority="P0",
     steps=[
         Step(name="create-region", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-reg-del-{{runId}}", "name": "QA Region Del {{runId}}", "status": "UP"},
+             body={"id": "qa-reg-del-{{runId}}", "name": "qa-region-del-{{runId}}", "status": "UP"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="confirm-region", method="GET",
              path="/geo/v1/regions/qa-reg-del-{{runId}}",
@@ -160,7 +160,7 @@ CASES.append(Case(
         # zone id MUST be coupling-valid: zone.id == regionId + "-" + <suffix> (GEO-1-29).
         Step(name="create-child-zone", method="POST", path="/geo/v1/internal/zones", internal=True,
              body={"id": "qa-reg-del-{{runId}}-z", "regionId": "qa-reg-del-{{runId}}",
-                   "name": "QA Child Zone {{runId}}", "status": "UP"},
+                   "name": "qa-child-zone-{{runId}}", "status": "UP"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="confirm-zone", method="GET",
              path="/geo/v1/zones/qa-reg-del-{{runId}}-z",
@@ -199,13 +199,13 @@ CASES.append(Case(
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         Step(name="create-region", method="POST", path="/geo/v1/internal/regions", internal=True,
-             body={"id": "qa-reg-upd-{{runId}}", "name": "QA Region Before {{runId}}"},
+             body={"id": "qa-reg-upd-{{runId}}", "name": "qa-region-before-{{runId}}"},
              test_script=[*assert_operation_envelope()]),
         retry_get_until_found(Step(name="confirm-created", method="GET",
              path="/geo/v1/regions/qa-reg-upd-{{runId}}",
              test_script=[*assert_status(200)])),
         Step(name="update-name", method="PATCH", path="/geo/v1/internal/regions/qa-reg-upd-{{runId}}", internal=True,
-             body={"name": "QA Region After {{runId}}", "updateMask": "name"},
+             body={"name": "qa-region-after-{{runId}}", "updateMask": "name"},
              test_script=[*assert_operation_envelope()]),
         # re-read until the Update commit is visible: the name flips from
         # "QA Region Before" to "QA Region After ...". retry on the STALE name via a
@@ -213,7 +213,7 @@ CASES.append(Case(
         Step(name="verify-name", method="GET", path="/geo/v1/regions/qa-reg-upd-{{runId}}",
              test_script=[
                  *assert_status(200),
-                 "const want = 'QA Region After ' + pm.environment.get('runId');",
+                 "const want = 'qa-region-after-' + pm.environment.get('runId');",
                  "const cur = pm.response.json().name;",
                  "const uc = parseInt(pm.environment.get('_updRetry') || '0', 10);",
                  "if (cur !== want && uc < 20) {",

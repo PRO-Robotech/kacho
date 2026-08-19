@@ -234,11 +234,11 @@ func insertStuckLB(t testing.TB, ctx context.Context, pool *pgxpool.Pool,
 
 	_, err := pool.Exec(ctx, `
 		INSERT INTO kacho_nlb.load_balancers
-			(id, project_id, region_id, type, status, placement_type, ip_families,
+			(id, project_id, name, region_id, type, status, placement_type, ip_families,
 			 address_v4, address_id_v4, vip_origin_v4,
 			 address_v6, address_id_v6, vip_origin_v6,
 			 created_at, updated_at)
-		VALUES ($1, $2, 'region-1', 'INTERNAL', $3, 'REGIONAL', $4,
+		VALUES ($1, $2, $1, 'region-1', 'INTERNAL', $3, 'REGIONAL', $4,
 		        $5, $6, $7,
 		        $8, $9, $10,
 		        now() - $11::interval, now() - $11::interval)

@@ -68,7 +68,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-crud-{{runId}}\", \"name\": \"QA Region CRUD {{runId}}\", \"countryCode\": \"RU\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-reg-crud-{{runId}}\", \"name\": \"qa-region-crud-{{runId}}\", \"countryCode\": \"RU\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -153,7 +153,7 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('region id materialized', () => pm.expect(j.id).to.eql('qa-reg-crud-' + pm.environment.get('runId')));",
-                  "pm.test('name persisted', () => pm.expect(j.name).to.eql('QA Region CRUD ' + pm.environment.get('runId')));",
+                  "pm.test('name persisted', () => pm.expect(j.name).to.eql('qa-region-crud-' + pm.environment.get('runId')));",
                   "pm.test('countryCode persisted', () => pm.expect(j.countryCode).to.eql('RU'));",
                   "pm.test('openForPlacement true (region status UP)', () => pm.expect(j.openForPlacement).to.eql(true));"
                 ]
@@ -240,7 +240,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"9-Bad_Id!\", \"name\": \"QA Malformed\"}",
+              "raw": "{\"id\": \"9-Bad_Id!\", \"name\": \"qa-malformed\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -295,7 +295,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"\", \"name\": \"QA Empty Id\"}",
+              "raw": "{\"id\": \"\", \"name\": \"qa-empty-id\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -350,7 +350,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-dup-{{runId}}\", \"name\": \"QA Region Dup {{runId}}\"}",
+              "raw": "{\"id\": \"qa-reg-dup-{{runId}}\", \"name\": \"qa-region-dup-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -457,7 +457,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-dup-{{runId}}\", \"name\": \"QA Region Dup Again {{runId}}\"}",
+              "raw": "{\"id\": \"qa-reg-dup-{{runId}}\", \"name\": \"qa-region-dup-again-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -608,7 +608,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-del-{{runId}}\", \"name\": \"QA Region Del {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-reg-del-{{runId}}\", \"name\": \"qa-region-del-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -715,7 +715,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-del-{{runId}}-z\", \"regionId\": \"qa-reg-del-{{runId}}\", \"name\": \"QA Child Zone {{runId}}\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-reg-del-{{runId}}-z\", \"regionId\": \"qa-reg-del-{{runId}}\", \"name\": \"qa-child-zone-{{runId}}\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1014,7 +1014,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-upd-{{runId}}\", \"name\": \"QA Region Before {{runId}}\"}",
+              "raw": "{\"id\": \"qa-reg-upd-{{runId}}\", \"name\": \"qa-region-before-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1122,7 +1122,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"QA Region After {{runId}}\", \"updateMask\": \"name\"}",
+              "raw": "{\"name\": \"qa-region-after-{{runId}}\", \"updateMask\": \"name\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1185,7 +1185,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "const want = 'QA Region After ' + pm.environment.get('runId');",
+                  "const want = 'qa-region-after-' + pm.environment.get('runId');",
                   "const cur = pm.response.json().name;",
                   "const uc = parseInt(pm.environment.get('_updRetry') || '0', 10);",
                   "if (cur !== want && uc < 20) {",

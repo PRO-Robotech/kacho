@@ -402,6 +402,13 @@ func (u *UseCase) Create(ctx context.Context, v *domain.Volume) (*operations.Ope
 		zoneRegionID = region
 	}
 	v.ID = ids.NewID(domain.PrefixVolume)
+	// Пустое имя не доживает до записи (#715): ресурса без имени не бывает.
+	// Подстановка стоит ЗДЕСЬ, а не в домене, потому что умолчание выводится из
+	// идентификатора, а идентификатор чеканится строкой выше — до неё выводить
+	// было не из чего. Отсюда же и то, что два безымянных тома в одном проекте
+	// не спорят за UNIQUE(project,name): идентификатор глобально уникален by
+	// construction, значит и производное имя тоже.
+	v.Name = validate.NameOrDefault(v.Name, v.ID)
 	v.Backend.BackendObject = blockbackend.ObjectName(u.installPrefix, v.ID)
 	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
 		fmt.Sprintf("Create volume %s", v.ID),
@@ -716,10 +723,21 @@ func resolveUpdate(mask []string, name, description string, labels map[string]st
 		}
 		return false
 	}
-	if apply("name") {
-		if err := domain.VolumeName(name).Validate(); err != nil {
-			return VolumeUpdate{}, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())
-		}
+	// Решение «что делать с именем на правке» принимает ЕДИНСТВЕННАЯ функция
+	// дерева (validate.NameOnUpdate): пять исходов маски и значения — правило
+	// горизонтальное, оно про форму запроса, а не про предмет сервиса.
+	//
+	// Наружу отказ уходит контрактным ТОНОМ storage, а не ошибкой канона:
+	// «Illegal argument name» — часть контракта (§1.7), он сам называет поле, и
+	// его пинят кейсы чёрного ящика на пути правки. Канон отвечает generic'ом с
+	// именем поля в деталях; отдать его как есть значило бы сменить наблюдаемое
+	// у landed-кейсов. Пересборка через err.Error() запрещена отдельно — она
+	// приклеила бы к сообщению обёртку gRPC.
+	applyName, nerr := validate.NameOnUpdate("name", mask, name)
+	if nerr != nil {
+		return VolumeUpdate{}, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, domain.ErrIllegalName)
+	}
+	if applyName {
 		n := name
 		u.Name = &n
 	}

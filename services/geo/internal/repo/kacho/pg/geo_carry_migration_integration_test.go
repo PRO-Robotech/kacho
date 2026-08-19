@@ -186,11 +186,11 @@ func TestGeoCarryPreservesThePlaceableZoneSet(t *testing.T) {
 	pool := newTestPool(t)
 
 	runCarry(t, pool,
-		[][2]string{{"r-open", "Region Open"}, {"r-closed", "Region Closed"}},
+		[][2]string{{"r-open", "region-open"}, {"r-closed", "region-closed"}},
 		[]carriedZone{
-			{"r-open-a", "r-open", "UP", "Zone Open A"},
-			{"r-open-b", "r-open", "STATUS_UNSPECIFIED", "Zone Unspecified B"},
-			{"r-closed-a", "r-closed", "DOWN", "Zone Closed A"},
+			{"r-open-a", "r-open", "UP", "zone-open-a"},
+			{"r-open-b", "r-open", "STATUS_UNSPECIFIED", "zone-unspecified-b"},
+			{"r-closed-a", "r-closed", "DOWN", "zone-closed-a"},
 		})
 
 	require.Equal(t, "UP", statusOf(t, pool, "regions", "r-open"),
@@ -213,10 +213,10 @@ func TestGeoCarryLeavesARegionWithNothingOpenClosed(t *testing.T) {
 	pool := newTestPool(t)
 
 	runCarry(t, pool,
-		[][2]string{{"r-dark", "Region Dark"}},
+		[][2]string{{"r-dark", "region-dark"}},
 		[]carriedZone{
-			{"r-dark-a", "r-dark", "DOWN", "Zone Dark A"},
-			{"r-dark-b", "r-dark", "STATUS_UNSPECIFIED", "Zone Dark B"},
+			{"r-dark-a", "r-dark", "DOWN", "zone-dark-a"},
+			{"r-dark-b", "r-dark", "STATUS_UNSPECIFIED", "zone-dark-b"},
 		})
 
 	require.Equal(t, "DOWN", statusOf(t, pool, "regions", "r-dark"),
@@ -230,8 +230,8 @@ func TestGeoCarryIsIdempotent(t *testing.T) {
 	pool := newTestPool(t)
 	ctx := context.Background()
 
-	regions := [][2]string{{"r-open", "Region Open"}}
-	zones := []carriedZone{{"r-open-a", "r-open", "UP", "Zone Open A"}}
+	regions := [][2]string{{"r-open", "region-open"}}
+	zones := []carriedZone{{"r-open-a", "r-open", "UP", "zone-open-a"}}
 
 	runCarry(t, pool, regions, zones)
 	first := openZoneIDs(t, pool)

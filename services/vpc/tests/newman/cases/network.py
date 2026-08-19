@@ -868,11 +868,19 @@ CASES.extend(headers_content_type_block("NET", "/vpc/v1/networks", {"projectId":
 # Network-specific edge cases
 CASES.append(Case(
     id="NET-LST-FILTER-MULTI-CONDITIONS",
-    title="List с filter из несколько условий — multi-condition filter",
-    classes=["FILTER"], priority="P3",
+    # `AND` разборщику НЕ ИЗВЕСТЕН — это записано в его же шапке («поддержка
+    # AND/OR/STARTS_WITH/IN не заведена: у неё нет вызывающего»). Поэтому
+    # `name="x" AND name="y"` разбирается до закрывающей кавычки, а остаток
+    # хвоста даёт `Unexpected token` — отказ детерминирован, и его текст
+    # («Bad expression at column N.») — часть контракта фильтра, а не проза.
+    # Прежнее `oneOf([200, 400])` принимало и 200, то есть молча признало бы
+    # законным день, когда край начнёт глотать невыразимое выражение.
+    title="List с filter из двух условий (AND не поддержан) → 400 InvalidArgument",
+    classes=["FILTER", "VAL"], priority="P3",
     steps=[Step(name="lst-multi", method="GET",
                 path="/vpc/v1/networks?projectId={{_suiteProjectId}}&filter=name%3D%22x%22%20AND%20name%3D%22y%22",
-                test_script=["pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             "pm.test('контрактный текст разборщика фильтра', () => pm.expect(String(pm.response.json().message || ''), pm.response.text()).to.contain('Bad expression at column'));"])],
 ))
 
 # List/Get edge cases
@@ -898,11 +906,17 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NET-LST-FILTER-SPECIAL-CHARS",
-    title="List с filter содержащим спец-символы → 400 или 200",
+    # Исход УСТАНОВЛЕН, а не «как получится»: `name="!@#$%"` разбирается штатно —
+    # поле из белого списка, значение в кавычках, хвоста нет, — поэтому запрос
+    # уходит параметром и страница приходит пустой. Спец-символы значения на
+    # разбор не влияют вовсе: они внутри кавычек. Прежнее `oneOf([200, 400])`
+    # принимало и отказ, то есть ту самую регрессию разбора, ради которой кейс и
+    # написан.
+    title="List с filter из спец-символов → 200 и пустая страница",
     classes=["FILTER", "VAL"], priority="P3",
     steps=[Step(name="lst-fsc", method="GET",
                 path="/vpc/v1/networks?projectId={{_suiteProjectId}}&filter=name%3D%22%21%40%23%24%25%22",
-                test_script=["pm.test('handled', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                test_script=assert_empty_page("значение из спец-символов именем ни у кого не является"))],
 ))
 
 CASES.append(Case(
@@ -925,11 +939,18 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NET-LST-DOUBLE-PROJECT-PARAM",
-    title="List с дубликатом projectId param → 200 (last wins) или 400",
+    # «last wins» не происходит НИКОГДА: `project_id` — скалярное поле запроса, и
+    # `runtime.PopulateQueryParameters` отвергает второе значение целиком
+    # (`too many values for field "project_id"`), а сгенерированный обработчик края
+    # переводит это в `InvalidArgument`. Проверка прав до отказа доходит и его не
+    # опережает: она читает первое значение (`url.Values.Get`), а оно — свой же
+    # проект актора. Значит исход один: 400 и код 3.
+    title="List с дубликатом projectId param → 400 InvalidArgument (край отвергает второе значение)",
     classes=["VAL"], priority="P3",
     steps=[Step(name="lst-dup", method="GET",
                 path="/vpc/v1/networks?projectId={{_suiteProjectId}}&projectId={{_suiteProjectCrossId}}&pageSize=10",
-                test_script=["pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             "pm.test('сообщение называет поле, из-за которого отказ', () => pm.expect(String(pm.response.json().message || ''), pm.response.text()).to.contain('project_id'));"])],
 ))
 
 CASES.append(Case(

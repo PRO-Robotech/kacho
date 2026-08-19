@@ -13,13 +13,16 @@ package domain
 import (
 	"regexp"
 	"unicode/utf8"
+
+	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
 )
 
 // ---- Newtypes для базовых строковых полей -----------------------------------
 
-// RcNameVPC — разрешительное имя для VPC-ресурсов (Network, Subnet, Address,
-// RouteTable, SecurityGroup, NetworkInterface). Допускает пустую строку,
-// uppercase и underscore; длина 0..63.
+// RcNameVPC — имя VPC-ресурса (Network, Subnet, Address, RouteTable,
+// SecurityGroup, NetworkInterface, CidrGroup, AddressPool, Gateway). Форму
+// задаёт ЕДИНСТВЕННОЕ объявление дерева — `corevalidate.NameForm`; своей у
+// сервиса больше нет (#715).
 type RcNameVPC string
 
 // RcDescription — описание ресурса; UTF-8 длина ≤ 256.
@@ -63,12 +66,16 @@ func (d RcLabels) Iterate(fn func(LabelKey, LabelVal) bool) {
 	}
 }
 
-// ---- Regex'ы (синхронизированы с corelib/validate; источник истины здесь) ---
+// ---- Regex'ы ---------------------------------------------------------------
+//
+// Формы ИМЕНИ здесь нет и быть не должно: её единственное объявление —
+// `corevalidate.NameForm` в общем фундаменте. Прежняя редакция этого места
+// объявляла себя «источником истины» и держала СВОЮ форму, шире общей
+// (заглавные, подчёркивание). Двух источников истины об одном предмете не
+// бывает — бывает один верный и один, о расхождении которого никто не узнает;
+// так и вышло (#715).
 
-var (
-	nameVPCRe  = regexp.MustCompile(`^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$`)
-	labelKeyRe = regexp.MustCompile(`^[a-z][-_./\\@a-z0-9]{0,62}$`)
-)
+var labelKeyRe = regexp.MustCompile(`^[a-z][-_./\\@a-z0-9]{0,62}$`)
 
 const (
 	// MaxNameLen — максимум для Name полей ресурсов.
@@ -124,8 +131,9 @@ const (
 	// MaxStaticRoutes — потолок числа статических маршрутов в таблице
 	// маршрутизации. Набор задаёт вызывающий телом запроса (RouteTable.Create и
 	// Update с маской static_routes несут ИТОГОВЫЙ набор целиком; аддитивных
-	// глаголов у маршрутов нет — AddRoutes/RemoveRoutes/UpdateRoute отказывают по
-	// имени, потому что StaticRoute не несёт идентичности). Длина оплачивается
+	// глаголов у маршрутов нет — они сняты с контракта вместе со своими
+	// сообщениями, потому что StaticRoute не несёт идентичности и адресовать
+	// поэлементную правку нечем). Длина оплачивается
 	// трижды: синхронным разбором каждой записи (префикс без host-bits +
 	// next-hop), сериализацией набора в JSONB и полной выдачей набора в КАЖДОМ
 	// Get/List этой таблицы и в payload каждого её события outbox. Без потолка
@@ -152,15 +160,51 @@ const (
 
 // ---- Validate()-методы ------------------------------------------------------
 
-// Validate проверяет, что value соответствует разрешительному name-контракту
-// для VPC-ресурсов. Пустая строка / uppercase / underscore — OK.
-// Длина 0..63 (regex это уже включает).
+// Validate проверяет имя против единственной формы дерева.
+//
+// Форма берётся из `nameform` — пакета БЕЗ транспорта, поэтому домен остаётся
+// stdlib-чистым и не тянет gRPC (правило слоёв, `architecture.md`). Своей формы
+// у сервиса нет и заводить её нельзя: две формы одного правила расходятся молча
+// (#715).
+//
+// ПУСТАЯ СТРОКА ЗДЕСЬ ПРОХОДИТ, и это не послабление, а необходимость.
+// `nameform.OK("")` — ЛОЖЬ, но newtype валидируется на ОБОИХ путях, а на пути
+// создания совокупная `Validate()` ресурса исполняется РАНЬШЕ, чем существует
+// идентификатор (сеть: проверка до `ids.NewID`, подстановка — после). Отвергай
+// newtype пустую строку — всякое создание без имени падало бы ДО того, как
+// умолчание вообще можно подставить.
+//
+// Поэтому контракт newtype ровно такой: «форма годная ЛИБО пусто-до-подстановки».
+// Законно ли пустое ИМЕННО СЕЙЧАС, решает use-case: на создании оно заменяется
+// `validate.NameOrDefault`, на правке — `validate.NameOnUpdate`. Не «чини» это
+// на строгую проверку — сломаешь создание без имени во всех девяти ресурсах разом.
 func (n RcNameVPC) Validate() error {
-	if !nameVPCRe.MatchString(string(n)) {
-		return newValidationError("name", `name must match ^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$ (letters, digits, hyphens, underscores; starts with letter; up to 63 chars; empty allowed)`)
+	s := string(n)
+	if s == "" {
+		return nil
+	}
+	if !nameform.OK(s) {
+		return newValidationError("name", nameFormViolationMsg)
 	}
 	return nil
 }
+
+// nameFormViolationMsg — текст отказа по форме имени.
+//
+// Форма подставляется из канона, а поясняющий хвост — ЛИТЕРАЛ, и это признанный
+// форк: `validate.Name` на пути правки строит ТОТ ЖЕ текст своим литералом, а
+// сюда его не позвать — он возвращает транспортную ошибку, из-за которой домен и
+// тянул бы gRPC. Тон сообщения — часть контракта (`api-conventions.md`), поэтому
+// расхождение здесь было бы наблюдаемо арендатором: один и тот же негодный ввод
+// отвечал бы по-разному на создании и на правке.
+//
+// Форк не оставлен на честное слово — его держит проба
+// `name_message_parity_test.go`: она сверяет ЭТОТ текст с тем, что производит
+// `validate.Name`, побайтово, и краснеет в день, когда любая из сторон поправится
+// одна. Настоящее снятие форка — за владельцем `nameform`: текст обязан жить там
+// же, где форма.
+const nameFormViolationMsg = "name must match " + nameform.Form +
+	" (lowercase letters, digits, hyphens; starts and ends with a letter or digit; 1..63 chars)"
 
 // Validate проверяет длину description (UTF-8 rune count ≤ MaxDescriptionLen).
 func (d RcDescription) Validate() error {

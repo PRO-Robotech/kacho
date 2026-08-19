@@ -72,7 +72,7 @@
 |---|---|---|---|---|
 | `id` PK | уникальный | `networks_pkey` ✅ | n/a | OK |
 | `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
-| `(project_id, name)` | уникальный name на project | `networks_project_id_name_key` UNIQUE ✅ | redundant List+name check (для UX) | OK |
+| `(project_id, name)` | уникальный name на project | `networks_project_id_name_key` UNIQUE — полный ✅ (715001) | redundant List+name check (для UX) | OK |
 | `default_security_group_id` | если не пустой — указывает на существующий SG | `networks_default_security_group_fk` FK ON DELETE SET NULL ✅ (0005) | inline в `internal/apps/kacho/api/network/create.go`.`doCreate` | OK |
 | `vrf_id` | уникальный per-network | `networks_vrf_id_key` UNIQUE ✅ (0007) + sequence-backed | n/a (DB-allocated) | OK |
 
@@ -82,7 +82,7 @@
 |---|---|---|---|---|
 | `id` PK | уникальный | `subnets_pkey` ✅ | n/a | OK |
 | `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
-| `(project_id, name)` | уникальный non-empty name | `subnets_project_id_name_key` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
+| `(project_id, name)` | уникальный name | `subnets_project_id_name_key` UNIQUE — полный ✅ (715001) | n/a | OK |
 | `network_id` | существует, не nullable | `subnets_network_id_fkey` FK (NO ACTION = RESTRICT) ✅ + `NOT NULL` ✅ | redundant `networkRepo.Get` в `doCreate` | OK |
 | `zone_id` | существует в kacho-geo | N/A (cross-service) | `geo.ZoneService.Get` через `ZoneRegistry` | OK (cross-service) |
 | `route_table_id` | если задан — указывает на существующую RT **той же сети** (можно `NULL`) | `subnets_route_table_id_fkey` FK ON DELETE SET NULL ✅ (только существование — область владения FK выразить не может) | `Subnet.Create` подставляет `network.default_route_table_id` (share-lock, writer-TX); ЯВНОЕ значение вызывающего проходит `validateSubnetRouteTableRef` (существование + `rt.network_id == subnet.network_id`) на Create и Update, в той же writer-TX | OK |

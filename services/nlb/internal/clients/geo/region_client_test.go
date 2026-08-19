@@ -39,7 +39,7 @@ func (f *fakeRegionService) Get(_ context.Context, req *geopb.GetRegionRequest) 
 }
 
 func TestRegionClient_Get_HappyPath(t *testing.T) {
-	regions := &fakeRegionService{resp: &geopb.Region{Id: "ru-central1", Name: "Central Russia"}}
+	regions := &fakeRegionService{resp: &geopb.Region{Id: "ru-central1", Name: "central-russia"}}
 	conn := startFakeGeo(t, regions)
 	c := NewRegionClient(conn)
 	require.NotNil(t, c)
@@ -47,7 +47,7 @@ func TestRegionClient_Get_HappyPath(t *testing.T) {
 	got, err := c.Get(ctxBackground(), "ru-central1")
 	require.NoError(t, err)
 	assert.Equal(t, "ru-central1", got.ID)
-	assert.Equal(t, "Central Russia", got.Name)
+	assert.Equal(t, "central-russia", got.Name)
 	// Stateless pass-through: ровно один RegionService.Get-вызов с тем же region_id;
 	// никакого ZoneService.List (kacho-nlb region-precheck зон не перечисляет).
 	require.NotNil(t, regions.gotReq)

@@ -2,23 +2,23 @@
   "note": "Ведомость форков: файлы вне shared/, объявляющие символ, который объявляет shared/. Держится гейтом shared-organisms-single-source. Запись, которой нечего исключать, роняет гейт — ведомость уменьшается сама, растёт только правкой человека с причиной. Пересбор: KACHO_REGEN_FORK_LEDGER=1 npm test -- shared-organisms-single-source",
   "groups": [
     {
-      "id": "compute:components",
-      "reason": "Оснастка модуля (атомы, молекулы, организмы) форкнута целиком. Прямая замена на @shared не работает: молекулы ссылок резолвят спеку из РЕЕСТРА, а реестр у модуля свой — в нём ровно те ресурсы, что модуль показывает (у storage есть images и snapshots, которых нет в реестре shared). Сведение требует сначала свести реестры; долг назван в .claude/rules/ui.md.",
+      "id": "compute:api",
+      "reason": "Домен объявляет СВОИ типы и свой клиент края, а путь совпадает с общим — признак по адресу справедливо это показывает, но предмет здесь другой, а не копия. Замер по именам экспортируемых типов (2026-08-17): своих у 16, совпадают с общим ровно 2 — `Operation` и `OperationList`, то есть конверт операции. Он и есть настоящий остаток: конверт один на всю платформу, и его дубль обязан сойтись к общему. Клиент края (`resources.ts`) несёт глаголы своего домена и общим не выражается. Снятие записи — задача де-форка этого модуля; сводить конверт раньше клиента нельзя: у общего клиента есть сохранение не-JSON тела отказа и числовой код, которых у форков нет.",
       "entries": [
         {
-          "file": "compute/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
-          "symbols": [
-            "DeleteDialog",
-            "HIGH_RISK_DELETE",
-            "requiresNameConfirm"
-          ]
+          "file": "compute/src/api/resources.ts",
+          "symbols": []
         },
         {
-          "file": "compute/src/components/molecules/DetailOverviewActions/DetailOverviewActions.tsx",
-          "symbols": [
-            "DetailOverviewActions"
-          ]
-        },
+          "file": "compute/src/api/types.ts",
+          "symbols": []
+        }
+      ]
+    },
+    {
+      "id": "compute:components",
+      "reason": "Осталась ровно та часть оснастки, которую нельзя заменить на @shared, пока реестр ресурсов модульный: эти компоненты резолвят спеку ПО ИДЕНТИФИКАТОРУ из реестра, а общий реестр несёт не все ресурсы модулей — замер на 007e3e99: в нём нет `snapshots` (storage) и `registries`/`repositories`/`tags` (registry), то есть прямая замена молча оставила бы эти ресурсы без ссылок. Предикат: сравнить ключи `REGISTRY` модуля и @shared. Снимается вместе с объединением реестров (#402), не раньше. Остальная оснастка модуля сведена к прослойкам.",
+      "entries": [
         {
           "file": "compute/src/components/molecules/RefNameLink/RefNameLink.tsx",
           "symbols": [
@@ -26,47 +26,10 @@
           ]
         },
         {
-          "file": "compute/src/components/molecules/ResourceEmptyState/ResourceEmptyState.tsx",
-          "symbols": [
-            "ResourceEmptyState"
-          ]
-        },
-        {
           "file": "compute/src/components/molecules/ResourceLink/ResourceLink.tsx",
           "symbols": [
             "ResourceLink",
             "resourceDetailHref"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/RowActionsMenu/RowActionsMenu.tsx",
-          "symbols": [
-            "RowActionsMenu",
-            "resourceHasRowActions"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
-          "symbols": [
-            "InlineResourceCreateForm"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
-          "symbols": [
-            "InlineResourceEditForm"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/InlineResourceForm/InlineResourceForm.tsx",
-          "symbols": [
-            "InlineResourceForm"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/OperationsTab/OperationsTab.tsx",
-          "symbols": [
-            "OperationsTab"
           ]
         },
         {
@@ -81,32 +44,6 @@
           "symbols": [
             "ResourceShell"
           ]
-        },
-        {
-          "file": "compute/src/components/organisms/form/RefSelect/RefSelect.tsx",
-          "symbols": [
-            "RefSelect"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/form/ResourceIcon/ResourceIcon.tsx",
-          "symbols": [
-            "ResourceIcon"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "compute:contexts",
-      "reason": "Контекст входа скопирован вместе с модулем по той же причине, что и клиент края: standalone-пакет, свой корень сборки.",
-      "entries": [
-        {
-          "file": "compute/src/contexts/AuthContext.tsx",
-          "symbols": [
-            "AuthProvider",
-            "isMfaFresh",
-            "useAuth"
-          ]
         }
       ]
     },
@@ -118,14 +55,6 @@
           "file": "compute/src/lib/api-client.ts",
           "symbols": [
             "ApiError"
-          ]
-        },
-        {
-          "file": "compute/src/lib/dependency-graph.ts",
-          "symbols": [
-            "blockingNodes",
-            "hasDependencyResolver",
-            "loadDependents"
           ]
         },
         {
@@ -186,6 +115,16 @@
       ]
     },
     {
+      "id": "dashboard:test",
+      "reason": "Окружение проб витрины. Предмет принадлежит БРАТСКОМУ гейту `module-test-setup-single-source.test.ts`, который называет витрину и оболочку поимённо и объясняет причину: у обеих свой корень сборки образа, и окружение обсуждается вместе с ним. Держать здесь второе правило об одном предмете нельзя — они разошлись бы молча; эта запись лишь отмечает, что признак по адресу файл ВИДИТ, а решение по нему принимает тот гейт.",
+      "entries": [
+        {
+          "file": "dashboard/src/test/setup.ts",
+          "symbols": []
+        }
+      ]
+    },
+    {
       "id": "host:lib",
       "reason": "Зеркало канона имён (`shared/src/lib/entity-names.ts`), а не вторая реализация: образ оболочки собирается из ЕЁ дерева — Dockerfile копирует только `host/`, каталога `shared/` в контексте сборки нет, поэтому импорт оттуда сломал бы сборку образа. Расхождение значений приземлиться молча не может: `HostBreadcrumb.names.test.ts` читает канон по относительному пути (пробы идут из дерева исходников, где `shared/` есть) и сверяет обе карты, объявляя объём осмотренного. Запись снимется вместе с переводом оболочки на сборку из общего дерева.",
       "entries": [
@@ -200,13 +139,17 @@
     },
     {
       "id": "host:test",
-      "reason": "Заглушка удалённого модуля витрины в харнессе оболочки: подменяет федеративный импорт, реализацией не является. Снимется вместе с переходом харнесса на реальный федеративный резолв.",
+      "reason": "Два файла, оба про харнесс оболочки, и оба не реализация. `dashboard-remote.tsx` — заглушка удалённого модуля витрины: подменяет федеративный импорт, снимется вместе с переходом харнесса на реальный федеративный резолв. `setup.ts` — окружение проб, и его предмет принадлежит братскому гейту `module-test-setup-single-source.test.ts`, где оболочка названа поимённо с причиной (свой корень сборки образа); второго правила об одном предмете здесь не заводим.",
       "entries": [
         {
           "file": "host/src/test/dashboard-remote.tsx",
           "symbols": [
             "DashboardPage"
           ]
+        },
+        {
+          "file": "host/src/test/setup.ts",
+          "symbols": []
         }
       ]
     },
@@ -223,23 +166,23 @@
       ]
     },
     {
-      "id": "nlb:components",
-      "reason": "Оснастка модуля (атомы, молекулы, организмы) форкнута целиком. Прямая замена на @shared не работает: молекулы ссылок резолвят спеку из РЕЕСТРА, а реестр у модуля свой — в нём ровно те ресурсы, что модуль показывает (у storage есть images и snapshots, которых нет в реестре shared). Сведение требует сначала свести реестры; долг назван в .claude/rules/ui.md.",
+      "id": "nlb:api",
+      "reason": "Домен объявляет СВОИ типы и свой клиент края, а путь совпадает с общим — признак по адресу справедливо это показывает, но предмет здесь другой, а не копия. Замер по именам экспортируемых типов (2026-08-17): своих у 10, совпадают с общим ровно 2 — `Operation` и `OperationList`, то есть конверт операции. Он и есть настоящий остаток: конверт один на всю платформу, и его дубль обязан сойтись к общему. Клиент края (`resources.ts`) несёт глаголы своего домена и общим не выражается. Снятие записи — задача де-форка этого модуля; сводить конверт раньше клиента нельзя: у общего клиента есть сохранение не-JSON тела отказа и числовой код, которых у форков нет.",
       "entries": [
         {
-          "file": "nlb/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
-          "symbols": [
-            "DeleteDialog",
-            "HIGH_RISK_DELETE",
-            "requiresNameConfirm"
-          ]
+          "file": "nlb/src/api/resources.ts",
+          "symbols": []
         },
         {
-          "file": "nlb/src/components/molecules/DetailOverviewActions/DetailOverviewActions.tsx",
-          "symbols": [
-            "DetailOverviewActions"
-          ]
-        },
+          "file": "nlb/src/api/types.ts",
+          "symbols": []
+        }
+      ]
+    },
+    {
+      "id": "nlb:components",
+      "reason": "Осталась ровно та часть оснастки, которую нельзя заменить на @shared, пока реестр ресурсов модульный: эти компоненты резолвят спеку ПО ИДЕНТИФИКАТОРУ из реестра, а общий реестр несёт не все ресурсы модулей — замер на 007e3e99: в нём нет `snapshots` (storage) и `registries`/`repositories`/`tags` (registry), то есть прямая замена молча оставила бы эти ресурсы без ссылок. Предикат: сравнить ключи `REGISTRY` модуля и @shared. Снимается вместе с объединением реестров (#402), не раньше. Остальная оснастка модуля сведена к прослойкам. Сверх того — собственные компоненты домена (components/organisms/TargetsManager/TargetsManager.tsx, components/organisms/form/NlbVipSourceField/NlbVipSourceField.tsx), у общего модуля пары не имеющие.",
+      "entries": [
         {
           "file": "nlb/src/components/molecules/RefNameLink/RefNameLink.tsx",
           "symbols": [
@@ -247,46 +190,10 @@
           ]
         },
         {
-          "file": "nlb/src/components/molecules/ResourceEmptyState/ResourceEmptyState.tsx",
-          "symbols": [
-            "ResourceEmptyState"
-          ]
-        },
-        {
           "file": "nlb/src/components/molecules/ResourceLink/ResourceLink.tsx",
           "symbols": [
             "ResourceLink",
             "resourceDetailHref"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/RowActionsMenu/RowActionsMenu.tsx",
-          "symbols": [
-            "RowActionsMenu"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
-          "symbols": [
-            "InlineResourceCreateForm"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
-          "symbols": [
-            "InlineResourceEditForm"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/InlineResourceForm/InlineResourceForm.tsx",
-          "symbols": [
-            "InlineResourceForm"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/OperationsTab/OperationsTab.tsx",
-          "symbols": [
-            "OperationsTab"
           ]
         },
         {
@@ -316,32 +223,6 @@
             "buildVipSourceOrNull",
             "lbTypeFromPlacement"
           ]
-        },
-        {
-          "file": "nlb/src/components/organisms/form/RefSelect/RefSelect.tsx",
-          "symbols": [
-            "RefSelect"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/form/ResourceIcon/ResourceIcon.tsx",
-          "symbols": [
-            "ResourceIcon"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "nlb:contexts",
-      "reason": "Контекст входа скопирован вместе с модулем по той же причине, что и клиент края: standalone-пакет, свой корень сборки.",
-      "entries": [
-        {
-          "file": "nlb/src/contexts/AuthContext.tsx",
-          "symbols": [
-            "AuthProvider",
-            "isMfaFresh",
-            "useAuth"
-          ]
         }
       ]
     },
@@ -353,14 +234,6 @@
           "file": "nlb/src/lib/api-client.ts",
           "symbols": [
             "ApiError"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/dependency-graph.ts",
-          "symbols": [
-            "blockingNodes",
-            "hasDependencyResolver",
-            "loadDependents"
           ]
         },
         {
@@ -385,27 +258,27 @@
       ]
     },
     {
+      "id": "registry:api",
+      "reason": "Домен объявляет СВОИ типы и свой клиент края, а путь совпадает с общим — признак по адресу справедливо это показывает, но предмет здесь другой, а не копия. Замер по именам экспортируемых типов (2026-08-17): своих у 8, совпадают с общим ровно 2 — `Operation` и `OperationList`, то есть конверт операции. Он и есть настоящий остаток: конверт один на всю платформу, и его дубль обязан сойтись к общему. Клиент края (`resources.ts`) несёт глаголы своего домена и общим не выражается. Снятие записи — задача де-форка этого модуля; сводить конверт раньше клиента нельзя: у общего клиента есть сохранение не-JSON тела отказа и числовой код, которых у форков нет.",
+      "entries": [
+        {
+          "file": "registry/src/api/resources.ts",
+          "symbols": []
+        },
+        {
+          "file": "registry/src/api/types.ts",
+          "symbols": []
+        }
+      ]
+    },
+    {
       "id": "registry:components",
-      "reason": "Оснастка модуля (атомы, молекулы, организмы) форкнута целиком. Прямая замена на @shared не работает: молекулы ссылок резолвят спеку из РЕЕСТРА, а реестр у модуля свой — в нём ровно те ресурсы, что модуль показывает (у storage есть images и snapshots, которых нет в реестре shared). Сведение требует сначала свести реестры; долг назван в .claude/rules/ui.md.",
+      "reason": "Осталась ровно та часть оснастки, которую нельзя заменить на @shared, пока реестр ресурсов модульный: эти компоненты резолвят спеку ПО ИДЕНТИФИКАТОРУ из реестра, а общий реестр несёт не все ресурсы модулей — замер на 007e3e99: в нём нет `snapshots` (storage) и `registries`/`repositories`/`tags` (registry), то есть прямая замена молча оставила бы эти ресурсы без ссылок. Предикат: сравнить ключи `REGISTRY` модуля и @shared. Снимается вместе с объединением реестров (#402), не раньше. Остальная оснастка модуля сведена к прослойкам. Сверх того — собственные компоненты домена (components/atoms/LifecycleTag/LifecycleTag.tsx), у общего модуля пары не имеющие.",
       "entries": [
         {
           "file": "registry/src/components/atoms/LifecycleTag/LifecycleTag.tsx",
           "symbols": [
             "lifecycleLabel"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
-          "symbols": [
-            "DeleteDialog",
-            "HIGH_RISK_DELETE",
-            "requiresNameConfirm"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/DetailOverviewActions/DetailOverviewActions.tsx",
-          "symbols": [
-            "DetailOverviewActions"
           ]
         },
         {
@@ -415,47 +288,10 @@
           ]
         },
         {
-          "file": "registry/src/components/molecules/ResourceEmptyState/ResourceEmptyState.tsx",
-          "symbols": [
-            "ResourceEmptyState"
-          ]
-        },
-        {
           "file": "registry/src/components/molecules/ResourceLink/ResourceLink.tsx",
           "symbols": [
             "ResourceLink",
             "resourceDetailHref"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/RowActionsMenu/RowActionsMenu.tsx",
-          "symbols": [
-            "RowActionsMenu",
-            "resourceHasRowActions"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
-          "symbols": [
-            "InlineResourceCreateForm"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
-          "symbols": [
-            "InlineResourceEditForm"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/InlineResourceForm/InlineResourceForm.tsx",
-          "symbols": [
-            "InlineResourceForm"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/OperationsTab/OperationsTab.tsx",
-          "symbols": [
-            "OperationsTab"
           ]
         },
         {
@@ -470,32 +306,6 @@
           "symbols": [
             "ResourceShell"
           ]
-        },
-        {
-          "file": "registry/src/components/organisms/form/RefSelect/RefSelect.tsx",
-          "symbols": [
-            "RefSelect"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/form/ResourceIcon/ResourceIcon.tsx",
-          "symbols": [
-            "ResourceIcon"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "registry:contexts",
-      "reason": "Контекст входа скопирован вместе с модулем по той же причине, что и клиент края: standalone-пакет, свой корень сборки.",
-      "entries": [
-        {
-          "file": "registry/src/contexts/AuthContext.tsx",
-          "symbols": [
-            "AuthProvider",
-            "isMfaFresh",
-            "useAuth"
-          ]
         }
       ]
     },
@@ -507,14 +317,6 @@
           "file": "registry/src/lib/api-client.ts",
           "symbols": [
             "ApiError"
-          ]
-        },
-        {
-          "file": "registry/src/lib/dependency-graph.ts",
-          "symbols": [
-            "blockingNodes",
-            "hasDependencyResolver",
-            "loadDependents"
           ]
         },
         {
@@ -545,23 +347,23 @@
       ]
     },
     {
-      "id": "storage:components",
-      "reason": "Оснастка модуля (атомы, молекулы, организмы) форкнута целиком. Прямая замена на @shared не работает: молекулы ссылок резолвят спеку из РЕЕСТРА, а реестр у модуля свой — в нём ровно те ресурсы, что модуль показывает (у storage есть images и snapshots, которых нет в реестре shared). Сведение требует сначала свести реестры; долг назван в .claude/rules/ui.md.",
+      "id": "storage:api",
+      "reason": "Домен объявляет СВОИ типы и свой клиент края, а путь совпадает с общим — признак по адресу справедливо это показывает, но предмет здесь другой, а не копия. Замер по именам экспортируемых типов (2026-08-17): своих у 17, совпадают с общим ровно 3 — `Operation`, `OperationList` и `ResourceReference`, то есть конверт операции. Он и есть настоящий остаток: конверт один на всю платформу, и его дубль обязан сойтись к общему. Клиент края (`resources.ts`) несёт глаголы своего домена и общим не выражается. Снятие записи — задача де-форка этого модуля; сводить конверт раньше клиента нельзя: у общего клиента есть сохранение не-JSON тела отказа и числовой код, которых у форков нет.",
       "entries": [
         {
-          "file": "storage/src/components/molecules/DeleteDialog/DeleteDialog.tsx",
-          "symbols": [
-            "DeleteDialog",
-            "HIGH_RISK_DELETE",
-            "requiresNameConfirm"
-          ]
+          "file": "storage/src/api/resources.ts",
+          "symbols": []
         },
         {
-          "file": "storage/src/components/molecules/DetailOverviewActions/DetailOverviewActions.tsx",
-          "symbols": [
-            "DetailOverviewActions"
-          ]
-        },
+          "file": "storage/src/api/types.ts",
+          "symbols": []
+        }
+      ]
+    },
+    {
+      "id": "storage:components",
+      "reason": "Осталась ровно та часть оснастки, которую нельзя заменить на @shared, пока реестр ресурсов модульный: эти компоненты резолвят спеку ПО ИДЕНТИФИКАТОРУ из реестра, а общий реестр несёт не все ресурсы модулей — замер на 007e3e99: в нём нет `snapshots` (storage) и `registries`/`repositories`/`tags` (registry), то есть прямая замена молча оставила бы эти ресурсы без ссылок. Предикат: сравнить ключи `REGISTRY` модуля и @shared. Снимается вместе с объединением реестров (#402), не раньше. Остальная оснастка модуля сведена к прослойкам.",
+      "entries": [
         {
           "file": "storage/src/components/molecules/RefNameLink/RefNameLink.tsx",
           "symbols": [
@@ -569,47 +371,10 @@
           ]
         },
         {
-          "file": "storage/src/components/molecules/ResourceEmptyState/ResourceEmptyState.tsx",
-          "symbols": [
-            "ResourceEmptyState"
-          ]
-        },
-        {
           "file": "storage/src/components/molecules/ResourceLink/ResourceLink.tsx",
           "symbols": [
             "ResourceLink",
             "resourceDetailHref"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/RowActionsMenu/RowActionsMenu.tsx",
-          "symbols": [
-            "RowActionsMenu",
-            "resourceHasRowActions"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx",
-          "symbols": [
-            "InlineResourceCreateForm"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/InlineResourceEditForm/InlineResourceEditForm.tsx",
-          "symbols": [
-            "InlineResourceEditForm"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/InlineResourceForm/InlineResourceForm.tsx",
-          "symbols": [
-            "InlineResourceForm"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/OperationsTab/OperationsTab.tsx",
-          "symbols": [
-            "OperationsTab"
           ]
         },
         {
@@ -624,32 +389,6 @@
           "symbols": [
             "ResourceShell"
           ]
-        },
-        {
-          "file": "storage/src/components/organisms/form/RefSelect/RefSelect.tsx",
-          "symbols": [
-            "RefSelect"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/form/ResourceIcon/ResourceIcon.tsx",
-          "symbols": [
-            "ResourceIcon"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "storage:contexts",
-      "reason": "Контекст входа скопирован вместе с модулем по той же причине, что и клиент края: standalone-пакет, свой корень сборки.",
-      "entries": [
-        {
-          "file": "storage/src/contexts/AuthContext.tsx",
-          "symbols": [
-            "AuthProvider",
-            "isMfaFresh",
-            "useAuth"
-          ]
         }
       ]
     },
@@ -661,14 +400,6 @@
           "file": "storage/src/lib/api-client.ts",
           "symbols": [
             "ApiError"
-          ]
-        },
-        {
-          "file": "storage/src/lib/dependency-graph.ts",
-          "symbols": [
-            "blockingNodes",
-            "hasDependencyResolver",
-            "loadDependents"
           ]
         },
         {
@@ -694,23 +425,6 @@
           "file": "storage/src/lib/use-resource-list.ts",
           "symbols": [
             "useResourceList"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "vpc:lib",
-      "reason": "Сборщик колонок vpc — форк общего: он тянет ССЫЛКУ модуля (ResourceLink из @/), а та резолвит спеку из реестра. Решение «как показать нескалярное значение» из него выведено в @shared/lib/display-text (#372); остальное сводится вместе с реестром.",
-      "entries": [
-        {
-          "file": "vpc/src/lib/spec-columns.tsx",
-          "symbols": [
-            "ReferrerLink",
-            "buildSpecColumns",
-            "formatCellByFormat",
-            "referrerHref",
-            "referrerMeta",
-            "reorderNameIdFirst"
           ]
         }
       ]

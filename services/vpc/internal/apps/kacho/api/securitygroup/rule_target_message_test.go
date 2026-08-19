@@ -88,9 +88,9 @@ func sgTargetRefusal(t *testing.T, targetID string, seedTargetInOtherNetwork boo
 	nr := repomock.NewNetworkRepo()
 	netA := ids.NewID(ids.PrefixNetwork)
 	netB := ids.NewID(ids.PrefixNetwork)
-	_, err := nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-A"})
+	_, err := nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-a"})
 	require.NoError(t, err)
-	_, err = nr.Insert(context.Background(), &domain.Network{ID: netB, ProjectID: "P", Name: "net-B"})
+	_, err = nr.Insert(context.Background(), &domain.Network{ID: netB, ProjectID: "P", Name: "net-b"})
 	require.NoError(t, err)
 	if seedTargetInOtherNetwork {
 		seedMockSGWithID(t, sgr, targetID, "P", netB, "sg-target-elsewhere")
@@ -148,7 +148,7 @@ func TestSGRuleTarget_SameNetworkTargetAccepted(t *testing.T) {
 	or := repomock.NewOpsRepo()
 	nr := repomock.NewNetworkRepo()
 	netA := ids.NewID(ids.PrefixNetwork)
-	_, err := nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-A"})
+	_, err := nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-a"})
 	require.NoError(t, err)
 	sgA := seedMockSG(t, sgr, "P", netA, "sg-target-same-net")
 

@@ -90,8 +90,7 @@ CREATE INDEX my_resource_parent_id_idx ON my_resource (parent_id);
 
 | Domain rule                              | DB CHECK                                                                        |
 | ---------------------------------------- | ------------------------------------------------------------------------------- |
-| `NameVPC` (permissive regex)             | `CHECK (name ~ '^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$')`               |
-| `NameGateway` (strict — на service-слое)  | `CHECK (name ~ '^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$')` (permissive DB-regex; строгая проверка lowercase — в service-слое) |
+| `Name` (единственная форма дерева)        | `CHECK (name ~ '^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$')` — приведено миграцией `715001`. До неё база отвергала имя с цифры, которое сервис принимает, и принимала заглавные с подчёркиванием, которые он отвергает |
 | `Description ≤ 256`                      | `CHECK (length(description) <= 256)`                                            |
 | `Labels` (≤64 пар + key regex + length)  | `CHECK (kacho_labels_valid(labels))` (общая функция в схеме `kacho_vpc`)        |
 | `Status` (enum-set)                      | `CHECK (status IN ('PROVISIONING', 'ACTIVE', ...))`                             |
@@ -104,7 +103,9 @@ CREATE INDEX my_resource_parent_id_idx ON my_resource (parent_id);
 
 Service-уровень обязан мапить SQLSTATE → gRPC code:
 `23503 → FailedPrecondition`, `23505 → AlreadyExists / FailedPrecondition`
-(по контексту), `23514 → InvalidArgument`, `23P01 → FailedPrecondition`.
+(по контексту), `23514 → InvalidArgument` (форма имени — исключение: сервис
+проверяет её сам, поэтому срабатывание `<таблица>_name_check` есть его дефект и
+отдаётся `Internal`), `23P01 → FailedPrecondition`.
 
 ---
 
@@ -134,20 +135,40 @@ NetworkInterface, AddressPool и связные таблицы):
 
 ## Правило 4 — UNIQUE для имен
 
-Все 7 пользовательских ресурсов VPC (Network, Subnet, Address, RouteTable,
-SecurityGroup, Gateway, NetworkInterface) — project-level, и
+Все 8 пользовательских ресурсов VPC (Network, Subnet, Address, RouteTable,
+SecurityGroup, Gateway, NetworkInterface, CidrGroup) — project-level, и
 для каждого действует **`(project_id, name)` UNIQUE** в пределах project.
 
-Семантика:
+Семантика — **одна на все восемь**, исключений нет:
 
-- **Network** (исторический baseline) — non-partial `UNIQUE (project_id, name)`
-  (`networks_project_id_name_key`), name никогда не пустое.
-- Остальные ресурсы — **partial** `UNIQUE (project_id, name) WHERE name <> ''`
-  (имя опционально; пустые имена дубликатов не образуют). Задается inline в
-  `0001_initial.sql` — реализует контракт Kachō `ALREADY_EXISTS` на дубль имени.
+- **partial** `UNIQUE (project_id, name) WHERE name <> ''` (имя опционально;
+  пустые имена дубликатов не образуют). Задается inline в той же миграции, что
+  `CREATE TABLE` (`0001_initial.sql`; `cidr_groups` — `0035`) — реализует контракт
+  Kachō `ALREADY_EXISTS` на дубль имени.
 
-Для **нового** ресурса этого сервиса — partial-UNIQUE добавляется в том же
-файле, что `CREATE TABLE` (правило 1).
+Предикат переписи (сверяй им, а не этим абзацем):
+
+```sh
+grep -rn "project_id, name" internal/migrations/*.sql
+```
+
+> [!note] Расхождение сети и семи соседей снято — но в другую сторону, чем предполагалось
+> `networks_project_id_name_key` создавался полным, у семи соседей он был
+> частичным (`WHERE name <> ''`), и вторая безымянная сеть в проекте получала
+> `ALREADY_EXISTS`, тогда как второй адрес или подсеть — нет: один контракт
+> исполнялся по-разному в зависимости от ресурса.
+>
+> Сначала это чинили приведением сети к частичной форме (#669). Решение владельца
+> #715 — **обратное**: чинить надо было не индексы, а причину. Ресурса без имени
+> не бывает: пустая строка остаётся законным входом создания, но сервер
+> подставляет имя, производное от `id`, до вставки. Тогда частичный предикат
+> теряет предмет, и полная форма становится верной у всех восьми — что и сделала
+> миграция `715001`.
+
+Для **нового** ресурса этого сервиса — полный UNIQUE `(project_id, name)`
+добавляется в том же файле, что `CREATE TABLE` (правило 1). Частичный предикат
+`WHERE name <> ''` НЕ заводить: он существует только ради пустых имён, а их не
+бывает.
 
 Помимо `(project_id, name)`, partial UNIQUE применяется к естественным
 инвариантам одного значения (один IP — один Address):

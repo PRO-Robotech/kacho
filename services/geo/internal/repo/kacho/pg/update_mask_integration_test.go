@@ -54,10 +54,10 @@ func seedZoneWithInfra(t *testing.T, pool *pgxpool.Pool) (*pg.ZoneRepo, string) 
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1"})
 	require.NoError(t, err)
 	_, err = zr.Insert(ctx, &domain.Zone{
-		ID: "region-1-a", RegionID: "region-1", Name: "Zone A", Status: domain.GeoStatusUp,
+		ID: "region-1-a", RegionID: "region-1", Name: "zone-a", Status: domain.GeoStatusUp,
 		Infra: domain.ZoneInfra{
 			NumericInfraID:     7,
 			HostClasses:        []string{"std-v3", "mem-v2"},
@@ -107,7 +107,7 @@ func TestZoneEmptyMaskDoesNotWipeUnsentInfra(t *testing.T) {
 	zr, id := seedZoneWithInfra(t, pool)
 	uc := zone.New(zr, zr, repomock.NewOpsRepo(), serviceerr.ToStatus)
 
-	op, err := uc.Update(context.Background(), zone.UpdateInput{ID: id, Name: "Zone A renamed"})
+	op, err := uc.Update(context.Background(), zone.UpdateInput{ID: id, Name: "zone-a-renamed"})
 	require.NoError(t, err)
 	require.Nil(t, op.Error, "the rename itself must succeed")
 
@@ -175,7 +175,7 @@ func TestZoneCannotBeReparented(t *testing.T) {
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 	zr, id := seedZoneWithInfra(t, pool)
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-2", Name: "Region 2"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-2", Name: "region-2"})
 	require.NoError(t, err)
 
 	uc := zone.New(zr, zr, repomock.NewOpsRepo(), serviceerr.ToStatus)
@@ -189,7 +189,7 @@ func TestZoneCannotBeReparented(t *testing.T) {
 
 	// Full PATCH with no mask at all: nothing in the request can carry a new parent,
 	// and the stored parent must be untouched.
-	_, err = uc.Update(ctx, zone.UpdateInput{ID: id, Name: "Zone A renamed"})
+	_, err = uc.Update(ctx, zone.UpdateInput{ID: id, Name: "zone-a-renamed"})
 	require.NoError(t, err)
 	var regionID string
 	require.NoError(t, pool.QueryRow(ctx, `SELECT region_id FROM zones WHERE id = $1`, id).Scan(&regionID))
@@ -197,7 +197,7 @@ func TestZoneCannotBeReparented(t *testing.T) {
 
 	// The id is not a naming convention either — creating a zone whose id is not
 	// prefixed by its region is refused before any FK is consulted.
-	_, err = uc.Create(ctx, zone.CreateInput{ID: "region-1-x", RegionID: "region-2", Name: "Mismatched"})
+	_, err = uc.Create(ctx, zone.CreateInput{ID: "region-1-x", RegionID: "region-2", Name: "mismatched"})
 	require.Error(t, err)
 	require.Contains(t, serviceerr.ToStatus(err).Error(),
 		"zone id 'region-1-x' must be prefixed by its regionId 'region-2'")
@@ -210,11 +210,11 @@ func TestRegionEmptyMaskDoesNotWipeCountryCode(t *testing.T) {
 	pool := newTestPool(t)
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
-	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1", CountryCode: "RU"})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "region-1", CountryCode: "RU"})
 	require.NoError(t, err)
 
 	uc := region.New(rr, rr, repomock.NewOpsRepo(), serviceerr.ToStatus)
-	_, err = uc.Update(ctx, region.UpdateInput{ID: "region-1", Name: "Region One"})
+	_, err = uc.Update(ctx, region.UpdateInput{ID: "region-1", Name: "region-one"})
 	require.NoError(t, err)
 
 	var cc string

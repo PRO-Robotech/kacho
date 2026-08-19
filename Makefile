@@ -187,10 +187,13 @@ SERVICES ?= iam vpc compute geo nlb storage registry
 # не названный здесь, — находка; названный здесь без такого импорта — тоже.
 AUTHZ_FGA_PKGS ?= \
 	./services/iam/internal/apps/kacho/api/access_binding \
+	./services/iam/internal/apps/kacho/api/listvisibility \
+	./services/iam/internal/apps/kacho/api/user \
 	./services/iam/internal/apps/kacho/api/readauthz \
 	./services/iam/internal/authzcascade \
 	./services/iam/internal/authzmap \
 	./services/iam/internal/service \
+	./services/iam/internal/testsupport/accesssnapshot \
 	./services/iam/internal/testsupport/fgatest
 
 # PG_OUTSIDE_SELECTION_PKGS — пакеты, которым нужен НАСТОЯЩИЙ Postgres, но
@@ -302,6 +305,15 @@ test-unit: $(HOOKS_NOTICE)
 ## читает и потому была зелёной. Собираемость держит гейт
 ## `internal/repohygiene/buildtaggedtestpackage_test.go`; ИСПОЛНЕНИЕ — эта
 ## строка. Свойства разные, и одно другого не заменяет.
+##
+## ОТБОР НИЖЕ ЧИТАЕТСЯ ГЕЙТОМ (#579). `internal/repohygiene/buildtagrunreach_test.go`
+## достаёт из этой рецептуры признак, область `go list` и фильтр `grep -E` и
+## требует, чтобы КАЖДЫЙ пакет с включающим признаком попадал в отбор какого-то
+## объявленного прогона. Копии отбора у гейта нет — он читает эти строки, поэтому
+## правка регулярного выражения ниже меняет и предикат гейта. Прежде свойство
+## «каждый пакет с признаком попадает в отбор» не проверял никто и выполнялось
+## оно случайно: первый же `//go:build integration` вне `internal/(repo|clients|
+## reconciler)` стал бы невидим всем прогонам молча.
 test-integration: $(HOOKS_NOTICE)
 ifdef SVC
 	@set -o pipefail; \

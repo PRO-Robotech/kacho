@@ -432,18 +432,43 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="VOL-CR-CRUD-EMPTY-NAME-OK",
-    title="Create два тома с пустым name в одном project → оба Operation ok (partial UNIQUE не действует на name='')",
+    title="Create два тома с пустым name в одном project → у каждого имя подставлено СВОИМ id, оба Operation ok",
     classes=["CRUD", "BVA"], priority="P2",
     # verifies CS1-S1-06
+    #
+    # Прежний заголовок объяснял сосуществование тем, что «partial UNIQUE не
+    # действует на name=''». Это объяснение пережило свой предмет: пустое имя
+    # больше не доживает до вставки — validate.NameOrDefault подставляет вместо
+    # него идентификатор ресурса, поэтому в базе лежат ДВА РАЗНЫХ непустых
+    # имени, и уникальность соблюдена обычным образом, а не в обход неё.
+    #
+    # Утверждается именно подстановка, а не «оба создались»: кейс, проверяющий
+    # только успех операций, остаётся зелёным и тогда, когда оба имени пусты, —
+    # то есть ровно при том поведении, которое контракт теперь запрещает.
     steps=[
         Step(name="cr-a", method="POST", path=VOL, body=_vol_body("noname", name=""),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "volumeAId")]),
         poll_operation_until_done(), assert_op_success(),
+        retry_until_authorized(Step(name="get-a-name-substituted", method="GET",
+             path=f"{VOL}/{{{{volumeAId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('имя тома A подставлено его идентификатором', () => "
+                          "pm.expect(pm.response.json().name, pm.response.text())"
+                          ".to.eql(pm.environment.get('volumeAId')));"])),
         Step(name="cr-b", method="POST", path=VOL, body=_vol_body("noname2", name=""),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "volumeBId")]),
         poll_operation_until_done(), assert_op_success(),
+        retry_until_authorized(Step(name="get-b-name-substituted", method="GET",
+             path=f"{VOL}/{{{{volumeBId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('имя тома B подставлено его идентификатором', () => "
+                          "pm.expect(pm.response.json().name, pm.response.text())"
+                          ".to.eql(pm.environment.get('volumeBId')));",
+                          "pm.test('подставленные имена различны — уникальность соблюдена, а не обойдена', () => "
+                          "pm.expect(pm.environment.get('volumeAId'))"
+                          ".to.not.eql(pm.environment.get('volumeBId')));"])),
         Step(name="cleanup-a", method="DELETE", path=f"{VOL}/{{{{volumeAId}}}}", test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="cleanup-b", method="DELETE", path=f"{VOL}/{{{{volumeBId}}}}", test_script=[*save_from_response("j.id", "opId")]),
@@ -691,11 +716,17 @@ CASES.append(Case(
 ))
 
 # ---------------------------------------------------------------------------
-# CS1-S1-12 (add) — name BVA/ECP parity (over-max len, digit-start, hyphen-start).
-#   self-validating VolumeName newtype (domain/volume.go): displayNameRe
-#   ^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$ + RuneCount<=63 → нарушение = фикс. текст
-#   "Illegal argument name". Техники: BVA (верхняя граница длины 63+1), ECP
-#   (недопустимый первый символ: цифра / дефис). Парити с IMG-CR-BVA-NAME-OVER-64.
+# CS1-S1-12 (add) — name BVA/ECP parity (over-max len, underscore, hyphen-start).
+#   Форма имени — ЕДИНСТВЕННАЯ в дереве (pkg/validate.NameForm, DNS label по
+#   RFC 1123): строчные буквы, цифры, дефис; первый и последний символ — буква
+#   ИЛИ ЦИФРА; 1..63. Нарушение → фикс. текст "Illegal argument name".
+#   Техники: BVA (верхняя граница длины 63+1), ECP (символ вне набора:
+#   подчёркивание; дефис по краю). Парити с IMG-CR-BVA-NAME-OVER-64.
+#
+#   Здесь стояло «недопустимый первый символ: цифра / дефис» и своя копия
+#   регулярки `^[a-z](...)`. Оба утверждения пережили свой предмет: цифра первым
+#   символом теперь законна, а копия формы разошлась бы с каноном в день его
+#   правки — молча, потому что заголовок кейса никто не перечитывает.
 # ---------------------------------------------------------------------------
 
 CASES.append(Case(
@@ -709,12 +740,18 @@ CASES.append(Case(
                              *_assert_msg("Illegal argument name")])],
 ))
 
+# ЗДЕСЬ БЫЛ КЕЙС «имя начинается с цифры → 400» (VOL-CR-VAL-NAME-DIGIT-START).
+# Его предмета больше нет: DNS label по RFC 1123 разрешает цифру первым символом,
+# и '9data-vol' теперь ЗАКОННОЕ имя тома. Кейс не удалён, а переведён на ось,
+# которая у формы действительно сузилась и отрицания у storage не имела, —
+# подчёркивание (прежний `displayNameRe` его тоже не принимал, но проверено это
+# не было ни одним кейсом).
 CASES.append(Case(
-    id="VOL-CR-VAL-NAME-DIGIT-START",
-    title="Create name '9data-vol' (первый символ - цифра) -> sync 400 INVALID_ARGUMENT 'Illegal argument name' (regex требует первый символ [a-z])",
+    id="VOL-CR-VAL-NAME-UNDERSCORE",
+    title="Create name 'data_vol' (подчёркивание) -> sync 400 INVALID_ARGUMENT 'Illegal argument name' (форма имени: буквы, цифры, дефис)",
     classes=["VAL", "NEG", "CONF"], priority="P1",
     # verifies CS1-S1-12
-    steps=[Step(name="cr-digit", method="POST", path=VOL, body=_vol_body("dg", name="9data-vol"),
+    steps=[Step(name="cr-underscore", method="POST", path=VOL, body=_vol_body("us", name="data_vol"),
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("Illegal argument name")])],
 ))
@@ -837,15 +874,33 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="VOL-LST-SEC-FILTER-SQLI",
-    title="Security: SQL-injection в filter (List) -> НЕ 500; handled (200|400); нет утечки pgx/SQLSTATE (filter параметризован/парсится whitelist) [INV-8]",
+    title="Security: SQL-injection в filter (List) -> 200 и ПУСТАЯ страница; нет утечки pgx/SQLSTATE [INV-8]",
     classes=["SEC", "VAL", "NEG"], priority="P0",
     # verifies CS1-S1-03 (INV-8 leak-guard на filter-пути)
+    #
+    # Прежде здесь стояло `oneOf([200, 400])` под заголовком «handled». Исход при
+    # этом УСТАНОВЛЕН: `name="a\' OR 1=1--"` разбирается штатно (`pkg/filter`.`Parse`
+    # — поле `name` в белом списке use-case\'а `volume.List`, значение в кавычках,
+    # хвоста нет), значение уезжает ПАРАМЕТРОМ запроса, и страница приходит пустой,
+    # потому что тома с таким именем нет. `400` производится только негодным
+    # СИНТАКСИСОМ выражения, которого эта нагрузка не содержит, — то есть прежняя
+    # запись перечисляла исход, которого на этом входе не бывает, и одновременно
+    # приняла бы регрессию разбора фильтра.
+    #
+    # Пустота проверяется по составу ответа: у публичной полосы края
+    # `EmitUnpopulated=true`, поэтому пустой список приходит как `[]`, и у
+    # списочного ответа ровно один массив верхнего уровня.
     steps=[Step(name="lst-filter-sqli", method="GET",
                 path=f"{VOL}?projectId={{{{_suiteProjectId}}}}&filter=name%3D%22a%27%20OR%201%3D1--%22",
                 test_script=[
                     "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                    "pm.test('handled 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                    "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                     "let j; try { j = pm.response.json(); } catch(e) { j = {}; }",
+                    "pm.test('страница пуста: тома с таким именем нет', () => {",
+                    "  const keys = Object.keys(j).filter(k => Array.isArray(j[k]));",
+                    "  pm.expect(keys, JSON.stringify(j)).to.have.lengthOf(1);",
+                    "  pm.expect(j[keys[0]], JSON.stringify(j)).to.have.lengthOf(0);",
+                    "});",
                     "const body = JSON.stringify(j).toLowerCase();",
                     "pm.test('no pgx/sqlstate/panic leak', () => { pm.expect(body).to.not.include('sqlstate'); pm.expect(body).to.not.include('pgx'); pm.expect(body).to.not.include('panic'); });",
                 ])],

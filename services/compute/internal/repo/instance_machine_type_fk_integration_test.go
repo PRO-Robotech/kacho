@@ -116,7 +116,7 @@ func TestIntegration_MachineType_InsertVsDelete_Race(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			in := comp1Instance(instID, "prj-mt-race", "")
+			in := comp1Instance(instID, "prj-mt-race", "mt-race-inst")
 			in.MachineTypeID = mt.ID
 			<-barrier
 			if _, _, ierr := instRepo.Insert(ctx, in); ierr == nil {

@@ -27,6 +27,17 @@ import (
 // прошла бы мимо неё.
 const validMaterial = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP1hkYQGqU/1oPRHMbSCPB8Vm+Ap0cJI4KX7BLpFVeMy tenant@example"
 
+// validKeyName — имя ключа, законное по единой форме имени ресурса
+// (corevalidate.NameForm).
+//
+// Здесь стояло «рабочий». Оно было законно, пока имя проверялось ТОЛЬКО длиной,
+// — и это ожидание было ошибочным: у соседних ресурсов того же сервиса кириллица
+// в имени не принимается. Пробы ниже про разбор материала ключа и про доставку
+// маски; имя в них — фикстура, и негодная фикстура роняла бы их по причине, к их
+// предмету отношения не имеющей. Форма имени утверждается отдельно, в
+// name_canon_test.go.
+const validKeyName = "work"
+
 type fakeKeyRepo struct {
 	inserted  *domain.GuestAccessKey
 	updateArg ports.GuestAccessKeyUpdate
@@ -131,7 +142,7 @@ func TestCreate_RejectsUnreadableMaterial(t *testing.T) {
 		repo := &fakeKeyRepo{}
 		svc, _ := svcWith(repo)
 		_, err := svc.Create(context.Background(), CreateReq{
-			ProjectID: "prj1", Name: "рабочий", PublicKey: "не ключ вовсе",
+			ProjectID: "prj1", Name: validKeyName, PublicKey: "не ключ вовсе",
 		})
 		if err == nil {
 			t.Fatal("нечитаемый материал обязан быть отвергнут")
@@ -154,7 +165,7 @@ func TestCreate_RejectsUnreadableMaterial(t *testing.T) {
 		repo := &fakeKeyRepo{}
 		svc, ops := svcWith(repo)
 		op, err := svc.Create(context.Background(), CreateReq{
-			ProjectID: "prj1", Name: "рабочий", PublicKey: validMaterial,
+			ProjectID: "prj1", Name: validKeyName, PublicKey: validMaterial,
 		})
 		if err != nil {
 			t.Fatalf("законный материал обязан пройти, получено %v", err)
@@ -212,7 +223,7 @@ func TestUpdate_ImmutableNamedBeforeUnknown(t *testing.T) {
 		repo := &fakeKeyRepo{}
 		svc, ops := svcWith(repo)
 		op, err := svc.Update(context.Background(), UpdateReq{
-			ID: id, UpdateMask: []string{"name"}, Name: "другое имя",
+			ID: id, UpdateMask: []string{"name"}, Name: "other-name",
 		})
 		if err != nil {
 			t.Fatalf("законная правка обязана пройти, получено %v", err)
@@ -221,7 +232,7 @@ func TestUpdate_ImmutableNamedBeforeUnknown(t *testing.T) {
 		if !repo.updated {
 			t.Fatal("правка не доехала до хранилища")
 		}
-		if repo.updateArg.Name == nil || *repo.updateArg.Name != "другое имя" {
+		if repo.updateArg.Name == nil || *repo.updateArg.Name != "other-name" {
 			t.Errorf("имя не доехало: %+v", repo.updateArg)
 		}
 		if repo.updateArg.LabelsSet {
@@ -233,7 +244,7 @@ func TestUpdate_ImmutableNamedBeforeUnknown(t *testing.T) {
 		repo := &fakeKeyRepo{}
 		svc, ops := svcWith(repo)
 		op, err := svc.Update(context.Background(), UpdateReq{
-			ID: id, Name: "имя", Labels: map[string]string{"среда": "проба"},
+			ID: id, Name: validKeyName, Labels: map[string]string{"среда": "проба"},
 		})
 		if err != nil {
 			t.Fatalf("правка с пустой маской обязана пройти, получено %v", err)

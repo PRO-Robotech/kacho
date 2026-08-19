@@ -51,6 +51,14 @@
 #    Makefile звал её, остальные звали helm напрямую. Обёртка снята, её довод
 #    сохранён здесь.
 #
+# 4. ЧЕЙ ЭТО ОТКАЗ — НАШ ИЛИ ЧУЖОГО ХОСТА — НАЗЫВАЕТСЯ КОДОМ ВОЗВРАТА, а не
+#    только прозой. Материализация — ПРЕДПОСЫЛКА, и её срыв по чужой причине не
+#    является вердиктом о дереве: по `e2e-flow.md` §6 это «условие не создано»,
+#    третий исход, который не зачитывается ни в зелёное, ни в красное. Пока оба
+#    отказа выходили единицей, вызывающий не мог их различить, и недоступность
+#    постороннего хоста приезжала в сводку как красный шард — то есть как дефект
+#    продукта (kacho#655).
+#
 # ЧЕГО ЭТОТ СКРИПТ НЕ ДЕЛАЕТ: он не судит о содержимом чартов и ничего не
 # рендерит. Материализация — предпосылка проверок, а не проверка.
 #
@@ -59,6 +67,13 @@
 #   KACHO_HELM_DEPS_REFRESH=1 …   — обойти пропуск (подтянуть свежие версии
 #                                   вышестоящих чартов из плавающих диапазонов)
 #   KACHO_HELM_DEPS_ATTEMPTS=N …  — число попыток (по умолчанию 3)
+#
+# Коды возврата:
+#   0 — зависимости материализованы (или уже были на месте);
+#   1 — ОТКАЗ НАШ: объявление, пин или локальный сабчарт. Это находка о дереве;
+#   2 — предпосылки самого скрипта не выполнены (нет helm, не чарт);
+#   3 — УСЛОВИЕ НЕ СОЗДАНО: удалённый источник чартов не ответил. Это НЕ находка
+#       о дереве и не вердикт о продукте.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,6 +87,75 @@ command -v helm >/dev/null 2>&1 || { echo "FATAL: нужен helm"; exit 2; }
 
 MARKER="$UMBRELLA/.kacho-deps-fingerprint"
 ATTEMPTS="${KACHO_HELM_DEPS_ATTEMPTS:-3}"
+
+# Отметка «условие не создано» — то, чем срыв по ЧУЖОЙ причине доезжает до
+# вызывающего через `make`. Код возврата через make не проходит: make отвечает
+# своей двойкой на любой упавший рецепт, и код 3 из этого скрипта до шага
+# конвейера не долетает by construction. Поэтому отметка — файлом.
+#
+# СНИМАЕТСЯ В НАЧАЛЕ КАЖДОГО ПРОГОНА, включая тот, что уходит по пропуску.
+# Иначе отметка пережила бы свой прогон и объявляла «условие не создано» на
+# здоровом стенде — послабление, которое не истекает само, то есть ровно тот
+# класс, который правила запрещают.
+PRECOND_MARK="$UMBRELLA/.kacho-deps-precondition-unmet"
+rm -f "$PRECOND_MARK"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ЧЕЙ ОТКАЗ — РЕШАЕТСЯ ПО СТРОКЕ, КОТОРУЮ ПЕЧАТАЕТ САМ HELM, А НЕ ПО ЛЕКСИКОНУ
+#
+# Все четыре образца ниже сняты с ПИННУТОГО helm (тот же, что ставит
+# azure/setup-helm в e2e-newman.yml и production-posture.yml), а не придуманы.
+#
+# СНЯТЫ на v4.2.3; при переводе пина на v4.2.4 (#590) образцы A и B сличены на
+# ОБЕИХ версиях запуском настоящего helm — вывод побайтово тот же, значит
+# различающая строка от версии не зависит. C и D на v4.2.4 не воспроизводились:
+# они требуют отвечающего 502 хоста и снятой версии в чужом индексе. Поэтому
+# здесь сказано, что именно сличалось, а не «образцы верны для v4.2.4»:
+#
+#   A. хост не резолвится
+#      ...Unable to get an update from the "https://…/charts" chart repository:
+#      Get "…/index.yaml": dial tcp: lookup …: no such host
+#   C. хост отвечает 502 — ФОРМА ИНЦИДЕНТА kacho#655
+#      ...Unable to get an update from the "http://…/bitnami" chart repository:
+#      failed to fetch http://…/bitnami/index.yaml : 502 Bad Gateway
+#   B. нет локального сабчарта
+#      Error: directory ../does-not-exist not found
+#   D. хост ЖИВ, версия снята — наш пин мёртв
+#      ...Successfully got an update from the "http://…" chart repository
+#      Error: can't get a valid version for 1 subchart(s): "postgresql" …
+#
+# Различает их ОДНА строка: `Unable to get an update from the "<http(s)://…>"
+# chart repository`. helm печатает её тогда и только тогда, когда УДАЛЁННЫЙ
+# репозиторий не ответил, — то есть это утверждение о транспорте, а не о нашем
+# объявлении. У D она отсутствует (обновление прошло УСПЕШНО, и упало разрешение
+# версии); у B сети не было вовсе.
+#
+# ПОЧЕМУ НЕ ПО СЛОВАМ «404 / not found / no such host», как было раньше. Прежний
+# предикат считал ПОСТОЯННЫМ всё, где встретилось `not found`, — и сообщение
+# инцидента `chart postgresql not found in https://charts.bitnami.com/bitnami:
+# … 502 Bad Gateway` попадало под него первым же словом. Отказ чужого хоста
+# объявлялся нашим и не повторялся ни разу, хотя повтор был бы уместен.
+#
+# ГРАНИЦА ПРОВЕДЕНА В СТОРОНУ КРАСНОГО, И ЭТО НАМЕРЕННО. Наши маркеры
+# проверяются ПЕРВЫМИ: если в одном выводе сошлись недоступный посторонний хост
+# и наша собственная поломка, отказ считается НАШИМ. Послабление выдаётся только
+# под доказательство, а не под его отсутствие, — иначе оно стало бы маской,
+# превращающей любой срыв подъёма в «условие не создано».
+#
+#   classify_deps_failure <файл-с-выводом-helm> → ours | external | transient
+classify_deps_failure() {
+  local log="$1"
+  # Наше: объявление, пин, локальный сабчарт. Проверяется ПЕРВЫМ (см. выше).
+  if grep -qE "^Error: directory .* not found|can't get a valid version for|unknown field|cannot be found in the .* directory" "$log"; then
+    echo ours; return
+  fi
+  # Чужое: удалённый репозиторий не ответил. Кавычки вокруг адреса — часть
+  # формы helm, и они же не дают строке совпасть с нашей прозой об этом же.
+  if grep -qE '[Uu]nable to get an update from the "https?://[^"]*" chart repository' "$log"; then
+    echo external; return
+  fi
+  echo transient
+}
 
 # Таблица объявленных зависимостей глазами самого helm, приведённая к четырём
 # полям через табуляцию: имя · версия · репозиторий · статус.
@@ -206,6 +290,115 @@ if [ "$SELFTEST" = "1" ]; then
 22|0|1|1|идём|обновление затребовано явно
 CASES
 
+  # ─── ЧЕЙ ОТКАЗ: классификация на РЕАЛЬНЫХ выводах helm ────────────────────
+  #
+  # Образцы сняты с пиннутого helm (тот же, что в e2e-newman.yml), а не
+  # сочинены: сочинённый образец доказывает, что предикат ловит сочинителя.
+  # Провенанс версий — в шапке: сняты на v4.2.3, A и B сличены и на v4.2.4.
+  # Инъекция в обе стороны: у «чужого» есть законный близнец «наше» той же
+  # формы — иначе предикат ловил бы форму сообщения, а не его существо.
+  echo
+  echo "  --- чей отказ (образцы настоящего helm, инъекция в обе стороны)"
+  cls_case() {
+    local want="$1" label="$2" f; f="$(mktemp)"; cat > "$f"
+    local got; got="$(classify_deps_failure "$f")"; rm -f "$f"
+    if [ "$got" = "$want" ]; then echo "  ОК  $label → $got"
+    else echo "  ПРОВАЛ $label → $got, ожидалось $want"; rc=1; fi
+  }
+  cls_case external 'A. хост не резолвится' <<'EOF'
+Getting updates for unmanaged Helm repositories...
+...Unable to get an update from the "https://charts.example.invalid/charts" chart repository:
+	Get "https://charts.example.invalid/charts/index.yaml": dial tcp: lookup charts.example.invalid on 127.0.0.53:53: no such host
+Error: no cached repository for helm-manager-f079cc88 found. (try 'helm repo update'): open /home/x/.cache/helm/repository/helm-manager-f079cc88-index.yaml: no such file or directory
+EOF
+  cls_case external 'C. хост отвечает 502 — форма инцидента kacho#655' <<'EOF'
+Getting updates for unmanaged Helm repositories...
+...Unable to get an update from the "https://charts.bitnami.com/bitnami" chart repository:
+	failed to fetch https://charts.bitnami.com/bitnami/index.yaml : 502 Bad Gateway
+Error: no cached repository for helm-manager-70341373 found. (try 'helm repo update'): open /home/x/.cache/helm/repository/helm-manager-70341373-index.yaml: no such file or directory
+EOF
+  cls_case ours 'B. нет локального сабчарта (близнец: та же немощь, причина НАША)' <<'EOF'
+Error: directory ../does-not-exist not found
+EOF
+  cls_case ours 'D. хост ЖИВ, версия снята — наш пин мёртв' <<'EOF'
+Getting updates for unmanaged Helm repositories...
+...Successfully got an update from the "https://charts.bitnami.com/bitnami" chart repository
+Error: can't get a valid version for 1 subchart(s): "postgresql" (repository "https://charts.bitnami.com/bitnami", version "13.4.4"). Make sure a matching chart version exists in the repo, or change the version constraint in Chart.yaml
+EOF
+  # Смесь: чужой хост молчит И у нас сломано. Наше выигрывает — послабление
+  # выдаётся под доказательство, а не под его отсутствие.
+  cls_case ours 'смесь: чужой молчит И наш сабчарт отсутствует → НАШЕ' <<'EOF'
+...Unable to get an update from the "https://charts.bitnami.com/bitnami" chart repository:
+	failed to fetch https://charts.bitnami.com/bitnami/index.yaml : 502 Bad Gateway
+Error: directory ../kacho-vpc not found
+EOF
+  cls_case transient 'отказ без доказательства чужой недоступности → повтор, потом КРАСНОЕ' <<'EOF'
+Error: context deadline exceeded
+EOF
+
+  # ─── ЖИВАЯ ИНЪЕКЦИЯ: настоящий helm, настоящий отказ, обе стороны ─────────
+  #
+  # Синтетический чарт, а не копия умбреллы: у умбреллы 22 объявления и полный
+  # проход 3 мин 22 с, то есть проба стала бы дороже того, что доказывает, и её
+  # перестали бы гонять. Предмет пробы — КОД ВОЗВРАТА И ОТМЕТКА, а они от числа
+  # зависимостей не зависят.
+  echo
+  echo "  --- живая инъекция (реальный helm, обе стороны)"
+  inj() {
+    local want_rc="$1" want_mark="$2" label="$3" dir; dir="$(mktemp -d)"
+    mkdir -p "$dir/u/templates"; cat > "$dir/u/Chart.yaml"
+    local got_rc=0
+    KACHO_HELM_DEPS_ATTEMPTS=1 bash "$0" "$dir/u" >"$dir/out.txt" 2>&1 || got_rc=$?
+    local got_mark=нет; [ -f "$dir/u/.kacho-deps-precondition-unmet" ] && got_mark=есть
+    if [ "$got_rc" = "$want_rc" ] && [ "$got_mark" = "$want_mark" ]; then
+      echo "  ОК  $label → код $got_rc, отметка $got_mark"
+    else
+      echo "  ПРОВАЛ $label → код $got_rc (ждали $want_rc), отметка $got_mark (ждали $want_mark)"
+      sed 's/^/        /' "$dir/out.txt" | tail -12; rc=1
+    fi
+    rm -rf "$dir"
+  }
+  # (1) ЧУЖОЕ: хост в объявлении недостижим. `.invalid` — зарезервированный
+  #     домен верхнего уровня (RFC 2606): он не резолвится НИКОГДА и ни у кого,
+  #     поэтому проба детерминирована и не зависит от того, что сегодня с чужим
+  #     хостом. Ждём код 3 и отметку.
+  inj 3 есть 'чужой источник недостижим → «условие не создано»' <<'EOF'
+apiVersion: v2
+name: probe-external
+version: 0.1.0
+dependencies:
+  - name: postgresql
+    version: 13.4.4
+    repository: https://kacho-chart-host-does-not-exist.invalid/charts
+EOF
+  # (2) НАШЕ: законный близнец той же формы — тоже не материализовалось, тоже
+  #     стенд не поднимется, но причина НАША. Ждём код 1 и НИКАКОЙ отметки.
+  #     Без этой половины правка превратила бы любой срыв подъёма в «условие не
+  #     создано», то есть завела бы маску.
+  inj 1 нет 'наш сабчарт отсутствует → КРАСНОЕ, как прежде' <<'EOF'
+apiVersion: v2
+name: probe-ours
+version: 0.1.0
+dependencies:
+  - name: mysub
+    version: ">= 0.0.0"
+    repository: file://../does-not-exist
+EOF
+
+  # (3) ОТМЕТКА ИСТЕКАЕТ САМА. Послабление, пережившее свой прогон, объявляло бы
+  #     «условие не создано» на здоровом стенде. Кладём отметку руками и требуем,
+  #     чтобы УСПЕШНЫЙ прогон её снял.
+  stale_dir="$(mktemp -d)"; mkdir -p "$stale_dir/u/templates"
+  printf 'apiVersion: v2\nname: probe-stale\nversion: 0.1.0\n' > "$stale_dir/u/Chart.yaml"
+  touch "$stale_dir/u/.kacho-deps-precondition-unmet"
+  KACHO_HELM_DEPS_ATTEMPTS=1 bash "$0" "$stale_dir/u" >/dev/null 2>&1 || true
+  if [ -f "$stale_dir/u/.kacho-deps-precondition-unmet" ]; then
+    echo "  ПРОВАЛ отметка пережила прогон — она объявит «условие не создано» на здоровом стенде"; rc=1
+  else
+    echo "  ОК  отметка снимается в начале прогона (не переживает свой предмет)"
+  fi
+  rm -rf "$stale_dir"
+
   echo
   [ $rc -eq 0 ] && echo "PASS: $(basename "$0") --self-test" || echo "FAIL: $(basename "$0") --self-test"
   exit $rc
@@ -228,6 +421,7 @@ fi
 
 echo "=== зависимости умбреллы: объявлено $total, не на месте $notok — материализуем" \
      "(попыток до $ATTEMPTS)"
+last_external_detail=""
 i=1
 while [ "$i" -le "$ATTEMPTS" ]; do
   log="$(mktemp)"
@@ -241,31 +435,58 @@ while [ "$i" -le "$ATTEMPTS" ]; do
   echo "--- попытка $i из $ATTEMPTS не удалась; вывод helm ЦЕЛИКОМ:"
   sed 's/^/    /' "$log"
 
-  # ОТКАЗ КЛАССИФИЦИРУЕТСЯ, А НЕ ПОВТОРЯЕТСЯ ВСЛЕПУЮ. Постоянный отказ повтором
-  # не лечится: архива по адресу нет либо версия снята. Повторять его — тратить
-  # минуты и прятать причину за таймаутом, а читателю потом чинить не то.
-  # Два случая чинятся по-разному, и слить их в одно сообщение значит отправить
-  # его не туда.
-  if grep -qiE '404|not found|no such host|unknown field|invalid' "$log"; then
-    rm -f "$log"
-    echo "FATAL: отказ выглядит ПОСТОЯННЫМ — повтор не поможет."
-    echo "       Архив недоступен по адресу либо версия снята: проверьте пины"
-    echo "       зависимостей в $UMBRELLA/Chart.yaml. Причина названа выводом helm выше."
-    exit 1
-  fi
+  # ОТКАЗ КЛАССИФИЦИРУЕТСЯ, А НЕ ПОВТОРЯЕТСЯ ВСЛЕПУЮ. Три класса чинятся тремя
+  # разными людьми, и слить их в одно сообщение значит отправить его не туда.
+  kind="$(classify_deps_failure "$log")"
+  case "$kind" in
+    ours)
+      # Наш отказ повтором не лечится: пин мёртв, объявление неверно, локального
+      # сабчарта нет. Это НАХОДКА О ДЕРЕВЕ, и она обязана остаться красной.
+      last_external_detail=""
+      rm -f "$log"
+      echo "FATAL: отказ НАШ — повтор не поможет."
+      echo "       Версия снята, объявление неверно либо локального сабчарта нет:"
+      echo "       проверьте зависимости в $UMBRELLA/Chart.yaml. Причина названа выводом helm выше."
+      exit 1
+      ;;
+    external)
+      # Чужой хост не ответил. Повторить стоит (502 переживает пару минут), но
+      # если не переживёт — это «условие не создано», а не находка.
+      last_external_detail="$(grep -oE '[Uu]nable to get an update from the "https?://[^"]*"' "$log" \
+                                | head -1 | sed 's/.*"\(.*\)"/\1/')"
+      echo "--- отказ ЧУЖОЙ: удалённый источник чартов не ответил (${last_external_detail:-адрес не извлёкся})"
+      ;;
+    *)
+      last_external_detail=""
+      ;;
+  esac
   rm -f "$log"
 
   if [ "$i" -lt "$ATTEMPTS" ]; then
-    echo "--- отказ выглядит ВРЕМЕННЫМ (сеть/таймаут), пауза $(( i * 5 ))с"
+    echo "--- отказ повторим, пауза $(( i * 5 ))с"
     sleep $(( i * 5 ))
   fi
   i=$(( i + 1 ))
 done
 
+# БЮДЖЕТ ПОВТОРОВ ИСЧЕРПАН. Чем это кончится, зависит от того, ЕСТЬ ЛИ
+# ДОКАЗАТЕЛЬСТВО чужой недоступности, а не от того, что доказательства нет.
+if [ -n "${last_external_detail:-}" ]; then
+  printf '%s\n' "источник чартов не ответил: ${last_external_detail}" > "$PRECOND_MARK"
+  echo "УСЛОВИЕ НЕ СОЗДАНО: удалённый источник чартов не ответил за $ATTEMPTS попыт(ок)."
+  echo "       Адрес: ${last_external_detail}"
+  echo "       Это НЕ вердикт о дереве и не дефект продукта: стенд не поднялся потому,"
+  echo "       что посторонний хост недоступен. Такой исход — третья категория"
+  echo "       («не выполнилось»): он не зачитывается ни в зелёное, ни в красное,"
+  echo "       и прогон повторяется, а не разбирается как упавшая проба."
+  echo "       Отметка для вызывающего: $PRECOND_MARK"
+  exit 3
+fi
+
 echo "FATAL: зависимости умбреллы не материализованы за $ATTEMPTS попыт(ок)."
-echo "       Отказ выглядит ВРЕМЕННЫМ, но исчерпал бюджет повторов. Это НЕ находка"
-echo "       о дереве: зависимости качаются извне, и их недоступность к коду ветки"
-echo "       отношения не имеет."
+echo "       Отказ не назвал себя ни нашим, ни чужим: доказательства недоступности"
+echo "       постороннего хоста в выводе helm НЕТ, поэтому послабление не выдаётся —"
+echo "       оно даётся под доказательство, а не под его отсутствие."
 echo "       Рендер был бы НЕПОЛНЫМ, а проверка по неполному рендеру — не «всё хорошо»,"
 echo "       а «не выполнилось». Причина названа выводом helm выше."
 exit 1

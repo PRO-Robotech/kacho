@@ -112,7 +112,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"id\": \"qa-reg-op-{{runId}}\", \"name\": \"QA Region Op {{runId}}\", \"countryCode\": \"RU\", \"status\": \"UP\"}",
+              "raw": "{\"id\": \"qa-reg-op-{{runId}}\", \"name\": \"qa-region-op-{{runId}}\", \"countryCode\": \"RU\", \"status\": \"UP\"}",
               "options": {
                 "raw": {
                   "language": "json"

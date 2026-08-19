@@ -350,7 +350,9 @@ Immutability + drain toggle + lean projection + delete-release:
 
 These extended patterns saturate the RPC × class matrix to ≥320 total cases for D-4:
 
-- `*-CR-VAL-NAME-NUMERIC-START` — VAL/P1 — name starts with a digit → InvalidArgument
+- `*-CR-VAL-NAME-DOT` — VAL/P1 — dot in name → InvalidArgument (DNS label, не DNS-имя).
+  Заменил `*-CR-VAL-NAME-NUMERIC-START`: под единой формой имени (RFC 1123) цифра
+  первым символом ЗАКОННА, поэтому прежнее ожидание стало неверным в обратную сторону.
 - `*-CR-VAL-NAME-HYPHEN-START` — VAL/P1 — name starts with `-` → InvalidArgument
 - `*-CR-VAL-NAME-HYPHEN-END` — VAL/P1 — name ends with `-` → InvalidArgument
 - `*-CR-VAL-NAME-SPECIAL-CHARS` — VAL/P1 — `!`/`@`/space in name → InvalidArgument

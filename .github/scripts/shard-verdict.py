@@ -24,6 +24,14 @@ assert-suites-green.sh, чтобы шард и свод не разошлись 
 ОТСУТСТВИЕ ОТЧЁТА — ОТДЕЛЬНОЕ СОСТОЯНИЕ, а не ноль падений: коллекция дерева, по
 которой нет файла отчёта, попадает в `missing`, и агрегатор трактует это как «не
 выполнилось».
+
+ПОЧЕМУ отчётов нет — тоже часть описи (kacho#655). «Ни одна проба не судила»
+получается двумя разными способами: стенд поднялся и прогон упал (находка о
+дереве) — и стенд не поднялся, потому что посторонний хост не отдал чарты
+(«условие не создано», `e2e-flow.md` §6). Следов у обоих одинаково ноль, поэтому
+причина приходит ОТМЕТКОЙ от того, кто её наблюдал, — единственного владельца
+материализации зависимостей. Своими силами свод этого не установит, и молчание
+здесь означало бы, что чужая недоступность и дальше читается как красный шард.
 """
 from __future__ import annotations
 
@@ -36,6 +44,28 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parents[2]
 MANIFEST = REPO / "deploy" / "e2e-shards.json"
 SUFFIX = ".postman_collection.json"
+
+# Отметку кладёт единственный владелец материализации зависимостей умбреллы
+# (deploy/scripts/helm-umbrella-deps.sh) и снимает её в начале каждого прогона,
+# поэтому она описывает ЭТОТ прогон, а не позапрошлый.
+PRECOND_MARK = REPO / "deploy" / "helm" / "umbrella" / ".kacho-deps-precondition-unmet"
+
+
+def precondition() -> dict | None:
+    """«Условие не создано» — если владелец материализации оставил отметку.
+
+    Пустой файл — тоже отметка: причина могла не извлечься, но САМ ФАКТ чужой
+    недоступности наблюдал тот, кто её положил. Считать отметку без текста
+    отсутствующей значило бы терять третью категорию из-за пустой строки.
+    """
+    if not PRECOND_MARK.is_file():
+        return None
+    try:
+        detail = PRECOND_MARK.read_text(encoding="utf-8").strip()
+    except Exception:
+        detail = ""
+    return {"unmet": True, "kind": "external-chart-source",
+            "detail": detail or "причина не извлеклась (отметка пуста)"}
 
 
 def suite_dir(svc: str) -> pathlib.Path:
@@ -88,6 +118,10 @@ def main() -> int:
         "per_collection": {},
     }
 
+    pre = precondition()
+    if pre:
+        v["precondition"] = pre
+
     for svc in shard["suites"]:
         for stem in tracked_stems(svc):
             key = f"{svc}/{stem}"
@@ -113,6 +147,9 @@ def main() -> int:
     out.write_text(json.dumps(v, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     print(f"[shard {args.shard}] суиты: {' '.join(shard['suites'])}")
+    if pre:
+        print(f"[shard {args.shard}] УСЛОВИЕ НЕ СОЗДАНО: {pre['detail']} — "
+              f"пробы не выполнялись вовсе; числа ниже это не вердикт о них")
     print(f"[shard {args.shard}] коллекций отчиталось {v['reported']} из {v['expected']}; "
           f"запросов {v['requests']}, утверждений {v['assertions']}, "
           f"УПАВШИХ {v['failed']}, БЕЗ ОТВЕТА {v['unanswered']}, "

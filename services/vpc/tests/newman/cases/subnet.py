@@ -17,7 +17,11 @@ def _make_net(name_suffix="net"):
             # эту форму первая редакция гейта тоже не видела. Блоки шире всех
             # диапазонов этого файла (10.x/24 и fd00../fd12../fd34../64); негативов на
             # вложенность здесь нет, поэтому широкий план ничего не ослабляет.
-            body={"projectId": "{{_suiteProjectId}}", "name": f"sub-{name_suffix}-{{{{runId}}}}",
+            # Суффикс приводится к нижнему регистру ЗДЕСЬ, а не у вызывающих: имя
+            # ресурса обязано отвечать единственной форме дерева (#715), а суффиксы
+            # исторически писались верблюжьим регистром (dupCidr, luaCount). Правка
+            # в помощнике закрывает и тех вызывающих, которых ещё нет.
+            body={"projectId": "{{_suiteProjectId}}", "name": f"sub-{name_suffix.lower()}-{{{{runId}}}}",
                   "ipv4CidrBlocks": ["10.0.0.0/8"], "ipv6CidrBlocks": ["fd00::/8"]},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.networkId", "netId")],
@@ -33,13 +37,14 @@ def _cleanup_net():
 
 def _cleanup_net_lenient():
     # См. route-table.py::_cleanup_net_lenient — wrap'нутый Create мог пройти permissive'но
-    # (subnet создан) → DELETE сети блокируется FK RESTRICT (400). Оба исхода ОК.
+    # (subnet создан) → DELETE сети блокируется FK RESTRICT (400). Полос две, и
+    # КАЖДАЯ читается своей подписью (`assert_cleanup_delete`), а не принимается скопом.
     # retry_on=(403,): DELETE своей свежей сети может краснеть 403, пока owner-tuple
     # материализуется (eventual-consistency после opgate) — ретраим ТОЛЬКО этот транзиент;
     # 200/400 — терминальны, 404 не крутим (сеть не удаляется дважды в этих кейсах).
     return retry_until_authorized(
         Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-             test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("сеть", "в сети остались подсети, таблицы маршрутизации или группы"),
                           *save_from_response("j.id", "opId")]),
         retry_on=(403,))
 

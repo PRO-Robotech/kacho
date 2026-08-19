@@ -60,12 +60,12 @@ func TestWrap_fkViolation_directionNeutral(t *testing.T) {
 // id существует, это ТОТ САМЫЙ регион, который правят, а занято другим чужое имя.
 func TestWrapUnique_nameConflict_speaksAboutTheName(t *testing.T) {
 	pgErr := &pgconn.PgError{Code: "23505", ConstraintName: "regions_name_key"}
-	err := dberr.WrapUnique(pgErr, "Region", "ru-central1", "Central Russia")
+	err := dberr.WrapUnique(pgErr, "Region", "ru-central1", "central-russia")
 
 	if !stderrors.Is(err, geoerrors.ErrAlreadyExists) {
 		t.Fatalf("WrapUnique(23505 name) = %v, want ErrAlreadyExists", err)
 	}
-	if !strings.Contains(err.Error(), "Region with name Central Russia already exists") {
+	if !strings.Contains(err.Error(), "Region with name central-russia already exists") {
 		t.Fatalf("WrapUnique(23505 name) msg = %q, want the house name-conflict tone "+
 			"\"<Resource> with name <name> already exists\"", err.Error())
 	}
@@ -79,7 +79,7 @@ func TestWrapUnique_nameConflict_speaksAboutTheName(t *testing.T) {
 // первичному ключу по-прежнему рапортуется по id (контракт-тон не меняется).
 func TestWrapUnique_idConflict_speaksAboutTheId(t *testing.T) {
 	pgErr := &pgconn.PgError{Code: "23505", ConstraintName: "regions_pkey"}
-	err := dberr.WrapUnique(pgErr, "Region", "ru-central1", "Central Russia")
+	err := dberr.WrapUnique(pgErr, "Region", "ru-central1", "central-russia")
 
 	if !stderrors.Is(err, geoerrors.ErrAlreadyExists) {
 		t.Fatalf("WrapUnique(23505 pkey) = %v, want ErrAlreadyExists", err)
@@ -94,7 +94,7 @@ func TestWrapUnique_idConflict_speaksAboutTheId(t *testing.T) {
 // хуже, чем назвать адресуемую идентичность строки.
 func TestWrapUnique_unknownConstraint_fallsBackToId(t *testing.T) {
 	pgErr := &pgconn.PgError{Code: "23505", ConstraintName: "regions_some_future_key"}
-	err := dberr.WrapUnique(pgErr, "Region", "ru-central1", "Central Russia")
+	err := dberr.WrapUnique(pgErr, "Region", "ru-central1", "central-russia")
 	if !strings.Contains(err.Error(), "Region ru-central1 already exists") {
 		t.Fatalf("WrapUnique(unknown constraint) msg = %q, want id-conflict fallback", err.Error())
 	}
@@ -103,12 +103,12 @@ func TestWrapUnique_unknownConstraint_fallsBackToId(t *testing.T) {
 // TestWrapUnique_nonUniqueErrors_delegateToWrap — WrapUnique отличается от Wrap
 // ТОЛЬКО на 23505; всё прочее обязано идти тем же маппингом.
 func TestWrapUnique_nonUniqueErrors_delegateToWrap(t *testing.T) {
-	err := dberr.WrapUnique(pgx.ErrNoRows, "Zone", "ru-central1-a", "Zone A")
+	err := dberr.WrapUnique(pgx.ErrNoRows, "Zone", "ru-central1-a", "zone-a")
 	if !stderrors.Is(err, geoerrors.ErrNotFound) {
 		t.Fatalf("WrapUnique(ErrNoRows) = %v, want ErrNotFound", err)
 	}
 	fkErr := &pgconn.PgError{Code: "23503", ConstraintName: "zones_region_id_fkey"}
-	if err := dberr.WrapUnique(fkErr, "Zone", "ru-central1-a", "Zone A"); !stderrors.Is(err, geoerrors.ErrFailedPrecondition) {
+	if err := dberr.WrapUnique(fkErr, "Zone", "ru-central1-a", "zone-a"); !stderrors.Is(err, geoerrors.ErrFailedPrecondition) {
 		t.Fatalf("WrapUnique(23503) = %v, want ErrFailedPrecondition", err)
 	}
 }
@@ -150,7 +150,7 @@ func TestWrapUnique_nameConstraintNamesMatchTheMigrations(t *testing.T) {
 
 	for _, constraint := range found {
 		pgErr := &pgconn.PgError{Code: "23505", ConstraintName: constraint}
-		got := dberr.WrapUnique(pgErr, "Region", "ru-central1", "Central Russia").Error()
+		got := dberr.WrapUnique(pgErr, "Region", "ru-central1", "central-russia").Error()
 		if !strings.Contains(got, "with name") {
 			t.Errorf("ограничение %q объявлено миграцией как UNIQUE(name), но WrapUnique "+
 				"рапортует по id: %q", constraint, got)

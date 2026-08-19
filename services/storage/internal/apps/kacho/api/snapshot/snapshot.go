@@ -344,6 +344,11 @@ func (u *UseCase) Create(ctx context.Context, s *domain.Snapshot) (*operations.O
 		}
 	}
 	s.ID = ids.NewID(domain.PrefixSnapshot)
+	// Пустое имя не доживает до записи (#715). Подстановка стоит ЗДЕСЬ, после
+	// чеканки идентификатора: умолчание выводится из него, и раньше выводить было
+	// не из чего. Два безымянных снимка в одном проекте не спорят за
+	// UNIQUE(project,name) — идентификатор уникален глобально by construction.
+	s.Name = validate.NameOrDefault(s.Name, s.ID)
 	// Имя объекта у бэкенда выводится из СОБСТВЕННОГО идентификатора снимка, а не из
 	// тома: том удаляется раньше снимка (ссылка на источник обнуляется), и имя,
 	// производное от тома, пережило бы то, что им названо. Вывод детерминирован —
@@ -501,10 +506,21 @@ func resolveUpdate(mask []string, name, description string, labels map[string]st
 		}
 		return false
 	}
-	if apply("name") {
-		if err := domain.SnapshotName(name).Validate(); err != nil {
-			return SnapshotUpdate{}, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())
-		}
+	// Решение «что делать с именем на правке» принимает ЕДИНСТВЕННАЯ функция
+	// дерева (validate.NameOnUpdate): пять исходов маски и значения — правило
+	// горизонтальное, оно про форму запроса, а не про предмет сервиса.
+	//
+	// Наружу отказ уходит контрактным ТОНОМ storage, а не ошибкой канона:
+	// «Illegal argument name» — часть контракта (§1.7), он сам называет поле, и
+	// его пинят кейсы чёрного ящика на пути правки. Канон отвечает generic'ом с
+	// именем поля в деталях; отдать его как есть значило бы сменить наблюдаемое
+	// у landed-кейсов. Пересборка через err.Error() запрещена отдельно — она
+	// приклеила бы к сообщению обёртку gRPC.
+	applyName, nerr := validate.NameOnUpdate("name", mask, name)
+	if nerr != nil {
+		return SnapshotUpdate{}, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, domain.ErrIllegalName)
+	}
+	if applyName {
 		n := name
 		u.Name = &n
 	}
@@ -635,6 +651,10 @@ func (u *UseCase) Copy(ctx context.Context, in CopyInput) (*operations.Operation
 	if verr := copyItem.Validate(); verr != nil {
 		return nil, u.errStatus(fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, verr.Error()))
 	}
+	// Копия — ОТДЕЛЬНЫЙ путь появления строки со своим идентификатором, поэтому
+	// подстановка нужна и здесь: правило «пустое имя не доживает до записи»
+	// принадлежит записи, а не глаголу (#715).
+	copyItem.Name = validate.NameOrDefault(copyItem.Name, copyItem.ID)
 
 	op, err := operations.NewFromContext(ctx, domain.PrefixOperation,
 		fmt.Sprintf("Copy snapshot %s to zone %s", in.SnapshotID, in.TargetZoneID),

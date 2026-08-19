@@ -82,8 +82,8 @@ func insertTargetGroup(t testing.TB, ctx context.Context, pool *pgxpool.Pool, de
 	seedQuotaForProject(t, ctx, pool, projectID)
 	_, err := pool.Exec(ctx, `
 		INSERT INTO kacho_nlb.target_groups
-			(id, project_id, region_id, deregistration_delay_seconds, status, port)
-		VALUES ($1, $2, 'ru-central1', $3, 'ACTIVE', 8080)
+			(id, project_id, region_id, name, deregistration_delay_seconds, status, port)
+		VALUES ($1, $2, 'ru-central1', $1, $3, 'ACTIVE', 8080)
 	`, id, projectID, delaySec)
 	require.NoError(t, err)
 	return id, projectID

@@ -289,14 +289,28 @@ st=0
 [ $rc -eq 0 ] && echo "  ОК  (0) дерево как есть → МОЛЧИТ" \
               || { echo "  ПРОВАЛ (0) дерево как есть уже красное"; st=1; }
 
-IAM_DEP="$UMBRELLA/charts/kacho-iam/templates/deployment.yaml"
-GEO_DEP="$UMBRELLA/charts/kacho-geo/templates/deployment.yaml"
+# ─────────────────────────────────────────────────────────────────────────────
+# ИНЪЕКЦИЯ ИДЁТ В КОПИЮ ДЕРЕВА, А НЕ В ЖИВУЮ РАБОЧУЮ КОПИЮ (#696).
+#
+# Прежняя редакция снимала резервную копию файла во временный каталог, правила
+# файл В ДЕРЕВЕ и возвращала его в конце тела функции. Снятие прогона между
+# этими двумя шагами (по времени, по памяти, по месту на диске) до возврата не
+# доходит — и уносит с собой ту самую резервную копию, из которой файл можно
+# было бы вернуть. Наблюдалось: прогон, снятый в середине, оставил в дереве
+# внесённую строку контроля, и без `git status` в чистой до того копии она
+# уехала бы в коммит.
+#
+# Поэтому координаты ниже — ОТНОСИТЕЛЬНЫЕ корню развёртывания: правится файл
+# под $WORK, а живое дерево остаётся источником, из которого читают.
+# ─────────────────────────────────────────────────────────────────────────────
+IAM_DEP_REL="helm/umbrella/charts/kacho-iam/templates/deployment.yaml"
+GEO_DEP_REL="helm/umbrella/charts/kacho-geo/templates/deployment.yaml"
 # КООРДИНАТА ПАТЧА ВНОСИТСЯ ТУДА, ОТКУДА ЕЁ БЕРЁТ РЕНДЕР. Гейт читает исполняемую
 # часть рендера (`command` + `args` контейнера), а тело задания приезжает в `args`
 # из отдельного файла — шаблон его только подключает (`.Files.Get`). Значит вносить
 # синтетическую координату надо в файл тела: инъекция в шаблон, который тела уже не
 # содержит, ничего в рендер не добавляет.
-BOOT_BODY="$UMBRELLA/charts/openfga-bootstrap/files/bootstrap.sh"
+BOOT_BODY_REL="helm/umbrella/charts/openfga-bootstrap/files/bootstrap.sh"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ИНЪЕКЦИЯ ОБЯЗАНА ИМЕТЬ ПРОИЗВОДИТЕЛЯ, И ЕГО ОТСУТСТВИЕ — ОТДЕЛЬНЫЙ ИСХОД.
@@ -332,18 +346,32 @@ open(path, "w").write(src[:i] + extra + src[i:])
 PY
 }
 
-# Снимок → инъекция → прогон гейта → восстановление. Возвращает 3, когда дефект
-# внести не удалось; при успехе кладёт исход прогона в INJ_RC/INJ_OUT.
+# КОПИЯ ДЕРЕВА РАЗВЁРТЫВАНИЯ — единственное, что правит самопроверка.
+#
+# Гейт находит свой корень по расположению СОБСТВЕННОГО файла, поэтому прогон
+# копии гейта из $WORK судит $WORK: отдельной ручки «какое дерево судить» здесь
+# не заводится, и молча увести гейт с настоящего дерева нечем.
+WORK="$(mktemp -d)"
+trap 'rm -rf "$TMPD" "$WORK"' EXIT
+cp -r "$DEPLOY_ROOT/." "$WORK/" || fatal "копия дерева развёртывания не собрана — инъекции некуда идти"
+[ -x "$WORK/tests/helm/$SCRIPT" ] || fatal "в копии нет самого гейта ($WORK/tests/helm/$SCRIPT)"
+
+# Инъекция в копию → прогон копии гейта → возврат файла копии к оригиналу.
+# Возвращает 3, когда дефект внести не удалось; при успехе кладёт исход прогона
+# в INJ_RC/INJ_OUT.
 INJ_RC=0; INJ_OUT=""; INJ_ERR=""
-run_with_injection() {  # <файл> <якорь> <вставка> <before|after>
-  local file="$1" bak
-  bak="$(mktemp)"; cp "$file" "$bak"
-  if ! INJ_ERR="$(inject_at "$@" 2>&1)"; then
-    cp "$bak" "$file"; rm -f "$bak"
+run_with_injection() {  # <путь-относительно-корня> <якорь> <вставка> <before|after>
+  local rel="$1"; shift
+  local file="$WORK/$rel"
+  # Возврат берётся из ЖИВОГО дерева, которое проба только читает: временная
+  # резервная копия исчезала бы вместе с прерванным прогоном.
+  cp "$DEPLOY_ROOT/$rel" "$file" || return 3
+  if ! INJ_ERR="$(inject_at "$file" "$@" 2>&1)"; then
+    cp "$DEPLOY_ROOT/$rel" "$file"
     return 3
   fi
-  INJ_OUT="$(bash "$0" 2>&1)"; INJ_RC=$?
-  cp "$bak" "$file"; rm -f "$bak"
+  INJ_OUT="$(bash "$WORK/tests/helm/$SCRIPT" 2>&1)"; INJ_RC=$?
+  cp "$DEPLOY_ROOT/$rel" "$file"
   return 0
 }
 
@@ -352,17 +380,17 @@ run_with_injection() {  # <файл> <якорь> <вставка> <before|after
 show() { printf '%s\n' "$1" | sed 's/^/      /'; }
 
 # (A) ИНЪЕКЦИЯ: вернуть в чарт объявление аннотации, которую патчит задание.
-if [ ! -f "$IAM_DEP" ]; then
-  echo "  ПРОВАЛ (A) не найден чарт для инъекции ($IAM_DEP)"; st=1
-elif ! run_with_injection "$IAM_DEP" \
+if [ ! -f "$DEPLOY_ROOT/$IAM_DEP_REL" ]; then
+  echo "  ПРОВАЛ (A) не найден чарт для инъекции ($IAM_DEP_REL)"; st=1
+elif ! run_with_injection "$IAM_DEP_REL" \
         "        kacho.cloud/config-checksum:" \
         '        kacho.cloud/openfga-model-id-rev: "pending"
 ' before; then
   echo "  ПРОВАЛ (A) дефект НЕ ВНЕСЁН — у инъекции пропал производитель"
   show "$INJ_ERR"; st=1
 elif [ $INJ_RC -ne 0 ] \
-     && printf '%s' "$INJ_OUT" | grep -q 'openfga-model-id-rev' \
-     && printf '%s' "$INJ_OUT" | grep -q 'kacho-iam'; then
+     && [[ "$INJ_OUT" == *'openfga-model-id-rev'* ]] \
+     && [[ "$INJ_OUT" == *'kacho-iam'* ]]; then
   echo "  ОК  (A) второй писатель → КРАСНЫЙ с ключом и координатой"
 else
   echo "  ПРОВАЛ (A) двойное владение не поймано (exit=$INJ_RC)"
@@ -372,9 +400,9 @@ fi
 # (B) КОНТРОЛЬ СЛЕВА: аннотация, объявленная чартом и никем не патчимая, законна.
 #     Без этого случая гейт краснел бы на КАЖДОЙ аннотации шаблона пода — то есть
 #     ловил бы форму, а не пересечение, и первый же ложный срабат его бы отключил.
-if [ ! -f "$GEO_DEP" ]; then
-  echo "  ПРОВАЛ (B) не найден чарт для контроля ($GEO_DEP)"; st=1
-elif ! run_with_injection "$GEO_DEP" \
+if [ ! -f "$DEPLOY_ROOT/$GEO_DEP_REL" ]; then
+  echo "  ПРОВАЛ (B) не найден чарт для контроля ($GEO_DEP_REL)"; st=1
+elif ! run_with_injection "$GEO_DEP_REL" \
         "      annotations:
 " \
         '        kacho.cloud/self-test-twin: "x"
@@ -392,9 +420,9 @@ fi
 #     законна. Он доказывает сразу две вещи: правая половина эту форму ВИДИТ
 #     (ключ назван в объёме осмотренного) и гейт всё равно молчит, потому что
 #     ключуется на ПЕРЕСЕЧЕНИИ, а не на факте «координата патча встретилась».
-if [ ! -f "$BOOT_BODY" ]; then
-  echo "  ПРОВАЛ (C) не найдено тело задания для контроля ($BOOT_BODY)"; st=1
-elif ! run_with_injection "$BOOT_BODY" \
+if [ ! -f "$DEPLOY_ROOT/$BOOT_BODY_REL" ]; then
+  echo "  ПРОВАЛ (C) не найдено тело задания для контроля ($BOOT_BODY_REL)"; st=1
+elif ! run_with_injection "$BOOT_BODY_REL" \
         'REV=$(date +%s)
 ' \
         'echo "self-test control" \
@@ -402,7 +430,7 @@ elif ! run_with_injection "$BOOT_BODY" \
 ' after; then
   echo "  ПРОВАЛ (C) контроль НЕ ВНЕСЁН — у инъекции пропал производитель"
   show "$INJ_ERR"; st=1
-elif [ $INJ_RC -eq 0 ] && printf '%s' "$INJ_OUT" | grep -q 'self-test-unowned'; then
+elif [ $INJ_RC -eq 0 ] && [[ "$INJ_OUT" == *'self-test-unowned'* ]]; then
   echo "  ОК  (C) координата патча без объявления в чарте → УВИДЕНА и НЕ покрашена"
 else
   echo "  ПРОВАЛ (C) контроль справа не прошёл (exit=$INJ_RC)"

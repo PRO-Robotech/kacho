@@ -5,9 +5,9 @@ package domain
 
 import (
 	"errors"
-	"regexp"
 	"time"
-	"unicode/utf8"
+
+	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 )
 
 // ID-префиксы ресурсов домена Storage (3-char, ids.NewID). Тип ресурса читается
@@ -20,51 +20,74 @@ const (
 	PrefixOperation = "sop"
 )
 
-// maxDisplayNameLen — верхняя граница tenant display-name (1..63, §1.1) для Volume и
-// Snapshot. Формат зеркалит DB-CHECK volumes_name_check / snapshots_name_check.
-const maxDisplayNameLen = 63
-
-// displayNameRe — допустимый charset tenant display-name (Volume/Snapshot): lowercase,
-// начинается с буквы, далее [-a-z0-9], заканчивается буквой/цифрой. Точная копия DB-CHECK
-// *_name_check (self-validating newtype энфорсит тот же инвариант в домене, не полагаясь
-// только на backstop CHECK). Общий для VolumeName и SnapshotName (parity).
-var displayNameRe = regexp.MustCompile(`^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$`)
-
-// errIllegalName / errIllegalSize — контрактные тексты валидации (часть контракта
+// ErrIllegalName / errIllegalSize — контрактные тексты валидации (часть контракта
 // Kachō, §1.7; assert'ятся behaviour-level в newman/integration). serviceerr
 // срезает sentinel-префикс, клиент видит именно эту строку.
 var (
+	// ErrIllegalName — контрактный текст отказа по имени, ОДИН на весь сервис.
+	//
+	// Экспортирован затем, чтобы правка, которая судит имя через общий канон
+	// (validate.NameOnUpdate), отвечала арендатору ТЕМ ЖЕ текстом, что и
+	// создание. Иначе у одного поля стало бы два тона отказа, и кейсы чёрного
+	// ящика, пинящие этот текст на пути правки, покраснели бы на верной правке.
 	//nolint:staticcheck // ST1005: контрактный текст Kachō (§1.7, "Illegal argument <field>") — капитализация нормативна
-	errIllegalName = errors.New("Illegal argument name")
+	ErrIllegalName = errors.New("Illegal argument name")
 	//nolint:staticcheck // ST1005: контрактный текст Kachō (§1.7) — капитализация нормативна
 	errIllegalSize = errors.New("Illegal argument size_bytes")
 	// errSourceConflict — том нельзя засеять одновременно из snapshot и image (F9).
 	errSourceConflict = errors.New("a volume is seeded from either a snapshot or an image, not both")
 )
 
+// ValidateName — форма имени ресурса storage, доступная за пределами домена.
+//
+// Нужна тем путям, что судят имя НЕ через агрегатный Validate() — например
+// правке, которая проверяет одно поле. Без неё вызывающий выбирал бы newtype
+// чужого ресурса («позову VolumeName для снимка, там всё равно одна функция»),
+// и связь между полем и его правилом читалась бы как совпадение.
+//
+// Семантика — NameOnCreate: пустая строка ЗАКОННА (см. validateDisplayName).
+// Решение «пустое здесь означает снять имя» принадлежит вызывающему, а не форме.
+func ValidateName(name string) error { return validateDisplayName(name) }
+
 // VolumeName — self-validating newtype display-name тома (skill evgeniy: инвариант
-// формы живёт на типе). Пустое имя допустимо (partial UNIQUE не действует на ”;
-// два безымянных тома в проекте легальны, S1-06).
+// формы живёт на типе).
+//
+// Пустая строка — законный ВХОД создания и означает «назови сам»: до вставки её
+// заменяет имя, производное от идентификатора (validate.NameOrDefault в use-case).
+// Ресурса с пустым именем поэтому не существует.
+//
+// Здесь стояло другое объяснение: «два безымянных тома в проекте легальны, потому
+// что частичный UNIQUE не действует на пустую строку». Оно пережило свой предмет
+// дважды — подстановка сделала пустое имя недостижимым для вставки, а индекс,
+// на который оно ссылалось, стал ПОЛНЫМ. Два безымянных тома сосуществуют
+// по-прежнему, но по обратной причине: у каждого своё непустое имя, выведенное из
+// глобально уникального идентификатора, — то есть уникальность соблюдена, а не
+// обойдена.
 type VolumeName string
 
-// Validate проверяет формат имени. Пусто → ok; иначе 1..63 lowercase из
-// допустимого charset. Любое нарушение → фиксированный errIllegalName.
+// Validate проверяет форму имени: пусто → ok (см. выше); иначе единственная форма
+// имени ресурса в дереве. Любое нарушение → фиксированный ErrIllegalName.
 func (n VolumeName) Validate() error {
 	return validateDisplayName(string(n))
 }
 
 // validateDisplayName — общий self-validating инвариант tenant display-name
-// (Volume/Snapshot): пусто → ok; иначе 1..63 lowercase из допустимого charset. Любое
-// нарушение → фиксированный контрактный errIllegalName ("Illegal argument name").
+// (Volume/Snapshot/Image). Форму НЕ объявляет: её единственное объявление в дереве —
+// corevalidate.NameForm, и вторая копия здесь уже стоила расхождения (прежняя
+// требовала букву первым символом, канон принимает и цифру).
+//
+// Зовётся именно NameOnCreate, а не Name: агрегатный Validate() исполняется РАНЬШЕ,
+// чем чеканится идентификатор, а имя по умолчанию выводится из идентификатора. Отказ
+// на пустой строке здесь отменил бы создание без имени ДО того, как подстановке будет
+// из чего выводить. Пустое имя до записи не доживает — его заменяет NameOrDefault в
+// use-case, в точке, где идентификатор уже есть.
+//
+// Возвращается контрактный ErrIllegalName, а не ошибка pkg/validate: текст «Illegal
+// argument name» — часть контракта Kachō (§1.7) и утверждается кейсами чёрного ящика.
+// Канону делегируется РЕШЕНИЕ о форме, а не форма ответа.
 func validateDisplayName(v string) error {
-	if v == "" {
-		return nil
-	}
-	if utf8.RuneCountInString(v) > maxDisplayNameLen {
-		return errIllegalName
-	}
-	if !displayNameRe.MatchString(v) {
-		return errIllegalName
+	if err := corevalidate.NameOnCreate("name", v); err != nil {
+		return ErrIllegalName
 	}
 	return nil
 }
@@ -173,7 +196,7 @@ type Volume struct {
 }
 
 // Validate проверяет domain-инварианты Volume перед созданием. Порядок выдаёт
-// контрактные тексты для input-негативов S1-11: name-формат → errIllegalName;
+// контрактные тексты для input-негативов S1-11: name-формат → ErrIllegalName;
 // size_bytes<=0 → errIllegalSize (DB-backstop CHECK size_bytes>0). Cross-service
 // ссылки (zone_id→geo, project_id→iam) валидируются peer-API на request-path, а не
 // здесь (existence — не domain-инвариант формы).

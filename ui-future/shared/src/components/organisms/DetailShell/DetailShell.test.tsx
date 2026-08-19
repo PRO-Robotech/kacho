@@ -14,47 +14,23 @@
 //     деградация: связанные таблицы поднимают свой тулбар на строку имени и
 //     обязаны переживать использование вне карточки.
 //
-// `Menu` общего стенда-заменителя — пустой `<div>`: пункты он не рисует, поэтому
-// на нём «клик по табу» был бы недостижим, а утверждение о выбранном табе —
-// истинным при любом. Здесь он переопределён так, чтобы пункты были кнопками.
+// `Menu` общего стенда-заменителя рисует пункты по-настоящему, поэтому свой
+// дублёр здесь больше не нужен — см. примечание у подмены модуля ниже.
 
 import { jest } from "@jest/globals";
-import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { antdStub } from "@shared/test/antd-stub";
 
-interface MenuItem {
-  key: string;
-  label?: React.ReactNode;
-}
-
-interface MenuProps {
-  items?: MenuItem[];
-  selectedKeys?: string[];
-  onClick?: (info: { key: string }) => void;
-}
-
-jest.unstable_mockModule("antd", () => ({
-  ...antdStub(),
-  Menu: ({ items, selectedKeys, onClick }: MenuProps) =>
-    React.createElement(
-      "nav",
-      { "data-testid": "rail" },
-      (items ?? []).map((item) =>
-        React.createElement(
-          "button",
-          {
-            key: item.key,
-            type: "button",
-            "aria-current": (selectedKeys ?? []).includes(item.key) ? "page" : undefined,
-            onClick: () => onClick?.({ key: item.key }),
-          },
-          item.label,
-        ),
-      ),
-    ),
-}));
+// Своего дублёра `Menu` здесь БОЛЬШЕ НЕТ (#588). Он рисовал пункты `<button>` с
+// `aria-current="page"` — ни того, ни другого меню antd не производит, поэтому
+// утверждения ниже были прибиты к форме дублёра и пережили бы продукт: переход
+// на настоящий рендер оставил бы их зелёными на разметке, которой в консоли нет.
+// Общий заменитель даёт форму настоящего — включая РОЛЬ, объявленную
+// вызывающим: меню antd кладёт свою `role` до остатка props, поэтому рейл вправе
+// объявить себя набором вкладок, и заменитель это доносит так же (см. примечание
+// у `Menu` в `antd-stub.ts` и пробу его контракта в `antd-stub.test.tsx`).
+jest.unstable_mockModule("antd", () => antdStub());
 
 const { DetailShell, HeaderSlotPortal } = await import("./DetailShell");
 
@@ -78,8 +54,12 @@ function show(initial: string, props: Record<string, unknown> = {}) {
   );
 }
 
-const railButtons = () => [...screen.getByTestId("rail").querySelectorAll("button")];
-const selectedTab = () => railButtons().find((b) => b.getAttribute("aria-current") === "page")?.textContent;
+/** Пункты рейла — ПО РОЛИ ВКЛАДКИ: рейл переключает вид в зоне 3, и объявлен он
+ *  набором вкладок (см. describe «рейл объявлен НАБОРОМ ВКЛАДОК» ниже). */
+const railButtons = () => screen.getAllByRole("tab");
+/** Какая вкладка выбрана — по `aria-selected`, а не по классу подсветки: класс
+ *  говорит о том, как пункт ВЫГЛЯДИТ, и о выборе не утверждает ничего. */
+const selectedTab = () => railButtons().find((li) => li.getAttribute("aria-selected") === "true")?.textContent;
 const address = () => screen.getByTestId("address").textContent;
 
 describe("DetailShell — выбор таба", () => {
@@ -137,6 +117,72 @@ describe("DetailShell — выбор таба", () => {
     expect(address()).toBe("(без параметров)");
     // Активный таб задаёт вызывающий: сама оболочка его не переключала.
     expect(screen.getByText("содержимое json")).toBeInTheDocument();
+  });
+});
+
+describe("DetailShell — рейл объявлен НАБОРОМ ВКЛАДОК, а не меню команд", () => {
+  // ПРЕДМЕТ (#627). Рейл переключает ВИД в зоне 3 — это вкладки, и оболочка так
+  // их и называет во всём своём коде (`DetailTab`, «вертикальные табы»). Рисует
+  // его меню antd, и пока роль не объявлена, наружу уходит `role="menu"` +
+  // `role="menuitem"`: для того, кто читает страницу не глазами, набор видов
+  // выглядит списком КОМАНД, а выбранный вид не помечен вовсе — выбранность
+  // несёт класс подсветки, то есть сведение о цвете, а не о состоянии.
+  //
+  // Это не придирка к разметке: сквозная проба тегов (#627) искала на карточке
+  // репозитория вкладку и не находила НИ ОДНОЙ — при том что вкладка строилась и
+  // рисовалась. «Связь не доехала до оболочки» и «доехала, но объявлена не тем»
+  // с той стороны неразличимы, а лечатся по-разному.
+  //
+  // Утверждается ФОРМА, доносимая наружу, а не внутренняя разметка меню: роль
+  // набора, роль пункта, помеченность выбранного и связь вкладки с её панелью.
+  it("рейл — набор вкладок, и каждый пункт объявлен вкладкой", () => {
+    show("/networks/net-1");
+
+    const рейл = screen.getByRole("tablist");
+    // Вертикальность объявлена: у набора вкладок умолчание — горизонтальный, и
+    // читающий страницу не глазами иначе ждёт стрелок влево-вправо.
+    expect(рейл).toHaveAttribute("aria-orientation", "vertical");
+    expect(
+      within(рейл)
+        .getAllByRole("tab")
+        .map((t) => t.textContent),
+    ).toEqual(["Обзор", "JSON"]);
+  });
+
+  it("выбранная вкладка помечена ВЫБРАННОЙ, остальные — явно нет", () => {
+    // Парный контроль внутри одного утверждения: «выбрана» без «не выбрана»
+    // зеленело бы на оболочке, помечающей выбранными все вкладки сразу.
+    show("/networks/net-1?tab=json");
+
+    expect(screen.getAllByRole("tab").map((t) => [t.textContent, t.getAttribute("aria-selected")])).toEqual([
+      ["Обзор", "false"],
+      ["JSON", "true"],
+    ]);
+  });
+
+  it("вкладка указывает на свою панель, а панель названа своей вкладкой", () => {
+    show("/networks/net-1?tab=json");
+
+    const вкладка = screen.getByRole("tab", { name: "JSON" });
+    const панель = screen.getByRole("tabpanel");
+    // Ссылка ведёт в существующий узел, а не в пустоту: висячая ссылка на панель
+    // выглядит как связь и связью не является.
+    expect(вкладка.getAttribute("aria-controls")).toBe(панель.getAttribute("id"));
+    expect(панель.getAttribute("aria-labelledby")).toBe(вкладка.getAttribute("id"));
+    expect(панель).toHaveTextContent("содержимое json");
+  });
+
+  it("в режиме формы панели вкладки НЕТ — и ссылки на неё тоже", () => {
+    // Контроль в обратную сторону к утверждению выше. Зона 3 занята формой, то
+    // есть панели активной вкладки на странице не существует; ссылка на неё
+    // указывала бы в пустоту, а роль панели у формы была бы неправдой.
+    show("/networks/net-1", { mainOverride: <div>форма правки</div> });
+
+    expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("tab").every((t) => !t.hasAttribute("aria-controls"))).toBe(true);
+    // Сам рейл при этом на месте — иначе утверждения выше зеленели бы на
+    // странице, где вкладок нет вовсе.
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
   });
 });
 

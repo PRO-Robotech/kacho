@@ -49,14 +49,14 @@ func TestIntegration_AddressPoolOverlap_AcrossPools(t *testing.T) {
 
 	// pool A {10.0.0.0/24} — OK.
 	_, err = createUC.Execute(ctx, addresspool.CreatePoolReq{
-		Name: "pool-a-" + t.Name(), Kind: domain.AddressPoolKindExternalPublic,
+		Name: "pool-a", Kind: domain.AddressPoolKindExternalPublic,
 		ZoneID: "zone-a", V4CIDRBlocks: []string{"10.0.0.0/24"},
 	})
 	require.NoError(t, err)
 
 	// pool B {10.0.0.128/25} — пересекается с A → FailedPrecondition.
 	_, err = createUC.Execute(ctx, addresspool.CreatePoolReq{
-		Name: "pool-b-" + t.Name(), Kind: domain.AddressPoolKindExternalPublic,
+		Name: "pool-b", Kind: domain.AddressPoolKindExternalPublic,
 		ZoneID: "zone-a", V4CIDRBlocks: []string{"10.0.0.128/25"},
 	})
 	require.Error(t, err)
@@ -68,7 +68,7 @@ func TestIntegration_AddressPoolOverlap_AcrossPools(t *testing.T) {
 
 	// disjoint pool C {10.1.0.0/24} — OK.
 	_, err = createUC.Execute(ctx, addresspool.CreatePoolReq{
-		Name: "pool-c-" + t.Name(), Kind: domain.AddressPoolKindExternalPublic,
+		Name: "pool-c", Kind: domain.AddressPoolKindExternalPublic,
 		ZoneID: "zone-a", V4CIDRBlocks: []string{"10.1.0.0/24"},
 	})
 	require.NoError(t, err, "disjoint CIDR must succeed")
@@ -133,7 +133,7 @@ func TestIntegration_AddressPoolOverlap_ConcurrentOverlap(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			_, errs[idx] = createUC.Execute(ctx, addresspool.CreatePoolReq{
-				Name: "pool-conc-" + t.Name(), Kind: domain.AddressPoolKindExternalPublic,
+				Name: "pool-conc", Kind: domain.AddressPoolKindExternalPublic,
 				ZoneID: "zone-a", V4CIDRBlocks: []string{"10.0.0.0/24"},
 			})
 		}(i)
@@ -169,14 +169,14 @@ func TestIntegration_AddressPoolOverlap_RemoveFreesBlock(t *testing.T) {
 
 	// pool A {10.0.0.0/24, 10.2.0.0/24}.
 	poolA, err := createUC.Execute(ctx, addresspool.CreatePoolReq{
-		Name: "pool-a-" + t.Name(), Kind: domain.AddressPoolKindExternalPublic,
+		Name: "pool-a", Kind: domain.AddressPoolKindExternalPublic,
 		ZoneID: "zone-a", V4CIDRBlocks: []string{"10.0.0.0/24", "10.2.0.0/24"},
 	})
 	require.NoError(t, err)
 
 	// Перед remove новый пул с 10.0.0.0/24 пересекается → FailedPrecondition.
 	_, err = createUC.Execute(ctx, addresspool.CreatePoolReq{
-		Name: "pool-pre-" + t.Name(), Kind: domain.AddressPoolKindExternalPublic,
+		Name: "pool-pre", Kind: domain.AddressPoolKindExternalPublic,
 		ZoneID: "zone-a", V4CIDRBlocks: []string{"10.0.0.0/24"},
 	})
 	require.Error(t, err, "pre-remove overlap must be rejected")
@@ -188,7 +188,7 @@ func TestIntegration_AddressPoolOverlap_RemoveFreesBlock(t *testing.T) {
 
 	// Теперь pool B {10.0.0.0/24} — OK (block освобожден removal'ом).
 	_, err = createUC.Execute(ctx, addresspool.CreatePoolReq{
-		Name: "pool-b-" + t.Name(), Kind: domain.AddressPoolKindExternalPublic,
+		Name: "pool-b", Kind: domain.AddressPoolKindExternalPublic,
 		ZoneID: "zone-a", V4CIDRBlocks: []string{"10.0.0.0/24"},
 	})
 	require.NoError(t, err, "removed CIDR must become reusable")

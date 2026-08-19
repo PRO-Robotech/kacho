@@ -17,18 +17,31 @@ func TestLbName_Validate(t *testing.T) {
 		value   domain.LbName
 		wantErr bool
 	}{
-		// happy paths: boundary "abc" (3 chars) and 63 chars.
-		{"min 3 chars OK", "abc", false},
+		// happy paths: границы формы — один символ и 63 символа.
+		//
+		// «min 3 chars» здесь больше нет: минимальная длина 3 была осью, по
+		// которой прежняя форма nlb расходилась с единственной формой дерева, и
+		// ничем не обоснована (#715). Имя из одного-двух символов законно.
+		{"1 char OK", "a", false},
+		{"2 chars OK", "ab", false},
+		{"3 chars OK", "abc", false},
 		{"hyphenated lowercase OK", "edge-public", false},
 		{"63 chars OK", domain.LbName("a" + strings.Repeat("b", 61) + "c"), false},
 		// negative: (regex), (length/empty).
 		{"empty rejected", "", true},
-		{"2 chars rejected (regex min len 3)", "ab", true},
+		// Здесь стояло «2 chars rejected» — ожидание было верно для прежней
+		// формы и неверно для канона. Взамен — вход, который именем не является
+		// ни при какой форме.
+		{"space rejected", "edge public", true},
 		{"64 chars rejected", domain.LbName("a" + strings.Repeat("b", 62) + "c"), true},
 		{"uppercase rejected", "Edge", true},
 		{"underscore rejected", "edge_public", true},
 		{"exclamation rejected", "edge!", true},
-		{"starts with digit rejected", "1edge", true},
+		// Здесь стояло «starts with digit rejected» — вторая ось прежнего
+		// расхождения. Канон — DNS label по RFC 1123, и ведущую цифру он
+		// принимает; ниже это утверждается положительно.
+		{"starts with digit OK", "1edge", false},
+		{"starts with hyphen rejected", "-edge", true},
 		{"ends with hyphen rejected", "edge-", true},
 	}
 	for _, tc := range cases {

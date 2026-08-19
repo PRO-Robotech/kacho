@@ -60,7 +60,7 @@ EXCLUDE / generated-колонки / индексы / триггеры — inlin
     <tr><th>Таблица</th><th>Ресурс / назначение</th><th>PK</th><th>Уникальность</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>networks</code></td><td>Network (VPC-контейнер)</td><td><code>id</code></td><td>non-partial <code>UNIQUE (project\_id, name)</code></td></tr>
+    <tr><td><code>networks</code></td><td>Network (VPC-контейнер)</td><td><code>id</code></td><td>partial <code>UNIQUE … WHERE name&lt;&gt;''</code></td></tr>
     <tr><td><code>subnets</code></td><td>Subnet (подсеть в зоне)</td><td><code>id</code></td><td>partial <code>UNIQUE … WHERE name&lt;&gt;''</code></td></tr>
     <tr><td><code>addresses</code></td><td>Address (internal / external IP)</td><td><code>id</code></td><td>partial <code>UNIQUE</code> + per-pool/subnet IP-dedup</td></tr>
     <tr><td><code>address\_references</code></td><td>1↔1 backref «кто использует адрес»</td><td><code>address\_id</code></td><td>—</td></tr>
@@ -126,7 +126,7 @@ service-валидации.
   <tbody>
     <tr>
       <td>Имя уникально в проекте</td>
-      <td><code>UNIQUE (project\_id, name)</code> — для <code>networks</code> non-partial; для остальных 6 — partial <code>WHERE name&lt;&gt;''</code></td>
+      <td><code>UNIQUE (project\_id, name)</code> — partial <code>WHERE name&lt;&gt;''</code> у всех восьми ресурсов: пустое имя законно по контракту и слот не занимает</td>
       <td><code>23505</code> → ALREADY_EXISTS</td>
     </tr>
     <tr>
@@ -216,7 +216,19 @@ writers / багов в app-коде):
   </tbody>
 </table>
 
-Все нарушения CHECK маппятся (SQLSTATE `23514`) в `service.ErrInvalidArg`:
+Нарушение CHECK (SQLSTATE `23514`) разбирается на **две полосы** — по тому, чьё
+это значение.
+
+- **Форму значения проверяет сам сервис** до вставки. Так устроено имя ресурса:
+  его судит доменный тип `RcNameVPC` единственной формой дерева. Ограничение
+  таблицы здесь — защита последнего рубежа, и его срабатывание означает, что
+  негодное значение прошло мимо проверки: это дефект сервиса. Наружу уходит
+  фиксированный `INTERNAL`, в журнал — `ERROR` с именем ограничения.
+  `INVALID_ARGUMENT` здесь обвинял бы вызывающего в чужой ошибке и не давал бы
+  ему ничего, что можно исправить.
+- **Форму проверяет только база** — тогда это отказ по вводу: `service.ErrInvalidArg`
+  → `INVALID_ARGUMENT`. Текст контрактный (`Illegal argument`); формулировка
+  Postgres и имя ограничения наружу не идут.
 
 <Codes codes={['invalidArgument', 'alreadyExists', 'failedPrecondition', 'internal']} />
 

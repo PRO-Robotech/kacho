@@ -7559,11 +7559,11 @@
       ]
     },
     {
-      "name": "TGR-CR-VAL-NAME-NUMERIC-START — Create TG with name starting with digit → InvalidArgument",
+      "name": "TGR-CR-VAL-NAME-DOT — Create TG with a dot in name → InvalidArgument (DNS label, не DNS-имя)",
       "description": "class:VAL | priority:P1",
       "item": [
         {
-          "name": "cr-digit",
+          "name": "cr-dot",
           "request": {
             "method": "POST",
             "header": [
@@ -7585,7 +7585,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"30s\", \"name\": \"9bad-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"30s\", \"name\": \"bad.name-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"

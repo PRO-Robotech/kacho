@@ -7,6 +7,7 @@ package kacho.cloud.compute.v1;
 
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
+import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/compute/v1/guest_access_key.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
@@ -51,6 +52,10 @@ service GuestAccessKeyService {
       post: "/compute/v1/guestAccessKeys"
       body: "*"
     };
+    option (kacho.cloud.api.operation) = {
+      metadata: "CreateGuestAccessKeyMetadata"
+      response: "GuestAccessKey"
+    };
     option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.create";
     option (kacho.iam.authz.v1.required_relation) = "editor";
     option (kacho.iam.authz.v1.scope_extractor)   = {
@@ -71,6 +76,10 @@ service GuestAccessKeyService {
     option (google.api.http) = {
       patch: "/compute/v1/guestAccessKeys/{guest_access_key_id}"
       body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UpdateGuestAccessKeyMetadata"
+      response: "GuestAccessKey"
     };
     option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.update";
     option (kacho.iam.authz.v1.required_relation) = "v_update";
@@ -105,6 +114,10 @@ service GuestAccessKeyService {
   rpc Delete(DeleteGuestAccessKeyRequest) returns (operation.Operation) {
     option (google.api.http) = {
       delete: "/compute/v1/guestAccessKeys/{guest_access_key_id}"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "DeleteGuestAccessKeyMetadata"
+      response: "google.protobuf.Empty"
     };
     option (kacho.iam.authz.v1.permission)        = "compute.guest_access_keys.delete";
     option (kacho.iam.authz.v1.required_relation) = "v_delete";

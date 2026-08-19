@@ -48,8 +48,8 @@ func seedNICSubnetFor(t *testing.T, db *sql.DB, tag string) string {
 // Возвращает ошибку, а не роняет пробу: часть проб ниже утверждает отказ базы.
 func insertNICWithLimit(db *sql.DB, subnetID string, limit int64, macTail int) error {
 	_, err := db.Exec(`
-		INSERT INTO network_interfaces (id, project_id, subnet_id, mac_address, bandwidth_limit_mbps)
-		VALUES ($1, $2, $3, $4, $5)`,
+		INSERT INTO network_interfaces (id, name, project_id, subnet_id, mac_address, bandwidth_limit_mbps)
+		VALUES ($1, $1, $2, $3, $4, $5)`,
 		ids.NewID(ids.PrefixNetworkInterface), "prj-36", subnetID,
 		fmt.Sprintf("0e:36:00:00:00:%02x", macTail), limit)
 	return err

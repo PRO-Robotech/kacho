@@ -64,7 +64,11 @@ ok() { SECTIONS=$((SECTIONS + 1)); }
 # explicitly, so a tooling mismatch can never be mistaken for a policy result
 # (and, just as important, can never be mistaken for a pass).
 command -v yq >/dev/null 2>&1 || fatal "yq not found — install mikefarah yq v4 (https://github.com/mikefarah/yq)"
-yq --version 2>&1 | grep -q "mikefarah" \
+# Сравнение — БЕЗ трубы: `… | grep -q` под `set -o pipefail` возвращает ОТКАЗ
+# НА СОВПАДЕНИИ (grep выходит по первому попаданию, писатель получает SIGPIPE,
+# и `pipefail` поднимает ЕГО статус до статуса конвейера). Задача #658.
+YQ_VER="$(yq --version 2>&1 || true)"
+[[ "${YQ_VER,,}" == *mikefarah* ]] \
   || fatal "wrong yq flavour: $(yq --version 2>&1 | head -1) — this guard needs mikefarah yq v4, not the jq wrapper"
 
 [ -f "$PROD" ] || fatal "values.prod.yaml not found at $PROD — production profile missing"

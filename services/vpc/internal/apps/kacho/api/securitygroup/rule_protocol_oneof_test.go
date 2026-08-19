@@ -141,7 +141,7 @@ func TestHandlerCreate_ProtocolNumberZeroRefusedBeforeOperation(t *testing.T) {
 	nr := repomock.NewNetworkRepo()
 	netA := ids.NewID(ids.PrefixNetwork)
 	if _, err := nr.Insert(context.Background(),
-		&domain.Network{ID: netA, ProjectID: "P", Name: "net-A"}); err != nil {
+		&domain.Network{ID: netA, ProjectID: "P", Name: "net-a"}); err != nil {
 		t.Fatalf("seed network: %v", err)
 	}
 	create := NewCreateSecurityGroupUseCase(sgr, nr, &repomock.ProjectClient{OK: true}, ops).
@@ -184,7 +184,7 @@ func TestHandlerCreate_ProtocolNumberZeroDoesNotBecomeAnyProtocol(t *testing.T) 
 	nr := repomock.NewNetworkRepo()
 	netA := ids.NewID(ids.PrefixNetwork)
 	if _, err := nr.Insert(context.Background(),
-		&domain.Network{ID: netA, ProjectID: "P", Name: "net-B"}); err != nil {
+		&domain.Network{ID: netA, ProjectID: "P", Name: "net-b"}); err != nil {
 		t.Fatalf("seed network: %v", err)
 	}
 	create := NewCreateSecurityGroupUseCase(sgr, nr, &repomock.ProjectClient{OK: true}, ops).

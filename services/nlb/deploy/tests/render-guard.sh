@@ -32,9 +32,17 @@ render() {
 }
 
 # assert_contains <render-output> <needle> <description>
+#
+# Сравнение — встроенное, БЕЗ трубы. `printf … | grep -qF` под `set -o pipefail`
+# возвращает ОТКАЗ НА СОВПАДЕНИИ, когда вывод не помещается в буфер трубы
+# целиком: grep выходит по первому попаданию, писатель получает SIGPIPE, и
+# `pipefail` поднимает ЕГО статус до статуса всего конвейера. Замер на Linux
+# (буфер трубы 64 KiB), совпадение в начале вывода: 8 КБ — 0 ложных отказов из
+# 200, 70 КБ — 177, 300 КБ — 200. Отсюда «локально зелено, на ранере красно»
+# при одном и том же дереве. Задача #658.
 assert_contains() {
   local out="$1" needle="$2" desc="$3"
-  if printf '%s' "$out" | grep -qF -- "$needle"; then
+  if [[ "$out" == *"$needle"* ]]; then
     pass "$desc"
   else
     fail "$desc — ожидали подстроку: $needle"
@@ -44,7 +52,7 @@ assert_contains() {
 # assert_absent <render-output> <needle> <description>
 assert_absent() {
   local out="$1" needle="$2" desc="$3"
-  if printf '%s' "$out" | grep -qF -- "$needle"; then
+  if [[ "$out" == *"$needle"* ]]; then
     fail "$desc — НЕ ожидали подстроку, но нашли: $needle"
   else
     pass "$desc"
@@ -87,7 +95,7 @@ mtls_geo_enable() {
     { prev_geo = ($0 ~ /^      geo:$/) }'
 }
 GEO_MTLS_ENABLE="$(mtls_geo_enable "$OUT_GEO")"
-if printf '%s' "$GEO_MTLS_ENABLE" | grep -qF 'enable: true'; then
+if [[ "$GEO_MTLS_ENABLE" == *'enable: true'* ]]; then
   pass "geo mTLS enable: true при edges.geo=true"
 else
   fail "geo mTLS enable должен быть true при edges.geo=true (получили: '${GEO_MTLS_ENABLE:-<пусто>}')"
@@ -97,7 +105,7 @@ fi
 echo "[mTLS geo edge — off by default]"
 OUT_GEO_OFF="$(render --set mtls.enable=true)"
 GEO_MTLS_ENABLE_OFF="$(mtls_geo_enable "$OUT_GEO_OFF")"
-if printf '%s' "$GEO_MTLS_ENABLE_OFF" | grep -qF 'enable: false'; then
+if [[ "$GEO_MTLS_ENABLE_OFF" == *'enable: false'* ]]; then
   pass "geo mTLS enable: false по умолчанию"
 else
   fail "geo mTLS должен быть enable: false по умолчанию (получили: '${GEO_MTLS_ENABLE_OFF:-<пусто>}')"

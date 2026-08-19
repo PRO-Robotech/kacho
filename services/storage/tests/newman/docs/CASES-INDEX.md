@@ -44,7 +44,7 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | VOL-UPD-MASK-IMMUTABLE-DISKTYPE | CS1-S1-05 | negative (sync) |
 | VOL-UPD-MASK-UNKNOWN-FIELD | CS1-S1-05 | negative (sync) |
 | VOL-CR-NEG-DUP-NAME | CS1-S1-06 | negative (op-error) |
-| VOL-CR-CRUD-EMPTY-NAME-OK | CS1-S1-06 | happy (partial-UNIQUE) |
+| VOL-CR-CRUD-EMPTY-NAME-OK | CS1-S1-06 | happy (имя подставлено идентификатором) |
 | VOL-DEL-CRUD-OK | CS1-S1-07 | happy |
 | VOL-DEL-NEG-NOTFOUND | CS1-S1-07 | negative (op-error) |
 | VOL-CR-NEG-ZONE-UNKNOWN | CS1-S1-08 | negative (peer sync) |
@@ -59,7 +59,7 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | VOL-LOP-NEG-MALFORMED-ID | CS1-S1-15 | negative (sync) |
 | VOL-LIFECYCLE-CONF | CS1-S1-01/04/07 | conformance |
 | VOL-CR-BVA-NAME-OVER-64 | CS1-S1-12 | negative (BVA) |
-| VOL-CR-VAL-NAME-DIGIT-START | CS1-S1-12 | negative (sync) |
+| VOL-CR-VAL-NAME-UNDERSCORE | CS1-S1-12 | negative (sync; заменил NAME-DIGIT-START — цифра первым символом теперь законна) |
 | VOL-CR-VAL-NAME-HYPHEN-START | CS1-S1-12 | negative (sync) |
 | VOL-UPD-MASK-RETIRED-BLOCKSIZE-REJECTED | CS1-S1-05 | negative (sync; слот снят с контракта — маска, называющая его, отвергается) |
 | VOL-UPD-MASK-IMMUTABLE-SOURCESNAPSHOT | CS1-S1-05 | negative (sync) |

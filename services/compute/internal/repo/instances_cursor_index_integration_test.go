@@ -33,8 +33,25 @@ import (
 // выбирает, не стоит ничего.
 
 const (
-	insCursorRows     = 200 // строк на проект
-	insCursorProjects = 8   // проектов в таблице (доля целевого — 1/8)
+	// insCursorRows — строк на проект.
+	//
+	// Было 200. Тогда проба зеленела, но НЕ потому, что свойство держится: все
+	// имена в ней были пустой строкой, строка таблицы была узкой, и курсорный
+	// индекс выигрывал по стоимости с небольшим запасом. Имя перестало быть
+	// пустым — единая форма имени пустой строки не допускает, — и строка стала
+	// шире, и планировщик на этом объёме стал предпочитать скан по проекту с
+	// последующей сортировкой — то есть проба покраснела на РАЗМЕРЕ ФИКСТУРЫ,
+	// а не на продукте.
+	//
+	// Замерено на этом дереве: 200 строк на проект — план сортирует; 2000 —
+	// берёт instances_project_cursor_idx и не сортирует. Снятие нового
+	// уникального индекса (project_id, name) плана НЕ меняет, то есть дело в
+	// объёме, а не в индексе.
+	//
+	// Объём поднят до 2000, чтобы выбор индекса перестал зависеть от ширины
+	// строки: проба обязана утверждать свойство продукта, а не удачу оценки.
+	insCursorRows     = 2000
+	insCursorProjects = 8 // проектов в таблице (доля целевого — 1/8)
 	insCursorPageSize = 20
 	insCursorSlack    = 5
 	insCursorOffset   = 120 // курсор в середине проекта
@@ -68,7 +85,8 @@ func TestIntegration_InstancesCursorIndex_PageDoesNotReadTheWholeProject(t *test
 		projects = append(projects, prj)
 		_, err = pool.Exec(ctx, `
 			INSERT INTO instances (id, project_id, zone_id, name, machine_type_id, status, created_at)
-			SELECT 'ins-' || $1 || lpad(g::text, 8, '0'), $1, 'ru-central1-a', '', 'mt-std2', 1,
+			SELECT 'ins-' || $1 || lpad(g::text, 8, '0'), $1, 'ru-central1-a',
+			       'ins-' || $1 || lpad(g::text, 8, '0'), 'mt-std2', 1,
 			       TIMESTAMPTZ '2020-01-01 00:00:00Z' + (g || ' seconds')::interval
 			  FROM generate_series(0, $2::int - 1) g`, prj, insCursorRows)
 		require.NoError(t, err)

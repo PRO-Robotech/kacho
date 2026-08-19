@@ -54,7 +54,7 @@ func seedSGForNet(t *testing.T, ctx context.Context, r kacho.Repository, netID s
 	t.Helper()
 	id := ids.NewID(ids.PrefixSecurityGroup)
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
-		_, e := w.SecurityGroups().Insert(ctx, &domain.SecurityGroup{ID: id, ProjectID: "project-dsg", NetworkID: netID})
+		_, e := w.SecurityGroups().Insert(ctx, &domain.SecurityGroup{ID: id, Name: domain.RcNameVPC(id), ProjectID: "project-dsg", NetworkID: netID})
 		return e
 	}))
 	return id

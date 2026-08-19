@@ -912,14 +912,22 @@ CASES.extend(http_method_not_allowed_block("LST", _LST_BASE))
 # Extended VAL/NEG/BVA matrix saturation
 # ---------------------------------------------------------------------------
 
+# ЗДЕСЬ БЫЛ КЕЙС «имя начинается с цифры → 400». Его предмета больше нет:
+# единая форма имени (DNS label по RFC 1123, `pkg/validate.NameForm`) разрешает
+# цифру первым символом, и `9bad-…` теперь ЗАКОННОЕ имя балансировщика: nlb
+# переведён на общую форму, своя регулярка из его домена снята.
+#
+# Кейс не удалён, а переведён на точку — символ, запрещённый и прежней формой
+# nlb, и новой. Выбор был сделан, когда перевод ещё шёл, и остаётся верным
+# после него: под обеими формами точка именем ресурса не является.
 CASES.append(Case(
-    id="LST-CR-VAL-NAME-NUMERIC-START",
-    title="Create with name starting with digit → InvalidArgument",
+    id="LST-CR-VAL-NAME-DOT",
+    title="Create with a dot in name → InvalidArgument (DNS label, не DNS-имя)",
     classes=["VAL"], priority="P1",
     steps=[
-        *_setup_lb("name-digit"),
-        retry_until_authorized(Step(name="cr-digit", method="POST", path=_LST_BASE,
-             body={"loadBalancerId": "{{nlbId}}", "name": "9bad-{{runId}}",
+        *_setup_lb("name-dot"),
+        retry_until_authorized(Step(name="cr-dot", method="POST", path=_LST_BASE,
+             body={"loadBalancerId": "{{nlbId}}", "name": "bad.name-{{runId}}",
                    "protocol": "TCP", "port": 80},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),

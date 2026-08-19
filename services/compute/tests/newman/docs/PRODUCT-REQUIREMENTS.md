@@ -77,14 +77,26 @@ ID ресурсов: Instance/Disk — `epd`; Image/Snapshot — `fd8`. api-gate
 
 ## B. Валидация (`VAL` / `NAME` / `SIZE`)
 
-### REQ-NAME-01 — name compute-ресурсов: lowercase-only regex `\|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?`   [P1]
-Имя Disk/Image/Snapshot/Instance (и `hostname`, `disk_spec.name`) ДОЛЖНО проходить proto-pattern
-`|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?` — пустая строка ОК; иначе начинается с lowercase-буквы, далее
-lowercase/digits/`-`/`_`, длина ≤63. UPPERCASE / digit-start / hyphen-start / спец-символы → `InvalidArgument`.
-⚠️ Это НЕ `NameVPC` (там uppercase разрешён) — нужен `corevalidate.NameCompute`.
-- Validated-by: `*-CR-VAL-NAME-{EMPTY-OK,UPPERCASE,DIGIT-START,HYPHEN-START,SPECIAL-CHARS}`, `*-CR-BVA-NAME-{MAX-63,OVER-64}`, `INST-CR-VAL-NAME-*`
-- Agent-check: `pkg/validate/validate.go` (`NameCompute`); вызов в начале каждого `Create`/`Update` (`internal/apps/kacho/api/*/`).
-- Divergence: формулировка контракта для empty/edge ещё не закреплена — `# probe-needed`; см. `docs/engineering/architecture/07-known-divergences.md`.
+### REQ-NAME-01 — имя ресурса: ЕДИНСТВЕННАЯ форма дерева, DNS label по RFC 1123   [P1]
+Имя ресурса compute (Instance, MachineType, PlacementGroup, GuestAccessKey) ДОЛЖНО
+проходить `pkg/validate.NameForm` — `^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`: строчные
+буквы, цифры, дефис; первый и последний символ — буква ИЛИ цифра; длина 1..63.
+UPPERCASE / подчёркивание / дефис по краю / спец-символы / не-ASCII → `InvalidArgument`.
+
+**Пустая строка на СОЗДАНИИ законна** и означает «назови сам»: сервис подставляет имя,
+производное от `id`, до вставки (`validate.NameOrDefault`), поэтому ресурса с пустым
+именем не возникает. На ПРАВКЕ пустое имя отвергается, когда маска его назвала; при
+пустой маске (полный PATCH) пустое означает «не прислали» и имя не меняется.
+
+> [!note] Здесь были три утверждения, переживших свой предмет
+> Прежняя редакция (а) разрешала подчёркивание и запрещала цифру первым символом —
+> обе оси сняты сведением к единой форме; (б) называла `corevalidate.NameCompute` и
+> `NameVPC` — таких функций в дереве нет, они удалены вместе с расхождением; (в)
+> перечисляла Disk/Image/Snapshot как ресурсы compute — блочное хранение принадлежит
+> `services/storage`, у compute этих контрактов нет.
+
+- Validated-by: `*-CR-VAL-NAME-{EMPTY-OK,UPPERCASE,HYPHEN-START,SPECIAL-CHARS}`, `*-CR-BVA-NAME-{MAX-63,OVER-64}`, `INST-CR-VAL-NAME-*`
+- Agent-check: `pkg/validate/validate.go` (`NameForm`, `Name`, `NameOnCreate`, `NameOrDefault`); вызов в начале каждого `Create`/`Update` (`internal/apps/kacho/api/*/`). Единственность формы держит гейт `internal/repohygiene` `TestResourceNameFormIsDeclaredOnce`.
 
 ### REQ-VAL-01 — required-поля Create — sync `InvalidArgument`                                  [P0]
 До создания Operation проверяются required: `project_id` (все), `zone_id` (Disk/Instance),

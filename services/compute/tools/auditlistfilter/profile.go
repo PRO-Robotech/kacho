@@ -83,8 +83,37 @@ var Profile = listfiltergate.Profile{
 	// filterVisible is the service's own generic helper (internal/handler/
 	// list_filter.go); FilterVisibleIDs is the port it calls, accepted so a handler
 	// that talks to the port directly still counts.
-	Filters:        []string{"listnarrow.Page", "listnarrow.IDs"},
-	Banned:         []string{"ListAllowedIDs", "ListObjects"},
+	Filters: []string{"listnarrow.Page", "listnarrow.IDs"},
+	Banned:  []string{"ListAllowedIDs", "ListObjects"},
+	// Where the ban actually comes FROM (#684). Until this was declared the ban was
+	// the two hand-written names and nothing else, and the gate said so on every run:
+	// "no enumeration source declared". That line was not a warning about a defect —
+	// it was a statement that the service was UNWATCHED for the form that lived in
+	// iam for months before #651 found it.
+	//
+	// Neither surface named here enumerates today, and that is the point: a list of
+	// names refuses only the forms someone has already met, so the ban has to arrive
+	// BEFORE the first caller. The method set of each is read on every run; the first
+	// method added to either that answers with a set of identifiers is banned inside
+	// every narrowing listing the day it is written, without anyone editing a list.
+	//
+	// Copying iam's answer here would have been wrong twice over: iam's sources are
+	// its own — the store's port and a paged verdict resolver over its own tables —
+	// and kacho-compute has neither. It holds grants nowhere; every authorization
+	// question it asks goes to kacho-iam, through the ports below.
+	EnumerationSources: []listfiltergate.EnumerationSource{
+		// The service's own client to kacho-iam: "may this subject act on this
+		// object" (InternalIAMService.Check). One method along from it is "which
+		// objects may this subject act on", and that is the form the ban must
+		// already refuse when it is written.
+		{Dir: "internal/check", Type: "IAMCheckClient", Role: listfiltergate.AsksVerdicts},
+		// The SHARED narrow port to kacho-iam's AuthorizeService, resolved from the
+		// module root because it is foundation rather than service code. It is the
+		// shortest path from "narrow this page" to "enumerate the universe": the RPC
+		// it fronts is the one that enumerates (AuthorizeService.ListObjects), so a
+		// profile watching only its own client would leave the likelier door unwatched.
+		{Dir: "pkg/listnarrow", Type: "AuthorizeClient", Role: listfiltergate.AsksVerdicts, Shared: true},
+	},
 	SubjectScopers: []string{"ListForCaller"},
 
 	Listings: map[string]listfiltergate.Listing{

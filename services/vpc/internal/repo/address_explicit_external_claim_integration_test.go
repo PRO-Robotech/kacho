@@ -70,7 +70,7 @@ func insertExplicitExternalV4Address(t testing.TB, ctx context.Context, r kacho.
 	require.NoError(t, err)
 	defer w.Abort()
 	rec, err = w.Addresses().Insert(ctx, &domain.Address{
-		ID:           addrID,
+		ID: addrID, Name: domain.RcNameVPC(addrID),
 		ProjectID:    projectID,
 		Type:         domain.AddressTypeExternal,
 		IpVersion:    domain.IpVersionIPv4,
@@ -165,7 +165,7 @@ func TestExplicitExternalIPv4_AlreadyTakenInPool_Rejected(t *testing.T) {
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	_, err = w.Addresses().Insert(ctx, &domain.Address{
-		ID:           ids.NewID(ids.PrefixAddress),
+		ID: ids.NewID(ids.PrefixAddress), Name: fixtureName(),
 		ProjectID:    "b1gtestproject00001",
 		Type:         domain.AddressTypeExternal,
 		IpVersion:    domain.IpVersionIPv4,
@@ -218,7 +218,7 @@ func TestExplicitExternalIPv4_ConcurrentClaims_ExactlyOneWins(t *testing.T) {
 				return
 			}
 			_, ierr := w.Addresses().Insert(ctx, &domain.Address{
-				ID:           ids.NewID(ids.PrefixAddress),
+				ID: ids.NewID(ids.PrefixAddress), Name: fixtureName(),
 				ProjectID:    fmt.Sprintf("b1gtestproject%05d", i),
 				Type:         domain.AddressTypeExternal,
 				IpVersion:    domain.IpVersionIPv4,
@@ -331,7 +331,7 @@ func TestExplicitExternalIPv6_GloballyUnique(t *testing.T) {
 		w, werr := r.Writer(ctx)
 		require.NoError(t, werr)
 		_, ierr := w.Addresses().Insert(ctx, &domain.Address{
-			ID:           ids.NewID(ids.PrefixAddress),
+			ID: ids.NewID(ids.PrefixAddress), Name: fixtureName(),
 			ProjectID:    project,
 			Type:         domain.AddressTypeExternal,
 			IpVersion:    domain.IpVersionIPv6,
@@ -372,7 +372,7 @@ func TestExplicitExternalIPv6_ClaimedInLedger_CursorSkipsIt(t *testing.T) {
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	rec, err := w.Addresses().Insert(ctx, &domain.Address{
-		ID:           ids.NewID(ids.PrefixAddress),
+		ID: ids.NewID(ids.PrefixAddress), Name: fixtureName(),
 		ProjectID:    "b1gtestproject00000",
 		Type:         domain.AddressTypeExternal,
 		IpVersion:    domain.IpVersionIPv6,
@@ -506,7 +506,7 @@ func TestExplicitExternalIPv6_SecondBlock_NotRejectedByOffsetCollision(t *testin
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	rec, err := w.Addresses().Insert(ctx, &domain.Address{
-		ID:           ids.NewID(ids.PrefixAddress),
+		ID: ids.NewID(ids.PrefixAddress), Name: fixtureName(),
 		ProjectID:    "b1gtestproject00000",
 		Type:         domain.AddressTypeExternal,
 		IpVersion:    domain.IpVersionIPv6,
@@ -530,7 +530,7 @@ func TestExplicitExternalIPv6_SecondBlock_NotRejectedByOffsetCollision(t *testin
 	require.NoError(t, err)
 	defer w2.Abort()
 	_, err = w2.Addresses().Insert(ctx, &domain.Address{
-		ID:           ids.NewID(ids.PrefixAddress),
+		ID: ids.NewID(ids.PrefixAddress), Name: fixtureName(),
 		ProjectID:    "b1gtestproject00001",
 		Type:         domain.AddressTypeExternal,
 		IpVersion:    domain.IpVersionIPv6,
@@ -569,7 +569,7 @@ func TestExplicitExternalIPv6_ReleaseOfSecondBlock_DoesNotWedgeAllocation(t *tes
 	w, err := r.Writer(ctx)
 	require.NoError(t, err)
 	_, err = w.Addresses().Insert(ctx, &domain.Address{
-		ID:           addrID,
+		ID: addrID, Name: domain.RcNameVPC(addrID),
 		ProjectID:    "b1gtestproject00000",
 		Type:         domain.AddressTypeExternal,
 		IpVersion:    domain.IpVersionIPv6,

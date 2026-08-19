@@ -46,7 +46,7 @@ func TestGEO1_UniqueName_ConcurrentRace(t *testing.T) {
 			defer wg.Done()
 			_, err := rr.Insert(ctx, &domain.Region{
 				ID:     "region-name-race-" + string(rune('a'+i)), // разные id
-				Name:   "Colliding Name",                          // одинаковое name
+				Name:   "colliding-name",                          // одинаковое name
 				Status: domain.GeoStatusUp,
 			})
 			mu.Lock()
@@ -73,7 +73,7 @@ func TestGEO1_ZoneUniqueName_ConcurrentRace(t *testing.T) {
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
-	_, err := rr.Insert(ctx, &domain.Region{ID: "ru-central1", Name: "RU Central 1", Status: domain.GeoStatusUp})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "ru-central1", Name: "ru-central-1", Status: domain.GeoStatusUp})
 	require.NoError(t, err)
 
 	const n = 8
@@ -86,7 +86,7 @@ func TestGEO1_ZoneUniqueName_ConcurrentRace(t *testing.T) {
 			defer wg.Done()
 			_, ierr := zr.Insert(ctx, &domain.Zone{
 				ID: "ru-central1-" + string(rune('a'+i)), RegionID: "ru-central1",
-				Name: "Colliding Zone Name", Status: domain.GeoStatusUp,
+				Name: "colliding-zone-name", Status: domain.GeoStatusUp,
 			})
 			mu.Lock()
 			defer mu.Unlock()
@@ -113,9 +113,9 @@ func TestGEO1_TwoProjection_InfraOnlyInternal(t *testing.T) {
 	ctx := context.Background()
 	ruc, zuc, _ := newUseCases(pool)
 
-	seedRegion(t, nil, ruc, "ru-central1", "RU Central 1") // UP
+	seedRegion(t, nil, ruc, "ru-central1", "ru-central-1") // UP
 	_, err := zuc.Create(ctx, zone.CreateInput{
-		ID: "ru-central1-a", RegionID: "ru-central1", Name: "Zone A", Status: domain.GeoStatusUp,
+		ID: "ru-central1-a", RegionID: "ru-central1", Name: "zone-a", Status: domain.GeoStatusUp,
 		Infra: domain.ZoneInfra{NumericInfraID: 10402, HostClasses: []string{"std-v3", "mem-v2"}, FailureDomainCount: 3, UnderlayAnchor: "fd00:ru1a::/48", CapacityHint: "AMPLE"},
 	})
 	require.NoError(t, err)
@@ -148,7 +148,7 @@ func TestGEO1_FreshDOWN_Persisted(t *testing.T) {
 	ctx := context.Background()
 	ruc, _, _ := newUseCases(pool)
 
-	op, err := ruc.Create(ctx, region.CreateInput{ID: "eu-west1", Name: "EU West 1", CountryCode: "NL"}) // no status
+	op, err := ruc.Create(ctx, region.CreateInput{ID: "eu-west1", Name: "eu-west-1", CountryCode: "NL"}) // no status
 	require.NoError(t, err)
 	require.True(t, op.Done)
 	require.Nil(t, op.Error)
@@ -174,9 +174,9 @@ func TestGEO1_ZoneOpenForPlacement_DependsOnRegion(t *testing.T) {
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
 	// Регион DOWN, зона UP.
-	_, err := rr.Insert(ctx, &domain.Region{ID: "ru-central1", Name: "RU Central 1", Status: domain.GeoStatusDown})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "ru-central1", Name: "ru-central-1", Status: domain.GeoStatusDown})
 	require.NoError(t, err)
-	_, err = zr.Insert(ctx, &domain.Zone{ID: "ru-central1-a", RegionID: "ru-central1", Name: "Zone A", Status: domain.GeoStatusUp})
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "ru-central1-a", RegionID: "ru-central1", Name: "zone-a", Status: domain.GeoStatusUp})
 	require.NoError(t, err)
 
 	z, err := zr.Get(ctx, "ru-central1-a")
@@ -197,13 +197,13 @@ func TestGEO1_OpenZoneCountHint_Rollup(t *testing.T) {
 	ctx := context.Background()
 	rr := pg.NewRegionRepo(pool)
 	zr := pg.NewZoneRepo(pool)
-	_, err := rr.Insert(ctx, &domain.Region{ID: "ru-central1", Name: "RU Central 1", Status: domain.GeoStatusUp})
+	_, err := rr.Insert(ctx, &domain.Region{ID: "ru-central1", Name: "ru-central-1", Status: domain.GeoStatusUp})
 	require.NoError(t, err)
 	for _, z := range []struct {
 		id string
 		st domain.GeoStatus
 	}{{"ru-central1-a", domain.GeoStatusUp}, {"ru-central1-b", domain.GeoStatusUp}, {"ru-central1-d", domain.GeoStatusDown}} {
-		_, zerr := zr.Insert(ctx, &domain.Zone{ID: z.id, RegionID: "ru-central1", Name: "Zone " + z.id, Status: z.st})
+		_, zerr := zr.Insert(ctx, &domain.Zone{ID: z.id, RegionID: "ru-central1", Name: "zone-" + z.id, Status: z.st})
 		require.NoError(t, zerr)
 	}
 
@@ -226,8 +226,8 @@ func TestGEO1_InfraMutable_NumericImmutable(t *testing.T) {
 	pool := newTestPool(t)
 	ctx := context.Background()
 	ruc, zuc, _ := newUseCases(pool)
-	seedRegion(t, nil, ruc, "ru-central1", "RU Central 1")
-	_, err := zuc.Create(ctx, zone.CreateInput{ID: "ru-central1-a", RegionID: "ru-central1", Name: "Zone A", Status: domain.GeoStatusUp,
+	seedRegion(t, nil, ruc, "ru-central1", "ru-central-1")
+	_, err := zuc.Create(ctx, zone.CreateInput{ID: "ru-central1-a", RegionID: "ru-central1", Name: "zone-a", Status: domain.GeoStatusUp,
 		Infra: domain.ZoneInfra{NumericInfraID: 10402, CapacityHint: "AMPLE", HostClasses: []string{"std-v3", "mem-v2"}}})
 	require.NoError(t, err)
 
