@@ -91,12 +91,17 @@ type ErrToStatus func(error) error
 // zoneUpdatable — known-set update_mask (mutable-поля). Immutable (id, regionId,
 // infra.numericInfraId) НЕ входят — отвергаются immutable-switch ДО UpdateMask.
 // `name` в набор НЕ входит и не может: поля у ресурса больше нет (#716).
+// ОБЕ формы имени каждого многословного поля — см. разбор у regionUpdatable.
 var zoneUpdatable = map[string]struct{}{
-	"status":                   {},
-	"infra.hostClasses":        {},
-	"infra.failureDomainCount": {},
-	"infra.underlayAnchor":     {},
-	"infra.capacityHint":       {},
+	"status":                     {},
+	"infra.hostClasses":          {},
+	"infra.host_classes":         {},
+	"infra.failureDomainCount":   {},
+	"infra.failure_domain_count": {},
+	"infra.underlayAnchor":       {},
+	"infra.underlay_anchor":      {},
+	"infra.capacityHint":         {},
+	"infra.capacity_hint":        {},
 }
 
 // UseCase — бизнес-логика Zone поверх Reader/Writer, LRO-стека и errStatus.
