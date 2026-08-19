@@ -87,8 +87,21 @@ type wdPoint struct {
 	Seeded bool
 }
 
-// Members — членов, которых точка ОБЯЗАНА материализовать.
+// Members — членов НА ОДНУ ВЫДАЧУ, которых точка обязана материализовать.
 func (p wdPoint) Members() int { return p.Objects * p.Rules }
+
+// TotalMembers — членов, которых точка обязана материализовать ВСЕГО.
+//
+// Отличается от Members ровно на веер, и различать их обязательно: делить
+// стейтменты веера на членов ОДНОЙ выдачи значит печатать число, верное для
+// другого предиката, — «1571 стейтмент на члена» там, где их три. Первая
+// редакция отчёта так и делала.
+func (p wdPoint) TotalMembers() int {
+	if p.Fanout > 0 {
+		return p.Fanout * p.Members()
+	}
+	return p.Members()
+}
 
 func (p wdPoint) String() string {
 	s := fmt.Sprintf("объектов %d × правил %d = членов %d", p.Objects, p.Rules, p.Members())
@@ -578,7 +591,7 @@ func runFanoutPoint(t *testing.T, ctx context.Context, p wdPoint) wdResult {
 	r.census = takeWDCensus(t, ctx, pool, bids[len(bids)-1])
 	// Члены считаются по ПОСЛЕДНЕЙ выдаче веера; общее число членов — веер ×
 	// членов на выдачу, и оно печатается отдельной колонкой.
-	r.saturated = int64(p.Members()) > 5000
+	r.saturated = int64(p.TotalMembers()) > 5000
 
 	t.Logf("[веер %d] %s\n    ИСХОД %s%s\n    время %s · стейтментов %d (%s)\n"+
 		"    членов у ПОСЛЕДНЕЙ выдачи ACTIVE %d · строк реестра %d · посев %s",
@@ -774,14 +787,17 @@ func renderWDReport(results []wdResult, wall time.Duration, final bool) string {
 	}
 
 	w("\nСТЕЙТМЕНТОВ НА ЧЛЕНА — ЭТО И ЕСТЬ РАЗЛИЧИЕ ПАКЕТНОЙ И ПОШТУЧНОЙ ПОЛОС\n")
-	w("%-26s %-11s %14s %16s %s\n", "полоса", "членов", "стейтментов", "на члена", "три самых частых")
+	w("  Знаменатель — члены ВСЕГО (веер × членов на выдачу), а не члены одной выдачи:\n")
+	w("  делить стейтменты веера на вторую величину значит печатать число, верное для\n")
+	w("  другого предиката.\n")
+	w("%-26s %-13s %14s %16s %s\n", "полоса", "членов всего", "стейтментов", "на члена", "три самых частых")
 	w("%s\n", strings.Repeat("-", 132))
 	for _, r := range results {
 		per := "—"
-		if r.point.Members() > 0 {
-			per = fmt.Sprintf("%.4f", float64(r.stmts)/float64(r.point.Members()))
+		if r.point.TotalMembers() > 0 {
+			per = fmt.Sprintf("%.4f", float64(r.stmts)/float64(r.point.TotalMembers()))
 		}
-		w("%-26s %-11d %14d %16s %s\n", r.band, r.point.Members(), r.stmts, per, r.topStmt)
+		w("%-26s %-13d %14d %16s %s\n", r.band, r.point.TotalMembers(), r.stmts, per, r.topStmt)
 	}
 
 	w("\nНАСЫЩЕНИЕ ШТАТНОГО ПРИБОРА\n")
@@ -807,10 +823,10 @@ func renderWDReport(results []wdResult, wall time.Duration, final bool) string {
 	}
 
 	w("\nОТЛОЖЕННАЯ РАБОТА, ОСТАВШАЯСЯ ПОСЛЕ ПРОХОДА (очереди)\n")
-	w("%-26s %-11s %14s %20s\n", "полоса", "членов", "очередь движка", "очередь пересведения")
+	w("%-26s %-13s %14s %20s\n", "полоса", "членов всего", "очередь движка", "очередь пересведения")
 	w("%s\n", strings.Repeat("-", 132))
 	for _, r := range results {
-		w("%-26s %-11d %14d %20d\n", r.band, r.point.Members(),
+		w("%-26s %-13d %14d %20d\n", r.band, r.point.TotalMembers(),
 			r.census.FGAOutbox, r.census.ReconcileOutbox)
 	}
 
