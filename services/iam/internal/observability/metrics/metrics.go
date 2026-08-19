@@ -26,17 +26,22 @@ package metrics
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
+
+	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 )
 
 // Registry owns a private *prometheus.Registry and the kacho-iam collectors.
@@ -129,6 +134,47 @@ func NewRegistry() *Registry {
 	}
 	reg.MustRegister(r.authzDuration, r.authzDecisions, r.authzStoreAttempts, r.grpcHandled, r.grpcDuration)
 	return r
+}
+
+// Namespace — префикс имён ВСЕХ серий этого сервиса. Отдельная константа, а не
+// литерал по месту: имя серии — контракт с панелями и правилами тревог, и
+// собранное в двух местах оно разъедется на первом переименовании.
+const Namespace = "kacho_iam"
+
+// RegisterPoolStats подключает к этому реестру состояние ОДНОГО пула соединений
+// под именем `poolName` (`primary`, `replica`).
+//
+// # Зачем
+//
+// Насыщение пула до этого не наблюдалось ничем: снаружи «запрос ждал свободного
+// соединения» и «запрос сам по себе медленный» дают одну и ту же растянутую
+// задержку RPC, а лечатся противоположным. Разбор величин и того, какая пара из
+// них различает эти два случая, — у самого коллектора (`pkg/db`); здесь только
+// провязка.
+//
+// # Почему НЕ MustRegister
+//
+// Повторная регистрация того же пула — ошибка сборки, а не причина ронять
+// процесс: наблюдение, убивающее сервис, который оно наблюдает, хуже
+// отсутствующего. Повтор поэтому проглатывается, а серии остаются от первой
+// регистрации — они те же самые.
+//
+// Всякий ДРУГОЙ отказ регистрации означает несогласованное объявление (то же имя
+// с другой размерностью), и он остаётся паникой: пропустить его молча значило бы
+// поднять процесс с семейством, которого на /metrics не будет никогда.
+//
+// `pool == nil` допустим: коллектор просто не отдаёт ни одной серии — см. его
+// разбор. Ветка «а есть ли пул» поэтому не нужна вызывающему.
+func (r *Registry) RegisterPoolStats(poolName string, pool *pgxpool.Pool) {
+	err := r.reg.Register(coredb.NewPoolStatsCollector(Namespace, poolName, pool))
+	if err == nil {
+		return
+	}
+	var already prometheus.AlreadyRegisteredError
+	if errors.As(err, &already) {
+		return
+	}
+	panic(fmt.Sprintf("metrics: register pool stats %q: %v", poolName, err))
 }
 
 // Handler returns the promhttp handler exposing this registry. Mount it on the
