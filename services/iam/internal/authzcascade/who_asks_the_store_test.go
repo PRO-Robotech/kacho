@@ -478,6 +478,10 @@ var nonQuestionMethods = map[string]string{
 	"DeleteTuples":           "write",
 	"WriteConditionalTuples": "write",
 	"GetStoreInfo":           "store metadata — not a question about relations",
+	"CheckOutcomeCounts": "local telemetry — reports how this process's OWN Check calls " +
+		"ended (answered / absorbed by retry / which outage shape), reading in-process " +
+		"counters. It sends nothing to the store and asks it nothing, so no lane decision " +
+		"turns on it (#720)",
 	"LatestAuthorizationModelID": "store metadata — reports which model was written LAST, " +
 		"not what any subject may do. It is deliberately NOT the model this process " +
 		"evaluates against (that one is pinned by env), and it is read as a change " +

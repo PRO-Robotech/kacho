@@ -152,6 +152,31 @@ func runServe(cfg config.Config) error {
 	// is imported only here (composition root) + the metrics adapter package.
 	metricsReg := metrics.NewRegistry()
 
+	// Читатель исходов вопроса к хранилищу прав (#720). Регистрируется только
+	// при живом HTTP-клиенте: у другой реализации хранилища этих счётчиков нет,
+	// и вечный ноль тут был бы не наблюдением, а утверждением неправды.
+	//
+	// Отличное от нуля `recovered` означает, что хранилище потряхивает, — видно
+	// ДО того, как перебой станет отказом арендатору. `deadline`/`connect`/
+	// `reset` разводят три источника, которые прежде выглядели одинаково.
+	if openfgaClient != nil {
+		metricsReg.NewFGACheckCollector(func() metrics.FGACheckCounts {
+			n := openfgaClient.CheckOutcomeCounts()
+			return metrics.FGACheckCounts{
+				Answered:    n.Answered,
+				Recovered:   n.Recovered,
+				Deadline:    n.Deadline,
+				Connect:     n.Connect,
+				Reset:       n.Reset,
+				ServerError: n.ServerError,
+				Decode:      n.Decode,
+				Rejected:    n.Rejected,
+				Canceled:    n.Canceled,
+				Other:       n.Other,
+			}
+		})
+	}
+
 	// Подключаем Prometheus-Recorder и логгер к default-registry LRO-worker'а и
 	// поднимаем его dispatcher ДО приема трафика. Без этого default-registry держит
 	// NopRecorder (live terminal-write/inflight метрики мертвы), а operations.Ready()

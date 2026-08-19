@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 )
@@ -68,6 +67,13 @@ type OpenFGAHTTPClient struct {
 	CheckTimeout time.Duration
 	ListTimeout  time.Duration
 	WriteTimeout time.Duration
+
+	// checkStats — счётчики исходов вопроса к хранилищу прав по закрытому
+	// набору форм (openfga_check_retry.go). Держатся ЗДЕСЬ, а не у вызывающего:
+	// вызывающих у Check десятки, и у каждого своя обёртка отказа, поэтому
+	// «перебой поглощён повтором» видно только в одном месте — на клиенте.
+	// Читаются снаружи через CheckOutcomeCounts.
+	checkStats fgaCheckStats
 }
 
 // ErrNotConfigured — returned by the HTTP methods if Endpoint/StoreID are empty.
@@ -127,61 +133,6 @@ func (c *OpenFGAHTTPClient) Check(ctx context.Context, subject, relation, object
 // negative from a lagging replica. Idempotent / read-only, same contract as Check.
 func (c *OpenFGAHTTPClient) CheckConsistent(ctx context.Context, subject, relation, object string) (bool, error) {
 	return c.check(ctx, subject, relation, object, consistencyHigherConsistency)
-}
-
-// check is the shared Check transport; consistency is the OpenFGA `consistency`
-// wire value ("" ⇒ omitted ⇒ default MINIMIZE_LATENCY).
-func (c *OpenFGAHTTPClient) check(ctx context.Context, subject, relation, object, consistency string) (bool, error) {
-	if c.Endpoint == "" || c.StoreID == "" {
-		return false, ErrNotConfigured
-	}
-	// Bound the per-RPC authz Check to the configured CheckTimeout (default 200ms):
-	// fgaHTTPClient carries no client-level Timeout BY DESIGN (the per-operation
-	// budgets differ by an order of magnitude — see openfga_transport.go), so an
-	// OpenFGA that accepts the TCP connection but stops responding (GC pause /
-	// overload / half-open TCP after a partition) would otherwise hang the
-	// authz-interceptor goroutine forever instead of failing closed within the FGA
-	// budget (D-47 "FGA outage → Unavailable"). Mirrors the sibling
-	// CheckWithContext / c.do() paths, which are already time-bounded.
-	cctx, cancel := context.WithTimeout(ctx, c.checkTimeout())
-	defer cancel()
-	body, _ := json.Marshal(openfgaCheckRequest{
-		AuthorizationModelID: c.AuthorizationModel,
-		TupleKey:             openfgaTupleKey{User: subject, Relation: relation, Object: object},
-		Consistency:          consistency,
-	})
-	req, _ := http.NewRequestWithContext(cctx, http.MethodPost,
-		fmt.Sprintf("http://%s/stores/%s/check", c.Endpoint, c.StoreID),
-		bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := fgaHTTPClient.Do(req)
-	if err != nil {
-		return false, fmt.Errorf("openfga check: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusBadRequest {
-		//: a 400 is a client-side validation error (relation absent
-		// on the object type, typed-wildcard object, ...) — such a Check can
-		// never resolve, so it is a clean DENY, not an outage.
-		// Drain (capped) before Close so the keep-alive connection returns to
-		// the idle pool instead of being torn down — mirrors the sibling
-		// writeOrDelete / listUsersOfType drain paths. Critical on the hot
-		// authz path: a degraded OpenFGA emitting a burst of 400s must not also
-		// churn fresh TCP connections (fd + TLS/handshake pressure).
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrBodyBytes))
-		return false, nil
-	}
-	if resp.StatusCode != http.StatusOK {
-		// Same drain-for-reuse rationale as the 400 branch above: a degraded
-		// OpenFGA returning 5xx on every Check must not churn connections.
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrBodyBytes))
-		return false, fmt.Errorf("openfga check: status %d", resp.StatusCode)
-	}
-	var r openfgaCheckResponse
-	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return false, fmt.Errorf("openfga check decode: %w", err)
-	}
-	return r.Allowed, nil
 }
 
 // maxTuplesPerWriteRequest mirrors OpenFGA's default maxTuplesPerWrite (100): a
