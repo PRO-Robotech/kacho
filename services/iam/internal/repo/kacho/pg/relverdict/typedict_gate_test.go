@@ -66,10 +66,15 @@ func (d dictionary) String() string {
 // с именем типа была здесь названа: колонка, заведённая позже и сюда не
 // внесённая, роняет гейт, а не проходит мимо него.
 var dictionaryOfColumn = map[string]dictionary{
-	"relation_fact.object_type":        dictModel,
-	"access_bindings.resource_type":    dictModel,
-	"resource_parent_edge.object_type": dictModel,
-	"resource_parent_edge.parent_type": dictModel,
+	"relation_fact.object_type":     dictModel,
+	"access_bindings.resource_type": dictModel,
+	// Перенесённая копия области выдачи (миграция 732001). Словарь тот же,
+	// что у родительской колонки, и это не совпадение: значение приходит
+	// оттуда — составной внешний ключ не даёт ему разойтись, а каскад правки
+	// переносит изменение сам.
+	"access_binding_subjects.resource_type": dictModel,
+	"resource_parent_edge.object_type":      dictModel,
+	"resource_parent_edge.parent_type":      dictModel,
 
 	"resource_mirror.object_type":      dictCatalog,
 	"role_verb.object_type":            dictCatalog,

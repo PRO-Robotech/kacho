@@ -94,6 +94,17 @@ var (
 // описало её.
 const probeRepeats = 21
 
+// baselineRevision / baselineReportPath — ЧЕМ ЭТОТ ЗАМЕР СРАВНИВАЕТСЯ.
+//
+// Выписаны, а не выведены, и это признано: базовый отчёт снят на ревизии, до
+// которой из текущего дерева дойти можно только историей. Зато обе величины
+// адресуемы и проверяемы одной командой, а «стало лучше» перестаёт быть
+// утверждением без второй половины.
+const (
+	baselineRevision   = "3acddcfdf9216440aaa77db505a63a456d7aed98"
+	baselineReportPath = "services/iam/internal/repo/kacho/pg/scalegrid/REPORT-R7-1-S1-scale-grid-before-S2.txt"
+)
+
 // probeChainDepth — глубина цепи фикстуры. Печатается РЯДОМ с S_набл: без неё
 // «совпало с ожидаемым» нечем проверить, а S_набл остаётся числом без предиката.
 const probeChainDepth = 3
@@ -185,9 +196,19 @@ type gridFixture struct {
 
 // newGridFixture — база оси: обвязка аренды, роль, цепь областей.
 //
-// Цепь набирается ПОСЕВЩИКОМ, каждое звено СО СВОЕЙ цепью: без собственных
-// рёбер у промежуточных предков дублирования не возникает вовсе, и прибор мерил
-// бы вырожденный случай, ничего об этом не сообщая.
+// Цепь набирается ПОСЕВЩИКОМ, каждое звено СО СВОЕЙ цепью — то есть сетка сеет
+// ЗАМЫКАНИЕ, топологию, которой производители дерева не пишут (они шлют одно-два
+// звена). Расхождение намеренное и названо здесь, чтобы числа читались верно:
+//
+//	для СТОИМОСТИ это консервативно — замыкание даёт обходу больше строк на
+//	каждом шаге, значит замер есть ВЕРХНЯЯ оценка, и числа годны;
+//	для ДОСТИЖИМОСТИ это не проба вовсе — при замыкании транзитивность не
+//	нужна, и высоту, до которой доходит обход на форме дерева, сетка не
+//	измеряет. Её измеряют пробы scopereach_integration_test.go.
+//
+// Прежняя редакция называла эту цепь «той, на которой обход обязан подниматься
+// транзитивно». Неточно ровно наоборот: на замыкании транзитивность и не
+// требуется.
 func newGridFixture(t *testing.T, ctx context.Context, tx pgx.Tx) *gridFixture {
 	t.Helper()
 	f := &gridFixture{tx: tx}
@@ -630,8 +651,13 @@ func observedScope(t *testing.T, ctx context.Context, tx pgx.Tx) int {
 		  UNION
 		    SELECT e.parent_type, e.parent_id, s.depth + 1
 		      FROM scope s
-		      JOIN kacho_iam.resource_parent_edge e
-		        ON e.object_type = s.s_type AND e.object_id = s.s_id
+		      CROSS JOIN LATERAL (
+		             SELECT pe.parent_type, pe.parent_id
+		               FROM kacho_iam.resource_parent_edge pe
+		              WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
+		              ORDER BY pe.depth
+		              LIMIT $3::int
+		           ) e
 		     WHERE s.depth < $3::int
 		)
 		SELECT count(*)::int FROM scope`,
@@ -651,8 +677,13 @@ func distinctScope(t *testing.T, ctx context.Context, tx pgx.Tx) int {
 		  UNION
 		    SELECT e.parent_type, e.parent_id, s.depth + 1
 		      FROM scope s
-		      JOIN kacho_iam.resource_parent_edge e
-		        ON e.object_type = s.s_type AND e.object_id = s.s_id
+		      CROSS JOIN LATERAL (
+		             SELECT pe.parent_type, pe.parent_id
+		               FROM kacho_iam.resource_parent_edge pe
+		              WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
+		              ORDER BY pe.depth
+		              LIMIT $3::int
+		           ) e
 		     WHERE s.depth < $3::int
 		)
 		SELECT count(DISTINCT (s_type, s_id))::int FROM scope`,
@@ -819,14 +850,26 @@ func TestScaleGrid_SmallGridStaysFlatAndTheControlGrows(t *testing.T) {
 					hi.point.Value()/max(lo.point.Value(), 1))
 			}
 		case scalegrid.AxisR:
-			// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ. Ось R — остаточная переменная: она расти
+			// НЕ КОНТРОЛЬ, и это перемерено, а не унаследовано. После R7-1-13
+			// разрешённый вердикт отвечает первой же строкой ветви выдач,
+			// поэтому число выдач, называющих спрашиваемого, его стоимости не
+			// меняет: ось плоская ПО ПОСТРОЕНИЮ. Утверждение о росте здесь
+			// краснело бы на верной правке, поэтому ось печатается как
+			// наблюдение — величина остаётся предметом предела S3.
+			t.Logf("ось %s (наблюдение, не контроль): %d → %d строк за вердикт при росте %d → %d, "+
+				"отношение %.2f. Плоскость здесь ОЖИДАЕМА: разрешённый вердикт отвечает "+
+				"первым основанием и остальные не читает",
+				lo.point.Axis, lo.rows, hi.rows, lo.point.Value(), hi.point.Value(), ratio)
+		case scalegrid.AxisF:
+			// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ. Условный факт безусловного основания не
+			// даёт, отбор различных над фактами читает их все — стоимость расти
 			// ОБЯЗАНА. Если и она плоская, прибор мерит не стоимость запроса, а
 			// что-то своё, и плоскость по N и B ничего не значит.
 			t.Logf("ось %s (положительный контроль): %d → %d строк за вердикт при росте %d → %d, "+
 				"отношение %.2f — она обязана РАСТИ",
 				lo.point.Axis, lo.rows, hi.rows, lo.point.Value(), hi.point.Value(), ratio)
 			if hi.rows <= lo.rows {
-				t.Errorf("ось %s НЕ ВЫРОСЛА (%d → %d при %d → %d выдачах): положительный контроль "+
+				t.Errorf("ось %s НЕ ВЫРОСЛА (%d → %d при %d → %d фактах): положительный контроль "+
 					"провален. Значит прибор не двигается на заведомо более дорогом вопросе, и "+
 					"плоскость по N и B тождественно верна — она получена сломанным прибором, а не "+
 					"свойством запроса",
@@ -916,7 +959,16 @@ func TestScaleGrid_FullGridReport(t *testing.T) {
 	}
 	prov.Postgres = postgresVersion(t, ctx)
 
-	header, err := prov.Header("R7-1 · S1 — ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ (базовый замер, ДО правок S2)")
+	// ЗАГОЛОВОК НАЗЫВАЕТ ОБЕ РЕВИЗИИ, а не только свою.
+	//
+	// Отчёт перезамера, не называющий базового, сравнивать не с чем: «стало
+	// лучше» — утверждение о ПАРЕ, и вторая её половина обязана быть адресуема,
+	// иначе читателю остаётся верить на слово. Базовый лежит рядом файлом, а не
+	// только в истории: ссылка на коммит требует доступа к репозиторию, а
+	// артефакт обязан читаться сам по себе.
+	header, err := prov.Header("R7-1 · S2 — ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ " +
+		"(перезамер ПОСЛЕ правок S2)\n" +
+		"БАЗОВЫЙ ЗАМЕР (ДО правок S2) — ревизия " + baselineRevision + ", файл " + baselineReportPath)
 	if err != nil {
 		t.Fatalf("шапка отчёта: %v", err)
 	}
@@ -1056,6 +1108,12 @@ func TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed(t *testing.T) {
 	deepDistinct := distinctScope(t, ctx, tx)
 
 	// Замкнутая форма при согласованных замыканиях: 1 + d·(d+1)/2.
+	//
+	// Свести её к 1 + d одним чтением таблицы рёбер НЕЛЬЗЯ, и это перемерено, а
+	// не предположено: таблица хранит цепь, ПРИСЛАННУЮ производителем, а не
+	// замыкание, и производители дерева шлют короткую. Одно чтение схлопнуло бы
+	// область до «объект + его непосредственный предок» — см.
+	// TestScopeReachesTheRootOnTheChainProducersActuallyWrite.
 	const d = probeChainDepth
 	wantClosed := 1 + d*(d+1)/2
 	t.Logf("цепь глубины d=%d: S_набл=%d (замкнутая форма 1+d(d+1)/2 = %d), "+
@@ -1073,6 +1131,14 @@ func TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed(t *testing.T) {
 	}
 	// Граница схемы: глубина ограничена четырьмя (CHECK depth BETWEEN 1 AND 4),
 	// значит S_гран = 1 + D(D+1)/2 = 11 при согласованных замыканиях.
+	//
+	// ПЛЕЧО, РАЗЛИЧАВШЕЕ ГРАНИЦУ И ВЫВОД «D + 1», ОСТАЁТСЯ ДЕЙСТВУЮЩИМ. Приёмка
+	// снимала его вместе с переходом на одно чтение — там 1 + D и D + 1
+	// становятся одним выражением, и различать нечего. Перехода не будет:
+	// предпосылка ложна (таблица не замыкание). Предикат возврата плеча,
+	// названный приёмкой, сработал в обратную сторону — S_гран равна
+	// 1 + D(D+1)/2, а не D + 1, и подстановка вывода вместо границы более чем
+	// вдвое занизила бы потолок, из которого выбираются L и L_m.
 	const sGran = 11
 	if deep > sGran {
 		t.Errorf("S_набл=%d превысила ОБЪЯВЛЕННУЮ границу S_гран=%d: граница выведена из схемы "+
@@ -1098,8 +1164,13 @@ func TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed(t *testing.T) {
 		  UNION
 		    SELECT e.parent_type, e.parent_id, s.depth + 1
 		      FROM scope s
-		      JOIN kacho_iam.resource_parent_edge e
-		        ON e.object_type = s.s_type AND e.object_id = s.s_id
+		      CROSS JOIN LATERAL (
+		             SELECT pe.parent_type, pe.parent_id
+		               FROM kacho_iam.resource_parent_edge pe
+		              WHERE pe.object_type = s.s_type AND pe.object_id = s.s_id
+		              ORDER BY pe.depth
+		              LIMIT 4
+		           ) e
 		     WHERE s.depth < 4
 		)
 		SELECT count(*)::int, count(DISTINCT (s_type, s_id))::int FROM scope`,

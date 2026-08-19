@@ -290,10 +290,12 @@ func TestEveryOutputRecordCarriesTheComparedShare(t *testing.T) {
 // входом. Один дублёр на оба случая скрыл бы именно это различие.
 type countingAsker struct {
 	stubAsker
-	mirror, iamDirect int64
+	mirror, iamDirect, earlyStops int64
 }
 
-func (c *countingAsker) LabelArmGrounds() (int64, int64) { return c.mirror, c.iamDirect }
+func (c *countingAsker) LabelArmGrounds() (int64, int64, int64) {
+	return c.mirror, c.iamDirect, c.earlyStops
+}
 
 // TestCoverageCarriesLabelArmGroundsPerAxis — числа меточной ветви едут В КАЖДОЙ
 // записи теневого пути, по осям раздельно.
