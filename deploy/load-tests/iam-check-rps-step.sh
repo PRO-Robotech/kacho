@@ -54,7 +54,24 @@ cpu_usec() {
 }
 
 iam_pods()  { k get pod -l app.kubernetes.io/name=kacho-iam -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
-openfga_pod(){ k get pod -o name | grep -m1 'openfga-[0-9a-f]' | cut -d/ -f2; }
+# openfga_pod — имя пода хранилища прав.
+#
+# БЕЗ КОНВЕЙЕРА С `grep -m`, и это не стилистика: скрипт идёт под `pipefail`, а
+# `grep -m1` выходит на первом совпадении. Писатель слева получает SIGPIPE, тот
+# поднимается до статуса конвейера — и НАЙДЕННОЕ объявляется ненайденным, то
+# есть отказ тем вероятнее, чем раньше встретилось совпадение. Сравнение делаем
+# средствами оболочки, где статуса конвейера не существует.
+openfga_pod() {
+  local out line
+  out=$(k get pod -o name) || return 0
+  while IFS= read -r line; do
+    if [[ "$line" =~ openfga-[0-9a-f] ]]; then
+      echo "${line#pod/}"
+      return 0
+    fi
+  done <<< "$out"
+  return 0
+}
 
 # snapshot <файл> — состояние всех участников в один момент.
 snapshot() {

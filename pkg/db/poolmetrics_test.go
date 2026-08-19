@@ -157,7 +157,7 @@ func TestPoolStatsCollectorReportsLiveNumbers(t *testing.T) {
 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	reg := prometheus.NewRegistry()
 	require.NoError(t, reg.Register(coredb.NewPoolStatsCollector("kacho_iam", "primary", pool)))
