@@ -390,9 +390,12 @@ if ! any_line_matches "$YQ_VER" 'mikefarah|version v?4'; then
   exit 2
 fi
 echo "=== зависимости умбреллы (самопроверки рендерят её; charts/*.tgz не в git) ==="
+# Уборка каталогов подкачки здесь СНЯТА: их заводит helm внутри
+# helm-umbrella-deps.sh, и сметает их теперь он сам — в начале своего прогона и
+# на любом пути. Проба, стиравшая чужой мусор в ЖИВОМ дереве, оставалась записью
+# в дерево, из которого запущена, — то есть тем, что этот же прогон и запрещает.
 bash "$DEPLOY_ROOT/scripts/helm-umbrella-deps.sh" "$DEPLOY_ROOT/helm/umbrella" \
   || { echo "FATAL: зависимости не материализованы — рендер будет неполным, проверки НЕ ВЫПОЛНЕНЫ"; exit 2; }
-rm -rf "$DEPLOY_ROOT"/helm/umbrella/tmpcharts-*
 
 FOUND="$(discover)"
 WANT="$(printf '%s\n' $DECLARED | LC_ALL=C sort)"
