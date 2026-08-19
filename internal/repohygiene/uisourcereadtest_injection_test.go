@@ -421,85 +421,163 @@ it("declares", () => { expect(source).toContain("Decoy"); });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Инъекция в дерево: гейт читает состав у git-индекса.
+//
+// Дерево для этой инъекции — СИНТЕТИЧЕСКОЕ, во временном каталоге. Прежняя
+// редакция подкладывала пробы в индекс ЖИВОЙ рабочей копии (`git add` по её
+// корню) и убирала их в `t.Cleanup`. Снятие прогона между этими двумя шагами —
+// по времени, по памяти, по месту на диске — до уборки не доходит, и записи
+// остаются staged: файлов нет ни на диске, ни в `HEAD`, а состав корпуса ВСЕ
+// гейты этого дерева берут именно у индекса. Соседняя сессия получала от них
+// вердикт о корпусе, которого не существует, — то есть порча тихая и делает
+// лживыми ровно те проверки, ради которых состав и берётся у индекса (#696).
+//
+// Синтетическое дерево закрывает класс по построению, а не уборкой: живой копии
+// проба не касается вовсе, поэтому её прерывание на ЛЮБОМ шаге не оставляет ни
+// staged-записей, ни правок.
 // ─────────────────────────────────────────────────────────────────────────────
 
-var censusLine = regexp.MustCompile(
-	`перепись: проб интерфейса осмотрено (\d+), читают с диска (\d+), обходят дерево (\d+), находок (\d+)`)
+var (
+	censusLine = regexp.MustCompile(
+		`перепись: проб интерфейса осмотрено (\d+), читают с диска (\d+), обходят дерево (\d+), находок (\d+)`)
+	judgedTreeLine = regexp.MustCompile(`гейт судит дерево: (\S+)`)
+)
 
 type uiCensus struct{ scanned, reads, walks, findings int }
 
-// runTreeGate прогоняет гейт по дереву отдельным процессом и возвращает его
-// перепись. Перепись — отдельное утверждение: без неё «молчит» неотличимо от
-// «не прочитал».
-func runTreeGate(t *testing.T, root string) (uiCensus, string, bool) {
+// runTreeGate прогоняет гейт отдельным процессом и возвращает его перепись.
+//
+// moduleRoot — откуда собирается пакет (корень модуля, читается только на
+// чтение); treeRoot — дерево, состав которого гейт обязан судить. Пустой
+// treeRoot означает «умолчание гейта» и служит положительным контролем: без
+// явного входа гейт обязан судить живую рабочую копию, иначе ручка входа
+// молча уводила бы его с настоящего дерева.
+//
+// Перепись — отдельное утверждение: без неё «молчит» неотличимо от «не прочитал».
+func runTreeGate(t *testing.T, moduleRoot, treeRoot string) (uiCensus, string, string, bool) {
 	t.Helper()
 	cmd := exec.Command("go", "test", "./internal/repohygiene/", "-count=1", "-v",
 		"-run", "TestUITestsDoNotReadTheirOwnSourceAsText")
-	cmd.Dir = root
+	cmd.Dir = moduleRoot
+	// Окружение чищено от переменных, которыми git выбирает репозиторий в обход
+	// рабочего каталога: иначе `git ls-files` синтетического дерева ответил бы
+	// про чужой индекс, и вердикт стал бы свойством запуска, а не дерева.
+	cmd.Env = gitenv.Env()
+	if treeRoot != "" {
+		cmd.Env = append(cmd.Env, uiProbeTreeRootEnv+"="+treeRoot)
+	}
 	out, err := cmd.CombinedOutput()
 	m := censusLine.FindStringSubmatch(string(out))
 	if m == nil {
 		t.Fatalf("гейт не напечатал перепись — вердикт был бы утверждением ни о чём:\n%s", out)
 	}
+	j := judgedTreeLine.FindStringSubmatch(string(out))
+	if j == nil {
+		t.Fatalf("гейт не назвал дерево, которое судит — «ноль находок» неотличимо от "+
+			"«ноль прочитанного»:\n%s", out)
+	}
 	n := func(s string) int { v, _ := strconv.Atoi(s); return v }
-	return uiCensus{n(m[1]), n(m[2]), n(m[3]), n(m[4])}, string(out), err == nil
+	return uiCensus{n(m[1]), n(m[2]), n(m[3]), n(m[4])}, j[1], string(out), err == nil
+}
+
+// synthUIProbeTree собирает синтетическое дерево проб интерфейса и делает его
+// видимым индексу: состав корпуса гейт берёт у `git ls-files`, поэтому файл,
+// лежащий рядом с репозиторием, но не добавленный в индекс, ему не виден — и
+// без `git add` инъекция дала бы ложное «гейт мёртв».
+func synthUIProbeTree(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	// Репозиторий заводится ДО первой записи: `git add` без него отказывает, а
+	// отказ читался бы как «гейт мёртв» вместо «дерево не собрано».
+	if out, err := gitenv.Command(root, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init в синтетическом дереве: %v\n%s", err, out)
+	}
+	writeUIProbes(t, root, files)
+	return root
+}
+
+// writeUIProbes кладёт пробы в дерево и добавляет их в индекс ЭТОГО дерева.
+// Все пути — внутри временного каталога: живая рабочая копия не упоминается.
+func writeUIProbes(t *testing.T, root string, files map[string]string) {
+	t.Helper()
+	rels := make([]string, 0, len(files))
+	for rel, body := range files {
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o750); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
+		}
+		if err := os.WriteFile(abs, []byte(body), 0o600); err != nil {
+			t.Fatalf("подложить %s: %v", rel, err)
+		}
+		rels = append(rels, rel)
+	}
+	if len(rels) == 0 {
+		return
+	}
+	addArgs := append([]string{"add", "-f", "--"}, rels...)
+	if out, err := gitenv.Command(root, addArgs...).CombinedOutput(); err != nil {
+		t.Fatalf("git add в синтетическом дереве: %v\n%s", err, out)
+	}
 }
 
 func TestUISourceReadGateOnTreeFailsOnInjectedDefect(t *testing.T) {
 	// Краткого режима здесь НЕТ намеренно: пропуск сделал бы весь пакет
 	// краткогейтящим, а он не входит ни в один отбор интеграционной джобы —
 	// то есть доказательство способности гейта упасть не исполнялось бы нигде.
-	// Цена — один вложенный `go test` на прогон пакета.
-	root := repoRoot(t)
+	// Цена — вложенные `go test` на прогон пакета.
+	module := repoRoot(t)
 
-	base, _, basePassed := runTreeGate(t, root)
-	if !basePassed {
-		t.Fatalf("гейт красен ДО инъекции (находок %d) — инъекция ничего не доказала бы: "+
-			"красное после неё было бы неотличимо от красного до", base.findings)
-	}
+	const (
+		censusRel = "ui-future/shared/src/test/injected-census.test.ts"
+		trunkRel  = "ui-future/system/src/injected-trunk.test.ts"
+		defectRel = "ui-future/shared/src/test/injected-self-source.test.tsx"
+	)
 
-	// Законные близнецы и дефект кладутся ВМЕСТЕ: так «краснеет» и «молчит»
-	// доказываются одним прогоном, и ни одно из двух не объясняется тем, что
-	// второе не читалось.
-	injected := map[string]string{
-		"ui-future/shared/src/test/injected-census.test.ts":       synthProbeTreeCensus,
-		"ui-future/shared/src/test/injected-trunk.test.ts":        synthProbeTrunkContract,
-		"ui-future/shared/src/test/injected-self-source.test.tsx": synthProbeSelfSource,
-	}
-	var rels []string
-	for rel, body := range injected {
-		abs := filepath.Join(root, rel)
-		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
-			t.Fatalf("подложить %s: %v", rel, err)
-		}
-		rels = append(rels, rel)
-	}
-	// Гейт берёт состав у git-индекса, поэтому файл на диске ему не виден:
-	// без `git add` инъекция дала бы ложное «гейт мёртв».
-	addArgs := append([]string{"-C", root, "add", "-f", "--"}, rels...)
-	if out, err := gitenv.Command("", addArgs...).CombinedOutput(); err != nil {
-		t.Fatalf("git add: %v\n%s", err, out)
-	}
-	t.Cleanup(func() {
-		rmArgs := append([]string{"-C", root, "rm", "-q", "-f", "--"}, rels...)
-		if out, err := gitenv.Command("", rmArgs...).CombinedOutput(); err != nil {
-			t.Errorf("уборка инъекции не удалась: %v\n%s — дерево осталось грязным", err, out)
-		}
+	// Дерево ДО инъекции несёт только законных близнецов. Их молчание и есть
+	// отрицательная половина пары, и доказывается она тем же прогоном, что и
+	// положительная: базовый прогон обязан быть зелёным.
+	tree := synthUIProbeTree(t, map[string]string{
+		censusRel: synthProbeTreeCensus,
+		trunkRel:  synthProbeTrunkContract,
 	})
 
-	after, log, passed := runTreeGate(t, root)
+	base, judged, baseLog, basePassed := runTreeGate(t, module, tree)
+	if !basePassed {
+		t.Fatalf("гейт красен на дереве из одних законных близнецов (находок %d) — "+
+			"он ловит форму, а не существо, и красное после инъекции было бы "+
+			"неотличимо от красного до неё:\n%s", base.findings, baseLog)
+	}
+	if judged != tree {
+		t.Fatalf("гейт судил %s, а инъекция шла в %s — вердикт ниже относился бы к "+
+			"чужому дереву", judged, tree)
+	}
+	if base.scanned != 2 || base.reads != 2 || base.walks != 1 || base.findings != 0 {
+		t.Fatalf("перепись до инъекции: осмотрено %d, читают %d, обходят %d, находок %d; "+
+			"ожидалось 2/2/1/0 — предпосылки дискриминатора не выполнены, значит его "+
+			"молчание ничего не стоит", base.scanned, base.reads, base.walks, base.findings)
+	}
+
+	// Тот же прогон, плюс настоящий дефект. Так «краснеет» и «молчит»
+	// доказываются одним прогоном, и ни одно из двух не объясняется тем, что
+	// второе не читалось.
+	writeUIProbes(t, tree, map[string]string{defectRel: synthProbeSelfSource})
+
+	after, judgedAfter, log, passed := runTreeGate(t, module, tree)
 
 	if passed {
 		t.Error("гейт зелен при подложенном дефекте — он не способен упасть")
 	}
-	if after.scanned != base.scanned+len(injected) {
-		t.Errorf("объём осмотренного вырос с %d до %d, ожидалось +%d — гейт не прочитал подложенное, "+
-			"и его молчание по законным близнецам ничего не значит",
-			base.scanned, after.scanned, len(injected))
+	if judgedAfter != tree {
+		t.Errorf("гейт судил %s вместо %s", judgedAfter, tree)
+	}
+	if after.scanned != base.scanned+1 {
+		t.Errorf("объём осмотренного вырос с %d до %d, ожидалось +1 — гейт не прочитал "+
+			"подложенное, и его молчание по законным близнецам ничего не значит",
+			base.scanned, after.scanned)
 	}
 	if after.findings != base.findings+1 {
 		t.Errorf("находок стало %d при %d до инъекции: ожидалась ровно ОДНА новая (дефект). "+
-			"Больше — гейт зачёл законного близнеца; меньше — не заметил дефекта", after.findings, base.findings)
+			"Больше — гейт зачёл законного близнеца; меньше — не заметил дефекта",
+			after.findings, base.findings)
 	}
 	if !strings.Contains(log, "injected-self-source.test.tsx") {
 		t.Errorf("координата подложенного дефекта в вердикте не названа:\n%s", log)
@@ -509,8 +587,24 @@ func TestUISourceReadGateOnTreeFailsOnInjectedDefect(t *testing.T) {
 			t.Errorf("законный близнец %s объявлен находкой — гейт ловит форму, а не существо", legal)
 		}
 	}
-	if after.walks != base.walks+1 {
-		t.Errorf("обходящих проб стало %d при %d до инъекции — подложенная перепись не опознана как перепись, "+
-			"значит её молчание объясняется не тем, чем мы думаем", after.walks, base.walks)
+	if after.walks != base.walks {
+		t.Errorf("обходящих проб стало %d при %d до инъекции — разбор схлопнулся, "+
+			"и молчание переписи объясняется не тем, чем мы думаем", after.walks, base.walks)
+	}
+}
+
+// TestUISourceReadGateJudgesTheLiveTreeByDefault — положительный контроль к
+// ручке входа.
+//
+// Гейт, чей корпус задаётся снаружи, обязан по умолчанию судить ЖИВУЮ рабочую
+// копию: иначе ручка, забытая в окружении, увела бы его на пустое дерево, и
+// «ноль находок» стало бы свойством запуска. Утверждается именно то, что гейт
+// НАЗЫВАЕТ, а не его вердикт: вердикт про живое дерево даёт сам гейт в этом же
+// пакете, и дублировать его здесь значило бы завести два места об одном.
+func TestUISourceReadGateJudgesTheLiveTreeByDefault(t *testing.T) {
+	module := repoRoot(t)
+	_, judged, log, _ := runTreeGate(t, module, "")
+	if judged != module {
+		t.Errorf("без явного входа гейт судит %s, а живой корень — %s:\n%s", judged, module, log)
 	}
 }

@@ -151,8 +151,21 @@ func (u *UseCase) Create(ctx context.Context, in CreateInput) (*operations.Opera
 	if in.Name == "" {
 		return nil, invalidArg("region name is required")
 	}
-	if err := domain.ValidateName("region name", in.Name); err != nil {
-		return nil, invalidArg(err.Error())
+	// Форма имени судится КАНОНОМ ДЕРЕВА, а не только длиной (задача #718).
+	//
+	// Миграция 715001 поставила ограничение формы `regions_name_check` во всех
+	// пяти схемах, но парной проверки в geo не было: доменная проверка сторожила
+	// ДЛИНУ, и притом 253 знака — вчетверо шире формы. Из-за этого `Region_One`
+	// проходило проверку сервиса и умирало на ограничении таблицы: БАЗА оказывалась первым
+	// читателем ввода, а вызывающий получал отказ, не называющий ни поля, ни
+	// формы. Ограничение таблицы обязано оставаться защитой последнего рубежа.
+	//
+	// Отдаётся статус канона КАК ЕСТЬ: он несёт `FieldViolation` с именем поля и
+	// самой формой, а `serviceerr.ToStatus` пробрасывает готовый статус первой
+	// же веткой — тем же путём, что `validate.PageSize` в List. Обёртка в
+	// sentinel эту деталь потеряла бы при пересборке статуса.
+	if err := validate.Name("name", in.Name); err != nil {
+		return nil, err
 	}
 	if err := domain.ValidateCountryCode(in.CountryCode); err != nil {
 		return nil, invalidArg(err.Error())
@@ -267,8 +280,10 @@ func (u *UseCase) buildUpdateParams(in UpdateInput) (UpdateParams, error) {
 		if in.Name == "" {
 			return p, invalidArg("region name is required")
 		}
-		if err := domain.ValidateName("region name", in.Name); err != nil {
-			return p, invalidArg(err.Error())
+		// Та же форма, что на создании: правка не вправе завести имя, которого
+		// создание не приняло бы (#718).
+		if err := validate.Name("name", in.Name); err != nil {
+			return p, err
 		}
 		name := in.Name
 		p.Name = &name

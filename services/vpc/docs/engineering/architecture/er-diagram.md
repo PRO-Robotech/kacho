@@ -448,8 +448,11 @@ inline в `CREATE TABLE` базовой схемы:
   `kacho_vpc.kacho_labels_valid(jsonb) IMMUTABLE` проверяет cardinality ≤ 64,
   key regex `^[a-z][-_./\\@a-z0-9]{0,62}$`, value length ≤ 63.
 
-Эти constraint'ы маппятся через `wrapPgErr` (SQLSTATE `23514`) в `service.ErrInvalidArg` →
-gRPC `INVALID_ARGUMENT`.
+Эти constraint'ы маппятся через `wrapPgErr` (SQLSTATE `23514`) в `service.ErrInvalidArg`
+→ gRPC `INVALID_ARGUMENT` — **кроме формы имени**. Её проверяет сам сервис
+(`domain.RcNameVPC` → единственная форма дерева), поэтому ограничение
+`<таблица>_name_check` есть защита последнего рубежа: его срабатывание означает
+дефект сервиса и отдаётся фиксированным `INTERNAL` с записью `ERROR` в журнал.
 
 ---
 

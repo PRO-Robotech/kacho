@@ -593,6 +593,12 @@ sentinel→code в отдельный слой (если когда-либо) �
   `ErrInternal` → `codes.Internal`, из-за чего user-reachable CHECK/EXCLUDE выглядел
   бы транзиентным серверным сбоем. Фиксированный текст (без leak'а pg-detail).
   Тест: `internal/repo/unique_test.go` (RED→GREEN).
+  **Уточнено позже:** 23514 разбирается на ДВЕ полосы. Форму имени compute
+  проверяет сам (`corevalidate.Name`/`NameOrDefault` на всех четырёх ресурсах,
+  несущих ограничение формы), поэтому срабатывание `<таблица>_name_check` есть
+  дефект сервиса, а не ввода: наружу фиксированный `Internal`, в журнал `ERROR` с
+  именем ограничения. Прочие CHECK по-прежнему `InvalidArgument`. Тест:
+  `internal/repo/checkviolation_test.go`.
 - **`InternalWatchService.Watch` streaming покрыт integration-тестами.**
   `internal/handler/internal_watch_stream_integration_test.go` (testcontainers):
   catchup-cursor через границу батча (250 > catchupBatchSize), `kinds`-фильтр,

@@ -69,12 +69,13 @@ def _cleanup_net():
 
 def _cleanup_net_lenient():
     # См. route-table.py::_cleanup_net_lenient — wrap'нутый Create мог пройти permissive'но
-    # (ресурс создан) → DELETE сети блокируется FK RESTRICT (400). Оба исхода ОК.
+    # (ресурс создан) → DELETE сети блокируется FK RESTRICT (400). Полос две, и
+    # КАЖДАЯ читается своей подписью (`assert_cleanup_delete`), а не принимается скопом.
     # retry_on=(403,): DELETE своей свежей сети может краснеть 403, пока owner-tuple
     # материализуется (eventual-consistency после opgate) — ретраим ТОЛЬКО этот транзиент.
     return retry_until_authorized(
         Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-             test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_cleanup_delete("сеть", "в сети остались подсети, таблицы маршрутизации или группы"),
                           *save_from_response("j.id", "opId")]),
         retry_on=(403,))
 
@@ -726,11 +727,17 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SG-LST-FILTER-SPECIAL-CHARS",
-    title="List с filter содержащим спец-символы → 400 или 200",
+    # Исход УСТАНОВЛЕН, а не «как получится»: `name="!@#$%"` разбирается штатно —
+    # поле из белого списка, значение в кавычках, хвоста нет, — поэтому запрос
+    # уходит параметром и страница приходит пустой. Спец-символы значения на
+    # разбор не влияют вовсе: они внутри кавычек. Прежнее `oneOf([200, 400])`
+    # принимало и отказ, то есть ту самую регрессию разбора, ради которой кейс и
+    # написан.
+    title="List с filter из спец-символов → 200 и пустая страница",
     classes=["FILTER", "VAL"], priority="P3",
     steps=[Step(name="lst-fsc", method="GET",
                 path="/vpc/v1/securityGroups?projectId={{_suiteProjectId}}&filter=name%3D%22%21%40%23%24%25%22",
-                test_script=["pm.test('handled', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                test_script=assert_empty_page("значение из спец-символов именем ни у кого не является"))],
 ))
 
 CASES.append(Case(
@@ -753,11 +760,18 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SG-LST-DOUBLE-PROJECT-PARAM",
-    title="List с дубликатом projectId param → 200 (last wins) или 400",
+    # «last wins» не происходит НИКОГДА: `project_id` — скалярное поле запроса, и
+    # `runtime.PopulateQueryParameters` отвергает второе значение целиком
+    # (`too many values for field "project_id"`), а сгенерированный обработчик края
+    # переводит это в `InvalidArgument`. Проверка прав до отказа доходит и его не
+    # опережает: она читает первое значение (`url.Values.Get`), а оно — свой же
+    # проект актора. Значит исход один: 400 и код 3.
+    title="List с дубликатом projectId param → 400 InvalidArgument (край отвергает второе значение)",
     classes=["VAL"], priority="P3",
     steps=[Step(name="lst-dup", method="GET",
                 path="/vpc/v1/securityGroups?projectId={{_suiteProjectId}}&projectId={{_suiteProjectCrossId}}&pageSize=10",
-                test_script=["pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             "pm.test('сообщение называет поле, из-за которого отказ', () => pm.expect(String(pm.response.json().message || ''), pm.response.text()).to.contain('project_id'));"])],
 ))
 
 CASES.append(Case(

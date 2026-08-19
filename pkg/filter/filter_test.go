@@ -297,3 +297,51 @@ func TestToSQLOnQuotesUnsafeColumn(t *testing.T) {
 		t.Fatalf("небезопасная колонка обязана быть закавычена, получено %q", frag)
 	}
 }
+
+// TestParse_NewmanSecurityPayloadsAreOrdinaryValues закрепляет исход, на котором
+// стоят сквозные кейсы `*-LST-SEC-FILTER-SQLI` и `*-LST-FILTER-SPECIAL-CHARS`
+// (issue #698).
+//
+// ПРЕДМЕТ. До #698 оба кейса утверждали `oneOf([200, 400])` — принимали и успех,
+// и отказ, то есть приняли бы ровно ту регрессию разбора, ради которой написаны.
+// Исход при этом УСТАНОВЛЕН: обе нагрузки стоят ВНУТРИ кавычек, а разборщик
+// закрывает значение первой закрывающей кавычкой и требует пустой хвост — то
+// есть кавычка, дефисы и спецсимволы значения на разбор не влияют вовсе.
+// Значение уезжает ПАРАМЕТРОМ ($N), поэтому список отвечает 200 и пустой
+// страницей, а не отказом.
+//
+// КОНТРОЛЬ В ОБЕ СТОРОНЫ. Рядом стоит выражение, которое разборщик обязан
+// ОТВЕРГНУТЬ (`AND` он не знает — это записано в его шапке): без него «принимает»
+// было бы неотличимо от «принимает всё», и утверждение о первых двух осталось бы
+// недоказанным. На нём стоит третий кейс — `NET-LST-FILTER-MULTI-CONDITIONS`.
+func TestParse_NewmanSecurityPayloadsAreOrdinaryValues(t *testing.T) {
+	accepted := []struct {
+		name, expr, value string
+	}{
+		{"внедрение в значение (*-LST-SEC-FILTER-SQLI)", `name="a' OR 1=1--"`, `a' OR 1=1--`},
+		{"спецсимволы в значении (*-LST-FILTER-SPECIAL-CHARS)", `name="!@#$%"`, `!@#$%`},
+	}
+	for _, tc := range accepted {
+		ast, err := Parse(tc.expr, []string{"name"})
+		if err != nil {
+			t.Fatalf("%s: выражение обязано разбираться, получено: %v", tc.name, err)
+		}
+		if ast == nil || ast.Field != "name" || ast.Op != OpEquals || ast.Value != tc.value {
+			t.Fatalf("%s: разобрано не то: %+v", tc.name, ast)
+		}
+		// Значение обязано уехать ПАРАМЕТРОМ: иначе «200 и пустая страница»
+		// было бы совпадением, а не свойством.
+		frag, args := ast.ToSQL(1)
+		if frag != "name = $1" || len(args) != 1 || args[0] != tc.value {
+			t.Fatalf("%s: значение не параметризовано: frag=%q args=%v", tc.name, frag, args)
+		}
+	}
+
+	// Зеркало: `AND` не поддержан, хвост после закрывающей кавычки — отказ.
+	if _, err := Parse(`name="x" AND name="y"`, []string{"name"}); err == nil {
+		t.Fatal("два условия ПРИНЯТЫ — тогда NET-LST-FILTER-MULTI-CONDITIONS " +
+			"утверждает отказ, которого больше нет")
+	} else if !strings.HasPrefix(err.Error(), "Bad expression at column ") {
+		t.Fatalf("текст отказа — часть контракта фильтра, получено: %q", err.Error())
+	}
+}

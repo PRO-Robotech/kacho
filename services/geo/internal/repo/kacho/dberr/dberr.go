@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
 	geoerrors "github.com/PRO-Robotech/kacho/services/geo/internal/errors"
 )
 
@@ -26,7 +27,7 @@ import (
 //	pgx.ErrNoRows            → ErrNotFound
 //	23505 UNIQUE             → ErrAlreadyExists
 //	23503 FK                 → ErrFailedPrecondition
-//	23514 CHECK              → ErrInvalidArg
+//	23514 CHECK              → ErrInternal (форма имени) | ErrInvalidArg
 //	context.Canceled         → ErrCanceled          (client-cancel, не серверный сбой)
 //	context.DeadlineExceeded → ErrDeadlineExceeded  (истёкший per-call timeout)
 //	все остальное            → ErrInternal
@@ -60,7 +61,7 @@ func Wrap(err error, resource, id string) error {
 			// с несуществующим region_id). Текст не привязан к направлению.
 			return fmt.Errorf("%w: %s %s violates a reference constraint", geoerrors.ErrFailedPrecondition, resource, id)
 		case "23514": // check_violation
-			return fmt.Errorf("%w: invalid %s", geoerrors.ErrInvalidArg, resource)
+			return checkViolation(pgErr, resource, id)
 		}
 		// Некатегоризированный SQLSTATE (deadlock 40P01, serialization 40001,
 		// insufficient_privilege 42501, …). Клиенту отдаём фиксированный sentinel
@@ -118,4 +119,30 @@ func WrapUnique(err error, resource, id, name string) error {
 		return fmt.Errorf("%w: %s with name %s already exists", geoerrors.ErrAlreadyExists, resource, name)
 	}
 	return Wrap(err, resource, id)
+}
+
+// checkViolation разбирает 23514 на две полосы по вопросу «чьё это значение»
+// (задача #718; тот же разбор, что в vpc, nlb, storage и compute).
+//
+// Форму имени Region/Zone geo теперь судит САМ, на пути запроса (`validate.Name`
+// в use-case). До этого парной проверки не было — она и была предметом задачи:
+// база оказывалась первым читателем ввода. Теперь ограничение таблицы есть
+// защита последнего рубежа, и его срабатывание означает, что негодное значение
+// прошло МИМО проверки: наш дефект, а не ввод вызывающего.
+//
+// Прочие ограничения остаются отказом по вводу. Имя ограничения наружу не идёт
+// ни в одной полосе — оно идёт в журнал: ERROR для нашего дефекта, WARN для
+// ввода, чтобы «ограничение ловит ввод регулярно» было счётно и попадало в
+// синхронную проверку.
+func checkViolation(pgErr *pgconn.PgError, resource, id string) error {
+	if nameform.IsConstraint(pgErr.TableName, pgErr.ConstraintName) {
+		slog.Error("name form backstop fired: service admitted a name it validates itself",
+			"sqlstate", pgErr.Code, "table", pgErr.TableName,
+			"constraint", pgErr.ConstraintName, "resource", resource, "id", id)
+		return geoerrors.ErrInternal
+	}
+	slog.Warn("check constraint rejected caller input",
+		"sqlstate", pgErr.Code, "table", pgErr.TableName,
+		"constraint", pgErr.ConstraintName, "resource", resource, "id", id)
+	return fmt.Errorf("%w: invalid %s", geoerrors.ErrInvalidArg, resource)
 }

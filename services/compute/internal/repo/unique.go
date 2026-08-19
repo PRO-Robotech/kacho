@@ -6,11 +6,13 @@ package repo
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 )
 
@@ -98,12 +100,40 @@ func wrapPgErr(err error, kind, id string) error {
 		return fmt.Errorf("%w: The %s %s is being used", ports.ErrFailedPrecondition, strings.ToLower(kind), id)
 	}
 	if isCheckViolation(err) {
-		// Фиксированный текст: не leak'аем raw CHECK-detail (constraint-имя /
-		// pg-message) наружу — только класс ошибки.
-		return ports.ErrInvalidArg
+		return wrapCheckViolation(err, kind, id)
 	}
 	if isExclusionViolation(err) {
 		return ports.ErrFailedPrecondition
 	}
 	return ports.ErrInternal
+}
+
+// wrapCheckViolation разбирает 23514 на две полосы по вопросу «чьё это
+// значение» — тот же разбор, что в vpc, nlb и storage: чинится класс, а не
+// экземпляр.
+//
+// Форму имени compute проверяет сам — `corevalidate.Name` / `NameOrDefault` на
+// всех четырёх ресурсах, несущих ограничение формы (машина, тип машины, группа
+// размещения, гостевой ключ). Значит ограничение таблицы есть защита последнего
+// рубежа, и его срабатывание означает, что негодное значение прошло МИМО
+// проверки: дефект сервиса, а не ввода.
+//
+// Текст наружу и раньше не пересказывал СУБД — здесь чинится не тон, а СМЫСЛ
+// кода ответа: `INVALID_ARGUMENT` на нашем дефекте обвиняет вызывающего и не
+// даёт ему ничего, что можно исправить. Имя ограничения идёт в журнал (ERROR для
+// нашего дефекта, WARN для ввода) — иначе о срабатывании не знает никто.
+func wrapCheckViolation(err error, kind, id string) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		if nameform.IsConstraint(pgErr.TableName, pgErr.ConstraintName) {
+			slog.Error("name form backstop fired: service admitted a name it validates itself",
+				"sqlstate", pgErr.Code, "table", pgErr.TableName,
+				"constraint", pgErr.ConstraintName, "kind", kind, "id", id)
+			return ports.ErrInternal
+		}
+		slog.Warn("check constraint rejected caller input",
+			"sqlstate", pgErr.Code, "table", pgErr.TableName,
+			"constraint", pgErr.ConstraintName, "kind", kind, "id", id)
+	}
+	return ports.ErrInvalidArg
 }

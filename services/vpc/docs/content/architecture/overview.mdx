@@ -287,7 +287,7 @@ flowchart TD
 
 Все ошибки — `google.rpc.Status {code, message, details[]}` (конвенция Kachō). Repo-sentinel'ы маппятся
 в gRPC-коды в сервис-слое (`MapRepoErr`); SQLSTATE-нарушения DB-инвариантов транслируются туда же
-(`23503`→`FailedPrecondition`, `23505`→`AlreadyExists`/`FailedPrecondition`, `23514`→`InvalidArgument`,
+(`23503`→`FailedPrecondition`, `23505`→`AlreadyExists`/`FailedPrecondition`, `23514`→`InvalidArgument` (кроме формы имени: она backstop, значит `Internal`),
 `23P01`→`FailedPrecondition`).
 
 <Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'failedPrecondition', 'unavailable', 'unauthenticated', 'permissionDenied', 'internal']} />

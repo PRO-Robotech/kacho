@@ -6,10 +6,13 @@ package helpers
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
 )
 
 // IsUniqueViolation — Postgres unique-constraint violation (SQLSTATE 23505).
@@ -244,7 +247,7 @@ func WrapPgErr(err error, kind, id string) error {
 		return fmt.Errorf("%w: %s has dependent resources", ErrFailedPrecondition, kind)
 	}
 	if IsCheckViolation(err) {
-		return fmt.Errorf("%w: %s violates check constraint", ErrInvalidArg, kind)
+		return wrapCheckViolation(err, kind)
 	}
 	if IsExclusionViolation(err) {
 		return fmt.Errorf("%w: value conflicts with existing %s", ErrFailedPrecondition, kind)
@@ -305,4 +308,62 @@ func classifyQuotaErr(err error) error {
 		return fmt.Errorf("%w: quota accounting: %v", ErrInternal, err)
 	}
 	return nil
+}
+
+// wrapCheckViolation разбирает 23514 на ДВЕ полосы по одному вопросу: чьё это
+// значение — вызывающего или наше (задача #718).
+//
+// # Почему один код ответа на два смысла — ложь
+//
+// Ограничение таблицы бывает двух видов, и они противоположны по тому, кого
+// обвиняет отказ:
+//
+//   - форму значения проверяет САМ СЕРВИС до вставки (имя ресурса: доменный
+//     newtype `domain.RcNameVPC` → `nameform.OK`, на обоих путях записи).
+//     Ограничение таблицы здесь — защита последнего рубежа, и её срабатывание
+//     означает, что негодное значение прошло МИМО проверки. Это наш дефект;
+//     `INVALID_ARGUMENT` сказал бы вызывающему «виноват ваш ввод», а он не
+//     виноват — и, что хуже, ему нечего исправлять;
+//   - форму проверяет ТОЛЬКО база. Тогда отказ по вводу уместен.
+//
+// Разделяет их `nameform.IsConstraint` — по конструкции имени ограничения,
+// которую задаёт миграция 715001, а не по догадке.
+//
+// # Почему текст не пересказывает СУБД
+//
+// «violates check constraint» — формулировка Postgres. Вызывающему она не
+// сообщает ни поля, ни того, что исправить, зато выносит наружу словарь
+// хранилища. Прежняя редакция отдавала её дословно (`"<Kind> violates check
+// constraint"`), и именно этот текст арендатор видел при создании адреса.
+// Тон отказа по вводу приведён к контрактному (`api-conventions.md`
+// §Error-format); исходная ошибка остаётся в цепочке для журнала оператора.
+//
+// # Наблюдаемость
+//
+// Полоса внутреннего дефекта пишет ERROR с именем ограничения: иначе «сервис
+// пропустил негодное значение» невидимо ниоткуда — на проводе фиксированный
+// текст, а в цепочке причина доживает только до отображения в статус. Полоса
+// ввода пишет WARN: ограничение, которое ловит ввод регулярно, — кандидат в
+// СИНХРОННУЮ проверку, и его частота обязана быть счётной.
+func wrapCheckViolation(err error, kind string) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && nameform.IsConstraint(pgErr.TableName, pgErr.ConstraintName) {
+		slog.Error("name form backstop fired: service admitted a name it validates itself",
+			"sqlstate", pgErr.Code,
+			"table", pgErr.TableName,
+			"constraint", pgErr.ConstraintName,
+			"kind", kind)
+		// Причина сохраняется в цепочке (как в неклассифицированной ветке ниже):
+		// serviceerr сворачивает ErrInternal в фиксированный текст, поэтому
+		// наружу она не уходит, а в журнале оператора остаётся.
+		return fmt.Errorf("%w: %v", ErrInternal, err)
+	}
+	if pgErr != nil {
+		slog.Warn("check constraint rejected caller input",
+			"sqlstate", pgErr.Code,
+			"table", pgErr.TableName,
+			"constraint", pgErr.ConstraintName,
+			"kind", kind)
+	}
+	return fmt.Errorf("%w: Illegal argument", ErrInvalidArg)
 }

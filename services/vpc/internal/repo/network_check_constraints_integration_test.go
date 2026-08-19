@@ -72,8 +72,15 @@ func TestIntegration_NetworkRepo_CheckConstraints(t *testing.T) {
 	}
 	err = insertNet(t, bad)
 	require.Error(t, err, "имя не по форме должно быть отклонено CHECK")
-	require.Truef(t, errors.Is(err, helpers.ErrInvalidArg),
-		"expected helpers.ErrInvalidArg from CHECK violation, got: %v", err)
+	// Полоса — ErrInternal, а не ErrInvalidArg, и это решение задачи #718:
+	// проба вставляет МИМО use-case, то есть воспроизводит «сервис пропустил
+	// негодное имя». Настоящий вызывающий сюда не доходит — его имя судит
+	// `domain.RcNameVPC` до вставки, — поэтому обвинение его ввода было бы
+	// неправдой, а исправить ему было бы нечего.
+	require.Truef(t, errors.Is(err, helpers.ErrInternal),
+		"форма имени — дефект сервиса: expected helpers.ErrInternal, got: %v", err)
+	require.Falsef(t, errors.Is(err, helpers.ErrInvalidArg),
+		"дефект сервиса не обвиняет вызывающего: %v", err)
 
 	// 3. Description длиннее 256 chars — отклоняется DB-CHECK length.
 	longDesc := make([]byte, 257)
@@ -105,6 +112,8 @@ func TestIntegration_NetworkRepo_CheckConstraints(t *testing.T) {
 	}
 	err = insertNet(t, empty)
 	require.Error(t, err, "пустое имя больше не является допустимым значением")
-	require.Truef(t, errors.Is(err, helpers.ErrInvalidArg),
-		"expected helpers.ErrInvalidArg from CHECK violation, got: %v", err)
+	// Та же полоса, что у пункта 2: пустая строка форме не отвечает, значит это
+	// то же ограничение формы имени и тот же смысл — сервис пропустил.
+	require.Truef(t, errors.Is(err, helpers.ErrInternal),
+		"форма имени — дефект сервиса: expected helpers.ErrInternal, got: %v", err)
 }

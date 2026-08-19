@@ -309,14 +309,14 @@
 | `*-LST-CRUD-OK` | CRUD | P1 | 6 (add,gat,net,rou,sec,sub) | List subnets в project → 200 |
 | `NIC-LIST-OK` | CRUD | P1 | 1 (nic) | List NetworkInterfaces в project → 200; созданный NIC присутствует; в ответе только lean control-plane-проекция (инфра/data-plane-полей нет). Verifies REQ-NIC-06. |
 | `SG-LIST-FILTER-NETWORK-OK` | CRUD,FILTER | P2 | 1 (sec) | List SecurityGroups с фильтром по `network_id` → возвращает только SG net-A; SG из другой сети net-B отсутствует. (negative-сторона = SG из другой сети, т.к. network-less SG больше нет.) Verifies REQ-RES-07. |
-| `*-LST-DOUBLE-PROJECT-PARAM` | VAL | P3 | 5 (add,gat,net,rou,sec) | List с дубликатом projectId param → 200 (last wins) или 400 |
+| `*-LST-DOUBLE-PROJECT-PARAM` | VAL | P3 | 5 (add,gat,net,rou,sec) | List с дубликатом projectId param → 400 InvalidArgument (край отвергает второе значение) |
 | `*-LST-FILTER-CASE-SENSITIVITY` | FILTER | P3 | 1 (gat) | Filter case-sensitivity на name field |
 | `*-LST-FILTER-EMPTY` | CRUD,FILTER | P2 | 1 (gat) | List Gateway с пустым filter expression → 200 (filter optional) |
 | `*-LST-FILTER-GARBAGE` | FILTER,VAL | P1 | 6 (add,gat,net,rou,sec,sub) | List с garbage filter syntax → 400 InvalidArgument |
 | `*-LST-FILTER-MATCH` | CRUD,FILTER | P2 | 6 (add,gat,net,rou,sec,sub) | Создать ресурс → list filter=name='X' → ресурс в результатах |
-| `*-LST-FILTER-MULTI-CONDITIONS` | FILTER | P3 | 1 (net) | List с filter из несколько условий — multi-condition filter |
+| `*-LST-FILTER-MULTI-CONDITIONS` | FILTER,VAL | P3 | 1 (net) | List с filter из двух условий (AND не поддержан) → 400 InvalidArgument |
 | `*-LST-FILTER-NAME-OK` | CRUD,FILTER | P2 | 6 (add,gat,net,rou,sec,sub) | List с filter name="foo" → 200 |
-| `*-LST-FILTER-SPECIAL-CHARS` | FILTER,VAL | P3 | 5 (add,gat,net,rou,sec) | List с filter содержащим спец-символы → 400 или 200 |
+| `*-LST-FILTER-SPECIAL-CHARS` | FILTER,VAL | P3 | 5 (add,gat,net,rou,sec) | List с filter из спец-символов → 200 и пустая страница |
 | `*-LST-FILTER-UNKNOWN-FIELD` | FILTER,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | List с filter на unsupported field → 400 InvalidArgument |
 | `*-LST-PAGE-NEGATIVE-SIZE` | BVA,VAL | P2 | 5 (add,gat,net,rou,sec) | List с pageSize=-1 → 400 или 200 |
 | `*-LST-PAGE-ROUNDTRIP` | BVA,CRUD,PAGE | P2 | 6 (add,gat,net,rou,sec,sub) | Pagination: получить пустой/не-пустой ответ + nextPageToken и пройти еще раз с ним |
@@ -324,7 +324,7 @@
 | `*-LST-PAGESIZE-1001` | BVA,VAL | P1 | 5 (add,gat,net,rou,sec) | List с pageSize=1001 (over max) → 400 |
 | `*-LST-PAGESIZE-EXACTLY-1000` | BVA | P2 | 5 (add,gat,net,rou,sec) | List с pageSize=1000 (boundary max) → 200 |
 | `*-LST-PERF-BASELINE` | CRUD,PERF | P2 | 6 (add,gat,net,rou,sec,sub) | List response time < 500ms (perf baseline) |
-| `*-LST-SEC-FILTER-SQLI` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security: SQL injection в filter → не 500 |
+| `*-LST-SEC-FILTER-SQLI` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security: SQL injection в filter → 200 и пустая страница, без 500 |
 | `*-LST-VAL-PROJECT-REQUIRED` | AUTHZ,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | List без projectId → InvalidArgument |
 
 ### ListBySubnet

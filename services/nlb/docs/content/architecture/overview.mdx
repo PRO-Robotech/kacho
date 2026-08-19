@@ -110,7 +110,9 @@ erDiagram
 Смена владения VIP (attach Address к балансировщику) и членство групп выражены атомарным
 `UPDATE … WHERE <expected>` (CAS) либо UNIQUE/FK, а не software `Get → check → Update`. Service-
 слой только маппит SQLSTATE на gRPC-код (`23503`→FailedPrecondition, `23505`→AlreadyExists,
-`23514`→InvalidArgument). Текст pgx наружу не утекает (→ фиксированный INTERNAL).
+`23514`→InvalidArgument, кроме формы имени: её проверяет сам сервис, поэтому
+срабатывание `<таблица>_name_check` — дефект сервиса и `Internal`). Текст pgx
+наружу не утекает (→ фиксированный INTERNAL).
 :::
 
 ## Async-модель: Operation + outbox

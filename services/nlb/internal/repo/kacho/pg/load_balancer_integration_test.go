@@ -100,7 +100,14 @@ func TestLB_CheckViolation_BadStatus(t *testing.T) {
 	assert.True(t, errors.Is(err, kacho.ErrInvalidArg), "want ErrInvalidArg, got %v", err)
 }
 
-// TestLB_CheckViolation_BadName — CHECK name regex.
+// TestLB_CheckViolation_BadName — CHECK формы имени.
+//
+// Полоса сменилась с ErrInvalidArg на ErrInternal осознанно (задача #718).
+// Проба бьёт writer'ом МИМО use-case, то есть воспроизводит ровно тот случай,
+// ради которого ограничение таблицы и стоит: «сервис пропустил негодное имя».
+// Настоящий вызывающий этого пути не проходит — его имя судит
+// `domain.LbName.Validate` → канон дерева, до вставки, — поэтому обвинять его
+// `INVALID_ARGUMENT` значит утверждать неправду.
 func TestLB_CheckViolation_BadName(t *testing.T) {
 	repo, cleanup := newRepo(t, setupTestDB(t))
 	defer cleanup()
@@ -113,7 +120,8 @@ func TestLB_CheckViolation_BadName(t *testing.T) {
 	defer w.Abort()
 	_, err = w.LoadBalancers().Insert(ctx, lb)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, kacho.ErrInvalidArg), "want ErrInvalidArg for bad name, got %v", err)
+	assert.True(t, errors.Is(err, kacho.ErrInternal), "форма имени — дефект сервиса: want ErrInternal, got %v", err)
+	assert.False(t, errors.Is(err, kacho.ErrInvalidArg), "дефект сервиса не обвиняет вызывающего: %v", err)
 }
 
 // TestLB_LabelsTooMany_CheckViolation — 65 labels → CHECK fail.

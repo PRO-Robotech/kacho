@@ -68,6 +68,32 @@ case "$branch" in
         ;;
 esac
 
+# ЧТО ИМЕННО УЕЗЖАЕТ — СПРАШИВАЕМ У GIT, А НЕ ВЫВОДИМ ИЗ ИМЕНИ ВЕТКИ.
+#
+# git передаёт хуку на вход строки `<local_ref> <local_sha> <remote_ref>
+# <remote_sha>` — по одной на каждую отправляемую ссылку. Это авторитетный
+# ответ на вопрос «что уедет этой отправкой»; ни точка ветвления, ни
+# вышестоящая ветка его не заменяют.
+#
+# Нулевой `<remote_sha>` (все нули) означает, что ссылки на origin ещё нет:
+# тогда база — ствол, потому что уезжает всё, чего в нём нет.
+#
+# Пустой вход означает, что хук позвали руками. Тогда диапазон не задаётся, и
+# нижестоящие считают от ствола — прежнее поведение, названное вслух.
+push_ranges=""
+zero="0000000000000000000000000000000000000000"
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ -z "${local_sha:-}" ] && continue
+    [ "$local_sha" = "$zero" ] && continue        # удаление ссылки — проверять нечего
+    if [ -z "${remote_sha:-}" ] || [ "$remote_sha" = "$zero" ]; then
+        push_ranges="$push_ranges ${KACHO_TRUNK_REF:-origin/main}...$local_sha"
+    else
+        push_ranges="$push_ranges $remote_sha..$local_sha"
+    fi
+done
+push_ranges="${push_ranges# }"
+export KACHO_PUSH_RANGE="$push_ranges"
+
 echo "== pre-push: локальные проверки перед отправкой ветки «$branch»"
 echo "   (обойти: git push --no-verify — но тогда конвейер станет первым читателем)"
 
@@ -84,7 +110,19 @@ echo "   (обойти: git push --no-verify — но тогда конвейе�
 # а не вышестоящая ветка.
 groups="$(bash "$ROOT/scripts/hooks/prepush-groups.sh")"
 echo "   группы прогона: $groups"
-changed="$(git diff --name-only "${KACHO_TRUNK_REF:-origin/main}"...HEAD 2> /dev/null || true)"
+# Тот же диапазон, что у производителя групп: два разных ответа на один вопрос
+# разошлись бы молча — и разошлись бы именно там, где расхождение не видно.
+if [ -n "$push_ranges" ]; then
+    changed=""
+    for range in $push_ranges; do
+        changed="$changed
+$(git diff --name-only "$range" 2> /dev/null || true)"
+    done
+    echo "   уезжает: $(printf '%s' "$changed" | grep -c . ) файл(ов) в диапазоне(ах) $push_ranges"
+else
+    changed="$(git diff --name-only "${KACHO_TRUNK_REF:-origin/main}"...HEAD 2> /dev/null || true)"
+    echo "   вход пуст (хук позван руками) — база: точка ветвления от ствола"
+fi
 
 # ВЕРДИКТ ЧИТАЕТСЯ ПО ЧИСЛАМ, А НЕ ПО КОДУ ВОЗВРАТА.
 #

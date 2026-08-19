@@ -158,8 +158,19 @@ func (u *UseCase) Create(ctx context.Context, in CreateInput) (*operations.Opera
 	if in.Name == "" {
 		return nil, invalidArg("zone name is required")
 	}
-	if err := domain.ValidateName("zone name", in.Name); err != nil {
-		return nil, invalidArg(err.Error())
+	// Форма имени судится КАНОНОМ ДЕРЕВА, а не только длиной (задача #718).
+	//
+	// Миграция 715001 поставила ограничение формы `zones_name_check`, но парной
+	// проверки в geo не было: доменная проверка сторожила ДЛИНУ (253 знака —
+	// вчетверо шире формы). Имя `Zone_A` проходило проверку сервиса и умирало на
+	// ограничении таблицы: БАЗА оказывалась первым читателем ввода, а вызывающий
+	// получал отказ, не называющий ни поля, ни формы. Ограничение таблицы обязано
+	// оставаться защитой последнего рубежа.
+	//
+	// Статус канона отдаётся КАК ЕСТЬ: он несёт `FieldViolation` с именем поля и
+	// формой, а `serviceerr.ToStatus` пробрасывает готовый статус первой веткой.
+	if err := validate.Name("name", in.Name); err != nil {
+		return nil, err
 	}
 	if err := in.Status.Validate(); err != nil {
 		return nil, invalidArg(err.Error())
@@ -262,8 +273,8 @@ func (u *UseCase) Update(ctx context.Context, in UpdateInput) (*operations.Opera
 // подсказку ёмкости и число доменов отказа при обычном переименовании — а имя от
 // ровно того же затирания было защищено. Защита имени была права, безусловное
 // применение остальных — нет: домен прямо документирует, что пустое значение на
-// Update означает «не менять поле» (domain.ValidateName). Теперь по этому правилу
-// живут ВСЕ поля, а очистка любого из них делается явно — через маску.
+// Update означает «не менять поле». Теперь по этому правилу живут ВСЕ поля, а
+// очистка любого из них делается явно — через маску.
 //
 // Поле, названное маской, но пришедшее пустым там, где ресурс пустоту хранить не
 // может (name — required + globally UNIQUE; status — CHECK IN ('UP','DOWN')),
@@ -285,8 +296,10 @@ func (u *UseCase) buildUpdateParams(in UpdateInput) (UpdateParams, error) {
 		if in.Name == "" {
 			return p, invalidArg("zone name is required")
 		}
-		if err := domain.ValidateName("zone name", in.Name); err != nil {
-			return p, invalidArg(err.Error())
+		// Та же форма, что на создании: правка не вправе завести имя, которого
+		// создание не приняло бы (#718).
+		if err := validate.Name("name", in.Name); err != nil {
+			return p, err
 		}
 		name := in.Name
 		p.Name = &name

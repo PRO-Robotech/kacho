@@ -103,7 +103,9 @@ CREATE INDEX my_resource_parent_id_idx ON my_resource (parent_id);
 
 Service-уровень обязан мапить SQLSTATE → gRPC code:
 `23503 → FailedPrecondition`, `23505 → AlreadyExists / FailedPrecondition`
-(по контексту), `23514 → InvalidArgument`, `23P01 → FailedPrecondition`.
+(по контексту), `23514 → InvalidArgument` (форма имени — исключение: сервис
+проверяет её сам, поэтому срабатывание `<таблица>_name_check` есть его дефект и
+отдаётся `Internal`), `23P01 → FailedPrecondition`.
 
 ---
 

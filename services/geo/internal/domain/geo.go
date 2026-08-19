@@ -17,14 +17,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"unicode/utf8"
 )
-
-// maxNameLen — верхняя граница display-name Region/Zone. Name — свободный
-// admin-assigned ярлык ("RU Central 1", "Zone A"), не slug, поэтому валидируем
-// только длину (charset-regex рассчитан на strict slug-ресурсы и отверг бы
-// пробелы/uppercase).
-const maxNameLen = 253
 
 // maxIDLen — верхняя граница id Region/Zone (DNS-label-подобный slug, 63 симв.).
 const maxIDLen = 63
@@ -75,15 +68,18 @@ func ValidateCountryCode(value string) error {
 	return nil
 }
 
-// ValidateName проверяет длину display-name (общий domain-инвариант Region/Zone).
-// Required-check (пустой name → InvalidArgument) делает use-case на Create-пути:
-// на Update пустой name означает «не менять поле» (COALESCE).
-func ValidateName(field, value string) error {
-	if utf8.RuneCountInString(value) > maxNameLen {
-		return fmt.Errorf("%s exceeds %d characters", field, maxNameLen)
-	}
-	return nil
-}
+// Проверка display-name жила ЗДЕСЬ и сторожила только ДЛИНУ — 253 знака.
+//
+// Предмета у неё больше нет (задача #718). Форму имени Region/Zone задаёт
+// ограничение таблицы, поставленное миграцией 715001, — та же единственная форма
+// дерева (`pkg/validate/nameform`, 1..63 знака), и её же теперь судит use-case
+// вызовом `validate.Name` ДО записи. Длиновая проверка была вчетверо шире формы,
+// то есть не отвергала НИ ОДНОГО имени, которого не отвергла бы форма: два
+// правила об одном поле, из которых работало одно.
+//
+// Снята вместе с вызовами, а не оставлена «на всякий случай»: правило, которое
+// не может сработать, следующий читатель примет за действующее ограничение и
+// станет держать имя в 253 знака законным.
 
 // GeoStatus — сырой admin maintenance-флаг Region/Zone (two-projection: только
 // Internal). Ширина int32 совпадает с geov1.GeoStatus — конверсии domain↔proto

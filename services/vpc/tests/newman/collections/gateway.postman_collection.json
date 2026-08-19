@@ -8932,7 +8932,7 @@
       ]
     },
     {
-      "name": "GW-LST-FILTER-SPECIAL-CHARS — List с filter содержащим спец-символы → 400 или 200",
+      "name": "GW-LST-FILTER-SPECIAL-CHARS — List с filter из спец-символов → 200 и пустая страница",
       "description": "class:FILTER | class:VAL | priority:P3",
       "item": [
         {
@@ -8963,7 +8963,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('handled', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "pm.test('страница пуста: значение из спец-символов именем ни у кого не является', () => {",
+                  "  const j = pm.response.json();",
+                  "  const keys = Object.keys(j).filter(k => Array.isArray(j[k]));",
+                  "  pm.expect(keys, JSON.stringify(j)).to.have.lengthOf(1);",
+                  "  pm.expect(j[keys[0]], JSON.stringify(j)).to.have.lengthOf(0);",
+                  "});"
                 ]
               }
             }
@@ -9056,7 +9062,7 @@
       ]
     },
     {
-      "name": "GW-LST-DOUBLE-PROJECT-PARAM — List с дубликатом projectId param → 200 (last wins) или 400",
+      "name": "GW-LST-DOUBLE-PROJECT-PARAM — List с дубликатом projectId param → 400 InvalidArgument (край отвергает второе значение)",
       "description": "class:VAL | priority:P3",
       "item": [
         {
@@ -9087,7 +9093,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('сообщение называет поле, из-за которого отказ', () => pm.expect(String(pm.response.json().message || ''), pm.response.text()).to.contain('project_id'));"
                 ]
               }
             }
@@ -9609,7 +9620,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"x y\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"natGatewaySpec\": {}, \"subnetId\": \"{{gwAnchorSubId}}\", \"name\": \"x\\u0000y\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9719,7 +9730,7 @@
       ]
     },
     {
-      "name": "GW-LST-SEC-FILTER-SQLI — Security: SQL injection в filter → не 500",
+      "name": "GW-LST-SEC-FILTER-SQLI — Security: SQL injection в filter → 200 и пустая страница, без 500",
       "description": "class:VAL | class:NEG | priority:P0",
       "item": [
         {
@@ -9751,7 +9762,13 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                  "pm.test('handled', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "pm.test('страница пуста: такого имени нет ни у кого — значение ушло параметром', () => {",
+                  "  const j = pm.response.json();",
+                  "  const keys = Object.keys(j).filter(k => Array.isArray(j[k]));",
+                  "  pm.expect(keys, JSON.stringify(j)).to.have.lengthOf(1);",
+                  "  pm.expect(j[keys[0]], JSON.stringify(j)).to.have.lengthOf(0);",
+                  "});"
                 ]
               }
             }

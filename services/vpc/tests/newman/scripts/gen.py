@@ -403,6 +403,76 @@ def assert_operation_envelope() -> List[str]:
     ]
 
 
+def assert_empty_page(why: str) -> List[str]:
+    """Списочное чтение, чей ответ УСТАНОВЛЕН: 200 и пустая страница.
+
+    Пара «HTTP-статус + форма ответа», а не `oneOf([200, 400])`. Разбор фильтра
+    детерминирован (`pkg/filter`.`Parse`): поле берётся из белого списка, значение
+    стоит в кавычках, хвоста нет — узел строится, значение уезжает ПАРАМЕТРОМ
+    запроса, и страница приходит пустой, потому что такого имени нет ни у кого.
+    `400` производится ТОЛЬКО негодным синтаксисом выражения, которого эта
+    нагрузка не содержит, — то есть прежняя запись перечисляла исход, которого на
+    этом входе не бывает, и одновременно приняла бы регрессию разбора.
+
+    Пустота проверяется по СОСТАВУ ответа, а не по имени поля: у публичной полосы
+    края `EmitUnpopulated=true` (`gateway/internal/restmux/mux.go`), поэтому
+    пустой список приходит как `[]`, а не отсутствует, и у списочного ответа
+    ровно один массив верхнего уровня. Обе половины утверждаются: «массив ровно
+    один» ловит смену формы ответа, «он пуст» — смену смысла фильтра.
+    """
+    return [
+        "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+        f"pm.test('страница пуста: {why}', () => {{",
+        "  const j = pm.response.json();",
+        "  const keys = Object.keys(j).filter(k => Array.isArray(j[k]));",
+        "  pm.expect(keys, JSON.stringify(j)).to.have.lengthOf(1);",
+        "  pm.expect(j[keys[0]], JSON.stringify(j)).to.have.lengthOf(0);",
+        "});",
+    ]
+
+
+def assert_cleanup_delete(what: str, refusal: str) -> List[str]:
+    """Уборка ЧИТАЕТ ОБЕ полосы, а не принимает любую из двух.
+
+    У шага уборки производителей действительно два, и это законно: кейс, чей
+    предмет — поведение Create, мог ресурс создать, а мог и нет, поэтому родитель
+    к моменту уборки либо пуст, либо занят. Но «два производителя» не означает
+    «любой ответ сойдёт»: прежняя запись `oneOf([200, 400])` не читала НИ ОДНУ из
+    полос и потому принимала и отказ в правах, поданный краем как 400, и отказ по
+    валидации (код 3), и смену контракта удаления.
+
+    Полосы названы и каждая пришпилена своей подписью:
+      200 — удаление ПРИНЯТО, ответ несёт конверт `Operation` (непустой `id`);
+      400 — удаление отвергнуто СОСТОЯНИЕМ ресурса: `FAILED_PRECONDITION`
+            (код 9). Чем именно занят ресурс, называет параметр `refusal` —
+            он идёт в текст утверждения, чтобы отказ читался без похода в код.
+            Все отказы удаления vpc имеют этот код (`api/*/delete.go`), поэтому
+            400 с кодом 3 здесь означает смену контракта, а не «уборке не
+            повезло».
+
+    Исполняется РОВНО ОДНО утверждение из двух, поэтому 403/404/500 попадают в
+    ветку отказа и роняют её на первом же `to.eql(400)` — то есть форма способна
+    упасть по своей причине. Ссылки на `pm.response.code` оставлены дословными:
+    по ним `_accepted_http_codes` читает набор исходов шага, и обёртка ожидания
+    видимости обязана видеть тот же набор (200, 400), что и прежде.
+    """
+    return [
+        "const _cuT = pm.response.text();",
+        "let _cuJ; try { _cuJ = pm.response.json(); } catch (e) { _cuJ = {}; }",
+        "if (pm.response.code === 200) {",
+        f"  pm.test('уборка ({what}): принято — 200 и конверт Operation', () => {{",
+        "    pm.expect(pm.response.code, _cuT).to.eql(200);",
+        "    pm.expect(_cuJ.id, _cuT).to.be.a('string').and.to.have.length.above(0);",
+        "  });",
+        "} else {",
+        f"  pm.test('уборка ({what}): отказ по СОСТОЯНИЮ — 400 и код 9 ({refusal})', () => {{",
+        "    pm.expect(pm.response.code, _cuT).to.eql(400);",
+        "    pm.expect(_cuJ.code, _cuT).to.eql(9);",
+        "  });",
+        "}",
+    ]
+
+
 # Subnet CIDR shape (VPC-1 F7). The flat "all blocks" array was split into an
 # immutable primary anchor set at Create (`ipv4_cidr_primary` / `ipv6_cidr_primary`)
 # plus additional ranges moved by the :add-cidr-blocks / :remove-cidr-blocks verb
@@ -1851,7 +1921,7 @@ def pairwise_subnet_pack():
 
 
 def security_injection_block(prefix, create_path, list_path, body_create):
-    """Security probes: SQL/command/XSS injection в name + filter.
+    r"""Security probes: SQL/command/XSS/нулевой байт в name + filter.
 
     Никогда не должно возвращать 500 или утечку pgx/stack trace — и это НЕ
     единственное, что здесь установлено.
@@ -1869,15 +1939,15 @@ def security_injection_block(prefix, create_path, list_path, body_create):
 
     Почему исход установим — по каждому звену тракта:
 
-      * имя проверяется САМЫМ РАЗРЕШИТЕЛЬНЫМ из контрактов имени
-        (`domain.RcNameVPC.Validate` / `corevalidate.NameVPC`, регекс
-        `^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$`), и ни одна из семи
-        нагрузок ему не соответствует: апостроф, угловая скобка, точка, слэш,
-        точка с запятой и пробел лежат вне класса символов, а «A»×1000 длиннее
-        63. У Gateway контракт СТРОЖЕ (`corevalidate.NameGateway` — без
-        uppercase и underscore), значит он отвергает то же подмножество и сверх
-        него. То есть `200` недостижим ни для одной нагрузки ни на одном из
-        шести ресурсов;
+      * имя проверяется ЕДИНСТВЕННОЙ формой дерева — DNS label RFC 1123,
+        `pkg/validate/nameform`.`Form` = `^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`.
+        Её читают ОБЕ ветки: `domain.RcNameVPC.Validate` у пяти ресурсов и
+        `corevalidate.NameOnCreate` у Gateway (прежние `corevalidate.NameVPC` и
+        `NameGateway` — две разные формы одного правила — сведены в одну, #715).
+        Ни одна из семи нагрузок ей не соответствует: апостроф, угловая скобка,
+        точка, слэш, точка с запятой, пробел и нулевой байт лежат вне класса
+        символов, а «A»×1000 и заглавная, и длиннее 63. То есть `200` недостижим
+        ни для одной нагрузки ни на одном из шести ресурсов;
       * отказ СИНХРОННЫЙ и стоит ДО обращения к соседям и до создания Operation
         (`Execute` каждого из шести ресурсов), поэтому код именно
         `INVALID_ARGUMENT`, а не `FAILED_PRECONDITION` peer-полосы и не
@@ -1900,10 +1970,23 @@ def security_injection_block(prefix, create_path, list_path, body_create):
     этого не меняется и утверждается СВОИМИ строками — усиление формы отказа его
     не замещает.
 
-    Замечание о нагрузке `nullbyte`: в дереве она несёт `x`, ПРОБЕЛ, `y`
-    (проверено побайтно), а не нулевой байт. Исход тот же — пробел вне класса
-    символов имени ровно так же, как и нулевой байт, — но имя нагрузки шире
-    того, что она шлёт.
+    Нагрузка `nullbyte` несёт НАСТОЯЩИЙ нулевой байт: `x`, `0x00`, `y`. В теле
+    запроса он записан экранированной последовательностью `\u0000` — другого
+    способа выразить его в JSON нет, — и разбор края возвращает из неё именно
+    байт `0x00`: `protojson.Unmarshal` на `CreateNetworkRequest` даёт имя
+    `78 00 79` без ошибки, после чего форма имени его отвергает. Нулевой байт
+    интересен отдельно от прочих нагрузок тем, что его обработка расходится
+    между слоями (разбор JSON, драйвер БД, C-строки libpq).
+
+    До #701 здесь стоял ПРОБЕЛ. Исход совпадал — пробел вне класса символов
+    ровно так же, — поэтому кейс был зелёным, и подмена прожила незамеченной:
+    «фикстура не проверяет того, чем названа». Слот занят, отчёт зелёный, а
+    входа, ради которого проба заведена, край не видел ни разу.
+
+    Соответствие ИМЕНИ нагрузки её БАЙТАМ держится теперь не вниманием, а гейтом
+    по дереву: `internal/repohygiene/artifactgates`
+    `TestInjectionPayloadCarriesWhatItsNamePromises` читает СГЕНЕРИРОВАННЫЕ
+    коллекции всех наборов и требует по каждой нагрузке то, что обещает её имя.
 
     Способность этих утверждений упасть доказана инъекцией в обе стороны:
     `scripts/selftest_security_injection_lanes.py`.
@@ -1914,7 +1997,8 @@ def security_injection_block(prefix, create_path, list_path, body_create):
         ("xss", "<script>alert(1)</script>"),
         ("cmd", "; rm -rf / ;"),
         ("path", "../../etc/passwd"),
-        ("nullbyte", "x y"),
+        # Настоящий нулевой байт, а не пробел (#701). Разбор — в docstring выше.
+        ("nullbyte", "x\x00y"),
         ("longpayload", "A" * 1000),
     ]
     cases = []
@@ -1939,15 +2023,23 @@ def security_injection_block(prefix, create_path, list_path, body_create):
                             "});",
                         ])],
         ))
+    # Списочная полоса той же нагрузки. Исход здесь УСТАНОВЛЕН, а не неопределён:
+    # `name="a\' OR 1=1--"` разбирается штатно (поле в белом списке, значение в
+    # кавычках, хвоста нет) и уезжает ПАРАМЕТРОМ запроса — значит 200 и пустая
+    # страница. Прежнее `oneOf([200, 400])` перечисляло исход, которого на этом
+    # входе не бывает, и тем же утверждением приняло бы регрессию разбора фильтра:
+    # разборщик, отвергающий законное выражение, зеленел бы наравне с исправным.
+    # `not 500` остаётся: это отдельный предмет (нет паники/утечки на пути фильтра),
+    # у него свой производитель, и он не поглощается утверждением о 200.
     cases.append(Case(
         id=f"{prefix}-LST-SEC-FILTER-SQLI",
-        title="Security: SQL injection в filter → не 500",
+        title="Security: SQL injection в filter → 200 и пустая страница, без 500",
         classes=["VAL", "NEG"], priority="P0",
         steps=[Step(name="lst-sqli", method="GET",
                     path=f"{list_path}?projectId={{{{_suiteProjectId}}}}&filter=name%3D%22a%27%20OR%201%3D1--%22",
                     test_script=[
                         "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                        "pm.test('handled', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                        *assert_empty_page("такого имени нет ни у кого — значение ушло параметром"),
                     ])],
     ))
     return cases
@@ -3655,6 +3747,8 @@ def load_cases_module(path: Path):
     mod.assert_refused_sync_or_async = assert_refused_sync_or_async
     mod.save_from_response = save_from_response
     mod.assert_operation_envelope = assert_operation_envelope
+    mod.assert_empty_page = assert_empty_page
+    mod.assert_cleanup_delete = assert_cleanup_delete
     mod.SUBNET_V4_CIDRS = SUBNET_V4_CIDRS
     mod.SUBNET_V6_CIDRS = SUBNET_V6_CIDRS
     mod.poll_operation_until_done = poll_operation_until_done
