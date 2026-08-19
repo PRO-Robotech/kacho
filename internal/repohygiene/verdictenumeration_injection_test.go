@@ -38,6 +38,30 @@ const registryValueSQL = `"kacho_iam.accounts"`
 // себе ни параметров, ни предикатов не несёт — они в соседних слагаемых.
 const assembledSQL = "\"SELECT m.labels FROM kacho_iam.resource_mirror m WHERE m.object_id = \" + idParam + \"::text\""
 
+// commaJoinedSQL — чтение, приписанное ЧЕРЕЗ ЗАПЯТУЮ. Форма законная и в
+// продукте не встречающаяся; гейт обязан находить её так же, как через JOIN,
+// иначе перечисление вернётся именно этим способом.
+const commaJoinedSQL = "`\n" + `
+SELECT m.object_id
+  FROM kacho_iam.access_bindings b, kacho_iam.resource_mirror m
+ WHERE b.id = $1::text` + "\n`"
+
+// TestG6RedOnACommaJoinedRead — гейт видит запятую как соединение.
+func TestG6RedOnACommaJoinedRead(t *testing.T) {
+	found, c := auditInjectedSQL(t, commaJoinedSQL)
+	var named bool
+	for _, f := range found {
+		if f.table == "resource_mirror" {
+			named = true
+		}
+	}
+	if !named {
+		t.Fatalf("чтение через запятую находкой не признано (чтений %d, привязано %d, находок %+v): "+
+			"перечисление вернулось бы именно этой формой", c.reads, c.bounded, found)
+	}
+	t.Logf("инъекция запятой: находок %d, первая — %s", len(found), found[0].table)
+}
+
 func auditInjectedSQL(t *testing.T, lit string) ([]enumFinding, enumCensus) {
 	t.Helper()
 	src := "package p\n\nvar idParam = \"$1\"\n\nvar q = " + lit + "\n"

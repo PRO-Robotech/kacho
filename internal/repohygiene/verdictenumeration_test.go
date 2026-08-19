@@ -388,7 +388,11 @@ func flattenConcat(e ast.Expr, consumed map[ast.Node]bool) (string, bool) {
 // является: там оно значение, а не запрос, и находкой быть не может.
 func precededByReadKeyword(sql string, at int) bool {
 	head := strings.ToUpper(strings.TrimRight(sql[:at], " \t\n"))
-	for _, kw := range []string{"FROM", "JOIN"} {
+	// Запятая — тоже соединение, и она НЕ мелочь: чтение, приписанное через
+	// запятую, ускользало бы от гейта молча, то есть ровно тем способом, каким
+	// перечисление и возвращается. Найдено саморевью, а не прогоном: на дереве
+	// такой формы сегодня нет, и «ноль находок» её отсутствия не доказывало.
+	for _, kw := range []string{"FROM", "JOIN", ","} {
 		if strings.HasSuffix(head, kw) {
 			return true
 		}
