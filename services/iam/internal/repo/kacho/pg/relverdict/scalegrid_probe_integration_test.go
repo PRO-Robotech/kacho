@@ -167,7 +167,11 @@ type gridFixture struct {
 	tx    pgx.Tx
 	seedN int
 	seedB int
-	seedR int
+	// seedBSubjects / seedBRoles — пулы оси B, каждый со своим счётчиком: они
+	// растут МЕДЛЕННЕЕ числа выдач и никогда не пересеваются.
+	seedBSubjects int
+	seedBRoles    int
+	seedR         int
 	// seedRoles — сколько ролей заведено. Считается ОТДЕЛЬНО от выдач и
 	// НИКОГДА не сбрасывается: смена способа набора переписывает выдачи, а роли
 	// остаются, и повторная их вставка была бы нарушением первичного ключа.
@@ -267,30 +271,93 @@ func (f *gridFixture) growN(t *testing.T, ctx context.Context, target int) {
 	f.seedN = target
 }
 
+// bSubjectPool — сколько РАЗЛИЧНЫХ чужих субъектов заводится под ось B.
+//
+// # Почему пул, а не «по субъекту на выдачу» — измерено, а не предположено
+//
+// Первая редакция давала каждой чужой выдаче своего пользователя. На 10⁶ она
+// не сошлась: прогон провёл на этой точке 58 минут и не закончил. Дело не во
+// вставках — их темп линеен, — а в стороже существования субъекта
+// (`kacho_iam.subject_ref_exists`, миграция 0049): он срабатывает НА КАЖДУЮ
+// строку обеих таблиц выдачи и берёт `FOR KEY SHARE` на строке субъекта. Милион
+// РАЗЛИЧНЫХ субъектов означает миллион различных блокировок строк, накопленных
+// в одной транзакции; тысяча субъектов — тысячу, и повторный захват уже
+// удерживаемой блокировки почти бесплатен.
+//
+// # Почему это НЕ ослабляет ось
+//
+// Ось B неудобна вердикту тем, что её выдачи лежат в ТОЙ ЖЕ области, куда он
+// смотрит, и обязаны быть отвергнуты по СУБЪЕКТУ. Отвергаются они построчно:
+// соединение `speaker` идёт по строкам `access_binding_subjects`, и работа
+// вердикта растёт от ЧИСЛА СТРОК, а не от числа различных субъектов в них.
+// Пул сохраняет число строк и сокращает только число различных значений —
+// то есть ровно ту величину, от которой стоимость вердикта не зависит.
+//
+// Уникальность действующей выдачи держится пятёркой (субъект, роль, область),
+// поэтому 10⁶ строк набираются как 10³ субъектов × 10³ ролей.
+const bSubjectPool = 1000
+
 // growB — досыпать ЧУЖИХ выдач до target.
 //
-// Чужие — по СУБЪЕКТУ: каждая выдача названа своим пользователем и лежит на ТОЙ
-// ЖЕ области (`project:prj-1`), которую вердикт действительно читает. Это самая
-// неудобная для запроса форма: выдача стоит там, куда он смотрит, и не должна
-// быть прочитана только потому, что называет не того. Разложить их по чужим
-// областям было бы дешевле (не нужны пользователи) и слабее — тогда ось мерила
-// бы избирательность соединения по области, а не по субъекту.
+// Чужие — по СУБЪЕКТУ: каждая выдача названа не тем, кого спрашивают, и лежит
+// на ТОЙ ЖЕ области (`project:prj-1`), которую вердикт действительно читает.
+// Это самая неудобная для запроса форма: выдача стоит там, куда он смотрит, и
+// не должна быть прочитана только потому, что называет не того. Разложить их по
+// чужим областям было бы дешевле и СЛАБЕЕ — тогда ось мерила бы избирательность
+// соединения по области, а не по субъекту, и кривая вышла бы плоской по причине,
+// не имеющей отношения к предмету.
 func (f *gridFixture) growB(t *testing.T, ctx context.Context, target int) {
 	t.Helper()
 	if target <= f.seedB {
 		return
 	}
 	s := scalegrid.NewSeeder(f.tx)
-	for i := f.seedB; i < target; i++ {
+
+	// Пул субъектов — до нужного, считая от заведённых.
+	wantSubjects := target
+	if wantSubjects > bSubjectPool {
+		wantSubjects = bSubjectPool
+	}
+	for i := f.seedBSubjects; i < wantSubjects; i++ {
 		uid := fmt.Sprintf("usr-b%07d", i)
-		bid := fmt.Sprintf("acb-b%07d", i)
 		must(t, s.QueueRaw(ctx,
 			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
 			 VALUES ($1, $1, $1 || '@kacho.local', 'acc-1')`, uid))
+	}
+	if wantSubjects > f.seedBSubjects {
+		f.seedBSubjects = wantSubjects
+	}
+
+	// Пул ролей: столько, чтобы пятёрка уникальности не столкнулась.
+	wantRoles := (target + bSubjectPool - 1) / bSubjectPool
+	for i := f.seedBRoles; i < wantRoles; i++ {
+		roleID := fmt.Sprintf("rol-b%05d", i)
+		must(t, s.QueueRaw(ctx,
+			`INSERT INTO kacho_iam.roles (id, name, permissions, rules, cluster_id)
+			 VALUES ($1, $2, '[]'::jsonb,
+			         jsonb_build_array(jsonb_build_object(
+			             'module', 'probe', 'resources', jsonb_build_array('*'),
+			             'verbs',  jsonb_build_array($3::text))),
+			         'cluster_kacho_root')`, roleID, fmt.Sprintf("probe.b%05d", i), probeVerb))
+		must(t, s.QueueRaw(ctx,
+			`INSERT INTO kacho_iam.role_verb (role_id, object_type, verb) VALUES ($1, $2, $3)`,
+			roleID, probeCatalogType, probeVerb))
+		must(t, s.QueueRaw(ctx,
+			`INSERT INTO kacho_iam.role_rule_selectors (role_id, rule_fp, arm, object_types, match_labels)
+			 VALUES ($1, 'fp-1', 'anchor', ARRAY[$2::text], '{}'::jsonb)`, roleID, probeCatalogType))
+	}
+	if wantRoles > f.seedBRoles {
+		f.seedBRoles = wantRoles
+	}
+
+	for i := f.seedB; i < target; i++ {
+		uid := fmt.Sprintf("usr-b%07d", i%bSubjectPool)
+		roleID := fmt.Sprintf("rol-b%05d", i/bSubjectPool)
+		bid := fmt.Sprintf("acb-b%07d", i)
 		must(t, s.QueueRaw(ctx,
 			`INSERT INTO kacho_iam.access_bindings
 			   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
-			 VALUES ($1, 'user', $2, 'rol-anchor', 'project', 'prj-1', 'ACTIVE')`, bid, uid))
+			 VALUES ($1, 'user', $2, $3, 'project', 'prj-1', 'ACTIVE')`, bid, uid, roleID))
 		must(t, s.QueueRaw(ctx,
 			`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
 			 VALUES ($1, 'user', $2)`, bid, uid))
