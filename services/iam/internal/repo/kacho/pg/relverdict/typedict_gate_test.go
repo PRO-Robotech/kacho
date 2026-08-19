@@ -75,6 +75,13 @@ var dictionaryOfColumn = map[string]dictionary{
 	"access_binding_subjects.resource_type": dictModel,
 	"resource_parent_edge.object_type":      dictModel,
 	"resource_parent_edge.parent_type":      dictModel,
+	// Представление цепи областей (миграция 740001): те же две колонки, тот же
+	// словарь. Одна из сторон объединения — сама таблица рёбер, две другие
+	// названы литералами модели (`project`, `account`, `cluster`); третьего
+	// словаря здесь не заводится, поэтому запись повторяет родительскую, а не
+	// вводит новую семантику.
+	"resource_scope_edge.object_type": dictModel,
+	"resource_scope_edge.parent_type": dictModel,
 
 	"resource_mirror.object_type":      dictCatalog,
 	"role_verb.object_type":            dictCatalog,

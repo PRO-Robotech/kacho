@@ -4,43 +4,35 @@
 package relverdict_test
 
 // scopereach_integration_test.go — ОБЛАСТЬ ВЕРДИКТА ДОСТАЁТ ДО КОРНЯ НА ТОЙ
-// ФОРМЕ ЦЕПИ, КОТОРУЮ ПРОИЗВОДЯТ ПРОИЗВОДИТЕЛИ.
+// ЦЕПИ, КОТОРУЮ ПРОИЗВОДИТ ДЕРЕВО.
 //
-// # Почему эта проба существует
+// # Что здесь изменилось и почему проба перевёрнута
 //
-// Обход цепи областей и одноразовое чтение таблицы рёбер равносильны РОВНО
-// ТОГДА, когда у каждого объекта лежит строка на КАЖДОГО предка до корня. Это
-// утверждение о ПРОИЗВОДИТЕЛЯХ, а не о схеме: ключ (объект, глубина) и проверка
-// глубины 1..4 допускают обе формы — и замыкание, и список непосредственных
-// рёбер.
+// Прежде рядом стояли две пробы: одна доставала до корня на цепи, ДОСЕЯННОЙ до
+// полной, вторая закрепляла КАК ЕСТЬ, что на цепи из одного звена — той, что
+// шлёт vpc, — выдача на аккаунт и факт администратора облака на кластере не
+// находятся. Вторая была объявлена сигнальной: её покраснение означало «предмет
+// закрыт», а не поломку. Предмет закрыт (kacho#740), поэтому она снята, и на её
+// место встало утверждение о НОВОМ поведении.
 //
-// Проверено по дереву, и предпосылка ЛОЖНА:
+// # Откуда теперь берутся звенья выше проекта
 //
-//	pkg/ownerregister.ParentChain(nil, projectID, "") — ОДНО звено (проект);
-//	registry шлёт [реестр, проект] — без аккаунта;
-//	cluster не шлёт НИКТО.
-//
-// Комментарий самого консьюмера говорит это прямо: «аккаунт достигается с самого
-// проекта его собственным ребром» — то есть транзитивным обходом.
+// Из собственной схемы iam, а не из сообщения производителя. Предок проекта —
+// его аккаунт (`projects.account_id`), предок аккаунта — кластер (синглтон
+// `clusters`); обе величины принадлежат iam и всегда актуальны. Цепь областей
+// читается представлением `resource_scope_edge`: к рёбрам, присланным
+// владельцами ресурсов, оно ДОБАВЛЯЕТ эти два звена там, где владелец о них
+// молчит. Копии при этом не заводится — звено И ЕСТЬ строка `projects`, поэтому
+// переезд проекта в другой аккаунт виден следующим же вопросом, а не после
+// перерегистрации всех его ресурсов.
 //
 // # Почему фикстура сеется ПРОИЗВОДИТЕЛЕМ, а не сырым SQL
 //
 // Сырой SQL позволяет положить цепь любой формы, в том числе той, которой в
-// продукте не бывает. Тогда «формы равносильны» становится свойством ФИКСТУРЫ:
-// она сама кладёт то, что потом проверяет. Ровно этот приём уже принят гейтом
-// полноты цепи; здесь он применяется к достижимости.
-//
-// # Что проба утверждает
-//
-// На цепи, набранной производителем (сеть → проект, проект → аккаунт, аккаунт →
-// кластер, по ОДНОМУ звену у каждого — как шлют в дереве), действуют:
-//
-//	· выдача роли на АККАУНТ — два звена вверх от объекта;
-//	· прямой факт system_admin на КЛАСТЕРЕ — три звена вверх.
-//
-// Оба — верхние уровни `security.md` §«Три уровня супер-доступа», включая
-// аварийный путь администратора облака. Если область схлопнулась до «объект +
-// проект», оба отвечают отказом, и отказ этот НЕОТЛИЧИМ от честного.
+// продукте не бывает. Тогда «область достаёт до корня» становится свойством
+// ФИКСТУРЫ: она сама кладёт то, что потом проверяет. Регистрация идёт тем же
+// вызовом, которым её делает продукт, и ровно с тем содержанием, которое шлёт
+// vpc: `ParentChain(nil, projectID, "")` — одно звено.
 
 import (
 	"context"
@@ -54,14 +46,42 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/resource_mirror"
 )
 
-// seedChainThroughProducer — цепь, набранная ЕДИНСТВЕННЫМ производителем рёбер
-// дерева, каждым звеном по отдельности.
+// registerThroughProducer — ОДНА регистрация, проведённая единственным
+// производителем рёбер дерева.
 //
-// Форма вызова — та, которой шлют регистрации. Но САМИ вызовы для проекта и
-// аккаунта дерево не делает: их объектов не регистрирует никто. Здесь они
-// досеяны, чтобы отделить свойство ЗАПРОСА (доходит ли обход до корня по полной
-// цепи) от свойства ПРОИЗВОДИТЕЛЕЙ (существует ли полная цепь). Смешать их —
-// значит объявить закрытым то, что не закрыто.
+// Форма вызова — та, которой шлют регистрации; содержание — то, которое шлёт
+// названный потребитель. Проверка `Applied` не формальность: молча не
+// применившаяся регистрация оставила бы пробу зелёной ни на чём.
+func registerThroughProducer(t *testing.T, ctx context.Context, tx pgx.Tx,
+	objectType, objectID string, chain []string, project, account string, version time.Time) {
+	t.Helper()
+	out, err := resource_mirror.UpsertTx(ctx, tx, resource_mirror.Row{
+		ObjectType:      objectType,
+		ObjectID:        objectID,
+		ParentProjectID: project,
+		ParentAccountID: account,
+		ParentChain:     chain,
+		SourceVersion:   version,
+	})
+	if err != nil {
+		t.Fatalf("регистрация %s:%s через производителя: %v", objectType, objectID, err)
+	}
+	if !out.Applied {
+		t.Fatalf("регистрация %s:%s не применилась — фикстура ничего не посеяла",
+			objectType, objectID)
+	}
+}
+
+// seedChainThroughProducer — цепь, названная владельцем ЦЕЛИКОМ, звено за
+// звеном.
+//
+// Это вторая из двух законных форм: владелец, чья иерархия глубже проекта
+// (реестр над репозиторием), обязан назвать её сам — вывести её из области
+// доставки нельзя. Здесь она изображена на проекте и аккаунте, чтобы проба
+// судила ИМЕННО присланную цепь, без участия достройки схемой.
+//
+// Что происходит, когда владелец шлёт ОДНО звено (а так шлют vpc, compute и
+// storage), утверждает соседняя проба — там выше проекта поднимает уже схема.
 func seedChainThroughProducer(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	t.Helper()
 	base := time.Now().UTC().Truncate(time.Microsecond)
@@ -74,39 +94,20 @@ func seedChainThroughProducer(t *testing.T, ctx context.Context, tx pgx.Tx) {
 		// Тип называется словарём КАТАЛОГА: им назван `resource_mirror.object_type`,
 		// и перевод в словарь модели делает сам производитель.
 		{catalogFormOf(t, "vpc_network"), "net-1", ownerregister.ParentChain(nil, "prj-1", ""), "prj-1", ""},
-		// Проект: своё собственное ребро на аккаунт — тоже досеяно (см. ниже).
 		{catalogFormOf(t, "project"), "prj-1", ownerregister.ParentChain(nil, "", "acc-1"), "", "acc-1"},
-		// ВНИМАНИЕ: ни этого звена, ни предыдущего дерево НЕ ПРОИЗВОДИТ. Рёбра
-		// появляются единственным путём — регистрацией ресурса, — и зовут её
-		// пять сервисов-соседей для СВОИХ ресурсов; объектов типа project и
-		// account не регистрирует никто, включая сам iam. Оба звена досеяны
-		// здесь НАМЕРЕННО, чтобы проба судила достижимость ПРИ ПОЛНОЙ ЦЕПИ:
-		// свойство запроса отделено от свойства производителей.
-		//
-		// Что происходит на цепи БЕЗ этих звеньев — утверждает соседняя проба
-		// TestScopeStopsAtTheProjectOnTheChainTheTreeActuallyProduces, и её
-		// ответ сегодня «не находит».
 		{catalogFormOf(t, "account"), "acc-1", []string{"cluster:cluster_kacho_root"}, "", ""},
 	}
 	for i, r := range regs {
-		if _, err := resource_mirror.UpsertTx(ctx, tx, resource_mirror.Row{
-			ObjectType:      r.objectType,
-			ObjectID:        r.objectID,
-			ParentProjectID: r.project,
-			ParentAccountID: r.account,
-			ParentChain:     r.chain,
-			SourceVersion:   base.Add(time.Duration(i) * time.Millisecond),
-		}); err != nil {
-			t.Fatalf("регистрация %s:%s через производителя: %v", r.objectType, r.objectID, err)
-		}
+		registerThroughProducer(t, ctx, tx, r.objectType, r.objectID, r.chain,
+			r.project, r.account, base.Add(time.Duration(i)*time.Millisecond))
 	}
 }
 
-// TestScopeReachesTheRootOnTheChainProducersActuallyWrite — Б1.
+// TestScopeReachesTheRootOnTheChainProducersActuallyWrite — цепь, названная
+// владельцем ЦЕЛИКОМ, поднимается до корня.
 //
-// Красная, пока область вердикта читается ОДНИМ обращением к таблице рёбер:
-// у сети лежит одно ребро (проект), и ни аккаунт, ни кластер в область не
-// попадают.
+// Красная, пока область вердикта читается ОДНИМ обращением к таблице рёбер: у
+// сети лежит одно ребро (проект), и ни аккаунт, ни кластер в область не попадают.
 func TestScopeReachesTheRootOnTheChainProducersActuallyWrite(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration")
@@ -197,34 +198,28 @@ func TestScopeReachesTheRootOnTheChainProducersActuallyWrite(t *testing.T) {
 	})
 }
 
-// TestScopeStopsAtTheProjectOnTheChainTheTreeActuallyProduces — вторая половина
-// Б1, закреплённая КАК ЕСТЬ.
+// TestScopeReachesTheRootOnTheChainTheTreeActuallyProduces — kacho#740.
 //
-// # Зачем закреплять то, что неверно
+// # Предмет
 //
-// Рёбра появляются единственным путём — регистрацией ресурса у владельца прав, —
-// и зовут её пять сервисов-соседей ТОЛЬКО для своих ресурсов. Объектов типа
-// project и account не регистрирует никто, включая сам iam. Значит рёбер
-// project → account и account → cluster в базе нет, и обход, дойдя до проекта,
-// останавливается: выдача на аккаунт и факт администратора облака на кластере
-// этой формой НЕ НАХОДЯТСЯ.
+// Владельцы ресурсов шлют ОДНО звено — проект, — и рёбер выше проекта не пишет
+// никто: объектов типа project и account не регистрирует ни один сервис, включая
+// сам iam. Пока цепь состояла ТОЛЬКО из присланного, обход доходил до проекта и
+// там останавливался: выдача на аккаунт и факт администратора облака на кластере
+// не находились, и отказ был НЕОТЛИЧИМ от честного.
 //
-// Пока это не закреплено, «не работает» неотличимо от «работает»: соседняя проба
-// досеивает недостающие звенья и потому зелена, а корпус вопросов сравнителя
-// таких вопросов не задаёт. Проба фиксирует НЫНЕШНИЙ ответ, чтобы:
+// Теперь звенья выше проекта достраивает схема — из тех самых строк `projects` и
+// `accounts`, которые iam и так держит. Проба утверждает исход на цепи, которую
+// дерево ДЕЙСТВИТЕЛЬНО производит: одно ребро у объекта, ни одного у проекта и
+// аккаунта.
 //
-//	· появление производителя было ЗАМЕЧЕНО — она покраснеет, и это сигнал
-//	  «предмет задачи о недостающих рёбрах закрыт», а не поломка;
-//	· переключение решения о доступе на эту форму нельзя было сделать молча.
+// # Почему отрицания стоят рядом и почему их два
 //
-// # Почему это не боевая регрессия
-//
-// Реляционный вердикт провязан единственным местом — теневым сравнителем;
-// решение о доступе принимает другая форма, берущая аккаунт резолвом на границе
-// чтения, а не ребром. Опасность отложенная, и потому предмет заведён задачей, а
-// не чинится здесь: kacho#740, там же предикат снятия и три рассматриваемых
-// решения.
-func TestScopeStopsAtTheProjectOnTheChainTheTreeActuallyProduces(t *testing.T) {
+// Первое — чужой аккаунт: без него положительные утверждения зеленели бы на
+// форме, разрешающей всем. Второе — объект под проектом, которого iam не знает:
+// без него нельзя отличить «схема достроила по данным» от «схема достраивает
+// всегда». Достройка обязана иметь предмет, а не быть безусловной.
+func TestScopeReachesTheRootOnTheChainTheTreeActuallyProduces(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration")
 	}
@@ -232,82 +227,103 @@ func TestScopeStopsAtTheProjectOnTheChainTheTreeActuallyProduces(t *testing.T) {
 		seedTenant(t, ctx, tx)
 		seedRole(t, ctx, tx, "rol-any", "vpc_network", "get", "anchor", "{}")
 
+		base := time.Now().UTC().Truncate(time.Microsecond)
 		// ТОЛЬКО то звено, которое дерево действительно производит: vpc шлёт
 		// ParentChain(nil, projectID, "") — один проект и ничего больше.
-		base := time.Now().UTC().Truncate(time.Microsecond)
-		if _, err := resource_mirror.UpsertTx(ctx, tx, resource_mirror.Row{
-			ObjectType:      catalogFormOf(t, "vpc_network"),
-			ObjectID:        "net-1",
-			ParentProjectID: "prj-1",
-			ParentChain:     ownerregister.ParentChain(nil, "prj-1", ""),
-			SourceVersion:   base,
-		}); err != nil {
-			t.Fatalf("регистрация сети через производителя: %v", err)
-		}
+		registerThroughProducer(t, ctx, tx, catalogFormOf(t, "vpc_network"), "net-1",
+			ownerregister.ParentChain(nil, "prj-1", ""), "prj-1", "", base)
+		// Второй объект — под проектом, которого в `projects` НЕТ. Достройке не
+		// из чего взять аккаунт, и цепь обязана остановиться.
+		registerThroughProducer(t, ctx, tx, catalogFormOf(t, "vpc_network"), "net-7",
+			ownerregister.ParentChain(nil, "prj-unknown", ""), "prj-unknown", "",
+			base.Add(time.Millisecond))
 
 		var edges int
 		if err := tx.QueryRow(ctx,
 			`SELECT count(*)::int FROM kacho_iam.resource_parent_edge`).Scan(&edges); err != nil {
 			t.Fatalf("перепись рёбер: %v", err)
 		}
-		if edges != 1 {
-			t.Fatalf("рёбер в базе %d, ожидалось РОВНО ОДНО: фикстура положила больше, чем "+
-				"производит дерево, и проба судила бы не то состояние", edges)
+		if edges != 2 {
+			t.Fatalf("рёбер в базе %d, ожидалось РОВНО ДВА (по одному на объект): фикстура "+
+				"положила больше, чем производит дерево, и проба судила бы не то состояние", edges)
 		}
-		t.Logf("на цепи, которую производит дерево, рёбер всего %d (сеть → проект)", edges)
+		t.Logf("на цепи, которую производит дерево, рёбер всего %d — по одному звену у объекта", edges)
 
-		ask := func(scopeType, scopeID, bindingID string) relverdict.Verdict {
+		ask := func(subject, objectID string) relverdict.Verdict {
+			t.Helper()
+			got, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
+				Subject: subject, ObjectType: "vpc_network", ObjectID: objectID, Relation: "v_get",
+			})
+			if err != nil {
+				t.Fatalf("вопрос о %s над %s: %v", subject, objectID, err)
+			}
+			return got
+		}
+		grant := func(bindingID, scopeType, scopeID, subjectID string) {
 			t.Helper()
 			exec(t, ctx, tx,
 				`INSERT INTO kacho_iam.access_bindings
 				   (id, subject_type, subject_id, role_id, resource_type, resource_id, status)
-				 VALUES ($1, 'user', 'usr-1', 'rol-any', $2, $3, 'ACTIVE')`,
-				bindingID, scopeType, scopeID)
+				 VALUES ($1, 'user', $4, 'rol-any', $2, $3, 'ACTIVE')`,
+				bindingID, scopeType, scopeID, subjectID)
 			exec(t, ctx, tx,
 				`INSERT INTO kacho_iam.access_binding_subjects (binding_id, subject_type, subject_id)
-				 VALUES ($1, 'user', 'usr-1')`, bindingID)
-			got, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
-				Subject: "user:usr-1", ObjectType: "vpc_network", ObjectID: "net-1", Relation: "v_get",
-			})
-			if err != nil {
-				t.Fatalf("вопрос при выдаче на %s: %v", scopeType, err)
-			}
-			exec(t, ctx, tx, `DELETE FROM kacho_iam.access_bindings WHERE id = $1`, bindingID)
-			return got
+				 VALUES ($1, 'user', $2)`, bindingID, subjectID)
 		}
 
 		// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ ПЕРВЫМ: до проекта обход доходит. Без него
-		// отказы ниже были бы неотличимы от «форма не работает вовсе».
-		if got := ask("project", "prj-1", "acb-prj"); got != relverdict.Allow {
-			t.Fatalf("выдача на ПРОЕКТ не достала до объекта: %s. Контроль провален, и отказы "+
-				"ниже ничего не говорят о высоте цепи", got)
+		// утверждения ниже ничего не сказали бы о высоте цепи.
+		grant("acb-prj", "project", "prj-1", "usr-1")
+		if got := ask("user:usr-1", "net-1"); got != relverdict.Allow {
+			t.Fatalf("выдача на ПРОЕКТ не достала до объекта: %s. Контроль провален, и "+
+				"утверждения ниже ничего не говорят о высоте цепи", got)
 		}
+		exec(t, ctx, tx, `DELETE FROM kacho_iam.access_bindings WHERE id = 'acb-prj'`)
 		t.Log("контроль: выдача на проект — allow, обход до непосредственного предка работает")
 
-		// А выше — не достаёт, и это закрепляется КАК ЕСТЬ.
-		if got := ask("account", "acc-1", "acb-acc"); got != relverdict.Deny {
-			t.Errorf("выдача на АККАУНТ дала %s. Если это allow — значит недостающие рёбра "+
-				"кто-то начал писать: предмет задачи о производителях закрыт, и эту пробу "+
-				"надо снять вместе с ним, а не чинить", got)
+		// (1) Выдача на АККАУНТ — два звена вверх, второе достроено схемой.
+		grant("acb-acc", "account", "acc-1", "usr-1")
+		if got := ask("user:usr-1", "net-1"); got != relverdict.Allow {
+			t.Errorf("выдача на АККАУНТ не достала до объекта арендатора: %s. Владелец шлёт "+
+				"одно звено, а предок проекта — его аккаунт — обязан браться из собственной "+
+				"схемы iam, иначе верхний ярус выдач недостижим, а отказ неотличим от честного", got)
 		}
+
+		// (2) Прямой факт администратора облака на КЛАСТЕРЕ — три звена вверх.
 		exec(t, ctx, tx,
 			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
 			 VALUES ('usr-admin', 'ext-admin', 'admin@kacho.local', 'acc-1')`)
 		exec(t, ctx, tx,
 			`INSERT INTO kacho_iam.relation_fact (object_type, object_id, relation, subject)
 			 VALUES ('cluster', 'cluster_kacho_root', 'system_admin', 'user:usr-admin')`)
-		admin, _, err := relverdict.Ask(ctx, tx, relverdict.Query{
-			Subject: "user:usr-admin", ObjectType: "vpc_network", ObjectID: "net-1", Relation: "v_get",
-		})
-		if err != nil {
-			t.Fatalf("вопрос администратора облака: %v", err)
+		if got := ask("user:usr-admin", "net-1"); got != relverdict.Allow {
+			t.Errorf("администратор облака не достал до объекта арендатора: %s. Это аварийный "+
+				"путь §«Три уровня супер-доступа»: он обязан работать независимо от состояния "+
+				"конвейеров материализации", got)
 		}
-		if admin != relverdict.Deny {
-			t.Errorf("администратор облака дал %s — см. выше: это сигнал о закрытии предмета, "+
-				"а не о поломке", admin)
+
+		// (3) ОТРИЦАНИЕ: объект под проектом, которого iam не знает, до корня не
+		// поднимается — ни выдачей на аккаунт, ни фактом на кластере.
+		if got := ask("user:usr-1", "net-7"); got != relverdict.Deny {
+			t.Errorf("выдача на аккаунт достала до объекта под НЕИЗВЕСТНЫМ проектом: %s — "+
+				"значит достройка безусловна и выдумывает предка, которого в данных нет", got)
 		}
-		t.Log("закреплено КАК ЕСТЬ: на цепи дерева выдача на аккаунт и факт на кластере " +
-			"этой формой не находятся — рёбер выше проекта не пишет никто")
+		if got := ask("user:usr-admin", "net-7"); got != relverdict.Deny {
+			t.Errorf("администратор облака достал до объекта под НЕИЗВЕСТНЫМ проектом: %s — "+
+				"см. выше: достройка обязана читать данные, а не подставлять корень всякому", got)
+		}
+
+		// (4) ОТРИЦАНИЕ: чужой аккаунт не достаёт и через достроенное звено.
+		exec(t, ctx, tx,
+			`INSERT INTO kacho_iam.accounts (id, name, owner_user_id) VALUES ('acc-9', 'foreign', 'usr-1')`)
+		exec(t, ctx, tx,
+			`INSERT INTO kacho_iam.users (id, external_id, email, account_id)
+			 VALUES ('usr-out', 'ext-out', 'out@kacho.local', 'acc-1')`)
+		grant("acb-foreign", "account", "acc-9", "usr-out")
+		if got := ask("user:usr-out", "net-1"); got != relverdict.Deny {
+			t.Errorf("выдача на ЧУЖОЙ аккаунт достала до объекта: %s — положительные "+
+				"утверждения выше зеленели бы на форме, которая разрешает всем", got)
+		}
 	})
 }
 
@@ -326,9 +342,9 @@ func TestScopeStopsAtTheProjectOnTheChainTheTreeActuallyProduces(t *testing.T) {
 // дереве не было ни одной. Все четыре точки входа сегодня сходятся — эта проба
 // закрепляет схождение, чтобы расхождение стало видимым.
 //
-// Цепь досеивается до аккаунта намеренно: предмет здесь — согласие четырёх
-// форм между собой, а не высота, до которой доходит производитель (её
-// закрепляет соседняя проба).
+// Цепь берётся ТА, КОТОРУЮ ПРОИЗВОДИТ ДЕРЕВО (одно звено): расхождение между
+// формами возможно и на достроенном схемой звене, а на досеянной полной цепи
+// достройка не участвовала бы вовсе.
 func TestAllFourEntryPointsAgreeOnAGrantAboveTheImmediateParent(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration")
@@ -336,7 +352,9 @@ func TestAllFourEntryPointsAgreeOnAGrantAboveTheImmediateParent(t *testing.T) {
 	withTx(t, func(ctx context.Context, tx pgx.Tx) {
 		seedTenant(t, ctx, tx)
 		seedRole(t, ctx, tx, "rol-acc", "vpc_network", "get", "anchor", "{}")
-		seedChainThroughProducer(t, ctx, tx)
+		registerThroughProducer(t, ctx, tx, catalogFormOf(t, "vpc_network"), "net-1",
+			ownerregister.ParentChain(nil, "prj-1", ""), "prj-1", "",
+			time.Now().UTC().Truncate(time.Microsecond))
 
 		// Выдача на АККАУНТ — два звена вверх от объекта.
 		exec(t, ctx, tx,
@@ -396,7 +414,7 @@ func TestAllFourEntryPointsAgreeOnAGrantAboveTheImmediateParent(t *testing.T) {
 		// поднимается по цепи не на ту высоту, — а по какой причине (иной
 		// предикат, иная привязка параметра), скажет уже разбор.
 		if verdict != relverdict.Allow {
-			t.Errorf("точечный вердикт %s при выдаче на аккаунт и полной цепи", verdict)
+			t.Errorf("точечный вердикт %s при выдаче на аккаунт и цепи из одного звена", verdict)
 		}
 		if !listed {
 			t.Errorf("перечисление не вернуло объект, который точечный вердикт разрешает: "+
