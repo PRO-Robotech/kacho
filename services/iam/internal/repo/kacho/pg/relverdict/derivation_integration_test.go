@@ -32,14 +32,26 @@ import (
 )
 
 // seedChain выстраивает цепь сеть → проект → аккаунт → кластер.
+//
+// Каждый объект несёт СВОЁ ЗАМЫКАНИЕ — строку на КАЖДОГО предка, а не только на
+// непосредственного. Это не педантизм фикстуры, а форма, которую производит
+// единственный производитель рёбер в дереве (`resource_mirror.UpsertTx`: он
+// кладёт всю присланную цепь, глубина — позиция в ней). Прежняя редакция клала
+// по одному ребру на звено и полагалась на то, что обход СОСТАВИТ цепь
+// транзитивно; такого состояния продукт не производит, и фикстура была
+// снисходительнее продукта ровно в ту сторону, в какую снисходительность
+// незаметна: пока обход рекурсивен, ответ совпадает.
 func seedChain(t *testing.T, ctx context.Context, tx pgx.Tx) {
 	t.Helper()
 	seedTenant(t, ctx, tx)
 	exec(t, ctx, tx,
 		`INSERT INTO kacho_iam.resource_parent_edge
 		   (object_type, object_id, parent_type, parent_id, depth)
-		 VALUES ('vpc_network', 'net-1', 'project', 'prj-1', 1),
-		        ('project',     'prj-1', 'account', 'acc-1', 1),
+		 VALUES ('vpc_network', 'net-1', 'project', 'prj-1',              1),
+		        ('vpc_network', 'net-1', 'account', 'acc-1',              2),
+		        ('vpc_network', 'net-1', 'cluster', 'cluster_kacho_root', 3),
+		        ('project',     'prj-1', 'account', 'acc-1',              1),
+		        ('project',     'prj-1', 'cluster', 'cluster_kacho_root', 2),
 		        ('account',     'acc-1', 'cluster', 'cluster_kacho_root', 1)`)
 }
 

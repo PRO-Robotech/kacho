@@ -625,14 +625,13 @@ func observedScope(t *testing.T, ctx context.Context, tx pgx.Tx) int {
 	t.Helper()
 	var n int
 	if err := tx.QueryRow(ctx, `
-		WITH RECURSIVE scope(s_type, s_id, depth) AS (
+		WITH scope(s_type, s_id, depth) AS (
 		    SELECT $1::text, $2::text, 0
-		  UNION
-		    SELECT e.parent_type, e.parent_id, s.depth + 1
-		      FROM scope s
-		      JOIN kacho_iam.resource_parent_edge e
-		        ON e.object_type = s.s_type AND e.object_id = s.s_id
-		     WHERE s.depth < $3::int
+		  UNION ALL
+		    SELECT e.parent_type, e.parent_id, e.depth
+		      FROM kacho_iam.resource_parent_edge e
+		     WHERE e.object_type = $1::text AND e.object_id = $2::text
+		       AND e.depth <= $3::int
 		)
 		SELECT count(*)::int FROM scope`,
 		probeModelType, "repo-0000000", 4).Scan(&n); err != nil {
@@ -646,14 +645,13 @@ func distinctScope(t *testing.T, ctx context.Context, tx pgx.Tx) int {
 	t.Helper()
 	var n int
 	if err := tx.QueryRow(ctx, `
-		WITH RECURSIVE scope(s_type, s_id, depth) AS (
+		WITH scope(s_type, s_id, depth) AS (
 		    SELECT $1::text, $2::text, 0
-		  UNION
-		    SELECT e.parent_type, e.parent_id, s.depth + 1
-		      FROM scope s
-		      JOIN kacho_iam.resource_parent_edge e
-		        ON e.object_type = s.s_type AND e.object_id = s.s_id
-		     WHERE s.depth < $3::int
+		  UNION ALL
+		    SELECT e.parent_type, e.parent_id, e.depth
+		      FROM kacho_iam.resource_parent_edge e
+		     WHERE e.object_type = $1::text AND e.object_id = $2::text
+		       AND e.depth <= $3::int
 		)
 		SELECT count(DISTINCT (s_type, s_id))::int FROM scope`,
 		probeModelType, "repo-0000000", 4).Scan(&n); err != nil {
@@ -1055,10 +1053,13 @@ func TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed(t *testing.T) {
 	deep := observedScope(t, ctx, tx)
 	deepDistinct := distinctScope(t, ctx, tx)
 
-	// Замкнутая форма при согласованных замыканиях: 1 + d·(d+1)/2.
+	// Замкнутая форма ПОСЛЕ R7-1-18: замыкание читается ОДНИМ обращением, и
+	// цепь есть сам объект плюс его предки — 1 + d. Прежняя форма обходила
+	// замыкание рекурсивно и давала 1 + d·(d+1)/2, находя каждого предка
+	// заново на каждом шаге; пара «до/после» на цепи d=3 — это 7 → 4.
 	const d = probeChainDepth
-	wantClosed := 1 + d*(d+1)/2
-	t.Logf("цепь глубины d=%d: S_набл=%d (замкнутая форма 1+d(d+1)/2 = %d), "+
+	wantClosed := 1 + d
+	t.Logf("цепь глубины d=%d: S_набл=%d (замкнутая форма 1+d = %d), "+
 		"различных сущностей на цепи=%d (1+d = %d)",
 		d, deep, wantClosed, deepDistinct, 1+d)
 
@@ -1072,8 +1073,9 @@ func TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed(t *testing.T) {
 			deepDistinct, 1+d)
 	}
 	// Граница схемы: глубина ограничена четырьмя (CHECK depth BETWEEN 1 AND 4),
-	// значит S_гран = 1 + D(D+1)/2 = 11 при согласованных замыканиях.
-	const sGran = 11
+	// значит S_гран = 1 + D = 5. До R7-1-18 та же граница читалась как
+	// 1 + D(D+1)/2 = 11 — перевычисление замыкания более чем удваивало её.
+	const sGran = 5
 	if deep > sGran {
 		t.Errorf("S_набл=%d превысила ОБЪЯВЛЕННУЮ границу S_гран=%d: граница выведена из схемы "+
 			"(глубина 1..4), и её превышение означает, что цепь длиннее, чем схема допускает",
@@ -1093,14 +1095,13 @@ func TestScaleGrid_ScopeCardinalityIsMeasuredNotAssumed(t *testing.T) {
 
 	var shallow, shallowDistinct int
 	if err := tx.QueryRow(ctx, `
-		WITH RECURSIVE scope(s_type, s_id, depth) AS (
+		WITH scope(s_type, s_id, depth) AS (
 		    SELECT $1::text, $2::text, 0
-		  UNION
-		    SELECT e.parent_type, e.parent_id, s.depth + 1
-		      FROM scope s
-		      JOIN kacho_iam.resource_parent_edge e
-		        ON e.object_type = s.s_type AND e.object_id = s.s_id
-		     WHERE s.depth < 4
+		  UNION ALL
+		    SELECT e.parent_type, e.parent_id, e.depth
+		      FROM kacho_iam.resource_parent_edge e
+		     WHERE e.object_type = $1::text AND e.object_id = $2::text
+		       AND e.depth <= 4
 		)
 		SELECT count(*)::int, count(DISTINCT (s_type, s_id))::int FROM scope`,
 		probeModelType, "repo-shallow").Scan(&shallow, &shallowDistinct); err != nil {
