@@ -390,9 +390,23 @@ func TestExtract_JoinFilterIsReadByNodeAndHeapFetchesAndWorkersArePrinted(t *tes
 	}
 	// Отброшенное фильтром входит в `Touched`, а `Actual Rows` остаётся видимым
 	// порознь: их РАЗНОСТЬ и есть то, что прячет неисправленный индекс.
-	if m.Removed != 20+12 {
-		t.Fatalf("сумма отброшенного %d, ожидалось %d (фильтр 20 + соединение 12).\nПерепись:\n%s",
-			m.Removed, 32, m.Census)
+	if m.Removed != 20+12+3 {
+		t.Fatalf("сумма отброшенного %d, ожидалось %d (фильтр 20 + соединение 12 + перепроверка 3).\n"+
+			"Перепись:\n%s", m.Removed, 35, m.Census)
+	}
+	// Отброшенное схлопыванию НЕ подлежит: перепроверка снята на предке
+	// bitmap-пары, и её три строки — не те же самые, что отдал ребёнок, а другие.
+	// Снять их заодно со схлопыванием значило бы спрятать работу, ради видимости
+	// которой отброшенное и печатается.
+	var rrsRemoved int64
+	for _, rc := range m.ByRelation {
+		if rc.Relation == "role_rule_selectors" {
+			rrsRemoved = rc.Removed
+		}
+	}
+	if rrsRemoved != 3 {
+		t.Fatalf("отброшенное перепроверкой на bitmap-паре потеряно: у role_rule_selectors %d, "+
+			"ожидалось 3.\nПерепись:\n%s", rrsRemoved, m.Census)
 	}
 	if m.Touched != m.Rows+m.Removed {
 		t.Fatalf("тронутое %d не равно отданному %d плюс отброшенному %d",

@@ -37,6 +37,10 @@ package planrows_test
 //
 // Не отнесено: Limit, Sort, Nested Loop, CTE Scan, WorkTable Scan, Result — шесть
 // узлов, 1 + 1 + 3 + 7 + (1 × 2) + 1 = 15 строк.
+//
+// Отброшено: фильтр 20 на `relation_fact`, перепроверка 3 на `role_rule_selectors`
+// (потерявший точность bitmap — то, что Postgres печатает здесь на самом деле),
+// соединение 12 на `Nested Loop`. Итого 35, и все три слагаемых видны порознь.
 const fullPlan = `[
   {
     "Plan": {
@@ -64,7 +68,7 @@ const fullPlan = `[
                   "Relation Name": "role_rule_selectors",
                   "Alias": "rrs",
                   "Actual Rows": 2, "Actual Loops": 1,
-                  "Rows Removed by Index Recheck": 0,
+                  "Rows Removed by Index Recheck": 3,
                   "Plans": [
                     {
                       "Node Type": "Bitmap Index Scan",
