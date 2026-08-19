@@ -36,8 +36,21 @@ mkdir -p "$OUT"
 k() { kubectl -n "$NS" "$@"; }
 
 # cpu_usec <pod> <container> — накопленное процессорное время контейнера.
+#
+# ОТКАЗ ЧТЕНИЯ ОБЯЗАН БЫТЬ ОТЛИЧИМ ОТ НУЛЯ. Прежняя редакция глушила отказ через
+# `|| echo 0`, и «не измерено» становилось неотличимо от «не потратило». Это не
+# теоретическая опасность: образ хранилища прав распространяется БЕЗ ОБОЛОЧКИ,
+# поэтому `exec` в него невозможен в принципе, и снимок писал ему ровно ноль на
+# каждой ступени каждого прогона. В разборе это выглядело как участник, который
+# под нагрузкой не тратит процессор вовсе, — то есть как факт, а не как пробел.
+# Теперь пробел называет себя сам, и его видно в таблице как NA.
 cpu_usec() {
-  k exec "$1" -c "$2" -- sh -c 'awk "/usage_usec/{print \$2}" /sys/fs/cgroup/cpu.stat' 2>/dev/null || echo 0
+  local v
+  v=$(k exec "$1" -c "$2" -- sh -c 'awk "/usage_usec/{print \$2}" /sys/fs/cgroup/cpu.stat' 2>/dev/null) || v=""
+  case "$v" in
+    ''|*[!0-9]*) echo "NA" ;;
+    *)           echo "$v" ;;
+  esac
 }
 
 iam_pods()  { k get pod -l app.kubernetes.io/name=kacho-iam -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
@@ -98,6 +111,8 @@ k get pod -l app.kubernetes.io/name=kacho-iam -o jsonpath='{range .items[*]}{.me
 # 374 мс и 0.77% отказов, а следующая за ней ступень 200 rps — 4 мс и ноль. Без
 # явного прогрева этот артефакт неотличим от находки, и он ложится на САМУЮ
 # низкую ступень, то есть портит именно ту точку, от которой отсчитывают запас.
+restarts > "$OUT/run.restarts.baseline"
+
 if [ "${WARMUP:-1}" = "1" ]; then
   echo "--- прогрев (результат выбрасывается) ---"
   k exec k6-iam-runner -- k6 run --quiet -e TARGET_RPS=200 -e DURATION=30s      -e ALLOW_RATIO="$ALLOW_RATIO" -e MAX_VUS=600 /scripts/internal_check.js      > "$OUT/warmup.k6.log" 2>&1 || true
@@ -127,9 +142,18 @@ for rate in ${STEPS//,/ }; do
   pg_conns > "$OUT/$tag.pg.after"
   pool_stats > "$OUT/$tag.pool.after" 2>/dev/null || true
   restarts > "$OUT/$tag.restarts.after"
+  # Сверяем ДВАЖДЫ: с началом ступени и с началом ПРОГОНА. Только первая сверка
+  # была здесь раньше, и она пропускает перезапуск, случившийся МЕЖДУ ступенями:
+  # «до» и «после» такой ступени совпадают между собой, поэтому метка не
+  # ставится, а числа соседних ступеней выглядят правдоподобно. Наблюдалось
+  # вживую — база службы прав была убита (код 137) в ходе серии, и ни одного
+  # файла .invalid не появилось.
   if ! diff -q "$OUT/$tag.restarts.before" "$OUT/$tag.restarts.after" >/dev/null 2>&1; then
     echo "INVALID: участник пути перезапустился в ходе ступени" > "$OUT/$tag.invalid"
     echo "    !! НЕДЕЙСТВИТЕЛЬНО: перезапуск участника — число этой ступени не читать"
+  elif ! diff -q "$OUT/run.restarts.baseline" "$OUT/$tag.restarts.after" >/dev/null 2>&1; then
+    echo "INVALID: участник пути перезапустился с начала прогона" > "$OUT/$tag.invalid"
+    echo "    !! НЕДЕЙСТВИТЕЛЬНО: перезапуск между ступенями — прогон не сравним с началом"
   fi
   k exec k6-iam-runner -- cat "/out/$tag.json" > "$OUT/$tag.summary.json" 2>/dev/null || echo '{}' > "$OUT/$tag.summary.json"
   echo "k6_exit=$k6rc" > "$OUT/$tag.rc"
