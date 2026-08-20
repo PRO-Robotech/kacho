@@ -47,13 +47,11 @@ const (
 	fmForeignProject = "project:prj-foreign"
 
 	fmGroupOuter = "group:grp-outer"
-	fmGroupInner = "group:grp-inner"
 
 	// Субъекты вопросника.
 	fmSubjDirect        = "user:u-direct" // назван в привязке проекта
 	fmSubjDirectSA      = "service_account:sa-direct"
 	fmSubjInGroup       = "user:u-in-group"       // член внешней группы
-	fmSubjNested        = "user:u-nested"         // член вложенной группы
 	fmSubjAccountAdmin  = "user:u-account-admin"  // каскад, уровень 3
 	fmSubjAccountOwner  = "user:u-account-owner"  // структурный источник на своём аккаунте
 	fmSubjClusterAdmin  = "user:u-cluster-admin"  // каскад, уровни 1-2
@@ -143,8 +141,13 @@ func buildWorld(m *Model) (*fmWorld, error) {
 		Model:     m,
 		RoleVerbs: map[string][]string{},
 		Groups: map[string][]string{
-			fmGroupOuter: {fmSubjInGroup, fmGroupInner + "#member"},
-			fmGroupInner: {fmSubjNested},
+			// Вложенность групп СНЯТА вместе со свойством: модель сужена до
+			// схемы (задача #734), и `group#member` субъектом членства больше
+			// не принимается — хранилище отвергает такой кортеж проверкой
+			// формы. Проба снимается вместе со своим предметом, а не
+			// подгоняется: субъект `u-nested` был заведён под эту ветвь и
+			// другой не имеет.
+			fmGroupOuter: {fmSubjInGroup},
 		},
 		byRef: map[string]fmObject{},
 	}
@@ -168,7 +171,6 @@ func buildWorld(m *Model) (*fmWorld, error) {
 	add(fmObject{Type: "project", ID: "prj-foreign", Tenant: tenantForeign, Labelled: true,
 		Pointers: map[string]string{"account": fmForeignAccount, "cluster": fmClusterObj}})
 	add(fmObject{Type: "group", ID: "grp-outer", Tenant: tenantHome})
-	add(fmObject{Type: "group", ID: "grp-inner", Tenant: tenantHome})
 
 	// По объекту каждого арендатора на КАЖДЫЙ тип с глаголами. Порядок обхода —
 	// порядок объявления в модели, поэтому тип-контейнер (реестр) заводится
@@ -569,7 +571,7 @@ func (q FullQuestion) Name() string {
 // без него «разрешено» и «разрешено всем» неразличимы.
 func fullSubjects() []string {
 	return []string{
-		fmSubjDirect, fmSubjDirectSA, fmSubjInGroup, fmSubjNested,
+		fmSubjDirect, fmSubjDirectSA, fmSubjInGroup,
 		fmSubjAccountAdmin, fmSubjAccountOwner, fmSubjClusterAdmin,
 		fmSubjObjectOwner, fmSubjStranger, fmSubjForeignDirect,
 	}
