@@ -240,3 +240,63 @@ func TestIntegration_DefaultShapeIsUnchanged(t *testing.T) {
 	assert.InDelta(t, 45.0, rec.OldestPendingAgeSeconds(table), 15.0)
 	assert.Equal(t, 1.0, rec.PoisonedCount(table))
 }
+
+// TestIntegration_ShapePredicatesPartitionTheTable — «недоставлено» и
+// «доставлено» РАЗБИВАЮТ таблицу, а не пересекаются и не теряют строк.
+//
+// Без этой пробы комментарий у `queueShapeSQL` утверждал бы дополнительность
+// предикатов, которую никто не проверял, — то есть был бы обещанием в шапке
+// структуры. Форма, у которой они пересеклись бы, публиковала бы глубину больше
+// числа строк; форма, у которой они не покрывают таблицу, — молча теряла бы
+// строки из обеих величин, и очередь выглядела бы разгруженной.
+//
+// Спрашивается напрямую у БД теми же выражениями, что исполняет сканер: вторая
+// их запись здесь разошлась бы с первой ровно там, где обе печатают «сошлось».
+func TestIntegration_ShapePredicatesPartitionTheTable(t *testing.T) {
+	pool := setupPG(t)
+	ctx := context.Background()
+
+	cases := []struct {
+		name               string
+		table              string
+		pending, delivered string
+		seed               string
+	}{
+		{
+			name: "форма отметки времени", table: "kacho_apps.fga_register_outbox",
+			pending: "sent_at IS NULL", delivered: "sent_at IS NOT NULL",
+			seed: `INSERT INTO kacho_apps.fga_register_outbox (event_type, sent_at) VALUES
+				('p.q', NULL), ('p.q', NULL), ('p.q', now())`,
+		},
+		{
+			name: "форма состояния", table: "kacho_apps.status_shaped_outbox",
+			pending: "status <> 'sent'", delivered: "status = 'sent'",
+			seed: `INSERT INTO kacho_apps.status_shaped_outbox (id, event_type, status) VALUES
+				('p1', 'p.q', 'pending'), ('p2', 'p.q', 'in_flight'),
+				('p3', 'p.q', 'failed'),  ('p4', 'p.q', 'sent')`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := pool.Exec(ctx, c.seed)
+			require.NoError(t, err)
+
+			var total, pending, delivered, both int64
+			require.NoError(t, pool.QueryRow(ctx, `SELECT
+				  count(*),
+				  count(*) FILTER (WHERE `+c.pending+`),
+				  count(*) FILTER (WHERE `+c.delivered+`),
+				  count(*) FILTER (WHERE (`+c.pending+`) AND (`+c.delivered+`))
+				FROM `+c.table).Scan(&total, &pending, &delivered, &both))
+
+			require.NotZero(t, total, "таблица пуста: на пустой разбиение выполняется "+
+				"тождественно, и проба ничего бы не проверила")
+			assert.Zero(t, both, "предикаты ПЕРЕСЕКАЮТСЯ: строка учтена и недоставленной, "+
+				"и доставленной — глубина станет больше числа строк")
+			assert.Equal(t, total, pending+delivered,
+				"предикаты НЕ ПОКРЫВАЮТ таблицу: строки выпали из обеих величин, и очередь "+
+					"выглядит разгруженной на величину потери")
+		})
+	}
+}
