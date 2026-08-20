@@ -31,10 +31,39 @@ import (
 	"context"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// rollbackGrace — сколько отпущено САМОМУ снятию транзакции.
+//
+// Снятие — не часть вопроса и его сроком не ограничено: вопрос кончился, а
+// связь ещё надо вернуть пригодной. Величина мала намеренно — недоступная база
+// не должна задерживать освобождение слота дольше, чем стоил бы новый коннект.
+const rollbackGrace = 2 * time.Second
+
+// rollback снимает транзакцию чтения контекстом, который ЖИВ.
+//
+// # Почему не тем же контекстом, что ограничивал вопрос
+//
+// Теневой вопрос идёт со своим коротким сроком. На исчерпании этого срока
+// контекст уже мёртв — и снятие, которому его отдают, до базы НЕ ДОЕЗЖАЕТ:
+// `Rollback` возвращает ошибку контекста, не отправив ничего. Связь уходит в пул
+// с незакрытой транзакцией, пул признаёт её непригодной и уничтожает, заводя
+// новую. Наблюдаемая цена — одно подключение за каждый сорванный по сроку
+// вопрос: под нагрузкой пул не «дорастает до потолка», а непрерывно перебирает
+// связи на стороне, которая и так узкая.
+//
+// Значения контекста сохраняются (они называют вызывающего), снимается только
+// отмена; свой короткий срок ставится взамен, чтобы снятие не висело вечно на
+// недоступной базе.
+func rollback(ctx context.Context, tx pgx.Tx) error {
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackGrace)
+	defer cancel()
+	return tx.Rollback(rctx)
+}
 
 // Asker — форма E как источник теневого вердикта.
 //
@@ -127,7 +156,7 @@ func (a *Asker) Allowed(ctx context.Context, subject, objectType, objectID, rela
 	if err != nil {
 		return false, fmt.Errorf("relverdict: транзакция чтения: %w", err)
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() { _ = rollback(ctx, tx) }()
 
 	v, grounds, err := Ask(ctx, tx, Query{
 		Subject: subject, ObjectType: objectType, ObjectID: objectID, Relation: relation,
@@ -174,7 +203,7 @@ func (a *Asker) Objects(ctx context.Context, subject, objectType string, relatio
 	if err != nil {
 		return nil, false, fmt.Errorf("relverdict: транзакция чтения: %w", err)
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() { _ = rollback(ctx, tx) }()
 
 	seen := make(map[string]struct{}, limit)
 	out := make([]string, 0, limit)
@@ -211,7 +240,7 @@ func (a *Asker) Subjects(ctx context.Context, objectType, objectID, relation str
 	if err != nil {
 		return nil, false, fmt.Errorf("relverdict: транзакция чтения: %w", err)
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() { _ = rollback(ctx, tx) }()
 
 	subjects, next, err := Subjects(ctx, tx, SubjectsQuery{
 		ObjectType: objectType, ObjectID: objectID, Relation: relation, Limit: limit,
@@ -236,7 +265,7 @@ func (a *Asker) Sources(ctx context.Context, objectType, objectID, relation stri
 	if err != nil {
 		return nil, fmt.Errorf("relverdict: транзакция чтения: %w", err)
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() { _ = rollback(ctx, tx) }()
 
 	sources, err := Expand(ctx, tx, objectType, objectID, relation)
 	if err != nil {

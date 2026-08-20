@@ -3,6 +3,12 @@
 
 package relverdict
 
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5"
+)
+
 // export_test.go — мост для проб пакета, и он намеренно УЗКИЙ.
 //
 // # Что здесь есть и чего здесь нет
@@ -44,3 +50,10 @@ const MaxConditionRowsForTest = maxConditionRows
 // возвращает, а завести счётчик внутри него значило бы править прод-код ради
 // прибора.
 func ListQuerySQLForTest(labelTable string) string { return listQuerySQL(labelTable) }
+
+// RollbackForTest — снятие транзакции чтения так, как его делает адаптер.
+//
+// Мост нужен затем, что предмет пробы — ИМЕННО контекст снятия, а не поведение
+// `pgx.Tx.Rollback` вообще: проба обязана звать тот же код, что исполняется на
+// пути чтения, иначе она утверждала бы про свою копию.
+func RollbackForTest(ctx context.Context, tx pgx.Tx) error { return rollback(ctx, tx) }
