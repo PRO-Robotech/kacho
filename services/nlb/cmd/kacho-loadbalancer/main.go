@@ -269,9 +269,14 @@ func runServe(configPath string) error {
 	// до установки отвечает нулями: исчезновение серий на это окно сообщило бы
 	// собирателю не «попаданий не было», а ничего.
 	//
-	// Полоса одна: второго кеша вердиктов в этом процессе нет.
+	// ПОЛОС ДВЕ, потому что окон положительных вердиктов у этого процесса два:
+	// окно звена решения (вопрос на ВЫЗОВ) и окно общего сужателя (вопрос на
+	// КАЖДЫЙ элемент страницы, а страница контрактно бывает до тысячи). Через
+	// второе проходит БОЛЬШЕ вопросов, чем через первое, и до #768 его не считал
+	// никто: «кеш сужателя даёт столько-то» было непроверяемо в обе стороны.
 	metricsAdapter.RegisterAuthzCache(map[string]authzmetrics.Reader{
-		authzmetrics.LaneRPC: authzCache.Cache,
+		authzmetrics.LaneRPC:    authzCache.Cache,
+		authzmetrics.LaneNarrow: peers.ListFilter.CacheStats,
 	}, authzCache.Read)
 	var outboxRec metrics.Recorder = metricsAdapter
 	var lroRec operations.Recorder = metricsAdapter
