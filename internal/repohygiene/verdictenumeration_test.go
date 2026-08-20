@@ -165,6 +165,25 @@ func auditSQLForEnumeration(file string, baseLine int, sql string) ([]enumFindin
 			bound[a] = true
 		}
 	}
+	// Производная таблица вбок, НЕ ЧИТАЮЩАЯ НИ ОДНОЙ ТАБЛИЦЫ СХЕМЫ, — вычисление
+	// на строку, а не перечисление: её строки берутся из внешней корреляции и
+	// констант, поэтому их число ограничено внешней стороной by construction.
+	//
+	// ЭТО НЕ ПОСЛАБЛЕНИЕ, и вот почему. Соединение вбок, которое таблицу ЧИТАЕТ
+	// (обход цепи областей: `LATERAL (SELECT … FROM kacho_iam.resource_scope_edge
+	// pe WHERE pe.object_type = s.s_type …) e`), в якоря НЕ попадает, а его
+	// внутреннее чтение по-прежнему проверяется этим же обходом отдельной
+	// строкой и привязывается собственным равенством. То есть правило добавляет
+	// в якоря ровно то, что якорем и является.
+	//
+	// Заведено первым экземпляром новой формы (#758): разбор написания субъекта
+	// на имя группы вынесен в соединение вбок, и чтение членств привязано к его
+	// результату голой колонкой. Прежняя редакция гейта такую привязку не
+	// видела — не потому, что её нет, а потому, что имени вычисленного набора
+	// неоткуда было взяться.
+	for _, a := range computedLateralAliasesOf(sql) {
+		bound[a] = true
+	}
 	for _, r := range reads {
 		c.tables[r.table] = true
 	}
@@ -194,6 +213,48 @@ func auditSQLForEnumeration(file string, baseLine int, sql string) ([]enumFindin
 		out = append(out, enumFinding{file: file, table: r.table, alias: r.alias, line: r.line})
 	}
 	return out, c
+}
+
+// computedLateralAliasesOf — псевдонимы соединений вбок, не читающих таблиц.
+//
+// Тело берётся по балансу скобок от `LATERAL (`; если в нём есть имя таблицы
+// схемы, псевдоним НЕ возвращается — такое соединение вбок судится как обычное
+// чтение.
+func computedLateralAliasesOf(sql string) []string {
+	const marker = "LATERAL ("
+	var out []string
+	for off := 0; ; {
+		i := strings.Index(strings.ToUpper(sql[off:]), marker)
+		if i < 0 {
+			return out
+		}
+		open := off + i + len(marker) - 1
+		depth, end := 0, -1
+		for j := open; j < len(sql); j++ {
+			switch sql[j] {
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 {
+					end = j
+				}
+			}
+			if end >= 0 {
+				break
+			}
+		}
+		if end < 0 {
+			return out
+		}
+		off = end + 1
+		if strings.Contains(sql[open:end], "kacho_iam.") {
+			continue
+		}
+		if a := aliasAfter(sql[end+1:]); a != "" {
+			out = append(out, a)
+		}
+	}
 }
 
 // tableReadsOf — чтения таблиц схемы: имя и введённый псевдоним.

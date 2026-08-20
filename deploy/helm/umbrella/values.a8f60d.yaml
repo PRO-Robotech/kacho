@@ -61,6 +61,28 @@ mtls:
     caNamespace: beget-cert-manager
 ingress-nginx:
   enabled: false
+# ─── БЮДЖЕТ ПАМЯТИ БАЗ НА ЭТОМ КЛАСТЕРЕ (#808) ───────────────────────────────
+#
+# Потолок здесь 640Mi — вчетверо-вшестеро ниже, чем на стенде разработчика (см.
+# п.4 шапки: узлов 4 по 1500m/3Gi). Трата при этом приезжала из values.dev.yaml
+# и values.dev-prod.yaml, где потолки другие, поэтому у четырёх баз объявленная
+# трата не помещалась в объявленный потолок — у pg-vpc в восемь раз (5312MiB
+# против 640Mi). Такое объявление не «оптимистично», оно НЕИСПОЛНИМО:
+# shared_buffers выделяется при старте, и 512MB общей памяти в контейнере на
+# 640Mi не помещаются вместе с самим сервером.
+#
+# Поэтому здесь опущены shared_buffers и work_mem — на этом кластере иначе
+# нельзя. Это отличается от слоя dev-prod, где менялся ТОЛЬКО потолок числа
+# соединений: там правка ничего не могла замедлить, здесь она приводит
+# объявление в область возможного. a8f60d — отдельный кластер, не тот стенд, на
+# котором гоняется сквозной набор.
+#
+# Арифметика — deploy/db_footprint_declaration_test.go:
+#     shared_buffers + max_connections × work_mem  ≤  limits.memory
+#
+# autovacuum_naptime повторён в каждом блоке (скаляр замещается целиком);
+# у pg-geo его нет и не должно быть — geo_outbox курсорный, без дренажа
+# (deploy/tests/helm/outbox-autovacuum-naptime-test.sh, NON_QUEUE_INSTANCES).
 pg-vpc:
   primary:
     persistence:
@@ -71,6 +93,20 @@ pg-vpc:
         memory: 96Mi
       limits:
         memory: 640Mi
+    # 128MB + 210 × 2MB = 548MiB ≤ 640Mi. Соединения остаются 210: пул службы
+    # vpc — 200 на реплику плюс 3 суперпользователю, ниже 203 нельзя
+    # (deploy/pool_fits_database_test.go). Значит вместить пришлось за счёт
+    # work_mem, и это осознанный размен: сортировка сверх 2MB уйдёт во временный
+    # файл вместо отказа по памяти всего процесса.
+    extendedConfiguration: |
+      synchronous_commit = local
+      max_connections = 210
+      shared_buffers = 128MB
+      work_mem = 2MB
+      effective_cache_size = 2GB
+      checkpoint_timeout = 15min
+      max_wal_size = 2GB
+      autovacuum_naptime = 5s
   volumePermissions:
     enabled: false
   readReplicas:
@@ -81,6 +117,14 @@ pg-compute:
     persistence:
       enabled: false
     resources: *id001
+    # 128MB + 100 × 4MB = 528MiB ≤ 640Mi.
+    extendedConfiguration: |
+      synchronous_commit = local
+      max_connections = 100
+      shared_buffers = 128MB
+      work_mem = 4MB
+      effective_cache_size = 1GB
+      autovacuum_naptime = 5s
   volumePermissions:
     enabled: false
   readReplicas:
@@ -119,6 +163,14 @@ pg-geo:
     persistence:
       enabled: false
     resources: *id001
+    # 128MB + 100 × 4MB = 528MiB ≤ 640Mi. Строки autovacuum_naptime здесь нет
+    # НАМЕРЕННО — см. шапку блока выше.
+    extendedConfiguration: |
+      synchronous_commit = local
+      max_connections = 100
+      shared_buffers = 128MB
+      work_mem = 4MB
+      effective_cache_size = 512MB
   volumePermissions:
     enabled: false
   readReplicas:
@@ -129,6 +181,14 @@ pg-nlb:
     persistence:
       enabled: false
     resources: *id001
+    # 128MB + 100 × 4MB = 528MiB ≤ 640Mi.
+    extendedConfiguration: |
+      synchronous_commit = local
+      max_connections = 100
+      shared_buffers = 128MB
+      work_mem = 4MB
+      effective_cache_size = 512MB
+      autovacuum_naptime = 5s
   volumePermissions:
     enabled: false
   readReplicas:

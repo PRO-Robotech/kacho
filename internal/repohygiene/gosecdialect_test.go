@@ -76,9 +76,11 @@ const selfFile = "internal/repohygiene/gosecdialect_test.go"
 // Исключение самоистекающее: как только директив в файле не останется,
 // TestPendingHandoffExemptionsStillHaveSubject упадёт и потребует удалить
 // запись отсюда. Оно не может пережить свой предмет.
-var pendingHandoff = []string{
-	"services/compute/internal/clients/fga_reconcile_adapter.go",
-}
+// Сейчас список ПУСТ, и это его цель, а не поломка: последняя запись
+// (адаптер сверки compute) истекла вместе со своим предметом — файл снят вместе
+// с примитивами сверки corelib (#760). Пустая ведомость обязана ПРОХОДИТЬ и
+// печатать перепись, иначе следующий держал бы запись ради зелёного.
+var pendingHandoff = []string{}
 
 // TestNoInertGosecSuppressions — ни один .go-файл не несёт `//nolint:gosec`.
 //
@@ -150,6 +152,11 @@ func TestNoInertGosecSuppressions(t *testing.T) {
 // нужно».
 func TestPendingHandoffExemptionsStillHaveSubject(t *testing.T) {
 	root := repoRoot(t)
+
+	// «Ноль находок» обязано быть отличимо от «ноль прочитанного»: на пустой
+	// ведомости цикл ниже не делает ни одного оборота, и без этой строки успех
+	// был бы неотличим от неисполнения.
+	t.Logf("перепись: записей в pendingHandoff — %d", len(pendingHandoff))
 
 	for _, rel := range pendingHandoff {
 		body, err := os.ReadFile(filepath.Join(root, rel))

@@ -24,8 +24,6 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
-
-	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
 )
 
 const (
@@ -40,14 +38,11 @@ const (
 // transient error is logged, never fatal. It returns their run-loops as supervised
 // tasks (reconRun / colRun), wired into the runServe errgroup — not fire-and-forget.
 func startBackstop(_ context.Context, pool *pgxpool.Pool, rec metrics.Recorder, logger *slog.Logger) (reconRun, colRun func(context.Context) error, err error) {
-	ad := clients.NewFGAReconcileAdapter(pool, computeFGAOutboxTable)
-	rc, rerr := reconciler.New(pool, reconciler.Config{
+	rc, rerr := reconciler.NewRedriveOnly(pool, reconciler.Config{
 		PartitionColumn: reconciler.RegisterOutboxPartition,
 		Table:           computeFGAOutboxTable,
 		Channel:         computeFGAOutboxChannel,
-		GraceWindow:     time.Minute, // anti-race deferral
-	}, reconciler.Adapters{Enumerator: ad, Registry: ad},
-		logger.With(slog.String("component", "fga-register-reconciler")))
+	}, logger.With(slog.String("component", "fga-register-reconciler")))
 	if rerr != nil {
 		return nil, nil, rerr
 	}
@@ -78,14 +73,13 @@ func startBackstop(_ context.Context, pool *pgxpool.Pool, rec metrics.Recorder, 
 // poisoned/exhausted register-intents are reset to claimable so the drainer
 // re-delivers them with their ORIGINAL, decoder-correct tuple payload.
 //
-// BackfillFromState / GCOrphans are deliberately NOT run for kacho-compute: they
-// re-emit corelib-fixed payloads ({"project_id":…} / {}) the compute tuple-set
-// decoder ({tuples:[…]}) cannot decode — running them would poison good state. And
-// because every compute Create co-commits its register-intent in the resource
-// writer-tx (atomically, no separate migration), there are no legacy never-enqueued
-// rows to backfill. The enumerator/registry adapter is still wired (reconciler.New
-// requires it) so the backstop is ready if the corelib re-emit contract grows a
-// per-service payload hook.
+// Здесь стояло объяснение, почему два других прохода corelib — сверка с
+// состоянием и сбор осиротевших — сознательно НЕ запускаются, и почему адаптер
+// перечисления всё-таки провязан «на случай, если контракт обзаведётся хуком».
+// Оба прохода сняты из corelib: их предикаты были недостижимы by construction —
+// намерение пишется в очередь В ТОЙ ЖЕ транзакции, что и строка ресурса, — а
+// адаптер, который никто не звал, был живым с виду механизмом, которого нет.
+// Вместе с ними снят и адаптер этого сервиса.
 func runReconciler(ctx context.Context, rc *reconciler.Reconciler, logger *slog.Logger) {
 	const interval = 5 * time.Minute
 	tick := time.NewTicker(interval)
