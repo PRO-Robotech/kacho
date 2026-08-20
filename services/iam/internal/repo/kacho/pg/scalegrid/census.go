@@ -110,6 +110,7 @@ func TakeCensus(ctx context.Context, tx pgx.Tx, speakerSubjects []string) (Censu
 	// которыми за него говорят. Соединение идёт через `access_binding_subjects`,
 	// потому что именно её читает вердикт: считать по колонкам родительской
 	// таблицы значило бы завести второе представление о том, кто назван.
+	//
 	// СУБЪЕКТ — ПАРОЙ КОЛОНОК, а не склейкой (#758). Склейка
 	// subject_type || ':' || subject_id выводит обе колонки из-под
 	// access_binding_subjects_subject_scope_idx: сравнивать приходится
