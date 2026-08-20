@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -266,5 +267,103 @@ func TestVerdictWithoutAFormIsAnErrorNotADenial(t *testing.T) {
 	}
 	if c.Decides("vpc_network") {
 		t.Fatal("без формы рубильник не вправе объявлять тип переключённым")
+	}
+}
+
+// КЛЮЧ КЛАССА РАСХОЖДЕНИЯ — контракт с внешним прибором.
+//
+// Разбор сводки читает направление по суффиксу `движок=<bool>`. Ключ, у
+// которого этот суффикс перестал быть последним, объявляет расхождение
+// НЕРАЗОБРАННЫМ — то есть прибор печатает отказ там, где расхождения нет вовсе.
+// Так уже случилось: второе написание направления в ключе дало четыре ложных
+// «не разобрано» на прогоне с нулём расхождений.
+//
+// Проба закрепляет суффикс, а не весь ключ: остальное — свобода записи.
+func TestDivergenceClassKeyEndsWithTheEngineAnswer(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		formAllows bool
+		engine     bool
+		wantSuffix string
+	}{
+		{"форма шире", true, false, "движок=false"},
+		{"форма уже", false, true, "движок=true"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&buf, nil))
+			c := New(&stubAsker{allow: tc.formAllows}, logger).
+				WithSwitchboard(verdictsource.New("vpc_network"))
+
+			_, _ = c.Verdict(context.Background(), "user:u1", "vpc_network", "n1", "v_get", nil,
+				func(context.Context) (bool, bool) { return tc.engine, true })
+
+			got := logOf(c, &buf)
+			// Ключ печатается в поле `class`; прибор читает его суффикс.
+			//
+			// Значение берётся из КАВЫЧЕК: ключ содержит пробелы, и обработчик
+			// журнала его цитирует. Разбор по первому пробелу отрезал бы ключ на
+			// первом же слове — и проба падала бы на исправном ключе, то есть
+			// была бы отрицанием без положительного контроля к самой себе.
+			m := regexp.MustCompile(`class="([^"]*)"`).FindStringSubmatch(got)
+			if m == nil {
+				t.Fatalf("запись не несёт ключа класса: %s", got)
+			}
+			key := m[1]
+			if !strings.HasSuffix(key, tc.wantSuffix) {
+				t.Fatalf("ключ %q обязан оканчиваться на %q — иначе разбор прибора объявит "+
+					"расхождение неразобранным", key, tc.wantSuffix)
+			}
+		})
+	}
+}
+
+// РАЗДЕЛИТЕЛЬ СВОДКИ не встречается ВНУТРИ ключа класса.
+//
+// Иначе поле `class_breakdown` неразбираемо by construction: прибор режет ключ
+// на части и объявляет направление неразобранным — то есть печатает отказ там,
+// где расхождения нет. Так и было с разделителем-пробелом: ключи содержат
+// пробелы, и ошибка не проявлялась ровно до первой непустой сводки.
+//
+// Проба порождает классы ВСЕХ родов, которые сравнитель умеет заводить, и
+// требует свойства от каждого — а не от одного выбранного.
+func TestSummarySeparatorNeverOccursInsideAClassKey(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	c := New(&stubAsker{allow: true}, logger).WithSwitchboard(verdictsource.New("vpc_network"))
+
+	// расхождение
+	_, _ = c.Verdict(context.Background(), "user:u1", "vpc_network", "n1", "v_get", nil,
+		func(context.Context) (bool, bool) { return false, true })
+	// «не выполнилось» — движок вердикта не дал
+	_, _ = c.Verdict(context.Background(), "user:u1", "vpc_network", "n2", "v_list", nil,
+		func(context.Context) (bool, bool) { return false, false })
+	// «спросить нельзя»
+	c.Unaskable("объект вопроса не разобран", "", "v_get")
+	settled(c)
+
+	c.Summarise()
+	got := buf.String()
+
+	// Берётся ПОСЛЕДНЯЯ сводка: сравнитель печатает их по ходу, и первая знает
+	// только о классах, случившихся до неё. Проба, читающая первую, утверждала
+	// бы о неполном наборе и падала бы на предпосылке вместо предмета.
+	all := regexp.MustCompile(`class_breakdown="([^"]*)"`).FindAllStringSubmatch(got, -1)
+	if len(all) == 0 {
+		t.Fatalf("сводка не несёт разбивки по классам: %s", got)
+	}
+	entries := strings.Split(all[len(all)-1][1], ClassBreakdownSeparator)
+	if len(entries) < 3 {
+		t.Fatalf("предпосылка пробы: классов породилось %d, ожидалось не меньше трёх (%q)",
+			len(entries), all[len(all)-1][1])
+	}
+	for _, entry := range entries {
+		key := entry
+		if i := strings.LastIndex(entry, "×"); i > 0 {
+			key = entry[:i]
+		}
+		if strings.Contains(key, strings.TrimSpace(ClassBreakdownSeparator)) {
+			t.Fatalf("ключ класса %q содержит разделитель сводки — поле неразбираемо", key)
+		}
 	}
 }
