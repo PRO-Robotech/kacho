@@ -52,6 +52,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
@@ -265,32 +267,34 @@ func AuditReadBudgetClassification(opts ReadBudgetOptions, out io.Writer) ([]Rea
 	return findings, c, nil
 }
 
-// DeclaredProtoPackages — пакеты, объявленные ДЕРЕВОМ. Перечень выводится
-// обходом, а не выписывается: рукописный список разошёлся бы с деревом молча, и
-// разошёлся бы именно там, где расхождение не видно, — на новом домене.
+// DeclaredProtoPackages — пакеты, объявленные ДЕРЕВОМ.
+//
+// Перечень выводится обходом, а не выписывается: рукописный список разошёлся бы
+// с деревом молча, и разошёлся бы именно там, где расхождение не видно, — на
+// новом домене.
+//
+// Состав берётся у ИНДЕКСА (`internal/treecorpus`), а не с диска: обход диска
+// подбирает то, что лежит у разработчика и не отслеживается, — распаковки
+// чартов, сборочные каталоги, отчёты прогонов. Два обхода поддерева в этом
+// дереве уже оказались дефектными по этой самой причине.
 func DeclaredProtoPackages(root string) ([]string, error) {
+	// Пути возвращаются АБСОЛЮТНЫМИ — так объявлено контрактом treecorpus.Under,
+	// поэтому join с корнем здесь был бы вторым корнем в пути.
+	files, err := treecorpus.UnderWithSuffix(filepath.Join(root, "proto", "kacho"), ".proto")
+	if err != nil {
+		return nil, err
+	}
 	set := map[string]struct{}{}
-	protoRoot := filepath.Join(root, "proto", "kacho")
-	err := filepath.Walk(protoRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() || !strings.HasSuffix(path, ".proto") {
-			return nil
-		}
-		b, rErr := os.ReadFile(path) //nolint:gosec // путь собран обходом дерева репозитория
+	for _, path := range files {
+		b, rErr := os.ReadFile(path)
 		if rErr != nil {
-			return rErr
+			return nil, rErr
 		}
 		// Выражение — ОБЩЕЕ с надгробием снятой поверхности (retiredrpcsurface.go):
 		// два места об одном предмете разъехались бы на первом же уточнении формы.
 		if m := protoPackageRe.FindStringSubmatch(string(b)); m != nil {
 			set[m[1]] = struct{}{}
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
 	}
 	out := make([]string, 0, len(set))
 	for p := range set {
