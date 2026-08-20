@@ -31,6 +31,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 )
 
@@ -51,7 +52,14 @@ func TestCarrierRaisesStorageWithoutAStartRefusal(t *testing.T) {
 	var log strings.Builder
 	logger := slog.New(slog.NewTextHandler(&log, nil))
 
-	desc, err := describe(cfg, logger, buildListFilter(cfg, nil, logger), probeExistence{})
+	// Приёмник величин кеша вердиктов — НАСТОЯЩИЙ, а не заглушка: предмет здесь
+	// не «поле заполнено», а «носитель позвал приёмник И отдал читателя того
+	// кеша, который спрашивает звено». Проба, принимающая заглушку, осталась бы
+	// зелёной на носителе, который приёмник не зовёт вовсе.
+	var authzCacheReader func() authz.Metrics
+	observeAuthzCache := func(read func() authz.Metrics) { authzCacheReader = read }
+
+	desc, err := describe(cfg, logger, buildListFilter(cfg, nil, logger), probeExistence{}, observeAuthzCache)
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут конструктором — процесс не поднялся бы:\n%v", err)
 	}
@@ -73,6 +81,17 @@ func TestCarrierRaisesStorageWithoutAStartRefusal(t *testing.T) {
 	// проверяет.
 	if serveErr != nil && !strings.Contains(serveErr.Error(), "server has been stopped") {
 		t.Fatalf("носитель вернул ошибку подъёма: %v", serveErr)
+	}
+
+	// Величины кеша вердиктов вышли из процесса: без этого доля попаданий не
+	// наблюдается, и «кеш не попадает ни разу» снаружи неотличимо от «кеш
+	// поглощает весь поток».
+	if authzCacheReader == nil {
+		t.Fatal("носитель не отдал читателя величин кеша положительных вердиктов — " +
+			"доля попаданий не выходит из процесса")
+	}
+	if s := authzCacheReader().Cache; s.Hits != 0 || s.Misses != 0 {
+		t.Fatalf("до первого вызова окно вердиктов не спрашивали, а счётчики не нулевые: %+v", s)
 	}
 
 	census := log.String()

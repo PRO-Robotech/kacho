@@ -38,6 +38,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
@@ -192,7 +193,10 @@ func runServe(configPath string) error {
 	// После пула, а не до него: порт сверки существования живёт НА пуле, и принести
 	// его раньше значило бы принести порт, отвечающий «соединения нет». Открытие
 	// пула обратимо (`defer` выше) и дешевле ложной сверки.
-	desc, err := describe(cfg, logger, peers.ListFilter, bootGate, kachopg.NewExistenceProbe(pool))
+	// Приёмник читателя величин кеша вердиктов. Объявлен ДО дескриптора: кеш
+	// собирает носитель контура, и читателя он отдаёт через поле дескриптора.
+	var authzCache authzmetrics.Source
+	desc, err := describe(cfg, logger, peers.ListFilter, bootGate, kachopg.NewExistenceProbe(pool), authzCache.Install)
 	if err != nil {
 		return err
 	}
@@ -260,6 +264,15 @@ func runServe(configPath string) error {
 	// эту строку — и полосы исчезнут с поверхности, а не станут нулями; ровно это
 	// ловит гейт дерева `TestEveryListNarrowConsumerRegistersItsCollector`.
 	metricsAdapter.RegisterListNarrow(func() listnarrow.Counts { return peers.ListFilter.Counts() })
+	// Доля попаданий кеша положительных вердиктов. Источник устанавливается ПОЗЖЕ
+	// — кеш строит носитель контура, — поэтому коллектор регистрируется сейчас и
+	// до установки отвечает нулями: исчезновение серий на это окно сообщило бы
+	// собирателю не «попаданий не было», а ничего.
+	//
+	// Полоса одна: второго кеша вердиктов в этом процессе нет.
+	metricsAdapter.RegisterAuthzCache(map[string]authzmetrics.Reader{
+		authzmetrics.LaneRPC: authzCache.Cache,
+	}, authzCache.Read)
 	var outboxRec metrics.Recorder = metricsAdapter
 	var lroRec operations.Recorder = metricsAdapter
 

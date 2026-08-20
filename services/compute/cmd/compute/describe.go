@@ -102,6 +102,7 @@ func describe(
 	narrower *authzfilter.Narrower,
 	gate *bootgate.Gate,
 	existence servicecontract.ExistenceProbe,
+	authzObserve func(read func() authz.Metrics),
 ) (servicecontract.Descriptor, error) {
 	mode, err := servicecontract.ParseMode(cfg.AuthMode)
 	if err != nil {
@@ -142,6 +143,11 @@ func describe(
 		CheckEdge:    servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
 		CacheWindow:  cfg.AuthZCacheTTL,
 		ClientBudget: cfg.AuthZCheckTimeout,
+		// Приёмник величин кеша вердиктов: носитель строит кеш, а
+		// диагностическую поверхность держит этот корень, и величины переходят
+		// границу только здесь. Без него доля попаданий не выходит из процесса,
+		// и «сколько даёт кеш» остаётся непроверяемым в обе стороны.
+		AuthzObserve: authzObserve,
 
 		// Верхняя граница обработки вызова и бюджет отказов — обе ВЕЛИЧИНЫ, обе с
 		// обоснованием у своих ручек конфигурации. «Не применимо» здесь незаконно:

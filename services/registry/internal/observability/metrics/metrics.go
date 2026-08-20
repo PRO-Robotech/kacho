@@ -61,6 +61,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowmetrics"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
 	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 )
 
@@ -196,4 +197,22 @@ var (
 // «коллектора нет».
 func (m *Metrics) RegisterListNarrow(read func() listnarrow.Counts) {
 	m.reg.MustRegister(narrowmetrics.New("registry", read))
+}
+
+// RegisterAuthzCache провязывает читателей величин КЕША ПОЛОЖИТЕЛЬНЫХ ВЕРДИКТОВ.
+//
+// Коллектор — ОДНА реализация на все сервисы (`pkg/authz/authzmetrics`) и одно
+// правило имени серии, однородное с краем
+// (`kacho_api_gateway_authz_cache_total`): собиратель, у которого уже есть
+// правило на край, читает сервисы тем же выражением.
+//
+// Полосы объявляет ВЫЗЫВАЮЩИЙ: кешей вердиктов в процессе бывает больше одного,
+// и полоса, которой в этом процессе нет, не рисуется нулями — иначе экспозиция
+// утверждала бы существование окна, которого нет.
+//
+// Решения звена — величина ПРОЦЕССА, а не полосы: звено у сервиса одно, и оба
+// слушателя проходят через него.
+func (m *Metrics) RegisterAuthzCache(lanes map[string]authzmetrics.Reader,
+	decisions authzmetrics.DecisionReader) {
+	m.reg.MustRegister(authzmetrics.New("registry", lanes, decisions))
 }

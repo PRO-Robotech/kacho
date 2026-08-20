@@ -74,7 +74,8 @@ func describeCfg(t *testing.T) (config.Config, config.MTLSConfig) {
 func TestDescriptorOfCompletePostureIsAccepted(t *testing.T) {
 	cfg, mtls := describeCfg(t)
 	desc, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
-		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{})
+		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
+		probeAuthzObserve)
 	require.NoError(t, err, "полная посадка обязана приниматься — иначе процесс не поднялся бы")
 	require.True(t, desc.Accepted())
 }
@@ -92,7 +93,8 @@ func TestUndeclaredDecisionEdgeRefusesInEveryPosture(t *testing.T) {
 			cfg.AuthN.Mode = mode
 			cfg.AuthZ.IAMEndpoint = ""
 			_, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
-				bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{})
+				bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
+				probeAuthzObserve)
 			require.Error(t, err, "ребро решения о доступе не объявлено — процесс не поднимается")
 			assert.Contains(t, err.Error(), "CheckEdge")
 		})
@@ -107,7 +109,8 @@ func TestHandlingBudgetHasNoDefaultAndNoExemption(t *testing.T) {
 	cfg, mtls := describeCfg(t)
 	cfg.APIServer.RequestTimeout = 0
 	_, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
-		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{})
+		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
+		probeAuthzObserve)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "HandlingBudget")
 }
@@ -123,7 +126,8 @@ func TestHandlingBudgetIsTheSameQuantityTheRetiredLinkRead(t *testing.T) {
 	cfg, mtls := describeCfg(t)
 	cfg.APIServer.RequestTimeout = 17123 * time.Millisecond // заведомо не круглое
 	desc, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
-		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{})
+		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
+		probeAuthzObserve)
 	require.NoError(t, err)
 	assert.Equal(t, cfg.APIServer.RequestTimeout, desc.Spec().HandlingBudget,
 		"граница обработки обязана быть ровно api-server.request-timeout, а не производной от неё")
@@ -189,7 +193,8 @@ func TestHiddenTypesAreResourcesNotHierarchyAnchors(t *testing.T) {
 func TestStreamBudgetIsExemptBecauseNoServerStreamIsServed(t *testing.T) {
 	cfg, mtls := describeCfg(t)
 	desc, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
-		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{})
+		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
+		probeAuthzObserve)
 	require.NoError(t, err)
 
 	_, hasValue := desc.Spec().StreamBudget.Get()
@@ -242,7 +247,8 @@ func TestNarrowerIsWiredToTheOneScopeFilteredMethod(t *testing.T) {
 	cfg, mtls := describeCfg(t)
 	narrower := buildListFilter(cfg, nil, discardLogger())
 	desc, err := describe(cfg, mtls, discardLogger(), narrower,
-		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{})
+		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
+		probeAuthzObserve)
 	require.NoError(t, err)
 
 	wired, ok := desc.Spec().Narrowers.Get()
@@ -251,3 +257,11 @@ func TestNarrowerIsWiredToTheOneScopeFilteredMethod(t *testing.T) {
 	assert.Same(t, narrower, wired[listByInstanceMethod],
 		"дескриптор обязан объявлять ТОТ ЖЕ объект, что сужает страницу на пути запроса")
 }
+
+// probeAuthzObserve — приёмник величин кеша вердиктов для проб КОНСТРУКТОРА.
+//
+// Заглушка здесь законна: предмет этих проб — что судит конструктор дескриптора,
+// а не куда уезжают величины. Настоящий приёмник, чей вызов носителем
+// утверждается, стоит в пробе подъёма (`carrier_start_test.go`): там его пропажа
+// красит пробу, здесь — не может по построению.
+func probeAuthzObserve(func() authz.Metrics) {}

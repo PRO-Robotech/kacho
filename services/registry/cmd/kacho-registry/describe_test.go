@@ -97,8 +97,9 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 // продукта — берём ровно те конструкторы, что зовёт корень.
 func probePorts() servePorts {
 	return servePorts{
-		existence: pg.NewExistenceProbe(nil),
-		narrower:  check.NewIAMCheckClient(nil).Narrower(),
+		existence:    pg.NewExistenceProbe(nil),
+		narrower:     check.NewIAMCheckClient(nil).Narrower(),
+		authzObserve: func(func() authz.Metrics) {},
 	}
 }
 

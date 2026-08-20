@@ -70,6 +70,7 @@ func describe(
 	narrower *authzfilter.Narrower,
 	gate *bootgate.Gate,
 	existence servicecontract.ExistenceProbe,
+	authzObserve func(read func() authz.Metrics),
 ) (servicecontract.Descriptor, error) {
 	mode, err := hostMode(cfg)
 	if err != nil {
@@ -116,6 +117,11 @@ func describe(
 		CheckEdge:    servicecontract.NewPeerEdge(checkAddr, checkCreds),
 		CacheWindow:  cfg.Authz.Cache.TTL,
 		ClientBudget: cfg.Authz.IAM.RequestTimeout,
+		// Приёмник величин кеша вердиктов: носитель строит кеш, а
+		// диагностическую поверхность держит этот корень, и величины переходят
+		// границу только здесь. Без него доля попаданий не выходит из процесса,
+		// и «сколько даёт кеш» остаётся непроверяемым в обе стороны.
+		AuthzObserve: authzObserve,
 
 		// Верхняя граница обработки вызова и бюджет отказов — обе ВЕЛИЧИНЫ, обе с
 		// обоснованием у своих ручек конфигурации (`api-server.handling-budget`,
