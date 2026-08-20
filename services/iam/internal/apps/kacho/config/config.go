@@ -85,13 +85,27 @@ type RepositoryConfig struct {
 //	URL              — standard DSN postgres://user:pass@host:port/db (master).
 //	SlaveURL         — DSN of the read-replica (optional).
 //	MaxConns         — pgxpool max conns (0 = pgx default).
+//	ReplicaBudget    — под сколько реплик рассчитана посадка (см. PostgresConfig).
 //	SSLMode          — disable|require|verify-ca|verify-full (validated in Validate).
 //	PasswordFromEnv  — name of the ENV var the password is read from and
 //	                   substituted into URL and SlaveURL. Default — KACHO_IAM_DB_PASSWORD.
 type PostgresConfig struct {
-	URL             string `mapstructure:"url"`
-	SlaveURL        string `mapstructure:"slave-url"`
-	MaxConns        int    `mapstructure:"max-conns"`
+	URL      string `mapstructure:"url"`
+	SlaveURL string `mapstructure:"slave-url"`
+	MaxConns int    `mapstructure:"max-conns"`
+
+	// ReplicaBudget — сколько реплик этой посадки могут работать ОДНОВРЕМЕННО.
+	//
+	// Служба не знает этого о себе и знать не обязана: под сколько реплик её
+	// раскладывают — свойство раскладки, а не процесса. Поэтому величину
+	// СООБЩАЮТ, и сообщает её тот же шаблон, который рендерит число реплик, —
+	// одно значение, два места применения, разойтись им негде.
+	//
+	// Нужна затем, что предел соединений у базы ОБЩИЙ на все реплики, а пул
+	// объявлен на ОДНУ. Произведение не записано нигде, и потому расхождение
+	// между обещанным и принимаемым не видно ни в одном файле по отдельности
+	// (загрузочный страж — `assertConnBudgetFits` в composition root).
+	ReplicaBudget   int    `mapstructure:"replica-budget"`
 	SSLMode         string `mapstructure:"ssl-mode"`
 	PasswordFromEnv string `mapstructure:"password-from-env"`
 }

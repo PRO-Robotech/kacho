@@ -97,6 +97,14 @@ func runServe(cfg config.Config) error {
 	}
 	defer pool.Close()
 
+	// Загрузочный страж: посадка не вправе обещать базе больше соединений, чем
+	// та принимает. Стоит СРАЗУ за созданием пула — до того, как процесс начнёт
+	// открывать соединения по работе: проверка, отложенная дальше, узнаёт о
+	// расхождении тогда же, когда о нём узнаёт арендатор.
+	if err := assertConnBudgetFits(ctx, pool, cfg.Repository.Postgres.ReplicaBudget); err != nil {
+		return err
+	}
+
 	// slave-pool wiring (read-replica). Если slave-url
 	// настроен и отличается от master URL — отдельный pgxpool для read-TX'ов;
 	// иначе slavePool = nil и kachopg.New() сделает fallback на master.
