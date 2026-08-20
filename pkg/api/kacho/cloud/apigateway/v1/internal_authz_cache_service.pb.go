@@ -50,8 +50,17 @@ type InvalidateSubjectRequest struct {
 	ResourceId   string `protobuf:"bytes,3,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
 	// EventType — diagnostic only (logged + emitted as metric label).
 	// Does NOT influence cache-invalidation behaviour.
-	// Canonical values: binding_revoke / binding_grant / jit_revoke /
-	// bg_revoke / group_member_change.
+	//
+	// Canonical values are exactly the three an iam producer can emit:
+	// binding_revoke / binding_grant / group_member_change. The drainer passes
+	// the row's event_type through verbatim, so this list is a statement about
+	// the emitting side, not about this edge.
+	//
+	// Two further values once stood here with no producer behind them and were
+	// retired from the iam dictionary by migration 754001. They are named there,
+	// not here: a contract that lists a value promises the caller may send it.
+	// Adding a value to this list without an emitter is the same defect again —
+	// it is guarded by retiredDictionaryValues in internal/repohygiene.
 	EventType     string `protobuf:"bytes,4,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
