@@ -46,10 +46,22 @@ import (
 // месту: одно расхождение в написании завело бы пятую полосу, которую никто не
 // заметит, потому что она всегда ноль.
 const (
+	// Решение ПРИНЯТО — модель прав ответила.
 	decisionAllow        = "allow"
 	decisionDeny         = "deny"
 	decisionErrorRefused = "error_refused"
 	decisionErrorPassed  = "error_passed"
+
+	// Решения НЕ БЫЛО — запрос допущен механизмом, который модель не спрашивает.
+	// Шесть механизмов, шесть полос: «пропущен, потому что путь публичен» и
+	// «разрешён, потому что права есть» — разные факты, и первый обязан быть
+	// виден, если однажды в список попадёт путь, которому там не место (#798).
+	decisionPublicPath     = "public_path"
+	decisionAllowlist      = "allowlist"
+	decisionInternalOrigin = "internal_origin"
+	decisionOverrideAllow  = "override_allow"
+	decisionExempt         = "exempt"
+	decisionScopeFiltered  = "scope_filtered"
 
 	cacheHit  = "hit"
 	cacheMiss = "miss"
@@ -140,6 +152,18 @@ var (
 		"kacho_api_gateway_authz_check_duration_seconds",
 		"Time taken to reach an authorization decision at the edge, in seconds.",
 		nil, nil)
+	// enforcingDesc — включена ли проверка В ЭТОМ ПРОЦЕССЕ.
+	//
+	// Отдельная серия, а не вывод из нулей на полосах решений: при выключенной
+	// проверке звено пропускает всё, коллектор собран, и все полосы стоят
+	// нулями — ровно так же, как при отсутствии трафика. Два противоположных
+	// состояния, неотличимых на поверхности, — это то же самое, что мягкий
+	// проход без своего счётчика (`security.md` §Hardening-инвариант 8(б)).
+	enforcingDesc = prometheus.NewDesc(
+		"kacho_api_gateway_authz_enforcing",
+		"1 when the edge authorization check is enabled in this process, 0 when it is off. "+
+			"Zero counters alone cannot tell 'check disabled' from 'no traffic'.",
+		nil, nil)
 )
 
 // Describe объявляет ВСЕ семейства до первого сбора.
@@ -148,6 +172,7 @@ func (c *authzCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- cacheDesc
 	ch <- clientCallsDesc
 	ch <- durationDesc
+	ch <- enforcingDesc
 }
 
 // Collect читает снимок и отдаёт все объявленные серии — включая нулевые.
@@ -165,6 +190,13 @@ func (c *authzCollector) Collect(ch chan<- prometheus.Metric) {
 		decisionDeny:         s.Counts.Denied,
 		decisionErrorRefused: s.Counts.ErrorRefused,
 		decisionErrorPassed:  s.Counts.ErrorPassed,
+
+		decisionPublicPath:     s.Counts.PublicPath,
+		decisionAllowlist:      s.Counts.Allowlist,
+		decisionInternalOrigin: s.Counts.InternalOrigin,
+		decisionOverrideAllow:  s.Counts.OverrideAllow,
+		decisionExempt:         s.Counts.Exempt,
+		decisionScopeFiltered:  s.Counts.ScopeFiltered,
 	} {
 		ch <- prometheus.MustNewConstMetric(decisionsDesc, prometheus.CounterValue,
 			float64(value), decision)
@@ -177,6 +209,12 @@ func (c *authzCollector) Collect(ch chan<- prometheus.Metric) {
 			float64(value), result)
 	}
 	ch <- prometheus.MustNewConstMetric(clientCallsDesc, prometheus.CounterValue, float64(s.ClientCalls))
+
+	enforcing := 0.0
+	if s.Counts.Enforcing {
+		enforcing = 1
+	}
+	ch <- prometheus.MustNewConstMetric(enforcingDesc, prometheus.GaugeValue, enforcing)
 
 	ch <- prometheus.MustNewConstHistogram(durationDesc,
 		s.Counts.DurationCount, s.Counts.DurationSum, cumulative(s.Counts))

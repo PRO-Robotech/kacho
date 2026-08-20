@@ -217,6 +217,11 @@ func NewAuthzMiddleware(cfg AuthzMiddlewareConfig) (*AuthzMiddleware, error) {
 	if metrics == nil {
 		metrics = NewAuthzMetrics()
 	}
+	// Посадка объявляется ЗДЕСЬ — в единственном месте, где она известна.
+	// Выключенная проверка пропускает всё, накопитель при этом собран, и все
+	// полосы стоят нулями: без этой строки «проверка выключена» и «трафика не
+	// было» на поверхности сбора неразличимы (#798).
+	metrics.SetEnforcing(cfg.Enabled)
 
 	allow := make(map[string]struct{}, len(cfg.PublicAllowlist))
 	for _, fqn := range cfg.PublicAllowlist {
@@ -462,6 +467,12 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 		// still guard here for completeness when this middleware is mounted
 		// without it (dev mode).
 		if isPublicHTTPPath(r.URL.Path) {
+			// СВОЯ полоса. Раньше этот проход не попадал НИ В ОДНУ, и число
+			// «решений в секунду», снятое с края, было занижено на весь публичный
+			// трафик — а среди путей списка есть продуктовые, а не только пробы
+			// живости. Полоса нужна ровно затем, чтобы путь, которому в списке не
+			// место, был виден, а не растворялся в тишине (#798).
+			m.metrics.RecordPublicPath()
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -668,7 +679,9 @@ func (m *AuthzMiddleware) decide(ctx context.Context, dr decisionRequest) decisi
 // without any subject/catalog check.
 func (m *AuthzMiddleware) phaseAllowlist(dr decisionRequest) (decision, bool) {
 	if _, ok := m.allow[dr.FQN]; ok {
-		m.metrics.RecordAllow()
+		// СВОЯ полоса, не `allow`: модель прав не спрашивали, и обойдена не только
+		// она, но и authN. Слитое в `allow`, это выглядело бы выдачей (#798).
+		m.metrics.RecordAllowlist()
 		return decision{outcome: outcomeAllow, descriptor: permissionDeniedDescriptor{FQN: dr.FQN}}, true
 	}
 	return decision{}, false
@@ -704,7 +717,10 @@ func (m *AuthzMiddleware) phaseAllowlist(dr decisionRequest) (decision, bool) {
 func (m *AuthzMiddleware) phaseInternalOriginExempt(dr decisionRequest) (decision, bool) {
 	if allowlist.HasInternalSuffix("/"+dr.FQN) && !m.isExternalRequest(dr) {
 		if entry, found := m.cfg.Catalog.Lookup(dr.FQN); found && entry.IsExempt() {
-			m.metrics.RecordAllow()
+			// СВОЯ полоса: допуск держится на СЕТЕВОЙ ПОЗИЦИИ, которая
+			// удостоверением не является, и принципал здесь не извлекался вовсе.
+			// Ровно этот поток обязан быть виден отдельно (#798).
+			m.metrics.RecordInternalOrigin()
 			return decision{
 				outcome:    outcomeAllow,
 				descriptor: permissionDeniedDescriptor{FQN: dr.FQN, Action: entry.Permission},
@@ -726,7 +742,9 @@ func (m *AuthzMiddleware) phaseOverride(dr decisionRequest) (decision, bool) {
 	}
 	switch dec {
 	case OverrideAllow:
-		m.metrics.RecordAllow()
+		// СВОЯ полоса: это правка файла руками. Её след обязан быть отличим от
+		// выдачи сильнее всех прочих (#798).
+		m.metrics.RecordOverrideAllow()
 		m.cfg.Logger.Info("authz override allow", "fqn", dr.FQN)
 		return decision{outcome: outcomeAllow, descriptor: permissionDeniedDescriptor{FQN: dr.FQN}}, true
 	case OverrideDeny:
@@ -771,7 +789,9 @@ func (m *AuthzMiddleware) phaseCatalog(ctx context.Context, dr decisionRequest) 
 				entry: entry,
 			}, true
 		}
-		m.metrics.RecordAllow()
+		// СВОЯ полоса: каталог снял вопрос МОДЕЛИ (принципал при этом установлен —
+		// см. ветку выше). «Права есть» здесь никто не утверждал (#798).
+		m.metrics.RecordExempt()
 		return entry, decision{
 			outcome:    outcomeAllow,
 			descriptor: permissionDeniedDescriptor{FQN: dr.FQN, Action: entry.Permission},
@@ -873,7 +893,10 @@ func (m *AuthzMiddleware) phaseScopeFiltered(dr decisionRequest, entry CatalogEn
 	if !entry.ScopeFiltered {
 		return decision{}, false
 	}
-	m.metrics.RecordAllow()
+	// СВОЯ полоса: авторизует ВЛАДЕЮЩИЙ СЕРВИС над данными, которыми отвечает.
+	// Допуск края здесь — не суждение о правах, и складывать его с выдачей значит
+	// утверждать проверку, которой край не делал (#798).
+	m.metrics.RecordScopeFiltered()
 	return decision{
 		outcome:    outcomeAllow,
 		descriptor: permissionDeniedDescriptor{FQN: dr.FQN, Action: entry.Permission},
