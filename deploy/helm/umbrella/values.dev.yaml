@@ -562,12 +562,24 @@ pg-iam:
     persistence:
       enabled: true
       size: 2Gi
+    # Предел процессора поднят 1000m → 3000m: замер пропускной способности
+    # `InternalIAMService.Check` показал, что упирается ИМЕННО эта база, а не
+    # служба. Доказано сдвигом границы, а не рассуждением: подъём предела с
+    # одного ядра до четырёх поднял потолок ОДНОЙ реплики 300 → 500 запросов в
+    # секунду без единой правки кода, тогда как +2 реплики службы дали +100.
+    # Отчёт — services/iam/tests/k6/results/BASELINE-internal-check.md.
+    #
+    # Следующий предел — ПАМЯТЬ, а не ядра: при 1Gi здесь стоят shared_buffers
+    # 128MB и effective_cache_size 512MB (ниже, в extendedConfiguration), и они
+    # рассчитаны на прежнюю посадку. Подняв ядра втрое, мы сдвигаем узкое место
+    # туда; это названо здесь затем, чтобы следующий замер не искал причину в
+    # процессоре, которого теперь хватает.
     resources:
       requests:
         cpu: 100m
         memory: 256Mi
       limits:
-        cpu: 1000m
+        cpu: 3000m
         memory: 1Gi
     extendedConfiguration: |
       synchronous_commit = local
