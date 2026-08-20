@@ -120,6 +120,8 @@ func AuditRetiredDictionaryValues(root string, files []string, retired []Retired
 
 	var findings []ContractValueFinding
 	for _, abs := range files {
+		// #nosec G304 -- путь пришёл из индекса git ЭТОГО дерева (treecorpus) либо
+		// из синтетического корня инъекции; постороннего ввода тут нет.
 		f, err := os.Open(abs)
 		if err != nil {
 			return nil, census, fmt.Errorf("не прочитан файл контракта %s: %w", abs, err)
