@@ -64,8 +64,12 @@ const gatewayServiceName = "api-gateway"
 // NOT in this set (any verified module — floor only):
 //   - InternalIAMService/{Check,LookupSubject,PollSubjectChanges} — hot-path
 //     service→service RPCs.
-//   - InternalSessionRevocationsService/IsRevoked — the gateway's own hot-path
-//     lookup, runs before per-user authz can possibly run (chicken-and-egg).
+//   - InternalSessionRevocationsService/IsRevoked — заведено под собственный
+//     запрос края, идущий до того, как может пойти пер-пользовательская
+//     проверка (курица и яйцо). ВНИМАНИЕ: этого вызывающего в дереве СЕГОДНЯ
+//     НЕТ (#797) — у края нет метода чтения в клиенте. То есть послаблению
+//     нечего исключать; оно оставлено до решения по #797, а не потому, что
+//     предмет есть. Исчезнет метод — снимать и эту строку.
 //   - InternalUserService/Get — service→service lookup.
 //   - Hydra hook callbacks are not in this set and cannot be: they are served
 //     over HTTP by internal/handler/iamhooks, not as gRPC methods. The gRPC
