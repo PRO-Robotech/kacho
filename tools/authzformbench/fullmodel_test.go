@@ -405,6 +405,9 @@ func writeFullModelReport(t *testing.T, v fullVerdicts, w *fmWorld,
 	}
 	c := w.Model.Census()
 	var b strings.Builder
+	// Отпечаток прибора — первой строкой: отчёт, не называющий, ЧЕМ он снят, гейт
+	// свежести отличить от древнего не может (см. freshness_test.go, полоса B).
+	fmt.Fprintf(&b, "%s", FingerprintHeader())
 	fmt.Fprintf(&b, "модель: типов %d · объявлений %d · типов с глаголами %d · глаголов %d · "+
 		"указателей %d · условий %d\n", c.Types, c.Declarations, c.VerbTypes, c.VerbDeclaration,
 		c.Pointers, c.Conditions)
