@@ -339,6 +339,19 @@ jobs:
           cache: true
       - run: go mod download
 
+      # Прибор переписи источников (services/iam/internal/scopesourcecensus)
+      # исполняется внешним psql. Без него пробы делают t.Skip, а пропуск в этой
+      # цели — ОТКАЗ: джоба стала бы красной не по вине дерева. Условие создаётся
+      # здесь явно, отдельным шагом, чтобы «не установлено» было отличимо от
+      # «пробы упали».
+      - name: клиент psql — условие для проб, исполняющих прибор
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq postgresql-client
+          fi
+          psql --version
+
       - name: пробы с настоящим Postgres вне отбора (пропуск = отказ)
         run: make test-pg-outside-selection
 
