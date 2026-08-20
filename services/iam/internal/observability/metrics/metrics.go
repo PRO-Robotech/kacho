@@ -105,7 +105,10 @@ func NewRegistry() *Registry {
 		reg: reg,
 		authzDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name: "kacho_iam_authz_check_duration_seconds",
-			Help: "Latency of the authz Check hot path (FGA Check + transport), by rpc and decision. SLO budget: ≤30ms p95.",
+			Help: "Latency of the authz Check hot path (FGA Check + transport), by rpc lane and outcome. " +
+				"SLO budget: <=30ms p95. On the BatchCheck lane `allowed` means the CALL completed, not that a " +
+				"question was allowed: one batch carries many answers, and a single label over all of them would " +
+				"be false about each. Per-question outcomes live in the decisions counter.",
 			// Buckets sized around the ≤30ms p95 budget, with headroom to spot
 			// regressions/timeouts (FGA Check ≤10ms target).
 			Buckets: []float64{0.001, 0.0025, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.25, 0.5, 1},
@@ -185,7 +188,12 @@ func (r *Registry) Handler() http.Handler {
 
 // AuthzObservation is a single recorded authz Check outcome.
 type AuthzObservation struct {
-	RPC      string  // "Check" | "CheckRelation"
+	// RPC — полоса, которой задан вопрос. Значения — ЗАКРЫТЫЙ словарь
+	// [DeclaredAuthzLanes]; каждое обязано иметь производителя, и это держит
+	// проба `TestEveryDeclaredLaneHasAProducer`. Прежняя редакция называла
+	// значения в этом комментарии, и одно из двух названных не производилось
+	// ничем: полоса присутствовала нулём и выглядела исправным наблюдением.
+	RPC      string
 	Allowed  bool    // decision allowed
 	Err      bool    // backend/validation error (overrides allow/deny in the decision counter)
 	Duration float64 // seconds
@@ -194,17 +202,31 @@ type AuthzObservation struct {
 // ObserveAuthz records one authz Check outcome: the duration histogram (labelled
 // rpc + allowed) plus the decision counter (allow|deny|error).
 func (r *Registry) ObserveAuthz(o AuthzObservation) {
-	allowed := strconv.FormatBool(o.Allowed)
-	r.authzDuration.WithLabelValues(o.RPC, allowed).Observe(o.Duration)
+	r.ObserveAuthzDuration(o.RPC, o.Allowed, o.Duration)
+	r.ObserveAuthzDecision(o.RPC, o.Allowed, o.Err)
+}
 
+// ObserveAuthzDuration записывает ТОЛЬКО длительность одного вызова.
+//
+// Отделено от решения потому, что у пачки вопросов эти две величины считаются
+// по-разному: длительность принадлежит ВЫЗОВУ (делить её на вопросы значило бы
+// утверждать про каждый то, чего никто не измерял), а решения — ВОПРОСАМ
+// (страница контрактно бывает до тысячи объектов, и счёт по вызовам занизил бы
+// нагрузку от списочной выдачи в тысячу раз).
+func (r *Registry) ObserveAuthzDuration(rpc string, allowed bool, seconds float64) {
+	r.authzDuration.WithLabelValues(rpc, strconv.FormatBool(allowed)).Observe(seconds)
+}
+
+// ObserveAuthzDecision записывает ТОЛЬКО исход одного вопроса.
+func (r *Registry) ObserveAuthzDecision(rpc string, allowed, failed bool) {
 	decision := "allow"
 	switch {
-	case o.Err:
+	case failed:
 		decision = "error"
-	case !o.Allowed:
+	case !allowed:
 		decision = "deny"
 	}
-	r.authzDecisions.WithLabelValues(o.RPC, decision).Inc()
+	r.authzDecisions.WithLabelValues(rpc, decision).Inc()
 }
 
 // ObserveAuthzStoreAttempt records ONE attempt against the authorization store.

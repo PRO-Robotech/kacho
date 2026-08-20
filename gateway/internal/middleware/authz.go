@@ -232,8 +232,14 @@ func NewAuthzMiddleware(cfg AuthzMiddlewareConfig) (*AuthzMiddleware, error) {
 	}, nil
 }
 
-// Metrics returns the metrics sink. NOTE: the gateway exposes no /metrics endpoint
-// today, so this sink is in-process only — see authz_metrics.go.
+// Metrics returns the metrics sink.
+//
+// Величины ВЫХОДЯТ наружу: их читает коллектор `gateway/internal/observability/metrics`,
+// зарегистрированный композиционным корнем на диагностической поверхности края
+// (`KACHO_API_GATEWAY_METRICS_ADDR`, умолчание `:9095`). Прежняя редакция этой
+// строки утверждала обратное — «эндпоинта нет, накопитель живёт только в
+// процессе» — и пережила свой предмет: поверхность появилась, а комментарий
+// остался и читался как объяснение, почему числа края смотреть негде.
 func (m *AuthzMiddleware) Metrics() *AuthzMetrics { return m.metrics }
 
 // subjectChangingFQNs — gRPC FQNs whose success changes a subject's grants.
