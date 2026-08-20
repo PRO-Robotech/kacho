@@ -3,17 +3,17 @@ R7-1 · S2 — ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ
 =======================================================================================================================================================================================================================================================
 
 ПРОВЕНАНС
-  снято               2026-08-19 19:45:01 MSK
-  ревизия дерева      916d3ee35fc90fc7851c76d59b2fd7674b75fd30
+  снято               2026-08-20 09:45:54 MSK
+  ревизия дерева      dd6bedcfab99f50f012f9baf1f43f22fdf204869
   состояние дерева    чистое (несохранённых правок нет) — ревизия описывает
                       исполнявшееся дерево целиком
   машина              AMD Ryzen 5 5600X 6-Core Processor, ядер 12
   Postgres            16.15
 
 ОТПЕЧАТОК ПРЕДМЕТА ЗАМЕРА (гейт свежести сверяет его с текущим деревом)
-  отпечаток состава     35fbf4e16ea3331e
-  отпечаток содержимого c4ee09e2fc235afa
-  файлов под отпечатком 90, таблиц выведено 14 (kacho_iam.access_binding_subjects, kacho_iam.access_bindings, kacho_iam.accounts, kacho_iam.group_members, kacho_iam.groups, kacho_iam.projects, kacho_iam.relation_fact, kacho_iam.resource_mirror, kacho_iam.resource_parent_edge, kacho_iam.role_rule_selectors, kacho_iam.role_verb, kacho_iam.roles, kacho_iam.service_accounts, kacho_iam.users)
+  отпечаток состава     ac5b3cdd29b31114
+  отпечаток содержимого b23d5533ece3ba7e
+  файлов под отпечатком 93, таблиц выведено 16 (kacho_iam.access_binding_subjects, kacho_iam.access_bindings, kacho_iam.accounts, kacho_iam.clusters, kacho_iam.group_members, kacho_iam.groups, kacho_iam.projects, kacho_iam.relation_fact, kacho_iam.resource_mirror, kacho_iam.resource_parent_edge, kacho_iam.resource_scope_edge, kacho_iam.role_rule_selectors, kacho_iam.role_verb, kacho_iam.roles, kacho_iam.service_accounts, kacho_iam.users)
   предикат отпечатка    все не-тестовые .go каталогов services/iam/internal/repo/kacho/pg/relverdict и services/iam/internal/repo/kacho/pg/scalegrid; все .sql каталога services/iam/internal/migrations, называющие хотя бы одну таблицу, которую читает запрос вердикта (имена таблиц ВЫВЕДЕНЫ из кода вердикта по приставке "kacho_iam.", а не выписаны)
   ФАЙЛЫ ПОД ОТПЕЧАТКОМ (пофайлово, чтобы гейт назвал ВИНОВНИКА, а не только факт)
     c758aac510e28d60  services/iam/internal/migrations/0001_initial.sql
@@ -91,13 +91,16 @@ R7-1 · S2 — ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ
     d246bbd4221b87e0  services/iam/internal/migrations/484002_account_quota_identity_carrier.sql
     3045af2563bed533  services/iam/internal/migrations/513001_system_role_rules_speak_the_catalog_dictionary.sql
     a0c5f6cb92e68363  services/iam/internal/migrations/732001_binding_subject_carries_its_scope.sql
-    8e156816e46eccfb  services/iam/internal/repo/kacho/pg/relverdict/asker.go
+    11839ffcb2202689  services/iam/internal/migrations/740001_scope_chain_reaches_the_root.sql
+    10afaa5d859057df  services/iam/internal/migrations/781001_scope_chain_takes_the_project_parent_from_the_journal.sql
+    49c0c0ad4e02e6a6  services/iam/internal/migrations/785001_scope_chain_covers_iam_own_types.sql
+    4db57cf06c1893f0  services/iam/internal/repo/kacho/pg/relverdict/asker.go
     7690dd1ed78f4b14  services/iam/internal/repo/kacho/pg/relverdict/condition.go
-    ebd71c05429229f7  services/iam/internal/repo/kacho/pg/relverdict/expand.go
+    331eb71c416fc30e  services/iam/internal/repo/kacho/pg/relverdict/expand.go
     34e69e5b51a980e6  services/iam/internal/repo/kacho/pg/relverdict/labelaxis.go
-    a5e47e3c6b61493a  services/iam/internal/repo/kacho/pg/relverdict/list.go
-    47b197b32b900c6e  services/iam/internal/repo/kacho/pg/relverdict/query.go
-    fa63c4351c7ace6d  services/iam/internal/repo/kacho/pg/relverdict/subjects.go
+    c998e169be4ec6e6  services/iam/internal/repo/kacho/pg/relverdict/list.go
+    8c43b6077c309aad  services/iam/internal/repo/kacho/pg/relverdict/query.go
+    b7cfe7200e59391a  services/iam/internal/repo/kacho/pg/relverdict/subjects.go
     809f5718cffa1732  services/iam/internal/repo/kacho/pg/scalegrid/census.go
     813a7da914ee5057  services/iam/internal/repo/kacho/pg/scalegrid/dictionary.go
     8e6a0bae815081b1  services/iam/internal/repo/kacho/pg/scalegrid/fingerprint.go
@@ -137,21 +140,21 @@ R7-1 · S2 — ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ
 ОСЬ N
 ------------------------------------------------------------------------------
 значение   способ набора             строк   отброш.  тронуто  сверочная обращ.       p50       p99 S_набл
-100        прямыми выдачами             14        14       28         36      2     459µs   2.817ms      7
-1000       прямыми выдачами             14        12       26         34      2     406µs     606µs      7
-10000      прямыми выдачами             14        12       26         34      2     408µs     564µs      7
-100000     прямыми выдачами             22        10       32         34      2     408µs     677µs      7
-1000000    прямыми выдачами             22        10       32         34      2     388µs     650µs      7
+100        прямыми выдачами             30        17       47         55      2     832µs   4.114ms      7
+1000       прямыми выдачами             30        15       45         45      2     907µs   1.013ms      7
+10000      прямыми выдачами             30        15       45         45      2     825µs   1.095ms      7
+100000     прямыми выдачами             30        15       45         45      2     919µs    1.08ms      7
+1000000    прямыми выдачами             30        15       45         45      2     695µs     795µs      7
 
-  отношение к нижней точке (несущая): 100→1.00  1000→1.00  10000→1.00  100000→1.57  1000000→1.57  
-  отношение сверочная/несущая по точкам: 100→2.57  1000→2.43  10000→2.43  100000→1.55  1000000→1.55  
+  отношение к нижней точке (несущая): 100→1.00  1000→1.00  10000→1.00  100000→1.00  1000000→1.00  
+  отношение сверочная/несущая по точкам: 100→1.83  1000→1.50  10000→1.50  100000→1.50  1000000→1.50  
   вердикт в каждой точке: 100→allow  1000→allow  10000→allow  100000→allow  1000000→allow  
   план по точкам:
-    100        [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact Seq Scan→resource_mirror]
-    1000       [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    10000      [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    100000     [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    1000000    [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
+    100        [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→resource_mirror Seq Scan→roles Seq Scan→service_accounts]
+    1000       [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    10000      [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    100000     [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    1000000    [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
 
   ПЕРЕПИСЬ ПОСАЖЕННОГО в верхней точке (по каждой таблице порознь, счётом по факту):
     объектов зеркала                       1000002
@@ -168,17 +171,17 @@ R7-1 · S2 — ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ
 ОСЬ B
 ------------------------------------------------------------------------------
 значение   способ набора             строк   отброш.  тронуто  сверочная обращ.       p50       p99 S_набл
-100        прямыми выдачами            123        10      133        143      2     458µs   2.355ms      7
-1000       прямыми выдачами             14        12       26         34      2     416µs     458µs      7
-1000000    прямыми выдачами             14        10       24         51      2   2.591ms   2.852ms      7
+100        прямыми выдачами            131        15      146        154      2     856µs   3.563ms      7
+1000       прямыми выдачами             30        15       45         68      2     708µs     756µs      7
+1000000    прямыми выдачами             22        15       37         62      2   3.886ms   4.262ms      7
 
-  отношение к нижней точке (несущая): 100→1.00  1000→0.11  1000000→0.11  
-  отношение сверочная/несущая по точкам: 100→1.16  1000→2.43  1000000→3.64  
+  отношение к нижней точке (несущая): 100→1.00  1000→0.23  1000000→0.17  
+  отношение сверочная/несущая по точкам: 100→1.18  1000→2.27  1000000→2.82  
   вердикт в каждой точке: 100→allow  1000→allow  1000000→allow  
   план по точкам:
-    100        [Index Only Scan→role_verb Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→access_binding_subjects Seq Scan→group_members Seq Scan→relation_fact]
-    1000       [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    1000000    [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
+    100        [Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→access_binding_subjects Seq Scan→access_bindings Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts Seq Scan→users]
+    1000       [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    1000000    [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→roles Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→service_accounts]
 
   ПЕРЕПИСЬ ПОСАЖЕННОГО в верхней точке (по каждой таблице порознь, счётом по факту):
     объектов зеркала                       1002
@@ -195,27 +198,27 @@ R7-1 · S2 — ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ
 ОСЬ R
 ------------------------------------------------------------------------------
 значение   способ набора             строк   отброш.  тронуто  сверочная обращ.       p50       p99 S_набл
-1          прямыми выдачами             14        12       26         38      2     450µs   2.892ms      7
-9          прямыми выдачами             14        12       26         34      2     496µs     645µs      7
-100        прямыми выдачами             14        12       26         34      2     388µs     754µs      7
-100        через группы                 13        12       25         34      2     420µs     507µs      7
-227        прямыми выдачами             14        12       26         35      2     434µs     745µs      7
-227        через группы                 13        12       25         35      2     454µs     509µs      7
-1000       прямыми выдачами             14        10       24         35      2     454µs     657µs      7
-1000       через группы                 13        10       23         35      2     614µs     980µs      7
+1          прямыми выдачами             21        15       36         49      2     798µs   3.704ms      7
+9          прямыми выдачами             30        15       45         45      2     723µs     940µs      7
+100        прямыми выдачами            120        15      135         45      2     716µs     754µs      7
+100        через группы                120        15      135         45      2     754µs     930µs      7
+227        прямыми выдачами            249        15      264         46      2     703µs     787µs      7
+227        через группы                249        15      264         46      2     760µs     871µs      7
+1000       прямыми выдачами           1020        15     1035         46      2     886µs   1.403ms      7
+1000       через группы               1020        15     1035         46      2     749µs     987µs      7
 
-  отношение к нижней точке (несущая): 1→1.00  9→1.00  100→1.00  100→0.93  227→1.00  227→0.93  1000→1.00  1000→0.93  
-  отношение сверочная/несущая по точкам: 1→2.71  9→2.43  100→2.43  100→2.62  227→2.50  227→2.69  1000→2.50  1000→2.69  
+  отношение к нижней точке (несущая): 1→1.00  9→1.43  100→5.71  100→5.71  227→11.86  227→11.86  1000→48.57  1000→48.57  
+  отношение сверочная/несущая по точкам: 1→2.33  9→1.50  100→0.38  100→0.38  227→0.18  227→0.18  1000→0.05  1000→0.05  
   вердикт в каждой точке: 1→allow  9→allow  100→allow  100→allow  227→allow  227→allow  1000→allow  1000→allow  
   план по точкам:
-    1          [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    9          [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    100        [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    100        [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    227        [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    227        [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    1000       [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    1000       [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
+    1          [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    9          [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    100        [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    100        [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    227        [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→roles Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→service_accounts]
+    227        [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→roles Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→service_accounts]
+    1000       [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→roles Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→service_accounts]
+    1000       [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→roles Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→service_accounts]
 
   ПЕРЕПИСЬ ПОСАЖЕННОГО в верхней точке (по каждой таблице порознь, счётом по факту):
     объектов зеркала                       1002
@@ -232,27 +235,27 @@ R7-1 · S2 — ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ
 ОСЬ F
 ------------------------------------------------------------------------------
 значение   способ набора             строк   отброш.  тронуто  сверочная обращ.       p50       p99 S_набл
-0          фактом лично                  7         2        9         22      2     412µs   2.438ms      7
-1          фактом лично                 14        12       26         34      2     449µs     847µs      7
-10         фактом лично                 23        18       41         43      2     422µs     450µs      7
-10         фактом через группу          23        19       42         28      2     434µs     547µs      7
-10         фактом подстановкой user:*       23        17       40         28      2     565µs     936µs      7
-100        фактом лично                113        18      131        133      2     514µs     639µs      7
-100        фактом через группу         113        19      132        133      2     432µs     637µs      7
-100        фактом подстановкой user:*      113        17      130        133      2     458µs     720µs      7
+0          фактом лично                 16         5       21         36      2     650µs   3.568ms      7
+1          фактом лично                 30        15       45         45      2     773µs     991µs      7
+10         фактом лично                 39       127      166         72      2     745µs   1.028ms      7
+10         фактом через группу          39       143      182         57      2     908µs   1.556ms      7
+10         фактом подстановкой user:*       39       111      150         57      2     890µs   1.005ms      7
+100        фактом лично                129      1261     1390        342      2     790µs     907µs      7
+100        фактом через группу         129      1436     1565        342      2     777µs     1.2ms      7
+100        фактом подстановкой user:*      129      1086     1215        342      2     737µs     842µs      7
 
-  отношение к нижней точке (несущая): 0→1.00  1→2.00  10→3.29  10→3.29  10→3.29  100→16.14  100→16.14  100→16.14  
-  отношение сверочная/несущая по точкам: 0→3.14  1→2.43  10→1.87  10→1.22  10→1.22  100→1.18  100→1.18  100→1.18  
+  отношение к нижней точке (несущая): 0→1.00  1→1.88  10→2.44  10→2.44  10→2.44  100→8.06  100→8.06  100→8.06  
+  отношение сверочная/несущая по точкам: 0→2.25  1→1.50  10→1.85  10→1.46  10→1.46  100→2.65  100→2.65  100→2.65  
   вердикт в каждой точке: 0→allow  1→allow  10→allow  10→allow  10→allow  100→allow  100→allow  100→allow  
   план по точкам:
-    0          [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    1          [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    10         [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    10         [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    10         [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    100        [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    100        [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
-    100        [Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Seq Scan→group_members Seq Scan→relation_fact]
+    0          [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    1          [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    10         [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    10         [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    10         [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    100        [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    100        [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
+    100        [Index Only Scan→access_bindings Index Only Scan→resource_parent_edge Index Only Scan→role_verb Index Scan→access_binding_subjects Index Scan→access_bindings Index Scan→groups Index Scan→resource_mirror Index Scan→resource_parent_edge Index Scan→role_rule_selectors Index Scan→users Seq Scan→accounts Seq Scan→clusters Seq Scan→group_members Seq Scan→relation_fact Seq Scan→roles Seq Scan→service_accounts]
 
   ПЕРЕПИСЬ ПОСАЖЕННОГО в верхней точке (по каждой таблице порознь, счётом по факту):
     объектов зеркала                       1002
@@ -267,7 +270,7 @@ R7-1 · S2 — ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ
 
 
 ОБЪЁМ ОСМОТРЕННОГО
-  осей 4, точек сетки 24, вердиктов задано 528, настенное время прогона 8m51s
+  осей 4, точек сетки 24, вердиктов задано 528, настенное время прогона 8m43s
 
 ПЕРЕПИСЬ ПРИБОРА В ВЕРХНЕЙ ТОЧКЕ ОСИ N (доля неотнесённого печатается всегда)
 ПРАВИЛО ОТНЕСЕНИЯ (объявлено до прогона; перепись печатает его дословно из кода)
@@ -315,33 +318,56 @@ R7-1 · S2 — ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ
    означает три четверти узлов.
 
 ОБЪЁМ ОСМОТРЕННОГО
-  узлов разобрано 43, отнесено 8, не отнесено 35 (81.4 %), отношений 8
+  узлов разобрано 94, отнесено 25, не отнесено 69 (73.4 %), отношений 14
   предпосылка (ожидаемые отношения): relation_fact, access_bindings, access_binding_subjects, role_verb, role_rule_selectors, group_members, resource_parent_edge, resource_mirror
 
 ВЕЛИЧИНЫ
-  отдано узлами (несущая, с множителем циклов)   22
-  отброшено всего                                10
-    из них фильтром                              9
+  отдано узлами (несущая, с множителем циклов)   30
+  отброшено всего                                15
+    из них фильтром                              14
     из них перепроверкой потерявшего точность bitmap 0
     из них соединением (по узлам)                1
-  тронуто (отдано + отброшено)                   32
-  по всем узлам плана, включая неотнесённые      121
-  строк на неотнесённых узлах                    99
+  тронуто (отдано + отброшено)                   45
+  по всем узлам плана, включая неотнесённые      156
+  строк на неотнесённых узлах                    126
   Heap Fetches                                   1
   Workers Launched                               0
 
 РАЗЛОЖЕНИЕ ПО ОТНОШЕНИЯМ (взято из плана, не выписано в коде)
   access_binding_subjects  доступов 1, отдано 9, отброшено 0
-  access_bindings          доступов 1, отдано 1, отброшено 0
+  access_bindings          доступов 2, отдано 1, отброшено 0
+  accounts                 доступов 1, отдано 3, отброшено 3
+  clusters                 доступов 1, отдано 3, отброшено 0
   group_members            доступов 1, отдано 1, отброшено 5
-  relation_fact            доступов 1, отдано 1, отброшено 0
+  groups                   доступов 1, отдано 0, отброшено 0
+  relation_fact            доступов 2, отдано 1, отброшено 2
   resource_mirror          доступов 1, отдано 1, отброшено 0
-  resource_parent_edge     доступов 1, отдано 7, отброшено 0
+  resource_parent_edge     доступов 9, отдано 9, отброшено 0
   role_rule_selectors      доступов 1, отдано 1, отброшено 0
   role_verb                доступов 1, отдано 1, отброшено 0
+  roles                    доступов 2, отдано 0, отброшено 0
+  service_accounts         доступов 1, отдано 0, отброшено 0
+  users                    доступов 1, отдано 0, отброшено 0
 
 ДОСТУПЫ ПООБЪЕКТНО (ключ отнесения назван, чтобы его можно было оспорить)
-  resource_parent_edge     Index Scan           циклов 7, отдано 7, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  resource_parent_edge     Index Scan           циклов 9, отдано 9, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  relation_fact            Seq Scan             циклов 2, отдано 0, отброшено 2 (фильтр 2, перепроверка 0), ключ: Relation Name
+  resource_parent_edge     Index Only Scan      циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  accounts                 Seq Scan             циклов 3, отдано 3, отброшено 3 (фильтр 3, перепроверка 0), ключ: Relation Name
+  resource_parent_edge     Index Only Scan      циклов 3, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  clusters                 Seq Scan             циклов 3, отдано 3, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  users                    Index Scan           циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  resource_parent_edge     Index Only Scan      циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  groups                   Index Scan           циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  resource_parent_edge     Index Only Scan      циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  service_accounts         Seq Scan             циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  resource_parent_edge     Index Only Scan      циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  roles                    Seq Scan             циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  resource_parent_edge     Index Only Scan      циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  roles                    Seq Scan             циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  resource_parent_edge     Index Only Scan      циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  access_bindings          Index Only Scan      циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
+  resource_parent_edge     Index Only Scan      циклов 1, отдано 0, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
   group_members            Seq Scan             циклов 1, отдано 1, отброшено 5 (фильтр 5, перепроверка 0), ключ: Relation Name
   access_binding_subjects  Index Scan           циклов 3, отдано 9, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
   access_bindings          Index Scan           циклов 1, отдано 1, отброшено 0 (фильтр 0, перепроверка 0), ключ: Relation Name
@@ -354,5 +380,5 @@ R7-1 · S2 — ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ
   Nested Loop          отброшено 1
 
 УЗЛЫ НЕИЗВЕСТНОГО ПРИБОРУ ТИПА
-  нет (все 43 узлов — знакомых типов)
+  нет (все 94 узлов — знакомых типов)
 
