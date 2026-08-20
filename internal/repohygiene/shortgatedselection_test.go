@@ -295,6 +295,18 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	"services/iam/internal/authzmap":                   "make test-authz-fga",
 	"services/iam/internal/service":                    "make test-authz-fga",
 	"services/iam/internal/testsupport/fgatest":        "make test-authz-fga",
+
+	// #803. Пакет заведён #800 и сразу оказался вне всякого прогона: шесть проб,
+	// все под кратким режимом, а отбор по пути до `internal/scopesourcecensus`
+	// не достаёт. Долгом это записывать было не за что — исполнять есть чем и
+	// почти даром: предмет у него ровно тот же, что у двух записей выше (нужен
+	// настоящий Postgres, сериализуется под `-p 1`), цена измерена — 15.6 с.
+	//
+	// Сверх Postgres пробам нужен внешний `psql`: прибор исполняется им, а без
+	// него они делают t.Skip — и цель, где пропуск есть отказ, стала бы красной.
+	// Поэтому джоба конвейера ставит клиента отдельным шагом; условие создаётся,
+	// а не подразумевается.
+	"services/iam/internal/scopesourcecensus": "make test-pg-outside-selection",
 }
 
 // TestShortGatedPackagesAreEitherSelectedOrCounted — сам гейт против дерева.

@@ -38,12 +38,13 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // retiredQueueEventValues — значения словаря, которые ОСТАЮТСЯ в ограничении, но
@@ -95,7 +96,13 @@ func TestQueueEventValueHasAProducer(t *testing.T) {
 			continue
 		}
 
-		producers, n := stringLiteralsIn(t, filepath.Join(root, "services", svc))
+		svcFiles, err := goFilesOfService(root, svc)
+		if err != nil {
+			t.Errorf("состав прод-кода сервиса %s не прочитан (%v) — остановись здесь: "+
+				"«производителей нет» неотличимо от «не смотрели»", svc, err)
+			continue
+		}
+		producers, n := stringLiteralsIn(svcFiles)
 		filesRead += n
 		if n == 0 {
 			t.Errorf("прод-код сервиса %s не прочитан (ноль файлов) — «производителей нет» "+
@@ -122,7 +129,7 @@ func TestQueueEventValueHasAProducer(t *testing.T) {
 					t.Errorf("%s: значение %q объявлено снятым с производства (%s), но "+
 						"производитель у него ЕСТЬ (%s). Послабление пережило свой предмет: "+
 						"либо снимай запись, либо снимай производителя.",
-						table, v, reason, producers2coord(v, t, filepath.Join(root, "services", svc)))
+						table, v, reason, producers2coord(v, svcFiles))
 				case !producers[v] && !retired:
 					t.Errorf("%s: словарь колонки %q допускает %q, а в не-тестовом коде %s "+
 						"нет ни одного места, которое это значение пишет (прочитано %d файлов). "+
@@ -158,19 +165,41 @@ func serviceOfSchema(qualified string) string {
 	return strings.TrimPrefix(schema, "kacho_")
 }
 
-// stringLiteralsIn — множество строковых литералов не-тестового Go под dir и
-// число прочитанных файлов. Разбор, а не текст: комментарий производителем не является.
-func stringLiteralsIn(t *testing.T, dir string) (map[string]bool, int) {
-	t.Helper()
+// goFilesOfService — не-тестовые `.go` сервиса, взятые из ИНДЕКСА git.
+//
+// Не обход диска: правила игнорирования действуют на любой глубине, и под
+// `services/` на машине, где поднимали стенд, лежат распаковки чартов и отчёты
+// прогонов. Обойдя их, гейт нашёл бы «производителя» в чужом файле — то есть
+// признал бы живым значение, которого продукт не пишет, и вердикт стал бы
+// свойством рабочего каталога, а не коммита.
+//
+// Пустой состав [treecorpus.Under] отдаёт ОТКАЗОМ, а не пустым успехом, — здесь
+// это то, что нужно: вызывающий обязан остановиться, а не печатать «ноль
+// находок» на «ноль прочитанного».
+func goFilesOfService(root, svc string) ([]string, error) {
+	all, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services", svc), ".go")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(all))
+	for _, p := range all {
+		if strings.HasSuffix(p, "_test.go") {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// stringLiteralsIn — множество строковых литералов перечисленных файлов и число
+// прочитанных. Разбор, а не текст: комментарий производителем не является.
+func stringLiteralsIn(paths []string) (map[string]bool, int) {
 	lits := map[string]bool{}
 	files := 0
-	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
-			return nil
-		}
+	for _, p := range paths {
 		f, e := parser.ParseFile(token.NewFileSet(), p, nil, 0)
 		if e != nil {
-			return nil
+			continue
 		}
 		files++
 		ast.Inspect(f, func(n ast.Node) bool {
@@ -181,25 +210,20 @@ func stringLiteralsIn(t *testing.T, dir string) (map[string]bool, int) {
 			}
 			return true
 		})
-		return nil
-	})
+	}
 	return lits, files
 }
 
 // producers2coord — координата первого производителя, чтобы отказ называл место,
-// а не только значение.
-func producers2coord(value string, t *testing.T, dir string) string {
-	t.Helper()
+// а не только значение. Состав файлов — тот же, что у [stringLiteralsIn]: два
+// разных состава дали бы отказ, называющий координату из другого дерева.
+func producers2coord(value string, paths []string) string {
 	coord := "<не найдено>"
-	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || coord != "<не найдено>" ||
-			!strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
-			return nil
-		}
+	for _, p := range paths {
 		fset := token.NewFileSet()
 		f, e := parser.ParseFile(fset, p, nil, 0)
 		if e != nil {
-			return nil
+			continue
 		}
 		ast.Inspect(f, func(n ast.Node) bool {
 			bl, ok := n.(*ast.BasicLit)
@@ -211,7 +235,9 @@ func producers2coord(value string, t *testing.T, dir string) string {
 			}
 			return true
 		})
-		return nil
-	})
+		if coord != "<не найдено>" {
+			return coord
+		}
+	}
 	return coord
 }
