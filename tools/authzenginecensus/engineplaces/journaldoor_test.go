@@ -44,6 +44,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 	"github.com/PRO-Robotech/kacho/tools/authzenginecensus/engineplaces"
 )
 
@@ -370,36 +371,35 @@ func TestJournalDoor_NonGoWritersAreAdjudicated(t *testing.T) {
 	files := map[string]int{}
 	scanned, executable := 0, 0
 
-	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			if info != nil && info.IsDir() && (info.Name() == ".git" || info.Name() == "node_modules" || info.Name() == "vendor") {
-				return filepath.SkipDir
-			}
-			return nil
+	// Состав дерева спрашивается У ИНДЕКСА, а не у диска: обход диска не знает
+	// правил игнорирования и потому судит чужой рабочий каталог — произведённые
+	// файлы, чужие копии, остатки прогонов. Требование держит гейт
+	// `internal/repohygiene.TestTreeWalkersAskTheIndex`, и он поймал ровно это
+	// место в первом же прогоне после заведения гейта.
+	out, err := gitenv.Command(root, "ls-files", "-z").Output()
+	if err != nil {
+		t.Fatalf("git ls-files: %v — состав дерева не установлен, и «ноль находок» "+
+			"здесь означало бы «ноль прочитанного»", err)
+	}
+	for _, rel := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
+		if rel == "" || strings.HasSuffix(rel, ".go") {
+			continue // пустая запись либо покрыто переписью
 		}
-		if strings.HasSuffix(p, ".go") {
-			return nil // покрыто переписью
-		}
-		raw, rerr := os.ReadFile(p) // #nosec G304 — обход собственного дерева
+		raw, rerr := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса своего дерева
 		if rerr != nil {
-			return nil
+			continue // файл в индексе, но снят с диска — не предмет этого гейта
 		}
 		scanned++
 		body := string(raw)
-		if !strings.HasSuffix(p, ".sh") && !strings.HasPrefix(body, "#!") {
-			return nil
+		if !strings.HasSuffix(rel, ".sh") && !strings.HasPrefix(body, "#!") {
+			continue
 		}
 		executable++
 		// Комментарии срезаются: гейт обязан читать ИСПОЛНЯЕМУЮ часть, иначе
 		// краснеет на объяснении рядом с самой защитой.
 		if engineWriteEndpoint.MatchString(shellExecutablePart(body)) {
-			rel, _ := filepath.Rel(root, p)
 			files[filepath.ToSlash(rel)]++
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход дерева не состоялся — перепись негодна: %v", err)
 	}
 
 	if executable == 0 {
