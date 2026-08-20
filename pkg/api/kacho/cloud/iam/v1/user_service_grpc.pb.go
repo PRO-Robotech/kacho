@@ -52,7 +52,7 @@ type UserServiceClient interface {
 	List(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error)
 	// Invite a user by email. Если user уже invited в этот Account
 	// (idempotent re-invite) — Operation возвращается, AB опционально создается.
-	// Permission: requires `admin` OR `editor` relation на account_id (OpenFGA Check).
+	// Permission: requires `admin` OR `editor` relation на account_id.
 	Invite(ctx context.Context, in *InviteUserRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Updates the specified User. Единственное mutable-поле — `labels` (User —
 	// label-selectable наравне с account/project). Identity-поля (`external_id`
@@ -242,7 +242,7 @@ type UserServiceServer interface {
 	List(context.Context, *ListUsersRequest) (*ListUsersResponse, error)
 	// Invite a user by email. Если user уже invited в этот Account
 	// (idempotent re-invite) — Operation возвращается, AB опционально создается.
-	// Permission: requires `admin` OR `editor` relation на account_id (OpenFGA Check).
+	// Permission: requires `admin` OR `editor` relation на account_id.
 	Invite(context.Context, *InviteUserRequest) (*operation.Operation, error)
 	// Updates the specified User. Единственное mutable-поле — `labels` (User —
 	// label-selectable наравне с account/project). Identity-поля (`external_id`

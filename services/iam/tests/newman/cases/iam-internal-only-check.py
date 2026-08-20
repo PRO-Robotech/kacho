@@ -23,7 +23,7 @@ Coverage:
   IAM-INT-NEG-EXT-IAM-LOOKUPSUBJECT    — InternalIAMService.LookupSubject → 404 mux-miss на external
   IAM-INT-NEG-EXT-IAM-CHECK            — InternalIAMService.Check → 404 mux-miss на external
   IAM-INT-NEG-EXT-UNBOUND-NEVER-SUCCEEDS
-                                       — WriteTuples / SessionRevocations.{Revoke,IsRevoked} /
+                                       — ReadTuples / SessionRevocations.{Revoke,IsRevoked} /
                                          ForceLogout / InternalUserService.Get: НИКОГДА не 2xx на
                                          external + пин к absent-path контролю. НЕ доказывает
                                          route-изоляцию (см. «TWO FAMILIES» ниже) и прямо это заявляет
@@ -183,7 +183,14 @@ CASES = []
 # Unbound REST paths for Internal* RPCs that carry NO `google.api.http` binding.
 #
 # Only two InternalIAMService RPCs are annotated (`:lookupSubject`, `:check`);
-# WriteTuples / SessionRevocations.Revoke / .IsRevoked / ForceLogout are not.
+# ReadTuples / SessionRevocations.Revoke / .IsRevoked / ForceLogout are not.
+#
+# The first of the four used to be InternalAuthorizeService/WriteTuples. That RPC
+# was retired from the contract (#788, zero callers), and a probe aimed at a
+# method that no longer exists asserts nothing: it would pass because there is no
+# such method, not because ban #6 holds — the exact defect this block's own note
+# below describes as "the form of an isolation check and none of its substance".
+# ReadTuples is its live sibling on the same service, equally unbound.
 # grpc-gateway is generated with `generate_unbound_methods=true`, so the route
 # these four actually answer on is the fully-qualified default form below — and
 # it is served ONLY by the cluster-internal sub-mux (ban #6).

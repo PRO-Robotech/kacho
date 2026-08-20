@@ -30,18 +30,18 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Consistency — read-consistency preference (mirrors OpenFGA
-// ConsistencyPreference). Nested to the request so it never collides with
-// model relations.
+// Consistency — read-freshness preference.
 type CheckRequest_Consistency int32
 
 const (
-	// Unset — treated as MINIMIZE_LATENCY (default, back-compat: legacy callers
-	// that never set the field keep the cache-eligible read).
+	// Unset — no explicit requirement. Answered from the primary all the same.
 	CheckRequest_CONSISTENCY_UNSPECIFIED CheckRequest_Consistency = 0
-	// Cache/replica-eligible read (OpenFGA default) — hot enforcement gate.
+	// Latency-first. No read path currently trades freshness for latency, so the
+	// answer is identical to the one below; the value keeps its meaning for a
+	// caller that is willing to accept a lagging read if one ever exists.
 	CheckRequest_MINIMIZE_LATENCY CheckRequest_Consistency = 1
-	// Bypass cache/replica-lag — strong read-after-write for confirm probes.
+	// The answer must not lag the caller's own committed write. Held by
+	// construction: the verdict reads the primary.
 	CheckRequest_HIGHER_CONSISTENCY CheckRequest_Consistency = 2
 )
 
@@ -293,19 +293,20 @@ type CheckRequest struct {
 	Object string `protobuf:"bytes,3,opt,name=object,proto3" json:"object,omitempty"`
 	// Trace-id для correlation в логах (optional).
 	TraceId string `protobuf:"bytes,4,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
-	// consistency — read-consistency preference forwarded verbatim to the OpenFGA
-	// `Check` (`consistency` field). ADDITIVE (field 5, internal-only message →
-	// buf-breaking=0).
+	// consistency — how fresh the caller needs the answer to be.
 	//
-	//   - UNSPECIFIED (default) → OpenFGA MINIMIZE_LATENCY: the hot per-RPC
-	//     enforcement gate stays cache/replica-eligible (low latency).
-	//   - HIGHER_CONSISTENCY → OpenFGA bypasses its read caches / replica lag and
-	//     computes strongly from the datastore. Used ONLY by the owner-tuple
-	//     confirm-gate (read-after-OWN-write): the probe MUST observe a tuple this
-	//     caller just wrote through the SAME store, so under the multi-replica
-	//     OpenFGA deployment a default (MINIMIZE_LATENCY) read can otherwise serve
-	//     a stale-negative from the other replica's cache for seconds — the
-	//     confirm-op tail-latency this field closes.
+	// THE STRONGER GUARANTEE IS NOW GIVEN UNCONDITIONALLY, and that is a statement
+	// about the source, not a field nobody reads. The preference used to be
+	// forwarded to an external relations engine that answered from its own replicas
+	// and read caches, so a default read could serve a stale negative for seconds.
+	// That engine was retired: the verdict is computed from the service's own
+	// primary database, in which a caller's committed write is visible to the very
+	// next read by construction.
+	//
+	// The field stays on the contract because it states the caller's REQUIREMENT,
+	// not the mechanism that meets it. Should a read path over a lagging replica
+	// ever be introduced, the requirement becomes discriminating again — and
+	// discriminating on it is the job of whoever introduces that path.
 	Consistency   CheckRequest_Consistency `protobuf:"varint,5,opt,name=consistency,proto3,enum=kacho.cloud.iam.v1.CheckRequest_Consistency" json:"consistency,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -431,109 +432,11 @@ func (x *CheckResponse) GetReason() string {
 	return ""
 }
 
-// WriteCreatorTupleRequest — sync write own-creator tuple.
-type WriteCreatorTupleRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Subject creator'а (например "user:<usr_xxx>"; результат Principal propagation).
-	SubjectId string `protobuf:"bytes,1,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
-	// Relation для creator-tuple (как правило "admin").
-	Relation string `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
-	// Объект только что созданного ресурса ("vpc_network:<enp>", "compute_instance:<...>" и т.п.).
-	Object        string `protobuf:"bytes,3,opt,name=object,proto3" json:"object,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *WriteCreatorTupleRequest) Reset() {
-	*x = WriteCreatorTupleRequest{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *WriteCreatorTupleRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*WriteCreatorTupleRequest) ProtoMessage() {}
-
-func (x *WriteCreatorTupleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use WriteCreatorTupleRequest.ProtoReflect.Descriptor instead.
-func (*WriteCreatorTupleRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *WriteCreatorTupleRequest) GetSubjectId() string {
-	if x != nil {
-		return x.SubjectId
-	}
-	return ""
-}
-
-func (x *WriteCreatorTupleRequest) GetRelation() string {
-	if x != nil {
-		return x.Relation
-	}
-	return ""
-}
-
-func (x *WriteCreatorTupleRequest) GetObject() string {
-	if x != nil {
-		return x.Object
-	}
-	return ""
-}
-
-// WriteCreatorTupleResponse — пусто; success implicit (gRPC OK).
-type WriteCreatorTupleResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *WriteCreatorTupleResponse) Reset() {
-	*x = WriteCreatorTupleResponse{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *WriteCreatorTupleResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*WriteCreatorTupleResponse) ProtoMessage() {}
-
-func (x *WriteCreatorTupleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use WriteCreatorTupleResponse.ProtoReflect.Descriptor instead.
-func (*WriteCreatorTupleResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{5}
-}
-
+// TOMBSTONE: `WriteCreatorTupleRequest` and `WriteCreatorTupleResponse` were
+// removed together with the `WriteCreatorTuple` RPC (#788). Never re-add
+// messages under these names.
 // RegisterResourceRequest — Internal FGA-proxy register-owner-tuple payload.
-// Форма симметрична CheckRequest / WriteCreatorTupleRequest.
+// Форма симметрична CheckRequest.
 type RegisterResourceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// FGA-subject string. Формат "<type>:<id>", напр.:
@@ -544,7 +447,7 @@ type RegisterResourceRequest struct {
 	SubjectId string `protobuf:"bytes,1,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
 	// FGA-relation для owner-tuple (как правило "admin" / "parent").
 	Relation string `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
-	// FGA-object string. Формат "<type>:<id>" из authorization-model OpenFGA
+	// Объект решения. Формат "<type>:<id>" словарём МОДЕЛИ прав
 	// (НЕ permission-каталог), напр. "vpc_network:<enp_xxx>",
 	// "compute_instance:<...>".
 	Object string `protobuf:"bytes,3,opt,name=object,proto3" json:"object,omitempty"`
@@ -609,7 +512,7 @@ type RegisterResourceRequest struct {
 
 func (x *RegisterResourceRequest) Reset() {
 	*x = RegisterResourceRequest{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -621,7 +524,7 @@ func (x *RegisterResourceRequest) String() string {
 func (*RegisterResourceRequest) ProtoMessage() {}
 
 func (x *RegisterResourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -634,7 +537,7 @@ func (x *RegisterResourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterResourceRequest.ProtoReflect.Descriptor instead.
 func (*RegisterResourceRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{6}
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RegisterResourceRequest) GetSubjectId() string {
@@ -710,7 +613,7 @@ type RegisterResourceResponse struct {
 
 func (x *RegisterResourceResponse) Reset() {
 	*x = RegisterResourceResponse{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -722,7 +625,7 @@ func (x *RegisterResourceResponse) String() string {
 func (*RegisterResourceResponse) ProtoMessage() {}
 
 func (x *RegisterResourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -735,7 +638,7 @@ func (x *RegisterResourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterResourceResponse.ProtoReflect.Descriptor instead.
 func (*RegisterResourceResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{7}
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{5}
 }
 
 // UnregisterResourceRequest — Internal FGA-proxy unregister-owner-tuple payload.
@@ -773,7 +676,7 @@ type UnregisterResourceRequest struct {
 
 func (x *UnregisterResourceRequest) Reset() {
 	*x = UnregisterResourceRequest{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -785,7 +688,7 @@ func (x *UnregisterResourceRequest) String() string {
 func (*UnregisterResourceRequest) ProtoMessage() {}
 
 func (x *UnregisterResourceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -798,7 +701,7 @@ func (x *UnregisterResourceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnregisterResourceRequest.ProtoReflect.Descriptor instead.
 func (*UnregisterResourceRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{8}
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *UnregisterResourceRequest) GetSubjectId() string {
@@ -867,7 +770,7 @@ type UnregisterResourceResponse struct {
 
 func (x *UnregisterResourceResponse) Reset() {
 	*x = UnregisterResourceResponse{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -879,7 +782,7 @@ func (x *UnregisterResourceResponse) String() string {
 func (*UnregisterResourceResponse) ProtoMessage() {}
 
 func (x *UnregisterResourceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -892,7 +795,7 @@ func (x *UnregisterResourceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnregisterResourceResponse.ProtoReflect.Descriptor instead.
 func (*UnregisterResourceResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{9}
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{7}
 }
 
 // ForceLogoutRequest — admin force-logout payload.
@@ -913,7 +816,7 @@ type ForceLogoutRequest struct {
 
 func (x *ForceLogoutRequest) Reset() {
 	*x = ForceLogoutRequest{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -925,7 +828,7 @@ func (x *ForceLogoutRequest) String() string {
 func (*ForceLogoutRequest) ProtoMessage() {}
 
 func (x *ForceLogoutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -938,7 +841,7 @@ func (x *ForceLogoutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForceLogoutRequest.ProtoReflect.Descriptor instead.
 func (*ForceLogoutRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{10}
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ForceLogoutRequest) GetUserId() string {
@@ -973,7 +876,7 @@ type ForceLogoutMetadata struct {
 
 func (x *ForceLogoutMetadata) Reset() {
 	*x = ForceLogoutMetadata{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[11]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -985,7 +888,7 @@ func (x *ForceLogoutMetadata) String() string {
 func (*ForceLogoutMetadata) ProtoMessage() {}
 
 func (x *ForceLogoutMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[11]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -998,7 +901,7 @@ func (x *ForceLogoutMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForceLogoutMetadata.ProtoReflect.Descriptor instead.
 func (*ForceLogoutMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{11}
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ForceLogoutMetadata) GetUserId() string {
@@ -1020,7 +923,7 @@ type ForceLogoutResult struct {
 
 func (x *ForceLogoutResult) Reset() {
 	*x = ForceLogoutResult{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[12]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1032,7 +935,7 @@ func (x *ForceLogoutResult) String() string {
 func (*ForceLogoutResult) ProtoMessage() {}
 
 func (x *ForceLogoutResult) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[12]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1045,7 +948,7 @@ func (x *ForceLogoutResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForceLogoutResult.ProtoReflect.Descriptor instead.
 func (*ForceLogoutResult) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{12}
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ForceLogoutResult) GetRevokedCount() int32 {
@@ -1068,7 +971,7 @@ type PollSubjectChangesRequest struct {
 
 func (x *PollSubjectChangesRequest) Reset() {
 	*x = PollSubjectChangesRequest{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[13]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1080,7 +983,7 @@ func (x *PollSubjectChangesRequest) String() string {
 func (*PollSubjectChangesRequest) ProtoMessage() {}
 
 func (x *PollSubjectChangesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[13]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1093,7 +996,7 @@ func (x *PollSubjectChangesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PollSubjectChangesRequest.ProtoReflect.Descriptor instead.
 func (*PollSubjectChangesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{13}
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *PollSubjectChangesRequest) GetSinceId() int64 {
@@ -1122,7 +1025,7 @@ type SubjectChange struct {
 
 func (x *SubjectChange) Reset() {
 	*x = SubjectChange{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[14]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1134,7 +1037,7 @@ func (x *SubjectChange) String() string {
 func (*SubjectChange) ProtoMessage() {}
 
 func (x *SubjectChange) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[14]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1147,7 +1050,7 @@ func (x *SubjectChange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubjectChange.ProtoReflect.Descriptor instead.
 func (*SubjectChange) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{14}
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SubjectChange) GetId() int64 {
@@ -1184,7 +1087,7 @@ type PollSubjectChangesResponse struct {
 
 func (x *PollSubjectChangesResponse) Reset() {
 	*x = PollSubjectChangesResponse{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[15]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1196,7 +1099,7 @@ func (x *PollSubjectChangesResponse) String() string {
 func (*PollSubjectChangesResponse) ProtoMessage() {}
 
 func (x *PollSubjectChangesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[15]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1209,7 +1112,7 @@ func (x *PollSubjectChangesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PollSubjectChangesResponse.ProtoReflect.Descriptor instead.
 func (*PollSubjectChangesResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{15}
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *PollSubjectChangesResponse) GetChanges() []*SubjectChange {
@@ -1237,7 +1140,7 @@ type GetRoleCompiledRequest struct {
 
 func (x *GetRoleCompiledRequest) Reset() {
 	*x = GetRoleCompiledRequest{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[16]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1249,7 +1152,7 @@ func (x *GetRoleCompiledRequest) String() string {
 func (*GetRoleCompiledRequest) ProtoMessage() {}
 
 func (x *GetRoleCompiledRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[16]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1262,7 +1165,7 @@ func (x *GetRoleCompiledRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRoleCompiledRequest.ProtoReflect.Descriptor instead.
 func (*GetRoleCompiledRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{16}
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetRoleCompiledRequest) GetRoleId() string {
@@ -1286,7 +1189,7 @@ type GetRoleCompiledResponse struct {
 
 func (x *GetRoleCompiledResponse) Reset() {
 	*x = GetRoleCompiledResponse{}
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[17]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1298,7 +1201,7 @@ func (x *GetRoleCompiledResponse) String() string {
 func (*GetRoleCompiledResponse) ProtoMessage() {}
 
 func (x *GetRoleCompiledResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[17]
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1311,7 +1214,7 @@ func (x *GetRoleCompiledResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRoleCompiledResponse.ProtoReflect.Descriptor instead.
 func (*GetRoleCompiledResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{17}
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetRoleCompiledResponse) GetRoleId() string {
@@ -1356,13 +1259,7 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\x12HIGHER_CONSISTENCY\x10\x02\"A\n" +
 	"\rCheckResponse\x12\x18\n" +
 	"\aallowed\x18\x01 \x01(\bR\aallowed\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\"\x99\x01\n" +
-	"\x18WriteCreatorTupleRequest\x12,\n" +
-	"\n" +
-	"subject_id\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\tsubjectId\x12(\n" +
-	"\brelation\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\brelation\x12%\n" +
-	"\x06object\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\x06object\"\x1b\n" +
-	"\x19WriteCreatorTupleResponse\"\x9b\x04\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"\x9b\x04\n" +
 	"\x17RegisterResourceRequest\x12,\n" +
 	"\n" +
 	"subject_id\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\tsubjectId\x12(\n" +
@@ -1415,11 +1312,10 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\arole_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06roleId\"T\n" +
 	"\x17GetRoleCompiledResponse\x12\x17\n" +
 	"\arole_id\x18\x01 \x01(\tR\x06roleId\x12 \n" +
-	"\vpermissions\x18\x02 \x03(\tR\vpermissions2\xca\b\n" +
+	"\vpermissions\x18\x02 \x03(\tR\vpermissions2\xca\a\n" +
 	"\x12InternalIAMService\x12\x9f\x01\n" +
 	"\rLookupSubject\x12(.kacho.cloud.iam.v1.LookupSubjectRequest\x1a).kacho.cloud.iam.v1.LookupSubjectResponse\"9\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02':\x01*\"\"/iam/v1/internal/iam:lookupSubject\x12\x7f\n" +
-	"\x05Check\x12 .kacho.cloud.iam.v1.CheckRequest\x1a!.kacho.cloud.iam.v1.CheckResponse\"1\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/iam/v1/internal/iam:check\x12~\n" +
-	"\x11WriteCreatorTuple\x12,.kacho.cloud.iam.v1.WriteCreatorTupleRequest\x1a-.kacho.cloud.iam.v1.WriteCreatorTupleResponse\"\f\x8a\xb5\x18\b<exempt>\x12\x91\x01\n" +
+	"\x05Check\x12 .kacho.cloud.iam.v1.CheckRequest\x1a!.kacho.cloud.iam.v1.CheckResponse\"1\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/iam/v1/internal/iam:check\x12\x91\x01\n" +
 	"\vForceLogout\x12&.kacho.cloud.iam.v1.ForceLogoutRequest\x1a .kacho.cloud.operation.Operation\"8\x8a\xb5\x18\b<exempt>\xb2\xd2*(\n" +
 	"\x13ForceLogoutMetadata\x12\x11ForceLogoutResult\x12\x81\x01\n" +
 	"\x12PollSubjectChanges\x12-.kacho.cloud.iam.v1.PollSubjectChangesRequest\x1a..kacho.cloud.iam.v1.PollSubjectChangesResponse\"\f\x8a\xb5\x18\b<exempt>\x12{\n" +
@@ -1440,61 +1336,57 @@ func file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_iam_v1_internal_iam_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_kacho_cloud_iam_v1_internal_iam_service_proto_goTypes = []any{
 	(CheckRequest_Consistency)(0),      // 0: kacho.cloud.iam.v1.CheckRequest.Consistency
 	(*LookupSubjectRequest)(nil),       // 1: kacho.cloud.iam.v1.LookupSubjectRequest
 	(*LookupSubjectResponse)(nil),      // 2: kacho.cloud.iam.v1.LookupSubjectResponse
 	(*CheckRequest)(nil),               // 3: kacho.cloud.iam.v1.CheckRequest
 	(*CheckResponse)(nil),              // 4: kacho.cloud.iam.v1.CheckResponse
-	(*WriteCreatorTupleRequest)(nil),   // 5: kacho.cloud.iam.v1.WriteCreatorTupleRequest
-	(*WriteCreatorTupleResponse)(nil),  // 6: kacho.cloud.iam.v1.WriteCreatorTupleResponse
-	(*RegisterResourceRequest)(nil),    // 7: kacho.cloud.iam.v1.RegisterResourceRequest
-	(*RegisterResourceResponse)(nil),   // 8: kacho.cloud.iam.v1.RegisterResourceResponse
-	(*UnregisterResourceRequest)(nil),  // 9: kacho.cloud.iam.v1.UnregisterResourceRequest
-	(*UnregisterResourceResponse)(nil), // 10: kacho.cloud.iam.v1.UnregisterResourceResponse
-	(*ForceLogoutRequest)(nil),         // 11: kacho.cloud.iam.v1.ForceLogoutRequest
-	(*ForceLogoutMetadata)(nil),        // 12: kacho.cloud.iam.v1.ForceLogoutMetadata
-	(*ForceLogoutResult)(nil),          // 13: kacho.cloud.iam.v1.ForceLogoutResult
-	(*PollSubjectChangesRequest)(nil),  // 14: kacho.cloud.iam.v1.PollSubjectChangesRequest
-	(*SubjectChange)(nil),              // 15: kacho.cloud.iam.v1.SubjectChange
-	(*PollSubjectChangesResponse)(nil), // 16: kacho.cloud.iam.v1.PollSubjectChangesResponse
-	(*GetRoleCompiledRequest)(nil),     // 17: kacho.cloud.iam.v1.GetRoleCompiledRequest
-	(*GetRoleCompiledResponse)(nil),    // 18: kacho.cloud.iam.v1.GetRoleCompiledResponse
-	nil,                                // 19: kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
-	nil,                                // 20: kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
-	(*User)(nil),                       // 21: kacho.cloud.iam.v1.User
-	(*ServiceAccount)(nil),             // 22: kacho.cloud.iam.v1.ServiceAccount
-	(*timestamppb.Timestamp)(nil),      // 23: google.protobuf.Timestamp
-	(*operation.Operation)(nil),        // 24: kacho.cloud.operation.Operation
+	(*RegisterResourceRequest)(nil),    // 5: kacho.cloud.iam.v1.RegisterResourceRequest
+	(*RegisterResourceResponse)(nil),   // 6: kacho.cloud.iam.v1.RegisterResourceResponse
+	(*UnregisterResourceRequest)(nil),  // 7: kacho.cloud.iam.v1.UnregisterResourceRequest
+	(*UnregisterResourceResponse)(nil), // 8: kacho.cloud.iam.v1.UnregisterResourceResponse
+	(*ForceLogoutRequest)(nil),         // 9: kacho.cloud.iam.v1.ForceLogoutRequest
+	(*ForceLogoutMetadata)(nil),        // 10: kacho.cloud.iam.v1.ForceLogoutMetadata
+	(*ForceLogoutResult)(nil),          // 11: kacho.cloud.iam.v1.ForceLogoutResult
+	(*PollSubjectChangesRequest)(nil),  // 12: kacho.cloud.iam.v1.PollSubjectChangesRequest
+	(*SubjectChange)(nil),              // 13: kacho.cloud.iam.v1.SubjectChange
+	(*PollSubjectChangesResponse)(nil), // 14: kacho.cloud.iam.v1.PollSubjectChangesResponse
+	(*GetRoleCompiledRequest)(nil),     // 15: kacho.cloud.iam.v1.GetRoleCompiledRequest
+	(*GetRoleCompiledResponse)(nil),    // 16: kacho.cloud.iam.v1.GetRoleCompiledResponse
+	nil,                                // 17: kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
+	nil,                                // 18: kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
+	(*User)(nil),                       // 19: kacho.cloud.iam.v1.User
+	(*ServiceAccount)(nil),             // 20: kacho.cloud.iam.v1.ServiceAccount
+	(*timestamppb.Timestamp)(nil),      // 21: google.protobuf.Timestamp
+	(*operation.Operation)(nil),        // 22: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_iam_v1_internal_iam_service_proto_depIdxs = []int32{
-	21, // 0: kacho.cloud.iam.v1.LookupSubjectResponse.user:type_name -> kacho.cloud.iam.v1.User
-	22, // 1: kacho.cloud.iam.v1.LookupSubjectResponse.service_account:type_name -> kacho.cloud.iam.v1.ServiceAccount
+	19, // 0: kacho.cloud.iam.v1.LookupSubjectResponse.user:type_name -> kacho.cloud.iam.v1.User
+	20, // 1: kacho.cloud.iam.v1.LookupSubjectResponse.service_account:type_name -> kacho.cloud.iam.v1.ServiceAccount
 	0,  // 2: kacho.cloud.iam.v1.CheckRequest.consistency:type_name -> kacho.cloud.iam.v1.CheckRequest.Consistency
-	19, // 3: kacho.cloud.iam.v1.RegisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
-	23, // 4: kacho.cloud.iam.v1.RegisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
-	20, // 5: kacho.cloud.iam.v1.UnregisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
-	23, // 6: kacho.cloud.iam.v1.UnregisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
-	15, // 7: kacho.cloud.iam.v1.PollSubjectChangesResponse.changes:type_name -> kacho.cloud.iam.v1.SubjectChange
+	17, // 3: kacho.cloud.iam.v1.RegisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
+	21, // 4: kacho.cloud.iam.v1.RegisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
+	18, // 5: kacho.cloud.iam.v1.UnregisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
+	21, // 6: kacho.cloud.iam.v1.UnregisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
+	13, // 7: kacho.cloud.iam.v1.PollSubjectChangesResponse.changes:type_name -> kacho.cloud.iam.v1.SubjectChange
 	1,  // 8: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:input_type -> kacho.cloud.iam.v1.LookupSubjectRequest
 	3,  // 9: kacho.cloud.iam.v1.InternalIAMService.Check:input_type -> kacho.cloud.iam.v1.CheckRequest
-	5,  // 10: kacho.cloud.iam.v1.InternalIAMService.WriteCreatorTuple:input_type -> kacho.cloud.iam.v1.WriteCreatorTupleRequest
-	11, // 11: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:input_type -> kacho.cloud.iam.v1.ForceLogoutRequest
-	14, // 12: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:input_type -> kacho.cloud.iam.v1.PollSubjectChangesRequest
-	7,  // 13: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:input_type -> kacho.cloud.iam.v1.RegisterResourceRequest
-	9,  // 14: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:input_type -> kacho.cloud.iam.v1.UnregisterResourceRequest
-	17, // 15: kacho.cloud.iam.v1.InternalIAMService.GetRoleCompiled:input_type -> kacho.cloud.iam.v1.GetRoleCompiledRequest
-	2,  // 16: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:output_type -> kacho.cloud.iam.v1.LookupSubjectResponse
-	4,  // 17: kacho.cloud.iam.v1.InternalIAMService.Check:output_type -> kacho.cloud.iam.v1.CheckResponse
-	6,  // 18: kacho.cloud.iam.v1.InternalIAMService.WriteCreatorTuple:output_type -> kacho.cloud.iam.v1.WriteCreatorTupleResponse
-	24, // 19: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:output_type -> kacho.cloud.operation.Operation
-	16, // 20: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:output_type -> kacho.cloud.iam.v1.PollSubjectChangesResponse
-	8,  // 21: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:output_type -> kacho.cloud.iam.v1.RegisterResourceResponse
-	10, // 22: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:output_type -> kacho.cloud.iam.v1.UnregisterResourceResponse
-	18, // 23: kacho.cloud.iam.v1.InternalIAMService.GetRoleCompiled:output_type -> kacho.cloud.iam.v1.GetRoleCompiledResponse
-	16, // [16:24] is the sub-list for method output_type
-	8,  // [8:16] is the sub-list for method input_type
+	9,  // 10: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:input_type -> kacho.cloud.iam.v1.ForceLogoutRequest
+	12, // 11: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:input_type -> kacho.cloud.iam.v1.PollSubjectChangesRequest
+	5,  // 12: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:input_type -> kacho.cloud.iam.v1.RegisterResourceRequest
+	7,  // 13: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:input_type -> kacho.cloud.iam.v1.UnregisterResourceRequest
+	15, // 14: kacho.cloud.iam.v1.InternalIAMService.GetRoleCompiled:input_type -> kacho.cloud.iam.v1.GetRoleCompiledRequest
+	2,  // 15: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:output_type -> kacho.cloud.iam.v1.LookupSubjectResponse
+	4,  // 16: kacho.cloud.iam.v1.InternalIAMService.Check:output_type -> kacho.cloud.iam.v1.CheckResponse
+	22, // 17: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:output_type -> kacho.cloud.operation.Operation
+	14, // 18: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:output_type -> kacho.cloud.iam.v1.PollSubjectChangesResponse
+	6,  // 19: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:output_type -> kacho.cloud.iam.v1.RegisterResourceResponse
+	8,  // 20: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:output_type -> kacho.cloud.iam.v1.UnregisterResourceResponse
+	16, // 21: kacho.cloud.iam.v1.InternalIAMService.GetRoleCompiled:output_type -> kacho.cloud.iam.v1.GetRoleCompiledResponse
+	15, // [15:22] is the sub-list for method output_type
+	8,  // [8:15] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
 	8,  // [8:8] is the sub-list for extension extendee
 	0,  // [0:8] is the sub-list for field type_name
@@ -1522,7 +1414,7 @@ func file_kacho_cloud_iam_v1_internal_iam_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc), len(file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   20,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

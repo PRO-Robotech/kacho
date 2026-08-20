@@ -15,13 +15,15 @@ kacho-loadbalancer) общаются с kacho-iam:
 - `ListPermissions` — catalog-mode listing (все permissions из IAM-domain).
 - `PollSubjectChanges(since_id, limit)` — для api-gateway authz-cache
   invalidation poll (см. [`29-relational-verdict.md`](29-relational-verdict.md)).
-- `WriteCreatorTuple(user, resource_type, resource_id)` — post-creation
-  FGA-tuple emit для vpc/compute/nlb.
+- `RegisterResource` / `UnregisterResource` — постановка и снятие иерархического
+  указателя для ресурса чужого сервиса. Намерение ложится строкой журнала
+  `kacho_iam.fga_outbox`, и триггер журнала складывает из неё прямой факт **в той же
+  транзакции**: дренажа наружу нет — применять не к чему и некому.
 
 **Use-cases:**
 - api-gateway: validate JWT → LookupSubject → resolve principal → propagate to backend.
 - kacho-vpc: per-RPC authz gate через Check.
-- kacho-compute: after-Create → WriteCreatorTuple для нового instance.
+- kacho-compute: after-Create → RegisterResource для нового instance.
 
 **Ограничения:**
 - Internal-only (запрет #6).
@@ -38,7 +40,15 @@ kacho-loadbalancer) общаются с kacho-iam:
 | `Check`                 | sync             | per-RPC authz gate (Cascade + FGA + OPA).       |
 | `ListPermissions`       | sync             | Catalog all permissions (debug).                |
 | `PollSubjectChanges`    | sync             | Drain subject_change_outbox (since_id ledger).  |
-| `WriteCreatorTuple`     | async (sync-LRO) | Post-create hierarchy tuple emit (kacho-vpc/compute peer-call). |
+| `RegisterResource`      | sync             | Постановка иерархического указателя через журнал. |
+| `UnregisterResource`    | sync             | Снятие того же указателя.                        |
+
+> [!note] Здесь стоял `WriteCreatorTuple` — RPC снят (#788)
+> Он писал кортёж создателя в движок НАПРЯМУЮ, мимо журнала `kacho_iam.fga_outbox`,
+> поэтому проекция `relation_fact` (инвариант миграции 0098) его не увидела бы никогда.
+> Вызывающих не осталось ни одного: все пять соседей ушли на `RegisterResource`, у
+> которого намерение сперва ложится в журнал. Имя держит надгробие `retiredRPCSurface`
+> в `internal/repohygiene` — вернуть его молча нельзя.
 
 ## Sequence diagram — LookupSubject (api-gateway flow)
 
@@ -94,7 +104,7 @@ sequenceDiagram
     VPC->>VPC: proceed with mutation
 ```
 
-## Sequence diagram — WriteCreatorTuple (kacho-vpc post-create)
+## Sequence diagram — RegisterResource (kacho-vpc post-create)
 
 ```mermaid
 sequenceDiagram
@@ -105,10 +115,10 @@ sequenceDiagram
     participant DB as Postgres kacho_iam
 
     VPC->>DB_VPC: INSERT vpc_networks → vpn_xxx
-    VPC->>IAM: WriteCreatorTuple {user:usr_alice, resource_type:vpc_network, resource_id:vpn_xxx}
+    VPC->>IAM: RegisterResource {subject:user:usr_alice, object:vpc_network:vpn_xxx, ...}
     IAM->>DB: INSERT fga_outbox (user:usr_alice, creator, vpc_network:vpn_xxx)
     DB->>DB: триггер журнала: строка → relation_fact (та же транзакция)
-    IAM-->>VPC: Operation done=true
+    IAM-->>VPC: OK
     Note over VPC: «записал» и «действует» совпадают — очереди наружу нет
 ```
 
@@ -136,11 +146,6 @@ grpcurl -plaintext -d '{
   "external_id":"ory-sub-xyz","email":"alice@example.com","display_name":"Alice"
 }' localhost:9091 kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity
 
-# WriteCreatorTuple (peer-call от vpc).
-grpcurl -plaintext -d '{
-  "user_id":"usr_alice","resource_type":"vpc_network","resource_id":"vpn_xxx"
-}' localhost:9091 kacho.cloud.iam.v1.InternalIAMService/WriteCreatorTuple
-
 # PollSubjectChanges (api-gateway cache invalidation poll).
 grpcurl -plaintext -d '{"since_id":0,"limit":100}' localhost:9091 \
   kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges
@@ -155,10 +160,11 @@ grpcurl -plaintext -d '{"since_id":0,"limit":100}' localhost:9091 \
   обработчика нет; имя не воспроизводится как координата.
 - **Check delegation:** narrow port `authorizer` over `*service.AuthorizeService`.
 - **PollSubjectChanges:** narrow port `subjectChanger` over `*service.SubjectChangeService`.
-- **WriteCreatorTuple:** узкий порт `relationWriter`, реализация —
-  `repo/kacho/pg.CreatorTupleWriter`: кладёт намерение строкой журнала в собственной
-  транзакции (соседние порты того же обработчика — `Authorizer`, `subjectChanger`,
-  `relationWriteGate`, `resourceRegistrar`, `roleCompiledReader`).
+- **Порты обработчика:** `Authorizer`, `subjectChanger`, `relationWriteGate`,
+  `resourceRegistrar`, `roleCompiledReader`. Отдельного порта ЗАПИСИ среди них нет:
+  `relationWriter` снят вместе с `WriteCreatorTuple` (#788) намеренно — тип без него
+  нельзя переоткрыть одной строкой вызова. Запись идёт через `resourceRegistrar`,
+  который кладёт строку журнала в собственной транзакции.
 - **Auth-interceptor:** реализован на стороне api-gateway (валидация JWT +
   propagation principal в backend).
 
@@ -166,10 +172,13 @@ grpcurl -plaintext -d '{"since_id":0,"limit":100}' localhost:9091 \
 
 - **gRPC-direct, не restmux** — иначе loop через api-gateway.
 - **LookupSubject — hot-path** — рекомендуется api-gateway cache на ~30s.
-- **WriteCreatorTuple — отдельная транзакция** — вызов идёт после `COMMIT` у
-  вызывающего и его не откатывает. Зато у самого RPC «принято» означает
-  «закоммичено»: строка журнала и прямой факт ложатся одной транзакцией, а не
-  ставятся в очередь (см. [`29-relational-verdict.md`](29-relational-verdict.md)).
+- **Указатель действует С КОММИТА, а не «когда доедет»** — `RegisterResource` кладёт
+  намерение строкой журнала, и триггер складывает из неё прямой факт в той же
+  транзакции. Вердикт о доступе читает ту же строку, поэтому «принято» означает
+  «закоммичено», а не «поставлено в очередь»; окна материализации у этого пути нет,
+  и ban #9 к нему неприменим — гейтить нечего.
+  Ручной дописи указателя не существует: прямой путь снят вместе с `WriteTuples`
+  (#788), а внешнего хранилища, мимо которого можно было бы писать, больше нет.
 - **Check без principal context** — caller обязан передать subject параметром.
 
 ## Связанные компоненты

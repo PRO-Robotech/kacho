@@ -63,18 +63,16 @@ service InternalIAMService {
     option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 
-  // WriteCreatorTuple — synchronous FGA-write для own-creator tuple.
-  // Вызывается из Create-handler ресурсного сервиса (kacho-vpc / kacho-compute /
-  // kacho-loadbalancer) ДО tx.Commit() — обеспечивает, что creator может сразу
-  // выполнить Get/Update/Delete на только что созданный ресурс без race на
-  // async-propagation (≤2s outbox-pipeline). Sync-path добавляет ≤10ms к
-  // budget Create (200ms p95).
-  //
-  // На fail (FGA unavailable): возвращает `Unavailable`; Create handler должен
-  // rollback'нуть TX (никаких partial-state ресурсов без owner-tuple).
-  rpc WriteCreatorTuple (WriteCreatorTupleRequest) returns (WriteCreatorTupleResponse) {
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-  }
+  // TOMBSTONE. `WriteCreatorTuple` — synchronous own-creator tuple write — is
+  // REMOVED (#788). Its comment described callers in vpc / compute / nlb; all
+  // five neighbours had long since moved to `RegisterResource` (nlb says so
+  // verbatim: «Replaces the former direct WriteCreatorTuple»), leaving zero.
+  // What remained was a door writing straight into the relation store, past
+  // `kacho_iam.fga_outbox` — a tuple the `relation_fact` projection (migration
+  // 0098) would never see. Never re-add an RPC under that name: the live path
+  // is RegisterResource / UnregisterResource, where the intent lands in the
+  // journal first and the direct write is only an accelerator.
+  // Intentional breaking change (proto/declared-breaks.yaml).
 
   // GetJWKSStatus снят с контракта. Он отчитывался о таблице ключей, которую
   // дропнула миграция 0065, и после этого мог отвечать только пустым набором —
@@ -119,8 +117,8 @@ service InternalIAMService {
   // gRPC OK, НЕ AlreadyExists. От этого зависит at-least-once outbox-retry —
   // drainer может ретраить безопасно.
   //
-  // Sync unary (как Check / WriteCreatorTuple), НЕ async через Operation: ретрай
-  // и at-least-once обеспечивает сам drainer.
+  // Sync unary (как Check), НЕ async через Operation: ретрай и at-least-once
+  // обеспечивает сам drainer.
   //
   // authz: `<exempt>` на уровне permission-каталога (как все Internal IAM RPC).
   // Least-priv энфорсится в IAM-handler через ReBAC: mTLS client-cert →
@@ -239,23 +237,11 @@ message CheckResponse {
   string reason = 2;
 }
 
-// WriteCreatorTupleRequest — sync write own-creator tuple.
-message WriteCreatorTupleRequest {
-  // Subject creator'а (например "user:<usr_xxx>"; результат Principal propagation).
-  string subject_id = 1 [(required) = true, (length) = "<=128"];
-
-  // Relation для creator-tuple (как правило "admin").
-  string relation = 2 [(required) = true, (length) = "<=32"];
-
-  // Объект только что созданного ресурса ("vpc_network:<enp>", "compute_instance:<...>" и т.п.).
-  string object = 3 [(required) = true, (length) = "<=128"];
-}
-
-// WriteCreatorTupleResponse — пусто; success implicit (gRPC OK).
-message WriteCreatorTupleResponse {}
-
+// TOMBSTONE: `WriteCreatorTupleRequest` and `WriteCreatorTupleResponse` were
+// removed together with the `WriteCreatorTuple` RPC (#788). Never re-add
+// messages under these names.
 // RegisterResourceRequest — Internal FGA-proxy register-owner-tuple payload.
-// Форма симметрична CheckRequest / WriteCreatorTupleRequest.
+// Форма симметрична CheckRequest.
 message RegisterResourceRequest {
   // FGA-subject string. Формат "<type>:<id>", напр.:
   //   "user:<usr_xxx>"

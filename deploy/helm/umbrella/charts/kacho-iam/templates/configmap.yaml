@@ -73,6 +73,13 @@ data:
         ssl-mode: {{ required "config.repository.postgres.sslMode не задан: канал к Postgres обязан быть объявлен явно (disable|require|verify-ca|verify-full); пустое значение молча дало бы открытый текст" .Values.config.repository.postgres.sslMode | quote }}
         password-from-env: KACHO_IAM_DB_PASSWORD
 
+    # Секции `authz` здесь НЕТ, и это не пропуск. Она несла две ручки — перечень
+    # типов, переключённых на реляционную форму, и признак теневой сверки, — и обе
+    # снялись вместе с внешним движком отношений (kacho#747, S6): переключать
+    # больше нечего, сверять не с чем. Оставленный ключ помог бы: helm принимает
+    # его молча, служба его не читает, а профиль объявлял бы посадку, которой в
+    # дереве нет. Держит это гейт TestR7_3_32_NoTemplateWiresTheRetiredEngine.
+
     authn:
       mode: {{ default "production" .Values.config.authn.mode | quote }}
       {{- with .Values.config.authn.hydraIssuer }}

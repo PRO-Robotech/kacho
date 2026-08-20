@@ -154,6 +154,28 @@ pg-vpc:
     resources:
       requests: { cpu: 100m, memory: 256Mi }
       limits: { cpu: 1000m, memory: 1Gi }
+    # ── БЮДЖЕТ ПАМЯТИ ПОДРЕЗАН ВМЕСТЕ С ПОТОЛКОМ ────────────────────────────
+    #
+    # Этот кластер урезает посадку КАЖДОЙ базы (4 vCPU / 8 GB на всё, см. шапку
+    # выше), поэтому урезать надо и трату: values.prod.yaml объявляет бюджет под
+    # свой потолок в 4Gi (512MB + 210 × 8MB = 2192MiB), а здесь потолок 1Gi —
+    # то есть унаследованный бюджет в него не помещается. extendedConfiguration
+    # СКАЛЯР, поэтому строка замещается целиком, а не дописывается: повторено
+    # всё, включая autovacuum_naptime.
+    #
+    # 128MB + 210 × 2MB = 548MiB ≤ 1Gi.
+    #
+    # max_connections = 210 оставлен как в боевом профиле НАМЕРЕННО: пул службы
+    # (200 на реплику) объявлен осознанно и здесь не режется, а PostgreSQL
+    # резервирует 3 соединения суперпользователю. Умолчание сборки (100) пул не
+    # вмещало — deploy/pool_fits_database_test.go это и находил (#762).
+    # Подрезан вместо этого work_mem: 2MB против 8MB в боевом профиле.
+    extendedConfiguration: |
+      max_connections = 210
+      shared_buffers = 128MB
+      work_mem = 2MB
+      effective_cache_size = 512MB
+      autovacuum_naptime = 5s
 pg-compute:
   primary:
     persistence:
@@ -168,6 +190,19 @@ pg-iam:
     resources:
       requests: { cpu: 100m, memory: 256Mi }
       limits: { cpu: 1000m, memory: 1Gi }
+    # Бюджет подрезан под здешний потолок — см. обоснование у pg-vpc выше.
+    # 128MB + 100 × 4MB = 528MiB ≤ 1Gi; пул службы iam здесь 80 ≤ 100 − 3.
+    #
+    # Названо прямо, чтобы не читалось шире, чем есть: на ЭТОМ кластере база
+    # прав посажена втрое ниже боевого профиля (1Gi против 4Gi, 100 соединений
+    # против 200). Замер пропускной способности, снятый на другом стенде, к
+    # этой посадке не относится.
+    extendedConfiguration: |
+      max_connections = 100
+      shared_buffers = 128MB
+      work_mem = 4MB
+      effective_cache_size = 512MB
+      autovacuum_naptime = 5s
 pg-geo:
   primary:
     persistence:

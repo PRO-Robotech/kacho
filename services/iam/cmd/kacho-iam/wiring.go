@@ -156,12 +156,19 @@ type services struct {
 // NOT gated on the authentication mode. Every deployed stand runs production
 // posture, and a guard absent from the stands where anyone would notice it firing is not a
 // guard.
+//
+// The message names the knob and the consequence deliberately: it is what an operator sees
+// when the stand will not come up, and a refusal that does not say what to fix cannot be
+// acted on.
 func ownGateWiringComplaint(store *authzcascade.Client) string {
 	if !store.FormReachable() {
 		return "источник вердикта о доступе не провязан: дверь решения собрана без " +
 			"реляционной формы, и КАЖДЫЙ вопрос о доступе вернул бы ошибку, а не ответ " +
 			"(проверьте строку подключения к базе службы прав)"
 	}
+	// Условия ПОЗИЦИИ РУБИЛЬНИКА здесь больше нет: рубильник переключал источник
+	// вердикта потипово, пока источников было два. Источник один — переключать
+	// нечего, и условие снято вместе со своим предметом, а не оставлено пустым.
 	return ""
 }
 
@@ -554,13 +561,6 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		// PollSubjectChanges drains subject_change_outbox for api-gateway
 		// authz-cache invalidation. Internal-only (port 9091).
 		WithSubjectChange(service.NewSubjectChangeService(kachopg.NewSubjectChangeRepo(pool))).
-		// WriteCreatorTuple — запись кортежа создателя СТРОКОЙ ЖУРНАЛА.
-		//
-		// Прежде это была синхронная запись в чужое хранилище отношений. Предмет RPC
-		// не изменился — модуль сообщает, что у созданного им объекта есть владелец, —
-		// а адресат стал тот же, что у любого другого намерения: журнал `fga_outbox`,
-		// из которого триггер складывает прямой факт в той же транзакции.
-		WithRelationWriter(kachopg.NewCreatorTupleWriter(pool)).
 		// SEC-C — FGA-proxy RPCs + ReBAC authz gate.
 		WithResourceRegistrar(registerResourceUC, regGate).
 		// ForceLogout records a session revocation.

@@ -26,10 +26,10 @@ const (
 )
 
 // ScopeExtractor describes how the kacho-iam authz middleware extracts an
-// OpenFGA scope object from an incoming RPC request.
+// scope object from an incoming RPC request.
 type ScopeExtractor struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// OpenFGA object type the scope id resolves to. Either a hierarchy scope
+	// Object type of the authorization model the scope id resolves to. Either a hierarchy scope
 	// (`cluster` / `account` / `project`) or a per-resource
 	// object type registered in the authorization model (`vpc_network`,
 	// `storage_volume`, `iam_group`, `iam_role`, ...). The api-gateway authz
@@ -39,7 +39,7 @@ type ScopeExtractor struct {
 	// Name of the proto request field from which the scope id is taken. Must be
 	// a top-level field on the request message and a non-empty string.
 	FromRequestField string `protobuf:"bytes,2,opt,name=from_request_field,json=fromRequestField,proto3" json:"from_request_field,omitempty"`
-	// Name of the proto request field from which the OpenFGA *object type* is
+	// Name of the proto request field from which the *object type* is
 	// derived at request time (scope-polymorphic RPCs). When set + non-empty,
 	// the api-gateway authz middleware reads this top-level string field off the
 	// request and uses its value as the FGA Check object type instead of the

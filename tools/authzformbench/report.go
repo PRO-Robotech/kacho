@@ -27,6 +27,13 @@ func Report(w io.Writer, prov Provenance, notes map[Form]string, cfg Config, cel
 	p("postgres     %s (своя БД прибора, СВОЙ контейнер)\n", prov.Postgres)
 	p("каскад       %s (глубина %d, объявлена — не подразумевается)\n", prov.CascadeChain, prov.CascadeDepth)
 	p("model        %s (sha256/16 %s)\n", prov.ModelPath, prov.ModelDigest)
+	// ОТПЕЧАТОК ПРИБОРА — печатается ЗДЕСЬ, а не считается гейтом отдельно: гейт
+	// свежести сверяет значение, полученное ТОЙ ЖЕ функцией. Вторая её реализация
+	// разошлась бы с первой молча — и разошлась бы там, где обе печатают «совпало».
+	p("%s", FingerprintHeader())
+	// Здесь печатался ИЗМЕРЕННЫЙ потолок пакетной проверки движка — снят вместе
+	// с движком. Строки нет вовсе, и это вернее прочерка: прочерк сообщал бы,
+	// что величину спрашивали.
 	p("shape        S=%d subjects, M=%d verbs %v, role=%q, K=%d\n",
 		cfg.Subjects, len(cfg.Verbs), cfg.Verbs, cfg.Role, cfg.RelabelK)
 	p("page         size=%d, partition=%d, parallel=%d\n",

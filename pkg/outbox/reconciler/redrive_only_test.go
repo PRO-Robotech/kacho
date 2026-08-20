@@ -3,19 +3,21 @@
 
 package reconciler_test
 
-// redrive_only_test.go — a service that only wants poisoned rows re-driven must not
-// be forced to invent the two domain adapters it will never call.
+// redrive_only_test.go — конструктор backstop'а отвергает конфигурацию, при которой
+// возврат отравленных строк был бы неверен, ДО первого запроса к базе.
 //
-// RedrivePoisoned is pure SQL over the outbox table: it reads neither the resource
-// enumerator nor the tuple registry. Demanding them anyway pushed services into one
-// of two bad shapes — write stub adapters that exist solely to satisfy a constructor
-// (dead code that reads as if a reconcile loop were running), or skip the backstop
-// entirely. Both happened: storage and registry have no redrive at all, which is why
-// a poisoned register intent there is permanent until someone edits the database by
-// hand.
+// RedrivePoisoned — чистый SQL поверх таблицы очереди: доменного состояния он не
+// читает вовсе. Значит единственное, что конструктор обязан решить заранее, —
+// таблица названа и ключ партиции задан тем же столбцом, что у дренажа этой
+// таблицы. Незаданный ключ читался бы как «упорядочивать нечем» и оживил бы
+// намерение поверх уже доставленного преемника.
+//
+// Здесь стояли ещё две пробы — про то, что backstop конструируется БЕЗ доменных
+// адаптеров и что проходы сверки на нём отказывают, а не разыменовывают nil.
+// Предмета у них больше нет: адаптеров и самих проходов в пакете не осталось
+// (#760), конструктор один.
 
 import (
-	"context"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,14 +35,14 @@ func nonNilPool(t *testing.T) *pgxpool.Pool {
 	return &pgxpool.Pool{}
 }
 
-func TestNewRedriveOnly_NeedsNoDomainAdapters(t *testing.T) {
+func TestNewRedriveOnly_ConstructsFromTableAndPartitionAlone(t *testing.T) {
 	t.Parallel()
 
 	r, err := reconciler.NewRedriveOnly(nonNilPool(t), reconciler.Config{
 		Table:           "kacho_storage.fga_register_outbox",
 		PartitionColumn: reconciler.RegisterOutboxPartition,
 	}, nil)
-	require.NoError(t, err, "a redrive-only reconciler must construct without domain adapters")
+	require.NoError(t, err, "конструктор backstop'а обязан обходиться таблицей и ключом партиции")
 	require.NotNil(t, r)
 }
 
@@ -97,51 +99,4 @@ func TestNewRedriveOnly_RefusesAnUnsetPartitionKey(t *testing.T) {
 		require.NoErrorf(t, err, "a real partition key must build: %q", good)
 		require.NotNil(t, r)
 	}
-}
-
-// TestNew_RefusesANonRegisterPartitionKey — a FULL reconciler reasons about
-// resource_id directly (intendedRegistered, lockResource, the synthesised
-// project-hierarchy intent), so it is a register-outbox reconciler by construction.
-// Handing it the tuple key would build a Reconciler whose redrive guards one column
-// while its backfill and GC read another — two halves of one pass, on two keys.
-func TestNew_RefusesANonRegisterPartitionKey(t *testing.T) {
-	t.Parallel()
-
-	_, err := reconciler.New(nonNilPool(t), reconciler.Config{
-		Table: "t", PartitionColumn: "tuple_key",
-	}, reconciler.Adapters{Enumerator: nilAdapters{}, Registry: nilAdapters{}}, nil)
-	require.Error(t, err, "the state passes are register-outbox specific; say so at construction")
-	require.Contains(t, err.Error(), "NewRedriveOnly",
-		"the refusal must name the constructor that DOES fit: %v", err)
-}
-
-// TestRedriveOnly_RefusesTheStatePasses — the passes that DO need the adapters must
-// say so instead of dereferencing nil. Constructing without adapters is a narrowing
-// of capability, and the narrowing has to be enforced where it matters.
-func TestRedriveOnly_RefusesTheStatePasses(t *testing.T) {
-	t.Parallel()
-
-	r, err := reconciler.NewRedriveOnly(nonNilPool(t), reconciler.Config{
-		Table: "t", PartitionColumn: reconciler.RegisterOutboxPartition,
-	}, nil)
-	require.NoError(t, err)
-
-	_, err = r.BackfillFromState(t.Context())
-	require.Error(t, err, "BackfillFromState needs the enumerator; it must refuse, not panic")
-
-	_, err = r.GCOrphans(t.Context())
-	require.Error(t, err, "GCOrphans needs the registry; it must refuse, not panic")
-}
-
-// nilAdapters satisfies both domain-adapter interfaces without a database. The
-// constructor guard under test decides before any pass runs, so these methods are
-// never called — and if one ever were, the nil pool above would make it loud.
-type nilAdapters struct{}
-
-func (nilAdapters) ListResources(context.Context) ([]reconciler.ResourceRow, error) {
-	return nil, nil
-}
-func (nilAdapters) ResourceExists(context.Context, string, string) (bool, error) { return false, nil }
-func (nilAdapters) ListRegistered(context.Context) ([]reconciler.RegisteredTuple, error) {
-	return nil, nil
 }

@@ -25,7 +25,6 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	InternalIAMService_LookupSubject_FullMethodName      = "/kacho.cloud.iam.v1.InternalIAMService/LookupSubject"
 	InternalIAMService_Check_FullMethodName              = "/kacho.cloud.iam.v1.InternalIAMService/Check"
-	InternalIAMService_WriteCreatorTuple_FullMethodName  = "/kacho.cloud.iam.v1.InternalIAMService/WriteCreatorTuple"
 	InternalIAMService_ForceLogout_FullMethodName        = "/kacho.cloud.iam.v1.InternalIAMService/ForceLogout"
 	InternalIAMService_PollSubjectChanges_FullMethodName = "/kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges"
 	InternalIAMService_RegisterResource_FullMethodName   = "/kacho.cloud.iam.v1.InternalIAMService/RegisterResource"
@@ -59,16 +58,6 @@ type InternalIAMServiceClient interface {
 	//
 	// REST exposed ONLY on the cluster-internal listener.
 	Check(ctx context.Context, in *CheckRequest, opts ...grpc.CallOption) (*CheckResponse, error)
-	// WriteCreatorTuple — synchronous FGA-write для own-creator tuple.
-	// Вызывается из Create-handler ресурсного сервиса (kacho-vpc / kacho-compute /
-	// kacho-loadbalancer) ДО tx.Commit() — обеспечивает, что creator может сразу
-	// выполнить Get/Update/Delete на только что созданный ресурс без race на
-	// async-propagation (≤2s outbox-pipeline). Sync-path добавляет ≤10ms к
-	// budget Create (200ms p95).
-	//
-	// На fail (FGA unavailable): возвращает `Unavailable`; Create handler должен
-	// rollback'нуть TX (никаких partial-state ресурсов без owner-tuple).
-	WriteCreatorTuple(ctx context.Context, in *WriteCreatorTupleRequest, opts ...grpc.CallOption) (*WriteCreatorTupleResponse, error)
 	// admin force-logout of a user. Writes
 	// `session_revocations` rows for every active access token (enumerated via
 	// Hydra introspection) + a `caep_outbox` row so federated downstream RPs
@@ -88,8 +77,8 @@ type InternalIAMServiceClient interface {
 	// gRPC OK, НЕ AlreadyExists. От этого зависит at-least-once outbox-retry —
 	// drainer может ретраить безопасно.
 	//
-	// Sync unary (как Check / WriteCreatorTuple), НЕ async через Operation: ретрай
-	// и at-least-once обеспечивает сам drainer.
+	// Sync unary (как Check), НЕ async через Operation: ретрай и at-least-once
+	// обеспечивает сам drainer.
 	//
 	// authz: `<exempt>` на уровне permission-каталога (как все Internal IAM RPC).
 	// Least-priv энфорсится в IAM-handler через ReBAC: mTLS client-cert →
@@ -139,16 +128,6 @@ func (c *internalIAMServiceClient) Check(ctx context.Context, in *CheckRequest, 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CheckResponse)
 	err := c.cc.Invoke(ctx, InternalIAMService_Check_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *internalIAMServiceClient) WriteCreatorTuple(ctx context.Context, in *WriteCreatorTupleRequest, opts ...grpc.CallOption) (*WriteCreatorTupleResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(WriteCreatorTupleResponse)
-	err := c.cc.Invoke(ctx, InternalIAMService_WriteCreatorTuple_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -231,16 +210,6 @@ type InternalIAMServiceServer interface {
 	//
 	// REST exposed ONLY on the cluster-internal listener.
 	Check(context.Context, *CheckRequest) (*CheckResponse, error)
-	// WriteCreatorTuple — synchronous FGA-write для own-creator tuple.
-	// Вызывается из Create-handler ресурсного сервиса (kacho-vpc / kacho-compute /
-	// kacho-loadbalancer) ДО tx.Commit() — обеспечивает, что creator может сразу
-	// выполнить Get/Update/Delete на только что созданный ресурс без race на
-	// async-propagation (≤2s outbox-pipeline). Sync-path добавляет ≤10ms к
-	// budget Create (200ms p95).
-	//
-	// На fail (FGA unavailable): возвращает `Unavailable`; Create handler должен
-	// rollback'нуть TX (никаких partial-state ресурсов без owner-tuple).
-	WriteCreatorTuple(context.Context, *WriteCreatorTupleRequest) (*WriteCreatorTupleResponse, error)
 	// admin force-logout of a user. Writes
 	// `session_revocations` rows for every active access token (enumerated via
 	// Hydra introspection) + a `caep_outbox` row so federated downstream RPs
@@ -260,8 +229,8 @@ type InternalIAMServiceServer interface {
 	// gRPC OK, НЕ AlreadyExists. От этого зависит at-least-once outbox-retry —
 	// drainer может ретраить безопасно.
 	//
-	// Sync unary (как Check / WriteCreatorTuple), НЕ async через Operation: ретрай
-	// и at-least-once обеспечивает сам drainer.
+	// Sync unary (как Check), НЕ async через Operation: ретрай и at-least-once
+	// обеспечивает сам drainer.
 	//
 	// authz: `<exempt>` на уровне permission-каталога (как все Internal IAM RPC).
 	// Least-priv энфорсится в IAM-handler через ReBAC: mTLS client-cert →
@@ -302,9 +271,6 @@ func (UnimplementedInternalIAMServiceServer) LookupSubject(context.Context, *Loo
 }
 func (UnimplementedInternalIAMServiceServer) Check(context.Context, *CheckRequest) (*CheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Check not implemented")
-}
-func (UnimplementedInternalIAMServiceServer) WriteCreatorTuple(context.Context, *WriteCreatorTupleRequest) (*WriteCreatorTupleResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method WriteCreatorTuple not implemented")
 }
 func (UnimplementedInternalIAMServiceServer) ForceLogout(context.Context, *ForceLogoutRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method ForceLogout not implemented")
@@ -374,24 +340,6 @@ func _InternalIAMService_Check_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(InternalIAMServiceServer).Check(ctx, req.(*CheckRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _InternalIAMService_WriteCreatorTuple_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(WriteCreatorTupleRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InternalIAMServiceServer).WriteCreatorTuple(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InternalIAMService_WriteCreatorTuple_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InternalIAMServiceServer).WriteCreatorTuple(ctx, req.(*WriteCreatorTupleRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -500,10 +448,6 @@ var InternalIAMService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Check",
 			Handler:    _InternalIAMService_Check_Handler,
-		},
-		{
-			MethodName: "WriteCreatorTuple",
-			Handler:    _InternalIAMService_WriteCreatorTuple_Handler,
 		},
 		{
 			MethodName: "ForceLogout",

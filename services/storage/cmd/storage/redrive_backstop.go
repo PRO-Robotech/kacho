@@ -37,9 +37,11 @@ const redriveInterval = 5 * time.Minute
 // действительно постоянна (отношение вне принимаемого набора), будет отравляться
 // снова — и это видно счётчиком отравлений, а не тишиной.
 //
-// Только redrive: BackfillFromState/GCOrphans переигрывают corelib-фиксированный
-// payload, который декодер storage не прочитает, поэтому reconciler строится
-// NewRedriveOnly — без доменных адаптеров, которых здесь не будет.
+// Возврат отравленных — единственный проход backstop'а. Здесь стояла оговорка,
+// почему НЕ запускаются два прохода сверки с состоянием: они переигрывали
+// corelib-фиксированный payload, который декодер storage не прочитает. Оговорка
+// пережила свой предмет — оба прохода сняты из corelib (#760), их предикаты
+// были недостижимы by construction.
 func startRedriveBackstop(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error {
 	rc, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
 		PartitionColumn: reconciler.RegisterOutboxPartition,

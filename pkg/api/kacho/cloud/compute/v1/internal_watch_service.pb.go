@@ -40,8 +40,21 @@ type WatchRequest struct {
 	// несуществующие отношения. Подписчик, попросивший снятый вид, получал бы
 	// пустой поток вместо отказа — то есть молчание вместо ответа.
 	Kinds []string `protobuf:"bytes,1,rep,name=kinds,proto3" json:"kinds,omitempty"`
-	// Возобновить с этой позиции (sequence_no exclusive).
-	// 0 = начать с current end (только новые события).
+	// Возобновить с этой позиции: сервер отдаёт строки со `sequence_no >
+	// from_sequence_no`, то есть курсор ИСКЛЮЧАЮЩИЙ.
+	//
+	// 0 (и омит) = отдать ВСЁ, что ещё лежит в журнале, с начала. Это не «только
+	// новые события»: у исключающего курсора ноль меньше любого номера строки,
+	// поэтому под него подпадают все.
+	//
+	// Здесь стояло обратное — «0 = начать с current end (только новые события)», —
+	// и это было неверно с самого заведения поля: на трёх предсуществующих строках
+	// подписчик получал три, а не ноль (замерено пробой
+	// TestIntegration_WatchStreamSince_ZeroCursorReplaysWhatIsRetained).
+	// Авторитетным признан код; замок держит смысл нуля от возврата прозы.
+	//
+	// Следствие, которое подписчику надо знать заранее: омит поля — это ПОЛНАЯ
+	// выдача журнала в пределах прав вызывающего, а не дешёвая подписка на хвост.
 	FromSequenceNo int64 `protobuf:"varint,2,opt,name=from_sequence_no,json=fromSequenceNo,proto3" json:"from_sequence_no,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache

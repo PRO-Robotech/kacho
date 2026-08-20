@@ -839,6 +839,52 @@ pg-vpc:
       hostssl   all all ::/0           md5
       hostnossl all all 0.0.0.0/0      reject
       hostnossl all all ::/0           reject
+    # ── ПОСАДКА И БЮДЖЕТ ПАМЯТИ — ВЫБРАНЫ ЗДЕСЬ, А НЕ УНАСЛЕДОВАНЫ (#756) ───
+    #
+    # Умолчание подчарта postgresql НЕПУСТО и потому обманчиво: `requests`
+    # 250m/256Mi, а `limits` — ПУСТЫЕ. Профиль, не объявивший ничего, получает
+    # базу БЕЗ предела памяти (она вправе унести узел) и с запросом, под
+    # который планировщик поставит её туда, где памяти уже нет. Настройки самой
+    # СУБД при этом приезжают из СБОРКИ: max_connections 100, shared_buffers
+    # 128MB, work_mem 4MB — их тоже никто не выбирал под эту поставку.
+    #
+    # Следствие, ради которого блок и появился: стенд, на котором снимали замер
+    # пропускной способности, был настроен ЛУЧШЕ боевой поставки — и вывод
+    # замера переносился на посадку, где он не проверялся ни разу.
+    #
+    # ПОТОЛОК И ТРАТА ОБЯЗАНЫ СХОДИТЬСЯ:
+    #
+    #     shared_buffers + max_connections × work_mem  ≤  limits.memory
+    #
+    # Здесь: 512MB + 210 × 8MB = 2192MiB ≤ 4Gi. Оценка верхняя и заведомо
+    # грубая — work_mem тратится на узел сортировки, а не на соединение, —
+    # поэтому она ловит не «сколько израсходуется», а случай, когда две
+    # величины назначены не глядя друг на друга. `effective_cache_size` в сумму
+    # НЕ входит: это подсказка планировщику о кэше ОС, а не выделение памяти.
+    #
+    # ПОЧЕМУ 210 СОЕДИНЕНИЙ (#762). Служба объявляет пул 200 на реплику
+    # (services/vpc/deploy/values.yaml, «200 conns/pod уже unlock'aет 10k RPS»),
+    # а PostgreSQL резервирует 3 соединения суперпользователю. Умолчание сборки
+    # (100) пул НЕ вмещало уже при одной реплике — то есть отказ в подключении
+    # ровно тогда, когда соединения понадобились.
+    #
+    # ЧТО ЭТО ДЕРЖИТ: deploy/db_footprint_declaration_test.go (объявлено ли и
+    # сходится ли) и deploy/pool_fits_database_test.go (вмещает ли предел базы
+    # пул службы). Обе читают ОБЪЯВЛЕНИЯ, а не рендер: значение, приехавшее из
+    # умолчания чарта, в манифесте выглядит точно так же, как объявленное.
+    #
+    # autovacuum_naptime ПОВТОРЁН здесь намеренно: extendedConfiguration —
+    # СКАЛЯР, и профиль, объявивший свой, замещает строку базового values.yaml
+    # ЦЕЛИКОМ, а не дописывает в неё.
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits: { cpu: 2000m, memory: 4Gi }
+    extendedConfiguration: |
+      max_connections = 210
+      shared_buffers = 512MB
+      work_mem = 8MB
+      effective_cache_size = 3GB
+      autovacuum_naptime = 5s
 pg-compute:
   auth:
     username: compute
@@ -851,6 +897,17 @@ pg-compute:
     certKeyFilename: tls.key
   primary:
     pgHbaConfiguration: *pgHbaTLSRequired
+    # Посадка и бюджет памяти — развёрнутое обоснование у pg-vpc выше.
+    # 256MB + 100 × 4MB = 656MiB ≤ 2Gi.
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 2Gi }
+    extendedConfiguration: |
+      max_connections = 100
+      shared_buffers = 256MB
+      work_mem = 4MB
+      effective_cache_size = 1GB
+      autovacuum_naptime = 5s
 pg-iam:
   auth:
     username: iam
@@ -863,6 +920,26 @@ pg-iam:
     certKeyFilename: tls.key
   primary:
     pgHbaConfiguration: *pgHbaTLSRequired
+    # Посадка и бюджет памяти — развёрнутое обоснование у pg-vpc выше.
+    #
+    # ЭТА база принимает проверку доступа на КАЖДЫЙ запрос КАЖДОЙ службы, и
+    # замер показал, что упирается именно она: подъём предела процессора с
+    # одного ядра до трёх поднял потолок ОДНОЙ реплики 300 → 500 запросов в
+    # секунду без единой правки кода, тогда как +2 реплики службы дали +100
+    # (services/iam/tests/k6/results/BASELINE-internal-check.md). Стенд, на
+    # котором снят этот замер, объявлял 3000m/2Gi и все три настройки — а
+    # боевой профиль не объявлял НИЧЕГО. Ровно это и есть #756.
+    #
+    # 512MB + 200 × 8MB = 2112MiB ≤ 4Gi.
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits: { cpu: 3000m, memory: 4Gi }
+    extendedConfiguration: |
+      max_connections = 200
+      shared_buffers = 512MB
+      work_mem = 8MB
+      effective_cache_size = 3GB
+      autovacuum_naptime = 5s
 pg-geo:
   auth:
     username: geo
@@ -875,6 +952,26 @@ pg-geo:
     certKeyFilename: tls.key
   primary:
     pgHbaConfiguration: *pgHbaTLSRequired
+    # Посадка и бюджет памяти — развёрнутое обоснование у pg-vpc выше.
+    # 256MB + 100 × 4MB = 656MiB ≤ 2Gi.
+    #
+    # autovacuum_naptime здесь НЕ ставится НАМЕРЕННО: geo_outbox — курсорный
+    # аудит-фид по sequence_no, без `sent_at` и без дренажа, поэтому лишние
+    # пробуждения launcher'а ему ничего не дают. Решение держит список
+    # NON_QUEUE_INSTANCES в deploy/tests/helm/outbox-autovacuum-naptime-test.sh:
+    # он покраснеет, если строку сюда добавить.
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 2Gi }
+    extendedConfiguration: |
+      max_connections = 100
+      shared_buffers = 256MB
+      work_mem = 4MB
+      effective_cache_size = 1GB
+# Здесь стоял инстанс `pg-openfga` — выделенная база внешнего движка прав. Он снят
+# вместе с движком (kacho#747, S6): объявлять посадку не за что, а пустой блок обещал
+# бы инстанс, которого чарт больше не рендерит. Посадка ОСТАЛЬНЫХ баз объявлена
+# по #808 — это работа линии, и она здесь сохранена, а не выбрана взамен.
 pg-nlb:
   enabled: true
   auth:
@@ -891,6 +988,17 @@ pg-nlb:
 # db.host/passwordSecretName point at this instance.
   primary:
     pgHbaConfiguration: *pgHbaTLSRequired
+    # Посадка и бюджет памяти — развёрнутое обоснование у pg-vpc выше.
+    # 256MB + 100 × 4MB = 656MiB ≤ 2Gi.
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 2Gi }
+    extendedConfiguration: |
+      max_connections = 100
+      shared_buffers = 256MB
+      work_mem = 4MB
+      effective_cache_size = 1GB
+      autovacuum_naptime = 5s
 pg-storage:
   enabled: true
   auth:
@@ -907,6 +1015,17 @@ pg-storage:
 # service's chart-default db.host/existingSecret already point at this instance.
   primary:
     pgHbaConfiguration: *pgHbaTLSRequired
+    # Посадка и бюджет памяти — развёрнутое обоснование у pg-vpc выше.
+    # 256MB + 100 × 4MB = 656MiB ≤ 2Gi.
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 2Gi }
+    extendedConfiguration: |
+      max_connections = 100
+      shared_buffers = 256MB
+      work_mem = 4MB
+      effective_cache_size = 1GB
+      autovacuum_naptime = 5s
 pg-registry:
   enabled: true
   auth:
@@ -920,18 +1039,43 @@ pg-registry:
     certKeyFilename: tls.key
   primary:
     pgHbaConfiguration: *pgHbaTLSRequired
+    # Посадка и бюджет памяти — развёрнутое обоснование у pg-vpc выше.
+    # 256MB + 100 × 4MB = 656MiB ≤ 2Gi.
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 2Gi }
+    extendedConfiguration: |
+      max_connections = 100
+      shared_buffers = 256MB
+      work_mem = 4MB
+      effective_cache_size = 1GB
+      autovacuum_naptime = 5s
 pg-kratos:
   enabled: true
   auth:
     username: kratos
     database: kratos
     existingSecret: kacho-umbrella-pg-kratos
+  primary:
+    # Потолок — развёрнутое обоснование у pg-vpc выше. Настройки самой СУБД
+    # здесь не объявляются: хранилище Ory ведёт свой чарт. Потолок при этом
+    # спрашивается со ВСЕХ инстансов — под без предела памяти уносит узел
+    # независимо от того, чьи данные он держит.
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
 pg-hydra:
   enabled: true
   auth:
     username: hydra
     database: hydra
     existingSecret: kacho-umbrella-pg-hydra
+  primary:
+    # Потолок — развёрнутое обоснование у pg-vpc выше; настройки СУБД ведёт
+    # чарт Ory, как и у pg-kratos.
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
 
 # ─── Ory identity tier (Kratos + Hydra) — production authN flow ─────────────
 # Enabled so the production OIDC/JWT path the api-gateway verifier depends on is

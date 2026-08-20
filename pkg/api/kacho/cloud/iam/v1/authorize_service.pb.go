@@ -31,7 +31,7 @@ const (
 
 // ResourceRef — typed resource pointer used across AuthorizeService.
 //
-// `type` mirrors the OpenFGA object-type vocabulary
+// `type` mirrors the object-type vocabulary of the authorization model
 // (`cluster` / `account` / `project` / `vpc_network` /
 // `vpc_subnet` / `compute_instance` / …). `id` is the resource id WITHOUT
 // the type prefix (i.e. `enp_xxx`, not `vpc_network:enp_xxx`).

@@ -200,7 +200,7 @@ func (AccessBinding_Scope) EnumDescriptor() ([]byte, []int) {
 // NB: это канонический AccessBinding из kacho.cloud.iam.v1 — единственный
 // источник истины для grant-привязок домена IAM.
 //
-// Runtime-Check грантов выполняется через OpenFGA ReBAC
+// Runtime-Check грантов выполняется реляционным вычислением по модели прав
 // (InternalIAMService.Check); tuple-sync — через fga_outbox drainer.
 //
 // Ресурс несет lifecycle (`status`), TTL (`expires_at`) и audit-метаданные

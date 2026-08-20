@@ -400,10 +400,15 @@ func runServe(cfg config.Config) error {
 	// до установки отвечает нулями: исчезновение серий на это окно сообщило бы
 	// собирателю не «попаданий не было», а ничего.
 	//
-	// Полоса одна: второго кеша вердиктов в этом процессе нет.
+	// ПОЛОС ДВЕ, потому что окон положительных вердиктов у этого процесса два:
+	// окно звена решения (вопрос на ВЫЗОВ) и окно общего сужателя (вопрос на
+	// КАЖДЫЙ элемент страницы, а страница контрактно бывает до тысячи). Через
+	// второе проходит БОЛЬШЕ вопросов, чем через первое, и до #768 его не считал
+	// никто: «кеш сужателя даёт столько-то» было непроверяемо в обе стороны.
 	var authzCache authzmetrics.Source
 	metricsAdapter.RegisterAuthzCache(map[string]authzmetrics.Reader{
-		authzmetrics.LaneRPC: authzCache.Cache,
+		authzmetrics.LaneRPC:    authzCache.Cache,
+		authzmetrics.LaneNarrow: listFilter.CacheStats,
 	}, authzCache.Read)
 
 	// Sync-primary owner-tuple registrar (Decision 2): create-flow синхронно

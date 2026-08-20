@@ -36,7 +36,7 @@ func expose(t *testing.T, m *gwmetrics.Metrics) string {
 
 // TestFreshProcessDeclaresEveryBandWithZero — OBS-1-02.
 //
-// Ни одного запроса не обслужено, а все четыре полосы решений, обе полосы окна
+// Ни одного запроса не обслужено, а все десять полос решений, обе полосы окна
 // вердиктов, обращения по проводу и число наблюдений длительности уже стоят на
 // поверхности нулями. Это и есть предмет #208: отсутствие серии и нулевая серия
 // обязаны быть различимы.
@@ -53,10 +53,21 @@ func TestFreshProcessDeclaresEveryBandWithZero(t *testing.T) {
 		`kacho_api_gateway_authz_check_decisions_total{decision="deny"} 0`,
 		`kacho_api_gateway_authz_check_decisions_total{decision="error_refused"} 0`,
 		`kacho_api_gateway_authz_check_decisions_total{decision="error_passed"} 0`,
+		// Шесть полос ДОПУСКА БЕЗ ОТВЕТА МОДЕЛИ (#798). Публичный проход раньше не
+		// попадал ни в одну, а пять остальных сливались в `allow`.
+		`kacho_api_gateway_authz_check_decisions_total{decision="public_path"} 0`,
+		`kacho_api_gateway_authz_check_decisions_total{decision="allowlist"} 0`,
+		`kacho_api_gateway_authz_check_decisions_total{decision="internal_origin"} 0`,
+		`kacho_api_gateway_authz_check_decisions_total{decision="override_allow"} 0`,
+		`kacho_api_gateway_authz_check_decisions_total{decision="exempt"} 0`,
+		`kacho_api_gateway_authz_check_decisions_total{decision="scope_filtered"} 0`,
 		`kacho_api_gateway_authz_cache_total{result="hit"} 0`,
 		`kacho_api_gateway_authz_cache_total{result="miss"} 0`,
 		`kacho_api_gateway_authz_client_calls_total 0`,
 		`kacho_api_gateway_authz_check_duration_seconds_count 0`,
+		// Посадка объявляется ОТДЕЛЬНОЙ серией: нулями на полосах решений
+		// «проверка выключена» и «трафика не было» не различаются (#798).
+		`kacho_api_gateway_authz_enforcing 0`,
 	} {
 		assert.Contains(t, body, want,
 			"свежий процесс обязан объявлять полосу нулём, а не отсутствием серии")
@@ -88,20 +99,41 @@ func TestDecisionBandsGrowIndependently(t *testing.T) {
 		return gwmetrics.AuthzSnapshot{Counts: authzMetrics.Counts()}
 	})
 
-	authzMetrics.RecordAllow()
-	authzMetrics.RecordAllow()
-	authzMetrics.RecordDeny()
-	authzMetrics.RecordErrorRefused()
-	authzMetrics.RecordErrorPassed()
+	// Числа РАЗНЫЕ у каждой полосы намеренно: одинаковые сделали бы невидимой
+	// перепутанную пару «метка ↔ поле снимка» в коллекторе, а десять полос —
+	// ровно тот размер, на котором такая опечатка и заводится.
+	repeat := func(n int, f func()) {
+		for i := 0; i < n; i++ {
+			f()
+		}
+	}
+	repeat(2, authzMetrics.RecordAllow)
+	repeat(1, authzMetrics.RecordDeny)
+	repeat(3, authzMetrics.RecordErrorRefused)
+	repeat(4, authzMetrics.RecordErrorPassed)
+	repeat(5, authzMetrics.RecordPublicPath)
+	repeat(6, authzMetrics.RecordAllowlist)
+	repeat(7, authzMetrics.RecordInternalOrigin)
+	repeat(8, authzMetrics.RecordOverrideAllow)
+	repeat(9, authzMetrics.RecordExempt)
+	repeat(10, authzMetrics.RecordScopeFiltered)
 	authzMetrics.RecordCacheHit()
 	authzMetrics.RecordCacheMiss()
+	authzMetrics.SetEnforcing(true)
 	authzMetrics.ObserveCheckDuration(3 * time.Millisecond)
 
 	body := expose(t, m)
 	assert.Contains(t, body, `kacho_api_gateway_authz_check_decisions_total{decision="allow"} 2`)
 	assert.Contains(t, body, `kacho_api_gateway_authz_check_decisions_total{decision="deny"} 1`)
-	assert.Contains(t, body, `kacho_api_gateway_authz_check_decisions_total{decision="error_refused"} 1`)
-	assert.Contains(t, body, `kacho_api_gateway_authz_check_decisions_total{decision="error_passed"} 1`)
+	assert.Contains(t, body, `kacho_api_gateway_authz_check_decisions_total{decision="error_refused"} 3`)
+	assert.Contains(t, body, `kacho_api_gateway_authz_check_decisions_total{decision="error_passed"} 4`)
+	assert.Contains(t, body, `kacho_api_gateway_authz_check_decisions_total{decision="public_path"} 5`)
+	assert.Contains(t, body, `kacho_api_gateway_authz_check_decisions_total{decision="allowlist"} 6`)
+	assert.Contains(t, body, `kacho_api_gateway_authz_check_decisions_total{decision="internal_origin"} 7`)
+	assert.Contains(t, body, `kacho_api_gateway_authz_check_decisions_total{decision="override_allow"} 8`)
+	assert.Contains(t, body, `kacho_api_gateway_authz_check_decisions_total{decision="exempt"} 9`)
+	assert.Contains(t, body, `kacho_api_gateway_authz_check_decisions_total{decision="scope_filtered"} 10`)
+	assert.Contains(t, body, `kacho_api_gateway_authz_enforcing 1`)
 	assert.Contains(t, body, `kacho_api_gateway_authz_cache_total{result="hit"} 1`)
 	assert.Contains(t, body, `kacho_api_gateway_authz_cache_total{result="miss"} 1`)
 	assert.Contains(t, body, `kacho_api_gateway_authz_check_duration_seconds_count 1`)

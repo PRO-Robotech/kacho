@@ -52,13 +52,11 @@ const (
 	fmForeignProject = "project:prj-foreign"
 
 	fmGroupOuter = "group:grp-outer"
-	fmGroupInner = "group:grp-inner"
 
 	// Субъекты вопросника.
 	fmSubjDirect        = "user:u-direct" // назван в привязке проекта
 	fmSubjDirectSA      = "service_account:sa-direct"
 	fmSubjInGroup       = "user:u-in-group"       // член внешней группы
-	fmSubjNested        = "user:u-nested"         // член вложенной группы
 	fmSubjAccountAdmin  = "user:u-account-admin"  // каскад, уровень 3
 	fmSubjAccountOwner  = "user:u-account-owner"  // структурный источник на своём аккаунте
 	fmSubjClusterAdmin  = "user:u-cluster-admin"  // каскад, уровни 1-2
@@ -72,9 +70,8 @@ const (
 	fmRoleEditor = "role.bench.editor"
 	fmRoleLister = "role.bench.lister"
 
-	// Метка набора — та же и у зеркала, и у правила-селектора.
-	fmLabelKey   = "authzformbench"
-	fmLabelValue = "full-model"
+	// Метка набора здесь больше не объявляется: её ставил единственный читатель —
+	// раскладка мира в строки формы под сверку с движком, снятая вместе с ним.
 )
 
 // fmTenant — принадлежность объекта арендатору. Объект, привязанный к кластеру,
@@ -148,8 +145,13 @@ func buildWorld(m *Model) (*fmWorld, error) {
 		Model:     m,
 		RoleVerbs: map[string][]string{},
 		Groups: map[string][]string{
-			fmGroupOuter: {fmSubjInGroup, fmGroupInner + "#member"},
-			fmGroupInner: {fmSubjNested},
+			// Вложенность групп СНЯТА вместе со свойством: модель сужена до
+			// схемы (задача #734), и `group#member` субъектом членства больше
+			// не принимается — хранилище отвергает такой кортеж проверкой
+			// формы. Проба снимается вместе со своим предметом, а не
+			// подгоняется: субъект `u-nested` был заведён под эту ветвь и
+			// другой не имеет.
+			fmGroupOuter: {fmSubjInGroup},
 		},
 		byRef: map[string]fmObject{},
 	}
@@ -173,7 +175,6 @@ func buildWorld(m *Model) (*fmWorld, error) {
 	add(fmObject{Type: "project", ID: "prj-foreign", Tenant: tenantForeign, Labelled: true,
 		Pointers: map[string]string{"account": fmForeignAccount, "cluster": fmClusterObj}})
 	add(fmObject{Type: "group", ID: "grp-outer", Tenant: tenantHome})
-	add(fmObject{Type: "group", ID: "grp-inner", Tenant: tenantHome})
 
 	// По объекту каждого арендатора на КАЖДЫЙ тип с глаголами. Порядок обхода —
 	// порядок объявления в модели, поэтому тип-контейнер (реестр) заводится
@@ -560,7 +561,7 @@ func (q FullQuestion) Name() string {
 // без него «разрешено» и «разрешено всем» неразличимы.
 func fullSubjects() []string {
 	return []string{
-		fmSubjDirect, fmSubjDirectSA, fmSubjInGroup, fmSubjNested,
+		fmSubjDirect, fmSubjDirectSA, fmSubjInGroup,
 		fmSubjAccountAdmin, fmSubjAccountOwner, fmSubjClusterAdmin,
 		fmSubjObjectOwner, fmSubjStranger, fmSubjForeignDirect,
 	}
@@ -612,52 +613,11 @@ type relRows struct {
 	RoleVerbs [][2]string
 }
 
-// relRows переводит мир в строки формы E. Разворота состава здесь нет by
-// construction — в этом и состоит форма.
-func (w *fmWorld) relRows() (relRows, error) {
-	var r relRows
-	labels := fmt.Sprintf(`{%q:%q}`, fmLabelKey, fmLabelValue)
-	for _, o := range w.Objects {
-		l := "{}"
-		if o.Labelled {
-			l = labels
-		}
-		r.Mirror = append(r.Mirror, [3]string{o.Type, o.ID, l})
-		for _, p := range sortedKeys(o.Pointers) {
-			pt, pid, err := splitObject(o.Pointers[p])
-			if err != nil {
-				return relRows{}, err
-			}
-			r.Edges = append(r.Edges, [5]string{o.Type, o.ID, p, pt, pid})
-		}
-	}
-	for _, f := range w.Facts {
-		ot, oid, err := splitObject(f.Object)
-		if err != nil {
-			return relRows{}, err
-		}
-		r.Facts = append(r.Facts, [4]string{ot, oid, f.Relation, f.Subject})
-	}
-	for _, b := range w.Bindings {
-		_, scopeID, err := splitObject(b.ScopeID)
-		if err != nil {
-			return relRows{}, err
-		}
-		r.Bindings = append(r.Bindings, [4]string{b.ID, b.ScopeType, scopeID, b.Role})
-		for _, s := range b.Subjects {
-			r.BindSubj = append(r.BindSubj, [2]string{b.ID, s})
-		}
-		for _, t := range b.SelectorTypes {
-			r.Selectors = append(r.Selectors, [3]string{b.ID, t, labels})
-		}
-	}
-	for _, role := range sortedKeys(w.RoleVerbs) {
-		for _, v := range w.RoleVerbs[role] {
-			r.RoleVerbs = append(r.RoleVerbs, [2]string{role, v})
-		}
-	}
-	return r, nil
-}
+// Метода `(*fmWorld).relRows` здесь БОЛЬШЕ НЕТ. Он раскладывал полномодельный мир
+// в строки формы, чтобы её вердикты можно было сверить с вердиктами внешнего движка
+// на том же мире. Движок снят (kacho#747, S6), сверять не с чем, и вызывающих у
+// метода не осталось ни одного. Тип `relRows` выше ЖИВ: его продолжает называть
+// проба узкой и полномодельной формы, у которой обе стороны свои.
 
 // subjectSeeds — что считается «этим субъектом» на входе вердикта: он сам и, для
 // пользователя, подстановочная форма своего типа. Членство в группах добирается

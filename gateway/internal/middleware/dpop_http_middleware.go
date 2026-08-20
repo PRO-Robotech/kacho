@@ -344,7 +344,7 @@ func (m *DPoPMiddleware) resolveFQN(method, path string) string {
 // Do NOT "fix" it by returning strings.TrimPrefix(path, "/"). That single change
 // would make those paths resolve to their catalog rows, and several of the rows
 // are `<exempt>` — including InternalIAMService RegisterResource /
-// UnregisterResource / WriteCreatorTuple, which WRITE AUTHORIZATION TUPLES.
+// UnregisterResource, which WRITE AUTHORIZATION TUPLES.
 // phaseInternalOriginExempt admits an exempt Internal* RPC on the internal
 // listener WITHOUT extracting a principal, on network position alone; its own
 // doc states the rule this would break — an RPC that grants privilege must have

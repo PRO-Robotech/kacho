@@ -247,7 +247,6 @@ func TestReadFloorRPCs_Membership(t *testing.T) {
 		// mutations — fga_writer-gated in-handler, not READ-floor (INV-FLOOR-8).
 		"/kacho.cloud.iam.v1.InternalIAMService/RegisterResource",
 		"/kacho.cloud.iam.v1.InternalIAMService/UnregisterResource",
-		"/kacho.cloud.iam.v1.InternalIAMService/WriteCreatorTuple",
 		// gateway-only / admin-tier mutations — not READ-floor.
 		"/kacho.cloud.iam.v1.InternalIAMService/ForceLogout",
 		"/kacho.cloud.iam.v1.InternalClusterService/GrantAdmin",

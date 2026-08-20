@@ -159,11 +159,11 @@ db:
 peers:
   iam:
     # KAC-178 §2 follow-up: ProjectService.Get живёт на PUBLIC iam listener (9090).
-    # InternalIAMService.{Check,WriteCreatorTuple} — на INTERNAL (9091).
+    # InternalIAMService.{Check,RegisterResource} — на INTERNAL (9091).
     # Раньше defaults были оба на 9091 + неверный service `kacho-iam:9091`
     # (у него только port 9090) → ProjectService Unimplemented → 'project lookup failed'.
     addr: kacho-iam.kacho.svc:9090              # ProjectService (public 9090)
-    internalAddr: kacho-iam-internal.kacho.svc:9091  # InternalIAMService.{Check, WriteCreatorTuple}
+    internalAddr: kacho-iam-internal.kacho.svc:9091  # InternalIAMService.{Check, RegisterResource}
     tls: false
     dialDuration: 10s
   vpc:
