@@ -286,6 +286,10 @@ func DeclaredProtoPackages(root string) ([]string, error) {
 	}
 	set := map[string]struct{}{}
 	for _, path := range files {
+		// #nosec G304 -- путь пришёл из индекса git (treecorpus), а не от вызывающего:
+		// вход этой функции — корень репозитория, и никакая часть пути не строится
+		// из данных запроса. Диалект намеренный: подавление другого вида в этом
+		// дереве не читает НИКТО, и такая строка была бы формой без действия.
 		b, rErr := os.ReadFile(path)
 		if rErr != nil {
 			return nil, rErr
