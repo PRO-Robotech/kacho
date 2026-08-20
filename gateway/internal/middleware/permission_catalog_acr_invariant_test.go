@@ -55,7 +55,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 28 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 31 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root + shared-resource
 // ceiling, domain-agnostic). Any drift (an RPC added or dropped) fails this
 // test. Categories A–J per the APPROVED acceptance docs.
@@ -160,6 +160,16 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.iam.v1.InternalLimitService/Create",
 		"kacho.cloud.iam.v1.InternalLimitService/Update",
 		"kacho.cloud.iam.v1.InternalLimitService/Delete",
+
+		// Те же три акта на ПУБЛИЧНОМ адресе (ADM-1 S1, #878). Порог
+		// подтверждения личности принадлежит ДЕЙСТВИЮ, а не адресу: сменить
+		// потолок через `/iam/v1/limits` — ровно то же изменение доли арендатора
+		// в общей платформе, что и через внутренний путь. Разойдись эти два
+		// перечня хоть на одну запись, публичный адрес стал бы дешёвым обходом
+		// ступени, и обход этот не был бы виден ни в одном диффе.
+		"kacho.cloud.iam.v1.LimitService/Create",
+		"kacho.cloud.iam.v1.LimitService/Update",
+		"kacho.cloud.iam.v1.LimitService/Delete",
 	}
 	set := make(map[string]struct{}, len(fqns))
 	for _, f := range fqns {
@@ -187,7 +197,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	// «чувствительное» — назначение, изменение и отзыв предела. Число утверждается,
 	// а не выводится из списка: молчаливое сокращение — ровно то, что произошло бы
 	// при случайно выпавшей записи.
-	require.Len(t, sensitive, 28, "the acceptance-doc sensitive set must contain exactly 28 FQNs")
+	require.Len(t, sensitive, 31, "the acceptance-doc sensitive set must contain exactly 31 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -208,7 +218,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 28, "exactly 28 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 31, "exactly 31 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -590,21 +600,32 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// = 29; итог 342 − 6 = 336. Сошлось — и это единственное, ради чего его стоит
 	// называть. Разойдись оно с замером, верным был бы замер.
 	//
-	// ЗДЕСЬ СОШЛИСЬ ДВЕ ЛИНИИ, И НИ ОДНА ИЗ НИХ НЕ БЫЛА ПРАВА ЦЕЛИКОМ. Линия
-	// снятия движка насчитала 279 / 30 / 337 — она вычла четыре глагола
-	// администрирования хранилища отношений, но не знала про пятую снятую запись.
-	// Линия ролевой модели насчитала 280 / 32 / 340 — она вычла
-	// `InternalIAMService/WriteCreatorTuple` и `InternalAuthorizeService/WriteTuples`,
-	// но не знала про снятое `ListObjects` и про снятый файл контракта целиком.
-	// Числа ниже — НЕ сумма и НЕ выбор одной стороны: они сняты замером
-	// сгенерированного каталога после слияния (336 записей, регенерация
-	// `make -C gateway permission-catalog`), и обе поправки в них учтены разом.
-	// Предикат повторения — тот же, что исполняет проба ниже: перепись
-	// `required_acr_min` по `c.FQNs()`.
-	assert.Equal(t, 28, n2, "sensitive count")
-	assert.Equal(t, 279, n1, "routine count")
+	// ЗДЕСЬ СОШЛИСЬ ТРИ ЛИНИИ, И НИ ОДНА НЕ БЫЛА ПРАВА ЦЕЛИКОМ.
+	//
+	//	снятие движка   — вычло записи администрирования хранилища отношений;
+	//	снятие двух дверей (#788) — вычло две записи полосы «освобождённых»;
+	//	публикация пределов (#878) — прибавила пять записей публичного
+	//	                `iam.v1.LimitService`.
+	//
+	// Числа ниже — НЕ сумма трёх поправок в уме и НЕ выбор одной стороны: они
+	// сняты ЗАМЕРОМ сгенерированного каталога ПОСЛЕ слияния (регенерация
+	// `make -C gateway permission-catalog`). Арифметика в уме дала бы совпадение,
+	// которое нечем проверить.
+	//
+	// ПОЧЕМУ ТРИ МУТАЦИИ ПРЕДЕЛОВ ЧУВСТВИТЕЛЬНЫ, А ПЕРЕЕЗД ПУЛА АДРЕСОВ БЫЛ ВЕСЬ
+	// РУТИННЫМ. Полоса про поверхность повышения привилегий. Управление пулом
+	// адресов ею не является — оно не выдаёт и не отзывает прав. Потолок числа
+	// ресурсов — да: поднять его значит расширить долю арендатора в общей
+	// платформе, опустить — заморозить ему создание, снять — молча передать
+	// решение другой области. Ровно поэтому те же три глагола несли «2» и на
+	// внутреннем сервисе: порог принадлежит ДЕЙСТВИЮ, а не адресу.
+	//
+	// ВНУТРЕННИЕ ПЯТЬ глаголов пределов ОСТАЮТСЯ на окно расширения (S1→S3) —
+	// отсюда прирост, а не замена.
+	assert.Equal(t, 31, n2, "sensitive count")
+	assert.Equal(t, 281, n1, "routine count")
 	assert.Equal(t, 29, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 336, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 341, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

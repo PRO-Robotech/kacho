@@ -743,6 +743,30 @@ func NewMux(
 			if err := iampb.RegisterAccessBindingServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam AccessBindingService: %w", err)
 			}
+			// LimitService — административная поверхность пределов на ПУБЛИЧНОМ
+			// бэкенде (ADM-1 S1, #878). Пять глаголов управления величиной под
+			// `/iam/v1/limits`, каждый гейтится `system_admin` @ `cluster`.
+			//
+			// ЗАПРЕТ 6 НЕ СМЯГЧЁН: наружу выставлен публичный `LimitService`, а не
+			// `InternalLimitService`; предикат `HasInternalSuffix`, который ловит
+			// второе, не тронут. Переезжает ГЛАГОЛ, а не разрешение для внутреннего
+			// сервиса.
+			//
+			// ЧТО ЭТО ЧИНИТ. Величину назначает администратор облака, и назначает он
+			// её через край. Пока глагол жил только внутренним, страница пределов
+			// консоли получала 404 — отказ, неотличимый от «такого раздела нет
+			// вовсе», при полностью исправном сервисе. Теперь отказ честен: 403 у
+			// того, кому не положено, 200 у администратора.
+			//
+			// ДВА АДРЕСА ДО S3. Внутренний путь несёт сегмент `/internal/`, поэтому
+			// публичный не совпадает с ним дословно — в отличие от пула адресов, где
+			// оба глагола объявляли ОДИН путь и согласие их записей стерёг
+			// `TestSharedRestPair_CannotChangeAnAccessDecision`. Здесь пары нет, и
+			// согласие решения держит `TestLimits_AdminSurfaceIsReachableFromOutside`
+			// — тем же предикатом `accessDecisionDiffers`, а не своей копией.
+			if err := iampb.RegisterLimitServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+				return nil, fmt.Errorf("register iam LimitService: %w", err)
+			}
 			// SAKeyService (ServiceAccount OAuth keys). Public under
 			// /iam/v1/serviceAccounts/{id}/keys. Без этой регистрации grpc-gateway
 			// не имеет REST-route → POST .../keys → 404, и SAKeyService.Issue/Revoke

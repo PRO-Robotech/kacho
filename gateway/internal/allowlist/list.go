@@ -321,6 +321,18 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.iam.v1.AccessBindingService/Create": {},
 	"/kacho.cloud.iam.v1.AccessBindingService/Update": {}, // public mutation (REST PATCH /iam/v1/accessBindings/{access_binding_id}); clears deletion_protection, editor relation (parity with Delete)
 	"/kacho.cloud.iam.v1.AccessBindingService/Delete": {},
+
+	// LimitService — административная поверхность пределов на ПУБЛИЧНОМ бэкенде
+	// (ADM-1 S1, #878). Наружу выставлен публичный глагол, а не `Internal*`:
+	// запрет 6 не смягчён, `HasInternalSuffix` не тронут. Доступ закрывает
+	// отношение `system_admin` @ `cluster`, которое подстановочный кортеж
+	// `user:*` не выполняет, — поэтому публикация адреса круга не расширяет, а
+	// делает отказ честным: 403 вместо 404.
+	"/kacho.cloud.iam.v1.LimitService/Get":            {},
+	"/kacho.cloud.iam.v1.LimitService/List":           {},
+	"/kacho.cloud.iam.v1.LimitService/Create":         {},
+	"/kacho.cloud.iam.v1.LimitService/Update":         {},
+	"/kacho.cloud.iam.v1.LimitService/Delete":         {},
 	"/kacho.cloud.iam.v1.AccessBindingService/Revoke": {}, // soft-revoke :verb (REST POST /iam/v1/accessBindings/{access_binding_id}:revoke), F10
 
 	"/kacho.cloud.iam.v1.AccessBindingService/ListByScope":           {}, // public sync read (REST GET /iam/v1/accessBindings:listByScope)
