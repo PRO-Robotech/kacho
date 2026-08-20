@@ -255,3 +255,48 @@ func padID(i int) string {
 	b := []byte{digits[(i/100)%10], digits[(i/10)%10], digits[i%10]}
 	return string(b)
 }
+
+// TestIntegration_WatchStreamSince_ZeroCursorReplaysWhatIsRetained — ЗАМОК НА
+// СМЫСЛ НУЛЯ. Курсор исключающий, поэтому `from_sequence_no = 0` отдаёт ВСЁ, что
+// ещё лежит в журнале, а не «только новые события».
+//
+// Проба заведена как RED против КОНТРАКТА: его комментарий обещал
+// «0 = начать с current end», и на трёх предсуществующих строках утверждение
+// «доставлено ноль» упало с тремя доставленными. Авторитетным признан код —
+// документ обязан отражать реальность, а не намерение, — и комментарий контракта
+// приведён к нему. Замок держит эту сторону: вернётся «только новые» в прозу —
+// проба останется зелёной и соврать ей не даст ничто, поэтому она утверждает
+// именно ЧИСЛО доставленного, а не факт вызова.
+func TestIntegration_WatchStreamSince_ZeroCursorReplaysWhatIsRetained(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := ctxWithUser(context.Background(), "usr_alice")
+	dsn := setupWatchDB(t)
+	pool, err := coredb.NewPool(ctx, dsn)
+	require.NoError(t, err)
+	pgtest.ClosePoolAtEnd(t, pool)
+
+	ids := make([]string, 0, 3)
+	for i := 0; i < 3; i++ {
+		_, err := pool.Exec(ctx,
+			`INSERT INTO compute_outbox (resource_kind, resource_id, event_type, payload) VALUES ('Instance',$1,'CREATED','{}'::jsonb)`,
+			"epz-"+padID(i))
+		require.NoError(t, err)
+		ids = append(ids, "epz-"+padID(i))
+	}
+	conn, err := pgx.Connect(ctx, dsn)
+	require.NoError(t, err)
+	defer func() { _ = conn.Close(ctx) }()
+
+	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, allowAllVisibility(ids...))
+	fs := &fakeWatchStream{ctx: ctx}
+	cursor, err := h.streamSince(ctx, conn, 0, nil, fs)
+	require.NoError(t, err)
+
+	require.Len(t, fs.sent, 3,
+		"нулевой курсор исключающий: он отдаёт всё, что лежит в журнале, а не «только новые»")
+	assert.Equal(t, int64(1), fs.sent[0].GetSequenceNo())
+	assert.Equal(t, fs.sent[2].GetSequenceNo(), cursor,
+		"позиция продвигается до последней прочитанной строки")
+}
