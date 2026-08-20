@@ -47,6 +47,19 @@ CREATE TABLE kacho_apps.fga_register_outbox (
     last_error    text,
     attempt_count integer      NOT NULL DEFAULT 0
 );
+
+-- Очередь ВТОРОЙ формы: доставленность помечена не отметкой времени, а
+-- состоянием. Это форма журнала аудита iam (таблица audit_outbox схемы kacho_iam),
+-- и она существовала ЗАДОЛГО до сканера: сканер читал ровно одну форму и на этой
+-- падал бы с «колонки sent_at нет», то есть очередь была ненаблюдаема by
+-- construction.
+CREATE TABLE kacho_apps.status_shaped_outbox (
+    id         text        PRIMARY KEY,
+    event_type text        NOT NULL,
+    status     text        NOT NULL DEFAULT 'pending',
+    attempts   integer     NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
 `
 
 func setupPG(t *testing.T) *pgxpool.Pool {
@@ -154,4 +167,76 @@ func Test_1_4_23_CollectorScan_PoisonedCount(t *testing.T) {
 		"collector sets the poisoned-count gauge to the current count of poisoned rows")
 	assert.Equal(t, float64(2), rec.BacklogDepth(tbl),
 		"poisoned rows are still pending → counted in backlog (sent_at NULL)")
+}
+
+// ── ФОРМА ОЧЕРЕДИ ОБЪЯВЛЯЕТСЯ, А НЕ ПОДРАЗУМЕВАЕТСЯ ──────────────────────────
+
+// TestIntegration_StatusShapedQueueIsScannable — сканер читает очередь, которая
+// помечает доставленность СОСТОЯНИЕМ, а не отметкой времени.
+//
+// Почему это не «ещё одна конфигурация»: пока форма подразумевалась, очередь
+// иной формы была ненаблюдаема НЕ потому, что кто-то забыл её провязать, а
+// потому, что провязка упала бы на первом же скане — «колонки sent_at нет». То
+// есть отсутствие наблюдаемости выглядело как её ненужность.
+func TestIntegration_StatusShapedQueueIsScannable(t *testing.T) {
+	pool := setupPG(t)
+	ctx := context.Background()
+
+	const table = "kacho_apps.status_shaped_outbox"
+	_, err := pool.Exec(ctx, `INSERT INTO `+table+` (id, event_type, status, attempts, created_at) VALUES
+		('e1', 'a.b', 'pending',   0, now() - interval '90 seconds'),
+		('e2', 'a.b', 'in_flight', 2, now() - interval '30 seconds'),
+		('e3', 'a.b', 'failed',    9, now() - interval '10 seconds'),
+		('e4', 'a.b', 'sent',      1, now() - interval '600 seconds')`)
+	require.NoError(t, err)
+
+	rec := metrics.NewMemRecorder()
+	col := metrics.NewCollector(pool, rec, metrics.CollectorConfig{
+		Table:       table,
+		MaxAttempts: 5,
+		Shape:       metrics.ShapeStatus,
+	})
+	require.NoError(t, col.Scan(ctx))
+
+	// Недоставленными считаются ВСЕ, кроме `sent`: строка `failed` — это backlog,
+	// а не «обработана». Зачесть её в доставленные значило бы объявить очередь
+	// разгруженной ровно тогда, когда доставка перестала получаться.
+	assert.Equal(t, 3.0, rec.BacklogDepth(table), "недоставленные: pending + in_flight + failed")
+
+	// Голова считается по НЕДОСТАВЛЕННЫМ. Самая старая строка таблицы — `sent`
+	// (600 c); если бы предикат её захватывал, возраст был бы ~600, и очередь
+	// выглядела бы застрявшей вшестеро сильнее, чем есть.
+	assert.InDelta(t, 90.0, rec.OldestPendingAgeSeconds(table), 15.0,
+		"возраст старейшей НЕДОСТАВЛЕННОЙ строки, а не старейшей вообще")
+
+	// Отравление считается по своей колонке: у этой формы она `attempts`.
+	assert.Equal(t, 1.0, rec.PoisonedCount(table), "attempts >= 5 и не sent — одна строка")
+}
+
+// TestIntegration_DefaultShapeIsUnchanged — ПАРНЫЙ ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ.
+//
+// Без него проба выше зеленела бы и на сканере, который перестал понимать
+// прежнюю форму: «новая форма читается» и «старая сломана» — совместимые
+// утверждения, и различает их только этот прогон.
+func TestIntegration_DefaultShapeIsUnchanged(t *testing.T) {
+	pool := setupPG(t)
+	ctx := context.Background()
+
+	const table = "kacho_apps.fga_register_outbox"
+	_, err := pool.Exec(ctx, `INSERT INTO `+table+` (event_type, attempt_count, created_at, sent_at) VALUES
+		('a.b', 0, now() - interval '45 seconds', NULL),
+		('a.b', 7, now() - interval '20 seconds', NULL),
+		('a.b', 0, now() - interval '900 seconds', now())`)
+	require.NoError(t, err)
+
+	rec := metrics.NewMemRecorder()
+	col := metrics.NewCollector(pool, rec, metrics.CollectorConfig{
+		Table: table, MaxAttempts: 5,
+		// Shape НЕ задана — умолчание обязано остаться прежним.
+	})
+	require.NoError(t, col.Scan(ctx))
+
+	assert.Equal(t, 2.0, rec.BacklogDepth(table))
+	assert.InDelta(t, 45.0, rec.OldestPendingAgeSeconds(table), 15.0)
+	assert.Equal(t, 1.0, rec.PoisonedCount(table))
 }
