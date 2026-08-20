@@ -661,6 +661,10 @@ func acceptableSpec() servicecontract.Spec {
 		AuthzObserve:  func(func() authz.Metrics) {},
 		BootGate:      servicecontract.NotApplicable[servicecontract.BootGate]("очереди регистраций у демо нет"),
 		StreamBudget:  servicecontract.NotApplicable[time.Duration]("демо не служит серверных стримов"),
+		Admission: servicecontract.Value(servicecontract.Admission{
+			Public:   grpcsrv.PlatformPublicAdmission(),
+			Internal: grpcsrv.PlatformInternalAdmission(),
+		}),
 	}
 }
 
