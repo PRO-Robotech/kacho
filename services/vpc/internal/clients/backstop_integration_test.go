@@ -36,24 +36,20 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
-
-	pgrepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 )
 
 const vpcOutboxTable = "kacho_vpc.fga_register_outbox"
 
 // newVPCReconciler собирает reconciler поверх vpc register-outbox и
 // per-service-адаптера (FGAReconcileAdapter реализует оба порта).
-func newVPCReconciler(t *testing.T, pool *pgxpool.Pool, grace time.Duration) *reconciler.Reconciler {
+func newVPCReconciler(t *testing.T, pool *pgxpool.Pool) *reconciler.Reconciler {
 	t.Helper()
-	ad := pgrepo.NewFGAReconcileAdapter(pool)
-	rc, err := reconciler.New(pool, reconciler.Config{
+	rc, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
 		PartitionColumn: reconciler.RegisterOutboxPartition,
 		Table:           vpcOutboxTable,
 		Channel:         "kacho_vpc_fga_register_outbox",
 		MaxAttempts:     10,
-		GraceWindow:     grace,
-	}, reconciler.Adapters{Enumerator: ad, Registry: ad}, nil)
+	}, nil)
 	require.NoError(t, err)
 	return rc
 }
@@ -113,7 +109,7 @@ func Test_1_4_30_ReconcilerRedrivesPoisoned(t *testing.T) {
 		         10,'was permanent')`)
 	require.NoError(t, err)
 
-	rc := newVPCReconciler(t, pool, 0)
+	rc := newVPCReconciler(t, pool)
 	n, err := rc.RedrivePoisoned(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, n, "exactly one poisoned row re-driven")

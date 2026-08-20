@@ -12,15 +12,17 @@ import (
 
 // TestMain hands this package one Postgres instead of one per test.
 //
-// Both register-outbox shapes this package exercises go into the one template:
-// they live in different Postgres schemas (kacho_apps, kacho_svc) and each helper
-// addresses its own by qualified name, so carrying the other one's empty table
-// costs nothing and saves a second template. The re-drive and GC proofs contend
-// on real rows of the caller's OWN database — which a clone still is — and the
-// NOTIFY the kacho_svc trigger fires is delivered only inside it.
+// Обе формы очереди, которые разбирает пакет, кладутся в один шаблон: они живут в
+// разных схемах Postgres, и каждый хелпер адресует свою по полному имени, поэтому
+// пустая таблица соседа ничего не стоит и экономит второй шаблон. Пробы возврата
+// отравленных строк спорят на настоящих строках СОБСТВЕННОЙ базы вызывающего —
+// клон ею и остаётся, — а NOTIFY триггера kacho_svc доставляется только внутри неё.
+//
+// Схема kacho_apps ушла отсюда вместе с пробами примитивов сверки (#760): она
+// обслуживала только их.
 func TestMain(m *testing.M) {
 	os.Exit(pgtest.Run(m, pgtest.Config{
 		Name:    "reconciler",
-		Migrate: pgtest.SQL(reconcilerSchema, registerOutboxSchema, tupleOutboxSchema),
+		Migrate: pgtest.SQL(registerOutboxSchema, tupleOutboxSchema),
 	}))
 }

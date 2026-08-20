@@ -22,8 +22,6 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
-
-	pgrepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 )
 
 const (
@@ -38,14 +36,10 @@ const (
 // observability/repair: транзиентная ошибка скана/прохода логируется, но не
 // фатальна. Интервалы reconcile/metrics — разумные production-каденции по умолчанию.
 func startBackstop(ctx context.Context, pool *pgxpool.Pool, rec metrics.Recorder, logger *slog.Logger) error {
-	rc, err := reconciler.New(pool, reconciler.Config{
+	rc, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
 		PartitionColumn: reconciler.RegisterOutboxPartition,
 		Table:           fgaRegisterOutboxTable,
 		Channel:         fgaRegisterOutboxChannel,
-		GraceWindow:     time.Minute, // anti-race: отсрочка, чтобы re-Create успел записать свой intent первым
-	}, reconciler.Adapters{
-		Enumerator: pgrepo.NewFGAReconcileAdapter(pool),
-		Registry:   pgrepo.NewFGAReconcileAdapter(pool),
 	}, logger.With(slog.String("component", "fga-register-reconciler")))
 	if err != nil {
 		return err
@@ -75,14 +69,13 @@ func startBackstop(ctx context.Context, pool *pgxpool.Pool, rec metrics.Recorder
 // корректным для декодера tuple-payload. Re-drive — рабочий backstop для уже
 // атомарного сервиса.
 //
-// BackfillFromState / GCOrphans в этом цикле сознательно НЕ запускаются: они
-// переэмитят corelib-fixed payload ({"project_id":…} / {}), который vpc-декодер
-// tuple (subject_id/relation/object) не разбирает — их запуск отравил бы здоровое
-// состояние. И поскольку каждый vpc Create co-commit'ит свой register-intent в
-// writer-TX ресурса, never-enqueued строк для backfill на практике нет.
-// Per-service enumerator/registry adapter все равно подключен (его требует
-// reconciler.New, и он задает table-scope для RedrivePoisoned) — backstop остается
-// готов, если corelib-контракт re-emit обзаведется per-service payload-хуком.
+// Здесь стояло объяснение, почему два других прохода corelib — сверка с
+// состоянием и сбор осиротевших — сознательно НЕ запускаются, и почему адаптер
+// перечисления всё-таки провязан «на случай, если контракт обзаведётся хуком».
+// Оба прохода сняты из corelib (#760): их предикаты были недостижимы by
+// construction — намерение пишется в очередь В ТОЙ ЖЕ транзакции, что и строка
+// ресурса, — а адаптер, который никто не звал, был живым с виду механизмом,
+// которого нет. Вместе с ними снят и адаптер этого сервиса.
 func runReconciler(ctx context.Context, rc *reconciler.Reconciler, logger *slog.Logger) {
 	const interval = 5 * time.Minute
 	tick := time.NewTicker(interval)

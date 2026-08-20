@@ -189,6 +189,14 @@ func attemptCountOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, rowID
 	return n
 }
 
+func lastErrorOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, rowID int64) *string {
+	t.Helper()
+	var e *string
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT last_error FROM kacho_svc.fga_register_outbox WHERE id=$1`, rowID).Scan(&e))
+	return e
+}
+
 func newRedriveReconciler(t *testing.T, pool *pgxpool.Pool) *reconciler.Reconciler {
 	t.Helper()
 	r, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
@@ -313,6 +321,12 @@ func Test_Redrive_RevivesWhenNothingHasOvertakenIt(t *testing.T) {
 	for _, id := range []int64{lonelyID, pendingID, earlierID} {
 		require.Lessf(t, attemptCountOf(t, ctx, pool, id), redriveMaxAtt,
 			"row %d must be claimable again after revival", id)
+		// last_error снимается вместе со счётчиком: строка, вернувшаяся в работу с
+		// прежним текстом отказа, читается оператором как всё ещё отравленная.
+		// Утверждение перенесено сюда из пробы, снятой вместе с примитивами
+		// сверки (#760) — там оно было единственным в дереве.
+		require.Nilf(t, lastErrorOf(t, ctx, pool, id),
+			"row %d must lose its last_error on revival", id)
 	}
 
 	runDrainerUntilQuiet(t, ctx, pool, m)
