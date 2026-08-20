@@ -58,6 +58,15 @@ type narrowConsumer struct {
 	ctorSites  []string
 	collector  string // имя сервиса, переданное narrowmetrics.New; пусто — коллектора нет
 	registered bool   // есть ли вызов RegisterListNarrow
+	// verdictLane — объявлена ли ПОЛОСА ОКНА ВЕРДИКТОВ сужателя
+	// (`authzmetrics.LaneNarrow`) в композиционном корне.
+	//
+	// Отдельно от `registered`, потому что это ДРУГОЙ предмет: коллектор
+	// `narrowmetrics` считает ИСХОДЫ СТРАНИЦЫ (сужено / аварийный режим / мягкий
+	// проход) и про окно вердиктов не говорит ничего. Через это окно проходит
+	// БОЛЬШЕ вопросов, чем через окно звена решения: звено спрашивает раз на
+	// вызов, сужатель — на каждый элемент страницы (#768).
+	verdictLane bool
 }
 
 // collectNarrowConsumers переписывает не-тестовое дерево сервисов и общего
@@ -140,6 +149,21 @@ func collectNarrowConsumers(t *testing.T) (consumers map[string]*narrowConsumer,
 			}
 			return true
 		})
+
+		// Полоса окна вердиктов объявляется КЛЮЧОМ карты читателей, а не вызовом,
+		// поэтому ищется отдельным проходом по выражениям выбора: `authzmetrics.LaneNarrow`.
+		ast.Inspect(file, func(n ast.Node) bool {
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "LaneNarrow" {
+				return true
+			}
+			pkgIdent, isQualified := sel.X.(*ast.Ident)
+			if !isQualified || pkgIdent.Name != "authzmetrics" || !inServices {
+				return true
+			}
+			get(service).verdictLane = true
+			return true
+		})
 	})
 	return consumers, harnessSites, scanned
 }
@@ -200,5 +224,69 @@ func TestEveryListNarrowConsumerRegistersItsCollector(t *testing.T) {
 	}
 	if len(findings) > 0 {
 		t.Fatalf("потребитель сужателя без наблюдаемых величин:\n  %s", strings.Join(findings, "\n  "))
+	}
+}
+
+// TestEveryListNarrowConsumerExportsItsVerdictWindow — у каждого потребителя
+// сужателя доля попаданий ЕГО ОКНА ВЕРДИКТОВ выставлена (#768).
+//
+// # Почему это ОТДЕЛЬНОЕ требование, а не часть предыдущего
+//
+// Коллектор `narrowmetrics` считает ИСХОДЫ СТРАНИЦЫ — сужено, аварийный режим,
+// мягкий проход, — и про окно вердиктов не говорит ничего. Между тем именно оно
+// решает, сколько вопросов доезжает до владельца модели под списочной нагрузкой:
+// звено решения задаёт ОДИН вопрос на вызов, а сужатель — по вопросу на КАЖДЫЙ
+// элемент страницы, а страница контрактно бывает до тысячи. До #768 у окна был
+// размер и не было ни одного счётчика попаданий, то есть утверждение «кеш
+// сужателя даёт столько-то» было непроверяемо в обе стороны.
+//
+// # Предпосылка
+//
+// Гейт судит ТЕХ ЖЕ потребителей, что и проба выше, и падает на своей же
+// предпосылке, если их не нашлось: молчание на пустом перечне ничего не
+// доказывает.
+func TestEveryListNarrowConsumerExportsItsVerdictWindow(t *testing.T) {
+	consumers, _, scanned := collectNarrowConsumers(t)
+
+	services := make([]string, 0, len(consumers))
+	for name, c := range consumers {
+		if len(c.ctorSites) > 0 {
+			services = append(services, name)
+		}
+	}
+	sort.Strings(services)
+	exporting := 0
+	for _, name := range services {
+		if consumers[name].verdictLane {
+			exporting++
+		}
+	}
+	t.Logf("осмотрено не-тестовых файлов Go: %d; потребителей сужателя: %d (%s); "+
+		"объявляют полосу окна вердиктов: %d",
+		scanned, len(services), strings.Join(services, ", "), exporting)
+
+	if scanned == 0 {
+		t.Fatal("осмотрено ноль файлов — гейт не читал дерева, и его молчание ничего не значит")
+	}
+	if len(services) == 0 {
+		t.Fatal("потребителей сужателя не нашлось — предмет гейта отпал: снимите его вместе " +
+			"с сужателем либо почините имена, которыми он его ищет")
+	}
+
+	var findings []string
+	for _, name := range services {
+		if consumers[name].verdictLane {
+			continue
+		}
+		findings = append(findings, "services/"+name+
+			" — строит сужатель ("+consumers[name].ctorSites[0]+"), но полосу окна его "+
+			"вердиктов не объявляет: передайте authzmetrics.LaneNarrow с читателем "+
+			"<сужатель>.CacheStats в RegisterAuthzCache композиционного корня. Через это "+
+			"окно идёт по вопросу на КАЖДЫЙ элемент страницы, а страница контрактно бывает "+
+			"до тысячи — то есть больше вопросов, чем через окно звена решения")
+	}
+	if len(findings) > 0 {
+		t.Fatalf("потребитель(и) сужателя не выставляют долю попаданий своего окна вердиктов:\n  %s",
+			strings.Join(findings, "\n  "))
 	}
 }

@@ -429,14 +429,22 @@ func runServe(cfg config.Config) error {
 	// кеш собирает носитель контура, и читателя он отдаёт через поле дескриптора.
 	var authzCache authzmetrics.Source
 
-	// ДВЕ полосы, потому что кешей положительных вердиктов у этого процесса два:
-	// окно звена решения (вопрос на вызов) и окно прямого пообъектного опроса
-	// страницы (вопрос на КАЖДЫЙ элемент, а страница контрактно бывает до
-	// тысячи). Сложить их в одну серию значило бы сделать невидимым тот из них,
-	// который не попадает, — а это ровно тот, ради которого величину и смотрят.
+	// ТРИ полосы, потому что окон положительных вердиктов у этого процесса три, и
+	// два последних стоят ДРУГ ЗА ДРУГОМ на одном пути:
+	//
+	//   · окно звена решения — вопрос на ВЫЗОВ;
+	//   · окно самого сервиса перед сужателем (`handler.cachedAuthorizer`) —
+	//     вопрос на КАЖДЫЙ элемент страницы;
+	//   · окно ОБЩЕГО сужателя (`pkg/listnarrow`) — то, что не поймал предыдущий.
+	//
+	// Сложить их в одну серию значило бы сделать невидимым то из них, которое не
+	// попадает, — а это ровно то, ради которого величину и смотрят. Последнее до
+	// #768 не считал никто, и «кеш сужателя даёт столько-то» было непроверяемо в
+	// обе стороны.
 	svcMetrics.RegisterAuthzCache(map[string]authzmetrics.Reader{
-		authzmetrics.LaneRPC:  authzCache.Cache,
-		authzmetrics.LaneList: registryHandler.VerdictCacheStats,
+		authzmetrics.LaneRPC:    authzCache.Cache,
+		authzmetrics.LaneList:   registryHandler.VerdictCacheStats,
+		authzmetrics.LaneNarrow: pageNarrower.CacheStats,
 	}, authzCache.Read)
 
 	desc, err := describe(cfg, mode, logger, servePorts{
