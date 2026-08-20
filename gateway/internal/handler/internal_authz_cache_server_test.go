@@ -151,7 +151,7 @@ func TestW1_2_11b_HandlerAcceptsOptionalScopeFields(t *testing.T) {
 	_, err := srv.InvalidateSubject(context.Background(),
 		&apigatewayv1.InvalidateSubjectRequest{
 			Subject:      "user:usr_a",
-			EventType:    "jit_revoke",
+			EventType:    "group_member_change",
 			ResourceType: "project",
 			ResourceId:   "prj_a",
 		})
