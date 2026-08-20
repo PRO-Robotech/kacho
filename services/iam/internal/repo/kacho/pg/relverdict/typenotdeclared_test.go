@@ -1,3 +1,6 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
 package relverdict
 
 import (
@@ -28,7 +31,7 @@ func TestAsk_UndeclaredTypeIsADenial(t *testing.T) {
 		t.Errorf("необъявленный тип: вердикт = %s, ожидался %s", v, Deny)
 	}
 	if !g.TypeNotDeclared {
-		t.Errorf("отказ по необъявленному типу обязан называть своё основание: "+
+		t.Errorf("отказ по необъявленному типу обязан называть своё основание: " +
 			"без него опечатка в имени типа настоящего ресурса утонет в тихом отказе")
 	}
 
