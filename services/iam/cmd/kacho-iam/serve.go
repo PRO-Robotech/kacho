@@ -322,7 +322,7 @@ func runServe(cfg config.Config) error {
 	//     it is also unreachable via the api-gateway, which carries no REST route
 	//     for it). Config.Validate additionally refuses to boot a production binary
 	//     whose mint is enabled with an empty list.
-	// The fga-proxy writes (Register/Unregister/WriteCreatorTuple) are NOT in the
+	// The fga-proxy writes (Register/Unregister) are NOT in the
 	// gateway-only set and stay gated in-handler by RelationWriteGate (fga_writer)
 	// — their callers are vpc/compute/nlb module SAs, not the gateway.
 	internalCallerPolicy := authzguard.NewCallerPolicy(productionMode, authzguard.GatewayFrontedInternalRPCs()).

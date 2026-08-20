@@ -45,7 +45,7 @@
 //     chicken-and-egg (runs before per-user authz can run); a per-call FGA
 //     round-trip here would add latency + an outage would mass-fail token
 //     refresh. Stays on the mTLS-module floor.
-//   - all mutations (Register/Unregister/WriteCreatorTuple stay fga_writer-
+//   - all mutations (Register/Unregister stay fga_writer-
 //     gated; ForceLogout/GrantAdmin/… stay system_admin / gateway-only) — this
 //     is a READ floor; the mutation surface is unchanged.
 package authzguard
@@ -80,7 +80,7 @@ const (
 //   - InternalIAMService/Check — PDP, never floor-gated.
 //   - InternalUserService/OnRecoveryCompleted — Kratos secret-authed hook.
 //   - InternalSessionRevocationsService/IsRevoked — hot-path chicken-and-egg.
-//   - InternalIAMService/{RegisterResource,UnregisterResource,WriteCreatorTuple}
+//   - InternalIAMService/{RegisterResource,UnregisterResource}
 //     — fga_writer-gated mutations.
 //   - ForceLogout / Cluster GrantAdmin/RevokeAdmin / Authorize
 //     WriteTuples/ReloadModel / SessionRevocations Revoke /

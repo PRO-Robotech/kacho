@@ -565,10 +565,16 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// снятие аренды адреса + 11 публичных глаголов пула + 4 чтения квот проекта
 	// + 1 чтение квот личности = 280. Сошлось — и это единственное, ради чего его
 	// стоит называть. Разойдись оно с замером, верным был бы замер.
+	//
+	// СНЯТИЕ ДВУХ АДМИНИСТРАТИВНЫХ ДВЕРЕЙ (#788) уменьшило полосу «освобождённых»
+	// на две записи: `InternalAuthorizeService/WriteTuples` и
+	// `InternalIAMService/WriteCreatorTuple` удалены с контракта целиком. Полосы
+	// «чувствительное» и «рутинное» не тронуты — обе двери стояли `<exempt>` как
+	// все Internal-RPC. 34→32 exempt, итог 342→340.
 	assert.Equal(t, 28, n2, "sensitive count")
 	assert.Equal(t, 280, n1, "routine count")
-	assert.Equal(t, 34, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 342, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 32, nEmpty, "no-requirement (exempt) count")
+	assert.Equal(t, 340, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

@@ -654,10 +654,6 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		// PollSubjectChanges drains subject_change_outbox for api-gateway
 		// authz-cache invalidation. Internal-only (port 9091).
 		WithSubjectChange(service.NewSubjectChangeService(kachopg.NewSubjectChangeRepo(pool))).
-		// WriteCreatorTuple — sync FGA write для
-		// per-resource creator-tuple (vpc/compute/nlb после Create).
-		// Local relationStore (line ~522) is in scope here within buildServices.
-		WithRelationWriter(relationStore).
 		// SEC-C — FGA-proxy RPCs + ReBAC authz gate.
 		WithResourceRegistrar(registerResourceUC, regGate).
 		// ForceLogout records a session revocation.
@@ -1127,9 +1123,11 @@ func buildAuthZServices(pool *pgxpool.Pool, opsRepo operations.Repo,
 		WithCallerAuthority(ownGates).
 		WithInsecureAnonymousPeer(!prodMode)
 
-	// RelationProjector — used by InternalAuthorizeService.
-	tupleWriter := service.NewRelationProjector(fgaTransport)
-	internalAuthH := internalauthorizeapp.NewHandler(tupleWriter, opsRepo, modelID)
+	// RelationProjector — used by InternalAuthorizeService. Read-only: the
+	// service has no Operation-producing RPC since WriteTuples was retired (#788),
+	// so no operations repo is handed to it.
+	tupleReader := service.NewRelationProjector(fgaTransport)
+	internalAuthH := internalauthorizeapp.NewHandler(tupleReader, modelID)
 
 	return authzServiceBundle{
 		authorize:         authzH,
