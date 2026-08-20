@@ -79,8 +79,18 @@ func Serve(ctx context.Context, d servicecontract.Descriptor, public, internal R
 
 	publicSrv, internalSrv := serverPair(spec, &slot)
 
-	public(publicSrv)
-	internal(internalSrv)
+	// ── потолок темпа: обёртка регистратора, а не звено цепочки ──────────────
+	//
+	// Регистрация идёт ЧЕРЕЗ ограничитель, и другого пути зарегистрировать
+	// службу у вызывающего нет — сервера он не получает. Поэтому «слушатель без
+	// потолка» перестаёт быть тем, что автор сервиса обязан не забыть.
+	adm, admErr := buildAdmission(spec)
+	if admErr != nil {
+		return admErr
+	}
+	because, _ := spec.Admission.NotApplicableBecause()
+	adm.arm(log, spec.Service, because)
+	adm.handOut(publicSrv, internalSrv, public, internal)
 
 	served := mergeServed(servedOf(publicSrv), servedOf(internalSrv))
 	domains, err := domainsOf(served)
@@ -116,7 +126,22 @@ func Serve(ctx context.Context, d servicecontract.Descriptor, public, internal R
 	}
 	slot.install(intr)
 
-	return listenAndServe(ctx, spec, publicSrv, internalSrv)
+	// Счёт допущенных и отвергнутых — задача носителя, а не сервиса: она живёт
+	// столько же, сколько слушатели, и гаснет вместе с ними. Своя отмена нужна
+	// затем, чтобы падение слушателя не оставляло задачу ждать общий контекст:
+	// [Serve] обязана вернуть управление, а не пережить свои же серверы.
+	reportCtx, stopReport := context.WithCancel(ctx)
+	defer stopReport()
+	reportDone := make(chan struct{})
+	go func() {
+		defer close(reportDone)
+		adm.report(reportCtx, log)
+	}()
+
+	serveErr := listenAndServe(ctx, spec, publicSrv, internalSrv)
+	stopReport()
+	<-reportDone
+	return serveErr
 }
 
 // serverPair собирает ОБА сервера из ОДНОЙ пары цепочек.

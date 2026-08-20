@@ -518,8 +518,37 @@ func runServe(cfg config.Config) error {
 		"hooks_mtls", mtlsCfg.HooksServerMTLS.Enable,
 		"metrics_mtls", mtlsCfg.MetricsServerMTLS.Enable,
 		"jwks_proxy_mtls", mtlsCfg.JWKSProxyServerMTLS.Enable)
-	registerPublicServices(grpcSrv, svcs, opsRepo)
-	registerInternalServices(internalSrv, svcs, pool, cfg.MigrateDSN(), logger)
+	// Потолок темпа и одновременности НА ВЫЗЫВАЮЩЕГО. Регистрация идёт ЧЕРЕЗ
+	// обёртку ограничителя: он получает дескриптор службы целиком и подставляет
+	// допуск МЕЖДУ цепочкой звеньев и обработчиком — то есть ПОСЛЕ того, как
+	// личность вызывающего установлена. Забыть метод здесь не на чем: перечня
+	// методов у вызывающего нет.
+	//
+	// Служебные поверхности (здоровье, отражение) регистрирует конструктор
+	// сервера ДО обёртки и под предел не попадают намеренно: отказ проверке
+	// готовности означал бы перезапуск пода из-за нагрузки на API.
+	publicAdmissionLimits, internalAdmissionLimits, err := admissionLimits(cfg)
+	if err != nil {
+		return err
+	}
+	// Ключи у слушателей РАЗНЫЕ, и это не деталь: публичный ключуется личностью
+	// конечного пользователя (за краем сидит арендатор, и предел объявлен на
+	// него), внутренний — личностью СЕРТИФИКАТА вызывающего модуля, потому что
+	// запрос модуля несёт личности разных арендаторов и ключ по арендатору
+	// дробил бы бюджет соседа на тысячу вёдер.
+	publicAdmission, err := grpcsrv.NewAdmission("public", publicAdmissionLimits, grpcsrv.PrincipalSubject)
+	if err != nil {
+		return fmt.Errorf("ограничитель допуска публичного слушателя: %w", err)
+	}
+	internalAdmission, err := grpcsrv.NewAdmission("internal", internalAdmissionLimits, grpcsrv.CertIdentitySubject)
+	if err != nil {
+		return fmt.Errorf("ограничитель допуска внутреннего слушателя: %w", err)
+	}
+	admission := listenerAdmission{public: publicAdmission, internal: internalAdmission}
+	admission.arm(logger, cfg)
+
+	registerPublicServices(publicAdmission.Registrar(grpcSrv), svcs, opsRepo)
+	registerInternalServices(internalAdmission.Registrar(internalSrv), svcs, pool, cfg.MigrateDSN(), logger)
 
 	publicAddr := cfg.APIServer.ListenAddress()
 	internalAddr := cfg.APIServer.InternalListenAddress()
@@ -731,9 +760,16 @@ func runServe(cfg config.Config) error {
 	// graceful-stop ОБОИХ серверов. sync.Once гарантирует, что параллельные
 	// триггеры (SIGTERM пришел одновременно с crash internal'а) не сделают
 	// двойной GracefulStop.
+	// Собственная отмена счётчика допуска: он обязан вернуть управление и тогда,
+	// когда гашение начал крах слушателя, а не сигнал. Общего контекста для
+	// этого мало — он сигнальный.
+	admissionCtx, stopAdmission := context.WithCancel(context.Background())
+	defer stopAdmission()
+
 	var shutdownOnce sync.Once
 	triggerShutdown := func() {
 		shutdownOnce.Do(func() {
+			stopAdmission()
 			stopGRPCBounded(internalSrv, gracefulTimeout)
 			stopGRPCBounded(grpcSrv, gracefulTimeout)
 			// Четыре не-gRPC поверхности гасятся ОДНОЙ отменой их общего контекста.
@@ -745,6 +781,13 @@ func runServe(cfg config.Config) error {
 	}
 
 	tasks := []func() error{
+		// Счёт допущенных и отвергнутых по каждому слушателю. Печатается ВСЕГДА,
+		// включая нули: «ноль отказов за всю жизнь контроля» обязано быть
+		// заметно, иначе мёртвый ограничитель невидим.
+		func() error {
+			admission.report(admissionCtx, logger)
+			return nil
+		},
 		// public gRPC server
 		func() error {
 			err := grpcSrv.Serve(listener)

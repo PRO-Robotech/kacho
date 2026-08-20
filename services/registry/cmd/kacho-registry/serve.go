@@ -933,6 +933,15 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		return servicecontract.Descriptor{}, fmt.Errorf("internal listener tls creds: %w", err)
 	}
 
+	// Потолок темпа и одновременности НА ВЫЗЫВАЮЩЕГО: величины посадки там, где
+	// она их назвала, и пол платформы там, где молчит. Сборка стоит ДО
+	// дескриптора намеренно — негодный набор обязан назвать СЛУШАТЕЛЯ, а не
+	// приехать в общий список находок безымянным.
+	admission, err := servicecontract.AdmissionFromPosture(cfg.AdmissionPublic, cfg.AdmissionInternal)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("KACHO_REGISTRY_ADMISSION_*: %w", err)
+	}
+
 	return servicecontract.New(servicecontract.Spec{
 		Service: "kacho-registry",
 		Mode:    mode,
@@ -988,6 +997,12 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		// этой отсечки у реестра не было вовсе (поле не заполнялось, а механизм
 		// читает неположительное как «ограничения нет»).
 		DenyBudget: servicecontract.Value(cfg.AuthZDenyBudgetPerSec),
+
+		// Ось потолка объявляется ВЕЛИЧИНОЙ, а не изъятием: слушатели выставлены
+		// наружу, и «потолка не надо» означало бы, что один вызывающий вправе
+		// занять сервис чтением. Изъятие законно только у внутрипроцессной
+		// фикстуры, и на боевой посадке дескриптор его отвергает.
+		Admission: servicecontract.Value(admission),
 
 		DBSSLMode:     cfg.DBSSLMode,
 		PublicAddr:    ":" + cfg.GrpcPort,

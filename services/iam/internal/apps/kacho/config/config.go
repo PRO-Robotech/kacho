@@ -72,6 +72,36 @@ type APIServerConfig struct {
 	// the issuer/signer. Served ONLY on the cluster-internal `kacho-iam-internal`
 	// Service (never external, ban #6) over one-way server-TLS. Empty disables it.
 	JWKSProxy JWKSProxyConfig `mapstructure:"jwks-proxy"`
+
+	// RateLimit — ПОТОЛОК ТЕМПА и ОДНОВРЕМЕННОСТИ на вызывающего, по одному
+	// набору на слушатель.
+	//
+	// У iam он значит больше, чем у соседей: iam стоит на пути запроса ВСЕХ
+	// остальных доменов (решение о доступе спрашивают у него на каждом RPC),
+	// поэтому неограниченный поток одного вызывающего сюда бьёт не по одному
+	// сервису, а по всей платформе.
+	//
+	// Молчание посадки означает ПОЛ ПЛАТФОРМЫ
+	// (`grpcsrv.PlatformPublicAdmission` / `PlatformInternalAdmission`), а не
+	// ноль: ноль механизм читает как «не ограничиваем», и слушатель выглядел бы
+	// защищённым, ни разу не отказав. Посадка вправе назвать свои величины, но
+	// только ВЕСЬ набор из четырёх осей — частичное объявление отвергается
+	// стартом с именем слушателя.
+	RateLimit RateLimitConfig `mapstructure:"rate-limit"`
+}
+
+// RateLimitConfig — величины допуска обоих слушателей в том виде, в каком их
+// объявляет файл настроек.
+//
+// Структура ручек — общая с фундаментом (`grpcsrv.AdmissionKnobs`): те же
+// четыре оси читают три семейства настроек платформы, и три копии тегов
+// разъехались бы на первой же новой оси — молча, потому что незнакомый ключ
+// viper игнорирует.
+type RateLimitConfig struct {
+	// Public — величины публичного слушателя, на ПРИНЦИПАЛА.
+	Public grpcsrv.AdmissionKnobs `mapstructure:"public"`
+	// Internal — величины внутреннего слушателя, на ЛИЧНОСТЬ СЕРТИФИКАТА.
+	Internal grpcsrv.AdmissionKnobs `mapstructure:"internal"`
 }
 
 // RepositoryConfig — repository section. Postgres-only (the repository type

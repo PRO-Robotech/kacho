@@ -76,6 +76,10 @@ func lawful() servicecontract.Spec {
 		AuthzObserve:  func(func() authz.Metrics) {},
 		BootGate:      servicecontract.NotApplicable[servicecontract.BootGate]("демо ничего не эмитит владельцу прав, поднимать нечего"),
 		StreamBudget:  servicecontract.NotApplicable[time.Duration]("демо не служит серверных стримов"),
+		Admission: servicecontract.Value(servicecontract.Admission{
+			Public:   grpcsrv.PlatformPublicAdmission(),
+			Internal: grpcsrv.PlatformInternalAdmission(),
+		}),
 	}
 }
 

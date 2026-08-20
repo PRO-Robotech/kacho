@@ -593,15 +593,13 @@ func runServe(cfg config.Config) error {
 		gracefulTimeout = 10 * time.Second
 	}
 
-	// Ограничитель допуска запросов — по одному на листенер, с РАЗНЫМИ ключами и
-	// разными величинами (см. admission.go). Собирается ДО постановки задач:
-	// негодное объявление обязано остановить старт, а не всплыть на первом
-	// запросе. Величины уже одобрены стражем S7 выше; здесь читается ТО ЖЕ
-	// значение.
-	admission, err := buildAdmission(cfg, logger)
-	if err != nil {
-		return err
-	}
+	// Ограничитель допуска запросов ЗДЕСЬ больше не собирается: его провязал
+	// носитель контура (`pkg/servicehost`) по оси дескриптора. Пока проводка
+	// принадлежала этому корню, она существовала ровно у одного сервиса из
+	// семи — и «провязал» было неотличимо от «не провязал» без сплошной
+	// переписи (задачи #692, #771). Величины по-прежнему объявляет посадка
+	// (`api-server.rate-limit`), и необъявленную боевую посадку по-прежнему не
+	// поднимает страж S7 выше.
 
 	// Отдельный контекст слушателей. Носитель гасит ОБА слушателя по отмене СВОЕГО
 	// контекста, поэтому флип готовности в shutting_down обязан произойти РАНЬШЕ
@@ -662,10 +660,10 @@ func runServe(cfg config.Config) error {
 		func() error {
 			serr := servicehost.Serve(serveCtx, desc,
 				func(reg grpc.ServiceRegistrar) {
-					registerPublicServices(guard(admission.public, reg), svcs, opsRepo)
+					registerPublicServices(reg, svcs, opsRepo)
 				},
 				func(reg grpc.ServiceRegistrar) {
-					registerInternalServices(guard(admission.internal, reg), svcs)
+					registerInternalServices(reg, svcs)
 				},
 			)
 			close(serveDone)
@@ -674,16 +672,6 @@ func runServe(cfg config.Config) error {
 				logger.Error("grpc listeners stopped", "err", serr)
 				return fmt.Errorf("grpc: %w", serr)
 			}
-			return nil
-		},
-		// Счёт допущенных и отвергнутых по каждому листенеру. Ставится задачей
-		// носителя по той же причине, что и уплотнение журнала: тот же контекст,
-		// что у слушателей, поэтому гашение процесса гасит и её.
-		//
-		// Отчёт печатается ВСЕГДА, включая нули: «ноль отказов за всю жизнь
-		// контроля» обязано быть заметно, иначе мёртвый ограничитель невидим.
-		func() error {
-			admission.report(serveCtx, logger)
 			return nil
 		},
 		// shutdown waiter: SIGTERM/SIGINT (ctx) ИЛИ краш слушателей (shutdownCh) →
