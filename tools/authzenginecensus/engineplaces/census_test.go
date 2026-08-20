@@ -278,7 +278,7 @@ func TestR7_3_01_CIRunsThisCensus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ci.yaml не прочитан — провязку нечем проверить: %v", err)
 	}
-	const invocation = "go test ./tools/authzenginecensus/engineplaces/ -run TestR7_3_01"
+	const invocation = "go test ./tools/authzenginecensus/engineplaces/ -run 'TestR7_3_01|TestJournalDoor'"
 	text := string(body)
 	if !strings.Contains(text, invocation) {
 		t.Fatalf("ci.yaml не зовёт %q — перепись пропускает себя под кратким, "+

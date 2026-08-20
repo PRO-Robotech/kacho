@@ -28,6 +28,13 @@ chmod +x ./heal-authz.sh
 `heal-authz.sh` reruns the OpenFGA bootstrap, waits for consumers to roll out,
 then replays IAM user/account/project relationship tuples from the IAM database.
 
+The replay goes through the journal (`kacho_iam.fga_outbox`), not straight into
+OpenFGA: engine state must stay a fold of that journal (migration 0098), and a
+tuple written directly to the engine would never reach the `relation_fact`
+projection — so the repair tool would deepen the divergence it is run to fix.
+The cost is that repaired tuples land via the drainer rather than instantly;
+re-run the script if a tuple is still missing a few seconds later.
+
 Then start the federated UI from Windows PowerShell:
 
 ```powershell

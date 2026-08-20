@@ -116,7 +116,7 @@ jobs:
       # модуле: гейт судится ПРОГОНОМ, а не чтением своего описания.
       # Провязка залочена тестом пакета (TestR7_3_01_CIRunsThisCensus).
       - name: Г1 — перепись мест обращения к движку прав (R7-3-01)
-        run: go test ./tools/authzenginecensus/engineplaces/ -run TestR7_3_01 -count=1 -v
+        run: go test ./tools/authzenginecensus/engineplaces/ -run 'TestR7_3_01|TestJournalDoor' -count=1 -v
 
   # ── TERRAFORM ────────────────────────────────────────────────────────────────
   #

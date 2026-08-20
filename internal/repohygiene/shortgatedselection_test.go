@@ -219,7 +219,7 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// берутся из тёплого кэша; в джобе без кэша сборки тот же шаг стоил бы полной
 	// пересборки. Второй половиной шва стоит проба пакета
 	// (TestR7_3_01_CIRunsThisCensus), как у tools/listfiltergate.
-	"tools/authzenginecensus/engineplaces": "go test ./tools/authzenginecensus/engineplaces/ -run TestR7_3_01 -count=1 -v",
+	"tools/authzenginecensus/engineplaces": "go test ./tools/authzenginecensus/engineplaces/ -run 'TestR7_3_01|TestJournalDoor' -count=1 -v",
 
 	// Шесть носителей поведенческих проб модели прав: пакет спрашивает НАСТОЯЩИЙ
 	// OpenFGA, а не читает текст модели. Цель test-authz-fga гонит их целиком (без
