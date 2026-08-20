@@ -212,6 +212,15 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// окружения и часов: он ручной по построению.
 	"tools/authzformbench": "go test ./tools/authzformbench/ -count=1",
 
+	// Г1 (R7-3-01): перепись мест обращения к внешнему движку прав. Типизирует
+	// ВСЁ дерево по export-данным, поэтому пропускает себя под кратким; отбор
+	// интеграционной джобы до `tools/` не достаёт вовсе. Свой шаг стоит в джобе
+	// build-test — там дерево уже собрано шагом `go build ./...`, и export-данные
+	// берутся из тёплого кэша; в джобе без кэша сборки тот же шаг стоил бы полной
+	// пересборки. Второй половиной шва стоит проба пакета
+	// (TestR7_3_01_CIRunsThisCensus), как у tools/listfiltergate.
+	"tools/authzenginecensus/engineplaces": "go test ./tools/authzenginecensus/engineplaces/ -run TestR7_3_01 -count=1 -v",
+
 	// Шесть носителей поведенческих проб модели прав: пакет спрашивает НАСТОЯЩИЙ
 	// OpenFGA, а не читает текст модели. Цель test-authz-fga гонит их целиком (без
 	// `-short`), запрещает пробам пропускать себя и выносит вердикт ПО ЧИСЛАМ —
