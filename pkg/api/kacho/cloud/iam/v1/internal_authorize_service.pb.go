@@ -11,8 +11,6 @@ package iamv1
 
 import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
-	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -205,170 +203,6 @@ func (*TupleCondition_ConditionId) isTupleCondition_Selector() {}
 
 func (*TupleCondition_Builtin) isTupleCondition_Selector() {}
 
-type WriteTuplesRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Tuples to insert. ≤ 100 entries.
-	Writes []*Tuple `protobuf:"bytes,1,rep,name=writes,proto3" json:"writes,omitempty"`
-	// Tuples to delete. ≤ 100 entries.
-	Deletes []*Tuple `protobuf:"bytes,2,rep,name=deletes,proto3" json:"deletes,omitempty"`
-	// Idempotency-key used to dedupe retried Write calls (the worker
-	// includes the AccessBinding id; FGA-engine itself accepts duplicates
-	// silently, but this helps trace logs).
-	IdempotencyKey string `protobuf:"bytes,3,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *WriteTuplesRequest) Reset() {
-	*x = WriteTuplesRequest{}
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[2]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *WriteTuplesRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*WriteTuplesRequest) ProtoMessage() {}
-
-func (x *WriteTuplesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[2]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use WriteTuplesRequest.ProtoReflect.Descriptor instead.
-func (*WriteTuplesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *WriteTuplesRequest) GetWrites() []*Tuple {
-	if x != nil {
-		return x.Writes
-	}
-	return nil
-}
-
-func (x *WriteTuplesRequest) GetDeletes() []*Tuple {
-	if x != nil {
-		return x.Deletes
-	}
-	return nil
-}
-
-func (x *WriteTuplesRequest) GetIdempotencyKey() string {
-	if x != nil {
-		return x.IdempotencyKey
-	}
-	return ""
-}
-
-type WriteTuplesMetadata struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Echo of idempotency_key for downstream observability.
-	IdempotencyKey string `protobuf:"bytes,1,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *WriteTuplesMetadata) Reset() {
-	*x = WriteTuplesMetadata{}
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *WriteTuplesMetadata) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*WriteTuplesMetadata) ProtoMessage() {}
-
-func (x *WriteTuplesMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use WriteTuplesMetadata.ProtoReflect.Descriptor instead.
-func (*WriteTuplesMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *WriteTuplesMetadata) GetIdempotencyKey() string {
-	if x != nil {
-		return x.IdempotencyKey
-	}
-	return ""
-}
-
-type WriteTuplesResult struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Number of tuples newly inserted (excludes idempotent no-ops).
-	Inserted int32 `protobuf:"varint,1,opt,name=inserted,proto3" json:"inserted,omitempty"`
-	// Number of tuples deleted.
-	Deleted       int32 `protobuf:"varint,2,opt,name=deleted,proto3" json:"deleted,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *WriteTuplesResult) Reset() {
-	*x = WriteTuplesResult{}
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *WriteTuplesResult) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*WriteTuplesResult) ProtoMessage() {}
-
-func (x *WriteTuplesResult) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use WriteTuplesResult.ProtoReflect.Descriptor instead.
-func (*WriteTuplesResult) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *WriteTuplesResult) GetInserted() int32 {
-	if x != nil {
-		return x.Inserted
-	}
-	return 0
-}
-
-func (x *WriteTuplesResult) GetDeleted() int32 {
-	if x != nil {
-		return x.Deleted
-	}
-	return 0
-}
-
 type ReadTuplesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Optional subject filter ("user:usr_alice" — case-insensitive prefix
@@ -389,7 +223,7 @@ type ReadTuplesRequest struct {
 
 func (x *ReadTuplesRequest) Reset() {
 	*x = ReadTuplesRequest{}
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -401,7 +235,7 @@ func (x *ReadTuplesRequest) String() string {
 func (*ReadTuplesRequest) ProtoMessage() {}
 
 func (x *ReadTuplesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -414,7 +248,7 @@ func (x *ReadTuplesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadTuplesRequest.ProtoReflect.Descriptor instead.
 func (*ReadTuplesRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{5}
+	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ReadTuplesRequest) GetSubjectFilter() string {
@@ -464,7 +298,7 @@ type ReadTuplesResponse struct {
 
 func (x *ReadTuplesResponse) Reset() {
 	*x = ReadTuplesResponse{}
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -476,7 +310,7 @@ func (x *ReadTuplesResponse) String() string {
 func (*ReadTuplesResponse) ProtoMessage() {}
 
 func (x *ReadTuplesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -489,7 +323,7 @@ func (x *ReadTuplesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadTuplesResponse.ProtoReflect.Descriptor instead.
 func (*ReadTuplesResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{6}
+	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ReadTuplesResponse) GetTuples() []*Tuple {
@@ -517,7 +351,7 @@ type ReloadModelRequest struct {
 
 func (x *ReloadModelRequest) Reset() {
 	*x = ReloadModelRequest{}
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -529,7 +363,7 @@ func (x *ReloadModelRequest) String() string {
 func (*ReloadModelRequest) ProtoMessage() {}
 
 func (x *ReloadModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -542,7 +376,7 @@ func (x *ReloadModelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReloadModelRequest.ProtoReflect.Descriptor instead.
 func (*ReloadModelRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{7}
+	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ReloadModelRequest) GetAuthorizationModelId() string {
@@ -564,7 +398,7 @@ type ReloadModelResponse struct {
 
 func (x *ReloadModelResponse) Reset() {
 	*x = ReloadModelResponse{}
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -576,7 +410,7 @@ func (x *ReloadModelResponse) String() string {
 func (*ReloadModelResponse) ProtoMessage() {}
 
 func (x *ReloadModelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -589,7 +423,7 @@ func (x *ReloadModelResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReloadModelResponse.ProtoReflect.Descriptor instead.
 func (*ReloadModelResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{8}
+	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ReloadModelResponse) GetAuthorizationModelId() string {
@@ -614,7 +448,7 @@ type GetFGAStoreInfoRequest struct {
 
 func (x *GetFGAStoreInfoRequest) Reset() {
 	*x = GetFGAStoreInfoRequest{}
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -626,7 +460,7 @@ func (x *GetFGAStoreInfoRequest) String() string {
 func (*GetFGAStoreInfoRequest) ProtoMessage() {}
 
 func (x *GetFGAStoreInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -639,7 +473,7 @@ func (x *GetFGAStoreInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFGAStoreInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetFGAStoreInfoRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{9}
+	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{6}
 }
 
 type GetFGAStoreInfoResponse struct {
@@ -665,7 +499,7 @@ type GetFGAStoreInfoResponse struct {
 
 func (x *GetFGAStoreInfoResponse) Reset() {
 	*x = GetFGAStoreInfoResponse{}
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -677,7 +511,7 @@ func (x *GetFGAStoreInfoResponse) String() string {
 func (*GetFGAStoreInfoResponse) ProtoMessage() {}
 
 func (x *GetFGAStoreInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -690,7 +524,7 @@ func (x *GetFGAStoreInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFGAStoreInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetFGAStoreInfoResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{10}
+	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *GetFGAStoreInfoResponse) GetStoreId() string {
@@ -739,7 +573,7 @@ var File_kacho_cloud_iam_v1_internal_authorize_service_proto protoreflect.FileDe
 
 const file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDesc = "" +
 	"\n" +
-	"3kacho/cloud/iam/v1/internal_authorize_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a*kacho/cloud/iam/v1/builtin_condition.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xc3\x01\n" +
+	"3kacho/cloud/iam/v1/internal_authorize_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a*kacho/cloud/iam/v1/builtin_condition.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xc3\x01\n" +
 	"\x05Tuple\x12'\n" +
 	"\asubject\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\asubject\x12(\n" +
 	"\brelation\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\brelation\x12%\n" +
@@ -750,16 +584,7 @@ const file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDesc = "" +
 	"\abuiltin\x18\x02 \x01(\x0e2$.kacho.cloud.iam.v1.BuiltinConditionH\x00R\abuiltin\x121\n" +
 	"\acontext\x18\x03 \x01(\v2\x17.google.protobuf.StructR\acontextB\n" +
 	"\n" +
-	"\bselector\"\xaf\x01\n" +
-	"\x12WriteTuplesRequest\x121\n" +
-	"\x06writes\x18\x01 \x03(\v2\x19.kacho.cloud.iam.v1.TupleR\x06writes\x123\n" +
-	"\adeletes\x18\x02 \x03(\v2\x19.kacho.cloud.iam.v1.TupleR\adeletes\x121\n" +
-	"\x0fidempotency_key\x18\x03 \x01(\tB\b\x8a\xc81\x04<=64R\x0eidempotencyKey\">\n" +
-	"\x13WriteTuplesMetadata\x12'\n" +
-	"\x0fidempotency_key\x18\x01 \x01(\tR\x0eidempotencyKey\"I\n" +
-	"\x11WriteTuplesResult\x12\x1a\n" +
-	"\binserted\x18\x01 \x01(\x05R\binserted\x12\x18\n" +
-	"\adeleted\x18\x02 \x01(\x05R\adeleted\"\xfb\x01\n" +
+	"\bselector\"\xfb\x01\n" +
 	"\x11ReadTuplesRequest\x120\n" +
 	"\x0esubject_filter\x18\x01 \x01(\tB\t\x8a\xc81\x05<=128R\rsubjectFilter\x121\n" +
 	"\x0frelation_filter\x18\x02 \x01(\tB\b\x8a\xc81\x04<=32R\x0erelationFilter\x12.\n" +
@@ -785,10 +610,8 @@ const file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDesc = "" +
 	"tupleCount\x12D\n" +
 	"\x10model_created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x0emodelCreatedAt\x12&\n" +
 	"\x0fmodel_build_sha\x18\x05 \x01(\tR\rmodelBuildSha\x12,\n" +
-	"\x12fga_engine_version\x18\x06 \x01(\tR\x10fgaEngineVersion2\x81\x04\n" +
-	"\x18InternalAuthorizeService\x12\x91\x01\n" +
-	"\vWriteTuples\x12&.kacho.cloud.iam.v1.WriteTuplesRequest\x1a .kacho.cloud.operation.Operation\"8\x8a\xb5\x18\b<exempt>\xb2\xd2*(\n" +
-	"\x13WriteTuplesMetadata\x12\x11WriteTuplesResult\x12i\n" +
+	"\x12fga_engine_version\x18\x06 \x01(\tR\x10fgaEngineVersion2\xed\x02\n" +
+	"\x18InternalAuthorizeService\x12i\n" +
 	"\n" +
 	"ReadTuples\x12%.kacho.cloud.iam.v1.ReadTuplesRequest\x1a&.kacho.cloud.iam.v1.ReadTuplesResponse\"\f\x8a\xb5\x18\b<exempt>\x12l\n" +
 	"\vReloadModel\x12&.kacho.cloud.iam.v1.ReloadModelRequest\x1a'.kacho.cloud.iam.v1.ReloadModelResponse\"\f\x8a\xb5\x18\b<exempt>\x12x\n" +
@@ -806,46 +629,38 @@ func file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescGZIP() []by
 	return file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_kacho_cloud_iam_v1_internal_authorize_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_kacho_cloud_iam_v1_internal_authorize_service_proto_goTypes = []any{
 	(*Tuple)(nil),                   // 0: kacho.cloud.iam.v1.Tuple
 	(*TupleCondition)(nil),          // 1: kacho.cloud.iam.v1.TupleCondition
-	(*WriteTuplesRequest)(nil),      // 2: kacho.cloud.iam.v1.WriteTuplesRequest
-	(*WriteTuplesMetadata)(nil),     // 3: kacho.cloud.iam.v1.WriteTuplesMetadata
-	(*WriteTuplesResult)(nil),       // 4: kacho.cloud.iam.v1.WriteTuplesResult
-	(*ReadTuplesRequest)(nil),       // 5: kacho.cloud.iam.v1.ReadTuplesRequest
-	(*ReadTuplesResponse)(nil),      // 6: kacho.cloud.iam.v1.ReadTuplesResponse
-	(*ReloadModelRequest)(nil),      // 7: kacho.cloud.iam.v1.ReloadModelRequest
-	(*ReloadModelResponse)(nil),     // 8: kacho.cloud.iam.v1.ReloadModelResponse
-	(*GetFGAStoreInfoRequest)(nil),  // 9: kacho.cloud.iam.v1.GetFGAStoreInfoRequest
-	(*GetFGAStoreInfoResponse)(nil), // 10: kacho.cloud.iam.v1.GetFGAStoreInfoResponse
-	(BuiltinCondition)(0),           // 11: kacho.cloud.iam.v1.BuiltinCondition
-	(*structpb.Struct)(nil),         // 12: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),   // 13: google.protobuf.Timestamp
-	(*operation.Operation)(nil),     // 14: kacho.cloud.operation.Operation
+	(*ReadTuplesRequest)(nil),       // 2: kacho.cloud.iam.v1.ReadTuplesRequest
+	(*ReadTuplesResponse)(nil),      // 3: kacho.cloud.iam.v1.ReadTuplesResponse
+	(*ReloadModelRequest)(nil),      // 4: kacho.cloud.iam.v1.ReloadModelRequest
+	(*ReloadModelResponse)(nil),     // 5: kacho.cloud.iam.v1.ReloadModelResponse
+	(*GetFGAStoreInfoRequest)(nil),  // 6: kacho.cloud.iam.v1.GetFGAStoreInfoRequest
+	(*GetFGAStoreInfoResponse)(nil), // 7: kacho.cloud.iam.v1.GetFGAStoreInfoResponse
+	(BuiltinCondition)(0),           // 8: kacho.cloud.iam.v1.BuiltinCondition
+	(*structpb.Struct)(nil),         // 9: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),   // 10: google.protobuf.Timestamp
 }
 var file_kacho_cloud_iam_v1_internal_authorize_service_proto_depIdxs = []int32{
 	1,  // 0: kacho.cloud.iam.v1.Tuple.condition:type_name -> kacho.cloud.iam.v1.TupleCondition
-	11, // 1: kacho.cloud.iam.v1.TupleCondition.builtin:type_name -> kacho.cloud.iam.v1.BuiltinCondition
-	12, // 2: kacho.cloud.iam.v1.TupleCondition.context:type_name -> google.protobuf.Struct
-	0,  // 3: kacho.cloud.iam.v1.WriteTuplesRequest.writes:type_name -> kacho.cloud.iam.v1.Tuple
-	0,  // 4: kacho.cloud.iam.v1.WriteTuplesRequest.deletes:type_name -> kacho.cloud.iam.v1.Tuple
-	0,  // 5: kacho.cloud.iam.v1.ReadTuplesResponse.tuples:type_name -> kacho.cloud.iam.v1.Tuple
-	13, // 6: kacho.cloud.iam.v1.ReloadModelResponse.reloaded_at:type_name -> google.protobuf.Timestamp
-	13, // 7: kacho.cloud.iam.v1.GetFGAStoreInfoResponse.model_created_at:type_name -> google.protobuf.Timestamp
-	2,  // 8: kacho.cloud.iam.v1.InternalAuthorizeService.WriteTuples:input_type -> kacho.cloud.iam.v1.WriteTuplesRequest
-	5,  // 9: kacho.cloud.iam.v1.InternalAuthorizeService.ReadTuples:input_type -> kacho.cloud.iam.v1.ReadTuplesRequest
-	7,  // 10: kacho.cloud.iam.v1.InternalAuthorizeService.ReloadModel:input_type -> kacho.cloud.iam.v1.ReloadModelRequest
-	9,  // 11: kacho.cloud.iam.v1.InternalAuthorizeService.GetFGAStoreInfo:input_type -> kacho.cloud.iam.v1.GetFGAStoreInfoRequest
-	14, // 12: kacho.cloud.iam.v1.InternalAuthorizeService.WriteTuples:output_type -> kacho.cloud.operation.Operation
-	6,  // 13: kacho.cloud.iam.v1.InternalAuthorizeService.ReadTuples:output_type -> kacho.cloud.iam.v1.ReadTuplesResponse
-	8,  // 14: kacho.cloud.iam.v1.InternalAuthorizeService.ReloadModel:output_type -> kacho.cloud.iam.v1.ReloadModelResponse
-	10, // 15: kacho.cloud.iam.v1.InternalAuthorizeService.GetFGAStoreInfo:output_type -> kacho.cloud.iam.v1.GetFGAStoreInfoResponse
-	12, // [12:16] is the sub-list for method output_type
-	8,  // [8:12] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	8,  // 1: kacho.cloud.iam.v1.TupleCondition.builtin:type_name -> kacho.cloud.iam.v1.BuiltinCondition
+	9,  // 2: kacho.cloud.iam.v1.TupleCondition.context:type_name -> google.protobuf.Struct
+	0,  // 3: kacho.cloud.iam.v1.ReadTuplesResponse.tuples:type_name -> kacho.cloud.iam.v1.Tuple
+	10, // 4: kacho.cloud.iam.v1.ReloadModelResponse.reloaded_at:type_name -> google.protobuf.Timestamp
+	10, // 5: kacho.cloud.iam.v1.GetFGAStoreInfoResponse.model_created_at:type_name -> google.protobuf.Timestamp
+	2,  // 6: kacho.cloud.iam.v1.InternalAuthorizeService.ReadTuples:input_type -> kacho.cloud.iam.v1.ReadTuplesRequest
+	4,  // 7: kacho.cloud.iam.v1.InternalAuthorizeService.ReloadModel:input_type -> kacho.cloud.iam.v1.ReloadModelRequest
+	6,  // 8: kacho.cloud.iam.v1.InternalAuthorizeService.GetFGAStoreInfo:input_type -> kacho.cloud.iam.v1.GetFGAStoreInfoRequest
+	3,  // 9: kacho.cloud.iam.v1.InternalAuthorizeService.ReadTuples:output_type -> kacho.cloud.iam.v1.ReadTuplesResponse
+	5,  // 10: kacho.cloud.iam.v1.InternalAuthorizeService.ReloadModel:output_type -> kacho.cloud.iam.v1.ReloadModelResponse
+	7,  // 11: kacho.cloud.iam.v1.InternalAuthorizeService.GetFGAStoreInfo:output_type -> kacho.cloud.iam.v1.GetFGAStoreInfoResponse
+	9,  // [9:12] is the sub-list for method output_type
+	6,  // [6:9] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_internal_authorize_service_proto_init() }
@@ -864,7 +679,7 @@ func file_kacho_cloud_iam_v1_internal_authorize_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDesc), len(file_kacho_cloud_iam_v1_internal_authorize_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

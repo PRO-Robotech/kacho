@@ -48,8 +48,7 @@
 //     эту проверку НЕ зовёт и пер-jti гейта не несёт вовсе — он прямо это
 //     оговаривает (в его теле нет claims предъявленного токена). Вызывающего у
 //     метода в дереве нет ни одного (#797).
-//   - all mutations (Register/Unregister/WriteCreatorTuple stay fga_writer-
-//     gated; ForceLogout/GrantAdmin/… stay system_admin / gateway-only) — this
+//   - все мутации (Register/Unregister) остаются за fga_writer-//     gated; ForceLogout/GrantAdmin/… stay system_admin / gateway-only) — this
 //     is a READ floor; the mutation surface is unchanged.
 package authzguard
 
@@ -84,7 +83,7 @@ const (
 //   - InternalUserService/OnRecoveryCompleted — Kratos secret-authed hook.
 //   - InternalSessionRevocationsService/IsRevoked — курица и яйцо; вызывающего
 //     в дереве нет (#797).
-//   - InternalIAMService/{RegisterResource,UnregisterResource,WriteCreatorTuple}
+//   - InternalIAMService/{RegisterResource,UnregisterResource}
 //     — fga_writer-gated mutations.
 //   - ForceLogout / Cluster GrantAdmin/RevokeAdmin / Authorize
 //     WriteTuples/ReloadModel / SessionRevocations Revoke /

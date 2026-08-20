@@ -220,6 +220,68 @@ var (
 	_ DirectionRecorder = (*MemRecorder)(nil)
 )
 
+// QueueShape — КАК очередь помечает доставленную строку.
+//
+// # Зачем это объявляется, а не подразумевается
+//
+// Пакет заведён над одной формой (`sent_at IS NULL` + `attempt_count`) и читал
+// её ЖЁСТКО. Очередь другой формы это делало ненаблюдаемой BY CONSTRUCTION:
+// провязать сканер было можно, но первый же скан падал бы на «колонки sent_at
+// нет» — то есть отсутствие наблюдаемости выглядело как её ненужность, а не как
+// пропуск. Реальный случай — журнал аудита iam: 29 446 строк, ни одной попытки
+// доставки за всё время жизни, и ни одной величины, которой это было бы видно.
+//
+// # Почему ЗАКРЫТЫЙ перечень, а не предикат строкой
+//
+// Предикат строкой из конфигурации дал бы гибкость ценой поверхности внедрения и
+// ценой второго места, где форма очереди «объявлена». Форм в дереве две; каждая
+// названа здесь вместе со своими тремя выражениями, и третья добавляется сюда, а
+// не в вызывающего.
+type QueueShape string
+
+const (
+	// ShapeSentAt — доставленность помечена ОТМЕТКОЙ ВРЕМЕНИ.
+	// Пустая строка нарочно: конфигурация, написанная до появления этого типа,
+	// продолжает означать ровно то, что означала.
+	ShapeSentAt QueueShape = ""
+	// ShapeStatus — доставленность помечена СОСТОЯНИЕМ (`status = 'sent'`),
+	// число попыток лежит в `attempts`.
+	ShapeStatus QueueShape = "status"
+)
+
+// queueShapeSQL — три выражения формы. Собраны в одном месте, чтобы «что считать
+// недоставленным» и «что считать доставленным» не могли разойтись: они обязаны
+// быть дополнением друг друга, и это проверяется пробой пакета.
+type queueShapeSQL struct {
+	pending   string
+	delivered string
+	attempts  string
+}
+
+func (s QueueShape) sql() (queueShapeSQL, error) {
+	switch s {
+	case ShapeSentAt:
+		return queueShapeSQL{
+			pending:   "sent_at IS NULL",
+			delivered: "sent_at IS NOT NULL",
+			attempts:  "attempt_count",
+		}, nil
+	case ShapeStatus:
+		// `failed` — это BACKLOG, а не «обработана»: зачесть её в доставленные
+		// значило бы объявить очередь разгруженной ровно тогда, когда доставка
+		// перестала получаться.
+		return queueShapeSQL{
+			pending:   "status <> 'sent'",
+			delivered: "status = 'sent'",
+			attempts:  "attempts",
+		}, nil
+	}
+	// Неизвестная форма — ЯВНЫЙ отказ, а не молчаливое умолчание: опечатка в
+	// композиционном корне иначе публиковала бы числа, снятые не тем предикатом,
+	// и они были бы неотличимы от верных.
+	return queueShapeSQL{}, fmt.Errorf("metrics: неизвестная форма очереди %q", string(s))
+}
+
 // CollectorConfig parameterises a Collector.
 type CollectorConfig struct {
 	// Table — full outbox table name (`<schema>.<table>`), used both for the
@@ -243,6 +305,9 @@ type CollectorConfig struct {
 	// `delivered_total{direction="withdrawal"} == 0` is the statement "not one withdrawal
 	// has ever been delivered", and it can only be made by a series that exists.
 	Directions map[string][]string
+	// Shape — КАК эта очередь помечает доставленную строку. Пусто ⇒ ShapeSentAt,
+	// форма, с которой пакет заведён: прежние вызывающие не меняются.
+	Shape QueueShape
 }
 
 func (c CollectorConfig) withDefaults() CollectorConfig {
@@ -279,14 +344,19 @@ func (c *Collector) Scan(ctx context.Context) error {
 		return errors.New("metrics.Collector.Scan: Table required")
 	}
 
+	shape, serr := c.cfg.Shape.sql()
+	if serr != nil {
+		return fmt.Errorf("metrics.Collector.Scan %s: %w", c.cfg.Table, serr)
+	}
+
 	// One round-trip: pending count, oldest-pending age (seconds), poisoned count.
 	q := fmt.Sprintf(`
 		SELECT
-		    count(*) FILTER (WHERE sent_at IS NULL)                                              AS backlog,
-		    COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at) FILTER (WHERE sent_at IS NULL))), 0) AS oldest_age,
-		    count(*) FILTER (WHERE sent_at IS NULL AND attempt_count >= $1)                      AS poisoned
-		FROM %s
-	`, outbox.SanitizeTable(c.cfg.Table))
+		    count(*) FILTER (WHERE %[2]s)                                              AS backlog,
+		    COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at) FILTER (WHERE %[2]s))), 0) AS oldest_age,
+		    count(*) FILTER (WHERE %[2]s AND %[3]s >= $1)                              AS poisoned
+		FROM %[1]s
+	`, outbox.SanitizeTable(c.cfg.Table), shape.pending, shape.attempts)
 
 	var backlog, poisoned int64
 	var oldestAge float64
@@ -316,14 +386,18 @@ func (c *Collector) scanDirections(ctx context.Context) error {
 	if !ok {
 		return nil
 	}
+	shape, serr := c.cfg.Shape.sql()
+	if serr != nil {
+		return fmt.Errorf("metrics.Collector.Scan %s directions: %w", c.cfg.Table, serr)
+	}
 	q := fmt.Sprintf(`
 		SELECT
-		    count(*) FILTER (WHERE sent_at IS NULL)                                              AS backlog,
-		    COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at) FILTER (WHERE sent_at IS NULL))), 0) AS oldest_age,
-		    count(*) FILTER (WHERE sent_at IS NOT NULL)                                          AS delivered
-		FROM %s
+		    count(*) FILTER (WHERE %[2]s)                                              AS backlog,
+		    COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at) FILTER (WHERE %[2]s))), 0) AS oldest_age,
+		    count(*) FILTER (WHERE %[3]s)                                              AS delivered
+		FROM %[1]s
 		WHERE event_type = ANY($1)
-	`, outbox.SanitizeTable(c.cfg.Table))
+	`, outbox.SanitizeTable(c.cfg.Table), shape.pending, shape.delivered)
 
 	// Deterministic order so a scan reports its directions the same way every time.
 	names := make([]string, 0, len(c.cfg.Directions))

@@ -14,7 +14,9 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// TestAuthzMetrics_FourDecisionBands — четыре полосы исхода считаются РАЗДЕЛЬНО.
+// TestAuthzMetrics_FourDecisionBands — полосы ПРИНЯТОГО решения считаются
+// РАЗДЕЛЬНО. Полосы допуска без ответа модели (#798) проверяет
+// authz_admission_lane_test.go — там их предмет.
 //
 // Полоса «проверка не состоялась» была одна на два противоположных исхода, и по
 // её значению нельзя было сказать, отклонил контроль запрос или пропустил.

@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 )
 
@@ -140,6 +141,14 @@ type Narrower struct {
 	breakglass    atomic.Uint64
 	misconfigured atomic.Uint64
 	transient     atomic.Uint64
+
+	// Величины окна вердиктов. Атомарные, а не под общим mutex: попадание
+	// считается на горячем пути по КАЖДОМУ элементу страницы, а страница
+	// контрактно бывает до тысячи.
+	cacheHits       atomic.Uint64
+	cacheMisses     atomic.Uint64
+	evictedExpired  atomic.Uint64
+	evictedCapacity atomic.Uint64
 
 	mu     sync.Mutex
 	cache  map[string]*list.Element
@@ -611,15 +620,21 @@ func (n *Narrower) getCache(subject, resourceType, id string) bool {
 	defer n.mu.Unlock()
 	el, ok := n.cache[cacheKey(subject, resourceType, id)]
 	if !ok {
+		n.cacheMisses.Add(1)
 		return false
 	}
 	e, _ := el.Value.(*cacheEntry)
 	if n.now().After(e.expires) {
 		n.lruLst.Remove(el)
 		delete(n.cache, e.key)
+		// Истечение — ШТАТНАЯ работа окна, и считается отдельно от давления
+		// потолка: сложенные, они объявили бы исчерпание потолка нормой.
+		n.evictedExpired.Add(1)
+		n.cacheMisses.Add(1)
 		return false
 	}
 	n.lruLst.MoveToFront(el)
+	n.cacheHits.Add(1)
 	return true
 }
 
@@ -648,6 +663,10 @@ func (n *Narrower) putCache(subject, resourceType, id string) {
 		te, _ := tail.Value.(*cacheEntry)
 		n.lruLst.Remove(tail)
 		delete(n.cache, te.key)
+		// Ещё ЖИВАЯ запись, снятая потолком, — это попадание, которого не будет.
+		// Ненулевое значение означает, что потолок мал для нагрузки, и доля
+		// попаданий упирается в него, а не в окно.
+		n.evictedCapacity.Add(1)
 	}
 }
 
@@ -656,6 +675,47 @@ func (n *Narrower) CacheSize() int {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return n.lruLst.Len()
+}
+
+// CacheStats — величины окна вердиктов сужателя (#768).
+//
+// # Зачем они здесь, если размер уже был
+//
+// Размер объясняет, ПОЧЕМУ доля попаданий такая, но самой доли не даёт. А доля
+// — та величина, которая решает, сколько вопросов доезжает до владельца модели
+// под списочной нагрузкой: звено решения задаёт ОДИН вопрос на вызов, а сужатель
+// — по вопросу на КАЖДЫЙ элемент страницы, а страница контрактно бывает до
+// тысячи. То есть здесь через окно проходит больше вопросов, чем через окно
+// звена, и до сих пор их не считал никто.
+//
+// # Форма — ТА ЖЕ, что у окна звена решения
+//
+// Возвращается `authz.CacheStats`, а не свой тип: коллектор
+// (`pkg/authz/authzmetrics`) принимает читателя именно этой формы, и второй тип
+// потребовал бы переходника, который разъехался бы с первым молча. Имена серий
+// от этого тоже остаются едиными.
+//
+// # `Invalidated` здесь ВСЕГДА ноль, и это факт, а не пропуск
+//
+// Проактивного снятия у окна сужателя НЕТ: кешируются только положительные
+// вердикты и только на своё время жизни, поэтому окно отзыва целиком
+// определяется истечением. Ноль на этой полосе — утверждение об устройстве, и
+// оно верно; сделать его отсутствующим значило бы скрыть эту разницу с окном
+// звена, у которого снятие по субъекту есть.
+func (n *Narrower) CacheStats() authz.CacheStats {
+	if n == nil {
+		return authz.CacheStats{}
+	}
+	n.mu.Lock()
+	entries := n.lruLst.Len()
+	n.mu.Unlock()
+	return authz.CacheStats{
+		Hits:            n.cacheHits.Load(),
+		Misses:          n.cacheMisses.Load(),
+		Entries:         entries,
+		EvictedExpired:  n.evictedExpired.Load(),
+		EvictedCapacity: n.evictedCapacity.Load(),
+	}
 }
 
 // Visible — сужение набора для УЖЕ УСТАНОВЛЕННОГО субъекта и ЯВНО названного

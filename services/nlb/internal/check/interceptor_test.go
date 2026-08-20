@@ -436,20 +436,20 @@ func TestAZD014_UnmappedRPC_FailClosed(t *testing.T) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// sync creator-tuple fail → operation aborts. Это
-// **handler-level** (worker abort tx до commit); здесь, в interceptor-suite,
-// проверяем что adapter транзитом передаёт WriteCreatorTuple errors (это
-// функционально для — handler ловит и rollback'ит).
+// Постановка указателя создателя — НЕ предмет интерцептора. Он гейтит Check;
+// указатель ставит сам обработчик отдельным вызовом
+// (`InternalIAMService.RegisterResource` — намерение в журнал, дренаж применяет).
+// Эта проба документирует разграничение, и только его.
 //
-// Sanity: interceptor НЕ перехватывает creator-tuple write — это другой
-// gRPC-call (`InternalIAMService.WriteCreatorTuple` через hierarchy-client),
-// не Check. Этот test просто документирует delineation.
+// Прежняя редакция называла здесь `WriteCreatorTuple`. Тот RPC писал кортёж в
+// движок напрямую и снят с контракта (#788); nlb ушёл с него на RegisterResource
+// раньше — см. register_applier.go, где это сказано дословно.
 // ────────────────────────────────────────────────────────────────────────────
 
 func TestAZD015_D11CreatorTupleWrite_NotInterceptorScope(t *testing.T) {
-	// Interceptor пропускает Create (Check OK); worker сам зовёт
-	// WriteCreatorTuple и решает что делать на failure. Здесь — sanity, что
-	// после allowed=true handler действительно запускается.
+	// Interceptor пропускает Create (Check OK); постановку указателя обработчик
+	// делает сам и сам решает, что делать на отказе. Здесь — sanity, что после
+	// allowed=true обработчик действительно запускается.
 	intr, _, _ := newTestInterceptor(t, func(_ context.Context, _, _, _ string) (bool, error) {
 		return true, nil
 	})
@@ -460,8 +460,8 @@ func TestAZD015_D11CreatorTupleWrite_NotInterceptorScope(t *testing.T) {
 		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Create"},
 		func(context.Context, any) (any, error) {
 			handlerCalled = true
-			// Здесь handler позвал бы WriteCreatorTuple → если бы упал,
-			// вернул бы Unavailable. Симулируем return-nil чтобы не падать.
+			// Здесь обработчик поставил бы указатель → на отказе вернул бы
+			// Unavailable. Симулируем return-nil чтобы не падать.
 			return "ok", nil
 		},
 	)

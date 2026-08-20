@@ -45,16 +45,59 @@
 # Проверяет: tools/declaredbreak (cmd/adjudicate-declared-breaks), шаг конвейера
 # «adjudicate breaking (vs main)».
 
-# Восемь записей kacho#716 — снятие поля-дубля с каталога размещения geo.
+# Семь записей kacho#788 — снятие двух административных дверей в хранилище отношений.
 #
-# Предмет один на все восемь: у Region и Zone идентификатор назначает администратор,
-# и он человекочитаем ПО ПОСТРОЕНИЮ («ru-central1»). Второе поле того же назначения
-# не добавляло ничего, кроме места, где два написания расходятся. Разрыв снимает его
-# из обеих проекций (публичной и админской) и из обоих запросов каждого ресурса.
+# Предмет один на все семь: `InternalAuthorizeService.WriteTuples` и
+# `InternalIAMService.WriteCreatorTuple` писали кортёж НАПРЯМУЮ, мимо журнала
+# `kacho_iam.fga_outbox`, на котором стоит проекция `relation_fact` (инвариант
+# миграции 0098). Вызывающих не было ни у одной: соседи ушли на `RegisterResource`.
+# Терминальный исход — снять, а не переводить на журнал: перевод дал бы работу без
+# выгодоприобретателя, а дверь без пользователя, но с доступом на запись, — это
+# открытый вход, а не мёртвый код.
+#
+# Резервировать нечего: protobuf не знает `reserved` ни для методов сервиса, ни для
+# имён сообщений верхнего уровня. Имена держит надгробие — перепись
+# `internal/repohygiene` `retiredRPCSurface` (она читает контракт, стабы и ОБЕ копии
+# каталога прав) плюс комментарии-надгробия в самих `.proto`.
 #
 # Записи живут от объявления до вливания этой ветки в ствол: после него база сравнения
 # поднимется, находок не станет, и адъюдикация назовёт их истёкшими поимённо.
-declared: []
+declared:
+  - rule: RPC_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_authorize_service.proto
+    symbol: WriteTuples
+    reason: административная запись набора кортежей мимо журнала; вызывающих ноль
+    issue: kacho#788
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_authorize_service.proto
+    symbol: WriteTuplesRequest
+    reason: вход снятого RPC WriteTuples; других читателей у сообщения нет
+    issue: kacho#788
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_authorize_service.proto
+    symbol: WriteTuplesMetadata
+    reason: метаданные операции снятого RPC WriteTuples
+    issue: kacho#788
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_authorize_service.proto
+    symbol: WriteTuplesResult
+    reason: результат операции снятого RPC WriteTuples
+    issue: kacho#788
+  - rule: RPC_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_iam_service.proto
+    symbol: WriteCreatorTuple
+    reason: синхронная запись кортежа создателя мимо журнала; вызывающих ноль
+    issue: kacho#788
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_iam_service.proto
+    symbol: WriteCreatorTupleRequest
+    reason: вход снятого RPC WriteCreatorTuple
+    issue: kacho#788
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_iam_service.proto
+    symbol: WriteCreatorTupleResponse
+    reason: пустой ответ снятого RPC WriteCreatorTuple
+    issue: kacho#788
 
 # ИСТОРИЯ ПЕРЕЧНЯ — почему его нормальное состояние ПУСТО.
 #
