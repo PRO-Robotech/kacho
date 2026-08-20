@@ -160,6 +160,16 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.iam.v1.InternalLimitService/Create",
 		"kacho.cloud.iam.v1.InternalLimitService/Update",
 		"kacho.cloud.iam.v1.InternalLimitService/Delete",
+
+		// Те же три акта на ПУБЛИЧНОМ адресе (ADM-1 S1, #878). Порог
+		// подтверждения личности принадлежит ДЕЙСТВИЮ, а не адресу: сменить
+		// потолок через `/iam/v1/limits` — ровно то же изменение доли арендатора
+		// в общей платформе, что и через внутренний путь. Разойдись эти два
+		// перечня хоть на одну запись, публичный адрес стал бы дешёвым обходом
+		// ступени, и обход этот не был бы виден ни в одном диффе.
+		"kacho.cloud.iam.v1.LimitService/Create",
+		"kacho.cloud.iam.v1.LimitService/Update",
+		"kacho.cloud.iam.v1.LimitService/Delete",
 	}
 	set := make(map[string]struct{}, len(fqns))
 	for _, f := range fqns {
@@ -187,7 +197,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	// «чувствительное» — назначение, изменение и отзыв предела. Число утверждается,
 	// а не выводится из списка: молчаливое сокращение — ровно то, что произошло бы
 	// при случайно выпавшей записи.
-	require.Len(t, sensitive, 28, "the acceptance-doc sensitive set must contain exactly 28 FQNs")
+	require.Len(t, sensitive, 31, "the acceptance-doc sensitive set must contain exactly 31 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -208,7 +218,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 28, "exactly 28 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 31, "exactly 31 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -571,10 +581,27 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// `InternalIAMService/WriteCreatorTuple` удалены с контракта целиком. Полосы
 	// «чувствительное» и «рутинное» не тронуты — обе двери стояли `<exempt>` как
 	// все Internal-RPC. 34→32 exempt, итог 342→340.
-	assert.Equal(t, 28, n2, "sensitive count")
-	assert.Equal(t, 280, n1, "routine count")
+	// ADM-1 S1 — публикация административной поверхности ПРЕДЕЛОВ (#878): пять
+	// записей публичного `iam.v1.LimitService`.
+	//
+	// Раскладываются они не поровну, и это решение, а не следствие: `Create` /
+	// `Update` / `Delete` идут в чувствительную полосу (28→31), `Get` / `List` —
+	// в рутинную (280→282), итог 340→345.
+	//
+	// ПОЧЕМУ ТРИ МУТАЦИИ ЧУВСТВИТЕЛЬНЫ, А ПЕРЕЕЗД ПУЛА АДРЕСОВ БЫЛ ВЕСЬ РУТИННЫМ.
+	// Полоса про поверхность повышения привилегий. Управление пулом адресов ею не
+	// является — оно не выдаёт и не отзывает прав. Потолок числа ресурсов — да:
+	// поднять его значит расширить долю арендатора в общей платформе, опустить —
+	// заморозить ему создание, снять — молча передать решение другой области.
+	// Ровно поэтому те же три глагола несли «2» и на внутреннем сервисе: порог
+	// принадлежит ДЕЙСТВИЮ, а не адресу, по которому до него дошли.
+	//
+	// ВНУТРЕННИЕ ПЯТЬ ОСТАЮТСЯ на время окна расширения (S1→S3) — отсюда прирост,
+	// а не замена. Стадия S3 снимет внутренние и вернёт числа на пять назад.
+	assert.Equal(t, 31, n2, "sensitive count")
+	assert.Equal(t, 282, n1, "routine count")
 	assert.Equal(t, 32, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 340, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 345, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()
