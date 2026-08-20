@@ -112,7 +112,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: k6
-          image: grafana/k6:2.1.0
+          image: grafana/k6:2.2.0
           imagePullPolicy: IfNotPresent
           # Хардening контейнера (trivy KSV-0014/KSV-0118): корень только на чтение,
           # без повышения привилегий, все capabilities сняты. Тома под запись НЕ
