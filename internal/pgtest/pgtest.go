@@ -320,7 +320,23 @@ func newDatabase(t testing.TB, fromTemplate bool) string {
 	if s.startErr != nil {
 		// A container that will not start is a failure, never a skip: skipping would
 		// report "the integration proofs did not run" as green.
-		t.Fatalf("pgtest: integration Postgres unavailable: %v", s.startErr)
+		//
+		// Но и обычным отказом это подавать нельзя: у пробы нет ВЕРДИКТА, а не
+		// «отрицательный вердикт». Через `t.Fatalf` весь пакет отдаёт код 1, и
+		// читатель идёт искать дефект в коде, которого нет; вдобавок остальные
+		// пробы пакета падают каскадом за 0.00 с по несозданному предмету —
+		// двенадцать «отказов» из одной непроизошедшей причины (наблюдалось
+		// дважды подряд на одном прогоне).
+		//
+		// Конвейер это различие ЖДЁТ: его шаг интеграции распознаёт код **75**
+		// как «условие не создано» и печатает свой текст. Производителя у этого
+		// исхода до сих пор не было ни в одном сервисе — объявление жило в одном
+		// месте, а выход кодом — ни в одном.
+		fmt.Fprintf(os.Stderr,
+			"pgtest: integration Postgres unavailable: %v\n"+
+				"УСЛОВИЕ НЕ СОЗДАНО: вердикта нет НИ У ОДНОЙ пробы пакета, включая успевшие пройти.\n"+
+				"Это не дефект кода. Прогон недействителен и повторяется.\n", s.startErr)
+		os.Exit(75)
 	}
 
 	name := fmt.Sprintf("kacho_%s_t%04d", s.cfg.Name, s.seq.Add(1))
