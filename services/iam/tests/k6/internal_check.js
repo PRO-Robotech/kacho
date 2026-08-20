@@ -69,16 +69,140 @@ const CA_PATH   = __ENV.CA_PATH   || '/certs/ca.crt';
 // Обратная сторона — «перестановка оказалась разрешающей» — теперь считается
 // (`iam_check_deny_input_allowed`), и доля отказного входа перестала быть
 // объявлением: её видно числом в сводке прогона.
-const TUPLES = JSON.parse(open(__ENV.FIXTURE_PATH || '/fixtures/allow_tuples.json'));
+const RAW_TUPLES = JSON.parse(open(__ENV.FIXTURE_PATH || '/fixtures/allow_tuples.json'));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СОСТАВ ПОДАЧИ — ПРИБОР ОБЯЗАН НАЗЫВАТЬ, О ЧЁМ ЕГО СПРАШИВАЛИ
+//
+// Пока состав не назывался, доля расхождений читалась как утверждение обо всём,
+// о чём прибор спрашивал, — а спрашивал он не обо всём. Замер 2026-08-20: подача
+// несла 273 тройки шести типов и НИ ОДНОГО объекта пяти собственных типов iam,
+// поэтому её «0.00 %» стоял рядом с переписью, называвшей 15 085 потерянных
+// объектов ровно этих типов. Два прибора мерили разные множества, и это было
+// неотличимо от согласия. Ноль, не читавший предмета, — это «ноль прочитанного»,
+// поданное как «ноль находок».
+//
+// Перечень пяти типов живёт ЗДЕСЬ и отдаётся наружу строкой `ФИКСТУРА-СВОИ-ТИПЫ`:
+// у него один дом, и оболочка прибора берёт его отсюда, а не держит вторую копию,
+// которая разошлась бы молча.
+const OWN_IAM_TYPES = [
+  'iam_access_binding', 'iam_group', 'iam_role', 'iam_service_account', 'iam_user',
+];
+
+// Классы, объявленные ЗАРАНЕЕ и считаемые ОТДЕЛЬНО. Класс печатается всегда,
+// даже когда его объектов ноль: класс, всплывающий в общей доле впервые в момент
+// расхождения, либо объявит достройку неудачной, либо научит игнорировать долю.
+//
+// `project_role` — роль с областью «проект». Её `account_id` пуст по ограничению
+// схемы (`roles_definition_tier_xor`: ровно один непустой якорь из трёх), а
+// отношения `project` у типа `iam_role` в модели прав нет вовсе. Поэтому форма,
+// достроенная из схемы, отвечает по ней РАНЬШЕ каскада движка — расхождение по
+// этому классу ОЖИДАЕМО и остаётся ожидаемым: догоняет материализация, каскад не
+// догонит никогда.
+const DECLARED_CLASSES = ['project_role'];
+
+// Тип объекта выводится ОДНИМ выражением на весь прибор — тем же, которым ниже
+// строится пул перестановки. Второе выражение разошлось бы с первым молча.
+function objectType(object) { return object.split(':')[0]; }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СУЖЕНИЕ ПОДАЧИ — ЧЕМ РАЗВОДЯТСЯ ЗНАМЕНАТЕЛИ
+//
+// Счётчики сравнителя живут в СЛУЖБЕ и общие на всю подачу: разложить их по типу
+// объекта, не трогая службу, нельзя. Поэтому «доля по пяти типам» берётся не
+// разбором счётчиков, а ОТДЕЛЬНОЙ рукой: сузили подачу — дельта счётчиков за
+// прогон относится ровно к ней и ни к чему больше.
+//
+// Форма — `only:a,b` либо `not:a,b`; пусто значит «вся подача». Неизвестная форма
+// — ЯВНЫЙ отказ, а не молчаливое «подам всё»: сужение, которое не состоялось,
+// вернуло бы долю по всей подаче под именем доли по пяти типам.
+function selector(spec, name) {
+  const raw = (spec || '').replace(/^\s+|\s+$/g, '');
+  if (raw === '') return null;
+  const i = raw.indexOf(':');
+  const mode = i < 0 ? '' : raw.slice(0, i);
+  const list = (i < 0 ? '' : raw.slice(i + 1)).split(',')
+    .map(function (x) { return x.replace(/^\s+|\s+$/g, ''); })
+    .filter(function (x) { return x !== ''; });
+  if ((mode !== 'only' && mode !== 'not') || list.length === 0) {
+    throw new Error(name + ': ожидается «only:a,b» либо «not:a,b», получено «' + raw + '»');
+  }
+  return { only: mode === 'only', set: list };
+}
+
+const TYPE_SEL  = selector(__ENV.FEED_TYPES, 'FEED_TYPES');
+const CLASS_SEL = selector(__ENV.FEED_CLASS, 'FEED_CLASS');
+
+function keepTuple(t) {
+  if (TYPE_SEL !== null) {
+    const hit = TYPE_SEL.set.indexOf(objectType(t.object)) >= 0;
+    if (hit !== TYPE_SEL.only) return false;
+  }
+  if (CLASS_SEL !== null) {
+    const hit = CLASS_SEL.set.indexOf(t['class'] || '') >= 0;
+    if (hit !== CLASS_SEL.only) return false;
+  }
+  return true;
+}
+
+const TUPLES = RAW_TUPLES.filter(keepTuple);
+
+// Пустая подача — ТРЕТИЙ исход, а не тихий ноль. Прогон на ней дал бы
+// «сравнений 0», неотличимое от «сравнили и не разошлись», то есть ровно тот
+// класс, ради которого этот прибор и правится.
+if (TUPLES.length === 0) {
+  throw new Error('ПОДАЧА ПУСТА после сужения (FEED_TYPES="' + (__ENV.FEED_TYPES || '') +
+    '", FEED_CLASS="' + (__ENV.FEED_CLASS || '') + '", всего в фикстуре ' + RAW_TUPLES.length +
+    '): мерить нечем, и «ноль расхождений» здесь означало бы «ноль прочитанного»');
+}
+
+const COMPOSITION = (function () {
+  const byType = {};
+  const byClass = {};
+  let own = 0;
+  for (const c of DECLARED_CLASSES) byClass[c] = 0;
+  for (const t of TUPLES) {
+    const ty = objectType(t.object);
+    byType[ty] = (byType[ty] || 0) + 1;
+    const cl = t['class'] || '-';
+    byClass[cl] = (byClass[cl] || 0) + 1;
+    if (OWN_IAM_TYPES.indexOf(ty) >= 0) own += 1;
+  }
+  return { byType: byType, byClass: byClass, own: own, total: TUPLES.length };
+})();
+
+// Отчёт СТРОКАМИ, а не одним JSON: его читает и человек, и оболочка прибора на
+// оболочечном языке, где разбор JSON потребовал бы второго инструмента.
+function reportComposition() {
+  console.log('ФИКСТУРА-СОСТАВ всего ' + COMPOSITION.total + ' из ' + RAW_TUPLES.length + ' в фикстуре');
+  const types = Object.keys(COMPOSITION.byType).sort();
+  for (const ty of types) console.log('ФИКСТУРА-ТИП ' + ty + ' ' + COMPOSITION.byType[ty]);
+  const classes = Object.keys(COMPOSITION.byClass).sort();
+  for (const cl of classes) console.log('ФИКСТУРА-КЛАСС ' + cl + ' ' + COMPOSITION.byClass[cl]);
+  console.log('ФИКСТУРА-СВОИ-ТИПЫ ' + OWN_IAM_TYPES.join(','));
+  console.log('ФИКСТУРА-СВОИ ' + COMPOSITION.own);
+  if (COMPOSITION.own === 0) {
+    console.log('ФИКСТУРА-ПРЕДУПРЕЖДЕНИЕ подача не содержит НИ ОДНОГО объекта пяти ' +
+      'собственных типов iam (' + OWN_IAM_TYPES.join(', ') + '); доля расхождений, ' +
+      'снятая на ней, об этих типах НЕ УТВЕРЖДАЕТ НИЧЕГО');
+  }
+}
+
+// Режим «только состав»: одна итерация, ни одного обращения к службе. Спрашивать
+// состав подачи ценой прогона нельзя — стенд общий.
+const COMPOSITION_ONLY = (__ENV.COMPOSITION_ONLY || '') !== '';
 
 // Индекс объектов ПО ТИПУ: отказ строится подстановкой объекта ТОГО ЖЕ типа.
 // Кросс-типовая подстановка тоже дала бы «нет пути», но сменила бы стоимость:
 // у типов, принадлежащих iam (account/project), путь отказа доплачивает
 // структурным чтением в свою базу, у vpc-типов — нет. Смешав типы, мы мерили бы
 // не ту работу, которую платит настоящий отказ по этому объекту.
+//
+// Строится по СУЖЕННОЙ подаче: иначе рука по пяти типам подставляла бы объекты
+// чужих типов и мерила бы не свой знаменатель.
 const BY_TYPE = {};
 for (const t of TUPLES) {
-  const ty = t.object.split(':')[0];
+  const ty = objectType(t.object);
   (BY_TYPE[ty] = BY_TYPE[ty] || []).push(t.object);
 }
 
@@ -101,7 +225,19 @@ const denyInput            = new Counter('iam_check_deny_input');
 const denyInputAllowed     = new Counter('iam_check_deny_input_allowed');
 const denyInputUnavailable = new Counter('iam_check_permutation_unavailable');
 
-export const options = {
+export const options = COMPOSITION_ONLY ? {
+  scenarios: {
+    composition: {
+      executor: 'per-vu-iterations',
+      vus: 1,
+      iterations: 1,
+      maxDuration: '30s',
+    },
+  },
+  // Порогов нет намеренно: в этом режиме не измеряется ничего, и порог,
+  // применённый к пустому набору, объявил бы «выдержан» о неснятой величине.
+  thresholds: {},
+} : {
   scenarios: {
     steady: {
       executor: 'constant-arrival-rate',
@@ -126,7 +262,15 @@ export const options = {
 const client = new grpc.Client();
 let connected = false;
 
+// setup() исполняется РОВНО ОДИН раз за прогон — в отличие от init-контекста,
+// который k6 исполняет в каждом VU. Состав, напечатанный оттуда, повторился бы
+// столько раз, сколько поднято VU.
+export function setup() {
+  reportComposition();
+}
+
 export default function () {
+  if (COMPOSITION_ONLY) return;
   if (!connected) {
     client.connect(ADDR, {
       reflect: true,
@@ -144,7 +288,7 @@ export default function () {
   let object = t.object;
   let isDeny = false;
   if (!wantAllow) {
-    const ty = t.object.split(':')[0];
+    const ty = objectType(t.object);
     const pool = BY_TYPE[ty];
     if (pool && pool.length > 1) {
       let cand = t.object;
