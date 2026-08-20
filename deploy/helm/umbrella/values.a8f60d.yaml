@@ -52,7 +52,7 @@
 # Какой коммит здесь стоит — решение оператора о том, что развёрнуто на стенде,
 # а не свойство дерева. Проверка утверждает не свежесть, а невозможность
 # разойтись: пин, собранный рукой мимо записи, был неотличим от выведенного.
-# порождено-от: main d00616453addb3264a6d1bce7e422cc7788cb031
+# порождено-от: main b6f69436e6ff414c064a76ee4df953cb3582d58e
 cert-manager:
   enabled: false
 mtls:
@@ -191,21 +191,21 @@ vpc:
       memory: 64Mi
     limits:
       memory: 448Mi
-  image: docker.io/prorobotech/kacho-vpc:main-d0061645
+  image: docker.io/prorobotech/kacho-vpc:main-b6f69436
 compute:
   resources: *id002
-  image: docker.io/prorobotech/kacho-compute:main-d0061645
+  image: docker.io/prorobotech/kacho-compute:main-b6f69436
 storage:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-storage
-    tag: main-d0061645
+    tag: main-b6f69436
     pullPolicy: IfNotPresent
 registry:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-registry
-    tag: main-d0061645
+    tag: main-b6f69436
     pullPolicy: IfNotPresent
   zot:
     # ⚠ ШАГ ОПЕРАТОРА (до раската): Secret `zot-auth` в ns kacho с ключами
@@ -234,21 +234,21 @@ registry:
     resources: *id002
 api-gateway:
   resources: *id002
-  image: docker.io/prorobotech/kacho-api-gateway:main-d0061645
+  image: docker.io/prorobotech/kacho-api-gateway:main-b6f69436
 kacho-iam:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-iam
-    tag: main-d0061645
+    tag: main-b6f69436
     pullPolicy: IfNotPresent
 kacho-geo:
   resources: *id002
-  image: docker.io/prorobotech/kacho-geo:main-d0061645
+  image: docker.io/prorobotech/kacho-geo:main-b6f69436
 kacho-nlb:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-nlb
-    tag: main-d0061645
+    tag: main-b6f69436
     pullPolicy: IfNotPresent
 openfga:
   resources: *id002
@@ -267,30 +267,30 @@ kratos-selfservice-ui:
       memory: 512Mi
 uif:
   enabled: true
-  image: docker.io/prorobotech/kacho-ui-future-host:main-d00616453addb3264a6d1bce7e422cc7788cb031
+  image: docker.io/prorobotech/kacho-ui-future-host:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
   imagePullPolicy: IfNotPresent
   resources: *id002
   dashboard:
-    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-d00616453addb3264a6d1bce7e422cc7788cb031
+    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
     resources: *id002
   vpc:
-    image: docker.io/prorobotech/kacho-ui-future-vpc:main-d00616453addb3264a6d1bce7e422cc7788cb031
+    image: docker.io/prorobotech/kacho-ui-future-vpc:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
     resources: *id002
   compute:
-    image: docker.io/prorobotech/kacho-ui-future-compute:main-d00616453addb3264a6d1bce7e422cc7788cb031
+    image: docker.io/prorobotech/kacho-ui-future-compute:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
     resources: *id002
   storage:
-    image: docker.io/prorobotech/kacho-ui-future-storage:main-d00616453addb3264a6d1bce7e422cc7788cb031
+    image: docker.io/prorobotech/kacho-ui-future-storage:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
     resources: *id002
   nlb:
-    image: docker.io/prorobotech/kacho-ui-future-nlb:main-d00616453addb3264a6d1bce7e422cc7788cb031
+    image: docker.io/prorobotech/kacho-ui-future-nlb:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
     resources: *id002
   registry:
-    image: docker.io/prorobotech/kacho-ui-future-registry:main-d00616453addb3264a6d1bce7e422cc7788cb031
+    image: docker.io/prorobotech/kacho-ui-future-registry:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
     resources: *id002
   iam:
-    image: docker.io/prorobotech/kacho-ui-future-iam:main-d00616453addb3264a6d1bce7e422cc7788cb031
+    image: docker.io/prorobotech/kacho-ui-future-iam:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
     resources: *id002
   system:
-    image: docker.io/prorobotech/kacho-ui-future-system:main-d00616453addb3264a6d1bce7e422cc7788cb031
+    image: docker.io/prorobotech/kacho-ui-future-system:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
     resources: *id002
