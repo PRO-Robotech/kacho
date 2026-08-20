@@ -7,9 +7,7 @@ package kacho.cloud.iam.v1;
 
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/iam/v1/builtin_condition.proto";
-import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
@@ -20,12 +18,14 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 // listener.
 //
 // Callers:
-//   - kacho-iam outbox-worker — `WriteTuples` on AccessBinding lifecycle
-//     events (the worker IS the only legitimate `tuple_writer`).
 //   - admin-UI / oncall tooling — `ReadTuples` / `GetFGAStoreInfo` for
 //     debugging.
 //   - openfga-bootstrap-job — `ReloadModel` after re-publishing the
 //     OpenFGA Authorization Model v2.
+//
+// This service is READ-ONLY with respect to the relation store. Writing a tuple
+// goes through `kacho_iam.fga_outbox` and its drainer — the invariant migration
+// 0098 rests on, and the one the `relation_fact` projection is a fold of.
 //
 // Tuple-format vocabulary matches OpenFGA upstream:
 //   subject: "<type>:<id>"           (or "<type>:<id>#<relation>" for usersets)
@@ -33,21 +33,15 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 //   object:  "<type>:<id>"
 //   condition: optional, see `Tuple.condition`.
 service InternalAuthorizeService {
-  // WriteTuples — write / delete a batch of FGA tuples atomically with
-  // respect to the FGA-engine (one transactional Write call). Used by the
-  // AccessBinding outbox-worker.
-  //
-  // Returns Operation; the worker waits for done=true before declaring the
-  // binding ACTIVE.
-  rpc WriteTuples (WriteTuplesRequest) returns (operation.Operation) {
-    option (kacho.cloud.api.operation) = {
-      metadata: "WriteTuplesMetadata"
-      response: "WriteTuplesResult"
-    };
-    // Cluster-internal listener-protected; callers are
-    // server-side workers and admin tooling.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-  }
+  // TOMBSTONE. `WriteTuples` — batch write/delete of tuples straight into the
+  // relation store — is REMOVED (#788). It had ZERO callers: its own comment
+  // named the outbox-worker, but that worker writes through its own drainer,
+  // not through this RPC. What it did have was a write door bypassing
+  // `kacho_iam.fga_outbox`, so any tuple it placed would never appear in the
+  // `relation_fact` projection (migration 0098) — the engine would answer yes
+  // and our own database no. Never re-add an RPC under that name: a batch
+  // relation edit that cannot be expressed as journal rows has to justify
+  // itself first. Intentional breaking change (proto/declared-breaks.yaml).
 
   // ReadTuples — read tuples matching a filter. Used by audit tooling
   // ("show every tuple where subject=usr_alice") and by access
@@ -124,31 +118,9 @@ message TupleCondition {
   google.protobuf.Struct context = 3;
 }
 
-message WriteTuplesRequest {
-  // Tuples to insert. ≤ 100 entries.
-  repeated Tuple writes = 1;
-
-  // Tuples to delete. ≤ 100 entries.
-  repeated Tuple deletes = 2;
-
-  // Idempotency-key used to dedupe retried Write calls (the worker
-  // includes the AccessBinding id; FGA-engine itself accepts duplicates
-  // silently, but this helps trace logs).
-  string idempotency_key = 3 [(length) = "<=64"];
-}
-
-message WriteTuplesMetadata {
-  // Echo of idempotency_key for downstream observability.
-  string idempotency_key = 1;
-}
-
-message WriteTuplesResult {
-  // Number of tuples newly inserted (excludes idempotent no-ops).
-  int32 inserted = 1;
-
-  // Number of tuples deleted.
-  int32 deleted = 2;
-}
+// TOMBSTONE: `WriteTuplesRequest`, `WriteTuplesMetadata` and `WriteTuplesResult`
+// were removed together with the `WriteTuples` RPC (#788). Never re-add messages
+// under these names.
 
 message ReadTuplesRequest {
   // Optional subject filter ("user:usr_alice" — case-insensitive prefix

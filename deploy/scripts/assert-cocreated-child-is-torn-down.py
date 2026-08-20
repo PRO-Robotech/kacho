@@ -208,6 +208,16 @@ WRITER_INSERT = re.compile(r"\bw\.([A-Za-z]+?)W?\(\)\.Insert\(")
 # «пометить» разными глаголами остаются разными.
 WRITER_DELETE = re.compile(r"\bw\.([A-Za-z]+?)W?\(\)\.Delete[A-Za-z]*\(")
 
+# Уборка потомка бывает НЕ прямым вызовом писателя, а общей функцией дренажа: у
+# выдач она одна на проект и на аккаунт, потому что оба снимают их одинаково и
+# разойтись двум копиям нельзя. Гейт обязан признавать обе формы — иначе законный
+# перевод на общий дренаж читается как ИСЧЕЗНУВШАЯ уборка, а исключение при живом
+# предмете объявляется протухшим. Наблюдалось: перевод удаления аккаунта и проекта
+# на `shared.RevokeBindingsInScope` (задача #792) покраснел здесь при верном коде.
+SHARED_TEARDOWN = {
+    "AccessBindings": re.compile(r"\bshared\.RevokeBindingsInScope\("),
+}
+
 # Известные гейту сопутствующие потомки: (сервис, ресурс-родитель) → {писатель: почему}.
 # Значение «None» означает «за уборку отвечает КЛИЕНТ» — такую пару гейт проверяет
 # по коллекциям; строка — записанное основание, почему клиенту делать нечего.
@@ -221,7 +231,7 @@ KNOWN_COCREATED = {
     ("iam", "account"): {
         "Projects": None,
         "AccessBindings":
-            "Account.Delete вычищает выдачи аккаунта сам (w.AccessBindingsW().Delete "
+            "Account.Delete вычищает выдачи аккаунта сам (shared.RevokeBindingsInScope "
             "в services/iam/internal/apps/kacho/api/account/delete.go)",
     },
 }
@@ -279,6 +289,10 @@ def census_sagas(root):
             except OSError:
                 del_src = ""
         del_writers = {m.group(1) for m in WRITER_DELETE.finditer(del_src)}
+        # вторая законная форма — общий дренаж; см. SHARED_TEARDOWN
+        for writer, pat in SHARED_TEARDOWN.items():
+            if pat.search(del_src):
+                del_writers.add(writer)
         for w in foreign:
             if w not in known:
                 unknown.append((svc, res, w, rel))
@@ -540,7 +554,7 @@ def self_test() -> int:
             rc = 1
         # и зеркальная сторона: как только вызов появляется — молчит.
         with open(os.path.join(d, "delete.go"), "w", encoding="utf-8") as fh:
-            fh.write("package account\nfunc g(){ w.AccessBindingsW().Delete(ctx, b); "
+            fh.write("package account\nfunc g(){ shared.RevokeBindingsInScope(ctx, b); "
                      "w.AccountsW().Delete(ctx, id) }\n")
         _unknown, stale, _nf, _nw = census_sagas(tmp)
         if not stale:

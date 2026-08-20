@@ -1,14 +1,15 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// authz_metrics.go — накопитель решений края: четыре полосы исхода, окно
-// вердиктов и длительность решения.
+// authz_metrics.go — накопитель решений края: десять полос исхода, окно
+// вердиктов, длительность решения и объявленная посадка.
 //
 // # Что здесь считается и почему именно так
 //
-// Решение о доступе принимается на крае один раз за запрос, и у него ровно
-// четыре исхода. Три из них раньше сливались в один счётчик «ошибка», а
-// четвёртого не было вовсе:
+// Решение о доступе принимается на крае один раз за запрос. Исходов, которые
+// стоит различать, десять, и они делятся на две группы.
+//
+// РЕШЕНИЕ ПРИНЯТО — модель прав ответила:
 //
 //   - разрешено;
 //   - отказано;
@@ -16,6 +17,28 @@
 //   - проверка не состоялась и запрос ПРОПУЩЕН (объявленный мягкий проход).
 //
 // Последние две — противоположные вещи, и по одному числу их не различить.
+//
+// РЕШЕНИЯ НЕ БЫЛО — запрос допущен механизмом, который модель не спрашивает
+// вовсе. Таких механизмов ШЕСТЬ, и каждый допускает по своему основанию:
+//
+//   - публичный путь HTTP (фиксированный список адресов, до всякой проверки);
+//   - фиксированный список FQN (обход и authN, и authZ);
+//   - приход на внутренний листенер (сетевая позиция — НЕ удостоверение);
+//   - файловое послабление маршрута (правка руками);
+//   - каталог снял вопрос модели (`<exempt>`, принципал при этом установлен);
+//   - сужение пообъектное ниже по стеку (`ScopeFiltered`).
+//
+// # Почему это НЕ одна полоса «разрешено» (#798)
+//
+// «Пропущен, потому что путь публичен» и «разрешён, потому что права есть» —
+// разные факты, и первый обязан быть виден, если однажды в список попадёт путь,
+// которому там не место. Тот же довод дословно применим к остальным пяти: правка
+// файла послаблений и приход на внутренний листенер — тем более. Слитые в
+// `allow`, они делали число «решений в секунду» завышенным по смыслу, а
+// публичный путь не попадал НИ В ОДНУ полосу, то есть занижал его же.
+//
+// Кардинальность от этого не растёт с нагрузкой: словарь закрыт десятью
+// константами и ни одно значение метки не берётся из данных вызывающего.
 // `security.md` §Hardening-инвариант 8(б) требует, чтобы мягкий проход нёс
 // СВОЙ счётчик: иначе он невидим, и «контроль ни разу не отказал» читается
 // одинаково при исправном контроле и при контроле, который всех пропускает.
@@ -79,6 +102,38 @@ type AuthzCounts struct {
 	// проходом. Отдельная полоса ровно потому, что это противоположный исход.
 	ErrorPassed uint64
 
+	// ── допуск БЕЗ ответа модели прав: шесть механизмов, шесть полос ──────────
+	//
+	// Ни один из них не является решением «разрешено»: модель не спрашивали. Их
+	// сумма и есть та часть потока, о которой владелец прав не знает ничего.
+
+	// PublicPath — запрос шёл по адресу из фиксированного списка публичных путей
+	// HTTP и короткозамкнулся ДО принятия решения. Раньше не попадал никуда.
+	PublicPath uint64
+	// Allowlist — FQN из фиксированного списка: обойдены и authN, и authZ.
+	Allowlist uint64
+	// InternalOrigin — `<exempt>`-метод Internal*, пришедший на внутренний
+	// листенер. Принципал НЕ извлекался: допуск держится на сетевой позиции,
+	// которая удостоверением не является.
+	InternalOrigin uint64
+	// OverrideAllow — файловое послабление маршрута. Правка руками, поэтому её
+	// след обязан быть виден отдельно от всего остального.
+	OverrideAllow uint64
+	// Exempt — каталог снял вопрос модели, принципал при этом установлен.
+	Exempt uint64
+	// ScopeFiltered — авторизует ВЛАДЕЮЩИЙ СЕРВИС над данными, которыми
+	// отвечает; край не сужает. Допуск края здесь — не суждение о правах.
+	ScopeFiltered uint64
+
+	// Enforcing — проверка ВКЛЮЧЕНА в этом процессе.
+	//
+	// Отдельная величина, а не вывод из нулей: при выключенной проверке звено
+	// пропускает всё, накопитель собран, и все полосы стоят нулями — ровно так
+	// же, как при отсутствии трафика. Два противоположных состояния, неотличимых
+	// по счётчикам, — это то же самое, что мягкий проход без своего счётчика
+	// (`security.md` §Hardening-инвариант 8(б)).
+	Enforcing bool
+
 	// CacheHits / CacheMisses — окно вердиктов. Их отношение к числу обращений к
 	// владельцу прав и есть ответ на вопрос, работает ли окно.
 	CacheHits   uint64
@@ -106,6 +161,15 @@ type AuthzMetrics struct {
 	deniedTotal       atomic.Uint64
 	errorRefusedTotal atomic.Uint64
 	errorPassedTotal  atomic.Uint64
+
+	publicPathTotal     atomic.Uint64
+	allowlistTotal      atomic.Uint64
+	internalOriginTotal atomic.Uint64
+	overrideAllowTotal  atomic.Uint64
+	exemptTotal         atomic.Uint64
+	scopeFilteredTotal  atomic.Uint64
+
+	enforcing atomic.Bool
 
 	cacheHitTotal  atomic.Uint64
 	cacheMissTotal atomic.Uint64
@@ -154,6 +218,36 @@ func (m *AuthzMetrics) RecordErrorRefused() { m.errorRefusedTotal.Add(1) }
 // мягким проходом. См. [AuthzMetrics.RecordErrorRefused] о месте вызова.
 func (m *AuthzMetrics) RecordErrorPassed() { m.errorPassedTotal.Add(1) }
 
+// Полосы допуска БЕЗ ответа модели прав. Каждая зовётся ТАМ, ГДЕ ПРИНЯТО
+// РЕШЕНИЕ ДОПУСТИТЬ, — в своём механизме, а не в общем месте: общая запись снова
+// слила бы шесть разных оснований в одно число, и «путь публичен» стало бы
+// неотличимо от «кто-то правил файл послаблений».
+func (m *AuthzMetrics) RecordPublicPath() { m.publicPathTotal.Add(1) }
+
+// RecordAllowlist — FQN из фиксированного списка (обойдены authN и authZ).
+func (m *AuthzMetrics) RecordAllowlist() { m.allowlistTotal.Add(1) }
+
+// RecordInternalOrigin — допуск по сетевой позиции, без извлечения принципала.
+func (m *AuthzMetrics) RecordInternalOrigin() { m.internalOriginTotal.Add(1) }
+
+// RecordOverrideAllow — файловое послабление маршрута.
+func (m *AuthzMetrics) RecordOverrideAllow() { m.overrideAllowTotal.Add(1) }
+
+// RecordExempt — каталог снял вопрос модели при установленном принципале.
+func (m *AuthzMetrics) RecordExempt() { m.exemptTotal.Add(1) }
+
+// RecordScopeFiltered — сужение пообъектное ниже по стеку.
+func (m *AuthzMetrics) RecordScopeFiltered() { m.scopeFilteredTotal.Add(1) }
+
+// SetEnforcing объявляет, включена ли проверка в этом процессе. Зовётся сборкой
+// звена — единственным местом, где это известно.
+func (m *AuthzMetrics) SetEnforcing(on bool) {
+	if m == nil {
+		return
+	}
+	m.enforcing.Store(on)
+}
+
 // RecordCacheHit / RecordCacheMiss — окно вердиктов.
 func (m *AuthzMetrics) RecordCacheHit()  { m.cacheHitTotal.Add(1) }
 func (m *AuthzMetrics) RecordCacheMiss() { m.cacheMissTotal.Add(1) }
@@ -200,6 +294,15 @@ func (m *AuthzMetrics) Counts() AuthzCounts {
 		ErrorPassed:  m.errorPassedTotal.Load(),
 		CacheHits:    m.cacheHitTotal.Load(),
 		CacheMisses:  m.cacheMissTotal.Load(),
+
+		PublicPath:     m.publicPathTotal.Load(),
+		Allowlist:      m.allowlistTotal.Load(),
+		InternalOrigin: m.internalOriginTotal.Load(),
+		OverrideAllow:  m.overrideAllowTotal.Load(),
+		Exempt:         m.exemptTotal.Load(),
+		ScopeFiltered:  m.scopeFilteredTotal.Load(),
+
+		Enforcing: m.enforcing.Load(),
 	}
 	m.durationMu.Lock()
 	out.DurationBuckets = append([]float64(nil), m.durationBuckets...)

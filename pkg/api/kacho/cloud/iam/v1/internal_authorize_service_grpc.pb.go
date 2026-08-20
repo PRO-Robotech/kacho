@@ -11,7 +11,6 @@ package iamv1
 
 import (
 	context "context"
-	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -23,7 +22,6 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	InternalAuthorizeService_WriteTuples_FullMethodName     = "/kacho.cloud.iam.v1.InternalAuthorizeService/WriteTuples"
 	InternalAuthorizeService_ReadTuples_FullMethodName      = "/kacho.cloud.iam.v1.InternalAuthorizeService/ReadTuples"
 	InternalAuthorizeService_ReloadModel_FullMethodName     = "/kacho.cloud.iam.v1.InternalAuthorizeService/ReloadModel"
 	InternalAuthorizeService_GetFGAStoreInfo_FullMethodName = "/kacho.cloud.iam.v1.InternalAuthorizeService/GetFGAStoreInfo"
@@ -38,12 +36,14 @@ const (
 // listener.
 //
 // Callers:
-//   - kacho-iam outbox-worker — `WriteTuples` on AccessBinding lifecycle
-//     events (the worker IS the only legitimate `tuple_writer`).
 //   - admin-UI / oncall tooling — `ReadTuples` / `GetFGAStoreInfo` for
 //     debugging.
 //   - openfga-bootstrap-job — `ReloadModel` after re-publishing the
 //     OpenFGA Authorization Model v2.
+//
+// This service is READ-ONLY with respect to the relation store. Writing a tuple
+// goes through `kacho_iam.fga_outbox` and its drainer — the invariant migration
+// 0098 rests on, and the one the `relation_fact` projection is a fold of.
 //
 // Tuple-format vocabulary matches OpenFGA upstream:
 //
@@ -52,13 +52,6 @@ const (
 //	object:  "<type>:<id>"
 //	condition: optional, see `Tuple.condition`.
 type InternalAuthorizeServiceClient interface {
-	// WriteTuples — write / delete a batch of FGA tuples atomically with
-	// respect to the FGA-engine (one transactional Write call). Used by the
-	// AccessBinding outbox-worker.
-	//
-	// Returns Operation; the worker waits for done=true before declaring the
-	// binding ACTIVE.
-	WriteTuples(ctx context.Context, in *WriteTuplesRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// ReadTuples — read tuples matching a filter. Used by audit tooling
 	// ("show every tuple where subject=usr_alice") and by access
 	// review materialisers.
@@ -85,16 +78,6 @@ type internalAuthorizeServiceClient struct {
 
 func NewInternalAuthorizeServiceClient(cc grpc.ClientConnInterface) InternalAuthorizeServiceClient {
 	return &internalAuthorizeServiceClient{cc}
-}
-
-func (c *internalAuthorizeServiceClient) WriteTuples(ctx context.Context, in *WriteTuplesRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(operation.Operation)
-	err := c.cc.Invoke(ctx, InternalAuthorizeService_WriteTuples_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *internalAuthorizeServiceClient) ReadTuples(ctx context.Context, in *ReadTuplesRequest, opts ...grpc.CallOption) (*ReadTuplesResponse, error) {
@@ -136,12 +119,14 @@ func (c *internalAuthorizeServiceClient) GetFGAStoreInfo(ctx context.Context, in
 // listener.
 //
 // Callers:
-//   - kacho-iam outbox-worker — `WriteTuples` on AccessBinding lifecycle
-//     events (the worker IS the only legitimate `tuple_writer`).
 //   - admin-UI / oncall tooling — `ReadTuples` / `GetFGAStoreInfo` for
 //     debugging.
 //   - openfga-bootstrap-job — `ReloadModel` after re-publishing the
 //     OpenFGA Authorization Model v2.
+//
+// This service is READ-ONLY with respect to the relation store. Writing a tuple
+// goes through `kacho_iam.fga_outbox` and its drainer — the invariant migration
+// 0098 rests on, and the one the `relation_fact` projection is a fold of.
 //
 // Tuple-format vocabulary matches OpenFGA upstream:
 //
@@ -150,13 +135,6 @@ func (c *internalAuthorizeServiceClient) GetFGAStoreInfo(ctx context.Context, in
 //	object:  "<type>:<id>"
 //	condition: optional, see `Tuple.condition`.
 type InternalAuthorizeServiceServer interface {
-	// WriteTuples — write / delete a batch of FGA tuples atomically with
-	// respect to the FGA-engine (one transactional Write call). Used by the
-	// AccessBinding outbox-worker.
-	//
-	// Returns Operation; the worker waits for done=true before declaring the
-	// binding ACTIVE.
-	WriteTuples(context.Context, *WriteTuplesRequest) (*operation.Operation, error)
 	// ReadTuples — read tuples matching a filter. Used by audit tooling
 	// ("show every tuple where subject=usr_alice") and by access
 	// review materialisers.
@@ -185,9 +163,6 @@ type InternalAuthorizeServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedInternalAuthorizeServiceServer struct{}
 
-func (UnimplementedInternalAuthorizeServiceServer) WriteTuples(context.Context, *WriteTuplesRequest) (*operation.Operation, error) {
-	return nil, status.Error(codes.Unimplemented, "method WriteTuples not implemented")
-}
 func (UnimplementedInternalAuthorizeServiceServer) ReadTuples(context.Context, *ReadTuplesRequest) (*ReadTuplesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReadTuples not implemented")
 }
@@ -217,24 +192,6 @@ func RegisterInternalAuthorizeServiceServer(s grpc.ServiceRegistrar, srv Interna
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&InternalAuthorizeService_ServiceDesc, srv)
-}
-
-func _InternalAuthorizeService_WriteTuples_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(WriteTuplesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InternalAuthorizeServiceServer).WriteTuples(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InternalAuthorizeService_WriteTuples_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InternalAuthorizeServiceServer).WriteTuples(ctx, req.(*WriteTuplesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _InternalAuthorizeService_ReadTuples_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -298,10 +255,6 @@ var InternalAuthorizeService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "kacho.cloud.iam.v1.InternalAuthorizeService",
 	HandlerType: (*InternalAuthorizeServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "WriteTuples",
-			Handler:    _InternalAuthorizeService_WriteTuples_Handler,
-		},
 		{
 			MethodName: "ReadTuples",
 			Handler:    _InternalAuthorizeService_ReadTuples_Handler,

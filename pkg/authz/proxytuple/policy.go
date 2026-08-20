@@ -3,7 +3,8 @@
 
 // Package proxytuple holds the ONE declaration of what a resource-owning module
 // may write into the authorization model through kacho-iam's FGA proxy —
-// RegisterResource / UnregisterResource / WriteCreatorTuple.
+// RegisterResource / UnregisterResource. (A third RPC, WriteCreatorTuple, shared
+// this rule and was retired with zero callers — #788.)
 //
 // WHY THIS LIVES IN THE SHARED FOUNDATION AND NOT UNDER THE OWNER'S `internal/`.
 // The rule has two sides that must never disagree: kacho-iam decides whether to
