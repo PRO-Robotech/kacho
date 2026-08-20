@@ -60,13 +60,12 @@ func Test_1_4_30_ReconcilerRedrivesPoisoned(t *testing.T) {
 		   WHERE resource_id = 'epd-redrive'`)
 	require.NoError(t, err)
 
-	ad := clients.NewFGAReconcileAdapter(pool, computeOutboxTbl)
-	rc, err := reconciler.New(pool, reconciler.Config{
+	rc, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
 		PartitionColumn: reconciler.RegisterOutboxPartition,
 		Table:           computeOutboxTbl,
 		Channel:         "compute_fga_register_outbox",
 		MaxAttempts:     10,
-	}, reconciler.Adapters{Enumerator: ad, Registry: ad}, nil)
+	}, nil)
 	require.NoError(t, err)
 
 	n, err := rc.RedrivePoisoned(ctx)
