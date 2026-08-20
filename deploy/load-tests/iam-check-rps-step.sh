@@ -128,13 +128,31 @@ k get pod -l app.kubernetes.io/name=kacho-iam -o jsonpath='{range .items[*]}{.me
 # 374 мс и 0.77% отказов, а следующая за ней ступень 200 rps — 4 мс и ноль. Без
 # явного прогрева этот артефакт неотличим от находки, и он ложится на САМУЮ
 # низкую ступень, то есть портит именно ту точку, от которой отсчитывают запас.
+#
+# ДЛИТЕЛЬНОСТЬ — 90 с, И ЭТО ИЗМЕРЕННАЯ ВЕЛИЧИНА, А НЕ КРУГЛОЕ ЧИСЛО. Здесь было
+# зашито 30 с, тогда как разбор `BASELINE-internal-check.md` установил, что после
+# перезапуска участника установление соединений занимает до 90 с. Тридцати не
+# хватало: на перемере #773 одна ступень пятой посадки всё равно попала под
+# холодный старт — 800 rps дала p99 62 мс против 17 и 19 мс в повторах той же
+# подачи, и разрешилось это повтором, а не истолкованием. Прогревать приходилось
+# вручную, то есть свойство держалось памятью прогоняющего.
+WARMUP_DUR="${WARMUP_DUR:-90s}"
 restarts > "$OUT/run.restarts.baseline"
 
 if [ "${WARMUP:-1}" = "1" ]; then
-  echo "--- прогрев (результат выбрасывается) ---"
-  k exec k6-iam-runner -- k6 run --quiet -e TARGET_RPS=200 -e DURATION=30s      -e ALLOW_RATIO="$ALLOW_RATIO" -e MAX_VUS=600 /scripts/internal_check.js      > "$OUT/warmup.k6.log" 2>&1 || true
+  echo "--- прогрев $WARMUP_DUR (результат выбрасывается) ---"
+  k exec k6-iam-runner -- k6 run --quiet -e TARGET_RPS=200 -e DURATION="$WARMUP_DUR" \
+     -e ALLOW_RATIO="$ALLOW_RATIO" -e MAX_VUS=600 /scripts/internal_check.js \
+     > "$OUT/warmup.k6.log" 2>&1 || true
   sleep 5
+else
+  # Прогрев ОТКЛЮЧЁН — сказать об этом в выводе, а не умолчать: первая ступень
+  # ляжет на холодный старт, и её срыв будет неотличим от находки. «Прогрева не
+  # было» обязано быть видно там же, где читают числа.
+  echo "--- ПРОГРЕВА НЕ БЫЛО (WARMUP=0): первая ступень меряет холодный старт ---"
+  echo "warmup=skipped" >> "$OUT/meta.txt"
 fi
+echo "warmup=${WARMUP:-1} warmup_duration=$WARMUP_DUR" >> "$OUT/meta.txt"
 
 for rep in $(seq "$REP_START" $(( REP_START + REPEATS - 1 ))); do
 breaches=0
