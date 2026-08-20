@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# iam-shadow-divergence-probe.sh — доля расхождений теневой сверки формы E с
+# движком, снятая ДВУМЯ подачами, которые разводят два объяснения расхождения.
+#
+# ЗАЧЕМ ДВЕ ПОДАЧИ, А НЕ ОДНА. Прибор `internal_check.js` строит отказной вход
+# ПЕРЕСТАНОВКОЙ — субъект одной тройки против объекта другой того же типа. Пока
+# подача смешана (`ALLOW_RATIO=0.9`), одно число «доля расхождений» отвечает сразу
+# на два вопроса и потому не отвечает ни на один: расходится ли форма E на
+# настоящих выдачах стенда, или расхождение приносят синтетические пары, которых
+# в выдачах нет вовсе. Замером пропускной способности это не разводится — нужны
+# два прогона на одном стенде:
+#
+#   рука A — ALLOW_RATIO=1.0 — НИ ОДНОЙ перестановки, только выдачи стенда;
+#   рука B — ALLOW_RATIO=0.0 — ОДНИ перестановки.
+#
+# Читается пара так, и только так:
+#   A высоко, B низко  ⇒ расходятся НАСТОЯЩИЕ выдачи; фикстура ни при чём;
+#   A низко,  B высоко ⇒ расхождение — артефакт перестановки;
+#   обе высоко         ⇒ два разных предмета, разбирать порознь;
+#   обе низко          ⇒ расхождения нет (или сравнение не доехало — см. «сравнено»).
+#
+# Замер #775 от 2026-08-20 на ревизии стенда 5ddacfd85: A = 61.0 %, B = 0.13 %.
+#
+# ИСХОДОВ ТРИ, И ТРЕТИЙ НЕ ВЫЧИТАЕТСЯ ИЗ ВЕРДИКТА:
+#   0 — измерено;
+#   1 — измерить не удалось (сводки нет, сравнений ноль, прибор не совпал с деревом);
+#   3 — УСЛОВИЕ НЕ СОЗДАНО (нет генератора, нет фикстуры). Это не «зелено» и не
+#       «красно»: мерить было нечем, и оно обязано быть отличимо от вердикта.
+#
+# Использование:
+#   ./iam-shadow-divergence-probe.sh [подача_rps] [длительность]
+#   ./iam-shadow-divergence-probe.sh 100 30s
+#
+# Порог НЕ ЭНФОРСИТСЯ, пока не задан `MAX_DIVERGED_SHARE` (доля, напр. 0.01).
+# Это названо вслух, а не умолчано: сегодня расхождение известно и велико, и
+# красный на нём был бы шумом, а не находкой. Когда #775 закрыт — задайте порог,
+# и проба станет гейтом, удерживающим свойство.
+set -euo pipefail
+
+NS="${NS:-kacho}"
+RPS="${1:-100}"
+DUR="${2:-30s}"
+RUNNER="${RUNNER:-k6-iam-runner}"
+SCRIPT_CM="${SCRIPT_CM:-k6-iam-check-script}"
+FIXTURE="${FIXTURE_PATH:-/fixtures/allow_tuples.json}"
+TREE_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/services/iam/tests/k6/internal_check.js"
+
+k() { kubectl -n "$NS" "$@"; }
+die_precond() { echo "УСЛОВИЕ НЕ СОЗДАНО: $*" >&2; exit 3; }
+
+# ── 0. Провенанс СНАЧАЛА, до подачи ──────────────────────────────────────────
+#
+# Не педантизм, а цена промаха: вердикт, снятый против стенда, исполняющего чужую
+# ревизию, относится к дереву, которого нет. Спрашивается ОБРАЗ ЗАПУЩЕННОГО пода,
+# а не метка развёртывания — метка переживает перекат.
+echo "── провенанс ─────────────────────────────────────────────"
+pods=$(k get pod -l app.kubernetes.io/name=kacho-iam -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+[ -n "$pods" ] || die_precond "службы прав на стенде нет"
+for p in $pods; do
+  img=$(k get pod "$p" -o jsonpath='{.status.containerStatuses[0].imageID}')
+  rev=$(docker exec "${KIND_NODE:-kacho-control-plane}" crictl inspecti "$img" 2>/dev/null \
+        | sed -n 's/.*"org.opencontainers.image.revision": "\([0-9a-f]*\)".*/\1/p' | head -1)
+  echo "  под $p ревизия ${rev:-НЕ УСТАНОВЛЕНА (клейма нет)}"
+done
+echo "  реплик: $(echo "$pods" | wc -l), подача ${RPS} rps × ${DUR}"
+
+# ── 1. Предусловия ───────────────────────────────────────────────────────────
+k get pod "$RUNNER" >/dev/null 2>&1 || die_precond "генератора $RUNNER нет; поднимите его до пробы"
+k exec "$RUNNER" -- sh -c "[ -s '$FIXTURE' ]" 2>/dev/null || die_precond "фикстуры $FIXTURE в генераторе нет или она пуста"
+[ -f "$TREE_SCRIPT" ] || die_precond "прибора нет в дереве: $TREE_SCRIPT"
+
+# ── 2. Прибор стенда обязан совпасть с деревом ───────────────────────────────
+#
+# Иначе проба мерит чужой прибор и называет это замером о дереве. Сверяется
+# ФАЙЛ В ПОДЕ, а не ConfigMap: правка ConfigMap доезжает до тома не мгновенно, и
+# «применили» здесь не равно «исполняется».
+tree_md5=$(md5sum "$TREE_SCRIPT" | cut -d' ' -f1)
+k create configmap "$SCRIPT_CM" --from-file=internal_check.js="$TREE_SCRIPT" \
+  --dry-run=client -o yaml | k apply -f - >/dev/null
+for _ in $(seq 1 24); do
+  pod_md5=$(k exec "$RUNNER" -- md5sum /scripts/internal_check.js 2>/dev/null | cut -d' ' -f1 || true)
+  [ "$pod_md5" = "$tree_md5" ] && break
+  sleep 5
+done
+[ "${pod_md5:-}" = "$tree_md5" ] || { echo "прибор в поде ($pod_md5) не сошёлся с деревом ($tree_md5)" >&2; exit 1; }
+echo "  прибор сверен с деревом: $tree_md5"
+
+# ── 3. Счётчики сравнителя: сумма ПОСЛЕДНЕЙ сводки каждой реплики ────────────
+counters() {
+  local tot_c=0 tot_d=0 seen=0 line c d
+  for p in $pods; do
+    line=$(k logs "$p" --tail=600 2>/dev/null | grep 'shadow verdict: сводка' | tail -1 || true)
+    [ -n "$line" ] || continue
+    c=$(printf '%s' "$line" | sed -n 's/.*"compared":\([0-9]*\).*/\1/p')
+    d=$(printf '%s' "$line" | sed -n 's/.*"diverged":\([0-9]*\).*/\1/p')
+    tot_c=$((tot_c + ${c:-0})); tot_d=$((tot_d + ${d:-0})); seen=$((seen + 1))
+  done
+  echo "$tot_c $tot_d $seen"
+}
+
+arm() { # arm <имя> <ALLOW_RATIO>
+  local name="$1" ratio="$2"
+  read -r c0 d0 s0 <<<"$(counters)"
+  [ "$s0" -gt 0 ] || { echo "сводки сравнителя нет ни у одной реплики — мерить нечем" >&2; exit 1; }
+  k exec "$RUNNER" -- k6 run --quiet \
+     -e TARGET_RPS="$RPS" -e DURATION="$DUR" -e ALLOW_RATIO="$ratio" \
+     -e FIXTURE_PATH="$FIXTURE" /scripts/internal_check.js >/dev/null 2>&1 || true
+  # сводка печатается раз в 30 с — дождаться СВЕЖЕЙ, иначе дельта будет неполной
+  sleep 35
+  read -r c1 d1 s1 <<<"$(counters)"
+  local dc=$((c1 - c0)) dd=$((d1 - d0))
+  if [ "$dc" -le 0 ]; then
+    printf '  %-46s сравнений 0 — ИЗМЕРИТЬ НЕ УДАЛОСЬ\n' "$name"
+    return 1
+  fi
+  printf '  %-46s сравнено %6d  разошлось %6d  доля %6.2f %%\n' \
+    "$name" "$dc" "$dd" "$(awk -v a="$dd" -v b="$dc" 'BEGIN{print 100*a/b}')"
+  awk -v a="$dd" -v b="$dc" 'BEGIN{print a/b}' > "/tmp/.probe_$3"
+}
+
+echo "── две руки ──────────────────────────────────────────────"
+rc=0
+arm "A: только выдачи стенда (ALLOW_RATIO=1.0)" 1.0 a || rc=1
+arm "B: только перестановки (ALLOW_RATIO=0.0)"  0.0 b || rc=1
+[ "$rc" -eq 0 ] || exit 1
+
+A=$(cat /tmp/.probe_a); B=$(cat /tmp/.probe_b); rm -f /tmp/.probe_a /tmp/.probe_b
+echo "── вердикт ───────────────────────────────────────────────"
+awk -v a="$A" -v b="$B" 'BEGIN{
+  if (a>=0.05 && b<0.05)      print "  расходятся НАСТОЯЩИЕ выдачи; перестановка ни при чём";
+  else if (a<0.05 && b>=0.05) print "  расхождение — артефакт перестановки (чинить прибор)";
+  else if (a>=0.05 && b>=0.05)print "  расходятся ОБЕ подачи — два разных предмета, разбирать порознь";
+  else                        print "  расхождений нет ни на одной подаче";
+}'
+if [ -n "${MAX_DIVERGED_SHARE:-}" ]; then
+  awk -v a="$A" -v m="$MAX_DIVERGED_SHARE" 'BEGIN{
+    if (a>m) { printf "  ОТКАЗ: доля на настоящих выдачах %.4f выше бюджета %.4f\n", a, m; exit 1 }
+    printf "  бюджет выдержан: %.4f <= %.4f\n", a, m;
+  }' || exit 1
+else
+  echo "  БЮДЖЕТ НЕ ЗАДАН (MAX_DIVERGED_SHARE не выставлен) — проба ТОЛЬКО отчитывается"
+  echo "  и не удерживает ничего. Закройте #775 и выставьте порог, иначе это не гейт."
+fi
