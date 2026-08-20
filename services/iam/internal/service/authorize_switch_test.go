@@ -190,3 +190,108 @@ func (alwaysAdmin) CheckWithContextualTuples(
 ) (bool, error) {
 	return true, nil
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ВНУТРЕННЯЯ ДВЕРЬ — та, через которую идёт КАЖДЫЙ запрос платформы
+//
+// `InternalIAMService.Check` делегирует не в `Check`, а в `CheckRelation`:
+// вызывающий уже принёс разрешённое отношение, и шаг «действие → отношение»
+// пропускается. Дверей, стало быть, две, и маршрутизация нужна ОБЕИМ.
+//
+// Эти пробы дописаны ПОСЛЕ того, как стенд показал `verdicts_form` = 0 при
+// 6611 решениях и четырнадцати переключённых типах: пробы утверждали публичную
+// дверь, а нагрузка шла во внутреннюю. Утверждение о наблюдаемом («чей ответ
+// получил вызывающий») было верным — и относилось не к той двери.
+// ─────────────────────────────────────────────────────────────────────────────
+
+func checkRelationOne(t *testing.T, svc *AuthorizeService, object, relation string) (*CheckResult, error) {
+	t.Helper()
+	return svc.CheckRelation(context.Background(), CheckRelationRequest{
+		Subject:  "user:usr-1",
+		Relation: relation,
+		Object:   object,
+	})
+}
+
+func TestInternalGateSwitchedTypeReturnsTheFormsVerdict(t *testing.T) {
+	svc, _, shadow := edgeWithSwitch(false, map[string]bool{"vpc_network:net-1": true}, "vpc_network")
+
+	res, err := checkRelationOne(t, svc, "vpc_network:net-1", "v_get")
+	if err != nil {
+		t.Fatalf("неожиданная ошибка: %v", err)
+	}
+	if !res.Allowed {
+		t.Fatal("внутренняя дверь вернула ответ движка — через неё идёт КАЖДЫЙ запрос платформы")
+	}
+	if len(shadow.verdicts) != 1 {
+		t.Fatalf("форму обязаны спросить ровно один раз, спросили %d", len(shadow.verdicts))
+	}
+}
+
+func TestInternalGateSwitchedTypeReturnsTheFormsDenial(t *testing.T) {
+	svc, _, _ := edgeWithSwitch(true, map[string]bool{}, "vpc_network")
+
+	res, err := checkRelationOne(t, svc, "vpc_network:net-1", "v_get")
+	if err != nil {
+		t.Fatalf("неожиданная ошибка: %v", err)
+	}
+	if res.Allowed {
+		t.Fatal("внутренняя дверь вернула ответ движка вместо отказа формы")
+	}
+}
+
+// Положительный контроль: не переключённый тип идёт прежним путём.
+func TestInternalGateUnswitchedTypeStillGoesToTheEngine(t *testing.T) {
+	svc, _, shadow := edgeWithSwitch(true, map[string]bool{}, "vpc_network")
+
+	res, err := checkRelationOne(t, svc, "vpc_subnet:sub-1", "v_get")
+	if err != nil || !res.Allowed {
+		t.Fatalf("не переключённый тип обязан отвечаться движком: allowed=%v err=%v", res.Allowed, err)
+	}
+	if len(shadow.verdicts) != 0 {
+		t.Fatalf("форма решала по не названному типу: %v", shadow.verdicts)
+	}
+	if len(shadow.askedKinds()) != 1 {
+		t.Fatalf("решение движка обязано быть предъявлено сравнению: %v", shadow.askedKinds())
+	}
+}
+
+// Отказ формы на внутренней двери — недоступность, а не отказ в доступе.
+func TestInternalGateFormFailureSurfacesAsUnavailable(t *testing.T) {
+	svc, engine, shadow := edgeWithSwitch(true, map[string]bool{}, "vpc_network")
+	shadow.formErr = errors.New("форма не ответила")
+
+	res, err := checkRelationOne(t, svc, "vpc_network:net-1", "v_get")
+	if err == nil {
+		t.Fatal("отказ формы обязан доехать до вызывающего ошибкой")
+	}
+	if res != nil && res.Allowed {
+		t.Fatal("подставлен ответ движка")
+	}
+	if len(engine.tr.snapshot()) != 0 {
+		t.Fatalf("движок спрошен на пути запроса: %v", engine.tr.snapshot())
+	}
+}
+
+// Администратор облака достигает переключённого типа и через внутреннюю дверь.
+func TestInternalGateCloudAdminStillReachesASwitchedType(t *testing.T) {
+	tr := &trace{}
+	shadow := &switchingShadow{
+		tracingShadow: tracingShadow{tr: tr},
+		switched:      map[string]bool{"vpc_network": true},
+		formAllows:    map[string]bool{},
+	}
+	svc := NewAuthorizeService(AuthorizeServiceConfig{
+		Relations:           &tracingRelations{tr: tr, allow: false},
+		Shadow:              shadow,
+		ClusterAdminChecker: alwaysAdmin{},
+	})
+
+	res, err := checkRelationOne(t, svc, "vpc_network:net-1", "v_get")
+	if err != nil {
+		t.Fatalf("неожиданная ошибка: %v", err)
+	}
+	if !res.Allowed {
+		t.Fatal("администратор облака потерял доступ через внутреннюю дверь — аварийный путь оборван")
+	}
+}

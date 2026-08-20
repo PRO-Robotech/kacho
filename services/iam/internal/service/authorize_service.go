@@ -736,23 +736,63 @@ func (s *AuthorizeService) CheckRelation(ctx context.Context, req CheckRelationR
 	// ответила бы «нет» о несуществующем объекте, и сравнение записало бы
 	// расхождение, которого нет, — но решение всё равно называется, иначе оно
 	// выпадает из знаменателя молча.
-	if objType, objID, ok := splitFGAObject(req.Object); ok {
+	objType, objID, parsed := splitFGAObject(req.Object)
+
+	// ПЕРЕКЛЮЧЁННЫЙ ТИП: решает форма, движок спрашивается рядом.
+	//
+	// Эта дверь — та, через которую идёт КАЖДЫЙ запрос платформы: интерсептор
+	// каждого сервиса спрашивает `InternalIAMService.Check`, а он делегирует
+	// сюда, не в публичный `Check`. Маршрутизация, поставленная только у
+	// публичной двери, оставила бы весь живой поток на движке — и оставила бы
+	// молча: ответы правильные, счётчик источника показывает движок, а
+	// самоотчёт при старте называет тип переключённым.
+	if parsed && s.decidesByForm(objType) {
+		return s.checkRelationByForm(ctx, req, objType, objID, condCtx, result)
+	}
+
+	// Теневой вопрос — до движка и до всех замыканий ниже (см. check). Форма
+	// объекта, которую разобрать не удалось, форме E НЕ отдаётся: она честно
+	// ответила бы «нет» о несуществующем объекте, и сравнение записало бы
+	// расхождение, которого нет, — но решение всё равно называется, иначе оно
+	// выпадает из знаменателя молча.
+	if parsed {
 		settleShadow := s.askShadow(ctx, req.Subject, objType, objID, req.Relation, condCtx)
 		defer func() { settleShadow(result.Allowed, err == nil) }()
 	} else {
 		s.shadowUnaskable("объект вопроса не разобран", "", req.Relation)
 	}
 
+	allowed, err := s.engineVerdictForRelation(ctx, req, condCtx)
+	if err != nil {
+		return result, err
+	}
+	result.Allowed = allowed
+	if !allowed {
+		// CheckRelation is the gateway/internal path — same rich-deny format as the
+		// public Check (no `action` available here, so the action segment is omitted).
+		result.DenyReasons = []string{s.formatDenyReason(ctx, req.Subject, req.Relation, req.Object, "")}
+	}
+	return result, nil
+}
+
+// engineVerdictForRelation — ОКОНЧАТЕЛЬНЫЙ вердикт движковой композиции
+// внутренней двери.
+//
+// Те же три слагаемых, что у публичной, и выделены по той же причине: у вопроса
+// появился второй вызывающий — теневой вопрос переключённого типа, — и оба
+// обязаны спрашивать движок ОДИНАКОВО. Иначе сверялись бы два разных вопроса.
+func (s *AuthorizeService) engineVerdictForRelation(
+	ctx context.Context, req CheckRelationRequest, condCtx map[string]any,
+) (bool, error) {
 	if s.relations == nil {
-		return result, fmt.Errorf("%w: authz unavailable", iamerr.ErrUnavailable)
+		return false, fmt.Errorf("%w: authz unavailable", iamerr.ErrUnavailable)
 	}
 	allowed, err := s.checkRelationWire(ctx, req, condCtx)
 	if err != nil {
-		return result, fmt.Errorf("%w: authz unavailable: %w", iamerr.ErrUnavailable, err)
+		return false, fmt.Errorf("%w: authz unavailable: %w", iamerr.ErrUnavailable, err)
 	}
 	if allowed {
-		result.Allowed = true
-		return result, nil
+		return true, nil
 	}
 	// Per-object resolve DENIED. Cluster-admin fallback: the internal
 	// per-RPC authz gate (InternalIAMService.Check) honors the same flat super-gate
@@ -760,8 +800,7 @@ func (s *AuthorizeService) CheckRelation(ctx context.Context, req CheckRelationR
 	// after the cascade is contracted. Checked AFTER the per-object resolve so the
 	// common allow case costs a single round-trip; nil-safe.
 	if authzguard.SubjectIsClusterAdmin(ctx, s.clusterAdmin, req.Subject) {
-		result.Allowed = true
-		return result, nil
+		return true, nil
 	}
 	// Structural fallback — same reason and same ordering as in check(): the
 	// cascade's parent pointers come from iam's committed rows, so levels below the
@@ -769,14 +808,38 @@ func (s *AuthorizeService) CheckRelation(ctx context.Context, req CheckRelationR
 	// is the path the api-gateway per-RPC gate takes.
 	structuralAllowed, serr := s.structuralFallback(ctx, req.Subject, req.Relation, req.Object, condCtx)
 	if serr != nil {
-		return result, fmt.Errorf("%w: authz unavailable: %w", iamerr.ErrUnavailable, serr)
+		return false, fmt.Errorf("%w: authz unavailable: %w", iamerr.ErrUnavailable, serr)
 	}
-	if structuralAllowed {
+	return structuralAllowed, nil
+}
+
+// checkRelationByForm — вердикт внутренней двери по ПЕРЕКЛЮЧЁННОМУ типу.
+//
+// Композиция заменена целиком; плоский надзор администратора облака остаётся по
+// той же причине и с той же границей, что у публичной двери (см. checkByForm):
+// он спрашивает о ДРУГОМ объекте — `cluster` — и объект-независим by
+// construction, а его позиция управляется собственным типом.
+func (s *AuthorizeService) checkRelationByForm(
+	ctx context.Context, req CheckRelationRequest, objType, objID string,
+	condCtx map[string]any, result *CheckResult,
+) (*CheckResult, error) {
+	allowed, err := s.shadow.Verdict(ctx, req.Subject, objType, objID, req.Relation, condCtx,
+		func(sctx context.Context) (bool, bool) {
+			a, e := s.engineVerdictForRelation(sctx, req, condCtx)
+			return a, e == nil
+		})
+	if err != nil {
+		// Форма не ответила — недоступность, а не отказ в доступе.
+		return result, fmt.Errorf("%w: authz unavailable: %w", iamerr.ErrUnavailable, err)
+	}
+	if allowed {
 		result.Allowed = true
 		return result, nil
 	}
-	// CheckRelation is the gateway/internal path — same rich-deny format as the
-	// public Check (no `action` available here, so the action segment is omitted).
+	if authzguard.SubjectIsClusterAdmin(ctx, s.clusterAdmin, req.Subject) {
+		result.Allowed = true
+		return result, nil
+	}
 	result.DenyReasons = []string{s.formatDenyReason(ctx, req.Subject, req.Relation, req.Object, "")}
 	return result, nil
 }
