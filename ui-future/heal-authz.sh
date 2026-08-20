@@ -42,22 +42,35 @@ secret_value() {
     -o "jsonpath={.data.${key}}" | base64 -d
 }
 
-fga_write() {
-  local label="$1"
-  local body="$2"
-  local url="${OPENFGA_URL}/stores/${STORE_ID}/write"
+# journal_write <user> <relation> <object> — кладёт кортеж СТРОКОЙ ЖУРНАЛА.
+#
+# ПОЧЕМУ НЕ ПРЯМО В ДВИЖОК, КАК БЫЛО. Состояние движка обязано быть свёрткой
+# журнала kacho_iam.fga_outbox (миграция 0098): на этом стоит проекция
+# relation_fact, а на ней — форма E. Кортеж, вписанный прямо в движок, в журнал
+# не попадает НИКОГДА, поэтому своя БД остаётся беднее чужой — и инструмент,
+# который зовут ЧИНИТЬ права, тихо углублял расхождение с каждым прогоном.
+#
+# Теперь строка ложится в журнал, а дальше её разносит дренаж: тем же путём
+# кортеж попадает и в движок, и в проекцию. Цена — применение не мгновенно.
+journal_write() {
+  local user="$1" relation="$2" object="$3"
 
-  if kubectl -n "$NAMESPACE" exec deploy/kacho-iam -- \
-    wget -q -O - \
-      --header 'content-type: application/json' \
-      --post-data "$body" \
-      "$url" >/dev/null 2>&1; then
-    echo "  ok: ${label}"
-  else
-    # OpenFGA may reject already-present tuples depending on server version.
-    # Continue so the script remains safe to rerun as a dev repair tool.
-    echo "  warn: ${label} write failed or already exists"
-  fi
+  # Значения приходят из наших же таблиц, но в SQL они уходят подстановкой,
+  # поэтому словарь сужается явно: одинарная кавычка здесь означала бы
+  # выполнение чужого запроса под правами починки.
+  local v
+  for v in "$user" "$relation" "$object"; do
+    if [[ ! "$v" =~ ^[A-Za-z0-9_:*.-]+$ ]]; then
+      echo "  ОТКАЗ: значение ${v} вне словаря идентификаторов — строка журнала не пишется" >&2
+      return 1
+    fi
+  done
+
+  psql_iam "INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+            VALUES ('fga.tuple.write',
+                    jsonb_build_object('user', '${user}', 'relation', '${relation}',
+                                       'object', '${object}'),
+                    now());" >/dev/null
 }
 
 fga_check() {
@@ -76,15 +89,19 @@ fga_check() {
   [[ "$resp" =~ \"allowed\"[[:space:]]*:[[:space:]]*true ]]
 }
 
+# fga_ensure <user> <relation> <object> — кортеж берётся ТРОЙКОЙ, а не двумя
+# готовыми телами запроса: прежде каждое место вызова повторяло одну и ту же
+# тройку дважды, в двух JSON-ах, и разойтись они могли молча.
 fga_ensure() {
-  local label="$1"
-  local check_body="$2"
-  local write_body="$3"
+  local user="$1" relation="$2" object="$3"
+  local label="${object}#${relation}@${user}"
 
-  if fga_check "$check_body"; then
+  if fga_check "{\"authorization_model_id\":\"${MODEL_ID}\",\"tuple_key\":{\"user\":\"${user}\",\"relation\":\"${relation}\",\"object\":\"${object}\"}}"; then
     echo "  exists: ${label}"
+  elif journal_write "$user" "$relation" "$object"; then
+    echo "  queued: ${label} (применит дренаж журнала)"
   else
-    fga_write "$label" "$write_body"
+    echo "  ОТКАЗ: ${label} не поставлен в журнал" >&2
   fi
 }
 
@@ -142,28 +159,19 @@ while IFS='|' read -r user_id account_id project_id; do
 
   echo "Repairing user=${user_id} account=${account_id}${project_id:+ project=${project_id}}"
 
-  fga_ensure "account:${account_id}#cluster@cluster:${CLUSTER_ID}" \
-    "{\"authorization_model_id\":\"${MODEL_ID}\",\"tuple_key\":{\"user\":\"cluster:${CLUSTER_ID}\",\"relation\":\"cluster\",\"object\":\"account:${account_id}\"}}" \
-    "{\"authorization_model_id\":\"${MODEL_ID}\",\"writes\":{\"tuple_keys\":[{\"user\":\"cluster:${CLUSTER_ID}\",\"relation\":\"cluster\",\"object\":\"account:${account_id}\"}]}}"
+  fga_ensure "cluster:${CLUSTER_ID}" "cluster" "account:${account_id}"
 
-  fga_ensure "account:${account_id}#owner@user:${user_id}" \
-    "{\"authorization_model_id\":\"${MODEL_ID}\",\"tuple_key\":{\"user\":\"user:${user_id}\",\"relation\":\"owner\",\"object\":\"account:${account_id}\"}}" \
-    "{\"authorization_model_id\":\"${MODEL_ID}\",\"writes\":{\"tuple_keys\":[{\"user\":\"user:${user_id}\",\"relation\":\"owner\",\"object\":\"account:${account_id}\"}]}}"
+  fga_ensure "user:${user_id}" "owner" "account:${account_id}"
 
-  fga_ensure "iam_user:${user_id}#account@account:${account_id}" \
-    "{\"authorization_model_id\":\"${MODEL_ID}\",\"tuple_key\":{\"user\":\"account:${account_id}\",\"relation\":\"account\",\"object\":\"iam_user:${user_id}\"}}" \
-    "{\"authorization_model_id\":\"${MODEL_ID}\",\"writes\":{\"tuple_keys\":[{\"user\":\"account:${account_id}\",\"relation\":\"account\",\"object\":\"iam_user:${user_id}\"}]}}"
+  fga_ensure "account:${account_id}" "account" "iam_user:${user_id}"
 
-  fga_ensure "iam_user:${user_id}#subject@user:${user_id}" \
-    "{\"authorization_model_id\":\"${MODEL_ID}\",\"tuple_key\":{\"user\":\"user:${user_id}\",\"relation\":\"subject\",\"object\":\"iam_user:${user_id}\"}}" \
-    "{\"authorization_model_id\":\"${MODEL_ID}\",\"writes\":{\"tuple_keys\":[{\"user\":\"user:${user_id}\",\"relation\":\"subject\",\"object\":\"iam_user:${user_id}\"}]}}"
+  fga_ensure "user:${user_id}" "subject" "iam_user:${user_id}"
 
   if [[ -n "$project_id" ]]; then
-    fga_ensure "project:${project_id}#account@account:${account_id}" \
-      "{\"authorization_model_id\":\"${MODEL_ID}\",\"tuple_key\":{\"user\":\"account:${account_id}\",\"relation\":\"account\",\"object\":\"project:${project_id}\"}}" \
-      "{\"authorization_model_id\":\"${MODEL_ID}\",\"writes\":{\"tuple_keys\":[{\"user\":\"account:${account_id}\",\"relation\":\"account\",\"object\":\"project:${project_id}\"}]}}"
+    fga_ensure "account:${account_id}" "account" "project:${project_id}"
   fi
 done <<< "$rows"
 
 echo
-echo "Authz repair complete."
+echo "Authz repair complete: недостающие кортежи поставлены в журнал "
+echo "kacho_iam.fga_outbox; движок и проекция relation_fact догонят его дренажом."
