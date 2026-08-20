@@ -42,8 +42,31 @@ acctA = MATRIX["accountAId"]
 RID = pm.RID
 
 
+def _psql(sql):
+    """Выполнить SQL в базе iam и вернуть вывод. Отказ — ГРОМКИЙ.
+
+    Прежняя редакция звала kubectl и выбрасывала результат: ни кода возврата, ни
+    stderr. Неверное имя пода, отсутствующий контекст, недоступный кластер — всё
+    это выглядело как успешный посев, а обнаруживалось через двадцать минут
+    падением сквозной пробы, которая называла виновником список.
+    """
+    args = ["kubectl", "-n", "kacho", "exec", "kacho-umbrella-pg-iam-0", "-c", "postgresql",
+            "--", "sh", "-c",
+            f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+    r = subprocess.run(args, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit(
+            f"[prodseed_vpc_ext] ОТКАЗ обращения к базе iam (код {r.returncode}).\n"
+            f"  запрос: {sql[:120]}\n"
+            f"  stderr: {r.stderr.strip()[:400]}\n"
+            "Посев пообъектных выдач НЕ состоялся. Дальше идти нельзя: кейсы "
+            "list-filter-d утверждают видимость, которой без этих строк не будет, "
+            "и падение назовёт виновником список, а не посев.")
+    return r.stdout.strip()
+
+
 def fga_write(user, relation, obj):
-    """Insert an FGA owner tuple into iam fga_outbox (drainer materialises it)."""
+    """Записать прямой факт через журнал iam (триггер проецирует его в relation_fact)."""
     sql = (
         "INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at) "
         "SELECT 'fga.tuple.write', "
@@ -51,9 +74,28 @@ def fga_write(user, relation, obj):
         "WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.fga_outbox "
         f"WHERE payload->>'user'='{user}' AND payload->>'relation'='{relation}' AND payload->>'object'='{obj}');"
     )
-    args = ["kubectl", "-n", "kacho", "exec", "kacho-umbrella-pg-iam-0", "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
-    subprocess.run(args, capture_output=True, text=True)
+    _psql(sql)
+
+
+def assert_fact_visible(user, relation, obj):
+    """Утверждать СПОСОБНОСТЬ, а не факт вставки.
+
+    Строка в журнале — это намерение; правом она становится, когда её спроецирует
+    триггер в `relation_fact`, откуда её читает форма вердикта. Проверять надо
+    именно проекцию: журнал, из которого ничего не спроецировалось, выглядит
+    ровно как успешный посев.
+    """
+    otype, _, oid = obj.partition(":")
+    n = _psql(
+        "SELECT count(*) FROM kacho_iam.relation_fact "
+        f"WHERE object_type='{otype}' AND object_id='{oid}' "
+        f"AND relation='{relation}' AND subject='{user}';")
+    if n != "1":
+        raise SystemExit(
+            f"[prodseed_vpc_ext] выдача НЕ материализовалась: {user} {relation} {obj} — "
+            f"строк в relation_fact {n!r}, ожидалась 1.\n"
+            "Журнал принял намерение, но проекции нет — значит право не действует "
+            "ни для одного вопроса, и сквозные кейсы упадут на видимости.")
 
 
 # 1) list-filter project + network + visible/hidden subnets (as bootstrap admin).
@@ -86,7 +128,13 @@ fga_write(f"service_account:{sva_ng}", "viewer", f"project:{lf_proj}")
 fga_write(f"service_account:{sva_sv}", "v_list", f"vpc_subnet:{lf_vis}")
 fga_write(f"service_account:{sva_sv}", "v_get", f"vpc_subnet:{lf_vis}")
 
-time.sleep(3)  # let the drainer materialise the tuples before newman reads
+# Проекция журнала в прямые факты — синхронный триггер, поэтому ждать нечего:
+# ждали здесь три секунды во времена, когда строку уносил дренаж во внешнее
+# хранилище. Вместо ожидания — утверждение: право обязано быть ВИДНО.
+assert_fact_visible(f"service_account:{sva_sv}", "viewer", f"project:{lf_proj}")
+assert_fact_visible(f"service_account:{sva_ng}", "viewer", f"project:{lf_proj}")
+assert_fact_visible(f"service_account:{sva_sv}", "v_list", f"vpc_subnet:{lf_vis}")
+assert_fact_visible(f"service_account:{sva_sv}", "v_get", f"vpc_subnet:{lf_vis}")
 
 print(json.dumps({
     "listFilterProjectId": lf_proj,
