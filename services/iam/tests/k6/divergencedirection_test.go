@@ -43,6 +43,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 const shadowProbeRel = "deploy/load-tests/iam-shadow-divergence-probe.sh"
@@ -100,13 +102,31 @@ func extractShellFunc(t *testing.T, body, name string) string {
 	return body[start : start+end+3]
 }
 
+// repoRootForK6 — корень СВОЕГО дерева.
+//
+// Через [gitenv.Command], а не напрямую: `GIT_DIR` сильнее рабочего каталога,
+// и под ней (то есть внутри любого хука git) `rev-parse --show-toplevel`
+// отвечает про ЧУЖОЙ репозиторий. Наблюдалось дословно: под выставленной
+// `GIT_DIR` команда печатала ПУСТО, корень становился пустой строкой, путь к
+// прибору — относительным, и четыре пробы этого файла объявляли «прибора нет в
+// дереве» — утверждение о продукте, которого никто не делал.
+//
+// Пустой ответ поэтому отвергается отдельно: он означает «репозиторий не
+// определён», а не «корень — текущий каталог». Без этой ветки отказ читался бы
+// как находка о приборе.
 func repoRootForK6(t *testing.T) string {
 	t.Helper()
-	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	out, err := gitenv.Command("", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
 		t.Fatalf("корень дерева не установлен (%v): пробе негде взять прибор", err)
 	}
-	return strings.TrimSpace(string(out))
+	root := strings.TrimSpace(string(out))
+	if root == "" {
+		t.Fatalf("корень дерева пуст: git не определил репозиторий. Это «условие не " +
+			"создано» на стороне пробы, а НЕ находка о приборе — не читай следующий " +
+			"отказ как утверждение о дереве")
+	}
+	return root
 }
 
 // TestR7_4_12_DivergenceIsSplitByDirectionAndByType — R7-4-12.
