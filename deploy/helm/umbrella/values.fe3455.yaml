@@ -163,10 +163,15 @@ pg-vpc:
     # СКАЛЯР, поэтому строка замещается целиком, а не дописывается: повторено
     # всё, включая autovacuum_naptime.
     #
-    # 128MB + 100 × 2MB = 328MiB ≤ 1Gi. Подрезан work_mem: 2MB против 8MB в
-    # боевом профиле — этот кластер вчетверо меньше.
+    # 128MB + 210 × 2MB = 548MiB ≤ 1Gi.
+    #
+    # max_connections = 210 оставлен как в боевом профиле НАМЕРЕННО: пул службы
+    # (200 на реплику) объявлен осознанно и здесь не режется, а PostgreSQL
+    # резервирует 3 соединения суперпользователю. Умолчание сборки (100) пул не
+    # вмещало — deploy/pool_fits_database_test.go это и находил (#762).
+    # Подрезан вместо этого work_mem: 2MB против 8MB в боевом профиле.
     extendedConfiguration: |
-      max_connections = 100
+      max_connections = 210
       shared_buffers = 128MB
       work_mem = 2MB
       effective_cache_size = 512MB
