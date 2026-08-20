@@ -35,7 +35,6 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
-	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 )
 
 const nlbOutboxTbl = "kacho_nlb.fga_register_outbox"
@@ -58,13 +57,12 @@ func Test_1_4_30_ReconcilerRedrivesPoisoned(t *testing.T) {
 		   WHERE resource_id = 'nlb-redrive'`)
 	require.NoError(t, err)
 
-	ad := kachopg.NewFGAReconcileAdapter(tc.Pool, nlbOutboxTbl)
-	rc, err := reconciler.New(tc.Pool, reconciler.Config{
+	rc, err := reconciler.NewRedriveOnly(tc.Pool, reconciler.Config{
 		PartitionColumn: reconciler.RegisterOutboxPartition,
 		Table:           nlbOutboxTbl,
 		Channel:         "kacho_nlb_fga_register_outbox",
 		MaxAttempts:     10,
-	}, reconciler.Adapters{Enumerator: ad, Registry: ad}, nil)
+	}, nil)
 	require.NoError(t, err)
 
 	n, err := rc.RedrivePoisoned(ctx)

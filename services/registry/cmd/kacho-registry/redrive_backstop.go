@@ -44,9 +44,11 @@ const (
 // безвозвратной потери. Постоянная причина отравится снова — и будет видна как
 // повторяющееся отравление, а не как тишина.
 //
-// Только redrive: BackfillFromState/GCOrphans переигрывают corelib-фиксированный
-// payload, который декодер registry не прочитает, поэтому reconciler строится
-// NewRedriveOnly — без доменных адаптеров, которых здесь не будет.
+// Возврат отравленных — единственный проход backstop'а. Здесь стояла оговорка,
+// почему НЕ запускаются два прохода сверки с состоянием: они переигрывали
+// corelib-фиксированный payload, который декодер registry не прочитает. Оговорка
+// пережила свой предмет — оба прохода сняты из corelib (#760), их предикаты
+// были недостижимы by construction.
 func startRedriveBackstop(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error {
 	rc, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
 		PartitionColumn: reconciler.RegisterOutboxPartition,
