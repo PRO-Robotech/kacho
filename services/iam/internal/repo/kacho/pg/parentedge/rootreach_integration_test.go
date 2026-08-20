@@ -58,12 +58,20 @@ import (
 )
 
 // seedTenantRows кладёт арендную обвязку НАСТОЯЩИМИ строками: аккаунт,
-// пользователя-владельца и проект.
+// пользователя-владельца и проект — И указатель проекта на аккаунт В ЖУРНАЛ.
 //
-// Именно они и есть предмет достройки: предок проекта — его аккаунт
-// (`projects.account_id`), предок аккаунта — кластер (синглтон, посеянный
-// миграцией 0001). Фикстура, обходящая внешние ключи, доказывала бы работу
-// представления на данных, которых в проде не бывает.
+// Звенья достройки берутся из РАЗНЫХ источников, и фикстура обязана повторять
+// оба (#781): предок аккаунта — синглтон `clusters` (схема; аккаунты сеются
+// миграциями, указателя в журнале у них нет), предок проекта — проекция журнала
+// `relation_fact`, куда его со-коммитит `Project.Create` в одной транзакции со
+// строкой `projects`.
+//
+// Прежняя редакция писала ТОЛЬКО строку состояния проекта. Пока цепь брала
+// предка оттуда, этого хватало; теперь такая фикстура строила бы проект, о
+// котором движок отношений не знает, — состояние, которого продукт не
+// производит, и гейт судил бы не то дерево. Фикстура, обходящая внешние ключи
+// или производителя, доказывала бы работу представления на данных, которых в
+// проде не бывает.
 func seedTenantRows(t *testing.T, pool *pgxpool.Pool, accountID string, projectIDs ...string) {
 	t.Helper()
 	ctx := context.Background()
@@ -92,6 +100,29 @@ func seedTenantRows(t *testing.T, pool *pgxpool.Pool, accountID string, projectI
 			`INSERT INTO kacho_iam.projects (id, account_id, name) VALUES ($1, $2, $3)`,
 			prj, accountID, fmt.Sprintf("prj-name-%d", i)); err != nil {
 			t.Fatalf("посев проекта %s: %v", prj, err)
+		}
+		// Тот же со-коммит, что делает продукт: строка журнала, из которой
+		// триггер 0098 наполняет проекцию. Применение проверяется числом —
+		// молча не спроецировавшаяся строка оставила бы гейт зелёным ни на чём.
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
+			 VALUES ('fga.tuple.write',
+			         jsonb_build_object('user', 'account:' || $1::text,
+			                            'relation', 'account',
+			                            'object', 'project:' || $2::text),
+			         now())`, accountID, prj); err != nil {
+			t.Fatalf("со-коммит указателя проекта %s в журнал: %v", prj, err)
+		}
+		var landed int
+		if err := tx.QueryRow(ctx,
+			`SELECT count(*)::int FROM kacho_iam.relation_fact
+			  WHERE object_type = 'project' AND object_id = $1 AND relation = 'account'`,
+			prj).Scan(&landed); err != nil {
+			t.Fatalf("перепись проекции журнала для %s: %v", prj, err)
+		}
+		if landed != 1 {
+			t.Fatalf("указатель проекта %s не спроецировался в relation_fact (найдено %d): "+
+				"фикстура ничего не посеяла", prj, landed)
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
