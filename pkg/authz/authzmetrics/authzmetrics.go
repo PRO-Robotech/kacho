@@ -46,7 +46,7 @@
 package authzmetrics
 
 import (
-	"sort"
+	"strconv"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -164,7 +164,6 @@ func (s *Source) Cache() authz.CacheStats { return s.Read().Cache }
 
 // Collector — коллектор величин окон вердиктов одного процесса.
 type Collector struct {
-	lanes         []string // отсортированы: порядок сбора не зависит от обхода карты
 	read          map[string]Reader
 	decisions     DecisionReader
 	cacheDesc     *prometheus.Desc
@@ -182,6 +181,18 @@ type Collector struct {
 func New(service string, lanes map[string]Reader, decisions DecisionReader) *Collector {
 	if decisions == nil {
 		decisions = func() authz.Metrics { return authz.Metrics{} }
+	}
+	// Полоса вне словаря — ОТКАЗ, а не пропуск. Пропуск был бы «принято и
+	// проигнорировано»: корень объявил окно, коллектор его молча выбросил, и
+	// величины не выходят наружу ровно так же, как до этой работы. Зовётся из
+	// композиционного корня, то есть падает на старте, а не в обслуживании.
+	for lane := range lanes {
+		if lane != LaneRPC && lane != LaneList {
+			panic("authzmetrics: неизвестная полоса окна вердиктов " + strconv.Quote(lane) +
+				": словарь полос закрыт (" + LaneRPC + ", " + LaneList + "). Метка, взятая из " +
+				"данных, превращает счётчик в перечень арендаторов — серий становится столько же, " +
+				"сколько обслужено")
+		}
 	}
 	c := &Collector{
 		read:      make(map[string]Reader, len(lanes)),
@@ -216,9 +227,7 @@ func New(service string, lanes map[string]Reader, decisions DecisionReader) *Col
 			read = func() authz.CacheStats { return authz.CacheStats{} }
 		}
 		c.read[lane] = read
-		c.lanes = append(c.lanes, lane)
 	}
-	sort.Strings(c.lanes)
 	return c
 }
 
@@ -234,8 +243,19 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect отдаёт все объявленные серии, включая нулевые.
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
-	for _, lane := range c.lanes {
-		s := c.read[lane]()
+	// Обход ЛИТЕРАЛЬНОГО набора, ключи которого — константы этого файла: значение
+	// метки полосы не может прийти из данных даже теоретически, и это же читает
+	// гейт дерева `TestDiagnosticCollectorLabelsAreAClosedVocabulary`. Полоса,
+	// которую вызывающий не объявил, не рисуется вовсе — иначе экспозиция
+	// утверждала бы существование окна, которого в этом процессе нет.
+	for lane, read := range map[string]Reader{
+		LaneRPC:  c.read[LaneRPC],
+		LaneList: c.read[LaneList],
+	} {
+		if read == nil {
+			continue
+		}
+		s := read()
 		// Обход ЛИТЕРАЛЬНЫХ наборов, ключи которых — константы этого файла:
 		// словари меток закрыты по построению, и это же читает гейт дерева
 		// `TestDiagnosticCollectorLabelsAreAClosedVocabulary`.

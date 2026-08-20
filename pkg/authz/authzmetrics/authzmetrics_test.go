@@ -249,3 +249,50 @@ func TestUninstalledDecisionsAnswerZero(t *testing.T) {
 		map[string]authzmetrics.Reader{authzmetrics.LaneRPC: nil}, nil)),
 		`kacho_nlb_authz_check_decisions_total{decision="unmapped"} 0`)
 }
+
+// TestUnknownLaneIsRefusedAtWiring — словарь полос закрыт ПО ПОСТРОЕНИЮ.
+//
+// Молчаливый пропуск неизвестной полосы был бы «принято и проигнорировано»:
+// корень объявил окно, коллектор его выбросил, и величины не выходят наружу
+// ровно так же, как если бы провязки не было. Отказ случается в композиционном
+// корне, то есть на старте, а не в обслуживании.
+func TestUnknownLaneIsRefusedAtWiring(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("неизвестная полоса принята — метка полосы приходит из данных, " +
+				"и число серий растёт с числом обслуженных арендаторов")
+		}
+		if msg, _ := r.(string); !strings.Contains(msg, "tenant-42") {
+			t.Fatalf("отказ не называет полосу, по нему нечего чинить: %v", r)
+		}
+	}()
+	_ = authzmetrics.New("vpc", map[string]authzmetrics.Reader{"tenant-42": nil}, nil)
+}
+
+// TestKnownLanesAreAccepted — законный близнец того же вызова.
+//
+// Без него предыдущая проба была бы неотличима от конструктора, отвергающего
+// всё подряд.
+func TestKnownLanesAreAccepted(t *testing.T) {
+	body := expose(t, authzmetrics.New("registry", map[string]authzmetrics.Reader{
+		authzmetrics.LaneRPC:  nil,
+		authzmetrics.LaneList: nil,
+	}, nil))
+	mustContain(t, body, `kacho_registry_authz_cache_total{lane="rpc",result="hit"} 0`)
+	mustContain(t, body, `kacho_registry_authz_cache_total{lane="list",result="hit"} 0`)
+}
+
+// TestUndeclaredLaneIsNotDrawn — полоса, которой в процессе нет, не рисуется.
+//
+// Нули по необъявленной полосе утверждали бы существование окна, которого нет,
+// и «второго кеша не завели» стало бы неотличимо от «второй кеш не попадает».
+func TestUndeclaredLaneIsNotDrawn(t *testing.T) {
+	body := expose(t, authzmetrics.New("geo", map[string]authzmetrics.Reader{
+		authzmetrics.LaneRPC: nil,
+	}, nil))
+	if strings.Contains(body, `lane="list"`) {
+		t.Fatalf("нарисована полоса, которую никто не объявлял:\n%s", body)
+	}
+	mustContain(t, body, `kacho_geo_authz_cache_total{lane="rpc",result="miss"} 0`)
+}
