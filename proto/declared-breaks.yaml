@@ -45,59 +45,7 @@
 # Проверяет: tools/declaredbreak (cmd/adjudicate-declared-breaks), шаг конвейера
 # «adjudicate breaking (vs main)».
 
-# Семь записей kacho#788 — снятие двух административных дверей в хранилище отношений.
-#
-# Предмет один на все семь: `InternalAuthorizeService.WriteTuples` и
-# `InternalIAMService.WriteCreatorTuple` писали кортёж НАПРЯМУЮ, мимо журнала
-# `kacho_iam.fga_outbox`, на котором стоит проекция `relation_fact` (инвариант
-# миграции 0098). Вызывающих не было ни у одной: соседи ушли на `RegisterResource`.
-# Терминальный исход — снять, а не переводить на журнал: перевод дал бы работу без
-# выгодоприобретателя, а дверь без пользователя, но с доступом на запись, — это
-# открытый вход, а не мёртвый код.
-#
-# Резервировать нечего: protobuf не знает `reserved` ни для методов сервиса, ни для
-# имён сообщений верхнего уровня. Имена держит надгробие — перепись
-# `internal/repohygiene` `retiredRPCSurface` (она читает контракт, стабы и ОБЕ копии
-# каталога прав) плюс комментарии-надгробия в самих `.proto`.
-#
-# Записи живут от объявления до вливания этой ветки в ствол: после него база сравнения
-# поднимется, находок не станет, и адъюдикация назовёт их истёкшими поимённо.
-declared:
-  - rule: RPC_NO_DELETE
-    path: kacho/cloud/iam/v1/internal_authorize_service.proto
-    symbol: WriteTuples
-    reason: административная запись набора кортежей мимо журнала; вызывающих ноль
-    issue: kacho#788
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/iam/v1/internal_authorize_service.proto
-    symbol: WriteTuplesRequest
-    reason: вход снятого RPC WriteTuples; других читателей у сообщения нет
-    issue: kacho#788
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/iam/v1/internal_authorize_service.proto
-    symbol: WriteTuplesMetadata
-    reason: метаданные операции снятого RPC WriteTuples
-    issue: kacho#788
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/iam/v1/internal_authorize_service.proto
-    symbol: WriteTuplesResult
-    reason: результат операции снятого RPC WriteTuples
-    issue: kacho#788
-  - rule: RPC_NO_DELETE
-    path: kacho/cloud/iam/v1/internal_iam_service.proto
-    symbol: WriteCreatorTuple
-    reason: синхронная запись кортежа создателя мимо журнала; вызывающих ноль
-    issue: kacho#788
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/iam/v1/internal_iam_service.proto
-    symbol: WriteCreatorTupleRequest
-    reason: вход снятого RPC WriteCreatorTuple
-    issue: kacho#788
-  - rule: MESSAGE_NO_DELETE
-    path: kacho/cloud/iam/v1/internal_iam_service.proto
-    symbol: WriteCreatorTupleResponse
-    reason: пустой ответ снятого RPC WriteCreatorTuple
-    issue: kacho#788
+declared: []
 
 # ИСТОРИЯ ПЕРЕЧНЯ — почему его нормальное состояние ПУСТО.
 #
@@ -106,8 +54,8 @@ declared:
 # сравнения поднялась, `buf breaking` их больше не показывает — находок 0, — и
 # адъюдикация обязана краснеть исходом «послабление истекло».
 #
-# КЛАСС ПОВТОРЯЛСЯ ПЯТЬ РАЗ: 21 запись (kacho#246), 2 (kacho#231), 4 (kacho#296),
-# 9 (kacho#400), 8 (kacho#716). Каждый раз предмет истекал в момент ВЛИВАНИЯ накопительной ветки в
+# КЛАСС ПОВТОРЯЛСЯ ШЕСТЬ РАЗ: 21 запись (kacho#246), 2 (kacho#231), 4 (kacho#296),
+# 9 (kacho#400), 8 (kacho#716), 7 (kacho#788). Каждый раз предмет истекал в момент ВЛИВАНИЯ накопительной ветки в
 # ствол, а не в момент правки контракта, — поэтому прежнее требование шапки «снимать
 # запись ТЕМ ЖЕ изменением, которое поднимает базу» было буквально невыполнимо:
 # изменение контракта и подъём базы разнесены во времени и делаются разными
@@ -123,3 +71,9 @@ declared:
 # обнаруживается там, где происходит, и чинится один раз в стволе, а не каждым PR по
 # очереди. Предикат, по которому это проверяется наблюдением: пять последовательных
 # вливаний, и ни один PR не получает красное «послабление истекло» по чужому предмету.
+#
+# ШЕСТОЙ РАЗ (kacho#788, семь записей) предикат наблюдения НЕ ВЫДЕРЖАЛ: истечение
+# наступило при вливании «второй волны ролевой модели» в ствол, шаг на push его назвал —
+# и остался неубранным, поэтому красное досталось постороннему PR той же линии, как и
+# прежде. Обнаружение работает; чинит его по-прежнему тот, кто наткнулся. Значит
+# недостаёт не шага, а того, чтобы вливающий ствол снимал истёкшее ТЕМ ЖЕ заходом.

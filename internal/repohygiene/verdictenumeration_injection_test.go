@@ -120,3 +120,29 @@ func TestG6SilentOnTheSameReadOnceBound(t *testing.T) {
 		t.Logf("близнец «%s»: находок 0 (чтений %d, привязано %d)", tw.name, c.reads, c.bounded)
 	}
 }
+
+// TestVerdictEnumerationLateralRuleAddsOnlyWhatIsAnchorByConstruction — контроль
+// в обе стороны для правила, заведённого вместе с #758.
+//
+// Правило добавляет в якоря соединение вбок, НЕ ЧИТАЮЩЕЕ таблиц схемы. Без
+// второго плеча оно было бы послаблением: соединение вбок, которое таблицу
+// читает, обязано по-прежнему судиться как чтение — иначе обход цепи областей
+// (он устроен ровно так) выпал бы из-под гейта целиком.
+func TestVerdictEnumerationLateralRuleAddsOnlyWhatIsAnchorByConstruction(t *testing.T) {
+	readsATable := "SELECT 1 FROM x CROSS JOIN LATERAL (\n" +
+		"  SELECT pe.parent_type FROM kacho_iam.resource_scope_edge pe\n" +
+		"   WHERE pe.object_type = s.s_type) e"
+	if got := computedLateralAliasesOf(readsATable); len(got) != 0 {
+		t.Fatalf("соединение вбок, ЧИТАЮЩЕЕ таблицу схемы, попало в якоря (%v): гейт перестал бы "+
+			"судить обход цепи областей, устроенный ровно так", got)
+	}
+
+	computesOnly := "SELECT 1 FROM x CROSS JOIN LATERAL (\n" +
+		"  SELECT substr(x.subject, 7) AS body WHERE x.subject LIKE 'group:%') group_write"
+	got := computedLateralAliasesOf(computesOnly)
+	if len(got) != 1 || got[0] != "group_write" {
+		t.Fatalf("вычисленное соединение вбок якорем НЕ стало (%v): правило не работает, и первый "+
+			"же экземпляр новой формы получил бы ложную находку", got)
+	}
+	t.Logf("плечи правила: читающее вбок — якорем не стало; вычисленное — стало (%s)", got[0])
+}
