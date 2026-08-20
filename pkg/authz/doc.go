@@ -1,8 +1,15 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package authz реализует REBAC-based authorization для backend-сервисов
-// Kachō (kacho-vpc / kacho-compute / kacho-loadbalancer / kacho-iam).
+// Package authz реализует REBAC-based authorization для backend-сервисов Kachō.
+//
+// Потребителей ШЕСТЬ — vpc, nlb, compute, storage, geo, registry, — и каждый
+// получает звено через носитель контура (`pkg/servicehost`). Здесь стоял
+// перечень из четырёх имён, включавший **iam**: он неверен и был неверен в ту
+// сторону, в которую ошибаться дороже всего — читатель искал бы у владельца
+// модели кеш вердиктов, которого там нет. Предикат:
+// `git grep -l "kacho/pkg/authz\"" -- services/iam` → пусто; iam решает у себя
+// и этот пакет не импортирует.
 //
 // # Архитектура
 //
@@ -88,4 +95,24 @@
 //   - check_client.go     — port-интерфейс CheckClient + composition helper
 //   - rate_limiter.go     — token-bucket per-Principal на denied-storm
 //   - listen_invalidate.go — pgx LISTEN-loop, инвалидирующий cache на NOTIFY
+//   - authzmetrics/        — коллектор величин звена и его окна вердиктов
+//
+// # Наблюдаемость
+//
+// `Interceptor.Metrics` отдаёт снимок величин звена ВМЕСТЕ с величинами окна
+// вердиктов (`Metrics.Cache`), а `authzmetrics` превращает их в серии
+// `kacho_<сервис>_authz_cache_total{lane,result}`,
+// `kacho_<сервис>_authz_cache_entries{lane}`,
+// `kacho_<сервис>_authz_cache_evictions_total{lane,reason}` и
+// `kacho_<сервис>_authz_check_decisions_total{decision}` — однородные с краем.
+//
+// Величины ОКНА считает само окно (`Cache.Stats`), а не звено: у звена нет ни
+// истечения записи, ни давления потолка, ни снятия, поэтому второй счётчик
+// попаданий рядом со звеном разошёлся бы с первым молча.
+//
+// Провязку держат два места, и оба обязательны: поле `AuthzObserve`
+// дескриптора (без него носитель отказывает в старте) и обход дерева
+// `internal/repohygiene.TestEveryCarrierServiceExportsItsVerdictCacheHitRate`
+// (сервис у носителя обязан строить коллектор). Первое ловит незаполненное
+// поле, второе — заполненное заглушкой.
 package authz

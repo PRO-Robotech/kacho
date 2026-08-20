@@ -35,6 +35,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
@@ -249,7 +250,17 @@ func runServe(cfg config.Config) error {
 	// положительная и три — страница, ушедшая БЕЗ пообъектной проверки. Снимите
 	// эту строку — и полосы исчезнут с поверхности, а не станут нулями; ровно это
 	// ловит гейт дерева `TestEveryListNarrowConsumerRegistersItsCollector`.
+	var authzCache authzmetrics.Source
 	metricsAdapter.RegisterListNarrow(func() listnarrow.Counts { return listFilter.Counts() })
+	// Доля попаданий кеша положительных вердиктов. Источник устанавливается ПОЗЖЕ
+	// — кеш строит носитель контура, — поэтому коллектор регистрируется сейчас и
+	// до установки отвечает нулями: исчезновение серий на это окно сообщило бы
+	// собирателю не «попаданий не было», а ничего.
+	//
+	// Полоса одна: второго кеша вердиктов в этом процессе нет.
+	metricsAdapter.RegisterAuthzCache(map[string]authzmetrics.Reader{
+		authzmetrics.LaneRPC: authzCache.Cache,
+	}, authzCache.Read)
 
 	// ── объявление о себе ─────────────────────────────────────────────────────
 	//
@@ -257,7 +268,7 @@ func runServe(cfg config.Config) error {
 	// что порт сверки существования живёт НА пуле, и принести его раньше значило бы
 	// принести порт, отвечающий «соединения нет». Открытие пула обратимо (`defer`
 	// выше) и дешевле ложной сверки.
-	desc, err := describe(cfg, logger, listFilter, bootGate, repo.NewExistenceProbe(pool))
+	desc, err := describe(cfg, logger, listFilter, bootGate, repo.NewExistenceProbe(pool), authzCache.Install)
 	if err != nil {
 		return err
 	}

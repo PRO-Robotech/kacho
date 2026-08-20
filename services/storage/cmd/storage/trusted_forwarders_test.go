@@ -107,7 +107,7 @@ func listenerChain(t *testing.T, cfg config.Config) grpc.UnaryServerInterceptor 
 	t.Helper()
 	cfg.AuthMode = "dev"
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	desc, err := describe(cfg, logger, buildListFilter(cfg, nil, logger), probeExistence{})
+	desc, err := describe(cfg, logger, buildListFilter(cfg, nil, logger), probeExistence{}, probeAuthzObserve)
 	if err != nil {
 		t.Fatalf("дескриптор не принят — круг до цепочки не доедет вовсе: %v", err)
 	}

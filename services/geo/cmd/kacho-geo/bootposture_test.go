@@ -107,9 +107,13 @@ func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	if call < 0 {
 		t.Fatal("composition root must emit the posture line: observability.LogBootPosture(logger, bootPosture(…))")
 	}
-	accepted := strings.Index(root, "describe(cfg, logger)")
+	// Якорь — ИМЯ вызова, а не его полный список аргументов. Полный список
+	// делал бы гейт проверкой написания: добавление законного порта роняло бы
+	// его на неизменившемся ПОРЯДКЕ, который он и стережёт (так и случилось —
+	// приёмник величин кеша вердиктов приехал седьмым аргументом).
+	accepted := strings.Index(root, "describe(cfg, logger")
 	if accepted < 0 || call < accepted {
-		t.Fatal("posture line must be emitted AFTER the descriptor was accepted (describe(cfg, logger)) — " +
+		t.Fatal("posture line must be emitted AFTER the descriptor was accepted (describe(cfg, logger…)) — " +
 			"a posture reported before it was accepted states an intent, not an outcome")
 	}
 	listener := strings.Index(root, "servicehost.Serve(")

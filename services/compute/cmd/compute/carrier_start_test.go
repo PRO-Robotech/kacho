@@ -29,6 +29,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 )
@@ -76,8 +77,16 @@ func TestCarrierCensusIsNotEmptyForCompute(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&log, nil))
 
 	cfg := describeCfg()
+	// Приёмник величин кеша вердиктов — НАСТОЯЩИЙ, а не заглушка: предмет здесь
+	// не «поле заполнено», а «носитель позвал приёмник И отдал читателя того
+	// кеша, который спрашивает звено». Проба, принимающая заглушку, осталась бы
+	// зелёной на носителе, который приёмник не зовёт вовсе.
+	var authzCacheReader func() authz.Metrics
+	observeAuthzCache := func(read func() authz.Metrics) { authzCacheReader = read }
+
 	desc, err := describe(cfg, logger, buildListFilter(cfg, nil, logger),
-		bootgate.New(bootgate.Config{RequireIAM: cfg.RequireIAM, Service: "kacho-compute"}), probeExistence{})
+		bootgate.New(bootgate.Config{RequireIAM: cfg.RequireIAM, Service: "kacho-compute"}), probeExistence{},
+		observeAuthzCache)
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
@@ -86,6 +95,17 @@ func TestCarrierCensusIsNotEmptyForCompute(t *testing.T) {
 	cancel()
 	regs := registrarsOfBothListeners()
 	_ = servicehost.Serve(ctx, desc, regs[0], regs[1])
+
+	// Величины кеша вердиктов вышли из процесса: без этого доля попаданий не
+	// наблюдается, и «кеш не попадает ни разу» снаружи неотличимо от «кеш
+	// поглощает весь поток».
+	if authzCacheReader == nil {
+		t.Fatal("носитель не отдал читателя величин кеша положительных вердиктов — " +
+			"доля попаданий не выходит из процесса")
+	}
+	if s := authzCacheReader().Cache; s.Hits != 0 || s.Misses != 0 {
+		t.Fatalf("до первого вызова окно вердиктов не спрашивали, а счётчики не нулевые: %+v", s)
+	}
 
 	census := log.String()
 	if strings.Contains(census, "методов 0") {

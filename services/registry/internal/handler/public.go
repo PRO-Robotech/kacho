@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
+	kachoauthz "github.com/PRO-Robotech/kacho/pkg/authz"
 
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
@@ -29,6 +30,9 @@ type RegistryHandler struct {
 	registryv1.UnimplementedRegistryServiceServer
 	uc    *registry.UseCase
 	authz repoAuthz
+	// verdictCache — читатель величин кеша вердиктов прямого пути; nil, когда
+	// кеша нет вовсе (срок жизни записи не задан).
+	verdictCache func() kachoauthz.CacheStats
 }
 
 // NewRegistryHandler конструирует RegistryHandler. authz — per-repo Check-порт для
@@ -38,7 +42,29 @@ type RegistryHandler struct {
 // шёл отдельным вопросом к общему хранилищу прав, тогда как у интерсептора такой кеш
 // есть с самого начала. Ноль → кеша нет (каждый вопрос живой).
 func NewRegistryHandler(uc *registry.UseCase, authz Authorizer, verdictTTL time.Duration) *RegistryHandler {
-	return &RegistryHandler{uc: uc, authz: newRepoAuthz(newCachedAuthorizer(authz, verdictTTL))}
+	cached := newCachedAuthorizer(authz, verdictTTL)
+	h := &RegistryHandler{uc: uc, authz: newRepoAuthz(cached)}
+	if s, ok := cached.(interface{ Stats() kachoauthz.CacheStats }); ok {
+		h.verdictCache = s.Stats
+	}
+	return h
+}
+
+// VerdictCacheStats — величины окна вердиктов ПРЯМОГО пути опроса страницы.
+//
+// Отдаются наружу затем, что у процесса ДВА кеша положительных вердиктов: окно
+// звена решения (вопрос на вызов) и это (вопрос на КАЖДЫЙ элемент страницы, а
+// страница контрактно бывает до тысячи). Не выставив второе, корень выставил бы
+// долю попаданий того окна, через которое проходит меньшая часть вопросов, —
+// и число читалось бы как ответ про оба.
+//
+// Кеша нет (ноль срока → обёртки нет) ⇒ нули: «окна не завели» и «окно не
+// попадает» тогда различает соседняя серия размера, а не пропажа семейства.
+func (h *RegistryHandler) VerdictCacheStats() kachoauthz.CacheStats {
+	if h == nil || h.verdictCache == nil {
+		return kachoauthz.CacheStats{}
+	}
+	return h.verdictCache()
 }
 
 // Get возвращает Registry по id (sync).

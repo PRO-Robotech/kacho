@@ -33,6 +33,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
@@ -91,7 +92,7 @@ func probeGate() *bootgate.Gate {
 // пока он красный, процесс не поднимается вовсе, а всякое отрицание ниже зеленеет
 // по чужой причине.
 func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
-	desc, err := describe(bootConfig(t, nil), quietLogger(), probeNarrower(), probeGate(), probeExistence{})
+	desc, err := describe(bootConfig(t, nil), quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve)
 	if err != nil {
 		t.Fatalf("дескриптор kacho-nlb отвергнут конструктором — процесс НЕ ПОДНИМЕТСЯ:\n%v", err)
 	}
@@ -158,7 +159,7 @@ func TestDescribeProbeCanFail(t *testing.T) {
 		"KACHO_NLB_EXTAPI__IAM__INTERNAL_ADDR": "",
 		"KACHO_NLB_EXTAPI__IAM__ADDR":          "",
 	})
-	_, err := describe(cfg, quietLogger(), probeNarrower(), probeGate(), probeExistence{})
+	_, err := describe(cfg, quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve)
 	if err == nil {
 		t.Fatal("дескриптор без ребра решения о доступе принят — конструктор не судит ничего, " +
 			"и положительная проба выше вакуумна")
@@ -182,7 +183,7 @@ func TestDescribeProbeCanFail(t *testing.T) {
 // носителю знать неоткуда: КАКОЙ круг приносит этот сервис — и что пустой он
 // принести не вправе.
 func TestDeclaredCircleIsTheOneTheProcessCarries(t *testing.T) {
-	desc, err := describe(bootConfig(t, nil), quietLogger(), probeNarrower(), probeGate(), probeExistence{})
+	desc, err := describe(bootConfig(t, nil), quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve)
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
@@ -229,7 +230,7 @@ func TestCarrierRaisesTheService(t *testing.T) {
 		"KACHO_NLB_API_SERVER__ENDPOINT":          "tcp://127.0.0.1:0",
 		"KACHO_NLB_API_SERVER__INTERNAL_ENDPOINT": "tcp://127.0.0.1:0",
 	})
-	desc, err := describe(cfg, quietLogger(), probeNarrower(), probeGate(), probeExistence{})
+	desc, err := describe(cfg, quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve)
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
@@ -270,3 +271,11 @@ type probeExistence struct{}
 func (probeExistence) ObjectExists(context.Context, string, string) (bool, error) {
 	return false, nil
 }
+
+// probeAuthzObserve — приёмник величин кеша вердиктов для проб КОНСТРУКТОРА.
+//
+// Заглушка здесь законна: предмет этих проб — что судит конструктор дескриптора,
+// а не куда уезжают величины. Настоящий приёмник, чей вызов носителем
+// утверждается, стоит в пробе подъёма (`carrier_start_test.go`): там его пропажа
+// красит пробу, здесь — не может по построению.
+func probeAuthzObserve(func() authz.Metrics) {}

@@ -166,12 +166,22 @@ func decisionLink(spec servicecontract.Spec, m authz.RPCMap) (*authz.Interceptor
 		opts.DenyRateLimitPerSec = budget
 	}
 
+	// Величины кеша уходят корню ДО того, как звено начнёт отвечать: приёмник
+	// объявлен полем дескриптора и потому не может быть забыт (О12). Отдаётся
+	// ЧИТАТЕЛЬ, а не кеш: наблюдающему нужны числа, а не право снять запись.
+	observe := func(intr *authz.Interceptor) *authz.Interceptor {
+		if spec.AuthzObserve != nil {
+			spec.AuthzObserve(intr.Metrics)
+		}
+		return intr
+	}
+
 	switch spec.Authz {
 	case servicecontract.AuthzSelf:
 		// Владелец модели решает у себя: клиента приносит он сам, ребра к себе
 		// не бывает. Порт непуст — это проверил конструктор дескриптора.
 		opts.Client = withExistenceHiding(spec, m, spec.SelfCheck)
-		return authz.NewInterceptor(opts), nil, nil
+		return observe(authz.NewInterceptor(opts)), nil, nil
 
 	case servicecontract.AuthzViaIAM:
 		conn, err := grpc.NewClient(spec.CheckEdge.Addr(),
@@ -183,7 +193,7 @@ func decisionLink(spec servicecontract.Spec, m authz.RPCMap) (*authz.Interceptor
 		}
 		opts.Client = withExistenceHiding(spec, m,
 			&iamCheckClient{cli: iamv1.NewInternalIAMServiceClient(conn)})
-		return authz.NewInterceptor(opts), func() { _ = conn.Close() }, nil
+		return observe(authz.NewInterceptor(opts)), func() { _ = conn.Close() }, nil
 
 	default:
 		// Недостижимо: конструктор дескриптора отвергает незаполненный источник.

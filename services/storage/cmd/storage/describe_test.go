@@ -44,6 +44,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
@@ -91,7 +92,7 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 func describeWith(t *testing.T, cfg config.Config) (servicecontract.Descriptor, error) {
 	t.Helper()
 	log := discard()
-	return describe(cfg, log, buildListFilter(cfg, nil, log), probeExistence{})
+	return describe(cfg, log, buildListFilter(cfg, nil, log), probeExistence{}, probeAuthzObserve)
 }
 
 // TestDescribeIsAcceptedByTheConstructor — ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ, и он первым:
@@ -177,7 +178,7 @@ func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
 func TestJournalOfThisProcessGoesToItsOwnLogger(t *testing.T) {
 	mine := discard()
 	cfg := bootConfig(t, nil)
-	desc, err := describe(cfg, mine, buildListFilter(cfg, nil, mine), probeExistence{})
+	desc, err := describe(cfg, mine, buildListFilter(cfg, nil, mine), probeExistence{}, probeAuthzObserve)
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
@@ -514,3 +515,11 @@ type probeExistence struct{}
 func (probeExistence) ObjectExists(context.Context, string, string) (bool, error) {
 	return false, nil
 }
+
+// probeAuthzObserve — приёмник величин кеша вердиктов для проб КОНСТРУКТОРА.
+//
+// Заглушка здесь законна: предмет этих проб — что судит конструктор дескриптора,
+// а не куда уезжают величины. Настоящий приёмник, чей вызов носителем
+// утверждается, стоит в пробе подъёма (`carrier_start_test.go`): там его пропажа
+// красит пробу, здесь — не может по построению.
+func probeAuthzObserve(func() authz.Metrics) {}

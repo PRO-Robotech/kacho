@@ -20,6 +20,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
@@ -394,6 +395,17 @@ func runServe(cfg config.Config) error {
 	// ловит гейт дерева `TestEveryListNarrowConsumerRegistersItsCollector`.
 	metricsAdapter.RegisterListNarrow(func() listnarrow.Counts { return listFilter.Counts() })
 
+	// Доля попаданий кеша положительных вердиктов. Источник устанавливается ПОЗЖЕ
+	// — кеш строит носитель контура, — поэтому коллектор регистрируется сейчас и
+	// до установки отвечает нулями: исчезновение серий на это окно сообщило бы
+	// собирателю не «попаданий не было», а ничего.
+	//
+	// Полоса одна: второго кеша вердиктов в этом процессе нет.
+	var authzCache authzmetrics.Source
+	metricsAdapter.RegisterAuthzCache(map[string]authzmetrics.Reader{
+		authzmetrics.LaneRPC: authzCache.Cache,
+	}, authzCache.Read)
+
 	// Sync-primary owner-tuple registrar (Decision 2): create-flow синхронно
 	// регистрирует owner-tuple в kacho-iam после commit — грант доступен сразу, без
 	// гонки с async register-drainer'ом. Тот же iam-internal endpoint :9091 +
@@ -474,7 +486,7 @@ func runServe(cfg config.Config) error {
 	// поэтому его отказ обязан наступить раньше, чем процесс поднимет дренаж
 	// регистраций и соседние соединения. Открытие пула обратимо (defer выше) и
 	// дешевле ложной сверки существования — это единственное, что стоит перед ним.
-	desc, err := describe(cfg, mtlsCfg, logger, listFilter, bootGate, kachopg.NewExistenceProbe(pool))
+	desc, err := describe(cfg, mtlsCfg, logger, listFilter, bootGate, kachopg.NewExistenceProbe(pool), authzCache.Install)
 	if err != nil {
 		return fmt.Errorf("describe kacho-vpc: %w", err)
 	}

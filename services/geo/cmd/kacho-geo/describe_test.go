@@ -33,6 +33,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	region "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/region"
 	zone "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/zone"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/config"
@@ -70,7 +71,7 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 // пока он красный, процесс не поднимается вовсе, а всякое отрицание ниже
 // зеленеет по чужой причине.
 func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
-	desc, err := describe(bootConfig(t, nil), slog.New(slog.NewTextHandler(&strings.Builder{}, nil)))
+	desc, err := describe(bootConfig(t, nil), slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve)
 	if err != nil {
 		t.Fatalf("дескриптор geo отвергнут конструктором — процесс НЕ ПОДНИМЕТСЯ:\n%v", err)
 	}
@@ -103,7 +104,7 @@ func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
 func TestDescribeProbeCanFail(t *testing.T) {
 	// Ребро решения о доступе не названо — отказ О6.
 	cfg := bootConfig(t, map[string]string{"KACHO_GEO_AUTHZ_IAM_GRPC_ADDR": ""})
-	_, err := describe(cfg, slog.New(slog.NewTextHandler(&strings.Builder{}, nil)))
+	_, err := describe(cfg, slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve)
 	if err == nil {
 		t.Fatal("дескриптор без ребра решения о доступе принят — конструктор не судит ничего, " +
 			"и положительная проба выше вакуумна")
@@ -208,7 +209,7 @@ func TestGeoServesNoServerStream(t *testing.T) {
 	// Вторая сторона той же оси, и на СВОЁМ дескрипторе: величина, объявленная
 	// процессом без единой подписки, — проводка без предмета. Носитель откажет в
 	// этом и сам (О11), но на старте процесса; проба переносит отказ в прогон.
-	desc, err := describe(bootConfig(t, nil), slog.New(slog.NewTextHandler(&strings.Builder{}, nil)))
+	desc, err := describe(bootConfig(t, nil), slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve)
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
@@ -225,7 +226,7 @@ func TestGeoServesNoServerStream(t *testing.T) {
 // здесь утверждается лишь то, что обе читают одно и то же и не расходятся.
 func TestBootPostureStillReportsWhatTheDescriptorCarries(t *testing.T) {
 	cfg := bootConfig(t, nil)
-	desc, err := describe(cfg, slog.New(slog.NewTextHandler(&strings.Builder{}, nil)))
+	desc, err := describe(cfg, slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve)
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
@@ -236,3 +237,11 @@ func TestBootPostureStillReportsWhatTheDescriptorCarries(t *testing.T) {
 	}
 	var _ = observability.LogBootPosture
 }
+
+// probeAuthzObserve — приёмник величин кеша вердиктов для проб КОНСТРУКТОРА.
+//
+// Заглушка здесь законна: предмет этих проб — что судит конструктор дескриптора,
+// а не куда уезжают величины. Настоящий приёмник, чей вызов носителем
+// утверждается, стоит в пробе подъёма (`carrier_start_test.go`): там его пропажа
+// красит пробу, здесь — не может по построению.
+func probeAuthzObserve(func() authz.Metrics) {}
