@@ -6,7 +6,7 @@
 Проверка изоляции `Internal*` сервисов от external TLS endpoint
 (Internal*-методы не публикуются на advertised external endpoint).
 
-  InternalIAMService / InternalUserService / InternalAuthorizeService /
+  InternalIAMService / InternalUserService /
   InternalBreakGlassService
   должны быть доступны ТОЛЬКО на cluster-internal listener — на api-gateway это
   выделенный `internal-rest` listener (:8081), в local/CI port-forward
@@ -143,8 +143,7 @@ external TLS :8443):
   is therefore the MESSAGE now, not the content type; a mux miss here is
   byte-identical to the nonsense-path control fired at the same listener.
 
-  UNBOUND fully-qualified paths — InternalAuthorizeService/WriteTuples,
-  InternalSessionRevocationsService/{Revoke,IsRevoked},
+  UNBOUND fully-qualified paths — InternalSessionRevocationsService/{Revoke,IsRevoked},
   InternalIAMService/ForceLogout, and GET /iam/v1/internal/users/{id}:
       403 on ALL THREE listeners, byte-identical to `/zzz`.
   They have no catalog entry, so the fail-closed authz gate answers before the
@@ -152,7 +151,7 @@ external TLS :8443):
   A "404 on external" assertion on these could never pass, and "not 404, so not
   exposed" would be indistinguishable from a misspelt path.
 
-  The docstring here previously claimed these four "are served ONLY by the
+  The docstring here previously claimed these "are served ONLY by the
   cluster-internal sub-mux". They are served on no REST listener at all; they are
   gRPC-only on iam :9091, which the note about SessionRevocations further down
   already says. The block above them describes replacing an earlier set of
@@ -196,7 +195,11 @@ CASES = []
 # cases, which target this default form for exactly this reason.
 # ---------------------------------------------------------------------------
 
-_UNBOUND_WRITE_TUPLES = "/kacho.cloud.iam.v1.InternalAuthorizeService/WriteTuples"
+# Путь InternalAuthorizeService/WriteTuples здесь БОЛЬШЕ НЕ ПРОБУЕТСЯ: службы
+# администрирования хранилища отношений не существует (стадия S6 эпика #747 сняла
+# её вместе с внешним движком прав). Проба по этому адресу стала бы дублем
+# бессмысленного контроля `/zzz` — тем самым «утверждением, которое не может
+# упасть», ради отличия от которого весь этот блок и написан.
 _UNBOUND_SR_REVOKE = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/Revoke"
 _UNBOUND_SR_ISREVOKED = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked"
 _UNBOUND_FORCE_LOGOUT = "/kacho.cloud.iam.v1.InternalIAMService/ForceLogout"
@@ -392,9 +395,6 @@ CASES.append(Case(
 # ===========================================================================
 
 _UNBOUND_PROBES = [
-    ("EXT-WRITETUPLES", "InternalAuthorizeService.WriteTuples", _UNBOUND_WRITE_TUPLES,
-     {"writes": [{"subject": "user:usr00000000000000abc", "relation": "viewer",
-                  "object": "account:acc00000000000abc"}]}),
     ("EXT-SR-REVOKE", "InternalSessionRevocationsService.Revoke", _UNBOUND_SR_REVOKE,
      {"userId": "usr00000000000000abc", "tokenJti": "leak-jti", "reason": "x"}),
     ("EXT-SR-ISREVOKED", "InternalSessionRevocationsService.IsRevoked", _UNBOUND_SR_ISREVOKED,

@@ -295,8 +295,8 @@ trigger vpc_outbox_notify_trg AFTER INSERT
 
 ### `fga_register_outbox` (миграция 0006/0008)
 
-Transactional-outbox для регистрации owner-tuple в FGA через `kacho-iam`. Намерение
-«register/unregister owner-tuple» пишется строкой в той же writer-TX, что вставляет/удаляет
+Transactional-outbox для регистрации владения через `kacho-iam`. Намерение
+«register/unregister» пишется строкой в той же writer-TX, что вставляет/удаляет
 ресурс (один commit, без dual-write); отдельный register-drainer применяет каждое намерение
 через `InternalIAMService.RegisterResource`/`Unregister`. LISTEN/NOTIFY-канал
 `kacho_vpc_fga_register_outbox` будит drainer на INSERT.

@@ -99,7 +99,6 @@ var unresolvedMetadata = []string{
 	"RevokeSAKeyMetadata",
 	"RevokeUserTokenMetadata",
 	"UpsertFromIdentityMetadata",
-	"WriteTuplesMetadata",
 }
 
 // TestEveryOperationMetadataIsResolvedOrPinned — объявленный тип метаданных либо

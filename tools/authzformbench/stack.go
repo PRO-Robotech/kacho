@@ -12,31 +12,26 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib" // database/sql driver for the volume query
+	_ "github.com/jackc/pgx/v5/stdlib" // database/sql driver
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// Pins. Both are overridable by environment so a run can be repeated against the
-// version a stand actually carries; the DEFAULTS are what this tree already pulls,
-// and the report prints whichever was used.
+// Пин образа. Переопределяется окружением, чтобы прогон можно было повторить на
+// той версии, которую несёт стенд; УМОЛЧАНИЕ — то, что дерево тянет и так, а
+// отчёт печатает использованное.
 //
-// openfga/openfga:v1.8.4 is the pin services/iam/internal/testsupport/fgatest
-// carries, so the shapes are measured against the same engine the tree's other
-// real-FGA proofs run against. Note the tree is not of one mind about this:
-// services/iam/internal/authzfilter/visibility.go says its BatchCheck ceiling was
-// "read off the deployed build (openfga/openfga:v1.14.0)". Two places about one
-// subject; this harness does not settle it, it MEASURES the ceiling at runtime
-// (probeBatchCap) and prints what the engine under test actually answered.
+// Здесь стояли ещё два пина — образ движка отношений и образ его командной
+// строки. Оба сняты вместе с движком (S6). Вместе с ними ушёл и разнобой, который
+// прежняя редакция этого файла честно называла: дерево пинило движок в двух
+// местах разными версиями, и прибор не разрешал спор, а измерял потолок пакетной
+// проверки на живом сервере. Спора больше нет — предмета не осталось.
 const (
-	defaultOpenFGAImage = "openfga/openfga:v1.8.4"
-	defaultCLIImage     = "openfga/cli:v0.7.13"
-	defaultPostgres     = "postgres:16-alpine"
+	defaultPostgres = "postgres:16-alpine"
 
-	pgUser = "openfga"
-	pgPass = "openfga"
-	pgDB   = "openfga"
+	pgUser = "bench"
+	pgPass = "bench"
+	pgDB   = "bench"
 )
 
 func envOr(key, def string) string {
@@ -46,32 +41,25 @@ func envOr(key, def string) string {
 	return def
 }
 
-// Stack is one OpenFGA over one Postgres on a private docker network, plus the
-// handle on that Postgres the volume measurement needs.
+// Stack — Postgres, на котором прибор меряет форму E, и ничего кроме.
 //
-// One stack per process, like fgatest's one server per test binary, for the same
-// reason: the isolation a container gives is already given by a STORE, and paying
-// for a container per shape would dwarf what is being measured.
+// Один стек на процесс: изоляцию между кейсами даёт СХЕМА внутри этой базы, и
+// платить контейнером за кейс значило бы платить за изоляцию, которая уже есть,
+// больше, чем стоит измеряемое. Это же свойство держит санкцию гейта
+// `TestNoPackageStartsAContainerPerTest`, и доказано оно исходом —
+// `isolation_test.go`, а не объявлением здесь.
+//
+// Прежде стек нёс ЧЕТЫРЕ предмета: сеть, Postgres движка отношений, сам движок и
+// отдельный Postgres формы E. Первые три сняты вместе с движком; четвёртый остался
+// и стал единственным. Отдельным он заводился затем, чтобы буферы, занятые
+// кортежами движка, не наказывали чтение формы E за чужие данные, — довод пережил
+// свой предмет, но не свою посадку: база по-прежнему своя, и числа остаются
+// сопоставимыми с уже опубликованными отчётами.
 type Stack struct {
-	HTTPBase string  // http://host:port — the OpenFGA HTTP API
-	DB       *sql.DB // the OpenFGA datastore, for tuple-bytes accounting
-	OpenFGA  string  // image actually used
-	Postgres string  // image actually used
-	BatchCap int     // measured, not assumed: the engine's BatchCheck ceiling
-
-	// RelDSN — СВОЙ Postgres формы E, отдельным контейнером.
-	//
-	// Отдельным, а не второй базой в датасторе движка, по двум причинам сразу, и
-	// вторая дороже первой: объём снимается по таблицам (смешались бы величины),
-	// а буферы, занятые кортежами движка, наказывали бы чтение формы E за чужие
-	// данные — и это выглядело бы свойством формы, а не посадки.
-	RelDSN      string
-	RelPostgres string
-
-	// StmtProducer — состояние производителя `StmtSQL` со стороны движка,
-	// снятое контролем в обе стороны при подъёме стека.
-	StmtProducer ProducerStatus
-	stmts        *pgStmtCounter
+	// DSN — строка подключения к этой базе. Хранилища формы E берут в ней по схеме.
+	DSN string
+	// Postgres — образ, который РЕАЛЬНО поднялся, а не тот, что задумывался.
+	Postgres string
 
 	terminate func()
 }
@@ -82,17 +70,17 @@ var (
 	stackErr  error
 )
 
-// SharedStack boots the stack on first use and returns it to every caller.
+// SharedStack поднимает стек при первом обращении и отдаёт его каждому следующему.
 //
-// Failure to boot is returned to EVERY caller, never only to the one that lost the
-// race to run the Once — the rest would otherwise proceed against an empty address
-// and report a shape as "slow" when nothing was running.
+// Неудача подъёма возвращается КАЖДОМУ вызывающему, а не только тому, кто
+// проиграл гонку за `Once`: иначе остальные пошли бы работать по пустому адресу и
+// отчитались бы о форме как о «медленной» там, где не было поднято ничего.
 func SharedStack(ctx context.Context) (*Stack, error) {
 	stackOnce.Do(func() { stackVal, stackErr = bootStack(ctx) })
 	return stackVal, stackErr
 }
 
-// CloseSharedStack terminates the containers. Safe to call when nothing booted.
+// CloseSharedStack гасит контейнер. Безопасна, когда ничего не поднималось.
 func CloseSharedStack() {
 	if stackVal != nil && stackVal.terminate != nil {
 		stackVal.terminate()
@@ -101,28 +89,9 @@ func CloseSharedStack() {
 }
 
 func bootStack(ctx context.Context) (*Stack, error) {
-	fgaImage := envOr("AUTHZFORMBENCH_FGA_IMAGE", defaultOpenFGAImage)
 	pgImage := envOr("AUTHZFORMBENCH_PG_IMAGE", defaultPostgres)
 
-	var stop []func()
-	undo := func() {
-		for i := len(stop) - 1; i >= 0; i-- {
-			stop[i]()
-		}
-	}
-
-	net, err := network.New(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("create network: %w", err)
-	}
-	stop = append(stop, func() { _ = net.Remove(context.Background()) })
-
-	// ── Postgres ────────────────────────────────────────────────────────────────
-	// Plain GenericContainer rather than the postgres module: the module's
-	// ConnectionString is host-side, and OpenFGA needs the CONTAINER-side address on
-	// the shared network. Both are wanted here, so the addresses are built
-	// explicitly instead of half-derived.
-	pgReq := testcontainers.ContainerRequest{
+	req := testcontainers.ContainerRequest{
 		Image:        pgImage,
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
@@ -130,162 +99,45 @@ func bootStack(ctx context.Context) (*Stack, error) {
 			"POSTGRES_PASSWORD": pgPass,
 			"POSTGRES_DB":       pgDB,
 		},
-		// Предзагрузка библиотеки статистики стейтментов — единственный способ
-		// узнать, сколько запросов движок посылает своему Postgres за одно HTTP-
-		// обращение. Правится СВОЙ контейнер харнесса, чужой прод-код не трогается.
-		Cmd:            []string{"postgres", "-c", "shared_preload_libraries=pg_stat_statements"},
-		Networks:       []string{net.Name},
-		NetworkAliases: map[string][]string{net.Name: {"benchpg"}},
 		WaitingFor: wait.ForListeningPort("5432/tcp").
 			WithStartupTimeout(90 * time.Second),
 	}
-	pgc, err := testcontainers.GenericContainer(ctx,
-		testcontainers.GenericContainerRequest{ContainerRequest: pgReq, Started: true})
+	c, err := testcontainers.GenericContainer(ctx,
+		testcontainers.GenericContainerRequest{ContainerRequest: req, Started: true})
 	if err != nil {
-		undo()
-		return nil, fmt.Errorf("start postgres: %w", err)
+		return nil, fmt.Errorf("поднять postgres: %w", err)
 	}
-	stop = append(stop, func() { _ = pgc.Terminate(context.Background()) })
+	stop := func() { _ = c.Terminate(context.Background()) }
 
-	pgHost, err := pgc.Host(ctx)
+	host, err := c.Host(ctx)
 	if err != nil {
-		undo()
-		return nil, fmt.Errorf("postgres host: %w", err)
+		stop()
+		return nil, fmt.Errorf("postgres, хост: %w", err)
 	}
-	pgPort, err := pgc.MappedPort(ctx, "5432")
+	port, err := c.MappedPort(ctx, "5432")
 	if err != nil {
-		undo()
-		return nil, fmt.Errorf("postgres port: %w", err)
+		stop()
+		return nil, fmt.Errorf("postgres, порт: %w", err)
 	}
-	hostDSN := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		pgUser, pgPass, pgHost, pgPort.Port(), pgDB)
-	inNetDSN := fmt.Sprintf("postgres://%s:%s@benchpg:5432/%s?sslmode=disable",
-		pgUser, pgPass, pgDB)
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		pgUser, pgPass, host, port.Port(), pgDB)
 
-	db, err := sql.Open("pgx", hostDSN)
+	// Готовность спрашивается ДО возврата стека: контейнер, чей порт уже слушает,
+	// ещё не обязан отвечать на запрос, и первая же операция замера отнеслась бы
+	// к базе, которая поднималась, а не к форме.
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
-		undo()
-		return nil, fmt.Errorf("open datastore: %w", err)
+		stop()
+		return nil, fmt.Errorf("открыть подключение: %w", err)
 	}
-	stop = append(stop, func() { _ = db.Close() })
-	if err := waitDB(ctx, db); err != nil {
-		undo()
+	err = waitDB(ctx, db)
+	_ = db.Close()
+	if err != nil {
+		stop()
 		return nil, err
 	}
 
-	// ── OpenFGA migrate (one-shot) ──────────────────────────────────────────────
-	// The deployed chart runs this as an initContainer (values.dev.yaml
-	// openfga.datastore.migrationType: initContainer); here it is a one-shot
-	// container that must EXIT 0 before the server starts. A server started against
-	// an unmigrated datastore fails on first write, which would read as "shape A is
-	// slow" instead of "nothing was measured".
-	migrate := testcontainers.ContainerRequest{
-		Image:      fgaImage,
-		Cmd:        []string{"migrate"},
-		Env:        map[string]string{"OPENFGA_DATASTORE_ENGINE": "postgres", "OPENFGA_DATASTORE_URI": inNetDSN},
-		Networks:   []string{net.Name},
-		WaitingFor: wait.ForExit().WithExitTimeout(120 * time.Second),
-	}
-	mc, err := testcontainers.GenericContainer(ctx,
-		testcontainers.GenericContainerRequest{ContainerRequest: migrate, Started: true})
-	if err != nil {
-		undo()
-		return nil, fmt.Errorf("openfga migrate: %w", err)
-	}
-	mstate, err := mc.State(ctx)
-	_ = mc.Terminate(context.Background())
-	if err != nil {
-		undo()
-		return nil, fmt.Errorf("openfga migrate state: %w", err)
-	}
-	if mstate.ExitCode != 0 {
-		undo()
-		return nil, fmt.Errorf("openfga migrate exited %d", mstate.ExitCode)
-	}
-
-	// ── OpenFGA server ──────────────────────────────────────────────────────────
-	fgaReq := testcontainers.ContainerRequest{
-		Image:        fgaImage,
-		Cmd:          []string{"run"},
-		ExposedPorts: []string{"8080/tcp"},
-		Env: map[string]string{
-			"OPENFGA_DATASTORE_ENGINE": "postgres",
-			"OPENFGA_DATASTORE_URI":    inNetDSN,
-		},
-		Networks: []string{net.Name},
-		WaitingFor: wait.ForHTTP("/healthz").WithPort("8080/tcp").
-			WithStartupTimeout(120 * time.Second),
-	}
-	fgac, err := testcontainers.GenericContainer(ctx,
-		testcontainers.GenericContainerRequest{ContainerRequest: fgaReq, Started: true})
-	if err != nil {
-		undo()
-		return nil, fmt.Errorf("start openfga: %w", err)
-	}
-	stop = append(stop, func() { _ = fgac.Terminate(context.Background()) })
-
-	fHost, err := fgac.Host(ctx)
-	if err != nil {
-		undo()
-		return nil, fmt.Errorf("openfga host: %w", err)
-	}
-	fPort, err := fgac.MappedPort(ctx, "8080")
-	if err != nil {
-		undo()
-		return nil, fmt.Errorf("openfga port: %w", err)
-	}
-
-	// ── Postgres формы E ────────────────────────────────────────────────────────
-	// Свой контейнер, а не вторая база в датасторе движка: иначе смешались бы
-	// объём и нагрузка, и «форма E читает медленно» было бы неотличимо от
-	// «буферы заняты чужими кортежами».
-	relReq := testcontainers.ContainerRequest{
-		Image:        pgImage,
-		ExposedPorts: []string{"5432/tcp"},
-		Env: map[string]string{
-			"POSTGRES_USER":     pgUser,
-			"POSTGRES_PASSWORD": pgPass,
-			"POSTGRES_DB":       pgDB,
-		},
-		WaitingFor: wait.ForListeningPort("5432/tcp").
-			WithStartupTimeout(90 * time.Second),
-	}
-	relc, err := testcontainers.GenericContainer(ctx,
-		testcontainers.GenericContainerRequest{ContainerRequest: relReq, Started: true})
-	if err != nil {
-		undo()
-		return nil, fmt.Errorf("start postgres формы E: %w", err)
-	}
-	stop = append(stop, func() { _ = relc.Terminate(context.Background()) })
-	relHost, err := relc.Host(ctx)
-	if err != nil {
-		undo()
-		return nil, fmt.Errorf("postgres формы E, хост: %w", err)
-	}
-	relPort, err := relc.MappedPort(ctx, "5432")
-	if err != nil {
-		undo()
-		return nil, fmt.Errorf("postgres формы E, порт: %w", err)
-	}
-
-	s := &Stack{
-		HTTPBase:    fmt.Sprintf("http://%s:%s", fHost, fPort.Port()),
-		DB:          db,
-		OpenFGA:     fgaImage,
-		Postgres:    pgImage,
-		RelPostgres: pgImage,
-		RelDSN: fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-			pgUser, pgPass, relHost, relPort.Port(), pgDB),
-		terminate: undo,
-	}
-
-	// Производитель `StmtSQL` со стороны движка заводится ЗДЕСЬ и сразу проходит
-	// контроль в обе стороны. Непрошедший контроль стек не роняет: колонка тогда
-	// просто не печатается (не ноль и не прочерк), а формулировка «на общем для
-	// форм уровне» из отчёта снимается — исход назван заранее и не является
-	// выбором исполнителя.
-	s.stmts, s.StmtProducer = VerifyEngineStmtProducer(ctx, db)
-	return s, nil
+	return &Stack{DSN: dsn, Postgres: pgImage, terminate: stop}, nil
 }
 
 func waitDB(ctx context.Context, db *sql.DB) error {
@@ -300,36 +152,5 @@ func waitDB(ctx context.Context, db *sql.DB) error {
 		}
 		time.Sleep(300 * time.Millisecond)
 	}
-	return fmt.Errorf("datastore never became reachable: %w", last)
-}
-
-// TupleBytes reports, for ONE store, the exact tuple count and the logical bytes
-// Postgres accounts to those rows.
-//
-// pg_column_size sums the row's own storage and excludes index overhead — which is
-// table-wide and therefore cannot be attributed to a store without lying. The
-// whole-table figure is returned separately so a reader can see both and neither is
-// presented as the other.
-//
-// Структурная часть выделена ОТДЕЛЬНОЙ парой величин (правка XC-10): счёт строк
-// её вычитает, а байты — нет, и эта асимметрия базы сравнения молча переезжала бы
-// на шестую форму. Теперь она хотя бы видна: структурные строки и их байты
-// печатаются рядом, и читатель вправе вычесть их сам. Правило подсчёта у шестой
-// формы то же самое — иначе колонка была бы сопоставима только на бумаге.
-func (s *Stack) TupleBytes(ctx context.Context, storeID string) (
-	count, rowBytes, structRows, structBytes, tableTotal int64, err error) {
-	row := s.DB.QueryRowContext(ctx, `
-		SELECT count(*),
-		       COALESCE(sum(pg_column_size(t.*)), 0),
-		       count(*) FILTER (WHERE t.relation IN ('cluster', 'account', 'project')),
-		       COALESCE(sum(pg_column_size(t.*)) FILTER (WHERE t.relation IN ('cluster', 'account', 'project')), 0)
-		  FROM tuple t WHERE t.store = $1`, storeID)
-	if err = row.Scan(&count, &rowBytes, &structRows, &structBytes); err != nil {
-		return 0, 0, 0, 0, 0, fmt.Errorf("tuple bytes for store %s: %w", storeID, err)
-	}
-	if err = s.DB.QueryRowContext(ctx,
-		`SELECT pg_total_relation_size('tuple')`).Scan(&tableTotal); err != nil {
-		return count, rowBytes, structRows, structBytes, 0, fmt.Errorf("tuple table size: %w", err)
-	}
-	return count, rowBytes, structRows, structBytes, tableTotal, nil
+	return fmt.Errorf("база так и не ответила: %w", last)
 }

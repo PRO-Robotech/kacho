@@ -275,8 +275,8 @@ Worker помечает операцию `done=true` и при успехе (`Ma
 
 При создании / удалении ресурса kacho-vpc публикует **register-intent** в таблицу
 `fga_register_outbox` — и делает это **в той же writer-транзакции**, что и сама DML-мутация.
-Так гарантируется co-commit: либо ресурс создан И его owner-hierarchy-tuple поставлен в
-очередь на запись в OpenFGA, либо ни то ни другое. Фоновый **drainer** (corelib
+Так гарантируется co-commit: либо ресурс создан И регистрация его владения поставлена в
+очередь, либо ни то ни другое. Фоновый **drainer** (corelib
 `outbox/drainer`) дренирует очередь через `kacho-iam.InternalIAMService.RegisterResource`,
 **reconciler** возвращает «застрявшие» записи в claimable, а **metrics-collector**
 (`outbox/metrics`) считает backlog и «отравленные» (исчерпавшие ретраи) записи.
@@ -297,8 +297,8 @@ Worker помечает операцию `done=true` и при успехе (`Ma
 
 :::caution Drainer должен быть подключен к kacho-iam
 Если `authz.iam-endpoint` не задан, register-drainer **не стартует**: intents остаются
-durable в таблице, но owner-tuple не доходят до OpenFGA → per-resource FGA `Check` уходит
-в `no path` (deny). Readiness сервиса в этом режиме сигнализирует `NotReady` до подключения
+durable в таблице, но владение не регистрируется в kacho-iam → per-resource `Check` уходит
+в deny (нет пути к ресурсу). Readiness сервиса в этом режиме сигнализирует `NotReady` до подключения
 drainer'а к kacho-iam. Метрика `outbox_poisoned_total` отражает записи, исчерпавшие ретраи.
 :::
 
@@ -337,7 +337,7 @@ durable change-log домена (transactional outbox): он накаплива�
     <tr><td>«Тупит» / пустые списки на свежем стенде</td><td>логи peer-conn, gRPC keepalive</td><td>idle inter-service conn в half-open (keepalive)</td></tr>
     <tr><td><code>UNAVAILABLE</code> на Create/Update</td><td>логи + Health peer-сервиса</td><td>недоступен kacho-iam / kacho-geo (fail-closed валидация project / zone)</td></tr>
     <tr><td>Операции «висят» <code>done=false</code></td><td>backlog-запрос + ERROR-логи worker'а</td><td>паника / зависшая зависимость в worker'е</td></tr>
-    <tr><td>Owner-tuple не доходят до FGA (per-resource <code>Check</code> = deny)</td><td>register-outbox backlog + <code>outbox\_poisoned\_total</code></td><td>drainer не подключен / kacho-iam недоступен</td></tr>
+    <tr><td>Регистрация владения не доходит до kacho-iam (per-resource <code>Check</code> = deny)</td><td>register-outbox backlog + <code>outbox\_poisoned\_total</code></td><td>drainer не подключен / kacho-iam недоступен</td></tr>
     <tr><td><code>INTERNAL "internal database error"</code></td><td>ERROR-логи (детали БД не утекают в ответ)</td><td>ошибка pgx / нарушение неотображенного constraint</td></tr>
   </tbody>
 </table>

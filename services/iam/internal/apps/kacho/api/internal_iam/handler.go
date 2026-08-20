@@ -58,10 +58,15 @@ type subjectChanger interface {
 	PollSubjectChanges(ctx context.Context, sinceID int64, limit int32) ([]service.SubjectChange, int64, error)
 }
 
-// relationWriter — narrow port-iface для WriteCreatorTuple. Implemented by
-// *clients.OpenFGAHTTPClient.
+// relationWriter — узкий порт для `WriteCreatorTuple`: положить намерение об
+// отношении СТРОКОЙ ЖУРНАЛА.
+//
+// Реализация — `repo/kacho/pg.CreatorTupleWriter`. Прежде здесь стоял клиент
+// внешнего хранилища отношений; предмет RPC не изменился (модуль сообщает, что у
+// созданного им объекта есть владелец), изменился адресат: журнал `fga_outbox`,
+// из которого триггер складывает прямой факт в той же транзакции.
 type relationWriter interface {
-	WriteTuples(ctx context.Context, tuples []clients.RelationTuple) error
+	RecordTuples(ctx context.Context, tuples []clients.RelationTuple) error
 }
 
 // relationWriteGate — narrow authz port for the resource-registration RPCs.
@@ -163,8 +168,8 @@ func (h *Handler) WithResourceRegistrar(registrar resourceRegistrar, gate relati
 }
 
 // RegisterResource — Internal FGA-proxy: enqueue an owner-hierarchy tuple write
-// into kacho_iam.fga_outbox (drainer applies it to OpenFGA). Idempotent: repeat
-// of the same tuple → OK, never AlreadyExists (drainer already_exists→success).
+// into kacho_iam.fga_outbox, out of which a trigger folds the direct fact in the
+// same commit. Idempotent: repeat of the same tuple → OK, never AlreadyExists.
 //
 // authz: exempt in proto-catalog; least-priv enforced HERE via ReBAC
 // (cert-cert→SA → `fga_writer@iam_fgaproxy:system`). cluster-internal :9091.
@@ -270,18 +275,18 @@ func (h *Handler) WriteCreatorTuple(ctx context.Context, req *iamv1.WriteCreator
 		return nil, err
 	}
 	if h.relations == nil {
-		return nil, status.Error(codes.Unavailable, "openfga writer not configured")
+		return nil, status.Error(codes.Unavailable, "relation writer not configured")
 	}
-	err = h.relations.WriteTuples(ctx, []clients.RelationTuple{{
+	err = h.relations.RecordTuples(ctx, []clients.RelationTuple{{
 		User:     req.GetSubjectId(),
 		Relation: req.GetRelation(),
 		Object:   req.GetObject(),
 	}})
 	if err != nil {
-		// Opaque UNAVAILABLE — never echo err.Error(): the raw OpenFGA transport
-		// error carries the cluster-internal FGA endpoint host:port + store id
-		// (leak, applies on :9091 too; hardening-invariant #1). Fixed text mirrors
-		// internal_authorize.ReadTuples / GetFGAStoreInfo.
+		// Opaque UNAVAILABLE — never echo err.Error(): сырая ошибка базы несёт
+		// координаты соединения (хост, порт, пользователь, имя базы). Утечка
+		// касается и :9091 (hardening-инвариант #1: INTERNAL никогда не эхает
+		// err.Error()).
 		return nil, status.Error(codes.Unavailable, "authz backend unavailable")
 	}
 	return &iamv1.WriteCreatorTupleResponse{}, nil
@@ -313,20 +318,23 @@ func (h *Handler) Check(ctx context.Context, req *iamv1.CheckRequest) (*iamv1.Ch
 		return nil, status.Error(codes.InvalidArgument, "Illegal argument object: required")
 	}
 	if h.authz == nil {
-		// FGA stack not wired — fail-closed (interceptor treats Unavailable
-		// as deny, not as "skip the gate").
-		return nil, status.Error(codes.Unavailable, "authz unavailable: openfga not configured")
+		// Источник вердикта не провязан — fail-closed (интерсептор читает
+		// Unavailable как отказ, а не как «пропустить страж»).
+		return nil, status.Error(codes.Unavailable, "authz unavailable: verdict source not wired")
 	}
 
 	res, err := h.authz.CheckRelation(ctx, service.CheckRelationRequest{
 		Subject:  req.GetSubjectId(),
 		Relation: req.GetRelation(),
 		Object:   req.GetObject(),
-		// Forward the read-consistency preference. Only HIGHER_CONSISTENCY is
-		// promoted to a strong read; UNSPECIFIED/MINIMIZE_LATENCY keep OpenFGA's
-		// cache-eligible default (hot enforcement gate). The owner-tuple confirm-gate
-		// sets HIGHER_CONSISTENCY so its read-after-own-write is never served a
-		// stale-replica negative.
+		// Требование свежести передаётся дальше, и оно ВЫПОЛНЕНО безусловно:
+		// вердикт читает ведущую базу службы, поэтому собственная закоммиченная
+		// запись вызывающего видна следующему же чтению by construction.
+		//
+		// Поле остаётся не «на всякий случай», а как ИМЯ требования: пути чтения с
+		// отстающей реплики сегодня нет (он вне границ приёмки R7-3), и появится
+		// он — различать требование будет тот, кто его заведёт. Прежде на этом
+		// поле ветвился вызов к чужому хранилищу, отвечавшему со своей копии.
 		HigherConsistency: req.GetConsistency() == iamv1.CheckRequest_HIGHER_CONSISTENCY,
 	})
 	if err != nil {

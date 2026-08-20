@@ -8,10 +8,16 @@ package reconciler_test
 // partitioned on resource_id.
 //
 // Its ordering key is the full tuple identity (user, relation, object),
-// materialised into a `tuple_key` column by iam migration 0067, because OpenFGA's
-// state is a SET OF TUPLES: a WRITE and a DELETE conflict only when they name the
-// same triple. Two rows that merely share an `object` touch different entries and
-// commute.
+// materialised into a `tuple_key` column by iam migration 0067, because the state
+// this queue feeds is a SET OF TUPLES: a WRITE and a DELETE conflict only when
+// they name the same triple. Two rows that merely share an `object` touch
+// different entries and commute.
+//
+// That set used to live in an external relation engine; since stage S6 it is
+// iam's own `kacho_iam.relation_fact`, folded out of this very journal by a
+// trigger. The queue, its ordering key and this backstop outlived the consumer
+// precisely because the property is about the SHAPE of the state, not about who
+// holds it.
 //
 // Until this file existed the backstop was unreachable for that queue: the revival
 // hard-coded `resource_id`, a column the tuple outbox does not have and never
@@ -22,7 +28,7 @@ package reconciler_test
 //
 // The four cases below are the whole contract of a partitioned revival:
 //
-//	revive        — a poisoned WRITE with nothing delivered past it reaches OpenFGA
+//	revive        — a poisoned WRITE with nothing delivered past it reaches the target
 //	revive        — a poisoned DELETE likewise (the quiet direction: "still granted"
 //	                and "working" look identical from outside)
 //	do not revive — a WRITE whose own tuple's DELETE already landed (over-grant)
@@ -108,8 +114,8 @@ const (
 	tupleMaxAtt    = 10
 )
 
-// tuple is one (user, relation, object) triple — the unit OpenFGA keys its state
-// on, and therefore the unit this queue must order by.
+// tuple is one (user, relation, object) triple — the unit the target keys its
+// state on, and therefore the unit this queue must order by.
 type tuple struct{ user, relation, object string }
 
 // key is the GRANT key production partitions on since iam migration 0098: one row there
@@ -118,9 +124,9 @@ type tuple struct{ user, relation, object string }
 // differently from production would prove a property production does not have.
 func (tp tuple) key() string { return tp.user + " " + tp.object }
 
-// tupleStore models OpenFGA closely enough for what is asserted: a SET of tuples,
-// where a write inserts and a delete removes, and a delete of an absent tuple is
-// not an error (the applier maps that to already-applied).
+// tupleStore models the target closely enough for what is asserted: a SET of
+// tuples, where a write inserts and a delete removes, and a delete of an absent
+// tuple is not an error (the applier maps that to already-applied).
 type tupleStore struct {
 	mu      sync.Mutex
 	present map[string]struct{}
@@ -323,8 +329,8 @@ func Test_Redrive_TupleKeyedOutbox_RevivesBothDirections(t *testing.T) {
 // Test_Redrive_TupleKeyedOutbox_RespectsTupleOrder — the guard, on this key.
 //
 // One tuple, two intents: the WRITE poisoned, the DELETE delivered. Reviving the
-// WRITE replays a grant past its own delivered revocation, and OpenFGA has no
-// tombstone to compare against — the tuple simply comes back. That is the
+// WRITE replays a grant past its own delivered revocation, and a set-shaped
+// target has no tombstone to compare against — the tuple simply comes back. That is the
 // over-grant the partition ordering exists to prevent, re-opened through the
 // backstop that repairs the queue.
 //
@@ -339,7 +345,7 @@ func Test_Redrive_TupleKeyedOutbox_RespectsTupleOrder(t *testing.T) {
 	pool := setupTupleOutboxPG(t)
 
 	withdrawn := tuple{"user:carol", "v_delete", "vpc_network:net-9"}
-	// Same object, different subject — a DIFFERENT entry in OpenFGA's set.
+	// Same object, different subject — a DIFFERENT entry in the target's set.
 	sameObject := tuple{"user:dave", "v_get", "vpc_network:net-9"}
 
 	supersededID := seedTupleIntent(t, ctx, pool, "fga.tuple.write", withdrawn, tupleMaxAtt, false)

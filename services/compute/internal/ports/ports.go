@@ -30,9 +30,10 @@ type Pagination struct {
 // Здесь НЕТ authz-измерения (прежнего `AllowedIDs`): видимость решается
 // per-object ПОСЛЕ чтения страницы (`handler.filterVisible` →
 // iam.AuthorizeService.BatchCheck), а не сужением SQL до заранее перечисленного
-// allow-list'а. Перечисление упиралось в жёсткий предел OpenFGA ListObjects
-// (1000, без continuation-token'а) и делало собственные ресурсы тенанта
-// невидимыми — см. package-doc `internal/authzfilter`.
+// allow-list'а. Перечисление упиралось в жёсткий предел прежнего движка прав
+// (1000 объектов, без продолжения) и делало собственные ресурсы тенанта
+// невидимыми. Движка нет, а форма вопроса остаётся: спрашиваем про страницу, а
+// не про вселенную — см. package-doc `internal/authzfilter`.
 type InstanceFilter struct {
 	ProjectID string
 	// Filter — raw filter expression (синтаксис Kachō: `name="<value>"`).

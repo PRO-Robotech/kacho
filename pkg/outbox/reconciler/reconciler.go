@@ -314,15 +314,20 @@ func NewRedriveOnly(pool *pgxpool.Pool, cfg Config, logger *slog.Logger) (*Recon
 // delivered successors, and on two different keys each half guards a partition
 // the other does not.
 //
-// Two shapes exist and both are live. A register-outbox writes one row per FGA
-// object and stamps RegisterOutboxPartition ("resource_id") with that object's
-// globally-unique id, so "same partition" is exactly "same target object"; that is
-// also the key lockResource and intendedRegistered use, which is why a full
-// Reconciler (New) accepts nothing else. iam's `fga_outbox` is the other: it
-// carries tuple WRITES and DELETES and keys on `tuple_key`, the full
-// (user, relation, object) triple materialised by iam migration 0067, because
-// OpenFGA's state is a set of tuples and rows that merely share an object commute.
-// It takes NewRedriveOnly.
+// One shape is live today. A register-outbox writes one row per object of the
+// rights model and stamps RegisterOutboxPartition ("resource_id") with that
+// object's globally-unique id, so "same partition" is exactly "same target
+// object"; that is also the key lockResource and intendedRegistered use, which is
+// why a full Reconciler (New) accepts nothing else.
+//
+// A second shape stood beside it and is worth keeping as the worked example of a
+// NARROWER key: iam's `fga_outbox` carried tuple WRITES and DELETES and keyed on
+// `tuple_key`, the full (user, relation, object) triple materialised by iam
+// migration 0067, because the target's state was a set of tuples and rows that
+// merely share an object commute. It took NewRedriveOnly. That journal is no
+// longer drained anywhere — its rows are folded into direct facts by a trigger —
+// so it neither poisons nor needs a redrive; the key-width rule it illustrates is
+// unaffected.
 //
 // # Two honest limits of this rule
 //

@@ -36,7 +36,7 @@
 #
 # ── ЧТО ИМЕННО ЗАПУСКАЕТСЯ ─────────────────────────────────────────────────────
 # `make dev-prod-up` (deploy/Makefile): проверенный двухфазный bring-up dev-up
-# (cert-manager CRD → mTLS → fga-bootstrap), затем фаза 3 — `helm upgrade` с
+# (cert-manager CRD → mTLS), затем фаза 3 — `helm upgrade` с
 # values.dev-prod.yaml (production-posture поверх kind-локальных адаптаций), затем:
 #   * assert-rollout-ready       — КАЖДЫЙ Deployment/StatefulSet rollout-complete,
 #                                  БЕЗ `|| true`; на провале печатает describe + логи
@@ -97,8 +97,8 @@ jobs:
       # без `version` setup-helm ставит ПОСЛЕДНЮЮ, и версия менялась бы без единой
       # правки в дереве. Прежний v3.17.0 удерживал прошлую мажорную из-за двойного
       # владения аннотацией `kacho.cloud/openfga-model-id-rev` под server-side apply
-      # (kacho#3); второй писатель снят — держит это
-      # deploy/tests/helm/podtemplate-annotation-single-owner-test.sh.
+      # (kacho#3); второй писатель снят вместе со всем движком прав (S6 эпика #747),
+      # изнутри релиза шаблон пода не патчит никто — предмета у запрета нет.
       # Расхождение значения между тремя конвейерами ловит
       # .github/scripts/check-pinned-tools.sh --divergence-only.
       - uses: azure/setup-helm@v5

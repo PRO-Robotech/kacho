@@ -118,11 +118,9 @@ var dsReadingVerbs = map[string]bool{
 //
 // Запись САМОИСТЕКАЕТ: глагол, которого больше нет ни у одного такого сервиса, — находка.
 var dsNotAResourceRead = map[string]string{
-	"ListObjects": "ответ о ПРАВАХ вызывающего (какие объекты ему доступны), а не перечень " +
-		"объектов ландшафта: он меняется от выдачи привязки, которой в конфигурации нет, и " +
-		"зависит от того, чьим токеном настроен провайдер",
-	"ListSubjects": "то же с другой стороны — кто имеет доступ к объекту; ответ о правах, " +
-		"а не о ресурсе",
+	"ListSubjects": "кто имеет доступ к объекту — ответ о ПРАВАХ, а не о ресурсе: он меняется " +
+		"от выдачи привязки, которой в конфигурации нет, и зависит от того, чьим токеном " +
+		"настроен провайдер",
 }
 
 // tfDataSources — соответствие читаемого сервиса именам источников данных провайдера.
@@ -1038,7 +1036,7 @@ service InternalZoneService {
 }
 
 service AuthorizeService {
-  rpc ListObjects(ListObjectsRequest) returns (ListObjectsResponse);
+  rpc ListSubjects(ListSubjectsRequest) returns (ListSubjectsResponse);
   rpc WhoAmI(WhoAmIRequest) returns (WhoAmIResponse);
 }
 
@@ -1069,7 +1067,7 @@ service NamespaceCatalogService {
 
 	// Словарь глаголов собирается только с НЕсоздающих сервисов: иначе самоистечение записи
 	// проверялось бы на множестве, к которому она не относится.
-	for _, v := range []string{"ListObjects", "WhoAmI", "ListNamespaces"} {
+	for _, v := range []string{"ListSubjects", "WhoAmI", "ListNamespaces"} {
 		if !dsContains(verbs, v) {
 			t.Fatalf("глагол %s не попал в словарь осмотренного — самоистечение записи перестало "+
 				"бы работать", v)

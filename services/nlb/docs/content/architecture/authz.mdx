@@ -7,7 +7,7 @@ title: Авторизация
 # Авторизация
 
 Эта страница описывает модель доступа Kachō NLB: per-RPC authz-Check через kacho-iam на **обоих**
-listener'ах, verb-bearing отношения, scope-filtered List и синхронизацию owner-tuples в OpenFGA.
+listener'ах, verb-bearing отношения, scope-filtered List и регистрацию владения в kacho-iam.
 Общий обзор устройства сервиса — на странице [Архитектура](/architecture/overview).
 
 ## AuthN + AuthZ на каждом запросе
@@ -19,7 +19,7 @@ public, ни на internal порту.
   service→service транспорт — **mTLS** (verified client-cert). Internal `:9091` не освобождён:
   mTLS обязателен.
 - **AuthZ** — каждый RPC (public и internal) проходит per-RPC `InternalIAMService.Check` в
-  kacho-iam (OpenFGA / ReBAC). Internal-периметр **не считается доверенным**
+  kacho-iam. Internal-периметр **не считается доверенным**
   (defense-in-depth против lateral movement).
 
 ## Verb-bearing отношения
@@ -48,7 +48,7 @@ flowchart LR
   cli["Клиент"] -->|"Bearer JWT"| agw["api-gateway"]
   agw -->|"verify JWT"| agw
   agw -->|"loadbalancer.v1.* + principal"| nlb["kacho-nlb"]
-  nlb -->|"Check(principal, relation, scope-object)"| iam["kacho-iam / OpenFGA"]
+  nlb -->|"Check(principal, relation, scope-object)"| iam["kacho-iam"]
   iam -->|"allow / deny"| nlb
   nlb -->|"SQL"| pg[("kacho_nlb")]
 ```
@@ -83,8 +83,10 @@ per-RPC Check для `Get` называют **одно и то же** отнош
 Как задаётся вопрос: страница читается **курсором из своей БД**, затем модель спрашивается про
 идентификаторы **этой** страницы — батчами ≤ 100, параллельно, под бюджетом **запроса**. Размер
 страницы — часть контракта и ради бюджета не сужается. Перечисления «покажи всё, что субъекту
-можно» на этом пути нет вовсе: такой вопрос имеет жёсткий серверный предел и не имеет
-продолжения, поэтому ресурсы сверх предела становились бы владельцу невидимы навсегда.
+можно» на этом пути нет вовсе: до стадии S6 такой запрос у внешнего движка прав нёс жёсткий
+серверный предел без продолжения, и ресурсы сверх предела становились владельцу невидимы
+навсегда; сегодня перечислительного RPC нет на контракте, а вопрос про страницу остаётся
+правильным и по стоимости — она пропорциональна странице, а не населению типа.
 
 Отказы:
 
@@ -98,13 +100,15 @@ per-RPC Check для `Get` называют **одно и то же** отнош
 объект (`ListOperations` на самом ресурсе): там вопрос задаётся о родителе, и это другой вопрос,
 не членство страницы.
 
-## Owner-tuples в OpenFGA
+## Регистрация владения в kacho-iam
 
-FGA-объектные типы домена: `nlb_network_load_balancer`, `nlb_listener`, `nlb_target_group`. При
-создании ресурса сервис через `InternalIAMService.RegisterResource` записывает hierarchy/owner-
-tuples (project / owner) в OpenFGA — модули не ходят в FGA напрямую, только через kacho-iam.
+Объектные типы домена в модели прав: `nlb_network_load_balancer`, `nlb_listener`,
+`nlb_target_group`. При создании ресурса сервис через `InternalIAMService.RegisterResource`
+регистрирует владение и место ресурса в цепи областей (project / owner) — модули не пишут в
+модель прав напрямую, только через kacho-iam.
 
-Доставка идемпотентна и at-least-once через **transactional outbox**: tuple-намерение пишется в
+Доставка идемпотентна и at-least-once через **transactional outbox**: намерение зарегистрировать
+ресурс пишется в
 `kacho_nlb.fga_register_outbox` в той же транзакции, что и ресурс; corelib-drainer (канал
 `kacho_nlb_fga_register_outbox`) досылает его в kacho-iam с ретраями.
 

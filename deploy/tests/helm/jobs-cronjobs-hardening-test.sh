@@ -9,11 +9,10 @@
 # TLS listener (port `tls`, backend-protocol GRPCS) so listenerorigin.ExternalListener
 # tags the traffic and the REST dispatcher 404s Internal* paths on the public edge.
 #
-#   1. openfga-bootstrap Job          — pod + container restricted floor.
-#   2. openfga-postgres-init Job      — pod + container restricted floor.
-#   3. (снято — jwks-rotator CronJob удалён как вестигиальный)
-#   4. kacho-geo data-migration Job   — pod + container restricted floor.
-#   5. api-gateway external ingress   — backend port `tls` + backend-protocol GRPCS
+#   1. (снято — задания начальной настройки движка прав удалены вместе с ним, S6 #747)
+#   2. (снято — jwks-rotator CronJob удалён как вестигиальный)
+#   3. kacho-geo data-migration Job   — pod + container restricted floor.
+#   4. api-gateway external ingress   — backend port `tls` + backend-protocol GRPCS
 #                                       (NOT the internal-origin `cmux`/GRPC path).
 #
 # Mirrors tests/helm/sec-hardening-test.sh: renders via `helm template` and
@@ -79,36 +78,26 @@ assert_ctr_sc() {
 
 POD=".spec.template.spec"
 
-# ── 1. openfga-bootstrap Job ─────────────────────────────────────────────────
-# (values.dev.yaml already enables openfga-bootstrap.openfgaBootstrap.enabled)
-BOOT=$(render charts/openfga-bootstrap/templates/openfga-bootstrap-job.yaml \
-  --set openfga-bootstrap.openfgaBootstrap.enabled=true)
-assert_pod_sc "$BOOT" "$POD" "openfga-bootstrap-job"
-assert_ctr_sc "$BOOT" "$POD" "bootstrap" "openfga-bootstrap-job"
+# ── 1. (снято) задания начальной настройки движка прав ───────────────────────
+# Подчарт движка удалён вместе с самим движком (S6 эпика #747): решение о доступе
+# вычисляет реляционная форма в базе iam. Проверять PSS-floor больше не на чем —
+# секция снята вместе с шаблонами, а не ослаблена.
 
-# ── 2. openfga-postgres-init Job ─────────────────────────────────────────────
-PGINIT=$(render charts/openfga-bootstrap/templates/openfga-postgres-init-job.yaml \
-  --set openfga-bootstrap.openfgaBootstrap.enabled=true \
-  --set openfga-bootstrap.openfgaBootstrap.initDatabase=true)
-assert_pod_sc "$PGINIT" "$POD" "openfga-postgres-init-job"
-assert_ctr_sc "$PGINIT" "$POD" "postgres-init" "openfga-postgres-init-job"
-
-# ── 3. (снято) kacho-iam jwks-rotator CronJob ────────────────────────────────
+# ── 2. (снято) kacho-iam jwks-rotator CronJob ────────────────────────────────
 # CronJob удалён как вестигиальный: iam не владеет ключом подписи (издатель и
 # подписант — Hydra; iam лишь проксирует её публичный JWKS), поэтому ротировать
 # нечего. Проверять PSS-floor больше не на чем — секция снята вместе с шаблоном.
 
-# ── 4. kacho-geo data-migration Job ──────────────────────────────────────────
+# ── 3. kacho-geo data-migration Job ──────────────────────────────────────────
 GEODM=$(render charts/kacho-geo/templates/geo-data-migration-job.yaml \
   --set kacho-geo.dataMigration.enabled=true)
 assert_pod_sc "$GEODM" "$POD" "geo-data-migration-job"
 assert_ctr_sc "$GEODM" "$POD" "copy" "geo-data-migration-job"
 
-# ── 5. api-gateway external ingress → external-marked TLS listener ────────────
+# ── 4. api-gateway external ingress → external-marked TLS listener ────────────
 # Render the FULL umbrella and select the effective api-gateway Ingress, so the
 # assertion is agnostic to which template produces it (sub-chart vs umbrella).
-ALL=$(helm template kacho-umbrella "$UMBRELLA" -f "$DEV" \
-  --set openfga-bootstrap.openfgaBootstrap.enabled=true 2>/dev/null)
+ALL=$(helm template kacho-umbrella "$UMBRELLA" -f "$DEV" 2>/dev/null)
 ING=$(echo "$ALL" | yq eval-all \
   'select(.kind == "Ingress" and .metadata.name == "api-gateway")' - 2>/dev/null)
 [ -n "$ING" ] || fail "api-gateway ingress: no Ingress named 'api-gateway' rendered"

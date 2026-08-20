@@ -6,9 +6,17 @@
 //
 // Под словом «условие» в дереве живут ДВЕ разные вещи, и их легко перепутать:
 //
-//   - условие на кортеже — `condition …` в модели прав и `Tuple.condition` на
-//     внутреннем листенере. Ключ условия сервер берёт сам, из запроса он
-//     вырезается. Это ЖИВОЕ;
+//   - условие на кортеже — `condition …` в модели прав. Ключ условия сервер
+//     берёт сам, из запроса он вырезается. Это ЖИВОЕ;
+//
+//     Здесь же стояла вторая координата живого — `Tuple.condition` на внутреннем
+//     листенере. Её больше нет: служба администрирования внешнего движка прав
+//     снята целиком стадией S6 (kacho#747) вместе со своим файлом контракта, а с
+//     ней ушли `TupleCondition` и единственный читатель `BuiltinCondition`.
+//     Положительная половина сузилась до модели — и это НЕ ослабление гейта, а
+//     истечение фикстуры вместе с её предметом: утверждать «TupleCondition на
+//     месте» о файле, которого нет, значит краснеть на достижении чужой цели;
+//
 //   - тенантская поверхность — ресурс условия со своим сервисом, наложение на
 //     привязку и подстрочный вычислитель. Это снято.
 //
@@ -154,11 +162,9 @@ const (
 	// (`[user with mfa_fresh, service_account with mfa_fresh]`). Число получено
 	// подсчётом вхождений, а не строк — первая редакция считала строками и
 	// ошиблась ровно на этот случай. Это и есть работа положительной половины.
-	liveMFARestrictions  = 4
-	fgaModelPath         = "proto/kacho/cloud/iam/v1/fga_model.fga"
-	internalAuthorizePth = "proto/kacho/cloud/iam/v1/internal_authorize_service.proto"
-	builtinConditionPth  = "proto/kacho/cloud/iam/v1/builtin_condition.proto"
-	accessBindingPth     = "proto/kacho/cloud/iam/v1/access_binding.proto"
+	liveMFARestrictions = 4
+	fgaModelPath        = "proto/kacho/cloud/iam/v1/fga_model.fga"
+	accessBindingPth    = "proto/kacho/cloud/iam/v1/access_binding.proto"
 )
 
 var (
@@ -369,17 +375,16 @@ func TestTupleConditionMechanism_StaysLive(t *testing.T) {
 			fgaModelPath, got, liveMFARestrictions)
 	}
 
-	ia := readTreeFile(t, root, internalAuthorizePth)
-	for _, must := range []string{"message TupleCondition", "TupleCondition condition = 4;"} {
-		if !strings.Contains(ia, must) {
-			t.Errorf("%s не содержит %q — условие на кортеже внутреннего листенера снято, "+
-				"а снималась только тенантская поверхность", internalAuthorizePth, must)
-		}
-	}
-
-	bc := readTreeFile(t, root, builtinConditionPth)
-	if !strings.Contains(bc, "enum BuiltinCondition") {
-		t.Errorf("%s не объявляет enum BuiltinCondition — его читает TupleCondition.builtin, "+
-			"он к снимаемой поверхности не относится", builtinConditionPth)
-	}
+	// Здесь стояли ещё две проверки живого — `TupleCondition` во внутреннем
+	// контракте и `enum BuiltinCondition` рядом с ним. Обе сняты вместе со своим
+	// предметом: стадия S6 (kacho#747) убрала службу администрирования внешнего
+	// движка прав целым файлом контракта, и `TupleCondition` ушёл с ней.
+	//
+	// Что из этого СЛЕДУЕТ и здесь не проверяется: `builtin_condition.proto`
+	// остался в дереве, но читателей у него больше нет ни одного —
+	// `TupleCondition.builtin` был единственным. Восстанавливать на него проверку
+	// нельзя: она утверждала бы, что файл кем-то читается, а это уже неправда.
+	// Судьба осиротевшего файла — отдельное решение по контракту (снять с
+	// объявлением разрыва либо назвать причину, по которой он остаётся), и оно
+	// принимается не здесь.
 }

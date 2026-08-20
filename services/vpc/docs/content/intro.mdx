@@ -92,8 +92,8 @@ Kachō VPC управляет **намерением и состоянием** �
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>🔑</span>
-    <span className={hero.featureTitle}>Авторизация OpenFGA</span>
-    <span className={hero.featureBody}>Per-RPC authz-гейт через kacho-iam (ReBAC; relation-based на ресурсах/проектах).</span>
+    <span className={hero.featureTitle}>Авторизация через kacho-iam</span>
+    <span className={hero.featureBody}>Per-RPC authz-гейт через kacho-iam: вердикт по отношению субъекта к ресурсу или его проекту.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>▤</span>
@@ -125,7 +125,6 @@ flowchart LR
     vpc["kacho-vpc<br/>:9090 public · :9091 internal"]
     iam["kacho-iam<br/>Project / authz"]
     geo["kacho-geo<br/>Geography (Region/Zone)"]
-    fga["OpenFGA<br/>tuples"]
   end
   subgraph store["Хранилище"]
     pg[("PostgreSQL<br/>kacho_vpc · outbox")]
@@ -138,7 +137,7 @@ flowchart LR
   agw -->|"kacho.cloud.vpc.v1"| vpc
   vpc -->|"SQL · pgx"| pg
   vpc -->|"authz Check · ProjectService.Get"| iam
-  vpc -->|"register owner-tuple"| iam
+  vpc -->|"RegisterResource (владение)"| iam
   vpc -->|"ZoneService.Get"| geo
   cmp -->|"NIC-spec validate · InternalAddressService"| vpc
 ```
@@ -230,7 +229,6 @@ FK-ограничения (`RESTRICT`) требуют удалять детей 
     <tr><td>PostgreSQL / pgx v5</td><td>Хранилище <code>kacho\_vpc</code></td></tr>
     <tr><td>Goose</td><td>Версионирование схемы (применены миграции <code>0001</code>..<code>0009</code>; <code>0001</code> — squashed baseline)</td></tr>
     <tr><td>sqlc + handwritten pgx</td><td>SQL-доступ (без ORM)</td></tr>
-    <tr><td>OpenFGA (ReBAC)</td><td>Авторизация — relation-based на ресурсах/проектах</td></tr>
     <tr><td>grpc-gateway</td><td>REST-проекция gRPC</td></tr>
   </tbody>
 </table>

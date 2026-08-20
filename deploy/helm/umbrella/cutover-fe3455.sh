@@ -227,7 +227,7 @@ helm dependency build . >/dev/null \
 #    from the Secret; these --set values are a defensive belt for the bitnami
 #    passwords-on-upgrade guard. Correct value paths: auth.password (secret key
 #    'password') + auth.postgresPassword (secret key 'postgres-password').
-PG_SVCS=(vpc compute iam geo nlb storage registry openfga kratos hydra)
+PG_SVCS=(vpc compute iam geo nlb storage registry kratos hydra)
 PGARGS=()
 for svc in "${PG_SVCS[@]}"; do
   sec="kacho-umbrella-pg-$svc"

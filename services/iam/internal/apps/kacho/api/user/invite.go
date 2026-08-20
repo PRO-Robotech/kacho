@@ -59,7 +59,7 @@ type InviteUserInput struct {
 // materialize the per-object access of every binding whose selector matches the
 // invite-flow's freshly-created iam-native objects (the project-scoped
 // AccessBinding + a brand-new invitee user), right after the invite tx commits.
-// Under the flat OpenFGA model the `from <scope>` ACCESS cascade on these leaf
+// Under the flat rights model the `from <scope>` ACCESS cascade on these leaf
 // types is gone, so the owner/account-admin per-object tuple is materialized
 // per-object; the sync call closes the GET-after-create race the async drain would
 // otherwise lose. Implemented by reconcile.Reconciler. nil-safe (the co-committed

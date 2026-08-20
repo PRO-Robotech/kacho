@@ -48,7 +48,6 @@ var partitionDrainedOutboxes = map[string]string{
 	"fga_register_outbox":         "resource_id", // vpc / nlb / storage (одноимённые таблицы в разных схемах)
 	"compute_fga_register_outbox": "resource_id",
 	"registry_outbox":             "resource_id",
-	"fga_outbox":                  "tuple_key", // iam
 }
 
 // nonPartitionDrainedOutboxes — очереди, выборка которых НЕ использует ключ
@@ -58,6 +57,13 @@ var partitionDrainedOutboxes = map[string]string{
 //
 // Запись обязана называть, чем эта очередь выбирается, а не «так исторически».
 var nonPartitionDrainedOutboxes = map[string]string{
+	"fga_outbox": "" +
+		"ДРЕНАЖА У НЕЁ БОЛЬШЕ НЕТ. Журнал намерений iam перестал быть очередью доставки " +
+		"вместе со снятием внешнего движка прав (стадия S6 эпика #747): прямой факт, из " +
+		"которого форма собирает вердикт, складывается из строки журнала триггером — в той " +
+		"же транзакции, что и мутация. Индексы под клейм «только голова партиции» остаются " +
+		"в схеме (применённые миграции не правятся) и никем не читаются; их снятие — предмет " +
+		"той же задачи, что и переименование журнала, и здесь оно не изобретается.",
 	"resource_reconcile_outbox": "" +
 		"собственная выборка, не общий дренаж: `WHERE sent_at IS NULL ORDER BY id ASC LIMIT n " +
 		"FOR UPDATE SKIP LOCKED` (reconcile_outbox/outbox.go). Единственный частичный индекс (id) " +

@@ -405,7 +405,7 @@ type Config struct {
 
 	// AuthZEnabled — master toggle for the per-RPC AuthZ middleware. When
 	// false (default), the middleware mounts as a pass-through (compat with
-	// dev environments without OpenFGA/IAM AuthorizeService).
+	// dev environments that have no IAM AuthorizeService to ask).
 	AuthZEnabled bool `envconfig:"KACHO_API_GATEWAY_AUTHZ_ENABLED" default:"false"`
 
 	// AuthZFailOpen — when true, transient IAM-Check failures (Unavailable

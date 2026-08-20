@@ -97,8 +97,8 @@ Kachō Compute управляет **намерением и состоянием
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>🔑</span>
-    <span className={hero.featureTitle}>Авторизация OpenFGA</span>
-    <span className={hero.featureBody}>Per-RPC authz-гейт через kacho-iam (ReBAC; relation-based на ресурсах/проектах).</span>
+    <span className={hero.featureTitle}>Авторизация через kacho-iam</span>
+    <span className={hero.featureBody}>Per-RPC authz-гейт через kacho-iam: вердикт по отношению субъекта к ресурсу или его проекту.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>◉</span>
@@ -233,7 +233,6 @@ internal-порту.
     <tr><td>PostgreSQL / pgx v5</td><td>Хранилище <code>kacho_compute</code></td></tr>
     <tr><td>Goose</td><td>Версионирование схемы (<code>0001</code> — squashed baseline)</td></tr>
     <tr><td>sqlc + handwritten pgx</td><td>SQL-доступ (без ORM)</td></tr>
-    <tr><td>OpenFGA (ReBAC)</td><td>Авторизация — relation-based на ресурсах/проектах</td></tr>
     <tr><td>grpc-gateway</td><td>REST-проекция gRPC</td></tr>
   </tbody>
 </table>

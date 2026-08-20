@@ -5,7 +5,7 @@
         assert-forwarder-narrowing assert-outbox-autovacuum helm-manifest-test \
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
-        reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json fga-model-embed \
+        reload-svc-iam psql-iam logs-iam build-services fga-model-embed \
         guard-kind-context guard-destructive gate-self-test waiter-discipline \
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline ceremony-declaration-discipline \
@@ -54,8 +54,7 @@ POSTURE_SKIP ?=
 # KAC-228: build + kind-load all backend service images. The dev deployments
 # reference local `kacho-<svc>:dev` images (values.dev.yaml), which kind cannot
 # pull from a registry → they MUST be built locally before helm install, else
-# pods sit in ImagePullBackOff and `helm --wait` times out (which also skips the
-# openfga-bootstrap RBAC, breaking fga-bootstrap). Single-repo builds: each
+# pods sit in ImagePullBackOff and `helm --wait` times out. Single-repo builds: each
 # Dockerfile is `COPY . .` + `go mod download` (versioned GitHub deps), so the
 # build context is the service's OWN dir (kacho-$svc), NOT the parent — a
 # workspace-root context would `COPY . .` a rootless tree → `go: no modules`.
@@ -402,7 +401,7 @@ UMBRELLA_OPTS := --set cert-manager.enabled=false
 # команда НЕ прерывает цель: следующая просто выполняется. Реально наблюдалось
 # 2026-07-16 в CI — `helm phase 2` упал с UPGRADE FAILED, а цель дошла до конца и
 # напечатала «dev-up complete», отдав exit 0. Стенд был собран наполовину (mTLS-фаза не
-# применена, fga-bootstrap без SA), а CI считал его поднятым и шёл гонять newman —
+# применена), а CI считал его поднятым и шёл гонять newman —
 # краснота вылезла позже и совсем в другом месте.
 # Тот же класс, что near-miss 2026-07-15 (см. guard-kind-context ниже): упавший
 # `use-context` не прервал цепочку, и стенд поехал на ПРОД.
@@ -457,10 +456,6 @@ dev-up: preflight
 	  --wait --timeout 10m; \
 	echo "Waiting for ingress-nginx admission webhook..."; \
 	kubectl -n kacho wait --for=condition=ready pod -l app.kubernetes.io/component=controller --timeout=60s; \
-	echo "=== fga-bootstrap (KAC-228: provision OpenFGA store + model + cluster viewer:* seed) ==="; \
-	echo "    NB: must run before any user signs up — else account/project FGA tuples"; \
-	echo "    are written best-effort against a missing store and lost (→ 503 on List)."; \
-	$(MAKE) fga-bootstrap; \
 	echo "=== prerequisite secrets (без них production-посадка не поднимается) ==="; \
 	./scripts/dev-prod-secrets.sh; \
 	echo "=== helm phase 3: PRODUCTION posture (values.dev-prod.yaml поверх dev) ==="; \
@@ -520,7 +515,7 @@ dev-down:
 #
 # ПОЧЕМУ ПОВЕРХ dev-up, а не отдельный fresh-install: bootstrap чистого кластера
 # несёт свой порядок (cert-manager отдельным релизом до продукта, затем один
-# helm-прогон продукта, затем fga-bootstrap и секреты).
+# helm-прогон продукта, затем секреты).
 # Дублировать этот рецепт значит завести вторую копию, которая
 # разъедется с оригиналом. Здесь мы переиспользуем проверенный bring-up; сам перевод
 # в production-posture (секреты + фаза 3) теперь ЧАСТЬ `dev-up`, а эта цель осталась
@@ -1092,7 +1087,7 @@ loadtest-address-allocate-clean: guard-kind-context
 	@kubectl -n kacho delete job k6-address-allocate --ignore-not-found
 	@kubectl -n kacho delete cm k6-address-allocate --ignore-not-found
 
-# ─── KAC-105: IAM stack (kacho-iam + OpenFGA; KAC-127: Zitadel → Ory) ──────────────
+# ─── KAC-105: IAM stack (kacho-iam; KAC-127: Zitadel → Ory) ──────────────────────
 
 # alias для reload-svc SVC=iam — пересобрать и перезагрузить kacho-iam.
 reload-svc-iam:
@@ -1137,81 +1132,13 @@ logs-iam:
 
 # KAC-127: zitadel-admin target удалён — Zitadel заменён на Ory Kratos + Hydra.
 
-# Вручную запустить openfga-bootstrap-job (для дебага / повторного применения model).
-# Helm hook удаляет старый Job при post-install/upgrade, поэтому здесь используем
-# `helm template` для рендера манифеста + apply.
-#
-# guard-kind-context: цель применяет манифесты, отрендеренные из values.dev.yaml,
-# в АКТИВНЫЙ контекст. Из dev-up она вызывается уже под гейтом, но вызывается и
-# напрямую (README, ui-future/heal-authz.sh) — а тогда гейта на пути нет.
-fga-bootstrap: guard-kind-context
-	@echo "Запускаем openfga-bootstrap Job (idempotent):"
-	@kubectl -n kacho delete job openfga-bootstrap --ignore-not-found
-	# Две правки против прежней версии (обе ломали bootstrap с нуля):
-	#
-	# 1. --show-only принимает путь ОТНОСИТЕЛЬНО корня umbrella → для шаблона САБЧАРТА
-	#    нужен префикс charts/<subchart>/. Было `templates/openfga-bootstrap-job.yaml`
-	#    (корневой путь) → helm падал «could not find template … in chart», kubectl
-	#    получал пустой stdin → «no objects passed to apply» → Job НЕ запускался.
-	#    Bootstrap уехал в сабчарт, а путь не поправили (соседний spire-таргет ниже уже
-	#    использует правильную форму `charts/…`).
-	#
-	# 2. Рендерим И RBAC, И Job. В релизе они — helm-ХУКИ (post-install/post-upgrade,
-	#    SA weight=0 → Job weight=10), т.е. при штатном `helm upgrade` создаются сами.
-	#    Но этот таргет применяет их ВРУЧНУЮ (нужен, когда апгрейд упал и хуки не
-	#    отработали), и рендерил ТОЛЬКО Job — без SA. Итог:
-	#      pods "openfga-bootstrap-" is forbidden: serviceaccount "openfga-bootstrap" not found
-	#    Job висел FailedCreate, kacho-iam-openfga-store не создавался, iam оставался с
-	#    «openfga: HTTP client not configured» → каждый Check «code 14 authz service
-	#    unavailable» → newman дох на Project.Create.
-	@helm template kacho-umbrella ./helm/umbrella -n kacho -f ./helm/umbrella/values.dev.yaml \
-	  --show-only charts/openfga-bootstrap/templates/openfga-bootstrap-rbac.yaml \
-	  --show-only charts/openfga-bootstrap/templates/openfga-bootstrap-job.yaml | kubectl -n kacho apply -f -
-	@echo "Ждём завершения…"
-	# ОТКАЗ НЕ КОНВЕРТИРУЕТСЯ В УСПЕХ. Здесь стояло
-	#   wait --for=condition=complete … || wait --for=condition=failed …
-	# и вторая команда возвращает НОЛЬ ровно тогда, когда Job упал: провал
-	# бутстрапа делал рецепт успешным. Дальше по цепочке `dev-up` шёл как ни в
-	# чём не бывало, а e2e-newman гонял суиты по стенду, где OpenFGA-стор не
-	# создан — то есть каждый Check отвечает «authz service unavailable». Ровно
-	# тот сценарий, который описан абзацем выше как уже случившийся; код при
-	# этом говорил «успех».
-	#
-	# Диагностика (логи Job'а) сохранена и печатается В ОБОИХ исходах — она и
-	# была единственной причиной держать здесь `||`. Но печать логов не есть
-	# вердикт: вердикт — код первого ожидания.
-	@set -e; \
-	if kubectl -n kacho wait --for=condition=complete job/openfga-bootstrap --timeout=300s; then \
-	  kubectl -n kacho logs -l job-name=openfga-bootstrap --tail=-1 || true; \
-	else \
-	  echo "!!! openfga-bootstrap НЕ дошёл до complete — ниже его логи, затем отказ."; \
-	  kubectl -n kacho logs -l job-name=openfga-bootstrap --tail=-1 || true; \
-	  kubectl -n kacho describe job/openfga-bootstrap || true; \
-	  exit 1; \
-	fi
-
-# KAC-127 (deploy#38): regenerate the openfga-model-stub ConfigMap from the
-# CANONICAL model. Run after any edit of $(OPENFGA_CANONICAL_FGA) — never edit the
-# DSL or the JSON inside the ConfigMap, both blocks are generated output and the
-# gate services/iam/internal/authzmap/fga_model_configmap_identity_test.go fails
-# the build if they drift from the canonical file. The openfga/cli image is
-# distroless (no shell), so the transform is done here at commit-time instead of
-# in a runtime init-container — see openfga-bootstrap-job.yaml.
-OPENFGA_CLI_IMAGE ?= openfga/cli:v0.7.13
-# KAC-127 RC-2b: canonical FGA model source. The ConfigMap below is GENERATED —
-# both the `model.fga` block (byte-identical copy) and the `model.json` block
-# (openfga/cli transform) are derived from this single artifact.
+# Копия канонической МОДЕЛИ прав, вшиваемая в двоичный файл iam: из неё
+# реляционная форма вердикта выводит отношения (XC-12). Модель остаётся
+# источником истины ФОРМЫ и после снятия внешнего движка (S6 эпика #747) —
+# снято то, что требовало ЖИВОГО движка, а не то, что называет модель.
+# Держится порождением плюс гейтом побайтового равенства
+# (services/iam/internal/authzmodel/identity_test.go).
 OPENFGA_CANONICAL_FGA ?= ../proto/kacho/cloud/iam/v1/fga_model.fga
-openfga-model-json:
-	@echo "Regenerating openfga-model-stub configmap from canonical fga_model.fga..."
-	python3 scripts/gen-openfga-model-configmap.py \
-	  helm/umbrella/charts/openfga-bootstrap/templates/openfga-model-stub-configmap.yaml \
-	  $(OPENFGA_CANONICAL_FGA) $(OPENFGA_CLI_IMAGE)
-
-# Третья производная того же канонического текста: копия, вшиваемая в двоичный
-# файл iam, из которой реляционная форма вердикта выводит отношения (XC-12).
-# Держится тем же способом, что и настройка кластера, — порождением плюс гейтом
-# побайтового равенства (services/iam/internal/authzmodel/identity_test.go).
 FGA_MODEL_EMBED ?= ../services/iam/internal/authzmodel/fga_model.fga
 fga-model-embed:
 	@cp $(OPENFGA_CANONICAL_FGA) $(FGA_MODEL_EMBED)

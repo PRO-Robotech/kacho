@@ -128,16 +128,13 @@ deploy/tests/helm/admin-hop-address-census-test.sh
 deploy/tests/helm/admin-hop-pod-shape-test.sh
 deploy/tests/helm/admin-hop-port-policy-test.sh
 deploy/tests/helm/admin-hop-transport-test.sh
-deploy/tests/helm/bootstrap-refusal-classified-test.sh
 deploy/tests/helm/config-rollout-binding-test.sh
 deploy/tests/helm/geo-authz-edge-armed-test.sh
 deploy/tests/helm/image-rollout-binding-test.sh
 deploy/tests/helm/makefile-destructive-guarded-test.sh
 deploy/tests/helm/neighbour-address-form-test.sh
 deploy/tests/helm/networkpolicy-egress-test.sh
-deploy/tests/helm/openfga-datastore-durable-test.sh
 deploy/tests/helm/outbox-autovacuum-naptime-test.sh
-deploy/tests/helm/podtemplate-annotation-single-owner-test.sh
 deploy/tests/helm/prerequisite-secrets-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
 gateway/tests/newman/scripts/selftest_tamper_mutation.py

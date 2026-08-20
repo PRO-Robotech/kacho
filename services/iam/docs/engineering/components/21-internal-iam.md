@@ -14,7 +14,7 @@ kacho-loadbalancer) общаются с kacho-iam:
   AuthorizeService.Check, но с Cascade fast-path и principal-prop).
 - `ListPermissions` — catalog-mode listing (все permissions из IAM-domain).
 - `PollSubjectChanges(since_id, limit)` — для api-gateway authz-cache
-  invalidation poll (см. [`29-openfga-check.md`](29-openfga-check.md)).
+  invalidation poll (см. [`29-relational-verdict.md`](29-relational-verdict.md)).
 - `WriteCreatorTuple(user, resource_type, resource_id)` — post-creation
   FGA-tuple emit для vpc/compute/nlb.
 
@@ -75,7 +75,7 @@ sequenceDiagram
     participant IAM as InternalIAMService.Check :9091
     participant Auth as AuthorizeService
     participant Cascade as cluster_admin_grants fast-path
-    participant FGA as OpenFGA
+    participant Form as реляционная форма (kacho_iam)
     participant OPA
 
     VPC->>IAM: Check {subject:user:usr_alice, action:"vpc.network.create", resource:project/prj_yyy}
@@ -84,8 +84,8 @@ sequenceDiagram
     alt ClusterAdminGrant ACTIVE
         Cascade-->>Auth: ALLOW
     else not cluster admin
-        Auth->>FGA: Check(user, creator, project)
-        FGA-->>Auth: allowed=true
+        Auth->>Form: вердикт: факт ∪ выдача ∪ метки ∪ членство
+        Form-->>Auth: allowed=true
         Auth->>OPA: guardrails deny eval
         OPA-->>Auth: false (no deny)
     end
@@ -102,20 +102,20 @@ sequenceDiagram
     participant VPC as kacho-vpc Network.Create
     participant DB_VPC
     participant IAM as InternalIAMService :9091
-    participant FGA as OpenFGA via fga_outbox
+    participant DB as Postgres kacho_iam
 
     VPC->>DB_VPC: INSERT vpc_networks → vpn_xxx
     VPC->>IAM: WriteCreatorTuple {user:usr_alice, resource_type:vpc_network, resource_id:vpn_xxx}
-    IAM->>FGA: WriteTuples [(user:usr_alice, creator, vpc_network:vpn_xxx)]
-    FGA-->>IAM: OK
+    IAM->>DB: INSERT fga_outbox (user:usr_alice, creator, vpc_network:vpn_xxx)
+    DB->>DB: триггер журнала: строка → relation_fact (та же транзакция)
     IAM-->>VPC: Operation done=true
-    Note over VPC: Теперь Alice — creator → имеет admin relation through FGA model
+    Note over VPC: «записал» и «действует» совпадают — очереди наружу нет
 ```
 
 ## Конфигурация
 
-Использует те же OpenFGA env vars, что и AuthorizeService
-(см. [`19-authorize.md`](19-authorize.md)).
+Своих переменных окружения у службы нет: вердикт и запись намерения идут в ту же базу,
+что и остальное состояние (см. [`19-authorize.md`](19-authorize.md) §Настройка).
 
 ## Как пользоваться
 
@@ -155,9 +155,10 @@ grpcurl -plaintext -d '{"since_id":0,"limit":100}' localhost:9091 \
   обработчика нет; имя не воспроизводится как координата.
 - **Check delegation:** narrow port `authorizer` over `*service.AuthorizeService`.
 - **PollSubjectChanges:** narrow port `subjectChanger` over `*service.SubjectChangeService`.
-- **WriteCreatorTuple:** narrow port `relationWriter` over `*clients.OpenFGAHTTPClient`
-  (соседние порты того же обработчика — `Authorizer`, `subjectChanger`, `relationWriteGate`,
-  `resourceRegistrar`, `roleCompiledReader`).
+- **WriteCreatorTuple:** узкий порт `relationWriter`, реализация —
+  `repo/kacho/pg.CreatorTupleWriter`: кладёт намерение строкой журнала в собственной
+  транзакции (соседние порты того же обработчика — `Authorizer`, `subjectChanger`,
+  `relationWriteGate`, `resourceRegistrar`, `roleCompiledReader`).
 - **Auth-interceptor:** реализован на стороне api-gateway (валидация JWT +
   propagation principal в backend).
 
@@ -165,21 +166,21 @@ grpcurl -plaintext -d '{"since_id":0,"limit":100}' localhost:9091 \
 
 - **gRPC-direct, не restmux** — иначе loop через api-gateway.
 - **LookupSubject — hot-path** — рекомендуется api-gateway cache на ~30s.
-- **WriteCreatorTuple — best-effort** — failure НЕ rollback'ит Create в
-  vpc/compute (peer-call после COMMIT); потеря tuple восстанавливается
-  через прямой `WriteTuples` по внутреннему слушателю (см. [`28-relationhook.md`](28-relationhook.md)).
+- **WriteCreatorTuple — отдельная транзакция** — вызов идёт после `COMMIT` у
+  вызывающего и его не откатывает. Зато у самого RPC «принято» означает
+  «закоммичено»: строка журнала и прямой факт ложатся одной транзакцией, а не
+  ставятся в очередь (см. [`29-relational-verdict.md`](29-relational-verdict.md)).
 - **Check без principal context** — caller обязан передать subject параметром.
 
 ## Связанные компоненты
 
 - [`03-user.md`](03-user.md) — User mirror.
 - [`19-authorize.md`](19-authorize.md) — Public Check.
-- [`28-relationhook.md`](28-relationhook.md) — как iam пишет родительский указатель своим ресурсам.
-- [`29-openfga-check.md`](29-openfga-check.md) — subject_change push chain.
+- [`29-relational-verdict.md`](29-relational-verdict.md) — родительский указатель, журнал намерений и сброс кэша края.
 
 ## Ссылки на код
 
 - `internal/apps/kacho/api/internal_iam/handler.go`, `lookup_subject.go`,
   `register_resource.go`, `force_logout.go`, `get_role_compiled.go`
 - `internal/service/authorize_service.go`, `subject_change_service.go`
-- `internal/clients/openfga_client.go`
+- `internal/repo/kacho/pg/creator_tuple_writer.go`, `internal/repo/kacho/pg/relverdict/`

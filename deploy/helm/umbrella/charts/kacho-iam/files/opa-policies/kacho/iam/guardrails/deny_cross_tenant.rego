@@ -1,7 +1,7 @@
 # KAC-127 Phase 3 (acceptance §4.6 R5, design §4.1 #5)
 # Deny: cross-tenant resource access (User from account A touching resource in account B).
 #
-# Rationale: belt-and-suspenders on top of OpenFGA's tuple-based isolation.
+# Rationale: belt-and-suspenders on top of the ReBAC model's tuple-based isolation.
 # Even if a misconfigured AccessBinding mistakenly granted an `editor`-style
 # role to a cross-tenant user, OPA blocks the request at gateway-time.
 # cluster_admin (permanent OR emergency) is exempt — they have legitimate

@@ -80,7 +80,7 @@ func Test_1_4_24_TransientBacklog_DoesNotStarveFreshIntent(t *testing.T) {
 		obj := fmt.Sprintf("stuck:obj%02d", i)
 		seq := make([]error, 0, 4096)
 		for j := 0; j < 4096; j++ {
-			seq = append(seq, fmt.Errorf("openfga write: status 503: backend unavailable"))
+			seq = append(seq, fmt.Errorf("downstream write: status 503: backend unavailable"))
 		}
 		fa.setErrorSeq(obj, seq...)
 	}

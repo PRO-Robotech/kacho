@@ -5,12 +5,12 @@ package internal_iam
 
 // handler_test.go — unit-тесты InternalIAMService.Check.
 //
-// Check делегирует в AuthorizeService.CheckRelation. Тест мокает authorizer
-// port-iface (без OpenFGA / OPA) и проверяет transport-маппинг:
+// Check делегирует в AuthorizeService.CheckRelation. Тест ставит дублёра на порт
+// решателя и проверяет transport-маппинг:
 //   - allowed=true                                  → CheckResponse{Allowed:true}
 //   - allowed=false (deny path)                     → CheckResponse{Allowed:false, Reason}
 //   - missing subject_id / relation / object        → InvalidArgument
-//   - authorizer == nil (FGA stack not wired)       → Unavailable (fail-closed)
+//   - authorizer == nil (решатель не провязан)      → Unavailable (fail-closed)
 //   - CheckRelation -> "authz unavailable"          → Unavailable
 //   - CheckRelation -> "Illegal argument ..."       → InvalidArgument
 //   - CheckRelation -> generic error                → Internal
@@ -58,9 +58,8 @@ func newCheckHandler(authz Authorizer) *Handler {
 
 func TestInternalIAM_Check_Allowed(t *testing.T) {
 	authz := &fakeAuthorizer{result: &service.CheckResult{
-		Allowed:              true,
-		AuthorizationModelID: "model_v2",
-		CheckedAt:            time.Now().UTC().Truncate(time.Second),
+		Allowed:   true,
+		CheckedAt: time.Now().UTC().Truncate(time.Second),
 	}}
 	h := newCheckHandler(authz)
 
@@ -154,8 +153,8 @@ func TestInternalIAM_Check_ErrorMapping(t *testing.T) {
 	}{
 		// Backend-unavailable is classified by the typed iamerr.ErrUnavailable
 		// sentinel (robust to error-text rewording), not an error-string prefix.
-		{"unavailable sentinel", iamerr.Wrapf(iamerr.ErrUnavailable, "authz unavailable: openfga check: status 503"), codes.Unavailable, ""},
-		{"unavailable sentinel other text", iamerr.Wrapf(iamerr.ErrUnavailable, "policy unavailable: opa down"), codes.Unavailable, ""},
+		{"unavailable sentinel", iamerr.Wrapf(iamerr.ErrUnavailable, "authz unavailable: read relation_fact: conn refused"), codes.Unavailable, ""},
+		{"unavailable sentinel other text", iamerr.Wrapf(iamerr.ErrUnavailable, "iam datastore unavailable"), codes.Unavailable, ""},
 		{"illegal argument", errors.New("Illegal argument relation: required"), codes.InvalidArgument, ""},
 		// Leak-lock (audit r3): the Internal default must be the OPAQUE fixed text,
 		// never err.Error() — an un-sentineled pgx/DB error carries driver text
@@ -202,13 +201,17 @@ type fakeGate struct {
 
 func (g *fakeGate) Authorize(_ context.Context) (string, error) { g.callCnt++; return g.domain, g.err }
 
-// fakeRelationWriter implements the relationWriter port.
+// fakeRelationWriter — дублёр порта relationWriter: он ПРИНИМАЕТ НАМЕРЕНИЕ строкой
+// журнала, а не пишет в чужое хранилище. Имя метода тут не косметика — оно и есть
+// предмет: после снятия внешнего движка адресат у `WriteCreatorTuple` один, журнал
+// `kacho_iam.fga_outbox`, из которого триггер складывает прямой факт в той же
+// транзакции.
 type fakeRelationWriter struct {
 	gotTuples []clients.RelationTuple
 	err       error
 }
 
-func (w *fakeRelationWriter) WriteTuples(_ context.Context, tuples []clients.RelationTuple) error {
+func (w *fakeRelationWriter) RecordTuples(_ context.Context, tuples []clients.RelationTuple) error {
 	w.gotTuples = append(w.gotTuples, tuples...)
 	return w.err
 }
@@ -276,12 +279,15 @@ func TestInternalIAM_WriteCreatorTuple_PrivilegeTupleDenied(t *testing.T) {
 }
 
 // TestInternalIAM_WriteCreatorTuple_WriterError_OpaqueMessage — leak-lock (audit r11):
-// the raw OpenFGA transport error must never reach the gRPC status message — it
-// carries the cluster-internal FGA endpoint host:port + store id. The message must
-// be the fixed opaque text, not err.Error() (%v). Mirrors internal_authorize's
-// ReadTuples/GetFGAStoreInfo scrub. security.md hardening-invariant #1 (:9091 not exempt).
+// сырой текст отказа ХРАНИЛИЩА не вправе попасть в сообщение gRPC-статуса: он несёт
+// координаты подключения (хост, порт, пользователь, имя базы). Сообщение обязано быть
+// фиксированным непрозрачным текстом, а не err.Error() (%v).
+//
+// Предмет пережил смену адресата: прежде под записью намерения лежал внешний движок и
+// утекал бы ЕГО адрес; теперь под ней лежит журнал в своей базе, и утекал бы адрес БАЗЫ.
+// security.md hardening-инвариант #1 (:9091 не освобождён).
 func TestInternalIAM_WriteCreatorTuple_WriterError_OpaqueMessage(t *testing.T) {
-	rawErr := `openfga write: Post "http://fga-host.internal:8080/stores/01STOREID/write": dial tcp 10.1.2.3:8080: connect: connection refused`
+	rawErr := "record tuples: failed to connect to host=pg-iam.internal user=kacho_iam database=kacho_iam: dial tcp 10.1.2.3:5432: connect: connection refused"
 	gate := &fakeGate{}
 	writer := &fakeRelationWriter{err: errors.New(rawErr)}
 	h := newWriteCreatorHandler(writer, gate)
@@ -293,9 +299,9 @@ func TestInternalIAM_WriteCreatorTuple_WriterError_OpaqueMessage(t *testing.T) {
 	assert.Equal(t, codes.Unavailable, status.Code(err))
 	msg := status.Convert(err).Message()
 	assert.Equal(t, "authz backend unavailable", msg,
-		"UNAVAILABLE must be opaque fixed text — never echo raw FGA transport err (endpoint/store-id leak)")
-	assert.NotContains(t, msg, "fga-host.internal", "FGA endpoint host:port leaked into status message")
-	assert.NotContains(t, msg, "01STOREID", "FGA store id leaked into status message")
+		"UNAVAILABLE обязан быть фиксированным непрозрачным текстом — никогда не эхо сырого отказа хранилища")
+	assert.NotContains(t, msg, "pg-iam.internal", "хост базы утёк в сообщение статуса")
+	assert.NotContains(t, msg, "kacho_iam", "имя базы/пользователя утекло в сообщение статуса")
 }
 
 // TestInternalIAM_WriteCreatorTuple_NilGateFailsClosed — an unwired gate → deny

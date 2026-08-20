@@ -134,7 +134,7 @@ internal/
 - `kacho-iam.ProjectService.Get` — existence check владельца-проекта
   (`project_id` — id владельца-проекта) в Create-мутациях (канонический error
   `"Project X not found"`); `InternalIAMService.Check` — per-RPC authz-gate;
-  `RegisterResource`/`UnregisterResource` — запись owner-tuple в FGA через IAM.
+  `RegisterResource`/`UnregisterResource` — регистрация владения через IAM.
 - `kacho-geo.ZoneService.Get` — валидация `zone_id` Subnet/AddressPool на request-path.
 
 ## База данных

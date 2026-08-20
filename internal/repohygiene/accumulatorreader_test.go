@@ -109,11 +109,6 @@ type accumulatorSubject struct {
 
 var observedAccumulators = []accumulatorSubject{
 	{
-		pkg: "shadowverdict", ctor: "New", accessor: "Counters",
-		why: "теневое сравнение намеренно ни на что не влияет, поэтому сравнитель, " +
-			"которого не спросили ни разу, снаружи неотличим от сравнителя без расхождений",
-	},
-	{
 		pkg: "jwksproxyhttp", ctor: "NewHandler", accessor: "Stats",
 		why: "зеркало ключей отказывает закрыто, поэтому «отказов не было» обязано быть " +
 			"отличимо от «сюда никто не приходил»: второе означает мёртвую плоскость данных",

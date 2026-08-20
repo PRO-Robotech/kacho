@@ -128,11 +128,12 @@ erDiagram
 только против ACTIVE-дубля. Delete forward-only, чтобы revert `DELETING→ACTIVE` не воскрешал конфликт.
 :::
 
-## Owner-tuple через transactional-outbox
+## Регистрация владения через transactional-outbox {#owner-registration}
 
-При создании реестра сервис должен записать owner-hierarchy-tuple в FGA (через kacho-iam), чтобы
-создатель видел реестр в authz-фильтрованном списке. Прямой запись в FGA из сервиса запрещена
-(модули не ходят в FGA напрямую) — используется **transactional-outbox**:
+При создании реестра сервис должен зарегистрировать владение и место реестра в цепи областей
+(`RegisterResource` в kacho-iam), чтобы создатель видел реестр в authz-фильтрованном списке.
+Прямая запись в модель прав из сервиса запрещена (модули пишут только через kacho-iam) —
+используется **transactional-outbox**:
 
 1. `Create` в одной writer-транзакции пишет строку в `registries` **и** intent в `registry_outbox`
    (один commit — no dual-write).
@@ -140,7 +141,7 @@ erDiagram
    intent через `iam.InternalIAMService.RegisterResource` по mTLS — идемпотентно, at-least-once.
 3. При удалении реестра/репозитория эмитится `fga.unregister` — снятие tuple.
 
-Owner-tuple, писанные через proxy, — только hierarchy-relation (`project`/`owner`); `admin/editor/...`
+Отношения, писанные через proxy, — только иерархические (`project`/`owner`); `admin/editor/...`
 через proxy запрещены (privilege-guard в iam). Модель `registry_registry` несёт `owner`, поэтому
 creator-tuple успешно материализуется.
 

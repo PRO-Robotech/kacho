@@ -1,0 +1,209 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package repohygiene
+
+// authzengineretired.go — разбор «внешнего движка прав в пути решения НЕТ»
+// (гейт Г6 приёмки R7-3, стадия S6).
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ПРЕДМЕТ
+//
+// До стадии S6 решение о доступе принимал внешний движок отношений: служба прав
+// держала HTTP-клиента к нему, писала в него кортежи очередью и спрашивала его на
+// каждом вопросе. S6 сняла его целиком — вердикт вычисляет реляционная форма в
+// собственной базе службы.
+//
+// Гейт стережёт ВОЗВРАЩЕНИЕ. Возвращается такое не решением, а по одному вызову:
+// «здесь бы сюда сходить» — и через полгода в пути решения снова стоит сетевой
+// сосед, чью недоступность никто не закладывал.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ПОЧЕМУ ПРЕДИКАТ — СЛОВАРЬ МЕТОДОВ, А НЕ СЛОВО «OPENFGA»
+//
+// Слово в дереве ОСТАЁТСЯ законно и во множестве мест: журнал намерений
+// называется `kacho_iam.fga_outbox` (переименование — предмет отдельной задачи,
+// применённые миграции не правятся), модель прав лежит в `fga_model.fga` и стала
+// источником истины ФОРМЫ, служебная учётка посредника зовётся `iam_fgaproxy`.
+// Гейт по слову краснел бы на них — то есть на исправном дереве — и был бы снят
+// первым же обходом.
+//
+// Различает не слово, а ПОВЕРХНОСТЬ: у снятого клиента был свой словарь методов,
+// и клиент такого хранилища узнаётся по нему, как бы ни назвали тип. Словарь
+// выведен из самого снятого типа (перечень методов якоря переписи S1), а не
+// придуман: возвращающий движок принесёт эти имена обратно, потому что это и есть
+// поверхность его API.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ГРАНИЦА НАЗВАНА ВСЛУХ
+//
+// Гейт НЕ поймает внешний движок, приведённый с ДРУГИМ API и другими именами
+// методов. Такого предиката не существует: «сетевой сосед в пути решения» по
+// синтаксису неотличим от любого другого клиента, а их в службе несколько
+// (провайдер личности, край). Что гейт даёт — невозможность вернуть СНЯТЫЙ движок
+// молча; что он не даёт — запрет на любую будущую внешнюю зависимость решения.
+// Второе держится обзором и приёмкой, а не разбором исходника.
+
+import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"sort"
+	"strings"
+)
+
+// RetiredEngineAnchor — имя типа снятого клиента.
+//
+// Отдельно от словаря методов: его возвращение однозначно, а метод может совпасть
+// у соседа случайно.
+const RetiredEngineAnchor = "OpenFGAHTTPClient"
+
+// RetiredEngineMethods — словарь методов снятого клиента.
+//
+// ПРАВИЛО ОТБОРА, и оно единственное: сюда попадает имя, у которого в оставшемся
+// дереве НЕТ ПРОИЗВОДИТЕЛЯ. Имя, которое отвечает дверь решения или форма,
+// маркером снятого движка быть не может — гейт краснел бы на исправном коде и был
+// бы отключён первым же обходом.
+//
+// Поэтому здесь НЕТ четырёх имён, бывших в поверхности движка и оставшихся в
+// дереве под живым производителем: `Check` и `CheckWithContext` (их отвечает
+// форма — запрет на них означал бы запрет на решение о доступе вообще),
+// `CheckWithContextConsistent` (дверь несёт его как ИМЯ требования вызывающего) и
+// `ListUsers` с `Expand` (перечисление принципалов и разбор оснований отвечает
+// дверь поверх формы).
+//
+// Остальное — то, чего в дереве нет вовсе: вопрос с кортежами на один запрос,
+// батчевый вопрос движка, запись и чтение ЧУЖОГО хранилища кортежей, сведения о
+// нём и идентификатор версии модели у него.
+var RetiredEngineMethods = []string{
+	"CheckWithContextualTuples", // кортежи, действующие только на этот запрос
+	"CheckConsistent",
+	"BatchCheckItems",
+	"WriteTuples", // запись в чужое хранилище кортежей
+	"WriteConditionalTuples",
+	"DeleteTuples",
+	"ReadTuples",
+	"ReadTuplesStrong",
+	"GetStoreInfo",               // сведения о чужом хранилище
+	"LatestAuthorizationModelID", // идентификатор версии модели у чужого хранилища
+}
+
+// EngineFinding — одно исполняемое место, вернувшее поверхность снятого движка.
+type EngineFinding struct {
+	File   string
+	Line   int
+	Symbol string
+	// Kind — «объявление» либо «обращение»: возвращённый тип и вызов его метода
+	// различаются исходом, и читателю находки надо знать, что именно он видит.
+	Kind string
+}
+
+// EngineCensus — объём осмотренного. «Ноль находок» обязано быть отличимо от
+// «ноль прочитанного».
+type EngineCensus struct {
+	// Files — прочитано непроверочных файлов Go.
+	Files int
+	// Idents — осмотрено идентификаторов в исполняемых позициях.
+	Idents int
+	// ProseMentions — файлов, где имя снятого движка стоит ТОЛЬКО в комментарии
+	// либо в строковом литерале. Это законно и печатается затем, чтобы «ноль
+	// находок» не читалось как «слова в дереве нет».
+	ProseMentions int
+	// Exempt — файлов, снятых с рассмотрения перечнем послаблений.
+	Exempt int
+}
+
+// FindRetiredEngineSurface разбирает исходники (имя → содержимое) и возвращает
+// исполняемые места, где поверхность снятого движка вернулась.
+//
+// exempt — предикат послабления по пути файла. Послабление ОБЯЗАНО истекать
+// само: перечень, которому больше нечего исключать, — находка, и это проверяет
+// проба гейта, а не внимательность.
+func FindRetiredEngineSurface(
+	sources map[string]string, exempt func(path string) bool,
+) ([]EngineFinding, EngineCensus, error) {
+	var (
+		findings []EngineFinding
+		census   EngineCensus
+	)
+	method := make(map[string]struct{}, len(RetiredEngineMethods))
+	for _, m := range RetiredEngineMethods {
+		method[m] = struct{}{}
+	}
+
+	names := make([]string, 0, len(sources))
+	for name := range sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		if exempt != nil && exempt(name) {
+			census.Exempt++
+			continue
+		}
+		src := sources[name]
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, name, src, parser.ParseComments)
+		if err != nil {
+			return nil, census, fmt.Errorf("разбор %s: %w", name, err)
+		}
+		census.Files++
+
+		found := false
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch v := n.(type) {
+			case *ast.Ident:
+				census.Idents++
+				if v.Name == RetiredEngineAnchor {
+					found = true
+					findings = append(findings, EngineFinding{
+						File: name, Line: fset.Position(v.Pos()).Line,
+						Symbol: v.Name, Kind: "объявление или ссылка на тип клиента",
+					})
+				}
+			case *ast.SelectorExpr:
+				// Обращение к методу словаря — только в позиции ВЫЗОВА: имя поля
+				// структуры, случайно совпавшее с методом, решением о доступе не
+				// является.
+				if _, ok := method[v.Sel.Name]; ok {
+					found = true
+					findings = append(findings, EngineFinding{
+						File: name, Line: fset.Position(v.Sel.Pos()).Line,
+						Symbol: v.Sel.Name, Kind: "обращение к методу снятого хранилища",
+					})
+				}
+			}
+			return true
+		})
+		if !found && mentionsEngineInProse(file, src) {
+			census.ProseMentions++
+		}
+	}
+	return findings, census, nil
+}
+
+// mentionsEngineInProse — назван ли движок в комментарии либо строковом литерале
+// этого файла.
+//
+// Считается ОТДЕЛЬНО от находок и находкой НЕ является: разбор снятия, шапка
+// миграции, имя журнала — законная проза, и гейт, который её ловит, краснеет на
+// собственном объяснении.
+func mentionsEngineInProse(file *ast.File, src string) bool {
+	for _, group := range file.Comments {
+		if strings.Contains(strings.ToLower(group.Text()), "openfga") {
+			return true
+		}
+	}
+	found := false
+	ast.Inspect(file, func(n ast.Node) bool {
+		lit, ok := n.(*ast.BasicLit)
+		if ok && lit.Kind == token.STRING && strings.Contains(strings.ToLower(lit.Value), "openfga") {
+			found = true
+		}
+		return !found
+	})
+	_ = src
+	return found
+}

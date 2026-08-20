@@ -24,7 +24,6 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	AuthorizeService_Check_FullMethodName           = "/kacho.cloud.iam.v1.AuthorizeService/Check"
 	AuthorizeService_BatchCheck_FullMethodName      = "/kacho.cloud.iam.v1.AuthorizeService/BatchCheck"
-	AuthorizeService_ListObjects_FullMethodName     = "/kacho.cloud.iam.v1.AuthorizeService/ListObjects"
 	AuthorizeService_ListSubjects_FullMethodName    = "/kacho.cloud.iam.v1.AuthorizeService/ListSubjects"
 	AuthorizeService_ExpandRelations_FullMethodName = "/kacho.cloud.iam.v1.AuthorizeService/ExpandRelations"
 	AuthorizeService_WhoAmI_FullMethodName          = "/kacho.cloud.iam.v1.AuthorizeService/WhoAmI"
@@ -114,26 +113,18 @@ type AuthorizeServiceClient interface {
 	//
 	// Hard cap: ≤ 100 checks per batch (InvalidArgument otherwise).
 	BatchCheck(ctx context.Context, in *BatchAuthorizeCheckRequest, opts ...grpc.CallOption) (*BatchAuthorizeCheckResponse, error)
-	// ListObjects — return all `resource_type` ids the subject has `action` on.
-	//
-	// Backed by FGA `ListObjects` — a **skeleton** integration today;
-	// full per-handler integration is planned. The endpoint returns
-	// `Unimplemented` if `KACHO_AUTHZ_LISTOBJECTS=off`
-	// (default).
-	ListObjects(ctx context.Context, in *ListObjectsRequest, opts ...grpc.CallOption) (*ListObjectsResponse, error)
-	// ListSubjects — inverse of ListObjects: return all subjects with `action`
-	// on a given resource. Used by admin-UI "who can access this" widget.
+	// ListSubjects — return all subjects holding `action` on a given resource.
+	// Used by the admin-UI "who can access this" widget.
 	//
 	// Hard cap: page size ≤ 1000 (InvalidArgument otherwise).
 	ListSubjects(ctx context.Context, in *ListSubjectsRequest, opts ...grpc.CallOption) (*ListSubjectsResponse, error)
-	// ExpandRelations — return the Zanzibar userset tree for a (resource,
-	// relation) pair. Each node is either a leaf (direct subject), a computed
-	// userset (`#admin → #viewer` etc.) or a tuple-to-userset. Used by audit
+	// ExpandRelations — return the subjects that resolve `relation` on `resource`,
+	// as recorded by the relational form that decides access. Used by audit
 	// tooling to explain a deny / allow decision.
 	//
-	// The returned tree is **read-only** and reflects the model at the pinned
-	// `authorization_model_id`. Max depth: 32 (server-
-	// side cap; deeper trees return PartialTree with a truncation marker).
+	// The answer is ONE LEVEL and carries no edges: the source is a set of flat
+	// records, not a graph, so there is no subtree to descend into and no depth to
+	// bound. The response is read-only.
 	ExpandRelations(ctx context.Context, in *ExpandRelationsRequest, opts ...grpc.CallOption) (*ExpandRelationsResponse, error)
 	// WhoAmI — return the authenticated caller's identity + a permission
 	// snapshot (cluster-level flags + per-account roles).
@@ -174,16 +165,6 @@ func (c *authorizeServiceClient) BatchCheck(ctx context.Context, in *BatchAuthor
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BatchAuthorizeCheckResponse)
 	err := c.cc.Invoke(ctx, AuthorizeService_BatchCheck_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *authorizeServiceClient) ListObjects(ctx context.Context, in *ListObjectsRequest, opts ...grpc.CallOption) (*ListObjectsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListObjectsResponse)
-	err := c.cc.Invoke(ctx, AuthorizeService_ListObjects_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -304,26 +285,18 @@ type AuthorizeServiceServer interface {
 	//
 	// Hard cap: ≤ 100 checks per batch (InvalidArgument otherwise).
 	BatchCheck(context.Context, *BatchAuthorizeCheckRequest) (*BatchAuthorizeCheckResponse, error)
-	// ListObjects — return all `resource_type` ids the subject has `action` on.
-	//
-	// Backed by FGA `ListObjects` — a **skeleton** integration today;
-	// full per-handler integration is planned. The endpoint returns
-	// `Unimplemented` if `KACHO_AUTHZ_LISTOBJECTS=off`
-	// (default).
-	ListObjects(context.Context, *ListObjectsRequest) (*ListObjectsResponse, error)
-	// ListSubjects — inverse of ListObjects: return all subjects with `action`
-	// on a given resource. Used by admin-UI "who can access this" widget.
+	// ListSubjects — return all subjects holding `action` on a given resource.
+	// Used by the admin-UI "who can access this" widget.
 	//
 	// Hard cap: page size ≤ 1000 (InvalidArgument otherwise).
 	ListSubjects(context.Context, *ListSubjectsRequest) (*ListSubjectsResponse, error)
-	// ExpandRelations — return the Zanzibar userset tree for a (resource,
-	// relation) pair. Each node is either a leaf (direct subject), a computed
-	// userset (`#admin → #viewer` etc.) or a tuple-to-userset. Used by audit
+	// ExpandRelations — return the subjects that resolve `relation` on `resource`,
+	// as recorded by the relational form that decides access. Used by audit
 	// tooling to explain a deny / allow decision.
 	//
-	// The returned tree is **read-only** and reflects the model at the pinned
-	// `authorization_model_id`. Max depth: 32 (server-
-	// side cap; deeper trees return PartialTree with a truncation marker).
+	// The answer is ONE LEVEL and carries no edges: the source is a set of flat
+	// records, not a graph, so there is no subtree to descend into and no depth to
+	// bound. The response is read-only.
 	ExpandRelations(context.Context, *ExpandRelationsRequest) (*ExpandRelationsResponse, error)
 	// WhoAmI — return the authenticated caller's identity + a permission
 	// snapshot (cluster-level flags + per-account roles).
@@ -355,9 +328,6 @@ func (UnimplementedAuthorizeServiceServer) Check(context.Context, *AuthorizeChec
 }
 func (UnimplementedAuthorizeServiceServer) BatchCheck(context.Context, *BatchAuthorizeCheckRequest) (*BatchAuthorizeCheckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BatchCheck not implemented")
-}
-func (UnimplementedAuthorizeServiceServer) ListObjects(context.Context, *ListObjectsRequest) (*ListObjectsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListObjects not implemented")
 }
 func (UnimplementedAuthorizeServiceServer) ListSubjects(context.Context, *ListSubjectsRequest) (*ListSubjectsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListSubjects not implemented")
@@ -421,24 +391,6 @@ func _AuthorizeService_BatchCheck_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AuthorizeServiceServer).BatchCheck(ctx, req.(*BatchAuthorizeCheckRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _AuthorizeService_ListObjects_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListObjectsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(AuthorizeServiceServer).ListObjects(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AuthorizeService_ListObjects_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AuthorizeServiceServer).ListObjects(ctx, req.(*ListObjectsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -511,10 +463,6 @@ var AuthorizeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "BatchCheck",
 			Handler:    _AuthorizeService_BatchCheck_Handler,
-		},
-		{
-			MethodName: "ListObjects",
-			Handler:    _AuthorizeService_ListObjects_Handler,
 		},
 		{
 			MethodName: "ListSubjects",

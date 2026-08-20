@@ -131,8 +131,8 @@ flowchart LR
   c["клиент"] -->|"полл OperationService.Get"| db
 ```
 
-Отдельный **FGA register-outbox** (канал `kacho_nlb_fga_register_outbox`) через corelib
-drainer доставляет owner/hierarchy-tuples в OpenFGA через kacho-iam (at-least-once,
+Отдельный **register-outbox** (канал `kacho_nlb_fga_register_outbox`) через corelib
+drainer доставляет владение и место ресурса в цепи областей в kacho-iam (at-least-once,
 идемпотентно). Подробнее — [Авторизация](/architecture/authz).
 
 :::warning Principal в фоновом воркере

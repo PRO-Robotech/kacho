@@ -398,8 +398,8 @@ resource может быть удален до завершения op). `accoun
 `List` / `OperationService.Get`.
 
 #### `fga_register_outbox` (миграция 0006/0008)
-Отдельный transactional-outbox для регистрации owner-tuple в FGA через `kacho-iam`. Независим
-от доменного `vpc_outbox`. Одна строка == один tuple. LISTEN/NOTIFY-канал
+Отдельный transactional-outbox для регистрации владения через `kacho-iam`. Независим
+от доменного `vpc_outbox`. Одна строка == одно намерение. LISTEN/NOTIFY-канал
 `kacho_vpc_fga_register_outbox` будит register-drainer на INSERT. Колонки `resource_kind` /
 `resource_id` (миграция 0008) нужны reconciler'у для адресации intent по ресурсу.
 

@@ -154,16 +154,6 @@ pg-registry:
   readReplicas:
     persistence:
       enabled: false
-pg-openfga:
-  primary:
-    persistence:
-      enabled: false
-    resources: *id001
-  volumePermissions:
-    enabled: false
-  readReplicas:
-    persistence:
-      enabled: false
 pg-kratos:
   primary:
     persistence:
@@ -250,8 +240,6 @@ kacho-nlb:
     repository: docker.io/prorobotech/kacho-nlb
     tag: main-d0061645
     pullPolicy: IfNotPresent
-openfga:
-  resources: *id002
 hydra:
   deployment:
     resources: *id002

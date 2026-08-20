@@ -186,7 +186,7 @@ func Test_ClaimPlan_DoesNotScaleWithBacklogDepth(t *testing.T) {
 //	observed applying exactly one 16-row batch every ~11.5 s for 46 s — 1.4 rows/s
 //	— and then jumping to ~600 rows/s the moment autovacuum finally re-analyzed.
 //	Revokes queued behind that stall took 30 s on average (49 s worst) to reach
-//	OpenFGA, against a 15 s e2e probe budget.
+//	внешний потребитель, против 15-секундного бюджета сквозной пробы.
 //
 // # What is asserted, and why the plan is not executed
 //

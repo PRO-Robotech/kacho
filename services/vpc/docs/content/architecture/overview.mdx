@@ -175,13 +175,13 @@ flowchart LR
     <tr>
       <td><code>vpc → iam</code> (lookup + authz)</td>
       <td>исходящее</td>
-      <td><code>ProjectService.Get</code> — существование проекта (owner-lookup на Create). <code>InternalIAMService.Check</code> — per-RPC authz-gate (ReBAC/OpenFGA). kacho-iam — leaf-owner, обратно не зовет.</td>
+      <td><code>ProjectService.Get</code> — существование проекта (owner-lookup на Create). <code>InternalIAMService.Check</code> — per-RPC authz-gate. kacho-iam — leaf-owner, обратно не зовет.</td>
       <td>peer-call (sync)</td>
     </tr>
     <tr>
-      <td><code>vpc → iam</code> (FGA-proxy)</td>
+      <td><code>vpc → iam</code> (регистрация ресурсов)</td>
       <td>исходящее</td>
-      <td><code>InternalIAMService.RegisterResource</code> / <code>UnregisterResource</code> — запись/снятие owner-hierarchy-tuple в FGA <strong>через kacho-iam</strong> (модули в OpenFGA напрямую не ходят). Намерение пишется в transactional-outbox в той же TX, что и ресурс; отдельный drainer применяет его idempotent / at-least-once.</td>
+      <td><code>InternalIAMService.RegisterResource</code> / <code>UnregisterResource</code> — регистрация/снятие владения и места ресурса в цепи областей <strong>через kacho-iam</strong> (модули в модель прав напрямую не пишут). Намерение пишется в transactional-outbox в той же TX, что и ресурс; отдельный drainer применяет его idempotent / at-least-once.</td>
       <td>outbox-drainer (async)</td>
     </tr>
     <tr>

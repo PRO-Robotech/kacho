@@ -118,8 +118,8 @@ RFC 3339 (`2026-06-24T10:00:00Z`).
 
 ## Авторизация
 
-Авторизация — **per-RPC, ReBAC** через **OpenFGA**: интерсептор перед выполнением метода
-вызывает `InternalIAMService.Check` в kacho-iam, и это одинаково для **обоих** listener'ов
+Авторизация — **per-RPC**: интерсептор перед выполнением метода вызывает
+`InternalIAMService.Check` в kacho-iam, и это одинаково для **обоих** listener'ов
 (internal не освобождён). Исключение — публичное чтение каталога, у которого per-RPC Check
 снят намеренно (см. первый пункт):
 
@@ -137,7 +137,7 @@ flowchart LR
   cli["Клиент"] -->|"Bearer JWT"| agw["api-gateway"]
   agw -->|"verify JWT"| agw
   agw -->|"geo.v1.* + subject"| geo["kacho-geo"]
-  geo -->|"Check(subject, relation, cluster)"| iam["kacho-iam / OpenFGA"]
+  geo -->|"Check(subject, relation, cluster)"| iam["kacho-iam"]
   iam -->|"allow / deny"| geo
   geo -->|"SQL"| pg[("kacho_geo")]
 ```

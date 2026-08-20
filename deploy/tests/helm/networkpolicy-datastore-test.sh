@@ -95,7 +95,6 @@ check_instance pg-vpc "app=vpc"
 check_instance pg-compute "app=compute"
 check_instance pg-iam "app=kacho-iam"
 check_instance pg-geo "app=kacho-geo"
-check_instance pg-openfga "app.kubernetes.io/name=openfga"
 check_instance pg-nlb "app=kacho-nlb"
 
 echo "$SCRIPT: all green ($N assertions)"

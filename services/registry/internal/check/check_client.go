@@ -3,7 +3,8 @@
 
 // Package check — per-RPC authz-гейт для kacho-registry. Оборачивает
 // authz-интерсептор из corelib registry-шной PermissionMap и CheckClient поверх
-// IAM (InternalIAMService.Check → OpenFGA/ReBAC). registry — CONSUMER iam-authz
+// IAM (InternalIAMService.Check — вердикт выносит сам iam по своим отношениям).
+// registry — CONSUMER iam-authz
 // (ребро registry→iam Check); интерсептор навешивается на ОБА листенера
 // (public :9090 + internal :9091) — internal НЕ освобождён (security.md).
 package check

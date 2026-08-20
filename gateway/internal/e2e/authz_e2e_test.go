@@ -86,9 +86,8 @@ func (s *authzStub) Check(ctx context.Context, req *iamv1.AuthorizeCheckRequest)
 		}
 	}
 	out := &iamv1.AuthorizeCheckResponse{
-		Allowed:              s.allow.Load(),
-		AuthorizationModelId: "model-e2e",
-		CheckedAt:            timestamppb.Now(),
+		Allowed:   s.allow.Load(),
+		CheckedAt: timestamppb.Now(),
 	}
 	if rp := s.reasons.Load(); rp != nil {
 		out.DenyReasons = *rp

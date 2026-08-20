@@ -175,13 +175,6 @@ pg-geo:
     resources:
       requests: { cpu: 100m, memory: 256Mi }
       limits: { cpu: 1000m, memory: 1Gi }
-pg-openfga:
-  primary:
-    persistence:
-      enabled: false
-    resources:
-      requests: { cpu: 100m, memory: 256Mi }
-      limits: { cpu: 1000m, memory: 1Gi }
 pg-nlb:
   primary:
     persistence:
@@ -203,12 +196,6 @@ pg-hydra:
     resources:
       requests: { cpu: 100m, memory: 256Mi }
       limits: { cpu: 1000m, memory: 1Gi }
-
-# ── capacity trims: single OpenFGA replica ──
-openfga:
-  replicaCount: 1
-  ingress:
-    enabled: false
 
 # it to free a pod's worth of CPU/mem on the 4-vCPU cluster.
 # ── no ingress controller on this cluster ──

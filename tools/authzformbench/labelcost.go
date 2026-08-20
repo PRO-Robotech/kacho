@@ -15,16 +15,20 @@ package authzformbench
 // неверно ещё секунду после того, как право снято, не дешевле: она опаснее.
 //
 // Поэтому здесь у каждой операции ДВЕ величины, и вторая никогда не сворачивается
-// в первую: работа (мс, обращения, стейтменты, строки) и ОКНО НЕВЕРНОГО ОТВЕТА.
+// в первую: работа (мс, стейтменты, строки) и ОКНО НЕВЕРНОГО ОТВЕТА.
 //
 // # Что здесь НЕ измеряется и почему — сказано в самом приборе, а не только в отчёте
 //
-// Очередь доставки. Между «метка изменена в БД сервиса» и «реконсайлер начал
-// пересчёт» у продукта стоит очередь со своим периодом опроса. Прибор её не
-// поднимает: он держит движок и Postgres, а не сервис. Поэтому измеренное окно
-// движка — это ЕГО НИЖНЯЯ ГРАНИЦА, и период очереди называется рядом отдельной
-// величиной, прочитанной из дерева предикатом. Сложить их в одно число значило бы
-// напечатать под именем измеренного то, что измерено наполовину.
+// Очередь доставки. Прибор её не поднимает — он держит Postgres, а не сервис, —
+// поэтому то, что стоит у продукта между изменением и его видимостью, называется
+// рядом отдельной величиной, прочитанной из дерева предикатом, и НЕ складывается с
+// измеренным: сложить значило бы напечатать под именем измеренного то, что измерено
+// наполовину.
+//
+// Формы, чьё окно этой очередью и определялось, здесь больше нет. Реляционная
+// форма между изменением метки и вердиктом очереди не имеет вовсе — её окно
+// измерено целиком, и раздел остаётся не ради неё, а ради честности отчёта: он
+// говорит, чего в числах НЕТ, до того как их прочитают.
 
 import (
 	"context"
@@ -50,59 +54,66 @@ import (
 const AttributionRule = `
 ПРАВИЛО ОТНЕСЕНИЯ (объявлено до прогона; отчёт печатает его дословно из кода)
 
-1. ЕДИНИЦЫ. Четыре, и ни одна не складывается с другой:
+0. СТОРОНА ОДНА. Правило писалось для СРАВНЕНИЯ двух форм — реляционной и
+   материализованной во внешнем движке отношений. Движок снят целиком, и второй
+   стороны больше нет. Пункты ниже сохранены и переписаны под то, что осталось,
+   а не выброшены: они объявляют, ЧТО именно попадает в измеряемую величину, и
+   без второй стороны этот вопрос не становится проще — он становится
+   единственным. Числа сравнивать не с чем; числа остаются.
+
+1. ЕДИНИЦЫ. Три, и ни одна не складывается с другой:
      мс             — время стены, p50/p95/min/max по повторам; нулевой повтор
                       прогревочный и в выборку не входит;
-     обращений      — круговых обращений к движку по HTTP;
-     стейтментов    — SQL-стейтментов на Postgres той формы, которая их порождает;
-                      считаются трассировщиком с контролем в обе стороны;
-     строк          — строк намерения, которых операция коснулась (кортежей у
-                      движка, строк таблиц у формы E).
+     стейтментов    — SQL-стейтментов на Postgres формы; считаются трассировщиком
+                      с контролем в обе стороны;
+     строк          — строк намерения, которых операция коснулась.
+   Четвёртой единицей были круговые обращения к движку по HTTP. Она СНЯТА, а не
+   оставлена нулём: величина без производителя печатается неотличимо от
+   измеренной.
 
-2. ОБЩЕЕ НЕ ПРИПИСЫВАЕТСЯ НИКОМУ. Зеркало объектов и цепь их предков есть у обеих
-   форм одинаково: форма E читает его на пути запроса, движку оно приезжает
-   структурными кортежами. Поэтому запись зеркала и ребра предка исключена из
-   стоимости ОБЕИХ форм и выполняется до старта секундомера. Приписать её одной
-   значило бы польстить другой.
+2. ОБЩЕЕ НЕ ПРИПИСЫВАЕТСЯ ФОРМЕ. Зеркало объектов и цепь их предков существуют
+   независимо от того, выдано ли кому-нибудь право: их наполняют владельцы
+   объектов. Поэтому запись зеркала и ребра предка исключена из стоимости формы и
+   выполняется до старта секундомера. Пункт пережил вторую сторону и остался
+   несущим: без него «выдать» у формы E выглядело бы дороже ровно на ту работу,
+   которую она не делает.
 
-3. ДВИЖКУ ПРИПИСЫВАЕТСЯ МАТЕРИАЛИЗАЦИЯ ДОСТУПА и только она: пересчёт состава,
-   который правило порождает, и запись/удаление кортежей. Не зеркало.
-
-4. ФОРМЕ E ПРИПИСЫВАЕТСЯ ВЫЧИСЛЕНИЕ ВЕРДИКТА НА ПУТИ ЗАПРОСА и запись самого
+3. ФОРМЕ ПРИПИСЫВАЕТСЯ ВЫЧИСЛЕНИЕ ВЕРДИКТА НА ПУТИ ЗАПРОСА и запись самого
    правила. Её работа по событию метки может оказаться нулевой — и этот ноль
    ИЗМЕРЯЕТСЯ теми же счётчиками, а не объявляется: ноль, взятый из рассуждения,
    неотличим от несработавшего счётчика.
 
-5. ОКНО НЕВЕРНОГО ОТВЕТА — отдельная величина, никогда не сворачиваемая в «мс».
+4. ОКНО НЕВЕРНОГО ОТВЕТА — отдельная величина, никогда не сворачиваемая в «мс».
    Отсчёт начинается в момент КОММИТА общего изменения (метка изменена, объект
    создан, правило отозвано) и кончается на ПЕРВОМ вопросе, ответ на который
    соответствует новому состоянию. Опрос идёт с шагом 200 мкс и своим бюджетом;
    исчерпание бюджета — «не выполнилось» с причиной, а не ноль.
 
-6. ОКНО ОТЗЫВА НАЗЫВАЕТСЯ ОТДЕЛЬНО ОТ ОСТАЛЬНЫХ. Это величина про безопасность:
+5. ОКНО ОТЗЫВА НАЗЫВАЕТСЯ ОТДЕЛЬНО ОТ ОСТАЛЬНЫХ. Это величина про безопасность:
    сколько времени доступ остаётся у того, кто его уже потерял. Она не
    усредняется с окнами выдачи и не входит ни в какую сводную «скорость».
 
-7. НЕИЗМЕРЕННАЯ ЧАСТЬ ОКНА НАЗЫВАЕТСЯ, А НЕ ПРИБАВЛЯЕТСЯ И НЕ ОБЪЯВЛЯЕТСЯ «ПОЛОМ».
-   Очередей доставки прибор не поднимает. Что между коммитом метки и началом
-   пересчёта стоит у продукта — читается из дерева предикатом и печатается
-   ТЕКСТОМ, отдельным разделом. Числом-нижней-границей это не становится: обе
-   очереди пробуждаются уведомлением, а периоды опроса суть запасной путь, и
-   назвать период запасного пути границей штатного значило бы придумать величину
-   в отчёте, весь предмет которого — чтобы величины были измеренными.
+6. НЕИЗМЕРЕННАЯ ЧАСТЬ НАЗЫВАЕТСЯ, А НЕ ПРИБАВЛЯЕТСЯ И НЕ ОБЪЯВЛЯЕТСЯ «ПОЛОМ».
+   Что стоит между коммитом изменения и тем, как его увидит продуктовый путь,
+   читается из дерева предикатом и печатается ТЕКСТОМ, отдельным разделом.
 
-8. ИСХОДОВ ЧЕТЫРЕ (как и в матрице XC-10): измерено · отказ · не выполнилось ·
-   неприменимо by construction. «Не выполнилось» никогда не вычитается ни в чью
-   пользу и печатается своей строкой с причиной.
+7. ИСХОДОВ ТРИ: измерено · не выполнилось · неизмеряемое, названное текстом.
+   Их было четыре, пока сторон было две: «отказ» был фактом о движке, а
+   «неприменимо by construction» — самым содержательным результатом таблицы (у
+   движка не могло быть общей транзакции с БД предмета выдачи). У формы E эта
+   операция ВЫРАЗИМА, поэтому она измеряется. «Не выполнилось» по-прежнему
+   никогда не вычитается ни в чью пользу и печатается своей строкой с причиной.
 
-9. КОНТРОЛИ ДО ЗАМЕРА, ИНАЧЕ ЗАМЕР НЕ НАЧИНАЕТСЯ. Перед первой величиной каждая
-   форма отвечает на два вопроса: посторонний на объекте набора — ОТКАЗ, субъект
-   правила на нём же — РАЗРЕШЕНО. Форма, отвечающая «нет» всем, иначе выиграла
-   бы все читающие колонки, не тронув ни одного индекса; форма, отвечающая «да»
-   всем, выиграла бы все окна.
+8. КОНТРОЛИ ДО ЗАМЕРА, ИНАЧЕ ЗАМЕР НЕ НАЧИНАЕТСЯ. Перед первой величиной форма
+   отвечает на два вопроса: посторонний на объекте набора — ОТКАЗ, субъект
+   правила на нём же — РАЗРЕШЕНО. Форма, отвечающая «нет» всем, иначе выиграла бы
+   все читающие колонки, не тронув ни одного индекса; форма, отвечающая «да»
+   всем, выиграла бы все окна. С уходом второй стороны эти контроли стали
+   ЕДИНСТВЕННЫМ, что отличает измеренную скорость от скорости неверного ответа.
 
-10. КРИВАЯ, А НЕ ТОЧКА. Каждая величина снимается на всех N перечня. Одно число
-    без наклона не отличает O(1) от O(N) — а вся разница форм именно в этом.
+9. КРИВАЯ, А НЕ ТОЧКА. Каждая величина снимается на всех N перечня. Одно число
+   без наклона не отличает O(1) от O(N) — и теперь, когда сравнивать не с чем,
+   наклон остался единственным содержательным утверждением замера.
 `
 
 // QueuePredicate — предикат, которым читается неизмеренная часть окна.
@@ -125,7 +136,8 @@ type LabelOp string
 
 const (
 	// LopFirstAnswer — чего стоит ПЕРВЫЙ верный ответ, считая от момента, когда
-	// правило написано. У формы E это запись правила и один вопрос; у движка —
+	// правило написано. У формы E это запись правила и один вопрос; у формы,
+	// материализующей состав, это была развёртка правила в кортежи —
 	// материализация всего набора и один вопрос. Это и есть развилка N.
 	LopFirstAnswer LabelOp = "L1-первый-ответ"
 	// LopCheck — прямой вердикт в установившемся состоянии.
@@ -225,7 +237,7 @@ func (sc LabelScenario) Object(i int) string { return fmt.Sprintf("net-%07d", i)
 func (sc LabelScenario) SpareEnter() string  { return "net-spare-enter" }
 func (sc LabelScenario) SpareCreate() string { return "net-spare-create" }
 
-// Ref — объект в форме, которой его называет движок.
+// Ref — объект строкой «тип:идентификатор».
 func (sc LabelScenario) Ref(objectID string) string { return sc.ObjectType + ":" + objectID }
 
 // Verb — модельное имя глагола (с приставкой) по канонической форме.
@@ -239,10 +251,6 @@ func (sc LabelScenario) Objects() []string {
 	}
 	return out
 }
-
-// ExpectedTuples — сколько кортежей материализация правила порождает у движка.
-// Произведение трёх линейных множителей; показателя степени здесь нет.
-func (sc LabelScenario) ExpectedTuples() int { return sc.N * len(sc.Verbs) * len(sc.Subjects) }
 
 // ── границы ───────────────────────────────────────────────────────────────────
 
@@ -271,7 +279,7 @@ type LabelForm interface {
 	StmtProducer() ProducerStatus
 
 	// ApplyRule записывает правило В ТОЙ ФОРМЕ, В КАКОЙ ОНО У НЕЁ СУЩЕСТВУЕТ:
-	// у формы E — строки правила и выдачи, у движка — материализованный состав.
+	// у формы E — строки правила и выдачи.
 	// Это и есть предмет L1.
 	ApplyRule(ctx context.Context) (Counters, int, error)
 	// DropRule снимает правило, не трогая общее. Нужен, чтобы повтор L1 мерил
@@ -305,11 +313,10 @@ type LabelCell struct {
 	Repeats            int
 	P50, P95, Min, Max float64 // мс работы
 
-	ReqEngine int
-	StmtSQL   int
-	StmtNote  string // непусто ⇒ величина НЕ измерена, здесь причина
-	Rows      int
-	Parts     int
+	StmtSQL  int
+	StmtNote string // непусто ⇒ величина НЕ измерена, здесь причина
+	Rows     int
+	Parts    int
 
 	// Окно неверного ответа. Заполняется только у операций-событий.
 	HasWindow  bool
@@ -403,7 +410,7 @@ func RunLabelPath(ctx context.Context, w LabelWorld, f LabelForm, sc LabelScenar
 		}
 		if rep > 0 {
 			firstMs = append(firstMs, d)
-			first.ReqEngine, first.StmtSQL = cnt.ReqEngine+c2.ReqEngine, cnt.StmtSQL+c2.StmtSQL
+			first.StmtSQL = cnt.StmtSQL + c2.StmtSQL
 			first.Rows = rows
 		}
 	}
@@ -444,7 +451,7 @@ func RunLabelPath(ctx context.Context, w LabelWorld, f LabelForm, sc LabelScenar
 		}
 		if rep > 0 {
 			chkMs = append(chkMs, d)
-			chk.ReqEngine, chk.StmtSQL = c.ReqEngine, c.StmtSQL
+			chk.StmtSQL = c.StmtSQL
 		}
 	}
 	if chk.Outcome == Measured {
@@ -476,7 +483,7 @@ func RunLabelPath(ctx context.Context, w LabelWorld, f LabelForm, sc LabelScenar
 		}
 		if rep > 0 {
 			pageMs = append(pageMs, d)
-			page.ReqEngine, page.StmtSQL, page.Parts, page.Rows = c.ReqEngine, c.StmtSQL, parts, len(ids)
+			page.StmtSQL, page.Parts, page.Rows = c.StmtSQL, parts, len(ids)
 		}
 	}
 	if page.Outcome == Measured {
@@ -555,7 +562,7 @@ func runLabelEvent(ctx context.Context, w LabelWorld, f LabelForm, sc LabelScena
 		if rep > 0 {
 			work = append(work, workMs)
 			window = append(window, winMs)
-			c.ReqEngine, c.StmtSQL, c.Rows = cnt.ReqEngine, cnt.StmtSQL, rows
+			c.StmtSQL, c.Rows = cnt.StmtSQL, rows
 			c.Polls = polls
 		}
 	}
@@ -664,197 +671,6 @@ func statsInto(c *LabelCell, ms []float64) {
 	c.P50, c.P95 = pct(s, 0.50), pct(s, 0.95)
 }
 
-// ── сторона движка ────────────────────────────────────────────────────────────
-
-// EngineLabelForm — путь меток у формы с материализацией.
-//
-// Правила у неё НЕТ: у движка отношений нет понятия отбора по меткам, поэтому
-// «написать правило» для него означает РАЗВЕРНУТЬ его в кортежи — по одному на
-// каждый объект × глагол × субъект. Развёртка считается здесь, а не спрашивается
-// у формы E: две реализации одного понятия, и их согласие — результат, а не
-// тождество.
-type EngineLabelForm struct {
-	st *Store
-	sc LabelScenario
-	// written — реестр кортежей, которые эта форма записала. Нужен потому, что
-	// движок отвергает удаление того, чего нет, а опрос состава стоил бы одного
-	// обращения на кортеж и попал бы в измеряемое окно.
-	written map[string]Tuple
-	// stmts — производитель `StmtSQL` со стороны движка. nil ⇒ не заведён, и
-	// колонка не печатается вовсе.
-	stmts *pgStmtCounter
-	prod  ProducerStatus
-}
-
-// NewEngineLabelForm заводит сторону движка над уже созданным store'ом.
-//
-// Производитель `StmtSQL` берётся у СТЕКА, а не заводится здесь: он один на
-// Postgres движка и уже прошёл контроль в обе стороны при подъёме. Завести
-// второй значило бы получить две величины одного предмета, расходящиеся молча.
-func NewEngineLabelForm(st *Store, sc LabelScenario) *EngineLabelForm {
-	return &EngineLabelForm{st: st, sc: sc, written: map[string]Tuple{},
-		stmts: st.stack.stmts, prod: st.stack.StmtProducer}
-}
-
-func (e *EngineLabelForm) Name() string {
-	return "движок отношений (материализация)"
-}
-func (e *EngineLabelForm) Place() string {
-	return "tools/authzformbench · store движка (Postgres OpenFGA)"
-}
-
-func (e *EngineLabelForm) StmtProducer() ProducerStatus { return e.prod }
-
-func (e *EngineLabelForm) start(ctx context.Context) {
-	if e.stmts != nil && e.prod.OK {
-		e.stmts.Start(ctx)
-	}
-}
-
-func (e *EngineLabelForm) count(ctx context.Context, reqs int, err error) (Counters, error) {
-	c := Counters{ReqEngine: reqs}
-	if e.stmts != nil && e.prod.OK {
-		if d, derr := e.stmts.Stop(ctx); derr == nil {
-			c.StmtSQL = d
-		}
-	}
-	return c, err
-}
-
-// expansion — состав, который правило порождает на названных объектах.
-func (e *EngineLabelForm) expansion(objects []string) []Tuple {
-	out := make([]Tuple, 0, len(objects)*len(e.sc.Verbs)*len(e.sc.Subjects))
-	for _, o := range objects {
-		for _, v := range e.sc.Verbs {
-			for _, s := range e.sc.Subjects {
-				out = append(out, Tuple{User: s, Relation: Verb(v), Object: e.sc.Ref(o)})
-			}
-		}
-	}
-	return out
-}
-
-func (e *EngineLabelForm) ApplyRule(ctx context.Context) (Counters, int, error) {
-	tuples := e.expansion(e.sc.Objects())
-	e.start(ctx)
-	n, err := e.writeTuples(ctx, tuples)
-	c, err := e.count(ctx, n, err)
-	return c, len(tuples), err
-}
-
-// DropRule снимает состав ПО РЕЕСТРУ записанного, а не опросом.
-//
-// Опрос стоил бы одного обращения на кортеж — при N=10000 это сотни тысяч
-// обращений, то есть прибор мерил бы себя. Реестр же обязателен и по другой
-// причине: движок отвергает удаление кортежа, которого нет, поэтому «удалить всё
-// ожидаемое» упало бы на первом же повторе, а «не выполнилось» описывало бы
-// прибор, а не форму.
-func (e *EngineLabelForm) DropRule(ctx context.Context) error {
-	if len(e.written) == 0 {
-		return nil
-	}
-	present := make([]Tuple, 0, len(e.written))
-	for _, t := range e.written {
-		present = append(present, t)
-	}
-	sort.Slice(present, func(i, j int) bool { return tupleKey(present[i]) < tupleKey(present[j]) })
-	_, err := e.deleteTuples(ctx, present)
-	return err
-}
-
-// writeTuples/deleteTuples ведут реестр и возвращают число обращений.
-func (e *EngineLabelForm) writeTuples(ctx context.Context, tuples []Tuple) (int, error) {
-	fresh := make([]Tuple, 0, len(tuples))
-	for _, t := range tuples {
-		if _, ok := e.written[tupleKey(t)]; !ok {
-			fresh = append(fresh, t)
-		}
-	}
-	if len(fresh) == 0 {
-		return 0, nil
-	}
-	n, err := e.st.WriteTuples(ctx, fresh)
-	if err != nil {
-		return n, err
-	}
-	for _, t := range fresh {
-		e.written[tupleKey(t)] = t
-	}
-	return n, nil
-}
-
-func (e *EngineLabelForm) deleteTuples(ctx context.Context, tuples []Tuple) (int, error) {
-	gone := make([]Tuple, 0, len(tuples))
-	for _, t := range tuples {
-		if _, ok := e.written[tupleKey(t)]; ok {
-			gone = append(gone, t)
-		}
-	}
-	if len(gone) == 0 {
-		return 0, nil
-	}
-	n, err := e.st.DeleteTuples(ctx, gone)
-	if err != nil {
-		return n, err
-	}
-	for _, t := range gone {
-		delete(e.written, tupleKey(t))
-	}
-	return n, nil
-}
-
-func tupleKey(t Tuple) string { return t.User + "|" + t.Relation + "|" + t.Object }
-
-func (e *EngineLabelForm) Settle(ctx context.Context, ev LabelEvent) (Counters, int, error) {
-	switch ev.Kind {
-	case EventEntered, EventCreated:
-		t := e.expansion([]string{ev.ObjectID})
-		e.start(ctx)
-		n, err := e.writeTuples(ctx, t)
-		c, err := e.count(ctx, n, err)
-		return c, len(t), err
-	case EventLeft:
-		t := e.expansion([]string{ev.ObjectID})
-		e.start(ctx)
-		n, err := e.deleteTuples(ctx, t)
-		c, err := e.count(ctx, n, err)
-		return c, len(t), err
-	case EventRuleRevoked:
-		t := e.expansion(e.sc.Objects())
-		e.start(ctx)
-		n, err := e.deleteTuples(ctx, t)
-		c, err := e.count(ctx, n, err)
-		return c, len(t), err
-	}
-	return Counters{}, 0, fmt.Errorf("неизвестное событие %q", ev.Kind)
-}
-
-func (e *EngineLabelForm) Check(ctx context.Context, subject, relation, objectID string) (bool, Counters, error) {
-	e.start(ctx)
-	ok, err := e.st.Check(ctx, subject, relation, e.sc.Ref(objectID))
-	c, err := e.count(ctx, 1, err)
-	return ok, c, err
-}
-
-func (e *EngineLabelForm) Page(ctx context.Context, subject, relation string, ids []string) (int, int, Counters, error) {
-	objs := make([]string, 0, len(ids))
-	for _, id := range ids {
-		objs = append(objs, e.sc.Ref(id))
-	}
-	e.start(ctx)
-	res, parts, err := e.st.CheckPage(ctx, subject, relation, objs, e.sc.Partition, e.sc.Parallelism)
-	c, err := e.count(ctx, parts, err)
-	allowed := 0
-	for _, ok := range res {
-		if ok {
-			allowed++
-		}
-	}
-	return allowed, parts, c, err
-}
-
-func (e *EngineLabelForm) Teardown(ctx context.Context) error { return e.st.Delete(ctx) }
-
 // ── производитель `StmtSQL` для формы, живущей в Postgres ─────────────────────
 
 // SQLStmtCounter — счётчик стейтментов на СВОЁМ пуле pgx.
@@ -949,22 +765,14 @@ func ReportLabelPath(w io.Writer, in LabelReportInput, cells []LabelCell) {
 	p("дата                %s\n", in.Prov.When)
 	p("ревизия дерева      %s\n", in.Prov.TreeRev)
 	p("машина              %s\n", in.Prov.Machine)
-	p("движок              %s\n", in.Prov.OpenFGA)
-	p("трансформ DSL       %s\n", in.Prov.CLI)
-	p("Postgres движка     %s\n", in.Prov.Postgres)
-	p("Postgres формы E    %s\n", in.Prov.RelPostgres)
+	p("Postgres            %s\n", in.Prov.Postgres)
 	p("модель              %s (sha256/16 %s)\n", in.Prov.ModelPath, in.Prov.ModelDigest)
-	// Потолок BatchCheck печатается ТОЛЬКО когда он в этом прогоне измерялся.
-	// Прежняя редакция печатала ноль с подписью «измерен у движка» — утверждение о
-	// замере, которого не было, и притом самое правдоподобное на вид: число стоит,
-	// подпись объясняет, откуда оно. Ноль здесь означает «не спрашивали».
-	if in.Prov.BatchCap > 0 {
-		p("потолок BatchCheck  %d (измерен у движка в этом прогоне)\n", in.Prov.BatchCap)
-	} else {
-		p("потолок BatchCheck  не измерялся в этом прогоне — он предмет матрицы XC-10;\n")
-		p("                    здесь использована часть страницы %d, и движок её принял\n",
-			in.Scenario.Partition)
-	}
+	// Здесь печатались образ движка отношений, образ его командной строки и
+	// ИЗМЕРЕННЫЙ потолок его пакетной проверки. Все три сняты вместе с движком.
+	// Потолок печатался только когда он в этом прогоне измерялся: прежняя редакция
+	// печатала ноль с подписью «измерен у движка» — утверждение о замере, которого
+	// не было, и притом самое правдоподобное на вид. Строки нет вовсе — это вернее,
+	// чем прочерк: прочерк сообщал бы, что величину спрашивали.
 	for _, ps := range in.Prov.StmtProducers {
 		p("производитель       %s\n", ps.String())
 	}
@@ -986,17 +794,17 @@ func ReportLabelPath(w io.Writer, in LabelReportInput, cells []LabelCell) {
 	p("виден по истории, и в этом его смысл: правило, впервые появившееся вместе с\n")
 	p("числами, неотличимо от правила, подобранного под них.\n")
 
-	p("\n\nРАБОТА: мс (p50 / p95), обращений к движку, стейтментов SQL, строк намерения\n")
+	p("\n\nРАБОТА: мс (p50 / p95), стейтментов SQL, строк намерения\n")
 	p("---------------------------------------------------------------------------\n")
-	p("%-28s %-30s %7s %6s %11s %11s %8s %8s %9s\n",
-		"операция", "форма", "N", "повт.", "p50 мс", "p95 мс", "обращ.", "стейтм.", "строк")
+	p("%-28s %-30s %7s %6s %11s %11s %8s %9s\n",
+		"операция", "форма", "N", "повт.", "p50 мс", "p95 мс", "стейтм.", "строк")
 	for _, op := range labelOpsOrder {
 		for _, c := range sortedCells(cells, op, in.Ns) {
 			if c.Outcome != Measured {
 				continue
 			}
-			p("%-28s %-30s %7d %6d %11.3f %11.3f %8d %8s %9d\n",
-				string(c.Op), shortForm(c.Form), c.N, c.Repeats, c.P50, c.P95, c.ReqEngine, stmtCol(c), c.Rows)
+			p("%-28s %-30s %7d %6d %11.3f %11.3f %8s %9d\n",
+				string(c.Op), shortForm(c.Form), c.N, c.Repeats, c.P50, c.P95, stmtCol(c), c.Rows)
 		}
 	}
 
@@ -1047,12 +855,12 @@ func ReportLabelPath(w io.Writer, in LabelReportInput, cells []LabelCell) {
 	}
 	p("\n\nИСХОДЫ ЯЧЕЕК\n------------\n")
 	total := 0
-	for _, o := range []Outcome{Measured, Refused, NotRun, NotApplicable} {
+	for _, o := range []Outcome{Measured, NotRun} {
 		p("%-18s %d\n", string(o), byOutcome[o])
 		total += byOutcome[o]
 	}
 	p("%-18s %d (обязана равняться числу ячеек: %d)\n", "сумма", total, len(cells))
-	if byOutcome[NotRun]+byOutcome[Refused]+byOutcome[NotApplicable] > 0 {
+	if byOutcome[NotRun] > 0 {
 		p("\nячейки не-измеренных исходов, поимённо:\n")
 		for _, c := range cells {
 			if c.Outcome == Measured {

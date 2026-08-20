@@ -33,9 +33,10 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
 
-// Authorizer — узкий порт per-repo authz-Check (InternalIAMService.Check →
-// OpenFGA/ReBAC). subject — FGA subject-строка ("user:usr_…" / "service_account:…"),
-// relation — verb-relation (v_list/v_delete), object — FGA object-строка. Реализуется
+// Authorizer — узкий порт per-repo authz-Check (InternalIAMService.Check; вердикт
+// выносит сам iam). subject — subject-строка модели ("user:usr_…" /
+// "service_account:…"), relation — verb-relation (v_list/v_delete), object —
+// object-строка модели. Реализуется
 // check.IAMCheckClient. nil → breakglass (authz bypass).
 type Authorizer interface {
 	Check(ctx context.Context, subject, relation, object string) (bool, error)

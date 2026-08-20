@@ -135,11 +135,12 @@ REST-проекция игнорирует ключи, которых нет в 
 
 ## Авторизация
 
-Авторизация — **per-RPC, ReBAC** через **OpenFGA** (relation-based на ресурсах и проектах).
+Авторизация — **per-RPC**, по отношению субъекта к ресурсу или его проекту.
 Интерсептор перед выполнением метода проверяет, что субъект имеет нужное отношение (`relation`)
 на целевой ресурс или его проект (`viewer` для чтения, `editor` для мутаций). Если отношения
 нет → `PERMISSION_DENIED` (HTTP `403`). Проверка идёт к `kacho-iam` (RPC
-`InternalIAMService.Check`; OpenFGA tuples живут там); недоступность peer-сервиса на
+`InternalIAMService.Check`); вердикт о доступе вычисляет реляционная форма в базе iam по
+модели прав. Недоступность peer-сервиса на
 request-path — `UNAVAILABLE` (fail-closed для мутаций).
 
 ```mermaid
@@ -147,8 +148,8 @@ flowchart LR
   cli["Клиент"] -->|"Bearer JWT"| agw["api-gateway"]
   agw -->|"verify JWT"| agw
   agw -->|"compute.v1.* + subject"| cmp["kacho-compute"]
-  cmp -->|"Check(subject, relation, object)"| fga["OpenFGA / kacho-iam"]
-  fga -->|"allow / deny"| cmp
+  cmp -->|"Check(subject, relation, object)"| iamsvc["kacho-iam"]
+  iamsvc -->|"allow / deny"| cmp
   cmp -->|"SQL"| pg[("kacho_compute")]
 ```
 

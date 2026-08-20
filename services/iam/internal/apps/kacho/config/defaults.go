@@ -54,15 +54,6 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("repository.postgres.ssl-mode", "disable")
 	v.SetDefault("repository.postgres.password-from-env", "KACHO_IAM_DB_PASSWORD")
 
-	// authz — кто принимает решение о доступе.
-	//
-	// Умолчания названы ЯВНО, а не оставлены нулевым значением структуры:
-	// «источник вердикта — как получится» не является состоянием, в котором
-	// служба прав вправе подняться. Пусто = решает движок по каждому типу;
-	// сверка включена = «расхождений ноль» отличимо от «сравнений ноль».
-	v.SetDefault("authz.verdict-form-types", []string{})
-	v.SetDefault("authz.shadow-compare", true)
-
 	// authn
 	// Safe-by-default (prod-readiness F14): an un-configured binary fails CLOSED
 	// (production = anonymous → PermissionDenied), never dev (anonymous → full
@@ -119,9 +110,10 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authn.bootstrap-mint.signing-key-env", "KACHO_IAM_BOOTSTRAP_SA_PRIVATE_KEY_PEM")
 	v.SetDefault("authn.bootstrap-mint.allowed-client-sans", []string{})
 
-	// OpenFGA, the gateway-internal drainer, Enterprise SSO, Governance,
-	// Federation/CAEP/ComplianceReport/Notify and the dead healthcheck
-	// placeholder were all removed (dead config) — OpenFGA + the drainer are
-	// configured from KACHO_IAM_* env vars in the composition root. The
+	// The external relations engine, the gateway-internal drainer, Enterprise SSO,
+	// Governance, Federation/CAEP/ComplianceReport/Notify and the dead healthcheck
+	// placeholder were all removed from this YAML (dead config). The drainer is
+	// configured from KACHO_IAM_* env vars in the composition root; the engine no
+	// longer exists at all, so it is configured nowhere. The
 	// Prometheus metrics listener default is set above (api-server.metrics-endpoint).
 }

@@ -4,13 +4,19 @@
 // model_parity_test.go — drift-gate «требуемое отношение объявлено в модели прав».
 //
 // Класс дефекта: permission-catalog требует (object_type, required_relation),
-// которого в OpenFGA-модели НЕТ вовсе. OpenFGA отвергает такой Check как
-// validation-error («relation ... not found in type definition»), интерсептор
-// фейлится fail-closed → RPC отдаёт PERMISSION_DENIED ВСЕГДА, независимо от
-// любых tuple'ов. Это не «нет доступа», а неработающая по построению модель:
-// ни один subject не может получить доступ, и ни один seed/грант этого не
-// исправит. Симметрично #68 (nlb_listener без `project`) и #71 (storage_* типов
-// не было вовсе) — те же emitter/catalog↔model mismatch'и.
+// которого в модели прав НЕТ вовсе. Источник вердикта отвергает такой вопрос —
+// плана вывода для необъявленной пары не существует, и ответом становится ОШИБКА,
+// а не отказ; интерсептор фейлится fail-closed → RPC отдаёт PERMISSION_DENIED
+// ВСЕГДА, независимо от любых выданных прав. Это не «нет доступа», а неработающая
+// по построению модель: ни один subject не может получить доступ, и ни один
+// seed/грант этого не исправит. Симметрично #68 (nlb_listener без `project`) и
+// #71 (storage_* типов не было вовсе) — те же emitter/catalog↔model mismatch'и.
+//
+// Класс ПЕРЕЖИЛ снятие внешнего движка отношений и стал строже. Раньше вопрос
+// отвергало чужое хранилище своим кодом валидации; теперь его отвергает
+// `internal/authzmodel`, компилируя план вывода из той же модели, — то есть
+// расхождение каталога с моделью бьёт не на границе с чужим сервисом, а внутри
+// собственного решения о доступе.
 //
 // Гейт data-driven: пары берутся из САМОГО каталога (nlb-часть), не из
 // хардкода — новый RPC с новым relation автоматически попадает под проверку.
@@ -55,30 +61,24 @@ func repoFile(t *testing.T, rel string) string {
 	}
 }
 
-// modelDSL — блок `model.fga` из openfga-bootstrap ConfigMap (модель, которую
-// реально загружает bootstrap-job на стенде), де-индентированный.
+// modelDSL — модель прав В ТОЙ КОПИИ, ПО КОТОРОЙ ПРИНИМАЕТСЯ РЕШЕНИЕ.
+//
+// Читалась карта настроек подчарта — блок, который загрузочное задание отправляло
+// внешнему хранилищу отношений. Ни хранилища, ни подчарта, ни карты больше нет.
+// Свойство гейта от переезда не потерялось, а стало точнее: сверяемся с копией,
+// которую служба КОМПИЛИРУЕТ в план вывода (`internal/authzmodel`), а не с той,
+// что уезжала наружу.
+//
+// Каноническую копию (`proto/kacho/cloud/iam/v1/fga_model.fga`) здесь подставлять
+// НЕЛЬЗЯ, хотя обе байт-идентичны: их равенство держит отдельная цель сборки
+// (`make -C deploy fga-model-embed`), и гейт обязан читать ту, которая
+// исполняется, — иначе при расхождении он зеленел бы на неисполняемой.
 func modelDSL(t *testing.T) string {
 	t.Helper()
-	raw, err := os.ReadFile(repoFile(t,
-		"deploy/helm/umbrella/charts/openfga-bootstrap/templates/openfga-model-stub-configmap.yaml"))
-	require.NoError(t, err)
-	var out []string
-	inBlock := false
-	for _, l := range strings.Split(string(raw), "\n") {
-		if strings.TrimRight(l, " ") == "  model.fga: |-" {
-			inBlock = true
-			continue
-		}
-		if !inBlock {
-			continue
-		}
-		if strings.HasPrefix(l, "  ") && !strings.HasPrefix(l, "    ") && strings.TrimSpace(l) != "" {
-			break // следующий ключ data: (model.json / комментарий к нему)
-		}
-		out = append(out, strings.TrimPrefix(l, "    "))
-	}
-	require.NotEmpty(t, out, "model.fga block is empty")
-	return strings.Join(out, "\n")
+	raw, err := os.ReadFile(repoFile(t, "services/iam/internal/authzmodel/fga_model.fga"))
+	require.NoError(t, err, "встроенная модель прав не прочитана — гейту не с чем сверять каталог")
+	require.NotEmpty(t, strings.TrimSpace(string(raw)), "встроенная модель пуста")
+	return string(raw)
 }
 
 // modelTypeBody — тело `type <name>` из DSL (до следующего type/condition).
@@ -110,7 +110,7 @@ func nlbCatalogEntries(t *testing.T) []catalogEntry {
 // TestModelParity_EveryRequiredRelationIsDeclared — каждое (object_type,
 // required_relation), требуемое nlb-частью каталога, ОБЯЗАНО быть объявлено в
 // модели. Необъявленное отношение = вечный fail-closed отказ на этом RPC
-// (OpenFGA не может вычислить Check), а не «least-priv по умолчанию».
+// (плана вывода нет, вопрос не принимается), а не «least-priv по умолчанию».
 func TestModelParity_EveryRequiredRelationIsDeclared(t *testing.T) {
 	dsl := modelDSL(t)
 	seen := map[string]bool{}
@@ -131,8 +131,9 @@ func TestModelParity_EveryRequiredRelationIsDeclared(t *testing.T) {
 		re := regexp.MustCompile(`(?m)^\s*define ` + regexp.QuoteMeta(rel) + `\s*:`)
 		require.Truef(t, re.MatchString(body),
 			"permission catalog requires relation %q on object type %q (%s), but the "+
-				"authorization model never DECLARES it — OpenFGA rejects such a Check as a "+
-				"model validation error, so the RPC is denied for EVERY subject forever and "+
+				"authorization model never DECLARES it — the verdict source refuses such a "+
+				"question outright (no derivation plan exists for the pair), so the RPC is "+
+				"denied for EVERY subject forever and "+
 				"no tuple/seed can fix it. Declare the relation on the type (and give it its "+
 				"legitimate bearer) or remove the RPC together with its catalog entry.\n"+
 				"type body:\n%s", rel, objType, e.FQN, body)
@@ -146,7 +147,7 @@ func TestModelParity_EveryRequiredRelationIsDeclared(t *testing.T) {
 //
 //   - тип subject'а — ТОЛЬКО `service_account`: ни `user`, ни `group#member`,
 //     ни wildcard `user:*`; человеко-/группо-subject физически невозможно
-//     записать в такой tuple (OpenFGA отвергнет write) → тенант не получит
+//     записать в такой факт (модель его не допускает) → тенант не получит
 //     его ни через роль, ни через группу;
 //   - отношение НЕ выводится из tier'а (`or editor`/`or admin`/`or viewer`) —
 //     иначе любой project-editor смог бы подделывать announce-state (BGP/route/

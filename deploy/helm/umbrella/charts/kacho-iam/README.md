@@ -2,12 +2,12 @@
 
 Identity / Access Management control-plane service for Kachō Cloud.
 Account / Project / User / ServiceAccount / Group / Role / AccessBinding +
-WebAuthn/Passkey AuthN (Phase 2) + OpenFGA + OPA AuthZ (Phase 3).
+WebAuthn/Passkey AuthN (Phase 2) + ReBAC + OPA AuthZ (Phase 3).
 
 This sub-chart is owned by the `kacho-deploy` umbrella and is not intended
 for standalone deployment. The umbrella manages cross-cutting Phase 3 concerns
-(OpenFGA bootstrap, OPA sidecar shared ConfigMap, NetworkPolicies) at the parent
-level; this sub-chart only declares the kacho-iam Deployment + its supporting
+(OPA sidecar shared ConfigMap, NetworkPolicies) at the parent level; this
+sub-chart only declares the kacho-iam Deployment + its supporting
 ConfigMap / RBAC / Service objects.
 
 ## Phase 3 additions
@@ -15,18 +15,17 @@ ConfigMap / RBAC / Service objects.
 | Feature | Manifestation |
 |---|---|
 | OPA sidecar | `templates/deployment.yaml` injects container `opa` when `opaSidecar.enabled=true`. |
-| `KACHO_IAM_OPENFGA_MODEL_ID` env | Read from Secret `openfga-model-id`, key `current`. |
 | Pod label `kacho.cloud/opa-sidecar=true` | Matched by umbrella NetworkPolicy `opa-sidecar-egress-allowlist`. |
-| Annotation `kacho.cloud/openfga-model-id-rev` | Ставится **только** `openfga-bootstrap-job`, чтобы перекатить под при смене модели. Чарт её НЕ объявляет — у поля один писатель (kacho#3: два писателя роняли `helm upgrade` конфликтом владения на server-side apply). |
 
-> [!warning] Снято как мёртвая поверхность.
-> `envFrom: opa-bundle-server-config` и его ConfigMap удалены: iam не
-> регистрирует bundle-сервис, и ни одну из шести переменных не читал ни один
-> процесс. Вместе с ними сняты секции конфига `extapi:` и `authz:` — их не
-> разбирает `Config` вовсе (виперу нечего в них класть), поэтому пин
-> model-id, таймауты Check/ListObjects и адрес OPA-сайдкара «настраивались»
-> в файле, который сервис не читает. Реально работающие значения приходят из
-> `KACHO_IAM_OPENFGA_*` / `KACHO_IAM_FGA_*` env.
+> [!note] Внешний движок отношений снят вместе со своей посадкой (S6 эпика #747).
+> Решение о доступе вычисляет реляционная форма в собственной базе iam, поэтому
+> из чарта ушли: подчарт начальной настройки движка, выделенная база движка,
+> секрет с идентификатором модели, init-контейнер ожидания движка, переменные
+> `KACHO_IAM_OPENFGA_STORE_ID` / `KACHO_IAM_OPENFGA_MODEL_ID`, ключ
+> `config.extapi.openfga.*` и рубильник источника вердикта
+> (`config.authz.verdictFormTypes` / `config.authz.shadowCompare`) — сравнивать
+> больше не с чем. Сама МОДЕЛЬ прав (`fga_model.fga`) остаётся: она источник
+> истины формы и разбирается службой, а не движком.
 
 ## Bundle signing key rotation (180d schedule)
 
@@ -154,14 +153,13 @@ extraSecrets:
 |---|---|---|
 | `OPA sidecar /health returns {"bundles":{"...":{"active_revision":""}}}` | First bundle pull pending | Wait ≤90s on dev / ≤65min on prod (OPA pollMinDelaySeconds). |
 | `OPA sidecar logs: signature verification failed: invalid key` | Public-key ConfigMap stale | `kubectl rollout restart deployment -n kacho-system -l app.kubernetes.io/part-of=kacho`. |
-| `kacho-iam logs: KACHO_IAM_OPENFGA_MODEL_ID is empty` | bootstrap-job hasn't run yet | `kubectl get job -n kacho-system openfga-bootstrap` — check completion status. |
-| `Backend gRPC returns Unavailable: "authorization service unavailable"` | FGA engine down | `kubectl get po -n kacho-system -l app.kubernetes.io/name=openfga` — restart if not Ready 3/3. The code is `UNAVAILABLE`, not `PERMISSION_DENIED`: nothing was decided, so the same call is worth retrying once the engine is back. A `PERMISSION_DENIED` here means the model answered — look at grants, not at pods. |
+| `Backend gRPC returns Unavailable: "authorization service unavailable"` | решение о доступе не принято (база iam недоступна / вычисление сорвалось) | `kubectl get po -n kacho-system -l app=kacho-iam` и его Postgres. Код `UNAVAILABLE`, а не `PERMISSION_DENIED`: не решено ничего, значит тот же вызов имеет смысл повторить. `PERMISSION_DENIED` здесь означает, что модель ОТВЕТИЛА — смотреть надо на выдачи, а не на поды. |
 | `Backend gRPC returns PermissionDenied: "policy: <msg>"` | OPA deny-rule fired (expected) | Review `<msg>` against acceptance §4.6 Rego rules. |
 
 ## See also
 
 - `docs/specs/sub-phase-3.3-iam-authz-fga-conditions-opa-acceptance.md` — full design + GWT.
-- Umbrella templates (Phase 3): `helm/umbrella/templates/{openfga-*,opa-*}*.yaml`.
+- Umbrella templates (Phase 3): `helm/umbrella/templates/opa-*.yaml`.
 
 Здесь стояла вторая ссылка — на проектный документ iam из каталога сторонних
 артефактов под `docs/`. Каталог удалён целиком решением владельца 2026-06-11

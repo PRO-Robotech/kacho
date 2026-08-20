@@ -35,7 +35,7 @@ AuthZ(per-RPC Check) → AccessLog → Idempotency → REST-mux → backend
   понижается до anonymous).
 - **DPoP** проверяет sender-constrained токены (jkt-thumbprint, htm/htu, iat-freshness,
   jti-replay с ограниченным LRU) и mTLS-bound (`cnf.x5t#S256`), затем step-up по `acr`.
-- **AuthZ** строит subject+context и зовёт `AuthorizeService.Check` (OpenFGA) по
+- **AuthZ** строит subject+context и зовёт `AuthorizeService.Check` по
   встроенному permission-каталогу. Промах по каталогу → deny; ошибка IAM → deny
   (fail-closed; fail-open запрещён в production стартовым гейтом).
 

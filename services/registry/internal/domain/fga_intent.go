@@ -13,7 +13,7 @@ import (
 )
 
 // FGA-register-intent — чистые domain-value-типы transactional-outbox owner-tuple
-// реле через IAM. Вместо прямой записи tuple в OpenFGA после commit'а
+// реле через IAM. Вместо прямой записи прав на стороне владельца после commit'а
 // (dual-write) writer-tx Create/Delete/Update пишет RegisterIntent строкой в
 // registry_outbox В ТОЙ ЖЕ tx (один commit). Отдельный register-drainer применяет
 // каждый intent через kacho-iam InternalIAMService.RegisterResource /

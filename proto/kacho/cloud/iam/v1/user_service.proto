@@ -51,7 +51,7 @@ service UserService {
 
   // Invite a user by email. Если user уже invited в этот Account
   // (idempotent re-invite) — Operation возвращается, AB опционально создается.
-  // Permission: requires `admin` OR `editor` relation на account_id (OpenFGA Check).
+  // Permission: requires `admin` OR `editor` relation на account_id.
   rpc Invite (InviteUserRequest) returns (operation.Operation) {
     option (google.api.http) = {
       post: "/iam/v1/users:invite"

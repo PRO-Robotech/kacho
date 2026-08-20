@@ -8,15 +8,15 @@ title: Авторизация
 
 Эта страница описывает, как гейтвей решает **что** аутентифицированному principal разрешено
 (AuthZ), после того как [аутентификация](/architecture/authn) установила **кто** он. Авторизация —
-per-RPC, deny-by-default, fail-closed: каждый вызов проверяется в `kacho-iam` (OpenFGA / ReBAC)
+per-RPC, deny-by-default, fail-closed: каждый вызов проверяется в `kacho-iam`
 против встроенного permission-каталога. Ключи конфигурации — [Конфигурация](/install/configuration).
 
 ## Принцип
 
 Гейтвей — единый пункт применения политики (PEP): он не хранит правила, а спрашивает решение у
-`kacho-iam` (PDP), который держит ReBAC-модель в OpenFGA. Для каждого RPC гейтвей знает, **какое
-разрешение** требуется (из permission-каталога), формирует subject + контекст ресурса и зовёт
-`AuthorizeService.Check`. Нет записи в каталоге → deny. Ошибка/недоступность IAM → deny
+`kacho-iam` (PDP): вердикт о доступе вычисляет реляционная форма в собственной базе iam
+по модели прав. Для каждого RPC гейтвей знает, **какое разрешение** требуется (из
+permission-каталога), формирует subject + контекст ресурса и зовёт `AuthorizeService.Check`. Нет записи в каталоге → deny. Ошибка/недоступность IAM → deny
 (fail-closed). Разрешение приходит только на явный `allow`.
 
 ## Permission-каталог
@@ -50,7 +50,7 @@ flowchart LR
   map --> subj["собрать subject + resource-context"]
   subj --> cache["authz-decision cache<br/>(LRU + TTL)"]
   cache -->|"hit"| dec["allow / deny"]
-  cache -->|"miss"| check["AuthorizeService.Check<br/>→ kacho-iam / OpenFGA"]
+  cache -->|"miss"| check["AuthorizeService.Check<br/>→ kacho-iam"]
   check -->|"allow"| pass["→ backend"]
   check -->|"deny"| deny2["403"]
   check -->|"error / timeout"| deny3["deny (fail-closed)"]
@@ -68,7 +68,7 @@ flowchart LR
 Чувствительные операции требуют повышенного уровня аутентификации. AuthN проставляет `acr`
 (authentication context class) в principal; step-up-гейт сверяет фактический `acr` с требуемым для
 операции. Недостаточный уровень → отказ с указанием необходимого шага (клиент должен пере-
-аутентифицироваться сильнее). Это ортогонально ReBAC-решению: даже при наличии права операция
+аутентифицироваться сильнее). Это ортогонально вердикту о доступе: даже при наличии права операция
 блокируется, пока не выполнен нужный `acr`.
 
 ## Fail-closed и fail-open

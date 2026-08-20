@@ -48,10 +48,10 @@ cpu_usec() {
   local v
   v=$(k exec "$1" -c "$2" -- sh -c 'awk "/usage_usec/{print \$2}" /sys/fs/cgroup/cpu.stat' 2>/dev/null) || v=""
   case "$v" in ''|*[!0-9]*) v="" ;; esac
-  # ЗАПАСНОЙ ПУТЬ — СНЯТИЕ С УЗЛА. Образ хранилища прав распространяется БЕЗ
-  # ОБОЛОЧКИ, поэтому `exec` в него невозможен В ПРИНЦИПЕ, и величина писалась бы
-  # NA на каждой ступени каждого прогона — участник выглядел бы неизмеримым,
-  # хотя измерим: его cgroup читается с узла по идентификатору контейнера.
+  # ЗАПАСНОЙ ПУТЬ — СНЯТИЕ С УЗЛА. Не всякий образ участника несёт ОБОЛОЧКУ, и
+  # тогда `exec` в него невозможен В ПРИНЦИПЕ, а величина писалась бы NA на
+  # каждой ступени каждого прогона — участник выглядел бы неизмеримым, хотя
+  # измерим: его cgroup читается с узла по идентификатору контейнера.
   if [ -z "$v" ] && [ -n "${NODE_CTR:-}" ]; then
     local cid path
     cid=$(k get pod "$1" -o jsonpath="{.status.containerStatuses[?(@.name=='$2')].containerID}" 2>/dev/null | sed 's|.*://||') || cid=""
@@ -69,10 +69,6 @@ cpu_usec() {
 # pipefail, а ранний выход grep роняет писателя SIGPIPE, и НАЙДЕННОЕ было бы
 # объявлено ненайденным тем вероятнее, чем раньше встретилось совпадение.
 pod_of() { k get pod -l "$1" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true; }
-# По МЕТКЕ, а не подстрокой имени: выражение вида `openfga-[0-9a-f]` подходит и
-# к `pg-openfga-0`, то есть снимок мог уехать с БАЗЫ вместо самого хранилища прав.
-openfga_pod() { pod_of app.kubernetes.io/name=openfga; }
-
 iam_pods() { k get pod -l app.kubernetes.io/name=kacho-iam -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
 vpc_pods() { k get pod -l app=vpc -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
 
@@ -101,18 +97,20 @@ pool_stats() {
   done
 }
 
+# Внешнего движка отношений и его базы в снимке больше нет: они сняты вместе с
+# посадкой (S6 эпика #747). Цена решения о доступе теперь целиком лежит на
+# `iam:*` и `pgiam`, которые в снимке уже есть, — то есть разложение цены не
+# потеряло слагаемого, оно переехало в уже измеряемого участника.
 snapshot() {
-  local f="$1" of gw
-  of=$(openfga_pod); gw=$(pod_of app=api-gateway)
+  local f="$1" gw
+  gw=$(pod_of app=api-gateway)
   {
     echo "ts_ns=$(date +%s%N)"
     for p in $(iam_pods); do echo "iam:$p=$(cpu_usec "$p" kacho-iam)"; done
     for p in $(vpc_pods); do echo "vpc:$p=$(cpu_usec "$p" vpc)"; done
     echo "gateway:$gw=$(cpu_usec "$gw" api-gateway)"
-    echo "openfga:$of=$(cpu_usec "$of" openfga)"
     echo "pgiam=$(cpu_usec kacho-umbrella-pg-iam-0 postgresql)"
     echo "pgvpc=$(cpu_usec kacho-umbrella-pg-vpc-0 postgresql)"
-    echo "pgfga=$(cpu_usec kacho-umbrella-pg-openfga-0 postgresql)"
     echo "k6=$(cpu_usec $RUNNER k6)"
     echo "authz $(authz_counters)"
   } > "$f"
@@ -122,7 +120,7 @@ snapshot() {
 # выполнившейся»: её число нельзя истолковывать ни как зелёное, ни как красное.
 restarts() {
   k get pod -o jsonpath='{range .items[*]}{.metadata.name}={.status.containerStatuses[0].restartCount}{"\n"}{end}' 2>/dev/null \
-    | grep -E 'kacho-iam|pg-iam|pg-vpc|^vpc-|api-gateway|openfga' || true
+    | grep -E 'kacho-iam|pg-iam|pg-vpc|^vpc-|api-gateway' || true
 }
 
 VPC_REPL=$(k get deploy vpc -o jsonpath='{.spec.replicas}')
@@ -143,16 +141,22 @@ echo "=== прогон '$LABEL' · полоса=$OP · vpc реплик=$VPC_REP
 # от соседней полосы, и дала на 5 запросах в секунду p50 275 мс, то есть число
 # о СОСЕДЕ, а не о себе.
 #
-# Ждём, пока хранилище прав не успокоится, но НЕ БЕСКОНЕЧНО: не дождались —
+# ЗА ЧЬЕЙ ТИШИНОЙ СЛЕДИМ. Прежде — за подом внешнего движка отношений. Движок
+# снят вместе с посадкой (S6 эпика #747), и хвост материализации теперь целиком
+# исполняет сама служба прав, поэтому проба переведена на её под. Оставить её
+# нацеленной на снятый под было нельзя: она молча возвращала бы «проверить
+# нечем» на каждом прогоне — форма ожидания без ожидания.
+#
+# Ждём, пока служба прав не успокоится, но НЕ БЕСКОНЕЧНО: не дождались —
 # говорим об этом вслух и пишем метку, чтобы ступень читалась с оговоркой, а
 # не как чистая.
 settle() {
   local limit=${SETTLE_CORES:-0.35} maxwait=${SETTLE_MAXWAIT:-240} quiet=0 waited=0 cid path a b cores
-  cid=$(k get pod -l app.kubernetes.io/name=openfga -o jsonpath='{.items[0].status.containerStatuses[0].containerID}' 2>/dev/null | sed 's|.*://||') || cid=""
+  cid=$(k get pod -l app.kubernetes.io/name=kacho-iam -o jsonpath='{.items[0].status.containerStatuses[0].containerID}' 2>/dev/null | sed 's|.*://||') || cid=""
   if [ -z "$cid" ] || [ -z "${NODE_CTR:-}" ]; then echo "  (тишину проверить нечем — пропускаю)"; return 0; fi
   path=$(docker exec "$NODE_CTR" sh -c "find /sys/fs/cgroup -maxdepth 6 -type d -name '*${cid}*' 2>/dev/null | head -1" 2>/dev/null) || path=""
-  [ -z "$path" ] && { echo "  (cgroup хранилища прав не найден — пропускаю)"; return 0; }
-  echo "--- жду тишины хранилища прав (порог ${limit} ядра) ---"
+  [ -z "$path" ] && { echo "  (cgroup службы прав не найден — пропускаю)"; return 0; }
+  echo "--- жду тишины службы прав (порог ${limit} ядра) ---"
   while [ "$waited" -lt "$maxwait" ]; do
     a=$(docker exec "$NODE_CTR" sh -c "awk '/usage_usec/{print \$2}' '$path/cpu.stat'" 2>/dev/null) || a=""
     sleep 5; waited=$(( waited + 5 ))

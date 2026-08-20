@@ -84,9 +84,11 @@ func NewIAMCheckClientWithProbe(conn grpc.ClientConnInterface, probe ResourceExi
 // зовущие operations.PrincipalFromContext (audit, scope-filter, OPA-overlay), видели бы
 // bootstrap независимо от реального caller'а.
 func (c *IAMCheckClient) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
-	// Consistency остаётся невыставленным: zero value CheckRequest_CONSISTENCY_UNSPECIFIED
-	// ⇒ OpenFGA default MINIMIZE_LATENCY — идентичное wire-поведение прежнему явному
-	// CONSISTENCY_UNSPECIFIED.
+	// Consistency остаётся невыставленным, и это ничего не стоит: вердикт выносит
+	// реляционная форма по ведущей базе iam, поэтому ответ не отстаёт от собственной
+	// записи вызывающего by construction. Прежде поле было просьбой к чужому
+	// хранилищу не отвечать со своей отстающей копии; сегодня оно называет
+	// требование вызывающего, а не способ его исполнения.
 	resp, err := c.cli.Check(auth.PropagateOutgoing(ctx), &iamv1.CheckRequest{
 		SubjectId: subjectID,
 		Relation:  relation,

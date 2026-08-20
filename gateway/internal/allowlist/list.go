@@ -293,7 +293,6 @@ var AllowedMethods = map[string]struct{}{
 	// самоописание вызывающего. Публичный сервис, не Internal*.
 	"/kacho.cloud.iam.v1.AuthorizeService/Check":           {},
 	"/kacho.cloud.iam.v1.AuthorizeService/BatchCheck":      {},
-	"/kacho.cloud.iam.v1.AuthorizeService/ListObjects":     {},
 	"/kacho.cloud.iam.v1.AuthorizeService/ListSubjects":    {},
 	"/kacho.cloud.iam.v1.AuthorizeService/ExpandRelations": {},
 	"/kacho.cloud.iam.v1.AuthorizeService/WhoAmI":          {},

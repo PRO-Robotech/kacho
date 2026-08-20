@@ -72,8 +72,8 @@ pg-registry|kacho_registry.registry_outbox
 # Инстансы БЕЗ клеймимой очереди — строка им НЕ нужна, и её появление там это не
 # «на всякий случай», а лишние пробуждения launcher'а в базе, которой они ничего
 # не дают. geo_outbox — курсорный аудит-фид по sequence_no, без sent_at и без
-# дренажа; openfga/kratos/hydra — сторонние хранилища без очередей Kacho.
-NON_QUEUE_INSTANCES="pg-geo pg-openfga pg-kratos pg-hydra"
+# дренажа; kratos/hydra — сторонние хранилища без очередей Kacho.
+NON_QUEUE_INSTANCES="pg-geo pg-kratos pg-hydra"
 
 # Профили, которыми стенды реально разворачивают, — из ЕДИНСТВЕННОЙ таблицы
 # дерева (deploy/stacks.txt). Своей копии здесь нет: копия знала о боевой

@@ -158,13 +158,13 @@ flowchart LR
 состояние — периодическим `List`. Подробнее — [Архитектура](/architecture/overview).
 :::
 
-:::note Второй outbox — регистрация owner-tuple в FGA
+:::note Второй outbox — регистрация владения в kacho-iam
 Помимо доменного `vpc_outbox` (журнал событий) worker на Create/Delete пишет — **в той же
 writer-TX** — строку-намерение в отдельную таблицу `fga_register_outbox`: «зарегистрировать /
-снять owner-hierarchy-tuple ресурса в FGA». Отдельный register-drainer применяет каждое намерение
+снять владение ресурсом и его место в цепи областей». Отдельный register-drainer применяет каждое намерение
 через `kacho-iam.InternalIAMService.RegisterResource` / `UnregisterResource` (idempotent,
 at-least-once, retry на `Unavailable`). Так per-resource authz-Check разрешается по каскаду «от
-проекта», а tuple durable и не теряется при transient-сбое FGA. Подробнее —
+проекта», а намерение durable и не теряется при transient-сбое kacho-iam. Подробнее —
 [Авторизация и приватность](/architecture/authz).
 :::
 

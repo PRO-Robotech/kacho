@@ -54,10 +54,9 @@ func (a *AuthzChecker) Check(ctx context.Context, in middleware.AuthzCheckInput)
 		return middleware.AuthzCheckResult{}, err
 	}
 	return middleware.AuthzCheckResult{
-		Allowed:              res.Allowed,
-		DenyReasons:          res.DenyReasons,
-		AuthorizationModelID: res.AuthorizationModelID,
-		CheckedAt:            res.CheckedAt,
+		Allowed:     res.Allowed,
+		DenyReasons: res.DenyReasons,
+		CheckedAt:   res.CheckedAt,
 	}, nil
 }
 

@@ -465,33 +465,3 @@ func usersetPairsSQL(m *Model) string {
 	sort.Strings(out)
 	return strings.Join(out, ", ")
 }
-
-// PlanCensus — перепись планов: сколько выразимо целиком, сколько несёт условие,
-// сколько не выразимо и чем именно.
-type PlanCensus struct {
-	Total         int
-	Expressible   int
-	Conditioned   []string
-	Unexpressible []string
-}
-
-// CensusPlans переписывает планы всех отношений всех типов.
-func (s *fullRelStore) CensusPlans() PlanCensus {
-	var c PlanCensus
-	for _, key := range sortedKeys(s.plans) {
-		p := s.plans[key]
-		if s.model.IsPointer(p.Type, p.Relation) {
-			continue
-		}
-		c.Total++
-		if p.Expressible() {
-			c.Expressible++
-		} else {
-			c.Unexpressible = append(c.Unexpressible, key+": "+strings.Join(p.Unclassified, "; "))
-		}
-		if len(p.Conditioned) > 0 {
-			c.Conditioned = append(c.Conditioned, key+": "+strings.Join(p.Conditioned, "; "))
-		}
-	}
-	return c
-}

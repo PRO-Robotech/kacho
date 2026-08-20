@@ -20,7 +20,7 @@ syntax = "proto3";
 //
 // Sync read; cursor `(created_at,id)` ASC; `page_size` clamped to max 1000
 // (no single-shot cluster-wide dump). Hits the local `kacho_iam` operations
-// table only — never calls OpenFGA on the request path.
+// table only — asks no authorization question on the request path.
 //
 // Authorization gate: admin-tier enforced by the
 // api-gateway permission-catalog entry — `required_relation = "system_admin"`,

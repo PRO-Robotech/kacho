@@ -80,15 +80,18 @@ type Config struct {
 	// (register-outbox без PartitionColumn → resurrect; с PartitionColumn →
 	// корректное ABSENT).
 	//
-	// Тот же класс — iam `fga_outbox`: он несёт СЫРОЙ, вообще не версионированный
-	// owner-hierarchy tuple, WRITE(grant) и DELETE(revoke) одного
-	// (user,relation,object) не коммутативны → iam задаёт PartitionColumn
-	// (`tuple_key` — материализованный триггером триплет) вместе с ApplyConcurrency>1.
+	// Тот же класс разбирался на журнале намерений iam `fga_outbox`: он несёт
+	// СЫРОЙ, вообще не версионированный owner-hierarchy tuple, а WRITE(grant) и
+	// DELETE(revoke) одного (user,relation,object) не коммутируют, поэтому там
+	// стоял PartitionColumn (`tuple_key` — материализованный триггером триплет)
+	// вместе с ApplyConcurrency>1. Дренажа у этого журнала больше нет — он снят
+	// вместе со своим адресатом, — но пример остаётся: правило про ширину ключа
+	// от него не зависит.
 	ApplyConcurrency int
 
 	// PartitionColumn — SQL-выражение над строкой outbox-таблицы, дающее ключ
-	// ПАРТИЦИИ порядка (обычная колонка: `tuple_key` для iam fga_outbox,
-	// `resource_id` для register-outbox'ов). Пусто (default) = фича выключена,
+	// ПАРТИЦИИ порядка (обычная колонка: `resource_id` для register-outbox'ов).
+	// Пусто (default) = фича выключена,
 	// claim-запрос БАЙТ-в-БАЙТ прежний (нулевое изменение поведения для всех
 	// consumer'ов, которые её не задают).
 	//
@@ -101,8 +104,8 @@ type Config struct {
 	// которых ему нет дела (радиус wedge тоже растёт до всей широкой группы).
 	//
 	// Канонический промах — iam `fga_outbox` до миграции 0067: партиция была
-	// `payload->>'object'`, тогда как состояние OpenFGA — МНОЖЕСТВО TUPLE'ов с
-	// ключом (user, relation, object). WRITE(user:a,v_get,P) и DELETE(user:b,v_get,P)
+	// `payload->>'object'`, тогда как состояние адресата было МНОЖЕСТВОМ кортежей
+	// с ключом (user, relation, object). WRITE(user:a,v_get,P) и DELETE(user:b,v_get,P)
 	// трогают РАЗНЫЕ элементы и коммутируют; общий у них только object. Замер на
 	// живом стенде под пакетным e2e: 8 643 pending-строки, 1 439 объектов, но 8 641
 	// РАЗЛИЧНЫХ tuple'ов — то есть широкий ключ давал 1 439 claimable-голов вместо
@@ -321,14 +324,15 @@ type Decoder[T any] func(payload []byte) (T, error)
 // оставить ApplyConcurrency=1.
 type Applier[T any] func(ctx context.Context, eventType string, payload T) error
 
-// ErrAlreadyApplied — applier возвращает, когда target-система сообщила «уже есть»
-// (для OpenFGA: HTTP 400 `already_exists` на write существующего tuple; HTTP 400
-// `cannot_delete` на delete отсутствующего). Drainer трактует как success.
+// ErrAlreadyApplied — applier возвращает, когда адресат сообщил «уже есть»:
+// повторная запись того, что у него уже лежит, либо снятие того, чего у него уже
+// нет. Drainer трактует как success.
 //
-// ВНИМАНИЕ: HTTP 409 сюда НЕ относится — у OpenFGA это transactional abort
-// (`{"code":"Aborted"}`), при котором НЕ ЗАПИСАНО НИЧЕГО. Классификация 409 как
-// already-applied пометила бы row sent_at и молча потеряла tuple (перманентная
-// authz-дыра); 409 — transient, его лечит именно retry.
+// ВНИМАНИЕ: отказ, при котором адресат НЕ ЗАПИСАЛ НИЧЕГО (транзакционный обрыв,
+// конфликт с параллельным писателем), сюда НЕ относится, как бы он ни назывался на
+// проводе. Пометив такую строку sent_at, дренаж молча потерял бы намерение —
+// перманентная дыра в правах; такой отказ обязан остаться transient, его и лечит
+// повтор. Различить их может только applier: словарь адресата знает он один.
 var ErrAlreadyApplied = errors.New("drainer: target reports already-applied (idempotent)")
 
 // ErrPermanent — applier wrap'ит в это, если retry бессмыслен (HTTP 4xx кроме

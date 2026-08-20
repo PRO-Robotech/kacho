@@ -1,11 +1,11 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// context_extractor.go — Build the OpenFGA Condition-evaluation context map
-// from the verified JWT + HTTP request.
+// context_extractor.go — Build the Condition-evaluation context map from the
+// verified JWT + HTTP request.
 //
-// OpenFGA `CheckRequest.Context` is a `google.protobuf.Struct` of arbitrary
-// keys consumed by predicate-conditions:
+// `CheckRequest.Context` is a `google.protobuf.Struct` of arbitrary keys
+// consumed by the rights model's predicate-conditions:
 //
 //	mfa_fresh(amr_claims, acr_value, current_time, mfa_at)
 //	non_expired(current_time, valid_until)
@@ -16,8 +16,8 @@
 //
 // This extractor builds the *caller-side* half of those keys — the ones
 // derivable from the JWT and the incoming HTTP request. Predicate-side
-// parameters (`allowed_cidrs`, `valid_until`, `expires_at`, `tz`, ...) live
-// in the FGA tuple's `condition.context` and are merged FGA-side.
+// parameters (`allowed_cidrs`, `valid_until`, `expires_at`, `tz`, ...) live on
+// the direct fact itself and are merged by iam when it computes the verdict.
 //
 // Reserved keys this extractor emits:
 //
@@ -37,8 +37,8 @@
 // Beyond the reserved keys above, any remaining `kacho_*`-prefixed ext_claims
 // are forwarded verbatim under their ORIGINAL key name (no prefix rewrite), so
 // future Conditions can read them without an extractor change. Non-`kacho_*`
-// ext_claims keys are dropped entirely. The FGA Conditions whitelist means
-// tenant-supplied junk never participates in actual condition evaluation.
+// ext_claims keys are dropped entirely. The condition set of the rights model is
+// closed, so tenant-supplied junk never participates in condition evaluation.
 package middleware
 
 import (
@@ -109,7 +109,7 @@ func NewContextExtractor(now func() time.Time, trustedXForwardedFor bool, opts .
 // over `<exempt>`-like cases consistently.
 func (e *ContextExtractor) BuildHTTP(t *VerifiedToken, r *http.Request, subj ResolvedSubject) map[string]any {
 	out := map[string]any{
-		// truncated to seconds to match OpenFGA Condition timestamps.
+		// truncated to seconds to match the model's Condition timestamps.
 		"current_time": e.now().UTC().Truncate(time.Second).Unix(),
 	}
 	if r != nil {

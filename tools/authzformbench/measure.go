@@ -5,7 +5,7 @@ package authzformbench
 
 import (
 	"context"
-	"errors"
+
 	"fmt"
 	"math"
 	"os"
@@ -17,25 +17,30 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
-// Outcome — three categories, never two.
+// Outcome — три категории, никогда не две.
 //
-// "not-run" is what a benchmark most wants to lose: a shape whose stack did not
-// come up, whose operation timed out, whose store refused the request, has NOT
-// won. It is carried to the report with its reason and is never averaged, never
-// omitted and never counted in anybody's favour.
+// «Не выполнилось» — то, что замер больше всего хочет потерять: форма, чей стек не
+// поднялся, чья операция вышла за срок, чьё хранилище отвергло запрос, НЕ
+// победила. Категория доносится до отчёта вместе с причиной, никогда не
+// усредняется, не опускается и не засчитывается никому в пользу.
+//
+// Категорий было ЧЕТЫРЕ, и обе снятые ушли вместе с движком отношений, а не были
+// упрощены:
+//
+//   - `refused` — «движок ответил отказом» — был фактом о движке, и производителем
+//     его была ошибка его HTTP-API;
+//   - `not-applicable` — «операции у формы нет by construction» — был самым
+//     содержательным результатом таблицы: у движка не могло быть общей транзакции
+//     с БД предмета выдачи. У формы E эта операция ВЫРАЗИМА, поэтому ячейка теперь
+//     измеряется, а не объявляется неприменимой.
+//
+// Категория, у которой не осталось производителя, не остаётся «на всякий случай»:
+// она печаталась бы в сводке нулём, неотличимым от посчитанного.
 type Outcome string
 
 const (
 	Measured Outcome = "measured"
-	Refused  Outcome = "refused" // the engine answered "no" — a fact about the engine
-	NotRun   Outcome = "not-run" // nothing was measured; the reason says why
-	// NotApplicable — четвёртый исход, и он НЕ вычитается ни в чью пользу и не
-	// сворачивается в «не выполнилось».
-	//
-	// Иначе ячейка «выдача в той же транзакции» у движка попадёт в «не
-	// выполнилось», отчёт скажет «не-измеренных 2», и читатель решит, что замер
-	// не доехал, — тогда как это самый содержательный результат таблицы.
-	NotApplicable Outcome = "not-applicable"
+	NotRun   Outcome = "not-run" // ничего не измерено; причина говорит, почему
 )
 
 // Op names one measured operation.
@@ -83,14 +88,12 @@ type Cell struct {
 	Repeats            int
 	P50, P95, Min, Max float64 // milliseconds; zero when Outcome != Measured
 
-	// Прежняя колонка `Requests` расщеплена на две САМОСТОЯТЕЛЬНЫЕ: у движка
-	// «обращение» — это HTTP-вызов, за которым стоит неизвестное число запросов к
-	// его Postgres, у формы E — SQL-стейтмент. Величины разные, ни одна не
-	// называется «обращениями» без уточнения, и ни в одной ячейке они не
-	// складываются.
-	ReqEngine int    // круговые обращения к движку
-	StmtSQL   int    // SQL-стейтменты
-	StmtNote  string // непусто ⇒ StmtSQL НЕ измерен, здесь причина; печатается вместо величины
+	// Колонка обращений была РАСЩЕПЛЕНА на две самостоятельные, пока сторон было
+	// две: у движка «обращение» — HTTP-вызов, за которым стоит неизвестное число
+	// запросов к его Postgres, у формы E — SQL-стейтмент. Складывать их было
+	// нельзя. Осталась одна величина; вторая снята, а не обнулена.
+	StmtSQL  int    // SQL-стейтменты
+	StmtNote string // непусто ⇒ StmtSQL НЕ измерен, здесь причина; печатается вместо величины
 
 	Parts  int // на сколько частей разложена страница (у формы E — одна)
 	Tuples int // строк намерения, которых операция коснулась
@@ -169,19 +172,21 @@ func DefaultConfig() Config {
 }
 
 // Provenance is what makes a number evidence rather than an anecdote.
+//
+// Здесь стояли три поля движка отношений — его образ, образ его командной строки
+// и ИЗМЕРЕННЫЙ потолок его пакетной проверки. Все три сняты вместе с ним. Потолок
+// снят с особым сожалением и потому назван: он был измерен на живом сервере, а не
+// взят из чужого утверждения, — ровно потому, что дерево пинило движок в двух
+// местах разными версиями и спорить о том, чья версия верна, было не нужно, когда
+// можно спросить. Предмета спора больше нет.
 type Provenance struct {
 	When        string
 	TreeRev     string
 	Machine     string
-	OpenFGA     string
-	Postgres    string
-	CLI         string
-	BatchCap    int // MEASURED off the engine, not assumed
+	Postgres    string // образ, на котором СНЯТ замер
 	ModelPath   string
 	ModelDigest string
 
-	// RelPostgres — Postgres формы E: своя посадка, не датастор движка.
-	RelPostgres string
 	// StmtProducers — состояние производителя `StmtSQL` по КАЖДОМУ месту снятия.
 	// Величина, у входа которой нет производителя, зеленеет молча — поэтому это
 	// печатается всегда, и при успехе, и при провале.
@@ -191,7 +196,15 @@ type Provenance struct {
 	CascadeDepth int
 }
 
-func CollectProvenance(st *Stack, modelPath string, modelDigest string) Provenance {
+// CollectProvenance собирает то, без чего число — анекдот.
+//
+// Стека здесь больше НЕ спрашивают, и это не упрощение подписи: мест снятия два —
+// своя посадка прибора и продуктовые таблицы iam (прогон Ф5), — и второе про стек
+// прибора не знает вовсе. Прежняя подпись брала `*Stack` и заполняла из него
+// образ Postgres; прогон Ф5 при этом поднимал стек, которым НЕ ПОЛЬЗОВАЛСЯ ни
+// одной операцией, только чтобы было что передать. Образ теперь называет тот, кто
+// на нём меряет.
+func CollectProvenance(postgres, modelPath, modelDigest string) Provenance {
 	rev := "unknown"
 	if out, err := gitenv.Command("", "rev-parse", "HEAD").Output(); err == nil {
 		rev = strings.TrimSpace(string(out))
@@ -210,14 +223,10 @@ func CollectProvenance(st *Stack, modelPath string, modelDigest string) Provenan
 		When:          time.Now().Format(time.RFC3339),
 		TreeRev:       rev,
 		Machine:       fmt.Sprintf("%s %s/%s %d cpu, MemTotal %s", host, runtime.GOOS, runtime.GOARCH, runtime.NumCPU(), mem),
-		OpenFGA:       st.OpenFGA,
-		Postgres:      st.Postgres,
-		CLI:           envOr("AUTHZFORMBENCH_CLI_IMAGE", defaultCLIImage),
-		BatchCap:      st.BatchCap,
+		Postgres:      postgres,
 		ModelPath:     modelPath,
 		ModelDigest:   modelDigest,
-		RelPostgres:   st.RelPostgres,
-		StmtProducers: []ProducerStatus{st.StmtProducer, relProducerStatus},
+		StmtProducers: []ProducerStatus{relProducerStatus},
 		CascadeChain:  CascadeChain,
 		CascadeDepth:  CascadeDepth,
 	}
@@ -228,27 +237,23 @@ func CollectProvenance(st *Stack, modelPath string, modelDigest string) Provenan
 // роняет открытие, если контроль не прошёл: величина, снятая производителем без
 // контроля, печаталась бы неотличимо от измеренной.
 var relProducerStatus = ProducerStatus{
-	Place:    "форма E (Postgres формы E)",
+	Place:    "форма E (Postgres прибора)",
 	Producer: "счётчик стейтментов на pgx.Tracer собственного пула",
 	OK:       true,
 	Note:     "контроль в обе стороны прогоняется при открытии каждого хранилища и роняет открытие",
 }
 
-// classify turns an error into an outcome. A refusal by the engine and a failure to
-// reach it are different facts and are kept apart; folding them would let a shape
-// that the engine REJECTS look like a shape the harness merely could not reach.
+// classify turns an error into an outcome.
+//
+// Ветвей было три. Две сняты вместе с движком отношений: «движок отверг запрос»
+// (его `APIError`) и «операции нет by construction» (его невыразимая общая
+// транзакция). Разделение стоило того, пока оно различало факты: свёрнутые в одну
+// категорию, отказ движка и недоезд до него дали бы форме, которую движок
+// ОТВЕРГАЕТ, вид формы, до которой прибор просто не дозвонился. Различать больше
+// нечего — остались «измерено» и «не выполнилось».
 func classify(err error) (Outcome, string) {
 	if err == nil {
 		return Measured, ""
-	}
-	// Неприменимость по построению — не отказ и не недоезд: у неё свой исход и
-	// своя строка отчёта с причиной.
-	if errors.Is(err, ErrNotApplicable) {
-		return NotApplicable, err.Error()
-	}
-	var apiErr *APIError
-	if errors.As(err, &apiErr) {
-		return Refused, apiErr.Error()
 	}
 	return NotRun, err.Error()
 }
@@ -257,46 +262,33 @@ func classify(err error) (Outcome, string) {
 type Runner struct {
 	Stack *Stack
 	Cfg   Config
-	Canon string
 
-	models map[Form][]byte
-	Notes  map[Form]string
+	Notes map[Form]string
 }
 
-// NewRunner готовит модели форм.
+// NewRunner готовит прогон.
 //
-// «Модель не требуется» — законный ответ, а не отказ: конструктор пяти прежних
-// форм требовал DSL для КАЖДОЙ, и до этой правки шестая форма не заводилась бы
-// вовсе — раньше первого замера и раньше любой проверки того, отвечает ли она
-// правильно. Ошибка при этом никуда не делась: неизвестное имя формы по-прежнему
-// возвращает ошибку, иначе «модель не требуется» покрывало бы и опечатку.
-func NewRunner(st *Stack, cfg Config, canon string) (*Runner, error) {
-	r := &Runner{Stack: st, Cfg: cfg, Canon: canon,
-		models: map[Form][]byte{}, Notes: map[Form]string{}}
+// Прежде конструктор ГОТОВИЛ МОДЕЛИ: для каждой формы он выводил из канонического
+// текста её DSL и гнал его через внешний преобразователь в JSON. Форме E модель не
+// требуется — вердикт она вычисляет запросом, — и «модель не требуется» было
+// законным ответом, отделённым от ошибки «неизвестная форма» намеренно, чтобы
+// первое не покрывало опечатку во втором. Модели готовились для пяти форм движка;
+// движка нет, и готовить нечего — вместе с этим сняты сам ответ-сентинел и
+// хранилище моделей.
+//
+// Конструктор оставлен, а не свёрнут в литерал: он остаётся единственным местом,
+// где `Notes` заводится непустой картой, и вызывающему не приходится знать, что её
+// надо создать.
+func NewRunner(st *Stack, cfg Config) *Runner {
+	r := &Runner{Stack: st, Cfg: cfg, Notes: map[Form]string{}}
 	for _, f := range cfg.Forms {
-		dsl, note, err := ModelFor(f, canon)
-		switch {
-		case errors.Is(err, ErrModelNotRequired):
-			r.Notes[f] = note
-			continue
-		case err != nil:
-			return nil, fmt.Errorf("model for %s: %w", f, err)
-		}
-		js, err := TransformDSL(dsl)
-		if err != nil {
-			return nil, fmt.Errorf("transform model for %s: %w", f, err)
-		}
-		r.models[f] = js
-		r.Notes[f] = note
+		r.Notes[f] = "модель авторизации не требуется — вердикт вычисляется запросом к БД"
 	}
-	return r, nil
+	return r
 }
 
 // NewSeededStore builds a store for `f`, seeds the structural tuples and (when
 // `grant`) the shape's grant tuples. Returned ready to be asked questions.
-//
-// Возвращается ГРАНИЦА, а не конкретный тип: до неё шестая форма к матрице не
-// подключалась ни одной операцией.
 func (r *Runner) NewSeededStore(ctx context.Context, f Form, sc Scenario, grant bool, name string) (RightsStore, error) {
 	st, err := r.openStore(ctx, f, sc, name)
 	if err != nil {
@@ -315,21 +307,13 @@ func (r *Runner) NewSeededStore(ctx context.Context, f Form, sc Scenario, grant 
 
 // openStore создаёт пустое хранилище формы за границей.
 func (r *Runner) openStore(ctx context.Context, f Form, sc Scenario, name string) (RightsStore, error) {
-	if f == FormE {
-		if r.Stack.RelDSN == "" {
-			return nil, fmt.Errorf("у формы E нет своей БД — стек поднят без неё")
-		}
-		return newRelStore(ctx, r.Stack.RelDSN, relSchemaName(name), sc)
+	if f != FormE {
+		return nil, fmt.Errorf("форма %q не измеряется этим прибором", f)
 	}
-	model, ok := r.models[f]
-	if !ok {
-		return nil, fmt.Errorf("модель формы %s не подготовлена", f)
+	if r.Stack == nil || r.Stack.DSN == "" {
+		return nil, fmt.Errorf("стек не поднят — измерять не на чем")
 	}
-	st, err := r.Stack.NewStore(ctx, name, model)
-	if err != nil {
-		return nil, err
-	}
-	return &engineStore{st: st, stmts: r.Stack.stmts, prod: r.Stack.StmtProducer}, nil
+	return newRelStore(ctx, r.Stack.DSN, relSchemaName(name), sc)
 }
 
 // relSchemaName делает из имени store'а имя схемы: Postgres не любит в
@@ -413,7 +397,7 @@ func (r *Runner) RunWrites(ctx context.Context, f Form, sc Scenario) []Cell {
 			fail(OpGrant, err)
 		} else if rep > 0 {
 			samples[OpGrant] = append(samples[OpGrant], d)
-			cells[OpGrant].ReqEngine, cells[OpGrant].StmtSQL = cnt.ReqEngine, cnt.StmtSQL
+			cells[OpGrant].StmtSQL = cnt.StmtSQL
 			cells[OpGrant].Tuples = len(grant)
 		}
 
@@ -449,7 +433,7 @@ func (r *Runner) RunWrites(ctx context.Context, f Form, sc Scenario) []Cell {
 				fail(OpRelabel1, err)
 			} else if rep > 0 {
 				samples[OpRelabel1] = append(samples[OpRelabel1], d)
-				cells[OpRelabel1].ReqEngine, cells[OpRelabel1].StmtSQL = cnt.ReqEngine, cnt.StmtSQL
+				cells[OpRelabel1].StmtSQL = cnt.StmtSQL
 				cells[OpRelabel1].Tuples = len(t1)
 			}
 
@@ -459,7 +443,7 @@ func (r *Runner) RunWrites(ctx context.Context, f Form, sc Scenario) []Cell {
 				fail(OpRelabelK, err)
 			} else if rep > 0 {
 				samples[OpRelabelK] = append(samples[OpRelabelK], d)
-				cells[OpRelabelK].ReqEngine, cells[OpRelabelK].StmtSQL = cnt.ReqEngine, cnt.StmtSQL
+				cells[OpRelabelK].StmtSQL = cnt.StmtSQL
 				cells[OpRelabelK].Tuples = len(tk)
 			}
 
@@ -469,7 +453,7 @@ func (r *Runner) RunWrites(ctx context.Context, f Form, sc Scenario) []Cell {
 				fail(OpRevoke, err)
 			} else if rep > 0 {
 				samples[OpRevoke] = append(samples[OpRevoke], d)
-				cells[OpRevoke].ReqEngine, cells[OpRevoke].StmtSQL = cnt.ReqEngine, cnt.StmtSQL
+				cells[OpRevoke].StmtSQL = cnt.StmtSQL
 				cells[OpRevoke].Tuples = len(rv)
 			}
 
@@ -493,7 +477,7 @@ func (r *Runner) runInline(ctx context.Context, st RightsStore, sc Scenario, obj
 		fail(OpInlineGrant, err)
 	} else if rep > 0 {
 		samples[OpInlineGrant] = append(samples[OpInlineGrant], d)
-		cells[OpInlineGrant].ReqEngine, cells[OpInlineGrant].StmtSQL = cnt.ReqEngine, cnt.StmtSQL
+		cells[OpInlineGrant].StmtSQL = cnt.StmtSQL
 		cells[OpInlineGrant].Tuples = len(data) + len(grant)
 	}
 
@@ -503,7 +487,7 @@ func (r *Runner) runInline(ctx context.Context, st RightsStore, sc Scenario, obj
 		fail(OpInlineRevoke, err)
 	} else if rep > 0 {
 		samples[OpInlineRevoke] = append(samples[OpInlineRevoke], d)
-		cells[OpInlineRevoke].ReqEngine, cells[OpInlineRevoke].StmtSQL = cnt.ReqEngine, cnt.StmtSQL
+		cells[OpInlineRevoke].StmtSQL = cnt.StmtSQL
 		cells[OpInlineRevoke].Tuples = len(rdata) + len(revoke)
 	}
 }
@@ -583,7 +567,7 @@ func (r *Runner) RunReads(ctx context.Context, f Form, sc Scenario) []Cell {
 		}
 		if rep > 0 {
 			samples[OpCheck] = append(samples[OpCheck], d)
-			cells[OpCheck].ReqEngine, cells[OpCheck].StmtSQL = cnt.ReqEngine, cnt.StmtSQL
+			cells[OpCheck].StmtSQL = cnt.StmtSQL
 		}
 	}
 
@@ -603,7 +587,7 @@ func (r *Runner) RunReads(ctx context.Context, f Form, sc Scenario) []Cell {
 		}
 		if rep > 0 {
 			samples[OpPage50] = append(samples[OpPage50], d)
-			cells[OpPage50].ReqEngine, cells[OpPage50].StmtSQL = cnt.ReqEngine, cnt.StmtSQL
+			cells[OpPage50].StmtSQL = cnt.StmtSQL
 			cells[OpPage50].Tuples = len(p)
 		}
 	}
@@ -626,7 +610,7 @@ func (r *Runner) RunReads(ctx context.Context, f Form, sc Scenario) []Cell {
 		}
 		if rep > 0 {
 			samples[OpPageFull] = append(samples[OpPageFull], d)
-			cells[OpPageFull].ReqEngine, cells[OpPageFull].StmtSQL = cnt.ReqEngine, cnt.StmtSQL
+			cells[OpPageFull].StmtSQL = cnt.StmtSQL
 			cells[OpPageFull].Parts = parts
 			cells[OpPageFull].Tuples = len(p)
 		}
@@ -684,8 +668,8 @@ func (r *Runner) runCascade(ctx context.Context, st RightsStore, f Form, sc Scen
 			ok, cc, e := st.Check(ctx, cascadeAdmin, "v_get", obj)
 			if e == nil && !ok {
 				return cc, fmt.Errorf("каскадный принципал получил отказ у формы %s — "+
-					"три верхних уровня доступа разрешаются каскадом, и форма, отвечающая здесь "+
-					"отказом, отвечает не то же самое, что остальные", f)
+					"три верхних уровня доступа разрешаются каскадом в момент запроса, и форма, "+
+					"отвечающая здесь отказом, ломает именно тот путь, которым чинят аварию", f)
 			}
 			return cc, e
 		})
@@ -695,7 +679,7 @@ func (r *Runner) runCascade(ctx context.Context, st RightsStore, f Form, sc Scen
 		}
 		if rep > 0 {
 			samples[OpCascade] = append(samples[OpCascade], d)
-			c.ReqEngine, c.StmtSQL = cnt.ReqEngine, cnt.StmtSQL
+			c.StmtSQL = cnt.StmtSQL
 			c.Parts = CascadeDepth
 		}
 	}

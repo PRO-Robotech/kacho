@@ -13,10 +13,10 @@ syntax = "proto3";
 // `Operation` async envelope: the handler
 // inserts `cluster_admin_grants` + `fga_outbox` + `audit_outbox` rows in a
 // single transaction, then the existing `FGAOutboxDrainer` worker pushes the
-// tuple to OpenFGA and flips the Operation to `done=true` within ≤2s.
+// tuple as a journal intent and flips the Operation to `done=true` within ≤2s.
 //
 // Read RPCs (`Get`, `ListAdmins`) are synchronous; they hit the local
-// `kacho_iam` schema only and never call OpenFGA on the request path.
+// `kacho_iam` schema only.
 //
 // Authorization gate:
 // every RPC requires the FGA relation `system_admin` on

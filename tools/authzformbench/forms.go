@@ -5,31 +5,34 @@ package authzformbench
 
 import "fmt"
 
-// Form names one of the shapes under comparison.
+// Form — форма хранения права, которую прибор измеряет.
+//
+// Значение осталось ОДНО. Их было шесть: пять описывали, как разложить выдачу в
+// кортежи внешнего движка отношений (плоско, через группу, через отношение роли,
+// через контейнер и композицией), шестая — реляционная — вычисляла вердикт
+// запросом к БД. Движок снят целиком (S6), и вместе с ним снялись пять форм: они
+// были формами хранения В НЁМ и измеряться иначе не могли.
+//
+// Тип оставлен при одном значении намеренно, и это не «на будущее»: он читается —
+// ячейка отчёта им подписана, и подпись «E-relational» отвечает на вопрос, к чему
+// относятся числа. Отчёт, потерявший имя формы, стал бы таблицей чисел без
+// предмета — а уже опубликованные отчёты (REPORT-*) подписаны именно так, и
+// сопоставимость с ними держится этой подписью.
 type Form string
 
-const (
-	FormA   Form = "A-flat"          // tuple per object × verb × subject           N·M·S
-	FormB   Form = "B-group"         // grant to group#member                       N·M + S
-	FormC   Form = "C-role-relation" // one role relation per object, verbs derive  N·S
-	FormD   Form = "D-container"     // objects point at a container                N + S
-	FormBCD Form = "BCD-combined"    // container + group                           N + S + 1
-	// FormE — реляционная: вердикт вычисляется запросом к БД поверх того же
-	// зеркала объектов, без внешнего движка отношений. Выдача — строка привязки
-	// и её правило-селектор: S + 2. Разворота в состав нет by construction.
-	FormE Form = "E-relational"
-)
+// FormE — реляционная форма: вердикт вычисляется запросом к БД поверх зеркала
+// объектов, внешнего движка отношений нет. Выдача — строка привязки, её субъекты
+// и её правило-селектор: S + 2. Разворота в состав нет by construction.
+const FormE Form = "E-relational"
 
-// AllForms in report order: today's shape first, then each fold, then the
-// composition. The composition is measured BECAUSE the folds compose — their gains
-// need not add, and their costs (graph depth on the read path) do accumulate.
+// AllForms — перечень измеряемых форм в порядке отчёта.
+var AllForms = []Form{FormE}
+
+// BenchType — тип объекта, на котором снимается замер.
 //
-// Форма E стоит последней и втянута в ОБЕ предпосылки поимённо: попадание в этот
-// перечень само по себе втягивает её только в вопросник эквивалентности (тот
-// итерируется по перечню), а в доказательстве различающей способности неравенства
-// объёмов выписаны по именам — и без своего неравенства форма E измерялась бы вне
-// доказательства различимости.
-var AllForms = []Form{FormA, FormB, FormC, FormD, FormBCD, FormE}
+// Переехал сюда из снятого файла преобразований модели: там он называл тип, чьи
+// глаголы переписывались под формы C и D, здесь — просто тип объектов фикстуры.
+const BenchType = "vpc_network"
 
 // Fixture ids. Fixed strings, not random: the comparison is between shapes, and a
 // difference in ids would be a difference in the data (requirement 3).
@@ -37,7 +40,6 @@ const (
 	clusterObj = "cluster:cluster_kacho_root"
 	accountObj = "account:acc-bench"
 	projectObj = "project:prj-bench"
-	groupObj   = "group:grp-bench"
 	labelObj   = "label_set:lbl-bench"
 
 	// ЧУЖОЙ арендатор — второй аккаунт того же кластера и его проект.
@@ -64,12 +66,13 @@ const (
 	cascadeAdmin = "user:cascade-account-admin"
 )
 
-// Общий словарь намерения — отношения, которыми формы описывают мутацию.
+// Словарь намерения — отношения, которыми описывается мутация.
 //
-// Формы A–BCD пишут его как есть (это их wire-форма), форма E переводит его в
-// строки на своей стороне. Словарь общий, а не формо-нейтральное намерение,
-// намеренно: так производители намерения ниже остаются нетронутыми, и пять
-// прежних форм измеряются ровно тем же кодом, что и до появления шестой.
+// Форма E переводит его в строки на своей стороне. Словарь пережил пять форм,
+// которые писали его как есть (это была их wire-форма), и не переписан под
+// единственную оставшуюся намеренно: производители намерения ниже остались
+// нетронутыми, а значит числа сегодняшних прогонов сравнимы с уже
+// опубликованными отчётами.
 const (
 	bindingRelPrefix       = "binding_role_"         // + роль; User — объект области
 	bindingSubjectRel      = "binding_subject"       // субъект привязки
@@ -90,10 +93,6 @@ type Scenario struct {
 
 // DefaultVerbs is the verb set 22 of the model's 24 verb-bearing types declare.
 func DefaultVerbs() []string { return []string{"v_get", "v_list", "v_update", "v_delete"} }
-
-// AllVerbs is every verb the bench type declares — used by the equivalence probe,
-// which must also ask about verbs the role does NOT grant.
-func AllVerbs() []string { return []string{"v_get", "v_list", "v_update", "v_delete"} }
 
 // NewScenario builds the dataset. Subjects are `user:` principals because that is
 // what a tenant binding names; `service_account:` resolves through the same direct
@@ -174,104 +173,18 @@ func (sc Scenario) Structural() []Tuple {
 	return out
 }
 
-func (sc Scenario) grantRelation() string { return "grant_" + sc.Role }
-
-// Model returns the DSL each shape needs, derived from the canonical text.
-//
-// A and B share the canonical model unchanged — that is the point of B: it is a
-// discipline of granting, not a model change. C and D each carry one transform.
-// BCD reuses D's model because `group#member` is already an accepted subject on the
-// container's grant relations.
-//
-// У формы E модели нет вовсе, и это ЗАКОННЫЙ ответ, а не отказ: она возвращает
-// ErrModelNotRequired. Ответ отделён от «неизвестной формы» намеренно — иначе
-// «модель не требуется» покрывало бы и опечатку в имени формы.
-func ModelFor(f Form, canon string) (dsl string, note string, err error) {
-	switch f {
-	case FormA, FormB:
-		return canon, "canonical, unchanged", nil
-	case FormE:
-		return "", "модель не требуется — вердикт вычисляется запросом к БД", ErrModelNotRequired
-	case FormC:
-		r, e := ModelC(canon)
-		if e != nil {
-			return "", "", e
-		}
-		return r.DSL, fmt.Sprintf("canonical + grant_viewer/grant_editor on %s, %d verbs rewritten", BenchType, len(r.VerbsTouched)), nil
-	case FormD, FormBCD:
-		r, e := ModelD(canon)
-		if e != nil {
-			return "", "", e
-		}
-		return r.DSL, fmt.Sprintf("canonical + type label_set + labels pointer on %s, %d verbs rewritten", BenchType, len(r.VerbsTouched)), nil
-	default:
-		return "", "", fmt.Errorf("unknown form %q", f)
-	}
-}
-
 // Grant returns the tuples that materialize the binding over the in-set objects.
+//
+// Выдача формы E — строка привязки, её субъекты и её правило-селектор. Объекты
+// набора здесь НЕ перечисляются: метка живёт в зеркале, зеркало наполняют
+// владельцы объектов, и выдача узнаёт набор запросом. Отсюда и то, что «выдать» у
+// неё стоит S + 2 независимо от N — постоянство и есть измеряемый результат, а не
+// отказ прибора.
 func Grant(f Form, sc Scenario) []Tuple {
-	rel := sc.grantRelation()
-	switch f {
-	case FormA:
-		out := make([]Tuple, 0, sc.N*len(sc.Verbs)*len(sc.Subjects))
-		for i := 0; i < sc.N; i++ {
-			obj := sc.Object(i)
-			for _, v := range sc.Verbs {
-				for _, s := range sc.Subjects {
-					out = append(out, Tuple{User: s, Relation: v, Object: obj})
-				}
-			}
-		}
-		return out
-	case FormB:
-		out := make([]Tuple, 0, sc.N*len(sc.Verbs)+len(sc.Subjects))
-		for _, s := range sc.Subjects {
-			out = append(out, Tuple{User: s, Relation: "member", Object: groupObj})
-		}
-		for i := 0; i < sc.N; i++ {
-			obj := sc.Object(i)
-			for _, v := range sc.Verbs {
-				out = append(out, Tuple{User: groupObj + "#member", Relation: v, Object: obj})
-			}
-		}
-		return out
-	case FormC:
-		out := make([]Tuple, 0, sc.N*len(sc.Subjects))
-		for i := 0; i < sc.N; i++ {
-			obj := sc.Object(i)
-			for _, s := range sc.Subjects {
-				out = append(out, Tuple{User: s, Relation: rel, Object: obj})
-			}
-		}
-		return out
-	case FormD:
-		out := make([]Tuple, 0, sc.N+len(sc.Subjects))
-		for i := 0; i < sc.N; i++ {
-			out = append(out, Tuple{User: labelObj, Relation: "labels", Object: sc.Object(i)})
-		}
-		for _, s := range sc.Subjects {
-			out = append(out, Tuple{User: s, Relation: rel, Object: labelObj})
-		}
-		return out
-	case FormBCD:
-		out := make([]Tuple, 0, sc.N+len(sc.Subjects)+1)
-		for i := 0; i < sc.N; i++ {
-			out = append(out, Tuple{User: labelObj, Relation: "labels", Object: sc.Object(i)})
-		}
-		for _, s := range sc.Subjects {
-			out = append(out, Tuple{User: s, Relation: "member", Object: groupObj})
-		}
-		out = append(out, Tuple{User: groupObj + "#member", Relation: rel, Object: labelObj})
-		return out
-	case FormE:
-		// Выдача формы E — строка привязки, её субъекты и её правило-селектор.
-		// Объекты набора здесь НЕ перечисляются: метка живёт в зеркале, зеркало
-		// наполняют владельцы объектов, и выдача узнаёт набор запросом. Отсюда и
-		// то, что операция «выдать» у двух форм мерит разные события.
-		return grantE(sc, bindingObj, projectObj)
+	if f != FormE {
+		return nil
 	}
-	return nil
+	return grantE(sc, bindingObj, projectObj)
 }
 
 // grantE собирает выдачу формы E: одна привязка + S субъектов + один селектор.
@@ -320,54 +233,27 @@ func InlineRevokeIntent(sc Scenario, obj string) (data, revoke []Tuple) {
 
 // CascadeSeed — принципал трёх верхних уровней доступа.
 //
-// У форм A–BCD это прямой кортеж «администратор аккаунта», который канонический
-// граф доводит до листа сам (`v_get` ← `super_admin` ← `super_admin from project`
-// ← `admin from account`). У формы E — строка администратора аккаунта, которую
-// запрос вердикта достаёт соединением ограниченной глубины по родительским
-// указателям. Обе формы отвечают на ОДИН вопрос, поэтому его можно задать обеим.
-func CascadeSeed(f Form, _ Scenario) []Tuple {
-	if f == FormE {
-		return []Tuple{{User: cascadeAdmin, Relation: cascadeAccountAdminRel, Object: accountObj}}
-	}
-	return []Tuple{{User: cascadeAdmin, Relation: "admin", Object: accountObj}}
+// Строка администратора аккаунта, которую запрос вердикта достаёт соединением
+// ограниченной глубины по родительским указателям (leaf → project → account →
+// cluster). Каскад меряется отдельной ячейкой, потому что это и есть путь,
+// которым чинят аварию: он разрешается в момент запроса и не зависит от того,
+// доехала ли до кого-нибудь материализация.
+func CascadeSeed(_ Form, _ Scenario) []Tuple {
+	return []Tuple{{User: cascadeAdmin, Relation: cascadeAccountAdminRel, Object: accountObj}}
 }
 
 // RelabelOne returns the tuples written when ONE object ENTERS the selected set —
 // the "a label changed on one resource" operation.
 //
-// This is the axis on which the shapes differ most and the one a flat index pays
-// worst: A rewrites the whole verb × subject cross-product for that object, D
-// writes one pointer.
+// Это ось, на которой формы расходились сильнее всего и на которой плоский индекс
+// платил хуже прочих: он переписывал всё произведение глаголов на субъекты для
+// этого объекта. У формы E это правка метки ОДНОЙ строки зеркала, и величина от
+// N не зависит.
 func RelabelOne(f Form, sc Scenario, obj string) []Tuple {
-	rel := sc.grantRelation()
-	switch f {
-	case FormA:
-		out := make([]Tuple, 0, len(sc.Verbs)*len(sc.Subjects))
-		for _, v := range sc.Verbs {
-			for _, s := range sc.Subjects {
-				out = append(out, Tuple{User: s, Relation: v, Object: obj})
-			}
-		}
-		return out
-	case FormB:
-		out := make([]Tuple, 0, len(sc.Verbs))
-		for _, v := range sc.Verbs {
-			out = append(out, Tuple{User: groupObj + "#member", Relation: v, Object: obj})
-		}
-		return out
-	case FormC:
-		out := make([]Tuple, 0, len(sc.Subjects))
-		for _, s := range sc.Subjects {
-			out = append(out, Tuple{User: s, Relation: rel, Object: obj})
-		}
-		return out
-	case FormD, FormBCD, FormE:
-		// Форма E делит это намерение с формой D дословно, но платит за него
-		// иначе: у D это кортеж-указатель в графе, у E — правка метки строки
-		// зеркала. Общий словарь на то и общий.
-		return []Tuple{{User: labelObj, Relation: labelsRel, Object: obj}}
+	if f != FormE {
+		return nil
 	}
-	return nil
+	return []Tuple{{User: labelObj, Relation: labelsRel, Object: obj}}
 }
 
 // RelabelMany is RelabelOne applied to K objects — the "mass re-tagging" operation.
@@ -381,59 +267,26 @@ func RelabelMany(f Form, sc Scenario, objs []string) []Tuple {
 
 // RevokeSubject returns the tuples DELETED when ONE subject loses the binding.
 //
-// Withdrawal is measured separately from grant on purpose: an additive-only
-// materialization path is green on every "was it granted" assertion and wrong on
-// exactly the operation revocation exists for (see .claude/rules/testing.md
-// §"Параллельный newman", create-vs-update discriminator).
+// Отзыв меряется отдельно от выдачи намеренно: путь материализации, умеющий
+// только ДОБАВЛЯТЬ, зелен на каждом утверждении «было ли выдано» и неверен ровно
+// на той операции, ради которой отзыв существует (см. .claude/rules/testing.md
+// §«Параллельный newman», дискриминатор create-vs-update).
 func RevokeSubject(f Form, sc Scenario, subject string) []Tuple {
-	rel := sc.grantRelation()
-	switch f {
-	case FormA:
-		out := make([]Tuple, 0, sc.N*len(sc.Verbs))
-		for i := 0; i < sc.N; i++ {
-			obj := sc.Object(i)
-			for _, v := range sc.Verbs {
-				out = append(out, Tuple{User: subject, Relation: v, Object: obj})
-			}
-		}
-		return out
-	case FormB, FormBCD:
-		return []Tuple{{User: subject, Relation: "member", Object: groupObj}}
-	case FormC:
-		out := make([]Tuple, 0, sc.N)
-		for i := 0; i < sc.N; i++ {
-			out = append(out, Tuple{User: subject, Relation: rel, Object: sc.Object(i)})
-		}
-		return out
-	case FormD:
-		return []Tuple{{User: subject, Relation: rel, Object: labelObj}}
-	case FormE:
-		return []Tuple{{User: subject, Relation: bindingSubjectRel, Object: bindingObj}}
+	if f != FormE {
+		return nil
 	}
-	return nil
+	return []Tuple{{User: subject, Relation: bindingSubjectRel, Object: bindingObj}}
 }
 
-// ExpectedGrantTuples is the closed-form count each shape predicts, so the measured
-// count can be checked against the arithmetic rather than trusted.
+// ExpectedGrantTuples — арифметика, объявленная ДО прогона, чтобы измеренное
+// число строк сверялось с ней, а не принималось на веру.
 func ExpectedGrantTuples(f Form, sc Scenario) int {
-	n, m, s := sc.N, len(sc.Verbs), len(sc.Subjects)
-	switch f {
-	case FormA:
-		return n * m * s
-	case FormB:
-		return n*m + s
-	case FormC:
-		return n * s
-	case FormD:
-		return n + s
-	case FormBCD:
-		return n + s + 1
-	case FormE:
-		// s + 2: привязка, её субъекты, её правило-селектор. Строки зеркала сюда
-		// не входят — они структурные, как указатели родителя у движка.
-		return s + 2
+	if f != FormE {
+		return -1
 	}
-	return -1
+	// s + 2: привязка, её субъекты, её правило-селектор. Строки зеркала сюда не
+	// входят — они структурные.
+	return len(sc.Subjects) + 2
 }
 
 // ExpectedStatements — объявленная ДО прогона арифметика колонки `StmtSQL` формы
@@ -446,9 +299,10 @@ func ExpectedGrantTuples(f Form, sc Scenario) int {
 // не рассуждением: инъекция «форма E разворачивает набор» пережила проверку
 // объёма и упала только на этой величине.
 //
-// -1 — «не объявлена»: у форм A–BCD стейтменты порождает движок, и их число —
-// свойство его реализации, а не наше объявление. Требовать от них чужую
-// арифметику значило бы перенести посылку одной формы на другую.
+// -1 — «не объявлена». Прежде так отвечали пять форм движка: стейтменты у них
+// порождал он сам, и их число было свойством его реализации, а не нашим
+// объявлением. Сегодня так отвечает только объём — у него нет колонки
+// стейтментов, потому что это не операция замера времени.
 func ExpectedStatements(f Form, op Op) int {
 	if f != FormE {
 		return -1
@@ -477,7 +331,9 @@ func ExpectedStatements(f Form, op Op) int {
 // законный результат, а не отказ прибора. Форма, у которой ни одна величина не
 // отвечает на удвоение входа, оставляет предпосылку «прибор различает»
 // недоказанной, поэтому величина, которая обязана вырасти, названа заранее и
-// сверяется с измеренной.
+// сверяется с измеренной. С уходом второй стороны эта предпосылка стала ВАЖНЕЕ, а
+// не менее важной: раньше различающую силу прибора можно было показать разницей
+// между формами, теперь показать её нечем, кроме отклика одной формы на вход.
 // Слагаемое 5 (а не 2) — чужой арендатор: второй аккаунт, его проект и один
 // помеченный объект в нём. Оно названо ЗДЕСЬ, потому что эта арифметика —
 // единственное место, где заявленный размер фикстуры сверяется с измеренным:
@@ -488,7 +344,5 @@ func ExpectedStructuralRows(f Form, sc Scenario) int {
 		// арендатора; плюс два проекта, два аккаунта и роль-с-глаголами.
 		return sc.N + sc.Spare + 5 + len(sc.Verbs)
 	}
-	// У форм A–BCD структурное — указатели родителя: по одному на объект плюс
-	// звенья двух цепей.
-	return sc.N + sc.Spare + 5
+	return -1
 }

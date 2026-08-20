@@ -358,8 +358,9 @@ type AuthzCacheConfig struct {
 
 // ─── FGA (owner-tuple registration via IAM) ───────────────────────────
 
-// FGAConfig — kacho-nlb НЕ ходит в FGA напрямую.
-// Прямой best-effort tuple-write (OpenFGA endpoint/store/model) удалён; вместо него
+// FGAConfig — kacho-nlb НЕ пишет права напрямую.
+// Прямой best-effort tuple-write (адрес прежнего движка, его стор и модель) удалён;
+// вместо него
 // owner-hierarchy tuple пишется register-intent'ом в `fga_register_outbox` в той же
 // writer-tx (Вариант A), а register-drainer применяет его через kacho-iam
 // InternalIAMService.RegisterResource/UnregisterResource по mTLS.

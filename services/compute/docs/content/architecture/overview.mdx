@@ -42,7 +42,7 @@ flowchart LR
 
 | Ребро | Зачем | Тип |
 |---|---|---|
-| compute → kacho-iam | authz-Check на каждом RPC; `ProjectService.Get` (существование проекта); регистрация owner-tuple в OpenFGA | sync, request-path |
+| compute → kacho-iam | authz-Check на каждом RPC; `ProjectService.Get` (существование проекта); регистрация владения ресурсом (`RegisterResource`) | sync, request-path |
 | compute → kacho-vpc | валидация NIC-spec (Subnet / SecurityGroup / Address); зона подсети обязана совпадать с зоной инстанса | sync, request-path |
 | compute → kacho-geo | валидация `zoneId` (`ZoneService.Get`) при Create Instance | sync, request-path |
 | compute → kacho-storage | резолв источника загрузки (образ / снимок / том) и attach / detach тома | sync, request-path |

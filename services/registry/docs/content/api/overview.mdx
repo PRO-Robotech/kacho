@@ -123,7 +123,7 @@ Data-plane аутентифицирует `docker`/`helm` по отдельно�
 
 ## Авторизация
 
-Авторизация — **per-RPC, ReBAC** через **OpenFGA**, проверяется на **обеих** control-plane-поверхностях
+Авторизация — **per-RPC**, проверяется на **обеих** control-plane-поверхностях
 и в data-plane. Интерсептор перед выполнением метода вызывает `InternalIAMService.Check` в kacho-iam.
 Модель — verb-bearing: каждому действию соответствует verb-relation (`v_get` / `v_list` / `v_create`
 / `v_update` / `v_delete`) на объекте `registry_registry` (реестр) или `registry_repository`

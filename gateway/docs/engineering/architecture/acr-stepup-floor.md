@@ -48,10 +48,10 @@ no policy artifact of that kind left to step up for.
 
 ## Boundary decisions (ratified)
 
-- **B1 — AccessBindingService/Create = net-strengthening.** `permission="<exempt>"` (FGA scope-Check stays skipped, handler `requireGrantAuthority` is the precise gate) **and** `required_acr_min="2"` — the two catalog fields are orthogonal; `StepUpGate` keys on FQN+acr, not scope. Adding acr=2 closes the "create-a-new-binding instead of Update/Delete/Revoke" step-up bypass without touching FGA.
+- **B1 — AccessBindingService/Create = net-strengthening.** `permission="<exempt>"` (the scope-Check stays skipped, handler `requireGrantAuthority` is the precise gate) **and** `required_acr_min="2"` — the two catalog fields are orthogonal; `StepUpGate` keys on FQN+acr, not scope. Adding acr=2 closes the "create-a-new-binding instead of Update/Delete/Revoke" step-up bypass without touching the relation model.
 - **B2 — Group membership + Group/Delete = sensitive.** A non-empty group's membership materializes/revokes its bindings' privileges. `GroupService/Delete` is **revoke-by-all** (cascade `group_members` + cleanup of group-targeted `AccessBinding.subject_id`) — strictly more impactful than `RemoveMember`, same destructive-revoke class as `RoleService/Delete`.
 - **B3 — subject-delete = routine.** `ServiceAccountService/Delete`, `UserService/Delete` are neither grant, credential-destroy, nor tenancy-root cascade. Lockout symmetry is preserved by keeping `UserTokenService/Revoke` + `SAKeyService/Revoke` sensitive (A).
-- **B5 — non-iam `Internal*`-admin (42) = routine.** Admin-curated platform-catalog / data-plane-wiring mutations are posture-neutral; still gated by `system_admin`/`system_viewer` ReBAC + mTLS + (for module-SA callers) the O-1 acr-exemption.
+- **B5 — non-iam `Internal*`-admin (42) = routine.** Admin-curated platform-catalog / data-plane-wiring mutations are posture-neutral; still gated by the `system_admin`/`system_viewer` relation check + mTLS + (for module-SA callers) the O-1 acr-exemption.
 - **B6 — author-inert create = routine.** `RoleService/Create`, `GroupService/Create` produce an inert artifact (no holders / no referencing bindings / empty group) — access is conferred only through a now-sensitive grant verb.
 
 ## Enforcement & fail-safe
@@ -68,11 +68,11 @@ Each point carries a verdict-parity guard pinning its REAL entrypoint to the sha
 - The generator injects an explicit `required_acr_min="2"` for every **non-exempt** un-annotated RPC at gen-time (so a new non-exempt privileged RPC fails closed by default). Downgrade to routine is an **explicit `"1"`**, never deletion of the entry.
 - Catalog **completeness** (`"no entry for method" → AUTHZ_DENIED`) is the backstop for genuinely un-cataloged methods.
 - The step-up layer itself treats an absent floor as "no floor" — intentional, because the two layers above are what make the net posture fail-closed for non-exempt RPC. The floor layer is not a second gate; it is the gate for RPCs that declare one.
-- **Exempt carve-out.** An exempt RPC is outside both backstops **by construction**, not by oversight: it declares no floor, and it relies instead on authN plus the in-handler ReBAC decision plus the deliberate FGA-exempt posture. The consequence is what matters for practice: **adding a new exempt RPC is a high-scrutiny action**, because exempting an RPC removes it from the layers that would otherwise carry it, and nothing downstream re-adds it. Where an exempt RPC still needs a floor, set one explicitly — `AccessBindingService/Create` is the pattern.
+- **Exempt carve-out.** An exempt RPC is outside both backstops **by construction**, not by oversight: it declares no floor, and it relies instead on authN plus the in-handler access verdict plus the deliberate scope-exempt posture. The consequence is what matters for practice: **adding a new exempt RPC is a high-scrutiny action**, because exempting an RPC removes it from the layers that would otherwise carry it, and nothing downstream re-adds it. Where an exempt RPC still needs a floor, set one explicitly — `AccessBindingService/Create` is the pattern.
 
 ## Out of scope (unchanged)
 
-FGA relation-authz / `required_relation` / `scope_extractor` / `permission` values; the machine-principal exemption (O-1) and its predicate; ACR-minting / IdP config; `mfa_max_age`; the acr-floor mechanism (5.4). This refinement changes only `required_acr_min` values + three doc-truthfulness godoc fixes + a verdict-parity lock test.
+Relation-authz / `required_relation` / `scope_extractor` / `permission` values; the machine-principal exemption (O-1) and its predicate; ACR-minting / IdP config; `mfa_max_age`; the acr-floor mechanism (5.4). This refinement changes only `required_acr_min` values + three doc-truthfulness godoc fixes + a verdict-parity lock test.
 
 > [!note] Why the exemption predicate is not printed here
 > `security.md` §"Публичные артефакты" uses **this exact mechanism** as its worked example of

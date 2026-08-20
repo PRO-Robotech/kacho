@@ -109,8 +109,6 @@ import (
 var sanctionedProviders = map[string]string{
 	"internal/pgtest": "internal/pgtest/pgtest_test.go: TestOneContainerManyDatabases + " +
 		"TestRowsDoNotCrossBetweenDatabases",
-	"services/iam/internal/testsupport/fgatest": "services/iam/internal/testsupport/fgatest/" +
-		"fgatest_test.go: TestOneServerManyStores",
 	// Инструмент сравнительного замера форм модели прав: тот же приём, что у двух
 	// соседей выше — стек под `sync.Once`, СВОЙ store на кейс, — и та же половинчатая
 	// проверка: «сервер один» И «области разные», обе в одном тесте. Пакет не выдаёт
@@ -725,8 +723,6 @@ func TestScannerClassifiesKnownStartersInTheTree(t *testing.T) {
 	must := []funcKey{
 		// OpenFGA: импорт `github.com/testcontainers/testcontainers-go` БЕЗ алиаса,
 		// package testcontainers — тот самый случай, что был невидим.
-		{dir: "services/iam/internal/testsupport/fgatest", pkg: "fgatest", name: "newFromModelJSON"},
-		{dir: "services/iam/internal/testsupport/fgatest", pkg: "fgatest", name: "New"},
 	}
 	// Про вторую половину каталога (modules/postgres) положительной пробы на дереве
 	// НЕТ, и это названо, а не умолчано: после перехода на общий контейнер прямой

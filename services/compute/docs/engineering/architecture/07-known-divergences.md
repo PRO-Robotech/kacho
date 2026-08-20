@@ -853,18 +853,21 @@ sentinel→code в отдельный слой (если когда-либо) �
   (`TestValidateAuthMode_Dev_BreakglassAllowed`). Тесты: `authmode_gate_test.go`
   (`*_Production_BreakglassRefusesBoot` prod+strict — assert'ит СООБЩЕНИЕ, не только факт
   ошибки; `*_ProductionStrict_BreakglassRefusesBoot`; `*_Dev_BreakglassAllowed`).
-- **`internal/authzfilter.FGAFilter` — per-service hand-rolled per-object фильтр,
-  не перечислением разрешённых объектов у модели прав.** Тот же класс, что «corelib-копии
-  helper'ов» (findings7 #1 / r7b): подъём в corelib — координированная workspace-wide
-  правка (vpc несёт идентичный двойник), не compute-only. **Corelib-примитив здесь
-  вообще неприменим**: он строит видимость перечислением
-  (`AuthorizeService.ListObjects`), а перечисление — сам источник дефекта. OpenFGA
-  капит ListObjects server-side (`OPENFGA_LIST_OBJECTS_MAX_RESULTS`, default 1000) и
-  **не отдаёт continuation-token**, поэтому pagination-loop corelib'а обрывается на
-  первой странице, а `max_results=10000` — лишь client-side trim уже усечённого
-  ответа: на сторе с >1000 объектов типа собственный ресурс тенанта выпадал из выдачи
+- **`internal/authzfilter` — per-service per-object фильтр, а не перечисление
+  разрешённых объектов.** Тот же класс, что «corelib-копии helper'ов» (findings7 #1 /
+  r7b): подъём в corelib — координированная workspace-wide правка (vpc несёт идентичный
+  двойник), не compute-only. **Перечислительный corelib-примитив здесь вообще
+  неприменим**: он строил видимость перечислением разрешённых объектов, а перечисление —
+  сам источник дефекта.
+  **История.** До стадии S6 вердикт о доступе давал внешний движок прав; его
+  перечислительный запрос был ограничен серверным потолком (по умолчанию 1000 объектов)
+  и **не отдавал continuation-token**, поэтому pagination-loop corelib'а обрывался на
+  первой странице, а клиентский лимит был лишь обрезкой уже усечённого ответа: при
+  числе объектов типа больше потолка собственный ресурс тенанта выпадал из выдачи
   (List пуст, `Image.GetLatestByFamily` → NotFound) при живой строке и живом гранте.
-  compute перешёл на ПРЯМОЙ per-object вопрос по прочитанной странице
+  Сегодня внешнего движка нет — вердикт вычисляет реляционная форма в базе kacho-iam, —
+  а перечислительный RPC снят с контракта; решение compute от этого не меняется.
+  compute задаёт ПРЯМОЙ per-object вопрос по прочитанной странице
   (`AuthorizeService.BatchCheck`, ≤100/батч, `viewer ∪ v_list` — тот же предикат).
   Консолидация per-object фильтра в corelib — cross-repo тикет. (finding r9b#7)
 - **envconfig-config (#3), non-CQRS repo-порты (#4), anemic domain (#5)** — уже

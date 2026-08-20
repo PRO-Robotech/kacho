@@ -67,11 +67,11 @@ import (
 // narrowing/removal fails the ordering guards.
 const iamPartitionKey = "tuple_key"
 
-// tupleState is an order-sensitive fake OpenFGA: it models PRESENCE of an
+// tupleState is an order-sensitive fake target: it models PRESENCE of an
 // individual tuple — keyed by the FULL (user, relation, object) triple, exactly
-// as OpenFGA keys its tuple set — honouring event_type (write → present, delete →
-// absent) in the order the drainer invokes Apply. A delete of an absent tuple is
-// an idempotent no-op (FGA 404 → success); a write is idempotent-add. The final
+// as the target keys its tuple set — honouring event_type (write → present,
+// delete → absent) in the order the drainer invokes Apply. A delete of an absent
+// tuple is an idempotent no-op; a write is idempotent-add. The final
 // presence of a tuple thus reflects the LAST apply OF THAT TUPLE — so a reordered
 // delete-then-write leaves it PRESENT (the leak), while write-then-delete leaves
 // it ABSENT (correct).
@@ -90,11 +90,11 @@ type tupleState struct {
 
 func newTupleState() *tupleState { return &tupleState{present: map[string]bool{}} }
 
-// tupleKeyOf renders the (user, relation, object) triple that identifies one FGA
+// tupleKeyOf renders the (user, relation, object) triple that identifies one
 // tuple — the model's state key and, byte-for-byte, the value kacho-iam's
 // fga_outbox trigger stores in its `tuple_key` column (migration 0067). The
-// separator is a space: OpenFGA forbids whitespace in every component of a tuple
-// key, and the rendering matches the canonical `user relation object` notation, so
+// separator is a space: no component of a tuple key may contain whitespace,
+// and the rendering matches the canonical `user relation object` notation, so
 // the per-partition wedge WARN stays readable. Even if a component ever did carry
 // a space, two triples could only COLLIDE into one partition — over-ordering, the
 // safe direction — never split one triple across partitions.

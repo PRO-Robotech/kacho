@@ -7,9 +7,14 @@
 // Visibility is no longer expressed in SQL: the repo returns a project-scoped
 // cursor page and the handler then asks kacho-iam about THAT page's ids
 // (AuthorizeService.BatchCheck). The removed shape — "enumerate every allowed id,
-// then narrow the SQL with `WHERE id = ANY(...)`" — hit OpenFGA's hard ListObjects
-// cap (1000, no continuation token) and silently erased a tenant's own resources;
-// see the `internal/authzfilter` package doc.
+// then narrow the SQL with `WHERE id = ANY(...)`" — ran into a hard server-side cap
+// on the enumeration (1000 ids, no continuation token) and silently erased a
+// tenant's own resources; see the `internal/authzfilter` package doc.
+//
+// That shape is now not merely rejected, it is UNSPEAKABLE: the enumerating RPC
+// was retired with the external relation engine, and the narrowing port carries
+// the per-page question and nothing else. This test therefore pins what the
+// page-shaped filter must do, not which of two shapes was chosen.
 //
 // What must hold under the new shape, against real rows and a real cursor:
 //   - a full traversal covers EXACTLY the accessible set — no holes. Individual

@@ -65,8 +65,10 @@ WORKLOADS = ("Deployment", "StatefulSet", "Job", "DaemonSet", "CronJob")
 
 # Чарты-склейки: workload'ов с монтами у них нет вовсе, поэтому матрицы им не
 # нужно. Это ИСКЛЮЧЕНИЕ, и оно живёт, пока у него есть предмет: пропажа чарта из
-# зависимостей умбреллы — находка (см. coverage_findings).
-NO_WORKLOAD_CHARTS = {"openfga-bootstrap", "kratos-selfservice-ui"}
+# зависимостей умбреллы — находка (см. coverage_findings). Запись подчарта
+# начальной настройки движка прав снята вместе с ним (S6 эпика #747) — ровно по
+# этому правилу: исключать стало нечего.
+NO_WORKLOAD_CHARTS = {"kratos-selfservice-ui"}
 
 
 class Chart:

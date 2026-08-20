@@ -4,34 +4,23 @@
 package authzformbench
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-// TestFormEConstructorAnswersModelNotRequired — «модель не требуется» законный
-// ответ, а не отказ, и он НЕ покрывает опечатку в имени формы.
+// ЗДЕСЬ БЫЛА проба конструктора моделей — снята вместе с движком (S6).
 //
-// Пара положительного с отрицательным здесь несущая: одиночное «для формы E
-// ошибки нет» зеленело бы и в конструкторе, который перестал отвечать ошибкой
-// вообще, — то есть ровно тогда, когда сломано всё.
-func TestFormEConstructorAnswersModelNotRequired(t *testing.T) {
-	_, canon, err := ResolveCanonicalModel()
-	require.NoError(t, err)
-
-	dsl, note, err := ModelFor(FormE, string(canon))
-	require.ErrorIs(t, err, ErrModelNotRequired,
-		"конструктор обязан ответить именно «модель не требуется» — не ошибкой и не молчанием")
-	require.Empty(t, dsl, "у формы, которой модель не требуется, не может быть текста модели")
-	require.NotEmpty(t, note, "ответ обязан нести причину — её печатает отчёт")
-
-	_, _, err = ModelFor(Form("no-such-form"), string(canon))
-	require.Error(t, err, "неизвестная форма обязана оставаться ошибкой")
-	require.NotErrorIs(t, err, ErrModelNotRequired,
-		"опечатка в имени формы получила ответ «модель не требуется» — тогда этот ответ "+
-			"покрывает и её, и шестая форма заводится из любой строки")
-}
+// Конструктор прогона готовил модель авторизации для КАЖДОЙ формы и гнал её через
+// внешний преобразователь. Форме E модель не требуется, и «не требуется» было
+// ЗАКОННЫМ ответом, отделённым от ошибки «неизвестная форма» намеренно: иначе
+// первое покрывало бы опечатку во втором, и форма заводилась бы из любой строки.
+// Проба держала эту пару — положительное с отрицательным, потому что одиночное
+// «для формы E ошибки нет» зеленело бы и в конструкторе, переставшем отвечать
+// ошибкой вообще.
+//
+// Моделей больше не готовит никто: готовить их было для кого, а не для чего.
+// Вместе с ответом-сентинелом снята и его проба — держать её было бы не за что.
 
 // TestFormEIsNamedInEveryPlaceTheMatrixCounts — форма заведена в СЛОВАРЯХ, а не
 // только в реализации.
@@ -40,7 +29,7 @@ func TestFormEConstructorAnswersModelNotRequired(t *testing.T) {
 // печатается: отчёт был бы полон по своему собственному счёту и молчал бы о том,
 // ради чего замер и делается.
 func TestFormEIsNamedInEveryPlaceTheMatrixCounts(t *testing.T) {
-	require.Contains(t, AllForms, FormE, "шестая форма не попала в перечень форм")
+	require.Contains(t, AllForms, FormE, "измеряемая форма не попала в перечень форм")
 
 	for _, op := range []Op{OpInlineGrant, OpInlineRevoke, OpCascade} {
 		require.Containsf(t, opsAll, op, "операция %s не заведена в словаре — её ячейка не печатается", op)
@@ -70,27 +59,20 @@ func TestStmtProducersPassControlInBothDirections(t *testing.T) {
 		t.Skip("поднимает контейнеры")
 	}
 	ctx := t.Context()
-	stack, canon := bootForTest(ctx, t)
+	stack, _ := bootForTest(ctx, t)
 
-	// Сторона движка. Контроль прогнан при подъёме стека; здесь он ПЕРЕПРОГОНЯЕТСЯ
-	// независимо — исход, взятый из чужого поля, не является проверкой.
-	_, again := VerifyEngineStmtProducer(ctx, stack.DB)
-	require.Equal(t, stack.StmtProducer.OK, again.OK,
-		"повторный контроль производителя движка дал другой ответ — величина недетерминирована")
-	if !stack.StmtProducer.OK {
-		// Провал контроля — законный, заранее названный исход, а не неудача пробы:
-		// колонка тогда не печатается вовсе. Но он обязан быть ВИДЕН.
-		t.Logf("производитель StmtSQL движка контроль НЕ прошёл: %s", stack.StmtProducer.Note)
-		t.Logf("следствие объявлено заранее: колонка q этого места не печатается, "+
-			"формулировка «на общем для форм уровне» из отчёта снимается (%s)", again.Note)
-	}
-
-	// Сторона формы E. Контроль прогоняется при открытии КАЖДОГО хранилища и
+	// Мест снятия было ДВА, и у каждого свой производитель: у движка отношений —
+	// дельта его собственной статистики стейтментов (у него нет хука трассировки),
+	// у формы E — трассировщик на своём пуле (у него нет расширения статистики).
+	// Первое место снято вместе с движком, и здесь перепроверялся его контроль —
+	// независимо от подъёма стека, потому что исход, взятый из чужого поля, не
+	// является проверкой.
+	//
+	// Осталось одно место и один производитель. Контроль прогоняется при открытии КАЖДОГО хранилища и
 	// роняет открытие; здесь проверяется, что он именно исполняется, а не объявлен.
 	cfg := DefaultConfig()
 	cfg.Forms = []Form{FormE}
-	r, err := NewRunner(stack, cfg, canon)
-	require.NoError(t, err)
+	r := NewRunner(stack, cfg)
 	sc := NewScenario(5, 2, 2, "editor", DefaultVerbs())
 	st, err := r.NewSeededStore(ctx, FormE, sc, true, "stmt-control-E")
 	require.NoError(t, err)
@@ -105,7 +87,6 @@ func TestStmtProducersPassControlInBothDirections(t *testing.T) {
 	_, c, err := st.Check(ctx, sc.Subjects[0], "v_get", sc.Object(0))
 	require.NoError(t, err)
 	require.Equal(t, 1, c.StmtSQL, "одиночная проверка формы E стоила не один стейтмент")
-	require.Zero(t, c.ReqEngine, "у формы E не может быть обращений к движку")
 
 	page := sc.Objects()
 	_, parts, pc, err := st.CheckPage(ctx, sc.Subjects[0], "v_get", page, 50, 8)
@@ -116,23 +97,29 @@ func TestStmtProducersPassControlInBothDirections(t *testing.T) {
 			"идентификаторов ОДНИМ запросом, иначе меряется способ вызова, а не форма")
 }
 
-// TestFormEInlineTransactionIsMeasuredAndEngineSaysNotApplicable — четвёртый
-// исход на своём месте.
+// TestFormEInlineTransactionIsMeasuredAndGrantTakesEffect — выдача, написанная в
+// ОДНОЙ транзакции с предметом выдачи.
 //
-// «Неприменимо by construction» здесь не оговорка, а самый содержательный
-// результат: общей транзакции между БД предмета выдачи и внешним движком не
-// бывает, и это единственная ячейка, где разница форм не в скорости.
-func TestFormEInlineTransactionIsMeasuredAndEngineSaysNotApplicable(t *testing.T) {
+// Здесь была вторая половина, и она была содержательнее первой: тот же вызов у
+// движка отношений возвращал «неприменимо by construction» — общей транзакции
+// между БД предмета выдачи и чужим хранилищем не бывает, — и это была
+// единственная ячейка, где разница форм измерялась не в скорости. Половина снята
+// вместе с движком; операция осталась ВЫРАЗИМОЙ, и теперь про неё утверждается
+// абсолютное: она делает работу и эта работа ДЕЙСТВУЕТ.
+//
+// Второе утверждение несущее: без него «выдача в одной транзакции» подтверждалась
+// бы одним лишь счётчиком стейтментов, то есть отчётом операции о работе, которой
+// она могла не сделать.
+func TestFormEInlineTransactionIsMeasuredAndGrantTakesEffect(t *testing.T) {
 	if testing.Short() {
 		t.Skip("поднимает контейнеры")
 	}
 	ctx := t.Context()
-	stack, canon := bootForTest(ctx, t)
+	stack, _ := bootForTest(ctx, t)
 
 	cfg := DefaultConfig()
-	cfg.Forms = []Form{FormA, FormE}
-	r, err := NewRunner(stack, cfg, canon)
-	require.NoError(t, err)
+	cfg.Forms = []Form{FormE}
+	r := NewRunner(stack, cfg)
 	sc := NewScenario(5, 3, 2, "editor", DefaultVerbs())
 	obj := sc.Object(sc.N + sc.Spare) // за пределами засева: объект заводится самой транзакцией
 	data, grant := InlineIntent(sc, obj)
@@ -151,44 +138,35 @@ func TestFormEInlineTransactionIsMeasuredAndEngineSaysNotApplicable(t *testing.T
 	require.True(t, ok, "объект, заведённый вместе с выдачей, не разрешён — встраиваемая "+
 		"операция отчиталась о работе, которой не сделала")
 
-	stA, err := r.NewSeededStore(ctx, FormA, sc, true, "inline-A")
-	require.NoError(t, err)
-	defer func() { _ = stA.Teardown(ctx) }()
-	_, err = stA.InlineGrant(ctx, data, grant)
-	require.ErrorIs(t, err, ErrNotApplicable)
-	o, reason := classify(err)
-	require.Equal(t, NotApplicable, o,
-		"неприменимость по построению свернулась в другой исход — отчёт скажет «не-измеренных N», "+
-			"и читатель решит, что замер не доехал")
-	require.NotEmpty(t, reason, "четвёртая категория печатается С ПРИЧИНОЙ, а не строкой без неё")
 }
 
-// TestCascadeHoldsOnBothSidesWithEmptyMaterialization — утверждение о ПАРИТЕТЕ,
-// а не о преимуществе формы E.
+// TestCascadeHoldsWithEmptyMaterialization — аварийный путь не зависит от того,
+// прошла ли материализация.
 //
 // Три верхних уровня доступа разрешаются каскадом намеренно: если бы права
 // администратора облака материализовались, то при отставшем конвейере человек,
 // обязанный чинить аварию, сам остался бы без прав — именно тогда, когда он
 // нужен. Независимость каскада от конвейера — свойство ДЕЙСТВУЮЩЕЙ формы, уже
-// закреплённое в продукте; замер, объявляющий преимуществом одной формы то, что
-// есть у обеих, замером не является.
+// закреплённое в продукте. Проба заводилась как утверждение о ПАРИТЕТЕ, а не о
+// преимуществе: замер, объявляющий преимуществом одной формы то, что есть у обеих,
+// замером не является. Второй стороны нет, и утверждение стало абсолютным — но
+// снимать его нельзя, оно про то, ради чего каскад и выбран.
 //
 // Состояние «материализация не проходила» здесь конструируется прямо: хранилище
 // засеяно структурно и БЕЗ единой строки выдачи.
-func TestCascadeHoldsOnBothSidesWithEmptyMaterialization(t *testing.T) {
+func TestCascadeHoldsWithEmptyMaterialization(t *testing.T) {
 	if testing.Short() {
 		t.Skip("поднимает контейнеры")
 	}
 	ctx := t.Context()
-	stack, canon := bootForTest(ctx, t)
+	stack, _ := bootForTest(ctx, t)
 
 	cfg := DefaultConfig()
-	cfg.Forms = []Form{FormA, FormE}
-	r, err := NewRunner(stack, cfg, canon)
-	require.NoError(t, err)
+	cfg.Forms = []Form{FormE}
+	r := NewRunner(stack, cfg)
 	sc := NewScenario(6, 2, 3, "editor", DefaultVerbs())
 
-	for _, f := range []Form{FormA, FormE} {
+	for _, f := range []Form{FormE} {
 		st, err := r.NewSeededStore(ctx, f, sc, false, "cascade-empty-"+string(f))
 		require.NoErrorf(t, err, "засев %s", f)
 		_, err = st.Write(ctx, CascadeSeed(f, sc))
@@ -235,12 +213,11 @@ func TestAccountScopedGrantReachesObjectsOfItsProjects(t *testing.T) {
 		t.Skip("поднимает контейнеры")
 	}
 	ctx := t.Context()
-	stack, canon := bootForTest(ctx, t)
+	stack, _ := bootForTest(ctx, t)
 
 	cfg := DefaultConfig()
 	cfg.Forms = []Form{FormE}
-	r, err := NewRunner(stack, cfg, canon)
-	require.NoError(t, err)
+	r := NewRunner(stack, cfg)
 	sc := NewScenario(5, 2, 2, "editor", DefaultVerbs())
 
 	st, err := r.NewSeededStore(ctx, FormE, sc, false, "scope-account-E")
@@ -293,12 +270,11 @@ func TestFormERefusesIntentItDoesNotUnderstand(t *testing.T) {
 		t.Skip("поднимает контейнеры")
 	}
 	ctx := t.Context()
-	stack, canon := bootForTest(ctx, t)
+	stack, _ := bootForTest(ctx, t)
 
 	cfg := DefaultConfig()
 	cfg.Forms = []Form{FormE}
-	r, err := NewRunner(stack, cfg, canon)
-	require.NoError(t, err)
+	r := NewRunner(stack, cfg)
 	sc := NewScenario(4, 2, 2, "editor", DefaultVerbs())
 
 	st, err := r.NewSeededStore(ctx, FormE, sc, false, "vocabulary-E")
@@ -320,8 +296,11 @@ func TestFormERefusesIntentItDoesNotUnderstand(t *testing.T) {
 	_, err = st.Write(ctx, []Tuple{{User: "user:x", Relation: "no_such_relation", Object: bindingObj}})
 	require.Error(t, err, "неизвестное отношение проглочено молча — намерение, которого форма "+
 		"не поняла, засчиталось бы ей как выполненная работа")
-	require.NotErrorIs(t, err, ErrNotApplicable,
-		"расхождение словаря выдано за неприменимость by construction — это разные вещи: "+
-			"первое дефект перевода, второе результат замера")
-	require.False(t, errors.Is(err, ErrModelNotRequired))
+	// Прежде здесь стояло ещё два отрицания: что ошибка не выдана за «неприменимо
+	// by construction» и не за «модель не требуется». Оба сентинела сняты вместе с
+	// движком, и разница, которую они стерегли, исчезла с ними: расхождение словаря
+	// — дефект перевода, а те два были результатами замера. Отличать больше не от
+	// чего, поэтому отрицания сняты, а не переписаны на другой предмет.
+	require.NotEqualf(t, "", err.Error(), "ошибка без текста — вызывающий не узнает, "+
+		"что именно форма не поняла")
 }
