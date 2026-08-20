@@ -138,6 +138,7 @@ func describe(
 	narrower *authzfilter.Narrower,
 	gate *bootgate.Gate,
 	existence servicecontract.ExistenceProbe,
+	authzObserve func(read func() authz.Metrics),
 ) (servicecontract.Descriptor, error) {
 	mode, err := hostMode(cfg.AuthN.Mode)
 	if err != nil {
@@ -165,6 +166,17 @@ func describe(
 		return servicecontract.Descriptor{}, fmt.Errorf("vpc→iam Check mTLS creds: %w", err)
 	}
 
+	// Потолок темпа и одновременности НА ВЫЗЫВАЮЩЕГО. Ручки читаются ОДНИМ
+	// входом (Config.AdmissionKnobs), а необъявленность боевой посадки роняет
+	// старт РАНЬШЕ — в Config.ValidateRequestRateLimits, где отказ называет
+	// ручку. Здесь остаётся то, чего страж не решает: чем ограничен слушатель,
+	// когда посадка молчит законно (вне боевого режима) — полом платформы.
+	admissionPublic, admissionInternal := cfg.AdmissionKnobs()
+	admission, err := servicecontract.AdmissionFromPosture(admissionPublic, admissionInternal)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("api-server.rate-limit: %w", err)
+	}
+
 	return servicecontract.New(servicecontract.Spec{
 		Service: "kacho-vpc",
 		Mode:    mode,
@@ -181,6 +193,12 @@ func describe(
 		CheckEdge:    servicecontract.NewPeerEdge(cfg.AuthZ.IAMEndpoint, checkCreds),
 		CacheWindow:  cfg.AuthZ.CacheTTL,
 		ClientBudget: cfg.AuthZ.CheckTimeout,
+
+		// Приёмник величин кеша вердиктов: носитель строит кеш, а
+		// диагностическую поверхность держит этот корень, и величины переходят
+		// границу только здесь. Без него доля попаданий не выходит из процесса,
+		// и «сколько даёт кеш» остаётся непроверяемым в обе стороны.
+		AuthzObserve: authzObserve,
 
 		// Верхняя граница обработки ОДНОГО вызова. Величина — та же
 		// `api-server.request-timeout`, что несло снятое звено vpc
@@ -222,6 +240,11 @@ func describe(
 		// пообъектный сужатель и регистрация владельца. Изъятие («ронять некого»)
 		// законно только у владельца модели, решающего в своём процессе.
 		DenyBudget: servicecontract.Value(cfg.AuthZ.DenyRateLimitPerSec),
+
+		// Ось потолка объявляется ВЕЛИЧИНОЙ, а не изъятием: слушатели выставлены
+		// наружу. Провязку делает носитель — до него она жила в композиционном
+		// корне ЭТОГО сервиса и была единственной на всю платформу.
+		Admission: servicecontract.Value(admission),
 
 		// Режим шифрования до своей БД читается из ТОЙ строки, что уходит в пул
 		// (`cfg.DSN()`): sslmode приезжает и из `repository.postgres.ssl-mode`, и

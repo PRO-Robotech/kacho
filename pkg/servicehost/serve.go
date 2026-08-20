@@ -79,8 +79,18 @@ func Serve(ctx context.Context, d servicecontract.Descriptor, public, internal R
 
 	publicSrv, internalSrv := serverPair(spec, &slot)
 
-	public(publicSrv)
-	internal(internalSrv)
+	// ── потолок темпа: обёртка регистратора, а не звено цепочки ──────────────
+	//
+	// Регистрация идёт ЧЕРЕЗ ограничитель, и другого пути зарегистрировать
+	// службу у вызывающего нет — сервера он не получает. Поэтому «слушатель без
+	// потолка» перестаёт быть тем, что автор сервиса обязан не забыть.
+	adm, admErr := buildAdmission(spec)
+	if admErr != nil {
+		return admErr
+	}
+	because, _ := spec.Admission.NotApplicableBecause()
+	adm.arm(log, spec.Service, because)
+	adm.handOut(publicSrv, internalSrv, public, internal)
 
 	served := mergeServed(servedOf(publicSrv), servedOf(internalSrv))
 	domains, err := domainsOf(served)
@@ -116,7 +126,22 @@ func Serve(ctx context.Context, d servicecontract.Descriptor, public, internal R
 	}
 	slot.install(intr)
 
-	return listenAndServe(ctx, spec, publicSrv, internalSrv)
+	// Счёт допущенных и отвергнутых — задача носителя, а не сервиса: она живёт
+	// столько же, сколько слушатели, и гаснет вместе с ними. Своя отмена нужна
+	// затем, чтобы падение слушателя не оставляло задачу ждать общий контекст:
+	// [Serve] обязана вернуть управление, а не пережить свои же серверы.
+	reportCtx, stopReport := context.WithCancel(ctx)
+	defer stopReport()
+	reportDone := make(chan struct{})
+	go func() {
+		defer close(reportDone)
+		adm.report(reportCtx, log)
+	}()
+
+	serveErr := listenAndServe(ctx, spec, publicSrv, internalSrv)
+	stopReport()
+	<-reportDone
+	return serveErr
 }
 
 // serverPair собирает ОБА сервера из ОДНОЙ пары цепочек.
@@ -166,12 +191,22 @@ func decisionLink(spec servicecontract.Spec, m authz.RPCMap) (*authz.Interceptor
 		opts.DenyRateLimitPerSec = budget
 	}
 
+	// Величины кеша уходят корню ДО того, как звено начнёт отвечать: приёмник
+	// объявлен полем дескриптора и потому не может быть забыт (О12). Отдаётся
+	// ЧИТАТЕЛЬ, а не кеш: наблюдающему нужны числа, а не право снять запись.
+	observe := func(intr *authz.Interceptor) *authz.Interceptor {
+		if spec.AuthzObserve != nil {
+			spec.AuthzObserve(intr.Metrics)
+		}
+		return intr
+	}
+
 	switch spec.Authz {
 	case servicecontract.AuthzSelf:
 		// Владелец модели решает у себя: клиента приносит он сам, ребра к себе
 		// не бывает. Порт непуст — это проверил конструктор дескриптора.
 		opts.Client = withExistenceHiding(spec, m, spec.SelfCheck)
-		return authz.NewInterceptor(opts), nil, nil
+		return observe(authz.NewInterceptor(opts)), nil, nil
 
 	case servicecontract.AuthzViaIAM:
 		conn, err := grpc.NewClient(spec.CheckEdge.Addr(),
@@ -183,7 +218,7 @@ func decisionLink(spec servicecontract.Spec, m authz.RPCMap) (*authz.Interceptor
 		}
 		opts.Client = withExistenceHiding(spec, m,
 			&iamCheckClient{cli: iamv1.NewInternalIAMServiceClient(conn)})
-		return authz.NewInterceptor(opts), func() { _ = conn.Close() }, nil
+		return observe(authz.NewInterceptor(opts)), func() { _ = conn.Close() }, nil
 
 	default:
 		// Недостижимо: конструктор дескриптора отвергает незаполненный источник.

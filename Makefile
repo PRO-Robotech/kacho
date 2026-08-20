@@ -231,9 +231,22 @@ AUTHZ_FGA_PKGS ?= \
 # назван: весь пакет (20 проб, оба прохода) — 11.9 с этой же целью, то есть
 # `-race -p 1`, на этой машине; без `-race` — 5.0 с. Джоба отдельная, поэтому
 # критический путь конвейера не удлиняется вовсе.
+# ТРЕТЬЯ ЗАПИСЬ ЗАВЕДЕНА ЗАДАЧЕЙ #803 и по тому же поводу, что вторая. Пакет
+# переписи источников звена цепи областей появился с #800 и сразу оказался вне
+# всякого прогона: все шесть его проб гейтятся кратким режимом (им нужны
+# настоящий Postgres через internal/pgtest и внешний psql, которым исполняется
+# прибор), а отбор интеграционной джобы идёт по пути `/internal/(repo|clients|
+# reconciler)` и до `internal/scopesourcecensus` не достаёт. То есть приёмка
+# R7-4 — включая «перепись даёт ноль в обе стороны» и обе отрицательные
+# половины про послабление и предел обхода — не исполнялась НИГДЕ, а пакет
+# печатал `ok`.
+# Цена измерена, а не оценена: весь пакет (6 проб, 3 подпробы) — 15.6 с этой же
+# целью, то есть `-race -p 1`, на этой машине. Джоба отдельная, критический путь
+# конвейера не удлиняется.
 PG_OUTSIDE_SELECTION_PKGS ?= \
 	./services/iam/internal/apps/kacho/api/bootstrap_token \
-	./services/nlb/internal/apps/kacho/jobs
+	./services/nlb/internal/apps/kacho/jobs \
+	./services/iam/internal/scopesourcecensus
 
 # ─── Хуки git ────────────────────────────────────────────────────────────────
 #
@@ -252,7 +265,7 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 # ЧЕМ ПРОВЯЗЫВАЕТСЯ И ПОЧЕМУ НЕ `core.hooksPath` — в шапке scripts/hooks/install.sh
 # (короткий ответ: он перебивает `.git/hooks` целиком и молча выключает всё, что
 # там уже лежало).
-.PHONY: test test-unit test-integration test-authz-fga test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice
+.PHONY: test test-unit test-integration test-authz-fga test-pg-outside-selection test-service test-service-short docs-sites help install-hooks check-hooks hooks-notice scale-grid-small scale-grid-full matrix-volume-small matrix-volume-full
 
 ## install-hooks — провязать хуки git из scripts/hooks в этот клон (один раз на клон).
 install-hooks:
@@ -450,3 +463,74 @@ SVC_PATH = $(if $(filter gateway,$(SVC)),gateway,services/$(SVC))
 
 help:
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/^## //'
+
+## ── ПРИБОР ПОРЯДКОВ: СЕТКА ЧЕТЫРЁХ ОСЕЙ (R7-1 · S1) ────────────────────────
+##
+## Две цели, потому что предметы РАЗНЫЕ, а не потому что «одна большая, другая
+## маленькая»:
+##
+##   scale-grid-small — идёт в конвейере на каждом прогоне. Утверждает не форму
+##                      кривой, а ОТСУТСТВИЕ ДЕГРАДАЦИИ: отношение верхней точки
+##                      к нижней против потолка, объявленного константой ДО
+##                      прогона, плюс положительный контроль по оси R (она
+##                      обязана расти — иначе плоскость получена сломанным
+##                      прибором, а не свойством запроса);
+##
+##   scale-grid-full  — РУЧНОЙ прогон до 10⁶ по четырём осям. Сажает миллион
+##                      объектов и миллион выдач, пишет отчёт артефактом дерева.
+##                      В конвейере не идёт и не должна: её место — перед
+##                      правкой и после неё, парой «до/после».
+##
+## Сетка живёт КОНСТАНТОЙ в services/iam/internal/repo/kacho/pg/scalegrid и
+## ниоткуда не переопределяется. Переменная ниже решает, ЗАПУСКАТЬ ли полный
+## прогон, и НИКОГДА — что мерить: отчёт, снятый на сокращённой сетке,
+## неотличим от полного и читается как полный.
+##
+## ПОЛНЫЙ ПРОГОН ИДЁТ ПОСЛЕДНИМ, НА ОКОНЧАТЕЛЬНОМ ДЕРЕВЕ. Отпечаток предмета
+## снимается в НАЧАЛЕ прогона, поэтому правка любого файла под отпечатком после
+## его старта делает отчёт несвежим В МОМЕНТ РОЖДЕНИЯ: гейт свежести покраснеет
+## на только что снятом замере. Под отпечатком — все не-тестовые .go каталогов
+## relverdict и scalegrid плюс миграции, называющие читаемые вердиктом таблицы;
+## тестовые файлы и Makefile в него не входят и правятся свободно.
+##
+## Стоило трёх перезапусков за одну сессию, каждый — потерянные минуты прогона.
+scale-grid-small:
+	$(GO) test ./services/iam/internal/repo/kacho/pg/relverdict/ \
+	  -run 'TestScaleGrid_SmallGridStaysFlatAndTheControlGrows|TestScaleGrid_StatisticsArePartOfThePointNotHygiene|TestScaleGridSeeder_RowForRowMatchesTheProducer' \
+	  -count=1 -v -timeout $(INTEGRATION_TIMEOUT)
+
+scale-grid-full:
+	KACHO_SCALEGRID_FULL=1 $(GO) test ./services/iam/internal/repo/kacho/pg/relverdict/ \
+	  -run TestScaleGrid_FullGridReport -count=1 -v -timeout 120m
+
+## ── ПРИБОР ОБЪЁМА: ОДНА ОПЕРАЦИЯ ПРОТИВ НАЛИТОЙ МАТРИЦЫ (R7-3) ──────────────
+##
+## Предмет ДРУГОЙ, чем у сетки порядков выше, и это не оттенок. Сетка варьирует
+## ОДНУ ось при неподвижных остальных: её точка N = 10⁶ держит выдач тысячу, а
+## точка B = 10⁶ держит объектов тысячу — то есть база в ней никогда не бывала
+## полной. Здесь матрица наливается ЦЕЛИКОМ (объекты и выдачи растут вместе), а
+## операций делается ПО ОДНОЙ: запись выдачи · вердикт (allow) · отзыв ·
+## вердикт после отзыва (deny). Вопрос не «сколько в секунду», а «меняется ли
+## стоимость ОДНОЙ операции от того, сколько всего лежит в базе».
+##
+##   matrix-volume-small — идёт в конвейере вместе с прочими интеграционными.
+##                         Утверждение ДВУХОСЕВОЕ: база обязана вырасти и прибор
+##                         обязан отчитаться ненулевой работой (положительный
+##                         контроль), а стоимость операции — не вырасти
+##                         (предмет). Односторонняя проба «ничего не растёт»
+##                         зеленела бы на приборе, докладывающем ноль.
+##
+##   matrix-volume-full  — РУЧНОЙ прогон до 10⁶ объектов И 10⁶ выдач
+##                         ОДНОВРЕМЕННО (≈6·10⁶ строк в таблицах), пишет отчёт
+##                         артефактом дерева. В конвейере не идёт и не должна.
+##
+## Свежесть отчёта сторожит `TestMatrixVolumeReportIsFreshAndItsSubjectHasNotMoved`
+## в том же пакете; отсутствие отчёта для него — ОТКАЗ, а не пропуск.
+matrix-volume-small:
+	$(GO) test ./services/iam/internal/repo/kacho/pg/relverdict/ \
+	  -run 'TestMatrixVolume_SmallGridMeasuresSomethingAndStaysFlat|TestMatrixVolumeFreshnessGateCanFailAndCanStaySilent' \
+	  -count=1 -v -timeout $(INTEGRATION_TIMEOUT)
+
+matrix-volume-full:
+	KACHO_MATRIX_VOLUME=1 $(GO) test ./services/iam/internal/repo/kacho/pg/relverdict/ \
+	  -run TestMatrixVolume_Report -count=1 -v -timeout 120m

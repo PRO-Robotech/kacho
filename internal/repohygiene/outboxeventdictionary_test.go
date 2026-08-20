@@ -716,9 +716,12 @@ var declaredQueueEventDictionary = map[string]map[string][]string{
 		"event_type": {"provider.oauth_client.delete", "provider.trust_grant.delete"},
 	},
 	"kacho_iam.subject_change_outbox": {
+		// jit_revoke / bg_revoke сняты миграцией 754001: производителя у них не
+		// было ни одного, а подсистем, ради которых значения заводились, в дереве
+		// нет. Держит гейт TestQueueEventValueHasAProducer.
 		"op": {
-			"bg_revoke", "binding_delete", "binding_grant", "binding_revoke",
-			"binding_upsert", "group_member_change", "jit_revoke",
+			"binding_delete", "binding_grant", "binding_revoke",
+			"binding_upsert", "group_member_change",
 		},
 	},
 }

@@ -460,8 +460,8 @@ func TestInterceptor_CacheHitSkipsCheck(t *testing.T) {
 		t.Fatalf("expected 1 Check (rest cache hits), got %d", calls)
 	}
 	m := intr.Metrics()
-	if m.CacheHits < 4 {
-		t.Fatalf("expected ≥4 cache hits, got %d", m.CacheHits)
+	if m.Cache.Hits < 4 {
+		t.Fatalf("expected ≥4 cache hits, got %d", m.Cache.Hits)
 	}
 }
 

@@ -5,6 +5,7 @@ package authz
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -47,6 +48,74 @@ type Cache struct {
 
 	// now — функция текущего времени, переопределяема в тестах.
 	now func() time.Time
+
+	// Величины окна вердиктов. Атомарные и вне `mu` намеренно: `Get` читает под
+	// RLock, и поднимать замок до write ради счётчика значило бы сериализовать
+	// самый горячий путь процесса ради наблюдения за ним.
+	//
+	// Учёт ЗДЕСЬ, а не у звена, потому что учитывать одну величину в двух местах
+	// значит завести два числа, которые разъедутся молча. Кеш — единственный, кто
+	// видит все свои события: у звена нет ни истечения записи, ни давления
+	// потолка, ни снятия.
+	hits            atomic.Uint64
+	misses          atomic.Uint64
+	evictedExpired  atomic.Uint64
+	evictedCapacity atomic.Uint64
+	invalidated     atomic.Uint64
+}
+
+// CacheStats — ПРОЧИТАННЫЕ величины окна вердиктов.
+//
+// Именно прочитанные: по отсутствию строки на поверхности «события не было» и
+// «счётчика нет» неразличимы, а прочитанный ноль их различает.
+//
+// # Зачем каждая, и почему трёх из пяти не хватает
+//
+// `Hits` без `Misses` не даёт доли: у неё нет знаменателя, и «попаданий много»
+// одинаково верно при кеше, поглощающем весь поток, и при кеше, мимо которого
+// идёт вдесятеро больше. `Entries` объясняет, ПОЧЕМУ доля такая, а три причины
+// вытеснения объясняют, почему она упала, — и сводить их в одну нельзя:
+// истечение окна есть штатная работа, давление потолка есть сигнал, что кеша не
+// хватает на нагрузку, а снятие есть единственный проактивный путь. Сложенные,
+// они объявили бы исчерпание потолка нормой.
+type CacheStats struct {
+	// Hits / Misses — исходы обращений к окну. Их сумма и есть число заданных
+	// окну вопросов; доля попаданий считается ПОТРЕБИТЕЛЕМ, а не здесь: доля,
+	// посчитанная в процессе за всё время жизни, не дифференцируется по времени и
+	// не складывается по репликам.
+	Hits   uint64
+	Misses uint64
+
+	// Subjects / Entries — текущий размер: субъектов и записей.
+	Subjects int
+	Entries  int
+
+	// EvictedExpired — записи, снятые ПО ИСТЕЧЕНИИ окна (лениво на чтении и
+	// подметанием перед вставкой). Штатная работа.
+	EvictedExpired uint64
+	// EvictedCapacity — записи, снятые ДАВЛЕНИЕМ ПОТОЛКА, то есть ещё живые.
+	// Каждая такая — попадание, которого не будет: ненулевое значение означает,
+	// что потолок мал для нагрузки, и доля попаданий упирается в него, а не в
+	// окно.
+	EvictedCapacity uint64
+	// Invalidated — записи, снятые ЯВНО (по субъекту либо целиком). Единственный
+	// проактивный путь снятия; ноль здесь означает, что окно отзыва целиком
+	// определяется истечением.
+	Invalidated uint64
+}
+
+// Stats — снимок величин окна вердиктов.
+func (c *Cache) Stats() CacheStats {
+	subjects, entries := c.Size()
+	return CacheStats{
+		Hits:            c.hits.Load(),
+		Misses:          c.misses.Load(),
+		Subjects:        subjects,
+		Entries:         entries,
+		EvictedExpired:  c.evictedExpired.Load(),
+		EvictedCapacity: c.evictedCapacity.Load(),
+		Invalidated:     c.invalidated.Load(),
+	}
 }
 
 // entryKey — composite-ключ (relation, object_type, object_id).
@@ -112,21 +181,28 @@ func (c *Cache) Get(subjectID, relation, objectType, objectID string) (allowed b
 	subMap, exists := c.store[subjectID]
 	if !exists {
 		c.mu.RUnlock()
+		c.misses.Add(1)
 		return false, false
 	}
 	e, exists := subMap[entryKey{relation, objectType, objectID}]
 	c.mu.RUnlock()
 
 	if !exists {
+		c.misses.Add(1)
 		return false, false
 	}
 	if c.now().After(e.expiresAt) {
 		// Lazy delete — guarded против clobber конкурентно записанного свежего
 		// entry (см. evictIfStale).
 		c.evictIfStale(subjectID, entryKey{relation, objectType, objectID}, e.expiresAt)
+		// Истёкшая запись — ПРОМАХ: вызывающий уйдёт к авторитетному Check ровно
+		// так же, как если бы записи не было вовсе. Считать её попаданием значило
+		// бы объявить долю тем выше, чем короче окно.
+		c.misses.Add(1)
 		return false, false
 	}
 	// Живая entry ⇒ positive-результат (negative не кешируется).
+	c.hits.Add(1)
 	return true, true
 }
 
@@ -155,6 +231,7 @@ func (c *Cache) evictIfStale(subjectID string, key entryKey, observedExpiresAt t
 	}
 	delete(subMap, key)
 	c.count--
+	c.evictedExpired.Add(1)
 	if len(subMap) == 0 {
 		delete(c.store, subjectID)
 	}
@@ -168,21 +245,26 @@ func (c *Cache) evictIfStale(subjectID string, key entryKey, observedExpiresAt t
 // cache-miss всегда откатывается на авторитетный Check → корректность не страдает.
 func (c *Cache) evictLocked() {
 	now := c.now()
+	var expired, capacity uint64
 	for sid, sm := range c.store {
 		for k, e := range sm {
 			if now.After(e.expiresAt) {
 				delete(sm, k)
 				c.count--
+				expired++
 			}
 		}
 		if len(sm) == 0 {
 			delete(c.store, sid)
 		}
 	}
+	c.evictedExpired.Add(expired)
 	if c.count < c.maxEntries {
 		return
 	}
-	// Всё ещё полно — эвиктим произвольные entry до low-water.
+	// Всё ещё полно — эвиктим произвольные entry до low-water. Эти записи ЖИВЫ:
+	// каждая из них — попадание, которого не будет, и потому считается отдельной
+	// причиной. Слитая с истечением, она объявила бы исчерпание потолка нормой.
 	target := c.maxEntries - c.maxEntries/8
 	if target < 0 {
 		target = 0
@@ -194,6 +276,7 @@ func (c *Cache) evictLocked() {
 			}
 			delete(sm, k)
 			c.count--
+			capacity++
 		}
 		if len(sm) == 0 {
 			delete(c.store, sid)
@@ -202,6 +285,7 @@ func (c *Cache) evictLocked() {
 			break
 		}
 	}
+	c.evictedCapacity.Add(capacity)
 }
 
 // SetAllowed — кеширует positive result (TTL).
@@ -245,6 +329,7 @@ func (c *Cache) InvalidateBySubject(subjectID string) {
 	defer c.mu.Unlock()
 	if sm, ok := c.store[subjectID]; ok {
 		c.count -= len(sm)
+		c.invalidated.Add(uint64(len(sm)))
 		delete(c.store, subjectID)
 	}
 }
@@ -256,6 +341,9 @@ func (c *Cache) InvalidateBySubject(subjectID string) {
 func (c *Cache) InvalidateAll() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.count > 0 {
+		c.invalidated.Add(uint64(c.count))
+	}
 	c.store = make(map[string]map[entryKey]entry, 64)
 	c.count = 0
 }

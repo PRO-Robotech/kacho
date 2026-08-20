@@ -70,6 +70,7 @@ func describe(
 	narrower *authzfilter.Narrower,
 	gate *bootgate.Gate,
 	existence servicecontract.ExistenceProbe,
+	authzObserve func(read func() authz.Metrics),
 ) (servicecontract.Descriptor, error) {
 	mode, err := hostMode(cfg)
 	if err != nil {
@@ -100,6 +101,15 @@ func describe(
 	}
 	checkAddr := firstNonEmpty(cfg.ExtAPI.IAM.InternalAddr, cfg.ExtAPI.IAM.Addr)
 
+	// Потолок темпа и одновременности НА ВЫЗЫВАЮЩЕГО: величины посадки там, где
+	// она их назвала, и пол платформы там, где молчит. Сборка стоит ДО
+	// дескриптора намеренно — негодный набор обязан назвать СЛУШАТЕЛЯ, а не
+	// приехать в общий список находок безымянным.
+	admission, err := servicecontract.AdmissionFromPosture(cfg.APIServer.RateLimit.Public, cfg.APIServer.RateLimit.Internal)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("api-server.rate-limit: %w", err)
+	}
+
 	return servicecontract.New(servicecontract.Spec{
 		Service: "kacho-nlb",
 		Mode:    mode,
@@ -116,6 +126,11 @@ func describe(
 		CheckEdge:    servicecontract.NewPeerEdge(checkAddr, checkCreds),
 		CacheWindow:  cfg.Authz.Cache.TTL,
 		ClientBudget: cfg.Authz.IAM.RequestTimeout,
+		// Приёмник величин кеша вердиктов: носитель строит кеш, а
+		// диагностическую поверхность держит этот корень, и величины переходят
+		// границу только здесь. Без него доля попаданий не выходит из процесса,
+		// и «сколько даёт кеш» остаётся непроверяемым в обе стороны.
+		AuthzObserve: authzObserve,
 
 		// Верхняя граница обработки вызова и бюджет отказов — обе ВЕЛИЧИНЫ, обе с
 		// обоснованием у своих ручек конфигурации (`api-server.handling-budget`,
@@ -124,6 +139,11 @@ func describe(
 		// сетевой сосед, которого шторм отказов может уронить, у него ЕСТЬ.
 		HandlingBudget: cfg.APIServer.HandlingBudget,
 		DenyBudget:     servicecontract.Value(cfg.Authz.DenyBudgetPerSec),
+
+		// Ось потолка объявляется ВЕЛИЧИНОЙ, а не изъятием: слушатели выставлены
+		// наружу, и «потолка не надо» означало бы, что один вызывающий вправе
+		// занять сервис чтением.
+		Admission: servicecontract.Value(admission),
 
 		// Срок жизни подписки — ВЕЛИЧИНА, а не изъятие: nlb служит серверный стрим
 		// (`InternalResourceLifecycleService`, провязан в wiring.go). Изъятие здесь

@@ -16,6 +16,7 @@
 package servicecontract_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
@@ -71,8 +73,13 @@ func lawful() servicecontract.Spec {
 		HideExistence: servicecontract.NotApplicable[map[servicecontract.ObjectType]servicecontract.NotFoundFormat]("демо не скрывает существование ни одного типа"),
 		Delivery:      servicecontract.NotApplicable[servicecontract.DeliveryProvenance]("демо ничего не регистрирует у владельца прав"),
 		DenyBudget:    servicecontract.Value(100.0),
+		AuthzObserve:  func(func() authz.Metrics) {},
 		BootGate:      servicecontract.NotApplicable[servicecontract.BootGate]("демо ничего не эмитит владельцу прав, поднимать нечего"),
 		StreamBudget:  servicecontract.NotApplicable[time.Duration]("демо не служит серверных стримов"),
+		Admission: servicecontract.Value(servicecontract.Admission{
+			Public:   grpcsrv.PlatformPublicAdmission(),
+			Internal: grpcsrv.PlatformInternalAdmission(),
+		}),
 	}
 }
 
@@ -464,4 +471,34 @@ func TestDescriptorCannotBeAssembledByLiteral(t *testing.T) {
 	if !got.Accepted() {
 		t.Fatal("принятый дескриптор не объявляет себя принятым")
 	}
+}
+
+// ── О12: величины кеша вердиктов некому прочитать ───────────────────────────
+
+// TestO12_UnobservedVerdictCacheRefusesStart — приёмник читателя обязателен.
+//
+// Отрицание в паре с положительным контролем [TestLawfulSpecIsAccepted] выше:
+// без него «отвергнуто» было бы неотличимо от конструктора, отвергающего всё.
+func TestO12_UnobservedVerdictCacheRefusesStart(t *testing.T) {
+	s := lawful()
+	s.AuthzObserve = nil
+	refuses(t, s, "AuthzObserve", "Доля попаданий")
+}
+
+// TestO12_ObserverIsRequiredForTheSelfDecidingOwnerToo — владелец модели не
+// освобождён.
+//
+// Кеш положительных вердиктов носитель строит на ОБЕИХ ветках источника
+// решения, поэтому освобождение владельца оставило бы ровно один процесс, чьи
+// величины некому прочитать, — и именно он самый нагруженный.
+func TestO12_ObserverIsRequiredForTheSelfDecidingOwnerToo(t *testing.T) {
+	s := lawful()
+	s.Authz = servicecontract.AuthzSelf
+	s.CheckEdge = servicecontract.PeerEdge{}
+	s.SelfCheck = authz.CheckClientFunc(func(context.Context, string, string, string) (bool, error) {
+		return true, nil
+	})
+	s.CacheWindow = 5 * time.Second
+	s.AuthzObserve = nil
+	refuses(t, s, "AuthzObserve")
 }

@@ -249,13 +249,14 @@ func sitesInFile(fset *token.FileSet, f *ast.File, rel, dir string,
 				"места построить не из чего", rel, fset.Position(call.Lparen).Line)
 			return false
 		}
+		bound := boundName(stack, call, len(out)+1)
 		out = append(out, FoundationSite{
-			ID:    dir + "#" + path.Base(rel) + ":" + boundName(stack, call, len(out)+1),
+			ID:    dir + "#" + path.Base(rel) + ":" + bound,
 			Dir:   dir,
 			File:  rel,
 			Line:  fset.Position(call.Lparen).Line,
 			Entry: entry,
-			Slice: sliceAtSite(entry, call, fn, pkgFuncs),
+			Slice: sliceAtSite(entry, call, bound, fn, pkgFuncs),
 		})
 		return true
 	})
@@ -263,6 +264,51 @@ func sitesInFile(fset *token.FileSet, f *ast.File, rel, dir string,
 		return nil, failure
 	}
 	return out, nil
+}
+
+// absorbUses поглощает то, ЧЕМ ОБЁРНУТ уже собранный сервер.
+//
+// Предмет — возможность, которая ставится не В конструктор, а ПОВЕРХ
+// регистрации: `register…(лимитер.Registrar(srv), …)`. В аргументах конструктора
+// её нет вовсе, поэтому без этого прохода слушатель, обернувший регистрацию,
+// читался бы как не усыновивший — ложная находка ровно там, где сделано верно.
+//
+// Берётся ТОЛЬКО обёртывающее выражение (`w.Fun` вызова, в чьи аргументы попал
+// сервер), а не список аргументов целиком. Разница несущая: аргументы соседних
+// вызовов («погасить сервер за срок», «зарегистрировать службы с пулом и
+// журналом») втянули бы в срез половину композиционного корня, и срез перестал
+// бы различать СОСЕДНИЕ серверы одного каталога — то есть ровно то свойство,
+// ради которого единицей счёта выбрано место сборки, а не каталог.
+func absorbUses(body *ast.BlockStmt, bound string, absorb func(ast.Node, bool)) {
+	if body == nil {
+		return
+	}
+	ast.Inspect(body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		for _, a := range call.Args {
+			if !mentionsIdent(a, bound) {
+				continue
+			}
+			absorb(call.Fun, true)
+			break
+		}
+		return true
+	})
+}
+
+// mentionsIdent — встречается ли имя внутри выражения.
+func mentionsIdent(n ast.Node, name string) bool {
+	found := false
+	ast.Inspect(n, func(x ast.Node) bool {
+		if id, ok := x.(*ast.Ident); ok && id.Name == name {
+			found = true
+		}
+		return !found
+	})
+	return found
 }
 
 // enclosingFunc — ближайшее объявление функции вверх по стеку.
@@ -324,7 +370,7 @@ func boundName(stack []ast.Node, call *ast.CallExpr, ordinal int) string {
 //  3. Область разрешения имён — объемлющая функция и пакет её файла. Величина,
 //     приехавшая из другого пакета параметром, разрешается поглощением обёртки,
 //     а не сквозным анализом: сквозной потребовал бы графа вызовов всего дерева.
-func sliceAtSite(entry string, call *ast.CallExpr, fn *ast.FuncDecl,
+func sliceAtSite(entry string, call *ast.CallExpr, bound string, fn *ast.FuncDecl,
 	pkgFuncs map[string]*ast.FuncDecl) *FoundationScan {
 
 	sc := &FoundationScan{Imports: map[string]bool{}, Selects: map[string]bool{}, Calls: map[string]bool{}}
@@ -374,6 +420,22 @@ func sliceAtSite(entry string, call *ast.CallExpr, fn *ast.FuncDecl,
 
 	for _, a := range call.Args {
 		absorb(a, true)
+	}
+
+	// Вторая половина среза: что с этим сервером ДЕЛАЮТ.
+	//
+	// Первая редакция читала только вход конструктора, и это было уже своего
+	// предмета. Возможность фундамента доезжает до слушателя двумя разными
+	// путями: одни ставятся В сервер (звенья цепочки, пределы транспорта) и
+	// видны в его аргументах, другие оборачивают РЕГИСТРАТОР (потолок темпа) и в
+	// аргументах не появляются вовсе. Слушатель, обернувший регистрацию, читался
+	// как не усыновивший — ложная находка ровно там, где сделано верно.
+	//
+	// Берутся аргументы вызовов, УПОМИНАЮЩИХ имя сервера, — а не всё тело
+	// функции: тело втянуло бы в срез каждую соседнюю величину, и переоценка из
+	// оговорённой (поглощение соседней функции) стала бы безграничной.
+	if bound != "" {
+		absorbUses(fn.Body, bound, absorb)
 	}
 
 	for len(pendingVals) > 0 || len(pendingFuncs) > 0 {

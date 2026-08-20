@@ -658,8 +658,13 @@ func acceptableSpec() servicecontract.Spec {
 		HideExistence: servicecontract.NotApplicable[map[servicecontract.ObjectType]servicecontract.NotFoundFormat]("демо ничего не скрывает"),
 		Delivery:      servicecontract.NotApplicable[servicecontract.DeliveryProvenance]("демо ничего не эмитит"),
 		DenyBudget:    servicecontract.Value(100.0),
+		AuthzObserve:  func(func() authz.Metrics) {},
 		BootGate:      servicecontract.NotApplicable[servicecontract.BootGate]("очереди регистраций у демо нет"),
 		StreamBudget:  servicecontract.NotApplicable[time.Duration]("демо не служит серверных стримов"),
+		Admission: servicecontract.Value(servicecontract.Admission{
+			Public:   grpcsrv.PlatformPublicAdmission(),
+			Internal: grpcsrv.PlatformInternalAdmission(),
+		}),
 	}
 }
 

@@ -49,40 +49,23 @@ type RateLimitConfig struct {
 
 // AdmissionLimitsConfig — четыре оси допуска ОДНОГО листенера.
 //
+// Псевдоним общей структуры фундамента, а не своя копия: те же четыре оси
+// читают три семейства настроек платформы (файл у vpc/nlb/iam, окружение у
+// остальных), и три копии тегов разъехались бы на первой же новой оси — молча,
+// потому что незнакомый ключ viper игнорирует.
+//
 // Читать эти поля напрямую нельзя — только через Config.PublicAdmissionLimits /
-// Config.InternalAdmissionLimits: страж старта, самоотчёт о посадке и проводка
-// обязаны спрашивать ОДНО значение и ОДИН его предикат непустоты
-// (grpcsrv.AdmissionLimits.IsDeclared). Разойдясь здесь, они разошлись бы ровно
-// там, где расхождение опасно, — «страж доволен, а листенер не ограничен».
-type AdmissionLimitsConfig struct {
-	// ReadPerSec — устойчивый темп ЧТЕНИЙ на вызывающего, запросов в секунду.
-	// Чтение стоит до 1000 объектов на страницу с проверкой прав партиями.
-	ReadPerSec float64 `mapstructure:"read-per-sec"`
+// Config.InternalAdmissionLimits (страж старта и самоотчёт о посадке) либо через
+// Config.AdmissionKnobs (сборка оси дескриптора). У двух читателей РАЗНЫЕ
+// вопросы: страж спрашивает «объявила ли посадка», носитель — «какие величины
+// действуют», и пол платформы отвечает только на второй.
+type AdmissionLimitsConfig = grpcsrv.AdmissionKnobs
 
-	// MutationPerSec — устойчивый темп МУТАЦИЙ на вызывающего. Ниже темпа
-	// чтений намеренно: каждая мутация — три строки в базе (ресурс, очередь
-	// намерения, операция).
-	MutationPerSec float64 `mapstructure:"mutation-per-sec"`
-
-	// BurstFactor — во сколько раз всплеск превышает устойчивый темп. Значение
-	// меньше единицы — самопротиворечие, отвергаемое в любом режиме.
-	BurstFactor float64 `mapstructure:"burst-factor"`
-
-	// InFlight — предел ОДНОВРЕМЕННЫХ запросов на вызывающего. Отдельная ось от
-	// темпа, и сводить их в одну нельзя: одновременность ограничивает стоимость
-	// одного мгновения независимо от `page_size`, чего темп сам по себе не
-	// делает.
-	InFlight int `mapstructure:"in-flight"`
-}
-
-// limits переводит объявление посадки в значение, которое понимает носитель.
-func (a AdmissionLimitsConfig) limits() grpcsrv.AdmissionLimits {
-	return grpcsrv.AdmissionLimits{
-		ReadPerSec:     a.ReadPerSec,
-		MutationPerSec: a.MutationPerSec,
-		BurstFactor:    a.BurstFactor,
-		InFlight:       a.InFlight,
-	}
+// limits переводит объявление посадки в значение, которое понимает носитель,
+// БЕЗ суждения о нём: страж старта обязан увидеть ровно то, что написала
+// посадка, — в том числе ноль, который механизм читает как «не ограничиваем».
+func limitsOf(a AdmissionLimitsConfig) grpcsrv.AdmissionLimits {
+	return grpcsrv.AdmissionLimits(a)
 }
 
 // PublicAdmissionLimits — величины публичного листенера.
@@ -91,11 +74,23 @@ func (a AdmissionLimitsConfig) limits() grpcsrv.AdmissionLimits {
 // одно на процесс, и его спрашивают страж старта, самоотчёт о посадке и
 // композиционный корень.
 func (c Config) PublicAdmissionLimits() grpcsrv.AdmissionLimits {
-	return c.APIServer.RateLimit.Public.limits()
+	return limitsOf(c.APIServer.RateLimit.Public)
 }
 
 // InternalAdmissionLimits — величины внутреннего листенера. Тот же контракт
 // единственного источника, что у PublicAdmissionLimits.
 func (c Config) InternalAdmissionLimits() grpcsrv.AdmissionLimits {
-	return c.APIServer.RateLimit.Internal.limits()
+	return limitsOf(c.APIServer.RateLimit.Internal)
+}
+
+// AdmissionKnobs — ручки обоих листенеров в том виде, в каком их написала
+// посадка. ЕДИНСТВЕННЫЙ вход для сборки оси дескриптора.
+//
+// Отличается от PublicAdmissionLimits/InternalAdmissionLimits вопросом, а не
+// значением: те отвечают стражу старта «что объявлено» (ноль остаётся нулём и
+// роняет боевую посадку), этот отдаёт ручки носителю, который подставит ПОЛ
+// ПЛАТФОРМЫ там, где посадка молчит. Разводить их важно: слив их в один
+// читатель, страж перестал бы видеть необъявленность — пол ответил бы за неё.
+func (c Config) AdmissionKnobs() (public, internal AdmissionLimitsConfig) {
+	return c.APIServer.RateLimit.Public, c.APIServer.RateLimit.Internal
 }

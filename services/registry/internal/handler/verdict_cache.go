@@ -45,6 +45,11 @@ func newCachedAuthorizer(az Authorizer, ttl time.Duration) Authorizer {
 	return &cachedAuthorizer{inner: az, cache: authz.NewCache(ttl)}
 }
 
+// Stats — величины окна вердиктов ЭТОГО пути. Нужны корню: у процесса ДВА кеша
+// положительных вердиктов (звено решения и этот, прямой), и сложенные в одну
+// серию они сделали бы невидимым тот из них, который не попадает.
+func (c *cachedAuthorizer) Stats() authz.CacheStats { return c.cache.Stats() }
+
 // Check отвечает из кеша, если ровно этот вердикт (subject, relation, object) уже
 // был получен как ПОЛОЖИТЕЛЬНЫЙ и не истёк; иначе спрашивает хранилище прав.
 func (c *cachedAuthorizer) Check(ctx context.Context, subject, relation, object string) (bool, error) {

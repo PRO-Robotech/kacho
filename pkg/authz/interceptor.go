@@ -112,10 +112,15 @@ type Interceptor struct {
 	rateLimiter *rateLimiter
 
 	// counters (lock-free atomic для observability).
+	//
+	// Величин КЕША здесь нет намеренно: их считает сам кеш (`Cache.Stats`).
+	// Собственный счётчик попаданий у звена был вторым местом учёта одной
+	// величины — а два места об одном предмете расходятся молча, и разойтись им
+	// есть на чём: истечения записи, давления потолка и снятия звено не видит
+	// вовсе.
 	allowedTotal     uint64
 	deniedTotal      uint64
 	unavailableTotal uint64
-	cacheHitsTotal   uint64
 	breakglassTotal  uint64
 	unmappedTotal    uint64
 	rateLimitedTotal uint64
@@ -367,7 +372,9 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 	// 5. Cache lookup. Кешируются только positive-результаты (negative никогда
 	// не кешируется — см. cache.go package-doc), поэтому hit ⇒ allowed.
 	if _, hit := i.opts.Cache.Get(subjectFGA, entry.Relation, objectType, objectID); hit {
-		atomic.AddUint64(&i.cacheHitsTotal, 1)
+		// Попадание учитывает сам кеш — он же учтёт промах на ветке ниже. Второй
+		// счётчик здесь разъехался бы с первым на первом же ленивом снятии
+		// истёкшей записи.
 		atomic.AddUint64(&i.allowedTotal, 1)
 		return verdict{decision: DecisionAllowed, err: nil}
 	}
@@ -482,15 +489,30 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 	return verdict{decision: DecisionAllowed, err: nil}
 }
 
-// Metrics — счетчики для Prometheus / тестов. Lock-free.
+// Metrics — снимок величин звена решения о доступе.
+//
+// Читается коллектором `pkg/authz/authzmetrics`, зарегистрированным
+// композиционным корнем сервиса на его диагностической поверхности. Прежде этот
+// снимок объявлял себя «счётчиками для Prometheus», не имея в прод-коде НИ
+// ОДНОГО читателя: величины росли и никуда не выходили, а «отказов не было» и
+// «звено не спрашивали» снаружи выглядели одинаково.
 type Metrics struct {
 	Allowed     uint64
 	Denied      uint64
 	Unavailable uint64
-	CacheHits   uint64
 	Breakglass  uint64
 	Unmapped    uint64
 	RateLimited uint64
+
+	// Cache — величины окна вердиктов, прочитанные у САМОГО окна.
+	//
+	// Вложенным полем, а не парой плоских счётчиков рядом: у окна пять величин, и
+	// доля попаданий без промахов не считается (нет знаменателя), а без размера и
+	// причин вытеснения не объясняется. Из решений они не выводятся ни одна:
+	// `Allowed` считает и попадание, и пропуск «нет пути», а `Denied` — ещё и
+	// отказы, случившиеся ДО обращения к окну (разбор объекта, форматирование),
+	// то есть вопросы, которых окну не задавали вовсе.
+	Cache CacheStats
 }
 
 // Metrics возвращает snapshot счетчиков.
@@ -499,12 +521,20 @@ func (i *Interceptor) Metrics() Metrics {
 		Allowed:     atomic.LoadUint64(&i.allowedTotal),
 		Denied:      atomic.LoadUint64(&i.deniedTotal),
 		Unavailable: atomic.LoadUint64(&i.unavailableTotal),
-		CacheHits:   atomic.LoadUint64(&i.cacheHitsTotal),
 		Breakglass:  atomic.LoadUint64(&i.breakglassTotal),
 		Unmapped:    atomic.LoadUint64(&i.unmappedTotal),
 		RateLimited: atomic.LoadUint64(&i.rateLimitedTotal),
+		Cache:       i.opts.Cache.Stats(),
 	}
 }
+
+// CacheStats — величины окна вердиктов ЭТОГО звена.
+//
+// Отдельный метод, а не поле снимка решений: окно наблюдают собиратели метрик, и
+// им нужны размер и причины вытеснения, которых у решений нет. Метод отдаёт
+// величины ТОГО кеша, который звено и спрашивает, — второго экземпляра у него
+// нет by construction (кеш обязателен полем опций, см. [NewInterceptor]).
+func (i *Interceptor) CacheStats() CacheStats { return i.opts.Cache.Stats() }
 
 // EvictInactiveSubjects — для periodic background job; удаляет rate-limiter
 // buckets, у которых lastSeen старше maxAge. Вернет кол-во удаленных.

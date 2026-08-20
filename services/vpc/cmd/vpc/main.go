@@ -20,6 +20,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"google.golang.org/grpc"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
@@ -394,6 +395,17 @@ func runServe(cfg config.Config) error {
 	// ловит гейт дерева `TestEveryListNarrowConsumerRegistersItsCollector`.
 	metricsAdapter.RegisterListNarrow(func() listnarrow.Counts { return listFilter.Counts() })
 
+	// Доля попаданий кеша положительных вердиктов. Источник устанавливается ПОЗЖЕ
+	// — кеш строит носитель контура, — поэтому коллектор регистрируется сейчас и
+	// до установки отвечает нулями: исчезновение серий на это окно сообщило бы
+	// собирателю не «попаданий не было», а ничего.
+	//
+	// Полоса одна: второго кеша вердиктов в этом процессе нет.
+	var authzCache authzmetrics.Source
+	metricsAdapter.RegisterAuthzCache(map[string]authzmetrics.Reader{
+		authzmetrics.LaneRPC: authzCache.Cache,
+	}, authzCache.Read)
+
 	// Sync-primary owner-tuple registrar (Decision 2): create-flow синхронно
 	// регистрирует owner-tuple в kacho-iam после commit — грант доступен сразу, без
 	// гонки с async register-drainer'ом. Тот же iam-internal endpoint :9091 +
@@ -474,7 +486,7 @@ func runServe(cfg config.Config) error {
 	// поэтому его отказ обязан наступить раньше, чем процесс поднимет дренаж
 	// регистраций и соседние соединения. Открытие пула обратимо (defer выше) и
 	// дешевле ложной сверки существования — это единственное, что стоит перед ним.
-	desc, err := describe(cfg, mtlsCfg, logger, listFilter, bootGate, kachopg.NewExistenceProbe(pool))
+	desc, err := describe(cfg, mtlsCfg, logger, listFilter, bootGate, kachopg.NewExistenceProbe(pool), authzCache.Install)
 	if err != nil {
 		return fmt.Errorf("describe kacho-vpc: %w", err)
 	}
@@ -581,15 +593,13 @@ func runServe(cfg config.Config) error {
 		gracefulTimeout = 10 * time.Second
 	}
 
-	// Ограничитель допуска запросов — по одному на листенер, с РАЗНЫМИ ключами и
-	// разными величинами (см. admission.go). Собирается ДО постановки задач:
-	// негодное объявление обязано остановить старт, а не всплыть на первом
-	// запросе. Величины уже одобрены стражем S7 выше; здесь читается ТО ЖЕ
-	// значение.
-	admission, err := buildAdmission(cfg, logger)
-	if err != nil {
-		return err
-	}
+	// Ограничитель допуска запросов ЗДЕСЬ больше не собирается: его провязал
+	// носитель контура (`pkg/servicehost`) по оси дескриптора. Пока проводка
+	// принадлежала этому корню, она существовала ровно у одного сервиса из
+	// семи — и «провязал» было неотличимо от «не провязал» без сплошной
+	// переписи (задачи #692, #771). Величины по-прежнему объявляет посадка
+	// (`api-server.rate-limit`), и необъявленную боевую посадку по-прежнему не
+	// поднимает страж S7 выше.
 
 	// Отдельный контекст слушателей. Носитель гасит ОБА слушателя по отмене СВОЕГО
 	// контекста, поэтому флип готовности в shutting_down обязан произойти РАНЬШЕ
@@ -650,10 +660,10 @@ func runServe(cfg config.Config) error {
 		func() error {
 			serr := servicehost.Serve(serveCtx, desc,
 				func(reg grpc.ServiceRegistrar) {
-					registerPublicServices(guard(admission.public, reg), svcs, opsRepo)
+					registerPublicServices(reg, svcs, opsRepo)
 				},
 				func(reg grpc.ServiceRegistrar) {
-					registerInternalServices(guard(admission.internal, reg), svcs)
+					registerInternalServices(reg, svcs)
 				},
 			)
 			close(serveDone)
@@ -662,16 +672,6 @@ func runServe(cfg config.Config) error {
 				logger.Error("grpc listeners stopped", "err", serr)
 				return fmt.Errorf("grpc: %w", serr)
 			}
-			return nil
-		},
-		// Счёт допущенных и отвергнутых по каждому листенеру. Ставится задачей
-		// носителя по той же причине, что и уплотнение журнала: тот же контекст,
-		// что у слушателей, поэтому гашение процесса гасит и её.
-		//
-		// Отчёт печатается ВСЕГДА, включая нули: «ноль отказов за всю жизнь
-		// контроля» обязано быть заметно, иначе мёртвый ограничитель невидим.
-		func() error {
-			admission.report(serveCtx, logger)
 			return nil
 		},
 		// shutdown waiter: SIGTERM/SIGINT (ctx) ИЛИ краш слушателей (shutdownCh) →

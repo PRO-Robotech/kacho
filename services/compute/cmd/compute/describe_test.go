@@ -76,7 +76,7 @@ func describeWith(t *testing.T, cfg config.Config) (servicecontract.Descriptor, 
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	gate := bootgate.New(bootgate.Config{RequireIAM: cfg.RequireIAM, Service: "kacho-compute"})
-	return describe(cfg, logger, buildListFilter(cfg, nil, logger), gate, probeExistence{})
+	return describe(cfg, logger, buildListFilter(cfg, nil, logger), gate, probeExistence{}, probeAuthzObserve)
 }
 
 // probeExistence — порт сверки существования для проб композиционного корня.
@@ -375,3 +375,11 @@ func registrarsOfBothListeners() []func(grpc.ServiceRegistrar) {
 		},
 	}
 }
+
+// probeAuthzObserve — приёмник величин кеша вердиктов для проб КОНСТРУКТОРА.
+//
+// Заглушка здесь законна: предмет этих проб — что судит конструктор дескриптора,
+// а не куда уезжают величины. Настоящий приёмник, чей вызов носителем
+// утверждается, стоит в пробе подъёма (`carrier_start_test.go`): там его пропажа
+// красит пробу, здесь — не может по построению.
+func probeAuthzObserve(func() authz.Metrics) {}

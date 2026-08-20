@@ -212,6 +212,15 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// окружения и часов: он ручной по построению.
 	"tools/authzformbench": "go test ./tools/authzformbench/ -count=1",
 
+	// Г1 (R7-3-01): перепись мест обращения к внешнему движку прав. Типизирует
+	// ВСЁ дерево по export-данным, поэтому пропускает себя под кратким; отбор
+	// интеграционной джобы до `tools/` не достаёт вовсе. Свой шаг стоит в джобе
+	// build-test — там дерево уже собрано шагом `go build ./...`, и export-данные
+	// берутся из тёплого кэша; в джобе без кэша сборки тот же шаг стоил бы полной
+	// пересборки. Второй половиной шва стоит проба пакета
+	// (TestR7_3_01_CIRunsThisCensus), как у tools/listfiltergate.
+	"tools/authzenginecensus/engineplaces": "go test ./tools/authzenginecensus/engineplaces/ -run 'TestR7_3_01|TestJournalDoor' -count=1 -v",
+
 	// Шесть носителей поведенческих проб модели прав: пакет спрашивает НАСТОЯЩИЙ
 	// OpenFGA, а не читает текст модели. Цель test-authz-fga гонит их целиком (без
 	// `-short`), запрещает пробам пропускать себя и выносит вердикт ПО ЧИСЛАМ —
@@ -286,6 +295,18 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	"services/iam/internal/authzmap":                   "make test-authz-fga",
 	"services/iam/internal/service":                    "make test-authz-fga",
 	"services/iam/internal/testsupport/fgatest":        "make test-authz-fga",
+
+	// #803. Пакет заведён #800 и сразу оказался вне всякого прогона: шесть проб,
+	// все под кратким режимом, а отбор по пути до `internal/scopesourcecensus`
+	// не достаёт. Долгом это записывать было не за что — исполнять есть чем и
+	// почти даром: предмет у него ровно тот же, что у двух записей выше (нужен
+	// настоящий Postgres, сериализуется под `-p 1`), цена измерена — 15.6 с.
+	//
+	// Сверх Postgres пробам нужен внешний `psql`: прибор исполняется им, а без
+	// него они делают t.Skip — и цель, где пропуск есть отказ, стала бы красной.
+	// Поэтому джоба конвейера ставит клиента отдельным шагом; условие создаётся,
+	// а не подразумевается.
+	"services/iam/internal/scopesourcecensus": "make test-pg-outside-selection",
 }
 
 // TestShortGatedPackagesAreEitherSelectedOrCounted — сам гейт против дерева.

@@ -19,6 +19,8 @@ import (
 	"google.golang.org/grpc"
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/authzmetrics"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
@@ -423,9 +425,24 @@ func runServe(cfg config.Config) error {
 	// ── дескриптор процесса: ОБЪЯВЛЕНИЕ о себе. Порты (сверка существования и
 	// проводка сужателя) приезжают сюда уже собранными — их предмет живёт в этом
 	// корне, а судит их носитель против каталога прав на каждом старте.
+	// Приёмник читателя величин кеша вердиктов звена. Объявлен ДО дескриптора:
+	// кеш собирает носитель контура, и читателя он отдаёт через поле дескриптора.
+	var authzCache authzmetrics.Source
+
+	// ДВЕ полосы, потому что кешей положительных вердиктов у этого процесса два:
+	// окно звена решения (вопрос на вызов) и окно прямого пообъектного опроса
+	// страницы (вопрос на КАЖДЫЙ элемент, а страница контрактно бывает до
+	// тысячи). Сложить их в одну серию значило бы сделать невидимым тот из них,
+	// который не попадает, — а это ровно тот, ради которого величину и смотрят.
+	svcMetrics.RegisterAuthzCache(map[string]authzmetrics.Reader{
+		authzmetrics.LaneRPC:  authzCache.Cache,
+		authzmetrics.LaneList: registryHandler.VerdictCacheStats,
+	}, authzCache.Read)
+
 	desc, err := describe(cfg, mode, logger, servePorts{
-		existence: pg.NewExistenceProbe(pool),
-		narrower:  pageNarrower,
+		existence:    pg.NewExistenceProbe(pool),
+		narrower:     pageNarrower,
+		authzObserve: authzCache.Install,
 	})
 	if err != nil {
 		return err
@@ -880,6 +897,10 @@ type servePorts struct {
 	// narrower — ПРОВОДКА сужателя списочной выдачи. Перечень сужаемых методов
 	// даёт каталог прав, а не это поле.
 	narrower servicecontract.ListNarrower
+	// authzObserve — приёмник читателя величин кеша вердиктов ЗВЕНА решения.
+	// Кеш строит носитель контура, поэтому иначе его величины из процесса не
+	// выходят.
+	authzObserve func(read func() authz.Metrics)
 }
 
 // describe собирает ОБЪЯВЛЕНИЕ сервиса о себе.
@@ -912,6 +933,15 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		return servicecontract.Descriptor{}, fmt.Errorf("internal listener tls creds: %w", err)
 	}
 
+	// Потолок темпа и одновременности НА ВЫЗЫВАЮЩЕГО: величины посадки там, где
+	// она их назвала, и пол платформы там, где молчит. Сборка стоит ДО
+	// дескриптора намеренно — негодный набор обязан назвать СЛУШАТЕЛЯ, а не
+	// приехать в общий список находок безымянным.
+	admission, err := servicecontract.AdmissionFromPosture(cfg.AdmissionPublic, cfg.AdmissionInternal)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("KACHO_REGISTRY_ADMISSION_*: %w", err)
+	}
+
 	return servicecontract.New(servicecontract.Spec{
 		Service: "kacho-registry",
 		Mode:    mode,
@@ -942,6 +972,12 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		// и это один источник, а не два одинаковых числа.
 		ClientBudget: check.CheckTimeout,
 
+		// Приёмник величин кеша вердиктов: носитель строит кеш, а диагностическую
+		// поверхность держит этот корень, и величины переходят границу только
+		// здесь. Без него доля попаданий не выходит из процесса, и «сколько даёт
+		// кеш» остаётся непроверяемым в обе стороны.
+		AuthzObserve: ports.authzObserve,
+
 		// Верхняя граница обработки вызова. «Не применимо» у неё нет: вызов без
 		// срока держит соединение из ограниченного пула столько, сколько
 		// выполняется его запрос. Величина и её обоснование — у ручки конфигурации.
@@ -961,6 +997,12 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		// этой отсечки у реестра не было вовсе (поле не заполнялось, а механизм
 		// читает неположительное как «ограничения нет»).
 		DenyBudget: servicecontract.Value(cfg.AuthZDenyBudgetPerSec),
+
+		// Ось потолка объявляется ВЕЛИЧИНОЙ, а не изъятием: слушатели выставлены
+		// наружу, и «потолка не надо» означало бы, что один вызывающий вправе
+		// занять сервис чтением. Изъятие законно только у внутрипроцессной
+		// фикстуры, и на боевой посадке дескриптор его отвергает.
+		Admission: servicecontract.Value(admission),
 
 		DBSSLMode:     cfg.DBSSLMode,
 		PublicAddr:    ":" + cfg.GrpcPort,

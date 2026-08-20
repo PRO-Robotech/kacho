@@ -102,6 +102,7 @@ func describe(
 	narrower *authzfilter.Narrower,
 	gate *bootgate.Gate,
 	existence servicecontract.ExistenceProbe,
+	authzObserve func(read func() authz.Metrics),
 ) (servicecontract.Descriptor, error) {
 	mode, err := servicecontract.ParseMode(cfg.AuthMode)
 	if err != nil {
@@ -126,6 +127,15 @@ func describe(
 		return servicecontract.Descriptor{}, fmt.Errorf("compute→iam Check mTLS creds: %w", err)
 	}
 
+	// Потолок темпа и одновременности НА ВЫЗЫВАЮЩЕГО: величины посадки там, где
+	// она их назвала, и пол платформы там, где молчит. Сборка стоит ДО
+	// дескриптора намеренно — негодный набор обязан назвать СЛУШАТЕЛЯ, а не
+	// приехать в общий список находок безымянным.
+	admission, err := servicecontract.AdmissionFromPosture(cfg.AdmissionPublic, cfg.AdmissionInternal)
+	if err != nil {
+		return servicecontract.Descriptor{}, fmt.Errorf("KACHO_COMPUTE_ADMISSION_*: %w", err)
+	}
+
 	return servicecontract.New(servicecontract.Spec{
 		Service: "kacho-compute",
 		Mode:    mode,
@@ -142,6 +152,11 @@ func describe(
 		CheckEdge:    servicecontract.NewPeerEdge(cfg.AuthZIAMGRPCAddr, checkCreds),
 		CacheWindow:  cfg.AuthZCacheTTL,
 		ClientBudget: cfg.AuthZCheckTimeout,
+		// Приёмник величин кеша вердиктов: носитель строит кеш, а
+		// диагностическую поверхность держит этот корень, и величины переходят
+		// границу только здесь. Без него доля попаданий не выходит из процесса,
+		// и «сколько даёт кеш» остаётся непроверяемым в обе стороны.
+		AuthzObserve: authzObserve,
 
 		// Верхняя граница обработки вызова и бюджет отказов — обе ВЕЛИЧИНЫ, обе с
 		// обоснованием у своих ручек конфигурации. «Не применимо» здесь незаконно:
@@ -149,6 +164,12 @@ func describe(
 		// то есть сетевой сосед, которого шторм отказов может уронить, у него ЕСТЬ.
 		HandlingBudget: cfg.HandlingBudget,
 		DenyBudget:     servicecontract.Value(cfg.AuthZDenyBudgetPerSec),
+
+		// Ось потолка объявляется ВЕЛИЧИНОЙ, а не изъятием: слушатели выставлены
+		// наружу, и «потолка не надо» означало бы, что один вызывающий вправе
+		// занять сервис чтением. Изъятие законно только у внутрипроцессной
+		// фикстуры, и на боевой посадке дескриптор его отвергает.
+		Admission: servicecontract.Value(admission),
 
 		// Срок жизни подписки — ВЕЛИЧИНА, а не изъятие: compute служит серверный
 		// стрим `InternalWatchService/Watch` (провязан в registerInternalServices).
