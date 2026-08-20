@@ -232,7 +232,7 @@ func AuditReadBudgetClassification(opts ReadBudgetOptions, out io.Writer) ([]Rea
 	})
 
 	if out != nil {
-		fmt.Fprintln(out, c.String())
+		_, _ = fmt.Fprintln(out, c.String())
 	}
 
 	// ── предпосылки ──────────────────────────────────────────────────────────
