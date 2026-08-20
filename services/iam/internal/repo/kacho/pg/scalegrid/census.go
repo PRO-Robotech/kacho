@@ -26,6 +26,30 @@ import (
 // того же исхода здесь не заводится — два места об одном предмете расходятся
 // молча. Прибор лишь ОТКАЗЫВАЕТСЯ считать и называет пустую строку.
 
+// BindingsNamingSubjectSQL — ОСЬ R по факту: выдачи, называющие спрашиваемого.
+//
+// Вынесена константой, а не оставлена литералом на месте вызова, потому что у
+// неё есть второй читатель — проба плана. Проба, собирающая запрос сама, судила
+// бы СВОЮ сборку: расхождение с прибором прошло бы мимо неё ровно потому, что
+// она подставляет своё.
+//
+// ЗАХОД — ПАРОЙ КОЛОНОК, а не склейкой, и разбирается ПАРАМЕТР, а не колонка.
+// Склейка `subject_type || ':' || subject_id` выводит колонки из-под индекса
+// `access_binding_subjects_subject_scope_idx` (732001): вычисленное значение
+// отбирает строки только ПОСЛЕ того, как они прочитаны. Ветвь выдач вердикта
+// (`grantArmSQL`) заходит сюда парой колонок — прибор обязан заходить так же,
+// иначе он мерит не тот заход, о котором отчитывается.
+//
+// ЧИСЛО ОТ ЭТОГО НЕ МЕНЯЕТСЯ, и это утверждается пробой, а не подразумевается:
+// именно одинаковость числа делала прежнюю форму тихой — перепись «не
+// двигалась», а двигалась цена.
+const BindingsNamingSubjectSQL = `SELECT count(*)::bigint
+		   FROM kacho_iam.access_binding_subjects bs
+		  WHERE (bs.subject_type, bs.subject_id) IN (
+		          SELECT split_part(s, ':', 1),
+		                 substr(s, length(split_part(s, ':', 1)) + 2)
+		            FROM unnest($1::text[]) AS s)`
+
 // ErrConditionNotCreated — предпосылка замера не выполнена.
 var ErrConditionNotCreated = errors.New("scalegrid: условие замера не создано")
 
@@ -110,10 +134,7 @@ func TakeCensus(ctx context.Context, tx pgx.Tx, speakerSubjects []string) (Censu
 	// которыми за него говорят. Соединение идёт через `access_binding_subjects`,
 	// потому что именно её читает вердикт: считать по колонкам родительской
 	// таблицы значило бы завести второе представление о том, кто назван.
-	if err := scalar(&c.BindingsNamingSubject,
-		`SELECT count(*)::bigint
-		   FROM kacho_iam.access_binding_subjects bs
-		  WHERE bs.subject_type || ':' || bs.subject_id = ANY($1::text[])`, speakerSubjects); err != nil {
+	if err := scalar(&c.BindingsNamingSubject, BindingsNamingSubjectSQL, speakerSubjects); err != nil {
 		return c, err
 	}
 	if err := scalar(&c.GroupMemberships, `SELECT count(*)::bigint FROM kacho_iam.group_members`); err != nil {

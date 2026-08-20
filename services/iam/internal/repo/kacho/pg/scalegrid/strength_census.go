@@ -25,6 +25,26 @@ import (
 // членств у спрашиваемого ноль. То же с L: нужны строки, совпавшие с ПАРОЙ
 // (говорящий, область), а не все строки таблицы.
 
+// SpeakerScopeRowsSQL — пара (говорящий, область) у ветви выдач.
+//
+// Вынесена константой по тому же доводу, что BindingsNamingSubjectSQL: у неё
+// есть второй читатель — проба плана, и судить она обязана прибор, а не свою
+// копию.
+//
+// Заход — ПАРОЙ КОЛОНОК (довод — у BindingsNamingSubjectSQL). Здесь он даёт
+// сверх того: все ЧЕТЫРЕ колонки индекса 732001 попадают в условие обращения —
+// субъект и область разом, — то есть ровно та форма, ради которой индекс и
+// заведён.
+const SpeakerScopeRowsSQL = `SELECT count(*)::bigint
+		   FROM kacho_iam.access_binding_subjects bs
+		   JOIN kacho_iam.access_bindings b ON b.id = bs.binding_id
+		  WHERE (bs.subject_type, bs.subject_id) IN (
+		          SELECT split_part(s, ':', 1),
+		                 substr(s, length(split_part(s, ':', 1)) + 2)
+		            FROM unnest($1::text[]) AS s)
+		    AND bs.resource_type = $2 AND bs.resource_id = $3
+		    AND b.status = 'ACTIVE' AND b.revoked_at IS NULL`
+
 // StrengthCensusInput — координаты, по которым снимается перепись.
 //
 // Названы явно, а не выведены из точки: перепись обязана спрашивать РОВНО о том
@@ -109,13 +129,7 @@ func TakeStrengthCensus(ctx context.Context, tx pgx.Tx, in StrengthCensusInput) 
 	}
 	// Пара (говорящий, область) — ровно тем соединением, которым её читает
 	// ветвь выдач: колонками, а не склейкой.
-	if err := scalar(&c.SpeakerScopeRows,
-		`SELECT count(*)::bigint
-		   FROM kacho_iam.access_binding_subjects bs
-		   JOIN kacho_iam.access_bindings b ON b.id = bs.binding_id
-		  WHERE bs.subject_type || ':' || bs.subject_id = ANY($1::text[])
-		    AND bs.resource_type = $2 AND bs.resource_id = $3
-		    AND b.status = 'ACTIVE' AND b.revoked_at IS NULL`,
+	if err := scalar(&c.SpeakerScopeRows, SpeakerScopeRowsSQL,
 		in.Speakers, in.ScopeType, in.ScopeID); err != nil {
 		return c, err
 	}
