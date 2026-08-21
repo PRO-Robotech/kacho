@@ -422,10 +422,10 @@ kacho-iam:
     # ON in prod (kacho-iam#137, supersedes the OFF-gate #122/#136), reusing the
     # SEC-F server cert — no new PKI.
     #
-    # WHY ON in server-tls-only mode: the hooks edge carries three HMAC-authed Ory
-    # webhook endpoints (Hydra token/refresh + Kratos provision); all three callers
-    # are HTTP clients that present NO transport client-cert (Ory webhooks cannot).
-    # A single server-tls-only mode on :9092 correctly covers all three — it
+    # WHY ON in server-tls-only mode: the hooks edge carries FOUR HMAC-authed Ory
+    # webhook endpoints (Hydra token/refresh + Kratos provision/recovery); every
+    # caller is an HTTP client that presents NO transport client-cert (Ory webhooks
+    # cannot). A single server-tls-only mode on :9092 covers all four — it
     # encrypts the transport + authenticates the server, while HMAC
     # (X-Kacho-Hook-Token) remains the caller-auth (defense-in-depth). The metrics
     # edge has no scrape client cert wired → server-tls-only too. mutual
@@ -437,6 +437,25 @@ kacho-iam:
     # Both HTTP edges run server-tls-only (default; restated here for prod clarity).
     hooksClientAuthMode: server-tls-only
     metricsClientAuthMode: server-tls-only
+  # ─── Обратные вызовы службы личности — под тем же TLS, что и слушатель ──────
+  #
+  # Слушатель хуков этого стенда работает под TLS (httpListeners выше), значит и
+  # полосы к нему обязаны идти https. Раньше две из четырёх полос (заведение
+  # пользователя и завершение восстановления доступа) были выписаны в шаблоне
+  # чарта буквой `http`, и профиль переопределить их не мог ВООБЩЕ — то есть
+  # боевая посадка не была в состоянии объявить их защищёнными.
+  #
+  # Узел и порт здесь не объявляются: их умолчания выводятся из релиза и из
+  # порта слушателя и совпадают с прежним адресом байт в байт. Объявляется
+  # ровно то, что решает профиль, — транспорт.
+  #
+  # Согласие полосы со слушателем держит deploy/identity_callback_transport_test.go:
+  # он выводит перечень полос из конфигурации и краснеет и на открытой полосе при
+  # слушателе под TLS, и на обратном — https к открытому слушателю.
+  kratos:
+    config:
+      hooks:
+        scheme: https
   kacho:
     iam:
       # Route to the provider's ADMIN API. DECLARED, never derived: the fallback
@@ -1083,6 +1102,36 @@ pg-hydra:
 # top (the chart derives them from kacho.domain).
 kratos:
   enabled: true
+  # ─── ДОВЕРИЕ К ВНУТРЕННЕМУ УДОСТОВЕРЯЮЩЕМУ — ЦЕНА ЗАЩИЩЁННОЙ ПОЛОСЫ ─────────
+  #
+  # Объявить полосу https мало: вызывающий обязан УМЕТЬ проверить сертификат
+  # слушателя. Без этого «посадка рендерится, но не работает» — рукопожатие не
+  # состоится, а служба личности сочтёт вызов сделанным и промолчит.
+  #
+  # Монтируется тот же корень, что уже смонтирован провайдеру рядом (ca.crt
+  # секрета kacho-iam-server-tls) — новой инфраструктуры ключей не заводится.
+  #
+  # ЦЕНА НАЗВАНА, А НЕ УМОЛЧАНА: SSL_CERT_FILE ЗАМЕЩАЕТ системный набор корней
+  # целиком, поэтому исходящий TLS этого пода доверяет только внутреннему
+  # удостоверяющему. Для этого профиля это верно — его исходящие полосы идут
+  # внутрь кластера; появится у службы личности внешний peer с публичным
+  # сертификатом (например, почтовый шлюз по TLS), и корни придётся объединять,
+  # а не подменять.
+  deployment:
+    extraEnv:
+      - name: SSL_CERT_FILE
+        value: /etc/kacho-iam-ca/ca.crt
+    extraVolumes:
+      - name: kacho-iam-internal-ca
+        secret:
+          secretName: kacho-iam-server-tls
+          items:
+            - key: ca.crt
+              path: ca.crt
+    extraVolumeMounts:
+      - name: kacho-iam-internal-ca
+        mountPath: /etc/kacho-iam-ca
+        readOnly: true
 hydra:
   enabled: true
   # Sub-phase 5.5 (kacho-iam#137) — prod transport hardening for the :9092 hooks

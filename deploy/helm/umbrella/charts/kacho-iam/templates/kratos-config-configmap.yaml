@@ -33,6 +33,13 @@ ENV substitution (`$KACHO_IAM_HOOK_TOKEN`) — Kratos выполняет на с
 проброшенные в Kratos pod из Secret `kacho-iam-hook-token`.
 */}}
 {{- if .Values.kratos.config.enabled }}
+{{- /* Схема обратных вызовов обязана быть ОБЪЯВЛЕНА: без неё адрес отрендерился
+     бы как `<no value>://…`, служба личности молча не дозвонилась бы до слушателя
+     хуков, и заведение пользователя не доехало бы НИКОГДА. Отказ рендера называет
+     ручку прямо — иначе стенд не поднять. */ -}}
+{{- if not (.Values.kratos.config.hooks).scheme }}
+{{- fail "kacho-iam: kratos.config.hooks.scheme не объявлен — транспорт обратных вызовов службы личности к слушателю хуков :9092 задаётся значением профиля (http|https), а не константой шаблона" }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -139,7 +146,7 @@ data:
                 # UpsertFromIdentity use-case in-process.
                 - hook: web_hook
                   config:
-                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
+                    url: {{ .Values.kratos.config.hooks.scheme }}://{{ include "kacho-iam.hooksAuthority" . }}/iam/v1/hooks/provision
                     method: POST
                     body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
                     auth:
@@ -155,7 +162,7 @@ data:
                 # C4 fix — see webauthn note above (same :9092 HTTP route).
                 - hook: web_hook
                   config:
-                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
+                    url: {{ .Values.kratos.config.hooks.scheme }}://{{ include "kacho-iam.hooksAuthority" . }}/iam/v1/hooks/provision
                     method: POST
                     body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
                     auth:
@@ -177,7 +184,7 @@ data:
                 # (see the registration.after note above for the rationale).
                 - hook: web_hook
                   config:
-                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
+                    url: {{ .Values.kratos.config.hooks.scheme }}://{{ include "kacho-iam.hooksAuthority" . }}/iam/v1/hooks/provision
                     method: POST
                     body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
                     auth:
@@ -192,7 +199,7 @@ data:
                 # C4 fix — provisioning web_hook → kacho-iam :9092 HTTP route.
                 - hook: web_hook
                   config:
-                    url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/provision
+                    url: {{ .Values.kratos.config.hooks.scheme }}://{{ include "kacho-iam.hooksAuthority" . }}/iam/v1/hooks/provision
                     method: POST
                     body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
                     auth:
@@ -238,7 +245,7 @@ data:
               # НАЛИЧИЕ держит проба, а не память автора.
               - hook: web_hook
                 config:
-                  url: http://kacho-iam-internal.{{ .Release.Namespace }}.svc:{{ .Values.service.internal.hooksHttpPort | default 9092 }}/iam/v1/hooks/recovery
+                  url: {{ .Values.kratos.config.hooks.scheme }}://{{ include "kacho-iam.hooksAuthority" . }}/iam/v1/hooks/recovery
                   method: POST
                   body: file:///etc/config/kratos/hooks/recovery-payload.jsonnet
                   auth:

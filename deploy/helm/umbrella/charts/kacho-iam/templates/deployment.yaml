@@ -235,10 +235,10 @@ spec:
             # / MetricsServerTLSConfig → tls.NewListener). The per-edge
             # CLIENTAUTHMODE selects the TLS ClientAuth mode:
             #   - server-tls-only → tls.NoClientCert (encryption + server-auth only,
-            #     NO client cert required). The hooks edge carries THREE
+            #     NO client cert required). The hooks edge carries FOUR
             #     HMAC-authenticated hook endpoints (Hydra token/refresh + Kratos
-            #     provision); all three callers are HTTP clients that present no
-            #     transport client-cert (Ory webhooks cannot) — HMAC
+            #     provision/recovery); every caller is an HTTP client that presents
+            #     no transport client-cert (Ory webhooks cannot) — HMAC
             #     (X-Kacho-Hook-Token) is the caller-auth. The metrics edge has no
             #     scrape client cert wired yet → server-tls-only too.
             #   - mutual → RequireAndVerifyClientCert (option, flip CLIENTAUTHMODE
