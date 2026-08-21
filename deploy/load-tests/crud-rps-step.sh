@@ -11,8 +11,15 @@
 # поэтому доля «проверка доступа» получается ДЕЛЕНИЕМ ИЗМЕРЕННОГО НА
 # ИЗМЕРЕННОЕ, а не оценкой:
 #
-#   проверок на операцию = Δ kacho_iam_authz_check_duration_seconds_count / Δ операций
-#   время проверок на операцию = Δ kacho_iam_authz_check_duration_seconds_sum   / Δ операций
+#   проверок службы на операцию = Δ kacho_iam_authz_check_duration_seconds_count / Δ операций
+#   времени службы на операцию  = Δ kacho_iam_authz_check_duration_seconds_sum   / Δ операций
+#   проверок КРАЯ на операцию   = Δ kacho_api_gateway_authz_check_decisions_total / Δ операций
+#
+# ПРОВЕРОК ДВЕ, И СЧИТАТЬ НАДО ОБЕ (#772). На пути чтения по id край решает
+# доступ ДО обращения к службе, поэтому «проверок на операцию», выведенное
+# только из счётчика службы, занижено — и занижено молча: вторая половина
+# просто не участвует в делении. Доли печатаются ПОРОЗНЬ и суммой: у каждой
+# стороны свой кеш, и смешение скрыло бы, чей именно промахивается.
 #
 # Вторая величина — ПРОЦЕССОРНО-СЕТЕВОЕ время внутри iam, а не доля задержки
 # края: между ними стоят два сетевых хопа и два кэша. Она нижняя граница цены
@@ -68,6 +75,10 @@ cpu_usec() {
 # pod_of <label> — имя первого пода по метке. БЕЗ `grep -m`: скрипт идёт под
 # pipefail, а ранний выход grep роняет писателя SIGPIPE, и НАЙДЕННОЕ было бы
 # объявлено ненайденным тем вероятнее, чем раньше встретилось совпадение.
+# Вердикт о перезапуске/смене состава — общий с прибором проверки доступа.
+# shellcheck source=lib/restart-verdict.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/restart-verdict.sh"
+
 pod_of() { k get pod -l "$1" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true; }
 iam_pods() { k get pod -l app.kubernetes.io/name=kacho-iam -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
 vpc_pods() { k get pod -l app=vpc -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; }
@@ -87,6 +98,39 @@ authz_counters() {
     total_s=$(awk -v a="$total_s" -v b="$s" 'BEGIN{printf "%.6f", a+b}')
   done
   echo "checks=$total_c sum=$total_s"
+}
+
+# edge_authz_counters — ВТОРАЯ ПОЛОВИНА той же цены (#772).
+#
+# На пути чтения по id проверок ДВЕ: одна на крае (он резолвит область и решает
+# доступ ДО обращения к службе), вторая в самой службе. Прибор снимал только
+# вторую, поэтому всякое «проверок на операцию», выведенное отсюда, было
+# занижено — и занижено МОЛЧА: половина просто не участвовала в делении.
+#
+# Серия края одноимённа по форме (`kacho_api_gateway_authz_*` против
+# `kacho_iam_authz_*`), поэтому складывать их законно, а держать порознь —
+# обязательно: доля попаданий кеша у них своя, и смешение скрыло бы, чей именно
+# кеш промахивается.
+#
+# Реплика края одна, но перебор всё равно по списку: масштабирование края —
+# вопрос настройки, а не построения, и жёсткое «первый под» разошлось бы с
+# деревом молча.
+edge_authz_counters() {
+  local p total_d total_h total_m
+  total_d=0; total_h=0; total_m=0
+  for p in $(k get pod -l app=api-gateway -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+    local m
+    m=$(k exec "$p" -- sh -c 'wget -qO- http://127.0.0.1:9095/metrics 2>/dev/null' 2>/dev/null) || m=""
+    if [ -z "$m" ]; then echo "edge_decisions=NA edge_hit=NA edge_miss=NA"; return 0; fi
+    local d h ms
+    d=$(echo "$m"  | awk '/^kacho_api_gateway_authz_check_decisions_total/{t+=$2} END{printf "%.0f", t+0}')
+    h=$(echo "$m"  | awk '/^kacho_api_gateway_authz_cache_total\{result="hit"\}/{t+=$2} END{printf "%.0f", t+0}')
+    ms=$(echo "$m" | awk '/^kacho_api_gateway_authz_cache_total\{result="miss"\}/{t+=$2} END{printf "%.0f", t+0}')
+    total_d=$(awk -v a="$total_d" -v b="$d"  'BEGIN{printf "%.0f", a+b}')
+    total_h=$(awk -v a="$total_h" -v b="$h"  'BEGIN{printf "%.0f", a+b}')
+    total_m=$(awk -v a="$total_m" -v b="$ms" 'BEGIN{printf "%.0f", a+b}')
+  done
+  echo "edge_decisions=$total_d edge_hit=$total_h edge_miss=$total_m"
 }
 
 pool_stats() {
@@ -113,6 +157,7 @@ snapshot() {
     echo "pgvpc=$(cpu_usec kacho-umbrella-pg-vpc-0 postgresql)"
     echo "k6=$(cpu_usec $RUNNER k6)"
     echo "authz $(authz_counters)"
+    echo "edge_authz $(edge_authz_counters)"
   } > "$f"
 }
 
@@ -216,17 +261,42 @@ for rate in ${STEPS//,/ }; do
   # Сверяем ДВАЖДЫ: с началом ступени И с началом прогона — иначе перезапуск,
   # случившийся МЕЖДУ ступенями, не помечается ничем, а числа соседних ступеней
   # выглядят правдоподобно.
-  if ! diff -q "$OUT/$tag.restarts.before" "$OUT/$tag.restarts.after" >/dev/null 2>&1; then
-    echo "INVALID: участник перезапустился в ходе ступени" > "$OUT/$tag.invalid"
-    echo "    !! НЕДЕЙСТВИТЕЛЬНО: перезапуск участника"
-  elif ! diff -q "$OUT/run.restarts.baseline" "$OUT/$tag.restarts.after" >/dev/null 2>&1; then
-    echo "INVALID: участник перезапустился с начала прогона" > "$OUT/$tag.invalid"
-    echo "    !! НЕДЕЙСТВИТЕЛЬНО: перезапуск между ступенями"
+  # Вердикт берётся из общей библиотеки — той же, что у прибора проверки доступа.
+  # Сверка целыми файлами читала как перезапуск ЛЮБОЕ расхождение, включая смену
+  # состава подов, то есть браковала замер масштабирования by construction.
+  # Разбор и границы — в lib/restart-verdict.sh; здесь второй копии не заводится.
+  grew_step=$(restart_grew "$OUT/$tag.restarts.before" "$OUT/$tag.restarts.after")
+  grew_run=$(restart_grew "$OUT/run.restarts.baseline" "$OUT/$tag.restarts.after")
+  if [ -n "$grew_step" ]; then
+    echo "INVALID: участник перезапустился в ходе ступени: $grew_step" > "$OUT/$tag.invalid"
+    echo "    !! НЕДЕЙСТВИТЕЛЬНО: перезапустился $grew_step — число этой ступени не читать"
+  elif [ -n "$grew_run" ]; then
+    echo "INVALID: участник перезапустился с начала прогона: $grew_run" > "$OUT/$tag.invalid"
+    echo "    !! НЕДЕЙСТВИТЕЛЬНО: с начала прогона перезапустился $grew_run"
+  fi
+  if composition_changed "$OUT/run.restarts.baseline" "$OUT/$tag.restarts.after"; then
+    {
+      echo "состав участников изменился с начала прогона"
+      echo "было:";  cut -d= -f1 "$OUT/run.restarts.baseline"
+      echo "стало:"; cut -d= -f1 "$OUT/$tag.restarts.after"
+    } > "$OUT/$tag.composition-changed"
+    echo "    ** СОСТАВ ИЗМЕНИЛСЯ с начала прогона (подробности в $tag.composition-changed)."
+    echo "       Ваше масштабирование — читайте число; если нет, под мог быть заменён"
+    echo "       после падения, и тогда числу верить нельзя."
   fi
 
   k exec "$RUNNER" -- cat "/out/$tag.json" > "$OUT/$tag.summary.json" 2>/dev/null || echo '{}' > "$OUT/$tag.summary.json"
   echo "k6_exit=$k6rc" > "$OUT/$tag.rc"
-  echo "    исход k6=$k6rc (бюджет нарушен ⇒ 99)"
+  # Легенда кода — ТОЛЬКО при ненулевом исходе. Безусловная строка «исход k6=0
+  # (бюджет нарушен ⇒ 99)» читается как утверждение о нарушении; на такой же
+  # строке в соседнем приборе споткнулся её собственный автор.
+  if [ "$k6rc" -eq 0 ]; then
+    echo "    исход k6=0 — бюджет прогона выдержан"
+  elif [ "$k6rc" -eq 99 ]; then
+    echo "    исход k6=99 — БЮДЖЕТ НАРУШЕН"
+  else
+    echo "    исход k6=$k6rc — прогон не состоялся (не вердикт о бюджете)"
+  fi
 
   if [ "$k6rc" != "0" ]; then
     breaches=$(( breaches + 1 ))
