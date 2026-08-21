@@ -142,20 +142,11 @@ rm -f "$PRECOND_MARK"
 # под доказательство, а не под его отсутствие, — иначе оно стало бы маской,
 # превращающей любой срыв подъёма в «условие не создано».
 #
-#   classify_deps_failure <файл-с-выводом-helm> → ours | external | transient
-classify_deps_failure() {
-  local log="$1"
-  # Наше: объявление, пин, локальный сабчарт. Проверяется ПЕРВЫМ (см. выше).
-  if grep -qE "^Error: directory .* not found|can't get a valid version for|unknown field|cannot be found in the .* directory" "$log"; then
-    echo ours; return
-  fi
-  # Чужое: удалённый репозиторий не ответил. Кавычки вокруг адреса — часть
-  # формы helm, и они же не дают строке совпасть с нашей прозой об этом же.
-  if grep -qE '[Uu]nable to get an update from the "https?://[^"]*" chart repository' "$log"; then
-    echo external; return
-  fi
-  echo transient
-}
+# Классификатор вынесен в lib/deps-failure-class.sh — его способность различать
+# наш отказ, чужую недоступность и неопознанное доказывается инъекцией БЕЗ
+# подъёма helm (см. deps-failure-class-inject.sh).
+# shellcheck source=lib/deps-failure-class.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/deps-failure-class.sh"
 
 # Таблица объявленных зависимостей глазами самого helm, приведённая к четырём
 # полям через табуляцию: имя · версия · репозиторий · статус.
