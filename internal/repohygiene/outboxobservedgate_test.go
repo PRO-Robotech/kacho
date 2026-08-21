@@ -39,6 +39,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -109,6 +110,15 @@ var outboxObservedWithoutDrainer = map[string]string{
 		"Сканер поставлен ровно затем, чтобы отсутствие доставки было ВИДНО; " +
 		"разложение по направлению к очереди без доставки неприменимо by " +
 		"construction. Решение и предикат пересмотра: " +
+		"services/iam/docs/engineering/architecture/audit-outbox-has-no-receiver.md",
+	"public.audit_outbox": "" +
+		"журнал аудита вычислений — БРАТ записи выше, и по тому же решению. Приёмник у " +
+		"аудита один на платформу, поэтому и отсутствие дренажа здесь имеет ровно то же " +
+		"основание: доставлять некуда. Пишут журнал восемь мест репозитория (машины, " +
+		"группы размещения, гостевые ключи доступа); сканер поставлен затем, чтобы " +
+		"отсутствие доставки было ВИДНО — до него величины не существовало вовсе. " +
+		"Разложение по направлению неприменимо by construction: направления доставки у " +
+		"очереди без доставки нет. Решение и предикат пересмотра — тот же документ: " +
 		"services/iam/docs/engineering/architecture/audit-outbox-has-no-receiver.md",
 }
 
@@ -696,4 +706,527 @@ func corelibOutboxConstStrings(t *testing.T, root string) map[string]string {
 		}
 	}
 	return out
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// КОЛОНКИ ДОСТАВКИ, КОТОРЫЕ ПИШУТ И НЕ ЧИТАЮТ
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// # Предмет — тот же класс, но на уровне КОЛОНКИ, а не проводки
+//
+// Проверки выше судят очередь по её ПРОВОДКЕ: есть дренаж — обязан быть сканер.
+// Очередь, которую не провёл никто, для них не существует BY CONSTRUCTION — она
+// не попадает ни в одно из двух множеств и молчит вместе с ними.
+//
+// Между тем схема такой очереди ОБЕЩАЕТ доставку: колонки `sent_at` /
+// `next_attempt_at` (а с ними `status` и `attempts`) объявляют переход строки из
+// «положена» в «доставлена». Значение в них пишется умолчанием на каждой вставке
+// и не читается никем и никогда. Снаружи это неотличимо от работающей очереди:
+// строки есть, состояние у них есть, а вопроса «сколько доставлено» не задаёт
+// никто.
+//
+// Класс измерен, а не предположен. Журнал аудита службы прав: 29 921 строка на
+// стенде kind-kacho (2026-08-21, только чтение, образ службы `a4b6cfba9`),
+// доставленных 0, `max(attempts)` = 0 — НИ ОДНОЙ попытки доставки за всю жизнь
+// очереди, а возраст старейшей строки равен возрасту стенда. Его брат в службе
+// вычислений устроен так же и до этой правки не наблюдался ничем.
+//
+// # Почему предикат — КОЛОНКИ, а не имя таблицы
+//
+// Имя — соглашение: очередь, названную иначе, гейт по суффиксу `_outbox`
+// пропустил бы, а таблицу с таким суффиксом, но без доставки (лента изменений
+// `vpc_outbox`, `nlb_outbox`, `compute_outbox`, `geo_outbox` — у них нет ни
+// `sent_at`, ни `next_attempt_at`), объявил бы находкой. Колонки доставки —
+// свойство САМОЙ таблицы: их объявляет тот, кто обещает доставку, и объявляет
+// ровно тогда, когда обещает. Замер по дереву: 11 таблиц из 194 миграций несут
+// такую колонку, и все одиннадцать — очереди; лент изменений среди них нет ни
+// одной.
+//
+// # Три законных исхода, и все три названы записью, а не молчанием
+//
+//  1. строки ДВИГАЕТ кто-то — дренаж (проводка `drainer.Config`) либо
+//     собственный оператор прод-кода (`UPDATE … SET sent_at`), как у очереди
+//     реконсиляции;
+//  2. строки не двигает никто, и это ВИДНО — поднят сканер состояния, а очередь
+//     стоит в [outboxObservedWithoutDrainer] с обоснованием;
+//  3. строки не двигает никто, сканера нет намеренно, и это НАЗВАНО записью в
+//     [deliveryColumnsWithoutAdvancer] с обоснованием и номером задачи.
+//
+// Четвёртого исхода нет: очередь, не попавшая ни в один, — находка.
+
+// deliveryColumnsWithoutAdvancer — очереди, чьи колонки доставки объявлены
+// схемой, но двигать их некому И сканера у них нет.
+//
+// # Чем эта запись отличается от [outboxObservedWithoutDrainer]
+//
+// Там очередь МОЛЧИТ СЛЫШИМО: сканер публикует растущую глубину и стареющую
+// голову, и это верное описание положения дел. Здесь сканера нет — и его нет по
+// решению, а не по забывчивости: у очереди, чья доставка стала тождеством
+// коммита, растущий возраст головы означал бы исправную службу, а тревога,
+// которая звонит всегда, отключается первой.
+//
+// # Запись обязана нести НОМЕР ЗАДАЧИ
+//
+// Обоснования мало: оно объясняет, почему так СЕЙЧАС, и ничего не говорит о том,
+// кто это закроет. Отсрочка без ответственного — это ban #11 через заднюю дверь,
+// поэтому [TestDeliveryColumnDeclarationsHaveSubject] требует в тексте ссылку
+// вида `#<номер>` и падает без неё.
+//
+// # Как запись истекает — двумя способами, и оба роняют гейт
+//
+// У очереди появился тот, кто двигает строки (её судят общие правила), либо
+// таблица исчезла из миграций (запись унаследует следующую слепую зону).
+var deliveryColumnsWithoutAdvancer = map[string]string{
+	"iam/fga_outbox": "" +
+		"журнал намерений службы прав. Колонки доставки ПЕРЕЖИЛИ свой дренаж: он снят " +
+		"вместе с внешним движком прав (стадия S6 эпика #747), а прямой факт, из которого " +
+		"форма собирает вердикт, складывается из строки журнала триггером — в той же " +
+		"транзакции, что и мутация. То есть доставка стала тождеством коммита, и двигать " +
+		"колонки больше некому и незачем. Сканер снят НАМЕРЕННО (см. шапку " +
+		"services/iam/cmd/kacho-iam/outbox_metrics_wiring.go): на исправной службе он " +
+		"отвечал бы вечно растущим возрастом головы. Снятие самих колонок вместе с " +
+		"индексами под клейм — предмет задачи #917, одной с переименованием журнала; " +
+		"здесь оно не изобретается, потому что применённые миграции не правятся (ban #5).",
+}
+
+// deliveryColumnMarks — колонки, объявляющие ПЕРЕХОД строки в доставленную.
+//
+// Ровно две, и обе именно объявляют переход, а не сопровождают его: `sent_at` —
+// отметка состоявшейся доставки, `next_attempt_at` — время следующей попытки.
+// `status` и `attempts` сюда НЕ входят намеренно: первое встречается у половины
+// ресурсных таблиц продукта, второе — у попыток чего угодно, и предикат на них
+// мерил бы не очередь, а словарь.
+var deliveryColumnMarks = []string{"sent_at", "next_attempt_at"}
+
+// deliveryColumnDecl — одна таблица, объявившая колонки доставки.
+type deliveryColumnDecl struct {
+	svc   string   // служба, чьей миграцией таблица заведена
+	table string   // имя без схемы: проводка и миграция квалифицируют по-разному
+	marks []string // какие именно колонки доставки объявлены
+	file  string   // миграция-производитель
+}
+
+// key — ключ учёта: служба и таблица вместе.
+//
+// Порознь они лгут: `fga_register_outbox` объявлен ТРЕМЯ службами, и объединение
+// по имени сделало бы одну провязанную очередь оправданием для двух
+// непровязанных.
+func (d deliveryColumnDecl) key() string { return d.svc + "/" + d.table }
+
+// migrationSource — одна миграция: путь и её ИСПОЛНЯЕМАЯ Up-секция.
+//
+// Тип нужен затем, чтобы разбор мог питаться синтетикой инъекции той же
+// функцией, что и деревом: проба, гоняющая свою копию разбора, доказывает
+// свойство копии.
+type migrationSource struct {
+	path string
+	up   string
+}
+
+var (
+	reCreateTable = regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?("?[A-Za-z_0-9.]+"?)\s*\(`)
+	reDropTable   = regexp.MustCompile(`(?i)DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?("?[A-Za-z_0-9.]+"?)`)
+	// reColumnDecl — объявление колонки: имя в начале строки, за ним тип.
+	//
+	// Тип пишется В ЛЮБОМ РЕГИСТРЕ, и это не педантизм: миграции дерева пишут его
+	// и строчными (`timestamp with time zone`, вывод pg_dump), и заглавными
+	// (`TIMESTAMPTZ`, рукописные). Первая редакция принимала только строчные и
+	// не увидела ДВЕ очереди из одиннадцати — то есть молчала бы на них при
+	// снятом движителе.
+	reColumnDecl = regexp.MustCompile(`(?m)^\s*"?([a-z_0-9]+)"?\s+[A-Za-z]`)
+	// reGoDeliveryAdvance — оператор, ДВИГАЮЩИЙ строку очереди.
+	//
+	// `[^;]{0,400}` намеренно: тело оператора не пересекает точку с запятой, и
+	// без этой границы выражение склеило бы соседние операторы одного литерала.
+	reGoDeliveryAdvance = regexp.MustCompile(`(?is)UPDATE\s+(?:[a-z_0-9]+\.)?([a-z_0-9]+)\s+SET\s+[^;]{0,400}?(sent_at|status)\s*=`)
+)
+
+// rawMigration — миграция как она лежит в дереве: путь и СЫРОЙ текст.
+type rawMigration struct {
+	path string
+	body string
+}
+
+// deliveryColumnDeclsInRaw — единственный вход разбора схемы.
+//
+// Отдельной функцией именно затем, чтобы инъекция и обход дерева шли ОДНИМ
+// путём, включая отрезание Down-секции и вырезание комментариев. Пока каждая
+// сторона звала [migrationUpSection] сама, инъекция доказывала свойство своей
+// последовательности вызовов, а не гейта: снять подготовку в обходе дерева и
+// оставить её в инъекции можно было бы, не покраснев.
+func deliveryColumnDeclsInRaw(svc string, files []rawMigration) []deliveryColumnDecl {
+	src := make([]migrationSource, 0, len(files))
+	for _, f := range files {
+		src = append(src, migrationSource{path: f.path, up: migrationUpSection(f.body)})
+	}
+	return deliveryColumnDeclsIn(svc, src)
+}
+
+// deliveryColumnDeclsIn — таблицы одной службы, объявившие колонки доставки, с
+// учётом последующего снятия.
+//
+// Миграции подаются В ПОРЯДКЕ ПРИМЕНЕНИЯ; таблица, заведённая одной и дропнутая
+// следующей, в результат не попадает — иначе запись пережила бы свой предмет, а
+// это ровно то, что гейт и ловит.
+func deliveryColumnDeclsIn(svc string, files []migrationSource) []deliveryColumnDecl {
+	live := map[string]deliveryColumnDecl{}
+	var order []string
+	for _, f := range files {
+		for _, m := range reCreateTable.FindAllStringSubmatchIndex(f.up, -1) {
+			name := bareTableName(f.up[m[2]:m[3]])
+			body, ok := parenBody(f.up, m[1]-1)
+			if !ok {
+				continue
+			}
+			marks := deliveryMarksIn(body)
+			if len(marks) == 0 {
+				continue
+			}
+			if _, seen := live[name]; !seen {
+				order = append(order, name)
+			}
+			live[name] = deliveryColumnDecl{svc: svc, table: name, marks: marks, file: f.path}
+		}
+		for _, m := range reDropTable.FindAllStringSubmatch(f.up, -1) {
+			delete(live, bareTableName(m[1]))
+		}
+	}
+	out := make([]deliveryColumnDecl, 0, len(live))
+	for _, name := range order {
+		if d, ok := live[name]; ok {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// deliveryMarksIn — какие колонки доставки объявлены телом CREATE TABLE.
+//
+// Читается ОБЪЯВЛЕНИЕ колонки (имя в начале строки, за ним тип), а не любое
+// упоминание имени: `CONSTRAINT … CHECK (sent_at IS NULL …)` колонку не заводит,
+// и засчитывать его значило бы считать ограничение обещанием доставки.
+func deliveryMarksIn(body string) []string {
+	declared := map[string]bool{}
+	for _, m := range reColumnDecl.FindAllStringSubmatch(body, -1) {
+		declared[m[1]] = true
+	}
+	var out []string
+	for _, mark := range deliveryColumnMarks {
+		if declared[mark] {
+			out = append(out, mark)
+		}
+	}
+	return out
+}
+
+// parenBody — тело скобки, открытой в позиции open.
+//
+// Скобки считаются, а не ищется первая закрывающая: определение колонки несёт
+// свои скобки (`timestamptz(3)`, `CHECK (…)`), и наивный поиск обрезал бы тело
+// на первой из них.
+func parenBody(s string, open int) (string, bool) {
+	if open < 0 || open >= len(s) || s[open] != '(' {
+		return "", false
+	}
+	depth := 0
+	for i := open; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return s[open+1 : i], true
+			}
+		}
+	}
+	return "", false
+}
+
+// bareTableName — имя без схемы и без кавычек.
+func bareTableName(s string) string {
+	s = strings.Trim(s, `"`)
+	if i := strings.LastIndex(s, "."); i >= 0 {
+		s = s[i+1:]
+	}
+	return strings.Trim(s, `"`)
+}
+
+// goDeliveryAdvancersIn — таблицы, чьи колонки доставки двигает СОБСТВЕННЫЙ
+// оператор прод-кода этой службы.
+//
+// Читаются ТОЛЬКО строковые литералы разобранного файла — то есть исполняемый
+// SQL. Текстовый поиск засчитал бы комментарий, объясняющий этот же оператор, и
+// молчал бы при снятом операторе: ровно тот класс, который гейт и ловит.
+func goDeliveryAdvancersIn(files map[string]string) map[string][]string {
+	out := map[string][]string{}
+	fset := token.NewFileSet()
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		f, err := parser.ParseFile(fset, path, files[path], 0)
+		if err != nil {
+			continue
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			lit, ok := n.(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				return true
+			}
+			text := lit.Value
+			if unq, uerr := strconv.Unquote(text); uerr == nil {
+				text = unq
+			}
+			for _, m := range reGoDeliveryAdvance.FindAllStringSubmatch(text, -1) {
+				table := m[1]
+				out[table] = append(out[table], path+":"+strconv.Itoa(fset.Position(lit.Pos()).Line))
+			}
+			return true
+		})
+	}
+	return out
+}
+
+// deliveryAccountability — как очередь отчитывается за свои колонки доставки.
+type deliveryAccountability int
+
+const (
+	// deliveryAdvanced — строки кто-то двигает.
+	deliveryAdvanced deliveryAccountability = iota
+	// deliveryVisiblySilent — не двигает никто, и это видно: сканер плюс запись.
+	deliveryVisiblySilent
+	// deliveryDeclaredSilent — не двигает никто, сканера нет, и это названо записью.
+	deliveryDeclaredSilent
+	// deliveryUnaccounted — не двигает никто и не говорит об этом никто. Находка.
+	deliveryUnaccounted
+)
+
+// classifyDeliveryColumns — исход по одной очереди.
+//
+// Отдельной функцией, потому что инъекция гоняет ЕЁ ЖЕ на синтетических
+// множествах: проба, повторяющая условие своими словами, доказывает свойство
+// своей копии.
+func classifyDeliveryColumns(advanced, drained, observed, observedNoted, declared bool) deliveryAccountability {
+	switch {
+	case advanced || drained:
+		return deliveryAdvanced
+	case observed && observedNoted:
+		return deliveryVisiblySilent
+	case declared:
+		return deliveryDeclaredSilent
+	default:
+		return deliveryUnaccounted
+	}
+}
+
+// TestEveryDeliveryColumnHasSomeoneWhoMovesItOrSaysNobodyDoes — колонки
+// доставки, которые пишут и не читают.
+//
+// Проверено инъекцией в обе стороны (outboxobservedgate_injection_test.go):
+// очередь с колонками доставки и без движителя даёт находку с координатой её
+// миграции; законные близнецы — лента изменений без таких колонок, очередь с
+// собственным оператором, очередь под дренажом и очередь со сканером и записью —
+// молчат.
+func TestEveryDeliveryColumnHasSomeoneWhoMovesItOrSaysNobodyDoes(t *testing.T) {
+	root := repoRoot(t)
+	inv := outboxWiringInventory(t, root)
+	decls, advancers, filesRead := deliveryColumnInventory(t, root)
+
+	// «Ноль находок» обязано быть отличимо от «ноль прочитанного».
+	if filesRead == 0 {
+		t.Fatalf("гейт не прочитал ни одной миграции — предпосылка обхода сломана, "+
+			"молчание ничего не доказывает (корень %s)", root)
+	}
+	if len(decls) == 0 {
+		t.Fatalf("гейт не нашёл НИ ОДНОЙ таблицы с колонками доставки в %d миграциях — "+
+			"распознавание сломано (ищется объявление колонки %s внутри CREATE TABLE)",
+			filesRead, strings.Join(deliveryColumnMarks, " / "))
+	}
+
+	drained, observed, observedFull := wiringByServiceAndTable(inv)
+
+	lines := make([]string, 0, len(decls))
+	unaccounted := 0
+	for _, d := range decls {
+		key := d.key()
+		_, declared := deliveryColumnsWithoutAdvancer[key]
+		_, noted := outboxObservedWithoutDrainer[observedFull[key]]
+		verdict := classifyDeliveryColumns(
+			len(advancers[key]) > 0, drained[key], observed[key], noted, declared)
+
+		switch verdict {
+		case deliveryAdvanced:
+			lines = append(lines, "  двигают        "+key+" ("+strings.Join(d.marks, ", ")+")")
+		case deliveryVisiblySilent:
+			lines = append(lines, "  молчит слышимо "+key+" ("+strings.Join(d.marks, ", ")+")")
+		case deliveryDeclaredSilent:
+			lines = append(lines, "  названо        "+key+" ("+strings.Join(d.marks, ", ")+")")
+		case deliveryUnaccounted:
+			unaccounted++
+			lines = append(lines, "  НАХОДКА        "+key+" ("+strings.Join(d.marks, ", ")+")")
+			t.Errorf("очередь %s объявила колонки доставки (%s, миграция %s), и НИКТО их не "+
+				"двигает: ни дренажа, ни собственного оператора. Строка ложится в таблицу со "+
+				"значением по умолчанию и остаётся в нём навсегда; «доставлено ноль за всю "+
+				"жизнь очереди» при этом не производит ни одна серия, поэтому застрявшая "+
+				"очередь неотличима от работающей. Исходов три: подними дренаж; либо "+
+				"подними сканер состояния и заведи запись в outboxObservedWithoutDrainer "+
+				"(молчание станет слышимым); либо заведи запись в "+
+				"deliveryColumnsWithoutAdvancer с обоснованием и номером задачи.",
+				key, strings.Join(d.marks, ", "), d.file)
+		}
+	}
+
+	sort.Strings(lines)
+	t.Logf("прочитано миграций: %d; таблиц с колонками доставки: %d; собственных операторов "+
+		"движения: %d; записей «двигать некому»: %d; находок: %d\n%s",
+		filesRead, len(decls), len(advancers), len(deliveryColumnsWithoutAdvancer),
+		unaccounted, strings.Join(lines, "\n"))
+}
+
+// TestDeliveryColumnDeclarationsHaveSubject — запись «двигать некому» живёт,
+// пока у неё есть предмет, и обязана называть ответственного.
+//
+// Два способа истечь, и оба роняют гейт: у очереди появился движитель (её судят
+// общие правила) либо таблица исчезла из миграций.
+func TestDeliveryColumnDeclarationsHaveSubject(t *testing.T) {
+	root := repoRoot(t)
+	inv := outboxWiringInventory(t, root)
+	decls, advancers, filesRead := deliveryColumnInventory(t, root)
+
+	if filesRead == 0 {
+		t.Fatalf("гейт не прочитал ни одной миграции (корень %s)", root)
+	}
+	t.Logf("прочитано миграций %d; таблиц с колонками доставки %d; записей «двигать некому» %d",
+		filesRead, len(decls), len(deliveryColumnsWithoutAdvancer))
+
+	live := map[string]deliveryColumnDecl{}
+	for _, d := range decls {
+		live[d.key()] = d
+	}
+	drained, _, _ := wiringByServiceAndTable(inv)
+
+	keys := make([]string, 0, len(deliveryColumnsWithoutAdvancer))
+	for k := range deliveryColumnsWithoutAdvancer {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		why := deliveryColumnsWithoutAdvancer[key]
+		if strings.TrimSpace(why) == "" {
+			t.Errorf("запись %s без обоснования: обязана называть, почему движителя нет и "+
+				"почему колонки при этом не сняты", key)
+		}
+		if !reIssueRef.MatchString(why) {
+			t.Errorf("запись %s не называет задачу: обоснование объясняет, почему так СЕЙЧАС, "+
+				"и ничего не говорит о том, кто это закроет. Отсрочка без ответственного — "+
+				"ban #11 через заднюю дверь. Поставь ссылку вида #<номер>.", key)
+		}
+		if _, ok := live[key]; !ok {
+			t.Errorf("запись %s больше не имеет предмета: таблицы с колонками доставки под "+
+				"этим именем в миграциях нет. Удали запись — иначе её унаследует следующая "+
+				"слепая зона.", key)
+		}
+		if drained[key] || len(advancers[key]) > 0 {
+			t.Errorf("запись %s ИСТЕКЛА: у очереди появился движитель. Теперь её судят общие "+
+				"правила, а эта запись выводит её из-под них. Удали запись.", key)
+		}
+	}
+}
+
+// reIssueRef — ссылка на задачу в обосновании записи.
+var reIssueRef = regexp.MustCompile(`#\d+`)
+
+// wiringByServiceAndTable — множества проводки, приведённые к ключу «служба и
+// таблица».
+//
+// Приведение нужно потому, что проводка называет таблицу С квалификатором схемы
+// (`kacho_iam.audit_outbox`, `public.compute_fga_register_outbox`), а миграция —
+// как придётся: та же таблица службы вычислений заведена без схемы вовсе.
+// Сравнение полных имён объявило бы находкой каждую очередь, чьи два места
+// написаны по-разному.
+func wiringByServiceAndTable(inv outboxInventory) (drained, observed map[string]bool, observedFull map[string]string) {
+	drained = map[string]bool{}
+	observed = map[string]bool{}
+	observedFull = map[string]string{}
+	for table, coords := range inv.drained {
+		for _, c := range coords {
+			drained[coordService(c)+"/"+bareTableName(table)] = true
+		}
+	}
+	for table, coords := range inv.observed {
+		for _, c := range coords {
+			key := coordService(c) + "/" + bareTableName(table)
+			observed[key] = true
+			observedFull[key] = table
+		}
+	}
+	return drained, observed, observedFull
+}
+
+// coordService — служба из координаты проводки («служба:путь»).
+func coordService(coord string) string {
+	if i := strings.Index(coord, ":"); i >= 0 {
+		return coord[:i]
+	}
+	return coord
+}
+
+// deliveryColumnInventory — таблицы с колонками доставки и собственные операторы
+// движения, по всем службам дерева.
+//
+// Состав берётся У ИНДЕКСА репозитория, а не обходом диска: под services/ на
+// машине, где поднимали стенд, лежат распаковки чартов и отчёты прогонов, и
+// обход по диску судил бы дерево, которого в репозитории нет.
+func deliveryColumnInventory(t *testing.T, root string) (decls []deliveryColumnDecl, advancers map[string][]string, filesRead int) {
+	t.Helper()
+	advancers = map[string][]string{}
+
+	servicesDir := filepath.Join(root, "services")
+	entries, err := os.ReadDir(servicesDir)
+	if err != nil {
+		t.Fatalf("читаю %s: %v", servicesDir, err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		svc := e.Name()
+		migDir := filepath.Join(servicesDir, svc, "internal", "migrations")
+		sqls, serr := treecorpus.UnderWithSuffix(migDir, ".sql")
+		if serr != nil {
+			// Служба без каталога миграций — законный случай, а не отказ.
+			sqls = nil
+		}
+		sort.Strings(sqls) // имя миграции начинается с версии ⇒ лексикографический порядок = порядок применения
+		sources := make([]rawMigration, 0, len(sqls))
+		for _, path := range sqls {
+			body, rerr := os.ReadFile(path)
+			if rerr != nil {
+				t.Fatalf("чтение %s: %v", path, rerr)
+			}
+			filesRead++
+			rel, _ := filepath.Rel(root, path)
+			sources = append(sources, rawMigration{path: rel, body: string(body)})
+		}
+		decls = append(decls, deliveryColumnDeclsInRaw(svc, sources)...)
+
+		goFiles := map[string]string{}
+		for _, path := range goFilesUnder(t, filepath.Join(servicesDir, svc)) {
+			body, rerr := os.ReadFile(path)
+			if rerr != nil {
+				continue
+			}
+			rel, _ := filepath.Rel(root, path)
+			goFiles[rel] = string(body)
+		}
+		for table, coords := range goDeliveryAdvancersIn(goFiles) {
+			key := svc + "/" + table
+			advancers[key] = append(advancers[key], coords...)
+		}
+	}
+	return decls, advancers, filesRead
 }
