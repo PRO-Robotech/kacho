@@ -43,7 +43,13 @@ export function StepUpModal() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pendingRef = useRef<PendingRequest | null>(null);
-  pendingRef.current = pending;
+  // Зеркало состояния пишется ПОСЛЕ отрисовки, а не во время неё. Присваивание
+  // прямо в теле компонента React считает записью во время рендера: при
+  // повторном проходе (строгий режим, прерванная отрисовка) зеркало разъедется
+  // с состоянием, и обработчик, читающий его, увидит чужой запрос.
+  useEffect(() => {
+    pendingRef.current = pending;
+  }, [pending]);
 
   // Регистрируем обработчик.
   useEffect(() => {

@@ -41,9 +41,8 @@ import { jest } from "@jest/globals";
 import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { REGISTRY } from "@shared/lib/resource-registry";
+import { REGISTRY, applyFieldDefaults  } from "@shared/lib/resource-registry";
 import type { ArrayField, FormField } from "@shared/lib/form-schema";
-import { applyFieldDefaults } from "@shared/lib/resource-registry";
 import { ResourceFormBody, isFullWidthField } from "./ResourceFormBody";
 
 /** Ресурсы сети — все восемь. Перечень тот же, что у VPC_SCOPED_IDS модуля. */
@@ -330,7 +329,10 @@ describe("отказ живёт ровно столько, сколько его
     fields: [{ name: "id", label: "Идентификатор", type: "string", required: true }],
   } as unknown as typeof REGISTRY["route-tables"];
 
-  function Живая() {
+  // Имя латиницей: правило хуков признаёт компонентом только имя с заглавной
+  // ЛАТИНСКОЙ буквы, и при кириллическом считало вызов хука вызовом в обычной
+  // функции — то есть находкой на исправном коде.
+  function LiveForm() {
     const [obj, setObj] = useState<Record<string, unknown>>({ id: "" });
     return (
       <ResourceFormBody
@@ -347,13 +349,13 @@ describe("отказ живёт ровно столько, сколько его
   }
 
   it("не показывается, пока отправку не пробовали", () => {
-    render(вОболочке(<Живая />));
+    render(вОболочке(<LiveForm />));
 
     expect(screen.queryAllByRole("alert")).toHaveLength(0);
   });
 
   it("гаснет, как только поле поправили, — не дожидаясь второй отправки", () => {
-    render(вОболочке(<Живая />));
+    render(вОболочке(<LiveForm />));
     отправить();
     expect(отказУПоля("Идентификатор")).toBeDefined();
 

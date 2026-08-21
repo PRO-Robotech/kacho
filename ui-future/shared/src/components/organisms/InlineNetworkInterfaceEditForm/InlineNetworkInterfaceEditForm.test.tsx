@@ -142,8 +142,8 @@ describe("InlineNetworkInterfaceEditForm — черта", () => {
     expect(черта).toBeDefined();
 
     const позиция = (el: Element) => [...document.body.querySelectorAll("*")].indexOf(el);
-    expect(позиция(screen.getByText("Метки"))).toBeLessThan(позиция(черта!));
-    expect(позиция(черта!)).toBeLessThan(позиция(screen.getByText("Подсеть")));
+    expect(позиция(screen.getByText("Метки"))).toBeLessThan(позиция(черта));
+    expect(позиция(черта)).toBeLessThan(позиция(screen.getByText("Подсеть")));
   });
 });
 

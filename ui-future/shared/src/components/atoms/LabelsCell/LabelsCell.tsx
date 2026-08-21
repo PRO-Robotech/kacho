@@ -40,6 +40,21 @@ const CHIP: CSSProperties = {
   borderRadius: 7,
   overflow: "hidden",
   cursor: "pointer",
+  // Метка — КНОПКА: она совершает действие (кладёт машинную форму в буфер), и
+  // потому обязана быть достижима с клавиатуры. Прежде это был `span` с
+  // обработчиком клика — то есть действие, которого для клавиатуры не
+  // существовало вовсе.
+  //
+  // Собственное оформление кнопки снимается, чтобы вид не менялся: браузер
+  // приносит свою рамку, заливку, поля и выравнивание текста.
+  padding: 0,
+  margin: 0,
+  background: "none",
+  font: "inherit",
+  textAlign: "left",
+  appearance: "none",
+  // Шрифт объявляется ПОСЛЕ сброса: `font: inherit` выше перебил бы эти три
+  // строки, и метка потеряла бы моноширинность вместе с кеглем.
   fontFamily: "var(--font-mono)",
   fontSize: 10,
   lineHeight: 1,
@@ -113,8 +128,9 @@ export function LabelsCell({ labels, max = 4 }: Props) {
       {shown.map(([k, v]) => {
         const kv = `${k}=${v}`;
         return (
-          <span
+          <button
             key={k}
+            type="button"
             style={CHIP}
             onClick={(e) => copy(e, kv)}
             // Подсказка несёт то, что ляжет в буфер, — а туда идёт `ключ=значение`,
@@ -123,7 +139,7 @@ export function LabelsCell({ labels, max = 4 }: Props) {
           >
             <span style={KEY_PART}>{k}</span>
             <span style={VALUE_PART}>{v}</span>
-          </span>
+          </button>
         );
       })}
       {hiddenCount > 0 && <span style={COUNTER}>+{hiddenCount}</span>}

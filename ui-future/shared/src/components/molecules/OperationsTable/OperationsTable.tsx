@@ -273,6 +273,11 @@ export function OperationsTable({ rows, loading, showResourceKind, empty, hidden
       className="kc-table-fill"
       style={{ height: "100%", minHeight: 0, minWidth: 0 }}
       onMouseOver={showTitleWhenClipped}
+      // Тот же обработчик и на ФОКУС: подсказка объясняет, что значение в ячейке
+      // обрезано, — и человеку, ведущему фокус с клавиатуры, она нужна ровно так
+      // же, как ведущему указатель. Без этой строки обрезанное значение было бы
+      // нечитаемо для того, кто мышью не пользуется.
+      onFocus={showTitleWhenClipped}
     >
       <ConfigProvider theme={TABLE_EDGE_THEME}>
         <Table<Op>

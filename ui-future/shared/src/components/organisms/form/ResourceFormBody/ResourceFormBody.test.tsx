@@ -289,8 +289,8 @@ describe("ResourceFormBody — порядок полей один на все ф
     // Утверждается МЕСТО черты, а не её наличие: черта, уехавшая в конец формы,
     // тоже «есть», и ничего при этом не отделяет. Сравниваются позиции в DOM.
     const позиция = (el: Element) => [...container.querySelectorAll("*")].indexOf(el);
-    expect(позиция(screen.getByText("поле метки"))).toBeLessThan(позиция(черта!));
-    expect(позиция(черта!)).toBeLessThan(позиция(screen.getByText("поле сеть")));
+    expect(позиция(screen.getByText("поле метки"))).toBeLessThan(позиция(черта));
+    expect(позиция(черта)).toBeLessThan(позиция(screen.getByText("поле сеть")));
   });
 
   it("отделять нечего — черты нет: у ресурса только общие поля", () => {
@@ -321,7 +321,7 @@ describe("ResourceFormBody — порядок полей один на все ф
     const [черта] = formDividers(container);
     expect(черта).toBeDefined();
     const позиция = (el: Element) => [...container.querySelectorAll("*")].indexOf(el);
-    expect(позиция(screen.getByText("поле описание"))).toBeLessThan(позиция(черта!));
-    expect(позиция(черта!)).toBeLessThan(позиция(screen.getByText("поле тип")));
+    expect(позиция(screen.getByText("поле описание"))).toBeLessThan(позиция(черта));
+    expect(позиция(черта)).toBeLessThan(позиция(screen.getByText("поле тип")));
   });
 });

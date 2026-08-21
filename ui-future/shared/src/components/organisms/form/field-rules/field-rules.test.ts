@@ -97,7 +97,7 @@ describe("длина списка", () => {
       itemLabel: "адрес",
       itemFields: [str({ name: "value", label: "Адрес" })],
       ...over,
-    }) as FormField;
+    });
 
   it("слишком короткий список назван числом", () => {
     expect(checkField(arr({ minItems: 1, required: true }), [])).toBe(

@@ -11,6 +11,9 @@
 // бы при снятой тени и при оставленной одинаково.
 
 import { jest } from "@jest/globals";
+// Тип берётся статическим импортом, значение — динамическим ниже: у типа нет
+// побочных эффектов, поэтому подменять его вместе с модулем незачем.
+import type { Column as ColumnOf } from "./ResourceTable";
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ThemeConfig } from "antd";
@@ -49,7 +52,7 @@ jest.unstable_mockModule("antd", () => {
 
 const { ResourceTable } = await import("./ResourceTable");
 const { CELL_CLIP_CLASS, CELL_MAX_WIDTH, CELL_INSET } = await import("./cellClip");
-type Column<T> = import("./ResourceTable").Column<T>;
+type Column<T> = ColumnOf<T>;
 
 interface Row {
   id: string;

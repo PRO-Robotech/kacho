@@ -204,7 +204,7 @@ describe("InlineAddressPoolEditForm — черта", () => {
     expect(черта).toBeDefined();
 
     const позиция = (el: Element) => [...document.body.querySelectorAll("*")].indexOf(el);
-    expect(позиция(screen.getByText("Описание"))).toBeLessThan(позиция(черта!));
-    expect(позиция(черта!)).toBeLessThan(позиция(screen.getByText("Тип")));
+    expect(позиция(screen.getByText("Описание"))).toBeLessThan(позиция(черта));
+    expect(позиция(черта)).toBeLessThan(позиция(screen.getByText("Тип")));
   });
 });
