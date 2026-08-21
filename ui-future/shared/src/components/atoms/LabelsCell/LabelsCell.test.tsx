@@ -108,6 +108,37 @@ describe("LabelsCell", () => {
     }
   });
 
+  it("метка достижима с КЛАВИАТУРЫ: она кнопка, а не текст с обработчиком", async () => {
+    // Метка совершает действие — кладёт машинную форму в буфер. Пока она была
+    // `span` с обработчиком клика, этого действия для клавиатуры не
+    // существовало вовсе: элемент не получал фокус и не отвечал на Enter.
+    //
+    // Утверждается НАБЛЮДАЕМОЕ, а не имя тега: метка находится по своей роли
+    // (её видит и программа чтения с экрана), получает фокус и срабатывает по
+    // клавише. Проба, искавшая `button` по тегу, зеленела бы на кнопке,
+    // недостижимой из-за `tabIndex={-1}`.
+    render(<LabelsCell labels={{ env: "prod" }} />);
+
+    const метка = screen.getByRole("button", { name: /env/ });
+    метка.focus();
+    expect(метка).toHaveFocus();
+
+    fireEvent.keyDown(метка, { key: "Enter", code: "Enter" });
+    fireEvent.click(метка); // браузер порождает click по Enter на кнопке сам
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("env=prod"));
+  });
+
+  it("счётчик скрытых меток кнопкой НЕ является — он ничего не делает (близнец)", () => {
+    // Обратная сторона утверждения выше: роль кнопки принадлежит тому, что
+    // действует. Без этого близнеца «метка — кнопка» зеленело бы и на разметке,
+    // где кнопками объявлено всё подряд, включая нажимаемое впустую.
+    render(<LabelsCell labels={{ a: "1", b: "2", c: "3", d: "4", e: "5" }} />);
+
+    const счётчик = screen.getByText(/^\+\d+$/);
+    expect(счётчик.tagName.toLowerCase()).not.toBe("button");
+  });
+
   it("shows an error toast when copying fails", async () => {
     writeText.mockRejectedValueOnce(new Error("clipboard unavailable"));
 
