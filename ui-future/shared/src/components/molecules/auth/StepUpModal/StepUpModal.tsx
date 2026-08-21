@@ -21,7 +21,7 @@
 //      replays original request.
 //   4. На cancel → reject (handler error) → apiClient throws StepUpRequiredError.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal, Button, Alert, Space, Typography } from "antd";
 import { SafetyOutlined, KeyOutlined } from "@ant-design/icons";
 import { useAuth } from "@shared/contexts/AuthContext";
@@ -42,14 +42,6 @@ export function StepUpModal() {
   const [pending, setPending] = useState<PendingRequest | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const pendingRef = useRef<PendingRequest | null>(null);
-  // Зеркало состояния пишется ПОСЛЕ отрисовки, а не во время неё. Присваивание
-  // прямо в теле компонента React считает записью во время рендера: при
-  // повторном проходе (строгий режим, прерванная отрисовка) зеркало разъедется
-  // с состоянием, и обработчик, читающий его, увидит чужой запрос.
-  useEffect(() => {
-    pendingRef.current = pending;
-  }, [pending]);
 
   // Регистрируем обработчик.
   useEffect(() => {
