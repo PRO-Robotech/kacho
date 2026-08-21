@@ -361,6 +361,28 @@ type Config struct {
 	// JWKSFetchTimeout — таймаут на single JWKS fetch (sec).
 	JWKSFetchTimeoutSeconds int `envconfig:"KACHO_JWKS_FETCH_TIMEOUT_SECONDS" default:"5"`
 
+	// IdempotencyStoreKind — где живут записи однократности `Idempotency-Key`:
+	// "memory" (в памяти процесса) либо "postgres" (общее хранилище флота).
+	//
+	// В памяти — законно РОВНО для флота из одной реплики: повтор, попавший в
+	// соседний под, записи не находит и уходит к downstream. Пару «вид хранилища
+	// ↔ FleetSize» сверяет отказ в старте
+	// (cmd/api-gateway/idempotency_validation.go), поэтому объявление посадки и
+	// объявление процесса больше не могут разойтись молча (#694).
+	IdempotencyStoreKind string `envconfig:"KACHO_IDEMPOTENCY_STORE" default:"memory"`
+
+	// IdempotencyDSN — адрес общего хранилища однократности. Задаётся ЯВНО:
+	// производить его из адреса соседа запрещено — такой адрес всегда непуст,
+	// поэтому хранилище выглядело бы настроенным и вело в никуда.
+	IdempotencyDSN string `envconfig:"KACHO_IDEMPOTENCY_DSN" default:""`
+
+	// FleetSize — верхняя граница числа реплик края, объявленная профилем
+	// посадки: максимум автомасштабирования, если оно включено, иначе число
+	// реплик развёртывания. Рендерится чартом ИЗ ТОГО ЖЕ значения, что питает
+	// автомасштабирование, — иначе это было бы второе объявление об одном
+	// предмете, а расходятся такие пары молча.
+	FleetSize int `envconfig:"KACHO_GATEWAY_FLEET_SIZE" default:"1"`
+
 	// DPoPReplayCacheSize — LRU capacity для DPoP-replay (entries).
 	DPoPReplayCacheSize int `envconfig:"KACHO_DPOP_REPLAY_CACHE_SIZE" default:"100000"`
 

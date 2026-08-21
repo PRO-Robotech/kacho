@@ -733,8 +733,26 @@ func main() {
 
 	httpMux.Handle("/", restHandler)
 
-	// Idempotency-Key store: in-memory, bounded, с TTL.
-	idempStore := middleware.NewIdempotencyStore(middleware.IdempotencyTTL)
+	// Хранилище однократности `Idempotency-Key`.
+	//
+	// ДОМЕН ПАРАЛЛЕЛИЗМА ГАРАНТИИ — ФЛОТ, А НЕ ПРОЦЕСС (#694). Хранилище в
+	// памяти процесса законно ровно для одной реплики; пару «вид хранилища ↔
+	// объявленный размер флота» сверяет отказ в старте ниже, а чарт рендерит
+	// размер флота из того же значения, что питает автомасштабирование.
+	if pairErr := validateIdempotencyFleetPairing(IdempotencyPairing{
+		StoreKind: cfg.IdempotencyStoreKind,
+		DSN:       cfg.IdempotencyDSN,
+		FleetSize: cfg.FleetSize,
+	}); pairErr != nil {
+		log.Fatalf("idempotency store startup-validation: %v", pairErr)
+	}
+	idempStore, idempCloser, idempErr := buildIdempotencyStore(context.Background(), cfg, logger)
+	if idempErr != nil {
+		log.Fatalf("idempotency store: %v", idempErr)
+	}
+	if idempCloser != nil {
+		defer func() { _ = idempCloser.Close() }()
+	}
 
 	// Build the HTTP chain. The DPoP middleware sits between the
 	// legacy auth-interceptor and the access-log: legacy fills principal

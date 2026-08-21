@@ -226,7 +226,8 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 	./services/iam/internal/apps/kacho/api/user \
 	./services/iam/internal/authzmap \
 	./services/iam/internal/service \
-	./services/iam/internal/testsupport/accesssnapshot
+	./services/iam/internal/testsupport/accesssnapshot \
+	./gateway/internal/idempotencypg
 
 # ─── Хуки git ────────────────────────────────────────────────────────────────
 #
