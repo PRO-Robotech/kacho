@@ -61,8 +61,13 @@ Kachō API Gateway конфигурируется через переменны�
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHN&#95;DEV&#95;SECRET</code></td><td><em>(пусто)</em></td><td>HMAC-секрет для dev-JWT (только режим <code>dev</code>)</td></tr>
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;AUTHN&#95;ENABLE&#95;DPOP</code></td><td><code>false</code></td><td>Включить проверку DPoP-proof (RFC 9449)</td></tr>
     <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;KRATOS&#95;PUBLIC&#95;URL</code></td><td>kratos-public svc</td><td>Ory Kratos public API для session-cookie SPA (<code>disabled</code> — выключить)</td></tr>
-    <tr><td><code>KACHO&#95;HYDRA&#95;ISSUER</code></td><td><em>(derived)</em></td><td>Issuer JWT (проверка <code>iss</code>)</td></tr>
-    <tr><td><code>KACHO&#95;HYDRA&#95;JWKS&#95;URL</code></td><td><em>(derived)</em></td><td>URL JWKS для проверки подписи</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;TOKEN&#95;ISSUERS</code></td><td><em>(не объявлено)</em></td><td>Принимаемые издатели через запятую. <strong>Не объявлено</strong> — строится одна запись из <code>KACHO&#95;HYDRA&#95;ISSUER</code>/<code>&#95;JWKS&#95;URL</code>. <strong>Объявлено, но элементов ноль</strong> (<code>","</code>, пробелы) — отказ в старте: пустой перечень означает «принимаем любого издателя». Задать вместе с прежним скалярным пином — тоже отказ в старте</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;TOKEN&#95;ISSUER&#95;KEYSETS</code></td><td><em>(пусто)</em></td><td>Привязка «издатель=адрес его набора ключей». Адрес <strong>объявляется</strong> и никогда не выводится из издателя: издатель приходит от предъявителя. Издатель без записи — отказ в старте; запись без принимающего её издателя — тоже</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;PLATFORM&#95;TOKEN&#95;ISSUER</code></td><td><em>(пусто)</em></td><td>Издатель, под которым чеканит платформа. Выбирает полосу приёма: строгий тип <code>at+jwt</code> и чтение отзыва на предъявлении. Пусто — своя чеканка не принимается</td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;PLATFORM&#95;TOKEN&#95;REVOCATION&#95;URL</code></td><td><em>(пусто)</em></td><td>Наш авторитет отзыва (RFC 7662). Обязателен, когда принимается наш издатель. На этой полосе «авторитет не ответил» означает <strong>отказ</strong></td></tr>
+    <tr><td><code>KACHO&#95;API&#95;GATEWAY&#95;PLATFORM&#95;TOKEN&#95;REVOCATION&#95;CA&#95;FILE</code></td><td><em>(пусто)</em></td><td>Якорь доверия хопа к авторитету отзыва. По хопу едет предъявленный токен. Нечитаемая связка — отказ в старте</td></tr>
+    <tr><td><code>KACHO&#95;HYDRA&#95;ISSUER</code></td><td><em>(derived)</em></td><td>Прежний скалярный пин издателя. Действует, только пока <code>&#95;TOKEN&#95;ISSUERS</code> не объявлен</td></tr>
+    <tr><td><code>KACHO&#95;HYDRA&#95;JWKS&#95;URL</code></td><td><em>(derived)</em></td><td>Прежний скалярный адрес набора. Та же оговорка</td></tr>
     <tr><td><code>KACHO&#95;HYDRA&#95;INTROSPECTION&#95;URL</code> / <code>&#95;ADMIN&#95;URL</code></td><td><em>(пусто)</em></td><td>OAuth2-интроспекция / admin-API Hydra</td></tr>
     <tr><td><code>KACHO&#95;JWKS&#95;CACHE&#95;TTL&#95;SECONDS</code></td><td><code>300</code></td><td>TTL кэша JWKS</td></tr>
     <tr><td><code>KACHO&#95;JWT&#95;CLOCK&#95;SKEW&#95;SECONDS</code></td><td><code>30</code></td><td>Допуск на рассинхрон часов при проверке <code>exp</code>/<code>nbf</code></td></tr>
@@ -145,8 +150,15 @@ listener'е ровно тогда, когда включён `MTLS&#95;ENABLE` �
     # AuthN — production Hydra + DPoP
     KACHO_API_GATEWAY_AUTHN_MODE: production-strict
     KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP: "true"
-    KACHO_HYDRA_ISSUER: https://auth.kacho.cloud/
-    KACHO_HYDRA_JWKS_URL: https://auth.kacho.cloud/.well-known/jwks.json
+    # Издатель — МНОЖЕСТВО: платформа чеканит свои токены сама, прежний издатель
+    # на переходе остаётся, и у каждого СВОЯ запись источника ключей. Один набор
+    # на двоих означал бы, что ключ одного проверяет токен другого.
+    KACHO_API_GATEWAY_TOKEN_ISSUERS: "https://iam.kacho.local,https://auth.kacho.cloud"
+    KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS: "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://auth.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER: "https://iam.kacho.local"
+    KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL: "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+    # Прежний скалярный пин при этом СНЯТ: два объявления об одном предмете дают
+    # отказ в старте, а не молчаливое старшинство.
 
     # AuthZ — включён, fail-closed
     KACHO_API_GATEWAY_AUTHZ_ENABLED: "true"

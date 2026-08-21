@@ -11,8 +11,13 @@ public-vs-internal.
 
 ## Что делает gateway
 
-- **AuthN.** Bearer-JWT, выпущенный Ory Hydra (RS256/ES256/EdDSA, проверка по JWKS:
-  alg-whitelist, iss/aud/exp/nbf, ротация ключей по kid); sender-constrained токены
+- **AuthN.** Bearer-JWT (RS256/ES256/EdDSA, проверка по JWKS: alg-whitelist,
+  iss/aud/typ/exp/nbf, обязательный срок, ротация ключей по kid). Издатель —
+  **множество**: платформа чеканит свои токены сама, прежний издатель на переходе
+  остаётся, и у каждого принимаемого издателя **своя** объявленная запись
+  источника ключей — ключ одного не проверяет токен, объявляющий другого. Отзыв
+  наших токенов читается у нас на пути запроса, и недоступность авторитета там
+  даёт отказ. Плюс sender-constrained токены
   **DPoP** (RFC 9449) и mTLS-bound (`cnf.x5t#S256`); session-cookie Ory Kratos для SPA;
   HMAC-токены для локальной разработки. Невалидный токен → `401`, никогда не
   понижается до anonymous. В `production-strict` анонимный доступ запрещен.
@@ -100,7 +105,11 @@ Region/Zone, AddressPool, internal-проекции ресурсов) регис
 | `KACHO_API_GATEWAY_NLB_GRPC` | `kacho-nlb.kacho.svc:9090` | backend nlb |
 | `KACHO_API_GATEWAY_AUTHN_MODE` | `dev` | `dev` / `production` / `production-strict` |
 | `KACHO_API_GATEWAY_AUTHZ_ENABLED` | `false` | per-RPC authz-middleware |
-| `KACHO_HYDRA_ISSUER` | derived | issuer/JWKS для проверки JWT |
+| `KACHO_API_GATEWAY_TOKEN_ISSUERS` | не объявлено | принимаемые издатели через запятую; вырожденное значение — отказ в старте |
+| `KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS` | пусто | привязка «издатель=адрес его набора ключей»; адрес объявляется, не выводится |
+| `KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER` | пусто | наш издатель; выбирает строгую полосу приёма и чтение отзыва |
+| `KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL` | пусто | наш авторитет отзыва; обязателен при принимаемом нашем издателе |
+| `KACHO_HYDRA_ISSUER` | derived | прежний скалярный пин; действует, пока `_TOKEN_ISSUERS` не объявлен |
 
 В production-окружении (`KACHO_APP_ENV=production`) gateway **отказывается стартовать**
 при authz-disabled / fail-open / неproduction-режиме authN — secure-by-default.
