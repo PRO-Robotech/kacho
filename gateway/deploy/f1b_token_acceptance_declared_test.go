@@ -186,13 +186,18 @@ func TestF1b_DeclaringProfilesAcceptOurIssuerWithARecordAndAnAuthority(t *testin
 	}
 }
 
-// TestF1b_DeclaringProfilesAgreeWithTheSecondVerifierConfiguration — обе
+// TestF1b_BothVerifierConfigurationsInOneProfileNameOnePlatform — обе
 // конфигурации проверяющего в ОДНОМ профиле говорят об одной платформе.
+//
+// Имя не называет «первую» или «вторую» намеренно: опорной здесь нет, тело
+// сверяет обе, и порядковое имя читалось бы как утверждение о том, чьё значение
+// правильное. Нумерация конфигураций назначена заголовком пакета записи приёма
+// на крае; здесь она не нужна вовсе.
 //
 // Расхождение здесь означало бы два места об одном предмете: край принимал бы
 // одного издателя, плоскость данных другого, и обнаружилось бы это не при
 // старте, а на живом токене.
-func TestF1b_DeclaringProfilesAgreeWithTheSecondVerifierConfiguration(t *testing.T) {
+func TestF1b_BothVerifierConfigurationsInOneProfileNameOnePlatform(t *testing.T) {
 	dir := filepath.Join("..", "..", "deploy", "helm", "umbrella")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
