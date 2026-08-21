@@ -321,8 +321,40 @@ type AccessBinding struct {
 	//
 	// Truncated to seconds (api-conventions).
 	MaterializedAt *timestamppb.Timestamp `protobuf:"bytes,23,opt,name=materialized_at,json=materializedAt,proto3" json:"materialized_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// OUTPUT-ONLY. ВТОРАЯ ФОРМА выдачи: имя отношения модели прав, выдаваемое
+	// напрямую на области выдачи. Взаимоисключающе с `role_id` — ровно одно из
+	// двух непусто.
+	//
+	// ЗАЧЕМ она есть. Роль раздаёт ГЛАГОЛЫ (`v_get`…`v_delete`) через свои правила,
+	// а встроенные права платформы выражены ИМЕНОВАННЫМИ отношениями
+	// (`system_viewer` — чтение внутренней поверхности служебной учёткой,
+	// `quota_reader` — чтение действующих пределов, `viewer` на кластере —
+	// публичное чтение глобального справочника размещения). Подобрать роль под
+	// каждое означало бы завести роли с пустыми правилами, то есть форму без
+	// содержания.
+	//
+	// Непусто ТОЛЬКО у системной выдачи (`system = true`). На вход создания это
+	// поле НЕ принимается: его нет ни в одном запросе, поэтому «принято и
+	// проигнорировано» здесь невозможно by construction — отношение это внутреннее
+	// имя, от которого зависит решение о доступе, и выдавать его вправе только
+	// платформа.
+	GrantedRelation string `protobuf:"bytes,24,opt,name=granted_relation,json=grantedRelation,proto3" json:"granted_relation,omitempty"`
+	// OUTPUT-ONLY. Выдача заведена ПЛАТФОРМОЙ: встроенный доступ, который прежде
+	// существовал помимо этой поверхности (права служебных учёток, публичное
+	// чтение справочников). Такая выдача видна перечислением наравне с обычной и
+	// отзывается штатно — снять защиту от удаления правкой, затем удалить.
+	//
+	// У неё пуст `granted_by_user_id`, и это не пробел аудита, а его содержание:
+	// выдал не человек, а платформа, и признак `system` отвечает на вопрос «кто
+	// выдал» точнее, чем любая подставленная учётка.
+	//
+	// Субъектом такой выдачи может быть подстановка «любой аутентифицированный»
+	// (`subject_type = "user"`, `subject_id = "*"`) — единственный субъект, которого
+	// нельзя ни назвать, ни отозвать поимённо, поэтому у обычной выдачи он
+	// отвергается.
+	System        bool `protobuf:"varint,25,opt,name=system,proto3" json:"system,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AccessBinding) Reset() {
@@ -472,6 +504,20 @@ func (x *AccessBinding) GetMaterializedAt() *timestamppb.Timestamp {
 		return x.MaterializedAt
 	}
 	return nil
+}
+
+func (x *AccessBinding) GetGrantedRelation() string {
+	if x != nil {
+		return x.GrantedRelation
+	}
+	return ""
+}
+
+func (x *AccessBinding) GetSystem() bool {
+	if x != nil {
+		return x.System
+	}
+	return false
 }
 
 // AccessTarget selects which objects, under the binding's scope-anchor, the grant
@@ -935,7 +981,7 @@ var File_kacho_cloud_iam_v1_access_binding_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/iam/v1/access_binding.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a*kacho/cloud/iam/v1/authorize_service.proto\"\xe8\b\n" +
+	"'kacho/cloud/iam/v1/access_binding.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a*kacho/cloud/iam/v1/authorize_service.proto\"\xab\t\n" +
 	"\rAccessBinding\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fsubject_type\x18\x02 \x01(\tR\vsubjectType\x12\x1d\n" +
@@ -959,7 +1005,9 @@ const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\x13deletion_protection\x18\x14 \x01(\bR\x12deletionProtection\x12E\n" +
 	"\x06labels\x18\x15 \x03(\v2-.kacho.cloud.iam.v1.AccessBinding.LabelsEntryR\x06labels\x128\n" +
 	"\x06target\x18\x16 \x01(\v2 .kacho.cloud.iam.v1.AccessTargetR\x06target\x12C\n" +
-	"\x0fmaterialized_at\x18\x17 \x01(\v2\x1a.google.protobuf.TimestampR\x0ematerializedAt\x1a9\n" +
+	"\x0fmaterialized_at\x18\x17 \x01(\v2\x1a.google.protobuf.TimestampR\x0ematerializedAt\x12)\n" +
+	"\x10granted_relation\x18\x18 \x01(\tR\x0fgrantedRelation\x12\x16\n" +
+	"\x06system\x18\x19 \x01(\bR\x06system\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"F\n" +

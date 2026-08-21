@@ -129,9 +129,9 @@ const file_kacho_cloud_quota_v1_identity_quota_service_proto_rawDesc = "" +
 	"1kacho/cloud/quota/v1/identity_quota_service.proto\x12\x14kacho.cloud.quota.v1\x1a\x1cgoogle/api/annotations.proto\x1a kacho/cloud/quota/v1/quota.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x1b\n" +
 	"\x19ListIdentityQuotasRequest\"Q\n" +
 	"\x1aListIdentityQuotasResponse\x123\n" +
-	"\x06quotas\x18\x01 \x03(\v2\x1b.kacho.cloud.quota.v1.QuotaR\x06quotas2\xab\x01\n" +
-	"\x14IdentityQuotaService\x12\x92\x01\n" +
-	"\x04List\x12/.kacho.cloud.quota.v1.ListIdentityQuotasRequest\x1a0.kacho.cloud.quota.v1.ListIdentityQuotasResponse\"'\x8a\xb5\x18\b<exempt>\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x10\x12\x0e/iam/v1/quotasBDZBgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1;quotav1b\x06proto3"
+	"\x06quotas\x18\x01 \x03(\v2\x1b.kacho.cloud.quota.v1.QuotaR\x06quotas2\xbb\x01\n" +
+	"\x14IdentityQuotaService\x12\xa2\x01\n" +
+	"\x04List\x12/.kacho.cloud.quota.v1.ListIdentityQuotasRequest\x1a0.kacho.cloud.quota.v1.ListIdentityQuotasResponse\"7\x8a\xb5\x18\b<exempt>\xa2\xb5\x18\x011\xba\xb5\x18\fSELF_SERVICE\x82\xd3\xe4\x93\x02\x10\x12\x0e/iam/v1/quotasBDZBgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/quota/v1;quotav1b\x06proto3"
 
 var (
 	file_kacho_cloud_quota_v1_identity_quota_service_proto_rawDescOnce sync.Once

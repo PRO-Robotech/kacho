@@ -375,9 +375,10 @@ const file_kacho_cloud_iam_v1_permission_catalog_service_proto_rawDesc = "" +
 	"\x10label_selectable\x18\x04 \x01(\bR\x0flabelSelectable\"\xa1\x01\n" +
 	"\x0eWildcardPolicy\x12?\n" +
 	"\x1cverb_wildcard_allowed_custom\x18\x01 \x01(\bR\x19verbWildcardAllowedCustom\x12N\n" +
-	"$module_resource_wildcard_system_only\x18\x02 \x01(\bR moduleResourceWildcardSystemOnly2\xc8\x01\n" +
-	"\x18PermissionCatalogService\x12\xab\x01\n" +
-	"\x15ListPermissionCatalog\x120.kacho.cloud.iam.v1.ListPermissionCatalogRequest\x1a1.kacho.cloud.iam.v1.ListPermissionCatalogResponse\"-\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x1b\x12\x19/iam/v1/permissionCatalogB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"$module_resource_wildcard_system_only\x18\x02 \x01(\bR moduleResourceWildcardSystemOnly2\xf3\x01\n" +
+	"\x18PermissionCatalogService\x12\xd6\x01\n" +
+	"\x15ListPermissionCatalog\x120.kacho.cloud.iam.v1.ListPermissionCatalogRequest\x1a1.kacho.cloud.iam.v1.ListPermissionCatalogResponse\"X\x8a\xb5\x18\x14iam.permissions.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1b\x12\x19/iam/v1/permissionCatalogB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_permission_catalog_service_proto_rawDescOnce sync.Once

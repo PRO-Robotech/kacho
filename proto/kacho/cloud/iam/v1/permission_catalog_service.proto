@@ -49,12 +49,22 @@ service PermissionCatalogService {
   // (react-query).
   rpc ListPermissionCatalog (ListPermissionCatalogRequest) returns (ListPermissionCatalogResponse) {
     option (google.api.http) = { get: "/iam/v1/permissionCatalog" };
-    // Authenticated-floor (system_viewer-tier): the catalog is platform
-    // metadata common to every tenant — any authenticated principal may read
-    // it. Exempt at the api-gateway permission catalog (parity with the
-    // tenant-wide `RoleService.Get`/`List` reference reads); anonymous is still
-    // rejected fail-closed by the IAM anti-anonymous interceptor.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    // Authenticated-floor read: словарь прав — метаданные платформы, одинаковые
+    // для всякого арендатора. Пол выражен отношением `viewer` кластерного
+    // синглтона, которое производит СИСТЕМНАЯ ВЫДАЧА с подстановочным субъектом,
+    // — поэтому читает всякий аутентифицированный, а анонимный по-прежнему
+    // отвергается fail-closed анти-анонимным интерсептором iam.
+    //
+    // Прежде здесь стояла полоса `<exempt>`. Пол был тот же, а доступ — невидимый:
+    // освобождение не показывается перечислением выдач и закрывается только
+    // выкаткой (#893/#895).
+    option (kacho.iam.authz.v1.permission) = "iam.permissions.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

@@ -114,6 +114,13 @@ type AccessBindingServiceClient interface {
 	// resolved from the subject — so the edge has no object to check and declares
 	// `scope_filtered`. `subject_type ∈ {"user","service_account"}` for v1;
 	// malformed subject_id / prefix↔type mismatch → INVALID_ARGUMENT.
+	//
+	// ЧТО ЭТА ПРОЕКЦИЯ НЕ ЗАПОЛНЯЕТ — и это сказано, а не умолчано. Ответ строится
+	// по паре «выдача × роль», поэтому СИСТЕМНЫЕ выдачи в него не попадают: у них
+	// роли нет by construction — они выдают именованное отношение (`grantedRelation`).
+	// Пустой ответ для служебной учётки означает «роль ей не выдана», а НЕ «прав у
+	// неё нет»: встроенный доступ виден полным перечислением выдач (`List`), где
+	// такие строки помечены `system`.
 	ListSubjectPrivileges(ctx context.Context, in *ListSubjectPrivilegesRequest, opts ...grpc.CallOption) (*ListSubjectPrivilegesResponse, error)
 	// Lists the roles that are assignable on the specified resource.
 	// Sync read (NOT an Operation). Returns ONLY the roles that
@@ -430,6 +437,13 @@ type AccessBindingServiceServer interface {
 	// resolved from the subject — so the edge has no object to check and declares
 	// `scope_filtered`. `subject_type ∈ {"user","service_account"}` for v1;
 	// malformed subject_id / prefix↔type mismatch → INVALID_ARGUMENT.
+	//
+	// ЧТО ЭТА ПРОЕКЦИЯ НЕ ЗАПОЛНЯЕТ — и это сказано, а не умолчано. Ответ строится
+	// по паре «выдача × роль», поэтому СИСТЕМНЫЕ выдачи в него не попадают: у них
+	// роли нет by construction — они выдают именованное отношение (`grantedRelation`).
+	// Пустой ответ для служебной учётки означает «роль ей не выдана», а НЕ «прав у
+	// неё нет»: встроенный доступ виден полным перечислением выдач (`List`), где
+	// такие строки помечены `system`.
 	ListSubjectPrivileges(context.Context, *ListSubjectPrivilegesRequest) (*ListSubjectPrivilegesResponse, error)
 	// Lists the roles that are assignable on the specified resource.
 	// Sync read (NOT an Operation). Returns ONLY the roles that

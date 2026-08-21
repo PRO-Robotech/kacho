@@ -89,6 +89,7 @@ service InternalBootstrapTokenService {
     // client-certificate SAN allow-list enforced by authzguard.CallerPolicy on
     // :9091 — see the file-level comment.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 }
 
