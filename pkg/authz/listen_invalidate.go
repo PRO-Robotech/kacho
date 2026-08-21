@@ -41,6 +41,9 @@ type ListenInvalidator struct {
 }
 
 // Run блокирующий loop. Возвращается на ctx.Done() или fatal err.
+//
+// РЕПЛИКИ: на-реплику — петля обслуживает кэш СВОЕГО процесса: подписка будит сброс его записей.
+// Разведи её — и реплики без подписки продолжат отвечать по отозванному.
 func (li *ListenInvalidator) Run(ctx context.Context) error {
 	if li.Channel == "" {
 		li.Channel = "kacho_iam_subjects"
@@ -138,6 +141,9 @@ func sleepFor(ctx context.Context, d time.Duration) bool {
 // runOnce runs one connect+LISTEN+serve cycle. The bool reports whether the
 // subscription was established (LISTEN succeeded) before the returned error — the
 // reconnect loop uses it to reset the backoff after a healthy session.
+//
+// РЕПЛИКИ: на-реплику — одна сессия подписки того же процесса; см. довод у ListenInvalidator.Run.
+// Общего состояния не пишет — только читает уведомления и чистит свой кэш.
 func (li *ListenInvalidator) runOnce(ctx context.Context, logger *slog.Logger) (bool, error) {
 	conn, err := pgx.Connect(ctx, li.ConnString)
 	if err != nil {

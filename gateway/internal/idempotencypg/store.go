@@ -247,6 +247,9 @@ SELECT FALSE, done, status_code, content_type, body
 const reserveAttempts = 3
 
 // Reserve атомарно разрешает ключ ровно в один из трёх исходов.
+//
+// РЕПЛИКИ: запрос — петля принадлежит обслуживаемому запросу: она ждёт исход брони, взятой
+// другим вызывающим, и живёт ровно столько, сколько живёт этот запрос.
 func (s *Store) Reserve(ctx context.Context, key string) (middleware.IdempotencyReservation, error) {
 	owner, err := newLeaseOwner()
 	if err != nil {
@@ -357,6 +360,9 @@ func (s *Store) release(ctx context.Context, key, owner string) {
 //
 // Ждём УСЛОВИЕ, а не время: шаг опроса — цена вопроса, а выход из ожидания
 // определяют исход держателя, его смерть или бюджет вызывающего.
+//
+// РЕПЛИКИ: запрос — петля принадлежит обслуживаемому запросу и завершается по его исходу;
+// у каждой реплики свои запросы, общего состояния петля не двигает.
 func (s *Store) Await(ctx context.Context, res middleware.IdempotencyReservation) middleware.IdempotencyAwait {
 	const q = `
 SELECT done, status_code, content_type, body, lease_expires_at <= now() AS lease_dead
@@ -403,6 +409,11 @@ SELECT done, status_code, content_type, body, lease_expires_at <= now() AS lease
 
 // reapLoop уносит просроченные записи партиями. Без него хранилище росло бы без
 // границы: у ключа, предъявленного один раз, нет никого, кто пришёл бы его убрать.
+//
+// РЕПЛИКИ: на-реплику — уборка — один условный оператор `DELETE … WHERE expires_at <= now()`
+// с ограничением партии. Строки заперты самим оператором, поэтому вторая
+// реплика уносит только то, что осталось, а на пустой выборке не делает
+// ничего. Дубль стоит одного запроса к своей базе и ни одного к соседям.
 func (s *Store) reapLoop() {
 	defer close(s.stopped)
 	t := time.NewTicker(s.cfg.ReapInterval)

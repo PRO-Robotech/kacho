@@ -42,6 +42,10 @@ const redriveInterval = 5 * time.Minute
 // corelib-фиксированный payload, который декодер storage не прочитает. Оговорка
 // пережила свой предмет — оба прохода сняты из corelib (#760), их предикаты
 // были недостижимы by construction.
+//
+// РЕПЛИКИ: на-реплику — проход — один условный оператор возврата отравленных строк.
+// Строки заперты самим оператором, повтор идемпотентен, к соседям проход
+// не ходит; вторая реплика приводит к тому же состоянию.
 func startRedriveBackstop(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error {
 	rc, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
 		PartitionColumn: reconciler.RegisterOutboxPartition,

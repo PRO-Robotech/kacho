@@ -76,6 +76,10 @@ func startBackstop(ctx context.Context, pool *pgxpool.Pool, rec metrics.Recorder
 // construction — намерение пишется в очередь В ТОЙ ЖЕ транзакции, что и строка
 // ресурса, — а адаптер, который никто не звал, был живым с виду механизмом,
 // которого нет. Вместе с ними снят и адаптер этого сервиса.
+//
+// РЕПЛИКИ: на-реплику — проход — один условный оператор возврата отравленных строк.
+// Строки заперты самим оператором, повтор идемпотентен, к соседям проход
+// не ходит; вторая реплика приводит к тому же состоянию.
 func runReconciler(ctx context.Context, rc *reconciler.Reconciler, logger *slog.Logger) {
 	const interval = 5 * time.Minute
 	tick := time.NewTicker(interval)

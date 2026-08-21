@@ -71,6 +71,9 @@ func OnAborted(ctx context.Context, fn func(ctx context.Context) error) error {
 
 // OnCodes — retry если grpc-status попадает в один из перечисленных кодов.
 // Любой другой error (включая ctx-cancel) — fail-fast.
+//
+// РЕПЛИКИ: запрос — петля принадлежит ОДНОМУ вызову соседа: это его повтор с отсрочкой,
+// завершающийся по исходу. Общего состояния не трогает.
 func OnCodes(ctx context.Context, fn func(ctx context.Context) error, retryCodes ...codes.Code) error {
 	bo := cbackoff.ExponentialBackoffBuilder().
 		WithInitialInterval(Defaults.InitialInterval).

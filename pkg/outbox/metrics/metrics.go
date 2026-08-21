@@ -423,6 +423,10 @@ func (c *Collector) scanDirections(ctx context.Context) error {
 // Run scans on c.cfg.Interval until ctx is cancelled. Scan errors are returned
 // to the caller's logger via the optional onErr callback (nil → swallowed; the
 // loop never dies on a transient scan error). Run blocks until ctx.Done().
+//
+// РЕПЛИКИ: на-реплику — проход только ЧИТАЕТ счётчики очереди и публикует их как показания
+// своего процесса. Реплики публикуют одну и ту же величину под своими
+// метками — это и есть штатная форма показания, а не дубль работы.
 func (c *Collector) Run(ctx context.Context, onErr func(error)) {
 	tick := time.NewTicker(c.cfg.Interval)
 	defer tick.Stop()

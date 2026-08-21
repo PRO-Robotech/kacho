@@ -159,6 +159,10 @@ func NewFreeIPRunner(pool *pgxpool.Pool, addrs vpcclient.InternalAddressClient, 
 // Run блокирует goroutine до отмены ctx. Каждые r.interval — tick reconcile;
 // транзиентные ошибки логируются и НЕ завершают Run (continue). Возврат nil
 // после ctx.Done — штатное завершение.
+//
+// РЕПЛИКИ: клейм — застрявшие строки берутся клеймом `FOR UPDATE SKIP LOCKED`, поэтому
+// репликам достаются непересекающиеся строки, а отравленная изолируется
+// сдвигом отметки времени, а не блокировкой очереди.
 func (r *FreeIPRunner) Run(ctx context.Context) error {
 	r.logger.InfoContext(ctx, "free_ip_runner started",
 		"interval", r.interval, "age_threshold", r.ageThreshold, "vpc_configured", r.addrs != nil)

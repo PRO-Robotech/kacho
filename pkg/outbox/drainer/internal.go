@@ -108,6 +108,10 @@ func sleepFor(ctx context.Context, d time.Duration) bool {
 // The bool reports whether the subscription was established (LISTEN succeeded)
 // before the returned error — reconnectLoop uses it to reset the backoff after a
 // healthy session.
+//
+// РЕПЛИКИ: на-реплику — подписка будит дренаж СВОЕГО процесса и ничего не пишет. Развод здесь
+// не нужен и вреден: неразбуженная реплика перестала бы дренажить вовсе,
+// а разводит очередь клейм (см. Drainer.Run).
 func (d *Drainer[T]) listenOnce(ctx context.Context, wakeup chan<- struct{}) (bool, error) {
 	// Hijack — берем conn из pool и забираем владение (pool больше его не recycle'ит).
 	// Это нужно потому, что LISTEN живет на одном connection и его нельзя
@@ -400,6 +404,9 @@ func truncErr(s string) string {
 //     ApplyTimeout-grace (см. processRowInTx).
 //
 // Все ошибки логируются; функция не возвращает err — drainer-loop устойчив.
+//
+// РЕПЛИКИ: клейм — партия уже взята клеймом с пропуском занятых, поэтому её строки
+// принадлежат только этой реплике; петля отсрочки внутри партии их не делит.
 func (d *Drainer[T]) drainBatch(ctx context.Context) {
 	d.maybeReportWedge(ctx)
 	iter := 0

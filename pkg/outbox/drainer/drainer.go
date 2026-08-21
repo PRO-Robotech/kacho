@@ -494,6 +494,10 @@ func New[T any](
 //     на in-flight apply), exits.
 //
 // Возвращает nil при clean shutdown.
+//
+// РЕПЛИКИ: клейм — строки берутся клеймом `FOR UPDATE SKIP LOCKED` по голове партиции,
+// поэтому репликам достаются непересекающиеся партии, а порядок внутри
+// партиции держится даже между партиями и репликами.
 func (d *Drainer[T]) Run(ctx context.Context) error {
 	// Wake-up signal channel — listenLoop signals on NOTIFY, processLoop consumes.
 	// Buffered: один сигнал «есть работа», даже если processLoop в данный

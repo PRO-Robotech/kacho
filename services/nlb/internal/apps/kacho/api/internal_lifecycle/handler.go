@@ -96,6 +96,9 @@ func NewHandler(feed kachorepo.LifecycleFeed, maxStreams int, log *slog.Logger) 
 //   - Все слоты semaphore заняты: ResourceExhausted (быстрый fail, не блок).
 //   - Неизвестный kind в request: InvalidArgument (sync, до acquire слота).
 //   - Невалидный resume_from_event_id: InvalidArgument (sync).
+//
+// РЕПЛИКИ: запрос — петля обслуживает ОДИН поток клиента и живёт ровно столько, сколько
+// живёт его подписка. Каждая реплика ведёт свои потоки — дубля нет.
 func (h *Handler) Subscribe(
 	req *lbv1.SubscribeRequest,
 	stream lbv1.InternalResourceLifecycleService_SubscribeServer,
