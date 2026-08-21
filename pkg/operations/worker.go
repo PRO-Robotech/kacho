@@ -540,6 +540,9 @@ var errWorkerPanic = errors.New("operations: worker panic")
 // terminalWrite — durable терминальная запись: retry+backoff на transient DB-
 // сбое, no-swallow при исчерпании budget (метрика + ERROR-лог), идемпотентность
 // (ErrAlreadyDone → no-op: строку уже разрешил Cancel/reconciler).
+//
+// РЕПЛИКИ: запрос — петля принадлежит ОДНОЙ операции: это повтор её терминальной записи с
+// отсрочкой, завершающийся по исходу. Запись условная и идемпотентная.
 func (w *Worker) terminalWrite(repo Repo, opID, opName string, write func(context.Context) error) {
 	bo := backoff.ExponentialBackoffBuilder().
 		WithInitialInterval(w.tw.InitialInterval).
@@ -732,6 +735,10 @@ func (w *Worker) claimRec() ClaimRecorder {
 //
 // Исчерпание бюджета — НЕ «разрешено»: вызывающий обязан отказаться от
 // исполнения (fail-closed).
+//
+// РЕПЛИКИ: запрос — петля принадлежит ОДНОЙ операции: это повтор её клейма с отсрочкой.
+// Сам клейм и есть механизм развода — исход `live=false` означает, что
+// операцию уже исполняет кто-то другой.
 func (w *Worker) claimExecution(ctx context.Context, claimer executionClaimer, opID string) (bool, error) {
 	bo := backoff.ExponentialBackoffBuilder().
 		WithInitialInterval(w.tw.InitialInterval).

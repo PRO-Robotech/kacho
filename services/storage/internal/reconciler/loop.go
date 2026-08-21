@@ -40,6 +40,14 @@ type Counts struct {
 	// Leaked — объекты у бэкенда, которым не соответствует ни одна наша строка.
 	// Сверщик их НЕ удаляет: снос чужих данных по собственному выводу необратим.
 	Leaked int
+	// Skipped — виды, проход по которым взяла другая реплика. Штатный исход, а
+	// не отказ; считается отдельно, чтобы «нас развели» не сливалось ни с
+	// «работы не было», ни с «проход отказал».
+	Skipped int
+	// Overtaken — условная запись исхода не применилась: строку правомерно увёл
+	// другой путь (арендатор удалил ресурс между наблюдением и записью). Тоже
+	// штатный исход и тоже считается отдельно от Failed.
+	Overtaken int
 }
 
 // Reconciler доводит намерение до плоскости данных и возвращает наблюдение обратно.
@@ -96,6 +104,9 @@ func New(store *Store, opener Opener, cfg Config) *Reconciler {
 }
 
 // Run крутит сверку до отмены контекста.
+//
+// РЕПЛИКИ: одиночка — проход по каждому виду ресурса берёт одна реплика замком
+// прохода в базе сервиса (Store.TryClaimKindPass); проигравший считает Skipped.
 func (r *Reconciler) Run(ctx context.Context) {
 	t := time.NewTicker(r.interval)
 	defer t.Stop()
@@ -110,28 +121,55 @@ func (r *Reconciler) Run(ctx context.Context) {
 			r.logger.InfoContext(ctx, "storage reconcile pass",
 				"scanned", c.Scanned, "provision", c.Provision, "resize", c.Resize,
 				"remove", c.Remove, "forget", c.Forget, "confirm", c.Confirm,
-				"vanished", c.Vanished, "waited", c.Waited, "failed", c.Failed)
+				"vanished", c.Vanished, "waited", c.Waited, "failed", c.Failed,
+				"skipped", c.Skipped, "overtaken", c.Overtaken)
 		}
 	}
 }
 
 // Once делает один проход по всем видам ресурсов.
+//
+// Каждый вид берётся замком прохода ОТДЕЛЬНО: вид — естественный ключ разбиения
+// (таблицы разные, строки не пересекаются), поэтому три вида могут идти в трёх
+// репликах одновременно, а один вид — ровно в одной.
 func (r *Reconciler) Once(ctx context.Context) Counts {
 	var total Counts
 	for _, kind := range AllKinds() {
-		rows, err := r.store.Drifted(ctx, kind, r.batch)
-		if err != nil {
-			r.logger.ErrorContext(ctx, "storage reconcile: drift query failed",
-				"kind", string(kind), "err", err)
+		release, taken, cerr := r.store.TryClaimKindPass(ctx, kind)
+		if cerr != nil {
+			r.logger.ErrorContext(ctx, "storage reconcile: pass claim failed",
+				"kind", string(kind), "err", cerr)
 			total.Failed++
 			continue
 		}
-		total.Scanned += len(rows)
-		for i := range rows {
-			r.step(ctx, rows[i], &total)
+		if !taken {
+			// Вид разбирает другая реплика. Не отказ и не работа — пропуск.
+			total.Skipped++
+			continue
 		}
+		r.onceKind(ctx, kind, &total)
+		release(ctx)
 	}
 	return total
+}
+
+// onceKind разбирает один вид под уже взятым замком прохода.
+//
+// Отдельная функция ровно затем, чтобы снятие замка стояло у вызывающего сразу
+// после вызова: `defer` внутри цикла отпустил бы все три замка только в конце
+// прохода, и вид, разобранный первым, оставался бы занятым, пока идут остальные.
+func (r *Reconciler) onceKind(ctx context.Context, kind Kind, total *Counts) {
+	rows, err := r.store.Drifted(ctx, kind, r.batch)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "storage reconcile: drift query failed",
+			"kind", string(kind), "err", err)
+		total.Failed++
+		return
+	}
+	total.Scanned += len(rows)
+	for i := range rows {
+		r.step(ctx, rows[i], total)
+	}
 }
 
 // step разбирает одну строку: наблюдает, решает, действует.
@@ -224,8 +262,13 @@ func (r *Reconciler) act(ctx, callCtx context.Context, backend blockbackend.Back
 			r.fail(ctx, row, err, c)
 			return
 		}
-		if err := r.store.Confirm(ctx, row.Kind, row.ID, observed); err != nil {
+		applied, cerr := r.store.Confirm(ctx, row.Kind, row.ID, observed)
+		if cerr != nil {
 			c.Failed++
+			return
+		}
+		if !applied {
+			c.Overtaken++
 			return
 		}
 		c.Provision++
@@ -252,8 +295,13 @@ func (r *Reconciler) act(ctx, callCtx context.Context, backend blockbackend.Back
 		c.Forget++
 
 	case ActionConfirm:
-		if err := r.store.Confirm(ctx, row.Kind, row.ID, observed); err != nil {
+		applied, cerr := r.store.Confirm(ctx, row.Kind, row.ID, observed)
+		if cerr != nil {
 			c.Failed++
+			return
+		}
+		if !applied {
+			c.Overtaken++
 			return
 		}
 		c.Confirm++

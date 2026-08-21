@@ -718,6 +718,9 @@ const (
 // лишь оттянул бы отказ на весь бюджет (data-integrity.md §«Межсервисное
 // намерение»: отказ в правах НЕ временный). Недоступность соседа остаётся за
 // `retry.OnUnavailable` внутри одной попытки.
+//
+// РЕПЛИКИ: запрос — петля принадлежит ОДНОМУ вызову привязки и завершается по его исходу;
+// у каждой реплики свои вызовы.
 func (c *internalAddressClient) attachWithVisibilityBudget(
 	ctx context.Context, req AttachExistingRequest,
 ) error {
@@ -851,6 +854,9 @@ func (c *internalAddressClient) createOwnedAddressAndWait(
 
 // waitOperation поллит OperationService.Get до done=true. Возвращает
 // Operation.response (`*anypb.Any`) либо смаппленную gRPC-status ошибку.
+//
+// РЕПЛИКИ: запрос — петля принадлежит ОДНОМУ вызову к соседу: она ждёт исхода его операции
+// и завершается по нему.
 func (c *internalAddressClient) waitOperation(
 	ctx context.Context, op *operationpb.Operation,
 ) (*anypb.Any, error) {

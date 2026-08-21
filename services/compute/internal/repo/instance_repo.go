@@ -18,6 +18,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
+	"github.com/PRO-Robotech/kacho/pkg/singlepass"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
@@ -538,7 +539,41 @@ func (r *InstanceRepo) ListStuckDeleting(ctx context.Context, olderThan time.Dur
 // stuckDeleteBatch — сколько застрявших удалений разбирается за один проход.
 // Каждое несёт вызовы к двум соседям, поэтому проход ограничен: остаток разберёт
 // следующий, а соседи не получат разом сотни снятий.
+//
+// Предел имеет смысл ровно потому, что проход разведён между репликами
+// (TryClaimStuckDeleteSweep). Без развода он умножался бы на число реплик, и
+// обещание «соседи не получат разом сотни снятий» было бы ложным при первом же
+// срабатывании автомасштабирования.
 const stuckDeleteBatch = 50
+
+// stuckDeleteSweepLock — имя замка прохода добивателя. Домен в имени обязателен:
+// пространство ключей общее на всю базу.
+const stuckDeleteSweepLock = "kacho.compute.stuck-delete-finisher"
+
+// TryClaimStuckDeleteSweep берёт проход добивателя на одну реплику.
+//
+// # Почему замок прохода, а не клейм строки
+//
+// Добиватель — бэкстоп: он ходит раз в пять минут по партии в stuckDeleteBatch
+// строк и не обязан ускоряться от числа реплик. Клейм строки потребовал бы
+// собственной колонки-аренды и миграции ради работы, которой в здоровой системе
+// нет вовсе (частичный индекс миграции 0027 почти всегда пуст).
+//
+// # Что здесь стояло раньше
+//
+// Развода не было, и это было ЗАПИСАНО как решение: «отдельной блокировки не
+// нужно, каждый шаг идемпотентен». Про корректность это верно — повторное снятие
+// привязки у владельца есть no-op, — и потому дубль ничего не портил. Неверен был
+// вывод: выборка детерминирована (`ORDER BY deleting_since LIMIT 50`), поэтому N
+// реплик берут ТЕ ЖЕ пятьдесят строк и зовут по каждой двух соседей. Предел
+// партии, обоснованный бережностью к соседям, молча умножался на число реплик.
+func (r *InstanceRepo) TryClaimStuckDeleteSweep(ctx context.Context) (func(context.Context), bool, error) {
+	release, ok, err := singlepass.TryAcquire(ctx, r.pool, stuckDeleteSweepLock)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	return func(rctx context.Context) { release(rctx) }, true, nil
+}
 
 func (r *InstanceRepo) Delete(ctx context.Context, id string) error {
 	tx, err := r.pool.Begin(ctx)

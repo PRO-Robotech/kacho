@@ -202,9 +202,13 @@ func mkVolumeCreating(t *testing.T, r *pg.VolumeRepo, project, name string, size
 // сверщик, увидев объект у бэкенда.
 func confirmReady(t *testing.T, pool *pgxpool.Pool, kind reconciler.Kind, id string, size int64) {
 	t.Helper()
-	require.NoError(t, reconciler.NewStore(pool).Confirm(
+	applied, err := reconciler.NewStore(pool).Confirm(
 		context.Background(), kind, id,
-		blockbackend.Observed{State: blockbackend.ObservedReady, SizeBytes: size}))
+		blockbackend.Observed{State: blockbackend.ObservedReady, SizeBytes: size})
+	require.NoError(t, err)
+	// Применение утверждается явно: подтверждение, не тронувшее ни одной строки,
+	// оставило бы ресурс в намерении, а фикстура выглядела бы исполненной.
+	require.True(t, applied, "подтверждение не применилось ни к одной строке")
 }
 
 // attach вставляет строку volume_attachments напрямую (attach-CAS — S2; здесь тест

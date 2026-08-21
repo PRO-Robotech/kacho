@@ -93,6 +93,9 @@ func NewInternalWatchHandler(pool *pgxpool.Pool, dsn string, log *slog.Logger, m
 // расход слота параллелизма и обращение к бэкенду. Оба отказа обязаны наступать до
 // подключения — иначе вызывающий получает retryable-код на ввод, который валидным не
 // станет, и отказ начинает зависеть от доступности БД.
+//
+// РЕПЛИКИ: запрос — петля обслуживает ОДИН поток клиента и живёт ровно столько, сколько
+// живёт его подписка. Каждая реплика ведёт свои потоки — дубля нет.
 func (h *InternalWatchHandler) Watch(req *computev1.WatchRequest, stream computev1.InternalWatchService_WatchServer) error {
 	ctx := stream.Context()
 

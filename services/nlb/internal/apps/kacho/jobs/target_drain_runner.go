@@ -114,6 +114,11 @@ func NewTargetDrainRunner(pool *pgxpool.Pool, logger *slog.Logger, interval time
 //
 // Возвращает nil после ctx.Done — это «штатное завершение» runner'а
 // при SIGTERM (parallel.ExecAbstract воспринимает nil как успех task'а).
+//
+// РЕПЛИКИ: на-реплику — проход — ОДИН оператор: снятие истёкших целей и эмиссия события идут
+// одним `DELETE … RETURNING` с общим выражением. Строки заперты самим
+// оператором, поэтому вторая реплика снимает ноль строк и эмитирует ноль
+// событий; к соседям проход не ходит.
 func (r *TargetDrainRunner) Run(ctx context.Context) error {
 	r.logger.InfoContext(ctx, "target drain runner started", "interval", r.interval)
 	defer r.logger.InfoContext(ctx, "target drain runner stopped")

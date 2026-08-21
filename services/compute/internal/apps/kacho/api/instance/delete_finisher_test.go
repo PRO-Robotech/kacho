@@ -67,7 +67,7 @@ func TestFinishStuckDeletes_CompletesWhatTheCrashLeft(t *testing.T) {
 	svc, nics, vols, id := crashedDeleteFixture(t)
 	ctx := context.Background()
 
-	finished, err := svc.FinishStuckDeletes(ctx, 0)
+	finished, _, err := svc.FinishStuckDeletes(ctx, 0)
 	if err != nil {
 		t.Fatalf("проход добивателя: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestFinishStuckDeletes_LeavesLiveInstanceAlone(t *testing.T) {
 	vols := &fakeVolumePeer{attached: map[string][]string{liveID: {"vol-9"}}}
 	svc := NewInstanceService(repo, nil, nil, nil, nil, nics, vols, nil)
 
-	finished, err := svc.FinishStuckDeletes(context.Background(), 0)
+	finished, _, err := svc.FinishStuckDeletes(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("проход добивателя: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestFinishStuckDeletes_RespectsGrace(t *testing.T) {
 	svc, nics, _, id := crashedDeleteFixture(t)
 	ctx := context.Background()
 
-	finished, err := svc.FinishStuckDeletes(ctx, time.Hour)
+	finished, _, err := svc.FinishStuckDeletes(ctx, time.Hour)
 	if err != nil {
 		t.Fatalf("проход добивателя: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestFinishStuckDeletes_RespectsGrace(t *testing.T) {
 
 	// Та же машина вне отсрочки — берётся. Пара доказывает, что отрицание выше про
 	// ВОЗРАСТ, а не про то, что добиватель вообще ничего не находит.
-	finished, err = svc.FinishStuckDeletes(ctx, 0)
+	finished, _, err = svc.FinishStuckDeletes(ctx, 0)
 	if err != nil {
 		t.Fatalf("проход добивателя: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestFinishStuckDeletes_PeerRefusalLeavesRowForRetry(t *testing.T) {
 	nics.detachErr = errors.New("peer unavailable")
 	ctx := context.Background()
 
-	if _, err := svc.FinishStuckDeletes(ctx, 0); err == nil {
+	if _, _, err := svc.FinishStuckDeletes(ctx, 0); err == nil {
 		t.Fatal("отказ владельца привязки обязан быть виден вызывающему, а не проглочен")
 	}
 	if _, err := svc.repo.Get(ctx, id); err != nil {
@@ -166,7 +166,7 @@ func TestFinishStuckDeletes_PeerRefusalLeavesRowForRetry(t *testing.T) {
 	// Владелец вернулся — следующий проход доделывает. Добиватель обязан
 	// самоисцеляться, а не выбывать на первом транзиентном отказе.
 	nics.detachErr = nil
-	finished, err := svc.FinishStuckDeletes(ctx, 0)
+	finished, _, err := svc.FinishStuckDeletes(ctx, 0)
 	if err != nil {
 		t.Fatalf("повтор после возвращения владельца: %v", err)
 	}
@@ -184,10 +184,10 @@ func TestFinishStuckDeletes_IsIdempotent(t *testing.T) {
 	svc, _, _, _ := crashedDeleteFixture(t)
 	ctx := context.Background()
 
-	if _, err := svc.FinishStuckDeletes(ctx, 0); err != nil {
+	if _, _, err := svc.FinishStuckDeletes(ctx, 0); err != nil {
 		t.Fatalf("первый проход: %v", err)
 	}
-	second, err := svc.FinishStuckDeletes(ctx, 0)
+	second, _, err := svc.FinishStuckDeletes(ctx, 0)
 	if err != nil {
 		t.Fatalf("второй проход: %v", err)
 	}
@@ -204,9 +204,13 @@ func TestFinishStuckDeletes_IsIdempotent(t *testing.T) {
 type fakeNicPeer struct {
 	attached  map[string][]string
 	detachErr error
+	// calls — сколько раз владельца ПОЗВАЛИ (перечисление плюс снятие). Счётчик,
+	// а не флаг: «не звали» и «звали и получили пусто» иначе неотличимы.
+	calls int
 }
 
 func (f *fakeNicPeer) ListByInstance(_ context.Context, ids []string) ([]ports.NicAttachment, error) {
+	f.calls++
 	var out []ports.NicAttachment
 	for _, id := range ids {
 		for _, nic := range f.attached[id] {
@@ -224,6 +228,7 @@ func (f *fakeNicPeer) Attach(context.Context, ports.NicAttachSpec) (*ports.NicAt
 }
 
 func (f *fakeNicPeer) Detach(_ context.Context, nicID, instanceID string) error {
+	f.calls++
 	if f.detachErr != nil {
 		return f.detachErr
 	}
@@ -240,9 +245,12 @@ func (f *fakeNicPeer) Detach(_ context.Context, nicID, instanceID string) error 
 type fakeVolumePeer struct {
 	attached  map[string][]string
 	detachErr error
+	// calls — см. довод у fakeNicPeer.calls.
+	calls int
 }
 
 func (f *fakeVolumePeer) ListAttachments(_ context.Context, ids []string) ([]ports.VolumeAttachmentInfo, error) {
+	f.calls++
 	var out []ports.VolumeAttachmentInfo
 	for _, id := range ids {
 		for _, vol := range f.attached[id] {
@@ -258,6 +266,7 @@ func (f *fakeVolumePeer) Attach(context.Context, ports.VolumeAttachSpec) (*ports
 }
 
 func (f *fakeVolumePeer) Detach(_ context.Context, volumeID, instanceID string) error {
+	f.calls++
 	if f.detachErr != nil {
 		return f.detachErr
 	}
@@ -269,4 +278,62 @@ func (f *fakeVolumePeer) Detach(_ context.Context, volumeID, instanceID string) 
 	}
 	f.attached[instanceID] = kept
 	return nil
+}
+
+// TestFinishStuckDeletes_LoserDoesNotTouchThePeers — исход, который видит СОСЕД.
+//
+// Утверждается не «замок взят», а то, ради чего он заведён: реплика, не
+// получившая проход, не зовёт владельцев привязок ВООБЩЕ. Утверждение о факте
+// взятия замка осталось бы зелёным на реализации, которая замок берёт и всё равно
+// идёт к соседям.
+//
+// Две реплики выражены двумя use-case поверх ОДНОГО хранилища — так же, как в бою
+// две реплики стоят над одной базой.
+func TestFinishStuckDeletes_LoserDoesNotTouchThePeers(t *testing.T) {
+	repo := portmock.NewInstanceRepo()
+	id := seedInstance(repo, domain.InstanceStatusRunning).ID
+	nics := &fakeNicPeer{attached: map[string][]string{id: {"nic-1"}}}
+	vols := &fakeVolumePeer{attached: map[string][]string{id: {"vol-1"}}}
+
+	winner := NewInstanceService(repo, nil, nil, nil, nil, nics, vols, nil)
+	loser := NewInstanceService(repo, nil, nil, nil, nil, nics, vols, nil)
+
+	ctx := context.Background()
+	if _, err := repo.MarkDeleting(ctx, id); err != nil {
+		t.Fatalf("предпосылка: перевод в DELETING обязан пройти: %v", err)
+	}
+
+	// Победитель держит проход: замок берётся и НЕ отпускается до конца пробы.
+	release, ok, err := repo.TryClaimStuckDeleteSweep(ctx)
+	if err != nil || !ok {
+		t.Fatalf("предпосылка: первый заявитель обязан получить проход (ok=%v, err=%v)", ok, err)
+	}
+
+	finished, ran, err := loser.FinishStuckDeletes(ctx, 0)
+	if err != nil {
+		t.Fatalf("проигрыш замка — штатный исход, а не отказ: %v", err)
+	}
+	if ran {
+		t.Fatal("проход не мог состояться: его держит другая реплика")
+	}
+	if len(finished) != 0 {
+		t.Fatalf("проигравший ничего не доделывает, а вернул %d", len(finished))
+	}
+	if nics.calls != 0 || vols.calls != 0 {
+		t.Fatalf("проигравший позвал соседей: интерфейсы %d, тома %d", nics.calls, vols.calls)
+	}
+
+	// Положительный контроль: замок отпущен — тот же вызов делает работу. Без него
+	// проба зеленела бы и на добивателе, который не работает ВООБЩЕ.
+	release(ctx)
+	finished, ran, err = winner.FinishStuckDeletes(ctx, 0)
+	if err != nil {
+		t.Fatalf("после снятия замка проход обязан пройти: %v", err)
+	}
+	if !ran || len(finished) != 1 {
+		t.Fatalf("после снятия замка ожидался один доделанный проход: ran=%v, finished=%v", ran, finished)
+	}
+	if nics.calls == 0 || vols.calls == 0 {
+		t.Fatalf("победитель обязан позвать владельцев: интерфейсы %d, тома %d", nics.calls, vols.calls)
+	}
 }

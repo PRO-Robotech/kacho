@@ -123,10 +123,16 @@ type Source interface {
 
 // Projection — проекция величин у владельца ресурса.
 type Projection interface {
-	// LoadCursor отдаёт курсор, на котором остановились. Пустая строка означает
-	// «с начала времён» — ровно то, что нужно проекции, ни разу не тянувшей
-	// дельту.
-	LoadCursor(ctx context.Context) (string, error)
+	// ClaimPass берёт проход на ОДНУ реплику и отдаёт курсор, с которого он
+	// продолжит. Пустой курсор означает «с начала времён» — ровно то, что нужно
+	// проекции, ни разу не тянувшей дельту.
+	//
+	// Второе значение говорит, достался ли проход нам. Проигрыш — штатный исход,
+	// а не отказ: дельта идемпотентна по ревизии, пропущенный тик ничего не
+	// теряет, следующий догонит.
+	//
+	// lease — сколько проход считается занятым с момента последней отметки.
+	ClaimPass(ctx context.Context, lease time.Duration) (cursor string, ok bool, err error)
 	// ApplyChange правит строки снимка, адресуя их по столбцам, и отдаёт число
 	// затронутых строк.
 	ApplyChange(ctx context.Context, ch Change) (int64, error)
@@ -211,17 +217,23 @@ func NewSyncer(src Source, proj Projection, cfg Config, log *slog.Logger) (*Sync
 // Страницы тянутся, пока курсор двигается: владелец величин отдаёт дельту
 // постранично, и остановка на первой странице означала бы, что администратор,
 // поменявший больше страницы за раз, ждёт следующего тика на каждую страницу.
-func (s *Syncer) RunOnce(ctx context.Context) (int64, error) {
-	cursor, err := s.proj.LoadCursor(ctx)
+func (s *Syncer) RunOnce(ctx context.Context) (int64, bool, error) {
+	// Проход берётся ОДНОЙ репликой. Аренда равна периоду тика: короче — и две
+	// реплики с разной фазой успели бы взять проход в одном окне; длиннее — и
+	// смерть победителя стоила бы лишнего окна простоя.
+	cursor, taken, err := s.proj.ClaimPass(ctx, s.cfg.Interval)
 	if err != nil {
-		return 0, fmt.Errorf("load cursor: %w", err)
+		return 0, false, fmt.Errorf("claim pass: %w", err)
+	}
+	if !taken {
+		return 0, false, nil
 	}
 
 	var rows int64
 	for page := 0; page < maxPagesPerRun; page++ {
 		changes, next, err := s.src.ListChangedSince(ctx, cursor, s.cfg.PageSize)
 		if err != nil {
-			return rows, fmt.Errorf("pull changes: %w", err)
+			return rows, true, fmt.Errorf("pull changes: %w", err)
 		}
 
 		var pageRows int64
@@ -232,12 +244,12 @@ func (s *Syncer) RunOnce(ctx context.Context) (int64, error) {
 				// следующий проход встретит то же самое. Иначе дельта уехала бы
 				// вперёд, а строка осталась бы со старой величиной навсегда —
 				// и снаружи это выглядело бы как исправная синхронизация.
-				return rows, fmt.Errorf("change %s@%s rev %d: %w",
+				return rows, true, fmt.Errorf("change %s@%s rev %d: %w",
 					ch.Kind, string(ch.Scope), ch.Revision, err)
 			}
 			n, err := s.proj.ApplyChange(ctx, ch)
 			if err != nil {
-				return rows, fmt.Errorf("apply %s@%s rev %d: %w",
+				return rows, true, fmt.Errorf("apply %s@%s rev %d: %w",
 					ch.Kind, string(ch.Scope), ch.Revision, err)
 			}
 			pageRows += n
@@ -256,7 +268,7 @@ func (s *Syncer) RunOnce(ctx context.Context) (int64, error) {
 		// двигала бы счётчик работы там, где работы не было.
 		if !caughtUp || len(changes) > 0 {
 			if err := s.proj.SaveCursor(ctx, next, pageRows); err != nil {
-				return rows, fmt.Errorf("save cursor: %w", err)
+				return rows, true, fmt.Errorf("save cursor: %w", err)
 			}
 		}
 
@@ -270,12 +282,12 @@ func (s *Syncer) RunOnce(ctx context.Context) (int64, error) {
 	// нечего было применять. Иначе остановившийся синхронизатор выглядел бы
 	// точно так же, как живой на неизменной конфигурации.
 	if err := s.proj.Heartbeat(ctx); err != nil {
-		return rows, fmt.Errorf("heartbeat: %w", err)
+		return rows, true, fmt.Errorf("heartbeat: %w", err)
 	}
 
 	s.pullsTotal++
 	s.rowsTotal += rows
-	return rows, nil
+	return rows, true, nil
 }
 
 // Run гоняет проходы до отмены контекста.
@@ -284,6 +296,9 @@ func (s *Syncer) RunOnce(ctx context.Context) (int64, error) {
 // тиком. Величина — не путь запроса, недоступность соседа здесь не должна
 // ронять сервис; но и «молча продолжаем» тоже не годится, поэтому каждый отказ
 // называется, а «ни одной строки за всё время» видно по накопительному счёту.
+//
+// РЕПЛИКИ: клейм — проход берёт одна реплика условной правкой строки курсора
+// (Projection.ClaimPass); проигравший пропускает тик.
 func (s *Syncer) Run(ctx context.Context) {
 	t := time.NewTicker(s.cfg.Interval)
 	defer t.Stop()
@@ -294,7 +309,7 @@ func (s *Syncer) Run(ctx context.Context) {
 
 	for {
 		runCtx, cancel := context.WithTimeout(ctx, s.cfg.PullTimeout)
-		rows, err := s.RunOnce(runCtx)
+		rows, ran, err := s.RunOnce(runCtx)
 		cancel()
 
 		switch {
@@ -303,6 +318,11 @@ func (s *Syncer) Run(ctx context.Context) {
 				slog.String("error", err.Error()),
 				slog.Int64("rows_total", s.rowsTotal),
 				slog.Int64("pulls_total", s.pullsTotal))
+		case !ran:
+			// Проход исполняет другая реплика. Отдельная строка от «нечего
+			// применять»: иначе «нас развели» и «дельта пуста» выглядели бы
+			// одинаково, а различить их — ровно то, ради чего развод заведён.
+			s.log.Debug("quota limit sync skipped: another replica holds the pass")
 		case rows > 0:
 			s.log.Info("quota limits synchronised",
 				slog.Int64("rows", rows),

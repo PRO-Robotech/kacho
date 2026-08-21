@@ -52,6 +52,10 @@ func New(p Poller, flush func(), interval time.Duration, logger *slog.Logger) *S
 }
 
 // Run blocks until ctx is cancelled. Call in a goroutine.
+//
+// РЕПЛИКИ: на-реплику — петля сбрасывает кэш СВОЕГО процесса и держит курсор в памяти. Каждая
+// реплика обязана опрашивать сама: разведи её — и кэш невыбранных реплик
+// не сбросится вовсе, то есть отозванный доступ продолжит действовать.
 func (w *SubjectChangeWatcher) Run(ctx context.Context) {
 	t := time.NewTicker(w.interval)
 	defer t.Stop()

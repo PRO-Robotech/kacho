@@ -319,6 +319,9 @@ func (rc *Reconciler) RecoverAll(ctx context.Context) error {
 
 // Run — периодический backstop: Sweep на каждом тике до отмены ctx. Ошибки
 // отдельного прогона логируются (loop не умирает на transient-сбое).
+//
+// РЕПЛИКИ: клейм — проход клеймит строки `FOR UPDATE SKIP LOCKED` в собственной транзакции,
+// поэтому конкурирующим репликам достаются непересекающиеся партии.
 func (rc *Reconciler) Run(ctx context.Context) {
 	t := time.NewTicker(rc.interval)
 	defer t.Stop()

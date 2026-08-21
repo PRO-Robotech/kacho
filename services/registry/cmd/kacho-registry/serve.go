@@ -672,6 +672,10 @@ type staleSweeper interface {
 // runStaleSweeper периодически (interval) подметает протухшие строки до отмены ctx
 // (SIGTERM). Ошибка sweep'а логируется под именем name и не роняет сервис (гигиена, не
 // критичный путь). Первый тик — через interval (свежий старт таблицы пуст).
+//
+// РЕПЛИКИ: на-реплику — проход — один условный оператор `DELETE … WHERE <отметка> <= <порог>`.
+// Строки заперты самим оператором, поэтому вторая реплика уносит только
+// остаток, а на пустой выборке не делает ничего; к соседям проход не ходит.
 func runStaleSweeper(ctx context.Context, sweeper staleSweeper, interval time.Duration, name string, logger *slog.Logger) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
