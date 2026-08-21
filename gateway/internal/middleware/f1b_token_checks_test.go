@@ -119,19 +119,62 @@ func TestF1b08_KeyIDFormIsBoundedBeforeUse(t *testing.T) {
 }
 
 // TestF1b08_ClockSkewIsAssertedOnBothSides — допуск на расхождение часов
-// утверждается ОБЕИМИ сторонами: за пределом отказ, внутри проход.
+// утверждается ОБЕИМИ сторонами, и часы пробы — ВХОД, а не системное время.
+//
+// Прежняя редакция двигала не часы, а утверждения токена, и попадала в допуск
+// широкими полями: такая проба не различает «допуск ровно такой» от «допуск
+// вдвое шире». Здесь двигаются часы проверяющего, а токен неподвижен, — тогда
+// граница утверждается там, где она объявлена.
 func TestF1b08_ClockSkewIsAssertedOnBothSides(t *testing.T) {
-	v, ours, _ := f1bTwoIssuerVerifier(t)
-	now := time.Now()
+	ours, legacy := newF1bKeySet(t), newF1bKeySet(t)
+	ours.addEC("ours-1")
+	legacy.addRSA("legacy-1")
 
-	inside := f1bClaims(f1bPlatformIssuer, f1bAudience, "usr-1", now.Add(tokenpolicy.ClockSkew/2), time.Minute)
-	if _, err := v.Verify(context.Background(), ours.mint("ours-1", PlatformTokenType, inside)); err != nil {
-		t.Fatalf("токен «из будущего» ВНУТРИ допуска отвергнут: %v", err)
+	// Часы — управляемые: проверяющий смотрит на них, а не на системное время.
+	var at time.Time
+	v, err := NewJWTVerifier(JWTVerifierConfig{
+		Issuers: []IssuerKeySet{
+			{Issuer: f1bPlatformIssuer, KeySetURL: ours.URL(), TokenTypes: []string{PlatformTokenType}},
+			{Issuer: f1bLegacyIssuer, KeySetURL: legacy.URL(),
+				TokenTypes: []string{LegacyTokenType}, TolerateAbsentTokenType: true},
+		},
+		ExpectedAudience: f1bAudience,
+		Clock:            func() time.Time { return at },
+	})
+	if err != nil {
+		t.Fatalf("построение проверяющего: %v", err)
 	}
 
-	outside := f1bClaims(f1bPlatformIssuer, f1bAudience, "usr-1", now.Add(2*tokenpolicy.ClockSkew+time.Minute), time.Minute)
-	if _, err := v.Verify(context.Background(), ours.mint("ours-1", PlatformTokenType, outside)); err == nil {
-		t.Fatalf("токен «из будущего» ЗА пределом допуска принят")
+	issued := time.Now()
+	tok := ours.mint("ours-1", PlatformTokenType,
+		f1bClaims(f1bPlatformIssuer, f1bAudience, "usr-1", issued, time.Minute))
+
+	// Обе стороны допуска по СРОКУ: токен истёк, но не дальше допуска — принят;
+	// на секунду дальше допуска — отвергнут.
+	at = issued.Add(time.Minute).Add(tokenpolicy.ClockSkew - 2*time.Second)
+	if _, verr := v.Verify(context.Background(), tok); verr != nil {
+		t.Fatalf("истёкший ВНУТРИ допуска отвергнут: %v — допуск уже объявленного", verr)
+	}
+	at = issued.Add(time.Minute).Add(tokenpolicy.ClockSkew + 2*time.Second)
+	if _, verr := v.Verify(context.Background(), tok); verr == nil {
+		t.Fatalf("истёкший ЗА пределом допуска принят — допуск шире объявленного")
+	}
+
+	// Обе стороны допуска по МОМЕНТУ ВСТУПЛЕНИЯ В СИЛУ: часы отстают.
+	at = issued.Add(-tokenpolicy.ClockSkew + 2*time.Second)
+	if _, verr := v.Verify(context.Background(), tok); verr != nil {
+		t.Fatalf("«из будущего» ВНУТРИ допуска отвергнут: %v", verr)
+	}
+	at = issued.Add(-tokenpolicy.ClockSkew - 2*time.Second)
+	if _, verr := v.Verify(context.Background(), tok); verr == nil {
+		t.Fatalf("«из будущего» ЗА пределом допуска принят")
+	}
+
+	// Положительный контроль: в момент выпуска токен принимается. Без него все
+	// четыре утверждения зеленели бы на проверяющем, отвергающем всё.
+	at = issued
+	if _, verr := v.Verify(context.Background(), tok); verr != nil {
+		t.Fatalf("токен отвергнут в момент собственного выпуска: %v", verr)
 	}
 }
 

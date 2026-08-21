@@ -12,6 +12,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -41,10 +42,27 @@ func TestF1b06_KeyOfOneIssuerDoesNotVerifyATokenClaimingTheOther(t *testing.T) {
 	now := time.Now()
 
 	// Подписан НАШИМ ключом, объявляет ПРЕЖНЕГО издателя.
-	crossA := ours.mint("ours-1", PlatformTokenType, f1bClaims(f1bLegacyIssuer, f1bAudience, "usr-1", now, time.Minute))
-	if _, err := v.Verify(context.Background(), crossA); err == nil {
+	//
+	// Тип берётся ПРИЕМЛЕМЫЙ для полосы прежнего издателя намеренно: с чужим для
+	// неё типом отказ приходил бы от сверки типа, и эта половина оставалась бы
+	// зелёной при полностью сломанном выборе записи. Утверждается поэтому не
+	// «хоть какой-нибудь отказ», а что отказ пришёл НЕ от типа: единственное, что
+	// теперь может отвергнуть этот токен, — отсутствие нашего ключа в наборе
+	// прежнего издателя.
+	crossA := ours.mint("ours-1", LegacyTokenType,
+		f1bClaims(f1bLegacyIssuer, f1bAudience, "usr-1", now, time.Minute))
+	_, errA := v.Verify(context.Background(), crossA)
+	if errA == nil {
 		t.Fatalf("токен, подписанный ключом НАШЕГО издателя и объявляющий ПРЕЖНЕГО, принят — " +
 			"ключ одного издателя проверил токен другого")
+	}
+	if errors.Is(errA, ErrUnexpectedTokenType) {
+		t.Fatalf("отказ пришёл от сверки ТИПА, а не от развязки наборов (%v) — на таком входе "+
+			"проба зелена и при сломанном выборе записи", errA)
+	}
+	if !errors.Is(errA, ErrKeyNotFound) {
+		t.Fatalf("отказ пришёл не от разрешения ключа в наборе ВЫБРАННОЙ записи (%v) — "+
+			"утверждение о развязке сказано о чём-то другом", errA)
 	}
 
 	// Зеркально: подписан ключом прежнего, объявляет нашего.

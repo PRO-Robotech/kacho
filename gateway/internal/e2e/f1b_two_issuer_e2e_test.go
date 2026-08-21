@@ -27,11 +27,14 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sort"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -46,6 +49,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
 
 const (
@@ -151,15 +155,20 @@ func newF1bAuthority(t *testing.T) *f1bAuthority {
 // f1bStand — край, поднятый с ДВУМЯ объявленными записями приёма, обеими
 // поверхностями и двумя авторитетами отзыва.
 type f1bStand struct {
-	restURL   string
-	grpcAddr  string
-	ours      *f1bSigner
-	legacy    *f1bSigner
-	ourAuth   *f1bAuthority
-	oldAuth   *f1bAuthority
-	restHits  *atomic.Int64
-	grpcHits  *atomic.Int64
-	closeGRPC func()
+	restURL  string
+	grpcAddr string
+	ours     *f1bSigner
+	legacy   *f1bSigner
+	ourAuth  *f1bAuthority
+	oldAuth  *f1bAuthority
+	restHits *atomic.Int64
+	grpcHits *atomic.Int64
+	// restPrincipal / grpcPrincipal — принципал, дошедший ДО обработчика.
+	// Захватывается, чтобы Ф1б-11 могла утверждать своё «принципал определён так
+	// же, как для токена прежнего издателя», а не только «запрос прошёл».
+	restPrincipal *atomic.Value
+	grpcPrincipal *atomic.Value
+	closeGRPC     func()
 }
 
 func newF1bStand(t *testing.T, acceptPlatform bool) *f1bStand {
@@ -177,12 +186,14 @@ func newF1bStandWithRequirement(t *testing.T) *f1bStand {
 func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStand {
 	t.Helper()
 	st := &f1bStand{
-		ours:     newF1bSigner(t, f1bPlatformIssuer, "ours-es256"),
-		legacy:   newF1bSigner(t, f1bLegacyIssuer, "legacy-es256"),
-		ourAuth:  newF1bAuthority(t),
-		oldAuth:  newF1bAuthority(t),
-		restHits: &atomic.Int64{},
-		grpcHits: &atomic.Int64{},
+		ours:          newF1bSigner(t, f1bPlatformIssuer, "ours-es256"),
+		legacy:        newF1bSigner(t, f1bLegacyIssuer, "legacy-es256"),
+		ourAuth:       newF1bAuthority(t),
+		oldAuth:       newF1bAuthority(t),
+		restHits:      &atomic.Int64{},
+		grpcHits:      &atomic.Int64{},
+		restPrincipal: &atomic.Value{},
+		grpcPrincipal: &atomic.Value{},
 	}
 
 	records := []middleware.IssuerKeySet{{
@@ -224,8 +235,10 @@ func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStan
 		WithRequireMachineTokenBinding(requireBinding)
 
 	// REST — НАСТОЯЩИЙ сервер и настоящее соединение.
-	rest := httptest.NewServer(auth.HTTP(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	rest := httptest.NewServer(auth.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		st.restHits.Add(1)
+		st.restPrincipal.Store(r.Header.Get(principalmeta.HeaderPrincipalType) + ":" +
+			r.Header.Get(principalmeta.HeaderPrincipalID))
 		w.WriteHeader(http.StatusOK)
 	})))
 	t.Cleanup(rest.Close)
@@ -253,6 +266,16 @@ func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStan
 				}
 				h := func(ctx context.Context, _ any) (any, error) {
 					st.grpcHits.Add(1)
+					var pt, pid string
+					if md, ok := metadata.FromIncomingContext(ctx); ok {
+						if v := md.Get(principalmeta.HeaderPrincipalType); len(v) > 0 {
+							pt = v[0]
+						}
+						if v := md.Get(principalmeta.HeaderPrincipalID); len(v) > 0 {
+							pid = v[0]
+						}
+					}
+					st.grpcPrincipal.Store(pt + ":" + pid)
 					return &emptyMsg{}, nil
 				}
 				if interceptor == nil {
@@ -504,4 +527,95 @@ func TestF1b10_EdgeRequiresBindingFromOurIssuersMachineTokens(t *testing.T) {
 		t.Fatalf("человеческий токен без привязки отвергнут: %d — привязка потребована там, "+
 			"где её не просили", got)
 	}
+}
+
+// TestF1b11_12_PrincipalIsResolvedIdenticallyForBothIssuers — половина
+// сценариев Ф1б-11/12, которую прежняя редакция объявляла и не утверждала.
+//
+// «Запрос прошёл» и «принципал определён так же» — разные утверждения, и
+// разница между ними есть весь смысл перевода: токен нашей чеканки обязан
+// давать ТОГО ЖЕ принципала, иначе смена издателя тихо сменила бы, за кого
+// говорит удостоверение.
+func TestF1b11_12_PrincipalIsResolvedIdenticallyForBothIssuers(t *testing.T) {
+	st := newF1bStand(t, true)
+
+	ourToken := st.ours.mint(t, middleware.PlatformTokenType, "jti-parity-ours", nil)
+	legacyToken := st.legacy.mint(t, middleware.LegacyTokenType, "jti-parity-legacy", nil)
+
+	require.Equal(t, http.StatusOK, st.callREST(t, ourToken))
+	ourREST, _ := st.restPrincipal.Load().(string)
+	require.Equal(t, http.StatusOK, st.callREST(t, legacyToken))
+	legacyREST, _ := st.restPrincipal.Load().(string)
+
+	require.NotEmpty(t, ourREST, "принципал не дошёл до обработчика вовсе — сравнивать нечего, "+
+		"и молчание этой пробы сказано ни о чём")
+	require.Equal(t, legacyREST, ourREST,
+		"REST: токен НАШЕГО издателя дал принципала %q, токен прежнего — %q; смена чеканки "+
+			"не вправе тихо сменить того, за кого говорит удостоверение", ourREST, legacyREST)
+
+	require.Equal(t, codes.OK, st.callGRPC(t, ourToken))
+	ourGRPC, _ := st.grpcPrincipal.Load().(string)
+	require.Equal(t, codes.OK, st.callGRPC(t, legacyToken))
+	legacyGRPC, _ := st.grpcPrincipal.Load().(string)
+
+	require.NotEmpty(t, ourGRPC, "принципал не дошёл до обработчика на нативной поверхности")
+	require.Equal(t, legacyGRPC, ourGRPC,
+		"gRPC: %q против %q", ourGRPC, legacyGRPC)
+
+	// И между поверхностями тоже: конфигурация одна, значит и принципал один.
+	require.Equal(t, ourREST, ourGRPC,
+		"одна конфигурация дала РАЗНЫХ принципалов на своих двух поверхностях (%q и %q) — "+
+			"утверждение о крае, предъявленное на одной, сказано про половину", ourREST, ourGRPC)
+}
+
+// TestF1b12_AuthNRefusalsAreIndistinguishableOnTheNativeSurface — вторая
+// объявленная и не утверждавшаяся половина: нативная поверхность отвечает на
+// неудачу проверки подлинности ОДНИМ постоянным сообщением.
+//
+// Различимые тексты — перечислительный оракул: по ним предъявитель узнаёт, чем
+// именно негоден его токен, и подбирает следующий.
+func TestF1b12_AuthNRefusalsAreIndistinguishableOnTheNativeSurface(t *testing.T) {
+	st := newF1bStand(t, true)
+	stranger := newF1bSigner(t, "https://issuer.example.invalid", "x-1")
+
+	refusals := map[string]string{
+		"издатель без объявленной записи": stranger.mint(t, middleware.PlatformTokenType, "j1", nil),
+		"наш издатель, чужой ключ": st.legacy.mint(t, middleware.PlatformTokenType, "j2",
+			func(c jwt.MapClaims) { c["iss"] = f1bPlatformIssuer }),
+		"наш издатель, тип не тот": st.ours.mint(t, "JWT", "j3", nil),
+		"истёкший срок": st.ours.mint(t, middleware.PlatformTokenType, "j4",
+			func(c jwt.MapClaims) { c["exp"] = time.Now().Add(-time.Hour).Unix() }),
+		"чужой адресат": st.ours.mint(t, middleware.PlatformTokenType, "j5",
+			func(c jwt.MapClaims) { c["aud"] = []any{"https://registry.kacho.test"} }),
+	}
+
+	seen := map[string][]string{}
+	for name, tok := range refusals {
+		conn, err := grpc.NewClient(st.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		require.NoError(t, err)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+tok)
+		ierr := conn.Invoke(ctx, "/kacho.cloud.iam.v1.ProbeService/Ping", &emptyMsg{}, &emptyMsg{})
+		cancel()
+		_ = conn.Close()
+
+		require.Error(t, ierr, "«%s» принят — тогда перечень отказов ниже сказан ни о чём", name)
+		stt, _ := status.FromError(ierr)
+		require.Equal(t, codes.Unauthenticated, stt.Code(), "«%s»: код отказа не тот", name)
+		seen[stt.Message()] = append(seen[stt.Message()], name)
+	}
+
+	if len(seen) != 1 {
+		var lines []string
+		for msg, names := range seen {
+			lines = append(lines, fmt.Sprintf("  %q ← %v", msg, names))
+		}
+		sort.Strings(lines)
+		t.Fatalf("нативная поверхность ответила %d РАЗНЫМИ сообщениями на %d неудач проверки "+
+			"подлинности:\n%s\n\nРазличимые тексты — перечислительный оракул: по ним предъявитель "+
+			"узнаёт, чем именно негоден его токен, и подбирает следующий.",
+			len(seen), len(refusals), strings.Join(lines, "\n"))
+	}
+	t.Logf("перепись: неудач проверки подлинности предъявлено %d, различимых сообщений %d",
+		len(refusals), len(seen))
 }

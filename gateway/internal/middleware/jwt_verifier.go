@@ -118,6 +118,12 @@ type JWTVerifier struct {
 	// allowMissingAudience — for tests / dev mode where the provider may not
 	// yet inject the gateway audience.
 	allowMissingAudience bool
+
+	// now — источник времени. ВХОД, а не окружение: без этого проба допуска на
+	// расхождение часов недетерминирована, то есть не может упасть предсказуемо
+	// и держится широкими допусками вместо утверждения. Ровно та же причина и
+	// та же форма, что у первой конфигурации проверяющего.
+	now func() time.Time
 }
 
 // JWTVerifierConfig — construction parameters.
@@ -132,6 +138,9 @@ type JWTVerifierConfig struct {
 	ExpectedAudience     string
 	ClockSkew            time.Duration
 	AllowMissingAudience bool
+
+	// Clock подменяет источник времени. nil → системное время.
+	Clock func() time.Time
 }
 
 // NewJWTVerifier constructs a verifier over the declared acceptance records.
@@ -167,11 +176,16 @@ func NewJWTVerifier(cfg JWTVerifierConfig) (*JWTVerifier, error) {
 	for _, rec := range records {
 		rec.jwks = NewJWKSCache(rec.keySetURL, cfg.JWKSCacheTTL, httpClient)
 	}
+	now := cfg.Clock
+	if now == nil {
+		now = time.Now
+	}
 	return &JWTVerifier{
 		records:              records,
 		expectedAudience:     cfg.ExpectedAudience,
 		clockSkew:            cfg.ClockSkew,
 		allowMissingAudience: cfg.AllowMissingAudience,
+		now:                  now,
 	}, nil
 }
 
@@ -423,6 +437,7 @@ func (v *JWTVerifier) Verify(ctx context.Context, token string) (*VerifiedToken,
 		jwt.WithIssuedAt(),
 		jwt.WithExpirationRequired(),
 		jwt.WithIssuer(rec.issuer),
+		jwt.WithTimeFunc(v.now),
 	)
 	claims := jwt.MapClaims{}
 	parsed, err := parser.ParseWithClaims(token, claims, func(_ *jwt.Token) (any, error) {

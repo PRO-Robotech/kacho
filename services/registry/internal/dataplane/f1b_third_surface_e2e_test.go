@@ -72,7 +72,14 @@ func f1bMint(t *testing.T, priv *ecdsa.PrivateKey, kid, issuer, typ string) stri
 		"iat": now, "nbf": now, "exp": now + 300, "jti": "tok-" + kid,
 	})
 	tok.Header["kid"] = kid
-	tok.Header["typ"] = typ
+	// ПУСТОЙ заголовок типа и ОТСУТСТВУЮЩИЙ — разные входы, и различает их только
+	// эта ветка. Проба «наш токен без типа» обязана подавать второе: первое
+	// проверяющий увидит как значение, а требование сценария — про отсутствие.
+	if typ != "" {
+		tok.Header["typ"] = typ
+	} else {
+		delete(tok.Header, "typ")
+	}
 	raw, err := tok.SignedString(priv)
 	require.NoError(t, err)
 	return raw
