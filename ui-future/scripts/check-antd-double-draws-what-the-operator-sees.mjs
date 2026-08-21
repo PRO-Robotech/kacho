@@ -117,6 +117,10 @@ const PROBED_BY = {
   Dropdown: "shared/src/components/molecules/RowActionsMenu/RowActionsMenu.test.tsx",
   List: "shared/src/pages/auth/Settings.passkeys-list.test.tsx",
   Menu: "shared/src/components/organisms/DetailShell/DetailShell.test.tsx",
+  // Переехало вслед за предметом: панель ключей сведена к тонкой обёртке и
+  // `Popconfirm` больше не рисует — его рисует общая реализация, и проба
+  // теперь лежит рядом с НЕЙ. Прежняя запись пережила свой предмет, и гейт
+  // это назвал сам, второй половиной самопроверки.
   Popconfirm: "iam/src/components/organisms/TokensPanel/TokensPanel.test.tsx",
   Spin: "shared/src/components/organisms/ResourceEditPage/ResourceEditPage.loading-caption.test.tsx",
   Statistic: "shared/src/pages/DashboardPage.statistic.test.tsx",
