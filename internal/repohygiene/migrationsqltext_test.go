@@ -60,39 +60,6 @@ import (
 	"testing"
 )
 
-// migrationUpSection — исполняемая часть миграции: Up-секция без комментариев.
-//
-// Порядок двух шагов обязателен и обратим быть не может: маркер `-- +goose Down`
-// САМ является комментарием, поэтому секция отрезается по СЫРОМУ тексту, и только
-// потом забеливаются комментарии. Забелив сперва, разбор потерял бы границу
-// секций и прочитал бы откат как часть наката.
-func migrationUpSection(body string) string {
-	up := body
-	if i := strings.Index(up, "-- +goose Down"); i >= 0 {
-		up = up[:i]
-	}
-	return sqlBlankComments(up)
-}
-
-// sqlBlankComments заменяет содержимое SQL-комментариев пробелами, сохраняя
-// длину строки и позиции переводов строк.
-//
-// Приоритет состояний: строка > комментарий > код. Внутри строкового литерала
-// `--` комментария не начинает; внутри комментария кавычка строки не открывает.
-// Блочные комментарии Postgres ВЛОЖЕННЫЕ — глубина считается, а не ищется первый
-// `*/`.
-func sqlBlankComments(s string) string {
-	out := []byte(s)
-	scanSQLComments(s, func(lo, hi int) {
-		for i := lo; i < hi && i < len(out); i++ {
-			if out[i] != '\n' {
-				out[i] = ' '
-			}
-		}
-	})
-	return string(out)
-}
-
 // sqlCommentText — ТОЛЬКО комментарии, каждый отдельной записью.
 //
 // Отдельная функция, а не «разница сырого и забелённого»: разница по байтам
@@ -106,56 +73,6 @@ func sqlCommentText(s string) []string {
 	var out []string
 	scanSQLComments(s, func(lo, hi int) { out = append(out, s[lo:hi]) })
 	return out
-}
-
-// scanSQLComments проходит текст один раз и зовёт onComment на каждом
-// комментарии. Приоритет состояний: строка > комментарий > код.
-func scanSQLComments(s string, onComment func(lo, hi int)) {
-	for i := 0; i < len(s); {
-		switch {
-		case s[i] == '\'':
-			i++
-			for i < len(s) {
-				if s[i] != '\'' {
-					i++
-					continue
-				}
-				if i+1 < len(s) && s[i+1] == '\'' { // '' — экранированная кавычка
-					i += 2
-					continue
-				}
-				i++
-				break
-			}
-		case s[i] == '-' && i+1 < len(s) && s[i+1] == '-':
-			j := strings.IndexByte(s[i:], '\n')
-			if j < 0 {
-				j = len(s)
-			} else {
-				j += i
-			}
-			onComment(i, j)
-			i = j
-		case s[i] == '/' && i+1 < len(s) && s[i+1] == '*':
-			depth, j := 1, i+2
-			for j < len(s) && depth > 0 {
-				switch {
-				case s[j] == '/' && j+1 < len(s) && s[j+1] == '*':
-					depth++
-					j += 2
-				case s[j] == '*' && j+1 < len(s) && s[j+1] == '/':
-					depth--
-					j += 2
-				default:
-					j++
-				}
-			}
-			onComment(i, j)
-			i = j
-		default:
-			i++
-		}
-	}
 }
 
 // Test_SqlBlankComments_KeepsCodeAndOffsets — забеливание проверено В ОБЕ

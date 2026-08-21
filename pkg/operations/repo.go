@@ -463,6 +463,16 @@ func (r *pgRepo) ListOwned(ctx context.Context, filter ListFilter, owner Owner) 
 // listWithOwner — общий построитель List/ListOwned. При owner != nil в WHERE
 // добавляется ownerPredicateSQL (ownership-scoped выдача); при owner == nil —
 // unscoped (internal-only, см. IDOR-warning на List).
+//
+// cursor-list-table: operations
+//
+// Объявление выше читает гейт курсорных индексов
+// (`internal/repohygiene/listcursorindex.go`). Оно нужно потому, что имя таблицы
+// здесь ВЫЧИСЛЯЕТСЯ (`r.tableName()` → `<схема>.operations`), а в тексте запроса
+// стоит глагол форматирования. Разбор, ищущий `FROM <литерал>`, такое чтение не
+// видит — и не увидел: замер задачи #708 потерял из-за этого семь физических
+// таблиц (по одной на сервис) и вместе с ними самый нагруженный список продукта.
+// Объявление самоистекает вместе с чтением: уйдёт запрос — уйдёт и оно.
 func (r *pgRepo) listWithOwner(ctx context.Context, filter ListFilter, owner *Owner) ([]Operation, string, error) {
 	// page_size дисциплина — единая для всех List RPC (api-conventions): 0 →
 	// DefaultPageSize, 1..MaxPageSize → как есть, вне диапазона (отрицательное /
