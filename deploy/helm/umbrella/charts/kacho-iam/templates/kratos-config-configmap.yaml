@@ -21,9 +21,9 @@ KAC-127 Phase 2 — Kratos config ConfigMap (WebAuthn / Passkey enabled).
     указывал на легаси :9091 с REST-подобным путём и падал молча, а объяснение
     ссылалось на «нереализованный» RPC — тот был реализован, не хватало маршрута.
 
-Файл маунтится в Kratos pod как `/etc/config/kratos/kratos.yaml`. Hydra/Kratos
+Файл маунтится в Kratos pod как `/etc/kacho-identity/kratos.yaml`. Hydra/Kratos
 helm subchart'ы умеют читать config из этого ConfigMap через `config.fromConfigMap`
-или через volume-mount + `kratos --config /etc/config/kratos/kratos.yaml`.
+или через volume-mount + `kratos --config /etc/kacho-identity/kratos.yaml`.
 В Phase 2 предпочитаем второй вариант (явный mount) — даёт нам полный контроль
 над структурой YAML без оборачивания в `kratos.config.*` (sub-chart wrapper).
 
@@ -71,7 +71,7 @@ data:
       default_schema_id: kacho_user_v2
       schemas:
         - id: kacho_user_v2
-          url: file:///etc/config/kratos/identity.schema.json
+          url: file:///etc/kacho-identity/identity.schema.json
 
     # ─── Selfservice flows ──────────────────────────────────────────────
     selfservice:
@@ -148,7 +148,7 @@ data:
                   config:
                     url: {{ .Values.kratos.config.hooks.scheme }}://{{ include "kacho-iam.hooksAuthority" . }}/iam/v1/hooks/provision
                     method: POST
-                    body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
+                    body: file:///etc/kacho-identity/hooks/identity-payload.jsonnet
                     auth:
                       type: api_key
                       config:
@@ -164,7 +164,7 @@ data:
                   config:
                     url: {{ .Values.kratos.config.hooks.scheme }}://{{ include "kacho-iam.hooksAuthority" . }}/iam/v1/hooks/provision
                     method: POST
-                    body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
+                    body: file:///etc/kacho-identity/hooks/identity-payload.jsonnet
                     auth:
                       type: api_key
                       config:
@@ -186,7 +186,7 @@ data:
                   config:
                     url: {{ .Values.kratos.config.hooks.scheme }}://{{ include "kacho-iam.hooksAuthority" . }}/iam/v1/hooks/provision
                     method: POST
-                    body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
+                    body: file:///etc/kacho-identity/hooks/identity-payload.jsonnet
                     auth:
                       type: api_key
                       config:
@@ -201,7 +201,7 @@ data:
                   config:
                     url: {{ .Values.kratos.config.hooks.scheme }}://{{ include "kacho-iam.hooksAuthority" . }}/iam/v1/hooks/provision
                     method: POST
-                    body: file:///etc/config/kratos/hooks/identity-payload.jsonnet
+                    body: file:///etc/kacho-identity/hooks/identity-payload.jsonnet
                     auth:
                       type: api_key
                       config:
@@ -247,7 +247,7 @@ data:
                 config:
                   url: {{ .Values.kratos.config.hooks.scheme }}://{{ include "kacho-iam.hooksAuthority" . }}/iam/v1/hooks/recovery
                   method: POST
-                  body: file:///etc/config/kratos/hooks/recovery-payload.jsonnet
+                  body: file:///etc/kacho-identity/hooks/recovery-payload.jsonnet
                   auth:
                     type: api_key
                     config:

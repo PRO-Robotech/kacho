@@ -729,6 +729,53 @@ pg-hydra:
 kratos:
   # KAC-127: Phase 2 IAM-стек требует Kratos (identity) включённым для smoke.
   enabled: true
+  deployment:
+    # ─── КОНФИГУРАЦИЯ ДОЛЖНА ДОЕЗЖАТЬ ДО ПРОЦЕССА, А НЕ ТОЛЬКО РЕНДЕРИТЬСЯ ─────
+    #
+    # Карты настроек `kacho-iam-kratos-{config,hooks,identity-schema}` собирает
+    # наш подчарт, и до этой провязки их НИКТО не монтировал: служба личности
+    # работала на конфигурации подчарта поставщика, где есть только `courier` и
+    # `serve`. Практическое следствие — обе полосы обратных вызовов (заведение
+    # пользователя и завершение восстановления доступа) не исполнялись ни на
+    # одном стенде, а схема личности подменялась умолчанием поставщика.
+    #
+    # Со стороны это выглядело исправным: шаблоны рендерились, карты в кластере
+    # присутствовали, транспорт полос был объявлен защищённым и проверялся
+    # соседней пробой. Не хватало ровно одного — чтения.
+    #
+    # Служба принимает НЕСКОЛЬКО файлов конфигурации и сливает их по порядку,
+    # поэтому наш файл идёт ВТОРЫМ и дополняет базовый, а не заменяет его: DSN,
+    # адреса слушателей и почтовая полоса остаются за подчартом поставщика.
+    #
+    # Пути не выдуманы здесь: они те же, что уже стоят внутри самой
+    # конфигурации (`file:///etc/config/kratos/...`), поэтому провязка сводится
+    # к монтированию каталога, а не к правке ссылок. Отдельные файлы монтируются через
+    # subPath — два тома на один каталог не поставить.
+    extraArgs:
+      - --config
+      - /etc/kacho-identity/kratos.yaml
+    extraVolumes:
+      - name: kacho-identity-config
+        configMap:
+          name: kacho-iam-kratos-config
+      - name: kacho-identity-hooks
+        configMap:
+          name: kacho-iam-kratos-hooks
+      - name: kacho-identity-schema
+        configMap:
+          name: kacho-iam-kratos-identity-schema
+    extraVolumeMounts:
+      - name: kacho-identity-config
+        mountPath: /etc/kacho-identity/kratos.yaml
+        subPath: kratos.yaml
+        readOnly: true
+      - name: kacho-identity-schema
+        mountPath: /etc/kacho-identity/identity.schema.json
+        subPath: identity.schema.json
+        readOnly: true
+      - name: kacho-identity-hooks
+        mountPath: /etc/kacho-identity/hooks
+        readOnly: true
   kratos:
     development: true
     automigration:
