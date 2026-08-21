@@ -42,6 +42,9 @@ const orphanSweepInterval = time.Hour
 //
 // Первый проход идёт СРАЗУ, до первого тика: иначе после каждого перезапуска мусор
 // ждал бы час, а перезапусков в жизни сервиса больше, чем часов между ними.
+//
+// РЕПЛИКИ: одиночка — проход берёт одна реплика замком прохода в базе сервиса
+// (RegistryRepo.TryClaimOrphanSweep); проигравший пропускает тик.
 func startOrphanSweepBackstop(ctx context.Context, repo *pg.RegistryRepo, logger *slog.Logger) {
 	log := logger.With(slog.String("component", "orphan_sweep"))
 	go func() {
@@ -66,6 +69,20 @@ func runOrphanSweepOnce(ctx context.Context, repo *pg.RegistryRepo, log *slog.Lo
 	// Проход не должен висеть до конца жизни процесса на неотвечающей базе.
 	sweepCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
+
+	release, taken, cerr := repo.TryClaimOrphanSweep(sweepCtx)
+	if cerr != nil {
+		log.Warn("замок прохода сверки не взят", "err", cerr)
+		return
+	}
+	if !taken {
+		// Проход исполняет другая реплика — штатный исход, а не отказ. Отдельная
+		// строка от «расхождений нет»: иначе «нас развели» и «сверять нечего»
+		// выглядели бы одинаково.
+		log.Debug("проход сверки пропущен: его исполняет другая реплика")
+		return
+	}
+	defer release(sweepCtx)
 
 	named, err := repo.SweepOrphanedRepositories(sweepCtx, -1)
 	if err != nil {
