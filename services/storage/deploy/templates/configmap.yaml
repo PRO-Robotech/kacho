@@ -16,6 +16,10 @@ data:
   KACHO_STORAGE_DB_USER: {{ .Values.db.user | quote }}
   KACHO_STORAGE_DB_NAME: {{ .Values.db.name | quote }}
   KACHO_STORAGE_DB_SSLMODE: {{ .Values.db.sslMode | quote }}
+  # Ширина пула на ОДНУ реплику. Общий configmap читают оба контейнера, и это
+  # безопасно: `MigrateDSN` строит строку без пуловых параметров (config.go),
+  # поэтому миграционный шаг значение просто не увидит.
+  KACHO_STORAGE_DB_MAX_CONNS: {{ .Values.db.maxConns | quote }}
   KACHO_STORAGE_GEO_GRPC_ADDR: {{ .Values.config.geoGrpcAddr | quote }}
   KACHO_STORAGE_IAM_GRPC_ADDR: {{ .Values.config.iamGrpcAddr | quote }}
   KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR: {{ .Values.config.authzIamGrpcAddr | quote }}

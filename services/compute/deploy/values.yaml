@@ -22,6 +22,26 @@ db:
   # pre-provisioned client CA); harden to verify-full where a root cert is mounted.
   # Set `disable` only on a dev stand running auth.mode=dev.
   sslMode: require
+  # maxConns — ширина пула pgx на ОДНУ реплику (KACHO_COMPUTE_DB_MAX_CONNS).
+  #
+  # Объявлена, а не унаследована умолчанием драйвера (#709). Умолчание —
+  # `max(4, число ядер УЗЛА)`: величина, которую никто не выбирал и которая
+  # меняется от смены узла без единой правки дерева, то есть посадка тихо
+  # меняет своё обещание базе. Проверить произведение «пул × потолок подов»
+  # против предела базы при таком умолчании нельзя вовсе.
+  #
+  # 15 — из арифметики: `max_connections = 100` у pg-compute на боевых
+  # профилях минус 3 слота суперпользователя = 97 отдаваемых, потолок
+  # автомасштабирования ниже — 5 подов, значит 15 × 5 = 75 ≤ 97 с запасом на
+  # миграционный шаг и лишние поды переката. Величина не меньше того, что
+  # действовало умолчанием на узле стенда (12, см. комментарий pg-compute в
+  # deploy/helm/umbrella/values.dev-prod.yaml), поэтому объявление ничего не
+  # сужает — оно делает выбор явным.
+  #
+  # Своей глубины для compute НЕ ИЗМЕРЕНО. Правишь это число или
+  # `autoscaling.maxReplicas` — правь второе: их произведение проверяет
+  # deploy/pool_fits_database_test.go.
+  maxConns: 15
 
 # ─── SEC auth posture (arms the binary's fail-closed production gates) ──
 # auth.mode drives cmd/compute/main.go::validateAuthMode. rules/security.md:
