@@ -327,6 +327,17 @@ func runServe(cfg config.Config) error {
 		return nil
 	}})
 
+	// Сканер состояния ЖУРНАЛА АУДИТА. Провязан безусловно и намеренно: журнал
+	// наполняется каждой мутацией репозитория, независимо от того, включён ли
+	// дренаж очереди регистраций ниже. Доставки у журнала нет и сегодня быть не
+	// может (приёмника аудита в продукте не существует), поэтому сканер здесь —
+	// единственное, чем «ноль доставленных строк за всю жизнь очереди» вообще
+	// заметно. Подробности и предикат пересмотра — audit_outbox_metrics.go.
+	background = append(background, bgWorker{"audit-outbox-metrics", func(c context.Context) error {
+		runAuditOutboxMetrics(c, pool, outboxRec, logger)
+		return nil
+	}})
+
 	// register-drainer — applies FGA owner-tuple register/unregister intents
 	// (compute_fga_register_outbox, written transactionally by repo.Insert/Delete)
 	// via kacho-iam InternalIAMService.RegisterResource/UnregisterResource over the
