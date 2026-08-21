@@ -192,10 +192,24 @@ spec:
             # ca.crt mounted at /etc/registry-ca — see the internal-ca volume, present
             # whenever mtls (prod) or the data-plane TLS-sidecar is on). The sidecar no
             # longer proxies JWKS — iam serves it over TLS directly.
-            - name: KACHO_REGISTRY_IAM_JWKS_URL
-              value: "{{ .Values.iam.jwksUrl }}"
-            - name: KACHO_REGISTRY_HYDRA_ISSUER
-              value: "{{ .Values.hydra.issuer }}"
+            # F1 (#897) — издатель токена стал МНОЖЕСТВОМ, и у каждого принимаемого
+            # издателя СВОЯ объявленная запись источника ключей. Объединить наборы
+            # было бы дешевле и уничтожило бы ровно ту защиту, ради которой развязка
+            # делается: ключ одного издателя проверял бы токен, объявляющий другого.
+            # Адрес записи ОБЪЯВЛЯЕТСЯ перечислением и никогда не выводится из
+            # издателя — издатель приходит от предъявителя.
+            - name: KACHO_REGISTRY_TOKEN_ISSUERS
+              value: "{{ .Values.tokenAcceptance.issuers }}"
+            - name: KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS
+              value: "{{ .Values.tokenAcceptance.issuerKeySets }}"
+            - name: KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER
+              value: "{{ .Values.tokenAcceptance.platformIssuer }}"
+            # Отзыв читается НА ПРЕДЪЯВЛЕНИИ: контроль, действующий только там, где
+            # удостоверение выдают, отзывом не является — он лишь не выдаёт нового.
+            # Адрес задаётся явно; выведенный из адреса соседа он был бы всегда
+            # непуст, то есть контроль выглядел бы включённым, ведя в никуда.
+            - name: KACHO_REGISTRY_TOKEN_REVOCATION_URL
+              value: "{{ .Values.tokenAcceptance.revocationUrl }}"
             - name: KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY
               value: "{{ .Values.dataplaneTLSTerminatedExternally }}"
             - name: KACHO_REGISTRY_TOKEN_REALM
@@ -210,10 +224,12 @@ spec:
             # (kacho-internal-ca) — the SAME CA that signs the kacho-iam-internal leaf
             # terminating :9097 — added to the system pool via SSL_CERT_DIR. Present when
             # mtls is on (prod — from the registry mTLS server secret) OR the data-plane
-            # TLS-sidecar cert is mounted. AuthMode stays production (requireSecureJWKSURL
-            # passes — iam.jwksUrl is https). Without this the https JWKS fetch fails the
-            # TLS handshake → fail-closed 401 on every pull (risk R3). The sidecar no
-            # longer proxies JWKS (that role dropped now that iam serves TLS directly).
+            # TLS-sidecar cert is mounted. AuthMode stays production (requireSecureKeySetURL
+            # passes — every declared key-set URL in tokenAcceptance.issuerKeySets is https).
+            # The same anchor serves the revocation authority (tokenAcceptance.revocationUrl):
+            # it is the same listener. Without this the https fetch fails the TLS handshake
+            # → fail-closed 401 on every pull (risk R3). The sidecar no longer proxies the
+            # key set (that role dropped now that iam serves TLS directly).
             - name: SSL_CERT_DIR
               value: /etc/registry-ca
             {{- end }}
@@ -252,6 +268,24 @@ spec:
               value: {{ printf "%s/ca.crt" $cli | quote }}
             - name: KACHO_REGISTRY_IAM_AUTHZ_MTLS_SERVERNAME
               value: {{ .Values.mtls.serverName.iamAuthz | quote }}
+            {{- end }}
+            {{- if .Values.mtls.edges.tokenRevocation }}
+            # registry→iam авторитет отзыва (internal :9097) client-creds. Ребро
+            # СВОЁ: маршруту отзыва присылают предъявленный токен, поэтому
+            # исключение из аутентификации, которым живёт маршрут набора ключей,
+            # сюда не распространяется. Якорь объявлен и непригоден → отказ в
+            # СТАРТЕ: откат на системные корни всегда «работает» и делает ошибку
+            # в якоре ненаблюдаемой.
+            - name: KACHO_REGISTRY_TOKEN_REVOCATION_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_REGISTRY_TOKEN_REVOCATION_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $cli | quote }}
+            - name: KACHO_REGISTRY_TOKEN_REVOCATION_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $cli | quote }}
+            - name: KACHO_REGISTRY_TOKEN_REVOCATION_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $cli | quote }}
+            - name: KACHO_REGISTRY_TOKEN_REVOCATION_MTLS_SERVERNAME
+              value: {{ .Values.mtls.serverName.tokenRevocation | quote }}
             {{- end }}
             {{- if .Values.mtls.edges.iamProject }}
             # registry→iam ProjectService.Get (public :9090) client-creds — same client

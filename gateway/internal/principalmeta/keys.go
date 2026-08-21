@@ -53,9 +53,18 @@ const (
 	MetaPrincipalType    = "x-kacho-principal-type"
 	MetaPrincipalID      = "x-kacho-principal-id"
 	MetaPrincipalDisplay = "x-kacho-principal-display-name"
-	MetaTokenACR         = "x-kacho-token-acr"   // #nosec G101 -- gRPC metadata key name (token ACR claim), not a credential
-	MetaTokenJti         = "x-kacho-token-jti"   // #nosec G101 -- gRPC metadata key name (token jti claim), not a credential
-	MetaTokenScope       = "x-kacho-token-scope" // #nosec G101 -- gRPC metadata key name (token scope claim), not a credential
+
+	// MetaPrincipalDisplayBin — ДВОИЧНАЯ форма отображаемого имени.
+	//
+	// Значение обычного метаданного ключа gRPC ограничено печатаемой латиницей;
+	// продукт русскоязычный, и имя, записанное кириллицей, роняет ВЕСЬ вызов,
+	// не дойдя до обработчика. Суффикс `-bin` допускает произвольные байты:
+	// gRPC кодирует значение сам. Тип и идентификатор остаются обычными
+	// ключами — они латиница by construction.
+	MetaPrincipalDisplayBin = "x-kacho-principal-display-name-bin"
+	MetaTokenACR            = "x-kacho-token-acr"   // #nosec G101 -- gRPC metadata key name (token ACR claim), not a credential
+	MetaTokenJti            = "x-kacho-token-jti"   // #nosec G101 -- gRPC metadata key name (token jti claim), not a credential
+	MetaTokenScope          = "x-kacho-token-scope" // #nosec G101 -- gRPC metadata key name (token scope claim), not a credential
 )
 
 // Lowercase prefixes used to strip forgeable client-supplied identity

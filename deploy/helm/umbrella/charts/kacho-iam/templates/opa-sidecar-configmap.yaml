@@ -136,7 +136,11 @@ data:
 
     kacho-iam OpaBundleService.GetBundle (Internal RPC, port 9091)
       ├── builds `bundle.tar.gz` from embed.FS policies + DB data
-      ├── signs JWS (ES256) using current oidc_jwks_keys row
+      ├── would sign JWS (ES256) with a bundle-signing key — NOT IMPLEMENTED,
+      │   and the key store this line used to name was dropped by a migration.
+      │   It must not be replaced by the token signing key store: that one holds
+      │   the keys the platform mints its own tokens with, and bundles are a
+      │   different subject with a different audience and a different rotation.
       └── serves at `/opa/v1/bundle.tar.gz` + detached `bundle.tar.gz.sig`
 
     OPA sidecar (every kacho-* pod):

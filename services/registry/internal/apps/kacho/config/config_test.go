@@ -69,24 +69,29 @@ func TestConfig_PushGrantTTL_Override(t *testing.T) {
 		"push-grant TTL must stay env-configurable")
 }
 
-// TestConfig_IAMJWKS_Defaults (RJU-14) фиксирует контракт data-plane authN после
-// unify: JWKS-источник верификации identity-JWT по умолчанию — cluster-internal
-// iam JWKS-proxy (https :9097), а НЕ Hydra напрямую (data-plane больше не звонит в
-// Hydra). Hydra issuer по-прежнему НЕ задан по умолчанию (iss проверяется только
-// когда сконфигурен) — issuer-pin остаётся раздельным knob'ом от JWKS-URL. realm
-// WWW-Authenticate остаётся token-шимом (docker идёт в шим, шим ходит в Hydra).
-func TestConfig_IAMJWKS_Defaults(t *testing.T) {
+// TestConfig_TokenAcceptance_Defaults — F1-20/F1-41: приём токена по умолчанию
+// НИЧЕГО не принимает.
+//
+// Ни перечня издателей, ни привязки «издатель → источник», ни нашего издателя,
+// ни авторитета отзыва: каждое из этих значений при пустом умолчании означало бы
+// «не сужаем», а «не сужаем» на проверке подлинности — это «принимаем любого».
+// Значения приезжают из чарта, и их отсутствие обязано ронять СТАРТ, а не первый
+// запрос. Адресат при этом умолчание имеет — он не является сужением сам по себе
+// и обязателен отдельным стражем.
+func TestConfig_TokenAcceptance_Defaults(t *testing.T) {
 	env := baseEnv()
 
 	var c Config
 	require.NoError(t, LoadInto(&c, env))
 
-	assert.Equal(t,
-		"https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json",
-		c.IAMJWKSURL,
-		"data-plane JWKS source must default to the cluster-internal iam JWKS proxy (https), not Hydra")
-	assert.Equal(t, "", c.HydraIssuer,
-		"Hydra issuer unset by default (verified only when configured); issuer-pin decoupled from JWKS-URL")
+	assert.Equal(t, "", c.TokenIssuers,
+		"перечень принимаемых издателей не имеет умолчания: пустой перечень означает «любой издатель»")
+	assert.Equal(t, "", c.TokenIssuerKeySets,
+		"привязка «издатель → источник» не имеет умолчания: адрес объявляется, а не выводится")
+	assert.Equal(t, "", c.PlatformTokenIssuer,
+		"наш издатель по умолчанию не принимается — переход объявляется явно")
+	assert.Equal(t, "", c.TokenRevocationURL,
+		"адрес авторитета отзыва не имеет умолчания: выведенный адрес всегда непуст и потому ведёт в никуда")
 	assert.Equal(t, "https://api.kacho.local/iam/token", c.TokenRealm,
 		"WWW-Authenticate realm stays the token-shim")
 	assert.Equal(t, "registry.kacho.local", c.ServiceAud)
@@ -117,27 +122,68 @@ func TestConfig_AnonymousSubject_Override(t *testing.T) {
 		"anon principal id must be env-configurable (matches iam AnonymousClientID)")
 }
 
-// TestConfig_IAMJWKS_Override_OldEnvIgnored (RJU-14) — новый env
-// KACHO_REGISTRY_IAM_JWKS_URL читается в IAMJWKSURL; старый
-// KACHO_REGISTRY_HYDRA_JWKS_URL БОЛЬШЕ НЕ КОНСУЛЬТИРУЕТСЯ (снят с контракта):
-// выставление старого имени не влияет на IAMJWKSURL. Hydra issuer по-прежнему
-// пиннится своим собственным env (issuer-pin остаётся на Hydra, отдельный knob).
-func TestConfig_IAMJWKS_Override_OldEnvIgnored(t *testing.T) {
+// TestConfig_TokenAcceptance_Override — объявления приёма читаются из своих
+// переменных, а снятые с контракта имена БОЛЬШЕ НЕ КОНСУЛЬТИРУЮТСЯ.
+//
+// Вторая половина существенна: молча принятое и не прочитанное значение — это
+// обещание возможности, которой нет. Оператор, оставивший прежнее имя, обязан
+// получить отказ в СТАРТЕ (перечень издателей окажется пуст), а не тихо
+// работающую посадку с чужими умолчаниями.
+func TestConfig_TokenAcceptance_Override(t *testing.T) {
 	env := baseEnv()
-	env["KACHO_REGISTRY_IAM_JWKS_URL"] = "https://kacho-iam-internal.example:9097/.well-known/jwks.json"
-	// Старый env — умышленно выставлен на другое значение: он не должен ничего менять.
-	env["KACHO_REGISTRY_HYDRA_JWKS_URL"] = "http://hydra.example:4444/.well-known/jwks.json"
-	env["KACHO_REGISTRY_HYDRA_ISSUER"] = "https://hydra.api.kacho.cloud"
+	env["KACHO_REGISTRY_TOKEN_ISSUERS"] = "https://iam.kacho.local,https://hydra.api.kacho.cloud"
+	env["KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS"] =
+		"https://iam.kacho.local=https://kacho-iam-internal.example:9097/.well-known/kacho/jwks.json," +
+			"https://hydra.api.kacho.cloud=https://kacho-iam-internal.example:9097/.well-known/jwks.json"
+	env["KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER"] = "https://iam.kacho.local"
+	env["KACHO_REGISTRY_TOKEN_REVOCATION_URL"] = "https://kacho-iam-internal.example:9097/internal/tokens/introspect"
+	// Снятые с контракта имена — умышленно выставлены: они не должны ничего менять.
+	env["KACHO_REGISTRY_IAM_JWKS_URL"] = "http://hydra.example:4444/.well-known/jwks.json"
+	env["KACHO_REGISTRY_HYDRA_ISSUER"] = "https://hydra.example"
 
 	var c Config
 	require.NoError(t, LoadInto(&c, env))
 
-	assert.Equal(t, "https://kacho-iam-internal.example:9097/.well-known/jwks.json", c.IAMJWKSURL,
-		"IAMJWKSURL must come from KACHO_REGISTRY_IAM_JWKS_URL")
-	assert.NotEqual(t, "http://hydra.example:4444/.well-known/jwks.json", c.IAMJWKSURL,
-		"the old KACHO_REGISTRY_HYDRA_JWKS_URL must no longer be consulted")
-	assert.Equal(t, "https://hydra.api.kacho.cloud", c.HydraIssuer,
-		"issuer-pin stays on Hydra via its own KACHO_REGISTRY_HYDRA_ISSUER env")
+	issuers, err := c.AcceptedTokenIssuers()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"https://iam.kacho.local", "https://hydra.api.kacho.cloud"}, issuers,
+		"перечень читается ЭЛЕМЕНТАМИ из KACHO_REGISTRY_TOKEN_ISSUERS")
+
+	bindings, err := c.TokenIssuerBindings()
+	require.NoError(t, err)
+	require.Len(t, bindings, 2)
+	assert.Equal(t, "https://kacho-iam-internal.example:9097/.well-known/kacho/jwks.json", bindings[0].KeySetURL,
+		"адрес набора берётся из объявленной привязки")
+	assert.Equal(t, TokenTypePlatform, bindings[0].TokenType,
+		"полоса нашей чеканки несёт свой тип токена")
+	assert.True(t, bindings[0].ReadRevocation,
+		"на предъявлении токена нашей чеканки читается отзыв")
+	assert.Equal(t, TokenTypeLegacy, bindings[1].TokenType,
+		"полоса прежнего издателя сохраняет свой тип токена")
+	assert.False(t, bindings[1].ReadRevocation,
+		"полоса прежнего издателя вне области под-фазы и своего поведения не меняет")
+}
+
+// TestConfig_RetiredTokenEnvsAreNotConsulted — снятые с контракта имена не
+// оживают через умолчания: посадка, задавшая ТОЛЬКО их, не принимает ни одного
+// издателя, то есть отказывает в старте, а не работает вслепую.
+func TestConfig_RetiredTokenEnvsAreNotConsulted(t *testing.T) {
+	env := baseEnv()
+	env["KACHO_REGISTRY_IAM_JWKS_URL"] = "https://kacho-iam-internal.example:9097/.well-known/jwks.json"
+	env["KACHO_REGISTRY_HYDRA_ISSUER"] = "https://hydra.api.kacho.cloud"
+	env["KACHO_REGISTRY_HYDRA_JWKS_URL"] = "http://hydra.example:4444/.well-known/jwks.json"
+
+	var c Config
+	require.NoError(t, LoadInto(&c, env))
+
+	issuers, err := c.AcceptedTokenIssuers()
+	require.NoError(t, err)
+	assert.Empty(t, issuers,
+		"снятые имена не консультируются: приём остаётся необъявленным и обязан ронять старт")
+
+	_, err = c.TokenIssuerBindings()
+	assert.Error(t, err,
+		"без объявленного перечня записи приёма не собираются — отказ приходит при построении")
 }
 
 // TestConfig_IAMProjectEdge_Override — env-override addr + отдельные mTLS-creds ребра.

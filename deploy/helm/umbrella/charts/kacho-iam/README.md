@@ -33,14 +33,18 @@ ConfigMap / RBAC / Service objects.
 > **Ротатора JWKS в чарте нет** — cronjob-шаблон, который его нёс, снят как
 > вестигиальный, и его имя здесь намеренно не воспроизводится: путь в обратных
 > кавычках читается следующим как живая координата, даже внутри абзаца,
-> объясняющего, что файла нет. Причина снятия: iam не владеет ключом подписи
-> токенов — издатель и подписант Hydra, а iam лишь проксирует её публичный JWKS
-> байт-в-байт. Соответственно **никто не наполняет** ConfigMap `kacho-iam-jwks` —
-> в нём остаётся пустой placeholder-PEM, а bundle-signing в коде iam вообще
-> отсутствует (JWS-подписи бандлов нет ни в одном пакете). Раздел оставлен как
-> описание намерения; прежде чем на него опираться — реализовать подпись бандлов
-> и её собственный key-lifecycle. Весь текст ниже про «rotator» относится к этому
-> нереализованному плану.
+> объясняющего, что файла нет. **Никто не наполняет** ConfigMap `kacho-iam-jwks` —
+> в нём остаётся пустой placeholder-PEM, а подписи бандлов в коде iam нет ни в
+> одном пакете. Раздел оставлен как описание намерения; прежде чем на него
+> опираться — реализовать подпись бандлов и её собственный key-lifecycle. Весь
+> текст ниже про «rotator» относится к этому нереализованному плану.
+>
+> **Прежняя редакция объясняла снятие тем, что iam не владеет ключом подписи
+> токенов. С задачи #897 это неверно:** платформа чеканит свои токены сама, у iam
+> есть ключница подписных ключей со своим сроком, ротацией и публикуемым набором
+> (`config.authn.tokenSigning.*`). На этот раздел смена ничего не переносит:
+> подпись БАНДЛА и подпись ТОКЕНА — разные предметы с разными адресатами и разной
+> ротацией, и ключница токенов под подпись бандлов не переиспользуется.
 
 The OPA bundle is (per the above plan) signed with JWS ES256; the public half
 would live in ConfigMap `kacho-iam-jwks`, rendered by
@@ -53,21 +57,28 @@ fleet load at startup to verify each downloaded bundle. (Прежняя реда
 
 ### Rotation cadence
 
-- **180d** is the **public-key** rotation cadence (acceptance §5.6).
-- **90d** is the Phase 2 default for **JWKS overall** (Hydra signing,
-  access-token JWT etc.). Phase 3 inherits this cadence; an operator MAY
-  configure a separate `bundle-only` key with 180d rotation by setting
-  `kacho.iam.jwks.rotationDays=180` AND adding a dedicated kid (Phase 4 work
-  if separate key rings are required).
+- **180d** is the **public-key** rotation cadence (acceptance §5.6) for the
+  bundle-signing key of this unimplemented plan.
+- The knob that used to be named here for setting that cadence was removed: no
+  line of code ever read it. It is deliberately not reproduced — a knob name in
+  backticks reads as a live setting, and an operator would set it and get
+  nothing. An implementation of bundle signing declares its own cadence knob.
+- The lifetime of the TOKEN signing key is a different setting for a different
+  key: `config.authn.tokenSigning.keyLifetime` (see `values.yaml`). Rotation of
+  that key runs inside the service, not from a CronJob.
 
 ### Rotation procedure
 
 Day 0:
 1. JWKS rotator CronJob hits `rotation-days` threshold for the current key.
-2. Rotator generates new ES256 keypair, encrypts private with KMS-CMK
-   (`KACHO_IAM_JWKS_ENC_KEY`), inserts into `oidc_jwks_keys` table.
-3. Rotator marks new row `current=true`, demotes old row `current=false` but
-   retains `valid=true` (still usable for verification).
+2. Rotator generates a new ES256 keypair, wraps the private half and stores it.
+   (The store this step used to name was dropped by a migration; a real
+   implementation of bundle signing brings its own. It must NOT reuse the token
+   signing key store — that one holds the keys the platform mints ITS OWN tokens
+   with, and a bundle-signing key sharing that store would share its rotation,
+   its published key set and its revocation, none of which are about bundles.)
+3. Rotator marks the new row current, demotes the old one but keeps it usable
+   for verification.
 4. Rotator updates ConfigMap `kacho-iam-jwks` — both old kid and new kid
    PEM entries present.
 5. `kacho-iam` bundle server would sign bundles with the new key during a
@@ -83,9 +94,9 @@ Day 0 + 2h (grace expiry):
    bundle.
 
 Day 0 + 180d (public-key audit cycle):
-9. Operator reviews `oidc_jwks_keys` table audit log. Any keys older than
-   180d that have been `valid=false` for > 7d are safe to purge (no in-flight
-   verification possible).
+9. Operator reviews the bundle-signing key audit log. A key older than 180d that
+   has been unusable for verification for more than 7d is safe to purge — no
+   in-flight verification against it is possible any more.
 
 ### Disaster: signing key compromise
 
@@ -100,14 +111,24 @@ If the **private** signing key leaks (e.g., dev-cluster Secret leak):
    (accept temporary fail-closed during sidecar pull lag).
 4. Invalidate ALL existing OPA bundles in CDN/cache (force re-pull) by making
    the pod template change, so sidecars detect a new revision and re-pull.
-5. Audit: query `oidc_jwks_keys` for any `current=true, valid=true` rows older
-   than incident timestamp — anything else is suspect.
+5. Audit: list the bundle-signing keys still usable for verification and
+   compare their age against the incident timestamp — anything older is suspect.
 
 ## Sealed-secret integration (operator setup)
 
-For production deployments, the AES-GCM KMS key
+For production deployments, the 32-byte AES-GCM key
 (`KACHO_IAM_JWKS_ENC_KEY`, default Secret name `kacho-iam-jwks-enc-key`) must
 be provisioned BEFORE first-deploy of this chart. Two supported patterns:
+
+> [!important] This key WRAPS THE PRIVATE HALF of the platform's token signing
+> key. The name is unchanged and the meaning is not: it used to encrypt rows of a
+> key store that had no reader at all, and it now wraps the private half held in
+> the iam key store the platform signs its own tokens with. The name was
+> deliberately NOT changed — renaming would cost an edit in every deployment
+> profile and open a window in which the old name is silently ignored, so a
+> profile that kept it would look configured while the process read nothing.
+> Production refuses to start without it, and what stops working when it is
+> absent is now token minting.
 
 ### Pattern A: external-secrets-operator (recommended)
 
