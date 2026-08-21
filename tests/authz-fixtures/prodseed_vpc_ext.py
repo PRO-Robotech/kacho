@@ -126,7 +126,12 @@ tok_ng = pm.sa_token(sva_ng)
 #    (а) МЕТОД-ГЕЙТ: право уровня проекта обоим субъектам. Без него список
 #        отвечает отказом метода, и пообъектная фильтрация не проверяется вовсе:
 #        кейс краснел бы, не дойдя до предмета.
-role_proj = pm.custom_role(acctA, f"ps-lf-projread-{RID}", "vpc", ["subnet"], ["get", "list"])
+# ИМЯ РОЛИ — НЕ ТО ЖЕ, ЧТО ИМЯ УЧЁТКИ. Форма имени роли не допускает дефиса:
+#   custom — ^[a-z][a-z0-9_]{0,40}$,  system — ^roles/[a-z]+\.[a-z]+$
+# Соседние фикстуры зовут служебные учётки через дефис, и скопированный оттуда
+# стиль дал синхронный отказ на самом первом создании роли. Сервер назвал
+# причину дословно — и назвал её потому, что посев больше не глотает отказ.
+role_proj = pm.custom_role(acctA, f"ps_lf_projread_{RID.replace('-', '_')}", "vpc", ["subnet"], ["get", "list"])
 pm.grant(sva_sv, role_proj, "project", lf_proj)
 pm.grant(sva_ng, role_proj, "project", lf_proj)
 
@@ -138,7 +143,7 @@ pm.grant(sva_ng, role_proj, "project", lf_proj)
 #        действовать, оставаясь по виду исправной: проекция журнала намеренно
 #        пропускает глаголы («глагол выводится из выдачи и копией не хранится»,
 #        миграция 0100). Строка принималась, права не возникало, посев молчал.
-role_one = _curl_role_with_names(acctA, f"ps-lf-one-{RID}", lf_vis)
+role_one = _curl_role_with_names(acctA, f"ps_lf_one_{RID.replace('-', '_')}", lf_vis)
 pm.grant(sva_sv, role_one, "project", lf_proj)
 
 #    Утверждение СПОСОБНОСТИ, а не факта записи: право обязано быть ВИДНО тому,
