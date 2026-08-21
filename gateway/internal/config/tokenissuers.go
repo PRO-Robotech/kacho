@@ -175,7 +175,18 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 				"KACHO_API_GATEWAY_TOKEN_ISSUERS declares no issuer set — the platform would mint "+
 				"tokens this edge rejects on the first request", c.PlatformTokenIssuer)
 		}
-		return []TokenIssuerBinding{legacyBinding(c.ResolvedHydraIssuer(), c.ResolvedHydraJWKSURL())}, nil
+		b := legacyBinding(c.ResolvedHydraIssuer(), c.ResolvedHydraJWKSURL())
+		// Требование к транспорту источника набора действует и здесь.
+		//
+		// Асимметрия была бы хуже строгости: объявивший перечень оператор
+		// получал бы проверку, а не объявивший — нет, и правильный поступок
+		// оказывался бы наказуем. Правило одно, потому что предмет один —
+		// источник набора есть единственный якорь доверия проверки подписи, и
+		// он не становится безопаснее оттого, что адрес приехал прежней ручкой.
+		if err := c.requireSecureKeySetURL(b.Issuer, b.KeySetURL); err != nil {
+			return nil, err
+		}
+		return []TokenIssuerBinding{b}, nil
 	}
 
 	// ДВА объявления об одном предмете. Отказ, а не старшинство: значение,

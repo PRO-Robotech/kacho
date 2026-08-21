@@ -235,3 +235,53 @@ func TestF1b01_UnsetDeclarationFallsBackToTheSingleLegacyRecord(t *testing.T) {
 		t.Fatalf("полоса прежнего издателя объявила чтение НАШЕГО авторитета отзыва")
 	}
 }
+
+// TestF1b04_TransportRequirementIsSymmetricAcrossBothPaths — требование к
+// транспорту источника набора одинаково на ОБОИХ путях объявления.
+//
+// Асимметрия была бы хуже строгости: объявивший перечень получал бы проверку, а
+// не объявивший — нет, и правильный поступок оказывался бы наказуем. Предмет при
+// этом один: источник набора есть единственный якорь доверия проверки подписи, и
+// он не становится безопаснее оттого, что адрес приехал прежней ручкой.
+func TestF1b04_TransportRequirementIsSymmetricAcrossBothPaths(t *testing.T) {
+	// (1) Путь ЗАПАСНОЙ — перечень не объявлен, адрес приехал прежней ручкой.
+	fallback := config.Config{
+		AppEnv: "production", APIDomain: "api.kacho.test",
+		HydraIssuer:  f1bLegacy,
+		HydraJWKSURL: "http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json",
+	}
+	if _, err := fallback.TokenAcceptance(); err == nil {
+		t.Fatalf("незащищённый адрес набора принят на ЗАПАСНОМ пути в производственной " +
+			"посадке — тогда не объявивший перечня оператор проверки не получает, а " +
+			"объявивший получает")
+	}
+
+	// (2) Путь ОБЪЯВЛЕННЫЙ — тот же адрес, то же отвержение.
+	declared := f1bFullDeclaration()
+	declared.TokenIssuerKeySets = f1bOurs + "=" + f1bOursKS + "," +
+		f1bLegacy + "=http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+	if _, err := declared.TokenAcceptance(); err == nil {
+		t.Fatalf("незащищённый адрес набора принят на ОБЪЯВЛЕННОМ пути")
+	}
+
+	// (3) Положительный контроль на обоих: защищённый адрес принимается.
+	fallback.HydraJWKSURL = "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+	if _, err := fallback.TokenAcceptance(); err != nil {
+		t.Fatalf("защищённый адрес отвергнут на запасном пути: %v", err)
+	}
+	if _, err := f1bFullDeclaration().TokenAcceptance(); err != nil {
+		t.Fatalf("защищённый адрес отвергнут на объявленном пути: %v", err)
+	}
+
+	// (4) В режиме разработки послабление действует одинаково на обоих путях —
+	// иначе асимметрия просто переезжает на другую метку окружения.
+	fallback.AppEnv, fallback.HydraJWKSURL = "dev",
+		"http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+	if _, err := fallback.TokenAcceptance(); err != nil {
+		t.Fatalf("незащищённый адрес отвергнут в режиме разработки на запасном пути: %v", err)
+	}
+	declared.AppEnv = "dev"
+	if _, err := declared.TokenAcceptance(); err != nil {
+		t.Fatalf("незащищённый адрес отвергнут в режиме разработки на объявленном пути: %v", err)
+	}
+}
