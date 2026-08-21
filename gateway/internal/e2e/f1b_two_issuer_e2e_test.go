@@ -164,6 +164,18 @@ type f1bStand struct {
 
 func newF1bStand(t *testing.T, acceptPlatform bool) *f1bStand {
 	t.Helper()
+	return newF1bStandWith(t, acceptPlatform, false)
+}
+
+// newF1bStandWithRequirement — тот же край с ВКЛЮЧЁННЫМ требованием привязки к
+// машинному принципалу.
+func newF1bStandWithRequirement(t *testing.T) *f1bStand {
+	t.Helper()
+	return newF1bStandWith(t, true, true)
+}
+
+func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStand {
+	t.Helper()
 	st := &f1bStand{
 		ours:     newF1bSigner(t, f1bPlatformIssuer, "ours-es256"),
 		legacy:   newF1bSigner(t, f1bLegacyIssuer, "legacy-es256"),
@@ -208,7 +220,8 @@ func newF1bStand(t *testing.T, acceptPlatform bool) *f1bStand {
 	).
 		WithVerifier(verifier).
 		WithRevocationCheck(legacyIntrospection, time.Hour).
-		WithPlatformRevocationCheck(platformIntrospection, time.Hour)
+		WithPlatformRevocationCheck(platformIntrospection, time.Hour).
+		WithRequireMachineTokenBinding(requireBinding)
 
 	// REST — НАСТОЯЩИЙ сервер и настоящее соединение.
 	rest := httptest.NewServer(auth.HTTP(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -442,5 +455,54 @@ func TestF1b09_LegacyLaneKeepsItsDocumentedSoftPass(t *testing.T) {
 	if got := st.callREST(t, revoked); got == http.StatusOK {
 		t.Fatalf("отозванный токен прежнего издателя принят — мягкий проход подменил собой " +
 			"весь контроль")
+	}
+}
+
+// ─── Ф1б-10: край требует привязку и валидирует её на ОБЕИХ поверхностях ────
+
+// TestF1b10_EdgeRequiresBindingFromOurIssuersMachineTokens — вторая половина
+// привязки: контур её проставляет, край её требует.
+func TestF1b10_EdgeRequiresBindingFromOurIssuersMachineTokens(t *testing.T) {
+	st := newF1bStandWithRequirement(t)
+
+	machine := func(cnf map[string]any, jti string) string {
+		return st.ours.mint(t, middleware.PlatformTokenType, jti, func(c jwt.MapClaims) {
+			c["kacho_principal_type"] = "service_account"
+			c["kacho_principal_id"] = "sva_deployer_a1b2"
+			c["sub"] = "sva_deployer_a1b2"
+			if cnf != nil {
+				c["cnf"] = cnf
+			}
+		})
+	}
+
+	// (1) Машинный принципал НАШЕГО издателя БЕЗ привязки — отвергается на обеих.
+	unbound := machine(nil, "jti-machine-unbound")
+	if got := st.callREST(t, unbound); got == http.StatusOK {
+		t.Fatalf("REST принял машинный токен НАШЕГО издателя без привязки — удостоверение, " +
+			"воспроизводимое как обычный предъявительский, у машины ничем не защищено")
+	}
+	if got := st.callGRPC(t, unbound); got == codes.OK {
+		t.Fatalf("нативная gRPC приняла машинный токен НАШЕГО издателя без привязки — " +
+			"утверждение о крае, предъявленное на одной поверхности, сказано про половину")
+	}
+
+	// (2) Тот же токен С привязкой — принимается на обеих. Несущая половина:
+	// без неё требование зеленеет на крае, отвергающем каждый машинный токен.
+	bound := machine(map[string]any{"x5t#S256": "TCyU4b8s7Yy0aBcDeFgHiJkLmNoPqRsTuVwXyZ012ab"},
+		"jti-machine-bound")
+	if got := st.callREST(t, bound); got != http.StatusOK {
+		t.Fatalf("REST отверг машинный токен НАШЕГО издателя С привязкой: %d", got)
+	}
+	if got := st.callGRPC(t, bound); got != codes.OK {
+		t.Fatalf("нативная gRPC отвергла машинный токен НАШЕГО издателя С привязкой: %v", got)
+	}
+
+	// (3) ЧЕЛОВЕЧЕСКИЙ принципал без привязки остаётся законным: сужение здесь
+	// было бы новым отказом тенанту, которого фаза не вводила.
+	human := st.ours.mint(t, middleware.PlatformTokenType, "jti-human-unbound", nil)
+	if got := st.callREST(t, human); got != http.StatusOK {
+		t.Fatalf("человеческий токен без привязки отвергнут: %d — привязка потребована там, "+
+			"где её не просили", got)
 	}
 }
