@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import type { Dispatch, FC, SetStateAction } from "react";
-import { ConfigProvider, theme } from "antd";
+import { ConfigProvider } from "antd";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import { ModuleErrorBoundary } from "@shared/components/organisms/ModuleErrorBoundary";
+import { buildTheme } from "@shared/lib/theme";
 import { HostShell } from "./components";
 import { ModulePlaceholderPage, ReachabilityPage } from "./pages";
 import {
@@ -18,11 +19,22 @@ import {
 
 const THEME_STORAGE_KEY = "kacho-theme";
 
+/*
+ * Умолчание — ТЁМНАЯ тема. Консоль операторская: в неё смотрят подолгу, часто
+ * рядом с другими тёмными инструментами, и палитра продукта построена вокруг
+ * тёмного фона — светлая тема выведена из неё, а не наоборот.
+ *
+ * Умолчание срабатывает ТОЛЬКО когда выбора нет. Сохранённый выбор сильнее его
+ * в обе стороны: "light" остаётся светлой, "dark" — тёмной. Поэтому сравнение
+ * идёт со светлым значением, а не с тёмным: любое иное содержимое ключа (пустая
+ * строка, мусор от прежней версии) — это «выбора нет», а не «выбор светлой».
+ */
 const readStoredTheme = (): boolean => {
   try {
-    return window.localStorage.getItem(THEME_STORAGE_KEY) === "dark";
+    return window.localStorage.getItem(THEME_STORAGE_KEY) !== "light";
   } catch {
-    return false;
+    // localStorage недоступен (private mode) — выбора нет, значит умолчание.
+    return true;
   }
 };
 
@@ -40,19 +52,11 @@ const App: FC = () => {
   }, [dark]);
 
   return (
-    <ConfigProvider
-      theme={{
-        algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: {
-          colorPrimary: "#3d8df5",
-          borderRadius: 6,
-          // Базовый размер как в kacho-ui (эталон 13, не дефолтный AntD 14) —
-          // покрывает host-хром + dashboard; remotes задают полную тему сами.
-          fontSize: 13,
-          fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-        },
-      }}
-    >
+    /* Тема каркаса собирается ТЕМ ЖЕ buildTheme, что и у модулей. Прежде здесь
+       стоял свой короткий набор токенов (свой primary, свой радиус), и каркас
+       красился мимо общей палитры: правка цвета в shared доезжала до модулей и
+       не доезжала до рейла с шапкой. Одно место — один источник. */
+    <ConfigProvider theme={buildTheme(dark ? "dark" : "light")}>
       {/* Корневая граница отказа (#371): последний рубеж для того, что не поймала
           граница модуля — отказ самого каркаса host'а. Без неё непойманная ошибка
           доходит до корня, и React снимает с экрана ВСЁ дерево (белый экран). */}

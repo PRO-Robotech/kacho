@@ -1,12 +1,13 @@
 // TableToolbar — переиспользуемые элементы тулбара таблиц:
 //   • поиск по имени/идентификатору (controlled);
+//   • подпись к числу показанных строк;
 //   • шестерёнка-конфигуратор видимости колонок (persist в localStorage).
 //
 // Используется во встроенных таблицах дочерних ресурсов (ResourceShell) и
 // рассчитан на переиспользование на странице-списке (ResourceListPage).
 
 import { useState } from "react";
-import { Button, Checkbox, Dropdown, Input, Typography } from "antd";
+import { Button, Checkbox, Dropdown, Input } from "antd";
 import { SearchOutlined, SettingOutlined } from "@ant-design/icons";
 import { narrowingTitle, searchPlaceholder, type NarrowingScope } from "@shared/lib/list-scope";
 
@@ -73,7 +74,9 @@ export function TableSearch({
   return (
     <Input
       allowClear
-      prefix={<SearchOutlined style={{ color: "var(--ant-color-text-tertiary, #8c8c8c)" }} />}
+      // Иконка — тусклая роль палитры, а не «серый вообще»: в светлой теме
+      // прежний запасной серый был единственным цветом, не менявшимся с темой.
+      prefix={<SearchOutlined style={{ color: "var(--kc-text-tertiary)" }} />}
       placeholder={placeholder ?? searchPlaceholder(scope)}
       title={narrowingTitle(scope)}
       value={value}
@@ -82,6 +85,12 @@ export function TableSearch({
     />
   );
 }
+
+// Счётчик показанных строк снят решением владельца: число над таблицей не
+// отвечало ни на один вопрос, ради которого на страницу приходят, а место в
+// ряду ручек занимало. Компонент удалён вместе с предметом, а не оставлен
+// «на случай»: неиспользуемая форма выглядит работающей и переживает своё
+// основание.
 
 /** ColumnSettings — шестерёнка с чек-боксами видимости колонок. */
 export function ColumnSettings({
@@ -97,23 +106,33 @@ export function ColumnSettings({
     <Dropdown
       trigger={["click"]}
       placement="bottomRight"
-      dropdownRender={() => (
+      popupRender={() => (
         <div
           style={{
             padding: 12,
             minWidth: 180,
-            background: "var(--ant-color-bg-elevated, #2d2e35)",
-            border: "1px solid var(--ant-color-border-secondary, #383941)",
-            borderRadius: 8,
-            boxShadow: "0 6px 16px rgba(0,0,0,0.45)",
+            // Выпадающий блок ДЕЙСТВИТЕЛЬНО всплывает над страницей — он один из
+            // немногих, кому тень положена; статичные панели держат глубину
+            // тоном. Роли берутся из палитры продукта: прежние запасные значения
+            // (тёмно-серый фон, чёрная тень) не менялись вместе с темой, и в
+            // светлой теме блок оставался тёмным.
+            background: "var(--kc-elevated)",
+            border: "1px solid var(--kc-border)",
+            borderRadius: 11,
+            boxShadow: "var(--kc-shadow-md)",
           }}
         >
-          <Typography.Text
-            type="secondary"
-            style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: 600 }}
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 550,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: "var(--kc-text-tertiary)",
+            }}
           >
             Колонки
-          </Typography.Text>
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
             {columns.map((c) => (
               <Checkbox key={c.key} checked={!hidden.has(c.key)} onChange={(e) => onToggle(c.key, !e.target.checked)}>

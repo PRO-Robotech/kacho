@@ -9,7 +9,7 @@ import { jest } from "@jest/globals";
 import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { antdStub } from "@shared/test/antd-stub";
 
-// Содержимое выпадающего блока приходит пропом `dropdownRender`, а не детьми, —
+// Содержимое выпадающего блока приходит пропом `popupRender`, а не детьми, —
 // его рисует общий стенд-заменитель. Своей копии здесь больше нет (#570).
 jest.unstable_mockModule("antd", () => antdStub());
 

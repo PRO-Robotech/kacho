@@ -57,11 +57,14 @@ describe("CidrSection подсети", () => {
     expect(screen.queryByText("CIDR-блоков нет")).not.toBeInTheDocument();
   });
 
-  it("счётчик считает якорь вместе с дополнительными", () => {
-    show({ primary: "10.0.1.0/24", blocks: ["10.0.2.0/24", "10.0.3.0/24"] });
-
-    expect(screen.getByText("(3)")).toBeInTheDocument();
-  });
+  // Здесь стояла проба «счётчик считает якорь вместе с дополнительными». Её
+  // предмета больше нет: решением владельца («отображать кол-во элементов не
+  // нужно») счётчик снят из шапки секции вовсе. Проба снята ВМЕСТЕ с предметом,
+  // а не ослаблена: утверждение о числе, которого продукт не показывает,
+  // зеленело бы вечно и не сторожило бы ничего. Что якорь и дополнительные
+  // живут в одном наборе, сторожат соседние пробы — «основной якорь показан» и
+  // «снять можно только дополнительные»: обе смотрят на сам набор, а не на
+  // подпись над ним.
 
   it("снять можно только дополнительные — по кнопке на каждом", () => {
     show({ primary: "10.0.1.0/24", blocks: ["10.0.2.0/24", "10.0.3.0/24"] });
@@ -110,14 +113,32 @@ describe("CidrSection подсети", () => {
     await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
   });
 
-  it("блок без префикса на край не уходит", () => {
+  it("блок без префикса на край не уходит, а отказ стоит РЯДОМ С ПОЛЕМ", () => {
     show();
 
     type("10.0.2.0");
     fireEvent.click(addBtn());
 
-    expect(toastError).toHaveBeenCalledWith("CIDR должен содержать префикс (например /24).");
+    // Претензия остаётся на экране у поля и называет, чего не хватает.
+    // Всплывающее сообщение исчезало бы раньше, чем человек перечитает
+    // набранное, — и негодная строка оставалась бы без объяснения.
+    expect(screen.getByRole("alert")).toHaveTextContent("CIDR должен содержать префикс (например /24).");
+    expect(toastError).not.toHaveBeenCalled();
     expect(action).not.toHaveBeenCalled();
+  });
+
+  it("претензия снимается, как только значение исправили", () => {
+    // Контроль в обратную сторону: без него «претензия показана» зеленело бы и
+    // на реализации, которая показывает её навсегда.
+    show();
+
+    type("10.0.2.0");
+    fireEvent.click(addBtn());
+    expect(screen.queryByRole("alert")).toBeInTheDocument();
+
+    type("10.0.2.0/24");
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("в шестёрочное семейство четвёрка не проходит", () => {
@@ -126,7 +147,7 @@ describe("CidrSection подсети", () => {
     type("10.0.2.0/24");
     fireEvent.click(addBtn());
 
-    expect(toastError).toHaveBeenCalledWith("Похоже не на IPv6-адрес.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Похоже не на IPv6-адрес.");
     expect(action).not.toHaveBeenCalled();
   });
 
@@ -136,7 +157,7 @@ describe("CidrSection подсети", () => {
     type("10.0.2.0/24");
     fireEvent.click(addBtn());
 
-    expect(toastError).toHaveBeenCalledWith("Этот CIDR уже добавлен.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Этот CIDR уже добавлен.");
     expect(action).not.toHaveBeenCalled();
   });
 

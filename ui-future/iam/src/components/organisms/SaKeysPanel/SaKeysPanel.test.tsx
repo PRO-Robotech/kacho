@@ -140,8 +140,8 @@ describe("SaKeysPanel", () => {
     renderPanel("sa-42");
 
     const path = revokeOpts().path as (body: unknown) => string;
-    expect(path({ keyId: "sak-9" })).toBe("/iam/v1/serviceAccounts/sa-42/keys/sak-9");
-    expect(path({ keyId: "a/b" })).toBe("/iam/v1/serviceAccounts/sa-42/keys/a%2Fb");
+    expect(path({ id: "sak-9" })).toBe("/iam/v1/serviceAccounts/sa-42/keys/sak-9");
+    expect(path({ id: "a/b" })).toBe("/iam/v1/serviceAccounts/sa-42/keys/a%2Fb");
   });
 
   it("до нажатия окно выпуска не показано, по кнопке — открывается", () => {
@@ -181,7 +181,7 @@ describe("SaKeysPanel", () => {
 
     fireEvent.click(within(confirm).getByRole("button", { name: "Отозвать" }));
 
-    expect(run).toHaveBeenCalledWith({ keyId: "sak-9" });
+    expect(run).toHaveBeenCalledWith({ id: "sak-9" });
   });
 
   it("отказ от подтверждения НЕ отзывает — отрицание в паре с положительным выше", async () => {

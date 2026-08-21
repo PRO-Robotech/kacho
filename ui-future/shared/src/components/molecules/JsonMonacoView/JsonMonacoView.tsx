@@ -45,6 +45,11 @@ export function JsonMonacoView({ data, height = "60vh" }: Props) {
         border: `1px solid ${token.colorBorderSecondary}`,
         borderRadius: token.borderRadius,
         overflow: "hidden",
+        // Литерал, а не токен, и это осознанно: цвет ЗЕРКАЛИТ фон встроенной
+        // темы Monaco (`vs-dark` / `vs`), которая нам не принадлежит и наших
+        // переменных не читает. Подставив сюда `--kc-field`, мы получили бы
+        // видимый шов между рамкой и полотном редактора — заметнее всего пока
+        // редактор грузится. Меняется вместе с темой Monaco, не с палитрой.
         background: mode === "dark" ? "#1e1e1e" : "#ffffff",
       }}
     >

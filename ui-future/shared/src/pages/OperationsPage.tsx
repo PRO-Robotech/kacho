@@ -6,9 +6,9 @@
 // Фильтры: id / Статус / Тип ресурса.
 
 import { useMemo, useState } from "react";
-import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Select, Tag, Typography } from "antd";
-import { ReloadOutlined, DeploymentUnitOutlined } from "@ant-design/icons";
+import { useQueries } from "@tanstack/react-query";
+import { Input, Select, Tag, Typography } from "antd";
+import { DeploymentUnitOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
 import { PanelHeader } from "@shared/components/molecules/PanelHeader";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
@@ -56,25 +56,18 @@ interface ResListResp {
 export function OperationsPage() {
   const project = useProjectStore((s) => s.project);
   const projectId = project?.id ?? null;
-  const qc = useQueryClient();
 
-  const headerRight = useMemo(
-    () => (
-      <Button
-        size="small"
-        icon={<ReloadOutlined />}
-        onClick={() =>
-          qc.invalidateQueries({
-            predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[1] === "operations",
-          })
-        }
-      >
-        Обновить
-      </Button>
-    ),
-    [qc],
-  );
-  useHeaderRight(headerRight);
+  // КНОПКИ «ОБНОВИТЬ» ЗДЕСЬ НЕТ (решение владельца).
+  //
+  // Список операций опрашивается сам — раз в несколько секунд, — поэтому кнопка
+  // предлагала сделать то, что и так происходит. Хуже: её присутствие говорит
+  // обратное, будто без неё страница показывает устаревшее, и человек жмёт её
+  // на всякий случай.
+  //
+  // Слот шапки сбрасывается ЯВНО, а не просто перестаёт заполняться: он держит
+  // состояние между страницами, и не сброшенный донёс бы сюда чужую кнопку с
+  // предыдущей страницы.
+  useHeaderRight(null);
 
   const breadcrumb = useMemo(
     () => (
@@ -221,7 +214,6 @@ export function OperationsPage() {
       <div style={{ flexShrink: 0 }}>
         <PanelHeader
           icon={<DeploymentUnitOutlined />}
-          eyebrow="Операции"
           title={
             // height 20 = строка заголовка (16·1.25); Tag ≤18 не распирает строку
             // → бейдж не прыгает относительно list-страниц (тот же фикс, что в

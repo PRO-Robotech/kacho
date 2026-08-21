@@ -1,24 +1,73 @@
 /*
- * KAC-246: типографическая шкала (Linear-стиль). Utility-классы, применяются
- * поверх AntD Typography для усиления визуального веса page-title и секций.
+ * KAC-246: типографическая шкала. Utility-классы, применяются поверх AntD
+ * Typography для усиления визуального веса page-title и секций.
  * Импортируется из index.css.
+ *
+ * Шкала приведена к эталону «тихой операторской». Ролей три, и они несут разную
+ * работу: заголовок страницы — крупный и плотный (отрицательный трекинг),
+ * надзаголовок — мелкий и разрежённый, машинное значение — моноширинное.
+ * Промежуточные ступени существуют, чтобы страницам не приходилось заводить
+ * собственные кегли inline'ом; своих размеров вне этого файла продукт не имеет.
+ *
+ * ВНИМАНИЕ: файл лежит в дереве в ЧЕТЫРЁХ побайтово одинаковых копиях
+ * (shared + compute + nlb + storage): три модуля импортируют
+ * `@/typography.css` напрямую из своей страницы, а не через shared. Правка
+ * одной копии до остальных не доезжает — правь все четыре одним заходом.
+ * Предикат (без последовательности, закрывающей этот комментарий):
+ * `find . -name typography.css -not -path "*node_modules*" -exec md5sum {} +`
+ * — все контрольные суммы обязаны совпасть.
  */
 
-.t-page-title {
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
+/*
+ * Заголовок страницы. Второй селектор — не украшение: класс вешают на
+ * `Typography.Title`, а у AntD собственное правило вида `h3.ant-typography`
+ * специфичнее одиночного класса, поэтому размер и вес отсюда до заголовка не
+ * доезжали вовсе. Пара `.t-page-title.ant-typography` перевешивает его, а
+ * одиночный `.t-page-title` продолжает работать на обычном узле.
+ */
+.t-page-title,
+.t-page-title.ant-typography {
+  font-size: clamp(24px, 2vw, 32px);
+  font-weight: 590;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
 }
 
+/*
+ * Надзаголовок над заголовком страницы: тип ресурса или раздел. Цвет —
+ * телеметрия: это единственное место шапки, где насыщенный цвет уместен.
+ * Чёрточка перед текстом заменяет разделитель — она короче любого слова и
+ * потому не спорит с заголовком под ней.
+ */
+.t-kicker {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--kc-cyan);
+  font-size: 9px;
+  font-weight: 720;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.t-kicker::before {
+  width: 20px;
+  height: 1px;
+  background: currentcolor;
+  content: "";
+}
+
+/* Заголовок поверхности (шапка панели). */
 .t-section {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
+/* Заголовок блока внутри поверхности. */
 .t-h3 {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 620;
 }
 
 .t-body {
@@ -26,15 +75,24 @@
   line-height: 1.55;
 }
 
+/* Ключ строки свойства, подпись под значением. */
 .t-small {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .t-label {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 550;
 }
 
+/*
+ * Моноширинный ряд: идентификаторы, адреса, CIDR, отметки времени. Цифры
+ * табличные — иначе столбец адресов «дышит» при обновлении списка.
+ */
 .t-mono {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 11px;
+  font-weight: 520;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }

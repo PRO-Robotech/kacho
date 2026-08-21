@@ -6,6 +6,7 @@
 import { jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { formDividers } from "@shared/test/form-divider";
 import { ApiError } from "@shared/api/client";
 
 const get = jest.fn<(path: string) => Promise<Record<string, unknown>>>();
@@ -184,5 +185,26 @@ describe("InlineAddressPoolEditForm", () => {
 
     await waitFor(() => expect(toastError).toHaveBeenCalledWith("Сохранить пул адресов: default pool already exists"));
     expect(onCancel).not.toHaveBeenCalled();
+  });
+});
+
+describe("InlineAddressPoolEditForm — черта", () => {
+  // ПОРЯДОК ПОЛЕЙ ОДИН НА ВСЕ ФОРМЫ (решение владельца): общие поля, черта,
+  // поля самого ресурса. Рукописная форма подчиняется тому же порядку, что и
+  // общее тело формы, — иначе две соседние формы читаются как два разных места
+  // продукта (канон консоли, правило 9).
+  //
+  // Утверждается МЕСТО черты, а не её наличие: черта, уехавшая в конец формы,
+  // тоже «есть» и при этом ничего не отделяет.
+  it("стоит между «Описание» и «Тип»", async () => {
+    show();
+    await screen.findByText("Тип");
+
+    const [черта] = formDividers();
+    expect(черта).toBeDefined();
+
+    const позиция = (el: Element) => [...document.body.querySelectorAll("*")].indexOf(el);
+    expect(позиция(screen.getByText("Описание"))).toBeLessThan(позиция(черта!));
+    expect(позиция(черта!)).toBeLessThan(позиция(screen.getByText("Тип")));
   });
 });

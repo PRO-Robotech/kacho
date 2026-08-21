@@ -1,22 +1,5 @@
 import type { ReactNode } from "react";
-import {
-  Activity,
-  Boxes,
-  Camera,
-  Cloud,
-  FolderKanban,
-  Globe2,
-  HardDrive,
-  History,
-  KeyRound,
-  Layers3,
-  Network,
-  Route,
-  Scale,
-  ScanSearch,
-  ShieldCheck,
-  UserRound,
-} from "lucide-react";
+import { Boxes, Cloud, HardDrive, KeyRound, Network, Scale } from "lucide-react";
 
 export interface ModuleStat {
   key: string;
@@ -29,7 +12,6 @@ export interface ServiceModule {
   key: string;
   segment: string;
   label: string;
-  short: string;
   icon: ReactNode;
   color: string;
   description: string;
@@ -45,7 +27,6 @@ export const SERVICE_MODULES: ServiceModule[] = [
     key: "vpc",
     segment: "vpc",
     label: "Virtual Private Cloud",
-    short: "VPC",
     icon: <Network size={iconSize} />,
     color: "#3D8DF5",
     description: "Облачные сети, подсети, группы безопасности, публичные IP, таблицы маршрутизации.",
@@ -66,7 +47,6 @@ export const SERVICE_MODULES: ServiceModule[] = [
     key: "compute",
     segment: "compute",
     label: "Compute",
-    short: "Compute",
     icon: <Cloud size={iconSize} />,
     color: "#36CFC9",
     // Блочное хранение (тома, образы, снимки) — домен storage, не compute:
@@ -84,7 +64,6 @@ export const SERVICE_MODULES: ServiceModule[] = [
     key: "storage",
     segment: "storage",
     label: "Storage",
-    short: "Storage",
     icon: <HardDrive size={iconSize} />,
     color: "#13C2C2",
     description: "Блочное хранение: тома, снимки, образы и типы дисков.",
@@ -100,7 +79,6 @@ export const SERVICE_MODULES: ServiceModule[] = [
     key: "registry",
     segment: "registry",
     label: "Registry",
-    short: "Registry",
     icon: <Boxes size={iconSize} />,
     color: "#EB2F96",
     description: "Реестры OCI-образов: реестры, репозитории и теги.",
@@ -116,7 +94,6 @@ export const SERVICE_MODULES: ServiceModule[] = [
     key: "nlb",
     segment: "nlb",
     label: "Load Balancer",
-    short: "NLB",
     icon: <Scale size={iconSize} />,
     color: "#FA8C16",
     description: "Балансировка трафика TCP/UDP на четвёртом уровне: балансировщики, обработчики, целевые группы.",
@@ -137,7 +114,6 @@ export const SERVICE_MODULES: ServiceModule[] = [
     key: "iam",
     segment: "iam",
     label: "Identity and Access Management",
-    short: "IAM",
     icon: <KeyRound size={iconSize} />,
     color: "#9B59F6",
     description: "Аккаунты, проекты, пользователи, сервисные аккаунты, группы, роли и связки прав.",
@@ -149,18 +125,3 @@ export const SERVICE_MODULES: ServiceModule[] = [
     ],
   },
 ];
-
-export const COMMON_DASHBOARD_ICONS = {
-  empty: <FolderKanban size={40} />,
-  go: <Activity size={14} />,
-  locked: <ShieldCheck size={14} />,
-  search: <ScanSearch size={16} />,
-  route: <Route size={16} />,
-  globe: <Globe2 size={16} />,
-  layers: <Layers3 size={16} />,
-  boxes: <Boxes size={16} />,
-  disk: <HardDrive size={16} />,
-  camera: <Camera size={16} />,
-  history: <History size={16} />,
-  user: <UserRound size={16} />,
-};

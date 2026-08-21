@@ -40,8 +40,10 @@ import {
   Tag,
   Typography,
 } from "antd";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { CloseOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
+import { MONO_FONT, editorAddInputStyle, editorEmptyStyle } from "@shared/components/organisms/form/editor-surface";
 import { getByPath, setByPath, deleteByPath } from "@shared/lib/path";
 import { hasProtocolNumber } from "@shared/lib/resource-registry";
 
@@ -219,12 +221,8 @@ export function SgRulesEditor({ value, onChange, path, description, editingNetwo
         <Space size={10}>
           <Typography.Text strong>Правила</Typography.Text>
           {/* Живая сводка направлений (обновляется по мере добавления). */}
-          <Tag color="green" style={{ margin: 0, fontSize: 11 }}>
-            ↓ {ingressN} вход.
-          </Tag>
-          <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>
-            ↑ {egressN} исх.
-          </Tag>
+          <Tag style={{ margin: 0, fontSize: 10, fontWeight: 540, fontFamily: MONO_FONT }}>↓ {ingressN} вход.</Tag>
+          <Tag style={{ margin: 0, fontSize: 10, fontWeight: 540, fontFamily: MONO_FONT }}>↑ {egressN} исх.</Tag>
         </Space>
       }
       extra={
@@ -250,9 +248,9 @@ export function SgRulesEditor({ value, onChange, path, description, editingNetwo
         ))}
       </div>
       {rules.length === 0 ? (
-        <Typography.Text type="secondary" italic style={{ fontSize: 12 }}>
+        <div style={{ ...editorEmptyStyle, display: "grid", placeItems: "center" }}>
           — пусто, трафик блокируется (default-deny) —
-        </Typography.Text>
+        </div>
       ) : (
         <Collapse
           ghost
@@ -309,14 +307,7 @@ export function RuleBody({
   const set = (patch: Partial<RuleExt>) => onChange({ ...rule, ...patch });
 
   return (
-    <Form
-      layout="horizontal"
-      labelCol={{ flex: "200px" }}
-      wrapperCol={{ flex: "1 1 0" }}
-      labelAlign="left"
-      colon={false}
-      size="middle"
-    >
+    <FormGrid>
       <div
         style={{
           display: "grid",
@@ -531,7 +522,7 @@ export function RuleBody({
           }
         />
       )}
-    </Form>
+    </FormGrid>
   );
 }
 
@@ -546,34 +537,22 @@ function CidrEditor({
 }) {
   return (
     <Space direction="vertical" size={8} style={{ width: "100%" }}>
-      <CidrChipList
-        label="IPv4 CIDR"
-        placeholder="0.0.0.0/0"
-        tagColor="blue"
-        value={v4}
-        onChange={(next) => onChange(next, v6)}
-      />
-      <CidrChipList
-        label="IPv6 CIDR"
-        placeholder="::/0"
-        tagColor="geekblue"
-        value={v6}
-        onChange={(next) => onChange(v4, next)}
-      />
+      <CidrChipList label="IPv4 CIDR" placeholder="0.0.0.0/0" value={v4} onChange={(next) => onChange(next, v6)} />
+      <CidrChipList label="IPv6 CIDR" placeholder="::/0" value={v6} onChange={(next) => onChange(v4, next)} />
     </Space>
   );
 }
 
+// Семейство названо подписью карточки, поэтому цвет тега здесь ничего не
+// добавлял: цветной тег в консоли сообщает СОСТОЯНИЕ, а не принадлежность.
 function CidrChipList({
   label,
   placeholder,
-  tagColor,
   value,
   onChange,
 }: {
   label: string;
   placeholder: string;
-  tagColor: string;
   value: string[];
   onChange: (next: string[]) => void;
 }) {
@@ -589,26 +568,23 @@ function CidrChipList({
     setDraft("");
   };
   return (
-    <Card size="small" title={label} bordered>
+    <Card size="small" title={label}>
       <Space direction="vertical" size={6} style={{ width: "100%" }}>
         <div style={{ minHeight: 22 }}>
           {value.length === 0 ? (
-            <Typography.Text type="secondary" italic style={{ fontSize: 12 }}>
-              — пусто —
-            </Typography.Text>
+            <div style={{ ...editorEmptyStyle, minHeight: 22, display: "grid", placeItems: "center" }}>— пусто —</div>
           ) : (
             <Space size={[4, 4]} wrap>
               {value.map((cidr) => (
                 <Tag
                   key={cidr}
-                  color={tagColor}
                   closable
                   closeIcon={<CloseOutlined style={{ fontSize: 10 }} />}
                   onClose={(e) => {
                     e.preventDefault();
                     onChange(value.filter((c) => c !== cidr));
                   }}
-                  style={{ fontFamily: "monospace", fontSize: 11, margin: 0 }}
+                  style={{ fontFamily: MONO_FONT, fontSize: 10, fontWeight: 540, margin: 0 }}
                 >
                   {cidr}
                 </Tag>
@@ -621,7 +597,7 @@ function CidrChipList({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={placeholder}
-            style={{ fontFamily: "monospace", fontSize: 12 }}
+            style={editorAddInputStyle}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();

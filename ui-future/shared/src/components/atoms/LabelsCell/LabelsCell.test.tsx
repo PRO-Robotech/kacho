@@ -45,10 +45,48 @@ describe("LabelsCell", () => {
       />,
     );
 
-    expect(screen.getByText("env=prod")).toBeInTheDocument();
-    expect(screen.getByText("owner=network")).toBeInTheDocument();
-    expect(screen.queryByText("region=eu")).not.toBeInTheDocument();
+    // Ключ и значение — РАЗНЫЕ узлы (решение владельца: ключ обязан быть виден
+    // отдельно, метки ищут именно по нему). Утверждаем обе половины, а не
+    // склеенную строку: склеенной в разметке больше нет by construction.
+    expect(screen.getByText("env")).toBeInTheDocument();
+    expect(screen.getByText("prod")).toBeInTheDocument();
+    expect(screen.getByText("owner")).toBeInTheDocument();
+    expect(screen.getByText("network")).toBeInTheDocument();
+    expect(screen.queryByText("region")).not.toBeInTheDocument();
+    expect(screen.queryByText("eu")).not.toBeInTheDocument();
     expect(screen.getByText("+1")).toBeInTheDocument();
+    // Машинная форма остаётся — она уходит в буфер и она же в подсказке.
+    expect(screen.getByTitle("Скопировать env=prod")).toBeInTheDocument();
+  });
+
+  // РАЗНЫЕ УЗЛЫ — ещё не «ключ виден отдельно».
+  //
+  // Проба выше утверждает, что ключ и значение перестали быть одной строкой в
+  // разметке. Само по себе это дефекта не закрывает: два соседних узла с
+  // одинаковым видом на глаз остаются одной строкой, а именно от этого метку и
+  // разделили — `team=networking` и `teamnet=working` на беглый взгляд одинаковы,
+  // ищут же метки по КЛЮЧУ, и он обязан находиться сразу.
+  //
+  // Поэтому здесь закреплено то, чем половины отличаются ВИДОМ (канон §6): у
+  // ключа своя заливка, больший вес и тон основного текста, у значения — ничего
+  // из этого. И знак равенства ушёл из показа: разделяет половины линия, её не
+  // приходится читать. В буфере машинная форма остаётся — это соседняя проба.
+  it("ключ отличим от значения ВИДОМ, а не только узлом", () => {
+    render(<LabelsCell labels={{ env: "prod" }} />);
+
+    const ключ = screen.getByText("env");
+    const значение = screen.getByText("prod");
+
+    expect(ключ.style.background).not.toBe("");
+    expect(значение.style.background).toBe("");
+    expect(Number(ключ.style.fontWeight)).toBeGreaterThan(
+      Number(значение.style.fontWeight),
+    );
+    expect(ключ.style.color).not.toBe(значение.style.color);
+    // Линия вместо знака равенства — и то, и другое: разделитель есть...
+    expect(ключ.style.borderRight).not.toBe("");
+    // ...а `=` в показанном тексте метки нет.
+    expect(ключ.parentElement?.textContent).toBe("envprod");
   });
 
   it("copies a label without bubbling the click", async () => {
@@ -58,10 +96,12 @@ describe("LabelsCell", () => {
     try {
       render(<LabelsCell labels={{ env: "prod" }} />);
 
-      fireEvent.click(screen.getByText("env=prod"));
+      fireEvent.click(screen.getByText("env"));
 
       await waitFor(() => expect(writeText).toHaveBeenCalledWith("env=prod"));
-      await waitFor(() => expect(successSpy).toHaveBeenCalledWith("Скопировано: env=prod"));
+      await waitFor(() =>
+        expect(successSpy).toHaveBeenCalledWith("Скопировано: env=prod"),
+      );
       expect(onClick).not.toHaveBeenCalled();
     } finally {
       document.removeEventListener("click", onClick);
@@ -73,8 +113,65 @@ describe("LabelsCell", () => {
 
     render(<LabelsCell labels={{ env: "prod" }} />);
 
-    fireEvent.click(screen.getByText("env=prod"));
+    fireEvent.click(screen.getByText("env"));
 
-    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith("Не удалось скопировать"));
+    await waitFor(() =>
+      expect(errorSpy).toHaveBeenCalledWith("Не удалось скопировать"),
+    );
+  });
+});
+
+// Метки живут в ячейке СПИСКА, поэтому их ряд обязан оставаться в одну строку.
+//
+// Перенос здесь — не «красивее/некрасивее»: вторая строка появляется у одной
+// строки таблицы, соседние остаются в одну, и список идёт лесенкой. Ужимаются
+// при этом сами метки, а не счётчик скрытых: счётчик короток и он и есть ответ
+// на вопрос «сколько ещё» — ужавшись, он превратился бы в «+…».
+//
+// Пара утверждений, а не одно: если бы ужимались ВСЕ теги одинаково, первое
+// (ряд не переносится) было бы верным, а ячейка перестала бы отвечать. Второе —
+// и есть тот законный близнец, который обязан остаться нетронутым.
+describe("LabelsCell — одна строка", () => {
+  const МЕТКИ = {
+    env: "production-eu-central",
+    owner: "network-platform",
+    region: "eu",
+    tier: "edge",
+    extra: "x",
+  };
+
+  it("ряд меток не переносится, а видимые метки ужимаются с многоточием", () => {
+    render(<LabelsCell max={2} labels={МЕТКИ} />);
+
+    // Метка стала двухчастной: ключ и значение — разные узлы (решение
+    // владельца). Ужимается ЗНАЧЕНИЕ, а не ключ: обрезанное значение остаётся
+    // понятным, обрезанный ключ — нет, а по ключу метку и ищут.
+    const значение = screen.getByText("production-eu-central");
+    const метка = значение.parentElement!;
+    const ряд = метка.parentElement!;
+    expect(ряд.style.flexWrap).toBe("nowrap");
+
+    expect(метка.style.whiteSpace).toBe("");
+    expect(метка.style.flexShrink).toBe("1");
+    expect(parseFloat(метка.style.minWidth)).toBe(0);
+
+    expect(значение.style.whiteSpace).toBe("nowrap");
+    expect(значение.style.textOverflow).toBe("ellipsis");
+    expect(значение.style.overflow).toBe("hidden");
+    // Без этого ужимание невозможно by construction, и «nowrap» дал бы ряд,
+    // вылезающий за колонку, вместо ряда, помещающегося в неё.
+    expect(parseFloat(значение.style.minWidth)).toBe(0);
+
+    // Ключ, наоборот, НЕ ужимается — положительный контроль к утверждению выше.
+    const ключ = screen.getByText("env");
+    expect(ключ.style.flexShrink).toBe("0");
+  });
+
+  it("счётчик скрытых НЕ ужимается — иначе он перестаёт отвечать (близнец)", () => {
+    render(<LabelsCell max={2} labels={МЕТКИ} />);
+
+    const счётчик = screen.getByText("+3");
+    expect(счётчик.style.flexShrink).toBe("0");
+    expect(счётчик.style.textOverflow).not.toBe("ellipsis");
   });
 });

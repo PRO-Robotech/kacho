@@ -9,6 +9,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Button, Space, Spin, Typography } from "antd";
 import { DeleteOutlined, LoadingOutlined, PlusOutlined } from "@ant-design/icons";
 import { ResourceTable, type Column } from "@/components/organisms/ResourceTable";
+import { ROW_ACTION_TRIGGER } from "@/components/molecules/RowActionsMenu";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
@@ -90,7 +91,14 @@ export function InstanceNicsTab({
           <Typography.Text type="secondary">—</Typography.Text>
         ),
     },
-    { header: "Подсеть", cell: (r) => r.subnet_id || "—" },
+    {
+      // Подсеть — ресурс VPC со своей карточкой, а не строка. Идентификатор
+      // `sub-…` человеку не адресован: Kachō адресует ресурсы неизменяемым `id`,
+      // а работает человек с именем. Соседняя колонка «NIC» в этой же таблице
+      // уже ссылка — плоский текст рядом с ней читается как недоделанный переход.
+      header: "Подсеть",
+      cell: (r) => <RefNameLink specId="subnets" refId={r.subnet_id} maxChars={28} />,
+    },
     { header: "IPv4", cell: (r) => r.primary_v4_address?.address || "—" },
     {
       header: "",
@@ -99,12 +107,23 @@ export function InstanceNicsTab({
         const nid = r.nic_id ?? "";
         if (!nid) return null;
         return pendingId === nid ? (
-          <Spin indicator={<LoadingOutlined style={{ fontSize: 12 }} spin />} />
+          // Ожидание занимает РОВНО место ручки: иначе строка на время операции
+          // становится другой высоты, и таблица дёргается на каждом отключении.
+          <span
+            style={{ display: "inline-flex", width: 30, height: 30, alignItems: "center", justifyContent: "center" }}
+          >
+            <Spin indicator={<LoadingOutlined style={{ fontSize: 12 }} spin />} />
+          </span>
         ) : (
+          // Геометрия ручки строки — ОДНА на продукт (`ROW_ACTION_TRIGGER`): 30×30,
+          // радиус 6. Прежде здесь стоял `size="small"`, то есть высота, которая
+          // ездит вместе с общей высотой элементов управления, — и столбец без
+          // данных то поднимал строку, то нет. Цвет снимается: он принадлежит
+          // `danger` (действие снимает связь), а не общему тону значка.
           <Button
             type="text"
             danger
-            size="small"
+            style={{ ...ROW_ACTION_TRIGGER, color: undefined }}
             icon={<DeleteOutlined />}
             aria-label="Отключить"
             onClick={() => onDetach(nid)}
@@ -133,20 +152,17 @@ export function InstanceNicsTab({
           Подключить
         </Button>
       </div>
-      {rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-          Сетевые интерфейсы ещё не подключены.
-        </div>
-      ) : (
-        <ResourceTable
-          rows={rows}
-          columns={columns}
-          rowKey={(r) => r.nic_id ?? r.index ?? Math.random().toString()}
-          // Интерфейсы приезжают полем машины, а не списком у края: курсора
-          // здесь нет, набор полон by construction.
-          complete
-        />
-      )}
+      {/* Пустое состояние — та же таблица со своей строкой «пусто», а не своя
+          рамка пунктиром: см. тот же довод во вкладке дисков. */}
+      <ResourceTable
+        rows={rows}
+        columns={columns}
+        rowKey={(r) => r.nic_id ?? r.index ?? Math.random().toString()}
+        // Интерфейсы приезжают полем машины, а не списком у края: курсора
+        // здесь нет, набор полон by construction.
+        complete
+        empty="Сетевые интерфейсы ещё не подключены"
+      />
       <OperationToastWatcher
         opId={opId}
         title={opTitle}

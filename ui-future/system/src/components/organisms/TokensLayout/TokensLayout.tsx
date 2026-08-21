@@ -15,17 +15,13 @@
 import { useMemo } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { DetailShell, type DetailTab } from "@shared/components/organisms/DetailShell";
+import { TOKENS_SECTION_LABEL, TOKENS_SECTIONS } from "@/labels";
 
-interface TokensSection {
-  /** Идентификатор пункта и он же — адрес его страницы. */
-  path: string;
-  label: string;
-}
-
-const SECTIONS: TokensSection[] = [
-  { path: "/system/tokens/service-account-keys", label: "Ключи сервисных аккаунтов" },
-  { path: "/system/tokens/user-tokens", label: "Токены пользователей" },
-];
+// Подписи и адреса пунктов — из `@/labels`, того же источника, из которого их
+// берёт меню модуля (`navigation.ts`). Прежде здесь стоял свой перечень с теми
+// же тремя литералами: правка подписи доезжала до одного места из двух, и один
+// адрес назывался в продукте двумя словами.
+const SECTIONS = TOKENS_SECTIONS;
 
 export function TokensLayout() {
   const location = useLocation();
@@ -42,8 +38,7 @@ export function TokensLayout() {
 
   return (
     <DetailShell
-      resourceLabel="Токены и ключи"
-      resourceName="Токены и ключи"
+      resourceName={TOKENS_SECTION_LABEL}
       tabs={tabs}
       activeTabId={active}
       onTabSelect={(id) => void navigate(id)}

@@ -15,6 +15,9 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
 import { RoutesEditor, type RouteEntry } from "./RoutesEditor";
+// Линия строки берётся из ОБЩЕГО источника геометрии, а не выписывается здесь:
+// проба, повторившая литерал, разошлась бы с продуктом молча.
+import { editorRowStyle } from "@shared/components/organisms/form/editor-surface";
 
 const realFetch = globalThis.fetch;
 
@@ -73,6 +76,43 @@ describe("следующий узел маршрута — обе ветви к�
     const строка = calls.at(-1)![0];
     expect(строка).not.toHaveProperty("next_hop_address");
     expect(строка).toHaveProperty("gateway_id");
+  });
+
+  it("первая строка стыкуется с шапкой ОДНОЙ линией, у остальных линия своя", () => {
+    // Решение владельца: линия РАЗДЕЛЯЕТ, поэтому первой строке она не нужна —
+    // над ней уже стоит нижняя граница шапки колонок. Здесь редактор рисует не
+    // таблицу, а сетку, и линии ей не схлопывает ничто: без правила на стыке
+    // выходило 2px там, где по всей консоли 1px.
+    //
+    // Строки берутся ПОЛОЖЕНИЕМ в поверхности, а не поиском по стилю: у сетки
+    // нет ролей, а совпадение по стилю выбрало бы и шапку — она той же сетки.
+    // Состав поверхности утверждается, чтобы перестановка её частей роняла
+    // пробу, а не заставляла её тихо смотреть на чужой узел.
+    const { container } = renderEditor(
+      [
+        { destination_prefix: "10.0.0.0/24", next_hop_address: "10.0.0.1" },
+        { destination_prefix: "0.0.0.0/0", next_hop_address: "10.0.0.2" },
+      ],
+      () => {},
+    );
+
+    const surface = container.firstElementChild as HTMLElement;
+    const parts = Array.from(surface.children) as HTMLElement[];
+    // шапка · две строки · подвал с «Добавить маршрут»
+    expect(parts).toHaveLength(4);
+
+    // `border-top: none` CSSOM не хранит вовсе, поэтому «линии нет» читается
+    // пустым объявлением. Рядом — признак того, что строка вообще оформлена
+    // (у неё своя сетка колонок): иначе пустое значило бы «стиля нет».
+    expect(parts[1].style.gridTemplateColumns).not.toBe("");
+    expect(parts[1].style.borderTop).toBe("");
+
+    // Положительный контроль: у второй строки линия ЕСТЬ, и она — ровно та,
+    // что объявлена общим источником. Без него «у первой линии нет» зеленело
+    // бы на редакторе, потерявшем разделители целиком.
+    const ref = document.createElement("div");
+    ref.style.borderTop = String(editorRowStyle.borderTop);
+    expect(parts[2].style.borderTop).toBe(ref.style.borderTop);
   });
 
   it("строка со шлюзом открывается в ветви шлюза, а не сбрасывается в адрес", () => {

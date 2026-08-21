@@ -10,6 +10,7 @@ import { jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ArrayField, FormField } from "@shared/lib/form-schema";
 import type { ResourceSpec } from "@shared/lib/resource-registry";
+import { formDividers } from "@shared/test/form-divider";
 import { ResourceFormBody, matchesVisibleWhen } from "./ResourceFormBody";
 
 function spec(fields?: FormField[]): ResourceSpec {
@@ -35,7 +36,7 @@ function show(fields: FormField[] | undefined, over: Partial<Parameters<typeof R
   const onSubmit = jest.fn();
   const onCancel = jest.fn();
   const onChange = jest.fn();
-  render(
+  const { container } = render(
     <ResourceFormBody
       spec={spec(fields)}
       mode="create"
@@ -48,7 +49,7 @@ function show(fields: FormField[] | undefined, over: Partial<Parameters<typeof R
       {...over}
     />,
   );
-  return { onSubmit, onCancel, onChange };
+  return { onSubmit, onCancel, onChange, container };
 }
 
 const labels = () => screen.queryAllByText(/^поле /).map((el) => el.textContent);
@@ -252,5 +253,75 @@ describe("ResourceFormBody — подвал", () => {
     show([str({ name: "name", label: "поле имя" })], { submitting: true });
 
     expect(screen.getByRole("button", { name: "Создать сеть" })).toBeDisabled();
+  });
+});
+
+describe("ResourceFormBody — порядок полей один на все формы", () => {
+  // Решение владельца: имя → описание → метки → ЧЕРТА → поля самого ресурса.
+  // Порядок объявления в реестре у ресурсов разный (у подсети форма начиналась с
+  // выбора сети, у прочих — с имени), поэтому рука шла к разным местам на
+  // соседних формах, а метки находились то вторыми, то последними. Первые три
+  // поля есть у КАЖДОГО ресурса и означают везде одно — их место принадлежит
+  // продукту, а не отдельной форме.
+  //
+  // Схема ниже намеренно перечислена ВРАЗБРОС: проба, поданная уже
+  // упорядоченной схемой, зеленела бы и на теле, которое ничего не
+  // переставляет, — то есть не утверждала бы ничего.
+  const вразброс = [
+    str({ name: "network_id", label: "поле сеть" }),
+    str({ name: "labels", label: "поле метки" }),
+    str({ name: "description", label: "поле описание" }),
+    str({ name: "name", label: "поле имя" }),
+  ];
+
+  it("общие поля идут первыми и в объявленном порядке, поля ресурса — за ними", () => {
+    show(вразброс);
+
+    expect(labels()).toEqual(["поле имя", "поле описание", "поле метки", "поле сеть"]);
+  });
+
+  it("черта стоит между общими полями и полями ресурса", () => {
+    const { container } = show(вразброс);
+
+    const [черта] = formDividers(container);
+    expect(черта).toBeDefined();
+
+    // Утверждается МЕСТО черты, а не её наличие: черта, уехавшая в конец формы,
+    // тоже «есть», и ничего при этом не отделяет. Сравниваются позиции в DOM.
+    const позиция = (el: Element) => [...container.querySelectorAll("*")].indexOf(el);
+    expect(позиция(screen.getByText("поле метки"))).toBeLessThan(позиция(черта!));
+    expect(позиция(черта!)).toBeLessThan(позиция(screen.getByText("поле сеть")));
+  });
+
+  it("отделять нечего — черты нет: у ресурса только общие поля", () => {
+    const { container } = show([str({ name: "name", label: "поле имя" })]);
+
+    expect(labels()).toEqual(["поле имя"]);
+    expect(formDividers(container)).toHaveLength(0);
+  });
+
+  it("общих полей нет вовсе — черты тоже нет", () => {
+    // Второй близнец отрицания: черта не должна вставать первой строкой формы,
+    // отделяя поля ресурса от пустоты над ними.
+    const { container } = show([str({ name: "network_id", label: "поле сеть" })]);
+
+    expect(labels()).toEqual(["поле сеть"]);
+    expect(formDividers(container)).toHaveLength(0);
+  });
+
+  it("отсутствующее общее поле пропускается, а не оставляет пустое место", () => {
+    // У пула адресов меток в форме нет: черта обязана встать сразу за описанием.
+    const { container } = show([
+      str({ name: "kind", label: "поле тип" }),
+      str({ name: "description", label: "поле описание" }),
+      str({ name: "name", label: "поле имя" }),
+    ]);
+
+    expect(labels()).toEqual(["поле имя", "поле описание", "поле тип"]);
+    const [черта] = formDividers(container);
+    expect(черта).toBeDefined();
+    const позиция = (el: Element) => [...container.querySelectorAll("*")].indexOf(el);
+    expect(позиция(screen.getByText("поле описание"))).toBeLessThan(позиция(черта!));
+    expect(позиция(черта!)).toBeLessThan(позиция(screen.getByText("поле тип")));
   });
 });

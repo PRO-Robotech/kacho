@@ -1,163 +1,46 @@
-import { useEffect, useRef, useState } from "react";
-import type { FC, ReactElement } from "react";
-import {
-  Activity,
-  Cable,
-  Camera,
-  Cloud,
-  Folder,
-  GitBranch,
-  Globe,
-  HardDrive,
-  Home,
-  KeyRound,
-  Layers,
-  Lock,
-  LogIn,
-  Network,
-  Route,
-  Scale,
-  Search,
-  Server,
-  Settings,
-  Shield,
-  Users,
-} from "lucide-react";
-import {
-  ApartmentOutlined,
-  ApiOutlined,
-  AppstoreOutlined,
-  BankOutlined,
-  CameraOutlined,
-  ClusterOutlined,
-  ContainerOutlined,
-  DesktopOutlined,
-  FileImageOutlined,
-  GatewayOutlined,
-  GlobalOutlined,
-  HddOutlined,
-  HistoryOutlined,
-  KeyOutlined,
-  NodeIndexOutlined,
-  ProductOutlined,
-  ProjectOutlined,
-  RobotOutlined,
-  SafetyCertificateOutlined,
-  SafetyOutlined,
-  TagsOutlined,
-  TeamOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
+import type { FC } from "react";
+import { Home, LogIn, Search, Settings } from "lucide-react";
 import { KachoLogo, RailButton } from "../../atoms";
-import { REMOTE_MODULES } from "../../../remotes/moduleCatalog";
 import { loginUrl } from "../../../utils/auth";
 import type { HostContext } from "../../../utils";
-import type { RemoteIconName, RemoteNavItem, RemoteNavSection } from "dashboard/navigation";
+import { REMOTE_MODULES } from "../../../remotes/moduleCatalog";
+import {
+  UNAVAILABLE_REASON,
+  activeSection,
+  iconByName,
+  iconSize,
+  fallbackIcon,
+  loadRemoteNavigation,
+  remotePath,
+  useModuleSections,
+  type ShellNavItem,
+} from "../../../lib/module-navigation";
 
-type ShellNavItem = {
-  key: string;
-  icon: ReactElement;
-  label: string;
-  to: (projectId: string | null) => string;
-  matches: (pathname: string) => boolean;
-  requiresProject?: boolean;
-  /** Модуль раздела не загрузился: кнопка остаётся, переход закрыт (#371). */
-  unavailable?: boolean;
-};
-
-/** Раздел рейла с пометкой недоступности его модуля. */
-type RailSection = RemoteNavSection & { unavailable?: boolean };
-
-// Загрузчики навигации — по одному literal-спецификатору на remote, иначе
-// @originjs/vite-plugin-federation перестанет резолвить их статически.
-const REMOTE_NAV_LOADERS: Record<string, () => Promise<unknown>> = {
-  dashboard: () => import("dashboard/navigation"),
-  vpc: () => import("vpc/navigation"),
-  compute: () => import("compute/navigation"),
-  storage: () => import("storage/navigation"),
-  nlb: () => import("nlb/navigation"),
-  registry: () => import("registry/navigation"),
-  iam: () => import("iam/navigation"),
-};
-const NAV_REMOTES = Object.keys(REMOTE_NAV_LOADERS);
-const UNAVAILABLE_REASON = "Раздел недоступен: модуль не загрузился";
-
-const loadRemoteNavigation = (remote: string): Promise<unknown> => REMOTE_NAV_LOADERS[remote]();
-
-const iconSize = 18;
-const iconByName: Record<RemoteIconName, ReactElement> = {
-  activity: <Activity size={iconSize} />,
-  cable: <Cable size={iconSize} />,
-  camera: <Camera size={iconSize} />,
-  cloud: <Cloud size={iconSize} />,
-  folder: <Folder size={iconSize} />,
-  "git-branch": <GitBranch size={iconSize} />,
-  globe: <Globe size={iconSize} />,
-  "hard-drive": <HardDrive size={iconSize} />,
-  key: <KeyRound size={iconSize} />,
-  layers: <Layers size={iconSize} />,
-  lock: <Lock size={iconSize} />,
-  network: <Network size={iconSize} />,
-  route: <Route size={iconSize} />,
-  scale: <Scale size={iconSize} />,
-  server: <Server size={iconSize} />,
-  shield: <Shield size={iconSize} />,
-  users: <Users size={iconSize} />,
-};
-const fallbackIcon = <Layers size={iconSize} />;
-
-// Иконки ресурсных пунктов сайдбара — те же AntD Outlined-иконки, что таблицы/
-// шапки деталей (ResourceIcon.ICONS в remote'ах). Ключ — specId (= последний
-// сегмент nav-path). Синхронизация: пользователь видит один глиф ресурса и в
-// рейле, и в таблице. Модульные (section) иконки остаются lucide.
-const antdSize = { fontSize: iconSize };
-const antdIconBySpec: Record<string, ReactElement> = {
-  // vpc
-  networks: <ApartmentOutlined style={antdSize} />,
-  subnets: <ClusterOutlined style={antdSize} />,
-  addresses: <GlobalOutlined style={antdSize} />,
-  "route-tables": <NodeIndexOutlined style={antdSize} />,
-  "security-groups": <SafetyOutlined style={antdSize} />,
-  "network-interfaces": <ApiOutlined style={antdSize} />,
-  gateways: <GatewayOutlined style={antdSize} />,
-  "cidr-groups": <TagsOutlined style={antdSize} />,
-  // nlb
-  "load-balancers": <ApartmentOutlined style={antdSize} />,
-  listeners: <ApiOutlined style={antdSize} />,
-  "target-groups": <ClusterOutlined style={antdSize} />,
-  // iam
-  accounts: <BankOutlined style={antdSize} />,
-  projects: <ProjectOutlined style={antdSize} />,
-  users: <UserOutlined style={antdSize} />,
-  "service-accounts": <RobotOutlined style={antdSize} />,
-  groups: <TeamOutlined style={antdSize} />,
-  roles: <SafetyCertificateOutlined style={antdSize} />,
-  "access-bindings": <KeyOutlined style={antdSize} />,
-  operations: <HistoryOutlined style={antdSize} />,
-  // compute
-  instances: <DesktopOutlined style={antdSize} />,
-  "placement-groups": <ContainerOutlined style={antdSize} />,
-  // MachineType (read-only sizing-каталог, compute-remote). iconByName не несёт
-  // cpu/machine-глифа → host-валидный RemoteIconName fallback `layers`, а точную
-  // ресурс-иконку даёт этот specId-маппинг (как images/volumes/disk-types).
-  "machine-types": <ProductOutlined style={antdSize} />,
-  // storage — блочное хранение целиком принадлежит storage-remote'у
-  // (Volume/Snapshot/Image/DiskType); отдельного раздела дисков у compute нет.
-  volumes: <HddOutlined style={antdSize} />,
-  snapshots: <CameraOutlined style={antdSize} />,
-  // Образ (boot-image, storage-remote): specId "images" → FileImageOutlined.
-  images: <FileImageOutlined style={antdSize} />,
-  "disk-types": <AppstoreOutlined style={antdSize} />,
-  // admin / system
-  "address-pools": <AppstoreOutlined style={antdSize} />,
-  regions: <AppstoreOutlined style={antdSize} />,
-  zones: <AppstoreOutlined style={antdSize} />,
-};
-
-// specId ресурса = последний сегмент nav-path ("nlb/load-balancers" → "load-balancers").
-function specIdFromPath(path: string): string {
-  return path.split("/").filter(Boolean).pop() ?? "";
-}
+/**
+ * Разделы, которые рейл ставит САМ, — в полосе модулей их нет.
+ *
+ * Каталог модулей хоста объявляет это прямо: у `dashboard` и `system` нет
+ * `section`, потому что первый — «Все сервисы» в верхней паре, а второй —
+ * «Администрирование» внизу рейла. Сверять надо с каталогом, а не с памятью:
+ * выписанный здесь перечень разошёлся бы с ним молча.
+ *
+ * Ключ раздела равен имени remote'а — это объявлено самим каталогом
+ * («Имя remote'а федерации — оно же ключ раздела навигации»), поэтому сравнение
+ * идёт по нему, а не по второй, выведенной здесь величине.
+ *
+ * ПОЧЕМУ ОТСЕКАЕТСЯ ТОЛЬКО ОБЪЯВЛЕННОЕ. Раздел, приехавший от remote'а, которого
+ * в каталоге нет вовсе, из полосы НЕ пропадает: тихо исчезнувший раздел
+ * неотличим от «такого сервиса нет» (#371) — это и есть тихая форма отказа.
+ * Здесь снимается ровно то, чему каталог уже назначил другое место.
+ *
+ * Зачем это понадобилось: администрирование стало спрашиваться наравне с прочими
+ * модулями (ради второго сайдбара, `module-navigation.tsx`), и его раздел поехал
+ * в полосу модулей ВДОБАВОК к кнопке внизу — две кнопки с одним именем и одним
+ * адресом назначения в одной полосе навигации.
+ */
+const SELF_PLACED_SECTIONS = new Set(
+  REMOTE_MODULES.filter((module) => !module.section).map((module) => module.remote),
+);
 
 const commonTop: ShellNavItem[] = [
   {
@@ -176,6 +59,25 @@ const commonTop: ShellNavItem[] = [
   },
 ];
 
+/**
+ * Первый уровень сайдбара — МОДУЛИ, и только они.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ПОЧЕМУ ТИПОВ РЕСУРСОВ ЗДЕСЬ БОЛЬШЕ НЕТ
+ *
+ * Прежде рейл показывал типы ресурсов активного модуля — сети, подсети, таблицы
+ * маршрутов — теми же иконками 44×42 и в той же полосе, что и сами модули. Два
+ * разных уровня иерархии стояли одним списком, различаясь только разделителем,
+ * и оба без подписей: по глифу приходилось угадывать и «какой это сервис», и
+ * «какой это ресурс».
+ *
+ * Хуже того, перечень модулей при этом ИСЧЕЗАЛ: войдя в VPC, пользователь
+ * переставал видеть Compute и Storage — переход между сервисами шёл через
+ * «Все сервисы» и обратно.
+ *
+ * Теперь уровни разведены: здесь модули, всегда все; типы ресурсов активного
+ * модуля — во втором уровне (`ModuleNav`), списком и с подписями.
+ */
 export const HostRail: FC<{
   context?: HostContext;
   currentPath?: string;
@@ -195,57 +97,22 @@ export const HostRail: FC<{
   loadNavigation = loadRemoteNavigation,
 }) => {
   const projectId = context?.project?.id ?? null;
-  const [sections, setSections] = useState<RailSection[]>([]);
-  // Навигация грузится ОДИН раз, на монтировании, — как и прежде, когда
-  // импорты стояли прямо в эффекте. Порт снимается при монтировании и дальше не
-  // перечитывается намеренно: зависимость эффекта от него перезапускала бы
-  // загрузку после каждого setSections (обёртка, созданная на рендере, каждый
-  // раз новая) — бесконечный цикл рендера, который выглядит как «прогон завис»,
-  // а не как падение.
-  const loadNavigationRef = useRef(loadNavigation);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void Promise.allSettled(NAV_REMOTES.map((remote) => loadNavigationRef.current(remote)))
-      .then((results) => {
-        if (cancelled) return;
-        const loaded = results.flatMap((result) =>
-          result.status === "fulfilled" ? normalizeRemoteNavigation(result.value) : [],
-        );
-        const down = NAV_REMOTES.filter((_, index) => results[index].status === "rejected");
-        // Раздел упавшего модуля НЕ выпадает из меню: он остаётся под своим
-        // именем с пометкой недоступности. Пропавший раздел неотличим от
-        // «такого сервиса нет» — это и есть тихая форма отказа (#371).
-        setSections(withUnavailable(dedupeSections(loaded), down));
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setSections(withUnavailable([], NAV_REMOTES));
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+  const sections = useModuleSections(loadNavigation);
   const current = activeSection(sections, currentPath);
-  // Внутри недоступного раздела показываем ПОЛНЫЙ перечень разделов: своих
-  // пунктов у него нет, и без этого пользователь остался бы в пустом рейле,
-  // без единого способа уйти из отказавшего модуля.
-  const section = current && !current.unavailable ? current : null;
-  const sectionItems: ShellNavItem[] = section
-    ? section.items.map(toShellItem)
-    : sections.map((remoteSection) => ({
-        key: `section-${remoteSection.key}`,
-        icon: iconByName[remoteSection.icon] ?? fallbackIcon,
-        label: remoteSection.label,
-        to: (nextProjectId: string | null) => remotePath(nextProjectId, remoteSection.landingPath),
-        matches: () => false,
-        requiresProject: remoteSection.requiresProject,
-        unavailable: remoteSection.unavailable,
-      }));
+
+  // Лаунчер модуля — сам раздел, а не его пункты. Перечень полный ВСЕГДА:
+  // уйти из модуля обязано быть можно, не возвращаясь на дашборд.
+  const moduleItems: ShellNavItem[] = sections
+    .filter((section) => !SELF_PLACED_SECTIONS.has(section.key))
+    .map((section) => ({
+      key: `section-${section.key}`,
+      icon: iconByName[section.icon] ?? fallbackIcon,
+      label: section.label,
+      to: (nextProjectId: string | null) => remotePath(nextProjectId, section.landingPath),
+      matches: () => current?.key === section.key,
+      requiresProject: section.requiresProject,
+      unavailable: section.unavailable,
+    }));
 
   const renderItem = (item: ShellNavItem) => {
     const disabled = !!item.requiresProject && !projectId;
@@ -267,15 +134,41 @@ export const HostRail: FC<{
   };
 
   return (
-    <nav className="rail-nav" aria-label="Host navigation">
-      <button type="button" className="rail-brand" onClick={() => navigate("/dashboard")} aria-label="Kacho">
-        <KachoLogo variant="mark" size={44} />
+    <nav
+      className="rail-nav"
+      aria-label="Host navigation"
+      // Поля рейла — половина разницы между его шириной (62) и шириной пункта
+      // (44): пункт обязан стоять по центру полосы, иначе активная подсветка
+      // читается как съехавшая.
+      style={{ paddingInline: 9 }}
+    >
+      <button
+        type="button"
+        className="rail-brand"
+        onClick={() => navigate("/dashboard")}
+        aria-label="Kacho"
+        // Оправа знака: квадрат 32 с радиусом 9. Цвета оправы — литералы, а не
+        // роли темы: знак продукта один и тот же в тёмной и светлой, поэтому
+        // токен здесь означал бы, что он меняется вместе с темой, а он не
+        // меняется. Сама графика знака не трогается — меняется только оправа.
+        style={{
+          width: 32,
+          height: 32,
+          flexShrink: 0,
+          margin: "11px auto 14px",
+          color: "#ffffff",
+          background: "#496fe0",
+          border: "1px solid rgb(156 181 255 / 0.45)",
+          borderRadius: 9,
+        }}
+      >
+        <KachoLogo variant="mark" size={22} />
       </button>
 
       <div className="rail-items">
         {commonTop.map(renderItem)}
-        {sectionItems.length > 0 && <div className="rail-section-divider" />}
-        {sectionItems.map(renderItem)}
+        {moduleItems.length > 0 && <div className="rail-section-divider" />}
+        {moduleItems.map(renderItem)}
       </div>
 
       <div className="rail-bottom">
@@ -290,125 +183,3 @@ export const HostRail: FC<{
     </nav>
   );
 };
-
-function activeSection(sections: RailSection[], pathname: string): RailSection | null {
-  if (pathname.startsWith("/iam")) {
-    return sections.find((section) => section.segment === "iam") ?? null;
-  }
-
-  const match = pathname.match(/^\/projects\/[^/]+\/([^/]+)/);
-  if (!match) return null;
-  return sections.find((section) => section.segment === match[1]) ?? null;
-}
-
-function toShellItem(item: RemoteNavItem): ShellNavItem {
-  return {
-    key: item.key,
-    // Иконка ресурса синхронизирована с таблицами (AntD ResourceIcon по specId);
-    // lucide item.icon — fallback для пунктов без ресурс-иконки.
-    icon: antdIconBySpec[specIdFromPath(item.path)] ?? iconByName[item.icon] ?? fallbackIcon,
-    label: item.label,
-    to: (projectId) => remotePath(projectId, item.path),
-    matches: (pathname) => matchesRemotePath(pathname, item.path),
-    requiresProject: item.requiresProject,
-  };
-}
-
-function normalizeRemoteNavigation(remote: unknown): RailSection[] {
-  const maybeModule = remote as {
-    DASHBOARD_NAVIGATION?: unknown;
-    default?: unknown;
-  };
-  const candidate =
-    maybeModule.DASHBOARD_NAVIGATION ??
-    (isRecord(maybeModule.default) ? maybeModule.default.DASHBOARD_NAVIGATION : undefined) ??
-    maybeModule.default;
-
-  if (!Array.isArray(candidate)) {
-    return [];
-  }
-
-  return candidate
-    .filter(isRecord)
-    .map((section) => ({
-      key: stringField(section.key),
-      segment: stringField(section.segment),
-      icon: isIconName(section.icon) ? section.icon : "layers",
-      label: stringField(section.label, stringField(section.key)),
-      landingPath: stringField(section.landingPath),
-      requiresProject: Boolean(section.requiresProject),
-      items: Array.isArray(section.items)
-        ? section.items.filter(isRecord).map((item) => ({
-            key: stringField(item.key),
-            icon: isIconName(item.icon) ? item.icon : "layers",
-            label: stringField(item.label, stringField(item.key)),
-            path: stringField(item.path),
-            requiresProject: Boolean(item.requiresProject),
-          }))
-        : [],
-    }))
-    .filter((section) => section.key && section.segment && section.label && section.landingPath);
-}
-
-function dedupeSections(sections: RailSection[]): RailSection[] {
-  const byKey = new Map<string, RailSection>();
-  for (const section of sections) {
-    byKey.set(section.key, section);
-  }
-  return [...byKey.values()];
-}
-
-/**
- * Проставляет пометку недоступности разделам модулей, чья навигация не приехала,
- * и ДОБАВЛЯЕТ раздел, если его не дал никто (агрегат `dashboard` мог упасть
- * вместе с ним). Запасное описание раздела берётся из каталога модулей —
- * единственного места, где живёт имя раздела.
- */
-function withUnavailable(sections: RailSection[], downRemotes: string[]): RailSection[] {
-  if (downRemotes.length === 0) return sections;
-  const down = new Set(downRemotes);
-  const out = sections.map((section) => (down.has(section.key) ? { ...section, unavailable: true } : section));
-  const present = new Set(out.map((section) => section.key));
-
-  for (const module of REMOTE_MODULES) {
-    if (!module.section || !down.has(module.remote) || present.has(module.section.key)) continue;
-    out.push({
-      key: module.section.key,
-      segment: module.section.segment,
-      icon: module.section.icon,
-      label: module.label,
-      landingPath: module.section.landingPath,
-      requiresProject: module.section.requiresProject,
-      items: [],
-      unavailable: true,
-    });
-  }
-
-  return out;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function stringField(value: unknown, fallback = ""): string {
-  return typeof value === "string" ? value : fallback;
-}
-
-function isIconName(value: unknown): value is RemoteIconName {
-  return typeof value === "string" && value in iconByName;
-}
-
-function remotePath(projectId: string | null, path: string) {
-  if (path.startsWith("/")) {
-    return path;
-  }
-  return projectId ? `/projects/${projectId}/${path}` : "/dashboard";
-}
-
-function matchesRemotePath(pathname: string, path: string) {
-  if (path.startsWith("/")) {
-    return pathname === path || pathname.startsWith(`${path}/`);
-  }
-  return new RegExp(`^/projects/[^/]+/${path.replace(/\//g, "\\/")}(?:/|$)`).test(pathname);
-}

@@ -32,7 +32,7 @@ describe("HostShell", () => {
     );
 
     expect(screen.getByRole("button", { name: "Все сервисы" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /выберите аккаунт/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /выберите область/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Включить тёмную тему" })).toBeInTheDocument();
     expect(screen.getByText("Shell content")).toBeInTheDocument();
   });
@@ -54,7 +54,7 @@ describe("HostShell", () => {
       </BrowserRouter>,
     );
 
-    expect(screen.getByRole("button", { name: /выберите аккаунт/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /выберите область/i })).toBeInTheDocument();
     expect(window.localStorage.getItem("kacho.context.v2")).toBe(JSON.stringify({ account: null, project: null }));
   });
 });

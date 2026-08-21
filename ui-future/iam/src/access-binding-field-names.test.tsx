@@ -83,7 +83,8 @@ const retiredNames = (() => {
 const ext = detailExtension("access-bindings");
 
 function showOverview(data: Record<string, unknown>) {
-  const rows = ext?.overviewExtra?.({ data, projectId: null, detailBase: "/iam/access-bindings/acb-1", navigate: () => {} }) ?? [];
+  const rows =
+    ext?.overviewExtra?.({ data, projectId: null, detailBase: "/iam/access-bindings/acb-1", navigate: () => {} }) ?? [];
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
   render(
     <QueryClientProvider client={client}>
@@ -175,6 +176,20 @@ describe("карточка привязки: что она показывает"
     // понимать обе, и это НЕ запасная ветка на снятое имя, а две проекции
     // ЖИВОГО поля.
     showOverview({ id: "acb-1", deletion_protection: true, target: { all_in_scope: {} } });
-    expect(valueOf("Защита от удаления")).toContain("Да");
+    expect(valueOf("Защита от удаления")).toContain("Удаление запрещено");
+  });
+
+  it("защита от удаления названа СЛЕДСТВИЕМ, а не ответом «Да»/«Нет»", () => {
+    // «Да» рядом с подписью «Защита от удаления» не говорит ни что защита
+    // включена, ни что удалить нельзя: читателю приходится достраивать смысл
+    // самому (канон консоли, правило 5 — булево не показывается сырым).
+    //
+    // Утверждаются ОБЕ стороны: односторонняя проба зеленела бы на разметке,
+    // где ложь по-прежнему рисуется словом «Нет».
+    showOverview({ id: "acb-1", deletionProtection: false, target: { all_in_scope: {} } });
+    const shown = valueOf("Защита от удаления");
+    expect(shown).toContain("Удаление разрешено");
+    expect(shown).not.toContain("Да");
+    expect(shown).not.toContain("Нет");
   });
 });

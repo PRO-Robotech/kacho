@@ -7,14 +7,16 @@
 // пилюля), НЕ из project — IAM-секция живёт на уровне /iam/*.
 
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Empty, Input, Select, Tag, Typography } from "antd";
-import { HistoryOutlined, ReloadOutlined } from "@ant-design/icons";
+import { useQuery } from "@tanstack/react-query";
+import { Button, Select, Typography } from "antd";
 import { api } from "@shared/api/client";
-import { PanelHeader } from "@shared/components/molecules/PanelHeader";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
+import { TableSearch } from "@shared/components/molecules/TableToolbar";
+import { ScopeRequiredEmpty } from "@/components/molecules/ScopeRequiredEmpty";
+import { IamListShell } from "@/components/organisms/iam/IamListShell";
 import { OperationsTable, type Op, statusOf, type OperationStatus } from "@shared/components/molecules/OperationsTable";
 import { useContext } from "@shared/lib/context-store";
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
 import { clientScope, narrowingTitle, scopeSuffix } from "@shared/lib/list-scope";
 
 interface ListAllResp {
@@ -33,7 +35,6 @@ const STATUS_OPTIONS: { value: OperationStatus | "all"; label: string }[] = [
 export function IamOperationsPage() {
   const account = useContext((s) => s.account);
   const accountId = account?.id ?? null;
-  const qc = useQueryClient();
 
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<OperationStatus | "all">("all");
@@ -76,36 +77,21 @@ export function IamOperationsPage() {
   // сводится к тому, дотянут ли курсор до конца.
   const scope = clientScope(!!nextToken);
 
-  const headerRight = useMemo(
-    () => (
-      <Button
-        size="small"
-        icon={<ReloadOutlined />}
-        onClick={() => {
-          setAcc([]);
-          setPageToken(null);
-          qc.invalidateQueries({
-            predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "iam-operations",
-          });
-        }}
-      >
-        Обновить
-      </Button>
-    ),
-    [qc],
-  );
-  useHeaderRight(headerRight);
+  // КНОПКИ «ОБНОВИТЬ» ЗДЕСЬ НЕТ, и это снятие, а не пропуск.
+  //
+  // Первая страница ленты поллится сама раз в пять секунд (`refetchInterval`
+  // ниже). Кнопка предлагала сделать то, что и так происходит, — и самим своим
+  // присутствием утверждала обратное: раз её показывают, значит без неё лента
+  // стоит. Слот шапки приложения при этом сбрасывается: он держит состояние
+  // между страницами и донёс бы сюда чужую кнопку.
+  useHeaderRight(null);
 
-  const breadcrumb = useMemo(
-    () => (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <Typography.Text type="secondary">Identity and Access Management</Typography.Text>
-        <Typography.Text type="secondary">/</Typography.Text>
-        <Typography.Text strong>Операции</Typography.Text>
-      </span>
-    ),
-    [],
-  );
+  // Крошки называют ПУТЬ, заголовок — предмет, и дважды одно не говорят:
+  // последнее звено «Операции» повторяло заголовок страницы. Подпись раздела —
+  // из единственного источника: здесь стояло «Identity and Access Management»,
+  // тогда как все соседние страницы IAM называют его «IAM», — два имени одного
+  // раздела на соседних экранах.
+  const breadcrumb = useMemo(() => <Typography.Text type="secondary">{SERVICES.iam.title}</Typography.Text>, []);
   useBreadcrumb(breadcrumb);
 
   const sorted = useMemo(
@@ -128,63 +114,40 @@ export function IamOperationsPage() {
   }, [sorted, query, status]);
 
   if (!accountId) {
-    return (
-      <div className="kc-surface" style={{ padding: 20, minHeight: "100%" }}>
-        <Empty description="Выберите Account вверху секции, чтобы увидеть операции." style={{ padding: "48px 0" }} />
-      </div>
-    );
+    return <ScopeRequiredEmpty purpose={`увидеть ${ENTITIES.operations.plural.toLowerCase()}`} />;
   }
 
   return (
-    <div
-      className="kc-surface"
-      style={{ padding: 20, height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}
+    // ТА ЖЕ ОБОЛОЧКА, ЧТО У ОСТАЛЬНЫХ СПИСКОВ РАЗДЕЛА (`IamListShell`).
+    //
+    // Здесь была своя: шапка `PanelHeader` с иконкой-плиткой, заголовком «IAM»
+    // и счётчиком строк. Заголовок называл МОДУЛЬ, а не предмет страницы, —
+    // то есть на странице операций слово «Операции» не стояло вовсе; счётчик
+    // снят решением владельца ВЕЗДЕ; поля страницы были `20` против `20px 24px`
+    // у соседей.
+    <IamListShell
+      title={ENTITIES.operations.plural}
+      narrowing={
+        <>
+          {/* ОТБОР — ПЕРЕД ПОИСКОМ: он меняет набор строк, среди которых потом
+              ищут. */}
+          <Select
+            value={status}
+            onChange={setStatus}
+            options={STATUS_OPTIONS}
+            title={narrowingTitle(scope)}
+            style={{ width: 180 }}
+          />
+          <TableSearch
+            value={query}
+            onChange={setQuery}
+            scope={scope}
+            placeholder={`Фильтр по идентификатору ${scopeSuffix(scope)}`}
+            width={320}
+          />
+        </>
+      }
     >
-      {/* Шапка (иконка + «Операции» + IAM + счётчик + фильтры) — фиксирована сверху. */}
-      <div style={{ flexShrink: 0, marginBottom: 12 }}>
-        <PanelHeader
-          icon={<HistoryOutlined />}
-          eyebrow="Операции"
-          title={
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 20, lineHeight: "20px" }}>
-              IAM
-              <Tag
-                style={{
-                  margin: 0,
-                  fontSize: 11.5,
-                  fontWeight: 600,
-                  lineHeight: "16px",
-                  height: 18,
-                  paddingInline: 6,
-                  borderRadius: 5,
-                }}
-              >
-                {filtered.length}
-              </Tag>
-            </span>
-          }
-          right={
-            <>
-              <Input
-                placeholder={`Фильтр по идентификатору ${scopeSuffix(scope)}`}
-                title={narrowingTitle(scope)}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                allowClear
-                style={{ width: 280 }}
-              />
-              <Select
-                value={status}
-                onChange={setStatus}
-                options={STATUS_OPTIONS}
-                title={narrowingTitle(scope)}
-                style={{ width: 180 }}
-              />
-            </>
-          }
-        />
-      </div>
-
       {/* Тело таблицы заполняет остаток поверхности и скроллит СЕБЯ (фикс. шапка
           колонок + вертикальный скролл тела) — иначе внутри Space высота
           коллапсирует и видно лишь ~4 строки. */}
@@ -204,6 +167,6 @@ export function IamOperationsPage() {
           </Button>
         </div>
       )}
-    </div>
+    </IamListShell>
   );
 }

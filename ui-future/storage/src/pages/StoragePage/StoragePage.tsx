@@ -13,8 +13,12 @@ import { ResourceListPage } from "@/components/organisms/ResourceListPage";
 import { ResourceShell } from "@/components/organisms/ResourceShell";
 import { contextApi } from "@/lib/context-store";
 import { REGISTRY, type ResourceSpec } from "@/lib/resource-registry";
+// Доменные расширения detail-страницы регистрируются в ОБЩЕМ реестре
+// (`@shared/components/organisms/ResourceDetailExtensions`) на старте бандла —
+// до рендера страниц. Импорт ради side-effect'а, экспортов у модуля нет.
+import "@/registerExtensions";
 import "@/typography.css";
-import "@/index.css";
+import "@shared/index.css";
 
 export interface StoragePageProps {
   context?: {

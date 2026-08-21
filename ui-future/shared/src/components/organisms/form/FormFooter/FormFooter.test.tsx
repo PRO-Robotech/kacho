@@ -59,10 +59,33 @@ describe("FormFooter", () => {
   });
 
   it("деструктивная отправка отличима от обычной", () => {
-    renderFooter({ danger: true, submitting: true, submitLabel: "Удалить" });
-    expect(screen.getByRole("button", { name: "Удалить" }).style.getPropertyValue("--doppler-c")).toBe(
-      "rgba(255, 77, 79, 0.6)",
+    // Утверждается РАЗЛИЧИЕ, а не конкретный цвет. Цвет пульсации назначает
+    // DopplerButton, и его собственная проба этот цвет и стережёт; второе место
+    // об одном предмете расходится с первым при любой правке палитры — так и
+    // вышло, когда тон кольца перевели с литерала на токен продукта.
+    //
+    // Различие же — то, ради чего подвал вообще передаёт `danger`: одинаковое
+    // кольцо на удалении и на сохранении читалось бы как одно и то же действие.
+    // Пара «оба назначены и они разные» падает на подмене `danger` любым
+    // другим значением, а на смене палитры — не падает.
+    const { unmount } = render(
+      <FormFooter
+        submitLabel="Удалить"
+        submitting
+        danger
+        onSubmit={() => {}}
+        onCancel={() => {}}
+      />,
     );
+    const danger = screen.getByRole("button", { name: "Удалить" }).style.getPropertyValue("--doppler-c");
+    unmount();
+
+    render(<FormFooter submitLabel="Создать" submitting onSubmit={() => {}} onCancel={() => {}} />);
+    const plain = screen.getByRole("button", { name: "Создать" }).style.getPropertyValue("--doppler-c");
+
+    expect(danger).not.toBe("");
+    expect(plain).not.toBe("");
+    expect(danger).not.toBe(plain);
   });
 
   it("липкий подвал прижимается к низу, обычный — нет", () => {
@@ -77,5 +100,42 @@ describe("FormFooter", () => {
       <FormFooter submitLabel="Создать" submitting={false} onSubmit={() => {}} onCancel={() => {}} />,
     );
     expect((plain.container.firstElementChild as HTMLElement).style.position).toBe("");
+  });
+});
+
+describe("подвал не «прыгает» при переходе создание↔правка", () => {
+  // Подпись создания склоняет имя ресурса («Создать облачную сеть»), подпись
+  // правки — одно слово («Сохранить»). Кнопка шириной ровно по подписи при
+  // переходе съёживается втрое, и «Отменить» переезжает под курсор туда, где
+  // секунду назад было подтверждение: промах по кнопке стоит отменённой работы.
+  const ширина = (label: string, over: Partial<Parameters<typeof FormFooter>[0]> = {}) => {
+    const { unmount } = render(
+      <FormFooter
+        submitLabel={label}
+        submitting={false}
+        onSubmit={() => {}}
+        onCancel={() => {}}
+        {...over}
+      />,
+    );
+    const value = screen.getByRole("button", { name: label }).style.minWidth;
+    unmount();
+    return value;
+  };
+
+  it("основное действие держит одну ширину на обеих подписях", () => {
+    expect(ширина("Создать облачную сеть")).toBe(ширина("Сохранить"));
+  });
+
+  it("пол ширины объявлен, а не оставлен содержимому", () => {
+    // Отрицание «не прыгает» выполнено и пустой строкой у обеих подписей —
+    // поэтому утверждается, что величина названа.
+    expect(ширина("Сохранить")).toMatch(/^\d+px$/);
+  });
+
+  it("деструктивная отправка держит ту же ширину", () => {
+    // Удаление выглядит ИНАЧЕ (линия опасности), но не УЖЕ: подвал у него тот
+    // же, и кнопки в нём стоят там же.
+    expect(ширина("Удалить", { danger: true })).toBe(ширина("Сохранить"));
   });
 });

@@ -5,6 +5,7 @@
 // имя / идентификатор / IP-адрес / дата создания.
 
 import { Link, useParams } from "react-router";
+import { DETAIL_CONTENT_WIDTH } from "@shared/components/organisms/DetailShell";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailPage";
@@ -135,7 +136,7 @@ export function AddressPoolDetailPage() {
     const v4 = (data.v4_cidr_blocks as string[] | undefined) ?? [];
     const v6 = (data.v6_cidr_blocks as string[] | undefined) ?? [];
     return (
-      <div style={{ marginTop: 24, maxWidth: 760 }}>
+      <div style={{ marginTop: 24, maxWidth: DETAIL_CONTENT_WIDTH }}>
         <AddressPoolCidrManager poolId={id} v4Blocks={v4} v6Blocks={v6} />
       </div>
     );

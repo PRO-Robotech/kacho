@@ -45,6 +45,7 @@ module.exports = {
     "^nlb/navigation$": "<rootDir>/src/test/nlb-navigation.ts",
     "^iam/IamPage$": "<rootDir>/src/test/iam-remote.tsx",
     "^iam/navigation$": "<rootDir>/src/test/iam-navigation.ts",
+    "^system/navigation$": "<rootDir>/src/test/system-navigation.ts",
   },
   transform: {
     "^.+\\.(ts|tsx)$": [

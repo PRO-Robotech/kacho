@@ -219,7 +219,9 @@ export function ResourceRefChips({
                     e.preventDefault();
                     onRemove(id);
                   }}
-                  style={{ fontFamily: "monospace", fontSize: 12, margin: 0 }}
+                  // Метка чипа — имя чужого ресурса, часто с адресом: ряд
+                  // моноширинный, но семейство берётся токеном продукта.
+                  style={{ fontFamily: "var(--font-mono)", fontSize: 11, margin: 0 }}
                 >
                   {name}
                 </Tag>

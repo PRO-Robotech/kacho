@@ -4,7 +4,6 @@ import { useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { Alert, Typography } from "antd";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
-import { FORM_WIDTH } from "@shared/components/organisms/form/FormShell";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { api } from "@shared/api/client";
 import { applyFieldDefaults, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
@@ -13,7 +12,6 @@ import { presetFieldsForSpec } from "@shared/lib/preset-fields";
 import { buildCreateBody } from "@shared/lib/update-mask";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
-import { createActionLabel } from "@shared/lib/resource-label";
 import { mutationFailureText, subjectNameOf, subjectOfSpec } from "@shared/lib/mutation-signal";
 import { useSignalledMutation } from "@shared/lib/use-signalled-mutation";
 
@@ -191,7 +189,14 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
   }
 
   return (
-    <div style={{ maxWidth: FORM_WIDTH }}>
+    // Ширины здесь НЕТ: страница занимает свою область целиком, как список и
+    // карточка. Ограничивает ширину только колонка ПОЛЕЙ, внутри оболочки формы,
+    // — заголовок и черта под ним обязаны идти на всю ширину страницы.
+    //
+    // Пока сужена была вся страница, черта под заголовком кончалась на 820-й
+    // точке против полутора тысяч у списка, и переход «список → создание» рвал
+    // обе линии сразу: и текст, и подчёркивание под ним.
+    <div>
       {/* Беклинк убран (req) — путь назад есть в breadcrumb хедера. */}
       <ResourceFormBody
         spec={spec}
@@ -200,7 +205,9 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
         onChange={setObj}
         lockedPaths={lockedPathsRef.current}
         fieldOptionsFilter={fieldOptionsFilter}
-        submitLabel={createActionLabel(spec)}
+        // Предмет назван заголовком формы прямо над кнопкой — здесь короткое
+        // «Создать» (решение владельца).
+        submitLabel="Создать"
         submitting={mutation.pending}
         onSubmit={submit}
         onCancel={() => navigate(backHref)}

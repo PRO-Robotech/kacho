@@ -39,7 +39,8 @@ export interface InlineResourceFormProps {
   /** Контекст-id для кастомных форм. */
   networkId?: string;
   subnetId?: string;
-  /** Заголовок generic-формы (по умолчанию «Создание/Редактирование: <singular>»). */
+  /** Заголовок generic-формы. Не задан — шапка называет тип ресурса, а действие
+   *  идёт надстрочной строкой. */
   title?: string;
   onCancel: () => void;
   onSuccess: () => void;

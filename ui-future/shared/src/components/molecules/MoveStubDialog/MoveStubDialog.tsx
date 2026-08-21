@@ -19,7 +19,7 @@ export function MoveStubDialog({ open, onOpenChange, resourceLabel, name, apiPat
       cancelButtonProps={{ style: { display: "none" } }}
       title={
         <span>
-          <InfoCircleOutlined style={{ color: "#3D8DF5", marginRight: 8 }} />
+          <InfoCircleOutlined style={{ color: "var(--kc-primary)", marginRight: 8 }} />
           Перемещение через UI пока не реализовано
         </span>
       }

@@ -2,14 +2,17 @@
 // InlineNetworkInterfaceCreateForm.
 
 import { useEffect, useState } from "react";
+import { addressSelectableFor } from "@shared/lib/address-availability";
 import { snakeToCamelPath } from "@shared/lib/update-mask";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Form, Input, Space, Tooltip, Typography } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
-import { ResourceRefChips } from "@shared/components/molecules/ResourceRefChips";
+import { RefMultiSelect } from "@shared/components/organisms/form/RefSelect";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
+import { FORM_DIVIDER_STYLE } from "@shared/components/organisms/form/editor-surface";
 import { LabelsEditor, labelsFromMap, labelsToMap, type LabelEntry } from "@shared/components/organisms/LabelsEditor";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
@@ -39,7 +42,7 @@ const labelWithInfo = (text: string, info: string) => (
   <Space size={4}>
     {text}
     <Tooltip title={info}>
-      <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
+      <QuestionCircleOutlined style={{ color: "var(--kc-text-tertiary)" }} />
     </Tooltip>
   </Space>
 );
@@ -158,14 +161,7 @@ export function InlineNetworkInterfaceEditForm({ projectId, nicId, onCancel, onS
 
   return (
     <FormShell specId="network-interfaces" mode="edit" singular={spec.singular}>
-      <Form
-        layout="horizontal"
-        labelCol={{ flex: "200px" }}
-        wrapperCol={{ flex: "1 1 0" }}
-        labelAlign="left"
-        colon={false}
-        size="middle"
-      >
+      <FormGrid>
         <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах фолдера. Можно изменять.")}>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Form.Item>
@@ -178,22 +174,28 @@ export function InlineNetworkInterfaceEditForm({ projectId, nicId, onCancel, onS
           <LabelsEditor value={labels} onChange={setLabels} />
         </Form.Item>
 
+        {/* ПОРЯДОК ОДИН НА ВСЕ ФОРМЫ (решение владельца): имя → описание →
+            метки → черта → поля самого ресурса. Черта берётся объявленной
+            (`FORM_DIVIDER_STYLE`) — своя, выписанная по месту, разошлась бы с
+            соседней формой молча. */}
+        <div style={FORM_DIVIDER_STYLE} aria-hidden />
+
         <Form.Item label={labelWithInfo("Подсеть", "Иммутабельно после создания.")}>
           <Input value={nic.subnet_id ?? ""} disabled />
         </Form.Item>
 
         <Form.Item label={labelWithInfo("IPv4 адрес", "Один Address-ресурс с internal_ipv4. KAC-55: максимум один.")}>
-          <ResourceRefChips
-            titleHidden
-            title="IPv4-адрес"
+          <RefMultiSelect
             refResource="addresses"
             projectId={projectId}
-            tagColor="blue"
             value={v4}
             onChange={setV4}
             maxItems={1}
             refFilter={(row) =>
-              (row.internal_ipv4_address as { subnet_id?: string } | undefined)?.subnet_id === nic.subnet_id
+              (row.internal_ipv4_address as { subnet_id?: string } | undefined)?.subnet_id === nic.subnet_id &&
+              // Занятые адреса скрыты — кроме тех, что держит ЭТОТ интерфейс:
+              // иначе форма правки потеряла бы собственное текущее значение.
+              addressSelectableFor(row, v4)
             }
             createResource="addresses"
             createPresetFields={{
@@ -207,17 +209,15 @@ export function InlineNetworkInterfaceEditForm({ projectId, nicId, onCancel, onS
         <Form.Item
           label={labelWithInfo("IPv6 адрес", "Internal или external IPv6 Address-ресурс. KAC-55: максимум один.")}
         >
-          <ResourceRefChips
-            titleHidden
-            title="IPv6-адрес"
+          <RefMultiSelect
             refResource="addresses"
             projectId={projectId}
-            tagColor="geekblue"
             value={v6}
             onChange={setV6}
             maxItems={1}
             refFilter={(row) =>
-              (row.internal_ipv6_address as { subnet_id?: string } | undefined)?.subnet_id === nic.subnet_id
+              (row.internal_ipv6_address as { subnet_id?: string } | undefined)?.subnet_id === nic.subnet_id &&
+              addressSelectableFor(row, v6)
             }
             createResource="addresses"
             createEditablePresetFields={{ _address_kind: "internal_v6" }}
@@ -227,12 +227,9 @@ export function InlineNetworkInterfaceEditForm({ projectId, nicId, onCancel, onS
         </Form.Item>
 
         <Form.Item label={labelWithInfo("Группы безопасности", "Группы безопасности, привязанные к этому интерфейсу.")}>
-          <ResourceRefChips
-            titleHidden
-            title="Группа безопасности"
+          <RefMultiSelect
             refResource="security-groups"
             projectId={projectId}
-            tagColor="purple"
             value={sgs}
             onChange={setSgs}
             refFilter={(row) => !!sgNetworkId && row.network_id === sgNetworkId}
@@ -246,7 +243,7 @@ export function InlineNetworkInterfaceEditForm({ projectId, nicId, onCancel, onS
           onSubmit={submit}
           onCancel={onCancel}
         />
-      </Form>
+      </FormGrid>
     </FormShell>
   );
 }

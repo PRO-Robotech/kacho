@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174 --host 0.0.0.0 --strictPort",
+    "prebuild": "node ../scripts/copy-monaco.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview --port 4174 --strictPort",
     "test": "node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --silent --testTimeout=30000 --forceExit --ci",
@@ -18,7 +19,8 @@
     "lint:css:fix": "stylelint \"src/**/*.{css,scss}\" --fix",
     "format": "prettier . --check",
     "format:check": "prettier . --check",
-    "format:write": "prettier . --write"
+    "format:write": "prettier . --write",
+    "predev": "node ../scripts/copy-monaco.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.2.2",

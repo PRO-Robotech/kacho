@@ -10,6 +10,7 @@
 
 import { Navigate, Route, Routes } from "react-router";
 import { TokensLayout } from "@/components/organisms/TokensLayout";
+import { TOKENS_LANDING_PATH } from "@/labels";
 import ServiceAccountKeysPage from "@shared/pages/system/ServiceAccountKeysPage";
 import UserTokensPage from "@shared/pages/system/UserTokensPage";
 import { RemoteShell } from "@/pages/RemoteShell";
@@ -22,7 +23,17 @@ export function TokensRoutes() {
         <Route path="service-account-keys" element={<ServiceAccountKeysPage />} />
         <Route path="user-tokens" element={<UserTokensPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="service-account-keys" replace />} />
+      {/* Адрес назначения АБСОЛЮТНЫЙ — ровно по той же причине, что и у соседнего
+          блока маршрутов (`SystemRoutes`). Относительный «service-account-keys»
+          внутри splat-маршрута резолвится от УЖЕ СОПОСТАВЛЕННОГО пути
+          (`/system/tokens/что-угодно`), давая
+          `/system/tokens/что-угодно/service-account-keys`; он снова попадает
+          сюда — и перенаправление зацикливается, наращивая адрес до
+          бесконечности. Наблюдаемо это как «страница не открывается» без
+          единого сообщения; в пробе — как прогон, который не заканчивается
+          вовсе: цикл синхронный, поэтому предел времени у пробы не срабатывает.
+          Соседний блок это уже чинил, а этот остался с прежней формой. */}
+      <Route path="*" element={<Navigate to={TOKENS_LANDING_PATH} replace />} />
     </Routes>
   );
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHead } from "@shared/components/organisms/DetailShell/PageHead";
 import type { FC } from "react";
 import { Button, Space, Tag, Typography } from "antd";
 
@@ -37,7 +38,8 @@ export const ReachabilityPage: FC = () => {
     <section className="workbench">
       <div className="panel-heading">
         <div>
-          <Typography.Title level={3}>Доступность API</Typography.Title>
+          {/* Заголовок — общей конструкцией: см. `PageHead`. */}
+          <PageHead title="Доступность API" />
           <Typography.Text type="secondary">
             Запросы идут по относительным адресам; Vite проксирует их на локальный кластер.
           </Typography.Text>

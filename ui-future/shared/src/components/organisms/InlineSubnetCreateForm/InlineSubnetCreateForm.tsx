@@ -22,8 +22,12 @@ import { useDebouncedValue } from "@shared/lib/list-search";
 import { pickerScopeOfSpec } from "@shared/lib/picker-search";
 import { useKeptLabel } from "@shared/lib/kept-choice";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { FORM_DIVIDER_STYLE } from "@shared/components/organisms/form/editor-surface";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
+import { MONO_FONT } from "@shared/components/organisms/form/editor-surface";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
+import { FieldError } from "@shared/components/organisms/form/FieldError";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
@@ -221,35 +225,50 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [op?.done, op?.error?.code]);
 
-  const submit = () => {
-    if (!networkId) {
-      toast.error("Выберите сеть для подсети.");
-      return;
-    }
+  // Правила полей — ОДНО объявление, читаемое и отправкой, и разметкой.
+  //
+  // Прежде каждое из шести правил жило внутри `submit` и заканчивалось
+  // всплывающим сообщением в углу экрана. Всплывашка не говорила, к какому полю
+  // относится, гасла через несколько секунд и на первом же правиле обрывала
+  // проверку, поэтому арендатор узнавал о недочётах ПО ОДНОМУ — за столько
+  // попыток отправки, сколько их было.
+  // Здесь считаются ВСЕ сразу и каждое приписано своему полю.
+  const проблемы = (): Record<string, string> => {
+    const out: Record<string, string> = {};
+    if (!networkId) out.network = "«Сеть»: поле обязательное — выберите сеть, в которой создаётся подсеть.";
     if (placementType === "ZONAL" && !zoneId) {
-      toast.error("Выберите зону доступности.");
-      return;
+      out.zone = "«Зона доступности»: поле обязательное при размещении ZONAL.";
     }
     if (placementType === "REGIONAL" && !regionId) {
-      toast.error("Выберите регион.");
-      return;
+      out.region = "«Регион»: поле обязательное при размещении REGIONAL.";
     }
     // VPC-1: ≥1 primary CIDR anchor required (v4 / v6 / both). Additional
     // ranges are added post-create via :add-cidr-blocks.
     const v4 = v4Primary.trim();
     const v6 = v6Primary.trim();
-    if (!v4 && !v6) {
-      toast.error("Укажите основной CIDR (IPv4 или IPv6).");
-      return;
-    }
+    // Требование «хотя бы одно семейство» названо у IPv4 — того поля, что
+    // помечено обязательным. Назвать его у обоих значило бы утверждать, что
+    // обязательны оба.
+    if (!v4 && !v6) out.v4 = "«Основной IPv4 CIDR»: нужен основной CIDR хотя бы одного семейства — IPv4 либо IPv6.";
     if (v4 && !v4.includes("/")) {
-      toast.error("Основной IPv4 CIDR должен содержать префикс, например 10.20.0.0/24.");
-      return;
+      out.v4 = "«Основной IPv4 CIDR»: CIDR должен содержать префикс (например 10.20.0.0/24).";
     }
     if (v6 && !(v6.includes("/") && v6.includes(":"))) {
-      toast.error("Основной IPv6 CIDR должен содержать префикс, например fd00:20::/64.");
-      return;
+      out.v6 = "«Основной IPv6 CIDR»: CIDR должен содержать префикс (например fd00:20::/64).";
     }
+    return out;
+  };
+
+  const [пробовалиОтправить, setПробовалиОтправить] = useState(false);
+  // Отказы считаются на каждом рендере по текущему вводу: поправленное поле
+  // выходит из отказа сразу, соседнее остаётся названным.
+  const отказы = пробовалиОтправить ? проблемы() : {};
+
+  const submit = () => {
+    setПробовалиОтправить(true);
+    if (Object.keys(проблемы()).length > 0) return;
+    const v4 = v4Primary.trim();
+    const v6 = v6Primary.trim();
     const labelMap = labelsFromEntries(labels);
 
     // placement_type НЕ отправляется — сервер выводит его из zone_id XOR
@@ -272,14 +291,26 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
 
   return (
     <FormShell specId="subnets" mode="create" singular={subnetSpec.singular}>
-      <Form
-        layout="horizontal"
-        labelCol={{ flex: "200px" }}
-        wrapperCol={{ flex: "1 1 0" }}
-        labelAlign="left"
-        colon={false}
-        size="middle"
-      >
+      <FormGrid>
+        <Form.Item label="Имя">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="subnet-..." />
+        </Form.Item>
+
+        <Form.Item label="Описание">
+          <Input.TextArea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+        </Form.Item>
+
+        <Form.Item label="Метки">
+          <LabelsEditor value={labels} onChange={setLabels} />
+        </Form.Item>
+
+        {/* ПОРЯДОК ОДИН НА ВСЕ ФОРМЫ (решение владельца): имя → описание →
+            метки → черта → поля самого ресурса. Здесь форма начиналась с выбора
+            сети, и на соседних формах рука шла к разным местам. Выбор сети от
+            этого не потерялся: он стоит первым среди полей ресурса, сразу за
+            чертой. */}
+        <div style={FORM_DIVIDER_STYLE} aria-hidden />
+
         <Form.Item label="Сеть" required>
           <Select
             showSearch
@@ -297,19 +328,11 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
             // «нет совпадений» на месте «нет среди загруженных».
             notFoundContent={networksLoading ? undefined : networkScope.emptyText}
             disabled={networkLocked}
+            status={отказы.network ? "error" : undefined}
+            aria-required
+            aria-invalid={отказы.network ? true : undefined}
           />
-        </Form.Item>
-
-        <Form.Item label="Имя">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="subnet-..." />
-        </Form.Item>
-
-        <Form.Item label="Описание">
-          <Input.TextArea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-        </Form.Item>
-
-        <Form.Item label="Метки">
-          <LabelsEditor value={labels} onChange={setLabels} />
+          <FieldError message={отказы.network} />
         </Form.Item>
 
         <Form.Item label="Размещение" required>
@@ -325,11 +348,29 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
 
         {placementType === "ZONAL" ? (
           <Form.Item label="Зона доступности" required>
-            <Select value={zoneId} onChange={setZoneId} options={zoneOptions} placeholder="Выберите зону" />
+            <Select
+              value={zoneId}
+              onChange={setZoneId}
+              options={zoneOptions}
+              placeholder="Выберите зону"
+              status={отказы.zone ? "error" : undefined}
+              aria-required
+              aria-invalid={отказы.zone ? true : undefined}
+            />
+            <FieldError message={отказы.zone} />
           </Form.Item>
         ) : (
           <Form.Item label="Регион" required>
-            <Select value={regionId} onChange={setRegionId} options={regionOptions} placeholder="Выберите регион" />
+            <Select
+              value={regionId}
+              onChange={setRegionId}
+              options={regionOptions}
+              placeholder="Выберите регион"
+              status={отказы.region ? "error" : undefined}
+              aria-required
+              aria-invalid={отказы.region ? true : undefined}
+            />
+            <FieldError message={отказы.region} />
           </Form.Item>
         )}
 
@@ -350,7 +391,7 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
             <Space size={4}>
               Основной IPv4 CIDR
               <Tooltip title="Неизменяемый основной IPv4 CIDR подсети (⊆ одного CIDR-блока сети), например 10.20.0.0/24. Можно оставить пустым для IPv6-only подсети. Доп. диапазоны добавляются позже.">
-                <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
+                <QuestionCircleOutlined style={{ color: "var(--kc-text-tertiary)" }} />
               </Tooltip>
             </Space>
           }
@@ -360,8 +401,12 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
             value={v4Primary}
             onChange={(e) => setV4Primary(e.target.value)}
             placeholder="10.20.0.0/24"
-            style={{ fontFamily: "monospace" }}
+            style={{ fontFamily: MONO_FONT, fontSize: 11, fontWeight: 520 }}
+            status={отказы.v4 ? "error" : undefined}
+            aria-required
+            aria-invalid={отказы.v4 ? true : undefined}
           />
+          <FieldError message={отказы.v4} />
         </Form.Item>
 
         <Form.Item
@@ -369,7 +414,7 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
             <Space size={4}>
               Основной IPv6 CIDR
               <Tooltip title="Опционально. Неизменяемый основной IPv6 CIDR подсети (⊆ IPv6 CIDR сети), например fd00:20::/64.">
-                <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
+                <QuestionCircleOutlined style={{ color: "var(--kc-text-tertiary)" }} />
               </Tooltip>
             </Space>
           }
@@ -378,17 +423,20 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
             value={v6Primary}
             onChange={(e) => setV6Primary(e.target.value)}
             placeholder="fd00:20::/64"
-            style={{ fontFamily: "monospace" }}
+            style={{ fontFamily: MONO_FONT, fontSize: 11, fontWeight: 520 }}
+            status={отказы.v6 ? "error" : undefined}
+            aria-invalid={отказы.v6 ? true : undefined}
           />
+          <FieldError message={отказы.v6} />
         </Form.Item>
 
         <FormFooter
-          submitLabel="Создать подсеть"
+          submitLabel="Создать"
           submitting={mutation.isPending || pendingOpId !== null}
           onSubmit={submit}
           onCancel={onCancel}
         />
-      </Form>
+      </FormGrid>
     </FormShell>
   );
 }

@@ -129,8 +129,8 @@ describe("UserTokensPanel", () => {
     renderPanel("usr-42");
 
     const path = revokeOpts().path as (body: unknown) => string;
-    expect(path({ tokenId: "tok-9" })).toBe("/iam/v1/users/usr-42/tokens/tok-9");
-    expect(path({ tokenId: "a/b" })).toBe("/iam/v1/users/usr-42/tokens/a%2Fb");
+    expect(path({ id: "tok-9" })).toBe("/iam/v1/users/usr-42/tokens/tok-9");
+    expect(path({ id: "a/b" })).toBe("/iam/v1/users/usr-42/tokens/a%2Fb");
   });
 
   it("до нажатия окно выпуска не показано, по кнопке — открывается", () => {
@@ -170,7 +170,7 @@ describe("UserTokensPanel", () => {
 
     fireEvent.click(within(confirm).getByRole("button", { name: "Отозвать" }));
 
-    expect(run).toHaveBeenCalledWith({ tokenId: "tok-9" });
+    expect(run).toHaveBeenCalledWith({ id: "tok-9" });
   });
 
   it("отказ от подтверждения НЕ отзывает — отрицание в паре с положительным выше", async () => {
