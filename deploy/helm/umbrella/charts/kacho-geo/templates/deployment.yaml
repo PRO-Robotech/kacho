@@ -119,6 +119,11 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.db.passwordSecretName }}
                   key: {{ .Values.db.passwordSecretKey }}
+            # Ширина пула на ЭТУ реплику. Стоит только у обслуживающего
+            # контейнера: миграционный шаг строит DSN без пуловых параметров
+            # (`MigrateDSN`), и сужать там нечего.
+            - name: KACHO_GEO_DB_MAX_CONNS
+              value: "{{ .Values.db.maxConns }}"
             - name: KACHO_GEO_GRPC_PORT
               value: "{{ .Values.ports.grpc }}"
             - name: KACHO_GEO_INTERNAL_PORT
