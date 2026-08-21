@@ -293,9 +293,27 @@ var pgBudgetKnobs = []string{"max_connections", "shared_buffers", "work_mem"}
 func scanDBFootprint(facts []dbFootprintFacts) []footprintFinding {
 	var out []footprintFinding
 	for _, f := range facts {
-		if !f.production {
-			continue // стенд разработки волен не выбирать ничего
-		}
+		// Требований ДВА, и они адресованы РАЗНЫМ множествам стеков.
+		//
+		//   ОБЯЗАН ОБЪЯВИТЬ — только боевой стек. «Стенд разработки волен не
+		//   выбирать ничего» остаётся в силе дословно: невыбравший вне предмета.
+		//
+		//   ОБЪЯВЛЕННОЕ ИСПОЛНИМО — всякий стек, который величины НАЗВАЛ. Здесь
+		//   боевой он или нет, значения не имеет: объявив потолок памяти и
+		//   max_connections, стек утверждает, что второе умещается в первое, —
+		//   и это утверждение либо верно, либо нет.
+		//
+		// Различие не педантское, и цена его отсутствия измерена (#883). Стенд
+		// разработки объявлял обе величины, и они не сходились в 1.7 раза:
+		// 128MiB + 200 × 8MiB = 1728MiB против потолка 1GiB. База прав падала
+		// с кодом 137 под нагрузкой ровно так, как эта арифметика предсказывает,
+		// а замеры пропускной способности, снятые на таком стенде, были
+		// недействительны — при том что здесь ими и меряют.
+		//
+		// Прежняя редакция отсекала небоевой стек ЦЕЛИКОМ, поэтому проверка
+		// молчала не потому, что арифметика сошлась, а потому, что её не
+		// спрашивали.
+		mustDeclare := f.production
 		for _, alias := range f.aliases {
 			node, _ := lookup(f.declared, alias, "primary")
 			primary, _ := node.(map[string]any)
@@ -325,8 +343,10 @@ func scanDBFootprint(facts []dbFootprintFacts) []footprintFinding {
 				}
 			}
 			if len(missing) > 0 {
-				out = append(out, footprintFinding{f.stack, alias, kindNoCeiling,
-					"не объявлено профилем: " + strings.Join(missing, ", ")})
+				if mustDeclare {
+					out = append(out, footprintFinding{f.stack, alias, kindNoCeiling,
+						"не объявлено профилем: " + strings.Join(missing, ", ")})
+				}
 				continue // без потолка спрашивать про трату нечего — иначе один пропуск считается дважды
 			}
 
@@ -346,8 +366,10 @@ func scanDBFootprint(facts []dbFootprintFacts) []footprintFinding {
 				}
 			}
 			if len(absent) > 0 {
-				out = append(out, footprintFinding{f.stack, alias, kindNoBudget,
-					"не объявлено профилем: extendedConfiguration " + strings.Join(absent, ", ")})
+				if mustDeclare {
+					out = append(out, footprintFinding{f.stack, alias, kindNoBudget,
+						"не объявлено профилем: extendedConfiguration " + strings.Join(absent, ", ")})
+				}
 				continue
 			}
 
@@ -586,6 +608,46 @@ func TestScanDBFootprint_InjectionBothWays(t *testing.T) {
 	devStand[0].production = false
 	if got := scanDBFootprint(devStand); len(got) != 0 {
 		t.Fatalf("стенд разработки покрашен: %+v", got)
+	}
+
+	// ── (к2) ДЕФЕКТ: стенд разработки НАЗВАЛ обе величины, и они не сходятся.
+	//         Прежняя редакция отсекала небоевой стек целиком, поэтому такой
+	//         случай был невидим — а именно он и наблюдался вживую (#883):
+	//         база прав падала с кодом 137 под нагрузкой, и замеры пропускной
+	//         способности, снятые на этом стенде, были недействительны.
+	//
+	//         «Волен не выбирать» и «выбрал невозможное» — разные состояния;
+	//         послабление относится к первому и не покрывает второе.
+	devOverspend := fpFacts(fpFullCeiling("1Gi"), fpFullBudget)
+	devOverspend[0].production = false
+	if got := only(t, scanDBFootprint(devOverspend), kindOverspend); !strings.Contains(got.why, "1024MiB") {
+		t.Fatalf("находка не называет объявленный потолок: %+v", got)
+	}
+
+	// ── (к3) ЗАКОННЫЙ БЛИЗНЕЦ: тот же небоевой стек, но величины СХОДЯТСЯ.
+	//         Без этой пробы (к2) зеленела бы и на проверке, красящей всякий
+	//         небоевой стек, назвавший хоть что-нибудь.
+	devFits := fpFacts(fpFullCeiling("4Gi"), fpFullBudget)
+	devFits[0].production = false
+	if got := scanDBFootprint(devFits); len(got) != 0 {
+		t.Fatalf("небоевой стек со сходящимся бюджетом покрашен: %+v", got)
+	}
+
+	// ── (к4) ЗАКОННЫЙ БЛИЗНЕЦ: небоевой стек назвал ПОТОЛОК, но не назвал
+	//         ручек траты. Требование ОБЪЯВИТЬ адресовано только боевым, и
+	//         это остаётся в силе: спрашивать нечего, находки быть не должно.
+	devCeilingOnly := fpFacts(fpFullCeiling("1Gi"), "")
+	devCeilingOnly[0].production = false
+	if got := scanDBFootprint(devCeilingOnly); len(got) != 0 {
+		t.Fatalf("небоевой стек покрашен за НЕобъявленную трату: %+v", got)
+	}
+
+	// ── (к5) КОНТРОЛЬ В ОБРАТНУЮ СТОРОНУ: тот же вход, но стек БОЕВОЙ —
+	//         обязан покраснеть за необъявленную трату. Без него (к4) была бы
+	//         неотличима от проверки, разучившейся требовать объявление вовсе.
+	prodCeilingOnly := fpFacts(fpFullCeiling("1Gi"), "")
+	if got := only(t, scanDBFootprint(prodCeilingOnly), kindNoBudget); got.stack != "injected" {
+		t.Fatalf("боевой стек без траты не покрашен как надо: %+v", got)
 	}
 
 	// ── (м) ДЕФЕКТ: ручка стоит ТОЛЬКО в комментарии. Разбор обязан читать
