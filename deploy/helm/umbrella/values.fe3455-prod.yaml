@@ -272,6 +272,14 @@ kacho-geo:
   env:
     KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 kacho-iam:
+  # Слушатель :9097 несёт ДВЕ поверхности с разными требованиями. Набор
+  # проверочных ключей обязан оставаться доступен без клиентского сертификата
+  # (потребитель origin-agnostic), а авторитет отзыва принимает предъявленный
+  # токен и обязан знать, кто спрашивает. Поэтому сертификат ЗАПРАШИВАЕТСЯ и
+  # верифицируется, если предъявлен, а отказывает сам обработчик авторитета:
+  # режим сам по себе ничего не сужает.
+  mtls:
+    jwksProxyClientAuthMode: optional-mutual
   image:
     # ── FORWARD ROLL: main-c744f956 (kacho-iam main c744f95, multiarch, Docker Hub-
     #    verified 2026-07-15) supersedes the live feature build KAC-registry-docker-auth-
@@ -325,6 +333,23 @@ kacho-iam:
       registryToken:
         issuer: https://registry.in-cloud.io/iam/token
         service: registry.in-cloud.io
+    authn:
+      # СВОЯ ЧЕКАНКА ТОКЕНОВ (F1, задача #897)
+      #
+      # Контур выдачи докер-токена переводится на НАШ подписант: обе его стороны
+      # наши, и подписант без производственного вызывающего — тот же класс, что
+      # хранилище без читателя.
+      #
+      # Каждое значение обязательно: незаданный издатель означает «любой»,
+      # пустой перечень допустимых алгоритмов означает «принимаем любой», а
+      # вырожденный путь записи набора превращает стража источника в проверку,
+      # неспособную упасть.
+      tokenSigning:
+        enabled: true
+        issuer: "https://iam.kacho.local"
+        algorithm: ES256
+        allowedAlgorithms: "ES256,RS256"
+        keySetPath: /.well-known/kacho/jwks.json
   # In-cluster Hydra token endpoint для registry `/iam/token` shim (client_credentials
   # exchange). Без него ResolveHydraTokenURL() падает на внешний issuer-URL, недостижимый
   # изнутри кластера → docker push/pull ломается на этапе брокеринга токена. (#168)
@@ -542,13 +567,34 @@ registry:
   #   serving) fails every signature verify CLOSED → HTTP 401 on ALL prod docker pulls.
   #   Runbook: roll kacho-iam first (this chart adds the :9097 listener), curl the
   #   in-cluster endpoint, THEN let the registry pod pick up this URL.
-  iam:
-    jwksUrl: https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json
-  # HydraIssuer stays pinned on Hydra (issuer-pin retained; decoupled from the JWKS
-  # URL knob). registry serve.go requireIssuerPinned still forces this non-empty; the
-  # verifier rejects any token whose iss ≠ this Hydra issuer even though JWKS is iam's.
-  hydra:
-    issuer: https://hydra.api.kacho.cloud
+  # Приём identity-JWT: издатель — МНОЖЕСТВО (F1, задача #897)
+  #
+  # Платформа чеканит свои токены сама, а прежний издатель на переходе остаётся,
+  # поэтому принимаемых издателей двое и у КАЖДОГО своя запись источника ключей.
+  # Объединять наборы в один документ дешевле и уничтожило бы ровно ту защиту,
+  # ради которой развязка заводится: ключ одного издателя проверял бы токен,
+  # объявляющий другого.
+  #
+  # Прежние ручки `registry.iam.jwksUrl` и `registry.hydra.issuer` СНЯТЫ, а не
+  # оставлены мостом: мост был бы вторым местом об одном предмете и обессмыслил
+  # бы то, ради чего смена вообще видна при старте — пересмотр пина издателя.
+  # Профиль, задающий только снятые имена, принимает НОЛЬ издателей и не
+  # поднимается.
+  tokenAcceptance:
+    issuers: "https://iam.kacho.local,https://hydra.api.kacho.cloud"
+    # Адрес ОБЪЯВЛЯЕТСЯ, а не выводится из издателя: издатель приходит от
+    # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
+    # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
+    # тождественно истинным.
+    issuerKeySets: "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://hydra.api.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    # Наш издатель выбирает полосу приёма: тип at+jwt и чтение отзыва на
+    # предъявлении. Вне issuers — отказ в старте.
+    platformIssuer: "https://iam.kacho.local"
+    # Авторитет отзыва. Контроль, действующий на выдаче и не действующий на
+    # предъявлении, отзывом не является: он лишь не выдаёт нового, а
+    # предъявленное проходит до истечения срока, и это состояние не сходится
+    # само.
+    revocationUrl: "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
   dataplaneTLSTerminatedExternally: true
   mtls:
     enable: true
@@ -560,6 +606,11 @@ registry:
       # edge (reuses registry-client-tls; serverName default kacho-geo.kacho.svc
       # ∈ geo server-cert SAN). Without it the geo peer rejects the insecure dial.
       geo: true
+      # Авторитету отзыва присылают ПРЕДЪЯВЛЕННЫЙ токен, поэтому хоп к нему идёт
+      # под клиентским сертификатом. Набор проверочных ключей с того же
+      # слушателя по-прежнему берётся БЕЗ сертификата: его origin-agnostic
+      # свойство и есть причина, по которой ребро не делается взаимным целиком.
+      tokenRevocation: true
 
 # pg-registry — greenfield bitnamilegacy image + operator secret (like the other pgs)
 pg-registry:
