@@ -32,6 +32,18 @@ const (
 //
 // A set of methods to retrieve information about disk types (public :9090; REST
 // /storage/v1/diskTypes).
+//
+// Read is project-scope EXEMPT (`<exempt>`), parity with the geo catalog and
+// with the machine-type catalog: disk types are admin-curated and global, and
+// EVERY authenticated tenant must read them to pick a type before creating a
+// volume. authN stays mandatory; only the project-scope Check is dropped, and
+// only for reads. Admin verbs (Create/Update/Delete/SetLifecycle) remain
+// `system_admin` on the cluster.
+//
+// This previously declared `required_relation: "viewer"` on the cluster object —
+// a relation no seed produces — so both read RPCs answered 403 to everyone and
+// no volume could be created. Held by the tree gate
+// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces.
 type DiskTypeServiceClient interface {
 	// Returns the information about the specified disk type.
 	//
@@ -75,6 +87,18 @@ func (c *diskTypeServiceClient) List(ctx context.Context, in *ListDiskTypesReque
 //
 // A set of methods to retrieve information about disk types (public :9090; REST
 // /storage/v1/diskTypes).
+//
+// Read is project-scope EXEMPT (`<exempt>`), parity with the geo catalog and
+// with the machine-type catalog: disk types are admin-curated and global, and
+// EVERY authenticated tenant must read them to pick a type before creating a
+// volume. authN stays mandatory; only the project-scope Check is dropped, and
+// only for reads. Admin verbs (Create/Update/Delete/SetLifecycle) remain
+// `system_admin` on the cluster.
+//
+// This previously declared `required_relation: "viewer"` on the cluster object —
+// a relation no seed produces — so both read RPCs answered 403 to everyone and
+// no volume could be created. Held by the tree gate
+// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces.
 type DiskTypeServiceServer interface {
 	// Returns the information about the specified disk type.
 	//

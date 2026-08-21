@@ -32,9 +32,20 @@ const (
 //
 // MachineTypeService — public, read-only sync catalog (discovery before launch).
 // Admin CRUD over the catalog — see InternalMachineTypeService in
-// internal_machine_type_service.proto (:9091, system_admin). Read is ambient
-// (cluster-scoped viewer, project-scope EXEMPT — any authenticated tenant reads
-// the catalog to choose a size, parity with the geo catalog).
+// internal_machine_type_service.proto (:9091, system_admin).
+//
+// Read is project-scope EXEMPT (`<exempt>`), parity with the geo catalog: the
+// machine-type catalog is admin-curated and global, and EVERY authenticated
+// tenant must read it to choose a size before launching anything. authN stays
+// mandatory — the gateway's `<exempt>` branch still requires a valid principal.
+// Only the project-scope Check is dropped, and only for reads.
+//
+// This previously declared `required_relation: "viewer"` on the cluster object.
+// No seed ever produced that relation on the cluster (only `system_admin`,
+// `system_viewer`, `quota_reader` exist there), so BOTH read RPCs answered 403
+// to everyone, tenant and administrator alike — the catalog was unreachable and
+// therefore no instance could be created. Held by the tree gate
+// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces.
 type MachineTypeServiceClient interface {
 	// Returns information about the specified machine type. To get the list, use List.
 	Get(ctx context.Context, in *GetMachineTypeRequest, opts ...grpc.CallOption) (*MachineType, error)
@@ -76,9 +87,20 @@ func (c *machineTypeServiceClient) List(ctx context.Context, in *ListMachineType
 //
 // MachineTypeService — public, read-only sync catalog (discovery before launch).
 // Admin CRUD over the catalog — see InternalMachineTypeService in
-// internal_machine_type_service.proto (:9091, system_admin). Read is ambient
-// (cluster-scoped viewer, project-scope EXEMPT — any authenticated tenant reads
-// the catalog to choose a size, parity with the geo catalog).
+// internal_machine_type_service.proto (:9091, system_admin).
+//
+// Read is project-scope EXEMPT (`<exempt>`), parity with the geo catalog: the
+// machine-type catalog is admin-curated and global, and EVERY authenticated
+// tenant must read it to choose a size before launching anything. authN stays
+// mandatory — the gateway's `<exempt>` branch still requires a valid principal.
+// Only the project-scope Check is dropped, and only for reads.
+//
+// This previously declared `required_relation: "viewer"` on the cluster object.
+// No seed ever produced that relation on the cluster (only `system_admin`,
+// `system_viewer`, `quota_reader` exist there), so BOTH read RPCs answered 403
+// to everyone, tenant and administrator alike — the catalog was unreachable and
+// therefore no instance could be created. Held by the tree gate
+// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces.
 type MachineTypeServiceServer interface {
 	// Returns information about the specified machine type. To get the list, use List.
 	Get(context.Context, *GetMachineTypeRequest) (*MachineType, error)
