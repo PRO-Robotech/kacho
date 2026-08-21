@@ -256,15 +256,72 @@ type Config struct {
 	// DataplaneAddr — адрес data-plane HTTP-листенера (Docker Registry v2 / OCI).
 	// Отдельный порт от gRPC :9090/:9091. Пусто → data-plane не поднимается.
 	DataplaneAddr string `envconfig:"KACHO_REGISTRY_DATAPLANE_ADDR" default:":8080"`
-	// IAMJWKSURL — iam internal JWKS proxy (mirrors Hydra keys); data-plane no
-	// longer dials Hydra directly. iam публикует cluster-internal HTTPS
-	// GET /.well-known/jwks.json — короткоживущий кэширующий reverse-proxy
-	// публичного JWKS Hydra (kid/alg байт-в-байт совпадают с Hydra-подписанными
-	// токенами; Hydra остаётся issuer/подписантом, iam ничего не пере-чеканит).
-	// Токен Hydra-issued (client_credentials для docker, jwt-bearer для k8s);
-	// подпись — RS256 (Ory default) либо ES256. issuer-pin (HydraIssuer) — отдельный
-	// knob, остаётся на Hydra. Пусто + не breakglass → data-plane fail-closed на старте.
-	IAMJWKSURL string `envconfig:"KACHO_REGISTRY_IAM_JWKS_URL" default:"https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"`
+	// ===== приём токена: издатель — МНОЖЕСТВО, у каждого СВОЯ запись источника =====
+
+	// TokenIssuers — перечень ПРИНИМАЕМЫХ издателей identity-JWT, через запятую.
+	//
+	// Издатель перестал быть скаляром: платформа чеканит свои токены сама, а
+	// прежний издатель на переходе остаётся. Страж старта считает ЭЛЕМЕНТЫ, а не
+	// длину строки: «,» и «  ,  ,» — непустые строки с нулём элементов, и такое
+	// значение означает «не сужаем», то есть «принимаем любого издателя».
+	//
+	// Пусто в production/production-strict → отказ в старте.
+	TokenIssuers string `envconfig:"KACHO_REGISTRY_TOKEN_ISSUERS" default:""`
+
+	// TokenIssuerKeySets — привязка «издатель → адрес его набора проверочных
+	// ключей», перечислением: `<издатель>=<адрес>` через запятую.
+	//
+	// Адрес ОБЪЯВЛЯЕТСЯ и НИКОГДА не выводится из издателя. Издатель приходит от
+	// предъявителя — это недоверенный вход; кроме прямого вреда, производный адрес
+	// получался бы у ВСЯКОГО издателя, и состояние «записи источника нет» не
+	// наступало бы никогда: страж старта остался бы в тексте, не имея возможности
+	// упасть.
+	//
+	// Издатель, объявленный принимаемым, но не имеющий записи, → отказ в старте.
+	// Вырожденная запись (адрес пуст либо не является абсолютным адресом) → отказ
+	// в старте: «источника нет», выданное за «источник объявлен».
+	TokenIssuerKeySets string `envconfig:"KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS" default:""`
+
+	// PlatformTokenIssuer — издатель, под которым чеканит НАША платформа.
+	//
+	// Он же выбирает полосу приёма: токен нашей чеканки несёт тип `at+jwt`
+	// (RFC 9068) и проходит чтение отзыва на предъявлении; полоса прежнего
+	// издателя сохраняет сегодняшнее поведение (тип `JWT`, отзыв не читается) —
+	// она вне области этой под-фазы.
+	//
+	// Пусто → наш издатель не принимается вовсе (и тогда чтение отзыва не
+	// требуется). Непусто, но вне TokenIssuers → отказ в старте: чеканить под
+	// издателем, которого приёмная сторона не принимает, значит выдавать токены,
+	// негодные с первого же запроса.
+	PlatformTokenIssuer string `envconfig:"KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER" default:""`
+
+	// TokenRevocationURL — ОБЪЯВЛЕННЫЙ адрес авторитета отзыва (интроспекция по
+	// форме RFC 7662) для токенов нашей чеканки.
+	//
+	// Задаётся явно и НИКОГДА не выводится из адреса соседней службы: выведенный
+	// адрес всегда непуст, поэтому контроль выглядел бы включённым, ведя в никуда,
+	// и ни один профиль развёртывания не обязан был бы ничего задавать, чтобы это
+	// заметить.
+	//
+	// Наш издатель принимается, а адрес не задан → отказ в старте: контроль,
+	// действующий только на выдаче, отзывом не является.
+	TokenRevocationURL string `envconfig:"KACHO_REGISTRY_TOKEN_REVOCATION_URL" default:""`
+
+	// TokenRevocationMTLS — учётные данные ребра «реестр → авторитет отзыва»,
+	// по той же дисциплине «на ребро», что и остальные исходящие рёбра.
+	//
+	// Ребро СВОЁ, а не общее с загрузкой набора ключей: набор несёт только
+	// публичный материал и потому доступен без аутентификации по
+	// задокументированному исключению, а маршруту отзыва ПРИСЫЛАЮТ предъявленный
+	// токен — на проводе оказывается удостоверение. Распространить исключение
+	// молча значило бы принять запрещённое допущение «внутренний периметр
+	// доверенный»: авторитет отвергает вызывающего, чью цепочку транспорт не
+	// проверил.
+	//
+	// Якорь объявлен и непригоден → отказ в СТАРТЕ: откат на системные корни
+	// всегда «работает», поэтому ошибка в якоре стала бы ненаблюдаемой.
+	TokenRevocationMTLS grpcclient.TLSClient `envconfig:"TOKEN_REVOCATION_MTLS"`
+
 	// TokenRealm — realm для WWW-Authenticate; docker сам идёт туда за Bearer-токеном.
 	// Остаётся token-шимом (kacho-iam /iam/token): docker предъявляет SA-key шиму,
 	// шим брокерит токен у Hydra. Для data-plane realm — непрозрачный указатель на
@@ -279,15 +336,8 @@ type Config struct {
 	// (ingress/mesh). В production/production-strict обязателен true — иначе
 	// buildDataplaneHandler (requireDataplaneTLSAck) отклоняет старт: bearer
 	// identity-JWT (реплеябельные в пределах TTL) не должны транзитить открытым текстом
-	// (CWE-319). Параллель requireSecureJWKSURL/requireIssuerPinned. В dev игнорируется.
+	// (CWE-319). Параллель requireSecureKeySetURL/requireTokenIssuersDeclared. В dev игнорируется.
 	DataplaneTLSTerminatedExternally bool `envconfig:"KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY" default:"false"`
-
-	// HydraIssuer — expected issuer identity-JWT (external Hydra issuer, напр.
-	// https://hydra.api.kacho.cloud). Пусто → iss не проверяется (dev-only). В
-	// production/production-strict issuer-pinning ОБЯЗАТЕЛЕН — buildDataplaneHandler
-	// (requireIssuerPinned) отклоняет старт при пустом значении, иначе data-plane принял
-	// бы токен любого RP, разделяющего JWKS+aud (federation-out).
-	HydraIssuer string `envconfig:"KACHO_REGISTRY_HYDRA_ISSUER" default:""`
 
 	// AnonymousSubjectID — the anonymous principal id (the iam-issued anon Hydra client
 	// id, kacho-iam AnonymousClientID) the data-plane resolves to the FGA wildcard

@@ -291,8 +291,9 @@ fixtures only, never a deployed stand.
 **Что осталось расхождением.** Часть умолчаний того же файла (DB `sslmode`, issuer) —
 по-прежнему нестрогие значения, рассчитанные на то, что боевой профиль их задаст. Отличие
 от прежнего состояния в том, что применить их молча теперь некому: под дефолтным
-`production` работают те самые boot-guard'ы data-plane (`requireSecureJWKSURL` /
-`requireIssuerPinned` / `requireDataplaneTLSAck`, регрессия в `serve_test.go`) и
+`production` работают те самые boot-guard'ы data-plane (`requireSecureKeySetURL` /
+`requireTokenIssuersDeclared` / `requireDataplaneTLSAck`, регрессия в
+`tokenverifier_test.go` и `serve_test.go`) и
 `validateSecurityConfig`, которые прежняя редакция называла пропускаемыми. Небезопасное
 умолчание перестало быть **достижимым** по умолчанию — оно осталось лишь недоделанным
 по форме.

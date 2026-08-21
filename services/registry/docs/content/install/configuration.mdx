@@ -90,19 +90,50 @@ authz `Check` (через kacho-iam) и mTLS на **обоих** gRPC-listener'�
 
 ## Data-plane (OCI auth-proxy)
 
-Data-plane аутентифицирует `docker`/`helm` по identity-JWT (Ory Hydra). В production обязательны
-секьюрный JWKS, pinned issuer и подтверждённая внешняя TLS-терминация.
+Data-plane аутентифицирует `docker`/`helm` по identity-JWT. **Издатель токена — множество:**
+платформа чеканит свои токены сама, а прежний издатель на переходе остаётся, и у каждого
+принимаемого издателя **своя объявленная запись источника ключей**. Объединить наборы было бы
+дешевле и уничтожило бы ровно ту защиту, ради которой развязка делается: ключ одного издателя
+проверял бы токен, объявляющий другого.
+
+:::warning Адрес набора **объявляется**, а не выводится из издателя
+Издатель приходит **от предъявителя** — это недоверенный вход. Кроме прямого вреда, производный
+адрес получался бы у **всякого** издателя, поэтому состояние «записи источника нет» не наступало бы
+никогда, и страж старта остался бы в тексте, не имея возможности упасть.
+:::
 
 <table>
   <thead><tr><th>Переменная</th><th>По умолчанию</th><th>Описание</th></tr></thead>
   <tbody>
-    <tr><td><code>KACHO_REGISTRY_HYDRA_JWKS_URL</code></td><td><em>(in-cluster http URL)</em></td><td>Hydra-public JWKS для верификации identity-JWT. В production обязан быть https</td></tr>
-    <tr><td><code>KACHO_REGISTRY_HYDRA_ISSUER</code></td><td><em>(пусто)</em></td><td>Ожидаемый <code>iss</code> токена. Пусто → iss не проверяется (dev). В production issuer-pinning обязателен</td></tr>
+    <tr><td><code>KACHO_REGISTRY_TOKEN_ISSUERS</code></td><td><em>(пусто)</em></td><td>Перечень принимаемых <code>iss</code> через запятую. Страж старта считает <strong>элементы</strong>, а не длину строки: <code>","</code> — непустая строка с нулём элементов. Пусто в production/production-strict → <strong>отказ в старте</strong></td></tr>
+    <tr><td><code>KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS</code></td><td><em>(пусто)</em></td><td>Привязка <code>издатель=адрес набора ключей</code> через запятую. Издатель без записи → отказ в старте; запись без принимающего её издателя → тоже отказ. В production каждый адрес обязан быть <code>https</code></td></tr>
+    <tr><td><code>KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER</code></td><td><em>(пусто)</em></td><td>Издатель, под которым чеканит наша платформа. Выбирает полосу приёма: тип токена <code>at+jwt</code> (RFC 9068) и чтение отзыва на предъявлении. Непусто, но вне <code>TOKEN_ISSUERS</code> → отказ в старте</td></tr>
+    <tr><td><code>KACHO_REGISTRY_TOKEN_REVOCATION_URL</code></td><td><em>(пусто)</em></td><td>Адрес авторитета отзыва (интроспекция RFC 7662) на cluster-internal слушателе iam. Обязателен, когда наш издатель принимается. В production обязан быть <code>https</code></td></tr>
+    <tr><td><code>KACHO_REGISTRY_TOKEN_REVOCATION_MTLS_*</code></td><td><em>(выключено)</em></td><td>Учётные данные ребра к авторитету отзыва (<code>ENABLE</code>/<code>CERTFILE</code>/<code>KEYFILE</code>/<code>CAFILES</code>/<code>SERVERNAME</code>). Якорь объявлен и непригоден → <strong>отказ в старте</strong>, а не откат на системные корни</td></tr>
     <tr><td><code>KACHO_REGISTRY_SERVICE_AUD</code></td><td><code>registry.kacho.local</code></td><td>Ожидаемый <code>aud</code> identity-JWT. Токен обязан нести <code>aud ⊇ ServiceAud</code> (иначе federation-out не даёт доступа)</td></tr>
     <tr><td><code>KACHO_REGISTRY_TOKEN_REALM</code></td><td><code>https://api.kacho.local/iam/token</code></td><td>realm для <code>WWW-Authenticate</code> — docker идёт туда за Bearer-токеном (token-шим kacho-iam)</td></tr>
     <tr><td><code>KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY</code></td><td><code>false</code></td><td>Подтверждение, что data-plane стоит за внешней TLS-терминацией. В production/production-strict обязан быть <code>true</code></td></tr>
   </tbody>
 </table>
+
+:::note Отзыв читается **на предъявлении**
+Контроль, действующий только там, где удостоверение выдают, отзывом не является: он лишь не выдаёт
+нового. Окно удержания утвердительного ответа берётся из объявленной политики платформы, а не
+задаётся здесь. Всякий неопознанный исход авторитета — не 200, не JSON, <code>401</code>, обрыв,
+истечение срока — закрывает доступ.
+
+Ребро к авторитету **своё**, а не общее с загрузкой набора ключей: набор несёт только публичный
+материал и потому открыт задокументированным исключением, а маршруту отзыва присылают
+**предъявленный токен**. Обращение обязано нести клиентский сертификат.
+:::
+
+:::info Снято с контракта
+`KACHO_REGISTRY_HYDRA_JWKS_URL` (эта страница называла его, а сервис читал другое имя),
+`KACHO_REGISTRY_IAM_JWKS_URL` и `KACHO_REGISTRY_HYDRA_ISSUER` **больше не консультируются**.
+Посадка, задавшая только их, не принимает ни одного издателя и потому **отказывает в старте**, а не
+работает вслепую. Прежний издатель объявляется своей записью в `TOKEN_ISSUERS` /
+`TOKEN_ISSUER_KEYSETS`.
+:::
 
 ## mTLS (per-edge)
 
@@ -148,9 +179,13 @@ internal ребёр к iam различаются, поэтому это **дв�
     KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS: spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
     KACHO_REGISTRY_AUTHZ_BREAKGLASS: "false"
 
-    # data-plane (Hydra identity-JWT)
-    KACHO_REGISTRY_HYDRA_JWKS_URL: https://hydra.api.kacho.cloud/.well-known/jwks.json
-    KACHO_REGISTRY_HYDRA_ISSUER: https://hydra.api.kacho.cloud
+    # data-plane: приём identity-JWT — издатель множество, у каждого своя запись
+    KACHO_REGISTRY_TOKEN_ISSUERS: https://iam.kacho.local,https://hydra.api.kacho.cloud
+    KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS: >-
+      https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,
+      https://hydra.api.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json
+    KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER: https://iam.kacho.local
+    KACHO_REGISTRY_TOKEN_REVOCATION_URL: https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect
     KACHO_REGISTRY_SERVICE_AUD: registry.kacho.local
     KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY: "true"
 
@@ -159,6 +194,7 @@ internal ребёр к iam различаются, поэтому это **дв�
     KACHO_REGISTRY_INTERNAL_SERVER_MTLS_ENABLE: "true"
     KACHO_REGISTRY_IAM_AUTHZ_MTLS_ENABLE: "true"
     KACHO_REGISTRY_IAM_PROJECT_MTLS_ENABLE: "true"
+    KACHO_REGISTRY_TOKEN_REVOCATION_MTLS_ENABLE: "true"
   `}
 </CodeBlock>
 

@@ -57,6 +57,9 @@ type keySet struct {
 	extra []map[string]any
 
 	// contentType — тип содержимого ответа; пусто → application/json.
+	// Значение "-" означает «заголовка нет вовсе»: обычное пустое значение
+	// такого состояния не даёт — библиотека проставила бы тип сама, угадав его
+	// по телу, и проба «типа нет» проверяла бы не то.
 	contentType string
 	// cacheControl — срок годности снимка; пусто → max-age=300.
 	cacheControl string
@@ -81,7 +84,13 @@ func newKeySet(t *testing.T) *keySet {
 		if cc == "" {
 			cc = "max-age=300"
 		}
-		w.Header().Set("Content-Type", ct)
+		if ct == "-" {
+			// nil, а не пустая строка: пустая строка не отключает угадывание типа
+			// по телу, а nil — отключает.
+			w.Header()["Content-Type"] = nil
+		} else {
+			w.Header().Set("Content-Type", ct)
+		}
 		w.Header().Set("Cache-Control", cc)
 		if ks.rawBody != nil {
 			_, _ = w.Write(ks.rawBody)

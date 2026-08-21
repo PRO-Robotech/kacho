@@ -33,7 +33,7 @@ func iamJWKSServer(t *testing.T, hydraMirroredKids ...string) *jwksServer {
 func TestJWKS_Verify_IAMOrigin_HydraIssuerPinned(t *testing.T) {
 	iam := iamJWKSServer(t, "hydra-kid-1")
 	// verifier направлен на iam-JWKS-URL; issuer-pin — на Hydra (раздельные knob'ы).
-	v := New(iam.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, iam.srv.URL, testAud, testHydraIss)
 	tok := iam.mintRS256(t, "hydra-kid-1", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 
 	sub, err := v.Verify(context.Background(), tok)
@@ -51,7 +51,7 @@ func TestJWKS_Verify_IAMOrigin_Unreachable_FailClosed(t *testing.T) {
 	tok := iam.mintRS256(t, "hydra-kid-1", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 	iam.srv.Close() // iam JWKS-proxy недоступен, кэш verifier'а пуст (cold)
 
-	v := New(iam.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, iam.srv.URL, testAud, testHydraIss)
 	_, err := v.Verify(context.Background(), tok)
 	require.Error(t, err, "iam JWKS unreachable + cold cache must fail closed (never allow)")
 	require.ErrorIs(t, err, ErrInvalidToken,
@@ -64,7 +64,7 @@ func TestJWKS_Verify_IAMOrigin_Unreachable_FailClosed(t *testing.T) {
 // ОТВЕРГАЕТСЯ. Ловит регрессию «заодно перепинить issuer на iam».
 func TestJWKS_Verify_IAMOrigin_IssuerMismatch_Rejected(t *testing.T) {
 	iam := iamJWKSServer(t, "hydra-kid-1")
-	v := New(iam.srv.URL, testAud, testHydraIss) // issuer-pin остаётся Hydra
+	v := newTestVerifier(t, iam.srv.URL, testAud, testHydraIss) // issuer-pin остаётся Hydra
 	claims := hydraClaims("cid-ci", time.Now().Add(time.Hour))
 	claims["iss"] = iam.srv.URL // iss указывает на iam, а не на Hydra — mismatch
 	tok := iam.mintRS256(t, "hydra-kid-1", claims)

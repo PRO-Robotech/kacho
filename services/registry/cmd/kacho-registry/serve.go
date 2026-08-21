@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -41,7 +40,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/check"
 	geoclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/geo"
 	iamclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/iam"
-	"github.com/PRO-Robotech/kacho/services/registry/internal/clients/jwks"
 	zotclient "github.com/PRO-Robotech/kacho/services/registry/internal/clients/zot"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/dataplane"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
@@ -640,19 +638,14 @@ func buildDataplaneHandler(cfg config.Config, authzConn *grpc.ClientConn, repoRe
 	if cfg.AuthZBreakglass {
 		logger.Warn("BREAKGLASS active: data-plane AuthN+AuthZ bypassed (emergency mode)")
 	} else {
-		if cfg.IAMJWKSURL == "" {
-			return nil, errors.New("data-plane requires KACHO_REGISTRY_IAM_JWKS_URL (or KACHO_REGISTRY_AUTHZ_BREAKGLASS=true to bypass)")
-		}
-		if err := requireSecureJWKSURL(cfg.AuthMode, cfg.IAMJWKSURL); err != nil {
-			return nil, err
-		}
-		if err := requireIssuerPinned(cfg.AuthMode, cfg.HydraIssuer); err != nil {
-			return nil, err
-		}
 		if authzConn == nil {
 			return nil, errors.New("data-plane requires authz IAM conn (KACHO_REGISTRY_AUTHZ_IAM_GRPC_ADDR)")
 		}
-		verifier = jwks.New(cfg.IAMJWKSURL, cfg.ServiceAud, cfg.HydraIssuer)
+		v, verr := buildTokenVerifier(cfg)
+		if verr != nil {
+			return nil, verr
+		}
+		verifier = v
 		authorizer = check.NewIAMCheckClient(authzConn)
 	}
 
@@ -698,27 +691,6 @@ func runStaleSweeper(ctx context.Context, sweeper staleSweeper, interval time.Du
 	}
 }
 
-// requireSecureJWKSURL — в production/production-strict JWKS-endpoint (единственный
-// trust-anchor верификации identity-JWT data-plane: jwks.Verifier тянет из него
-// публичные ключи) обязан быть https://. Plaintext-HTTP допускает MITM-подмену
-// JWKS-документа на пути к iam-JWKS-эндпоинту → forge-токен под любой subject →
-// полный обход data-plane AuthN. В dev (и breakglass — там verifier не поднимается)
-// http:// допустим, симметрично DB sslmode=disable.
-func requireSecureJWKSURL(authMode, jwksURL string) error {
-	switch authMode {
-	case "production", "production-strict":
-		u, err := url.Parse(jwksURL)
-		if err != nil {
-			return fmt.Errorf("invalid KACHO_REGISTRY_IAM_JWKS_URL %q: %w", jwksURL, err)
-		}
-		if !strings.EqualFold(u.Scheme, "https") {
-			return fmt.Errorf("AuthMode=%s requires https:// KACHO_REGISTRY_IAM_JWKS_URL "+
-				"(JWKS trust anchor must not be fetched over plaintext; got scheme %q)", authMode, u.Scheme)
-		}
-	}
-	return nil
-}
-
 // requireDataplaneTLSAck — data-plane OCI-листенер (DataplaneAddr) обслуживает открытый
 // HTTP; штатно TLS терминируется внешним ingress/mesh перед подом. По этому сокету
 // транзитят bearer identity-JWT (Hydra-issued, реплеябельные в пределах TTL). В
@@ -726,7 +698,7 @@ func requireSecureJWKSURL(authMode, jwksURL string) error {
 // ошибочно настроен на plaintext-passthrough, docker-login токены утекают в открытом
 // виде (harvest+replay, CWE-319). Оператор обязан ЯВНО подтвердить внешнюю TLS-
 // терминацию (KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY=true) — параллель
-// requireSecureJWKSURL/requireIssuerPinned. В dev — no-op (как http:// JWKS и DB
+// requireSecureKeySetURL/requireTokenIssuersDeclared. В dev — no-op (как http:// JWKS и DB
 // sslmode=disable). Вызывается только когда data-plane поднимается (DataplaneAddr!="").
 func requireDataplaneTLSAck(authMode string, tlsTerminatedExternally bool) error {
 	switch authMode {
@@ -751,7 +723,7 @@ func requireDataplaneTLSAck(authMode string, tlsTerminatedExternally bool) error
 // тегом и удаляет содержимое — минуя проверку подписи docker-Bearer'а, per-request
 // Check, сокрытие существования и запрет разрушительного DELETE. Один хоп в объезд
 // всей плоскости данных, поэтому молчаливый старт в такой посадке запрещён
-// (параллель requireDataplaneTLSAck / requireSecureJWKSURL / requireIssuerPinned).
+// (параллель requireDataplaneTLSAck / requireSecureKeySetURL / requireTokenIssuersDeclared).
 //
 // zotAddr пуст ⇒ хранилище не сконфигурировано, ходить некуда — гейт молчит.
 // В dev — no-op (in-process фикстуры поднимают zot без аутентификации).
@@ -766,25 +738,6 @@ func requireZotCredentials(authMode, zotAddr, username, password string) error {
 				"KACHO_REGISTRY_ZOT_PASSWORD (the layer store at %q must authenticate its callers; "+
 				"without credentials it serves anyone that reaches its port, and the whole data-plane "+
 				"authorization is one hop away)", authMode, zotAddr)
-		}
-	}
-	return nil
-}
-
-// requireIssuerPinned — в production/production-strict issuer (iss) identity-JWT
-// обязан быть закреплён (KACHO_REGISTRY_HYDRA_ISSUER непустой). jwks.Verifier пропускает
-// iss-проверку при пустом issuer (issuer-pinning опционален) — тогда data-plane принял бы
-// любой токен, подписанный ключом из того же JWKS и несущий aud ⊇ ServiceAud, независимо
-// от того, КТО его выпустил (federation-out на другой RP, разделяющий Hydra/JWKS, дал бы
-// доступ к OCI data-plane). В проде issuer-pinning не должен молча отсутствовать — параллель
-// requireSecureJWKSURL. В dev (и breakglass — verifier не поднимается) пустой iss допустим.
-func requireIssuerPinned(authMode, issuer string) error {
-	switch authMode {
-	case "production", "production-strict":
-		if issuer == "" {
-			return fmt.Errorf("AuthMode=%s requires KACHO_REGISTRY_HYDRA_ISSUER "+
-				"(issuer pinning must not be silently omitted; a token from any relying "+
-				"party sharing the JWKS+aud would otherwise authenticate)", authMode)
 		}
 	}
 	return nil
@@ -866,7 +819,7 @@ func validateSecurityConfig(cfg config.Config) error {
 // Что покрыто: authz (:9091 — Check + fga-proxy регистрация владельца), project
 // (:9090 — существование проекта и поиск аккаунта, вход в резолв области), geo
 // (:9090 — регион реестра). Ребро JWKS сюда НЕ входит: оно ходит по HTTPS
-// односторонним TLS и держится своей стражей (requireSecureJWKSURL).
+// односторонним TLS и держится своей стражей (requireSecureKeySetURL).
 //
 // dev осознанно терпит невзведённый транспорт — только локальные фикстуры; на
 // РАЗВЁРНУТОМ стенде dev-посадка запрещена отдельным правилом (production-mode
