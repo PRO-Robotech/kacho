@@ -722,8 +722,17 @@ func (uc *UpsertFromIdentityUseCase) bootstrapPersonalResources(
 				return domain.User{}, aerr
 			}
 			ownerBindingID = createdOwner.ID
-			if _, err := w.AccessBindingsW().Insert(ctx, projectAB); err != nil {
+			createdProjectAB, err := w.AccessBindingsW().Insert(ctx, projectAB)
+			if err != nil {
 				return domain.User{}, err
+			}
+			// Состав субъектов записывается вместе с выдачей — иначе она
+			// невидима форме вердикта, и человек не имеет прав на проекте,
+			// который сам же и завёл. Замер на живом стенде: из 111 выдач без
+			// состава 110 пришли отсюда.
+			if serr := w.AccessBindingsW().InsertSubjects(ctx, createdProjectAB.ID,
+				[]domain.Subject{{Type: projectAB.SubjectType, ID: projectAB.SubjectID}}); serr != nil {
+				return domain.User{}, serr
 			}
 
 			// 5. Durable audit_outbox iam.user.created in the SAME bootstrap tx

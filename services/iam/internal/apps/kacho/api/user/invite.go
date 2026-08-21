@@ -407,6 +407,17 @@ func (uc *InviteUserUseCase) doInvite(
 				if abErr != nil {
 					return inviteTxResult{}, abErr
 				}
+				// Состав субъектов выдачи ОБЯЗАН быть записан вместе с ней.
+				// Форма вердикта заходит в выдачи с пары «субъект + область»
+				// через дочернюю таблицу: выдача без неё невидима вердикту
+				// целиком — право записано, читается списками и не действует.
+				// Отличить это состояние от «права не выдавали» нечем, поэтому
+				// оно и прожило незамеченным, пока право вычислял внешний
+				// движок: ему кортежи писались другим путём.
+				if serr := w.AccessBindingsW().InsertSubjects(ctx, ins.ID,
+					[]domain.Subject{{Type: domain.SubjectTypeUser, ID: subjectID}}); serr != nil {
+					return inviteTxResult{}, serr
+				}
 				out.createdAB = ins
 				out.haveAB = true
 				// Co-commit a reconcile
