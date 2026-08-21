@@ -822,7 +822,7 @@ func normalizeSQLTable(tok string) string {
 		return ""
 	}
 	for _, r := range tok {
-		if !(r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')) {
+		if r != '_' && !(r >= 'a' && r <= 'z') && !(r >= 'A' && r <= 'Z') && !(r >= '0' && r <= '9') {
 			return ""
 		}
 	}

@@ -12,7 +12,7 @@
 //
 // Проба красна на состоянии ДО фикса: без `708001` план несёт узел сортировки,
 // потому что порядок брать неоткуда.
-package migrations_test
+package cursorplan_test
 
 import (
 	"testing"
