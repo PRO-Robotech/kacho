@@ -242,13 +242,22 @@ def grant(sva, role_id, scope_type, scope_id):
     её, посев готовит субъекта, у которого нет права, и всякое утверждение о
     видимости после этого проверяет не продукт, а собственную поломку.
     """
+    # ОБЛАСТЬ НАЗЫВАЕТСЯ ТОЧЕЧНЫМ ИМЕНЕМ. Сервер принимает только `iam.project` /
+    # `iam.account` / `iam.cluster` и на голом `project` отвечает
+    # `Illegal argument scopeType "project"` — синхронно, до всякой записи.
+    #
+    # Приводим здесь, а не у вызывающих, по замеру: из четырёх вызовов этого
+    # помощника три слали голое имя и один точечное. Три выдачи не создавались
+    # НИКОГДА, и это было незаметно, потому что отказ проглатывался (см. выше).
+    # Починка у каждого вызывающего снимает симптом до первого нового вызова.
+    dotted = scope_type if "." in scope_type else f"iam.{scope_type}"
     rb = _curl("POST", "/iam/v1/accessBindings", boot, {
         "subjectType": "service_account", "subjectId": sva, "roleId": role_id,
-        "scopeType": scope_type, "scopeId": scope_id, "target": {"allInScope": {}}})
+        "scopeType": dotted, "scopeId": scope_id, "target": {"allInScope": {}}})
     if not isinstance(rb, dict) or not rb.get("id"):
         raise SystemExit(
             f"[prodseed] выдача ОТВЕРГНУТА: субъект {sva}, роль {role_id}, "
-            f"область {scope_type}:{scope_id}.\n"
+            f"область {dotted}:{scope_id}.\n"
             f"  ответ края: {rb}\n"
             "Посев без выдачи готовит субъекта БЕЗ ПРАВА — дальше идти нельзя: "
             "кейсы утверждали бы видимость, которой нет, а падение назвало бы "
