@@ -81,6 +81,20 @@ func newJWKSHopClient(caFile string, timeout time.Duration) (*http.Client, error
 	return newPinnedHopClient(jwksHopCAEnv, caFile, timeout)
 }
 
+// platformRevocationCAEnv — ручка якоря доверия хопа к НАШЕМУ авторитету отзыва.
+const platformRevocationCAEnv = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CA_FILE"
+
+// newPlatformRevocationHopClient — тот же клиент для хопа к нашему авторитету
+// отзыва.
+//
+// По этому хопу едет ПРЕДЪЯВЛЕННЫЙ токен, а не только административный вызов:
+// авторитет спрашивают, посылая ему само удостоверение. Значит требование к
+// транспорту здесь то же, что у административного хопа, и по той же причине —
+// прочитанное с провода удостоверение пригодно тому, кто его прочитал.
+func newPlatformRevocationHopClient(caFile string, timeout time.Duration) (*http.Client, error) {
+	return newPinnedHopClient(platformRevocationCAEnv, caFile, timeout)
+}
+
 // newPinnedHopClient строит клиент, доверяющий ТОЛЬКО указанной связке.
 //
 // `envName` попадает в текст отказа: оператор, читающий отказ, обязан узнать, какую

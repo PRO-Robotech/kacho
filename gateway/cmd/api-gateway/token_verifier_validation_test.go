@@ -96,10 +96,7 @@ func TestTokenVerifier_TheGuardsInputHasAProducer(t *testing.T) {
 		require.Empty(t, cfg.ResolvedHydraIssuer(),
 			"а после разбора издателя не остаётся: вырожденное значение %q", issuer)
 
-		_, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-			JWKSURL:        cfg.ResolvedHydraJWKSURL(),
-			ExpectedIssuer: cfg.ResolvedHydraIssuer(),
-		})
+		_, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: cfg.ResolvedHydraIssuer(), KeySetURL: cfg.ResolvedHydraJWKSURL(), TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}}})
 		require.Error(t, err, "конструктор обязан отказать на пустом издателе")
 		produced++
 

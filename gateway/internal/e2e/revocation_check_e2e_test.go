@@ -70,8 +70,9 @@ type revocationHarness struct {
 
 func newRevocationHarness(t *testing.T, hydra *hydraFixture, introspectURL string, logInterval time.Duration) revocationHarness {
 	t.Helper()
-	verifier, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: hydra.jwksURL, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	verifier, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: hydra.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	require.NoError(t, err)
 	introspection, err := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{

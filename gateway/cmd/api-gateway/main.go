@@ -149,12 +149,44 @@ func main() {
 		logger.Error("api-gateway refusing to start", "err", jwksCAErr)
 		os.Exit(1)
 	}
+	// ОБЪЯВЛЕНИЕ ПРИЁМА — кого принимаем и откуда берём набор проверочных
+	// ключей КАЖДОГО принимаемого издателя.
+	//
+	// Разбор и стражи живут в config (tokenissuers.go), а не здесь, по той же
+	// причине, что у второй конфигурации проверяющего: предикат нужен ДВУМ
+	// читателям — процессу при старте и пробе развёртывания, которая спрашивает
+	// у профиля ровно то, что спросит процесс. Второй до main не дотягивается
+	// by construction, поэтому предикат, оставленный здесь, пришлось бы
+	// сформулировать заново — и он разошёлся бы молча.
+	//
+	// Отказ БЕЗУСЛОВЕН и не проходит через дев-послабление соседнего стража:
+	// вырожденный перечень издателей означает «принимаем любого», а это
+	// посадка, запрещённая в любом режиме.
+	acceptance, accErr := cfg.TokenAcceptance()
+	if accErr != nil {
+		logger.Error("api-gateway refusing to start: token acceptance declaration", "err", accErr)
+		os.Exit(1)
+	}
+	issuerRecords := make([]middleware.IssuerKeySet, 0, len(acceptance))
+	acceptedIssuers := make([]string, 0, len(acceptance))
+	platformAccepted := false
+	for _, b := range acceptance {
+		issuerRecords = append(issuerRecords, middleware.IssuerKeySet{
+			Issuer:                  b.Issuer,
+			KeySetURL:               b.KeySetURL,
+			TokenTypes:              b.TokenTypes,
+			TolerateAbsentTokenType: b.TolerateAbsentTokenType,
+			ReadRevocation:          b.ReadRevocation,
+		})
+		acceptedIssuers = append(acceptedIssuers, b.Issuer)
+		platformAccepted = platformAccepted || b.ReadRevocation
+	}
+
 	jwtVerifier, jverr := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL:          cfg.ResolvedHydraJWKSURL(),
+		Issuers:          issuerRecords,
 		JWKSCacheTTL:     time.Duration(cfg.JWKSCacheTTLSeconds) * time.Second,
 		JWKSFetchTimeout: time.Duration(cfg.JWKSFetchTimeoutSeconds) * time.Second,
 		HTTPClient:       jwksHopClient,
-		ExpectedIssuer:   cfg.ResolvedHydraIssuer(),
 		ExpectedAudience: cfg.ExpectedAudience(),
 		ClockSkew:        time.Duration(cfg.JWTClockSkewSeconds) * time.Second,
 	})
@@ -163,12 +195,12 @@ func main() {
 	}
 	if jverr != nil {
 		logger.Warn("jwks verifier not wired into principal path (HMAC-dev only)",
-			"err", jverr, "jwks_url", cfg.ResolvedHydraJWKSURL())
+			"err", jverr, "accepted_issuers", acceptedIssuers)
 	} else {
 		authInterceptor = authInterceptor.WithVerifier(jwtVerifier)
-		logger.Info("hydra jwks verifier wired into principal path",
-			"jwks_url", cfg.ResolvedHydraJWKSURL(),
-			"issuer", cfg.ResolvedHydraIssuer())
+		logger.Info("token verifier wired into principal path",
+			"accepted_issuers", acceptedIssuers,
+			"platform_issuer_accepted", platformAccepted)
 	}
 
 	// Hybrid external listener: when enabled, a client that presents a
@@ -286,7 +318,50 @@ func main() {
 			"cache_ttl_s", cfg.IntrospectionCacheTTLSeconds,
 			"cache_entries", cfg.IntrospectionCacheSize,
 			"per_call_timeout_ms", cfg.IntrospectionTimeoutMs)
+		// ─── ОТЗЫВ НАШИХ ТОКЕНОВ — У НАС (Ф1б, задача #926) ─────────────
+		//
+		// Полоса отзыва — свойство ЗАПИСИ ИЗДАТЕЛЯ, а не настройки процесса:
+		// прежний провайдер о наших токенах не знает by construction, и его
+		// ответ на наш токен есть утверждение о предмете, которого у него нет.
+		// Поэтому читатель второй, и живёт он рядом, а не вместо.
+		//
+		// Провязывается ТОЛЬКО когда наш издатель действительно принимается:
+		// читатель без предмета — та же форма без содержания, что предмет без
+		// читателя.
+		if platformAccepted {
+			platformHopClient, phErr := newPlatformRevocationHopClient(
+				cfg.PlatformTokenRevocationCAFile,
+				time.Duration(cfg.IntrospectionTimeoutMs)*time.Millisecond)
+			if phErr != nil {
+				log.Fatalf("platform revocation authority client: %v", phErr)
+			}
+			platformCache, pcErr := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
+				HydraIntrospectionURL: cfg.PlatformTokenRevocationURL,
+				HTTPClient:            platformHopClient,
+				MaxEntries:            cfg.IntrospectionCacheSize,
+				TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
+				Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
+			})
+			if pcErr != nil {
+				// Наш издатель принимается, а спросить о его токенах некого.
+				// Отказ при СТАРТЕ, а не отказ каждому запросу: первый виден
+				// оператору, второй — арендатору.
+				log.Fatalf("platform revocation check: %v", pcErr)
+			}
+			authInterceptor = authInterceptor.WithPlatformRevocationCheck(platformCache, 0)
+			logger.Info("revocation of OUR OWN tokens is read on presentation",
+				"authority_pinned", strings.TrimSpace(cfg.PlatformTokenRevocationCAFile) != "",
+				"cache_ttl_s", cfg.IntrospectionCacheTTLSeconds,
+				"unanswered_verdict", "refuse")
+		}
 	} else {
+		// Наш издатель принимается, а никакого читателя отзыва не провязано
+		// вовсе: конфигурация, при которой мы чеканим, отзываем и своего же
+		// отзыва не исполняем. Отказ в старте.
+		if platformAccepted {
+			log.Fatalf("our own issuer is accepted, but no revocation reader is mounted: " +
+				"a control that acts only where the credential is ISSUED is not revocation")
+		}
 		// Production-class environments never reach this branch — the guard above
 		// refuses to start. A dev stand may legitimately have no admin API to ask.
 		logger.Warn("revocation check NOT mounted: no introspection endpoint configured; "+
@@ -411,8 +486,7 @@ func main() {
 
 		logger.Info("dpop-mw wired",
 			"api_domain", cfg.APIDomain,
-			"jwks_url", cfg.ResolvedHydraJWKSURL(),
-			"issuer", cfg.ResolvedHydraIssuer(),
+			"accepted_issuers", acceptedIssuers,
 			"audience", cfg.ExpectedAudience(),
 			"stepup_catalog_entries", stepUpCatalog.Size(),
 		)

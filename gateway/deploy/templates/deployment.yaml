@@ -228,6 +228,35 @@ spec:
             - name: KACHO_HYDRA_ISSUER
               value: {{ .Values.hydra.issuer | quote }}
             {{- end }}
+            {{- end }}
+            {{- if .Values.tokenAcceptance }}
+            # Ф1б (#926) — издатель на крае стал МНОЖЕСТВОМ, и у каждого
+            # принимаемого издателя СВОЯ объявленная запись источника ключей.
+            # Объединить наборы было бы дешевле и уничтожило бы ровно ту защиту,
+            # ради которой развязка делается: ключ одного издателя проверял бы
+            # токен, объявляющий другого.
+            #
+            # Пустое значение рендерится НАМЕРЕННО: «не объявлено» и «объявлено
+            # пустым» различает сам процесс, и различие это — предмет стража
+            # старта, а не шаблона.
+            - name: KACHO_API_GATEWAY_TOKEN_ISSUERS
+              value: {{ .Values.tokenAcceptance.issuers | quote }}
+            - name: KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS
+              value: {{ .Values.tokenAcceptance.issuerKeySets | quote }}
+            - name: KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER
+              value: {{ .Values.tokenAcceptance.platformIssuer | quote }}
+            # Отзыв НАШИХ токенов читается У НАС и НА ПРЕДЪЯВЛЕНИИ: прежний
+            # провайдер о наших токенах не знает by construction. Адрес задаётся
+            # явно; выведенный из адреса соседа он был бы всегда непуст, то есть
+            # контроль выглядел бы включённым, ведя в никуда.
+            - name: KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL
+              value: {{ .Values.tokenAcceptance.revocationUrl | quote }}
+            {{- if (.Values.tokenAcceptance.revocationCa | default dict).secretName }}
+            - name: KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CA_FILE
+              value: {{ printf "%s/%s" .Values.tokenAcceptance.revocationCa.mountPath .Values.tokenAcceptance.revocationCa.key | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.hydra }}
             # Revocation path. A verified signature says who minted the token and
             # when it lapses; it cannot say whether the token has since been
             # turned off. Only the provider knows that, over its ADMIN API —
@@ -437,6 +466,11 @@ spec:
               mountPath: {{ .Values.hydra.jwksCa.mountPath | quote }}
               readOnly: true
             {{- end }}
+            {{- if ((.Values.tokenAcceptance | default dict).revocationCa | default dict).secretName }}
+            - name: platform-revocation-ca
+              mountPath: {{ .Values.tokenAcceptance.revocationCa.mountPath | quote }}
+              readOnly: true
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /healthz
@@ -486,4 +520,12 @@ spec:
             items:
               - key: {{ .Values.hydra.jwksCa.key | quote }}
                 path: {{ .Values.hydra.jwksCa.key | quote }}
+        {{- end }}
+        {{- if ((.Values.tokenAcceptance | default dict).revocationCa | default dict).secretName }}
+        - name: platform-revocation-ca
+          secret:
+            secretName: {{ .Values.tokenAcceptance.revocationCa.secretName | quote }}
+            items:
+              - key: {{ .Values.tokenAcceptance.revocationCa.key | quote }}
+                path: {{ .Values.tokenAcceptance.revocationCa.key | quote }}
         {{- end }}

@@ -36,11 +36,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 )
 
 // VerifiedToken — output of JWTVerifier.Verify. Carries all claims required by
@@ -81,6 +84,15 @@ type VerifiedToken struct {
 
 	// Raw claims for callers that need fields we did not explicitly extract.
 	Claims jwt.MapClaims
+
+	// ReadRevocation — объявила ли ЗАПИСЬ этого издателя чтение отзыва на
+	// предъявлении.
+	//
+	// Полоса выбирается по издателю, а не по настройке процесса: отзыв нашего
+	// токена знает только НАШ авторитет — прежний провайдер о наших токенах не
+	// знает by construction, и его ответ на наш токен есть утверждение о чужом
+	// предмете, а не «действует» или «отозван».
+	ReadRevocation bool
 }
 
 // TokenConfirmation — RFC 7800 §3 confirmation method. Either DPoP-bound
@@ -94,58 +106,92 @@ type TokenConfirmation struct {
 }
 
 // JWTVerifier — RFC 8725-hardened access-token validator.
+//
+// Издатель здесь — МНОЖЕСТВО объявленных записей, а не скаляр: край принимает
+// нашу чеканку наравне с прежним издателем, и у каждого свой набор
+// проверочных ключей (token_acceptance.go).
 type JWTVerifier struct {
-	jwks             *JWKSCache
-	expectedIssuer   string
+	records          map[string]*issuerRecord
 	expectedAudience string
 	clockSkew        time.Duration
 
-	// allowMissingAudience — for tests / dev mode where Hydra may not yet
-	// inject the gateway audience.
+	// allowMissingAudience — for tests / dev mode where the provider may not
+	// yet inject the gateway audience.
 	allowMissingAudience bool
 }
 
 // JWTVerifierConfig — construction parameters.
 type JWTVerifierConfig struct {
-	JWKSURL              string
+	// Issuers — ОБЪЯВЛЕННЫЕ записи приёма: по одной на каждого принимаемого
+	// издателя. Обязательны: пустой перечень означает «принимаем любого».
+	Issuers []IssuerKeySet
+
 	JWKSCacheTTL         time.Duration
 	JWKSFetchTimeout     time.Duration
 	HTTPClient           *http.Client // optional; nil → default
-	ExpectedIssuer       string
 	ExpectedAudience     string
 	ClockSkew            time.Duration
 	AllowMissingAudience bool
 }
 
-// NewJWTVerifier constructs a verifier wired to the given JWKS endpoint.
+// NewJWTVerifier constructs a verifier over the declared acceptance records.
+//
+// Отказ вместо построения на всяком состоянии, которое при пустом значении
+// означает «не сужаем»: записей нет · пустой издатель, адрес или набор типов ·
+// издатель объявлен дважды · неабсолютный адрес · тип доказательства владения
+// объявлен принимаемым.
 func NewJWTVerifier(cfg JWTVerifierConfig) (*JWTVerifier, error) {
-	if cfg.JWKSURL == "" {
-		return nil, errors.New("jwt verifier: JWKSURL is required")
-	}
-	if cfg.ExpectedIssuer == "" {
-		return nil, errors.New("jwt verifier: ExpectedIssuer is required")
+	records, err := normaliseIssuerKeySets(cfg.Issuers)
+	if err != nil {
+		return nil, err
 	}
 	if cfg.JWKSCacheTTL <= 0 {
 		cfg.JWKSCacheTTL = 5 * time.Minute
+	}
+	// Потолок срока снимка объявлен политикой платформы, а не выбран здесь: он
+	// второе слагаемое отсрочки снятия подписного ключа, и слагаемое, известное
+	// только одной стороне, делает арифметику неисчислимой.
+	if cfg.JWKSCacheTTL > tokenpolicy.ConsumerKeySetCacheCeiling {
+		cfg.JWKSCacheTTL = tokenpolicy.ConsumerKeySetCacheCeiling
 	}
 	if cfg.JWKSFetchTimeout <= 0 {
 		cfg.JWKSFetchTimeout = 5 * time.Second
 	}
 	if cfg.ClockSkew <= 0 {
-		cfg.ClockSkew = 30 * time.Second
+		cfg.ClockSkew = tokenpolicy.ClockSkew
 	}
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: cfg.JWKSFetchTimeout}
 	}
+	for _, rec := range records {
+		rec.jwks = NewJWKSCache(rec.keySetURL, cfg.JWKSCacheTTL, httpClient)
+	}
 	return &JWTVerifier{
-		jwks: NewJWKSCache(cfg.JWKSURL, cfg.JWKSCacheTTL, httpClient),
-
-		expectedIssuer:       cfg.ExpectedIssuer,
+		records:              records,
 		expectedAudience:     cfg.ExpectedAudience,
 		clockSkew:            cfg.ClockSkew,
 		allowMissingAudience: cfg.AllowMissingAudience,
 	}, nil
+}
+
+// Issuers возвращает объявленных принимаемых издателей. Порядок не значим —
+// это НАБОР, а не последовательность: запись выбирается точным равенством
+// объявленного токеном издателя, никогда перебором.
+func (v *JWTVerifier) Issuers() []string {
+	out := make([]string, 0, len(v.records))
+	for iss := range v.records {
+		out = append(out, iss)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ReadsRevocationFor отвечает, объявлено ли чтение отзыва на предъявлении для
+// токенов этого издателя.
+func (v *JWTVerifier) ReadsRevocationFor(issuer string) bool {
+	rec, ok := v.records[issuer]
+	return ok && rec.readRevocation
 }
 
 // JWKSCache — thread-safe TTL cache for a single JWKS endpoint. Refreshes on
@@ -316,17 +362,41 @@ func (v *JWTVerifier) Verify(ctx context.Context, token string) (*VerifiedToken,
 	if jerr := json.Unmarshal(header, &hdr); jerr != nil {
 		return nil, fmt.Errorf("invalid jwt header: %w", jerr)
 	}
-	if _, ok := AllowedJWTAlgs[hdr.Alg]; !ok {
+	if !tokenpolicy.AlgorithmAllowed(hdr.Alg) {
 		return nil, fmt.Errorf("%w: alg=%q", ErrUnsupportedAlg, hdr.Alg)
 	}
-	// Hydra typically emits `typ=at+jwt` or no typ. Reject `typ=JWT` is NOT
-	// done — common legacy. Reject typ=dpop+jwt (DPoP proof masquerading).
-	if strings.EqualFold(hdr.Typ, "dpop+jwt") {
-		return nil, fmt.Errorf("%w: typ=dpop+jwt is not a valid access token", ErrUnsupportedAlg)
+	// Идентификатор ключа — НЕДОВЕРЕННЫЙ вход, и его форма ограничивается ДО
+	// того, как он попадёт в поиск по снимку, в повод вынужденного перезапроса
+	// и в журнал.
+	if !keyIDWellFormed(hdr.Kid) {
+		return nil, ErrMalformedKeyID
 	}
 
-	// 2. Resolve key from JWKS.
-	jwk, err := v.jwks.Resolve(ctx, hdr.Kid)
+	// 2. Издатель — тоже НЕДОВЕРЕННЫЙ вход, и здесь он служит ИСКЛЮЧИТЕЛЬНО
+	//    ключом поиска в таблице объявленных записей. Издателя, для которого
+	//    записи нет, не бывает: он даёт отказ, а не перебор записей подряд и не
+	//    адрес, выведенный из него самого.
+	//
+	//    Разбор утверждений ДО проверки подписи здесь неизбежен — выбрать
+	//    ключ иначе нечем, — поэтому ничто из разобранного не используется ни
+	//    для чего, кроме выбора записи, пока подпись не сошлась.
+	unverified, err := unverifiedIssuer(token)
+	if err != nil {
+		return nil, fmt.Errorf("invalid jwt claims: %w", err)
+	}
+	rec, ok := v.records[unverified]
+	if !ok {
+		// Издатель в текст не уносится: он пришёл от предъявителя.
+		return nil, ErrNoIssuerRecord
+	}
+	// Тип равен ожидаемому для ЭТОЙ полосы. ОТСУТСТВИЕ и НЕСОВПАДЕНИЕ — разные
+	// вещи, и различает их только эта ветка.
+	if !rec.acceptsTokenType(hdr.Typ) {
+		return nil, ErrUnexpectedTokenType
+	}
+
+	// 3. Resolve key from the record's OWN key set.
+	jwk, err := rec.jwks.Resolve(ctx, hdr.Kid)
 	if err != nil {
 		return nil, fmt.Errorf("jwks resolve kid=%q: %w", hdr.Kid, err)
 	}
@@ -338,11 +408,21 @@ func (v *JWTVerifier) Verify(ctx context.Context, token string) (*VerifiedToken,
 		return nil, fmt.Errorf("jwk to public key: %w", err)
 	}
 
-	// 3. Parse + verify via golang-jwt; supply our pinned key.
+	// 4. Parse + verify via golang-jwt; supply our pinned key.
+	//
+	//    Срок ОБЯЗАТЕЛЕН, и это включено ЯВНО: разбор, встретив срок, его
+	//    проверит, а не встретив — не возразит. Токен без срока живёт вечно, и
+	//    заметить это на положительном пути нельзя.
+	//
+	//    Издатель сверяется ТОЙ ЖЕ библиотекой, что и подпись, и сверяется с
+	//    издателем ВЫБРАННОЙ записи: разобранное до проверки подписи значение
+	//    выбрало запись и на этом свою роль исчерпало.
 	parser := jwt.NewParser(
 		jwt.WithValidMethods([]string{hdr.Alg}),
 		jwt.WithLeeway(v.clockSkew),
 		jwt.WithIssuedAt(),
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuer(rec.issuer),
 	)
 	claims := jwt.MapClaims{}
 	parsed, err := parser.ParseWithClaims(token, claims, func(_ *jwt.Token) (any, error) {
@@ -355,12 +435,8 @@ func (v *JWTVerifier) Verify(ctx context.Context, token string) (*VerifiedToken,
 		return nil, errors.New("jwt invalid")
 	}
 
-	// 4. Validate iss / aud / exp / nbf / iat (manual — golang-jwt already
-	//    checks exp/nbf/iat with leeway, but we want iss/aud strict).
+	// 5. Validate aud (golang-jwt checked exp/nbf/iat with leeway and iss above).
 	iss, _ := claims["iss"].(string)
-	if iss != v.expectedIssuer {
-		return nil, fmt.Errorf("iss mismatch: got %q expected %q", iss, v.expectedIssuer)
-	}
 	auds, err := extractAudience(claims)
 	if err != nil {
 		return nil, err
@@ -374,12 +450,13 @@ func (v *JWTVerifier) Verify(ctx context.Context, token string) (*VerifiedToken,
 	}
 
 	out := &VerifiedToken{
-		Raw:      token,
-		Kid:      hdr.Kid,
-		Alg:      hdr.Alg,
-		Issuer:   iss,
-		Audience: auds,
-		Claims:   claims,
+		Raw:            token,
+		Kid:            hdr.Kid,
+		Alg:            hdr.Alg,
+		Issuer:         iss,
+		Audience:       auds,
+		Claims:         claims,
+		ReadRevocation: rec.readRevocation,
 	}
 
 	if sub, ok := claims["sub"].(string); ok {
@@ -581,4 +658,31 @@ func stringSlice(v any) []string {
 		return []string{t}
 	}
 	return nil
+}
+
+// unverifiedIssuer достаёт объявленный токеном `iss` ДО проверки подписи.
+//
+// Разбор до проверки подписи здесь неизбежен: выбрать ключ иначе нечем. Поэтому
+// у значения ровно одна роль — ключ поиска в таблице объявленных записей, — и
+// оно не участвует ни в построении адреса, ни в ключе кэша, ни в тексте,
+// уходящем наружу. Ни одно другое утверждение отсюда не читается.
+func unverifiedIssuer(token string) (string, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return "", fmt.Errorf("jwt must have 3 parts, got %d", len(parts))
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("decode payload: %w", err)
+	}
+	if len(payload) > tokenpolicy.KeySetBodyCeiling {
+		return "", errors.New("payload exceeds the declared ceiling")
+	}
+	var claims struct {
+		Iss string `json:"iss"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return "", fmt.Errorf("decode claims: %w", err)
+	}
+	return claims.Iss, nil
 }

@@ -55,9 +55,8 @@ func (c *countingLookup) LookupByExternalID(_ context.Context, _ string) (middle
 // not stamp the gateway audience yet).
 func rs256Verifier(t *testing.T, fix *jwksFixture) *middleware.JWTVerifier {
 	t.Helper()
-	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL:              fix.url,
-		ExpectedIssuer:       testIssuer,
+	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
 		ExpectedAudience:     testAudience,
 		AllowMissingAudience: true,
 		JWKSCacheTTL:         time.Hour,
@@ -307,9 +306,8 @@ func TestAuthJWKS_JWKSUnreachable_FailClosed(t *testing.T) {
 	token := fix.sign(t, hydraClaims("user", "usr_alice_acc_a1b2"))
 
 	// Verifier points at a dead endpoint; cache is empty → fail-closed.
-	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL:          "http://127.0.0.1:1/.well-known/jwks.json",
-		ExpectedIssuer:   testIssuer,
+	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: "http://127.0.0.1:1/.well-known/jwks.json", TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
 		ExpectedAudience: testAudience,
 		JWKSFetchTimeout: 200 * time.Millisecond,
 	})
