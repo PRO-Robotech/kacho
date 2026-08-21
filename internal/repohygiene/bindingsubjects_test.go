@@ -31,10 +31,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // TestBindingInsertAlwaysWritesItsSubjects — у каждого вызова Insert выдачи в
@@ -46,15 +47,21 @@ func TestBindingInsertAlwaysWritesItsSubjects(t *testing.T) {
 	var filesRead, funcsWithInsert int
 	var offenders []string
 
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") ||
-			strings.HasSuffix(path, "_test.go") {
-			return err
+	// Состав берётся у ИНДЕКСА, а не у файловой системы: неотслеживаемый файл не
+	// принадлежит дереву, и обход диска дал бы вердикт о том, что лежит у
+	// конкретного разработчика, а не о том, что в репозитории.
+	files, err := treecorpus.UnderWithSuffix(dir, ".go")
+	if err != nil {
+		t.Fatalf("состав дерева: %v", err)
+	}
+	for _, path := range files {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
 		}
 		fset := token.NewFileSet()
 		f, perr := parser.ParseFile(fset, path, nil, 0)
 		if perr != nil {
-			return nil
+			continue
 		}
 		filesRead++
 		ast.Inspect(f, func(n ast.Node) bool {
@@ -91,12 +98,7 @@ func TestBindingInsertAlwaysWritesItsSubjects(t *testing.T) {
 			}
 			return true
 		})
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход дерева: %v", err)
 	}
-
 	// Перепись объявляется всегда: «ноль находок» обязано быть отличимо от
 	// «ноль прочитанного».
 	t.Logf("перепись: файлов прочитано %d; функций, вставляющих выдачу, %d; без состава субъектов %d",
