@@ -53,20 +53,41 @@ import (
 // Anything else — bindings, attachments, interfaces, authorization answers — is
 // tenant data, however read-only it looks.
 func referenceCatalogueRPCs() map[string]string {
-	// EMPTY IS THE GOAL, NOT A GAP. A row standing on a wildcard-satisfiable
-	// relation says "authenticated" while looking like an authorization check.
-	// For a genuine global catalogue that reading is correct — but then the row
-	// should say so outright, and the lane that says it outright is `<exempt>`.
+	// НЕ ПУСТО — И ЭТО РЕШЕНИЕ, А НЕ ПРОБЕЛ (#893/#895).
 	//
-	// The machine-type and disk-type catalogues used to be named here. Both were
-	// moved to `<exempt>` (#892) after the relation they stood on turned out to
-	// be produced by nobody at all, so the check answered 403 to everyone rather
-	// than "yes" to everyone. Parity with the geo catalogue, which took that lane
-	// earlier.
+	// Прежняя редакция объявляла пустоту целью и направляла глобальный справочник
+	// в полосу `<exempt>`. Довод был верен ровно наполовину: отношение, на котором
+	// справочник стоял, действительно не производил никто, и проверка отвечала
+	// отказом всем. Но `<exempt>` лечит это ценой, которую владелец назвал
+	// неприемлемой: доступ, выданный освобождением, НЕ ВИДЕН перечислением выдач и
+	// НЕ ОТЗЫВАЕТСЯ ничем, кроме выкатки, — «ничего не выдано» и «выдано в обход»
+	// становятся неотличимы.
 	//
-	// Add a row here only when a catalogue genuinely stands on such a relation and
-	// the `<exempt>` lane is unavailable — and say why in the value.
-	return map[string]string{}
+	// Теперь у отношения есть производитель, и он первоклассный: СИСТЕМНАЯ ВЫДАЧА
+	// с подстановочным субъектом, заведённая посевом, видимая перечислением выдач
+	// и отзываемая штатно. Поэтому строка каталога честна дважды: она признаёт,
+	// что отношение выполняется подстановкой (то есть означает
+	// «аутентифицирован»), и указывает на объект, снятие которого этот доступ
+	// закрывает.
+	//
+	// Обоснование, которому обязан отвечать каждый пункт, не изменилось: ответ —
+	// администрируемая платформой топология либо инвентарь, одинаковый для всех
+	// арендаторов, без единой арендаторской строки и без инфраструктурных
+	// подробностей.
+	const why = "глобальный справочник платформы: одинаков для всех арендаторов, " +
+		"арендаторских строк не содержит; отношение выполняется подстановочным " +
+		"субъектом СИСТЕМНОЙ ВЫДАЧИ, которая видна перечислением выдач и отзывается штатно"
+	return map[string]string{
+		"kacho.cloud.geo.v1.RegionService/Get":                              why + " (каталог размещения: регионы)",
+		"kacho.cloud.geo.v1.RegionService/List":                             why + " (каталог размещения: регионы)",
+		"kacho.cloud.geo.v1.ZoneService/Get":                                why + " (каталог размещения: зоны)",
+		"kacho.cloud.geo.v1.ZoneService/List":                               why + " (каталог размещения: зоны)",
+		"kacho.cloud.compute.v1.MachineTypeService/Get":                     why + " (инвентарь: типы машин)",
+		"kacho.cloud.compute.v1.MachineTypeService/List":                    why + " (инвентарь: типы машин)",
+		"kacho.cloud.storage.v1.DiskTypeService/Get":                        why + " (инвентарь: типы дисков)",
+		"kacho.cloud.storage.v1.DiskTypeService/List":                       why + " (инвентарь: типы дисков)",
+		"kacho.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog": why + " (словарь прав платформы)",
+	}
 }
 
 // typeRelation is one (object type, relation) pair of the authorization model.

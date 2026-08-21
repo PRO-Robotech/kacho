@@ -568,10 +568,12 @@ const file_kacho_cloud_storage_v1_disk_type_service_proto_rawDesc = "" +
 	"\x15DeleteDiskTypeRequest\x12&\n" +
 	"\fdisk_type_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\n" +
 	"diskTypeId\"\x18\n" +
-	"\x16DeleteDiskTypeResponse2\xb2\x02\n" +
-	"\x0fDiskTypeService\x12\x8d\x01\n" +
-	"\x03Get\x12*.kacho.cloud.storage.v1.GetDiskTypeRequest\x1a .kacho.cloud.storage.v1.DiskType\"8\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02&\x12$/storage/v1/diskTypes/{disk_type_id}\x12\x8e\x01\n" +
-	"\x04List\x12,.kacho.cloud.storage.v1.ListDiskTypesRequest\x1a-.kacho.cloud.storage.v1.ListDiskTypesResponse\")\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x17\x12\x15/storage/v1/diskTypes2\xf1\x06\n" +
+	"\x16DeleteDiskTypeResponse2\x8d\x03\n" +
+	"\x0fDiskTypeService\x12\xba\x01\n" +
+	"\x03Get\x12*.kacho.cloud.storage.v1.GetDiskTypeRequest\x1a .kacho.cloud.storage.v1.DiskType\"e\x8a\xb5\x18\x16storage.disk_types.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02&\x12$/storage/v1/diskTypes/{disk_type_id}\x12\xbc\x01\n" +
+	"\x04List\x12,.kacho.cloud.storage.v1.ListDiskTypesRequest\x1a-.kacho.cloud.storage.v1.ListDiskTypesResponse\"W\x8a\xb5\x18\x17storage.disk_types.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x17\x12\x15/storage/v1/diskTypes2\xf1\x06\n" +
 	"\x17InternalDiskTypeService\x12\xbd\x01\n" +
 	"\x06Create\x12-.kacho.cloud.storage.v1.CreateDiskTypeRequest\x1a .kacho.cloud.storage.v1.DiskType\"b\x8a\xb5\x18\x19storage.disk_types.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/storage/v1/diskTypes\x12\xcc\x01\n" +

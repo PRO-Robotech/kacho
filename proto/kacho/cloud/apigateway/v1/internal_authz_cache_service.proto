@@ -51,6 +51,7 @@ service InternalAuthzCacheService {
     // SubjectChangeApplier over mutual-TLS, so subject-level authz does not
     // apply.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 }
 

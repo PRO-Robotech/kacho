@@ -48,25 +48,30 @@ func TestPermissionCatalog_RedesignReg(t *testing.T) {
 		// relation and no scope of its own — see the dedicated case below.
 		{"kacho.cloud.iam.v1.AccessBindingService/Revoke", "iam.access_bindings.revoke", "v_delete", "iam_access_binding", "access_binding_id"},
 	}
-	// Каталоги, читаемые ЛЮБЫМ аутентифицированным: project-scope EXEMPT (#892),
-	// паритет с каталогом geo. Их место здесь, а не в `want`: там перечислены
-	// записи, ОБЪЯВЛЯЮЩИЕ проверку на крае, и утверждение «не exempt» для них
-	// несущее. Оба каталога стояли на `viewer@cluster` — отношении, которого не
-	// производит никто, — поэтому отвечали отказом каждому вызывающему, и ни
-	// машина, ни том не создавались.
+	// Каталоги, читаемые ЛЮБЫМ аутентифицированным, стоят на ОТНОШЕНИИ, у которого
+	// есть производитель (#893/#895).
+	//
+	// Здесь недолго требовалось обратное — полоса `<exempt>` (#892). Довод был
+	// верен наполовину: отношение `viewer` на кластере не производил никто, и
+	// проверка отвечала отказом каждому, поэтому ни машина, ни том не создавались.
+	// Освобождение это чинило, но делало доступ невидимым: он не показывался
+	// перечислением выдач и закрывался только выкаткой. Производитель заведён —
+	// системная выдача с подстановочным субъектом, — и оба свойства держатся
+	// одновременно: читает всякий аутентифицированный, и при этом доступ виден и
+	// отзываем.
 	for _, fqn := range []string{
 		"kacho.cloud.compute.v1.MachineTypeService/Get",
 		"kacho.cloud.compute.v1.MachineTypeService/List",
 	} {
-		t.Run(fqn+" (exempt)", func(t *testing.T) {
+		t.Run(fqn+" (produced relation)", func(t *testing.T) {
 			entry, ok := c.Lookup(fqn)
 			require.True(t, ok, "fqn missing from embedded catalog: %s", fqn)
-			assert.True(t, entry.IsExempt(),
-				"%s — глобальный каталог, читаемый любым аутентифицированным: полоса `<exempt>`", fqn)
-			assert.Empty(t, entry.RequiredRelation,
-				"%s: у записи `<exempt>` отношения быть не может — иначе она объявляет проверку, которой нет", fqn)
-			assert.Empty(t, entry.ScopeExtractor.ObjectType,
-				"%s: у записи `<exempt>` области быть не может", fqn)
+			assert.False(t, entry.IsExempt(),
+				"%s — глобальный каталог обязан стоять на отношении, а не на освобождении", fqn)
+			assert.Equal(t, "viewer", entry.RequiredRelation,
+				"%s: отношение обязано быть тем, которое производит системная выдача", fqn)
+			assert.Equal(t, "cluster", entry.ScopeExtractor.ObjectType,
+				"%s: область — кластерный синглтон", fqn)
 		})
 	}
 

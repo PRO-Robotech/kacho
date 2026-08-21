@@ -54,6 +54,7 @@ service AccessBindingService {
     // the actual scope object). Anonymous is still rejected by the IAM
     // anti-anonymous interceptor.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "HANDLER_DECIDES";
     option (kacho.iam.authz.v1.required_acr_min) = "2";
   }
 
@@ -183,6 +184,13 @@ service AccessBindingService {
   // resolved from the subject — so the edge has no object to check and declares
   // `scope_filtered`. `subject_type ∈ {"user","service_account"}` for v1;
   // malformed subject_id / prefix↔type mismatch → INVALID_ARGUMENT.
+  //
+  // ЧТО ЭТА ПРОЕКЦИЯ НЕ ЗАПОЛНЯЕТ — и это сказано, а не умолчано. Ответ строится
+  // по паре «выдача × роль», поэтому СИСТЕМНЫЕ выдачи в него не попадают: у них
+  // роли нет by construction — они выдают именованное отношение (`grantedRelation`).
+  // Пустой ответ для служебной учётки означает «роль ей не выдана», а НЕ «прав у
+  // неё нет»: встроенный доступ виден полным перечислением выдач (`List`), где
+  // такие строки помечены `system`.
   rpc ListSubjectPrivileges (ListSubjectPrivilegesRequest) returns (ListSubjectPrivilegesResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings:listSubjectPrivileges" };
     option (kacho.iam.authz.v1.permission)       = "iam.access_bindings_by_subjects.listSubjectPrivileges";

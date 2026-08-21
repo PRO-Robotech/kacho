@@ -156,6 +156,14 @@ var file_kacho_iam_authz_v1_authz_options_proto_extTypes = []protoimpl.Extension
 		Tag:           "varint,50006,opt,name=scope_filtered",
 		Filename:      "kacho/iam/authz/v1/authz_options.proto",
 	},
+	{
+		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
+		ExtensionType: (*string)(nil),
+		Field:         50007,
+		Name:          "kacho.iam.authz.v1.exempt_reason",
+		Tag:           "bytes,50007,opt,name=exempt_reason",
+		Filename:      "kacho/iam/authz/v1/authz_options.proto",
+	},
 }
 
 // Extension fields to descriptorpb.MethodOptions.
@@ -172,6 +180,8 @@ var (
 	E_HideExistence = &file_kacho_iam_authz_v1_authz_options_proto_extTypes[4]
 	// optional bool scope_filtered = 50006;
 	E_ScopeFiltered = &file_kacho_iam_authz_v1_authz_options_proto_extTypes[5]
+	// optional string exempt_reason = 50007;
+	E_ExemptReason = &file_kacho_iam_authz_v1_authz_options_proto_extTypes[6]
 )
 
 var File_kacho_iam_authz_v1_authz_options_proto protoreflect.FileDescriptor
@@ -191,7 +201,8 @@ const file_kacho_iam_authz_v1_authz_options_proto_rawDesc = "" +
 	"\x0fscope_extractor\x12\x1e.google.protobuf.MethodOptions\x18ӆ\x03 \x01(\v2\".kacho.iam.authz.v1.ScopeExtractorR\x0escopeExtractor:J\n" +
 	"\x10required_acr_min\x12\x1e.google.protobuf.MethodOptions\x18Ԇ\x03 \x01(\tR\x0erequiredAcrMin:G\n" +
 	"\x0ehide_existence\x12\x1e.google.protobuf.MethodOptions\x18Ն\x03 \x01(\bR\rhideExistence:G\n" +
-	"\x0escope_filtered\x12\x1e.google.protobuf.MethodOptions\x18ֆ\x03 \x01(\bR\rscopeFilteredBBZ@github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1;authzv1b\x06proto3"
+	"\x0escope_filtered\x12\x1e.google.protobuf.MethodOptions\x18ֆ\x03 \x01(\bR\rscopeFiltered:E\n" +
+	"\rexempt_reason\x12\x1e.google.protobuf.MethodOptions\x18׆\x03 \x01(\tR\fexemptReasonBBZ@github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1;authzv1b\x06proto3"
 
 var (
 	file_kacho_iam_authz_v1_authz_options_proto_rawDescOnce sync.Once
@@ -217,11 +228,12 @@ var file_kacho_iam_authz_v1_authz_options_proto_depIdxs = []int32{
 	1, // 3: kacho.iam.authz.v1.required_acr_min:extendee -> google.protobuf.MethodOptions
 	1, // 4: kacho.iam.authz.v1.hide_existence:extendee -> google.protobuf.MethodOptions
 	1, // 5: kacho.iam.authz.v1.scope_filtered:extendee -> google.protobuf.MethodOptions
-	0, // 6: kacho.iam.authz.v1.scope_extractor:type_name -> kacho.iam.authz.v1.ScopeExtractor
-	7, // [7:7] is the sub-list for method output_type
-	7, // [7:7] is the sub-list for method input_type
-	6, // [6:7] is the sub-list for extension type_name
-	0, // [0:6] is the sub-list for extension extendee
+	1, // 6: kacho.iam.authz.v1.exempt_reason:extendee -> google.protobuf.MethodOptions
+	0, // 7: kacho.iam.authz.v1.scope_extractor:type_name -> kacho.iam.authz.v1.ScopeExtractor
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	7, // [7:8] is the sub-list for extension type_name
+	0, // [0:7] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
 }
 
@@ -237,7 +249,7 @@ func file_kacho_iam_authz_v1_authz_options_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_iam_authz_v1_authz_options_proto_rawDesc), len(file_kacho_iam_authz_v1_authz_options_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   1,
-			NumExtensions: 6,
+			NumExtensions: 7,
 			NumServices:   0,
 		},
 		GoTypes:           file_kacho_iam_authz_v1_authz_options_proto_goTypes,

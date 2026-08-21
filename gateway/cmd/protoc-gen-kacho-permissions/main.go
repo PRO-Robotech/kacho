@@ -63,6 +63,12 @@ type CatalogEntry struct {
 	// data it answers with, so the edge authenticates and runs no per-RPC Check.
 	// Omitted from JSON when false so the catalog diff stays minimal.
 	ScopeFiltered bool `json:"scope_filtered,omitempty"`
+	// ExemptReason — mirror of the (kacho.iam.authz.v1.exempt_reason) option.
+	// Required exactly when Permission == ExemptSentinel and forbidden otherwise:
+	// the sentinel alone stands for four incomparable lanes, and telling them
+	// apart used to require reading each RPC's implementation. Omitted from JSON
+	// when empty so the catalog diff stays minimal.
+	ExemptReason string `json:"exempt_reason,omitempty"`
 }
 
 // ScopeExtractor mirrors authzv1.ScopeExtractor on the JSON side.
@@ -291,6 +297,7 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 	scope := getScopeExt(opts, authzv1.E_ScopeExtractor)
 	hideExistence := getBoolExt(opts, authzv1.E_HideExistence)
 	scopeFiltered := getBoolExt(opts, authzv1.E_ScopeFiltered)
+	exemptReason := getStringExt(opts, authzv1.E_ExemptReason)
 
 	entry := CatalogEntry{
 		FQN:              rpcFQN,
@@ -300,6 +307,7 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 		RequiredAcrMin:   requiredAcrMin,
 		HideExistence:    hideExistence,
 		ScopeFiltered:    scopeFiltered,
+		ExemptReason:     exemptReason,
 	}
 
 	if scopeFiltered {
@@ -335,8 +343,24 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 	}
 
 	if permission == ExemptSentinel {
-		// Exempt RPC — no required-fields check.
+		// Exempt RPC — модель не спрашивают. Единственное, что требуется, — сказать
+		// ПОЧЕМУ: без причины строка означает четыре несопоставимые вещи сразу, и
+		// различить их можно только прочитав реализацию. Значение по существу судит
+		// гейт дерева (закрытый словарь и координата энфорса); здесь — что оно
+		// вообще названо.
+		if exemptReason == "" {
+			return entry, fmt.Sprintf(
+				"%s: (kacho.iam.authz.v1.exempt_reason) is required alongside permission = %q",
+				rpcFQN, ExemptSentinel)
+		}
 		return entry, ""
+	}
+	if exemptReason != "" {
+		// Причина освобождения у НЕосвобождённого RPC — утверждение о полосе,
+		// которой у него нет. Каталог обязан говорить правду про полосу.
+		return entry, fmt.Sprintf(
+			"%s: (kacho.iam.authz.v1.exempt_reason) is set on a non-exempt RPC (permission = %q)",
+			rpcFQN, permission)
 	}
 
 	if permission == "" {

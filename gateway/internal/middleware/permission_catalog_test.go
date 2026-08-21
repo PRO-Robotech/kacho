@@ -442,9 +442,13 @@ func TestPermissionCatalog_InternalClusterService_LockedSystemAdmin(t *testing.T
 
 // TestPermissionCatalog_ListPermissionCatalog_ExemptAndTombstones — the
 // embedded catalog MUST:
-//   - carry PermissionCatalogService.ListPermissionCatalog as an authenticated-
-//     floor read (<exempt> permission — no FGA Check; reachable on the external
-//     listener so the UI can build its role/permission palette);
+//   - carry PermissionCatalogService.ListPermissionCatalog as an
+//     authenticated-floor read that STANDS ON A PRODUCED RELATION (#893/#895) —
+//     `viewer` on the cluster singleton, satisfied for every authenticated caller
+//     by the wildcard subject of a SYSTEM GRANT. The floor is the same as before;
+//     what changed is that the access is now visible on the grant surface and
+//     revocable there. The `<exempt>` lane gave the same floor and left the access
+//     invisible to any listing and closable only by a release;
 //   - NOT carry the two tombstoned RPCs InternalIAMService.ListPermissions
 //     and InternalAuthorizeService.RunRegoTest.
 //
@@ -456,9 +460,12 @@ func TestPermissionCatalog_ListPermissionCatalog_ExemptAndTombstones(t *testing.
 
 	entry, ok := c.Lookup("kacho.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog")
 	require.True(t, ok, "ListPermissionCatalog missing from embedded catalog (resync not run?)")
-	assert.Equal(t, "<exempt>", entry.Permission,
-		"ListPermissionCatalog must be <exempt> (authenticated-floor read, no FGA Check)")
-	assert.True(t, entry.IsExempt(), "ListPermissionCatalog must be exempt")
+	assert.False(t, entry.IsExempt(),
+		"ListPermissionCatalog must stand on a produced relation, not on the exempt lane")
+	assert.Equal(t, "viewer", entry.RequiredRelation,
+		"the floor is the relation a system grant produces for every authenticated caller")
+	assert.Equal(t, "cluster", entry.ScopeExtractor.ObjectType,
+		"the platform permission dictionary is anchored on the cluster singleton")
 
 	for _, gone := range []string{
 		"kacho.cloud.iam.v1.InternalIAMService/ListPermissions",
@@ -565,9 +572,14 @@ func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 		})
 	}
 
-	// Exempt RPCs stay exempt (authenticated-floor reads, no FGA Check).
+	// Exempt RPCs stay exempt (the service itself decides over the data it
+	// answers with; there is no single object for the edge to ask about).
+	//
+	// ListPermissionCatalog used to stand here and no longer does: its floor moved
+	// onto a relation a SYSTEM GRANT produces (#893/#895), so the access it grants
+	// is visible on the grant surface and revocable there. The exempt lane gave the
+	// same floor while leaving the access invisible to any listing.
 	for _, fqn := range []string{
-		"kacho.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog",
 		"kacho.cloud.iam.v1.AccountService/List",
 	} {
 		entry, ok := c.Lookup(fqn)

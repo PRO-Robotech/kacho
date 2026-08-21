@@ -828,11 +828,11 @@ const file_kacho_cloud_iam_v1_group_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xb4\x0f\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xcb\x0f\n" +
 	"\fGroupService\x12\xa1\x01\n" +
 	"\x03Get\x12#.kacho.cloud.iam.v1.GetGroupRequest\x1a\x19.kacho.cloud.iam.v1.Group\"Z\x8a\xb5\x18\x0eiam.groups.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x15\n" +
-	"\tiam_group\x12\bgroup_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1b\x12\x19/iam/v1/groups/{group_id}\x12y\n" +
-	"\x04List\x12%.kacho.cloud.iam.v1.ListGroupsRequest\x1a&.kacho.cloud.iam.v1.ListGroupsResponse\"\"\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x10\x12\x0e/iam/v1/groups\x12\xca\x01\n" +
+	"\tiam_group\x12\bgroup_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1b\x12\x19/iam/v1/groups/{group_id}\x12\x8f\x01\n" +
+	"\x04List\x12%.kacho.cloud.iam.v1.ListGroupsRequest\x1a&.kacho.cloud.iam.v1.ListGroupsResponse\"8\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x12SERVICE_SIDE_AUTHZ\x82\xd3\xe4\x93\x02\x10\x12\x0e/iam/v1/groups\x12\xca\x01\n" +
 	"\x06Create\x12&.kacho.cloud.iam.v1.CreateGroupRequest\x1a .kacho.cloud.operation.Operation\"v\x8a\xb5\x18\x11iam.groups.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aaccount\x12\n" +
 	"account_id\xa2\xb5\x18\x011\xb2\xd2*\x1c\n" +
