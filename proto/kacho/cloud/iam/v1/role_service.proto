@@ -27,6 +27,7 @@ service RoleService {
     // authenticated principal may read it (no per-role FGA scope). Exempt at
     // the middleware; anonymous still rejected by the IAM interceptor.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "SERVICE_SIDE_AUTHZ";
   }
 
   // Retrieves the list of Role resources. Поддерживает фильтры:
@@ -37,6 +38,7 @@ service RoleService {
     option (google.api.http) = { get: "/iam/v1/roles" };
     // Role catalog read — exempt (see Get above).
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "SERVICE_SIDE_AUTHZ";
   }
 
   // Creates a custom role in the specified account.

@@ -135,9 +135,9 @@ const file_kacho_cloud_apigateway_v1_internal_authz_cache_service_proto_rawDesc 
 	"\vresource_id\x18\x03 \x01(\tR\n" +
 	"resourceId\x12\x1d\n" +
 	"\n" +
-	"event_type\x18\x04 \x01(\tR\teventType2\x8b\x01\n" +
-	"\x19InternalAuthzCacheService\x12n\n" +
-	"\x11InvalidateSubject\x123.kacho.cloud.apigateway.v1.InvalidateSubjectRequest\x1a\x16.google.protobuf.Empty\"\f\x8a\xb5\x18\b<exempt>BNZLgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/apigateway/v1;apigatewayv1b\x06proto3"
+	"event_type\x18\x04 \x01(\tR\teventType2\xa1\x01\n" +
+	"\x19InternalAuthzCacheService\x12\x83\x01\n" +
+	"\x11InvalidateSubject\x123.kacho.cloud.apigateway.v1.InvalidateSubjectRequest\x1a\x16.google.protobuf.Empty\"!\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENERBNZLgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/apigateway/v1;apigatewayv1b\x06proto3"
 
 var (
 	file_kacho_cloud_apigateway_v1_internal_authz_cache_service_proto_rawDescOnce sync.Once

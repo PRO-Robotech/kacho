@@ -41,6 +41,7 @@ service AccountService {
     // gateway middleware exempts this RPC. Anonymous is still rejected by the
     // IAM anti-anonymous interceptor.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "SERVICE_SIDE_AUTHZ";
   }
 
   // Creates an account using the data specified in the request.
@@ -71,6 +72,7 @@ service AccountService {
     // The api-gateway per-RPC middleware therefore exempts it; anonymous is
     // still rejected by the IAM anti-anonymous interceptor.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "SELF_SERVICE";
   }
 
   // Updates the specified account.

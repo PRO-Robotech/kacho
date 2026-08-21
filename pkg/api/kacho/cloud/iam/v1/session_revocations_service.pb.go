@@ -434,11 +434,11 @@ const file_kacho_cloud_iam_v1_session_revocations_service_proto_rawDesc = "" +
 	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x85\x01\n" +
 	"\x12ListByUserResponse\x12G\n" +
 	"\vrevocations\x18\x01 \x03(\v2%.kacho.cloud.iam.v1.SessionRevocationR\vrevocations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xc0\x03\n" +
-	"!InternalSessionRevocationsService\x12\x82\x01\n" +
-	"\x06Revoke\x12!.kacho.cloud.iam.v1.RevokeRequest\x1a .kacho.cloud.operation.Operation\"3\x8a\xb5\x18\b<exempt>\xb2\xd2*#\n" +
-	"\x0eRevokeMetadata\x12\x11SessionRevocation\x12f\n" +
-	"\tIsRevoked\x12$.kacho.cloud.iam.v1.IsRevokedRequest\x1a%.kacho.cloud.iam.v1.IsRevokedResponse\"\f\x8a\xb5\x18\b<exempt>\x12\xad\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xea\x03\n" +
+	"!InternalSessionRevocationsService\x12\x97\x01\n" +
+	"\x06Revoke\x12!.kacho.cloud.iam.v1.RevokeRequest\x1a .kacho.cloud.operation.Operation\"H\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\xb2\xd2*#\n" +
+	"\x0eRevokeMetadata\x12\x11SessionRevocation\x12{\n" +
+	"\tIsRevoked\x12$.kacho.cloud.iam.v1.IsRevokedRequest\x1a%.kacho.cloud.iam.v1.IsRevokedResponse\"!\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\x12\xad\x01\n" +
 	"\n" +
 	"ListByUser\x12%.kacho.cloud.iam.v1.ListByUserRequest\x1a&.kacho.cloud.iam.v1.ListByUserResponse\"P\x8a\xb5\x18\"iam.session_revocations.listByUser\x92\xb5\x18\x06viewer\x9a\xb5\x18\x13\n" +
 	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\xa8\xb5\x18\x01B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"

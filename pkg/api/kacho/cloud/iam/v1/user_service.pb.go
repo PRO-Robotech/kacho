@@ -668,11 +668,11 @@ const file_kacho_cloud_iam_v1_user_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xc4\f\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xdb\f\n" +
 	"\vUserService\x12\x9a\x01\n" +
 	"\x03Get\x12\".kacho.cloud.iam.v1.GetUserRequest\x1a\x18.kacho.cloud.iam.v1.User\"U\x8a\xb5\x18\riam.users.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x13\n" +
-	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x19\x12\x17/iam/v1/users/{user_id}\x12v\n" +
-	"\x04List\x12$.kacho.cloud.iam.v1.ListUsersRequest\x1a%.kacho.cloud.iam.v1.ListUsersResponse\"!\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x0f\x12\r/iam/v1/users\x12\xcc\x01\n" +
+	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x19\x12\x17/iam/v1/users/{user_id}\x12\x8c\x01\n" +
+	"\x04List\x12$.kacho.cloud.iam.v1.ListUsersRequest\x1a%.kacho.cloud.iam.v1.ListUsersResponse\"7\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x12SERVICE_SIDE_AUTHZ\x82\xd3\xe4\x93\x02\x0f\x12\r/iam/v1/users\x12\xcc\x01\n" +
 	"\x06Invite\x12%.kacho.cloud.iam.v1.InviteUserRequest\x1a .kacho.cloud.operation.Operation\"y\x8a\xb5\x18\x10iam.users.invite\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aaccount\x12\n" +
 	"account_id\xa2\xb5\x18\x012\xb2\xd2*\x1a\n" +

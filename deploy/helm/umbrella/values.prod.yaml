@@ -190,7 +190,8 @@ api-gateway:
     # verifies every bearer's SIGNATURE with. Substituting it substitutes the access
     # decision, and the edge then believes its own answer. Plaintext, or TLS whose
     # certificate nobody checks, both leave that open. registry already fetches from
-    # this same :9097 over https (see registry.iam.jwksUrl below) — one port, one
+    # this same :9097 over https (see registry.tokenAcceptance.issuerKeySets below) — one
+    # port, one
     # transport.
     jwksUrl: "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
     # Anchor for the hop above: the internal-CA bundle that signs iam's serving cert.
@@ -393,10 +394,23 @@ kacho-geo:
   # with an empty trusted-forwarder allow-list — an empty list means "trust ANY
   # mTLS-verified peer to forward the end-user principal", i.e. principal-spoofing
   # straight through to admin Region/Zone CRUD on :9091. The geo chart ships no
-  # default (env: {}), so this profile MUST pin it; the dev profile does, which is
-  # why the gap never showed locally. api-gateway is the only legitimate forwarder.
+  # default (env: {}), so this profile MUST pin it.
+  #
+  # СОСТАВ — по ФАКТИЧЕСКИМ отправителям, а не «наверное, только шлюз». Справочник
+  # размещения читают на пути запроса пять сервисов, и каждый из них форвардит
+  # личность инициатора (auth.PropagateOutgoing в его geo-клиенте): vpc и compute
+  # (zone_id/region_id), nlb (region_id + зона→регион), storage (зона тома),
+  # registry (region_id пространства имён). Отправитель вне круга не «ходит под
+  # своим сертификатом» — его форвардленная личность СНИМАЕТСЯ
+  # (TrustedPrincipalExtract), и geo видит вызов без принципала: до тех пор пока
+  # чтения справочника были освобождены от проверки, это ничего не меняло, а под
+  # проверкой отношения `viewer` даёт отказ на живом пути (#916).
+  #
+  # SAN пишется по сертификату, который пир РЕАЛЬНО предъявляет: у storage
+  # пространство имён своё (kacho-storage), и запись «по образцу соседа» не
+  # совпала бы — отказ был бы молчаливым.
   env:
-    KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
+    KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute,spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb,spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage,spiffe://kacho.cloud/ns/kacho/sa/kacho-registry"
   db:
     sslmode: require
   mtls:

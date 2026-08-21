@@ -133,8 +133,15 @@ func (c Config) TokenIssuerBindings() ([]TokenIssuerBinding, error) {
 		return nil, err
 	}
 	if len(issuers) == 0 {
+		// Считаются ЭЛЕМЕНТЫ, а не длина строки, и сообщение называет обе
+		// величины: у «,» длина 1 и элементов ноль, и именно на таком входе
+		// предикат по длине молчит. Отказ не зависит от режима — пустой
+		// перечень означает «принимаем любого издателя», а тогда проходит
+		// токен любой третьей стороны, разделяющей с нами набор ключей и
+		// адресата.
 		return nil, fmt.Errorf("KACHO_REGISTRY_TOKEN_ISSUERS declares no issuer element "+
-			"(value %q); an empty issuer set means «accept any issuer»", c.TokenIssuers)
+			"(value %q has %d characters and %d elements); an empty issuer set means "+
+			"«accept any issuer»", c.TokenIssuers, len(c.TokenIssuers), len(issuers))
 	}
 	keySets, err := c.TokenIssuerKeySetMap()
 	if err != nil {
@@ -206,4 +213,117 @@ func (c Config) TokenIssuerBindings() ([]TokenIssuerBinding, error) {
 		}
 	}
 	return out, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ОБЪЯВЛЕНИЕ ПРИЁМА ЦЕЛИКОМ — один читатель на два вопроса
+//
+// «Что принимаем» и «поднимется ли эта посадка» — вопросы об ОДНОМ объявлении,
+// и отвечать на них обязан один предикат. Пока их было два, они разошлись:
+// страж старта освобождал режим разработки от требования непустого перечня, а
+// читатель отвергал пустой перечень в любом режиме. Освобождение было
+// недостижимым — отказ приходил из читателя, — но объявляло посадку, которой у
+// кода нет: «в разработке принимаем любого издателя». Правило, которое нельзя
+// исполнить, хуже отсутствующего (`api-conventions.md` §«ДВА ПРАВИЛА ОБ ОДНОМ
+// ПОЛЕ»), а «пустой перечень допустим» — ещё и прямо запрещённая посадка
+// (`security.md` §«Пустой список — это „не сужаем“»).
+//
+// Второе следствие единственности читателя: его вправе позвать проба
+// РАЗВЁРТЫВАНИЯ и спросить у объявленного профилем ровно то, что спросит
+// процесс при старте. Пока предикат жил в `main`, такой пробе оставалось
+// сформулировать его заново — и разойтись с ним молча.
+
+// isProductionPosture — режимы, в которых послаблений нет.
+func (c Config) isProductionPosture() bool {
+	switch c.AuthMode {
+	case "production", "production-strict":
+		return true
+	}
+	return false
+}
+
+// TokenAcceptance возвращает записи приёма и отвергает объявление, с которым
+// плоскость данных не поднимется.
+//
+// Порядок — от того, без чего не построить ничего, к тому, что уточняет
+// посадку: перечень издателей → привязка «издатель → источник» →
+// защищённость адресов → авторитет отзыва.
+//
+// Место, пройденное не полностью, даёт отказ проверки при ПЕРВОМ ЖЕ ЗАПРОСЕ
+// вместо отказа при СТАРТЕ. Разница не косметическая: первый виден арендатору и
+// не виден оператору, второй виден оператору и не доходит до арендатора.
+func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
+	bindings, err := c.TokenIssuerBindings()
+	if err != nil {
+		return nil, err
+	}
+	readsRevocation := false
+	for _, b := range bindings {
+		if err := c.requireSecureKeySetURL(b.Issuer, b.KeySetURL); err != nil {
+			return nil, err
+		}
+		readsRevocation = readsRevocation || b.ReadRevocation
+	}
+	if readsRevocation {
+		if err := c.requireRevocationAuthority(); err != nil {
+			return nil, err
+		}
+	}
+	return bindings, nil
+}
+
+// requireSecureKeySetURL — источник набора проверочных ключей есть единственный
+// якорь доверия проверки подписи. По открытому HTTP его документ подменяется на
+// пути, и тогда подделывается токен под любого субъекта — то есть проверка
+// подлинности обходится целиком.
+//
+// В dev открытый HTTP допустим — симметрично незашифрованному соединению к базе.
+func (c Config) requireSecureKeySetURL(issuer, keySetURL string) error {
+	if !c.isProductionPosture() {
+		return nil
+	}
+	u, err := url.Parse(keySetURL)
+	if err != nil {
+		return fmt.Errorf("KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS record for issuer %q: invalid URL %q: %w",
+			issuer, keySetURL, err)
+	}
+	if !strings.EqualFold(u.Scheme, "https") {
+		return fmt.Errorf("AuthMode=%s requires an https:// key-set URL in "+
+			"KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS for issuer %q (the key set is the trust anchor of "+
+			"signature verification and must not be fetched over plaintext; got scheme %q)",
+			c.AuthMode, issuer, u.Scheme)
+	}
+	return nil
+}
+
+// requireRevocationAuthority — наш издатель принимается, значит отзыв обязан
+// иметь читателя на пути запроса.
+//
+// Адрес задаётся ЯВНО. Умолчание вида «взять базовый адрес соседа и приклеить
+// путь» запрещено: оно всегда непусто, поэтому контроль выглядит включённым,
+// ведя в никуда, и ни один профиль развёртывания не обязан ничего задавать,
+// чтобы это заметить.
+func (c Config) requireRevocationAuthority() error {
+	trimmed := strings.TrimSpace(c.TokenRevocationURL)
+	if trimmed == "" {
+		return fmt.Errorf("KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER is accepted, so "+
+			"KACHO_REGISTRY_TOKEN_REVOCATION_URL is required: a control that acts only where the "+
+			"credential is ISSUED is not revocation — it merely declines to issue a new one "+
+			"(AuthMode=%s)", c.AuthMode)
+	}
+	if !c.isProductionPosture() {
+		return nil
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("AuthMode=%s requires an absolute KACHO_REGISTRY_TOKEN_REVOCATION_URL "+
+			"(got %q); it is declared explicitly and never derived from a neighbour's address",
+			c.AuthMode, c.TokenRevocationURL)
+	}
+	if !strings.EqualFold(u.Scheme, "https") {
+		return fmt.Errorf("AuthMode=%s requires an https:// KACHO_REGISTRY_TOKEN_REVOCATION_URL "+
+			"(the answer decides access and must not transit plaintext; got scheme %q)",
+			c.AuthMode, u.Scheme)
+	}
+	return nil
 }

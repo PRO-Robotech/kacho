@@ -33,17 +33,21 @@ const (
 // A set of methods to retrieve information about disk types (public :9090; REST
 // /storage/v1/diskTypes).
 //
-// Read is project-scope EXEMPT (`<exempt>`), parity with the geo catalog and
-// with the machine-type catalog: disk types are admin-curated and global, and
-// EVERY authenticated tenant must read them to pick a type before creating a
-// volume. authN stays mandatory; only the project-scope Check is dropped, and
-// only for reads. Admin verbs (Create/Update/Delete/SetLifecycle) remain
-// `system_admin` on the cluster.
+// Read стоит на отношении `viewer` кластерного синглтона, которое производит
+// СИСТЕМНАЯ ВЫДАЧА с подстановочным субъектом: каталог администрируется
+// платформой, одинаков для всех и обязан читаться ВСЯКИМ аутентифицированным
+// арендатором, иначе он не выберет ни размер, ни тип. authN остаётся
+// обязательным. Админские глаголы каталога — `system_admin` на кластере.
 //
-// This previously declared `required_relation: "viewer"` on the cluster object —
-// a relation no seed produces — so both read RPCs answered 403 to everyone and
-// no volume could be created. Held by the tree gate
-// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces.
+// ДВЕ ПРЕЖНИЕ РЕДАКЦИИ, И ОБЕ ВЕРНЫ НАПОЛОВИНУ. Первая объявляла то же отношение,
+// которого НЕ ПРОИЗВОДИЛ никто, — оба чтения отвечали отказом каждому, и создать
+// было нельзя ничего. Вторая (#892) снимала проверку полосой `<exempt>` — отказ
+// уходил, но вместе с ним и видимость: доступ, выданный освобождением, не
+// показывается перечислением выдач и закрывается только выкаткой. Производитель
+// заведён (#893/#895), поэтому оба свойства верны сразу. Держат два гейта дерева:
+// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces (у отношения есть
+// производитель) и TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues
+// (такое отношение позволено только глобальному справочнику, названному поимённо).
 type DiskTypeServiceClient interface {
 	// Returns the information about the specified disk type.
 	//
@@ -88,17 +92,21 @@ func (c *diskTypeServiceClient) List(ctx context.Context, in *ListDiskTypesReque
 // A set of methods to retrieve information about disk types (public :9090; REST
 // /storage/v1/diskTypes).
 //
-// Read is project-scope EXEMPT (`<exempt>`), parity with the geo catalog and
-// with the machine-type catalog: disk types are admin-curated and global, and
-// EVERY authenticated tenant must read them to pick a type before creating a
-// volume. authN stays mandatory; only the project-scope Check is dropped, and
-// only for reads. Admin verbs (Create/Update/Delete/SetLifecycle) remain
-// `system_admin` on the cluster.
+// Read стоит на отношении `viewer` кластерного синглтона, которое производит
+// СИСТЕМНАЯ ВЫДАЧА с подстановочным субъектом: каталог администрируется
+// платформой, одинаков для всех и обязан читаться ВСЯКИМ аутентифицированным
+// арендатором, иначе он не выберет ни размер, ни тип. authN остаётся
+// обязательным. Админские глаголы каталога — `system_admin` на кластере.
 //
-// This previously declared `required_relation: "viewer"` on the cluster object —
-// a relation no seed produces — so both read RPCs answered 403 to everyone and
-// no volume could be created. Held by the tree gate
-// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces.
+// ДВЕ ПРЕЖНИЕ РЕДАКЦИИ, И ОБЕ ВЕРНЫ НАПОЛОВИНУ. Первая объявляла то же отношение,
+// которого НЕ ПРОИЗВОДИЛ никто, — оба чтения отвечали отказом каждому, и создать
+// было нельзя ничего. Вторая (#892) снимала проверку полосой `<exempt>` — отказ
+// уходил, но вместе с ним и видимость: доступ, выданный освобождением, не
+// показывается перечислением выдач и закрывается только выкаткой. Производитель
+// заведён (#893/#895), поэтому оба свойства верны сразу. Держат два гейта дерева:
+// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces (у отношения есть
+// производитель) и TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues
+// (такое отношение позволено только глобальному справочнику, названному поимённо).
 type DiskTypeServiceServer interface {
 	// Returns the information about the specified disk type.
 	//
