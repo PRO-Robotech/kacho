@@ -14,6 +14,7 @@ import (
 
 	corecfg "github.com/PRO-Robotech/kacho/pkg/config"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // Config хранит конфигурацию api-gateway.
@@ -39,6 +40,10 @@ import (
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
 //	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off)
 //	KACHO_API_GATEWAY_INTERNAL_GRPC_ADDR     — cluster-internal gRPC listener (default :9091)
+//	KACHO_API_GATEWAY_ADMISSION_PUBLIC_*     — потолок темпа/одновременности внешнего
+//	                                           слушателя (READ_PER_SEC, MUTATION_PER_SEC,
+//	                                           BURST_FACTOR, IN_FLIGHT; молчание — пол платформы)
+//	KACHO_API_GATEWAY_ADMISSION_INTERNAL_*   — то же для cluster-internal слушателя
 //	KACHO_API_GATEWAY_METRICS_ADDR           — cluster-internal диагностическая поверхность
 //	                                           (GET /metrics, default :9095; пустая строка —
 //	                                           объявленное выключение с причиной в журнале)
@@ -200,6 +205,34 @@ type Config struct {
 	// со своим риском, а дублирование дало бы два места об одном предмете.
 	MetricsAddr string `envconfig:"KACHO_API_GATEWAY_METRICS_ADDR" default:":9095"`
 
+	// --- ПОТОЛОК ТЕМПА И ОДНОВРЕМЕННОСТИ на вызывающего, по слушателю ---
+	//
+	// Величины — свойство ПЛАТФОРМЫ, а не края: арендатору обещан один пол на
+	// весь продукт, и «сколько мне можно» не должно зависеть от того, во что он
+	// упёрся первым. Поэтому числа живут в фундаменте
+	// (`grpcsrv.PlatformPublicAdmission` / `PlatformInternalAdmission`), а здесь
+	// стоит только ОТСТУПЛЕНИЕ посадки от них.
+	//
+	// Три состояния, а не два. Посадка вправе молчать (берётся пол платформы) и
+	// вправе назвать ВЕСЬ набор осей (берётся он); назвать ЧАСТЬ она не вправе —
+	// такой вход выглядит настройкой и не ограничивает по незаполненной оси, а
+	// оператор считает предел выставленным. Частичный набор отвергается при
+	// старте (`grpcsrv.AdmissionKnobs.Resolve`), а не дополняется полом.
+	//
+	// Имена переменных выводятся из тега родительского поля и осей ручки:
+	// KACHO_API_GATEWAY_ADMISSION_{PUBLIC,INTERNAL}_{READ_PER_SEC,
+	// MUTATION_PER_SEC,BURST_FACTOR,IN_FLIGHT}.
+
+	// AdmissionPublic — величины ВНЕШНЕГО gRPC-слушателя. Ключ ведра — личность
+	// конечного пользователя: за краем сидит арендатор, и предел объявлен на него.
+	AdmissionPublic grpcsrv.AdmissionKnobs `envconfig:"KACHO_API_GATEWAY_ADMISSION_PUBLIC"`
+
+	// AdmissionInternal — величины CLUSTER-INTERNAL gRPC-слушателя. Ключ ведра —
+	// личность СЕРТИФИКАТА вызывающего модуля (сюда ходит толкатель iam), а не
+	// арендатора: запрос модуля несёт личности разных арендаторов, и ключ по
+	// арендатору дробил бы бюджет соседа на тысячу вёдер.
+	AdmissionInternal grpcsrv.AdmissionKnobs `envconfig:"KACHO_API_GATEWAY_ADMISSION_INTERNAL"`
+
 	// --- cluster-internal gRPC listener mTLS (InternalAuthzCacheService) ---
 	//
 	// The dedicated internal listener (InternalGRPCAddr) hosts
@@ -327,6 +360,28 @@ type Config struct {
 
 	// JWKSFetchTimeout — таймаут на single JWKS fetch (sec).
 	JWKSFetchTimeoutSeconds int `envconfig:"KACHO_JWKS_FETCH_TIMEOUT_SECONDS" default:"5"`
+
+	// IdempotencyStoreKind — где живут записи однократности `Idempotency-Key`:
+	// "memory" (в памяти процесса) либо "postgres" (общее хранилище флота).
+	//
+	// В памяти — законно РОВНО для флота из одной реплики: повтор, попавший в
+	// соседний под, записи не находит и уходит к downstream. Пару «вид хранилища
+	// ↔ FleetSize» сверяет отказ в старте
+	// (cmd/api-gateway/idempotency_validation.go), поэтому объявление посадки и
+	// объявление процесса больше не могут разойтись молча (#694).
+	IdempotencyStoreKind string `envconfig:"KACHO_IDEMPOTENCY_STORE" default:"memory"`
+
+	// IdempotencyDSN — адрес общего хранилища однократности. Задаётся ЯВНО:
+	// производить его из адреса соседа запрещено — такой адрес всегда непуст,
+	// поэтому хранилище выглядело бы настроенным и вело в никуда.
+	IdempotencyDSN string `envconfig:"KACHO_IDEMPOTENCY_DSN" default:""`
+
+	// FleetSize — верхняя граница числа реплик края, объявленная профилем
+	// посадки: максимум автомасштабирования, если оно включено, иначе число
+	// реплик развёртывания. Рендерится чартом ИЗ ТОГО ЖЕ значения, что питает
+	// автомасштабирование, — иначе это было бы второе объявление об одном
+	// предмете, а расходятся такие пары молча.
+	FleetSize int `envconfig:"KACHO_GATEWAY_FLEET_SIZE" default:"1"`
 
 	// DPoPReplayCacheSize — LRU capacity для DPoP-replay (entries).
 	DPoPReplayCacheSize int `envconfig:"KACHO_DPOP_REPLAY_CACHE_SIZE" default:"100000"`

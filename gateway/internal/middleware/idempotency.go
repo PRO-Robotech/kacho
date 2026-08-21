@@ -8,44 +8,138 @@
 // повторном запросе с тем же ключом возвращается сохраненный ответ без вызова
 // downstream: тот же Idempotency-Key → тот же Operation.id.
 //
-// Реализация: in-memory store с TTL, ограничением емкости (FIFO-вытеснение) и
-// фоновым GC. Кэш-ключ привязан к (principal, method, path, Idempotency-Key),
+// Кэш-ключ привязан к (principal, method, path, Idempotency-Key, sha256 тела),
 // поэтому запись одного caller'а не может быть отдана другому principal'у или на
-// другом маршруте. Для текущей фазы (single api-gateway pod) этого достаточно;
-// при horizontal scaling потребуется внешнее хранилище (Postgres / Redis).
+// другом маршруте.
+//
+// # ДОМЕН ПАРАЛЛЕЛИЗМА ЗАЩИТЫ = ФЛОТ, А НЕ ПРОЦЕСС (#694)
+//
+// Однократность — инвариант, и держать его обязан слой, охватывающий ВЕСЬ домен
+// параллелизма, в котором её обходят (правило #10). Домен здесь — флот подов
+// края, а не один процесс: посадка объявляет автомасштабирование, и повтор,
+// попавший в соседнюю реплику, записи в чужой памяти не находит. Поэтому
+// хранилище здесь — ИНТЕРФЕЙС с ровно одной атомарной точкой допуска
+// (`Reserve`), а не структура: реализация в памяти процесса законна ровно для
+// флота из одной реплики, для большего нужна общая (`internal/idempotencypg`).
+// Пару «хранилище ↔ объявленный размер флота» сводит воедино отказ в старте
+// (`gateway/cmd/api-gateway/idempotency_validation.go`); чарт рендерит размер
+// флота из того же значения, что питает автомасштабирование, поэтому два
+// объявления об одном предмете перестали существовать.
 package middleware
 
 import (
 	"bytes"
 	"container/list"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"google.golang.org/grpc/codes"
 )
 
 const (
-	// IdempotencyTTL — время жизни записи.
+	// IdempotencyTTL — время жизни записи. Погашение ключа живёт ровно столько,
+	// после чего запись убирается сборщиком — иначе хранилище растёт без границы.
 	IdempotencyTTL = 24 * time.Hour
-	// idempotencyMaxEntries — потолок числа записей (FIFO-вытеснение). Защищает
-	// от роста памяти, если caller шлет mutating-запросы с уникальным ключом.
+	// idempotencyMaxEntries — потолок числа записей (FIFO-вытеснение) у
+	// хранилища В ПАМЯТИ. Защищает от роста памяти, если caller шлет
+	// mutating-запросы с уникальным ключом.
 	idempotencyMaxEntries = 10000
 	// idempotencyMaxBodyBytes — ответы крупнее не кэшируются (control-plane
 	// ответы — это маленький Operation/ресурс; крупное тело кэшировать незачем,
 	// и это убирает amplification-вектор).
 	idempotencyMaxBodyBytes = 256 * 1024
+	// IdempotencyWaitBudget — сколько ждать держателя брони, прежде чем ответить
+	// вызывающему «ключ в работе». Ожидание ограничено намеренно: бесконечное
+	// держало бы соединение столько, сколько живёт чужой запрос.
+	IdempotencyWaitBudget = 5 * time.Second
+	// IdempotencyLeaseTTL — срок брони. Держатель, умерший, не оставив исхода
+	// (упавший под), освобождает ключ по истечении этого срока, а не навсегда.
+	IdempotencyLeaseTTL = 2 * time.Minute
 )
 
-// idempotencyEntry хранит сохраненный response.
+// IdempotencyRecord — сохранённый ответ. Content-Type — единственный заголовок,
+// который восстанавливается при повторе: он один и захватывается.
+type IdempotencyRecord struct {
+	StatusCode  int
+	ContentType string
+	Body        []byte
+}
+
+// IdempotencyOutcome — исход атомарного допуска по ключу. Их РОВНО ТРИ, и
+// четвёртого нет: либо ответ уже есть, либо исполняем мы, либо исполняет другой.
+type IdempotencyOutcome int
+
+const (
+	// IdempotencyReplay — по ключу есть законченная запись; её и отдаём.
+	IdempotencyReplay IdempotencyOutcome = iota
+	// IdempotencyOwn — бронь наша: downstream исполняем МЫ, ровно один раз.
+	// Держатель ОБЯЗАН ровно один раз вызвать Commit либо Release.
+	IdempotencyOwn
+	// IdempotencyWait — бронь у другого предъявителя (в этом процессе или в
+	// соседней реплике): ждём его исхода, downstream не зовём.
+	IdempotencyWait
+)
+
+// IdempotencyReservation — результат допуска. Lease непрозрачен для середины:
+// хранилище выдаёт его и требует обратно, чтобы Commit/Release не мог применить
+// тот, чью бронь уже перехватили по истечении срока.
+type IdempotencyReservation struct {
+	Key     string
+	Outcome IdempotencyOutcome
+	Record  IdempotencyRecord
+	Lease   any
+}
+
+// IdempotencyAwaitOutcome — чем кончилось ожидание держателя брони.
+type IdempotencyAwaitOutcome int
+
+const (
+	// IdempotencyAwaitReplay — держатель оставил исход; отдаём его.
+	IdempotencyAwaitReplay IdempotencyAwaitOutcome = iota
+	// IdempotencyAwaitVacant — держатель ушёл, НЕ оставив исхода (паника, 5xx,
+	// смерть пода): ключ свободен, вызывающий исполняет downstream сам.
+	IdempotencyAwaitVacant
+	// IdempotencyAwaitBusy — держатель всё ещё работает, бюджет ожидания исчерпан.
+	// Исполнять downstream НЕЛЬЗЯ — это и было бы вторым исполнением.
+	IdempotencyAwaitBusy
+)
+
+// IdempotencyAwait — исход ожидания.
+type IdempotencyAwait struct {
+	Outcome IdempotencyAwaitOutcome
+	Record  IdempotencyRecord
+}
+
+// IdempotencyStore — хранилище однократности.
+//
+// Контракт: Reserve — ЕДИНСТВЕННАЯ точка допуска, и она атомарна. Раздельные
+// «посмотреть» и «записать» здесь запрещены (правило #10): под конкуренцией они
+// пропускают обоих предъявителей, и это ровно тот дефект, ради которого
+// хранилище существует.
+type IdempotencyStore interface {
+	// Reserve атомарно разрешает ключ ровно в один из трёх исходов.
+	Reserve(ctx context.Context, key string) (IdempotencyReservation, error)
+	// Commit — держатель записывает исход и снимает бронь. keep=false означает
+	// «исход есть, но хранить его нельзя» (5xx / слишком большое тело): ждущие
+	// его получат, а следующий предъявитель — нет.
+	Commit(ctx context.Context, res IdempotencyReservation, rec IdempotencyRecord, keep bool)
+	// Release — держатель снимает бронь, не оставив исхода.
+	Release(ctx context.Context, res IdempotencyReservation)
+	// Await — ждущий дожидается исхода держателя, не дольше ctx.
+	Await(ctx context.Context, res IdempotencyReservation) IdempotencyAwait
+}
+
+// idempotencyEntry хранит сохраненный response вместе со сроком годности.
 type idempotencyEntry struct {
-	statusCode int
-	body       []byte
-	headers    http.Header
-	expiresAt  time.Time
+	record    IdempotencyRecord
+	expiresAt time.Time
 }
 
 // idempotencyItem — значение элемента FIFO-списка: ключ + запись.
@@ -54,40 +148,44 @@ type idempotencyItem struct {
 	entry idempotencyEntry
 }
 
-// idempotencyFlight — an in-flight reservation for a key. The first (leader)
-// caller for a key registers a flight; concurrent (follower) callers block on
-// `done` and then replay the leader's captured response, so a mutating
-// downstream runs exactly once per concurrent batch (single-flight — closes the
-// check-then-act TOCTOU, CWE-362).
+// idempotencyFlight — бронь ключа в этом процессе. Первый (держатель)
+// регистрирует бронь, остальные ждут `done` и повторяют захваченный им ответ,
+// поэтому мутирующий downstream исполняется ровно один раз на пачку
+// одновременных предъявлений (закрывает check-then-act TOCTOU, CWE-362).
 type idempotencyFlight struct {
-	done       chan struct{}
-	hasResult  bool
-	statusCode int
-	body       []byte
-	headers    http.Header
+	done      chan struct{}
+	hasResult bool
+	record    IdempotencyRecord
 }
 
-// IdempotencyStore — in-memory store с TTL, ограничением емкости и GC.
-type IdempotencyStore struct {
+// MemoryIdempotencyStore — хранилище В ПАМЯТИ ПРОЦЕССА: TTL, потолок ёмкости,
+// фоновый сборщик.
+//
+// ЗАКОННО РОВНО ДЛЯ ФЛОТА ИЗ ОДНОЙ РЕПЛИКИ. Второй под этих записей не видит,
+// поэтому повтор, попавший в него, проходит к downstream. Пару «этот store ↔
+// объявленный размер флота» держит отказ в старте
+// (validateIdempotencyFleetPairing), а не комментарий: комментарий здесь уже
+// стоял, был верен и не был связан ни с чем (#694).
+type MemoryIdempotencyStore struct {
 	mu         sync.Mutex
 	elems      map[string]*list.Element      // key → *list.Element{Value: *idempotencyItem}
 	order      *list.List                    // FIFO insertion order для вытеснения
-	inflight   map[string]*idempotencyFlight // key → in-flight reservation
+	inflight   map[string]*idempotencyFlight // key → бронь
 	ttl        time.Duration
 	maxEntries int
 }
 
-// NewIdempotencyStore создает store с фоновым GC и стандартной емкостью.
-func NewIdempotencyStore(ttl time.Duration) *IdempotencyStore {
+// NewIdempotencyStore создает in-memory store с фоновым GC и стандартной емкостью.
+func NewIdempotencyStore(ttl time.Duration) *MemoryIdempotencyStore {
 	return newIdempotencyStoreWithCap(ttl, idempotencyMaxEntries)
 }
 
 // newIdempotencyStoreWithCap — конструктор с явной емкостью (для тестов).
-func newIdempotencyStoreWithCap(ttl time.Duration, maxEntries int) *IdempotencyStore {
+func newIdempotencyStoreWithCap(ttl time.Duration, maxEntries int) *MemoryIdempotencyStore {
 	if maxEntries <= 0 {
 		maxEntries = idempotencyMaxEntries
 	}
-	s := &IdempotencyStore{
+	s := &MemoryIdempotencyStore{
 		elems:      make(map[string]*list.Element),
 		order:      list.New(),
 		inflight:   make(map[string]*idempotencyFlight),
@@ -98,59 +196,55 @@ func newIdempotencyStoreWithCap(ttl time.Duration, maxEntries int) *IdempotencyS
 	return s
 }
 
-// reserve is the single-flight admission point. Under the store lock it resolves
-// one of three outcomes for the key:
-//
-//   - cached != nil  — a completed long-term entry exists; replay it and return.
-//   - leader != nil  — no in-flight reservation existed; THIS caller owns the
-//     downstream execution and MUST call finishLeader or abortLeader exactly once.
-//   - follower != nil — another caller is already executing downstream; wait on
-//     follower.done, then replay follower's captured result (or fall through when
-//     the leader aborted without one).
-func (s *IdempotencyStore) reserve(key string) (cached *idempotencyEntry, leader, follower *idempotencyFlight) {
+// Reserve — атомарная точка допуска под одним удержанием замка.
+func (s *MemoryIdempotencyStore) Reserve(_ context.Context, key string) (IdempotencyReservation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e, ok := s.elems[key]; ok {
 		it := e.Value.(*idempotencyItem)
 		if !time.Now().After(it.entry.expiresAt) {
-			entry := it.entry
-			return &entry, nil, nil
+			return IdempotencyReservation{Key: key, Outcome: IdempotencyReplay, Record: it.entry.record}, nil
 		}
 		s.removeElem(e)
 	}
 	if fl, ok := s.inflight[key]; ok {
-		return nil, nil, fl
+		return IdempotencyReservation{Key: key, Outcome: IdempotencyWait, Lease: fl}, nil
 	}
 	fl := &idempotencyFlight{done: make(chan struct{})}
 	s.inflight[key] = fl
-	return nil, fl, nil
+	return IdempotencyReservation{Key: key, Outcome: IdempotencyOwn, Lease: fl}, nil
 }
 
-// finishLeader records the leader's response on the flight (so followers can
-// replay it), optionally commits it to the long-term store, drops the in-flight
-// reservation and wakes followers. Called exactly once by the leader.
-func (s *IdempotencyStore) finishLeader(key string, fl *idempotencyFlight, entry idempotencyEntry, cache bool) {
-	s.mu.Lock()
-	fl.statusCode = entry.statusCode
-	fl.body = entry.body
-	fl.headers = entry.headers
-	fl.hasResult = true
-	if cache {
-		s.putLocked(key, entry)
+// Commit записывает исход держателя на бронь (чтобы ждущие его повторили),
+// при keep — кладёт в долговременное хранилище, снимает бронь и будит ждущих.
+func (s *MemoryIdempotencyStore) Commit(_ context.Context, res IdempotencyReservation, rec IdempotencyRecord, keep bool) {
+	fl, ok := res.Lease.(*idempotencyFlight)
+	if !ok {
+		return
 	}
-	delete(s.inflight, key)
+	s.mu.Lock()
+	fl.record = rec
+	fl.hasResult = true
+	if keep {
+		s.putLocked(res.Key, idempotencyEntry{record: rec, expiresAt: time.Now().Add(s.ttl)})
+	}
+	if cur, exists := s.inflight[res.Key]; exists && cur == fl {
+		delete(s.inflight, res.Key)
+	}
 	s.mu.Unlock()
 	close(fl.done)
 }
 
-// abortLeader drops the in-flight reservation without a result (downstream
-// panicked / never produced a cacheable response). Followers wake and fall
-// through to execute downstream themselves. Idempotent for the not-yet-finished
-// flight.
-func (s *IdempotencyStore) abortLeader(key string, fl *idempotencyFlight) {
+// Release снимает бронь без исхода. Ждущие просыпаются и исполняют downstream
+// сами.
+func (s *MemoryIdempotencyStore) Release(_ context.Context, res IdempotencyReservation) {
+	fl, ok := res.Lease.(*idempotencyFlight)
+	if !ok {
+		return
+	}
 	s.mu.Lock()
-	if cur, ok := s.inflight[key]; ok && cur == fl {
-		delete(s.inflight, key)
+	if cur, exists := s.inflight[res.Key]; exists && cur == fl {
+		delete(s.inflight, res.Key)
 		s.mu.Unlock()
 		close(fl.done)
 		return
@@ -158,8 +252,25 @@ func (s *IdempotencyStore) abortLeader(key string, fl *idempotencyFlight) {
 	s.mu.Unlock()
 }
 
+// Await ждёт держателя брони этого процесса.
+func (s *MemoryIdempotencyStore) Await(ctx context.Context, res IdempotencyReservation) IdempotencyAwait {
+	fl, ok := res.Lease.(*idempotencyFlight)
+	if !ok {
+		return IdempotencyAwait{Outcome: IdempotencyAwaitVacant}
+	}
+	select {
+	case <-fl.done:
+		if fl.hasResult {
+			return IdempotencyAwait{Outcome: IdempotencyAwaitReplay, Record: fl.record}
+		}
+		return IdempotencyAwait{Outcome: IdempotencyAwaitVacant}
+	case <-ctx.Done():
+		return IdempotencyAwait{Outcome: IdempotencyAwaitBusy}
+	}
+}
+
 // gcLoop удаляет expired entries раз в ttl/24 (но не реже минуты).
-func (s *IdempotencyStore) gcLoop() {
+func (s *MemoryIdempotencyStore) gcLoop() {
 	tick := s.ttl / 24
 	if tick < time.Minute {
 		tick = time.Minute
@@ -181,21 +292,21 @@ func (s *IdempotencyStore) gcLoop() {
 }
 
 // removeElem снимает элемент из списка и map. Caller держит s.mu.
-func (s *IdempotencyStore) removeElem(e *list.Element) {
+func (s *MemoryIdempotencyStore) removeElem(e *list.Element) {
 	it := e.Value.(*idempotencyItem)
 	s.order.Remove(e)
 	delete(s.elems, it.key)
 }
 
 // Len возвращает текущее число записей.
-func (s *IdempotencyStore) Len() int {
+func (s *MemoryIdempotencyStore) Len() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.elems)
 }
 
 // get возвращает сохраненный entry или (zero, false) если ключа нет/expired.
-func (s *IdempotencyStore) get(key string) (idempotencyEntry, bool) {
+func (s *MemoryIdempotencyStore) get(key string) (idempotencyEntry, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.elems[key]
@@ -211,14 +322,14 @@ func (s *IdempotencyStore) get(key string) (idempotencyEntry, bool) {
 }
 
 // put сохраняет entry с TTL, вытесняя самую старую запись при достижении лимита.
-func (s *IdempotencyStore) put(key string, entry idempotencyEntry) {
+func (s *MemoryIdempotencyStore) put(key string, entry idempotencyEntry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.putLocked(key, entry)
 }
 
 // putLocked — общий insert-путь. Caller держит s.mu.
-func (s *IdempotencyStore) putLocked(key string, entry idempotencyEntry) {
+func (s *MemoryIdempotencyStore) putLocked(key string, entry idempotencyEntry) {
 	if e, ok := s.elems[key]; ok {
 		e.Value.(*idempotencyItem).entry = entry
 		s.order.MoveToBack(e)
@@ -239,10 +350,17 @@ func (s *IdempotencyStore) putLocked(key string, entry idempotencyEntry) {
 // проходят насквозь. Ответ кэшируется при status < 500 (5xx не кэшируем —
 // retry-safety) и теле не больше idempotencyMaxBodyBytes.
 //
-// Ключ кэша — fingerprint запроса (principal, method, path, Idempotency-Key):
-// middleware смонтирован после authN/authZ, поэтому principal-заголовки уже
-// проставлены, и запись одного caller'а не может быть отдана другому.
-func HTTPIdempotency(store *IdempotencyStore) func(http.Handler) http.Handler {
+// Ключ кэша — fingerprint запроса (principal, method, path, Idempotency-Key,
+// sha256 тела): middleware смонтирован после authN/authZ, поэтому
+// principal-заголовки уже проставлены, и запись одного caller'а не может быть
+// отдана другому.
+//
+// ОТКАЗ ХРАНИЛИЩА — FAIL-CLOSED. Вызывающий, приславший ключ, ПОПРОСИЛ
+// однократность. Если хранилище недоступно, дать её нечем — и тихо исполнить
+// мутацию значило бы ответить успехом на просьбу, которую мы не выполнили
+// (запрещённый класс «принято-и-проигнорировано»). Отвечаем 503 и называем
+// причину; повтор осмыслен. Запросы БЕЗ ключа этим не задеты вовсе.
+func HTTPIdempotency(store IdempotencyStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !isMutating(r.Method) {
@@ -256,57 +374,59 @@ func HTTPIdempotency(store *IdempotencyStore) func(http.Handler) http.Handler {
 			}
 			key := idempotencyCacheKey(r, idemKey)
 
-			// Single-flight admission. Atomically resolve to: an existing cached
-			// entry (replay), a follower waiting on an in-flight leader, or the
-			// leader that owns downstream execution. This closes the check-then-act
-			// TOCTOU where two concurrent same-key double-submits both miss the
-			// cache and both mutate downstream (CWE-362).
-			cached, leader, follower := store.reserve(key)
-			if cached != nil {
-				replayIdempotent(w, *cached)
+			// Единственная точка допуска, и она атомарна. Здесь закрывается
+			// check-then-act, при котором два одновременных предъявления одного
+			// ключа оба промахиваются мимо записи и оба мутируют (CWE-362).
+			res, err := store.Reserve(r.Context(), key)
+			if err != nil {
+				writeIdempotencyStoreUnavailable(w)
 				return
 			}
-			if follower != nil {
-				<-follower.done
-				if follower.hasResult {
-					replayIdempotent(w, idempotencyEntry{
-						statusCode: follower.statusCode,
-						body:       follower.body,
-						headers:    follower.headers,
-					})
-					return
+			switch res.Outcome {
+			case IdempotencyReplay:
+				replayIdempotent(w, res.Record)
+				return
+			case IdempotencyWait:
+				waitCtx, cancel := context.WithTimeout(r.Context(), IdempotencyWaitBudget)
+				got := store.Await(waitCtx, res)
+				cancel()
+				switch got.Outcome {
+				case IdempotencyAwaitReplay:
+					replayIdempotent(w, got.Record)
+				case IdempotencyAwaitVacant:
+					// Держатель ушёл, не оставив исхода — ключ свободен,
+					// исполняем сами (best-effort, как и было).
+					next.ServeHTTP(w, r)
+				default:
+					writeIdempotencyInFlight(w)
 				}
-				// Leader aborted without a result (panic / no cacheable response)
-				// — fall through and execute downstream directly, best-effort.
-				next.ServeHTTP(w, r)
 				return
 			}
 
-			// Leader path. Guarantee the reservation is always released even if
-			// downstream panics (followers must never block forever).
+			// Полоса держателя. Бронь снимается ВСЕГДА, даже если downstream
+			// паникует: иначе ждущие висят до истечения срока брони.
 			finished := false
 			defer func() {
 				if !finished {
-					store.abortLeader(key, leader)
+					store.Release(context.WithoutCancel(r.Context()), res)
 				}
 			}()
 			rec := &responseRecorder{ResponseWriter: w, body: &bytes.Buffer{}, statusCode: 200}
 			next.ServeHTTP(rec, r)
-			headers := http.Header{}
-			if ct := w.Header().Get("Content-Type"); ct != "" {
-				headers.Set("Content-Type", ct)
+			answer := IdempotencyRecord{
+				StatusCode:  rec.statusCode,
+				ContentType: w.Header().Get("Content-Type"),
+				Body:        rec.body.Bytes(),
 			}
-			// Cache long-term only non-5xx responses within the size cap (5xx are
-			// retry-safe; oversized bodies would pin memory). Followers of this
-			// concurrent batch still replay the leader's captured response either
-			// way, so the batch shares one downstream execution.
-			cache := rec.statusCode < 500 && rec.body.Len() <= idempotencyMaxBodyBytes
-			store.finishLeader(key, leader, idempotencyEntry{
-				statusCode: rec.statusCode,
-				body:       rec.body.Bytes(),
-				headers:    headers,
-				expiresAt:  time.Now().Add(store.ttl),
-			}, cache)
+			// Долговременно храним только не-5xx в пределах потолка (5xx
+			// retry-safe; огромные тела держали бы память). Ждущие этой пачки
+			// повторяют захваченный исход в любом случае, поэтому пачка делит
+			// одно исполнение downstream.
+			keep := rec.statusCode < 500 && rec.body.Len() <= idempotencyMaxBodyBytes
+			// Запись исхода не должна отменяться вместе с запросом вызывающего:
+			// он мог отсоединиться, но downstream уже исполнен, и следующий
+			// предъявитель обязан получить именно этот ответ.
+			store.Commit(context.WithoutCancel(r.Context()), res, answer, keep)
 			finished = true
 		})
 	}
@@ -314,26 +434,73 @@ func HTTPIdempotency(store *IdempotencyStore) func(http.Handler) http.Handler {
 
 // replayIdempotent writes a stored/captured response to w with the
 // X-Idempotent-Replayed marker.
-func replayIdempotent(w http.ResponseWriter, e idempotencyEntry) {
-	for k, vs := range e.headers {
-		for _, v := range vs {
-			w.Header().Add(k, v)
-		}
+func replayIdempotent(w http.ResponseWriter, rec IdempotencyRecord) {
+	if rec.ContentType != "" {
+		w.Header().Set("Content-Type", rec.ContentType)
 	}
 	w.Header().Set("X-Idempotent-Replayed", "true")
-	w.WriteHeader(e.statusCode)
-	_, _ = w.Write(e.body)
+	w.WriteHeader(rec.StatusCode)
+	_, _ = w.Write(rec.Body)
 }
 
-// idempotencyCacheKey строит fingerprint запроса. NUL-разделитель исключает
-// коллизии склейки между сегментами. В ключ входит sha256 тела запроса: повтор
-// того же Idempotency-Key с ДРУГИМ payload'ом становится cache-miss (выполняется
-// downstream), а не молчаливым replay'ем первого ответа (masked lost-update,
-// CWE-694). Тело читается capped и восстанавливается для downstream.
+// writeIdempotencyInFlight — ответ ждущему, чей держатель не уложился в бюджет.
+// 409/ABORTED, а не исполнение: исполнить значило бы сделать мутацию дважды —
+// ровно то, что заголовок и запрещает. Повтор осмыслен: держатель закончит и
+// следующее предъявление получит его ответ.
+func writeIdempotencyInFlight(w http.ResponseWriter) {
+	writeIdempotencyStatus(w, http.StatusConflict, codes.Aborted,
+		"a request with this Idempotency-Key is already in flight")
+}
+
+// writeIdempotencyStoreUnavailable — ответ, когда общее хранилище недоступно.
+// 503/UNAVAILABLE: однократность обещана и не может быть обеспечена, значит
+// мутация не исполняется. Fail-closed для мутаций.
+func writeIdempotencyStoreUnavailable(w http.ResponseWriter) {
+	writeIdempotencyStatus(w, http.StatusServiceUnavailable, codes.Unavailable,
+		"idempotency store is unavailable; the exactly-once guarantee cannot be honoured")
+}
+
+// writeIdempotencyStatus печатает тело в форме grpc-gateway ({code,message,details}),
+// чтобы клиент разбирал отказ края тем же кодом, что и отказ сервиса.
+func writeIdempotencyStatus(w http.ResponseWriter, httpStatus int, code codes.Code, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(httpStatus)
+	_ = json.NewEncoder(w).Encode(struct {
+		Code    int      `json:"code"`
+		Message string   `json:"message"`
+		Details []string `json:"details"`
+	}{Code: int(code), Message: msg, Details: []string{}})
+}
+
+// idempotencyCacheKey строит fingerprint запроса и СВОРАЧИВАЕТ его в sha256.
+//
+// Прообраз — (principal, метод, путь, Idempotency-Key, sha256 тела) через
+// NUL-разделитель: NUL исключает коллизии склейки между сегментами и не может
+// прийти из значения заголовка, потому что заголовок его не переносит. В ключ
+// входит sha256 тела запроса: повтор того же Idempotency-Key с ДРУГИМ payload'ом
+// становится cache-miss (выполняется downstream), а не молчаливым replay'ем
+// первого ответа (masked lost-update, CWE-694). Тело читается capped и
+// восстанавливается для downstream.
+//
+// СВОРАЧИВАНИЕ В ХЭШ — не украшение, и держится тремя доводами:
+//
+//  1. ключ уезжает в ОБЩЕЕ хранилище флота, а прообраз содержит идентификатор
+//     вызывающего и путь ресурса — при свёртке в базе не лежит ни того, ни
+//     другого, и утечка снимка хранилища не говорит, кто что создавал;
+//  2. длина ключа перестаёт зависеть от вызывающего: `Idempotency-Key` — его
+//     значение, и без свёртки размер строки в хранилище задаёт он;
+//  3. NUL в прообразе делал ключ непредставимым для текстовой колонки Postgres
+//     (`invalid byte sequence 0x00`). Свёртка снимает это by construction, не
+//     ослабляя разделитель.
+//
+// Различительная способность не меняется: разные прообразы дают разные ключи с
+// точностью до стойкости sha256.
 func idempotencyCacheKey(r *http.Request, idemKey string) string {
 	principal := r.Header.Get(principalmeta.HeaderPrincipalID)
-	return principal + "\x00" + r.Method + "\x00" + r.URL.Path + "\x00" + idemKey +
+	preimage := principal + "\x00" + r.Method + "\x00" + r.URL.Path + "\x00" + idemKey +
 		"\x00" + hashRequestBody(r)
+	sum := sha256.Sum256([]byte(preimage))
+	return hex.EncodeToString(sum[:])
 }
 
 // hashRequestBody возвращает hex(sha256) первых idempotencyMaxBodyBytes тела

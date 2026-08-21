@@ -46,7 +46,11 @@ func externalSurface(t *testing.T) (*grpc.Server, map[string]grpc.ServiceInfo) {
 	t.Helper()
 	srv := grpc.NewServer()
 	t.Cleanup(srv.Stop)
-	registerExternalGRPCServices(srv, nil, opsproxy.New(nil))
+	// Оба регистратора — один и тот же сервер: предмет этого случая — СОСТАВ
+	// поверхности, а не то, что из неё покрыто потолком темпа. Подставить сюда
+	// ограничитель значило бы завести второй предмет; кто из двух что получает,
+	// утверждает admission_wiring_test.go.
+	registerExternalGRPCServices(srv, srv, nil, opsproxy.New(nil))
 	return srv, srv.GetServiceInfo()
 }
 

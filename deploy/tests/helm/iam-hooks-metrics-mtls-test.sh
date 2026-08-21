@@ -5,13 +5,21 @@
 # (:9095) — per-edge server-side TLS, reusing the SEC-F internal-CA server cert.
 #
 # Sub-phase 5.5 (kacho-iam#137, supersedes the OFF-gate #122/#136): the hooks edge
-# carries THREE HMAC-authenticated hook endpoints (Hydra token/refresh + Kratos
-# provision); all three callers are HTTP clients that present NO transport
+# carries FOUR HMAC-authenticated hook endpoints (Hydra token/refresh + Kratos
+# provision/recovery); every caller is an HTTP client that presents NO transport
 # client-cert (Ory webhooks cannot). The old RequireAndVerifyClientCert default
 # would reject every webhook at the TLS handshake. 5.5 introduces a per-edge
 # clientAuthMode: the hooks/metrics edges run `server-tls-only` (encryption +
 # server-auth; HMAC is the caller-auth — a single mode on :9092 correctly covers
-# all three hook endpoints). The prod gate is now flipped ON.
+# all four hook endpoints). The prod gate is now flipped ON.
+#
+# ЭТОТ ГЕЙТ СУДИТ ДВЕ ПОЛОСЫ ИЗ ЧЕТЫРЁХ, И ЭТО НАЗВАНО, ЧТОБЫ «ЗЕЛЕНО» НЕ ЧИТАЛОСЬ
+# ШИРЕ, ЧЕМ ЕСТЬ: он читает конфигурацию внешнего сервера OAuth и утверждает
+# транспорт полос token/refresh. Полосы службы личности (provision/recovery) он не
+# видит вовсе, а с уходом внешнего сервера (эпик #896) у него не останется предмета.
+# Транспорт КАЖДОЙ полосы — по перечню, выведенному из конфигурации, — держит
+# deploy/identity_callback_transport_test.go; он не знает ни имени того сервера, ни
+# его ключей и потому переживёт его уход.
 #
 # DETERMINISM NOTE: `helm template` on this large multi-subchart umbrella renders
 # the kacho-iam subchart Deployment NON-deterministically (values coalescing — the

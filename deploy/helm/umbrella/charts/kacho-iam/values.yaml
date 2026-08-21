@@ -128,6 +128,27 @@ kratos:
       connectionURI: "smtp://mailhog.kacho.svc:1025/?disable_starttls=true"
       fromAddress: "noreply@kacho.cloud"
       fromName: "Kacho Cloud"
+    # ─── Обратные вызовы службы личности к слушателю хуков iam (:9092) ────────
+    #
+    # ТРАНСПОРТ И АДРЕС — РЕШЕНИЕ ПРОФИЛЯ, А НЕ КОНСТАНТА ШАБЛОНА. По этим полосам
+    # едут сведения о личности (заведение пользователя, завершение восстановления
+    # доступа), и инвариант платформы требует защищённого транспорта на КАЖДОМ
+    # слушателе, включая внутренние: «внутренний — значит доверенный» объявлено
+    # запрещённым допущением (security.md §«AuthN+AuthZ ВЕЗДЕ»).
+    #
+    # Прежде схема была выписана в шаблоне буквой `http`, поэтому боевая посадка
+    # НЕ МОГЛА объявить эти полосы защищёнными — значения шаблон не читал.
+    #
+    # Умолчание `http` парно умолчанию `mtls.httpListeners: false` ниже: слушатель
+    # хуков в чарте по умолчанию открыт, и https к нему не подключился бы вовсе.
+    # Профиль, включивший TLS на этом слушателе, обязан объявить здесь `https` —
+    # согласие полосы со слушателем держит deploy/identity_callback_transport_test.go.
+    hooks:
+      scheme: http
+      # Пусто ⇒ `<fullname>-internal.<namespace>.svc` (адрес внутри кластера).
+      host: ""
+      # Пусто ⇒ service.internal.hooksHttpPort.
+      port: ""
 
 # JWKS rotator CronJob — УДАЛЁН (был вестигиальным).
 #
@@ -395,8 +416,9 @@ mtls:
   # jwksProxy: true
   # registryToken: true
   # Per-edge TLS ClientAuth mode for the HTTP listeners (kacho-iam#137). Default
-  # server-tls-only: the hooks edge carries three HMAC-authed Ory webhook
-  # endpoints (Hydra token/refresh + Kratos provision) that present NO client cert
+  # server-tls-only: the hooks edge carries four HMAC-authed Ory webhook
+  # endpoints (Hydra token/refresh + Kratos provision/recovery) — none presents a
+  # client cert
   # — RequireAndVerifyClientCert would reject them at the handshake (bug #122); the
   # metrics edge has no scrape client cert wired yet. server-tls-only encrypts the
   # transport without an impossible client-cert requirement; HMAC stays the

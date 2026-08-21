@@ -29,8 +29,10 @@ import (
 // startInternalGRPCListener builds the internal-only gRPC server, listens on
 // addr (host:port; ":0" for ephemeral in tests), registers
 // InternalAuthzCacheService on it (and NOT on externalSrv — internal-only
-// invariant), and returns the wired server + listener so the caller drives
-// Serve() and GracefulStop() under its existing signal-shutdown flow.
+// invariant), and returns the wired server + listener + this listener's rate
+// ceiling, so the caller drives Serve() and GracefulStop() under its existing
+// signal-shutdown flow and counts admissions in the same place it counts the
+// external listener's.
 //
 // SECURITY (security.md invariant #1/#4): the internal perimeter is NOT trusted.
 // When sec.mtlsEnabled the listener mounts mTLS transport credentials
@@ -44,30 +46,37 @@ import (
 //
 // addr=":0" → kernel picks port; the caller can read it via lis.Addr() (used
 // by the unit test for ephemeral-port lifecycle).
+//
+// limits — the per-caller rate/concurrency ceiling for THIS listener. Passed in
+// rather than resolved here so both listeners answer one resolution of the
+// posture: two resolutions of the same knobs are two places about one subject,
+// and they drift silently — one listener would end up on the platform floor and
+// the other on the operator's numbers with nothing red anywhere.
 func startInternalGRPCListener(
 	addr string, inv handler.Invalidator,
-	externalSrv *grpc.Server, sec internalListenerSecurity, logger *slog.Logger,
-) (*grpc.Server, net.Listener, error) {
+	externalSrv *grpc.Server, sec internalListenerSecurity,
+	limits grpcsrv.AdmissionLimits, logger *slog.Logger,
+) (*grpc.Server, net.Listener, *grpcsrv.Admission, error) {
 	if addr == "" {
-		return nil, nil, fmt.Errorf("internal grpc listener: addr required")
+		return nil, nil, nil, fmt.Errorf("internal grpc listener: addr required")
 	}
 	if externalSrv == nil {
 		// Defensive: RegisterInternalAuthzCacheService panics on nil
 		// externalSrv to enforce the internal-only invariant. Surface the
 		// same error at construction time so wiring bugs are caught before
 		// Serve().
-		return nil, nil, fmt.Errorf("internal grpc listener: externalSrv required (pass both servers to make the internal-only invariant explicit)")
+		return nil, nil, nil, fmt.Errorf("internal grpc listener: externalSrv required (pass both servers to make the internal-only invariant explicit)")
 	}
 	if sec.mtlsEnabled && sec.serverCreds == nil {
 		// Defensive: buildInternalListenerSecurity never returns this shape, but a
 		// hand-rolled posture with mtlsEnabled and no creds would silently downgrade
 		// to plaintext — fail loudly instead.
-		return nil, nil, fmt.Errorf("internal grpc listener: mTLS enabled but server credentials are nil")
+		return nil, nil, nil, fmt.Errorf("internal grpc listener: mTLS enabled but server credentials are nil")
 	}
 
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
-		return nil, nil, fmt.Errorf("listen internal grpc %s: %w", addr, err)
+		return nil, nil, nil, fmt.Errorf("listen internal grpc %s: %w", addr, err)
 	}
 
 	opts := []grpc.ServerOption{
@@ -107,7 +116,33 @@ func startInternalGRPCListener(
 
 	srv := grpc.NewServer(opts...)
 
-	handler.RegisterInternalAuthzCacheService(srv, externalSrv, inv, logger)
+	// ПОТОЛОК ТЕМПА И ОДНОВРЕМЕННОСТИ на вызывающего — и на этом слушателе тоже.
+	//
+	// «Внутренний — значит доверенный» здесь запрещено ровно так же, как в
+	// вопросе о правах: сюда ходит толкатель iam, а инвалидация кэша решений о
+	// доступе — самый дешёвый для вызывающего и самый дорогой для края вызов,
+	// какой у этого порта есть. Модуль, ушедший в петлю повторов, обнулял бы кэш
+	// края непрерывно, и каждый следующий запрос арендатора снова шёл бы в iam за
+	// решением — то есть отказ одного соседа превращался бы в нагрузку на всех.
+	//
+	// Ключ ведра — личность СЕРТИФИКАТА, а не конечного пользователя: запрос
+	// модуля несёт личности разных арендаторов, и ключ по арендатору дробил бы
+	// бюджет соседа на тысячу вёдер, задушив его на ровном месте.
+	//
+	// Ошибка сборки — ОТКАЗ, а не «поднимемся без потолка»: объект, который
+	// выглядит ограничителем и не ограничивает, есть ровно тот класс, который мы
+	// ловим в чужом коде.
+	adm, admErr := grpcsrv.NewAdmission("internal", limits, grpcsrv.CertIdentitySubject)
+	if admErr != nil {
+		_ = lis.Close()
+		return nil, nil, nil, fmt.Errorf("internal grpc listener: request admission: %w", admErr)
+	}
+
+	// Регистрация идёт ЧЕРЕЗ обёртку: она получает дескриптор службы целиком и
+	// подставляет допуск МЕЖДУ цепочкой звеньев и обработчиком, то есть ПОСЛЕ
+	// того, как личность сертификата установлена. Забыть метод здесь не на чем —
+	// перечня методов у вызывающего нет.
+	handler.RegisterInternalAuthzCacheService(adm.Registrar(srv), externalSrv, inv, logger)
 
 	// gRPC reflection — schema discovery for `grpcurl` and friends during
 	// incident response. This is the ONLY listener that serves it: the
@@ -136,5 +171,5 @@ func startInternalGRPCListener(
 			slog.Bool("reflection", sec.mtlsEnabled),
 			slog.String("invariant", "internal-only — never on external TLS"))
 	}
-	return srv, lis, nil
+	return srv, lis, adm, nil
 }

@@ -114,6 +114,11 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.db.passwordSecretName }}
                   key: {{ .Values.db.passwordSecretKey }}
+            # Ширина пула на ЭТУ реплику. Стоит только у обслуживающего
+            # контейнера: миграционный шаг открывает одно соединение и живёт
+            # секунды, а `pool_max_conns` в его DSN сузил бы не тот предмет.
+            - name: KACHO_COMPUTE_DB_MAX_CONNS
+              value: "{{ .Values.db.maxConns }}"
             - name: KACHO_COMPUTE_GRPC_PORT
               value: "{{ .Values.ports.grpc }}"
             - name: KACHO_COMPUTE_INTERNAL_PORT

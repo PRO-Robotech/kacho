@@ -71,14 +71,19 @@ just its mechanics:
 
 - **Divergent semantics:** FIFO insertion-order eviction (NOT LRU — a replay
   read must not extend an idempotency record's lifetime) **plus** an atomic
-  single-flight reservation (leader/follower flights) that has no analogue in a
-  plain key/value cache. Its value type also carries HTTP status/body/headers
-  and a body-size cap.
-- **Why separate:** the single-flight admission path (`reserve` /
-  `finishLeader` / `abortLeader`) and FIFO eviction are the whole point of this
-  component; the generic LRU would either need to absorb single-flight (bloating
-  a general primitive with a one-caller concern) or the store would lose its
-  exactly-once guarantee. Kept as a focused component.
+  admission point (owner / waiter reservations) that has no analogue in a plain
+  key/value cache. Its value type also carries HTTP status/body/content-type and
+  a body-size cap.
+- **Why separate:** the admission path (`Reserve` / `Commit` / `Release` /
+  `Await`) and FIFO eviction are the whole point of this component; the generic
+  LRU would either need to absorb admission (bloating a general primitive with a
+  one-caller concern) or the store would lose its exactly-once guarantee. Kept as
+  a focused component.
+- **Since #694 the store is an INTERFACE**, and `MemoryIdempotencyStore` is one
+  of two implementations; the shared one (`internal/idempotencypg`) is not a
+  cache at all. That makes folding it into a cache primitive doubly wrong: the
+  admission contract now has to hold across processes, which no in-process
+  primitive can express. See §3a.
 
 ### Migrated (was 2b): `KratosClient` whoami cache
 
@@ -95,52 +100,77 @@ once in `internal/lrucache`.
 Rubric reference: kacho-corelib reuse principle. Contract impact: none —
 unexported, in-process, no wire/API/DB change.
 
-## 3. Per-pod in-memory idempotency & DPoP-replay state under HPA (accepted residual)
+## 3. DPoP-replay state is still per-pod; idempotency no longer is (#694 landed)
 
-**Rule (project-rule #10 spirit).** A within-domain invariant should be enforced
-at a layer that spans the whole concurrency domain, not a per-process software
-check. `IdempotencyStore.reserve()` (single-flight, exactly-once per
-`Idempotency-Key`) and `DPoPReplayCache` (RFC 9449 §11.1 anti-replay on `jti`)
-are both correct **within one process** (atomic reserve / `AddIfAbsent`), but the
-concurrency domain is the whole gateway fleet — and the shipped chart enables HPA
-(`autoscaling.enabled=true`, `maxReplicas: 10`), so the domain spans N pods.
+**Rule (project-rule #10).** A within-domain invariant must be enforced at a layer
+that spans the whole concurrency domain, not by a per-process software check. For
+the edge that domain is the **fleet**, because the shipped chart carries an HPA.
 
-**Why the gateway keeps per-pod state (for now).**
+### 3a. `Idempotency-Key` — CLOSED (#694)
 
-- **No shared store is provisioned.** Backing these with Postgres/Redis
-  (`INSERT … ON CONFLICT DO NOTHING` for idempotency; `SET NX` with TTL for
-  `jti`) is a genuinely correct fix but adds a hard runtime dependency and a
-  per-request round-trip to the request-side bottleneck (~3500 RPS/pod). That is
-  a deliberate infra decision, tracked separately — not something to bolt on
-  silently under this hardening pass.
-- **Capping `maxReplicas: 1` is worse.** api-gateway is the documented RPS
-  bottleneck; forcing a single replica to "restore" the store's precondition
-  trades a correctness edge case for a hard availability/capacity regression.
+This section used to cover both stores and accepted both as residual. Half of it
+has a fix, and leaving the acceptance in place would be an exemption that
+outlived its subject.
 
-**Accepted residual + compensating controls.**
+- The store is now an **interface** with one atomic admission point
+  (`middleware.IdempotencyStore.Reserve`). Two implementations ship: in-process
+  (`MemoryIdempotencyStore`, correct for a fleet of exactly one) and shared
+  (`gateway/internal/idempotencypg`, one Postgres table, admission by a single
+  `INSERT … ON CONFLICT … RETURNING`, records reaped at TTL).
+- **The pairing is enforced, not documented.** The chart derives the declared
+  fleet size from the very values that drive the HPA and hands it to the process
+  (`KACHO_GATEWAY_FLEET_SIZE`); the process refuses to start when an in-process
+  store meets a fleet larger than one
+  (`cmd/api-gateway/idempotency_validation.go`), and the chart refuses to render
+  such a pairing at all. There is no longer a comment stating a precondition that
+  nothing checks.
+- **The shipped default now declares one replica** (`autoscaling.maxReplicas: 1`).
+  The previous note here argued against exactly that — "do NOT cap maxReplicas to
+  1, it trades an edge case for a capacity regression". The argument was sound
+  while there was no alternative; there is one now, and it costs two lines
+  (`idempotency.store: postgres` + an address). An edge that promises exactly-once
+  and does not deliver it is worse than an edge with a lower ceiling, so the
+  default was chosen in favour of a promise that holds.
+- **Named honestly:** a rolling update briefly runs two pods even at one replica,
+  and in that window the in-process store does not give exactly-once. Only the
+  shared store closes it.
+- **Remaining infra step (not this change):** no umbrella profile provisions a
+  database for the edge, so raising the ceiling today means pointing
+  `idempotency.dsn` at a store the operator provisions. Adding a `pg-gateway`
+  instance to the umbrella is a deployment decision with its own blast radius
+  (per-profile blocks, posture assertions, connection arithmetic) and is tracked
+  separately.
 
-- *Idempotency:* two same-key double-submits that land on different pods each
-  become a leader → duplicate downstream mutation. This is bounded to genuine
-  concurrent double-submits of the **same** key racing across pods within the TTL
-  window; the common single-client-retry case still hits one pod (keep-alive /
-  L7 affinity) and dedups. The downstream resource services remain the real
-  exactly-once authority via their own DB-level invariants (FK / partial-UNIQUE /
-  atomic CAS, project-rule #10) — the gateway store is a latency/UX optimisation,
-  not the integrity boundary.
-- *DPoP replay:* a captured proof can be replayed at most once per replica that
-  has not yet seen its `jti`, bounded by the 60s `iat`-freshness window (cache
-  TTL = 2× that). Replay is capped at ~N (live replicas), not unbounded, and only
-  within one freshness window.
+Proof: `gateway/internal/idempotencypg/store_integration_test.go` builds **two or
+more independent replicas over one database** — separate store, separate pool,
+separate middleware — and asserts that a repeat landing on another replica
+replays the stored answer without calling downstream, and that concurrent
+same-key submissions across replicas execute downstream exactly once.
 
-**Path to full fix (when provisioned):** move both to a shared low-latency store
-(idempotency: `INSERT … ON CONFLICT DO NOTHING` keyed on
-`(principal,method,path,key)` with `RETURNING` to elect leader vs follower; DPoP:
-`SET NX` with TTL = freshness window), or pin same-key/same-`jti` requests to one
-pod via consistent-hash sticky routing.
+### 3b. DPoP `jti` replay — still per-pod (accepted residual, latent; #909)
+
+`DPoPReplayCache` (RFC 9449 §11.1 anti-replay) remains a per-pod
+`lrucache.AddIfAbsent`: correct within one process, not across the fleet. A
+captured proof can be presented at most once per replica that has not yet seen
+its `jti`, bounded by the `iat`-freshness window (cache TTL = 2× it).
+
+Two things make this different from 3a rather than simply "not done yet":
+
+- it is **latent**: no deployment profile mounts the DPoP validators
+  (`authn.enableDpop` is set by no profile), so today the cache is not on any
+  live request path. It becomes live the day DPoP is enabled;
+- the fix is **cheaper** than 3a's and shaped differently: `jti` needs
+  `INSERT … ON CONFLICT DO NOTHING` with a TTL, no lease, no takeover, no stored
+  response.
+
+Tracked as #909 so it lands with its own proof rather than riding along here.
+That issue carries the predicate for removing THIS section.
 
 Rubric reference: project-rule #10 (concurrency-domain enforcement); CWE-362 /
-CWE-294. Contract impact: none — internal in-process state only; no wire/API/DB
-change. The `deploy/values.yaml` autoscaling block documents this residual inline.
+CWE-294. Contract impact of 3a: the edge now answers `409 ABORTED` to a caller
+whose key is held by another in-flight request, and `503 UNAVAILABLE` when the
+shared store cannot be reached — both instead of silently executing the mutation
+a second time. Requests without `Idempotency-Key` are untouched.
 
 ## 4. `main()` is a long composition root (single wiring site, by design)
 

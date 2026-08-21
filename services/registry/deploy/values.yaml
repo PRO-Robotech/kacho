@@ -156,8 +156,23 @@ db:
   passwordSecretKey: password
   # sslmode for the DSN. dev → disable; prod (production-strict) → require|verify-ca|verify-full.
   sslmode: disable
-  # pgx pool cap (0 = pgx default max(4, NumCPU)).
-  maxConns: "0"
+  # maxConns — ширина пула pgx на ОДНУ реплику (KACHO_REGISTRY_DB_MAX_CONNS).
+  #
+  # ЗДЕСЬ СТОЯЛ НОЛЬ, и это не «ширина ноль», а «действует умолчание драйвера» —
+  # `max(4, число ядер УЗЛА)` (#709). Величину никто не выбирал, она меняется от
+  # смены узла без единой правки дерева, а произведение «пул × потолок подов»
+  # при ней не проверить ничем: ноль в сомножителе обращает его в ноль и
+  # проходит любую проверку.
+  #
+  # 20 — из арифметики: pg-registry объявляет `max_connections = 100` на боевых
+  # профилях (а на стенде разработки не объявляет вовсе, и тогда действует то же
+  # умолчание сборки образа — 100), минус 3 слота суперпользователя = 97
+  # отдаваемых; автомасштабирования у службы нет, потолок подов —
+  # `replicaCount` = 1, значит 20 × 1 = 20 ≤ 97.
+  #
+  # Своей глубины для registry НЕ ИЗМЕРЕНО. Произведение проверяет
+  # deploy/pool_fits_database_test.go.
+  maxConns: "20"
   # server-side statement_timeout backstop for pooled conns (libpq value). "0"/"" → off.
   statementTimeout: "30s"
 
