@@ -228,7 +228,7 @@ func TestValidateAuthMode(t *testing.T) {
 // plaintext-старт запрещён: оператор обязан ЯВНО подтвердить внешнюю TLS-терминацию
 // (KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY=true), иначе старт отклоняется.
 // В dev — no-op (как открытый HTTP у набора ключей и DB sslmode=disable).
-// Параллель requireSecureKeySetURL / requireTokenIssuersDeclared.
+// Параллель Config.TokenAcceptance.
 func TestRequireDataplaneTLSAck(t *testing.T) {
 	cases := []struct {
 		name          string

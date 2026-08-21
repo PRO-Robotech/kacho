@@ -698,7 +698,7 @@ func runStaleSweeper(ctx context.Context, sweeper staleSweeper, interval time.Du
 // ошибочно настроен на plaintext-passthrough, docker-login токены утекают в открытом
 // виде (harvest+replay, CWE-319). Оператор обязан ЯВНО подтвердить внешнюю TLS-
 // терминацию (KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY=true) — параллель
-// requireSecureKeySetURL/requireTokenIssuersDeclared. В dev — no-op (как http:// JWKS и DB
+// Config.TokenAcceptance. В dev — no-op (как http:// JWKS и DB
 // sslmode=disable). Вызывается только когда data-plane поднимается (DataplaneAddr!="").
 func requireDataplaneTLSAck(authMode string, tlsTerminatedExternally bool) error {
 	switch authMode {
@@ -723,7 +723,7 @@ func requireDataplaneTLSAck(authMode string, tlsTerminatedExternally bool) error
 // тегом и удаляет содержимое — минуя проверку подписи docker-Bearer'а, per-request
 // Check, сокрытие существования и запрет разрушительного DELETE. Один хоп в объезд
 // всей плоскости данных, поэтому молчаливый старт в такой посадке запрещён
-// (параллель requireDataplaneTLSAck / requireSecureKeySetURL / requireTokenIssuersDeclared).
+// (параллель requireDataplaneTLSAck / Config.TokenAcceptance).
 //
 // zotAddr пуст ⇒ хранилище не сконфигурировано, ходить некуда — гейт молчит.
 // В dev — no-op (in-process фикстуры поднимают zot без аутентификации).

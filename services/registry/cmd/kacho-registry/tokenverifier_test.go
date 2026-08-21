@@ -323,10 +323,15 @@ func TestF1_25_RevocationAuthorityIsRequiredWhenOurIssuerIsAccepted(t *testing.T
 	})
 }
 
-// TestRequireSecureKeySetURL — набор проверочных ключей есть единственный якорь
-// доверия проверки подписи; по открытому HTTP его документ подменяется на пути.
-// В dev открытый HTTP допустим — симметрично незашифрованному соединению к базе.
-func TestRequireSecureKeySetURL(t *testing.T) {
+// TestKeySetURLMustBeSecureInProduction — набор проверочных ключей есть
+// единственный якорь доверия проверки подписи; по открытому HTTP его документ
+// подменяется на пути. В dev открытый HTTP допустим — симметрично
+// незашифрованному соединению к базе.
+//
+// Проба идёт через сборку целиком, а не зовёт предикат по имени: предмет здесь
+// — МЕСТО, где объявление отвергается (старт), а не ответ отдельной функции.
+// Вызов по имени остался бы зелёным, даже если бы сборка перестала его звать.
+func TestKeySetURLMustBeSecureInProduction(t *testing.T) {
 	cases := []struct {
 		name      string
 		authMode  string
@@ -342,7 +347,11 @@ func TestRequireSecureKeySetURL(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := requireSecureKeySetURL(tc.authMode, probePlatformIssuer, tc.keySetURL)
+			cfg := prodConfig(t)
+			cfg.AuthMode = tc.authMode
+			cfg.TokenIssuers = probePlatformIssuer
+			cfg.TokenIssuerKeySets = probePlatformIssuer + "=" + tc.keySetURL
+			_, err := buildTokenVerifier(cfg)
 			if tc.wantErr {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), "KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS",
@@ -352,6 +361,42 @@ func TestRequireSecureKeySetURL(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+		})
+	}
+}
+
+// TestF1_41_IssuerSetIsCountedByElementsInEveryMode — перечень издателей обязан
+// содержать элементы В ЛЮБОМ режиме, и это ОДНО правило, а не два.
+//
+// Здесь стояли два предиката об одном поле: страж старта освобождал режим
+// разработки, читатель того же перечня — нет. Освобождение было недостижимым
+// (отказ приходил из читателя), но объявляло посадку, которой у кода нет:
+// «в разработке принимаем любого издателя». Правило, которое нельзя исполнить,
+// хуже отсутствующего; пустой перечень принимающих — прямо запрещённая посадка.
+//
+// Проба закрепляет РАЗРЕШЕНИЕ спора, а не вводит новое поведение: она зелена и
+// до сведения предикатов, и после. Красной её сделает возвращённое послабление.
+func TestF1_41_IssuerSetIsCountedByElementsInEveryMode(t *testing.T) {
+	for _, mode := range []string{"dev", "production", "production-strict"} {
+		t.Run(mode+"/вырожденный перечень отвергается", func(t *testing.T) {
+			cfg := prodConfig(t)
+			cfg.AuthMode = mode
+			cfg.TokenIssuers = ","
+			_, err := buildTokenVerifier(cfg)
+			require.Errorf(t, err, "режим %q не освобождает от требования непустого перечня: "+
+				"пустой перечень означает «принимаем любого издателя»", mode)
+			require.Contains(t, err.Error(), "KACHO_REGISTRY_TOKEN_ISSUERS")
+			require.Contains(t, err.Error(), "1 characters and 0 elements",
+				"диагностика обязана называть ОБЕ величины — длину и число элементов: "+
+					"именно их расхождение и есть предмет")
+		})
+
+		t.Run(mode+"/положительный контроль: законный перечень поднимается", func(t *testing.T) {
+			cfg := prodConfig(t)
+			cfg.AuthMode = mode
+			_, err := buildTokenVerifier(cfg)
+			require.NoErrorf(t, err, "режим %q обязан поднимать законное объявление — "+
+				"иначе отрицание выше зеленело бы на страже, отвергающем всё", mode)
 		})
 	}
 }

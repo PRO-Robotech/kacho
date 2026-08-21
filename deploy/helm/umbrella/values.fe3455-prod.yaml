@@ -288,7 +288,8 @@ kacho-iam:
     #      • #321 SA-key registry-audience union — the audience bug this cutover fixes;
     #      • #319 token name/labels;
     #      • #322/#323 cluster-internal Hydra-JWKS proxy listener (:9097) — REQUIRED so
-    #        registry.iam.jwksUrl below is coherent (iam must SERVE :9097 before/with the
+    #        registry.tokenAcceptance.issuerKeySets below is coherent (iam must SERVE :9097
+    #        before/with the
     #        registry JWKS-flip, else every token-verify 401s);
     #      • #325 RG-1 anon-token + registry RPC catalog entries (418-catalog — must land
     #        together with api-gateway c7dce40d + registry af0eacae);
@@ -562,8 +563,8 @@ registry:
   #
   # ⚠ IAM-FIRST DEPLOY SEQUENCING (fail-closed — do NOT flip prematurely):
   #   the kacho-iam :9097 JWKS endpoint MUST be live and smoke-verified serving
-  #   (GET /.well-known/jwks.json → 200 with Hydra kids) BEFORE this registry.iam.jwksUrl
-  #   flip reaches a rolling registry pod. A premature flip (iam endpoint not yet
+  #   (GET /.well-known/jwks.json → 200 with Hydra kids) BEFORE this key-set flip
+  #   (registry.tokenAcceptance.issuerKeySets) reaches a rolling registry pod. A premature flip (iam endpoint not yet
   #   serving) fails every signature verify CLOSED → HTTP 401 on ALL prod docker pulls.
   #   Runbook: roll kacho-iam first (this chart adds the :9097 listener), curl the
   #   in-cluster endpoint, THEN let the registry pod pick up this URL.

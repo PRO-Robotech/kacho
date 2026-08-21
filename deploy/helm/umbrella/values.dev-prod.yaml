@@ -124,7 +124,8 @@ api-gateway:
   # as the admin hop right below.
   #
   # This also settles a contradiction that lived in THIS FILE: registry has been fetching
-  # from the same :9097 over https all along (see registry.iam.jwksUrl), while the edge
+  # from the same :9097 over https all along (see registry.tokenAcceptance.issuerKeySets),
+  # while the edge
   # was told plaintext was fine and the canonical profile went around the facade to the
   # provider instead. One port cannot be two transports.
   hydra:

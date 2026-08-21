@@ -190,7 +190,8 @@ api-gateway:
     # verifies every bearer's SIGNATURE with. Substituting it substitutes the access
     # decision, and the edge then believes its own answer. Plaintext, or TLS whose
     # certificate nobody checks, both leave that open. registry already fetches from
-    # this same :9097 over https (see registry.iam.jwksUrl below) — one port, one
+    # this same :9097 over https (see registry.tokenAcceptance.issuerKeySets below) — one
+    # port, one
     # transport.
     jwksUrl: "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
     # Anchor for the hop above: the internal-CA bundle that signs iam's serving cert.

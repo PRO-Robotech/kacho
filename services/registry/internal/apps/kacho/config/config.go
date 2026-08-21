@@ -336,7 +336,7 @@ type Config struct {
 	// (ingress/mesh). В production/production-strict обязателен true — иначе
 	// buildDataplaneHandler (requireDataplaneTLSAck) отклоняет старт: bearer
 	// identity-JWT (реплеябельные в пределах TTL) не должны транзитить открытым текстом
-	// (CWE-319). Параллель requireSecureKeySetURL/requireTokenIssuersDeclared. В dev игнорируется.
+	// (CWE-319). Параллель Config.TokenAcceptance. В dev игнорируется.
 	DataplaneTLSTerminatedExternally bool `envconfig:"KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY" default:"false"`
 
 	// AnonymousSubjectID — the anonymous principal id (the iam-issued anon Hydra client
