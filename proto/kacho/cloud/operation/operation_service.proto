@@ -18,6 +18,7 @@ service OperationService {
   rpc Get (GetOperationRequest) returns (Operation) {
     option (google.api.http) = { get: "/operations/{operation_id}" };
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "HANDLER_DECIDES";
   }
 
   // Cancels the specified operation.
@@ -26,6 +27,7 @@ service OperationService {
   rpc Cancel (CancelOperationRequest) returns (Operation) {
     option (google.api.http) = { post: "/operations/{operation_id}:cancel" body: "*" };
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "HANDLER_DECIDES";
   }
 }
 

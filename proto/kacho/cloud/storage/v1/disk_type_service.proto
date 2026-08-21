@@ -16,30 +16,58 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v
 // A set of methods to retrieve information about disk types (public :9090; REST
 // /storage/v1/diskTypes).
 //
-// Read is project-scope EXEMPT (`<exempt>`), parity with the geo catalog and
-// with the machine-type catalog: disk types are admin-curated and global, and
-// EVERY authenticated tenant must read them to pick a type before creating a
-// volume. authN stays mandatory; only the project-scope Check is dropped, and
-// only for reads. Admin verbs (Create/Update/Delete/SetLifecycle) remain
-// `system_admin` on the cluster.
+// Read стоит на отношении `viewer` кластерного синглтона, которое производит
+// СИСТЕМНАЯ ВЫДАЧА с подстановочным субъектом: каталог администрируется
+// платформой, одинаков для всех и обязан читаться ВСЯКИМ аутентифицированным
+// арендатором, иначе он не выберет ни размер, ни тип. authN остаётся
+// обязательным. Админские глаголы каталога — `system_admin` на кластере.
 //
-// This previously declared `required_relation: "viewer"` on the cluster object —
-// a relation no seed produces — so both read RPCs answered 403 to everyone and
-// no volume could be created. Held by the tree gate
-// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces.
+// ДВЕ ПРЕЖНИЕ РЕДАКЦИИ, И ОБЕ ВЕРНЫ НАПОЛОВИНУ. Первая объявляла то же отношение,
+// которого НЕ ПРОИЗВОДИЛ никто, — оба чтения отвечали отказом каждому, и создать
+// было нельзя ничего. Вторая (#892) снимала проверку полосой `<exempt>` — отказ
+// уходил, но вместе с ним и видимость: доступ, выданный освобождением, не
+// показывается перечислением выдач и закрывается только выкаткой. Производитель
+// заведён (#893/#895), поэтому оба свойства верны сразу. Держат два гейта дерева:
+// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces (у отношения есть
+// производитель) и TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues
+// (такое отношение позволено только глобальному справочнику, названному поимённо).
 service DiskTypeService {
   // Returns the information about the specified disk type.
   //
   // To get the list of available disk types, make a [List] request.
   rpc Get(GetDiskTypeRequest) returns (DiskType) {
     option (google.api.http) = {get: "/storage/v1/diskTypes/{disk_type_id}"};
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    // Ambient placement-catalog read. Стоит на отношении `viewer` кластерного
+    // синглтона, которое производит СИСТЕМНАЯ ВЫДАЧА с подстановочным субъектом:
+    // справочник обязан читать всякий аутентифицированный арендатор, и подстановка
+    // выполняет отношение за него, поэтому арендатор с нулём собственных выдач не
+    // получает отказа.
+    //
+    // Здесь недолго стояла полоса `<exempt>` (#892): отношение тогда не производил
+    // НИКТО, и проверка отвечала отказом каждому. Освобождение это чинило, но
+    // делало доступ невидимым — он не показывался перечислением выдач и
+    // закрывался только выкаткой. Теперь верны оба свойства сразу (#893/#895).
+    option (kacho.iam.authz.v1.permission) = "storage.disk_types.get";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of disk types.
   rpc List(ListDiskTypesRequest) returns (ListDiskTypesResponse) {
     option (google.api.http) = {get: "/storage/v1/diskTypes"};
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    // Ambient placement-catalog read — то же отношение и тот же производитель,
+    // что у соседнего чтения этого сервиса (#893/#895).
+    option (kacho.iam.authz.v1.permission) = "storage.disk_types.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

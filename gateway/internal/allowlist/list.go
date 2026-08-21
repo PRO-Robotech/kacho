@@ -345,9 +345,11 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.iam.v1.AccessBindingService/ExpandAccess":          {}, // public sync read (REST GET /iam/v1/accessBindings:expandAccess)
 	// iam.v1 — PermissionCatalogService
 	// Public, sync read (REST GET /iam/v1/permissionCatalog): authenticated-floor
-	// read (<exempt> в каталоге — no FGA Check), чтобы UI собирал role/permission
-	// palette без Internal* RPC. MUST be reachable on the external listener (else
-	// 404/NotFound при gRPC-маршрутизации).
+	// read — отношение `viewer` на кластере, выданное системной выдачей субъекту
+	// «любой аутентифицированный» (#893/#895), чтобы UI собирал role/permission
+	// palette без Internal* RPC. Прежде здесь стояла полоса `<exempt>`: пол был тот
+	// же, но доступ не показывался перечислением выдач и не отзывался. MUST be
+	// reachable on the external listener (else 404/NotFound при gRPC-маршрутизации).
 	"/kacho.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog": {},
 	// iam.v1 — InternalIAMService / InternalUserService.* — НЕ в allowlist
 	// (HasInternalSuffix блокирует автоматически; запрет #6). Речь ровно про

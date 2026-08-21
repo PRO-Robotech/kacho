@@ -20,21 +20,37 @@ service RegionService {
   // Returns the information about the specified region.
   rpc Get (GetRegionRequest) returns (Region) {
     option (google.api.http) = { get: "/geo/v1/regions/{region_id}" };
-    // Ambient placement-catalog read: project-scope EXEMPT (authN-only). Region/
-    // Zone is an admin-curated global catalog every authenticated tenant must
-    // read to launch any placeable resource (zoneId/regionId originate here), so
-    // the gateway waives the per-RPC FGA Check (<exempt>) — a project-scope Check
-    // would 403 a zero-binding tenant. authN (JWT) stays mandatory. Documented
-    // exception, see security.md (geo public-read EXEMPT), mirrors iam JWKS-route.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    // Ambient placement-catalog read. Стоит на отношении `viewer` кластерного
+    // синглтона, которое производит СИСТЕМНАЯ ВЫДАЧА с подстановочным субъектом:
+    // справочник обязан читать всякий аутентифицированный арендатор, и подстановка
+    // выполняет отношение за него, поэтому арендатор с нулём собственных выдач не
+    // получает отказа.
+    //
+    // Здесь недолго стояла полоса `<exempt>` (#892): отношение тогда не производил
+    // НИКТО, и проверка отвечала отказом каждому. Освобождение это чинило, но
+    // делало доступ невидимым — он не показывался перечислением выдач и
+    // закрывался только выкаткой. Теперь верны оба свойства сразу (#893/#895).
+    option (kacho.iam.authz.v1.permission) = "geo.regions.get";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of regions.
   rpc List (ListRegionsRequest) returns (ListRegionsResponse) {
     option (google.api.http) = { get: "/geo/v1/regions" };
-    // Ambient placement-catalog read — project-scope EXEMPT (authN-only); see
-    // RegionService.Get. authN (JWT) stays; per-RPC FGA Check waived (<exempt>).
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    // Ambient placement-catalog read — то же отношение и тот же производитель,
+    // что у соседнего чтения этого сервиса (#893/#895).
+    option (kacho.iam.authz.v1.permission) = "geo.regions.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

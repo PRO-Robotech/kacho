@@ -43,6 +43,7 @@ service ProjectService {
   rpc List (ListProjectsRequest) returns (ListProjectsResponse) {
     option (google.api.http) = { get: "/iam/v1/projects" };
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "SERVICE_SIDE_AUTHZ";
   }
 
   // Creates a project within the specified account.

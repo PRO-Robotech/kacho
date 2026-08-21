@@ -72,6 +72,7 @@ service IdentityQuotaService {
     // authN is NOT waived: the edge's exempt branch still requires a valid
     // principal, and an anonymous call has no identity to answer about.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "SELF_SERVICE";
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }

@@ -3,8 +3,9 @@
 
 """Case-set: kacho-geo public ZoneService (Get/List) через api-gateway.
 
-Публичная read-only поверхность каталога зон: sync, ambient-read (project-scope
-EXEMPT — любой аутентифицированный принципал читает каталог, GEO-1-20). GEO-1
+Публичная read-only поверхность каталога зон: sync, ambient-read — отношение
+`viewer` на кластере, выданное системной выдачей субъекту «любой
+аутентифицированный», поэтому персонального гранта не нужно (GEO-1-20). GEO-1
 landed-контракт: Zone — плоский flat-resource {id, regionId, name, createdAt,
 openForPlacement°, placementBlockedReason°}. Сырой admin-флаг `status` вынесен в
 two-projection (InternalZone :9091, НЕ на public); единственный публичный

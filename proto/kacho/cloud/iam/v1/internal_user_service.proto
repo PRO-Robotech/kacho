@@ -41,11 +41,13 @@ service InternalUserService {
       response: "User"
     };
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
   // Internal Get без auth (для api-gateway interceptor'а; не выставляется на public mux).
   rpc Get (GetUserRequest) returns (User) {
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
   // hook called by Ory Kratos after a successful
@@ -65,6 +67,7 @@ service InternalUserService {
     // authorized caller via secret-token (configured in Kratos webhooks
     // config). No per-RPC authz check.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 }
 

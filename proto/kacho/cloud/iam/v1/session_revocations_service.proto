@@ -48,6 +48,7 @@ service InternalSessionRevocationsService {
     // kacho-iam internal logout handler, ForceLogout admin RPC,
     // back-channel logout, CAEP receiver — all server-side.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
   // IsRevoked — sync hot-path lookup for api-gateway: `SELECT 1 FROM
@@ -58,6 +59,7 @@ service InternalSessionRevocationsService {
     // before authz can possibly run — chicken-and-egg means this MUST
     // bypass per-RPC authz.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
   // ListByUser — admin / audit endpoint: enumerate active revocations for a

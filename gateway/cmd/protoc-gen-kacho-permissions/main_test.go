@@ -36,6 +36,16 @@ func buildOpts(t *testing.T, permission, relation, acrMin, scopeObj, scopeField 
 	return opts
 }
 
+// withExemptReason — освобождённая строка обязана назвать ПРИЧИНУ (#893/#895):
+// сам литерал `<exempt>` стоит за четырьмя несопоставимыми полосами, и различить
+// их можно было только прочитав реализацию каждого RPC. Помощник ставит причину
+// отдельным шагом, чтобы её ОТСУТСТВИЕ задавалось в пробе явно, а не молчанием
+// общего конструктора.
+func withExemptReason(opts *descriptorpb.MethodOptions, reason string) *descriptorpb.MethodOptions {
+	proto.SetExtension(opts, authzv1.E_ExemptReason, reason)
+	return opts
+}
+
 func TestExtractEntry_FullyAnnotated(t *testing.T) {
 	opts := buildOpts(t,
 		"vpc.networks.create",
@@ -150,8 +160,9 @@ func TestExtractEntry_MissingScopeFields(t *testing.T) {
 }
 
 func TestExtractEntry_ExemptSentinel(t *testing.T) {
-	// Exempt RPC — only `permission` is required, others may be empty.
-	opts := buildOpts(t, ExemptSentinel, "", "", "", "")
+	// Exempt RPC — требуются ДВА поля: `permission` и причина освобождения;
+	// остальные могут быть пусты.
+	opts := withExemptReason(buildOpts(t, ExemptSentinel, "", "", "", ""), "HANDLER_DECIDES")
 	entry, warn := extractEntry("op.OperationService/Get", opts)
 	if warn != "" {
 		t.Fatalf("exempt RPC should not warn, got: %s", warn)
@@ -159,6 +170,45 @@ func TestExtractEntry_ExemptSentinel(t *testing.T) {
 	if entry.Permission != ExemptSentinel {
 		t.Errorf("expected exempt permission, got %q", entry.Permission)
 	}
+	if entry.ExemptReason != "HANDLER_DECIDES" {
+		t.Errorf("причина освобождения обязана доезжать до строки каталога, получено %q", entry.ExemptReason)
+	}
+}
+
+// TestExtractEntry_ExemptReasonIsRequiredAndOnlyThere — обе стороны требования
+// причины. Односторонняя проба зеленела бы на генераторе, который причину просто
+// игнорирует.
+func TestExtractEntry_ExemptReasonIsRequiredAndOnlyThere(t *testing.T) {
+	t.Run("освобождение без причины — предупреждение", func(t *testing.T) {
+		opts := buildOpts(t, ExemptSentinel, "", "", "", "")
+		_, warn := extractEntry("op.OperationService/Get", opts)
+		if warn == "" {
+			t.Fatalf("освобождение без причины обязано быть предупреждением: строка означала бы " +
+				"четыре несопоставимые полосы сразу")
+		}
+	})
+	t.Run("законный близнец: освобождение с причиной — молчание", func(t *testing.T) {
+		opts := withExemptReason(buildOpts(t, ExemptSentinel, "", "", "", ""), "SELF_SERVICE")
+		if _, warn := extractEntry("op.OperationService/Get", opts); warn != "" {
+			t.Fatalf("законный близнец обязан молчать, получено: %s", warn)
+		}
+	})
+	t.Run("причина у НЕосвобождённой записи — предупреждение", func(t *testing.T) {
+		opts := withExemptReason(
+			buildOpts(t, "vpc.networks.create", "editor", "2", "project", "project_id"),
+			"SELF_SERVICE")
+		_, warn := extractEntry("kacho.cloud.vpc.v1.NetworkService/Create", opts)
+		if warn == "" {
+			t.Fatalf("причина освобождения у записи с проверкой — утверждение о полосе, которой " +
+				"у неё нет")
+		}
+	})
+	t.Run("законный близнец: обычная запись без причины — молчание", func(t *testing.T) {
+		opts := buildOpts(t, "vpc.networks.create", "editor", "2", "project", "project_id")
+		if _, warn := extractEntry("kacho.cloud.vpc.v1.NetworkService/Create", opts); warn != "" {
+			t.Fatalf("законный близнец обязан молчать, получено: %s", warn)
+		}
+	})
 }
 
 // TestExtractEntry_ExemptUnannotated_NoAcrDefault — SEC-ACR-15 / R3/B-1: the
@@ -170,7 +220,7 @@ func TestExtractEntry_ExemptSentinel(t *testing.T) {
 // scope-Check is skipped for <exempt>) — so it relies on authN + in-handler
 // ReBAC + deliberate FGA-exempt posture, and adding one is high-scrutiny.
 func TestExtractEntry_ExemptUnannotated_NoAcrDefault(t *testing.T) {
-	opts := buildOpts(t, ExemptSentinel, "", "", "", "")
+	opts := withExemptReason(buildOpts(t, ExemptSentinel, "", "", "", ""), "HANDLER_DECIDES")
 	entry, _ := extractEntry("kacho.cloud.iam.v1.AccessBindingService/Create", opts)
 	if entry.RequiredAcrMin != "" {
 		t.Errorf("exempt un-annotated RPC must keep EMPTY acr (no default injection), got %q", entry.RequiredAcrMin)
@@ -179,7 +229,7 @@ func TestExtractEntry_ExemptUnannotated_NoAcrDefault(t *testing.T) {
 	// Contrast: an EXPLICIT acr on an exempt RPC is preserved (orthogonal fields —
 	// this is exactly the AccessBindingService/Create net-strengthening: exempt +
 	// acr="2").
-	optsExplicit := buildOpts(t, ExemptSentinel, "", "2", "", "")
+	optsExplicit := withExemptReason(buildOpts(t, ExemptSentinel, "", "2", "", ""), "HANDLER_DECIDES")
 	entry2, warn := extractEntry("kacho.cloud.iam.v1.AccessBindingService/Create", optsExplicit)
 	if warn != "" {
 		t.Fatalf("exempt RPC with explicit acr should not warn, got: %s", warn)

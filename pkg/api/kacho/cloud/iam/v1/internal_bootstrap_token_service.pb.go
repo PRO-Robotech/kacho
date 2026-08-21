@@ -230,9 +230,9 @@ const file_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto_rawDesc = "
 	"\n" +
 	"expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12!\n" +
 	"\fprincipal_id\x18\x05 \x01(\tR\vprincipalId\x127\n" +
-	"\tissued_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt2\xa3\x01\n" +
-	"\x1dInternalBootstrapTokenService\x12\x81\x01\n" +
-	"\x12MintBootstrapToken\x12-.kacho.cloud.iam.v1.MintBootstrapTokenRequest\x1a..kacho.cloud.iam.v1.MintBootstrapTokenResponse\"\f\x8a\xb5\x18\b<exempt>B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\tissued_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt2\xb8\x01\n" +
+	"\x1dInternalBootstrapTokenService\x12\x96\x01\n" +
+	"\x12MintBootstrapToken\x12-.kacho.cloud.iam.v1.MintBootstrapTokenRequest\x1a..kacho.cloud.iam.v1.MintBootstrapTokenResponse\"!\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENERB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto_rawDescOnce sync.Once

@@ -47,6 +47,7 @@ service UserService {
     // middleware exempts this RPC. Anonymous is still rejected by the IAM
     // anti-anonymous interceptor.
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "SERVICE_SIDE_AUTHZ";
   }
 
   // Invite a user by email. Если user уже invited в этот Account

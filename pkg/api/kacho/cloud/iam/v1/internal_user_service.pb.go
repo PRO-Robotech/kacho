@@ -288,12 +288,12 @@ const file_kacho_cloud_iam_v1_internal_user_service_proto_rawDesc = "" +
 	"\x05email\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=320R\x05email\"j\n" +
 	"\x1bOnRecoveryCompletedMetadata\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x122\n" +
-	"\x15revoked_session_count\x18\x02 \x01(\x05R\x13revokedSessionCount2\xd7\x03\n" +
-	"\x13InternalUserService\x12\xcd\x01\n" +
-	"\x12UpsertFromIdentity\x12-.kacho.cloud.iam.v1.UpsertFromIdentityRequest\x1a .kacho.cloud.operation.Operation\"f\x8a\xb5\x18\b<exempt>\xb2\xd2*\"\n" +
-	"\x1aUpsertFromIdentityMetadata\x12\x04User\x82\xd3\xe4\x93\x02.:\x01*\")/iam/v1/internal/users:upsertFromIdentity\x12Q\n" +
-	"\x03Get\x12\".kacho.cloud.iam.v1.GetUserRequest\x1a\x18.kacho.cloud.iam.v1.User\"\f\x8a\xb5\x18\b<exempt>\x12\x9c\x01\n" +
-	"\x13OnRecoveryCompleted\x12..kacho.cloud.iam.v1.OnRecoveryCompletedRequest\x1a .kacho.cloud.operation.Operation\"3\x8a\xb5\x18\b<exempt>\xb2\xd2*#\n" +
+	"\x15revoked_session_count\x18\x02 \x01(\x05R\x13revokedSessionCount2\x96\x04\n" +
+	"\x13InternalUserService\x12\xe2\x01\n" +
+	"\x12UpsertFromIdentity\x12-.kacho.cloud.iam.v1.UpsertFromIdentityRequest\x1a .kacho.cloud.operation.Operation\"{\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\xb2\xd2*\"\n" +
+	"\x1aUpsertFromIdentityMetadata\x12\x04User\x82\xd3\xe4\x93\x02.:\x01*\")/iam/v1/internal/users:upsertFromIdentity\x12f\n" +
+	"\x03Get\x12\".kacho.cloud.iam.v1.GetUserRequest\x1a\x18.kacho.cloud.iam.v1.User\"!\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\x12\xb1\x01\n" +
+	"\x13OnRecoveryCompleted\x12..kacho.cloud.iam.v1.OnRecoveryCompletedRequest\x1a .kacho.cloud.operation.Operation\"H\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\xb2\xd2*#\n" +
 	"\x1bOnRecoveryCompletedMetadata\x12\x04UserB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
