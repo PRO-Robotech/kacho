@@ -378,7 +378,12 @@ kacho-geo:
   image: kacho-geo:dev
   imagePullPolicy: IfNotPresent
   env:
-    KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
+    # Круг отправителей чужой личности — по ФАКТИЧЕСКИМ отправителям: справочник
+    # размещения читают на пути запроса vpc, compute, nlb, storage и registry, и
+    # каждый форвардит личность инициатора. Отправитель вне круга получает не
+    # «свой сертификат», а СНЯТУЮ личность → geo видит вызов без принципала.
+    # Обоснование состава и ловушка с пространством имён storage — values.prod.yaml.
+    KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute,spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb,spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage,spiffe://kacho.cloud/ns/kacho/sa/kacho-registry"
   mtls:
     enable: true
     edges:

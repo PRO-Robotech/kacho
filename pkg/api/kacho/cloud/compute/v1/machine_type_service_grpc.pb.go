@@ -34,18 +34,21 @@ const (
 // Admin CRUD over the catalog — see InternalMachineTypeService in
 // internal_machine_type_service.proto (:9091, system_admin).
 //
-// Read is project-scope EXEMPT (`<exempt>`), parity with the geo catalog: the
-// machine-type catalog is admin-curated and global, and EVERY authenticated
-// tenant must read it to choose a size before launching anything. authN stays
-// mandatory — the gateway's `<exempt>` branch still requires a valid principal.
-// Only the project-scope Check is dropped, and only for reads.
+// Read стоит на отношении `viewer` кластерного синглтона, которое производит
+// СИСТЕМНАЯ ВЫДАЧА с подстановочным субъектом: каталог администрируется
+// платформой, одинаков для всех и обязан читаться ВСЯКИМ аутентифицированным
+// арендатором, иначе он не выберет ни размер, ни тип. authN остаётся
+// обязательным. Админские глаголы каталога — `system_admin` на кластере.
 //
-// This previously declared `required_relation: "viewer"` on the cluster object.
-// No seed ever produced that relation on the cluster (only `system_admin`,
-// `system_viewer`, `quota_reader` exist there), so BOTH read RPCs answered 403
-// to everyone, tenant and administrator alike — the catalog was unreachable and
-// therefore no instance could be created. Held by the tree gate
-// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces.
+// ДВЕ ПРЕЖНИЕ РЕДАКЦИИ, И ОБЕ ВЕРНЫ НАПОЛОВИНУ. Первая объявляла то же отношение,
+// которого НЕ ПРОИЗВОДИЛ никто, — оба чтения отвечали отказом каждому, и создать
+// было нельзя ничего. Вторая (#892) снимала проверку полосой `<exempt>` — отказ
+// уходил, но вместе с ним и видимость: доступ, выданный освобождением, не
+// показывается перечислением выдач и закрывается только выкаткой. Производитель
+// заведён (#893/#895), поэтому оба свойства верны сразу. Держат два гейта дерева:
+// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces (у отношения есть
+// производитель) и TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues
+// (такое отношение позволено только глобальному справочнику, названному поимённо).
 type MachineTypeServiceClient interface {
 	// Returns information about the specified machine type. To get the list, use List.
 	Get(ctx context.Context, in *GetMachineTypeRequest, opts ...grpc.CallOption) (*MachineType, error)
@@ -89,18 +92,21 @@ func (c *machineTypeServiceClient) List(ctx context.Context, in *ListMachineType
 // Admin CRUD over the catalog — see InternalMachineTypeService in
 // internal_machine_type_service.proto (:9091, system_admin).
 //
-// Read is project-scope EXEMPT (`<exempt>`), parity with the geo catalog: the
-// machine-type catalog is admin-curated and global, and EVERY authenticated
-// tenant must read it to choose a size before launching anything. authN stays
-// mandatory — the gateway's `<exempt>` branch still requires a valid principal.
-// Only the project-scope Check is dropped, and only for reads.
+// Read стоит на отношении `viewer` кластерного синглтона, которое производит
+// СИСТЕМНАЯ ВЫДАЧА с подстановочным субъектом: каталог администрируется
+// платформой, одинаков для всех и обязан читаться ВСЯКИМ аутентифицированным
+// арендатором, иначе он не выберет ни размер, ни тип. authN остаётся
+// обязательным. Админские глаголы каталога — `system_admin` на кластере.
 //
-// This previously declared `required_relation: "viewer"` on the cluster object.
-// No seed ever produced that relation on the cluster (only `system_admin`,
-// `system_viewer`, `quota_reader` exist there), so BOTH read RPCs answered 403
-// to everyone, tenant and administrator alike — the catalog was unreachable and
-// therefore no instance could be created. Held by the tree gate
-// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces.
+// ДВЕ ПРЕЖНИЕ РЕДАКЦИИ, И ОБЕ ВЕРНЫ НАПОЛОВИНУ. Первая объявляла то же отношение,
+// которого НЕ ПРОИЗВОДИЛ никто, — оба чтения отвечали отказом каждому, и создать
+// было нельзя ничего. Вторая (#892) снимала проверку полосой `<exempt>` — отказ
+// уходил, но вместе с ним и видимость: доступ, выданный освобождением, не
+// показывается перечислением выдач и закрывается только выкаткой. Производитель
+// заведён (#893/#895), поэтому оба свойства верны сразу. Держат два гейта дерева:
+// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces (у отношения есть
+// производитель) и TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues
+// (такое отношение позволено только глобальному справочнику, названному поимённо).
 type MachineTypeServiceServer interface {
 	// Returns information about the specified machine type. To get the list, use List.
 	Get(context.Context, *GetMachineTypeRequest) (*MachineType, error)

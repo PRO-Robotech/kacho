@@ -666,11 +666,11 @@ const file_kacho_cloud_iam_v1_service_account_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xfc\x10\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x92\x11\n" +
 	"\x15ServiceAccountService\x12\xe5\x01\n" +
 	"\x03Get\x12,.kacho.cloud.iam.v1.GetServiceAccountRequest\x1a\".kacho.cloud.iam.v1.ServiceAccount\"\x8b\x01\x8a\xb5\x18\x18iam.service_accounts.get\x92\xb5\x18\x05v_get\x9a\xb5\x18)\n" +
-	"\x13iam_service_account\x12\x12service_account_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02.\x12,/iam/v1/serviceAccounts/{service_account_id}\x12\x94\x01\n" +
-	"\x04List\x12..kacho.cloud.iam.v1.ListServiceAccountsRequest\x1a/.kacho.cloud.iam.v1.ListServiceAccountsResponse\"+\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x19\x12\x17/iam/v1/serviceAccounts\x12\xf9\x01\n" +
+	"\x13iam_service_account\x12\x12service_account_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02.\x12,/iam/v1/serviceAccounts/{service_account_id}\x12\xaa\x01\n" +
+	"\x04List\x12..kacho.cloud.iam.v1.ListServiceAccountsRequest\x1a/.kacho.cloud.iam.v1.ListServiceAccountsResponse\"A\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x12SERVICE_SIDE_AUTHZ\x82\xd3\xe4\x93\x02\x19\x12\x17/iam/v1/serviceAccounts\x12\xf9\x01\n" +
 	"\x06Create\x12/.kacho.cloud.iam.v1.CreateServiceAccountRequest\x1a .kacho.cloud.operation.Operation\"\x9b\x01\x8a\xb5\x18\x1biam.service_accounts.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aaccount\x12\n" +
 	"account_id\xa2\xb5\x18\x011\xb2\xd2*.\n" +

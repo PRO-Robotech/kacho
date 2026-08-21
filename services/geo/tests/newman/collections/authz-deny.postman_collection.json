@@ -149,7 +149,7 @@
       ]
     },
     {
-      "name": "GEO-REG-GT-AUTHZ-AMBIENT-OK — GET /geo/v1/regions as authenticated jwtNoBindings (zero-binding) → 200 (ambient read; project-scope EXEMPT, GEO-1-20)",
+      "name": "GEO-REG-GT-AUTHZ-AMBIENT-OK — GET /geo/v1/regions as authenticated jwtNoBindings (zero-binding) → 200 (ambient read; отношение выдано системной выдачей подстановочному субъекту, GEO-1-20)",
       "description": "class:AUTHZ | class:CONF | priority:P1",
       "item": [
         {
@@ -360,7 +360,7 @@
       ]
     },
     {
-      "name": "GEO-REG-GET-AUTHZ-ANON-DENY — GET /geo/v1/regions/{id} as anonymous (no Bearer) → 401 UNAUTHENTICATED — project-scope EXEMPT removes authZ, never authN; Get carries its own <exempt> annotation, so List coverage does not speak for it",
+      "name": "GEO-REG-GET-AUTHZ-ANON-DENY — GET /geo/v1/regions/{id} as anonymous (no Bearer) → 401 UNAUTHENTICATED — подстановочный субъект системной выдачи расширяет отношение на аутентифицированных, а не на всех; Get несёт свою запись каталога, поэтому покрытие List за него не отвечает",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {

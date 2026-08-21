@@ -995,15 +995,15 @@ const file_kacho_cloud_iam_v1_authorize_service_proto_rawDesc = "" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12!\n" +
 	"\faccount_name\x18\x02 \x01(\tR\vaccountName\x12\x14\n" +
-	"\x05roles\x18\x03 \x03(\tR\x05roles2\xf5\x06\n" +
+	"\x05roles\x18\x03 \x03(\tR\x05roles2\x85\a\n" +
 	"\x10AuthorizeService\x12\xa2\x01\n" +
 	"\x05Check\x12).kacho.cloud.iam.v1.AuthorizeCheckRequest\x1a*.kacho.cloud.iam.v1.AuthorizeCheckResponse\"B\x8a\xb5\x18\x13iam.authorize.check\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/iam/v1/authorize:check\x12\xd8\x01\n" +
 	"\n" +
 	"BatchCheck\x12..kacho.cloud.iam.v1.BatchAuthorizeCheckRequest\x1a/.kacho.cloud.iam.v1.BatchAuthorizeCheckResponse\"i\x8a\xb5\x18\x18iam.authorize.batchCheck\x92\xb5\x18\x06viewer\x9a\xb5\x18\x13\n" +
 	"\aproject\x12\bscope_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/iam/v1/authorize:batchCheck\x12\xb3\x01\n" +
 	"\fListSubjects\x12'.kacho.cloud.iam.v1.ListSubjectsRequest\x1a(.kacho.cloud.iam.v1.ListSubjectsResponse\"P\x8a\xb5\x18\x1aiam.authorize.listSubjects\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/iam/v1/authorize:listSubjects\x12\xb9\x01\n" +
-	"\x0fExpandRelations\x12*.kacho.cloud.iam.v1.ExpandRelationsRequest\x1a+.kacho.cloud.iam.v1.ExpandRelationsResponse\"M\x8a\xb5\x18\x14iam.authorize.expand\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02&:\x01*\"!/iam/v1/authorize:expandRelations\x12o\n" +
-	"\x06WhoAmI\x12!.kacho.cloud.iam.v1.WhoAmIRequest\x1a\".kacho.cloud.iam.v1.WhoAmIResponse\"\x1e\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\f\x12\n" +
+	"\x0fExpandRelations\x12*.kacho.cloud.iam.v1.ExpandRelationsRequest\x1a+.kacho.cloud.iam.v1.ExpandRelationsResponse\"M\x8a\xb5\x18\x14iam.authorize.expand\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02&:\x01*\"!/iam/v1/authorize:expandRelations\x12\x7f\n" +
+	"\x06WhoAmI\x12!.kacho.cloud.iam.v1.WhoAmIRequest\x1a\".kacho.cloud.iam.v1.WhoAmIResponse\".\x8a\xb5\x18\b<exempt>\xba\xb5\x18\fSELF_SERVICE\x82\xd3\xe4\x93\x02\f\x12\n" +
 	"/iam/v1/meB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (

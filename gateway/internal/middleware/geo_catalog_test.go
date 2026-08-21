@@ -12,16 +12,21 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// TestPermissionCatalog_Geo_S5_PublicReadExempt (GEO-1 F6, GEO-1-20/21) — the geo
-// public read RPCs (RegionService / ZoneService Get+List) are project-scope EXEMPT:
-// authN-only. Region/Zone is an admin-curated global placement catalog every
-// authenticated tenant must read to launch any placeable resource, so the gateway
-// waives the per-RPC FGA Check (`<exempt>`) — a project-scope Check would 403 a
-// zero-binding tenant (GEO-1-20). authN (JWT) still applies (GEO-1-21). This is the
-// documented exception recorded in security.md (mirrors the iam JWKS-route note).
-// Regressing any of the four back to a real `required_relation` would re-block a
-// zero-binding tenant from discovering zones.
-func TestPermissionCatalog_Geo_S5_PublicReadExempt(t *testing.T) {
+// TestPermissionCatalog_Geo_S5_PublicReadStandsOnAProducedRelation (#893/#895) —
+// публичное чтение справочника размещения (RegionService / ZoneService Get+List)
+// стоит на ОТНОШЕНИИ, у которого есть производитель, а не на освобождении.
+//
+// ПОЧЕМУ ЗДЕСЬ БЫЛО ОБРАТНОЕ. Прежняя редакция требовала `<exempt>`: отношение
+// `viewer` на кластере не производил никто, и проверка отвечала отказом всем —
+// арендатор с нулём выдач не мог прочитать зоны. Освобождение это чинило, но
+// ценой, которую владелец назвал неприемлемой: доступ, выданный освобождением, не
+// виден перечислением выдач и не отзывается ничем, кроме выкатки.
+//
+// Производитель заведён — системная выдача с подстановочным субъектом. Поэтому
+// арендатор с нулём собственных выдач по-прежнему читает справочник (подстановка
+// выполняет отношение за него), и при этом доступ ВИДЕН и ОТЗЫВАЕМ. Возврат этих
+// четырёх строк в полосу `<exempt>` снова сделал бы его невидимым.
+func TestPermissionCatalog_Geo_S5_PublicReadStandsOnAProducedRelation(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 
@@ -34,11 +39,16 @@ func TestPermissionCatalog_Geo_S5_PublicReadExempt(t *testing.T) {
 		t.Run(fqn, func(t *testing.T) {
 			entry, ok := c.Lookup(fqn)
 			require.True(t, ok, "fqn missing from embedded catalog: %s", fqn)
-			assert.True(t, entry.IsExempt(), "geo public read must be <exempt> (project-scope EXEMPT) on %s", fqn)
-			assert.Equal(t, "<exempt>", entry.Permission, "geo public read permission must be <exempt> on %s", fqn)
-			assert.Empty(t, entry.RequiredRelation, "geo public read must carry no required_relation on %s", fqn)
-			assert.Empty(t, entry.ScopeExtractor.ObjectType, "geo public read must carry no scope object_type on %s", fqn)
-			assert.Empty(t, entry.ScopeExtractor.FromRequestField, "geo public read must carry no scope from_request_field on %s", fqn)
+			assert.False(t, entry.IsExempt(),
+				"публичное чтение справочника обязано стоять на отношении, а не на освобождении: %s", fqn)
+			assert.Equal(t, "viewer", entry.RequiredRelation,
+				"отношение обязано быть тем, которое производит системная выдача: %s", fqn)
+			assert.Equal(t, "cluster", entry.ScopeExtractor.ObjectType,
+				"область — кластерный синглтон: %s", fqn)
+			assert.Equal(t, "*", entry.ScopeExtractor.FromRequestField,
+				"идентификатор кластера берётся не из тела запроса: %s", fqn)
+			assert.Equal(t, "1", entry.RequiredACRMin,
+				"чтение справочника не требует усиления входа: %s", fqn)
 		})
 	}
 }

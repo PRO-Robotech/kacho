@@ -105,11 +105,14 @@ func TestPermissionMap_VerbBearing_ProjectList_StaysViewer(t *testing.T) {
 }
 
 // TestPermissionMap_VerbBearing_MachineTypeCatalogCarriesNoVerb — чтение каталога
-// типов машин глаголом не гейтится вовсе: полоса `<exempt>`. Предмет
-// пробы — что оно НЕ флипается в verb-несущую форму (F-8): ни `v_get`, ни
-// `v_list` здесь появиться не вправе, потому что кластер глаголов не несёт.
-// Прежняя редакция требовала `viewer` — отношение, не производимое ни одним
-// посевом, из-за чего каталог отвечал отказом всем.
+// типов машин глаголом не гейтится: кластер глаголов не несёт (F-8). Предмет
+// пробы — что оно НЕ флипается в verb-несущую форму: ни `v_get`, ни `v_list`
+// здесь появиться не вправе.
+//
+// Отношение при этом непусто и обязано быть непустым: каталог стоит на `viewer`
+// кластерного синглтона, который производит системная выдача с подстановочным
+// субъектом. Прежние две редакции требовали то отношения без
+// производителя (отказ всем), то полосы `<exempt>` (доступ невидим и неотзываем).
 func TestPermissionMap_VerbBearing_MachineTypeCatalogCarriesNoVerb(t *testing.T) {
 	m := check.PermissionMap()
 	for _, rpc := range []string{
@@ -117,13 +120,11 @@ func TestPermissionMap_VerbBearing_MachineTypeCatalogCarriesNoVerb(t *testing.T)
 		"/kacho.cloud.compute.v1.MachineTypeService/List",
 	} {
 		e, ok := m[rpc]
-		if !ok {
-			continue // `<exempt>` в карту проверок не попадает
-		}
+		require.Truef(t, ok, "%s must be mapped", rpc)
 		require.NotContainsf(t, e.Relation, "v_",
 			"%s: чтение кластерного каталога не вправе нести глагол (F-8)", rpc)
-		require.Emptyf(t, e.Relation,
-			"%s: полоса `<exempt>` — отношения быть не может", rpc)
+		require.Equalf(t, "viewer", e.Relation,
+			"%s: отношение обязано быть тем, которое производит системная выдача", rpc)
 	}
 }
 

@@ -16,29 +16,56 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v
 // Admin CRUD over the catalog — see InternalMachineTypeService in
 // internal_machine_type_service.proto (:9091, system_admin).
 //
-// Read is project-scope EXEMPT (`<exempt>`), parity with the geo catalog: the
-// machine-type catalog is admin-curated and global, and EVERY authenticated
-// tenant must read it to choose a size before launching anything. authN stays
-// mandatory — the gateway's `<exempt>` branch still requires a valid principal.
-// Only the project-scope Check is dropped, and only for reads.
+// Read стоит на отношении `viewer` кластерного синглтона, которое производит
+// СИСТЕМНАЯ ВЫДАЧА с подстановочным субъектом: каталог администрируется
+// платформой, одинаков для всех и обязан читаться ВСЯКИМ аутентифицированным
+// арендатором, иначе он не выберет ни размер, ни тип. authN остаётся
+// обязательным. Админские глаголы каталога — `system_admin` на кластере.
 //
-// This previously declared `required_relation: "viewer"` on the cluster object.
-// No seed ever produced that relation on the cluster (only `system_admin`,
-// `system_viewer`, `quota_reader` exist there), so BOTH read RPCs answered 403
-// to everyone, tenant and administrator alike — the catalog was unreachable and
-// therefore no instance could be created. Held by the tree gate
-// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces.
+// ДВЕ ПРЕЖНИЕ РЕДАКЦИИ, И ОБЕ ВЕРНЫ НАПОЛОВИНУ. Первая объявляла то же отношение,
+// которого НЕ ПРОИЗВОДИЛ никто, — оба чтения отвечали отказом каждому, и создать
+// было нельзя ничего. Вторая (#892) снимала проверку полосой `<exempt>` — отказ
+// уходил, но вместе с ним и видимость: доступ, выданный освобождением, не
+// показывается перечислением выдач и закрывается только выкаткой. Производитель
+// заведён (#893/#895), поэтому оба свойства верны сразу. Держат два гейта дерева:
+// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces (у отношения есть
+// производитель) и TestCatalog_WildcardSatisfiableRelations_AreNamedReferenceCatalogues
+// (такое отношение позволено только глобальному справочнику, названному поимённо).
 service MachineTypeService {
   // Returns information about the specified machine type. To get the list, use List.
   rpc Get (GetMachineTypeRequest) returns (MachineType) {
     option (google.api.http) = { get: "/compute/v1/machineTypes/{machine_type_id}" };
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    // Ambient placement-catalog read. Стоит на отношении `viewer` кластерного
+    // синглтона, которое производит СИСТЕМНАЯ ВЫДАЧА с подстановочным субъектом:
+    // справочник обязан читать всякий аутентифицированный арендатор, и подстановка
+    // выполняет отношение за него, поэтому арендатор с нулём собственных выдач не
+    // получает отказа.
+    //
+    // Здесь недолго стояла полоса `<exempt>` (#892): отношение тогда не производил
+    // НИКТО, и проверка отвечала отказом каждому. Освобождение это чинило, но
+    // делало доступ невидимым — он не показывался перечислением выдач и
+    // закрывался только выкаткой. Теперь верны оба свойства сразу (#893/#895).
+    option (kacho.iam.authz.v1.permission) = "compute.machineTypes.get";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Retrieves the list of machine types. Filter whitelist: name=, family=, minGpus=.
   rpc List (ListMachineTypesRequest) returns (ListMachineTypesResponse) {
     option (google.api.http) = { get: "/compute/v1/machineTypes" };
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    // Ambient placement-catalog read — то же отношение и тот же производитель,
+    // что у соседнего чтения этого сервиса (#893/#895).
+    option (kacho.iam.authz.v1.permission) = "compute.machineTypes.list";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

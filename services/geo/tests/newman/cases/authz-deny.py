@@ -5,11 +5,14 @@
 
 GEO-1 landed authz-контракт (сверено с security.md §AuthN+AuthZ ВЕЗДЕ + proto
 authz_options + GEO-1 F6):
-  * Public read (RegionService/ZoneService Get/List) — **project-scope EXEMPT**
-    (authN-only, GEO-1-20): у 4 read-RPC снят required_relation+scope_extractor →
-    любой АУТЕНТИФИЦИРОВАННЫЙ принципал (в т.ч. zero-binding) читает каталог.
-      - anonymous (нет Bearer) → 401 UNAUTHENTICATED (code 16) — EXEMPT снимает
-        authZ, но НЕ authN (GEO-1-21; anonymous-full-access запрещён).
+  * Public read (RegionService/ZoneService Get/List) — отношение `viewer` на
+    КЛАСТЕРЕ, которое платформа выдаёт СИСТЕМНОЙ ВЫДАЧЕЙ субъекту «любой
+    аутентифицированный» (#893/#895): персонального гранта не нужно, поэтому
+    zero-binding читает каталог, но проверка при этом настоящая и её основание
+    видно перечислением выдач.
+      - anonymous (нет Bearer) → 401 UNAUTHENTICATED (code 16): подстановка
+        расширяет отношение на АУТЕНТИФИЦИРОВАННЫХ, а не на всех
+        (GEO-1-21; anonymous-full-access запрещён).
       - authenticated zero-binding (jwtNoBindings) → 200 (ambient read, GEO-1-20).
   * Admin CRUD (InternalRegion/ZoneService, `/geo/v1/internal/…` internal listener):
     `system_admin`@cluster (scope_extractor object_type:cluster, GEO-1-22).
@@ -101,12 +104,13 @@ CASES.append(Case(
 
 
 # ---------------------------------------------------------------------------
-# authenticated zero-binding public read → 200 (ambient read; project-scope EXEMPT).
+# authenticated zero-binding public read → 200 (ambient read; отношение выдано
+# системной выдачей подстановочному субъекту).
 # verifies GEO-1-20
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="GEO-REG-GT-AUTHZ-AMBIENT-OK",
-    title="GET /geo/v1/regions as authenticated jwtNoBindings (zero-binding) → 200 (ambient read; project-scope EXEMPT, GEO-1-20)",
+    title="GET /geo/v1/regions as authenticated jwtNoBindings (zero-binding) → 200 (ambient read; отношение выдано системной выдачей подстановочному субъекту, GEO-1-20)",
     classes=["AUTHZ", "CONF"], priority="P1",
     steps=[
         Step(name="list-regions-noviewer", method="GET", path="/geo/v1/regions", auth="jwtNoBindings",
@@ -177,14 +181,14 @@ CASES.append(Case(
 
 
 # ---------------------------------------------------------------------------
-# anonymous Get-by-id → 401. List was covered; Get is a separate exempt RPC.
+# anonymous Get-by-id → 401. List was covered; Get — отдельный RPC со своей записью.
 # verifies GEO-1-21
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="GEO-REG-GET-AUTHZ-ANON-DENY",
-    title="GET /geo/v1/regions/{id} as anonymous (no Bearer) → 401 UNAUTHENTICATED — project-scope EXEMPT "
-          "removes authZ, never authN; Get carries its own <exempt> annotation, so List coverage does not "
-          "speak for it",
+    title="GET /geo/v1/regions/{id} as anonymous (no Bearer) → 401 UNAUTHENTICATED — подстановочный "
+          "субъект системной выдачи расширяет отношение на аутентифицированных, а не на всех; Get несёт "
+          "свою запись каталога, поэтому покрытие List за него не отвечает",
     classes=["AUTHZ", "NEG"], priority="P1",
     steps=[
         Step(name="get-region-anon", method="GET", path="/geo/v1/regions/{{existingRegionId}}", auth="anonymous",

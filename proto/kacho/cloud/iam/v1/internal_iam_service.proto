@@ -35,6 +35,7 @@ service InternalIAMService {
       body: "*"
     };
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
   // TOMBSTONE. The false-assurance stub
@@ -61,6 +62,7 @@ service InternalIAMService {
       body: "*"
     };
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
   // TOMBSTONE. `WriteCreatorTuple` — synchronous own-creator tuple write — is
@@ -99,6 +101,7 @@ service InternalIAMService {
     // Cluster-internal listener-protected; admin authz gate enforced at
     // the api-gateway internal mux layer (system_admin role required).
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
   // PollSubjectChanges drains subject_change_outbox by ascending id cursor.
@@ -106,6 +109,7 @@ service InternalIAMService {
   // decision-cache invalidation.
   rpc PollSubjectChanges (PollSubjectChangesRequest) returns (PollSubjectChangesResponse) {
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
   // RegisterResource — Internal FGA-proxy: apply an owner-hierarchy tuple
@@ -127,6 +131,7 @@ service InternalIAMService {
   // listener :9091 only — нет google.api.http.
   rpc RegisterResource (RegisterResourceRequest) returns (RegisterResourceResponse) {
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
   // UnregisterResource — Internal FGA-proxy: снять owner-hierarchy tuple
@@ -140,6 +145,7 @@ service InternalIAMService {
   // нет google.api.http.
   rpc UnregisterResource (UnregisterResourceRequest) returns (UnregisterResourceResponse) {
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
   // GetRoleCompiled — Internal two-projection read (redesign-2026 F5): returns a
@@ -151,6 +157,7 @@ service InternalIAMService {
   // no google.api.http; admin-UI authz gating happens at the internal mux layer.
   rpc GetRoleCompiled (GetRoleCompiledRequest) returns (GetRoleCompiledResponse) {
     option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 }
 
