@@ -36,7 +36,39 @@ const (
 	MDKeyPrincipalType    = "x-kacho-principal-type"
 	MDKeyPrincipalID      = "x-kacho-principal-id"
 	MDKeyPrincipalDisplay = "x-kacho-principal-display-name"
+
+	// MDKeyPrincipalDisplayBin — ДВОИЧНАЯ форма того же значения.
+	//
+	// Значение обычного метаданного ключа gRPC ограничено печатаемой латиницей
+	// (0x20–0x7E), и библиотека отвергает ВЕСЬ вызов, не дойдя до обработчика.
+	// Продукт русскоязычный: арендатор называет себя по-русски, и это законный
+	// ввод — значит имя обязано ехать формой, которая произвольные байты
+	// допускает. Суффикс `-bin` и есть эта форма: gRPC кодирует такое значение
+	// сам, а мост HTTP→gRPC декодирует его перед передачей, поэтому тракт
+	// работает целиком, а не наполовину.
+	//
+	// Тип и идентификатор остаются обычными ключами намеренно: они латиница
+	// by construction (`usr-`+крокфорд, закрытый словарь типов), и переводить
+	// их значило бы платить кодированием за то, что кодирования не требует.
+	MDKeyPrincipalDisplayBin = "x-kacho-principal-display-name-bin"
 )
+
+// SetPrincipalDisplayMD кладёт отображаемое имя в метаданные ЕДИНСТВЕННЫМ
+// правильным способом — двоичным ключом.
+//
+// Функция существует, чтобы у производителей не было выбора: имя, положенное
+// обычным ключом, роняет вызов на первом же не-латинском символе, и падает он
+// НЕ там, где имя записали, а на любом последующем запросе. Один вход в тракт
+// делает этот класс невоспроизводимым по построению.
+//
+// Пустое имя не кладётся вовсе: пустой ключ в метаданных и отсутствие ключа
+// читаются одинаково, а лишняя пара стоит места в каждом запросе.
+func SetPrincipalDisplayMD(md metadata.MD, displayName string) {
+	if displayName == "" {
+		return
+	}
+	md.Set(MDKeyPrincipalDisplayBin, displayName)
+}
 
 // envDebugPrincipal читает KACHO_DEBUG_PRINCIPAL лениво (не при package-init) и
 // кеширует результат. Дефолтное значение debug-флага для extractor'ов, построенных
@@ -204,8 +236,22 @@ func principalFromIncomingMetadata(ctx context.Context, dbg debugConfig) (operat
 	return operations.Principal{
 		Type:        pType,
 		ID:          pID,
-		DisplayName: first(md.Get(MDKeyPrincipalDisplay)),
+		DisplayName: principalDisplayName(md),
 	}, true
+}
+
+// principalDisplayName читает имя, предпочитая двоичную форму.
+//
+// Прежняя форма читается ЗАПАСНЫМ путём, и это не вежливость: край и сервисы
+// катятся не одновременно. Читатель, знающий только новую форму, в окне выкатки
+// потерял бы имя у ВСЕХ — включая тех, у кого оно латиницей и работало.
+// Послабление истекает от появления предмета: когда ни один производитель
+// прежней формы не останется, запасной путь снимается вместе с ключом.
+func principalDisplayName(md metadata.MD) string {
+	if v := first(md.Get(MDKeyPrincipalDisplayBin)); v != "" {
+		return v
+	}
+	return first(md.Get(MDKeyPrincipalDisplay))
 }
 
 // sensitiveMetadataSubstrings — подстроки (lowercase) в имени metadata-ключа,

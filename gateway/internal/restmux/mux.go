@@ -170,7 +170,11 @@ func buildPrincipalMetadata(r *http.Request) metadata.MD {
 		md.Append(principalmeta.MetaPrincipalID, pi)
 	}
 	if pd != "" {
-		md.Append(principalmeta.MetaPrincipalDisplay, pd)
+		// Имя кладётся ДВОИЧНЫМ ключом: значение обычного роняет вызов на
+		// первом же не-латинском символе, и падает он не здесь, а на любом
+		// последующем запросе арендатора — то есть выглядит как «продукт не
+		// работает», а не как дефект передачи имени.
+		md.Append(principalmeta.MetaPrincipalDisplayBin, pd)
 	}
 	if acr != "" {
 		md.Append(principalmeta.MetaTokenACR, acr)
