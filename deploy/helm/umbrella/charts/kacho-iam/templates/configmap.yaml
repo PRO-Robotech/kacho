@@ -102,6 +102,32 @@ data:
       # derive from this. A config value (not a duplicate env) so it resolves deterministically.
       hydra-issuer: {{ . | quote }}
       {{- end }}
+      {{- $ts := .Values.config.authn.tokenSigning | default dict }}
+      {{- if $ts.enabled }}
+      # token-signing — СВОЯ чеканка токенов (#897): ключница, подписант, ротация
+      # и публикация набора проверочных ключей.
+      #
+      # Блок рендерится ТОЛЬКО при enabled: пока чеканка выключена, её настройки
+      # не требуются, и страж, требующий того, чем не пользуются, отказывал бы в
+      # старте без предмета. Будучи включённой, чеканка требует их ВСЕ:
+      # незаданное здесь означает «не сужаем», а не «взять разумное» —
+      # незаданный издатель означает «любой», пустой перечень алгоритмов означает
+      # «принимаем любой», а отсутствующий путь набора делает страж записи
+      # источника тождественно истинным. Каждое из трёх невидимо на
+      # положительном пути: токен выпускается, проверяется, запрос проходит.
+      #
+      # Значения НЕ подставляются умолчанием шаблона (`default`) намеренно: тогда
+      # профиль, забывший ручку, выглядел бы настроенным, а решение о посадке
+      # приняла бы эта строка вместо оператора. Пустое доезжает до стража, и он
+      # отказывает в старте, называя настройку.
+      token-signing:
+        enabled: true
+        issuer: {{ $ts.issuer | quote }}
+        algorithm: {{ $ts.algorithm | quote }}
+        allowed-algorithms: {{ $ts.allowedAlgorithms | quote }}
+        key-set-path: {{ $ts.keySetPath | quote }}
+        key-lifetime: {{ $ts.keyLifetime | quote }}
+      {{- end }}
       {{- $bm := .Values.config.authn.bootstrapMint | default dict }}
       # bootstrap-mint — caller gate for InternalBootstrapTokenService/
       # MintBootstrapToken (:9091), the cluster `system_admin` token mint. The RPC

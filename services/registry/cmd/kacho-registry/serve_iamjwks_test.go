@@ -13,10 +13,9 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho/services/registry/internal/clients/jwks"
 )
 
-// b64uJSON — base64url(JSON(v)) без padding (JOSE-сегмент).
+// b64uJSON — base64url(JSON(v)) без padding (сегмент JOSE).
 func b64uJSON(t *testing.T, v any) string {
 	t.Helper()
 	b, err := json.Marshal(v)
@@ -26,62 +25,128 @@ func b64uJSON(t *testing.T, v any) string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-// TestDataplaneVerifier_FetchesJWKSFromConfiguredIAMURL (RJU-09/RJU-14) — сквозной
-// wiring config → verifier: env KACHO_REGISTRY_IAM_JWKS_URL питает cfg.IAMJWKSURL,
-// который serve.go передаёт в jwks.New. Тест собирает verifier тем же вызовом, что и
-// buildDataplaneHandler, и доказывает, что скачивание JWKS уходит на СКОНФИГУРИРОВАННЫЙ
-// iam-origin (не Hydra): fake iam-сервер записывает путь/host входящего GET. Форсит
-// фетч токеном с валидным JOSE-заголовком (alg=RS256, неизвестный kid → cache-miss →
-// refresh). Референс cfg.IAMJWKSURL — RED до config-rename (поле не существует).
-func TestDataplaneVerifier_FetchesJWKSFromConfiguredIAMURL(t *testing.T) {
+// TestDataplaneVerifier_FetchesEachIssuerKeySetFromItsDeclaredURL — сквозная
+// провязка «настройка → проверяющий» на ДВУХ записях.
+//
+// Утверждается не «фетч случился», а «фетч ушёл ПО СВОЕМУ адресу для КАЖДОГО
+// издателя»: при объединённом наборе или при адресе, выведенном из издателя, оба
+// обращения пришли бы в одно место, и проба этого бы не заметила, если бы
+// смотрела только на факт обращения.
+func TestDataplaneVerifier_FetchesEachIssuerKeySetFromItsDeclaredURL(t *testing.T) {
 	var mu sync.Mutex
-	var gotPath, gotHost string
-	fetched := false
+	paths := map[string]int{}
 
 	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
-		gotPath, gotHost, fetched = r.URL.Path, r.Host, true
+		paths[r.URL.Path]++
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"keys":[]}`))
 	}))
 	defer iam.Close()
 
-	iamJWKSURL := iam.URL + "/.well-known/jwks.json"
+	const (
+		platformIssuer = "https://iam.kacho.local"
+		legacyIssuer   = "https://hydra.api.kacho.cloud"
+		platformPath   = "/.well-known/kacho/jwks.json"
+		legacyPath     = "/.well-known/jwks.json"
+	)
+
 	t.Setenv("KACHO_REGISTRY_DB_PASSWORD", "s3cr3t")
-	t.Setenv("KACHO_REGISTRY_IAM_JWKS_URL", iamJWKSURL)
-	t.Setenv("KACHO_REGISTRY_HYDRA_ISSUER", "https://hydra.api.kacho.cloud")
+	t.Setenv("KACHO_REGISTRY_AUTH_MODE", "dev") // адреса пробного сервера — открытый HTTP
+	t.Setenv("KACHO_REGISTRY_TOKEN_ISSUERS", platformIssuer+","+legacyIssuer)
+	t.Setenv("KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS",
+		platformIssuer+"="+iam.URL+platformPath+","+legacyIssuer+"="+iam.URL+legacyPath)
+	t.Setenv("KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER", platformIssuer)
+	t.Setenv("KACHO_REGISTRY_TOKEN_REVOCATION_URL", iam.URL+"/internal/tokens/introspect")
 
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	if cfg.IAMJWKSURL != iamJWKSURL {
-		t.Fatalf("cfg.IAMJWKSURL = %q, want %q (env must feed the field)", cfg.IAMJWKSURL, iamJWKSURL)
+	v, err := buildTokenVerifier(cfg)
+	if err != nil {
+		t.Fatalf("buildTokenVerifier: %v", err)
 	}
 
-	// Тот же конструктор, что и в buildDataplaneHandler: JWKS-URL=iam, issuer-pin=Hydra.
-	v := jwks.New(cfg.IAMJWKSURL, cfg.ServiceAud, cfg.HydraIssuer)
-
-	// Токен с валидным JOSE-заголовком и неизвестным kid → cache-miss → refresh (GET на
-	// iam-URL). Подпись/claims нерелевантны: фетч происходит до их проверки.
-	header := b64uJSON(t, map[string]any{"alg": "RS256", "typ": "JWT", "kid": "probe"})
-	claims := b64uJSON(t, map[string]any{"sub": "cid", "aud": cfg.ServiceAud})
-	tok := header + "." + claims + "." + base64.RawURLEncoding.EncodeToString([]byte("sig"))
-	_, _ = v.Verify(context.Background(), tok) // ожидаемо падает (unknown kid) — важен факт фетча
+	// Токен с законным заголовком и неизвестным идентификатором ключа: обращение
+	// к источнику происходит ДО проверки подписи, поэтому подпись нерелевантна.
+	probe := func(issuer, typ string) {
+		header := b64uJSON(t, map[string]any{"alg": "RS256", "typ": typ, "kid": "probe"})
+		claims := b64uJSON(t, map[string]any{"sub": "cid", "aud": cfg.ServiceAud, "iss": issuer, "exp": 1 << 40})
+		tok := header + "." + claims + "." + base64.RawURLEncoding.EncodeToString([]byte("sig"))
+		_, _ = v.Verify(context.Background(), tok) // ожидаемо отвергается — важен адрес обращения
+	}
+	probe(platformIssuer, "at+jwt")
+	probe(legacyIssuer, "JWT")
 
 	mu.Lock()
 	defer mu.Unlock()
-	if !fetched {
-		t.Fatalf("verifier never fetched JWKS from the configured iam URL")
+	if paths[platformPath] == 0 {
+		t.Fatalf("набор нашего издателя не запрашивался по объявленному адресу %q; обращения: %v", platformPath, paths)
 	}
-	if gotPath != "/.well-known/jwks.json" {
-		t.Fatalf("JWKS fetched from path %q, want /.well-known/jwks.json", gotPath)
+	if paths[legacyPath] == 0 {
+		t.Fatalf("набор прежнего издателя не запрашивался по объявленному адресу %q; обращения: %v", legacyPath, paths)
 	}
-	// Host входящего запроса = fake iam-сервер (доказывает: data-plane дёргает iam-origin,
-	// сконфигурированный env'ом, а не Hydra).
-	wantHost := iam.Listener.Addr().String()
-	if gotHost != wantHost {
-		t.Fatalf("JWKS fetched from host %q, want configured iam origin %q", gotHost, wantHost)
+}
+
+// TestDataplaneVerifier_UndeclaredIssuerNeverReachesAnySource — издатель без
+// объявленной записи не приводит НИ К ОДНОМУ обращению: ни перебора записей, ни
+// адреса, выведенного из самого издателя.
+func TestDataplaneVerifier_UndeclaredIssuerNeverReachesAnySource(t *testing.T) {
+	var mu sync.Mutex
+	hits := 0
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		hits++
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys":[]}`))
+	}))
+	defer iam.Close()
+
+	const platformIssuer = "https://iam.kacho.local"
+	t.Setenv("KACHO_REGISTRY_DB_PASSWORD", "s3cr3t")
+	t.Setenv("KACHO_REGISTRY_AUTH_MODE", "dev")
+	t.Setenv("KACHO_REGISTRY_TOKEN_ISSUERS", platformIssuer)
+	t.Setenv("KACHO_REGISTRY_TOKEN_ISSUER_KEYSETS", platformIssuer+"="+iam.URL+"/.well-known/kacho/jwks.json")
+	t.Setenv("KACHO_REGISTRY_PLATFORM_TOKEN_ISSUER", platformIssuer)
+	t.Setenv("KACHO_REGISTRY_TOKEN_REVOCATION_URL", iam.URL+"/internal/tokens/introspect")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	v, err := buildTokenVerifier(cfg)
+	if err != nil {
+		t.Fatalf("buildTokenVerifier: %v", err)
+	}
+
+	header := b64uJSON(t, map[string]any{"alg": "RS256", "typ": "at+jwt", "kid": "probe"})
+	claims := b64uJSON(t, map[string]any{
+		"sub": "cid", "aud": cfg.ServiceAud, "iss": "https://not-declared.example", "exp": 1 << 40,
+	})
+	tok := header + "." + claims + "." + base64.RawURLEncoding.EncodeToString([]byte("sig"))
+	if _, verr := v.Verify(context.Background(), tok); verr == nil {
+		t.Fatalf("издатель без объявленной записи обязан быть отвергнут")
+	}
+
+	mu.Lock()
+	afterUndeclared := hits
+	mu.Unlock()
+	if afterUndeclared != 0 {
+		t.Fatalf("издатель без записи стоил %d обращений к источнику; перебора записей быть не должно", afterUndeclared)
+	}
+
+	// Положительный контроль: объявленный издатель обращение всё-таки вызывает —
+	// иначе «ноль обращений» верно и для проверяющего, который не ходит никуда.
+	okClaims := b64uJSON(t, map[string]any{"sub": "cid", "aud": cfg.ServiceAud, "iss": platformIssuer, "exp": 1 << 40})
+	_, _ = v.Verify(context.Background(), header+"."+okClaims+"."+base64.RawURLEncoding.EncodeToString([]byte("sig")))
+
+	mu.Lock()
+	afterDeclared := hits
+	mu.Unlock()
+	if afterDeclared == 0 {
+		t.Fatalf("объявленный издатель обязан приводить к обращению по своему адресу")
 	}
 }

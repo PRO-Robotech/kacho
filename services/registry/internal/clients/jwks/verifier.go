@@ -1,34 +1,53 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package jwks — верификатор identity-JWT data-plane реестра по Hydra JWKS.
+// Package jwks — проверяющий identity-JWT плоскости данных реестра.
 //
-// Токен выдаёт Ory Hydra (client_credentials — для docker через token-шим;
-// jwt-bearer — для k8s workload). Токен несёт ИДЕНТИЧНОСТЬ (sub = principal id,
-// напр. Hydra client_id ↔ ServiceAccount), без pre-issued Docker-scope: авторизация —
-// per-request Check в registry (identity-only, Вариант B). Verifier тянет публичные
-// ключи с Hydra-public JWKS-endpoint, кэширует их с ограниченным TTL (Cache-Control
-// max-age, но не бесконечно), рефетчит по неизвестному kid (key rotation) и энфорсит
-// подпись RS256 или ES256 + exp + aud (наш service) + опц. iss (Hydra). Реализация —
-// на stdlib (crypto/rsa + crypto/ecdsa + encoding/base64/json), без внешних
-// JWT-зависимостей.
+// # Что он проверяет
 //
-// Fail-closed (JWKS — hard-dependency AuthN-стадии): JWKS недоступен и нужного ключа нет
-// в свежем кэше → отказ. Обслуживание по УСТАРЕВШЕМУ кэшу допускается только внутри
-// конечной отсрочки на транзиентный сбой (staleServeAttempts×minRefresh за TTL,
-// отсчитывается от последнего УСПЕШНОГО фетча и неудачами не продлевается); за её
-// пределами ключ не выдаётся, поэтому ротированный/отозванный ключ не остаётся валидным
-// при постоянно недоступном источнике. alg вне allowlist {RS256, ES256} (в т.ч. `none`,
-// HS*) → отказ.
+// Состав обязательных проверок объявлен ОДИН раз — в `pkg/tokenpolicy`, — и эта
+// реализация ОБЪЯВЛЯЕТ, какие из них исполняет (`DeclaredChecks`). Пока состав
+// живёт у каждой поверхности свой, различие между поверхностями не выражено и
+// потому не может покраснеть; объявление делает его предметом гейта по дереву.
+//
+// # Издатель — МНОЖЕСТВО, и у каждого СВОЯ запись источника ключей
+//
+// Платформа чеканит свои токены сама, а прежний издатель на переходе остаётся.
+// Принять двух издателей, имея один набор ключей, значило бы разрешить ключу
+// одного проверять токен другого — то есть отменить ту самую защиту, ради
+// которой развязка и делается. Поэтому у каждого принимаемого издателя своя
+// объявленная запись: свой адрес набора, свой снимок, свой срок годности.
+//
+// Адрес записи ОБЪЯВЛЯЕТСЯ перечислением и НИКОГДА не выводится из издателя.
+// Издатель приходит от предъявителя — это недоверенный вход; кроме прямого
+// вреда (значение от предъявителя управляет тем, куда мы ходим), производный
+// адрес получался бы у ВСЯКОГО издателя, и состояние «записи нет» не наступало
+// бы никогда: страж старта остался бы в тексте, не имея возможности упасть.
+//
+// # Отзыв читается НА ПРЕДЪЯВЛЕНИИ
+//
+// Контроль, действующий только в местах выдачи удостоверения, отзывом не
+// является: он лишь не выдаёт нового. Поэтому запись нашей чеканки несёт
+// читателя авторитета отзыва на пути запроса; любой неопознанный исход
+// авторитета — отказ (см. revocation.go).
+//
+// # Отказ при сомнении
+//
+// Слишком строгая проверка даёт отказ, видимый сразу. Слишком слабая даёт
+// принимаемый чужой токен, не видимый никогда: успешная проверка выглядит
+// одинаково независимо от того, что именно она проверила. Поэтому на каждой
+// развилке выбран отказ.
 //
 // Реализует порт dataplane.TokenVerifier (структурно: Verify(ctx,string)(string,error)).
 package jwks
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdh"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -38,101 +57,241 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"mime"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 )
 
-// ErrInvalidToken — обобщённая ошибка верификации (подпись/срок/aud/iss/kid/alg/формат).
-// Data-plane маппит любую ошибку Verify в 401 error="invalid_token" (не раскрывая
-// причину клиенту — defense-in-depth).
+// ErrInvalidToken — обобщённая ошибка проверки. Плоскость данных отвечает на неё
+// 401 error="invalid_token", не раскрывая причину предъявителю.
+//
+// Текст ошибки НЕ несёт значений, пришедших от предъявителя (идентификатор
+// ключа, объявленный издатель, алгоритм): он уходит в журнал и в диагностику,
+// то есть покидает процесс.
 var ErrInvalidToken = errors.New("jwks: invalid token")
 
-// defaultTTL — TTL кэша JWKS (fallback, если сервер не задал Cache-Control).
+// defaultTTL — срок годности снимка набора, когда источник его не назвал.
 const defaultTTL = 5 * time.Minute
 
-// maxTTL — верхняя граница TTL кэша ключей. Cache-Control max-age сервера JWKS
-// клампится до этого значения: непомерный/ошибочный max-age (напр. годы) не должен
-// оставлять ротированный/отозванный ключ валидным дольше окна ротации. Держит
-// обещание docstring'а («ограниченный TTL ... но не бесконечно», CWE-613).
-const maxTTL = time.Hour
+// maxTTL — потолок срока годности снимка. Он НЕ объявляется здесь: это второе
+// слагаемое арифметики отсрочки снятия ключа, и пока каждая сторона объявляет
+// своё число, отсрочка не вычисляется, а угадывается. Источник один —
+// `pkg/tokenpolicy`.
+const maxTTL = tokenpolicy.ConsumerKeySetCacheCeiling
 
-// defaultMinRefresh — минимальный интервал между рефетчами JWKS по неизвестному kid.
-// kid приходит из attacker-controlled JOSE-header и читается ДО верификации подписи;
-// без троттла каждый запрос с новым случайным kid форсил бы outbound-GET на Hydra JWKS
-// (pre-auth DoS-амплификация, CWE-770/400). Легитимная ротация ключа подхватывается с
-// задержкой ≤ minRefresh (после первого рефетча новый kid уже в кэше — обслуживается
-// мгновенно; троттлятся только по-прежнему-неизвестные kid'ы).
-const defaultMinRefresh = 10 * time.Second
+// defaultMinRefresh — собственный минимальный интервал ВЫНУЖДЕННОГО перезапроса
+// набора по неизвестному идентификатору ключа. Значение — из объявленной
+// политики: идентификатор читается из заголовка ДО проверки подписи, поэтому без
+// интервала поток выдуманных идентификаторов превращается в поток обращений к
+// публикатору.
+const defaultMinRefresh = tokenpolicy.UnknownKeyIDRefetchInterval
 
-// staleServeAttempts — во сколько троттл-окон укладывается отсрочка обслуживания по
-// ПРОТУХШЕМУ кэшу (граница = staleServeAttempts × minRefresh, при дефолтах — 30s).
+// staleServeAttempts — во сколько окон интервала укладывается отсрочка
+// обслуживания по ПРОТУХШЕМУ снимку (граница = staleServeAttempts × minRefresh
+// сверх срока годности).
 //
-// Отсрочка нужна: рефетч троттлится, поэтому один сетевой blip иначе превратился бы в
-// minRefresh-окно тотального auth-отказа для валидных токенов. Но троттл-окно
-// ВОЗОБНОВЛЯЕТСЯ на каждой попытке, поэтому «отдаём из кэша, пока окно активно» без
-// АБСОЛЮТНОЙ границы означает: при постоянно недоступном источнике ротированный или
-// отозванный ключ принимается бесконечно (CWE-613) — прямо вопреки fail-closed-обещанию
-// пакета. Граница отсчитывается от последнего УСПЕШНОГО фетча (единственный момент,
-// когда ключ был подтверждён источником), поэтому она не продлевается неудачами.
-// Три попытки — компромисс: транзиентный сбой прощён, окно приёма неподтверждённого
-// ключа ограничено долей TTL.
+// Отсрочка нужна: перезапрос ограничен интервалом, поэтому один сетевой сбой
+// иначе превратился бы в окно полного отказа проверки для законных токенов. Но
+// окно интервала возобновляется на каждой попытке, поэтому «отдаём из снимка,
+// пока окно активно» без АБСОЛЮТНОЙ границы означает: при постоянно недоступном
+// источнике снятый ключ принимается бесконечно. Граница отсчитывается от
+// последнего УСПЕШНОГО обращения — единственного момента, когда ключ был
+// подтверждён источником, — и потому неудачами не продлевается.
 const staleServeAttempts = 3
 
-// maxJWKSBytes — верхняя граница размера тела JWKS-ответа (io.LimitReader перед
-// json.Decode): скомпрометированный/подменённый JWKS-endpoint не может исчерпать
-// память verifier'а гигантским телом (CWE-400).
-const maxJWKSBytes = 1 << 20 // 1 MiB
+// maxKeyIDLen — потолок длины идентификатора ключа. Значение приходит от
+// предъявителя, поэтому его форма ограничивается ДО использования: иначе
+// произвольная строка доходит до поиска, до журнала и до счётчиков.
+const maxKeyIDLen = 128
 
-// Verifier — потокобезопасный верификатор Hydra-issued identity-JWT по Hydra JWKS.
-type Verifier struct {
-	jwksURL    string
-	aud        string        // ожидаемый audience (наш service); обязателен
-	iss        string        // ожидаемый issuer (Hydra); "" → проверка iss пропускается
-	ttl        time.Duration // ограниченный TTL кэша ключей
-	minRefresh time.Duration // минимальный интервал между рефетчами по неизвестному kid
-	http       *http.Client
-	now        func() time.Time
-
-	mu          sync.Mutex
-	keys        map[string]crypto.PublicKey // kid → *rsa.PublicKey | *ecdsa.PublicKey
-	fetched     time.Time                   // время последнего УСПЕШНОГО рефетча (TTL-база)
-	lastRefresh time.Time                   // время последней ПОПЫТКИ рефетча (троттл-база, вкл. неудачные)
+// KeySetSource — ОБЪЯВЛЕННАЯ запись «издатель → источник его набора ключей».
+//
+// Записи задаются перечислением. Издателя, для которого записи нет, не бывает:
+// он даёт отказ, а не перебор записей подряд и не адрес, выведенный из него
+// самого.
+type KeySetSource struct {
+	// Issuer — точное значение `iss`, которое обязан объявить токен. Служит
+	// ТОЛЬКО ключом поиска в этой таблице: ни частью адреса, ни частью имени,
+	// ни частью ключа кэша.
+	Issuer string
+	// URL — объявленный адрес набора проверочных ключей этого издателя.
+	URL string
+	// TokenType — ожидаемое значение `typ`. Тип обязателен: разбор, не
+	// встретив типа, сам не возразит, а один подписант, обслуживающий два
+	// контура, делает путаницу типов настоящей возможностью.
+	TokenType string
+	// TolerateAbsentTokenType — принимать токен ЭТОЙ записи, если заголовок
+	// типа не несёт вовсе. НЕСОВПАДАЮЩИЙ тип отвергается всё равно.
+	//
+	// Послабление выдано ровно одной полосе — прежнего издателя — и по
+	// названной причине: его токены чеканим не мы, форму заголовка диктует он,
+	// и потребовать от неё того, чего мы у него не проверяли, значило бы
+	// поставить работу живого контура на непроверенное допущение о третьей
+	// стороне. Цена ошибки здесь несимметрична обычной: лишняя строгость на
+	// ЭТОЙ полосе — не видимый отказ одного запроса, а отказ КАЖДОГО, и
+	// защиты она не добавляет — подпись, издатель, адресат и привязка ключа
+	// уже отвергли бы чужой токен.
+	//
+	// На НАШЕЙ полосе послабления нет и быть не может: производитель типа —
+	// мы сами, и отсутствие типа означало бы, что мы не выпускаем того, что
+	// требуем.
+	//
+	// ПРЕДИКАТ СНЯТИЯ: послабление уходит вместе с записью прежнего издателя.
+	// Запись, которой больше нечего зеркалить, — находка, и вместе с ней
+	// находкой становится это поле.
+	TolerateAbsentTokenType bool
+	// ReadRevocation — спрашивать авторитет отзыва на предъявлении токена
+	// этого издателя. Полоса прежнего издателя своего поведения не меняет.
+	ReadRevocation bool
 }
 
-// New строит Verifier для Hydra JWKS-endpoint. aud — обязательный expected audience
-// (наш service, напр. "registry.kacho.local"); iss — опциональный expected issuer
-// (Hydra; пусто → не проверяется).
-func New(jwksURL, aud, iss string) *Verifier {
-	return &Verifier{
-		jwksURL:    jwksURL,
-		aud:        aud,
-		iss:        iss,
-		ttl:        defaultTTL,
-		minRefresh: defaultMinRefresh,
-		http:       &http.Client{Timeout: 10 * time.Second},
-		now:        time.Now,
-		keys:       map[string]crypto.PublicKey{},
+// Option — настройка проверяющего сверх обязательных записей.
+type Option func(*Verifier)
+
+// WithRevocationReader задаёт читателя авторитета отзыва. Обязателен, если хотя
+// бы одна запись объявила чтение отзыва: объявленный контроль без читателя —
+// мёртвый контроль, и он не отказал бы ни разу за всю свою жизнь.
+func WithRevocationReader(r RevocationReader) Option {
+	return func(v *Verifier) { v.revoke = r }
+}
+
+// WithHTTPClient подменяет клиента обращений к источникам наборов.
+func WithHTTPClient(c *http.Client) Option {
+	return func(v *Verifier) {
+		if c != nil {
+			v.http = c
+		}
 	}
 }
 
-// jwtHeader — разбираемая часть JOSE-header (alg + kid).
+// WithClock подменяет источник времени. Часы — вход, а не окружение: без этого
+// пробы допуска на расхождение часов недетерминированы, то есть не могут упасть
+// предсказуемо.
+func WithClock(now func() time.Time) Option {
+	return func(v *Verifier) {
+		if now != nil {
+			v.now = now
+		}
+	}
+}
+
+// issuerRecord — состояние ОДНОЙ записи источника: свой снимок, свой срок
+// годности, своё окно перезапроса. Раздельность здесь не про производительность:
+// общий снимок означал бы, что ключ одного издателя проверяет токен другого.
+type issuerRecord struct {
+	issuer         string
+	url            string
+	tokenType      string
+	tolerateNoTyp  bool
+	readRevocation bool
+
+	mu          sync.Mutex
+	keys        map[string]keyRecord
+	ttl         time.Duration
+	fetched     time.Time // последнее УСПЕШНОЕ обращение (база срока годности)
+	lastRefresh time.Time // последняя ПОПЫТКА (база интервала, включая неудачные)
+}
+
+// keyRecord — проверочный ключ вместе с алгоритмом, ЗАКРЕПЛЁННЫМ за ним
+// источником. Заголовок токена алгоритм не выбирает: иначе предъявитель сам
+// назначает, как проверять его подпись.
+type keyRecord struct {
+	pub crypto.PublicKey
+	alg string // пусто → источник алгоритм не объявил, остаётся сверка по виду ключа
+}
+
+// Verifier — потокобезопасный проверяющий identity-JWT.
+type Verifier struct {
+	aud     string
+	records map[string]*issuerRecord
+	revoke  RevocationReader
+	skew    time.Duration
+	http    *http.Client
+	now     func() time.Time
+}
+
+// New строит проверяющего по ОБЪЯВЛЕННЫМ записям источников.
+//
+// Отказ вместо старта, если: записей нет · у записи пуст издатель, адрес или тип
+// токена · издатель объявлен дважды · не задан ожидаемый адресат · запись
+// объявила чтение отзыва, а читателя нет. Каждое из этих состояний при пустом
+// значении означает «не сужаем», а «не сужаем» на проверке подлинности — это
+// «принимаем любого».
+func New(sources []KeySetSource, aud string, opts ...Option) (*Verifier, error) {
+	if strings.TrimSpace(aud) == "" {
+		return nil, errors.New("jwks: expected audience is required (an unset audience means «any audience»)")
+	}
+	if len(sources) == 0 {
+		return nil, errors.New("jwks: at least one declared issuer key-set source is required")
+	}
+
+	v := &Verifier{
+		aud:     aud,
+		records: make(map[string]*issuerRecord, len(sources)),
+		skew:    tokenpolicy.ClockSkew,
+		http:    &http.Client{Timeout: 10 * time.Second},
+		now:     time.Now,
+	}
+	for _, s := range sources {
+		issuer := strings.TrimSpace(s.Issuer)
+		if issuer == "" {
+			return nil, errors.New("jwks: key-set source with an empty issuer")
+		}
+		if strings.TrimSpace(s.URL) == "" {
+			return nil, fmt.Errorf("jwks: issuer %q has a key-set source with an empty URL", issuer)
+		}
+		if strings.TrimSpace(s.TokenType) == "" {
+			return nil, fmt.Errorf("jwks: issuer %q declares no expected token type "+
+				"(an unset type means «any type»)", issuer)
+		}
+		if _, dup := v.records[issuer]; dup {
+			return nil, fmt.Errorf("jwks: issuer %q is declared twice — one issuer, one key-set record", issuer)
+		}
+		v.records[issuer] = &issuerRecord{
+			issuer:         issuer,
+			url:            strings.TrimSpace(s.URL),
+			tokenType:      strings.TrimSpace(s.TokenType),
+			tolerateNoTyp:  s.TolerateAbsentTokenType,
+			readRevocation: s.ReadRevocation,
+			keys:           map[string]keyRecord{},
+			ttl:            defaultTTL,
+		}
+	}
+	for _, o := range opts {
+		o(v)
+	}
+	for _, rec := range v.records {
+		if rec.readRevocation && v.revoke == nil {
+			return nil, fmt.Errorf("jwks: issuer %q declares revocation on presentation but no revocation "+
+				"reader is wired — a declared control without a reader never refuses", rec.issuer)
+		}
+	}
+	return v, nil
+}
+
+// jwtHeader — разбираемая часть заголовка JOSE.
 type jwtHeader struct {
 	Alg string `json:"alg"`
 	Kid string `json:"kid"`
+	Typ string `json:"typ"`
 }
 
-// jwtClaims — энфорсимые claim'ы identity-JWT. aud может быть строкой или массивом
-// (JWT RFC 7519) — обрабатывается кастомным типом audience.
+// jwtClaims — энфорсимые утверждения токена. `aud` допускает строку или массив
+// (RFC 7519) — разбирается собственным типом audience.
 type jwtClaims struct {
 	Sub string   `json:"sub"`
-	Exp int64    `json:"exp"`
 	Iss string   `json:"iss"`
 	Aud audience `json:"aud"`
-	// Ext — обёртка обогащения Hydra token-hook'а. Для федеративного SA/user токена
-	// (client_credentials / jwt-bearer) `sub` — это Hydra client_id, а реальный
-	// Kachō principal id (sva…/usr…) IAM штампует в ext.ext_claims.kacho_principal_id.
+	Iat int64    `json:"iat"`
+	Nbf int64    `json:"nbf"`
+	Exp int64    `json:"exp"`
+	// Ext — обёртка обогащения прежнего издателя: там `sub` несёт
+	// идентификатор клиента, а принципал Kachō штампуется отдельным
+	// утверждением.
 	Ext struct {
 		ExtClaims struct {
 			KachoPrincipalID string `json:"kacho_principal_id"`
@@ -140,9 +299,19 @@ type jwtClaims struct {
 	} `json:"ext"`
 }
 
-// Verify верифицирует Bearer-JWT и возвращает identity (`sub`). Энфорс: alg ∈
-// {RS256, ES256}, подпись по JWKS-ключу (kid) + exp>now + aud==наш service + (если
-// задан) iss. Любое нарушение → ErrInvalidToken.
+// Verify проверяет предъявленный компактный JWS и возвращает принципала.
+//
+// Порядок не косметический:
+//
+//  1. алгоритм сверяется с закрытым словарём ДО разрешения ключа — иначе «без
+//     подписи» доходит до поиска ключа и оплачивается обращением к источнику;
+//  2. форма идентификатора ключа ограничивается ДО использования;
+//  3. запись источника выбирается по объявленному издателю ТОЛЬКО поиском в
+//     таблице — ни перебора, ни адреса, выведенного из самого издателя;
+//  4. подпись — до утверждений: срок и адресат не значат ничего, пока не
+//     доказано, кто их написал;
+//  5. отзыв — последним, потому что спрашивать авторитет о токене, который и
+//     так негоден, незачем.
 func (v *Verifier) Verify(ctx context.Context, raw string) (string, error) {
 	parts := strings.Split(raw, ".")
 	if len(parts) != 3 {
@@ -153,211 +322,342 @@ func (v *Verifier) Verify(ctx context.Context, raw string) (string, error) {
 	if err := decodeSegment(parts[0], &hdr); err != nil {
 		return "", fmt.Errorf("%w: bad header", ErrInvalidToken)
 	}
-	if hdr.Alg != algRS256 && hdr.Alg != algES256 {
-		return "", fmt.Errorf("%w: unexpected alg %q", ErrInvalidToken, hdr.Alg)
+	// (1) Закрытый словарь алгоритмов — общий для всей платформы. Пустое
+	// значение в него не входит: «алгоритм не назван» означало бы «любой».
+	if !tokenpolicy.AlgorithmAllowed(hdr.Alg) {
+		return "", fmt.Errorf("%w: algorithm outside the declared dictionary", ErrInvalidToken)
 	}
-
-	key, err := v.keyFor(ctx, hdr.Kid)
-	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrInvalidToken, err)
-	}
-
-	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil {
-		return "", fmt.Errorf("%w: bad signature encoding", ErrInvalidToken)
-	}
-	sum := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
-	if err := verifySignature(hdr.Alg, key, sum[:], sig); err != nil {
-		return "", fmt.Errorf("%w: %v", ErrInvalidToken, err)
+	// (2) Идентификатор ключа — недоверенный вход.
+	if !keyIDWellFormed(hdr.Kid) {
+		return "", fmt.Errorf("%w: malformed key id", ErrInvalidToken)
 	}
 
 	var claims jwtClaims
 	if err := decodeSegment(parts[1], &claims); err != nil {
 		return "", fmt.Errorf("%w: bad claims", ErrInvalidToken)
 	}
-	if claims.Exp == 0 || v.now().After(time.Unix(claims.Exp, 0)) {
-		return "", fmt.Errorf("%w: expired", ErrInvalidToken)
+	// (3) Объявленный издатель — тоже недоверенный вход, и здесь он служит
+	// ИСКЛЮЧИТЕЛЬНО ключом поиска.
+	rec, ok := v.records[claims.Iss]
+	if !ok {
+		return "", fmt.Errorf("%w: issuer has no declared key-set record", ErrInvalidToken)
+	}
+	// Тип равен ожидаемому для ЭТОЙ записи. Сравнение регистронезависимо:
+	// `typ` — медиа-тип, а они регистронезависимы по RFC.
+	//
+	// ОТСУТСТВИЕ типа и НЕСОВПАДЕНИЕ типа — разные вещи, и различает их только
+	// эта ветка. Несовпадение отвергается всегда; отсутствие — всегда, кроме
+	// полосы, которой послабление выдано явно и с предикатом снятия.
+	if hdr.Typ == "" {
+		if !rec.tolerateNoTyp {
+			return "", fmt.Errorf("%w: token declares no type", ErrInvalidToken)
+		}
+	} else if !strings.EqualFold(hdr.Typ, rec.tokenType) {
+		return "", fmt.Errorf("%w: unexpected token type", ErrInvalidToken)
+	}
+
+	key, err := v.keyFor(ctx, rec, hdr.Kid)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrInvalidToken, err)
+	}
+	// Алгоритм, ЗАКРЕПЛЁННЫЙ за ключом источником. Заголовок его не выбирает.
+	if key.alg != "" && key.alg != hdr.Alg {
+		return "", fmt.Errorf("%w: header algorithm differs from the algorithm bound to the key", ErrInvalidToken)
+	}
+
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return "", fmt.Errorf("%w: bad signature encoding", ErrInvalidToken)
+	}
+	// (4)
+	if err := verifySignature(hdr.Alg, key.pub, []byte(parts[0]+"."+parts[1]), sig); err != nil {
+		return "", fmt.Errorf("%w: %v", ErrInvalidToken, err)
+	}
+
+	if err := v.checkTime(claims); err != nil {
+		return "", err
 	}
 	if !claims.Aud.contains(v.aud) {
 		return "", fmt.Errorf("%w: audience mismatch", ErrInvalidToken)
 	}
-	if v.iss != "" && claims.Iss != v.iss {
-		return "", fmt.Errorf("%w: issuer mismatch", ErrInvalidToken)
-	}
 	if claims.Sub == "" {
 		return "", fmt.Errorf("%w: empty subject", ErrInvalidToken)
 	}
-	// Kachō principal id (sva…/usr…) — источник истины authz-subject'а. Для
-	// федеративного токена Hydra `sub` несёт client_id, а principal id обогащён
-	// token-hook'ом в ext.ext_claims.kacho_principal_id. Пусто (необогащённый
-	// user-OIDC / back-compat) → падаем обратно на `sub`.
+
+	// (5) Отзыв — на предъявлении. Любой неопознанный исход авторитета
+	// закрывает доступ: «не дозвонился» не означает «разрешено».
+	if rec.readRevocation {
+		active, rerr := v.revoke.Active(ctx, raw)
+		if rerr != nil {
+			return "", fmt.Errorf("%w: revocation authority did not answer", ErrInvalidToken)
+		}
+		if !active {
+			return "", fmt.Errorf("%w: revoked", ErrInvalidToken)
+		}
+	}
+
+	// Принципал Kachō — источник истины субъекта авторизации. У прежнего
+	// издателя он приезжает обогащением; пусто → падаем обратно на `sub`.
 	if pid := claims.Ext.ExtClaims.KachoPrincipalID; pid != "" {
 		return pid, nil
 	}
 	return claims.Sub, nil
 }
 
-// keyFor возвращает публичный ключ по kid. Свежий кэш с этим kid → отдаём сразу; иначе
-// один рефетч JWKS (key rotation). Рефетч не удался → отказ (fail-closed): по
-// устаревшему кэшу не обслуживаем ДОЛЬШЕ ОГРАНИЧЕННОЙ ОТСРОЧКИ, чтобы ротированный или
-// отозванный ключ не оставался валидным без границы. Рефетч удался, но kid по-прежнему
-// нет → отказ.
+// checkTime проверяет срок и момент вступления в силу с ОБЪЯВЛЕННЫМ допуском на
+// расхождение часов.
 //
-// Троттл (CWE-770/400): kid берётся из attacker-controlled JOSE-header ДО верификации
-// подписи, поэтому рефетч ограничен одним на окно minRefresh. Слот рефетча захватывается
-// под lock'ом ДО отпускания его на outbound-GET, поэтому конкурентные промахи (флуд
-// случайных kid) коллапсируют в один фетч (не thundering herd), а не в N одновременных
-// исходящих HTTPS-соединений.
-//
-// Обслуживание известного kid при активном троттл-окне ОГРАНИЧЕНО ПО ВРЕМЕНИ (CWE-613).
-// Внутри отсрочки (ttl + staleServeAttempts×minRefresh от последнего УСПЕШНОГО фетча)
-// известный kid отдаётся из кэша — иначе один сетевой blip рефетча амплифицировался бы в
-// minRefresh-окно тотального auth-отказа для валидных токенов. За её пределами кэш
-// считается неподтверждённым и ключ НЕ выдаётся, даже когда троттл-окно активно: окно
-// возобновляется каждой (в т.ч. неудачной) попыткой, поэтому без абсолютной границы
-// постоянно недоступный источник оставлял бы отозванный ключ валидным вечно.
-func (v *Verifier) keyFor(ctx context.Context, kid string) (crypto.PublicKey, error) {
-	v.mu.Lock()
+// Срок ОБЯЗАТЕЛЕН, и это включено явно: разбор, встретив срок, его проверит, а
+// не встретив — не возразит. Токен без срока живёт вечно, и заметить это на
+// положительном пути нельзя.
+func (v *Verifier) checkTime(c jwtClaims) error {
 	now := v.now()
-	key, ok := v.keys[kid]
-	age := now.Sub(v.fetched)
-	if ok && age < v.ttl {
-		v.mu.Unlock()
+	if c.Exp == 0 {
+		return fmt.Errorf("%w: expiry is required", ErrInvalidToken)
+	}
+	if now.Add(-v.skew).After(time.Unix(c.Exp, 0)) {
+		return fmt.Errorf("%w: expired", ErrInvalidToken)
+	}
+	horizon := now.Add(v.skew)
+	if c.Nbf != 0 && time.Unix(c.Nbf, 0).After(horizon) {
+		return fmt.Errorf("%w: not valid yet", ErrInvalidToken)
+	}
+	if c.Iat != 0 && time.Unix(c.Iat, 0).After(horizon) {
+		return fmt.Errorf("%w: issued in the future", ErrInvalidToken)
+	}
+	return nil
+}
+
+// keyIDWellFormed ограничивает форму идентификатора ключа ДО его использования.
+//
+// Значение приходит от предъявителя. Разрешены только знаки, из которых
+// составляют идентификаторы ключей (base64url плюс точка, тильда и двоеточие):
+// ни разделителей пути, ни управляющих символов, ни разметки — и с потолком
+// длины, чтобы четырёхкилобайтная строка не доходила ни до поиска, ни до
+// журнала.
+//
+// Пустое значение негодно тем же правилом: токен без идентификатора ключа
+// отвергается одинаково до и после ротации.
+func keyIDWellFormed(kid string) bool {
+	if kid == "" || len(kid) > maxKeyIDLen {
+		return false
+	}
+	for i := 0; i < len(kid); i++ {
+		c := kid[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '-', c == '_', c == '.', c == '~', c == ':':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// keyFor возвращает ключ записи по идентификатору. Свежий снимок с этим
+// идентификатором — отдаём сразу; иначе РОВНО ОДИН вынужденный перезапрос.
+//
+// Вынужденный перезапрос намеренно игнорирует срок годности: снимок бывает
+// свежим и уже неполным, и именно этот повод поглощает ротацию, случившуюся в
+// середине отсрочки. Его цена ограничена собственным интервалом — иначе поток
+// выдуманных идентификаторов превращается в поток обращений к публикатору.
+//
+// Обслуживание по протухшему снимку ОГРАНИЧЕНО во времени: окно интервала
+// возобновляется каждой попыткой, поэтому без абсолютной границы постоянно
+// недоступный источник оставлял бы снятый ключ валидным вечно.
+func (v *Verifier) keyFor(ctx context.Context, rec *issuerRecord, kid string) (keyRecord, error) {
+	rec.mu.Lock()
+	now := v.now()
+	key, ok := rec.keys[kid]
+	age := now.Sub(rec.fetched)
+	if ok && age < rec.ttl {
+		rec.mu.Unlock()
 		return key, nil
 	}
-	// Нужен рефетч (протухший кэш ИЛИ неизвестный kid). Троттлим: не чаще одного
-	// рефетча на minRefresh. Захватываем слот (lastRefresh = now) под lock'ом до
-	// отпускания его на HTTP-GET — конкурентные промахи в этом окне получают
-	// throttled-fail, а не собственный outbound-фетч.
-	if now.Sub(v.lastRefresh) < v.minRefresh {
-		servable := ok && age < v.ttl+time.Duration(staleServeAttempts)*v.minRefresh
-		v.mu.Unlock()
+	// Слот перезапроса захватывается ПОД замком до отпускания его на обращение
+	// к источнику: конкурентные промахи схлопываются в одно обращение, а не
+	// веерятся в N исходящих соединений.
+	if now.Sub(rec.lastRefresh) < defaultMinRefresh {
+		servable := ok && age < rec.ttl+staleServeAttempts*defaultMinRefresh
+		rec.mu.Unlock()
 		if servable {
 			return key, nil
 		}
 		if ok {
-			// Ключ известен, но не подтверждался источником дольше отсрочки: считаем его
-			// неподтверждённым и отвергаем — иначе отозванный ключ пережил бы отзыв.
-			return nil, fmt.Errorf("stale key %q: jwks unconfirmed for %s", kid, age.Truncate(time.Second))
+			return keyRecord{}, fmt.Errorf("key unconfirmed by its source for %s", age.Truncate(time.Second))
 		}
-		return nil, fmt.Errorf("unknown kid %q", kid)
+		return keyRecord{}, errors.New("unknown key id")
 	}
-	v.lastRefresh = now
-	v.mu.Unlock()
+	rec.lastRefresh = now
+	rec.mu.Unlock()
 
-	// Рефетч отвязан от request-ctx вызывающего: слот уже захвачен (lastRefresh
-	// продвинут), поэтому отмена/RST победителя слота (в т.ч. pre-auth флуд
-	// attacker-controlled kid'ов с немедленным RST) не должна ни срывать общий фетч
-	// ключей, ни жечь троттл-слот, блокируя подхват ротации для остальных вызывающих.
-	// Собственный дедлайн — http.Client.Timeout (как register-on-push в
-	// dataplane/handler.go, отвязанный от request-ctx через context.WithoutCancel).
+	// Обращение отвязано от контекста вызывающего: слот уже захвачен, поэтому
+	// обрыв соединения победителем слота не должен ни срывать общее обновление
+	// ключей, ни сжигать слот, блокируя подхват ротации для остальных.
 	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), v.http.Timeout)
 	defer cancel()
-	if err := v.refresh(fetchCtx); err != nil {
-		return nil, err
+	if err := v.refresh(fetchCtx, rec); err != nil {
+		return keyRecord{}, err
 	}
 
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if k, ok := v.keys[kid]; ok {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if k, ok := rec.keys[kid]; ok {
 		return k, nil
 	}
-	return nil, fmt.Errorf("unknown kid %q", kid)
+	return keyRecord{}, errors.New("unknown key id")
 }
 
-// refresh тянет JWKS и перестраивает кэш публичных ключей (RSA + EC/P-256). Любой сбой
-// фетча/парсинга → ошибка (caller fail-closed).
-func (v *Verifier) refresh(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.jwksURL, nil)
+// refresh тянет набор ОДНОЙ записи и перестраивает её снимок.
+//
+// Тип содержимого проверяется ДО разбора, а чтение прекращается на объявленном
+// потолке: ответ, по форме не являющийся набором ключей, — это признак того, что
+// по адресу не тот эндпоинт, и разбирать его незачем.
+func (v *Verifier) refresh(ctx context.Context, rec *issuerRecord) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rec.url, nil)
 	if err != nil {
-		return err
+		return errors.New("key set request could not be built")
 	}
 	resp, err := v.http.Do(req)
 	if err != nil {
-		return err
+		return errors.New("key set source did not answer")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("jwks fetch status %d", resp.StatusCode)
+		return fmt.Errorf("key set source answered %d", resp.StatusCode)
+	}
+	if err := keySetContentTypeOK(resp.Header.Get("Content-Type")); err != nil {
+		return err
+	}
+
+	// Потолок тела: читаем на один байт больше и отвергаем превышение целиком.
+	// Обрезанное тело нельзя разбирать «сколько влезло» — неполный набор
+	// неотличим от полного, и потребитель принял бы его за истину.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, tokenpolicy.KeySetBodyCeiling+1))
+	if err != nil {
+		return errors.New("key set body could not be read")
+	}
+	if len(body) > tokenpolicy.KeySetBodyCeiling {
+		return fmt.Errorf("key set body exceeds the declared ceiling of %d bytes", tokenpolicy.KeySetBodyCeiling)
 	}
 
 	var doc struct {
 		Keys []jsonWebKey `json:"keys"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxJWKSBytes)).Decode(&doc); err != nil {
-		return fmt.Errorf("jwks decode: %w", err)
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&doc); err != nil {
+		return errors.New("key set body is not a key set document")
 	}
 
-	fresh := make(map[string]crypto.PublicKey, len(doc.Keys))
+	fresh := make(map[string]keyRecord, len(doc.Keys))
 	for _, k := range doc.Keys {
-		if k.Kid == "" {
+		if !keyIDWellFormed(k.Kid) {
 			continue
 		}
 		pub, perr := k.toKey()
 		if perr != nil {
-			continue // ключ неподдерживаемого типа/битый пропускаем (остальные валидны)
+			// ПОТРЕБИТЕЛЬ пропускает ключ, которого не понимает, и принимает
+			// набор. Это НАМЕРЕННО противоположно правилу публикатора («не
+			// можешь отдать целиком — не отдавай ничего»), и предметы у них
+			// разные: там неполнота выдаётся за полноту, здесь один незнакомый
+			// ключ (новый вид, будущий алгоритм) обвалил бы проверку ВСЕХ
+			// токенов сразу.
+			continue
 		}
-		fresh[k.Kid] = pub
+		fresh[k.Kid] = keyRecord{pub: pub, alg: k.Alg}
 	}
 
 	ttl := parseMaxAge(resp.Header.Get("Cache-Control"))
 	if ttl > maxTTL {
-		ttl = maxTTL // кламп: непомерный server max-age не растягивает rotation-окно
+		ttl = maxTTL // потолок: непомерный срок годности не растягивает окно ротации
 	}
-	v.mu.Lock()
-	v.keys = fresh
-	v.fetched = v.now()
+	rec.mu.Lock()
+	rec.keys = fresh
+	rec.fetched = v.now()
 	if ttl > 0 {
-		v.ttl = ttl
+		rec.ttl = ttl
 	}
-	v.mu.Unlock()
+	rec.mu.Unlock()
 	return nil
 }
 
-// verifySignature проверяет подпись JWS по alg. Тип ключа обязан соответствовать alg
-// (RSA↔RS256, EC↔ES256) — несоответствие отвергается (защита от alg-confusion).
-func verifySignature(alg string, key crypto.PublicKey, hash, sig []byte) error {
+// keySetContentTypeOK отвергает ответ, который набором ключей не является.
+//
+// Ответ не того типа — признак НАСТРОЙКИ (по адресу стоит не тот эндпоинт), а
+// не сбоя: повтором он не лечится. Проверка стоит до разбора, потому что разбор
+// страницы с ошибкой может случайно дать пустой набор, а пустой набор читается
+// как факт «ключей нет».
+func keySetContentTypeOK(header string) error {
+	if strings.TrimSpace(header) == "" {
+		return errors.New("key set answer carries no content type")
+	}
+	mt, _, err := mime.ParseMediaType(header)
+	if err != nil {
+		return errors.New("key set answer carries an unparsable content type")
+	}
+	switch strings.ToLower(mt) {
+	case "application/json", "application/jwk-set+json":
+		return nil
+	default:
+		return errors.New("key set answer is not a key set media type")
+	}
+}
+
+// verifySignature проверяет подпись по алгоритму. Вид ключа обязан
+// соответствовать алгоритму — несоответствие отвергается (иначе ключ одного вида
+// подставляется в проверку другого).
+func verifySignature(alg string, key crypto.PublicKey, signingInput, sig []byte) error {
 	switch alg {
-	case algRS256:
+	case tokenpolicy.AlgRS256:
 		pub, ok := key.(*rsa.PublicKey)
 		if !ok {
 			return errors.New("key type mismatch for RS256")
 		}
-		if err := rsa.VerifyPKCS1v15(pub, crypto.SHA256, hash, sig); err != nil {
+		sum := sha256.Sum256(signingInput)
+		if err := rsa.VerifyPKCS1v15(pub, crypto.SHA256, sum[:], sig); err != nil {
 			return errors.New("signature mismatch")
 		}
 		return nil
-	case algES256:
+	case tokenpolicy.AlgES256:
 		pub, ok := key.(*ecdsa.PublicKey)
 		if !ok {
 			return errors.New("key type mismatch for ES256")
 		}
-		// JWS ES256: raw подпись r||s, по 32 байта (P-256).
+		// ES256 в JWS: сырая подпись r||s, по 32 байта (P-256).
 		if len(sig) != 64 {
 			return errors.New("bad ES256 signature length")
 		}
+		sum := sha256.Sum256(signingInput)
 		r := new(big.Int).SetBytes(sig[:32])
 		s := new(big.Int).SetBytes(sig[32:])
-		if !ecdsa.Verify(pub, hash, r, s) {
+		if !ecdsa.Verify(pub, sum[:], r, s) {
+			return errors.New("signature mismatch")
+		}
+		return nil
+	case tokenpolicy.AlgEdDSA:
+		pub, ok := key.(ed25519.PublicKey)
+		if !ok {
+			return errors.New("key type mismatch for EdDSA")
+		}
+		// Ed25519 подписывает СООБЩЕНИЕ, а не его свёртку: подставить сюда
+		// заранее посчитанный SHA-256 значило бы проверять не то.
+		if len(sig) != ed25519.SignatureSize {
+			return errors.New("bad EdDSA signature length")
+		}
+		if !ed25519.Verify(pub, signingInput, sig) {
 			return errors.New("signature mismatch")
 		}
 		return nil
 	default:
-		return fmt.Errorf("unexpected alg %q", alg)
+		return errors.New("algorithm outside the declared dictionary")
 	}
 }
 
-// поддерживаемые алгоритмы подписи (Hydra advertises RS256 по умолчанию, ES256 —
-// опционально). Всё вне allowlist (`none`, HS*) отвергается.
-const (
-	algRS256 = "RS256"
-	algES256 = "ES256"
-)
-
-// jsonWebKey — JWK (RFC 7517): RSA (n/e) либо EC/P-256 (crv/x/y) — base64url big-endian.
+// jsonWebKey — ключ набора: RSA (n/e), EC/P-256 (crv/x/y) либо OKP/Ed25519
+// (crv/x) — все в base64url, big-endian.
 type jsonWebKey struct {
 	Kty string `json:"kty"`
 	Kid string `json:"kid"`
+	Alg string `json:"alg"`
 	Crv string `json:"crv"`
 	N   string `json:"n"`
 	E   string `json:"e"`
@@ -365,14 +665,16 @@ type jsonWebKey struct {
 	Y   string `json:"y"`
 }
 
-// toKey собирает публичный ключ из JWK по kty. Поддержаны RSA и EC/P-256 (ES256);
-// остальные типы/кривые — ошибка.
+// toKey собирает проверочный ключ по виду. Поддержаны ровно те виды, которые
+// отвечают закрытому словарю алгоритмов; остальные — ошибка (и пропуск набором).
 func (k jsonWebKey) toKey() (crypto.PublicKey, error) {
 	switch k.Kty {
 	case "RSA":
 		return k.toRSA()
 	case "EC":
 		return k.toECDSA()
+	case "OKP":
+		return k.toOKP()
 	default:
 		return nil, fmt.Errorf("unsupported kty %q", k.Kty)
 	}
@@ -396,22 +698,19 @@ func (k jsonWebKey) toRSA() (*rsa.PublicKey, error) {
 		return nil, errors.New("invalid exponent")
 	}
 	n := new(big.Int).SetBytes(nb)
-	// Минимальный размер модуля: < 2048 бит — forgeable-token risk (короткий модуль
-	// факторизуется, подпись подделывается). Отвергаем, чтобы слабый ключ не попал в
-	// кэш верификатора.
+	// Короткий модуль факторизуется, а значит подпись подделывается. Такой ключ
+	// не попадает в снимок вовсе.
 	if n.BitLen() < minRSAModulusBits {
 		return nil, fmt.Errorf("RSA modulus too small: %d bits (min %d)", n.BitLen(), minRSAModulusBits)
 	}
 	return &rsa.PublicKey{N: n, E: int(e.Int64())}, nil
 }
 
-// minRSAModulusBits — минимальный допустимый размер RSA-модуля. Ключи короче
-// отвергаются как forgeable (недостаточная стойкость к факторизации).
+// minRSAModulusBits — минимальный допустимый размер модуля RSA.
 const minRSAModulusBits = 2048
 
-// toECDSA собирает *ecdsa.PublicKey из base64url x/y для кривой P-256 (ES256). Точка
-// валидируется как лежащая на кривой (ecdh.P256().NewPublicKey отвергает off-curve),
-// иначе битый/подложный ключ не попадает в кэш.
+// toECDSA собирает *ecdsa.PublicKey из base64url x/y для кривой P-256. Точка
+// проверяется как лежащая на кривой — иначе подложный ключ попадёт в снимок.
 func (k jsonWebKey) toECDSA() (*ecdsa.PublicKey, error) {
 	if k.Crv != "P-256" {
 		return nil, fmt.Errorf("unsupported EC curve %q", k.Crv)
@@ -427,7 +726,8 @@ func (k jsonWebKey) toECDSA() (*ecdsa.PublicKey, error) {
 	if len(xb) == 0 || len(xb) > 32 || len(yb) == 0 || len(yb) > 32 {
 		return nil, errors.New("invalid EC coordinate length")
 	}
-	// Uncompressed SEC1: 0x04 || X(32) || Y(32); NewPublicKey проверяет on-curve.
+	// Несжатая точка SEC1: 0x04 || X(32) || Y(32); NewPublicKey проверяет,
+	// что она на кривой.
 	uncompressed := make([]byte, 1+32+32)
 	uncompressed[0] = 4
 	copy(uncompressed[1+(32-len(xb)):33], xb)
@@ -442,7 +742,23 @@ func (k jsonWebKey) toECDSA() (*ecdsa.PublicKey, error) {
 	}, nil
 }
 
-// audience — aud, допускающий строку ИЛИ массив строк (JWT RFC 7519).
+// toOKP собирает ed25519.PublicKey из base64url x. Кривая — только Ed25519:
+// закрытый словарь алгоритмов называет EdDSA, и других кривых у него нет.
+func (k jsonWebKey) toOKP() (ed25519.PublicKey, error) {
+	if k.Crv != "Ed25519" {
+		return nil, fmt.Errorf("unsupported OKP curve %q", k.Crv)
+	}
+	xb, err := base64.RawURLEncoding.DecodeString(k.X)
+	if err != nil {
+		return nil, err
+	}
+	if len(xb) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("invalid Ed25519 public key length %d", len(xb))
+	}
+	return ed25519.PublicKey(xb), nil
+}
+
+// audience — `aud`, допускающий строку ИЛИ массив строк (RFC 7519).
 type audience []string
 
 func (a *audience) UnmarshalJSON(b []byte) error {
@@ -468,7 +784,7 @@ func (a audience) contains(want string) bool {
 	return false
 }
 
-// decodeSegment base64url-декодирует JOSE-сегмент и разбирает JSON в out.
+// decodeSegment раскодирует сегмент JOSE и разбирает его как JSON.
 func decodeSegment(seg string, out any) error {
 	b, err := base64.RawURLEncoding.DecodeString(seg)
 	if err != nil {
@@ -477,7 +793,7 @@ func decodeSegment(seg string, out any) error {
 	return json.Unmarshal(b, out)
 }
 
-// parseMaxAge извлекает max-age (секунды) из Cache-Control; 0 — не задан/битый.
+// parseMaxAge извлекает max-age (секунды) из Cache-Control; 0 — не задан либо негоден.
 func parseMaxAge(cacheControl string) time.Duration {
 	for _, part := range strings.Split(cacheControl, ",") {
 		part = strings.TrimSpace(part)

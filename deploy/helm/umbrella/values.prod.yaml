@@ -190,7 +190,8 @@ api-gateway:
     # verifies every bearer's SIGNATURE with. Substituting it substitutes the access
     # decision, and the edge then believes its own answer. Plaintext, or TLS whose
     # certificate nobody checks, both leave that open. registry already fetches from
-    # this same :9097 over https (see registry.iam.jwksUrl below) — one port, one
+    # this same :9097 over https (see registry.tokenAcceptance.issuerKeySets below) — one
+    # port, one
     # transport.
     jwksUrl: "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
     # Anchor for the hop above: the internal-CA bundle that signs iam's serving cert.
@@ -430,6 +431,13 @@ kacho-geo:
 kacho-iam:
   # mTLS: server-only (authz authority; gateway/vpc/compute/nlb dial iam).
   mtls:
+    # Слушатель :9097 несёт ДВЕ поверхности с разными требованиями. Набор
+    # проверочных ключей обязан оставаться доступен без клиентского сертификата
+    # (потребитель origin-agnostic), а авторитет отзыва принимает предъявленный
+    # токен и обязан знать, кто спрашивает. Поэтому сертификат ЗАПРАШИВАЕТСЯ и
+    # верифицируется, если предъявлен, а отказывает сам обработчик авторитета:
+    # режим сам по себе ничего не сужает.
+    jwksProxyClientAuthMode: optional-mutual
     enable: true
     # Server-side TLS for the HTTP hooks (:9092) + /metrics (:9095) listeners is
     # ON in prod (kacho-iam#137, supersedes the OFF-gate #122/#136), reusing the
@@ -450,21 +458,6 @@ kacho-iam:
     # Both HTTP edges run server-tls-only (default; restated here for prod clarity).
     hooksClientAuthMode: server-tls-only
     metricsClientAuthMode: server-tls-only
-  # ─── Обратные вызовы службы личности — под тем же TLS, что и слушатель ──────
-  #
-  # Слушатель хуков этого стенда работает под TLS (httpListeners выше), значит и
-  # полосы к нему обязаны идти https. Раньше две из четырёх полос (заведение
-  # пользователя и завершение восстановления доступа) были выписаны в шаблоне
-  # чарта буквой `http`, и профиль переопределить их не мог ВООБЩЕ — то есть
-  # боевая посадка не была в состоянии объявить их защищёнными.
-  #
-  # Узел и порт здесь не объявляются: их умолчания выводятся из релиза и из
-  # порта слушателя и совпадают с прежним адресом байт в байт. Объявляется
-  # ровно то, что решает профиль, — транспорт.
-  #
-  # Согласие полосы со слушателем держит deploy/identity_callback_transport_test.go:
-  # он выводит перечень полос из конфигурации и краснеет и на открытой полосе при
-  # слушателе под TLS, и на обратном — https к открытому слушателю.
   kratos:
     config:
       hooks:
@@ -556,6 +549,22 @@ kacho-iam:
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-registry
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-geo
 
+      # СВОЯ ЧЕКАНКА ТОКЕНОВ (F1, задача #897)
+      #
+      # Контур выдачи докер-токена переводится на НАШ подписант: обе его стороны
+      # наши, и подписант без производственного вызывающего — тот же класс, что
+      # хранилище без читателя.
+      #
+      # Каждое значение обязательно: незаданный издатель означает «любой»,
+      # пустой перечень допустимых алгоритмов означает «принимаем любой», а
+      # вырожденный путь записи набора превращает стража источника в проверку,
+      # неспособную упасть.
+      tokenSigning:
+        enabled: true
+        issuer: "https://iam.kacho.local"
+        algorithm: ES256
+        allowedAlgorithms: "ES256,RS256"
+        keySetPath: /.well-known/kacho/jwks.json
 # ─── kacho-nlb (L4 NLB control-plane) ───────────────────────────────────────
 # Enabled in production; condition-gated pieces (sub-chart + its Postgres) on.
 kacho-nlb:
@@ -790,14 +799,34 @@ registry:
   # single facade to Hydra (core rule #16); Hydra remains the token SIGNER, only
   # key DISTRIBUTION goes through iam. https is required by requireSecureJWKSURL,
   # and the chart default is http:// — which fails the guard.
-  iam:
-    jwksUrl: https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json
-  hydra:
-    # Expected `iss` of the identity-JWT — pinned on Hydra (the signer), decoupled
-    # from the JWKS URL above. Empty fails requireIssuerPinned; an unpinned issuer
-    # would federate in any RP sharing JWKS+aud. Same issuer string the gateway
-    # verifier pins; a per-cluster overlay overrides both together.
-    issuer: "https://hydra.api.kacho.cloud"
+  # Приём identity-JWT: издатель — МНОЖЕСТВО (F1, задача #897)
+  #
+  # Платформа чеканит свои токены сама, а прежний издатель на переходе остаётся,
+  # поэтому принимаемых издателей двое и у КАЖДОГО своя запись источника ключей.
+  # Объединять наборы в один документ дешевле и уничтожило бы ровно ту защиту,
+  # ради которой развязка заводится: ключ одного издателя проверял бы токен,
+  # объявляющий другого.
+  #
+  # Прежние ручки `registry.iam.jwksUrl` и `registry.hydra.issuer` СНЯТЫ, а не
+  # оставлены мостом: мост был бы вторым местом об одном предмете и обессмыслил
+  # бы то, ради чего смена вообще видна при старте — пересмотр пина издателя.
+  # Профиль, задающий только снятые имена, принимает НОЛЬ издателей и не
+  # поднимается.
+  tokenAcceptance:
+    issuers: "https://iam.kacho.local,https://hydra.api.kacho.cloud"
+    # Адрес ОБЪЯВЛЯЕТСЯ, а не выводится из издателя: издатель приходит от
+    # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
+    # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
+    # тождественно истинным.
+    issuerKeySets: "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://hydra.api.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    # Наш издатель выбирает полосу приёма: тип at+jwt и чтение отзыва на
+    # предъявлении. Вне issuers — отказ в старте.
+    platformIssuer: "https://iam.kacho.local"
+    # Авторитет отзыва. Контроль, действующий на выдаче и не действующий на
+    # предъявлении, отзывом не является: он лишь не выдаёт нового, а
+    # предъявленное проходит до истечения срока, и это состояние не сходится
+    # само.
+    revocationUrl: "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
   # Operator acknowledgement that the plaintext data-plane :8080 listener sits
   # behind external TLS termination — bearer identity-JWTs must not transit
   # cleartext. Required by requireDataplaneTLSAck in any production mode.
@@ -817,6 +846,11 @@ registry:
       iamAuthz: true
       iamProject: true
       geo: true
+      # Авторитету отзыва присылают ПРЕДЪЯВЛЕННЫЙ токен, поэтому хоп к нему идёт
+      # под клиентским сертификатом. Набор проверочных ключей с того же
+      # слушателя по-прежнему берётся БЕЗ сертификата: его origin-agnostic
+      # свойство и есть причина, по которой ребро не делается взаимным целиком.
+      tokenRevocation: true
 
 # ─── Per-service Postgres (database-per-service) — credentials via existingSecret ─
 # NO plaintext passwords in this profile. Each bitnami pg instance reads its

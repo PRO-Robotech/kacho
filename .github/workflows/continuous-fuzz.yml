@@ -51,6 +51,10 @@ jobs:
           - { target: FuzzJWTVerify,               pkg: ./gateway/internal/fuzz }
           - { target: FuzzDPoPProof,               pkg: ./gateway/internal/fuzz }
           - { target: FuzzAuthzMiddleware,         pkg: ./gateway/internal/fuzz }
+          # Идентификатор ключа приходит из заголовка предъявленного токена и
+          # читается ДО проверки подписи — цель гоняет прод-путь плоскости данных
+          # реестра целиком, а не отдельную проверку формы.
+          - { target: FuzzKeyIDNeverReachesTheKeySetSource, pkg: ./services/registry/internal/clients/jwks }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

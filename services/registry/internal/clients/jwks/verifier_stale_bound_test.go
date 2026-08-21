@@ -23,7 +23,7 @@ import (
 // истёкшее окно, а все остальные обслуживались из протухшего кэша.
 func TestJWKS_Verify_PermanentlyDownSource_StopsAcceptingStaleKey(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa") // Cache-Control: max-age=300
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
@@ -63,7 +63,7 @@ func TestJWKS_Verify_PermanentlyDownSource_StopsAcceptingStaleKey(t *testing.T) 
 // остаётся. Граница ограничивает отсрочку, а не отменяет её.
 func TestJWKS_Verify_TransientBlip_StillServesWithinGrace(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 
 	clock := time.Now()
 	v.now = func() time.Time { return clock }

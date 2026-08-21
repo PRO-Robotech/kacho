@@ -218,64 +218,17 @@ func TestValidateAuthMode(t *testing.T) {
 	}
 }
 
-// TestRequireSecureJWKSURL — в production/production-strict JWKS trust-anchor
-// обязан быть https://; в dev допускается http:// (как DB sslmode=disable).
-func TestRequireSecureJWKSURL(t *testing.T) {
-	cases := []struct {
-		name     string
-		authMode string
-		jwksURL  string
-		wantErr  bool
-	}{
-		{"dev-http-ok", "dev", "http://hydra.kacho.svc:4444/.well-known/jwks.json", false},
-		{"dev-https-ok", "dev", "https://hydra.kacho.svc:4444/.well-known/jwks.json", false},
-		{"prod-http-rejected", "production", "http://hydra.kacho.svc:4444/.well-known/jwks.json", true},
-		{"prod-https-ok", "production", "https://hydra.api.kacho.cloud/.well-known/jwks.json", false},
-		{"prod-strict-http-rejected", "production-strict", "http://hydra.kacho.svc:4444/.well-known/jwks.json", true},
-		{"prod-strict-https-ok", "production-strict", "https://hydra.api.kacho.cloud/.well-known/jwks.json", false},
-		{"prod-scheme-uppercase-ok", "production", "HTTPS://hydra.api.kacho.cloud/jwks", false},
-		{"prod-bad-url", "production", "://not a url", true},
-		// iam JWKS proxy URL (post-unify): http:// rejected, https:// accepted in prod.
-		{"prod-iam-http-rejected", "production", "http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json", true},
-		{"prod-iam-https-ok", "production", "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := requireSecureJWKSURL(tc.authMode, tc.jwksURL)
-			if tc.wantErr && err == nil {
-				t.Fatalf("want error, got nil")
-			}
-			if !tc.wantErr && err != nil {
-				t.Fatalf("want nil, got %v", err)
-			}
-		})
-	}
-}
-
-// TestRequireSecureJWKSURL_ErrorNamesIAMEnv (RJU-14) — после config-rename prod-гард
-// обязан именовать НОВЫЙ env KACHO_REGISTRY_IAM_JWKS_URL (а не старый _HYDRA_JWKS_URL)
-// в тексте отказа. Behaviour-level lock рефактора имени переменной (testing.md APICONV):
-// операторская диагностика указывает на актуальное имя env. Держит и позитивную сторону
-// (упомянут IAM), и негативную (старое имя вычищено).
-func TestRequireSecureJWKSURL_ErrorNamesIAMEnv(t *testing.T) {
-	err := requireSecureJWKSURL("production", "http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json")
-	if err == nil {
-		t.Fatalf("want error for http:// iam JWKS URL in production, got nil")
-	}
-	if !strings.Contains(err.Error(), "KACHO_REGISTRY_IAM_JWKS_URL") {
-		t.Fatalf("error must name the renamed env KACHO_REGISTRY_IAM_JWKS_URL, got %q", err.Error())
-	}
-	if strings.Contains(err.Error(), "KACHO_REGISTRY_HYDRA_JWKS_URL") {
-		t.Fatalf("error must not reference the old env KACHO_REGISTRY_HYDRA_JWKS_URL, got %q", err.Error())
-	}
-}
+// Проверки требований к адресу набора ключей и к пину издателя переехали в
+// tokenverifier_test.go вместе со своим предметом: издатель перестал быть
+// скаляром, а адрес набора — одним на всех. Здесь они не дублируются — два места
+// об одном предмете расходятся молча.
 
 // TestRequireDataplaneTLSAck — data-plane OCI-листенер обслуживает открытый HTTP
 // (bearer identity-JWT транзитят по сокету). В production/production-strict молчаливый
 // plaintext-старт запрещён: оператор обязан ЯВНО подтвердить внешнюю TLS-терминацию
 // (KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY=true), иначе старт отклоняется.
-// В dev — no-op (как http:// JWKS и DB sslmode=disable). Параллель requireSecureJWKSURL/
-// requireIssuerPinned.
+// В dev — no-op (как открытый HTTP у набора ключей и DB sslmode=disable).
+// Параллель Config.TokenAcceptance.
 func TestRequireDataplaneTLSAck(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -293,37 +246,6 @@ func TestRequireDataplaneTLSAck(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := requireDataplaneTLSAck(tc.authMode, tc.tlsTerminated)
-			if tc.wantErr && err == nil {
-				t.Fatalf("want error, got nil")
-			}
-			if !tc.wantErr && err != nil {
-				t.Fatalf("want nil, got %v", err)
-			}
-		})
-	}
-}
-
-// TestRequireIssuerPinned — в production/production-strict issuer (iss) identity-JWT
-// обязан быть закреплён (KACHO_REGISTRY_HYDRA_ISSUER непустой); пустой iss в проде
-// принимал бы токен от любого RP с тем же JWKS+aud (federation-out). В dev пустой iss
-// допустим (issuer-pinning опционален), симметрично http:// JWKS и DB sslmode=disable.
-func TestRequireIssuerPinned(t *testing.T) {
-	cases := []struct {
-		name     string
-		authMode string
-		issuer   string
-		wantErr  bool
-	}{
-		{"dev-empty-ok", "dev", "", false},
-		{"dev-set-ok", "dev", "https://hydra.api.kacho.cloud", false},
-		{"prod-empty-rejected", "production", "", true},
-		{"prod-set-ok", "production", "https://hydra.api.kacho.cloud", false},
-		{"prod-strict-empty-rejected", "production-strict", "", true},
-		{"prod-strict-set-ok", "production-strict", "https://hydra.api.kacho.cloud", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := requireIssuerPinned(tc.authMode, tc.issuer)
 			if tc.wantErr && err == nil {
 				t.Fatalf("want error, got nil")
 			}

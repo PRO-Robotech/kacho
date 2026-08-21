@@ -172,7 +172,7 @@ func hydraClaims(sub string, exp time.Time) map[string]any {
 // REG-TX-13 — валидный Hydra RS256-JWT (Ory default) → Verify возвращает sub.
 func TestJWKS_Verify_RS256_Valid(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 
 	sub, err := v.Verify(context.Background(), tok)
@@ -185,7 +185,7 @@ func TestJWKS_Verify_RS256_Valid(t *testing.T) {
 func TestJWKS_Verify_ES256_Valid(t *testing.T) {
 	js := newJWKSServer(t)
 	js.addEC(t, "kid-ec")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	tok := js.mintES256(t, "kid-ec", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 
 	sub, err := v.Verify(context.Background(), tok)
@@ -199,7 +199,7 @@ func TestJWKS_Verify_ES256_Valid(t *testing.T) {
 // целится в несуществующий service_account:<client_id> и отказывает любой push/pull.
 func TestJWKS_Verify_ReturnsKachoPrincipalID(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	claims := hydraClaims("81f92eee-client-uuid", time.Now().Add(time.Hour))
 	claims["ext"] = map[string]any{"ext_claims": map[string]any{"kacho_principal_id": "svaz7x4kcr58s59fx75v"}}
 	tok := js.mintRS256(t, "kid-rsa", claims)
@@ -213,7 +213,7 @@ func TestJWKS_Verify_ReturnsKachoPrincipalID(t *testing.T) {
 // (back-compat: user-OIDC / not-yet-enriched токены).
 func TestJWKS_Verify_FallsBackToSubWhenNoPrincipalClaim(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	tok := js.mintRS256(t, "kid-rsa", hydraClaims("usr-bare", time.Now().Add(time.Hour)))
 
 	sub, err := v.Verify(context.Background(), tok)
@@ -224,7 +224,7 @@ func TestJWKS_Verify_FallsBackToSubWhenNoPrincipalClaim(t *testing.T) {
 // REG-TX-13 — истёкший Hydra-JWT → 401 (invalid_token на стороне proxy).
 func TestJWKS_Verify_Expired(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", time.Now().Add(-time.Minute)))
 
 	_, err := v.Verify(context.Background(), tok)
@@ -234,7 +234,7 @@ func TestJWKS_Verify_Expired(t *testing.T) {
 // REG-TX-05/13 — wrong audience (токен для другого service) → отвергается.
 func TestJWKS_Verify_WrongAudience(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	claims := hydraClaims("cid-ci", time.Now().Add(time.Hour))
 	claims["aud"] = "some-other-service"
 	tok := js.mintRS256(t, "kid-rsa", claims)
@@ -247,7 +247,7 @@ func TestJWKS_Verify_WrongAudience(t *testing.T) {
 // чужой issuer после переключения не принимается).
 func TestJWKS_Verify_WrongIssuer(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	claims := hydraClaims("cid-ci", time.Now().Add(time.Hour))
 	claims["iss"] = "https://api.kacho.local/iam/token" // старый IAM-native issuer
 	tok := js.mintRS256(t, "kid-rsa", claims)
@@ -266,7 +266,7 @@ func TestJWKS_Verify_UnknownKid(t *testing.T) {
 	tok := js.mintRS256(t, "kid-rogue", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 	delete(js.rsaKeys, "kid-rogue") // JWKS больше его не отдаёт
 
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	_, err = v.Verify(context.Background(), tok)
 	require.Error(t, err)
 }
@@ -274,7 +274,7 @@ func TestJWKS_Verify_UnknownKid(t *testing.T) {
 // REG-TX-13 — подпись не сходится (tampered payload) → отвергается.
 func TestJWKS_Verify_BadSignature(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 
 	// Подмена обязана ДЕЙСТВИТЕЛЬНО менять токен. Прежняя редакция дописывала
@@ -298,7 +298,7 @@ func TestJWKS_Verify_BadSignature(t *testing.T) {
 // подсунуть как HMAC-секрет (alg-confusion). Allowlist — только {RS256, ES256}.
 func TestJWKS_Verify_HS256_Rejected(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	signingInput := joseSigningInput("HS256", "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 	tok := signingInput + "." + b64u([]byte("sig"))
 	_, err := v.Verify(context.Background(), tok)
@@ -308,7 +308,7 @@ func TestJWKS_Verify_HS256_Rejected(t *testing.T) {
 // REG-TX-21 alg-guard — alg=none (unsigned) → отвергается. Никогда не принимать none.
 func TestJWKS_Verify_NoneAlg_Rejected(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	signingInput := joseSigningInput("none", "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 	tok := signingInput + "." // пустая подпись
 	_, err := v.Verify(context.Background(), tok)
@@ -325,7 +325,7 @@ func TestJWKS_Verify_KeyTypeAlgConfusion_Rejected(t *testing.T) {
 	// header alg=ES256, но kid указывает на RSA-ключ → key.(*ecdsa.PublicKey) не проходит.
 	t.Run("es256-header-over-rsa-key", func(t *testing.T) {
 		js := newJWKSServer(t, "kid-rsa")
-		v := New(js.srv.URL, testAud, testHydraIss)
+		v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 		signingInput := joseSigningInput("ES256", "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 		// подпись-заглушка нужной для ES256 длины (64B) — type-assert падает ДО её проверки.
 		tok := signingInput + "." + b64u(make([]byte, 64))
@@ -336,7 +336,7 @@ func TestJWKS_Verify_KeyTypeAlgConfusion_Rejected(t *testing.T) {
 	t.Run("rs256-header-over-ec-key", func(t *testing.T) {
 		js := newJWKSServer(t)
 		js.addEC(t, "kid-ec")
-		v := New(js.srv.URL, testAud, testHydraIss)
+		v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 		signingInput := joseSigningInput("RS256", "kid-ec", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 		tok := signingInput + "." + b64u([]byte("stub-signature"))
 		_, err := v.Verify(context.Background(), tok)
@@ -347,7 +347,7 @@ func TestJWKS_Verify_KeyTypeAlgConfusion_Rejected(t *testing.T) {
 // JWKS кэшируется (TTL): повторные Verify известным kid не рефетчат JWKS.
 func TestJWKS_Verify_Caches(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	for i := 0; i < 3; i++ {
 		tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 		_, err := v.Verify(context.Background(), tok)
@@ -362,7 +362,7 @@ func TestJWKS_Verify_Caches(t *testing.T) {
 // выполняется по часам, продвинутым за окно троттла (иначе — throttled-fail).
 func TestJWKS_Verify_RefetchOnUnknownKid(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
@@ -390,7 +390,7 @@ func TestJWKS_Verify_RefetchOnUnknownKid(t *testing.T) {
 // DoS-амплификация закрыта).
 func TestJWKS_Verify_UnknownKidThrottled_NoRefetch(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
@@ -416,7 +416,7 @@ func TestJWKS_Verify_UnknownKidThrottled_NoRefetch(t *testing.T) {
 // одновременных промахов не веерятся в N исходящих JWKS-фетчей (thundering herd).
 func TestJWKS_Verify_ConcurrentUnknownKid_BoundsRefetch(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
@@ -454,7 +454,7 @@ func TestJWKS_Verify_ConcurrentUnknownKid_BoundsRefetch(t *testing.T) {
 // ротированным ключом, отвергается как "unknown kid" на всё окно minRefresh.
 func TestJWKS_Verify_RefreshDetachedFromRequestCtx(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
@@ -494,7 +494,7 @@ func TestJWKS_Verify_JWKSUnreachable_FailClosed(t *testing.T) {
 	tok := js.mintRS256(t, "kid-rsa", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 	js.srv.Close() // JWKS больше недоступен, кэш пуст
 
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	_, err := v.Verify(context.Background(), tok)
 	require.Error(t, err)
 }
@@ -504,7 +504,7 @@ func TestJWKS_Verify_JWKSUnreachable_FailClosed(t *testing.T) {
 // fail-closed (ротированный/отозванный ключ не остаётся валидным бесконечно).
 func TestJWKS_Verify_StaleCacheJWKSDown_FailClosed(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa") // JWKS отдаёт Cache-Control: max-age=300
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
@@ -535,7 +535,7 @@ func TestJWKS_Verify_StaleCacheJWKSDown_FailClosed(t *testing.T) {
 // TestJWKS_Verify_PermanentlyDownSource_StopsAcceptingStaleKey.
 func TestJWKS_Verify_KnownKidServedFromCache_WhileRefetchThrottled(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa") // Cache-Control: max-age=300
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
 
@@ -568,7 +568,7 @@ func TestJWKS_Verify_KnownKidServedFromCache_WhileRefetchThrottled(t *testing.T)
 func TestJWKS_Verify_CacheControlTTL_ClampedToMax(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
 	js.cacheControl = "max-age=999999999" // ~31 год
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 
 	clock := time.Now()
 	v.now = func() time.Time { return clock }
@@ -577,9 +577,10 @@ func TestJWKS_Verify_CacheControlTTL_ClampedToMax(t *testing.T) {
 	_, err := v.Verify(context.Background(), tok)
 	require.NoError(t, err)
 
-	v.mu.Lock()
-	got := v.ttl
-	v.mu.Unlock()
+	rec := v.onlyRecord(t)
+	rec.mu.Lock()
+	got := rec.ttl
+	rec.mu.Unlock()
 	require.LessOrEqual(t, got, maxTTL,
 		"server-supplied max-age must be clamped to maxTTL (rotated key must not stay cached ~31y)")
 	require.Greater(t, got, time.Duration(0))
@@ -588,7 +589,7 @@ func TestJWKS_Verify_CacheControlTTL_ClampedToMax(t *testing.T) {
 // Malformed token (не три сегмента) → отвергается.
 func TestJWKS_Verify_Malformed(t *testing.T) {
 	js := newJWKSServer(t, "kid-rsa")
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	_, err := v.Verify(context.Background(), "not-a-jwt")
 	require.Error(t, err)
 }
@@ -634,7 +635,7 @@ func TestJWKS_Verify_SmallModulusKey_Rejected(t *testing.T) {
 	weak, err := rsa.GenerateKey(rand.Reader, 1024)
 	require.NoError(t, err)
 	js.rsaKeys["kid-weak"] = weak
-	v := New(js.srv.URL, testAud, testHydraIss)
+	v := newTestVerifier(t, js.srv.URL, testAud, testHydraIss)
 	tok := js.mintRS256(t, "kid-weak", hydraClaims("cid-ci", time.Now().Add(time.Hour)))
 
 	_, err = v.Verify(context.Background(), tok)
