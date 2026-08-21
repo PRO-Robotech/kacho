@@ -316,6 +316,28 @@ def sa_token(sva):
 CLUSTER_ROOT_OBJECT = "cluster:cluster_kacho_root"
 
 
+def seed_fga_tuple(fga_subject, relation, obj):
+    """Посеять факт отношения (<fga_subject> #<relation> @obj) через журнал iam.
+
+    Проекция журнала намеренно пропускает ГЛАГОЛЫ (`v_*`, миграция 0100): глагол
+    выводится из выдачи и копией не хранится. Здесь сеются отношения УРОВНЯ
+    ОБЛАСТИ (`viewer`, `system_viewer`), и их проекция принимает.
+
+    Кластерный случай и его обоснование — в seed_fga_cluster ниже.
+    """
+    sql = (
+        "INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at) "
+        "SELECT 'fga.tuple.write', jsonb_build_object("
+        f"'user','{fga_subject}','relation','{relation}','object','{obj}'), now() "
+        "WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.fga_outbox "
+        f"WHERE payload->>'user'='{fga_subject}' AND payload->>'relation'='{relation}' "
+        f"AND payload->>'object'='{obj}');"
+    )
+    args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+    subprocess.run(args, capture_output=True, text=True)
+
+
 def seed_fga_cluster(fga_subject, relation):
     """Seed a cluster-scope FGA tuple (<fga_subject> #<relation> @cluster_kacho_root)
     deterministically via kacho_iam.fga_outbox → drainer → OpenFGA (idempotent
@@ -332,17 +354,7 @@ def seed_fga_cluster(fga_subject, relation):
     matrix SA `system_viewer@cluster` so the floor is satisfied; it grants ONLY the
     global-catalog read floor (no project/account resource access), so DENY matrices
     (project-scope, cross-account, catalog-MUTATE admin-only) are unaffected."""
-    sql = (
-        "INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at) "
-        "SELECT 'fga.tuple.write', jsonb_build_object("
-        f"'user','{fga_subject}','relation','{relation}','object','{CLUSTER_ROOT_OBJECT}'), now() "
-        "WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.fga_outbox "
-        f"WHERE payload->>'user'='{fga_subject}' AND payload->>'relation'='{relation}' "
-        f"AND payload->>'object'='{CLUSTER_ROOT_OBJECT}');"
-    )
-    args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
-    subprocess.run(args, capture_output=True, text=True)
+    seed_fga_tuple(fga_subject, relation, CLUSTER_ROOT_OBJECT)
 
 
 def subject(account_id, name, grants=()):

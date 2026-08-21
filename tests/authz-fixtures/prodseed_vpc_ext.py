@@ -87,6 +87,17 @@ def assert_subject_sees_subnet(token, project_id, subnet_id, must_see):
     while time.time() < deadline:
         r = pm._curl("GET", f"/vpc/v1/subnets?projectId={project_id}&pageSize=1000",
                      token, base=pm.PUBLIC)
+        # ОТКАЗ — НЕ ПУСТАЯ СТРАНИЦА. Помощник края не смотрит на HTTP-статус, и
+        # тело отказа (`{"code":7,...}`) читается как список без ключа `subnets`,
+        # то есть неотличимо от «прав нет ни на один объект». Пустая страница у
+        # 200 несёт ключ `subnets` (пустым массивом либо отсутствующим полем при
+        # непустом ответе), поэтому различаем по наличию признака отказа.
+        if isinstance(r, dict) and ("code" in r or "message" in r) and "subnets" not in r:
+            raise SystemExit(
+                f"[prodseed_vpc_ext] край ОТВЕРГ чтение списка подсетей проекта "
+                f"{project_id}: {r}. Это отказ, а не пустая страница: без этого "
+                "различения посев назвал бы виновником пообъектную фильтрацию, "
+                "тогда как не пройден гейт метода.")
         ids = [x.get("id") for x in (r.get("subnets") or [])]
         last = ids
         if (subnet_id in ids) == must_see:
@@ -131,9 +142,15 @@ tok_ng = pm.sa_token(sva_ng)
 # Соседние фикстуры зовут служебные учётки через дефис, и скопированный оттуда
 # стиль дал синхронный отказ на самом первом создании роли. Сервер назвал
 # причину дословно — и назвал её потому, что посев больше не глотает отказ.
-role_proj = pm.custom_role(acctA, f"ps_lf_projread_{RID.replace('-', '_')}", "vpc", ["subnet"], ["get", "list"])
-pm.grant(sva_sv, role_proj, "project", lf_proj)
-pm.grant(sva_ng, role_proj, "project", lf_proj)
+#        Гейт края для `SubnetService/List` требует отношение УРОВНЯ ОБЛАСТИ —
+#        `viewer` на объекте-проекте, — а НЕ глагол на подсети. Роль на весь тип
+#        `subnet` его не производит: она даёт `v_get`/`v_list` на КАЖДОЙ подсети
+#        проекта. Такая роль (а) метод-гейт не открывает, поэтому список отвечает
+#        отказом, и (б) разрушает предмет пункта (б) ниже — субъект видел бы ВСЁ,
+#        включая подсеть, которая ему не выдана. Поэтому здесь сеется ровно факт
+#        уровня области, тем же путём, каким матрица сеет пол чтения каталога.
+pm.seed_fga_tuple(f"service_account:{sva_sv}", "viewer", f"project:{lf_proj}")
+pm.seed_fga_tuple(f"service_account:{sva_ng}", "viewer", f"project:{lf_proj}")
 
 #    (б) ПООБЪЕКТНОЕ ПРАВО: роль, чьё правило названо ПЕРЕЧНЕМ объектов
 #        (`resourceNames`), привязанная субъекту S на тот же проект. Видимой
