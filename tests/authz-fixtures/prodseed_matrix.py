@@ -230,12 +230,30 @@ def make_sa(account_id, name):
 
 
 def grant(sva, role_id, scope_type, scope_id):
-    """AccessBinding: SA subject, role on scope (iam.project / iam.account)."""
+    """Выдача: субъект — служебная учётка, роль на области.
+
+    ОТКАЗ ГРОМКИЙ, и это главное в этой функции. Прежняя редакция читала `id`
+    из ответа и, не найдя его, **молча возвращалась**: отвергнутая выдача была
+    неотличима от созданной. Наблюдалось вживую — роли заведены, селекторы
+    записаны верно, привязок в базе **ноль**, а посев отчитался успехом и упал
+    через двадцать минут в чужом кейсе, назвав виновником список.
+
+    Молчание здесь дороже обычного: выдача — это ПРЕДМЕТ фикстуры. Не создав
+    её, посев готовит субъекта, у которого нет права, и всякое утверждение о
+    видимости после этого проверяет не продукт, а собственную поломку.
+    """
     rb = _curl("POST", "/iam/v1/accessBindings", boot, {
         "subjectType": "service_account", "subjectId": sva, "roleId": role_id,
         "scopeType": scope_type, "scopeId": scope_id, "target": {"allInScope": {}}})
-    if rb.get("id"):
-        _poll(rb["id"], boot)
+    if not isinstance(rb, dict) or not rb.get("id"):
+        raise SystemExit(
+            f"[prodseed] выдача ОТВЕРГНУТА: субъект {sva}, роль {role_id}, "
+            f"область {scope_type}:{scope_id}.\n"
+            f"  ответ края: {rb}\n"
+            "Посев без выдачи готовит субъекта БЕЗ ПРАВА — дальше идти нельзя: "
+            "кейсы утверждали бы видимость, которой нет, а падение назвало бы "
+            "виновником список.")
+    _poll(rb["id"], boot)
 
 
 def custom_role(account_id, name, module, resources, verbs):
