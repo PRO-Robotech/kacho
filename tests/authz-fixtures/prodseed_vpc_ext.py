@@ -1,31 +1,40 @@
 #!/usr/bin/env python3
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
-"""VPC list-filter-d fixtures on top of the production-mode SA matrix (#59).
+"""Фикстуры list-filter-d для vpc поверх матрицы служебных учёток (#59).
 
-Per-object filtered-List needs FGA tuples that the public AccessBinding API cannot
-express (vpc_subnet object-scope). Subject S (subset-viewer) gets project#viewer
-(method-gate) + vpc_subnet#v_list/v_get on ONE visible subnet; subject N
-(no-subnet-grant) gets project#viewer only (List returns 200 empty — the read tier
-on the project does NOT cascade visibility onto subnets in the explicit model). The
-hidden subnet is granted to nobody (no-leak). Both subjects are RS256 ServiceAccount
-principals.
+Пообъектная фильтрация списка требует права на ОДИН объект: субъект S
+(subset-viewer) видит РОВНО ОДНУ подсеть проекта, субъект N — ни одной, скрытая
+подсеть не выдана никому.
 
-The project-level tuple grants exactly the relation the permission catalog declares
-for a top-level project List, which is the whole point of these fixtures: a subject
-handed precisely what the catalog states must be able to list. It said `v_list` until
-2026-07-29 and the service enforced the read tier `viewer`; since neither relation is
-derived from the other, the seeded subjects satisfied one gate and not the other and
-the three list cases were red on a live grant. The annotations were corrected, so this
-now writes `viewer` — the value has moved, the intent has not.
+# Чем это выдаётся — и почему больше не кортежами
 
-Reads /tmp/matrix.json (boot token + acctA), seeds the resources + tuples, and
-emits ONLY the list-filter extra fixtures on stdout.
+Здесь стояла прямая запись кортежей в журнал `kacho_iam.fga_outbox`
+(`vpc_subnet#v_list/v_get`), и она **перестала действовать**, оставаясь по виду
+исправной. Проекция журнала в прямые факты **намеренно пропускает глаголы**
+(миграция 0100: «глагол выводится из выдачи и копией не хранится»), поэтому
+строка принималась, проекции не возникало, а фикстура об этом не знала: посев
+печатал переменные и выходил успехом, а падал через двадцать минут кейс, который
+называл виновником список.
+
+Сегодня право на один объект выражается тем же путём, каким его выражает
+продукт, — **ролью с перечнем объектов** (`resourceNames`) и привязкой этой роли
+на проект. Тот же путь проходит арендатор в консоли; фикстура перестала быть
+снисходительнее продукта и заодно перестала зависеть от внутренней формы
+хранения.
+
+# Что осталось прежним
+
+Право уровня проекта (`viewer`) выдаётся обоим субъектам — это метод-гейт: без
+него список отвечает отказом метода, и пообъектная фильтрация не проверяется
+вовсе. Оба субъекта — служебные учётки с токеном RS256.
+
+Читает /tmp/matrix.json (токен запуска + acctA), заводит ресурсы и выдачи и
+печатает на стандартный вывод ТОЛЬКО дополнительные фикстуры list-filter.
 """
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 import time
 
@@ -42,60 +51,52 @@ acctA = MATRIX["accountAId"]
 RID = pm.RID
 
 
-def _psql(sql):
-    """Выполнить SQL в базе iam и вернуть вывод. Отказ — ГРОМКИЙ.
+def _curl_role_with_names(account_id, name, subnet_id):
+    """Роль, чьё правило названо ПЕРЕЧНЕМ объектов (`resourceNames`).
 
-    Прежняя редакция звала kubectl и выбрасывала результат: ни кода возврата, ни
-    stderr. Неверное имя пода, отсутствующий контекст, недоступный кластер — всё
-    это выглядело как успешный посев, а обнаруживалось через двадцать минут
-    падением сквозной пробы, которая называла виновником список.
+    `pm.custom_role` перечня не принимает — он заводит роль на весь тип, а нам
+    нужна ровно одна подсеть. Форма правила та же, что у арендатора в консоли,
+    и ту же форму проверяет проба паритета в наборе iam.
     """
-    args = ["kubectl", "-n", "kacho", "exec", "kacho-umbrella-pg-iam-0", "-c", "postgresql",
-            "--", "sh", "-c",
-            f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
-    r = subprocess.run(args, capture_output=True, text=True)
-    if r.returncode != 0:
-        raise SystemExit(
-            f"[prodseed_vpc_ext] ОТКАЗ обращения к базе iam (код {r.returncode}).\n"
-            f"  запрос: {sql[:120]}\n"
-            f"  stderr: {r.stderr.strip()[:400]}\n"
-            "Посев пообъектных выдач НЕ состоялся. Дальше идти нельзя: кейсы "
-            "list-filter-d утверждают видимость, которой без этих строк не будет, "
-            "и падение назовёт виновником список, а не посев.")
-    return r.stdout.strip()
+    listed = pm._curl("GET", f"/iam/v1/roles?accountId={account_id}&pageSize=1000", boot)
+    for r in listed.get("roles") or []:
+        if r.get("name") == name:
+            return r.get("id", "")
+    resp = pm._curl("POST", "/iam/v1/roles", boot, {
+        "accountId": account_id, "name": name,
+        "description": "newman fixture: право на ОДНУ подсеть",
+        "rules": [{"module": "vpc", "resources": ["subnet"],
+                   "verbs": ["get", "list"], "resourceNames": [subnet_id]}],
+    })
+    return pm._await(resp, boot, "roleId")
 
 
-def fga_write(user, relation, obj):
-    """Записать прямой факт через журнал iam (триггер проецирует его в relation_fact)."""
-    sql = (
-        "INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at) "
-        "SELECT 'fga.tuple.write', "
-        f"jsonb_build_object('user','{user}','relation','{relation}','object','{obj}'), now() "
-        "WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.fga_outbox "
-        f"WHERE payload->>'user'='{user}' AND payload->>'relation'='{relation}' AND payload->>'object'='{obj}');"
-    )
-    _psql(sql)
+def assert_subject_sees_subnet(token, project_id, subnet_id, must_see):
+    """Утверждать, что субъект ВИДИТ (или не видит) подсеть — его собственным чтением.
 
+    Спрашиваем не хранилище, а КРАЙ, под токеном самого субъекта: посев обязан
+    утверждать способность, а не форму записи. Проверка внутренней таблицы
+    зеленела бы и тогда, когда путь чтения до неё не доходит.
 
-def assert_fact_visible(user, relation, obj):
-    """Утверждать СПОСОБНОСТЬ, а не факт вставки.
-
-    Строка в журнале — это намерение; правом она становится, когда её спроецирует
-    триггер в `relation_fact`, откуда её читает форма вердикта. Проверять надо
-    именно проекцию: журнал, из которого ничего не спроецировалось, выглядит
-    ровно как успешный посев.
+    Материализация выдачи eventually-consistent, поэтому ограниченный повтор —
+    законный: он ждёт ОКНА, а не маскирует отказ. Не сошлось за отведённое —
+    посев падает громко и называет, чего именно не видно.
     """
-    otype, _, oid = obj.partition(":")
-    n = _psql(
-        "SELECT count(*) FROM kacho_iam.relation_fact "
-        f"WHERE object_type='{otype}' AND object_id='{oid}' "
-        f"AND relation='{relation}' AND subject='{user}';")
-    if n != "1":
-        raise SystemExit(
-            f"[prodseed_vpc_ext] выдача НЕ материализовалась: {user} {relation} {obj} — "
-            f"строк в relation_fact {n!r}, ожидалась 1.\n"
-            "Журнал принял намерение, но проекции нет — значит право не действует "
-            "ни для одного вопроса, и сквозные кейсы упадут на видимости.")
+    deadline = time.time() + 30
+    last = None
+    while time.time() < deadline:
+        r = pm._curl("GET", f"/vpc/v1/subnets?projectId={project_id}&pageSize=1000",
+                     token, base=pm.PUBLIC)
+        ids = [x.get("id") for x in (r.get("subnets") or [])]
+        last = ids
+        if (subnet_id in ids) == must_see:
+            return
+        time.sleep(1)
+    raise SystemExit(
+        f"[prodseed_vpc_ext] выдача не сошлась за 30с: подсеть {subnet_id} "
+        f"{'НЕ видна' if must_see else 'видна, хотя не выдана'}; список вернул {last}.\n"
+        "Посев обязан утверждать СПОСОБНОСТЬ: без этой проверки кейсы list-filter-d "
+        "утверждали бы видимость, которой нет, и падение назвало бы виновником список.")
 
 
 # 1) list-filter project + network + visible/hidden subnets (as bootstrap admin).
@@ -120,21 +121,33 @@ sva_ng = pm.make_sa(acctA, f"ps-lf-ng-{RID}")   # no-subnet-grant N
 tok_sv = pm.sa_token(sva_sv)
 tok_ng = pm.sa_token(sva_ng)
 
-# 3) FGA tuples (service_account subjects).
-#    method-gate: both get project#viewer → List returns 200 (not method-403).
-fga_write(f"service_account:{sva_sv}", "viewer", f"project:{lf_proj}")
-fga_write(f"service_account:{sva_ng}", "viewer", f"project:{lf_proj}")
-#    per-object visibility: only S sees the visible subnet; hidden granted to nobody.
-fga_write(f"service_account:{sva_sv}", "v_list", f"vpc_subnet:{lf_vis}")
-fga_write(f"service_account:{sva_sv}", "v_get", f"vpc_subnet:{lf_vis}")
+# 3) Выдачи — тем же путём, каким их выражает продукт.
+#
+#    (а) МЕТОД-ГЕЙТ: право уровня проекта обоим субъектам. Без него список
+#        отвечает отказом метода, и пообъектная фильтрация не проверяется вовсе:
+#        кейс краснел бы, не дойдя до предмета.
+role_proj = pm.custom_role(acctA, f"ps-lf-projread-{RID}", "vpc", ["subnet"], ["get", "list"])
+pm.grant(sva_sv, role_proj, "project", lf_proj)
+pm.grant(sva_ng, role_proj, "project", lf_proj)
 
-# Проекция журнала в прямые факты — синхронный триггер, поэтому ждать нечего:
-# ждали здесь три секунды во времена, когда строку уносил дренаж во внешнее
-# хранилище. Вместо ожидания — утверждение: право обязано быть ВИДНО.
-assert_fact_visible(f"service_account:{sva_sv}", "viewer", f"project:{lf_proj}")
-assert_fact_visible(f"service_account:{sva_ng}", "viewer", f"project:{lf_proj}")
-assert_fact_visible(f"service_account:{sva_sv}", "v_list", f"vpc_subnet:{lf_vis}")
-assert_fact_visible(f"service_account:{sva_sv}", "v_get", f"vpc_subnet:{lf_vis}")
+#    (б) ПООБЪЕКТНОЕ ПРАВО: роль, чьё правило названо ПЕРЕЧНЕМ объектов
+#        (`resourceNames`), привязанная субъекту S на тот же проект. Видимой
+#        оказывается ровно одна подсеть; скрытая не названа нигде.
+#
+#        Прежде здесь стояла прямая запись кортежей в журнал, и она перестала
+#        действовать, оставаясь по виду исправной: проекция журнала намеренно
+#        пропускает глаголы («глагол выводится из выдачи и копией не хранится»,
+#        миграция 0100). Строка принималась, права не возникало, посев молчал.
+role_one = _curl_role_with_names(acctA, f"ps-lf-one-{RID}", lf_vis)
+pm.grant(sva_sv, role_one, "project", lf_proj)
+
+#    Утверждение СПОСОБНОСТИ, а не факта записи: право обязано быть ВИДНО тому,
+#    кому выдано. Журнал, принявший намерение и ничего не материализовавший,
+#    выглядит ровно как успешный посев — эту разницу и ловим здесь, в момент
+#    посева, а не в чужом кейсе через двадцать минут.
+assert_subject_sees_subnet(tok_sv, lf_proj, lf_vis, must_see=True)
+assert_subject_sees_subnet(tok_sv, lf_proj, lf_hid, must_see=False)
+assert_subject_sees_subnet(tok_ng, lf_proj, lf_vis, must_see=False)
 
 print(json.dumps({
     "listFilterProjectId": lf_proj,
