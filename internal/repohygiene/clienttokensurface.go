@@ -36,7 +36,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -75,12 +75,23 @@ type SurfaceCensus struct {
 // не константой: их нельзя прочитать, значит нельзя и проверить.
 func ScanSurfaceRegistrations(dir string) (regs []SurfaceRegistration, census SurfaceCensus, findings []string, err error) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, func(fi fs.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, 0)
+
+	// Каталог обходится сам, а не разборщиком каталогов: тот связывает файлы с
+	// пакетами, не читая условий сборки, и о такой границе объявляет сам. Здесь
+	// предмет — файлы композиционного корня, и связывать их с пакетами не надо.
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, census, nil, fmt.Errorf("repohygiene: разбор %s: %w", dir, err)
+		return nil, census, nil, fmt.Errorf("repohygiene: состав %s: %w", dir, err)
 	}
+	var names []string
+	for _, e := range entries {
+		n := e.Name()
+		if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") {
+			continue
+		}
+		names = append(names, n)
+	}
+	sort.Strings(names)
 
 	// handlerToSurface — идентификатор, отданный полем Handler, → объявленная
 	// поверхность.
@@ -90,15 +101,12 @@ func ScanSurfaceRegistrations(dir string) (regs []SurfaceRegistration, census Su
 	alias := map[string]string{}
 
 	var files []*ast.File
-	for _, pkg := range pkgs {
-		names := make([]string, 0, len(pkg.Files))
-		for n := range pkg.Files {
-			names = append(names, n)
+	for _, n := range names {
+		f, perr := parser.ParseFile(fset, filepath.Join(dir, n), nil, 0)
+		if perr != nil {
+			return nil, census, nil, fmt.Errorf("repohygiene: разбор %s: %w", n, perr)
 		}
-		sort.Strings(names)
-		for _, n := range names {
-			files = append(files, pkg.Files[n])
-		}
+		files = append(files, f)
 	}
 	census.Files = len(files)
 
