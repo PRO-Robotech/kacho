@@ -80,7 +80,9 @@ func newEdgeProbe(t *testing.T) *edgeProbe {
 	t.Helper()
 
 	srv := grpc.NewServer()
-	registerExternalGRPCServices(srv, nil, opsproxy.New(nil))
+	// Оба регистратора — один и тот же сервер: предмет здесь — что край отвечает
+	// сам, а не то, что из этого покрыто потолком темпа (admission_wiring_test.go).
+	registerExternalGRPCServices(srv, srv, nil, opsproxy.New(nil))
 
 	lis := bufconn.Listen(1 << 20)
 	go func() { _ = srv.Serve(lis) }()
