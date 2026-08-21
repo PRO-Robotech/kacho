@@ -67,10 +67,17 @@ func StartLimitSyncer(
 		return nil, fmt.Errorf("quota limit syncer: %w", err)
 	}
 
-	if rows, ferr := syncer.RunOnce(ctx); ferr != nil {
+	switch rows, ran, ferr := syncer.RunOnce(ctx); {
+	case ferr != nil:
 		logger.Warn("resource-count quota: first limit sync failed, retrying in background",
 			slog.String("error", ferr.Error()), slog.String("schema", schema))
-	} else {
+	case !ran:
+		// Проход держит другая реплика. Первый проход остаётся проверкой того,
+		// что путь доставки существует, — но исполняет его одна реплика, и
+		// «нас развели» обязано быть отличимо от «догнали».
+		logger.Info("resource-count quota: first limit sync skipped, another replica holds the pass",
+			slog.String("schema", schema))
+	default:
 		logger.Info("resource-count quota: limit snapshot caught up",
 			slog.Int64("rows", rows), slog.String("schema", schema))
 	}

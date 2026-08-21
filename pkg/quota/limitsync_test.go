@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -54,11 +55,24 @@ type fakeProjection struct {
 	order    []string
 	applyErr error
 	loadErr  error
+	// passTaken — проход уже держит другая реплика. Дублёр обязан уметь
+	// ОТКАЗАТЬ так же, как настоящая проекция: подставная, раздающая проход
+	// всем, сделала бы невидимым ровно тот дефект, ради которого клейм заведён.
+	passTaken bool
+	// claims — сколько раз проход был взят.
+	claims int
 }
 
-func (f *fakeProjection) LoadCursor(context.Context) (string, error) {
-	f.order = append(f.order, "load")
-	return f.cursor, f.loadErr
+func (f *fakeProjection) ClaimPass(context.Context, time.Duration) (string, bool, error) {
+	f.order = append(f.order, "claim")
+	if f.loadErr != nil {
+		return "", false, f.loadErr
+	}
+	if f.passTaken {
+		return "", false, nil
+	}
+	f.claims++
+	return f.cursor, true, nil
 }
 
 func (f *fakeProjection) ApplyChange(_ context.Context, ch quota.Change) (int64, error) {
@@ -109,11 +123,11 @@ func TestSyncer_AppliesEveryPageAndAdvancesCursorAfterApplying(t *testing.T) {
 	}
 	proj := &fakeProjection{rowsPer: 3}
 
-	rows, err := newSyncer(t, src, proj).RunOnce(context.Background())
+	rows, _, err := newSyncer(t, src, proj).RunOnce(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, int64(6), rows, "две страницы по три строки")
 
-	require.Equal(t, []string{"load", "apply", "save", "apply", "save", "beat"}, proj.order,
+	require.Equal(t, []string{"claim", "apply", "save", "apply", "save", "beat"}, proj.order,
 		"курсор двигается ПОСЛЕ применения своей страницы; отметка прохода — в конце")
 	require.Equal(t, []string{"c1", "c2"}, proj.saved)
 	require.Len(t, proj.applied, 2)
@@ -129,7 +143,7 @@ func TestSyncer_StopsWhenTheOwnerReturnsTheSameCursor(t *testing.T) {
 	src := &fakeSource{}
 	proj := &fakeProjection{cursor: "c9"}
 
-	rows, err := newSyncer(t, src, proj).RunOnce(context.Background())
+	rows, _, err := newSyncer(t, src, proj).RunOnce(context.Background())
 	require.NoError(t, err)
 	require.Zero(t, rows)
 	require.Equal(t, []string{"c9"}, src.calls, "ровно один запрос: курсор не сдвинулся")
@@ -150,7 +164,7 @@ func TestSyncer_UnknownScopeStopsTheRunAndLeavesTheCursor(t *testing.T) {
 	}
 	proj := &fakeProjection{}
 
-	_, err := newSyncer(t, src, proj).RunOnce(context.Background())
+	_, _, err := newSyncer(t, src, proj).RunOnce(context.Background())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `scope: unknown "REGION"`)
 	require.Empty(t, proj.saved, "курсор не двигается: следующий проход встретит то же самое")
@@ -166,7 +180,7 @@ func TestSyncer_ApplyFailureLeavesTheCursorWhereItWas(t *testing.T) {
 	}
 	proj := &fakeProjection{applyErr: errors.New("peer refused")}
 
-	_, err := newSyncer(t, src, proj).RunOnce(context.Background())
+	_, _, err := newSyncer(t, src, proj).RunOnce(context.Background())
 	require.Error(t, err)
 	require.Empty(t, proj.saved)
 }
