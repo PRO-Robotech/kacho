@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # restart-verdict-inject.sh — доказательство инъекцией для вердикта о перезапуске.
 #
 # Проверяет ОБЕ стороны по каждой оси: дефект обязан быть назван ПОИМЁННО, а

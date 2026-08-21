@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # restart-verdict.sh — РАЗЛИЧЕНИЕ двух событий, которые сверка целыми файлами
 # смешивала в одно: перезапуск участника пути и смену состава участников.
 #
