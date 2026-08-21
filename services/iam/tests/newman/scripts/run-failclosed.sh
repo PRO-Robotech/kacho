@@ -59,32 +59,42 @@ done
 # менялись (503 / gRPC 14, и НИКОГДА 200 с пустым списком): контракт
 # fail-closed — свойство продукта, а не движка.
 #
+# СВОРАЧИВАЕТСЯ БАЗА СЛУЖБЫ, А НЕ САМА СЛУЖБА — и это не деталь, а разница между
+# «вердикт не вычислить» и «спросить некого вообще».
+#
+# Первая редакция сворачивала iam целиком. Прогон показал цену: гаснет и проверка
+# личности (край перестаёт получать ключи), поэтому запросы получают отказ
+# личности вместо отказа доступности, а девять последующих коллекций остаются
+# без отчёта — им не с кем работать. Утверждения кейсов говорят про 503 и gRPC 14,
+# то есть именно про НЕДОСТУПНОСТЬ ВЕРДИКТА; их и надо создать.
+#
+# Свёрнутая база даёт ровно это: служба жива, личность проверяется, а решение о
+# доступе вычислить не из чего.
+#
 # Имя ИЩЕТСЯ, а не пишется: оно зависит от имени релиза чарта, и хардкод молча
 # промахнулся бы при переименовании — скрипт «отработал бы», не создав условия.
-# Исключены явно: край консоли (`ui-iam` — статика, вердикта не даёт) и
-# бутстрап-задания.
 mapfile -t CANDIDATES < <(
-  kubectl -n "$NS" get deploy -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
-    | grep -E '(^|-)iam$' | grep -v -- 'ui-' | grep -v -- 'bootstrap' || true
+  kubectl -n "$NS" get statefulset -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+    | grep -E 'pg-iam$' || true
 )
 if [ "${#CANDIDATES[@]}" -ne 1 ]; then
-  echo "FATAL: в namespace '$NS' ожидалась ровно одна Deployment источника вердикта, найдено ${#CANDIDATES[@]}: ${CANDIDATES[*]:-(нет)}" >&2
+  echo "FATAL: в namespace '$NS' ожидался ровно один StatefulSet базы источника вердикта, найдено ${#CANDIDATES[@]}: ${CANDIDATES[*]:-(нет)}" >&2
   echo "       условие для authz-failclosed не создано — отчёта не будет, и гейт это назовёт" >&2
   exit 1
 fi
 DEPLOY="${CANDIDATES[0]}"
-WAS="$(kubectl -n "$NS" get deploy "$DEPLOY" -o jsonpath='{.spec.replicas}')"
+WAS="$(kubectl -n "$NS" get statefulset "$DEPLOY" -o jsonpath='{.spec.replicas}')"
 [ -n "$WAS" ] || WAS=1
-echo "[failclosed] источник вердикта: deploy/$DEPLOY (реплик сейчас: $WAS)"
+echo "[failclosed] база источника вердикта: statefulset/$DEPLOY (реплик сейчас: $WAS)"
 
 restore() {
   local rc=$?
-  echo "[failclosed] возвращаю deploy/$DEPLOY → replicas=$WAS"
-  kubectl -n "$NS" scale deploy "$DEPLOY" --replicas="$WAS" >/dev/null 2>&1 || true
+  echo "[failclosed] возвращаю statefulset/$DEPLOY → replicas=$WAS"
+  kubectl -n "$NS" scale statefulset "$DEPLOY" --replicas="$WAS" >/dev/null 2>&1 || true
   # Ждём готовности: следующий шаг прогона работает на этом же стенде, и
   # оставить его без источника вердикта значило бы обменять один честный красный на
   # каскад чужих.
-  kubectl -n "$NS" rollout status deploy/"$DEPLOY" --timeout="${SCALE_TIMEOUT}s" || {
+  kubectl -n "$NS" rollout status statefulset/"$DEPLOY" --timeout="${SCALE_TIMEOUT}s" || {
     echo "FATAL: источник вердикта не вернулось в строй за ${SCALE_TIMEOUT}s — стенд повреждён, дальнейшие суиты недостоверны" >&2
     exit 1
   }
@@ -97,11 +107,11 @@ restore() {
 trap restore EXIT
 
 # ─── 2. свернуть в ноль и дождаться, что подов не осталось ───────────────────
-echo "[failclosed] сворачиваю deploy/$DEPLOY → replicas=0"
-kubectl -n "$NS" scale deploy "$DEPLOY" --replicas=0
+echo "[failclosed] сворачиваю statefulset/$DEPLOY → replicas=0"
+kubectl -n "$NS" scale statefulset "$DEPLOY" --replicas=0
 deadline=$((SECONDS + SCALE_TIMEOUT))
 while :; do
-  live="$(kubectl -n "$NS" get deploy "$DEPLOY" -o jsonpath='{.status.replicas}' 2>/dev/null || echo "")"
+  live="$(kubectl -n "$NS" get statefulset "$DEPLOY" -o jsonpath='{.status.replicas}' 2>/dev/null || echo "")"
   [ -z "$live" ] && live=0
   [ "$live" -eq 0 ] && break
   if [ "$SECONDS" -ge "$deadline" ]; then
