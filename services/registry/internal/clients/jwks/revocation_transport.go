@@ -103,6 +103,9 @@ func (t RevocationTransport) httpClientFor(authorityURL string) (*http.Client, e
 
 	pool := x509.NewCertPool()
 	for _, f := range t.CAFiles {
+		// #nosec G304 -- путь приходит из КОНФИГА сервиса (перечень якорей доверия
+		// авторитета отзыва), а не из запроса; оператор объявляет его сам, и
+		// нечитаемый якорь отказывает в старте строкой ниже, а не молчит.
 		pem, rerr := os.ReadFile(f)
 		if rerr != nil {
 			return nil, fmt.Errorf("revocation trust anchor %q could not be read: %w", f, rerr)
