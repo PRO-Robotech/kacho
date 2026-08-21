@@ -13,27 +13,24 @@ chmod +x ./proxies.sh
 
 The script starts all required port-forwards and stops them when you press `Ctrl+C`.
 
-## After Docker/kind restart
+## После перезапуска Docker/kind
 
-The dev stack uses ephemeral OpenFGA/Postgres storage in places. If Docker or
-kind was stopped and the UI starts returning permission errors like
-`iam.projectses.list`, repair OpenFGA before starting the proxies:
+Здесь стояла процедура починки прав скриптом `heal-authz.sh`: перезапустить
+загрузку внешнего движка прав, дождаться переката потребителей и переиграть
+кортежи из базы iam.
 
-```bash
-chmod +x ./heal-authz.sh
-./heal-authz.sh
-./proxies.sh
-```
+**Ни скрипта, ни его предмета больше нет.** Внешний движок отношений снят
+целиком (эпик #747, стадия S6): решение о доступе вычисляет форма поверх
+собственной базы iam, эфемерного состояния у неё нет, и «переиграть кортежи»
+означало бы переиграть саму базу. Сам скрипт при этом не работал ЗАДОЛГО до
+снятия: он звал цель сборки `fga-bootstrap`, которой в дереве нет, и обрывался
+на ней (`set -euo pipefail`), не доходя ни до одного кортежа. То есть процедура,
+описанная здесь, не исполнялась ни разу с тех пор, как цель исчезла, — а
+запускают такое именно тогда, когда доступ уже сломан.
 
-`heal-authz.sh` reruns the OpenFGA bootstrap, waits for consumers to roll out,
-then replays IAM user/account/project relationship tuples from the IAM database.
-
-The replay goes through the journal (`kacho_iam.fga_outbox`), not straight into
-OpenFGA: engine state must stay a fold of that journal (migration 0098), and a
-tuple written directly to the engine would never reach the `relation_fact`
-projection — so the repair tool would deepen the divergence it is run to fix.
-The cost is that repaired tuples land via the drainer rather than instantly;
-re-run the script if a tuple is still missing a few seconds later.
+Если после перезапуска kind консоль отвечает отказами вида
+`iam.projectses.list`, предмет ищется в состоянии базы iam и в дренаже журнала
+`kacho_iam.fga_outbox`, а не в отдельном инструменте починки.
 
 Then start the federated UI from Windows PowerShell:
 
