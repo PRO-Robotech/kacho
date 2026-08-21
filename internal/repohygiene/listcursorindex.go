@@ -9,11 +9,14 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // Разбор дерева для гейта «курсорное чтение страницы обязано получать ПОРЯДОК из
@@ -192,22 +195,28 @@ var (
 	// приведённый в комментарии примером, индексом не является.
 	createIdxRe = regexp.MustCompile(
 		`(?is)CREATE\s+(UNIQUE\s+)?INDEX(?:\s+CONCURRENTLY)?(?:\s+IF\s+NOT\s+EXISTS)?\s+([\w."]+)\s+ON\s+(?:ONLY\s+)?([\w."]+)\s*(?:USING\s+\w+\s*)?\(`)
-	cursorDropIdxRe   = regexp.MustCompile(`(?is)DROP\s+INDEX(?:\s+CONCURRENTLY)?(?:\s+IF\s+EXISTS)?\s+([\w."]+)\s*;`)
-	createTblRe = regexp.MustCompile(`(?is)CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([\w."]+)`)
-	dropTblRe   = regexp.MustCompile(`(?is)DROP\s+TABLE(?:\s+IF\s+EXISTS)?\s+([\w."]+)`)
-	renameTblRe = regexp.MustCompile(`(?is)ALTER\s+TABLE(?:\s+IF\s+EXISTS)?\s+([\w."]+)\s+RENAME\s+TO\s+([\w."]+)`)
+	cursorDropIdxRe = regexp.MustCompile(`(?is)DROP\s+INDEX(?:\s+CONCURRENTLY)?(?:\s+IF\s+EXISTS)?\s+([\w."]+)\s*;`)
+	createTblRe     = regexp.MustCompile(`(?is)CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([\w."]+)`)
+	dropTblRe       = regexp.MustCompile(`(?is)DROP\s+TABLE(?:\s+IF\s+EXISTS)?\s+([\w."]+)`)
+	renameTblRe     = regexp.MustCompile(`(?is)ALTER\s+TABLE(?:\s+IF\s+EXISTS)?\s+([\w."]+)\s+RENAME\s+TO\s+([\w."]+)`)
 	// indexPredicateRe — предикат частичного индекса сразу за списком колонок.
 	indexPredicateRe = regexp.MustCompile(`(?is)^\s*WHERE\b`)
 )
 
-// SurveyCursorIndexes обходит дерево и сводит курсорные чтения прод-кода с
-// индексами, которые объявляют миграции.
+// SurveyCursorIndexes сводит курсорные чтения прод-кода с индексами, которые
+// объявляют миграции.
 //
-// root — корень репозитория (или синтетического дерева инъекционной пробы).
-func SurveyCursorIndexes(root string) (CursorCensus, error) {
+// Состав дерева приходит СОСТАВЛЕННЫМ (`treecorpus.Tree`), а не собирается здесь
+// обходом диска: под `services/` и `gateway/` на всякой машине, где поднимали
+// стенд, лежат игнорируемые каталоги, и вердикт, собранный обходом файловой
+// системы, стал бы свойством рабочего каталога, а не коммита. Конструктор
+// выбирает ВЫЗЫВАЮЩИЙ: гейт берёт `treecorpus.NewTree` (индекс git),
+// инъекционная проба — `treecorpus.SyntheticTree` (её дерево репозиторием не
+// является, спрашивать у него индекс нечего).
+func SurveyCursorIndexes(tree *treecorpus.Tree) (CursorCensus, error) {
 	var c CursorCensus
 
-	tables, indexes, sqlFiles, services, err := replayMigrationIndexes(root)
+	tables, indexes, sqlFiles, services, err := replayMigrationIndexes(tree)
 	if err != nil {
 		return c, err
 	}
@@ -220,7 +229,7 @@ func SurveyCursorIndexes(root string) (CursorCensus, error) {
 		c.Indexes += len(ix)
 	}
 
-	reads, goFiles, literals, err := collectCursorReads(root)
+	reads, goFiles, literals, err := collectCursorReads(tree)
 	if err != nil {
 		return c, err
 	}
@@ -354,7 +363,7 @@ func indexMentions(ix DeclaredIndex, column string) bool {
 
 // cursorServiceOfPath — сервис, которому принадлежит файл прод-кода.
 func cursorServiceOfPath(rel string) string {
-	parts := strings.Split(filepath.ToSlash(rel), "/")
+	parts := strings.Split(rel, "/")
 	if len(parts) >= 2 && parts[0] == "services" {
 		return parts[1]
 	}
@@ -372,11 +381,17 @@ func cursorServiceOfPath(rel string) string {
 // Порядок ФАЙЛОВ — числовой по версии, а не лексикографический: с 2026-08 номер
 // миграции выводится из номера задачи (`708001_…`), поэтому `1000001`
 // лексикографически меньше `539001`, а применяется позже.
-func replayMigrationIndexes(root string) (map[string]map[string]bool, map[string][]DeclaredIndex, int, []string, error) {
-	servicesDir := filepath.Join(root, "services")
-	entries, err := os.ReadDir(servicesDir)
-	if err != nil {
-		return nil, nil, 0, nil, fmt.Errorf("чтение %s: %w", servicesDir, err)
+func replayMigrationIndexes(tree *treecorpus.Tree) (map[string]map[string]bool, map[string][]DeclaredIndex, int, []string, error) {
+	perService := map[string][]string{}
+	for _, rel := range tree.SortedFiles() {
+		parts := strings.Split(rel, "/")
+		if len(parts) < 5 || parts[0] != "services" || parts[2] != "internal" || parts[3] != "migrations" {
+			continue
+		}
+		if !strings.HasSuffix(rel, ".sql") {
+			continue
+		}
+		perService[parts[1]] = append(perService[parts[1]], rel)
 	}
 
 	tables := map[string]map[string]bool{}
@@ -384,34 +399,22 @@ func replayMigrationIndexes(root string) (map[string]map[string]bool, map[string
 	var services []string
 	files := 0
 
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		svc := e.Name()
-		dir := filepath.Join(servicesDir, svc, "internal", "migrations")
-		sqls, gerr := filepath.Glob(filepath.Join(dir, "*.sql"))
-		if gerr != nil {
-			return nil, nil, 0, nil, fmt.Errorf("обход %s: %w", dir, gerr)
-		}
-		if len(sqls) == 0 {
-			continue
-		}
+	for svc, rels := range perService {
 		services = append(services, svc)
-		sortMigrationsByVersion(sqls)
+		sortMigrationsByVersion(rels)
 
 		live := map[string]bool{}
 		byName := map[string]DeclaredIndex{}
 		var order []string
 
-		for _, path := range sqls {
-			body, rerr := os.ReadFile(path) //nolint:gosec // путь получен обходом дерева репозитория
+		for _, rel := range rels {
+			body, rerr := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))
 			if rerr != nil {
-				return nil, nil, 0, nil, fmt.Errorf("чтение %s: %w", path, rerr)
+				return nil, nil, 0, nil, fmt.Errorf("чтение %s: %w", rel, rerr)
 			}
 			files++
 			up := migrationUpSection(string(body))
-			for _, op := range schemaOpsInTextOrder(up, filepath.Base(path)) {
+			for _, op := range schemaOpsInTextOrder(up, path.Base(rel)) {
 				switch op.kind {
 				case opCreateTable:
 					live[op.name] = true
@@ -458,7 +461,7 @@ func replayMigrationIndexes(root string) (map[string]map[string]bool, map[string
 // применяет мигратор. Файл без числового префикса уходит в конец по имени.
 func sortMigrationsByVersion(paths []string) {
 	num := func(p string) (int64, string) {
-		base := filepath.Base(p)
+		base := path.Base(p)
 		i := 0
 		for i < len(base) && base[i] >= '0' && base[i] <= '9' {
 			i++
@@ -646,101 +649,85 @@ func unqualifyIdent(ident string) string {
 // Разбирается СИНТАКСИЧЕСКОЕ дерево, а не сырой текст: `ORDER BY`, приведённый в
 // комментарии, чтением не является, а в дереве таких комментариев много —
 // репозитории объясняют свой обход прозой прямо над запросом.
-func collectCursorReads(root string) ([]CursorRead, int, int, error) {
+func collectCursorReads(tree *treecorpus.Tree) ([]CursorRead, int, int, error) {
 	var reads []CursorRead
 	files, literals := 0, 0
 
-	for _, base := range []string{"services", "pkg", "gateway"} {
-		dir := filepath.Join(root, base)
-		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+	for _, rel := range tree.SortedFiles() {
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
 			continue
 		}
-		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				if d.Name() == "node_modules" || d.Name() == "testdata" {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return nil
-			}
-			files++
-			fset := token.NewFileSet()
-			f, perr := parser.ParseFile(fset, path, nil, parser.ParseComments)
-			if perr != nil {
-				return fmt.Errorf("разбор %s: %w", path, perr)
-			}
-			rel, rerr := filepath.Rel(root, path)
-			if rerr != nil {
-				rel = path
-			}
-			rel = filepath.ToSlash(rel)
+		top := rel
+		if i := strings.Index(rel, "/"); i >= 0 {
+			top = rel[:i]
+		}
+		if top != "services" && top != "pkg" && top != "gateway" {
+			continue
+		}
+		files++
+		abs := filepath.Join(tree.Root(), filepath.FromSlash(rel))
+		fset := token.NewFileSet()
+		f, perr := parser.ParseFile(fset, abs, nil, parser.ParseComments)
+		if perr != nil {
+			return nil, 0, 0, fmt.Errorf("разбор %s: %w", rel, perr)
+		}
 
-			// Все литералы файла — сперва для связывания псевдонимов, затем для
-			// поиска чтений. Псевдоним (`ORDER BY v.created_at`) бывает связан в
-			// ДРУГОМ литерале того же файла: список колонок и `FROM` хранятся
-			// константой (`snapshotFrom`, `diskTypeSelect`), а запрос собирается
-			// форматированием.
-			var lits []struct {
+		// Все литералы файла — сперва для связывания псевдонимов, затем для
+		// поиска чтений. Псевдоним (`ORDER BY v.created_at`) бывает связан в
+		// ДРУГОМ литерале того же файла: список колонок и `FROM` хранятся
+		// константой (`snapshotFrom`, `diskTypeSelect`), а запрос собирается
+		// форматированием.
+		var lits []struct {
+			text string
+			line int
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			bl, ok := n.(*ast.BasicLit)
+			if !ok || bl.Kind != token.STRING {
+				return true
+			}
+			text, uerr := strconv.Unquote(bl.Value)
+			if uerr != nil {
+				return true
+			}
+			literals++
+			lits = append(lits, struct {
 				text string
 				line int
-			}
-			ast.Inspect(f, func(n ast.Node) bool {
-				bl, ok := n.(*ast.BasicLit)
-				if !ok || bl.Kind != token.STRING {
-					return true
-				}
-				text, uerr := strconv.Unquote(bl.Value)
-				if uerr != nil {
-					return true
-				}
-				literals++
-				lits = append(lits, struct {
-					text string
-					line int
-				}{text, fset.Position(bl.Pos()).Line})
-				return true
-			})
-
-			aliases := map[string]string{}
-			for _, l := range lits {
-				for alias, table := range sqlAliasBindings(l.text) {
-					if _, seen := aliases[alias]; !seen {
-						aliases[alias] = table
-					}
-				}
-			}
-			marker := ""
-			for _, cg := range f.Comments {
-				if m := cursorTableMarker.FindStringSubmatch(cg.Text()); m != nil {
-					marker = m[1]
-					break
-				}
-			}
-
-			for _, l := range lits {
-				keys, ok := cursorOrderOf(l.text)
-				if !ok {
-					continue
-				}
-				table, marked := resolveCursorTable(l.text, keys, aliases, marker)
-				reads = append(reads, CursorRead{
-					File:   rel,
-					Line:   l.line,
-					Table:  table,
-					Keys:   keys,
-					Shared: !strings.HasPrefix(rel, "services/"),
-					Marked: marked,
-				})
-			}
-			return nil
+			}{text, fset.Position(bl.Pos()).Line})
+			return true
 		})
-		if err != nil {
-			return nil, 0, 0, err
+
+		aliases := map[string]string{}
+		for _, l := range lits {
+			for alias, table := range sqlAliasBindings(l.text) {
+				if _, seen := aliases[alias]; !seen {
+					aliases[alias] = table
+				}
+			}
+		}
+		marker := ""
+		for _, cg := range f.Comments {
+			if m := cursorTableMarker.FindStringSubmatch(cg.Text()); m != nil {
+				marker = m[1]
+				break
+			}
+		}
+
+		for _, l := range lits {
+			keys, ok := cursorOrderOf(l.text)
+			if !ok {
+				continue
+			}
+			table, marked := resolveCursorTable(l.text, keys, aliases, marker)
+			reads = append(reads, CursorRead{
+				File:   rel,
+				Line:   l.line,
+				Table:  table,
+				Keys:   keys,
+				Shared: !strings.HasPrefix(rel, "services/"),
+				Marked: marked,
+			})
 		}
 	}
 	sort.Slice(reads, func(i, j int) bool {

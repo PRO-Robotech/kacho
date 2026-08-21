@@ -31,13 +31,21 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // TestEveryCursorPageReadGetsItsOrderFromAnIndex — сам гейт.
 func TestEveryCursorPageReadGetsItsOrderFromAnIndex(t *testing.T) {
-	root := repoRoot(t)
+	// Состав дерева берётся у ИНДЕКСА git, а не обходом диска: под `services/`
+	// и `gateway/` на машине, где поднимали стенд, лежат игнорируемые каталоги,
+	// и вердикт стал бы свойством рабочего каталога, а не коммита.
+	tree, err := treecorpus.NewTree(repoRoot(t))
+	if err != nil {
+		t.Fatalf("состав дерева: %v", err)
+	}
 
-	c, err := SurveyCursorIndexes(root)
+	c, err := SurveyCursorIndexes(tree)
 	if err != nil {
 		t.Fatalf("обход дерева: %v", err)
 	}
