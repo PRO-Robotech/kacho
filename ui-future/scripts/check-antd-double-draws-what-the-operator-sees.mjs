@@ -117,7 +117,7 @@ const PROBED_BY = {
   Dropdown: "shared/src/components/molecules/RowActionsMenu/RowActionsMenu.test.tsx",
   List: "shared/src/pages/auth/Settings.passkeys-list.test.tsx",
   Menu: "shared/src/components/organisms/DetailShell/DetailShell.test.tsx",
-  Popconfirm: "iam/src/components/organisms/SaKeysPanel/SaKeysPanel.test.tsx",
+  Popconfirm: "iam/src/components/organisms/TokensPanel/TokensPanel.test.tsx",
   Spin: "shared/src/components/organisms/ResourceEditPage/ResourceEditPage.loading-caption.test.tsx",
   Statistic: "shared/src/pages/DashboardPage.statistic.test.tsx",
   Tabs: "iam/src/pages/iam/AccessPage/AccessPage.role-tabs.test.tsx",
