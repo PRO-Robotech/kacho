@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, test } from "@playwright/test";
-import { createdResourceId, runTag, tenantWithProject } from "./fixtures";
+import { createdResourceId, ловушкаБуфера, runTag, tenantWithProject } from "./fixtures";
 
 /**
  * Доступность действий консоли с КЛАВИАТУРЫ.
@@ -33,9 +33,11 @@ test("метка списка достижима клавишей Tab и сра�
   });
   await createdResourceId(page, ответ, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть с меткой");
 
-  // Разрешение на буфер: результат нажатия читается ИЗ БУФЕРА, а не по подписи
-  // об успехе. Подпись сообщает о намерении, буфер — о случившемся.
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  // Результат нажатия читается по ТОМУ, ЧТО ПРОДУКТ ПОЛОЖИЛ, а не по подписи об
+  // успехе: подпись сообщает о намерении, перехват — о случившемся. Чтение
+  // системного буфера здесь не годится — оно зависит от разрешений среды, и
+  // падение утверждало бы о ранере, а не о консоли.
+  const скопировано = await ловушкаБуфера(page);
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
 
   const метка = page.locator(`[title="Скопировать ${КЛЮЧ}=${ЗНАЧЕНИЕ}"]`).first();
@@ -76,13 +78,13 @@ test("метка списка достижима клавишей Tab и сра�
   // 3. И СРАБАТЫВАЕТ по клавише — с тем же результатом, что по указателю.
   await page.keyboard.press("Enter");
   await expect
-    .poll(async () => page.evaluate(() => navigator.clipboard.readText()), {
+    .poll(скопировано, {
       message:
         "Enter на метке не положил в буфер машинную форму: до кнопки дошли, но " +
         "нажатие клавишей результата не дало",
       timeout: 15_000,
     })
-    .toBe(`${КЛЮЧ}=${ЗНАЧЕНИЕ}`);
+    .toEqual([`${КЛЮЧ}=${ЗНАЧЕНИЕ}`]);
 });
 
 test("счётчик скрытых меток в обход клавишей НЕ попадает — он ничего не делает", async ({ page }) => {

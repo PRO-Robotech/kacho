@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { tenantWithProject, createdResourceId, runTag } from "./fixtures";
+import { tenantWithProject, createdResourceId, runTag, ловушкаБуфера } from "./fixtures";
 
 /**
  * Пользовательские сценарии консоли: ФАКТЫ, МЕТКИ, ПУСТОЕ СОСТОЯНИЕ.
@@ -592,7 +592,11 @@ test("при нехватке ширины ужимается значение �
  */
 test("клик по метке кладёт в буфер машинную форму ключ=значение", async ({ page }) => {
   // verifies #925
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  // Перехват записи вместо чтения системного буфера: разрешение `clipboard-read`
+  // действует не во всякой посадке, и проба, на него опирающаяся, утверждает о
+  // среде прогона, а не о консоли (наблюдалось: локально зелено, в конвейере
+  // красно на исправном продукте).
+  const скопировано = await ловушкаБуфера(page);
   const { projectId } = await tenantWithProject(page);
   await сетьСМеткой(page, projectId);
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
@@ -609,11 +613,11 @@ test("клик по метке кладёт в буфер машинную фо�
 
   await метка.click();
   await expect
-    .poll(async () => page.evaluate(() => navigator.clipboard.readText()), {
+    .poll(скопировано, {
       message:
         "клик по метке не положил в буфер машинную форму: вставлять метку в фильтр или в вызов " +
         "пришлось бы, набирая знак равенства руками",
       timeout: 15_000,
     })
-    .toBe(`${КЛЮЧ_МЕТКИ}=${ЗНАЧЕНИЕ_МЕТКИ}`);
+    .toEqual([`${КЛЮЧ_МЕТКИ}=${ЗНАЧЕНИЕ_МЕТКИ}`]);
 });
