@@ -104,19 +104,26 @@ func TestPermissionMap_VerbBearing_ProjectList_StaysViewer(t *testing.T) {
 	}
 }
 
-// TestPermissionMap_VerbBearing_MachineTypeCatalogUnchanged — MachineType read-only
-// catalog гейтится `viewer` на cluster singleton (cluster — не verb-bearing, F-8);
-// не флипается. DiskType ушёл вместе с дублем блочного хранения (владелец —
-// kacho-storage), MachineType остался единственным compute-каталогом.
-func TestPermissionMap_VerbBearing_MachineTypeCatalogUnchanged(t *testing.T) {
+// TestPermissionMap_VerbBearing_MachineTypeCatalogCarriesNoVerb — чтение каталога
+// типов машин глаголом не гейтится вовсе: полоса `<exempt>`. Предмет
+// пробы — что оно НЕ флипается в verb-несущую форму (F-8): ни `v_get`, ни
+// `v_list` здесь появиться не вправе, потому что кластер глаголов не несёт.
+// Прежняя редакция требовала `viewer` — отношение, не производимое ни одним
+// посевом, из-за чего каталог отвечал отказом всем.
+func TestPermissionMap_VerbBearing_MachineTypeCatalogCarriesNoVerb(t *testing.T) {
 	m := check.PermissionMap()
 	for _, rpc := range []string{
 		"/kacho.cloud.compute.v1.MachineTypeService/Get",
 		"/kacho.cloud.compute.v1.MachineTypeService/List",
 	} {
 		e, ok := m[rpc]
-		require.Truef(t, ok, "%s must be mapped", rpc)
-		require.Equalf(t, "viewer", e.Relation, "%s: cluster-catalog read stays viewer (F-8)", rpc)
+		if !ok {
+			continue // `<exempt>` в карту проверок не попадает
+		}
+		require.NotContainsf(t, e.Relation, "v_",
+			"%s: чтение кластерного каталога не вправе нести глагол (F-8)", rpc)
+		require.Emptyf(t, e.Relation,
+			"%s: полоса `<exempt>` — отношения быть не может", rpc)
 	}
 }
 

@@ -15,31 +15,31 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v
 
 // A set of methods to retrieve information about disk types (public :9090; REST
 // /storage/v1/diskTypes).
+//
+// Read is project-scope EXEMPT (`<exempt>`), parity with the geo catalog and
+// with the machine-type catalog: disk types are admin-curated and global, and
+// EVERY authenticated tenant must read them to pick a type before creating a
+// volume. authN stays mandatory; only the project-scope Check is dropped, and
+// only for reads. Admin verbs (Create/Update/Delete/SetLifecycle) remain
+// `system_admin` on the cluster.
+//
+// This previously declared `required_relation: "viewer"` on the cluster object —
+// a relation no seed produces — so both read RPCs answered 403 to everyone and
+// no volume could be created. Held by the tree gate
+// TestClusterScopedCatalogEntryNamesARelationSomeoneProduces.
 service DiskTypeService {
   // Returns the information about the specified disk type.
   //
   // To get the list of available disk types, make a [List] request.
   rpc Get(GetDiskTypeRequest) returns (DiskType) {
     option (google.api.http) = {get: "/storage/v1/diskTypes/{disk_type_id}"};
-    option (kacho.iam.authz.v1.permission)        = "storage.disk_types.get";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "cluster"
-      from_request_field: "*"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 
   // Retrieves the list of disk types.
   rpc List(ListDiskTypesRequest) returns (ListDiskTypesResponse) {
     option (google.api.http) = {get: "/storage/v1/diskTypes"};
-    option (kacho.iam.authz.v1.permission)        = "storage.disk_types.list";
-    option (kacho.iam.authz.v1.required_relation) = "viewer";
-    option (kacho.iam.authz.v1.scope_extractor)   = {
-      object_type:        "cluster"
-      from_request_field: "*"
-    };
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 }
 

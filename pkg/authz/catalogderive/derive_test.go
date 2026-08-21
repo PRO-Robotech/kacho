@@ -59,9 +59,14 @@ func TestDeriveSubstitutesTheClusterSingleton(t *testing.T) {
 	m, err := catalogderive.Derive("kacho.cloud.storage.v1")
 	require.NoError(t, err)
 
-	e := m["/kacho.cloud.storage.v1.DiskTypeService/List"]
+	// Пример берётся с АДМИНСКОГО глагола каталога, а не с чтения: чтение
+	// каталога типов дисков — project-scope EXEMPT (#892), у него якоря нет
+	// by construction. Прежняя редакция стояла на `List`, и когда его полосу
+	// исправили, проба покраснела не на своём предмете: она утверждает про
+	// подстановку синглтона, а не про то, какие RPC кластерные.
+	e := m["/kacho.cloud.storage.v1.InternalDiskTypeService/Create"]
 	require.NotNil(t, e.Extract)
-	ot, id, xerr := e.Extract(&storagev1.ListDiskTypesRequest{})
+	ot, id, xerr := e.Extract(&storagev1.CreateDiskTypeRequest{})
 	require.NoError(t, xerr)
 	assert.Equal(t, "cluster", ot)
 	assert.Equal(t, "cluster_kacho_root", id)
