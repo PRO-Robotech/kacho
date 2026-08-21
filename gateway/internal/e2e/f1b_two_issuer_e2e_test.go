@@ -240,9 +240,8 @@ func newF1bStandWith(t *testing.T, acceptPlatform, requireBinding bool) *f1bStan
 			return stream.SendMsg(&struct{}{})
 		}),
 	)
-	// Метод, до которого доходит запрос, регистрируется как неизвестная служба:
-	// предмет пробы — слой authN, а не тело обработчика.
-	grpc.UnaryInterceptor(auth.Unary())
+	// Пробный метод регистрируется вручную: предмет пробы — слой authN, а не
+	// тело обработчика, поэтому службы из контракта здесь не нужно.
 	srv.RegisterService(&grpc.ServiceDesc{
 		ServiceName: "kacho.cloud.iam.v1.ProbeService",
 		HandlerType: (*any)(nil),
