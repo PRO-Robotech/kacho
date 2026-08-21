@@ -57,6 +57,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // AuthMode — режим работы auth-interceptor'а.
@@ -501,7 +502,7 @@ func (a *AuthInterceptor) injectPrincipal(ctx context.Context, pType, pID, displ
 	}
 	inMD.Set(a.mdKeyPrincipalType, pType)
 	inMD.Set(a.mdKeyPrincipalID, pID)
-	inMD.Set(a.mdKeyPrincipalDisplay, displayName)
+	inMD.Set(a.mdKeyPrincipalDisplay, grpcsrv.EncodePrincipalDisplayName(displayName))
 	ctx = metadata.NewIncomingContext(ctx, inMD)
 
 	// Inject в outgoing metadata — для нативного handler'а, который форвардит
@@ -514,7 +515,7 @@ func (a *AuthInterceptor) injectPrincipal(ctx context.Context, pType, pID, displ
 	}
 	md.Set(a.mdKeyPrincipalType, pType)
 	md.Set(a.mdKeyPrincipalID, pID)
-	md.Set(a.mdKeyPrincipalDisplay, displayName)
+	md.Set(a.mdKeyPrincipalDisplay, grpcsrv.EncodePrincipalDisplayName(displayName))
 	return metadata.NewOutgoingContext(ctx, md)
 }
 
@@ -693,10 +694,9 @@ func (a *AuthInterceptor) validateJWT(tokenStr string) (jwt.MapClaims, error) {
 func setPrincipalHeaders(r *http.Request, pType, pID, displayName string) {
 	r.Header.Set(principalmeta.HeaderPrincipalType, pType)
 	r.Header.Set(principalmeta.HeaderPrincipalID, pID)
-	r.Header.Set(principalmeta.HeaderPrincipalDisplay, displayName)
+	principalmeta.SetPrincipalDisplay(r.Header, displayName)
 	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalType, pType)
 	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalID, pID)
-	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalDisplay, displayName)
 }
 
 // writeHTTPUnauthorized emits a 401 with a gRPC-shaped JSON body (code 16 =
@@ -821,10 +821,9 @@ func (a *AuthInterceptor) tryKratosSession(r *http.Request) bool {
 	}
 	r.Header.Set(principalmeta.HeaderPrincipalType, subj.Type)
 	r.Header.Set(principalmeta.HeaderPrincipalID, subj.ID)
-	r.Header.Set(principalmeta.HeaderPrincipalDisplay, subj.DisplayName)
+	principalmeta.SetPrincipalDisplay(r.Header, subj.DisplayName)
 	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalType, subj.Type)
 	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalID, subj.ID)
-	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalDisplay, subj.DisplayName)
 	a.logger.Info("auth.HTTP: Principal injected (Kratos)",
 		"type", subj.Type, "id", subj.ID, "identity_id", res.IdentityID)
 	return true
@@ -967,10 +966,9 @@ func (a *AuthInterceptor) tryDevSecretJWT(w http.ResponseWriter, r *http.Request
 		}
 		r.Header.Set(principalmeta.HeaderPrincipalType, "service_account")
 		r.Header.Set(principalmeta.HeaderPrincipalID, saID)
-		r.Header.Set(principalmeta.HeaderPrincipalDisplay, saID)
+		principalmeta.SetPrincipalDisplay(r.Header, saID)
 		r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalType, "service_account")
 		r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalID, saID)
-		r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalDisplay, saID)
 		a.logger.Info("auth.HTTP: SA principal injected", "id", saID)
 		next.ServeHTTP(w, r)
 		return true
@@ -982,11 +980,10 @@ func (a *AuthInterceptor) tryDevSecretJWT(w http.ResponseWriter, r *http.Request
 		// Plain headers — WithMetadata callback in restmux форвардит.
 		r.Header.Set(principalmeta.HeaderPrincipalType, subj.Type)
 		r.Header.Set(principalmeta.HeaderPrincipalID, subj.ID)
-		r.Header.Set(principalmeta.HeaderPrincipalDisplay, subj.DisplayName)
+		principalmeta.SetPrincipalDisplay(r.Header, subj.DisplayName)
 		// Legacy form — grpc-gateway default convention fallback.
 		r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalType, subj.Type)
 		r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalID, subj.ID)
-		r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalDisplay, subj.DisplayName)
 		a.logger.Info("auth.HTTP: Principal injected", "type", subj.Type, "id", subj.ID)
 	}
 	return false

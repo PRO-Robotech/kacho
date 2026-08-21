@@ -91,7 +91,7 @@ func PropagateOutgoing(ctx context.Context) context.Context {
 	return metadata.AppendToOutgoingContext(ctx,
 		MDKeyPrincipalType, p.Type,
 		MDKeyPrincipalID, p.ID,
-		MDKeyPrincipalDisplay, p.DisplayName,
+		MDKeyPrincipalDisplay, grpcsrv.EncodePrincipalDisplayName(p.DisplayName),
 	)
 }
 

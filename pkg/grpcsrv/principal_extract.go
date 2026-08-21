@@ -204,7 +204,7 @@ func principalFromIncomingMetadata(ctx context.Context, dbg debugConfig) (operat
 	return operations.Principal{
 		Type:        pType,
 		ID:          pID,
-		DisplayName: first(md.Get(MDKeyPrincipalDisplay)),
+		DisplayName: DecodePrincipalDisplayName(first(md.Get(MDKeyPrincipalDisplay))),
 	}, true
 }
 
