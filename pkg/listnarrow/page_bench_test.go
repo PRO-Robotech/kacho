@@ -70,6 +70,7 @@ package listnarrow_test
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -100,16 +101,20 @@ func (p benchPeer) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRe
 //
 // Отдельный тип, а не поле в `benchPeer`: счётчик в замеряемом дублёре был бы
 // той самой общей ячейкой, которой замер не должен касаться.
+// Счётчики АТОМАРНЫ: сужение зовёт соседа из нескольких горутин — это его
+// смысл, батчи идут параллельно. Обычные поля здесь дают гонку, и поймал её
+// не замер, а прогон с детектором: локальная короткая группа бенчмарки не
+// гоняет, поэтому «локально зелено» относилось к меньшему, чем казалось.
 type countingPeer struct {
 	allow  bool
-	calls  int
-	checks int
+	calls  atomic.Int64
+	checks atomic.Int64
 }
 
 func (p *countingPeer) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
 	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
-	p.calls++
-	p.checks += len(in.GetChecks())
+	p.calls.Add(1)
+	p.checks.Add(int64(len(in.GetChecks())))
 	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
 	for range in.GetChecks() {
 		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: p.allow})
@@ -276,35 +281,35 @@ func TestPageCostShapeIsLinearInBatchesNotInRows(t *testing.T) {
 			// Обращений — по одному на партию, и ни одного сверх: отношение здесь
 			// одно, поэтому веер числа обращений не меняет.
 			wantCalls := (size + listnarrow.MaxBatchSize - 1) / listnarrow.MaxBatchSize
-			if peer.calls != wantCalls {
+			if got := int(peer.calls.Load()); got != wantCalls {
 				t.Fatalf("обращений к соседу %d, ожидалось %d на %d строк при партии %d: "+
 					"стоимость страницы изменила ФОРМУ — партия нарезана иначе либо отношение "+
 					"спрошено больше одного раза. Это и есть та регрессия, которую нельзя увидеть "+
 					"ни по исходу вызова, ни по стенным миллисекундам на общем ранере",
-					peer.calls, wantCalls, size, listnarrow.MaxBatchSize)
+					got, wantCalls, size, listnarrow.MaxBatchSize)
 			}
 			// Вопросов — ровно по строке: ни одна не спрошена дважды.
-			if peer.checks != size {
+			if got := int(peer.checks.Load()); got != size {
 				t.Fatalf("вопросов задано %d на %d строк: строка спрошена больше одного раза, "+
-					"то есть стоимость страницы выросла кратно и молча", peer.checks, size)
+					"то есть стоимость страницы выросла кратно и молча", got, size)
 			}
 
 			// Вторая страница тем же сужателем не стоит НИ ОДНОГО обращения:
 			// окно вердиктов прогрето. Без этого утверждения правка, ломающая
 			// попадание в окно, не роняла бы ничего — все исходы остались бы теми
 			// же, изменилась бы только цена.
-			before := peer.calls
+			before := peer.calls.Load()
 			if _, err := listnarrow.Page(ctx, n, "vpc_network", "list", rows,
 				func(r row) string { return r.id }); err != nil {
 				t.Fatalf("повторное сужение отказало: %v", err)
 			}
-			if peer.calls != before {
+			if peer.calls.Load() != before {
 				t.Fatalf("повторная страница стоила %d обращений вместо нуля: окно вердиктов "+
 					"перестало попадать. Ни один исход при этом не меняется — видно только ценой",
-					peer.calls-before)
+					peer.calls.Load()-before)
 			}
 			t.Logf("перепись: строк %d, обращений к соседу %d, вопросов %d, "+
-				"повторная страница обращений 0", size, peer.calls, peer.checks)
+				"повторная страница обращений 0", size, peer.calls.Load(), peer.checks.Load())
 		})
 	}
 }
@@ -338,7 +343,7 @@ func TestPageCostShapeCounterMovesWhenTheVerdictWindowExpires(t *testing.T) {
 		func(r row) string { return r.id }); err != nil {
 		t.Fatalf("первая страница: %v", err)
 	}
-	first := peer.calls
+	first := peer.calls.Load()
 	if first == 0 {
 		t.Fatal("первая страница не стоила ни одного обращения — счётчик не считает")
 	}
@@ -349,15 +354,15 @@ func TestPageCostShapeCounterMovesWhenTheVerdictWindowExpires(t *testing.T) {
 		func(r row) string { return r.id }); err != nil {
 		t.Fatalf("вторая страница: %v", err)
 	}
-	if peer.calls != 2*first {
+	if peer.calls.Load() != 2*first {
 		t.Fatalf("после истечения окна вторая страница стоила %d обращений вместо %d: либо "+
 			"счётчик не движется — и тогда «ноль обращений» в соседней пробе ничего не утверждает, "+
 			"— либо окно вердиктов не истекает, и снятый доступ продолжает проходить дольше "+
-			"объявленного", peer.calls-first, first)
+			"объявленного", peer.calls.Load()-first, first)
 	}
-	if peer.checks != 2*len(rows) {
-		t.Fatalf("вопросов задано %d вместо %d", peer.checks, 2*len(rows))
+	if peer.checks.Load() != int64(2*len(rows)) {
+		t.Fatalf("вопросов задано %d вместо %d", peer.checks.Load(), 2*len(rows))
 	}
 	t.Logf("перепись контроля: окно %s, страниц 2 по %d строк, обращений %d, вопросов %d",
-		window, len(rows), peer.calls, peer.checks)
+		window, len(rows), peer.calls.Load(), peer.checks.Load())
 }
