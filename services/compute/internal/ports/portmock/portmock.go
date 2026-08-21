@@ -44,6 +44,14 @@ type InstanceRepo struct {
 	// Update (epic RSAB β, D-β6). nil — Update ещё не вызывался. Позволяет
 	// use-case-тесту проверить решение «labels ∈ mask → эмитить register-intent».
 	LastUpdateEmitLabels *bool
+	// StuckDeleteSweepTaken — замок прохода добивателя уже у кого-то. Дублёр
+	// обязан уметь ОТКАЗАТЬ так же, как настоящий: подставной репозиторий,
+	// раздающий замок всем, сделал бы невидимым ровно тот дефект, ради которого
+	// замок и заведён.
+	StuckDeleteSweepTaken bool
+	// StuckDeleteSweepClaims — сколько раз проход был взят. Счётчик, а не флаг:
+	// «взяли один раз» и «взяли трижды» иначе неотличимы.
+	StuckDeleteSweepClaims int
 }
 
 // NewInstanceRepo создаёт пустой InstanceRepo.
@@ -236,6 +244,24 @@ func (r *InstanceRepo) ListStuckDeleting(_ context.Context, olderThan time.Durat
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// TryClaimStuckDeleteSweep — замок прохода добивателя. Держится в самом дублёре,
+// поэтому два use-case поверх ОДНОГО дублёра ведут себя так же, как две реплики
+// над одной базой: второй получает отказ, пока первый не отпустил.
+func (r *InstanceRepo) TryClaimStuckDeleteSweep(_ context.Context) (func(context.Context), bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.StuckDeleteSweepTaken {
+		return nil, false, nil
+	}
+	r.StuckDeleteSweepTaken = true
+	r.StuckDeleteSweepClaims++
+	return func(context.Context) {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		r.StuckDeleteSweepTaken = false
+	}, true, nil
 }
 
 // Delete удаляет строку ВМ (финальный шаг delete-саги; привязки уже сняты в

@@ -46,6 +46,9 @@ const (
 // он прерывает проход, оставляя строку на месте, и разбирается повтором, когда
 // сосед вернётся.
 //
+// РЕПЛИКИ: одиночка — проход берёт одна реплика замком прохода в базе сервиса
+// (InstanceRepo.TryClaimStuckDeleteSweep); проигравший пропускает тик.
+//
 // Первый проход идёт сразу, до первого тика: после перезапуска застрявшее не
 // должно ждать полный интервал, а перезапусков в жизни сервиса больше, чем
 // интервалов между ними.
@@ -69,7 +72,7 @@ func finishStuckDeletesOnce(ctx context.Context, svc *instance.InstanceService, 
 	passCtx, cancel := context.WithTimeout(ctx, stuckDeleteTimeout)
 	defer cancel()
 
-	finished, err := svc.FinishStuckDeletes(passCtx, stuckDeleteGrace)
+	finished, ran, err := svc.FinishStuckDeletes(passCtx, stuckDeleteGrace)
 	// Доделанное логируется ДАЖЕ при ошибке: проход мог довести часть машин до
 	// конца и встать на следующей, и молчать о сделанном нельзя.
 	for _, id := range finished {
@@ -78,6 +81,14 @@ func finishStuckDeletesOnce(ctx context.Context, svc *instance.InstanceService, 
 	if err != nil {
 		log.Warn("проход добивателя прерван; строки остались на месте и будут разобраны повтором",
 			"finished_before_error", len(finished), "err", err)
+		return
+	}
+	if !ran {
+		// Проход исполняет другая реплика — это штатный исход, а не отказ.
+		// Отдельная строка от «застрявших нет»: иначе «нас развели» и «работы не
+		// было» выглядели бы одинаково, а различить их — ровно то, ради чего
+		// развод и заведён.
+		log.Debug("проход добивателя пропущен: его исполняет другая реплика")
 		return
 	}
 	if len(finished) == 0 {

@@ -122,6 +122,17 @@ type InstanceRepo interface {
 	// исполнитель, и подхватывать его нельзя, иначе оба снимают одни и те же
 	// привязки наперегонки.
 	ListStuckDeleting(ctx context.Context, olderThan time.Duration) ([]string, error)
+	// TryClaimStuckDeleteSweep берёт проход добивателя на себя — ровно одна
+	// реплика из всех, подошедших к проходу одновременно.
+	//
+	// Возвращает (release, true, nil), если проход наш; (nil, false, nil), если
+	// его уже исполняет другая реплика. Проигрыш — ШТАТНЫЙ исход, а не отказ:
+	// проигравший пропускает тик и приходит на следующем.
+	//
+	// Тип замыкания — голая функция, а не тип из адаптера: порт живёт в слое
+	// use-case, и втянуть сюда драйвер базы значило бы протащить адаптер через
+	// весь граф импортов.
+	TryClaimStuckDeleteSweep(ctx context.Context) (release func(context.Context), ok bool, err error)
 }
 
 // MachineTypeFilter — фильтр для списка machine-type (COMP-1 F7/F19). Ambient

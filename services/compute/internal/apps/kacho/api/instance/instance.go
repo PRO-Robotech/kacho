@@ -1012,31 +1012,49 @@ func (s *InstanceService) releaseAndDelete(ctx context.Context, id string) error
 //
 // # Многорепличность
 //
-// Отдельной блокировки нет и не нужно: каждый шаг идемпотентен (повторное снятие
-// привязки — no-op у владельца, отсутствующая строка — успех), поэтому две
-// реплики, взявшиеся за одну машину, приходят к тому же исходу. Это свойство
-// самих шагов, а не удача расписания.
+// Проход берётся ОДНОЙ репликой — TryClaimStuckDeleteSweep, замок прохода в базе
+// сервиса. Второе возвращаемое значение говорит, состоялся ли проход: проигрыш
+// замка есть штатный исход, а не отказ.
+//
+// Здесь стояло обратное решение: «отдельной блокировки не нужно, каждый шаг
+// идемпотентен». Про КОРРЕКТНОСТЬ это верно и остаётся верным — повторное снятие
+// привязки у владельца есть no-op, отсутствующая строка есть успех, — поэтому
+// дубль ничего не портил. Неверен был вывод о ЦЕНЕ: выборка детерминирована, две
+// реплики берут одни и те же пятьдесят машин и зовут по каждой двух соседей.
+// Предел партии, обоснованный бережностью к соседям, умножался на число реплик —
+// а компонент масштабируется по загрузке, то есть умножение включается само и
+// именно под нагрузкой.
 //
 // # Отказ соседа
 //
 // Отказ владельца привязки ВОЗВРАЩАЕТСЯ вызывающему и прерывает проход: строка
 // обязана уцелеть до успешного снятия. Следующий проход начнёт заново —
 // самоисцеление при возвращении соседа.
-func (s *InstanceService) FinishStuckDeletes(ctx context.Context, grace time.Duration) ([]string, error) {
+func (s *InstanceService) FinishStuckDeletes(ctx context.Context, grace time.Duration) ([]string, bool, error) {
+	release, ok, err := s.repo.TryClaimStuckDeleteSweep(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	if !ok {
+		// Проход исполняет другая реплика. Не ошибка и не работа — пропуск тика.
+		return nil, false, nil
+	}
+	defer release(ctx)
+
 	stuck, err := s.repo.ListStuckDeleting(ctx, grace)
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
 	finished := make([]string, 0, len(stuck))
 	for _, id := range stuck {
 		if err := s.releaseAndDelete(ctx, id); err != nil {
 			// Уже доделанное возвращаем вместе с ошибкой: вызывающий обязан видеть
 			// и то, что сделано, и то, на чём проход встал.
-			return finished, err
+			return finished, true, err
 		}
 		finished = append(finished, id)
 	}
-	return finished, nil
+	return finished, true, nil
 }
 
 // GetSerialPortOutput — sync RPC: синтетический текст (control-plane).
