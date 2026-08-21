@@ -754,6 +754,35 @@ kratos:
     extraArgs:
       - --config
       - /etc/kacho-identity/kratos.yaml
+    # ─── ОТПЕЧАТКИ СОДЕРЖИМОГО: без них правка настроек НЕ ПЕРЕКАТЫВАЕТ под ────
+    #
+    # Настройки приезжают томом и читаются процессом ОДИН РАЗ — на старте.
+    # Правка карты настроек не меняет шаблон пода, значит Kubernetes под НЕ
+    # перекатывает, и процесс продолжает жить со старым содержимым, пока его не
+    # перезапустит что-нибудь постороннее. Дерево и работающая система
+    # расходятся МОЛЧА, а любой гейт, читающий рендер, отчитается новым значением.
+    #
+    # ПОЧЕМУ ПЕРЕМЕННЫЕ, А НЕ АННОТАЦИЯ. Из ручек чарта провайдера через
+    # шаблонизацию (`tpl`) проходит РОВНО ОДНА — `deployment.extraEnv`;
+    # `deployment.annotations` и `podMetadata.annotations` идут прямым `toYaml`,
+    # и вычислить в них sha256 не из чего. Тот же вывод и та же развилка, что у
+    # соседа-терминатора административного перехода (_hydra-admin-tls.tpl).
+    #
+    # Значения НЕ читаются процессом — они существуют ради того, чтобы шаблон
+    # пода менялся вместе с содержимым. Отпечаток берётся с ТОГО ЖЕ
+    # именованного шаблона, из которого рендерится сама карта настроек, поэтому
+    # соответствие доказано построением, а не заявлено.
+    #
+    # Курьер наследует эти переменные тем же способом, каким наследует тома
+    # (`statefulSet.extraEnv` пуст ⇒ берётся `deployment.extraEnv`), поэтому
+    # привязку получают ОБА рабочих объекта.
+    extraEnv:
+      - name: KACHO_IDENTITY_CONFIG_SHA256
+        value: '{{ printf "%s\n" (include "kacho.identity.configYaml" .) | sha256sum }}'
+      - name: KACHO_IDENTITY_SCHEMA_SHA256
+        value: '{{ printf "%s\n" (include "kacho.identity.schemaJSON" .) | sha256sum }}'
+      - name: KACHO_IDENTITY_HOOKS_SHA256
+        value: '{{ printf "%s\n%s\n" (include "kacho.identity.hookIdentityPayload" .) (include "kacho.identity.hookRecoveryPayload" .) | sha256sum }}'
     extraVolumes:
       - name: kacho-identity-config
         configMap:

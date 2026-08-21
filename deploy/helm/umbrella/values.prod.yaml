@@ -79,6 +79,34 @@
 # NB: on a cluster that already runs cert-manager, set `cert-manager.enabled=false`
 # and point `mtls.internalCA.caNamespace` at that controller's
 # --cluster-resource-namespace (see values.fe3455.yaml) via a per-cluster overlay.
+# ─── Обратные вызовы службы личности — под тем же TLS, что и слушатель ────────
+#
+# Слушатель хуков этого стенда работает под TLS (kacho-iam.mtls.httpListeners
+# ниже), значит и полосы к нему обязаны идти https. Прежде две из четырёх полос
+# (заведение пользователя и завершение восстановления доступа) были выписаны в
+# шаблоне чарта буквой `http`, и профиль переопределить их не мог ВООБЩЕ — то
+# есть боевая посадка не была в состоянии объявить их защищёнными.
+#
+# Узел и порт здесь не объявляются: их умолчания выводятся из имени подчарта и
+# порта слушателя и совпадают с прежним адресом байт в байт. Объявляется ровно
+# то, что решает профиль, — транспорт.
+#
+# ПОЧЕМУ В `global`, А НЕ В ЗНАЧЕНИЯХ ПОДЧАРТА. Содержимое настроек службы
+# личности читается из ДВУХ контекстов: нашего подчарта (там рендерится карта
+# настроек) и подчарта провайдера (там в шаблон пода кладётся отпечаток её
+# содержимого, без которого правка карты не перекатывает под). Общими для обоих
+# являются только `.Values.global` и `.Release`.
+#
+# Согласие полосы со слушателем держит deploy/identity_callback_transport_test.go:
+# он выводит перечень полос из конфигурации и краснеет и на открытой полосе при
+# слушателе под TLS, и на обратном — https к открытому слушателю.
+global:
+  kacho:
+    identity:
+      hooks:
+        scheme: https
+
+
 mtls:
   enabled: true
   # ─── Postgres SERVER-TLS from the same internal CA (templates/pg-certificates.yaml) ─
@@ -450,25 +478,6 @@ kacho-iam:
     # Both HTTP edges run server-tls-only (default; restated here for prod clarity).
     hooksClientAuthMode: server-tls-only
     metricsClientAuthMode: server-tls-only
-  # ─── Обратные вызовы службы личности — под тем же TLS, что и слушатель ──────
-  #
-  # Слушатель хуков этого стенда работает под TLS (httpListeners выше), значит и
-  # полосы к нему обязаны идти https. Раньше две из четырёх полос (заведение
-  # пользователя и завершение восстановления доступа) были выписаны в шаблоне
-  # чарта буквой `http`, и профиль переопределить их не мог ВООБЩЕ — то есть
-  # боевая посадка не была в состоянии объявить их защищёнными.
-  #
-  # Узел и порт здесь не объявляются: их умолчания выводятся из релиза и из
-  # порта слушателя и совпадают с прежним адресом байт в байт. Объявляется
-  # ровно то, что решает профиль, — транспорт.
-  #
-  # Согласие полосы со слушателем держит deploy/identity_callback_transport_test.go:
-  # он выводит перечень полос из конфигурации и краснеет и на открытой полосе при
-  # слушателе под TLS, и на обратном — https к открытому слушателю.
-  kratos:
-    config:
-      hooks:
-        scheme: https
   kacho:
     iam:
       # Route to the provider's ADMIN API. DECLARED, never derived: the fallback
@@ -1162,9 +1171,37 @@ kratos:
     extraArgs:
       - --config
       - /etc/kacho-identity/kratos.yaml
+    # ─── ОТПЕЧАТКИ СОДЕРЖИМОГО: без них правка настроек НЕ ПЕРЕКАТЫВАЕТ под ────
+    #
+    # Настройки приезжают томом и читаются процессом ОДИН РАЗ — на старте.
+    # Правка карты настроек не меняет шаблон пода, значит Kubernetes под НЕ
+    # перекатывает, и процесс продолжает жить со старым содержимым, пока его не
+    # перезапустит что-нибудь постороннее. Дерево и работающая система
+    # расходятся МОЛЧА, а любой гейт, читающий рендер, отчитается новым значением.
+    #
+    # ПОЧЕМУ ПЕРЕМЕННЫЕ, А НЕ АННОТАЦИЯ. Из ручек чарта провайдера через
+    # шаблонизацию (`tpl`) проходит РОВНО ОДНА — `deployment.extraEnv`;
+    # `deployment.annotations` и `podMetadata.annotations` идут прямым `toYaml`,
+    # и вычислить в них sha256 не из чего. Тот же вывод и та же развилка, что у
+    # соседа-терминатора административного перехода (_hydra-admin-tls.tpl).
+    #
+    # Значения НЕ читаются процессом — они существуют ради того, чтобы шаблон
+    # пода менялся вместе с содержимым. Отпечаток берётся с ТОГО ЖЕ
+    # именованного шаблона, из которого рендерится сама карта настроек, поэтому
+    # соответствие доказано построением, а не заявлено.
+    #
+    # Курьер наследует эти переменные тем же способом, каким наследует тома
+    # (`statefulSet.extraEnv` пуст ⇒ берётся `deployment.extraEnv`), поэтому
+    # привязку получают ОБА рабочих объекта.
     extraEnv:
       - name: SSL_CERT_FILE
         value: /etc/kacho-iam-ca/ca.crt
+      - name: KACHO_IDENTITY_CONFIG_SHA256
+        value: '{{ printf "%s\n" (include "kacho.identity.configYaml" .) | sha256sum }}'
+      - name: KACHO_IDENTITY_SCHEMA_SHA256
+        value: '{{ printf "%s\n" (include "kacho.identity.schemaJSON" .) | sha256sum }}'
+      - name: KACHO_IDENTITY_HOOKS_SHA256
+        value: '{{ printf "%s\n%s\n" (include "kacho.identity.hookIdentityPayload" .) (include "kacho.identity.hookRecoveryPayload" .) | sha256sum }}'
     extraVolumes:
       - name: kacho-identity-config
         configMap:
