@@ -111,7 +111,7 @@ func TestPermissionMap_VerbBearing_ProjectList_StaysViewer(t *testing.T) {
 //
 // Отношение при этом непусто и обязано быть непустым: каталог стоит на `viewer`
 // кластерного синглтона, который производит системная выдача с подстановочным
-// субъектом (#893/#895). Прежние две редакции требовали то отношения без
+// субъектом. Прежние две редакции требовали то отношения без
 // производителя (отказ всем), то полосы `<exempt>` (доступ невидим и неотзываем).
 func TestPermissionMap_VerbBearing_MachineTypeCatalogCarriesNoVerb(t *testing.T) {
 	m := check.PermissionMap()
