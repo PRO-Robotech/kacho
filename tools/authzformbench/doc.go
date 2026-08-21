@@ -1,148 +1,105 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package authzformbench compares SIX shapes of the same authorization grant —
-// five of them against a real OpenFGA over a real Postgres, the sixth against a
-// Postgres of its own — and reports write cost, read cost and volume for each,
-// as a CURVE over N rather than as one number.
+// Package authzformbench измеряет стоимость РЕЛЯЦИОННОЙ формы выдачи прав —
+// работу записи, работу чтения и объём — как КРИВУЮ по N, а не как одно число.
 //
-// It is a measuring instrument, not a product change. Nothing under services/,
-// pkg/, gateway/ or proto/ imports it, and it writes nothing into them: the
-// canonical model proto/kacho/cloud/iam/v1/fga_model.fga is READ and transformed
-// in memory. The two shapes that need a different model (C and D) carry that
-// difference as a transform of the canonical text, so the model they measure
-// cannot drift from the model production runs — it IS the canonical model with
-// named relations added.
+// Это измерительный прибор, а не часть продукта. Ничто под services/, pkg/,
+// gateway/ или proto/ его не импортирует, и он ничего туда не пишет: каноническая
+// модель `proto/kacho/cloud/iam/v1/fga_model.fga` только ЧИТАЕТСЯ.
 //
-// # The subject
+// # Что здесь было и чего больше нет (S6)
 //
-// A role rule is narrowed by a label selector and EXPANDED by the reconciler into
-// tuples: one per object × verb, for each subject of the binding. There is no
-// exponent — three linear factors multiply:
+// Пакет заводился как СРАВНЕНИЕ ШЕСТИ форм одной и той же выдачи: пяти способов
+// разложить её в кортежи внешнего движка отношений и шестого — реляционного, где
+// вердикт вычисляется запросом к БД. Движок снят из продукта целиком, и вместе с
+// ним снята половина прибора: его транспорт, его посадка, преобразования
+// канонической модели под формы C и D, вопросник согласия сторон и все пять форм
+// хранения В НЁМ. Мерить их больше нечем — они были формами хранения в движке, и
+// вне его не существуют.
 //
-//	tuples = N objects × M verbs × S subjects
+// Осталась форма E, и осталась она РАБОЧЕЙ. Сравнивать её теперь не с чем, и это
+// сказано прямо во всех местах, где иначе читалось бы иначе: в отчёте, в правиле
+// отнесения и в шапках проб. Что при этом НЕ пропало:
 //
-// At N=1000, M=5, S=10 that is 50 000 tuples from one row of a role. The question
-// this package exists to answer is whether folding any of the three factors into
-// an indirection is worth what the indirection costs on the READ path, which is
-// hot: pages are narrowed in partitions and a page is up to 1000 objects.
+//   - абсолютная стоимость формы — сколько стоит выдать, отозвать, переразметить,
+//     спросить один объект и целую страницу, и сколько это занимает строк;
+//   - НАКЛОН по N. Он и был главным утверждением замера: цена выдачи у формы E
+//     постоянна (S + 2) при том, что материализованный состав рос как N·M·S.
+//     Постоянство — результат, а не отказ прибора, и без второй стороны наклон
+//     остался единственным содержательным утверждением;
+//   - окно неверного ответа на пути меток (`labelcost.go`) — сколько времени
+//     доступ остаётся у того, кто его уже потерял.
 //
-// # The six shapes
+// # Предмет
 //
-//	A  flat        one tuple per object × verb × subject          N·M·S      (today)
-//	B  group       grant to group#member, subjects are members    N·M + S
-//	C  role-rel    one role relation per object, verbs derive it  N·S
-//	D  container   objects point at a container, grant on it      N + S
-//	BCD combined   container + group                              N + S + 1
-//	E  relational  a row of binding + its selector; no engine     S + 2
+// Правило роли сужается селектором меток. Материализующая форма разворачивала его
+// в кортежи: N объектов × M глаголов × S субъектов — три линейных множителя, без
+// показателя степени. При N=1000, M=5, S=10 это 50 000 строк из одной строки роли.
+// Реляционная форма не разворачивает ничего: она хранит привязку, её субъектов и
+// её селектор (S + 2) и вычисляет вердикт запросом на пути чтения — который
+// горячий: страница договора до 1000 объектов.
 //
-// B needs NO model change: `group#member` is already an accepted subject on every
-// verb of every type. C and D need relations that do not exist today, which is why
-// they are transforms rather than a discipline of granting.
+// # Что измеряется и в каких единицах
 //
-// # Форма E — не шестой способ писать кортежи, а их отсутствие
+// Запись, по операциям, — время стены И число SQL-стейтментов (величина, у
+// которой есть объявленная ДО прогона арифметика, см. `ExpectedStatements`):
 //
-// Она вычисляет вердикт ЗАПРОСОМ к БД поверх того же зеркала объектов, которое
-// iam ведёт сегодня, и внешнего движка отношений у неё нет. Отсюда три вещи,
-// которых у прежних пяти не бывает и которые измеряются отдельно, а не сводятся
-// к «быстрее»:
+//	W1 grant       материализовать привязку над N объектами
+//	W2 revoke      снять ОДНОГО субъекта
+//	W3 relabel-1   один объект входит в набор
+//	W4 relabel-K   K объектов входят в набор
+//	T-inline-*     выдача и отзыв В ОДНОЙ транзакции с предметом выдачи
 //
-//   - выдача и отзыв живут в ТОЙ ЖЕ транзакции, что предмет выдачи. У пяти
-//     прежних форм эта операция неприменима by construction — общей транзакции
-//     между БД сервиса и чужим движком не существует, — и это отдельный, четвёртый
-//     исход ячейки, никогда не сворачиваемый в «не выполнилось»;
-//   - колонка «обращений» расщеплена на две. У движка это HTTP-вызов, за которым
-//     стоит своё число запросов к его Postgres; у формы E — SQL-стейтмент. Обе
-//     печатаются под своими именами и не складываются ни в одной ячейке;
-//   - каскад трёх верхних уровней доступа у формы E — соединение ограниченной
-//     глубины по родительским указателям (leaf → project → account → cluster).
-//     Он не читает ничего, что доставляется очередью, — но того же свойства
-//     держится и действующая форма, поэтому каскад спрашивается ОБЕИМ, и
-//     утверждение о нём — о паритете, а не о преимуществе.
+// Чтение, по операциям, — время стены:
 //
-// Что форма E НЕ убирает и о чём отчёт обязан сказать против её интереса:
-// зеркало объектов и очередь его наполнения. Она убирает материализацию доступа,
-// а не зеркало; «очередей больше нет» — неверное прочтение.
+//	R1 check       один объект, один глагол, один субъект
+//	R2 page-50     одна часть страницы
+//	R3 page-1000   страница договора (pkg/validate.MaxPageSize)
+//	C-cascade      вопрос каскадного принципала — того, кто чинит аварию
 //
-// # What is measured, and in what unit
+// Объём: строки выдачи и логические байты, которые Postgres относит к строкам
+// хранилища. Накладные расходы индекса табличные, а не построковые, поэтому
+// печатаются отдельно и никакой строке не приписываются.
 //
-// Write, per operation, wall-clock milliseconds AND the number of store round
-// trips (writes are dominated by round trips, so a millisecond figure without the
-// request count hides which of the two moved):
+// # Исходов ТРИ, и третий не вычитается ни в чью пользу
 //
-//	W1 grant       materialize the whole binding over N objects
-//	W2 revoke      withdraw ONE subject from the binding
-//	W3 relabel-1   one object enters the selected set
-//	W4 relabel-K   K objects enter the selected set
+// Измерено · не выполнилось · неизмеряемое, названное текстом. «Не выполнилось» —
+// стек не поднялся, операция вышла за срок — НИКОГДА не сворачивается в «быстро»
+// и не опускается: оно доносится до отчёта своей строкой с причиной.
 //
-// Read, per operation, wall-clock milliseconds:
+// Категорий было четыре. «Отказ движка» и «неприменимо by construction» сняты
+// вместе со своими производителями — подробности в комментарии к `Outcome`. Вторая
+// из них была самым содержательным результатом таблицы: у движка не могло быть
+// общей транзакции с БД предмета выдачи. У формы E эта операция выразима, поэтому
+// она теперь ИЗМЕРЯЕТСЯ.
 //
-//	R1 check       one object, one verb, one subject
-//	R2 page-50     one partition — the store's own BatchCheck ceiling
-//	R3 page-1000   a contract-sized page: ceil(1000/50) partitions, ≤8 in flight,
-//	               mirroring authzfilter.MaxBatchChecksPerRequest / BatchParallelism
+// # Прибор обязан быть показан РАЗЛИЧАЮЩИМ свой вход
 //
-// Volume: the exact tuple count for the store, and the logical row bytes Postgres
-// reports for that store's rows. Index overhead is table-wide, not per-store, so it
-// is reported once for the whole table and never attributed to a shape.
+// Прежде это доказывалось двумя способами сразу: удвоением N на форме, чья цена и
+// есть N·M·S, и неравенством объёмов между формами. Оба способа ушли с движком, и
+// требование от этого стало СТРОЖЕ, а не слабее: у формы E цена выдачи постоянна
+// по N, поэтому различающую силу приходится показывать на величине, которая
+// обязана расти, — структурной части (строка зеркала на объект). Она объявлена ДО
+// прогона (`ExpectedStructuralRows`) и сверяется с измеренной; там же сверяется
+// постоянство выдачи и поштучная арифметика стейтментов. Доказательство —
+// `TestHarnessSeesTheInputOfFormE`, и оно же держит живость канала длительностей.
 //
-// # Four outcomes, not three
+// # Провенанс
 //
-// Every cell is one of measured / refused / not-run / not-applicable. "Not-run" —
-// the stack did not come up, the operation timed out, the store refused the
-// request — is NEVER folded into a shape's favour and never silently omitted; it
-// is carried through to the report as its own category with the reason attached. A
-// shape that could not be measured did not win.
+// Отчёт называет образ Postgres, машину, ревизию дерева, дату и отпечаток
+// канонической модели. Замер без них — не свидетельство, потому что его нельзя
+// повторить. Модель читается и после снятия движка: план вердикта формы E
+// компилируется из неё продуктовым `internal/authzplan`, поэтому «на какой модели
+// снят замер» остаётся осмысленным вопросом.
 //
-// Четвёртая категория — «неприменимо by construction» — заведена ради ячеек,
-// которые СОДЕРЖАТЕЛЬНЫ именно своей пустотой: у движка отношений нет и не может
-// быть общей транзакции с БД предмета выдачи. Свернуть её в «не выполнилось»
-// значило бы напечатать «не-измеренных 20» и заставить читателя решить, что замер
-// не доехал, — тогда как это самый содержательный результат таблицы. Она
-// печатается своей строкой, с причиной, и сумма четырёх категорий обязана
-// равняться числу ячеек.
+// # Два места снятия, и путать их нельзя
 //
-// # Behavioural equivalence is a PRECONDITION, not a footnote
-//
-// A shape that answers differently is not faster, it is different. Before any
-// timing is reported, TestFormsAnswerIdentically asks every shape the same
-// question set — positives AND negatives (wrong subject, wrong object, ungranted
-// verb, after revoke, after a subject leaves the group, after an object leaves the
-// set) — and requires identical verdict vectors. The negatives are the half that
-// matters: an additive shape that never withdraws is green on every positive.
-//
-// Фикстура несёт ДВУХ арендаторов, и это не полнота картины, а условие того, что
-// предпосылка вообще о чём-то говорит. При одном аккаунте и одном проекте конъюнкт
-// «объект лежит в области выдачи» тождественно истинен для каждого спрошенного
-// объекта: его полное снятие оставляло зелёными все пробы вердикта, то есть
-// эквивалентность была обеспечена на одноарендном случае, а решение принимается
-// для многоарендной системы. Поэтому вопросник спрашивает про помеченный объект
-// ЧУЖОГО арендатора (у формы E отказать обязана область, у форм движка отказ
-// структурен), а каскад спрашивается ещё и про чужой аккаунт — иначе
-// «администратор ЭТОГО аккаунта» и «администратор любого» неразличимы.
-//
-// # Provenance
-//
-// The report names the OpenFGA image, the Postgres image, the machine, the tree
-// revision and the date. A measurement without them is not evidence, because it
-// cannot be repeated.
-//
-// # Reuse, not reinvention
-//
-// The container form is the one this tree already uses for OpenFGA integration
-// proofs — services/iam/internal/testsupport/fgatest: one server for the process,
-// a STORE per case, the model transformed once by the pinned openfga/cli image.
-// That package cannot be imported from here (it is under services/iam/internal/,
-// so only services/iam/... may import it), so the form is reproduced rather than
-// called. Where the two differ, deliberately:
-//
-//   - the datastore is POSTGRES, not the in-memory default. Production runs
-//     postgres (deploy/helm/umbrella/values.dev.yaml: openfga.datastore.engine),
-//     and the whole subject here is how many datastore round trips an indirection
-//     costs. In-memory would understate C and D by construction and the result
-//     would be an artefact of the harness;
-//   - it is a benchmark, so it owns its timing, warm-up and repeats rather than
-//     leaving them to `go test -bench`, whose adaptive iteration count fights a
-//     per-iteration setup this size and which reports a mean where the spread is
-//     the interesting part.
+// Прибор держит СВОЙ Postgres (`stack.go`, один контейнер на процесс, изоляция
+// схемой — доказательство в `isolation_test.go`) и меряет на нём воспроизведение
+// формы E. Продуктовую форму E — запрос по настоящим таблицам iam — меряет прогон
+// Ф5, и живёт он не здесь, а рядом с ней: правило видимости Go разрешает
+// импортировать `services/iam/internal/...` только из дерева `services/iam/`.
+// Прогон, положенный рядом с прибором, мерил бы воспроизведение продукта, а не
+// продукт. Поэтому каждая ячейка несёт признак `Place`.
 package authzformbench

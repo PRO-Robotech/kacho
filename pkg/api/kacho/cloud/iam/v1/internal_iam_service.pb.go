@@ -30,18 +30,18 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Consistency — read-consistency preference (mirrors OpenFGA
-// ConsistencyPreference). Nested to the request so it never collides with
-// model relations.
+// Consistency — read-freshness preference.
 type CheckRequest_Consistency int32
 
 const (
-	// Unset — treated as MINIMIZE_LATENCY (default, back-compat: legacy callers
-	// that never set the field keep the cache-eligible read).
+	// Unset — no explicit requirement. Answered from the primary all the same.
 	CheckRequest_CONSISTENCY_UNSPECIFIED CheckRequest_Consistency = 0
-	// Cache/replica-eligible read (OpenFGA default) — hot enforcement gate.
+	// Latency-first. No read path currently trades freshness for latency, so the
+	// answer is identical to the one below; the value keeps its meaning for a
+	// caller that is willing to accept a lagging read if one ever exists.
 	CheckRequest_MINIMIZE_LATENCY CheckRequest_Consistency = 1
-	// Bypass cache/replica-lag — strong read-after-write for confirm probes.
+	// The answer must not lag the caller's own committed write. Held by
+	// construction: the verdict reads the primary.
 	CheckRequest_HIGHER_CONSISTENCY CheckRequest_Consistency = 2
 )
 
@@ -293,19 +293,20 @@ type CheckRequest struct {
 	Object string `protobuf:"bytes,3,opt,name=object,proto3" json:"object,omitempty"`
 	// Trace-id для correlation в логах (optional).
 	TraceId string `protobuf:"bytes,4,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
-	// consistency — read-consistency preference forwarded verbatim to the OpenFGA
-	// `Check` (`consistency` field). ADDITIVE (field 5, internal-only message →
-	// buf-breaking=0).
+	// consistency — how fresh the caller needs the answer to be.
 	//
-	//   - UNSPECIFIED (default) → OpenFGA MINIMIZE_LATENCY: the hot per-RPC
-	//     enforcement gate stays cache/replica-eligible (low latency).
-	//   - HIGHER_CONSISTENCY → OpenFGA bypasses its read caches / replica lag and
-	//     computes strongly from the datastore. Used ONLY by the owner-tuple
-	//     confirm-gate (read-after-OWN-write): the probe MUST observe a tuple this
-	//     caller just wrote through the SAME store, so under the multi-replica
-	//     OpenFGA deployment a default (MINIMIZE_LATENCY) read can otherwise serve
-	//     a stale-negative from the other replica's cache for seconds — the
-	//     confirm-op tail-latency this field closes.
+	// THE STRONGER GUARANTEE IS NOW GIVEN UNCONDITIONALLY, and that is a statement
+	// about the source, not a field nobody reads. The preference used to be
+	// forwarded to an external relations engine that answered from its own replicas
+	// and read caches, so a default read could serve a stale negative for seconds.
+	// That engine was retired: the verdict is computed from the service's own
+	// primary database, in which a caller's committed write is visible to the very
+	// next read by construction.
+	//
+	// The field stays on the contract because it states the caller's REQUIREMENT,
+	// not the mechanism that meets it. Should a read path over a lagging replica
+	// ever be introduced, the requirement becomes discriminating again — and
+	// discriminating on it is the job of whoever introduces that path.
 	Consistency   CheckRequest_Consistency `protobuf:"varint,5,opt,name=consistency,proto3,enum=kacho.cloud.iam.v1.CheckRequest_Consistency" json:"consistency,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -446,7 +447,7 @@ type RegisterResourceRequest struct {
 	SubjectId string `protobuf:"bytes,1,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
 	// FGA-relation для owner-tuple (как правило "admin" / "parent").
 	Relation string `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
-	// FGA-object string. Формат "<type>:<id>" из authorization-model OpenFGA
+	// Объект решения. Формат "<type>:<id>" словарём МОДЕЛИ прав
 	// (НЕ permission-каталог), напр. "vpc_network:<enp_xxx>",
 	// "compute_instance:<...>".
 	Object string `protobuf:"bytes,3,opt,name=object,proto3" json:"object,omitempty"`

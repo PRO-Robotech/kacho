@@ -19,7 +19,7 @@
 #
 # Sub-chart propagation: Helm пропагирует автоматически только `global.*`. Для
 # sub-chart'ов, которым нужны umbrella-значения, дублируем структуру в namespace'е
-# sub-chart'а (`kacho-iam.*`, `openfga-bootstrap.*`, `kratos-selfservice-ui.*`).
+# sub-chart'а (`kacho-iam.*`, `kratos-selfservice-ui.*`).
 
 # INFRA sec-hardening — optional Helm-owned Namespace carrying Pod Security
 # Admission labels (restricted, warn+audit). Default FALSE: the dev/CI flow
@@ -108,56 +108,9 @@ kacho-iam:
       limits:
         cpu: 200m
         memory: 256Mi
-  # `openfga-bootstrap` writes the model id into this Secret; kacho-iam reads it.
-  openfgaBootstrap:
-    modelIdSecretName: openfga-model-id
-
-# ─── OpenFGA ReBAC engine (external chart, condition-gated) ────────────────
-# Disabled in base values; values.dev.yaml enables it. Kept here so `helm lint`
-# (без -f) не падает на nil .Values.openfga.
-openfga:
-  enabled: false
-
-# ─── openfga-bootstrap sub-chart (local glue for the external openfga chart) ─
-# The bootstrap templates read `.Values.openfgaBootstrap.*` / `.Values.openfga.*`
-# / `.Values.openfgaPdb.*` in the sub-chart scope — supplied here under the
-# `openfga-bootstrap:` key (mirrors the former top-level keys verbatim). Each hook
-# self-gates, so flipping the flags is all that's needed.
-openfga-bootstrap:
-  openfga:
-    enabled: false           # drives the openfga PodDisruptionBudget gate
-  openfgaPdb:
-    enabled: false
-    minAvailable: 2
-  openfgaBootstrap:
-    enabled: false
-    # alpine/k8s несёт kubectl+jq+curl+coreutils, бежит root → bootstrap-скрипту
-    # не нужен runtime apk add.
-    image: alpine/k8s:1.36.2
-    storeName: kacho-store
-    authorizationModelConfigMap: openfga-model-stub
-    modelIdSecretName: openfga-model-id
-    clusterSingletonId: cluster_kacho_root
-    # Opt-in `CREATE DATABASE kacho_openfga`. Off by default — bitnami pg-openfga
-    # auto-creates the DB from auth.username / auth.database.
-    initDatabase: false
-    dbAdmin:
-      # Клиент джобы инициализации, а не сервер: серверы приходят из подчарта со
-      # своими тегами. Клиент 18 к серверу 16 совместим — протокол обратно
-      # совместим, а джоба делает только CREATE DATABASE/ROLE.
-      image: postgres:18-alpine
-      host: kacho-umbrella-pg-openfga
-      port: "5432"
-      user: postgres
-      passwordSecretName: kacho-umbrella-pg-openfga
-      passwordSecretKey: postgres-password
-      fgaUser: openfga
-      fgaPasswordSecretName: kacho-umbrella-pg-openfga
-      fgaPasswordSecretKey: password
-      fgaDatabase: kacho_openfga
 
 # ─── Cross-cutting authz NetworkPolicy (umbrella template networkpolicy-authz) ─
-# Defense-in-depth pod-to-pod allowlist spanning openfga + kacho-iam + api-gateway
+# Defense-in-depth pod-to-pod allowlist spanning kacho-iam + api-gateway
 # + backends — no single owning chart, so the selectors live at umbrella level.
 # Disabled by default (would block :9091 port-forward debugging in dev). The rest
 # of the OPA sidecar config now lives in the kacho-iam sub-chart.
@@ -167,14 +120,11 @@ opaSidecar:
     iamPodSelector:
       matchLabels:
         app.kubernetes.io/name: kacho-iam
-    openfgaPodSelector:
-      matchLabels:
-        app.kubernetes.io/name: openfga
     apiGatewayPodSelector:
       matchLabels:
         app: api-gateway
-    # Backend services that dial kacho-iam :9091 (per-RPC Check + fga-register) and
-    # OpenFGA :8081. A service missing from this list is fail-CLOSED on every RPC once
+    # Backend services that dial kacho-iam :9091 (per-RPC Check + fga-register).
+    # A service missing from this list is fail-CLOSED on every RPC once
     # these policies are enforced — it is an allowlist, not a hint. `kacho-storage` is
     # the storage control-plane pod label (chart fullnameOverride, `app: kacho-storage`).
     # `kacho-geo` and `registry` dial kacho-iam :9091 exactly like the others
@@ -236,12 +186,6 @@ networkPolicy:
               matchLabels: { app: kacho-geo }
           - podSelector:
               matchLabels: { kacho.cloud/job: geo-data-migration }
-      - name: pg-openfga
-        from:
-          - podSelector:
-              matchLabels: { app.kubernetes.io/name: openfga }
-          - podSelector:
-              matchLabels: { app: openfga-postgres-init }
       - name: pg-nlb
         from:
           - podSelector:
@@ -591,7 +535,7 @@ security:
 # inside one: these are database-per-service instances, so the line on pg-iam
 # reaches iam's tables and nothing else. Deliberately NOT listed: pg-geo (its
 # geo_outbox is a sequence-cursor audit feed with no `sent_at` claim and no
-# drainer), pg-openfga, pg-kratos, pg-hydra (third-party stores, no Kacho queue).
+# drainer), pg-kratos, pg-hydra (third-party stores, no Kacho queue).
 #
 # WHY 5s. The launcher has to stop being the binding term: 5 s sits below the
 # ~5.4 s it takes to accumulate the per-table threshold of 1000 modifications at

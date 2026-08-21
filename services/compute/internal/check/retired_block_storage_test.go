@@ -78,8 +78,8 @@ var retiredBlockStorage = []retiredResource{
 // members and the queued tuples; then iam's four vocabularies (grantable catalog,
 // per-verb emission guard, label-selectable/materializable feed, AccessBinding
 // target whitelist) dropped them; and only then did `type compute_disk` /
-// `compute_image` / `compute_snapshot` leave the model and the generated
-// openfga-bootstrap ConfigMap.
+// `compute_image` / `compute_snapshot` leave the canonical authorization model and
+// the embedded copy the service compiles its decision plan from.
 //
 // That half is held by services/iam/internal/check/retired_block_storage_test.go
 // (artefacts in the tree) and

@@ -121,10 +121,15 @@ var errNotFound = status.Error(codes.NotFound, "x")
 			wantFind: false,
 		},
 		{
+			// Фикстура привязана к ЖИВОМУ признаку внешней системы, а не к
+			// конкретному адаптеру: прежняя редакция называла клиент внешнего
+			// движка прав, и законный близнец истёк вместе с ним — унеся
+			// доказательство, что гейт не срабатывает вхолостую (стадия S6
+			// эпика #747).
 			name:   "законный близнец: адаптер к ВНЕШНЕЙ системе",
-			path:   "services/iam/internal/clients/openfga_write.go",
+			path:   "services/iam/internal/clients/hydra_token_exchange.go",
 			origin: "чужой протокол и чужие коды — словарь из пяти полос к ним неприменим",
-			body: injectionHeader + `func mapFGA(err error) error {
+			body: injectionHeader + `func mapProvider(err error) error {
 	if st, ok := status.FromError(err); ok && st.Code() == codes.Aborted {
 		return err
 	}

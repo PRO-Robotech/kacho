@@ -14,8 +14,8 @@ Kachō Registry не заводит собственную систему пра
 задаётся теми же grant'ами, что и остальной доступ в проекте. Эта страница описывает модель авторизации:
 объекты, verb-relations, как гейтятся control-plane RPC и data-plane push/pull.
 
-Авторизация — **per-RPC / per-request, ReBAC** через **OpenFGA**, вызывается как
-`InternalIAMService.Check` в kacho-iam. Проверяется на **всех** поверхностях: public control-plane
+Авторизация — **per-RPC / per-request**, вызывается как `InternalIAMService.Check`
+в kacho-iam. Проверяется на **всех** поверхностях: public control-plane
 (`:9090`), internal (`:9091`) и data-plane. Внутренний периметр не доверенный (defense-in-depth).
 
 ## Два объекта авторизации
@@ -104,14 +104,14 @@ label-scoped доступ.
 
 ## Owner-tuple и видимость создателя
 
-Чтобы создатель видел свой реестр сразу после Create, сервис пишет owner/project-tuple в FGA через
-transactional-outbox (см. [Архитектура](/architecture/overview#owner-tuple-через-transactional-outbox)).
+Чтобы создатель видел свой реестр сразу после Create, сервис регистрирует владение и проект
+реестра в kacho-iam через transactional-outbox (см. [Архитектура](/architecture/overview#owner-registration)).
 Модель `registry_registry` несёт relation `owner`, поэтому creator-tuple успешно материализуется.
 Через proxy (`RegisterResource`) разрешены **только** hierarchy-relations (`project`/`owner`) —
 `admin/editor/viewer` через proxy запрещены (privilege-guard в iam).
 
 :::note Grant-latency
-Между записью tuple и его учётом в authz-фильтрованном `List` проходит ~0.6–2 с (FGA-пропагация).
+Между регистрацией и её учётом в authz-фильтрованном `List` проходит ~0.6–2 с (распространение прав).
 Только что созданный реестр или только что запушенный репозиторий может не появиться в списке мгновенно
 — клиент/UI делает poll-retry, а не мгновенный refetch.
 :::

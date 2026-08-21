@@ -40,9 +40,9 @@ type LoadBalancerRecord struct {
 // совпадение; Filter — синтаксис `name="<value>"` (через corelib/filter.Parse).
 // Per-object RBAC-видимость здесь НЕ выражается: видимость решается на СТРАНИЦЕ
 // (use-case → iam BatchCheck, см. internal/authzfilter). Прежнее поле AllowedIDs
-// («перечисли всё разрешённое → WHERE id = ANY») удалено вместе с ListObjects-
-// перечислением: оно упиралось в жёсткий предел OpenFGA (1000 объектов на тип в
-// сторе) и молча прятало собственные ресурсы тенанта.
+// («перечисли всё разрешённое → WHERE id = ANY») удалено вместе с самим
+// перечислением: оно упиралось в жёсткий предел прежнего движка прав (1000
+// объектов на тип в его сторе) и молча прятало собственные ресурсы тенанта.
 type LoadBalancerFilter struct {
 	ProjectID string
 	Name      *NameFilter

@@ -57,10 +57,9 @@ func (s *stubAuthorizeServer) Check(ctx context.Context, req *iamv1.AuthorizeChe
 		}
 	}
 	return &iamv1.AuthorizeCheckResponse{
-		Allowed:              s.allowed,
-		DenyReasons:          s.reasons,
-		AuthorizationModelId: "model_test",
-		CheckedAt:            timestamppb.Now(),
+		Allowed:     s.allowed,
+		DenyReasons: s.reasons,
+		CheckedAt:   timestamppb.Now(),
 	}, nil
 }
 
@@ -114,7 +113,6 @@ func TestIAMAuthorizeClient_Check_Allow(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.True(t, res.Allowed)
-	assert.Equal(t, "model_test", res.AuthorizationModelID)
 	assert.Equal(t, int64(1), stub.calls.Load())
 
 	last := stub.lastReq.Load()

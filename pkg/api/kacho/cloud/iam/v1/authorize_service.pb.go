@@ -31,7 +31,7 @@ const (
 
 // ResourceRef — typed resource pointer used across AuthorizeService.
 //
-// `type` mirrors the OpenFGA object-type vocabulary
+// `type` mirrors the object-type vocabulary of the authorization model
 // (`cluster` / `account` / `project` / `vpc_network` /
 // `vpc_subnet` / `compute_instance` / …). `id` is the resource id WITHOUT
 // the type prefix (i.e. `enp_xxx`, not `vpc_network:enp_xxx`).
@@ -212,9 +212,6 @@ type AuthorizeCheckResponse struct {
 	//	["non_expired: now() >= expires_at(2026-05-01T00:00:00Z)"]
 	//	["no path"]
 	DenyReasons []string `protobuf:"bytes,2,rep,name=deny_reasons,json=denyReasons,proto3" json:"deny_reasons,omitempty"`
-	// Authorization model id used to resolve this Check (pinned).
-	// Useful for forensic correlation.
-	AuthorizationModelId string `protobuf:"bytes,3,opt,name=authorization_model_id,json=authorizationModelId,proto3" json:"authorization_model_id,omitempty"`
 	// Timestamp at which the decision was made (truncated to seconds).
 	CheckedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=checked_at,json=checkedAt,proto3" json:"checked_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -263,13 +260,6 @@ func (x *AuthorizeCheckResponse) GetDenyReasons() []string {
 		return x.DenyReasons
 	}
 	return nil
-}
-
-func (x *AuthorizeCheckResponse) GetAuthorizationModelId() string {
-	if x != nil {
-		return x.AuthorizationModelId
-	}
-	return ""
 }
 
 func (x *AuthorizeCheckResponse) GetCheckedAt() *timestamppb.Timestamp {
@@ -390,175 +380,6 @@ func (x *BatchAuthorizeCheckResponse) GetResponses() []*AuthorizeCheckResponse {
 	return nil
 }
 
-type ListObjectsRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// FGA-style subject string. Required.
-	Subject string `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
-	// FGA object type to enumerate. 1-32 chars.
-	ResourceType string `protobuf:"bytes,2,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
-	// Action string in `<domain>.<resource>.<verb>` form. Server resolves to
-	// an FGA relation. 1-128 chars.
-	Action string `protobuf:"bytes,3,opt,name=action,proto3" json:"action,omitempty"`
-	// Hard cap on results. Default 1000, max 10000.
-	MaxResults int64 `protobuf:"varint,4,opt,name=max_results,json=maxResults,proto3" json:"max_results,omitempty"`
-	// Page token for pagination.
-	PageToken string `protobuf:"bytes,5,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	// Per-request condition context (see AuthorizeCheckRequest.context).
-	Context       *structpb.Struct `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListObjectsRequest) Reset() {
-	*x = ListObjectsRequest{}
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListObjectsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListObjectsRequest) ProtoMessage() {}
-
-func (x *ListObjectsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListObjectsRequest.ProtoReflect.Descriptor instead.
-func (*ListObjectsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *ListObjectsRequest) GetSubject() string {
-	if x != nil {
-		return x.Subject
-	}
-	return ""
-}
-
-func (x *ListObjectsRequest) GetResourceType() string {
-	if x != nil {
-		return x.ResourceType
-	}
-	return ""
-}
-
-func (x *ListObjectsRequest) GetAction() string {
-	if x != nil {
-		return x.Action
-	}
-	return ""
-}
-
-func (x *ListObjectsRequest) GetMaxResults() int64 {
-	if x != nil {
-		return x.MaxResults
-	}
-	return 0
-}
-
-func (x *ListObjectsRequest) GetPageToken() string {
-	if x != nil {
-		return x.PageToken
-	}
-	return ""
-}
-
-func (x *ListObjectsRequest) GetContext() *structpb.Struct {
-	if x != nil {
-		return x.Context
-	}
-	return nil
-}
-
-type ListObjectsResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// List of bare object ids (no type prefix).
-	ResourceIds []string `protobuf:"bytes,1,rep,name=resource_ids,json=resourceIds,proto3" json:"resource_ids,omitempty"`
-	// Continuation token; empty when no more pages.
-	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
-	// True when the underlying FGA ListObjects returned its hard cap and
-	// there may be additional results beyond `max_results`.
-	Truncated bool `protobuf:"varint,3,opt,name=truncated,proto3" json:"truncated,omitempty"`
-	// True when the subject has unbounded reach over
-	// (resource_type, action) — typically because they hold a CLUSTER-scoped
-	// wildcard grant (e.g. `*.*.*.*` or `compute.instance.*.read` at
-	// scope=CLUSTER). When true, callers MUST skip the WHERE-IN filter and
-	// return all rows; `resource_ids` is empty in this case (server side
-	// does not enumerate when an explicit short-circuit is available).
-	WildcardGrant bool `protobuf:"varint,4,opt,name=wildcard_grant,json=wildcardGrant,proto3" json:"wildcard_grant,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListObjectsResponse) Reset() {
-	*x = ListObjectsResponse{}
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListObjectsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListObjectsResponse) ProtoMessage() {}
-
-func (x *ListObjectsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListObjectsResponse.ProtoReflect.Descriptor instead.
-func (*ListObjectsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *ListObjectsResponse) GetResourceIds() []string {
-	if x != nil {
-		return x.ResourceIds
-	}
-	return nil
-}
-
-func (x *ListObjectsResponse) GetNextPageToken() string {
-	if x != nil {
-		return x.NextPageToken
-	}
-	return ""
-}
-
-func (x *ListObjectsResponse) GetTruncated() bool {
-	if x != nil {
-		return x.Truncated
-	}
-	return false
-}
-
-func (x *ListObjectsResponse) GetWildcardGrant() bool {
-	if x != nil {
-		return x.WildcardGrant
-	}
-	return false
-}
-
 type ListSubjectsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Resource for which to enumerate subjects.
@@ -578,7 +399,7 @@ type ListSubjectsRequest struct {
 
 func (x *ListSubjectsRequest) Reset() {
 	*x = ListSubjectsRequest{}
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -590,7 +411,7 @@ func (x *ListSubjectsRequest) String() string {
 func (*ListSubjectsRequest) ProtoMessage() {}
 
 func (x *ListSubjectsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -603,7 +424,7 @@ func (x *ListSubjectsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSubjectsRequest.ProtoReflect.Descriptor instead.
 func (*ListSubjectsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{7}
+	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ListSubjectsRequest) GetResource() *ResourceRef {
@@ -653,7 +474,7 @@ type ListSubjectsResponse struct {
 
 func (x *ListSubjectsResponse) Reset() {
 	*x = ListSubjectsResponse{}
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -665,7 +486,7 @@ func (x *ListSubjectsResponse) String() string {
 func (*ListSubjectsResponse) ProtoMessage() {}
 
 func (x *ListSubjectsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[8]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -678,7 +499,7 @@ func (x *ListSubjectsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSubjectsResponse.ProtoReflect.Descriptor instead.
 func (*ListSubjectsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{8}
+	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListSubjectsResponse) GetSubjects() []string {
@@ -697,20 +518,18 @@ func (x *ListSubjectsResponse) GetNextPageToken() string {
 
 type ExpandRelationsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Resource whose userset tree to expand.
+	// Resource whose subjects to list.
 	Resource *ResourceRef `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
-	// FGA relation name (`viewer` / `editor` / `admin` / domain-specific).
+	// Relation name (`viewer` / `editor` / `admin` / domain-specific).
 	// 1-32 chars.
-	Relation string `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
-	// Maximum tree depth to return (1-32). Default 16.
-	MaxDepth      int32 `protobuf:"varint,3,opt,name=max_depth,json=maxDepth,proto3" json:"max_depth,omitempty"`
+	Relation      string `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExpandRelationsRequest) Reset() {
 	*x = ExpandRelationsRequest{}
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -722,7 +541,7 @@ func (x *ExpandRelationsRequest) String() string {
 func (*ExpandRelationsRequest) ProtoMessage() {}
 
 func (x *ExpandRelationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[9]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -735,7 +554,7 @@ func (x *ExpandRelationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExpandRelationsRequest.ProtoReflect.Descriptor instead.
 func (*ExpandRelationsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{9}
+	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ExpandRelationsRequest) GetResource() *ResourceRef {
@@ -752,32 +571,21 @@ func (x *ExpandRelationsRequest) GetRelation() string {
 	return ""
 }
 
-func (x *ExpandRelationsRequest) GetMaxDepth() int32 {
-	if x != nil {
-		return x.MaxDepth
-	}
-	return 0
-}
-
-// UsersetTree — recursive Zanzibar-style userset tree.
+// UsersetTree — FLAT listing of the subjects that resolve a relation.
 //
-// Each node is one of:
-//   - `leaves`       — direct subject references at this node.
-//   - `computed`     — points to another (resource, relation) within the same
-//     FGA model (e.g. `admin` resolves to `viewer ∪ direct`).
-//   - `tuple_to_userset` — userset reached via an intermediate tuple
-//     (parent-resource cascade).
+// The name is historical and the shape is not a tree: the source is the
+// relational form that decides access, and its records are flat. There is
+// exactly one level, and the two edge fields that used to descend into
+// sub-usersets are reserved below — nothing would ever fill them.
+//
+// `ComputedUsersetEdge` and `TupleToUsersetEdge` were removed with them. Never
+// re-add messages under those names.
 type UsersetTree struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Direct subject leaves at this level.
+	// Subjects that resolve the relation, as recorded by the relational form.
 	Leaves []string `protobuf:"bytes,1,rep,name=leaves,proto3" json:"leaves,omitempty"`
-	// Computed-userset edges from this node.
-	Computed []*ComputedUsersetEdge `protobuf:"bytes,2,rep,name=computed,proto3" json:"computed,omitempty"`
-	// Tuple-to-userset edges from this node.
-	TupleToUserset []*TupleToUsersetEdge `protobuf:"bytes,3,rep,name=tuple_to_userset,json=tupleToUserset,proto3" json:"tuple_to_userset,omitempty"`
-	// True when the subtree rooted at this node was truncated due to
-	// `max_depth`. The caller can re-issue ExpandRelations with the leaf
-	// node as root.
+	// True when the listing was cut short by the server-side cap and is therefore
+	// incomplete.
 	Truncated     bool `protobuf:"varint,4,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -785,7 +593,7 @@ type UsersetTree struct {
 
 func (x *UsersetTree) Reset() {
 	*x = UsersetTree{}
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -797,7 +605,7 @@ func (x *UsersetTree) String() string {
 func (*UsersetTree) ProtoMessage() {}
 
 func (x *UsersetTree) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[10]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -810,26 +618,12 @@ func (x *UsersetTree) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsersetTree.ProtoReflect.Descriptor instead.
 func (*UsersetTree) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{10}
+	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *UsersetTree) GetLeaves() []string {
 	if x != nil {
 		return x.Leaves
-	}
-	return nil
-}
-
-func (x *UsersetTree) GetComputed() []*ComputedUsersetEdge {
-	if x != nil {
-		return x.Computed
-	}
-	return nil
-}
-
-func (x *UsersetTree) GetTupleToUserset() []*TupleToUsersetEdge {
-	if x != nil {
-		return x.TupleToUserset
 	}
 	return nil
 }
@@ -841,140 +635,21 @@ func (x *UsersetTree) GetTruncated() bool {
 	return false
 }
 
-type ComputedUsersetEdge struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Target relation on the same resource.
-	Relation string `protobuf:"bytes,1,opt,name=relation,proto3" json:"relation,omitempty"`
-	// Resolved subtree (lazily — when within `max_depth`).
-	Subtree       *UsersetTree `protobuf:"bytes,2,opt,name=subtree,proto3" json:"subtree,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ComputedUsersetEdge) Reset() {
-	*x = ComputedUsersetEdge{}
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ComputedUsersetEdge) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ComputedUsersetEdge) ProtoMessage() {}
-
-func (x *ComputedUsersetEdge) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ComputedUsersetEdge.ProtoReflect.Descriptor instead.
-func (*ComputedUsersetEdge) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *ComputedUsersetEdge) GetRelation() string {
-	if x != nil {
-		return x.Relation
-	}
-	return ""
-}
-
-func (x *ComputedUsersetEdge) GetSubtree() *UsersetTree {
-	if x != nil {
-		return x.Subtree
-	}
-	return nil
-}
-
-type TupleToUsersetEdge struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Parent resource reached via the intermediate tuple.
-	Parent *ResourceRef `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
-	// Relation on the parent.
-	Relation string `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
-	// Resolved subtree.
-	Subtree       *UsersetTree `protobuf:"bytes,3,opt,name=subtree,proto3" json:"subtree,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *TupleToUsersetEdge) Reset() {
-	*x = TupleToUsersetEdge{}
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *TupleToUsersetEdge) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*TupleToUsersetEdge) ProtoMessage() {}
-
-func (x *TupleToUsersetEdge) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use TupleToUsersetEdge.ProtoReflect.Descriptor instead.
-func (*TupleToUsersetEdge) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *TupleToUsersetEdge) GetParent() *ResourceRef {
-	if x != nil {
-		return x.Parent
-	}
-	return nil
-}
-
-func (x *TupleToUsersetEdge) GetRelation() string {
-	if x != nil {
-		return x.Relation
-	}
-	return ""
-}
-
-func (x *TupleToUsersetEdge) GetSubtree() *UsersetTree {
-	if x != nil {
-		return x.Subtree
-	}
-	return nil
-}
-
 type ExpandRelationsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Resource whose tree was expanded (echo of request).
+	// Resource whose subjects were listed (echo of request).
 	Resource *ResourceRef `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
 	// Relation that was expanded (echo of request).
 	Relation string `protobuf:"bytes,2,opt,name=relation,proto3" json:"relation,omitempty"`
-	// Root of the userset tree.
-	Tree *UsersetTree `protobuf:"bytes,3,opt,name=tree,proto3" json:"tree,omitempty"`
-	// Authorization model id at which the tree was resolved.
-	AuthorizationModelId string `protobuf:"bytes,4,opt,name=authorization_model_id,json=authorizationModelId,proto3" json:"authorization_model_id,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// The subjects that resolve the relation.
+	Tree          *UsersetTree `protobuf:"bytes,3,opt,name=tree,proto3" json:"tree,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExpandRelationsResponse) Reset() {
 	*x = ExpandRelationsResponse{}
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[13]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -986,7 +661,7 @@ func (x *ExpandRelationsResponse) String() string {
 func (*ExpandRelationsResponse) ProtoMessage() {}
 
 func (x *ExpandRelationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[13]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -999,7 +674,7 @@ func (x *ExpandRelationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExpandRelationsResponse.ProtoReflect.Descriptor instead.
 func (*ExpandRelationsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{13}
+	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ExpandRelationsResponse) GetResource() *ResourceRef {
@@ -1023,13 +698,6 @@ func (x *ExpandRelationsResponse) GetTree() *UsersetTree {
 	return nil
 }
 
-func (x *ExpandRelationsResponse) GetAuthorizationModelId() string {
-	if x != nil {
-		return x.AuthorizationModelId
-	}
-	return ""
-}
-
 // WhoAmIRequest — empty; the subject is derived from the auth context.
 type WhoAmIRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1039,7 +707,7 @@ type WhoAmIRequest struct {
 
 func (x *WhoAmIRequest) Reset() {
 	*x = WhoAmIRequest{}
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[14]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1051,7 +719,7 @@ func (x *WhoAmIRequest) String() string {
 func (*WhoAmIRequest) ProtoMessage() {}
 
 func (x *WhoAmIRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[14]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1064,7 +732,7 @@ func (x *WhoAmIRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WhoAmIRequest.ProtoReflect.Descriptor instead.
 func (*WhoAmIRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{14}
+	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{10}
 }
 
 // WhoAmIResponse — caller identity + permission snapshot. All fields are
@@ -1108,7 +776,7 @@ type WhoAmIResponse struct {
 
 func (x *WhoAmIResponse) Reset() {
 	*x = WhoAmIResponse{}
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[15]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1120,7 +788,7 @@ func (x *WhoAmIResponse) String() string {
 func (*WhoAmIResponse) ProtoMessage() {}
 
 func (x *WhoAmIResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[15]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1133,7 +801,7 @@ func (x *WhoAmIResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WhoAmIResponse.ProtoReflect.Descriptor instead.
 func (*WhoAmIResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{15}
+	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *WhoAmIResponse) GetSubject() string {
@@ -1216,7 +884,7 @@ type AccountMembership struct {
 
 func (x *AccountMembership) Reset() {
 	*x = AccountMembership{}
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[16]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1228,7 +896,7 @@ func (x *AccountMembership) String() string {
 func (*AccountMembership) ProtoMessage() {}
 
 func (x *AccountMembership) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[16]
+	mi := &file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1241,7 +909,7 @@ func (x *AccountMembership) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountMembership.ProtoReflect.Descriptor instead.
 func (*AccountMembership) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{16}
+	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *AccountMembership) GetAccountId() string {
@@ -1279,33 +947,18 @@ const file_kacho_cloud_iam_v1_authorize_service_proto_rawDesc = "" +
 	"\x06action\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x051-128R\x06action\x121\n" +
 	"\acontext\x18\x04 \x01(\v2\x17.google.protobuf.StructR\acontext\x12#\n" +
 	"\btrace_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=64R\atraceId\x125\n" +
-	"\x11required_relation\x18\x06 \x01(\tB\b\x8a\xc81\x04<=32R\x10requiredRelation\"\xc6\x01\n" +
+	"\x11required_relation\x18\x06 \x01(\tB\b\x8a\xc81\x04<=32R\x10requiredRelation\"\xae\x01\n" +
 	"\x16AuthorizeCheckResponse\x12\x18\n" +
 	"\aallowed\x18\x01 \x01(\bR\aallowed\x12!\n" +
-	"\fdeny_reasons\x18\x02 \x03(\tR\vdenyReasons\x124\n" +
-	"\x16authorization_model_id\x18\x03 \x01(\tR\x14authorizationModelId\x129\n" +
+	"\fdeny_reasons\x18\x02 \x03(\tR\vdenyReasons\x129\n" +
 	"\n" +
-	"checked_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcheckedAt\"\xaf\x01\n" +
+	"checked_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcheckedAtJ\x04\b\x03\x10\x04R\x16authorization_model_id\"\xaf\x01\n" +
 	"\x1aBatchAuthorizeCheckRequest\x12G\n" +
 	"\x06checks\x18\x01 \x03(\v2).kacho.cloud.iam.v1.AuthorizeCheckRequestB\x04\xe8\xc71\x01R\x06checks\x12#\n" +
 	"\bscope_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=20R\ascopeId\x12#\n" +
 	"\btrace_id\x18\x03 \x01(\tB\b\x8a\xc81\x04<=64R\atraceId\"g\n" +
 	"\x1bBatchAuthorizeCheckResponse\x12H\n" +
-	"\tresponses\x18\x01 \x03(\v2*.kacho.cloud.iam.v1.AuthorizeCheckResponseR\tresponses\"\xa2\x02\n" +
-	"\x12ListObjectsRequest\x12'\n" +
-	"\asubject\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\asubject\x121\n" +
-	"\rresource_type\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x041-32R\fresourceType\x12%\n" +
-	"\x06action\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x051-128R\x06action\x12,\n" +
-	"\vmax_results\x18\x04 \x01(\x03B\v\xfa\xc71\a<=10000R\n" +
-	"maxResults\x12(\n" +
-	"\n" +
-	"page_token\x18\x05 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x121\n" +
-	"\acontext\x18\x06 \x01(\v2\x17.google.protobuf.StructR\acontext\"\xa5\x01\n" +
-	"\x13ListObjectsResponse\x12!\n" +
-	"\fresource_ids\x18\x01 \x03(\tR\vresourceIds\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12\x1c\n" +
-	"\ttruncated\x18\x03 \x01(\bR\ttruncated\x12%\n" +
-	"\x0ewildcard_grant\x18\x04 \x01(\bR\rwildcardGrant\"\x8c\x02\n" +
+	"\tresponses\x18\x01 \x03(\v2*.kacho.cloud.iam.v1.AuthorizeCheckResponseR\tresponses\"\x8c\x02\n" +
 	"\x13ListSubjectsRequest\x12A\n" +
 	"\bresource\x18\x01 \x01(\v2\x1f.kacho.cloud.iam.v1.ResourceRefB\x04\xe8\xc71\x01R\bresource\x12%\n" +
 	"\x06action\x18\x02 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x051-128R\x06action\x12'\n" +
@@ -1316,28 +969,17 @@ const file_kacho_cloud_iam_v1_authorize_service_proto_rawDesc = "" +
 	"\x13subject_type_filter\x18\x05 \x01(\tB\b\x8a\xc81\x04<=32R\x11subjectTypeFilter\"Z\n" +
 	"\x14ListSubjectsResponse\x12\x1a\n" +
 	"\bsubjects\x18\x01 \x03(\tR\bsubjects\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xac\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x96\x01\n" +
 	"\x16ExpandRelationsRequest\x12A\n" +
 	"\bresource\x18\x01 \x01(\v2\x1f.kacho.cloud.iam.v1.ResourceRefB\x04\xe8\xc71\x01R\bresource\x12(\n" +
-	"\brelation\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x041-32R\brelation\x12%\n" +
-	"\tmax_depth\x18\x03 \x01(\x05B\b\xfa\xc71\x04<=32R\bmaxDepth\"\xda\x01\n" +
+	"\brelation\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x041-32R\brelationJ\x04\b\x03\x10\x04R\tmax_depth\"k\n" +
 	"\vUsersetTree\x12\x16\n" +
-	"\x06leaves\x18\x01 \x03(\tR\x06leaves\x12C\n" +
-	"\bcomputed\x18\x02 \x03(\v2'.kacho.cloud.iam.v1.ComputedUsersetEdgeR\bcomputed\x12P\n" +
-	"\x10tuple_to_userset\x18\x03 \x03(\v2&.kacho.cloud.iam.v1.TupleToUsersetEdgeR\x0etupleToUserset\x12\x1c\n" +
-	"\ttruncated\x18\x04 \x01(\bR\ttruncated\"l\n" +
-	"\x13ComputedUsersetEdge\x12\x1a\n" +
-	"\brelation\x18\x01 \x01(\tR\brelation\x129\n" +
-	"\asubtree\x18\x02 \x01(\v2\x1f.kacho.cloud.iam.v1.UsersetTreeR\asubtree\"\xa4\x01\n" +
-	"\x12TupleToUsersetEdge\x127\n" +
-	"\x06parent\x18\x01 \x01(\v2\x1f.kacho.cloud.iam.v1.ResourceRefR\x06parent\x12\x1a\n" +
-	"\brelation\x18\x02 \x01(\tR\brelation\x129\n" +
-	"\asubtree\x18\x03 \x01(\v2\x1f.kacho.cloud.iam.v1.UsersetTreeR\asubtree\"\xdd\x01\n" +
+	"\x06leaves\x18\x01 \x03(\tR\x06leaves\x12\x1c\n" +
+	"\ttruncated\x18\x04 \x01(\bR\ttruncatedJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\bcomputedR\x10tuple_to_userset\"\xc5\x01\n" +
 	"\x17ExpandRelationsResponse\x12;\n" +
 	"\bresource\x18\x01 \x01(\v2\x1f.kacho.cloud.iam.v1.ResourceRefR\bresource\x12\x1a\n" +
 	"\brelation\x18\x02 \x01(\tR\brelation\x123\n" +
-	"\x04tree\x18\x03 \x01(\v2\x1f.kacho.cloud.iam.v1.UsersetTreeR\x04tree\x124\n" +
-	"\x16authorization_model_id\x18\x04 \x01(\tR\x14authorizationModelId\"\x0f\n" +
+	"\x04tree\x18\x03 \x01(\v2\x1f.kacho.cloud.iam.v1.UsersetTreeR\x04treeJ\x04\b\x04\x10\x05R\x16authorization_model_id\"\x0f\n" +
 	"\rWhoAmIRequest\"\xc4\x02\n" +
 	"\x0eWhoAmIResponse\x12\x18\n" +
 	"\asubject\x18\x01 \x01(\tR\asubject\x12\x17\n" +
@@ -1353,13 +995,12 @@ const file_kacho_cloud_iam_v1_authorize_service_proto_rawDesc = "" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12!\n" +
 	"\faccount_name\x18\x02 \x01(\tR\vaccountName\x12\x14\n" +
-	"\x05roles\x18\x03 \x03(\tR\x05roles2\xa6\b\n" +
+	"\x05roles\x18\x03 \x03(\tR\x05roles2\xf5\x06\n" +
 	"\x10AuthorizeService\x12\xa2\x01\n" +
 	"\x05Check\x12).kacho.cloud.iam.v1.AuthorizeCheckRequest\x1a*.kacho.cloud.iam.v1.AuthorizeCheckResponse\"B\x8a\xb5\x18\x13iam.authorize.check\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/iam/v1/authorize:check\x12\xd8\x01\n" +
 	"\n" +
 	"BatchCheck\x12..kacho.cloud.iam.v1.BatchAuthorizeCheckRequest\x1a/.kacho.cloud.iam.v1.BatchAuthorizeCheckResponse\"i\x8a\xb5\x18\x18iam.authorize.batchCheck\x92\xb5\x18\x06viewer\x9a\xb5\x18\x13\n" +
-	"\aproject\x12\bscope_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/iam/v1/authorize:batchCheck\x12\xae\x01\n" +
-	"\vListObjects\x12&.kacho.cloud.iam.v1.ListObjectsRequest\x1a'.kacho.cloud.iam.v1.ListObjectsResponse\"N\x8a\xb5\x18\x19iam.authorize.listObjects\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02\":\x01*\"\x1d/iam/v1/authorize:listObjects\x12\xb3\x01\n" +
+	"\aproject\x12\bscope_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/iam/v1/authorize:batchCheck\x12\xb3\x01\n" +
 	"\fListSubjects\x12'.kacho.cloud.iam.v1.ListSubjectsRequest\x1a(.kacho.cloud.iam.v1.ListSubjectsResponse\"P\x8a\xb5\x18\x1aiam.authorize.listSubjects\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/iam/v1/authorize:listSubjects\x12\xb9\x01\n" +
 	"\x0fExpandRelations\x12*.kacho.cloud.iam.v1.ExpandRelationsRequest\x1a+.kacho.cloud.iam.v1.ExpandRelationsResponse\"M\x8a\xb5\x18\x14iam.authorize.expand\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02&:\x01*\"!/iam/v1/authorize:expandRelations\x12o\n" +
 	"\x06WhoAmI\x12!.kacho.cloud.iam.v1.WhoAmIRequest\x1a\".kacho.cloud.iam.v1.WhoAmIResponse\"\x1e\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\f\x12\n" +
@@ -1377,63 +1018,51 @@ func file_kacho_cloud_iam_v1_authorize_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_iam_v1_authorize_service_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_kacho_cloud_iam_v1_authorize_service_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_kacho_cloud_iam_v1_authorize_service_proto_goTypes = []any{
 	(*ResourceRef)(nil),                 // 0: kacho.cloud.iam.v1.ResourceRef
 	(*AuthorizeCheckRequest)(nil),       // 1: kacho.cloud.iam.v1.AuthorizeCheckRequest
 	(*AuthorizeCheckResponse)(nil),      // 2: kacho.cloud.iam.v1.AuthorizeCheckResponse
 	(*BatchAuthorizeCheckRequest)(nil),  // 3: kacho.cloud.iam.v1.BatchAuthorizeCheckRequest
 	(*BatchAuthorizeCheckResponse)(nil), // 4: kacho.cloud.iam.v1.BatchAuthorizeCheckResponse
-	(*ListObjectsRequest)(nil),          // 5: kacho.cloud.iam.v1.ListObjectsRequest
-	(*ListObjectsResponse)(nil),         // 6: kacho.cloud.iam.v1.ListObjectsResponse
-	(*ListSubjectsRequest)(nil),         // 7: kacho.cloud.iam.v1.ListSubjectsRequest
-	(*ListSubjectsResponse)(nil),        // 8: kacho.cloud.iam.v1.ListSubjectsResponse
-	(*ExpandRelationsRequest)(nil),      // 9: kacho.cloud.iam.v1.ExpandRelationsRequest
-	(*UsersetTree)(nil),                 // 10: kacho.cloud.iam.v1.UsersetTree
-	(*ComputedUsersetEdge)(nil),         // 11: kacho.cloud.iam.v1.ComputedUsersetEdge
-	(*TupleToUsersetEdge)(nil),          // 12: kacho.cloud.iam.v1.TupleToUsersetEdge
-	(*ExpandRelationsResponse)(nil),     // 13: kacho.cloud.iam.v1.ExpandRelationsResponse
-	(*WhoAmIRequest)(nil),               // 14: kacho.cloud.iam.v1.WhoAmIRequest
-	(*WhoAmIResponse)(nil),              // 15: kacho.cloud.iam.v1.WhoAmIResponse
-	(*AccountMembership)(nil),           // 16: kacho.cloud.iam.v1.AccountMembership
-	(*structpb.Struct)(nil),             // 17: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),       // 18: google.protobuf.Timestamp
+	(*ListSubjectsRequest)(nil),         // 5: kacho.cloud.iam.v1.ListSubjectsRequest
+	(*ListSubjectsResponse)(nil),        // 6: kacho.cloud.iam.v1.ListSubjectsResponse
+	(*ExpandRelationsRequest)(nil),      // 7: kacho.cloud.iam.v1.ExpandRelationsRequest
+	(*UsersetTree)(nil),                 // 8: kacho.cloud.iam.v1.UsersetTree
+	(*ExpandRelationsResponse)(nil),     // 9: kacho.cloud.iam.v1.ExpandRelationsResponse
+	(*WhoAmIRequest)(nil),               // 10: kacho.cloud.iam.v1.WhoAmIRequest
+	(*WhoAmIResponse)(nil),              // 11: kacho.cloud.iam.v1.WhoAmIResponse
+	(*AccountMembership)(nil),           // 12: kacho.cloud.iam.v1.AccountMembership
+	(*structpb.Struct)(nil),             // 13: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),       // 14: google.protobuf.Timestamp
 }
 var file_kacho_cloud_iam_v1_authorize_service_proto_depIdxs = []int32{
 	0,  // 0: kacho.cloud.iam.v1.AuthorizeCheckRequest.resource:type_name -> kacho.cloud.iam.v1.ResourceRef
-	17, // 1: kacho.cloud.iam.v1.AuthorizeCheckRequest.context:type_name -> google.protobuf.Struct
-	18, // 2: kacho.cloud.iam.v1.AuthorizeCheckResponse.checked_at:type_name -> google.protobuf.Timestamp
+	13, // 1: kacho.cloud.iam.v1.AuthorizeCheckRequest.context:type_name -> google.protobuf.Struct
+	14, // 2: kacho.cloud.iam.v1.AuthorizeCheckResponse.checked_at:type_name -> google.protobuf.Timestamp
 	1,  // 3: kacho.cloud.iam.v1.BatchAuthorizeCheckRequest.checks:type_name -> kacho.cloud.iam.v1.AuthorizeCheckRequest
 	2,  // 4: kacho.cloud.iam.v1.BatchAuthorizeCheckResponse.responses:type_name -> kacho.cloud.iam.v1.AuthorizeCheckResponse
-	17, // 5: kacho.cloud.iam.v1.ListObjectsRequest.context:type_name -> google.protobuf.Struct
-	0,  // 6: kacho.cloud.iam.v1.ListSubjectsRequest.resource:type_name -> kacho.cloud.iam.v1.ResourceRef
-	0,  // 7: kacho.cloud.iam.v1.ExpandRelationsRequest.resource:type_name -> kacho.cloud.iam.v1.ResourceRef
-	11, // 8: kacho.cloud.iam.v1.UsersetTree.computed:type_name -> kacho.cloud.iam.v1.ComputedUsersetEdge
-	12, // 9: kacho.cloud.iam.v1.UsersetTree.tuple_to_userset:type_name -> kacho.cloud.iam.v1.TupleToUsersetEdge
-	10, // 10: kacho.cloud.iam.v1.ComputedUsersetEdge.subtree:type_name -> kacho.cloud.iam.v1.UsersetTree
-	0,  // 11: kacho.cloud.iam.v1.TupleToUsersetEdge.parent:type_name -> kacho.cloud.iam.v1.ResourceRef
-	10, // 12: kacho.cloud.iam.v1.TupleToUsersetEdge.subtree:type_name -> kacho.cloud.iam.v1.UsersetTree
-	0,  // 13: kacho.cloud.iam.v1.ExpandRelationsResponse.resource:type_name -> kacho.cloud.iam.v1.ResourceRef
-	10, // 14: kacho.cloud.iam.v1.ExpandRelationsResponse.tree:type_name -> kacho.cloud.iam.v1.UsersetTree
-	16, // 15: kacho.cloud.iam.v1.WhoAmIResponse.accounts:type_name -> kacho.cloud.iam.v1.AccountMembership
-	18, // 16: kacho.cloud.iam.v1.WhoAmIResponse.checked_at:type_name -> google.protobuf.Timestamp
-	1,  // 17: kacho.cloud.iam.v1.AuthorizeService.Check:input_type -> kacho.cloud.iam.v1.AuthorizeCheckRequest
-	3,  // 18: kacho.cloud.iam.v1.AuthorizeService.BatchCheck:input_type -> kacho.cloud.iam.v1.BatchAuthorizeCheckRequest
-	5,  // 19: kacho.cloud.iam.v1.AuthorizeService.ListObjects:input_type -> kacho.cloud.iam.v1.ListObjectsRequest
-	7,  // 20: kacho.cloud.iam.v1.AuthorizeService.ListSubjects:input_type -> kacho.cloud.iam.v1.ListSubjectsRequest
-	9,  // 21: kacho.cloud.iam.v1.AuthorizeService.ExpandRelations:input_type -> kacho.cloud.iam.v1.ExpandRelationsRequest
-	14, // 22: kacho.cloud.iam.v1.AuthorizeService.WhoAmI:input_type -> kacho.cloud.iam.v1.WhoAmIRequest
-	2,  // 23: kacho.cloud.iam.v1.AuthorizeService.Check:output_type -> kacho.cloud.iam.v1.AuthorizeCheckResponse
-	4,  // 24: kacho.cloud.iam.v1.AuthorizeService.BatchCheck:output_type -> kacho.cloud.iam.v1.BatchAuthorizeCheckResponse
-	6,  // 25: kacho.cloud.iam.v1.AuthorizeService.ListObjects:output_type -> kacho.cloud.iam.v1.ListObjectsResponse
-	8,  // 26: kacho.cloud.iam.v1.AuthorizeService.ListSubjects:output_type -> kacho.cloud.iam.v1.ListSubjectsResponse
-	13, // 27: kacho.cloud.iam.v1.AuthorizeService.ExpandRelations:output_type -> kacho.cloud.iam.v1.ExpandRelationsResponse
-	15, // 28: kacho.cloud.iam.v1.AuthorizeService.WhoAmI:output_type -> kacho.cloud.iam.v1.WhoAmIResponse
-	23, // [23:29] is the sub-list for method output_type
-	17, // [17:23] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	0,  // 5: kacho.cloud.iam.v1.ListSubjectsRequest.resource:type_name -> kacho.cloud.iam.v1.ResourceRef
+	0,  // 6: kacho.cloud.iam.v1.ExpandRelationsRequest.resource:type_name -> kacho.cloud.iam.v1.ResourceRef
+	0,  // 7: kacho.cloud.iam.v1.ExpandRelationsResponse.resource:type_name -> kacho.cloud.iam.v1.ResourceRef
+	8,  // 8: kacho.cloud.iam.v1.ExpandRelationsResponse.tree:type_name -> kacho.cloud.iam.v1.UsersetTree
+	12, // 9: kacho.cloud.iam.v1.WhoAmIResponse.accounts:type_name -> kacho.cloud.iam.v1.AccountMembership
+	14, // 10: kacho.cloud.iam.v1.WhoAmIResponse.checked_at:type_name -> google.protobuf.Timestamp
+	1,  // 11: kacho.cloud.iam.v1.AuthorizeService.Check:input_type -> kacho.cloud.iam.v1.AuthorizeCheckRequest
+	3,  // 12: kacho.cloud.iam.v1.AuthorizeService.BatchCheck:input_type -> kacho.cloud.iam.v1.BatchAuthorizeCheckRequest
+	5,  // 13: kacho.cloud.iam.v1.AuthorizeService.ListSubjects:input_type -> kacho.cloud.iam.v1.ListSubjectsRequest
+	7,  // 14: kacho.cloud.iam.v1.AuthorizeService.ExpandRelations:input_type -> kacho.cloud.iam.v1.ExpandRelationsRequest
+	10, // 15: kacho.cloud.iam.v1.AuthorizeService.WhoAmI:input_type -> kacho.cloud.iam.v1.WhoAmIRequest
+	2,  // 16: kacho.cloud.iam.v1.AuthorizeService.Check:output_type -> kacho.cloud.iam.v1.AuthorizeCheckResponse
+	4,  // 17: kacho.cloud.iam.v1.AuthorizeService.BatchCheck:output_type -> kacho.cloud.iam.v1.BatchAuthorizeCheckResponse
+	6,  // 18: kacho.cloud.iam.v1.AuthorizeService.ListSubjects:output_type -> kacho.cloud.iam.v1.ListSubjectsResponse
+	9,  // 19: kacho.cloud.iam.v1.AuthorizeService.ExpandRelations:output_type -> kacho.cloud.iam.v1.ExpandRelationsResponse
+	11, // 20: kacho.cloud.iam.v1.AuthorizeService.WhoAmI:output_type -> kacho.cloud.iam.v1.WhoAmIResponse
+	16, // [16:21] is the sub-list for method output_type
+	11, // [11:16] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_authorize_service_proto_init() }
@@ -1447,7 +1076,7 @@ func file_kacho_cloud_iam_v1_authorize_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_authorize_service_proto_rawDesc), len(file_kacho_cloud_iam_v1_authorize_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

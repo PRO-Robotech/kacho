@@ -13,7 +13,8 @@ package drainer_test
 //   - Inline copy of the kacho-iam `fga_outbox` DDL (see fgaOutboxSchema in
 //     drainer_testhelpers_test.go, which names the migrations it mirrors).
 //     corelib doesn't own iam migrations.
-//   - Fake-Applier (no real OpenFGA).
+//   - Fake-Applier (a recorder; the drainer's consumer is a port, not a
+//     particular downstream).
 //   - Each test wraps its body in context.WithTimeout to bound any hang.
 //
 // Public API exercised from `package drainer`:
@@ -246,7 +247,7 @@ func TestW1_1_03_DeleteEventApplied(t *testing.T) {
 	calls := fa.snapshotCalls()
 	require.Len(t, calls, 1)
 	assert.Equal(t, "fga.tuple.delete", calls[0].eventType,
-		"applier must observe eventType=delete to dispatch correct OpenFGA verb")
+		"applier must observe eventType=delete to dispatch the correct verb downstream")
 }
 
 // TestW1_1_04_IdempotentErrAlreadyApplied_SuccessPath — ErrAlreadyApplied is
@@ -258,7 +259,7 @@ func TestW1_1_04_IdempotentErrAlreadyApplied_SuccessPath(t *testing.T) {
 
 	pool, _ := setupDrainerPG(t)
 	fa := newFakeApplier()
-	fa.setDefaultErr(drainer.ErrAlreadyApplied) // models OpenFGA HTTP 409
+	fa.setDefaultErr(drainer.ErrAlreadyApplied) // models a downstream "already applied" reply
 
 	dCancel, done, _ := startDrainer(t, ctx, pool, testCfg(), fa)
 	defer func() { dCancel(); <-done }()

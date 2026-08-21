@@ -230,12 +230,39 @@ def make_sa(account_id, name):
 
 
 def grant(sva, role_id, scope_type, scope_id):
-    """AccessBinding: SA subject, role on scope (iam.project / iam.account)."""
+    """Выдача: субъект — служебная учётка, роль на области.
+
+    ОТКАЗ ГРОМКИЙ, и это главное в этой функции. Прежняя редакция читала `id`
+    из ответа и, не найдя его, **молча возвращалась**: отвергнутая выдача была
+    неотличима от созданной. Наблюдалось вживую — роли заведены, селекторы
+    записаны верно, привязок в базе **ноль**, а посев отчитался успехом и упал
+    через двадцать минут в чужом кейсе, назвав виновником список.
+
+    Молчание здесь дороже обычного: выдача — это ПРЕДМЕТ фикстуры. Не создав
+    её, посев готовит субъекта, у которого нет права, и всякое утверждение о
+    видимости после этого проверяет не продукт, а собственную поломку.
+    """
+    # ОБЛАСТЬ НАЗЫВАЕТСЯ ТОЧЕЧНЫМ ИМЕНЕМ. Сервер принимает только `iam.project` /
+    # `iam.account` / `iam.cluster` и на голом `project` отвечает
+    # `Illegal argument scopeType "project"` — синхронно, до всякой записи.
+    #
+    # Приводим здесь, а не у вызывающих, по замеру: из четырёх вызовов этого
+    # помощника три слали голое имя и один точечное. Три выдачи не создавались
+    # НИКОГДА, и это было незаметно, потому что отказ проглатывался (см. выше).
+    # Починка у каждого вызывающего снимает симптом до первого нового вызова.
+    dotted = scope_type if "." in scope_type else f"iam.{scope_type}"
     rb = _curl("POST", "/iam/v1/accessBindings", boot, {
         "subjectType": "service_account", "subjectId": sva, "roleId": role_id,
-        "scopeType": scope_type, "scopeId": scope_id, "target": {"allInScope": {}}})
-    if rb.get("id"):
-        _poll(rb["id"], boot)
+        "scopeType": dotted, "scopeId": scope_id, "target": {"allInScope": {}}})
+    if not isinstance(rb, dict) or not rb.get("id"):
+        raise SystemExit(
+            f"[prodseed] выдача ОТВЕРГНУТА: субъект {sva}, роль {role_id}, "
+            f"область {dotted}:{scope_id}.\n"
+            f"  ответ края: {rb}\n"
+            "Посев без выдачи готовит субъекта БЕЗ ПРАВА — дальше идти нельзя: "
+            "кейсы утверждали бы видимость, которой нет, а падение назвало бы "
+            "виновником список.")
+    _poll(rb["id"], boot)
 
 
 def custom_role(account_id, name, module, resources, verbs):
@@ -289,6 +316,28 @@ def sa_token(sva):
 CLUSTER_ROOT_OBJECT = "cluster:cluster_kacho_root"
 
 
+def seed_fga_tuple(fga_subject, relation, obj):
+    """Посеять факт отношения (<fga_subject> #<relation> @obj) через журнал iam.
+
+    Проекция журнала намеренно пропускает ГЛАГОЛЫ (`v_*`, миграция 0100): глагол
+    выводится из выдачи и копией не хранится. Здесь сеются отношения УРОВНЯ
+    ОБЛАСТИ (`viewer`, `system_viewer`), и их проекция принимает.
+
+    Кластерный случай и его обоснование — в seed_fga_cluster ниже.
+    """
+    sql = (
+        "INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at) "
+        "SELECT 'fga.tuple.write', jsonb_build_object("
+        f"'user','{fga_subject}','relation','{relation}','object','{obj}'), now() "
+        "WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.fga_outbox "
+        f"WHERE payload->>'user'='{fga_subject}' AND payload->>'relation'='{relation}' "
+        f"AND payload->>'object'='{obj}');"
+    )
+    args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
+            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
+    subprocess.run(args, capture_output=True, text=True)
+
+
 def seed_fga_cluster(fga_subject, relation):
     """Seed a cluster-scope FGA tuple (<fga_subject> #<relation> @cluster_kacho_root)
     deterministically via kacho_iam.fga_outbox → drainer → OpenFGA (idempotent
@@ -305,17 +354,7 @@ def seed_fga_cluster(fga_subject, relation):
     matrix SA `system_viewer@cluster` so the floor is satisfied; it grants ONLY the
     global-catalog read floor (no project/account resource access), so DENY matrices
     (project-scope, cross-account, catalog-MUTATE admin-only) are unaffected."""
-    sql = (
-        "INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at) "
-        "SELECT 'fga.tuple.write', jsonb_build_object("
-        f"'user','{fga_subject}','relation','{relation}','object','{CLUSTER_ROOT_OBJECT}'), now() "
-        "WHERE NOT EXISTS (SELECT 1 FROM kacho_iam.fga_outbox "
-        f"WHERE payload->>'user'='{fga_subject}' AND payload->>'relation'='{relation}' "
-        f"AND payload->>'object'='{CLUSTER_ROOT_OBJECT}');"
-    )
-    args = ["kubectl", "-n", KACHO_NS, "exec", PG_IAM_POD, "-c", "postgresql",
-            "--", "sh", "-c", f'PGPASSWORD="$POSTGRES_PASSWORD" psql -U iam -d kacho_iam -h 127.0.0.1 -tAc "{sql}"']
-    subprocess.run(args, capture_output=True, text=True)
+    seed_fga_tuple(fga_subject, relation, CLUSTER_ROOT_OBJECT)
 
 
 def subject(account_id, name, grants=()):

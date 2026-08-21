@@ -97,7 +97,6 @@ var generatedRestRoutes = []restRoute{
 	{Method: "POST", Template: "/iam/v1/authorize:batchCheck", FQN: "kacho.cloud.iam.v1.AuthorizeService/BatchCheck"},
 	{Method: "POST", Template: "/iam/v1/authorize:check", FQN: "kacho.cloud.iam.v1.AuthorizeService/Check"},
 	{Method: "POST", Template: "/iam/v1/authorize:expandRelations", FQN: "kacho.cloud.iam.v1.AuthorizeService/ExpandRelations"},
-	{Method: "POST", Template: "/iam/v1/authorize:listObjects", FQN: "kacho.cloud.iam.v1.AuthorizeService/ListObjects"},
 	{Method: "POST", Template: "/iam/v1/authorize:listSubjects", FQN: "kacho.cloud.iam.v1.AuthorizeService/ListSubjects"},
 	{Method: "GET", Template: "/iam/v1/groups", FQN: "kacho.cloud.iam.v1.GroupService/List"},
 	{Method: "POST", Template: "/iam/v1/groups", FQN: "kacho.cloud.iam.v1.GroupService/Create"},

@@ -42,13 +42,13 @@ extend google.protobuf.MethodOptions {
   string permission = 50001;
 }
 
-// required_relation — OpenFGA relation name to be checked on the scope object
+// required_relation — relation name of the authorization model to be checked on the scope object
 // (`viewer` / `editor` / `owner` / `admin` / domain-specific).
 extend google.protobuf.MethodOptions {
   string required_relation = 50002;
 }
 
-// scope_extractor — how to derive the OpenFGA scope object from the request.
+// scope_extractor — how to derive the scope object from the request.
 extend google.protobuf.MethodOptions {
   ScopeExtractor scope_extractor = 50003;
 }
@@ -152,9 +152,9 @@ extend google.protobuf.MethodOptions {
 }
 
 // ScopeExtractor describes how the kacho-iam authz middleware extracts an
-// OpenFGA scope object from an incoming RPC request.
+// scope object from an incoming RPC request.
 message ScopeExtractor {
-  // OpenFGA object type the scope id resolves to. Either a hierarchy scope
+  // Object type of the authorization model the scope id resolves to. Either a hierarchy scope
   // (`cluster` / `account` / `project`) or a per-resource
   // object type registered in the authorization model (`vpc_network`,
   // `storage_volume`, `iam_group`, `iam_role`, ...). The api-gateway authz
@@ -166,7 +166,7 @@ message ScopeExtractor {
   // a top-level field on the request message and a non-empty string.
   string from_request_field = 2;
 
-  // Name of the proto request field from which the OpenFGA *object type* is
+  // Name of the proto request field from which the *object type* is
   // derived at request time (scope-polymorphic RPCs). When set + non-empty,
   // the api-gateway authz middleware reads this top-level string field off the
   // request and uses its value as the FGA Check object type instead of the

@@ -16,7 +16,6 @@
 - `make reload-svc-iam` — alias for `make reload-svc SVC=iam`
 - `make psql-iam` — psql в `kacho_iam`-БД (pg-iam)
 - `make logs-iam` — `kubectl logs -f deploy/kacho-iam`
-- `make fga-bootstrap` — вручную запустить openfga-bootstrap Job (создаёт store + загружает model)
 
 Здесь стояла ещё одна цель — про начальные учётные данные администратора того
 поставщика личности, который стенд поднимал до KAC-127. Поставщик заменён на Ory
@@ -86,9 +85,6 @@ Dev-стенд поднимает рядом с остальными серви�
   (`security.md` §Production-mode обязателен ВЕЗДЕ).
 - **kratos-selfservice-ui** — sub-chart в `helm/umbrella/charts/kratos-selfservice-ui/`,
   интерактивный логин для тех кейсов, где нужен человек.
-- **OpenFGA** — ReBAC engine (tuple-store, Check-API). gRPC `:8081`, HTTP `:8080`
-  (playground в dev — `http://openfga.kacho.local`). Внешний chart
-  `openfga.github.io/helm-charts`.
 
 Постгресы — **отдельный инстанс на каждого владельца данных** (запрет #8:
 DB-per-service). Перечень выводится из `helm/umbrella/Chart.yaml`, а не выписывается
@@ -96,21 +92,18 @@ DB-per-service). Перечень выводится из `helm/umbrella/Chart.y
 инстансов; прежняя редакция называла три, включая постгрес снятого поставщика
 личности).
 
-**Bootstrap-order** (NFR-9): OpenFGA → kacho-iam. Init-container `wait-for-openfga`
-блокирует старт iam, пока `kacho-umbrella-openfga:8080` не ответит (условие
-`initContainer.waitForExtAuth.enabled`, по умолчанию включено). OpenFGA store создаётся
-`openfga-bootstrap` post-install Job'ом (helm hook), store_id пишется в Secret
-`kacho-iam-openfga-store`, kacho-iam читает его при старте через `optional: true`
-secretKeyRef. Ожидания поставщика личности в шаблоне больше нет — надгробие с
-причиной стоит в самом шаблоне.
+**Bootstrap-order**: у ярусa прав отдельного движка больше нет — решение о
+доступе вычисляет сама iam в своей базе (S6 эпика #747). Вместе с движком сняты
+его подчарт начальной настройки, выделенная база и init-контейнер ожидания;
+надгробия с причинами стоят в самих шаблонах. Ожидания поставщика личности в
+шаблоне тоже нет — по той же форме.
 
 **Полезные команды** (см. секцию «IAM stack» выше):
 - `make psql-iam` — psql в `kacho_iam`
 - `make logs-iam` — логи kacho-iam
-- `make fga-bootstrap` — пересоздать OpenFGA store + model вручную
 
 **Persistence**: все постгресы стенда — `emptyDir`, данные пропадают при
-`make dev-down`. Bootstrap-job и default-roles seed выполнятся заново при `make dev-up`.
+`make dev-down`. Default-roles seed выполнится заново при `make dev-up`.
 
 ## Проверка посадки
 

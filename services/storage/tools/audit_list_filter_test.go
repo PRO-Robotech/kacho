@@ -157,10 +157,11 @@ func (u *UseCase) List() error {
 }
 `
 	// ucEnumerateAllowedIDs — the OTHER rejected shape: "enumerate everything the
-	// subject may see, then narrow the SQL to it". OpenFGA's ListObjects caps that
-	// enumeration server-side with no continuation token, so a tenant's own resource
-	// silently falls outside the prefix and becomes invisible. The gate must NOT
-	// accept it as a per-object filter.
+	// subject may see, then narrow the SQL to it". Such an enumeration is capped
+	// server-side with no continuation token, so a tenant's own resource silently
+	// falls outside the prefix and becomes invisible. The gate must NOT accept it as
+	// a per-object filter — and it stays in the fixture on purpose: the shape can be
+	// hand-written again long after the RPC that made it convenient is gone.
 	ucEnumerateAllowedIDs = `package volume
 
 func (u *UseCase) List() error {

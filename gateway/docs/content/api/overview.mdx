@@ -97,7 +97,7 @@ grpc-gateway-проекция proto-полей (`snake_case` в `.proto`). Enum 
 
 ## Авторизация
 
-Каждый RPC проходит per-RPC `AuthorizeService.Check` (OpenFGA) по встроенному permission-каталогу;
+Каждый RPC проходит per-RPC `AuthorizeService.Check` по встроенному permission-каталогу;
 deny-by-default, fail-closed. Нет права → `PERMISSION_DENIED` (HTTP `403`); IAM недоступен → deny.
 Чувствительные операции требуют step-up по `acr`. Детали — [Авторизация](/architecture/authz).
 

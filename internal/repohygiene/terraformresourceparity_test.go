@@ -62,7 +62,7 @@ var nonCreatingVerbs = map[string]bool{
 	"Enable": true, "ExpandAccess": true, "ExpandRelations": true, "Get": true, "GetByValue": true, "GetRepository": true,
 	"GetSerialPortOutput": true, "GetTargetStates": true, "List": true, "ListAccessBindings": true, "ListAllOperations": true,
 	"ListAssignableRoles": true, "ListByAccount": true, "ListByRole": true, "ListByScope": true, "ListBySubject": true,
-	"ListBySubnet": true, "ListMembers": true, "ListObjects": true, "ListOperations": true, "ListPermissionCatalog": true,
+	"ListBySubnet": true, "ListMembers": true, "ListOperations": true, "ListPermissionCatalog": true,
 	"ListReferrers": true, "ListRepositories": true, "ListRouteTables": true, "ListSecurityGroups": true,
 	"ListSubjectPrivileges": true, "ListSubjects": true, "ListSubnets": true, "ListTags": true, "ListUsedAddresses": true,
 	"Move": true, "Relocate": true, "RemoveCidrBlocks": true, "RemoveMember": true, "RemoveOneToOneNat": true, "RemoveRoutes": true,

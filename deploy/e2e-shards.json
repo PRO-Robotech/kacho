@@ -11,7 +11,7 @@
     "  полный стенд           29 workload   8298Mi   2980m",
     "  ядро без сервисных     18 workload   2730Mi   1330m",
     "то есть 45% запрошенного CPU стенда не зависит от того, что тестируется",
-    "(iam+geo+gateway+openfga+hydra+kratos+cert-manager+ingress и их базы), а 55%",
+    "(iam+geo+gateway+hydra+kratos+cert-manager+ingress и их базы), а 55%",
     "— зависит и снимается. Раннер даёт 4 ядра: 2980m запросов на 4000m",
     "allocatable — это и есть измеренная причина (BatchCheck Unavailable, окно",
     "материализации p90 11с против 5с локально).",

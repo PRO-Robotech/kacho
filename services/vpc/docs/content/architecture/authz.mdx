@@ -11,8 +11,8 @@ import { Codes } from '@site/src/components/commonBlocks/Codes'
 Kachō VPC защищен на двух взаимодополняющих уровнях:
 
 1. **Авторизация (authz)** — на каждый RPC проверяется, что вызывающий субъект имеет нужное
-   отношение (relation) на ресурс или проект. Модель — **ReBAC** (relationship-based access
-   control) поверх **OpenFGA**, проверка идет через `kacho-iam`.
+   отношение (relation) на ресурс или проект. Отношения описывает **модель прав**
+   платформы; вердикт о доступе вычисляет `kacho-iam`.
 2. **Приватность данных** — инфраструктурно-чувствительные поля (placement,
    underlay-идентификаторы, host-интерфейсы) **никогда** не покидают internal-поверхность. Публичный API показывает только
    tenant-facing «намерение + результат».
@@ -42,7 +42,7 @@ flowchart LR
     uc["UseCase / handler"]
   end
   icpt -->|"Check(subject, relation, object)"| iam["kacho-iam<br/>InternalIAMService"]
-  iam -->|"ReBAC eval"| fga[("OpenFGA<br/>tuples")]
+  iam -->|"вердикт по модели прав"| rel[("реляционная форма<br/>в базе kacho_iam")]
   iam -->|"allowed: bool"| icpt
   icpt -->|"allowed → next"| uc
   icpt -. "denied → PERMISSION_DENIED" .-> cli
@@ -85,7 +85,7 @@ Relation выводится из gRPC-метода. Действие над **с
 :::warning Ярусные и глагольные отношения РАЗВЯЗАНЫ
 `editor` наследует `viewer` (`viewer: […] or editor`), и это по-прежнему так. Но глагольные
 отношения `v_get`/`v_list`/`v_update`/`v_delete` **не выводятся из ярусных**: они объявлены
-прямыми usersets (`[user, service_account, group#member] or super_admin`). Наличие `editor` на
+прямым присвоением (`[user, service_account, group#member] or super_admin`). Наличие `editor` на
 ресурсе **не** даёт `v_update`, а `viewer` **не** даёт `v_get` — глагольный грант выдаётся явно
 правилом роли. Это исключает завышение прав, когда широкая ярусная роль «протекает» в мелкие
 действия.
@@ -98,9 +98,12 @@ Top-level `List` возвращает `200` и только доступные �
 страницы и есть `v_get`. Список и чтение по id задают один вопрос и разойтись не могут.
 
 Видимость резолвится **прямым вопросом про объекты страницы** (батчами), а не перечислением всего
-доступного субъекту: перечисление в хранилище отношений ограничено серверным потолком и не имеет
-продолжения, поэтому на долгоживущем сторе объект сверх потолка стал бы невидим владельцу при
-живых правах. Ошибка проверки — fail-closed; частично отфильтрованная страница не отдаётся.
+доступного субъекту. Форма вопроса выбрана по цене ошибки: перечисление отвечает про население
+типа, а страница — про то, что уже прочитано. До стадии S6 вердикт давал внешний движок прав, и
+его перечислительный запрос нёс жёсткий предел без продолжения — объект сверх предела становился
+невидим владельцу при живых правах; такого RPC на контракте больше нет, а форма вопроса осталась
+правильной и по стоимости. Ошибка проверки — fail-closed; частично отфильтрованная страница не
+отдаётся.
 
 `v_list` при этом остаётся живым отношением: им гейтятся списки, вложенные **в** объект
 (`NetworkService/ListSubnets` → `v_list` на `vpc_network`) — там у вопроса есть единый объект.
@@ -140,19 +143,20 @@ vpc_network:{networkId}#project@project:{projectId}
   per-RPC проверку в правильной области (защита от обращения к чужому объекту по угаданному id).
 
 :::note Каскада обычных прав вниз НЕТ
-Модель **плоская**: `viewer`/`editor`/`admin` и глагольные `v_*` на ресурсе — прямые usersets, а
-не производные от одноимённых отношений проекта. `viewer` на проекте **не** делает вызывающего
+Модель **плоская**: `viewer`/`editor`/`admin` и глагольные `v_*` на ресурсе объявлены прямым
+присвоением, а не выводятся из одноимённых отношений проекта. `viewer` на проекте **не** делает вызывающего
 `viewer` на каждой сети этого проекта. Доступ уровня проекта и ниже материализуется реконсайлером
 **на каждый объект** из привязок — это осознанное решение против завышения прав, а каскад оставлен
 ровно трём верхним уровням.
 :::
 
-**kacho-vpc в OpenFGA напрямую не ходит.** Намерение «зарегистрировать owner-tuple» worker на
+**kacho-vpc в модель прав напрямую не пишет.** Намерение «зарегистрировать владение» worker на
 Create пишет строкой в transactional-outbox `fga_register_outbox` — **в той же writer-TX**, что
 вставляет ресурс (один commit, без dual-write). Отдельный register-drainer применяет каждое
 намерение через `kacho-iam.InternalIAMService.RegisterResource` (на Delete — `UnregisterResource`):
-idempotent, at-least-once, retry на `Unavailable`. Так tuple durable и не теряется при
-transient-сбое FGA — иначе пользователь создал бы ресурс и не увидел его (per-resource Check = DENY).
+idempotent, at-least-once, retry на `Unavailable`. Так намерение durable и не теряется при
+transient-сбое kacho-iam — иначе пользователь создал бы ресурс и не увидел его
+(per-resource Check = DENY).
 
 ```mermaid
 sequenceDiagram
@@ -160,22 +164,21 @@ sequenceDiagram
   participant V as kacho-vpc (worker)
   participant D as register-drainer
   participant I as kacho-iam
-  participant F as OpenFGA
   C->>V: Create (через authz-гейт на project)
   V->>V: BEGIN · INSERT network · INSERT fga_register_outbox · COMMIT
   V-->>C: Operation done · response = Network
-  Note over D,F: асинхронно, вне request-path
+  Note over D,I: асинхронно, вне request-path
   D->>I: RegisterResource: vpc_network:<id>#project@project:<pid>
-  I->>F: Write tuple (idempotent)
-  Note over V,F: теперь Get/Update/Delete этого network авторизуются по project-наследованию
+  I->>I: прямой факт в базе kacho_iam (idempotent)
+  Note over V,I: теперь Get/Update/Delete этого network авторизуются по project-наследованию
 ```
 
 :::tip NoPath → NOT_FOUND, а не PERMISSION_DENIED
-Между коммитом ресурса и применением owner-tuple drainer'ом есть короткое окно. Если `Check`
-приходит, когда tuple еще не записан, `kacho-iam` возвращает «нет пути к объекту». Interceptor
-трактует это как **pass-through**: запрос идет в handler, который вернет `NOT_FOUND` из БД (если
+Между коммитом ресурса и применением регистрации drainer'ом есть короткое окно. Если `Check`
+приходит, когда владение еще не зарегистрировано, `kacho-iam` возвращает «нет пути к объекту».
+Interceptor трактует это как **pass-through**: запрос идет в handler, который вернет `NOT_FOUND` из БД (если
 ресурса правда нет) или нормальный ответ. Это сознательное решение — не маскировать «ресурс
-существует, но нет tuple» как `403`.
+существует, но владение еще не зарегистрировано» как `403`.
 :::
 
 ---

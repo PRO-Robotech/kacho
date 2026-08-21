@@ -44,7 +44,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
-// Subject FGA-prefix vocabulary. Mirrors the OpenFGA Authorization Model
+// Subject prefix vocabulary. Mirrors the authorization model's subject
 // types: user / service_account / workload.
 const (
 	subjectPrefixUser           = "user"

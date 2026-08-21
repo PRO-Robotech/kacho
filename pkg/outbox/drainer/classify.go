@@ -25,11 +25,12 @@ type Class int
 const (
 	// ClassSuccess — nil error; the row is delivered.
 	ClassSuccess Class = iota
-	// ClassAlreadyApplied — the target reports already-applied (for OpenFGA: a 400
-	// `already_exists` on write / `cannot_delete` on delete); idempotent success,
-	// the row is marked sent. NOT the OpenFGA 409 — that is a transactional abort
-	// that applied NOTHING, so marking it sent would silently drop the tuple; it
-	// belongs to ClassTransient.
+	// ClassAlreadyApplied — the target reports already-applied; idempotent success,
+	// the row is marked sent. What decides the class is not the wire code but what
+	// the target DID: "it is already there, nothing left to do" is success, while an
+	// abort that applied NOTHING is ClassTransient — marking such a row sent would
+	// silently drop the intent. Only the applier can tell the two apart, because
+	// only it knows its target's vocabulary.
 	ClassAlreadyApplied
 	// ClassPermanent — retry is pointless (ErrPermanent, gRPC InvalidArgument /
 	// 4xx-non-409, decode-failure). The row is poisoned (attempt_count forced to
@@ -125,13 +126,14 @@ func Classify(err error) Class {
 // binding reconciler runs reads that mirror, so the resource has no owner tuple and
 // no materialized verbs until the row is delivered. Poisoning is therefore only
 // correct in a service that also re-drives poisoned rows
-// (reconciler.RedrivePoisoned). WHEN it re-drives is the service's choice and the
-// two live shapes differ on purpose: the register-outboxes run the pass on a
-// timer, while iam's tuple outbox runs it on an EVENT — the authorization model
-// changing — because there the permanent cause is known and a blind repeat of a
-// refused write cannot pass. Either shape satisfies this comment; no backstop at
-// all does not, and that this is a property of the TREE rather than of anyone's
-// memory is held by internal/repohygiene TestEveryPoisoningOutboxHasARedrive.
+// (reconciler.RedrivePoisoned). WHEN it re-drives is the service's choice: the
+// register-outboxes run the pass on a timer. A second shape stood beside it — an
+// EVENT-driven pass over iam's tuple journal, woken by the rights model changing —
+// and it went away with that journal's drainer: those rows are no longer applied to
+// anything, so nothing can poison them. What survives is the rule rather than the
+// pair of examples — a queue that poisons owes a backstop — and that this is a
+// property of the TREE rather than of anyone's memory is held by
+// internal/repohygiene TestEveryPoisoningOutboxHasARedrive.
 // With that backstop the outcome is a bounded pause:
 // a cause that was temporary succeeds on a later pass, and a cause that is genuinely
 // permanent keeps poisoning — visibly, via the poison counter — instead of silently

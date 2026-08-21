@@ -4,7 +4,7 @@
 // Package fgaintent — serialisation of FGA owner-tuple register/unregister intents
 // written to the compute_fga_register_outbox table (transactional outbox).
 //
-// kacho-compute does NOT talk to OpenFGA directly any more. Instead, on every
+// kacho-compute does NOT write into the rights model itself. Instead, on every
 // resource Create/Delete it records an
 // "intent" row IN THE SAME writer-tx as the resource Insert/Delete. A separate
 // register-drainer (corelib outbox/drainer) later replays each intent by calling
@@ -85,8 +85,9 @@ type Payload struct {
 // (Contract-A: the `<rel> from project` cascade was removed) a per-resource Check
 // resolves through the per-object v_* tuples the iam reconciler MATERIALIZES for the
 // principal's role binding (keyed by the resource's parent project carried in the
-// register intent) — not a live `from project` derivation. Same type mapping the
-// deleted openfga_write_client.go used.
+// register intent) — not a live `from project` derivation. The mapping is
+// inherited from the direct-write client compute used to carry; that client is
+// gone, and this table is where a compute resource_kind is named as a model type.
 var fgaTypeByKind = map[string]string{
 	"Instance":       "compute_instance",
 	"GuestAccessKey": "compute_guest_access_key",

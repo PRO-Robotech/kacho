@@ -118,26 +118,23 @@ service AuthorizeService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // ListObjects — return all `resource_type` ids the subject has `action` on.
+  // TOMBSTONE: `ListObjects` ("enumerate every id of `resource_type` the subject
+  // can reach") is REMOVED, together with its `ListObjectsRequest` /
+  // `ListObjectsResponse` messages. Never re-add an RPC under that name.
   //
-  // Backed by FGA `ListObjects` — a **skeleton** integration today;
-  // full per-handler integration is planned. The endpoint returns
-  // `Unimplemented` if `KACHO_AUTHZ_LISTOBJECTS=off`
-  // (default).
-  rpc ListObjects (ListObjectsRequest) returns (ListObjectsResponse) {
-    option (google.api.http) = { post: "/iam/v1/authorize:listObjects" body: "*" };
-    option (kacho.iam.authz.v1.permission) = "iam.authorize.listObjects";
-    // There is no resource in this request at all — it enumerates what a subject
-    // can reach — so the only object the edge could name would be the subject's
-    // own ARN, which is not an object of any type it knows. kacho-iam decides:
-    // self-query ∨ cluster-admin. See AuthorizeService.Check for why the previous
-    // `viewer`-on-cluster row was not a gate.
-    option (kacho.iam.authz.v1.scope_filtered)   = true;
-    option (kacho.iam.authz.v1.required_acr_min) = "1";
-  }
+  // It was not paginated by construction: `page_token` was rejected outright and
+  // `next_page_token` was never populated, so the truncation the response
+  // advertised had no continuation — objects past the cap were unreachable while
+  // the grants that covered them were live. "Enumerate the universe, then filter"
+  // is the shape the platform forbids; "read a page, then check that page" is the
+  // one it requires.
+  //
+  // No replacement is introduced here. "What can I see" is answered by the
+  // paginated `List` of the owning resource service, which narrows a page by
+  // checking the ids on it.
 
-  // ListSubjects — inverse of ListObjects: return all subjects with `action`
-  // on a given resource. Used by admin-UI "who can access this" widget.
+  // ListSubjects — return all subjects holding `action` on a given resource.
+  // Used by the admin-UI "who can access this" widget.
   //
   // Hard cap: page size ≤ 1000 (InvalidArgument otherwise).
   rpc ListSubjects (ListSubjectsRequest) returns (ListSubjectsResponse) {
@@ -152,14 +149,13 @@ service AuthorizeService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // ExpandRelations — return the Zanzibar userset tree for a (resource,
-  // relation) pair. Each node is either a leaf (direct subject), a computed
-  // userset (`#admin → #viewer` etc.) or a tuple-to-userset. Used by audit
+  // ExpandRelations — return the subjects that resolve `relation` on `resource`,
+  // as recorded by the relational form that decides access. Used by audit
   // tooling to explain a deny / allow decision.
   //
-  // The returned tree is **read-only** and reflects the model at the pinned
-  // `authorization_model_id`. Max depth: 32 (server-
-  // side cap; deeper trees return PartialTree with a truncation marker).
+  // The answer is ONE LEVEL and carries no edges: the source is a set of flat
+  // records, not a graph, so there is no subtree to descend into and no depth to
+  // bound. The response is read-only.
   rpc ExpandRelations (ExpandRelationsRequest) returns (ExpandRelationsResponse) {
     option (google.api.http) = { post: "/iam/v1/authorize:expandRelations" body: "*" };
     option (kacho.iam.authz.v1.permission) = "iam.authorize.expand";
@@ -197,7 +193,7 @@ service AuthorizeService {
 
 // ResourceRef — typed resource pointer used across AuthorizeService.
 //
-// `type` mirrors the OpenFGA object-type vocabulary
+// `type` mirrors the object-type vocabulary of the authorization model
 // (`cluster` / `account` / `project` / `vpc_network` /
 // `vpc_subnet` / `compute_instance` / …). `id` is the resource id WITHOUT
 // the type prefix (i.e. `enp_xxx`, not `vpc_network:enp_xxx`).
@@ -260,9 +256,16 @@ message AuthorizeCheckResponse {
   //   ["no path"]
   repeated string deny_reasons = 2;
 
-  // Authorization model id used to resolve this Check (pinned).
-  // Useful for forensic correlation.
-  string authorization_model_id = 3;
+  // `authorization_model_id` carried the version id that the EXTERNAL engine
+  // minted for the model it held in its own store. That engine is gone, so
+  // nothing mints such an id and nothing could fill the field — it would answer
+  // every caller with a permanent empty string. Number AND name are reserved.
+  //
+  // The authorization MODEL itself is not gone: it is still the source the
+  // relational form is derived from. What is gone is the version id of a store
+  // that no longer exists.
+  reserved 3;
+  reserved "authorization_model_id";
 
   // Timestamp at which the decision was made (truncated to seconds).
   google.protobuf.Timestamp checked_at = 4;
@@ -285,47 +288,6 @@ message BatchAuthorizeCheckResponse {
   // Per-item responses, same order as request. Length == request.checks
   // length.
   repeated AuthorizeCheckResponse responses = 1;
-}
-
-message ListObjectsRequest {
-  // FGA-style subject string. Required.
-  string subject = 1 [(required) = true, (length) = "<=128"];
-
-  // FGA object type to enumerate. 1-32 chars.
-  string resource_type = 2 [(required) = true, (length) = "1-32"];
-
-  // Action string in `<domain>.<resource>.<verb>` form. Server resolves to
-  // an FGA relation. 1-128 chars.
-  string action = 3 [(required) = true, (length) = "1-128"];
-
-  // Hard cap on results. Default 1000, max 10000.
-  int64 max_results = 4 [(value) = "<=10000"];
-
-  // Page token for pagination.
-  string page_token = 5 [(length) = "<=100"];
-
-  // Per-request condition context (see AuthorizeCheckRequest.context).
-  google.protobuf.Struct context = 6;
-}
-
-message ListObjectsResponse {
-  // List of bare object ids (no type prefix).
-  repeated string resource_ids = 1;
-
-  // Continuation token; empty when no more pages.
-  string next_page_token = 2;
-
-  // True when the underlying FGA ListObjects returned its hard cap and
-  // there may be additional results beyond `max_results`.
-  bool truncated = 3;
-
-  // True when the subject has unbounded reach over
-  // (resource_type, action) — typically because they hold a CLUSTER-scoped
-  // wildcard grant (e.g. `*.*.*.*` or `compute.instance.*.read` at
-  // scope=CLUSTER). When true, callers MUST skip the WHERE-IN filter and
-  // return all rows; `resource_ids` is empty in this case (server side
-  // does not enumerate when an explicit short-circuit is available).
-  bool wildcard_grant = 4;
 }
 
 message ListSubjectsRequest {
@@ -355,72 +317,61 @@ message ListSubjectsResponse {
 }
 
 message ExpandRelationsRequest {
-  // Resource whose userset tree to expand.
+  // Resource whose subjects to list.
   ResourceRef resource = 1 [(required) = true];
 
-  // FGA relation name (`viewer` / `editor` / `admin` / domain-specific).
+  // Relation name (`viewer` / `editor` / `admin` / domain-specific).
   // 1-32 chars.
   string relation = 2 [(required) = true, (length) = "1-32"];
 
-  // Maximum tree depth to return (1-32). Default 16.
-  int32 max_depth = 3 [(value) = "<=32"];
+  // `max_depth` bounded how far the answer descended while the answer was a
+  // TREE. It is one level now — the basis of a right is a flat record — so depth
+  // is not defined for this answer and nothing reads the field. Accepting a
+  // number the server never looks at would promise a knob that does not exist,
+  // so it is gone rather than ignored. Number AND name are reserved.
+  reserved 3;
+  reserved "max_depth";
 }
 
-// UsersetTree — recursive Zanzibar-style userset tree.
+// UsersetTree — FLAT listing of the subjects that resolve a relation.
 //
-// Each node is one of:
-//   * `leaves`       — direct subject references at this node.
-//   * `computed`     — points to another (resource, relation) within the same
-//                       FGA model (e.g. `admin` resolves to `viewer ∪ direct`).
-//   * `tuple_to_userset` — userset reached via an intermediate tuple
-//                          (parent-resource cascade).
+// The name is historical and the shape is not a tree: the source is the
+// relational form that decides access, and its records are flat. There is
+// exactly one level, and the two edge fields that used to descend into
+// sub-usersets are reserved below — nothing would ever fill them.
+//
+// `ComputedUsersetEdge` and `TupleToUsersetEdge` were removed with them. Never
+// re-add messages under those names.
 message UsersetTree {
-  // Direct subject leaves at this level.
+  // Subjects that resolve the relation, as recorded by the relational form.
   repeated string leaves = 1;
 
-  // Computed-userset edges from this node.
-  repeated ComputedUsersetEdge computed = 2;
+  // Edge fields of the retired graph shape. Numbers AND names are reserved so a
+  // later message cannot silently reuse either.
+  reserved 2, 3;
+  reserved "computed", "tuple_to_userset";
 
-  // Tuple-to-userset edges from this node.
-  repeated TupleToUsersetEdge tuple_to_userset = 3;
-
-  // True when the subtree rooted at this node was truncated due to
-  // `max_depth`. The caller can re-issue ExpandRelations with the leaf
-  // node as root.
+  // True when the listing was cut short by the server-side cap and is therefore
+  // incomplete.
   bool truncated = 4;
 }
 
-message ComputedUsersetEdge {
-  // Target relation on the same resource.
-  string relation = 1;
-
-  // Resolved subtree (lazily — when within `max_depth`).
-  UsersetTree subtree = 2;
-}
-
-message TupleToUsersetEdge {
-  // Parent resource reached via the intermediate tuple.
-  ResourceRef parent = 1;
-
-  // Relation on the parent.
-  string relation = 2;
-
-  // Resolved subtree.
-  UsersetTree subtree = 3;
-}
-
 message ExpandRelationsResponse {
-  // Resource whose tree was expanded (echo of request).
+  // Resource whose subjects were listed (echo of request).
   ResourceRef resource = 1;
 
   // Relation that was expanded (echo of request).
   string relation = 2;
 
-  // Root of the userset tree.
+  // The subjects that resolve the relation.
   UsersetTree tree = 3;
 
-  // Authorization model id at which the tree was resolved.
-  string authorization_model_id = 4;
+  // `authorization_model_id` carried the pinned model id of the external
+  // authorization engine. There is no such engine and nothing to put here, so
+  // the field is gone rather than answered with a permanent empty string.
+  // Number AND name are reserved.
+  reserved 4;
+  reserved "authorization_model_id";
 }
 
 // WhoAmIRequest — empty; the subject is derived from the auth context.

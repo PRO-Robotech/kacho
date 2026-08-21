@@ -54,10 +54,9 @@ func (f *fakeChecker) Check(ctx context.Context, in middleware.AuthzCheckInput) 
 		return middleware.AuthzCheckResult{}, f.returnErr
 	}
 	return middleware.AuthzCheckResult{
-		Allowed:              f.allowed,
-		DenyReasons:          f.reasons,
-		AuthorizationModelID: "model_test",
-		CheckedAt:            time.Now(),
+		Allowed:     f.allowed,
+		DenyReasons: f.reasons,
+		CheckedAt:   time.Now(),
 	}, nil
 }
 

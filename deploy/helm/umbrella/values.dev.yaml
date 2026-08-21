@@ -26,13 +26,13 @@
 
 # KAC-127 — обнуляем global.imageRegistry для dev. В values.yaml он =
 # `docker.io/prorobotech` (DockerHub-namespace для kacho-* образов). Но
-# third-party sub-chart'ы (Ory kratos/hydra/keto, OpenFGA, bitnami postgresql)
+# third-party sub-chart'ы (Ory kratos/hydra/keto, bitnami postgresql)
 # тоже уважают `global.imageRegistry` и подставляют его перед СВОИМ image →
 # получается несуществующий `docker.io/prorobotech/oryd/hydra`. На dev-стенде
 # kacho-* образы и так заданы явной строкой `image: kacho-*:dev` (flat-string,
 # global.imageRegistry не используется этими sub-chart'ами), поэтому обнуление
 # global безопасно для kacho-сервисов и чинит pull third-party образов
-# (Ory → docker.io/oryd/*, OpenFGA → docker.io/openfga/*).
+# (Ory → docker.io/oryd/*).
 global:
   imageRegistry: ""
 
@@ -522,10 +522,6 @@ vpc:
   networkPolicy:
     enabled: false
     adminPodsSelector: {}
-  # KAC-127 issue #22: write-side FGA. Each VPC resource Create publishes
-  # `vpc_<resource>:<id>#project@project:<project_id>` into the shared OpenFGA
-  # store so per-resource Get/Update/Delete Checks resolve. store-id / model-id
-  # are bootstrap-job-populated Secrets, injected as config ENV-override.
   authz:
     # Круг отправителей чужой личности — см. values.prod.yaml (там же обоснование
     # состава). Пустой список НЕ запрещает, а не сужает; боевая посадка на нём не
@@ -549,7 +545,6 @@ vpc:
 # ─── KAC-105: IAM stack (sub-phase 2.0) ─────────────────────────────────
 # Отдельные Postgres-инстансы (запрет #8: database-per-service):
 #   pg-iam      → kacho-iam (схема kacho_iam)
-#   pg-openfga  → OpenFGA tuple-store (Phase 3)
 # В dev — emptyDir (без persistence), небольшие resource-лимиты.
 # KAC-127: pg-zitadel удалён — auth-tier (identity/OIDC) на Ory (Kratos/Hydra).
 
@@ -641,37 +636,6 @@ pg-geo:
     image:
       repository: bitnamilegacy/os-shell
 
-pg-openfga:
-  # KAC-127: backing Postgres для OpenFGA tuple-store — включён вместе с openfga.
-  enabled: true
-  auth:
-    username: openfga
-    password: changeme-dev-openfga
-    database: openfga
-  primary:
-    persistence:
-      enabled: true
-      size: 2Gi
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 1000m
-        memory: 1Gi
-  image:
-    repository: bitnamilegacy/postgresql
-    # Тег ПРИПИНЕН и одинаков у всех инстансов — см. §«Почему тег обязателен»
-    # ниже по файлу (у pg-kratos). Умолчание чарта (16.1 на debian-11) в этом
-    # ряду НЕ работает: его initdb отказывается стартовать, когда не может
-    # разрешить собственный идентификатор пользователя, а образ записи о нём не
-    # несёт. Расхождение было невидимым ровно потому, что два инстанса тег имели,
-    # а восемь — нет.
-    tag: "16.4.0-debian-12-r0"
-  volumePermissions:
-    image:
-      repository: bitnamilegacy/os-shell
-
 # KAC-NLB — backing Postgres for kacho-nlb (database-per-service, запрет #8).
 # Schema `kacho_nlb`, owned by user `kacho_nlb`. Migrator (goose) runs as an
 # init-container of the kacho-nlb Deployment; this StatefulSet exposes the
@@ -719,7 +683,7 @@ pg-nlb:
 # Kratos + Hydra. OIDC issuer для kacho-iam теперь Hydra.
 
 # KAC-115: Ory stack — Kratos (identity) + Hydra (OIDC) + Keto (REBAC).
-# Включаются вместо Zitadel+OpenFGA через overrides.yaml.
+# Включаются вместо Zitadel через overrides.yaml.
 
 pg-kratos:
   # KAC-127: backing Postgres для Kratos — включён вместе с kratos.
@@ -1126,60 +1090,6 @@ kratos-selfservice-ui:
 # KAC-127: zitadelOidcBootstrap удалён — identity/OIDC tier перешёл на Ory
 # Kratos + Hydra (см. секции pg-kratos / pg-hydra выше).
 
-# OpenFGA — REBAC engine для kacho-iam (Phase 3). Condition-gated через
-# `openfga.enabled` / `openfgaBootstrap.enabled` (default false на E0/E1).
-#
-# KAC-135 W0.4 (HA-mini): replicaCount=2 на dev (kind). Upstream chart default —
-# 3 replicas (production HA), но для kind dev-стенда это перебор по RAM/CPU и
-# blocked by 2-node kind config. 2 replicas достаточно для verify-survives-pod-restart
-# смоук-теста (одна нода drain'ится — вторая остаётся, drainer/cache-invalidation
-# тесты W1 не падают). Postgres backend (engine=postgres ниже) → state shared
-# между replicas, безопасно для concurrent bootstrap-Job (он сам идемпотентен
-# через sha256 DSL-compare). Upstream формула: `replicas: ternary 1 replicaCount
-# (eq datastore.engine "memory")` — engine=memory принудительно заходит в 1 rep;
-# с postgres работает заявленный replicaCount.
-openfga:
-  enabled: true
-  # replicaCount=1 в dev/newman (было 2): 2 реплики над shared-PG дают read-after-write
-  # replica-lag — write owner-tuple идёт на одну реплику, а enforcement-Check (default
-  # MINIMIZE_LATENCY consistency) может прочитать другую (stale) → флейки-403 на
-  # immediate-mutate СВОЕГО свежесозданного ресурса, хотя tuple записан синхронно
-  # (sync-registrar). Это корень eventual-consistency-флейка e2e-newman под CI-нагрузкой
-  # (падающие суиты перемещались между прогонами). Single replica = write+read один
-  # инстанс → нет replica-lag → owner-tuple виден сразу. Prod (values.*-prod) держит
-  # replicaCount>1 для HA (там HIGHER_CONSISTENCY на confirm-путях + больше запас).
-  replicaCount: 1
-  datastore:
-    engine: postgres
-    uri: postgres://openfga:changeme-dev-openfga@kacho-umbrella-pg-openfga:5432/openfga?sslmode=disable
-    # KAC-127: migrationType=initContainer вместо job. Дефолт sub-chart'а — `job` +
-    # waitForMigrations=true: OpenFGA Deployment получает init-container
-    # `wait-for-migration` (groundnuty/k8s-wait-for `job-wr`), который ждёт
-    # завершения отдельного migration-Job. Под `helm install --wait` это deadlock:
-    # `--wait` блокируется на не-Ready OpenFGA pod (init-container крутится),
-    # release уходит в failed по timeout. С `initContainer` миграция исполняется
-    # как собственный init-container OpenFGA Deployment — отдельного Job нет,
-    # нет гонки, `--wait` дожидается обычным порядком.
-    migrationType: initContainer
-  service:
-    type: ClusterIP
-    grpc:
-      port: 8081
-    http:
-      port: 8080
-  playground:
-    enabled: true
-  ingress:
-    enabled: true
-    className: nginx
-    hosts:
-      - host: openfga.kacho.local
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              port: http
-
 # kacho-iam — control-plane сервис IAM (Account / Project / User / ServiceAccount /
 # Group / Role / AccessBinding). E0 — skeleton + CRUD; интеграция с Ory — E2/E3.
 kacho-iam:
@@ -1265,18 +1175,6 @@ kacho-iam:
       bootstrapMint:
         allowedClientSANs:
           - spiffe://kacho.cloud/ns/kacho/sa/kacho-bootstrap-operator
-    extapi:
-      # KAC-127: zitadel config удалён — identity/OIDC tier на Ory Kratos + Hydra.
-      openfga:
-        # ЗДЕСЬ ТОЛЬКО ТО, ЧТО ЧИТАЕТ ШАБЛОН. Клиент OpenFGA собирается в
-        # композиционном корне из переменных окружения, а не из этой секции:
-        # адрес — KACHO_IAM_OPENFGA_ENDPOINT (умолчание в самом коде),
-        # включённость — наличие store-id. Стоявшие здесь `enabled`/`endpoint`
-        # не читал никто, и второй из них называл адрес, отличный от
-        # действующего умолчания, — оператор правил бы строку, ничего не меняя.
-        # store-id заполняется bootstrap-job'ом в Secret kacho-iam-openfga-store
-        storeIdSecretName: kacho-iam-openfga-store
-        storeIdSecretKey: store_id
   initContainer:
     migrator:
       enabled: true
@@ -1342,8 +1240,6 @@ kacho-iam:
       limits:
         cpu: 100m
         memory: 256Mi
-  openfgaBootstrap:
-    modelIdSecretName: openfga-model-id
   # ─── Phase 3b — Federation IN (external IdP → kacho via Hydra jwt-bearer) ──
   # Hydra v26.2.0 does NOT load trusted issuers from `hydra.config.*` — they
   # are registered at runtime via the admin trust-grant API
@@ -1381,26 +1277,6 @@ kacho-iam:
         allowedSubjects:
           - "^system:serviceaccount:kacho-.+:.+$"
 
-# ─── KAC-127 Phase 3: OpenFGA bootstrap-job (KAC-105 extended) ──────────
-# post-install hook with full DSL v2 + idempotent + model-id Secret patch +
-# rolling-restart annotation on consumer Deployments.
-# See umbrella/templates/openfga-bootstrap-job.yaml for full behaviour.
-openfga-bootstrap:
-  openfgaBootstrap:
-    # KAC-127 (deploy#38 fix): включён. Раньше был отключён из-за template-бага —
-    # init-container `dsl-transform` запускал `/bin/sh`-скрипт на distroless
-    # образе openfga/cli (нет shell). Fix: init-container удалён, DSL→JSON transform
-    # перенесён на commit-time — ConfigMap openfga-model-stub несёт оба ключа.
-    enabled: true
-    # alpine/k8s несёт kubectl+jq+curl+coreutils, бежит root.
-    image: alpine/k8s:1.36.2
-    storeName: kacho-store
-    authorizationModelConfigMap: openfga-model-stub
-    modelIdSecretName: openfga-model-id
-    clusterSingletonId: cluster_kacho_root
-    # Dev: rely on bitnami pg-openfga auto-init (database `openfga`).
-    initDatabase: false
-
 # ─── Cross-cutting authz NetworkPolicy (umbrella template networkpolicy-authz) ─
 # The OPA sidecar config itself now lives in the kacho-iam sub-chart
 # (kacho-iam.opaSidecar above). Only the cross-cutting pod-to-pod allowlist stays
@@ -1409,9 +1285,9 @@ opaSidecar:
   networkPolicy:
     enabled: false
 
-# Sub-chart propagation note: opaSidecar + openfgaBootstrap.modelIdSecretName
-# are propagated to kacho-iam sub-chart via the kacho-iam.opaSidecar / .openfgaBootstrap
-# blocks above (inside the kacho-iam: top-level mapping). Duplicate top-level
+# Sub-chart propagation note: opaSidecar is propagated to the kacho-iam
+# sub-chart via the kacho-iam.opaSidecar block above (inside the kacho-iam:
+# top-level mapping). Duplicate top-level
 # `kacho-iam:` block would last-wins-overwrite — see KAC-127 PR review.
 
 # ─── KAC-NLB: kacho-nlb L4 NLB control-plane (sub-phase 4.0) ─────────────

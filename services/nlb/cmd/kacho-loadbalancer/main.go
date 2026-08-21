@@ -697,8 +697,9 @@ func dialPeers(
 	// оставляя только доступные объекты; read==enforce (та же relation, что per-RPC
 	// Check на Get), fail-closed. nil → use-case'ы получают unfiltered passthrough
 	// (disabled / нет iam conn). Перечисления «все разрешённые id» больше нет — оно
-	// упиралось в жёсткий предел OpenFGA ListObjects (1000 на тип в сторе) и молча
-	// прятало собственные ресурсы тенанта (см. internal/authzfilter package-doc).
+	// упиралось в жёсткий предел прежнего движка прав (1000 объектов на тип в его
+	// сторе, без продолжения) и молча прятало собственные ресурсы тенанта
+	// (см. internal/authzfilter package-doc).
 	// AuthorizeService зарегистрирован и на iam INTERNAL listener
 	// (9091) — service→service per-object list-filter ходит по тому же mTLS-edge, что
 	// InternalIAMService.Check (reuse iamInternalConn; mTLS — mtls.iam-register). :9091

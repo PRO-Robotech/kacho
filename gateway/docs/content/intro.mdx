@@ -63,7 +63,7 @@ data-plane прокси прикладного трафика. За физиче
   <thead><tr><th>Функция</th><th>Кратко</th></tr></thead>
   <tbody>
     <tr><td><strong>AuthN</strong></td><td>Bearer-JWT (Ory Hydra, проверка по JWKS), sender-constrained <strong>DPoP</strong> и mTLS-bound токены, session-cookie Ory Kratos для SPA, HMAC-токены для локальной разработки. Невалидный токен → <code>401</code>, никогда не понижается до anonymous</td></tr>
-    <tr><td><strong>AuthZ</strong></td><td>Per-RPC <code>AuthorizeService.Check</code> → OpenFGA по встроенному permission-каталогу; deny-by-default, fail-closed; step-up-гейт по уровню аутентификации (<code>acr</code>)</td></tr>
+    <tr><td><strong>AuthZ</strong></td><td>Per-RPC <code>AuthorizeService.Check</code> по встроенному permission-каталогу; deny-by-default, fail-closed; step-up-гейт по уровню аутентификации (<code>acr</code>)</td></tr>
     <tr><td><strong>Identity propagation</strong></td><td>Клиентские заголовки <code>x-kacho-principal-&#42;</code> стрипаются на входе и заново выставляются гейтвеем только после валидной аутентификации — подделать identity нельзя</td></tr>
     <tr><td><strong>Routing + isolation</strong></td><td>Маршрутизация по domain-prefix <code>kacho.cloud.&lt;domain&gt;.v1.&#42;</code> через allowlist (deny-by-default). <code>Internal&#42;</code>-сервисы видны только на cluster-internal listener</td></tr>
     <tr><td><strong>Operations</strong></td><td><code>OperationService.Get/Cancel</code> обслуживается in-process: по prefix id операция направляется во владеющий backend</td></tr>
@@ -155,7 +155,7 @@ per-RPC через `kacho-iam`, затем маршрутизирует в ну�
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>🛡</span>
     <span className={hero.featureTitle}>Per-RPC AuthZ, fail-closed</span>
-    <span className={hero.featureBody}>Каждый вызов проходит <code>Check</code> → OpenFGA по permission-каталогу; deny-by-default, fail-open запрещён в production.</span>
+    <span className={hero.featureBody}>Каждый вызов проходит <code>Check</code> по permission-каталогу; deny-by-default, fail-open запрещён в production.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>◫</span>
@@ -184,7 +184,6 @@ per-RPC через `kacho-iam`, затем маршрутизирует в ну�
     <tr><td>grpc-gateway</td><td>REST-проекция gRPC (split-mux public / internal)</td></tr>
     <tr><td>Protocol Buffers / Buf</td><td>Контракт доменов (<code>kacho-proto</code>) + native <code>kacho.cloud.apigateway.v1</code></td></tr>
     <tr><td>Ory Hydra / Kratos</td><td>OAuth2/OIDC (JWT-issuer + JWKS) и session-management SPA</td></tr>
-    <tr><td>OpenFGA (ReBAC)</td><td>Авторизация — per-RPC <code>Check</code> через kacho-iam</td></tr>
     <tr><td>DPoP (RFC 9449)</td><td>Sender-constrained токены (proof-of-possession)</td></tr>
   </tbody>
 </table>

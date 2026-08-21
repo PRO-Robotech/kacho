@@ -58,7 +58,7 @@ API-сервер поднимает два независимых gRPC-listener'
   <thead><tr><th>Listener</th><th>Endpoint (дефолт)</th><th>Назначение</th></tr></thead>
   <tbody>
     <tr><td>public</td><td><code>tcp://0.0.0.0:9090</code></td><td>Клиенты + UI через api-gateway: CRUD + lifecycle</td></tr>
-    <tr><td>internal</td><td><code>tcp://0.0.0.0:9091</code></td><td>Cluster-internal (mTLS): peer-сервисы, lifecycle-стрим FGA-синхронизации</td></tr>
+    <tr><td>internal</td><td><code>tcp://0.0.0.0:9091</code></td><td>Cluster-internal (mTLS): peer-сервисы, lifecycle-стрим синхронизации прав</td></tr>
   </tbody>
 </table>
 
@@ -82,8 +82,8 @@ API-сервер поднимает два независимых gRPC-listener'
 ## Boot-gate REQUIRE_IAM
 
 Fail-closed boot-gate: при `KACHO_NLB_REQUIRE_IAM=true` мутирующий `Create` отклоняется, а
-readiness остаётся `NotReady`, пока сервис не убедился, что kacho-iam достижим (FGA-подключение
-поднято). Так сервис не принимает мутации, для которых не сможет записать owner-tuples.
+readiness остаётся `NotReady`, пока сервис не убедился, что kacho-iam достижим (соединение
+установлено). Так сервис не принимает мутации, для которых не сможет записать owner-tuples.
 Production-профиль включает этот флаг.
 
 ## Контейнерный образ

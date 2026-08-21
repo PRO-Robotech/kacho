@@ -453,7 +453,7 @@ launch_wave() {  # $@ = суиты волны; одновременно испо
     # transiently exhausts it → phantom (see nlb run.sh header). Force nlb serial.
     # nlb: shared external-VIP pool (--jobs>1 exhausts it). iam+registry: materialization-
     # heavy (every AccessBinding / registry+repo Create → owner-tuple via fga_register_outbox
-    # → drainer → OpenFGA Write). Under --jobs>1 the concurrent create rate outruns the
+    # → drainer). Under --jobs>1 the concurrent create rate outruns the
     # drainer → owner-tuple materialization backlog → create→Get/Delete 403/404 read-your-
     # writes past even a 48s client retry (throughput inversion, EC-lag not correctness — the
     # emission is verified). Serialising these suites keeps the drainer caught up so the

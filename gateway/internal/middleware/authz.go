@@ -83,10 +83,9 @@ type AuthzCheckInput struct {
 
 // AuthzCheckResult — caller-friendly Check result.
 type AuthzCheckResult struct {
-	Allowed              bool
-	DenyReasons          []string
-	AuthorizationModelID string
-	CheckedAt            time.Time
+	Allowed     bool
+	DenyReasons []string
+	CheckedAt   time.Time
 }
 
 // AuthorizeChecker — narrowed dependency (mock-able). The clients package
@@ -1225,7 +1224,6 @@ func (m *AuthzMiddleware) phaseCheck(
 			"action", entry.Permission,
 			"resource", descriptor.ResourceType+":"+descriptor.ResourceID,
 			"risk", entry.RiskLevel,
-			"model_id", result.AuthorizationModelID,
 		)
 		return decision{outcome: outcomeAllow, descriptor: descriptor, entry: entry}
 	}

@@ -3,7 +3,7 @@ Copyright (c) PRO-Robotech
 SPDX-License-Identifier: BUSL-1.1
 -->
 
-# Авторизация Region/Zone и FGA-таплы
+# Авторизация Region/Zone и регистрация ресурсов
 
 Осознанные решения по модели авторизации kacho-geo. Зафиксированы здесь, чтобы их
 не приняли за пробел при ревью.
@@ -14,7 +14,7 @@ Region и Zone — глобальный cluster-scoped каталог: они н
 одинаковы для всего кластера. Поэтому авторизация ведётся **не по объекту
 конкретного региона/зоны**, а по cluster-синглтону.
 
-- В модели OpenFGA (kacho-iam) **нет типов `region`/`zone`** — есть `type cluster`
+- В модели прав (kacho-iam) **нет типов `region`/`zone`** — есть `type cluster`
   с синглтоном `cluster:cluster_kacho_root`.
 - **Отношение объявляется в proto и больше нигде.** Каждый admin-RPC несёт
   `required_relation = "system_admin"` рядом со своим `permission`
@@ -47,13 +47,13 @@ Region и Zone — глобальный cluster-scoped каталог: они н
 > токеном, который видно в дифе, а не спрятано в отношении, чью выполнимость надо знать
 > отдельно.
 
-**Следствие:** geo **намеренно НЕ участвует** в потоке owner-таплов
+**Следствие:** geo **намеренно НЕ участвует** в потоке регистрации владения
 (`RegisterResource`/`UnregisterResource`), которым vpc/compute регистрируют свои
-ресурсы в FGA. Per-resource таплов для Region/Zone не существует, поэтому на
+ресурсы в kacho-iam. Per-resource записей для Region/Zone не существует, поэтому на
 Create/Update/Delete **нечего регистрировать и нечему устаревать** — Check работает
-через cluster-синглтон без таплов. Это та же модель, что у admin-ресурса
+через cluster-синглтон. Это та же модель, что у admin-ресурса
 `vpc.AddressPool`. `geo_outbox` — **audit-only** (строки CREATED/UPDATED/DELETED через
-corelib `outbox.Emit` в writer-транзакции), не драйвер FGA-таплов.
+corelib `outbox.Emit` в writer-транзакции), не драйвер регистрации.
 
 ## Отказ старта вместо аварийного обхода: чем это стало
 

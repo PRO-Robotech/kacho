@@ -45,7 +45,119 @@
 # Проверяет: tools/declaredbreak (cmd/adjudicate-declared-breaks), шаг конвейера
 # «adjudicate breaking (vs main)».
 
-declared: []
+# Одиннадцать записей kacho#747 — стадия S6 снимает внешний движок прав, и вместе с ним
+# то в контракте, что существовало только ради него.
+#
+# Предметов три, и они разные:
+#
+#   1. `AuthorizeService.ListObjects` с парой своих сообщений — перечисление всего,
+#      что субъекту доступно. Метод не был постраничен by construction: `page_token`
+#      отвергался, `next_page_token` не заполнялся никогда, поэтому объявленное
+#      усечение не имело продолжения и объекты сверх потолка были недостижимы при
+#      живых правах. Заменителя нет: «что мне видно» отвечает постраничный `List`
+#      ресурсной службы, сужающий страницу проверкой её же идентификаторов.
+#
+#   2. Графовые рёбра `UsersetTree` (`computed`, `tuple_to_userset`) с их сообщениями
+#      и поле `authorization_model_id` в ОБОИХ ответах, где оно стояло
+#      (`AuthorizeCheckResponse`, `ExpandRelationsResponse`) — форма ответа внешнего
+#      движка. Источник вердикта теперь реляционный и плоский; заполнять эти поля
+#      нечем никогда, а оставленное поле обещало бы то, чего нет. Снимается НЕ модель
+#      прав (она остаётся источником, из которого выведена реляционная форма), а
+#      идентификатор её версии в чужом хранилище. Той же правде подчинён и запрос:
+#      `ExpandRelationsRequest.max_depth` ограничивал спуск, пока ответ был деревом,
+#      и после перехода к плоскому перечню его никто не читает — принятое и
+#      проигнорированное поле запрещено прямо, поэтому оно снято, а не оставлено.
+#
+#   3. `internal_authorize_service.proto` целиком — служба администрирования самого
+#      движка (его хранилище кортежей, пин идентификатора модели, сведения о сторе).
+#      Движка нет — предмета не осталось ни у одного из её четырёх глаголов.
+#
+#   4. `builtin_condition.proto` целиком — перечисление известных условий. Осиротело
+#      от пункта 3: его единственным импортёром был снятый файл (`TupleCondition.builtin`),
+#      а арендаторская поверхность условий снята раньше приёмкой IAM-C. Читателей в
+#      непорождённом коде ноль.
+#
+#      ГРАНИЦА, названная явно: снимается ПЕРЕЧИСЛЕНИЕ, а не механизм условий.
+#      Условия по-прежнему вычисляются — реляционной формой, своим кодом
+#      (`services/iam/internal/repo/kacho/pg/relverdict/condition.go`), и этого
+#      контракта она не читает. Живой остаётся и модельная половина: `condition …`
+#      в `fga_model.fga` (6 определений, 4 ограничения `with mfa_fresh`) и сбор
+#      контекста условия на крае (`gateway/internal/middleware/context_extractor.go`,
+#      провязан в composition root) — оба проверены отдельно и не тронуты.
+#
+#      ВНИМАНИЕ ЧИТАТЕЛЮ, КОТОРЫЙ НАЙДЁТ ОБРАТНОЕ РЕШЕНИЕ: приёмка IAM-C
+#      (`services/iam/docs/engineering/acceptance/retire-tenant-condition-surface.md`)
+#      этот файл СОХРАНИЛА ОСОЗНАННО — пункт Р10 отвергает его снятие «за компанию», а
+#      §4 числит перечисление среди живого. Основание того решения названо там же и
+#      сегодня ИСТЕКЛО дословно: «его читает `TupleCondition.builtin` внутреннего
+#      листенера» — листенера нет, читателя нет. Снятие не отменяет то решение задним
+#      числом, а исполняет его собственный предикат.
+#
+# Записи живут от объявления до вливания этой ветки в ствол: после него база сравнения
+# поднимется, находок не станет, и адъюдикация назовёт их истёкшими поимённо.
+declared:
+  - rule: RPC_NO_DELETE
+    path: kacho/cloud/iam/v1/authorize_service.proto
+    symbol: ListObjects
+    reason: перечисление вселенной вместо сужения страницы; не постраничен by construction, продолжения у ответа нет
+    issue: kacho#747
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/iam/v1/authorize_service.proto
+    symbol: ListObjectsRequest
+    reason: запрос снятого глагола ListObjects, других вызывающих у сообщения нет
+    issue: kacho#747
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/iam/v1/authorize_service.proto
+    symbol: ListObjectsResponse
+    reason: ответ снятого глагола ListObjects, других вызывающих у сообщения нет
+    issue: kacho#747
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/iam/v1/authorize_service.proto
+    symbol: computed
+    reason: ребро графа усерсетов; реляционный источник плоский, заполнять поле нечем никогда
+    issue: kacho#747
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/iam/v1/authorize_service.proto
+    symbol: tuple_to_userset
+    reason: ребро графа усерсетов; реляционный источник плоский, заполнять поле нечем никогда
+    issue: kacho#747
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/iam/v1/authorize_service.proto
+    symbol: ComputedUsersetEdge
+    reason: тип снятого ребра графа усерсетов, других вызывающих у сообщения нет
+    issue: kacho#747
+  - rule: MESSAGE_NO_DELETE
+    path: kacho/cloud/iam/v1/authorize_service.proto
+    symbol: TupleToUsersetEdge
+    reason: тип снятого ребра графа усерсетов, других вызывающих у сообщения нет
+    issue: kacho#747
+  # ОДНА запись на ДВЕ находки, и это названо, а не умолчано: поле с этим именем
+  # стояло и в AuthorizeCheckResponse (номер 3), и в ExpandRelationsResponse
+  # (номер 4). Сопоставление идёт по правилу, пути и символу В КАВЫЧКАХ, а
+  # различить сообщения нечем: имя поля у них общее, а номера («3», «4») не
+  # уникальны — «3» назван ещё и снятым UsersetTree.tuple_to_userset. Следствие,
+  # которое надо знать при снятии: запись истечёт только когда исчезнут ОБЕ
+  # находки, то есть после вливания ветки, а не после половины работы.
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/iam/v1/authorize_service.proto
+    symbol: authorization_model_id
+    reason: идентификатор версии модели в хранилище внешнего движка (оба ответа); движка нет, поле обещало бы несуществующее
+    issue: kacho#747
+  - rule: FIELD_NO_DELETE
+    path: kacho/cloud/iam/v1/authorize_service.proto
+    symbol: max_depth
+    reason: ответ перестал быть деревом — глубина у плоского перечня оснований не определена, поле никто не читает
+    issue: kacho#747
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/builtin_condition.proto
+    symbol: kacho/cloud/iam/v1/builtin_condition.proto
+    reason: последний импортёр — снятая служба администрирования хранилища отношений; арендаторская поверхность условий снята приёмкой IAM-C; читателей в непорождённом коде ноль
+    issue: kacho#747
+  - rule: FILE_NO_DELETE
+    path: kacho/cloud/iam/v1/internal_authorize_service.proto
+    symbol: kacho/cloud/iam/v1/internal_authorize_service.proto
+    reason: служба существовала только ради администрирования внешнего движка прав, снятого стадией S6
+    issue: kacho#747
 
 # ИСТОРИЯ ПЕРЕЧНЯ — почему его нормальное состояние ПУСТО.
 #

@@ -125,7 +125,7 @@ flowchart LR
   end
   subgraph cp["Control plane"]
     nlb["kacho-nlb<br/>:9090 public · :9091 internal"]
-    iam["kacho-iam<br/>authz Check · Project · FGA"]
+    iam["kacho-iam<br/>authz Check · Project · RegisterResource"]
   end
   subgraph store["Хранилище"]
     pg[("PostgreSQL<br/>kacho_nlb · outbox")]
@@ -139,7 +139,7 @@ flowchart LR
   cli --> agw
   agw -->|"kacho.cloud.loadbalancer.v1"| nlb
   nlb -->|"SQL · pgx"| pg
-  nlb -->|"authz Check · Project · FGA"| iam
+  nlb -->|"authz Check · Project · RegisterResource"| iam
   nlb -->|"IPAM · ref-validate"| vpc
   nlb -->|"Instance-resolve"| cmp
   nlb -->|"RegionService.Get"| geo
@@ -181,7 +181,7 @@ API владельца на request-path. Подробнее — [Архитек
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>🔑</span>
     <span className={hero.featureTitle}>Авторизация на обоих портах</span>
-    <span className={hero.featureBody}>Per-RPC authz Check через kacho-iam (ReBAC/OpenFGA) — и на public (:9090), и на internal (:9091).</span>
+    <span className={hero.featureBody}>Per-RPC authz Check через kacho-iam — и на public (:9090), и на internal (:9091).</span>
   </div>
 </div>
 
@@ -195,7 +195,6 @@ API владельца на request-path. Подробнее — [Архитек
     <tr><td>PostgreSQL / pgx v5</td><td>Хранилище <code>kacho_nlb</code></td></tr>
     <tr><td>Goose</td><td>Версионирование схемы (отдельный <code>cmd/migrator</code>)</td></tr>
     <tr><td>sqlc + handwritten pgx</td><td>SQL-доступ (без ORM)</td></tr>
-    <tr><td>OpenFGA (ReBAC)</td><td>Авторизация — per-RPC Check + hierarchy-tuples через kacho-iam</td></tr>
     <tr><td>grpc-gateway</td><td>REST-проекция gRPC</td></tr>
   </tbody>
 </table>
@@ -209,7 +208,7 @@ API владельца на request-path. Подробнее — [Архитек
     <tr><td><strong>kacho-proto</strong></td><td>Центральные <code>.proto</code> + сгенерированные Go-stubs</td></tr>
     <tr><td><strong>kacho-corelib</strong></td><td>Общие пакеты (db, grpcsrv, grpcclient, operations, outbox, config, ...)</td></tr>
     <tr><td><strong>kacho-api-gateway</strong></td><td>Edge: gRPC-proxy + REST mux</td></tr>
-    <tr><td><strong>kacho-iam</strong></td><td>Авторизация (Check), ProjectService, FGA owner-tuples</td></tr>
+    <tr><td><strong>kacho-iam</strong></td><td>Авторизация (Check), ProjectService, регистрация владения ресурсами</td></tr>
     <tr><td><strong>kacho-vpc / kacho-compute / kacho-geo</strong></td><td>Владельцы ссылок: Address/Subnet/NIC · Instance · Region</td></tr>
   </tbody>
 </table>

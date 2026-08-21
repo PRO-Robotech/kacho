@@ -36,7 +36,8 @@ import (
 // by corelib; here we test the nlb consumer-applier (iam.NewRegisterApplier
 // + iam.DecodeFGARegisterIntent) end-to-end against testcontainers Postgres with
 // the migration-0002 fga_register_outbox table, driven by a scripted fake
-// RegisterResourceClient (no real OpenFGA — record-recorder).
+// RegisterResourceClient (a record-recorder — the applier's downstream is a port,
+// and the queue outlived the external consumer it once fed).
 
 // ---- fake RegisterResourceClient (records + scripts replies) ----------------
 

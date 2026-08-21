@@ -41,7 +41,7 @@ Kachō. Пользователь заводит **Registry** — namespace-ре�
 Бизнес-ценность в том, что реестр **встроен в модель доступа платформы**. Не нужен внешний
 registry со своей отдельной системой прав: кто может пушить и тянуть образы, определяют те же
 роли IAM, что и для остального проекта. Каждый `docker push` / `docker pull` проходит per-request
-проверку в IAM (ReBAC / OpenFGA) — доступ на уровне конкретного реестра и даже конкретного
+проверку в IAM — доступ на уровне конкретного реестра и даже конкретного
 репозитория внутри него. Метки реестра участвуют в label-scoped авторизации, как у любого
 ресурса Kachō.
 
@@ -105,7 +105,7 @@ namespace живут репозитории, в репозиториях — т�
 
 Kachō Registry — доменный сервис платформы. По сборке он зависит только от `kacho-corelib` и
 `kacho-proto`; в runtime у него исходящие рёбра в `kacho-iam` (авторизация, валидация проекта,
-запись owner-tuple в FGA) и в бэкенд хранилища образов (zot). Tenant-запросы control-plane идут
+регистрация владения) и в бэкенд хранилища образов (zot). Tenant-запросы control-plane идут
 через `api-gateway`; data-plane push/pull — на отдельный OCI-endpoint `registry.kacho.local`.
 
 ```mermaid
@@ -152,7 +152,7 @@ flowchart LR
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>🔑</span>
     <span className={hero.featureTitle}>Авторизация через IAM</span>
-    <span className={hero.featureBody}>Каждый push/pull проходит per-request Check в kacho-iam (ReBAC). Права — на уровне реестра и репозитория.</span>
+    <span className={hero.featureBody}>Каждый push/pull проходит per-request Check в kacho-iam. Права — на уровне реестра и репозитория.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>⇄</span>
@@ -172,7 +172,7 @@ flowchart LR
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>⛓</span>
     <span className={hero.featureTitle}>Owner-tuple через outbox</span>
-    <span className={hero.featureBody}>При создании реестра owner-hierarchy-tuple пишется в FGA через транзакционный outbox (at-least-once).</span>
+    <span className={hero.featureBody}>При создании реестра владение регистрируется в kacho-iam через транзакционный outbox (at-least-once).</span>
   </div>
 </div>
 
@@ -187,7 +187,7 @@ flowchart LR
     <tr><td>zot</td><td>OCI-совместимый registry-бэкенд (блобы/манифесты, S3-backed) — source of truth образов</td></tr>
     <tr><td>OCI Distribution / Docker Registry v2</td><td>Data-plane push/pull (<code>registry.kacho.local</code>)</td></tr>
     <tr><td>Goose</td><td>Версионирование схемы (миграции <code>0001</code>, <code>0002</code>)</td></tr>
-    <tr><td>OpenFGA (ReBAC) · Ory Hydra</td><td>Авторизация — per-RPC / per-request Check через kacho-iam; identity-JWT для data-plane</td></tr>
+    <tr><td>Ory Hydra</td><td>OAuth2/OIDC — identity-JWT для data-plane; авторизация — per-RPC / per-request Check через kacho-iam</td></tr>
     <tr><td>grpc-gateway</td><td>REST-проекция control-plane gRPC</td></tr>
   </tbody>
 </table>

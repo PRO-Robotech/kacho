@@ -35,7 +35,7 @@ export const CODES = {
   permissionDenied: {
     grpc: 'PERMISSION_DENIED',
     http: '403',
-    when: 'Субъект не имеет нужного отношения (relation) на ресурс/проект в OpenFGA (authz-интерсептор)',
+    when: 'Субъект не имеет нужного отношения (relation) на ресурс/проект (authz-интерсептор)',
   },
   internal: {
     grpc: 'INTERNAL',

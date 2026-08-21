@@ -547,7 +547,7 @@ Immutable-поля по ресурсам:
 
 **Объектная авторизация в handler-ах не живёт** — она выражена в permission-модели
 (`internal/check.PermissionMap`) и энфорсится per-RPC
-authz-интерсептором (`InternalIAMService.Check` → OpenFGA) на обоих листенерах,
+authz-интерсептором (`InternalIAMService.Check`) на обоих листенерах,
 fail-closed для не описанных в карте RPC.
 
 #### Что отсюда снято

@@ -10,9 +10,7 @@
 #      container incl. init-containers — not only the OPA sidecar.
 #   2. The umbrella ships a Namespace template carrying Pod Security Admission
 #      warn+audit=restricted labels for the kacho namespace.
-#   3. openfga-bootstrap Role scopes its secrets get/update/patch rule with
-#      resourceNames (least-privilege — no namespace-wide secret read).
-#   4. Image references support a digest-pin override (repository@sha256:...).
+#   3. Image references support a digest-pin override (repository@sha256:...).
 #
 # Mirrors tests/helm/*-test.sh: renders via `helm template ... --show-only` and
 # asserts with yq. Contracts unchanged (helm/CI/docs only).
@@ -73,7 +71,6 @@ POD_SC=$(echo "$IAM" | yq 'select(.kind == "Deployment") | .spec.template.spec.s
 ok
 assert_sc "$IAM" "kacho-iam" "kacho-iam"
 assert_sc "$IAM" "migrate" "kacho-iam"
-assert_sc "$IAM" "wait-for-openfga" "kacho-iam"
 
 # ── 2. kacho-geo workload hardening ──────────────────────────────────────────
 GEO=$(render charts/kacho-geo/templates/deployment.yaml)
@@ -91,27 +88,7 @@ NS=$(render templates/namespace.yaml --set namespace.create=true)
   || fail "namespace: pod-security audit label != restricted"
 ok
 
-# ── 4. openfga-bootstrap RBAC least-privilege (scoped secrets rule) ───────────
-RBAC=$(render charts/openfga-bootstrap/templates/openfga-bootstrap-rbac.yaml --set openfgaBootstrap.enabled=true)
-SCOPED=$(echo "$RBAC" | yq 'select(.kind == "Role") | .rules[] | select(.resources[] == "secrets") | select(.resourceNames != null) | .resourceNames | join(",")' 2>/dev/null | head -1)
-[[ "$SCOPED" == *"kacho-iam-openfga-store"* ]] || fail "openfga-bootstrap Role: secrets rule not scoped to kacho-iam-openfga-store via resourceNames"
-[[ "$SCOPED" == *"openfga-model-id"* ]] || fail "openfga-bootstrap Role: secrets rule not scoped to openfga-model-id via resourceNames"
-# No unrestricted get on all secrets: every rule granting `get` on secrets must carry resourceNames.
-UNSCOPED_GET=$(echo "$RBAC" | yq 'select(.kind == "Role") | .rules[] | select(.resources[] == "secrets") | select(.verbs[] == "get") | select(.resourceNames == null) | .verbs | join(",")' 2>/dev/null)
-[ -z "$UNSCOPED_GET" ] || fail "openfga-bootstrap Role: a secrets rule still grants get with no resourceNames"
-# The deployments get/patch rule is resourceName-scoped to ONLY the consumer
-# Deployments the Job bumps (no namespace-wide deployment patch → no lateral
-# image/sidecar swap on a compromised bootstrap SA).
-DEP_SCOPED=$(echo "$RBAC" | yq 'select(.kind == "Role") | .rules[] | select(.resources[] == "deployments") | select(.resourceNames != null) | .resourceNames | join(",")' 2>/dev/null | head -1)
-for d in kacho-iam api-gateway vpc compute loadbalancer; do
-  [[ "$DEP_SCOPED" == *"$d"* ]] || fail "openfga-bootstrap Role: deployments rule not scoped to $d via resourceNames"
-done
-# No deployments rule may grant patch/get without resourceNames.
-UNSCOPED_DEP=$(echo "$RBAC" | yq 'select(.kind == "Role") | .rules[] | select(.resources[] == "deployments") | select(.resourceNames == null) | .verbs | join(",")' 2>/dev/null)
-[ -z "$UNSCOPED_DEP" ] || fail "openfga-bootstrap Role: a deployments rule still grants $UNSCOPED_DEP with no resourceNames"
-ok
-
-# ── 5. Image digest-pin override (repository@sha256:...) ──────────────────────
+# ── 4. Image digest-pin override (repository@sha256:...) ──────────────────────
 DIG="sha256:0000000000000000000000000000000000000000000000000000000000000000"
 IAM_DIG=$(render charts/kacho-iam/templates/deployment.yaml --set kacho-iam.image.digest="$DIG")
 IAM_DIG_IMAGE="$(echo "$IAM_DIG" | yq 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image')"

@@ -231,7 +231,7 @@ Per-repo `ci.yaml` по-прежнему гоняет только сборку/
 
 **Why accepted.**
 - Newman is a **through-the-gateway black box**: it needs a live api-gateway + Hydra
-  token-exchange + IAM/OpenFGA + zot + Postgres — i.e. the aggregate deployed stack. Per
+  token-exchange + IAM + zot + Postgres — i.e. the aggregate deployed stack. Per
   `polyrepo.md`, e2e-through-api-gateway is owned by the deployed stand — today the
   `deploy/` directory of this monorepo (`deploy/scripts/newman-parallel.sh` and the
   charts it raises), not by a per-service unit-CI runner that has no such stack.

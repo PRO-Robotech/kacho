@@ -212,15 +212,6 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// окружения и часов: он ручной по построению.
 	"tools/authzformbench": "go test ./tools/authzformbench/ -count=1",
 
-	// Г1 (R7-3-01): перепись мест обращения к внешнему движку прав. Типизирует
-	// ВСЁ дерево по export-данным, поэтому пропускает себя под кратким; отбор
-	// интеграционной джобы до `tools/` не достаёт вовсе. Свой шаг стоит в джобе
-	// build-test — там дерево уже собрано шагом `go build ./...`, и export-данные
-	// берутся из тёплого кэша; в джобе без кэша сборки тот же шаг стоил бы полной
-	// пересборки. Второй половиной шва стоит проба пакета
-	// (TestR7_3_01_CIRunsThisCensus), как у tools/listfiltergate.
-	"tools/authzenginecensus/engineplaces": "go test ./tools/authzenginecensus/engineplaces/ -run 'TestR7_3_01|TestJournalDoor' -count=1 -v",
-
 	// Шесть носителей поведенческих проб модели прав: пакет спрашивает НАСТОЯЩИЙ
 	// OpenFGA, а не читает текст модели. Цель test-authz-fga гонит их целиком (без
 	// `-short`), запрещает пробам пропускать себя и выносит вердикт ПО ЧИСЛАМ —
@@ -266,11 +257,21 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// terraform у scripts/ci-local.sh, чтобы вердикт был и до отправки ветки.
 	"terraform/internal/provider": "go test ./terraform/internal/provider -run Acceptance -count=1",
 
-	"services/iam/internal/apps/kacho/api/access_binding": "make test-authz-fga",
-	"services/iam/internal/apps/kacho/api/readauthz":      "make test-authz-fga",
+	// СЕМЬ ЗАПИСЕЙ НИЖЕ ПЕРЕЕХАЛИ С ЦЕЛИ, КОТОРОЙ БОЛЬШЕ НЕТ.
+	//
+	// Их пробы спрашивали НАСТОЯЩИЙ внешний движок прав, и гнала их своя цель.
+	// Движок снят стадией S6 эпика #747, харнесс к нему — вместе с ним, а сами
+	// пробы переписаны на реляционную форму: им нужен Postgres, а не чужой сервер.
+	// Причина освобождения не изменилась (пакеты лежат в apps/ и internal/authz*,
+	// отбор интеграционной джобы идёт по пути и до них не достаёт), сменился
+	// исполнитель.
+	"services/iam/internal/apps/kacho/api/access_binding": "make test-pg-outside-selection",
+	"services/iam/internal/apps/kacho/api/readauthz":      "make test-pg-outside-selection",
+	"services/iam/internal/authzmap":                      "make test-pg-outside-selection",
 
 	// Пробы «страница списка есть страница ВИДИМОГО» (задача #645) — настоящий
-	// Postgres И настоящий OpenFGA сразу, по всем семи списочным поверхностям.
+	// Postgres по всем семи списочным поверхностям (прежде — он же и внешний
+	// движок прав; со снятием движка вопрос о доступе отвечает та же база).
 	// Снисходительного дублёра здесь нет ни с одной стороны намеренно: предмет —
 	// ПОРЯДОК между страницей и сужением, а дублёр, игнорирующий размер страницы,
 	// скрывает этот дефект by construction.
@@ -279,22 +280,17 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// пути и до него не достаёт, а под кратким он пропускает себя целиком. Без
 	// этой строки шестьдесят проб печатали бы `ok`, не исполнившись ни разу, —
 	// ровно тот исход, ради предотвращения которого и заведён этот перечень.
-	"services/iam/internal/apps/kacho/api/listvisibility": "make test-authz-fga",
-	// Снятие кортежей объекта личности вместе со строкой человека (IAM-ID-1-61):
-	// проба спрашивает НАСТОЯЩИЙ движок прав о том, исчезли ли кортежи, — форму
-	// снятия, которую принимающая сторона молча не применяет, иначе не отличить
-	// от применённой. Остальные пробы пакета — юниты по фейкам и идут в быстрой
+	"services/iam/internal/apps/kacho/api/listvisibility": "make test-pg-outside-selection",
+	// Снятие фактов объекта личности вместе со строкой человека (IAM-ID-1-61):
+	// проба спрашивает СВОЮ базу о том, исчезли ли прямые факты, — снятие, которое
+	// не доехало, иначе не отличить от применённого. Остальные пробы пакета — юниты по фейкам и идут в быстрой
 	// джобе.
-	"services/iam/internal/apps/kacho/api/user": "make test-authz-fga",
-	"services/iam/internal/authzcascade":        "make test-authz-fga",
+	"services/iam/internal/apps/kacho/api/user": "make test-pg-outside-selection",
 	// Снимок множества доступа (IAM-ID-1-28/29/30): страницы объектов берутся
-	// курсором из своей базы, а вопрос о доступе задаётся НАСТОЯЩЕМУ движку
-	// продовым клиентом — подменив второе, инструмент утверждал бы про свою
-	// копию правил. Юнит-пробы компаратора идут в быстрой джобе.
-	"services/iam/internal/testsupport/accesssnapshot": "make test-authz-fga",
-	"services/iam/internal/authzmap":                   "make test-authz-fga",
-	"services/iam/internal/service":                    "make test-authz-fga",
-	"services/iam/internal/testsupport/fgatest":        "make test-authz-fga",
+	// курсором из своей базы, а вопрос о доступе задаётся ПРОДОВОЙ дверью решения —
+	// подменив её, инструмент утверждал бы про свою копию правил. Юнит-пробы компаратора идут в быстрой джобе.
+	"services/iam/internal/testsupport/accesssnapshot": "make test-pg-outside-selection",
+	"services/iam/internal/service":                    "make test-pg-outside-selection",
 
 	// #803. Пакет заведён #800 и сразу оказался вне всякого прогона: шесть проб,
 	// все под кратким режимом, а отбор по пути до `internal/scopesourcecensus`

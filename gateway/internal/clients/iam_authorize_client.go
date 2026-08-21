@@ -84,9 +84,6 @@ type AuthorizeCheckResult struct {
 	// DenyReasons — ordered short-string reasons. Empty on Allowed=true.
 	DenyReasons []string
 
-	// AuthorizationModelID — pinned model id (for forensics).
-	AuthorizationModelID string
-
 	// CheckedAt — timestamp the IAM service stamped the decision.
 	CheckedAt time.Time
 }
@@ -357,9 +354,8 @@ func toResult(resp *iamv1.AuthorizeCheckResponse) AuthorizeCheckResult {
 		return AuthorizeCheckResult{}
 	}
 	r := AuthorizeCheckResult{
-		Allowed:              resp.GetAllowed(),
-		AuthorizationModelID: resp.GetAuthorizationModelId(),
-		DenyReasons:          append([]string(nil), resp.GetDenyReasons()...),
+		Allowed:     resp.GetAllowed(),
+		DenyReasons: append([]string(nil), resp.GetDenyReasons()...),
 	}
 	if ts := resp.GetCheckedAt(); ts != nil {
 		r.CheckedAt = ts.AsTime()

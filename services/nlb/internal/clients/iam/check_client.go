@@ -100,7 +100,9 @@ func resolveCheckTimeout(d time.Duration) time.Duration {
 }
 
 // Check — см. контракт CheckClient.Check. Consistency-поле запроса не
-// выставляется (zero value == CONSISTENCY_UNSPECIFIED → OpenFGA MINIMIZE_LATENCY).
+// выставляется, и это ничего не стоит: вердикт выносит реляционная форма по
+// ведущей базе iam, поэтому чтение не отстаёт от собственной записи вызывающего
+// by construction. Поле называет требование, а не способ его исполнения.
 func (c *checkClient) Check(ctx context.Context, subjectID, relation, object string) (bool, error) {
 	return c.check(ctx, subjectID, relation, object)
 }

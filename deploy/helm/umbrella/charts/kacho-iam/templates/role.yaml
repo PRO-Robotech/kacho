@@ -17,5 +17,4 @@ rules:
     resources: ["secrets"]
     resourceNames:
       - {{ .Values.db.passwordSecretName | quote }}
-      - {{ .Values.config.extapi.openfga.storeIdSecretName | quote }}
     verbs: ["get"]

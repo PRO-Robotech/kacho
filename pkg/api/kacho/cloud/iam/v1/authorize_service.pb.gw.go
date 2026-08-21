@@ -89,33 +89,6 @@ func local_request_AuthorizeService_BatchCheck_0(ctx context.Context, marshaler 
 	return msg, metadata, err
 }
 
-func request_AuthorizeService_ListObjects_0(ctx context.Context, marshaler runtime.Marshaler, client AuthorizeServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq ListObjectsRequest
-		metadata runtime.ServerMetadata
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	msg, err := client.ListObjects(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_AuthorizeService_ListObjects_0(ctx context.Context, marshaler runtime.Marshaler, server AuthorizeServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq ListObjectsRequest
-		metadata runtime.ServerMetadata
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	msg, err := server.ListObjects(ctx, &protoReq)
-	return msg, metadata, err
-}
-
 func request_AuthorizeService_ListSubjects_0(ctx context.Context, marshaler runtime.Marshaler, client AuthorizeServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq ListSubjectsRequest
@@ -236,26 +209,6 @@ func RegisterAuthorizeServiceHandlerServer(ctx context.Context, mux *runtime.Ser
 			return
 		}
 		forward_AuthorizeService_BatchCheck_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodPost, pattern_AuthorizeService_ListObjects_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.AuthorizeService/ListObjects", runtime.WithHTTPPathPattern("/iam/v1/authorize:listObjects"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_AuthorizeService_ListObjects_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_AuthorizeService_ListObjects_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
 	mux.Handle(http.MethodPost, pattern_AuthorizeService_ListSubjects_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
@@ -391,23 +344,6 @@ func RegisterAuthorizeServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 		}
 		forward_AuthorizeService_BatchCheck_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_AuthorizeService_ListObjects_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.AuthorizeService/ListObjects", runtime.WithHTTPPathPattern("/iam/v1/authorize:listObjects"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_AuthorizeService_ListObjects_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_AuthorizeService_ListObjects_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodPost, pattern_AuthorizeService_ListSubjects_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -465,7 +401,6 @@ func RegisterAuthorizeServiceHandlerClient(ctx context.Context, mux *runtime.Ser
 var (
 	pattern_AuthorizeService_Check_0           = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"iam", "v1", "authorize"}, "check"))
 	pattern_AuthorizeService_BatchCheck_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"iam", "v1", "authorize"}, "batchCheck"))
-	pattern_AuthorizeService_ListObjects_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"iam", "v1", "authorize"}, "listObjects"))
 	pattern_AuthorizeService_ListSubjects_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"iam", "v1", "authorize"}, "listSubjects"))
 	pattern_AuthorizeService_ExpandRelations_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"iam", "v1", "authorize"}, "expandRelations"))
 	pattern_AuthorizeService_WhoAmI_0          = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"iam", "v1", "me"}, ""))
@@ -474,7 +409,6 @@ var (
 var (
 	forward_AuthorizeService_Check_0           = runtime.ForwardResponseMessage
 	forward_AuthorizeService_BatchCheck_0      = runtime.ForwardResponseMessage
-	forward_AuthorizeService_ListObjects_0     = runtime.ForwardResponseMessage
 	forward_AuthorizeService_ListSubjects_0    = runtime.ForwardResponseMessage
 	forward_AuthorizeService_ExpandRelations_0 = runtime.ForwardResponseMessage
 	forward_AuthorizeService_WhoAmI_0          = runtime.ForwardResponseMessage

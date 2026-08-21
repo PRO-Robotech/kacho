@@ -27,11 +27,14 @@
 //
 // Shape (3) must be "read a page by cursor → batch-check its ids". The inverse —
 // ListAllowedIDs/ListObjects ("enumerate everything the subject may see", then
-// narrow the SQL to that set) — is rejected explicitly: OpenFGA caps that
-// enumeration server-side with no continuation token, so a tenant's own resource
-// silently falls outside the prefix and becomes invisible forever. The shape is
-// gone from every sibling service; the gate names it so it cannot return "as an
-// equivalent".
+// narrow the SQL to that set) — is rejected explicitly. It was the external
+// relations engine that capped such an enumeration server-side with no
+// continuation token, so a tenant's own resource silently fell outside the prefix
+// and stayed invisible while its grant and its row both existed. The engine is
+// gone; the rejection is not, and it never rested on the cap alone — "enumerate
+// everything visible" is unbounded by construction, and an answer to it is not a
+// page. The shape is gone from every sibling service; the gate names it so it
+// cannot return "as an equivalent".
 //
 // # Why this is an AST walk and not a grep
 //

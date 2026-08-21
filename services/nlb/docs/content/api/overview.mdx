@@ -52,7 +52,7 @@ REST-поверхность строится через **grpc-gateway**: каж
   <thead><tr><th>Порт</th><th>Listener</th><th>Кто ходит</th><th>Назначение</th></tr></thead>
   <tbody>
     <tr><td><code>:9090</code></td><td>public</td><td>Tenant-клиенты через <code>api-gateway</code></td><td>Публичный CRUD + lifecycle всех трёх ресурсов</td></tr>
-    <tr><td><code>:9091</code></td><td>internal</td><td>Peer-сервисы (cluster-internal, mTLS)</td><td>Internal-сервисы: приём lifecycle-стрима FGA-синхронизации и служебные ребра</td></tr>
+    <tr><td><code>:9091</code></td><td>internal</td><td>Peer-сервисы (cluster-internal, mTLS)</td><td>Internal-сервисы: приём lifecycle-стрима синхронизации прав и служебные ребра</td></tr>
   </tbody>
 </table>
 
@@ -98,8 +98,7 @@ suffix-`:verb` на конкретном ресурсе (`.../{id}:start`), а �
 
 ## Авторизация
 
-Авторизация — **per-RPC, ReBAC** через **OpenFGA**, проверяется через `InternalIAMService.Check`
-в kacho-iam. Каждый RPC несёт в proto аннотации `permission` и `required_relation`, а также
+Авторизация — **per-RPC**, проверяется через `InternalIAMService.Check` в kacho-iam. Каждый RPC несёт в proto аннотации `permission` и `required_relation`, а также
 `scope_extractor` (по какому объекту проверять доступ). Verb-bearing relations:
 
 - **read** (`Get`, `GetTargetStates`) — `v_get`; `ListOperations` — `v_list`;

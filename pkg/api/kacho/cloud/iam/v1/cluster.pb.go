@@ -30,7 +30,7 @@ const (
 //
 // Exactly one Cluster row exists, with literal id `cluster_kacho_root` (enforced
 // by DB-level CHECK + BEFORE INSERT trigger).
-// Used as the OpenFGA root object for cluster-admin grants
+// Used as the root object of the authorization model for cluster-admin grants
 // (`cluster:cluster_kacho_root#system_admin@user:...`).
 //
 // Identity hierarchy: cluster → account → project → resource. Each downstream

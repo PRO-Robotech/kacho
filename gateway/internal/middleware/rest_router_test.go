@@ -104,14 +104,17 @@ func TestRestRouter_Resolve_UnknownRoute(t *testing.T) {
 	}
 }
 
-// TestRestRouter_TombstonedRoutesGone — the two tombstoned RPCs must no longer
-// resolve to a route:
-//   - InternalIAMService.ListPermissions (GET /iam/v1/internal/iam/permissions)
-//     replaced by the public PermissionCatalogService.ListPermissionCatalog;
-//   - InternalAuthorizeService.RunRegoTest (had no REST gateway binding — never
-//     in this table — guarded here so a future re-add does not slip through).
+// TestRestRouter_TombstonedRoutesGone — the tombstoned RPC must no longer
+// resolve to a route: InternalIAMService.ListPermissions
+// (GET /iam/v1/internal/iam/permissions), replaced by the public
+// PermissionCatalogService.ListPermissionCatalog.
 //
-// If the route table is not regenerated after the tombstones, the stale
+// A second FQN stood here — InternalAuthorizeService.RunRegoTest. Its guard is
+// gone because its SERVICE is gone: InternalAuthorizeService administered the
+// external authorization engine and was removed whole with it, so no route can
+// name that method any more and the guard had nothing left to guard.
+//
+// If the route table is not regenerated after the tombstone, the stale
 // /iam/v1/internal/iam/permissions entry keeps resolving → this test fails,
 // signalling the sync was skipped.
 func TestRestRouter_TombstonedRoutesGone(t *testing.T) {
@@ -119,11 +122,9 @@ func TestRestRouter_TombstonedRoutesGone(t *testing.T) {
 	if fqn, ok := r.Resolve("GET", "/iam/v1/internal/iam/permissions"); ok {
 		t.Errorf("Resolve(GET /iam/v1/internal/iam/permissions) = %s, want no match — ListPermissions tombstoned in proto-G", fqn)
 	}
-	// No route may still map to either tombstoned FQN.
+	// No route may still map to the tombstoned FQN.
 	for _, rt := range generatedRestRoutes {
-		switch rt.FQN {
-		case "kacho.cloud.iam.v1.InternalIAMService/ListPermissions",
-			"kacho.cloud.iam.v1.InternalAuthorizeService/RunRegoTest":
+		if rt.FQN == "kacho.cloud.iam.v1.InternalIAMService/ListPermissions" {
 			t.Errorf("route table still contains tombstoned FQN %q (template %q)", rt.FQN, rt.Template)
 		}
 	}

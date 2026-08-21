@@ -35,6 +35,8 @@
 package repohygiene
 
 import (
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -196,4 +198,20 @@ func makefileAssignment(t *testing.T, root, name string) string {
 		}
 	}
 	return strings.ReplaceAll(b.String(), `\`, " ")
+}
+
+// rootMakefile — корневой Makefile этого дерева.
+//
+// Жил в пробе, снятой вместе со своим предметом (харнесс проб против внешнего
+// движка прав, стадия S6 эпика #747). Переехал сюда, к оставшемуся читателю:
+// вспомогательная функция без читателя — мёртвый код, а вспомогательная функция,
+// живущая в чужом файле, переживает его снятие только случайно.
+func rootMakefile(t *testing.T, root string) string {
+	t.Helper()
+	// #nosec G304 -- читается корневой Makefile этого же репозитория.
+	raw, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatalf("не прочитан корневой Makefile: %v", err)
+	}
+	return string(raw)
 }

@@ -3,16 +3,16 @@
 apiVersion: v2
 name: kacho-umbrella
 version: 2.0.0
-description: "Kachō Cloud Control Plane — umbrella chart (flat API + Operations). Bundles the control-plane services (api-gateway, vpc, compute, kacho-iam, kacho-nlb, ui) with their per-service Postgres instances, the Ory identity tier (Kratos + Hydra) and OpenFGA ReBAC engine, plus dev infrastructure (ingress-nginx, in-cluster. Matches the kind dev stand brought up by `make dev-up` (values.dev.yaml)."
+description: "Kachō Cloud Control Plane — umbrella chart (flat API + Operations). Bundles the control-plane services (api-gateway, vpc, compute, kacho-iam, kacho-nlb, ui) with their per-service Postgres instances, the Ory identity tier (Kratos + Hydra), plus dev infrastructure (ingress-nginx, in-cluster. Matches the kind dev stand brought up by `make dev-up` (values.dev.yaml)."
 #
-# ЧЕТЫРЕ ЧАРТА ЛЕЖАТ В `charts/` И НАМЕРЕННО НЕ ОБЪЯВЛЕНЫ ЗАВИСИМОСТЯМИ:
-# kacho-iam, kacho-geo, openfga-bootstrap, kratos-selfservice-ui. Их исходники
+# ТРИ ЧАРТА ЛЕЖАТ В `charts/` И НАМЕРЕННО НЕ ОБЪЯВЛЕНЫ ЗАВИСИМОСТЯМИ:
+# kacho-iam, kacho-geo, kratos-selfservice-ui. Их исходники
 # версионируются здесь же, а `charts/` — это и есть каталог сабчартов: helm
 # загружает оттуда всё, что является чартом, без всякого объявления.
 #
 # Объявить такой чарт зависимостью `file://./charts/<имя>` — значит попросить
 # helm МАТЕРИАЛИЗОВАТЬ его в тот же каталог, где лежит исходник. Так и было, и
-# после `helm dep update` каждый из четырёх существовал в `charts/` ДВАЖДЫ:
+# после `helm dep update` каждый из них существовал в `charts/` ДВАЖДЫ:
 # каталогом-исходником и собранным архивом. Какая из двух копий попадёт в рендер
 # — не определено: замерено на неизменном дереве, шесть рендеров подряд дали
 # каталог 5 раз и архив 1 раз.
@@ -25,8 +25,8 @@ description: "Kachō Cloud Control Plane — umbrella chart (flat API + Operatio
 # привязки в этот момент не было вовсе.
 #
 # Здешний же комментарий про `uif` эту ловушку называл прямым текстом — «два
-# одноимённых сабчарта делают рендер helm недетерминированным», — и четыре чарта
-# её воспроизводили. Запрет держит гейт internal/repohygiene/subchartdup_test.go.
+# одноимённых сабчарта делают рендер helm недетерминированным», — и вендоренные
+# чарты её воспроизводили. Запрет держит гейт internal/repohygiene/subchartdup_test.go.
 dependencies:
   - name: ingress-nginx
     version: 4.x
@@ -66,11 +66,6 @@ dependencies:
     alias: pg-geo
     version: 13.x
     repository: https://charts.bitnami.com/bitnami
-  - name: postgresql
-    alias: pg-openfga
-    version: 13.x
-    repository: https://charts.bitnami.com/bitnami
-    condition: pg-openfga.enabled
   # kacho-nlb owns its own Postgres instance (schema `kacho_nlb`, goose migrator).
   # Condition-gated so lean clusters can stay without NLB.
   - name: postgresql
@@ -147,12 +142,7 @@ dependencies:
     repository: https://charts.bitnami.com/bitnami
     condition: pg-storage.enabled
 
-  # ─── Identity / authorization tier ───────────────────────────────────────
-  # OpenFGA — ReBAC engine for kacho-iam.
-  - name: openfga
-    version: 0.2.x
-    repository: https://openfga.github.io/helm-charts
-    condition: openfga.enabled
+  # ─── Identity tier ────────────────────────────────────────────────────────
   # Ory stack — Kratos (identity + self-service flows) + Hydra (OAuth2/OIDC).
   #
   # ВЕРСИИ ПРИБИТЫ, А НЕ ПЛАВАЮТ — это условие работы гейта посадки, а не вкусовщина.

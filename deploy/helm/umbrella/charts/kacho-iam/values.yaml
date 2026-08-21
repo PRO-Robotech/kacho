@@ -157,7 +157,7 @@ image:
   pullPolicy: IfNotPresent
 
 # INFRA sec-hardening — pod- and per-container securityContext floor applied to
-# EVERY container of this workload (main + migrate/wait-for-openfga init), not
+# EVERY container of this workload (main + migrate init), not
 # just the OPA sidecar. runAsNonRoot + readOnlyRootFilesystem + drop ALL caps +
 # no privilege escalation + seccomp RuntimeDefault (CIS Kubernetes 5.2 / PSS
 # restricted). Overridable per profile; a writable emptyDir is mounted at /tmp
@@ -266,32 +266,11 @@ config:
       # страж не даст: он откажет в старте.
       maxConns: 80
       sslMode: disable
-  # ─── authz: кто принимает решение о доступе ────────────────────────────────
-  authz:
-    # verdictFormTypes — типы объектов (словарь МОДЕЛИ прав: `iam_group`, не
-    # `iam.group`), решение по которым принимает реляционная форма вычисления в
-    # собственной базе, а не внешний движок отношений.
-    #
-    # ПУСТО — не переключено ничего: решает движок по каждому типу. Умолчание
-    # названо явно; «как получится» состоянием службы прав не является.
-    #
-    # Переключение потиповое и обратимое без пересборки образа: правка этого
-    # перечня меняет отпечаток конфигурационной карты в шаблоне пода, под
-    # перекатывается, процесс поднимается с новой позицией и печатает её
-    # самоотчётом. Тип, о котором форму спросить нечем, роняет старт с именем
-    # типа и причиной.
-    #
-    # Условие переключения ТИПА — конформная перепись по нему (все четыре рода
-    # вопроса, доля «спросить нельзя» названа числом), а не удобство порядка.
-    verdictFormTypes: []
-    # shadowCompare — идёт ли теневая сверка двух форм.
-    #
-    # Включена по умолчанию: пока она идёт, «расхождений ноль» отличимо от
-    # «сравнений ноль» — а без этого различия решение о переключении типа
-    # принимать не на чем. Непустой verdictFormTypes при выключенной сверке —
-    # отказ в старте.
-    shadowCompare: true
-
+  # Секция `authz` снята вместе с внешним движком отношений (kacho#747, S6): её две
+  # ручки переключали источник вердикта потипово и включали теневую сверку двух
+  # форм. Источник один — переключать нечего, сверять не с чем. Профиль, сохранивший
+  # эти значения, объявлял бы посадку, которой в дереве нет; держит это гейт
+  # TestR7_3_32_NoProfileNamesTheRetiredLanding.
   authn:
     # secure-by-default (core rule #16); dev — явный opt-in dev-профиля.
     mode: production
@@ -361,24 +340,11 @@ config:
       # ФАКТИЧЕСКИМ отправителям: запись под несуществующего разрешала бы говорить за
       # пользователя предъявителю сертификата, которого мы не выпускаем. Появится
       # компонент — запись вернётся вместе с его кодом (решение владельца 2026-08-09).
-  extapi:
-    openfga:
-      # Only the Secret coordinates are consumed (deployment.yaml wires
-      # KACHO_IAM_OPENFGA_STORE_ID from them). The endpoint and the Check/
-      # ListObjects budgets come from KACHO_IAM_OPENFGA_ENDPOINT /
-      # KACHO_IAM_FGA_*_TIMEOUT_MS in the composition root, never from here.
-      storeIdSecretName: kacho-iam-openfga-store
-      storeIdSecretKey: store_id
 
 initContainer:
   migrator:
     enabled: true
     command: ["/usr/local/bin/kacho-migrator", "up"]
-  # wait-for-openfga init-container. На E0/E1 (без auth) — ставь false
-  # (OpenFGA ещё не задеплоен, pod иначе застрянет в Init).
-  # На E2/E3 — true (стандартная gate-проверка startup-порядка).
-  waitForExtAuth:
-    enabled: true
 
 resources:
   requests:
@@ -471,7 +437,7 @@ mtls:
   serverSecretName: kacho-iam-server-tls
   mountPath: /etc/kacho-iam/tls   # <mountPath>/server/{tls.crt,tls.key,ca.crt}
 
-# ─── KAC-127 Phase 3 — OPA sidecar + OpenFGA model id ────────────────────
+# ─── KAC-127 Phase 3 — OPA sidecar ───────────────────────────────────────
 # Fallback defaults if umbrella does not override. Umbrella's `opaSidecar.*`
 # section (in values.yaml at top-level) propagates here via subchart import
 # (Helm rule: subchart can read parent values only via `--set` or aliasing;
@@ -505,10 +471,6 @@ opaSidecar:
   # Dev-only inline policy fallback (bypasses bundle signing). MUST stay off on prod.
   policiesFallback:
     enabled: false
-
-# Mirror knob — `openfga-bootstrap-job` writes here at install/upgrade.
-openfgaBootstrap:
-  modelIdSecretName: openfga-model-id
 
 # metricsScrape — объявление СБОРА величин диагностической поверхности.
 #

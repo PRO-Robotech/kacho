@@ -387,8 +387,8 @@ func TestInterceptor_AllowSystemPrincipalAnonymousDenied(t *testing.T) {
 }
 
 // A ScopeFiltered RPC must NOT trigger the per-RPC Check — the handler
-// authorises at the data level (ListObjects-filtered result). A single-object
-// Check would 403 the whole call before the scope-filter runs.
+// authorises at the data level (it reads a page and checks the ids on it). A
+// single-object Check would 403 the whole call before the scope-filter runs.
 func TestInterceptor_ScopeFilteredRPCBypassesCheck(t *testing.T) {
 	stub := authz.CheckClientFunc(func(ctx context.Context, s, r, o string) (bool, error) {
 		t.Fatalf("Check must NOT be called on a ScopeFiltered RPC")

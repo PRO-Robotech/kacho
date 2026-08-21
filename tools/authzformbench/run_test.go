@@ -29,7 +29,7 @@ import (
 //
 //	AUTHZFORMBENCH_NS=10,100,1000,10000   the curve
 //	AUTHZFORMBENCH_SUBJECTS=10            S
-//	AUTHZFORMBENCH_FORMS=A-flat,D-container
+//	AUTHZFORMBENCH_FORMS=E-relational
 //	AUTHZFORMBENCH_WRITE_REPEATS=5
 //	AUTHZFORMBENCH_READ_REPEATS=20
 //	AUTHZFORMBENCH_OUT=/path/report.txt   (default: stdout only)
@@ -60,40 +60,22 @@ func TestRunMatrix(t *testing.T) {
 		}
 	}
 
-	r, err := NewRunner(stack, cfg, canon)
-	require.NoError(t, err)
+	r := NewRunner(stack, cfg)
 
-	// The engine's BatchCheck ceiling is MEASURED, once, before anything is timed —
-	// the report must print what this engine enforces, not what a comment says.
+	// Здесь ИЗМЕРЯЛСЯ потолок пакетной проверки движка отношений — один раз, до
+	// того как что-либо засекалось: отчёт обязан печатать то, что движок реально
+	// принимает, а не то, что о нём говорит комментарий. Повод был не
+	// педантический — дерево пинило движок в двух местах разными версиями, и
+	// спрашивать оказалось дешевле, чем разрешать спор. Потолка нет вместе с
+	// движком; часть страницы берётся из настройки и печатается в отчёте.
 	//
-	// Модель берётся у первой формы, У КОТОРОЙ ОНА ЕСТЬ: у формы E её нет вовсе, и
-	// прогон, состоящий из одной формы E, потолок движка не меряет — он ему не
-	// нужен, а взять nil-модель значило бы уронить прогон на пустом месте.
-	var probeModel []byte
-	for _, f := range cfg.Forms {
-		if m, ok := r.models[f]; ok {
-			probeModel = m
-			break
-		}
-	}
-	require.NotNil(t, probeModel, "ни у одной формы прогона нет модели — потолок движка мерить нечем")
-	probe, err := stack.NewStore(ctx, "cap-probe", probeModel)
-	require.NoError(t, err)
-	cap0, err := probe.probeBatchCap(ctx, BenchType, 1, 4096)
-	require.NoError(t, err)
-	stack.BatchCap = cap0
-	require.NoError(t, probe.Delete(ctx))
-	t.Logf("measured BatchCheck ceiling: %d (authzfilter.MaxBatchChecksPerRequest = 50)", cap0)
-	if cap0 < cfg.Partition {
-		t.Logf("engine ceiling %d is BELOW the configured partition %d — lowering the partition; "+
-			"the report says which was used", cap0, cfg.Partition)
-		cfg.Partition = cap0
-		r.Cfg.Partition = cap0
-	}
-
+	// Каноническая модель по-прежнему ЧИТАЕТСЯ, хотя ни одной модели авторизации
+	// прибор больше не готовит: её отпечаток — часть провенанса. План вердикта
+	// формы E компилируется из неё же (продуктовым `internal/authzplan`), поэтому
+	// «на какой модели снят замер» остаётся осмысленным вопросом.
 	sum := sha256.Sum256([]byte(canon))
 	modelPath, _, _ := ResolveCanonicalModel()
-	prov := CollectProvenance(stack, modelPath, hex.EncodeToString(sum[:])[:16])
+	prov := CollectProvenance(stack.Postgres, modelPath, hex.EncodeToString(sum[:])[:16])
 
 	var cells []Cell
 	for _, f := range cfg.Forms {
@@ -114,16 +96,16 @@ func TestRunMatrix(t *testing.T) {
 		t.Logf("report written to %s", out)
 	}
 
-	// The run does not fail on a not-run cell — that would hide the rest of the
-	// matrix. It fails when NOTHING was measured, because a report of only
-	// third-category outcomes must never read as a completed comparison.
+	// Прогон не падает на отдельной неснятой ячейке — это скрыло бы остальную
+	// таблицу. Он падает, когда не измерено НИЧЕГО: отчёт из одних исходов третьей
+	// категории не должен читаться как состоявшийся замер.
 	measured := 0
 	for _, c := range cells {
 		if c.Outcome == Measured {
 			measured++
 		}
 	}
-	require.Positive(t, measured, "not a single cell was measured — the report is not a comparison")
+	require.Positive(t, measured, "не измерена ни одна ячейка — отчёт не является замером")
 	t.Logf("cells: %d measured, %d other", measured, len(cells)-measured)
 }
 

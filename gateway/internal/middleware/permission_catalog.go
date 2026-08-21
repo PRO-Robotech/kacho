@@ -54,8 +54,8 @@ type CatalogEntry struct {
 	// bypass per-RPC authz (Login / Register / Recovery / Health).
 	Permission string `json:"permission"`
 
-	// RequiredRelation — OpenFGA relation (`viewer` / `editor` / `admin` /
-	// domain-specific) checked against the scope.
+	// RequiredRelation — relation of the rights model (`viewer` / `editor` /
+	// `admin` / domain-specific) checked against the scope.
 	RequiredRelation string `json:"required_relation"`
 
 	// ScopeExtractor — how to obtain the scope id from the incoming request.
@@ -140,7 +140,7 @@ type CatalogEntry struct {
 
 // ScopeExtractor — mirrored from `kacho.cloud.iam.v1.PermissionScopeExtractor`.
 type ScopeExtractor struct {
-	// ObjectType — OpenFGA object type ("project" / "vpc_network" / ...).
+	// ObjectType — object type of the rights model ("project" / "vpc_network" / ...).
 	ObjectType string `json:"object_type"`
 
 	// FromRequestField — top-level proto request field name from which the

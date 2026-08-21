@@ -21,12 +21,12 @@ title: Авторизация и приватность
 Plaintext/insecure-gRPC в проде запрещён. dev-mode «anonymous → full access» допустим только в
 локальных unit/integration-фикстурах — в развёрнутом стенде каждый запрос проходит AuthN.
 
-## Авторизация (AuthZ) — per-RPC ReBAC
+## Авторизация (AuthZ) — per-RPC вердикт о доступе
 
-Каждый RPC (public **и** internal) проходит per-RPC **Check** через OpenFGA (ReBAC,
-relation-based). kacho-compute вызывает `InternalIAMService.Check` в kacho-iam (где живут FGA
-tuples); интерсептор проверяет, что субъект имеет нужное отношение (`relation`) на целевой
-ресурс или его проект:
+Каждый RPC (public **и** internal) проходит per-RPC **Check**: kacho-compute вызывает
+`InternalIAMService.Check` в kacho-iam, а тот вычисляет вердикт о доступе реляционной формой
+в собственной базе по модели прав. Интерсептор проверяет, что субъект имеет нужное отношение
+(`relation`) на целевой ресурс или его проект:
 
 - **read** (`Get` / `List`) — отношение `viewer`-tier;
 - **мутации** (`Create` / `Update` / `Delete` / lifecycle-действия) — `editor`-tier.
@@ -53,17 +53,17 @@ capability, а не право. Его энтропия защищает от п
 flowchart LR
   cli["Клиент"] -->|"Bearer JWT"| agw["api-gateway"]
   agw -->|"verify JWT + subject"| cmp["kacho-compute"]
-  cmp -->|"Check(subject, relation, object)"| iam["kacho-iam / OpenFGA"]
+  cmp -->|"Check(subject, relation, object)"| iam["kacho-iam"]
   iam -->|"allow / deny"| cmp
   cmp -->|"SQL"| pg[("kacho_compute")]
 ```
 
-## Регистрация owner-tuple
+## Регистрация владения ресурсом
 
-При создании ресурса kacho-compute регистрирует owner-hierarchy-tuple в OpenFGA **через
-kacho-iam** (`InternalIAMService.RegisterResource`) — модуль не ходит в FGA напрямую. Запись
+При создании ресурса kacho-compute регистрирует владение **через kacho-iam**
+(`InternalIAMService.RegisterResource`) — модуль не пишет в модель прав напрямую. Запись
 идемпотентна, at-least-once через transactional-outbox (drainer). Так создатель ресурса и
-члены проекта получают доступ по правилам ReBAC.
+члены проекта получают доступ по модели прав.
 
 ## Фильтрация List
 

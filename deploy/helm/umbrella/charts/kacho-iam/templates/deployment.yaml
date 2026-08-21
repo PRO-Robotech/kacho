@@ -75,27 +75,6 @@ spec:
         kacho.cloud/image-id: {{ dig "kachoImageIds" "iam" "unset" (.Values.global | default dict) | quote }}
         # ConfigMap-content hash → pod rolling-restart при изменении config.yaml.
         kacho.cloud/config-checksum: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        # ЗДЕСЬ НАМЕРЕННО НЕТ `kacho.cloud/openfga-model-id-rev` — kacho#3.
-        #
-        # Эта аннотация на живом объекте ЕСТЬ: её ставит openfga-bootstrap-job
-        # (post-install/post-upgrade hook) после записи новой модели прав, чтобы
-        # перекатить под — идентификатор модели приезжает через
-        # `valueFrom.secretKeyRef` и читается процессом РОВНО ОДИН РАЗ, на старте.
-        #
-        # Объявлять её ещё и здесь нельзя: у поля стало бы два писателя — чарт со
-        # значением-заглушкой и задание с настоящим. Helm 3 сводил манифесты
-        # на клиенте и на владение не смотрел; Helm 4 применяет их на стороне
-        # сервера, где владение полем энфорсится, — и обновление релиза падает
-        # конфликтом менеджеров полей на этой самой аннотации.
-        #
-        # Владельца нельзя выбрать в пользу чарта: значение существует только
-        # ПОСЛЕ обращения к OpenFGA, а OpenFGA поднимает этот же релиз — то есть
-        # раньше момента, когда шаблон рендерится, идентификатора не существует.
-        # Значит поле принадлежит заданию, а чарт про него только рассказывает.
-        # Остальные Deployment'ы из списка задания эту аннотацию и не объявляли —
-        # здесь снята единственная асимметрия.
-        #
-        # Держит это deploy/tests/helm/podtemplate-annotation-single-owner-test.sh.
         {{- if .Values.opaSidecar.enabled }}
         # config-checksum выше хэширует ТОЛЬКО configmap.yaml, а с включённым
         # OPA-сайдкаром под потребляет ещё два ConfigMap'а: политику сайдкара
@@ -166,34 +145,6 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.db.passwordSecretName }}
                   key: {{ .Values.db.passwordSecretKey }}
-        {{- end }}
-        # KAC-105 / sub-phase-2.0-iam-overview-acceptance NFR-9:
-        # «kacho-iam config-load fails-fast, если OpenFGA недоступен;
-        #  ordering managed через init-container, пингующий OpenFGA HTTP-ready
-        #  endpoint». На E0/E1 коду kacho-iam ещё не нужен OpenFGA (это E3); НО
-        # init-container остаётся в шаблоне как infrastructure-readiness гарантия.
-        # Условие `initContainer.waitForExtAuth.enabled` (default `true`) позволяет
-        # отключить ожидание для E0/E1-стендов где OpenFGA ещё не задеплоен.
-        # KAC-127: wait-for-zitadel удалён — identity/OIDC tier на Ory Kratos + Hydra.
-        {{- if .Values.initContainer.waitForExtAuth.enabled }}
-        - name: wait-for-openfga
-          image: busybox:1.36
-          securityContext:
-            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
-          command:
-            - sh
-            - -c
-            - |
-              echo "wait-for-openfga: ожидаем kacho-umbrella-openfga:8080 (max 300s)…"
-              for i in $(seq 1 60); do
-                if nc -z kacho-umbrella-openfga 8080 2>/dev/null; then
-                  echo "wait-for-openfga: OK"
-                  exit 0
-                fi
-                sleep 5
-              done
-              echo "wait-for-openfga: TIMEOUT — kacho-umbrella-openfga:8080 недоступен"
-              exit 1
         {{- end }}
       containers:
         - name: {{ include "kacho-iam.fullname" . }}
@@ -367,27 +318,6 @@ spec:
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- end }}
             {{- end }}
-            # OpenFGA store-id создаётся bootstrap-job'ом, см. umbrella/templates/openfga-bootstrap-job.yaml.
-            # На E0 secret может ещё не существовать к моменту первого старта;
-            # `optional: true` позволяет pod'у стартовать без него (kacho-iam
-            # начнёт использовать OpenFGA только в E3, до этого — no-op).
-            - name: KACHO_IAM_OPENFGA_STORE_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.config.extapi.openfga.storeIdSecretName }}
-                  key: {{ .Values.config.extapi.openfga.storeIdSecretKey }}
-                  optional: true
-            # ─── KAC-127 Phase 3 — authz core env vars ──────────────────
-            # acceptance §5.2 / P3-D2: pinned authorization_model_id (versioned + immutable).
-            # Источник — Secret openfga-model-id, key `current`, patch'ит openfga-bootstrap-job.
-            # `optional: true` для cold-start до первого bootstrap; кешируется in-memory
-            # после первого успешного fetch, refreshes на NOTIFY `kacho_iam_subjects`.
-            - name: KACHO_IAM_OPENFGA_MODEL_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.openfgaBootstrap.modelIdSecretName | default "openfga-model-id" }}
-                  key: current
-                  optional: true
             # subject-change push-drainer (W1.2): IAM нотифицирует api-gateway
             # InternalAuthzCacheService об изменениях subject → инвалидация authz-кэша.
             # REQUIRED в коде (cmd/kacho-iam/subject_change_wiring.go) — без него pod

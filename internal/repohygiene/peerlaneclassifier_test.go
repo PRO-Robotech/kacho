@@ -80,7 +80,6 @@ const peerClientDir = "internal/clients/"
 // TestForeignSystemDirsHaveSubject: запись, которой больше нечего исключать,
 // создаёт впечатление границы, которой нет.
 var foreignSystemDirs = map[string]string{
-	"openfga":      "хранилище отношений — чужой протокол и чужие коды",
 	"hydra":        "провайдер токенов — OAuth2, не наш каталог",
 	"/zot/":        "реестр образов — distribution-API, не наш каталог",
 	"/jwks/":       "публичные ключи верификации — HTTP, а не gRPC-полоса",

@@ -33,11 +33,11 @@
 //	                                       │  kacho-iam :9091         │
 //	                                       │  InternalIAMService.Check│
 //	                                       └──────────────────────────┘
-//	                                                  │
-//	                                                  ▼ openfga.Check
-//	                                       ┌──────────────────────────┐
-//	                                       │  OpenFGA                 │
-//	                                       └──────────────────────────┘
+//
+// Дальше сети НЕТ: вердикт складывает реляционная форма в собственной базе iam.
+// Здесь стоял пятый ярус — внешний движок отношений, которому iam пересылал
+// вопрос. Его сняли, и для потребителя это значит ровно одно: сосед в пути
+// решения один, поэтому и отказ ниже назван один.
 //
 // # Окно отзыва (объявлено политикой — см. revocation_policy.go)
 //
@@ -70,7 +70,7 @@
 //
 // # Fail modes
 //
-//   - OpenFGA / kacho-iam.Check unavailable → fail-closed `PermissionDenied`.
+//   - kacho-iam.Check unavailable → fail-closed `PermissionDenied`.
 //   - `KACHO_<SVC>_AUTHZ__BREAKGLASS=true` env (dev/break-glass) → bypass Check
 //   - WARN log (rate-limited) + Prometheus alert.
 //

@@ -953,8 +953,8 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// Прямой write-side FGA убран: каждый Create/Delete ресурса эмитит FGA
 	// owner-tuple register/unregister INTENT в своей writer-TX (один commit, без
 	// dual-write); register-drainer применяет каждый intent через kacho-iam
-	// InternalIAMService.RegisterResource по mTLS. В use-case'ах больше нет
-	// fgaTupleWriter / OpenFGAWriteClient.
+	// InternalIAMService.RegisterResource по mTLS. Писателя кортежей прав в
+	// use-case'ах больше нет вовсе: права пишет владелец, и только он.
 
 	// Все VPC-ресурсы (Network/Subnet/Address/RouteTable/SecurityGroup/Gateway/
 	// NetworkInterface) работают через `kacho.Repository` (Reader/Writer split).
