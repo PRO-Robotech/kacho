@@ -59,19 +59,26 @@ var catalogPublicReads = []string{
 	"/kacho.cloud.compute.v1.MachineTypeService/List",
 }
 
-// TestPermissionMap_CatalogReads_ViewerOnCluster — each public catalog read is
-// mapped → relation "viewer", object "cluster:cluster_kacho_root".
-func TestPermissionMap_CatalogReads_ViewerOnCluster(t *testing.T) {
+// TestPermissionMap_CatalogReads_CarryNoRelation — публичное чтение каталога
+// проверки прав НЕ несёт: полоса `<exempt>`, паритет с каталогом geo.
+// authN при этом обязателен — его требует ветка `<exempt>` на крае, и это
+// проверяется там же, где живёт.
+//
+// Прежняя редакция требовала `viewer` на кластерном синглтоне. Это отношение не
+// производит ни один посев, поэтому проверка отвечала отказом каждому — и
+// арендатору, и администратору, — а каталог был недостижим, то есть машину
+// нельзя было создать вовсе. Проба закрепляла ровно то состояние, из-за
+// которого продукт не работал.
+func TestPermissionMap_CatalogReads_CarryNoRelation(t *testing.T) {
 	m := check.PermissionMap()
 	for _, fullMethod := range catalogPublicReads {
 		entry, ok := m[fullMethod]
-		require.Truef(t, ok, "catalog read RPC %s must be present in PermissionMap (public listener runs authz Check)", fullMethod)
-		require.Equalf(t, "viewer", entry.Relation, "%s: required_relation must be viewer", fullMethod)
-		require.NotNilf(t, entry.Extract, "%s: must carry an ObjectExtractor", fullMethod)
-		objType, objID, err := entry.Extract(nil)
-		require.NoErrorf(t, err, "%s: cluster-scoped extractor must not error", fullMethod)
-		require.Equalf(t, "cluster", objType, "%s: object_type must be cluster", fullMethod)
-		require.Equalf(t, "cluster_kacho_root", objID, "%s: object_id must be cluster singleton", fullMethod)
+		if !ok {
+			continue // записи `<exempt>` в карту проверок не попадают by construction
+		}
+		require.Emptyf(t, entry.Relation,
+			"%s: чтение каталога — полоса `<exempt>`; непустое отношение означает, что запись "+
+				"объявляет проверку, которой на крае нет", fullMethod)
 	}
 }
 

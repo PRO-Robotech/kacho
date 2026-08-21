@@ -53,17 +53,20 @@ import (
 // Anything else — bindings, attachments, interfaces, authorization answers — is
 // tenant data, however read-only it looks.
 func referenceCatalogueRPCs() map[string]string {
-	return map[string]string{
-		// Machine inventory: the shapes of machine a tenant may ask for. Curated by
-		// the platform, identical for every tenant, required before Instance.Create.
-		"kacho.cloud.compute.v1.MachineTypeService/Get":  "global machine-type catalogue",
-		"kacho.cloud.compute.v1.MachineTypeService/List": "global machine-type catalogue",
-		// Disk inventory, compute's copy. The block-storage split has not retired it
-		// yet; while it is served it is the same catalogue with the same standing.
-		// Disk inventory on the owning service. Required before Volume.Create.
-		"kacho.cloud.storage.v1.DiskTypeService/Get":  "global disk-type catalogue",
-		"kacho.cloud.storage.v1.DiskTypeService/List": "global disk-type catalogue",
-	}
+	// EMPTY IS THE GOAL, NOT A GAP. A row standing on a wildcard-satisfiable
+	// relation says "authenticated" while looking like an authorization check.
+	// For a genuine global catalogue that reading is correct — but then the row
+	// should say so outright, and the lane that says it outright is `<exempt>`.
+	//
+	// The machine-type and disk-type catalogues used to be named here. Both were
+	// moved to `<exempt>` (#892) after the relation they stood on turned out to
+	// be produced by nobody at all, so the check answered 403 to everyone rather
+	// than "yes" to everyone. Parity with the geo catalogue, which took that lane
+	// earlier.
+	//
+	// Add a row here only when a catalogue genuinely stands on such a relation and
+	// the `<exempt>` lane is unavailable — and say why in the value.
+	return map[string]string{}
 }
 
 // typeRelation is one (object type, relation) pair of the authorization model.

@@ -622,9 +622,13 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	//
 	// ВНУТРЕННИЕ ПЯТЬ глаголов пределов ОСТАЮТСЯ на окно расширения (S1→S3) —
 	// отсюда прирост, а не замена.
+	// #892 перевёл ЧЕТЫРЕ чтения каталогов (типы машин, типы дисков) из полосы
+	// с порогом в полосу `<exempt>`: они гейтились отношением, которого не
+	// производит никто, поэтому отвечали отказом всем. Отсюда −4 у обычной
+	// полосы и +4 у полосы без требования; общее число записей не меняется.
 	assert.Equal(t, 31, n2, "sensitive count")
-	assert.Equal(t, 281, n1, "routine count")
-	assert.Equal(t, 29, nEmpty, "no-requirement (exempt) count")
+	assert.Equal(t, 277, n1, "routine count")
+	assert.Equal(t, 33, nEmpty, "no-requirement (exempt) count")
 	assert.Equal(t, 341, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.

@@ -24,9 +24,6 @@ func TestPermissionCatalog_RedesignReg(t *testing.T) {
 	want := []struct {
 		fqn, perm, rel, objType, fromField string
 	}{
-		// compute MachineTypeService — public read (cluster-viewer, geo-parity).
-		{"kacho.cloud.compute.v1.MachineTypeService/Get", "compute.machineTypes.get", "viewer", "cluster", "*"},
-		{"kacho.cloud.compute.v1.MachineTypeService/List", "compute.machineTypes.list", "viewer", "cluster", "*"},
 		// compute InternalMachineTypeService — admin CRUD (system_admin on cluster).
 		{"kacho.cloud.compute.v1.InternalMachineTypeService/Create", "compute.machineTypes.create", "system_admin", "cluster", "*"},
 		{"kacho.cloud.compute.v1.InternalMachineTypeService/Update", "compute.machineTypes.update", "system_admin", "cluster", "*"},
@@ -51,6 +48,28 @@ func TestPermissionCatalog_RedesignReg(t *testing.T) {
 		// relation and no scope of its own — see the dedicated case below.
 		{"kacho.cloud.iam.v1.AccessBindingService/Revoke", "iam.access_bindings.revoke", "v_delete", "iam_access_binding", "access_binding_id"},
 	}
+	// Каталоги, читаемые ЛЮБЫМ аутентифицированным: project-scope EXEMPT (#892),
+	// паритет с каталогом geo. Их место здесь, а не в `want`: там перечислены
+	// записи, ОБЪЯВЛЯЮЩИЕ проверку на крае, и утверждение «не exempt» для них
+	// несущее. Оба каталога стояли на `viewer@cluster` — отношении, которого не
+	// производит никто, — поэтому отвечали отказом каждому вызывающему, и ни
+	// машина, ни том не создавались.
+	for _, fqn := range []string{
+		"kacho.cloud.compute.v1.MachineTypeService/Get",
+		"kacho.cloud.compute.v1.MachineTypeService/List",
+	} {
+		t.Run(fqn+" (exempt)", func(t *testing.T) {
+			entry, ok := c.Lookup(fqn)
+			require.True(t, ok, "fqn missing from embedded catalog: %s", fqn)
+			assert.True(t, entry.IsExempt(),
+				"%s — глобальный каталог, читаемый любым аутентифицированным: полоса `<exempt>`", fqn)
+			assert.Empty(t, entry.RequiredRelation,
+				"%s: у записи `<exempt>` отношения быть не может — иначе она объявляет проверку, которой нет", fqn)
+			assert.Empty(t, entry.ScopeExtractor.ObjectType,
+				"%s: у записи `<exempt>` области быть не может", fqn)
+		})
+	}
+
 	for _, w := range want {
 		t.Run(w.fqn, func(t *testing.T) {
 			entry, ok := c.Lookup(w.fqn)
