@@ -38,3 +38,25 @@ func (a *SessionRevocationsAdapter) Revoke(ctx context.Context, in *iamv1.Revoke
 	_, err := a.client.Revoke(ctx, in)
 	return err
 }
+
+// IsSessionRevoked asks kacho-iam whether the credential with this identifier
+// has been revoked in OUR record — the one written by sign-out and by the
+// administrative force-logout.
+//
+// ЗАЧЕМ ОТДЕЛЬНЫЙ ВОПРОС, ЕСЛИ КРАЙ УЖЕ СПРАШИВАЕТ ПРОВАЙДЕРА. Провайдер знает
+// о своих отзывах и об истечении срока; о записи, которую делаем МЫ, он не знает
+// и знать не может. До появления этого вызывающего наш отзыв не участвовал в
+// решении на пути запроса вовсе: запись писалась и читалась только
+// административными путями (#797).
+//
+// Ошибка возвращается БЕЗ ПОДМЕНЫ: «спросить не удалось» и «отозван» — разные
+// исходы, и вызывающий (middleware.LocalThenProviderRevocation) обязан их
+// различать, иначе недоступность соседа читалась бы как отзыв, а отзыв — как
+// недоступность.
+func (a *SessionRevocationsAdapter) IsSessionRevoked(ctx context.Context, jti string) (bool, error) {
+	resp, err := a.client.IsRevoked(ctx, &iamv1.IsRevokedRequest{TokenJti: jti})
+	if err != nil {
+		return false, err
+	}
+	return resp.GetRevoked(), nil
+}
