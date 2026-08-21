@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
@@ -173,7 +174,16 @@ func runServe(cfg config.Config) error {
 	// Приёмник читателя величин кеша вердиктов. Объявлен ДО дескриптора: кеш
 	// собирает носитель контура, и читателя он отдаёт через поле дескриптора.
 	var authzCache authzmetrics.Source
-	desc, err := describe(cfg, logger, narrower, pg.NewExistenceProbe(pool), authzCache.Install)
+
+	// Приватный prometheus-реестр. Скрейпится ТОЛЬКО с cluster-internal
+	// diagnostic-порта; ServiceMonitor чарта нацелен именно на него.
+	//
+	// Собирается ДО дескриптора: реестр — поле объявления, и без него дескриптор
+	// не принимается. Регистрации коллекторов остаются ниже по тексту — им нужен
+	// только сам реестр, а не порядок относительно объявления.
+	svcMetrics := metrics.New()
+
+	desc, err := describe(cfg, logger, narrower, pg.NewExistenceProbe(pool), authzCache.Install, svcMetrics.Registerer())
 	if err != nil {
 		return err
 	}
@@ -199,9 +209,6 @@ func runServe(cfg config.Config) error {
 	}
 	operations.Start()
 
-	// Приватный prometheus-реестр. Скрейпится ТОЛЬКО с cluster-internal
-	// diagnostic-порта; ServiceMonitor чарта нацелен именно на него.
-	svcMetrics := metrics.New()
 	// Величины сужателя выходят из процесса ТОЛЬКО здесь. Полос четыре: одна
 	// положительная и три — страница, ушедшая БЕЗ пообъектной проверки. Снимите
 	// эту строку — и полосы исчезнут с поверхности, а не станут нулями; ровно это
@@ -496,6 +503,7 @@ func describe(
 	narrower servicecontract.ListNarrower,
 	existence servicecontract.ExistenceProbe,
 	authzObserve func(read func() authz.Metrics),
+	metricsReg prometheus.Registerer,
 ) (servicecontract.Descriptor, error) {
 	mode, err := servicecontract.ParseMode(cfg.AuthMode)
 	if err != nil {
@@ -548,6 +556,11 @@ func describe(
 		// границу только здесь. Без него доля попаданий не выходит из процесса,
 		// и «сколько даёт кеш» остаётся непроверяемым в обе стороны.
 		AuthzObserve: authzObserve,
+
+		// Реестр приходит из корня по той же причине: серии задержки заводит
+		// носитель своими руками, а поверхность, которую скребут, держит корень.
+		// Разбор решения — у `servicecontract.Spec.Metrics`.
+		Metrics: metricsReg,
 
 		// Верхняя граница обработки вызова. «Не применимо» у неё нет: вызов без
 		// срока держит соединение из ограниченного пула столько, сколько

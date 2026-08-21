@@ -40,6 +40,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
@@ -114,7 +115,7 @@ func TestCarrierRaisesVPCWithoutAStartRefusal(t *testing.T) {
 
 	desc, err := describe(cfg, mtls, logger, buildListFilter(cfg, nil, logger),
 		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
-		observeAuthzCache)
+		observeAuthzCache, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут конструктором — процесс не поднялся бы:\n%v", err)
 	}

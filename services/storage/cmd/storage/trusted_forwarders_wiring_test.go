@@ -36,6 +36,8 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // circleOfDescriptor — круг, который несёт принятый дескриптор storage.
@@ -44,7 +46,7 @@ func circleOfDescriptor(t *testing.T, cfg configForCircle) []string {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	c := prodCfg(cfg.sans...)
 	c.AuthMode = "dev" // предмет — круг, а не боевая строгость транспорта
-	desc, err := describe(c, logger, buildListFilter(c, nil, logger), probeExistence{}, probeAuthzObserve)
+	desc, err := describe(c, logger, buildListFilter(c, nil, logger), probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор не принят на круге %v: %v", cfg.sans, err)
 	}

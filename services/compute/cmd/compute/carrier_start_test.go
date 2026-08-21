@@ -29,6 +29,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
@@ -86,7 +88,7 @@ func TestCarrierCensusIsNotEmptyForCompute(t *testing.T) {
 
 	desc, err := describe(cfg, logger, buildListFilter(cfg, nil, logger),
 		bootgate.New(bootgate.Config{RequireIAM: cfg.RequireIAM, Service: "kacho-compute"}), probeExistence{},
-		observeAuthzCache)
+		observeAuthzCache, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}

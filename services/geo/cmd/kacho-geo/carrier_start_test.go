@@ -30,6 +30,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
@@ -60,7 +61,7 @@ func TestCarrierRaisesGeoWithoutAStartRefusal(t *testing.T) {
 	var authzCacheReader func() authz.Metrics
 	observeAuthzCache := func(read func() authz.Metrics) { authzCacheReader = read }
 
-	desc, err := describe(cfg, logger, observeAuthzCache)
+	desc, err := describe(cfg, logger, observeAuthzCache, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут конструктором — процесс не поднялся бы:\n%v", err)
 	}

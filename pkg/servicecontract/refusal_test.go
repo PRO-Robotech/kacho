@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -74,6 +75,7 @@ func lawful() servicecontract.Spec {
 		Delivery:      servicecontract.NotApplicable[servicecontract.DeliveryProvenance]("демо ничего не регистрирует у владельца прав"),
 		DenyBudget:    servicecontract.Value(100.0),
 		AuthzObserve:  func(func() authz.Metrics) {},
+		Metrics:       prometheus.NewRegistry(),
 		BootGate:      servicecontract.NotApplicable[servicecontract.BootGate]("демо ничего не эмитит владельцу прав, поднимать нечего"),
 		StreamBudget:  servicecontract.NotApplicable[time.Duration]("демо не служит серверных стримов"),
 		Admission: servicecontract.Value(servicecontract.Admission{
@@ -501,4 +503,47 @@ func TestO12_ObserverIsRequiredForTheSelfDecidingOwnerToo(t *testing.T) {
 	s.CacheWindow = 5 * time.Second
 	s.AuthzObserve = nil
 	refuses(t, s, "AuthzObserve")
+}
+
+// ── О13: задержку обслуженного вызова некуда записать ───────────────────────
+
+// TestO13_UnobservedLatencyRefusesStart — реестр метрик обязателен.
+//
+// Отрицание в паре с положительным контролем [TestLawfulSpecIsAccepted]: без
+// него «отвергнуто» было бы неотличимо от конструктора, отвергающего всё.
+func TestO13_UnobservedLatencyRefusesStart(t *testing.T) {
+	s := lawful()
+	s.Metrics = nil
+	refuses(t, s, "Metrics", "задержк")
+}
+
+// TestO13_LatencyObservationIsRequiredInDevPostureToo — dev-посадка НЕ
+// освобождена, и это отдельная проба, а не придирка.
+//
+// Освобождение dev выглядит безобидно и снимает предмет задачи целиком: стенд
+// разработчика — ровно то место, где задержку меряют перед тем, как что-нибудь
+// про неё утверждать. Освободив его, мы получили бы процесс, у которого «не
+// наблюдает» неотличимо от «наблюдает», в единственной посадке, где на это
+// смотрят руками.
+//
+// Проба сторожит именно РЕШЕНИЕ: если завтра кто-нибудь заведёт здесь ветку по
+// режиму, она покраснеет.
+func TestO13_LatencyObservationIsRequiredInDevPostureToo(t *testing.T) {
+	s := lawful()
+	s.Mode = servicecontract.ModeDev
+	s.Metrics = nil
+	refuses(t, s, "Metrics")
+}
+
+// TestO13_LawfulDevSpecWithARegistryIsAccepted — законный близнец предыдущей
+// пробы.
+//
+// Без него отрицание выше зеленело бы и на конструкторе, отвергающем всякую
+// dev-посадку по любой причине.
+func TestO13_LawfulDevSpecWithARegistryIsAccepted(t *testing.T) {
+	s := lawful()
+	s.Mode = servicecontract.ModeDev
+	if _, err := servicecontract.New(s); err != nil {
+		t.Fatalf("законная dev-посадка с реестром отвергнута — отрицание выше вакуумно: %v", err)
+	}
 }

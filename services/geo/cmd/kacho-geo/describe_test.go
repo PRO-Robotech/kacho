@@ -27,6 +27,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/observability"
@@ -71,7 +72,7 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 // пока он красный, процесс не поднимается вовсе, а всякое отрицание ниже
 // зеленеет по чужой причине.
 func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
-	desc, err := describe(bootConfig(t, nil), slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve)
+	desc, err := describe(bootConfig(t, nil), slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор geo отвергнут конструктором — процесс НЕ ПОДНИМЕТСЯ:\n%v", err)
 	}
@@ -104,7 +105,7 @@ func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
 func TestDescribeProbeCanFail(t *testing.T) {
 	// Ребро решения о доступе не названо — отказ О6.
 	cfg := bootConfig(t, map[string]string{"KACHO_GEO_AUTHZ_IAM_GRPC_ADDR": ""})
-	_, err := describe(cfg, slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve)
+	_, err := describe(cfg, slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve, prometheus.NewRegistry())
 	if err == nil {
 		t.Fatal("дескриптор без ребра решения о доступе принят — конструктор не судит ничего, " +
 			"и положительная проба выше вакуумна")
@@ -209,7 +210,7 @@ func TestGeoServesNoServerStream(t *testing.T) {
 	// Вторая сторона той же оси, и на СВОЁМ дескрипторе: величина, объявленная
 	// процессом без единой подписки, — проводка без предмета. Носитель откажет в
 	// этом и сам (О11), но на старте процесса; проба переносит отказ в прогон.
-	desc, err := describe(bootConfig(t, nil), slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve)
+	desc, err := describe(bootConfig(t, nil), slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
@@ -226,7 +227,7 @@ func TestGeoServesNoServerStream(t *testing.T) {
 // здесь утверждается лишь то, что обе читают одно и то же и не расходятся.
 func TestBootPostureStillReportsWhatTheDescriptorCarries(t *testing.T) {
 	cfg := bootConfig(t, nil)
-	desc, err := describe(cfg, slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve)
+	desc, err := describe(cfg, slog.New(slog.NewTextHandler(&strings.Builder{}, nil)), probeAuthzObserve, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}

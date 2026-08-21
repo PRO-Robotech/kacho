@@ -27,6 +27,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
@@ -92,7 +93,7 @@ func probeGate() *bootgate.Gate {
 // пока он красный, процесс не поднимается вовсе, а всякое отрицание ниже зеленеет
 // по чужой причине.
 func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
-	desc, err := describe(bootConfig(t, nil), quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve)
+	desc, err := describe(bootConfig(t, nil), quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор kacho-nlb отвергнут конструктором — процесс НЕ ПОДНИМЕТСЯ:\n%v", err)
 	}
@@ -159,7 +160,7 @@ func TestDescribeProbeCanFail(t *testing.T) {
 		"KACHO_NLB_EXTAPI__IAM__INTERNAL_ADDR": "",
 		"KACHO_NLB_EXTAPI__IAM__ADDR":          "",
 	})
-	_, err := describe(cfg, quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve)
+	_, err := describe(cfg, quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 	if err == nil {
 		t.Fatal("дескриптор без ребра решения о доступе принят — конструктор не судит ничего, " +
 			"и положительная проба выше вакуумна")
@@ -183,7 +184,7 @@ func TestDescribeProbeCanFail(t *testing.T) {
 // носителю знать неоткуда: КАКОЙ круг приносит этот сервис — и что пустой он
 // принести не вправе.
 func TestDeclaredCircleIsTheOneTheProcessCarries(t *testing.T) {
-	desc, err := describe(bootConfig(t, nil), quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve)
+	desc, err := describe(bootConfig(t, nil), quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
@@ -230,7 +231,7 @@ func TestCarrierRaisesTheService(t *testing.T) {
 		"KACHO_NLB_API_SERVER__ENDPOINT":          "tcp://127.0.0.1:0",
 		"KACHO_NLB_API_SERVER__INTERNAL_ENDPOINT": "tcp://127.0.0.1:0",
 	})
-	desc, err := describe(cfg, quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve)
+	desc, err := describe(cfg, quietLogger(), probeNarrower(), probeGate(), probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
