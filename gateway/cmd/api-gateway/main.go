@@ -262,8 +262,27 @@ func main() {
 		if rcErr != nil {
 			log.Fatalf("revocation check: %v", rcErr)
 		}
-		authInterceptor = authInterceptor.WithRevocationCheck(revocationCache, 0)
+		// ИСТОЧНИКОВ ОТЗЫВА ДВА, И СПРАШИВАЮТСЯ ОБА (#797).
+		//
+		// Провайдер знает о своих отзывах и об истечении срока. О записи, которую
+		// делает НАШ выход — по идентификатору удостоверения, — он не знает и
+		// знать не может. До этой провязки наш отзыв не участвовал в решении на
+		// пути запроса вовсе: он писался и читался только административными
+		// путями, то есть выход записывал намерение, а не прекращал доступ.
+		//
+		// Соединение к iam уже поднято выше (dialBackends) и является
+		// критическим: без него край не обслуживает ни одного запроса, потому
+		// что iam фронтит и личность, и права. Поэтому отдельной ветки «а вдруг
+		// его нет» здесь не заводится — она была бы веткой, в которой край всё
+		// равно не работает.
+		var revocationChecker middleware.TokenRevocationChecker = revocationCache
+		if iamConn := backends["iamInternal"]; iamConn != nil {
+			revocationChecker = middleware.NewLocalThenProviderRevocation(
+				clients.NewSessionRevocationsAdapter(iamConn), revocationCache)
+		}
+		authInterceptor = authInterceptor.WithRevocationCheck(revocationChecker, 0)
 		logger.Info("revocation check active on the authN path",
+			"sources", "own record + provider introspection",
 			"cache_ttl_s", cfg.IntrospectionCacheTTLSeconds,
 			"cache_entries", cfg.IntrospectionCacheSize,
 			"per_call_timeout_ms", cfg.IntrospectionTimeoutMs)
