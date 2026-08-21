@@ -586,6 +586,26 @@ func main() {
 	}
 
 	// --- gRPC server ---
+	//
+	// ПОТОЛОК ТЕМПА И ОДНОВРЕМЕННОСТИ на вызывающего — сначала величины, потом
+	// ограничители, потом всё, что ими покрывается. Величины обоих слушателей
+	// разрешаются ОДНИМ вызовом и ДО первой сборки сервера: негодный набор — это
+	// отказ старта, а не предупреждение, и отказать он обязан раньше, чем
+	// процесс начнёт выглядеть поднявшимся.
+	publicAdmissionLimits, internalAdmissionLimits, admErr := admissionLimits(cfg)
+	if admErr != nil {
+		log.Fatalf("request admission: %v", admErr)
+	}
+	// Ключ ВНЕШНЕГО слушателя — личность конечного пользователя: за краем сидит
+	// арендатор, и предел объявлен на него. Личность к этому моменту ещё не
+	// установлена — её ставит звено ниже по цепочке, и именно поэтому звено
+	// допуска встаёт ПОСЛЕ него (см. admission.go).
+	externalAdmission, admErr := grpcsrv.NewAdmission("public", publicAdmissionLimits, grpcsrv.PrincipalSubject)
+	if admErr != nil {
+		log.Fatalf("request admission (external listener): %v", admErr)
+	}
+	armAdmission(logger, externalAdmission, !cfg.AdmissionPublic.IsSilent())
+
 	// Resolver handles native kacho.cloud.* — performs allowlist + domain
 	// routing.
 	resolver := proxy.Resolver(backends)
@@ -607,6 +627,28 @@ func main() {
 		grpcUnaryInterceptors = append(grpcUnaryInterceptors, cnfGRPCInterceptor.Unary())
 		grpcStreamInterceptors = append(grpcStreamInterceptors, cnfGRPCInterceptor.Stream())
 	}
+	// ДОПУСК ПО ТЕМПУ И ОДНОВРЕМЕННОСТИ — здесь, и место несущее в обе стороны.
+	//
+	// ПОСЛЕ личности: ключом ведра служит она, и ограничитель, ключующийся до
+	// звена, её устанавливающего, снимается подстановкой чужого заголовка — то
+	// есть ограничивает только того, кто не пытается его обойти.
+	//
+	// ДО отказа в маршруте и решения о правах: и то и другое стоит дорого, а
+	// решение о правах — это СЕТЕВОЙ вызов к iam на КАЖДОМ запросе, причём все
+	// запросы края идут туда под ОДНОЙ личностью сертификата, то есть в одно
+	// ведро на внутреннем слушателе iam. Поток одного арендатора, не
+	// остановленный здесь, вычерпал бы это общее ведро — и решение о правах
+	// перестало бы приниматься для ВСЕХ. Допуск после решения о правах защищал бы
+	// только пересылку в домен, оставив усилитель нагрузки нетронутым.
+	//
+	// Звено ТОЛЬКО ПОТОКОВОЕ, и это не пропуск: проксируемый поток края не
+	// проходит ни через один дескриптор службы (его несёт обработчик неизвестной
+	// службы, который библиотека диспетчеризует как поток), а собственную
+	// поверхность края покрывает обёртка регистратора ниже. Унарное звено рядом
+	// с обёрткой означало бы двойное списание, а без обёртки — потерю
+	// служебного изъятия для проверки здоровья.
+	grpcStreamInterceptors = append(grpcStreamInterceptors, externalAdmission.StreamInterceptor())
+
 	// Route refusal for Internal*Service — BEFORE authorization, AFTER
 	// authentication. Position is the whole point, in both directions.
 	//
@@ -640,7 +682,7 @@ func main() {
 	// external_grpc_services.go. Запросы /kacho.cloud.operation.OperationService/*
 	// идут напрямую туда, минуя transparent-proxy routing (server.go Resolver).
 	opsProxy := opsproxy.New(backends)
-	registerExternalGRPCServices(grpcSrv, backends, opsProxy)
+	registerExternalGRPCServices(grpcSrv, externalAdmission.Registrar(grpcSrv), backends, opsProxy)
 
 	// --- REST mux (grpc-gateway) ---
 	// Регистрирует активные публичные сервисы + OperationService через OpsProxy
@@ -793,11 +835,22 @@ func main() {
 		)
 	}
 	internalGRPCAddr := cfg.InternalGRPCAddr
-	internalGrpcSrv, internalLis, ierr := startInternalGRPCListener(
-		internalGRPCAddr, authzMW.AsInvalidator(), grpcSrv, internalSec, logger)
+	internalGrpcSrv, internalLis, internalAdmission, ierr := startInternalGRPCListener(
+		internalGRPCAddr, authzMW.AsInvalidator(), grpcSrv, internalSec,
+		internalAdmissionLimits, logger)
 	if ierr != nil {
 		log.Fatalf("internal grpc listener: %v", ierr)
 	}
+	armAdmission(logger, internalAdmission, !cfg.AdmissionInternal.IsSilent())
+	// Счёт допущенных и отвергнутых по ОБОИМ слушателям плюс уборка вёдер
+	// простаивающих субъектов. Печатается всегда, включая нули: «ноль отказов за
+	// всю жизнь контроля» обязано быть заметно, иначе мёртвый ограничитель
+	// неотличим от живого, который просто не достигал предела.
+	//
+	// Задача живёт на КОНТЕКСТЕ ОСТАНОВКИ процесса, а не на своём: тогда итоговый
+	// счёт печатается по сигналу, а не теряется вместе с невыполненным `defer`,
+	// если процесс уйдёт через os.Exit.
+	go grpcsrv.ReportAdmission(ctx, logger, "api-gateway: ", externalAdmission, internalAdmission)
 	defer func() { _ = internalLis.Close() }()
 	go func() {
 		serveErr := internalGrpcSrv.Serve(internalLis)

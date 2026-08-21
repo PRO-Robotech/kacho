@@ -41,29 +41,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 )
-
-// admissionReportInterval — как часто в журнал уходит счёт допущенных и
-// отвергнутых.
-//
-// Отчёт печатается ВСЕГДА, а не только при находках: «ноль отказов за всю жизнь
-// контроля» обязано быть заметно, иначе мёртвый ограничитель невидим — он
-// навешен, исполняется на каждом запросе и не отверг ни разу, ровно как и тот,
-// чей ключ всегда пуст. Отличает их ПАРА чисел: ноль отвергнутых при нуле
-// допущенных означает «никто не звал», а при миллионе допущенных — «предел ни
-// разу не достигнут», и это разные факты.
-const admissionReportInterval = time.Minute
-
-// admissionIdleWindow — за сколько простоя ведро субъекта убирается. Величина
-// щедрая намеренно: убрать ведро значит вернуть субъекту полный всплеск, поэтому
-// уборка обязана отставать от окна, в котором предел ещё имеет смысл.
-const admissionIdleWindow = 10 * time.Minute
 
 // admission — пара ограничителей процесса. Ноль означает объявленное изъятие;
 // на боевой посадке такое объявление до сюда не доезжает — его отвергает
@@ -141,47 +124,13 @@ func (a admission) arm(log *slog.Logger, service servicecontract.ServiceName, be
 	}
 }
 
-// report — фоновая задача носителя: периодически печатает счётчики обоих
-// слушателей и убирает вёдра простаивающих субъектов.
+// report — фоновая задача носителя: счёт допущенных и отвергнутых плюс уборка
+// вёдер простаивающих субъектов.
 //
-// Уборка живёт здесь, а не внутри самого ограничителя: пространство личностей
-// задаёт вызывающий, поэтому у роста числа вёдер обязан быть владелец в
-// носителе, а не фоновая горутина, запущенная библиотекой за спиной у процесса.
-// Собственный жёсткий потолок у ограничителя при этом остаётся — уборка его
-// дополняет, а не заменяет.
+// Тело — общее с остальными композиционными корнями ([grpcsrv.ReportAdmission]):
+// оно было написано здесь и у iam слово в слово, а край стал бы третьей копией.
+// Метод остаётся, потому что его предмет — ПАРА слушателей этого носителя, и
+// звать его собственная проба носителя обязана так же, как звал раньше.
 func (a admission) report(ctx context.Context, log *slog.Logger) {
-	if a.public == nil && a.internal == nil {
-		return
-	}
-	t := time.NewTicker(admissionReportInterval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			a.logOnce(log, "servicehost: request admission final counters")
-			return
-		case <-t.C:
-			for _, l := range []*grpcsrv.Admission{a.public, a.internal} {
-				if l != nil {
-					l.EvictIdle(admissionIdleWindow)
-				}
-			}
-			a.logOnce(log, "servicehost: request admission counters")
-		}
-	}
-}
-
-func (a admission) logOnce(log *slog.Logger, msg string) {
-	for _, l := range []*grpcsrv.Admission{a.public, a.internal} {
-		if l == nil {
-			continue
-		}
-		s := l.Stats()
-		log.Info(msg,
-			"listener", l.Listener(),
-			"admitted", s.Admitted,
-			"rejected_rate", s.RejectedRate,
-			"rejected_in_flight", s.RejectedInFlight,
-			"subjects", s.Subjects)
-	}
+	grpcsrv.ReportAdmission(ctx, log, "servicehost: ", a.public, a.internal)
 }

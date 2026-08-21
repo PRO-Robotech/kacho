@@ -97,8 +97,16 @@ func (s *InternalAuthzCacheServer) InvalidateSubject(
 // the invariant. Both args are panic-guarded against nil to catch arg-swap
 // programmer bugs (the most likely way to accidentally expose this on the
 // external endpoint).
+//
+// internalSrv is a grpc.ServiceRegistrar rather than a *grpc.Server so the
+// composition root can hand in the server WRAPPED by the per-caller rate ceiling
+// (grpcsrv.Admission.Registrar). The wrapper rewrites every method of the
+// descriptor, which is why the ceiling has to be applied where registration
+// happens and not afterwards. externalSrv stays a *grpc.Server: its role here is
+// not to receive a registration but to make the internal-only invariant a
+// checkable argument.
 func RegisterInternalAuthzCacheService(
-	internalSrv, externalSrv *grpc.Server, inv Invalidator, logger *slog.Logger,
+	internalSrv grpc.ServiceRegistrar, externalSrv *grpc.Server, inv Invalidator, logger *slog.Logger,
 ) {
 	if internalSrv == nil {
 		panic("RegisterInternalAuthzCacheService: internalSrv is nil (programmer error)")

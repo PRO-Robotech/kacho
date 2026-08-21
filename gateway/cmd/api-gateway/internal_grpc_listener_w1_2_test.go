@@ -37,6 +37,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/handler"
 	apigatewayv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/apigateway/v1"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 const (
@@ -105,7 +106,13 @@ func startSecuredInternalListener(t *testing.T, inv handler.Invalidator, sec int
 	externalSrv := grpc.NewServer()
 	t.Cleanup(externalSrv.Stop)
 
-	srv, lis, err := startInternalGRPCListener(":0", inv, externalSrv, sec, nil)
+	// Величины допуска — ПОЛ ПЛАТФОРМЫ: предмет этих случаев — mTLS и круг
+	// отправителей, и потолок темпа не должен на них влиять. Пол щедр (тысяча
+	// чтений в секунду на модуль), поэтому ни один из них в него не упрётся; а
+	// подать сюда крошечный набор значило бы завести второй предмет в чужом
+	// случае.
+	srv, lis, _, err := startInternalGRPCListener(":0", inv, externalSrv, sec,
+		grpcsrv.PlatformInternalAdmission(), nil)
 	require.NoError(t, err, "startInternalGRPCListener must succeed on :0")
 	require.NotNil(t, srv, "must return *grpc.Server")
 	require.NotNil(t, lis, "must return net.Listener")
