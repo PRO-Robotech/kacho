@@ -318,55 +318,58 @@ func main() {
 			"cache_ttl_s", cfg.IntrospectionCacheTTLSeconds,
 			"cache_entries", cfg.IntrospectionCacheSize,
 			"per_call_timeout_ms", cfg.IntrospectionTimeoutMs)
-		// ─── ОТЗЫВ НАШИХ ТОКЕНОВ — У НАС (Ф1б, задача #926) ─────────────
-		//
-		// Полоса отзыва — свойство ЗАПИСИ ИЗДАТЕЛЯ, а не настройки процесса:
-		// прежний провайдер о наших токенах не знает by construction, и его
-		// ответ на наш токен есть утверждение о предмете, которого у него нет.
-		// Поэтому читатель второй, и живёт он рядом, а не вместо.
-		//
-		// Провязывается ТОЛЬКО когда наш издатель действительно принимается:
-		// читатель без предмета — та же форма без содержания, что предмет без
-		// читателя.
-		if platformAccepted {
-			platformHopClient, phErr := newPlatformRevocationHopClient(
-				cfg.PlatformTokenRevocationCAFile,
-				time.Duration(cfg.IntrospectionTimeoutMs)*time.Millisecond)
-			if phErr != nil {
-				log.Fatalf("platform revocation authority client: %v", phErr)
-			}
-			platformCache, pcErr := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-				HydraIntrospectionURL: cfg.PlatformTokenRevocationURL,
-				HTTPClient:            platformHopClient,
-				MaxEntries:            cfg.IntrospectionCacheSize,
-				TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
-				Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
-			})
-			if pcErr != nil {
-				// Наш издатель принимается, а спросить о его токенах некого.
-				// Отказ при СТАРТЕ, а не отказ каждому запросу: первый виден
-				// оператору, второй — арендатору.
-				log.Fatalf("platform revocation check: %v", pcErr)
-			}
-			authInterceptor = authInterceptor.WithPlatformRevocationCheck(platformCache, 0)
-			logger.Info("revocation of OUR OWN tokens is read on presentation",
-				"authority_pinned", strings.TrimSpace(cfg.PlatformTokenRevocationCAFile) != "",
-				"cache_ttl_s", cfg.IntrospectionCacheTTLSeconds,
-				"unanswered_verdict", "refuse")
-		}
 	} else {
-		// Наш издатель принимается, а никакого читателя отзыва не провязано
-		// вовсе: конфигурация, при которой мы чеканим, отзываем и своего же
-		// отзыва не исполняем. Отказ в старте.
-		if platformAccepted {
-			log.Fatalf("our own issuer is accepted, but no revocation reader is mounted: " +
-				"a control that acts only where the credential is ISSUED is not revocation")
-		}
 		// Production-class environments never reach this branch — the guard above
 		// refuses to start. A dev stand may legitimately have no admin API to ask.
 		logger.Warn("revocation check NOT mounted: no introspection endpoint configured; "+
 			"a revoked token stays usable until it expires on its own",
 			"knob", "KACHO_HYDRA_INTROSPECTION_URL")
+	}
+
+	// ─── ОТЗЫВ НАШИХ ТОКЕНОВ — У НАС (Ф1б, задача #926) ─────────────────────
+	//
+	// Полоса отзыва — свойство ЗАПИСИ ИЗДАТЕЛЯ, а не настройки процесса: прежний
+	// провайдер о наших токенах не знает by construction, и его ответ на наш
+	// токен есть утверждение о предмете, которого у него нет. Поэтому читатель
+	// второй, и живёт он РЯДОМ, а не вместо.
+	//
+	// # Почему этот блок стоит СНАРУЖИ ветки прежнего провайдера
+	//
+	// Он стоял внутри неё, и это делало невыразимой посадку, к которой фаза и
+	// ведёт: «принимаем ТОЛЬКО нашего издателя». Такой профиль не задаёт адреса
+	// прежнего провайдера — задавать нечего, — и наш читатель не провязывался
+	// вовсе, а следом старт отвергался. Отказ был честный, но отвергал он не
+	// ошибку оператора, а состояние, которое обязано быть законным: возможность,
+	// объявленная и неисполнимая ни при каком входе, — тот же класс, что поле,
+	// которое требуют и прислать нельзя.
+	//
+	// Читатели независимы, потому что независимы их предметы: у каждого свой
+	// авторитет, свой якорь доверия, свой счётчик и своя семантика молчания.
+	if platformAccepted {
+		platformHopClient, phErr := newPlatformRevocationHopClient(
+			cfg.PlatformTokenRevocationCAFile,
+			time.Duration(cfg.IntrospectionTimeoutMs)*time.Millisecond)
+		if phErr != nil {
+			log.Fatalf("platform revocation authority client: %v", phErr)
+		}
+		platformCache, pcErr := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
+			HydraIntrospectionURL: cfg.PlatformTokenRevocationURL,
+			HTTPClient:            platformHopClient,
+			MaxEntries:            cfg.IntrospectionCacheSize,
+			TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
+			Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
+		})
+		if pcErr != nil {
+			// Наш издатель принимается, а спросить о его токенах некого. Отказ
+			// при СТАРТЕ, а не отказ каждому запросу: первый виден оператору,
+			// второй — арендатору.
+			log.Fatalf("platform revocation check: %v", pcErr)
+		}
+		authInterceptor = authInterceptor.WithPlatformRevocationCheck(platformCache, 0)
+		logger.Info("revocation of OUR OWN tokens is read on presentation",
+			"authority_pinned", strings.TrimSpace(cfg.PlatformTokenRevocationCAFile) != "",
+			"cache_ttl_s", cfg.IntrospectionCacheTTLSeconds,
+			"unanswered_verdict", "refuse")
 	}
 
 	// --- Per-RPC authentication floor, on the layer that always runs ---
