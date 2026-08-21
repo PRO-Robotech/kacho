@@ -350,6 +350,38 @@ spec:
             - name: KACHO_APP_ENV
               value: {{ .Values.appEnv | quote }}
             {{- end }}
+            # ── ОДНОКРАТНОСТЬ Idempotency-Key: ХРАНИЛИЩЕ И ФЛОТ — ОДНО ОБЪЯВЛЕНИЕ (#694) ──
+            #
+            # Размер флота НЕ выписывается второй раз: он ВЫВОДИТСЯ из тех же
+            # значений, что питают автомасштабирование. Два объявления об одном
+            # предмете расходятся молча — здесь они расходиться не могут by
+            # construction.
+            {{- $fleet := int .Values.replicas }}
+            {{- if .Values.autoscaling.enabled }}
+            {{- $fleet = int .Values.autoscaling.maxReplicas }}
+            {{- end }}
+            {{- if and (eq .Values.idempotency.store "memory") (gt $fleet 1) }}
+            {{- fail (printf "idempotency.store=memory keeps Idempotency-Key records inside one process, but this profile declares up to %d api-gateway replicas (autoscaling.maxReplicas / replicas). A repeat that lands on another replica finds no record and the mutation runs a second time, silently — the header promises exactly-once and would not deliver it. Either declare one replica, or set idempotency.store=postgres with idempotency.dsn (or idempotency.existingSecret) pointing at a store the whole fleet shares. See gateway/docs/engineering/architecture/known-divergences.md §3." $fleet) }}
+            {{- end }}
+            - name: KACHO_GATEWAY_FLEET_SIZE
+              value: {{ $fleet | quote }}
+            - name: KACHO_IDEMPOTENCY_STORE
+              value: {{ .Values.idempotency.store | quote }}
+            {{- if eq .Values.idempotency.store "postgres" }}
+            {{- if .Values.idempotency.existingSecret }}
+            - name: KACHO_IDEMPOTENCY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.idempotency.existingSecret }}
+                  key: {{ .Values.idempotency.secretKey }}
+            {{- else }}
+            {{- if not .Values.idempotency.dsn }}
+            {{- fail "idempotency.store=postgres but neither idempotency.dsn nor idempotency.existingSecret is set — the shared idempotency store would have no address. Deriving one from a neighbour's address is forbidden: it is never empty, so the store would look configured and lead nowhere." }}
+            {{- end }}
+            - name: KACHO_IDEMPOTENCY_DSN
+              value: {{ .Values.idempotency.dsn | quote }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.internalListener.mtls.enable }}
             {{- if not .Values.mtls.enable }}
             {{- fail "internalListener.mtls.enable=true requires mtls.enable=true — the internal :9091 listener verifies incoming client certs against the internal CA (KACHO_API_GATEWAY_MTLS_CA_FILE), which the mtls block mounts. Enable mtls.enable (backend-dial mTLS) alongside it." }}

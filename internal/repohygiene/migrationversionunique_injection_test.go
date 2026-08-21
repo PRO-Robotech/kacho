@@ -22,7 +22,9 @@
 package repohygiene
 
 import (
+	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -45,25 +47,60 @@ func realCorpus(t *testing.T) []string {
 	return tree.SortedFiles()
 }
 
-// dirPreviouslyInvisible — каталог миграций, которого не видела прежняя выписка.
+// dirPreviouslyInvisible — каталог миграций, которого не видела прежняя выписка
+// И который уже несёт номер, подкладываемый инъекцией.
 //
-// Если такого каталога в дереве не осталось, слепая зона исчезла сама, и проба
-// целится в любой каталог миграций: утверждение о РАЗБОРЕ от этого не слабеет,
-// а превращать исчезновение слепой зоны в красное было бы падением на
-// достижении собственной цели.
-func dirPreviouslyInvisible(t *testing.T, census migrationUniqueCensus) string {
+// ВТОРОЕ УСЛОВИЕ — НЕ ПРИДИРКА, И ОНО ИЗМЕРЕНО. Обе инъекции ниже подкладывают
+// файл с номером `1` (в формах `0001_…` и `1_…`) и требуют СТОЛКНОВЕНИЯ. Такое
+// требование осмысленно ровно тогда, когда номер `1` в целевом каталоге уже
+// занят; в каталоге, чья нумерация начинается с номера задачи, столкновению
+// взяться неоткуда — и проба, ничего не доказав, покраснела бы на исправном
+// разборе.
+//
+// Предпосылка была НЕЯВНОЙ и держалась тем, что все каталоги миграций дерева
+// происходили из порядковой эры. Первый каталог новой формы
+// (`gateway/internal/idempotencypg/migrations`, #694, единственный файл
+// `694001_…`) сортируется раньше остальных и стал целью — инъекция получила ноль
+// находок на полностью исправном дереве. Условие сделано явным, а не обойдено
+// перестановкой: следующий такой каталог иначе воспроизвёл бы то же самое.
+//
+// Если каталога, отвечающего ОБОИМ условиям, не осталось, слепая зона исчезла
+// сама, и проба целится в любой каталог, который несёт номер `1`: утверждение о
+// РАЗБОРЕ от этого не слабеет, а превращать исчезновение слепой зоны в красное
+// было бы падением на достижении собственной цели.
+func dirPreviouslyInvisible(t *testing.T, census migrationUniqueCensus, files []string) string {
 	t.Helper()
+	carriesVersionOne := map[string]bool{}
+	for _, rel := range files {
+		dir, base := path.Split(rel)
+		dir = strings.TrimSuffix(dir, "/")
+		if !strings.HasSuffix(base, ".sql") {
+			continue
+		}
+		num := base[:strings.IndexByte(base+"_", '_')]
+		if n, err := strconv.Atoi(num); err == nil && n == 1 {
+			carriesVersionOne[dir] = true
+		}
+	}
 	for _, d := range census.ByDir {
-		if !previousGlobShapeRe.MatchString(d.Dir) {
+		if !previousGlobShapeRe.MatchString(d.Dir) && carriesVersionOne[d.Dir] {
+			return d.Dir
+		}
+	}
+	for _, d := range census.ByDir {
+		if carriesVersionOne[d.Dir] {
+			t.Logf("каталогов вне прежней выписки, несущих номер 1, в дереве нет — "+
+				"инъекция целится в %s", d.Dir)
 			return d.Dir
 		}
 	}
 	if len(census.ByDir) == 0 {
 		t.Fatal("в дереве нет ни одного каталога миграций — инъектировать некуда")
 	}
-	t.Logf("каталогов вне прежней выписки в дереве больше нет — инъекция целится в %s",
-		census.ByDir[0].Dir)
-	return census.ByDir[0].Dir
+	t.Fatalf("ни один каталог миграций не несёт номер 1, а обе инъекции ниже "+
+		"подкладывают именно его и требуют столкновения: доказывать нечем.\n"+
+		"Каталоги: %s", census)
+	return ""
 }
 
 func TestMigrationVersionUnique_ProvenByInjection(t *testing.T) {
@@ -77,7 +114,7 @@ func TestMigrationVersionUnique_ProvenByInjection(t *testing.T) {
 	}
 	t.Logf("контроль: настоящее дерево разобрано молча — %s", baseCensus)
 
-	target := dirPreviouslyInvisible(t, baseCensus)
+	target := dirPreviouslyInvisible(t, baseCensus, files)
 
 	t.Run("дубль в ранее невидимом каталоге — краснеет и называет координату", func(t *testing.T) {
 		injected := append(append([]string{}, files...), target+"/0001_injected_duplicate.sql")

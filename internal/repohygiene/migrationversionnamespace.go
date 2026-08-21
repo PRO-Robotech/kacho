@@ -129,15 +129,21 @@ var migrationVersionFileRe = regexp.MustCompile(`^0*(\d+)_[^/]*\.sql$`)
 // выводится из дерева, потому что дерево содержит и то, что в него добавили бы
 // в обход правила; выводимый перечень принял бы такую прибавку молча.
 var frozenLegacyMigrations = map[string]string{
-	"pkg/migrations/common":                 "1-4",
-	"services/compute/internal/migrations":  "1-34,36-38",
-	"services/compute/migrations":           "1",
-	"services/geo/internal/migrations":      "1-4",
-	"services/iam/internal/migrations":      "1-100",
-	"services/nlb/internal/migrations":      "1-35",
-	"services/registry/internal/migrations": "1-17",
-	"services/storage/internal/migrations":  "1-25",
-	"services/vpc/internal/migrations":      "1-45",
+	// Общее хранилище однократности края (#694). Порядковой эры у него НЕТ и не
+	// будет: каталог заведён уже после закрытия эры, поэтому спек пуст — все его
+	// номера обязаны выводиться из номера задачи. Пустая запись законна и
+	// содержательна: она говорит «каталог под надзором, legacy-номеров ноль»,
+	// тогда как отсутствие записи означало бы «номера не под надзором».
+	"gateway/internal/idempotencypg/migrations": "",
+	"pkg/migrations/common":                     "1-4",
+	"services/compute/internal/migrations":      "1-34,36-38",
+	"services/compute/migrations":               "1",
+	"services/geo/internal/migrations":          "1-4",
+	"services/iam/internal/migrations":          "1-100",
+	"services/nlb/internal/migrations":          "1-35",
+	"services/registry/internal/migrations":     "1-17",
+	"services/storage/internal/migrations":      "1-25",
+	"services/vpc/internal/migrations":          "1-45",
 }
 
 // migrationVersionCensus — объём осмотренного. Отдельное утверждение: «ноль
