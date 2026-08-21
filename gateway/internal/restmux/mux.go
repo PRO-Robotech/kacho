@@ -135,6 +135,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // buildPrincipalMetadata собирает outgoing gRPC-metadata из HTTP middleware-set
@@ -170,7 +171,10 @@ func buildPrincipalMetadata(r *http.Request) metadata.MD {
 		md.Append(principalmeta.MetaPrincipalID, pi)
 	}
 	if pd != "" {
-		md.Append(principalmeta.MetaPrincipalDisplay, pd)
+		// Значение приезжает уже закодированным (principalmeta.SetPrincipalDisplay);
+		// страж идемпотентен и стоит здесь ПОСЛЕДНИМ рубежом: непечатаемый ASCII
+		// отверг бы весь вызов, не дойдя до обработчика (#873).
+		md.Append(principalmeta.MetaPrincipalDisplay, grpcsrv.EnsurePrincipalDisplayNameWireSafe(pd))
 	}
 	if acr != "" {
 		md.Append(principalmeta.MetaTokenACR, acr)

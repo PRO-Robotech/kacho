@@ -422,11 +422,10 @@ func injectVerifiedTokenHeaders(r *http.Request, t *VerifiedToken) {
 	if pType, pID, _, err := principalFromVerifiedToken(t); err == nil {
 		r.Header.Set(principalmeta.HeaderPrincipalType, pType)
 		r.Header.Set(principalmeta.HeaderPrincipalID, pID)
-		r.Header.Set(principalmeta.HeaderPrincipalDisplay, "") // not forwarded on this path
+		principalmeta.SetPrincipalDisplay(r.Header, "") // not forwarded on this path
 		// Legacy grpc-gateway convention fallback.
 		r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalType, pType)
 		r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalID, pID)
-		r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalDisplay, "")
 	}
 
 	// The token's own context — ACR, jti, scope, exp — describes the CREDENTIAL,
