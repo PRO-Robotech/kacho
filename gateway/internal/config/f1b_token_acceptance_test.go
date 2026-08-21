@@ -10,6 +10,7 @@
 package config_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -36,17 +37,50 @@ func f1bFullDeclaration() config.Config {
 	}
 }
 
+// f1bOnlyTheIssuerSetGuardCanFire — объявление, в котором вырожденный перечень
+// издателей отвергает СТРАЖ ПЕРЕЧНЯ и никто другой.
+//
+// Фикстура нарочно бедна. Полное объявление (`f1bFullDeclaration`) для этой
+// пробы негодно, и это измерено, а не предположено: на нём вырожденный перечень
+// роняет старт СОСЕДНИМ стражем — «наш издатель вне перечня принимаемых», — чьё
+// сообщение содержит ту же подстроку, что искала прежняя редакция пробы.
+// Обезвредив страж перечня, я получал `err == nil` и НОЛЬ записей приёма, то
+// есть буквально посадку «принимаем любого издателя», а проба оставалась
+// зелёной. Здесь названо и то, откуда фикстура бедна: убрать из неё нашего
+// издателя и авторитет отзыва — значит убрать всех, кто способен отказать
+// вместо предмета пробы.
+func f1bOnlyTheIssuerSetGuardCanFire(env, issuers string) config.Config {
+	return config.Config{
+		AppEnv:       env,
+		APIDomain:    "api.kacho.test",
+		TokenIssuers: issuers,
+	}
+}
+
 // TestF1b02_DegenerateIssuerSetRefusesTheStart — страж считает ЭЛЕМЕНТЫ, а не
-// длину строки.
+// длину строки, и говорит ОБЕ величины.
 func TestF1b02_DegenerateIssuerSetRefusesTheStart(t *testing.T) {
 	for _, degenerate := range []string{",", " ", " , , ", ",,,", "\t"} {
-		cfg := f1bFullDeclaration()
-		cfg.TokenIssuers = degenerate
-		_, err := cfg.TokenAcceptance()
+		cfg := f1bOnlyTheIssuerSetGuardCanFire("production", degenerate)
+		bindings, err := cfg.TokenAcceptance()
 		if err == nil {
-			t.Fatalf("вырожденный перечень издателей %q принят — при длине %d он содержит "+
-				"НОЛЬ элементов, а пустой перечень означает «принимаем любого издателя»",
-				degenerate, len(degenerate))
+			t.Fatalf("вырожденный перечень издателей %q принят (записей приёма %d) — при длине "+
+				"%d он содержит НОЛЬ элементов, а пустой перечень означает «принимаем любого "+
+				"издателя»", degenerate, len(bindings), len(degenerate))
+		}
+		// Сообщение обязано назвать ОБЕ величины — иначе отличить этот страж от
+		// соседнего нечем, и проба зеленеет на любом отказе.
+		//
+		// Именно эти две подстроки и есть различающая сила пробы: предикат по
+		// длине строки, поставленный вместо предиката по элементам, напечатал бы
+		// не ноль элементов, а другое число либо не напечатал бы ничего.
+		wantElements := "0 elements"
+		wantChars := fmt.Sprintf("%d characters", len(degenerate))
+		if !strings.Contains(err.Error(), wantElements) || !strings.Contains(err.Error(), wantChars) {
+			t.Fatalf("отказ на входе %q не называет обе величины (ждали %q и %q): %v\n"+
+				"Страж, не назвавший их, неотличим от соседнего: у «,» длина 1 и элементов "+
+				"ноль, и именно на таком входе предикат по длине молчит.",
+				degenerate, wantElements, wantChars, err)
 		}
 		if !strings.Contains(err.Error(), "KACHO_API_GATEWAY_TOKEN_ISSUERS") {
 			t.Fatalf("отказ не называет настройку, которую правит оператор: %v", err)
@@ -55,14 +89,25 @@ func TestF1b02_DegenerateIssuerSetRefusesTheStart(t *testing.T) {
 
 	// Отказ НЕ освобождается режимом: «принимаем любого» не становится законным
 	// оттого, что стенд назвали разработческим.
-	for _, env := range []string{"dev", "local", "test", "", "production"} {
-		cfg := f1bFullDeclaration()
-		cfg.AppEnv = env
-		cfg.TokenIssuers = ","
-		if _, err := cfg.TokenAcceptance(); err == nil {
+	for _, env := range []string{"dev", "local", "test", "", "production", "production-strict"} {
+		cfg := f1bOnlyTheIssuerSetGuardCanFire(env, ",")
+		_, err := cfg.TokenAcceptance()
+		if err == nil {
 			t.Fatalf("вырожденный перечень принят в режиме %q — освобождение по режиму здесь "+
 				"означало бы объявленную посадку «принимаем любого издателя»", env)
 		}
+		if !strings.Contains(err.Error(), "0 elements") {
+			t.Fatalf("в режиме %q отказал не страж перечня, а кто-то другой: %v", env, err)
+		}
+	}
+
+	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ на той же бедной фикстуре: непустой перечень с
+	// объявленной записью источника проходит. Без него отрицания выше зеленели
+	// бы на разборе, отвергающем всё.
+	ok := f1bOnlyTheIssuerSetGuardCanFire("production", f1bLegacy)
+	ok.TokenIssuerKeySets = f1bLegacy + "=" + f1bLegKS
+	if _, err := ok.TokenAcceptance(); err != nil {
+		t.Fatalf("непустой перечень на той же фикстуре отвергнут: %v", err)
 	}
 }
 
