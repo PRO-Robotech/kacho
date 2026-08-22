@@ -110,7 +110,7 @@ jobs:
       # (`console-run-category.py`, последний шаг) его не видит и не может
       # отнести к «условие не создано». Полноту держит гейт
       # `internal/repohygiene` `TestEveryStepOfTheProbeJobIsVisibleToTheCategoriser`.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         id: checkout
 
       # ─── ГЕЙТ ВЕРДИКТА ПРОВЕРЯЕТСЯ ДО СТЕНДА ────────────────────────────
@@ -140,21 +140,21 @@ jobs:
       # production-posture.yml — это сверяет
       # .github/scripts/check-pinned-tools.sh --divergence-only: два конвейера,
       # поднимающие стенд разными версиями, дают несравнимые вердикты о том же дереве.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         id: setup-go
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.console_url == '' }}
         with:
           go-version-file: go.mod
           cache: true
-      - uses: azure/setup-helm@v5
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5
         id: setup-helm
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.console_url == '' }}
         with:
           version: v4.2.4
-      - uses: azure/setup-kubectl@v5
+      - uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5
         id: setup-kubectl
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.console_url == '' }}
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
         id: setup-node
         with:
           node-version: '26'
@@ -251,7 +251,7 @@ jobs:
       # запишет пересобранный набор под точным ключом. Кэш чинит себя сам.
       - name: системные пакеты — восстановить из кэша
         id: cache-deps
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6
         with:
           path: ~/.cache/kacho-playwright-deps
           key: ${{ steps.deps-key.outputs.key }}
@@ -286,7 +286,7 @@ jobs:
       - name: системные пакеты — сохранить в кэш
         id: save-deps
         if: ${{ !cancelled() && steps.install-deps.outputs.complete == 'true' && steps.cache-deps.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6
         with:
           path: ~/.cache/kacho-playwright-deps
           key: ${{ steps.deps-key.outputs.key }}
@@ -316,7 +316,7 @@ jobs:
       # признак), а восстановление отделено и ни на что не влияет, кроме скорости.
       - name: браузер — восстановить из кэша
         id: cache-browser
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('ui-future/e2e/package-lock.json') }}
@@ -423,7 +423,7 @@ jobs:
       - name: браузер — сохранить в кэш
         id: save-browser
         if: ${{ !cancelled() && steps.install-browser.outputs.complete == 'true' && steps.cache-browser.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('ui-future/e2e/package-lock.json') }}
@@ -611,7 +611,7 @@ jobs:
       - name: отчёт (в том числе на красном)
         id: artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: console-e2e-results
           path: |

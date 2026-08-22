@@ -72,8 +72,8 @@ jobs:
     name: gosec (Go static analysis)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -164,7 +164,7 @@ jobs:
           # через upload ниже). Отказ сканера роняет гейт ниже — по метке, не по числу.
           exit 0
 
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
         if: always()
         with:
           sarif_file: gosec.sarif
@@ -253,8 +253,7 @@ jobs:
     name: trivy (fs + IaC)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       # Каждый скан идёт ДВАЖДЫ: sarif (exit-code 0, только в Security-tab) и table
       # (exit-code 1 — реальный гейт). Причина: с `format: sarif` trivy-action
       # срабатывает на ЛЮБОЕ правило в SARIF независимо от фильтра `severity`
@@ -273,7 +272,7 @@ jobs:
       # Теперь один прогон отвечает на оба вопроса, а выгрузка не может сослаться
       # на файл, который никто не создавал.
       - name: trivy fs (SARIF → Security)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -297,7 +296,7 @@ jobs:
       # сам, но здесь от него зависит ОБЪЁМ ОСМОТРЕННОГО — поэтому назван явно.
       # Полноту осмотра держит отдельный гейт (последний шаг job'а).
       - name: trivy config (SARIF → Security)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           scan-type: 'config'
           scan-ref: '.'
@@ -307,20 +306,20 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
 
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
         if: always()
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
 
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4
         if: always()
         with:
           sarif_file: trivy-config.sarif
           category: trivy-config
 
       - name: trivy fs (гейт CRITICAL/HIGH)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -335,7 +334,7 @@ jobs:
       # job зелёный только когда зелены оба.
       - name: trivy config (гейт CRITICAL/HIGH)
         if: '!cancelled()'
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           scan-type: 'config'
           scan-ref: '.'
