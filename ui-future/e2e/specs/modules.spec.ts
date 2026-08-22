@@ -23,75 +23,75 @@ import { registerAndSignIn, apiCalls } from "./fixtures";
  * 200, при том что куски модуля отдавали 404 и консоль была пустым скелетом.
  */
 
-interface Модуль {
-  имя: string;
-  путь: (projectId: string) => string;
-  ждём: RegExp;
+interface Module {
+  name: string;
+  path: (projectId: string) => string;
+  awaitedCall: RegExp;
 }
 
-const МОДУЛИ: Модуль[] = [
-  { имя: "сводка", путь: (p) => `/projects/${p}/dashboard`, ждём: /\/iam\/v1\// },
-  { имя: "сети", путь: (p) => `/projects/${p}/vpc/networks`, ждём: /\/vpc\/v1\/networks/ },
-  { имя: "подсети", путь: (p) => `/projects/${p}/vpc/subnets`, ждём: /\/vpc\/v1\/subnets/ },
+const MODULES: Module[] = [
+  { name: "сводка", path: (p) => `/projects/${p}/dashboard`, awaitedCall: /\/iam\/v1\// },
+  { name: "сети", path: (p) => `/projects/${p}/vpc/networks`, awaitedCall: /\/vpc\/v1\/networks/ },
+  { name: "подсети", path: (p) => `/projects/${p}/vpc/subnets`, awaitedCall: /\/vpc\/v1\/subnets/ },
   {
-    имя: "группы безопасности",
-    путь: (p) => `/projects/${p}/vpc/security-groups`,
-    ждём: /\/vpc\/v1\/securityGroups/,
+    name: "группы безопасности",
+    path: (p) => `/projects/${p}/vpc/security-groups`,
+    awaitedCall: /\/vpc\/v1\/securityGroups/,
   },
-  { имя: "машины", путь: (p) => `/projects/${p}/compute/instances`, ждём: /\/compute\/v1\// },
-  { имя: "тома", путь: (p) => `/projects/${p}/storage/volumes`, ждём: /\/storage\/v1\// },
-  { имя: "балансировщики", путь: (p) => `/projects/${p}/nlb/load-balancers`, ждём: /\/nlb\/v1\// },
-  { имя: "реестры", путь: (p) => `/projects/${p}/registry/registries`, ждём: /\/registry\/v1\// },
-  { имя: "пользователи", путь: (p) => `/projects/${p}/iam/users`, ждём: /\/iam\/v1\// },
+  { name: "машины", path: (p) => `/projects/${p}/compute/instances`, awaitedCall: /\/compute\/v1\// },
+  { name: "тома", path: (p) => `/projects/${p}/storage/volumes`, awaitedCall: /\/storage\/v1\// },
+  { name: "балансировщики", path: (p) => `/projects/${p}/nlb/load-balancers`, awaitedCall: /\/nlb\/v1\// },
+  { name: "реестры", path: (p) => `/projects/${p}/registry/registries`, awaitedCall: /\/registry\/v1\// },
+  { name: "пользователи", path: (p) => `/projects/${p}/iam/users`, awaitedCall: /\/iam\/v1\// },
 ];
 
 test.describe("модули консоли", () => {
   test("каждый модуль загружается и делает свой вызов к API", async ({ page }) => {
-    const ошибки: string[] = [];
+    const errors: string[] = [];
     page.on("console", (m) => {
-      if (m.type() === "error") ошибки.push(m.text().slice(0, 200));
+      if (m.type() === "error") errors.push(m.text().slice(0, 200));
     });
-    const вызовы = apiCalls(page);
+    const calls = apiCalls(page);
 
     const { projectId } = await registerAndSignIn(page);
 
-    for (const м of МОДУЛИ) {
-      вызовы.length = 0;
-      ошибки.length = 0;
+    for (const mod of MODULES) {
+      calls.length = 0;
+      errors.length = 0;
 
-      await page.goto(м.путь(projectId), { waitUntil: "domcontentloaded" });
+      await page.goto(mod.path(projectId), { waitUntil: "domcontentloaded" });
 
       await expect
-        .poll(() => вызовы.filter((c) => м.ждём.test(c)), {
+        .poll(() => calls.filter((c) => mod.awaitedCall.test(c)), {
           message:
-            `модуль «${м.имя}» не сделал ни одного своего вызова к API. ` +
+            `модуль «${mod.name}» не сделал ни одного своего вызова к API. ` +
             `Страница при этом отвечает 200 — так отвечает и скелет, у которого ` +
             `не загрузились куски федерации`,
           timeout: 30_000,
         })
         .not.toHaveLength(0);
 
-      const неудачные = вызовы.filter((c) => м.ждём.test(c) && !c.startsWith("2"));
+      const failed = calls.filter((c) => mod.awaitedCall.test(c) && !c.startsWith("2"));
       expect(
-        неудачные,
-        `модуль «${м.имя}» получил отказ на своём вызове: ${неудачные.join(", ")}`,
+        failed,
+        `модуль «${mod.name}» получил отказ на своём вызове: ${failed.join(", ")}`,
       ).toHaveLength(0);
 
       expect(
-        ошибки,
-        `модуль «${м.имя}» дал ошибки в консоли браузера — так виден 404 на куске ` +
+        errors,
+        `модуль «${mod.name}» дал ошибки в консоли браузера — так виден 404 на куске ` +
           `федерации, которого не видно по коду ответа страницы`,
       ).toHaveLength(0);
     }
   });
 
   test("админский раздел открывается и читает глобальный справочник", async ({ page }) => {
-    const вызовы = apiCalls(page);
+    const calls = apiCalls(page);
     await registerAndSignIn(page);
 
     await page.goto("/system/regions", { waitUntil: "domcontentloaded" });
     await expect
-      .poll(() => вызовы.filter((c) => /\/geo\/v1\/regions/.test(c)), {
+      .poll(() => calls.filter((c) => /\/geo\/v1\/regions/.test(c)), {
         message:
           "админский раздел не спросил справочник размещения. Он объявлен доступным " +
           "каждому аутентифицированному арендатору намеренно: без него нельзя выбрать " +
@@ -100,7 +100,7 @@ test.describe("модули консоли", () => {
       })
       .not.toHaveLength(0);
 
-    const отказы = вызовы.filter((c) => /\/geo\/v1\/regions/.test(c) && !c.startsWith("2"));
-    expect(отказы, `справочник размещения отказал: ${отказы.join(", ")}`).toHaveLength(0);
+    const refusals = calls.filter((c) => /\/geo\/v1\/regions/.test(c) && !c.startsWith("2"));
+    expect(refusals, `справочник размещения отказал: ${refusals.join(", ")}`).toHaveLength(0);
   });
 });

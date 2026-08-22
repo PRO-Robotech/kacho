@@ -61,10 +61,10 @@ describe("предпосылка гейта: обход читает то, чт�
   });
 
   it("у каждого приложения есть хотя бы один объявленный вход", () => {
-    const безВхода = APPS.filter((app) => entryPoints(uiRoot, app).length === 0);
-    if (безВхода.length > 0) {
+    const withoutEntry = APPS.filter((app) => entryPoints(uiRoot, app).length === 0);
+    if (withoutEntry.length > 0) {
       throw new Error(
-        `у приложений [${безВхода.join(", ")}] не найдено НИ ОДНОГО входа. Гейт читает ` +
+        `у приложений [${withoutEntry.join(", ")}] не найдено НИ ОДНОГО входа. Гейт читает ` +
           `не то: либо сменилась форма блока exposes в vite.config.ts, либо ушёл ` +
           `src/main.tsx. С нулём входов недостижимым оказывается ВСЁ, и находки гейта ` +
           `перестают что-либо значить`,
@@ -97,16 +97,16 @@ describe("каждый не-тестовый модуль приложения �
   );
 
   it("недостижимых сверх ведомости нет", () => {
-    const находки = allUnreachable.filter((k) => !(k in ledger.allowed));
-    if (находки.length > 0) {
-      const поПриложениям = WALKS.map((w) => {
-        const свои = находки.filter((k) => k.startsWith(`${w.app}/`));
-        return свои.length ? `  ${w.app} (входы: ${w.entries.join(", ")}):\n${свои.map((k) => `      ${k}`).join("\n")}` : "";
+    const findings = allUnreachable.filter((k) => !(k in ledger.allowed));
+    if (findings.length > 0) {
+      const byApp = WALKS.map((w) => {
+        const own = findings.filter((k) => k.startsWith(`${w.app}/`));
+        return own.length ? `  ${w.app} (входы: ${w.entries.join(", ")}):\n${own.map((k) => `      ${k}`).join("\n")}` : "";
       })
         .filter(Boolean)
         .join("\n");
       throw new Error(
-        `недостижимых от объявленных входов модулей: ${находки.length}\n${поПриложениям}\n\n` +
+        `недостижимых от объявленных входов модулей: ${findings.length}\n${byApp}\n\n` +
           `Модуль без пути от входа не «лежит про запас»: он выглядит работающим, его ` +
           `правят при правках соседей и принимают за живой. Исходов три — провязать к ` +
           `живой поверхности, снять вместе с его пробами, либо (если это осознанный ` +
@@ -118,11 +118,11 @@ describe("каждый не-тестовый модуль приложения �
 
 describe("ведомость самоистекает", () => {
   it("в ведомости нет записей про модули, которых в дереве нет", () => {
-    const протухшие = Object.keys(ledger.allowed).filter((k) => !moduleExists.has(k));
-    if (протухшие.length > 0) {
+    const stale = Object.keys(ledger.allowed).filter((k) => !moduleExists.has(k));
+    if (stale.length > 0) {
       throw new Error(
-        `записей в ведомости, которым больше нечего исключать: ${протухшие.length}\n` +
-          протухшие.map((k) => `      ${k}`).join("\n") +
+        `записей в ведомости, которым больше нечего исключать: ${stale.length}\n` +
+          stale.map((k) => `      ${k}`).join("\n") +
           `\n\nМодуль снят, а послабление осталось. Такая запись переживает свой предмет ` +
           `и унесёт с собой следующую слепую зону — снимите её из ` +
           `${path.relative(uiRoot, LEDGER_FILE)}`,
@@ -131,11 +131,11 @@ describe("ведомость самоистекает", () => {
   });
 
   it("в ведомости нет записей про модули, ставшие достижимыми", () => {
-    const ожившие = Object.keys(ledger.allowed).filter((k) => allReachable.has(k));
-    if (ожившие.length > 0) {
+    const revived = Object.keys(ledger.allowed).filter((k) => allReachable.has(k));
+    if (revived.length > 0) {
       throw new Error(
-        `записей в ведомости про УЖЕ достижимые модули: ${ожившие.length}\n` +
-          ожившие.map((k) => `      ${k}`).join("\n") +
+        `записей в ведомости про УЖЕ достижимые модули: ${revived.length}\n` +
+          revived.map((k) => `      ${k}`).join("\n") +
           `\n\nДолг закрыт, послабление осталось — снимите его из ` +
           `${path.relative(uiRoot, LEDGER_FILE)}`,
       );
@@ -143,11 +143,11 @@ describe("ведомость самоистекает", () => {
   });
 
   it("каждая запись ведомости несёт причину, а не пустую строку", () => {
-    const безПричины = Object.entries(ledger.allowed).filter(([, reason]) => reason.trim().length < 10);
-    if (безПричины.length > 0) {
+    const withoutReason = Object.entries(ledger.allowed).filter(([, reason]) => reason.trim().length < 10);
+    if (withoutReason.length > 0) {
       throw new Error(
-        `записей ведомости без причины: ${безПричины.length}\n` +
-          безПричины.map(([k]) => `      ${k}`).join("\n") +
+        `записей ведомости без причины: ${withoutReason.length}\n` +
+          withoutReason.map(([k]) => `      ${k}`).join("\n") +
           `\n\nПослабление без причины неотличимо от забытого`,
       );
     }

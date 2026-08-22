@@ -38,7 +38,7 @@ import { tenantWithProject, runTag } from "./fixtures";
  */
 
 /** Общие поля, чей порядок владелец задал один на все формы создания. */
-const ОБЩИЕ_ПОЛЯ = ["Имя", "Описание", "Метки"];
+const COMMON_FIELDS = ["Имя", "Описание", "Метки"];
 
 /**
  * Формы создания, доступные арендатору проекта.
@@ -50,7 +50,7 @@ const ОБЩИЕ_ПОЛЯ = ["Имя", "Описание", "Метки"];
  * широк: пять модулей и семнадцать форм, то есть все, до которых у арендатора
  * есть адрес.
  */
-const ФОРМЫ_СОЗДАНИЯ = [
+const CREATE_FORMS = [
   "vpc/networks",
   "vpc/subnets",
   "vpc/addresses",
@@ -71,12 +71,12 @@ const ФОРМЫ_СОЗДАНИЯ = [
 ];
 
 /** Подпись поля, как её читает человек: звёздочка обязательности — не часть имени. */
-function имяПоля(текст: string): string {
-  return текст.replace(/[\s*\u00A0]+$/u, "").trim();
+function fieldName(text: string): string {
+  return text.replace(/[\s*\u00A0]+$/u, "").trim();
 }
 
 /**
- * подписиФормы — подписи полей формы СВЕРХУ ВНИЗ, как их видит глаз.
+ * formLabels — подписи полей формы СВЕРХУ ВНИЗ, как их видит глаз.
  *
  * Порядок берётся по вертикальной координате, а не по порядку в разметке: это
  * разные вещи (сетка вправе переставить), а канон говорит именно о том, что
@@ -84,31 +84,31 @@ function имяПоля(текст: string): string {
  * внутри поля («Публичный (авто)» у адреса балансировщика) тоже размечены как
  * подписи, но полем не являются и стояли бы в перечне лишними строками.
  */
-async function подписиФормы(page: Page): Promise<Array<{ имя: string; y: number; x: number }>> {
+async function formLabels(page: Page): Promise<Array<{ name: string; y: number; x: number }>> {
   return await page.evaluate(() => {
-    const форма = document.querySelector("form.ant-form");
-    if (!форма) return [];
-    return Array.from(форма.querySelectorAll(".ant-form-item-label label"))
+    const form = document.querySelector("form.ant-form");
+    if (!form) return [];
+    return Array.from(form.querySelectorAll(".ant-form-item-label label"))
       .map((l) => {
         const r = l.getBoundingClientRect();
-        return { имя: (l.textContent ?? "").trim(), y: Math.round(r.y), x: Math.round(r.x) };
+        return { name: (l.textContent ?? "").trim(), y: Math.round(r.y), x: Math.round(r.x) };
       })
       .sort((a, b) => a.y - b.y);
   });
 }
 
 /** Форма создания загружена, когда у неё есть подпись первого поля и кнопка отправки. */
-async function открытьФормуСоздания(page: Page, projectId: string, ресурс: string): Promise<void> {
-  await page.goto(`/projects/${projectId}/${ресурс}/create`, { waitUntil: "domcontentloaded" });
+async function openCreateForm(page: Page, projectId: string, resource: string): Promise<void> {
+  await page.goto(`/projects/${projectId}/${resource}/create`, { waitUntil: "domcontentloaded" });
   await expect(
     page.locator("form.ant-form"),
-    `форма создания «${ресурс}» не отрисовалась: дальше проверялась бы пустая страница, ` +
+    `форма создания «${resource}» не отрисовалась: дальше проверялась бы пустая страница, ` +
       `а не порядок полей`,
   ).toBeVisible({ timeout: 45_000 });
   await expect
-    .poll(async () => (await подписиФормы(page)).length, {
+    .poll(async () => (await formLabels(page)).length, {
       message:
-        `у формы создания «${ресурс}» не появилось ни одной подписи поля — вердикт о ` +
+        `у формы создания «${resource}» не появилось ни одной подписи поля — вердикт о ` +
         `порядке полей на такой странице был бы вердиктом ни о чём`,
       timeout: 45_000,
     })
@@ -116,7 +116,7 @@ async function открытьФормуСоздания(page: Page, projectId: s
 }
 
 /** Ручки, которыми на странице списка ЧТО-ТО делают: ими доказывается, что страница жива. */
-function ручкиСписка(page: Page): Locator {
+function listControls(page: Page): Locator {
   return page
     .locator(".app-main")
     .getByRole("button")
@@ -124,14 +124,14 @@ function ручкиСписка(page: Page): Locator {
 }
 
 /**
- * ручкиОбновления — любое предложение обновить список руками.
+ * refreshControls — любое предложение обновить список руками.
  *
  * Ловится ТРЕМЯ формами сразу, потому что кнопка бывает без подписи: текстом
  * («Обновить», «Обновить список»), доступным именем и рисунком круговой стрелки.
  * Проба, знающая одну форму, зеленела бы на двух других — а пользователь видит
  * их одинаково.
  */
-function ручкиОбновления(page: Page): Locator {
+function refreshControls(page: Page): Locator {
   return page.locator(
     '.app-main button:has-text("Обновить"), ' +
       '.app-main button[aria-label*="бнов"], ' +
@@ -145,52 +145,52 @@ test("порядок полей един на всех формах создан
   test.setTimeout(300_000);
   const { projectId } = await tenantWithProject(page);
 
-  const снято: Array<{ ресурс: string; общие: string[]; всего: number }> = [];
+  const captured: Array<{ resource: string; common: string[]; total: number }> = [];
 
-  for (const ресурс of ФОРМЫ_СОЗДАНИЯ) {
-    await открытьФормуСоздания(page, projectId, ресурс);
-    const подписи = (await подписиФормы(page)).map((п) => имяПоля(п.имя));
-    const общие = подписи.filter((п) => ОБЩИЕ_ПОЛЯ.includes(п));
+  for (const resource of CREATE_FORMS) {
+    await openCreateForm(page, projectId, resource);
+    const labels = (await formLabels(page)).map((lbl) => fieldName(lbl.name));
+    const common = labels.filter((lbl) => COMMON_FIELDS.includes(lbl));
 
     // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ. Без него «общие поля идут первыми» верно и для
     // формы, у которой вообще нет других полей, — то есть утверждение о порядке
     // делается там, где порядка не существует.
     expect(
-      подписи.length,
-      `форма «${ресурс}»: поля ресурса не показаны (подписи: ${JSON.stringify(подписи)}). ` +
+      labels.length,
+      `форма «${resource}»: поля ресурса не показаны (подписи: ${JSON.stringify(labels)}). ` +
         `Утверждать порядок «сначала общие, потом свои» не о чем`,
-    ).toBeGreaterThan(общие.length);
+    ).toBeGreaterThan(common.length);
 
     // Общие поля стоят ПЕРВЫМИ — и именно в том порядке, что назвал владелец.
     expect(
-      подписи.slice(0, общие.length),
-      `форма «${ресурс}»: общие поля не первые. Сверху вниз: ${JSON.stringify(подписи)}. ` +
+      labels.slice(0, common.length),
+      `форма «${resource}»: общие поля не первые. Сверху вниз: ${JSON.stringify(labels)}. ` +
         `Владелец назвал порядок «имя → описание → метки» до полей ресурса: рука идёт к ` +
         `одному месту на всех формах, и разойтись им нельзя`,
-    ).toEqual(общие);
+    ).toEqual(common);
 
     expect(
-      общие,
-      `форма «${ресурс}»: общие поля переставлены между собой — ${JSON.stringify(общие)}`,
-    ).toEqual(ОБЩИЕ_ПОЛЯ.filter((п) => общие.includes(п)));
+      common,
+      `форма «${resource}»: общие поля переставлены между собой — ${JSON.stringify(common)}`,
+    ).toEqual(COMMON_FIELDS.filter((lbl) => common.includes(lbl)));
 
-    снято.push({ ресурс, общие, всего: подписи.length });
+    captured.push({ resource, common, total: labels.length });
   }
 
   // Сверка форм ДРУГ С ДРУГОМ, а не с образцом: расхождение между двумя формами
   // и есть та беда, о которой говорит правило.
-  const образец = JSON.stringify(снято[0].общие);
-  for (const с of снято) {
+  const sample = JSON.stringify(captured[0].common);
+  for (const rec of captured) {
     expect(
-      JSON.stringify(с.общие),
-      `форма «${с.ресурс}» открывается набором ${JSON.stringify(с.общие)}, а «${снято[0].ресурс}» — ` +
-        `${образец}. Соседние формы говорят с пользователем по-разному`,
-    ).toBe(образец);
+      JSON.stringify(rec.common),
+      `форма «${rec.resource}» открывается набором ${JSON.stringify(rec.common)}, а «${captured[0].resource}» — ` +
+        `${sample}. Соседние формы говорят с пользователем по-разному`,
+    ).toBe(sample);
   }
 
   console.log(
-    `осмотрено форм создания: ${снято.length}; полей всего: ` +
-      `${снято.reduce((s, c) => s + c.всего, 0)}; начало у всех — ${образец}`,
+    `осмотрено форм создания: ${captured.length}; полей всего: ` +
+      `${captured.reduce((s, c) => s + c.total, 0)}; начало у всех — ${sample}`,
   );
 });
 
@@ -199,46 +199,46 @@ test("общие поля отделены от полей ресурса чер
   test.setTimeout(180_000);
   const { projectId } = await tenantWithProject(page);
 
-  for (const ресурс of ["vpc/networks", "compute/instances", "nlb/listeners"]) {
-    await открытьФормуСоздания(page, projectId, ресурс);
-    const подписи = await подписиФормы(page);
-    const последнееОбщее = подписи.filter((п) => ОБЩИЕ_ПОЛЯ.includes(имяПоля(п.имя))).at(-1);
-    const первоеСвоё = подписи.find((п) => !ОБЩИЕ_ПОЛЯ.includes(имяПоля(п.имя)));
-    expect(последнееОбщее, `форма «${ресурс}»: общих полей нет вовсе`).toBeTruthy();
-    expect(первоеСвоё, `форма «${ресурс}»: полей ресурса нет вовсе`).toBeTruthy();
+  for (const resource of ["vpc/networks", "compute/instances", "nlb/listeners"]) {
+    await openCreateForm(page, projectId, resource);
+    const labels = await formLabels(page);
+    const lastCommon = labels.filter((lbl) => COMMON_FIELDS.includes(fieldName(lbl.name))).at(-1);
+    const firstOwn = labels.find((lbl) => !COMMON_FIELDS.includes(fieldName(lbl.name)));
+    expect(lastCommon, `форма «${resource}»: общих полей нет вовсе`).toBeTruthy();
+    expect(firstOwn, `форма «${resource}»: полей ресурса нет вовсе`).toBeTruthy();
 
     // Черта ищется НЕ по имени класса, а по тому, чем она является на экране:
     // тонкая горизонтальная линия во всю ширину формы. Так проба переживает
     // замену компонента и не переживает исчезновение самой линии.
-    const черта = await page.evaluate(() => {
-      const форма = document.querySelector("form.ant-form");
-      if (!форма) return null;
-      const ширинаФормы = форма.getBoundingClientRect().width;
-      const линии = Array.from(форма.querySelectorAll("div")).filter((d) => {
+    const divider = await page.evaluate(() => {
+      const form = document.querySelector("form.ant-form");
+      if (!form) return null;
+      const formWidth = form.getBoundingClientRect().width;
+      const lines = Array.from(form.querySelectorAll("div")).filter((d) => {
         const r = d.getBoundingClientRect();
-        return r.height <= 2 && r.height > 0 && r.width > ширинаФормы * 0.8;
+        return r.height <= 2 && r.height > 0 && r.width > formWidth * 0.8;
       });
-      return линии.length === 0
+      return lines.length === 0
         ? null
-        : { сколько: линии.length, y: Math.round(линии[0].getBoundingClientRect().y) };
+        : { howMany: lines.length, y: Math.round(lines[0].getBoundingClientRect().y) };
     });
 
     expect(
-      черта,
-      `форма «${ресурс}»: между общими полями и полями ресурса нет разделительной черты — ` +
+      divider,
+      `форма «${resource}»: между общими полями и полями ресурса нет разделительной черты — ` +
         `«как назвать» и «чем это будет» слились в один список`,
     ).not.toBeNull();
 
     expect(
-      черта!.y,
-      `форма «${ресурс}»: черта на y=${черта!.y} стоит не между «${имяПоля(последнееОбщее!.имя)}» ` +
-        `(y=${последнееОбщее!.y}) и «${имяПоля(первоеСвоё!.имя)}» (y=${первоеСвоё!.y})`,
-    ).toBeGreaterThan(последнееОбщее!.y);
-    expect(черта!.y).toBeLessThan(первоеСвоё!.y);
+      divider!.y,
+      `форма «${resource}»: черта на y=${divider!.y} стоит не между «${fieldName(lastCommon!.name)}» ` +
+        `(y=${lastCommon!.y}) и «${fieldName(firstOwn!.name)}» (y=${firstOwn!.y})`,
+    ).toBeGreaterThan(lastCommon!.y);
+    expect(divider!.y).toBeLessThan(firstOwn!.y);
 
     console.log(
-      `${ресурс}: черта y=${черта!.y} между «${имяПоля(последнееОбщее!.имя)}» ` +
-        `(${последнееОбщее!.y}) и «${имяПоля(первоеСвоё!.имя)}» (${первоеСвоё!.y})`,
+      `${resource}: черта y=${divider!.y} между «${fieldName(lastCommon!.name)}» ` +
+        `(${lastCommon!.y}) и «${fieldName(firstOwn!.name)}» (${firstOwn!.y})`,
     );
   }
 });
@@ -253,95 +253,95 @@ test("незаполненное обязательное поле помече�
   // между ними стоит третье. Форма с единственным обязательным полем не
   // различает «отказ у своего поля» и «отказ где-то в форме» — там любое место
   // рядом, и утверждение о месте было бы вакуумным.
-  await открытьФормуСоздания(page, projectId, "nlb/listeners");
-  const форма = page.locator("form.ant-form");
+  await openCreateForm(page, projectId, "nlb/listeners");
+  const form = page.locator("form.ant-form");
 
   // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ ДО ДЕЙСТВИЯ: форма не краснеет, пока её не трогали.
   // Без него проба не отличила бы отказ, вызванный попыткой, от постоянного
   // украшения, висящего на форме всегда.
   await expect(
-    форма.locator("[role=alert]"),
+    form.locator("[role=alert]"),
     "форма показала отказ ДО первой попытки отправки: она обвиняет за незаполненное поле того, " +
       "кто её только что открыл",
   ).toHaveCount(0);
 
   await page.locator('button:has-text("Создать")').last().click();
 
-  const отказы = форма.locator("[role=alert]");
+  const errors = form.locator("[role=alert]");
   await expect(
-    отказы.first(),
+    errors.first(),
     "отправка пустой формы не показала ни одного отказа: обязательность поля объявлена, " +
       "но не соблюдается — либо соблюдается молча, и пользователю нечего исправлять",
   ).toBeVisible({ timeout: 15_000 });
 
-  const снимок = await page.evaluate(() => {
-    const форма = document.querySelector("form.ant-form")!;
-    const отказы = Array.from(форма.querySelectorAll("[role=alert]")).map((a) => {
+  const snapshot = await page.evaluate(() => {
+    const form = document.querySelector("form.ant-form")!;
+    const errors = Array.from(form.querySelectorAll("[role=alert]")).map((a) => {
       const r = a.getBoundingClientRect();
-      return { текст: (a.textContent ?? "").trim(), y: Math.round(r.y), x: Math.round(r.x) };
+      return { text: (a.textContent ?? "").trim(), y: Math.round(r.y), x: Math.round(r.x) };
     });
-    const подписи = Array.from(форма.querySelectorAll(".ant-form-item-label label")).map((l) => {
+    const labels = Array.from(form.querySelectorAll(".ant-form-item-label label")).map((l) => {
       const r = l.getBoundingClientRect();
-      return { имя: (l.textContent ?? "").trim(), y: Math.round(r.y), x: Math.round(r.x) };
+      return { name: (l.textContent ?? "").trim(), y: Math.round(r.y), x: Math.round(r.x) };
     });
-    const кнопка = Array.from(document.querySelectorAll("button")).find(
+    const button = Array.from(document.querySelectorAll("button")).find(
       (b) => (b.textContent ?? "").trim() === "Создать",
     );
     return {
-      отказы,
-      подписи,
-      кнопкаY: кнопка ? Math.round(кнопка.getBoundingClientRect().y) : -1,
-      адрес: location.pathname,
+      errors,
+      labels,
+      buttonY: button ? Math.round(button.getBoundingClientRect().y) : -1,
+      url: location.pathname,
     };
   });
 
   // Форма НЕ отправилась: иначе «отказ у поля» проверялся бы на странице,
   // которая уже ушла дальше.
   expect(
-    снимок.адрес,
+    snapshot.url,
     "форма с незаполненным обязательным полем всё-таки отправилась — отказ, который она " +
       "показала, ничего не остановил",
   ).toContain("/create");
 
-  const подпись = (имя: string) => снимок.подписи.find((п) => имяПоля(п.имя) === имя);
-  const балансировщик = подпись("Балансировщик");
-  const протокол = подпись("Протокол");
-  expect(балансировщик, "поля «Балансировщик» на форме обработчика нет").toBeTruthy();
-  expect(протокол, "поля «Протокол» на форме обработчика нет").toBeTruthy();
+  const labelOf = (name: string) => snapshot.labels.find((lbl) => fieldName(lbl.name) === name);
+  const balancer = labelOf("Балансировщик");
+  const protocol = labelOf("Протокол");
+  expect(balancer, "поля «Балансировщик» на форме обработчика нет").toBeTruthy();
+  expect(protocol, "поля «Протокол» на форме обработчика нет").toBeTruthy();
 
-  const отказПоля = снимок.отказы.find((о) => о.текст.includes("Балансировщик"));
+  const fieldError = snapshot.errors.find((err) => err.text.includes("Балансировщик"));
   expect(
-    отказПоля,
-    `отказ не назвал поле по имени. Показано: ${JSON.stringify(снимок.отказы.map((о) => о.текст))}`,
+    fieldError,
+    `отказ не назвал поле по имени. Показано: ${JSON.stringify(snapshot.errors.map((err) => err.text))}`,
   ).toBeTruthy();
 
   // МЕСТО ОШИБКИ И МЕСТО ИСПРАВЛЕНИЯ СОВПАДАЮТ: сообщение стоит в строке своего
   // поля — ниже его подписи и ВЫШЕ подписи следующего поля.
   expect(
-    отказПоля!.y,
-    `отказ «${отказПоля!.текст}» стоит на y=${отказПоля!.y}, вне строки своего поля ` +
-      `(«Балансировщик» y=${балансировщик!.y}, следующее поле «Протокол» y=${протокол!.y}). ` +
+    fieldError!.y,
+    `отказ «${fieldError!.text}» стоит на y=${fieldError!.y}, вне строки своего поля ` +
+      `(«Балансировщик» y=${balancer!.y}, следующее поле «Протокол» y=${protocol!.y}). ` +
       `Пользователь читает претензию не там, где её исправляют`,
-  ).toBeGreaterThan(балансировщик!.y);
-  expect(отказПоля!.y).toBeLessThan(протокол!.y);
+  ).toBeGreaterThan(balancer!.y);
+  expect(fieldError!.y).toBeLessThan(protocol!.y);
 
   // …и в колонке ввода, а не полосой во всю ширину: строка под формой стоит
   // левее подписей и ниже последнего поля.
   expect(
-    отказПоля!.x,
-    `отказ выровнен по колонке имён (x=${отказПоля!.x}, подпись x=${балансировщик!.x}) — ` +
+    fieldError!.x,
+    `отказ выровнен по колонке имён (x=${fieldError!.x}, подпись x=${balancer!.x}) — ` +
       `так выглядит полоса под формой, а не пометка на поле`,
-  ).toBeGreaterThan(балансировщик!.x);
+  ).toBeGreaterThan(balancer!.x);
 
   expect(
-    Math.abs(отказПоля!.y - балансировщик!.y),
-    `отказ ближе к кнопке отправки (y=${снимок.кнопкаY}), чем к своему полю ` +
-      `(y=${балансировщик!.y}) — это сводная строка под формой`,
-  ).toBeLessThan(Math.abs(снимок.кнопкаY - отказПоля!.y));
+    Math.abs(fieldError!.y - balancer!.y),
+    `отказ ближе к кнопке отправки (y=${snapshot.buttonY}), чем к своему полю ` +
+      `(y=${balancer!.y}) — это сводная строка под формой`,
+  ).toBeLessThan(Math.abs(snapshot.buttonY - fieldError!.y));
 
   console.log(
-    `отказов показано: ${снимок.отказы.length}; каждый в своей строке; ` +
-      `${JSON.stringify(снимок.отказы.map((о) => `${о.текст.slice(0, 40)}@${о.y}`))}`,
+    `отказов показано: ${snapshot.errors.length}; каждый в своей строке; ` +
+      `${JSON.stringify(snapshot.errors.map((err) => `${err.text.slice(0, 40)}@${err.y}`))}`,
   );
 });
 
@@ -350,49 +350,49 @@ test("кнопка отправки называет действие, пред�
   test.setTimeout(180_000);
   const { projectId } = await tenantWithProject(page);
 
-  for (const ресурс of [
+  for (const resource of [
     "vpc/networks",
     "vpc/route-tables",
     "compute/instances",
     "storage/volumes",
     "nlb/load-balancers",
   ]) {
-    await открытьФормуСоздания(page, projectId, ресурс);
+    await openCreateForm(page, projectId, resource);
 
-    const заголовок = (await page.locator("h3.ant-typography").first().textContent())?.trim() ?? "";
-    const подписьКнопки =
+    const title = (await page.locator("h3.ant-typography").first().textContent())?.trim() ?? "";
+    const buttonLabel =
       (await page.locator('button:has-text("Создать")').last().textContent())?.trim() ?? "";
 
     // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: предмет назван — но заголовком, а не кнопкой.
     // Без него «кнопка не называет предмет» зеленело бы и на странице, где
     // предмет не назван нигде.
     expect(
-      заголовок.length,
-      `форма «${ресурс}»: заголовок не назвал предмет («${заголовок}»). Тогда кнопка «Создать» ` +
+      title.length,
+      `форма «${resource}»: заголовок не назвал предмет («${title}»). Тогда кнопка «Создать» ` +
         `не говорит, что именно создаётся, — и коротка она не по канону, а по недосмотру`,
     ).toBeGreaterThan("Создать".length);
 
     expect(
-      подписьКнопки,
-      `форма «${ресурс}»: кнопка подписана «${подписьКнопки}» — она повторяет предмет, уже ` +
-        `названный заголовком «${заголовок}» в двадцати точках выше`,
+      buttonLabel,
+      `форма «${resource}»: кнопка подписана «${buttonLabel}» — она повторяет предмет, уже ` +
+        `названный заголовком «${title}» в двадцати точках выше`,
     ).toBe("Создать");
 
-    console.log(`${ресурс}: заголовок «${заголовок}» · кнопка «${подписьКнопки}»`);
+    console.log(`${resource}: заголовок «${title}» · кнопка «${buttonLabel}»`);
   }
 });
 
 test("поля страницы одни на списке, карточке и форме", async ({ page }) => {
   // verifies #925
   const { projectId } = await tenantWithProject(page);
-  const имя = `net-pad-${runTag()}`;
+  const name = `net-pad-${runTag()}`;
 
-  const создание = await page.request.post("/vpc/v1/networks", {
-    data: { projectId, name: имя, ipv4CidrBlocks: ["10.61.0.0/16"] },
+  const createResp = await page.request.post("/vpc/v1/networks", {
+    data: { projectId, name: name, ipv4CidrBlocks: ["10.61.0.0/16"] },
   });
   expect(
-    создание.status(),
-    `сеть для пробы не создана: край ответил ${создание.status()}. Это УСЛОВИЕ пробы, а не её ` +
+    createResp.status(),
+    `сеть для пробы не создана: край ответил ${createResp.status()}. Это УСЛОВИЕ пробы, а не её ` +
       `предмет — карточку не на чем открыть`,
   ).toBe(200);
 
@@ -402,33 +402,33 @@ test("поля страницы одни на списке, карточке и 
         const res = await page.request.get(`/vpc/v1/networks?projectId=${projectId}`);
         if (!res.ok()) return "";
         const b = (await res.json()) as { networks?: Array<{ id: string; name: string }> };
-        return b.networks?.find((n) => n.name === имя)?.id ?? "";
+        return b.networks?.find((n) => n.name === name)?.id ?? "";
       },
       { message: "созданная сеть не читается по списку — карточку открывать нечем", timeout: 60_000 },
     )
     .not.toBe("");
   void id;
-  const список = (await (
+  const list = (await (
     await page.request.get(`/vpc/v1/networks?projectId=${projectId}`)
   ).json()) as { networks: Array<{ id: string; name: string }> };
-  const netId = список.networks.find((n) => n.name === имя)!.id;
+  const netId = list.networks.find((n) => n.name === name)!.id;
 
-  const замеры: Array<{ страница: string; заголовок: string; x: number; y: number }> = [];
-  for (const [страница, адрес] of [
+  const measurements: Array<{ pageName: string; title: string; x: number; y: number }> = [];
+  for (const [pageName, url] of [
     ["список", `/projects/${projectId}/vpc/networks`],
     ["форма", `/projects/${projectId}/vpc/networks/create`],
     ["карточка", `/projects/${projectId}/vpc/networks/${netId}`],
   ] as const) {
-    await page.goto(адрес, { waitUntil: "domcontentloaded" });
+    await page.goto(url, { waitUntil: "domcontentloaded" });
     const h = page.locator("h3.ant-typography").first();
-    await expect(h, `${страница}: заголовок страницы не отрисовался`).toBeVisible({
+    await expect(h, `${pageName}: заголовок страницы не отрисовался`).toBeVisible({
       timeout: 45_000,
     });
     const box = await h.boundingBox();
-    expect(box, `${страница}: у заголовка нет геометрии`).not.toBeNull();
-    замеры.push({
-      страница,
-      заголовок: ((await h.textContent()) ?? "").trim(),
+    expect(box, `${pageName}: у заголовка нет геометрии`).not.toBeNull();
+    measurements.push({
+      pageName,
+      title: ((await h.textContent()) ?? "").trim(),
       x: Math.round(box!.x),
       y: Math.round(box!.y),
     });
@@ -436,21 +436,21 @@ test("поля страницы одни на списке, карточке и 
 
   // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: это три РАЗНЫЕ страницы. Совпадение полей у трёх
   // копий одной страницы не значило бы ничего.
-  const заголовки = new Set(замеры.map((з) => з.заголовок));
+  const titles = new Set(measurements.map((meas) => meas.title));
   expect(
-    заголовки.size,
-    `открылись не три разные страницы, а ${заголовки.size}: ${JSON.stringify([...заголовки])}`,
+    titles.size,
+    `открылись не три разные страницы, а ${titles.size}: ${JSON.stringify([...titles])}`,
   ).toBe(3);
 
-  for (const з of замеры.slice(1)) {
+  for (const meas of measurements.slice(1)) {
     expect(
-      { x: з.x, y: з.y },
-      `${з.страница}: заголовок стоит в ${з.x}×${з.y}, а на списке — ${замеры[0].x}×${замеры[0].y}. ` +
+      { x: meas.x, y: meas.y },
+      `${meas.pageName}: заголовок стоит в ${meas.x}×${meas.y}, а на списке — ${measurements[0].x}×${measurements[0].y}. ` +
         `Поля страницы разъехались: при переходе между страницами одного ресурса текст дёргается`,
-    ).toEqual({ x: замеры[0].x, y: замеры[0].y });
+    ).toEqual({ x: measurements[0].x, y: measurements[0].y });
   }
 
-  console.log(`поля страницы: ${замеры.map((з) => `${з.страница} ${з.x}×${з.y}`).join(" · ")}`);
+  console.log(`поля страницы: ${measurements.map((meas) => `${meas.pageName} ${meas.x}×${meas.y}`).join(" · ")}`);
 });
 
 /**
@@ -461,19 +461,19 @@ test("поля страницы одни на списке, карточке и 
  * самого опроса проба обвиняла бы страницы, которым кнопка положена. Здесь
  * условие проверяется, а не предполагается.
  */
-const СПИСКИ = [
-  { адрес: "vpc/networks", край: "/vpc/v1/networks" },
-  { адрес: "vpc/subnets", край: "/vpc/v1/subnets" },
-  { адрес: "vpc/security-groups", край: "/vpc/v1/securityGroups" },
-  { адрес: "compute/instances", край: "/compute/v1/instances" },
-  { адрес: "compute/machine-types", край: "/compute/v1/machineTypes" },
-  { адрес: "storage/volumes", край: "/storage/v1/volumes" },
-  { адрес: "nlb/load-balancers", край: "/nlb/v1/networkLoadBalancers" },
+const LISTS = [
+  { url: "vpc/networks", edge: "/vpc/v1/networks" },
+  { url: "vpc/subnets", edge: "/vpc/v1/subnets" },
+  { url: "vpc/security-groups", edge: "/vpc/v1/securityGroups" },
+  { url: "compute/instances", edge: "/compute/v1/instances" },
+  { url: "compute/machine-types", edge: "/compute/v1/machineTypes" },
+  { url: "storage/volumes", edge: "/storage/v1/volumes" },
+  { url: "nlb/load-balancers", edge: "/nlb/v1/networkLoadBalancers" },
 ];
 
-const СПИСКИ_ВНЕ_ПРОЕКТА = [
-  { адрес: "/iam/roles", край: "/iam/v1/roles" },
-  { адрес: "/system/zones", край: "/geo/v1/zones" },
+const LISTS_OUTSIDE_PROJECT = [
+  { url: "/iam/roles", edge: "/iam/v1/roles" },
+  { url: "/system/zones", edge: "/geo/v1/zones" },
 ];
 
 test("список, который опрашивается сам, не предлагает «Обновить»", async ({ page }) => {
@@ -481,25 +481,25 @@ test("список, который опрашивается сам, не пре�
   test.setTimeout(300_000);
   const { projectId } = await tenantWithProject(page);
 
-  let запросы: string[] = [];
+  let requests: string[] = [];
   page.on("request", (r) => {
-    запросы.push(new URL(r.url()).pathname);
+    requests.push(new URL(r.url()).pathname);
   });
 
-  const адреса = [
-    ...СПИСКИ.map((с) => ({ ...с, полный: `/projects/${projectId}/${с.адрес}` })),
-    ...СПИСКИ_ВНЕ_ПРОЕКТА.map((с) => ({ ...с, полный: с.адрес })),
+  const urls = [
+    ...LISTS.map((rec) => ({ ...rec, full: `/projects/${projectId}/${rec.url}` })),
+    ...LISTS_OUTSIDE_PROJECT.map((rec) => ({ ...rec, full: rec.url })),
   ];
 
-  for (const с of адреса) {
-    запросы = [];
-    await page.goto(с.полный, { waitUntil: "domcontentloaded" });
+  for (const rec of urls) {
+    requests = [];
+    await page.goto(rec.full, { waitUntil: "domcontentloaded" });
 
     // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ 1: страница жива и её ручки на месте. Без него
     // «кнопки „Обновить“ нет» зеленело бы на пустой странице.
     await expect(
-      ручкиСписка(page).first(),
-      `${с.адрес}: на странице нет ни одной ручки списка — она не загрузилась, и вердикт ` +
+      listControls(page).first(),
+      `${rec.url}: на странице нет ни одной ручки списка — она не загрузилась, и вердикт ` +
         `«кнопки „Обновить“ нет» был бы вердиктом о пустоте`,
     ).toBeVisible({ timeout: 45_000 });
 
@@ -507,9 +507,9 @@ test("список, который опрашивается сам, не пре�
     // опрашивает край САМ. Ждём именно этого условия — второго запроса, которого
     // никто руками не просил, — а не отмеренного времени.
     await expect
-      .poll(() => запросы.filter((u) => u === с.край).length, {
+      .poll(() => requests.filter((u) => u === rec.edge).length, {
         message:
-          `${с.адрес}: за отведённое время край ${с.край} запрошен меньше двух раз. Список себя ` +
+          `${rec.url}: за отведённое время край ${rec.edge} запрошен меньше двух раз. Список себя ` +
           `не опрашивает — значит правило «кнопки „Обновить“ быть не должно» к нему не относится, ` +
           `и проба обязана это сказать, а не молча зеленеть`,
         // Бюджет заметно больше промежутка опроса (он секундный): под нагрузкой
@@ -520,11 +520,11 @@ test("список, который опрашивается сам, не пре�
       })
       .toBeGreaterThanOrEqual(2);
 
-    const ручки = ручкиОбновления(page);
-    const сколько = await ручки.count();
-    const подписи = сколько
-      ? await ручки.evaluateAll((эл) =>
-          эл.map(
+    const controls = refreshControls(page);
+    const howMany = await controls.count();
+    const labels = howMany
+      ? await controls.evaluateAll((els) =>
+          els.map(
             (e) =>
               (e.textContent ?? "").trim() ||
               e.getAttribute("aria-label") ||
@@ -535,19 +535,19 @@ test("список, который опрашивается сам, не пре�
       : [];
 
     expect(
-      сколько,
-      `${с.адрес}: список опрашивает ${с.край} сам, и при этом предлагает обновить его руками ` +
-        `(${JSON.stringify(подписи)}). Ручка предлагает то, что и так происходит, а её ` +
+      howMany,
+      `${rec.url}: список опрашивает ${rec.edge} сам, и при этом предлагает обновить его руками ` +
+        `(${JSON.stringify(labels)}). Ручка предлагает то, что и так происходит, а её ` +
         `присутствие говорит обратное`,
     ).toBe(0);
 
     console.log(
-      `${с.адрес}: ${с.край} опрошен ${запросы.filter((u) => u === с.край).length}×, ` +
-        `ручек обновления ${сколько}`,
+      `${rec.url}: ${rec.edge} опрошен ${requests.filter((u) => u === rec.edge).length}×, ` +
+        `ручек обновления ${howMany}`,
     );
   }
 
-  console.log(`осмотрено списков: ${адреса.length}`);
+  console.log(`осмотрено списков: ${urls.length}`);
 });
 
 test("в строках списка нет флажков и группового удаления", async ({ page }) => {
@@ -557,43 +557,43 @@ test("в строках списка нет флажков и групповог
   // Сеть заводится ради ТРЕТЬЕГО списка — собственного списка арендатора. Два
   // общих каталога (роли, зоны) показывают чужие строки, и на них проба
   // утверждала бы об устройстве таблицы, которую этот арендатор не наполнял.
-  const имя = `net-bulk-${runTag()}`;
-  const создание = await page.request.post("/vpc/v1/networks", {
-    data: { projectId, name: имя, ipv4CidrBlocks: ["10.62.0.0/16"] },
+  const name = `net-bulk-${runTag()}`;
+  const createResp = await page.request.post("/vpc/v1/networks", {
+    data: { projectId, name: name, ipv4CidrBlocks: ["10.62.0.0/16"] },
   });
   expect(
-    создание.status(),
-    `сеть для пробы не создана: край ответил ${создание.status()}. Это УСЛОВИЕ пробы, а не её предмет`,
+    createResp.status(),
+    `сеть для пробы не создана: край ответил ${createResp.status()}. Это УСЛОВИЕ пробы, а не её предмет`,
   ).toBe(200);
 
   // ЧИТАЕМЫЕ КАТАЛОГИ СЮДА НЕ ВХОДЯТ НАМЕРЕННО. У списка, где удаления нет
   // by construction (типы машин, типы дисков), не бывает и группового удаления,
   // поэтому «флажков нет» там верно всегда и ничего не сторожит. Проба стоит на
   // списках, где строку УДАЛЯЮТ, — там снятие групповых действий и есть решение.
-  for (const адрес of ["/iam/roles", "/system/zones", `/projects/${projectId}/vpc/networks`]) {
-    await page.goto(адрес, { waitUntil: "domcontentloaded" });
+  for (const url of ["/iam/roles", "/system/zones", `/projects/${projectId}/vpc/networks`]) {
+    await page.goto(url, { waitUntil: "domcontentloaded" });
 
     // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: строки есть, и у строки есть СВОЁ меню действий —
     // тот самый путь, которым удаляют по одной. На пустой таблице «флажков нет»
     // не значит ничего.
     await expect
       .poll(async () => await page.locator(".app-main tbody tr").count(), {
-        message: `${адрес}: таблица пуста — утверждать об устройстве её строк не о чем`,
+        message: `${url}: таблица пуста — утверждать об устройстве её строк не о чем`,
         timeout: 45_000,
       })
       .toBeGreaterThan(0);
 
-    const строк = await page.locator(".app-main tbody tr").count();
-    const меню = await page.locator(".app-main tbody .anticon-more").count();
+    const rowCount = await page.locator(".app-main tbody tr").count();
+    const menuCount = await page.locator(".app-main tbody .anticon-more").count();
     expect(
-      меню,
-      `${адрес}: у строк нет собственного меню действий (строк ${строк}). Тогда удалять по одной ` +
+      menuCount,
+      `${url}: у строк нет собственного меню действий (строк ${rowCount}). Тогда удалять по одной ` +
         `нечем, и снятие групповых действий оставило бы пользователя вовсе без удаления`,
     ).toBeGreaterThan(0);
 
     expect(
       await page.locator('.app-main tbody input[type="checkbox"]').count(),
-      `${адрес}: в строках таблицы стоят флажки. Групповое снятие — самая дорогая ошибка списка: ` +
+      `${url}: в строках таблицы стоят флажки. Групповое снятие — самая дорогая ошибка списка: ` +
         `оно необратимо, а подтверждение называет число, которое читатель и так видел неверно`,
     ).toBe(0);
 
@@ -603,15 +603,15 @@ test("в строках списка нет флажков и групповог
         .getByRole("button")
         .filter({ hasText: /выделенн|выбранн/i })
         .count(),
-      `${адрес}: на странице есть действие над выделенными строками`,
+      `${url}: на странице есть действие над выделенными строками`,
     ).toBe(0);
 
     expect(
       await page.locator(".app-main").getByText(/Выделено\s*:/i).count(),
-      `${адрес}: на странице есть счётчик выделенных строк`,
+      `${url}: на странице есть счётчик выделенных строк`,
     ).toBe(0);
 
-    console.log(`${адрес}: строк ${строк}, меню действий ${меню}, флажков 0`);
+    console.log(`${url}: строк ${rowCount}, меню действий ${menuCount}, флажков 0`);
   }
 });
 
@@ -619,24 +619,24 @@ test("темы документации показаны текстом: жив�
   // verifies #925
   const { projectId } = await tenantWithProject(page);
 
-  const страницы = [
-    { адрес: `/projects/${projectId}/vpc/networks`, тема: "Облачные сети и подсети" },
-    { адрес: `/projects/${projectId}/compute/instances`, тема: "Документация" },
-    { адрес: `/projects/${projectId}/storage/volumes`, тема: "Документация" },
-    { адрес: "/iam/users", тема: "Управление доступом" },
+  const pages = [
+    { url: `/projects/${projectId}/vpc/networks`, topic: "Облачные сети и подсети" },
+    { url: `/projects/${projectId}/compute/instances`, topic: "Документация" },
+    { url: `/projects/${projectId}/storage/volumes`, topic: "Документация" },
+    { url: "/iam/users", topic: "Управление доступом" },
   ];
 
-  for (const с of страницы) {
-    await page.goto(с.адрес, { waitUntil: "domcontentloaded" });
+  for (const rec of pages) {
+    await page.goto(rec.url, { waitUntil: "domcontentloaded" });
 
     // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: тема на странице ЕСТЬ. Без него «ссылок в никуда
     // нет» зеленело бы на странице, где нет и самих тем.
     await expect(
-      page.getByText(с.тема, { exact: false }).first(),
-      `${с.адрес}: темы документации не показаны вовсе — утверждать, что они не ссылки, не о чем`,
+      page.getByText(rec.topic, { exact: false }).first(),
+      `${rec.url}: темы документации не показаны вовсе — утверждать, что они не ссылки, не о чем`,
     ).toBeVisible({ timeout: 45_000 });
 
-    const мёртвые = await page.evaluate(() => {
+    const dead = await page.evaluate(() => {
       const main = document.querySelector(".app-main") ?? document.body;
       return Array.from(main.querySelectorAll("a"))
         .filter((a) => {
@@ -647,12 +647,12 @@ test("темы документации показаны текстом: жив�
     });
 
     expect(
-      мёртвые,
-      `${с.адрес}: на странице есть якоря, которые выглядят ссылками и никуда не ведут: ` +
-        `${JSON.stringify(мёртвые)}. Адресов у документации в дереве нет ни одного, поэтому темы ` +
+      dead,
+      `${rec.url}: на странице есть якоря, которые выглядят ссылками и никуда не ведут: ` +
+        `${JSON.stringify(dead)}. Адресов у документации в дереве нет ни одного, поэтому темы ` +
         `показываются текстом`,
     ).toEqual([]);
 
-    console.log(`${с.адрес}: тема «${с.тема}» показана, мёртвых якорей 0`);
+    console.log(`${rec.url}: тема «${rec.topic}» показана, мёртвых якорей 0`);
   }
 });

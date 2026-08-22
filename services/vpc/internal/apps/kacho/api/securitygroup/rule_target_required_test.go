@@ -53,86 +53,86 @@ func ingressBase() domain.SecurityGroupRule {
 
 func TestRuleTargetIsExactlyOne(t *testing.T) {
 	for _, tc := range []struct {
-		имя     string
-		правило func() domain.SecurityGroupRule
-		отказ   bool
-		поле    string
-		почему  string
+		name    string
+		rule    func() domain.SecurityGroupRule
+		wantErr bool
+		field   string
+		why     string
 	}{
 		{
-			имя: "без цели — отказ",
-			правило: func() domain.SecurityGroupRule {
+			name: "без цели — отказ",
+			rule: func() domain.SecurityGroupRule {
 				return ingressBase()
 			},
-			отказ: true,
-			поле:  ".target",
-			почему: "правило без цели описывает «разрешить трафик куда?» и по закрытой модели не " +
+			wantErr: true,
+			field:   ".target",
+			why: "правило без цели описывает «разрешить трафик куда?» и по закрытой модели не " +
 				"разрешает ничего — вызывающий получал успех на правиле, которое не делает того, " +
 				"что он написал",
 		},
 		{
-			имя: "две цели — отказ",
-			правило: func() domain.SecurityGroupRule {
+			name: "две цели — отказ",
+			rule: func() domain.SecurityGroupRule {
 				r := ingressBase()
 				r.V4CidrBlocks = []string{"10.0.0.0/8"}
 				r.SecurityGroupID = "sgrpeer00000000000000"
 				return r
 			},
-			отказ: true,
-			поле:  ".target",
-			почему: "на проводе `oneof` держит ОДНУ ветвь: вторая молча теряется при обратном " +
+			wantErr: true,
+			field:   ".target",
+			why: "на проводе `oneof` держит ОДНУ ветвь: вторая молча теряется при обратном " +
 				"преобразовании, и сохранённое правило отличается от написанного",
 		},
 		{
-			имя: "цель — блоки v4",
-			правило: func() domain.SecurityGroupRule {
+			name: "цель — блоки v4",
+			rule: func() domain.SecurityGroupRule {
 				r := ingressBase()
 				r.V4CidrBlocks = []string{"10.0.0.0/8"}
 				return r
 			},
-			почему: "положительный контроль: без него отказ зеленел бы на реализации, отвергающей ЛЮБОЕ правило",
+			why: "положительный контроль: без него отказ зеленел бы на реализации, отвергающей ЛЮБОЕ правило",
 		},
 		{
-			имя: "цель — блоки v6",
-			правило: func() domain.SecurityGroupRule {
+			name: "цель — блоки v6",
+			rule: func() domain.SecurityGroupRule {
 				r := ingressBase()
 				r.V6CidrBlocks = []string{"fd00::/8"}
 				return r
 			},
-			почему: "второе семейство — тоже законная цель, и оно проверяется отдельно: " +
+			why: "второе семейство — тоже законная цель, и оно проверяется отдельно: " +
 				"проверка, считающая целью только v4, отвергала бы законное v6-правило",
 		},
 		{
-			имя: "цель — блоки обоих семейств суть ОДНА цель",
-			правило: func() domain.SecurityGroupRule {
+			name: "цель — блоки обоих семейств суть ОДНА цель",
+			rule: func() domain.SecurityGroupRule {
 				r := ingressBase()
 				r.V4CidrBlocks = []string{"10.0.0.0/8"}
 				r.V6CidrBlocks = []string{"fd00::/8"}
 				return r
 			},
-			почему: "ветвь `cidr_blocks` несёт ОБА набора, поэтому «v4 и v6» — одна цель, а не две. " +
+			why: "ветвь `cidr_blocks` несёт ОБА набора, поэтому «v4 и v6» — одна цель, а не две. " +
 				"Проверка, считающая наборы по отдельности, отвергала бы законное dualstack-правило",
 		},
 		{
-			имя: "цель — группа",
-			правило: func() domain.SecurityGroupRule {
+			name: "цель — группа",
+			rule: func() domain.SecurityGroupRule {
 				r := ingressBase()
 				r.SecurityGroupID = "sgrpeer00000000000000"
 				return r
 			},
-			почему: "третий положительный контроль: цель-группа законна",
+			why: "третий положительный контроль: цель-группа законна",
 		},
 	} {
-		t.Run(tc.имя, func(t *testing.T) {
-			err := validateSGRule("rule_specs[0]", tc.правило())
-			if !tc.отказ {
-				require.NoError(t, err, tc.почему)
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSGRule("rule_specs[0]", tc.rule())
+			if !tc.wantErr {
+				require.NoError(t, err, tc.why)
 				return
 			}
-			require.Error(t, err, tc.почему)
+			require.Error(t, err, tc.why)
 			assert.Equal(t, codes.InvalidArgument, status.Code(err),
 				"это неверный ввод, а не состояние ресурса")
-			assert.Equal(t, "rule_specs[0]"+tc.поле, fieldViolation(t, err),
+			assert.Equal(t, "rule_specs[0]"+tc.field, fieldViolation(t, err),
 				"отказ обязан называть поле: иначе вызывающий правит наугад")
 		})
 	}

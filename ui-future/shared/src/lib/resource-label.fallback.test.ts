@@ -35,11 +35,11 @@ describe("ресурс без объявленного падежа", () => {
       // неоткрывающейся страницы.
       expect(label).toBe("Создать кластер очередей");
       expect(warn).toHaveBeenCalledTimes(1);
-      const сказано = String(warn.mock.calls[0]?.[0] ?? "");
+      const said = String(warn.mock.calls[0]?.[0] ?? "");
       // Сообщение обязано называть ПРЕДМЕТ и МЕСТО правки: «что-то не так»
       // читатель снимает как непонятное.
-      expect(сказано).toContain("Кластер очередей");
-      expect(сказано).toContain("accusative");
+      expect(said).toContain("Кластер очередей");
+      expect(said).toContain("accusative");
     } finally {
       warn.mockRestore();
     }

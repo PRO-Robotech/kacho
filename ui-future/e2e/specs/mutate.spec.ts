@@ -22,21 +22,21 @@ import { registerAndSignIn, runTag } from "./fixtures";
 
 test("создание сети: ресурс появляется и виден на странице", async ({ page }) => {
   const { projectId } = await registerAndSignIn(page);
-  const имя = `net-e2e-${runTag()}`;
+  const name = `net-e2e-${runTag()}`;
 
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
 
-  const создать = page.locator('button:has-text("Создать"), a:has-text("Создать")').first();
-  await expect(создать, "на странице сетей нет элемента создания").toBeVisible({
+  const createControl = page.locator('button:has-text("Создать"), a:has-text("Создать")').first();
+  await expect(createControl, "на странице сетей нет элемента создания").toBeVisible({
     timeout: 30_000,
   });
-  await создать.click();
+  await createControl.click();
 
-  const поле = page.locator('input[type="text"]:visible, input:not([type]):visible').first();
-  await expect(поле, "форма создания не предложила ни одного поля").toBeVisible({
+  const field = page.locator('input[type="text"]:visible, input:not([type]):visible').first();
+  await expect(field, "форма создания не предложила ни одного поля").toBeVisible({
     timeout: 20_000,
   });
-  await поле.fill(имя);
+  await field.fill(name);
 
   // АДРЕСНЫЙ БЛОК ЗАПОЛНЯЕТСЯ, потому что форма его требует, — и требует
   // справедливо. Шаблон сети открывает список одной пустой строкой, а её
@@ -55,14 +55,14 @@ test("создание сети: ресурс появляется и виден
   ).toBeVisible({ timeout: 20_000 });
   await cidr.fill("10.91.0.0/16");
 
-  const [ответ] = await Promise.all([
+  const [response] = await Promise.all([
     page.waitForResponse(
       (r) => r.url().includes("/vpc/v1/networks") && r.request().method() === "POST",
       { timeout: 40_000 },
     ),
     page.locator('button:has-text("Создать"):visible, button[type="submit"]:visible').last().click(),
   ]);
-  expect(ответ.status(), "запрос на создание отвергнут краем").toBe(200);
+  expect(response.status(), "запрос на создание отвергнут краем").toBe(200);
 
   // Ресурс появляется в ограниченном окне — это законное ожидание СОБЫТИЯ,
   // а не повтор пробы: мутация асинхронна by design.
@@ -80,11 +80,11 @@ test("создание сети: ресурс появляется и виден
         timeout: 60_000,
       },
     )
-    .toContain(имя);
+    .toContain(name);
 
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
   await expect(
-    page.getByText(имя, { exact: false }).first(),
+    page.getByText(name, { exact: false }).first(),
     "сеть есть в API, но не видна на странице: список отвечает верно, а консоль " +
       "его не показывает — для пользователя ресурса нет",
   ).toBeVisible({ timeout: 30_000 });
@@ -92,14 +92,14 @@ test("создание сети: ресурс появляется и виден
 
 test("создание зональной подсети: справочник размещения обязан быть засеян", async ({ page }) => {
   const { projectId } = await registerAndSignIn(page);
-  const имяСети = `net-z-${runTag()}`;
-  const имяПодсети = `sub-z-${runTag()}`;
+  const networkName = `net-z-${runTag()}`;
+  const subnetName = `sub-z-${runTag()}`;
 
-  const зоны = await page.request.get("/geo/v1/zones");
-  expect(зоны.ok(), "справочник зон недоступен").toBeTruthy();
-  const зона = ((await зоны.json()) as { zones?: Array<{ id: string }> }).zones?.[0]?.id;
+  const zones = await page.request.get("/geo/v1/zones");
+  expect(zones.ok(), "справочник зон недоступен").toBeTruthy();
+  const zone = ((await zones.json()) as { zones?: Array<{ id: string }> }).zones?.[0]?.id;
   expect(
-    зона,
+    zone,
     "справочник зон ПУСТ. Это не косметика: любое создание зонального ресурса " +
       "отвечает «зона не найдена», и свежеподнятый стенд непригоден — при том " +
       "что все поды готовы и ни один гейт этого не показывает",
@@ -108,10 +108,10 @@ test("создание зональной подсети: справочник �
   // Супернет объявляется НАМЕРЕННО: сеть без него подсети не принимает — нарезать
   // не из чего. Проба, создававшая сеть без супернета, была снисходительнее
   // продукта и прятала бы этот отказ.
-  const сеть = await page.request.post("/vpc/v1/networks", {
-    data: { projectId, name: имяСети, ipv4CidrBlocks: ["10.77.0.0/16"] },
+  const network = await page.request.post("/vpc/v1/networks", {
+    data: { projectId, name: networkName, ipv4CidrBlocks: ["10.77.0.0/16"] },
   });
-  expect(сеть.status(), "сеть не создана").toBe(200);
+  expect(network.status(), "сеть не создана").toBe(200);
 
   const netId = await expect
     .poll(
@@ -119,7 +119,7 @@ test("создание зональной подсети: справочник �
         const res = await page.request.get(`/vpc/v1/networks?projectId=${projectId}`);
         if (!res.ok()) return "";
         const b = (await res.json()) as { networks?: Array<{ id: string; name: string }> };
-        return b.networks?.find((n) => n.name === имяСети)?.id ?? "";
+        return b.networks?.find((n) => n.name === networkName)?.id ?? "";
       },
       { message: "идентификатор созданной сети не получен", timeout: 60_000 },
     )
@@ -129,7 +129,7 @@ test("создание зональной подсети: справочник �
   const list = (await (await page.request.get(`/vpc/v1/networks?projectId=${projectId}`)).json()) as {
     networks: Array<{ id: string; name: string }>;
   };
-  const id = list.networks.find((n) => n.name === имяСети)!.id;
+  const id = list.networks.find((n) => n.name === networkName)!.id;
 
   // placement_type НЕ передаётся: он выводится сервером, и присланное значение
   // отвергается явно. Проба говорит с контрактом, а не спорит с ним.
@@ -141,17 +141,17 @@ test("создание зональной подсети: справочник �
   // дополнительные диапазоны добавляются отдельным глаголом. Проба, посылавшая
   // снятое поле, получала отказ края по существу — и это ровно то, ради чего
   // сквозная проба и существует.
-  const подсеть = await page.request.post("/vpc/v1/subnets", {
+  const subnet = await page.request.post("/vpc/v1/subnets", {
     data: {
       projectId,
       networkId: id,
-      name: имяПодсети,
-      zoneId: зона,
+      name: subnetName,
+      zoneId: zone,
       ipv4CidrPrimary: "10.77.7.0/24",
     },
   });
   expect(
-    подсеть.status(),
-    `зональная подсеть не создана: ${(await подсеть.text()).slice(0, 200)}`,
+    subnet.status(),
+    `зональная подсеть не создана: ${(await subnet.text()).slice(0, 200)}`,
   ).toBe(200);
 });

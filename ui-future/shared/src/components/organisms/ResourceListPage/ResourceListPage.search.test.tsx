@@ -151,10 +151,10 @@ describe("поиск уходит на сервер там, где владел�
     renderList(spec, "/iam/users");
     await waitFor(() => expect(listUrls(spec.apiPath).length).toBeGreaterThan(0));
 
-    const поле = await screen.findByPlaceholderText(/по всему списку/i);
+    const searchField = await screen.findByPlaceholderText(/по всему списку/i);
     // И предмет поиска на месте — иначе «область названа» достигалось бы
     // затиранием того, ради чего перекрытие заводили.
-    expect(поле.getAttribute("placeholder")).toMatch(/почте/i);
+    expect(searchField.getAttribute("placeholder")).toMatch(/почте/i);
   });
 
   it("пустая строка поиска фильтра не шлёт", async () => {
@@ -211,7 +211,7 @@ describe("законный близнец: владелец, который вы
    * есть весь набор, и подпись отговаривала верить верному ответу. Различие
    * стоит различать, поэтому ниже пара, а не один случай.
    */
-  function рендерСписка(spec: (typeof REGISTRY)[string]) {
+  function renderAccountsList(spec: (typeof REGISTRY)[string]) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
@@ -232,7 +232,7 @@ describe("законный близнец: владелец, который вы
     expect(spec.serverSearchField).toBeUndefined();
     expect(spec.search?.serverTerm).toBeUndefined();
     stubList(spec.payloadKey, [{ id: "acc-1", name: "alpha" }], "cursor-1");
-    рендерСписка(spec);
+    renderAccountsList(spec);
     await waitFor(() => expect(listUrls(spec.apiPath).length).toBeGreaterThan(0));
     expect(await screen.findByPlaceholderText(/среди загруженных/i)).toBeTruthy();
   });
@@ -243,7 +243,7 @@ describe("законный близнец: владелец, который вы
     // ни от чего.
     const spec = REGISTRY.accounts;
     stubList(spec.payloadKey, [{ id: "acc-1", name: "alpha" }], "");
-    рендерСписка(spec);
+    renderAccountsList(spec);
     await waitFor(() => expect(listUrls(spec.apiPath).length).toBeGreaterThan(0));
     expect(await screen.findByPlaceholderText(/по всему списку/i)).toBeTruthy();
   });

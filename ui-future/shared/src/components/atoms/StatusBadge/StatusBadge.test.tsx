@@ -95,8 +95,8 @@ describe("StatusBadge", () => {
 });
 
 /** Геометрия пилюли — то, что задаёт форму, без тона. */
-function геометрия(узел: HTMLElement) {
-  const s = узел.style;
+function geometry(node: HTMLElement) {
+  const s = node.style;
   return {
     display: s.display,
     alignItems: s.alignItems,
@@ -122,18 +122,18 @@ describe("StatusBadge — форма пилюли одна на продукт",
       </>,
     );
 
-    const статус = screen.getByText("Active");
-    const открыт = screen.getByText("Открыт");
-    const закрыт = screen.getByText("Закрыт");
+    const status = screen.getByText("Active");
+    const opened = screen.getByText("Открыт");
+    const closed = screen.getByText("Закрыт");
 
-    expect(геометрия(открыт)).toEqual(геометрия(статус));
+    expect(geometry(opened)).toEqual(geometry(status));
     // Контроль: сравниваются не две пустоты — форма действительно объявлена.
-    expect(геометрия(статус).height).toBe("20px");
-    expect(геометрия(статус).borderRadius).toBe("6px");
+    expect(geometry(status).height).toBe("20px");
+    expect(geometry(status).borderRadius).toBe("6px");
 
     // Близнец: другой ТОН той же формы — геометрия та же, заливка другая.
     // Иначе равенство выше выполнялось бы и на двух узлах без единого свойства.
-    expect(геометрия(закрыт)).toEqual(геометрия(статус));
-    expect(закрыт.style.background).not.toBe(открыт.style.background);
+    expect(geometry(closed)).toEqual(geometry(status));
+    expect(closed.style.background).not.toBe(opened.style.background);
   });
 });

@@ -25,7 +25,7 @@ test("неаутентифицированный не получает ниче�
   request,
 }) => {
   // Отрицание: без сессии — отказ на каждом домене.
-  for (const путь of [
+  for (const path of [
     "/vpc/v1/networks",
     "/compute/v1/instances",
     "/storage/v1/volumes",
@@ -33,23 +33,23 @@ test("неаутентифицированный не получает ниче�
     "/registry/v1/registries",
     "/iam/v1/projects",
   ]) {
-    const r = await request.get(путь);
+    const r = await request.get(path);
     expect(
       r.status(),
-      `${путь} ответил ${r.status()} без единого признака личности — ` +
+      `${path} ответил ${r.status()} без единого признака личности — ` +
         `отказ по умолчанию не действует`,
     ).toBe(401);
   }
 
   // Положительное В ТОМ ЖЕ ПРОГОНЕ: иначе всё выше зеленеет на мёртвом продукте.
   const { projectId } = await registerAndSignIn(page);
-  for (const путь of [
+  for (const path of [
     `/vpc/v1/networks?projectId=${projectId}`,
     `/compute/v1/instances?projectId=${projectId}`,
     "/iam/v1/projects",
   ]) {
-    const r = await page.request.get(путь);
-    expect(r.status(), `своё недоступно: ${путь} → ${r.status()}`).toBe(200);
+    const r = await page.request.get(path);
+    expect(r.status(), `своё недоступно: ${path} → ${r.status()}`).toBe(200);
   }
 });
 
@@ -59,19 +59,19 @@ test("админские поверхности закрыты обычному 
   await registerAndSignIn(page);
 
   // Отрицание: поверхности, требующие полномочий уровня кластера.
-  for (const путь of ["/vpc/v1/addressPools", "/iam/v1/internal/cluster/admins"]) {
-    const r = await page.request.get(путь);
+  for (const path of ["/vpc/v1/addressPools", "/iam/v1/internal/cluster/admins"]) {
+    const r = await page.request.get(path);
     expect(
       [403, 404].includes(r.status()),
-      `${путь} ответил ${r.status()} обычному арендатору — админская поверхность открыта`,
+      `${path} ответил ${r.status()} обычному арендатору — админская поверхность открыта`,
     ).toBeTruthy();
   }
 
   // Положительное: глобальный справочник размещения объявлен доступным каждому
   // аутентифицированному НАМЕРЕННО — без него нельзя выбрать зону.
-  const справочник = await page.request.get("/geo/v1/regions");
+  const catalog = await page.request.get("/geo/v1/regions");
   expect(
-    справочник.status(),
+    catalog.status(),
     "справочник размещения закрыт: арендатор без него не создаст ни один " +
       "размещаемый ресурс, а решение об открытости принято и записано",
   ).toBe(200);
@@ -80,12 +80,12 @@ test("админские поверхности закрыты обычному 
 test("чужой проект не читается", async ({ page }) => {
   const { projectId } = await registerAndSignIn(page);
 
-  const своё = await page.request.get(`/vpc/v1/networks?projectId=${projectId}`);
-  expect(своё.status(), "своё недоступно — отрицание ниже стало бы бессмысленным").toBe(200);
+  const own = await page.request.get(`/vpc/v1/networks?projectId=${projectId}`);
+  expect(own.status(), "своё недоступно — отрицание ниже стало бы бессмысленным").toBe(200);
 
-  const чужое = await page.request.get("/vpc/v1/networks?projectId=prjzzzzzzzzzzzzzzzzz");
+  const foreign = await page.request.get("/vpc/v1/networks?projectId=prjzzzzzzzzzzzzzzzzz");
   expect(
-    [400, 403, 404].includes(чужое.status()),
-    `чужой проект ответил ${чужое.status()} — граница арендатора не держится`,
+    [400, 403, 404].includes(foreign.status()),
+    `чужой проект ответил ${foreign.status()} — граница арендатора не держится`,
   ).toBeTruthy();
 });

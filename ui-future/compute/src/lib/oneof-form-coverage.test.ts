@@ -13,12 +13,12 @@ describe("вид машины: каждая ветвь спецификации 
 
   it("перечень контракта совпадает с перечнем, который даёт форма", () => {
     const contract = oneofBranches("compute/v1/instance_service.proto", "CreateInstanceRequest", "spec");
-    const форма: Record<string, Record<string, unknown>> = {
+    const form: Record<string, Record<string, unknown>> = {
       vm_spec: instanceBody(spec, "VM"),
       container_spec: instanceBody(spec, "CONTAINER"),
     };
-    const выразимо = contract.filter((branch) => (форма[branch] ?? {})[branch] !== undefined);
-    expect(выразимо).toEqual(contract);
+    const expressible = contract.filter((branch) => (form[branch] ?? {})[branch] !== undefined);
+    expect(expressible).toEqual(contract);
   });
 
   it("вторая ветвь в теле не появляется — отрицание в паре с положительным", () => {

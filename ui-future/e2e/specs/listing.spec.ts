@@ -15,11 +15,11 @@ import { registerAndSignIn, createdResourceId, runTag } from "./fixtures";
  * этого не делала и падала на «нет строки поиска» — сообщение верное, вывод из
  * него делался неверный: искали пропавший поиск, а не отсутствующий ресурс.
  */
-async function сетьВПроекте(page: Page, projectId: string): Promise<string> {
-  const ответ = await page.request.post("/vpc/v1/networks", {
+async function networkInProject(page: Page, projectId: string): Promise<string> {
+  const response = await page.request.post("/vpc/v1/networks", {
     data: { projectId, name: `net-lst-${runTag()}`, ipv4CidrBlocks: ["10.93.0.0/16"] },
   });
-  return createdResourceId(page, ответ, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под список");
+  return createdResourceId(page, response, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под список");
 }
 
 /**
@@ -40,25 +40,25 @@ async function сетьВПроекте(page: Page, projectId: string): Promise<
  * Возвращается ИМЯ, а не идентификатор: именно оно видно в строке таблицы, и
  * именно по нему проба узнаёт, что список разрешился непустым.
  */
-async function подсетьВСети(page: Page, projectId: string, networkId: string): Promise<string> {
-  const зоны = await page.request.get("/geo/v1/zones");
+async function subnetInNetwork(page: Page, projectId: string, networkId: string): Promise<string> {
+  const zones = await page.request.get("/geo/v1/zones");
   expect(
-    зоны.ok(),
+    zones.ok(),
     "справочник зон недоступен — зональную подсеть создать негде. Это УСЛОВИЕ пробы, " +
       "а не её предмет: о ручке вкладки такой прогон не говорит ничего",
   ).toBeTruthy();
-  const зона = ((await зоны.json()) as { zones?: Array<{ id: string }> }).zones?.[0]?.id ?? "";
-  expect(зона, "справочник зон ПУСТ — свежеподнятый стенд непригоден для размещаемых ресурсов").not.toBe("");
+  const zone = ((await zones.json()) as { zones?: Array<{ id: string }> }).zones?.[0]?.id ?? "";
+  expect(zone, "справочник зон ПУСТ — свежеподнятый стенд непригоден для размещаемых ресурсов").not.toBe("");
 
-  const имя = `sub-lst-${runTag()}`;
+  const name = `sub-lst-${runTag()}`;
   // `placement_type` не передаётся: он выводится сервером из того, что задано
   // (`zone_id` → ZONAL), а присланный отвергается явно. Якорь адресов —
   // `ipv4CidrPrimary` внутри супернета сети (`10.93.0.0/16` выше).
-  const ответ = await page.request.post("/vpc/v1/subnets", {
-    data: { projectId, networkId, name: имя, zoneId: зона, ipv4CidrPrimary: "10.93.1.0/24" },
+  const response = await page.request.post("/vpc/v1/subnets", {
+    data: { projectId, networkId, name: name, zoneId: zone, ipv4CidrPrimary: "10.93.1.0/24" },
   });
-  await createdResourceId(page, ответ, "subnetId", (id) => `/vpc/v1/subnets/${id}`, "подсеть под вкладку сети");
-  return имя;
+  await createdResourceId(page, response, "subnetId", (id) => `/vpc/v1/subnets/${id}`, "подсеть под вкладку сети");
+  return name;
 }
 
 /**
@@ -71,7 +71,7 @@ async function подсетьВСети(page: Page, projectId: string, networkId
  * область поиска не спрашивается (осознанно, #465), и утверждать про её ответ
  * тут было бы нечего.
  */
-async function проектВКонтексте(page: Page, projectId: string): Promise<void> {
+async function projectInContext(page: Page, projectId: string): Promise<void> {
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
   await expect
     .poll(
@@ -111,20 +111,20 @@ async function проектВКонтексте(page: Page, projectId: string): 
 test("поиск в списке уходит запросом, и край его принимает", async ({ page }) => {
   // verifies #373
   const { projectId } = await registerAndSignIn(page);
-  await сетьВПроекте(page, projectId);
+  await networkInProject(page, projectId);
 
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
 
-  const поиск = page.locator('input[type="search"]').first();
-  await expect(поиск, "на странице списка нет строки поиска").toBeVisible({ timeout: 30_000 });
+  const search = page.locator('input[type="search"]').first();
+  await expect(search, "на странице списка нет строки поиска").toBeVisible({ timeout: 30_000 });
 
   // Строка поиска обязана НАЗЫВАТЬ, о чём судит: серверная — о всём списке.
-  await expect(поиск, "строка поиска не объявляет, что спрашивает сервер").toHaveAttribute(
+  await expect(search, "строка поиска не объявляет, что спрашивает сервер").toHaveAttribute(
     "placeholder",
     /по всему списку/,
   );
 
-  const [ответ] = await Promise.all([
+  const [response] = await Promise.all([
     page.waitForResponse(
       (r) => {
         const u = new URL(r.url());
@@ -136,12 +136,12 @@ test("поиск в списке уходит запросом, и край ег
       },
       { timeout: 30_000 },
     ),
-    поиск.fill(`ищем-${runTag()}`),
+    search.fill(`ищем-${runTag()}`),
   ]);
 
   // 200 против 400 здесь и есть весь предмет: 400 означает, что выражение
   // собрано не по грамматике владельца, и тогда поиск ронял бы страницу целиком.
-  expect(ответ.status(), `край отверг выражение фильтра: ${await ответ.text()}`).toBe(200);
+  expect(response.status(), `край отверг выражение фильтра: ${await response.text()}`).toBe(200);
 });
 
 /**
@@ -154,23 +154,23 @@ test("поиск в списке уходит запросом, и край ег
 test("пока список прочитан не весь, сортировка не предлагается", async ({ page }) => {
   // verifies #373
   const { projectId } = await registerAndSignIn(page);
-  await сетьВПроекте(page, projectId);
+  await networkInProject(page, projectId);
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
   await expect(
     page.locator("table").first(),
     "таблицы списка нет — у пустого арендатора её и не бывает, предмет пробы не создан",
   ).toBeVisible({ timeout: 30_000 });
 
-  const ещё = page.locator('button:has-text("Показать ещё")');
-  const сортируемые = page.locator("th.ant-table-column-has-sorters");
+  const moreButton = page.locator('button:has-text("Показать ещё")');
+  const sortableHeaders = page.locator("th.ant-table-column-has-sorters");
 
-  if ((await ещё.count()) > 0) {
-    expect(await сортируемые.count(), "список прочитан не весь, а сортировка предлагается").toBe(0);
+  if ((await moreButton.count()) > 0) {
+    expect(await sortableHeaders.count(), "список прочитан не весь, а сортировка предлагается").toBe(0);
   } else {
     // Положительный контроль: на прочитанном целиком списке сортировка ЕСТЬ —
     // иначе «нуль сортируемых» означало бы и «убрали правильно», и «сломали
     // везде», а различить было бы нечем.
-    expect(await сортируемые.count(), "список прочитан целиком, а сортировать нечем").toBeGreaterThan(0);
+    expect(await sortableHeaders.count(), "список прочитан целиком, а сортировать нечем").toBeGreaterThan(0);
   }
 });
 
@@ -199,8 +199,8 @@ test("пока список прочитан не весь, сортировка
 test("ручка вкладки связанного ресурса называет свою область", async ({ page }) => {
   // verifies #373
   const { projectId } = await registerAndSignIn(page);
-  const networkId = await сетьВПроекте(page, projectId);
-  const имяПодсети = await подсетьВСети(page, projectId, networkId);
+  const networkId = await networkInProject(page, projectId);
+  const subnetName = await subnetInNetwork(page, projectId, networkId);
 
   await page.goto(`/projects/${projectId}/vpc/networks/${networkId}/subnets`, { waitUntil: "domcontentloaded" });
 
@@ -208,20 +208,20 @@ test("ручка вкладки связанного ресурса называ
   // ручку. Иначе утверждения ниже читают переходное состояние: пока ответа нет,
   // оболочка рисует поиск, а на пустом ответе заменяет его приглашением.
   await expect(
-    page.getByText(имяПодсети, { exact: false }).first(),
+    page.getByText(subnetName, { exact: false }).first(),
     "созданная подсеть не видна на вкладке сети: список либо не разрешился, либо " +
       "разрешился пустым — тогда оболочка показывает приглашение создать первую, " +
       "и строки поиска на странице нет вовсе",
   ).toBeVisible({ timeout: 30_000 });
 
-  const поиск = page.locator('input[placeholder*="Поиск"]').first();
-  await expect(поиск, "на вкладке связанного ресурса нет строки поиска").toBeVisible({ timeout: 30_000 });
+  const search = page.locator('input[placeholder*="Поиск"]').first();
+  await expect(search, "на вкладке связанного ресурса нет строки поиска").toBeVisible({ timeout: 30_000 });
 
   // До этой правки здесь стояло «Поиск по имени или идентификатору» — подпись,
   // не говорящая, о чём судит поиск. Пустой ответ такой ручки пользователь
   // читает как «такого ресурса нет», хотя над недочитанным списком это
   // утверждение никем не проверено.
-  await expect(поиск, "строка поиска не называет область, в которой судит").toHaveAttribute(
+  await expect(search, "строка поиска не называет область, в которой судит").toHaveAttribute(
     "placeholder",
     /по всему списку|среди загруженных/,
   );
@@ -242,11 +242,11 @@ test("ручка вкладки связанного ресурса называ
 test("общий поиск не работает вхолостую и уходит на сервер", async ({ page }) => {
   // verifies #373, #465
   const { projectId } = await registerAndSignIn(page);
-  await проектВКонтексте(page, projectId);
+  await projectInContext(page, projectId);
 
   // Окно наблюдения обязано принадлежать СТРАНИЦЕ ПОИСКА, а не предыдущей.
   //
-  // `проектВКонтексте` заходит на страницу СЕТЕЙ и возвращается ровно в тот миг,
+  // `projectInContext` заходит на страницу СЕТЕЙ и возвращается ровно в тот миг,
   // когда контекст осел в localStorage, — а это и есть предусловие, которое
   // разблокирует списочный запрос той страницы. Слушатель, навешенный сразу
   // после, ловил `/vpc/v1/networks` ЧУЖОЙ страницы и вменял его поиску.
@@ -265,15 +265,15 @@ test("общий поиск не работает вхолостую и уход
   // `/system/search`, поэтому первый же запрос страницы поиска виден.
   await page.goto("about:blank");
 
-  const списки: string[] = [];
+  const listCalls: string[] = [];
   page.on("request", (r) => {
     const u = new URL(r.url());
-    if (/\/v1\//.test(u.pathname)) списки.push(u.pathname + u.search);
+    if (/\/v1\//.test(u.pathname)) listCalls.push(u.pathname + u.search);
   });
 
   await page.goto("/system/search", { waitUntil: "domcontentloaded" });
-  const поиск = page.locator('input[placeholder*="Поиск"]').first();
-  await expect(поиск).toBeVisible({ timeout: 30_000 });
+  const search = page.locator('input[placeholder*="Поиск"]').first();
+  await expect(search).toBeVisible({ timeout: 30_000 });
 
   // Окно не должно быть пустым, иначе «ноль списков» означает «ничего не
   // прочитано». Ждём УСЛОВИЕ — что страница вообще пошла в край: оболочка
@@ -283,14 +283,14 @@ test("общий поиск не работает вхолостую и уход
   // время сделать то, чего она делать не должна». Опрос завершается на ПЕРВОЙ
   // удачной проверке: на нуле он не ждал нисколько, а ждал ровно тогда, когда
   // уже был красен, — то есть обещанного окна не существовало.
-  await expect.poll(() => списки.some((u) => u.startsWith("/iam/v1/")), { timeout: 30_000 }).toBe(true);
+  await expect.poll(() => listCalls.some((u) => u.startsWith("/iam/v1/")), { timeout: 30_000 }).toBe(true);
 
   expect(
-    списки.filter((u) => u.includes("/vpc/v1/networks")),
+    listCalls.filter((u) => u.includes("/vpc/v1/networks")),
     "страница спросила списки до запроса",
   ).toEqual([]);
 
-  const [ответ] = await Promise.all([
+  const [response] = await Promise.all([
     page.waitForResponse(
       (r) => {
         const u = new URL(r.url());
@@ -298,13 +298,13 @@ test("общий поиск не работает вхолостую и уход
       },
       { timeout: 30_000 },
     ),
-    поиск.fill("прод"),
+    search.fill("прод"),
   ]);
-  expect(ответ.status(), `край отверг выражение поиска: ${await ответ.text()}`).toBe(200);
+  expect(response.status(), `край отверг выражение поиска: ${await response.text()}`).toBe(200);
   // Запирает #465: без `project_id` запрос уходил, но край его отвергал —
   // здесь утверждается не только «край ответил», а что ответил ИМЕННО на
   // project-scoped запрос своего проекта, а не по чужой случайности.
-  expect(new URL(ответ.url()).searchParams.get("project_id"), "запрос ушёл без project_id").toBe(projectId);
+  expect(new URL(response.url()).searchParams.get("project_id"), "запрос ушёл без project_id").toBe(projectId);
 });
 
 /**
@@ -334,25 +334,25 @@ test("поле подбора формы спрашивает край, а не 
   // запроса, а выпадающий список отвечал «нет данных».
   test.setTimeout(180_000);
   const { projectId } = await registerAndSignIn(page);
-  const имя = `net-pick-${runTag()}`;
+  const name = `net-pick-${runTag()}`;
   await page.request
-    .post("/vpc/v1/networks", { data: { projectId, name: имя, ipv4CidrBlocks: ["10.95.0.0/16"] } })
+    .post("/vpc/v1/networks", { data: { projectId, name: name, ipv4CidrBlocks: ["10.95.0.0/16"] } })
     .then((r) => createdResourceId(page, r, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под поле подбора"));
 
   await page.goto(`/projects/${projectId}/vpc/subnets/create`, { waitUntil: "domcontentloaded" });
 
-  const поле = page.locator('input[role="combobox"]').first();
+  const field = page.locator('input[role="combobox"]').first();
   await expect(
-    поле,
+    field,
     "на форме создания подсети нет поля подбора — условие пробы не создано, и о поиске этот прогон не говорит ничего",
   ).toBeVisible({ timeout: 60_000 });
 
-  await поле.click();
+  await field.click();
 
   // ПРЕДМЕТ: ввод уходит запросом, и край его принимает. 200 против 400 здесь и
   // есть половина предмета: 400 означает, что выражение собрано не по грамматике
   // владельца, и тогда поле роняло бы список на каждом нажатии клавиши.
-  const [ответ] = await Promise.all([
+  const [response] = await Promise.all([
     page.waitForResponse(
       (r) => {
         const u = new URL(r.url());
@@ -364,15 +364,15 @@ test("поле подбора формы спрашивает край, а не 
       },
       { timeout: 30_000 },
     ),
-    поле.pressSequentially(имя.slice(-8), { delay: 60 }),
+    field.pressSequentially(name.slice(-8), { delay: 60 }),
   ]);
-  expect(ответ.status(), `край отверг выражение поля подбора: ${await ответ.text()}`).toBe(200);
+  expect(response.status(), `край отверг выражение поля подбора: ${await response.text()}`).toBe(200);
 
   // Положительный контроль: сеть, которую край вернул по этому вводу, ВИДНА в
   // поле. Без него «запрос ушёл» зеленело бы и на поле, которое ответ края
   // выбрасывает — а именно так и выглядит повторное сужение в браузере.
   await expect(
-    page.getByText(имя, { exact: false }).first(),
-    `край ответил по вводу, а поле подбора сеть ${имя} не показало — ответ отброшен уже в браузере`,
+    page.getByText(name, { exact: false }).first(),
+    `край ответил по вводу, а поле подбора сеть ${name} не показало — ответ отброшен уже в браузере`,
   ).toBeVisible({ timeout: 20_000 });
 });

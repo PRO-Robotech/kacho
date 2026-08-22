@@ -19,7 +19,7 @@
 // же форму, а не другой продукт.
 import type { CSSProperties } from "react";
 
-const СТИЛЬ: CSSProperties = {
+const STYLE: CSSProperties = {
   marginTop: 6,
   fontSize: 12,
   lineHeight: 1.35,
@@ -41,7 +41,7 @@ interface Props {
 export function FieldError({ id, message }: Props) {
   if (!message) return null;
   return (
-    <div id={id} role="alert" style={СТИЛЬ}>
+    <div id={id} role="alert" style={STYLE}>
       {message}
     </div>
   );

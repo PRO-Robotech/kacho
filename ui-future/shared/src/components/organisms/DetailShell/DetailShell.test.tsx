@@ -138,7 +138,7 @@ describe("DetailShell — рейл объявлен НАБОРОМ ВКЛАДО�
   it("рейл — набор вкладок, и каждый пункт объявлен вкладкой", () => {
     show("/networks/net-1");
 
-    const рейл = screen.getByRole("tablist");
+    const rail = screen.getByRole("tablist");
     // Направление объявлено ЯВНО, и объявлено ГОРИЗОНТАЛЬНЫМ: вкладки стоят
     // полосой под именем ресурса, и читающий страницу не глазами обязан ждать
     // стрелок влево-вправо, а не вверх-вниз. Прежде здесь стояло «вертикально» —
@@ -146,9 +146,9 @@ describe("DetailShell — рейл объявлен НАБОРОМ ВКЛАДО�
     // навигации по модулю. Рейл снят решением владельца, а проба его пережила:
     // она перестала описывать продукт, продолжая падать на верном коде.
     // Утверждение не ослаблено — снятие атрибута по-прежнему роняет пробу.
-    expect(рейл).toHaveAttribute("aria-orientation", "horizontal");
+    expect(rail).toHaveAttribute("aria-orientation", "horizontal");
     expect(
-      within(рейл)
+      within(rail)
         .getAllByRole("tab")
         .map((t) => t.textContent),
     ).toEqual(["Обзор", "JSON"]);
@@ -168,13 +168,13 @@ describe("DetailShell — рейл объявлен НАБОРОМ ВКЛАДО�
   it("вкладка указывает на свою панель, а панель названа своей вкладкой", () => {
     show("/networks/net-1?tab=json");
 
-    const вкладка = screen.getByRole("tab", { name: "JSON" });
-    const панель = screen.getByRole("tabpanel");
+    const tab = screen.getByRole("tab", { name: "JSON" });
+    const panel = screen.getByRole("tabpanel");
     // Ссылка ведёт в существующий узел, а не в пустоту: висячая ссылка на панель
     // выглядит как связь и связью не является.
-    expect(вкладка.getAttribute("aria-controls")).toBe(панель.getAttribute("id"));
-    expect(панель.getAttribute("aria-labelledby")).toBe(вкладка.getAttribute("id"));
-    expect(панель).toHaveTextContent("содержимое json");
+    expect(tab.getAttribute("aria-controls")).toBe(panel.getAttribute("id"));
+    expect(panel.getAttribute("aria-labelledby")).toBe(tab.getAttribute("id"));
+    expect(panel).toHaveTextContent("содержимое json");
   });
 
   it("в режиме формы НЕТ ни вкладок, ни панели вкладки", () => {

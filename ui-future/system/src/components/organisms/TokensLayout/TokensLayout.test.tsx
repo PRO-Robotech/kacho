@@ -46,7 +46,7 @@ function show(at: string) {
   );
 }
 
-const ПУНКТЫ = ["Ключи сервисных аккаунтов", "Токены пользователей"];
+const ITEMS = ["Ключи сервисных аккаунтов", "Токены пользователей"];
 
 describe("раздел «Токены и ключи»", () => {
   it("показывает содержимое открытого адреса", () => {
@@ -69,8 +69,8 @@ describe("раздел «Токены и ключи»", () => {
     // поверх колонки, и в разделе снова окажется две навигации, а его части
     // разойдутся по виду между собой.
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
-    for (const п of ПУНКТЫ) {
-      expect(screen.queryByText(п)).not.toBeInTheDocument();
+    for (const item of ITEMS) {
+      expect(screen.queryByText(item)).not.toBeInTheDocument();
     }
   });
 

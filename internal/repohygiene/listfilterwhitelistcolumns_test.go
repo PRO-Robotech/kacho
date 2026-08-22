@@ -280,9 +280,9 @@ func TestFilterWhitelistGateCanFail(t *testing.T) {
 		"addresses": {"name": "text", "ip_version": "smallint NOT NULL DEFAULT 0", "reserved": "boolean"},
 	}
 	cases := []struct {
-		имя     string
-		поле    string
-		находка bool
+		name    string
+		field   string
+		finding bool
 	}{
 		{"настоящая текстовая колонка проходит", "name", false},
 		{"логическая колонка проходит", "reserved", false},
@@ -294,11 +294,11 @@ func TestFilterWhitelistGateCanFail(t *testing.T) {
 		{"опечатка — находка", "nmae", true}, //nolint:misspell // намеренно негодное имя — предмет кейса
 	}
 	for _, c := range cases {
-		t.Run(c.имя, func(t *testing.T) {
-			typ, exists := cols["addresses"][c.поле]
+		t.Run(c.name, func(t *testing.T) {
+			typ, exists := cols["addresses"][c.field]
 			bad := !exists || strings.HasPrefix(typ, "smallint") || strings.HasPrefix(typ, "integer")
-			if bad != c.находка {
-				t.Fatalf("предикат гейта негоден: поле %q → находка=%v, ожидалось %v", c.поле, bad, c.находка)
+			if bad != c.finding {
+				t.Fatalf("предикат гейта негоден: поле %q → находка=%v, ожидалось %v", c.field, bad, c.finding)
 			}
 		})
 	}

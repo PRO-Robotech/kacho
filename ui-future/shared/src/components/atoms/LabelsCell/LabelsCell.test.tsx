@@ -74,19 +74,19 @@ describe("LabelsCell", () => {
   it("ключ отличим от значения ВИДОМ, а не только узлом", () => {
     render(<LabelsCell labels={{ env: "prod" }} />);
 
-    const ключ = screen.getByText("env");
-    const значение = screen.getByText("prod");
+    const key = screen.getByText("env");
+    const value = screen.getByText("prod");
 
-    expect(ключ.style.background).not.toBe("");
-    expect(значение.style.background).toBe("");
-    expect(Number(ключ.style.fontWeight)).toBeGreaterThan(
-      Number(значение.style.fontWeight),
+    expect(key.style.background).not.toBe("");
+    expect(value.style.background).toBe("");
+    expect(Number(key.style.fontWeight)).toBeGreaterThan(
+      Number(value.style.fontWeight),
     );
-    expect(ключ.style.color).not.toBe(значение.style.color);
+    expect(key.style.color).not.toBe(value.style.color);
     // Линия вместо знака равенства — и то, и другое: разделитель есть...
-    expect(ключ.style.borderRight).not.toBe("");
+    expect(key.style.borderRight).not.toBe("");
     // ...а `=` в показанном тексте метки нет.
-    expect(ключ.parentElement?.textContent).toBe("envprod");
+    expect(key.parentElement?.textContent).toBe("envprod");
   });
 
   it("copies a label without bubbling the click", async () => {
@@ -119,12 +119,12 @@ describe("LabelsCell", () => {
     // недостижимой из-за `tabIndex={-1}`.
     render(<LabelsCell labels={{ env: "prod" }} />);
 
-    const метка = screen.getByRole("button", { name: /env/ });
-    метка.focus();
-    expect(метка).toHaveFocus();
+    const label = screen.getByRole("button", { name: /env/ });
+    label.focus();
+    expect(label).toHaveFocus();
 
-    fireEvent.keyDown(метка, { key: "Enter", code: "Enter" });
-    fireEvent.click(метка); // браузер порождает click по Enter на кнопке сам
+    fireEvent.keyDown(label, { key: "Enter", code: "Enter" });
+    fireEvent.click(label); // браузер порождает click по Enter на кнопке сам
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("env=prod"));
   });
@@ -135,8 +135,8 @@ describe("LabelsCell", () => {
     // где кнопками объявлено всё подряд, включая нажимаемое впустую.
     render(<LabelsCell labels={{ a: "1", b: "2", c: "3", d: "4", e: "5" }} />);
 
-    const счётчик = screen.getByText(/^\+\d+$/);
-    expect(счётчик.tagName.toLowerCase()).not.toBe("button");
+    const counter = screen.getByText(/^\+\d+$/);
+    expect(counter.tagName.toLowerCase()).not.toBe("button");
   });
 
   it("shows an error toast when copying fails", async () => {
@@ -163,7 +163,7 @@ describe("LabelsCell", () => {
 // (ряд не переносится) было бы верным, а ячейка перестала бы отвечать. Второе —
 // и есть тот законный близнец, который обязан остаться нетронутым.
 describe("LabelsCell — одна строка", () => {
-  const МЕТКИ = {
+  const LABELS = {
     env: "production-eu-central",
     owner: "network-platform",
     region: "eu",
@@ -172,37 +172,37 @@ describe("LabelsCell — одна строка", () => {
   };
 
   it("ряд меток не переносится, а видимые метки ужимаются с многоточием", () => {
-    render(<LabelsCell max={2} labels={МЕТКИ} />);
+    render(<LabelsCell max={2} labels={LABELS} />);
 
     // Метка стала двухчастной: ключ и значение — разные узлы (решение
     // владельца). Ужимается ЗНАЧЕНИЕ, а не ключ: обрезанное значение остаётся
     // понятным, обрезанный ключ — нет, а по ключу метку и ищут.
-    const значение = screen.getByText("production-eu-central");
-    const метка = значение.parentElement!;
-    const ряд = метка.parentElement!;
-    expect(ряд.style.flexWrap).toBe("nowrap");
+    const value = screen.getByText("production-eu-central");
+    const label = value.parentElement!;
+    const row = label.parentElement!;
+    expect(row.style.flexWrap).toBe("nowrap");
 
-    expect(метка.style.whiteSpace).toBe("");
-    expect(метка.style.flexShrink).toBe("1");
-    expect(parseFloat(метка.style.minWidth)).toBe(0);
+    expect(label.style.whiteSpace).toBe("");
+    expect(label.style.flexShrink).toBe("1");
+    expect(parseFloat(label.style.minWidth)).toBe(0);
 
-    expect(значение.style.whiteSpace).toBe("nowrap");
-    expect(значение.style.textOverflow).toBe("ellipsis");
-    expect(значение.style.overflow).toBe("hidden");
+    expect(value.style.whiteSpace).toBe("nowrap");
+    expect(value.style.textOverflow).toBe("ellipsis");
+    expect(value.style.overflow).toBe("hidden");
     // Без этого ужимание невозможно by construction, и «nowrap» дал бы ряд,
     // вылезающий за колонку, вместо ряда, помещающегося в неё.
-    expect(parseFloat(значение.style.minWidth)).toBe(0);
+    expect(parseFloat(value.style.minWidth)).toBe(0);
 
     // Ключ, наоборот, НЕ ужимается — положительный контроль к утверждению выше.
-    const ключ = screen.getByText("env");
-    expect(ключ.style.flexShrink).toBe("0");
+    const key = screen.getByText("env");
+    expect(key.style.flexShrink).toBe("0");
   });
 
   it("счётчик скрытых НЕ ужимается — иначе он перестаёт отвечать (близнец)", () => {
-    render(<LabelsCell max={2} labels={МЕТКИ} />);
+    render(<LabelsCell max={2} labels={LABELS} />);
 
-    const счётчик = screen.getByText("+3");
-    expect(счётчик.style.flexShrink).toBe("0");
-    expect(счётчик.style.textOverflow).not.toBe("ellipsis");
+    const counter = screen.getByText("+3");
+    expect(counter.style.flexShrink).toBe("0");
+    expect(counter.style.textOverflow).not.toBe("ellipsis");
   });
 });
