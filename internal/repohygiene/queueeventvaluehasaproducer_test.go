@@ -65,6 +65,7 @@ var retiredQueueEventValues = map[string]string{}
 func TestQueueEventValueHasAProducer(t *testing.T) {
 	root := repoRoot(t)
 	dicts := enumDictionaryInventory(t, root)
+	wiring := outboxWiringInventory(t, root)
 
 	if dicts.filesRead == 0 {
 		t.Fatalf("гейт не прочитал ни одной миграции (корень %s) — предпосылка сломана, "+
@@ -81,10 +82,10 @@ func TestQueueEventValueHasAProducer(t *testing.T) {
 	valuesChecked, filesRead := 0, 0
 
 	for _, table := range tables {
-		svc := serviceOfSchema(table)
+		svc := queueService(wiring, table)
 		if svc == "" {
-			t.Errorf("таблица %q не называет сервис схемой — какой прод-код считать её "+
-				"производителем, не определено", table)
+			t.Errorf("таблица %q не называет сервис ни проводкой, ни схемой — какой "+
+				"прод-код считать её производителем, не определено", table)
 			continue
 		}
 		key := svc + ":" + unqualify(table)
@@ -96,7 +97,7 @@ func TestQueueEventValueHasAProducer(t *testing.T) {
 			continue
 		}
 
-		svcFiles, err := goFilesOfService(root, svc)
+		svcFiles, err := producerCorpus(root, svc)
 		if err != nil {
 			t.Errorf("состав прод-кода сервиса %s не прочитан (%v) — остановись здесь: "+
 				"«производителей нет» неотличимо от «не смотрели»", svc, err)
@@ -156,6 +157,58 @@ func TestQueueEventValueHasAProducer(t *testing.T) {
 		dicts.filesRead, filesRead, len(tables), valuesChecked, len(retiredQueueEventValues))
 }
 
+// queueService — сервис, чей прод-код считать производителем значений очереди.
+//
+// # Почему НЕ по схеме
+//
+// Схема называет сервис только там, где её так назвали: `kacho_iam` → `iam`.
+// Журнал службы вычислений живёт в `public`, и вывод по схеме дал бы «сервис
+// public», которого в дереве нет, — то есть гейт сообщал бы об отказе ЧТЕНИЯ
+// там, где на самом деле не сработала догадка. Координата проводки — факт: она
+// говорит, чей композиционный корень эту очередь поднимает.
+//
+// Схема остаётся запасным путём для очередей, которых не поднимает ни одна
+// проводка: она хуже, но лучше, чем ничего, и её отказ виден вызывающему.
+func queueService(wiring outboxInventory, table string) string {
+	if coords, ok := wiring.drained[table]; ok {
+		if svc, err := exemptQueueService(coords); err == nil {
+			return svc
+		}
+	}
+	if coords, ok := wiring.observed[table]; ok {
+		if svc, err := exemptQueueService(coords); err == nil {
+			return svc
+		}
+	}
+	return serviceOfSchema(table)
+}
+
+// producerCorpus — где искать производителя значения.
+//
+// Корпус ШИРЕ каталога сервиса на общую библиотеку, и это не послабление, а
+// исправление предпосылки. Значение, которое пишет ОБЩИЙ механизм доставки
+// (`pkg/audit` помечает строку доставленной), производится продуктом ровно так
+// же, как значение, написанное сервисом; корпус, ограниченный каталогом
+// сервиса, объявлял бы такое значение мёртвым и толкал бы дублировать общий
+// оператор в каждую службу.
+//
+// Цена названа: значение, которое пишет общий пакет, НЕ поднятый этой службой,
+// тоже сойдёт за живое. Она ограничена тем, что запись в переписи вообще
+// появляется только у очереди, которую служба поднимает своей проводкой, — то
+// есть общий механизм у неё провязан by construction. Способность гейта упасть
+// сохраняется: у МЁРТВОГО значения нет литерала нигде в дереве.
+func producerCorpus(root, svc string) ([]string, error) {
+	files, err := goFilesOfService(root, svc)
+	if err != nil {
+		return nil, err
+	}
+	shared, err := goFilesOfService(root, "")
+	if err != nil {
+		return nil, err
+	}
+	return append(files, shared...), nil
+}
+
 // serviceOfSchema — «kacho_<сервис>.<таблица>» → «<сервис>».
 func serviceOfSchema(qualified string) string {
 	schema, _, ok := strings.Cut(qualified, ".")
@@ -177,7 +230,11 @@ func serviceOfSchema(qualified string) string {
 // это то, что нужно: вызывающий обязан остановиться, а не печатать «ноль
 // находок» на «ноль прочитанного».
 func goFilesOfService(root, svc string) ([]string, error) {
-	all, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services", svc), ".go")
+	dir := filepath.Join(root, "services", svc)
+	if svc == "" {
+		dir = filepath.Join(root, "pkg")
+	}
+	all, err := treecorpus.UnderWithSuffix(dir, ".go")
 	if err != nil {
 		return nil, err
 	}
