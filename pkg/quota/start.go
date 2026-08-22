@@ -44,6 +44,8 @@ import (
 // доставки существует. Отказ первого прохода НЕ фатален (сосед мог ещё не
 // подняться), но назван, поэтому «величины не догоняют» не приходится выяснять
 // по симптомам.
+//
+// Проход несёт СВОЙ срок и НЕ повторяется фоновым циклом (#666) — см. startSyncer.
 func StartLimitSyncer(
 	ctx context.Context,
 	db Execer,
@@ -67,7 +69,26 @@ func StartLimitSyncer(
 		return nil, fmt.Errorf("quota limit syncer: %w", err)
 	}
 
-	switch rows, ran, ferr := syncer.RunOnce(ctx); {
+	return startSyncer(ctx, syncer, schema, logger), nil
+}
+
+// startSyncer — первый проход плюс фоновый цикл. Отделено от сборки, чтобы у
+// подъёма был шов: собранный синхронизатор приходит готовым, и поведение подъёма
+// проверяется без базы.
+//
+// ДВА СВОЙСТВА, КОТОРЫХ ЗДЕСЬ НЕ БЫЛО (#666).
+//
+//  1. Первый проход несёт СВОЙ срок. Прежде он шёл голым контекстом процесса —
+//     у того срока нет вовсе, поэтому сосед, принявший соединение и замолчавший,
+//     держал бы подъём сервиса столько, сколько сам захочет. У цикла бюджет был
+//     всегда; у первого прохода, того самого, что случается в загрузочную бурю,
+//     его не было.
+//  2. Цикл этот проход НЕ повторяет. Прежде подъём делал проход, а цикл делал
+//     ещё один до первого тика — ровно два отказа на каждый подъём каждого
+//     домена с разницей в десятки миллисекунд, оба про одно событие и оба в тот
+//     момент, когда сосед и без того на пределе.
+func startSyncer(ctx context.Context, syncer *Syncer, schema string, logger *slog.Logger) func() {
+	switch rows, ran, ferr := syncer.RunOnceBudgeted(ctx); {
 	case ferr != nil:
 		logger.Warn("resource-count quota: first limit sync failed, retrying in background",
 			slog.String("error", ferr.Error()), slog.String("schema", schema))
@@ -86,11 +107,12 @@ func StartLimitSyncer(
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		syncer.Run(runCtx)
+		// Проход уже сделан выше — цикл начинает с ожидания тика.
+		syncer.RunAfterInterval(runCtx)
 	}()
 
 	return func() {
 		cancel()
 		<-done
-	}, nil
+	}
 }
