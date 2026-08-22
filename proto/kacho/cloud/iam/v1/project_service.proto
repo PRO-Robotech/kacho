@@ -42,8 +42,18 @@ service ProjectService {
   // (user / serviceAccount / role).
   rpc List (ListProjectsRequest) returns (ListProjectsResponse) {
     option (google.api.http) = { get: "/iam/v1/projects" };
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-    option (kacho.iam.authz.v1.exempt_reason)  = "SERVICE_SIDE_AUTHZ";
+    // Сужение происходит НА ДАННЫХ, и это объявлено машинно, а не прозой:
+    // обработчик читает страницу курсором и спрашивает модель про идентификаторы
+    // ЭТОЙ страницы. Единого объекта, про который край мог бы спросить заранее,
+    // у такого чтения нет by construction.
+    //
+    // Полоса `scope_filtered`, а НЕ `<exempt>`: последняя несёт второй смысл,
+    // которому здесь не место — она допускает вызов внутреннего слушателя
+    // ВООБЩЕ БЕЗ ПРИНЦИПАЛА, на основании сетевого положения. Пообъектный фильтр
+    // ниже по стеку без принципала бессмыслен, поэтому лоток обязан быть тот,
+    // который идёт ПОСЛЕ его извлечения.
+    option (kacho.iam.authz.v1.permission)     = "iam.projects.list";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
   }
 
   // Creates a project within the specified account.
