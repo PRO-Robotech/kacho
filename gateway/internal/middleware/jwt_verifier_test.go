@@ -142,8 +142,9 @@ func standardClaims() jwt.MapClaims {
 
 func TestJWTVerifier_ES256_HappyPath(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
-	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	require.NoError(t, err)
 
@@ -158,8 +159,9 @@ func TestJWTVerifier_ES256_HappyPath(t *testing.T) {
 
 func TestJWTVerifier_RS256_HappyPath(t *testing.T) {
 	fix := newJWKSFixture(t, "RS256")
-	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	require.NoError(t, err)
 	got, err := v.Verify(context.Background(), fix.sign(t, standardClaims()))
@@ -169,8 +171,9 @@ func TestJWTVerifier_RS256_HappyPath(t *testing.T) {
 
 func TestJWTVerifier_EdDSA_HappyPath(t *testing.T) {
 	fix := newJWKSFixture(t, "EdDSA")
-	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	require.NoError(t, err)
 	got, err := v.Verify(context.Background(), fix.sign(t, standardClaims()))
@@ -180,8 +183,9 @@ func TestJWTVerifier_EdDSA_HappyPath(t *testing.T) {
 
 func TestJWTVerifier_AlgNoneRejected(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
-	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	require.NoError(t, err)
 
@@ -201,8 +205,9 @@ func TestJWTVerifier_HS256AlgorithmConfusionRejected(t *testing.T) {
 	// key as HMAC secret (CVE-2015-9235 family). Our whitelist excludes HS*,
 	// so verifier must reject BEFORE any crypto op.
 	fix := newJWKSFixture(t, "RS256")
-	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	require.NoError(t, err)
 
@@ -228,8 +233,9 @@ func TestJWTVerifier_HS256AlgorithmConfusionRejected(t *testing.T) {
 // отвергнута.
 func TestJWTVerifier_UnknownKidForcesRefetchThenFails(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
-	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	require.NoError(t, err)
 
@@ -256,8 +262,9 @@ func TestJWTVerifier_UnknownKidForcesRefetchThenFails(t *testing.T) {
 
 func TestJWTVerifier_ExpiredTokenRejected(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
-	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience, ClockSkew: time.Second,
+	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience, ClockSkew: time.Second,
 	})
 	require.NoError(t, err)
 	claims := standardClaims()
@@ -270,8 +277,9 @@ func TestJWTVerifier_ExpiredTokenRejected(t *testing.T) {
 
 func TestJWTVerifier_NotYetValid(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience, ClockSkew: time.Second,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience, ClockSkew: time.Second,
 	})
 	claims := standardClaims()
 	claims["nbf"] = time.Now().Add(1 * time.Hour).Unix()
@@ -281,19 +289,26 @@ func TestJWTVerifier_NotYetValid(t *testing.T) {
 
 func TestJWTVerifier_BadIssuer(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	claims := standardClaims()
 	claims["iss"] = "https://evil.example.com"
 	_, err := v.Verify(context.Background(), fix.sign(t, claims))
-	require.ErrorContains(t, err, "iss mismatch")
+	// Отказ тот же, а формулировка сменилась вместе с предметом: пин издателя
+	// перестал быть скаляром, и «не тот издатель» стало означать «у этого
+	// издателя нет ОБЪЯВЛЕННОЙ записи источника ключей». Объявленный
+	// предъявителем издатель в текст при этом НЕ уносится — он недоверенный вход.
+	require.ErrorIs(t, err, middleware.ErrNoIssuerRecord)
+	assert.NotContains(t, err.Error(), "evil.example.com")
 }
 
 func TestJWTVerifier_BadAudience(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	claims := standardClaims()
 	claims["aud"] = []any{"https://other.example.com"}
@@ -303,8 +318,9 @@ func TestJWTVerifier_BadAudience(t *testing.T) {
 
 func TestJWTVerifier_TamperedSignature(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	tok := fix.sign(t, standardClaims())
 	// Flip the last char of payload then re-encode signature (will not verify).
@@ -316,8 +332,9 @@ func TestJWTVerifier_TamperedSignature(t *testing.T) {
 }
 
 func TestJWTVerifier_JWKSUnreachable(t *testing.T) {
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: "http://127.0.0.1:1/.well-known/jwks.json", ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: "http://127.0.0.1:1/.well-known/jwks.json", TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 		JWKSFetchTimeout: 200 * time.Millisecond,
 	})
 	_, err := v.Verify(context.Background(), "x.y.z")
@@ -326,9 +343,10 @@ func TestJWTVerifier_JWKSUnreachable(t *testing.T) {
 
 func TestJWTVerifier_JWKSCacheSecondCallNoNetwork(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
-		JWKSCacheTTL: 1 * time.Hour,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
+		JWKSCacheTTL:     1 * time.Hour,
 	})
 	token := fix.sign(t, standardClaims())
 	_, err := v.Verify(context.Background(), token)
@@ -342,8 +360,9 @@ func TestJWTVerifier_JWKSCacheSecondCallNoNetwork(t *testing.T) {
 
 func TestJWTVerifier_DPoPBoundClaimsExtracted(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	claims := standardClaims()
 	claims["cnf"] = map[string]any{"jkt": "expected-thumbprint"}
@@ -356,8 +375,9 @@ func TestJWTVerifier_DPoPBoundClaimsExtracted(t *testing.T) {
 
 func TestJWTVerifier_MTLSBoundClaimsExtracted(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	claims := standardClaims()
 	claims["cnf"] = map[string]any{"x5t#S256": "client-cert-thumb"}
@@ -371,8 +391,9 @@ func TestJWTVerifier_TypDPoPRejected(t *testing.T) {
 	// Defence: an attacker presents a DPoP proof JWT as if it were an access
 	// token. typ=dpop+jwt must be rejected by the access-token verifier.
 	fix := newJWKSFixture(t, "ES256")
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, standardClaims())
 	tok.Header["kid"] = fix.kid
@@ -380,13 +401,43 @@ func TestJWTVerifier_TypDPoPRejected(t *testing.T) {
 	s, _ := tok.SignedString(fix.priv)
 	_, err := v.Verify(context.Background(), s)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "dpop+jwt")
+	// Тип доказательства владения отвергается тем, что его нет в ЗАКРЫТОМ
+	// наборе, объявленном полосой, — а не отдельной веткой про одно значение.
+	// Объявить его принимаемым тоже нельзя: построение проверяющего отвергает
+	// такую запись (см. TestJWTVerifier_Construction_RefusesProofTypeAsCredential).
+	require.ErrorIs(t, err, middleware.ErrUnexpectedTokenType)
+}
+
+// TestJWTVerifier_Construction_RefusesProofTypeAsCredential — положительная
+// половина предыдущей пробы: полоса, объявляющая тип доказательства владения
+// принимаемым ТИПОМ ТОКЕНА, не строится вовсе.
+func TestJWTVerifier_Construction_RefusesProofTypeAsCredential(t *testing.T) {
+	_, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
+		Issuers: []middleware.IssuerKeySet{{
+			Issuer: testIssuer, KeySetURL: "https://iam.kacho.test/jwks",
+			TokenTypes: []string{middleware.ProofTokenType},
+		}},
+		ExpectedAudience: testAudience,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), middleware.ProofTokenType)
+
+	// Положительный контроль: та же запись с типом токена ДОСТУПА строится.
+	_, err = middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
+		Issuers: []middleware.IssuerKeySet{{
+			Issuer: testIssuer, KeySetURL: "https://iam.kacho.test/jwks",
+			TokenTypes: []string{middleware.PlatformTokenType},
+		}},
+		ExpectedAudience: testAudience,
+	})
+	require.NoError(t, err)
 }
 
 func TestJWTVerifier_ExtClaimsExtracted(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	claims := standardClaims()
 	claims["ext_claims"] = map[string]any{
@@ -403,8 +454,9 @@ func TestJWTVerifier_ExtClaimsExtracted(t *testing.T) {
 func TestJWTVerifier_AudAsString(t *testing.T) {
 	// RFC 7519 allows aud as string OR array; we must accept both.
 	fix := newJWKSFixture(t, "ES256")
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	claims := standardClaims()
 	claims["aud"] = testAudience // single string
@@ -414,24 +466,48 @@ func TestJWTVerifier_AudAsString(t *testing.T) {
 }
 
 func TestJWTVerifier_EmptyTokenRejected(t *testing.T) {
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: "http://x", ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: "http://x", TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	_, err := v.Verify(context.Background(), "")
 	require.Error(t, err)
 }
 
 func TestJWTVerifier_StructurallyMalformed(t *testing.T) {
-	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: "http://x", ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: "http://x", TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	_, err := v.Verify(context.Background(), "notajwt")
 	require.Error(t, err)
 }
 
 func TestJWTVerifier_Construction_Validates(t *testing.T) {
+	// Ни одной объявленной записи — «принимаем любого издателя».
 	_, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{})
 	assert.Error(t, err)
-	_, err = middleware.NewJWTVerifier(middleware.JWTVerifierConfig{JWKSURL: "x"})
+	// Запись без адреса источника — объявленный источник, которого нет.
+	_, err = middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
+		Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, TokenTypes: []string{middleware.LegacyTokenType}}},
+	})
 	assert.Error(t, err)
+	// Запись без издателя.
+	_, err = middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
+		Issuers: []middleware.IssuerKeySet{{KeySetURL: "https://iam.kacho.test/jwks", TokenTypes: []string{middleware.LegacyTokenType}}},
+	})
+	assert.Error(t, err)
+	// Запись без объявленного типа токена — «любой тип».
+	_, err = middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
+		Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: "https://iam.kacho.test/jwks"}},
+	})
+	assert.Error(t, err)
+	// Положительный контроль: полная запись строится.
+	_, err = middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
+		Issuers: []middleware.IssuerKeySet{{
+			Issuer: testIssuer, KeySetURL: "https://iam.kacho.test/jwks",
+			TokenTypes: []string{middleware.LegacyTokenType},
+		}},
+	})
+	assert.NoError(t, err)
 }

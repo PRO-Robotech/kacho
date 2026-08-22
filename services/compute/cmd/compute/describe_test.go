@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
@@ -76,7 +77,7 @@ func describeWith(t *testing.T, cfg config.Config) (servicecontract.Descriptor, 
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	gate := bootgate.New(bootgate.Config{RequireIAM: cfg.RequireIAM, Service: "kacho-compute"})
-	return describe(cfg, logger, buildListFilter(cfg, nil, logger), gate, probeExistence{}, probeAuthzObserve)
+	return describe(cfg, logger, buildListFilter(cfg, nil, logger), gate, probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 }
 
 // probeExistence — порт сверки существования для проб композиционного корня.

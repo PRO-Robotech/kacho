@@ -38,6 +38,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
@@ -92,7 +93,7 @@ func bootConfig(t *testing.T, env map[string]string) config.Config {
 func describeWith(t *testing.T, cfg config.Config) (servicecontract.Descriptor, error) {
 	t.Helper()
 	log := discard()
-	return describe(cfg, log, buildListFilter(cfg, nil, log), probeExistence{}, probeAuthzObserve)
+	return describe(cfg, log, buildListFilter(cfg, nil, log), probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 }
 
 // TestDescribeIsAcceptedByTheConstructor — ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ, и он первым:
@@ -161,14 +162,16 @@ func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
 //
 // storage был последним сервисом дерева, который вёл собственный журнал доступа, и
 // вёл его ОДНОСТОРОННЕ: звено стояло только в unary-цепочке, поэтому стрим-вызов не
-// оставлял в журнале ни строки. Носитель ведёт журнал на ОБЕИХ полосах и самым
-// внешним звеном — то есть видит и паниковавший вызов, который прежде оставался
-// единственным ненаблюдаемым исходом.
+// оставлял в журнале ни строки. Носитель ведёт журнал на ОБЕИХ полосах и ВТОРЫМ
+// звеном — снаружи него стоит только измеритель задержки, а восстановление паники
+// идёт следом (`измеритель задержки → журнал доступа → восстановление паники → …`),
+// поэтому журнал видит и паниковавший вызов, который прежде оставался единственным
+// ненаблюдаемым исходом.
 //
 // Само это свойство держат пробы носителя, а не storage: `TestAccessLogRecordsThePanickingCall`,
 // `TestAccessLogRecordsAnOrdinaryCallToo`, `TestAccessLogRecordsAStreamCallToo`,
 // `TestAccessLogRecordsThePanickingStreamCall` и
-// `TestAccessLogIsOutermostPanicRecoveryNextAndDecisionIsLast` в `pkg/servicehost`.
+// `TestLatencyIsOutermostAccessLogNextAndDecisionIsLast` в `pkg/servicehost`.
 // Дублировать их здесь значило бы завести седьмое место об одном предмете.
 //
 // От storage требуется единственное, чего носитель за него сделать не может, —
@@ -178,7 +181,7 @@ func TestDescribeIsAcceptedByTheConstructor(t *testing.T) {
 func TestJournalOfThisProcessGoesToItsOwnLogger(t *testing.T) {
 	mine := discard()
 	cfg := bootConfig(t, nil)
-	desc, err := describe(cfg, mine, buildListFilter(cfg, nil, mine), probeExistence{}, probeAuthzObserve)
+	desc, err := describe(cfg, mine, buildListFilter(cfg, nil, mine), probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}

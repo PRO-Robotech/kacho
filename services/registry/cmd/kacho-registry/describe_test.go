@@ -39,6 +39,7 @@ import (
 	"go/parser"
 	"go/token"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
@@ -100,6 +101,9 @@ func probePorts() servePorts {
 		existence:    pg.NewExistenceProbe(nil),
 		narrower:     check.NewIAMCheckClient(nil).Narrower(),
 		authzObserve: func(func() authz.Metrics) {},
+		// Свой реестр на КАЖДЫЙ вызов: общий на пакет связал бы пробы через
+		// состояние процесса, и вторая падала бы на «серия уже зарегистрирована».
+		metricsReg: prometheus.NewRegistry(),
 	}
 }
 

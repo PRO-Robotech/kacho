@@ -288,7 +288,7 @@ func TestInternalListenerRefusesOverTheDeclaredRate(t *testing.T) {
 	// мутаций = 1 × 2 = 2, и InvalidateSubject мутация по конвенции имён.
 	tiny := grpcsrv.AdmissionLimits{ReadPerSec: 1, MutationPerSec: 1, BurstFactor: 2, InFlight: 4}
 	srv, lis, adm, err := startInternalGRPCListener(":0", inv,
-		externalSrv, internalListenerSecurity{}, tiny, nil)
+		externalSrv, internalListenerSecurity{}, tiny, probeLatency(t), nil)
 	require.NoError(t, err)
 	require.NotNil(t, adm, "помощник обязан вернуть ограничитель: без него счёт "+
 		"допущенных и отвергнутых печатать нечем, и мёртвый потолок был бы невидим")
@@ -357,7 +357,7 @@ func TestInternalListenerRefusesToStartOnUnusableLimits(t *testing.T) {
 
 	srv, gotLis, adm, err := startInternalGRPCListener(addr, &fakeInvalidator{},
 		externalSrv, internalListenerSecurity{},
-		grpcsrv.AdmissionLimits{ReadPerSec: 10}, nil) // объявлена ОДНА ось из четырёх
+		grpcsrv.AdmissionLimits{ReadPerSec: 10}, probeLatency(t), nil) // объявлена ОДНА ось из четырёх
 	require.Error(t, err, "негодный набор обязан ронять сборку слушателя")
 	require.Nil(t, srv)
 	require.Nil(t, gotLis)

@@ -196,7 +196,17 @@ func runServe(configPath string) error {
 	// Приёмник читателя величин кеша вердиктов. Объявлен ДО дескриптора: кеш
 	// собирает носитель контура, и читателя он отдаёт через поле дескриптора.
 	var authzCache authzmetrics.Source
-	desc, err := describe(cfg, logger, peers.ListFilter, bootGate, kachopg.NewExistenceProbe(pool), authzCache.Install)
+
+	// Prometheus observability adapter: приватный реестр, питает outbox-recorder,
+	// LRO-worker/reconciler recorder и diagnostic /metrics. Заменяет in-memory
+	// MemRecorder (метрики не экспортировались наружу) и NopRecorder LRO-worker'а.
+	//
+	// Собирается ДО дескриптора: реестр — поле объявления, и без него дескриптор
+	// не принимается. Регистрации коллекторов остаются ниже по тексту — им нужен
+	// только сам адаптер, а не порядок относительно объявления.
+	metricsAdapter := nlbmetrics.New(buildVersion, buildCommit)
+
+	desc, err := describe(cfg, logger, peers.ListFilter, bootGate, kachopg.NewExistenceProbe(pool), authzCache.Install, metricsAdapter.Registerer())
 	if err != nil {
 		return err
 	}
@@ -255,10 +265,6 @@ func runServe(configPath string) error {
 	// (пообъектная проверка целевой группы в Listener/LoadBalancer), а это другой
 	// путь, чем per-RPC гейт.
 
-	// Prometheus observability adapter: приватный реестр, питает outbox-recorder,
-	// LRO-worker/reconciler recorder и diagnostic /metrics. Заменяет in-memory
-	// MemRecorder (метрики не экспортировались наружу) и NopRecorder LRO-worker'а.
-	metricsAdapter := nlbmetrics.New(buildVersion, buildCommit)
 	// Величины сужателя выходят из процесса ТОЛЬКО здесь. Полос четыре: одна
 	// положительная и три — страница, ушедшая БЕЗ пообъектной проверки. Снимите
 	// эту строку — и полосы исчезнут с поверхности, а не станут нулями; ровно это

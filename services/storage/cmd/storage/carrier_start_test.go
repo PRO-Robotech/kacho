@@ -31,6 +31,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 )
@@ -59,7 +61,7 @@ func TestCarrierRaisesStorageWithoutAStartRefusal(t *testing.T) {
 	var authzCacheReader func() authz.Metrics
 	observeAuthzCache := func(read func() authz.Metrics) { authzCacheReader = read }
 
-	desc, err := describe(cfg, logger, buildListFilter(cfg, nil, logger), probeExistence{}, observeAuthzCache)
+	desc, err := describe(cfg, logger, buildListFilter(cfg, nil, logger), probeExistence{}, observeAuthzCache, prometheus.NewRegistry())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут конструктором — процесс не поднялся бы:\n%v", err)
 	}

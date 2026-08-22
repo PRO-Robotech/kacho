@@ -491,7 +491,7 @@ func runServe(cfg config.Config) error {
 	// поэтому его отказ обязан наступить раньше, чем процесс поднимет дренаж
 	// регистраций и соседние соединения. Открытие пула обратимо (defer выше) и
 	// дешевле ложной сверки существования — это единственное, что стоит перед ним.
-	desc, err := describe(cfg, mtlsCfg, logger, listFilter, bootGate, kachopg.NewExistenceProbe(pool), authzCache.Install)
+	desc, err := describe(cfg, mtlsCfg, logger, listFilter, bootGate, kachopg.NewExistenceProbe(pool), authzCache.Install, metricsAdapter.Registerer())
 	if err != nil {
 		return fmt.Errorf("describe kacho-vpc: %w", err)
 	}
