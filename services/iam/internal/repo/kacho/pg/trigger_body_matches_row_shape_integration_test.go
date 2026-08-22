@@ -73,6 +73,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 )
 
@@ -251,7 +252,7 @@ func TestTriggerBodyMatchesRowShape(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	findings, census := findTriggerFieldDrift(ctx, t, pool, "kacho_iam")
 	t.Log(census)
@@ -285,7 +286,7 @@ func TestJournalAcceptsAWriteAfterEveryMigration(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	_, err = pool.Exec(ctx,
 		`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
@@ -324,7 +325,7 @@ func TestTriggerBodyFieldRefsProvenByInjection(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	const schema = "kacho_iam_trigger_probe"
 	for _, stmt := range []string{
