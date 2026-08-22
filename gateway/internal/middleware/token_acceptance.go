@@ -51,7 +51,7 @@ const (
 	// здесь заново.
 	PlatformTokenType = tokenpolicy.TokenTypeAccess
 	// LegacyTokenType — тип, которым помечает свои токены прежний издатель.
-	LegacyTokenType = "JWT"
+	LegacyTokenType = tokenpolicy.TokenTypeLegacy
 	// ProofTokenType — тип доказательства владения (RFC 9449). Токеном
 	// ДОСТУПА не является ни при каком издателе, поэтому объявить его
 	// принимаемым нельзя: это было бы доказательством, выданным за
