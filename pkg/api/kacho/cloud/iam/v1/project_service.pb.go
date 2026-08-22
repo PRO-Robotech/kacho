@@ -571,13 +571,12 @@ const file_kacho_cloud_iam_v1_project_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x84\n" +
-	"\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xfb\t\n" +
 	"\x0eProjectService\x12\xab\x01\n" +
 	"\x03Get\x12%.kacho.cloud.iam.v1.GetProjectRequest\x1a\x1b.kacho.cloud.iam.v1.Project\"`\x8a\xb5\x18\x10iam.projects.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
-	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/iam/v1/projects/{project_id}\x12\x95\x01\n" +
-	"\x04List\x12'.kacho.cloud.iam.v1.ListProjectsRequest\x1a(.kacho.cloud.iam.v1.ListProjectsResponse\":\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x12SERVICE_SIDE_AUTHZ\x82\xd3\xe4\x93\x02\x12\x12\x10/iam/v1/projects\x12\xd4\x01\n" +
+	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/iam/v1/projects/{project_id}\x12\x8c\x01\n" +
+	"\x04List\x12'.kacho.cloud.iam.v1.ListProjectsRequest\x1a(.kacho.cloud.iam.v1.ListProjectsResponse\"1\x8a\xb5\x18\x11iam.projects.list\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02\x12\x12\x10/iam/v1/projects\x12\xd4\x01\n" +
 	"\x06Create\x12(.kacho.cloud.iam.v1.CreateProjectRequest\x1a .kacho.cloud.operation.Operation\"~\x8a\xb5\x18\x13iam.projects.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aaccount\x12\n" +
 	"account_id\xa2\xb5\x18\x011\xb2\xd2* \n" +
