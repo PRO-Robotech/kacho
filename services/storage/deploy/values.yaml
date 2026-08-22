@@ -181,10 +181,6 @@ config:
 migrator:
   enabled: true
 
-serviceMonitor:
-  enabled: false
-  interval: 30s
-
 resources:
   requests:
     cpu: 50m
