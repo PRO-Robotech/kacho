@@ -55,7 +55,7 @@ import (
 func startInternalGRPCListener(
 	addr string, inv handler.Invalidator,
 	externalSrv *grpc.Server, sec internalListenerSecurity,
-	limits grpcsrv.AdmissionLimits, logger *slog.Logger,
+	limits grpcsrv.AdmissionLimits, latency *grpcsrv.ServerLatency, logger *slog.Logger,
 ) (*grpc.Server, net.Listener, *grpcsrv.Admission, error) {
 	if addr == "" {
 		return nil, nil, nil, fmt.Errorf("internal grpc listener: addr required")
@@ -66,6 +66,15 @@ func startInternalGRPCListener(
 		// same error at construction time so wiring bugs are caught before
 		// Serve().
 		return nil, nil, nil, fmt.Errorf("internal grpc listener: externalSrv required (pass both servers to make the internal-only invariant explicit)")
+	}
+	if latency == nil {
+		// Defensive, по образцу проверки externalSrv выше: нулевой измеритель
+		// прозрачен ПО ПОСТРОЕНИЮ (см. grpcsrv.ServerLatency), поэтому слушатель с
+		// ним поднялся бы, служил и не выпустил наружу ни одной длительности — а
+		// «не провязали» было бы неотличимо от «провязали». Отказ на сборке
+		// превращает ошибку проводки в отказ старта, который видно.
+		return nil, nil, nil, fmt.Errorf("internal grpc listener: latency measurer required " +
+			"(nil измеритель прозрачен: слушатель служил бы, не наблюдая задержки)")
 	}
 	if sec.mtlsEnabled && sec.serverCreds == nil {
 		// Defensive: buildInternalListenerSecurity never returns this shape, but a
@@ -104,6 +113,19 @@ func startInternalGRPCListener(
 	// Доступность от посадки транспорта не зависит: паника обработчика ЭТОГО
 	// листенера завершает процесс ВСЕГО края (вместе с внешним :443 и
 	// REST-мультиплексором), а не только internal-порт.
+	// Измеритель задержки — ПЕРЕД восстановлением паники, то есть ещё внешнее.
+	// `ChainUnaryInterceptor` накапливает в порядке вызовов, поэтому объявленный
+	// первым остаётся самым внешним и накрывает всё, включая паниковавший вызов
+	// (восстановление обращает панику в отказ, и отказ попадает в ряд).
+	//
+	// Этот слушатель несёт инвалидацию кэша решений о доступе — самый дешёвый для
+	// вызывающего и самый дорогой для края вызов, какой у порта есть. Его
+	// задержка входит слагаемым в задержку КАЖДОГО последующего запроса
+	// арендатора, поэтому собственный ряд у неё обязан быть.
+	opts = append(opts,
+		grpc.ChainUnaryInterceptor(latency.UnaryServerInterceptor(grpcsrv.ListenerInternal)),
+		grpc.ChainStreamInterceptor(latency.StreamServerInterceptor(grpcsrv.ListenerInternal)),
+	)
 	opts = append(opts,
 		grpc.ChainUnaryInterceptor(grpcsrv.UnaryPanicRecovery(logger)),
 		grpc.ChainStreamInterceptor(grpcsrv.StreamPanicRecovery(logger)),

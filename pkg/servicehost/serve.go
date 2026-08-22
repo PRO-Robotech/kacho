@@ -77,7 +77,10 @@ func Serve(ctx context.Context, d servicecontract.Descriptor, public, internal R
 	// ── звено решения о доступе: слот, заполняемый ПОСЛЕ отказов старта ──────
 	var slot decisionSlot
 
-	publicSrv, internalSrv := serverPair(spec, &slot)
+	publicSrv, internalSrv, pairErr := serverPair(spec, &slot)
+	if pairErr != nil {
+		return pairErr
+	}
 
 	// ── потолок темпа: обёртка регистратора, а не звено цепочки ──────────────
 	//
@@ -156,17 +159,36 @@ func Serve(ctx context.Context, d servicecontract.Descriptor, public, internal R
 // Наблюдаемая половина того же свойства держится пробой
 // `TestBothListenersRefuseIdenticallyOnTheWire`: она поднимает ОБА сервера,
 // собранных этой функцией, и сверяет, что вызывающий видит от них одно и то же.
-func serverPair(spec servicecontract.Spec, slot *decisionSlot) (public, internal *grpc.Server) {
-	unary := unaryChain(spec, slot)
-	stream := streamChain(spec, slot)
-	build := func(creds credentials.TransportCredentials) *grpc.Server {
+func serverPair(spec servicecontract.Spec, slot *decisionSlot) (public, internal *grpc.Server, err error) {
+	// Измеритель задержки — ОДИН на процесс, полос у него две.
+	//
+	// Один: серии заводятся в реестре, и второй измеритель над тем же реестром
+	// был бы повторной регистрацией того же семейства. Две полосы: один и тот же
+	// метод служится обоими слушателями, и слитый ряд — среднее двух разных
+	// величин (см. [grpcsrv.Listener]).
+	if spec.Metrics == nil {
+		return nil, nil, fmt.Errorf("servicehost: %s не поднимается — реестра метрик нет, "+
+			"а слушатель без измерителя задержки служил бы молча. Дескриптор с таким полем не "+
+			"проходит конструктор (servicecontract.New, О13); сюда он попал в обход него",
+			spec.Service)
+	}
+	lat, lerr := grpcsrv.NewServerLatency(spec.Metrics)
+	if lerr != nil {
+		return nil, nil, fmt.Errorf("servicehost: %s не поднимается — измеритель задержки не "+
+			"заводится в переданном реестре: %w. Так выглядит несогласованное объявление серии "+
+			"(то же имя с другой размерностью); поднять процесс значило бы отдать ему "+
+			"диагностическую поверхность без семейства, которого на ней не будет никогда",
+			spec.Service, lerr)
+	}
+	build := func(creds credentials.TransportCredentials, on grpcsrv.Listener) *grpc.Server {
 		return grpcsrv.NewServer(
 			grpc.Creds(creds),
-			grpc.ChainUnaryInterceptor(unary...),
-			grpc.ChainStreamInterceptor(stream...),
+			grpc.ChainUnaryInterceptor(unaryChain(spec, slot, lat, on)...),
+			grpc.ChainStreamInterceptor(streamChain(spec, slot, lat, on)...),
 		)
 	}
-	return build(spec.PublicCreds), build(spec.InternalCreds)
+	return build(spec.PublicCreds, grpcsrv.ListenerPublic),
+		build(spec.InternalCreds, grpcsrv.ListenerInternal), nil
 }
 
 // decisionLink строит звено решения о доступе — ОДНО на семь сервисов.
@@ -535,41 +557,51 @@ func catalogOf(domains []string) catalogView {
 //
 // Позиции и причина на каждую:
 //
-//  1. журнал доступа — САМЫМ ВНЕШНИМ: он обязан видеть исход любого вызова,
+//  1. измеритель задержки — САМОЕ внешнее звено. Он обязан накрывать всё, что
+//     процесс делает ради вызова, включая отказ, произведённый ЛЮБЫМ звеном
+//     ниже. Стоя внутри решения о доступе, он оставил бы неизмеренным каждый
+//     отказ по правам — то есть ровно тот исход, ради которого в разбор
+//     происшествия и приходят; стоя внутри восстановления паники — ещё и каждую
+//     панику. Полоса слушателя приходит параметром: один и тот же метод служится
+//     обоими, и слитый ряд был бы средним двух разных величин;
+//  2. журнал доступа: он обязан видеть исход любого вызова,
 //     включая паниковавший. Стоя внутри восстановления паники, он пропускал бы
 //     ровно тот исход, который тяжелее всех, — раскрутка стека проходит мимо
 //     записи, и самый серьёзный отказ остаётся единственным ненаблюдаемым;
-//  2. восстановление после паники: ловит панику всего нижележащего, включая
+//  3. восстановление после паники: ловит панику всего нижележащего, включая
 //     сами звенья. Иначе одно разыменование nil на пути запроса ОДНОГО тенанта
 //     прекращает обслуживание ВСЕХ. Журнал этажом выше видит его обычный
 //     возврат `codes.Internal` и записывает как исход;
-//  3. срок — ВНУТРИ восстановления и НАД всем остальным: он обязан накрывать и
+//  4. срок — ВНУТРИ восстановления и НАД всем остальным: он обязан накрывать и
 //     вопрос о доступе, и запросы к своей БД, иначе вызов без срока держит
 //     соединение из ограниченного пула сколько угодно. Величина у полос РАЗНАЯ:
 //     unary берёт границу обработки запроса, стрим — срок жизни подписки, и на
 //     стриме этой позиции может не быть вовсе (см. [streamChain]);
-//  4. загрузочный гейт мутаций: отвергает создание, пока путь доставки
+//  5. загрузочный гейт мутаций: отвергает создание, пока путь доставки
 //     намерений регистрации не поднят. Стоит ДО выяснения личности намеренно —
 //     это отказ по состоянию ПРОЦЕССА, он не зависит от того, кто спрашивает, и
 //     платить за него работой по извлечению личности незачем;
-//  5. личность пира по сертификату — чей это пир;
-//  6. переданная личность, сужённая кругом — вправе ли пир говорить за другого.
-//     Порядок 5→6 обязателен: решение о доверии по ещё не извлечённой личности
+//  6. личность пира по сертификату — чей это пир;
+//  7. переданная личность, сужённая кругом — вправе ли пир говорить за другого.
+//     Порядок 6→7 обязателен: решение о доверии по ещё не извлечённой личности
 //     решением не является;
-//  7. решение о доступе — читает уже извлечённого субъекта.
+//  8. решение о доступе — читает уже извлечённого субъекта.
 //
 // # Чего в этой цепочке ПОКА НЕТ, и почему это названо, а не умолчано
 //
-// Не хватает двух позиций: метрик с идентификатором запроса и слота
-// ограничителя одновременности. Причина не «руки не дошли»: ограничитель
+// Не хватает слота ограничителя одновременности; позиция метрик, стоявшая здесь
+// же, ЗАПОЛНЕНА — её занял измеритель задержки (позиция 1 выше). Причина, по
+// которой ограничителя всё ещё нет, не «руки не дошли»: ограничитель
 // требует ИЗМЕРЕННОЙ ёмкости модели прав — потолок, выведенный неверно,
 // превращает нагрузку в отказы на ПОЛОЖИТЕЛЬНОМ пути, то есть чинит одно и
 // ломает другое, причём молча.
 //
-// Позиции при этом зафиксированы здесь, а не оставлены на усмотрение: когда
+// Позиция при этом зафиксирована здесь, а не оставлена на усмотрение: когда
 // звено введут, оно встанет на своё место, а не туда, где окажется удобно.
-func unaryChain(spec servicecontract.Spec, slot *decisionSlot) []grpc.UnaryServerInterceptor {
+func unaryChain(spec servicecontract.Spec, slot *decisionSlot,
+	lat *grpcsrv.ServerLatency, on grpcsrv.Listener) []grpc.UnaryServerInterceptor {
 	chain := []grpc.UnaryServerInterceptor{
+		lat.UnaryServerInterceptor(on),
 		accessLogUnary(spec.Logger),
 		grpcsrv.UnaryPanicRecovery(spec.Logger),
 		handlingBudgetUnary(spec.HandlingBudget),
@@ -594,8 +626,10 @@ func unaryChain(spec servicecontract.Spec, slot *decisionSlot) []grpc.UnaryServe
 //
 // Загрузочного гейта мутаций здесь нет и в unary-варианте он условен по другой
 // причине: мутация в этом продукте всегда unary (см. [bootGateUnary]).
-func streamChain(spec servicecontract.Spec, slot *decisionSlot) []grpc.StreamServerInterceptor {
+func streamChain(spec servicecontract.Spec, slot *decisionSlot,
+	lat *grpcsrv.ServerLatency, on grpcsrv.Listener) []grpc.StreamServerInterceptor {
 	chain := []grpc.StreamServerInterceptor{
+		lat.StreamServerInterceptor(on),
 		accessLogStream(spec.Logger),
 		grpcsrv.StreamPanicRecovery(spec.Logger),
 	}

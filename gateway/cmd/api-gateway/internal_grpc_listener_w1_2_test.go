@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -112,7 +113,7 @@ func startSecuredInternalListener(t *testing.T, inv handler.Invalidator, sec int
 	// подать сюда крошечный набор значило бы завести второй предмет в чужом
 	// случае.
 	srv, lis, _, err := startInternalGRPCListener(":0", inv, externalSrv, sec,
-		grpcsrv.PlatformInternalAdmission(), nil)
+		grpcsrv.PlatformInternalAdmission(), probeLatency(t), nil)
 	require.NoError(t, err, "startInternalGRPCListener must succeed on :0")
 	require.NotNil(t, srv, "must return *grpc.Server")
 	require.NotNil(t, lis, "must return net.Listener")
@@ -381,3 +382,17 @@ func TestW1_2_InternalGRPCListener_InsecureDev_BackwardCompat(t *testing.T) {
 
 // Compile-time guard — fakeInvalidator must satisfy handler.Invalidator.
 var _ handler.Invalidator = (*fakeInvalidator)(nil)
+
+// probeLatency — измеритель над одноразовым реестром для проб, чей предмет НЕ он.
+//
+// Реестр у каждого вызова свой: общий сделал бы две пробы одного пакета
+// зависимыми через состояние процесса, и вторая падала бы на «серия уже
+// зарегистрирована» — отказ, не имеющий отношения к её предмету.
+func probeLatency(t *testing.T) *grpcsrv.ServerLatency {
+	t.Helper()
+	l, err := grpcsrv.NewServerLatency(prometheus.NewRegistry())
+	if err != nil {
+		t.Fatalf("измеритель пробы: %v", err)
+	}
+	return l
+}

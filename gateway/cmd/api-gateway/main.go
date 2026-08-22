@@ -545,6 +545,26 @@ func main() {
 	// `TestUnregisteredCollectorIsRed`, а провязку в дереве — гейт
 	// `TestDeclaredAccumulatorsHaveANonTestReader`.
 	diagMetrics := gwmetrics.New(buildVersion, buildCommit)
+
+	// Измеритель задержки обслуженного вызова — ОДИН на процесс, полос у него
+	// две (внешний слушатель и внутренний).
+	//
+	// Край — единственная поверхность платформы, которую не поднимает носитель
+	// входящего пути, поэтому отказ старта О13 (`servicecontract.New`) сюда не
+	// достаёт и провязка живёт здесь. Измеритель тот же, что у семи сервисов:
+	// ряды края ложатся в общее семейство, и вопрос «где во всей платформе вырос
+	// хвост» остаётся одним запросом — а край стоит перед КАЖДЫМ обращением
+	// арендатора, поэтому без его ряда картина неполна ровно в том месте, куда
+	// смотрят первым.
+	edgeLatency, elErr := grpcsrv.NewServerLatency(diagMetrics.Registerer())
+	if elErr != nil {
+		// Отказ подъёма, а не предупреждение: он означает несогласованное
+		// объявление серии, и поднять край значило бы отдать ему диагностическую
+		// поверхность без семейства, которого на ней не будет никогда.
+		logger.Error("api-gateway refusing to start: измеритель задержки обслуженного вызова "+
+			"не заводится в реестре края", "err", elErr)
+		os.Exit(1)
+	}
 	diagMetrics.RegisterAuthz(func() gwmetrics.AuthzSnapshot {
 		snap := gwmetrics.AuthzSnapshot{Counts: authz.metrics.Counts()}
 		if authz.calls != nil {
@@ -674,6 +694,16 @@ func main() {
 	}
 	grpcUnaryInterceptors = append(grpcUnaryInterceptors, middleware.UnaryAccessLog(logger))
 	grpcStreamInterceptors = append(grpcStreamInterceptors, middleware.StreamAccessLog(logger))
+	// Измеритель СТАВИТСЯ ПЕРВЫМ, то есть самым внешним: он обязан накрывать всё,
+	// что край делает ради запроса, включая отказ по правам и отказ маршрутизации.
+	// Стоя за звеном прав, он оставил бы неизмеренным каждый отказ — исход, ради
+	// которого в разбор происшествия и приходят.
+	grpcUnaryInterceptors = append([]grpc.UnaryServerInterceptor{
+		edgeLatency.UnaryServerInterceptor(grpcsrv.ListenerPublic),
+	}, grpcUnaryInterceptors...)
+	grpcStreamInterceptors = append([]grpc.StreamServerInterceptor{
+		edgeLatency.StreamServerInterceptor(grpcsrv.ListenerPublic),
+	}, grpcStreamInterceptors...)
 	grpcSrv := proxy.NewServer(resolver,
 		grpc.ChainUnaryInterceptor(grpcUnaryInterceptors...),
 		grpc.ChainStreamInterceptor(grpcStreamInterceptors...),
@@ -855,7 +885,7 @@ func main() {
 	internalGRPCAddr := cfg.InternalGRPCAddr
 	internalGrpcSrv, internalLis, internalAdmission, ierr := startInternalGRPCListener(
 		internalGRPCAddr, authzMW.AsInvalidator(), grpcSrv, internalSec,
-		internalAdmissionLimits, logger)
+		internalAdmissionLimits, edgeLatency, logger)
 	if ierr != nil {
 		log.Fatalf("internal grpc listener: %v", ierr)
 	}
