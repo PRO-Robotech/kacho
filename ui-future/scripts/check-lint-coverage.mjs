@@ -61,7 +61,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const LINTABLE = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
 
@@ -186,25 +186,45 @@ for (const f of tracked) {
   byPkg.get(pkg).push(f);
 }
 
-const findings = [];
-let filesSeen = 0;
-let filesInspected = 0;
-let filesDeclaredIgnore = 0;
-let probesRun = 0;
-const engines = new Set();
+// ────────────────────────────────────────────────────────────────────────────
+// ПАКЕТ СУДИТСЯ ОТДЕЛЬНЫМ ПРОЦЕССОМ — иначе гейт умирает по памяти.
+//
+// Прежде все двенадцать пакетов обходились одним процессом, и каждый оставлял в
+// нём СВОЙ модуль ESLint: подъём идёт от каталога пакета, поэтому копии разные и
+// кэш импорта их не схлопывает. К ним добавлялись разобранные конфигурации и
+// созданные правила. Потребление росло вместе с деревом и упёрлось в предел:
+// «FATAL ERROR: Ineffective mark-compacts» и код 134 — то есть «не выполнилось»,
+// а не находка, и по виду сводки это неотличимо от красного.
+//
+// Замер, а не догадка (одна машина, одно дерево, различие только в устройстве):
+// монолитом пик 4.39 ГБ и отказ при умолчании ноды; по процессу на пакет — см.
+// строку переписи ниже, память возвращается ОС после каждого.
+//
+// Подпорка `--max-old-space-size` снята вместе с этой правкой: она отодвигала
+// предел, а не убирала рост.
+// ────────────────────────────────────────────────────────────────────────────
 
-const pkgs = [...byPkg.keys()].sort();
-for (const pkg of pkgs) {
-  const files = byPkg.get(pkg);
+/** Судит ОДИН пакет. Чистая функция: её зовёт и дочерний процесс, и самопроверка. */
+async function judgePackage(pkg, files) {
+  const out = {
+    pkg,
+    findings: [],
+    filesSeen: 0,
+    inspected: 0,
+    declaredIgnore: 0,
+    probesRun: 0,
+    engine: null,
+    line: "",
+  };
   const pkgDir = path.join(uiRoot, pkg);
   const hasConfig = CONFIG_NAMES.some((n) => fs.existsSync(path.join(pkgDir, n)));
   if (!hasConfig) {
-    findings.push(
+    out.findings.push(
       `${pkg}: ${files.length} отслеживаемых линтуемых файлов, но конфигурации ESLint НЕТ ` +
         `(искали ${CONFIG_NAMES.join(", ")}) — пакет не линтуется ничем`,
     );
-    filesSeen += files.length;
-    continue;
+    out.filesSeen = files.length;
+    return out;
   }
 
   let ESLint;
@@ -212,22 +232,21 @@ for (const pkg of pkgs) {
   try {
     ({ ESLint, version } = await eslintOf(pkgDir));
   } catch (e) {
-    findings.push(
+    out.findings.push(
       `${pkg}: собственный ESLint не резолвится (${String(e?.message ?? e).split("\n")[0]}) — ` +
         `npm run lint:js в этом пакете неисполним; гейт судить не может`,
     );
-    filesSeen += files.length;
-    continue;
+    out.filesSeen = files.length;
+    return out;
   }
-  engines.add(`${pkg}→${version}`);
+  out.engine = `${pkg}→${version}`;
 
   const eslint = new ESLint({ cwd: pkgDir });
-  let inspected = 0;
   const outside = [];
   const declared = [];
   const lintable = [];
   for (const f of files) {
-    filesSeen += 1;
+    out.filesSeen += 1;
     const abs = path.join(uiRoot, f);
     const rel = path.relative(pkgDir, abs);
     const isOutsideBasePath = rel.startsWith("..") || path.isAbsolute(rel);
@@ -241,11 +260,10 @@ for (const pkg of pkgs) {
       declared.push(f);
       continue;
     }
-    inspected += 1;
+    out.inspected += 1;
     lintable.push(abs);
   }
-  filesInspected += inspected;
-  filesDeclaredIgnore += declared.length;
+  out.declaredIgnore = declared.length;
 
   // Пробный прогон — по ОДНОМУ файлу каждого расширения, встретившегося в пакете.
   // Расширение выбирает, какие блоки конфигурации применятся, а с ними и какие
@@ -258,25 +276,106 @@ for (const pkg of pkgs) {
   }
   const probeFiles = [...byExt.values()];
   const failure = await probeLintRuns(ESLint, pkgDir, probeFiles);
-  probesRun += probeFiles.length;
+  out.probesRun = probeFiles.length;
 
   const ign = declared.length ? ` (объявленный ignores: ${declared.length})` : "";
-  console.log(
-    `  ${pkg}: проверяется ${inspected}/${files.length}${ign}; ` +
-      `ESLint ${version}, пробный прогон по ${probeFiles.length} файлам — ${failure === null ? "исполнился" : "ОТКАЗ"}`,
-  );
+  out.line =
+    `  ${pkg}: проверяется ${out.inspected}/${files.length}${ign}; ` +
+    `ESLint ${version}, пробный прогон по ${probeFiles.length} файлам — ${failure === null ? "исполнился" : "ОТКАЗ"}`;
+
   if (failure !== null) {
-    findings.push(
+    out.findings.push(
       `${pkg}: объявленная команда npm run lint:js НЕИСПОЛНИМА — собственный ESLint ${version} ` +
         `упал на пробном прогоне: «${failure}». Область линта этого пакета не проверена ничем, ` +
         `и «ноль находок» здесь означало бы «ноль прочитанного»`,
     );
   }
   if (outside.length) {
-    findings.push(
+    out.findings.push(
       `${pkg}: ${outside.length} файлов вне базового пути конфигурации: ${outside.slice(0, 5).join(", ")}…`,
     );
   }
+  return out;
+}
+
+// Режим дочернего процесса: судит один пакет и отдаёт итог строкой JSON. Пик
+// собственного потребления сообщает сам — родителю его иначе не узнать.
+const packageArg = process.argv.indexOf("--package");
+if (packageArg !== -1) {
+  const pkg = process.argv[packageArg + 1];
+  const files = byPkg.get(pkg) ?? [];
+  let res;
+  try {
+    res = await judgePackage(pkg, files);
+  } catch (e) {
+    // Отказ ДО пробного прогона — например, конфигурация пакета не разбирается,
+    // и на ней падает уже проверка области. Он обязан доехать до родителя
+    // ПРИЧИНОЙ, а не одним «процесс не завершился успехом»: иначе находка
+    // называет симптом и посылает читателя искать не там.
+    res = {
+      pkg,
+      findings: [
+        `${pkg}: собственный ESLint отказал ДО пробного прогона: ` +
+          `«${String(e?.message ?? e).split("\n")[0]}». Область линта этого пакета не проверена ничем, ` +
+          `и «ноль находок» здесь означало бы «ноль прочитанного»`,
+      ],
+      filesSeen: files.length,
+      inspected: 0,
+      declaredIgnore: 0,
+      probesRun: 0,
+      engine: null,
+      line: `  ${pkg}: ОТКАЗ до пробного прогона`,
+    };
+  }
+  res.peakRssKb = process.resourceUsage().maxRSS;
+  process.stdout.write(JSON.stringify(res));
+  process.exit(0);
+}
+
+const findings = [];
+let filesSeen = 0;
+let filesInspected = 0;
+let filesDeclaredIgnore = 0;
+let probesRun = 0;
+let peakChildRssKb = 0;
+const engines = new Set();
+
+const pkgs = [...byPkg.keys()].sort();
+const self = fileURLToPath(import.meta.url);
+for (const pkg of pkgs) {
+  let raw;
+  try {
+    raw = execFileSync(process.execPath, [self, "--package", pkg], {
+      cwd: uiRoot,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+  } catch (e) {
+    // Отказ САМОГО дочернего процесса — это «не выполнилось» по этому пакету, и
+    // молчать о нём нельзя: иначе пакет выпадает из переписи, а гейт остаётся
+    // зелёным, ничего о нём не прочитав.
+    findings.push(
+      `${pkg}: процесс, судивший пакет, не завершился успехом (${String(e?.message ?? e).split("\n")[0]}) — ` +
+        `область линта этого пакета не проверена ничем`,
+    );
+    continue;
+  }
+  let res;
+  try {
+    res = JSON.parse(raw);
+  } catch {
+    findings.push(`${pkg}: процесс, судивший пакет, вернул неразбираемый ответ — судить по нему нельзя`);
+    continue;
+  }
+  filesSeen += res.filesSeen;
+  filesInspected += res.inspected;
+  filesDeclaredIgnore += res.declaredIgnore;
+  probesRun += res.probesRun;
+  if (res.engine) engines.add(res.engine);
+  if (res.peakRssKb > peakChildRssKb) peakChildRssKb = res.peakRssKb;
+  if (res.line) console.log(res.line);
+  findings.push(...res.findings);
 }
 
 console.log("");
@@ -284,6 +383,13 @@ console.log(
   `осмотрено: пакетов ${pkgs.length}, отслеживаемых линтуемых файлов ${filesSeen} ` +
     `(проверяется ${filesInspected}, объявленный ignores ${filesDeclaredIgnore}); ` +
     `пробных прогонов линта ${probesRun}; экземпляров ESLint ${engines.size} [${[...engines].join(", ")}]`,
+);
+// Пик печатается ВСЕГДА, а не только при отказе: подход к пределу обязан быть
+// виден заранее. Величина — максимум по дочерним процессам, то есть по самому
+// дорогому пакету; у монолита она была суммой по всем и упиралась в предел.
+console.log(
+  `пик потребления: ${(peakChildRssKb / 1024).toFixed(0)} МБ (самый дорогой пакет из ${pkgs.length}); ` +
+    `у процесса-родителя ${(process.resourceUsage().maxRSS / 1024).toFixed(0)} МБ`,
 );
 
 // Предпосылка гейта: без пакетов и без файлов он не судит ни о чём и обязан сказать это

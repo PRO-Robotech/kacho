@@ -51,9 +51,28 @@ if (!BASE) {
  */
 const HOST_IP = process.env.KACHO_CONSOLE_HOST_IP;
 const hostResolverArgs = (() => {
-  if (!HOST_IP) return [];
-  const host = new URL(BASE).hostname;
-  return [`--host-resolver-rules=MAP ${host} ${HOST_IP}`];
+  if (!HOST_IP) {
+    // ФАКТ ПЕЧАТАЕТСЯ ВСЕГДА. Отсутствие отображения выглядит в логе точно так
+    // же, как его наличие, — а разошлись эти два состояния на живом прогоне:
+    // шаг проверки условия отображение применил, прогон проб получил
+    // ERR_NAME_NOT_RESOLVED минутой позже (#985). Отличить их можно было
+    // только тем, чего в логе не было.
+    console.log(`[конфиг проб] отображение имени НЕ задано (KACHO_CONSOLE_HOST_IP пуст); адрес ${BASE} разрешает резолвер браузера`);
+    return [];
+  }
+  const url = new URL(BASE);
+  const host = url.hostname;
+  const port = url.port;
+  // ДВЕ ФОРМЫ ПРАВИЛА, и это не перестраховка. Chromium принимает и
+  // `MAP <хост> <адрес>`, и `MAP <хост>:<порт> <адрес>:<порт>`; какая из них
+  // действует, зависит от того, как разбирается адрес с непустым портом.
+  // Форма без порта на живом прогоне сработала в одном процессе и не
+  // сработала в другом — значит полагаться на неё одну нельзя.
+  const rules = port
+    ? [`MAP ${host}:${port} ${HOST_IP}:${port}`, `MAP ${host} ${HOST_IP}`]
+    : [`MAP ${host} ${HOST_IP}`];
+  console.log(`[конфиг проб] отображение имени браузеру: ${rules.join(", ")}`);
+  return [`--host-resolver-rules=${rules.join(",")}`];
 })();
 
 export default defineConfig({
@@ -86,6 +105,10 @@ export default defineConfig({
         : {}),
       ...(hostResolverArgs.length ? { args: hostResolverArgs } : {}),
     },
+    // Проверить ФАКТ применения args из этого файла нечем: playwright не
+    // отдаёт командную строку запущенного браузера. Поэтому печатается то,
+    // что конфиг СОБРАЛСЯ применить, — и это единственное, что отличает
+    // «правило не задано» от «правило задано и не подействовало».
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "off",

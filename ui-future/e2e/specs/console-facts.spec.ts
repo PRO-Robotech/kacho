@@ -646,3 +646,57 @@ test("клик по метке кладёт в буфер машинную фо�
       "пришлось бы, набирая знак равенства руками",
   ).toBeVisible({ timeout: 15_000 });
 });
+
+test("список адресов показывает ВНУТРЕННИЙ адрес, а не приветственный экран", async ({ page }) => {
+  // verifies #927
+  //
+  // Отбор в списке отбрасывал строки без внешнего адреса и НЕ считался сужением,
+  // поэтому страница уходила в приветственное состояние: консоль утверждала
+  // «адресов нет» там, где край ответил «есть». Модульная проба видит логику
+  // отбора, но не видит края — а нашли дефект именно браузером, и закрывает его
+  // та проба, которая смотрит на то же, на что смотрел нашедший.
+  const { projectId } = await tenantWithProject(page);
+  await scopeIsReady(page, projectId);
+
+  // Внутренний адрес берётся ИЗ ПОДСЕТИ, поэтому цепочка обязательна: сеть с
+  // супернетом (без него нарезать не из чего) → зональная подсеть → адрес.
+  // Полоса внешних адресов здесь ни при чём — проба не зависит от посева стенда.
+  const network = await page.request.post("/vpc/v1/networks", {
+    data: { projectId, name: `net-927-${runTag()}`, ipv4CidrBlocks: ["10.91.0.0/16"] },
+  });
+  const netId = await createdResourceId(page, network, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под внутренний адрес");
+
+  const zones = await page.request.get("/geo/v1/zones");
+  expect(zones.ok(), "справочник зон недоступен — зональную подсеть создать негде. Это УСЛОВИЕ пробы, а не её предмет").toBeTruthy();
+  const zone = ((await zones.json()) as { zones?: Array<{ id: string }> }).zones?.[0]?.id ?? "";
+  expect(zone, "справочник зон ПУСТ — стенд непригоден для размещаемых ресурсов").not.toBe("");
+
+  const subnet = await page.request.post("/vpc/v1/subnets", {
+    data: { projectId, networkId: netId, name: `sub-927-${runTag()}`, zoneId: zone, ipv4CidrPrimary: "10.91.7.0/24" },
+  });
+  const subnetId = await createdResourceId(page, subnet, "subnetId", (id) => `/vpc/v1/subnets/${id}`, "подсеть под внутренний адрес");
+
+  const address = await page.request.post("/vpc/v1/addresses", {
+    data: { projectId, name: `adr-int-${runTag()}`, internalIpv4AddressSpec: { subnetId } },
+  });
+  const addressId = await createdResourceId(page, address, "addressId", (id) => `/vpc/v1/addresses/${id}`, "внутренний адрес");
+
+  // Значение адреса выделяет сервер — спрашиваем его, а не угадываем.
+  const created = await page.request.get(`/vpc/v1/addresses/${addressId}`);
+  expect(created.ok(), "созданный внутренний адрес не читается").toBeTruthy();
+  const ip = ((await created.json()) as { internalIpv4Address?: { address?: string } }).internalIpv4Address?.address ?? "";
+  expect(ip, "край не назвал значение внутреннего адреса — сверять на странице нечего").not.toBe("");
+
+  await page.goto(`/projects/${projectId}/vpc/addresses`, { waitUntil: "domcontentloaded" });
+
+  // Сперва — что страница ОТКРЫЛАСЬ, и только потом требование факта: иначе
+  // отказ обвинит отрисовку строки в том, что каркас ещё читает области.
+  await expect(
+    page.getByRole("heading", { name: "IP-адреса" }).first(),
+    "страница списка адресов не открылась по прямому адресу: каркас не отдал область арендатора, " +
+      "и содержимого на экране нет вовсе — о показе адреса такой прогон не говорит ничего",
+  ).toBeVisible({ timeout: 60_000 });
+
+  await expect(page.getByText(ip).first(), "внутренний адрес не показан в списке — консоль молчит о том, что край вернул").toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Зарезервируйте первый IP-адрес"), "список ушёл в приветственное состояние при непустом ответе края").toHaveCount(0);
+});
