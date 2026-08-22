@@ -716,7 +716,7 @@ Source of truth — `internal/migrations/*.sql`: `0001_initial.sql` (baseline-с
 ### 6.3 Индексы (helper)
 
 - `*_created_at_idx`, `*_project_idx` — для пагинации и WHERE-фильтра.
-- `*_network_idx`, `addresses_internal_subnet_idx` — для cascade-фильтров.
+- `*_network_idx`, `addresses_subnet_cursor_idx` — для cascade-фильтров.
 - `address_pools_selector_labels_gin` — GIN-индекс с `jsonb_path_ops` для
   `@>`-запроса в label-cascade.
 - `vpc_outbox_seq_idx`, `vpc_outbox_kind_idx` — для выборок по `sequence_no` / `resource_kind` в outbox-журнале.

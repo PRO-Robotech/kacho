@@ -128,7 +128,7 @@ check-then-act, который в этом репозитории запрещё
 времени этого **не различает**.
 
 Посчитать проект по индексу можно уже сегодня — `(project_id)` проиндексирован у всех восьми таблиц
-(`networks_project_idx`, `subnets_project_idx`, `addresses_project_idx`, `sg_project_idx`,
+(`networks_project_idx`, `subnets_project_idx`, `addresses_project_cursor_idx`, `sg_project_idx`,
 `route_tables_project_idx`, `gateways_project_idx`, `network_interfaces_project_idx` — все в
 `0001_initial.sql`; восьмой, `cidr_groups_project_idx`, — в `0035_cidr_groups.sql`). Но
 **возможность посчитать не есть учёт**: посчитанное устаревает между чтением и записью. Два

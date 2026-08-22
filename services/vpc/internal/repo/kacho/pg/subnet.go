@@ -178,7 +178,8 @@ func (r *subnetReader) AddressesBySubnet(ctx context.Context, subnetID string, p
 		argIdx += 2
 	}
 	// Фильтр — по generated-колонке internal_subnet_id (индекс
-	// addresses_internal_subnet_idx), а не по дизъюнкции jsonb-выражений,
+	// addresses_subnet_cursor_idx — одноколоночный снят по #963, его ключ лежит
+	// префиксом курсорного), а не по дизъюнкции jsonb-выражений,
 	// которую не покрывает ни один индекс: иначе цена страницы равна размеру
 	// таблицы ВСЕХ проектов, а не размеру страницы. Колонка авторитетна:
 	// «внутренний адрес несёт ровно одну семью» закреплено проверкой
@@ -301,7 +302,7 @@ func (w *subnetWriter) Update(ctx context.Context, s *domain.Subnet) (*kacho.Sub
 // переданных CIDR'ах. Предусловие снятия диапазона: см. godoc порта.
 // Сравнение inet разных семейств даёт false, поэтому оба семейства передаются
 // одним массивом. Запрос индексирован по internal_subnet_id (generated-колонка,
-// addresses_internal_subnet_idx) — цена страницы не зависит от размера таблицы.
+// addresses_subnet_cursor_idx) — цена страницы не зависит от размера таблицы.
 func (w *subnetWriter) OccupiedCidrs(ctx context.Context, subnetID string, cidrs []string) ([]string, error) {
 	if len(cidrs) == 0 || subnetID == "" {
 		return nil, nil

@@ -44,7 +44,9 @@ func (r *addressReader) Get(ctx context.Context, id string) (*kacho.AddressRecor
 
 // List — cursor-based pagination + filter.Parse. SubnetID-сужение — объединение
 // по обеим внутренним семьям через хранимую колонку internal_subnet_id
-// (индекс addresses_project_subnet_page_idx, миграция 0034).
+// (индекс addresses_subnet_cursor_idx, миграция 912001: постраничный дубль
+// addresses_project_subnet_page_idx снят по #963 — он не покрывал дочерний
+// список подсети, где предикат проекта не задан вовсе).
 func (r *addressReader) List(ctx context.Context, f kacho.AddressFilter, p kacho.Pagination) ([]*kacho.AddressRecord, string, error) {
 	pageSize, err := validate.PageSize("page_size", p.PageSize)
 	if err != nil {
