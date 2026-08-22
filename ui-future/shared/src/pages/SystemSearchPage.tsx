@@ -264,7 +264,7 @@ export function SystemSearchPage() {
           браузере поверх прочитанной страницы, названы поимённо. Иначе «ничего
           не найдено» читалось бы как утверждение об отсутствии ресурса. */}
       {active && PARTIAL_DOMAINS.length > 0 && (
-        <div className="text-xs text-muted-foreground">
+        <div className="text-xs text-muted-foreground" data-testid="search-partial-notice">
           Поиск неполон в {PARTIAL_DOMAINS.length} из {SEARCH_DOMAINS.length} областей — там сравниваются только
           загруженные строки (по {PARTIAL_PAGE}):{" "}
           {PARTIAL_DOMAINS.map((d) => REGISTRY[d.specId].plural).join(", ")}.
