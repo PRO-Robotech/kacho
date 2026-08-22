@@ -7,10 +7,18 @@ ingress для всего namespace.
 
 Закрывает security P0 #2 (lateral movement через :9091): без NetworkPolicy
 любой pod в namespace `kacho` может вызвать
-  - InternalWatchService.Watch(from=0)  → mass exfiltration outbox
   - InternalAddressService.AllocateInternalIP/AllocateExternalIP → IPAM privileges
   - InternalAddressPoolService.{Create,Delete} → admin IPAM privileges
   - InternalAddressPoolService.BindAsNetworkDefault → переписать IPAM default для network
+
+Здесь первой строкой перечня стоял поток наблюдения (`InternalWatchService.Watch`)
+с обоснованием «массовый вынос очереди». RPC СНЯТ — он числится в надгробии
+снятых поверхностей, и вызвать его нельзя ни из какого пода (#816).
+
+Обоснование, пережившее свой предмет, — не безобидная опечатка: перечень читают,
+решая, нужна ли политика вообще и что она защищает. Строка про несуществующий
+RPC либо завышает ценность защиты, либо (найдя, что RPC нет) обесценивает весь
+перечень вместе с живыми тремя пунктами.
 
 Включается через umbrella values:
   vpc:
