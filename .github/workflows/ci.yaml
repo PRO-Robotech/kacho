@@ -67,8 +67,8 @@ jobs:
     name: build · vet · gofmt · test -race
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -113,12 +113,12 @@ jobs:
     name: terraform — формат · модульные пробы · приёмка провайдера
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
           cache: true
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f  # v1
         with:
           tofu_version: 1.12.5
           # Обёртка перехватывает код возврата и подменяет вывод; вердикт должен
@@ -209,8 +209,8 @@ jobs:
       matrix:
         svc: [iam, vpc, compute, geo, nlb, storage, registry]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -299,8 +299,8 @@ jobs:
     name: Postgres-пробы вне отбора интеграционной джобы (пропуск = отказ)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -326,9 +326,9 @@ jobs:
     name: buf lint · breaking · generate-diff
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with: { fetch-depth: 0 }
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
           # cache: false — ОСОЗНАННО, не оплошность. С `cache: true` джоба флакала:
@@ -358,7 +358,7 @@ jobs:
       # статус skipped — джоба красная по причине, к предмету проверок отношения
       # не имеющей. Это третья категория исхода: проверки не выполнялись, а
       # вердикт о них выдан. Наблюдалось на прогоне 31101264016.
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-setup-action@3e33fea8596569a62fcaa33eb3880b6ac7098941  # v1.9.0
         with:
           version: 1.72.0
           github_token: ${{ github.token }}
@@ -472,8 +472,8 @@ jobs:
     name: permission-catalog · rest-route-table (staleness + copy-drift)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
           # cache: false — та же причина, что в job `proto` выше: go.mod несёт
@@ -487,7 +487,7 @@ jobs:
       # github_token — по той же причине, что в job `proto`: без него релиз buf
       # берётся неаутентифицированно, квота общая на IP ранера, и на её исчерпании
       # шаги гейта дрейфа получают skipped при красной джобе.
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-setup-action@3e33fea8596569a62fcaa33eb3880b6ac7098941  # v1.9.0
         with:
           version: 1.72.0
           github_token: ${{ github.token }}
@@ -1038,8 +1038,8 @@ jobs:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -1070,8 +1070,8 @@ jobs:
     name: govulncheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -1084,7 +1084,7 @@ jobs:
     name: helm lint · template (dev + prod)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       # ПИН ОБЯЗАТЕЛЕН: без `version` setup-helm ставит ПОСЛЕДНЮЮ, то есть версия
       # менялась бы без единой правки в дереве, а гейт проверял бы чарты не тем,
       # чем поднимается стенд. Значение обязано совпадать с e2e-newman.yml и
@@ -1099,14 +1099,14 @@ jobs:
       # вместе с заданием начальной настройки. Изнутри релиза шаблон пода теперь
       # НЕ ПАТЧИТ НИКТО — предмета у запрета не осталось, поэтому и проверки на
       # него в дереве нет: гейт снят вместе с предметом, а не ослаблен.
-      - uses: azure/setup-helm@v5
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5
         with:
           version: v4.2.4
 
       # Go нужен ровно одному шагу — проверке умолчаний чужих чартов личности
       # (`-tags helmcharts`): её условие создаёт `helm dependency build`, а не
       # unit-прогон, поэтому она живёт здесь.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
 
@@ -1255,6 +1255,14 @@ jobs:
       - name: пины инструментов не расходятся между конвейерами
         run: bash .github/scripts/check-pinned-tools.sh --divergence-only
 
+      # Шаг подключает чужой код ПО СОДЕРЖИМОМУ, а не по подвижному тегу (#699).
+      # Проверка местная и без сети: она читает объявления шагов этого дерева.
+      # Отставание пинов от апстрима — вопрос ДРУГОЙ полосы (dependabot,
+      # еженедельно), и красным прогоном на коммит, который версий не касался,
+      # оно приходить не должно.
+      - name: шаги конвейера подключены по содержимому
+        run: bash .github/scripts/check-actions-pinned.sh
+
       - name: манифест-проверки (deploy/tests/helm)
         working-directory: deploy
         run: make helm-manifest-test
@@ -1390,7 +1398,7 @@ jobs:
     name: перенос ветки не откатил ствол
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           # Гейт судит ГРАФ — родителей посадки и точку расхождения ветки со
           # стволом. Мелкий клон их не содержит: merge-base не разрешается,
@@ -1447,8 +1455,8 @@ jobs:
     # Полный прогон восьми сборок — минуты; backstop, чтобы зависший webpack не держал очередь.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
         with:
           node-version: '26'
           cache: npm
@@ -1477,7 +1485,7 @@ jobs:
       # предмет — размеры, пересечения маршрутов, дубли разделов — по которому решение
       # можно принять по фактам, а не по вкусу.
       - name: выложить собранные сайты
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: docs-sites
           path: |
