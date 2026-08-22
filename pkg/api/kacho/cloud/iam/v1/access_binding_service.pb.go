@@ -899,7 +899,11 @@ type ListAccessBindingsResponse struct {
 	//   - членство — состав ТЕХ групп, что названы субъектами выдач НА ЭТОЙ
 	//     странице. Членство в группе без выдачи доступа не даёт и к вопросу
 	//     «кто имеет доступ» не относится; видимость наследуется от выдачи,
-	//     которую вызывающий и так видит;
+	//     которую вызывающий и так видит. Состав ОГРАНИЧЕН СВЕРХУ: страница
+	//     ограничивает число ГРУПП, но не число ЧЛЕНОВ, а членство неограниченно
+	//     by construction. Упёршись в предел, ответ называет группы поимённо в
+	//     `incomplete_membership_group_ids` — молча усечённый состав читался бы
+	//     как «в группе больше никого»;
 	//   - кластерные администраторы — ВСЕ действующие, и только тому, кто сам
 	//     кластерный администратор. Верхний ярус супер-доступа обязан быть виден
 	//     целиком тому, кто им распоряжается, и не обязан — арендатору.
@@ -908,9 +912,17 @@ type ListAccessBindingsResponse struct {
 	// (`ListByScope`/`ListBySubject`/`ListByRole`/`ListByAccount`) делит с ним
 	// это сообщение и поле НЕ заполняет — там оно пусто ВСЕГДА, и это сказано
 	// здесь, а не оставлено читателю как «ничего не найдено».
-	Records       []*GrantSurfaceRecord `protobuf:"bytes,3,rep,name=records,proto3" json:"records,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Records []*GrantSurfaceRecord `protobuf:"bytes,3,rep,name=records,proto3" json:"records,omitempty"`
+	// Группы, чей состав в `records` НЕПОЛОН: предел ответа достигнут, и дальше
+	// членство не читалось. Полный состав такой группы берётся её собственным
+	// пагинированным глаголом (`GroupService.ListMembers`) — он для того и есть.
+	//
+	// Пусто = состав всех названных групп возвращён целиком. Это утверждение, а
+	// не умолчание: непустое значение говорит «дальше мы не читали», пустое —
+	// «дальше читать нечего».
+	IncompleteMembershipGroupIds []string `protobuf:"bytes,4,rep,name=incomplete_membership_group_ids,json=incompleteMembershipGroupIds,proto3" json:"incomplete_membership_group_ids,omitempty"`
+	unknownFields                protoimpl.UnknownFields
+	sizeCache                    protoimpl.SizeCache
 }
 
 func (x *ListAccessBindingsResponse) Reset() {
@@ -960,6 +972,13 @@ func (x *ListAccessBindingsResponse) GetNextPageToken() string {
 func (x *ListAccessBindingsResponse) GetRecords() []*GrantSurfaceRecord {
 	if x != nil {
 		return x.Records
+	}
+	return nil
+}
+
+func (x *ListAccessBindingsResponse) GetIncompleteMembershipGroupIds() []string {
+	if x != nil {
+		return x.IncompleteMembershipGroupIds
 	}
 	return nil
 }
@@ -2022,11 +2041,12 @@ const file_kacho_cloud_iam_v1_access_binding_service_proto_rawDesc = "" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x128\n" +
 	"\x13subject_type_filter\x18\x04 \x01(\tB\b\x8a\xc81\x04<=32R\x11subjectTypeFilter\x12'\n" +
-	"\x0finclude_revoked\x18\x05 \x01(\bR\x0eincludeRevoked\"\xd2\x01\n" +
+	"\x0finclude_revoked\x18\x05 \x01(\bR\x0eincludeRevoked\"\x99\x02\n" +
 	"\x1aListAccessBindingsResponse\x12J\n" +
 	"\x0faccess_bindings\x18\x01 \x03(\v2!.kacho.cloud.iam.v1.AccessBindingR\x0eaccessBindings\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12@\n" +
-	"\arecords\x18\x03 \x03(\v2&.kacho.cloud.iam.v1.GrantSurfaceRecordR\arecords\"\xb1\x01\n" +
+	"\arecords\x18\x03 \x03(\v2&.kacho.cloud.iam.v1.GrantSurfaceRecordR\arecords\x12E\n" +
+	"\x1fincomplete_membership_group_ids\x18\x04 \x03(\tR\x1cincompleteMembershipGroupIds\"\xb1\x01\n" +
 	"\"ListAccessBindingOperationsRequest\x128\n" +
 	"\x11access_binding_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0faccessBindingId\x12'\n" +
 	"\tpage_size\x18\x02 \x01(\x03B\n" +
