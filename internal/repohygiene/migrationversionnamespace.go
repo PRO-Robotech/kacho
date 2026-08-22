@@ -131,6 +131,16 @@ const (
 	maxIssueNumber              = 10_000_000
 	firstIssuedMigrationVersion = minIssueNumber * migrationOrdinalSpan
 	lastIssuedMigrationVersion  = maxIssueNumber*migrationOrdinalSpan - 1
+
+	// firstTimestampMigrationVersion — граница, с которой номер читается как
+	// МЕТКА ВРЕМЕНИ, а не как «задача × 1000 + порядок».
+	//
+	// Величина выведена, а не выбрана: `20000101000000` — полночь первого января
+	// двухтысячного года, то есть метка времени раньше всякой возможной здесь.
+	// Наибольший порядковый номер (`maxIssueNumber × 1000`) на девять порядков
+	// меньше, поэтому формы различаются по величине однозначно и различение не
+	// перестанет работать от роста номеров задач.
+	firstTimestampMigrationVersion = 20000101000000
 )
 
 // migrationVersionFileRe — имя файла миграции. Ведущие нули — часть записи, а не
@@ -266,6 +276,8 @@ func migrationVersionFindings(byDir map[string]*migrationDirVersions, frozen map
 							"    Порядковая эра ЗАКРЫТА: номер, выбранный из каталога, две линии "+
 							"выбирают одинаково, и слияние примет это молча.\n"+
 							"    Назови миграцию по своей задаче: `<задача><порядковый:3>_<что_делает>.sql` "+
+							"— либо меткой времени заведения `YYYYMMDDHHMMSS`, которой требует "+
+							"гейт монотонности (#921); обе формы законны. "+
 							"(например 539001_…). Номер задачи — тот же, что в имени ветки.",
 						dir, formatVersionList(added)))
 				}
@@ -281,6 +293,11 @@ func migrationVersionFindings(byDir map[string]*migrationDirVersions, frozen map
 		}
 
 		for _, v := range got.Issued {
+			// Метка времени порядкового разряда не несёт и не обязана: у неё
+			// другой предмет — момент заведения. См. границу форм выше.
+			if v >= firstTimestampMigrationVersion {
+				continue
+			}
 			if ord := v % migrationOrdinalSpan; ord == 0 {
 				out = append(out, fmt.Sprintf(
 					"%s: номер %d не несёт порядкового разряда (последние три цифры — 000).\n"+
@@ -288,7 +305,17 @@ func migrationVersionFindings(byDir map[string]*migrationDirVersions, frozen map
 						"вторая — 002. Ноль означал бы, что задача не назвала ни одной.",
 					dir, v))
 			}
-			if v > lastIssuedMigrationVersion {
+			// Метка времени — ЗАКОННАЯ форма нового номера (уточнение 2026-08-22,
+			// задача #921), и потому здесь не находка. Правило про заведение
+			// НОВЫХ порядковых номеров держит проверка формы добавленных файлов
+			// (`TestNewMigrationOutranksEveryAppliedOne`): она требует метки
+			// времени от того, что добавлено относительно ствола.
+			//
+			// Здесь стоял отказ «номер больше всякого возможного», и он делал
+			// два гейта дерева НЕСОВМЕСТИМЫМИ: порядковую форму отвергал один,
+			// метку времени — другой, и добавить миграцию было нельзя ни в
+			// какой форме. Обнаружено попыткой добавить её.
+			if v > lastIssuedMigrationVersion && v < firstTimestampMigrationVersion {
 				out = append(out, fmt.Sprintf(
 					"%s: номер %d больше всякого возможного (задача №%d не существует).\n"+
 						"    Так выглядит метка времени — её выдаёт `goose.Create` без "+
