@@ -40,6 +40,13 @@ import (
 )
 
 const (
+	// knobDeclaredKeySets / knobLegacyKeySet — настройки, из которых может
+	// приехать адрес набора. Названы константами, потому что их называет ОТКАЗ,
+	// а отказ, указывающий не на ту настройку, хуже отсутствующего: он
+	// отправляет оператора править то, что в этой посадке пусто.
+	knobDeclaredKeySets = "KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS"
+	knobLegacyKeySet    = "KACHO_HYDRA_JWKS_URL"
+
 	// TokenTypePlatform — тип токена доступа НАШЕЙ чеканки (RFC 9068).
 	TokenTypePlatform = "at+jwt"
 	// TokenTypeLegacy — тип, которым помечает свои токены прежний издатель.
@@ -60,6 +67,13 @@ type TokenIssuerBinding struct {
 	// ReadRevocation — читать НАШ авторитет отзыва на предъявлении токена
 	// этого издателя.
 	ReadRevocation bool
+	// SourceKnob — настройка, ИЗ КОТОРОЙ приехал адрес набора.
+	//
+	// Нужна отказу, а не логике: у адреса два источника — объявленный перечень
+	// и прежний скалярный пин, — и отказ, называющий не тот, отправляет
+	// оператора править настройку, которая в этой посадке пуста. Ровно так и
+	// было: страж защищённости схемы называл перечень на пути, где перечня нет.
+	SourceKnob string
 }
 
 // isProductionPosture — режимы, в которых послаблений нет. Тот же разделитель
@@ -139,7 +153,10 @@ func absoluteKeySetURL(raw string) error {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("key-set URL %q is not a URL: %w", raw, err)
+		// «не разбирается» на ОБЪЯВЛЕННОМ пути и на ЗАПАСНОМ — два разных стража,
+		// и тексты у них разные намеренно: иначе отказ не сказал бы, какую из
+		// двух настроек править, а различитель пробы стал бы общим для обоих.
+		return fmt.Errorf("key-set URL %q is not a parseable URL: %w", raw, err)
 	}
 	if u.Scheme == "" || u.Host == "" {
 		return fmt.Errorf("key-set URL %q is not absolute (scheme and host are required; "+
@@ -175,7 +192,7 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 				"KACHO_API_GATEWAY_TOKEN_ISSUERS declares no issuer set — the platform would mint "+
 				"tokens this edge rejects on the first request", c.PlatformTokenIssuer)
 		}
-		b := legacyBinding(c.ResolvedHydraIssuer(), c.ResolvedHydraJWKSURL())
+		b := legacyBinding(c.ResolvedHydraIssuer(), c.ResolvedHydraJWKSURL(), knobLegacyKeySet)
 		// Требование к транспорту источника набора действует и здесь.
 		//
 		// Асимметрия была бы хуже строгости: объявивший перечень оператор
@@ -183,7 +200,7 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 		// оказывался бы наказуем. Правило одно, потому что предмет один —
 		// источник набора есть единственный якорь доверия проверки подписи, и
 		// он не становится безопаснее оттого, что адрес приехал прежней ручкой.
-		if err := c.requireSecureKeySetURL(b.Issuer, b.KeySetURL); err != nil {
+		if err := c.requireSecureKeySetURL(b); err != nil {
 			return nil, err
 		}
 		return []TokenIssuerBinding{b}, nil
@@ -245,7 +262,7 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 				"without a record resolves to nothing, and deriving its address from the issuer "+
 				"string is forbidden (the issuer comes from the presenter)", iss)
 		}
-		b := legacyBinding(iss, keySetURL)
+		b := legacyBinding(iss, keySetURL, knobDeclaredKeySets)
 		if iss == platform {
 			// НАША полоса: производитель типа — мы сами, отсутствие типа
 			// означало бы, что мы не выпускаем того, что требуем; и отзыв
@@ -277,7 +294,7 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 
 	readsRevocation := false
 	for _, b := range out {
-		if err := c.requireSecureKeySetURL(b.Issuer, b.KeySetURL); err != nil {
+		if err := c.requireSecureKeySetURL(b); err != nil {
 			return nil, err
 		}
 		readsRevocation = readsRevocation || b.ReadRevocation
@@ -314,10 +331,11 @@ func (c Config) TokenAcceptance() ([]TokenIssuerBinding, error) {
 //
 // ПРЕДИКАТ СНЯТИЯ: послабление и второе значение уходят вместе с самой записью
 // прежнего издателя.
-func legacyBinding(issuer, keySetURL string) TokenIssuerBinding {
+func legacyBinding(issuer, keySetURL, sourceKnob string) TokenIssuerBinding {
 	return TokenIssuerBinding{
 		Issuer:                  issuer,
 		KeySetURL:               keySetURL,
+		SourceKnob:              sourceKnob,
 		TokenTypes:              []string{TokenTypeLegacy, TokenTypePlatform},
 		TolerateAbsentTokenType: true,
 	}
@@ -330,20 +348,24 @@ func legacyBinding(issuer, keySetURL string) TokenIssuerBinding {
 //
 // В режиме разработки открытый HTTP допустим — симметрично незашифрованному
 // соединению к базе.
-func (c Config) requireSecureKeySetURL(issuer, keySetURL string) error {
+func (c Config) requireSecureKeySetURL(b TokenIssuerBinding) error {
 	if !c.isProductionPosture() {
 		return nil
 	}
-	u, err := url.Parse(keySetURL)
+	u, err := url.Parse(b.KeySetURL)
 	if err != nil {
-		return fmt.Errorf("KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS record for issuer %q: "+
-			"invalid URL %q: %w", issuer, keySetURL, err)
+		// Собственный отказ, а не обёртка чужого: за ним НЕТ ни одной нашей
+		// ветки — разбор адреса ведёт библиотека. Он называет ту настройку, из
+		// которой адрес приехал: на запасном пути перечня не существует, и
+		// прежняя редакция отправляла оператора править пустое значение.
+		return fmt.Errorf("%s: key-set URL %q for issuer %q is not a URL: %w",
+			b.SourceKnob, b.KeySetURL, b.Issuer, err)
 	}
 	if !strings.EqualFold(u.Scheme, "https") {
-		return fmt.Errorf("KACHO_APP_ENV=%q requires an https:// key-set URL in "+
-			"KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS for issuer %q (the key set is the trust anchor "+
-			"of signature verification and must not be fetched over plaintext; got scheme %q)",
-			c.AppEnv, issuer, u.Scheme)
+		return fmt.Errorf("KACHO_APP_ENV=%q requires an https:// key-set URL in %s "+
+			"for issuer %q (the key set is the trust anchor of signature verification and must "+
+			"not be fetched over plaintext; got scheme %q)",
+			c.AppEnv, b.SourceKnob, b.Issuer, u.Scheme)
 	}
 	return nil
 }

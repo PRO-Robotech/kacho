@@ -67,6 +67,15 @@ type f1bGuardCase struct {
 	// в один можно было бы, ослабив первый до литерала, — и тогда проба
 	// перестала бы утверждать обе величины, ради которых её и чинили.
 	LiteralAnchor string
+	// RoutesThroughWrapper — литерал ОБЁРТКИ, через которую проходит отказ этого
+	// стража, если он через обёртку проходит.
+	//
+	// Освобождение обёртки чужого отказа законно ровно тогда, когда за ней стоит
+	// ХОТЯ БЫ ОДНА наша ветка, — и это ОБЪЯВЛЯЕТСЯ здесь, а не предполагается.
+	// Обёртка, которую не назвал никто, обёрткой не является: это
+	// самостоятельный страж без хозяина, и он невидим ровно по той причине, по
+	// какой был невидим страж вырожденного перечня.
+	RoutesThroughWrapper string
 }
 
 // literalAnchor возвращает якорь поиска в исходнике.
@@ -163,7 +172,8 @@ func f1bGuardCases() []f1bGuardCase {
 				c.TokenIssuerKeySets = f1bLegacy + "=/.well-known/jwks.json"
 				return c
 			}(),
-			Discriminator: "is not absolute",
+			Discriminator:        "is not absolute",
+			RoutesThroughWrapper: "record for issuer %q: %w",
 		},
 		{
 			Name: "адрес записи из одних разделителей",
@@ -173,7 +183,8 @@ func f1bGuardCases() []f1bGuardCase {
 				c.TokenIssuerKeySets = f1bLegacy + "=///"
 				return c
 			}(),
-			Discriminator: "consists of separators only",
+			Discriminator:        "consists of separators only",
+			RoutesThroughWrapper: "record for issuer %q: %w",
 		},
 		{
 			Name: "незащищённая схема адреса набора в производственной посадке",
@@ -215,7 +226,8 @@ func f1bGuardCases() []f1bGuardCase {
 				c.TokenIssuerKeySets = "здесь-нет-знака-равенства"
 				return c
 			}(),
-			Discriminator: "is not «issuer=url»",
+			Discriminator:        "is not «issuer=url»",
+			RoutesThroughWrapper: "record for issuer %q: %w",
 		},
 		{
 			Name: "запись привязки без издателя",
@@ -225,7 +237,8 @@ func f1bGuardCases() []f1bGuardCase {
 				c.TokenIssuerKeySets = "=" + f1bLegKS
 				return c
 			}(),
-			Discriminator: "names no issuer",
+			Discriminator:        "names no issuer",
+			RoutesThroughWrapper: "record for issuer %q: %w",
 		},
 		{
 			Name: "адрес записи пуст",
@@ -235,7 +248,8 @@ func f1bGuardCases() []f1bGuardCase {
 				c.TokenIssuerKeySets = f1bLegacy + "="
 				return c
 			}(),
-			Discriminator: "key-set URL is empty",
+			Discriminator:        "key-set URL is empty",
+			RoutesThroughWrapper: "record for issuer %q: %w",
 		},
 		{
 			Name: "адрес авторитета отзыва не абсолютен",
@@ -262,14 +276,34 @@ func f1bGuardCases() []f1bGuardCase {
 			Discriminator: "the answer decides access",
 		},
 		{
-			Name: "адрес записи не разбирается как URL",
+			Name: "адрес записи не разбирается как URL (ОБЪЯВЛЕННЫЙ путь)",
 			Cfg: func() config.Config {
 				c := f1bBase("production")
 				c.TokenIssuers = f1bLegacy
 				c.TokenIssuerKeySets = f1bLegacy + "=://%%zz"
 				return c
 			}(),
-			Discriminator: "is not a URL",
+			Discriminator:        "is not a parseable URL",
+			RoutesThroughWrapper: "record for issuer %q: %w",
+		},
+		{
+			// Страж БЕЗ ХОЗЯИНА, найденный мутационной переписью ревьюера:
+			// единственная из двадцати веток, которая не держалась ничем.
+			// Освобождение по обёртке на ней не работает — за ней НЕТ нашей
+			// ветки, адрес разбирает библиотека, — значит это самостоятельный
+			// страж, и ряд ему нужен свой.
+			Name: "адрес набора не разбирается как URL на ЗАПАСНОМ пути",
+			Cfg: func() config.Config {
+				c := f1bBase("production")
+				// Перечень НЕ объявлен: адрес приезжает прежним пином, и на этом
+				// пути он не проходил проверки формы вовсе.
+				c.HydraJWKSURL = "://%%zz"
+				return c
+			}(),
+			Discriminator: "KACHO_HYDRA_JWKS_URL: key-set URL",
+			// Различитель собирается ПРИ ВЫПОЛНЕНИИ (имя ручки подставляется),
+			// а в исходнике на его месте шаблон — поэтому якорь поиска свой.
+			LiteralAnchor: "key-set URL %q for issuer %q is not a URL",
 		},
 		{
 			Name: "два объявления об одном предмете",
@@ -344,6 +378,18 @@ func f1bRunGuardCases(t *testing.T, cases []f1bGuardCase) {
 		t.Fatalf("различителей %d при %d рядах — значит какие-то ряды делят одну подстроку "+
 			"и не различаются между собой", len(seen), len(cases))
 	}
+}
+
+// f1bWrapperIsClaimed отвечает, объявил ли хоть один ряд, что его отказ проходит
+// через эту обёртку. Обёртка, которую не назвал никто, обёрткой не является —
+// это страж без хозяина.
+func f1bWrapperIsClaimed(literal string) bool {
+	for _, c := range f1bGuardCases() {
+		if c.RoutesThroughWrapper != "" && strings.Contains(literal, c.RoutesThroughWrapper) {
+			return true
+		}
+	}
+	return false
 }
 
 // refusalLiteral — форматная строка одного отказа, найденная В ДЕРЕВЕ.
@@ -427,9 +473,15 @@ func TestF1b_EveryRefusalInTheDeclarationParserIsNamedByTheTable(t *testing.T) {
 		}
 		// Обёртка чужого отказа несёт различитель ВНУТРЕННЕЙ ветки, а своего не
 		// имеет и иметь не должна: она ничего не решает, только добавляет
-		// координату. Освобождение узкое и механическое — по наличию глагола
-		// оборачивания, а не по имени и не по списку.
-		if strings.Contains(lit.Text, "%w") {
+		// координату.
+		//
+		// Но освобождение выдаётся не за наличие глагола оборачивания, а за
+		// НАЗВАННУЮ внутреннюю ветку: обёртка законна тогда и только тогда,
+		// когда хотя бы один ряд объявил, что его отказ через неё проходит.
+		// Прежняя редакция освобождала по одному лишь `%w` — и пропускала ровно
+		// тот случай, ради которого перепись заведена: самостоятельный страж,
+		// оборачивающий отказ БИБЛИОТЕКИ, за которым нашей ветки нет вовсе.
+		if strings.Contains(lit.Text, "%w") && f1bWrapperIsClaimed(lit.Text) {
 			wrappers++
 			continue
 		}
