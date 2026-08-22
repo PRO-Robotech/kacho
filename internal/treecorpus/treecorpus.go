@@ -42,6 +42,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
@@ -62,8 +64,7 @@ func Under(dir string) ([]string, error) {
 	// `git -C <dir> ls-files` и запуск git с рабочим каталогом <dir> дают здесь
 	// одно и то же — обе формы велят git считать <dir> текущим каталогом, а
 	// `ls-files` перечисляет относительно него.
-	cmd := gitenv.Command(abs, "ls-files", "-z")
-	out, err := cmd.Output()
+	out, err := listFilesCached(abs)
 	if err != nil {
 		return nil, fmt.Errorf("treecorpus: git ls-files в %s: %w — состав дерева "+
 			"взять неоткуда; обход диска вместо индекса читал бы игнорируемые "+
@@ -120,3 +121,65 @@ func UnderWithSuffix(dir string, suffixes ...string) ([]string, error) {
 	}
 	return out, nil
 }
+
+// listFilesCached — состав индекса git для каталога, прочитанный ОДИН раз за
+// прогон.
+//
+// # Зачем кеш
+//
+// Гейты дерева спрашивают состав независимо друг от друга — по замеру 2026-08-22
+// в пакете проверок 103 обращения к корпусу на 823 пробы, и каждое поднимало
+// отдельный процесс git. Прогон подошёл к пределу времени вплотную (17 минут при
+// пределе 15 на пробу), и следующий заведённый гейт ронял его — то есть цена
+// была не «медленно», а «новую проверку больше не завести».
+//
+// # Почему кешировать ЗАКОННО
+//
+// Состав индекса за прогон не меняется by construction: проба, пишущая в дерево,
+// из которого запущена, — сама по себе находка, и её ловит отдельный гейт
+// (`TestProbesDoNotWriteIntoTheTreeTheyRunFrom`). Синтетические деревья идут
+// мимо: у них свой конструктор `SyntheticTree`, и он индекс не спрашивает.
+//
+// # Что кеш НЕ делает
+//
+// Он не прячет ошибку: неуспех git кладётся в кеш вместе с результатом, поэтому
+// второй спрашивающий получит тот же отказ, а не тишину. «Git недоступен» обязано
+// оставаться отказом для КАЖДОГО вызывающего — иначе первый упадёт, а остальные
+// увидят пустой корпус и отчитаются «ноль находок».
+func listFilesCached(abs string) ([]byte, error) {
+	v, _ := listFilesOnce.LoadOrStore(abs, &sync.Once{})
+	once := v.(*sync.Once)
+	once.Do(func() {
+		atomic.AddInt64(&listFilesProcesses, 1)
+		out, err := gitenv.Command(abs, "ls-files", "-z").Output()
+		listFilesResult.Store(abs, listFilesEntry{out: out, err: err})
+	})
+	r, ok := listFilesResult.Load(abs)
+	if !ok {
+		// Недостижимо: once.Do возвращается только после записи результата.
+		// Ветка оставлена отказом, а не пустым составом: пустой корпус читался
+		// бы как «в дереве ничего нет».
+		return nil, fmt.Errorf("treecorpus: состав %s не сохранён — корпус не прочитан", abs)
+	}
+	e := r.(listFilesEntry)
+	return e.out, e.err
+}
+
+type listFilesEntry struct {
+	out []byte
+	err error
+}
+
+var (
+	listFilesOnce   sync.Map
+	listFilesResult sync.Map
+
+	// listFilesProcesses — сколько РАЗ поднимался процесс git за прогон.
+	// Величина нужна пробе кеша: «стало быстрее» на общей машине не измеряется
+	// (соседний прогон меняет ответ), а «процесс поднят один раз на корень» —
+	// свойство, а не наблюдение.
+	listFilesProcesses int64
+)
+
+// ListFilesProcesses — число поднятий процесса git за прогон. Для проб.
+func ListFilesProcesses() int64 { return atomic.LoadInt64(&listFilesProcesses) }

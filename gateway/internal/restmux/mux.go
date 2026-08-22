@@ -207,6 +207,18 @@ func buildPrincipalMetadata(r *http.Request) metadata.MD {
 // поведение для них не меняется.
 func principalHeaderMatcher(key string) (string, bool) {
 	if name, ok := principalmeta.KachoNamespaceKey(key); ok {
+		// Ключ, который кладёт аннотатор, мост НЕ пропускает: у одного значения
+		// один производитель. Пока пропускал и он, каждый такой ключ уезжал в
+		// metadata трижды — одной копией от аннотатора и двумя от моста, по
+		// одной на каждую форму заголовка (#930).
+		//
+		// Расхождение копий было бы ненаблюдаемым: потребитель читает первую,
+		// а равенство остальных держалось не проверкой, а совпадением
+		// источника — и переставало держаться в тот день, когда источников
+		// стало два.
+		if principalmeta.IsAnnotatorProducedKey(name) {
+			return "", false
+		}
 		if principalmeta.IsGatewayProducedKey(name) {
 			return name, true
 		}
