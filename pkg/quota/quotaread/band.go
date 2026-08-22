@@ -256,9 +256,17 @@ func (b *Band) States(ctx context.Context, c Carrier) ([]State, error) {
 	elsewhere := map[string]struct{}{}
 	for _, l := range limits {
 		if l.Carrier != c.Type {
-			if l.Carrier != "" {
-				elsewhere[l.Carrier] = struct{}{}
+			// Величина с НЕНАЗВАННЫМ носителем тоже попадает в перечень — под
+			// явным именем. Прежде она выпадала и из ответа, и из перечня, из-за
+			// чего отказ утверждал «величин нет вовсе» при существующей величине.
+			// Наступает это на рассинхроне версий владельца величин и потребителя:
+			// вид, чей носитель здешнему словарю ещё неизвестен, приходит с пустым
+			// полем. Пустое поле обязано означать «не назван», а не «нет».
+			named := l.Carrier
+			if named == "" {
+				named = "<носитель не назван>"
 			}
+			elsewhere[named] = struct{}{}
 			continue
 		}
 		out = append(out, State{

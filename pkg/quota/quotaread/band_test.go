@@ -325,3 +325,28 @@ func TestStatesRefuseAnUnnamedCarrier(t *testing.T) {
 		})
 	}
 }
+
+// TestStatesNameACeilingWhoseCarrierIsUnnamed — величина с пустым носителем не
+// исчезает бесследно.
+//
+// Пустое поле носителя приходит на рассинхроне версий: владелец величин знает
+// вид, чей носитель здешнему словарю ещё неизвестен. Прежде такая величина
+// выпадала И из ответа, И из перечня в отказе, поэтому отказ утверждал «величин
+// нет вовсе» — при существующей величине. Пустое обязано означать «не назван».
+func TestStatesNameACeilingWhoseCarrierIsUnnamed(t *testing.T) {
+	t.Parallel()
+
+	limits := &stubLimits{limits: []quotaread.ResolvedLimit{
+		{Kind: "loadbalancer.somethingNew", Value: 4, Carrier: ""},
+	}}
+
+	_, err := newBand(t, &stubRows{}, limits).
+		States(context.Background(), quotaread.ProjectCarrier("prj-10"))
+	require.Error(t, err)
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	msg := status.Convert(err).Message()
+	require.Contains(t, msg, "prj-10")
+	require.Contains(t, msg, "не назван",
+		"величина существует, и отказ обязан это признать: «носитель не назван» и "+
+			"«величин нет» — разные утверждения, и второе ложно")
+}
