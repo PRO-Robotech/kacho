@@ -160,10 +160,15 @@ global:
         scheme: http
         host: ""
         port: ""
-      smtp:
-        connectionURI: "smtp://mailhog.kacho.svc:1025/?disable_starttls=true"
-        fromAddress: noreply@kacho.cloud
-        fromName: Kacho Cloud
+      # ─── ЗНАЧЕНИЯ ПОЧТЫ СНЯТЫ (задача #943) ───────────────────────────────
+      #
+      # Здесь стояли `smtp.connectionURI/fromAddress/fromName`. Их читал ровно
+      # один шаблон — наша конфигурация службы личности, — а её почтовый
+      # процесс не читает: он работает на файле подчарта поставщика. То есть
+      # значения не участвовали ни в одной отправке письма.
+      #
+      # Действующие значения живут в слое поставщика, где у них читатель есть.
+      # Держать вторые здесь значило объявлять, что почтой управляем мы.
 
 # Phase 2 (KAC-127) — Kratos identity schema + config ConfigMaps. Управляются
 # флагами; в Phase 2 поднимаются вместе с kacho-iam (один namespace, один Helm
