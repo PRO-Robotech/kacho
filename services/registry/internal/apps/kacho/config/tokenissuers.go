@@ -15,14 +15,16 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 )
 
 const (
 	// TokenTypePlatform — тип токена доступа НАШЕЙ чеканки (RFC 9068).
-	TokenTypePlatform = "at+jwt"
+	TokenTypePlatform = tokenpolicy.TokenTypeAccess
 	// TokenTypeLegacy — тип токена прежнего издателя. Полоса прежнего издателя
 	// вне области этой под-фазы и своего поведения не меняет.
-	TokenTypeLegacy = "JWT"
+	TokenTypeLegacy = tokenpolicy.TokenTypeLegacy
 )
 
 // TokenIssuerBinding — ОБЪЯВЛЕННАЯ запись «издатель → источник его набора».
