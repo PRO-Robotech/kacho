@@ -47,7 +47,9 @@ import (
 
 const (
 	// PlatformTokenType — тип токена доступа НАШЕЙ чеканки (RFC 9068).
-	PlatformTokenType = "at+jwt"
+	// Значение берётся из общего объявления в `pkg/tokenpolicy`, а не пишется
+	// здесь заново.
+	PlatformTokenType = tokenpolicy.TokenTypeAccess
 	// LegacyTokenType — тип, которым помечает свои токены прежний издатель.
 	LegacyTokenType = "JWT"
 	// ProofTokenType — тип доказательства владения (RFC 9449). Токеном
