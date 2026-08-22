@@ -63,10 +63,26 @@ var (
 	ErrDPoPRequiredButBear = errors.New("dpop required: access token has cnf.jkt but no DPoP header presented")
 )
 
+// DPoPReplayGuard — однократность предъявления доказательства владения.
+//
+// Порт, а не тип, потому что домен параллелизма гарантии — ФЛОТ подов края, а
+// не один процесс. Реализаций две, и различие между ними наблюдаемо только на
+// второй реплике:
+//
+//	DPoPReplayCache            — в памяти процесса; верно ровно до второй реплики
+//	idempotencypg.Store        — вне процесса; общая запись, допуск одним оператором
+//
+// Отказ обязан различать «повтор» и «хранилище не ответило»: первое — отказ
+// клиенту, второе — отказ края. Смешать их значило бы отдать клиенту отказ в
+// доступе на нашу собственную недоступность.
+type DPoPReplayGuard interface {
+	Add(jti string) error
+}
+
 // DPoPValidator wires the replay cache and freshness window. Stateless beyond
 // the replay cache → safe for use as a singleton.
 type DPoPValidator struct {
-	replay         *DPoPReplayCache
+	replay         DPoPReplayGuard
 	iatFreshness   time.Duration
 	now            func() time.Time
 	requireAthWhen func(*VerifiedToken) bool // optional: ath enforcement gate
@@ -74,7 +90,7 @@ type DPoPValidator struct {
 
 // DPoPValidatorConfig — construction parameters.
 type DPoPValidatorConfig struct {
-	ReplayCache  *DPoPReplayCache
+	ReplayCache  DPoPReplayGuard
 	IatFreshness time.Duration
 	Now          func() time.Time
 	// RequireAthWhen — when set and returns true, an `ath` claim is mandatory

@@ -27,7 +27,7 @@ import (
 // флоте больше одной реплики и есть тот дефект, ради которого всё это заведено.
 func buildIdempotencyStore(
 	ctx context.Context, cfg config.Config, logger *slog.Logger,
-) (middleware.IdempotencyStore, io.Closer, error) {
+) (middleware.IdempotencyStore, *idempotencypg.Store, io.Closer, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.IdempotencyStoreKind)) {
 	case idempotencyStorePostgres:
 		store, err := idempotencypg.New(ctx, idempotencypg.Config{
@@ -37,14 +37,19 @@ func buildIdempotencyStore(
 			Logger:   logger,
 		})
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		logger.Info("idempotency store: shared, spans the whole fleet",
 			"kind", idempotencyStorePostgres, "fleet_size", cfg.FleetSize)
-		return store, store, nil
+		return store, store, store, nil
 	default:
 		logger.Info("idempotency store: in this process only, valid for a single replica",
 			"kind", idempotencyStoreMemory, "fleet_size", cfg.FleetSize)
-		return middleware.NewIdempotencyStore(middleware.IdempotencyTTL), nil, nil
+		// Второе значение — nil НАМЕРЕННО: внешнего хранилища нет, значит и
+		// однократность предъявления доказательства владения остаётся в памяти
+		// процесса. Законно это ровно при флоте в одну реплику, и связывает их
+		// та же проверка пары, что и для ключа однократности: два предмета, но
+		// одно условие — запись видна всем репликам или репликa одна.
+		return middleware.NewIdempotencyStore(middleware.IdempotencyTTL), nil, nil, nil
 	}
 }

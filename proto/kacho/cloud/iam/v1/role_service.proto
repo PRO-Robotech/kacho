@@ -23,11 +23,29 @@ service RoleService {
   // Returns the specified Role resource.
   rpc Get (GetRoleRequest) returns (Role) {
     option (google.api.http) = { get: "/iam/v1/roles/{role_id}" };
-    // The Role catalog is a tenant-wide reference list — any
-    // authenticated principal may read it (no per-role FGA scope). Exempt at
-    // the middleware; anonymous still rejected by the IAM interceptor.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-    option (kacho.iam.authz.v1.exempt_reason)  = "SERVICE_SIDE_AUTHZ";
+    // Сужение происходит НА ДАННЫХ, тем же предикатом, что у страницы:
+    // обработчик читает роль и спрашивает про ЕЁ идентификатор
+    // (`resolveVisibleRoleIDs`). Системная роль видна каждому по построению,
+    // пользовательская — по выдаче; страница и единичное чтение не могут
+    // разойтись, потому что решают одним предикатом.
+    //
+    // Полоса `scope_filtered`, а НЕ `<exempt>` — по двум причинам, и обе
+    // измеримы:
+    //
+    //   (1) причина освобождения называлась НЕВЕРНО. `SERVICE_SIDE_AUTHZ`
+    //       означает «решение принимает сервис своим Check», а здесь его не
+    //       принимает никто: каталог ролей читает любой аутентифицированный.
+    //       Запись каталога, объявляющая одно, пока код делает другое, — тот
+    //       же класс, что мы ловим в проверках: форма без содержания;
+    //   (2) у `<exempt>` есть ВТОРОЙ смысл, к предмету отношения не имеющий:
+    //       она допускает вызов внутреннего слушателя ВООБЩЕ БЕЗ ПРИНЦИПАЛА.
+    //       Для чтения, которое сужается по вызывающему, это не послабление,
+    //       а дыра: сужать становится не по кому.
+    //
+    // Поведение обработчика не меняется ни на строку — меняется то, что
+    // объявлено о нём краю.
+    option (kacho.iam.authz.v1.permission)     = "iam.roles.get";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
   }
 
   // Retrieves the list of Role resources. Поддерживает фильтры:
