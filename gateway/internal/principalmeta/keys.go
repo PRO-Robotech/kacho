@@ -131,6 +131,40 @@ func KachoNamespaceKey(key string) (string, bool) {
 // IsGatewayProducedKey reports whether a bare lower-cased `x-kacho-` key (as
 // returned by KachoNamespaceKey) is one the gateway itself produces — i.e. one
 // that may legitimately cross the REST→gRPC bridge to a backend.
+// annotatorProducedKeys — ключи, которые кладёт в metadata САМ аннотатор
+// (`buildPrincipalMetadata` в `restmux`), и потому мост REST→gRPC обязан их
+// отбрасывать: иначе одно логическое значение едет по проводу тремя копиями —
+// одной от аннотатора и двумя от моста, по одной на каждую форму заголовка.
+//
+// # Почему единственным производителем оставлен аннотатор, а не мост
+//
+// Он умеет то, чего мост не умеет by construction:
+//
+//   - кладёт отображаемое имя ДВОИЧНЫМ ключом (`…-display-name-bin`). Обычный
+//     ключ роняет вызов на первом же не-латинском символе, и падает он не на
+//     краю, а на любом последующем запросе арендатора;
+//   - читает ОБЕ формы входного заголовка и сводит их к одному значению, то
+//     есть число копий не зависит от того, какую форму поставил слой аутентификации.
+//
+// # Что мост продолжает пропускать
+//
+// Остальные ключи закрытого набора (`x-kacho-token-jti`/`-scope`/`-exp`):
+// аннотатор их не кладёт, и мост — их ЕДИНСТВЕННЫЙ производитель. Снять его
+// целиком значило бы потерять их молча.
+var annotatorProducedKeys = map[string]bool{
+	MetaPrincipalType:    true,
+	MetaPrincipalID:      true,
+	MetaPrincipalDisplay: true, // мост знает только обычную форму имени
+	MetaTokenACR:         true,
+}
+
+// IsAnnotatorProducedKey — кладёт ли этот ключ аннотатор metadata.
+//
+// Имя приходит уже нормализованным (нижний регистр, без мостового префикса) —
+// так его отдаёт KachoNamespaceKey, и обе формы заголовка сводятся к одному
+// имени ещё до этого вопроса.
+func IsAnnotatorProducedKey(name string) bool { return annotatorProducedKeys[name] }
+
 func IsGatewayProducedKey(name string) bool {
 	for _, p := range gatewayProducedPrefixes {
 		if strings.HasPrefix(name, p) {
