@@ -201,8 +201,9 @@ func jtiOf(token string) string {
 
 func buildMiddleware(t *testing.T, hydra *hydraFixture) http.Handler {
 	t.Helper()
-	verifier, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: hydra.jwksURL, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	verifier, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: hydra.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	require.NoError(t, err)
 	replayCache := middleware.NewDPoPReplayCache(middleware.DPoPReplayCacheConfig{
@@ -370,8 +371,9 @@ func TestE2E_BearerToken_NoCnf_Accepted(t *testing.T) {
 func TestE2E_HealthEndpoint_BypassesAuth(t *testing.T) {
 	hydra := newHydra(t)
 	defer hydra.close()
-	verifier, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: hydra.jwksURL, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	verifier, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: hydra.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	dpopValidator, _ := middleware.NewDPoPValidator(middleware.DPoPValidatorConfig{
 		ReplayCache: middleware.NewDPoPReplayCache(middleware.DPoPReplayCacheConfig{}),
@@ -397,8 +399,9 @@ func TestE2E_HealthEndpoint_BypassesAuth(t *testing.T) {
 func TestE2E_ProductionStrict_RejectsAnonymous(t *testing.T) {
 	hydra := newHydra(t)
 	defer hydra.close()
-	verifier, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: hydra.jwksURL, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	verifier, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: hydra.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	dpopValidator, _ := middleware.NewDPoPValidator(middleware.DPoPValidatorConfig{
 		ReplayCache: middleware.NewDPoPReplayCache(middleware.DPoPReplayCacheConfig{}),
@@ -430,8 +433,9 @@ func (f fixedPermLookup) Lookup(_ string) middleware.PermissionRequirement { ret
 func TestE2E_StepUpRequired_Challenge(t *testing.T) {
 	hydra := newHydra(t)
 	defer hydra.close()
-	verifier, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: hydra.jwksURL, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	verifier, _ := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: hydra.jwksURL, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	replay := middleware.NewDPoPReplayCache(middleware.DPoPReplayCacheConfig{})
 	dpopValidator, _ := middleware.NewDPoPValidator(middleware.DPoPValidatorConfig{ReplayCache: replay})

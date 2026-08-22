@@ -66,6 +66,15 @@ var (
 	ErrJWKSFetchFailed    = errors.New("jwks fetch failed")
 	ErrJWKSUnreachable    = errors.New("jwks endpoint unreachable")
 	ErrJWKThumbprintMatch = errors.New("jwk thumbprint mismatch with cnf.jkt")
+
+	// ErrMalformedKeyID — идентификатор ключа не прошёл ограничение формы.
+	// Форма ограничивается ДО использования: значение приходит от
+	// предъявителя, а дальше попадает в поиск по снимку набора и в журнал.
+	ErrMalformedKeyID = errors.New("malformed key id")
+	// ErrUnexpectedTokenType — заголовок типа не входит в закрытый набор,
+	// объявленный полосой этого издателя. Ни само значение, ни ожидаемый набор
+	// в текст не уносятся: тон отказа authN на крае постоянен намеренно.
+	ErrUnexpectedTokenType = errors.New("unexpected token type")
 )
 
 // JWK — minimal RFC 7517 representation of a single JSON Web Key. Only the

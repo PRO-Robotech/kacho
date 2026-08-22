@@ -111,13 +111,65 @@ func (a *AuthInterceptor) WithRevocationCheck(c TokenRevocationChecker, reportIn
 	return a
 }
 
+// WithPlatformRevocationCheck mounts the revocation reader for tokens OUR OWN
+// issuer minted, on both surfaces.
+//
+// # Почему это ОТДЕЛЬНЫЙ читатель, а не тот же
+//
+// Полоса отзыва — свойство ЗАПИСИ издателя (token_acceptance.go), а не
+// настройки процесса. Прежний провайдер о наших токенах не знает by
+// construction: спрошенный про наш токен, он отвечает не «действует» и не
+// «отозван», а утверждение о предмете, которого у него нет. Отзыв нашего токена
+// знает только НАШ авторитет.
+//
+// # Почему на этой полосе «не ответил» означает ОТКАЗ
+//
+// Асимметрия с полосой прежнего издателя объявлена, а не выведена, и основание
+// у неё — различие предмета, а не удобство:
+//
+//   - НАША полоса. Токен наш, отзыв наш, авторитет наш и живёт на том же
+//     внутреннем слушателе, к которому край обращается на каждом запросе. Если
+//     он молчит, край уже отказывает по правам. Мягкий проход означал бы:
+//     чеканим, отзываем и СВОЙ ЖЕ отзыв не исполняем — ровно тот класс, где
+//     контроль действует на выдаче и не действует на предъявлении;
+//   - полоса ПРЕЖНЕГО издателя. Авторитет — третья сторона, её доступностью мы
+//     не управляем. Мягкий проход там принят, задокументирован и несёт
+//     собственный страж: «ответило не то» остаётся постоянной неисправностью и
+//     даёт отказ. Менять его этой фазой значило бы завести новую поверхность
+//     отказа, которой фаза не предусматривала.
+//
+// ПРЕДИКАТ СНЯТИЯ асимметрии: она уходит вместе с полосой прежнего издателя.
+//
+// A nil checker leaves it unmounted; в этом состоянии токен нашего издателя
+// отвергается на предъявлении — объявленный контроль без читателя не отказал бы
+// ни разу за свою жизнь, поэтому здесь он отказывает всегда.
+func (a *AuthInterceptor) WithPlatformRevocationCheck(c TokenRevocationChecker, reportInterval time.Duration) *AuthInterceptor {
+	if c == nil {
+		return a
+	}
+	a.platformRevocation = c
+	a.platformRevocationFailures = newIntrospectionFailureReporter(reportInterval, nil)
+	return a
+}
+
 // revocationCheck asks about a verified token and reports the verdict, logging
 // the two failure modes on the caller's behalf (rate-limited, with a running
 // total) so both surfaces report identically.
 //
+// Полоса выбирается по ЗАПИСИ ИЗДАТЕЛЯ, которую проверяющий пометил на
+// проверенном токене (`VerifiedToken.ReadRevocation`), — не по настройке
+// процесса и не по адресу. Признак ставит тот же код, который выбрал запись для
+// проверки подписи, поэтому разойтись им нечем.
+//
 // surface/route are log context only — they never change the verdict.
 func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken, surface, route string) revocationVerdict {
-	if a.revocation == nil || vt == nil {
+	if vt == nil {
+		return revocationNotAsked
+	}
+	if vt.ReadRevocation {
+		return a.platformRevocationCheck(ctx, vt, surface, route)
+	}
+	if a.revocation == nil {
 		return revocationNotAsked
 	}
 	// A token with no identifier cannot be asked about: introspection is keyed on
@@ -186,4 +238,62 @@ func writeHTTPServiceUnavailable(w http.ResponseWriter, reason string) {
 		"code":    http.StatusServiceUnavailable,
 		"message": reason,
 	})
+}
+
+// platformRevocationCheck спрашивает НАШ авторитет о НАШЕМ токене, и на каждой
+// развилке выбирает отказ.
+//
+// Три отличия от полосы прежнего издателя, и все три намеренные:
+//
+//  1. читателя нет ⇒ ОТКАЗ. Запись объявила чтение отзыва, а читателя не
+//     провязали — это контроль, который не отказал бы ни разу; здесь он
+//     отказывает всегда, и композиционный корень отказывает в старте раньше;
+//  2. идентификатора отзыва нет ⇒ ОТКАЗ. Производитель идентификатора на этой
+//     полосе МЫ САМИ, поэтому его отсутствие означает не «нечего спросить», а
+//     «мы выпустили то, что не умеем отозвать»;
+//  3. авторитет не ответил ⇒ ОТКАЗ. «Не дозвонился» не есть «разрешено».
+func (a *AuthInterceptor) platformRevocationCheck(ctx context.Context, vt *VerifiedToken, surface, route string) revocationVerdict {
+	if a.platformRevocation == nil {
+		a.logger.Error("revocation reader for our own issuer is not wired; refusing",
+			"surface", surface, "route", route,
+			"hint", "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL must address our revocation authority")
+		return revocationUnanswerable
+	}
+	if vt.JTI == "" {
+		a.logger.Error("our own token carries no identifier to revoke by; refusing",
+			"surface", surface, "route", route)
+		return revocationUnanswerable
+	}
+
+	_, err := a.platformRevocation.Introspect(ctx, vt.JTI, vt.Raw)
+	switch {
+	case err == nil:
+		return revocationLive
+
+	case errors.Is(err, ErrTokenInactive):
+		return revocationRevoked
+
+	case errors.Is(err, ErrIntrospectionMisconfigured):
+		if report, total, represents := a.platformRevocationFailures.observe(); report {
+			a.logger.Error("our revocation authority is misconfigured; refusing requests",
+				"err", err, "surface", surface, "route", route,
+				"platform_revocation_failures_total", total,
+				"occurrences_since_last_report", represents,
+				"hint", "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL must address our "+
+					"revocation authority on the cluster-internal listener")
+		}
+		return revocationUnanswerable
+
+	default:
+		// Отличается от полосы прежнего издателя ровно здесь, и это решение, а
+		// не недосмотр: недоступность НАШЕГО сервиса не есть разрешение
+		// пользоваться токеном, который мы, возможно, уже отозвали.
+		if report, total, represents := a.platformRevocationFailures.observe(); report {
+			a.logger.Error("our revocation authority did not answer; refusing requests",
+				"err", err, "surface", surface, "route", route,
+				"platform_revocation_failures_total", total,
+				"occurrences_since_last_report", represents)
+		}
+		return revocationUnanswerable
+	}
 }

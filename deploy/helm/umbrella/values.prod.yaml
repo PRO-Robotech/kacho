@@ -123,6 +123,40 @@ cert-manager:
 
 # ─── api-gateway (edge) ─────────────────────────────────────────────────────
 api-gateway:
+  # ─── Объявление приёма токена (Ф1б, задача #926) ──────────────────────
+  #
+  # Издатель на крае — МНОЖЕСТВО: платформа чеканит свои токены сама (задача
+  # #897), а прежний издатель на переходе остаётся. У КАЖДОГО принимаемого
+  # издателя своя запись источника ключей: объединить наборы было бы дешевле и
+  # уничтожило бы ровно ту защиту, ради которой развязка делается — ключ одного
+  # издателя проверял бы токен, объявляющий другого.
+  #
+  # Значения — ТЕ ЖЕ, что у ПЕРВОЙ конфигурации проверяющего
+  # (kacho-registry.tokenAcceptance ниже): одна платформа, один набор адресов.
+  # Расхождение между ними было бы двумя местами об одном предмете.
+  #
+  # ОТКАТ состоит в снятии platformIssuer и нашего издателя из issuers — не в
+  # перекатке образа.
+  tokenAcceptance:
+    issuers: "https://iam.kacho.local,https://hydra.api.kacho.cloud"
+    # Адрес ОБЪЯВЛЯЕТСЯ, а не выводится из издателя: издатель приходит от
+    # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
+    # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
+    # тождественно истинным.
+    issuerKeySets: "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://hydra.api.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    # Наш издатель выбирает полосу приёма: строгий тип at+jwt и чтение отзыва на
+    # предъявлении. Вне issuers — отказ в старте.
+    platformIssuer: "https://iam.kacho.local"
+    # НАШ авторитет отзыва. Прежний провайдер о наших токенах не знает by
+    # construction: спрошенный про наш токен, он отвечает не «действует» и не
+    # «отозван», а утверждение о предмете, которого у него нет.
+    revocationUrl: "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+    # Якорь доверия хопа к авторитету: по нему едет ПРЕДЪЯВЛЕННЫЙ токен, а не
+    # только административный вызов. Та же связка, что у хопа за ключами.
+    revocationCa:
+      secretName: kacho-iam-server-tls
+      key: ca.crt
+      mountPath: /etc/api-gateway/platform-revocation-ca
   # KACHO_APP_ENV — keys the two fail-fast production guards
   # (validateProductionAuthzConfig + validateProductionInternalListener). An
   # empty/unset label is ALREADY production-class by design (a forgotten label must
@@ -193,7 +227,8 @@ api-gateway:
     # this same :9097 over https (see registry.tokenAcceptance.issuerKeySets below) — one
     # port, one
     # transport.
-    jwksUrl: "https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    jwksUrl: ""  # СНЯТ: адрес набора теперь объявляется записью издателя
+              # в tokenAcceptance.issuerKeySets выше.
     # Anchor for the hop above: the internal-CA bundle that signs iam's serving cert.
     # Unreadable or certificate-less ⇒ REFUSES THE START, exactly like the admin hop —
     # falling back to the system roots would read as configured and verify nothing.
@@ -201,7 +236,8 @@ api-gateway:
       secretName: kacho-iam-server-tls
       key: ca.crt
       mountPath: /etc/api-gateway/hydra-jwks-ca
-    issuer: "https://hydra.api.kacho.cloud"
+    issuer: ""  # СНЯТ вместе с приходом tokenAcceptance выше: два объявления об одном
+                # предмете дают ОТКАЗ В СТАРТЕ, а не молчаливое старшинство.
     # ─── Revocation path (ADMIN API — not the public issuer above) ──────────
     # A verified signature proves who minted the token and when it lapses. It
     # cannot prove the token is still good: a sign-out, a revoked machine key

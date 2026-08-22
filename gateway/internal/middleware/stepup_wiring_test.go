@@ -57,8 +57,9 @@ func buildStepUpMiddleware(t *testing.T, verifier *middleware.JWTVerifier) *midd
 
 func stepUpVerifier(t *testing.T, fix *jwksFixture) *middleware.JWTVerifier {
 	t.Helper()
-	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
+	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{Issuers: []middleware.IssuerKeySet{{Issuer: testIssuer, KeySetURL: fix.url, TokenTypes: []string{middleware.LegacyTokenType, middleware.PlatformTokenType}, TolerateAbsentTokenType: true}},
+
+		ExpectedAudience: testAudience,
 	})
 	require.NoError(t, err)
 	return v

@@ -135,20 +135,66 @@ dis="$(env_val KACHO_HYDRA_ISSUER "$DEV")"
 PROD="$(helm template kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.prod.yaml" \
          --show-only charts/api-gateway/templates/deployment.yaml 2>/dev/null)"
 [ -n "$PROD" ] || fail "umbrella render of api-gateway deployment (prod) is empty"
+# ФОРМ ОБЪЯВЛЕНИЯ ДВЕ, СВОЙСТВО ОДНО. Адрес набора ключей объявляется либо
+# прежней одиночной ручкой, либо записью издателей (Ф1б, #926: платформа
+# принимает ДВУХ издателей, и у каждого свой набор). Проба обязана судить
+# СВОЙСТВО — «материал проверки едет через зеркало iam, по TLS, не от
+# провайдера напрямую», — а не имя ручки: иначе она переживает свой предмет и
+# краснеет на верной посадке. Ровно это и произошло, когда запись издателей
+# пришла, а проба продолжала требовать снятую ручку.
 pjw="$(env_val KACHO_HYDRA_JWKS_URL "$PROD")"
-[ "$pjw" = "$WANT_PROD" ] || fail "prod KACHO_HYDRA_JWKS_URL=$pjw (want the iam mirror $WANT_PROD)"
-case "$pjw" in
-  https://*) ;;
-  *) fail "prod JWKS URL is not TLS ($pjw) — the material that verifies every bearer's signature travels this hop" ;;
-esac
-if any_line_matches "$pjw" "$PROVIDER_SPELLING"; then
-  fail "prod JWKS URL addresses the provider directly ($pjw) — that bypasses the iam facade (core #16), a hop already found and closed once"
+pks="$(env_val KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS "$PROD")"
+if [ -n "$pjw" ] && [ -n "$pks" ]; then
+  fail "prod объявляет адрес набора ДВАЖДЫ (одиночная ручка и запись издателей) — два объявления об одном предмете, из которых верно одно"
 fi
+if [ -z "$pjw" ] && [ -z "$pks" ]; then
+  fail "prod не объявляет адрес набора НИ ОДНОЙ формой — краю нечем проверять подписи, и это не будет видно до первого предъявления"
+fi
+
+# Перечень адресов, которые край реально будет тянуть: одиночная ручка даёт
+# один, запись издателей — по одному на издателя.
+if [ -n "$pks" ]; then
+  prod_urls="$(printf '%s' "$pks" | tr ',' '\n' | sed 's/^[^=]*=//')"
+else
+  prod_urls="$pjw"
+fi
+
+seen_mirror=0
+while IFS= read -r u; do
+  [ -n "$u" ] || continue
+  case "$u" in
+    https://*) ;;
+    *) fail "prod JWKS URL is not TLS ($u) — the material that verifies every bearer's signature travels this hop" ;;
+  esac
+  if any_line_matches "$u" "$PROVIDER_SPELLING"; then
+    fail "prod JWKS URL addresses the provider directly ($u) — that bypasses the iam facade (core #16), a hop already found and closed once"
+  fi
+  case "$u" in
+    "${WANT_PROD%/.well-known/*}"/*) seen_mirror=1 ;;
+  esac
+done <<EOF_URLS
+$prod_urls
+EOF_URLS
+[ "$seen_mirror" -eq 1 ] \
+  || fail "prod: ни один адрес набора не ведёт на зеркало iam (ждали адреса вида ${WANT_PROD%/.well-known/*}/…), объявлено: $prod_urls"
 # Якорь доверия обязан быть смонтирован: TLS без проверки сертификата на этом хопе
 # читается как настроенная защита, ничего не проверяя.
 [[ "$PROD" == *'hydra-jwks-ca'* ]] \
   || fail "prod api-gateway pod carries no trust anchor for the JWKS hop — TLS whose certificate nobody checks leaves substitution open"
+# Издатель — та же история двух форм: либо прежняя одиночная ручка, либо
+# перечень принимаемых издателей. Публичный издатель обязан быть назван в той
+# форме, которая действует.
 pis="$(env_val KACHO_HYDRA_ISSUER "$PROD")"
-[ "$pis" = "https://hydra.api.kacho.cloud" ] || fail "prod KACHO_HYDRA_ISSUER=$pis (want public issuer https://hydra.api.kacho.cloud)"; ok
+pissuers="$(env_val KACHO_API_GATEWAY_TOKEN_ISSUERS "$PROD")"
+if [ -n "$pis" ]; then
+  [ "$pis" = "https://hydra.api.kacho.cloud" ] || fail "prod KACHO_HYDRA_ISSUER=$pis (want public issuer https://hydra.api.kacho.cloud)"
+elif [ -n "$pissuers" ]; then
+  case ",$pissuers," in
+    *,https://hydra.api.kacho.cloud,*) ;;
+    *) fail "prod перечень принимаемых издателей не называет публичного издателя https://hydra.api.kacho.cloud: $pissuers" ;;
+  esac
+else
+  fail "prod не объявляет издателя НИ ОДНОЙ формой — токен принимается без сверки того, кто его выпустил"
+fi; ok
 
 echo "PASS: $SCRIPT ($N assertions)"
