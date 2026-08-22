@@ -633,11 +633,13 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// освобождённых (две освобождённые несут порог явно). Прежняя подпись
 	// называла его «exempt count» — верно для предиката и неверно по составу.
 	assert.Equal(t, 31, n2, "sensitive count")
-	// 286→285, итог 341→340: снят поток жизненного цикла nlb (#814) — у него не
+	// 285→284, итог 340→339: снят поток журнала изменений compute — подписчика
+	// у него не было ни одного дня, и запись каталога ушла вместе с контрактом.
+	// Прежняя правка этих чисел: 286→285, итог 341→340: снят поток жизненного цикла nlb (#814) — у него не
 	// было ни одного потребителя, и вместе с контрактом ушла его запись каталога.
-	assert.Equal(t, 285, n1, "routine count")
+	assert.Equal(t, 284, n1, "routine count")
 	assert.Equal(t, 24, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 340, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 339, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

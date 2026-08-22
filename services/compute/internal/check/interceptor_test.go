@@ -219,64 +219,17 @@ func TestInterceptor_Unary_UnmappedInternalRPC_FailClosed(t *testing.T) {
 	require.Equal(t, 0, *calls)
 }
 
-// TestInterceptor_Stream_InternalWatch_ReachesHandlerOnlyWithASubject — the outbox
-// stream reaches its handler only when the request names a caller.
+// Здесь стояла проба стримового перехватчика на потоке журнала изменений: она
+// закрепляла, что опознанный вызывающий доходит до обработчика без единого
+// вопроса про объект, а неопознанный отсекается БЕЗУСЛОВНО.
 //
-// # Why this test says the opposite of what it used to
-//
-// Its previous name was "PublicExempt" and it asserted that a stream with an EMPTY
-// context reaches the handler. That is precisely the defect: the interceptor answered
-// allow before reading the subject, so the handler ran for a caller nobody had
-// identified — and the handler then streamed every tenant's resource snapshots.
-//
-// What is genuinely true, and is still asserted here, is that no SINGLE-object Check
-// happens: the rows belong to individually-owned objects the request never names, so
-// one question about one object cannot gate this RPC. What replaces it is not
-// "nothing" but two things: an unconditional subject requirement, asserted here, and
-// per-row narrowing in the handler, asserted in
-// internal/handler/internal_watch_authorization_test.go on what the caller receives.
-//
-// The subject cut must be UNCONDITIONAL — not "when the mode is production". There is
-// no per-RPC Check underneath a scope-filtered RPC to fall back on, so an
-// unrecognised caller plus a missing filter is the original hole again.
-func TestInterceptor_Stream_InternalWatch_ReachesHandlerOnlyWithASubject(t *testing.T) {
-	const watchMethod = "/kacho.cloud.compute.v1.InternalWatchService/Watch"
+// Поток снят. Утверждение про безусловное отсечение пустого субъекта
+// остаётся нормой корпуса и от этого RPC не зависело: за методом, сужаемым по
+// данным, нет per-RPC Check, на который можно откатиться, поэтому неопознанный
+// вызывающий при выключенном фильтре означал бы исходную дыру. Сегодня у compute
+// сужаемых по данным методов нет вовсе — свойство проверяется там, где предмет
+// есть, а здесь проба утверждала бы про несуществующий метод.
 
-	t.Run("identified caller reaches the handler without a single-object Check", func(t *testing.T) {
-		intr, calls := newTestInterceptor(t, func(_ context.Context, _, _, _ string) (bool, error) {
-			t.Fatal("a scope-filtered RPC must not be gated by a single-object Check")
-			return false, nil
-		})
-		called := false
-		handler := func(srv any, ss grpc.ServerStream) error { called = true; return nil }
-		ss := &fakeServerStream{ctx: principalCtx("user", "usr_alice")}
-
-		err := intr.Stream()(nil, ss, &grpc.StreamServerInfo{FullMethod: watchMethod}, handler)
-
-		require.NoError(t, err)
-		require.True(t, called, "an identified caller must reach the handler, which narrows the stream per row")
-		require.Equal(t, 0, *calls, "no single-object Check: the caller names no object to ask about")
-	})
-
-	t.Run("caller the request does not identify never reaches the handler", func(t *testing.T) {
-		intr, _ := newTestInterceptor(t, func(_ context.Context, _, _, _ string) (bool, error) {
-			t.Fatal("the model must not be consulted for a request that names nobody")
-			return false, nil
-		})
-		called := false
-		handler := func(srv any, ss grpc.ServerStream) error { called = true; return nil }
-		ss := &fakeServerStream{ctx: context.Background()} // names nobody
-
-		err := intr.Stream()(nil, ss, &grpc.StreamServerInfo{FullMethod: watchMethod}, handler)
-
-		require.Error(t, err)
-		st, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.PermissionDenied, st.Code())
-		require.False(t, called,
-			"the handler must not run for an unidentified caller: it would stream every tenant's snapshots")
-	})
-}
 
 // fakeServerStream — minimal grpc.ServerStream fake carrying only a Context();
 // Stream() reads no other method before delegating to handler.

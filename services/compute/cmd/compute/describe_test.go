@@ -64,7 +64,6 @@ func describeCfg() config.Config {
 		AuthZCheckTimeout:         2 * time.Second,
 		AuthZDenyBudgetPerSec:     100,
 		HandlingBudget:            30 * time.Second,
-		WatchStreamBudget:         time.Hour,
 	}
 }
 
@@ -77,7 +76,7 @@ func describeWith(t *testing.T, cfg config.Config) (servicecontract.Descriptor, 
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	gate := bootgate.New(bootgate.Config{RequireIAM: cfg.RequireIAM, Service: "kacho-compute"})
-	return describe(cfg, logger, buildListFilter(cfg, nil, logger), gate, probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
+	return describe(cfg, logger, gate, probeExistence{}, probeAuthzObserve, prometheus.NewRegistry())
 }
 
 // probeExistence — порт сверки существования для проб композиционного корня.
@@ -127,32 +126,35 @@ func TestDescriptorIsAcceptedForCompute(t *testing.T) {
 	}
 }
 
-// TestDescriptorNarrowsExactlyTheChangeStream — проводка сужателя объявлена на
-// том методе, который каталог называет сужаемым, и это ЕДИНСТВЕННЫЙ метод.
+// TestDescriptorDeclaresNoNarrowersSinceTheStreamIsGone — сужаемых методов у
+// сервиса больше НЕТ, и пустая карта здесь есть УТВЕРЖДЕНИЕ, а не умолчание.
 //
-// Обе половины проверяет носитель по каталогу (О3/О4) — здесь закрепляется то,
-// что объявляет сам сервис, чтобы промах был назван в прогоне, а не на старте
-// процесса при развёртывании.
-func TestDescriptorNarrowsExactlyTheChangeStream(t *testing.T) {
+// Единственным сужаемым был поток журнала изменений, снятый вместе со своей
+// поверхностью. Носитель сверяет проводку с каталогом в обе стороны,
+// поэтому лишний сужатель роняет так же, как потерянный: проба закрепляет
+// именно СХОЖДЕНИЕ пустого с пустым, а не «сужателей нет, и ладно».
+//
+// Публичные списки сужаются не здесь — у них пообъектная проверка живёт в самих
+// обработчиках, и носитель про неё не спрашивает.
+func TestDescriptorDeclaresNoNarrowersSinceTheStreamIsGone(t *testing.T) {
 	desc, err := describeWith(t, describeCfg())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
 	wired, ok := desc.Spec().Narrowers.Get()
 	if !ok {
-		t.Fatal("ось проводки сужателя объявлена НЕ величиной: у compute есть сужаемый метод, " +
-			"и изъятие было бы ложным заявлением")
+		t.Fatal("ось проводки сужателя объявлена НЕ величиной: пустая карта — это " +
+			"заявление «сужаемых методов нет», и оно обязано быть сказано величиной, " +
+			"а не изъятием")
 	}
-	if len(wired) != 1 {
-		t.Fatalf("проводок сужателя %d, ожидалась одна (поток журнала изменений): %v", len(wired), wired)
-	}
-	n, present := wired[watchMethod]
-	if !present || n == nil {
-		t.Fatalf("проводка сужателя на %s отсутствует: за этим методом пообъектной проверки на "+
-			"крае нет вовсе, поэтому отсутствующий сужатель означает не «строже», а «без рубежа»",
-			watchMethod)
+	if len(wired) != 0 {
+		t.Fatalf("проводок сужателя %d, ожидалось ноль: сужаемый метод у сервиса был "+
+			"один — поток журнала изменений, — и он снят. Появившаяся проводка "+
+			"означает либо возврат снятого, либо метод, чья запись каталога с этой "+
+			"картой не сошлась: %v", len(wired), wired)
 	}
 }
+
 
 // TestHideExistenceFormsComeFromTheProducer — объявленная форма отказа совпадает
 // с той, которой РЕАЛЬНО отвечает звено решения о доступе.
@@ -187,47 +189,52 @@ func TestHideExistenceFormsComeFromTheProducer(t *testing.T) {
 	}
 }
 
-// TestStreamBudgetOutlivesTheHandlingBudget — ось срока жизни подписки судится в
-// ОБЕ стороны на СВОЁМ дескрипторе.
+// TestStreamBudgetIsWaivedWithItsSubject — ось объявлена ИЗЪЯТИЕМ, и причина
+// изъятия названа вслух.
 //
-// Первая сторона: величина объявлена (у compute есть служимый серверный стрим —
-// поток журнала изменений). Вторая: она ЗАМЕТНО превосходит границу обработки
-// одиночного вызова — иначе подписка обрывалась бы не позже, чем истекает потолок
-// ОДНОГО запроса, то есть возвращался бы ровно тот разрыв, ради устранения
-// которого ось и заведена, только теперь с виду осознанно.
-func TestStreamBudgetOutlivesTheHandlingBudget(t *testing.T) {
+// Здесь стояла проба, судившая ВЕЛИЧИНУ срока жизни подписки: она требовала,
+// чтобы час заметно превосходил границу обработки одиночного вызова. Предмета
+// у величины больше нет — подписка снята, — и величина пережила бы его:
+// читатель нашёл бы объявленный срок и стал бы искать, что именно столько живёт.
+//
+// Изъятие проверяется на ОБЕ стороны: ось объявлена (необъявленная роняет старт),
+// и объявлена именно изъятием, а не величиной. Появится стрим — вернётся и
+// величина, и проба про её отношение к границе обработки.
+func TestStreamBudgetIsWaivedWithItsSubject(t *testing.T) {
 	desc, err := describeWith(t, describeCfg())
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
 	spec := desc.Spec()
-	budget, ok := spec.StreamBudget.Get()
-	if !ok {
-		t.Fatal("срок жизни подписки объявлен изъятием, а compute служит серверный стрим " +
-			"InternalWatchService/Watch — заявление ложно, и носитель уронил бы старт (О11)")
+	if !spec.StreamBudget.Declared() {
+		t.Fatal("ось срока жизни стрима НЕ объявлена: носитель роняет старт на " +
+			"необъявленной оси, поэтому «стримов не служу» обязано быть сказано вслух")
 	}
-	if budget <= spec.HandlingBudget {
-		t.Fatalf("срок жизни подписки %v не превосходит границы обработки вызова %v", budget, spec.HandlingBudget)
+	if v, ok := spec.StreamBudget.Get(); ok {
+		t.Fatalf("ось объявлена величиной %v, а серверных стримов сервис не служит: "+
+			"величина пережила бы свой предмет и читалась бы как срок жизни чего-то "+
+			"существующего", v)
 	}
-
-	// Конструктор судит ту же пару — проверяем ЕГО отказом, а не своим прочтением:
-	// иначе проба утверждала бы про число, а не про то, что число кем-то судится.
-	cfg := describeCfg()
-	cfg.WatchStreamBudget = cfg.HandlingBudget
-	if _, err := describeWith(t, cfg); err == nil {
-		t.Fatal("дескриптор ПРИНЯТ со сроком подписки, равным границе обработки вызова: " +
-			"отличие двух величин и есть предмет оси, и оно перестало судиться")
+	why, ok := spec.StreamBudget.NotApplicableBecause()
+	if !ok || why == "" {
+		t.Fatal("изъятие без причины: читатель не сможет отличить «стримов нет» от " +
+			"«про ось забыли», а гейт над осью на пустой причине молчит")
 	}
+	t.Logf("ось срока жизни стрима изъята, причина: %s", why)
 }
 
-// TestComputeServesExactlyOneServerStream — предмет объявленной величины: он есть,
-// и он один.
+
+// TestComputeServesNoServerStreams — предмет ИЗЪЯТОЙ оси: стримов нет, и это
+// проверяется обходом зарегистрированного, а не чтением объявления.
 //
-// Величина у процесса БЕЗ служимых стримов — проводка без предмета (носитель
-// считает это находкой, О11). Проба читает СОСТАВ ЗАРЕГИСТРИРОВАННОГО, а не
-// память автора: появится второй стрим — она назовёт его, и решение про его срок
-// придётся принять явно.
-func TestComputeServesExactlyOneServerStream(t *testing.T) {
+// Ось срока жизни стрима объявлена изъятием («серверных стримов сервис не
+// служит»). Изъятие — заявление о дереве, и оно способно устареть молча: кто-то
+// зарегистрирует стрим, а срок его жизни останется неназванным, потому что ось
+// уже «объявлена». Проба закрывает именно этот зазор.
+//
+// Обход обоих слушателей, а не одного: снятый поток жил на внутреннем, и
+// освобождение внутреннего было бы ровно тем допущением, которое запрещено.
+func TestComputeServesNoServerStreams(t *testing.T) {
 	methods, streams := 0, []string{}
 	for _, reg := range registrarsOfBothListeners() {
 		srv := grpc.NewServer()
@@ -242,16 +249,17 @@ func TestComputeServesExactlyOneServerStream(t *testing.T) {
 		}
 	}
 	if methods == 0 {
-		t.Fatal("ни один метод не зарегистрирован — «стрим ровно один» было бы утверждением " +
-			"на пустом наборе")
+		t.Fatal("ни один метод не зарегистрирован — «стримов нет» было бы вакуумной " +
+			"истиной на пустом наборе")
 	}
-	if len(streams) != 1 || streams[0] != string(watchMethod) {
-		t.Fatalf("служимые серверные стримы: %v, ожидался ровно один — %s.\nСрок жизни подписки "+
-			"объявлен ОДНОЙ величиной; появившийся второй стрим наследует её молча, и решение "+
-			"про его срок никто не принимал", streams, watchMethod)
+	if len(streams) != 0 {
+		t.Fatalf("служимые серверные стримы: %v, ожидался ноль.\nОсь срока жизни "+
+			"стрима объявлена ИЗЪЯТИЕМ («стримов не служу»): появившийся стрим "+
+			"делает изъятие ложным, и срок его жизни не назван никем", streams)
 	}
 	t.Logf("осмотрено служимых методов: %d, серверных стримов среди них: %d", methods, len(streams))
 }
+
 
 // TestDescriptorRefusesInsecureListenersInProduction — боевая посадка судится
 // ОТВЕТОМ САМОГО ТРАНСПОРТА, а не ручкой конфигурации.
@@ -365,14 +373,13 @@ func registrarsOfBothListeners() []func(grpc.ServiceRegistrar) {
 		instance:    instance.NewInstanceService(nil, nil, nil, nil, nil, nil, nil, nil),
 	}
 	opsRepo := operations.NewRepo(nil, "public")
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	return []func(grpc.ServiceRegistrar){
 		func(r grpc.ServiceRegistrar) {
 			registerPublicServices(handler.PublicRegistrar(r, false), svcs, opsRepo, nil)
 		},
 		func(r grpc.ServiceRegistrar) {
-			registerInternalServices(handler.InternalRegistrar(r, false), svcs, nil, "", logger, 1, nil)
+			registerInternalServices(handler.InternalRegistrar(r, false), svcs)
 		},
 	}
 }

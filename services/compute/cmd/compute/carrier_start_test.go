@@ -86,7 +86,7 @@ func TestCarrierCensusIsNotEmptyForCompute(t *testing.T) {
 	var authzCacheReader func() authz.Metrics
 	observeAuthzCache := func(read func() authz.Metrics) { authzCacheReader = read }
 
-	desc, err := describe(cfg, logger, buildListFilter(cfg, nil, logger),
+	desc, err := describe(cfg, logger,
 		bootgate.New(bootgate.Config{RequireIAM: cfg.RequireIAM, Service: "kacho-compute"}), probeExistence{},
 		observeAuthzCache, prometheus.NewRegistry())
 	if err != nil {
@@ -110,7 +110,12 @@ func TestCarrierCensusIsNotEmptyForCompute(t *testing.T) {
 	}
 
 	census := log.String()
-	if strings.Contains(census, "методов 0") {
+	// Предикат читает ПОЛЕ переписи, а не подстроку: носитель печатает
+	// «осмотрено: методов N (…), …, сужаемых методов M, …», и поиск «методов 0»
+	// совпадал с ХВОСТОМ строки — с числом сужаемых. Пока сужаемые у сервиса
+	// были, проба зеленела; их стало ноль (поток журнала снят) — и она
+	// покраснела на 38 осмотренных методах, объявив пустым непустое.
+	if strings.Contains(census, "осмотрено: методов 0") {
 		t.Fatalf("отказы старта осмотрели НОЛЬ методов — вердикт получен на пустом наборе:\n%s", census)
 	}
 	if !strings.Contains(census, "census") {
