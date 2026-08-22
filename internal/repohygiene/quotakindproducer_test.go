@@ -66,6 +66,52 @@ var (
 	quotaSQLLineCommentRe = regexp.MustCompile(`(?m)^\s*--.*$`)
 )
 
+// missingPiece — ЧЕГО именно не хватает виду. Закрытый словарь, а не проза.
+//
+// ПОЧЕМУ НЕ ПРОЗОЙ. Прежняя редакция описывала недостающее свободным текстом, и
+// текст пережил свой предмет: он утверждал, что у kacho-iam нет механизма учёта
+// вовсе, — при том что таблица, функция счёта и списывающий триггер заведены
+// миграцией `484002_account_quota_identity_carrier.sql`. Ошибка не косметическая:
+// «механизма нет» ОТГОВАРИВАЕТ от работы, которая на деле сводится к добавлению
+// вида и его триггера к уже работающему механизму (задача #733).
+//
+// Закрытый словарь чинит это by construction: каждая названная часть —
+// утверждение О ДЕРЕВЕ, и оно проверяется.
+//
+// ГРАНИЦА НАЗВАНА, потому что она есть. Частей три, а обходом миграций (ветка
+// «е») сверяются ДВЕ: у таблицы учёта и функции счёта есть общий для владельца
+// признак, и он в `quotaMechanismPieceProbe`. Третья — списывающий триггер вида
+// — такого признака не имеет by construction: он существует не «у владельца», а
+// «у вида», и её предмет разбирают ветки (а)/(б) по множеству производителей.
+// Завести ей probe здесь значило бы завести второе место об одном предмете,
+// которое разойдётся с первым молча.
+//
+// Следствие, которое обязано быть ВИДНО, а не подразумеваться: пока все записи
+// долга называют только триггер вида, ветка (е) не судит ни одной названной
+// части. Это законное состояние, а не поломка, — поэтому оно печатается
+// переписью, а не роняет прогон, и истекает само на первой же записи,
+// назвавшей таблицу или функцию.
+type missingPiece string
+
+const (
+	// missingAccountingTable — у владельца нет таблицы строк учёта.
+	missingAccountingTable missingPiece = "таблица учёта"
+	// missingCountingFunction — у владельца нет функции счёта.
+	missingCountingFunction missingPiece = "функция счёта"
+	// missingKindTrigger — механизм есть, а этого вида он не считает.
+	missingKindTrigger missingPiece = "списывающий триггер вида"
+)
+
+// quotaDebt — запись объявленного долга: что именно отсутствует и почему это
+// состояние, а не упущение.
+//
+// `Missing` обязателен и непуст: долг, не называющий недостающего, нечем снять —
+// он переживёт свой предмет ровно так, как это уже случилось однажды.
+type quotaDebt struct {
+	Missing []missingPiece
+	Why     string
+}
+
 // kindsWithoutADebitProducer — ОБЪЯВЛЕННЫЙ ДОЛГ: виды каталога, которые сегодня
 // не списывает никто.
 //
@@ -74,23 +120,57 @@ var (
 // не было наблюдаемым состоянием вовсе: строки такого вида просто не заводились,
 // и арендатор видел не «потолка нет», а отсутствие вида в ответе.
 //
-// Запись ИСТЕКАЕТ САМА: как только у вида появляется производитель, запись
-// становится находкой и гейт падает, требуя её снять. Держать её «на всякий
-// случай» нельзя — это и есть механизм, которым исключение переживает свой
-// предмет.
+// Запись ИСТЕКАЕТ САМА, и теперь по ДВУМ осям: как только у вида появляется
+// производитель, запись становится находкой; и как только названная ею часть
+// механизма появляется в дереве, находкой становится сама причина.
 //
 // Задача: PRO-Robotech/kacho#414.
-var kindsWithoutADebitProducer = map[string]string{
-	// У kacho-iam НЕТ таблицы учёта вовсе — ни `project_resource_quotas`, ни
-	// триггеров, ни клиента величин к самому себе. Это не «дописать триггер»,
-	// а завести владельцу учёт целиком; носитель у всех шести — аккаунт, а не
-	// проект, поэтому и материализация у них другая.
-	"iam.project":        "#414: у kacho-iam нет таблицы учёта; носитель — аккаунт",
-	"iam.user":           "#414: у kacho-iam нет таблицы учёта; носитель — аккаунт",
-	"iam.serviceAccount": "#414: у kacho-iam нет таблицы учёта; носитель — аккаунт",
-	"iam.group":          "#414: у kacho-iam нет таблицы учёта; носитель — аккаунт",
-	"iam.role":           "#414: у kacho-iam нет таблицы учёта; носитель — аккаунт",
-	"iam.accessBinding":  "#414: у kacho-iam нет таблицы учёта; носитель — аккаунт",
+var kindsWithoutADebitProducer = map[string]quotaDebt{
+	// МЕХАНИЗМ УЧЁТА У iam ЕСТЬ, и это измерено, а не предположено: таблица
+	// `kacho_iam.project_resource_quotas`, функция `kacho_iam.kacho_quota_count`
+	// и списывающий триггер заведены миграцией
+	// `484002_account_quota_identity_carrier.sql`, а единственный производитель
+	// отказа — миграцией `484001_quota_refusal_single_source.sql`. Вид
+	// `iam.account` через них уже списывается.
+	//
+	// Недостаёт этим шести не механизма, а СЕБЯ в нём: своего вида и своего
+	// триггера. Носитель у всех шести — аккаунт (`carrier_type = 'account'`), и
+	// эту величину носителя таблица принимает by construction — её ограничение
+	// перечисляет `project`, `account` и `identity`, — поэтому работа сводится к
+	// добавлению триггера на таблицу ресурса, а не к заведению учёта заново.
+	//
+	// Здесь три месяца стояло обратное («у kacho-iam нет таблицы учёта вовсе —
+	// ни `project_resource_quotas`, ни триггеров, ни клиента величин к самому
+	// себе»). Утверждение писалось ДО `484002` и пережило свой предмет. Оно
+	// опаснее обычной устаревшей строки, потому что ОТГОВАРИВАЕТ: читатель
+	// заключал, что перед ним заведение подсистемы, а не один триггер. Клиента
+	// величин к себе у iam нет и НЕ ТРЕБУЕТСЯ отдельно: iam — сам владелец
+	// величин, авторитет лежит в этой же базе и читается тем же оператором, что
+	// списывает, — догонять нечего. Задача #733.
+	"iam.project": {
+		Missing: []missingPiece{missingKindTrigger},
+		Why:     "#414: механизм учёта у iam есть (484002) — недостаёт вида и его триггера; носитель — аккаунт",
+	},
+	"iam.user": {
+		Missing: []missingPiece{missingKindTrigger},
+		Why:     "#414: механизм учёта у iam есть (484002) — недостаёт вида и его триггера; носитель — аккаунт",
+	},
+	"iam.serviceAccount": {
+		Missing: []missingPiece{missingKindTrigger},
+		Why:     "#414: механизм учёта у iam есть (484002) — недостаёт вида и его триггера; носитель — аккаунт",
+	},
+	"iam.group": {
+		Missing: []missingPiece{missingKindTrigger},
+		Why:     "#414: механизм учёта у iam есть (484002) — недостаёт вида и его триггера; носитель — аккаунт",
+	},
+	"iam.role": {
+		Missing: []missingPiece{missingKindTrigger},
+		Why:     "#414: механизм учёта у iam есть (484002) — недостаёт вида и его триггера; носитель — аккаунт",
+	},
+	"iam.accessBinding": {
+		Missing: []missingPiece{missingKindTrigger},
+		Why:     "#414: механизм учёта у iam есть (484002) — недостаёт вида и его триггера; носитель — аккаунт",
+	},
 
 	// Вложенные виды vpc: механизм носителя (`kacho_quota_carrier_lifecycle` +
 	// умолчания вложенных) заведён у nlb и registry, у vpc — нет. До #401 эти
@@ -142,9 +222,9 @@ func TestEveryCatalogueKindHasADebitProducer(t *testing.T) {
 	// (б) запись долга, которой больше нечего исключать. Без этой ветки
 	// послабление переживает свой предмет — и следующий читатель унаследует его
 	// как описание действительности.
-	for kind, why := range kindsWithoutADebitProducer {
+	for kind, debt := range kindsWithoutADebitProducer {
 		if produced[kind] {
-			findings = append(findings, "запись долга «"+kind+"» ("+why+") устарела: "+
+			findings = append(findings, "запись долга «"+kind+"» ("+debt.Why+") устарела: "+
 				"у вида ПОЯВИЛСЯ производитель списания — снять запись")
 		}
 	}
@@ -166,6 +246,58 @@ func TestEveryCatalogueKindHasADebitProducer(t *testing.T) {
 			findings = append(findings, "вид «"+kind+"» списывается триггером, но каталог его "+
 				"НЕ называет: место занимается под потолок, которого не существует")
 		}
+	}
+
+	// (д) запись долга обязана НАЗЫВАТЬ недостающее. Долг без перечня нечем
+	// снять: он и есть та форма, в которой утверждение переживает свой предмет.
+	for kind, debt := range kindsWithoutADebitProducer {
+		if len(debt.Missing) == 0 {
+			findings = append(findings, "запись долга «"+kind+"» не называет ни одной "+
+				"недостающей части: снять её нечем, потому что нечего проверять")
+		}
+	}
+
+	// (е) причина долга сверяется с ДЕРЕВОМ. Часть, названная недостающей, но
+	// заведённая у владельца, — утверждение, пережившее свой предмет: оно
+	// отговаривает от работы, которая давно свелась к меньшему (#733).
+	mechanisms, mechFiles := readQuotaMechanisms(t, root)
+	t.Logf("перепись механизмов учёта: владельцев осмотрено %d; файлов миграций прочитано %d",
+		len(mechanisms), mechFiles)
+	// Охват сверки СЧЁТЕН: без него «ноль находок» у этой ветки неотличимо от
+	// «ноль осмотренного», а сегодня она и впрямь не судит ничего — все записи
+	// называют только триггер вида, чей предмет у веток (а)/(б).
+	var piecesJudged, piecesDeferred int
+	for kind, debt := range kindsWithoutADebitProducer {
+		owner := quotaOwnerDirOfKind(kind)
+		present, known := mechanisms[owner]
+		if !known {
+			findings = append(findings, "запись долга «"+kind+"» указывает на владельца «"+owner+
+				"», у которого в дереве нет миграций: причина долга не проверяема")
+			continue
+		}
+		// Триггер вида здесь не судится: он уже разобран ветками (а) и (б) —
+		// они читают то же множество производителей.
+		for _, piece := range debt.Missing {
+			if _, judged := quotaMechanismPieceProbe[piece]; judged {
+				piecesJudged++
+			} else {
+				piecesDeferred++
+			}
+		}
+		for _, stale := range staleDebtPieces(debt.Missing, present) {
+			findings = append(findings, "причина долга «"+kind+"» устарела: она называет "+
+				"недостающей часть «"+string(stale)+"», а у владельца «"+owner+
+				"» эта часть ЗАВЕДЕНА — недостаёт только вида и его триггера")
+		}
+	}
+	t.Logf("перепись причин долга: записей %d; частей названо %d, из них сверено обходом %d, "+
+		"отдано веткам (а)/(б) %d",
+		len(kindsWithoutADebitProducer), piecesJudged+piecesDeferred, piecesJudged, piecesDeferred)
+	if piecesJudged == 0 {
+		t.Logf("сверкой обходом сегодня не судится НИ ОДНА названная часть: все записи долга "+
+			"называют только «%s», чей предмет у веток (а)/(б). Ветка сработает на первой же "+
+			"записи, назвавшей «%s» или «%s»",
+			missingKindTrigger, missingAccountingTable, missingCountingFunction)
 	}
 
 	sort.Strings(findings)
@@ -327,4 +459,158 @@ func quotaKeysOf(m map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// quotaMechanismPieceProbe — как часть механизма учёта опознаётся в миграции.
+//
+// Комментарии снимаются ДО поиска: эти миграции подробно объясняют механизм и
+// называют его части в прозе постоянно. Гейт, читающий сырой текст, нашёл бы
+// таблицу в комментарии, объясняющем её отсутствие.
+var quotaMechanismPieceProbe = map[missingPiece]*regexp.Regexp{
+	missingAccountingTable:  regexp.MustCompile(`(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[a-z_]+\.project_resource_quotas`),
+	missingCountingFunction: regexp.MustCompile(`(?i)CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+[a-z_]+\.kacho_quota_count`),
+}
+
+// quotaOwnerAliasDir — расхождения «первый сегмент вида» ↔ «каталог сервиса».
+//
+// Совпадение имени с каталогом — правило, и единственное исключение названо
+// здесь, а не подразумевается: домен `loadbalancer` живёт в `services/nlb`.
+var quotaOwnerAliasDir = map[string]string{"loadbalancer": "nlb"}
+
+// quotaOwnerDirOfKind — каталог сервиса-владельца по виду.
+func quotaOwnerDirOfKind(kind string) string {
+	head := kind
+	if i := strings.Index(kind, "."); i >= 0 {
+		head = kind[:i]
+	}
+	if alias, ok := quotaOwnerAliasDir[head]; ok {
+		return alias
+	}
+	return head
+}
+
+// staleDebtPieces — части, названные долгом недостающими, которые дерево
+// показывает СУЩЕСТВУЮЩИМИ.
+//
+// Триггер вида не судится здесь by construction: у него нет общего для владельца
+// признака, и его разбирают ветки (а)/(б) по множеству производителей.
+func staleDebtPieces(named []missingPiece, present map[missingPiece]bool) []missingPiece {
+	var out []missingPiece
+	for _, piece := range named {
+		if _, judged := quotaMechanismPieceProbe[piece]; !judged {
+			continue
+		}
+		if present[piece] {
+			out = append(out, piece)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// quotaMechanismInSQL — какие части механизма учёта заводит этот текст.
+func quotaMechanismInSQL(sql string) map[missingPiece]bool {
+	sql = quotaSQLLineCommentRe.ReplaceAllString(sql, "")
+	out := map[missingPiece]bool{}
+	for piece, re := range quotaMechanismPieceProbe {
+		if re.MatchString(sql) {
+			out[piece] = true
+		}
+	}
+	return out
+}
+
+// readQuotaMechanisms — какие части механизма учёта заведены у каждого владельца.
+func readQuotaMechanisms(t *testing.T, root string) (map[string]map[missingPiece]bool, int) {
+	t.Helper()
+	out := map[string]map[missingPiece]bool{}
+	filesRead := 0
+
+	paths, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services"), ".sql")
+	if err != nil {
+		t.Fatalf("состав дерева под services/: %v", err)
+	}
+	for _, path := range paths {
+		rel, rerr := filepath.Rel(root, path)
+		if rerr != nil {
+			continue
+		}
+		rel = filepath.ToSlash(rel)
+		parts := strings.Split(rel, "/")
+		if len(parts) < 5 || parts[2] != "internal" || parts[3] != "migrations" {
+			continue
+		}
+		b, ferr := os.ReadFile(path)
+		if ferr != nil {
+			t.Fatalf("чтение %s: %v", rel, ferr)
+		}
+		filesRead++
+		svc := parts[1]
+		if out[svc] == nil {
+			out[svc] = map[missingPiece]bool{}
+		}
+		for piece := range quotaMechanismInSQL(string(b)) {
+			out[svc][piece] = true
+		}
+	}
+	return out, filesRead
+}
+
+// TestQuotaDebtReasonProbe_CanFailAndStaysSilentOnTheGenuineGap — доказательство
+// того, что сверка причины долга с деревом способна упасть и что законный
+// близнец её не тревожит.
+//
+// Без пары гейт ловил бы форму: перечень частей можно объявить и не проверить
+// ни одной, и выглядело бы это строже прежней прозы, оставаясь тем же самым
+// необеспеченным утверждением.
+func TestQuotaDebtReasonProbe_CanFailAndStaysSilentOnTheGenuineGap(t *testing.T) {
+	// Инъекция: текст, ЗАВОДЯЩИЙ обе части. Долг, называющий их недостающими,
+	// обязан быть объявлен устаревшим — обе поимённо.
+	const real = `
+CREATE TABLE IF NOT EXISTS kacho_iam.project_resource_quotas (
+    carrier_type text NOT NULL);
+CREATE OR REPLACE FUNCTION kacho_iam.kacho_quota_count()
+RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END; $$;`
+
+	present := quotaMechanismInSQL(real)
+	if !present[missingAccountingTable] || !present[missingCountingFunction] {
+		t.Fatalf("разбор не увидел заведённых частей: %v", present)
+	}
+	stale := staleDebtPieces(
+		[]missingPiece{missingAccountingTable, missingCountingFunction, missingKindTrigger}, present)
+	if len(stale) != 2 {
+		t.Fatalf("устаревшими названы %v, а заведены обе части", stale)
+	}
+
+	// Законный близнец 1: владелец, у которого механизма ДЕЙСТВИТЕЛЬНО нет.
+	// Долг о нём — верное утверждение, и гейт обязан молчать.
+	genuine := quotaMechanismInSQL(`ALTER TABLE kacho_geo.zones ADD COLUMN status text;`)
+	if got := staleDebtPieces(
+		[]missingPiece{missingAccountingTable, missingCountingFunction}, genuine); len(got) != 0 {
+		t.Fatalf("настоящий пробел объявлен устаревшим долгом: %v", got)
+	}
+
+	// Законный близнец 2: проза, называющая части. Комментарий, ОБЪЯСНЯЮЩИЙ
+	// отсутствие учёта, не заводит его — иначе гейт зеленел бы на собственном
+	// разборе (`testing.md` §«Гейт читает исполняемую часть, а не текст»).
+	prose := quotaMechanismInSQL(
+		`-- у владельца нет ни kacho_iam.project_resource_quotas, ни FUNCTION kacho_iam.kacho_quota_count`)
+	if len(prose) != 0 {
+		t.Fatalf("часть, названная в комментарии, принята за заведённую: %v", prose)
+	}
+
+	// Законный близнец 3: часть, которую эта сверка не судит вовсе. Триггер вида
+	// разбирают ветки (а)/(б); называть его здесь устаревшим было бы вторым
+	// местом об одном предмете.
+	if got := staleDebtPieces([]missingPiece{missingKindTrigger}, present); len(got) != 0 {
+		t.Fatalf("триггер вида судится сверкой причины, хотя его предмет у соседа: %v", got)
+	}
+
+	// Соответствие каталога сервису — тоже утверждение, и оно проверяется.
+	if got := quotaOwnerDirOfKind("loadbalancer.listeners"); got != "nlb" {
+		t.Fatalf("расхождение имени домена и каталога не учтено: %q", got)
+	}
+	if got := quotaOwnerDirOfKind("iam.project"); got != "iam" {
+		t.Fatalf("владелец вида определён неверно: %q", got)
+	}
 }
