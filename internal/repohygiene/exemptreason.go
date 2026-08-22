@@ -50,12 +50,15 @@ var exemptReasonDictionary = map[string]string{
 // САМОИСТЕКАЮТ в обе стороны: строка перечня без живой записи каталога —
 // находка (ей больше нечего называть), запись каталога без строки — тоже
 // (причина заявлена, а место не названо).
+// Седьмым ушло чтение одной роли (#973): его причина называла «решение
+// принимает сервис своим Check», тогда как решения не принимал никто — каталог
+// ролей читает любой аутентифицированный, а сужение делает обработчик на
+// данных. Гейт это и назвал: строка перечня осталась без живой записи каталога.
 // Шесть списков iam ушли отсюда вместе со своим освобождением (#914): они
 // переведены в полосу сужения на данных, где решение принимает тот же владелец,
 // но край при этом ОБЯЗАН извлечь принципала. Строка перечня без живой записи
 // каталога — находка, поэтому запись и координата снимаются одним изменением.
 var EnforcementSite = map[string]string{
-	"kacho.cloud.iam.v1.RoleService/Get":             "services/iam/internal/apps/kacho/api/role/get.go",
 	"kacho.cloud.iam.v1.AccountService/Create":       "services/iam/internal/apps/kacho/api/account/create.go",
 	"kacho.cloud.iam.v1.AuthorizeService/WhoAmI":     "services/iam/internal/apps/kacho/api/authorize/whoami.go",
 	"kacho.cloud.quota.v1.IdentityQuotaService/List": "services/iam/internal/apps/kacho/api/identityquota/handler.go",
