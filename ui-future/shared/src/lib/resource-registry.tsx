@@ -1540,11 +1540,15 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           const ext6 = (row.external_ipv6_address as { address?: string } | undefined)?.address;
           const int = (row.internal_ipv4_address as { address?: string } | undefined)?.address;
           const int6 = (row.internal_ipv6_address as { address?: string } | undefined)?.address;
-          // KAC-58: показываем external_ipv6_address наравне с external_ipv4
-          // (обе ветки oneof; форма теперь предлагает только external).
-          // internal_* оставлены в render для backward compat — Address-ресурсы,
-          // созданные через compute Instance.Create flow до KAC-58 / напрямую
-          // через API, останутся видимыми.
+          // Порядок предпочтения, а не список исключений: у адреса ровно одна
+          // ветка oneof, и колонка показывает ту, что заполнена.
+          //
+          // Здесь стояло «internal_* оставлены для backward compat». Это было
+          // неверно вдвойне: внутренний адрес — штатный вид, который арендатор
+          // резервирует в подсети (так говорит и пустое состояние раздела), а до
+          // #927 такие строки до колонки вообще не доходили — список отбрасывал
+          // их раньше. То есть ветка, объявленная совместимостью со старым, была
+          // единственным местом, готовым показать обычный сегодняшний ресурс.
           const ip = ext || ext6 || int || int6;
           if (!ip) return <span className="text-muted-foreground">—</span>;
           return <span className="font-mono text-xs">{ip}</span>;
