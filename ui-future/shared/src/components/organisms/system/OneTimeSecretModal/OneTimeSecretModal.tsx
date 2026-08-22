@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Checkbox, Input, Modal, Space, Typography, App } from "antd";
 import { CopyOutlined, DownloadOutlined, WarningOutlined } from "@ant-design/icons";
 import type { IssuedCredential } from "@shared/api/tokens";
+import { copyText } from "@shared/lib/clipboard";
 
 const { Text, Paragraph } = Typography;
 
@@ -42,7 +43,11 @@ function CopyField({ label, value, mono = true }: { label: string; value: string
         <Button
           icon={<CopyOutlined />}
           onClick={() => {
-            void navigator.clipboard.writeText(value);
+            // Секрет показывается ОДИН раз: не сработавшее копирование здесь
+            // означает потерянный доступ, а не неудобство. См.
+            // `@shared/lib/clipboard` — вне защищённого контекста прямое
+            // обращение роняло обработчик, и кнопка не делала ничего.
+            void copyText(value);
             message.success("Скопировано");
           }}
         />
@@ -166,7 +171,8 @@ export function OneTimeSecretModal({ open, onClose, credential, title, subjectLa
               size="small"
               icon={<CopyOutlined />}
               onClick={() => {
-                void navigator.clipboard.writeText(credential.private_key_pem);
+                // Тот же одноразовый секрет, вторая его форма — приватный ключ.
+                void copyText(credential.private_key_pem);
                 message.success("Приватный ключ скопирован");
               }}
             >

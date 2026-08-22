@@ -75,7 +75,11 @@ function show(over: Partial<Parameters<typeof InlineResourceCreateForm>[0]> = {}
   return { onCancel, onSuccess };
 }
 
-const submit = () => fireEvent.click(screen.getByRole("button", { name: /Создать подсеть/ }));
+// Кнопка отправки называет ДЕЙСТВИЕ и только его: предмет уже назван заголовком
+// над ней (канон консоли, правило 3). Имя ищется ТОЧНЫМ совпадением — образец
+// `/Создать/` совпал бы и с прежней подписью «Создать подсеть», то есть проба
+// пережила бы возврат предмета в кнопку и ничего бы об этом не сказала.
+const submit = () => fireEvent.click(screen.getByRole("button", { name: "Создать" }));
 const body = () => create.mock.calls[0][1] as Record<string, unknown>;
 
 beforeEach(() => {
@@ -96,6 +100,18 @@ describe("InlineResourceCreateForm", () => {
     show();
 
     expect(screen.getByDisplayValue(/^subnets-\d{6}$/)).toBeInTheDocument();
+  });
+
+  it("предмет назван заголовком, кнопка — только действием", () => {
+    show();
+
+    // Пара, а не одно утверждение. «Предмета в кнопке нет» в одиночку выполнимо
+    // формой, которая не называет предмет вовсе; «заголовок называет предмет» в
+    // одиночку — формой, где предмет назван дважды, в двадцати точках друг от
+    // друга. Канон консоли, правило 3: подпись не повторяет заголовок.
+    expect(screen.getByRole("heading", { name: "Создать подсеть" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Создать" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /подсеть/i })).not.toBeInTheDocument();
   });
 
   it("контекстное поле показано только для чтения и уезжает в тело как задано", async () => {
@@ -149,7 +165,7 @@ describe("InlineResourceCreateForm", () => {
 
     submit();
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /Создать подсеть/ })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Создать" })).toBeDisabled());
     expect(onCancel).not.toHaveBeenCalled();
     expect(onSuccess).not.toHaveBeenCalled();
     expect(toastSuccess).not.toHaveBeenCalled();

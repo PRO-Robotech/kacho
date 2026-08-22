@@ -389,7 +389,7 @@ describe("составные пути — объём осмотренного", 
     // каждая своей.
     expect(dynamicVerb.map((c) => `${c.file} ${c.literal}`).sort()).toEqual([
       "components/organisms/AddressPoolCidrManager/AddressPoolCidrManager.tsx " +
-        "${POOLS_API}/${poolId}:${params.verb}CidrBlocks",
+        "${POOLS_API}/${poolId}:${verb}CidrBlocks",
       "components/organisms/CidrGroupBlocksManager/CidrGroupBlocksManager.tsx " +
         "${CIDR_GROUPS_API}/${cidrGroupId}:${verb}-cidr-blocks",
       "components/organisms/CidrGroupBlocksManager/CidrGroupBlocksManager.tsx " +

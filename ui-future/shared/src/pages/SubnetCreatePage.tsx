@@ -4,6 +4,7 @@
 // возврат в подсети сети.
 
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router";
+import { DETAIL_CONTENT_WIDTH } from "@shared/components/organisms/DetailShell";
 import { useMemo } from "react";
 import { Typography } from "antd";
 import { InlineSubnetCreateForm } from "@shared/components/organisms/InlineSubnetCreateForm";
@@ -36,7 +37,7 @@ export function SubnetCreatePage() {
     : `/projects/${projectId}/vpc/subnets`;
 
   return (
-    <div style={{ maxWidth: 920 }}>
+    <div style={{ maxWidth: DETAIL_CONTENT_WIDTH }}>
       <InlineSubnetCreateForm
         projectId={projectId}
         networkId={networkId}

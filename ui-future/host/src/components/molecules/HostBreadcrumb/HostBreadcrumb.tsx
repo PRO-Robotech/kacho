@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Dispatch, FC, SetStateAction } from "react";
-import { Dropdown, Typography, theme } from "antd";
-import type { MenuProps } from "antd";
+import { Typography, theme } from "antd";
 import { ChevronRight } from "lucide-react";
-import { BreadcrumbPill } from "../../atoms";
+import { ScopePicker } from "../ScopePicker";
 import {
   getAccount,
   getProject,
@@ -42,21 +41,56 @@ export const RESOURCE_LABELS: Record<string, string> = {
   // Подписи не-сущностей: agregate-страница прав и разделы администрирования.
   // `/system/cluster/admins` и `/system/tokens/user-tokens` подписывает их
   // РАЗДЕЛ, потому что крошка строится по ПЕРВОМУ сегменту после `/system/`.
+  //
+  // `access` подписывает `/iam/access/grant` (у самой `/iam/access` звено снято
+  // как последнее — см. ниже).
+  //
+  // ЗДЕСЬ СТОЯЛО `search: "Поиск"` — подпись без единого адреса, который её
+  // произвёл бы. Звено ресурса рисуется, только когда за именем ресурса есть
+  // ещё сегмент; у `/system/search` его нет ни одного (единственный маршрут —
+  // `<Route path="search">`, вложенных нет), поэтому подпись не показывалась бы
+  // никогда. Страница называет себя сама — `PageHead title="Поиск"`.
   access: "Управление доступом",
-  search: "Поиск",
   cluster: "Администраторы кластера",
   tokens: "Токены и ключи",
 };
 
 // deriveCrumb — «<Модуль> / <ресурс>» из pathname. Поддержаны /iam/<res>,
 // /projects/<pid>/<module>/<res>, /system/<res>. Иначе null → «Все сервисы».
-function deriveCrumb(path: string): { module: string; resource: string } | null {
-  let m = path.match(/^\/iam\/([^/]+)/);
-  if (m) return { module: SERVICES.iam.title, resource: RESOURCE_LABELS[m[1]] ?? "Раздел" };
-  m = path.match(/^\/projects\/[^/]+\/([^/]+)\/([^/]+)/);
-  if (m) return { module: MODULE_LABELS[m[1]] ?? m[1].toUpperCase(), resource: RESOURCE_LABELS[m[2]] ?? "Раздел" };
-  m = path.match(/^\/system\/([^/]+)/);
-  if (m) return { module: SERVICES.system.title, resource: RESOURCE_LABELS[m[1]] ?? "Раздел" };
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// НА СТРАНИЦЕ СПИСКА ПОСЛЕДНЕЕ ЗВЕНО НЕ ПОКАЗЫВАЕТСЯ (решение владельца)
+//
+// Крошки называют ПУТЬ, заголовок — ПРЕДМЕТ. На списке они говорили одно и то
+// же слово: «… / Облачные сети» в крошках и «Облачные сети» заголовком двадцатью
+// точками ниже и вчетверо крупнее. Пока у списка заголовка не было, крошки
+// оставались единственным местом, где раздел назывался; теперь он назван.
+//
+// На КАРТОЧКЕ звено остаётся: там заголовок — имя экземпляра, повторения нет, а
+// раздел в пути ведёт назад, к списку.
+//
+// Различаем по адресу: список — путь, оканчивающийся именем ресурса; карточка,
+// форма и вкладка — то же плюс сегмент дальше.
+function deriveCrumb(path: string): { module: string; resource?: string } | null {
+  const tail = (rest: string | undefined) => (rest && rest !== "/" ? true : false);
+  let m = path.match(/^\/iam\/([^/]+)(\/.*)?$/);
+  if (m)
+    return {
+      module: SERVICES.iam.title,
+      resource: tail(m[2]) ? (RESOURCE_LABELS[m[1]] ?? "Раздел") : undefined,
+    };
+  m = path.match(/^\/projects\/[^/]+\/([^/]+)\/([^/]+)(\/.*)?$/);
+  if (m)
+    return {
+      module: MODULE_LABELS[m[1]] ?? m[1].toUpperCase(),
+      resource: tail(m[3]) ? (RESOURCE_LABELS[m[2]] ?? "Раздел") : undefined,
+    };
+  m = path.match(/^\/system\/([^/]+)(\/.*)?$/);
+  if (m)
+    return {
+      module: SERVICES.system.title,
+      resource: tail(m[2]) ? (RESOURCE_LABELS[m[1]] ?? "Раздел") : undefined,
+    };
   return null;
 }
 
@@ -155,29 +189,18 @@ export const HostBreadcrumb: FC<{
     })();
   };
 
-  const accountMenu: MenuProps = {
-    items: accounts.length
-      ? accounts.map((item) => ({ key: item.id, label: item.name }))
-      : [{ key: "__empty", label: "Аккаунтов нет", disabled: true }],
-    selectedKeys: context.account ? [context.account.id] : [],
-    onClick: ({ key }) => {
-      const nextAccount = accounts.find((item) => item.id === key);
-      if (nextAccount) setHostContext(onChange, { account: nextAccount, project: null });
-    },
+  const pickAccount = (next: { id: string; name: string }) => {
+    // Смена аккаунта ОБНУЛЯЕТ проект: проект принадлежит аккаунту, и оставить
+    // прежний означало бы показать чужой. Раньше это было незаметно — второе
+    // поле просто пустело после клика по первому.
+    setHostContext(onChange, { account: next, project: null });
+    loadProjects(next.id);
   };
 
-  const projectMenu: MenuProps = {
-    items: projects.length
-      ? projects.map((item) => ({ key: item.id, label: item.name }))
-      : [{ key: "__empty", label: account ? "Проектов нет" : "Выберите аккаунт", disabled: true }],
-    selectedKeys: context.project ? [context.project.id] : [],
-    onClick: ({ key }) => {
-      const nextProject = projects.find((item) => item.id === key);
-      if (nextProject && account) {
-        setHostContext(onChange, { account, project: nextProject });
-        void navigate(`/projects/${nextProject.id}/dashboard`);
-      }
-    },
+  const pickProject = (next: { id: string; name: string }) => {
+    if (!account) return;
+    setHostContext(onChange, { account, project: { ...next, accountId: account.id } });
+    void navigate(`/projects/${next.id}/dashboard`);
   };
 
   const sep = <ChevronRight size={14} strokeWidth={2} className="breadcrumb-separator" aria-hidden />;
@@ -196,43 +219,55 @@ export const HostBreadcrumb: FC<{
   const crumb = deriveCrumb(path);
 
   return (
-    <div className="context-breadcrumb" style={{ color: token.colorTextSecondary }}>
+    // Крошки — 12 px и приглушённый тон: это адрес, а не заголовок. Кегль
+    // проставлен здесь, а не в листе каркаса, чтобы шапка и её содержимое
+    // объявлялись одним местом.
+    <div className="context-breadcrumb" style={{ color: token.colorTextSecondary, fontSize: 12 }}>
       {!onDashboard && (
         <>
-          <Dropdown menu={accountMenu} trigger={["click"]} placement="bottomLeft">
-            <BreadcrumbPill token={token} active={!!account} placeholder="Выберите аккаунт" chevron>
-              {account?.name || account?.id}
-            </BreadcrumbPill>
-          </Dropdown>
+          {/* ОДИН выбор области вместо двух полей подряд. Два поля лгали о
+              независимости выбора: проект принадлежит аккаунту, и смена
+              аккаунта обнуляет проект — по двум отдельным полям этого не видно
+              до клика. Панель показывает связь целиком. */}
+          <ScopePicker
+            account={account ? { id: account.id, name: account.name || account.id } : null}
+            project={project ? { id: project.id, name: project.name || project.id } : null}
+            accounts={accounts.map((a) => ({ id: a.id, name: a.name || a.id }))}
+            projects={projects.map((pr) => ({ id: pr.id, name: pr.name || pr.id }))}
+            // Раздел IAM — область АККАУНТА: у его ресурсов проекта нет, и
+            // колонка проектов там показывала бы выбор, которого не существует.
+            accountOnly={onIam}
+            onAccountPick={pickAccount}
+            onProjectPick={pickProject}
+            onOpen={loadProjects}
+          />
           {sep}
-          {!onIam && (
-            <>
-              <Dropdown
-                menu={projectMenu}
-                trigger={["click"]}
-                placement="bottomLeft"
-                disabled={!account}
-                onOpenChange={(open) => {
-                  if (open && account) loadProjects(account.id);
-                }}
-              >
-                <BreadcrumbPill token={token} active={!!project} placeholder="Проект" chevron>
-                  {project?.name || project?.id}
-                </BreadcrumbPill>
-              </Dropdown>
-              {sep}
-            </>
-          )}
         </>
       )}
       {crumb ? (
-        <>
-          <Typography.Text type="secondary">{crumb.module}</Typography.Text>
-          {sep}
-          <Typography.Text className="breadcrumb-current">{crumb.resource}</Typography.Text>
-        </>
+        crumb.resource === undefined ? (
+          // Список: звено раздела снято, потому что его называет заголовок
+          // страницы. Модуль становится текущим звеном — полновесным.
+          <Typography.Text className="breadcrumb-current" style={{ fontSize: 12, color: token.colorText }}>
+            {crumb.module}
+          </Typography.Text>
+        ) : (
+          <>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {crumb.module}
+            </Typography.Text>
+            {sep}
+            {/* Текущее звено — единственное полновесное: цвет основного текста и
+                вес 600 (из класса), остальные звенья приглушены. */}
+            <Typography.Text className="breadcrumb-current" style={{ fontSize: 12, color: token.colorText }}>
+              {crumb.resource}
+            </Typography.Text>
+          </>
+        )
       ) : (
-        <Typography.Text className="breadcrumb-current">Все сервисы</Typography.Text>
+        <Typography.Text className="breadcrumb-current" style={{ fontSize: 12, color: token.colorText }}>
+          Все сервисы
+        </Typography.Text>
       )}
     </div>
   );

@@ -1,8 +1,18 @@
 // InlineNetworkInterfaceCreateForm — NIC create модалка. Зеркально к
-// InlineNetworkInterfaceEditForm. Subnet — RefSelect (если preset не задан).
-// Все поля с info-tooltip, labelCol 140px, required-звёздочка справа.
+// InlineNetworkInterfaceEditForm: тот же состав полей и тот же порядок, иначе
+// одно и то же место продукта читается как два разных.
+//
+// Подсеть выбирается своим списком (не `RefSelect`): её кандидатов надо
+// прочитать здесь же — по выбранной подсети фильтруются адреса, а её сеть
+// решает, какие группы безопасности показывать. Адреса и группы — `RefMultiSelect`.
+//
+// Геометрия (ширина колонки подписи) берётся из `FormGrid`, одна на все формы
+// консоли; здесь её не объявляют. Прежняя редакция этой шапки называла и
+// компонент подсети, и число 140 — ни то, ни другое дереву не отвечало.
 
 import { useEffect, useMemo, useState } from "react";
+import { addressIsFree } from "@shared/lib/address-availability";
+import { FORM_DIVIDER_STYLE } from "@shared/components/organisms/form/editor-surface";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Form, Input, Select, Space, Tooltip } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";
@@ -10,9 +20,11 @@ import { api } from "@shared/api/client";
 import { useDebouncedValue } from "@shared/lib/list-search";
 import { pickerScopeOfSpec } from "@shared/lib/picker-search";
 import { useKeptLabel } from "@shared/lib/kept-choice";
-import { ResourceRefChips } from "@shared/components/molecules/ResourceRefChips";
+import { RefMultiSelect } from "@shared/components/organisms/form/RefSelect";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
+import { FieldError } from "@shared/components/organisms/form/FieldError";
 import { LabelsEditor, labelsToMap, type LabelEntry } from "@shared/components/organisms/LabelsEditor";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
@@ -33,7 +45,7 @@ const labelWithInfo = (text: string, info: string) => (
   <Space size={4}>
     {text}
     <Tooltip title={info}>
-      <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
+      <QuestionCircleOutlined style={{ color: "var(--kc-text-tertiary)" }} />
     </Tooltip>
   </Space>
 );
@@ -146,11 +158,17 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [op?.done, op?.error?.code]);
 
+  // Отказ подсети стоит У ПОЛЯ, а не всплывашкой в углу: подсеть — первое поле
+  // формы, и сообщение о ней читается там же, где её выбирают.
+  const [пробовалиОтправить, setПробовалиОтправить] = useState(false);
+  const отказПодсети =
+    пробовалиОтправить && !subnetId
+      ? "«Подсеть»: поле обязательное — интерфейс создаётся внутри подсети."
+      : undefined;
+
   const submit = () => {
-    if (!subnetId) {
-      toast.error("Выберите подсеть для интерфейса.");
-      return;
-    }
+    setПробовалиОтправить(true);
+    if (!subnetId) return;
     mutation.mutate({
       project_id: projectId,
       subnet_id: subnetId,
@@ -165,14 +183,25 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
 
   return (
     <FormShell specId="network-interfaces" mode="create" singular={spec.singular}>
-      <Form
-        layout="horizontal"
-        labelCol={{ flex: "200px" }}
-        wrapperCol={{ flex: "1 1 0" }}
-        labelAlign="left"
-        colon={false}
-        size="middle"
-      >
+      <FormGrid>
+        <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах фолдера.")}>
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
+        </Form.Item>
+
+        <Form.Item label={labelWithInfo("Описание", "Опциональное описание для людей.")}>
+          <Input.TextArea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+        </Form.Item>
+
+        <Form.Item label={labelWithInfo("Метки", "Пары ключ=значение для группировки/фильтрации.")}>
+          <LabelsEditor value={labels} onChange={setLabels} />
+        </Form.Item>
+
+        {/* ПОРЯДОК ОДИН НА ВСЕ ФОРМЫ (решение владельца): имя → описание →
+            метки → черта → поля самого ресурса. Форма начиналась с выбора
+            подсети; он не потерялся — стоит первым за чертой, среди полей
+            ресурса, где ему и место. */}
+        <div style={FORM_DIVIDER_STYLE} aria-hidden />
+
         <Form.Item
           label={labelWithInfo("Подсеть", "Подсеть, в которой создаётся NIC. После Create иммутабельно.")}
           required
@@ -193,35 +222,25 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
             // «нет совпадений» на месте «нет среди загруженных».
             notFoundContent={subnetsLoading ? undefined : subnetScope.emptyText}
             disabled={subnetLocked}
+            status={отказПодсети ? "error" : undefined}
+            aria-required
+            aria-invalid={отказПодсети ? true : undefined}
           />
-        </Form.Item>
-
-        <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах фолдера.")}>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
-        </Form.Item>
-
-        <Form.Item label={labelWithInfo("Описание", "Опциональное описание для людей.")}>
-          <Input.TextArea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-        </Form.Item>
-
-        <Form.Item label={labelWithInfo("Метки", "Пары ключ=значение для группировки/фильтрации.")}>
-          <LabelsEditor value={labels} onChange={setLabels} />
+          <FieldError message={отказПодсети} />
         </Form.Item>
 
         <Form.Item label={labelWithInfo("IPv4 адрес", "Один Address-ресурс с internal_ipv4. KAC-55: максимум один.")}>
-          <ResourceRefChips
-            titleHidden
-            title="IPv4-адрес"
+          <RefMultiSelect
             refResource="addresses"
             projectId={projectId}
-            tagColor="blue"
             value={v4}
             onChange={setV4}
             maxItems={1}
             disabled={!subnetId}
             disabledHint="Сначала выберите подсеть"
             refFilter={(row) =>
-              (row.internal_ipv4_address as { subnet_id?: string } | undefined)?.subnet_id === subnetId
+              (row.internal_ipv4_address as { subnet_id?: string } | undefined)?.subnet_id === subnetId &&
+              addressIsFree(row)
             }
             createResource="addresses"
             createPresetFields={{
@@ -235,19 +254,17 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
         <Form.Item
           label={labelWithInfo("IPv6 адрес", "Internal или external IPv6 Address-ресурс. KAC-55: максимум один.")}
         >
-          <ResourceRefChips
-            titleHidden
-            title="IPv6-адрес"
+          <RefMultiSelect
             refResource="addresses"
             projectId={projectId}
-            tagColor="geekblue"
             value={v6}
             onChange={setV6}
             maxItems={1}
             disabled={!subnetId}
             disabledHint="Сначала выберите подсеть"
             refFilter={(row) =>
-              (row.internal_ipv6_address as { subnet_id?: string } | undefined)?.subnet_id === subnetId
+              (row.internal_ipv6_address as { subnet_id?: string } | undefined)?.subnet_id === subnetId &&
+              addressIsFree(row)
             }
             createResource="addresses"
             createEditablePresetFields={{ _address_kind: "internal_v6" }}
@@ -257,12 +274,9 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
         </Form.Item>
 
         <Form.Item label={labelWithInfo("Группы безопасности", "Группы безопасности, привязанные к этому интерфейсу.")}>
-          <ResourceRefChips
-            titleHidden
-            title="Группа безопасности"
+          <RefMultiSelect
             refResource="security-groups"
             projectId={projectId}
-            tagColor="purple"
             value={sgs}
             onChange={setSgs}
             disabled={!subnetId}
@@ -273,12 +287,12 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
           />
         </Form.Item>
         <FormFooter
-          submitLabel="Создать сетевой интерфейс"
+          submitLabel="Создать"
           submitting={mutation.isPending || !!pendingOpId}
           onSubmit={submit}
           onCancel={onCancel}
         />
-      </Form>
+      </FormGrid>
     </FormShell>
   );
 }

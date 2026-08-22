@@ -18,15 +18,22 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Descriptions, Select, Spin, Typography } from "antd";
+import { Button, Select, Spin, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
-import { DetailShell, HeaderSlotPortal, type DetailTab, type DocLink } from "@/components/organisms/DetailShell";
+import {
+  DETAIL_CONTENT_WIDTH,
+  DetailShell,
+  DetailSurface,
+  HeaderSlotPortal,
+  PropertyRows,
+  type DetailTab,
+} from "@/components/organisms/DetailShell";
 import { DetailHeaderProvider } from "@/components/molecules/PanelHeader";
 import { ResourceIcon } from "@/components/organisms/form/ResourceIcon";
 import { ResourceEmptyState } from "@/components/molecules/ResourceEmptyState";
 import { ResourceTable } from "@/components/organisms/ResourceTable";
 import { ErrorResult } from "@/components/molecules/ErrorResult";
-import { CopyableId } from "@/components/atoms/CopyableId";
+import { MonoValue } from "@shared/components/atoms/CopyableId/MonoValue";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
 import { formatDateTime } from "@/lib/datetime";
 import { RowActionsMenu, resourceHasRowActions } from "@/components/molecules/RowActionsMenu";
@@ -40,11 +47,10 @@ import { detailExtension, type DescItem, type DetailExtCtx } from "@/components/
 import { api } from "@/api/client";
 import { REGISTRY, getByPath, resourceProjectPath, type ResourceSpec } from "@/lib/resource-registry";
 import { buildSpecColumns } from "@/lib/spec-columns";
-import { useResourceList, useResourceListAllPages } from "@/lib/use-resource-list";
+import { useResourceList } from "@/lib/use-resource-list";
 import { noMatchesText, rowsAreComplete, type NarrowingScope } from "@shared/lib/list-scope";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { DetailOverviewActions } from "@/components/molecules/DetailOverviewActions";
-import { createActionLabel } from "@shared/lib/resource-label";
 
 export type ResourceShellMode = "edit" | "child-create";
 
@@ -80,22 +86,23 @@ function RelatedTable({
   const childSpecResolved = pathScoped
     ? { ...childSpec, apiPath: childSpec.apiPath.replace(pathParams[0], parentId) }
     : childSpec;
-  // loadAllPages (напр. образы): грузим ВСЕ страницы, чтобы facet видел полный
-  // набор. Оба хука зовём безусловно (стабильный порядок), гейтим через enabled.
+  // loadAllPages (напр. образы): дочитываем курсор до конца, чтобы facet видел
+  // полный набор. Хук ОДИН — общий (`@shared/lib/use-resource-list`), и
+  // дочитывание он делает ТЕМ ЖЕ запросом: второй путь чтения разошёлся бы с
+  // первым молча. Прежде здесь стояла пара «своя копия хука + свой
+  // fetchAllPages», и копия курсор не читала вовсе.
   const wantAll = pathScoped && !!childSpec.loadAllPages;
-  const singleQ = useResourceList(
+  const { data, isLoading, isError, error } = useResourceList(
     childSpecResolved,
-    wantAll ? "__disabled__" : pathScoped ? null : "project_id",
-    wantAll ? null : pathScoped ? null : projectId,
+    pathScoped ? null : "project_id",
+    pathScoped ? null : projectId,
+    undefined,
+    undefined,
+    { loadAllPages: wantAll },
   );
-  const allQ = useResourceListAllPages(childSpecResolved, { enabled: wantAll });
-  const { data, isLoading, isError, error } = wantAll ? allQ : singleQ;
-  // Область, о которой судят ручки вкладки (#373). Чтение здесь двоякое:
-  // `allQ` дочитывает курсор до конца (facet обязан видеть весь набор) — его
-  // набор полон; `singleQ` этого модуля берёт РОВНО ОДНУ страницу и курсор
-  // ответа не читает вовсе (своя, отставшая копия хука), поэтому полноту он не
-  // может утверждать ни при каком ответе. Пока копия не сведена с общей, честный
-  // ответ один: «прочитанная часть».
+  // Область, о которой судят ручки вкладки (#373). При `loadAllPages` набор
+  // полон — курсор дочитан до конца; иначе прочитана первая страница, и
+  // утверждать полноту нельзя ни при каком ответе.
   const scope: NarrowingScope = wantAll ? "whole" : "loaded";
   const all = (data?.[childSpec.payloadKey] as Record<string, unknown>[] | undefined) ?? [];
   // Фильтр по родителю (OR по нескольким полям — напр. subnet→addresses v4∪v6).
@@ -125,7 +132,6 @@ function RelatedTable({
   const createPath = `${detailBase}/${childSpec.route}/create`;
   // drill в ребёнка — на его собственный flat-URL (родитель → в хлебных крошках).
   const flatChildBase = resourceProjectPath(childSpec.id, projectId) ?? `${detailBase}/${childSpec.route}`;
-  const createLabel = createActionLabel(childSpec);
 
   // Колонки: spec.columns без столбцов-ссылок на родителя (filterFields).
   const specNoParent: ResourceSpec = {
@@ -157,9 +163,10 @@ function RelatedTable({
   if (isError) return <ErrorResult error={error} />;
 
   // Пустое состояние — welcome (только когда детей реально нет; промах поиска
-  // показывается внутри таблицы). createLabel передаём отдельно (тот же текст).
+  // показывается внутри таблицы). Подпись кнопки — короткое «Создать», её
+  // ставит сам экран пустого состояния: предмет назван его же заголовком.
   if (!isLoading && ownRows.length === 0) {
-    return <ResourceEmptyState spec={childSpec} onCreate={() => navigate(createPath)} createLabel={createLabel} />;
+    return <ResourceEmptyState spec={childSpec} onCreate={() => navigate(createPath)} />;
   }
 
   return (
@@ -311,7 +318,7 @@ export function ResourceShell({
           icon={<PlusOutlined />}
           onClick={() => navigate(`${detailBase}/${childSpec.route}/create`)}
         >
-          Создать {childSpec.singular.toLowerCase()}
+          Создать
         </Button>
       );
     }
@@ -334,10 +341,14 @@ export function ResourceShell({
   const extCtx = { data, projectId: projectId ?? null, detailBase, navigate };
 
   // ── Обзор: 5 обязательных + доменные строки расширения ──
+  const description = getByPath<string>(data, "description") ?? "";
   const overviewItems: DescItem[] = [
-    { label: "Идентификатор", value: <CopyableId id={getByPath<string>(data, "id") ?? ""} /> },
-    { label: "Имя", value: name },
-    { label: "Описание", value: getByPath<string>(data, "description") || "—" },
+    { label: "Идентификатор", value: <MonoValue value={getByPath<string>(data, "id") ?? ""} />, copy: getByPath<string>(data, "id") || undefined },
+    // Копирование строки объявляется там, где у значения НЕТ своего значка:
+    // имя и описание — обычный текст, и без `copy` строка оставалась бы
+    // единственной на карточке, откуда значение нельзя забрать (правило 4).
+    { label: "Имя", value: name, copy: name || undefined },
+    { label: "Описание", value: description || "—", copy: description || undefined },
     { label: "Дата создания", value: formatDateTime(getByPath<string>(data, "created_at")) },
     // KAC-246: метки в обзоре — read-only (chips); добавление/правка — в форме
     // создания/модификации (LabelsEditor, key=value-таблица).
@@ -351,14 +362,22 @@ export function ResourceShell({
       label: "Обзор",
       render: () => (
         <div>
-          <Descriptions
-            column={1}
-            size="small"
-            bordered
-            style={{ maxWidth: 920 }}
-            labelStyle={{ width: 260, whiteSpace: "nowrap", verticalAlign: "top" }}
-            items={overviewItems.map((it, i) => ({ key: String(i), label: it.label, children: it.value }))}
-          />
+          {/* Обзор — поверхность-секция со строками «ключ · значение» (правило 4
+              канона консоли). Прежде здесь стоял `Descriptions` antd: он рисует
+              таблицу с рамкой на КАЖДОЙ ячейке, то есть решётку там, где язык
+              карточки держит одну линию между строками, — и заодно не объявлял
+              строкам, что они строки свойств, поэтому вложенные ссылки рисовали
+              собственные значки копирования рядом с общим значком строки.
+              `PropertyRows` объявляет место само (`property-row-context`), и
+              правило исполняется у любого вложенного значения, включая те, что
+              о нём не знают. */}
+          <div style={{ maxWidth: DETAIL_CONTENT_WIDTH }}>
+            {/* Заголовок секции НЕ повторяет имя вкладки: вкладка над ней уже
+                говорит «Обзор». Здесь — что именно лежит в секции. */}
+            <DetailSurface title="Основные свойства">
+              <PropertyRows items={overviewItems} />
+            </DetailSurface>
+          </div>
           {ext?.overviewBelow?.(extCtx)}
         </div>
       ),
@@ -483,7 +502,6 @@ export function ResourceShell({
   // Зона-2 шапка для форм (edit/child-create): действие + тип + иконка ресурса
   // формы — контекст переезжает в блок табов, форма в зоне 3 свою шапку не дублирует.
   const childForHeader = mode === "child-create" && childRoute ? specByRoute(childRoute) : undefined;
-  const headerEyebrow = mode === "edit" ? "Редактирование" : mode === "child-create" ? "Создание" : undefined;
   const headerTitle = mode === "edit" ? spec.plural : mode === "child-create" ? childForHeader?.plural : undefined;
   const headerIcon =
     mode === "child-create" && childForHeader ? <ResourceIcon specId={childForHeader.id} /> : undefined;
@@ -493,15 +511,11 @@ export function ResourceShell({
     // (единая шапка с формами через PanelHeader).
     <DetailHeaderProvider value={{ icon: <ResourceIcon specId={spec.id} /> }}>
       <DetailShell
-        resourceLabel={spec.genitive ?? spec.plural}
         resourceName={name}
-        nameEyebrow={spec.singular}
         tabs={tabs}
-        docLinks={(spec.docs as DocLink[] | undefined) ?? []}
         mainOverride={mainOverride}
         activeTabId={activeTabId}
         onTabSelect={onTabSelect}
-        headerEyebrow={headerEyebrow}
         headerTitle={headerTitle}
         headerIcon={headerIcon}
       />

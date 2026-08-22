@@ -143,7 +143,6 @@ export function QuotasPage() {
       <div style={{ flexShrink: 0, marginBottom: 12 }}>
         <PanelHeader
           icon={<DashboardOutlined />}
-          eyebrow="Проект"
           title="Квоты"
           right={
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>

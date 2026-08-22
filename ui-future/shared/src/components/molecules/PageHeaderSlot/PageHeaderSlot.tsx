@@ -127,5 +127,8 @@ export function HeaderBreadcrumbSlot() {
 export function PageTitleSlot() {
   const { pageTitle } = useSlot();
   if (!pageTitle) return null;
-  return <h1 className="text-2xl font-semibold tracking-tight mb-4">{pageTitle}</h1>;
+  // Заголовок страницы — ОДНА ступень шкалы на продукт (`t-page-title`), а не
+  // свой набор утилит: у соседней страницы тот же заголовок рисуется этим
+  // классом, и два описания одного кегля разошлись бы на первой же правке.
+  return <h1 className="t-page-title mb-4">{pageTitle}</h1>;
 }

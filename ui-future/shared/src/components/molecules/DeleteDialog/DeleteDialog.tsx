@@ -111,16 +111,18 @@ export function DeleteDialog({
           style={{
             width: 46,
             height: 46,
-            borderRadius: 13,
+            borderRadius: 8,
             flexShrink: 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             fontSize: 21,
-            color: token.colorError,
-            background: "linear-gradient(135deg, rgba(229,72,77,0.20), rgba(229,72,77,0.06))",
-            border: "1px solid rgba(229,72,77,0.26)",
-            boxShadow: "0 1px 0 rgba(255,255,255,0.04) inset",
+            // Тон опасности — из набора состояний продукта, а не свой красный:
+            // прежний цвет не менялся ни в одной теме, а на светлой ещё и не
+            // совпадал с цветом кнопки «Удалить» в том же окне.
+            color: "var(--status-error-fg)",
+            background: "var(--status-error-bg)",
+            border: "1px solid var(--status-error-border)",
           }}
         >
           <DeleteOutlined />

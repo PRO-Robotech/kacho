@@ -55,25 +55,38 @@ function mountAt(pathname: string) {
 }
 
 describe("RegistryPage — маршруты раздела разрешаются в свои списки", () => {
+  // Список опознаётся по СВОЕЙ колонке, а не по названию в шапке: названия там
+  // больше нет — оно повторяло раздел, уже названный навигацией и хлебными
+  // крошками. Колонка различает не хуже: она принадлежит ровно одному ресурсу
+  // и приезжает из его объявления, то есть проба по-прежнему падает, если
+  // маршрут разрешился не в тот список.
   it.each([
-    ["registries", "Реестры"],
-    ["repositories", "Репозитории"],
-    ["tags", "Теги"],
-  ])("%s открывает свой список", async (route, plural) => {
+    // Признак взят из того, что страница ДЕЙСТВИТЕЛЬНО рисует на пустом списке:
+    // у реестров и репозиториев это заголовок их пустого состояния, у тегов —
+    // их собственная колонка (пустого состояния у них не объявлено). Все три
+    // принадлежат ровно одному ресурсу, поэтому маршрут различают однозначно.
+    ["registries", "Создайте первый реестр"],
+    ["repositories", "Видимость"],
+    ["tags", "Дайджест"],
+  ])("%s открывает свой список", async (route, ownColumn) => {
     mountAt(`/projects/prj-1/registry/${route}`);
 
-    expect(await screen.findByText(plural)).toBeInTheDocument();
+    expect((await screen.findAllByText(ownColumn)).length).toBeGreaterThan(0);
   });
 
   it("призыв к созданию есть ровно там, где ресурс создаётся клиентом", async () => {
     // Реестр создаётся из консоли (`ops.create: true`), а репозиторий и тег —
     // нет: они появляются от `docker push`. Призыв к созданию на них означал бы
-    // форму, которой сервер не примет. Список строит текст как «Создать » +
-    // `spec.singular.toLowerCase()`, без склонения, — закрепляем как есть.
+    // форму, которой сервер не примет.
+    //
+    // Кнопка называет ДЕЙСТВИЕ — «Создать», без предмета: предмет уже назван
+    // заголовком страницы в двадцати точках левее. Проба пинила прежний текст
+    // «Создать реестр» и была красной с того часа, как список перешёл на
+    // короткую подпись, — то есть закрепляла ровно то, что снято.
     mountAt("/projects/prj-1/registry/registries");
     // CTA живёт в правом слоте шапки (useHeaderRight), который рисует RegistryFrame:
     // его наличие доказывает, что смонтирована не только страница, но и рама.
-    expect(await screen.findByText("Создать реестр")).toBeInTheDocument();
+    expect(await screen.findByText("Создать")).toBeInTheDocument();
   });
 
   it.each(["repositories", "tags"])("%s не предлагает создание, которого у него нет", async (route) => {
@@ -81,8 +94,12 @@ describe("RegistryPage — маршруты раздела разрешаютс�
     // на странице, которая вообще ничего не нарисовала.
     mountAt(`/projects/prj-1/registry/${route}`);
 
-    await screen.findByText(route === "tags" ? "Теги" : "Репозитории");
-    expect(screen.queryByText(/^Создать /)).toBeNull();
+    await screen.findAllByText(route === "tags" ? "Дайджест" : "Видимость");
+    // Ищем ТОЧНУЮ подпись кнопки. Здесь стояло `/^Создать /` — с пробелом на
+    // конце: короткому «Создать» это выражение не отвечает ни при каком входе,
+    // поэтому отрицание проходило и на странице, где призыв показан. Отрицание
+    // без совпадающего с положительным предиката ничего не утверждает.
+    expect(screen.queryByText("Создать")).toBeNull();
   });
 
   it("списки трёх ресурсов не путаются между собой", async () => {
@@ -90,9 +107,9 @@ describe("RegistryPage — маршруты раздела разрешаютс�
     // тривиально верно на странице, которая не показала вообще ничего.
     mountAt("/projects/prj-1/registry/repositories");
 
-    expect(await screen.findByText("Репозитории")).toBeInTheDocument();
-    expect(screen.queryByText("Реестры")).toBeNull();
-    expect(screen.queryByText("Теги")).toBeNull();
+    expect((await screen.findAllByText("Видимость")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Дайджест")).toBeNull();
+    expect(screen.queryByText("Создать реестр")).toBeNull();
   });
 });
 
@@ -105,7 +122,7 @@ describe("RegistryPage — перенаправление по умолчани�
     // найденный отдельным `findByText`, к моменту проверки уже отсоединён.
     await waitFor(() => {
       expect(screen.getByTestId("at")).toHaveTextContent("/projects/prj-1/registry/registries");
-      expect(screen.getByText("Реестры")).toBeInTheDocument();
+      expect(screen.getByText("Создайте первый реестр")).toBeInTheDocument();
     });
   });
 

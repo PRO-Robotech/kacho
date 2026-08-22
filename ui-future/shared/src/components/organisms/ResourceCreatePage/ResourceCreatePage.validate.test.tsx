@@ -62,7 +62,18 @@ function renderCreate(spec: ResourceSpec) {
 }
 
 async function submit() {
-  await userEvent.click(await screen.findByRole("button", { name: /Создать регион/i }));
+  // Подпись кнопки — короткое «Создать» (решение владельца; канон консоли §3 и
+  // §8: кнопка называет ДЕЙСТВИЕ, предмет уже назван заголовком над ней).
+  //
+  // Имя задано СТРОКОЙ, а не выражением: строка сверяется целиком, поэтому
+  // вернувшееся склонение («Создать регион») эту пробу роняет, а не проходит
+  // подстрокой.
+  //
+  // Что заголовок предмет НАЗЫВАЕТ — утверждает соседний файл этого же
+  // каталога (`ResourceCreatePage.geo.test.tsx`, проба «кнопка называет
+  // действие, предмет назван заголовком над ней»); без него короткая подпись
+  // здесь была бы неотличима от страницы, которая не говорит, что создаётся.
+  await userEvent.click(await screen.findByRole("button", { name: "Создать" }));
 }
 
 afterEach(() => {
@@ -95,6 +106,10 @@ describe("ResourceCreatePage — spec.validate", () => {
   it("sends the request when the spec accepts the form state", async () => {
     stubFetch();
     renderCreate({ ...REGISTRY.regions, validate: () => null });
+    // Положительный контроль обязан подавать ЗАКОННЫЙ ввод: обязательный
+    // идентификатор региона форма теперь требует до отправки, и без него проба
+    // утверждала бы «запрос ушёл» о состоянии, в котором он уходить не должен.
+    await userEvent.type(await screen.findByPlaceholderText("region-1"), "ru-central1");
     await submit();
 
     await waitFor(() => expect(methods.includes("POST")).toBe(true));

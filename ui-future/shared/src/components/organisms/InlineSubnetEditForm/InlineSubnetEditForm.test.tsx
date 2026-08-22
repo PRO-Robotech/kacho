@@ -11,6 +11,7 @@
 import { jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { formDividers } from "@shared/test/form-divider";
 import { ApiError } from "@shared/api/client";
 
 const get = jest.fn<(path: string) => Promise<Record<string, unknown>>>();
@@ -158,5 +159,26 @@ describe("InlineSubnetEditForm", () => {
     // Чужая таблица — заведомо отвергаемое значение: показывать её значит
     // предлагать отказ.
     expect(screen.queryByText("чужая")).not.toBeInTheDocument();
+  });
+});
+
+describe("InlineSubnetEditForm — черта", () => {
+  // ПОРЯДОК ПОЛЕЙ ОДИН НА ВСЕ ФОРМЫ (решение владельца): общие поля, черта,
+  // поля самого ресурса. Рукописная форма подчиняется тому же порядку, что и
+  // общее тело формы, — иначе две соседние формы читаются как два разных места
+  // продукта (канон консоли, правило 9).
+  //
+  // Утверждается МЕСТО черты, а не её наличие: черта, уехавшая в конец формы,
+  // тоже «есть» и при этом ничего не отделяет.
+  it("стоит между «Метки» и «Таблица маршрутизации»", async () => {
+    show();
+    await screen.findByText("Таблица маршрутизации");
+
+    const [черта] = formDividers();
+    expect(черта).toBeDefined();
+
+    const позиция = (el: Element) => [...document.body.querySelectorAll("*")].indexOf(el);
+    expect(позиция(screen.getByText("Метки"))).toBeLessThan(позиция(черта));
+    expect(позиция(черта)).toBeLessThan(позиция(screen.getByText("Таблица маршрутизации")));
   });
 });

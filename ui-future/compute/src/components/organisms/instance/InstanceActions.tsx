@@ -1,6 +1,6 @@
-// InstanceActions — доменные lifecycle-действия инстанса в шапке «Обзора»:
+// InstanceActions — доменные lifecycle-действия машины в шапке «Обзора»:
 // Запустить / Остановить / Перезапустить (async :start / :stop / :restart →
-// Operation-poll). Доступность действий зависит от текущего статуса инстанса.
+// Operation-poll). Доступность действий зависит от текущего статуса машины.
 
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -15,6 +15,14 @@ import { toast } from "@/lib/toast";
 // вторым именем машины в продукте (везде остальное — «Виртуальная машина»).
 import { ENTITIES } from "@shared/lib/entity-names";
 import { errorText } from "@shared/lib/error-presentation";
+import { REGISTRY } from "@/lib/resource-registry";
+
+// Подпись операции склоняется — «Запуск виртуальной машины», а не «Запуск
+// виртуальная машина», — поэтому берётся родительный падеж, объявленный реестром
+// (то самое поле, ради которого он там и заведён). Прежде здесь стояло «Запуск
+// инстанса»: ВТОРОЕ имя того же предмета, при том что шапка этого же файла
+// объявляет запрет на него и импортирует ради него единый источник имён.
+const VM_GENITIVE = (REGISTRY["compute-instances"]?.genitive ?? ENTITIES.instances.singular).toLowerCase();
 
 type Verb = "start" | "stop" | "restart";
 
@@ -55,21 +63,21 @@ export function InstanceActions({
     <Space>
       <Button
         icon={<CaretRightOutlined />}
-        onClick={() => run("start", "Запуск инстанса")}
+        onClick={() => run("start", `Запуск ${VM_GENITIVE}`)}
         disabled={busy || !isStopped}
       >
         Запустить
       </Button>
       <Button
         icon={<PoweroffOutlined />}
-        onClick={() => run("stop", "Остановка инстанса")}
+        onClick={() => run("stop", `Остановка ${VM_GENITIVE}`)}
         disabled={busy || !isRunning}
       >
         Остановить
       </Button>
       <Button
         icon={<ReloadOutlined />}
-        onClick={() => run("restart", "Перезапуск инстанса")}
+        onClick={() => run("restart", `Перезапуск ${VM_GENITIVE}`)}
         disabled={busy || !isRunning}
       >
         Перезапустить

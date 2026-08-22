@@ -37,6 +37,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 )
 
 const (
@@ -48,7 +50,10 @@ const (
 	knobLegacyKeySet    = "KACHO_HYDRA_JWKS_URL"
 
 	// TokenTypePlatform — тип токена доступа НАШЕЙ чеканки (RFC 9068).
-	TokenTypePlatform = "at+jwt"
+	// Значение НЕ объявляется здесь второй раз: оно живёт в `pkg/tokenpolicy`,
+	// и второе объявление одного значения расходится с первым при первой же
+	// правке одного из двух — молча.
+	TokenTypePlatform = tokenpolicy.TokenTypeAccess
 	// TokenTypeLegacy — тип, которым помечает свои токены прежний издатель.
 	TokenTypeLegacy = "JWT"
 )

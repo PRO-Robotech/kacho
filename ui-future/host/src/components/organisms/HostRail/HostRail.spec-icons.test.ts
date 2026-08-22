@@ -36,9 +36,12 @@ function navSegments(): { segments: Set<string>; filesRead: string[] } {
   return { segments, filesRead };
 }
 
-/** Ключи литерала antdIconBySpec из исходника рейла. */
+/** Ключи литерала antdIconBySpec из объявления навигации модулей.
+ *  Карта переехала из рейла в общее объявление, когда второй уровень навигации
+ *  выделился в ModuleNav: рейл и панель типов берут глифы из ОДНОГО источника,
+ *  иначе один и тот же раздел показывался бы двумя разными значками. */
 function iconKeys(): string[] {
-  const src = readFileSync(path.join(here, "HostRail.tsx"), "utf8");
+  const src = readFileSync(path.join(here, "../../../lib/module-navigation.tsx"), "utf8");
   const start = src.indexOf("const antdIconBySpec");
   const end = src.indexOf("\n};", start);
   expect(start).toBeGreaterThan(-1);

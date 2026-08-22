@@ -12,6 +12,7 @@ import { Form, Input, Typography } from "antd";
 import { api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { LabelsEditor } from "@shared/components/organisms/form/LabelsEditor";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { REGISTRY } from "@shared/lib/resource-registry";
@@ -99,14 +100,7 @@ export function InlineSecurityGroupEditForm({ projectId, sgId, onCancel }: Props
 
   return (
     <FormShell specId="security-groups" mode="edit" singular={sgSpec.singular}>
-      <Form
-        layout="horizontal"
-        labelCol={{ flex: "200px" }}
-        wrapperCol={{ flex: "1 1 0" }}
-        labelAlign="left"
-        colon={false}
-        size="middle"
-      >
+      <FormGrid>
         <Form.Item label="Имя">
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Form.Item>
@@ -119,7 +113,7 @@ export function InlineSecurityGroupEditForm({ projectId, sgId, onCancel }: Props
           <LabelsEditor pathPrefix="" path="labels" label="" value={obj} onChange={setObj} />
         </Form.Item>
         <FormFooter submitLabel="Сохранить" submitting={updateMain.isPending} onSubmit={submit} onCancel={onCancel} />
-      </Form>
+      </FormGrid>
     </FormShell>
   );
 }

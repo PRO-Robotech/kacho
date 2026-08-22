@@ -33,6 +33,16 @@ ENV KACHO_STORAGE_REMOTE=$KACHO_STORAGE_REMOTE
 COPY host/package*.json ./
 RUN npm ci
 
+# Скрипт сборки: кладёт редактор JSON в public модуля. Без него `prebuild`
+# останавливает сборку — вкладка JSON иначе собралась бы «успешно» и не работала
+# бы в рантайме (CSP запрещает загрузку редактора со стороннего CDN).
+#
+# Каталог кладётся в КОРЕНЬ стадии: здесь сборка идёт из `/app/host`, а шаг зовёт
+# скрипт как `../scripts/…`. Семь остальных образов консоли копируют его так же —
+# и только этот не копировал, отчего его сборка падала на `MODULE_NOT_FOUND`,
+# тогда как у прочих проходила.
+COPY scripts/ scripts/
+
 COPY shared/ shared/
 COPY host/ host/
 WORKDIR /app/host

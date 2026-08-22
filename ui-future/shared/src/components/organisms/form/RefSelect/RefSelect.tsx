@@ -22,7 +22,7 @@ import { useKeptLabel } from "@shared/lib/kept-choice";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { InlineResourceCreateForm } from "@shared/components/organisms/InlineResourceCreateForm";
 import { FormBareProvider } from "@shared/components/organisms/form/FormShell";
-import { refOptionExtra, refOptionHead } from "./refOptionLabel";
+import { refOptionLabel } from "./refOptionLabel";
 import { createActionLabel } from "@shared/lib/resource-label";
 
 interface Props {
@@ -43,6 +43,12 @@ interface Props {
   createResource?: string;
   createPresetFields?: (form: Record<string, unknown>) => Record<string, unknown>;
   createTitle?: string;
+  /** Поле обязательное — обязательность объявляется вводу, а не только звёздочке подписи. */
+  required?: boolean;
+  /** Поле не прошло правило схемы: линия отказа и `aria-invalid`. */
+  invalid?: boolean;
+  /** Идентификатор сообщения об отказе — для `aria-describedby`. */
+  describedBy?: string;
 }
 
 export function RefSelect({
@@ -59,6 +65,9 @@ export function RefSelect({
   createResource,
   createPresetFields,
   createTitle,
+  required,
+  invalid,
+  describedBy,
 }: Props) {
   const project = useProjectStore((s) => s.project);
   const spec = getResource(refResource);
@@ -110,21 +119,20 @@ export function RefSelect({
   const candidates = ((spec ? data?.[spec.payloadKey] : undefined) ?? []).filter((it) =>
     refFilter ? refFilter(it as Record<string, unknown>) : true,
   );
+  // Подпись варианта собирается ЧИСТОЙ функцией, общей с полем множественного
+  // выбора: две копии одного правила разошлись бы молча — и разошлись бы там,
+  // где расхождение не видно, потому что обе возвращают строку на любом входе.
   const options = candidates.map((it) => ({
     uid: it.id,
-    name: refOptionHead(refResource, it as Record<string, unknown>),
-    extra: refOptionExtra(refResource, it as Record<string, unknown>),
+    label: refOptionLabel(refResource, it as Record<string, unknown>),
   }));
-
-  const labelOf = (o: { uid: string; name: string; extra?: string }) =>
-    `${o.name || o.uid}${o.extra ? ` · ${o.extra}` : ""}`;
 
   // Выбранное значение обязано пережить сужение: сервер отвечает по ВВОДУ, и
   // уже сделанный выбор в этот ответ не обязан попадать. Без запоминания метки
   // поле показывало бы вместо имени идентификатор — ровно то, что канон консоли
   // (правило 2) и запрещает.
   const chosen = options.find((o) => o.uid === value);
-  const keptLabel = useKeptLabel(value, chosen ? labelOf(chosen) : null);
+  const keptLabel = useKeptLabel(value, chosen ? chosen.label : null);
   const keptChoice = value && keptLabel ? [{ value, label: keptLabel }] : [];
 
   if (!spec) return <div className="text-xs text-rose-600">Неизвестная ссылка: {refResource}</div>;
@@ -138,9 +146,17 @@ export function RefSelect({
         showSearch
         allowClear
         value={value || undefined}
-        placeholder={placeholder ?? `Выбрать ${spec.singular}…`}
+        // «Выбрать» управляет ВИНИТЕЛЬНЫМ падежом, как и «Создать»: подсказка
+        // собиралась из именительного и читалась «Выбрать таблица маршрутов».
+        // Падеж берётся из объявления ресурса тем же производителем, что и
+        // подпись действия, — второй способ склонять разошёлся бы с первым.
+        placeholder={placeholder ?? `${createActionLabel(spec, "Выбрать")}…`}
         disabled={disabled || !enabled}
         style={{ width: "100%" }}
+        status={invalid ? "error" : undefined}
+        aria-required={required ? true : undefined}
+        aria-invalid={invalid ? true : undefined}
+        aria-describedby={invalid ? describedBy : undefined}
         title={scope.notice}
         onSearch={setTerm}
         // Сузил сервер — клиент НЕ пересеивает: повторное сужение по загруженной
@@ -161,7 +177,7 @@ export function RefSelect({
         }}
         options={[
           ...keptChoice,
-          ...options.map((o) => ({ value: o.uid, label: labelOf(o) })),
+          ...options.map((o) => ({ value: o.uid, label: o.label })),
           ...(createSpec ? [{ value: CREATE_SENTINEL, label: `+ ${createActionLabel(createSpec)}…` }] : []),
         ]}
       />
@@ -187,7 +203,11 @@ export function RefSelect({
           width={720}
           destroyOnClose
           title={null}
-          styles={{ body: { padding: "12px 24px 20px" } }}
+          // Тот же интерьер, что у основной модалки формы (.kc-form-modal):
+          // «утопленный» фон и одинаковая рамка. Прежде эта модалка была
+          // единственной формой консоли с другим фоном и другим отступом.
+          className="kc-form-modal"
+          styles={{ body: { padding: 18 } }}
         >
           <FormBareProvider>
             <InlineResourceCreateForm

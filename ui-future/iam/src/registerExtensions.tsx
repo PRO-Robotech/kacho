@@ -22,6 +22,7 @@ import {
 import { registerInlineForm } from "@shared/components/organisms/InlineResourceForm";
 import type { DetailTab } from "@shared/components/organisms/DetailShell";
 import { IamRefLink } from "@shared/components/molecules/IamRefLink";
+import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
@@ -53,6 +54,7 @@ import { SaKeysPanel } from "@/components/organisms/SaKeysPanel";
 import { UserTokensPanel } from "@/components/organisms/UserTokensPanel";
 import { InlineRoleCreateForm } from "@/components/organisms/iam/InlineRoleCreateForm";
 import { InlineRoleEditForm } from "@/components/organisms/iam/InlineRoleEditForm";
+import { MONO_FONT } from "@shared/components/organisms/form/editor-surface";
 
 // ─────────────────────────── helpers ───────────────────────────
 
@@ -60,7 +62,38 @@ const dash = <Typography.Text type="secondary">—</Typography.Text>;
 
 function mono(v: unknown): ReactNode {
   const s = v == null ? "" : String(v);
-  return s ? <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{s}</span> : dash;
+  return s ? <span style={{ fontFamily: MONO_FONT, fontSize: 12 }}>{s}</span> : dash;
+}
+
+// БУЛЕВО НАЗЫВАЕТСЯ СЛЕДСТВИЕМ, А НЕ ОТВЕТОМ «ДА» (канон консоли, правило 5).
+//
+// Здесь стояло `<Tag color="gold">Да</Tag>` против приглушённого «Нет», и это
+// было неверно дважды. Во-первых, «Да» рядом с подписью «Защита от удаления» не
+// говорит ни что защита включена, ни что удалить нельзя — смысл достраивает
+// читатель. Во-вторых, цвет следовал за ИСТИННОСТЬЮ: сторона, о которой как раз
+// и стоит знать («защиты нет, ресурс можно снести»), уходила в приглушённый
+// тон, а охрана красилась тем же жёлтым, что и предупреждение.
+//
+// Форма — общая (`BoolFact`), та же, что у соседних доменов: тон объявлен
+// КАЖДОЙ стороне, глиф принадлежит стороне, а смысл несёт текст.
+//
+// Два имени поля — не запасная ветка на снятое имя, а две ЖИВЫЕ проекции: край
+// отдаёт camelCase, домен объявляет snake_case.
+function deletionProtectionRow(data: Record<string, unknown>): DescItem {
+  return {
+    label: "Защита от удаления",
+    value: (
+      <BoolFact
+        value={getByPath<boolean>(data, "deletion_protection") ?? getByPath<boolean>(data, "deletionProtection")}
+        yes="Удаление запрещено"
+        no="Удаление разрешено"
+        yesTone="good"
+        yesGlyph="lock"
+        noTone="attention"
+        noGlyph="unlock"
+      />
+    ),
+  };
 }
 
 // ─────────────────────── IAM-1 helpers (definitionTier / verbs / target / revoke) ───────────────────────
@@ -90,7 +123,7 @@ function verbChips(verbs: string[] | undefined, notes?: Record<string, string>):
             key={v}
             color={isDeleteStar ? "volcano" : undefined}
             title={note}
-            style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+            style={{ margin: 0, fontFamily: MONO_FONT, fontSize: 12 }}
           >
             {v}
           </Tag>
@@ -218,7 +251,7 @@ function targetView(t: AccessBindingTarget | undefined): ReactNode {
     return (
       <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
         {res.map((r, i) => (
-          <Tag key={i} color="geekblue" style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+          <Tag key={i} color="geekblue" style={{ margin: 0, fontFamily: MONO_FONT, fontSize: 12 }}>
             {r.type}:{r.id}
           </Tag>
         ))}
@@ -612,7 +645,7 @@ function roleRulesView(rules: RoleRule[] | undefined): ReactNode {
   if (!rules || rules.length === 0) return dash;
   const chips = (xs: string[]) =>
     xs.map((x) => (
-      <Tag key={x} style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
+      <Tag key={x} style={{ margin: 0, fontFamily: MONO_FONT, fontSize: 12 }}>
         {x}
       </Tag>
     ));
@@ -646,7 +679,7 @@ function roleRulesView(rules: RoleRule[] | undefined): ReactNode {
               <Typography.Text type="secondary" style={{ fontSize: 11 }}>
                 модуль:
               </Typography.Text>
-              <Tag style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{rule.module || "—"}</Tag>
+              <Tag style={{ margin: 0, fontFamily: MONO_FONT, fontSize: 12 }}>{rule.module || "—"}</Tag>
             </span>
             <span style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
               <Typography.Text type="secondary" style={{ fontSize: 11 }}>
@@ -674,11 +707,7 @@ function roleRulesView(rules: RoleRule[] | undefined): ReactNode {
                   метки:
                 </Typography.Text>
                 {Object.entries(rule.match_labels ?? {}).map(([k, v]) => (
-                  <Tag
-                    key={k}
-                    color="purple"
-                    style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 12 }}
-                  >
+                  <Tag key={k} color="purple" style={{ margin: 0, fontFamily: MONO_FONT, fontSize: 12 }}>
                     {k}={v}
                   </Tag>
                 ))}
@@ -702,7 +731,9 @@ registerDetailExtension("roles", {
     const dt: DefinitionTier | undefined = roleDefinitionTier(role);
     const tt = dt?.tier_type ?? dt?.tierType ?? "";
     const tid = dt?.tier_id ?? dt?.tierId ?? "";
-    const rows: DescItem[] = [{ label: "Тип", value: isSystem ? <Tag color="purple">Системная</Tag> : <Tag>Пользовательская</Tag> }];
+    const rows: DescItem[] = [
+      { label: "Тип", value: isSystem ? <Tag color="purple">Системная</Tag> : <Tag>Пользовательская</Tag> },
+    ];
     // definitionTier (dotted tierType + anchor). Legacy fallback — flat FK-поля.
     if (tt) {
       rows.push({ label: "Уровень (tierType)", value: <Tag color={iamTierColor(tt)}>{tt}</Tag> });
@@ -752,15 +783,20 @@ registerDetailExtension("accounts", {
     ];
     const status = getByPath<string>(data, "status");
     if (status) rows.push({ label: "Статус", value: <StatusBadge state={status} /> });
-    rows.push({
-      label: "Защита от удаления",
-      value:
-        getByPath<boolean>(data, "deletion_protection") || getByPath<boolean>(data, "deletionProtection") ? (
-          <Tag color="gold">Да</Tag>
-        ) : (
-          <span className="text-muted-foreground">Нет</span>
-        ),
-    });
+    // ЗАЩИТЫ ОТ УДАЛЕНИЯ У АККАУНТА НЕТ — и строка о ней снята.
+    //
+    // Поля `deletion_protection` нет ни в сообщении Account (account.proto: id,
+    // name, description, labels, owner_user_id, created_at — и всё), ни в
+    // UpdateAccountRequest, чья маска допускает ровно name, description, labels.
+    // Значение приходило `undefined`, и строка бодро сообщала «Удаление
+    // разрешено» — утверждение о ресурсе, которого сервер не делал.
+    //
+    // Заметил это владелец с другой стороны: факт показан, а в форме правки ему
+    // нет пары. Пары и не могло быть — управлять нечем.
+    //
+    // У привязки доступа поле ЖИВОЕ (access_binding.proto, тег 20), и там строка
+    // остаётся: одноимённое свойство у двух ресурсов — разные предметы, и
+    // показывать его надо там, где у него есть источник.
     return rows;
   },
   extraTabs: ({ data, detailBase }) => {
@@ -927,15 +963,7 @@ registerDetailExtension("access-bindings", {
     if (revokedAt) rows.push({ label: "Отозвана", value: fmtTs(revokedAt) });
     if (grantedBy)
       rows.push({ label: "Кто выдал", value: <IamRefLink specId="users" refId={grantedBy} nameField="email" /> });
-    rows.push({
-      label: "Защита от удаления",
-      value:
-        getByPath<boolean>(data, "deletion_protection") || getByPath<boolean>(data, "deletionProtection") ? (
-          <Tag color="gold">Да</Tag>
-        ) : (
-          <span className="text-muted-foreground">Нет</span>
-        ),
-    });
+    rows.push(deletionProtectionRow(data));
     return rows;
   },
 });

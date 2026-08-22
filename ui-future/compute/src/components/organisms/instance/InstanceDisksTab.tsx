@@ -9,6 +9,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Button, Checkbox, Input, Space, Spin, Typography } from "antd";
 import { DeleteOutlined, LoadingOutlined, PlusOutlined } from "@ant-design/icons";
 import { ResourceTable, type Column } from "@/components/organisms/ResourceTable";
+import { ROW_ACTION_TRIGGER } from "@/components/molecules/RowActionsMenu";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
@@ -102,11 +103,22 @@ export function InstanceDisksTab({
         ),
     },
     { header: "Устройство", cell: (r) => r.device_name || "—" },
-    { header: "Роль", cell: (r) => (r.is_boot ? "boot" : "data") },
+    {
+      // Роль диска — булево свойство, названное СЛЕДСТВИЕМ. Прежде здесь стояли
+      // служебные слова `boot` и `data`: латиница посреди русского интерфейса,
+      // из которой не следует ни что машина грузится с этого тома, ни что она
+      // грузится не с него. Выделена та сторона, о которой стоит знать: с
+      // загрузочного тома машину не отключить, и строка ниже это подтверждает —
+      // столбца действий у неё нет.
+      header: "Роль",
+      cell: (r) => <BoolFact value={r.is_boot} yes="Загрузочный" no="Дополнительный" yesTone="active" />,
+    },
     { header: "Режим", cell: (r) => r.mode || "—" },
     {
       header: "При удалении машины",
-      cell: (r) => <BoolFact value={r.auto_delete} yes="Том удаляется" no="Том остаётся" />,
+      cell: (r) => (
+        <BoolFact value={r.auto_delete} yes="Том удаляется" no="Том остаётся" yesTone="attention" yesGlyph="warn" />
+      ),
     },
     {
       header: "",
@@ -115,12 +127,23 @@ export function InstanceDisksTab({
         const vid = r.volume_id ?? "";
         if (!vid || r.is_boot) return null;
         return pendingId === vid ? (
-          <Spin indicator={<LoadingOutlined style={{ fontSize: 12 }} spin />} />
+          // Ожидание занимает РОВНО место ручки: иначе строка на время операции
+          // становится другой высоты, и таблица дёргается на каждом отключении.
+          <span
+            style={{ display: "inline-flex", width: 30, height: 30, alignItems: "center", justifyContent: "center" }}
+          >
+            <Spin indicator={<LoadingOutlined style={{ fontSize: 12 }} spin />} />
+          </span>
         ) : (
+          // Геометрия ручки строки — ОДНА на продукт (`ROW_ACTION_TRIGGER`): 30×30,
+          // радиус 6. Прежде здесь стоял `size="small"`, то есть высота, которая
+          // ездит вместе с общей высотой элементов управления, — и столбец без
+          // данных то поднимал строку, то нет. Цвет снимается: он принадлежит
+          // `danger` (действие снимает связь), а не общему тону значка.
           <Button
             type="text"
             danger
-            size="small"
+            style={{ ...ROW_ACTION_TRIGGER, color: undefined }}
             icon={<DeleteOutlined />}
             aria-label="Отключить"
             onClick={() => onDetach(vid)}
@@ -159,20 +182,20 @@ export function InstanceDisksTab({
           Подключить
         </Button>
       </div>
-      {rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-          Тома ещё не подключены.
-        </div>
-      ) : (
-        <ResourceTable
-          rows={rows}
-          columns={columns}
-          rowKey={(r) => r.volume_id ?? r.device_name ?? Math.random().toString()}
-          // Диски приезжают полем самой машины, а не отдельным списком: курсора
-          // здесь нет, набор полон by construction.
-          complete
-        />
-      )}
+      {/* Пустое состояние — та же таблица со своей строкой «пусто», а не своя
+          рамка пунктиром. Своя рамка была вторым видом одного предмета: в
+          соседних таблицах продукта пустота выглядит иначе, и переход между
+          вкладками читался как переход в другое место продукта. Заодно шапка
+          колонок остаётся на месте — видно, ЧТО именно не подключено. */}
+      <ResourceTable
+        rows={rows}
+        columns={columns}
+        rowKey={(r) => r.volume_id ?? r.device_name ?? Math.random().toString()}
+        // Диски приезжают полем самой машины, а не отдельным списком: курсора
+        // здесь нет, набор полон by construction.
+        complete
+        empty="Тома ещё не подключены"
+      />
       <OperationToastWatcher
         opId={opId}
         title={opTitle}

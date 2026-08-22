@@ -2,10 +2,25 @@ import { render, screen } from "@testing-library/react";
 import { HomePage } from ".";
 
 describe("HomePage", () => {
-  it("renders cloud services page copy", () => {
+  it("называет предмет страницы общей шапкой продукта", () => {
     render(<HomePage />);
 
+    // Заголовок — тот же механизм, что у списков, карточек и форм (`PageHead`):
+    // у стартовой страницы не может быть своего кегля, с неё начинают и по ней
+    // судят об остальном.
     expect(screen.getByRole("heading", { name: "Сервисы облака" })).toBeInTheDocument();
-    expect(screen.getByText("Оболочка хоста для федеративных модулей")).toBeInTheDocument();
+  });
+
+  it("не пересказывает устройство консоли подзаголовком", () => {
+    render(<HomePage />);
+
+    // Здесь стояло «Оболочка хоста для федеративных модулей» — фраза о НАШЕМ
+    // устройстве, а не о том, что человек здесь получит. Снята вместе с
+    // переходом на общую шапку; проба правится вместе с предметом.
+    //
+    // Отрицание держится положительным контролем выше: без него «подзаголовка
+    // нет» зеленело бы и на странице, не отрисовавшей ничего.
+    expect(screen.queryByText(/оболочка хоста/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/федеративн/i)).not.toBeInTheDocument();
   });
 });

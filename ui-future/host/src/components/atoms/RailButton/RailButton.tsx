@@ -30,6 +30,10 @@ export const RailButton: FC<{
         disabled={blocked}
         onClick={onClick}
         aria-label={label}
+        // Пункт рейла 44×42 — та же клетка, из которой выведена ширина полосы
+        // (44 + поля по 9 = 62, см. HostShell). Держится здесь, а не в листе
+        // каркаса, потому что за ширину полосы отвечает разметка, а не тема.
+        style={{ width: 44, height: 42 }}
       >
         {icon}
       </button>

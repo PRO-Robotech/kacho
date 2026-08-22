@@ -92,9 +92,15 @@ function sortableHeaders(): Element[] {
   return Array.from(document.querySelectorAll("th[data-sortable]"));
 }
 
-/** Поле ввода вкладки — единственное на этой поверхности. */
+/** Строка поиска вкладки — по роли ПОИСКА, а не обычного текстового поля.
+ *
+ *  Роль `searchbox` — наблюдаемое свойство: её объявляет `type="search"`, и по
+ *  ней поле называет себя поиском программе чтения с экрана. Прежде помощник
+ *  брал первое попавшееся текстовое поле — тогда поиск и был обычным полем; при
+ *  сведении ручек к одной общей семантика на время потерялась, и это показала
+ *  проба браузером, а не эта. */
 function searchBox(): HTMLInputElement {
-  return screen.getAllByRole("textbox")[0] as HTMLInputElement;
+  return screen.getAllByRole("searchbox")[0] as HTMLInputElement;
 }
 
 afterEach(() => {

@@ -33,9 +33,21 @@ export function CidrListCell({ items }: Props): ReactNode {
   const list = cidrItems(...items);
   if (list.length === 0) return <span className="text-muted-foreground">—</span>;
   return (
-    <span style={{ display: "inline-flex", flexDirection: "column", gap: 2, alignItems: "flex-start" }}>
+    // `maxWidth: "100%"` + `nowrap` на каждой строке: префикс не переносится
+    // ВНУТРИ себя. Перенос рвал бы `fd00:1234:5678:9abc::/64` посреди адреса и
+    // добавлял ячейке лишнюю строку — то есть менял высоту строки списка от
+    // ширины колонки. Длину префикса (`/64`) при обрезке видно в подсказке:
+    // именно она несёт смысл, и терять её молча нельзя.
+    <span
+      style={{ display: "inline-flex", flexDirection: "column", gap: 2, alignItems: "flex-start", maxWidth: "100%" }}
+    >
       {list.map((c, i) => (
-        <span key={`${c}-${i}`} className="font-mono text-xs">
+        <span
+          key={`${c}-${i}`}
+          className="t-mono"
+          title={c}
+          style={{ maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        >
           {c}
         </span>
       ))}

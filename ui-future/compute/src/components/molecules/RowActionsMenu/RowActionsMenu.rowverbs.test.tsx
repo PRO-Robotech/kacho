@@ -29,8 +29,10 @@ jest.unstable_mockModule("antd", () => ({
 }));
 
 const { REGISTRY } = await import("@/lib/resource-registry");
-// Адрес МОДУЛЯ, а не `@shared/…`: именно его резолвит `ResourceShell`, и именно
-// он был копией. Проба через `@shared/…` осталась бы зелёной при живом дефекте.
+// Адрес МОДУЛЯ, а не `@shared/…`: по нему лежала копия, и проба через `@shared/…`
+// осталась бы зелёной при живом дефекте. Сегодня по этому адресу ре-экспорт, и
+// предмет пробы стал уже: она утверждает, что адрес модуля ведёт к реализации,
+// читающей `spec.rowVerbs`, — вернуть сюда копию значит снова её уронить.
 const { RowActionsMenu, resourceHasRowActions } = await import("@/components/molecules/RowActionsMenu");
 
 /** Ресурс без правки/удаления/перемещения, у которого ЕДИНСТВЕННОЕ действие — глагол. */
@@ -75,7 +77,13 @@ describe("объявленный глагол доезжает до меню с�
     render(
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={["/x"]}>
-          <RowActionsMenu spec={specWithVerb()} row={{ id: "usr-1", invite_status: "ACTIVE" }} basePath="/x" projectId={null} editAsPanel />
+          <RowActionsMenu
+            spec={specWithVerb()}
+            row={{ id: "usr-1", invite_status: "ACTIVE" }}
+            basePath="/x"
+            projectId={null}
+            editAsPanel
+          />
         </MemoryRouter>
       </QueryClientProvider>,
     );

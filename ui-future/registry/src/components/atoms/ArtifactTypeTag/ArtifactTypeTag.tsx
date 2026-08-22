@@ -16,7 +16,11 @@ const ARTIFACT_META: Record<string, { label: string; color: string; Icon: Compon
   // Container — контейнерный образ (docker/OCI); ShipWheel («штурвал») — Helm-чарт.
   ARTIFACT_TYPE_CONTAINER_IMAGE: { label: "Docker-образ", color: "#2496ed", Icon: Container },
   ARTIFACT_TYPE_HELM_CHART: { label: "Helm-чарт", color: "#6e56cf", Icon: ShipWheel },
-  ARTIFACT_TYPE_OTHER: { label: "Иной", color: "var(--kc-text-tertiary, #8b929e)", Icon: Package },
+  // Docker и Helm опознают по их СОБСТВЕННЫМ цветам — это марки, они одинаковы
+  // в любой теме и потому заданы литералом намеренно. «Иной» марки не имеет, и
+  // его тон обязан быть ролью темы: с литеральным запасным значением он оставался
+  // одним и тем же серым в светлой и тёмной теме.
+  ARTIFACT_TYPE_OTHER: { label: "Иной", color: "var(--kc-text-tertiary)", Icon: Package },
 };
 
 /** artifactTypeLabel — человекочитаемая метка типа (для фильтра/тестов/tooltip). */
