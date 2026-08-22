@@ -40,6 +40,7 @@ import { instanceFetcherFor, type InstanceFetcher } from "@shared/lib/resourceIn
 import { useContext } from "@shared/lib/context-store";
 import { useDebouncedValue } from "@shared/lib/list-search";
 import { pickerScope, pickerScopeOfSpec } from "@shared/lib/picker-search";
+import { MONO_FONT } from "@shared/components/organisms/form/editor-surface";
 
 // Re-export WILDCARD для обратной совместимости импортёров RulesEditor.
 export { WILDCARD };
@@ -796,7 +797,7 @@ function MatchLabelsEditor({
                   e.preventDefault();
                   remove(key);
                 }}
-                style={{ fontFamily: "ui-monospace, monospace" }}
+                style={{ fontFamily: MONO_FONT }}
               >
                 {key}={val}
               </Tag>

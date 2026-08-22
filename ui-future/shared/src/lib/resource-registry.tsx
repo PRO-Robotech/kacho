@@ -587,6 +587,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.iam.title,
     scope: "account",
     ops: { create: true, update: true, delete: true },
+    emptyState: {
+      title: "Создайте первый проект",
+      body:
+        "Проект — рабочая область внутри аккаунта: сети, машины, тома и права живут в его границах. " +
+        "Ресурсы разных проектов не видят друг друга, поэтому проект и есть единица изоляции.",
+      docs: ["Проекты и аккаунты"],
+    },
     columns: [
       COL_NAME,
       {
@@ -637,6 +644,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.iam.title,
     scope: "account",
     ops: { create: true, update: true, delete: true },
+    emptyState: {
+      title: "Создайте первый сервисный аккаунт",
+      body:
+        "Сервисный аккаунт — учётная запись для программ: конвейеров, скриптов, внешних систем. " +
+        "Ему выдают права так же, как человеку, но входит он по ключу, а не по паролю.",
+      docs: ["Сервисные аккаунты и ключи"],
+    },
     columns: [
       COL_NAME,
       {
@@ -689,6 +703,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.iam.title,
     scope: "global",
     ops: { create: false, update: false, delete: true },
+    emptyState: {
+      title: "Пригласите первого пользователя",
+      body:
+        "Пользователь — человек, который входит в консоль и работает с ресурсами аккаунта. " +
+        "Права он получает привязкой роли, а не самим фактом приглашения.",
+      docs: ["Пользователи и приглашения"],
+    },
     columns: [
       { header: "Эл. почта", path: "email", format: "text" },
       { header: "Отображаемое имя", path: "display_name", format: "text" },
@@ -808,6 +829,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
     ],
@@ -896,8 +918,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
                   {m}
                 </code>
               ))}
-              {more > 0 && <span style={{ fontSize: 11, color: "rgba(0,0,0,.45)" }}>+{more}</span>}
-              <span style={{ fontSize: 11, color: "rgba(0,0,0,.45)" }}>· {rules.length}</span>
+              {/* Счётчик правил и «+N» — второстепенный текст: тон берётся ролью темы,
+                  потому что литерал чёрного 45% на тёмной странице был неразличим. */}
+              {more > 0 && <span style={{ fontSize: 11, color: "var(--kc-text-tertiary)" }}>+{more}</span>}
+              <span style={{ fontSize: 11, color: "var(--kc-text-tertiary)" }}>· {rules.length}</span>
             </span>
           );
         },
@@ -946,7 +970,24 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     genitive: "привязки доступа",
     serviceTitle: SERVICES.iam.title,
     scope: "account",
-    ops: { create: false, update: false, delete: true },
+    ops: { create: false, update: true, delete: true },
+    // ФОРМА ПРАВКИ — РОВНО ПО МАСКЕ КРАЯ, не шире и не уже.
+    //
+    // Край принимает у привязки два поля: `deletion_protection` и `labels`
+    // (`UpdateAccessBindingRequest`, остальное immutable — снимается и заводится
+    // заново). Консоль же объявляла ресурс неправимым вовсе, и получалось хуже,
+    // чем «не показали кнопку»: карточка ПОКАЗЫВАЛА замок, отзыв при включённом
+    // замке пряталcя, а снять замок из консоли было нечем. Свойство видно,
+    // управлять им невозможно — тупик, из которого выход только через API.
+    fields: [
+      {
+        name: "deletion_protection",
+        label: "Защита от удаления",
+        type: "bool",
+        description: "Пока защита включена, привязку нельзя отозвать. Снимите её, чтобы отозвать доступ.",
+      },
+      { name: "labels", label: "Метки", type: "labels" },
+    ],
     columns: [
       {
         // Субъект(ы): IAM-1 — subjects[] (1..N); первый как ref-ссылка + «+N».
@@ -1120,6 +1161,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // :add/:remove-cidr-blocks). Compact IPv4-first view.
         header: "CIDR",
         path: "ipv4_cidr_blocks",
+        multiline: true,
         render: (row) => <SupernetCell v4={row.ipv4_cidr_blocks} v6={row.ipv6_cidr_blocks} />,
       },
       {
@@ -1149,6 +1191,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
     ],
@@ -1296,11 +1339,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // (managed via :add/:remove-cidr-blocks). v4_cidr_blocks[] retired.
         header: "IPv4 CIDR",
         path: "ipv4_cidr_primary",
+        multiline: true,
         render: (row) => <CidrPrimaryCell primary={row.ipv4_cidr_primary} extra={row.ipv4_cidr_blocks} />,
       },
       {
         header: "IPv6 CIDR",
         path: "ipv6_cidr_primary",
+        multiline: true,
         render: (row) => <CidrPrimaryCell primary={row.ipv6_cidr_primary} extra={row.ipv6_cidr_blocks} />,
       },
       {
@@ -1313,6 +1358,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
       {
@@ -1507,7 +1553,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Используется",
         path: "used",
-        render: (row) => <BoolFact value={row.used} yes="Используется" no="Свободен" />,
+        render: (row) => <BoolFact value={row.used} yes="Используется" no="Свободен" yesTone="active" yesGlyph="link" />,
       },
       {
         header: "Версия",
@@ -1533,7 +1579,15 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         header: "Защита от удаления",
         path: "deletion_protection",
         render: (row) => (
-          <BoolFact value={row.deletion_protection} yes="Удаление запрещено" no="Удаление разрешено" accent />
+          <BoolFact
+            value={row.deletion_protection}
+            yes="Удаление запрещено"
+            no="Удаление разрешено"
+            yesTone="good"
+            yesGlyph="lock"
+            noTone="attention"
+            noGlyph="unlock"
+          />
         ),
       },
       {
@@ -1553,6 +1607,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
     ],
@@ -1809,6 +1864,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
     ],
@@ -1905,6 +1961,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
+    emptyState: {
+      title: "Создайте первый сетевой интерфейс",
+      body:
+        "Сетевой интерфейс — точка подключения машины к подсети: он несёт её адреса и группы безопасности. " +
+        "Интерфейс живёт отдельно от машины, поэтому его можно переносить между ними.",
+      docs: ["Сетевые интерфейсы"],
+    },
     columns: [
       {
         header: "Имя",
@@ -1994,6 +2057,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
     ],
@@ -2210,7 +2274,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           return nid ? <RefNameLink specId="networks" refId={nid} /> : <span className="text-muted-foreground">—</span>;
         },
       },
-      { header: "По умолчанию", path: "default_for_network", format: "text" },
+      // Булево показывается СЛЕДСТВИЕМ, а не сырым `true`: в таблице стояло
+      // именно оно — значение из ответа, ничего не сообщающее о предмете.
+      // «По умолчанию» у группы безопасности означает, что её получают
+      // интерфейсы, которым группу не назвали явно.
+      {
+        header: "По умолчанию",
+        path: "default_for_network",
+        format: "bool",
+        boolLabels: { yes: "Группа по умолчанию", no: "Назначается явно" },
+      },
       COL_CREATED,
       COL_ID,
     ],
@@ -2297,6 +2370,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
+    emptyState: {
+      title: "Создайте первый шлюз",
+      body:
+        "Шлюз — выход из облачной сети наружу: через него ресурсы без публичного адреса обращаются в интернет. " +
+        "Маршрут к шлюзу задаётся в таблице маршрутизации подсети.",
+      docs: ["Шлюзы и выход в интернет"],
+    },
     columns: [
       {
         header: "Имя",
@@ -2316,6 +2396,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
       COL_CREATED,
@@ -2430,11 +2511,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "IPv4",
         path: "v4_cidr_blocks",
+        multiline: true,
         render: (row) => <CidrListCell items={[row.v4_cidr_blocks]} />,
       },
       {
         header: "IPv6",
         path: "v6_cidr_blocks",
+        multiline: true,
         render: (row) => <CidrListCell items={[row.v6_cidr_blocks]} />,
       },
       { header: "Членов", path: "cidr_block_count", format: "text" },
@@ -2450,6 +2533,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
       COL_CREATED,
@@ -2535,6 +2619,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
+    emptyState: {
+      title: "Каталог типов дисков пуст",
+      body:
+        "Тип диска задаёт носитель и предел скорости для томов: его записи заводит администратор облака. " +
+        "Пока каталог пуст, создать том не получится — обратитесь к администратору.",
+      docs: ["Типы дисков"],
+    },
     columns: [
       {
         header: "Идентификатор",
@@ -2575,6 +2666,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
+    emptyState: {
+      title: "Каталог зон доступности пуст",
+      body:
+        "Зона — независимая площадка внутри региона, в которой размещаются машины, тома и подсети. " +
+        "Записи каталога заводит администратор облака; обратитесь к нему, если список пуст.",
+      docs: ["Регионы и зоны доступности"],
+    },
     columns: [
       {
         header: "Идентификатор",
@@ -2614,6 +2712,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
+    emptyState: {
+      title: "Каталог регионов пуст",
+      body:
+        "Регион — географическая область, объединяющая зоны доступности одной площадки. " +
+        "Записи каталога заводит администратор облака; обратитесь к нему, если список пуст.",
+      docs: ["Регионы и зоны доступности"],
+    },
     columns: [
       {
         header: "Идентификатор",
@@ -2653,6 +2758,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       start: true,
       stop: true,
       restart: true,
+    },
+    emptyState: {
+      title: "Создайте первую виртуальную машину",
+      body:
+        "Виртуальная машина — вычислительный узел с загрузочным диском и сетевыми интерфейсами. " +
+        "Перед созданием понадобятся подсеть для интерфейса и образ либо том для загрузки.",
+      docs: ["Виртуальные машины"],
     },
     columns: [
       {
@@ -2720,6 +2832,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
     ],
@@ -3066,6 +3179,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.storage.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
+    emptyState: {
+      title: "Создайте первый том",
+      body:
+        "Том — блочный диск, который подключается к машине и переживает её пересоздание. " +
+        "Том можно создать пустым, из образа или из снимка, а затем расширить без остановки машины.",
+      docs: ["Тома и снимки"],
+    },
     columns: [
       {
         header: "Имя",
@@ -3105,6 +3225,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: "Storage",
     scope: "project",
     ops: { create: false, update: false, delete: false },
+    emptyState: {
+      title: "Создайте первый образ",
+      body:
+        "Образ — слепок диска, из которого разворачивают загрузочные тома машин. " +
+        "Один образ раскатывается на сколько угодно машин, поэтому им удобно фиксировать готовую сборку.",
+      docs: ["Образы дисков"],
+    },
     columns: [
       {
         header: "Имя",
@@ -3159,6 +3286,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
     ],
@@ -3183,6 +3311,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
+    emptyState: {
+      title: "Каталог типов машин пуст",
+      body:
+        "Тип машины задаёт число процессоров и объём памяти для виртуальных машин. " +
+        "Записи каталога заводит администратор облака; обратитесь к нему, если список пуст.",
+      docs: ["Типы машин"],
+    },
     columns: [
       {
         header: "Имя",
@@ -3287,6 +3422,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
       COL_CREATED,
@@ -3695,6 +3831,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.system.title,
     scope: "global",
     ops: { create: true, update: true, delete: true },
+    emptyState: {
+      title: "Создайте первый пул адресов",
+      body:
+        "Пул адресов — диапазон, из которого арендаторам выдаются публичные адреса. " +
+        "Пока пула нет, выделить внешний адрес не из чего, и создание адреса завершится отказом.",
+      docs: ["Пулы публичных адресов"],
+    },
     columns: [
       // Те же колонки и стиль, что у subnets list (CopyableName/Id, отдельные
       // v4/v6 блоки, LabelsCell): visual parity по запросу user'а.
@@ -3749,6 +3892,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки селектора",
         path: "selector_labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.selector_labels as Record<string, string> | undefined} />,
       },
       {
@@ -3903,6 +4047,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.nlb.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
+    emptyState: {
+      title: "Создайте первый балансировщик",
+      body:
+        "Балансировщик распределяет входящие соединения по целям и снимает нагрузку с отказавших. " +
+        "Ему понадобятся слушатель на нужном порту и целевая группа с адресатами.",
+      docs: ["Балансировка нагрузки"],
+    },
     columns: [
       {
         header: "Имя",
@@ -3924,6 +4075,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
     ],
@@ -4014,6 +4166,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.nlb.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
+    emptyState: {
+      title: "Создайте первый слушатель",
+      body:
+        "Слушатель — порт и протокол, на которых балансировщик принимает соединения. " +
+        "Каждый слушатель направляет трафик в свою целевую группу, поэтому их заводят по числу служб.",
+      docs: ["Слушатели балансировщика"],
+    },
     columns: [
       {
         header: "Имя",
@@ -4098,6 +4257,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.nlb.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
+    emptyState: {
+      title: "Создайте первую целевую группу",
+      body:
+        "Целевая группа — набор адресатов, между которыми балансировщик делит соединения. " +
+        "Состояние каждой цели проверяется, и отказавшая исключается из раздачи до восстановления.",
+      docs: ["Целевые группы"],
+    },
     columns: [
       {
         header: "Имя",
@@ -4118,6 +4284,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       {
         header: "Метки",
         path: "labels",
+        multiline: true,
         render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
       },
     ],

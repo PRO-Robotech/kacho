@@ -55,7 +55,10 @@ export interface TabWiring {
   buildsPathFromApiPath: boolean;
 }
 
-const SOURCE_RE = /\.tsx?$/;
+/** Что считается исходником консоли. Экспортируется, чтобы перепись объёма
+ *  осмотренного в пробе считала ТЕ ЖЕ файлы, что и обход провязки: два
+ *  предиката об одном предмете разошлись бы молча. */
+export const SOURCE_RE = /\.tsx?$/;
 
 /** Обход дерева без `node_modules`. */
 export function walk(dir: string, match: RegExp, out: string[] = []): string[] {

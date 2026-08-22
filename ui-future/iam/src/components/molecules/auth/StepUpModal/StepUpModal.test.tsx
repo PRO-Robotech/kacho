@@ -20,13 +20,22 @@ jest.unstable_mockModule("@shared/contexts/AuthContext", () => ({
   useAuth: () => auth,
 }));
 
+// Мок отдаёт ВСЁ, что берёт цепочка импорта, а не только то, что зовёт сам
+// компонент. Окно подтверждения тянет `@shared/pages/auth/Login` (за
+// `bufferToBase64Url`), а тот берёт из kratos ещё и `flowMessages` — под ESM
+// недостающий экспорт кладёт всю суиту сразу: «does not provide an export named».
+//
+// Раньше это не проявлялось только потому, что здесь лежала своя копия окна с
+// импортом из модульного `@/pages/auth/Login`; копия снята, цепочка стала общей,
+// и мок правится ВМЕСТЕ с предметом.
 jest.unstable_mockModule("@shared/lib/kratos", () => ({
   kratos: { loginUrl: () => "#idp", getFlow: jest.fn(), submitFlow: jest.fn() },
   findNode: jest.fn(),
   csrfToken: jest.fn(),
+  flowMessages: () => [],
 }));
 
-jest.unstable_mockModule("@/pages/auth/Login", () => ({
+jest.unstable_mockModule("@shared/pages/auth/Login", () => ({
   bufferToBase64Url: () => "",
 }));
 

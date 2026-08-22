@@ -31,7 +31,7 @@ import { kindLabel } from "@shared/lib/quota-view";
 import { clientScope, rowsAreComplete } from "@shared/lib/list-scope";
 
 /** Внутренний слушатель: раздел администратора, не публичная поверхность. */
-export const LIMITS_PATH = "/iam/v1/limits";
+export const LIMITS_PATH = "/iam/v1/internal/limits";
 
 interface Limit {
   id: string;

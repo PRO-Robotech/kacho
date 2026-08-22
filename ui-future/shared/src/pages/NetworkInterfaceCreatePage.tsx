@@ -5,6 +5,7 @@
 // ResourceCreatePage → расхождение формата + SG.
 
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router";
+import { DETAIL_CONTENT_WIDTH } from "@shared/components/organisms/DetailShell";
 import { useMemo } from "react";
 import { Typography } from "antd";
 import { InlineNetworkInterfaceCreateForm } from "@shared/components/organisms/InlineNetworkInterfaceCreateForm";
@@ -35,7 +36,7 @@ export function NetworkInterfaceCreatePage() {
   const back = `/projects/${projectId}/vpc/network-interfaces`;
 
   return (
-    <div style={{ maxWidth: 920 }}>
+    <div style={{ maxWidth: DETAIL_CONTENT_WIDTH }}>
       <InlineNetworkInterfaceCreateForm
         projectId={projectId}
         subnetId={subnetId}

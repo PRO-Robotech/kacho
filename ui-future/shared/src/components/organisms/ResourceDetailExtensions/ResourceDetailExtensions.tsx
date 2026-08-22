@@ -11,6 +11,7 @@
 // docs/superpowers/specs/2026-05-30-kacho-ui-rollout-migration-map.json
 
 import { type ReactNode } from "react";
+import { DETAIL_CONTENT_WIDTH } from "@shared/components/organisms/DetailShell";
 import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Tag, Typography } from "antd";
@@ -32,6 +33,7 @@ import { SECURITY_GROUP_USED_BY_LIMIT } from "@shared/lib/used-by-limits";
 import { api } from "@shared/api/client";
 import { getByPath } from "@shared/lib/resource-registry";
 import { displayText } from "@shared/lib/display-text";
+import { copyText } from "@shared/lib/clipboard";
 
 /** Одна запись `used_by` — output-only kacho.cloud.reference.Reference. */
 export interface UsedByEntry {
@@ -44,6 +46,14 @@ export interface DescItem {
    *  которое пользователь забыл ввести (продукт #478). Рисует её `FieldLabel`. */
   label: ReactNode;
   value: ReactNode;
+  /** Что кладёт в буфер значок рядом со значением. Не задано — кнопки нет.
+   *
+   *  Объявляется там, где значение ПЕРЕНОСЯТ в чужое поле (адрес, MAC), и не
+   *  объявляется там, где значение — ссылка, набор меток или факт словами:
+   *  ссылку копируют её собственной кнопкой, а слово «Свободен» вставлять
+   *  некуда. Совпадает по имени и смыслу с `PropertyItem.copy` — строку рисует
+   *  один компонент (`PropertyRows`), и второй формы у этого поля нет. */
+  copy?: string;
 }
 
 export interface DetailExtCtx {
@@ -85,7 +95,7 @@ function txt(v: unknown): ReactNode {
 
 function mono(v: unknown): ReactNode {
   const s = displayText(v);
-  return s ? <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{s}</span> : dash;
+  return s ? <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 520 }}>{s}</span> : dash;
 }
 
 
@@ -100,10 +110,18 @@ function cidrTags(items: string[] | undefined): ReactNode {
           title="Нажмите, чтобы скопировать"
           onClick={(e) => {
             e.stopPropagation();
-            void navigator.clipboard?.writeText(c);
+            // См. `@shared/lib/clipboard`: вне защищённого контекста прямого
+            // доступа к буферу нет вовсе, и `?.` тихо не делает ничего.
+            void copyText(c);
             toast.success(`Скопировано: ${c}`);
           }}
-          style={{ margin: 0, cursor: "pointer", fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+          style={{
+            margin: 0,
+            cursor: "pointer",
+            fontFamily: "var(--font-mono)",
+            fontSize: 11,
+            fontWeight: 520,
+          }}
         >
           {c}
         </Tag>
@@ -167,7 +185,7 @@ function AddressRefTag({ id, projectId }: { id: string; projectId: string | null
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
       <ResourceIcon specId="addresses" />
       {name}
-      {ip && <span style={{ fontFamily: "ui-monospace, monospace", opacity: 0.85 }}> · {ip}</span>}
+      {ip && <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, opacity: 0.85 }}> · {ip}</span>}
     </span>
   );
   return projectId ? (
@@ -207,16 +225,19 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
             specId="security-groups"
             refId={getByPath<string>(data, "default_security_group_id")}
             maxChars={42}
+          copy={false}
           />
         ),
+        copy: getByPath<string>(data, "default_security_group_id") ?? undefined,
       },
       {
         label: "Таблица маршрутизации по умолчанию",
         value: getByPath<string>(data, "default_route_table_id") ? (
-          <RefNameLink specId="route-tables" refId={getByPath<string>(data, "default_route_table_id")} maxChars={42} />
+          <RefNameLink specId="route-tables" refId={getByPath<string>(data, "default_route_table_id")} maxChars={42} copy={false} />
         ) : (
           dash
         ),
+        copy: getByPath<string>(data, "default_route_table_id") ?? undefined,
       },
     ],
     // VPC-1: declared supernet — managed via :add/:remove-cidr-blocks (immutable
@@ -226,7 +247,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
       const v4 = getByPath<string[]>(data, "ipv4_cidr_blocks") ?? [];
       const v6 = getByPath<string[]>(data, "ipv6_cidr_blocks") ?? [];
       return (
-        <div style={{ marginTop: 24, maxWidth: 760 }}>
+        <div style={{ marginTop: 24, maxWidth: DETAIL_CONTENT_WIDTH }}>
           <NetworkCidrManager networkId={networkId} v4Blocks={v4} v6Blocks={v6} />
         </div>
       );
@@ -243,18 +264,21 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
           // `PlacementAnchor` — здесь стояла третья её копия.
           label: "Размещение",
           value: <PlacementAnchor row={data} maxChars={42} />,
+        // Копируется идентификатор якоря — зоны либо региона.
+        copy: getByPath<string>(data, "zone_id") || getByPath<string>(data, "region_id") || undefined,
         },
         {
           label: "Сеть",
-          value: <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")} maxChars={42} />,
+          value: <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")}  maxChars={42} copy={false} />, copy: getByPath<string>(data, "network_id") ?? undefined,
         },
         {
           label: "Таблица маршрутизации",
           value: getByPath<string>(data, "route_table_id") ? (
-            <RefNameLink specId="route-tables" refId={getByPath<string>(data, "route_table_id")} maxChars={42} />
+            <RefNameLink specId="route-tables" refId={getByPath<string>(data, "route_table_id")} maxChars={42} copy={false} />
           ) : (
             dash
           ),
+          copy: getByPath<string>(data, "route_table_id") ?? undefined,
         },
         // CIDR (primary + доп.) — НЕ в таблице Обзора: доп. диапазоны управляются
         // отдельными RPC (:add/:remove-cidr-blocks), показаны панелью ниже.
@@ -285,7 +309,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
     overviewExtra: ({ data }) => [
       {
         label: "Сеть",
-        value: <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")} maxChars={42} />,
+        value: <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")}  maxChars={42} copy={false} />, copy: getByPath<string>(data, "network_id") ?? undefined,
       },
     ],
     // Статические маршруты — отдельная таблица с подписью под Обзором.
@@ -304,10 +328,11 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
         {
           label: "Сеть",
           value: getByPath<string>(data, "network_id") ? (
-            <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")} maxChars={42} />
+            <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")} maxChars={42} copy={false} />
           ) : (
             dash
           ),
+          copy: getByPath<string>(data, "network_id") ?? undefined,
         },
         {
           label: "Назначение",
@@ -371,9 +396,11 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
         { label: "Вид", value: txt(info.kind) },
         {
           label: "Занятость",
-          // `accent` — как у соседних фактов этой же карточки: без него «занят»
-          // получал третичный цвет и читался выключенным рядом с включёнными.
-          value: <BoolFact value={used} yes="Используется ресурсом" no="Свободен" accent />,
+          // Тон `active` — «связь установлена, ресурс задействован» (канон §5).
+          // Не `good`, которым помечена защита ниже: одинаковый тон делал охрану
+          // и занятость одним событием на вид. Без тона вовсе «занят» получал
+          // приглушённый цвет и читался выключенным — с этого начался #446.
+          value: <BoolFact value={used} yes="Используется ресурсом" no="Свободен" yesTone="active" yesGlyph="link" />,
         },
         {
           // Тот же вид, что у группы правил, — но БЕЗ потолка: у адреса число
@@ -390,8 +417,11 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
               value={getByPath<boolean>(data, "deletion_protection")}
               yes="Удаление запрещено"
               no="Удаление разрешено"
-              accent
-            />
+              yesTone="good"
+              yesGlyph="lock"
+              noTone="attention"
+              noGlyph="unlock"
+              />
           ),
         },
       ];
@@ -428,7 +458,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
       const v4 = getByPath<string[]>(data, "v4_cidr_blocks") ?? [];
       const v6 = getByPath<string[]>(data, "v6_cidr_blocks") ?? [];
       return (
-        <div style={{ marginTop: 24, maxWidth: 760 }}>
+        <div style={{ marginTop: 24, maxWidth: DETAIL_CONTENT_WIDTH }}>
           <CidrGroupBlocksManager cidrGroupId={id} v4Blocks={v4} v6Blocks={v6} />
         </div>
       );
@@ -439,9 +469,16 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
     overviewExtra: ({ data, projectId }) => [
       {
         label: "Подсеть",
-        value: <RefNameLink specId="subnets" refId={getByPath<string>(data, "subnet_id")} maxChars={42} />,
+        value: <RefNameLink specId="subnets" refId={getByPath<string>(data, "subnet_id")}  maxChars={42} copy={false} />, copy: getByPath<string>(data, "subnet_id") ?? undefined,
       },
-      { label: "MAC-адрес", value: mono(getByPath<string>(data, "mac_address")) },
+      {
+        label: "MAC-адрес",
+        value: mono(getByPath<string>(data, "mac_address")),
+        // MAC переносят в конфигурацию гостя и в правила соседних систем —
+        // ровно тот случай, ради которого кнопка и заведена. Пустого значения
+        // копировать нечего: там стоит прочерк, и кнопка обещала бы значение.
+        copy: getByPath<string>(data, "mac_address") || undefined,
+      },
       {
         label: "IPv4-адреса",
         value: <AddressRefTags ids={getByPath<string[]>(data, "v4_address_ids")} projectId={projectId} />,

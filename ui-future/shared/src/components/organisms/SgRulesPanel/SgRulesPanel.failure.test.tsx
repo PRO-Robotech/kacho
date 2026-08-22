@@ -31,6 +31,11 @@ jest.unstable_mockModule("@shared/lib/toast", () => ({
 
 const { SgRulesPanel } = await import("./SgRulesPanel");
 const { PageHeaderSlotProvider, HeaderRightSlot } = await import("@shared/components/molecules/PageHeaderSlot");
+// Панель живёт ВНУТРИ карточки ресурса, и это условие рендера, а не декорация:
+// по нему `FormShell` решает, рисовать ли собственную шапку. Без провайдера
+// проба показывала форму в посадке, которой на странице не бывает, — с шапкой,
+// которой на экране нет. Тот же довод, по которому здесь настоящий слот шапки.
+const { DetailHeaderProvider } = await import("@shared/components/molecules/PanelHeader");
 // Роутер здесь не декорация: ссылочные цели рисуются `<Link>`, а он без роутера
 // роняет рендер целиком.
 const { MemoryRouter } = await import("react-router");
@@ -43,10 +48,12 @@ function show() {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={["/projects/prj-1/vpc/security-groups/sg-1"]}>
         <PageHeaderSlotProvider>
-          <div data-testid="header-slot">
-            <HeaderRightSlot />
-          </div>
-          <SgRulesPanel sgId="sg-1" projectId="prj-1" rules={[]} networkId="net-1" />
+          <DetailHeaderProvider value={{ icon: <span aria-hidden /> }}>
+            <div data-testid="header-slot">
+              <HeaderRightSlot />
+            </div>
+            <SgRulesPanel sgId="sg-1" projectId="prj-1" rules={[]} networkId="net-1" />
+          </DetailHeaderProvider>
         </PageHeaderSlotProvider>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -56,11 +63,28 @@ function show() {
 /** Заменитель `Form.Item` рисует подпись в `<label>` рядом с полем. */
 const field = (label: string) => within(screen.getByText(label).parentElement as HTMLElement);
 
-/** Действие списка живёт в шапке; у формы своя одноимённая кнопка подтверждения. */
+/** Действие списка живёт в шапке; у пустой вкладки есть своё такое же в теле. */
 const openForm = () =>
   fireEvent.click(within(screen.getByTestId("header-slot")).getByRole("button", { name: /Добавить правило/ }));
-/** В режиме формы шапка пуста, поэтому имя однозначно. */
-const submitForm = () => fireEvent.click(screen.getByRole("button", { name: "Добавить правило" }));
+/**
+ * Основное действие подвала — по КОНСТРУКЦИИ, а не по подписи.
+ *
+ * Подпись подвала называет одно действие («Добавить»): предмет уже назван
+ * заголовком над формой (канон §8). По имени кнопку теперь не выбрать — тем же
+ * словом подписаны кнопки добавления блока в наборах CIDR внутри правила, и
+ * прежнее `getByRole("button", { name: "Добавить правило" })` искало подпись,
+ * которой продукт больше не печатает.
+ *
+ * Единственность `DopplerButton` в подвале утверждается, а не предполагается.
+ */
+function submitButton(): HTMLElement {
+  const found = screen.getAllByRole("button").filter((b) => b.classList.contains("doppler-btn"));
+  expect(found).toHaveLength(1);
+  return found[0];
+}
+const submitForm = () => fireEvent.click(submitButton());
+/** Форма открыта — доказывается её заголовком, а не тем, что где-то есть кнопка. */
+const formIsOpen = () => expect(screen.getByRole("heading", { name: "Добавить правило" })).toBeInTheDocument();
 
 const TYPED = "из офиса";
 const typeDescription = () => fireEvent.change(field("Описание").getByRole("textbox"), { target: { value: TYPED } });
@@ -99,8 +123,16 @@ describe("SgRulesPanel — отказ края при сохранении пр�
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
 
-    expect(screen.getByRole("button", { name: "Добавить правило" })).toBeInTheDocument();
+    // Форма НА ЭКРАНЕ — её заголовок. Прежде здесь искалась кнопка «Добавить
+    // правило»: та подпись была у подвала формы, и утверждение читалось как
+    // «форма открыта». Подпись подвала укоротилась до действия, а такая же
+    // кнопка осталась у списка — то есть по имени «форма открыта» и «список
+    // вернулся» стали неотличимы. Заголовок формы есть только у формы.
+    formIsOpen();
     expect(screen.queryByText(EMPTY_LIST)).not.toBeInTheDocument();
+    // Подпись подвала — та, что и должна быть: без неё «форма осталась»
+    // зеленело бы на форме, потерявшей своё действие.
+    expect(submitButton().textContent).toBe("Добавить");
     typedValueSurvives();
   });
 

@@ -1483,8 +1483,6 @@ kacho-nlb:
     enable: true
   networkPolicy:
     enable: false
-  serviceMonitor:
-    enable: false
   resources:
     requests:
       cpu: 100m

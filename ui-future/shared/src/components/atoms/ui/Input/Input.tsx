@@ -7,11 +7,14 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className
   <input
     ref={ref}
     type={type ?? "text"}
+    // Форма поля — общая с AntD (`SHAPE` в lib/theme.ts): высота 38, радиус 8,
+    // отступ 11, заливка `--kc-field`. Тени нет: глубина делается тоном, и
+    // статичное поле над страницей не всплывает.
     className={cn(
-      "flex h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm",
-      "shadow-sm transition-colors",
+      "flex h-[38px] w-full rounded-lg border border-[var(--kc-border)] bg-[var(--kc-field)] px-[11px] text-[13px]",
+      "transition-colors hover:border-[var(--kc-line-strong)]",
       "placeholder:text-muted-foreground/60",
-      "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary",
+      "focus-visible:outline-none focus-visible:border-[var(--kc-primary)] focus-visible:shadow-[shadow:var(--kc-focus-ring)]",
       "disabled:cursor-not-allowed disabled:opacity-50",
       className,
     )}
@@ -25,10 +28,10 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
     <textarea
       ref={ref}
       className={cn(
-        "flex w-full rounded-md border border-border bg-background px-3 py-2 text-sm",
-        "shadow-sm transition-colors",
+        "flex w-full rounded-lg border border-[var(--kc-border)] bg-[var(--kc-field)] px-[11px] py-2 text-[13px]",
+        "transition-colors hover:border-[var(--kc-line-strong)]",
         "placeholder:text-muted-foreground/60",
-        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary",
+        "focus-visible:outline-none focus-visible:border-[var(--kc-primary)] focus-visible:shadow-[shadow:var(--kc-focus-ring)]",
         "disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
@@ -55,7 +58,14 @@ export function Label({
     <div className={cn("space-y-0.5", className)}>
       <label htmlFor={htmlFor} className="text-sm font-medium leading-none">
         {children}
-        {required && <span className="ml-0.5 text-rose-500">*</span>}
+        {/* Признак обязательности — тон опасности продукта: розовый из палитры
+            Tailwind не участвовал ни в одной теме и на светлой уходил в цвет
+            подписи рядом. */}
+        {required && (
+          <span className="ml-0.5" style={{ color: "var(--kc-danger)" }}>
+            *
+          </span>
+        )}
       </label>
       {description && <p className="text-xs text-muted-foreground">{description}</p>}
     </div>

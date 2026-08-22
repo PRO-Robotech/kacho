@@ -5,7 +5,7 @@
 // справочник для ref-полей region_id (cross-service ref → geo.Region).
 
 import type { FormField } from "@shared/lib/form-schema";
-import { setByPath } from "./path";
+import { getByPath as getByPathImpl, setByPath } from "./path";
 import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
@@ -115,6 +115,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.compute.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
+    emptyState: {
+      title: "Каталог регионов пуст",
+      body:
+        "Регион — верхний уровень оси размещения Kachō: внутри него живут зоны доступности, " +
+        "и на него ссылаются балансировщики и группы целей. Каталог заводит администратор " +
+        "облака — обратитесь к нему, если список пуст.",
+      docs: ["Регионы и зоны доступности"],
+    },
     columns: [
       { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
       // Здесь стояла колонка «Статус» по полю `status`. Публичный geo.Region
@@ -143,7 +151,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // общего словаря форматов.
         render: (row) =>
           typeof row.open_for_placement === "boolean" ? (
-            <BoolFact value={row.open_for_placement} yes="Размещение доступно" no="Размещение закрыто" />
+            <BoolFact
+              value={row.open_for_placement}
+              yes="Размещение доступно"
+              no="Размещение закрыто"
+              yesTone="good"
+              noTone="attention"
+            />
           ) : (
             <span style={{ opacity: 0.45 }}>—</span>
           ),
@@ -165,6 +179,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.compute.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
+    emptyState: {
+      title: "Создайте первую виртуальную машину",
+      body:
+        "Виртуальная машина — вычислительный ресурс Kachō с собственными дисками и сетевыми " +
+        "интерфейсами. Балансировщик направляет на неё трафик, когда машина добавлена в целевую группу.",
+      docs: ["Виртуальные машины"],
+    },
     columns: [
       { header: "Имя", path: "name", format: "text" },
       { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
@@ -182,6 +203,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
+    emptyState: {
+      title: "Создайте первый сетевой интерфейс",
+      body:
+        "Сетевой интерфейс — подключение ресурса к подсети Kachō: он держит IP-адреса и группы " +
+        "безопасности. Целевая группа может ссылаться прямо на интерфейс, а не на машину целиком.",
+      docs: ["Сетевые интерфейсы"],
+    },
     columns: [
       { header: "Имя", path: "name", format: "text" },
       { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
@@ -201,6 +229,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.system.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
+    emptyState: {
+      title: "Каталог зон пуст",
+      body:
+        "Зона доступности — точка размещения внутри региона Kachō: к ней привязаны подсети, машины " +
+        "и зональные балансировщики. Каталог заводит администратор облака — обратитесь к нему, " +
+        "если список пуст.",
+      docs: ["Регионы и зоны доступности"],
+    },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
     template: () => ({}),
   },
@@ -220,6 +256,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
+    emptyState: {
+      title: "Создайте первую подсеть",
+      body:
+        "Подсеть — диапазон IP-адресов внутри облачной сети Kachō, привязанный к зоне доступности. " +
+        "Машины и балансировщики получают адреса именно из неё.",
+      docs: ["Облачные сети и подсети"],
+    },
     columns: [
       { header: "Имя", path: "name", format: "text" },
       { header: "Идентификатор", path: "id", format: "uid-short" },
@@ -241,6 +284,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.vpc.title,
     scope: "project",
     ops: { create: false, update: false, delete: false },
+    emptyState: {
+      title: "Зарезервируйте первый IP-адрес",
+      body:
+        "IP-адрес — адрес, закреплённый за проектом: внутренний из подсети или публичный для доступа " +
+        "извне. Балансировщик берёт отсюда свой VIP и держит его, пока адрес не освобождён.",
+      docs: ["Адреса облачных ресурсов"],
+    },
     columns: [
       { header: "Имя", path: "name", format: "text" },
       { header: "Идентификатор", path: "id", format: "uid-short" },
@@ -266,19 +316,22 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     accusative: "балансировщик нагрузки",
     plural: ENTITIES["load-balancers"].plural,
     genitive: "Балансировщика нагрузки",
-    docs: [
-      { label: "Балансировщики нагрузки", href: "#" },
-      { label: "Обработчики и целевые группы", href: "#" },
-    ],
     serviceTitle: SERVICES.nlb.title,
     scope: "project",
     // Действий-глаголов у балансировщика нет: `:start`/`:stop` сняты с контракта,
     // административное включение/выключение выражается полем admin_state.
     ops: { create: true, update: true, delete: true },
+    emptyState: {
+      title: "Создайте первый балансировщик нагрузки",
+      body:
+        "Балансировщик нагрузки принимает трафик на VIP-адрес и разносит его между целями внутри " +
+        "региона Kachō. Дальше к нему добавляют обработчики — они задают протокол и порт приёма.",
+      docs: ["Балансировщики нагрузки"],
+    },
     // Листенеры — связанный дочерний ресурс (within-service FK load_balancer_id):
     // отдельный registry-driven таб + auto-CTA «Создать листенер». Целевые группы
     // одним filterField не выражаются (связь идёт ЧЕРЕЗ листенер) — их вкладку
-    // подаёт bespoke LoadBalancerDetailPage.
+    // подаёт расширение карточки по spec.id (`lib/nlb-detail-extensions`).
     related: [{ childId: "listeners", filterField: "load_balancer_id", label: "Листенеры" }],
     columns: [
       {
@@ -291,7 +344,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "id",
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
-      { header: "Регион", path: "region_id", format: "text" },
+      {
+        // Регион — ресурс каталога geo со своей карточкой, поэтому ссылка, а не
+        // плоский текст: соседние колонки той же таблицы («Имя», «Адрес») ссылкой
+        // уже были, и один предмет выглядел двумя (канон §9).
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
       { header: "Схема", path: "type", format: "code" },
       {
         header: "Адрес",
@@ -482,13 +542,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     singular: ENTITIES.listeners.singular,
     accusative: "обработчик",
     plural: ENTITIES.listeners.plural,
-    docs: [
-      { label: "Обработчики", href: "#" },
-      { label: "Балансировщики нагрузки", href: "#" },
-    ],
     serviceTitle: SERVICES.nlb.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
+    emptyState: {
+      title: "Создайте первый обработчик",
+      body:
+        "Обработчик — точка приёма трафика балансировщика: протокол и порт, на которых он слушает. " +
+        "Обработчик указывает целевую группу, и с него начинается путь запроса к машинам.",
+      docs: ["Обработчики"],
+    },
     columns: [
       {
         header: "Имя",
@@ -583,14 +646,17 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     singular: ENTITIES["target-groups"].singular,
     accusative: "целевую группу",
     plural: ENTITIES["target-groups"].plural,
-    docs: [
-      { label: "Целевые группы", href: "#" },
-      { label: "Балансировщики нагрузки", href: "#" },
-    ],
     genitive: "Целевой группы",
     serviceTitle: SERVICES.nlb.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
+    emptyState: {
+      title: "Создайте первую целевую группу",
+      body:
+        "Целевая группа собирает машины и сетевые интерфейсы, принимающие трафик на общем порту " +
+        "бэкенда. На группу ссылается обработчик — без неё направлять трафик балансировщику некуда.",
+      docs: ["Целевые группы"],
+    },
     columns: [
       {
         header: "Имя",
@@ -602,7 +668,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "id",
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
-      { header: "Регион", path: "region_id", format: "text" },
+      {
+        // Та же ссылка, что в списке балансировщиков: один предмет — один вид.
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
       { header: "Дата создания", path: "created_at", format: "datetime" },
       {
         header: "Метки",
@@ -722,11 +793,13 @@ export function resourceProjectPath(specId: string, projectId: string | null | u
   return resourceListPath(specId, spec.route, projectId);
 }
 
+// Чтение значения по пути — ОДНА реализация на дерево (`@shared/lib/path`).
+// Здесь стояла своя: она разбирала только точки, а общая понимает ещё и индекс
+// в скобках (`spec.rules[0].direction`). Две реализации одного предмета
+// расходятся молча, и расхождение видно только на том поле, которое одна из них
+// прочитать не умеет. Обёртка оставлена ради <T> у вызывающих.
 export function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {
-  return path.split(".").reduce<unknown>((acc, key) => {
-    if (acc == null || typeof acc !== "object") return undefined;
-    return (acc as Record<string, unknown>)[key];
-  }, obj) as T | undefined;
+  return getByPathImpl(obj, path) as T | undefined;
 }
 
 // applyDefaults — для Create-формы прогоняем все поля и подставляем default-ы.

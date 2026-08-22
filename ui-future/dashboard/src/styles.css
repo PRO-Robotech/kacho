@@ -21,24 +21,30 @@ body,
   margin: 0;
 }
 
+/* Подложка standalone-прогона. Цвет берётся из палитры; хекс остаётся запасным
+   на случай, когда страница открыта БЕЗ каркаса host'а — тогда роли объявлять
+   некому, и без запасного значения фон был бы прозрачным. Тот же приём ниже у
+   каждого var(--kc-…) в этом файле, и по той же причине. */
 .remote-standalone {
   min-height: 100vh;
   padding: 16px;
-  background: #f5f7fb;
+  background: var(--kc-page, #f4f6fb);
 }
 
-/* Консольный лендинг: белая подложка фиксированного размера (как detail-страницы,
-   .kc-surface) — слева дерево-навигация (аккаунты/проекты), по центру плашки услуг.
-   Заполняет область до футера; скроллится только контент, не вся страница. */
+/* Консольный лендинг: слева дерево-навигация (аккаунты/проекты), справа витрина
+   услуг. Заполняет область до футера; скроллится только контент, не вся
+   страница.
+
+   ОБЩЕЙ ПОДЛОЖКИ ПОД СТРАНИЦЕЙ НЕТ. Здесь она была: заливка, рамка и радиус 11
+   вокруг всего экрана. У остальных страниц консоли её сняли решением владельца
+   (см. .kc-surface в общем листе: «содержимое оказывалось в коробке, а не на
+   плоскости»), и главная осталась единственной страницей в рамке. Разделяет
+   колонки одна линия — правая граница дерева, — а не коробка вокруг обеих. */
 .dashboard-console {
   display: flex;
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: var(--kc-container, #fff);
-  border: 1px solid var(--kc-border-secondary, rgb(127 127 127 / 0.18));
-  border-radius: 12px;
-  box-shadow: var(--kc-shadow-sm, 0 1px 2px rgb(0 0 0 / 0.05));
 }
 
 .dashboard-nav {
@@ -50,12 +56,38 @@ body,
   min-width: 236px;
   padding: 8px 10px 12px;
   overflow-y: auto;
-  border-right: 1px solid var(--kc-border-secondary, rgb(127 127 127 / 0.18));
+  border-right: 1px solid var(--kc-border, rgb(16 28 56 / 0.1));
 }
 
-/* Поиск по дереву — компактный. */
+/* Поиск по дереву — ТОЙ ЖЕ геометрии, что ручки строки инструментов списка:
+   высота 32, радиус 8. Числа не выдуманы — это высота кнопки antd размера по
+   умолчанию, и та же пара стоит у `.kc-list-tools` в общем листе.
+
+   Высоту держит ОБОЛОЧКА поля, а не поле внутри неё: у поля со значком
+   внутренний `.ant-input` уже растянут по оболочке, и вторая высота на нём
+   сдвигает текст вниз относительно рамки.
+
+   Объявлено здесь, а не взято из общего листа, по вынужденной причине:
+   `shared/src/index.css` открывается директивами tailwind, а у этого пакета нет
+   ни postcss.config, ни tailwind.config (предикат: `ls dashboard/postcss.config.*
+   dashboard/tailwind.config.*` → пусто), поэтому импорт оставил бы в сборке
+   необработанные `@tailwind`. Расхождение с общим листом названо в отчёте
+   задачи как нужда общего кода. */
 .dash-tree-search {
   margin-bottom: 2px;
+}
+
+.dash-tree-search.ant-input-affix-wrapper {
+  height: 32px;
+  min-height: 32px;
+  border-radius: 8px;
+}
+
+/* Внутреннее поле оболочки высоту НЕ назначает — её держит оболочка. Селектор
+   сужен до этой оболочки, чтобы не спорить специфичностью с чужими правилами. */
+.dash-tree-search.ant-input-affix-wrapper > .ant-input {
+  height: auto;
+  min-height: 0;
 }
 
 /* Дерево аккаунтов/проектов — плотное, без «воздуха». */
@@ -79,13 +111,13 @@ body,
 }
 
 .dash-tree .ant-tree-node-content-wrapper:hover {
-  background: var(--kc-hover-fill, rgb(127 127 127 / 0.08));
+  background: var(--kc-hover-fill, rgb(16 28 56 / 0.04));
 }
 
 .dash-tree .ant-tree-node-selected {
-  color: #3d8df5;
+  color: var(--kc-primary, #3a5bd9);
   font-weight: 500;
-  background: var(--sidebar-active-bg, rgb(61 141 245 / 0.12)) !important;
+  background: var(--sidebar-active-bg, rgb(58 91 217 / 0.1)) !important;
 }
 
 .dash-tree .ant-tree-switcher {
@@ -94,7 +126,7 @@ body,
 }
 
 .dash-tree .ant-tree-iconEle {
-  color: var(--kc-text-tertiary, rgb(127 127 127 / 0.75));
+  color: var(--kc-text-tertiary, #8492aa);
   vertical-align: -2px;
 }
 
@@ -113,49 +145,74 @@ body,
 .dash-tree-mark {
   padding: 0;
   color: inherit;
-  background: rgb(61 141 245 / 0.28);
+  background: var(--sidebar-active-bg, rgb(58 91 217 / 0.1));
   border-radius: 3px;
 }
 
 .dash-nav-empty {
   padding: 6px 10px;
   font-size: 12px;
-  color: var(--kc-text-tertiary, rgb(127 127 127 / 0.7));
+  color: var(--kc-text-tertiary, #8492aa);
 }
 
+/* Поля объявляет разметка общей величиной (`PAGE_PADDING`), а не этот файл:
+   значение одно на список, карточку, форму и главную, и живёт оно рядом с
+   шапкой. Второй экземпляр здесь разошёлся бы с ним молча. */
 .dashboard-main {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding: 4px 24px 24px;
 }
 
-.dashboard-heading {
-  margin-bottom: 20px;
+/* Правый слот шапки: область, в границах которой показаны числа витрины.
+   Сжимается многоточием — длинное имя проекта иначе выдавливает заголовок. */
+.dashboard-scope {
+  max-width: 320px;
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--kc-text-secondary, #5a6a85);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.dashboard-heading h3 {
-  margin: 0 0 4px;
+/* Подсказка под шапкой держит высоту и ПУСТАЯ. Она появляется только пока
+   проект не выбран; без резерва выбор проекта поднимал бы всю витрину на
+   строку, и переход читался бы как прыжок. */
+.dashboard-hint {
+  height: 20px;
+  margin: 0 0 16px;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--kc-text-secondary, #5a6a85);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Плашки одного размера: фиксированная высота, заголовок + метрики. Приподняты
-   над белой подложкой тенью + чётким hover'ом (иначе «сливаются» white-on-white). */
+/* Плашки одного размера: фиксированная высота, заголовок + метрики. От подложки
+   их отделяет линия и тон, а не тень: плашка не всплывает над страницей, она в
+   ней лежит. Наведение усиливает линию и подкрашивает фон — этого достаточно,
+   чтобы плашка читалась как нажимаемая, и не нужен подъём, который на тёмной
+   теме всё равно не виден. */
 .dashboard-tile {
   width: 100%;
-  height: 132px;
+
+  /* Высота считана по составу плитки, а не подобрана: шапка 46 + поля тела
+     16 + 16 + описание в две строки 36 + отступ 12 + метрика (33 цифра + 4 +
+     16 подпись) 53 = 179, округлено до 180. Две строки описания — по самому
+     длинному описанию реестра (94 знака), а не по среднему. */
+  height: 180px;
   cursor: pointer;
-  border: 1px solid var(--kc-border, rgb(127 127 127 / 0.2));
-  box-shadow: 0 1px 2px rgb(16 24 40 / 0.05);
+  border: 1px solid var(--kc-border, rgb(16 28 56 / 0.1));
+  border-radius: 11px;
   transition:
-    box-shadow 150ms ease,
-    border-color 150ms ease,
-    transform 150ms ease;
+    border-color var(--kc-duration, 160ms) var(--kc-ease, ease),
+    background-color var(--kc-duration, 160ms) var(--kc-ease, ease);
 }
 
 .dashboard-tile:hover:not(.dashboard-tile-disabled) {
-  border-color: rgb(61 141 245 / 0.45);
-  box-shadow: 0 6px 16px rgb(16 24 40 / 0.1);
-  transform: translateY(-1px);
+  border-color: var(--kc-line-strong, rgb(16 28 56 / 0.2));
+  background: var(--kc-hover-fill, rgb(16 28 56 / 0.04));
 }
 
 .dashboard-tile-disabled {
@@ -166,7 +223,7 @@ body,
 /* Разделитель между заголовком и метриками. */
 .dashboard-tile .ant-card-head {
   min-height: 46px;
-  border-bottom: 1px solid var(--kc-border-secondary, rgb(127 127 127 / 0.14));
+  border-bottom: 1px solid var(--kc-border-secondary, rgb(16 28 56 / 0.07));
 }
 
 .dashboard-tile-icon {
@@ -174,11 +231,33 @@ body,
   align-items: center;
 }
 
+/* Замок на отключённой плитке — носитель объяснения, поэтому он элемент, а не
+   голый значок: подсказку и подпись для чтения не глазами вешать не на что. */
+.dashboard-tile-lock {
+  display: inline-flex;
+  align-items: center;
+  color: var(--kc-text-tertiary, #8492aa);
+}
+
+/* Чем владеет домен. Область ФИКСИРОВАННАЯ — две строки: описания в реестре от
+   30 до 94 знаков, и «по содержимому» ставило бы ряды плиток лесенкой. */
+.dashboard-tile-about {
+  display: -webkit-box;
+  height: 36px;
+  margin: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--kc-text-secondary, #5a6a85);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 /* Ряд метрик: равные колонки, крупная цифра над мелким лейблом, вертикальные
    разделители между метриками — чтобы числа не «сливались». */
 .dashboard-tile-stats {
   display: flex;
-  margin-top: 2px;
+  margin-top: 12px;
 }
 
 .dashboard-metric {
@@ -194,22 +273,23 @@ body,
 }
 
 .dashboard-metric + .dashboard-metric {
-  border-left: 1px solid var(--kc-border-secondary, rgb(127 127 127 / 0.14));
+  border-left: 1px solid var(--kc-border-secondary, rgb(16 28 56 / 0.07));
 }
 
 .dashboard-metric-value {
   font-size: 30px;
-  font-weight: 600;
+  font-weight: 590;
   line-height: 1.1;
   color: var(--kc-text, inherit);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .dashboard-metric-label {
   margin-top: 4px;
   overflow: hidden;
   font-size: 11.5px;
-  color: var(--kc-text-tertiary, rgb(127 127 127 / 0.72));
+  color: var(--kc-text-tertiary, #8492aa);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from "react";
-import { Card, Col, Empty, Input, Row, Space, Tree, Typography } from "antd";
+import { Card, Col, Input, Row, Space, Tree } from "antd";
 import type { DataNode } from "antd/es/tree";
-import { ArrowRight, Boxes, FolderClosed, LockKeyhole, Search } from "lucide-react";
+import { ArrowRight, FolderClosed, LockKeyhole, Search } from "lucide-react";
 import { SERVICE_MODULES } from "../../lib/service-modules";
 import type { ServiceModule } from "../../lib/service-modules";
 import { useModuleCounts } from "../../hooks/use-module-counts";
 import { apiList, loadHostContext } from "../../utils";
 import type { AccountRef, HostContext, ProjectRef } from "../../utils";
-import { clientScope, narrowingTitle, scopeSuffix } from "@shared/lib/list-scope";
+import { clientScope, narrowingTitle, noMatchesText, scopeSuffix } from "@shared/lib/list-scope";
+// Шапка и поля страницы — ОДНА конструкция на всю консоль (канон §1, §8).
+// Здесь стоял свой заголовок (`Typography.Title level={3}` плюс подпись под
+// ним): кегль, вес, межбуквенное расстояние и высота блока приходили не оттуда,
+// откуда у списка и карточки, и переход «главная → раздел» читался как переход
+// в другой продукт.
+import { PageHead, PAGE_PADDING } from "@shared/components/organisms/DetailShell/PageHead";
 
 export interface DashboardPageProps {
   context?: HostContext;
@@ -25,6 +31,10 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
   // host берёт контекст из URL.
   const [accounts, setAccounts] = useState<AccountRef[]>([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
+  // Отказ чтения ОТЛИЧИМ от пустого ответа. Прежде обе ветки сходились в
+  // `accounts = []`, и дерево говорило «ничего не найдено» там, где на самом
+  // деле ничего не прочитано: исход «не выполнилось» зачитывался в «пусто».
+  const [accountsFailed, setAccountsFailed] = useState(false);
   const [projectsByAccount, setProjectsByAccount] = useState<Record<string, ProjectRef[]>>({});
   const loadedAccounts = useRef<Set<string>>(new Set());
   const [search, setSearch] = useState("");
@@ -81,6 +91,7 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
       } catch {
         if (!cancelled) {
           setAccounts([]);
+          setAccountsFailed(true);
           setAccountsLoaded(true);
         }
       }
@@ -173,25 +184,50 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
     if (target != null) void navigate(target);
   };
 
-  const caption = ctx.project
-    ? `Проект: ${ctx.project.name || ctx.project.id}`
-    : "Выберите проект в дереве слева, чтобы открыть VPC / Compute / NLB. IAM доступен всегда.";
+  // Правый слот шапки называет ОБЛАСТЬ, в границах которой показаны числа.
+  const scopeLabel = ctx.project ? `Проект: ${ctx.project.name || ctx.project.id}` : "Проект не выбран";
+  // Подсказка под шапкой стоит ВСЕГДА и держит свою высоту (см. `.dashboard-hint`).
+  // Пустая, она резервирует место: иначе выбор проекта поднимал бы всю витрину
+  // на строку, и переход читался бы как прыжок.
+  const hint = ctx.project
+    ? ""
+    : "Выберите проект в дереве слева — модули открываются в его границах. IAM доступен и без проекта.";
+  // Отключённая плитка ОБЪЯСНЯЕТ, почему она отключена. Замок без объяснения
+  // сообщает «сюда нельзя» и умалчивает о том, что нужно сделать, чтобы стало
+  // можно, — а сделать нужно ровно одно.
+  const lockReason = "Модуль работает в границах проекта — выберите проект в дереве слева.";
+
+  // Строка состояния дерева. Три исхода, и они РАЗНЫЕ: не прочитано · прочитано
+  // и пусто · прочитано, но сужение ничего не дало. Последний берёт слова у
+  // общего источника (`noMatchesText`): над недочитанным списком «ничего не
+  // найдено» — утверждение, которого никто не проверял (#373).
+  const navEmptyText = !accountsLoaded
+    ? "Загрузка…"
+    : accountsFailed
+      ? "Список аккаунтов не загрузился"
+      : accounts.length === 0
+        ? "Аккаунтов нет"
+        : noMatchesText(scope);
 
   return (
     <section className="dashboard-console" data-testid="dashboard-page">
       <aside className="dashboard-nav">
+        {/* Ручка сужения — той же геометрии, что ручки строки инструментов
+            списка: высота 32, радиус 8 (канон §3). Прежде она была `small`
+            (24 и 6) — единственная ручка консоли своего размера. Значок берёт
+            тусклую роль палитры, а не непрозрачность: непрозрачность не меняется
+            вместе с темой. */}
         <Input
           allowClear
-          size="small"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={`Поиск аккаунта или проекта ${scopeSuffix(scope)}`}
           title={narrowingTitle(scope)}
-          prefix={<Search size={13} style={{ opacity: 0.5 }} />}
+          prefix={<Search size={13} style={{ color: "var(--kc-text-tertiary)" }} />}
           className="dash-tree-search"
         />
         {treeData.length === 0 ? (
-          <div className="dash-nav-empty">{!accountsLoaded ? "Загрузка…" : "Ничего не найдено"}</div>
+          <div className="dash-nav-empty">{navEmptyText}</div>
         ) : (
           <Tree
             showIcon
@@ -210,17 +246,20 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
         )}
       </aside>
 
-      <main className="dashboard-main">
-        <div className="dashboard-heading">
-          <Typography.Title level={3}>Сервисы облака</Typography.Title>
-          <Typography.Text type="secondary">{caption}</Typography.Text>
-        </div>
+      {/* Поля страницы — общие (`PAGE_PADDING`), а не свои. Пока их было двое,
+          заголовок главной стоял на другой вертикали, чем заголовок раздела, и
+          в переходе текст дёргался. */}
+      <main className="dashboard-main" style={{ padding: PAGE_PADDING }}>
+        <PageHead title="Сервисы облака" right={<span className="dashboard-scope">{scopeLabel}</span>} />
+        <p className="dashboard-hint">{hint}</p>
 
-        {treeData.length === 0 && accountsLoaded && accounts.length > 0 && q === "" ? (
-          <Card>
-            <Empty image={<Boxes size={40} color="#8b8f99" />} description="Нет доступных проектов" />
-          </Card>
-        ) : null}
+        {/* Здесь стояла карточка «Нет доступных проектов». Показать её было
+            НЕЛЬЗЯ ни при каком состоянии: её условие требовало пустого дерева
+            при непустом списке аккаунтов и пустом поиске, а дерево при пустом
+            поиске строится по аккаунту на узел — то есть пусто ровно тогда,
+            когда пуст сам список. Форма пустого состояния была, содержания у
+            неё не было. Настоящая пустота — свойство ДЕРЕВА, и о ней говорит
+            строка состояния в самом дереве (`navEmptyText`). */}
 
         <Row gutter={[16, 16]}>
           {SERVICE_MODULES.map((module) => {
@@ -242,8 +281,23 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
                       <span>{module.label}</span>
                     </Space>
                   }
-                  extra={disabled ? <LockKeyhole size={16} /> : <ArrowRight size={16} />}
+                  extra={
+                    disabled ? (
+                      <span className="dashboard-tile-lock" title={lockReason} aria-label={lockReason}>
+                        <LockKeyhole size={16} />
+                      </span>
+                    ) : (
+                      <ArrowRight size={16} />
+                    )
+                  }
                 >
+                  {/* Чем владеет домен — ВИДНО, а не объявлено в реестре.
+                      Описание жило в `SERVICE_MODULES` и не имело ни одного
+                      читателя в продукте: его утверждала проба (компания compute
+                      не обещает блочного хранения), а человек его не видел
+                      никогда. Область фиксирована по самому длинному описанию
+                      реестра — иначе ряды плиток вставали лесенкой. */}
+                  <p className="dashboard-tile-about">{module.description}</p>
                   <div className="dashboard-tile-stats">
                     {module.stats.map((stat) => (
                       <div key={stat.key} className="dashboard-metric">

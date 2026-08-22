@@ -4,11 +4,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Button, Space, Spin, Typography } from "antd";
+import { Alert, Button, Spin, Typography } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
-import { FORM_WIDTH } from "@shared/components/organisms/form/FormShell";
 import { buildUpdateBody, computeUpdateMask } from "@shared/lib/update-mask";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { api } from "@shared/api/client";
@@ -172,26 +171,32 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
   }
 
   return (
-    <div style={{ maxWidth: FORM_WIDTH }}>
-      <Space direction="vertical" size={20} style={{ width: "100%" }}>
-        <div>
-          <Link to={backHref}>
-            <Button type="text" size="small" icon={<ArrowLeftOutlined />} style={{ marginLeft: -8 }}>
-              {name}
-            </Button>
-          </Link>
-        </div>
-        <ResourceFormBody
-          spec={spec}
-          mode="edit"
-          obj={obj}
-          onChange={setObj}
-          submitLabel="Сохранить"
-          submitting={mutation.pending}
-          onSubmit={submit}
-          onCancel={() => navigate(backHref)}
-        />
-      </Space>
+    // Раскладка правки — та же, что у создания: одна карточка формы, без полосы
+    // над ней. Прежде здесь стояла ссылка назад отдельной строкой, и из-за неё
+    // вся форма — вместе с подвалом и его кнопками — стояла на её высоту ниже,
+    // чем на создании: переход «создать → править» сдвигал действия под курсором.
+    //
+    // Ссылка при этом была ВТОРЫМ местом об одном предмете: путь назад уже несёт
+    // хлебная крошка шапки, где имя ресурса — ссылка на его карточку (см. `breadcrumb`
+    // выше). Страница создания рассталась с такой же ссылкой по той же причине.
+    // Ширины здесь НЕТ: страница занимает свою область целиком, как список и
+    // карточка. Ограничивает ширину только колонка ПОЛЕЙ, внутри оболочки формы,
+    // — заголовок и черта под ним обязаны идти на всю ширину страницы.
+    //
+    // Пока сужена была вся страница, черта под заголовком кончалась на 820-й
+    // точке против полутора тысяч у списка, и переход «список → создание» рвал
+    // обе линии сразу: и текст, и подчёркивание под ним.
+    <div>
+      <ResourceFormBody
+        spec={spec}
+        mode="edit"
+        obj={obj}
+        onChange={setObj}
+        submitLabel="Сохранить"
+        submitting={mutation.pending}
+        onSubmit={submit}
+        onCancel={() => navigate(backHref)}
+      />
     </div>
   );
 }

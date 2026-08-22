@@ -12,27 +12,38 @@ import { type ReactNode } from "react";
 
 const TILE = 42;
 
+// Плитка типа. Заливка ПЛОСКАЯ, а не градиентная: в целевом оформлении глубина
+// делается тоном, и два насыщенных цвета рядом ставит только фирменный
+// градиент, который в разметке страниц не участвует. Радиус 8 — тот же, что у
+// пункта рейла модулей (44×42): это одна и та же форма «квадратная плитка с
+// глифом», и держать её двумя радиусами не за чем. Цвета — токены; прежде
+// здесь стоял отменённый бренд-синий, не менявшийся ни в одной теме.
 const tileStyle: React.CSSProperties = {
   width: TILE,
   height: TILE,
-  borderRadius: 12,
+  borderRadius: 8,
   flexShrink: 0,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   fontSize: 19,
   color: "var(--kc-primary)",
-  background: "linear-gradient(135deg, rgba(61,141,245,0.16), rgba(61,141,245,0.05))",
-  border: "1px solid rgba(61,141,245,0.22)",
+  background: "var(--kc-primary-bg)",
+  border: "1px solid var(--kc-border)",
 };
 
+// Надзаголовок — ряд телеметрии целевого оформления: мелкий, сильно разрежённый
+// и цвета `--kc-cyan`. Чёрточки перед текстом (класс `.t-kicker`) здесь нет
+// намеренно: она принадлежит надзаголовку СТРАНИЦЫ, где заменяет разделитель
+// перед крупным заголовком, а тут слева уже стоит плитка — вторая чёрточка
+// добавила бы третий элемент в строку, которая называет всего одно слово.
 const eyebrowStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
-  letterSpacing: "0.06em",
+  fontSize: 9,
+  fontWeight: 720,
+  letterSpacing: "0.14em",
   textTransform: "uppercase",
-  color: "var(--kc-primary)",
-  marginBottom: 2,
+  color: "var(--kc-cyan)",
+  marginBottom: 3,
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -40,7 +51,8 @@ const eyebrowStyle: React.CSSProperties = {
 
 const titleStyle: React.CSSProperties = {
   fontSize: 16,
-  fontWeight: 600,
+  fontWeight: 590,
+  letterSpacing: "-0.02em",
   color: "var(--kc-text)",
   lineHeight: 1.25,
   whiteSpace: "nowrap",

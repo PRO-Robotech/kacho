@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Button, Input, Popconfirm, Segmented, Space, Table, Tag, Typography } from "antd";
+import { Button, Popconfirm, Segmented, Space, Table, Tag, Typography } from "antd";
 import { PlusOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnsType } from "antd/es/table";
@@ -17,9 +17,12 @@ import { iamApi, IAM, type Role } from "@shared/api/iam";
 import { useIamMutation, fmtTs, CopyableMonoId, SystemTag } from "@shared/components/organisms/iam/IamCommon";
 import { InlineRoleCreateForm } from "@/components/organisms/iam/InlineRoleCreateForm";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
+import { ColumnSettings, TableSearch, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
 import { IamListShell, useTableScrollY } from "@/components/organisms/iam/IamListShell";
 import { useContext } from "@shared/lib/context-store";
-import { clientScope, narrowingTitle, scopeSuffix } from "@shared/lib/list-scope";
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
+import { clientScope, scopeSuffix } from "@shared/lib/list-scope";
+import { MONO_FONT } from "@shared/components/organisms/form/editor-surface";
 
 export function RolesPage() {
   const navigate = useNavigate();
@@ -27,15 +30,23 @@ export function RolesPage() {
   // Segmented + Input в шапке списка (паритет с generic-списками).
   const [roleKind, setRoleKind] = useState<"all" | "system" | "custom">("all");
   const [query, setQuery] = useState("");
-  const headerAction = useMemo(
+  // Слот шапки приложения ПУСТ: «Создать» стоит последней в ряду ручек списка,
+  // как у generic-страницы. Сбросить его всё равно нужно — слот держит состояние
+  // между страницами и донёс бы сюда чужую кнопку.
+  useHeaderRight(null);
+  // Крошки называют ПУТЬ, заголовок — предмет: последнее звено повторяло бы
+  // заголовок страницы.
+  useBreadcrumb(useMemo(() => <Typography.Text type="secondary">{SERVICES.iam.title}</Typography.Text>, []));
+  const cta = useMemo(
     () => (
+      // Кнопка называет ДЕЙСТВИЕ: предмет назван заголовком страницы левее и
+      // вчетверо крупнее, а «пользовательскую» уточняет отбор рядом.
       <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate("/iam/roles/create")}>
-        Создать пользовательскую роль
+        Создать
       </Button>
     ),
     [navigate],
   );
-  useHeaderRight(headerAction);
 
   const { data, isLoading } = useQuery({
     queryKey: ["iam", "roles", "list"],
@@ -56,6 +67,8 @@ export function RolesPage() {
     ? byKind.filter((r) => (r.name ?? "").toLowerCase().includes(q) || (r.id ?? "").toLowerCase().includes(q))
     : byKind;
   const { wrapRef, scrollY } = useTableScrollY();
+
+  const [hidden, toggleHidden] = useHiddenColumns("cols:iam-roles");
 
   const del = useIamMutation({
     method: "DELETE",
@@ -104,7 +117,7 @@ export function RolesPage() {
       render: (v: string[] | undefined) => (
         <Space size={4} wrap>
           {(v ?? []).slice(0, 4).map((p) => (
-            <Tag key={p} style={{ fontFamily: "monospace", fontSize: 11 }}>
+            <Tag key={p} style={{ fontFamily: MONO_FONT, fontSize: 11 }}>
               {p}
             </Tag>
           ))}
@@ -156,31 +169,49 @@ export function RolesPage() {
     },
   ];
 
+  // Где есть отбор — есть и выбор столбцов: ручка «показывать» стоит рядом с
+  // ручками «сузить», как у generic-списка и у привязок доступа.
+  const toggleCols = columns
+    .filter((c) => typeof c.title === "string" && c.title !== "")
+    .map((c) => ({ key: String(c.title), label: String(c.title) }));
+  const shownColumns = columns.filter((c) => !hidden.has(String(c.title ?? "")));
+
   return (
     <IamListShell
-      specId="roles"
-      title="Роли"
-      count={roles.length}
-      right={
-        <Space size={8}>
-          <Input.Search
-            placeholder={`Фильтр по имени или идентификатору ${scopeSuffix(scope)}`}
-            title={narrowingTitle(scope)}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            allowClear
-            style={{ width: 280 }}
-          />
+      title={ENTITIES.roles.plural}
+      narrowing={
+        <>
+          {/* ОТБОР — ПЕРЕД ПОИСКОМ: он меняет НАБОР строк, среди которых потом
+              ищут. Стоя после поля поиска, отбор читался как уточнение к нему,
+              хотя порядок обратный. Счётчики из подписей сняты — счётчик снят
+              решением владельца ВЕЗДЕ, а «Все (128)» вдобавок повторял то, что
+              видно в самой таблице. */}
           <Segmented
             value={roleKind}
             onChange={(v) => setRoleKind(v as "all" | "system" | "custom")}
             options={[
-              { label: `Все (${roles.length})`, value: "all" },
-              { label: `Системные (${systemRoles.length})`, value: "system" },
-              { label: `Кастомные (${customRoles.length})`, value: "custom" },
+              { label: "Все", value: "all" },
+              { label: "Системные", value: "system" },
+              { label: "Кастомные", value: "custom" },
             ]}
           />
-        </Space>
+          {/* Поле поиска продукта ОДНО (`TableSearch`) и само называет свою
+              область. Прежняя `Input.Search` несла вдобавок кнопку-лупу: второй
+              способ сделать то, что и так происходит на вводе. */}
+          <TableSearch
+            value={query}
+            onChange={setQuery}
+            scope={scope}
+            placeholder={`Фильтр по имени или идентификатору ${scopeSuffix(scope)}`}
+            width={320}
+          />
+        </>
+      }
+      actions={
+        <>
+          <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
+          {cta}
+        </>
       }
     >
       <div ref={wrapRef} className="kc-table-fill" style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
@@ -190,7 +221,7 @@ export function RolesPage() {
           className="kc-table"
           loading={isLoading}
           dataSource={visibleRoles}
-          columns={columns}
+          columns={shownColumns}
           pagination={false}
           scroll={{ x: "max-content", y: scrollY }}
           onRow={(row) => ({
@@ -223,10 +254,10 @@ export function RoleCreatePage() {
     useMemo(
       () => (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Typography.Text type="secondary">IAM</Typography.Text>
+          <Typography.Text type="secondary">{SERVICES.iam.title}</Typography.Text>
           <Typography.Text type="secondary">/</Typography.Text>
           <Link to="/iam/roles">
-            <Typography.Text type="secondary">Роли</Typography.Text>
+            <Typography.Text type="secondary">{ENTITIES.roles.plural}</Typography.Text>
           </Link>
           <Typography.Text type="secondary">/</Typography.Text>
           <Typography.Text strong>Создать</Typography.Text>

@@ -23,7 +23,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Cascader, Modal, Segmented, Select, Switch, Typography } from "antd";
+import { Cascader, Modal, Segmented, Select, Switch } from "antd";
 import { api } from "@shared/api/client";
 import { getResource } from "@shared/lib/resource-registry";
 import { useProjectStore } from "@shared/lib/context-store";
@@ -481,9 +481,9 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
         </Modal>
       )}
 
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+      <span style={{ fontSize: 11, color: "var(--kc-text-tertiary)" }}>
         Подсеть должна быть в той же зоне, что и ВМ.
-      </Typography.Text>
+      </span>
     </div>
   );
 }

@@ -1,60 +1,71 @@
-// IamListShell — единая «поверхность списка» для кастомных IAM-страниц (Roles,
-// Groups, AccessBindings, Access, Users), которые не проходят через generic
-// ResourceListPage (у них свои табы/фильтры/редакторы). Даёт тот же вид, что и
-// generic-списки: белая kc-surface-подложка на всю высоту до футера, шапка
-// PanelHeader (иконка ресурса + «Список» + заголовок + счётчик), а тело —
-// flex-column, который заполняет остаток поверхности и скроллится ВНУТРИ неё
-// (не тянет страницу). Устраняет расхождение: кастомные iam-страницы висели на
-// голом тёмном фоне без подложки, а таблицы обрезались у футера.
+// IamListShell — «поверхность списка» для кастомных IAM-страниц (Роли, Группы,
+// Привязки доступа, Права доступа), которые не проходят через generic
+// ResourceListPage: у них свои табы, отборы и редакторы.
+//
+// ТА ЖЕ ШАПКА И ТОТ ЖЕ РЯД РУЧЕК, ЧТО У GENERIC-СПИСКА.
+//
+// Здесь стояла своя конструкция шапки (`PanelHeader`): иконка-плитка,
+// надзаголовок «Список», заголовок и счётчик строк. Ни одного из четырёх у
+// generic-списка нет, и переход с /iam/accounts на /iam/roles читался как
+// переход в другой продукт:
+//
+//   • надзаголовок «Список» сообщал СПОСОБ показа вместо предмета и стоял
+//     одинаковым на каждой странице — то есть не различал ничего;
+//   • счётчик снят решением владельца ВЕЗДЕ, а не только у generic-списка;
+//   • иконка-плитка — признак идентичности ЭКЗЕМПЛЯРА, у типа её место в
+//     навигации;
+//   • поля страницы были `20` против `20px 24px` у generic — четыре точки по
+//     горизонтали, не видные на статичной странице и отлично видные в переходе.
+//
+// Всё это приходит теперь из одного места (`PageHead` + `PAGE_PADDING`), и
+// правка геометрии доезжает до кастомных страниц вместе с generic.
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Tag } from "antd";
-import { PanelHeader } from "@shared/components/molecules/PanelHeader";
-import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
+import { PageHead, PAGE_PADDING } from "@shared/components/organisms/DetailShell/PageHead";
 
 interface Props {
-  /** specId для ResourceIcon (тот же глиф, что в сайдбаре): roles/groups/… */
-  specId: string;
+  /** Заголовок — САМ предмет страницы: тип во множественном числе. */
   title: ReactNode;
-  /** Счётчик рядом с заголовком (как у generic-списка). */
-  count?: number;
-  /** Правая часть шапки — фильтры/поиск (CTA «Создать» живёт в шапке страницы). */
-  right?: ReactNode;
+  /** Ручки сужения: отборы, затем поиск (порядок — решение владельца: отбор
+   *  меняет НАБОР строк, среди которых потом ищут). */
+  narrowing?: ReactNode;
+  /** Ручки действия: «Столбцы», затем «Создать» — последней в ряду. */
+  actions?: ReactNode;
   children: ReactNode;
 }
 
-// IamListShell — kc-surface + PanelHeader (фикс. сверху) + fill-контейнер тела.
-export function IamListShell({ specId, title, count, right, children }: Props) {
+export function IamListShell({ title, narrowing, actions, children }: Props) {
   return (
     <div
       className="kc-surface"
-      style={{ padding: 20, height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}
+      style={{
+        padding: PAGE_PADDING,
+        flex: 1,
+        minHeight: 0,
+        height: "100%",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
     >
-      <div style={{ flexShrink: 0, marginBottom: 12 }}>
-        <PanelHeader
-          icon={<ResourceIcon specId={specId} />}
-          eyebrow="Список"
-          title={
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 20, lineHeight: "20px" }}>
-              {title}
-              {count != null && (
-                <Tag
-                  style={{
-                    margin: 0,
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    lineHeight: "16px",
-                    height: 18,
-                    paddingInline: 6,
-                    borderRadius: 5,
-                  }}
-                >
-                  {count}
-                </Tag>
-              )}
-            </span>
+      <div style={{ flexShrink: 0 }}>
+        <PageHead
+          title={title}
+          right={
+            // Класс задаёт ОДНУ высоту и один радиус всем ручкам ряда (32 и 8) —
+            // тот же, что у generic-списка. Без него каждая ручка приносила свою:
+            // поле поиска от antd, отбор-селект, переключатель и первичная кнопка
+            // давали четыре разные высоты в одном ряду.
+            narrowing !== undefined || actions !== undefined ? (
+              <div
+                className="kc-list-tools"
+                style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>{narrowing}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{actions}</div>
+              </div>
+            ) : undefined
           }
-          right={right}
         />
       </div>
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>{children}</div>

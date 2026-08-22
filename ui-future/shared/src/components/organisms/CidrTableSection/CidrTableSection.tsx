@@ -1,24 +1,43 @@
 // CidrTableSection — секция CIDR-блоков одного семейства (v4/v6): шапка с
 // бейджем семейства, таблица [CIDR-блок | ⌫] и строка ввода в подвале.
 //
-// Единственный вид для ВСЕХ наборов CIDR консоли — блоки подсети и объявленный
-// супернет сети. Прежде их рисовали два разных компонента: подсеть — таблицей,
-// сеть — карточкой с чипами, — при одинаковой механике (add и remove суть
-// РАЗНЫЕ глаголы края, каждое действие уходит сразу своим RPC, без batch-save).
-// Два вида одного предмета читались как два разных предмета.
+// Единственный вид для ВСЕХ наборов CIDR консоли: блоки подсети, объявленный
+// супернет сети, состав набора префиксов и диапазоны пула адресов. Механика у
+// всех четырёх одна (add и remove суть РАЗНЫЕ глаголы края, каждое действие
+// уходит сразу своим RPC, без batch-save), а вид был разный — то таблица, то
+// карточка с чипами: два вида одного предмета читаются как два предмета.
 //
-// Край запрещает менять эти блоки через PATCH (immutable after Create) — только
-// глаголы `:add-cidr-blocks` / `:remove-cidr-blocks`, отвечающие Operation.
+// Своё у ресурса — путь глагола, имена полей семейства, тексты и, у пула,
+// добавочные поля тела: это объявляет ВЛАДЕЛЕЦ, рядом со своим путём. Всё
+// остальное — здесь, в одном месте.
+//
+// Край запрещает менять эти блоки правкой (immutable after Create) — только
+// парой глаголов «добавить»/«снять». Как они названы и чем отвечают, знает
+// владелец: у подсети, сети и набора префиксов — операцией, у пула адресов —
+// собой. Секция умеет оба исхода: операции в ответе нет — обновляем кэш сразу.
 import { useState } from "react";
+import { DETAIL_CONTENT_WIDTH, DetailSurface } from "@shared/components/organisms/DetailShell";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Space, Spin, Tag, Tooltip, Typography } from "antd";
+import { Button, Input, Spin, Tag, Tooltip } from "antd";
 import { DeleteOutlined, LoadingOutlined, LockOutlined, PlusOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
 import { OperationToastWatcher } from "@shared/components/molecules/OperationToastWatcher";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
-import { SectionHeader } from "@shared/components/molecules/SectionHeader";
 import { toast } from "@shared/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
+import {
+  EDITOR_ACTIONS_WIDTH,
+  MONO_FONT,
+  editorAddButtonStyle,
+  editorAddInputStyle,
+  editorAddRowStyle,
+  editorEmptyStyle,
+  editorIconButtonStyle,
+  editorRowStyle,
+  editorFirstRowStyle,
+  editorBodyStyle,
+  editorValueCellStyle,
+} from "@shared/components/organisms/form/editor-surface";
 
 export type CidrKind = "v4" | "v6";
 
@@ -38,20 +57,12 @@ export const IP_PREFIXED_BLOCK_FIELDS: CidrBlockFields = {
   v6: "ipv6_cidr_blocks",
 };
 
-const MONO_FONT = "ui-monospace, monospace";
-const ROW_H = 41;
-
 export function validateCidr(kind: CidrKind, cidr: string, prefixExample: string): string | null {
   if (!cidr) return "Введите CIDR.";
   if (!cidr.includes("/")) return `CIDR должен содержать префикс (например ${prefixExample}).`;
   if (kind === "v6" && !cidr.includes(":")) return "Похоже не на IPv6-адрес.";
   return null;
 }
-
-// Бейдж семейства в плитке шапки — «IPv4» / «IPv6» (mono, мелко чтобы влезло).
-const familyTile = (text: string) => (
-  <span style={{ fontSize: 10.5, fontWeight: 700, fontFamily: MONO_FONT, letterSpacing: "-0.04em" }}>{text}</span>
-);
 
 export interface CidrTableSectionProps {
   /** Путь глагола края. Строит его ВЛАДЕЛЕЦ ресурса, а не эта секция: голова
@@ -64,6 +75,16 @@ export interface CidrTableSectionProps {
   blockFields: CidrBlockFields;
   /** Префикс ключа кэша владельца: обновляется и карточка, и список. */
   invalidateKey: string;
+  /** Ещё ключи кэша, которые обязано обновить это действие. Нужен там, где на
+   *  тех же блоках стоит отдельный виджет (заполненность пула адресов): его
+   *  запрос лежит под своим ключом, и без него число на экране пережило бы
+   *  снятие блока, из которого считалось. */
+  alsoInvalidate?: readonly (readonly unknown[])[];
+  /** Поля тела глагола сверх набора блоков — их называет ВЛАДЕЛЕЦ ресурса.
+   *  Пул адресов повторяет свой id в теле, и это его контракт, а не общее
+   *  правило: подставить его здесь всем значило бы слать чужому глаголу поле,
+   *  которого он не знает, — а неизвестный ключ край отбрасывает МОЛЧА. */
+  extraBody?: Record<string, unknown>;
   kind: CidrKind;
   /** Изменяемые блоки (уходят через глаголы). */
   blocks: string[];
@@ -87,6 +108,8 @@ export function CidrTableSection({
   actionPath,
   blockFields,
   invalidateKey,
+  alsoInvalidate,
+  extraBody,
   kind,
   blocks,
   title,
@@ -103,13 +126,34 @@ export function CidrTableSection({
   const [opId, setOpId] = useState<string | null>(null);
   const [opTitle, setOpTitle] = useState("");
   const [pendingCidr, setPendingCidr] = useState<string | null>(null);
+  /**
+   * Отказ ВВОДА — рядом с полем, а не всплывающим сообщением.
+   *
+   * Прежде отказ показывался всплывающим сообщением: оно появляется в углу
+   * экрана, живёт несколько секунд и исчезает, а негодная строка остаётся в
+   * поле без единого признака того, чем именно она негодна. Человек, набравший
+   * `10.0.1.0` без префикса, перечитывает своё значение и не видит претензии —
+   * она уже уехала. Причина отказа обязана стоять там, где её читают перед
+   * повторным нажатием, и жить, пока значение не исправлено.
+   *
+   * Отказ КРАЯ (снятие блока, в котором есть выданные адреса) остаётся
+   * всплывающим: он относится к строке набора, а не к вводу, и поля, рядом с
+   * которым его показать, у него нет.
+   */
+  const [refusal, setRefusal] = useState<string | null>(null);
 
   const family = kind === "v4" ? "IPv4" : "IPv6";
   const field = blockFields[kind];
 
+  /** Обновить всё, что показывает эти блоки: свой ресурс и названные соседи. */
+  const invalidateAll = () => {
+    void qc.invalidateQueries({ queryKey: [invalidateKey] });
+    for (const key of alsoInvalidate ?? []) void qc.invalidateQueries({ queryKey: [...key] });
+  };
+
   const mutate = useMutation({
     mutationFn: (params: { verb: "add" | "remove"; cidr: string }) =>
-      api.action(actionPath(params.verb), { [field]: [params.cidr] }),
+      api.action(actionPath(params.verb), { ...extraBody, [field]: [params.cidr] }),
     onSuccess: (resp, vars) => {
       const id = extractOperationId(resp);
       if (id) {
@@ -120,7 +164,7 @@ export function CidrTableSection({
         // Широкий prefix-инвалидейт: матчит и карточку (shell-detail), и список
         // — узкие ключи не совпадали с ключом ResourceShell, и карточка
         // показывала прежний набор.
-        void qc.invalidateQueries({ queryKey: [invalidateKey] });
+        invalidateAll();
         setPendingCidr(null);
       }
     },
@@ -137,13 +181,14 @@ export function CidrTableSection({
     const cidr = draft.trim();
     const verr = validateCidr(kind, cidr, prefixExample);
     if (verr) {
-      toast.error(verr);
+      setRefusal(verr);
       return;
     }
     if (blocks.includes(cidr)) {
-      toast.error("Этот CIDR уже добавлен.");
+      setRefusal("Этот CIDR уже добавлен.");
       return;
     }
+    setRefusal(null);
     setPendingCidr(cidr);
     mutate.mutate({ verb: "add", cidr });
     setDraft("");
@@ -155,75 +200,54 @@ export function CidrTableSection({
     mutate.mutate({ verb: "remove", cidr });
   };
 
-  return (
-    <div style={{ marginTop: 24, maxWidth: 760 }}>
-      <SectionHeader
-        icon={familyTile(family)}
-        eyebrow="Список"
-        title={
-          <span>
-            {title} <Typography.Text type="secondary">({(primary ? 1 : 0) + blocks.length})</Typography.Text>
-          </span>
-        }
-      />
+  // Семейство адресов стоит В ЗАГОЛОВКЕ, а не отдельной плиткой слева.
+  //
+  // Плитка его и несла, и когда она ушла вместе со своей шапкой, две секции
+  // подряд стали называться одинаково — «CIDR» и «CIDR», — то есть перестали
+  // различаться вовсе. Заголовок, не отличающий секцию от соседней, не
+  // выполняет своей работы; поэтому семейство переехало в него, а не пропало.
+  const heading = `${family} ${title}`;
 
-      <div
-        style={{
-          border: "1px solid var(--kc-border)",
-          borderRadius: 8,
-          overflow: "hidden",
-          background: "var(--kc-page)",
-        }}
-      >
-        <table className="w-full text-sm kc-grid-table" style={{ tableLayout: "fixed" }}>
+  // Примечание справа отвечает на «зачем эта секция», а не повторяет заголовок.
+  const note = primary
+    ? "Основной якорь и дополнительные блоки"
+    : family === "IPv6"
+      ? "Опционально"
+      : "Адресное пространство";
+
+  return (
+    <div style={{ marginTop: 24, maxWidth: DETAIL_CONTENT_WIDTH }}>
+      <DetailSurface title={heading} note={note}>
+
+      <div style={editorBodyStyle}>
+        <table className="w-full" style={{ tableLayout: "fixed", borderCollapse: "collapse" }}>
           <colgroup>
-            <col style={{ width: "calc(100% - 48px)" }} />
-            <col style={{ width: 48 }} />
+            <col style={{ width: `calc(100% - ${EDITOR_ACTIONS_WIDTH}px)` }} />
+            <col style={{ width: EDITOR_ACTIONS_WIDTH }} />
           </colgroup>
-          <thead>
-            <tr style={{ background: "var(--kc-container)" }}>
-              <th
-                className="text-left"
-                style={{
-                  padding: "7px 12px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  letterSpacing: "0.02em",
-                  color: "var(--kc-text-tertiary)",
-                }}
-              >
-                CIDR-блок
-              </th>
-              <th style={{ padding: "7px 4px" }} />
-            </tr>
-          </thead>
+      {/* Шапки колонки нет: в секции один столбец значений, и подпись «CIDR-блок»
+          повторяла заголовок секции («IPv4 CIDR») другими словами. Строка,
+          которая ничего не добавляет к сказанному выше, занимает высоту и
+          отодвигает сами значения. */}
           <tbody>
             {!primary && blocks.length === 0 && (
-              <tr style={{ height: ROW_H, borderTop: "1px solid var(--kc-border-secondary)" }}>
-                <td
-                  colSpan={2}
-                  style={{
-                    textAlign: "center",
-                    verticalAlign: "middle",
-                    fontSize: 12,
-                    color: "var(--kc-text-tertiary)",
-                  }}
-                >
+              <tr>
+                {/* Ячейка `minHeight` не читает — высоту задаёт `height`,
+                    который для ячейки и есть минимум. */}
+                <td colSpan={2} style={{ ...editorEmptyStyle, height: 72 }}>
                   {emptyText}
                 </td>
               </tr>
             )}
             {primary && (
-              <tr className="kc-kv-row" style={{ height: ROW_H, borderTop: "1px solid var(--kc-border-secondary)" }}>
-                <td className="px-3 font-mono text-xs" style={{ verticalAlign: "middle" }}>
+              <tr className="kc-kv-row" style={editorFirstRowStyle}>
+                <td style={editorValueCellStyle}>
                   {primary}{" "}
-                  <Tag color="default" style={{ marginLeft: 6, fontFamily: MONO_FONT }}>
-                    основной
-                  </Tag>
+                  <Tag style={{ marginLeft: 6, fontFamily: MONO_FONT, fontSize: 10, fontWeight: 540 }}>основной</Tag>
                 </td>
-                <td className="px-1 text-center" style={{ verticalAlign: "middle" }}>
+                <td style={{ textAlign: "center", verticalAlign: "middle" }}>
                   <Tooltip title={primaryHint}>
-                    <LockOutlined style={{ color: "var(--kc-text-tertiary)", fontSize: 12 }} />
+                    <LockOutlined style={{ color: "var(--kc-text-tertiary)", fontSize: 13 }} />
                   </Tooltip>
                 </td>
               </tr>
@@ -231,26 +255,20 @@ export function CidrTableSection({
             {blocks.map((cidr, i) => {
               const busy = pendingCidr === cidr && (mutate.isPending || opId !== null);
               return (
-                <tr
-                  key={i}
-                  className="kc-kv-row"
-                  style={{ height: ROW_H, borderTop: "1px solid var(--kc-border-secondary)" }}
-                >
-                  <td className="px-3 font-mono text-xs" style={{ verticalAlign: "middle" }}>
-                    {cidr}
-                  </td>
-                  <td className="px-1 text-center" style={{ verticalAlign: "middle" }}>
+                <tr key={i} className="kc-kv-row" style={i === 0 && !primary ? editorFirstRowStyle : editorRowStyle}>
+                  <td style={editorValueCellStyle}>{cidr}</td>
+                  <td style={{ textAlign: "center", verticalAlign: "middle" }}>
                     {busy ? (
                       <Spin indicator={<LoadingOutlined style={{ fontSize: 12 }} spin />} />
                     ) : (
                       <Button
                         type="text"
                         danger
-                        size="small"
                         icon={<DeleteOutlined />}
                         aria-label="Удалить CIDR"
                         onClick={() => onRemove(cidr)}
                         disabled={inputDisabled}
+                        style={editorIconButtonStyle}
                       />
                     )}
                   </td>
@@ -258,36 +276,61 @@ export function CidrTableSection({
               );
             })}
           </tbody>
-          <tfoot>
-            <tr style={{ borderTop: "1px solid var(--kc-border-secondary)" }}>
-              <td style={{ padding: "8px 10px" }} colSpan={2}>
-                <Space.Compact style={{ width: "100%" }}>
-                  <Input
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder={placeholder}
-                    disabled={inputDisabled}
-                    style={{ fontFamily: MONO_FONT, fontSize: 12.5 }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        onAdd();
-                      }
-                    }}
-                  />
-                  <Button
-                    type="dashed"
-                    icon={<PlusOutlined />}
-                    onClick={onAdd}
-                    disabled={!draft.trim() || inputDisabled}
-                  >
-                    Добавить
-                  </Button>
-                </Space.Compact>
-              </td>
-            </tr>
-          </tfoot>
         </table>
+
+        {/* Строка добавления — вне таблицы: она не строка набора, а действие над
+            ним. Внутри <tfoot> её поле наследовало бы ширины колонок и ломалось
+            бы вместе с ними. */}
+        <div style={editorAddRowStyle}>
+          <Input
+            value={draft}
+            /* Набор нового значения снимает прежнюю претензию: она была про то,
+               что стёрто, и держать её значило бы обвинять человека в том, чего
+               в поле уже нет. */
+            onChange={(e) => {
+              setDraft(e.target.value);
+              if (refusal) setRefusal(null);
+            }}
+            placeholder={placeholder}
+            disabled={inputDisabled}
+            status={refusal ? "error" : undefined}
+            aria-invalid={refusal ? true : undefined}
+            /* Цвет границы задан здесь, а не оставлен `status`: рамка — то
+               единственное, что связывает претензию с полем, и она обязана
+               держаться токеном палитры, а не производным цветом виджета. */
+            style={refusal ? { ...editorAddInputStyle, borderColor: "var(--kc-danger)" } : editorAddInputStyle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onAdd();
+              }
+            }}
+          />
+          <Button
+            icon={<PlusOutlined />}
+            onClick={onAdd}
+            disabled={!draft.trim() || inputDisabled}
+            style={editorAddButtonStyle}
+          >
+            Добавить
+          </Button>
+        </div>
+
+        {refusal && (
+          // Претензия названа словами: чего не хватает во ВВЕДЁННОМ значении, а
+          // не «неверное значение» — второе не подсказывает, что править.
+          <div
+            role="alert"
+            style={{
+              padding: "0 10px 10px",
+              fontSize: 11,
+              lineHeight: 1.35,
+              color: "var(--kc-danger)",
+            }}
+          >
+            {refusal}
+          </div>
+        )}
       </div>
 
       <OperationToastWatcher
@@ -296,9 +339,10 @@ export function CidrTableSection({
         onDone={() => {
           setOpId(null);
           setPendingCidr(null);
-          void qc.invalidateQueries({ queryKey: [invalidateKey] });
+          invalidateAll();
         }}
       />
+      </DetailSurface>
     </div>
   );
 }

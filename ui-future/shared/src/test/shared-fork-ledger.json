@@ -16,38 +16,6 @@
       ]
     },
     {
-      "id": "compute:components",
-      "reason": "Осталась ровно та часть оснастки, которую нельзя заменить на @shared, пока реестр ресурсов модульный: эти компоненты резолвят спеку ПО ИДЕНТИФИКАТОРУ из реестра, а общий реестр несёт не все ресурсы модулей — замер на 007e3e99: в нём нет `snapshots` (storage) и `registries`/`repositories`/`tags` (registry), то есть прямая замена молча оставила бы эти ресурсы без ссылок. Предикат: сравнить ключи `REGISTRY` модуля и @shared. Снимается вместе с объединением реестров (#402), не раньше. Остальная оснастка модуля сведена к прослойкам.",
-      "entries": [
-        {
-          "file": "compute/src/components/molecules/RefNameLink/RefNameLink.tsx",
-          "symbols": [
-            "RefNameLink"
-          ]
-        },
-        {
-          "file": "compute/src/components/molecules/ResourceLink/ResourceLink.tsx",
-          "symbols": [
-            "ResourceLink",
-            "resourceDetailHref"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/ResourceDetailExtensions/ResourceDetailExtensions.tsx",
-          "symbols": [
-            "DETAIL_EXTENSIONS",
-            "detailExtension"
-          ]
-        },
-        {
-          "file": "compute/src/components/organisms/ResourceShell/ResourceShell.tsx",
-          "symbols": [
-            "ResourceShell"
-          ]
-        }
-      ]
-    },
-    {
       "id": "compute:lib",
       "reason": "Библиотека модуля: реестр ресурсов и всё, что его читает. Реестр модульный намеренно (состав ресурсов у модулей разный), поэтому его потребители живут рядом с ним. Правило домена и сборки адреса из них ВЫВЕДЕНО в @shared/lib/service-prefix (#372) — сводится то, что от состава реестра не зависит.",
       "entries": [
@@ -65,15 +33,6 @@
             "getByPath",
             "getResource",
             "resourceProjectPath"
-          ]
-        },
-        {
-          "file": "compute/src/lib/spec-columns.tsx",
-          "symbols": [
-            "ReferrerLink",
-            "buildSpecColumns",
-            "formatCellByFormat",
-            "reorderNameIdFirst"
           ]
         },
         {
@@ -184,32 +143,6 @@
       "reason": "Осталась ровно та часть оснастки, которую нельзя заменить на @shared, пока реестр ресурсов модульный: эти компоненты резолвят спеку ПО ИДЕНТИФИКАТОРУ из реестра, а общий реестр несёт не все ресурсы модулей — замер на 007e3e99: в нём нет `snapshots` (storage) и `registries`/`repositories`/`tags` (registry), то есть прямая замена молча оставила бы эти ресурсы без ссылок. Предикат: сравнить ключи `REGISTRY` модуля и @shared. Снимается вместе с объединением реестров (#402), не раньше. Остальная оснастка модуля сведена к прослойкам. Сверх того — собственные компоненты домена (components/organisms/TargetsManager/TargetsManager.tsx, components/organisms/form/NlbVipSourceField/NlbVipSourceField.tsx), у общего модуля пары не имеющие.",
       "entries": [
         {
-          "file": "nlb/src/components/molecules/RefNameLink/RefNameLink.tsx",
-          "symbols": [
-            "RefNameLink"
-          ]
-        },
-        {
-          "file": "nlb/src/components/molecules/ResourceLink/ResourceLink.tsx",
-          "symbols": [
-            "ResourceLink",
-            "resourceDetailHref"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/ResourceDetailExtensions/ResourceDetailExtensions.tsx",
-          "symbols": [
-            "DETAIL_EXTENSIONS",
-            "detailExtension"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/ResourceShell/ResourceShell.tsx",
-          "symbols": [
-            "ResourceShell"
-          ]
-        },
-        {
           "file": "nlb/src/components/organisms/TargetsManager/TargetsManager.tsx",
           "symbols": [
             "buildTargetPayload",
@@ -245,15 +178,6 @@
             "getResource",
             "resourceProjectPath"
           ]
-        },
-        {
-          "file": "nlb/src/lib/spec-columns.tsx",
-          "symbols": [
-            "ReferrerLink",
-            "buildSpecColumns",
-            "formatCellByFormat",
-            "reorderNameIdFirst"
-          ]
         }
       ]
     },
@@ -279,26 +203,6 @@
           "file": "registry/src/components/atoms/LifecycleTag/LifecycleTag.tsx",
           "symbols": [
             "lifecycleLabel"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/RefNameLink/RefNameLink.tsx",
-          "symbols": [
-            "RefNameLink"
-          ]
-        },
-        {
-          "file": "registry/src/components/molecules/ResourceLink/ResourceLink.tsx",
-          "symbols": [
-            "ResourceLink",
-            "resourceDetailHref"
-          ]
-        },
-        {
-          "file": "registry/src/components/organisms/ResourceDetailExtensions/ResourceDetailExtensions.tsx",
-          "symbols": [
-            "DETAIL_EXTENSIONS",
-            "detailExtension"
           ]
         },
         {
@@ -330,15 +234,6 @@
           ]
         },
         {
-          "file": "registry/src/lib/spec-columns.tsx",
-          "symbols": [
-            "ReferrerLink",
-            "buildSpecColumns",
-            "formatCellByFormat",
-            "reorderNameIdFirst"
-          ]
-        },
-        {
           "file": "registry/src/lib/use-resource-list.ts",
           "symbols": [
             "useResourceList"
@@ -362,28 +257,8 @@
     },
     {
       "id": "storage:components",
-      "reason": "Осталась ровно та часть оснастки, которую нельзя заменить на @shared, пока реестр ресурсов модульный: эти компоненты резолвят спеку ПО ИДЕНТИФИКАТОРУ из реестра, а общий реестр несёт не все ресурсы модулей — замер на 007e3e99: в нём нет `snapshots` (storage) и `registries`/`repositories`/`tags` (registry), то есть прямая замена молча оставила бы эти ресурсы без ссылок. Предикат: сравнить ключи `REGISTRY` модуля и @shared. Снимается вместе с объединением реестров (#402), не раньше. Остальная оснастка модуля сведена к прослойкам.",
+      "reason": "Осталась ОДНА оболочка карточки, и держит её ровно один недостающий ресурс. Реестр расширений detail-страницы сведён к общему: доменные строки storage подключаются ручкой `registerDetailExtension` из `storage/src/registerExtensions.tsx`. `ResourceShell` свести нельзя, пока реестр ресурсов модульный: общая оболочка резолвит спеку ПО МАРШРУТУ в `REGISTRY` из @shared (`specByRoute`), а там нет `snapshots` — замер 2026-08-21: своих у storage 6, отсутствует в общем ровно 1, `snapshots`. Прямая замена молча оставила бы карточку снимка без спеки, то есть без страницы. Предикат: сравнить ключи `id` в `storage/src/lib/resource-registry.tsx` и `shared/src/lib/resource-registry.tsx` — пустая разность снимает запись. Соседний модуль compute свою оболочку свёл именно потому, что у него эта разность пуста. Снимается вместе с объединением реестров (#402), не раньше.",
       "entries": [
-        {
-          "file": "storage/src/components/molecules/RefNameLink/RefNameLink.tsx",
-          "symbols": [
-            "RefNameLink"
-          ]
-        },
-        {
-          "file": "storage/src/components/molecules/ResourceLink/ResourceLink.tsx",
-          "symbols": [
-            "ResourceLink",
-            "resourceDetailHref"
-          ]
-        },
-        {
-          "file": "storage/src/components/organisms/ResourceDetailExtensions/ResourceDetailExtensions.tsx",
-          "symbols": [
-            "DETAIL_EXTENSIONS",
-            "detailExtension"
-          ]
-        },
         {
           "file": "storage/src/components/organisms/ResourceShell/ResourceShell.tsx",
           "symbols": [
@@ -410,21 +285,6 @@
             "getByPath",
             "getResource",
             "resourceProjectPath"
-          ]
-        },
-        {
-          "file": "storage/src/lib/spec-columns.tsx",
-          "symbols": [
-            "ReferrerLink",
-            "buildSpecColumns",
-            "formatCellByFormat",
-            "reorderNameIdFirst"
-          ]
-        },
-        {
-          "file": "storage/src/lib/use-resource-list.ts",
-          "symbols": [
-            "useResourceList"
           ]
         }
       ]

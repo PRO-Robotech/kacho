@@ -6,9 +6,9 @@ package main
 // diagnostic_metrics_test.go — the scrape target the chart declares must be the one
 // the process serves.
 //
-// The ServiceMonitor shipped with this service declares a scrape of `/metrics` on the
+// Объявление сбора этой службы называет путь `/metrics` на the
 // `metrics` port. The process listened on that port and served `/healthz` only, so
-// enabling the ServiceMonitor would have pointed Prometheus at a 404 — a monitoring
+// включённый сбор указал бы сборщику на 404 — то есть наблюдениеoring
 // declaration with nothing behind it, which reads as "this service is observed" while
 // observing nothing.
 //
@@ -81,19 +81,25 @@ func TestMetricsEndpointExposesOutboxSeries(t *testing.T) {
 		"runtime collectors must be registered — they are what turns a leak into a graph")
 }
 
-// TestServiceMonitorMatchesWhatTheProcessServes reads the shipped ServiceMonitor and
-// checks its declared path against the mux. This is the assertion that was missing:
-// the chart and the process were each internally consistent and disagreed with each
-// other.
-func TestServiceMonitorMatchesWhatTheProcessServes(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "deploy", "templates", "servicemonitor.yaml"))
-	require.NoError(t, err, "the ServiceMonitor this test guards must exist")
+// TestScrapeAnnotationMatchesWhatTheProcessServes читает ОБЪЯВЛЕНИЕ СБОРА и
+// сверяет названный им путь с тем, что обслуживает мультиплексор. Это то самое
+// утверждение, которого не хватало: чарт и процесс были внутренне
+// согласованы каждый и расходились друг с другом.
+//
+// Прежде утверждение читало отдельный объект описи. Он снят задачей #955:
+// объявлений сбора было два, а действует одно — аннотация на поде. Предмет
+// утверждения от этого не изменился, изменился носитель, поэтому проба
+// переориентирована, а не удалена: удалить её значило бы снять проверку
+// вместе с механизмом, который она стерегла и который остался.
+func TestScrapeAnnotationMatchesWhatTheProcessServes(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "deploy", "templates", "deployment.yaml"))
+	require.NoError(t, err, "объявление, которое стережёт эта проба, обязано существовать")
 
 	path := scrapePathOf(t, string(raw))
 	rec := httptest.NewRecorder()
 	diagnosticMux(metrics.New()).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 	assert.Equalf(t, http.StatusOK, rec.Code,
-		"the ServiceMonitor scrapes %q; the process must serve it, or the declaration is monitoring nothing", path)
+		"объявление сбора называет %q; процесс обязан его обслуживать, иначе объявление is monitoring nothing", path)
 }
 
 // scrapePathOf extracts the single `path:` value from the ServiceMonitor endpoint.
@@ -101,10 +107,10 @@ func scrapePathOf(t *testing.T, manifest string) string {
 	t.Helper()
 	for _, line := range strings.Split(manifest, "\n") {
 		f := strings.TrimSpace(line)
-		if after, ok := strings.CutPrefix(f, "path:"); ok {
+		if after, ok := strings.CutPrefix(f, "prometheus.io/path:"); ok {
 			return strings.Trim(strings.TrimSpace(after), `"'`)
 		}
 	}
-	t.Fatal("ServiceMonitor declares no scrape path — cannot check it against the process")
+	t.Fatal("объявление сбора не называет пути — сверять с процессом нечего")
 	return ""
 }
