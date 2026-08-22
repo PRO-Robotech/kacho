@@ -131,6 +131,19 @@ type AuthInterceptor struct {
 	// not be asked about at all (no identifier). Separate window and counter — see
 	// WithRevocationCheck.
 	revocationSkips *introspectionFailureReporter
+	// platformRevocation — авторитет отзыва НАШИХ токенов.
+	//
+	// Полоса выбирается по ИЗДАТЕЛЮ, а не по настройке процесса: прежний
+	// провайдер о наших токенах не знает by construction, и его ответ на наш
+	// токен есть утверждение о чужом предмете, а не «действует» или «отозван».
+	//
+	// На этой полосе «авторитет не ответил» означает ОТКАЗ — см.
+	// auth_revocation.go, где асимметрия двух полос объявлена и обоснована.
+	platformRevocation TokenRevocationChecker
+	// platformRevocationFailures — свой счётчик и своё окно доклада: «наш
+	// авторитет молчит» и «чужой авторитет молчит» суть разные неисправности с
+	// разными исправлениями и разными читателями.
+	platformRevocationFailures *introspectionFailureReporter
 	// stepUp / stepUpLookup / stepUpRoutes — the per-RPC authentication floor,
 	// applied on this always-running layer rather than behind a feature toggle.
 	// All three or none; see auth_stepup.go for why the floor cannot live where

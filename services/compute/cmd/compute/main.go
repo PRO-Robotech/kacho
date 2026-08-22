@@ -273,7 +273,7 @@ func runServe(cfg config.Config) error {
 	// что порт сверки существования живёт НА пуле, и принести его раньше значило бы
 	// принести порт, отвечающий «соединения нет». Открытие пула обратимо (`defer`
 	// выше) и дешевле ложной сверки.
-	desc, err := describe(cfg, logger, listFilter, bootGate, repo.NewExistenceProbe(pool), authzCache.Install)
+	desc, err := describe(cfg, logger, listFilter, bootGate, repo.NewExistenceProbe(pool), authzCache.Install, metricsAdapter.Registerer())
 	if err != nil {
 		return err
 	}

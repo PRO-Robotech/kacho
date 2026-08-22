@@ -39,6 +39,17 @@ func TestIntegration_VPC_CursorPagesTakeTheirOrderFromAnIndex(t *testing.T) {
 			{Table: "gateways", Index: "gateways_project_cursor_idx", Order: "created_at ASC, id ASC", Where: byProject},
 			{Table: "network_interfaces", Index: "network_interfaces_project_cursor_idx", Order: "created_at ASC, id ASC", Where: byProject},
 
+			// Страницу адресов берут ТРИ чтения, и обязательное равенство у них
+			// разное. Строка выше проверяет общий список проекта; две ниже —
+			// чтения по подсети и по пулу, у которых ведущее равенство своё
+			// (#912). Без них порядок из индекса получало одно чтение из трёх,
+			// а остальные два сортировали весь набор под равенством: на
+			// подсети с тысячей адресов это видно сразу и растёт линейно.
+			{Table: "addresses", Index: "addresses_subnet_cursor_idx", Order: "created_at ASC, id ASC",
+				Where: "internal_subnet_id = 'sub-plan'"},
+			{Table: "addresses", Index: "addresses_pool_cursor_idx", Order: "created_at ASC, id ASC",
+				Where: "external_ipv4 ->> 'address_pool_id' = 'apl-plan'"},
+
 			// Пул адресов — админский ресурс, колонки проекта у него нет, а оба
 			// фильтра списка необязательны: ведущего равенства не существует.
 			{Table: "address_pools", Index: "address_pools_cursor_idx", Order: "created_at ASC, id ASC"},

@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
@@ -103,6 +105,7 @@ func describe(
 	gate *bootgate.Gate,
 	existence servicecontract.ExistenceProbe,
 	authzObserve func(read func() authz.Metrics),
+	metricsReg prometheus.Registerer,
 ) (servicecontract.Descriptor, error) {
 	mode, err := servicecontract.ParseMode(cfg.AuthMode)
 	if err != nil {
@@ -157,6 +160,11 @@ func describe(
 		// границу только здесь. Без него доля попаданий не выходит из процесса,
 		// и «сколько даёт кеш» остаётся непроверяемым в обе стороны.
 		AuthzObserve: authzObserve,
+
+		// Реестр приходит из корня по той же причине: серии задержки заводит
+		// носитель своими руками, а поверхность, которую скребут, держит этот
+		// корень. Разбор решения — у `servicecontract.Spec.Metrics`.
+		Metrics: metricsReg,
 
 		// Верхняя граница обработки вызова и бюджет отказов — обе ВЕЛИЧИНЫ, обе с
 		// обоснованием у своих ручек конфигурации. «Не применимо» здесь незаконно:

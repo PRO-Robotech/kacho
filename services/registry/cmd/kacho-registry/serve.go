@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
@@ -449,6 +450,7 @@ func runServe(cfg config.Config) error {
 		existence:    pg.NewExistenceProbe(pool),
 		narrower:     pageNarrower,
 		authzObserve: authzCache.Install,
+		metricsReg:   svcMetrics.Registerer(),
 	})
 	if err != nil {
 		return err
@@ -866,6 +868,12 @@ type servePorts struct {
 	// Кеш строит носитель контура, поэтому иначе его величины из процесса не
 	// выходят.
 	authzObserve func(read func() authz.Metrics)
+	// metricsReg — реестр, в котором носитель заводит серии задержки
+	// обслуженного вызова. Приходит из корня, потому что диагностическую
+	// поверхность держит он: серии носитель заводит своими руками, и другого
+	// пути к скребомому реестру у него нет. Разбор решения — у
+	// `servicecontract.Spec.Metrics`.
+	metricsReg prometheus.Registerer
 }
 
 // describe собирает ОБЪЯВЛЕНИЕ сервиса о себе.
@@ -942,6 +950,7 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		// здесь. Без него доля попаданий не выходит из процесса, и «сколько даёт
 		// кеш» остаётся непроверяемым в обе стороны.
 		AuthzObserve: ports.authzObserve,
+		Metrics:      ports.metricsReg,
 
 		// Верхняя граница обработки вызова. «Не применимо» у неё нет: вызов без
 		// срока держит соединение из ограниченного пула столько, сколько

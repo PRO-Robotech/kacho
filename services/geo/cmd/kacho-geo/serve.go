@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
@@ -60,7 +61,19 @@ func runServe(cfg config.Config) error {
 	// Приёмник читателя величин кеша вердиктов. Объявлен ДО дескриптора: кеш
 	// собирает носитель контура, и читателя он отдаёт через поле дескриптора.
 	var authzCache authzmetrics.Source
-	desc, err := describe(cfg, logger, authzCache.Install)
+
+	// ── observability: Prometheus-адаптер метрик разрешителя осиротевших
+	// операций. Исполнителя длительных операций здесь нет и не заводится:
+	// мутации каталога — конфиг-INSERT, операция завершается СИНХРОННО
+	// (shared/syncop), поэтому диспетчеризовать в worker нечего, а его ряды
+	// вечно стояли бы на нуле и читались как «отказов нет».
+	//
+	// Собирается ДО дескриптора: реестр — поле объявления, и без него дескриптор
+	// не принимается. Регистрация коллектора кеша остаётся ниже по тексту — ей
+	// нужен только сам адаптер, а не порядок относительно объявления.
+	metricsAdapter := metrics.New(buildVersion, buildCommit)
+
+	desc, err := describe(cfg, logger, authzCache.Install, metricsAdapter.Registerer())
 	if err != nil {
 		return err
 	}
@@ -78,12 +91,6 @@ func runServe(cfg config.Config) error {
 	}
 	defer pool.Close()
 
-	// ── observability: Prometheus-адаптер метрик разрешителя осиротевших
-	// операций. Исполнителя длительных операций здесь нет и не заводится:
-	// мутации каталога — конфиг-INSERT, операция завершается СИНХРОННО
-	// (shared/syncop), поэтому диспетчеризовать в worker нечего, а его ряды
-	// вечно стояли бы на нуле и читались как «отказов нет».
-	metricsAdapter := metrics.New(buildVersion, buildCommit)
 	// Доля попаданий кеша положительных вердиктов. Источник устанавливается ПОЗЖЕ
 	// — кеш строит носитель контура, — поэтому коллектор регистрируется сейчас и
 	// до установки отвечает нулями: исчезновение серий на это окно сообщило бы
@@ -167,7 +174,8 @@ func runServe(cfg config.Config) error {
 // стража (разбор режима и боевая посадка), и оба были написаны заново в каждом
 // из семи сервисов, расходясь тем, что именно каждый считает обязательным.
 func describe(cfg config.Config, logger *slog.Logger,
-	authzObserve func(read func() authz.Metrics)) (servicecontract.Descriptor, error) {
+	authzObserve func(read func() authz.Metrics),
+	metricsReg prometheus.Registerer) (servicecontract.Descriptor, error) {
 	mode, err := servicecontract.ParseMode(cfg.AuthMode)
 	if err != nil {
 		return servicecontract.Descriptor{}, fmt.Errorf("KACHO_GEO_AUTH_MODE: %w", err)
@@ -219,6 +227,11 @@ func describe(cfg config.Config, logger *slog.Logger,
 		// границу только здесь. Без него доля попаданий не выходит из процесса,
 		// и «сколько даёт кеш» остаётся непроверяемым в обе стороны.
 		AuthzObserve: authzObserve,
+
+		// Реестр отдаёт тот же корень: серии задержки заводит носитель своими
+		// руками, а поверхность, которую скребут, держит этот корень. Разбор
+		// решения — у `servicecontract.Spec.Metrics`.
+		Metrics: metricsReg,
 
 		// Верхняя граница обработки вызова. «Не применимо» у неё нет: вызов без
 		// срока держит соединение из ограниченного пула столько, сколько

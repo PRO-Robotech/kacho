@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -75,7 +76,7 @@ func TestDescriptorOfCompletePostureIsAccepted(t *testing.T) {
 	cfg, mtls := describeCfg(t)
 	desc, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
 		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
-		probeAuthzObserve)
+		probeAuthzObserve, prometheus.NewRegistry())
 	require.NoError(t, err, "полная посадка обязана приниматься — иначе процесс не поднялся бы")
 	require.True(t, desc.Accepted())
 }
@@ -94,7 +95,7 @@ func TestUndeclaredDecisionEdgeRefusesInEveryPosture(t *testing.T) {
 			cfg.AuthZ.IAMEndpoint = ""
 			_, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
 				bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
-				probeAuthzObserve)
+				probeAuthzObserve, prometheus.NewRegistry())
 			require.Error(t, err, "ребро решения о доступе не объявлено — процесс не поднимается")
 			assert.Contains(t, err.Error(), "CheckEdge")
 		})
@@ -110,7 +111,7 @@ func TestHandlingBudgetHasNoDefaultAndNoExemption(t *testing.T) {
 	cfg.APIServer.RequestTimeout = 0
 	_, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
 		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
-		probeAuthzObserve)
+		probeAuthzObserve, prometheus.NewRegistry())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "HandlingBudget")
 }
@@ -127,7 +128,7 @@ func TestHandlingBudgetIsTheSameQuantityTheRetiredLinkRead(t *testing.T) {
 	cfg.APIServer.RequestTimeout = 17123 * time.Millisecond // заведомо не круглое
 	desc, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
 		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
-		probeAuthzObserve)
+		probeAuthzObserve, prometheus.NewRegistry())
 	require.NoError(t, err)
 	assert.Equal(t, cfg.APIServer.RequestTimeout, desc.Spec().HandlingBudget,
 		"граница обработки обязана быть ровно api-server.request-timeout, а не производной от неё")
@@ -194,7 +195,7 @@ func TestStreamBudgetIsExemptBecauseNoServerStreamIsServed(t *testing.T) {
 	cfg, mtls := describeCfg(t)
 	desc, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
 		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
-		probeAuthzObserve)
+		probeAuthzObserve, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	_, hasValue := desc.Spec().StreamBudget.Get()
@@ -248,7 +249,7 @@ func TestNarrowerIsWiredToTheOneScopeFilteredMethod(t *testing.T) {
 	narrower := buildListFilter(cfg, nil, discardLogger())
 	desc, err := describe(cfg, mtls, discardLogger(), narrower,
 		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
-		probeAuthzObserve)
+		probeAuthzObserve, prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	wired, ok := desc.Spec().Narrowers.Get()

@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -80,7 +81,7 @@ func TestAccessLogRecordsThePanickingCall(t *testing.T) {
 	spec.Logger = log
 
 	var slot decisionSlot
-	chain := unaryChain(spec, &slot)
+	chain := unaryChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
 	// Слот решения о доступе на этой пробе не нужен: паника случается ниже него.
 	// Убираем последнее звено, чтобы вызов дошёл до обработчика.
 	chain = chain[:len(chain)-1]
@@ -283,7 +284,7 @@ func TestHandlingBudgetReachesTheHandler(t *testing.T) {
 	spec := chainSpec()
 	spec.HandlingBudget = 5 * time.Second
 	var slot decisionSlot
-	chain := unaryChain(spec, &slot)
+	chain := unaryChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1] // без слота решения: предмет пробы — срок
 
 	dl, has := deadlineOfCall(t, chain, context.Background())
@@ -320,7 +321,7 @@ func TestHandlingBudgetNeverWidensTheCallersDeadline(t *testing.T) {
 	spec := chainSpec()
 	spec.HandlingBudget = time.Hour
 	var slot decisionSlot
-	chain := unaryChain(spec, &slot)
+	chain := unaryChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -368,7 +369,7 @@ func gateSpec(gate servicecontract.Axis[servicecontract.BootGate]) servicecontra
 func callThroughChain(t *testing.T, spec servicecontract.Spec, method string) (reached bool, err error) {
 	t.Helper()
 	var slot decisionSlot
-	chain := unaryChain(spec, &slot)
+	chain := unaryChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1]
 	_, err = runUnaryChain(chain, context.Background(), method, nil,
 		func(context.Context, any) (any, error) { reached = true; return "ok", nil })
@@ -646,6 +647,7 @@ func acceptableSpec() servicecontract.Spec {
 		Authz:          servicecontract.AuthzSelf,
 		SelfCheck:      denyingClient(),
 		HandlingBudget: 30 * time.Second,
+		Metrics:        prometheus.NewRegistry(),
 		DBSSLMode:      "disable",
 		PublicAddr:     ":9090",
 		InternalAddr:   ":9091",

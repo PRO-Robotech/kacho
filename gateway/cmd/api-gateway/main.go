@@ -149,12 +149,44 @@ func main() {
 		logger.Error("api-gateway refusing to start", "err", jwksCAErr)
 		os.Exit(1)
 	}
+	// ОБЪЯВЛЕНИЕ ПРИЁМА — кого принимаем и откуда берём набор проверочных
+	// ключей КАЖДОГО принимаемого издателя.
+	//
+	// Разбор и стражи живут в config (tokenissuers.go), а не здесь, по той же
+	// причине, что у ПЕРВОЙ конфигурации проверяющего: предикат нужен ДВУМ
+	// читателям — процессу при старте и пробе развёртывания, которая спрашивает
+	// у профиля ровно то, что спросит процесс. Второй до main не дотягивается
+	// by construction, поэтому предикат, оставленный здесь, пришлось бы
+	// сформулировать заново — и он разошёлся бы молча.
+	//
+	// Отказ БЕЗУСЛОВЕН и не проходит через дев-послабление соседнего стража:
+	// вырожденный перечень издателей означает «принимаем любого», а это
+	// посадка, запрещённая в любом режиме.
+	acceptance, accErr := cfg.TokenAcceptance()
+	if accErr != nil {
+		logger.Error("api-gateway refusing to start: token acceptance declaration", "err", accErr)
+		os.Exit(1)
+	}
+	issuerRecords := make([]middleware.IssuerKeySet, 0, len(acceptance))
+	acceptedIssuers := make([]string, 0, len(acceptance))
+	platformAccepted := false
+	for _, b := range acceptance {
+		issuerRecords = append(issuerRecords, middleware.IssuerKeySet{
+			Issuer:                  b.Issuer,
+			KeySetURL:               b.KeySetURL,
+			TokenTypes:              b.TokenTypes,
+			TolerateAbsentTokenType: b.TolerateAbsentTokenType,
+			ReadRevocation:          b.ReadRevocation,
+		})
+		acceptedIssuers = append(acceptedIssuers, b.Issuer)
+		platformAccepted = platformAccepted || b.ReadRevocation
+	}
+
 	jwtVerifier, jverr := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
-		JWKSURL:          cfg.ResolvedHydraJWKSURL(),
+		Issuers:          issuerRecords,
 		JWKSCacheTTL:     time.Duration(cfg.JWKSCacheTTLSeconds) * time.Second,
 		JWKSFetchTimeout: time.Duration(cfg.JWKSFetchTimeoutSeconds) * time.Second,
 		HTTPClient:       jwksHopClient,
-		ExpectedIssuer:   cfg.ResolvedHydraIssuer(),
 		ExpectedAudience: cfg.ExpectedAudience(),
 		ClockSkew:        time.Duration(cfg.JWTClockSkewSeconds) * time.Second,
 	})
@@ -163,12 +195,12 @@ func main() {
 	}
 	if jverr != nil {
 		logger.Warn("jwks verifier not wired into principal path (HMAC-dev only)",
-			"err", jverr, "jwks_url", cfg.ResolvedHydraJWKSURL())
+			"err", jverr, "accepted_issuers", acceptedIssuers)
 	} else {
 		authInterceptor = authInterceptor.WithVerifier(jwtVerifier)
-		logger.Info("hydra jwks verifier wired into principal path",
-			"jwks_url", cfg.ResolvedHydraJWKSURL(),
-			"issuer", cfg.ResolvedHydraIssuer())
+		logger.Info("token verifier wired into principal path",
+			"accepted_issuers", acceptedIssuers,
+			"platform_issuer_accepted", platformAccepted)
 	}
 
 	// Hybrid external listener: when enabled, a client that presents a
@@ -294,6 +326,52 @@ func main() {
 			"knob", "KACHO_HYDRA_INTROSPECTION_URL")
 	}
 
+	// ─── ОТЗЫВ НАШИХ ТОКЕНОВ — У НАС (Ф1б, задача #926) ─────────────────────
+	//
+	// Полоса отзыва — свойство ЗАПИСИ ИЗДАТЕЛЯ, а не настройки процесса: прежний
+	// провайдер о наших токенах не знает by construction, и его ответ на наш
+	// токен есть утверждение о предмете, которого у него нет. Поэтому читатель
+	// второй, и живёт он РЯДОМ, а не вместо.
+	//
+	// # Почему этот блок стоит СНАРУЖИ ветки прежнего провайдера
+	//
+	// Он стоял внутри неё, и это делало невыразимой посадку, к которой фаза и
+	// ведёт: «принимаем ТОЛЬКО нашего издателя». Такой профиль не задаёт адреса
+	// прежнего провайдера — задавать нечего, — и наш читатель не провязывался
+	// вовсе, а следом старт отвергался. Отказ был честный, но отвергал он не
+	// ошибку оператора, а состояние, которое обязано быть законным: возможность,
+	// объявленная и неисполнимая ни при каком входе, — тот же класс, что поле,
+	// которое требуют и прислать нельзя.
+	//
+	// Читатели независимы, потому что независимы их предметы: у каждого свой
+	// авторитет, свой якорь доверия, свой счётчик и своя семантика молчания.
+	if platformAccepted {
+		platformHopClient, phErr := newPlatformRevocationHopClient(
+			cfg.PlatformTokenRevocationCAFile,
+			time.Duration(cfg.IntrospectionTimeoutMs)*time.Millisecond)
+		if phErr != nil {
+			log.Fatalf("platform revocation authority client: %v", phErr)
+		}
+		platformCache, pcErr := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
+			HydraIntrospectionURL: cfg.PlatformTokenRevocationURL,
+			HTTPClient:            platformHopClient,
+			MaxEntries:            cfg.IntrospectionCacheSize,
+			TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
+			Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
+		})
+		if pcErr != nil {
+			// Наш издатель принимается, а спросить о его токенах некого. Отказ
+			// при СТАРТЕ, а не отказ каждому запросу: первый виден оператору,
+			// второй — арендатору.
+			log.Fatalf("platform revocation check: %v", pcErr)
+		}
+		authInterceptor = authInterceptor.WithPlatformRevocationCheck(platformCache, 0)
+		logger.Info("revocation of OUR OWN tokens is read on presentation",
+			"authority_pinned", strings.TrimSpace(cfg.PlatformTokenRevocationCAFile) != "",
+			"cache_ttl_s", cfg.IntrospectionCacheTTLSeconds,
+			"unanswered_verdict", "refuse")
+	}
+
 	// --- Per-RPC authentication floor, on the layer that always runs ---
 	//
 	// The catalog says, per RPC, how strongly a caller must have authenticated.
@@ -411,8 +489,7 @@ func main() {
 
 		logger.Info("dpop-mw wired",
 			"api_domain", cfg.APIDomain,
-			"jwks_url", cfg.ResolvedHydraJWKSURL(),
-			"issuer", cfg.ResolvedHydraIssuer(),
+			"accepted_issuers", acceptedIssuers,
 			"audience", cfg.ExpectedAudience(),
 			"stepup_catalog_entries", stepUpCatalog.Size(),
 		)
@@ -545,6 +622,26 @@ func main() {
 	// `TestUnregisteredCollectorIsRed`, а провязку в дереве — гейт
 	// `TestDeclaredAccumulatorsHaveANonTestReader`.
 	diagMetrics := gwmetrics.New(buildVersion, buildCommit)
+
+	// Измеритель задержки обслуженного вызова — ОДИН на процесс, полос у него
+	// две (внешний слушатель и внутренний).
+	//
+	// Край — единственная поверхность платформы, которую не поднимает носитель
+	// входящего пути, поэтому отказ старта О13 (`servicecontract.New`) сюда не
+	// достаёт и провязка живёт здесь. Измеритель тот же, что у семи сервисов:
+	// ряды края ложатся в общее семейство, и вопрос «где во всей платформе вырос
+	// хвост» остаётся одним запросом — а край стоит перед КАЖДЫМ обращением
+	// арендатора, поэтому без его ряда картина неполна ровно в том месте, куда
+	// смотрят первым.
+	edgeLatency, elErr := grpcsrv.NewServerLatency(diagMetrics.Registerer())
+	if elErr != nil {
+		// Отказ подъёма, а не предупреждение: он означает несогласованное
+		// объявление серии, и поднять край значило бы отдать ему диагностическую
+		// поверхность без семейства, которого на ней не будет никогда.
+		logger.Error("api-gateway refusing to start: измеритель задержки обслуженного вызова "+
+			"не заводится в реестре края", "err", elErr)
+		os.Exit(1)
+	}
 	diagMetrics.RegisterAuthz(func() gwmetrics.AuthzSnapshot {
 		snap := gwmetrics.AuthzSnapshot{Counts: authz.metrics.Counts()}
 		if authz.calls != nil {
@@ -674,6 +771,16 @@ func main() {
 	}
 	grpcUnaryInterceptors = append(grpcUnaryInterceptors, middleware.UnaryAccessLog(logger))
 	grpcStreamInterceptors = append(grpcStreamInterceptors, middleware.StreamAccessLog(logger))
+	// Измеритель СТАВИТСЯ ПЕРВЫМ, то есть самым внешним: он обязан накрывать всё,
+	// что край делает ради запроса, включая отказ по правам и отказ маршрутизации.
+	// Стоя за звеном прав, он оставил бы неизмеренным каждый отказ — исход, ради
+	// которого в разбор происшествия и приходят.
+	grpcUnaryInterceptors = append([]grpc.UnaryServerInterceptor{
+		edgeLatency.UnaryServerInterceptor(grpcsrv.ListenerPublic),
+	}, grpcUnaryInterceptors...)
+	grpcStreamInterceptors = append([]grpc.StreamServerInterceptor{
+		edgeLatency.StreamServerInterceptor(grpcsrv.ListenerPublic),
+	}, grpcStreamInterceptors...)
 	grpcSrv := proxy.NewServer(resolver,
 		grpc.ChainUnaryInterceptor(grpcUnaryInterceptors...),
 		grpc.ChainStreamInterceptor(grpcStreamInterceptors...),
@@ -855,7 +962,7 @@ func main() {
 	internalGRPCAddr := cfg.InternalGRPCAddr
 	internalGrpcSrv, internalLis, internalAdmission, ierr := startInternalGRPCListener(
 		internalGRPCAddr, authzMW.AsInvalidator(), grpcSrv, internalSec,
-		internalAdmissionLimits, logger)
+		internalAdmissionLimits, edgeLatency, logger)
 	if ierr != nil {
 		log.Fatalf("internal grpc listener: %v", ierr)
 	}

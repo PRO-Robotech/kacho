@@ -412,6 +412,40 @@ kacho-nlb:
       trustedForwarderSANs:
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
 api-gateway:
+  # ─── Объявление приёма токена (Ф1б, задача #926) ──────────────────────
+  #
+  # Издатель на крае — МНОЖЕСТВО: платформа чеканит свои токены сама (задача
+  # #897), а прежний издатель на переходе остаётся. У КАЖДОГО принимаемого
+  # издателя своя запись источника ключей: объединить наборы было бы дешевле и
+  # уничтожило бы ровно ту защиту, ради которой развязка делается — ключ одного
+  # издателя проверял бы токен, объявляющий другого.
+  #
+  # Значения — ТЕ ЖЕ, что у ПЕРВОЙ конфигурации проверяющего
+  # (kacho-registry.tokenAcceptance ниже): одна платформа, один набор адресов.
+  # Расхождение между ними было бы двумя местами об одном предмете.
+  #
+  # ОТКАТ состоит в снятии platformIssuer и нашего издателя из issuers — не в
+  # перекатке образа.
+  tokenAcceptance:
+    issuers: "https://iam.kacho.local,https://hydra.api.kacho.cloud"
+    # Адрес ОБЪЯВЛЯЕТСЯ, а не выводится из издателя: издатель приходит от
+    # предъявителя, и производный адрес получался бы у ВСЯКОГО издателя —
+    # состояние «записи нет» не наступало бы никогда, а страж старта стал бы
+    # тождественно истинным.
+    issuerKeySets: "https://iam.kacho.local=https://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,https://hydra.api.kacho.cloud=https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    # Наш издатель выбирает полосу приёма: строгий тип at+jwt и чтение отзыва на
+    # предъявлении. Вне issuers — отказ в старте.
+    platformIssuer: "https://iam.kacho.local"
+    # НАШ авторитет отзыва. Прежний провайдер о наших токенах не знает by
+    # construction: спрошенный про наш токен, он отвечает не «действует» и не
+    # «отозван», а утверждение о предмете, которого у него нет.
+    revocationUrl: "https://kacho-iam-internal.kacho.svc:9097/internal/tokens/introspect"
+    # Якорь доверия хопа к авторитету: по нему едет ПРЕДЪЯВЛЕННЫЙ токен, а не
+    # только административный вызов. Та же связка, что у хопа за ключами.
+    revocationCa:
+      secretName: kacho-iam-server-tls
+      key: ca.crt
+      mountPath: /etc/api-gateway/platform-revocation-ca
   # FORWARD ROLL: main-c7dce40d (kacho-api-gateway origin/main HEAD, Docker Hub-verified
   # 2026-07-15T14:02) — strict forward from the live main-a7c82963 (a7c82963 IS an
   # ancestor of c7dce40d, no revert). Adds RG-1 #145: registers the 6 public Repository

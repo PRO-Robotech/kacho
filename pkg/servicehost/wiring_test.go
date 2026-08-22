@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -34,6 +35,7 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
 	// Дескрипторы vpc линкуются РАДИ ГЛОБАЛЬНОГО РЕЕСТРА: набор пообъектных типов
@@ -260,7 +262,7 @@ func TestAccessLogRecordsAStreamCallToo(t *testing.T) {
 	spec := chainSpec()
 	spec.Logger = log
 	var slot decisionSlot
-	chain := streamChain(spec, &slot)
+	chain := streamChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1] // без слота решения: предмет пробы — журнал
 
 	err := runStreamChain(chain, &fakeStream{ctx: context.Background()}, panicMethod,
@@ -284,7 +286,7 @@ func TestAccessLogRecordsThePanickingStreamCall(t *testing.T) {
 	spec := chainSpec()
 	spec.Logger = log
 	var slot decisionSlot
-	chain := streamChain(spec, &slot)
+	chain := streamChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1]
 
 	err := runStreamChain(chain, &fakeStream{ctx: context.Background()}, panicMethod,
@@ -313,7 +315,7 @@ func TestStreamBudgetReachesTheStreamHandler(t *testing.T) {
 	spec.HandlingBudget = 5 * time.Second
 	spec.StreamBudget = servicecontract.Value(time.Hour)
 	var slot decisionSlot
-	chain := streamChain(spec, &slot)
+	chain := streamChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1]
 
 	var (
@@ -368,7 +370,7 @@ func TestStreamBudgetNeverWidensTheCallersDeadline(t *testing.T) {
 	spec := chainSpec()
 	spec.StreamBudget = servicecontract.Value(time.Hour)
 	var slot decisionSlot
-	chain := streamChain(spec, &slot)
+	chain := streamChain(spec, &slot, probeLatency(t), grpcsrv.ListenerPublic)
 	chain = chain[:len(chain)-1]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -454,8 +456,12 @@ func TestBothListenersRefuseIdenticallyOnTheWire(t *testing.T) {
 	spec := chainSpec()
 	spec.PublicCreds = insecure.NewCredentials()
 	spec.InternalCreds = insecure.NewCredentials()
+	spec.Metrics = prometheus.NewRegistry()
 	var slot decisionSlot
-	public, internal := serverPair(spec, &slot)
+	public, internal, perr := serverPair(spec, &slot)
+	if perr != nil {
+		t.Fatalf("пара слушателей: %v", perr)
+	}
 
 	pub, intl := callOverTheWire(t, public), callOverTheWire(t, internal)
 	if pub != intl {
@@ -477,6 +483,7 @@ func TestBothListenersReachTheHandlerOnceTheDecisionLinkIsInstalled(t *testing.T
 	spec := chainSpec()
 	spec.PublicCreds = insecure.NewCredentials()
 	spec.InternalCreds = insecure.NewCredentials()
+	spec.Metrics = prometheus.NewRegistry()
 	var slot decisionSlot
 	slot.install(authz.NewInterceptor(authz.InterceptorOptions{
 		ServiceName: "kacho-demo",
@@ -487,7 +494,10 @@ func TestBothListenersReachTheHandlerOnceTheDecisionLinkIsInstalled(t *testing.T
 			"/kacho.cloud.demo.v1.WidgetService/Get": {Public: true},
 		},
 	}))
-	public, internal := serverPair(spec, &slot)
+	public, internal, perr := serverPair(spec, &slot)
+	if perr != nil {
+		t.Fatalf("пара слушателей: %v", perr)
+	}
 
 	pub, intl := callOverTheWire(t, public), callOverTheWire(t, internal)
 	if pub != codes.OK || intl != codes.OK {
