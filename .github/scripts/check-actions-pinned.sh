@@ -37,7 +37,10 @@ while IFS= read -r line; do
     case "$ref" in ./*) continue ;; esac
 
     declared=$((declared + 1))
-    if ! printf '%s' "$ref" | grep -qE '@[0-9a-f]{40}$'; then
+    # Сравнение БЕЗ трубы: `printf | grep -q` под `pipefail` даёт ложный отказ,
+    # когда `grep` завершается рано и производитель получает SIGPIPE — тот самый
+    # класс, который ловит гейт дерева (#658).
+    if [[ ! "$ref" =~ @[0-9a-f]{40}$ ]]; then
         unpinned=$((unpinned + 1))
         findings+=("$file:$lineno: $ref — подключено по подвижной ссылке")
     fi
