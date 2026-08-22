@@ -282,6 +282,10 @@ type jwtHeader struct {
 	Alg string `json:"alg"`
 	Kid string `json:"kid"`
 	Typ string `json:"typ"`
+	// Crit — параметры, которые ОТПРАВИТЕЛЬ пометил обязательными к пониманию
+	// (RFC 7515 §4.1.11). Не читая его, принимающий исполняет условие, которого
+	// не понял, — то есть принимает токен на основании, которого не проверил.
+	Crit []string `json:"crit"`
 }
 
 // jwtClaims — энфорсимые утверждения токена. `aud` допускает строку или массив
@@ -334,6 +338,14 @@ func (v *Verifier) Verify(ctx context.Context, raw string) (string, error) {
 	// (2) Идентификатор ключа — недоверенный вход.
 	if !keyIDWellFormed(hdr.Kid) {
 		return "", fmt.Errorf("%w: malformed key id", ErrInvalidToken)
+	}
+	// (2а) Параметр, помеченный отправителем обязательным к пониманию, мы
+	// обязаны либо исполнить, либо отвергнуть токен целиком (RFC 7515 §4.1.11).
+	// Обратная сторона того же требования — НЕ помеченное неизвестное
+	// игнорируется (RFC 7519, EID 8060): именно на этом держится совместимость,
+	// поэтому неизвестные поля заголовка и утверждений разбор молча пропускает.
+	if ok, name := tokenpolicy.CriticalHeadersUnderstood(hdr.Crit); !ok {
+		return "", fmt.Errorf("%w: critical header %q is not understood", ErrInvalidToken, name)
 	}
 
 	var claims jwtClaims
@@ -704,14 +716,12 @@ func (k jsonWebKey) toRSA() (*rsa.PublicKey, error) {
 	n := new(big.Int).SetBytes(nb)
 	// Короткий модуль факторизуется, а значит подпись подделывается. Такой ключ
 	// не попадает в снимок вовсе.
-	if n.BitLen() < minRSAModulusBits {
-		return nil, fmt.Errorf("RSA modulus too small: %d bits (min %d)", n.BitLen(), minRSAModulusBits)
+	if n.BitLen() < tokenpolicy.MinRSAModulusBits {
+		return nil, fmt.Errorf("RSA modulus too small: %d bits (min %d)",
+			n.BitLen(), tokenpolicy.MinRSAModulusBits)
 	}
 	return &rsa.PublicKey{N: n, E: int(e.Int64())}, nil
 }
-
-// minRSAModulusBits — минимальный допустимый размер модуля RSA.
-const minRSAModulusBits = 2048
 
 // toECDSA собирает *ecdsa.PublicKey из base64url x/y для кривой P-256. Точка
 // проверяется как лежащая на кривой — иначе подложный ключ попадёт в снимок.
