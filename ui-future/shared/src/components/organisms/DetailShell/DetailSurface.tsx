@@ -18,6 +18,7 @@ import { useState, type ReactNode } from "react";
 import { PropertyRowProvider } from "./property-row-context";
 import { Check, Copy } from "lucide-react";
 import { toast } from "@shared/lib/toast";
+import { copyText } from "@shared/lib/clipboard";
 
 /** Строка свойства: ключ и значение. label — узел, а не строка: ключу бывает
  *  нужна подсказка ⓘ рядом с именем (см. DescItem расширений карточки). */
@@ -224,7 +225,8 @@ function ValueCopy({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
     try {
-      await navigator.clipboard.writeText(value);
+      // См. `@shared/lib/clipboard`.
+      if (!(await copyText(value))) throw new Error("буфер недоступен");
       setCopied(true);
       toast.success("Скопировано");
       setTimeout(() => setCopied(false), 1500);

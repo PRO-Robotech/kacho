@@ -24,6 +24,7 @@ import { Check, Copy } from "lucide-react";
 import { LazyJsonMonacoView } from "@shared/components/molecules/JsonMonacoView";
 import { toast } from "@shared/lib/toast";
 import { HeaderSlotPortal } from "./DetailShell";
+import { copyText } from "@shared/lib/clipboard";
 
 interface Props {
   data: unknown;
@@ -38,7 +39,8 @@ export function JsonTab({ data }: Props) {
 
   const onCopy = async () => {
     try {
-      await navigator.clipboard.writeText(text);
+      // См. `@shared/lib/clipboard`.
+      if (!(await copyText(text))) throw new Error("буфер недоступен");
       setCopied(true);
       toast.success("JSON скопирован");
       setTimeout(() => setCopied(false), 1500);

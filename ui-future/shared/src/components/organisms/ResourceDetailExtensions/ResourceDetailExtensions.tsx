@@ -33,6 +33,7 @@ import { SECURITY_GROUP_USED_BY_LIMIT } from "@shared/lib/used-by-limits";
 import { api } from "@shared/api/client";
 import { getByPath } from "@shared/lib/resource-registry";
 import { displayText } from "@shared/lib/display-text";
+import { copyText } from "@shared/lib/clipboard";
 
 /** Одна запись `used_by` — output-only kacho.cloud.reference.Reference. */
 export interface UsedByEntry {
@@ -109,7 +110,9 @@ function cidrTags(items: string[] | undefined): ReactNode {
           title="Нажмите, чтобы скопировать"
           onClick={(e) => {
             e.stopPropagation();
-            void navigator.clipboard?.writeText(c);
+            // См. `@shared/lib/clipboard`: вне защищённого контекста прямого
+            // доступа к буферу нет вовсе, и `?.` тихо не делает ничего.
+            void copyText(c);
             toast.success(`Скопировано: ${c}`);
           }}
           style={{

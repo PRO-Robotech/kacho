@@ -22,6 +22,7 @@
 
 import type { CSSProperties } from "react";
 import { toast } from "@shared/lib/toast";
+import { copyText } from "@shared/lib/clipboard";
 
 interface Props {
   labels?: Record<string, string> | null;
@@ -117,10 +118,12 @@ export function LabelsCell({ labels, max = 4 }: Props) {
 
   const copy = (e: React.MouseEvent, kv: string) => {
     e.stopPropagation();
-    navigator.clipboard
-      .writeText(kv)
-      .then(() => toast.success(`Скопировано: ${kv}`))
-      .catch(() => toast.error("Не удалось скопировать"));
+    // Через общий помощник: `navigator.clipboard` существует только в
+    // защищённом контексте, а консоль открывают и по `http://` на имени
+    // хоста — там прямое обращение роняло обработчик до всякого `catch`.
+    void copyText(kv).then((ok) =>
+      ok ? toast.success(`Скопировано: ${kv}`) : toast.error("Не удалось скопировать"),
+    );
   };
 
   return (

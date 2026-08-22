@@ -15,6 +15,7 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { toast } from "@shared/lib/toast";
 import { cn } from "@shared/lib/utils";
+import { copyText } from "@shared/lib/clipboard";
 
 interface Props {
   name: string;
@@ -46,7 +47,10 @@ export function CopyableName({ name, fallback, className, iconOnly }: Props) {
     e.preventDefault();
     e.stopPropagation();
     try {
-      await navigator.clipboard.writeText(value);
+      // Копирование через общий помощник: `navigator.clipboard` существует
+      // только в защищённом контексте, а консоль открывают и по `http://` на
+      // имени хоста — там его нет вовсе, и прямое обращение роняло обработчик.
+      if (!(await copyText(value))) throw new Error("буфер недоступен");
       setCopied(true);
       toast.success(isFallback ? "ID скопирован" : "Имя скопировано");
       setTimeout(() => setCopied(false), 1500);

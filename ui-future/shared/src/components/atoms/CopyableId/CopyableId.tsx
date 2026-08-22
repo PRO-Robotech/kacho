@@ -25,6 +25,7 @@ import { MonoValue } from "./MonoValue";
 import { Check, Copy } from "lucide-react";
 import { toast } from "@shared/lib/toast";
 import { cn } from "@shared/lib/utils";
+import { copyText } from "@shared/lib/clipboard";
 
 interface Props {
   id: string;
@@ -52,7 +53,9 @@ export function CopyableId({ id, className, showIcon = true }: Props) {
     e.preventDefault();
     e.stopPropagation();
     try {
-      await navigator.clipboard.writeText(id);
+      // См. `@shared/lib/clipboard`: прямое обращение к `navigator.clipboard`
+      // работает не во всякой посадке консоли.
+      if (!(await copyText(id))) throw new Error("буфер недоступен");
       setCopied(true);
       toast.success("ID скопирован");
       setTimeout(() => setCopied(false), 1500);
