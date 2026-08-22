@@ -124,4 +124,3 @@ func TestPermissionMap_CatalogAdmin_EnforcedByInterceptor(t *testing.T) {
 // Урок применим к ЛЮБОМУ будущему стриму: «как у соседа» — не довод, пока не
 // назван предикат, на котором сосед авторизует. Имя снятого RPC стоит в надгробии
 // `retiredRPCSurface`, поэтому вернуться молча оно не может.
-

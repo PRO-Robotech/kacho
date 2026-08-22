@@ -155,7 +155,6 @@ func TestDescriptorDeclaresNoNarrowersSinceTheStreamIsGone(t *testing.T) {
 	}
 }
 
-
 // TestHideExistenceFormsComeFromTheProducer — объявленная форма отказа совпадает
 // с той, которой РЕАЛЬНО отвечает звено решения о доступе.
 //
@@ -223,7 +222,6 @@ func TestStreamBudgetIsWaivedWithItsSubject(t *testing.T) {
 	t.Logf("ось срока жизни стрима изъята, причина: %s", why)
 }
 
-
 // TestComputeServesNoServerStreams — предмет ИЗЪЯТОЙ оси: стримов нет, и это
 // проверяется обходом зарегистрированного, а не чтением объявления.
 //
@@ -259,7 +257,6 @@ func TestComputeServesNoServerStreams(t *testing.T) {
 	}
 	t.Logf("осмотрено служимых методов: %d, серверных стримов среди них: %d", methods, len(streams))
 }
-
 
 // TestDescriptorRefusesInsecureListenersInProduction — боевая посадка судится
 // ОТВЕТОМ САМОГО ТРАНСПОРТА, а не ручкой конфигурации.

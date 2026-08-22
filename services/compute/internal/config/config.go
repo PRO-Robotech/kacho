@@ -44,7 +44,6 @@ type Config struct {
 	// НЕ выставляется через api-gateway external endpoint.
 	InternalGrpcPort string `envconfig:"KACHO_COMPUTE_INTERNAL_PORT" default:"9091"`
 
-
 	// MetricsAddr — адрес cluster-internal diagnostic HTTP-listener'а
 	// (/metrics + /healthz + /readyz). Default ":9095" — отдельный internal-порт
 	// (НЕ маршрутизируется на external endpoint; cluster-internal scrape +
@@ -212,7 +211,6 @@ type Config struct {
 	// К серверному стриму эта величина НЕ применяется — у подписки своя
 	// (KACHO_COMPUTE_WATCH_STREAM_BUDGET).
 	HandlingBudget time.Duration `envconfig:"KACHO_COMPUTE_HANDLING_BUDGET" default:"30s"`
-
 
 	// AuthZTrustedForwarderSANs — allow-list cert-identity SAN'ов, которым разрешено
 	// форвардить end-user principal в x-kacho-principal-* metadata (обычно

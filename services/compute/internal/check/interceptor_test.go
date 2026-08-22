@@ -230,7 +230,6 @@ func TestInterceptor_Unary_UnmappedInternalRPC_FailClosed(t *testing.T) {
 // сужаемых по данным методов нет вовсе — свойство проверяется там, где предмет
 // есть, а здесь проба утверждала бы про несуществующий метод.
 
-
 // fakeServerStream — minimal grpc.ServerStream fake carrying only a Context();
 // Stream() reads no other method before delegating to handler.
 type fakeServerStream struct {

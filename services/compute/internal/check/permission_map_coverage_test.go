@@ -211,7 +211,6 @@ func TestPermissionMap_ServedEntriesWellFormed(t *testing.T) {
 // срока жизни стрима у носителя, которая роняет старт, будучи необъявленной.
 // Появится стрим — обе стороны заговорят, и этот гейт вернётся вместе с ними.
 
-
 // TestPermissionMap_EveryComputeServiceClassified — исчерпывающая классификация
 // пакета: каждый сервис `kacho.cloud.compute.v1` либо в served-списках, либо в
 // notServedServiceNames. Без этого гейта новый сервис, поднятый в main.go, но не
