@@ -16,29 +16,29 @@ import { jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MonoValue } from "./MonoValue";
 
-const ЗНАЧЕНИЕ = "rtb6qc1500147672jdmp";
+const VALUE = "rtb6qc1500147672jdmp";
 
 describe("MonoValue", () => {
   it("одна строка: не переносится и обрезается многоточием", () => {
-    render(<MonoValue value={ЗНАЧЕНИЕ} />);
-    const узел = screen.getByText(ЗНАЧЕНИЕ);
+    render(<MonoValue value={VALUE} />);
+    const node = screen.getByText(VALUE);
 
-    expect(узел.getAttribute("class") ?? "").toContain("t-mono");
-    expect(узел.style.whiteSpace).toBe("nowrap");
-    expect(узел.style.textOverflow).toBe("ellipsis");
-    expect(узел.style.overflow).toBe("hidden");
+    expect(node.getAttribute("class") ?? "").toContain("t-mono");
+    expect(node.style.whiteSpace).toBe("nowrap");
+    expect(node.style.textOverflow).toBe("ellipsis");
+    expect(node.style.overflow).toBe("hidden");
     // Без этого гибкий элемент не становится уже своего содержимого, и обрезка
     // не наступает НИКОГДА: правило выглядело бы исполненным и не делало ничего.
     // Отсутствие свойства даёт пустую строку → NaN, то есть проба падает и на нём.
-    expect(parseFloat(узел.style.minWidth)).toBe(0);
+    expect(parseFloat(node.style.minWidth)).toBe(0);
   });
 
   it("обрезка — только показ: полное значение остаётся в разметке и в подсказке", () => {
-    render(<MonoValue value={ЗНАЧЕНИЕ} />);
-    const узел = screen.getByText(ЗНАЧЕНИЕ);
+    render(<MonoValue value={VALUE} />);
+    const node = screen.getByText(VALUE);
 
-    expect(узел.textContent).toBe(ЗНАЧЕНИЕ);
-    expect(узел).toHaveAttribute("title", ЗНАЧЕНИЕ);
+    expect(node.textContent).toBe(VALUE);
+    expect(node).toHaveAttribute("title", VALUE);
   });
 
   it("копирования не предлагает: в строке свойств оно общее", () => {
@@ -49,13 +49,13 @@ describe("MonoValue", () => {
       value: { writeText },
     });
 
-    const { container } = render(<MonoValue value={ЗНАЧЕНИЕ} />);
+    const { container } = render(<MonoValue value={VALUE} />);
 
     expect(container.querySelector("button")).toBeNull();
-    fireEvent.click(screen.getByText(ЗНАЧЕНИЕ));
+    fireEvent.click(screen.getByText(VALUE));
     expect(writeText).not.toHaveBeenCalled();
     // Парный положительный: «кнопки нет» не достигнуто тем, что нет и значения.
-    expect(screen.getByText(ЗНАЧЕНИЕ)).toBeInTheDocument();
+    expect(screen.getByText(VALUE)).toBeInTheDocument();
   });
 
   it("пустое значение — прочерк, а не пустая моноширинная строка с подсказкой", () => {

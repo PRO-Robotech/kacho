@@ -138,7 +138,7 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - name: pyyaml (нужен гейту связности суита↔гейт↔артефакт)
         run: python3 -m pip install --quiet pyyaml
 
@@ -211,7 +211,7 @@ jobs:
       # Стенд не нужен; newman нужен — и если его нет, проба выходит НЕнулевым кодом,
       # а не молча. Установка ставит ту же мажорную версию, что и шард: вердикт о
       # разборе утверждений на другой версии был бы вердиктом о другом предмете.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
         with: { node-version: '26' }
       - name: newman (нужен пробе ALLOW-полос authz-deny)
         run: npm i -g newman@6
@@ -417,11 +417,10 @@ jobs:
       # на общем раннере это отказ, неотличимый от дефекта продукта.
       CLUSTER_NAME: kacho-${{ matrix.shard.id }}
     steps:
-      - uses: actions/checkout@v7
-
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       # Тулчейны ставим сами и с ПИНАМИ, не полагаясь на состав образа ранера: он
       # меняется без нашего участия, и «оно там было» — не инвариант.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -443,13 +442,12 @@ jobs:
       # поднимает стенд С НУЛЯ и делает три фазы helm подряд, поэтому проходит
       # ровно тот путь, где задание впервые записывает аннотацию, а следующая
       # фаза применяет релиз поверх уже записанного.
-      - uses: azure/setup-helm@v5
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5
         with:
           version: v4.2.4
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
         with: { node-version: '26' }
-      - uses: azure/setup-kubectl@v5
-
+      - uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5
       # buf нужен пробе ban #6: она берёт дескрипторы из `buf build proto`, а не из
       # reflection — reflection на внутреннем листенере закрыт намеренно и снимать
       # его ради пробы нельзя. Пин 1.72.0 — тот же, что у job'ов `proto` и каталога
@@ -458,7 +456,7 @@ jobs:
       # github_token — по той же причине, что в обоих job'ах ci.yaml: без него
       # релиз buf берётся неаутентифицированно, квота общая на IP ранера, и на её
       # исчерпании проба ban #6 не выполняется вовсе при красной джобе.
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-setup-action@3e33fea8596569a62fcaa33eb3880b6ac7098941  # v1.9.0
         with:
           version: 1.72.0
           github_token: ${{ github.token }}
@@ -872,7 +870,7 @@ jobs:
 
       - name: upload — опись шарда + newman-отчёты + журналы стенда
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: newman-shard-${{ matrix.shard.id }}
           # Три строки: опись (она же якорь общего предка) + отчёты. Суита
@@ -945,8 +943,8 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -964,7 +962,7 @@ jobs:
       # отказ скачивания, из которого не видно, чьей описи не хватает.
       - name: скачать архивы шардов (описи + отчёты)
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
           pattern: newman-shard-*
           path: .

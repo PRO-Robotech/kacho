@@ -245,8 +245,8 @@ export function apiCalls(page: Page): string[] {
  * и на отказе рисуется другая подпись. Проба, ждущая успеха, краснеет и когда
  * буфер недоступен, и когда ушло не то значение.
  */
-export function подписьКопирования(page: Page, значение: string) {
-  return page.getByText(`Скопировано: ${значение}`).first();
+export function copyToast(page: Page, value: string) {
+  return page.getByText(`Скопировано: ${value}`).first();
 }
 
 /**
@@ -268,14 +268,14 @@ export function подписьКопирования(page: Page, значени�
  * Ждать этого ДО создания ресурсов выгоднее вдвойне: время ожидания тратится
  * на то, что всё равно должно произойти, а к моменту перехода область уже есть.
  */
-export async function областьГотова(page: Page, projectId: string): Promise<void> {
+export async function scopeIsReady(page: Page, projectId: string): Promise<void> {
   await page.goto(`/projects/${projectId}/dashboard`, { waitUntil: "domcontentloaded" });
   await expect
     .poll(
       async () => {
-        const кнопка = page.getByRole("button", { name: "Virtual Private Cloud" }).first();
-        if ((await кнопка.count()) === 0) return false;
-        return await кнопка.isEnabled();
+        const button = page.getByRole("button", { name: "Virtual Private Cloud" }).first();
+        if ((await button.count()) === 0) return false;
+        return await button.isEnabled();
       },
       {
         message:

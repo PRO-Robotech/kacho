@@ -17,12 +17,12 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PropertyRows } from "./DetailSurface";
 
-const ДЛИННОЕ = "net-0123456789abcdefghijklmnopqrstuvwxyz-конец";
+const LONG_VALUE = "net-0123456789abcdefghijklmnopqrstuvwxyz-конец";
 
-let скопировано: string[] = [];
+let copied: string[] = [];
 
 beforeEach(() => {
-  скопировано = [];
+  copied = [];
   // Буфера обмена в jsdom нет вовсе. Подменяется он ЦЕЛИКОМ и на каждую пробу:
   // общий на файл накапливал бы записи соседних проб, и утверждение «уехало
   // ровно это» стало бы утверждением «уехало в том числе это».
@@ -30,7 +30,7 @@ beforeEach(() => {
     configurable: true,
     value: {
       writeText: (t: string) => {
-        скопировано.push(t);
+        copied.push(t);
         return Promise.resolve();
       },
     },
@@ -39,12 +39,12 @@ beforeEach(() => {
 
 describe("строка обзора: копирование значения", () => {
   it("строка с объявленным копированием несёт кнопку, и в буфер уезжает ПОЛНОЕ значение", async () => {
-    render(<PropertyRows items={[{ label: "Идентификатор", value: ДЛИННОЕ, copy: ДЛИННОЕ }]} />);
+    render(<PropertyRows items={[{ label: "Идентификатор", value: LONG_VALUE, copy: LONG_VALUE }]} />);
 
-    const кнопка = screen.getByRole("button", { name: "Скопировать: Идентификатор" });
-    await userEvent.click(кнопка);
+    const button = screen.getByRole("button", { name: "Скопировать: Идентификатор" });
+    await userEvent.click(button);
 
-    expect(скопировано).toEqual([ДЛИННОЕ]);
+    expect(copied).toEqual([LONG_VALUE]);
   });
 
   it("строка БЕЗ объявленного копирования кнопки не несёт (парное отрицание)", () => {

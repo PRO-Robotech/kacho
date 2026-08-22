@@ -91,7 +91,7 @@ function renderList(spec: ResourceSpec) {
 }
 
 /** Заголовок страницы — `Typography.Title level={3}`, то есть `h3`. */
-function заголовокСтраницы(): HTMLElement {
+function pageHeading(): HTMLElement {
   return screen.getByRole("heading", { level: 3 });
 }
 
@@ -106,7 +106,7 @@ function заголовокСтраницы(): HTMLElement {
 const VPC_SPECS = Object.values(REGISTRY).filter((s) => s.apiPath.startsWith("/vpc/v1/"));
 
 /** Контроль вывода: восемь типов раздела сетей обязаны в него попасть. */
-const ВОСЕМЬ = [
+const EIGHT = [
   "networks",
   "subnets",
   "addresses",
@@ -122,9 +122,9 @@ describe("подпись действия называет действие, а 
     // Без этого «ни одна подпись не несёт имени типа» ниже было бы выполнено и
     // пустым набором — то есть «ноль находок» не отличалось бы от «ноль
     // прочитанного».
-    expect(VPC_SPECS.length).toBeGreaterThanOrEqual(ВОСЕМЬ.length);
+    expect(VPC_SPECS.length).toBeGreaterThanOrEqual(EIGHT.length);
     const ids = new Set(VPC_SPECS.map((s) => s.id));
-    expect(ВОСЕМЬ.filter((id) => !ids.has(id))).toEqual([]);
+    expect(EIGHT.filter((id) => !ids.has(id))).toEqual([]);
   });
 
   it("«Создать» без предмета — там, где у предмета своя форма винительного", async () => {
@@ -146,7 +146,7 @@ describe("подпись действия называет действие, а 
 
     // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ к трём отрицаниям выше: имя типа на экране ЕСТЬ —
     // значит «его нет на кнопке» не выполнено по причине пустого экрана.
-    expect(заголовокСтраницы().textContent).toBe("Таблицы маршрутов");
+    expect(pageHeading().textContent).toBe("Таблицы маршрутов");
   });
 
   it.each(VPC_SPECS.filter((s) => s.ops.create).map((s) => [s.id, s] as const))(
@@ -168,7 +168,7 @@ describe("подпись действия называет действие, а 
       expect(cta.textContent).not.toContain(spec.accusative);
       expect(cta.textContent).not.toContain(spec.singular.toLowerCase());
       // Положительный контроль — на каждом типе, а не только на показательном.
-      expect(заголовокСтраницы().textContent).toBe(spec.plural);
+      expect(pageHeading().textContent).toBe(spec.plural);
     },
   );
 });
@@ -195,7 +195,7 @@ describe("строка инструментов", () => {
     // спрашиваем.
     await screen.findByText("Создайте вашу первую облачную сеть");
 
-    expect(заголовокСтраницы().textContent).toBe(spec.plural);
+    expect(pageHeading().textContent).toBe(spec.plural);
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByRole("button", { name: "Столбцы" })).toBeNull();
   });
@@ -220,21 +220,21 @@ describe("строка инструментов", () => {
     renderList(spec);
     await screen.findAllByText("первая");
 
-    const поиск = screen.getByRole("searchbox");
-    const столбцы = screen.getByRole("button", { name: "Столбцы" });
-    const создать = screen.getByRole("link", { name: /Создать/ });
-    const таблица = screen.getByRole("table");
+    const search = screen.getByRole("searchbox");
+    const columns = screen.getByRole("button", { name: "Столбцы" });
+    const createLink = screen.getByRole("link", { name: /Создать/ });
+    const table = screen.getByRole("table");
 
     /** true, если `a` стоит в документе раньше `b`. */
-    const раньше = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
-    expect(раньше(поиск, столбцы)).toBe(true);
-    expect(раньше(столбцы, создать)).toBe(true);
-    expect(раньше(создать, таблица)).toBe(true);
+    expect(before(search, columns)).toBe(true);
+    expect(before(columns, createLink)).toBe(true);
+    expect(before(createLink, table)).toBe(true);
     // Отрицание в паре с положительным: проба обязана уметь сказать «нет».
-    expect(раньше(столбцы, поиск)).toBe(false);
-    expect(раньше(создать, столбцы)).toBe(false);
-    expect(раньше(таблица, поиск)).toBe(false);
+    expect(before(columns, search)).toBe(false);
+    expect(before(createLink, columns)).toBe(false);
+    expect(before(table, search)).toBe(false);
   });
 
   it("отбор стоит ПЕРЕД поиском: он меняет набор, среди которого потом ищут", async () => {
@@ -249,12 +249,12 @@ describe("строка инструментов", () => {
     renderList(spec);
     await screen.findAllByText("первая");
 
-    const отбор = screen.getByRole("combobox");
-    const поиск = screen.getByRole("searchbox");
+    const filterSelect = screen.getByRole("combobox");
+    const search = screen.getByRole("searchbox");
 
-    const раньше = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
-    expect(раньше(отбор, поиск)).toBe(true);
-    expect(раньше(поиск, отбор)).toBe(false);
+    expect(before(filterSelect, search)).toBe(true);
+    expect(before(search, filterSelect)).toBe(false);
   });
 });

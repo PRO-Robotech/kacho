@@ -63,7 +63,7 @@ function ряд(page: Page, подпись: string) {
 }
 
 func TestFormRowLocatorIsSilentOnGuardedAndOnUnrelatedForms(t *testing.T) {
-	for _, c := range []struct{ имя, src string }{
+	for _, c := range []struct{ name, src string }{
 		{
 			"отсечение вложенных строк есть",
 			`return page
@@ -101,7 +101,7 @@ func TestFormRowLocatorIsSilentOnGuardedAndOnUnrelatedForms(t *testing.T) {
 		got, _ := FindUnguardedFormRowLocators(c.src)
 		if len(got) != 0 {
 			t.Errorf("%s: найдено %d находок на законной форме — гейт ловит форму, а не существо: %v",
-				c.имя, len(got), got)
+				c.name, len(got), got)
 		}
 	}
 }

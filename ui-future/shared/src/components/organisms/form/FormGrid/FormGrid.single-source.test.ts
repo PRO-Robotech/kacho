@@ -29,7 +29,7 @@ import { stripComments } from "@shared/test/strip-comments";
  * где `__dirname` не определён, и проба падала бы поломкой разбора — то есть
  * «не выполнилось», а не вердиктом.
  */
-function корень(): string {
+function root(): string {
   let dir = process.cwd();
   for (let i = 0; i < 6; i++) {
     if (existsSync(join(dir, "shared", "src")) && existsSync(join(dir, "vpc", "src"))) return dir;
@@ -40,9 +40,9 @@ function корень(): string {
   throw new Error(`корень консоли не найден вверх от ${process.cwd()} — проба не знает, что читать`);
 }
 
-const КОРЕНЬ = join(корень(), "shared", "src");
+const ROOT = join(root(), "shared", "src");
 /** Единственный законный дом геометрии. */
-const ДОМ = join("components", "organisms", "form", "FormGrid", "FormGrid.tsx");
+const HOME = join("components", "organisms", "form", "FormGrid", "FormGrid.tsx");
 
 /**
  * Послабление — ровно одно, названное поимённо и с причиной.
@@ -57,13 +57,13 @@ const ДОМ = join("components", "organisms", "form", "FormGrid", "FormGrid.tsx
  * (проверка ниже), иначе перечень переживёт свой предмет и унаследует следующую
  * слепую зону.
  */
-const ПОСЛАБЛЕНИЯ = [join("components", "organisms", "system", "GrantAdminModal", "GrantAdminModal.tsx")];
+const EXEMPTIONS = [join("components", "organisms", "system", "GrantAdminModal", "GrantAdminModal.tsx")];
 
-function исходники(dir: string, out: string[] = []): string[] {
+function sources(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const p = join(dir, entry);
     if (statSync(p).isDirectory()) {
-      исходники(p, out);
+      sources(p, out);
       continue;
     }
     if (!/\.tsx?$/.test(entry)) continue;
@@ -74,34 +74,34 @@ function исходники(dir: string, out: string[] = []): string[] {
 }
 
 describe("ширина колонки подписи объявлена одним файлом", () => {
-  const файлы = исходники(join(КОРЕНЬ, "components"));
-  const объявляют = файлы.filter((p) => /labelCol=\{\{\s*flex:/.test(stripComments(readFileSync(p, "utf8"))));
+  const files = sources(join(ROOT, "components"));
+  const declaring = files.filter((p) => /labelCol=\{\{\s*flex:/.test(stripComments(readFileSync(p, "utf8"))));
 
   it("перепись непуста — иначе «ноль находок» означало бы «ноль прочитанного»", () => {
-    expect(файлы.length).toBeGreaterThan(100);
+    expect(files.length).toBeGreaterThan(100);
   });
 
-  const относительные = объявляют.map((p) => p.slice(КОРЕНЬ.length + 1));
+  const relative = declaring.map((p) => p.slice(ROOT.length + 1));
 
   it("объявление ровно одно, и это FormGrid", () => {
-    expect(относительные.filter((p) => !ПОСЛАБЛЕНИЯ.includes(p))).toEqual([ДОМ]);
+    expect(relative.filter((p) => !EXEMPTIONS.includes(p))).toEqual([HOME]);
   });
 
   it("послаблению есть что исключать — иначе оно переживёт свой предмет", () => {
-    for (const p of ПОСЛАБЛЕНИЯ) expect(относительные).toContain(p);
+    for (const p of EXEMPTIONS) expect(relative).toContain(p);
   });
 
   // Контроль в обратную сторону: гейт читает ИСПОЛНЯЕМУЮ часть. Без этого он
   // краснел бы на собственном объяснении и на любом разборе, называющем свойство.
   it("упоминание в комментарии объявлением не считается", () => {
-    const комментарий = `// здесь стояло labelCol={{ flex: "200px" }} — снято\nexport const x = 1;`;
+    const comment = `// здесь стояло labelCol={{ flex: "200px" }} — снято\nexport const x = 1;`;
 
-    expect(/labelCol=\{\{\s*flex:/.test(stripComments(комментарий))).toBe(false);
-    expect(/labelCol=\{\{\s*flex:/.test(комментарий)).toBe(true);
+    expect(/labelCol=\{\{\s*flex:/.test(stripComments(comment))).toBe(false);
+    expect(/labelCol=\{\{\s*flex:/.test(comment)).toBe(true);
   });
 
   it("объявленное число — то самое, которого требует канон формы", () => {
-    const src = readFileSync(join(КОРЕНЬ, ДОМ), "utf8");
+    const src = readFileSync(join(ROOT, HOME), "utf8");
     expect(stripComments(src)).toContain("FORM_LABEL_WIDTH = 200");
   });
 });

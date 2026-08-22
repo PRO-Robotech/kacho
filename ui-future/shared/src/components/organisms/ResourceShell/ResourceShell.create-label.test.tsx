@@ -70,7 +70,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-function открытьВкладку(tab: string) {
+function openTab(tab: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -88,16 +88,16 @@ function открытьВкладку(tab: string) {
 
 describe("вкладка связанного ресурса: подпись действия", () => {
   it("кнопка в шапке называет действие, ребёнка называет вкладка", async () => {
-    открытьВкладку("route-tables");
+    openTab("route-tables");
 
     await waitFor(() => expect(screen.getByRole("button", { name: /Создать/ })).toBeInTheDocument());
-    const подпись = screen.getByRole("button", { name: /Создать/ }).textContent ?? "";
+    const label = screen.getByRole("button", { name: /Создать/ }).textContent ?? "";
 
-    expect(подпись).toBe("Создать");
+    expect(label).toBe("Создать");
     // Обе прежние сборки названы дословно: и та, что стояла в продукте, и та,
     // которой её чинили. Возврат любой красит эту пробу.
-    expect(подпись).not.toContain("таблицу маршрутов");
-    expect(подпись).not.toContain("таблица маршрутов");
+    expect(label).not.toContain("таблицу маршрутов");
+    expect(label).not.toContain("таблица маршрутов");
 
     // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ к трём отрицаниям: имя ребёнка на экране ЕСТЬ —
     // его несёт вкладка, на которой кнопка и стоит.
@@ -112,7 +112,7 @@ describe("вкладка связанного ресурса: подпись д�
     // таблицу маршрутов» — строку, которой после решения владельца нет НИГДЕ, —
     // и потому было истинно по построению. Спрашивается ровно та подпись,
     // которую продукт теперь производит.
-    открытьВкладку("");
+    openTab("");
 
     // Имя ресурса на карточке стоит дважды — заголовком и строкой обзора,
     // поэтому ждём ЛЮБОЕ его вхождение: предмет пробы не в том, сколько их.

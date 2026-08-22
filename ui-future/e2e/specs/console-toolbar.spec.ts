@@ -36,20 +36,20 @@ import { tenantWithProject, createdResourceId, runTag } from "./fixtures";
  * поля рисует его оболочка, а не сам `input`.
  */
 
-const ШИРИНА_ОКНА = { width: 1440, height: 900 };
+const VIEWPORT = { width: 1440, height: 900 };
 
 /** Ряд считается одним, пока ручки стоят на одной высоте: разброс верха ≤ 4 точек. */
-const РАЗБРОС_РЯДА = 4;
+const ROW_SPREAD = 4;
 
-interface Коробка {
+interface Box {
   x: number;
   y: number;
   w: number;
   h: number;
   right: number;
-  радиус: string;
-  подпись: string;
-  чем: string;
+  radius: string;
+  label: string;
+  what: string;
 }
 
 /**
@@ -61,9 +61,9 @@ interface Коробка {
  * «высоту задаёт оболочка, не поле внутри» проверялось бы своим же нарушением.
  * Обход не знает ни одного имени класса и переживёт смену библиотеки.
  */
-async function ручкиРяда(page: Page): Promise<Record<string, Коробка | null>> {
+async function rowControls(page: Page): Promise<Record<string, Box | null>> {
   return page.evaluate(() => {
-    const рамка = (el: Element | null): Element | null => {
+    const wrapper = (el: Element | null): Element | null => {
       let cur: Element | null = el;
       for (let i = 0; i < 4 && cur; i++) {
         if (parseFloat(getComputedStyle(cur).borderTopWidth) > 0) return cur;
@@ -71,7 +71,7 @@ async function ручкиРяда(page: Page): Promise<Record<string, Короб
       }
       return el;
     };
-    const снять = (el: Element | null | undefined, чем: string): Коробка | null => {
+    const capture = (el: Element | null | undefined, what: string): Box | null => {
       if (!el) return null;
       const b = el.getBoundingClientRect();
       const cs = getComputedStyle(el);
@@ -81,38 +81,38 @@ async function ручкиРяда(page: Page): Promise<Record<string, Короб
         w: Math.round(b.width),
         h: Math.round(b.height),
         right: Math.round(b.right),
-        радиус: cs.borderRadius,
-        подпись: (el.textContent ?? "").replace(/\s+/g, " ").trim(),
-        чем,
+        radius: cs.borderRadius,
+        label: (el.textContent ?? "").replace(/\s+/g, " ").trim(),
+        what,
       };
     };
-    const кнопка = (re: RegExp) =>
+    const button = (re: RegExp) =>
       Array.from(document.querySelectorAll("button")).find((b) => re.test(b.textContent ?? ""));
-    const поле = Array.from(document.querySelectorAll("input")).find((i) =>
+    const field = Array.from(document.querySelectorAll("input")).find((i) =>
       /оиск/.test(i.getAttribute("placeholder") ?? ""),
     );
     return {
-      поиск: снять(рамка(поле ?? null), "оболочка поля поиска"),
-      столбцы: снять(кнопка(/Столбцы/), "кнопка «Столбцы»"),
-      создать: снять(кнопка(/^\s*Создать\s*$/), "кнопка «Создать»"),
-    } as Record<string, Коробка | null>;
+      search: capture(wrapper(field ?? null), "оболочка поля поиска"),
+      columns: capture(button(/Столбцы/), "кнопка «Столбцы»"),
+      create: capture(button(/^\s*Создать\s*$/), "кнопка «Создать»"),
+    } as Record<string, Box | null>;
   });
 }
 
 /** Строки свойств карточки: где стоит значение и где — кнопка копирования. */
-async function строкиСвойств(page: Page) {
+async function propertyRows(page: Page) {
   return page.evaluate(() => {
-    const строки: Array<{
-      подпись: string;
-      колонкаX: number;
-      колонкаRight: number;
-      значениеX: number;
-      значениеRight: number;
-      копияX: number | null;
-      копияRight: number | null;
-      значокW: number | null;
-      значокH: number | null;
-      копийВСтроке: number;
+    const rows: Array<{
+      label: string;
+      columnX: number;
+      columnRight: number;
+      valueX: number;
+      valueRight: number;
+      copyX: number | null;
+      copyRight: number | null;
+      iconW: number | null;
+      iconH: number | null;
+      copiesInRow: number;
     }> = [];
     // `dd` — семантика HTML («значение определения»), а не наше имя класса:
     // проба переживёт переименование стилей и умрёт вместе со строкой свойств.
@@ -120,71 +120,71 @@ async function строкиСвойств(page: Page) {
       const dt = dd.previousElementSibling;
       const b = dd.getBoundingClientRect();
       const cs = getComputedStyle(dd);
-      const первый = dd.firstElementChild?.getBoundingClientRect();
-      if (!первый) return;
+      const first = dd.firstElementChild?.getBoundingClientRect();
+      if (!first) return;
       // Кнопка копирования строки названа «Скопировать: <подпись>» — по этой
       // подписи её и находим, а не по классу.
-      const копия = Array.from(dd.querySelectorAll("button")).filter((btn) =>
+      const copy = Array.from(dd.querySelectorAll("button")).filter((btn) =>
         /^Скопировать:/.test(btn.getAttribute("aria-label") ?? btn.getAttribute("title") ?? ""),
       );
-      const к = копия[0]?.getBoundingClientRect();
-      const svg = копия[0]?.querySelector("svg")?.getBoundingClientRect();
-      строки.push({
-        подпись: (dt?.textContent ?? "").trim(),
-        колонкаX: Math.round(b.x + parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth)),
-        колонкаRight: Math.round(b.right - parseFloat(cs.paddingRight)),
-        значениеX: Math.round(первый.x),
-        значениеRight: Math.round(первый.right),
-        копияX: к ? Math.round(к.x) : null,
-        копияRight: к ? Math.round(к.right) : null,
-        значокW: svg ? Math.round(svg.width) : null,
-        значокH: svg ? Math.round(svg.height) : null,
-        копийВСтроке: копия.length,
+      const box = copy[0]?.getBoundingClientRect();
+      const svg = copy[0]?.querySelector("svg")?.getBoundingClientRect();
+      rows.push({
+        label: (dt?.textContent ?? "").trim(),
+        columnX: Math.round(b.x + parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth)),
+        columnRight: Math.round(b.right - parseFloat(cs.paddingRight)),
+        valueX: Math.round(first.x),
+        valueRight: Math.round(first.right),
+        copyX: box ? Math.round(box.x) : null,
+        copyRight: box ? Math.round(box.right) : null,
+        iconW: svg ? Math.round(svg.width) : null,
+        iconH: svg ? Math.round(svg.height) : null,
+        copiesInRow: copy.length,
       });
     });
-    return строки;
+    return rows;
   });
 }
 
 /** Сеть с двумя подсетями РАЗНОЙ длины имени — иначе «столбец» и «за значением» неразличимы. */
-async function сетьСПодсетями(page: Page, projectId: string): Promise<string> {
-  const о = await page.request.post("/vpc/v1/networks", {
+async function networkWithSubnets(page: Page, projectId: string): Promise<string> {
+  const resp = await page.request.post("/vpc/v1/networks", {
     data: { projectId, name: `net-tb-${runTag()}`, ipv4CidrBlocks: ["10.79.0.0/16"] },
   });
-  const netId = await createdResourceId(page, о, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под пробу");
+  const netId = await createdResourceId(page, resp, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под пробу");
 
-  const зоны = await page.request.get("/geo/v1/zones");
+  const zones = await page.request.get("/geo/v1/zones");
   expect(
-    зоны.ok(),
+    zones.ok(),
     "справочник зон недоступен — зональную подсеть создать негде. Это УСЛОВИЕ пробы, " +
       "а не её предмет: о ручках и строках свойств такой прогон не говорит ничего",
   ).toBeTruthy();
-  const зона = ((await зоны.json()) as { zones?: Array<{ id: string }> }).zones?.[0]?.id ?? "";
-  expect(зона, "справочник зон ПУСТ — стенд непригоден для размещаемых ресурсов").not.toBe("");
+  const zone = ((await zones.json()) as { zones?: Array<{ id: string }> }).zones?.[0]?.id ?? "";
+  expect(zone, "справочник зон ПУСТ — стенд непригоден для размещаемых ресурсов").not.toBe("");
 
   // Имена намеренно разной длины: если копирование в ячейке идёт ЗА значением,
   // значки в двух строках встанут на разном x; если бы оно стояло столбцом —
   // на одном. Две одинаковых по длине строки этого различить не могут.
-  const имена: Array<[string, string]> = [
+  const names: Array<[string, string]> = [
     [`s-a-${runTag()}`, "10.79.1.0/24"],
     [`s-bbbb-much-longer-name-${runTag()}`, "10.79.2.0/24"],
   ];
-  for (const [имя, cidr] of имена) {
-    const о2 = await page.request.post("/vpc/v1/subnets", {
-      data: { projectId, networkId: netId, name: имя, zoneId: зона, ipv4CidrPrimary: cidr },
+  for (const [name, cidr] of names) {
+    const resp2 = await page.request.post("/vpc/v1/subnets", {
+      data: { projectId, networkId: netId, name: name, zoneId: zone, ipv4CidrPrimary: cidr },
     });
-    await createdResourceId(page, о2, "subnetId", (id) => `/vpc/v1/subnets/${id}`, "подсеть под пробу");
+    await createdResourceId(page, resp2, "subnetId", (id) => `/vpc/v1/subnets/${id}`, "подсеть под пробу");
   }
   return netId;
 }
 
 /** Открывает список и дожидается СТРОКИ ИНСТРУМЕНТОВ, а не «страница ответила». */
-async function списокСРучками(page: Page, путь: string): Promise<void> {
-  await page.setViewportSize(ШИРИНА_ОКНА);
-  await page.goto(путь, { waitUntil: "domcontentloaded" });
+async function listWithControls(page: Page, path: string): Promise<void> {
+  await page.setViewportSize(VIEWPORT);
+  await page.goto(path, { waitUntil: "domcontentloaded" });
   await expect(
     page.getByRole("button", { name: /Столбцы/ }),
-    `${путь}: строка инструментов не появилась. Пустой список показывает приглашение ` +
+    `${path}: строка инструментов не появилась. Пустой список показывает приглашение ` +
       `создать первый ресурс и ручек не несёт — значит предмет пробы не создан, ` +
       `и это условие, а не вердикт о порядке ручек`,
   ).toBeVisible({ timeout: 45_000 });
@@ -200,38 +200,38 @@ test("порядок ручек списка: сузить, показать, с
   // не сдвинув ручку (`order`, `row-reverse`, портал), — обычное дело, и проба
   // по разметке этого не увидела бы.
   const { projectId } = await tenantWithProject(page);
-  await сетьСПодсетями(page, projectId);
-  await списокСРучками(page, `/projects/${projectId}/vpc/networks`);
+  await networkWithSubnets(page, projectId);
+  await listWithControls(page, `/projects/${projectId}/vpc/networks`);
 
-  const р = await ручкиРяда(page);
-  for (const имя of ["поиск", "столбцы", "создать"]) {
-    expect(р[имя], `в строке инструментов не нашлось ручки «${имя}» — сравнивать порядок не с чем`).not.toBeNull();
+  const controls = await rowControls(page);
+  for (const name of ["поиск", "столбцы", "создать"]) {
+    expect(controls[name], `в строке инструментов не нашлось ручки «${name}» — сравнивать порядок не с чем`).not.toBeNull();
   }
-  const поиск = р.поиск!;
-  const столбцы = р.столбцы!;
-  const создать = р.создать!;
+  const search = controls.search!;
+  const columns = controls.columns!;
+  const create = controls.create!;
 
   // Сначала — что ряд ОДИН. Без этого сравнение по горизонтали ничего не значит:
   // ручка, уехавшая этажом выше, бывает «левее» чего угодно.
-  const верх = [поиск.y, столбцы.y, создать.y];
+  const tops = [search.y, columns.y, create.y];
   expect(
-    Math.max(...верх) - Math.min(...верх),
-    `ручки стоят не одним рядом: поиск y=${поиск.y}, «Столбцы» y=${столбцы.y}, «Создать» y=${создать.y}. ` +
+    Math.max(...tops) - Math.min(...tops),
+    `ручки стоят не одним рядом: поиск y=${search.y}, «Столбцы» y=${columns.y}, «Создать» y=${create.y}. ` +
       `Порядок слева направо имеет смысл только внутри одной строки`,
-  ).toBeLessThanOrEqual(РАЗБРОС_РЯДА);
+  ).toBeLessThanOrEqual(ROW_SPREAD);
 
   expect(
-    поиск.x,
-    `поиск стоит правее «Столбцов» (поиск x=${поиск.x}, «Столбцы» x=${столбцы.x}): ` +
+    search.x,
+    `поиск стоит правее «Столбцов» (поиск x=${search.x}, «Столбцы» x=${columns.x}): ` +
       `сужение обязано идти ПЕРЕД выбором того, что показывать`,
-  ).toBeLessThan(столбцы.x);
+  ).toBeLessThan(columns.x);
 
   expect(
-    столбцы.x,
-    `«Создать» стоит левее «Столбцов» (x=${создать.x} против ${столбцы.x}): действие, ИЗМЕНЯЮЩЕЕ набор, ` +
+    columns.x,
+    `«Создать» стоит левее «Столбцов» (x=${create.x} против ${columns.x}): действие, ИЗМЕНЯЮЩЕЕ набор, ` +
       `обязано стоять после всех, которые набор только показывают. «Создать» в начале ряда — ` +
       `признак нарушения, названный каноном §3 дословно`,
-  ).toBeLessThan(создать.x);
+  ).toBeLessThan(create.x);
 });
 
 test("ручки списка — одной высоты и одного радиуса", async ({ page }) => {
@@ -239,33 +239,33 @@ test("ручки списка — одной высоты и одного рад
   //
   // Канон §3: одна высота и один радиус у всех ручек (32 и 8); признак
   // нарушения — четыре разные высоты в одном ряду. Мерим ОБОЛОЧКУ каждой ручки
-  // (см. `ручкиРяда`): правило прямо говорит, что высоту задаёт оболочка поля,
+  // (см. `rowControls`): правило прямо говорит, что высоту задаёт оболочка поля,
   // а не поле внутри, — и проба, померившая `input`, зеленела бы на том самом
   // дефекте, ради которого написана.
   const { projectId } = await tenantWithProject(page);
-  await сетьСПодсетями(page, projectId);
-  await списокСРучками(page, `/projects/${projectId}/vpc/networks`);
+  await networkWithSubnets(page, projectId);
+  await listWithControls(page, `/projects/${projectId}/vpc/networks`);
 
-  const р = await ручкиРяда(page);
-  const ручки = Object.entries(р).filter(([, к]) => к !== null) as Array<[string, Коробка]>;
+  const controls = await rowControls(page);
+  const presentControls = Object.entries(controls).filter(([, box]) => box !== null) as Array<[string, Box]>;
   expect(
-    ручки.length,
+    presentControls.length,
     "в строке инструментов меньше двух ручек — «одна высота у всех» на одной ручке истинно даром",
   ).toBeGreaterThanOrEqual(2);
 
-  const перечень = ручки.map(([имя, к]) => `${имя} (${к.чем}) h=${к.h} r=${к.радиус}`).join(", ");
+  const listing = presentControls.map(([name, box]) => `${name} (${box.what}) h=${box.h} r=${box.radius}`).join(", ");
 
-  const высоты = [...new Set(ручки.map(([, к]) => к.h))];
+  const heights = [...new Set(presentControls.map(([, box]) => box.h))];
   expect(
-    высоты,
-    `в одном ряду ${высоты.length} разных высот: ${перечень}. Полоса читается как случайно ` +
+    heights,
+    `в одном ряду ${heights.length} разных высот: ${listing}. Полоса читается как случайно ` +
       `составленная — каждая ручка принесла свою высоту вместо общей`,
   ).toHaveLength(1);
-  expect(высоты[0], `высота ручек ${высоты[0]} вместо канонических 32: ${перечень}`).toBe(32);
+  expect(heights[0], `высота ручек ${heights[0]} вместо канонических 32: ${listing}`).toBe(32);
 
-  const радиусы = [...new Set(ручки.map(([, к]) => к.радиус))];
-  expect(радиусы, `в одном ряду ${радиусы.length} разных радиуса: ${перечень}`).toHaveLength(1);
-  expect(радиусы[0], `радиус ручек ${радиусы[0]} вместо канонических 8px: ${перечень}`).toBe("8px");
+  const radii = [...new Set(presentControls.map(([, box]) => box.radius))];
+  expect(radii, `в одном ряду ${radii.length} разных радиуса: ${listing}`).toHaveLength(1);
+  expect(radii[0], `радиус ручек ${radii[0]} вместо канонических 8px: ${listing}`).toBe("8px");
 });
 
 test("кнопка называет действие, а не предмет страницы", async ({ page }) => {
@@ -277,12 +277,12 @@ test("кнопка называет действие, а не предмет с�
   // надо убедиться, что предмет на странице ВООБЩЕ назван. Без второй половины
   // проба зеленела бы на странице без заголовка, то есть на худшем исходе.
   const { projectId } = await tenantWithProject(page);
-  await сетьСПодсетями(page, projectId);
-  await списокСРучками(page, `/projects/${projectId}/vpc/networks`);
+  await networkWithSubnets(page, projectId);
+  await listWithControls(page, `/projects/${projectId}/vpc/networks`);
 
-  const заголовок = (await page.getByRole("heading").first().innerText()).trim();
+  const title = (await page.getByRole("heading").first().innerText()).trim();
   expect(
-    заголовок,
+    title,
     "у страницы списка нет заголовка — тогда предмет не назван нигде, и короткая подпись " +
       "кнопки означала бы не «предмет назван рядом», а «предмет не назван вовсе»",
   ).not.toBe("");
@@ -290,20 +290,20 @@ test("кнопка называет действие, а не предмет с�
   // Подпись читается ТЕКСТОМ кнопки, а не её доступным именем: значок antd
   // вносит в доступное имя своё «plus», и утверждение о подписи спорило бы с
   // оформлением значка, а не с текстом, который видит глаз.
-  const подпись = (await page.getByRole("button", { name: /Создать/ }).first().innerText())
+  const label = (await page.getByRole("button", { name: /Создать/ }).first().innerText())
     .replace(/\s+/g, " ")
     .trim();
 
   expect(
-    подпись,
-    `подпись кнопки — «${подпись}»: она называет ПРЕДМЕТ, хотя предмет уже назван заголовком ` +
-      `«${заголовок}» той же страницы. Кнопка обязана называть действие`,
+    label,
+    `подпись кнопки — «${label}»: она называет ПРЕДМЕТ, хотя предмет уже назван заголовком ` +
+      `«${title}» той же страницы. Кнопка обязана называть действие`,
   ).toBe("Создать");
 
   expect(
-    подпись.toLowerCase(),
-    `подпись кнопки «${подпись}» повторяет заголовок страницы «${заголовок}»`,
-  ).not.toContain(заголовок.toLowerCase());
+    label.toLowerCase(),
+    `подпись кнопки «${label}» повторяет заголовок страницы «${title}»`,
+  ).not.toContain(title.toLowerCase());
 });
 
 test("вкладка карточки повторяет порядок ручек списка", async ({ page }) => {
@@ -315,9 +315,9 @@ test("вкладка карточки повторяет порядок руче
   // ресурса, «Создать» — в слот действий), поэтому совпадение порядка здесь не
   // следует из порядка на списке и обязано утверждаться отдельно.
   const { projectId } = await tenantWithProject(page);
-  const netId = await сетьСПодсетями(page, projectId);
+  const netId = await networkWithSubnets(page, projectId);
 
-  await page.setViewportSize(ШИРИНА_ОКНА);
+  await page.setViewportSize(VIEWPORT);
   await page.goto(`/projects/${projectId}/vpc/networks/${netId}`, { waitUntil: "domcontentloaded" });
   await page.getByRole("tab", { name: /Подсети/ }).first().click();
   await expect(
@@ -326,28 +326,28 @@ test("вкладка карточки повторяет порядок руче
       "показывает приглашение и ручек не несёт: предмет пробы не создан",
   ).toBeVisible({ timeout: 45_000 });
 
-  const р = await ручкиРяда(page);
-  for (const имя of ["поиск", "столбцы", "создать"]) {
-    expect(р[имя], `на вкладке карточки не нашлось ручки «${имя}»`).not.toBeNull();
+  const controls = await rowControls(page);
+  for (const name of ["поиск", "столбцы", "создать"]) {
+    expect(controls[name], `на вкладке карточки не нашлось ручки «${name}»`).not.toBeNull();
   }
-  const { поиск, столбцы, создать } = р as Record<string, Коробка>;
+  const { search, columns, create } = controls as Record<string, Box>;
 
-  const верх = [поиск.y, столбцы.y, создать.y];
+  const tops = [search.y, columns.y, create.y];
   expect(
-    Math.max(...верх) - Math.min(...верх),
-    `ручки вкладки стоят не одним рядом: поиск y=${поиск.y}, «Столбцы» y=${столбцы.y}, «Создать» y=${создать.y}`,
-  ).toBeLessThanOrEqual(РАЗБРОС_РЯДА);
+    Math.max(...tops) - Math.min(...tops),
+    `ручки вкладки стоят не одним рядом: поиск y=${search.y}, «Столбцы» y=${columns.y}, «Создать» y=${create.y}`,
+  ).toBeLessThanOrEqual(ROW_SPREAD);
 
   expect(
-    поиск.x,
-    `на вкладке поиск правее «Столбцов» (${поиск.x} против ${столбцы.x}) — порядок ручек ` +
+    search.x,
+    `на вкладке поиск правее «Столбцов» (${search.x} против ${columns.x}) — порядок ручек ` +
       `на вкладке разошёлся с порядком на списке`,
-  ).toBeLessThan(столбцы.x);
+  ).toBeLessThan(columns.x);
   expect(
-    столбцы.x,
-    `на вкладке «Создать» левее «Столбцов» (${создать.x} против ${столбцы.x}): на списке она справа, ` +
+    columns.x,
+    `на вкладке «Создать» левее «Столбцов» (${create.x} против ${columns.x}): на списке она справа, ` +
       `на вкладке слева — ровно тот признак нарушения, который канон называет дословно`,
-  ).toBeLessThan(создать.x);
+  ).toBeLessThan(create.x);
 });
 
 test("ручки вкладки карточки — той же высоты, что на списке", async ({ page }) => {
@@ -363,28 +363,28 @@ test("ручки вкладки карточки — той же высоты, �
   // причинам, и слитое утверждение назвало бы виновником то из двух, что
   // упало первым.
   const { projectId } = await tenantWithProject(page);
-  const netId = await сетьСПодсетями(page, projectId);
+  const netId = await networkWithSubnets(page, projectId);
 
-  await page.setViewportSize(ШИРИНА_ОКНА);
+  await page.setViewportSize(VIEWPORT);
   await page.goto(`/projects/${projectId}/vpc/networks/${netId}`, { waitUntil: "domcontentloaded" });
   await page.getByRole("tab", { name: /Подсети/ }).first().click();
   await expect(page.getByRole("button", { name: /Столбцы/ })).toBeVisible({ timeout: 45_000 });
 
-  const р = await ручкиРяда(page);
-  const ручки = Object.entries(р).filter(([, к]) => к !== null) as Array<[string, Коробка]>;
-  expect(ручки.length, "на вкладке меньше двух ручек — утверждать об одной высоте не о чем").toBeGreaterThanOrEqual(2);
+  const controls = await rowControls(page);
+  const presentControls = Object.entries(controls).filter(([, box]) => box !== null) as Array<[string, Box]>;
+  expect(presentControls.length, "на вкладке меньше двух ручек — утверждать об одной высоте не о чем").toBeGreaterThanOrEqual(2);
 
-  const перечень = ручки.map(([имя, к]) => `${имя} (${к.чем}) h=${к.h} r=${к.радиус}`).join(", ");
-  const высоты = [...new Set(ручки.map(([, к]) => к.h))];
+  const listing = presentControls.map(([name, box]) => `${name} (${box.what}) h=${box.h} r=${box.radius}`).join(", ");
+  const heights = [...new Set(presentControls.map(([, box]) => box.h))];
 
   expect(
-    высоты,
-    `в ряду ручек вкладки карточки ${высоты.length} разных высот: ${перечень}. ` +
+    heights,
+    `в ряду ручек вкладки карточки ${heights.length} разных высот: ${listing}. ` +
       `На списке те же ручки стоят одной высотой — значит правило до вкладки не доехало`,
   ).toHaveLength(1);
   expect(
-    высоты[0],
-    `высота ручек вкладки ${высоты[0]} вместо канонических 32: ${перечень}`,
+    heights[0],
+    `высота ручек вкладки ${heights[0]} вместо канонических 32: ${listing}`,
   ).toBe(32);
 });
 
@@ -398,31 +398,31 @@ test("значение строки свойств стоит слева, одн
   // справа тоже «одинаково»). Одного (а) не хватило бы: право-выровненный
   // столбец прошёл бы его целиком.
   const { projectId } = await tenantWithProject(page);
-  const netId = await сетьСПодсетями(page, projectId);
+  const netId = await networkWithSubnets(page, projectId);
 
-  await page.setViewportSize(ШИРИНА_ОКНА);
+  await page.setViewportSize(VIEWPORT);
   await page.goto(`/projects/${projectId}/vpc/networks/${netId}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("dd").first()).toBeVisible({ timeout: 45_000 });
 
-  const строки = await строкиСвойств(page);
+  const rows = await propertyRows(page);
   expect(
-    строки.length,
+    rows.length,
     "на карточке меньше трёх строк свойств — «одной колонкой» на такой выборке истинно даром",
   ).toBeGreaterThanOrEqual(3);
 
-  const левые = [...new Set(строки.map((с) => с.значениеX))];
+  const lefts = [...new Set(rows.map((row) => row.valueX))];
   expect(
-    левые,
-    `значения начинаются на ${левые.length} разных отступах (${левые.join(", ")}): ` +
-      строки.map((с) => `«${с.подпись}» x=${с.значениеX}`).join("; ") +
+    lefts,
+    `значения начинаются на ${lefts.length} разных отступах (${lefts.join(", ")}): ` +
+      rows.map((row) => `«${row.label}» x=${row.valueX}`).join("; ") +
       `. Колонки значений нет — глазу не за что зацепиться`,
   ).toHaveLength(1);
 
-  for (const с of строки) {
+  for (const row of rows) {
     expect(
-      Math.abs(с.значениеX - с.колонкаX),
-      `значение строки «${с.подпись}» стоит на x=${с.значениеX} при левом крае колонки ${с.колонкаX} ` +
-        `(отступ ${с.значениеX - с.колонкаX} точек): значение обязано стоять У ЛЕВОГО КРАЯ, а не отодвинутым от него`,
+      Math.abs(row.valueX - row.columnX),
+      `значение строки «${row.label}» стоит на x=${row.valueX} при левом крае колонки ${row.columnX} ` +
+        `(отступ ${row.valueX - row.columnX} точек): значение обязано стоять У ЛЕВОГО КРАЯ, а не отодвинутым от него`,
     ).toBeLessThanOrEqual(2);
   }
 });
@@ -438,47 +438,47 @@ test("копирование в строке свойств — столбцом
   // был краем КОЛОНКИ. Три значка, случайно оказавшиеся на одном x посреди
   // строки, дали бы то же совпадение и столбцом не были бы.
   const { projectId } = await tenantWithProject(page);
-  const netId = await сетьСПодсетями(page, projectId);
+  const netId = await networkWithSubnets(page, projectId);
 
-  await page.setViewportSize(ШИРИНА_ОКНА);
+  await page.setViewportSize(VIEWPORT);
   await page.goto(`/projects/${projectId}/vpc/networks/${netId}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("dd").first()).toBeVisible({ timeout: 45_000 });
 
-  const строки = await строкиСвойств(page);
-  const сКопией = строки.filter((с) => с.копияRight !== null);
+  const rows = await propertyRows(page);
+  const withCopy = rows.filter((row) => row.copyRight !== null);
   expect(
-    сКопией.length,
-    `строк с копированием ${сКопией.length} — «правый край общий» требует хотя бы двух: ` +
+    withCopy.length,
+    `строк с копированием ${withCopy.length} — «правый край общий» требует хотя бы двух: ` +
       `на одной строке любое расположение образует «столбец»`,
   ).toBeGreaterThanOrEqual(2);
 
-  for (const с of сКопией) {
+  for (const row of withCopy) {
     expect(
-      с.копийВСтроке,
-      `в строке «${с.подпись}» кнопок копирования ${с.копийВСтроке}: канон требует ОДНУ на строку`,
+      row.copiesInRow,
+      `в строке «${row.label}» кнопок копирования ${row.copiesInRow}: канон требует ОДНУ на строку`,
     ).toBe(1);
   }
 
-  const края = [...new Set(сКопией.map((с) => с.копияRight))];
+  const edges = [...new Set(withCopy.map((row) => row.copyRight))];
   expect(
-    края,
-    `значки копирования стоят на ${края.length} разных правых краях (${края.join(", ")}): ` +
-      сКопией.map((с) => `«${с.подпись}» right=${с.копияRight}`).join("; ") +
+    edges,
+    `значки копирования стоят на ${edges.length} разных правых краях (${edges.join(", ")}): ` +
+      withCopy.map((row) => `«${row.label}» right=${row.copyRight}`).join("; ") +
       `. Столбец действий не читается столбцом — знак гуляет по строке вслед за длиной значения`,
   ).toHaveLength(1);
 
-  for (const с of сКопией) {
+  for (const row of withCopy) {
     expect(
-      Math.abs(с.копияRight! - с.колонкаRight),
-      `значок строки «${с.подпись}» стоит правым краем на ${с.копияRight} при правом крае колонки ` +
-        `${с.колонкаRight}: общий край есть, но он не край колонки — значит значки просто совпали`,
+      Math.abs(row.copyRight! - row.columnRight),
+      `значок строки «${row.label}» стоит правым краем на ${row.copyRight} при правом крае колонки ` +
+        `${row.columnRight}: общий край есть, но он не край колонки — значит значки просто совпали`,
     ).toBeLessThanOrEqual(2);
   }
 
-  for (const с of сКопией) {
+  for (const row of withCopy) {
     expect(
-      [с.значокW, с.значокH],
-      `рисунок значка в строке «${с.подпись}» — ${с.значокW}×${с.значокH} вместо 13×13: ` +
+      [row.iconW, row.iconH],
+      `рисунок значка в строке «${row.label}» — ${row.iconW}×${row.iconH} вместо 13×13: ` +
         `правые края сведены, но рисунки разной величины снова разбивают столбец`,
     ).toEqual([13, 13]);
   }
@@ -502,49 +502,49 @@ test("одно значение, два места: в ячейке копиро
   // зеленели бы и тогда, когда различие исчезло: они не спрашивают про
   // ПРОТИВОПОЛОЖНОСТЬ, а она здесь и есть предмет.
   const { projectId } = await tenantWithProject(page);
-  const netId = await сетьСПодсетями(page, projectId);
+  const netId = await networkWithSubnets(page, projectId);
 
   // ── МЕСТО ПЕРВОЕ: ячейка таблицы. Копирование идёт ЗА значением.
-  await списокСРучками(page, `/projects/${projectId}/vpc/subnets`);
+  await listWithControls(page, `/projects/${projectId}/vpc/subnets`);
 
-  const ячейки = await page.evaluate(() => {
-    const строки: Array<{ значениеRight: number; копияX: number; ячейкаRight: number }> = [];
+  const cells = await page.evaluate(() => {
+    const rows: Array<{ valueRight: number; copyX: number; cellRight: number }> = [];
     document.querySelectorAll("tbody tr").forEach((tr) => {
       const td = tr.querySelector("td");
       if (!td) return;
-      const кн = Array.from(td.querySelectorAll("button")).find((b) =>
+      const copyBtn = Array.from(td.querySelectorAll("button")).find((b) =>
         /Скопировать имя/.test(b.getAttribute("aria-label") ?? b.getAttribute("title") ?? ""),
       );
-      const знач = td.querySelector("a");
-      if (!кн || !знач) return;
-      строки.push({
-        значениеRight: Math.round(знач.getBoundingClientRect().right),
-        копияX: Math.round(кн.getBoundingClientRect().x),
-        ячейкаRight: Math.round(td.getBoundingClientRect().right),
+      const value = td.querySelector("a");
+      if (!copyBtn || !value) return;
+      rows.push({
+        valueRight: Math.round(value.getBoundingClientRect().right),
+        copyX: Math.round(copyBtn.getBoundingClientRect().x),
+        cellRight: Math.round(td.getBoundingClientRect().right),
       });
     });
-    return строки;
+    return rows;
   });
 
   expect(
-    ячейки.length,
+    cells.length,
     "в колонке имени меньше двух строк со значком копирования — «идёт за значением» неотличимо " +
       "от «стоит столбцом»: на одной строке это одно и то же",
   ).toBeGreaterThanOrEqual(2);
 
-  for (const я of ячейки) {
+  for (const cell of cells) {
     expect(
-      я.копияX - я.значениеRight,
+      cell.copyX - cell.valueRight,
       `в ячейке таблицы значок копирования оторвался от значения: значение кончается на ` +
-        `${я.значениеRight}, значок начинается на ${я.копияX} (разрыв ${я.копияX - я.значениеRight} точек). ` +
+        `${cell.valueRight}, значок начинается на ${cell.copyX} (разрыв ${cell.copyX - cell.valueRight} точек). ` +
         `Столбца действий в ячейке нет, и уехавший вправо значок оторвался бы от своего значения`,
     ).toBeLessThanOrEqual(12);
   }
 
-  const левыеВЯчейках = [...new Set(ячейки.map((я) => я.копияX))];
+  const leftsInCells = [...new Set(cells.map((cell) => cell.copyX))];
   expect(
-    левыеВЯчейках.length,
-    `значки в ячейках выстроились в СТОЛБЕЦ (все на x=${левыеВЯчейках[0]}) при именах разной длины: ` +
+    leftsInCells.length,
+    `значки в ячейках выстроились в СТОЛБЕЦ (все на x=${leftsInCells[0]}) при именах разной длины: ` +
       `в ячейке копирование обязано следовать за значением, а не занимать общий слот`,
   ).toBeGreaterThanOrEqual(2);
 
@@ -552,26 +552,26 @@ test("одно значение, два места: в ячейке копиро
   await page.goto(`/projects/${projectId}/vpc/networks/${netId}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("dd").first()).toBeVisible({ timeout: 45_000 });
 
-  const строки = await строкиСвойств(page);
-  const короткая = строки
-    .filter((с) => с.копияX !== null)
-    .find((с) => с.значениеRight < с.колонкаRight - 60);
+  const rows = await propertyRows(page);
+  const shortest = rows
+    .filter((row) => row.copyX !== null)
+    .find((row) => row.valueRight < row.columnRight - 60);
   expect(
-    короткая,
+    shortest,
     "среди строк свойств не нашлось ни одной, где значение заметно короче колонки: " +
       "на значении во всю ширину «у правого края» и «за значением» совпадают, и различить их нечем",
   ).toBeDefined();
 
   expect(
-    короткая!.копияX! - короткая!.значениеRight,
-    `в строке свойств «${короткая!.подпись}» значок прилип к значению: значение кончается на ` +
-      `${короткая!.значениеRight}, значок начинается на ${короткая!.копияX}. В строке свойств ` +
+    shortest!.copyX! - shortest!.valueRight,
+    `в строке свойств «${shortest!.label}» значок прилип к значению: значение кончается на ` +
+      `${shortest!.valueRight}, значок начинается на ${shortest!.copyX}. В строке свойств ` +
       `копирование — ОБЩИЙ столбец у правого края, а не спутник значения: место здесь решает иначе, чем ячейка`,
   ).toBeGreaterThan(12);
 
   expect(
-    Math.abs(короткая!.копияRight! - короткая!.колонкаRight),
-    `в строке свойств «${короткая!.подпись}» значок не дошёл до правого края колонки ` +
-      `(${короткая!.копияRight} против ${короткая!.колонкаRight})`,
+    Math.abs(shortest!.copyRight! - shortest!.columnRight),
+    `в строке свойств «${shortest!.label}» значок не дошёл до правого края колонки ` +
+      `(${shortest!.copyRight} против ${shortest!.columnRight})`,
   ).toBeLessThanOrEqual(2);
 });

@@ -20,7 +20,7 @@ interface Call {
 }
 let calls: Call[] = [];
 
-const пределы = [
+const limits = [
   { id: "lim-1", scope: "DEFAULT", scope_id: "", kind: "vpc.network", value: 5 },
   { id: "lim-2", scope: "PROJECT", scope_id: "prj-1", kind: "vpc.subnet", value: 20 },
 ];
@@ -50,7 +50,7 @@ function stub(failPatch = false) {
       ok: true,
       status: 200,
       statusText: "OK",
-      text: () => Promise.resolve(JSON.stringify({ limits: пределы })),
+      text: () => Promise.resolve(JSON.stringify({ limits: limits })),
     } as Response);
   };
 }
@@ -146,7 +146,7 @@ describe("раздел администратора: пределы", () => {
         ok: true,
         status: 200,
         statusText: "OK",
-        text: () => Promise.resolve(JSON.stringify({ limits: пределы })),
+        text: () => Promise.resolve(JSON.stringify({ limits: limits })),
       } as Response);
     };
     renderPage();

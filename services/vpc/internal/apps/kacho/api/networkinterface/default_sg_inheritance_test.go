@@ -34,48 +34,48 @@ func TestInheritedSecurityGroups(t *testing.T) {
 	const netDefault = "sgr-net-default"
 
 	for _, tc := range []struct {
-		имя       string
-		явный     []string
-		умолчание string
-		ждём      []string
-		почему    string
+		name         string
+		explicit     []string
+		defaultGroup string
+		want         []string
+		why          string
 	}{
 		{
-			имя:       "пустой набор наследует группу сети",
-			явный:     nil,
-			умолчание: netDefault,
-			ждём:      []string{netDefault},
-			почему: "это и есть обещание контракта; без него пустой набор означает " +
+			name:         "пустой набор наследует группу сети",
+			explicit:     nil,
+			defaultGroup: netDefault,
+			want:         []string{netDefault},
+			why: "это и есть обещание контракта; без него пустой набор означает " +
 				"«не разрешено ничего», то есть противоположное обещанному",
 		},
 		{
-			имя:       "явный выбор сильнее наследования",
-			явный:     []string{"sgr-mine-1", "sgr-mine-2"},
-			умолчание: netDefault,
-			ждём:      []string{"sgr-mine-1", "sgr-mine-2"},
-			почему: "положительный контроль: без него утверждение выше зеленело бы на " +
+			name:         "явный выбор сильнее наследования",
+			explicit:     []string{"sgr-mine-1", "sgr-mine-2"},
+			defaultGroup: netDefault,
+			want:         []string{"sgr-mine-1", "sgr-mine-2"},
+			why: "положительный контроль: без него утверждение выше зеленело бы на " +
 				"реализации, которая ВСЕГДА подставляет группу сети и затирает выбор",
 		},
 		{
-			имя:       "пустая группа сети наследования не даёт",
-			явный:     nil,
-			умолчание: "",
-			ждём:      nil,
-			почему: "подставить пустую строку в набор ссылок значило бы завести висячую " +
+			name:         "пустая группа сети наследования не даёт",
+			explicit:     nil,
+			defaultGroup: "",
+			want:         nil,
+			why: "подставить пустую строку в набор ссылок значило бы завести висячую " +
 				"ссылку вместо отсутствия — сеть, заведённая до того, как создание группы " +
 				"стало безусловным, обязана давать отсутствие, а не мусор",
 		},
 		{
-			имя:       "явный выбор при пустой группе сети сохраняется",
-			явный:     []string{"sgr-mine-1"},
-			умолчание: "",
-			ждём:      []string{"sgr-mine-1"},
-			почему:    "второй положительный контроль: наследование не вмешивается в явный выбор",
+			name:         "явный выбор при пустой группе сети сохраняется",
+			explicit:     []string{"sgr-mine-1"},
+			defaultGroup: "",
+			want:         []string{"sgr-mine-1"},
+			why:          "второй положительный контроль: наследование не вмешивается в явный выбор",
 		},
 	} {
-		t.Run(tc.имя, func(t *testing.T) {
-			got := inheritedSecurityGroups(tc.явный, tc.умолчание)
-			assert.Equal(t, tc.ждём, got, tc.почему)
+		t.Run(tc.name, func(t *testing.T) {
+			got := inheritedSecurityGroups(tc.explicit, tc.defaultGroup)
+			assert.Equal(t, tc.want, got, tc.why)
 		})
 	}
 }

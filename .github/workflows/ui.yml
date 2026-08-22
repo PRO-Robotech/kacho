@@ -95,8 +95,8 @@ jobs:
     # timeout-backstop, чтобы зависший tsc не держал прогон.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
         with:
           node-version: '26'
           cache: npm
@@ -136,8 +136,8 @@ jobs:
     # проверяет конфигурации всех одиннадцати пакетов, включая девять приложений.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
         with:
           node-version: '26'
           cache: npm
@@ -159,20 +159,21 @@ jobs:
       # создании — ровно ту форму отказа, с которой заведена #572, — и требует, чтобы
       # гейт её назвал; затем ставит рядом законную конфигурацию той же внешности и
       # требует молчания. Без второй половины гейт ловил бы форму, а не существо.
-      # Гейт держит в памяти по экземпляру ESLint на каждый из двенадцати пакетов
-      # и разбирает всё дерево консоли, поэтому его потребление растёт ВМЕСТЕ С
-      # деревом. Умолчание ноды перестало вмещать его при 1368 линтуемых файлах:
-      # прогон умирает с `Ineffective mark-compacts` и кодом 134 — то есть даёт
-      # «не выполнилось», а не находку, и вердикта нет НИ У ОДНОЙ проверки шага.
       #
-      # Замер, а не догадка: на этой ревизии ствол (1328 файлов) падает при 4096
-      # и проходит при 6144 — то есть предел был перейдён не одной веткой, а
-      # ростом дерева, и следующая сотня файлов уперлась бы в него так же.
-      # Величина названа здесь, чтобы её можно было пересмотреть замером, а не
-      # правкой наугад. Устройство гейта — предмет отдельный, заведён как #934.
+      # ПОДПОРКА ПО ПАМЯТИ СНЯТА ВМЕСТЕ С ПРИЧИНОЙ (#934).
+      #
+      # Здесь стоял `NODE_OPTIONS: --max-old-space-size=6144`: гейт держал по
+      # экземпляру ESLint на каждый из двенадцати пакетов в ОДНОМ процессе, и
+      # потребление росло вместе с деревом — прогон умирал с `Ineffective
+      # mark-compacts` и кодом 134, то есть давал «не выполнилось», а не находку.
+      # Подпорка отодвигала предел, а не убирала рост.
+      #
+      # Теперь каждый пакет судит отдельный процесс, и память возвращается ОС
+      # после каждого. Замер на одном дереве, различие только в устройстве:
+      # 4.39 ГБ и отказ при умолчании ноды → 763 МБ у самого дорогого пакета и
+      # код 0. Пик печатается в переписи гейта — следующий подход к пределу
+      # будет виден заранее, а не обнаружится отказом.
       - name: покрытие и исполнимость линта (все пакеты)
-        env:
-          NODE_OPTIONS: --max-old-space-size=6144
         run: |
           node scripts/check-lint-coverage.mjs --self-test
           node scripts/check-lint-coverage.mjs
@@ -257,8 +258,8 @@ jobs:
     # Стенд здесь не нужен: гейт собирает маленький remote той же оснасткой, что и
     # продукт, и выполняет его точку входа в том же процессе — секунды.
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
         with:
           node-version: '26'
           cache: npm
@@ -294,8 +295,8 @@ jobs:
       matrix:
         pkg: [host, dashboard, vpc, compute, storage, nlb, registry, iam, system]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7
         with:
           node-version: '26'
           cache: npm
@@ -344,9 +345,8 @@ jobs:
         # ui-future/deploy. compute и storage в polyrepo-матрице отсутствовали.
         project: [host, dashboard, vpc, compute, storage, nlb, registry, iam, system]
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4
       # ─── ПУБЛИКАЦИЯ, А НЕ ТОЛЬКО СБОРКА ────────────────────────────────────
       #
       # Здесь стояло `push: false`, и это означало ровно одно: образы консоли
@@ -408,13 +408,13 @@ jobs:
 
       - name: login to Docker Hub
         if: steps.gate.outputs.push == 'true'
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: build ${{ matrix.project }}
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7
         with:
           # Контекст — ui-future/: Dockerfile'ы remotes копируют shared/ рядом.
           context: ui-future
@@ -436,7 +436,7 @@ jobs:
     name: матрица покрывает все remotes
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - name: сверить матрицу с деревом
         run: |
           find . -maxdepth 2 -name Dockerfile -not -path './node_modules/*' \

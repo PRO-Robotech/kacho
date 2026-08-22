@@ -174,11 +174,11 @@ describe("InlineSubnetEditForm — черта", () => {
     show();
     await screen.findByText("Таблица маршрутизации");
 
-    const [черта] = formDividers();
-    expect(черта).toBeDefined();
+    const [divider] = formDividers();
+    expect(divider).toBeDefined();
 
-    const позиция = (el: Element) => [...document.body.querySelectorAll("*")].indexOf(el);
-    expect(позиция(screen.getByText("Метки"))).toBeLessThan(позиция(черта));
-    expect(позиция(черта)).toBeLessThan(позиция(screen.getByText("Таблица маршрутизации")));
+    const position = (el: Element) => [...document.body.querySelectorAll("*")].indexOf(el);
+    expect(position(screen.getByText("Метки"))).toBeLessThan(position(divider));
+    expect(position(divider)).toBeLessThan(position(screen.getByText("Таблица маршрутизации")));
   });
 });

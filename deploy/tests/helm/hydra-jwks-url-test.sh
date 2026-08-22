@@ -109,13 +109,40 @@ OFF="$(helm template ag "$AGW" 2>/dev/null)"
 DEV="$(helm template kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.dev.yaml" \
         --show-only charts/api-gateway/templates/deployment.yaml 2>/dev/null)"
 [ -n "$DEV" ] || fail "umbrella render of api-gateway deployment is empty (dep not built? run helm dep update)"
+# ФОРМ ОБЪЯВЛЕНИЯ ДВЕ, СВОЙСТВО ОДНО — то же, что для боевого профиля ниже.
+# Здесь проба требовала одиночную ручку ИМЕНЕМ и потому краснела на верной
+# посадке: третья фаза (#899) объявляет обоих издателей записью, а одиночную
+# ручку снимает — держать обе значило бы иметь два объявления одного предмета,
+# и страж старта на этом отказывает.
 djw="$(env_val KACHO_HYDRA_JWKS_URL "$DEV")"
-[ -n "$djw" ] || fail "dev stand api-gateway pod has NO KACHO_HYDRA_JWKS_URL env — gateway will fetch unreachable default"
-[ "$djw" = "$WANT" ] || fail "dev KACHO_HYDRA_JWKS_URL=$djw (want cluster-internal $WANT)"; ok
-case "$djw" in
-  *localhost*) fail "dev JWKS URL points at localhost ($djw) — gateway pod cannot reach it" ;;
-  https://hydra.*) fail "dev JWKS URL points at PUBLIC issuer ($djw) — not reachable from the gateway pod" ;;
-esac; ok
+dks="$(env_val KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS "$DEV")"
+if [ -n "$djw" ] && [ -n "$dks" ]; then
+  fail "dev объявляет адрес набора ДВАЖДЫ (одиночная ручка и запись издателей) — старшинство между ними не назначается молча"
+fi
+if [ -z "$djw" ] && [ -z "$dks" ]; then
+  fail "dev не объявляет адрес набора НИ ОДНОЙ формой — край выведет недостижимое умолчание, и ни один токен не проверится"
+fi
+ok
+
+# Свойство, ради которого проба написана: КАЖДЫЙ адрес, который край будет
+# тянуть, достижим из пода. Одиночная ручка даёт один адрес, запись издателей —
+# по одному на издателя, и проверить надо все: достижимый первый и недостижимый
+# второй дают ровно тот отказ, который проба обязана ловить.
+if [ -n "$dks" ]; then
+  dev_urls="$(printf '%s' "$dks" | tr ',' '\n' | sed 's/^[^=]*=//')"
+else
+  dev_urls="$djw"
+fi
+while IFS= read -r u; do
+  [ -n "$u" ] || continue
+  case "$u" in
+    *localhost*) fail "dev JWKS URL points at localhost ($u) — gateway pod cannot reach it" ;;
+    https://hydra.*) fail "dev JWKS URL points at PUBLIC issuer ($u) — not reachable from the gateway pod" ;;
+  esac
+done <<EOF_DEV_URLS
+$dev_urls
+EOF_DEV_URLS
+ok
 
 # SEC-J: the verifier does an EXACT-match `iss` check, so the dev gateway issuer
 # MUST equal Hydra's dev self.issuer (values.dev.yaml hydra.config.urls.self.issuer
@@ -124,7 +151,19 @@ esac; ok
 # check → AUTHN_REQUIRED persists even with a reachable JWKS URL.
 DEV_ISSUER="http://localhost:28080/.ory/hydra/public/"
 dis="$(env_val KACHO_HYDRA_ISSUER "$DEV")"
-[ "$dis" = "$DEV_ISSUER" ] || fail "dev KACHO_HYDRA_ISSUER=$dis (want $DEV_ISSUER matching Hydra dev self.issuer)"; ok
+dissuers="$(env_val KACHO_API_GATEWAY_TOKEN_ISSUERS "$DEV")"
+if [ -n "$dis" ]; then
+  [ "$dis" = "$DEV_ISSUER" ] || fail "dev KACHO_HYDRA_ISSUER=$dis (want $DEV_ISSUER matching Hydra dev self.issuer)"
+else
+  # Издатель назван записью перечня — его строка обязана совпадать ДОСЛОВНО,
+  # включая завершающий слеш: `iss` сверяется целиком, и лишний символ здесь
+  # означает отказ каждому живому токену.
+  case ",$dissuers," in
+    *",$DEV_ISSUER,"*) ;;
+    *) fail "dev не называет издателя провайдера ни ручкой, ни записью перечня (перечень: $dissuers) — токены прежней чеканки перестанут приниматься" ;;
+  esac
+fi
+ok
 
 # ── (3) umbrella + values.prod.yaml — production-strict makes the verifier
 #        mandatory, so the JWKS URL must be the in-cluster address of the iam

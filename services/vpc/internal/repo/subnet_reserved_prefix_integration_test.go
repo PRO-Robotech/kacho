@@ -73,18 +73,18 @@ func TestIntegration_Subnet_ReservedPrefix_NotWrittenToTheDatabase(t *testing.T)
 		WithReservedPrefixes(domain.NewReservedPrefixes(reservedRangeUnderTest))
 
 	for i, tc := range []struct {
-		имя  string
-		блок string
+		name  string
+		block string
 	}{
 		{"блок арендатора совпадает со служебным", reservedRangeUnderTest},
 		{"блок арендатора ПОГЛОЩАЕТ служебный", "10.42.0.0/20"},
 		{"блок арендатора внутри служебного", "10.42.7.128/25"},
 	} {
-		t.Run(tc.имя, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			op, cerr := subUC.Execute(ctx, domain.Subnet{
 				ProjectID: proj, NetworkID: n.Id,
 				Name:   domain.RcNameVPC(fmt.Sprintf("s-refused-%d", i)),
-				ZoneID: "zone-a", V4CidrBlocks: []string{tc.блок},
+				ZoneID: "zone-a", V4CidrBlocks: []string{tc.block},
 			})
 			require.Error(t, cerr, "подсеть поверх служебного диапазона обязана отвергаться")
 			require.Nil(t, op, "отказ синхронный: операции не создаётся")

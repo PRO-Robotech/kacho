@@ -46,11 +46,11 @@ describe("CidrListCell — одна строка на префикс", () => {
 
   it("префикс не переносится и обрезается многоточием", () => {
     render(<CidrListCell items={[V6]} />);
-    const строка = screen.getByText(V6);
+    const line = screen.getByText(V6);
 
-    expect(строка.style.whiteSpace).toBe("nowrap");
-    expect(строка.style.textOverflow).toBe("ellipsis");
-    expect(строка.style.overflow).toBe("hidden");
+    expect(line.style.whiteSpace).toBe("nowrap");
+    expect(line.style.textOverflow).toBe("ellipsis");
+    expect(line.style.overflow).toBe("hidden");
   });
 
   it("длина префикса не теряется молча: полное значение в подсказке", () => {

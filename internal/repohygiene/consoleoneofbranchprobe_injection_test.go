@@ -118,14 +118,14 @@ func TestConsoleOneofProbeGateParsesRegistry(t *testing.T) {
 
 func TestConsoleOneofProbeGateDiscriminatesCoverage(t *testing.T) {
 	// Дефект: проба модуля есть, но про ЭТОТ спек молчит.
-	чужая := `oneofBranches("demo/v1/other.proto", "X", "y"); REGISTRY["gadgets"]`
-	if coveredBySomeProbe([]string{чужая}, "widgets") {
+	foreignProbe := `oneofBranches("demo/v1/other.proto", "X", "y"); REGISTRY["gadgets"]`
+	if coveredBySomeProbe([]string{foreignProbe}, "widgets") {
 		t.Fatalf("проба, не называющая спек, засчитана покрытием — гейт молчал бы на дефекте, " +
 			"ради которого написан")
 	}
 	// Законный близнец: проба называет спек — гейт молчит.
-	своя := `oneofBranches("demo/v1/w.proto", "CreateWidgetRequest", "anchor"); REGISTRY["widgets"]`
-	if !coveredBySomeProbe([]string{своя}, "widgets") {
+	ownProbe := `oneofBranches("demo/v1/w.proto", "CreateWidgetRequest", "anchor"); REGISTRY["widgets"]`
+	if !coveredBySomeProbe([]string{ownProbe}, "widgets") {
 		t.Fatalf("проба, называющая спек, не засчитана — первый же ложный срабат отключил бы гейт")
 	}
 	// Ноль проб у модуля — тоже дефект, а не «нечего проверять».

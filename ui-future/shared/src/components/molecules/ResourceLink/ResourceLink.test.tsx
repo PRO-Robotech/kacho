@@ -109,14 +109,14 @@ describe("ResourceLink — копирование видно всегда, ти�
 
   /** Базовые (безвариантные) классы прозрачности элемента. Вариантные
    *  (`group-hover:…`) сюда не попадают — они про другое состояние. */
-  const базоваяПрозрачность = (el: Element): string[] =>
+  const baseOpacity = (el: Element): string[] =>
     (el.getAttribute("class") ?? "").split(/\s+/).filter((c) => /^opacity-\d+$/.test(c));
 
-  const классы = (el: Element): string[] => (el.getAttribute("class") ?? "").split(/\s+/);
+  const classes = (el: Element): string[] => (el.getAttribute("class") ?? "").split(/\s+/);
 
   /** Предки узла, несущие класс `group`: правило тона срабатывает от наведения
    *  на ЛЮБОГО из них — это селектор потомка, а не дочернего. */
-  const якоряТона = (node: Element): HTMLElement[] => {
+  const toneAnchors = (node: Element): HTMLElement[] => {
     const out: HTMLElement[] = [];
     for (let n = node.parentElement; n; n = n.parentElement) {
       if (n.classList.contains("group")) out.push(n);
@@ -132,9 +132,9 @@ describe("ResourceLink — копирование видно всегда, ти�
     // «копирования нет вовсе».
     expect(icon).not.toBeNull();
     // Ни одного гасящего класса: значок стоит видимым при любом состоянии.
-    expect(базоваяПрозрачность(icon as Element)).toEqual([]);
+    expect(baseOpacity(icon as Element)).toEqual([]);
     // И его не раскрывают наведением — иначе с сенсорного ввода он недоступен.
-    expect(классы(icon as Element).filter((c) => c.startsWith("group-hover:opacity"))).toEqual([]);
+    expect(classes(icon as Element).filter((c) => c.startsWith("group-hover:opacity"))).toEqual([]);
   });
 
   it("тише значок делает ТОН, и меняет его подход к ИМЕНИ", () => {
@@ -144,18 +144,18 @@ describe("ResourceLink — копирование видно всегда, ти�
     expect(icon).not.toBeNull();
     // В покое — тон второстепенного текста. Без него значок звучал бы наравне
     // с именем, к которому он приставлен.
-    expect(классы(icon as Element)).toContain("text-[var(--kc-text-tertiary)]");
+    expect(classes(icon as Element)).toContain("text-[var(--kc-text-tertiary)]");
     // Тона не меняет ничто — значок остаётся одинаково тусклым и на подходе.
-    expect(классы(icon as Element)).toContain("group-hover:text-[var(--kc-text)]");
+    expect(classes(icon as Element)).toContain("group-hover:text-[var(--kc-text)]");
 
     const anchor = container.querySelector("a");
     // Ссылки нет — «якорь охватывает имя» было бы утверждением ни о чём.
     expect(anchor).not.toBeNull();
 
-    const охватывающие = якоряТона(icon as Element).filter((g) => g.contains(anchor as Element));
+    const enclosing = toneAnchors(icon as Element).filter((g) => g.contains(anchor as Element));
     // Ни один якорь не содержит имени: тон менялся бы только от наведения на
     // сам значок — на двенадцать пикселей.
-    expect(охватывающие.length).toBeGreaterThan(0);
+    expect(enclosing.length).toBeGreaterThan(0);
   });
 
   it("тон касается ТОЛЬКО значка: имя показано в полную силу (положительный контроль)", () => {
@@ -165,8 +165,8 @@ describe("ResourceLink — копирование видно всегда, ти�
     expect(anchor).not.toBeNull();
     // Без этого контроля «значок приглушён» зеленело бы и на разметке, где
     // приглушено ВСЁ.
-    expect(базоваяПрозрачность(anchor as Element)).toEqual([]);
-    expect(классы(anchor as Element)).not.toContain("text-[var(--kc-text-tertiary)]");
+    expect(baseOpacity(anchor as Element)).toEqual([]);
+    expect(classes(anchor as Element)).not.toContain("text-[var(--kc-text-tertiary)]");
     expect(anchor).toHaveTextContent("сеть");
   });
 });
@@ -228,19 +228,19 @@ describe("идентификатор как имя — показывается 
 // ужимается. Без него «minWidth: 0» на общем ряду сплющил бы иконку в полоску,
 // то есть обрезка имени оплачивалась бы порчей соседа.
 describe("ResourceLink — имя в одну строку", () => {
-  const ИМЯ = "боевая сеть периметра восточного региона";
+  const NAME = "боевая сеть периметра восточного региона";
 
-  function узелИмени(): HTMLElement {
-    return screen.getByText(ИМЯ);
+  function nameNode(): HTMLElement {
+    return screen.getByText(NAME);
   }
 
   it("имя не переносится, обрезается многоточием и умеет стать уже содержимого", () => {
     render(
       <MemoryRouter>
-        <ResourceLink specId="networks" id="net-1" name={ИМЯ} projectId="prj-1" />
+        <ResourceLink specId="networks" id="net-1" name={NAME} projectId="prj-1" />
       </MemoryRouter>,
     );
-    const v = узелИмени();
+    const v = nameNode();
 
     expect(v.style.whiteSpace).toBe("nowrap");
     expect(v.style.textOverflow).toBe("ellipsis");
@@ -251,19 +251,19 @@ describe("ResourceLink — имя в одну строку", () => {
   it("значок типа при этом не ужимается (близнец)", () => {
     const { container } = render(
       <MemoryRouter>
-        <ResourceLink specId="networks" id="net-1" name={ИМЯ} projectId="prj-1" icon />
+        <ResourceLink specId="networks" id="net-1" name={NAME} projectId="prj-1" icon />
       </MemoryRouter>,
     );
 
-    const обёрткаЗначка = container.querySelector<HTMLElement>("[style*='flex-shrink']");
-    expect(обёрткаЗначка).not.toBeNull();
-    expect(обёрткаЗначка!.style.flexShrink).toBe("0");
+    const iconWrapper = container.querySelector<HTMLElement>("[style*='flex-shrink']");
+    expect(iconWrapper).not.toBeNull();
+    expect(iconWrapper!.style.flexShrink).toBe("0");
   });
 
   it("переход ссылки берёт длительность и кривую токенами продукта", () => {
     render(
       <MemoryRouter>
-        <ResourceLink specId="networks" id="net-1" name={ИМЯ} projectId="prj-1" />
+        <ResourceLink specId="networks" id="net-1" name={NAME} projectId="prj-1" />
       </MemoryRouter>,
     );
     const anchor = screen.getByRole("link");

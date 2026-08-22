@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { tenantWithProject, createdResourceId, runTag, подписьКопирования, областьГотова } from "./fixtures";
+import { tenantWithProject, createdResourceId, runTag, copyToast, scopeIsReady } from "./fixtures";
 
 /**
  * Пользовательские сценарии консоли: ФАКТЫ, МЕТКИ, ПУСТОЕ СОСТОЯНИЕ.
@@ -27,31 +27,31 @@ import { tenantWithProject, createdResourceId, runTag, подписьКопир�
 
 /** Разделы, пустые у свежего арендатора. Четыре модуля намеренно: предмет
  *  канона — переход МЕЖДУ разделами, и один модуль его не проверяет. */
-const ПУСТЫЕ_РАЗДЕЛЫ = [
-  { имя: "подсети", путь: "vpc/subnets" },
-  { имя: "адреса", путь: "vpc/addresses" },
-  { имя: "шлюзы", путь: "vpc/gateways" },
-  { имя: "наборы префиксов", путь: "vpc/cidr-groups" },
-  { имя: "виртуальные машины", путь: "compute/instances" },
-  { имя: "тома", путь: "storage/volumes" },
-  { имя: "балансировщики", путь: "nlb/load-balancers" },
-  { имя: "реестры", путь: "registry/registries" },
+const EMPTY_SECTIONS = [
+  { name: "подсети", path: "vpc/subnets" },
+  { name: "адреса", path: "vpc/addresses" },
+  { name: "шлюзы", path: "vpc/gateways" },
+  { name: "наборы префиксов", path: "vpc/cidr-groups" },
+  { name: "виртуальные машины", path: "compute/instances" },
+  { name: "тома", path: "storage/volumes" },
+  { name: "балансировщики", path: "nlb/load-balancers" },
+  { name: "реестры", path: "registry/registries" },
 ];
 
-interface Зоны {
-  раздел: string;
-  рисунок: { x: number; y: number; w: number; h: number };
-  заголовок: { x: number; y: number; w: number; h: number };
-  кнопка: { x: number; y: number; w: number; h: number };
-  панель: { x: number; y: number; w: number; h: number };
-  строки: string[];
-  титул: string;
+interface Zones {
+  section: string;
+  picture: { x: number; y: number; w: number; h: number };
+  heading: { x: number; y: number; w: number; h: number };
+  button: { x: number; y: number; w: number; h: number };
+  panel: { x: number; y: number; w: number; h: number };
+  lines: string[];
+  title: string;
 }
 
 /** Целые точки: «совпадает до точки» — это и есть единица, которой меряет глаз. */
-async function бокс(l: Locator, что: string): Promise<{ x: number; y: number; w: number; h: number }> {
+async function box(l: Locator, what: string): Promise<{ x: number; y: number; w: number; h: number }> {
   const b = await l.boundingBox();
-  expect(b, `${что}: элемента нет на экране, мерить нечего`).not.toBeNull();
+  expect(b, `${what}: элемента нет на экране, мерить нечего`).not.toBeNull();
   return { x: Math.round(b!.x), y: Math.round(b!.y), w: Math.round(b!.width), h: Math.round(b!.height) };
 }
 
@@ -62,43 +62,43 @@ async function бокс(l: Locator, что: string): Promise<{ x: number; y: num
  * стенде пауза дала бы красное при исправном продукте, на быстром зелёное при
  * сломанном.
  */
-async function пустойРаздел(page: Page, projectId: string, р: { имя: string; путь: string }): Promise<Зоны> {
-  await page.goto(`/projects/${projectId}/${р.путь}`, { waitUntil: "domcontentloaded" });
+async function emptySection(page: Page, projectId: string, sec: { name: string; path: string }): Promise<Zones> {
+  await page.goto(`/projects/${projectId}/${sec.path}`, { waitUntil: "domcontentloaded" });
 
-  const панель = page.locator('[role="status"]').first();
+  const panel = page.locator('[role="status"]').first();
   await expect(
-    панель,
-    `раздел «${р.имя}»: экрана пустого состояния нет. У свежего арендатора список пуст, ` +
+    panel,
+    `раздел «${sec.name}»: экрана пустого состояния нет. У свежего арендатора список пуст, ` +
       `и на его месте обязан стоять экран «смотреть не на что, вот следующий шаг»`,
   ).toBeVisible({ timeout: 30_000 });
 
-  const заголовок = панель.getByRole("heading");
-  await expect(заголовок, `раздел «${р.имя}»: у пустого экрана нет заголовка`).toBeVisible();
+  const heading = panel.getByRole("heading");
+  await expect(heading, `раздел «${sec.name}»: у пустого экрана нет заголовка`).toBeVisible();
 
   // Рисунок — ПЕРВЫЙ svg панели. Что это именно рисунок, а не значок внутри
   // кнопки, доказывает его размер: холст пустого состояния 208×136 (канон, §7),
   // и он проверяется ниже как отдельное утверждение.
-  const рисунок = панель.locator("svg").first();
-  await expect(рисунок, `раздел «${р.имя}»: у пустого экрана нет рисунка`).toBeVisible();
+  const picture = panel.locator("svg").first();
+  await expect(picture, `раздел «${sec.name}»: у пустого экрана нет рисунка`).toBeVisible();
 
-  const кнопка = панель.getByRole("button");
+  const button = panel.getByRole("button");
   await expect(
-    кнопка,
-    `раздел «${р.имя}»: на пустом экране нет кнопки создания, хотя глагол создания у ресурса есть`,
+    button,
+    `раздел «${sec.name}»: на пустом экране нет кнопки создания, хотя глагол создания у ресурса есть`,
   ).toBeVisible();
 
-  const текст = await панель.innerText();
+  const text = await panel.innerText();
   return {
-    раздел: р.имя,
-    рисунок: await бокс(рисунок, `рисунок раздела «${р.имя}»`),
-    заголовок: await бокс(заголовок, `заголовок раздела «${р.имя}»`),
-    кнопка: await бокс(кнопка, `кнопка раздела «${р.имя}»`),
-    панель: await бокс(панель, `экран раздела «${р.имя}»`),
-    строки: текст
+    section: sec.name,
+    picture: await box(picture, `рисунок раздела «${sec.name}»`),
+    heading: await box(heading, `заголовок раздела «${sec.name}»`),
+    button: await box(button, `кнопка раздела «${sec.name}»`),
+    panel: await box(panel, `экран раздела «${sec.name}»`),
+    lines: text
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean),
-    титул: (await заголовок.innerText()).trim(),
+    title: (await heading.innerText()).trim(),
   };
 }
 
@@ -120,52 +120,52 @@ test("рисунок и кнопка пустого раздела стоят н
   // verifies #925
   const { projectId } = await tenantWithProject(page);
 
-  const снято: Зоны[] = [];
-  for (const р of ПУСТЫЕ_РАЗДЕЛЫ) снято.push(await пустойРаздел(page, projectId, р));
+  const captured: Zones[] = [];
+  for (const sec of EMPTY_SECTIONS) captured.push(await emptySection(page, projectId, sec));
 
-  const первый = снято[0];
+  const first = captured[0];
 
   // Холст рисунка — один ключ на все разделы (канон §7: 208×136).
-  for (const з of снято) {
+  for (const zones of captured) {
     expect(
-      { w: з.рисунок.w, h: з.рисунок.h },
-      `раздел «${з.раздел}»: холст рисунка ${з.рисунок.w}×${з.рисунок.h}, а канон объявляет 208×136 — ` +
+      { w: zones.picture.w, h: zones.picture.h },
+      `раздел «${zones.section}»: холст рисунка ${zones.picture.w}×${zones.picture.h}, а канон объявляет 208×136 — ` +
         `рисунки разных разделов перестали быть одной серией`,
     ).toEqual({ w: 208, h: 136 });
   }
 
-  for (const з of снято.slice(1)) {
+  for (const zones of captured.slice(1)) {
     expect(
-      з.рисунок,
-      `рисунок прыгает: в разделе «${первый.раздел}» он стоит на ${JSON.stringify(первый.рисунок)}, ` +
-        `в разделе «${з.раздел}» — на ${JSON.stringify(з.рисунок)}. Зоны экрана объявлены ` +
+      zones.picture,
+      `рисунок прыгает: в разделе «${first.section}» он стоит на ${JSON.stringify(first.picture)}, ` +
+        `в разделе «${zones.section}» — на ${JSON.stringify(zones.picture)}. Зоны экрана объявлены ` +
         `фиксированной высоты, значит разница может прийти только из содержимого — ` +
         `а содержимое двигать картинку не вправе`,
-    ).toEqual(первый.рисунок);
+    ).toEqual(first.picture);
 
     expect(
-      з.кнопка,
-      `кнопка прыгает: в разделе «${первый.раздел}» она стоит на ${JSON.stringify(первый.кнопка)}, ` +
-        `в разделе «${з.раздел}» — на ${JSON.stringify(з.кнопка)}. Именно этот прыжок читается ` +
+      zones.button,
+      `кнопка прыгает: в разделе «${first.section}» она стоит на ${JSON.stringify(first.button)}, ` +
+        `в разделе «${zones.section}» — на ${JSON.stringify(zones.button)}. Именно этот прыжок читается ` +
         `как переход в другое место продукта`,
-    ).toEqual(первый.кнопка);
+    ).toEqual(first.button);
 
     expect(
-      з.заголовок.y,
-      `заголовок прыгает по вертикали: «${первый.раздел}» — y=${первый.заголовок.y}, ` +
-        `«${з.раздел}» — y=${з.заголовок.y}`,
-    ).toBe(первый.заголовок.y);
+      zones.heading.y,
+      `заголовок прыгает по вертикали: «${first.section}» — y=${first.heading.y}, ` +
+        `«${zones.section}» — y=${zones.heading.y}`,
+    ).toBe(first.heading.y);
   }
 
   // Положительный контроль: страницы РАЗНЫЕ. Без него совпадение координат
   // означало бы и «зоны держат место», и «мы восемь раз посмотрели на одно и то
   // же», а различить было бы нечем.
-  const титулы = снято.map((з) => з.титул);
+  const titles = captured.map((zones) => zones.title);
   expect(
-    new Set(титулы).size,
-    `заголовки разделов не различаются (${JSON.stringify(титулы)}): совпадение координат ` +
+    new Set(titles).size,
+    `заголовки разделов не различаются (${JSON.stringify(titles)}): совпадение координат ` +
       `в таком прогоне ничего не доказывает — мерили одну и ту же страницу`,
-  ).toBe(снято.length);
+  ).toBe(captured.length);
 });
 
 /**
@@ -180,39 +180,39 @@ test("экран пустого раздела центрирован по об�
   // verifies #925
   const { projectId } = await tenantWithProject(page);
 
-  for (const р of ПУСТЫЕ_РАЗДЕЛЫ.slice(0, 4)) {
-    const з = await пустойРаздел(page, projectId, р);
-    const центрX = з.панель.x + з.панель.w / 2;
+  for (const sec of EMPTY_SECTIONS.slice(0, 4)) {
+    const zones = await emptySection(page, projectId, sec);
+    const centerX = zones.panel.x + zones.panel.w / 2;
 
-    for (const [что, b] of [
-      ["рисунок", з.рисунок],
-      ["заголовок", з.заголовок],
-      ["кнопка", з.кнопка],
+    for (const [what, b] of [
+      ["рисунок", zones.picture],
+      ["заголовок", zones.heading],
+      ["кнопка", zones.button],
     ] as const) {
       expect(
-        Math.abs(b.x + b.w / 2 - центрX),
-        `раздел «${р.имя}»: ${что} не по центру по горизонтали — его середина ${b.x + b.w / 2}, ` +
-          `середина экрана ${центрX}`,
+        Math.abs(b.x + b.w / 2 - centerX),
+        `раздел «${sec.name}»: ${what} не по центру по горизонтали — его середина ${b.x + b.w / 2}, ` +
+          `середина экрана ${centerX}`,
       ).toBeLessThanOrEqual(1);
     }
 
     // По вертикали: столбец содержимого стоит серединой на середине панели.
     // Меряется по крайним видимым зонам — от верха рисунка до низа последней
     // зоны, — потому что канон фиксирует именно зоны, а не отдельные элементы.
-    const низ = await page.evaluate(() => {
-      const п = document.querySelector('[role="status"]') as HTMLElement | null;
-      if (!п) return null;
-      const дети = Array.prototype.map.call(п.children, (c: Element) => c.getBoundingClientRect()) as DOMRect[];
-      return дети.length === 0 ? null : Math.round(дети[дети.length - 1].bottom);
+    const bottom = await page.evaluate(() => {
+      const panelEl = document.querySelector('[role="status"]') as HTMLElement | null;
+      if (!panelEl) return null;
+      const children = Array.prototype.map.call(panelEl.children, (c: Element) => c.getBoundingClientRect()) as DOMRect[];
+      return children.length === 0 ? null : Math.round(children[children.length - 1].bottom);
     });
-    expect(низ, `раздел «${р.имя}»: у экрана состояния нет ни одной зоны`).not.toBeNull();
+    expect(bottom, `раздел «${sec.name}»: у экрана состояния нет ни одной зоны`).not.toBeNull();
 
-    const серединаСодержимого = (з.рисунок.y + низ!) / 2;
-    const серединаПанели = з.панель.y + з.панель.h / 2;
+    const contentMiddle = (zones.picture.y + bottom!) / 2;
+    const panelMiddle = zones.panel.y + zones.panel.h / 2;
     expect(
-      Math.abs(серединаСодержимого - серединаПанели),
-      `раздел «${р.имя}»: экран не по центру по вертикали — середина содержимого ` +
-        `${серединаСодержимого}, середина отведённой ему области ${серединаПанели}. ` +
+      Math.abs(contentMiddle - panelMiddle),
+      `раздел «${sec.name}»: экран не по центру по вертикали — середина содержимого ` +
+        `${contentMiddle}, середина отведённой ему области ${panelMiddle}. ` +
         `Прижатый к верху экран состояния читается как сбившаяся вёрстка`,
     ).toBeLessThanOrEqual(3);
   }
@@ -229,22 +229,22 @@ test("у каждого пустого раздела есть описание,
   // verifies #925
   const { projectId } = await tenantWithProject(page);
 
-  let осмотрено = 0;
-  for (const р of ПУСТЫЕ_РАЗДЕЛЫ) {
-    const з = await пустойРаздел(page, projectId, р);
-    осмотрено += 1;
+  let inspected = 0;
+  for (const sec of EMPTY_SECTIONS) {
+    const zones = await emptySection(page, projectId, sec);
+    inspected += 1;
 
-    const объяснение = з.строки.filter((s) => s !== з.титул && s.length >= 60);
+    const explanation = zones.lines.filter((s) => s !== zones.title && s.length >= 60);
     expect(
-      объяснение.length,
-      `раздел «${р.имя}»: под заголовком «${з.титул}» нет объяснения предмета. ` +
-        `Прочитано с экрана: ${JSON.stringify(з.строки)}`,
+      explanation.length,
+      `раздел «${sec.name}»: под заголовком «${zones.title}» нет объяснения предмета. ` +
+        `Прочитано с экрана: ${JSON.stringify(zones.lines)}`,
     ).toBeGreaterThan(0);
   }
 
   // Перепись: «ноль находок» обязано быть отличимо от «ноль прочитанного».
-  expect(осмотрено, "не осмотрено ни одного раздела — вердикта такой прогон не даёт").toBe(
-    ПУСТЫЕ_РАЗДЕЛЫ.length,
+  expect(inspected, "не осмотрено ни одного раздела — вердикта такой прогон не даёт").toBe(
+    EMPTY_SECTIONS.length,
   );
 });
 
@@ -255,32 +255,32 @@ test("у каждого пустого раздела есть описание,
 /** Сеть с группой правил: группа по умолчанию заводится ВМЕСТЕ с сетью и
  *  безусловно (решение владельца в самом сервисе), поэтому одна сеть уже даёт
  *  строку с фактом «Группа по умолчанию». */
-async function сетьСГруппами(page: Page, projectId: string): Promise<{ netId: string; своя: string }> {
-  const сеть = await page.request.post("/vpc/v1/networks", {
+async function networkWithGroups(page: Page, projectId: string): Promise<{ netId: string; own: string }> {
+  const network = await page.request.post("/vpc/v1/networks", {
     data: { projectId, name: `net-fct-${runTag()}`, ipv4CidrBlocks: ["10.79.0.0/16"] },
   });
-  const netId = await createdResourceId(page, сеть, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под факты");
+  const netId = await createdResourceId(page, network, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под факты");
 
   // Вторая группа — ЯВНАЯ: без неё видна только одна сторона факта, а канон
   // требует обе. Проба с одной стороной зеленела бы на продукте, у которого
   // вторая сторона печатается сырым `false`.
-  const своя = `sg-fct-${runTag()}`;
-  const ответ = await page.request.post("/vpc/v1/securityGroups", {
-    data: { projectId, networkId: netId, name: своя },
+  const own = `sg-fct-${runTag()}`;
+  const response = await page.request.post("/vpc/v1/securityGroups", {
+    data: { projectId, networkId: netId, name: own },
   });
   await createdResourceId(
     page,
-    ответ,
+    response,
     "securityGroupId",
     (id) => `/vpc/v1/securityGroups/${id}`,
     "группа безопасности под факты",
   );
-  return { netId, своя };
+  return { netId, own };
 }
 
 /** Тексты всех ячеек страницы. Таблица списка разложена на ДВЕ таблицы (шапка и
  *  тело), поэтому спрашивается страница целиком, а не первая найденная. */
-async function ячейки(page: Page): Promise<string[]> {
+async function cells(page: Page): Promise<string[]> {
   return page.evaluate(() =>
     Array.prototype.map
       .call(document.querySelectorAll("td"), (c: Element) => (c as HTMLElement).innerText.trim())
@@ -304,43 +304,43 @@ async function ячейки(page: Page): Promise<string[]> {
 test("ни одна ячейка списка не показывает сырое true или false", async ({ page }) => {
   // verifies #925
   const { projectId } = await tenantWithProject(page);
-  await сетьСГруппами(page, projectId);
+  await networkWithGroups(page, projectId);
 
-  const списки = [
-    { имя: "группы безопасности", путь: `/projects/${projectId}/vpc/security-groups` },
-    { имя: "таблицы маршрутизации", путь: `/projects/${projectId}/vpc/route-tables` },
-    { имя: "облачные сети", путь: `/projects/${projectId}/vpc/networks` },
-    { имя: "зоны", путь: "/system/zones" },
-    { имя: "регионы", путь: "/system/regions" },
+  const lists = [
+    { name: "группы безопасности", path: `/projects/${projectId}/vpc/security-groups` },
+    { name: "таблицы маршрутизации", path: `/projects/${projectId}/vpc/route-tables` },
+    { name: "облачные сети", path: `/projects/${projectId}/vpc/networks` },
+    { name: "зоны", path: "/system/zones" },
+    { name: "регионы", path: "/system/regions" },
   ];
 
-  let прочитано = 0;
-  for (const л of списки) {
-    await page.goto(л.путь, { waitUntil: "domcontentloaded" });
+  let readCount = 0;
+  for (const list of lists) {
+    await page.goto(list.path, { waitUntil: "domcontentloaded" });
     await expect
-      .poll(async () => (await ячейки(page)).length, {
+      .poll(async () => (await cells(page)).length, {
         message:
-          `список «${л.имя}» не отдал ни одной ячейки. Это УСЛОВИЕ пробы: на пустом списке ` +
+          `список «${list.name}» не отдал ни одной ячейки. Это УСЛОВИЕ пробы: на пустом списке ` +
           `утверждение «сырого true нет» истинно by construction и не значит ничего`,
         timeout: 30_000,
       })
       .toBeGreaterThan(0);
 
-    const тексты = await ячейки(page);
-    прочитано += тексты.length;
+    const texts = await cells(page);
+    readCount += texts.length;
 
-    const сырые = тексты.filter((t) => /^(true|false)$/i.test(t));
+    const raw = texts.filter((t) => /^(true|false)$/i.test(t));
     expect(
-      сырые,
-      `список «${л.имя}»: в ячейках стоит сырое булево ${JSON.stringify(сырые)} — ` +
+      raw,
+      `список «${list.name}»: в ячейках стоит сырое булево ${JSON.stringify(raw)} — ` +
         `служебное слово вместо факта о ресурсе`,
     ).toEqual([]);
 
     // «Да»/«Нет» — та же болезнь другими словами: ответ вместо следствия.
-    const дане = тексты.filter((t) => /^(да|нет)$/i.test(t));
+    const yesNo = texts.filter((t) => /^(да|нет)$/i.test(t));
     expect(
-      дане,
-      `список «${л.имя}»: ячейка отвечает «${дане.join(", ")}» — это ответ на вопрос, ` +
+      yesNo,
+      `список «${list.name}»: ячейка отвечает «${yesNo.join(", ")}» — это ответ на вопрос, ` +
         `которого читатель не задавал, а не следствие`,
     ).toEqual([]);
   }
@@ -348,7 +348,7 @@ test("ни одна ячейка списка не показывает сыро
   // Положительный контроль: булевы факты на экране были, и они читаются словами.
   await page.goto(`/projects/${projectId}/vpc/security-groups`, { waitUntil: "domcontentloaded" });
   await expect
-    .poll(async () => (await ячейки(page)).filter((t) => t === "Группа по умолчанию").length, {
+    .poll(async () => (await cells(page)).filter((t) => t === "Группа по умолчанию").length, {
       message:
         "в списке групп безопасности нет ячейки «Группа по умолчанию»: значит булевой колонки " +
         "на экране не было вовсе, и отрицание выше зеленело на её отсутствии",
@@ -356,8 +356,8 @@ test("ни одна ячейка списка не показывает сыро
     })
     .toBeGreaterThan(0);
 
-  expect(прочитано, "не прочитано ни одной ячейки — вердикта такой прогон не даёт").toBeGreaterThan(0);
-  console.log(`[перепись] ячеек прочитано: ${прочитано}, списков: ${списки.length}`);
+  expect(readCount, "не прочитано ни одной ячейки — вердикта такой прогон не даёт").toBeGreaterThan(0);
+  console.log(`[перепись] ячеек прочитано: ${readCount}, списков: ${lists.length}`);
 });
 
 /**
@@ -370,25 +370,25 @@ test("ни одна ячейка списка не показывает сыро
 test("обе стороны булева факта названы следствием", async ({ page }) => {
   // verifies #925
   const { projectId } = await tenantWithProject(page);
-  const { своя } = await сетьСГруппами(page, projectId);
+  const { own } = await networkWithGroups(page, projectId);
 
   await page.goto(`/projects/${projectId}/vpc/security-groups`, { waitUntil: "domcontentloaded" });
   await expect
-    .poll(async () => (await ячейки(page)).filter((t) => t === своя).length, {
-      message: `в списке нет явной группы «${своя}» — предмет пробы не создан`,
+    .poll(async () => (await cells(page)).filter((t) => t === own).length, {
+      message: `в списке нет явной группы «${own}» — предмет пробы не создан`,
       timeout: 30_000,
     })
     .toBeGreaterThan(0);
 
-  const тексты = await ячейки(page);
+  const texts = await cells(page);
   expect(
-    тексты,
-    `сторона «истина» не названа следствием. Прочитано: ${JSON.stringify(тексты)}`,
+    texts,
+    `сторона «истина» не названа следствием. Прочитано: ${JSON.stringify(texts)}`,
   ).toContain("Группа по умолчанию");
   expect(
-    тексты,
+    texts,
     `сторона «ложь» не названа следствием — а печатается сырым чаще именно она. ` +
-      `Прочитано: ${JSON.stringify(тексты)}`,
+      `Прочитано: ${JSON.stringify(texts)}`,
   ).toContain("Назначается явно");
 });
 
@@ -412,7 +412,7 @@ test("тон факта следует смыслу, а не истинност�
   const { projectId } = await tenantWithProject(page);
   // Готовность области — ДО создания ресурсов: ожидание тратится на то, что всё
   // равно должно произойти, а к моменту перехода каркас уже знает проект.
-  await областьГотова(page, projectId);
+  await scopeIsReady(page, projectId);
 
   // Адрес берётся РЕГИОНАЛЬНЫЙ — без зоны, — и это не мелочь размещения.
   //
@@ -427,10 +427,10 @@ test("тон факта следует смыслу, а не истинност�
   // «Свободен» и «Удаление разрешено». Опираться на условие, которое стенд
   // создаёт и проверяет, — не послабление, а отказ от требования, которого
   // никто не обещал.
-  const адрес = await page.request.post("/vpc/v1/addresses", {
+  const address = await page.request.post("/vpc/v1/addresses", {
     data: { projectId, name: `adr-tone-${runTag()}`, externalIpv4AddressSpec: {} },
   });
-  await createdResourceId(page, адрес, "addressId", (id) => `/vpc/v1/addresses/${id}`, "публичный адрес под тон");
+  await createdResourceId(page, address, "addressId", (id) => `/vpc/v1/addresses/${id}`, "публичный адрес под тон");
 
   await page.goto(`/projects/${projectId}/vpc/addresses`, { waitUntil: "domcontentloaded" });
 
@@ -455,28 +455,28 @@ test("тон факта следует смыслу, а не истинност�
       "такой прогон не говорит ничего",
   ).toBeVisible({ timeout: 60_000 });
 
-  const свободен = page.getByText("Свободен", { exact: true }).first();
-  const разрешено = page.getByText("Удаление разрешено", { exact: true }).first();
+  const free = page.getByText("Свободен", { exact: true }).first();
+  const allowed = page.getByText("Удаление разрешено", { exact: true }).first();
   await expect(
-    свободен,
+    free,
     "в списке адресов нет факта «Свободен» — свежевыделенный адрес никем не занят, и эта сторона " +
       "обязана быть на экране",
   ).toBeVisible({ timeout: 30_000 });
   await expect(
-    разрешено,
+    allowed,
     "в списке адресов нет факта «Удаление разрешено» — защита от удаления по умолчанию снята",
   ).toBeVisible({ timeout: 30_000 });
 
-  const цвет = (l: Locator) => l.evaluate((el) => getComputedStyle(el as HTMLElement).color);
-  const цСвободен = await цвет(свободен);
-  const цРазрешено = await цвет(разрешено);
+  const colorOf = (l: Locator) => l.evaluate((el) => getComputedStyle(el as HTMLElement).color);
+  const colorFree = await colorOf(free);
+  const colorAllowed = await colorOf(allowed);
 
   expect(
-    цРазрешено,
-    `оба факта этой строки пришли из ЛЖИ, и тон у них совпал (${цСвободен}). Значит тон назначает ` +
+    colorAllowed,
+    `оба факта этой строки пришли из ЛЖИ, и тон у них совпал (${colorFree}). Значит тон назначает ` +
       `истинность, а не смысл: «Свободен» — штатное положение адреса, «Удаление разрешено» — ` +
       `единственная из двух сторон, о которой стоит знать, и выглядеть одинаково они не вправе`,
-  ).not.toBe(цСвободен);
+  ).not.toBe(colorFree);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -487,55 +487,55 @@ test("тон факта следует смыслу, а не истинност�
  *  «значение не помещается» — свойство ПОСТРОЕНИЯ, а не удачной ширины окна:
  *  ряд меток ограничен по ширине, и 63 моноширинных знака в него не входят ни
  *  при каком разумном размере колонки. */
-const ЗНАЧЕНИЕ_МЕТКИ = "prod-eu-central-primary-cluster-0123456789-abcdefghij-klmnopqr";
-const КЛЮЧ_МЕТКИ = "env";
+const LABEL_VALUE = "prod-eu-central-primary-cluster-0123456789-abcdefghij-klmnopqr";
+const LABEL_KEY = "env";
 
-async function сетьСМеткой(page: Page, projectId: string): Promise<void> {
-  const ответ = await page.request.post("/vpc/v1/networks", {
+async function networkWithLabel(page: Page, projectId: string): Promise<void> {
+  const response = await page.request.post("/vpc/v1/networks", {
     data: {
       projectId,
       name: `net-lbl-${runTag()}`,
       ipv4CidrBlocks: ["10.81.0.0/16"],
-      labels: { [КЛЮЧ_МЕТКИ]: ЗНАЧЕНИЕ_МЕТКИ, tier: "backend" },
+      labels: { [LABEL_KEY]: LABEL_VALUE, tier: "backend" },
     },
   });
-  await createdResourceId(page, ответ, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть с меткой");
+  await createdResourceId(page, response, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть с меткой");
 }
 
-interface Часть {
-  текст: string;
+interface Part {
+  text: string;
   x: number;
   y: number;
   w: number;
-  видно: number;
-  всего: number;
-  вес: number;
-  заливка: string;
+  visible: number;
+  total: number;
+  weight: number;
+  background: string;
 }
 
 /** Метка на экране: обе её части с их размерами и оформлением. */
-async function частиМетки(page: Page): Promise<Часть[]> {
-  const метка = page.locator(`[title="Скопировать ${КЛЮЧ_МЕТКИ}=${ЗНАЧЕНИЕ_МЕТКИ}"]`).first();
+async function labelParts(page: Page): Promise<Part[]> {
+  const label = page.locator(`[title="Скопировать ${LABEL_KEY}=${LABEL_VALUE}"]`).first();
   await expect(
-    метка,
-    `в списке нет метки ${КЛЮЧ_МЕТКИ}=${ЗНАЧЕНИЕ_МЕТКИ}: предмет пробы не создан либо метки не показываются`,
+    label,
+    `в списке нет метки ${LABEL_KEY}=${LABEL_VALUE}: предмет пробы не создан либо метки не показываются`,
   ).toBeVisible({ timeout: 30_000 });
-  return метка.evaluate((el) =>
+  return label.evaluate((el) =>
     Array.prototype.map.call(el.children, (c: Element) => {
       const r = c.getBoundingClientRect();
       const s = getComputedStyle(c as HTMLElement);
       return {
-        текст: (c as HTMLElement).innerText.trim(),
+        text: (c as HTMLElement).innerText.trim(),
         x: Math.round(r.x),
         y: Math.round(r.y),
         w: Math.round(r.width),
-        видно: (c as HTMLElement).clientWidth,
-        всего: (c as HTMLElement).scrollWidth,
-        вес: Number(s.fontWeight),
-        заливка: s.backgroundColor,
+        visible: (c as HTMLElement).clientWidth,
+        total: (c as HTMLElement).scrollWidth,
+        weight: Number(s.fontWeight),
+        background: s.backgroundColor,
       };
     }),
-  ) as Promise<Часть[]>;
+  ) as Promise<Part[]>;
 }
 
 /**
@@ -548,38 +548,38 @@ async function частиМетки(page: Page): Promise<Часть[]> {
 test("ключ метки виден отдельно от значения и набран заметнее", async ({ page }) => {
   // verifies #925
   const { projectId } = await tenantWithProject(page);
-  await сетьСМеткой(page, projectId);
+  await networkWithLabel(page, projectId);
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
 
-  const части = await частиМетки(page);
+  const parts = await labelParts(page);
   expect(
-    части.map((ч) => ч.текст),
+    parts.map((part) => part.text),
     "метка нарисована не двумя частями: ключ и значение слиты в одну строку, и глаз не " +
       "отличает, где кончается ключ",
-  ).toEqual([КЛЮЧ_МЕТКИ, ЗНАЧЕНИЕ_МЕТКИ]);
+  ).toEqual([LABEL_KEY, LABEL_VALUE]);
 
-  const [ключ, значение] = части;
+  const [key, value] = parts;
   expect(
-    ключ.x + ключ.w,
-    `ключ стоит не слева от значения: ключ занимает [${ключ.x}, ${ключ.x + ключ.w}], ` +
-      `значение начинается на ${значение.x}`,
-  ).toBeLessThanOrEqual(значение.x + 1);
+    key.x + key.w,
+    `ключ стоит не слева от значения: ключ занимает [${key.x}, ${key.x + key.w}], ` +
+      `значение начинается на ${value.x}`,
+  ).toBeLessThanOrEqual(value.x + 1);
   expect(
-    Math.abs(ключ.y - значение.y),
-    `ключ и значение стоят на разных строках (y=${ключ.y} против y=${значение.y}) — ` +
+    Math.abs(key.y - value.y),
+    `ключ и значение стоят на разных строках (y=${key.y} против y=${value.y}) — ` +
       `ряд меток обязан идти одной строкой, иначе список идёт лесенкой`,
   ).toBeLessThanOrEqual(1);
 
   expect(
-    ключ.вес,
-    `ключ набран не заметнее значения (вес ${ключ.вес} против ${значение.вес}): ` +
+    key.weight,
+    `ключ набран не заметнее значения (вес ${key.weight} против ${value.weight}): ` +
       `сначала «про что», потом «какое»`,
-  ).toBeGreaterThan(значение.вес);
+  ).toBeGreaterThan(value.weight);
   expect(
-    ключ.заливка,
-    `у ключа нет собственной заливки (${ключ.заливка}) — именно она отделяет его от значения ` +
+    key.background,
+    `у ключа нет собственной заливки (${key.background}) — именно она отделяет его от значения ` +
       `вместо знака равенства, который приходится читать`,
-  ).not.toBe(значение.заливка);
+  ).not.toBe(value.background);
 });
 
 /**
@@ -592,23 +592,23 @@ test("ключ метки виден отдельно от значения и �
 test("при нехватке ширины ужимается значение метки, а не её ключ", async ({ page }) => {
   // verifies #925
   const { projectId } = await tenantWithProject(page);
-  await сетьСМеткой(page, projectId);
+  await networkWithLabel(page, projectId);
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
 
-  const [ключ, значение] = await частиМетки(page);
+  const [key, value] = await labelParts(page);
 
   expect(
-    значение.всего,
-    `значение метки (${ЗНАЧЕНИЕ_МЕТКИ.length} знаков) поместилось целиком: видно ${значение.видно} ` +
-      `при полной ширине ${значение.всего}. Тогда проба ничего не проверяет — ряд меток обязан ` +
+    value.total,
+    `значение метки (${LABEL_VALUE.length} знаков) поместилось целиком: видно ${value.visible} ` +
+      `при полной ширине ${value.total}. Тогда проба ничего не проверяет — ряд меток обязан ` +
       `быть уже предельного значения, иначе ужимать нечего`,
-  ).toBeGreaterThan(значение.видно);
+  ).toBeGreaterThan(value.visible);
 
   expect(
-    ключ.всего,
-    `ужался КЛЮЧ: видно ${ключ.видно} при полной ширине ${ключ.всего}. Обрезанный ключ ` +
+    key.total,
+    `ужался КЛЮЧ: видно ${key.visible} при полной ширине ${key.total}. Обрезанный ключ ` +
       `перестаёт отвечать на вопрос «про что эта метка»`,
-  ).toBeLessThanOrEqual(ключ.видно + 1);
+  ).toBeLessThanOrEqual(key.visible + 1);
 });
 
 /**
@@ -622,27 +622,81 @@ test("клик по метке кладёт в буфер машинную фо�
   // verifies #925
   
   const { projectId } = await tenantWithProject(page);
-  await сетьСМеткой(page, projectId);
+  await networkWithLabel(page, projectId);
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
 
-  const метка = page.locator(`[title="Скопировать ${КЛЮЧ_МЕТКИ}=${ЗНАЧЕНИЕ_МЕТКИ}"]`).first();
-  await expect(метка, "метки нет на экране — предмет пробы не создан").toBeVisible({ timeout: 30_000 });
+  const label = page.locator(`[title="Скопировать ${LABEL_KEY}=${LABEL_VALUE}"]`).first();
+  await expect(label, "метки нет на экране — предмет пробы не создан").toBeVisible({ timeout: 30_000 });
 
-  const видимое = (await метка.innerText()).replace(/\s+/g, " ").trim();
+  const visibleText = (await label.innerText()).replace(/\s+/g, " ").trim();
   expect(
-    видимое,
-    `на экране метка показана слитной формой «${видимое}» — тогда разведение ключа и значения ` +
+    visibleText,
+    `на экране метка показана слитной формой «${visibleText}» — тогда разведение ключа и значения ` +
       `не состоялось, и копировать отдельную форму незачем`,
   ).not.toContain("=");
 
-  await метка.click();
+  await label.click();
   // Читается то, что продукт СКАЗАЛ: подпись успеха несёт саму строку и
   // показывается только при состоявшемся копировании (помощник возвращает
   // исход, на отказе подпись другая). Системный буфер не спрашивается — вне
   // защищённого контекста его нет, и проба утверждала бы о посадке стенда.
   await expect(
-    подписьКопирования(page, `${КЛЮЧ_МЕТКИ}=${ЗНАЧЕНИЕ_МЕТКИ}`),
+    copyToast(page, `${LABEL_KEY}=${LABEL_VALUE}`),
     "клик по метке не дал машинной формы: вставлять метку в фильтр или в вызов " +
       "пришлось бы, набирая знак равенства руками",
   ).toBeVisible({ timeout: 15_000 });
+});
+
+test("список адресов показывает ВНУТРЕННИЙ адрес, а не приветственный экран", async ({ page }) => {
+  // verifies #927
+  //
+  // Отбор в списке отбрасывал строки без внешнего адреса и НЕ считался сужением,
+  // поэтому страница уходила в приветственное состояние: консоль утверждала
+  // «адресов нет» там, где край ответил «есть». Модульная проба видит логику
+  // отбора, но не видит края — а нашли дефект именно браузером, и закрывает его
+  // та проба, которая смотрит на то же, на что смотрел нашедший.
+  const { projectId } = await tenantWithProject(page);
+  await scopeIsReady(page, projectId);
+
+  // Внутренний адрес берётся ИЗ ПОДСЕТИ, поэтому цепочка обязательна: сеть с
+  // супернетом (без него нарезать не из чего) → зональная подсеть → адрес.
+  // Полоса внешних адресов здесь ни при чём — проба не зависит от посева стенда.
+  const network = await page.request.post("/vpc/v1/networks", {
+    data: { projectId, name: `net-927-${runTag()}`, ipv4CidrBlocks: ["10.91.0.0/16"] },
+  });
+  const netId = await createdResourceId(page, network, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под внутренний адрес");
+
+  const zones = await page.request.get("/geo/v1/zones");
+  expect(zones.ok(), "справочник зон недоступен — зональную подсеть создать негде. Это УСЛОВИЕ пробы, а не её предмет").toBeTruthy();
+  const zone = ((await zones.json()) as { zones?: Array<{ id: string }> }).zones?.[0]?.id ?? "";
+  expect(zone, "справочник зон ПУСТ — стенд непригоден для размещаемых ресурсов").not.toBe("");
+
+  const subnet = await page.request.post("/vpc/v1/subnets", {
+    data: { projectId, networkId: netId, name: `sub-927-${runTag()}`, zoneId: zone, ipv4CidrPrimary: "10.91.7.0/24" },
+  });
+  const subnetId = await createdResourceId(page, subnet, "subnetId", (id) => `/vpc/v1/subnets/${id}`, "подсеть под внутренний адрес");
+
+  const address = await page.request.post("/vpc/v1/addresses", {
+    data: { projectId, name: `adr-int-${runTag()}`, internalIpv4AddressSpec: { subnetId } },
+  });
+  const addressId = await createdResourceId(page, address, "addressId", (id) => `/vpc/v1/addresses/${id}`, "внутренний адрес");
+
+  // Значение адреса выделяет сервер — спрашиваем его, а не угадываем.
+  const created = await page.request.get(`/vpc/v1/addresses/${addressId}`);
+  expect(created.ok(), "созданный внутренний адрес не читается").toBeTruthy();
+  const ip = ((await created.json()) as { internalIpv4Address?: { address?: string } }).internalIpv4Address?.address ?? "";
+  expect(ip, "край не назвал значение внутреннего адреса — сверять на странице нечего").not.toBe("");
+
+  await page.goto(`/projects/${projectId}/vpc/addresses`, { waitUntil: "domcontentloaded" });
+
+  // Сперва — что страница ОТКРЫЛАСЬ, и только потом требование факта: иначе
+  // отказ обвинит отрисовку строки в том, что каркас ещё читает области.
+  await expect(
+    page.getByRole("heading", { name: "IP-адреса" }).first(),
+    "страница списка адресов не открылась по прямому адресу: каркас не отдал область арендатора, " +
+      "и содержимого на экране нет вовсе — о показе адреса такой прогон не говорит ничего",
+  ).toBeVisible({ timeout: 60_000 });
+
+  await expect(page.getByText(ip).first(), "внутренний адрес не показан в списке — консоль молчит о том, что край вернул").toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Зарезервируйте первый IP-адрес"), "список ушёл в приветственное состояние при непустом ответе края").toHaveCount(0);
 });

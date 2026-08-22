@@ -93,16 +93,16 @@ export function InlineAddressPoolCreateForm({ onCancel, onSuccess }: Props) {
   // Отказ стоит У ПОЛЯ блоков, а не всплывашкой: пул адресов правят через
   // редактор блоков, и сообщение о пустом наборе читается там, где его
   // наполняют.
-  const [пробовалиОтправить, setПробовалиОтправить] = useState(false);
-  const пустыеБлоки = v4Blocks.length === 0 && v6Blocks.length === 0;
-  const отказБлоков =
-    пробовалиОтправить && пустыеБлоки
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const blocksEmpty = v4Blocks.length === 0 && v6Blocks.length === 0;
+  const blocksError =
+    submitAttempted && blocksEmpty
       ? "«IPv4 и IPv6 CIDR»: нужен хотя бы один блок — IPv4 либо IPv6."
       : undefined;
 
   const submit = () => {
-    setПробовалиОтправить(true);
-    if (пустыеБлоки) return;
+    setSubmitAttempted(true);
+    if (blocksEmpty) return;
     const payload: Record<string, unknown> = {
       name: name || undefined,
       description: description || undefined,
@@ -153,7 +153,7 @@ export function InlineAddressPoolCreateForm({ onCancel, onSuccess }: Props) {
           }
         >
           <SubnetCidrChips v4Blocks={v4Blocks} onV4Change={setV4Blocks} v6Blocks={v6Blocks} onV6Change={setV6Blocks} />
-          <FieldError message={отказБлоков} />
+          <FieldError message={blocksError} />
         </Form.Item>
 
         <Form.Item

@@ -50,8 +50,8 @@ describe("следующий узел маршрута — обе ветви к�
   it("ветвь адреса выражается — положительный контроль", () => {
     const calls: RouteEntry[][] = [];
     renderEditor([{ destination_prefix: "10.0.0.0/24", next_hop_address: "10.0.0.1" }], (n) => calls.push(n));
-    const адрес = screen.getByDisplayValue("10.0.0.1");
-    fireEvent.change(адрес, { target: { value: "10.0.0.2" } });
+    const address = screen.getByDisplayValue("10.0.0.1");
+    fireEvent.change(address, { target: { value: "10.0.0.2" } });
     expect(calls.at(-1)).toEqual([{ destination_prefix: "10.0.0.0/24", next_hop_address: "10.0.0.2" }]);
   });
 
@@ -61,8 +61,8 @@ describe("следующий узел маршрута — обе ветви к�
 
     // Переключатель ветви — свой у каждой строки: маршруты в одной таблице
     // независимы, и общий переключатель менял бы их все разом.
-    const выбор = screen.getByLabelText("Вид следующего узла");
-    fireEvent.change(выбор, { target: { value: "gateway" } });
+    const select = screen.getByLabelText("Вид следующего узла");
+    fireEvent.change(select, { target: { value: "gateway" } });
 
     expect(calls.at(-1)).toEqual([{ destination_prefix: "0.0.0.0/0", gateway_id: "" }]);
   });
@@ -73,9 +73,9 @@ describe("следующий узел маршрута — обе ветви к�
     const calls: RouteEntry[][] = [];
     renderEditor([{ destination_prefix: "0.0.0.0/0", next_hop_address: "10.0.0.1" }], (n) => calls.push(n));
     fireEvent.change(screen.getByLabelText("Вид следующего узла"), { target: { value: "gateway" } });
-    const строка = calls.at(-1)![0];
-    expect(строка).not.toHaveProperty("next_hop_address");
-    expect(строка).toHaveProperty("gateway_id");
+    const row = calls.at(-1)![0];
+    expect(row).not.toHaveProperty("next_hop_address");
+    expect(row).toHaveProperty("gateway_id");
   });
 
   it("первая строка стыкуется с шапкой ОДНОЙ линией, у остальных линия своя", () => {

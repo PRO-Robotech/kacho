@@ -181,9 +181,9 @@ export function routeGaps(drafts: DraftRoute[]): RouteGap[] {
     // Нехватка считается ПО ВЫБРАННОЙ ВЕТВИ: у строки со шлюзом пустое поле
     // адреса претензией не является, а вот невыбранный шлюз — является. Счёт по
     // одному полю уже однажды дал молчаливую потерю маршрута.
-    const заполнена =
+    const isFilled =
       kindOf(r) === "gateway" ? (r.gateway_id ?? "").trim() !== "" : r.next_hop_address.trim() !== "";
-    if (!заполнена) missing.push(MISSING_NEXT_HOP);
+    if (!isFilled) missing.push(MISSING_NEXT_HOP);
     if (missing.length > 0) gaps.push({ row: i + 1, missing });
   });
   return gaps;

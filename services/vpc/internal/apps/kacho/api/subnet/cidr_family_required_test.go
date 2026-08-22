@@ -69,31 +69,31 @@ func fieldViolationsOf(t *testing.T, err error) []string {
 // InvalidArgument с именем поля; каждая односемейная форма проходит до коммита.
 func TestSubnetRefusedWhenNeitherFamilyHasAnAnchor(t *testing.T) {
 	for _, tc := range []struct {
-		имя   string
-		v4    []string
-		v6    []string
-		отказ bool
+		name    string
+		v4      []string
+		v6      []string
+		wantErr bool
 	}{
 		{
-			имя:   "ни v4, ни v6 якоря — адресов у подсети нет вовсе",
-			отказ: true,
+			name:    "ни v4, ни v6 якоря — адресов у подсети нет вовсе",
+			wantErr: true,
 		},
 		{
 			// Положительный контроль №1: v4-only подсеть законна (реестр решений §2).
-			имя: "только v4",
-			v4:  []string{"10.20.0.0/24"},
+			name: "только v4",
+			v4:   []string{"10.20.0.0/24"},
 		},
 		{
 			// Положительный контроль №2: v6-only подсеть законна. Без него отказ
 			// зеленел бы и на реализации, ТРЕБУЮЩЕЙ оба семейства.
-			имя: "только v6",
+			name: "только v6",
 			// Внутри объявленного сетью v6-супернета `fd00::/48` (seedNetwork):
 			// фикстура не снисходительнее продукта, иначе положительный контроль
 			// краснел бы по чужой причине и обесценивал отрицание рядом.
 			v6: []string{"fd00::/64"},
 		},
 	} {
-		t.Run(tc.имя, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			uc, netID := placementFixture(t)
 			op, err := uc.Execute(context.Background(), domain.Subnet{
 				ProjectID: "f1", NetworkID: netID, Name: domain.RcNameVPC("anchor-case"),
@@ -101,7 +101,7 @@ func TestSubnetRefusedWhenNeitherFamilyHasAnAnchor(t *testing.T) {
 				V4CidrBlocks: tc.v4,
 				V6CidrBlocks: tc.v6,
 			})
-			if !tc.отказ {
+			if !tc.wantErr {
 				require.NoError(t, err, "односемейная подсеть законна — реестр решений §2")
 				require.True(t, op.Done)
 				require.Nil(t, op.Error, "односемейная подсеть обязана доехать до коммита")

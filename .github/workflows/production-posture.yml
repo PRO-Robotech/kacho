@@ -85,11 +85,10 @@ jobs:
     # dev-up ~13м + фаза 3 (перезапуск всех подов с production-конфигом) + rollout-wait.
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
-
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       # Тулчейны ставим сами и с ПИНАМИ, не полагаясь на состав образа ранера: он
       # меняется без нашего участия, и «оно там было» — не инвариант.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7
         with:
           go-version-file: go.mod
           cache: true
@@ -101,11 +100,10 @@ jobs:
       # изнутри релиза шаблон пода не патчит никто — предмета у запрета нет.
       # Расхождение значения между тремя конвейерами ловит
       # .github/scripts/check-pinned-tools.sh --divergence-only.
-      - uses: azure/setup-helm@v5
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5
         with:
           version: v4.2.4
-      - uses: azure/setup-kubectl@v5
-
+      - uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5
       # kind — БИНАРЬ, без создания кластера: кластер поднимает `make dev-up` своим
       # kind-config (host-port mappings для ingress). БЕЗ sudo и в ~/bin — установка
       # переносима между ранерами и переживает смену площадки.

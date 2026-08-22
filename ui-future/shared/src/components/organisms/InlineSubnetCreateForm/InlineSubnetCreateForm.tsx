@@ -232,7 +232,7 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
   // проверку, поэтому арендатор узнавал о недочётах ПО ОДНОМУ — за столько
   // попыток отправки, сколько их было.
   // Здесь считаются ВСЕ сразу и каждое приписано своему полю.
-  const проблемы = (): Record<string, string> => {
+  const problems = (): Record<string, string> => {
     const out: Record<string, string> = {};
     if (!networkId) out.network = "«Сеть»: поле обязательное — выберите сеть, в которой создаётся подсеть.";
     if (placementType === "ZONAL" && !zoneId) {
@@ -258,14 +258,14 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
     return out;
   };
 
-  const [пробовалиОтправить, setПробовалиОтправить] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   // Отказы считаются на каждом рендере по текущему вводу: поправленное поле
   // выходит из отказа сразу, соседнее остаётся названным.
-  const отказы = пробовалиОтправить ? проблемы() : {};
+  const errors = submitAttempted ? problems() : {};
 
   const submit = () => {
-    setПробовалиОтправить(true);
-    if (Object.keys(проблемы()).length > 0) return;
+    setSubmitAttempted(true);
+    if (Object.keys(problems()).length > 0) return;
     const v4 = v4Primary.trim();
     const v6 = v6Primary.trim();
     const labelMap = labelsFromEntries(labels);
@@ -327,11 +327,11 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
             // «нет совпадений» на месте «нет среди загруженных».
             notFoundContent={networksLoading ? undefined : networkScope.emptyText}
             disabled={networkLocked}
-            status={отказы.network ? "error" : undefined}
+            status={errors.network ? "error" : undefined}
             aria-required
-            aria-invalid={отказы.network ? true : undefined}
+            aria-invalid={errors.network ? true : undefined}
           />
-          <FieldError message={отказы.network} />
+          <FieldError message={errors.network} />
         </Form.Item>
 
         <Form.Item label="Размещение" required>
@@ -352,11 +352,11 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
               onChange={setZoneId}
               options={zoneOptions}
               placeholder="Выберите зону"
-              status={отказы.zone ? "error" : undefined}
+              status={errors.zone ? "error" : undefined}
               aria-required
-              aria-invalid={отказы.zone ? true : undefined}
+              aria-invalid={errors.zone ? true : undefined}
             />
-            <FieldError message={отказы.zone} />
+            <FieldError message={errors.zone} />
           </Form.Item>
         ) : (
           <Form.Item label="Регион" required>
@@ -365,11 +365,11 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
               onChange={setRegionId}
               options={regionOptions}
               placeholder="Выберите регион"
-              status={отказы.region ? "error" : undefined}
+              status={errors.region ? "error" : undefined}
               aria-required
-              aria-invalid={отказы.region ? true : undefined}
+              aria-invalid={errors.region ? true : undefined}
             />
-            <FieldError message={отказы.region} />
+            <FieldError message={errors.region} />
           </Form.Item>
         )}
 
@@ -401,11 +401,11 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
             onChange={(e) => setV4Primary(e.target.value)}
             placeholder="10.20.0.0/24"
             style={{ fontFamily: MONO_FONT, fontSize: 11, fontWeight: 520 }}
-            status={отказы.v4 ? "error" : undefined}
+            status={errors.v4 ? "error" : undefined}
             aria-required
-            aria-invalid={отказы.v4 ? true : undefined}
+            aria-invalid={errors.v4 ? true : undefined}
           />
-          <FieldError message={отказы.v4} />
+          <FieldError message={errors.v4} />
         </Form.Item>
 
         <Form.Item
@@ -423,10 +423,10 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
             onChange={(e) => setV6Primary(e.target.value)}
             placeholder="fd00:20::/64"
             style={{ fontFamily: MONO_FONT, fontSize: 11, fontWeight: 520 }}
-            status={отказы.v6 ? "error" : undefined}
-            aria-invalid={отказы.v6 ? true : undefined}
+            status={errors.v6 ? "error" : undefined}
+            aria-invalid={errors.v6 ? true : undefined}
           />
-          <FieldError message={отказы.v6} />
+          <FieldError message={errors.v6} />
         </Form.Item>
 
         <FormFooter

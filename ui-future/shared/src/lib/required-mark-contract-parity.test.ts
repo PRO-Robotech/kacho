@@ -419,7 +419,7 @@ describe("звёздочка обязательности сходится с к
 // ── способность упасть: инъекция в обе стороны ──────────────────────────────
 
 describe("инъекция: гейт краснеет на дефекте и молчит на законном близнеце", () => {
-  const защёлка = (raw: string) => adjudicate(readForms([{ rel: "synthetic.tsx", raw }]));
+  const latch = (raw: string) => adjudicate(readForms([{ rel: "synthetic.tsx", raw }]));
 
   it("контракт различает два ресурса — иначе дискриминатору нечего различать", () => {
     // Положительный контроль самого разбора контракта: если бы обе стороны
@@ -430,7 +430,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
   });
 
   it("ДЕФЕКТ: «Имя» со звёздочкой у ресурса, чей контракт её не требует — находка с координатой", () => {
-    const verdict = защёлка(
+    const verdict = latch(
       `<FormShell specId="subnets" mode="create">\n` +
         `  <Form.Item label="Имя" required>\n    <Input />\n  </Form.Item>\n` +
         `</FormShell>\n`,
@@ -443,7 +443,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
     // Первая перепись по `label="Имя"` нашла три места; ещё два несли подпись
     // выражением (`labelWithInfo("Имя", …)`) и в неё не попали. Радиус берётся
     // по механизму, а не по форме записи.
-    const verdict = защёлка(
+    const verdict = latch(
       `<FormShell specId="network-interfaces" mode="create">\n` +
         `  <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах фолдера.")} required>\n` +
         `    <Input />\n  </Form.Item>\n</FormShell>\n`,
@@ -452,7 +452,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
   });
 
   it("БЛИЗНЕЦ: та же подпись без звёздочки — молчание, и объявление рассужено", () => {
-    const verdict = защёлка(
+    const verdict = latch(
       `<FormShell specId="subnets" mode="create">\n  <Form.Item label="Имя">\n    <Input />\n  </Form.Item>\n</FormShell>\n`,
     );
     expect(verdict.findings).toEqual([]);
@@ -463,7 +463,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
     // потому, что не разобрал её, а потому, что контракт группы IAM объявляет
     // `name` обязательным. Без проверки `judged` молчание означало бы «не
     // прочитал».
-    const verdict = защёлка(
+    const verdict = latch(
       `<FormShell specId="groups" mode="create">\n` +
         `  <Form.Item label="Имя" name="name" required rules={[{ required: true }]}>\n` +
         `    <Input />\n  </Form.Item>\n</FormShell>\n`,
@@ -475,7 +475,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
   it("БЛИЗНЕЦ: звёздочка у ДРУГОГО поля — вне области гейта, и он это не скрывает", () => {
     // Гейт судит поле `name`. Обязательность «Сети» он не рассматривает вовсе —
     // и не объявляет её законной: она просто не попадает в счёт рассуженного.
-    const verdict = защёлка(
+    const verdict = latch(
       `<FormShell specId="subnets" mode="create">\n  <Form.Item label="Сеть" required>\n    <Select />\n  </Form.Item>\n</FormShell>\n`,
     );
     expect(verdict.findings).toEqual([]);
@@ -485,7 +485,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
   it("разбор тега переживает `>` внутри выражения подписи", () => {
     // Наивный поиск первого `>` обрезал бы тег на `<Space size={4}>` и потерял
     // `required` — гейт молчал бы на дефекте, который обязан находить.
-    const verdict = защёлка(
+    const verdict = latch(
       `<FormShell specId="subnets" mode="create">\n` +
         `  <Form.Item label={<Space size={4}>Имя<Tooltip title="x" /></Space>} required>\n` +
         `    <Input />\n  </Form.Item>\n</FormShell>\n`,

@@ -187,14 +187,14 @@ func TestSubnetCreate_TenantBlockSwallowsReservedRange_Refused(t *testing.T) {
 // служебной.
 func TestSubnetCreate_AdjacentAndUnrelatedBlocksPass(t *testing.T) {
 	for _, tc := range []struct {
-		имя  string
-		блок string
+		name  string
+		block string
 	}{
 		{"вплотную ниже служебного диапазона", "10.11.11.0/24"},
 		{"вплотную выше служебного диапазона", "10.11.13.0/24"},
 		{"в другой части адресного плана сети", "10.200.0.0/16"},
 	} {
-		t.Run(tc.имя, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			kr := kachomock.NewRepository()
 			or := repomock.NewOpsRepo()
 			netID := ids.NewID(ids.PrefixNetwork)
@@ -209,7 +209,7 @@ func TestSubnetCreate_AdjacentAndUnrelatedBlocksPass(t *testing.T) {
 				NetworkID:    netID,
 				Name:         domain.RcNameVPC("s-ok"),
 				ZoneID:       testZone,
-				V4CidrBlocks: []string{tc.блок},
+				V4CidrBlocks: []string{tc.block},
 			})
 			require.NoError(t, err)
 			require.NotNil(t, op)

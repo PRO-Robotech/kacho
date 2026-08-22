@@ -26,12 +26,12 @@ export const HEALTH_CHECK_APP_BRANCHES = ["http", "https"] as const;
 export const HEALTH_CHECK_BRANCHES = ["tcp", "http", "https", "grpc"] as const;
 
 function healthCheckAppFields(branch: "http" | "https"): FormField[] {
-  const у = branch === "https" ? "HTTPS" : "HTTP";
+  const protoLabel = branch === "https" ? "HTTPS" : "HTTP";
   const when = { field: "_health_check_protocol", equals: branch } as const;
   return [
     {
       name: `health_check.${branch}.port`,
-      label: `HC: ${у}-порт`,
+      label: `HC: ${protoLabel}-порт`,
       type: "int",
       required: false,
       visibleWhen: when,
@@ -174,14 +174,14 @@ export function healthCheckFields(): FormField[] {
 export function sanitizeHealthCheck(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...obj };
   const hc = out["health_check"];
-  const выбор = out["_health_check_protocol"];
+  const choice = out["_health_check_protocol"];
   delete out["_health_check_protocol"];
   if (!hc || typeof hc !== "object") return out;
 
   const src = hc as Record<string, unknown>;
-  const ветвь =
-    typeof выбор === "string" && (HEALTH_CHECK_BRANCHES as readonly string[]).includes(выбор)
-      ? выбор
+  const branch =
+    typeof choice === "string" && (HEALTH_CHECK_BRANCHES as readonly string[]).includes(choice)
+      ? choice
       : (HEALTH_CHECK_BRANCHES.find((b) => src[b] !== undefined) ?? "tcp");
 
   const next: Record<string, unknown> = {};
@@ -189,18 +189,18 @@ export function sanitizeHealthCheck(obj: Record<string, unknown>): Record<string
     if ((HEALTH_CHECK_BRANCHES as readonly string[]).includes(k)) continue;
     next[k] = v;
   }
-  const тело = src[ветвь];
-  if (тело && typeof тело === "object") {
-    const очищенное: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(тело as Record<string, unknown>)) {
+  const body = src[branch];
+  if (body && typeof body === "object") {
+    const cleaned: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
       if (typeof v === "string" && v.trim() === "") continue;
       if (v === undefined || v === null) continue;
       if (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0) continue;
-      очищенное[k] = v;
+      cleaned[k] = v;
     }
-    next[ветвь] = очищенное;
+    next[branch] = cleaned;
   } else {
-    next[ветвь] = {};
+    next[branch] = {};
   }
   out["health_check"] = next;
   return out;

@@ -35,18 +35,18 @@ interface FormConfig {
 /**
  * Что живая оболочка передала форме через ConfigProvider.
  *
- * Держится полем объекта и читается через `захваченное()`: присваивание идёт
+ * Держится полем объекта и читается через `captured()`: присваивание идёт
  * ИЗ подменённого модуля, о котором анализ типов не знает, и при чтении прямо
  * из переменной он сузил бы её до «ничего» по последнему видимому присваиванию.
  */
-const захват: { форма?: FormConfig } = {};
+const capture: { form?: FormConfig } = {};
 
-const захваченное = (): FormConfig | undefined => захват.форма;
+const captured = (): FormConfig | undefined => capture.form;
 
 jest.unstable_mockModule("antd", () => ({
   ...antdStub(),
   ConfigProvider: ({ children, form }: React.PropsWithChildren<{ form?: FormConfig }>) => {
-    захват.форма = form;
+    capture.form = form;
     return React.createElement(React.Fragment, null, children);
   },
 }));
@@ -57,12 +57,12 @@ const { ThemeProvider } = await import("@shared/lib/theme-context");
 type Producer = (label: React.ReactNode, info: { required: boolean }) => React.ReactNode;
 
 /** Рисует подпись ТЕМ производителем, который оболочка отдала форме. */
-function подписьЖивойОболочки(text: string, required: boolean): string {
-  захват.форма = undefined;
+function liveShellLabel(text: string, required: boolean): string {
+  capture.form = undefined;
   render(<ThemeProvider>{null}</ThemeProvider>);
 
-  const форма = захваченное();
-  if (typeof форма?.requiredMark !== "function") {
+  const form = captured();
+  if (typeof form?.requiredMark !== "function") {
     throw new Error(
       "ThemeProvider не передал форме производитель звёздочки (form.requiredMark). Через эту " +
         "оболочку проходит КАЖДАЯ форма, которую заполняет арендатор — страницы всех модулей " +
@@ -71,7 +71,7 @@ function подписьЖивойОболочки(text: string, required: boolea
     );
   }
 
-  render(<div data-testid="подпись">{(форма.requiredMark as Producer)(<span>{text}</span>, { required })}</div>);
+  render(<div data-testid="подпись">{(form.requiredMark as Producer)(<span>{text}</span>, { required })}</div>);
   return screen.getByTestId("подпись").textContent ?? "";
 }
 
@@ -79,23 +79,23 @@ describe("живая оболочка ставит звёздочку ПОСЛЕ
   it("у обязательного поля подпись оканчивается звёздочкой", () => {
     // Утверждается ПОРЯДОК, а не присутствие: `toContain("*")` зеленел бы и на
     // звёздочке слева — то есть ровно на дефекте, который правится.
-    const текст = подписьЖивойОболочки("Имя", true);
-    expect(текст).toMatch(/Имя\s*\*$/);
-    expect(текст).not.toMatch(/^\s*\*/);
+    const text = liveShellLabel("Имя", true);
+    expect(text).toMatch(/Имя\s*\*$/);
+    expect(text).not.toMatch(/^\s*\*/);
   });
 
   it("у необязательного поля звёздочки нет вовсе", () => {
     // Положительный контроль к предыдущему. Без него «звёздочка справа»
     // зеленело бы и на реализации, которая рисует её КАЖДОМУ полю: подпись
     // необязательного поля тоже оканчивалась бы звёздочкой.
-    expect(подписьЖивойОболочки("Описание", false)).toBe("Описание");
+    expect(liveShellLabel("Описание", false)).toBe("Описание");
   });
 
   it("оболочка отдаёт форме единственного производителя, а не свою копию", () => {
     // Второй экземпляр renderer'а разошёлся бы с этим молча, и правка порядка
     // доехала бы не всюду.
-    захват.форма = undefined;
+    capture.form = undefined;
     render(<ThemeProvider>{null}</ThemeProvider>);
-    expect(захваченное()?.requiredMark).toBe(requiredMarkAfterLabel);
+    expect(captured()?.requiredMark).toBe(requiredMarkAfterLabel);
   });
 });

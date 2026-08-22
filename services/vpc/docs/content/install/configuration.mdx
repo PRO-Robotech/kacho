@@ -43,7 +43,7 @@ import dedent from 'ts-dedent'
       type: POSTGRES
       postgres:
         url: postgres://vpc@kacho-umbrella-pg-vpc:5432/kacho_vpc
-        max-conns: 200                       # размер pgxpool (0 → pgx default)
+        max-conns: 40                        # размер pgxpool (0 → pgx default)
         ssl-mode: disable                    # disable|require|verify-ca|verify-full
         password-from-env: KACHO_VPC_DB_PASSWORD   # имя ENV с паролем БД
 

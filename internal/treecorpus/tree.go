@@ -30,8 +30,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // Tree — состав дерева: множество файлов и множество каталогов, в которых есть
@@ -53,8 +51,10 @@ func NewTree(root string) (*Tree, error) {
 	if err != nil {
 		return nil, fmt.Errorf("treecorpus: абсолютный путь для %s: %w", root, err)
 	}
-	cmd := gitenv.Command(abs, "ls-files", "-z")
-	out, err := cmd.Output()
+	// Состав берётся через общий кеш прогона: спрашивающих у одного дерева
+	// десятки, а поднимать процесс git на каждого — та цена, из-за которой
+	// прогон проверок подошёл к пределу времени вплотную.
+	out, err := listFilesCached(abs)
 	if err != nil {
 		return nil, fmt.Errorf("treecorpus: git ls-files в %s: %w — проверка не может "+
 			"назвать дерево, о котором говорит, а обход диска вместо индекса читал бы "+
