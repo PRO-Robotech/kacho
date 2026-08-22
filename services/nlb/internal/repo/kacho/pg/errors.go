@@ -4,7 +4,6 @@
 package pg
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
+	"github.com/PRO-Robotech/kacho/pkg/pagetoken"
 	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
@@ -130,8 +130,11 @@ func encodePageToken(t time.Time, id string) string {
 	if t.IsZero() && id == "" {
 		return ""
 	}
-	raw := t.UTC().Format(time.RFC3339Nano) + "\x00" + id
-	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+	// Форма объявлена ОДИН раз — в `pkg/pagetoken` (#652). Она отличается от
+	// канонической (алфавит URL без дополнения, разделитель — нулевой байт), и
+	// это различие ВИДНО там же: пока каждая форма жила у себя, несовместимость
+	// токенов двух служб обнаруживалась только на чужом курсоре.
+	return pagetoken.NULSeparatedRawURL.Encode(pagetoken.Cursor{CreatedAt: t, ID: id})
 }
 
 // decodePageToken — обратное преобразование. Malformed token →
@@ -140,19 +143,15 @@ func decodePageToken(token string) (pageCursor, error) {
 	if token == "" {
 		return pageCursor{}, nil
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		return pageCursor{}, invalidArg("page_token", "malformed base64")
+	// Тексты отказа СВЕДЕНЫ к одному: общий разбор не сообщает, на каком именно
+	// шаге форма не сошлась, и это осознанно. Три разных текста говорили
+	// предъявителю, ЧЕМ именно негоден его непрозрачный курсор, — то есть
+	// описывали внутренности, которые он не вправе знать.
+	c, ok := pagetoken.NULSeparatedRawURL.Decode(token)
+	if !ok || c == nil {
+		return pageCursor{}, invalidArg("page_token", "malformed page_token")
 	}
-	parts := strings.SplitN(string(raw), "\x00", 2)
-	if len(parts) != 2 {
-		return pageCursor{}, invalidArg("page_token", "malformed payload")
-	}
-	t, err := time.Parse(time.RFC3339Nano, parts[0])
-	if err != nil {
-		return pageCursor{}, invalidArg("page_token", "malformed timestamp")
-	}
-	return pageCursor{CreatedAt: t, ID: parts[1]}, nil
+	return pageCursor{CreatedAt: c.CreatedAt, ID: c.ID}, nil
 }
 
 // pageSizeOrDefault — clamp page_size в [1, MaxPageSize]; 0 → DefaultPageSize=50.
