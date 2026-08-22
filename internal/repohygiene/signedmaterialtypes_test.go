@@ -74,13 +74,6 @@ var signedTypeDebt = []signedTypeDebtEntry{
 			"появления политики, и в её область эта поверхность не переводилась",
 		Until: "файл читает значение из pkg/tokenpolicy вместо своего объявления",
 	},
-	{
-		File: "services/registry/internal/apps/kacho/config/tokenissuers.go",
-		Name: "TokenTypePlatform",
-		Why: "ОЖИДАЕМЫЙ тип на принимающей стороне плоскости данных реестра: тот же предмет " +
-			"с другой стороны провода, и потому та же величина",
-		Until: "файл читает значение из pkg/tokenpolicy вместо своего объявления",
-	},
 }
 
 // signedTypeDebtDefects — что не так с самой ведомостью, безотносительно дерева.

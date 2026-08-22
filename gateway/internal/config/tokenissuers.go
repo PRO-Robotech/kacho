@@ -55,7 +55,7 @@ const (
 	// правке одного из двух — молча.
 	TokenTypePlatform = tokenpolicy.TokenTypeAccess
 	// TokenTypeLegacy — тип, которым помечает свои токены прежний издатель.
-	TokenTypeLegacy = "JWT"
+	TokenTypeLegacy = tokenpolicy.TokenTypeLegacy
 )
 
 // TokenIssuerBinding — ОБЪЯВЛЕННАЯ запись «издатель → источник его набора».
