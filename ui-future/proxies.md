@@ -13,54 +13,22 @@ chmod +x ./proxies.sh
 
 The script starts all required port-forwards and stops them when you press `Ctrl+C`.
 
-## After Docker/kind restart
+## Здесь был раздел о восстановлении прав — предмета у него нет
 
-The dev stack uses ephemeral OpenFGA/Postgres storage in places. If Docker or
-kind was stopped and the UI starts returning permission errors like
-`iam.projectses.list`, repair OpenFGA before starting the proxies:
+Раздел объяснял, как «починить OpenFGA» после перезапуска стенда, и звал
+`heal-authz.sh`. **Внешнего движка прав в дереве нет**: он снят целиком — ни
+чарта, ни базы, ни цели бутстрапа. Скрипт восстанавливал состояние, которого не
+бывает.
 
-```bash
-chmod +x ./heal-authz.sh
-./heal-authz.sh
-./proxies.sh
-```
+Отдельно он был мёртв и по построению: путь к каталогу развёртывания выводился
+из имени времён полирепо (`../kacho-deploy`), и `cd` в несуществующий каталог под
+`set -e` ронял его первой же строкой. То есть умолчание не работало ни при каком
+состоянии стенда.
 
-`heal-authz.sh` reruns the OpenFGA bootstrap, waits for consumers to roll out,
-then replays IAM user/account/project relationship tuples from the IAM database.
+Снят вместе с предметом, а не починен: чинить координату у инструмента, чья
+работа больше не существует, значит оставить в дереве живой на вид путь
+восстановления, которого нет.
 
-The replay goes through the journal (`kacho_iam.fga_outbox`), not straight into
-OpenFGA: engine state must stay a fold of that journal (migration 0098), and a
-tuple written directly to the engine would never reach the `relation_fact`
-projection — so the repair tool would deepen the divergence it is run to fix.
-The cost is that repaired tuples land via the drainer rather than instantly;
-re-run the script if a tuple is still missing a few seconds later.
-
-Then start the federated UI from Windows PowerShell:
-
-```powershell
-cd D:\Repos\job\kacho\kacho-ui-future
-npm run dev
-```
-
-Open:
-
-```text
-http://localhost:5174
-```
-
-The host consumes the dashboard through module federation. For this
-`@originjs/vite-plugin-federation` setup, the host can run in Vite dev mode, but
-the remote must expose built assets. `dev-federation.ps1` therefore runs:
-
-```text
-dashboard npm run dev:remote:watch  -> rebuilds dist on source changes
-dashboard npm run preview           -> serves http://localhost:4175/assets/remoteEntry.js
-host npm run dev                    -> serves http://localhost:5174
-```
-
-Do not use dashboard `npm run dev` on port `5175` as the host remote. In that
-mode `/assets/remoteEntry.js` is served by Vite dev fallback and is not the
-built federation remote entry.
 
 ## What Vite proxies
 
