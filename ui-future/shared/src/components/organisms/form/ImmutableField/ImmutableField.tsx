@@ -4,6 +4,7 @@
 // выглядит как обычный input формы, но disabled — видно ПОЧЕМУ нельзя править.
 import { Input, Tooltip } from "antd";
 import { LockOutlined } from "@ant-design/icons";
+import { MONO_FONT } from "@shared/components/organisms/form/editor-surface";
 
 interface Props {
   value: React.ReactNode;
@@ -27,12 +28,14 @@ export function ImmutableField({ value, reason }: Props) {
         value={empty ? "" : String(value)}
         placeholder={empty ? "—" : undefined}
         suffix={lock}
-        style={{ fontFamily: "ui-monospace, monospace" }}
+        style={{ fontFamily: MONO_FONT, fontSize: 11, fontWeight: 520 }}
       />
     );
   }
 
-  // ReactNode (ссылка/тег) — disabled-input-стилизованная обёртка.
+  // ReactNode (ссылка/тег) — обёртка ровно той же формы, что и поле ввода
+  // рядом: та же высота, тот же радиус и тот же фон. Отличие формы читалось бы
+  // как «другой вид поля», хотя отличие только в том, что его нельзя править.
   return (
     <div
       style={{
@@ -40,14 +43,16 @@ export function ImmutableField({ value, reason }: Props) {
         alignItems: "center",
         justifyContent: "space-between",
         gap: 8,
-        minHeight: 32,
+        minHeight: 38,
         padding: "0 11px",
         border: "1px solid var(--kc-border)",
-        borderRadius: 6,
-        background: "var(--kc-container)",
+        borderRadius: 8,
+        background: "var(--kc-field)",
         color: "var(--kc-text-secondary)",
         cursor: "not-allowed",
-        fontFamily: "ui-monospace, monospace",
+        fontFamily: MONO_FONT,
+        fontSize: 11,
+        fontWeight: 520,
       }}
     >
       <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

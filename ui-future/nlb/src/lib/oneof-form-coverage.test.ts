@@ -88,7 +88,7 @@ describe("каждая ветвь проверки живости выразим
 describe("балансировщик: каждая ветвь источника VIP выразима формой этого модуля", () => {
   const spec = REGISTRY["load-balancers"];
 
-  function тело(mode: string, placement: string, fam: Record<string, unknown> = {}): Record<string, unknown> {
+  function makeBody(mode: string, placement: string, fam: Record<string, unknown> = {}): Record<string, unknown> {
     return spec.sanitize!({
       project_id: "prj-1",
       region_id: "reg-1",
@@ -97,26 +97,26 @@ describe("балансировщик: каждая ветвь источника
     }) as Record<string, unknown>;
   }
 
-  function ветви(body: Record<string, unknown>, at: string): string[] {
+  function branchesAt(body: Record<string, unknown>, at: string): string[] {
     const node = body[at];
     return node && typeof node === "object" ? Object.keys(node as Record<string, unknown>) : [];
   }
 
   it("перечень контракта совпадает с перечнем, который даёт форма", () => {
     const contract = oneofBranches("loadbalancer/v1/network_load_balancer.proto", "VipSource", "source");
-    const форма: Record<string, Record<string, unknown>> = {
-      public: тело("public", "EXTERNAL_REGIONAL"),
-      subnet_id: тело("subnet", "INTERNAL_REGIONAL", { subnet_id: "sub-1" }),
-      address_id: тело("address", "EXTERNAL_REGIONAL", { address_id: "adr-1" }),
+    const form: Record<string, Record<string, unknown>> = {
+      public: makeBody("public", "EXTERNAL_REGIONAL"),
+      subnet_id: makeBody("subnet", "INTERNAL_REGIONAL", { subnet_id: "sub-1" }),
+      address_id: makeBody("address", "EXTERNAL_REGIONAL", { address_id: "adr-1" }),
     };
-    const выразимо = contract.filter((branch) => ветви(форма[branch] ?? {}, "v4_source").includes(branch));
-    expect(выразимо).toEqual(contract);
+    const expressible = contract.filter((branch) => branchesAt(form[branch] ?? {}, "v4_source").includes(branch));
+    expect(expressible).toEqual(contract);
   });
 
   it("семейство с незаполненной ссылкой в тело не уезжает — отрицание в паре с положительным", () => {
     // Без него «ветвь доезжает» могло бы означать «доезжает всегда, в том числе
     // пустой». Ветвь ссылки без ссылки — не источник: сервер отверг бы запрос.
-    const body = тело("address", "EXTERNAL_REGIONAL", {});
+    const body = makeBody("address", "EXTERNAL_REGIONAL", {});
     expect(body).not.toHaveProperty("v4_source");
   });
 

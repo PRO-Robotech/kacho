@@ -19,8 +19,10 @@ import { CopyableMonoId } from "@shared/components/organisms/iam/IamCommon";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
+import { ScopeRequiredEmpty } from "@/components/molecules/ScopeRequiredEmpty";
 import { IamListShell, useTableScrollY } from "@/components/organisms/iam/IamListShell";
 import { useContext } from "@shared/lib/context-store";
+import { SERVICES } from "@shared/lib/entity-names";
 import { errorText } from "@shared/lib/error-presentation";
 import { useDebouncedValue } from "@shared/lib/list-search";
 import { pickerScope } from "@shared/lib/picker-search";
@@ -59,7 +61,13 @@ export function AccessPage() {
   const resourceType = scope === "cloud" ? "account" : "project";
   const resourceId = scope === "cloud" ? accountId : projectId;
   const { wrapRef, scrollY } = useTableScrollY();
-  const headerAction = useMemo(
+  // Слот шапки приложения ПУСТ: действие стоит последним в ряду ручек списка,
+  // как у generic-страницы. Сбросить его всё равно нужно — слот держит состояние
+  // между страницами.
+  useHeaderRight(null);
+  // Крошки называют ПУТЬ, заголовок — предмет.
+  useBreadcrumb(useMemo(() => <Typography.Text type="secondary">{SERVICES.iam.title}</Typography.Text>, []));
+  const cta = useMemo(
     () => (
       <Button
         type="primary"
@@ -72,7 +80,6 @@ export function AccessPage() {
     ),
     [navigate, resourceId, scope],
   );
-  useHeaderRight(headerAction);
 
   const bindings = useQuery({
     queryKey: ["iam", "access-bindings", "by-resource", resourceType, resourceId],
@@ -141,7 +148,7 @@ export function AccessPage() {
       render: (_v, row) => {
         const u = row.user;
         return (
-          <Space size={6} direction="vertical" size-2>
+          <Space size={6} direction="vertical">
             <Typography.Text strong>{u?.display_name || u?.email || row.userId}</Typography.Text>
             {u?.email ? (
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -171,17 +178,20 @@ export function AccessPage() {
       key: "id",
       render: (_v, row) => <CopyableMonoId id={row.userId} />,
     },
-    {
-      title: "Федерация",
-      key: "fed",
-      width: 100,
-      render: () => <Typography.Text type="secondary">—</Typography.Text>,
-    },
   ];
+  // Здесь стояла колонка «Федерация», чей рендер был КОНСТАНТОЙ — прочерк в
+  // каждой строке при любых данных. Заголовок обещал факт, у которого нет
+  // производителя: ни ответ края, ни ресурс его не несут. Такой столбец —
+  // ровно то же обещание, что мёртвая ссылка: он занимает ширину и утверждает,
+  // что о федерации здесь что-то сказано. Вернётся вместе с источником.
 
   return (
-    <IamListShell specId="access-bindings" title="Права доступа" count={rows.length}>
-      <Space size={12} wrap style={{ marginBottom: 12, flexShrink: 0 }}>
+    <IamListShell
+      title="Права доступа"
+      // Переключатель области стоит В РЯДУ РУЧЕК, а не отдельной строкой над
+      // таблицей: он сужает набор строк, то есть принадлежит группе «сузить».
+      // Своей строкой он занимал высоту и читался как ещё одна шапка.
+      narrowing={
         <Segmented
           value={scope}
           onChange={(v) => setScope(v as ScopeTab)}
@@ -190,30 +200,16 @@ export function AccessPage() {
             { label: "Каталог", value: "folder", disabled: !projectId },
           ]}
         />
-      </Space>
-
+      }
+      actions={cta}
+    >
       {!resourceId ? (
-        <Alert
-          type="info"
-          style={{ flexShrink: 0 }}
-          message={
-            scope === "cloud"
-              ? "Выберите Account в шапке для просмотра прав доступа."
-              : "Выберите Project в шапке для просмотра прав доступа."
-          }
-        />
+        // Одна форма «область не выбрана» на весь раздел: прежде здесь стоял
+        // `Alert` вверху страницы, у списка ресурсов — `Empty` от antd, у групп
+        // — голая строка. Три вида одного предмета.
+        <ScopeRequiredEmpty purpose="увидеть права доступа" scope={scope === "cloud" ? "account" : "project"} />
       ) : (
         <>
-          <Alert
-            type="info"
-            style={{ marginBottom: 12, flexShrink: 0 }}
-            message={
-              scope === "cloud"
-                ? "В этом разделе вы можете настроить права доступа к Account."
-                : "В этом разделе вы можете настроить права доступа к Project."
-            }
-            closable
-          />
           <div ref={wrapRef} className="kc-table-fill" style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
             <Table<Row>
               rowKey="userId"
@@ -250,7 +246,7 @@ export function AccessGrantPage() {
     useMemo(
       () => (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Typography.Text type="secondary">IAM</Typography.Text>
+          <Typography.Text type="secondary">{SERVICES.iam.title}</Typography.Text>
           <Typography.Text type="secondary">/</Typography.Text>
           <Link to="/iam/access">
             <Typography.Text type="secondary">Права доступа</Typography.Text>

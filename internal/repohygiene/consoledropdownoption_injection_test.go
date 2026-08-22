@@ -16,10 +16,10 @@ import (
 	"testing"
 )
 
-// пробаСЗеркалом — запись, которая выглядит совершенно обычной и попадает в
+// probeWithMirror — запись, которая выглядит совершенно обычной и попадает в
 // невидимое зеркало варианта. Форма взята с натуры: так был написан помощник
 // `выбрать` до починки.
-const пробаСЗеркалом = `
+const probeWithMirror = `
 import { test } from "@playwright/test";
 
 // Вариант выбирается по тексту — форма, ради которой гейт и заведён.
@@ -29,9 +29,9 @@ test("выбор региона", async ({ page }) => {
 });
 `
 
-// пробаПоКлассуВарианта — законный близнец: та же цепочка, но вариант назван
+// probeByOptionClass — законный близнец: та же цепочка, но вариант назван
 // своим классом. Гейт обязан МОЛЧАТЬ.
-const пробаПоКлассуВарианта = `
+const probeByOptionClass = `
 import { test, expect } from "@playwright/test";
 
 test("выбор региона", async ({ page }) => {
@@ -46,9 +46,9 @@ test("выбор региона", async ({ page }) => {
 });
 `
 
-// пробаБезСписка — второй законный близнец: проба, которая списков не трогает
+// probeWithoutList — второй законный близнец: проба, которая списков не трогает
 // вовсе. Гейт не вправе требовать от неё знания о варианте.
-const пробаБезСписка = `
+const probeWithoutList = `
 import { test, expect } from "@playwright/test";
 
 test("страница списка открывается", async ({ page }) => {
@@ -57,10 +57,10 @@ test("страница списка открывается", async ({ page }) =>
 });
 `
 
-// пробаСКлассамиВКомментарии — близнец, отделяющий КОД от прозы: оба класса
+// probeWithClassesInComment — близнец, отделяющий КОД от прозы: оба класса
 // названы только в комментарии, кода со списком нет. Гейт, читающий сырой
 // текст, объявил бы находку на собственном объяснении.
-const пробаСКлассамиВКомментарии = `
+const probeWithClassesInComment = `
 import { test } from "@playwright/test";
 
 // Здесь разбирается, почему ".ant-select-dropdown" нельзя опрашивать по тексту
@@ -70,11 +70,11 @@ test("ничего не выбирает", async ({ page }) => {
 });
 `
 
-func пробныйКорпус(t *testing.T, файлы map[string]string) []string {
+func probeCorpus(t *testing.T, files map[string]string) []string {
 	t.Helper()
 	dir := t.TempDir()
 	var paths []string
-	for name, src := range файлы {
+	for name, src := range files {
 		p := filepath.Join(dir, name)
 		if err := os.WriteFile(p, []byte(src), 0o600); err != nil {
 			t.Fatalf("подготовка синтетики %s: %v", name, err)
@@ -87,7 +87,7 @@ func пробныйКорпус(t *testing.T, файлы map[string]string) []st
 func TestConsoleDropdownGateFailsOnTheMirrorForm(t *testing.T) {
 	// (а) ИНЪЕКЦИЯ: настоящая форма промаха обязана быть найдена и НАЗВАНА.
 	found, read, touching, err := consoleDropdownFindings(
-		пробныйКорпус(t, map[string]string{"mirror.spec.ts": пробаСЗеркалом}))
+		probeCorpus(t, map[string]string{"mirror.spec.ts": probeWithMirror}))
 	if err != nil {
 		t.Fatalf("разбор синтетики: %v", err)
 	}
@@ -101,11 +101,11 @@ func TestConsoleDropdownGateFailsOnTheMirrorForm(t *testing.T) {
 
 	// (б) ЗАКОННЫЕ БЛИЗНЕЦЫ: гейт обязан молчать на всех трёх.
 	for name, src := range map[string]string{
-		"byclass.spec.ts": пробаПоКлассуВарианта,
-		"nolist.spec.ts":  пробаБезСписка,
-		"prose.spec.ts":   пробаСКлассамиВКомментарии,
+		"byclass.spec.ts": probeByOptionClass,
+		"nolist.spec.ts":  probeWithoutList,
+		"prose.spec.ts":   probeWithClassesInComment,
 	} {
-		got, _, _, gerr := consoleDropdownFindings(пробныйКорпус(t, map[string]string{name: src}))
+		got, _, _, gerr := consoleDropdownFindings(probeCorpus(t, map[string]string{name: src}))
 		if gerr != nil {
 			t.Fatalf("разбор близнеца %s: %v", name, gerr)
 		}
@@ -118,13 +118,13 @@ func TestConsoleDropdownGateFailsOnTheMirrorForm(t *testing.T) {
 	// (в) ПРЕДПОСЫЛКА РАЗБОРА: комментарий действительно не считается за селектор.
 	// Проверяется отдельно от (б), потому что «молчит» там могло бы объясняться
 	// и тем, что разбор вообще ничего не читает.
-	_, литералы := tsScan(пробаСКлассамиВКомментарии)
-	if strings.Contains(strings.Join(литералы, "\n"), consoleDropdownClass) {
+	_, literals := tsScan(probeWithClassesInComment)
+	if strings.Contains(strings.Join(literals, "\n"), consoleDropdownClass) {
 		t.Fatal("разбор считает комментарий строковым литералом — гейт судил бы прозу, " +
 			"и объяснение этого класса стало бы находкой на самом себе")
 	}
-	_, литералыКода := tsScan(пробаСЗеркалом)
-	if !strings.Contains(strings.Join(литералыКода, "\n"), consoleDropdownClass) {
+	_, codeLiterals := tsScan(probeWithMirror)
+	if !strings.Contains(strings.Join(codeLiterals, "\n"), consoleDropdownClass) {
 		t.Fatal("разбор не видит селектора в КОДЕ — тогда «ноль находок» означает " +
 			"«ноль прочитанного», а не чистоту")
 	}

@@ -10,8 +10,10 @@ import { useEffect, useMemo, useState } from "react";
 import { snakeToCamelPath } from "@shared/lib/update-mask";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Form, Input, Select, Space, Tooltip, Typography } from "antd";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
+import { FORM_DIVIDER_STYLE } from "@shared/components/organisms/form/editor-surface";
 import { LockOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
@@ -169,14 +171,7 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
 
   return (
     <FormShell specId="subnets" mode="edit" singular={subnetSpec.singular}>
-      <Form
-        layout="horizontal"
-        labelCol={{ flex: "200px" }}
-        wrapperCol={{ flex: "1 1 0" }}
-        labelAlign="left"
-        colon={false}
-        size="middle"
-      >
+      <FormGrid>
         <Form.Item label="Имя">
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </Form.Item>
@@ -189,12 +184,18 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
           <LabelsEditor value={labels} onChange={setLabels} />
         </Form.Item>
 
+        {/* ПОРЯДОК ОДИН НА ВСЕ ФОРМЫ (решение владельца): имя → описание →
+            метки → черта → поля самого ресурса. Черта берётся объявленной
+            (`FORM_DIVIDER_STYLE`) — своя, выписанная по месту, разошлась бы с
+            соседней формой молча. */}
+        <div style={FORM_DIVIDER_STYLE} aria-hidden />
+
         <Form.Item
           label={
             <Space size={4}>
               {isRegional ? "Регион" : "Зона доступности"}
               <Tooltip title="Размещение (placementType°) неизменяемо после Subnet.Create">
-                <LockOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
+                <LockOutlined style={{ color: "var(--kc-text-tertiary)" }} />
               </Tooltip>
             </Space>
           }
@@ -223,7 +224,7 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
           onSubmit={submit}
           onCancel={onCancel}
         />
-      </Form>
+      </FormGrid>
     </FormShell>
   );
 

@@ -17,8 +17,11 @@ import { Form, Input, InputNumber, Select, Space, Switch, Tooltip } from "antd";
 import { QuestionCircleOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
 import { SubnetCidrChips } from "@shared/components/molecules/SubnetCidrChips";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
+import { FORM_DIVIDER_STYLE } from "@shared/components/organisms/form/editor-surface";
+import { FieldError } from "@shared/components/organisms/form/FieldError";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
@@ -87,11 +90,19 @@ export function InlineAddressPoolCreateForm({ onCancel, onSuccess }: Props) {
     },
   });
 
+  // Отказ стоит У ПОЛЯ блоков, а не всплывашкой: пул адресов правят через
+  // редактор блоков, и сообщение о пустом наборе читается там, где его
+  // наполняют.
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const blocksEmpty = v4Blocks.length === 0 && v6Blocks.length === 0;
+  const blocksError =
+    submitAttempted && blocksEmpty
+      ? "«IPv4 и IPv6 CIDR»: нужен хотя бы один блок — IPv4 либо IPv6."
+      : undefined;
+
   const submit = () => {
-    if (v4Blocks.length === 0 && v6Blocks.length === 0) {
-      toast.error("Добавьте хотя бы один CIDR (IPv4 или IPv6).");
-      return;
-    }
+    setSubmitAttempted(true);
+    if (blocksEmpty) return;
     const payload: Record<string, unknown> = {
       name: name || undefined,
       description: description || undefined,
@@ -107,14 +118,7 @@ export function InlineAddressPoolCreateForm({ onCancel, onSuccess }: Props) {
 
   return (
     <FormShell specId="address-pools" mode="create" singular={spec.singular}>
-      <Form
-        layout="horizontal"
-        labelCol={{ flex: "200px" }}
-        wrapperCol={{ flex: "1 1 0" }}
-        labelAlign="left"
-        colon={false}
-        size="middle"
-      >
+      <FormGrid>
         <Form.Item label="Имя">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="pool-public-zone-a" />
         </Form.Item>
@@ -122,6 +126,12 @@ export function InlineAddressPoolCreateForm({ onCancel, onSuccess }: Props) {
         <Form.Item label="Описание">
           <Input.TextArea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
         </Form.Item>
+
+        {/* ПОРЯДОК ОДИН НА ВСЕ ФОРМЫ (решение владельца): имя → описание →
+            метки → черта → поля самого ресурса. Черта берётся объявленной
+            (`FORM_DIVIDER_STYLE`) — своя, выписанная по месту, разошлась бы с
+            соседней формой молча. */}
+        <div style={FORM_DIVIDER_STYLE} aria-hidden />
 
         <Form.Item label="Тип" required>
           <Select value={kind} onChange={setKind} options={KIND_OPTIONS} placeholder="Выберите тип пула" />
@@ -137,12 +147,13 @@ export function InlineAddressPoolCreateForm({ onCancel, onSuccess }: Props) {
             <Space size={4}>
               IPv4 и IPv6 CIDR
               <Tooltip title="Блоки IPv4 (например, 198.51.100.0/24) и/или IPv6 (например, 2001:db8::/64), из которых аллоцируются адреса. Хотя бы одно семейство обязательно.">
-                <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
+                <QuestionCircleOutlined style={{ color: "var(--kc-text-tertiary)" }} />
               </Tooltip>
             </Space>
           }
         >
           <SubnetCidrChips v4Blocks={v4Blocks} onV4Change={setV4Blocks} v6Blocks={v6Blocks} onV6Change={setV6Blocks} />
+          <FieldError message={blocksError} />
         </Form.Item>
 
         <Form.Item
@@ -150,7 +161,7 @@ export function InlineAddressPoolCreateForm({ onCancel, onSuccess }: Props) {
             <Space size={4}>
               По умолчанию
               <Tooltip title="Пул по умолчанию — один на пару «зона + семейство адресов». Он используется, когда пул не указан явно.">
-                <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
+                <QuestionCircleOutlined style={{ color: "var(--kc-text-tertiary)" }} />
               </Tooltip>
             </Space>
           }
@@ -163,7 +174,7 @@ export function InlineAddressPoolCreateForm({ onCancel, onSuccess }: Props) {
             <Space size={4}>
               Приоритет выбора
               <Tooltip title="Разрешение спора при равной точности: побеждает больший приоритет.">
-                <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
+                <QuestionCircleOutlined style={{ color: "var(--kc-text-tertiary)" }} />
               </Tooltip>
             </Space>
           }
@@ -175,12 +186,12 @@ export function InlineAddressPoolCreateForm({ onCancel, onSuccess }: Props) {
           />
         </Form.Item>
         <FormFooter
-          submitLabel="Создать пул адресов"
+          submitLabel="Создать"
           submitting={mutation.isPending}
           onSubmit={submit}
           onCancel={onCancel}
         />
-      </Form>
+      </FormGrid>
     </FormShell>
   );
 }

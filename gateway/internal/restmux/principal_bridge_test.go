@@ -93,12 +93,16 @@ func TestBridge_CarriesGatewayDerivedIdentity(t *testing.T) {
 	md := annotate(t, r)
 
 	for key, want := range map[string]string{
-		principalmeta.MetaPrincipalType:    "user",
-		principalmeta.MetaPrincipalID:      "usr-alice",
-		principalmeta.MetaPrincipalDisplay: "Alice",
-		principalmeta.MetaTokenACR:         "2",
-		principalmeta.MetaTokenJti:         "jti-1",
-		principalmeta.MetaTokenScope:       "openid",
+		principalmeta.MetaPrincipalType: "user",
+		principalmeta.MetaPrincipalID:   "usr-alice",
+		// Имя приезжает ДВОИЧНЫМ ключом: обычный роняет вызов на первом же
+		// не-латинском символе. Здесь стоял обычный, и он держался ТОЛЬКО
+		// мостом — то есть второй копией значения; мост её больше не делает
+		// (#930), а единственным производителем остался аннотатор.
+		principalmeta.MetaPrincipalDisplayBin: "Alice",
+		principalmeta.MetaTokenACR:            "2",
+		principalmeta.MetaTokenJti:            "jti-1",
+		principalmeta.MetaTokenScope:          "openid",
 	} {
 		vals := md.Get(key)
 		if len(vals) == 0 {

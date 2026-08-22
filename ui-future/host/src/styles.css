@@ -1,3 +1,31 @@
+/* Палитра каркаса — те же роли, что в общем листе, объявленные здесь заново.
+ *
+ * Каркас грузится РАНЬШЕ любого модуля и обязан быть оформлен сам по себе: пока
+ * ни один модуль не приехал, его собственная разметка уже на экране. Общий лист
+ * приезжает вместе с модулем, поэтому опереться на него каркас не может.
+ *
+ * Отсюда два правила, за которыми надо следить.
+ *
+ * 1. Объявляется ТОЛЬКО то, что читает разметка самого каркаса. Сверять надо в
+ *    ОБЕ стороны: объявленное-но-мёртвое тихо расходится с общим листом, а
+ *    читаемое-но-необъявленное молча живёт на запасном значении. Один список —
+ *    имена ролей, встречающиеся в разметке каркаса и панели; второй — имена,
+ *    объявленные ниже в этом файле. Списки обязаны совпасть.
+ *
+ * 2. Значения совпадают с общим листом (shared, index.css) ДОСЛОВНО. Сверять
+ *    строку объявления целиком: у всех ролей значения тем разные, кроме кривой
+ *    и длительности перехода, которые от темы не зависят вовсе.
+ *
+ * ПРЕДИКАТЫ ЗДЕСЬ НЕ ПРИВОДЯТСЯ, и это не небрежность. Минификатор CSS разбирает
+ * содержимое комментария и падает на апострофах и косых чертах, из которых
+ * состоит всякая команда оболочки: сборка каркаса печатала два предупреждения
+ * (Unexpected и Unterminated string token) ровно из-за них. Команды сверки живут
+ * в описании задачи, а не в файле, который проходит через минификатор.
+ *
+ * Всё остальное каркас берёт из темы AntD: App.tsx собирает её тем же
+ * buildTheme(), что и модули, — там дублирования нет by construction.
+ */
+
 :root {
   color-scheme: light;
   font-family:
@@ -9,22 +37,41 @@
     "Segoe UI",
     sans-serif;
 
-  --kc-hover-fill: rgb(127 127 127 / 0.08);
-  --sidebar-active-bg: rgb(61 141 245 / 0.12);
+  --kc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --kc-duration: 160ms;
 }
 
+:root,
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --kc-hover-fill: rgb(127 127 127 / 0.08);
-  --sidebar-active-bg: rgb(61 141 245 / 0.12);
+  --kc-page: #f4f6fb;
+  --kc-rail: #eef1f7;
+  --kc-container: #fff;
+  --kc-border: rgb(16 28 56 / 0.1);
+  --kc-border-secondary: rgb(16 28 56 / 0.07);
+  --kc-line-strong: rgb(16 28 56 / 0.2);
+  --kc-text: #0d1526;
+  --kc-text-tertiary: #8492aa;
+  --kc-hover-fill: rgb(16 28 56 / 0.04);
+  --kc-primary: #3a5bd9;
+  --sidebar-active-bg: rgb(58 91 217 / 0.1);
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --kc-hover-fill: rgb(255 255 255 / 0.08);
-  --sidebar-active-bg: rgb(61 141 245 / 0.18);
+  --kc-page: #050914;
+  --kc-rail: #070d18;
+  --kc-container: #09111f;
+  --kc-border: rgb(205 222 255 / 0.11);
+  --kc-border-secondary: rgb(205 222 255 / 0.09);
+  --kc-line-strong: rgb(205 222 255 / 0.2);
+  --kc-text: #e8f0ff;
+  --kc-text-tertiary: #65738c;
+  --kc-hover-fill: rgb(232 240 255 / 0.04);
+  --kc-primary: #6d8eff;
+  --sidebar-active-bg: rgb(109 142 255 / 0.12);
 }
 
 * {
@@ -41,6 +88,23 @@ body,
 
 body {
   overflow: hidden;
+
+  /* Базовый кегль 13 — как у эталона. Ставится на body, а НЕ на html: Tailwind
+     в модулях считает отступы и размеры в rem, и сдвиг КОРНЕВОГО кегля перекроил
+     бы всю их сетку заодно с цветом. */
+  font-size: 13px;
+
+  /* Фон страницы задаётся явно: у host'а нет Tailwind-слоя, который красил бы
+     body, а полотно за каркасом видно в момент до первой отрисовки AntD. */
+  background: var(--kc-page);
+  color: var(--kc-text);
+}
+
+/* Фокус клавиатурой виден всегда и одинаково — единственная «тень», которую
+   продукт рисует не под всплывающим элементом. */
+:focus-visible {
+  outline: 2px solid var(--kc-primary);
+  outline-offset: 2px;
 }
 
 .app-shell {
@@ -60,6 +124,11 @@ body {
   flex-direction: column;
   height: 100%;
   padding: 6px 8px;
+
+  /* Рейл — своя плоскость, на полтона отличная и от страницы, и от панели.
+     Разница мала намеренно: рейл обязан читаться как край, а не как ещё одна
+     поверхность со своим содержимым. */
+  background: var(--kc-rail);
 }
 
 .rail-brand,
@@ -97,14 +166,14 @@ body {
   width: 32px;
   height: 1px;
   margin: 4px auto;
-  background: rgb(127 127 127 / 0.16);
+  background: var(--kc-border);
   border-radius: 1px;
 }
 
 .rail-bottom {
   padding-top: 6px;
   margin-top: 6px;
-  border-top: 1px solid rgb(127 127 127 / 0.16);
+  border-top: 1px solid var(--kc-border);
 }
 
 .rail-button {
@@ -113,15 +182,15 @@ body {
   height: 36px;
   padding: 0;
   border-radius: 8px;
-  color: rgb(127 127 127);
+  color: var(--kc-text-tertiary);
   transition:
-    background-color 150ms ease,
-    color 150ms ease;
+    background-color var(--kc-duration) var(--kc-ease),
+    color var(--kc-duration) var(--kc-ease);
 }
 
 .rail-button:hover {
   background: var(--kc-hover-fill);
-  color: currentcolor;
+  color: var(--kc-text);
 }
 
 .rail-button:disabled {
@@ -130,13 +199,13 @@ body {
 }
 
 .rail-button:disabled:hover {
-  color: rgb(127 127 127);
+  color: var(--kc-text-tertiary);
   background: transparent;
 }
 
 .rail-button[data-active] {
   background: var(--sidebar-active-bg);
-  color: #3d8df5;
+  color: var(--kc-primary);
 }
 
 .rail-button[data-active]::before {
@@ -146,7 +215,7 @@ body {
   left: -8px;
   width: 2px;
   content: "";
-  background: #3d8df5;
+  background: var(--kc-primary);
   border-radius: 2px;
 }
 
@@ -201,8 +270,8 @@ body {
   border: 0;
   border-radius: 8px;
   transition:
-    background-color 150ms ease,
-    color 150ms ease;
+    background-color var(--kc-duration) var(--kc-ease),
+    color var(--kc-duration) var(--kc-ease);
 }
 
 .breadcrumb-pill:disabled {
@@ -222,13 +291,13 @@ body {
 
 .breadcrumb-pill-chevron {
   flex-shrink: 0;
-  color: rgb(127 127 127);
+  color: var(--kc-text-tertiary);
   transform: rotate(90deg);
 }
 
 .breadcrumb-separator {
   flex-shrink: 0;
-  color: rgb(127 127 127);
+  color: var(--kc-text-tertiary);
 }
 
 .breadcrumb-current {
@@ -244,17 +313,30 @@ body {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  /* Вертикальный отступ подтянут (8px) — симметричный зазор header↔surface и
-     surface↔footer, без «воздуха». Горизонталь 16px (визуальные поля страницы). */
-  padding: 8px 16px;
+
+  /* Полей нет НАМЕРЕННО. В эталоне боковая панель ресурса примыкает к рейлу
+     вплотную и читается его продолжением; поля принадлежат рабочей области
+     СПРАВА от панели, а не общей обёртке. Поле здесь отодвинуло бы панель от
+     рейла, заведя между ними полосу фона, которой в эталоне нет. */
+  padding: 0;
+
   /* Content-область ограничена по высоте (header + content + footer в 100vh);
-     сама НЕ скроллится — белая поверхность (.kc-surface) фиксированного размера
+     сама НЕ скроллится — поверхность (.kc-surface) фиксированного размера
      заполняет её и скроллит контент внутри себя. flex-column — чтобы дочерний
      remote-frame заполнял высоту через flex:1 (percentage-height через
      block-границу в Chrome не резолвится → поверхность «висела» короткой). */
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Ореол фона. Он не украшение: поверхности продукта полупрозрачны (--kc-surface-bg),
+   и именно этот мягкий свет даёт им глубину вместо тени. Пятно одно, слабое и
+   уведено в верхний правый угол — туда, где реже всего стоит содержимое.
+   В светлой теме его нет: на белом такое пятно читается не как свет, а как
+   грязь на экране. */
+:root[data-theme="dark"] .app-content {
+  background-image: radial-gradient(circle at 72% 18%, rgb(55 86 152 / 0.09), transparent 34%);
 }
 
 /* Обёртка antd <App> (`.ant-app`) каждого remote рендерится прямым ребёнком
@@ -269,17 +351,6 @@ body {
   min-width: 0;
 }
 
-.app-footer {
-  flex-shrink: 0;
-  padding: 9px 16px 11px;
-  text-align: center;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--kc-text-tertiary, rgb(127 127 127 / 0.7));
-  border-top: 1px solid var(--kc-border-secondary, rgb(127 127 127 / 0.18));
-  background: transparent;
-  height: auto;
-}
 
 .workbench {
   width: min(980px, 100%);
@@ -309,9 +380,9 @@ body {
   gap: 16px;
   min-height: 56px;
   padding: 10px 12px;
-  border: 1px solid rgb(127 127 127 / 0.18);
-  border-radius: 6px;
-  background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
+  border: 1px solid var(--kc-border);
+  border-radius: 8px;
+  background: var(--kc-container);
 }
 
 .probe-row > div:first-child {
@@ -344,4 +415,205 @@ body {
     align-items: stretch;
     flex-direction: column;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Второй уровень сайдбара: типы ресурсов активного модуля ─────────────────
+ *
+ * Пункт-строка, а не иконка: в отличие от рейла, здесь есть место для подписи,
+ * и подпись — весь смысл уровня. Активный помечен левой границей и подложкой,
+ * как вкладка раздела в эталоне. */
+.module-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0 7px 7px 0;
+  background: transparent;
+  color: var(--kc-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 160ms var(--kc-ease),
+    background-color 160ms var(--kc-ease),
+    border-color 160ms var(--kc-ease);
+}
+
+.module-nav-link:disabled {
+  color: var(--kc-text-tertiary);
+  cursor: not-allowed;
+}
+
+.module-nav-link:hover:not(:disabled) {
+  color: var(--kc-text);
+
+  /* Подсветка наведения — роль темы: светлая плёнка была литералом тёмной
+     палитры и на белом фоне не давала отклика вовсе. */
+  background: var(--kc-hover-fill);
+}
+
+/* Начертание постоянно — по той же причине, что у вкладок карточки: смена веса
+   двигает текст, и пункт «дышит» при выборе. Выбор несут левая граница, тон
+   подложки и цвет — три признака, ни один не меняет размеров. */
+.module-nav-link[data-active="true"] {
+  border-left-color: var(--kc-primary);
+  background: var(--sidebar-active-bg);
+  color: var(--kc-primary);
+}
+
+.module-nav-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  font-size: 14px;
+}
+
+.module-nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.module-nav-doc {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  color: var(--kc-primary);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.module-nav-doc:hover {
+  color: var(--kc-text);
+}
+
+/* ── Единый выбор рабочей области (аккаунт + проект) ─────────────────────────
+ *
+ * Кнопка — не «поле ввода», а звено адреса: она стоит в строке хлебных крошек и
+ * читается их частью, поэтому у неё нет ни заливки поля, ни рамки в покое. */
+.scope-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--kc-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 160ms var(--kc-ease),
+    border-color 160ms var(--kc-ease);
+}
+
+.scope-picker-trigger:hover {
+  /* Роль темы, а не литерал тёмной палитры: на светлой теме белая плёнка
+     по белому фону читалась как отсутствие наведения. */
+  background: var(--kc-hover-fill);
+  border-color: var(--kc-border);
+}
+
+.scope-picker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Шеврон повёрнут вниз: он обещает раскрытие, а не переход вправо. */
+.scope-picker-chevron {
+  flex: 0 0 auto;
+  color: var(--kc-text-tertiary);
+  transform: rotate(90deg);
+}
+
+.scope-picker-title {
+  padding: 12px 12px 8px;
+  color: var(--kc-text-tertiary);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.scope-picker-list {
+  display: grid;
+  gap: 2px;
+  max-height: 300px;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+}
+
+.scope-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--kc-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 160ms var(--kc-ease),
+    color 160ms var(--kc-ease);
+}
+
+.scope-picker-item:hover {
+  background: var(--kc-hover-fill);
+  color: var(--kc-text);
+}
+
+.scope-picker-item[data-selected="true"] {
+  background: var(--sidebar-active-bg);
+  color: var(--kc-primary);
+  font-weight: 600;
+}
+
+.scope-picker-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Стрелка «ведёт дальше» проступает только под курсором: в покое она была бы
+   шумом на каждой строке списка. */
+.scope-picker-item-more {
+  flex: 0 0 auto;
+  color: var(--kc-text-tertiary);
+  opacity: 0;
+  transition: opacity var(--kc-duration) var(--kc-ease);
+}
+
+.scope-picker-item:hover .scope-picker-item-more {
+  opacity: 1;
 }

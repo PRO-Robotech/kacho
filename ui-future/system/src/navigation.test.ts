@@ -7,11 +7,20 @@ describe("System navigation", () => {
     expect(system).toBeDefined();
     expect(system?.segment).toBe("system");
     expect(system?.landingPath).toBe("/system/regions");
+    // Перечень утверждается ЦЕЛИКОМ и по порядку — не «содержит», а «равен»:
+    // порядок пунктов виден пользователю в колонке раздела, и молча
+    // переставленный пункт не был бы находкой при слабом утверждении.
+    //
+    // «Пределы» добавлены вместе со своим предметом: страница существовала и
+    // работала, но пункта на неё не было НИ ОДНОГО — попасть можно было только
+    // набрав адрес руками. Это зона рута: величины всех трёх уровней и их
+    // правка.
     expect(system?.items.map((item) => item.path)).toEqual([
       "/system/regions",
       "/system/zones",
       "/system/address-pools",
       "/system/cluster/admins",
+      "/system/limits",
     ]);
   });
 

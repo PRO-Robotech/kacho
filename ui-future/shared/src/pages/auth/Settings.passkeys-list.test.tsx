@@ -84,7 +84,7 @@ afterEach(() => {
  * поэтому на двух ключах элементов списка четыре. Считать их все значило бы
  * утверждать о разметке списка действий, а не о числе ключей.
  */
-const строкиКлючей = () => screen.getAllByRole("listitem").filter((li) => within(li).queryByRole("heading"));
+const keyRows = () => screen.getAllByRole("listitem").filter((li) => within(li).queryByRole("heading"));
 
 describe("Settings — перечень passkey", () => {
   it("каждый зарегистрированный ключ показан СВОЕЙ строкой", async () => {
@@ -98,7 +98,7 @@ describe("Settings — перечень passkey", () => {
     expect(screen.getByText("Телефон")).toBeInTheDocument();
     // Строк ровно столько, сколько ключей: перечень, показывающий один ключ из
     // двух, выглядит как исправный.
-    expect(строкиКлючей()).toHaveLength(2);
+    expect(keyRows()).toHaveLength(2);
   });
 
   it("снятие ключа предложено НА СТРОКЕ этого ключа", async () => {
@@ -109,11 +109,11 @@ describe("Settings — перечень passkey", () => {
     renderSettings();
 
     await screen.findByText("Ноутбук");
-    const строка = строкиКлючей().find((li) => within(li).queryByText("Телефон"))!;
+    const row = keyRows().find((li) => within(li).queryByText("Телефон"))!;
     // Кнопка несёт идентификатор СВОЕГО ключа: одна кнопка на страницу сняла бы
     // не тот ключ, и утверждение «кнопка есть» этого не различает.
-    expect(within(строка).getByTestId("settings-remove-passkey-cred-2")).toBeInTheDocument();
-    expect(within(строка).queryByTestId("settings-remove-passkey-cred-1")).not.toBeInTheDocument();
+    expect(within(row).getByTestId("settings-remove-passkey-cred-2")).toBeInTheDocument();
+    expect(within(row).queryByTestId("settings-remove-passkey-cred-1")).not.toBeInTheDocument();
   });
 
   it("без ключей перечня НЕТ, и сказано это прямо", async () => {

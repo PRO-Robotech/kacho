@@ -48,7 +48,15 @@ export function RemoteShell({ children }: { children: ReactNode }) {
           <AuthProvider>
             <StepUpModal />
             <PageHeaderSlotProvider>
-              <section className="vpc-remote-frame iam-remote-frame">
+              {/* Здесь стояло ВТОРОЕ имя класса, под которое правил не объявляет ни
+                  один лист стилей дерева: ноль вхождений и в исходниках, и в
+                  собранном листе этого модуля. Мёртвое имя обещает оформление,
+                  которого нет, и следующий читатель ищет его лист. Оно снято, а
+                  не оставлено «на всякий случай», и здесь намеренно не
+                  воспроизводится: имя в обратных кавычках читается как живая
+                  координата. Рамку задаёт `vpc-remote-frame` — он объявлен в
+                  общем листе, и его берут все федеративные модули. */}
+              <section className="vpc-remote-frame">
                 <div className="vpc-host-header-slots">
                   <div className="vpc-host-header-actions">
                     <HeaderRightSlot />

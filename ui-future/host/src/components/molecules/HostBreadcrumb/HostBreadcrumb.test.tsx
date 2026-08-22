@@ -26,8 +26,10 @@ describe("HostBreadcrumb", () => {
     const onChange: Dispatch<SetStateAction<HostContext>> = jest.fn();
     render(<HostBreadcrumb context={context} onChange={onChange} />);
 
-    expect(screen.getByRole("button", { name: /выберите аккаунт/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /проект/i })).toBeInTheDocument();
+    // Выбор области ОДИН, а не два поля подряд: проект принадлежит аккаунту, и
+    // два независимых поля скрывали эту связь до первого клика.
+    expect(screen.getByRole("button", { name: /выберите область/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^проект$/i })).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalled();
@@ -48,7 +50,7 @@ describe("HostBreadcrumb", () => {
     const onChange: Dispatch<SetStateAction<HostContext>> = jest.fn();
     render(<HostBreadcrumb context={context} onChange={onChange} />);
 
-    expect(screen.getByRole("button", { name: "acc-1" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "project-1" })).toBeInTheDocument();
+    // Оба звена названы ОДНОЙ подписью: она и есть адрес рабочей области.
+    expect(screen.getByRole("button", { name: "acc-1 / project-1" })).toBeInTheDocument();
   });
 });

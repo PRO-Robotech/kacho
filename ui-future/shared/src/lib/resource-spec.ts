@@ -29,6 +29,15 @@ import type { FormField } from "./form-schema";
 
 export interface ResourceColumn {
   header: string;
+  /**
+   * Значение занимает НЕСКОЛЬКО СТРОК (набор адресов, набор ссылок) и обрезке
+   * в одну строку не подлежит.
+   *
+   * Объявляется явно, а не выводится из `format`: такие колонки рисуют своим
+   * `render`, и формата у них нет вовсе — вывод по формату молча пропустил бы
+   * ровно те колонки, ради которых признак и заведён.
+   */
+  multiline?: boolean;
   // Путь в плоском объекте: "name", "status", "zone_id"
   path: string;
   format?: "text" | "uid-short" | "datetime" | "status" | "code" | "list" | "references" | "bool";

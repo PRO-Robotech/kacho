@@ -1,1 +1,8 @@
-export * from "./ResourceDetailExtensions";
+// Реестр расширений detail-страницы живёт в ЕДИНСТВЕННОМ экземпляре — в
+// `shared/`. Здесь только ре-экспорт: своя копия отставала бы молча, и правка
+// общего реестра до модуля не доезжала (правило 9 канона консоли).
+//
+// Доменные расширения storage подключаются к этому реестру ручкой
+// `registerDetailExtension` из `@/registerExtensions`, а не второй копией
+// реестра рядом с общим.
+export * from "@shared/components/organisms/ResourceDetailExtensions";

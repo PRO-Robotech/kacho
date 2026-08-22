@@ -57,7 +57,7 @@ export function OperationDialog({ opId, title, onSuccess, onClose }: Props) {
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            <span className="font-mono text-xs text-muted-foreground">{shortId}</span>
+            <span className="t-mono text-muted-foreground">{shortId}</span>
           </DialogDescription>
         </DialogHeader>
 
@@ -68,17 +68,27 @@ export function OperationDialog({ opId, title, onSuccess, onClose }: Props) {
               <p className="text-sm text-muted-foreground">Выполнение операции…</p>
             </>
           )}
+          {/* Исход окрашен тонами состояний продукта. Прежние `emerald-700` /
+              `rose-700` брались из палитры Tailwind, не участвующей ни в одной
+              теме: на тёмном фоне тёмно-зелёный текст «Успешно завершено» почти
+              не читался — то есть цвет сообщал исход только на светлой. */}
           {done && !opError && !fetchError && (
             <>
-              <CheckCircle2 className="h-8 w-8 text-emerald-500" />
-              <p className="text-sm font-medium text-emerald-700">Успешно завершено</p>
+              <CheckCircle2 className="h-8 w-8" style={{ color: "var(--status-ok-fg)" }} />
+              <p className="text-sm font-medium" style={{ color: "var(--status-ok-fg)" }}>
+                Успешно завершено
+              </p>
             </>
           )}
           {(opError || fetchError) && (
             <>
-              <XCircle className="h-8 w-8 text-rose-500" />
-              <p className="text-sm font-medium text-rose-700">Операция завершилась с ошибкой</p>
-              <p className="text-xs text-rose-600 text-center max-w-xs">{opError?.message ?? fetchError?.message}</p>
+              <XCircle className="h-8 w-8" style={{ color: "var(--status-error-fg)" }} />
+              <p className="text-sm font-medium" style={{ color: "var(--status-error-fg)" }}>
+                Операция завершилась с ошибкой
+              </p>
+              <p className="text-xs text-center max-w-xs" style={{ color: "var(--status-error-fg)" }}>
+                {opError?.message ?? fetchError?.message}
+              </p>
             </>
           )}
         </div>

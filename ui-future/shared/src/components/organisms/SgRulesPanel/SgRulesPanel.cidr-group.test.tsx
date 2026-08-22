@@ -24,6 +24,11 @@ jest.unstable_mockModule("@shared/api/client", () => ({
 
 const { SgRulesPanel } = await import("./SgRulesPanel");
 const { PageHeaderSlotProvider, HeaderRightSlot } = await import("@shared/components/molecules/PageHeaderSlot");
+// Панель живёт ВНУТРИ карточки ресурса, и это условие рендера, а не декорация:
+// по нему `FormShell` решает, рисовать ли собственную шапку. Без провайдера
+// проба показывала форму в посадке, которой на странице не бывает, — с шапкой,
+// которой на экране нет. Тот же довод, по которому здесь настоящий слот шапки.
+const { DetailHeaderProvider } = await import("@shared/components/molecules/PanelHeader");
 const { MemoryRouter } = await import("react-router");
 
 type Rule = Parameters<typeof SgRulesPanel>[0]["rules"][number];
@@ -34,8 +39,10 @@ function show(rules: Rule[]) {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={["/projects/prj-1/vpc/security-groups/sg-1"]}>
         <PageHeaderSlotProvider>
-          <HeaderRightSlot />
-          <SgRulesPanel sgId="sg-1" projectId="prj-1" rules={rules} networkId="net-1" />
+          <DetailHeaderProvider value={{ icon: <span aria-hidden /> }}>
+            <HeaderRightSlot />
+            <SgRulesPanel sgId="sg-1" projectId="prj-1" rules={rules} networkId="net-1" />
+          </DetailHeaderProvider>
         </PageHeaderSlotProvider>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -67,6 +74,23 @@ describe("источник правила — ссылка на то, на чт�
 
     const link = await screen.findByRole("link", { name: "backend" });
     expect(link).toHaveAttribute("href", "/projects/prj-1/vpc/security-groups/sg-9");
+  });
+
+  it("несколько блоков показаны ВСЕ, каждый своей строкой", () => {
+    // Прежде блоки склеивались запятой в ОДНУ строку, а общая обрезка клетки
+    // держит клетку в одну строку: из трёх блоков читатель видел первый и
+    // многоточие и шёл на карточку проверять, есть ли там ещё.
+    show([
+      {
+        id: "sgr-4",
+        direction: "INGRESS",
+        cidr_blocks: { v4_cidr_blocks: ["10.0.0.0/8", "192.168.0.0/16"], v6_cidr_blocks: ["fd00::/8"] },
+      },
+    ]);
+
+    for (const block of ["10.0.0.0/8", "192.168.0.0/16", "fd00::/8"]) {
+      expect(screen.getByText(block)).toBeInTheDocument();
+    }
   });
 
   it("набор блоков остаётся текстом — ссылаться там не на что", () => {

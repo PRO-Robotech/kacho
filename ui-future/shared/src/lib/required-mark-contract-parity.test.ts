@@ -354,10 +354,25 @@ function adjudicate(forms: FormsRead): Verdict {
 
 // ── перепись дерева ──────────────────────────────────────────────────────────
 
-const treeSources = execFileSync("git", ["ls-files", "*/src/**/*.tsx"], { cwd: UI_ROOT, encoding: "utf8" })
+// Перечень берётся у git (он знает состав дерева), но ЧИТАЕТСЯ рабочая копия:
+// это разные вещи. Файл, удалённый в рабочей копии и ещё числящийся в индексе, —
+// законное переходное состояние; гейт, падающий на нём, обвиняет автора в том,
+// что тот снял мёртвый компонент, и заставляет коммитить ради зелёного прогона.
+// Пропущенные считаются и НАЗЫВАЮТСЯ: «ноль находок» обязано быть отличимо от
+// «ноль прочитанного».
+const treeListed = execFileSync("git", ["ls-files", "*/src/**/*.tsx"], { cwd: UI_ROOT, encoding: "utf8" })
   .split("\n")
-  .filter((rel) => rel.length > 0 && !rel.includes(".test."))
-  .map((rel) => ({ rel, raw: readFileSync(join(UI_ROOT, rel), "utf8") }));
+  .filter((rel) => rel.length > 0 && !rel.includes(".test."));
+
+const treeMissing: string[] = [];
+const treeSources = treeListed.flatMap((rel) => {
+  const abs = join(UI_ROOT, rel);
+  if (!existsSync(abs)) {
+    treeMissing.push(rel);
+    return [];
+  }
+  return [{ rel, raw: readFileSync(abs, "utf8") }];
+});
 
 const treeForms = readForms(treeSources);
 const treeVerdict = adjudicate(treeForms);
@@ -384,7 +399,12 @@ describe("объём осмотренного — «ноль находок» о
     console.log(
       `[#608] форм прочитано ${treeForms.filesRead} · Form.Item разобрано ${treeForms.itemsParsed} · ` +
         `объявили обязательность ${treeForms.claims.length} · из них про поле «name» рассужено ` +
-        `${treeVerdict.judged}, не рассужено ${treeVerdict.unresolved} · находок ${treeVerdict.findings.length}`,
+        `${treeVerdict.judged}, не рассужено ${treeVerdict.unresolved} · находок ${treeVerdict.findings.length}` +
+        // Пропущенные называются числом И поимённо: молчаливый пропуск сделал бы
+        // «ноль находок» неотличимым от «ноль прочитанного».
+        (treeMissing.length
+          ? ` · числятся в индексе, но в рабочей копии их нет: ${treeMissing.length} (${treeMissing.join(", ")})`
+          : " · пропущенных нет"),
     );
     expect(treeVerdict.judged).toBeGreaterThan(0);
   });
@@ -399,7 +419,7 @@ describe("звёздочка обязательности сходится с к
 // ── способность упасть: инъекция в обе стороны ──────────────────────────────
 
 describe("инъекция: гейт краснеет на дефекте и молчит на законном близнеце", () => {
-  const защёлка = (raw: string) => adjudicate(readForms([{ rel: "synthetic.tsx", raw }]));
+  const latch = (raw: string) => adjudicate(readForms([{ rel: "synthetic.tsx", raw }]));
 
   it("контракт различает два ресурса — иначе дискриминатору нечего различать", () => {
     // Положительный контроль самого разбора контракта: если бы обе стороны
@@ -410,7 +430,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
   });
 
   it("ДЕФЕКТ: «Имя» со звёздочкой у ресурса, чей контракт её не требует — находка с координатой", () => {
-    const verdict = защёлка(
+    const verdict = latch(
       `<FormShell specId="subnets" mode="create">\n` +
         `  <Form.Item label="Имя" required>\n    <Input />\n  </Form.Item>\n` +
         `</FormShell>\n`,
@@ -423,7 +443,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
     // Первая перепись по `label="Имя"` нашла три места; ещё два несли подпись
     // выражением (`labelWithInfo("Имя", …)`) и в неё не попали. Радиус берётся
     // по механизму, а не по форме записи.
-    const verdict = защёлка(
+    const verdict = latch(
       `<FormShell specId="network-interfaces" mode="create">\n` +
         `  <Form.Item label={labelWithInfo("Имя", "Имя интерфейса в пределах фолдера.")} required>\n` +
         `    <Input />\n  </Form.Item>\n</FormShell>\n`,
@@ -432,7 +452,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
   });
 
   it("БЛИЗНЕЦ: та же подпись без звёздочки — молчание, и объявление рассужено", () => {
-    const verdict = защёлка(
+    const verdict = latch(
       `<FormShell specId="subnets" mode="create">\n  <Form.Item label="Имя">\n    <Input />\n  </Form.Item>\n</FormShell>\n`,
     );
     expect(verdict.findings).toEqual([]);
@@ -443,7 +463,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
     // потому, что не разобрал её, а потому, что контракт группы IAM объявляет
     // `name` обязательным. Без проверки `judged` молчание означало бы «не
     // прочитал».
-    const verdict = защёлка(
+    const verdict = latch(
       `<FormShell specId="groups" mode="create">\n` +
         `  <Form.Item label="Имя" name="name" required rules={[{ required: true }]}>\n` +
         `    <Input />\n  </Form.Item>\n</FormShell>\n`,
@@ -455,7 +475,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
   it("БЛИЗНЕЦ: звёздочка у ДРУГОГО поля — вне области гейта, и он это не скрывает", () => {
     // Гейт судит поле `name`. Обязательность «Сети» он не рассматривает вовсе —
     // и не объявляет её законной: она просто не попадает в счёт рассуженного.
-    const verdict = защёлка(
+    const verdict = latch(
       `<FormShell specId="subnets" mode="create">\n  <Form.Item label="Сеть" required>\n    <Select />\n  </Form.Item>\n</FormShell>\n`,
     );
     expect(verdict.findings).toEqual([]);
@@ -465,7 +485,7 @@ describe("инъекция: гейт краснеет на дефекте и м�
   it("разбор тега переживает `>` внутри выражения подписи", () => {
     // Наивный поиск первого `>` обрезал бы тег на `<Space size={4}>` и потерял
     // `required` — гейт молчал бы на дефекте, который обязан находить.
-    const verdict = защёлка(
+    const verdict = latch(
       `<FormShell specId="subnets" mode="create">\n` +
         `  <Form.Item label={<Space size={4}>Имя<Tooltip title="x" /></Space>} required>\n` +
         `    <Input />\n  </Form.Item>\n</FormShell>\n`,

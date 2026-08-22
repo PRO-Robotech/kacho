@@ -1,14 +1,28 @@
-// NlbVipCell — VIP-адрес(а) балансировщика в колонке списка / строке обзора.
-// Поля LoadBalancer `v4_address_id` / `v6_address_id` ссылаются на vpc Address
-// (аллоцированный VIP). Рендерим единым видом ссылки на ресурс — иконка + имя
-// адреса (+ сам IP моноширинно), кликабельно на detail адреса — как поле
-// «IPv4-адрес» на NIC-детали (AddressRefTag). Оба id пустые → прочерк.
+// NlbVipCell — VIP-адрес(а) балансировщика в колонке списка и в строке обзора.
+//
+// Поля `v4_address_id` / `v6_address_id` ссылаются на Address домена vpc, то
+// есть на ЧУЖОЙ ресурс со своей карточкой. Значит это обычная ссылка на ресурс,
+// и рисует её единственный вид ссылки консоли — `ResourceLink` (канон §9:
+// «двух реализаций одного вида не бывает»).
+//
+// Здесь стояла своя: собственный `<Link>` с собственным набором классов,
+// собственной сборкой адреса `/projects/<id>/vpc/addresses/<id>` и без иконки
+// типа, значка копирования, подсказки с полным значением и признака «я в строке
+// свойств». В одной таблице из-за этого жили два поведения: у «Имени» отзывался
+// общий значок справа, у адреса — ничего.
+//
+// Что осталось своим и почему: РЕЗОЛВ САМОГО IP. `RefNameLink` показывает имя
+// ресурса, а здесь читателю нужен адрес, который лежит внутри одной из четырёх
+// ветвей ответа. Поэтому список адресов проекта запрашивается здесь, а рисуется
+// уже общим компонентом.
 
 import type { FC } from "react";
-import { Link, useParams } from "react-router";
+import { useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
+import { ResourceLink } from "@/components/molecules/ResourceLink";
 import { getByPath } from "@/lib/resource-registry";
+import { MONO_FONT } from "@shared/components/organisms/form/editor-surface";
 
 export interface NlbVipCellProps {
   v4AddressId?: string;
@@ -27,10 +41,11 @@ function addressIp(data: Record<string, unknown> | undefined): string {
   );
 }
 
-// VipAddressLink — резолвит Address по id и рендерит сам IP (моноширинно)
-// ссылкой на detail адреса в модуле VPC. Резолв через ОДНУ общую LIST-выборку
-// адресов проекта (queryKey per-project, TanStack-дедуп) — не per-id GET: все
-// ячейки списка LB делят один запрос → мгновенно. Пока не загрузилось — id.
+// VipAddressLink — резолвит Address по id и показывает сам IP ссылкой на его
+// карточку. Резолв идёт ОДНОЙ выборкой адресов проекта (ключ на проект,
+// TanStack дедуплицирует), а не запросом на каждую ячейку: список
+// балансировщиков делит один запрос. Пока не загрузилось — идентификатор,
+// усечённый тем же правилом, что у всякой ссылки.
 const VipAddressLink: FC<{ id: string }> = ({ id }) => {
   const { projectId } = useParams();
   const { data } = useQuery({
@@ -44,18 +59,13 @@ const VipAddressLink: FC<{ id: string }> = ({ id }) => {
     staleTime: 30_000,
   });
   const addr = (data?.addresses ?? []).find((a) => (a.id as string) === id);
-  const label = addressIp(addr) || id.slice(0, 12);
-  const content = <span style={{ fontFamily: "ui-monospace, monospace" }}>{label}</span>;
-  return projectId ? (
-    <Link
-      to={`/projects/${projectId}/vpc/addresses/${id}`}
-      onClick={(e) => e.stopPropagation()}
-      className="text-primary hover:underline"
-    >
-      {content}
-    </Link>
-  ) : (
-    <span className="text-foreground">{content}</span>
+  // Моноширинным набором — САМ АДРЕС: это машинное значение, и цифры в нём
+  // читают по столбикам. Шрифт берётся общей константой редакторов, а не своим
+  // сокращением: два перечня гарнитур расходятся молча.
+  return (
+    <span style={{ fontFamily: MONO_FONT }}>
+      <ResourceLink specId="addresses" id={id} name={addressIp(addr)} projectId={projectId ?? null} icon plain />
+    </span>
   );
 };
 
@@ -64,6 +74,8 @@ export const NlbVipCell: FC<NlbVipCellProps> = ({ v4AddressId, v6AddressId }) =>
   if (ids.length === 0) {
     return <span className="text-muted-foreground">—</span>;
   }
+  // Оба семейства — КАЖДОЕ своей строкой: балансировщик двойного стека несёт два
+  // адреса, и свёртка второго в «ещё 1» назвала бы число вместо адреса.
   return (
     <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
       {ids.map((id) => (

@@ -12,6 +12,7 @@ import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { toast } from "@shared/lib/toast";
 import type { Operation } from "@shared/api/types";
 import type { Role } from "@shared/api/iam";
+import { copyText } from "@shared/lib/clipboard";
 
 /**
  * groupedRoleOptions — опции для role-picker `<Select>`, сгруппированные на
@@ -56,7 +57,8 @@ export function CopyableMonoId({ id }: { id: string | undefined }) {
         onClick={(e) => {
           e.stopPropagation();
           if (id) {
-            void navigator.clipboard.writeText(id);
+            // См. `@shared/lib/clipboard`.
+            void copyText(id);
             toast.success("Скопировано");
           }
         }}

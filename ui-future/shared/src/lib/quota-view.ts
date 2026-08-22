@@ -116,8 +116,8 @@ export function sourceLabel(q: Quota): string {
 function carrierLabel(q: Quota): string | null {
   if (countedInProject(q)) return null;
   if (q.carrier_type === "account") return "Считается в аккаунте";
-  const родитель = kindLabel(q.carrier_type);
-  return `Считается в каждом: ${родитель}`;
+  const parentLabel = kindLabel(q.carrier_type);
+  return `Считается в каждом: ${parentLabel}`;
 }
 
 export interface QuotaRow {

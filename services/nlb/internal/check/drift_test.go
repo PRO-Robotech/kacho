@@ -45,7 +45,6 @@ var allPublicServiceDescs = []grpc.ServiceDesc{
 // «authN+authZ на ОБОИХ listener'ах»; «Internal = trusted» — запрещённое допущение),
 // поэтому их RPC ТОЖЕ обязаны быть в PermissionMap (с реальным Relation, не Public).
 var allInternalServiceDescs = []grpc.ServiceDesc{
-	lbv1.InternalResourceLifecycleService_ServiceDesc,
 	lbv1.InternalLoadBalancerAnnounceService_ServiceDesc,
 }
 
@@ -236,7 +235,8 @@ func TestDrift_CatalogCompleteness(t *testing.T) {
 	for _, p := range cat {
 		uniq[p] = struct{}{}
 	}
-	require.Lenf(t, uniq, 30,
+	// 30→29: снят вид прав снятого потока подписки (#814).
+	require.Lenf(t, uniq, 29,
 		catalogCountRationale+"; got %d: %v", len(uniq), sortedKeys(uniq))
 	require.Equal(t, len(cat), len(uniq), "Catalog() contains duplicates")
 }
@@ -370,13 +370,6 @@ func TestExtract_AllRPCEntries(t *testing.T) {
 		// Internal listener (:9091) — the SAME authz interceptor runs there, so
 		// these entries decide access exactly as the public ones do.
 		//
-		// Subscribe streams resource ids of EVERY project, so it has no per-request
-		// object: its extractor is the cluster floor, constant by construction. The
-		// case pins that constancy — a future extractor that starts reading the
-		// request would make the gate caller-influenced.
-		{"/kacho.cloud.loadbalancer.v1.InternalResourceLifecycleService/Subscribe",
-			&lbv1.SubscribeRequest{},
-			"cluster", "cluster_kacho_root"},
 		// GetAnnounceState якорится на КЛАСТЕРЕ, а не на балансировщике, и это
 		// намеренно: announce-state — инфра-данные, `v_get` на балансировщике
 		// держит его владелец-тенант, а `system_viewer` на кластере — нет.

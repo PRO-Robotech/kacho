@@ -49,7 +49,7 @@ function show(initial: string, props: Record<string, unknown> = {}) {
   return render(
     <MemoryRouter initialEntries={[initial]}>
       <Address />
-      <DetailShell resourceLabel="Сеть" resourceName="web" tabs={tabs} {...props} />
+      <DetailShell resourceName="web" tabs={tabs} {...props} />
     </MemoryRouter>,
   );
 }
@@ -138,12 +138,17 @@ describe("DetailShell — рейл объявлен НАБОРОМ ВКЛАДО�
   it("рейл — набор вкладок, и каждый пункт объявлен вкладкой", () => {
     show("/networks/net-1");
 
-    const рейл = screen.getByRole("tablist");
-    // Вертикальность объявлена: у набора вкладок умолчание — горизонтальный, и
-    // читающий страницу не глазами иначе ждёт стрелок влево-вправо.
-    expect(рейл).toHaveAttribute("aria-orientation", "vertical");
+    const rail = screen.getByRole("tablist");
+    // Направление объявлено ЯВНО, и объявлено ГОРИЗОНТАЛЬНЫМ: вкладки стоят
+    // полосой под именем ресурса, и читающий страницу не глазами обязан ждать
+    // стрелок влево-вправо, а не вверх-вниз. Прежде здесь стояло «вертикально» —
+    // утверждение о вертикальном рейле, который занимал колонку, принадлежащую
+    // навигации по модулю. Рейл снят решением владельца, а проба его пережила:
+    // она перестала описывать продукт, продолжая падать на верном коде.
+    // Утверждение не ослаблено — снятие атрибута по-прежнему роняет пробу.
+    expect(rail).toHaveAttribute("aria-orientation", "horizontal");
     expect(
-      within(рейл)
+      within(rail)
         .getAllByRole("tab")
         .map((t) => t.textContent),
     ).toEqual(["Обзор", "JSON"]);
@@ -163,35 +168,66 @@ describe("DetailShell — рейл объявлен НАБОРОМ ВКЛАДО�
   it("вкладка указывает на свою панель, а панель названа своей вкладкой", () => {
     show("/networks/net-1?tab=json");
 
-    const вкладка = screen.getByRole("tab", { name: "JSON" });
-    const панель = screen.getByRole("tabpanel");
+    const tab = screen.getByRole("tab", { name: "JSON" });
+    const panel = screen.getByRole("tabpanel");
     // Ссылка ведёт в существующий узел, а не в пустоту: висячая ссылка на панель
     // выглядит как связь и связью не является.
-    expect(вкладка.getAttribute("aria-controls")).toBe(панель.getAttribute("id"));
-    expect(панель.getAttribute("aria-labelledby")).toBe(вкладка.getAttribute("id"));
-    expect(панель).toHaveTextContent("содержимое json");
+    expect(tab.getAttribute("aria-controls")).toBe(panel.getAttribute("id"));
+    expect(panel.getAttribute("aria-labelledby")).toBe(tab.getAttribute("id"));
+    expect(panel).toHaveTextContent("содержимое json");
   });
 
-  it("в режиме формы панели вкладки НЕТ — и ссылки на неё тоже", () => {
-    // Контроль в обратную сторону к утверждению выше. Зона 3 занята формой, то
-    // есть панели активной вкладки на странице не существует; ссылка на неё
-    // указывала бы в пустоту, а роль панели у формы была бы неправдой.
+  it("в режиме формы НЕТ ни вкладок, ни панели вкладки", () => {
+    // Контроль в обратную сторону к утверждению выше — и предмет у него теперь
+    // ДРУГОЙ. Прежде проба требовала, чтобы вкладки оставались на месте, а у них
+    // лишь пропадала ссылка на панель. Владелец снял вкладки со страницы формы
+    // целиком («зачем-то табы»): вкладка переключает ВИД на ресурс, а форма не
+    // вид — она его правит. Оставленные рядом, вкладки предлагали уйти с
+    // недозаполненной формы, ничего не сказав о судьбе введённого, и при этом ни
+    // одна из них не была выбрана — набор без выбранного пункта читается как
+    // сломанный.
+    //
+    // Число названо ЯВНО (ноль вкладок, ноль наборов), а не заменено на «нет
+    // ничего»: рядом стоит положительный контроль на той же оболочке и тех же
+    // вкладках, поэтому «ноль» здесь означает «сняты формой», а не «их и не
+    // было».
     show("/networks/net-1", { mainOverride: <div>форма правки</div> });
 
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     expect(screen.queryByRole("tabpanel")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("tab").every((t) => !t.hasAttribute("aria-controls"))).toBe(true);
-    // Сам рейл при этом на месте — иначе утверждения выше зеленели бы на
-    // странице, где вкладок нет вовсе.
+  });
+
+  it("без формы те же вкладки на месте — положительный контроль к утверждению выше", () => {
+    // Без него «вкладок ноль» зеленело бы и на оболочке, которая не рисует
+    // вкладок ни при каких условиях.
+    show("/networks/net-1");
+
     expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel")).toBeInTheDocument();
   });
 });
 
 describe("DetailShell — содержимое главной зоны", () => {
-  it("mainOverride заменяет содержимое активного таба, оставляя рейл", () => {
+  it("mainOverride заменяет содержимое активного таба и уносит вкладки", () => {
+    // Предмет изменён решением владельца: прежде проба требовала, чтобы рейл
+    // оставался «для контекста». Контекст даёт шапка — она называет ТИП и ИМЯ
+    // ресурса, — а вкладки на странице правки предлагали уйти с формы.
     show("/networks/net-1", { mainOverride: <div>форма правки</div> });
 
     expect(screen.getByText("форма правки")).toBeInTheDocument();
     expect(screen.queryByText("содержимое обзора")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("tab")).toHaveLength(0);
+  });
+
+  it("без mainOverride показано содержимое таба, а вкладки на месте", () => {
+    // Парный положительный: без него утверждения выше были бы одинаково зелены
+    // и у оболочки, которая не показывает НИЧЕГО.
+    show("/networks/net-1");
+
+    expect(screen.getByText("содержимое обзора")).toBeInTheDocument();
+    expect(screen.queryByText("форма правки")).not.toBeInTheDocument();
     expect(railButtons()).toHaveLength(2);
   });
 
@@ -207,7 +243,6 @@ describe("HeaderSlotPortal", () => {
     render(
       <MemoryRouter initialEntries={["/networks/net-1"]}>
         <DetailShell
-          resourceLabel="Сеть"
           resourceName="web"
           tabs={[
             {

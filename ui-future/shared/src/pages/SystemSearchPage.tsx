@@ -36,6 +36,7 @@
 // частый запрос администратора («найди эту машину») не решался в принципе.
 
 import { useState, useMemo, useEffect } from "react";
+import { PageHead } from "@shared/components/organisms/DetailShell/PageHead";
 import { Link } from "react-router";
 import { useQueries } from "@tanstack/react-query";
 import { Search } from "lucide-react";
@@ -217,12 +218,19 @@ export function SystemSearchPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Поиск</h1>
-        <p className="text-sm text-muted-foreground">
-          Поиск по всем ресурсам сразу — по имени и идентификатору.
-        </p>
-      </div>
+      {/* Шапка ОБЩАЯ с прочими страницами (`PageHead`). Здесь стоял свой
+          заголовок со своим кеглем (`text-xl`), и страница поиска выглядела
+          приехавшей из другого продукта: у всех остальных кегль задаёт одна
+          конструкция. Пояснение ушло в правый слот — оно относится к предмету
+          страницы, а не соперничает с ним по вертикали. */}
+      <PageHead
+        title="Поиск"
+        right={
+          <span style={{ color: "var(--kc-text-secondary)", fontSize: 13 }}>
+            По всем ресурсам сразу — по имени и идентификатору
+          </span>
+        }
+      />
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -256,7 +264,7 @@ export function SystemSearchPage() {
           браузере поверх прочитанной страницы, названы поимённо. Иначе «ничего
           не найдено» читалось бы как утверждение об отсутствии ресурса. */}
       {active && PARTIAL_DOMAINS.length > 0 && (
-        <div className="text-xs text-muted-foreground">
+        <div className="text-xs text-muted-foreground" data-testid="search-partial-notice">
           Поиск неполон в {PARTIAL_DOMAINS.length} из {SEARCH_DOMAINS.length} областей — там сравниваются только
           загруженные строки (по {PARTIAL_PAGE}):{" "}
           {PARTIAL_DOMAINS.map((d) => REGISTRY[d.specId].plural).join(", ")}.

@@ -13,7 +13,16 @@ import { ResourceListPage } from "@/components/organisms/ResourceListPage";
 import { ResourceShell } from "@/components/organisms/ResourceShell";
 import { contextApi } from "@/lib/context-store";
 import { REGISTRY } from "@/lib/resource-registry";
-import "@/typography.css";
+// Доменные расширения карточки — side-effect-импорт входной точки модуля: он
+// подключает их до первого рендера `ResourceShell`, которая читает их по
+// идентификатору спеки. Оболочка при этом остаётся app-agnostic.
+import "@/registerExtensions";
+// Типографика — ОДИН лист на всё дерево (`@shared/typography.css`). Здесь
+// лежала его байт-в-байт копия: у форка листа стилей нет ни гейта, ни пробы —
+// перепись форков читает только `.ts`/`.tsx`, — поэтому разойтись он мог молча
+// и незаметно. Так же берут его vpc, iam и раздел администрирования.
+import "@shared/typography.css";
+import "@shared/index.css";
 import "@/index.css";
 
 export interface RegistryPageProps {

@@ -57,7 +57,7 @@ const MODULES: string[] = readdirSync(repoRoot, { withFileTypes: true })
  * его классы прозрачности и отсутствовали. Существование проверяется отдельной
  * пробой — исчезни он, гейт стал бы вакуумным, а не красным.
  */
-const ОБРАЗЕЦ = "shared/src/components/atoms/CopyableName/CopyableName.tsx";
+const SAMPLE = "shared/src/components/atoms/CopyableName/CopyableName.tsx";
 
 /**
  * Строковые литералы из массива `content: [...]`.
@@ -144,7 +144,7 @@ describe("сборка стилей модуля читает общий код"
   it("своя предпосылка: образец общего кода на месте", () => {
     // Без него сверка ниже проверяла бы шаблон против несуществующего файла и
     // краснела бы на переезде каталога, а не на дефекте сборки.
-    expect(existsSync(path.join(repoRoot, ОБРАЗЕЦ))).toBe(true);
+    expect(existsSync(path.join(repoRoot, SAMPLE))).toBe(true);
   });
 
   it.each(MODULES)("%s: шаблоны сборки достают до общего кода", (module) => {
@@ -159,25 +159,25 @@ describe("сборка стилей модуля читает общий код"
     // та требовала одного строкового элемента, эта — непустоты и всех строк.
     expect({
       module,
-      непустой: globs.length > 0,
-      толькоСтроки: globs.every((g) => typeof g === "string"),
-    }).toEqual({ module, непустой: true, толькоСтроки: true });
+      nonEmpty: globs.length > 0,
+      onlyStrings: globs.every((g) => typeof g === "string"),
+    }).toEqual({ module, nonEmpty: true, onlyStrings: true });
 
     // Шаблон разворачивается ОТНОСИТЕЛЬНО каталога модуля — так же, как его
     // читает сборка, — и сверяется с фактическим файлом общего кода.
     const reach = globs.filter((g) => {
       const abs = path.resolve(repoRoot, module, g);
-      return globToRegExp(abs).test(path.join(repoRoot, ОБРАЗЕЦ));
+      return globToRegExp(abs).test(path.join(repoRoot, SAMPLE));
     });
 
     expect({
       module,
-      достаёт: reach.length > 0,
-      подсказка: `добавь в content шаблон, покрывающий ${ОБРАЗЕЦ}`,
+      reaches: reach.length > 0,
+      hint: `добавь в content шаблон, покрывающий ${SAMPLE}`,
     }).toEqual({
       module,
-      достаёт: true,
-      подсказка: `добавь в content шаблон, покрывающий ${ОБРАЗЕЦ}`,
+      reaches: true,
+      hint: `добавь в content шаблон, покрывающий ${SAMPLE}`,
     });
   });
 });

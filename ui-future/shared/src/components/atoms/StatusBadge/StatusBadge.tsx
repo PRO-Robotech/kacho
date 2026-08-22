@@ -9,6 +9,31 @@ import type { CSSProperties } from "react";
 
 type Tone = "ok" | "info" | "warn" | "muted" | "error" | "violet";
 
+/**
+ * Форма пилюли состояния — ОДНА на продукт, поэтому она объявлена здесь и
+ * импортируется всеми, кто рисует состояние (значок статуса, признак открытости
+ * площадки). Прежде форму задавал набор Tailwind-классов, и второй такой же
+ * набор жил в соседнем атоме: правка одного до другого не доезжала.
+ *
+ * Числа — из целевого оформления: компактный отступ, радиус 6 (ряд «тег/код»),
+ * кегль 11 и вес 560 — тон читается, но пилюля не спорит с именем ресурса
+ * рядом. Граница берётся В ТОН заливки, поэтому здесь задан только её вид и
+ * толщина; цвет приходит из набора тона.
+ */
+export const statusPillShape: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  height: 20,
+  padding: "0 7px",
+  borderRadius: 6,
+  borderWidth: 1,
+  borderStyle: "solid",
+  fontSize: 11,
+  fontWeight: 560,
+  lineHeight: 1,
+  whiteSpace: "nowrap",
+};
+
 const TONE_STYLE: Record<Tone, CSSProperties> = {
   ok: {
     background: "var(--status-ok-bg)",
@@ -41,6 +66,12 @@ const TONE_STYLE: Record<Tone, CSSProperties> = {
     borderColor: "var(--status-violet-border)",
   },
 };
+
+/** Стиль пилюли целиком: форма + тон. Тон стоит ПОСЛЕ формы — цвет границы
+ *  приходит из него и перекрыть его формой нельзя. */
+export function statusPillStyle(tone: Tone): CSSProperties {
+  return { ...statusPillShape, ...TONE_STYLE[tone] };
+}
 
 const TONE_BY_STATUS: Record<string, Tone> = {
   ACTIVE: "ok",
@@ -84,12 +115,5 @@ export function StatusBadge({ state }: { state?: string }) {
   }
   const display = displayLabel(state);
   const tone = TONE_BY_STATUS[display] ?? "muted";
-  return (
-    <span
-      className="inline-flex items-center rounded px-1.5 h-[20px] text-[11px] font-medium leading-none border"
-      style={TONE_STYLE[tone]}
-    >
-      {display.charAt(0) + display.slice(1).toLowerCase()}
-    </span>
-  );
+  return <span style={statusPillStyle(tone)}>{display.charAt(0) + display.slice(1).toLowerCase()}</span>;
 }

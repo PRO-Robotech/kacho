@@ -48,22 +48,31 @@ describe("IpamUtilizationBar", () => {
     expect(fillOf(under.container).style.width).toBe("0%");
   });
 
-  it("меняет цвет на порогах 30 / 70 / 90", () => {
+  it("меняет тон на порогах 30 / 70 / 90", () => {
     // Порог — единственный сигнал «пора расширять пул»; заезд границы на
     // единицу делает предупреждение поздним.
+    //
+    // Наблюдаемое — ЗАЛИВКА, а не имя класса: тон приходит из набора состояний
+    // продукта (`--status-*`) инлайн-стилем, и обе темы читают его сами. Проба
+    // на имя класса палитры Tailwind закрепляла бы ровно тот хардкод, из-за
+    // которого полоса не участвовала в теме.
     const cases: Array<[number, string]> = [
-      [29, "bg-emerald-500"],
-      [30, "bg-blue-500"],
-      [69, "bg-blue-500"],
-      [70, "bg-orange-400"],
-      [89, "bg-orange-400"],
-      [90, "bg-red-500"],
-      [100, "bg-red-500"],
+      [29, "var(--status-ok-fg)"],
+      [30, "var(--status-info-fg)"],
+      [69, "var(--status-info-fg)"],
+      [70, "var(--status-warn-fg)"],
+      [89, "var(--status-warn-fg)"],
+      [90, "var(--status-error-fg)"],
+      [100, "var(--status-error-fg)"],
     ];
-    for (const [pct, cls] of cases) {
+    for (const [pct, tone] of cases) {
       const { container } = render(<IpamUtilizationBar total={100} used={pct} />);
-      expect(fillOf(container).className).toContain(cls);
+      expect(fillOf(container).style.background).toBe(tone);
     }
+
+    // Контроль в обратную сторону: четыре порога обязаны дать ЧЕТЫРЕ разных
+    // тона. Без него набор совпадений зеленел бы и на полосе одного цвета.
+    expect(new Set(cases.map(([, tone]) => tone)).size).toBe(4);
   });
 
   it("показывает подпись, когда она есть, и не заводит пустой строки, когда её нет", () => {
@@ -96,9 +105,9 @@ describe("CIDRBreakdown", () => {
 
     const fills = container.querySelectorAll<HTMLElement>("tbody [style*='width']");
     expect(fills).toHaveLength(2);
-    // 250/256 = 97% — красный порог; 10/256 = 3% — зелёный.
-    expect(fills[0].className).toContain("bg-red-500");
-    expect(fills[1].className).toContain("bg-emerald-500");
+    // 250/256 = 97% — тон ошибки; 10/256 = 3% — тон здоровья.
+    expect(fills[0].style.background).toBe("var(--status-error-fg)");
+    expect(fills[1].style.background).toBe("var(--status-ok-fg)");
   });
 
   it("блок нулевого размера не делит на ноль", () => {

@@ -18,7 +18,7 @@
 
 import { countedInProject, kindLabel, quotaRows, sourceLabel, type Quota } from "./quota-view";
 
-const плоский: Quota = {
+const flat: Quota = {
   kind: "vpc.network",
   limit: 5,
   used: 2,
@@ -28,7 +28,7 @@ const плоский: Quota = {
   carrier_id: "prj-1",
 };
 
-const вложенный: Quota = {
+const nested: Quota = {
   kind: "vpc.network.subnet",
   limit: 10,
   used: 0,
@@ -40,37 +40,37 @@ const вложенный: Quota = {
 
 describe("что считается в проекте, а что внутри носителя", () => {
   it("плоский вид с носителем-проектом считается в проекте", () => {
-    expect(countedInProject(плоский)).toBe(true);
+    expect(countedInProject(flat)).toBe(true);
   });
 
   it("вид, названный носителем чужого типа, — не считается", () => {
-    expect(countedInProject(вложенный)).toBe(false);
+    expect(countedInProject(nested)).toBe(false);
   });
 
   it("вложенный вид не считается в проекте, даже когда носитель назван проектом", () => {
     // Ровно то состояние, в котором владелец находится сегодня: носитель
     // проставлен константой и говорит «проект» про все виды. Признак формы имени
     // не зависит от этой ошибки и не даёт показать 0 как факт.
-    expect(countedInProject({ ...вложенный, carrier_type: "project" })).toBe(false);
+    expect(countedInProject({ ...nested, carrier_type: "project" })).toBe(false);
   });
 
   it("оба признака требуются вместе — контроль в обе стороны", () => {
-    expect(countedInProject({ ...плоский, carrier_type: "vpc.network" })).toBe(false);
-    expect(countedInProject({ ...плоский, kind: "vpc.subnet.networkInterface" })).toBe(false);
-    expect(countedInProject(плоский)).toBe(true);
+    expect(countedInProject({ ...flat, carrier_type: "vpc.network" })).toBe(false);
+    expect(countedInProject({ ...flat, kind: "vpc.subnet.networkInterface" })).toBe(false);
+    expect(countedInProject(flat)).toBe(true);
   });
 });
 
 describe("строки витрины", () => {
   it("потребление показывается только там, где оно есть", () => {
-    const rows = quotaRows([плоский, вложенный]);
+    const rows = quotaRows([flat, nested]);
     expect(rows[0].used).toBe(2);
     // Не 0 и не прочерк: значения нет вовсе, и столбец обязан молчать.
     expect(rows[1].used).toBeNull();
   });
 
   it("строка без потребления называет носителя", () => {
-    const rows = quotaRows([вложенный]);
+    const rows = quotaRows([nested]);
     expect(rows[0].carrierLabel).toContain("сет");
     expect(rows[0].used).toBeNull();
   });
@@ -78,7 +78,7 @@ describe("строки витрины", () => {
   it("предел 0 — это предел, а не отсутствие предела", () => {
     // 0 означает «ничего нельзя», и спутать его с «не задано» нельзя: арендатор
     // прочитал бы отказ как сбой.
-    const rows = quotaRows([{ ...плоский, limit: 0 }]);
+    const rows = quotaRows([{ ...flat, limit: 0 }]);
     expect(rows[0].limit).toBe(0);
   });
 
@@ -86,9 +86,9 @@ describe("строки витрины", () => {
     // Ответ не обещает порядка; страница, показывающая его «как пришло», при
     // каждом обновлении переставляла бы строки под курсором читателя.
     const rows = quotaRows([
-      { ...плоский, kind: "vpc.subnet" },
-      { ...плоский, kind: "vpc.address" },
-      { ...плоский, kind: "vpc.network" },
+      { ...flat, kind: "vpc.subnet" },
+      { ...flat, kind: "vpc.address" },
+      { ...flat, kind: "vpc.network" },
     ]);
     expect(rows.map((r) => r.kind)).toEqual(["vpc.address", "vpc.network", "vpc.subnet"]);
   });
@@ -100,7 +100,7 @@ describe("вид, которого витрина не знала, всё рав
     // закрытый перечень, молча теряла бы новые пределы — то есть именно те, о
     // которых арендатор ещё не знает.
     expect(kindLabel("совсем.новый")).toBe("совсем.новый");
-    const rows = quotaRows([{ ...плоский, kind: "совсем.новый.вид" }]);
+    const rows = quotaRows([{ ...flat, kind: "совсем.новый.вид" }]);
     expect(rows).toHaveLength(1);
     expect(rows[0].kind).toBe("совсем.новый.вид");
   });
@@ -113,12 +113,12 @@ describe("вид, которого витрина не знала, всё рав
 
 describe("источник значения назван так, чтобы было понятно, куда идти", () => {
   it("платформенное умолчание не приписывается ни проекту, ни аккаунту", () => {
-    expect(sourceLabel({ ...плоский, source_scope: "DEFAULT", source_scope_id: "" })).toMatch(/умолчание/i);
+    expect(sourceLabel({ ...flat, source_scope: "DEFAULT", source_scope_id: "" })).toMatch(/умолчание/i);
   });
 
   it("предел аккаунта и предел проекта различимы", () => {
-    const acc = sourceLabel({ ...плоский, source_scope: "ACCOUNT", source_scope_id: "acc-1" });
-    const prj = sourceLabel({ ...плоский, source_scope: "PROJECT", source_scope_id: "prj-1" });
+    const acc = sourceLabel({ ...flat, source_scope: "ACCOUNT", source_scope_id: "acc-1" });
+    const prj = sourceLabel({ ...flat, source_scope: "PROJECT", source_scope_id: "prj-1" });
     expect(acc).not.toBe(prj);
     expect(acc).toContain("acc-1");
     expect(prj).toContain("prj-1");
@@ -127,6 +127,6 @@ describe("источник значения назван так, чтобы бы
   it("неизвестный источник не выдаётся за известный", () => {
     // Молчаливый откат к «умолчанию» приписал бы платформе предел, который
     // задал кто-то другой, — и увёл бы арендатора не туда.
-    expect(sourceLabel({ ...плоский, source_scope: "SCOPE_UNSPECIFIED", source_scope_id: "" })).toMatch(/не назван/i);
+    expect(sourceLabel({ ...flat, source_scope: "SCOPE_UNSPECIFIED", source_scope_id: "" })).toMatch(/не назван/i);
   });
 });

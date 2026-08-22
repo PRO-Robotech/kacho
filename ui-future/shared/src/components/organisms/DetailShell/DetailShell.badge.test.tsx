@@ -27,7 +27,6 @@ function show(tabs: { id: string; label: string; count?: number }[]) {
   return render(
     <MemoryRouter initialEntries={["/networks/net-1"]}>
       <DetailShell
-        resourceLabel="Сеть"
         resourceName="web"
         tabs={tabs.map((t) => ({ ...t, render: () => <div>содержимое {t.id}</div> }))}
       />

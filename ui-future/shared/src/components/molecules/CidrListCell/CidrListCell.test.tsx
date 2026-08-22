@@ -32,3 +32,30 @@ describe("CidrListCell", () => {
     expect(cidrItems("a", ["b", "", 7, null], undefined, "")).toEqual(["a", "b"]);
   });
 });
+
+// Каждый префикс стоит СВОЕЙ строкой — и одной. Перенос ВНУТРИ префикса рвал бы
+// `fd00:1234:5678:9abc::/64` посреди адреса и делал высоту строки списка
+// функцией ширины колонки.
+//
+// Обрезка у CIDR стоит дороже, чем у имени: значение несёт длина префикса, и
+// она стоит В КОНЦЕ — то есть теряется первой. Поэтому вместе с обрезкой обязана
+// приезжать подсказка с полным значением; проба утверждает обе половины, иначе
+// «одна строка» была бы куплена молчаливой потерей `/64`.
+describe("CidrListCell — одна строка на префикс", () => {
+  const V6 = "fd00:1234:5678:9abc::/64";
+
+  it("префикс не переносится и обрезается многоточием", () => {
+    render(<CidrListCell items={[V6]} />);
+    const line = screen.getByText(V6);
+
+    expect(line.style.whiteSpace).toBe("nowrap");
+    expect(line.style.textOverflow).toBe("ellipsis");
+    expect(line.style.overflow).toBe("hidden");
+  });
+
+  it("длина префикса не теряется молча: полное значение в подсказке", () => {
+    render(<CidrListCell items={[V6]} />);
+
+    expect(screen.getByText(V6)).toHaveAttribute("title", V6);
+  });
+});

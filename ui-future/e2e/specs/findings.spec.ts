@@ -39,7 +39,7 @@ import { tenantWithProject, createdResourceId, runTag } from "./fixtures";
 const SURFACE = ".kc-surface";
 
 /** ждёт, пока страница модуля отрисовалась, и отдаёт число её экземпляров. */
-async function экземпляровСтраницы(page: Page): Promise<number> {
+async function pageInstances(page: Page): Promise<number> {
   await expect(page.locator(SURFACE).first(), `страница не отрисовалась вовсе: ни одного ${SURFACE}`).toBeVisible({
     timeout: 30_000,
   });
@@ -59,20 +59,20 @@ test("compute: пять адресов раздела, страница одна
   test.setTimeout(180_000);
   const { projectId } = await tenantWithProject(page);
 
-  const адреса = [
-    { имя: "список машин", путь: "compute/instances" },
-    { имя: "создание машины", путь: "compute/instances/create" },
-    { имя: "типы машин", путь: "compute/machine-types" },
-    { имя: "группы размещения", путь: "compute/placement-groups" },
-    { имя: "ключи доступа", путь: "compute/guest-access-keys" },
+  const routes = [
+    { name: "список машин", path: "compute/instances" },
+    { name: "создание машины", path: "compute/instances/create" },
+    { name: "типы машин", path: "compute/machine-types" },
+    { name: "группы размещения", path: "compute/placement-groups" },
+    { name: "ключи доступа", path: "compute/guest-access-keys" },
   ];
 
-  for (const а of адреса) {
-    await page.goto(`/projects/${projectId}/${а.путь}`, { waitUntil: "domcontentloaded" });
+  for (const route of routes) {
+    await page.goto(`/projects/${projectId}/${route.path}`, { waitUntil: "domcontentloaded" });
 
     expect(
-      await экземпляровСтраницы(page),
-      `«${а.имя}»: страница присутствует не в одном экземпляре. Два — это два ` +
+      await pageInstances(page),
+      `«${route.name}»: страница присутствует не в одном экземпляре. Два — это два ` +
         `дерева маршрутов на одном адресе (каждое со своим состоянием и своей ` +
         `полосой прокрутки); ноль — общая оболочка сменила подложку, и тогда ` +
         `перемерять надо маркер, а не чинить compute`,
@@ -80,16 +80,16 @@ test("compute: пять адресов раздела, страница одна
 
     expect(
       new URL(page.url()).pathname,
-      `«${а.имя}»: адрес сменился сам — раздел перехвачен ловушкой «всё остальное» ` +
+      `«${route.name}»: адрес сменился сам — раздел перехвачен ловушкой «всё остальное» ` +
         `чужого дерева маршрутов и для оператора не существует`,
-    ).toBe(`/projects/${projectId}/${а.путь}`);
+    ).toBe(`/projects/${projectId}/${route.path}`);
   }
 
   // Положительный контроль на ИСПРАВНОМ разделе: если единица не получается и
   // здесь, дело в маркере или в оболочке, а не в compute.
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
   expect(
-    await экземпляровСтраницы(page),
+    await pageInstances(page),
     "контрольный раздел (сети) тоже не дал ровно одного экземпляра — " +
       "значит меряется не удвоение compute, а сам способ счёта",
   ).toBe(1);
@@ -106,24 +106,24 @@ test("vpc: правка маршрутов без изменений остав�
   // у ВСЕХ строк, включая нетронутые, без единой ошибки на экране.
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
-  const тег = runTag();
+  const tag = runTag();
 
-  const сеть = await page.request.post("/vpc/v1/networks", {
-    data: { projectId, name: `net-rt-${тег}`, ipv4CidrBlocks: ["10.91.0.0/16"] },
+  const network = await page.request.post("/vpc/v1/networks", {
+    data: { projectId, name: `net-rt-${tag}`, ipv4CidrBlocks: ["10.91.0.0/16"] },
   });
-  const netId = await createdResourceId(page, сеть, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под таблицу");
+  const netId = await createdResourceId(page, network, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под таблицу");
 
-  const таблица = await page.request.post("/vpc/v1/routeTables", {
+  const table = await page.request.post("/vpc/v1/routeTables", {
     data: {
       projectId,
       networkId: netId,
-      name: `rt-${тег}`,
+      name: `rt-${tag}`,
       staticRoutes: [{ destinationPrefix: "10.91.5.0/24", nextHopAddress: "10.91.0.9", labels: { proba: "ostavit" } }],
     },
   });
   const rtId = await createdResourceId(
     page,
-    таблица,
+    table,
     "routeTableId",
     (id) => `/vpc/v1/routeTables/${id}`,
     "таблица маршрутизации с меткой на маршруте",
@@ -131,14 +131,14 @@ test("vpc: правка маршрутов без изменений остав�
 
   // Условие пробы: метка ДЕЙСТВИТЕЛЬНО записана краем. Без этой строки проба
   // зеленела бы на продукте, который метки вообще не принимает.
-  const метки = async () => {
+  const labels = async () => {
     const r = await page.request.get(`/vpc/v1/routeTables/${rtId}`);
     if (!r.ok()) return null;
     const b = (await r.json()) as { staticRoutes?: Array<{ labels?: Record<string, string> }> };
     return b.staticRoutes?.[0]?.labels ?? {};
   };
   expect(
-    await метки(),
+    await labels(),
     "край не сохранил метку при создании — условие пробы не создано, и о панели " +
       "правки этот прогон не говорит ничего",
   ).toMatchObject({ proba: "ostavit" });
@@ -151,9 +151,9 @@ test("vpc: правка маршрутов без изменений остав�
   // них совпадают дословно. `.first()` брал кнопку РЕСУРСА, открывал общую форму
   // правки, где маршрутов нет вовсе, и запрос панели не уходил никогда: проба
   // падала по таймауту ожидания ответа, обвиняя продукт в том, чего он не делал.
-  const панельМаршрутов = page.getByTestId("routes-panel");
+  const routesPanel = page.getByTestId("routes-panel");
   await expect(
-    панельМаршрутов,
+    routesPanel,
     "панель статических маршрутов не отрисовалась — условие пробы не создано",
   ).toBeVisible({ timeout: 30_000 });
 
@@ -161,34 +161,34 @@ test("vpc: правка маршрутов без изменений остав�
   // нажималось бы по ещё пустому списку, панель засевала бы пустой черновик, и
   // «Сохранить» осталось бы выключенным — снова таймаут вместо предмета.
   await expect(
-    панельМаршрутов.getByText("10.91.5.0/24"),
+    routesPanel.getByText("10.91.5.0/24"),
     "панель не показала созданный маршрут — правится пустой список, а не он",
   ).toBeVisible({ timeout: 30_000 });
 
-  const редактировать = панельМаршрутов.getByRole("button", { name: "Редактировать" });
+  const editButton = routesPanel.getByRole("button", { name: "Редактировать" });
   await expect(
-    редактировать,
+    editButton,
     "в панели маршрутов нет действия «Редактировать»",
   ).toBeVisible({ timeout: 30_000 });
-  await редактировать.click();
+  await editButton.click();
 
-  const сохранить = панельМаршрутов.getByRole("button", { name: "Сохранить" });
-  await expect(сохранить, "панель не перешла в режим правки: нет действия «Сохранить»").toBeVisible({
+  const saveButton = routesPanel.getByRole("button", { name: "Сохранить" });
+  await expect(saveButton, "панель не перешла в режим правки: нет действия «Сохранить»").toBeVisible({
     timeout: 15_000,
   });
 
   // Сохранение обязано ДОЕХАТЬ до края — иначе «метка на месте» означало бы лишь,
   // что кнопка ничего не сделала, и проба была бы зелёной вхолостую.
-  const [ответ] = await Promise.all([
+  const [response] = await Promise.all([
     page.waitForResponse((r) => r.url().includes(`/vpc/v1/routeTables/${rtId}`) && r.request().method() === "PATCH", {
       timeout: 40_000,
     }),
-    сохранить.click(),
+    saveButton.click(),
   ]);
-  expect(ответ.status(), "сохранение маршрутов отвергнуто краем").toBe(200);
+  expect(response.status(), "сохранение маршрутов отвергнуто краем").toBe(200);
 
   await expect
-    .poll(метки, {
+    .poll(labels, {
       message:
         "сохранение БЕЗ ЕДИНОЙ ПРАВКИ стёрло метку маршрута. Набор маршрутов " +
         "заменяется целиком, поэтому поле, которого нет в черновике панели, " +
@@ -214,34 +214,34 @@ test("iam: часть почты сужает список пользовате�
 
   await page.goto("/iam/users", { waitUntil: "domcontentloaded" });
 
-  const строка = page.getByText(email, { exact: false }).first();
+  const row = page.getByText(email, { exact: false }).first();
   await expect(
-    строка,
+    row,
     `собственной строки арендатора (${email}) нет на странице пользователей — ` +
       `условие пробы не создано: сужать нечего, и о поиске этот прогон не говорит ничего`,
   ).toBeVisible({ timeout: 60_000 });
 
-  const поиск = page.getByPlaceholder(/Поиск|Фильтр/).first();
+  const search = page.getByPlaceholder(/Поиск|Фильтр/).first();
   await expect(
-    поиск,
+    search,
     "на странице пользователей нет поля поиска — искать почту нечем " +
       "(двести первый пользователь при этом недостижим и прокруткой)",
   ).toBeVisible({ timeout: 15_000 });
 
   // Контроль, что найденное поле — ДЕЙСТВИТЕЛЬНО поиск, а не что-то похожее: на
   // заведомо отсутствующем вводе строка обязана исчезнуть.
-  await поиск.fill(`нет-такого-${runTag()}`);
+  await search.fill(`нет-такого-${runTag()}`);
   await expect(
-    строка,
+    row,
     "поле не сузило список ни на чём — значит это не поиск, и утверждение ниже было бы про другое",
   ).toBeHidden({ timeout: 15_000 });
 
   // Предмет: часть ПОЧТЫ обязана находить своего владельца.
-  const частьПочты = email.split("@")[0].slice(-10);
-  await поиск.fill(частьПочты);
+  const emailPart = email.split("@")[0].slice(-10);
+  await search.fill(emailPart);
   await expect(
-    строка,
-    `поиск по части почты («${частьПочты}») не находит пользователя ${email}. ` +
+    row,
+    `поиск по части почты («${emailPart}») не находит пользователя ${email}. ` +
       `Сужение идёт по имени и идентификатору, а имени у пользователя нет — ` +
       `то есть искать нечем именно тем, чем пользователя и знают`,
   ).toBeVisible({ timeout: 15_000 });
@@ -261,38 +261,59 @@ test("vpc: заход по адресу вкладки правил показы
   // сообщения и из закладки.
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
-  const тег = runTag();
+  const tag = runTag();
 
-  const сеть = await page.request.post("/vpc/v1/networks", {
-    data: { projectId, name: `net-sg-${тег}`, ipv4CidrBlocks: ["10.92.0.0/16"] },
+  const network = await page.request.post("/vpc/v1/networks", {
+    data: { projectId, name: `net-sg-${tag}`, ipv4CidrBlocks: ["10.92.0.0/16"] },
   });
-  const netId = await createdResourceId(page, сеть, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под группу");
+  const netId = await createdResourceId(page, network, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под группу");
 
-  const имяГруппы = `sg-${тег}`;
-  const группа = await page.request.post("/vpc/v1/securityGroups", {
-    data: { projectId, networkId: netId, name: имяГруппы },
+  const groupName = `sg-${tag}`;
+  const group = await page.request.post("/vpc/v1/securityGroups", {
+    data: { projectId, networkId: netId, name: groupName },
   });
   const sgId = await createdResourceId(
     page,
-    группа,
+    group,
     "securityGroupId",
     (id) => `/vpc/v1/securityGroups/${id}`,
     "группа безопасности",
   );
 
-  const адресВкладки = `/projects/${projectId}/vpc/security-groups/${sgId}/rules`;
-  await page.goto(адресВкладки, { waitUntil: "domcontentloaded" });
+  // ПРАВИЛО В ГРУППЕ — условие второй половины пробы, а не украшение.
+  //
+  // Групповые ручки («Выбрать все», «Удалить») показываются только когда
+  // выбирать есть что: на пустой таблице отключённая кнопка удаления —
+  // форма без содержания, она ничего не выбирает и ни на что не отвечает.
+  // Прежде проба создавала группу БЕЗ правил и всё же требовала кнопку
+  // удаления — то есть утверждала о ручке, которой на пустой вкладке
+  // неоткуда взяться. Теперь предмет создан, и утверждение применимо.
+  const rule = await page.request.patch(`/vpc/v1/securityGroups/${sgId}/rules`, {
+    data: {
+      additionRuleSpecs: [
+        { description: "проба вкладки правил", direction: "INGRESS", cidrBlocks: { v4CidrBlocks: ["10.92.1.0/24"] } },
+      ],
+    },
+  });
+  expect(
+    rule.status(),
+    `правило в группу не добавлено: край ответил ${rule.status()} ${(await rule.text()).slice(0, 200)}. ` +
+      `Это УСЛОВИЕ пробы, а не её предмет`,
+  ).toBe(200);
+
+  const tabUrl = `/projects/${projectId}/vpc/security-groups/${sgId}/rules`;
+  await page.goto(tabUrl, { waitUntil: "domcontentloaded" });
 
   // Положительный контроль: карточка группы отрисована и адрес не сменился. Без
   // него «кнопок не видно» было бы неотличимо от «страница не открылась».
   await expect(
-    page.getByText(имяГруппы, { exact: false }).first(),
-    `карточка группы ${имяГруппы} не отрисовалась по прямому адресу вкладки правил — условие пробы не создано`,
+    page.getByText(groupName, { exact: false }).first(),
+    `карточка группы ${groupName} не отрисовалась по прямому адресу вкладки правил — условие пробы не создано`,
   ).toBeVisible({ timeout: 60_000 });
   expect(
     new URL(page.url()).pathname,
     "адрес вкладки правил сменился сам — вкладка по прямому заходу недостижима",
-  ).toBe(адресВкладки);
+  ).toBe(tabUrl);
 
   await expect(
     page.getByRole("button", { name: /Добавить правило/ }).first(),
@@ -325,7 +346,7 @@ test("vpc: заход по адресу вкладки правил показы
  * ЭТОТ файл, иначе она не дойдёт до нуля никогда — гейт считал бы находкой сам
  * себя.
  */
-const ЧУЖИЕ_ПОСТАВЩИКИ = /zitadel|keycloak|auth0|okta|cognito/i;
+const FOREIGN_PROVIDERS = /zitadel|keycloak|auth0|okta|cognito/i;
 
 test("iam: страница пользователей не называет стороннего поставщика личности", async ({ page }) => {
   // verifies #421.
@@ -348,11 +369,11 @@ test("iam: страница пользователей не называет с�
       "отсутствии чужого имени на такой странице ничего не значило бы",
   ).toBeVisible({ timeout: 60_000 });
 
-  const видимыйТекст = await page.locator("body").innerText();
-  const найдено = видимыйТекст.match(ЧУЖИЕ_ПОСТАВЩИКИ);
+  const visibleText = await page.locator("body").innerText();
+  const found = visibleText.match(FOREIGN_PROVIDERS);
   expect(
-    найдено?.[0] ?? null,
-    `страница пользователей называет стороннего поставщика личности («${найдено?.[0] ?? ""}»). ` +
+    found?.[0] ?? null,
+    `страница пользователей называет стороннего поставщика личности («${found?.[0] ?? ""}»). ` +
       `Арендатор входит через фасад iam, и подпись поля обязана говорить о том, ` +
       `что это за поле, а не о том, чей это продукт`,
   ).toBeNull();
@@ -360,70 +381,94 @@ test("iam: страница пользователей не называет с�
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-test("vpc: значок копирования у имени не виден в покое и раскрывается наведением", async ({ page }) => {
-  // verifies #480 — КРАСНАЯ до фикса задачи.
+test("vpc: значок копирования виден всегда, а наведение меняет только тон", async ({ page }) => {
+  // verifies #480 — предмет ПЕРЕПИСАН решением владельца (2026-08-21).
   //
-  // Дефект: значок копирования стоит у КАЖДОГО имени постоянно и в полную силу
-  // цвета текста, тогда как до #446 его не было видно вовсе — он появлялся
-  // наведением на имя. Владелец на живом стенде: «кнопка копировать, слишком
-  // контрастная и большая, нужно сделать как было в Name у ресурсов до
-  // изменения, там меня все устраивало».
+  // Раньше проба требовала обратного: значок невидим в покое и раскрывается
+  // наведением на имя. Владелец это отменил дословно — «кнопка копирования
+  // является частью компонента ссылки и идентификатора, а не справа в таблице с
+  // подсветкой без наведения», и отдельно: «всегда активны, а не только при
+  // наведении».
   //
-  // Сдержанность потерялась не решением, а как побочный эффект: #446 развела
-  // ссылку и кнопку (кнопка внутри `<a>` гасила переход), текст имени перестал
-  // быть потомком кнопки, и у правила `group-hover` не осталось якоря.
+  // Довод, по которому проявление снято: действие, которого не видно, пока на
+  // него не навели, недоступно с сенсорного ввода ВООБЩЕ — там наведения нет
+  // by construction, — а глазами страницу нельзя прочесть как список
+  // возможностей. Сдержанность теперь держит ТОН (значок тусклый, пока к нему не
+  // потянулись), а не отсутствие.
   //
-  // ПОЧЕМУ БРАУЗЕРОМ. Видимость здесь решает КАСКАД: значок раскрывает
-  // `:hover` предка, то есть правило живёт не в элементе, а в отношении двух.
-  // jsdom каскада не считает вовсе — модульная проба рядом
-  // (`ResourceLink.test.tsx`) утверждает наличие якоря и его охват, но о
-  // вычисленной прозрачности не может сказать ни она, ни любая другая.
+  // ПОЧЕМУ БРАУЗЕРОМ. Обе половины утверждения решает КАСКАД: видимость — своя
+  // прозрачность, тон — правило от наведения на предка. jsdom каскада не считает
+  // вовсе, поэтому модульная проба рядом (ResourceLink.test.tsx) может сказать
+  // только о наличии классов, но не о вычисленном значении.
   test.setTimeout(180_000);
   const { projectId } = await tenantWithProject(page);
 
-  const имя = `net-copy-${runTag()}`;
-  const сеть = await page.request.post("/vpc/v1/networks", {
-    data: { projectId, name: имя, ipv4CidrBlocks: ["10.94.0.0/16"] },
+  const name = `net-copy-${runTag()}`;
+  const network = await page.request.post("/vpc/v1/networks", {
+    data: { projectId, name: name, ipv4CidrBlocks: ["10.94.0.0/16"] },
   });
-  await createdResourceId(page, сеть, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под пробу копирования");
+  await createdResourceId(page, network, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть под пробу копирования");
 
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
 
-  const ссылкаИмени = page.getByRole("link", { name: имя }).first();
+  const nameLink = page.getByRole("link", { name: name }).first();
   await expect(
-    ссылкаИмени,
-    `имени ${имя} нет в списке ссылкой — УСЛОВИЕ пробы не создано: о значке ` +
+    nameLink,
+    `имени ${name} нет в списке ссылкой — УСЛОВИЕ пробы не создано: о значке ` +
       `копирования такой прогон не говорит ничего`,
   ).toBeVisible({ timeout: 60_000 });
 
   // Значок берётся из ТОЙ ЖЕ строки: на странице их столько же, сколько имён.
-  const строка = page.locator("tr").filter({ has: page.getByRole("link", { name: имя }) }).first();
-  const значок = строка.getByRole("button", { name: /[Сс]копировать/ }).locator("svg").first();
+  const row = page.locator("tr").filter({ has: page.getByRole("link", { name: name }) }).first();
+  const button = row.getByRole("button", { name: /[Сс]копировать/ }).first();
   await expect(
-    значок,
-    "у имени нет кнопки копирования вовсе — тогда «сдержанно» означало бы «нечем копировать»",
+    button,
+    "у имени нет кнопки копирования вовсе — тогда «видна всегда» означало бы «нечем копировать»",
   ).toBeAttached({ timeout: 15_000 });
 
   // Курсор уводится заведомо в сторону: оставшись над строкой, он измерил бы
-  // «покой» при наведении — и проба зазеленела бы прямо на дефекте.
+  // покой при наведении, и обе половины утверждения смешались бы.
   await page.mouse.move(0, 0);
 
-  // ПРЕДМЕТ, часть 1 — в покое значка не видно.
+  // ПРЕДМЕТ, часть 1 — в покое значок ВИДЕН. Ровно то, что прежняя редакция
+  // запрещала: предмет пробы перевёрнут решением владельца, а не ослаблен.
   await expect(
-    значок,
-    "значок копирования виден в покое: он стоит у каждого имени постоянно и " +
-      "спорит с самим именем за внимание",
-  ).toHaveCSS("opacity", "0");
+    button,
+    "значок копирования не виден в покое — с сенсорного ввода копирование " +
+      "недостижимо вовсе, а глазами страницу нельзя прочесть как список действий",
+  ).toBeVisible();
 
-  // ПРЕДМЕТ, часть 2 — наведение НА ИМЯ его раскрывает. Без этой половины
-  // «не виден» зеленело бы и на значке, невидимом НАВСЕГДА, — а это тише
-  // нынешнего дефекта и потому хуже: копирования просто не стало бы.
-  await ссылкаИмени.hover();
+  // ПРЕДМЕТ, часть 2 — наведение на имя усиливает ТОН, а не раскрывает значок.
+  // Без этой половины «виден всегда» зеленело бы и на значке, который никак не
+  // отзывается на подход, — то есть на кнопке, не отличимой от подписи.
+  //
+  // Тон мерится на САМОМ ЗНАЧКЕ, а не на кнопке-обёртке. Причина не в удобстве:
+  // правило `group-hover` объявлено у значка (`CopyableName`), и якорем ему
+  // служит обёртка имени — то есть тон обязан меняться на подходе К ИМЕНИ, а не
+  // на двенадцати пикселях самой кнопки. Обёртка при этом свой цвет не меняет
+  // by construction: её `hover:` отвечает на наведение НА НЕЁ.
+  //
+  // Прежняя редакция мерила обёртку и была зелёной, пока значок был её прямым
+  // потомком без своего правила. Сведение ручек копирования к одному компоненту
+  // структуру изменило — свойство осталось тем же, узел стал другим.
+  const icon = button.locator("svg").first();
   await expect(
-    значок,
-    "наведение на имя не раскрыло значок — копирование недостижимо: в покое " +
-      "его не видно, и появиться от наведения на то, к чему он относится, нечему",
-  ).toHaveCSS("opacity", "1");
+    icon,
+    "у кнопки копирования нет значка — мерить тон не на чем",
+  ).toBeAttached({ timeout: 15_000 });
+  const toneAtRest = await icon.evaluate((el) => getComputedStyle(el).color);
+  await nameLink.hover();
+  await expect
+    .poll(
+      async () => icon.evaluate((el) => getComputedStyle(el).color),
+      {
+        message:
+          "тон значка не изменился при наведении на имя — кнопка ничем не " +
+          "отзывается на подход и читается как неактивная подпись",
+        timeout: 5_000,
+      },
+    )
+    .not.toBe(toneAtRest);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -449,28 +494,28 @@ test("vpc: форма правил называет те цели, которы�
   // Условие пробы: набор правил отрисовался. Утверждение об отсутствии слова
   // зеленеет на пустом экране, на 404 и на не загрузившемся модуле — то есть
   // ровно там, где оно ничего не проверяет.
-  const правила = page.locator(".ant-card").filter({ hasText: "Добавить правило" }).first();
+  const rulesCard = page.locator(".ant-card").filter({ hasText: "Добавить правило" }).first();
   await expect(
-    правила,
+    rulesCard,
     "на форме создания группы безопасности нет набора правил — читать нечего, и вывод о его подписи был бы ни о чём",
   ).toBeVisible({ timeout: 60_000 });
 
-  const текст = (await правила.innerText()).trim();
-  expect(текст.length, "набор правил отрисовался пустым").toBeGreaterThan(20);
+  const text = (await rulesCard.innerText()).trim();
+  expect(text.length, "набор правил отрисовался пустым").toBeGreaterThan(20);
 
   // ПРЕДМЕТ, часть 1 — названа цель, которую контракт ПРИНИМАЕТ.
   expect(
-    текст,
+    text,
     `подпись набора правил не называет набор префиксов — третью цель правила, ` +
-      `которую край принимает и форма умеет заполнять. Прочитано: «${текст.slice(0, 400)}»`,
+      `которую край принимает и форма умеет заполнять. Прочитано: «${text.slice(0, 400)}»`,
   ).toMatch(/набор префиксов/i);
 
   // ПРЕДМЕТ, часть 2 — не предложена цель, снятая с контракта. Обе половины
   // нужны: одна без другой оставляет ровно половину неправды.
   expect(
-    текст,
+    text,
     `подпись набора правил предлагает цель, снятую с контракта: край её не ` +
-      `принимает ни в каком виде, и выбравший её получит отказ. Прочитано: «${текст.slice(0, 400)}»`,
+      `принимает ни в каком виде, и выбравший её получит отказ. Прочитано: «${text.slice(0, 400)}»`,
   ).not.toMatch(/предустановленн/i);
 });
 
@@ -484,25 +529,25 @@ test("vpc: форма правил называет те цели, которы�
  * именно пункт и не требует знать разметку: положение на экране — это то, что
  * видит пользователь, а имя класса — нет.
  */
-async function положениеПункта(page: Page, подпись: string): Promise<{ x: number; y: number }> {
-  const все = page.getByText(подпись, { exact: true });
-  const сколько = await все.count();
-  expect(сколько, `подписи «${подпись}» нет на экране — раздел не отрисовался, и о его виде вывода нет`).toBeGreaterThan(
+async function itemPosition(page: Page, label: string): Promise<{ x: number; y: number }> {
+  const all = page.getByText(label, { exact: true });
+  const howMany = await all.count();
+  expect(howMany, `подписи «${label}» нет на экране — раздел не отрисовался, и о его виде вывода нет`).toBeGreaterThan(
     0,
   );
 
-  let лучшая: { x: number; y: number } | null = null;
-  for (let i = 0; i < сколько; i++) {
-    const box = await все.nth(i).boundingBox();
+  let best: { x: number; y: number } | null = null;
+  for (let i = 0; i < howMany; i++) {
+    const box = await all.nth(i).boundingBox();
     if (!box) continue; // невидимая отрисовка — не то, что читает пользователь
-    if (лучшая === null || box.x < лучшая.x) лучшая = { x: box.x, y: box.y };
+    if (best === null || box.x < best.x) best = { x: box.x, y: box.y };
   }
-  expect(лучшая, `подпись «${подпись}» есть в разметке, но не занимает места на экране`).not.toBeNull();
-  return лучшая!;
+  expect(best, `подпись «${label}» есть в разметке, но не занимает места на экране`).not.toBeNull();
+  return best!;
 }
 
 /** Стоят ли две подписи СТОЛБЦОМ (рейл), а не строкой (ряд вкладок поверх). */
-function столбцом(a: { x: number; y: number }, b: { x: number; y: number }): boolean {
+function inColumn(a: { x: number; y: number }, b: { x: number; y: number }): boolean {
   return Math.abs(a.x - b.x) <= 4 && Math.abs(a.y - b.y) >= 16;
 }
 
@@ -541,9 +586,9 @@ test("администрирование: обе части раздела ст�
     "часть раздела «Регионы/Зоны» не отрисовалась — условие пробы не создано",
   ).toBeVisible({ timeout: 60_000 });
 
-  const контроль = столбцом(await положениеПункта(page, "Регионы"), await положениеПункта(page, "Зоны"));
+  const control = inColumn(await itemPosition(page, "Регионы"), await itemPosition(page, "Зоны"));
   expect(
-    контроль,
+    control,
     "пункты уже общей части раздела не стоят столбцом — меряется не раздел, а " +
       "способ счёта либо сама общая оболочка",
   ).toBe(true);
@@ -557,20 +602,20 @@ test("администрирование: обе части раздела ст�
     "часть раздела «Токены и ключи» не отрисовалась — условие пробы не создано",
   ).toBeVisible({ timeout: 60_000 });
 
-  const ключи = await положениеПункта(page, "Ключи сервисных аккаунтов");
-  const токены = await положениеПункта(page, "Токены пользователей");
+  const keys = await itemPosition(page, "Ключи сервисных аккаунтов");
+  const tokens = await itemPosition(page, "Токены пользователей");
   expect(
-    столбцом(ключи, токены),
-    `пункты «Токены и ключи» стоят рядом (${Math.round(ключи.x)},${Math.round(ключи.y)}) и ` +
-      `(${Math.round(токены.x)},${Math.round(токены.y)}) — это ряд вкладок поверх содержимого, ` +
+    inColumn(keys, tokens),
+    `пункты «Токены и ключи» стоят рядом (${Math.round(keys.x)},${Math.round(keys.y)}) и ` +
+      `(${Math.round(tokens.x)},${Math.round(tokens.y)}) — это ряд вкладок поверх содержимого, ` +
       `а соседняя часть ТОГО ЖЕ раздела строит пункты столбцом слева. Пользователь читает ` +
       `разницу как «другое место продукта»`,
   ).toBe(true);
 
   // ── предмет: лишнего поясняющего абзаца нет ───────────────────────────────
-  const видимыйТекст = await page.locator("body").innerText();
+  const visibleText = await page.locator("body").innerText();
   expect(
-    видимыйТекст,
+    visibleText,
     "раздел пересказывает своё название поясняющим абзацем: «Выпуск и отзыв …» " +
       "стоит под заголовком «Токены и ключи». Единственный факт этого абзаца — " +
       "секрет показывается один раз — сказан там, где он нужен: в окне выпуска",
@@ -600,16 +645,16 @@ test("iam: меню строки пользователя не предлага�
 
   // УСЛОВИЕ: своя строка на странице есть. Без неё «пункта нет» неотличимо от
   // «страницы нет», и утверждение ничего не значит.
-  const строка = page.locator("tr").filter({ hasText: email }).first();
+  const row = page.locator("tr").filter({ hasText: email }).first();
   await expect(
-    строка,
+    row,
     `собственной строки арендатора (${email}) нет на странице пользователей — ` +
       `условие пробы не создано: меню открывать не над чем`,
   ).toBeVisible({ timeout: 60_000 });
 
-  const действия = строка.getByRole("button", { name: "Действия" }).first();
-  await expect(действия, "у строки пользователя нет меню действий вовсе").toBeVisible({ timeout: 15_000 });
-  await действия.click();
+  const actions = row.getByRole("button", { name: "Действия" }).first();
+  await expect(actions, "у строки пользователя нет меню действий вовсе").toBeVisible({ timeout: 15_000 });
+  await actions.click();
 
   // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: меню открылось и читается. Утверждение об отсутствии
   // пункта зеленеет на неоткрывшемся меню — то есть ровно там, где не проверяет
@@ -679,9 +724,9 @@ test("форма: звёздочка стоит СПРАВА от подписи
   await page.goto(`/projects/${projectId}/vpc/subnets/create`, { waitUntil: "domcontentloaded" });
 
   // УСЛОВИЕ: форма отрисовалась и на ней есть ОБЯЗАТЕЛЬНОЕ поле «Размещение».
-  const подпись = page.locator("label").filter({ hasText: "Размещение" }).first();
+  const label = page.locator("label").filter({ hasText: "Размещение" }).first();
   await expect(
-    подпись,
+    label,
     "на форме создания подсети нет подписи «Размещение» — форма не отрисовалась, и " +
       "вывод о положении звёздочки был бы ни о чём",
   ).toBeVisible({ timeout: 60_000 });
@@ -691,10 +736,10 @@ test("форма: звёздочка стоит СПРАВА от подписи
   // ОКАНЧИВАТЬСЯ. Умолчание библиотеки провалит это же утверждение — и это
   // верно: слева он или отсутствует как узел, решение владельца не исполнено
   // одинаково.
-  const текст = (await подпись.innerText()).trim();
+  const text = (await label.innerText()).trim();
   expect(
-    текст,
-    `подпись обязательного поля не оканчивается звёздочкой (прочитано: «${текст}»). ` +
+    text,
+    `подпись обязательного поля не оканчивается звёздочкой (прочитано: «${text}»). ` +
       `Либо её рисует библиотека псевдоэлементом слева, либо её нет вовсе — ` +
       `решение владельца «все звёздочки справа» не исполнено`,
   ).toMatch(/\*$/);
@@ -702,16 +747,16 @@ test("форма: звёздочка стоит СПРАВА от подписи
   // ПРЕДМЕТ, часть 2 — положение на экране. Текстовый порядок не исключает
   // вёрстки, уносящей значок влево (порядок в потоке правится одним свойством
   // стиля), поэтому утверждается и геометрия.
-  const значок = подпись.locator("span[aria-hidden]").filter({ hasText: "*" }).first();
-  const коробкаЗначка = await значок.boundingBox();
-  const коробкаПодписи = await подпись.boundingBox();
-  expect(коробкаЗначка, "звёздочка не занимает места на экране").not.toBeNull();
-  expect(коробкаПодписи, "подпись не занимает места на экране").not.toBeNull();
+  const icon = label.locator("span[aria-hidden]").filter({ hasText: "*" }).first();
+  const iconBox = await icon.boundingBox();
+  const labelBox = await label.boundingBox();
+  expect(iconBox, "звёздочка не занимает места на экране").not.toBeNull();
+  expect(labelBox, "подпись не занимает места на экране").not.toBeNull();
   expect(
-    коробкаЗначка!.x,
-    `звёздочка стоит слева от текста подписи: её левый край ${Math.round(коробкаЗначка!.x)}, ` +
-      `левый край подписи ${Math.round(коробкаПодписи!.x)}. Решение владельца — справа`,
-  ).toBeGreaterThan(коробкаПодписи!.x);
+    iconBox!.x,
+    `звёздочка стоит слева от текста подписи: её левый край ${Math.round(iconBox!.x)}, ` +
+      `левый край подписи ${Math.round(labelBox!.x)}. Решение владельца — справа`,
+  ).toBeGreaterThan(labelBox!.x);
 
   // КОНТРОЛЬ: значок помечает ОБЯЗАТЕЛЬНОСТЬ, а не все подписи подряд — verifies #608.
   // Без него оба утверждения выше зеленели бы на форме, где звёздочку получил
@@ -725,16 +770,16 @@ test("форма: звёздочка стоит СПРАВА от подписи
   // формы с контрактом владельца по всему дереву держит гейт
   // `shared/src/lib/required-mark-contract-parity.test.ts`; здесь — то, что
   // видит глаз на одной живой форме.
-  const необязательная = page.locator("label").filter({ hasText: "Имя" }).first();
+  const optionalLabel = page.locator("label").filter({ hasText: "Имя" }).first();
   await expect(
-    необязательная,
+    optionalLabel,
     "на форме создания подсети нет подписи «Имя» — контроль не на чем поставить, и " +
       "утверждение о звёздочке осталось бы без пары",
   ).toBeVisible({ timeout: 20_000 });
-  const текстНеобязательной = (await необязательная.innerText()).trim();
+  const optionalText = (await optionalLabel.innerText()).trim();
   expect(
-    текстНеобязательной,
-    `подпись НЕобязательного поля несёт звёздочку (прочитано: «${текстНеобязательной}»). ` +
+    optionalText,
+    `подпись НЕобязательного поля несёт звёздочку (прочитано: «${optionalText}»). ` +
       `Тогда значок помечает не обязательность, а факт наличия поля: арендатор не может ` +
       `отличить по нему, что он обязан заполнить`,
   ).not.toMatch(/\*$/);

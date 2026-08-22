@@ -20,7 +20,7 @@ interface Call {
 }
 let calls: Call[] = [];
 
-const пределы = [
+const limits = [
   { id: "lim-1", scope: "DEFAULT", scope_id: "", kind: "vpc.network", value: 5 },
   { id: "lim-2", scope: "PROJECT", scope_id: "prj-1", kind: "vpc.subnet", value: 20 },
 ];
@@ -50,7 +50,7 @@ function stub(failPatch = false) {
       ok: true,
       status: 200,
       statusText: "OK",
-      text: () => Promise.resolve(JSON.stringify({ limits: пределы })),
+      text: () => Promise.resolve(JSON.stringify({ limits: limits })),
     } as Response);
   };
 }
@@ -77,23 +77,14 @@ async function openEditor(kind: string) {
 }
 
 describe("раздел администратора: пределы", () => {
-  it("читает пределы с ПУБЛИЧНОГО адреса, закрытого отношением, а не сокрытием", async () => {
-    // Здесь стояло обратное утверждение — «читает с внутреннего слушателя», — и
-    // оно было верным ровно до ADM-1 S1 (#878). Внутренний адрес наружу не
-    // выходил, поэтому страница администратора получала 404: отказ, неотличимый
-    // от «такого раздела нет вовсе», при полностью исправном сервисе.
-    //
-    // Проба переписана ВМЕСТЕ со своим предметом, а не подогнана под новый
-    // адрес: она утверждает то же самое свойство с другой стороны — что доступ
-    // закрывает ОТНОШЕНИЕ (`system_admin` @ `cluster`, гейт края), а не форма
-    // пути. Сегмента `/internal/` в адресе быть не должно; будь он там, отказ
-    // снова стал бы неотличим от отсутствия раздела.
+  it("читает пределы с ВНУТРЕННЕГО слушателя, а не с публичной поверхности", async () => {
+    // Публичного пути к величинам нет вовсе, и спросить его значило бы получать
+    // отказ на каждом открытии страницы.
     stub();
     renderPage();
     await waitFor(() => expect(calls.length).toBeGreaterThan(0));
     expect(new URL(calls[0].url, "http://x").pathname).toBe(LIMITS_PATH);
-    expect(LIMITS_PATH).not.toContain("/internal/");
-    expect(LIMITS_PATH).toBe("/iam/v1/limits");
+    expect(LIMITS_PATH).toContain("/internal/");
   });
 
   it("меняет ТОЛЬКО величину и называет её маской", async () => {
@@ -155,7 +146,7 @@ describe("раздел администратора: пределы", () => {
         ok: true,
         status: 200,
         statusText: "OK",
-        text: () => Promise.resolve(JSON.stringify({ limits: пределы })),
+        text: () => Promise.resolve(JSON.stringify({ limits: limits })),
       } as Response);
     };
     renderPage();

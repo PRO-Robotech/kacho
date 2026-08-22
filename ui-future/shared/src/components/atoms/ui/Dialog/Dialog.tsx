@@ -11,17 +11,22 @@ export const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
   <DialogPrimitive.Portal>
-    <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" />
+    {/* Затемнение БЕЗ размытия: стеклянные размытия целевое оформление
+        запрещает прямо — фокус на окне даётся тоном подложки, а не расфокусом
+        страницы под ним. */}
+    <DialogPrimitive.Overlay className="fixed inset-0 z-40 bg-black/55" />
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border bg-background p-6 shadow-lg max-h-[85vh] overflow-y-auto",
+        // Радиус 11 — ряд поверхности; тень остаётся: окно действительно
+        // всплывает над страницей, а запрет теней касается статичных панелей.
+        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 gap-4 rounded-[11px] border border-[var(--kc-border)] bg-[var(--kc-elevated)] p-6 shadow-[shadow:var(--kc-shadow-lg)] max-h-[85vh] overflow-y-auto",
         className,
       )}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100">
+      <DialogPrimitive.Close className="absolute right-4 top-4 grid h-[30px] w-[30px] place-items-center rounded-md text-[var(--kc-text-tertiary)] transition-colors hover:bg-[var(--kc-hover-fill)] hover:text-[var(--kc-text)]">
         <X className="h-4 w-4" />
         <span className="sr-only">Закрыть окно</span>
       </DialogPrimitive.Close>

@@ -126,8 +126,7 @@ OUT_ALL="$(render \
   --set serviceAccount.create=true \
   --set rbac.create=true \
   --set autoscaling.enabled=true \
-  --set networkPolicy.enable=true \
-  --set serviceMonitor.enable=true)"
+  --set networkPolicy.enable=true)"
 BAD_DOCS="$(printf '%s\n' "$OUT_ALL" | awk '
   BEGIN { src="(unknown)"; hasKind=0; hasApi=0 }
   /^---[[:space:]]*$/ {

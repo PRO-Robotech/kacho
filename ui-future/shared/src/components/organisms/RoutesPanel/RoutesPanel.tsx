@@ -1,6 +1,7 @@
 // RoutesPanel — static routes of a RouteTable rendered as ONE shared table in both modes.
 //
-// Read mode  : text cells, header action «Редактировать». 0 routes => dashed placeholder.
+// Read mode  : text cells, header action «Редактировать». 0 routes => надпись на
+//              месте таблицы, тем же тоном, что у пустого набора CIDR.
 // Edit mode  : SAME table/columns — each value cell becomes a seamless borderless <Input>,
 //              the (always-present) right column shows a per-row trash button, and a
 //              full-width dashed «Добавить маршрут» footer row appears below the rows.
@@ -11,7 +12,12 @@
 // changes; every <tr> has a fixed height with vertical-align:middle so text-cells and
 // input-cells occupy the exact same row height — nothing shifts when toggling edit.
 //
-// The SectionHeader title stays «Статические маршруты (N)» in BOTH modes.
+// Заголовок секции — «Статические маршруты», БЕЗ числа строк, в обоих режимах.
+// Здесь стояло обратное («стоит «Статические маршруты (N)»»), и это пережило
+// свой предмет: счётчик снят из шапки решением владельца («отображать кол-во
+// элементов не нужно»), а шапку рисует общая поверхность карточки, а не
+// отдельный заголовок секции. Комментарий, обещающий число, следующей правкой
+// вернул бы его обратно.
 //
 // save() does a full-replace update (static_routes + update_mask) and starts an async
 // Operation. ЗАМЕНА ВСЕГО СПИСКА — несущее свойство, и из него следуют два
@@ -25,15 +31,28 @@
 //     удалённый маршрут, о котором оператору отвечают успехом — `routeGaps`.
 
 import { useState } from "react";
-import { Button, Input, Select, Space, Typography } from "antd";
+import { DetailSurface, DETAIL_CONTENT_WIDTH } from "@shared/components/organisms/DetailShell";
+import { Button, Input, Select, Space, } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
-import { SectionHeader } from "@shared/components/molecules/SectionHeader";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
+import {
+  EDITOR_ACTIONS_WIDTH,
+  EDITOR_ROW_HEIGHT,
+  MONO_FONT,
+  editorEmptyStyle,
+  editorHeadCellStyle,
+  editorIconButtonStyle,
+  editorRowStyle,
+  editorFirstRowStyle,
+  editorBodyStyle,
+  editorValueCellStyle,
+  editorMissingFieldStyle,
+} from "@shared/components/organisms/form/editor-surface";
 import type { SetReplacementDraft } from "@shared/lib/set-replacement-draft";
 import { operationStore } from "@shared/lib/use-operation-store";
 import { toast } from "@shared/lib/toast";
@@ -110,6 +129,12 @@ export interface RouteGap {
 const MISSING_DESTINATION = "префикс назначения";
 const MISSING_NEXT_HOP = "следующий узел";
 
+// Пометка НЕЗАПОЛНЕННОГО поля берётся из общего источника геометрии
+// (`editorMissingFieldStyle`), а не объявляется здесь. Решение владельца
+// «помечать на самом поле» относится к КАЖДОМУ набору значений консоли, и своя
+// рамка в этом файле была бы первой из копий, которые расходятся молча, —
+// ровно тем, ради чего числа редактора собраны в одном месте.
+
 // Экспортированы для тестов.
 export function draftsFromRoutes(routes: StaticRoute[]): DraftRoute[] {
   return routes.map((r) => ({
@@ -156,9 +181,9 @@ export function routeGaps(drafts: DraftRoute[]): RouteGap[] {
     // Нехватка считается ПО ВЫБРАННОЙ ВЕТВИ: у строки со шлюзом пустое поле
     // адреса претензией не является, а вот невыбранный шлюз — является. Счёт по
     // одному полю уже однажды дал молчаливую потерю маршрута.
-    const заполнена =
+    const isFilled =
       kindOf(r) === "gateway" ? (r.gateway_id ?? "").trim() !== "" : r.next_hop_address.trim() !== "";
-    if (!заполнена) missing.push(MISSING_NEXT_HOP);
+    if (!isFilled) missing.push(MISSING_NEXT_HOP);
     if (missing.length > 0) gaps.push({ row: i + 1, missing });
   });
   return gaps;
@@ -168,8 +193,11 @@ export function routeGapText(gap: RouteGap): string {
   return `Строка ${gap.row}: не указан ${gap.missing.join(" и ")}`;
 }
 
-const MONO_FONT = "ui-monospace, monospace";
-const ROW_H = 41; // фиксированная высота строки в обоих режимах — нет вертикального прыжка
+// Высота строки — общая с секцией CIDR и редактором маршрутов формы: один
+// предмет («набор значений, который правят по одному») рисуется одним видом.
+// Фиксированной она остаётся по своей прежней причине: в обоих режимах строка
+// одной высоты, поэтому вход в правку не двигает содержимое.
+const ROW_H = EDITOR_ROW_HEIGHT;
 
 const rtSpec = REGISTRY["route-tables"];
 
@@ -179,7 +207,8 @@ const rtSpec = REGISTRY["route-tables"];
 const cellInputStyle: React.CSSProperties = {
   width: "100%",
   fontFamily: MONO_FONT,
-  fontSize: 12,
+  fontSize: 11,
+  fontWeight: 520,
   padding: 0,
   height: ROW_H - 2,
   lineHeight: `${ROW_H - 2}px`,
@@ -256,8 +285,6 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
     }
   }
 
-  const count = editing ? (drafts?.length ?? 0) : routes.length;
-
   const headerRight = editing ? (
     <Space>
       <Button type="primary" loading={mutation.isPending} disabled={gaps.length > 0} onClick={save}>
@@ -281,81 +308,65 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
     // ресурса (шапка карточки) и у этой панели. Их доступные имена совпадают
     // дословно («edit Редактировать»), поэтому выбрать панель по имени кнопки
     // нельзя ничем: `.first()` берёт чужую и открывает не тот редактор.
-    <div data-testid="routes-panel" style={{ marginTop: 24, maxWidth: 760 }}>
-      <SectionHeader
-        eyebrow="Список"
-        title={
-          <span>
-            Статические маршруты <Typography.Text type="secondary">({count})</Typography.Text>
-          </span>
-        }
-        right={headerRight}
-      />
+    <div data-testid="routes-panel" style={{ marginTop: 24, maxWidth: DETAIL_CONTENT_WIDTH }}>
+      {/* Секция — ОДИН блок: шапка внутри той же поверхности, что и таблица.
+          Пока у шапки была своя рамка, а у таблицы своя, они стыковались двумя
+          линиями, и шапка читалась приделанной сверху. Надзаголовок «Список»
+          снят: он называл способ показа вместо предмета и стоял одинаковым у
+          каждой секции — то есть не различал ничего. */}
+      <DetailSurface title="Статические маршруты" note={headerRight}>
 
       {showTable ? (
-        <div
-          style={{
-            border: "1px solid var(--kc-border)",
-            borderRadius: 8,
-            overflow: "hidden",
-            background: "var(--kc-page)",
-          }}
-        >
-          <table className="w-full text-sm kc-grid-table" style={{ tableLayout: "fixed" }}>
+        <div style={editorBodyStyle}>
+          <table className="w-full kc-grid-table" style={{ tableLayout: "fixed", borderCollapse: "collapse" }}>
             {/* Фиксированные ширины колонок — идентичны в read и edit, без горизонтального прыжка. */}
             <colgroup>
-              <col style={{ width: "calc((100% - 48px) / 2)" }} />
-              <col style={{ width: "calc((100% - 48px) / 2)" }} />
-              <col style={{ width: 48 }} />
+              <col style={{ width: `calc((100% - ${EDITOR_ACTIONS_WIDTH}px) / 2)` }} />
+              <col style={{ width: `calc((100% - ${EDITOR_ACTIONS_WIDTH}px) / 2)` }} />
+              <col style={{ width: EDITOR_ACTIONS_WIDTH }} />
             </colgroup>
             <thead>
-              <tr style={{ background: "var(--kc-container)" }}>
-                <th
-                  className="text-left"
-                  style={{
-                    padding: "7px 12px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    letterSpacing: "0.02em",
-                    color: "var(--kc-text-tertiary)",
-                  }}
-                >
+              <tr>
+                <th className="text-left" style={editorHeadCellStyle}>
                   Префикс назначения
                 </th>
-                <th
-                  className="text-left"
-                  style={{
-                    padding: "7px 12px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    letterSpacing: "0.02em",
-                    color: "var(--kc-text-tertiary)",
-                  }}
-                >
+                <th className="text-left" style={editorHeadCellStyle}>
                   Следующий узел
                 </th>
                 {/* колонка действий присутствует всегда (пустая в read) → число колонок не меняется */}
-                <th style={{ padding: "7px 4px" }} />
+                <th style={{ ...editorHeadCellStyle, padding: 0 }} />
               </tr>
             </thead>
             <tbody>
               {editing
-                ? (drafts ?? []).map((row, i) => (
+                ? (drafts ?? []).map((row, i) => {
+                    // Нехватка ЭТОЙ строки — чтобы пометить сами поля, а не
+                    // только назвать номер строки в сводке под таблицей.
+                    // Нумерация в `routeGaps` идёт с единицы, как её видит
+                    // оператор; здесь индекс с нуля, отсюда сдвиг.
+                    const rowGap = gaps.find((g) => g.row === i + 1);
+                    return (
                     <tr
                       key={i}
                       className="kc-kv-row"
-                      style={{ height: ROW_H, borderTop: "1px solid var(--kc-border-secondary)" }}
+                      style={i === 0 ? editorFirstRowStyle : editorRowStyle}
                     >
-                      <td className="px-3 font-mono text-xs" style={{ verticalAlign: "middle" }}>
+                      <td style={{ ...editorValueCellStyle, paddingRight: 8 }}>
                         <Input
                           variant="borderless"
                           placeholder="10.0.0.0/24"
                           value={row.destination_prefix}
                           onChange={(e) => setRow(i, { destination_prefix: e.target.value })}
-                          style={cellInputStyle}
+                          // Помечено само поле, а не строка под таблицей: место
+                          // ошибки и место исправления совпадают.
+                          aria-invalid={rowGap?.missing.includes(MISSING_DESTINATION) || undefined}
+                          style={{
+                            ...cellInputStyle,
+                            ...(rowGap?.missing.includes(MISSING_DESTINATION) ? editorMissingFieldStyle : null),
+                          }}
                         />
                       </td>
-                      <td className="px-3 font-mono text-xs" style={{ verticalAlign: "middle" }}>
+                      <td style={{ ...editorValueCellStyle, paddingRight: 8 }}>
                         {/* Ветвь `next_hop` выбирается ЯВНО и правится здесь же.
                             Прежде выбора не было вовсе: шлюз лишь переживал
                             сохранение, а сменить ветвь можно было только набрав
@@ -384,58 +395,65 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
                           />
                           <div style={{ flex: 1, minWidth: 0 }}>
                             {kindOf(row) === "gateway" ? (
-                              <RefSelect
-                                refResource="gateways"
-                                refProjectScoped
-                                value={row.gateway_id ?? ""}
-                                onChange={(id) => setRow(i, { gateway_id: id })}
-                                placeholder="Выберите шлюз"
-                              />
+                              <div
+                                style={
+                                  rowGap?.missing.includes(MISSING_NEXT_HOP) ? editorMissingFieldStyle : undefined
+                                }
+                              >
+                                <RefSelect
+                                  refResource="gateways"
+                                  refProjectScoped
+                                  value={row.gateway_id ?? ""}
+                                  onChange={(id) => setRow(i, { gateway_id: id })}
+                                  placeholder="Выберите шлюз"
+                                />
+                              </div>
                             ) : (
                               <Input
                                 variant="borderless"
                                 placeholder="10.0.0.1"
                                 value={row.next_hop_address}
                                 onChange={(e) => setRow(i, { next_hop_address: e.target.value })}
-                                style={cellInputStyle}
+                                aria-invalid={rowGap?.missing.includes(MISSING_NEXT_HOP) || undefined}
+                                style={{
+                                  ...cellInputStyle,
+                                  ...(rowGap?.missing.includes(MISSING_NEXT_HOP) ? editorMissingFieldStyle : null),
+                                }}
                               />
                             )}
                           </div>
                         </div>
                       </td>
-                      <td className="px-1 text-center" style={{ verticalAlign: "middle" }}>
+                      <td style={{ textAlign: "center", verticalAlign: "middle" }}>
                         <Button
                           type="text"
                           danger
-                          size="small"
                           icon={<DeleteOutlined />}
                           aria-label="Удалить маршрут"
                           onClick={() => removeRow(i)}
+                          style={editorIconButtonStyle}
                         />
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 : routes.map((r, i) => (
                     <tr
                       key={i}
                       className="kc-kv-row"
-                      style={{ height: ROW_H, borderTop: "1px solid var(--kc-border-secondary)" }}
+                      style={i === 0 ? editorFirstRowStyle : editorRowStyle}
                     >
-                      <td className="px-3 font-mono text-xs" style={{ verticalAlign: "middle" }}>
-                        {r.destination_prefix}
-                      </td>
-                      <td className="px-3 font-mono text-xs" style={{ verticalAlign: "middle" }}>
-                        {r.next_hop_address || r.gateway_id}
-                      </td>
+                      <td style={editorValueCellStyle}>{r.destination_prefix}</td>
+                      <td style={editorValueCellStyle}>{r.next_hop_address || r.gateway_id}</td>
                       {/* пустая ячейка резервирует колонку действий */}
-                      <td className="px-1" />
+                      <td />
                     </tr>
                   ))}
             </tbody>
             {editing && (
               <tfoot>
-                <tr style={{ borderTop: "1px solid var(--kc-border-secondary)" }}>
-                  <td style={{ padding: "8px 12px" }} colSpan={3}>
+                <tr style={{ borderTop: "1px solid var(--kc-border)" }}>
+                  <td style={{ padding: 10 }} colSpan={3}>
                     <Button type="dashed" block icon={<PlusOutlined />} onClick={addRow}>
                       Добавить маршрут
                     </Button>
@@ -448,12 +466,10 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
       ) : (
         <div
           style={{
-            border: "1px dashed var(--kc-border)",
-            borderRadius: 8,
-            padding: "24px 12px",
-            textAlign: "center",
-            fontSize: 13,
-            color: "var(--kc-text-tertiary)",
+            ...editorBodyStyle,
+            ...editorEmptyStyle,
+            display: "grid",
+            placeItems: "center",
           }}
         >
           Статических маршрутов нет — нажмите «Редактировать», чтобы добавить.
@@ -463,12 +479,13 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
       {gaps.length > 0 && (
         // Каждая неполная строка названа отдельной строкой: перечень через
         // запятую скрывал бы, сколько их, за первой же.
-        <div role="alert" style={{ marginTop: 8, fontSize: 12, color: "var(--kc-error)" }}>
+        <div role="alert" style={{ marginTop: 10, fontSize: 11, color: "var(--kc-danger)" }}>
           {gaps.map((g) => (
             <div key={g.row}>{routeGapText(g)}</div>
           ))}
         </div>
       )}
+      </DetailSurface>
     </div>
   );
 }

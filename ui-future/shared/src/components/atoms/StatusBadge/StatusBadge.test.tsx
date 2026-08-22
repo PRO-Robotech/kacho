@@ -10,6 +10,21 @@
 import { render, screen } from "@testing-library/react";
 import { StatusBadge } from "./StatusBadge";
 
+// ФОРМА пилюли состояния — ОДНА на продукт.
+//
+// Прежде форму задавал набор Tailwind-классов прямо в этом атоме, и второй такой
+// же набор жил в соседнем — признаке открытости площадки. Правка одного до
+// другого не доезжала, и в одной карточке стояли две пилюли разной геометрии.
+// Теперь форма объявлена здесь один раз (`statusPillShape`/`statusPillStyle`) и
+// БЕРЁТСЯ соседом, а не повторяется им.
+//
+// Утверждается наблюдаемая ГЕОМЕТРИЯ обеих пилюль, а не факт импорта: импорт
+// можно поставить и рядом дописать своё. Пара, а не одно утверждение: рядом
+// стоит пилюля другого ТОНА — она обязана совпасть геометрией и разойтись
+// заливкой. Без неё «геометрия совпала» было бы верно и для двух узлов, у
+// которых не задано вообще ничего.
+import { PlacementBadge } from "@shared/components/atoms/PlacementBadge";
+
 /** Фон пилюли — то, чем оттенок наблюдаем: класс он не меняет, только style. */
 function toneBackgroundOf(label: string): string {
   return screen.getByText(label).style.background;
@@ -76,5 +91,49 @@ describe("StatusBadge", () => {
     render(<StatusBadge state="STATUS_SOMETHING_NEW" />);
     expect(screen.getByText("Something_new")).toBeInTheDocument();
     expect(toneBackgroundOf("Something_new")).toBe("var(--status-muted-bg)");
+  });
+});
+
+/** Геометрия пилюли — то, что задаёт форму, без тона. */
+function geometry(node: HTMLElement) {
+  const s = node.style;
+  return {
+    display: s.display,
+    alignItems: s.alignItems,
+    height: s.height,
+    padding: s.padding,
+    borderRadius: s.borderRadius,
+    borderWidth: s.borderWidth,
+    borderStyle: s.borderStyle,
+    fontSize: s.fontSize,
+    fontWeight: s.fontWeight,
+    lineHeight: s.lineHeight,
+    whiteSpace: s.whiteSpace,
+  };
+}
+
+describe("StatusBadge — форма пилюли одна на продукт", () => {
+  it("признак открытости площадки берёт форму у значка состояния, а не повторяет её", () => {
+    render(
+      <>
+        <StatusBadge state="ACTIVE" />
+        <PlacementBadge open={true} />
+        <PlacementBadge open={false} />
+      </>,
+    );
+
+    const status = screen.getByText("Active");
+    const opened = screen.getByText("Открыт");
+    const closed = screen.getByText("Закрыт");
+
+    expect(geometry(opened)).toEqual(geometry(status));
+    // Контроль: сравниваются не две пустоты — форма действительно объявлена.
+    expect(geometry(status).height).toBe("20px");
+    expect(geometry(status).borderRadius).toBe("6px");
+
+    // Близнец: другой ТОН той же формы — геометрия та же, заливка другая.
+    // Иначе равенство выше выполнялось бы и на двух узлах без единого свойства.
+    expect(geometry(closed)).toEqual(geometry(status));
+    expect(closed.style.background).not.toBe(opened.style.background);
   });
 });

@@ -57,23 +57,23 @@ describe("места рендера таблицы", () => {
 });
 
 describe("клиентское сужение: нарушение находится", () => {
-  const НАРУШЕНИЕ = `
+  const VIOLATION = `
     const ответ = await api.list<{ штуки: Штука[] }>("/путь", { pageSize: "500" });
     const видимые = ответ.штуки.filter((ш) => ш.имя.toLowerCase().includes(запрос));
     return <Input value={запрос} onChange={сменить} />;
   `;
 
   it("сужает, читает список, ручка на экране — находка", () => {
-    expect(narrowsLoadedList(НАРУШЕНИЕ)).toBe(true);
-    expect(declaresScope(НАРУШЕНИЕ)).toBe(false);
+    expect(narrowsLoadedList(VIOLATION)).toBe(true);
+    expect(declaresScope(VIOLATION)).toBe(false);
   });
 
   it("та же поверхность, объявившая область, — пропускается", () => {
     // Законный близнец. Без него «находок нет» означало бы и «дерево честно», и
     // «предикат ловит всё подряд, а исключения его гасят».
-    const ЗАКОННО = `import { clientScope } from "@shared/lib/list-scope";\n` + НАРУШЕНИЕ;
-    expect(narrowsLoadedList(ЗАКОННО)).toBe(true);
-    expect(declaresScope(ЗАКОННО)).toBe(true);
+    const LEGITIMATE = `import { clientScope } from "@shared/lib/list-scope";\n` + VIOLATION;
+    expect(narrowsLoadedList(LEGITIMATE)).toBe(true);
+    expect(declaresScope(LEGITIMATE)).toBe(true);
   });
 });
 
@@ -81,7 +81,7 @@ describe("клиентское сужение: чужие формы НЕ счи
   it("подбор значения в поле формы — не предмет этого гейта", () => {
     // Тот же вызов `toLowerCase().includes`, но владелец предиката — ручка
     // выпадающего поля. Класс подбора чинится иначе и заведён отдельно.
-    const подбор = `
+    const pickerSample = `
       const ответ = await api.list<{ роли: Роль[] }>("/роли", { pageSize: "500" });
       return (
         <Select
@@ -93,28 +93,28 @@ describe("клиентское сужение: чужие формы НЕ счи
         />
       );
     `;
-    expect(narrowingLines(подбор)).toEqual([]);
-    expect(narrowsLoadedList(подбор)).toBe(false);
+    expect(narrowingLines(pickerSample)).toEqual([]);
+    expect(narrowsLoadedList(pickerSample)).toBe(false);
   });
 
   it("сужение без чтения списка — не предмет (это не список)", () => {
-    const безСписка = `
+    const withoutList = `
       const видимые = свои.filter((ш) => ш.имя.toLowerCase().includes(запрос));
       return <Input value={запрос} />;
     `;
-    expect(narrowingLines(безСписка).length).toBeGreaterThan(0);
-    expect(readsList(безСписка)).toBe(false);
-    expect(narrowsLoadedList(безСписка)).toBe(false);
+    expect(narrowingLines(withoutList).length).toBeGreaterThan(0);
+    expect(readsList(withoutList)).toBe(false);
+    expect(narrowsLoadedList(withoutList)).toBe(false);
   });
 
   it("сужение без ручки — не предмет (пользователю нечем этим управлять)", () => {
-    const безРучки = `
+    const withoutControl = `
       const ответ = await api.list<{ штуки: Штука[] }>("/путь", { pageSize: "500" });
       const свои = ответ.штуки.filter((ш) => ш.родитель.toLowerCase().includes(родительId));
     `;
-    expect(readsList(безРучки)).toBe(true);
-    expect(hasControl(безРучки)).toBe(false);
-    expect(narrowsLoadedList(безРучки)).toBe(false);
+    expect(readsList(withoutControl)).toBe(true);
+    expect(hasControl(withoutControl)).toBe(false);
+    expect(narrowsLoadedList(withoutControl)).toBe(false);
   });
 });
 

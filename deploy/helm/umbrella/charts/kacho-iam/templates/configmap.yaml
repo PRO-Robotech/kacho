@@ -128,6 +128,29 @@ data:
         key-set-path: {{ $ts.keySetPath | quote }}
         key-lifetime: {{ $ts.keyLifetime | quote }}
       {{- end }}
+      {{- $ct := .Values.config.authn.clientToken | default dict }}
+      {{- if $ct.enabled }}
+      # client-token — токен-эндпоинт платформы (#898): выдача по учётным данным
+      # клиента, чья личность доказана подписанным утверждением.
+      #
+      # Блок рендерится ТОЛЬКО при enabled — по той же причине, что блок выше.
+      # Эндпоинт монтируется на УЖЕ объявленную внешне досягаемую поверхность
+      # выдачи (api-server.registry-token) и своего слушателя не заводит: вид
+      # выдачи задан формой запроса, а не выбором порта, и второй слушатель об
+      # одном предмете разошёлся бы с первым в периметре и посадке TLS.
+      #
+      # Умолчания шаблона (`default`) здесь нет намеренно: перечень адресатов,
+      # адресат по умолчанию, срок токена и потолок тела расширяют принимаемое
+      # либо описывают наш расход, и профиль, забывший ручку, выглядел бы
+      # настроенным. Пустое доезжает до стража, и он отказывает в старте,
+      # называя настройку.
+      client-token:
+        enabled: true
+        allowed-audiences: {{ $ct.allowedAudiences | quote }}
+        default-audience: {{ $ct.defaultAudience | quote }}
+        token-ttl: {{ $ct.tokenTtl | quote }}
+        body-ceiling: {{ $ct.bodyCeiling }}
+      {{- end }}
       {{- $bm := .Values.config.authn.bootstrapMint | default dict }}
       # bootstrap-mint — caller gate for InternalBootstrapTokenService/
       # MintBootstrapToken (:9091), the cluster `system_admin` token mint. The RPC

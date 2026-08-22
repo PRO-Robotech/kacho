@@ -32,17 +32,29 @@ let urls: string[] = [];
  * где настоящий край отдаёт разные виды разных доменов. Проба на таком дублёре
  * краснела бы на исправной странице — то есть измеряла бы фикстуру, а не предмет.
  */
-function stub(body: unknown, ok = true) {
+/** Владелец, чьи виды называет тело проб: все они из домена vpc. */
+const BODY_OWNER = "/vpc/v1/quotas";
+
+function stub(body: unknown, ok = true, owner = BODY_OWNER) {
   urls = [];
   globalThis.fetch = (input: RequestInfo | URL) => {
     const url = requestUrl(input);
-    const first = urls.length === 0;
     urls.push(url);
+    // Тело достаётся владельцу ПО АДРЕСУ, а не по позиции в очереди.
+    //
+    // Здесь стоял счётчик (`urls.length === 0`). Недетерминированным дублёр от
+    // этого НЕ был — замер показал пять вызовов подряд, ровно в порядке
+    // объявления доменов, без повторов, — но получатель тела зависел от порядка
+    // объявления на странице, к предмету пробы отношения не имеющего.
+    //
+    // Адрес такой связи не имеет: тело принадлежит домену, чьи виды в нём
+    // названы, и это видно из самого тела.
+    const mine = url.includes(owner);
     return Promise.resolve({
       ok,
       status: ok ? 200 : 500,
       statusText: ok ? "OK" : "Internal Server Error",
-      text: () => Promise.resolve(JSON.stringify(first ? body : { quotas: [] })),
+      text: () => Promise.resolve(JSON.stringify(mine ? body : { quotas: [] })),
     } as Response);
   };
 }
@@ -66,7 +78,7 @@ function renderPage() {
   );
 }
 
-const плоский = {
+const flat = {
   kind: "vpc.network",
   limit: 5,
   used: 2,
@@ -76,7 +88,7 @@ const плоский = {
   carrier_id: "prj-1",
 };
 
-const вложенный = {
+const nested = {
   kind: "vpc.network.subnet",
   limit: 10,
   used: 0,
@@ -96,7 +108,7 @@ function rowCells(label: string): string[] {
 
 describe("витрина квот арендатора", () => {
   it("спрашивает пределы своего проекта", async () => {
-    stub({ quotas: [плоский] });
+    stub({ quotas: [flat] });
     renderPage();
     await waitFor(() => expect(urls.length).toBeGreaterThan(0));
     const u = new URL(urls[0], "http://x");
@@ -110,7 +122,7 @@ describe("витрина квот арендатора", () => {
     // предел, которого тот не видит: ровно та беда, ради которой чтение и
     // заводилось. Перечень путей выписан, потому что он и есть утверждение;
     // вывести его из страницы значило бы сверять страницу с ней же.
-    stub({ quotas: [плоский] });
+    stub({ quotas: [flat] });
     renderPage();
     await waitFor(() => expect(urls.length).toBe(5));
     const paths = urls.map((u) => new URL(u, "http://x").pathname).sort();
@@ -124,7 +136,7 @@ describe("витрина квот арендатора", () => {
   });
 
   it("показывает четвёрку: вид, предел, занято, источник", async () => {
-    stub({ quotas: [плоский] });
+    stub({ quotas: [flat] });
     renderPage();
     const cells = await waitFor(() => rowCells("Облачные сети"));
     expect(cells.join(" | ")).toContain("5");
@@ -135,13 +147,13 @@ describe("витрина квот арендатора", () => {
   it("вид, считающийся внутри носителя, потребления НЕ показывает", async () => {
     // Ни числа, ни прочерка: значения нет вовсе. Ноль здесь читался бы как
     // «ничего не создано», а это неправда — просто счёт ведётся не тут.
-    stub({ quotas: [вложенный] });
+    stub({ quotas: [nested] });
     renderPage();
     const cells = await waitFor(() => rowCells("Подсети в одной сети"));
     // Отказ обязан назвать, ЧТО было показано вместо носителя, — иначе разбор
     // упавшей пробы начинается с повторного запуска.
-    const занято = cells.find((c) => /Считается в каждом/.test(c)) ?? `НЕТ НОСИТЕЛЯ; ячейки: ${cells.join(" | ")}`;
-    expect(занято).toMatch(/Считается в каждом/);
+    const usedCell = cells.find((c) => /Считается в каждом/.test(c)) ?? `НЕТ НОСИТЕЛЯ; ячейки: ${cells.join(" | ")}`;
+    expect(usedCell).toMatch(/Считается в каждом/);
     for (const c of cells) {
       expect(c).not.toBe("0");
       expect(c).not.toBe("—");
@@ -150,14 +162,14 @@ describe("витрина квот арендатора", () => {
 
   it("а вид, считающийся в проекте, потребление показывает — положительный контроль", async () => {
     // Без него «не показывает» означало бы «не показывает никогда».
-    stub({ quotas: [плоский, вложенный] });
+    stub({ quotas: [flat, nested] });
     renderPage();
     await waitFor(() => rowCells("Облачные сети"));
     expect(rowCells("Облачные сети").some((c) => c === "2")).toBe(true);
   });
 
   it("источник назван так, что видно, куда идти", async () => {
-    stub({ quotas: [вложенный] });
+    stub({ quotas: [nested] });
     renderPage();
     const cells = await waitFor(() => rowCells("Подсети в одной сети"));
     expect(cells.join(" | ")).toContain("acc-7");
@@ -166,7 +178,7 @@ describe("витрина квот арендатора", () => {
   it("незнакомый вид показывается, а не пропадает", async () => {
     // Каталог видов растёт на сервере; витрина, знающая закрытый перечень,
     // молча теряла бы новые пределы — те самые, о которых арендатор не знает.
-    stub({ quotas: [{ ...плоский, kind: "будущий.вид" }] });
+    stub({ quotas: [{ ...flat, kind: "будущий.вид" }] });
     renderPage();
     expect(await screen.findByText("будущий.вид")).toBeTruthy();
   });

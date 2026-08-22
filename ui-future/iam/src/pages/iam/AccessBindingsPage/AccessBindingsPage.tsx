@@ -8,8 +8,8 @@
 
 import { useMemo, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router";
-import { Button, Empty, Select, Space, Typography } from "antd";
-import { FilterOutlined, PlusOutlined } from "@ant-design/icons";
+import { Button, Select, Typography } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
 import { RowActionsMenu } from "@shared/components/molecules/RowActionsMenu";
@@ -19,6 +19,7 @@ import { iamApi, type AccessBindingList } from "@shared/api/iam";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { useContext } from "@shared/lib/context-store";
+import { ScopeRequiredEmpty } from "@/components/molecules/ScopeRequiredEmpty";
 import { IamListShell } from "@/components/organisms/iam/IamListShell";
 import { ColumnSettings, useHiddenColumns } from "@shared/components/molecules/TableToolbar";
 import { clientScope, rowsAreComplete } from "@shared/lib/list-scope";
@@ -116,55 +117,45 @@ export function AccessBindingsPage() {
     [columns],
   );
 
-  // breadcrumb / CTA через header-слоты. Мемоизируем node'ы (useEffect на [node]).
+  // КРОШКИ НАЗЫВАЮТ ПУТЬ, ЗАГОЛОВОК — ПРЕДМЕТ, И ДВАЖДЫ ОДНО НЕ ГОВОРЯТ.
+  // Последнее звено повторяло заголовок страницы двадцатью точками ниже и
+  // вчетверо крупнее.
   const breadcrumbNode = useMemo(
-    () => (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <Typography.Text type="secondary">{abSpec.serviceTitle}</Typography.Text>
-        <Typography.Text type="secondary">/</Typography.Text>
-        <Typography.Text strong>{abSpec.plural}</Typography.Text>
-      </span>
-    ),
-    [abSpec.serviceTitle, abSpec.plural],
+    () => <Typography.Text type="secondary">{abSpec.serviceTitle}</Typography.Text>,
+    [abSpec.serviceTitle],
   );
   const ctaNode = useMemo(
     () => (
+      // Кнопка называет ДЕЙСТВИЕ: предмет уже назван заголовком страницы.
       <Button
         type="primary"
         icon={<PlusOutlined />}
         onClick={() => navigate("/iam/access-bindings/create")}
         data-testid="access-bindings-create-btn"
       >
-        Создать привязку доступа
+        Создать
       </Button>
     ),
     [navigate],
   );
   useBreadcrumb(breadcrumbNode);
-  useHeaderRight(ctaNode);
+  // Слот шапки приложения ПУСТ: «Создать» стоит последней в ряду ручек списка.
+  useHeaderRight(null);
 
   if (legacyRedirect) return <Navigate to={legacyRedirect} replace />;
 
   if (!account) {
-    return (
-      <IamListShell specId="access-bindings" title={abSpec.plural}>
-        <Empty
-          description="Выберите Account вверху секции, чтобы увидеть привязки доступа."
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          style={{ padding: "48px 0" }}
-        />
-      </IamListShell>
-    );
+    return <ScopeRequiredEmpty purpose={`увидеть ${abSpec.plural.toLowerCase()}`} />;
   }
 
   return (
     <IamListShell
-      specId="access-bindings"
       title={abSpec.plural}
-      count={bindings.length}
-      right={
-        <Space size={8} align="center" wrap>
-          <FilterOutlined style={{ opacity: 0.4, fontSize: 14 }} />
+      narrowing={
+        <>
+          {/* Значок воронки снят: он подписывал ряд ручек, который и так виден,
+              и был единственным элементом ряда без своей высоты — из-за него
+              полоса читалась составленной случайно. */}
           <Select
             value={includeRevoked ? "true" : "false"}
             onChange={(v) => setIncludeRevoked(v === "true")}
@@ -188,9 +179,16 @@ export function AccessBindingsPage() {
             style={{ width: 190 }}
             data-testid="access-bindings-subject-filter"
           />
-          {/* Где есть фильтр — есть и выбор столбцов (требование владельца). */}
+        </>
+      }
+      actions={
+        <>
+          {/* Где есть фильтр — есть и выбор столбцов (требование владельца).
+              «Создать» — ПОСЛЕДНЕЙ: действие, изменяющее набор, стоит после
+              всех, которые его только показывают. */}
           <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
-        </Space>
+          {ctaNode}
+        </>
       }
     >
       <div style={{ flex: 1, minHeight: 0, minWidth: 0 }} data-testid="access-bindings-table">
@@ -244,9 +242,7 @@ export function AccessBindingCreatePage() {
   );
 
   const lockedSubject =
-    lockSubject && presetSubjectType && presetSubjectId
-      ? { type: presetSubjectType, id: presetSubjectId }
-      : undefined;
+    lockSubject && presetSubjectType && presetSubjectId ? { type: presetSubjectType, id: presetSubjectId } : undefined;
 
   const breadcrumb = useMemo(
     () => (

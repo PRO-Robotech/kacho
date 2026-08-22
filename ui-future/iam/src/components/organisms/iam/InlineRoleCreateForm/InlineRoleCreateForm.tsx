@@ -241,7 +241,7 @@ export function InlineRoleCreateForm({
         </FormSection>
       </Form>
       <FormFooter
-        submitLabel="Создать роль"
+        submitLabel="Создать"
         submitting={mut.submitting}
         submitDisabled={submitDisabled}
         onSubmit={submit}

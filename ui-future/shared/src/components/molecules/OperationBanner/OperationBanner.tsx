@@ -5,14 +5,12 @@
 
 import { useEffect } from "react";
 import { Loader2, X } from "lucide-react";
-import { theme } from "antd";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { operationStore, useOperationEntry } from "@shared/lib/use-operation-store";
 import { toast } from "@shared/lib/toast";
 
 export function OperationBanner() {
   const entry = useOperationEntry();
-  const { token } = theme.useToken();
   const invalidate = useInvalidateResourceList();
 
   // Поллим Operation пока pending. При done — обновляем стор.
@@ -44,50 +42,51 @@ export function OperationBanner() {
   // Банер показываем ТОЛЬКО для pending — финальные состояния уезжают в toast.
   if (!entry || entry.status !== "pending") return null;
 
-  const palette = {
-    bg: token.colorBgElevated,
-    border: token.colorBorderSecondary,
-    text: token.colorText,
-    icon: <Loader2 size={16} className="animate-spin" color={token.colorPrimary} />,
-  };
-
   return (
     <div
       role="status"
       aria-live="polite"
       style={{
         position: "sticky",
-        top: 48,
+        // Плашка липнет ПОД шапкой, поэтому её отступ равен высоте шапки.
+        // Высоту объявляет `SHAPE.headerHeight` в `lib/theme.ts` — там же, где
+        // её читает AntD Layout; здесь стоит то же число, и разойтись они могут
+        // только вместе с правкой шапки.
+        top: 54,
         zIndex: 19,
         display: "flex",
         alignItems: "center",
         gap: 12,
         padding: "10px 16px",
-        background: palette.bg,
-        borderBottom: `1px solid ${palette.border}`,
-        color: palette.text,
+        background: "var(--kc-elevated)",
+        borderBottom: "1px solid var(--kc-border)",
+        color: "var(--kc-text)",
         fontSize: 13,
       }}
     >
-      {palette.icon}
+      <Loader2 size={15} className="animate-spin" color="var(--kc-primary)" />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ fontWeight: 500 }}>{entry.title}</span>
-        <span style={{ marginLeft: 8, color: token.colorTextSecondary, fontSize: 12 }}>операция выполняется…</span>
+        <span style={{ fontWeight: 550 }}>{entry.title}</span>
+        <span style={{ marginLeft: 8, color: "var(--kc-text-secondary)", fontSize: 12 }}>операция выполняется…</span>
       </div>
       <button
         type="button"
         onClick={() => operationStore.dismiss()}
         aria-label="Скрыть"
+        // Иконочная кнопка — форма целевого оформления: 30×30, радиус 6,
+        // тусклый тон. Заливка при наведении даётся классом, чтобы состояние
+        // не пришлось держать в React ради одного цвета.
+        className="hover:bg-[var(--kc-hover-fill)] hover:text-[var(--kc-text)] transition-colors"
         style={{
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          width: 24,
-          height: 24,
-          borderRadius: 4,
+          width: 30,
+          height: 30,
+          borderRadius: 6,
           border: "none",
           background: "transparent",
-          color: token.colorTextSecondary,
+          color: "var(--kc-text-tertiary)",
           cursor: "pointer",
         }}
       >

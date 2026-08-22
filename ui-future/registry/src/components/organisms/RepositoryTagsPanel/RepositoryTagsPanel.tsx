@@ -19,6 +19,7 @@ import {
   HddOutlined,
   UserOutlined,
 } from "@ant-design/icons";
+import { ROW_ACTION_TRIGGER } from "@/components/molecules/RowActionsMenu";
 import { registriesApi } from "@/api/resources";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { ResourceIcon } from "@/components/organisms/form/ResourceIcon";
@@ -104,7 +105,7 @@ export const RepositoryTagsPanel: FC<{
           justifyContent: "space-between",
           gap: 8,
           padding: "10px 10px 10px 16px",
-          borderBottom: "1px solid var(--kc-border, rgba(128,128,128,0.18))",
+          borderBottom: "1px solid var(--kc-border)",
         }}
       >
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
@@ -124,7 +125,16 @@ export const RepositoryTagsPanel: FC<{
             · теги{rows.length ? ` · ${rows.length}` : ""}
           </Typography.Text>
         </span>
-        <Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} aria-label="Закрыть теги" />
+        {/* Кнопка-значок — ОДНА форма на всю консоль (`ROW_ACTION_TRIGGER`: 30×30,
+            радиус 6, вторичный тон). `size="small"` даёт свою высоту и свой
+            радиус, и три значка панели стояли тремя разными ручками. */}
+        <Button
+          type="text"
+          style={ROW_ACTION_TRIGGER}
+          icon={<CloseOutlined />}
+          onClick={onClose}
+          aria-label="Закрыть теги"
+        />
       </div>
 
       {/* Тело: вертикальный список карточек тегов (скролл внутри). */}
@@ -144,7 +154,20 @@ export const RepositoryTagsPanel: FC<{
         ) : isLoading ? (
           <Skeleton active paragraph={{ rows: 3 }} />
         ) : rows.length === 0 ? (
-          <Empty description="Нет тегов — репозиторий ещё не публиковался (docker push)." />
+          // Тот же вид «пусто», что у прочих узких панелей продукта: линейный
+          // рисунок и приглушённая строка. Умолчание antd рисует тяжёлую серую
+          // плитку — единственный элемент на экране, не подчиняющийся ни теме,
+          // ни языку карточки; полноразмерный экран пустого состояния сюда не
+          // ставится намеренно: его области посчитаны по ширине страницы, и в
+          // панели 360 точек описание вылезло бы за свою область.
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Тегов нет — в репозиторий ещё не было docker push.
+              </Typography.Text>
+            }
+          />
         ) : (
           rows.map((r) => {
             const tag = getByPath<string>(r, "tag") ?? "";
@@ -163,7 +186,7 @@ export const RepositoryTagsPanel: FC<{
                   <Tag
                     color="blue"
                     style={{
-                      fontFamily: "var(--font-mono, monospace)",
+                      fontFamily: "var(--font-mono)",
                       fontSize: 13,
                       fontWeight: 600,
                       margin: 0,
@@ -225,7 +248,7 @@ export const RepositoryTagsPanel: FC<{
                   {arch && (
                     <Tag
                       bordered
-                      style={{ margin: 0, fontFamily: "var(--font-mono, monospace)", fontSize: 11, lineHeight: "18px" }}
+                      style={{ margin: 0, fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: "18px" }}
                     >
                       {arch}
                     </Tag>
@@ -242,7 +265,7 @@ export const RepositoryTagsPanel: FC<{
                       columnGap: 12,
                       rowGap: 4,
                       marginTop: 6,
-                      color: "var(--kc-text-tertiary, #8b929e)",
+                      color: "var(--kc-text-tertiary)",
                       fontSize: 11,
                     }}
                   >
@@ -280,7 +303,7 @@ export const RepositoryTagsPanel: FC<{
                     style={{
                       flex: 1,
                       minWidth: 0,
-                      fontFamily: "var(--font-mono, monospace)",
+                      fontFamily: "var(--font-mono)",
                       fontSize: 12,
                       color: "var(--kc-text-secondary)",
                       overflow: "hidden",
@@ -293,7 +316,7 @@ export const RepositoryTagsPanel: FC<{
                   <Tooltip title={`Копировать: docker pull ${pullRef}`} placement="topRight">
                     <Button
                       type="text"
-                      size="small"
+                      style={ROW_ACTION_TRIGGER}
                       icon={<CopyOutlined />}
                       onClick={() => copyText(`docker pull ${pullRef}`, "docker pull скопирован")}
                       aria-label="Копировать docker pull"
@@ -369,7 +392,16 @@ function TagDeleteAction({
       cancelText="Отмена"
       onConfirm={() => mutation.mutate()}
     >
-      <Button type="text" size="small" danger icon={<DeleteOutlined />} loading={pending} aria-label="Удалить тег" />
+      <Button
+        type="text"
+        // Геометрия общая, тон — СВОЙ: `ROW_ACTION_TRIGGER` назначает вторичный
+        // цвет текста, и он перебил бы красный у опасного действия.
+        style={{ ...ROW_ACTION_TRIGGER, color: undefined }}
+        danger
+        icon={<DeleteOutlined />}
+        loading={pending}
+        aria-label="Удалить тег"
+      />
     </Popconfirm>
   );
 }

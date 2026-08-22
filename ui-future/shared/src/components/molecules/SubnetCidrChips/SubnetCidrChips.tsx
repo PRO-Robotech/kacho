@@ -89,7 +89,9 @@ export function CidrSection({ kind, blocks, onChange, hideTitle }: SectionProps)
                     e.preventDefault();
                     onRemove(cidr);
                   }}
-                  style={{ fontFamily: "monospace", fontSize: 12, margin: 0 }}
+                  // CIDR — машинное значение: моноширинный ряд продукта, а не
+                  // родовое `monospace`, у которого в каждом браузере свой шрифт.
+                  style={{ fontFamily: "var(--font-mono)", fontSize: 11, margin: 0 }}
                 >
                   {cidr}
                 </Tag>
@@ -102,7 +104,7 @@ export function CidrSection({ kind, blocks, onChange, hideTitle }: SectionProps)
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={placeholder}
-            style={{ fontFamily: "monospace", fontSize: 12 }}
+            style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();

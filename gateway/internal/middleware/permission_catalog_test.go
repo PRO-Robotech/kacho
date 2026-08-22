@@ -572,19 +572,33 @@ func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 		})
 	}
 
-	// Exempt RPCs stay exempt (the service itself decides over the data it
-	// answers with; there is no single object for the edge to ask about).
+	// Списки iam ушли из полосы освобождения в полосу сужения на данных (#914).
 	//
-	// ListPermissionCatalog used to stand here and no longer does: its floor moved
-	// onto a relation a SYSTEM GRANT produces (#893/#895), so the access it grants
-	// is visible on the grant surface and revocable there. The exempt lane gave the
-	// same floor while leaving the access invisible to any listing.
+	// Здесь стояло «AccountService/List остаётся освобождённым». Это перестало быть
+	// верным намеренно: у освобождения есть ВТОРОЙ смысл — оно допускает вызов
+	// внутреннего слушателя ВООБЩЕ БЕЗ ПРИНЦИПАЛА, на основании сетевого положения.
+	// Пообъектный фильтр ниже по стеку без принципала бессмыслен, поэтому лоток
+	// обязан быть тот, который идёт ПОСЛЕ его извлечения.
+	//
+	// ListPermissionCatalog ушёл отсюда раньше и по другой причине: его пол перевели
+	// на отношение, которое производит СИСТЕМНАЯ ВЫДАЧА (#893/#895), — доступ стал
+	// виден в перечне выдач и отзываем там же.
 	for _, fqn := range []string{
 		"kacho.cloud.iam.v1.AccountService/List",
+		"kacho.cloud.iam.v1.GroupService/List",
+		"kacho.cloud.iam.v1.ProjectService/List",
+		"kacho.cloud.iam.v1.RoleService/List",
+		"kacho.cloud.iam.v1.ServiceAccountService/List",
+		"kacho.cloud.iam.v1.UserService/List",
 	} {
 		entry, ok := c.Lookup(fqn)
-		require.True(t, ok, "exempt fqn missing: %s", fqn)
-		assert.True(t, entry.IsExempt(), "%s must stay exempt", fqn)
+		require.True(t, ok, "запись каталога отсутствует: %s", fqn)
+		assert.False(t, entry.IsExempt(),
+			"%s больше не освобождён: освобождение допускает вызов без принципала", fqn)
+		assert.True(t, entry.ScopeFiltered,
+			"%s обязан объявлять сужение на данных", fqn)
+		assert.NotEmpty(t, entry.Permission,
+			"%s обязан нести НАСТОЯЩЕЕ имя права, а не пустую строку", fqn)
 	}
 
 	// Invariant: an Internal.* RPC anchored on the CLUSTER SINGLETON must not carry

@@ -32,7 +32,7 @@ def run(name: str, status: str, conclusion: str | None = None) -> dict:
     return {"name": name, "status": status, "conclusion": conclusion}
 
 
-def test_все_зелёные_дают_зелёное() -> None:
+def test_all_green_yields_green() -> None:
     """Положительный контроль. Без него «красное» ниже зеленело бы на чём угодно."""
     v = decide([run("ci", "completed", "success"), run("ui", "completed", "success")])
     assert v.state == GREEN, v
@@ -40,13 +40,14 @@ def test_все_зелёные_дают_зелёное() -> None:
     assert (v.total, v.green) == (2, 2)
 
 
-def test_одна_красная_блокирует_и_НАЗЫВАЕТ_виновника() -> None:
+def test_one_red_blocks_and_names_the_culprit() -> None:
+    """Одна красная блокирует — и НАЗЫВАЕТ виновника."""
     v = decide([run("ci", "completed", "success"), run("ui", "completed", "failure")])
     assert v.state == RED, v
     assert v.offenders == ("ui",), "вердикт обязан называть, что именно красно"
 
 
-def test_отмена_и_снятие_по_времени_тоже_блокируют() -> None:
+def test_cancelled_and_timed_out_also_block() -> None:
     """Отменённый прогон не даёт вердикта — зачесть его в зелёное значит принять
     отсутствие ответа за ответ."""
     for bad in ("cancelled", "timed_out", "action_required", "stale"):
@@ -54,7 +55,7 @@ def test_отмена_и_снятие_по_времени_тоже_блокир�
         assert v.state == RED, (bad, v)
 
 
-def test_пока_что_то_идёт_вердикта_НЕТ() -> None:
+def test_while_anything_runs_there_is_no_verdict() -> None:
     """Третья категория: не зелено и не красно. Вызывающий обязан подождать."""
     for waiting in ("queued", "in_progress", "waiting", "pending", "requested"):
         v = decide([run("ci", "completed", "success"), run("ui", waiting)])
@@ -62,13 +63,13 @@ def test_пока_что_то_идёт_вердикта_НЕТ() -> None:
         assert v.pending == 1
 
 
-def test_отказ_решает_НЕ_дожидаясь_остальных() -> None:
+def test_a_failure_decides_without_waiting_for_the_rest() -> None:
     """Держать ранеры ради заведомо красного вердикта — расход без предмета."""
     v = decide([run("ci", "completed", "failure"), run("ui", "in_progress")])
     assert v.state == RED, v
 
 
-def test_ноль_проверок_это_НЕ_зелено() -> None:
+def test_zero_checks_is_not_green() -> None:
     """Предмет #614 в чистом виде: «никто не смотрел» обязано быть отличимо от
     «замечаний нет»."""
     v = decide([])
@@ -76,7 +77,7 @@ def test_ноль_проверок_это_НЕ_зелено() -> None:
     assert "никто не смотрел" in v.reason
 
 
-def test_только_нейтральные_это_НЕ_зелено() -> None:
+def test_neutral_only_is_not_green() -> None:
     """Пропущенное и нейтральное не зачитываются в успех: иначе класс «форма без
     содержания» возвращается уровнем ниже."""
     v = decide([run("ci", "completed", "skipped"), run("ui", "completed", "neutral")])
@@ -84,7 +85,7 @@ def test_только_нейтральные_это_НЕ_зелено() -> None:
     assert v.neutralish == 2 and v.green == 0
 
 
-def test_нейтральные_рядом_с_зелёными_не_мешают() -> None:
+def test_neutral_alongside_green_does_not_interfere() -> None:
     """Парный контроль к предыдущей: пропуск сам по себе не отравляет вердикт,
     если хоть одна проверка действительно смотрела."""
     v = decide([run("ci", "completed", "success"), run("docs", "completed", "skipped")])
@@ -92,7 +93,7 @@ def test_нейтральные_рядом_с_зелёными_не_мешают
     assert (v.green, v.neutralish) == (1, 1)
 
 
-def test_себя_из_счёта_исключаем() -> None:
+def test_self_is_excluded_from_the_count() -> None:
     """Без этого вердикт ждал бы собственного завершения вечно."""
     self_name = "сводный вердикт"
     v = decide([run(self_name, "in_progress"), run("ci", "completed", "success")], self_name)
@@ -100,7 +101,7 @@ def test_себя_из_счёта_исключаем() -> None:
     assert v.total == 1
 
 
-def test_принимает_обе_формы_ответа() -> None:
+def test_both_response_shapes_are_accepted() -> None:
     """API отдаёт объект с ключом check_runs; в пробах удобнее список. Разбор не
     должен зависеть от того, чем его накормили."""
     as_list = decide([run("ci", "completed", "success")])
@@ -108,7 +109,8 @@ def test_принимает_обе_формы_ответа() -> None:
     assert as_list.state == as_obj.state == GREEN
 
 
-def test_мусор_на_входе_не_читается_как_зелёное() -> None:
+def test_garbage_input_is_not_read_as_green() -> None:
+    """Мусор на входе не читается как зелёное."""
     for junk in ("строка", 42, None):
         try:
             decide(junk)

@@ -1,0 +1,260 @@
+// Строка инструментов списка: заголовок страницы, подпись действия, состав и
+// порядок ряда ручек.
+//
+// ── ЧТО ЗДЕСЬ УТВЕРЖДАЕТСЯ И ПОЧЕМУ ИМЕННО ЭТО ────────────────────────────────
+//
+// 1. КНОПКА НАЗЫВАЕТ ДЕЙСТВИЕ, ЗАГОЛОВОК — ПРЕДМЕТ.
+//
+//    Здесь стояла проба на СКЛОНЕНИЕ подписи: кнопка собиралась как
+//    `Создать ${spec.singular.toLowerCase()}` и давала «Создать таблица
+//    маршрутов», а проба требовала «Создать таблицу маршрутов» из объявленного
+//    у каждого ресурса `accusative`.
+//
+//    Предмет изменён решением владельца: кнопка называет ДЕЙСТВИЕ — «Создать», —
+//    потому что предмет уже назван заголовком страницы в двадцати точках левее
+//    и вчетверо крупнее. Проба правится ВМЕСТЕ с предметом.
+//
+//    ОСЛАБЛЕНИЯ ЗДЕСЬ НЕТ, и вот чем оно закрыто. Утверждение «на кнопке имени
+//    типа нет» само по себе выполняется и на экране, где не отрисовалось НИЧЕГО,
+//    поэтому оно стоит в паре со своим положительным контролем: имя типа на этом
+//    же экране ЕСТЬ и его несёт заголовок (`PageHead` → `h3`). Пара опровержима
+//    с обеих сторон: вернут имя на кнопку — покраснеет первая половина; уберут
+//    заголовок — вторая. Ни одна половина по отдельности этого не даёт.
+//
+//    Механизм склонения из продукта НЕ УШЁЛ и здесь не сторожится: полная форма
+//    (`createActionLabel`) осталась там, где предмет рядом не назван — пункт
+//    выпадающего списка, подпись выбора, текст отказа, — и её держит
+//    `shared/src/lib/resource-label.test.ts` (там же требование объявить
+//    `accusative` у каждого ресурса). Дублировать это утверждение здесь значило
+//    бы завести два места об одном предмете.
+//
+// 2. ЗАГОЛОВОК ЕСТЬ И У ПУСТОГО СПИСКА.
+//
+//    Крошки перестали называть раздел последним звеном — ИМЕННО потому, что его
+//    называет заголовок (канон, §2: «раздел называется один раз»). Значит на
+//    странице, где заголовка нет, раздел не назван ничем: посылка, снявшая
+//    крошку, там не выполняется. Отдельная проба ниже держит обе стороны —
+//    заголовок над пустым списком есть, строки инструментов над ним нет.
+//
+// 3. РУЧКИ СТОЯТ ОДНОЙ ГРУППОЙ, И ПОРЯДОК В НЕЙ — ПОРЯДОК РАБОТЫ: сузить
+//    (отборы, затем поиск) → выбрать, что показывать («Столбцы») → сделать
+//    («Создать»). Над ПУСТЫМ списком ряда нет вовсе: сужать нечего, выбирать
+//    столбцы не у чего — это была бы подпись к тому, чего нет.
+//
+//    ЗДЕСЬ СТОЯЛ СЧЁТЧИК СТРОК, и проба разводила три его случая («Всего» на
+//    дочитанном курсоре, «Загружено» на недочитанном, «Найдено» под сужением).
+//    Решением владельца «отображать кол-во элементов не нужно» счётчик снят
+//    ВЕЗДЕ, а компонент, который его рисовал, удалён вместе с предметом. Проба
+//    снятого предмета зеленела бы вечно и не сторожила бы ничего, поэтому все
+//    четыре её случая сняты, а не ослаблены. То, что в них было живого, стоит
+//    рядом и не пропало: клиентское сужение — в `search-term`-пробе на том же
+//    ресурсе и том же вводе, а «за курсором есть ещё» называет строка поиска —
+//    в `search`-пробе.
+
+import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router";
+import { HeaderRightSlot, PageHeaderSlotProvider } from "@shared/components/molecules/PageHeaderSlot";
+import { REGISTRY, type ResourceSpec } from "@shared/lib/resource-registry";
+import { ResourceListPage } from "./ResourceListPage";
+
+const realFetch = globalThis.fetch;
+
+/** Отвечает на любой список строками; `nextToken` непуст — за курсором есть ещё. */
+function stubList(payloadKey: string, rows: Record<string, unknown>[], nextToken = "") {
+  globalThis.fetch = () =>
+    Promise.resolve({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: () => Promise.resolve(JSON.stringify({ [payloadKey]: rows, next_page_token: nextToken })),
+    } as Response);
+}
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+  localStorage.clear();
+});
+
+function renderList(spec: ResourceSpec) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[`/projects/p1/vpc/${spec.route}`]}>
+        <PageHeaderSlotProvider>
+          <HeaderRightSlot />
+          <ResourceListPage spec={spec} panelForms />
+        </PageHeaderSlotProvider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+/** Заголовок страницы — `Typography.Title level={3}`, то есть `h3`. */
+function pageHeading(): HTMLElement {
+  return screen.getByRole("heading", { level: 3 });
+}
+
+/**
+ * Ресурсы VPC — ВЫВЕДЕНЫ из реестра, а не выписаны.
+ *
+ * Выписанный перечень разошёлся бы с деревом молча: заведут девятый ресурс — и
+ * проба останется зелёной, ничего о нём не утверждая. Общий код не вправе
+ * импортировать перечень приложения (`vpc/src/lib/scoped-resources.ts`), поэтому
+ * признак берётся из самой спеки — адрес её API у края.
+ */
+const VPC_SPECS = Object.values(REGISTRY).filter((s) => s.apiPath.startsWith("/vpc/v1/"));
+
+/** Контроль вывода: восемь типов раздела сетей обязаны в него попасть. */
+const EIGHT = [
+  "networks",
+  "subnets",
+  "addresses",
+  "route-tables",
+  "security-groups",
+  "network-interfaces",
+  "gateways",
+  "cidr-groups",
+];
+
+describe("подпись действия называет действие, а предмет называет заголовок", () => {
+  it("перепись: вывод по адресу API даёт непустой набор и покрывает все восемь типов", () => {
+    // Без этого «ни одна подпись не несёт имени типа» ниже было бы выполнено и
+    // пустым набором — то есть «ноль находок» не отличалось бы от «ноль
+    // прочитанного».
+    expect(VPC_SPECS.length).toBeGreaterThanOrEqual(EIGHT.length);
+    const ids = new Set(VPC_SPECS.map((s) => s.id));
+    expect(EIGHT.filter((id) => !ids.has(id))).toEqual([]);
+  });
+
+  it("«Создать» без предмета — там, где у предмета своя форма винительного", async () => {
+    // Ресурс взят тот же, что и прежде, и по той же причине: у «таблицы
+    // маршрутов» именительный и винительный РАЗЛИЧАЮТСЯ, поэтому возврат любой
+    // из двух прежних сборок подписи здесь виден, а на «шлюзе» — нет.
+    const spec = REGISTRY["route-tables"];
+    stubList(spec.payloadKey, [{ id: "rtb-1", name: "основная" }]);
+    renderList(spec);
+
+    const cta = await screen.findByRole("link", { name: /Создать/ });
+
+    expect(cta.textContent).toBe("Создать");
+    // Обе прежние сборки названы дословно: и та, что стояла в продукте
+    // («Создать таблица маршрутов»), и та, которой её чинили («Создать таблицу
+    // маршрутов»). Возврат любой красит эту строку.
+    expect(cta.textContent).not.toContain("таблицу маршрутов");
+    expect(cta.textContent).not.toContain("таблица маршрутов");
+
+    // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ к трём отрицаниям выше: имя типа на экране ЕСТЬ —
+    // значит «его нет на кнопке» не выполнено по причине пустого экрана.
+    expect(pageHeading().textContent).toBe("Таблицы маршрутов");
+  });
+
+  it.each(VPC_SPECS.filter((s) => s.ops.create).map((s) => [s.id, s] as const))(
+    "%s: кнопка — «Создать», имя типа несёт заголовок",
+    async (_id, spec) => {
+      // Правка сидит в ОБЩЕМ компоненте, и раздел сетей монтирует его для всех
+      // своих типов — значит она обязана доходить до каждого, а не до того, на
+      // чьём снимке дефект заметили.
+      stubList(spec.payloadKey, [{ id: "x-1", name: "строка" }]);
+      renderList(spec);
+
+      const cta = await screen.findByRole("link", { name: /Создать/ });
+
+      expect(cta.textContent).toBe("Создать");
+      // Отрицание не вырождено: форма объявлена и непуста — это требование
+      // `lib/resource-label.test.ts`, здесь оно только перепроверяется, чтобы
+      // `not.toContain("")` не оказался истиной по построению.
+      expect(spec.accusative).toBeTruthy();
+      expect(cta.textContent).not.toContain(spec.accusative);
+      expect(cta.textContent).not.toContain(spec.singular.toLowerCase());
+      // Положительный контроль — на каждом типе, а не только на показательном.
+      expect(pageHeading().textContent).toBe(spec.plural);
+    },
+  );
+});
+
+describe("строка инструментов", () => {
+  it("пустой список — заголовок ЕСТЬ, строки инструментов НЕТ", async () => {
+    // Две половины, и обе обязательны.
+    //
+    // Ручек нет: сужать нечего — в это состояние страница приходит только при
+    // пустом наборе и БЕЗ сужения (см. `listViewState`); выбирать столбцы не у
+    // чего. Полоса ручек над пустой таблицей — подпись к тому, чего нет.
+    //
+    // Заголовок есть: крошки перестали называть раздел последним звеном именно
+    // потому, что его называет заголовок. Без заголовка пустой список не назвал
+    // бы свой тип НИЧЕМ — а это единственная страница, где у пользователя нет и
+    // строк, по которым тип угадывается.
+    const spec = REGISTRY.networks;
+    stubList(spec.payloadKey, []);
+    renderList(spec);
+
+    // Ждём именно ПУСТОЕ СОСТОЯНИЕ, а не кнопку «Создать»: она стоит и на самом
+    // экране пустого состояния, поэтому находится ещё до ответа сервера — и
+    // утверждение уехало бы в состояние загрузки, о котором мы здесь ничего не
+    // спрашиваем.
+    await screen.findByText("Создайте вашу первую облачную сеть");
+
+    expect(pageHeading().textContent).toBe(spec.plural);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Столбцы" })).toBeNull();
+  });
+
+  it("непустой список — ручки стоят НАД таблицей, сужение перед действиями", async () => {
+    // Порядок утверждается ВЗАИМНЫМ РАСПОЛОЖЕНИЕМ узлов, а не разбором обёрток:
+    // проба, цепляющаяся за структуру `div`-ов, краснеет на первой же правке
+    // раскладки, ничего не сказав о том, что читатель видит.
+    //
+    // Звеньев по-прежнему три, но среднее — другое. Прежде цепочка читалась
+    // «сужение → счётчик → действия»; счётчик снят решением владельца
+    // «отображать кол-во элементов не нужно», и на его место встала САМА
+    // ТАБЛИЦА: ручки стоят НАД ней одной группой, а не отдельной полосой во всю
+    // ширину и не под списком. Заменить снятое звено на «поиск где-то есть»
+    // означало бы ослабить утверждение до неопровержимого.
+    //
+    // Четвёртым звеном добавлено «Создать»: решением владельца она переехала из
+    // правого слота шапки приложения СЮДА и стоит ПОСЛЕ «Столбцов» — действие,
+    // изменяющее набор, после тех, что его только показывают.
+    const spec = REGISTRY.networks;
+    stubList(spec.payloadKey, [{ id: "net-1", name: "первая" }]);
+    renderList(spec);
+    await screen.findAllByText("первая");
+
+    const search = screen.getByRole("searchbox");
+    const columns = screen.getByRole("button", { name: "Столбцы" });
+    const createLink = screen.getByRole("link", { name: /Создать/ });
+    const table = screen.getByRole("table");
+
+    /** true, если `a` стоит в документе раньше `b`. */
+    const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+    expect(before(search, columns)).toBe(true);
+    expect(before(columns, createLink)).toBe(true);
+    expect(before(createLink, table)).toBe(true);
+    // Отрицание в паре с положительным: проба обязана уметь сказать «нет».
+    expect(before(columns, search)).toBe(false);
+    expect(before(createLink, columns)).toBe(false);
+    expect(before(table, search)).toBe(false);
+  });
+
+  it("отбор стоит ПЕРЕД поиском: он меняет набор, среди которого потом ищут", async () => {
+    // Решение владельца. Стоя после поля поиска, отбор читался как уточнение к
+    // нему, хотя порядок обратный: сперва сужается НАБОР строк, потом внутри
+    // него ищут.
+    //
+    // Ресурс взят с отбором по зоне — у большинства типов раздела отбора нет
+    // вовсе, и на них утверждение было бы беспредметным.
+    const spec = REGISTRY.subnets;
+    stubList(spec.payloadKey, [{ id: "sub-1", name: "первая" }]);
+    renderList(spec);
+    await screen.findAllByText("первая");
+
+    const filterSelect = screen.getByRole("combobox");
+    const search = screen.getByRole("searchbox");
+
+    const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+    expect(before(filterSelect, search)).toBe(true);
+    expect(before(search, filterSelect)).toBe(false);
+  });
+});

@@ -64,16 +64,16 @@ async function anyRegionId(page: Page): Promise<string> {
  * предок, а не самый внешний. Разметку это не изобретает: `.ant-form-item` —
  * ряд, который форма рисует и так, и других признаков ряда у неё нет.
  */
-function ряд(page: Page, подпись: string) {
+function row(page: Page, label: string) {
   return page
-    .getByText(подпись, { exact: true })
+    .getByText(label, { exact: true })
     .locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-form-item ")][1]')
     .first();
 }
 
 /** Подполе составного виджета — по СВЯЗАННОЙ с ним подписи (`<label for>`).
  *
- * ЗАЧЕМ ОТДЕЛЬНО ОТ `ряд`. Строка составного списка (цель группы, спецификация
+ * ЗАЧЕМ ОТДЕЛЬНО ОТ `row`. Строка составного списка (цель группы, спецификация
  * интерфейса) рисуется обычными `div` — своего `.ant-form-item` у подполя нет
  * BY CONSTRUCTION, и адресовать его рядом нельзя ни при какой правке помощника.
  * Единственный `.ant-form-item` с текстом «Внешний адрес» — ВНЕШНЕЕ поле
@@ -94,8 +94,8 @@ function ряд(page: Page, подпись: string) {
  * `.first()` — на случай нескольких строк: подписи у них одинаковы, а вводы
  * разные (идентификаторы не совпадают, это заперто той же модульной пробой).
  */
-function подполе(page: Page, подпись: string) {
-  return page.getByLabel(подпись, { exact: true }).first();
+function subfield(page: Page, label: string) {
+  return page.getByLabel(label, { exact: true }).first();
 }
 
 /** Выбор в выпадающем списке по видимому тексту варианта.
@@ -117,70 +117,70 @@ function подполе(page: Page, подпись: string) {
  * пробы в «не выполнилось» у всей суиты. Названный отказ за 20 с — это не
  * послабление, а разница между находкой и потерей прогона.
  */
-async function выбратьИз(page: Page, открыть: Locator, подпись: string, вариант: RegExp) {
-  await открыть.click();
-  const пункт = page
+async function pickFrom(page: Page, opener: Locator, label: string, option: RegExp) {
+  await opener.click();
+  const item = page
     .locator(".ant-select-dropdown:visible")
     .locator(".ant-select-item-option")
-    .filter({ hasText: вариант })
+    .filter({ hasText: option })
     .first();
   await expect(
-    пункт,
-    `в списке «${подпись}» нет варианта ${вариант} — выбрать нечего, и о ветви такой прогон не говорит ничего`,
+    item,
+    `в списке «${label}» нет варианта ${option} — выбрать нечего, и о ветви такой прогон не говорит ничего`,
   ).toBeVisible({ timeout: 20_000 });
-  await пункт.click({ timeout: 20_000 });
+  await item.click({ timeout: 20_000 });
 }
 
 /** Выбор в списке ПОЛЯ формы (подпись слева, контрол справа). */
-async function выбрать(page: Page, подпись: string, вариант: RegExp) {
-  await выбратьИз(page, ряд(page, подпись).locator(".ant-select").first(), подпись, вариант);
+async function pick(page: Page, label: string, option: RegExp) {
+  await pickFrom(page, row(page, label).locator(".ant-select").first(), label, option);
 }
 
 /** Выбор в списке ПОДПОЛЯ составного виджета (мелкая подпись сверху).
  *
  * Щёлкается ТОТ ЖЕ элемент, что и у поля формы, — обёртка списка: доступное имя
  * ведёт к полю ввода ВНУТРИ неё, а открывает список обработчик обёртки. Путь
- * общий с `выбрать`, поэтому новизна здесь ровно одна — способ адресации.
+ * общий с `pick`, поэтому новизна здесь ровно одна — способ адресации.
  */
-async function выбратьПодполе(page: Page, подпись: string, вариант: RegExp) {
-  const список = подполе(page, подпись).locator(
+async function pickSubfield(page: Page, label: string, option: RegExp) {
+  const select = subfield(page, label).locator(
     'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " ant-select ")][1]',
   );
-  await выбратьИз(page, список, подпись, вариант);
+  await pickFrom(page, select, label, option);
 }
 
 /** Группа целей, прочитанная по имени из списка проекта. */
-async function группаПоИмени(page: Page, projectId: string, имя: string) {
+async function targetGroupByName(page: Page, projectId: string, name: string) {
   const res = await page.request.get(`/nlb/v1/targetGroups?projectId=${projectId}`);
   if (!res.ok()) return null;
   const body = (await res.json()) as { targetGroups?: Array<Record<string, unknown>> };
-  return body.targetGroups?.find((g) => g.name === имя) ?? null;
+  return body.targetGroups?.find((g) => g.name === name) ?? null;
 }
 
 /** Открыть форму создания группы целей и заполнить общую часть. */
-async function начатьСозданиеГруппы(page: Page, projectId: string, имя: string, regionId: string) {
+async function startGroupCreation(page: Page, projectId: string, name: string, regionId: string) {
   await page.goto(`/projects/${projectId}/nlb/target-groups`, { waitUntil: "domcontentloaded" });
 
-  const создать = page.locator('button:has-text("Создать"), a:has-text("Создать")').first();
-  await expect(создать, "на странице групп целей нет элемента создания").toBeVisible({ timeout: 30_000 });
-  await создать.click();
+  const createControl = page.locator('button:has-text("Создать"), a:has-text("Создать")').first();
+  await expect(createControl, "на странице групп целей нет элемента создания").toBeVisible({ timeout: 30_000 });
+  await createControl.click();
 
-  const имяПоле = ряд(page, "Имя").locator("input").first();
-  await expect(имяПоле, "форма создания группы целей не предложила поле имени").toBeVisible({ timeout: 20_000 });
-  await имяПоле.fill(имя);
+  const nameField = row(page, "Имя").locator("input").first();
+  await expect(nameField, "форма создания группы целей не предложила поле имени").toBeVisible({ timeout: 20_000 });
+  await nameField.fill(name);
 
-  await выбрать(page, "Регион", new RegExp(regionId));
+  await pick(page, "Регион", new RegExp(regionId));
 }
 
 /** Отправить форму и дождаться ответа края на создание группы. */
-async function отправить(page: Page) {
-  const [ответ] = await Promise.all([
+async function submit(page: Page) {
+  const [response] = await Promise.all([
     page.waitForResponse((r) => r.url().includes("/nlb/v1/targetGroups") && r.request().method() === "POST", {
       timeout: 40_000,
     }),
     page.locator('button:has-text("Создать"):visible, button[type="submit"]:visible').last().click(),
   ]);
-  expect(ответ.status(), `создание группы целей отвергнуто краем: ${(await ответ.text()).slice(0, 300)}`).toBe(200);
+  expect(response.status(), `создание группы целей отвергнуто краем: ${(await response.text()).slice(0, 300)}`).toBe(200);
 }
 
 test("группа целей создаётся с проверкой живости по HTTP — ветвь выбрана из формы", async ({ page }) => {
@@ -190,24 +190,24 @@ test("группа целей создаётся с проверкой живо�
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
   const regionId = await anyRegionId(page);
-  const имя = `tg-http-${runTag()}`;
+  const name = `tg-http-${runTag()}`;
 
-  await начатьСозданиеГруппы(page, projectId, имя, regionId);
+  await startGroupCreation(page, projectId, name, regionId);
 
-  await выбрать(page, "HC: протокол", /HTTP —/);
-  await ряд(page, "HC: путь").locator("input").first().fill("/healthz");
+  await pick(page, "HC: протокол", /HTTP —/);
+  await row(page, "HC: путь").locator("input").first().fill("/healthz");
 
-  await отправить(page);
+  await submit(page);
 
   await expect
-    .poll(async () => Boolean(await группаПоИмени(page, projectId, имя)), {
+    .poll(async () => Boolean(await targetGroupByName(page, projectId, name)), {
       message: "группа целей не появилась в списке после принятого запроса",
       timeout: 60_000,
     })
     .toBe(true);
 
-  const группа = (await группаПоИмени(page, projectId, имя)) as Record<string, unknown>;
-  const hc = (группа.healthCheck ?? {}) as Record<string, unknown>;
+  const group = (await targetGroupByName(page, projectId, name)) as Record<string, unknown>;
+  const hc = (group.healthCheck ?? {}) as Record<string, unknown>;
   expect(
     hc.http,
     "группа создана с проверкой живости НЕ по HTTP: ветвь, выбранная в форме, до контракта не доехала. " +
@@ -228,23 +228,23 @@ test("группа целей создаётся СРАЗУ с целью — в
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
   const regionId = await anyRegionId(page);
-  const имя = `tg-tgt-${runTag()}`;
-  const адрес = "203.0.113.7";
+  const name = `tg-tgt-${runTag()}`;
+  const address = "203.0.113.7";
 
-  await начатьСозданиеГруппы(page, projectId, имя, regionId);
+  await startGroupCreation(page, projectId, name, regionId);
 
-  await ряд(page, "Цели").getByRole("button", { name: /Добавить/ }).first().click();
+  await row(page, "Цели").getByRole("button", { name: /Добавить/ }).first().click();
   // Вид цели и её значение — РАЗНЫЕ контролы строки, и адресуются по своим
   // подписям, а не по порядку в разметке.
-  await выбратьПодполе(page, "Чем названа цель", /Внешний адрес/);
-  await подполе(page, "Внешний адрес").fill(адрес);
+  await pickSubfield(page, "Чем названа цель", /Внешний адрес/);
+  await subfield(page, "Внешний адрес").fill(address);
 
-  await отправить(page);
+  await submit(page);
 
   await expect
     .poll(
       async () => {
-        const g = await группаПоИмени(page, projectId, имя);
+        const g = await targetGroupByName(page, projectId, name);
         const targets = (g?.targets as Array<Record<string, unknown>> | undefined) ?? [];
         return targets.map((t) => (t.externalIp as Record<string, unknown> | undefined)?.address ?? "").join(",");
       },
@@ -256,7 +256,7 @@ test("группа целей создаётся СРАЗУ с целью — в
         timeout: 60_000,
       },
     )
-    .toBe(адрес);
+    .toBe(address);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -268,11 +268,11 @@ test("группа целей создаётся СРАЗУ с целью — в
 // находки пережили зелёные модульные пробы своих модулей.
 
 /** Балансировщик, прочитанный по имени из списка проекта. */
-async function балансировщикПоИмени(page: Page, projectId: string, имя: string) {
+async function balancerByName(page: Page, projectId: string, name: string) {
   const res = await page.request.get(`/nlb/v1/networkLoadBalancers?projectId=${projectId}`);
   if (!res.ok()) return null;
   const body = (await res.json()) as { networkLoadBalancers?: Array<Record<string, unknown>> };
-  return body.networkLoadBalancers?.find((b) => b.name === имя) ?? null;
+  return body.networkLoadBalancers?.find((b) => b.name === name) ?? null;
 }
 
 test("внешний балансировщик создаётся ТОЛЬКО на IPv4 — от семейства можно отказаться", async ({ page }) => {
@@ -285,23 +285,23 @@ test("внешний балансировщик создаётся ТОЛЬКО 
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
   const regionId = await anyRegionId(page);
-  const имя = `lb-v4only-${runTag()}`;
+  const name = `lb-v4only-${runTag()}`;
 
   await page.goto(`/projects/${projectId}/nlb/load-balancers`, { waitUntil: "domcontentloaded" });
-  const создать = page.locator('button:has-text("Создать"), a:has-text("Создать")').first();
-  await expect(создать, "на странице балансировщиков нет элемента создания").toBeVisible({ timeout: 30_000 });
-  await создать.click();
+  const createControl = page.locator('button:has-text("Создать"), a:has-text("Создать")').first();
+  await expect(createControl, "на странице балансировщиков нет элемента создания").toBeVisible({ timeout: 30_000 });
+  await createControl.click();
 
-  const имяПоле = ряд(page, "Имя").locator("input").first();
-  await expect(имяПоле, "форма создания балансировщика не предложила поле имени").toBeVisible({ timeout: 20_000 });
-  await имяПоле.fill(имя);
+  const nameField = row(page, "Имя").locator("input").first();
+  await expect(nameField, "форма создания балансировщика не предложила поле имени").toBeVisible({ timeout: 20_000 });
+  await nameField.fill(name);
   // Размещение объявляется ЯВНО: от него зависит, какие режимы источника форма
   // вообще предлагает («публичный» есть только у внешней схемы). Полагаться на
   // умолчание значило бы проверять другой ресурс всякий раз, когда умолчание
   // сменят, — и заголовок пробы про ВНЕШНИЙ балансировщик перестал бы быть про
   // то, что она делает.
-  await выбрать(page, "Размещение", /^EXTERNAL_REGIONAL/);
-  await выбрать(page, "Регион", new RegExp(regionId));
+  await pick(page, "Размещение", /^EXTERNAL_REGIONAL/);
+  await pick(page, "Регион", new RegExp(regionId));
 
   // Режим семейства выбирается в СВОЕЙ строке. Строка адресуется ближайшим
   // рядом над своей подписью: секция «Источник VIP» — поле во всю ширину, то
@@ -312,50 +312,50 @@ test("внешний балансировщик создаётся ТОЛЬКО 
   // режим объясняет себя тут же соседним текстом («Публичный VIP выделяется
   // платформой автоматически»), и поиск по тексту нашёл бы объяснение наравне с
   // кнопкой — то есть щелчок зависел бы от того, что уже выбрано.
-  const режим = (подпись: string, вариант: RegExp) =>
-    ряд(page, подпись).locator(".ant-segmented-item-label").filter({ hasText: вариант }).first();
+  const mode = (label: string, option: RegExp) =>
+    row(page, label).locator(".ant-segmented-item-label").filter({ hasText: option }).first();
 
   // IPv4 задаётся ПОЛОЖИТЕЛЬНО, а не умолчанием. Иначе утверждение «создан
   // только на IPv4» держалось бы на шаблоне формы: смени он режим — и проба
   // перестала бы отправлять что-либо вовсе, а причину показала бы пределом
   // времени у ожидания ответа края, то есть следствием вместо причины.
-  const источникV4 = режим("IPv4 Адрес", /^Публичный/);
+  const sourceV4 = mode("IPv4 Адрес", /^Публичный/);
   await expect(
-    источникV4,
+    sourceV4,
     "в строке IPv4 нет режима «Публичный (авто)»: внешнему балансировщику неоткуда " +
       "взять VIP, и утверждать про отказ от IPv6 не на чем — не задано ни одно семейство",
   ).toBeVisible({ timeout: 20_000 });
-  await источникV4.click();
+  await sourceV4.click();
 
   // Отказ от IPv6 — то, ради чего проба и написана. Сперва семейство ЗАДАЁТСЯ,
   // и только потом снимается: шаблон формы ставит IPv6 в «Не задавать» сам,
   // поэтому щелчок по умолчанию ничего не доказывал бы — «шестого нет» вышло бы
   // верным и при кнопке, которая не работает вовсе.
-  const источникV6 = режим("IPv6 Адрес", /^Публичный/);
+  const sourceV6 = mode("IPv6 Адрес", /^Публичный/);
   await expect(
-    источникV6,
+    sourceV6,
     "в строке IPv6 нет режима «Публичный (авто)» — задать семейство нечем, и снять " +
       "его потом было бы нечего: проба про отказ проверяла бы умолчание",
   ).toBeVisible({ timeout: 20_000 });
-  await источникV6.click();
+  await sourceV6.click();
 
-  const отказV6 = режим("IPv6 Адрес", /^Не задавать/);
+  const declineV6 = mode("IPv6 Адрес", /^Не задавать/);
   await expect(
-    отказV6,
+    declineV6,
     "в строке IPv6 нет способа отказаться от семейства: при внешнем размещении оба " +
       "предложенных режима дают источник, поэтому балансировщик только на IPv4 не собрать",
   ).toBeVisible({ timeout: 20_000 });
-  await отказV6.click();
+  await declineV6.click();
 
   // Выбор ПРИНЯТ формой, а не только нажат: строка сообщает, что семейство не
   // задаётся. Без этого щелчок мимо кнопки был бы неотличим от щелчка по ней, и
   // отказ пришёл бы позже — пределом времени у ожидания ответа края.
   await expect(
-    ряд(page, "IPv6 Адрес").getByText(/не задаётся/),
+    row(page, "IPv6 Адрес").getByText(/не задаётся/),
     "строка IPv6 не подтвердила отказ от семейства: выбор режима не принят формой",
   ).toBeVisible({ timeout: 20_000 });
 
-  const [ответ] = await Promise.all([
+  const [response] = await Promise.all([
     page.waitForResponse((r) => r.url().includes("/nlb/v1/networkLoadBalancers") && r.request().method() === "POST", {
       timeout: 40_000,
     }),
@@ -379,7 +379,7 @@ test("внешний балансировщик создаётся ТОЛЬКО 
   // раньше.
   const lbId = await createdResourceId(
     page,
-    ответ,
+    response,
     "networkLoadBalancerId",
     (id) => `/nlb/v1/networkLoadBalancers/${id}`,
     "внешний балансировщик только на IPv4",
@@ -389,7 +389,7 @@ test("внешний балансировщик создаётся ТОЛЬКО 
   // материализуется в связанный адрес: без этого «шестого нет» вакуумно —
   // до саги отсутствуют оба.
   await expect
-    .poll(async () => ((await балансировщикПоИмени(page, projectId, имя))?.v4AddressId as string) ?? "", {
+    .poll(async () => ((await balancerByName(page, projectId, name))?.v4AddressId as string) ?? "", {
       message:
         `балансировщик ${lbId} создан, но заявленное семейство IPv4 не материализовалось ` +
         "в связанный адрес: без него утверждение «IPv6 отсутствует» ничего не значит — " +
@@ -398,11 +398,11 @@ test("внешний балансировщик создаётся ТОЛЬКО 
     })
     .not.toBe("");
 
-  const балансировщик = (await балансировщикПоИмени(page, projectId, имя)) as Record<string, unknown>;
+  const balancer = (await balancerByName(page, projectId, name)) as Record<string, unknown>;
   expect(
-    (балансировщик.v6AddressId as string) ?? "",
+    (balancer.v6AddressId as string) ?? "",
     "балансировщик создан С IPv6, хотя от семейства отказались в форме: отказ до контракта " +
-      `не доехал. Что приехало: ${JSON.stringify(балансировщик.v6AddressId)}`,
+      `не доехал. Что приехало: ${JSON.stringify(balancer.v6AddressId)}`,
   ).toBe("");
 });
 
@@ -419,15 +419,32 @@ test("вид «контейнер» машины не создаёт — отк�
   // существует. Проба остаётся верной, если отказ переедет между консолью и краем.
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
-  const имя = `vm-ctr-${runTag()}`;
+  const name = `vm-ctr-${runTag()}`;
 
   await page.goto(`/projects/${projectId}/compute/instances/create`, { waitUntil: "domcontentloaded" });
 
-  const имяПоле = ряд(page, "Имя").locator("input").first();
-  await expect(имяПоле, "форма создания машины не предложила поле имени").toBeVisible({ timeout: 30_000 });
-  await имяПоле.fill(имя);
-  await выбрать(page, "Тип инстанса", /CONTAINER/);
+  const nameField = row(page, "Имя").locator("input").first();
+  await expect(nameField, "форма создания машины не предложила поле имени").toBeVisible({ timeout: 30_000 });
+  await nameField.fill(name);
 
+  // ОСТАЛЬНОЕ ОБЯЗАТЕЛЬНОЕ ЗАПОЛНЯЕТСЯ, иначе предмет пробы недостижим.
+  //
+  // Форма называет ВСЕ незаполненные обязательные поля до отправки — зону, тип
+  // машины и образ, — и делает это раньше, чем доходит до вида. Оставив их
+  // пустыми, проба меряла бы не связку «вид ↔ источник ОС», а собственную
+  // недозаполненность: отказ по виду не показывался бы никогда, ни на
+  // сломанном продукте, ни на починенном.
+  //
+  // Прежняя редакция заполняла только имя и была зелёной, пока формы не
+  // проверяли своих обязательных полей вовсе: тогда запрос уходил на край и
+  // отказ приходил оттуда. Предмет пробы — исход («машины с этим именем нет»)
+  // и наличие внятного отказа — остался прежним; изменилось, кто отказывает.
+  await pick(page, "Тип инстанса", /CONTAINER/);
+
+  // Нажатие оставлено, но отказ по виду виден и БЕЗ него: он относится к форме
+  // целиком и показывается сразу. Прежде он приходил тостом из отправки, а до
+  // отправки форма не доходила, пока оставалось незаполненное обязательное
+  // поле, — и на стенде без образов проба была неисполнима вовсе.
   await page.locator('button:has-text("Создать"):visible, button[type="submit"]:visible').last().click();
 
   await expect(
@@ -436,14 +453,14 @@ test("вид «контейнер» машины не создаёт — отк�
       "арендатор узнаёт об этом отказом на запрос, который не мог пройти",
   ).toBeVisible({ timeout: 20_000 });
 
-  const списокНесётИмя = async (): Promise<string> => {
+  const listCarriesName = async (): Promise<string> => {
     const res = await page.request.get(`/compute/v1/instances?projectId=${projectId}`);
     if (!res.ok()) return `список машин недоступен: ${res.status()}`;
     const body = (await res.json()) as { instances?: Array<Record<string, unknown>> };
-    return (body.instances ?? []).some((i) => i.name === имя) ? "создана" : "не создана";
+    return (body.instances ?? []).some((i) => i.name === name) ? "создана" : "не создана";
   };
   expect(
-    await списокНесётИмя(),
+    await listCarriesName(),
     "машина вида «контейнер» создана: вид объявлен контрактом несоздаваемым, а отказ его " +
       "не назвал — значит связки «вид ↔ источник ОС» на пути создания нет",
   ).toBe("не создана");
@@ -451,7 +468,7 @@ test("вид «контейнер» машины не создаёт — отк�
   // (+) положительный контроль на ту же ось: отказ различает вид, а не
   // срабатывает безусловно. Без него «контейнер не создался» могло бы означать
   // «форма не создаёт ничего».
-  await выбрать(page, "Тип инстанса", /VM/);
+  await pick(page, "Тип инстанса", /VM/);
   await page.locator('button:has-text("Создать"):visible, button[type="submit"]:visible').last().click();
   await expect(
     page.getByText(/Вид «контейнер» пока не создаётся/),

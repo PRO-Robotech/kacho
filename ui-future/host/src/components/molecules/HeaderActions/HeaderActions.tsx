@@ -8,10 +8,12 @@ export const HeaderActions: FC<{
 }> = ({ dark, setDark }) => {
   return (
     <div className="header-actions">
+      {/* Высоту кнопка берёт из темы (36) — как всякое действие продукта.
+          Уменьшенный размер делал её вдвое ниже шапки и читался как
+          второстепенная, хотя это единственное действие в шапке. */}
       <Tooltip title={dark ? "Светлая тема" : "Тёмная тема"}>
         <Button
           type="text"
-          size="small"
           icon={dark ? <Sun size={16} /> : <Moon size={16} />}
           aria-label={dark ? "Включить светлую тему" : "Включить тёмную тему"}
           onClick={() => setDark((v) => !v)}

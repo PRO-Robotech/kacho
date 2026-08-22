@@ -57,10 +57,24 @@ describe("NlbVipSourceField helpers", () => {
   });
 
   it("subnetPlacementMatches — legacy без placement = ZONAL", () => {
-    const zonal = subnetPlacementMatches("ZONAL");
-    expect(zonal({ placement_type: "ZONAL" })).toBe(true);
-    expect(zonal({})).toBe(true); // legacy → ZONAL
-    expect(zonal({ placement_type: "REGIONAL" })).toBe(false);
+    const zonal = subnetPlacementMatches("ZONAL", "ru-central1");
+    expect(zonal({ placement_type: "ZONAL", region_id: "ru-central1" })).toBe(true);
+    // legacy → ZONAL: размещение не объявлено, но регион известен.
+    expect(zonal({ region_id: "ru-central1" })).toBe(true);
+    expect(zonal({ placement_type: "REGIONAL", region_id: "ru-central1" })).toBe(false);
+  });
+
+  it("subnetPlacementMatches — чужой регион отвергается, и своего мало не бывает", () => {
+    // Требование региона — ОТДЕЛЬНОЕ от трактовки размещения, и утверждается
+    // отдельно: слитые в один кейс, они дали бы зелёное на любой из двух
+    // причин отказа, и понять, какая сработала, было бы нельзя.
+    const zonal = subnetPlacementMatches("ZONAL", "ru-central1");
+    expect(zonal({ placement_type: "ZONAL", region_id: "ru-central2" })).toBe(false);
+    // Регион у строки не пришёл — подтвердить совпадение нечем, и догадка здесь
+    // означала бы связать ресурсы разных регионов.
+    expect(zonal({ placement_type: "ZONAL" })).toBe(false);
+    // Регион не выбран в форме — выбирать не из чего вовсе.
+    expect(subnetPlacementMatches("ZONAL")({ placement_type: "ZONAL", region_id: "ru-central1" })).toBe(false);
   });
 
   it("linkAddressFilter — сфера + семейство", () => {

@@ -26,6 +26,7 @@ import { formatBytes } from "./bytes";
 import { CopyableId } from "@/components/atoms/CopyableId";
 import { CopyableName } from "@/components/atoms/CopyableName";
 import { LabelsCell } from "@/components/atoms/LabelsCell";
+import { RefNameLink } from "@/components/molecules/RefNameLink";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
 // Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
 // литерал рядом с местом показа расходится молча, ссылка — нет.
@@ -99,11 +100,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "project",
     // Start/Stop/Restart — доменные действия на detail (InstanceActions), не в ops.
     ops: { create: true, update: true, delete: true },
-    docs: [
-      { label: "Виртуальные машины", href: "#" },
-      { label: "Типы машин", href: "#" },
-      { label: "Тома и снимки", href: "#" },
-    ],
     columns: [
       {
         header: "Имя",
@@ -112,7 +108,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
       { header: "Тип", path: "instance_kind", format: "code" },
-      { header: "Зона", path: "zone_id", format: "text" },
+      {
+        // Зона — ресурс каталога размещения со своей карточкой, значит ссылка, а
+        // не строка. Плоский текст рядом с кликабельными соседями по той же
+        // таблице читается как «этот переход не сделали».
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
+      },
       { header: "Тип машины", path: "machine_type_id", format: "code" },
       { header: "vCPU", path: "effective_resources.v_cpu", format: "text" },
       {
@@ -409,7 +412,15 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     },
     emptyState: {
       title: "Создайте первую виртуальную машину",
-      body: "Выберите тип инстанса (VM/CONTAINER), тип машины (sizing) и образ. ОС VM доставляется из storage.image, контейнер — из registry.image. Персистентные данные храните на томах Storage.",
+      // Описание говорит словами ПРЕДМЕТА, а не контракта. Прежний текст
+      // перечислял `VM/CONTAINER`, `sizing`, `storage.image` и `registry.image` —
+      // машинные слова, которых нет ни в одной подписи этого же экрана: они не
+      // говорят ни что такое машина, ни чего не хватает, чтобы её создать. Тот же
+      // ресурс в общем реестре описан прозой, и два текста об одном предмете
+      // расходились ровно там, где расхождение не видно.
+      body:
+        "Виртуальная машина — вычислительный узел с загрузочным диском и сетевыми интерфейсами. " +
+        "Перед созданием понадобятся подсеть для интерфейса и образ либо том для загрузки.",
       docs: ["Виртуальные машины"],
     },
   },
@@ -454,7 +465,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     template: () => ({}),
     emptyState: {
       title: "Каталог типов машин пуст",
-      body: "Типы машин задаёт администратор кластера (InternalMachineTypeService). Тип машины — единый канал размера инстанса (vCPU/память/GPU): выберите его при создании виртуальной машины.",
+      // Имя служебного RPC отсюда снято: административная поверхность арендатору
+      // не адресована и на публичном экране ничего ему не объясняет — она называет
+      // то, чего он всё равно не вызовет.
+      body:
+        "Тип машины задаёт размер виртуальной машины — число ядер, объём памяти и графические ускорители. " +
+        "Каталог заводит администратор облака: обратитесь к нему, если ни одного типа не видно.",
     },
   },
 
@@ -481,6 +497,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
     template: () => ({}),
+    emptyState: {
+      title: "Каталог зон пуст",
+      body:
+        "Зона доступности — координата размещения внутри региона: отсюда берутся zoneId для машин, подсетей и томов. " +
+        "Каталог заводит администратор облака — обратитесь к нему, если ни одной зоны не видно.",
+      docs: ["Регионы и зоны доступности"],
+    },
   },
 
   // ====== compute: GuestAccessKey ======
@@ -548,6 +571,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
     ],
     template: () => ({}),
+    emptyState: {
+      title: "Создайте первый образ в разделе Storage",
+      body:
+        "Образ — готовый снимок операционной системы, из которого разворачивается загрузочный том машины. " +
+        "Пока в проекте нет ни одного образа, виртуальную машину создавать не из чего.",
+      docs: ["Образы и загрузочные тома"],
+    },
   },
 
   // storage.Volume — attach-disk picker (project-scoped).
@@ -567,6 +597,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
     ],
     template: () => ({}),
+    emptyState: {
+      title: "Создайте первый том в разделе Storage",
+      body:
+        "Том — блочный диск, который подключается к машине и переживает её остановку. " +
+        "Данные, обязанные пережить пересоздание машины, держите на томе, а не в её корневой файловой системе.",
+      docs: ["Тома и снимки"],
+    },
   },
 
   // vpc.NetworkInterface — attach-NIC picker (project-scoped).
@@ -586,6 +623,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
     ],
     template: () => ({}),
+    emptyState: {
+      title: "Создайте сетевой интерфейс в разделе VPC",
+      body:
+        "Сетевой интерфейс — точка подключения машины к подсети: он несёт её адреса и группы безопасности. " +
+        "Заведите интерфейс заранее, чтобы подключить машину к нему, а не к сети по умолчанию.",
+      docs: ["Сетевые интерфейсы"],
+    },
   },
 };
 

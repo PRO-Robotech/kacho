@@ -1,1 +1,0 @@
-export { LoadBalancerDetailPage } from "./LoadBalancerDetailPage";

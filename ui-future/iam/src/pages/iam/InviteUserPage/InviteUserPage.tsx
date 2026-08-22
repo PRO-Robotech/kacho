@@ -6,7 +6,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Button, Cascader, Form, Input, Select, Space, Typography, Alert } from "antd";
+import { Alert, Button, Cascader, Form, Input, Select, Space, Typography } from "antd";
 import { LinkOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { iamApi } from "@shared/api/iam";
@@ -14,7 +14,9 @@ import { groupedRoleOptions } from "@shared/components/organisms/iam/IamCommon";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
+import { ScopeRequiredEmpty } from "@/components/molecules/ScopeRequiredEmpty";
 import { useContext } from "@shared/lib/context-store";
+import { SERVICES, ENTITIES } from "@shared/lib/entity-names";
 import { toast } from "@shared/lib/toast";
 import { useDebouncedValue } from "@shared/lib/list-search";
 import { pickerScope } from "@shared/lib/picker-search";
@@ -59,10 +61,10 @@ export function InviteUserPage() {
   const breadcrumb = useMemo(
     () => (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        <Typography.Text type="secondary">IAM</Typography.Text>
+        <Typography.Text type="secondary">{SERVICES.iam.title}</Typography.Text>
         <Typography.Text type="secondary">/</Typography.Text>
         <Link to="/iam/users">
-          <Typography.Text type="secondary">Пользователи</Typography.Text>
+          <Typography.Text type="secondary">{ENTITIES.users.plural}</Typography.Text>
         </Link>
         <Typography.Text type="secondary">/</Typography.Text>
         <Typography.Text strong>Пригласить</Typography.Text>
@@ -163,16 +165,16 @@ export function InviteUserPage() {
     }
   };
 
+  // Без аккаунта приглашать некуда — и об этом говорит ТА ЖЕ форма, что у
+  // остальных страниц раздела (`ScopeRequiredEmpty`). Здесь стоял `Alert` внутри
+  // формы, под которым висел заведомо отключённый подвал: страница показывала
+  // ручки, ни одна из которых не работала.
+  if (!accountId) {
+    return <ScopeRequiredEmpty purpose="пригласить пользователя" />;
+  }
+
   return (
     <FormShell specId="users" mode="create" singular="Пользователь" title="Приглашение пользователя">
-      {!accountId ? (
-        <Alert
-          type="info"
-          showIcon
-          message="Выберите Account"
-          description="Чтобы пригласить пользователя, сначала выберите Account в шапке."
-        />
-      ) : null}
       {magicLink ? (
         <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Alert
@@ -193,7 +195,7 @@ export function InviteUserPage() {
           </Button>
           <FormFooter submitLabel="Готово" submitting={false} onSubmit={close} onCancel={close} />
         </Space>
-      ) : accountId ? (
+      ) : (
         <Form
           form={form}
           layout="horizontal"
@@ -213,8 +215,7 @@ export function InviteUserPage() {
               allowClear={false}
               expandTrigger="hover"
               showSearch={{
-                filter: (input, path) =>
-                  path.some((o) => String(o.label).toLowerCase().includes(input.toLowerCase())),
+                filter: (input, path) => path.some((o) => String(o.label).toLowerCase().includes(input.toLowerCase())),
               }}
               placeholder="Сначала аккаунт, затем проект (необязательно)"
               displayRender={(labels) => labels.join(" / ")}
@@ -270,14 +271,6 @@ export function InviteUserPage() {
             onCancel={close}
           />
         </Form>
-      ) : (
-        <FormFooter
-          submitLabel="Пригласить"
-          submitting={false}
-          submitDisabled
-          onSubmit={() => undefined}
-          onCancel={close}
-        />
       )}
     </FormShell>
   );

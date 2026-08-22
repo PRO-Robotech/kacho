@@ -17,11 +17,16 @@ interface Props {
   projectId?: string;
   /** Render как antd Tag (chip-стиль). Default — обычная ссылка. */
   asTag?: boolean;
+  /** Рисовать ли собственный значок копирования. По умолчанию да — так ссылка
+   *  ведёт себя в ячейке таблицы. Строка свойств передаёт `false`: копирование
+   *  там принадлежит строке, а не значению. */
+  copy?: boolean;
   /** Если задан — обрезать имя по N символов с многоточием. Title даёт полное имя. */
   maxChars?: number;
 }
 
-export function RefNameLink({ specId, refId, projectId: projectOverride, asTag, maxChars }: Props) {
+export function RefNameLink({ specId,
+  copy = true, refId, projectId: projectOverride, asTag, maxChars }: Props) {
   const params = useParams();
   const project = useProjectStore((s) => s.project);
   const projectId = projectOverride ?? params.projectId ?? project?.id ?? null;
@@ -61,14 +66,22 @@ export function RefNameLink({ specId, refId, projectId: projectOverride, asTag, 
       name={row?.name ?? ""}
       projectId={projectId}
       icon
-      copy
+      // Свой значок копирования — только там, где строка НЕ несёт общего.
+      //
+      // В строке свойств кнопка одна на все строки и стоит справа отдельным
+      // столбцом; собственный значок ссылки давал рядом с ней вторую кнопку
+      // другого вида и размера — в одной таблице получалось два поведения.
+      // В ячейке таблицы общего значка нет, и свой остаётся.
+      copy={copy}
       maxChars={maxChars}
       plain
     />
   );
 
   if (asTag) {
-    return <Tag style={{ margin: 0, padding: "0 6px", lineHeight: "20px" }}>{inner}</Tag>;
+    // Отступ и высота — те же, что у метки: радиус, фон и граница приходят из
+    // темы AntD, здесь остаётся только компактный отступ целевого оформления.
+    return <Tag style={{ margin: 0, padding: "3px 7px", lineHeight: 1 }}>{inner}</Tag>;
   }
   return inner;
 }

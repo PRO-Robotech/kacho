@@ -2,12 +2,31 @@
 //
 // Сохраняет старый API (Column<T>, sortKey) для совместимости с
 // ResourceListPage и тестами, но делегирует рендер в antd.
+//
+// Три решения о ВИДЕ списка принимаются здесь, потому что они про таблицу
+// целиком, а не про отдельную колонку, и потому что нарушаются они одинаково у
+// всех восьми ресурсов сразу:
+//
+//   * строка — одной высоты у всех, клетка — одной строки (`cellClip`);
+//   * края закрепляются, но их стык называется ЛИНИЕЙ, а не тенью
+//     (`pinnedEdge`);
+//   * прокрутка вбок принадлежит таблице, а не странице.
 
 import { type ReactNode, useMemo, useRef, useState, useEffect } from "react";
-import { Table } from "antd";
+import { ConfigProvider, Table } from "antd";
 import type { ColumnType, TableProps } from "antd/es/table";
 import { getByPath } from "@shared/lib/path";
 import { displayText } from "@shared/lib/display-text";
+import { CELL_INSET, CELL_MAX_WIDTH, CellClip, showTitleWhenClipped } from "./cellClip";
+import { TABLE_EDGE_THEME, pinnedEdgeStyle } from "./pinnedEdge";
+
+// Ширина закреплённых колонок. Числа не декоративные: без явной ширины antd
+// закрепление молча игнорирует (знание оплачено в registry и держится пробой, а
+// не комментарием), а служебной колонке широкая ширина превращала бы её в пустую
+// полосу через пол-экрана.
+const SERVICE_WIDTH = 48;
+const IDENTITY_WIDTH = 260;
+const ACTIONS_WIDTH = 64;
 
 export interface Column<T> {
   header: string;
@@ -15,6 +34,31 @@ export interface Column<T> {
   className?: string;
   /** Path в row для local-sort. Если не задан — колонка не сортируется. */
   sortKey?: string;
+  /**
+   * Ширина колонки в точках.
+   *
+   * Задавать её ОБЯЗАТЕЛЬНО там, где содержимое короткое и предсказуемое (адрес,
+   * зона, дата, состояние). Без ширины таблица делит доступное место поровну, и
+   * четыре коротких значения на широком экране расходятся на треть экрана каждое
+   * — между «10.10.1.0/24» и «ru-central1-a» встаёт триста точек пустоты, и
+   * строка перестаёт читаться как одна строка: глаз не связывает её края.
+   *
+   * Остаток ширины забирает распорка (см. ниже), а не сами колонки.
+   */
+  width?: number;
+  /**
+   * Значение колонки занимает НЕСКОЛЬКО СТРОК и обрезке в одну не подлежит.
+   *
+   * Общая обрезка держит клетку в одну строку (`white-space: nowrap`), и набор
+   * значений — блоки адресов подсети, ссылки на использующие ресурсы — она
+   * схлопывала в первую строку: остальные были в разметке и не были видны.
+   * Читатель делал вывод «у подсети один блок» и шёл на карточку проверять.
+   *
+   * Каждая строка внутри такой клетки не переносится сама по себе — за это
+   * отвечает её ячейка (`CidrListCell` и подобные), поэтому высота строки
+   * остаётся предсказуемой.
+   */
+  multiline?: boolean;
 }
 
 interface Props<T> {
@@ -48,23 +92,15 @@ interface Props<T> {
    */
   complete: boolean;
   /**
-   * Выделение строк. Не задано — столбца флажков нет вовсе.
-   *
-   * Вызывающий обязан объявить его ЯВНО: столбец флажков — приглашение к
-   * групповому действию, и заводить его там, где действия нет, значит обещать
-   * возможность, которой не существует.
-   */
-  selection?: {
-    selected: string[];
-    onChange: (next: string[]) => void;
-  };
-  /**
    * Строка, чьё содержимое раскрыто рядом (боковая панель): подсвечивается,
    * чтобы панель было видно, ОТКУДА она открыта.
    *
-   * Это НЕ `selection`: там множество строк, выбранных под групповое действие,
-   * здесь одна строка, чей контекст показан. Один проп на оба смысла означал бы
-   * «выделено» в двух разных значениях сразу.
+   * Выделения строк под ГРУППОВОЕ действие здесь нет и не бывает: удаление по
+   * флажкам снято решением владельца для всех ресурсов, удаляют по одной строке
+   * из её меню действий. Проп `selection` (и вместе с ним `rowSelection`
+   * таблицы) стоял здесь после снятия единственного вызывающего — вход без
+   * производителя: столбец флажков он не рисовал никогда, но читался как живая
+   * возможность и приглашал провязать её обратно.
    *
    * Приехало из форка registry (#405): панель тегов образа. Второй проп того
    * форка — `stickyFirst` — не приехал, потому что предмета у него больше нет:
@@ -82,68 +118,118 @@ export function ResourceTable<T extends object>({
   defaultSort,
   onRowClick,
   complete,
-  selection,
   selectedRowKey,
 }: Props<T>) {
-  const antColumns: ColumnType<T>[] = useMemo(
-    () =>
-      columns.map((c, idx) => {
-        const col: ColumnType<T> = {
-          title: c.header,
-          key: String(idx),
-          className: c.className,
-          render: (_value, row) => c.cell(row),
-        };
-        if (c.sortKey && complete) {
-          col.sorter = (a: T, b: T) => {
-            const av = getByPath(a, c.sortKey!);
-            const bv = getByPath(b, c.sortKey!);
-            if (av == null && bv == null) return 0;
-            if (av == null) return 1;
-            if (bv == null) return -1;
-            if (typeof av === "number" && typeof bv === "number") return av - bv;
-            return displayText(av).localeCompare(displayText(bv));
-          };
-          if (defaultSort && defaultSort.col === idx) {
-            col.defaultSortOrder = defaultSort.dir === "asc" ? "ascend" : "descend";
-          }
-        }
-        return col;
-      }),
-    [columns, defaultSort, complete],
-  );
-
-  // Края таблицы закрепляются, потому что широкая таблица прокручивается вбок:
-  // уехав вправо, читатель иначе видит значения, не понимая, к какому ресурсу
-  // они относятся, и не достаёт до меню действий, не вернувшись обратно.
-  // Закрепляются РОВНО два края — колонка идентичности и столбец действий
-  // (последний, узнаваемый по пустому заголовку). Закреплять больше нельзя:
-  // на узком экране закреплённые края съедают всю видимую ширину.
-  const stickyColumns: ColumnType<T>[] = useMemo(() => {
-    if (antColumns.length === 0) return antColumns;
-    const last = antColumns.length - 1;
-    const actionsLast = columns[last]?.header === "" && last > 0;
-
+  const antColumns: ColumnType<T>[] = useMemo(() => {
+    // Края таблицы закрепляются, потому что широкая таблица прокручивается
+    // вбок: уехав вправо, читатель иначе видит значения, не понимая, к какому
+    // ресурсу они относятся, и не достаёт до меню действий, не вернувшись
+    // обратно. Закрепляются РОВНО два края — колонка идентичности и столбец
+    // действий (последний, узнаваемый по пустому заголовку). Закреплять больше
+    // нельзя: на узком экране закреплённые края съедают всю видимую ширину.
+    //
     // Слева закрепляется НАЧАЛЬНЫЙ ОТРЕЗОК до колонки идентичности включительно,
     // а не «первая колонка»: перед именем часто стоят служебные колонки (выбор
     // строки), и antd закрепляет только сплошной префикс — закрепив одну лишь
-    // колонку имени, получаем разъезжающуюся таблицу. Служебной колонке ширину
-    // назначаем узкую: широкая превращается в пустую полосу через пол-экрана
-    // (что и случилось на правилах группы безопасности).
+    // колонку имени, получаем разъезжающуюся таблицу.
+    const last = columns.length - 1;
+    const actionsLast = columns[last]?.header === "" && last > 0;
     const identity = columns.findIndex((c) => c.header !== "");
     const stickyThrough = identity < 0 || identity > 2 ? 0 : identity;
 
-    return antColumns.map((c, i) => {
-      if (i <= stickyThrough) {
-        const own = columns[i]?.header === "" ? 48 : 260;
-        return { ...c, fixed: "left" as const, width: c.width ?? own };
-      }
-      if (i === last && actionsLast) return { ...c, fixed: "right" as const, width: c.width ?? 64 };
-      return c;
-    });
-  }, [antColumns, columns]);
+    const built = columns.map((c, idx) => {
+      // Служебная колонка (выбор строки, столбец действий) заголовка не несёт.
+      // Её содержимое — флажок и кнопка, то есть предмет не строчный: обрезать
+      // его нечем, а высоту он задаёт сам и одинаково у всех строк.
+      const service = c.header === "";
+      const pinnedStart = idx <= stickyThrough;
+      const pinnedEnd = idx === last && actionsLast;
+      const width = pinnedStart ? (service ? SERVICE_WIDTH : IDENTITY_WIDTH) : pinnedEnd ? ACTIONS_WIDTH : undefined;
+      // Клетка не шире, чем колонке отведено: у закреплённой ширина объявлена,
+      // и предел берётся из неё, иначе содержимое растянуло бы столбец шире
+      // объявленного — и закрепление разъехалось бы с тем, что показано.
+      const clipWidth = width === undefined ? CELL_MAX_WIDTH : Math.max(width - CELL_INSET, 0);
+      // Линия стоит на СТЫКЕ закрепления и прокручиваемой части: у левого
+      // закрепления это его последняя колонка, у правого — сам столбец действий.
+      const edge =
+        pinnedStart && idx === stickyThrough
+          ? pinnedEdgeStyle("start")
+          : pinnedEnd
+            ? pinnedEdgeStyle("end")
+            : {};
 
-  // Тело таблицы скроллится внутри белой поверхности (h+v), а шапка колонок
+      const col: ColumnType<T> = {
+        title: c.header,
+        key: String(idx),
+        className: c.className,
+        // Клетка идентичности — В ДВЕ СТРОКИ: под именем стоит идентификатор.
+        // Общая обрезка держит одну строку (`white-space: nowrap`), и вторая в
+        // неё не влезала вовсе — идентификатор был в разметке и не был виден.
+        render: (_value, row) =>
+          service ? (
+            c.cell(row)
+          ) : c.multiline || (pinnedStart && idx === stickyThrough) ? (
+            <span style={{ display: "block", maxWidth: clipWidth, minWidth: 0 }}>{c.cell(row)}</span>
+          ) : (
+            <CellClip maxWidth={clipWidth}>{c.cell(row)}</CellClip>
+          ),
+        // Клетки одной строки стоят по центру её высоты: столбец действий выше
+        // строки текста, и без этого текст сидел бы по верхнему краю строки, а
+        // кнопка — по середине.
+        onCell: () => ({ style: { verticalAlign: "middle", ...edge } }),
+        onHeaderCell: () => ({ style: { ...edge } }),
+      };
+      if (width !== undefined) col.width = width;
+      else if (c.width !== undefined) col.width = c.width;
+      if (pinnedStart) col.fixed = "left";
+      else if (pinnedEnd) col.fixed = "right";
+
+      if (c.sortKey && complete) {
+        col.sorter = (a: T, b: T) => {
+          const av = getByPath(a, c.sortKey!);
+          const bv = getByPath(b, c.sortKey!);
+          if (av == null && bv == null) return 0;
+          if (av == null) return 1;
+          if (bv == null) return -1;
+          if (typeof av === "number" && typeof bv === "number") return av - bv;
+          return displayText(av).localeCompare(displayText(bv));
+        };
+        if (defaultSort && defaultSort.col === idx) {
+          col.defaultSortOrder = defaultSort.dir === "asc" ? "ascend" : "descend";
+        }
+      }
+      return col;
+    });
+
+    // РАСПОРКА — колонка без содержимого, забирающая остаток ширины.
+    //
+    // Без неё antd делит свободное место между содержательными колонками, и на
+    // широком экране четыре коротких значения расходятся на треть экрана каждое:
+    // между адресом и зоной встаёт триста точек пустоты, и строка перестаёт
+    // читаться как одна строка — глаз не связывает её края.
+    //
+    // Ставится ПЕРЕД столбцом действий (тот закреплён справа), и только когда у
+    // всех содержательных колонок ширина известна: иначе остаток забирать не у
+    // чего, и пустая колонка просто съела бы место у той, что должна тянуться.
+    const lastIdx = columns.length - 1;
+    const actionsLastCol = columns[lastIdx]?.header === "" && lastIdx > 0;
+    const contentCols = actionsLastCol ? columns.slice(0, lastIdx) : columns;
+    const allSized = contentCols.length > 0 && contentCols.every((c, i) => c.width !== undefined || i <= stickyThrough);
+    if (allSized) {
+      const spacer: ColumnType<T> = {
+        title: "",
+        key: "spacer",
+        // Пустая клетка не объявляется заголовком колонки для тех, кто читает
+        // страницу не глазами: сообщать там нечего.
+        render: () => null,
+        onCell: () => ({ style: { padding: 0 } }),
+      };
+      built.splice(actionsLastCol ? lastIdx : built.length, 0, spacer);
+    }
+    return built;
+  }, [columns, defaultSort, complete]);
+
+  // Тело таблицы скроллится внутри поверхности (h+v), а шапка колонок
   // (thead) фиксирована сверху. scroll.y = высота доступной области минус thead;
   // пересчитывается ResizeObserver'ом при изменении размеров окна/области.
   // Пока область не измерена (первый рендер) — y=undefined (обычный поток).
@@ -166,16 +252,22 @@ export function ResourceTable<T extends object>({
   }, []);
 
   const tableProps: TableProps<T> = {
-    columns: stickyColumns,
+    columns: antColumns,
     dataSource: rows,
     rowKey: (row) => rowKey(row),
     pagination: false,
     size: "small",
-    // kc-table — zebra-striping + контрастный header + комфортный row-height +
-    // чёткий hover (стили в index.css, theme-aware через vars).
+    // kc-table — строки разделяет ЛИНИЯ, а не заливка: полосатость снята
+    // (index.css), потому что она спорила с границей строки и давала третий тон
+    // там, где палитра держит два. Остальное там же: приглушённая шапка,
+    // комфортная высота строки, наведение. Правило подсветки выбранной строки
+    // (`kc-row-selected`) тоже живёт в общем листе — здесь оно не дублируется.
     className: "kc-table",
-    // scroll.x=max-content — колонки держат натуральную ширину, широкая таблица
-    // получает СВОЙ горизонтальный скролл (не тянет страницу). scroll.y — тело
+    // scroll.x=max-content — столбец держит ширину своего содержимого, но не
+    // шире предела клетки (`CELL_MAX_WIDTH`): без предела одно длинное описание
+    // растянуло бы столбец на две тысячи точек и увезло вбок таблицу целиком.
+    // Прокрутка вбок остаётся у САМОЙ таблицы (страницу она не тянет), а край
+    // закрепления назван линией — см. `pinnedEdge`. scroll.y — тело
     // скроллится вертикально под фиксированной шапкой колонок.
     scroll: { x: "max-content", y: scrollY },
     loading,
@@ -183,14 +275,6 @@ export function ResourceTable<T extends object>({
       emptyText: empty ?? "Ресурсов не найдено",
     },
     rowClassName: selectedRowKey ? (row) => (rowKey(row) === selectedRowKey ? "kc-row-selected" : "") : undefined,
-    // Ключ выделения — тот же, что ключ строки: иначе «выделено три» и
-    // «удаляем три» относились бы к разным множествам.
-    rowSelection: selection
-      ? {
-          selectedRowKeys: selection.selected,
-          onChange: (keys) => selection.onChange(keys.map(String)),
-        }
-      : undefined,
     onRow: onRowClick
       ? (row) => ({
           onClick: (e) => {
@@ -209,10 +293,27 @@ export function ResourceTable<T extends object>({
   };
 
   // Обёртка заполняет доступную высоту (flex:1 родителя) — от неё считается
-  // scroll.y, чтобы тело таблицы скроллилось внутри белой поверхности.
+  // scroll.y, чтобы тело таблицы скроллилось внутри поверхности.
+  //
+  // Обработчик наведения стоит ОДИН на всю поверхность: он договаривает
+  // подсказкой то, что не поместилось в клетку. Подписка на каждую клетку стоила
+  // бы столько же, сколько измерение, — то есть числа строк, помноженного на
+  // число колонок (см. `cellClip`).
   return (
-    <div ref={wrapRef} className="kc-table-fill" style={{ height: "100%", minHeight: 0, minWidth: 0 }}>
-      <Table<T> {...tableProps} />
+    <div
+      ref={wrapRef}
+      className="kc-table-fill"
+      style={{ height: "100%", minHeight: 0, minWidth: 0 }}
+      onMouseOver={showTitleWhenClipped}
+      // Тот же обработчик и на ФОКУС: подсказка объясняет, что значение в ячейке
+      // обрезано, — и человеку, ведущему фокус с клавиатуры, она нужна ровно так
+      // же, как ведущему указатель. Без этой строки обрезанное значение было бы
+      // нечитаемо для того, кто мышью не пользуется.
+      onFocus={showTitleWhenClipped}
+    >
+      <ConfigProvider theme={TABLE_EDGE_THEME}>
+        <Table<T> {...tableProps} />
+      </ConfigProvider>
     </div>
   );
 }

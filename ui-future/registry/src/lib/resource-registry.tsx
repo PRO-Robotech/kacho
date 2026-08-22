@@ -94,10 +94,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.registry.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
-    docs: [
-      { label: "Реестры контейнеров", href: "#" },
-      { label: "Публикация образов (docker login / push)", href: "#" },
-    ],
+    // Здесь стоял `docs` — пара объявлений с `href: "#"`. Ни одного адреса у
+    // документации в дереве нет, и читателя у этого поля нет тоже: темы
+    // показывает экран пустого состояния из `emptyState.docs`, и показывает их
+    // ТЕКСТОМ — ссылка, ведущая на ту же страницу, обещает переход, которого не
+    // существует. Два объявления, дублировавшие те же две темы, сняты; появится
+    // адрес сайта документации — темы станут ссылками в одном месте, а не в
+    // каждом объявлении.
     // Репозитории — дочерний ресурс: появляются при docker push в реестр.
     // Отдельный registry-driven таб (read-only список, без CTA «Создать»).
     related: [{ childId: "repositories", filterField: "registry_id", label: "Репозитории" }],
@@ -276,6 +279,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ],
     // Мутаций create/update нет — form-schema не требуется.
     template: () => ({}),
+    emptyState: {
+      title: "Теги появляются после docker push",
+      body:
+        "Тег — версия образа в репозитории: имя, за которым стоит манифест и его дайджест. " +
+        "В консоли теги не создаются — выполните docker push в этот репозиторий, и тег появится в списке.",
+      docs: ["Публикация образов (docker login / push)"],
+    },
   },
 
   // ====== geo (read-only ref-цель) ======
@@ -297,6 +307,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
     template: () => ({}),
+    emptyState: {
+      title: "Каталог регионов пуст",
+      body:
+        "Регион — территориальная область Kachō, в которой размещается реестр: реестр региональный и доступен из всех зон своего региона. " +
+        "Записи каталога заводит администратор облака — обратитесь к нему.",
+      docs: ["Регионы размещения"],
+    },
   },
 };
 

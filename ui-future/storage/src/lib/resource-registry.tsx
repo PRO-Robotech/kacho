@@ -121,10 +121,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.storage.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
-    docs: [
-      { label: "Тома (блочное хранение)", href: "#" },
-      { label: "Снимки томов", href: "#" },
-    ],
+    // Здесь стояло объявление `docs` с адресами `href: "#"` — тем и снято.
+    // Адреса у документации в дереве нет ни одного, а ссылка, ведущая на ту же
+    // страницу, обещает переход, которого не существует, и обнаруживает это
+    // только кликом (правило 9 канона консоли). Читателя объявление не
+    // достигало вовсе: `spec.docs` не читает НИ ОДНО место продукта — темы
+    // показывает пустое состояние из `emptyState.docs`, и показывает их
+    // текстом. То есть объявление было обещанием без исполнителя.
     columns: [
       {
         header: "Имя",
@@ -406,10 +409,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     serviceTitle: SERVICES.storage.title,
     scope: "project",
     ops: { create: true, update: true, delete: true },
-    docs: [
-      { label: "Образы (загрузочные)", href: "#" },
-      { label: "Тома (блочное хранение)", href: "#" },
-    ],
+    // Здесь стояло объявление `docs` с адресами `href: "#"` — тем и снято.
+    // Адреса у документации в дереве нет ни одного, а ссылка, ведущая на ту же
+    // страницу, обещает переход, которого не существует, и обнаруживает это
+    // только кликом (правило 9 канона консоли). Читателя объявление не
+    // достигало вовсе: `spec.docs` не читает НИ ОДНО место продукта — темы
+    // показывает пустое состояние из `emptyState.docs`, и показывает их
+    // текстом. То есть объявление было обещанием без исполнителя.
     columns: [
       {
         header: "Имя",
@@ -567,7 +573,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ops: { create: false, update: false, delete: false },
     columns: [
       { header: "Имя", path: "name", format: "text", className: "font-medium" },
-      { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
+      // Идентификатор — `uid-short`, а не `text`: этот формат и есть форма
+      // идентификатора в продукте (значение плюс копирование одним значком).
+      // Прежде здесь стоял `text` с моноширинным классом — идентификатор
+      // выглядел похоже и НЕ копировался, тогда как у тома, снимка и образа в
+      // том же модуле копировался. Один предмет, два вида (правило 9 канона).
+      { header: "Идентификатор", path: "id", format: "uid-short" },
       {
         header: "Ярус",
         path: "tier",
@@ -609,6 +620,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
     template: () => ({}),
+    emptyState: {
+      title: "Каталог зон пуст",
+      body:
+        "Зона доступности — площадка размещения, к которой привязаны тома и снимки проекта. " +
+        "Записи каталога заводит администратор облака Kachō — пока каталог пуст, разместить том негде, обратитесь к нему.",
+      docs: ["Зоны доступности"],
+    },
   },
 
   // Region — cross-service ref-цель (owner geo) для Image.region_id (REGIONAL/anycast).
@@ -627,6 +645,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ops: { create: false, update: false, delete: false },
     columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
     template: () => ({}),
+    emptyState: {
+      title: "Каталог регионов пуст",
+      body:
+        "Регион — территориальная область Kachō, объединяющая зоны доступности: образ создаётся в регионе и доступен во всех его зонах. " +
+        "Записи каталога заводит администратор облака — обратитесь к нему, если каталог пуст.",
+      docs: ["Регионы размещения"],
+    },
   },
 };
 

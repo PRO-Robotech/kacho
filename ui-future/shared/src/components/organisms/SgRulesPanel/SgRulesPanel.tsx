@@ -18,11 +18,29 @@ import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { DirectionFact } from "@shared/components/atoms/DirectionFact";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
+import { ROW_ACTION_TRIGGER } from "@shared/components/molecules/RowActionsMenu";
 import { ResourceTable } from "@shared/components/organisms/ResourceTable";
+// ПРЯМО ИЗ ФАЙЛА, а не через баррель `DetailShell/index.ts`.
+//
+// Баррель реэкспортирует и сам `DetailShell`, а тот тянет `react-router`, —
+// пакет с ESM-сборкой, который jest в этом дереве не трансформирует
+// (`transformIgnorePatterns` оставлен по умолчанию). Через баррель эта
+// зависимость приезжала к КАЖДОМУ, кто импортирует форму: цепочка
+// `resource-registry → RoutesEditor → RefSelect → InlineResourceCreateForm →
+// ResourceFormBody → FormShell → DetailShell → react-router` кладёт суиту
+// целиком — не «падает проба», а «suite failed to run», то есть вердикта нет
+// ни у одной пробы файла. Замер в момент починки: 153 суиты из 219 не
+// исполнялись вовсе.
+//
+// Шапка страницы про маршрутизацию не знает и знать не должна — импорт из
+// файла оставляет её зависимости её собственными.
+import { PageHead } from "@shared/components/organisms/DetailShell/PageHead";
 import { useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { RuleBody, emptyRule, type RuleExt } from "@shared/components/organisms/form/SgRulesEditor";
+import { MONO_FONT, editorSurfaceStyle } from "@shared/components/organisms/form/editor-surface";
 import { ruleFieldError, type RuleFieldError } from "@shared/components/organisms/form/SgRulesEditor/rule-field-error";
 import { hasProtocolNumber, REGISTRY, sanitizeSgRule } from "@shared/lib/resource-registry";
+import { createActionLabel } from "@shared/lib/resource-label";
 import { operationStore } from "@shared/lib/use-operation-store";
 import { toast } from "@shared/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
@@ -79,7 +97,11 @@ function dirOf(r: SgRule): "INGRESS" | "EGRESS" {
 function protoLabel(r: SgRule): string {
   if (r.protocol_name) return r.protocol_name;
   if (hasProtocolNumber(r.protocol_number)) return `proto ${r.protocol_number}`;
-  return "Any";
+  // «Любой» — тем же словом, каким этот же выбор назван в самой форме правила
+  // (`Протокол → Любой`). Здесь стояло `Any`: единственное английское слово на
+  // русской вкладке, и означало оно ровно то же самое. Одно значение, названное
+  // на экране двумя языками, читается как два разных значения.
+  return "Любой";
 }
 function portsLabel(r: SgRule): string {
   if (!r.ports) return "—";
@@ -89,11 +111,24 @@ function portsLabel(r: SgRule): string {
   if (f === t || t == null) return String(f);
   return `${f}–${t}`;
 }
+/**
+ * Предмет формы — ПРАВИЛО, а не группа безопасности, чью карточку мы правим.
+ *
+ * Падеж объявлен, а не выведен из строки: русское склонение по окончанию —
+ * правило с исключениями, и вывод по хвосту слова ошибается молча (см. разбор
+ * в `resource-label`). Правило — не запись реестра ресурсов, поэтому падеж
+ * стоит здесь; способ сборки подписи при этом остаётся общий.
+ */
+const RULE_SUBJECT = { singular: "Правило", accusative: "правило" };
+
+/** Блоки правила обоих семейств — в том порядке, в каком их называет контракт. */
+function cidrBlocks(r: SgRule): string[] {
+  return [...(r.cidr_blocks?.v4_cidr_blocks ?? []), ...(r.cidr_blocks?.v6_cidr_blocks ?? [])];
+}
+
 function targetParts(r: SgRule): { kind: string; value: string } {
   if (r.cidr_blocks) {
-    const v4 = r.cidr_blocks.v4_cidr_blocks ?? [];
-    const v6 = r.cidr_blocks.v6_cidr_blocks ?? [];
-    return { kind: "CIDR", value: [...v4, ...v6].join(", ") || "—" };
+    return { kind: "CIDR", value: cidrBlocks(r).join(", ") || "—" };
   }
   if (r.security_group_id) return { kind: "Группа безопасности", value: r.security_group_id };
   if (r.cidr_group_id) return { kind: "Набор префиксов", value: r.cidr_group_id };
@@ -102,6 +137,18 @@ function targetParts(r: SgRule): { kind: string; value: string } {
   // поля `<путь>.target`), поэтому прочерк остался ровно для строк, сохранённых
   // прежним контрактом; миграция 0029 приводит их к выразимому виду.
   return { kind: "—", value: "—" };
+}
+
+/**
+ * Машинное значение — моноширинным рядом: адрес, префикс, диапазон портов.
+ *
+ * Задаётся ТОЛЬКО начертание, без своего кегля: клетки одной строки, набранные
+ * разным размером, ломают её общую линию. Тот же выбор, что у моноширинных
+ * клеток редакторов (`editorValueCellStyle` там задаёт и кегль — там строка
+ * своя, а здесь она общая с остальными столбцами таблицы).
+ */
+function Mono({ children }: { children: ReactNode }) {
+  return <span style={{ fontFamily: MONO_FONT }}>{children}</span>;
 }
 
 // Цель-ССЫЛКА показывается ссылкой (канон консоли, правило 2): иконка типа, имя,
@@ -116,7 +163,22 @@ function targetCell(r: SgRule, projectId: string | null): ReactNode {
   if (r.cidr_group_id) {
     return <RefNameLink specId="cidr-groups" refId={r.cidr_group_id} projectId={projectId ?? undefined} />;
   }
-  return targetParts(r).value;
+  const blocks = cidrBlocks(r);
+  if (blocks.length === 0) return targetParts(r).value;
+  // Блоки — КАЖДЫЙ своей строкой (тот же вид, что у набора значений в остальных
+  // списках консоли, `format: "list"`). Прежде они склеивались запятой в одну
+  // строку, а общая обрезка клетки держит её в одну строку: из трёх блоков
+  // читатель видел первый и многоточие и шёл на карточку проверять, есть ли там
+  // ещё. Моноширинный ряд здесь и был обещан комментарием — но не задан ничем.
+  return (
+    <span
+      style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 2, maxWidth: "100%" }}
+    >
+      {blocks.map((b) => (
+        <Mono key={b}>{b}</Mono>
+      ))}
+    </span>
+  );
 }
 
 export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
@@ -206,7 +268,20 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
     Modal.confirm({
       title: "Удалить правило",
       icon: <ExclamationCircleFilled />,
-      content: `${dirOf(r)} · ${protoLabel(r)} · ${targetParts(r).value}`,
+      // Правило названо ТЕМ ЖЕ видом, каким оно стоит в строке списка:
+      // направление — признаком, цель — моноширинным рядом. Прежде здесь
+      // подставлялось машинное значение контракта (`INGRESS`), которого на
+      // экране нет больше нигде: подтверждение спрашивают у человека, а слово
+      // запроса адресовано не ему.
+      content: (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <DirectionFact value={dirOf(r)} />
+          <span aria-hidden>·</span>
+          <span>{protoLabel(r)}</span>
+          <span aria-hidden>·</span>
+          <Mono>{targetParts(r).value}</Mono>
+        </span>
+      ),
       okText: "Удалить правило",
       okButtonProps: { danger: true },
       cancelText: "Отмена",
@@ -268,25 +343,55 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
     () =>
       editObj ? null : (
         <>
-          {/* «Выбрать все» — рядом с действиями: заголовок колонки общей таблицы
-          принимает только текст, и чекбокс в него не поставить. */}
-          <Checkbox
-            checked={allSelected}
-            indeterminate={someSelected && !allSelected}
-            onChange={(e) => toggleAll(e.target.checked)}
-            disabled={selectableIds.length === 0}
-          >
-            Выбрать все
-          </Checkbox>
+          {/* Групповое действие и его выбор стоят ВМЕСТЕ, а основное действие —
+              последним. Прежде «Добавить» стояло между флажком и «Удалить», то
+              есть разбивало пару «что выбрано → что с этим сделать» на две
+              половины по разные стороны от чужой кнопки.
+
+              Пары контролов нет вовсе, пока правил нет: выключенный флажок и
+              выключенное «Удалить» над пустой вкладкой обещают групповое
+              действие над набором, которого не существует.
+
+              «Выбрать все» стоит В ШАПКЕ, а не в заголовке столбца — и это два
+              разных ограничения, а не одно. Заголовок столбца общей таблицы
+              типизирован строкой (`Column.header: string`), узел в него не
+              положить. Столбец флажков самой таблицы (`ResourceTable.selection`)
+              рассмотрен и отвергнут: у него в дереве НОЛЬ вызывающих (то есть
+              это не «как у всех», а новая форма), он не умеет закрывать выбор
+              строке без `id`, а заменитель `antd` рисует его заголовок пустым —
+              «выбрать все» стало бы ненаблюдаемо для проб. Флажок с подписью в
+              правом слоте шапки — ровно то, чем страница списка показывает свои
+              переключатели (`ResourceListPage`, `listFilters`). */}
+          {rules.length > 0 && (
+            <>
+              <Checkbox
+                checked={allSelected}
+                indeterminate={someSelected && !allSelected}
+                onChange={(e) => toggleAll(e.target.checked)}
+                disabled={selectableIds.length === 0}
+              >
+                Выбрать все
+              </Checkbox>
+              <Button danger icon={<DeleteOutlined />} disabled={!someSelected} onClick={confirmDeleteSelected}>
+                Удалить{selCount > 0 ? ` (${selCount})` : ""}
+              </Button>
+            </>
+          )}
           <Button type="primary" icon={<PlusOutlined />} onClick={startAdd}>
             Добавить правило
           </Button>
-          <Button danger icon={<DeleteOutlined />} disabled={!someSelected} onClick={confirmDeleteSelected}>
-            Удалить{selCount > 0 ? ` (${selCount})` : ""}
-          </Button>
         </>
       ),
-    [editObj, allSelected, someSelected, selectableIds.length, selCount, toggleAll, confirmDeleteSelected],
+    [
+      editObj,
+      rules.length,
+      allSelected,
+      someSelected,
+      selectableIds.length,
+      selCount,
+      toggleAll,
+      confirmDeleteSelected,
+    ],
   );
   useHeaderRight(listActions);
 
@@ -296,12 +401,25 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
     // своя разметка — отсюда и другая ширина, и другие отступы, и кнопки не на
     // общем месте.
     return (
-      <FormShell
-        specId="security-groups"
-        mode={editingId ? "edit" : "create"}
-        singular="правило"
-        title={editingId ? "Правило" : "Правило"}
-      >
+      <FormShell specId="security-groups" mode={editingId ? "edit" : "create"} singular="правило">
+        {/* Форма НАЗЫВАЕТ СВОЁ ДЕЙСТВИЕ — и делает это сама.
+            `FormShell` внутри карточки ресурса шапку не рисует намеренно: там её
+            показывает зона 2, куда `ResourceShell` кладёт действие своей формы
+            правки. У этой панели зоны 2 нет — она меняет содержимое ВКЛАДКИ, а
+            зона 2 продолжает называть саму группу безопасности. Поэтому на
+            экране форма правила выходила без единой подписи: под вкладкой
+            «Правила» появлялся голый столбец полей, и «создаю» от «меняю»
+            отличалось только надписью на кнопке подвала.
+            Шапка — та же `PageHead`, что у всех форм консоли, и подпись
+            собирается ТЕМ ЖЕ способом: глагол плюс предмет в винительном падеже
+            (`createActionLabel`), как это делает `FormShell` для всех остальных
+            форм. Здесь стояло «Создание правила» — форма, которой в консоли
+            больше нет ни у одной формы (везде «Создать подсеть», «Изменить
+            сеть»), и вдобавок называвшая действие иначе, чем ЭТОТ ЖЕ файл
+            двадцатью строками выше: кнопка списка «Добавить правило», операция
+            «Добавление правила группы безопасности». Одно действие, названное на
+            одном экране двумя словами, читается как два разных действия. */}
+        <PageHead title={createActionLabel(RULE_SUBJECT, editingId ? "Изменить" : "Добавить")} />
         <RuleBody rule={editObj} onChange={setEditObj} editingNetworkId={networkId || undefined} />
         {formError && (
           // Причина стоит НАД подвалом — там, где на неё смотрят перед повторным
@@ -310,18 +428,19 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
             role="alert"
             style={{
               marginTop: 12,
-              padding: "8px 12px",
-              borderRadius: 6,
-              border: "1px solid var(--kc-error)",
-              color: "var(--kc-error)",
-              fontSize: 13,
+              padding: "9px 12px",
+              borderRadius: 8,
+              border: "1px solid color-mix(in srgb, var(--kc-danger) 30%, transparent)",
+              background: "color-mix(in srgb, var(--kc-danger) 8%, transparent)",
+              color: "var(--kc-danger)",
+              fontSize: 12,
             }}
           >
             {formError.field ? `${formError.field}: ${formError.message}` : formError.message}
           </div>
         )}
         <FormFooter
-          submitLabel={editingId ? "Сохранить" : "Добавить правило"}
+          submitLabel={editingId ? "Сохранить" : "Добавить"}
           submitting={mutation.isPending}
           onSubmit={saveEdit}
           onCancel={cancelEdit}
@@ -332,12 +451,39 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
 
   // ── режим списка ──
   return (
-    <div>
+    // Вкладка-СПИСОК заполняет отведённую ей область и прокручивает СЕБЯ — та же
+    // оболочка, что у встроенных таблиц дочерних ресурсов (`RelatedTable`).
+    // Прежде здесь стоял обычный `<div>`: общая таблица меряет доступную высоту
+    // от своего контейнера, у контейнера без высоты мерять нечего, и вместо
+    // прокрутки тела под закреплённой шапкой прокручивалась вся вкладка вместе
+    // с шапкой колонок.
+    <div style={{ height: "100%", minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
       {/* Шапку «Правила» показывает зона-3 (название таба); действия ушли в
           правый слот шапки СТРАНИЦЫ — туда же, где «Создать» у всех списков. */}
       {rules.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-          Правил нет — трафик блокируется (default-deny).
+        // Пустой набор — УТВЕРЖДЕНИЕ о безопасности («не разрешено ничего»), а не
+        // «здесь пока пусто», поэтому фраза остаётся дословно. Рядом с ней —
+        // первый шаг: вкладка, называющая предмет и не дающая с ним ничего
+        // сделать, отправляет читателя искать действие глазами по всему экрану.
+        //
+        // Кегль — строки, а не подписи столбца: прежде фраза набиралась рядом
+        // подписей (11, третичный цвет), и единственное сообщение вкладки
+        // читалось выключенным.
+        <div
+          style={{
+            ...editorSurfaceStyle,
+            display: "grid",
+            justifyItems: "center",
+            gap: 14,
+            padding: "40px 16px",
+          }}
+        >
+          <span style={{ fontSize: 13, color: "var(--kc-text-secondary)" }}>
+            Правил нет — трафик блокируется (default-deny).
+          </span>
+          <Button type="primary" icon={<PlusOutlined />} onClick={startAdd}>
+            Добавить правило
+          </Button>
         </div>
       ) : (
         // Таблица правил — та же `ResourceTable`, что у всех списков консоли.
@@ -369,10 +515,22 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
               header: "Направление",
               cell: (row) => <DirectionFact value={dirOf(row)} />,
             },
-            { header: "Протокол", cell: (row) => protoLabel(row) },
-            { header: "Диапазон портов", cell: (row) => portsLabel(row) },
+            // Ширина объявлена у столбцов с КОРОТКИМ и предсказуемым значением, а
+            // «Источник» и «Описание» её не несут намеренно — они забирают
+            // остаток. Так же устроены столбцы всех списков консоли
+            // (`spec-columns`: ширина выводится из типа значения, длинные и
+            // непредсказуемые поля оставлены содержимому), и числа взяты оттуда
+            // же: 140 — ряд короткого значения из закрытого набора, 150 и 180 —
+            // по длине самой подписи столбца.
+            //
+            // Прежде ширины не было НИ У ОДНОГО столбца, и таблица делила экран
+            // между восемью поровну: между «TCP» и «80–443» вставало по трети
+            // экрана пустоты, и строка переставала читаться как одна строка.
+            { header: "Протокол", width: 140, cell: (row) => protoLabel(row) },
+            { header: "Диапазон портов", width: 150, cell: (row) => <Mono>{portsLabel(row)}</Mono> },
             {
               header: "Тип источника",
+              width: 180,
               cell: (row) => (
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   {targetParts(row).kind}
@@ -381,8 +539,9 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
             },
             {
               header: "Источник",
-              // Моноширинный класс снят: он был осмыслен, пока в ячейке стоял
-              // идентификатор. Набор блоков остаётся моноширинным сам по себе.
+              // Набор блоков стоит столбиком, поэтому клетка НЕ обрезается в одну
+              // строку: общая обрезка показала бы из трёх блоков только первый.
+              multiline: true,
               cell: (row) => targetCell(row, projectId),
             },
             {
@@ -413,7 +572,12 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
                       ],
                     }}
                   >
-                    <Button type="text" size="small" icon={<MoreOutlined />} aria-label="Действия" />
+                    {/* Кнопка действий — ОДНА форма на все списки консоли
+                        (`ROW_ACTION_TRIGGER`: 30×30, радиус 6, вторичный тон).
+                        Здесь стоял `size="small"`, а он привязан к общей высоте
+                        элементов управления (36) — то есть строка этой таблицы
+                        росла из-за столбца, в котором нет данных. */}
+                    <Button type="text" icon={<MoreOutlined />} aria-label="Действия" style={ROW_ACTION_TRIGGER} />
                   </Dropdown>
                 );
               },

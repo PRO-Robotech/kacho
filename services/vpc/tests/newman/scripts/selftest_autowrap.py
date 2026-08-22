@@ -440,36 +440,36 @@ def _poll_actor(steps):
     return "шага опроса нет"
 
 
-_админ_издатель = [
+_admin_issuer = [
     Step(name="create", method="POST", path="/vpc/v1/addressPools", auth="jwtBootstrap",
          body={"name": "p"},
          test_script=[*gen.assert_status(200), *gen.save_from_response("j.id", "opId")]),
     gen.poll_operation_until_done(),
 ]
 check("инъекция: опрос наследует актора издателя операции",
-      _poll_actor(_админ_издатель) == "jwtBootstrap",
-      f"получено {_poll_actor(_админ_издатель)!r}")
+      _poll_actor(_admin_issuer) == "jwtBootstrap",
+      f"получено {_poll_actor(_admin_issuer)!r}")
 
-_дефолтный_издатель = [
+_default_issuer = [
     Step(name="create", method="POST", path="/vpc/v1/networks", body={"name": "n"},
          test_script=[*gen.assert_status(200), *gen.save_from_response("j.id", "opId")]),
     gen.poll_operation_until_done(),
 ]
 check("близнец-12: издатель под умолчанием коллекции — опрос актора НЕ получает",
-      _poll_actor(_дефолтный_издатель) is None,
-      f"получено {_poll_actor(_дефолтный_издатель)!r}")
+      _poll_actor(_default_issuer) is None,
+      f"получено {_poll_actor(_default_issuer)!r}")
 
-_явный_актор = [
+_explicit_actor = [
     Step(name="create", method="POST", path="/vpc/v1/addressPools", auth="jwtBootstrap",
          body={"name": "p"},
          test_script=[*gen.assert_status(200), *gen.save_from_response("j.id", "opId")]),
     gen.poll_operation_until_done(auth="jwtProjectAdminB1"),
 ]
 check("близнец-13: явно заданный актор опроса сильнее вывода — кейс о ЧУЖОЙ операции",
-      _poll_actor(_явный_актор) == "jwtProjectAdminB1",
-      f"получено {_poll_actor(_явный_актор)!r}")
+      _poll_actor(_explicit_actor) == "jwtProjectAdminB1",
+      f"получено {_poll_actor(_explicit_actor)!r}")
 
-_последний_издатель = [
+_last_issuer = [
     Step(name="create-admin", method="POST", path="/vpc/v1/addressPools", auth="jwtBootstrap",
          body={"name": "p"},
          test_script=[*gen.assert_status(200), *gen.save_from_response("j.id", "opId")]),
@@ -478,8 +478,8 @@ _последний_издатель = [
     gen.poll_operation_until_done(),
 ]
 check("близнец-14: берётся ПОСЛЕДНИЙ издатель имени, а не первый",
-      _poll_actor(_последний_издатель) is None,
-      f"получено {_poll_actor(_последний_издатель)!r}")
+      _poll_actor(_last_issuer) is None,
+      f"получено {_poll_actor(_last_issuer)!r}")
 
 # ---------------------------------------------------------------------------
 # 10. ОБЪЁМ ОСМОТРЕННОГО: «ноль находок» обязано быть отличимо от «ноль прочитанного».

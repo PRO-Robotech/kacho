@@ -207,6 +207,18 @@ func buildPrincipalMetadata(r *http.Request) metadata.MD {
 // поведение для них не меняется.
 func principalHeaderMatcher(key string) (string, bool) {
 	if name, ok := principalmeta.KachoNamespaceKey(key); ok {
+		// Ключ, который кладёт аннотатор, мост НЕ пропускает: у одного значения
+		// один производитель. Пока пропускал и он, каждый такой ключ уезжал в
+		// metadata трижды — одной копией от аннотатора и двумя от моста, по
+		// одной на каждую форму заголовка (#930).
+		//
+		// Расхождение копий было бы ненаблюдаемым: потребитель читает первую,
+		// а равенство остальных держалось не проверкой, а совпадением
+		// источника — и переставало держаться в тот день, когда источников
+		// стало два.
+		if principalmeta.IsAnnotatorProducedKey(name) {
+			return "", false
+		}
 		if principalmeta.IsGatewayProducedKey(name) {
 			return name, true
 		}
@@ -425,9 +437,11 @@ func NewMux(
 		}
 	}
 
-	// lbAddr / lbInternalAddr обслуживают kacho-nlb (loadbalancer.v1).
+	// lbAddr обслуживает kacho-nlb (loadbalancer.v1). Внутреннего адреса
+	// здесь больше нет: единственный маршрут, который его требовал, снят
+	// вместе со своим потоком (#814).
 	// registryAddr / registryInternalAddr обслуживают kacho-registry (registry.v1).
-	var vpcAddr, vpcInternalAddr, computeAddr, computeInternalAddr, iamAddr, iamInternalAddr, lbAddr, lbInternalAddr, geoAddr, geoInternalAddr, registryAddr, registryInternalAddr, storageAddr, storageInternalAddr string
+	var vpcAddr, vpcInternalAddr, computeAddr, computeInternalAddr, iamAddr, iamInternalAddr, lbAddr, geoAddr, geoInternalAddr, registryAddr, registryInternalAddr, storageAddr, storageInternalAddr string
 	if addrs != nil {
 		vpcAddr = addrs["vpc"]
 		vpcInternalAddr = addrs["vpcInternal"]
@@ -436,7 +450,6 @@ func NewMux(
 		iamAddr = addrs["iam"]
 		iamInternalAddr = addrs["iamInternal"]
 		lbAddr = addrs["loadbalancer"]
-		lbInternalAddr = addrs["loadbalancerInternal"]
 		geoAddr = addrs["geo"]
 		geoInternalAddr = addrs["geoInternal"]
 		registryAddr = addrs["registry"]
@@ -919,11 +932,6 @@ func NewMux(
 		// HasInternalSuffix в gRPC-роутере (server.go Resolver / shimproxy.go)
 		// блокирует попадание InternalResourceLifecycleService.* на external/TLS
 		// endpoint.
-		if mux == internalMux && lbInternalAddr != "" {
-			if err := lbpb.RegisterInternalResourceLifecycleServiceHandlerFromEndpoint(ctx, mux, lbInternalAddr, optsFor("loadbalancerInternal")); err != nil {
-				return nil, fmt.Errorf("register loadbalancer InternalResourceLifecycleService: %w", err)
-			}
-		}
 
 		// --- registry.v1 (kacho-registry): RegistryService ---
 		// Public control-plane реестра под /registry/v1/*: registries CRUD +

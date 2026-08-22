@@ -254,8 +254,8 @@ describe("объявленная связь доезжает до рейла В�
     stubApi();
     mountAt("/projects/prj-1/registry/registries/reg-1/repositories/nginx/tags");
 
-    const теги = await screen.findByRole("tab", { name: /Теги/ });
-    expect(теги).toHaveAttribute("aria-selected", "true");
+    const tagsTab = await screen.findByRole("tab", { name: /Теги/ });
+    expect(tagsTab).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: /Обзор/ })).toHaveAttribute("aria-selected", "false");
   });
 });
