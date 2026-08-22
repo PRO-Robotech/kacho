@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { tenantWithProject, createdResourceId, runTag, подписьКопирования } from "./fixtures";
+import { tenantWithProject, createdResourceId, runTag, подписьКопирования, областьГотова } from "./fixtures";
 
 /**
  * Пользовательские сценарии консоли: ФАКТЫ, МЕТКИ, ПУСТОЕ СОСТОЯНИЕ.
@@ -410,6 +410,9 @@ test("обе стороны булева факта названы следст�
 test("тон факта следует смыслу, а не истинности", async ({ page }) => {
   // verifies #925
   const { projectId } = await tenantWithProject(page);
+  // Готовность области — ДО создания ресурсов: ожидание тратится на то, что всё
+  // равно должно произойти, а к моменту перехода каркас уже знает проект.
+  await областьГотова(page, projectId);
 
   const зоны = await page.request.get("/geo/v1/zones");
   expect(зоны.ok(), "справочник зон недоступен — публичный адрес выделять негде").toBeTruthy();
