@@ -4,12 +4,13 @@
 package repohygiene
 
 import (
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/gitenv"
 )
 
 // TestNewMigrationOutranksEveryAppliedOne — номер НОВОЙ миграции больше любого
@@ -60,7 +61,7 @@ func TestNewMigrationOutranksEveryAppliedOne(t *testing.T) {
 			"это граница проверки, а не её зелёный исход")
 	}
 
-	out, err := exec.Command("git", "-C", root, "diff", "--name-only",
+	out, err := gitenv.Command(root, "diff", "--name-only",
 		"--diff-filter=A", base+"...HEAD").Output()
 	if err != nil {
 		t.Skipf("состав добавленного относительно %s не прочитан: %v", base, err)
@@ -103,7 +104,7 @@ func TestNewMigrationOutranksEveryAppliedOne(t *testing.T) {
 func resolveTrunkRef(t *testing.T, root string) string {
 	t.Helper()
 	for _, ref := range []string{"origin/main", "main"} {
-		if err := exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", ref).Run(); err == nil {
+		if err := gitenv.Command(root, "rev-parse", "--verify", "--quiet", ref).Run(); err == nil {
 			return ref
 		}
 	}
