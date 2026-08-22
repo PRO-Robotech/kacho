@@ -82,6 +82,76 @@ func (SubjectType) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{0}
 }
 
+// GrantSurfaceKind — ВИД записи поверхности выдач (#914, решение 2).
+//
+// Поверхностей ВЫДАЧИ три, и они остаются раздельными: выдача заводится и
+// отзывается своим глаголом, состав группы — своим, кластерный администратор —
+// своим. Сводить их в одну поверхность было бы неверно: у членства нет ни роли,
+// ни области, ни срока, а у кластерного администратора свой порядок выдачи —
+// это единственный доступ, обязанный работать, когда сломано всё остальное.
+//
+// Раздельными остаются ПОВЕРХНОСТИ, но не ЧТЕНИЕ. Две поверхности об одном
+// предмете расходятся молча: спрашивающий «кто имеет доступ» получает ответ с
+// одной из них и считает его полным. Поэтому перечисление выдач возвращает
+// записи всех трёх видов, называя вид каждой.
+//
+// Решение и его обоснование —
+// `services/iam/docs/engineering/architecture/grant-surface-boundaries.md`.
+type GrantSurfaceKind int32
+
+const (
+	GrantSurfaceKind_GRANT_SURFACE_KIND_UNSPECIFIED GrantSurfaceKind = 0
+	// Выдача: обычная (роль на области) либо системная (именованное отношение).
+	GrantSurfaceKind_GRANT_SURFACE_KIND_ACCESS_BINDING GrantSurfaceKind = 1
+	// Состав группы: членство доносит до члена то, что выдано группе.
+	GrantSurfaceKind_GRANT_SURFACE_KIND_GROUP_MEMBERSHIP GrantSurfaceKind = 2
+	// Кластерный администратор: верхний ярус супер-доступа, действующий каскадом.
+	GrantSurfaceKind_GRANT_SURFACE_KIND_CLUSTER_ADMIN GrantSurfaceKind = 3
+)
+
+// Enum value maps for GrantSurfaceKind.
+var (
+	GrantSurfaceKind_name = map[int32]string{
+		0: "GRANT_SURFACE_KIND_UNSPECIFIED",
+		1: "GRANT_SURFACE_KIND_ACCESS_BINDING",
+		2: "GRANT_SURFACE_KIND_GROUP_MEMBERSHIP",
+		3: "GRANT_SURFACE_KIND_CLUSTER_ADMIN",
+	}
+	GrantSurfaceKind_value = map[string]int32{
+		"GRANT_SURFACE_KIND_UNSPECIFIED":      0,
+		"GRANT_SURFACE_KIND_ACCESS_BINDING":   1,
+		"GRANT_SURFACE_KIND_GROUP_MEMBERSHIP": 2,
+		"GRANT_SURFACE_KIND_CLUSTER_ADMIN":    3,
+	}
+)
+
+func (x GrantSurfaceKind) Enum() *GrantSurfaceKind {
+	p := new(GrantSurfaceKind)
+	*p = x
+	return p
+}
+
+func (x GrantSurfaceKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (GrantSurfaceKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_iam_v1_access_binding_proto_enumTypes[1].Descriptor()
+}
+
+func (GrantSurfaceKind) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_iam_v1_access_binding_proto_enumTypes[1]
+}
+
+func (x GrantSurfaceKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use GrantSurfaceKind.Descriptor instead.
+func (GrantSurfaceKind) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{1}
+}
+
 // Lifecycle status. PENDING is reserved for a JIT approval workflow;
 // ACTIVE is the steady state; REVOKED is terminal.
 type AccessBinding_Status int32
@@ -120,11 +190,11 @@ func (x AccessBinding_Status) String() string {
 }
 
 func (AccessBinding_Status) Descriptor() protoreflect.EnumDescriptor {
-	return file_kacho_cloud_iam_v1_access_binding_proto_enumTypes[1].Descriptor()
+	return file_kacho_cloud_iam_v1_access_binding_proto_enumTypes[2].Descriptor()
 }
 
 func (AccessBinding_Status) Type() protoreflect.EnumType {
-	return &file_kacho_cloud_iam_v1_access_binding_proto_enumTypes[1]
+	return &file_kacho_cloud_iam_v1_access_binding_proto_enumTypes[2]
 }
 
 func (x AccessBinding_Status) Number() protoreflect.EnumNumber {
@@ -177,11 +247,11 @@ func (x AccessBinding_Scope) String() string {
 }
 
 func (AccessBinding_Scope) Descriptor() protoreflect.EnumDescriptor {
-	return file_kacho_cloud_iam_v1_access_binding_proto_enumTypes[2].Descriptor()
+	return file_kacho_cloud_iam_v1_access_binding_proto_enumTypes[3].Descriptor()
 }
 
 func (AccessBinding_Scope) Type() protoreflect.EnumType {
-	return &file_kacho_cloud_iam_v1_access_binding_proto_enumTypes[2]
+	return &file_kacho_cloud_iam_v1_access_binding_proto_enumTypes[3]
 }
 
 func (x AccessBinding_Scope) Number() protoreflect.EnumNumber {
@@ -752,6 +822,278 @@ func (x *Subject) GetId() string {
 	return ""
 }
 
+// GroupMembershipRecord — одно членство в группе.
+//
+// Это НЕ выдача, и полей выдачи у него нет: роли, области и срока у членства не
+// бывает. Пустые поля читатель принимает за «не задано», а не за «неприменимо»,
+// — поэтому у вида своя форма, а не общая с вырезанной серединой.
+type GroupMembershipRecord struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID группы, чей это состав.
+	GroupId string `protobuf:"bytes,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	// Тип члена: "user" | "service_account".
+	MemberType string `protobuf:"bytes,2,opt,name=member_type,json=memberType,proto3" json:"member_type,omitempty"`
+	// ID члена.
+	MemberId string `protobuf:"bytes,3,opt,name=member_id,json=memberId,proto3" json:"member_id,omitempty"`
+	// Когда член добавлен.
+	AddedAt       *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=added_at,json=addedAt,proto3" json:"added_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GroupMembershipRecord) Reset() {
+	*x = GroupMembershipRecord{}
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GroupMembershipRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GroupMembershipRecord) ProtoMessage() {}
+
+func (x *GroupMembershipRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GroupMembershipRecord.ProtoReflect.Descriptor instead.
+func (*GroupMembershipRecord) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GroupMembershipRecord) GetGroupId() string {
+	if x != nil {
+		return x.GroupId
+	}
+	return ""
+}
+
+func (x *GroupMembershipRecord) GetMemberType() string {
+	if x != nil {
+		return x.MemberType
+	}
+	return ""
+}
+
+func (x *GroupMembershipRecord) GetMemberId() string {
+	if x != nil {
+		return x.MemberId
+	}
+	return ""
+}
+
+func (x *GroupMembershipRecord) GetAddedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AddedAt
+	}
+	return nil
+}
+
+// ClusterAdminRecord — один действующий кластерный администратор.
+//
+// Форма своя по той же причине: выдаётся и отзывается он собственным глаголом,
+// роли у него нет, а область — весь кластер по построению.
+type ClusterAdminRecord struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID записи о выдаче администраторских прав на кластере.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Тип субъекта: "user" | "service_account".
+	SubjectType string `protobuf:"bytes,2,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
+	// ID субъекта.
+	SubjectId string `protobuf:"bytes,3,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
+	// Когда выдано.
+	GrantedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=granted_at,json=grantedAt,proto3" json:"granted_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClusterAdminRecord) Reset() {
+	*x = ClusterAdminRecord{}
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClusterAdminRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClusterAdminRecord) ProtoMessage() {}
+
+func (x *ClusterAdminRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClusterAdminRecord.ProtoReflect.Descriptor instead.
+func (*ClusterAdminRecord) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ClusterAdminRecord) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ClusterAdminRecord) GetSubjectType() string {
+	if x != nil {
+		return x.SubjectType
+	}
+	return ""
+}
+
+func (x *ClusterAdminRecord) GetSubjectId() string {
+	if x != nil {
+		return x.SubjectId
+	}
+	return ""
+}
+
+func (x *ClusterAdminRecord) GetGrantedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.GrantedAt
+	}
+	return nil
+}
+
+// GrantSurfaceRecord — одна запись поверхности выдач вместе со своим ВИДОМ.
+//
+// Вид назван ДВАЖДЫ — полем `kind` и ветвью `record`, — и это осознанно: ветвь
+// читает тот, кто разбирает запись по её форме, `kind` — тот, кто раскладывает
+// перечисление по видам, не заглядывая внутрь. Согласие двух прочтений — не
+// пожелание: его держит проба
+// (`services/iam/internal/apps/kacho/api/access_binding`), потому что запись, чей
+// `kind` разошёлся с ветвью, читается разными вызывающими по-разному.
+type GrantSurfaceRecord struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Вид записи. UNSPECIFIED не производится: запись без вида означала бы, что
+	// перечисление вернуло что-то, чего само назвать не может.
+	Kind GrantSurfaceKind `protobuf:"varint,1,opt,name=kind,proto3,enum=kacho.cloud.iam.v1.GrantSurfaceKind" json:"kind,omitempty"`
+	// Types that are valid to be assigned to Record:
+	//
+	//	*GrantSurfaceRecord_Binding
+	//	*GrantSurfaceRecord_GroupMembership
+	//	*GrantSurfaceRecord_ClusterAdmin
+	Record        isGrantSurfaceRecord_Record `protobuf_oneof:"record"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GrantSurfaceRecord) Reset() {
+	*x = GrantSurfaceRecord{}
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrantSurfaceRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrantSurfaceRecord) ProtoMessage() {}
+
+func (x *GrantSurfaceRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrantSurfaceRecord.ProtoReflect.Descriptor instead.
+func (*GrantSurfaceRecord) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *GrantSurfaceRecord) GetKind() GrantSurfaceKind {
+	if x != nil {
+		return x.Kind
+	}
+	return GrantSurfaceKind_GRANT_SURFACE_KIND_UNSPECIFIED
+}
+
+func (x *GrantSurfaceRecord) GetRecord() isGrantSurfaceRecord_Record {
+	if x != nil {
+		return x.Record
+	}
+	return nil
+}
+
+func (x *GrantSurfaceRecord) GetBinding() *AccessBinding {
+	if x != nil {
+		if x, ok := x.Record.(*GrantSurfaceRecord_Binding); ok {
+			return x.Binding
+		}
+	}
+	return nil
+}
+
+func (x *GrantSurfaceRecord) GetGroupMembership() *GroupMembershipRecord {
+	if x != nil {
+		if x, ok := x.Record.(*GrantSurfaceRecord_GroupMembership); ok {
+			return x.GroupMembership
+		}
+	}
+	return nil
+}
+
+func (x *GrantSurfaceRecord) GetClusterAdmin() *ClusterAdminRecord {
+	if x != nil {
+		if x, ok := x.Record.(*GrantSurfaceRecord_ClusterAdmin); ok {
+			return x.ClusterAdmin
+		}
+	}
+	return nil
+}
+
+type isGrantSurfaceRecord_Record interface {
+	isGrantSurfaceRecord_Record()
+}
+
+type GrantSurfaceRecord_Binding struct {
+	// Вид ACCESS_BINDING.
+	Binding *AccessBinding `protobuf:"bytes,2,opt,name=binding,proto3,oneof"`
+}
+
+type GrantSurfaceRecord_GroupMembership struct {
+	// Вид GROUP_MEMBERSHIP.
+	GroupMembership *GroupMembershipRecord `protobuf:"bytes,3,opt,name=group_membership,json=groupMembership,proto3,oneof"`
+}
+
+type GrantSurfaceRecord_ClusterAdmin struct {
+	// Вид CLUSTER_ADMIN.
+	ClusterAdmin *ClusterAdminRecord `protobuf:"bytes,4,opt,name=cluster_admin,json=clusterAdmin,proto3,oneof"`
+}
+
+func (*GrantSurfaceRecord_Binding) isGrantSurfaceRecord_Record() {}
+
+func (*GrantSurfaceRecord_GroupMembership) isGrantSurfaceRecord_Record() {}
+
+func (*GrantSurfaceRecord_ClusterAdmin) isGrantSurfaceRecord_Record() {}
+
 type CreateAccessBindingMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the AccessBinding that is being created.
@@ -770,7 +1112,7 @@ type CreateAccessBindingMetadata struct {
 
 func (x *CreateAccessBindingMetadata) Reset() {
 	*x = CreateAccessBindingMetadata{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -782,7 +1124,7 @@ func (x *CreateAccessBindingMetadata) String() string {
 func (*CreateAccessBindingMetadata) ProtoMessage() {}
 
 func (x *CreateAccessBindingMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -795,7 +1137,7 @@ func (x *CreateAccessBindingMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateAccessBindingMetadata.ProtoReflect.Descriptor instead.
 func (*CreateAccessBindingMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{5}
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CreateAccessBindingMetadata) GetAccessBindingId() string {
@@ -825,7 +1167,7 @@ type DeleteAccessBindingMetadata struct {
 
 func (x *DeleteAccessBindingMetadata) Reset() {
 	*x = DeleteAccessBindingMetadata{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -837,7 +1179,7 @@ func (x *DeleteAccessBindingMetadata) String() string {
 func (*DeleteAccessBindingMetadata) ProtoMessage() {}
 
 func (x *DeleteAccessBindingMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -850,7 +1192,7 @@ func (x *DeleteAccessBindingMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAccessBindingMetadata.ProtoReflect.Descriptor instead.
 func (*DeleteAccessBindingMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{6}
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *DeleteAccessBindingMetadata) GetAccessBindingId() string {
@@ -880,7 +1222,7 @@ type UpdateAccessBindingMetadata struct {
 
 func (x *UpdateAccessBindingMetadata) Reset() {
 	*x = UpdateAccessBindingMetadata{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -892,7 +1234,7 @@ func (x *UpdateAccessBindingMetadata) String() string {
 func (*UpdateAccessBindingMetadata) ProtoMessage() {}
 
 func (x *UpdateAccessBindingMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -905,7 +1247,7 @@ func (x *UpdateAccessBindingMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateAccessBindingMetadata.ProtoReflect.Descriptor instead.
 func (*UpdateAccessBindingMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{7}
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UpdateAccessBindingMetadata) GetAccessBindingId() string {
@@ -935,7 +1277,7 @@ type RevokeAccessBindingMetadata struct {
 
 func (x *RevokeAccessBindingMetadata) Reset() {
 	*x = RevokeAccessBindingMetadata{}
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[8]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -947,7 +1289,7 @@ func (x *RevokeAccessBindingMetadata) String() string {
 func (*RevokeAccessBindingMetadata) ProtoMessage() {}
 
 func (x *RevokeAccessBindingMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[8]
+	mi := &file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -960,7 +1302,7 @@ func (x *RevokeAccessBindingMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeAccessBindingMetadata.ProtoReflect.Descriptor instead.
 func (*RevokeAccessBindingMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{8}
+	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *RevokeAccessBindingMetadata) GetAccessBindingId() string {
@@ -1034,7 +1376,26 @@ const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\x16AccessTargetAllInScope\"N\n" +
 	"\aSubject\x123\n" +
 	"\x04type\x18\x01 \x01(\x0e2\x1f.kacho.cloud.iam.v1.SubjectTypeR\x04type\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\"h\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\"\xa7\x01\n" +
+	"\x15GroupMembershipRecord\x12\x19\n" +
+	"\bgroup_id\x18\x01 \x01(\tR\agroupId\x12\x1f\n" +
+	"\vmember_type\x18\x02 \x01(\tR\n" +
+	"memberType\x12\x1b\n" +
+	"\tmember_id\x18\x03 \x01(\tR\bmemberId\x125\n" +
+	"\badded_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\aaddedAt\"\xa1\x01\n" +
+	"\x12ClusterAdminRecord\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
+	"\fsubject_type\x18\x02 \x01(\tR\vsubjectType\x12\x1d\n" +
+	"\n" +
+	"subject_id\x18\x03 \x01(\tR\tsubjectId\x129\n" +
+	"\n" +
+	"granted_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tgrantedAt\"\xbe\x02\n" +
+	"\x12GrantSurfaceRecord\x128\n" +
+	"\x04kind\x18\x01 \x01(\x0e2$.kacho.cloud.iam.v1.GrantSurfaceKindR\x04kind\x12=\n" +
+	"\abinding\x18\x02 \x01(\v2!.kacho.cloud.iam.v1.AccessBindingH\x00R\abinding\x12V\n" +
+	"\x10group_membership\x18\x03 \x01(\v2).kacho.cloud.iam.v1.GroupMembershipRecordH\x00R\x0fgroupMembership\x12M\n" +
+	"\rcluster_admin\x18\x04 \x01(\v2&.kacho.cloud.iam.v1.ClusterAdminRecordH\x00R\fclusterAdminB\b\n" +
+	"\x06record\"h\n" +
 	"\x1bCreateAccessBindingMetadata\x12*\n" +
 	"\x11access_binding_id\x18\x01 \x01(\tR\x0faccessBindingId\x12\x1d\n" +
 	"\n" +
@@ -1055,7 +1416,12 @@ const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\x18SUBJECT_TYPE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11SUBJECT_TYPE_USER\x10\x01\x12 \n" +
 	"\x1cSUBJECT_TYPE_SERVICE_ACCOUNT\x10\x02\x12\x16\n" +
-	"\x12SUBJECT_TYPE_GROUP\x10\x03B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\x12SUBJECT_TYPE_GROUP\x10\x03*\xac\x01\n" +
+	"\x10GrantSurfaceKind\x12\"\n" +
+	"\x1eGRANT_SURFACE_KIND_UNSPECIFIED\x10\x00\x12%\n" +
+	"!GRANT_SURFACE_KIND_ACCESS_BINDING\x10\x01\x12'\n" +
+	"#GRANT_SURFACE_KIND_GROUP_MEMBERSHIP\x10\x02\x12$\n" +
+	" GRANT_SURFACE_KIND_CLUSTER_ADMIN\x10\x03B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_access_binding_proto_rawDescOnce sync.Once
@@ -1069,43 +1435,53 @@ func file_kacho_cloud_iam_v1_access_binding_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_iam_v1_access_binding_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_access_binding_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_kacho_cloud_iam_v1_access_binding_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_kacho_cloud_iam_v1_access_binding_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_kacho_cloud_iam_v1_access_binding_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_kacho_cloud_iam_v1_access_binding_proto_goTypes = []any{
 	(SubjectType)(0),                    // 0: kacho.cloud.iam.v1.SubjectType
-	(AccessBinding_Status)(0),           // 1: kacho.cloud.iam.v1.AccessBinding.Status
-	(AccessBinding_Scope)(0),            // 2: kacho.cloud.iam.v1.AccessBinding.Scope
-	(*AccessBinding)(nil),               // 3: kacho.cloud.iam.v1.AccessBinding
-	(*AccessTarget)(nil),                // 4: kacho.cloud.iam.v1.AccessTarget
-	(*AccessTargetResources)(nil),       // 5: kacho.cloud.iam.v1.AccessTargetResources
-	(*AccessTargetAllInScope)(nil),      // 6: kacho.cloud.iam.v1.AccessTargetAllInScope
-	(*Subject)(nil),                     // 7: kacho.cloud.iam.v1.Subject
-	(*CreateAccessBindingMetadata)(nil), // 8: kacho.cloud.iam.v1.CreateAccessBindingMetadata
-	(*DeleteAccessBindingMetadata)(nil), // 9: kacho.cloud.iam.v1.DeleteAccessBindingMetadata
-	(*UpdateAccessBindingMetadata)(nil), // 10: kacho.cloud.iam.v1.UpdateAccessBindingMetadata
-	(*RevokeAccessBindingMetadata)(nil), // 11: kacho.cloud.iam.v1.RevokeAccessBindingMetadata
-	nil,                                 // 12: kacho.cloud.iam.v1.AccessBinding.LabelsEntry
-	(*timestamppb.Timestamp)(nil),       // 13: google.protobuf.Timestamp
-	(*ResourceRef)(nil),                 // 14: kacho.cloud.iam.v1.ResourceRef
+	(GrantSurfaceKind)(0),               // 1: kacho.cloud.iam.v1.GrantSurfaceKind
+	(AccessBinding_Status)(0),           // 2: kacho.cloud.iam.v1.AccessBinding.Status
+	(AccessBinding_Scope)(0),            // 3: kacho.cloud.iam.v1.AccessBinding.Scope
+	(*AccessBinding)(nil),               // 4: kacho.cloud.iam.v1.AccessBinding
+	(*AccessTarget)(nil),                // 5: kacho.cloud.iam.v1.AccessTarget
+	(*AccessTargetResources)(nil),       // 6: kacho.cloud.iam.v1.AccessTargetResources
+	(*AccessTargetAllInScope)(nil),      // 7: kacho.cloud.iam.v1.AccessTargetAllInScope
+	(*Subject)(nil),                     // 8: kacho.cloud.iam.v1.Subject
+	(*GroupMembershipRecord)(nil),       // 9: kacho.cloud.iam.v1.GroupMembershipRecord
+	(*ClusterAdminRecord)(nil),          // 10: kacho.cloud.iam.v1.ClusterAdminRecord
+	(*GrantSurfaceRecord)(nil),          // 11: kacho.cloud.iam.v1.GrantSurfaceRecord
+	(*CreateAccessBindingMetadata)(nil), // 12: kacho.cloud.iam.v1.CreateAccessBindingMetadata
+	(*DeleteAccessBindingMetadata)(nil), // 13: kacho.cloud.iam.v1.DeleteAccessBindingMetadata
+	(*UpdateAccessBindingMetadata)(nil), // 14: kacho.cloud.iam.v1.UpdateAccessBindingMetadata
+	(*RevokeAccessBindingMetadata)(nil), // 15: kacho.cloud.iam.v1.RevokeAccessBindingMetadata
+	nil,                                 // 16: kacho.cloud.iam.v1.AccessBinding.LabelsEntry
+	(*timestamppb.Timestamp)(nil),       // 17: google.protobuf.Timestamp
+	(*ResourceRef)(nil),                 // 18: kacho.cloud.iam.v1.ResourceRef
 }
 var file_kacho_cloud_iam_v1_access_binding_proto_depIdxs = []int32{
-	13, // 0: kacho.cloud.iam.v1.AccessBinding.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 1: kacho.cloud.iam.v1.AccessBinding.status:type_name -> kacho.cloud.iam.v1.AccessBinding.Status
-	13, // 2: kacho.cloud.iam.v1.AccessBinding.expires_at:type_name -> google.protobuf.Timestamp
-	13, // 3: kacho.cloud.iam.v1.AccessBinding.revoked_at:type_name -> google.protobuf.Timestamp
-	7,  // 4: kacho.cloud.iam.v1.AccessBinding.subjects:type_name -> kacho.cloud.iam.v1.Subject
-	12, // 5: kacho.cloud.iam.v1.AccessBinding.labels:type_name -> kacho.cloud.iam.v1.AccessBinding.LabelsEntry
-	4,  // 6: kacho.cloud.iam.v1.AccessBinding.target:type_name -> kacho.cloud.iam.v1.AccessTarget
-	13, // 7: kacho.cloud.iam.v1.AccessBinding.materialized_at:type_name -> google.protobuf.Timestamp
-	5,  // 8: kacho.cloud.iam.v1.AccessTarget.resources:type_name -> kacho.cloud.iam.v1.AccessTargetResources
-	6,  // 9: kacho.cloud.iam.v1.AccessTarget.all_in_scope:type_name -> kacho.cloud.iam.v1.AccessTargetAllInScope
-	14, // 10: kacho.cloud.iam.v1.AccessTargetResources.resources:type_name -> kacho.cloud.iam.v1.ResourceRef
+	17, // 0: kacho.cloud.iam.v1.AccessBinding.created_at:type_name -> google.protobuf.Timestamp
+	2,  // 1: kacho.cloud.iam.v1.AccessBinding.status:type_name -> kacho.cloud.iam.v1.AccessBinding.Status
+	17, // 2: kacho.cloud.iam.v1.AccessBinding.expires_at:type_name -> google.protobuf.Timestamp
+	17, // 3: kacho.cloud.iam.v1.AccessBinding.revoked_at:type_name -> google.protobuf.Timestamp
+	8,  // 4: kacho.cloud.iam.v1.AccessBinding.subjects:type_name -> kacho.cloud.iam.v1.Subject
+	16, // 5: kacho.cloud.iam.v1.AccessBinding.labels:type_name -> kacho.cloud.iam.v1.AccessBinding.LabelsEntry
+	5,  // 6: kacho.cloud.iam.v1.AccessBinding.target:type_name -> kacho.cloud.iam.v1.AccessTarget
+	17, // 7: kacho.cloud.iam.v1.AccessBinding.materialized_at:type_name -> google.protobuf.Timestamp
+	6,  // 8: kacho.cloud.iam.v1.AccessTarget.resources:type_name -> kacho.cloud.iam.v1.AccessTargetResources
+	7,  // 9: kacho.cloud.iam.v1.AccessTarget.all_in_scope:type_name -> kacho.cloud.iam.v1.AccessTargetAllInScope
+	18, // 10: kacho.cloud.iam.v1.AccessTargetResources.resources:type_name -> kacho.cloud.iam.v1.ResourceRef
 	0,  // 11: kacho.cloud.iam.v1.Subject.type:type_name -> kacho.cloud.iam.v1.SubjectType
-	12, // [12:12] is the sub-list for method output_type
-	12, // [12:12] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	17, // 12: kacho.cloud.iam.v1.GroupMembershipRecord.added_at:type_name -> google.protobuf.Timestamp
+	17, // 13: kacho.cloud.iam.v1.ClusterAdminRecord.granted_at:type_name -> google.protobuf.Timestamp
+	1,  // 14: kacho.cloud.iam.v1.GrantSurfaceRecord.kind:type_name -> kacho.cloud.iam.v1.GrantSurfaceKind
+	4,  // 15: kacho.cloud.iam.v1.GrantSurfaceRecord.binding:type_name -> kacho.cloud.iam.v1.AccessBinding
+	9,  // 16: kacho.cloud.iam.v1.GrantSurfaceRecord.group_membership:type_name -> kacho.cloud.iam.v1.GroupMembershipRecord
+	10, // 17: kacho.cloud.iam.v1.GrantSurfaceRecord.cluster_admin:type_name -> kacho.cloud.iam.v1.ClusterAdminRecord
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_access_binding_proto_init() }
@@ -1118,13 +1494,18 @@ func file_kacho_cloud_iam_v1_access_binding_proto_init() {
 		(*AccessTarget_Resources)(nil),
 		(*AccessTarget_AllInScope)(nil),
 	}
+	file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[7].OneofWrappers = []any{
+		(*GrantSurfaceRecord_Binding)(nil),
+		(*GrantSurfaceRecord_GroupMembership)(nil),
+		(*GrantSurfaceRecord_ClusterAdmin)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_access_binding_proto_rawDesc), len(file_kacho_cloud_iam_v1_access_binding_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   10,
+			NumEnums:      4,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
