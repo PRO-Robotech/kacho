@@ -31,6 +31,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -192,6 +193,10 @@ type Syncer struct {
 	// синхронизирована за всё время» было ЗАМЕТНО. Механизм, не тронувший ни
 	// одной строки за всю свою жизнь, — находка, а не тишина; без счётчика он
 	// неотличим от исправно работающего на неизменной конфигурации.
+	// mu защищает накопленное. Заведён вместе с экспортом `Health`: писатель —
+	// горутина цикла, а читатель теперь может быть любым, и «сегодня гонки нет»
+	// есть свойство нынешних вызывающих, а не типа. Экспорт приглашает второго.
+	mu         sync.Mutex
 	pullsTotal int64
 	rowsTotal  int64
 	// lastSuccess — когда проход состоялся в последний раз. Нулевое значение
@@ -225,6 +230,8 @@ type Health struct {
 
 // Health отдаёт накопленное вместе с признаком «ни одного прохода за всю жизнь».
 func (s *Syncer) Health() Health {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return Health{
 		Pulls:             s.pullsTotal,
 		Rows:              s.rowsTotal,
@@ -353,9 +360,11 @@ func (s *Syncer) RunOnce(ctx context.Context) (int64, bool, error) {
 		return rows, true, fmt.Errorf("heartbeat: %w", err)
 	}
 
+	s.mu.Lock()
 	s.pullsTotal++
 	s.rowsTotal += rows
 	s.lastSuccess = s.now()
+	s.mu.Unlock()
 	return rows, true, nil
 }
 
@@ -436,11 +445,3 @@ func (s *Syncer) run(ctx context.Context, passNow bool) {
 		}
 	}
 }
-
-// Stats отдаёт накопленное — для наблюдаемости и для проб.
-//
-// Оставлен как узкая форма `Health` для вызывающих, которым нужны только два
-// числа. Признак «ни одного прохода за всю жизнь» здесь НЕ выводится намеренно:
-// вывод, сделанный вызывающим, разошёлся бы со строкой журнала, а различать
-// мёртвого тянущего и живого на неизменной конфигурации обязан один предикат.
-func (s *Syncer) Stats() (pulls, rows int64) { return s.pullsTotal, s.rowsTotal }
