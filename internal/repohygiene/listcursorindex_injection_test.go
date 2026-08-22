@@ -164,6 +164,112 @@ func Test_CursorIndexGate_RedsOnPartialIndex(t *testing.T) {
 	}
 }
 
+// Test_CursorIndexGate_SilentOnPartialIndexWhoseePredicateTheReadCarries —
+// послабление, заведённое вместе с вывозом журнала аудита (#812): частичный
+// индекс ЗАСЧИТЫВАЕТСЯ, когда чтение несёт его предикат дословно.
+//
+// Пара обязательна и проверяется обеими половинами В ОДНОЙ пробе: тот же
+// индекс с тем же чтением МИНУС предикат обязан снова стать находкой. Иначе
+// «засчитан» было бы неотличимо от «частичные засчитываются всегда».
+func Test_CursorIndexGate_SilentOnPartialIndexWhosePredicateTheReadCarries(t *testing.T) {
+	const partialIdx = "CREATE INDEX widgets_live_cursor_idx ON kacho_alpha.widgets " +
+		"(created_at, id) WHERE project_id <> '';"
+
+	carries := cursorInjectionTree(t, partialIdx,
+		"SELECT id FROM kacho_alpha.widgets WHERE project_id <> '' "+
+			"ORDER BY created_at ASC, id ASC LIMIT $1")
+	if got := findingNames(t, carries); len(got) != 0 {
+		t.Fatalf("чтение несёт предикат индекса дословно — индекс обязан засчитаться; получено %v", got)
+	}
+
+	// Законный близнец наоборот: тот же индекс, чтение БЕЗ предиката.
+	silentAbout := cursorInjectionTree(t, partialIdx,
+		"SELECT id FROM kacho_alpha.widgets ORDER BY created_at ASC, id ASC LIMIT $1")
+	if got := findingNames(t, silentAbout); len(got) != 1 || got[0] != "alpha.widgets" {
+		t.Fatalf("чтение без предиката индекса покрытым не является; получено %v", got)
+	}
+
+	// И третья половина: предикат, ПОХОЖИЙ на индексный, но не тот.
+	nearMiss := cursorInjectionTree(t, partialIdx,
+		"SELECT id FROM kacho_alpha.widgets WHERE project_id <> $1 "+
+			"ORDER BY created_at ASC, id ASC LIMIT $2")
+	if got := findingNames(t, nearMiss); len(got) != 1 || got[0] != "alpha.widgets" {
+		t.Fatalf("похожий, но иной предикат покрытием не является; получено %v", got)
+	}
+}
+
+// Test_CursorIndexGate_PartialIndexEasingIsNoWiderThanImplication — послабление
+// выше НЕ ШИРЕ того, что оно доказывает.
+//
+// # Зачем отдельная проба
+//
+// Первая редакция послабления искала предикат ПОДСТРОКОЙ, и этого достаточно
+// ровно для одного вывода — «текст встретился», — а нужен другой: «строки
+// запроса суть подмножество строк индекса». Три случая ниже разошлись у этих
+// выводов, и все три засчитывались:
+//
+//   - дизъюнкция — чтение ШИРЕ индекса, строки вне предиката ему нужны;
+//   - отрицание — чтению нужно ДОПОЛНЕНИЕ множества индекса;
+//   - предикат в КОММЕНТАРИИ — он не исполняется вовсе; на стороне индекса тот
+//     же класс закрыт соседней пробой Test_CursorIndexGate_RedsOnIndexNamedOnlyInAComment.
+//
+// Законный близнец идёт ЗДЕСЬ ЖЕ: предикат конъюнктом верхнего уровня рядом с
+// другим условием обязан по-прежнему засчитываться. Без него проба зеленела бы
+// на послаблении, снятом целиком.
+func Test_CursorIndexGate_PartialIndexEasingIsNoWiderThanImplication(t *testing.T) {
+	const partialIdx = "CREATE INDEX widgets_live_cursor_idx ON kacho_alpha.widgets " +
+		"(created_at, id) WHERE project_id <> '';"
+	const tail = " ORDER BY created_at ASC, id ASC LIMIT $9"
+
+	for _, tc := range []struct {
+		name  string
+		where string
+		serve bool
+	}{
+		{"дизъюнкция", "WHERE project_id <> '' OR created_at < $1", false},
+		{"отрицание", "WHERE NOT (project_id <> '')", false},
+		{"предикат в комментарии", "/* project_id <> '' */", false},
+		{"AND внутри скобок", "WHERE (project_id <> '' AND created_at < $1) OR id = $2", false},
+		{"конъюнкт верхнего уровня", "WHERE project_id <> '' AND created_at < $1", true},
+		{"он же вторым конъюнктом", "WHERE created_at < $1 AND project_id <> ''", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tree := cursorInjectionTree(t, partialIdx,
+				"SELECT id FROM kacho_alpha.widgets "+tc.where+tail)
+			got := findingNames(t, tree)
+			switch {
+			case tc.serve && len(got) != 0:
+				t.Fatalf("предикат стоит конъюнктом верхнего уровня — индекс обязан засчитаться; получено %v", got)
+			case !tc.serve && (len(got) != 1 || got[0] != "alpha.widgets"):
+				t.Fatalf("чтение не является подмножеством индекса — засчитывать нельзя; получено %v", got)
+			}
+		})
+	}
+}
+
+// Test_CursorIndexGate_PredicateComparisonKeepsLiteralCase — регистр ВНУТРИ
+// строкового литерала значим: `'SENT'` и `'sent'` отбирают разные строки.
+//
+// Проба стоит рядом с послаблением, потому что опускание регистра было бы
+// естественной «нормализацией» и молча расширило бы его на индекс, построенный
+// по другому множеству.
+func Test_CursorIndexGate_PredicateComparisonKeepsLiteralCase(t *testing.T) {
+	const idx = "CREATE INDEX widgets_live_cursor_idx ON kacho_alpha.widgets " +
+		"(created_at, id) WHERE project_id <> 'SENT';"
+	same := cursorInjectionTree(t, idx,
+		"SELECT id FROM kacho_alpha.widgets WHERE project_id <> 'SENT' "+
+			"ORDER BY created_at ASC, id ASC LIMIT $1")
+	if got := findingNames(t, same); len(got) != 0 {
+		t.Fatalf("дословно тот же литерал обязан засчитаться; получено %v", got)
+	}
+	other := cursorInjectionTree(t, idx,
+		"SELECT id FROM kacho_alpha.widgets WHERE project_id <> 'sent' "+
+			"ORDER BY created_at ASC, id ASC LIMIT $1")
+	if got := findingNames(t, other); len(got) != 1 || got[0] != "alpha.widgets" {
+		t.Fatalf("иной регистр литерала — иное множество строк; получено %v", got)
+	}
+}
+
 // Test_CursorIndexGate_RedsOnDeepEqualityPrefix — префикс глубже одной колонки
 // обслуживает обход только тогда, когда запрос несёт ОБА равенства. Зачесть его
 // общему списку значило бы объявить покрытым то, что покрыто не будет (в дереве

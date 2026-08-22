@@ -74,6 +74,17 @@ var outboxDirectionSplitExempt = map[string]string{
 		"есть выглядящие парными (выдать ↔ отозвать), но направление у всех одно: " +
 		"уведомить о том, что решения субъекта устарели. Обратного события — «вернуть " +
 		"кэшированное решение» — не существует ни в словаре, ни у принимающей стороны.",
+	"kacho_iam.audit_outbox": "" +
+		"журнал аудита control-plane. Запись журнала — свершившийся ФАКТ о действии; " +
+		"обратного факта не бывает, и ни одна запись не отменяет другую. Половин у " +
+		"потока поэтому не две, а одна, и разложение по направлению разложило бы " +
+		"очередь на неё саму и на пустоту. Различить «вывозится» и «перестал " +
+		"вывозиться» сводные величины здесь МОГУТ: доставка одна, поэтому глубина и " +
+		"возраст головы говорят ровно о ней.",
+	"public.audit_outbox": "" +
+		"журнал аудита вычислений — БРАТ записи выше и по тому же основанию: запись " +
+		"журнала есть свершившийся факт, обратного события у него нет. Приёмник у " +
+		"аудита один на платформу, поэтому и форма доставки у обоих журналов одна.",
 }
 
 // outboxObservedWithoutDrainer — очереди, которые НАБЛЮДАЮТСЯ, но НЕ ДРЕНЯТСЯ.
@@ -100,27 +111,14 @@ var outboxDirectionSplitExempt = map[string]string{
 // Двумя способами, и оба роняют гейт ниже: у очереди появился дренаж (её судят
 // общие правила, и запись отсюда выводит её из-под них) либо сканер сняли
 // (наблюдать перестали, а запись утверждает обратное).
-var outboxObservedWithoutDrainer = map[string]string{
-	"kacho_iam.audit_outbox": "" +
-		"журнал аудита control-plane. Дренажа нет и построить его сегодня нельзя: " +
-		"приёмника аудита в дереве не существует ни одного (предикат: ноль " +
-		"не-тестовых файлов Go, объявляющих приёмник/экспортёр/отправитель аудита), " +
-		"а завести его — отдельная под-фаза со своей приёмкой. Снять очередь тоже " +
-		"нельзя: это журнал аудита, и его снятие — решение уровня требований. " +
-		"Сканер поставлен ровно затем, чтобы отсутствие доставки было ВИДНО; " +
-		"разложение по направлению к очереди без доставки неприменимо by " +
-		"construction. Решение и предикат пересмотра: " +
-		"services/iam/docs/engineering/architecture/audit-outbox-has-no-receiver.md",
-	"public.audit_outbox": "" +
-		"журнал аудита вычислений — БРАТ записи выше, и по тому же решению. Приёмник у " +
-		"аудита один на платформу, поэтому и отсутствие дренажа здесь имеет ровно то же " +
-		"основание: доставлять некуда. Пишут журнал восемь мест репозитория (машины, " +
-		"группы размещения, гостевые ключи доступа); сканер поставлен затем, чтобы " +
-		"отсутствие доставки было ВИДНО — до него величины не существовало вовсе. " +
-		"Разложение по направлению неприменимо by construction: направления доставки у " +
-		"очереди без доставки нет. Решение и предикат пересмотра — тот же документ: " +
-		"services/iam/docs/engineering/architecture/audit-outbox-has-no-receiver.md",
-}
+//
+// # СЕГОДНЯ ЗДЕСЬ ПУСТО, и это измерение, а не забытая карта
+//
+// Обе записи, ради которых категория заводилась, — журналы аудита двух служб —
+// ИСТЕКЛИ первым способом: у обоих появился приёмник и вывоз (#812). Пустой
+// перечень и есть цель категории; проверку он НЕ роняет, потому что очередь без
+// доставки — состояние, которое мы не запрещаем, а делаем видимым.
+var outboxObservedWithoutDrainer = map[string]string{}
 
 // TestEveryDrainedOutboxIsObserved — каждая очередь, для которой поднят дренаж,
 // имеет сканер состояния той же таблицы.
@@ -277,6 +275,10 @@ type outboxInventory struct {
 	drained map[string][]string
 	// observed — таблица → координаты, где поднят сканер состояния.
 	observed map[string][]string
+	// shipped — доставка этой таблицы ведётся ВЫВОЗОМ (`pkg/audit`), а не общей
+	// оснасткой дренажа. Читается там, где текст находки описывает механику:
+	// у двух механизмов она разная, и общий текст посылал бы чинить не то.
+	shipped map[string]bool
 	// split — у сканера этой таблицы задано разложение по направлению.
 	split map[string]bool
 	// partition — таблица → ключ партиции порядка, объявленный проводкой
@@ -425,6 +427,7 @@ func outboxWiringInventory(t *testing.T, root string) outboxInventory {
 	inv := outboxInventory{
 		drained:          map[string][]string{},
 		observed:         map[string][]string{},
+		shipped:          map[string]bool{},
 		split:            map[string]bool{},
 		partition:        map[string]string{},
 		redrive:          map[string][]string{},
@@ -561,6 +564,11 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 		// Проводка распознаётся ДО чтения полей: иначе нерезолвящийся Table
 		// молча выпал бы из обеих картин вместе со своим литералом.
 		kind := ""
+		// retryPermanentByType — механизм доставки, у которого травления нет BY
+		// CONSTRUCTION, а не по объявленной политике. Признак читается по типу
+		// настроек, потому что политикой он и не может быть объявлен: поля с
+		// одним законным значением не бывает.
+		retryPermanentByType := false
 		switch sel.Sel.Name {
 		case "Config":
 			if pkg, ok := sel.X.(*ast.Ident); ok {
@@ -570,6 +578,24 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 				case "reconciler":
 					kind = "возврат"
 				}
+			}
+		case "ShipperConfig":
+			// Вывоз журнала аудита (`pkg/audit`) — доставка НАРАВНЕ с дренажом:
+			// он клеймит строку, отдаёт её приёмнику и помечает доставленной.
+			// Не признать его дренажом значило бы оставить очередь под записью
+			// «наблюдается, но не дренится» при живой доставке — то есть гейт
+			// молчал бы о механизме, которого не видит, и молчал бы «чисто».
+			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "audit" {
+				kind = "дренаж"
+				// Травления у вывоза журнала НЕТ by construction: контракт его
+				// приёмника (`audit.Sink`) знает два исхода — принято и не
+				// принято, — а класса «не приму никогда» у него не существует.
+				// Значит и возврату отравленных строк нечего возвращать;
+				// свойство держится пробой пакета
+				// TestPermanentlyRefusedRowNeverWedgesTheQueue, которая
+				// утверждает, что бессрочно отвергаемая запись остаётся ждущей,
+				// а не объявляется негодной.
+				retryPermanentByType = true
 			}
 		case "CollectorConfig":
 			kind = "сканер"
@@ -583,7 +609,7 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 		var hasDirections bool
 		var partition string
 		var hasPartitionKey bool
-		var retryPermanent bool
+		retryPermanent := retryPermanentByType
 		for _, elt := range cl.Elts {
 			kv, ok := elt.(*ast.KeyValueExpr)
 			if !ok {
@@ -629,6 +655,9 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 		}
 		if kind == "дренаж" {
 			inv.drained[table] = append(inv.drained[table], coord)
+			if retryPermanentByType {
+				inv.shipped[table] = true
+			}
 			if retryPermanent {
 				inv.retryPermanent[table] = append(inv.retryPermanent[table], coord)
 			}
