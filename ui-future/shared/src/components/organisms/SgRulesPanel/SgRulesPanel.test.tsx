@@ -83,6 +83,11 @@ jest.unstable_mockModule("@shared/lib/toast", () => ({
 
 const { SgRulesPanel } = await import("./SgRulesPanel");
 const { PageHeaderSlotProvider, HeaderRightSlot } = await import("@shared/components/molecules/PageHeaderSlot");
+// Панель живёт ВНУТРИ карточки ресурса, и это условие рендера, а не декорация:
+// по нему `FormShell` решает, рисовать ли собственную шапку. Без провайдера
+// проба показывала форму в посадке, которой на странице не бывает, — с шапкой,
+// которой на экране нет. Тот же довод, по которому здесь настоящий слот шапки.
+const { DetailHeaderProvider } = await import("@shared/components/molecules/PanelHeader");
 // Роутер здесь НЕ декорация: столбец «Источник» показывает ссылочные цели
 // ссылками (канон консоли, правило 2), а `<Link>` без роутера роняет рендер
 // целиком — то есть без него проба судила бы о панели, которой на странице нет.
@@ -112,10 +117,12 @@ function show(rules: Rule[] = RULES) {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={["/projects/prj-1/vpc/security-groups/sg-1"]}>
         <PageHeaderSlotProvider>
-          <div data-testid="header-slot">
-            <HeaderRightSlot />
-          </div>
-          <SgRulesPanel sgId="sg-1" projectId="prj-1" rules={rules} networkId="net-1" />
+          <DetailHeaderProvider value={{ icon: <span aria-hidden /> }}>
+            <div data-testid="header-slot">
+              <HeaderRightSlot />
+            </div>
+            <SgRulesPanel sgId="sg-1" projectId="prj-1" rules={rules} networkId="net-1" />
+          </DetailHeaderProvider>
         </PageHeaderSlotProvider>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -126,6 +133,26 @@ const rowOf = (text: string) => screen.getByText(text).closest("tr")!;
 /** Действия панели живут в шапке; в строках есть одноимённый пункт меню. */
 const headerAction = (name: RegExp | string) => within(screen.getByTestId("header-slot")).getByRole("button", { name });
 const boxes = () => screen.getAllByRole("checkbox");
+/**
+ * Основное действие подвала формы — по КОНСТРУКЦИИ, а не по подписи.
+ *
+ * Подпись подвала теперь называет одно действие («Добавить», «Сохранить»):
+ * предмет уже назван заголовком над формой (канон §8). Слово «Добавить» из-за
+ * этого перестало быть однозначным — им же подписаны кнопки добавления блока в
+ * наборах CIDR внутри самого правила, и `getByRole("button", { name:
+ * "Добавить" })` выбрал бы одну из четырёх наугад.
+ *
+ * Подвал рисует ровно одну `DopplerButton` (`.doppler-btn`) — единственность
+ * здесь утверждается, а не предполагается: перестанет она быть единственной —
+ * упадёт этот помощник, а не проба, чей предмет совсем другой.
+ */
+function formSubmit(): HTMLElement {
+  const found = screen.getAllByRole("button").filter((b) => b.classList.contains("doppler-btn"));
+  expect(found).toHaveLength(1);
+  return found[0];
+}
+/** Заголовок формы: он и называет действие, и доказывает, что форма открыта. */
+const formHeading = (name: string) => screen.getByRole("heading", { name });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -141,12 +168,57 @@ describe("SgRulesPanel — список", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
+  it("пустой набор предлагает первый шаг, а не только называет предмет", () => {
+    show([]);
+
+    // Действие стоит РЯДОМ с объяснением: вкладка, которая называет предмет и не
+    // даёт с ним ничего сделать, отправляет читателя искать действие глазами по
+    // всему экрану.
+    const empty = screen.getByText("Правил нет — трафик блокируется (default-deny).").parentElement as HTMLElement;
+    fireEvent.click(within(empty).getByRole("button", { name: "Добавить правило" }));
+
+    // Здесь стояло `getByText("Создание")` — след прежней шапки формы, где
+    // действие было заголовком, а предмет надзаголовком. Надзаголовки сняты
+    // решением владельца, действие и предмет стоят одной строкой, и старое
+    // утверждение искало узел, которого продукт больше не рисует нигде.
+    expect(formHeading("Добавить правило")).toBeInTheDocument();
+  });
+
+  it("групповое действие не предлагается там, где выбирать нечего", () => {
+    show([]);
+
+    // Выключенный флажок и выключенное «Удалить» над пустой вкладкой обещают
+    // действие над набором, которого не существует.
+    const header = within(screen.getByTestId("header-slot"));
+    expect(header.getByRole("button", { name: /Добавить правило/ })).toBeInTheDocument();
+    expect(header.queryByRole("button", { name: /Удалить/ })).not.toBeInTheDocument();
+    expect(header.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
   it("направление показано словом, а не машинным значением", () => {
     show();
 
     expect(screen.getByText("Входящий")).toBeInTheDocument();
     expect(screen.getByText("Исходящий")).toBeInTheDocument();
     expect(screen.queryByText("INGRESS")).not.toBeInTheDocument();
+  });
+
+  it("«любой протокол» назван по-русски — одно значение не носит двух имён", () => {
+    // Здесь стояло английское `Any` — единственное английское слово на русской
+    // вкладке, и означало оно ровно то же, что «Любой» в поле «Протокол» самой
+    // формы правила. Одно значение, названное на одном экране двумя языками,
+    // читается как два разных значения.
+    show([
+      { id: "sgr-any", direction: "INGRESS", cidr_blocks: { v4_cidr_blocks: ["0.0.0.0/0"] }, description: "всё" },
+      { id: "sgr-tcp", direction: "INGRESS", protocol_name: "TCP", description: "по имени" },
+    ]);
+
+    expect(within(rowOf("всё")).getByText("Любой")).toBeInTheDocument();
+    expect(screen.queryByText("Any")).not.toBeInTheDocument();
+    // Положительный контроль: названный протокол показан СВОИМ именем, а не
+    // подменён «Любым». Без него отрицание зеленело бы на панели, печатающей
+    // «Любой» в каждой строке.
+    expect(within(rowOf("по имени")).getByText("TCP")).toBeInTheDocument();
   });
 
   it("протокол по номеру подписан номером, а не пустотой", () => {
@@ -233,6 +305,21 @@ describe("SgRulesPanel — удаление", () => {
     expect(update).toHaveBeenCalledWith("/vpc/v1/securityGroups/sg-1/rules", { deletion_rule_ids: ["sgr-2"] });
   });
 
+  it("подтверждение удаления называет правило ТЕМ ЖЕ видом, что и строка списка", () => {
+    // Спрашивают у человека — значит и называют по-человечески. Прежде в запрос
+    // подставлялось машинное значение контракта («INGRESS»), которого на экране
+    // нет больше нигде: строка списка показывает направление словом.
+    show();
+
+    fireEvent.click(within(rowOf("http")).getByRole("button", { name: "Удалить" }));
+
+    const { container, unmount } = render(<>{confirms[0].content}</>);
+    expect(container.textContent).toContain("Входящий");
+    expect(container.textContent).toContain("0.0.0.0/0");
+    expect(container.textContent).not.toContain("INGRESS");
+    unmount();
+  });
+
   it("отказ края показан текстом сервера, без кода протокола", async () => {
     update.mockRejectedValue(new ApiError(400, 9, null, "rule is referenced"));
     show();
@@ -250,10 +337,21 @@ describe("SgRulesPanel — правка и добавление", () => {
 
     fireEvent.click(headerAction(/Добавить правило/));
 
-    // Форма правила живёт в общей оболочке форм: она называет ДЕЙСТВИЕ и тип
-    // («Создание» · «Правило»), а не собственный заголовок «Новое правило».
-    expect(screen.getByText("Создание")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Добавить правило" })).toBeInTheDocument();
+    // Форма правила называет ДЕЙСТВИЕ НАД ПРЕДМЕТОМ одной строкой — той же
+    // конструкцией, что все формы консоли («Создать подсеть», «Изменить сеть»).
+    // Прежде здесь утверждались два отдельных узла, «Создание» и «Правило»:
+    // действие заголовком, предмет надзаголовком. Надзаголовки сняты решением
+    // владельца — предмет ушёл в ту же строку, что действие.
+    //
+    // Утверждение действительно только потому, что панель отрисована В УСЛОВИЯХ
+    // СТРАНИЦЫ (`DetailHeaderProvider`, см. `show`): внутри карточки ресурса
+    // общая оболочка своей шапки не рисует, и эту показывает сама панель.
+    expect(formHeading("Добавить правило")).toBeInTheDocument();
+    // Подвал называет ДЕЙСТВИЕ, без повтора предмета: «Добавить», а не
+    // «Добавить правило» — предмет уже назван заголовком над кнопкой (канон §8).
+    // Утверждается дословно: `toHaveTextContent` прошло бы и на прежней подписи,
+    // потому что она этой начинается.
+    expect(formSubmit().textContent).toBe("Добавить");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -261,7 +359,7 @@ describe("SgRulesPanel — правка и добавление", () => {
     show();
 
     fireEvent.click(headerAction(/Добавить правило/));
-    fireEvent.click(screen.getByRole("button", { name: "Добавить правило" }));
+    fireEvent.click(formSubmit());
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     const body = update.mock.calls[0][1] as Record<string, unknown>;
@@ -273,8 +371,12 @@ describe("SgRulesPanel — правка и добавление", () => {
     show();
 
     fireEvent.click(within(rowOf("http")).getByRole("button", { name: "Редактировать" }));
-    expect(screen.getByText("Редактирование")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    // Заголовок правки называет ТО ЖЕ действие тем же глаголом, каким его
+    // называет любая другая форма консоли («Изменить …»). Прежде утверждалось
+    // «Изменение» — отдельный узел снятого надзаголовка.
+    expect(formHeading("Изменить правило")).toBeInTheDocument();
+    expect(formSubmit().textContent).toBe("Сохранить");
+    fireEvent.click(formSubmit());
 
     await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
     const body = update.mock.calls[0][1] as Record<string, unknown>;

@@ -72,7 +72,7 @@ describe("ResourceDetailPage", () => {
     });
     show("/projects/prj-1/vpc/networks/net-1");
 
-    expect(await screen.findByText("Общее")).toBeInTheDocument();
+    expect(await screen.findByText("Основные свойства")).toBeInTheDocument();
     expect(screen.getByText("опорная сеть")).toBeInTheDocument();
   });
 
@@ -81,7 +81,7 @@ describe("ResourceDetailPage", () => {
     show("/projects/prj-1/vpc/networks/net-1");
 
     expect(await screen.findByText(/not found/i)).toBeInTheDocument();
-    expect(screen.queryByText("Общее")).not.toBeInTheDocument();
+    expect(screen.queryByText("Основные свойства")).not.toBeInTheDocument();
     // Возврат обязан быть предложен: тупик без выхода — тоже отказ.
     expect(screen.getByRole("button", { name: /Назад/ })).toBeInTheDocument();
   });

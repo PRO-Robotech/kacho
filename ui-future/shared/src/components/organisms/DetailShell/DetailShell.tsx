@@ -1,25 +1,30 @@
-// DetailShell — обёртка detail-страницы под единый look-and-feel.
+// DetailShell — обёртка карточки ресурса под единый вид.
 //
-// Layout (внутри Content; глобальный ServiceSidebar w=56 рисует Layout.tsx):
-//   ┌─ Sub-pane w=240 ────────┬─ Main pane ────────────────────────────────┐
-//   │  RESOURCE LABEL (caps)  │  [secondary action row]                    │
-//   │  Name + status badges   │                                            │
-//   │  ──────                 │  Active tab content (Обзор / IP-адреса …)  │
-//   │  Вкладки (верт. рейл)   │                                            │
-//   │                         │                                            │
-//   │  ──────                 │                                            │
-//   │  ДОКУМЕНТАЦИЯ           │                                            │
-//   │  · ссылки               │                                            │
-//   └─────────────────────────┴────────────────────────────────────────────┘
+// Раскладка (внутри Content; навигацию по модулю рисует оболочка узла):
+//   ┌─────────────────────────────────────────────────────────────────────┐
+//   │  ТИП РЕСУРСА (надзаголовок)                                         │
+//   │  Имя ресурса                     [действия ресурса · фильтры таба]  │
+//   │  Обзор │ JSON │ Подсети …        ← вкладки, ГОРИЗОНТАЛЬНО           │
+//   │  ───────────────────────────────────────────────────────────────────│
+//   │  Содержимое активной вкладки — ЛИБО форма (`mainOverride`)          │
+//   └─────────────────────────────────────────────────────────────────────┘
+//
+// Здесь была раскладка в ДВЕ зоны: слева вертикальный рейл вкладок со своей
+// шапкой, справа содержимое. Рейл снят — колонка рядом с навигацией принадлежит
+// НАВИГАЦИИ ПО МОДУЛЮ, а вкладки относятся к одному открытому ресурсу. Диаграмма
+// пережила эту правку и продолжала описывать зону 2, которой оболочка не рисует.
+//
+// Вкладок НЕТ, когда тело занято формой (`mainOverride`) — см. примечание у
+// самого набора.
 //
 // Tab выбирается через ?tab=<id>. Дефолт — первый tab.
 
 import { createContext, useContext, useId, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router";
-import { Menu, Typography, Badge } from "antd";
+import { Menu, Badge } from "antd";
 import type { GetProp, MenuProps } from "antd";
-import { useDetailHeaderIcon } from "@shared/components/molecules/PanelHeader";
+import { PageHead } from "./PageHead";
 
 // Слот в правой части строки-имени (зона 3): активный таб может «поднять» свой
 // тулбар (поиск/колонки/фильтры) на уровень имени ресурса через HeaderSlotPortal.
@@ -41,7 +46,7 @@ export interface DetailTab {
   /** Зона-2 «действие» (eyebrow) для этого таба — НЕ обязано совпадать с label
    *  меню. Default: label. Напр. json → «Информация», связанный таб → «Список». */
   eyebrow?: string;
-  /** Зона-2 заголовок (тип/название предмета таба). Default: resourceLabel
+  /** Зона-2 заголовок (тип/название предмета таба).
    *  (тип мастер-ресурса). Напр. связанный таб «Подсети» → plural ребёнка. */
   headerTitle?: string;
   /** Зона-2 иконка предмета таба. Default: иконка мастер-ресурса (ctxIcon).
@@ -63,14 +68,12 @@ export interface DocLink {
 }
 
 interface Props {
-  resourceLabel: string;
   resourceName: string;
   badges?: ReactNode;
   tabs: DetailTab[];
   /** Опциональный ряд кнопок-secondary actions над content в main pane.
    *  Используется для domain-specific действий (Subnet «Перенести в зону» и т.п.). */
   secondaryActions?: ReactNode;
-  docLinks?: DocLink[];
   defaultTab?: string;
   /** KAC-232: если задан — main pane (zone 3) рендерит это вместо контента
    *  активного таба. Используется для form-panel (edit / create связного
@@ -84,21 +87,19 @@ interface Props {
   onTabSelect?: (id: string) => void;
   /** Действия рядом с именем ресурса в зоне 3 (Редактировать/Удалить/Создать). */
   nameActions?: ReactNode;
-  /** Caps-eyebrow над именем (тип ресурса) — зеркалит eyebrow зоны-2 → симметрия. */
-  nameEyebrow?: string;
-  /** Override зоны-2 шапки (для форм edit/create: «Редактирование»/«Создание» +
-   *  тип + иконка ресурса формы). Иначе eyebrow = label активного таба. */
-  headerEyebrow?: string;
+  /** ЗДЕСЬ БЫЛИ `nameEyebrow` и `headerEyebrow` — надзаголовок над именем
+   *  ресурса («ОБЛАЧНАЯ СЕТЬ», «Изменение»). Надзаголовки сняты по всему
+   *  продукту решением владельца, и пропы сняты ВМЕСТЕ с ними, а не оставлены
+   *  «на будущее»: принятое и никем не читаемое значение обещает вызывающему
+   *  влияние, которого нет.
+   *
+   *  Режим правки называет теперь сама форма — её заголовок несёт и действие, и
+   *  предмет («Изменение подсети»), поэтому сказанное здесь не потерялось. */
   headerTitle?: string;
   headerIcon?: ReactNode;
 }
 
-// Рейл табов: фиксированная ширина под самый длинный label/zone-2-заголовок
-// (после сокращения route-table longest = «Сетевые интерфейсы»/«Группы
-// безопасности» ≈175px@16 + иконка 42 + отступы). Жёстко пинуется (min=max),
-// иначе в `min-width:max-content` обёртке длинный заголовок распирал бы aside →
-// ширина рейла «прыгала» при смене таба (KAC-246).
-const SUB_PANE_WIDTH = 288;
+
 
 /** Пункт рейла — ВКЛАДКА, а не пункт меню.
  *
@@ -120,16 +121,13 @@ export function DetailShell({
   badges,
   tabs,
   secondaryActions,
-  docLinks,
   defaultTab,
   mainOverride,
   activeTabId,
   onTabSelect,
   nameActions,
-  nameEyebrow,
-  headerEyebrow,
+  headerTitle,
 }: Props) {
-  const ctxIcon = useDetailHeaderIcon();
   const [slotEl, setSlotEl] = useState<HTMLElement | null>(null);
   const [params, setParams] = useSearchParams();
   const fallback = defaultTab ?? tabs[0]?.id ?? "overview";
@@ -137,6 +135,24 @@ export function DetailShell({
   const activeId = controlled ? (activeTabId ?? fallback) : (params.get("tab") ?? fallback);
   const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
 
+  // Шапка страницы (зона 3): заголовок — ПРЕДМЕТ, надзаголовок — действие или
+  // контекст над ним. Оба берутся у активной вкладки, если оболочке не названы
+  // свои (режим формы: «Редактирование» над типом ресурса). До этого `headerTitle`
+  // был объявлен пропом и не читался ни одной строкой: вызывающий его передавал,
+  // а шапка показывала вместо него надзаголовок — принято и проигнорировано.
+  // Заголовок страницы — ИМЯ РЕСУРСА, и оно не меняется при смене вкладки:
+  // предмет страницы — сам ресурс, а вкладка лишь выбирает, что о нём показать.
+  // Прежде здесь стояло имя активной вкладки, и страница называла себя «Обзор» —
+  // то есть сообщала способ просмотра вместо того, на что смотрят. Переопределение
+  // (`headerTitle`) остаётся за формами: у «Создания» ресурса ещё нет имени.
+  //
+  // Пустое имя подписывается ЯВНО. Имени, которого нет, у ресурса не бывает
+  // (сервер проставляет производное от `id`), но ответ края читается ДО того,
+  // как это стало нормой, и на старой строке имя приходит пустым. Пустой
+  // заголовок читается как «не загрузилось»: страница выглядит сломанной там,
+  // где сломан один ресурс. Подстановка стоит ПОСЛЕ переопределения формы —
+  // у «Создания» имени ещё нет, и там заголовок называет тип, а не прочерк.
+  const headTitle = headerTitle ?? (resourceName || "(без имени)");
   // Связь «вкладка ↔ её панель» — по идентификаторам узлов. Префикс уникален на
   // экземпляр оболочки: карточка на странице одна, но в пробах их рисуют рядом, и
   // совпавшие идентификаторы связали бы вкладку с чужой панелью.
@@ -155,14 +171,13 @@ export function DetailShell({
     setParams(next, { replace: true });
   };
 
-  const docs = docLinks ?? DEFAULT_VPC_DOCS;
 
   return (
     <div
       className="kc-surface"
       style={{
         display: "flex",
-        alignItems: "stretch",
+        flexDirection: "column",
         overflow: "hidden",
         // Detail-поверхность заполняет ограниченную content-область host'а
         // (header + content + footer в 100vh; .app-content overflow:hidden →
@@ -173,262 +188,124 @@ export function DetailShell({
         maxHeight: "100%",
       }}
     >
-      {/* KAC-246: рейл табов — часть единой detail-поверхности. Без своего
-          фона/рамки/радиуса/тени; от main отделён ТОЛЬКО вертикальным
-          border-secondary. «Встроен», а не «плавает». */}
-      <aside
-        style={{
-          width: SUB_PANE_WIDTH,
-          minWidth: SUB_PANE_WIDTH,
-          maxWidth: SUB_PANE_WIDTH,
-          flexGrow: 0,
-          flexShrink: 0,
-          overflowX: "hidden",
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          borderRight: "1px solid var(--kc-border-secondary)",
-          // padding 20 — как у list kc-surface, чтобы блок [иконка+действие+тип]
-          // был на той же позиции (20,20) от kc-surface и НЕ прыгал list↔detail.
-          padding: 20,
-        }}
-      >
-        {/* Зона 2 (рейл) — ИДЕНТИЧНОСТЬ ресурса: [иконка осн. ресурса] +
-            ТИП(eyebrow) + имя. (Поменяно местами с контекстом таба в зоне 3.) */}
-        <div
-          style={{
-            paddingBottom: 14,
-            marginBottom: 18,
-            borderBottom: "1px solid var(--kc-border-secondary)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-            {/* Бейдж основного ресурса — та же плитка-иконка, что у ContextBadge. */}
-            {ctxIcon && (
-              <div
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 12,
-                  flexShrink: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 19,
-                  color: "var(--kc-primary)",
-                  background: "linear-gradient(135deg, rgba(61,141,245,0.16), rgba(61,141,245,0.05))",
-                  border: "1px solid rgba(61,141,245,0.22)",
-                }}
-              >
-                {ctxIcon}
-              </div>
-            )}
-            <div style={{ minWidth: 0 }}>
-              {nameEyebrow && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    letterSpacing: "0.06em",
-                    textTransform: "uppercase",
-                    color: "var(--kc-primary)",
-                    marginBottom: 2,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {nameEyebrow}
-                </div>
-              )}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                {/* Размер/вес синхронизированы с ContextBadge-title зоны-3
-                    (16/600/lh1.25) → типографика рейла и main идентична. */}
-                <Typography.Title
-                  level={3}
-                  ellipsis={{ tooltip: resourceName || undefined }}
-                  style={{
-                    margin: 0,
-                    fontSize: 16,
-                    fontWeight: 600,
-                    lineHeight: 1.25,
-                    color: "var(--kc-text)",
-                  }}
-                >
-                  {resourceName || "(без имени)"}
-                </Typography.Title>
-                {badges}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Рейл — НАБОР ВКЛАДОК, и объявлен он именно так (#627).
-            Рисует его меню antd (ради вида: классы `ant-menu-*` и токены темы), но
-            наружу уходит роль набора вкладок: рейл ПЕРЕКЛЮЧАЕТ ВИД в зоне 3, а не
-            запускает команды, и выбранный вид обязан быть помечен состоянием, а не
-            только классом подсветки. Пока роли не было, тот, кто читает страницу не
-            глазами, получал список команд без единого признака открытого вида, а
-            сквозная проба не находила на карточке ни одной вкладки — при том что
-            вкладка строилась и рисовалась.
-            Меню это доносит by construction: свою `role` оно кладёт ДО остатка
-            props, а пункт вычисляет роль как `role || "menuitem"` и спреадит
-            остаток на `<li>`. Проверено рендером собранного antd 6.5.4, и то же
-            поведение несёт стенд-заменитель проб (`shared/src/test/antd-stub.ts`,
-            там же — проба его контракта). */}
-        <Menu
-          mode="inline"
-          role="tablist"
-          aria-orientation="vertical"
-          selectedKeys={active ? [active.id] : []}
-          onClick={({ key }) => setTab(key)}
-          className="kc-detail-rail-menu"
-          style={{ borderRight: "none", background: "transparent" }}
-          items={tabs.map((t): RailTab => ({
-            key: t.id,
-            role: "tab",
-            id: tabDomId(t.id),
-            "aria-selected": t.id === active?.id,
-            // Панель есть только тогда, когда зона 3 показывает содержимое
-            // вкладки: в режиме формы её не существует, и ссылка на неё была бы
-            // висячей — связью на вид, а не по существу.
-            ...(mainOverride ? {} : { "aria-controls": panelDomId }),
-            label: (
-              <span
-                style={{
-                  display: "inline-flex",
-                  justifyContent: "space-between",
-                  width: "100%",
-                  alignItems: "center",
-                }}
-              >
-                <span>{t.label}</span>
-                {typeof t.count === "number" && t.count > 0 && (
-                  <Badge count={t.count} color="rgba(255,255,255,0.12)" overflowCount={9999} />
-                )}
-              </span>
-            ),
-          }))}
-        />
-
-        {docs.length > 0 && (
-          <div
-            style={{
-              marginTop: "auto",
-              padding: "16px 8px 8px 8px",
-              borderTop: "1px solid var(--kc-border-secondary)",
-            }}
-          >
-            <Typography.Text
-              type="secondary"
-              style={{
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: 0.5,
-                fontWeight: 500,
-              }}
-            >
-              Документация
-            </Typography.Text>
-            <ul
-              style={{
-                listStyle: "none",
-                padding: 0,
-                margin: "8px 0 0 0",
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-              }}
-            >
-              {docs.map((d) => (
-                <li key={d.href}>
-                  <Typography.Link
-                    href={d.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ fontSize: 12, lineHeight: 1.4 }}
-                  >
-                    {d.label}
-                  </Typography.Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </aside>
 
       <main
         style={{
           flex: 1,
           minWidth: 0,
+          minHeight: 0,
           padding: "20px 24px",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
         }}
       >
-        {/* Зона 3 (main) верх — ТОЛЬКО название активного таба (дубль). Структура
-            ЗЕРКАЛИТ зону-2: невидимый eyebrow-спейсер (та же высота, что caps-тип
-            в рейле) → title встаёт ровно на строку ИМЕНИ зоны-2 (req3). minHeight
-            42 + paddingBottom 14 → нижняя линия на той же y, что у рейла (req2).
-            Всё nowrap → высота фиксирована, текст/линия НЕ прыгают при смене таба
-            (req1). Справа — слот фильтров. */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 16,
-            flexWrap: "nowrap",
-            // 56 (border-box) = высота блока зоны-2 (иконка 42 + paddingBottom 14)
-            // → нижние линии зоны-2/зоны-3 на одной y (req2). Контент-область 42,
-            // текст центрируется в ней как у зоны-2 → title на строке имени (req3).
-            minHeight: 56,
-            // Шапка зоны-3 фиксирована (не скроллится) — flexShrink:0.
-            flexShrink: 0,
-            paddingBottom: 14,
-            marginBottom: 18,
-            borderBottom: "1px solid var(--kc-border-secondary)",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            {/* невидимый eyebrow-спейсер = caps-тип зоны-2 по высоте */}
-            <div
-              aria-hidden
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                marginBottom: 2,
-                visibility: "hidden",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {" "}
-            </div>
-            <Typography.Title
-              level={3}
-              ellipsis={{ tooltip: undefined }}
-              style={{
-                margin: 0,
-                fontSize: 16,
-                fontWeight: 600,
-                lineHeight: 1.25,
-                color: "var(--kc-text)",
-              }}
-            >
-              {headerEyebrow ?? active?.headerTitle ?? active?.label}
-            </Typography.Title>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "nowrap", flexShrink: 0 }}>
-            {nameActions}
-            {/* Слот для фильтров активного таба. */}
-            <div ref={setSlotEl} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "nowrap" }} />
-          </div>
-        </div>
+        {/* Шапка страницы — ОБЩАЯ с листом ресурсов (`PageHead`): один и тот же
+            предмет (имя того, на что смотрят) обязан выглядеть одинаково, где бы
+            на него ни смотрели. Довод про равную высоту с зоной 2 снят вместе с
+            самой зоной: сшивать больше нечего. */}
+        <PageHead
+          title={headTitle}
+          badges={badges}
+          // Линия под именем — ТОЛЬКО когда вкладок нет.
+          //
+          // При вкладках её роль исполняет их полоса: две линии в двух десятках
+          // точек друг от друга читаются как пустая полоса между ними, и имя
+          // ресурса отрывается от своих же вкладок.
+          //
+          // А вот когда тело занято формой (`mainOverride`), вкладок нет — и без
+          // линии заголовок оставался висеть над полями, а всё содержимое
+          // поднималось на высоту снятой полосы. В переходе «карточка → правка»
+          // это читалось как прыжок заголовка: сам он стоит на месте, съезжает
+          // то, что под ним. Линия занимает место полосы и держит ритм страницы.
+          divider={!!mainOverride}
+          right={
+            <>
+              {/* ПОРЯДОК ТОТ ЖЕ, ЧТО В СТРОКЕ ИНСТРУМЕНТОВ СПИСКА: сузить →
+                  выбрать, что показывать → сделать. Слот фильтров активной
+                  вкладки идёт первым, действия — последними.
 
-        {/* Зона-3 контент: fill-таб (related-таблица) заполняет область и
+                  Прежде действия стояли ПЕРЕД слотом, и кнопка «Создать» на
+                  вкладке дочернего ресурса оказывалась в начале ряда фильтров —
+                  тогда как на странице списка того же ресурса она стоит в
+                  конце. Один и тот же набор ручек читался как два разных. */}
+              <div ref={setSlotEl} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "nowrap" }} />
+              {nameActions}
+            </>
+          }
+        />
+
+        {/* Вкладки ресурса — ГОРИЗОНТАЛЬНЫЕ и внутри карточки.
+            Прежде они стояли вертикальным рейлом слева, занимая колонку, которая
+            в иерархии продукта принадлежит НАВИГАЦИИ ПО МОДУЛЮ: вкладки относятся
+            к одному открытому ресурсу, а колонка рядом с рейлом — ко всему
+            разделу. Из-за этого перечень типов модуля жил безымянными иконками в
+            рейле, а колонка появлялась только внутри карточки.
+
+            Набор объявлен вкладками, а не меню (#627): он ПЕРЕКЛЮЧАЕТ ВИД в теле
+            карточки, а не запускает команды, и выбранный вид обязан быть помечен
+            состоянием, а не только подсветкой. Пока роли не было, читающий
+            страницу не глазами получал список команд без единого признака
+            открытого вида, а сквозная проба не находила на карточке ни одной
+            вкладки — при том что вкладка строилась и рисовалась. */}
+        {/* Вкладок НЕТ, когда тело занято формой (`mainOverride`).
+            Вкладка переключает ВИД на ресурс, а форма — не вид: она правит его.
+            Оставленные рядом, вкладки предлагали уйти с недозаполненной формы,
+            ничего не сказав о судьбе введённого, и при этом ни одна из них не
+            была выбрана — набор без выбранного пункта читается как сломанный. */}
+        {!mainOverride && (
+        <Menu
+          mode="horizontal"
+          role="tablist"
+          aria-orientation="horizontal"
+          selectedKeys={active ? [active.id] : []}
+          onClick={({ key }) => setTab(key)}
+          className="kc-detail-tabs"
+          style={{ background: "transparent", fontSize: 12, lineHeight: "38px" }}
+          items={tabs.map((t): RailTab => ({
+            key: t.id,
+            role: "tab",
+            id: tabDomId(t.id),
+            "aria-selected": t.id === active?.id,
+            "aria-controls": panelDomId,
+            // Панель у вкладки есть ВСЕГДА, пока сама вкладка нарисована: набор
+            // рисуется только там, где тело карточки показывает содержимое
+            // вкладки (см. условие выше). Здесь стояла ветвь «в режиме формы
+            // ссылки нет» — она пережила свой предмет: с тех пор как вкладки
+            // сняты со страницы формы целиком, `mainOverride` в этой точке ложен
+            // by construction, и ветвь описывала состояние, которого код не
+            // производит.
+            label: (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <span>{t.label}</span>
+                {typeof t.count === "number" && t.count > 0 && (
+                  // Форма счётчика — тег: поле, линия, моноширинная цифра.
+                  <Badge
+                    count={t.count}
+                    overflowCount={9999}
+                    style={{
+                      background: "var(--kc-field)",
+                      border: "1px solid var(--kc-border)",
+                      color: "var(--kc-text-secondary)",
+                      boxShadow: "none",
+                      borderRadius: 5,
+                      minWidth: 20,
+                      height: 18,
+                      lineHeight: "16px",
+                      padding: "0 5px",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 10,
+                      fontWeight: 540,
+                    }}
+                  />
+                )}
+              </span>
+            ),
+          }))}
+        />
+        )}
+
+        {/* Тело карточки: fill-таб (related-таблица) заполняет область и
             скроллит СЕБЯ (thead фиксирован), content-таб (Обзор/JSON/форма) —
             скроллится целиком. Внешний контейнер overflow:hidden + flex-column,
             скролл живёт во внутренней обёртке per-case. */}
@@ -479,12 +356,3 @@ export function DetailShell({
   );
 }
 
-// Дефолтные ссылки для VPC ресурсов (Kachō docs; конкретные ссылки на тип
-// мастер-ресурса передаёт ResourceShell через docLinks).
-const DEFAULT_VPC_DOCS: DocLink[] = [
-  { label: "Начать работу с сетями и подсетями", href: "#" },
-  { label: "Облачные сети и подсети", href: "#" },
-  { label: "Группы безопасности", href: "#" },
-  { label: "Адреса облачных ресурсов", href: "#" },
-  { label: "Получить статический публичный IP-адрес", href: "#" },
-];

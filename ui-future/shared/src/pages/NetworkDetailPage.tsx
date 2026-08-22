@@ -6,6 +6,7 @@
 // Каждый child-tab имеет Title + filter (имя или id substring) над таблицей.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DETAIL_CONTENT_WIDTH } from "@shared/components/organisms/DetailShell";
 import { useParams, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Input, Space, Typography } from "antd";
@@ -151,7 +152,7 @@ export function NetworkDetailPage() {
       return (
         <Space direction="vertical" size={24} style={{ width: "100%" }}>
           {networkId && (
-            <div style={{ maxWidth: 760 }}>
+            <div style={{ maxWidth: DETAIL_CONTENT_WIDTH }}>
               <SectionHeader eyebrow="Адресное пространство" title="CIDR" />
               <NetworkCidrManager networkId={networkId} v4Blocks={v4} v6Blocks={v6} />
             </div>

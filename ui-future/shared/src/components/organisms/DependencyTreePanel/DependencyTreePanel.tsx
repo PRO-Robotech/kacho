@@ -31,7 +31,7 @@ function CountPill({ n, token }: { n: number; token: Token }) {
         minWidth: 18,
         height: 17,
         padding: "0 6px",
-        borderRadius: 9,
+        borderRadius: 6,
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
@@ -51,7 +51,7 @@ function groupTitle(resourceId: string, count: number, anyBlocks: boolean, token
     <span style={{ display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
       <Tag
         color={anyBlocks ? "warning" : "default"}
-        style={{ margin: 0, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 5, paddingInline: 8 }}
+        style={{ margin: 0, fontSize: 11, display: "inline-flex", alignItems: "center", gap: 5, paddingInline: 7 }}
       >
         <span style={{ display: "inline-flex", fontSize: 13, lineHeight: 0 }}>
           <ResourceIcon specId={resourceId} />

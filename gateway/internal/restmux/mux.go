@@ -425,9 +425,11 @@ func NewMux(
 		}
 	}
 
-	// lbAddr / lbInternalAddr обслуживают kacho-nlb (loadbalancer.v1).
+	// lbAddr обслуживает kacho-nlb (loadbalancer.v1). Внутреннего адреса
+	// здесь больше нет: единственный маршрут, который его требовал, снят
+	// вместе со своим потоком (#814).
 	// registryAddr / registryInternalAddr обслуживают kacho-registry (registry.v1).
-	var vpcAddr, vpcInternalAddr, computeAddr, computeInternalAddr, iamAddr, iamInternalAddr, lbAddr, lbInternalAddr, geoAddr, geoInternalAddr, registryAddr, registryInternalAddr, storageAddr, storageInternalAddr string
+	var vpcAddr, vpcInternalAddr, computeAddr, computeInternalAddr, iamAddr, iamInternalAddr, lbAddr, geoAddr, geoInternalAddr, registryAddr, registryInternalAddr, storageAddr, storageInternalAddr string
 	if addrs != nil {
 		vpcAddr = addrs["vpc"]
 		vpcInternalAddr = addrs["vpcInternal"]
@@ -436,7 +438,6 @@ func NewMux(
 		iamAddr = addrs["iam"]
 		iamInternalAddr = addrs["iamInternal"]
 		lbAddr = addrs["loadbalancer"]
-		lbInternalAddr = addrs["loadbalancerInternal"]
 		geoAddr = addrs["geo"]
 		geoInternalAddr = addrs["geoInternal"]
 		registryAddr = addrs["registry"]
@@ -919,11 +920,6 @@ func NewMux(
 		// HasInternalSuffix в gRPC-роутере (server.go Resolver / shimproxy.go)
 		// блокирует попадание InternalResourceLifecycleService.* на external/TLS
 		// endpoint.
-		if mux == internalMux && lbInternalAddr != "" {
-			if err := lbpb.RegisterInternalResourceLifecycleServiceHandlerFromEndpoint(ctx, mux, lbInternalAddr, optsFor("loadbalancerInternal")); err != nil {
-				return nil, fmt.Errorf("register loadbalancer InternalResourceLifecycleService: %w", err)
-			}
-		}
 
 		// --- registry.v1 (kacho-registry): RegistryService ---
 		// Public control-plane реестра под /registry/v1/*: registries CRUD +

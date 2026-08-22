@@ -43,8 +43,8 @@ import { declaredSymbols, sourceFiles, sweep, type ForkHit } from "./shared-symb
  * раскладка иначе делают все утверждения ниже вакуумно истинными.
  *
  * СВОЯ ПРЕДПОСЫЛКА. Вторая проба гоняет распознаватель объявлений по самому
- * `shared/` и требует ровно одно объявление на каждый из пяти организмов CRUD.
- * Если распознаватель перестанет узнавать реализацию (переезд на
+ * `shared/` и требует ровно одно объявление на каждый компонент перечня
+ * `COMPONENTS`. Если распознаватель перестанет узнавать реализацию (переезд на
  * `const X = () => …`, экспорт по умолчанию), это всплывёт здесь, а не превратит
  * обход дерева в тихий no-op.
  *
@@ -78,6 +78,10 @@ interface Ledger {
 // `organisms/form/`) и рендерера поля (файл `FormField`, символ
 // `FormFieldRenderer`, потому что `FormField` — это ТИП поля, а не компонент).
 interface Organism {
+  /** Каталог ОТ `components/`, а не от `components/organisms/`: ведомый перечень
+   *  перестал быть только про организмы, когда в него вошла оболочка экранов
+   *  состояния (`molecules/StatePanel`). Слой — часть адреса, а не подразумеваемая
+   *  константа. */
   dir: string;
   file: string;
   symbol: string;
@@ -85,35 +89,61 @@ interface Organism {
 
 const COMPONENTS: readonly Organism[] = [
   {
-    dir: "ResourceListPage",
+    dir: "organisms/ResourceListPage",
     file: "ResourceListPage",
     symbol: "ResourceListPage",
   },
   {
-    dir: "ResourceCreatePage",
+    dir: "organisms/ResourceCreatePage",
     file: "ResourceCreatePage",
     symbol: "ResourceCreatePage",
   },
   {
-    dir: "ResourceEditPage",
+    dir: "organisms/ResourceEditPage",
     file: "ResourceEditPage",
     symbol: "ResourceEditPage",
   },
   {
-    dir: "form/ResourceFormBody",
+    dir: "organisms/form/ResourceFormBody",
     file: "ResourceFormBody",
     symbol: "ResourceFormBody",
   },
-  { dir: "form/FormField", file: "FormField", symbol: "FormFieldRenderer" },
+  { dir: "organisms/form/FormField", file: "FormField", symbol: "FormFieldRenderer" },
   // Граница отказа модуля (#371). Символ — HOC `withModuleBoundary`, а не класс
   // `ModuleErrorBoundary`: у обёртки один вид на всё дерево, и копия в модуле
-  // означала бы, что правка экрана отказа доезжает не всюду.
+  // означала бы, что правка экрана отказа доезжает не всюду. Правило здесь
+  // ПОКАТАЛОЖНОЕ, поэтому соседи по каталогу — панель отказа и её рисунок
+  // (`ModuleUnavailableArt`) — накрыты этой же записью, и своей им не нужно.
   {
-    dir: "ModuleErrorBoundary",
+    dir: "organisms/ModuleErrorBoundary",
     file: "ModuleErrorBoundary",
     symbol: "withModuleBoundary",
   },
+  // Оболочка экранов состояния: «раздел временно недоступен» и «список пуст» —
+  // ОДИН предмет и один вид (решение владельца о единстве вида). Копия в модуле
+  // означала бы два вида одного предмета, а её не поймал бы ни признак по символу
+  // (переименуют), ни признак по адресу (переименуют файл) — только это правило.
+  { dir: "molecules/StatePanel", file: "StatePanel", symbol: "StatePanel" },
 ] as const;
+
+/*
+ * ЧЕТЫРЕ КОМПОНЕНТА СЕГОДНЯШНЕЙ СЕРИИ В ЭТОТ ПЕРЕЧЕНЬ НЕ ВОШЛИ — назвать причину
+ * обязательно, иначе следующий читатель прочтёт пропуск как недосмотр и внесёт
+ * их, получив красное на исправном дереве:
+ *
+ *   `PageHead`, `DetailSurface` — живут в `organisms/DetailShell/`, а этот каталог
+ *   у compute/nlb/registry/storage содержит ЗАКОННУЮ прослойку `DetailShell.tsx`
+ *   рядом с `index.ts`. Правило ниже требует «в каталоге только `index.ts`», то
+ *   есть на законной прослойке дало бы ложное красное. Оба накрыты правилом дерева
+ *   (их символы объявлены `shared/`, копия по адресу тоже видна).
+ *
+ *   `RefMultiSelect` — то же самое для `organisms/form/RefSelect/`.
+ *
+ *   `ModuleUnavailableArt` — сосед по уже ведомому каталогу (см. запись выше),
+ *   отдельной записи не требует; вдобавок объявлен `export const`, а проба
+ *   реализации ниже утверждает `export function` — форма объявления у ведомых
+ *   компонентов одна, и ослаблять её ради одной записи нельзя.
+ */
 
 const SWEEP = sweep(repoRoot);
 
@@ -181,7 +211,7 @@ describe("единый источник: реализация в shared/, при
     for (const comp of COMPONENTS) {
       const hits = sharedSources.filter((f) => declaredSymbols(readFileSync(f, "utf8")).has(comp.symbol));
       expect(hits.map((f) => path.relative(repoRoot, f))).toEqual([
-        `shared/src/components/organisms/${comp.dir}/${comp.file}.tsx`,
+        `shared/src/components/${comp.dir}/${comp.file}.tsx`,
       ]);
     }
   });
@@ -237,12 +267,13 @@ describe("единый источник: реализация в shared/, при
   });
 });
 
-// Пять организмов CRUD форку не подлежат ВОВСЕ: их в ведомости нет и быть не
-// может (правило выше поймало бы объявление, эта проба ловит и остатки каталога
-// — файл рядом с прослойкой, который прослойкой не является).
-describe("организмы CRUD: в приложении допустима только прослойка @shared", () => {
+// Ведомые компоненты форку не подлежат ВОВСЕ: их в ведомости нет и быть не может
+// (правило выше поймало бы объявление, эта проба ловит и остатки каталога — файл
+// рядом с прослойкой, который прослойкой не является, в том числе с ПЕРЕИМЕНОВАННЫМ
+// именем файла и переименованными символами: такую копию правило выше не видит).
+describe("ведомые компоненты: в приложении допустима только прослойка @shared", () => {
   for (const comp of COMPONENTS) {
-    const sharedFile = path.join(repoRoot, "shared/src/components/organisms", comp.dir, `${comp.file}.tsx`);
+    const sharedFile = path.join(repoRoot, "shared/src/components", comp.dir, `${comp.file}.tsx`);
 
     it(`${comp.symbol} реализован в shared/`, () => {
       expect(existsSync(sharedFile)).toBe(true);
@@ -250,7 +281,7 @@ describe("организмы CRUD: в приложении допустима т
     });
 
     for (const app of SWEEP.apps) {
-      const appDir = path.join(repoRoot, app, "src/components/organisms", comp.dir);
+      const appDir = path.join(repoRoot, app, "src/components", comp.dir);
 
       it(`${app}/${comp.dir}: только прослойка @shared`, () => {
         if (!existsSync(appDir)) return; // приложение этот компонент не показывает
@@ -261,7 +292,7 @@ describe("организмы CRUD: в приложении допустима т
           comp: comp.dir,
           hasIndex: true,
         });
-        expect(readFileSync(indexFile, "utf8")).toContain("@shared/components/organisms/" + comp.dir);
+        expect(readFileSync(indexFile, "utf8")).toContain("@shared/components/" + comp.dir);
         // Anything besides the shim is a fork in disguise.
         const stray = readdirSync(appDir).filter((f) => f !== "index.ts");
         expect({ app, comp: comp.dir, stray }).toEqual({

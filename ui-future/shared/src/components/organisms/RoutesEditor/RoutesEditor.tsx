@@ -24,6 +24,14 @@
 import { Button, Input, Select } from "antd";
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
+import {
+  EDITOR_ACTIONS_WIDTH,
+  EDITOR_ROW_HEIGHT,
+  MONO_FONT,
+  editorHeadCellStyle,
+  editorIconButtonStyle,
+  editorSurfaceStyle,
+} from "@shared/components/organisms/form/editor-surface";
 
 /**
  * Строка маршрута. Ветвь следующего узла представлена ровно одним из полей —
@@ -75,23 +83,24 @@ interface Props {
   disabled?: boolean;
 }
 
-const ROW_H = 38;
-const GRID = "minmax(0, 1.2fr) 150px minmax(0, 1.4fr) 40px";
+// Строка редактора — той же высоты и с тем же разделителем, что у секции CIDR:
+// набор значений, который правят по одному, — один предмет на всю консоль.
+const ROW_H = EDITOR_ROW_HEIGHT;
+const GRID = `minmax(0, 1.2fr) 150px minmax(0, 1.4fr) ${EDITOR_ACTIONS_WIDTH}px`;
 const COL_DIVIDER = "1px solid var(--kc-border-secondary)";
 
 const headCellStyle: React.CSSProperties = {
-  padding: "7px 12px",
-  fontSize: 11,
-  fontWeight: 600,
-  letterSpacing: "0.02em",
-  color: "var(--kc-text-tertiary)",
+  ...editorHeadCellStyle,
+  display: "flex",
+  alignItems: "center",
+  padding: "0 16px",
   borderRight: COL_DIVIDER,
 };
 
 const cellWrapStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
-  padding: "0 12px",
+  padding: "0 16px",
   minWidth: 0,
   borderRight: COL_DIVIDER,
 };
@@ -100,12 +109,18 @@ const cellInputStyle: React.CSSProperties = {
   width: "100%",
   minWidth: 0,
   background: "transparent",
-  fontFamily: "ui-monospace, monospace",
-  fontSize: 12.5,
+  fontFamily: MONO_FONT,
+  fontSize: 11,
+  fontWeight: 520,
   padding: 0,
   height: ROW_H - 1,
   lineHeight: `${ROW_H - 1}px`,
 };
+
+// Линия между соседями рисуется ОДИН раз: у шапки она снизу, у строки — сверху,
+// и на стыке они дали бы 2px там, где по всей консоли 1px. Сетка линии не
+// схлопывает — в отличие от таблицы, где это делает `border-collapse`.
+const ROW_TOP_LINE = "1px solid var(--kc-border)";
 
 export function RoutesEditor({ value, onChange, disabled }: Props) {
   const update = (idx: number, next: RouteEntry) => onChange(value.map((r, i) => (i === idx ? next : r)));
@@ -126,21 +141,12 @@ export function RoutesEditor({ value, onChange, disabled }: Props) {
   };
 
   return (
-    <div
-      style={{
-        width: "100%",
-        minWidth: 0,
-        border: "1px solid var(--kc-border)",
-        borderRadius: 8,
-        overflow: "hidden",
-        background: "var(--kc-page)",
-      }}
-    >
-      <div style={{ display: "grid", gridTemplateColumns: GRID, background: "var(--kc-container)" }}>
+    <div style={{ ...editorSurfaceStyle, width: "100%", minWidth: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: GRID }}>
         <div style={headCellStyle}>Префикс назначения</div>
         <div style={headCellStyle}>Вид</div>
         <div style={headCellStyle}>Следующий узел</div>
-        <div />
+        <div style={{ ...editorHeadCellStyle, borderRight: "none" }} />
       </div>
 
       {value.map((r, idx) => {
@@ -154,7 +160,8 @@ export function RoutesEditor({ value, onChange, disabled }: Props) {
               gridTemplateColumns: GRID,
               alignItems: "stretch",
               minWidth: 0,
-              borderTop: "1px solid var(--kc-border-secondary)",
+              minHeight: ROW_H,
+              borderTop: idx === 0 ? "none" : ROW_TOP_LINE,
             }}
           >
             <div style={cellWrapStyle}>
@@ -205,21 +212,21 @@ export function RoutesEditor({ value, onChange, disabled }: Props) {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Button
                 type="text"
-                size="small"
+                danger
                 aria-label="Удалить маршрут"
                 icon={<DeleteOutlined />}
                 onClick={() => onChange(value.filter((_, i) => i !== idx))}
                 disabled={disabled}
+                style={editorIconButtonStyle}
               />
             </div>
           </div>
         );
       })}
 
-      <div style={{ borderTop: "1px solid var(--kc-border-secondary)", padding: 6 }}>
+      <div style={{ borderTop: value.length === 0 ? "none" : ROW_TOP_LINE, padding: 10 }}>
         <Button
           type="dashed"
-          size="small"
           block
           icon={<PlusOutlined />}
           disabled={disabled}

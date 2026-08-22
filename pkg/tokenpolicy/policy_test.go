@@ -110,3 +110,42 @@ func TestAlgorithmDictionaryIsClosed(t *testing.T) {
 		}
 	}
 }
+
+// TestCriticalHeadersPolicyHasBothPolarities — единый источник обязан выражать
+// ОБА требования о неизвестном параметре заголовка (#902).
+func TestCriticalHeadersPolicyHasBothPolarities(t *testing.T) {
+	if ok, name := tokenpolicy.CriticalHeadersUnderstood(nil); !ok {
+		t.Fatalf("отсутствующий crit — законный вход, а отвергнут по %q", name)
+	}
+	if ok, _ := tokenpolicy.CriticalHeadersUnderstood([]string{}); !ok {
+		t.Fatal("пустой crit не помечает ничего обязательным — отказ здесь неверен")
+	}
+	ok, name := tokenpolicy.CriticalHeadersUnderstood([]string{"unknown-ext"})
+	if ok {
+		t.Fatal("помеченный обязательным неизвестный параметр обязан давать отказ: " +
+			"принять его значит согласиться с условием, которого не проверил")
+	}
+	if name != "unknown-ext" {
+		t.Fatalf("отказ обязан назвать непонятый параметр, назван %q", name)
+	}
+	if len(tokenpolicy.KnownCriticalHeaders()) != 0 {
+		t.Fatal("перечень исполняемых расширений пуст by construction: ни одна " +
+			"поверхность приёма не исполняет ни одного. Появилось — заведи вместе " +
+			"с исполнением, а не заранее")
+	}
+}
+
+// TestDeviationWithoutReasonIsNotExcused — отступление с пустой причиной не
+// засчитывается: иначе поле стало бы способом снять требование молча.
+func TestDeviationWithoutReasonIsNotExcused(t *testing.T) {
+	silent := []tokenpolicy.Deviation{{Check: tokenpolicy.CheckAudience}}
+	if got := tokenpolicy.MissingChecksExcept([]tokenpolicy.Check{}, silent); len(got) == 0 {
+		t.Fatal("пустая причина простила проверку — требование снимается молча")
+	}
+	withReason := []tokenpolicy.Deviation{{Check: tokenpolicy.CheckAudience, Reason: "адресата проверяет поверхность"}}
+	before := len(tokenpolicy.MissingChecksExcept([]tokenpolicy.Check{}, nil))
+	after := len(tokenpolicy.MissingChecksExcept([]tokenpolicy.Check{}, withReason))
+	if after != before-1 {
+		t.Fatalf("названная причина не учтена: было %d, стало %d", before, after)
+	}
+}

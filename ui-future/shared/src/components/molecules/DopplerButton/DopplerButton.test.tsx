@@ -48,10 +48,17 @@ describe("DopplerButton", () => {
         <DopplerButton pulsing>Создать</DopplerButton>
       </>,
     );
+    // Утверждается ТОКЕН, а не литерал: тон кольца обязан следовать палитре
+    // продукта в обеих темах. Прежде здесь стояли `rgba(255, 77, 79, .6)` и
+    // `rgba(22, 119, 255, .55)` — цвета прежней палитры, не менявшиеся ни в
+    // одной теме; проба закрепляла ровно тот хардкод, из-за которого кольцо
+    // шло вокруг кнопки другого оттенка.
     const danger = buttonEl("Удалить").style.getPropertyValue("--doppler-c");
     const primary = buttonEl("Создать").style.getPropertyValue("--doppler-c");
-    expect(danger).toBe("rgba(255, 77, 79, 0.6)");
-    expect(primary).toBe("rgba(22, 119, 255, 0.55)");
+    expect(danger).toContain("var(--kc-danger)");
+    expect(primary).toContain("var(--kc-primary)");
+    // Контроль в обратную сторону: два разных токена могли бы разрешиться в
+    // один цвет, но подмена `danger` на обычную отправку обязана быть видна.
     expect(danger).not.toBe(primary);
   });
 

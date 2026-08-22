@@ -372,6 +372,10 @@ func (v *JWTVerifier) Verify(ctx context.Context, token string) (*VerifiedToken,
 		Alg string `json:"alg"`
 		Kid string `json:"kid"`
 		Typ string `json:"typ"`
+		// Crit — параметры, которые ОТПРАВИТЕЛЬ пометил обязательными к пониманию
+		// (RFC 7515 §4.1.11). Не читая его, край исполнял бы условие, которого не
+		// понял, — то есть принимал токен на непроверенном основании.
+		Crit []string `json:"crit"`
 	}
 	if jerr := json.Unmarshal(header, &hdr); jerr != nil {
 		return nil, fmt.Errorf("invalid jwt header: %w", jerr)
@@ -384,6 +388,13 @@ func (v *JWTVerifier) Verify(ctx context.Context, token string) (*VerifiedToken,
 	// и в журнал.
 	if !keyIDWellFormed(hdr.Kid) {
 		return nil, ErrMalformedKeyID
+	}
+	// Помеченное обязательным — исполнить или отвергнуть токен целиком. Обратная
+	// сторона того же требования: НЕ помеченное неизвестное игнорируется
+	// (RFC 7519, EID 8060) — на этом держится совместимость, поэтому разбор
+	// неизвестные поля молча пропускает и здесь, и в утверждениях.
+	if ok, name := tokenpolicy.CriticalHeadersUnderstood(hdr.Crit); !ok {
+		return nil, fmt.Errorf("%w: crit=%q", ErrUnknownCriticalHeader, name)
 	}
 
 	// 2. Издатель — тоже НЕДОВЕРЕННЫЙ вход, и здесь он служит ИСКЛЮЧИТЕЛЬНО

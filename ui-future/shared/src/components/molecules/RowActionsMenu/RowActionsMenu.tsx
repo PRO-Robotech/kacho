@@ -86,6 +86,36 @@ export function resourceHasRowActions(spec: ResourceSpec): boolean {
   );
 }
 
+/**
+ * Кнопка действий строки — ОДНА форма на все строки и все ресурсы.
+ *
+ * Она стоит в КАЖДОЙ строке списка, поэтому яркой быть не вправе: иначе столбец
+ * действий перетягивает внимание с данных, ради которых список и открыт. Но и
+ * теряться она не должна — «видно у одних строк и не видно у других» читается
+ * как «действие есть не у всех», хотя действия одинаковы у всей таблицы.
+ * Отсюда вторичный тон, а не третичный: он тише имени ресурса и заметно
+ * различим на поверхности без наведения.
+ *
+ * Значок не появляется по наведению и не зависит ни от строки, ни от состава
+ * меню: наведение — способ УЗНАТЬ про действия, а не условие их существования,
+ * и на сенсорном экране его нет вовсе.
+ *
+ * Размер задан явно, а не взят у размера `small`: тот меняется вместе с общей
+ * высотой элементов управления (36), а здесь нужен размер ячейки — 30×30, чтобы
+ * строка списка не выросла из-за столбца, в котором нет данных.
+ *
+ * Объявлен ОДНИМ объектом на модуль: одна форма для всех строк тогда не
+ * обещание, а следствие — вида, зависящего от строки, взяться неоткуда.
+ */
+export const ROW_ACTION_TRIGGER: React.CSSProperties = {
+  width: 30,
+  height: 30,
+  minWidth: 30,
+  padding: 0,
+  borderRadius: 6,
+  color: "var(--kc-text-secondary)",
+};
+
 export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: Props) {
   const navigate = useNavigate();
   const params = useParams();
@@ -221,10 +251,10 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
       <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
         <Button
           type="text"
-          size="small"
           icon={<MoreOutlined />}
           onClick={(e) => e.stopPropagation()}
           aria-label="Действия"
+          style={ROW_ACTION_TRIGGER}
         />
       </Dropdown>
 

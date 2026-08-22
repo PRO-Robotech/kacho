@@ -17,8 +17,10 @@ import { Form, Input, InputNumber, Select, Space, Switch, Tooltip, Typography } 
 import { QuestionCircleOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
 import { AddressPoolCidrManager } from "@shared/components/organisms/AddressPoolCidrManager";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
+import { FORM_DIVIDER_STYLE } from "@shared/components/organisms/form/editor-surface";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
@@ -125,14 +127,7 @@ export function InlineAddressPoolEditForm({ poolId, onCancel, onSuccess }: Props
 
   return (
     <FormShell specId="address-pools" mode="edit" singular={spec.singular}>
-      <Form
-        layout="horizontal"
-        labelCol={{ flex: "200px" }}
-        wrapperCol={{ flex: "1 1 0" }}
-        labelAlign="left"
-        colon={false}
-        size="middle"
-      >
+      <FormGrid>
         <Form.Item label="Имя">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="pool-public-zone-a" />
         </Form.Item>
@@ -140,6 +135,12 @@ export function InlineAddressPoolEditForm({ poolId, onCancel, onSuccess }: Props
         <Form.Item label="Описание">
           <Input.TextArea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
         </Form.Item>
+
+        {/* ПОРЯДОК ОДИН НА ВСЕ ФОРМЫ (решение владельца): имя → описание →
+            метки → черта → поля самого ресурса. Черта берётся объявленной
+            (`FORM_DIVIDER_STYLE`) — своя, выписанная по месту, разошлась бы с
+            соседней формой молча. */}
+        <div style={FORM_DIVIDER_STYLE} aria-hidden />
 
         <Form.Item label="Тип">
           <Select value={pool.kind ?? "EXTERNAL_PUBLIC"} options={KIND_OPTIONS} disabled />
@@ -154,7 +155,7 @@ export function InlineAddressPoolEditForm({ poolId, onCancel, onSuccess }: Props
             <Space size={4}>
               IPv4 и IPv6 CIDR
               <Tooltip title="Блоки IPv4 и/или IPv6, из которых аллоцируются адреса. Добавление/удаление применяется сразу (отдельный RPC), не через «Сохранить». Удалить блок с уже выделенными адресами нельзя.">
-                <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
+                <QuestionCircleOutlined style={{ color: "var(--kc-text-tertiary)" }} />
               </Tooltip>
             </Space>
           }
@@ -171,7 +172,7 @@ export function InlineAddressPoolEditForm({ poolId, onCancel, onSuccess }: Props
             <Space size={4}>
               По умолчанию
               <Tooltip title="Пул по умолчанию — один на пару «зона + семейство адресов».">
-                <QuestionCircleOutlined style={{ color: "rgba(255,255,255,0.45)" }} />
+                <QuestionCircleOutlined style={{ color: "var(--kc-text-tertiary)" }} />
               </Tooltip>
             </Space>
           }
@@ -187,7 +188,7 @@ export function InlineAddressPoolEditForm({ poolId, onCancel, onSuccess }: Props
           />
         </Form.Item>
         <FormFooter submitLabel="Сохранить" submitting={mutation.isPending} onSubmit={submit} onCancel={onCancel} />
-      </Form>
+      </FormGrid>
     </FormShell>
   );
 }

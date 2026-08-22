@@ -182,6 +182,15 @@ export function buildSpecColumns(spec: ResourceSpec, opts: FormatCellOpts = {}):
   return ordered.map((c) => ({
     header: c.header,
     className: c.className,
+    // Ширина — БОЛЬШЕЕ из «сколько нужно значению» и «сколько нужно подписи».
+    // Ширины по типу одного заголовка не знают, и подпись вроде «Группа
+    // безопасности по умолчанию» в 220 точек не помещалась — она переносилась на
+    // вторую строку, поднимая шапку таблицы, при том что свободного места справа
+    // оставалось полэкрана.
+    width: c.path === identityPath ? undefined : columnWidth(c),
+    // Набор значений и набор ссылок рисуются столбиком — обрезка клетки в одну
+    // строку показала бы из них только первое.
+    multiline: c.multiline || c.format === "list" || c.format === "references",
     cell: (row) => {
       const inner = c.render ? c.render(row) : formatCellByFormat(c, row, opts);
       // Колонка имени — ссылка на карточку; остальное как объявлено спекой.
@@ -189,6 +198,52 @@ export function buildSpecColumns(spec: ResourceSpec, opts: FormatCellOpts = {}):
     },
     sortKey: c.format === "datetime" || c.format === "text" || c.format === "uid-short" ? c.path : undefined,
   }));
+}
+
+/**
+ * Ширина колонки: большее из «сколько нужно значению» и «сколько нужно подписи».
+ *
+ * Оценка подписи приближённая, и это честно: измерить текст до отрисовки нельзя,
+ * а измерять после — значит менять ширину уже показанной таблицы. Приближение
+ * выбрано С ЗАПАСОМ: промах в большую сторону оставляет лишний воздух, промах в
+ * меньшую переносит заголовок на вторую строку, то есть возвращает тот дефект.
+ */
+function columnWidth(c: ResourceColumn): number | undefined {
+  const byFormat = widthForFormat(c.format);
+  if (byFormat === undefined) return undefined;
+  return Math.ceil(Math.max(byFormat, c.header.length * 7.6 + 34));
+}
+
+/**
+ * Ширина колонки по типу её значения.
+ *
+ * Задавать её нужно ВСЕМ: колонка без ширины забирает весь остаток себе, и
+ * распорка таблицы остаётся ни с чем — значения снова расходятся на треть экрана
+ * каждое, а между адресом и зоной встаёт пустота.
+ *
+ * Значения одного типа во всех таблицах продукта одной длины, поэтому одинаковая
+ * ширина делает списки узнаваемыми: дата находится там же, где нашлась на
+ * прошлой странице.
+ */
+function widthForFormat(format: ResourceColumn["format"]): number | undefined {
+  switch (format) {
+    case "uid-short":
+      return 200;
+    case "datetime":
+      return 180;
+    case "status":
+      return 140;
+    case "bool":
+      return 150;
+    case "code":
+      return 190;
+    case "list":
+      return 200;
+    case "references":
+      return 220;
+    default:
+      return 220;
+  }
 }
 
 export function formatCellByFormat(
@@ -251,32 +306,32 @@ export function formatCellByFormat(
       }
       return <Typography.Text type="secondary">—</Typography.Text>;
     case "references":
-      // Generic renderer для output-only списков kacho.cloud.reference.Reference
-      // (типичный shape: [{ referrer: { type, id }, type }, ...]). Показываем
-      // первый referrer как «{label} {id}» (plain text + link, без chip); full
-      // id — в tooltip + as visible text (~20 chars, помещается в cell); "+N
-      // more" — тихий subtle <span> (тоже без chip) если рефереров больше
-      // одного, с tooltip-listing остальных. Для известных referrer-типов
-      // первый элемент обёрнут в SPA-<Link>; для прочих — plain (forward-compat
-      // fallback). Клик внутри <a> не триггерит row-navigation (см.
-      // ResourceTable.tsx — есть skip на `closest('a')`).
+      // Набор ссылок на использующие ресурсы — КАЖДАЯ своей строкой.
+      //
+      // Прежде показывался только первый, а остальные — подписью «ещё N»: числом,
+      // из которого не узнать ни одного ресурса. Читатель всё равно шёл на
+      // карточку, то есть свёртка стоила лишнего перехода на каждой строке — тот
+      // же довод, по которому снята свёртка у набора адресов.
+      //
+      // Известный тип рисуется ссылкой, неизвестный — текстом: тип приезжает из
+      // чужого домена, и выдумывать адрес для незнакомого нельзя.
       if (Array.isArray(v) && v.length > 0) {
-        const first = v[0] as { referrer?: { type?: string; id?: string } } | undefined;
-        const more = v.length > 1 ? v.length - 1 : 0;
         const projectId = opts.projectId ?? (getByPath<string>(row, "project_id") || null);
-        const restTitle = more
-          ? (v.slice(1) as Array<{ referrer?: { type?: string; id?: string } }>)
-              .map((r) => `${r.referrer?.type ?? "?"} ${r.referrer?.id ?? ""}`)
-              .join("\n")
-          : undefined;
+        const list = v as Array<{ referrer?: { type?: string; id?: string } }>;
         return (
-          <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, fontSize: 12 }}>
-            <ReferrerLink projectId={projectId} referrer={first?.referrer} />
-            {more > 0 && (
-              <span style={{ color: "rgba(0,0,0,.45)", fontSize: 11 }} title={restTitle}>
-                ещё {more}
-              </span>
-            )}
+          <span
+            style={{
+              display: "inline-flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: 2,
+              fontSize: 12,
+              maxWidth: "100%",
+            }}
+          >
+            {list.map((r, k) => (
+              <ReferrerLink key={`${r.referrer?.id ?? "?"}-${k}`} projectId={projectId} referrer={r.referrer} />
+            ))}
           </span>
         );
       }

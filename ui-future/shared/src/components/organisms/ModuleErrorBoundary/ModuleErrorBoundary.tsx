@@ -1,6 +1,7 @@
 import { Component } from "react";
 import type { ComponentType, ErrorInfo, ReactNode } from "react";
 import { ModuleUnavailablePanel } from "./ModuleUnavailablePanel";
+import { reloadPage } from "./browser-navigation";
 
 export interface ModuleErrorBoundaryProps {
   /** Имя раздела для экрана отказа. Обязательно: экран называет раздел по имени. */
@@ -9,6 +10,9 @@ export interface ModuleErrorBoundaryProps {
    * Вызывается по кнопке «Повторить» ПОСЛЕ сброса состояния границы. Ленивый
    * модуль обязан здесь пересоздать свой `lazy()`: React кэширует ОТКЛОНЁННЫЙ
    * промис навсегда, поэтому один только сброс границы даст тот же отказ сразу.
+   *
+   * Не передан — значит владельца попытки нет, и повтором становится
+   * перезагрузка страницы (см. `handleRetry`).
    */
   onRetry?: () => void;
   children?: ReactNode;
@@ -44,8 +48,21 @@ export class ModuleErrorBoundary extends Component<ModuleErrorBoundaryProps, Mod
   }
 
   private handleRetry = (): void => {
+    // Повтор обязан ЗАНОВО пытаться загрузить раздел, а не перерисовывать экран.
+    // Пересоздать попытку умеет только владелец `lazy()`: React кэширует
+    // ОТКЛОНЁННЫЙ промис навсегда, поэтому сброс состояния границы без нового
+    // `lazy()` вернёт тот же отказ мгновенно — пользователь увидел бы мигание и
+    // тот же экран, то есть кнопку, которая ничего не делает.
+    //
+    // Владельца нет (корневая граница каркаса — отказ мог случиться в любом
+    // месте уже смонтированного дерева): честного способа, кроме полной
+    // перезагрузки страницы, здесь не существует, и делается именно она.
+    if (!this.props.onRetry) {
+      reloadPage();
+      return;
+    }
     this.setState({ error: null });
-    this.props.onRetry?.();
+    this.props.onRetry();
   };
 
   render(): ReactNode {

@@ -6,6 +6,7 @@ package pg_test
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -353,8 +354,22 @@ func TestIntegration_AddressList_NarrowBySubnet_PlanIsPagePriced(t *testing.T) {
 			used = append(used, n.indexName)
 		}
 	}
-	assert.Contains(t, used, "addresses_project_subnet_page_idx",
-		"сужение обязано опираться на индекс своего предиката; план использовал %v\n%s", used, plan)
+	// Индексов, покрывающих ЭТОТ предикат, в дереве ДВА, и оба законны:
+	// `addresses_project_subnet_page_idx` и `addresses_subnet_cursor_idx` (#912).
+	// Планировщик выбирает между ними по статистике, поэтому утверждение об
+	// ОДНОМ имени падает не на дефекте, а на распределении данных: то же дерево
+	// даёт разный выбор до и после миграции, меняющей наполнение таблицы.
+	//
+	// Утверждается то, ради чего механизм заведён: сужение опирается на индекс
+	// СВОЕГО предиката, а не на общий проектный. Что именно из двух — вопрос
+	// цены, и он проверен выше исходом (сколько строк тронуто).
+	//
+	// Сам факт двух индексов об одном предикате — отдельный предмет: они
+	// дублируют друг друга, и один лишний. Заведён задачей.
+	narrowIdx := []string{"addresses_project_subnet_page_idx", "addresses_subnet_cursor_idx"}
+	assert.Truef(t, slices.ContainsFunc(used, func(n string) bool { return slices.Contains(narrowIdx, n) }),
+		"сужение обязано опираться на индекс своего предиката (%v); план использовал %v\n%s",
+		narrowIdx, used, plan)
 	for _, n := range nodes {
 		assert.NotContains(t, n.nodeType, "Sort",
 			"порядок обязан приходить из индекса, а не из сортировки страницы подсети: %s", plan)

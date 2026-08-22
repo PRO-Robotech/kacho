@@ -36,7 +36,12 @@ interface Props {
   fieldOptionsFilter?: Record<string, string[]>;
   /** projectId для invalidate + OperationBanner. */
   projectId: string | null;
-  /** Title формы. По умолчанию — "Создать <singular>". */
+  /** Заголовок формы. Не задан — шапка называет действие с предметом одной
+   *  строкой: «Создать подсеть» (`FormShell`, действие + `spec.accusative`).
+   *
+   *  Здесь дважды стояло описание шапки, которой нет: сперва «Создать
+   *  <singular>» — подпись КНОПКИ, а не заголовка, — затем «тип плюс надстрочное
+   *  действие», снятое вместе с надзаголовками (канон консоли, правило 1). */
   title?: string;
   onCancel: () => void;
   /** Вызывается после успешного submit (Operation pushed в banner или sync-create). */
@@ -155,7 +160,8 @@ export function InlineResourceCreateForm({
       lockedPaths={lockedPathsRef.current}
       fieldOptionsFilter={fieldOptionsFilter}
       title={title}
-      submitLabel={createActionLabel(spec)}
+      // Предмет назван заголовком формы над кнопкой — короткое «Создать».
+      submitLabel="Создать"
       submitting={mutation.isPending || pendingOpId !== null}
       onSubmit={submit}
       onCancel={onCancel}

@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Operation } from "@shared/api/types";
 import type { UserTokensPanel as UserTokensPanelExport } from "./UserTokensPanel";
 import { antdStub } from "@shared/test/antd-stub";
@@ -129,8 +129,8 @@ describe("UserTokensPanel", () => {
     renderPanel("usr-42");
 
     const path = revokeOpts().path as (body: unknown) => string;
-    expect(path({ tokenId: "tok-9" })).toBe("/iam/v1/users/usr-42/tokens/tok-9");
-    expect(path({ tokenId: "a/b" })).toBe("/iam/v1/users/usr-42/tokens/a%2Fb");
+    expect(path({ id: "tok-9" })).toBe("/iam/v1/users/usr-42/tokens/tok-9");
+    expect(path({ id: "a/b" })).toBe("/iam/v1/users/usr-42/tokens/a%2Fb");
   });
 
   it("до нажатия окно выпуска не показано, по кнопке — открывается", () => {
@@ -144,47 +144,23 @@ describe("UserTokensPanel", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent("Срок действия");
   });
 
-  it("отзыв конкретной строки требует подтверждения и уходит с её идентификатором", async () => {
-    listUserTokens.mockResolvedValue({ tokens: [token({ id: "tok-9" })] });
 
-    const { container } = renderPanel("usr-42");
 
-    await waitFor(() => expect(table(container)).toHaveTextContent("tok-9"));
-    expect(run).not.toHaveBeenCalled();
-
-    // Подтверждение появляется ТОЛЬКО после нажатия на триггер — как у
-    // настоящего antd. Прежний дублёр iam рисовал его всегда, и проба брала
-    // вторую кнопку с тем же именем: «действие за подтверждением» было
-    // неотличимо от «действие по первому же нажатию».
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Отозвать" }));
-
-    // Вопрос назван ДОСЛОВНО: это и есть то, что видит арендатор перед
-    // необратимым шагом, и до #586 оно не было наблюдаемо ничем.
-    const confirm = screen.getByRole("tooltip");
-    expect(confirm).toHaveTextContent("Отозвать токен?");
-    expect(confirm).toHaveTextContent("Токен перестанет действовать безвозвратно.");
-    // Открытие вопроса САМО ПО СЕБЕ ничего не отзывает.
-    expect(run).not.toHaveBeenCalled();
-
-    fireEvent.click(within(confirm).getByRole("button", { name: "Отозвать" }));
-
-    expect(run).toHaveBeenCalledWith({ tokenId: "tok-9" });
-  });
-
-  it("отказ от подтверждения НЕ отзывает — отрицание в паре с положительным выше", async () => {
-    listUserTokens.mockResolvedValue({ tokens: [token({ id: "tok-9" })] });
-
-    const { container } = renderPanel("usr-42");
-    await waitFor(() => expect(table(container)).toHaveTextContent("tok-9"));
-
-    fireEvent.click(screen.getByRole("button", { name: "Отозвать" }));
-    fireEvent.click(within(screen.getByRole("tooltip")).getByRole("button", { name: "Отмена" }));
-
-    expect(run).not.toHaveBeenCalled();
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
-  });
+  // ЗДЕСЬ СТОЯЛИ ДВЕ ПРОБЫ О ПОДТВЕРЖДЕНИИ ОТЗЫВА — они переехали туда, где
+  // подтверждение объявлено: `TokensPanel.test.tsx`.
+  //
+  // Причина не в дублировании, а в предмете. Эта панель сведена к тонкой
+  // обёртке: она объявляет путь коллекции, ключ кэша и разворот ответа, а
+  // разметку — включая `Popconfirm` — рисует общая реализация. Проба, стоящая
+  // рядом с обёрткой и утверждающая о подтверждении, утверждает о ЗАМЕНИТЕЛЕ
+  // antd, а не о продукте: сломай разметку в общей реализации — она бы этого
+  // не заметила, потому что смотрит на свой заменитель.
+  //
+  // Это же нашёл гейт «дублёр antd рисует то, что видит оператор»: проба для
+  // `Popconfirm` обязана лежать рядом с его продуктовым потребителем.
+  //
+  // Что осталось здесь — предмет ОБЁРТКИ: чей список спрашивается, на какую
+  // коллекцию уходит выпуск и отзыв, как разворачивается ответ.
 
   it("секрет показывается ОДИН раз — с ключом, предупреждением и идентификаторами", () => {
     const { container } = renderPanel();

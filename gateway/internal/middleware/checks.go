@@ -28,6 +28,7 @@ var implementedChecks = []tokenpolicy.Check{
 	tokenpolicy.CheckSignature,
 	tokenpolicy.CheckExpiry,
 	tokenpolicy.CheckNotBefore,
+	tokenpolicy.CheckCriticalHeaders,
 	tokenpolicy.CheckAudience,
 }
 

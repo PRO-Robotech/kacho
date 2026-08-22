@@ -39,8 +39,8 @@ function sections(container: HTMLElement): HTMLElement[] {
 describe("SubnetCidrPanel", () => {
   it("рисует ровно две секции — по одной на семейство", () => {
     renderPanel();
-    expect(screen.getByText("IPv4")).toBeInTheDocument();
-    expect(screen.getByText("IPv6")).toBeInTheDocument();
+    expect(screen.getByText(new RegExp("^IPv4\\b"))).toBeInTheDocument();
+    expect(screen.getByText(new RegExp("^IPv6\\b"))).toBeInTheDocument();
   });
 
   it("основной диапазон каждого семейства показан", () => {
@@ -55,11 +55,11 @@ describe("SubnetCidrPanel", () => {
     const { container } = renderPanel();
     const [v4, v6] = sections(container);
 
-    expect(within(v4).getByText("IPv4")).toBeInTheDocument();
+    expect(within(v4).getByText(new RegExp("^IPv4\\b"))).toBeInTheDocument();
     expect(within(v4).getByText("10.0.2.0/24")).toBeInTheDocument();
     expect(within(v4).queryByText("fd00:2::/64")).not.toBeInTheDocument();
 
-    expect(within(v6).getByText("IPv6")).toBeInTheDocument();
+    expect(within(v6).getByText(new RegExp("^IPv6\\b"))).toBeInTheDocument();
     expect(within(v6).getByText("fd00:2::/64")).toBeInTheDocument();
     expect(within(v6).queryByText("10.0.2.0/24")).not.toBeInTheDocument();
   });
@@ -68,6 +68,6 @@ describe("SubnetCidrPanel", () => {
     // Исчезнувшая секция читается как «этому семейству здесь не место», и
     // добавить первый диапазон становится неоткуда.
     renderPanel({ v6Primary: undefined, v6Blocks: [] });
-    expect(screen.getByText("IPv6")).toBeInTheDocument();
+    expect(screen.getByText(new RegExp("^IPv6\\b"))).toBeInTheDocument();
   });
 });

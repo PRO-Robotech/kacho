@@ -50,7 +50,11 @@ function show(props: Record<string, unknown> = {}) {
 const selectShowing = (optionText: string) =>
   [...document.querySelectorAll("select")].find((s) => [...s.options].some((o) => o.textContent === optionText));
 
-const save = () => fireEvent.click(screen.getByRole("button", { name: "Создать сетевой интерфейс" }));
+// Кнопка отправки называет ДЕЙСТВИЕ и только его: предмет уже назван заголовком
+// формы над ней (канон консоли, правило 3). Имя ищется ТОЧНЫМ совпадением —
+// образец `/Создать/` совпал бы и с прежней подписью «Создать сетевой интерфейс», то
+// есть проба пережила бы возврат предмета в кнопку и промолчала.
+const save = () => fireEvent.click(screen.getByRole("button", { name: "Создать" }));
 const body = () => create.mock.calls[0][1] as Record<string, unknown>;
 
 beforeEach(() => {
@@ -59,6 +63,14 @@ beforeEach(() => {
   // ответ известен сразу. `async` без `await` обещало ожидание, которого нет.
   list.mockImplementation((path: string) => {
     if (path.includes("/subnets")) return Promise.resolve({ subnets: [{ id: "sub-1", name: "внутренняя" }] });
+    if (path.includes("/addresses"))
+      return Promise.resolve({
+        addresses: [
+          { id: "adr-free", name: "запасной", internal_ipv4_address: { subnet_id: "sub-1", address: "10.0.0.5" } },
+          // Занятость адрес сообщает САМ — полем `used` (address.proto, тег 16).
+          { id: "adr-busy", name: "уже-в-деле", used: true, internal_ipv4_address: { subnet_id: "sub-1", address: "10.0.0.6" } },
+        ],
+      });
     return Promise.resolve({});
   });
   create.mockResolvedValue({});
@@ -71,7 +83,12 @@ describe("InlineNetworkInterfaceCreateForm", () => {
     await waitFor(() => expect(selectShowing("внутренняя")).toBeDefined());
     save();
 
-    expect(toastError).toHaveBeenCalledWith("Выберите подсеть для интерфейса.");
+    // Отказ стоит В СТРОКЕ поля, а не всплывашкой в углу: сообщение обязано
+    // лежать внутри той же обёртки, что и подпись «Подсеть», иначе «рядом с
+    // полем» осталось бы утверждением о вкусе, а не о разметке.
+    const alert = screen.queryAllByRole("alert").find((el) => (el.parentElement?.textContent ?? "").includes("Подсеть"));
+    expect(alert).toHaveTextContent("«Подсеть»: поле обязательное — интерфейс создаётся внутри подсети.");
+    expect(toastError).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -85,6 +102,23 @@ describe("InlineNetworkInterfaceCreateForm", () => {
     await waitFor(() => expect(create).toHaveBeenCalledWith("/vpc/v1/networkInterfaces", expect.anything()));
     expect(body().subnet_id).toBe("sub-1");
     expect(body().project_id).toBe("prj-1");
+  });
+
+  it("занятый адрес в списке не предлагается, свободный — предлагается", async () => {
+    // Прежде список предлагал ВСЕ адреса подсети, включая привязанные к другому
+    // интерфейсу: выбор проходил форму целиком и умирал на крае («address adr…
+    // is already in use»). Консоль звала сделать то, что край отвергает by
+    // construction, и узнать об этом можно было только отправкой.
+    //
+    // Пара обязательна: одно «занятого нет» выполнимо списком, который не
+    // предлагает НИЧЕГО, — то есть полем, сломанным целиком.
+    show();
+
+    await waitFor(() => expect(selectShowing("внутренняя")).toBeDefined());
+    fireEvent.change(selectShowing("внутренняя")!, { target: { value: "sub-1" } });
+
+    await waitFor(() => expect(screen.getAllByText("запасной · 10.0.0.5").length).toBeGreaterThan(0));
+    expect(screen.queryByText("уже-в-деле · 10.0.0.6")).not.toBeInTheDocument();
   });
 
   it("заданная подсеть заперта — интерфейс не переносят между подсетями", () => {

@@ -151,8 +151,15 @@ interface DropdownProps {
     items?: DropdownMenuItem[];
     onClick?: (info: { key: string; domEvent: React.MouseEvent }) => void;
   };
-  /** Вторая форма подачи содержимого: произвольный узел вместо списка пунктов. */
-  dropdownRender?: () => React.ReactNode;
+  /** Вторая форма подачи содержимого: произвольный узел вместо списка пунктов.
+   *
+   *  Имя — `popupRender`, как у antd 6. Прежнее `dropdownRender` там объявлено
+   *  устаревшим и печатает предупреждение в консоль браузера; проба модулей
+   *  считает такое предупреждение находкой, и она права: устаревшее API уедет
+   *  вместе с мажором. Дублёр обязан принимать ТО ЖЕ имя, что зовёт продукт, —
+   *  иначе он снисходительнее настоящего и прячет ровно тот случай, ради
+   *  которого его подставляют. */
+  popupRender?: () => React.ReactNode;
   disabled?: boolean;
 }
 
@@ -722,9 +729,9 @@ export function antdStub(): Record<string, unknown> {
   // Упрощение снисходительно ровно в одну сторону — «видно, не открыв», — и она
   // не наша: открывает меню antd, а не консоль.
 
-  const Dropdown = ({ children, menu, dropdownRender, disabled }: DropdownProps) => {
-    const overlay = dropdownRender
-      ? dropdownRender()
+  const Dropdown = ({ children, menu, popupRender, disabled }: DropdownProps) => {
+    const overlay = popupRender
+      ? popupRender()
       : menu
         ? React.createElement(
             "ul",

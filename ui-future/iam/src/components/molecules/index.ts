@@ -1,4 +1,5 @@
 export * from "./auth";
+export { ScopeRequiredEmpty } from "./ScopeRequiredEmpty";
 export { DeleteDialog } from "@shared/components/molecules/DeleteDialog";
 export { DetailOverviewActions } from "@shared/components/molecules/DetailOverviewActions";
 export { DopplerButton } from "@shared/components/molecules/DopplerButton";

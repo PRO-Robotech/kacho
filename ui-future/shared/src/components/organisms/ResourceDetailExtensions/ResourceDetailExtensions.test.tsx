@@ -149,8 +149,8 @@ describe("панели под обзором", () => {
     // «CIDR» и бейдж IPv4/IPv6 отдельно. Слово то же, что у подсети (решение
     // владельца 2026-08-12): сеть и подсеть держат один предмет, и «супернет»
     // рядом с «CIDR» читались как два разных.
-    expect(screen.getAllByText("CIDR")).toHaveLength(2);
-    expect(screen.getByText("IPv4")).toBeInTheDocument();
+    expect(screen.getAllByText(/^IPv[46] CIDR/)).toHaveLength(2);
+    expect(screen.getByText(new RegExp("^IPv4\\b"))).toBeInTheDocument();
     expect(screen.getByText("10.30.0.0/16")).toBeInTheDocument();
     expect(screen.getByText("CIDR-блоков нет")).toBeInTheDocument();
   });

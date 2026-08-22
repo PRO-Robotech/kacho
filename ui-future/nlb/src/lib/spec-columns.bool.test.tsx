@@ -11,12 +11,17 @@
 // open_for_placement = 5`, публичная проекция.
 //
 // ГДЕ ЭТО РИСУЕТСЯ. Список регионов рисует ОБЩИЙ `ResourceListPage`, а он
-// строит ячейки общим `@shared/lib/spec-columns`. Проба берёт ОБА сборщика —
-// локальный и общий — и утверждает про КАЖДЫЙ одно и то же наблюдаемое: что
-// показано в ячейке. Прежняя редакция вместо этого читала исходник общего
-// рендера и искала в нём подстроки-образцы; такое утверждение говорит о
-// символах файла, переживает любую перепись той же логики и не может упасть на
-// изменении того, что человек видит.
+// строит ячейки общим `@shared/lib/spec-columns`. Прежде их было ДВА — общий и
+// форк этого модуля, — и проба сверяла показанное у каждого, чтобы расхождение
+// не приземлилось молча. Форк снят: сборщик один, и первое же утверждение ниже
+// требует именно ТОЖДЕСТВА. Оно способно упасть — вернуть в `./spec-columns`
+// собственное тело, и проба покраснеет с именем предмета; остальные утверждения
+// продолжают говорить о том, что человек видит в ячейке.
+//
+// Прежняя редакция вместо этого читала исходник общего рендера и искала в нём
+// подстроки-образцы; такое утверждение говорит о символах файла, переживает
+// любую перепись той же логики и не может упасть на изменении того, что человек
+// видит.
 
 import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -30,31 +35,18 @@ function textOf(node: ReactNode): string {
   return render(<div>{node}</div>).container.textContent ?? "";
 }
 
-type Builder = typeof buildSpecColumns;
-
-function cellTextWith(build: Builder, header: RegExp, row: Record<string, unknown>): string {
-  const col = build(REGISTRY["compute-regions"]).find((c) => header.test(c.header));
+function cellText(header: RegExp, row: Record<string, unknown>): string {
+  const col = buildSpecColumns(REGISTRY["compute-regions"]).find((c) => header.test(c.header));
   if (!col) throw new Error(`колонки ${header} нет в списке регионов`);
   return textOf(col.cell(row));
 }
 
-/** Оба сборщика — локальный этого пакета и общий, которым рисует список. */
-const BUILDERS: Array<[string, Builder]> = [
-  ["локальный", buildSpecColumns],
-  ["общий", buildShared as Builder],
-];
-
-const cellText = (header: RegExp, row: Record<string, unknown>) =>
-  cellTextWith(buildSpecColumns, header, row);
-
 describe("логическая колонка в списке регионов", () => {
-  it.each(BUILDERS)("%s сборщик рисует закрытый регион одинаково", (_name, build) => {
-    // Прежде это была «предпосылка», прочитанная из исходника общего рендера.
-    // Теперь утверждается наблюдаемое у ОБОИХ: разъедутся — покраснеет тот, кто
-    // разошёлся, и будет названо, какой именно.
-    const text = cellTextWith(build, /размещ/i, { open_for_placement: false });
-    expect(text).not.toContain("false");
-    expect(text).not.toBe("");
+  it("сборщик этого модуля — ТОТ ЖЕ, которым рисует список", () => {
+    // Два сборщика об одном предмете расходятся молча, и расхождение видно
+    // только на живой странице. Здесь оно наблюдаемо: форк вернётся — упадёт
+    // это утверждение, а не пользователь.
+    expect(buildSpecColumns).toBe(buildShared);
   });
 
   it("предпосылка: колонка над логическим полем в списке есть", () => {
@@ -83,14 +75,12 @@ describe("логическая колонка в списке регионов",
     // заголовком «Открыт для размещения» оно не говорит ни что размещение
     // доступно, ни что регион закрыт. Пока общий словарь логического варианта
     // не нёс, ячейка держала свой «Да»/«Нет»; теперь предмета у него нет.
-    for (const [, build] of BUILDERS) {
-      const yes = cellTextWith(build, /размещ/i, { open_for_placement: true });
-      const no = cellTextWith(build, /размещ/i, { open_for_placement: false });
-      expect(yes).toMatch(/размещение доступно/i);
-      expect(no).toMatch(/размещение закрыто/i);
-      expect(yes).not.toMatch(/^\s*Да\s*$/);
-      expect(no).not.toMatch(/^\s*Нет\s*$/);
-    }
+    const yes = cellText(/размещ/i, { open_for_placement: true });
+    const no = cellText(/размещ/i, { open_for_placement: false });
+    expect(yes).toMatch(/размещение доступно/i);
+    expect(no).toMatch(/размещение закрыто/i);
+    expect(yes).not.toMatch(/^\s*Да\s*$/);
+    expect(no).not.toMatch(/^\s*Нет\s*$/);
   });
 
   it("отсутствующее значение остаётся прочерком, а не «нет»", () => {

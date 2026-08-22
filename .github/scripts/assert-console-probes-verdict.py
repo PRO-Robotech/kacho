@@ -63,20 +63,47 @@ def walk_specs(node: dict) -> list[dict]:
     return out
 
 
-def outcomes(report: dict) -> list[tuple[str, str]]:
-    """Пары «имя пробы → исход». Исход берётся из последнего результата попытки."""
-    res: list[tuple[str, str]] = []
+def outcomes(report: dict) -> list[tuple[str, str, str]]:
+    """Тройки «имя пробы → исход → текст отказа».
+
+    Текст нужен третьей категории (#935): падение НА НАВИГАЦИИ означает, что
+    проба до продукта не дошла, и вердикт о продукте по ней не выносится.
+    """
+    res: list[tuple[str, str, str]] = []
     for spec in walk_specs(report):
         title = spec.get("title") or "(без имени)"
         status = "не исполнена"
+        message = ""
         for t in spec.get("tests", []) or []:
             runs = t.get("results", []) or []
             if runs:
-                status = runs[-1].get("status") or "не исполнена"
+                last = runs[-1]
+                status = last.get("status") or "не исполнена"
+                err = last.get("error") or {}
+                message = err.get("message") or ""
+                if not message:
+                    errs = last.get("errors") or []
+                    if errs:
+                        message = errs[0].get("message") or ""
             elif t.get("status"):
                 status = t["status"]
-        res.append((title, status))
+        res.append((title, status, message))
     return res
+
+
+# Отказы, при которых запрос до продукта НЕ ДОШЁЛ: имя не разрешилось, соединение
+# отвергнуто, стенд недостижим. Список закрытый и узкий намеренно — расширять его
+# «похожими» словами значит превращать третью категорию в маску для красного.
+_UNREACHED = (
+    "net::ERR_NAME_NOT_RESOLVED",
+    "net::ERR_CONNECTION_REFUSED",
+    "net::ERR_CONNECTION_RESET",
+    "net::ERR_ADDRESS_UNREACHABLE",
+)
+
+
+def unreached(message: str) -> bool:
+    return any(tok in message for tok in _UNREACHED)
 
 
 def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
@@ -118,9 +145,26 @@ def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
         )
         rc = 1
 
-    bad = [(n, s) for n, s in got if s != "passed"]
-    for name, status in got:
+    bad = [(n, s, m) for n, s, m in got if s != "passed"]
+    for name, status, _ in got:
         log.append(f"  {'✓' if status == 'passed' else '✗'} {status:<12} {name}")
+
+    # ТРЕТЬЯ КАТЕГОРИЯ (#935): ни одна проба не дошла до продукта.
+    #
+    # Красное означает «продукт ответил не то». Если КАЖДАЯ упавшая проба
+    # отвалилась на самой навигации — стенд недостижим для браузера, и о
+    # продукте не сказано ничего. Код возврата остаётся ненулевым (вычета нет,
+    # прогон не зелёный), но причина названа своя: иначе разбор уходит в
+    # продукт, которого запрос не касался.
+    if bad and len(bad) == len(got) and all(unreached(m) for _, _, m in bad):
+        log.append(
+            f"НЕ ВЫПОЛНИЛОСЬ: все {len(got)} проб отвалились на навигации — до "
+            "продукта не дошла ни одна. Это НЕ вердикт по продукту: разбирать "
+            "надо достижимость стенда для браузера. Шаг «браузер видит консоль» "
+            "задаёт тот же вопрос ДО прогона и обязан был поймать это раньше."
+        )
+        return 1, log
+
     if bad:
         log.append(f"ПРОВАЛ: проб не в состоянии «прошла»: {len(bad)}.")
         log.append(
@@ -144,9 +188,12 @@ _SPEC_WITH_GROUP = (
 )
 
 
-def _report(*statuses: str) -> str:
+def _report(*statuses: str, message: str = "") -> str:
     specs = [
-        {"title": f"проба-{i}", "tests": [{"results": [{"status": s}]}]}
+        {
+            "title": f"проба-{i}",
+            "tests": [{"results": [{"status": s, "error": {"message": message}}]}],
+        }
         for i, s in enumerate(statuses)
     ]
     return json.dumps({"suites": [{"title": "s", "specs": specs}]})
@@ -195,6 +242,47 @@ def self_test() -> int:
         rep.unlink()
         got, _ = verdict(rep, specs)
         cases.append(("отсутствие отчёта ловится", got == 1, 1, got))
+
+        # ТРЕТЬЯ КАТЕГОРИЯ: все пробы отвалились на навигации — вердикт остаётся
+        # ненулевым (вычета нет), но причина названа своя.
+        rep.write_text(
+            _report("failed", "failed", "failed",
+                    message="page.goto: net::ERR_NAME_NOT_RESOLVED at http://x/"),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        cases.append(("недостижимость названа своей причиной",
+                      got == 1 and any("НЕ ВЫПОЛНИЛОСЬ" in ln for ln in log),
+                      "1 + «НЕ ВЫПОЛНИЛОСЬ»", got))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: те же три падения, но по существу продукта — третья
+        # категория объявляться НЕ должна, иначе она станет маской для красного.
+        rep.write_text(
+            _report("failed", "failed", "failed",
+                    message="expect(received).toBeVisible() — элемент не найден"),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        cases.append(("падение по существу третьей категорией НЕ считается",
+                      got == 1 and not any("НЕ ВЫПОЛНИЛОСЬ" in ln for ln in log),
+                      "1 без «НЕ ВЫПОЛНИЛОСЬ»", got))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: часть проб дошла до продукта — значит стенд достижим,
+        # и сетевое падение остальных третьей категорией не объявляется.
+        rep.write_text(
+            json.dumps({"suites": [{"title": "s", "specs": [
+                {"title": "прошла", "tests": [{"results": [{"status": "passed"}]}]},
+                {"title": "упала", "tests": [{"results": [
+                    {"status": "failed",
+                     "error": {"message": "net::ERR_NAME_NOT_RESOLVED"}}]}]},
+                {"title": "прошла-2", "tests": [{"results": [{"status": "passed"}]}]},
+            ]}]}),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        cases.append(("частичная недостижимость третьей категорией НЕ считается",
+                      got == 1 and not any("НЕ ВЫПОЛНИЛОСЬ" in ln for ln in log),
+                      "1 без «НЕ ВЫПОЛНИЛОСЬ»", got))
 
         # КРАСНЕЕТ: дерево проб пусто — «ноль упавших» из ничего.
         empty = root / "empty"

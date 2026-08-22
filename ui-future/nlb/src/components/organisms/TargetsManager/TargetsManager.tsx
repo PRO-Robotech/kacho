@@ -6,7 +6,19 @@
 //
 // Backend (kacho-nlb) матчит :removeTargets по identity-форме (стабильного
 // target id нет), поэтому remove отправляет только oneof-identity без weight.
+//
+// ВИД СЕКЦИИ — ОБЩИЙ, а не свой. Секция «шапка + таблица» рисуется
+// `DetailSurface`, а геометрия строк берётся из `editor-surface` — те же числа,
+// что у меток, статических маршрутов, правил группы и блоков CIDR. Здесь стояли
+// свои: высота строки 41 против общей 42, радиус 8 против 11, своя заливка, свой
+// перечень моноширинных гарнитур и свой стиль шапки колонок. Пять копий одной
+// высоты расходятся молча, и расхождение видно только рядом на одном экране —
+// то есть почти никогда (канон §4, §9).
+//
+// Снят и надзаголовок «Список» со счётчиком «Цели (N)»: надзаголовков в консоли
+// нет, а счётчик снят решением владельца ВЕЗДЕ (канон §1).
 
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button, Input, InputNumber, Select, Space, Spin, Typography } from "antd";
@@ -15,6 +27,20 @@ import { api } from "@/api/client";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
+import { RefNameLink } from "@/components/molecules/RefNameLink";
+import { StatusBadge } from "@/components/atoms/StatusBadge";
+import { DetailSurface, DETAIL_CONTENT_WIDTH } from "@/components/organisms/DetailShell";
+import {
+  EDITOR_ACTIONS_WIDTH,
+  MONO_FONT,
+  editorBodyStyle,
+  editorEmptyStyle,
+  editorFirstRowStyle,
+  editorHeadCellStyle,
+  editorIconButtonStyle,
+  editorRowStyle,
+  editorValueCellStyle,
+} from "@shared/components/organisms/form/editor-surface";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
@@ -36,8 +62,6 @@ export const TARGETS_MANAGER_REPLACEMENT: SetReplacementDraft = {
 };
 
 const TARGET_GROUPS_API = "/nlb/v1/targetGroups";
-const MONO_FONT = "ui-monospace, monospace";
-const ROW_H = 41;
 
 export type TargetKind = "instance" | "nic" | "ip_ref" | "external_ip";
 
@@ -86,17 +110,50 @@ export function buildTargetPayload(kind: TargetKind, f: TargetFormState): Target
   }
 }
 
-// targetIdentity — человекочитаемое представление identity для таблицы.
-export function targetIdentity(t: Target): { label: string; value: string } {
-  if (t.instance_id) return { label: "Виртуальная машина", value: t.instance_id };
-  if (t.nic_id) return { label: "NIC", value: t.nic_id };
-  if (t.ip_ref) return { label: "Адрес в облаке", value: `${t.ip_ref.address ?? ""} (${t.ip_ref.subnet_id ?? ""})` };
-  if (t.external_ip)
-    return {
-      label: "Внешний адрес",
-      value: `${t.external_ip.address ?? ""}${t.external_ip.zone_id ? ` @${t.external_ip.zone_id}` : ""}`,
-    };
-  return { label: "—", value: "" };
+// targetIdentity — вид цели словом. Ветвь `oneof` — закрытое множество, поэтому
+// запасного значения здесь нет: неназванная цель отвечает прочерком.
+export function targetIdentity(t: Target): { label: string } {
+  if (t.instance_id) return { label: "Виртуальная машина" };
+  if (t.nic_id) return { label: "Сетевой интерфейс" };
+  if (t.ip_ref) return { label: "Адрес в облаке" };
+  if (t.external_ip) return { label: "Внешний адрес" };
+  return { label: "—" };
+}
+
+/**
+ * Эндпоинт цели — ССЫЛКА на тот ресурс, которым цель и является.
+ *
+ * Здесь стоял машинный идентификатор плоским моноширинным текстом: ни имени, ни
+ * перехода, при том что соседние поля той же карточки ссылкой уже были. Машина,
+ * интерфейс и подсеть — ресурсы со своими карточками, поэтому рисуются
+ * единственным видом ссылки консоли (канон §9); адрес и зона внешней цели
+ * ресурсом не являются — адрес остаётся значением, зона ведёт в каталог.
+ */
+function TargetEndpoint({ t, projectId }: { t: Target; projectId: string | null }): ReactNode {
+  const project = projectId ?? undefined;
+  if (t.instance_id) {
+    return <RefNameLink specId="compute-instances" refId={t.instance_id} projectId={project} maxChars={40} />;
+  }
+  if (t.nic_id) {
+    return <RefNameLink specId="network-interfaces" refId={t.nic_id} projectId={project} maxChars={40} />;
+  }
+  if (t.ip_ref) {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <span>{t.ip_ref.address || "—"}</span>
+        <RefNameLink specId="subnets" refId={t.ip_ref.subnet_id} projectId={project} maxChars={28} />
+      </span>
+    );
+  }
+  if (t.external_ip) {
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <span>{t.external_ip.address || "—"}</span>
+        {t.external_ip.zone_id ? <RefNameLink specId="zones" refId={t.external_ip.zone_id} maxChars={28} /> : null}
+      </span>
+    );
+  }
+  return <span>—</span>;
 }
 
 // targetIdentityOnly — для :removeTargets backend матчит по identity-форме.
@@ -167,217 +224,187 @@ export function TargetsManager({ targetGroupId, projectId, targets }: Props) {
   };
 
   return (
-    <div style={{ marginTop: 24, maxWidth: 760 }}>
-      {/* Заголовок секции — единый стиль caps-eyebrow + title (как PanelHeader). */}
-      <div style={{ marginBottom: 10 }}>
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-            color: "var(--kc-primary)",
-          }}
-        >
-          Список
-        </div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--kc-text)" }}>
-          Цели <Typography.Text type="secondary">({targets.length})</Typography.Text>
-        </div>
-      </div>
-
-      <div
-        style={{
-          border: "1px solid var(--kc-border)",
-          borderRadius: 8,
-          overflow: "hidden",
-          background: "var(--kc-page)",
-        }}
-      >
-        <table className="w-full text-sm kc-grid-table" style={{ tableLayout: "fixed" }}>
-          <colgroup>
-            <col style={{ width: 130 }} />
-            <col />
-            <col style={{ width: 80 }} />
-            <col style={{ width: 48 }} />
-          </colgroup>
-          <thead>
-            <tr style={{ background: "var(--kc-container)" }}>
-              {["Тип", "Эндпоинт", "Вес", ""].map((h, i) => (
-                <th
-                  key={i}
-                  className="text-left"
-                  style={{
-                    padding: "7px 12px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    letterSpacing: "0.02em",
-                    color: "var(--kc-text-tertiary)",
-                  }}
-                >
-                  {h}
+    <div style={{ marginTop: 24, maxWidth: DETAIL_CONTENT_WIDTH }}>
+      {/* Секция — ОДИН блок: шапка внутри той же поверхности, что и таблица.
+          Заголовок называет предмет, а не способ показа; счётчика при нём нет. */}
+      <DetailSurface title="Цели">
+        <div style={editorBodyStyle}>
+          <table className="w-full kc-grid-table" style={{ tableLayout: "fixed", borderCollapse: "collapse" }}>
+            <colgroup>
+              <col style={{ width: 170 }} />
+              <col />
+              <col style={{ width: 150 }} />
+              <col style={{ width: 80 }} />
+              <col style={{ width: EDITOR_ACTIONS_WIDTH }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th className="text-left" style={editorHeadCellStyle}>
+                  Тип
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {targets.length === 0 && (
-              <tr style={{ height: ROW_H, borderTop: "1px solid var(--kc-border-secondary)" }}>
-                <td
-                  colSpan={4}
-                  style={{
-                    textAlign: "center",
-                    verticalAlign: "middle",
-                    fontSize: 12,
-                    color: "var(--kc-text-tertiary)",
-                  }}
-                >
-                  Цели ещё не добавлены
-                </td>
+                <th className="text-left" style={editorHeadCellStyle}>
+                  Эндпоинт
+                </th>
+                {/* Состояние цели назначает сервер: снятие двухфазное (сперва
+                    слив, потом удаление). Без этой колонки «удаление ничего не
+                    сделало» и «цель сливается» выглядят одинаково — поле
+                    приезжало и не читалось никем. */}
+                <th className="text-left" style={editorHeadCellStyle}>
+                  Состояние
+                </th>
+                <th className="text-left" style={editorHeadCellStyle}>
+                  Вес
+                </th>
+                {/* Колонка действий есть всегда — число колонок не меняется. */}
+                <th style={{ ...editorHeadCellStyle, padding: 0 }} />
               </tr>
-            )}
-            {targets.map((t, i) => {
-              const ident = targetIdentity(t);
-              const key = JSON.stringify(targetIdentityOnly(t));
-              const busy = pendingKey === key && (mutate.isPending || opId !== null);
-              return (
-                <tr
-                  key={i}
-                  className="kc-kv-row"
-                  style={{ height: ROW_H, borderTop: "1px solid var(--kc-border-secondary)" }}
-                >
-                  <td className="px-3" style={{ verticalAlign: "middle" }}>
-                    {ident.label}
-                  </td>
-                  <td
-                    className="px-3 font-mono text-xs"
-                    style={{
-                      verticalAlign: "middle",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {ident.value}
-                  </td>
-                  <td className="px-3" style={{ verticalAlign: "middle" }}>
-                    {t.weight ?? 1}
-                  </td>
-                  <td className="px-1 text-center" style={{ verticalAlign: "middle" }}>
-                    {busy ? (
-                      <Spin indicator={<LoadingOutlined style={{ fontSize: 12 }} spin />} />
-                    ) : (
-                      <Button
-                        type="text"
-                        danger
-                        size="small"
-                        icon={<DeleteOutlined />}
-                        aria-label="Удалить target"
-                        onClick={() => onRemove(t)}
-                        disabled={inputsDisabled}
-                      />
-                    )}
+            </thead>
+            <tbody>
+              {targets.length === 0 && (
+                <tr style={editorFirstRowStyle}>
+                  <td colSpan={5} style={editorEmptyStyle}>
+                    Цели ещё не добавлены
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr style={{ borderTop: "1px solid var(--kc-border-secondary)" }}>
-              <td colSpan={4} style={{ padding: "10px 12px" }}>
-                <Space direction="vertical" size={8} style={{ width: "100%" }}>
-                  <Space wrap align="start" style={{ width: "100%" }}>
-                    <Select
-                      value={kind}
-                      onChange={(v) => setKind(v as TargetKind)}
-                      disabled={inputsDisabled}
-                      style={{ width: 220 }}
-                      options={[
-                        { value: "instance", label: "Виртуальная машина" },
-                        { value: "nic", label: "Сетевой интерфейс" },
-                        { value: "ip_ref", label: "Адрес в облаке (подсеть + адрес)" },
-                        { value: "external_ip", label: "Внешний адрес (вне облака)" },
-                      ]}
-                    />
-                    {kind === "instance" && (
-                      <div style={{ minWidth: 260 }}>
-                        <RefSelect
-                          refResource="compute-instances"
-                          refProjectScoped
-                          value={form.instanceId}
-                          onChange={(v) => set({ instanceId: v || undefined })}
+              )}
+              {targets.map((t, i) => {
+                const ident = targetIdentity(t);
+                const key = JSON.stringify(targetIdentityOnly(t));
+                const busy = pendingKey === key && (mutate.isPending || opId !== null);
+                return (
+                  <tr key={i} className="kc-kv-row" style={i === 0 ? editorFirstRowStyle : editorRowStyle}>
+                    {/* Вид цели — слово, а не машинное значение: у ячейки свой
+                        набор, поэтому моноширинность здесь снята. */}
+                    <td style={{ ...editorValueCellStyle, fontFamily: "inherit" }}>{ident.label}</td>
+                    <td style={{ ...editorValueCellStyle, overflow: "hidden" }}>
+                      <TargetEndpoint t={t} projectId={projectId} />
+                    </td>
+                    <td style={{ ...editorValueCellStyle, fontFamily: "inherit" }}>
+                      <StatusBadge state={t.status} />
+                    </td>
+                    <td style={editorValueCellStyle}>{t.weight ?? 1}</td>
+                    <td style={{ ...editorValueCellStyle, padding: 0, textAlign: "center" }}>
+                      {busy ? (
+                        <Spin indicator={<LoadingOutlined style={{ fontSize: 12 }} spin />} />
+                      ) : (
+                        <Button
+                          type="text"
+                          danger
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          aria-label="Удалить target"
+                          onClick={() => onRemove(t)}
+                          disabled={inputsDisabled}
+                          style={editorIconButtonStyle}
                         />
-                      </div>
-                    )}
-                    {kind === "nic" && (
-                      <div style={{ minWidth: 260 }}>
-                        <RefSelect
-                          refResource="network-interfaces"
-                          refProjectScoped
-                          value={form.nicId}
-                          onChange={(v) => set({ nicId: v || undefined })}
-                        />
-                      </div>
-                    )}
-                    {kind === "ip_ref" && (
-                      <>
-                        <div style={{ minWidth: 220 }}>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: "1px solid var(--kc-border)" }}>
+                <td colSpan={5} style={{ padding: 10 }}>
+                  <Space direction="vertical" size={8} style={{ width: "100%" }}>
+                    <Space wrap align="start" style={{ width: "100%" }}>
+                      <Select
+                        value={kind}
+                        onChange={(v) => setKind(v as TargetKind)}
+                        disabled={inputsDisabled}
+                        style={{ width: 220 }}
+                        options={[
+                          { value: "instance", label: "Виртуальная машина" },
+                          { value: "nic", label: "Сетевой интерфейс" },
+                          { value: "ip_ref", label: "Адрес в облаке (подсеть + адрес)" },
+                          { value: "external_ip", label: "Внешний адрес (вне облака)" },
+                        ]}
+                      />
+                      {kind === "instance" && (
+                        <div style={{ minWidth: 260 }}>
                           <RefSelect
-                            refResource="subnets"
+                            refResource="compute-instances"
                             refProjectScoped
-                            value={form.subnetId}
-                            onChange={(v) => set({ subnetId: v || undefined })}
+                            value={form.instanceId}
+                            onChange={(v) => set({ instanceId: v || undefined })}
                           />
                         </div>
-                        <Input
-                          value={form.ipAddr ?? ""}
-                          onChange={(e) => set({ ipAddr: e.target.value.trim() })}
-                          placeholder="10.0.0.5"
-                          disabled={inputsDisabled}
-                          style={{ width: 160, fontFamily: MONO_FONT, fontSize: 12.5 }}
-                        />
-                      </>
-                    )}
-                    {kind === "external_ip" && (
-                      <>
-                        <Input
-                          value={form.extAddr ?? ""}
-                          onChange={(e) => set({ extAddr: e.target.value.trim() })}
-                          placeholder="203.0.113.10"
-                          disabled={inputsDisabled}
-                          style={{ width: 180, fontFamily: MONO_FONT, fontSize: 12.5 }}
-                        />
-                        <div style={{ minWidth: 200 }}>
+                      )}
+                      {kind === "nic" && (
+                        <div style={{ minWidth: 260 }}>
                           <RefSelect
-                            refResource="zones"
-                            value={form.zoneId}
-                            onChange={(v) => set({ zoneId: v || undefined })}
-                            placeholder="Зона (опц.)"
+                            refResource="network-interfaces"
+                            refProjectScoped
+                            value={form.nicId}
+                            onChange={(v) => set({ nicId: v || undefined })}
                           />
                         </div>
-                      </>
-                    )}
-                    <InputNumber
-                      min={0}
-                      max={1000}
-                      value={form.weight ?? 1}
-                      disabled={inputsDisabled}
-                      onChange={(v) => set({ weight: typeof v === "number" ? v : 1 })}
-                      style={{ width: 90 }}
-                    />
-                    <Button type="dashed" icon={<PlusOutlined />} onClick={onAdd} disabled={!payload || inputsDisabled}>
-                      Добавить
-                    </Button>
+                      )}
+                      {kind === "ip_ref" && (
+                        <>
+                          <div style={{ minWidth: 220 }}>
+                            <RefSelect
+                              refResource="subnets"
+                              refProjectScoped
+                              value={form.subnetId}
+                              onChange={(v) => set({ subnetId: v || undefined })}
+                            />
+                          </div>
+                          <Input
+                            value={form.ipAddr ?? ""}
+                            onChange={(e) => set({ ipAddr: e.target.value.trim() })}
+                            placeholder="10.0.0.5"
+                            disabled={inputsDisabled}
+                            style={{ width: 160, fontFamily: MONO_FONT }}
+                          />
+                        </>
+                      )}
+                      {kind === "external_ip" && (
+                        <>
+                          <Input
+                            value={form.extAddr ?? ""}
+                            onChange={(e) => set({ extAddr: e.target.value.trim() })}
+                            placeholder="203.0.113.10"
+                            disabled={inputsDisabled}
+                            style={{ width: 180, fontFamily: MONO_FONT }}
+                          />
+                          <div style={{ minWidth: 200 }}>
+                            <RefSelect
+                              refResource="zones"
+                              value={form.zoneId}
+                              onChange={(v) => set({ zoneId: v || undefined })}
+                              placeholder="Зона (опц.)"
+                            />
+                          </div>
+                        </>
+                      )}
+                      <InputNumber
+                        min={0}
+                        max={1000}
+                        value={form.weight ?? 1}
+                        disabled={inputsDisabled}
+                        onChange={(v) => set({ weight: typeof v === "number" ? v : 1 })}
+                        style={{ width: 90 }}
+                      />
+                      <Button
+                        type="dashed"
+                        icon={<PlusOutlined />}
+                        onClick={onAdd}
+                        disabled={!payload || inputsDisabled}
+                      >
+                        Добавить
+                      </Button>
+                    </Space>
+                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                      Вес 0–1000; 0 — слить трафик, не удаляя target.
+                    </Typography.Text>
                   </Space>
-                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                    Вес 0–1000; 0 — слить трафик, не удаляя target.
-                  </Typography.Text>
-                </Space>
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </DetailSurface>
 
       <OperationToastWatcher
         opId={opId}
