@@ -28,7 +28,6 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
 	announceapi "github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/announce"
-	internallifecycle "github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/internal_lifecycle"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/listener"
 	lbhandler "github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/loadbalancer"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/operation"
@@ -185,14 +184,6 @@ func registerPublic(reg grpc.ServiceRegistrar, w grpcWiring) {
 // серверов (`grpc.Server.GetServiceInfo`), поэтому «зарегистрировали не туда»
 // видно наблюдением, а не обзором диффа.
 func registerInternal(reg grpc.ServiceRegistrar, w grpcWiring) {
-	// InternalResourceLifecycleService — FGA tuple-sync для kacho-iam.
-	lifecycleHandler := internallifecycle.NewHandler(
-		kachopg.NewLifecycleFeed(w.cfg.Repository.Postgres.URL),
-		w.cfg.InternalLifecycle.MaxStreams,
-		w.logger,
-	)
-	lbv1.RegisterInternalResourceLifecycleServiceServer(reg, lifecycleHandler)
-
 	// InternalLoadBalancerAnnounceService — обратная связь состояния анонса.
 	// Инфра-чувствительные данные (BGP/route/VRF/kernel/infra-id) на внешнюю
 	// поверхность не выходят.
