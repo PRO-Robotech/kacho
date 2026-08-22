@@ -39,6 +39,21 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Скрипты оснастки прогона — тот же Node, но расширение .mjs: без этой
+    // записи их не покрывает НИ один блок, и `no-undef` объявляет `process`
+    // неразрешимым именем. Записаны отдельно от проб, потому что предмет у
+    // них другой: они не утверждают о продукте, а создают условие прогона.
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: { ...globals.node },
+    },
+    rules: {
+      "no-console": "off",
+    },
+  },
+  {
     files: ["**/*.ts"],
     languageOptions: {
       ecmaVersion: "latest",

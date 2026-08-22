@@ -30,6 +30,32 @@ if (!BASE) {
   );
 }
 
+/**
+ * ОТОБРАЖЕНИЕ ИМЕНИ СТЕНДА — ЯВНОЕ, А НЕ ЧЕРЕЗ РЕЗОЛВЕР БРАУЗЕРА (#935)
+ *
+ * Имя стенда своего кластера (`console.kacho.local`) живёт только в `/etc/hosts`
+ * ранера: ingress host-based, и без имени в заголовке `Host` стенд отвечать не
+ * обязан. ОС это имя разрешает, а браузер — своим резолвером, и эти два ответа
+ * РАЗОШЛИСЬ: шаг-гейт получал `200` от curl, а следом ВСЕ пробы падали на
+ * `net::ERR_NAME_NOT_RESOLVED`, то есть ни одна не доходила до продукта, и
+ * «не выполнилось» подавалось как красное.
+ *
+ * Механизм расхождения не установлен (суффикс `.local` зарезервирован за mDNS,
+ * и браузер вправе идти туда вместо файла) — здесь снят САМ ПРЕДМЕТ: адрес
+ * задаётся браузеру отображением, поэтому его резолвер в разрешении имени не
+ * участвует вовсе. Ни адрес, ни заголовок `Host` при этом не меняются, то есть
+ * стенд получает ровно тот же запрос — маскировки нет.
+ *
+ * Ручка ЯВНАЯ и без умолчания: на внешнем стенде имя разрешается по-настоящему,
+ * и молчаливое отображение на localhost увело бы пробы в никуда.
+ */
+const HOST_IP = process.env.KACHO_CONSOLE_HOST_IP;
+const hostResolverArgs = (() => {
+  if (!HOST_IP) return [];
+  const host = new URL(BASE).hostname;
+  return [`--host-resolver-rules=MAP ${host} ${HOST_IP}`];
+})();
+
 export default defineConfig({
   testDir: "./specs",
   timeout: 90_000,
@@ -54,9 +80,12 @@ export default defineConfig({
     // доходил до 100 % КАЖДЫЙ раз, тело архива приходило целиком примерно за
     // секунду, а не укладывалась РАСПАКОВКА — шаг стоял после подъёма стенда и
     // делил ранер с ним. Разбор — в комментарии шага `.github/workflows/console-e2e.yml`.
-    ...(process.env.KACHO_CHROMIUM
-      ? { launchOptions: { executablePath: process.env.KACHO_CHROMIUM } }
-      : {}),
+    launchOptions: {
+      ...(process.env.KACHO_CHROMIUM
+        ? { executablePath: process.env.KACHO_CHROMIUM }
+        : {}),
+      ...(hostResolverArgs.length ? { args: hostResolverArgs } : {}),
+    },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "off",
