@@ -35,6 +35,29 @@
 # (Ory → docker.io/oryd/*).
 global:
   imageRegistry: ""
+  kacho:
+    # ─── СЛУЖБА ЛИЧНОСТИ: АДРЕСА СТЕНДА, А НЕ БОЕВЫЕ ─────────────────────────
+    #
+    # Умолчания собираются из `domain: api.kacho.cloud` и дают
+    # `https://app.api.kacho.cloud/auth/<поток>`. На этом стенде такого имени
+    # нет, слушателя на 443 тоже нет (kind отображает ТОЛЬКО 80 → 28080), а
+    # потоки консольный nginx раздаёт в КОРНЕ (`^/(login|registration|…)`),
+    # без префикса `/auth`. Пока это не объявлено, служба личности уводит
+    # браузер на боевое имя: оно не разрешается, и ни одна проба консоли до
+    # продукта не доходит (прогон 32599157014 — 66 из 66).
+    #
+    # Величины взяты не на глаз: это ровно то, что раздаёт консольный nginx
+    # (ui-future/deploy/templates/configmap-nginx.yaml) — `/.ory/kratos/public/`
+    # на публичный API службы и корневые пути на её интерфейс.
+    identity:
+      appBaseURL: "http://console.kacho.local:28080"
+      kratosPublicBaseURL: "/.ory/kratos/public/"
+      flowPathPrefix: ""
+      # Cookie сессии обязана быть принята браузером на `console.kacho.local`:
+      # родительский домен принимается, чужой (`api.kacho.cloud`) отвергается
+      # целиком, и сессия не держится вовсе.
+      cookieDomain: "kacho.local"
+      webauthnRpId: "kacho.local"
 
 # ─── cluster-internal mTLS (default ON for the dev stand) ──────────────────
 # The whole scheme runs on mTLS: cert-manager mints an internal-CA, every

@@ -60,16 +60,35 @@ deploy/identity_global_defaults_agree_test.go, проба про умолчан�
 
 {{/* Тело настроек службы личности (`kratos.yaml`). */}}
 {{- define "kacho.identity.configYaml" -}}
+{{- /* ── БРАУЗЕРНЫЕ АДРЕСА: ВЫВОДЯТСЯ, НО ПЕРЕОПРЕДЕЛИМЫ ПРОФИЛЕМ ─────────────
+     Ниже — адреса, по которым ходит БРАУЗЕР, а не под. Выводить их из одного
+     `domain` можно ровно там, где консоль стоит на `https://<app>.<domain>`
+     без порта. На стенде разработки она стоит на `http://console.kacho.local:28080`
+     (kind отображает 80 → 28080, слушателя на 443 нет вовсе), а потоки служба
+     раздаёт в КОРНЕ (`^/(login|registration|…)` в nginx консоли), без префикса
+     `/auth`. Невыразимость этой посадки означала не «профиль не настроен», а
+     `https://app.api.kacho.cloud/auth/registration` в браузере стенда: имя не
+     разрешается, и ни одна проба консоли не доходит до продукта.
+
+     Идиома та же, что у `hooks.host`/`hooks.port` выше: ПУСТО ⇒ вывести.
+     Поэтому боевой профиль, который ничего из этого не объявляет, рендерится
+     байт-в-байт как прежде. */ -}}
+{{- $id := .Values.global.kacho.identity -}}
+{{- $app := ($id.appBaseURL | default (printf "https://%s.%s" $id.appSubdomain $id.domain)) -}}
+{{- $kratosPublic := ($id.kratosPublicBaseURL | default (printf "https://%s.%s/" $id.kratosSubdomain $id.domain)) -}}
+{{- $flow := printf "%s%s" $app ($id.flowPathPrefix | toString) -}}
+{{- $cookieDomain := ($id.cookieDomain | default $id.domain) -}}
+{{- $rpID := ($id.webauthnRpId | default $id.domain) -}}
 version: v1.3.1
 
 # ─── Serve endpoints ────────────────────────────────────────────────
 serve:
   public:
-    base_url: https://{{ .Values.global.kacho.identity.kratosSubdomain }}.{{ .Values.global.kacho.identity.domain }}/
+    base_url: {{ $kratosPublic }}
     cors:
       enabled: true
       allowed_origins:
-        - https://{{ .Values.global.kacho.identity.appSubdomain }}.{{ .Values.global.kacho.identity.domain }}
+        - {{ $app }}
       allowed_methods: [POST, GET, PUT, PATCH, DELETE]
       allowed_headers: [Authorization, Cookie, Content-Type]
       exposed_headers: [Content-Type, Set-Cookie]
@@ -85,9 +104,9 @@ identity:
 
 # ─── Selfservice flows ──────────────────────────────────────────────
 selfservice:
-  default_browser_return_url: https://{{ .Values.global.kacho.identity.appSubdomain }}.{{ .Values.global.kacho.identity.domain }}/
+  default_browser_return_url: {{ $app }}/
   allowed_return_urls:
-    - https://{{ .Values.global.kacho.identity.appSubdomain }}.{{ .Values.global.kacho.identity.domain }}/
+    - {{ $app }}/
 
   methods:
     # WebAuthn / Passkey — primary authentication method (acceptance §5.1).
@@ -98,11 +117,11 @@ selfservice:
         rp:
           # RP-id = root домен. WebAuthn Level 3 §5.1.3 разрешает RP-id равным
           # eTLD+1 → credentials работают для всех поддоменов (app., kratos., …).
-          id: {{ .Values.global.kacho.identity.domain | quote }}
+          id: {{ $rpID | quote }}
           display_name: "Kacho Cloud"
           # Origin строго совпадает с UI origin (acceptance §6.1.4 — phishing-resistance).
           origins:
-            - https://{{ .Values.global.kacho.identity.appSubdomain }}.{{ .Values.global.kacho.identity.domain }}
+            - {{ $app }}
 
     # Password fallback (acceptance §5.1, §6.3.1):
     #   - Argon2id m=64MB t=3 p=4 (Kratos default tuned per OWASP 2024).
@@ -142,7 +161,7 @@ selfservice:
     # ─── Registration ────────────────────────────────────────────
     registration:
       enabled: true
-      ui_url: https://{{ .Values.global.kacho.identity.appSubdomain }}.{{ .Values.global.kacho.identity.domain }}/auth/registration
+      ui_url: {{ $flow }}/registration
       lifespan: 30m
       after:
         webauthn:
@@ -185,7 +204,7 @@ selfservice:
 
     # ─── Login ───────────────────────────────────────────────────
     login:
-      ui_url: https://{{ .Values.global.kacho.identity.appSubdomain }}.{{ .Values.global.kacho.identity.domain }}/auth/login
+      ui_url: {{ $flow }}/login
       lifespan: 30m
       after:
         webauthn:
@@ -223,7 +242,7 @@ selfservice:
     # ─── Settings ────────────────────────────────────────────────
     # Privileged flow — re-authentication every 15min.
     settings:
-      ui_url: https://{{ .Values.global.kacho.identity.appSubdomain }}.{{ .Values.global.kacho.identity.domain }}/auth/settings
+      ui_url: {{ $flow }}/settings
       lifespan: 30m
       privileged_session_max_age: 15m
       required_aal: highest_available
@@ -234,7 +253,7 @@ selfservice:
     # в Phase 2; relaxed /24 — Phase 12 hardening per §10 Q5).
     recovery:
       enabled: true
-      ui_url: https://{{ .Values.global.kacho.identity.appSubdomain }}.{{ .Values.global.kacho.identity.domain }}/auth/recovery
+      ui_url: {{ $flow }}/recovery
       lifespan: 5m
       use: code
       after:
@@ -268,18 +287,18 @@ selfservice:
     # ─── Verification ────────────────────────────────────────────
     verification:
       enabled: true
-      ui_url: https://{{ .Values.global.kacho.identity.appSubdomain }}.{{ .Values.global.kacho.identity.domain }}/auth/verification
+      ui_url: {{ $flow }}/verification
       lifespan: 15m
       use: code
 
     # ─── Logout ──────────────────────────────────────────────────
     logout:
       after:
-        default_browser_return_url: https://{{ .Values.global.kacho.identity.appSubdomain }}.{{ .Values.global.kacho.identity.domain }}/
+        default_browser_return_url: {{ $app }}/
 
     # ─── Error ───────────────────────────────────────────────────
     error:
-      ui_url: https://{{ .Values.global.kacho.identity.appSubdomain }}.{{ .Values.global.kacho.identity.domain }}/auth/error
+      ui_url: {{ $flow }}/error
 
 # ─── Session ────────────────────────────────────────────────────────
 session:
@@ -287,7 +306,7 @@ session:
   # (отдельный жизненный цикл — acceptance §2.3).
   lifespan: 24h
   cookie:
-    domain: {{ .Values.global.kacho.identity.domain | quote }}
+    domain: {{ $cookieDomain | quote }}
     same_site: Lax
     path: /
     persistent: true
