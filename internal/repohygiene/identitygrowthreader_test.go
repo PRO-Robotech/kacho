@@ -47,8 +47,6 @@ var (
 	identityGrowthMetricNameRe = regexp.MustCompile(`"(kacho_iam_[a-z0-9_]+)"`)
 	// строчный комментарий Go
 	identityGrowthGoCommentRe = regexp.MustCompile(`(?m)^\s*//.*$`)
-	// строчный комментарий YAML
-	identityGrowthYAMLCommentRe = regexp.MustCompile(`(?m)^\s*#.*$`)
 )
 
 // TestIdentityGrowthMetricsHaveANamedReader — каждый ряд семейства назван хотя
@@ -93,9 +91,17 @@ func TestIdentityGrowthMetricsHaveANamedReader(t *testing.T) {
 	}
 }
 
-// TestIdentityGrowthReaderGate_CanFailAndIgnoresProse — доказательство того, что
-// разбор способен упасть и что законная форма его не тревожит.
-func TestIdentityGrowthReaderGate_CanFailAndIgnoresProse(t *testing.T) {
+// TestIdentityGrowthReaderGate_CanFailAndJudgesOnlyExecutableText — доказательство
+// того, что разбор способен упасть и что законная форма его не тревожит.
+//
+// БЛИЗНЕЦ ПОДБИРАЕТСЯ ПОД КЛАСС, А НЕ ПОД РЕАЛИЗАЦИЮ. Прежняя редакция ставила
+// рядом комментарий, занимающий строку целиком, — то есть ровно ту форму,
+// которую снятие и умело снимать, — и потому подтверждала только уже
+// написанное. Хвостовая форма (`… > 100  # снято правило про <ряд>`) проходила
+// мимо гейта в ОБЕИХ формах выражения. Поэтому близнецы ниже перечисляют класс:
+// где комментарий, а где `#`, комментария не открывающий, — и по каждой оси
+// утверждается ОБЕ стороны.
+func TestIdentityGrowthReaderGate_CanFailAndJudgesOnlyExecutableText(t *testing.T) {
 	// Инъекция: документ, где ряд назван ТОЛЬКО в пояснении. Пояснение не
 	// срабатывает, поэтому читателем не является.
 	const proseOnly = "```yaml\n" +
@@ -150,6 +156,72 @@ func TestIdentityGrowthReaderGate_CanFailAndIgnoresProse(t *testing.T) {
 	}
 	if !strings.Contains(com, "kacho_iam_lro_reconcile_runs_total") {
 		t.Fatalf("исполняемая часть выражения потеряна вместе с комментарием: %q", com)
+	}
+
+	// Законный близнец 4: ХВОСТОВОЙ комментарий, ОДНОСТРОЧНАЯ форма. Это и есть
+	// подмена, которой снимают правило: выражение переписано на другой ряд, а
+	// снятый оставлен памяткой в конце строки. Пока памятка засчитывалась
+	// читателем, гейт зеленел при отсутствующем читателе.
+	const tailInline = "```yaml\n" +
+		"- alert: TailInline\n" +
+		"  expr: increase(kacho_iam_lro_inflight[1h]) > 100  # снято правило про kacho_iam_identities_total\n" +
+		"```\n"
+	tail := strings.Join(alertExpressionsIn(tailInline), "\n")
+	if strings.Contains(tail, "kacho_iam_identities_total") {
+		t.Fatalf("ряд из ХВОСТОВОГО комментария принят за читателя: %q", tail)
+	}
+	if !strings.Contains(tail, "kacho_iam_lro_inflight") {
+		t.Fatalf("исполняемая часть выражения снята вместе с хвостовым комментарием: %q", tail)
+	}
+
+	// Законный близнец 5: тот же комментарий в БЛОЧНОЙ форме. Формы правила
+	// пишутся обе, и починка одной оставила бы вторую дырой.
+	const tailBlock = "```yaml\n" +
+		"- alert: TailBlock\n" +
+		"  expr: |\n" +
+		"    increase(kacho_iam_lro_inflight[1h]) > 100  # снято правило про kacho_iam_identities_total\n" +
+		"```\n"
+	tailB := strings.Join(alertExpressionsIn(tailBlock), "\n")
+	if strings.Contains(tailB, "kacho_iam_identities_total") {
+		t.Fatalf("ряд из хвостового комментария БЛОЧНОЙ формы принят за читателя: %q", tailB)
+	}
+	if !strings.Contains(tailB, "kacho_iam_lro_inflight") {
+		t.Fatalf("исполняемая часть блочного выражения снята вместе с комментарием: %q", tailB)
+	}
+
+	// Законный близнец 6: `#` ВНУТРИ строкового литерала комментария не
+	// открывает. Отрезать по нему значило бы вырезать половину исполняемого
+	// выражения — то есть объявить находкой правило, которое читателем является.
+	// Три вида кавычек: двойные и одинарные (YAML и PromQL) и обратные — сырая
+	// строка PromQL.
+	for _, quoted := range []struct {
+		name string
+		doc  string
+	}{
+		{"двойные кавычки", "```yaml\n- alert: Q1\n  expr: rate(kacho_iam_identities_total{path=\"/a #b\"}[5m]) > 0\n```\n"},
+		{"одинарные кавычки", "```yaml\n- alert: Q2\n  expr: rate(kacho_iam_identities_total{path='/a #b'}[5m]) > 0\n```\n"},
+		{"сырая строка PromQL", "```yaml\n- alert: Q3\n  expr: rate(kacho_iam_identities_total{path=`/a #b`}[5m]) > 0\n```\n"},
+		{"блочная форма", "```yaml\n- alert: Q4\n  expr: |\n    rate(kacho_iam_identities_total{path=\"/a #b\"}[5m]) > 0\n```\n"},
+	} {
+		got := strings.Join(alertExpressionsIn(quoted.doc), "\n")
+		if !strings.Contains(got, "kacho_iam_identities_total") {
+			t.Fatalf("%s: ряд из выражения потерян — `#` внутри литерала принят за комментарий: %q",
+				quoted.name, got)
+		}
+		if !strings.Contains(got, "> 0") {
+			t.Fatalf("%s: хвост выражения отрезан по `#` внутри литерала: %q", quoted.name, got)
+		}
+	}
+
+	// Законный близнец 7: `#`, прижатый к предыдущему знаку, комментария не
+	// открывает ни в YAML, ни в PromQL.
+	const glued = "```yaml\n" +
+		"- alert: Glued\n" +
+		"  expr: rate(kacho_iam_identities_total{ref=\"a#b\"}[5m]) > 0\n" +
+		"```\n"
+	gl := strings.Join(alertExpressionsIn(glued), "\n")
+	if !strings.Contains(gl, "kacho_iam_identities_total") || !strings.Contains(gl, "> 0") {
+		t.Fatalf("прижатый `#` принят за начало комментария: %q", gl)
 	}
 
 	// Разбор объявления: имя ряда берётся из кода, а не из его комментария.
@@ -232,7 +304,58 @@ func alertExpressionsIn(doc string) []string {
 	return out
 }
 
-// stripYAMLComments снимает строчные комментарии YAML.
+// stripYAMLComments снимает комментарии — и строчные, и ХВОСТОВЫЕ.
+//
+// Хвостовая форма и есть предмет, ради которого снятие заведено: имя ряда,
+// убранного из выражения и оставленного памяткой в конце строки, продолжало бы
+// считаться читателем. Прежняя редакция снимала только строку-комментарий
+// целиком, поэтому подмена вида
+//
+//	expr: increase(kacho_iam_lro_inflight[1h]) > 100  # снято правило про kacho_iam_identities_total
+//
+// оставляла гейт зелёным при отсутствующем читателе — в ОБЕИХ формах выражения,
+// однострочной и блочной.
+//
+// Regex по всему тексту здесь не годится, и разбор YAML тоже. Regex не отличает
+// комментарий от `#` внутри строкового литерала и вырезал бы исполняемую часть
+// выражения. Разбор YAML не годится по другой причине: в блочном скаляре (`|`)
+// YAML комментариев не знает вовсе — там `#` начинает комментарий PromQL,
+// который снять всё равно надо. Поэтому — свой обход со знанием кавычек, одно
+// правило на обе формы.
 func stripYAMLComments(s string) string {
-	return identityGrowthYAMLCommentRe.ReplaceAllString(s, "")
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = stripCommentFromLine(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// stripCommentFromLine отрезает хвост строки, начиная с `#`, который открывает
+// комментарий.
+//
+// `#` открывает комментарий, когда он первый знак строки либо ему предшествует
+// пробельный, и он не внутри строкового литерала. Кавычек три вида: двойные и
+// одинарные (ими квотирует и YAML, и PromQL) и обратные — сырая строка PromQL.
+// `#`, прижатый к предыдущему знаку (`a#b`), комментария не открывает ни в YAML,
+// ни в PromQL.
+func stripCommentFromLine(line string) string {
+	var quote byte // 0 — вне строки; иначе знак, которым она открыта
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case quote != 0:
+			if c == '\\' && quote == '"' {
+				i++ // экранированный знак строку не закрывает
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'' || c == '`':
+			quote = c
+		case c == '#' && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t'):
+			return strings.TrimRight(line[:i], " \t")
+		}
+	}
+	return line
 }
