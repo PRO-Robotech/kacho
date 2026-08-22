@@ -427,6 +427,27 @@ func main() {
 	// anonymous when requireForAllRequests=false).
 	var dpopMiddleware *middleware.DPoPMiddleware
 	var cnfGRPCInterceptor *middleware.CnfBindingInterceptor
+	// ХРАНИЛИЩЕ ОДНОКРАТНОСТИ СТРОИТСЯ ЗДЕСЬ, а не ниже по файлу: его же
+	// запись держит однократность предъявления доказательства владения
+	// (DPoP), и страж этой проверки собирается парой строк ниже. Порядок
+	// здесь — не стиль: страж, собранный раньше хранилища, получил бы память
+	// процесса при живом общем хранилище, и различие увидела бы только вторая
+	// реплика — то есть никто (#909).
+	if pairErr := validateIdempotencyFleetPairing(IdempotencyPairing{
+		StoreKind: cfg.IdempotencyStoreKind,
+		DSN:       cfg.IdempotencyDSN,
+		FleetSize: cfg.FleetSize,
+	}); pairErr != nil {
+		log.Fatalf("idempotency store startup-validation: %v", pairErr)
+	}
+	idempStore, sharedReplayStore, idempCloser, idempErr := buildIdempotencyStore(context.Background(), cfg, logger)
+	if idempErr != nil {
+		log.Fatalf("idempotency store: %v", idempErr)
+	}
+	if idempCloser != nil {
+		defer func() { _ = idempCloser.Close() }()
+	}
+
 	if cfg.AuthNEnableDPoP {
 		var verifierErr error
 		// Reuse the SAME verifier instance already wired into the
@@ -436,12 +457,33 @@ func main() {
 			log.Fatalf("jwt verifier (required by DPoP): %v", jverr)
 		}
 		verifier := jwtVerifier
-		replayCache := middleware.NewDPoPReplayCache(middleware.DPoPReplayCacheConfig{
-			MaxEntries: cfg.DPoPReplayCacheSize,
-			TTL:        time.Duration(cfg.DPoPReplayCacheTTLSeconds) * time.Second,
-		})
+		// ОДНОКРАТНОСТЬ ПРЕДЪЯВЛЕНИЯ — свойство ФЛОТА, а не процесса.
+		//
+		// Пока запись о предъявленном доказательстве живёт в памяти, обещание
+		// верно ровно до второй реплики: перехваченное доказательство, поданное
+		// в соседний под, записи не находит и проходит. Отказа при этом не
+		// происходит и следа не остаётся (#909).
+		//
+		// Общее хранилище берётся ТО ЖЕ, что держит ключ однократности: второй
+		// пул к той же базе ради того же предмета был бы вторым местом об одном.
+		// Его отсутствие законно ровно при флоте в одну реплику — и это
+		// проверено при старте, парой строк выше.
+		replayTTL := time.Duration(cfg.DPoPReplayCacheTTLSeconds) * time.Second
+		var replayGuard middleware.DPoPReplayGuard
+		if sharedReplayStore != nil {
+			replayGuard = newDPoPReplayStore(sharedReplayStore, replayTTL, dpopReplayStoreTimeout)
+			logger.Info("dpop replay guard: shared, spans the whole fleet",
+				"ttl", replayTTL, "fleet_size", cfg.FleetSize)
+		} else {
+			replayGuard = middleware.NewDPoPReplayCache(middleware.DPoPReplayCacheConfig{
+				MaxEntries: cfg.DPoPReplayCacheSize,
+				TTL:        replayTTL,
+			})
+			logger.Info("dpop replay guard: in this process only, valid for a single replica",
+				"ttl", replayTTL, "fleet_size", cfg.FleetSize)
+		}
 		dpopValidator, derr := middleware.NewDPoPValidator(middleware.DPoPValidatorConfig{
-			ReplayCache:  replayCache,
+			ReplayCache:  replayGuard,
 			IatFreshness: time.Duration(cfg.DPoPIatFreshnessSeconds) * time.Second,
 		})
 		if derr != nil {
@@ -846,20 +888,6 @@ func main() {
 	// памяти процесса законно ровно для одной реплики; пару «вид хранилища ↔
 	// объявленный размер флота» сверяет отказ в старте ниже, а чарт рендерит
 	// размер флота из того же значения, что питает автомасштабирование.
-	if pairErr := validateIdempotencyFleetPairing(IdempotencyPairing{
-		StoreKind: cfg.IdempotencyStoreKind,
-		DSN:       cfg.IdempotencyDSN,
-		FleetSize: cfg.FleetSize,
-	}); pairErr != nil {
-		log.Fatalf("idempotency store startup-validation: %v", pairErr)
-	}
-	idempStore, idempCloser, idempErr := buildIdempotencyStore(context.Background(), cfg, logger)
-	if idempErr != nil {
-		log.Fatalf("idempotency store: %v", idempErr)
-	}
-	if idempCloser != nil {
-		defer func() { _ = idempCloser.Close() }()
-	}
 
 	// Build the HTTP chain. The DPoP middleware sits between the
 	// legacy auth-interceptor and the access-log: legacy fills principal
