@@ -220,7 +220,7 @@ describe("строка инструментов", () => {
     renderList(spec);
     await screen.findAllByText("первая");
 
-    const поиск = screen.getByRole("textbox");
+    const поиск = screen.getByRole("searchbox");
     const столбцы = screen.getByRole("button", { name: "Столбцы" });
     const создать = screen.getByRole("link", { name: /Создать/ });
     const таблица = screen.getByRole("table");
@@ -250,7 +250,7 @@ describe("строка инструментов", () => {
     await screen.findAllByText("первая");
 
     const отбор = screen.getByRole("combobox");
-    const поиск = screen.getByRole("textbox");
+    const поиск = screen.getByRole("searchbox");
 
     const раньше = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 

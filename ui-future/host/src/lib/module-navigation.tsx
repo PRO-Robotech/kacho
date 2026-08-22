@@ -157,6 +157,18 @@ export function specIdFromPath(path: string): string {
  *
  * Теперь сопоставление идёт по объявленному `segment` любого раздела, и
  * следующий раздел вне области проекта заработает сам, без правки этой функции.
+ *
+ * ПЕРВЫЙ СЕГМЕНТ — НЕ ЕДИНСТВЕННЫЙ ПРИЗНАК: раздел может лежать ВНУТРИ чужого
+ * адресного пространства. «Токены и ключи» объявлены своим разделом (рейл
+ * показывает их отдельной плиткой), а живут под `/system/tokens/…` — по первому
+ * сегменту находился сосед, и колонка показывала ЕГО пункты. Пока у этой части
+ * была собственная полоса вкладок, расхождение не бросалось в глаза; как только
+ * полосу сняли, части одного раздела остались вовсе без перечня.
+ *
+ * Поэтому сначала спрашивается ПРИНАДЛЕЖНОСТЬ АДРЕСА: раздел, чей пункт
+ * совпадает с открытым адресом, и есть тот, чьи пункты надо показать. Сегмент
+ * остаётся запасным признаком — он отвечает на посадочных адресах, где ни один
+ * пункт ещё не выбран.
  */
 export function activeSection(sections: RailSection[], pathname: string): RailSection | null {
   const inProject = pathname.match(/^\/projects\/[^/]+\/([^/]+)/);
@@ -164,6 +176,14 @@ export function activeSection(sections: RailSection[], pathname: string): RailSe
 
   const top = pathname.split("/").filter(Boolean)[0];
   if (!top) return null;
+
+  // Принадлежность адреса пункту — сильнее совпадения по сегменту: у вложенного
+  // раздела сегмент не совпадает с первым сегментом его же адресов.
+  const byItem = sections.find((section) =>
+    section.items.some((item) => pathname === item.path || pathname.startsWith(`${item.path}/`)),
+  );
+  if (byItem) return byItem;
+
   return sections.find((section) => section.segment === top) ?? null;
 }
 
