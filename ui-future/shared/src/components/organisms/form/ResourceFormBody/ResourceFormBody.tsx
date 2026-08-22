@@ -3,12 +3,17 @@
 // и modal-шеллом (Inline*Form), и page-шеллом (ResourceCreate/EditPage), что
 // даёт паритет create==edit==modal==page. Шеллы владеют state + mutation +
 // Operation-flow и передают obj/onChange/lockedPaths/submit сюда.
+import { useId, useState } from "react";
 import { Alert, Form } from "antd";
 import { FormFieldRenderer } from "@shared/components/organisms/form/FormField";
+import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FieldLabel } from "@shared/components/organisms/form/FieldLabel";
+import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { ImmutableField } from "@shared/components/organisms/form/ImmutableField";
+import { checkFields, hasErrors } from "@shared/components/organisms/form/field-rules";
+import { FORM_DIVIDER_STYLE } from "@shared/components/organisms/form/editor-surface";
 import { getByPath } from "@shared/lib/path";
 import type { ResourceSpec } from "@shared/lib/resource-registry";
 import type { FormField } from "@shared/lib/form-schema";
@@ -23,7 +28,8 @@ export interface ResourceFormBodyProps {
   lockedPaths?: Set<string>;
   /** per-field enum option narrowing (create-context). */
   fieldOptionsFilter?: Record<string, string[]>;
-  /** title override (default "Создание/Редактирование: <singular>"). */
+  /** Заголовок формы. Не задан — шапка называет действие с предметом одной
+   *  строкой («Создать подсеть»); надзаголовка-действия над ней нет. */
   title?: string;
   submitLabel: string;
   submitting: boolean;
@@ -31,6 +37,14 @@ export interface ResourceFormBodyProps {
   onCancel: () => void;
   /** sticky footer for tall forms. */
   stickyFooter?: boolean;
+  /** Отказ, относящийся к форме ЦЕЛИКОМ, а не к отдельному полю: «эта
+   *  комбинация не создаётся вовсе». Показывается ВМЕСТЕ с полевыми отказами и
+   *  не ждёт их устранения — он о другом.
+   *
+   *  Разница существенная и наблюдалась: выбрав несоздаваемый вид машины,
+   *  арендатор узнавал об этом лишь заполнив зону, тип и образ, — то есть
+   *  проделав работу, которая всё равно не могла привести к созданию. */
+  formError?: string | null;
 }
 
 // Канон формы — имя поля в левой колонке, ввод в правой. Во всю ширину выходит
@@ -65,6 +79,7 @@ export function matchesVisibleWhen(
   return Array.isArray(vw.equals) ? vw.equals.includes(cur) : cur === vw.equals;
 }
 
+
 function displayValue(obj: Record<string, unknown>, field: FormField): React.ReactNode {
   const raw = getByPath(obj, field.name);
   if (field.type === "enum") {
@@ -87,7 +102,18 @@ export function ResourceFormBody({
   onSubmit,
   onCancel,
   stickyFooter,
+  formError,
 }: ResourceFormBodyProps) {
+  // Хуки стоят ДО раннего возврата: ресурс без схемы формы уходит из функции
+  // ниже, и хук, оказавшийся за этим возвратом, вызывался бы не на каждом
+  // рендере — это нарушение правил хуков, а не стилистика.
+  //
+  // `attempted` — «отправку уже пробовали». Отдельным состоянием, а не выводом
+  // из `submitting`: отправка не начинается, пока форма не прошла проверку, и
+  // вывод по `submitting` означал бы «отказы показываются только тогда, когда
+  // отказов нет».
+  const [attempted, setAttempted] = useState(false);
+  const uid = useId();
   const fields = spec.fields;
   if (!fields) {
     return <Alert type="warning" message={`У ресурса ${spec.singular} нет form-schema; используйте API напрямую.`} />;
@@ -95,24 +121,63 @@ export function ResourceFormBody({
   const editMode = mode === "edit";
   const locked = lockedPaths ?? new Set<string>();
 
-  const visible = fields.filter((f) => {
+  const shown = fields.filter((f) => {
     if (f.hidden) return false;
     if (editMode && (f.editHidden || f.createOnly)) return false;
     if (!editMode && f.updateOnly) return false;
     return matchesVisibleWhen(obj, f.visibleWhen);
   });
 
-  return (
-    <FormShell specId={spec.id} mode={mode} singular={spec.singular} title={title}>
-      <Form
-        layout="horizontal"
-        labelCol={{ flex: "200px" }}
-        wrapperCol={{ flex: "1 1 0" }}
-        labelAlign="left"
-        colon={false}
-        size="middle"
-      >
-        {visible.map((f) => {
+  // ОБЩИЕ ПОЛЯ ИДУТ ПЕРВЫМИ И ВСЕГДА В ОДНОМ ПОРЯДКЕ (решение владельца):
+  // имя → описание → метки, затем черта, затем поля самого ресурса.
+  //
+  // Порядок объявления в реестре у ресурсов разный — у подсети форма начиналась
+  // с выбора сети, у прочих с имени. Из-за этого рука шла к разным местам на
+  // соседних формах, а метки находились то вторыми, то последними. Между тем
+  // первые три поля есть у КАЖДОГО ресурса и означают везде одно, так что их
+  // место — свойство продукта, а не отдельной формы.
+  //
+  // Порядок задаётся ЗДЕСЬ, а не переписыванием реестров: реестров восемь, и
+  // договорённость, живущая в восьми местах, разойдётся при первом же новом
+  // ресурсе. Поля, которых у ресурса нет, просто отсутствуют — черта тогда
+  // встаёт сразу после тех, что есть, а если общих полей нет вовсе, её нет.
+  const COMMON_ORDER = ["name", "description", "labels"];
+  const common = COMMON_ORDER.map((n) => shown.find((f) => f.name === n)).filter(
+    (f): f is (typeof shown)[number] => f !== undefined,
+  );
+  const rest = shown.filter((f) => !COMMON_ORDER.includes(f.name));
+  const visible = [...common, ...rest];
+  // Черта отделяет «как назвать» от «чем это будет»: индекс, ПЕРЕД которым она
+  // рисуется. Ноль означает, что общих полей у ресурса нет и отделять нечего.
+  const dividerBefore = common.length > 0 && rest.length > 0 ? common.length : -1;
+
+  // Отказы показываются ПОСЛЕ попытки отправки, а не с первого рендера: форма,
+  // краснеющая ещё до того, как её тронули, обвиняет за незаполненное поле того,
+  // кто только что её открыл. Обязательность до отправки сообщает звёздочка у
+  // подписи и `aria-required` у самого ввода.
+  //
+  // Считаются они на КАЖДОМ рендере по текущему `obj`, а не запоминаются снимком:
+  // поправленное поле выходит из отказа сразу, как только его тронули, а
+  // соседнее остаётся названным. Снимок, сделанный в момент отправки, держал бы
+  // красным поле, которое уже исправлено, — и подталкивал бы жать «создать»
+  // второй раз, чтобы узнать, помогло ли.
+  const errors = attempted ? checkFields(visible, obj, { editMode, lockedPaths: locked }) : {};
+
+  const handleSubmit = () => {
+    setAttempted(true);
+    if (hasErrors(checkFields(visible, obj, { editMode, lockedPaths: locked }))) return;
+    // Общий отказ формы отправку ЗДЕСЬ не останавливает — и это осознанно.
+    // Останавливает её вызывающий: он же владеет проверкой (`spec.validate`) и
+    // он же показывает отказ в своём тоне («<Ресурс> не создан: <причина>»),
+    // одинаковом с отказом края. Перехватить отправку здесь значило бы отнять у
+    // него этот тон и оставить пользователя без привычного сообщения.
+    //
+    // Роль этого компонента другая и она дополняющая: назвать причину СРАЗУ,
+    // рядом с полями, — до того, как человек заполнит остальное и нажмёт.
+    onSubmit();
+  };
+
+  const renderField = (f: (typeof shown)[number]) => {
           const isLocked = locked.has(f.name) || (editMode && !!f.immutable);
           const fullWidth = isFullWidthField(f);
 
@@ -139,15 +204,39 @@ export function ResourceFormBody({
                 }
               : f;
 
+          // Здесь показывается отказ САМОГО поля — и только он. Отказ подполя
+          // строки списка наверх НЕ всплывает: его показывает сама строка, у
+          // которой не заполнили ввод (`FormField` ставит `FieldError` в строке
+          // с одним подполем, в строке с несколькими и в строке таблицы
+          // значений). Всплытие давало то же сообщение вторым местом — у поля
+          // целиком, — и читатель искал незаполненный ввод глазами по всему
+          // списку, хотя претензия относилась к одной его строке.
+          //
+          // Прежняя редакция этого примечания утверждала обратное («отказ поля и
+          // отказ строки — ОДНО сообщение под полем») и обосновывала это тем,
+          // что у строки таблицы значений места под сообщение нет by
+          // construction. Оба утверждения пережили свой предмет: всплытие снято
+          // решением владельца, а место у строки заведено (`EditableKVTable`,
+          // проп `rowErrors`). Два места об одном предмете, из которых верно
+          // одно, — поэтому неверное снято, а не оставлено рядом.
+          const problem = errors[f.name];
+          const errId = fieldErrorId(`${uid}-${f.name}`);
+
           const inner = (
-            <FormFieldRenderer
-              field={field}
-              pathPrefix=""
-              value={obj}
-              onChange={onChange}
-              editMode={editMode}
-              hideLabel={!fullWidth}
-            />
+            <>
+              <FormFieldRenderer
+                field={field}
+                pathPrefix=""
+                value={obj}
+                onChange={onChange}
+                editMode={editMode}
+                hideLabel={!fullWidth}
+                invalid={!!errors[f.name]}
+                describedBy={errId}
+                itemErrors={errors}
+              />
+              <FieldError id={errId} message={problem} />
+            </>
           );
 
           if (fullWidth) {
@@ -162,18 +251,40 @@ export function ResourceFormBody({
               {inner}
             </Form.Item>
           );
-        })}
+  };
+
+  return (
+    <FormShell specId={spec.id} mode={mode} singular={spec.singular} accusative={spec.accusative} title={title}>
+      <FormGrid>
+        {common.map(renderField)}
+        {/* ЧЕРТА отделяет «как назвать» от «чем это будет». Она часть сетки
+            (`gridColumn: 1 / -1`), а не обёртка вокруг поля: обёртка сломала бы
+            раскладку «имя слева, ввод справа», которую задаёт сама сетка.
+
+            Стиль берётся ОБЪЯВЛЕННЫЙ (`FORM_DIVIDER_STYLE`), а не выписанный
+            здесь. Выписанный был дословной копией объявления — и это ровно тот
+            случай, ради которого объявление и заводили: две черты разной
+            толщины на соседних формах читаются как разные места продукта, а
+            пока копии совпадают побайтово, расхождения не видно вовсе. */}
+        {dividerBefore > 0 && <div style={FORM_DIVIDER_STYLE} aria-hidden />}
+        {rest.map(renderField)}
+
+        {/* Общий отказ формы — НАД подвалом, там, где на него смотрят перед
+            нажатием, и ВСЕГДА, а не после первой попытки: он говорит не «поле
+            не заполнено», а «эта комбинация не создастся вовсе», и узнать это
+            стоит до того, как заполнены остальные поля. */}
+        {formError && <FieldError message={formError} />}
 
         {/* Футер — вне грид-Form.Item (иначе наследует пустую 200px label-колонку
             и кнопки/разделитель уезжают вправо). Рендерим на всю ширину формы. */}
         <FormFooter
           submitLabel={submitLabel}
           submitting={submitting}
-          onSubmit={onSubmit}
+          onSubmit={handleSubmit}
           onCancel={onCancel}
           sticky={stickyFooter}
         />
-      </Form>
+      </FormGrid>
     </FormShell>
   );
 }

@@ -32,6 +32,25 @@ The script starts all required port-forwards and stops them when you press `Ctrl
 `iam.projectses.list`, предмет ищется в состоянии базы iam и в дренаже журнала
 `kacho_iam.fga_outbox`, а не в отдельном инструменте починки.
 
+## Linux / WSL: run the whole console locally
+
+`dev-federation.ps1` is PowerShell-only and names **four** remotes while the tree
+has **eight**. `dev-federation.sh` derives the list from `host/vite.config.ts`
+instead of repeating it, so a new remote cannot be silently left out:
+
+```bash
+./proxies.sh          # terminal 1 — port-forwards into kind
+./dev-federation.sh   # terminal 2 — builds 8 remotes, serves them, starts the host
+```
+
+It builds every remote once, starts `dev:remote:watch` + `preview` per remote and
+`npm run dev` for the host, then waits until each `remoteEntry.js` actually
+answers before declaring the stand up. A remote that fails to build is a refusal
+with its log path, not a partially-started stand.
+
+Ports: host `5174`, remotes `4175…4182` in the order the host declares them.
+Logs land in `.dev-logs/`.
+
 Then start the federated UI from Windows PowerShell:
 
 ```powershell
@@ -66,7 +85,10 @@ The host app uses relative browser URLs. `host/vite.config.ts` proxies them to t
 ```text
 /vpc/*                  -> http://localhost:8080
 /compute/*              -> http://localhost:8080
+/storage/*              -> http://localhost:8080
+/geo/*                  -> http://localhost:8080
 /nlb/*                  -> http://localhost:8080
+/registry/*             -> http://localhost:8080
 /iam/v1/*               -> http://localhost:8080
 /operations/*           -> http://localhost:8080
 /healthz, /readyz       -> http://localhost:8080

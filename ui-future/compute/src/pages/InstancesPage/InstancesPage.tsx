@@ -11,10 +11,15 @@ import { Toaster } from "@/components/molecules/Toaster";
 import { ResourceCreatePage } from "@/components/organisms/ResourceCreatePage";
 import { ResourceListPage } from "@/components/organisms/ResourceListPage";
 import { ResourceShell } from "@/components/organisms/ResourceShell";
+// Доменные расширения карточки машины (строки Обзора, действия шапки, вкладки
+// «Диски» / «Сетевые интерфейсы») регистрируются в общем реестре side-effect
+// импортом — до рендера страниц. Общая оболочка карточки остаётся
+// app-agnostic: доменное содержимое инжектится модулем, а не хардкодится в ней.
+import "@/registerExtensions";
 import { contextApi } from "@/lib/context-store";
 import { REGISTRY } from "@/lib/resource-registry";
 import "@/typography.css";
-import "@/index.css";
+import "@shared/index.css";
 
 export interface InstancesPageProps {
   context?: {

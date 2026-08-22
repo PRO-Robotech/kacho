@@ -354,10 +354,25 @@ function adjudicate(forms: FormsRead): Verdict {
 
 // ── перепись дерева ──────────────────────────────────────────────────────────
 
-const treeSources = execFileSync("git", ["ls-files", "*/src/**/*.tsx"], { cwd: UI_ROOT, encoding: "utf8" })
+// Перечень берётся у git (он знает состав дерева), но ЧИТАЕТСЯ рабочая копия:
+// это разные вещи. Файл, удалённый в рабочей копии и ещё числящийся в индексе, —
+// законное переходное состояние; гейт, падающий на нём, обвиняет автора в том,
+// что тот снял мёртвый компонент, и заставляет коммитить ради зелёного прогона.
+// Пропущенные считаются и НАЗЫВАЮТСЯ: «ноль находок» обязано быть отличимо от
+// «ноль прочитанного».
+const treeListed = execFileSync("git", ["ls-files", "*/src/**/*.tsx"], { cwd: UI_ROOT, encoding: "utf8" })
   .split("\n")
-  .filter((rel) => rel.length > 0 && !rel.includes(".test."))
-  .map((rel) => ({ rel, raw: readFileSync(join(UI_ROOT, rel), "utf8") }));
+  .filter((rel) => rel.length > 0 && !rel.includes(".test."));
+
+const treeMissing: string[] = [];
+const treeSources = treeListed.flatMap((rel) => {
+  const abs = join(UI_ROOT, rel);
+  if (!existsSync(abs)) {
+    treeMissing.push(rel);
+    return [];
+  }
+  return [{ rel, raw: readFileSync(abs, "utf8") }];
+});
 
 const treeForms = readForms(treeSources);
 const treeVerdict = adjudicate(treeForms);
@@ -384,7 +399,12 @@ describe("объём осмотренного — «ноль находок» о
     console.log(
       `[#608] форм прочитано ${treeForms.filesRead} · Form.Item разобрано ${treeForms.itemsParsed} · ` +
         `объявили обязательность ${treeForms.claims.length} · из них про поле «name» рассужено ` +
-        `${treeVerdict.judged}, не рассужено ${treeVerdict.unresolved} · находок ${treeVerdict.findings.length}`,
+        `${treeVerdict.judged}, не рассужено ${treeVerdict.unresolved} · находок ${treeVerdict.findings.length}` +
+        // Пропущенные называются числом И поимённо: молчаливый пропуск сделал бы
+        // «ноль находок» неотличимым от «ноль прочитанного».
+        (treeMissing.length
+          ? ` · числятся в индексе, но в рабочей копии их нет: ${treeMissing.length} (${treeMissing.join(", ")})`
+          : " · пропущенных нет"),
     );
     expect(treeVerdict.judged).toBeGreaterThan(0);
   });

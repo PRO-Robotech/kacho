@@ -6,6 +6,9 @@ import { RefSelect } from "@shared/components/organisms/form/RefSelect";
 import { SgRulesEditor } from "@shared/components/organisms/form/SgRulesEditor";
 import { LabelsEditor } from "@shared/components/organisms/form/LabelsEditor";
 import { EditableKVTable } from "@shared/components/molecules/EditableKVTable";
+import { editorEmptyStyle, editorIconButtonStyle } from "@shared/components/organisms/form/editor-surface";
+import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
+import type { FieldErrors } from "@shared/components/organisms/form/field-rules";
 import { getByPath, setByPath, deleteByPath } from "@shared/lib/path";
 import type { FormField as FF, ArrayField } from "@shared/lib/form-schema";
 import { displayText } from "@shared/lib/display-text";
@@ -28,6 +31,17 @@ interface Props {
   // (`<label for>`): строка составного списка (ArrayItemField). Не задан —
   // renderer чеканит свой, как и раньше.
   controlId?: string;
+  // Поле не прошло правило схемы: ввод получает линию отказа и `aria-invalid`,
+  // а сообщение рисует вызывающий рядом с полем. Здесь — только СОСТОЯНИЕ ввода:
+  // текст отказа живёт у того, кто владеет проверкой, иначе один предмет
+  // рисовался бы дважды.
+  invalid?: boolean;
+  // Идентификатор сообщения об отказе — ввод ссылается на него `aria-describedby`,
+  // чтобы читающий с экрана услышал причину вместе с полем.
+  describedBy?: string;
+  // Отказы по ПОДПОЛЯМ строк списка (ключ — полный путь `<поле>[i].<подполе>`).
+  // Нужны только списку: он один рисует чужие поля внутри себя.
+  itemErrors?: FieldErrors;
 }
 
 function fullPath(prefix: string, name: string): string {
@@ -49,7 +63,18 @@ function называетсяПодписью(field: FF): boolean {
   return НАЗЫВАЕМЫЕ_ПОДПИСЬЮ.has(field.type);
 }
 
-export function FormFieldRenderer({ field, pathPrefix, value, onChange, editMode, hideLabel, controlId }: Props) {
+export function FormFieldRenderer({
+  field,
+  pathPrefix,
+  value,
+  onChange,
+  editMode,
+  hideLabel,
+  controlId,
+  invalid,
+  describedBy,
+  itemErrors,
+}: Props) {
   if (field.hidden) return null;
   if (editMode && field.editHidden) return null;
   if (field.visibleWhen) {
@@ -78,6 +103,7 @@ export function FormFieldRenderer({ field, pathPrefix, value, onChange, editMode
         editMode={editMode}
         disabled={disabled}
         hideLabel={hideLabel}
+        itemErrors={itemErrors}
       />
     );
   if (field.type === "sg-rules") {
@@ -119,6 +145,8 @@ export function FormFieldRenderer({ field, pathPrefix, value, onChange, editMode
       disabled={disabled}
       hideLabel={hideLabel}
       controlId={controlId}
+      invalid={invalid}
+      describedBy={describedBy}
     />
   );
 }
@@ -131,6 +159,8 @@ function ScalarFieldRenderer({
   disabled,
   hideLabel,
   controlId,
+  invalid,
+  describedBy,
 }: Props & { disabled?: boolean }) {
   const ownId = useId();
   // Идентификатор снаружи сильнее собственного: подпись рисует вызывающий, и
@@ -141,6 +171,19 @@ function ScalarFieldRenderer({
   const cur = getByPath(value, path);
 
   const set = (v: unknown) => onChange(setByPath(value, path, v));
+
+  // Состояние ввода, общее для всех его видов. Обязательность объявляется
+  // ЗДЕСЬ, а не только звёздочкой у подписи: звёздочку рисуют `aria-hidden`
+  // (она украшение), поэтому без `aria-required` читающий с экрана не узнавал
+  // об обязательности вовсе — ни до отправки, ни после.
+  const состояние = {
+    "aria-required": field.required ? true : undefined,
+    "aria-invalid": invalid ? true : undefined,
+    "aria-describedby": invalid ? describedBy : undefined,
+  };
+  // Линия отказа — свойство виджета библиотеки, а не атрибут DOM, поэтому она
+  // отделена от `aria-*`: переключатель её не принимает.
+  const линияОтказа = invalid ? ("error" as const) : undefined;
 
   return (
     <div className={hideLabel ? "" : "space-y-1.5"}>
@@ -163,6 +206,8 @@ function ScalarFieldRenderer({
           placeholder={field.placeholder}
           pattern={field.pattern}
           disabled={disabled}
+          status={линияОтказа}
+          {...состояние}
         />
       )}
       {field.type === "text" && (
@@ -173,6 +218,8 @@ function ScalarFieldRenderer({
           placeholder={field.placeholder}
           rows={field.rows ?? 3}
           disabled={disabled}
+          status={линияОтказа}
+          {...состояние}
         />
       )}
       {field.type === "int" && (
@@ -184,6 +231,8 @@ function ScalarFieldRenderer({
           min={field.min}
           max={field.max}
           disabled={disabled}
+          status={линияОтказа}
+          {...состояние}
         />
       )}
       {field.type === "bool" && (
@@ -194,6 +243,7 @@ function ScalarFieldRenderer({
           checked={Boolean(cur ?? field.default)}
           onChange={(checked) => set(checked)}
           disabled={disabled}
+          {...состояние}
         />
       )}
       {field.type === "enum" && (
@@ -208,6 +258,8 @@ function ScalarFieldRenderer({
           style={{ width: "100%" }}
           optionFilterProp="label"
           options={field.options.map((o) => ({ value: o.value, label: o.label }))}
+          status={линияОтказа}
+          {...состояние}
         />
       )}
       {field.type === "ref" && (
@@ -225,6 +277,9 @@ function ScalarFieldRenderer({
           createResource={field.createResource}
           createPresetFields={field.createPresetFields}
           createTitle={field.createTitle}
+          required={field.required}
+          invalid={invalid}
+          describedBy={describedBy}
         />
       )}
     </div>
@@ -273,7 +328,9 @@ function ArrayItemField({
           display: "flex",
           alignItems: "center",
           gap: 4,
-          fontSize: 12,
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: "0.02em",
           color: "var(--kc-text-secondary)",
           lineHeight: 1.2,
           whiteSpace: "nowrap",
@@ -287,7 +344,7 @@ function ArrayItemField({
           <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
         )}
         {required && (
-          <span style={{ color: "#ff4d4f" }} aria-hidden>
+          <span style={{ color: "var(--kc-danger)" }} aria-hidden>
             *
           </span>
         )}
@@ -310,6 +367,7 @@ function ArrayFieldRenderer({
   editMode,
   disabled,
   hideLabel,
+  itemErrors,
 }: { field: ArrayField; disabled?: boolean } & Omit<Props, "field">) {
   // Основа идентификаторов подполей строки. Каждое подполе получает свой
   // (`<основа>-<строка>-<имя подполя>`), иначе одна подпись связалась бы со
@@ -339,9 +397,7 @@ function ArrayFieldRenderer({
   const rows = (
     <>
       {items.length === 0 && (
-        <Typography.Text type="secondary" italic style={{ fontSize: 12 }}>
-          — пусто —
-        </Typography.Text>
+        <div style={{ ...editorEmptyStyle, display: "grid", placeItems: "center" }}>— пусто —</div>
       )}
       {items.map((_, idx) => {
         // Колонки считаются по ПОКАЗЫВАЕМЫМ подполям, а не по объявленным.
@@ -368,9 +424,10 @@ function ArrayFieldRenderer({
             display: "flex",
             alignItems: "flex-start",
             gap: 8,
-            padding: 8,
-            borderRadius: 6,
-            background: "var(--kc-hover-fill)",
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid var(--kc-border)",
+            background: "var(--kc-field)",
           }}
         >
           <div
@@ -383,6 +440,10 @@ function ArrayFieldRenderer({
           >
             {visible.map((sub) => {
               const subId = `${uid}-${idx}-${sub.name}`;
+              // Отказ подполя адресуется ПУТЁМ, а не порядковым номером колонки:
+              // строка со взаимоисключающей группой показывает поля одной ветви,
+              // и номер колонки означал бы разное в разных строках.
+              const subProblem = itemErrors?.[`${path}[${idx}].${sub.name}`];
               const input = (
                 <FormFieldRenderer
                   field={sub}
@@ -392,9 +453,17 @@ function ArrayFieldRenderer({
                   editMode={editMode}
                   hideLabel
                   controlId={subId}
+                  invalid={!!subProblem}
+                  describedBy={fieldErrorId(subId)}
                 />
               );
-              if (soleItemField) return <div key={sub.name}>{input}</div>;
+              if (soleItemField)
+                return (
+                  <div key={sub.name}>
+                    {input}
+                    <FieldError id={fieldErrorId(subId)} message={subProblem} />
+                  </div>
+                );
               return (
                 <ArrayItemField
                   key={sub.name}
@@ -404,18 +473,18 @@ function ArrayFieldRenderer({
                   description={sub.description}
                 >
                   {input}
+                  <FieldError id={fieldErrorId(subId)} message={subProblem} />
                 </ArrayItemField>
               );
             })}
           </div>
           <AntButton
             type="text"
-            size="small"
             icon={<DeleteOutlined />}
             onClick={() => removeAt(idx)}
             disabled={disabled}
             danger
-            style={{ flexShrink: 0, marginTop: 2 }}
+            style={{ ...editorIconButtonStyle, flexShrink: 0, marginTop: 2 }}
           />
         </div>
         );
@@ -436,6 +505,16 @@ function ArrayFieldRenderer({
     return (
       <EditableKVTable
         rows={values}
+        // Отказы строк доезжают до самой таблицы. Пока их здесь не было, отказ
+        // подполя не показывался НИГДЕ: эта ветвь возвращается раньше `rows`,
+        // где сообщение ставится, поэтому форма отказывалась отправляться и
+        // молчала о причине — нажатие на «Создать» не давало ни ответа, ни
+        // объяснения. Свойство «незаполненное обязательное подполе не уезжает
+        // на сервер» при этом держалось, а «форма называет поле» — нет.
+        rowErrors={items.map((_, idx) => {
+          const message = itemErrors?.[`${path}[${idx}].${sub.name}`];
+          return message ? { id: fieldErrorId(`${uid}-${idx}-${sub.name}`), message } : undefined;
+        })}
         onChange={(next) => onChange(setByPath(value, path, next.map((r) => ({ value: r.a }))))}
         colA={{
           header: sub.label || field.itemLabel,
@@ -481,7 +560,7 @@ function ArrayFieldRenderer({
       title={
         <Space size={8}>
           <Typography.Text strong>{field.label}</Typography.Text>
-          {field.required && <span style={{ color: "#ff4d4f", fontSize: 12 }}>*</span>}
+          {field.required && <span style={{ color: "var(--kc-danger)", fontSize: 12 }}>*</span>}
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
             {items.length}
             {field.maxItems !== undefined ? `/${field.maxItems}` : ""}

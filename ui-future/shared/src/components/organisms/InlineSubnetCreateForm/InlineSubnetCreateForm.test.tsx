@@ -11,6 +11,12 @@
 //     осмысленно и не является диапазоном.
 //
 // Проверяется наблюдаемое: показанный текст отказа и ТЕЛО ушедшего запроса.
+//
+// ГДЕ показан отказ — часть предмета, а не оформление. Прежде эти проверки
+// утверждали вызов всплывающего сообщения: оно появляется в углу экрана, гаснет
+// через секунды и не говорит, к какому из четырнадцати полей относится. Теперь
+// утверждается пара «текст назвал поле и правило» И «сообщение стоит в той же
+// строке формы, что и поле», — второе и есть то, ради чего правка делалась.
 
 import { jest } from "@jest/globals";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -60,7 +66,24 @@ const pick = (optionText: string, value: string) =>
   fireEvent.change(selectShowing(optionText)!, { target: { value } });
 const typeIn = (placeholder: string, value: string) =>
   fireEvent.change(screen.getByPlaceholderText(placeholder), { target: { value } });
-const save = () => fireEvent.click(screen.getByRole("button", { name: "Создать подсеть" }));
+// Кнопка отправки называет ДЕЙСТВИЕ и только его: предмет уже назван заголовком
+// формы над ней (канон консоли, правило 3). Имя ищется ТОЧНЫМ совпадением —
+// образец `/Создать/` совпал бы и с прежней подписью «Создать подсеть», то
+// есть проба пережила бы возврат предмета в кнопку и промолчала.
+const save = () => fireEvent.click(screen.getByRole("button", { name: "Создать" }));
+
+/**
+ * Отказ, стоящий В СТРОКЕ названного поля.
+ *
+ * Ищем не «где-нибудь на экране»: сообщение обязано лежать внутри той же
+ * обёртки поля, что и его подпись, — иначе «рядом с полем» осталось бы
+ * утверждением о вкусе, а не о разметке. Проверка так же поймает сообщение,
+ * уехавшее наверх формы.
+ */
+const alertNextTo = (fieldLabel: string): HTMLElement | undefined =>
+  screen
+    .queryAllByRole("alert")
+    .find((el) => (el.parentElement?.textContent ?? "").includes(fieldLabel));
 const body = () => create.mock.calls[0][1] as Record<string, unknown>;
 
 beforeEach(() => {
@@ -118,7 +141,10 @@ describe("InlineSubnetCreateForm", () => {
     pick("ru-central1-a", "ru-central1-a");
     save();
 
-    expect(toastError).toHaveBeenCalledWith("Укажите основной CIDR (IPv4 или IPv6).");
+    expect(alertNextTo("Основной IPv4 CIDR")).toHaveTextContent(
+      "«Основной IPv4 CIDR»: нужен основной CIDR хотя бы одного семейства — IPv4 либо IPv6.",
+    );
+    expect(toastError).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -130,8 +156,8 @@ describe("InlineSubnetCreateForm", () => {
     typeIn("10.20.0.0/24", "10.20.0.0");
     save();
 
-    expect(toastError).toHaveBeenCalledWith(
-      "Основной IPv4 CIDR должен содержать префикс, например 10.20.0.0/24.",
+    expect(alertNextTo("Основной IPv4 CIDR")).toHaveTextContent(
+      "«Основной IPv4 CIDR»: CIDR должен содержать префикс (например 10.20.0.0/24).",
     );
     expect(create).not.toHaveBeenCalled();
   });
@@ -142,7 +168,9 @@ describe("InlineSubnetCreateForm", () => {
     typeIn("10.20.0.0/24", "10.20.0.0/24");
     save();
 
-    expect(toastError).toHaveBeenCalledWith("Выберите зону доступности.");
+    expect(alertNextTo("Зона доступности")).toHaveTextContent(
+      "«Зона доступности»: поле обязательное при размещении ZONAL.",
+    );
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -154,7 +182,9 @@ describe("InlineSubnetCreateForm", () => {
     typeIn("10.20.0.0/24", "10.20.0.0/24");
     save();
 
-    expect(toastError).toHaveBeenCalledWith("Выберите сеть для подсети.");
+    expect(alertNextTo("Сеть")).toHaveTextContent(
+      "«Сеть»: поле обязательное — выберите сеть, в которой создаётся подсеть.",
+    );
     expect(create).not.toHaveBeenCalled();
   });
 

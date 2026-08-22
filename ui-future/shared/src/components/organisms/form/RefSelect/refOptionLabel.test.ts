@@ -7,7 +7,7 @@
 // allowed, and greying it out here would be the UI narrowing rights it does not
 // own. It is labelled, not removed.
 
-import { refOptionExtra } from "./refOptionLabel";
+import { refOptionExtra, refOptionLabel, refTagLabel } from "./refOptionLabel";
 
 describe("refOptionExtra — zones", () => {
   it("shows the region a zone belongs to", () => {
@@ -133,5 +133,69 @@ describe("refOptionExtra — тип машины называет размер",
 
   it("соседний ресурс приписку типа машины не получает (контроль)", () => {
     expect(refOptionExtra("projects", { effective_resources: { v_cpu: 2 } })).toBe("");
+  });
+});
+
+// Подпись ВАРИАНТА в списке и подпись ВЫБРАННОГО значения (фишки внутри поля) —
+// разные предметы, и различие это не косметическое. В списке человек выбирает
+// по имени; в фишке имя ресурса-адреса («reserved-front») о выборе не говорит
+// ничего, а ширину поля съедает. Решение владельца 2026-08-21: в фишке —
+// только адрес.
+describe("refTagLabel — фишка адреса называет адрес", () => {
+  const ADDR = { id: "adr-a", name: "reserved-front", internal_ipv4_address: { address: "10.0.0.5" } };
+
+  it("имя ресурса в фишку не попадает", () => {
+    expect(refTagLabel("addresses", ADDR)).toBe("10.0.0.5");
+  });
+
+  it("в списке то же значение подписано ИМЕНЕМ и адресом (положительный контроль)", () => {
+    // Без этой стороны «в фишке нет имени» выполнялось бы правилом, которое не
+    // показывает имя нигде, — и выбирать стало бы не из чего.
+    expect(refOptionLabel("addresses", ADDR)).toBe("reserved-front · 10.0.0.5");
+  });
+
+  it("внешний адрес читается так же, как внутренний", () => {
+    expect(refTagLabel("addresses", { id: "adr-x", name: "vip", external_ipv4_address: { address: "203.0.113.7" } })).toBe(
+      "203.0.113.7",
+    );
+  });
+
+  it("края не назвал адреса — остаётся имя, а не пустая фишка", () => {
+    // Фишка без подписи читается как сбой поля, а не как ресурс, о котором
+    // сервер ничего не сказал.
+    expect(refTagLabel("addresses", { id: "adr-y", name: "reserved-front" })).toBe("reserved-front");
+  });
+
+  it("нет ни имени, ни адреса — остаётся идентификатор", () => {
+    expect(refTagLabel("addresses", { id: "adr-z" })).toBe("adr-z");
+  });
+});
+
+// Сужение намеренно перечислением, а не признаком «у ресурса есть приписка»:
+// приписка группы безопасности — сеть, зоны — регион, типа машины — размер, и
+// ни одна из них имени не заменяет.
+describe("refTagLabel — прочие ресурсы подписаны именем", () => {
+  it("группа безопасности остаётся именем, а не сетью", () => {
+    expect(refTagLabel("security-groups", { id: "sg-1", name: "web", network_id: "net-12345678" })).toBe("web");
+  });
+
+  it("зона остаётся именем, а не регионом", () => {
+    expect(refTagLabel("zones", { id: "ru-central1-a", name: "ru-central1-a", region_id: "ru-central1" })).toBe(
+      "ru-central1-a",
+    );
+  });
+
+  it("безымянный ресурс подписан идентификатором", () => {
+    expect(refTagLabel("security-groups", { id: "sg-2" })).toBe("sg-2");
+  });
+});
+
+describe("refOptionLabel — подпись варианта", () => {
+  it("без приписки — одно имя, без разделителя", () => {
+    expect(refOptionLabel("projects", { id: "prj-1", name: "prod" })).toBe("prod");
+  });
+
+  it("безымянный ресурс подписан идентификатором", () => {
+    expect(refOptionLabel("projects", { id: "prj-1" })).toBe("prj-1");
   });
 });

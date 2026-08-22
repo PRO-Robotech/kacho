@@ -36,7 +36,7 @@ function wrap(node: React.ReactNode) {
 
 /** Секция семейства — ближайший предок бейджа, у которого есть своё поле ввода. */
 function family(badge: string): HTMLElement {
-  let el: HTMLElement | null = screen.getByText(badge);
+  let el: HTMLElement | null = screen.getByText(new RegExp(`^${badge}\\b`));
   while (el && !el.querySelector("input")) el = el.parentElement;
   if (!el) throw new Error(`секция «${badge}» не найдена`);
   return el;
@@ -53,12 +53,27 @@ beforeEach(() => {
 });
 
 describe("состав набора префиксов", () => {
-  it("показывает состав и его число по семействам", () => {
+  it("показывает состав в СВОЁМ семействе, пустое называет пустым", () => {
+    // Число префиксов больше не утверждается: счётчик снят из шапки секции
+    // решением владельца («отображать кол-во элементов не нужно»). Взамен
+    // утверждение стало точнее — префикс ищется ВНУТРИ секции своего семейства,
+    // а пустое семейство названо в своей.
     wrap(<CidrGroupBlocksManager cidrGroupId="cdg-1" v4Blocks={["203.0.113.0/24"]} v6Blocks={[]} />);
 
-    expect(screen.getByText("203.0.113.0/24")).toBeInTheDocument();
-    expect(within(family("IPv4")).getByText("(1)")).toBeInTheDocument();
-    expect(screen.getByText("Префиксов нет")).toBeInTheDocument();
+    expect(within(family("IPv4")).getByText("203.0.113.0/24")).toBeInTheDocument();
+    expect(within(family("IPv6")).getByText("Префиксов нет")).toBeInTheDocument();
+    // Контроль в обратную сторону: непустое семейство пустым не названо.
+    expect(within(family("IPv4")).queryByText("Префиксов нет")).not.toBeInTheDocument();
+  });
+
+  it("семейство названо В ЗАГОЛОВКЕ — иначе обе секции называются «Префиксы»", () => {
+    // Решение владельца: семейство переехало из плитки слева в заголовок.
+    // Плитка ушла вместе со своей шапкой, и без переезда обе секции набора
+    // назывались бы одинаково.
+    wrap(<CidrGroupBlocksManager cidrGroupId="cdg-1" v4Blocks={["203.0.113.0/24"]} v6Blocks={[]} />);
+
+    expect(screen.getByRole("heading", { name: "IPv4 Префиксы" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "IPv6 Префиксы" })).toBeInTheDocument();
   });
 
   it("добавление уходит глаголом набора и полем, которое ЭТОТ край принимает", async () => {

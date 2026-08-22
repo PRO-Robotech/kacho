@@ -113,12 +113,12 @@ export function ResourceFormModal({ projectId }: Props) {
       // Клик по маске вне модалки → закрытие (user UX-запрос).
       maskClosable={true}
       title={null}
-      // FormShell сам рендерит band-шапку + подложку-карточку. Modal content/
-      // body — тёмный фон (--kc-page) через .kc-form-modal (см. index.css),
-      // чтобы карточка формы «всплывала» как на welcome-странице «первый
-      // ресурс». Паддинг 16 — небольшая рамка вокруг карточки.
+      // Интерьер модалки «утоплен» относительно её карточки: фон — --kc-page
+      // через .kc-form-modal (см. общий лист), поверх него лежит форма. Смысл
+      // тот же, что и был, — глубина делается ТОНОМ, а не тенью под каждым
+      // блоком. Паддинг 18 — та же рамка, что у шапки поверхности эталона.
       className="kc-form-modal"
-      styles={{ body: { padding: 16 } }}
+      styles={{ body: { padding: 18 } }}
       // Anim — стандартная Antd (zoom from center). Без transform-origin
       // override модалка появляется из центра, не от точки клика.
     >

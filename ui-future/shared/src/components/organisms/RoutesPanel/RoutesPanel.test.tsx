@@ -24,6 +24,10 @@ jest.unstable_mockModule("@shared/lib/toast", () => ({
 }));
 
 const { RoutesPanel } = await import("./RoutesPanel");
+// Линия строки берётся из ОБЩЕГО источника геометрии, а не выписывается здесь:
+// проба, повторившая литерал, разошлась бы с продуктом молча — ровно тем, ради
+// чего числа редактора собраны в одном месте.
+const { editorRowStyle, EDITOR_ROW_HEIGHT } = await import("@shared/components/organisms/form/editor-surface");
 
 type Route = {
   destination_prefix?: string;
@@ -45,6 +49,37 @@ const startEdit = () => fireEvent.click(screen.getByRole("button", { name: /Ре
 const save = () => fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
 const cancel = () => fireEvent.click(screen.getByRole("button", { name: "Отменить" }));
 const rowInputs = () => screen.getAllByRole("textbox");
+/** Строки набора — сам набор, а не подпись над ним; в обоих режимах, читающем и
+ *  правящем. Заведено на месте снятого счётчика: число строк осталось предметом
+ *  проб, а место, где оно читалось, сменилось с заголовка секции на саму
+ *  таблицу. */
+const editRows = () => Array.from(screen.getByRole("table").querySelectorAll<HTMLElement>("tbody tr"));
+/**
+ * Объявленная линия строки, приведённая к той форме, в какой её хранит DOM.
+ *
+ * Сравнивать значение стиля с литералом нельзя: CSSOM нормализует запись, и
+ * проба ловила бы нормализацию, а не расхождение. Эталон прогоняется через тот
+ * же CSSOM — и берётся из ОБЩЕГО источника геометрии, а не выписывается здесь.
+ */
+function declaredRowLine(): string {
+  const ref = document.createElement("div");
+  ref.style.borderTop = String(editorRowStyle.borderTop);
+  return ref.style.borderTop;
+}
+/**
+ * «Линии сверху нет» читается как ПУСТОЕ объявление: `border-top: none` CSSOM не
+ * хранит вовсе (проверено — свойство возвращает пустую строку, атрибут не
+ * появляется). Поэтому одного этого признака мало: пустым он будет и у строки,
+ * которую геометрия вообще не тронула. Рядом обязателен признак того, что
+ * строка ОФОРМЛЕНА общей геометрией, — её высота.
+ */
+function expectStitchedWithoutLine(row: HTMLElement): void {
+  expect(row.style.height).toBe(`${EDITOR_ROW_HEIGHT}px`);
+  expect(row.style.borderTop).toBe("");
+}
+/** Поле, помеченное как незаполненное, — по признаку, который видит и читалка
+ *  экрана, а не по цвету рамки. */
+const invalidFields = () => screen.getAllByRole("textbox").filter((el) => el.getAttribute("aria-invalid") === "true");
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -74,13 +109,45 @@ describe("RoutesPanel — режим чтения", () => {
     expect(screen.getByText("gtw-1")).toBeInTheDocument();
   });
 
-  it("счётчик в подписи считает показанные маршруты", () => {
+  // Здесь стояла проба «счётчик в подписи считает показанные маршруты». Её
+  // предмета больше нет: решением владельца («отображать кол-во элементов не
+  // нужно») число снято из заголовка секции — он теперь просто «Статические
+  // маршруты». Проба снята ВМЕСТЕ с предметом, а не ослаблена до «подпись
+  // есть»: утверждение о числе, которого продукт не печатает, зеленело бы
+  // вечно. Сколько строк показано, сторожат пробы правки — они считают сами
+  // строки, а не подпись над ними.
+  it("показаны ВСЕ маршруты, а не первый из них", () => {
+    // Положительный контроль на месте снятой пробы: она была единственной,
+    // утверждавшей что-либо о списке ИЗ ДВУХ строк, и без неё «показывает
+    // маршрут» зеленело бы на реализации, рисующей ровно одну.
     show([
       { destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" },
       { destination_prefix: "0.0.0.0/0", gateway_id: "gtw-1" },
     ]);
 
-    expect(screen.getByText("(2)")).toBeInTheDocument();
+    const body = screen.getByRole("table").querySelector("tbody");
+    expect(body?.querySelectorAll("tr")).toHaveLength(2);
+    expect(screen.getByText("10.0.0.1")).toBeInTheDocument();
+    expect(screen.getByText("gtw-1")).toBeInTheDocument();
+  });
+
+  it("первая строка стыкуется с шапкой ОДНОЙ линией, у остальных линия своя", () => {
+    // Решение владельца: линия РАЗДЕЛЯЕТ, а значит первой строке не нужна — над
+    // ней уже стоит нижняя граница шапки секции. Две линии вплотную давали
+    // тёмную полосу в две точки, и на глаз это читалось как щель между шапкой и
+    // таблицей при нулевом зазоре.
+    show([
+      { destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" },
+      { destination_prefix: "0.0.0.0/0", gateway_id: "gtw-1" },
+    ]);
+
+    const rows = editRows();
+    expect(rows).toHaveLength(2);
+    expectStitchedWithoutLine(rows[0]);
+    // Положительный контроль: у второй строки линия ЕСТЬ и она — объявленная
+    // общим источником. Без него «у первой нет линии» зеленело бы на таблице,
+    // где линий нет ни у кого, то есть на снятом разделителе.
+    expect(rows[1].style.borderTop).toBe(declaredRowLine());
   });
 
   it("до перехода в правку полей ввода нет", () => {
@@ -130,23 +197,46 @@ describe("RoutesPanel — правка", () => {
   });
 
   it("правка пустого списка сразу даёт куда писать", () => {
+    // Утверждение о счётчике «(1)» снято вместе со счётчиком (решение
+    // владельца, см. выше). Число строк утверждается по самим строкам — так же
+    // строго и без посредника в виде подписи.
     show([]);
 
     startEdit();
 
     expect(rowInputs()).toHaveLength(2);
-    expect(screen.getByText("(1)")).toBeInTheDocument();
+    expect(editRows()).toHaveLength(1);
   });
 
-  it("добавленная строка появляется пустой и увеличивает счётчик", () => {
+  it("правка не меняет стык первой строки с шапкой", () => {
+    // Вход в правку не двигает содержимое — это несущее свойство панели (одна и
+    // та же таблица в обоих режимах). Стык первой строки его часть: появись у
+    // неё линия при переходе, таблица поехала бы на точку вниз.
+    show([
+      { destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" },
+      { destination_prefix: "192.168.0.0/16", next_hop_address: "10.0.0.2" },
+    ]);
+
+    startEdit();
+
+    const rows = editRows();
+    expect(rows).toHaveLength(2);
+    expectStitchedWithoutLine(rows[0]);
+    expect(rows[1].style.borderTop).toBe(declaredRowLine());
+  });
+
+  it("добавленная строка появляется пустой", () => {
+    // Прежний заголовок обещал ещё и «увеличивает счётчик» — счётчика нет,
+    // поэтому обещание снято, а не оставлено ложным. Прирост набора при этом
+    // утверждается точным числом строк, а не «стало больше».
     show([]);
 
     startEdit();
     fireEvent.click(screen.getByRole("button", { name: /Добавить маршрут/ }));
 
     expect(rowInputs()).toHaveLength(4);
+    expect(editRows()).toHaveLength(2);
     expect(rowInputs()[2]).toHaveValue("");
-    expect(screen.getByText("(2)")).toBeInTheDocument();
   });
 
   it("сохранение уходит полной заменой списка и маской своего поля", async () => {
@@ -176,6 +266,51 @@ describe("RoutesPanel — правка", () => {
     expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled();
     expect(screen.getByText("Строка 2: не указан префикс назначения и следующий узел")).toBeInTheDocument();
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("незаполненное поле помечено САМО, а не только названо в сводке", () => {
+    // Решение владельца: место ошибки и место исправления совпадают. Прежде
+    // нехватка называлась ТОЛЬКО строкой под таблицей — оператор пересчитывал
+    // строки глазами, чтобы понять, куда смотреть.
+    show([{ destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" }]);
+
+    startEdit();
+    fireEvent.click(screen.getByRole("button", { name: /Добавить маршрут/ }));
+
+    // Помечены ровно ДВА поля — оба поля второй строки, и ни одно из первой.
+    // Число здесь несущее: «есть хоть одно помеченное» зеленело бы на пометке
+    // всей таблицы разом, то есть на указателе, который никуда не указывает.
+    const marked = invalidFields();
+    expect(marked).toHaveLength(2);
+    const second = editRows()[1];
+    for (const field of marked) expect(second).toContainElement(field);
+
+    // Положительный контроль: заполненные поля первой строки НЕ помечены.
+    // Без него отрицание выше зеленело бы на продукте, помечающем всё подряд.
+    const firstRowFields = within(editRows()[0]).getAllByRole("textbox");
+    expect(firstRowFields).toHaveLength(2);
+    for (const field of firstRowFields) expect(field).not.toHaveAttribute("aria-invalid");
+
+    // Сводка под таблицей осталась — она называет строку целиком; пометка на
+    // поле её не заменяет, а показывает, КУДА смотреть.
+    expect(screen.getByText("Строка 2: не указан префикс назначения и следующий узел")).toBeInTheDocument();
+  });
+
+  it("дописанное поле перестаёт быть помеченным", () => {
+    // Вторая половина того же предмета: пометка ОБЯЗАНА сниматься. Без этой
+    // пробы «помечено» зеленело бы на пометке, которая, раз появившись, стоит
+    // до перезагрузки страницы, — и оператор чинил бы уже исправленное.
+    show([{ destination_prefix: "10.0.0.0/8", next_hop_address: "10.0.0.1" }]);
+
+    startEdit();
+    fireEvent.click(screen.getByRole("button", { name: /Добавить маршрут/ }));
+    expect(invalidFields()).toHaveLength(2);
+
+    fireEvent.change(rowInputs()[2], { target: { value: "192.168.0.0/16" } });
+    expect(invalidFields()).toHaveLength(1);
+
+    fireEvent.change(rowInputs()[3], { target: { value: "10.0.0.2" } });
+    expect(invalidFields()).toHaveLength(0);
   });
 
   it("стёртый адрес существующего маршрута не удаляет его молча", () => {

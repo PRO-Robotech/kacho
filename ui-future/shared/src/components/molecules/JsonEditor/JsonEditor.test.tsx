@@ -27,7 +27,7 @@ describe("JsonEditor", () => {
     fireEvent.change(editor(), { target: { value: '{"a":1}' } });
 
     expect(screen.queryByText(/^JSON:/)).not.toBeInTheDocument();
-    expect(editor().className).not.toContain("ring-rose-500");
+    expect(editor().style.border).toContain("var(--kc-border)");
   });
 
   it("на неразбираемом тексте показывает причину и подсвечивает поле", () => {
@@ -36,7 +36,12 @@ describe("JsonEditor", () => {
     fireEvent.change(editor(), { target: { value: "{не json" } });
 
     expect(screen.getByText(/^JSON:/)).toBeInTheDocument();
-    expect(editor().className).toContain("ring-rose-500");
+    // Подсветка наблюдается ГРАНИЦЕЙ в тоне опасности продукта, а не классом
+    // палитры Tailwind: прежний `ring-rose-500` не участвовал ни в одной теме,
+    // и проба на него закрепляла тот самый хардкод. Пара с положительным
+    // контролем выше (валидный текст → обычная линия) держит различимость:
+    // утверждение об одной границе зеленело бы на поле, всегда красном.
+    expect(editor().style.border).toContain("var(--kc-danger)");
   });
 
   it("не глотает ввод, который пока не разбирается", () => {

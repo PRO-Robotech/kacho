@@ -28,10 +28,16 @@ const withProviders = (ui: ReactNode) => {
   );
 };
 
-/** The form object as the create page holds it: placement, and the default picker state. */
+/** Объект формы, как его держит страница создания: размещение, РЕГИОН и исходное
+ *  состояние выбора.
+ *
+ *  Регион здесь не для полноты: подсеть обязана быть региона балансировщика, и
+ *  пока он не выбран, выбор подсети закрыт. Фикстура без региона проверяла бы
+ *  состояние «регион не выбран», а не то, ради чего написана. */
 function formValue(placement: string, modes: { v4?: string; v6?: string } = {}) {
   return {
     placement,
+    region_id: "ru-central1",
     vip_source: {
       _v4_mode: modes.v4 ?? "subnet",
       v4: { subnet_id: "", address_id: "" },

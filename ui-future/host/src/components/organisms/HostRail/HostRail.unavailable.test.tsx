@@ -105,6 +105,6 @@ describe("HostRail: раздел упавшего модуля остаётся 
     );
 
     const broken = await screen.findByRole("button", { name: moduleLabelOf("nlb") });
-    expect(broken).toHaveAttribute("title", "Раздел недоступен: модуль не загрузился");
+    expect(broken).toHaveAttribute("title", "Раздел временно недоступен: ведутся технические работы");
   });
 });

@@ -11,11 +11,16 @@ import { Toaster } from "@/components/molecules/Toaster";
 import { ResourceCreatePage } from "@/components/organisms/ResourceCreatePage";
 import { ResourceListPage } from "@/components/organisms/ResourceListPage";
 import { ResourceShell } from "@/components/organisms/ResourceShell";
-import { LoadBalancerDetailPage } from "@/pages/LoadBalancerDetailPage";
 import { contextApi } from "@/lib/context-store";
 import { REGISTRY } from "@/lib/resource-registry";
+// Доменные расширения карточек раздела кладутся в ОБЩИЙ реестр расширений при
+// загрузке этого модуля: общая оболочка карточки спрашивает их по `spec.id` и
+// о разделе ничего не знает. Импорт ради побочного действия — символов отсюда
+// точке входа не нужно, а без него карточки NLB остались бы без доменных строк
+// «Обзора» и без вкладки «Целевые группы».
+import "@/lib/nlb-detail-extensions";
 import "@/typography.css";
-import "@/index.css";
+import "@shared/index.css";
 
 export interface NlbPageProps {
   context?: {
@@ -61,10 +66,10 @@ export const NlbPage: FC<NlbPageProps> = ({ context }) => {
               <Routes>
                 <Route index element={<ProjectNlbDefaultRedirect />} />
                 {NLB_SCOPED.map((spec) => {
-                  // LoadBalancer detail — bespoke обёртка (вкладка «Целевые группы»
-                  // attach/detach); остальные ресурсы — generic ResourceShell.
-                  // Layout/edit/child-create — тот же ResourceShell внутри обёртки.
-                  const isLb = spec.id === "load-balancers";
+                  // Карточка — ОДНА оболочка на все ресурсы раздела. Прежде у
+                  // балансировщика стояла своя страница-обёртка ради одной
+                  // вкладки; вкладку теперь подаёт расширение по `spec.id`, и
+                  // разветвления по имени ресурса здесь не осталось.
                   return (
                     <Route key={spec.id}>
                       <Route
@@ -77,30 +82,13 @@ export const NlbPage: FC<NlbPageProps> = ({ context }) => {
                         path={`${spec.route}/create`}
                         element={<ResourceCreatePage spec={spec} parentField="project_id" parentParam="projectId" />}
                       />
-                      <Route
-                        path={`${spec.route}/:uid`}
-                        element={isLb ? <LoadBalancerDetailPage /> : <ResourceShell spec={spec} />}
-                      />
-                      <Route
-                        path={`${spec.route}/:uid/edit`}
-                        element={
-                          isLb ? <LoadBalancerDetailPage mode="edit" /> : <ResourceShell spec={spec} mode="edit" />
-                        }
-                      />
+                      <Route path={`${spec.route}/:uid`} element={<ResourceShell spec={spec} />} />
+                      <Route path={`${spec.route}/:uid/edit`} element={<ResourceShell spec={spec} mode="edit" />} />
                       <Route
                         path={`${spec.route}/:uid/:childRoute/create`}
-                        element={
-                          isLb ? (
-                            <LoadBalancerDetailPage mode="child-create" />
-                          ) : (
-                            <ResourceShell spec={spec} mode="child-create" />
-                          )
-                        }
+                        element={<ResourceShell spec={spec} mode="child-create" />}
                       />
-                      <Route
-                        path={`${spec.route}/:uid/:tab`}
-                        element={isLb ? <LoadBalancerDetailPage /> : <ResourceShell spec={spec} />}
-                      />
+                      <Route path={`${spec.route}/:uid/:tab`} element={<ResourceShell spec={spec} />} />
                     </Route>
                   );
                 })}

@@ -2,8 +2,12 @@
 // ServiceAccount). Backend ListProjects / ListServiceAccounts требует
 // account_id, поэтому список показывается только когда в IAM-секции выбран
 // Account (context-store). Аналог project-scope у VPC-страниц.
+//
+// Заглушка «аккаунт не выбран» — ОДНА на весь раздел
+// (`ScopeRequiredEmpty`): прежде здесь стоял `Empty` от antd, прижатый к
+// верхнему краю, и таких форм у одного вопроса было шесть.
 
-import { Empty } from "antd";
+import { ScopeRequiredEmpty } from "@/components/molecules/ScopeRequiredEmpty";
 import { ResourceListPage } from "@/components/organisms/ResourceListPage";
 import { useContext } from "@shared/lib/context-store";
 import type { ResourceSpec } from "@shared/lib/resource-registry";
@@ -18,13 +22,7 @@ export function IamScopedListShell({
   const account = useContext((s) => s.account);
 
   if (!account) {
-    return (
-      <Empty
-        description={`Выберите Account вверху секции, чтобы увидеть ${spec.plural}.`}
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        style={{ padding: "48px 0" }}
-      />
-    );
+    return <ScopeRequiredEmpty purpose={`увидеть ${spec.plural}`} />;
   }
 
   return (

@@ -33,11 +33,15 @@ function show(v4: string[] = [], v6: string[] = []) {
   );
 }
 
-/** Секция семейства — ближайший предок бейджа, у которого есть своё поле ввода.
- *  Семейство различается бейджем шапки («IPv4»/«IPv6»), а заголовок у обеих
- *  секций общий («CIDR») — тем же словом и в том же виде, что у подсети. */
+/** Секция семейства — ближайший предок заголовка, у которого есть своё поле ввода.
+ *
+ *  Семейство стоит В ЗАГОЛОВКЕ («IPv4 CIDR» / «IPv6 CIDR»), а не отдельным
+ *  бейджем-плиткой: плитка ушла вместе со своей шапкой, и пока семейство не
+ *  переехало в заголовок, обе секции назывались одинаково — «CIDR» и «CIDR», —
+ *  то есть не различались вовсе. Поэтому поиск идёт по НАЧАЛУ заголовка, а не
+ *  по точному совпадению со словом. */
 function family(badge: string): HTMLElement {
-  let el: HTMLElement | null = screen.getByText(badge);
+  let el: HTMLElement | null = screen.getByText(new RegExp(`^${badge}\\b`));
   while (el && !el.querySelector("input")) el = el.parentElement;
   if (!el) throw new Error(`секция «${badge}» не найдена`);
   return el;
@@ -64,13 +68,33 @@ describe("NetworkCidrManager", () => {
     expect(screen.getAllByText("CIDR-блоков нет")).toHaveLength(2);
   });
 
-  it("показывает объявленные блоки и их число по семействам", () => {
+  it("показывает объявленные блоки — каждый в СВОЁМ семействе", () => {
+    // Числа блоков здесь больше не утверждаются: счётчик снят из шапки секции
+    // решением владельца («отображать кол-во элементов не нужно»). Утверждение
+    // «по семействам» при этом не потеряно, а усилено: прежде оно опиралось на
+    // счётчик рядом с бейджем, теперь блок ищется ВНУТРИ своей секции — то
+    // есть проверяется принадлежность самого значения, а не подпись над ним.
     show(["10.30.0.0/16"], ["fd00:30::/48", "fd00:31::/48"]);
 
-    expect(screen.getByText("10.30.0.0/16")).toBeInTheDocument();
-    expect(screen.getByText("fd00:31::/48")).toBeInTheDocument();
-    expect(within(v4card()).getByText("(1)")).toBeInTheDocument();
-    expect(within(v6card()).getByText("(2)")).toBeInTheDocument();
+    expect(within(v4card()).getByText("10.30.0.0/16")).toBeInTheDocument();
+    expect(within(v6card()).getByText("fd00:30::/48")).toBeInTheDocument();
+    expect(within(v6card()).getByText("fd00:31::/48")).toBeInTheDocument();
+    // Контроль в обратную сторону: шестёрка не показана в секции четвёрки —
+    // без него «блок внутри своей секции» зеленело бы и на реализации,
+    // рисующей оба семейства в одной.
+    expect(within(v4card()).queryByText("fd00:30::/48")).not.toBeInTheDocument();
+  });
+
+  it("семейство названо В ЗАГОЛОВКЕ — иначе две секции подряд неразличимы", () => {
+    // Семейство переехало из плитки слева в заголовок (решение владельца):
+    // плитка ушла вместе со своей шапкой, и обе секции стали называться «CIDR»
+    // и «CIDR» — то есть перестали различаться вовсе. Заголовки названы
+    // дословно, а не «начинается с IPv4»: имя секции — то, что читает
+    // пользователь, и оно часть решения.
+    show(["10.30.0.0/16"], ["fd00:30::/48"]);
+
+    expect(screen.getByRole("heading", { name: "IPv4 CIDR" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "IPv6 CIDR" })).toBeInTheDocument();
   });
 
   it("на пустом вводе добавить нечем", () => {
@@ -115,14 +139,43 @@ describe("NetworkCidrManager", () => {
     await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
   });
 
-  it("блок без префикса на край не уходит и объясняет отказ", () => {
+  it("блок без префикса на край не уходит, а отказ стоит РЯДОМ С ПОЛЕМ", () => {
     show();
 
     type(v4card(), "10.30.0.0");
     fireEvent.click(addBtn(v4card()));
 
-    expect(toastError).toHaveBeenCalledWith("CIDR должен содержать префикс (например /16).");
+    // Претензия живёт в своей секции, у поля, и называет ЧЕГО не хватает.
+    // Всплывающее сообщение уехало бы из угла экрана раньше, чем человек
+    // перечитает набранное, — и негодная строка осталась бы без объяснения.
+    expect(within(v4card()).getByRole("alert")).toHaveTextContent("CIDR должен содержать префикс (например /16).");
+    expect(toastError).not.toHaveBeenCalled();
     expect(action).not.toHaveBeenCalled();
+  });
+
+  it("претензия снимается, как только значение исправили", () => {
+    // Контроль в обратную сторону: без него «претензия показана» зеленело бы и
+    // на реализации, которая показывает её навсегда.
+    show();
+
+    type(v4card(), "10.30.0.0");
+    fireEvent.click(addBtn(v4card()));
+    expect(within(v4card()).queryByRole("alert")).toBeInTheDocument();
+
+    type(v4card(), "10.30.0.0/16");
+
+    expect(within(v4card()).queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("отказ одного семейства не задевает соседнее", () => {
+    // Секции самостоятельны: претензия к четвёрке не имеет отношения к шестёрке,
+    // и общая на обе означала бы обвинение поля, в которое не вводили.
+    show();
+
+    type(v4card(), "10.30.0.0");
+    fireEvent.click(addBtn(v4card()));
+
+    expect(within(v6card()).queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("в шестёрочное семейство четвёрка не проходит", () => {
@@ -131,7 +184,7 @@ describe("NetworkCidrManager", () => {
     type(v6card(), "10.30.0.0/16");
     fireEvent.click(addBtn(v6card()));
 
-    expect(toastError).toHaveBeenCalledWith("Похоже не на IPv6-адрес.");
+    expect(within(v6card()).getByRole("alert")).toHaveTextContent("Похоже не на IPv6-адрес.");
     expect(action).not.toHaveBeenCalled();
   });
 
@@ -141,7 +194,7 @@ describe("NetworkCidrManager", () => {
     type(v4card(), "10.30.0.0/16");
     fireEvent.click(addBtn(v4card()));
 
-    expect(toastError).toHaveBeenCalledWith("Этот CIDR уже добавлен.");
+    expect(within(v4card()).getByRole("alert")).toHaveTextContent("Этот CIDR уже добавлен.");
     expect(action).not.toHaveBeenCalled();
   });
 

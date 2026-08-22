@@ -28,20 +28,31 @@ export function JsonEditor({ value, onChange, rows = 18, className, placeholder 
 
   return (
     <div className="space-y-1">
+      {/* Поле ввода — та же форма, что у всякого поля продукта: заливка
+          `--kc-field`, линия `--kc-border`, радиус 8. Прежде здесь стояли
+          `bg-zinc-950 text-zinc-100` — чёрное поле со светлым текстом
+          НЕЗАВИСИМО от темы: на светлой консоли редактор оставался чёрным
+          прямоугольником. Отказ формата виден границей и подписью в тоне
+          ошибки продукта. */}
       <textarea
         rows={rows}
         spellCheck={false}
-        className={cn(
-          "w-full font-mono text-xs rounded-md border border-border bg-zinc-950 text-zinc-100 p-3",
-          "focus:outline-none focus:ring-1 focus:ring-primary",
-          parseErr && "ring-1 ring-rose-500",
-          className,
-        )}
+        style={{
+          background: "var(--kc-field)",
+          color: "var(--kc-text)",
+          borderRadius: 8,
+          border: `1px solid ${parseErr ? "var(--kc-danger)" : "var(--kc-border)"}`,
+        }}
+        className={cn("w-full t-mono p-3", "focus:outline-none focus:ring-1 focus:ring-primary", className)}
         value={value}
         onChange={(e) => handle(e.target.value)}
         placeholder={placeholder}
       />
-      {parseErr && <div className="text-xs text-rose-600">JSON: {parseErr}</div>}
+      {parseErr && (
+        <div className="t-small" style={{ color: "var(--kc-danger)" }}>
+          JSON: {parseErr}
+        </div>
+      )}
     </div>
   );
 }

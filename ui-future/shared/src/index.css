@@ -22,153 +22,207 @@ body.ant-modal-open {
 /*
  * KAC-246: дуал-тема (dark/light). CSS-vars определены ДЛЯ ОБЕИХ тем через
  * :root[data-theme="dark"] / :root[data-theme="light"] (data-theme ставит
- * ThemeProvider, src/lib/theme-context.tsx). Это нужно, чтобы Tailwind/CSS-
- * компоненты (StatusBadge / Toaster / ServiceSidebar / ResourceTable) были
- * theme-aware через var(--…), а не хардкодили dark/light-цвет.
+ * host, а remote читает его в ThemeProvider, src/lib/theme-context.tsx). Это
+ * нужно, чтобы Tailwind/CSS-компоненты (StatusBadge / Toaster / ServiceSidebar /
+ * ResourceTable) были theme-aware через var(--…), а не хардкодили цвет.
  *
  * Значения палитры синхронизированы с AntD-токенами в src/lib/theme.ts —
- * меняешь там, меняй здесь.
+ * меняешь там, меняй здесь. Это не пожелание, а условие связности: часть
+ * ролей (фон поля, усиленная линия, ореол фокуса) видна пользователю ТОЛЬКО
+ * через AntD-компоненты, поэтому var(--kc-field) и Palette.field обязаны
+ * нести одно значение — иначе поле ввода и рамка вокруг него разъедутся.
+ *
+ * Палитра — холодная «операторская»: насыщенный цвет занимает меньше десятой
+ * части поверхности и стоит только там, где сообщает действие, состояние или
+ * живую связь. Глубина делается ТОНОМ, а не тенью: тень остаётся под тем, что
+ * действительно всплывает над страницей (модалка, выпадающий список), и не
+ * ставится под статичной панелью.
  *
  * Tailwind hsl-vars (--background / --foreground / …) сохранены для shadcn-
- * слоя (tailwind.config.js → hsl(var(--…))).
+ * слоя (tailwind.config.js → hsl(var(--…))) и пересчитаны из тех же цветов:
+ * они красят body и служебные Tailwind-утилиты, поэтому обязаны совпадать с
+ * --kc-*, а не жить своей палитрой.
  */
+
+/* === Не зависит от темы === */
+:root {
+  /* Кривая и длительность перехода: одна на весь продукт, чтобы движение
+     читалось как одно вещество, а не как набор разных анимаций. */
+  --kc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --kc-duration: 160ms;
+  /* Моноширинный ряд: идентификаторы, адреса, CIDR. Имя уже потребляется
+     разметкой реестра (var(--font-mono, monospace)) — до сих пор оно не было
+     объявлено нигде, то есть fallback работал всегда. */
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
 
 /* === DARK === */
 :root[data-theme="dark"] {
   /* shadcn / Tailwind hsl-токены */
-  --background: 228 14% 6%; /* #0d0e12 */
-  --foreground: 226 18% 92%; /* #e7e9ef */
-  --card: 230 16% 10%; /* #15161d */
-  --card-foreground: 226 18% 92%;
-  --primary: 213 90% 60%; /* #3D8DF5 */
+  --background: 224 60% 5%; /* #050914 */
+  --foreground: 219 100% 96%; /* #e8f0ff */
+  --card: 218 55% 8%; /* #09111f */
+  --card-foreground: 219 100% 96%;
+  --primary: 226 100% 71%; /* #6d8eff */
   --primary-foreground: 0 0% 100%;
-  --secondary: 222 12% 18%; /* #272a33 */
-  --secondary-foreground: 226 18% 92%;
-  --muted: 230 14% 12%;
-  --muted-foreground: 222 9% 64%; /* #9aa0ac */
-  --accent: 222 12% 18%;
-  --accent-foreground: 226 18% 92%;
-  --destructive: 358 75% 59%; /* #e5484d */
+  --secondary: 218 29% 17%;
+  --secondary-foreground: 219 100% 96%;
+  --muted: 218 51% 10%; /* #0d1728 */
+  --muted-foreground: 218 20% 63%; /* #8c9ab3 */
+  --accent: 218 29% 17%;
+  --accent-foreground: 219 100% 96%;
+  --destructive: 355 100% 71%; /* #ff6b78 */
   --destructive-foreground: 0 0% 100%;
-  --border: 222 12% 18%;
+  --border: 218 29% 17%;
   --radius: 0.5rem;
 
   /* === KAC-246 семантические theme-vars === */
-  --kc-page: #0d0e12;
-  --kc-container: #15161d;
-  --kc-elevated: #1b1d25;
-  --kc-border: #272a33;
-  --kc-border-secondary: #1d1f27;
-  --kc-text: #e7e9ef;
-  --kc-text-secondary: #9aa0ac;
-  --kc-text-tertiary: #6a7080;
-  --kc-hover-fill: rgb(255 255 255 / 0.045);
-  --kc-primary: #3d8df5;
-  --kc-brand-gradient: linear-gradient(135deg, #3d8df5 0%, #6e56cf 100%);
-  --kc-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
-  --kc-shadow-md: 0 6px 20px rgb(0 0 0 / 0.5);
-  --kc-shadow-lg: 0 16px 48px rgb(0 0 0 / 0.55);
-  --kc-focus-ring: 0 0 0 3px rgb(61 141 245 / 0.25);
+  --kc-page: #050914;
+  --kc-rail: #070d18;
+  --kc-container: #09111f;
+  /* Поверхность полупрозрачна намеренно: сквозь неё проходит ореол фона
+     (см. .app-content в host/src/styles.css) — так глубина появляется без
+     единой тени. Непрозрачный --kc-container остаётся для AntD-компонентов,
+     которым прозрачность вредна (шапка таблицы, карточка). */
+  --kc-surface-bg: rgb(9 17 31 / 0.74);
+  --kc-elevated: #111c2e;
+  --kc-field: #0d1728;
+  --kc-field-hover: #111d31;
+  --kc-border: rgb(205 222 255 / 0.11);
+  /* Третья роль границы: в эталоне линий две (.11 и .2), в дереве их три —
+     внутренние разделители (колонки таблиц, сетка свойств) держим на волос
+     мягче основной, чтобы интерьер панели не читался как решётка. */
+  --kc-border-secondary: rgb(205 222 255 / 0.09);
+  --kc-line-strong: rgb(205 222 255 / 0.2);
+  --kc-text: #e8f0ff;
+  --kc-text-secondary: #8c9ab3;
+  --kc-text-tertiary: #65738c;
+  /* В эталоне два фона наведения (.045 у кнопки и .035 у строки); роль в
+     дереве одна, поэтому берём значение между ними. */
+  --kc-hover-fill: rgb(232 240 255 / 0.04);
+  --kc-primary: #6d8eff;
+  --kc-primary-bg: rgb(109 142 255 / 0.12);
+  --kc-cyan: #65d7ee;
+  --kc-error: #ff6b78;
+  --kc-danger: #ff6b78;
+  --kc-brand-gradient: linear-gradient(135deg, #6d8eff 0%, #9d79ef 100%);
+  /* Тень остаётся ТОЛЬКО для всплывающего: модалка, выпадающий список,
+     подсказка. Под статичной панелью её нет — это и есть тональная глубина. */
+  --kc-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.5);
+  --kc-shadow-md: 0 12px 32px rgb(0 0 0 / 0.55);
+  --kc-shadow-lg: 0 22px 60px rgb(0 0 0 / 0.62);
+  --kc-focus-ring: 0 0 0 3px rgb(109 142 255 / 0.12);
 
   /* Status badge tones (приглушённый фон + яркий текст в dark) */
-  --status-ok-bg: rgb(43 184 119 / 0.16);
-  --status-ok-fg: #4fd6a0;
-  --status-ok-border: rgb(43 184 119 / 0.32);
-  --status-info-bg: rgb(61 141 245 / 0.16);
-  --status-info-fg: #6fb0fb;
-  --status-info-border: rgb(61 141 245 / 0.32);
-  --status-warn-bg: rgb(224 163 56 / 0.16);
-  --status-warn-fg: #e9bd6b;
-  --status-warn-border: rgb(224 163 56 / 0.32);
-  --status-muted-bg: rgb(255 255 255 / 0.06);
-  --status-muted-fg: #aab0bc;
-  --status-muted-border: rgb(255 255 255 / 0.12);
-  --status-error-bg: rgb(229 72 77 / 0.16);
-  --status-error-fg: #f0787c;
-  --status-error-border: rgb(229 72 77 / 0.34);
-  --status-violet-bg: rgb(110 86 207 / 0.18);
-  --status-violet-fg: #a594ef;
-  --status-violet-border: rgb(110 86 207 / 0.36);
+  --status-ok-bg: rgb(87 213 154 / 0.14);
+  --status-ok-fg: #57d59a;
+  --status-ok-border: rgb(87 213 154 / 0.3);
+  --status-info-bg: rgb(109 142 255 / 0.14);
+  --status-info-fg: #8ba7ff;
+  --status-info-border: rgb(109 142 255 / 0.32);
+  --status-warn-bg: rgb(232 183 101 / 0.14);
+  --status-warn-fg: #e8b765;
+  --status-warn-border: rgb(232 183 101 / 0.3);
+  --status-muted-bg: rgb(205 222 255 / 0.06);
+  --status-muted-fg: #8c9ab3;
+  --status-muted-border: rgb(205 222 255 / 0.14);
+  --status-error-bg: rgb(255 107 120 / 0.14);
+  --status-error-fg: #ff8792;
+  --status-error-border: rgb(255 107 120 / 0.32);
+  --status-violet-bg: rgb(157 121 239 / 0.16);
+  --status-violet-fg: #a883f4;
+  --status-violet-border: rgb(157 121 239 / 0.34);
 
   /* Toaster tones (тёмный фон + accent-текст) */
-  --toast-bg: #1b1d25;
-  --toast-border: #272a33;
-  --toast-fg: #e7e9ef;
-  --toast-success-accent: #4fd6a0;
-  --toast-error-accent: #f0787c;
-  --toast-info-accent: #6fb0fb;
-  --toast-loading-accent: #9aa0ac;
+  --toast-bg: #111c2e;
+  --toast-border: rgb(205 222 255 / 0.2);
+  --toast-fg: #e8f0ff;
+  --toast-success-accent: #57d59a;
+  --toast-error-accent: #ff8792;
+  --toast-info-accent: #8ba7ff;
+  --toast-loading-accent: #8c9ab3;
 
-  /* Sidebar / table accents */
-  --sidebar-active-bg: rgb(61 141 245 / 0.14);
-  --table-stripe: rgb(255 255 255 / 0.02);
+  /* Sidebar / rail accents */
+  --sidebar-active-bg: rgb(109 142 255 / 0.12);
 }
 
 /* === LIGHT === */
 :root,
 :root[data-theme="light"] {
-  --background: 220 18% 97%; /* #f6f7f9 */
-  --foreground: 218 16% 9%; /* #14171c */
-  --card: 0 0% 100%; /* #ffffff */
-  --card-foreground: 218 16% 9%;
-  --primary: 213 90% 60%; /* #3D8DF5 */
+  --background: 223 47% 97%; /* #f4f6fb */
+  --foreground: 221 49% 10%; /* #0d1526 */
+  --card: 0 0% 100%; /* #fff */
+  --card-foreground: 221 49% 10%;
+  --primary: 228 68% 54%; /* #3a5bd9 */
   --primary-foreground: 0 0% 100%;
-  --secondary: 214 14% 90%; /* #e3e6ea */
-  --secondary-foreground: 218 16% 9%;
-  --muted: 216 17% 95%;
-  --muted-foreground: 220 9% 39%; /* #5a616e */
-  --accent: 214 14% 90%;
-  --accent-foreground: 218 16% 9%;
-  --destructive: 358 75% 59%;
+  --secondary: 225 9% 91%;
+  --secondary-foreground: 221 49% 10%;
+  --muted: 220 60% 98%; /* #f7f9fd */
+  --muted-foreground: 219 18% 44%; /* #5c6a85 */
+  --accent: 225 9% 91%;
+  --accent-foreground: 221 49% 10%;
+  --destructive: 355 63% 50%; /* #d02f3d */
   --destructive-foreground: 0 0% 100%;
-  --border: 214 14% 90%;
+  --border: 225 9% 91%;
   --radius: 0.5rem;
-  --kc-page: #f6f7f9;
+
+  /* Светлая тема — не «другой продукт», а холодный светлый аналог ТЕХ ЖЕ
+     ролей: та же геометрия, та же скупость сигнала. Сигнальные цвета
+     затемнены до читаемости на белом (контраст ≥ 4.5 к #fff). */
+  --kc-page: #f4f6fb;
+  --kc-rail: #eef1f7;
   --kc-container: #fff;
+  --kc-surface-bg: #fff;
   --kc-elevated: #fff;
-  --kc-border: #e3e6ea;
-  --kc-border-secondary: #eef0f3;
-  --kc-text: #14171c;
-  --kc-text-secondary: #5a616e;
-  --kc-text-tertiary: #8b929e;
-  --kc-hover-fill: rgb(0 0 0 / 0.03);
-  --kc-primary: #3d8df5;
-  --kc-brand-gradient: linear-gradient(135deg, #3d8df5 0%, #6e56cf 100%);
-  --kc-shadow-sm: 0 1px 2px rgb(16 24 40 / 0.06);
-  --kc-shadow-md: 0 6px 20px rgb(16 24 40 / 0.1);
-  --kc-shadow-lg: 0 16px 48px rgb(16 24 40 / 0.16);
-  --kc-focus-ring: 0 0 0 3px rgb(61 141 245 / 0.25);
+  --kc-field: #f7f9fd;
+  --kc-field-hover: #eff3fa;
+  --kc-border: rgb(16 28 56 / 0.1);
+  --kc-border-secondary: rgb(16 28 56 / 0.07);
+  --kc-line-strong: rgb(16 28 56 / 0.2);
+  --kc-text: #0d1526;
+  --kc-text-secondary: #5c6a85;
+  --kc-text-tertiary: #8492aa;
+  --kc-hover-fill: rgb(16 28 56 / 0.04);
+  --kc-primary: #3a5bd9;
+  --kc-primary-bg: rgb(58 91 217 / 0.1);
+  --kc-cyan: #0d7f99;
+  --kc-error: #d02f3d;
+  --kc-danger: #d02f3d;
+  --kc-brand-gradient: linear-gradient(135deg, #3a5bd9 0%, #6b3fd4 100%);
+  --kc-shadow-sm: 0 1px 2px rgb(13 21 38 / 0.06);
+  --kc-shadow-md: 0 10px 28px rgb(13 21 38 / 0.1);
+  --kc-shadow-lg: 0 22px 56px rgb(13 21 38 / 0.16);
+  --kc-focus-ring: 0 0 0 3px rgb(58 91 217 / 0.14);
 
   /* Status badge tones (светлый фон + насыщенный текст + чёткий border) */
-  --status-ok-bg: #e6f7ef;
-  --status-ok-fg: #157a4f;
-  --status-ok-border: #bce8d3;
-  --status-info-bg: #e8f1fe;
-  --status-info-fg: #1f6fd6;
-  --status-info-border: #c4dcf9;
+  --status-ok-bg: #e6f6ee;
+  --status-ok-fg: #0f7a52;
+  --status-ok-border: #bfe6d4;
+  --status-info-bg: #e9edfd;
+  --status-info-fg: #2f4dc4;
+  --status-info-border: #c6d1f7;
   --status-warn-bg: #fbf2dd;
-  --status-warn-fg: #976414;
+  --status-warn-fg: #8d5d12;
   --status-warn-border: #f0dcae;
-  --status-muted-bg: #eef0f3;
-  --status-muted-fg: #5a616e;
-  --status-muted-border: #dde1e7;
-  --status-error-bg: #fdeaea;
-  --status-error-fg: #c5343a;
-  --status-error-border: #f6cccd;
-  --status-violet-bg: #efebfb;
-  --status-violet-fg: #5a45b8;
-  --status-violet-border: #d8cef4;
+  --status-muted-bg: #eef0f5;
+  --status-muted-fg: #5c6a85;
+  --status-muted-border: #dce0e9;
+  --status-error-bg: #fdeaec;
+  --status-error-fg: #b32633;
+  --status-error-border: #f6ccd1;
+  --status-violet-bg: #eeeafb;
+  --status-violet-fg: #5a34bd;
+  --status-violet-border: #d7cdf4;
 
   /* Toaster tones (светлый фон + accent-текст) */
   --toast-bg: #fff;
-  --toast-border: #e3e6ea;
-  --toast-fg: #14171c;
-  --toast-success-accent: #157a4f;
-  --toast-error-accent: #c5343a;
-  --toast-info-accent: #1f6fd6;
-  --toast-loading-accent: #5a616e;
-  --sidebar-active-bg: rgb(61 141 245 / 0.1);
-  --table-stripe: rgb(0 0 0 / 0.018);
+  --toast-border: rgb(16 28 56 / 0.14);
+  --toast-fg: #0d1526;
+  --toast-success-accent: #0f7a52;
+  --toast-error-accent: #b32633;
+  --toast-info-accent: #2f4dc4;
+  --toast-loading-accent: #5c6a85;
+  --sidebar-active-bg: rgb(58 91 217 / 0.1);
 }
 
 @layer base {
@@ -178,6 +232,10 @@ body.ant-modal-open {
 
   body {
     @apply bg-background text-foreground antialiased;
+    /* Базовый кегль 13 — как у эталона. Ставится на body, а НЕ на html:
+       Tailwind считает отступы и размеры в rem, и сдвиг корневого кегля
+       перекроил бы всю сетку. */
+    font-size: 13px;
     font-family:
       Inter,
       ui-sans-serif,
@@ -190,15 +248,22 @@ body.ant-modal-open {
   }
 }
 
-/*
- * KAC-246: тонкий zebra-striping + комфортный row-height + sticky header для
- * ResourceTable (AntD Table). rowClassName="kc-table-row" не нужен — нечётные
- * строки берём через :nth-child. Применяется ко всем AntD small-таблицам в app.
- */
-.kc-table .ant-table-tbody > tr.ant-table-row:nth-child(odd) > td {
-  background: var(--table-stripe);
+/* Фокус клавиатурой виден всегда и одинаково: это единственный ореол, который
+   продукт рисует не под всплывающим элементом. Правило стоит ВНЕ `@layer base`
+   намеренно: слой уступает любому неслоёному правилу, а стили AntD приезжают
+   рантаймом и слоёв не объявляют — внутри слоя обводка проигрывала бы им
+   молча, и «фокус не виден» выглядело бы как отсутствие правила, а не как
+   проигранный спор о приоритете. */
+:focus-visible {
+  outline: 2px solid var(--kc-primary);
+  outline-offset: 2px;
 }
 
+/*
+ * Таблицы: строки разделяет граница, а не заливка. Полосатость (zebra) снята
+ * намеренно — она спорила с границей строки и давала третий тон там, где
+ * палитра держит два. Остаются наведение и подсветка выбранной строки.
+ */
 .kc-table .ant-table-tbody > tr.ant-table-row:hover > td {
   background: var(--kc-hover-fill);
 }
@@ -226,15 +291,24 @@ body.ant-modal-open {
 }
 
 /*
- * KAC-246: единая content page-surface (Linear-стиль). ResourceListPage и
- * DetailShell оборачивают контент в .kc-surface — поверхность поверх фона
- * страницы (container-фон + secondary-border + r12 + мягкая тень).
+ * KAC-246: единая content page-surface. ResourceListPage и DetailShell оборачивают
+ * контент в .kc-surface. Радиус 11, граница --kc-border, фон --kc-surface-bg
+ * и НИ ОДНОЙ тени: панель не всплывает над страницей, она и есть страница —
+ * от фона её отделяет тон и линия.
  */
+/* Общей подложки под страницей НЕТ (решение владельца, эталон).
+ *
+ * В эталоне рабочая область — это фон страницы, а поверхностями являются СЕКЦИИ
+ * внутри неё («Обзор», «IPv4 CIDR»). Внешняя карточка поверх них давала второй
+ * тон под первым и читалась рамкой вокруг всего экрана: содержимое оказывалось
+ * «в коробке», а не на плоскости.
+ *
+ * Имя класса оставлено: оно держит РАЗМЕР (высоту и прокрутку) сразу у списка и
+ * у карточки. Снята ровно заливка с рамкой. */
 .kc-surface {
-  background: var(--kc-container);
-  border: 1px solid var(--kc-border-secondary);
-  border-radius: 12px;
-  box-shadow: var(--kc-shadow-sm);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
 
 /* Federated host integration.
@@ -287,40 +361,20 @@ body.ant-modal-open {
 }
 
 /*
- * KAC-246: detail-рейл вертикальное меню табов — active-пункт = sidebar-active-bg
- * tint + accent-текст + левый accent-бар, скруглённый item. Согласовано с
- * расширенным сайдбаром.
+ * KAC-246: detail-рейл вертикальное меню табов. Форма пункта взята у эталона: высота 38,
+ * левая граница 2px и скругление только справа (0 7px 7px 0) — активный пункт
+ * «прирастает» к краю панели, а не висит в ней отдельной пилюлей.
  */
-.kc-detail-rail-menu.ant-menu-inline .ant-menu-item {
-  border-radius: 8px;
-  margin-inline: 0;
-  width: 100%;
-  height: 34px;
-  line-height: 34px;
-}
-
-.kc-detail-rail-menu.ant-menu-inline .ant-menu-item-selected {
-  background: var(--sidebar-active-bg) !important;
-  color: var(--kc-primary) !important;
-  font-weight: 600;
-}
-
-.kc-detail-rail-menu.ant-menu-inline .ant-menu-item-selected::after {
-  inset-inline: 0 auto;
-  border-inline-end: none;
-  border-inline-start: 2px solid var(--kc-primary);
-  transform: scaleY(1);
-  opacity: 1;
-}
-
 /* KAC-246: DopplerButton — пульсация submit/danger-кнопок. Вынесено из inline
-   \3c style> в компоненте (он рвал .ant-btn+.ant-btn зазор в Modal-футере). */
+   \3c style> в компоненте (он рвал .ant-btn+.ant-btn зазор в Modal-футере).
+   Цвет всегда приходит инлайном из самого компонента; запасное значение
+   держим в палитре продукта, чтобы в листе не осталось постороннего синего. */
 @keyframes doppler-ring {
   0% {
-    box-shadow: 0 0 0 0 var(--doppler-c, rgb(22 119 255 / 0.55));
+    box-shadow: 0 0 0 0 var(--doppler-c, rgb(109 142 255 / 0.55));
   }
   100% {
-    box-shadow: 0 0 0 14px var(--doppler-c0, rgb(22 119 255 / 0));
+    box-shadow: 0 0 0 14px var(--doppler-c0, rgb(109 142 255 / 0));
   }
 }
 
@@ -357,26 +411,26 @@ body.ant-modal-open {
   pointer-events: none;
 }
 
-/* kc-form-modal — Create/Edit-модалка: интерьер тёмный (--kc-page), чтобы
+/* KAC-246: kc-form-modal — Create/Edit-модалка: интерьер тёмный (--kc-page), чтобы
    подложка-карточка FormShell (elevated) «всплывала», как на welcome-странице
-   «первый ресурс». KAC-246. */
+   «первый ресурс». */
 .kc-form-modal .ant-modal-content,
 .kc-form-modal .ant-modal-body {
   background: var(--kc-page);
 }
 
-/* kc-kv-row — строка EditableKVTable (метки / статические маршруты): мягкий
-   hover в тон остального UI. KAC-246. */
+/* KAC-246: kc-kv-row — строка EditableKVTable (метки / статические маршруты): мягкий
+   hover в тон остального UI. */
 .kc-kv-row {
-  transition: background 0.12s ease;
+  transition: background-color var(--kc-duration) var(--kc-ease);
 }
 
 .kc-kv-row:hover {
   background: var(--kc-hover-fill);
 }
 
-/* kc-grid-table — вертикальные разделители колонок (кроме последней — действий)
-   у table-таблиц (RoutesPanel detail). EditableKVTable рисует их inline. KAC-246. */
+/* KAC-246: kc-grid-table — вертикальные разделители колонок (кроме последней — действий)
+   у table-таблиц (RoutesPanel detail). EditableKVTable рисует их inline. */
 .kc-grid-table th:not(:last-child),
 .kc-grid-table td:not(:last-child) {
   border-right: 1px solid var(--kc-border-secondary);
@@ -385,12 +439,199 @@ body.ant-modal-open {
 /* Подсветка строки, чьё содержимое раскрыто в боковой панели (`selectedRowKey`
  * у ResourceTable): связь панель↔строка. Правило переехало сюда вместе с самим
  * пропом (#405) — стиль, объявленный в одном модуле, работал бы ровно там, где
- * его объявили, и молча не работал бы у следующего. Перебивает zebra-striping и
- * красит закреплённую ячейку. */
+ * его объявили, и молча не работал бы у следующего. Красит и закреплённую
+ * ячейку, иначе левая колонка выпадает из подсветки. */
 .kc-table .ant-table-row.kc-row-selected > .ant-table-cell,
 .kc-table .ant-table-row.kc-row-selected > .ant-table-cell-fix-left {
-  background: var(--kc-primary-bg, rgb(64 128 255 / 0.16)) !important;
+  background: var(--kc-primary-bg) !important;
 }
 .kc-table .ant-table-row.kc-row-selected > .ant-table-cell:first-child {
-  box-shadow: inset 3px 0 0 var(--kc-primary, #4080ff);
+  box-shadow: inset 3px 0 0 var(--kc-primary);
+}
+
+/* Вкладки карточки ресурса — ГОРИЗОНТАЛЬНЫЕ и внутри карточки.
+ *
+ * Прежде здесь стояли правила вертикального рейла (.kc-detail-rail-menu): он
+ * занимал колонку слева, которая в иерархии продукта принадлежит навигации по
+ * модулю. Вкладки относятся к ОДНОМУ ресурсу и переехали внутрь карточки;
+ * правила рейла сняты вместе с ним, а не оставлены «на случай возврата» —
+ * мёртвое правило переживает свой предмет и вводит в заблуждение следующего.
+ *
+ * Активная вкладка помечена подчёркиванием и цветом; полосу под всем набором
+ * рисует сам antd (`ant-menu-horizontal` несёт нижнюю границу). */
+.kc-detail-tabs.ant-menu-horizontal {
+  flex-shrink: 0;
+  /* Воздух распределён вниз: вкладки стоят вплотную к имени ресурса, которому
+     принадлежат, и отделены от содержимого. Прежде было наоборот — большой
+     отступ отрывал их от имени и прижимал к таблице обзора. */
+  margin-bottom: 22px;
+  line-height: 38px;
+  border-bottom: 1px solid var(--kc-border);
+}
+
+.kc-detail-tabs.ant-menu-horizontal > .ant-menu-item {
+  padding-inline: 0;
+  margin-inline-end: 22px;
+  color: var(--kc-text-secondary);
+  font-size: 12px;
+}
+
+.kc-detail-tabs.ant-menu-horizontal > .ant-menu-item:hover {
+  color: var(--kc-text);
+}
+
+/* Выбранная вкладка НЕ меняет начертания.
+ *
+ * Жирное начертание шире обычного, поэтому смена веса при выборе двигала саму
+ * вкладку и все соседние: текст прыгал, а за ним прыгала ширина колонок под
+ * ним. Интерфейс, который шевелится от собственного выбора, читается как
+ * неисправный, и попасть мышью во вкладку рядом становится труднее.
+ *
+ * Выбор при этом виден не хуже: его несут цвет и подчёркивание в два пикселя —
+ * два независимых признака вместо одного, и ни один не меняет размеров. */
+.kc-detail-tabs.ant-menu-horizontal > .ant-menu-item-selected {
+  color: var(--kc-primary);
+}
+
+/* Подчёркивание активной вкладки — 2px в цвете сигнала, вплотную к линии
+   набора: разрыв между ними читался бы как «подчёркнуто не то». */
+.kc-detail-tabs.ant-menu-horizontal > .ant-menu-item::after {
+  inset-inline: 0;
+  border-bottom: 2px solid transparent;
+}
+
+.kc-detail-tabs.ant-menu-horizontal > .ant-menu-item-selected::after {
+  border-bottom-color: var(--kc-primary);
+}
+
+/* Обёртка тела таблицы, заполняющая доступную высоту.
+ *
+ * Класс ставили ДВА компонента (`ResourceTable`, `OperationsTable`), а правила
+ * у него не было НИ ОДНОГО — то есть таблица «просила высоту» у пустоты и
+ * оседала по высоте своих строк, оставляя под собой пустое поле в пол-экрана.
+ * Класс без правила выглядит работающим и не работает: в разметке он есть, в
+ * стилях его нет, и заметить это можно только измерив.
+ *
+ * `height: 100%` здесь обязателен вместе с `min-height: 0`: без второго
+ * flex-потомок не даёт себя сжать ниже содержимого, и внутренняя прокрутка тела
+ * не включается — вместо неё растёт вся страница. */
+.kc-table-fill {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.kc-table-fill > .ant-table-wrapper,
+.kc-table-fill > .ant-table-wrapper > .ant-spin-nested-loading,
+.kc-table-fill > .ant-table-wrapper > .ant-spin-nested-loading > .ant-spin-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Закреплённые колонки НЕПРОЗРАЧНЫ.
+ *
+ * У antd закрепление держится `position: sticky`, а фон ячейка берёт от строки.
+ * Пока фон прозрачен, прокручиваемое содержимое видно СКВОЗЬ закреплённые
+ * колонки: имя ресурса и кнопка действий наезжают на проплывающие мимо
+ * значения, и первая с последней колонки читаются как испорченные.
+ *
+ * Фон совпадает с фоном поверхности, а на наведении — с фоном строки: иначе
+ * подсветка обрывалась бы ровно на закреплённых колонках, разрезая строку. */
+.kc-table .ant-table-cell-fix-left,
+.kc-table .ant-table-cell-fix-right {
+  background: var(--kc-surface-bg);
+}
+
+.kc-table .ant-table-thead > tr > th.ant-table-cell-fix-left,
+.kc-table .ant-table-thead > tr > th.ant-table-cell-fix-right {
+  background: var(--kc-container);
+}
+
+.kc-table .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-left,
+.kc-table .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right {
+  background: var(--kc-hover-fill);
+}
+
+/* Выделенная строка держит свой тон и под закреплением — иначе выделение
+   обрывается на краях и строка выглядит выделенной наполовину. */
+.kc-table .ant-table-row.kc-row-selected > .ant-table-cell-fix-left,
+.kc-table .ant-table-row.kc-row-selected > .ant-table-cell-fix-right {
+  background: var(--kc-primary-bg, rgb(64 128 255 / 0.16)) !important;
+}
+
+/* Заголовок колонки НЕ переносится: перенос поднимает шапку таблицы и сдвигает
+   всё под ней, а прочитать подпись в две строки не легче, чем в одну. Не
+   поместившееся договаривает подсказка. */
+.kc-table .ant-table-thead > tr > th {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Идентификатор ресурса: отступ уходит в отрицательное поле, чтобы заливка при
+   наведении дышала вокруг значения, а левый край значения оставался на линии
+   столбца. Объявлено классом, а не инлайном: инлайн не переопределить снаружи
+   без !important, и строка свойств не могла подвинуть значок к общему краю. */
+.kc-copyable-id {
+  padding: 2px 5px;
+  margin-block: -2px;
+  margin-inline-start: -5px;
+  border-radius: 6px;
+  transition:
+    color var(--kc-duration) var(--kc-ease),
+    background-color var(--kc-duration) var(--kc-ease);
+}
+
+/* ОДНА ГЕОМЕТРИЯ У ВСЕХ РУЧЕК СТРОКИ ИНСТРУМЕНТОВ.
+   Поле поиска, отборы-селекты, кнопка выбора столбцов и кнопка создания
+   приходят из разных мест и приносят каждая свою высоту и свой радиус — в одном
+   ряду это читается как случайно составленная полоса. Высота 32 — та же, что у
+   кнопки antd размера по умолчанию, поэтому ничего не «подгоняется» под
+   выдуманное число. */
+/* Высота задаётся ОБОЛОЧКЕ поля, а не полю внутри неё: у поля со значком
+   (`ant-input-affix-wrapper`) внутренний `ant-input` уже растянут по оболочке, и
+   вторая высота на нём сдвигала текст вниз относительно рамки — на списке это
+   было видно как съехавший вниз placeholder поиска. */
+.kc-list-tools .ant-input-affix-wrapper,
+.kc-list-tools > * > .ant-input:not(.ant-input-affix-wrapper .ant-input),
+.kc-list-tools .ant-select .ant-select-selector,
+.kc-list-tools .ant-btn,
+.kc-list-tools .ant-segmented {
+  height: 32px;
+  min-height: 32px;
+  border-radius: 8px;
+}
+.kc-list-tools .ant-select-single {
+  height: 32px;
+}
+/* Содержимое центрируется ВЫРАВНИВАНИЕМ, а не навязанной высотой строки.
+   Число вроде `line-height: 30px` верно ровно для одного кегля и одной гарнитуры:
+   у выбранного значения селекта текст от него поехал вниз относительно текста в
+   поле поиска рядом. Выравнивание по центру гибкой коробки не зависит ни от
+   кегля, ни от того, что внутри, — значок, тег или строка. */
+.kc-list-tools .ant-select .ant-select-selector {
+  display: flex;
+  align-items: center;
+}
+.kc-list-tools .ant-select .ant-select-selector .ant-select-selection-item,
+.kc-list-tools .ant-select .ant-select-selector .ant-select-selection-placeholder,
+.kc-list-tools .ant-select .ant-select-selector .ant-select-selection-search {
+  display: flex;
+  align-items: center;
+  line-height: normal;
+}
+.kc-list-tools .ant-segmented .ant-segmented-item-label {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  line-height: normal;
+}
+
+/* Внутреннее поле оболочки со значком высоту не назначает — её держит оболочка. */
+.kc-list-tools .ant-input-affix-wrapper > .ant-input {
+  height: auto;
+  min-height: 0;
 }

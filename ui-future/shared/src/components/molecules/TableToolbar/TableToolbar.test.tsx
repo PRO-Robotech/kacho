@@ -9,7 +9,7 @@ import { jest } from "@jest/globals";
 import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { antdStub } from "@shared/test/antd-stub";
 
-// Содержимое выпадающего блока приходит пропом `dropdownRender`, а не детьми, —
+// Содержимое выпадающего блока приходит пропом `popupRender`, а не детьми, —
 // его рисует общий стенд-заменитель. Своей копии здесь больше нет (#570).
 jest.unstable_mockModule("antd", () => antdStub());
 
@@ -29,15 +29,20 @@ describe("TableSearch", () => {
     const onChange = jest.fn<(v: string) => void>();
     render(<TableSearch value="" onChange={onChange} scope="whole" />);
 
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "front" } });
+    // Роль `searchbox`, а не `textbox`: поле объявлено полем ПОИСКА (`type="search"`),
+    // и это его наблюдаемое свойство — программа чтения с экрана называет его
+    // поиском, браузер даёт свою очистку. Проба, ищущая обычное текстовое поле,
+    // зеленела бы на потере этой семантики — она однажды и потерялась при сведении
+    // ручек к одной общей.
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "front" } });
 
     expect(onChange).toHaveBeenCalledWith("front");
   });
 
   it("показывает текущее значение и подсказку", () => {
     render(<TableSearch value="front" onChange={() => {}} scope="whole" placeholder="Найти" />);
-    expect(screen.getByRole("textbox")).toHaveValue("front");
-    expect(screen.getByRole("textbox")).toHaveAttribute("placeholder", "Найти");
+    expect(screen.getByRole("searchbox")).toHaveValue("front");
+    expect(screen.getByRole("searchbox")).toHaveAttribute("placeholder", "Найти");
   });
 });
 

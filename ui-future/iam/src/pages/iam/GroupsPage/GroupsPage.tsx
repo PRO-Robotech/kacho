@@ -11,14 +11,24 @@ import type { ColumnsType } from "antd/es/table";
 import { api } from "@shared/api/client";
 import { iamApi, IAM, type Group, type User, type ServiceAccount } from "@shared/api/iam";
 import { useIamMutation, fmtTs, CopyableMonoId } from "@shared/components/organisms/iam/IamCommon";
-import { SectionHeader } from "@shared/components/molecules/SectionHeader";
-import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
+import { DETAIL_CONTENT_WIDTH, DetailSurface } from "@shared/components/organisms/DetailShell";
+import {
+  EDITOR_ACTIONS_WIDTH,
+  editorBodyStyle,
+  editorEmptyStyle,
+  editorFirstRowStyle,
+  editorHeadCellStyle,
+  editorIconButtonStyle,
+  editorRowStyle,
+} from "@shared/components/organisms/form/editor-surface";
+import { ScopeRequiredEmpty } from "@/components/molecules/ScopeRequiredEmpty";
 import { IamRefLink } from "@/components/molecules/IamRefLink";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { IamListShell, useTableScrollY } from "@/components/organisms/iam/IamListShell";
 import { useContext } from "@shared/lib/context-store";
+import { ENTITIES, SERVICES } from "@shared/lib/entity-names";
 import { LabelsEditor, labelsFromEntries, type LabelEntry } from "@shared/components/organisms/LabelsEditor";
 import { useDebouncedValue } from "@shared/lib/list-search";
 import { pickerScope, type PickerScope } from "@shared/lib/picker-search";
@@ -49,20 +59,28 @@ export function GroupsPage() {
   const account = useContext((s) => s.account);
   const accountId = account?.id ?? null;
   const navigate = useNavigate();
-  const headerAction = useMemo(
+  // Слот шапки приложения ПУСТ: «Создать» стоит последней в ряду ручек списка,
+  // как у generic-страницы. Сбросить его всё равно нужно — слот держит состояние
+  // между страницами и донёс бы сюда чужую кнопку.
+  useHeaderRight(null);
+  // Крошки называют ПУТЬ, заголовок — предмет, и дважды одно не говорят:
+  // последнее звено повторяло бы заголовок страницы двадцатью точками ниже.
+  useBreadcrumb(useMemo(() => <Typography.Text type="secondary">{SERVICES.iam.title}</Typography.Text>, []));
+  const cta = useMemo(
     () => (
+      // Кнопка называет ДЕЙСТВИЕ: предмет уже назван заголовком страницы левее
+      // и вчетверо крупнее.
       <Button
         type="primary"
         icon={<PlusOutlined />}
         disabled={!accountId}
         onClick={() => navigate("/iam/groups/create")}
       >
-        Создать группу
+        Создать
       </Button>
     ),
     [accountId, navigate],
   );
-  useHeaderRight(headerAction);
 
   const list = useQuery({
     queryKey: ["iam", "groups", "list", accountId],
@@ -135,40 +153,38 @@ export function GroupsPage() {
     },
   ];
 
+  if (!accountId) return <ScopeRequiredEmpty purpose={`увидеть ${ENTITIES.groups.plural}`} />;
+
   return (
-    <IamListShell specId="groups" title="Группы" count={groups.length}>
-      {!accountId ? (
-        <Typography.Text type="secondary">Выберите аккаунт, чтобы увидеть его группы.</Typography.Text>
-      ) : (
-        <div ref={wrapRef} className="kc-table-fill" style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
-          <Table<Group>
-            rowKey="id"
-            size="small"
-            className="kc-table"
-            loading={list.isLoading}
-            dataSource={groups}
-            columns={columns}
-            pagination={false}
-            scroll={{ x: "max-content", y: scrollY }}
-            onRow={(row) => ({
-              onClick: (e) => {
-                if (
-                  (e.target as HTMLElement)?.closest(
-                    "button, a, .ant-dropdown, .ant-popover, .ant-select, .ant-table-row-expand-icon",
-                  )
+    <IamListShell title={ENTITIES.groups.plural} actions={cta}>
+      <div ref={wrapRef} className="kc-table-fill" style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
+        <Table<Group>
+          rowKey="id"
+          size="small"
+          className="kc-table"
+          loading={list.isLoading}
+          dataSource={groups}
+          columns={columns}
+          pagination={false}
+          scroll={{ x: "max-content", y: scrollY }}
+          onRow={(row) => ({
+            onClick: (e) => {
+              if (
+                (e.target as HTMLElement)?.closest(
+                  "button, a, .ant-dropdown, .ant-popover, .ant-select, .ant-table-row-expand-icon",
                 )
-                  return;
-                navigate(`/iam/groups/${row.id}`);
-              },
-              style: { cursor: "pointer" },
-            })}
-            expandable={{
-              expandedRowRender: (row) => <GroupMembersPanel group={row} accountId={accountId} />,
-            }}
-            locale={{ emptyText: "Групп нет. Создайте первую." }}
-          />
-        </div>
-      )}
+              )
+                return;
+              navigate(`/iam/groups/${row.id}`);
+            },
+            style: { cursor: "pointer" },
+          })}
+          expandable={{
+            expandedRowRender: (row) => <GroupMembersPanel group={row} accountId={accountId} />,
+          }}
+          locale={{ emptyText: "Групп нет. Создайте первую." }}
+        />
+      </div>
     </IamListShell>
   );
 }
@@ -184,10 +200,10 @@ export function GroupCreatePage() {
     useMemo(
       () => (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Typography.Text type="secondary">IAM</Typography.Text>
+          <Typography.Text type="secondary">{SERVICES.iam.title}</Typography.Text>
           <Typography.Text type="secondary">/</Typography.Text>
           <Link to="/iam/groups">
-            <Typography.Text type="secondary">Группы</Typography.Text>
+            <Typography.Text type="secondary">{ENTITIES.groups.plural}</Typography.Text>
           </Link>
           <Typography.Text type="secondary">/</Typography.Text>
           <Typography.Text strong>Создать</Typography.Text>
@@ -278,10 +294,10 @@ export function GroupEditPage() {
     useMemo(
       () => (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Typography.Text type="secondary">IAM</Typography.Text>
+          <Typography.Text type="secondary">{SERVICES.iam.title}</Typography.Text>
           <Typography.Text type="secondary">/</Typography.Text>
           <Link to="/iam/groups">
-            <Typography.Text type="secondary">Группы</Typography.Text>
+            <Typography.Text type="secondary">{ENTITIES.groups.plural}</Typography.Text>
           </Link>
           <Typography.Text type="secondary">/</Typography.Text>
           <Typography.Text strong>Редактирование</Typography.Text>
@@ -424,18 +440,15 @@ export function GroupMembersPanel({ group, accountId }: { group: Group; accountI
   const MEMBER_TYPE_LABEL: Record<string, string> = { user: "пользователь", service_account: "сервисный аккаунт" };
 
   return (
-    <div style={{ marginTop: 24, maxWidth: 820 }}>
-      <SectionHeader
-        icon={<ResourceIcon specId="groups" />}
-        eyebrow="Список"
-        title={
-          <span>
-            Участники <Typography.Text type="secondary">({memberList.length})</Typography.Text>
-          </span>
-        }
-      />
-
-      <Space size={8} wrap style={{ marginBottom: 12 }}>
+    // Ширина блока — ОДНА на все секции карточки (`DETAIL_CONTENT_WIDTH`): здесь
+    // стояло своё число 820 против 920 у соседних, и правый край страницы шёл
+    // лесенкой.
+    <div style={{ marginTop: 24, maxWidth: DETAIL_CONTENT_WIDTH }}>
+      {/* Ряд ручек на вкладке карточки живёт по тем же правилам, что ряд
+          инструментов списка: одна высота и один радиус у всех (32 и 8). Класс
+          задаёт их в одном месте — иначе два селекта и кнопка приносят каждый
+          свою высоту, и полоса читается составленной случайно. */}
+      <Space className="kc-list-tools" size={8} wrap style={{ marginBottom: 12 }}>
         <Select
           value={pickerType}
           style={{ width: 200 }}
@@ -486,93 +499,83 @@ export function GroupMembersPanel({ group, accountId }: { group: Group; accountI
         </Button>
       </Space>
 
-      {/* Bordered kc-grid-table — единый вид с CIDR-блоками подсети (конвенция
-          overviewBelow-секций): Тип | Участник | Добавлен | действие. */}
-      <div
-        style={{
-          border: "1px solid var(--kc-border)",
-          borderRadius: 8,
-          overflow: "hidden",
-          background: "var(--kc-page)",
-        }}
-      >
-        <table className="w-full text-sm kc-grid-table" style={{ tableLayout: "fixed" }}>
-          <colgroup>
-            <col style={{ width: 170 }} />
-            <col />
-            <col style={{ width: 180 }} />
-            <col style={{ width: 48 }} />
-          </colgroup>
-          <thead>
-            <tr style={{ background: "var(--kc-container)" }}>
-              {["Тип", "Участник", "Добавлен"].map((h) => (
-                <th
-                  key={h}
-                  className="text-left"
-                  style={{
-                    padding: "7px 12px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    letterSpacing: "0.02em",
-                    color: "var(--kc-text-tertiary)",
-                  }}
+      {/* ШАПКА СЕКЦИИ — СТРОКА ТОЙ ЖЕ ТАБЛИЦЫ (`DetailSurface`), а не блок над
+          ней. Здесь стояли ДВЕ конструкции подряд: `SectionHeader` со своей
+          иконкой, надзаголовком «Список» и счётчиком — и отдельная рамка со
+          своим радиусом под таблицей. На стыке шли две линии и два радиуса,
+          шапка читалась приделанной сверху, а счётчик повторял то, что и так
+          сосчитано глазами. Геометрия строк и ячеек берётся из общего набора
+          (`editor-surface`), которым нарисованы метки, маршруты и блоки CIDR:
+          это один предмет — «набор значений, который правят по одному». */}
+      <DetailSurface title="Участники" note="Пользователи и сервисные аккаунты">
+        <div style={editorBodyStyle}>
+          <table className="w-full" style={{ tableLayout: "fixed", borderCollapse: "collapse" }}>
+            <colgroup>
+              <col style={{ width: 170 }} />
+              <col />
+              <col style={{ width: 180 }} />
+              <col style={{ width: EDITOR_ACTIONS_WIDTH }} />
+            </colgroup>
+            <thead>
+              <tr>
+                {["Тип", "Участник", "Добавлен"].map((h) => (
+                  <th key={h} className="text-left" style={editorHeadCellStyle}>
+                    {h}
+                  </th>
+                ))}
+                <th style={editorHeadCellStyle} />
+              </tr>
+            </thead>
+            <tbody>
+              {memberList.length === 0 && (
+                <tr>
+                  <td colSpan={4} style={editorEmptyStyle}>
+                    Участников нет
+                  </td>
+                </tr>
+              )}
+              {memberList.map((m, i) => (
+                <tr
+                  key={`${m.member_type}:${m.member_id}`}
+                  className="kc-kv-row"
+                  // Линия РАЗДЕЛЯЕТ: первой строке она не нужна — над ней уже
+                  // стоит нижняя граница шапки колонок.
+                  style={i === 0 ? editorFirstRowStyle : editorRowStyle}
                 >
-                  {h}
-                </th>
+                  <td style={{ padding: "0 16px", verticalAlign: "middle" }}>
+                    <Tag color={m.member_type === "user" ? "blue" : "gold"} style={{ margin: 0 }}>
+                      {MEMBER_TYPE_LABEL[m.member_type] ?? m.member_type}
+                    </Tag>
+                  </td>
+                  <td style={{ padding: "0 16px", verticalAlign: "middle" }}>
+                    <IamRefLink
+                      specId={m.member_type === "user" ? "users" : "service-accounts"}
+                      refId={m.member_id}
+                      nameField={m.member_type === "user" ? "email" : "name"}
+                    />
+                  </td>
+                  <td style={{ padding: "0 16px", verticalAlign: "middle" }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                      {fmtTs(m.added_at)}
+                    </Typography.Text>
+                  </td>
+                  <td style={{ textAlign: "center", verticalAlign: "middle" }}>
+                    <Popconfirm
+                      title="Удалить участника?"
+                      okText="Удалить"
+                      okButtonProps={{ danger: true }}
+                      cancelText="Отмена"
+                      onConfirm={() => void removeMut.run({ member_type: m.member_type, member_id: m.member_id })}
+                    >
+                      <Button size="small" type="text" danger icon={<DeleteOutlined />} style={editorIconButtonStyle} />
+                    </Popconfirm>
+                  </td>
+                </tr>
               ))}
-              <th style={{ padding: "7px 4px" }} />
-            </tr>
-          </thead>
-          <tbody>
-            {memberList.length === 0 && (
-              <tr style={{ height: 44, borderTop: "1px solid var(--kc-border-secondary)" }}>
-                <td
-                  colSpan={4}
-                  style={{ textAlign: "center", verticalAlign: "middle", fontSize: 12, color: "var(--kc-text-tertiary)" }}
-                >
-                  Участников нет
-                </td>
-              </tr>
-            )}
-            {memberList.map((m) => (
-              <tr
-                key={`${m.member_type}:${m.member_id}`}
-                className="kc-kv-row"
-                style={{ height: 44, borderTop: "1px solid var(--kc-border-secondary)" }}
-              >
-                <td style={{ padding: "0 12px", verticalAlign: "middle" }}>
-                  <Tag color={m.member_type === "user" ? "blue" : "gold"} style={{ margin: 0 }}>
-                    {MEMBER_TYPE_LABEL[m.member_type] ?? m.member_type}
-                  </Tag>
-                </td>
-                <td style={{ padding: "0 12px", verticalAlign: "middle" }}>
-                  <IamRefLink
-                    specId={m.member_type === "user" ? "users" : "service-accounts"}
-                    refId={m.member_id}
-                    nameField={m.member_type === "user" ? "email" : "name"}
-                  />
-                </td>
-                <td style={{ padding: "0 12px", verticalAlign: "middle" }}>
-                  <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                    {fmtTs(m.added_at)}
-                  </Typography.Text>
-                </td>
-                <td style={{ textAlign: "center", verticalAlign: "middle" }}>
-                  <Popconfirm
-                    title="Удалить участника?"
-                    okText="Удалить"
-                    okButtonProps={{ danger: true }}
-                    cancelText="Отмена"
-                    onConfirm={() => void removeMut.run({ member_type: m.member_type, member_id: m.member_id })}
-                  >
-                    <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-                  </Popconfirm>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </tbody>
+          </table>
+        </div>
+      </DetailSurface>
     </div>
   );
 }

@@ -148,10 +148,23 @@ export function buildVipSourceOrNull(
 // subnetPlacementMatches — кандидат-подсеть подходит для источника VIP, только
 // если её placement совпадает с placement балансировщика. Legacy-подсети без
 // placement_type трактуются как ZONAL.
-export function subnetPlacementMatches(placement: string) {
+export function subnetPlacementMatches(placement: string, regionId?: string) {
   return (row: Record<string, unknown>): boolean => {
     const pt = (row.placement_type as string | undefined) || "ZONAL";
-    return pt === placement;
+    if (pt !== placement) return false;
+    // Регион подсети обязан совпадать с регионом балансировщика.
+    //
+    // Без этой проверки в список попадали подсети ЛЮБОГО региона, и выбор
+    // заканчивался отказом сервера уже после отправки формы: связать ресурсы
+    // разных регионов нельзя (согласованность размещения — правило продукта, а
+    // не вкус). Отвергнуть заведомо негодный выбор до отправки дешевле для всех.
+    //
+    // Регион берётся из АВТОРИТЕТНОГО поля строки подсети, а не выводится из
+    // имени её зоны: имена региона и зоны — произвольные строки, и вывод по
+    // ним запрещён прямо (правило продукта; строковая деривация к тому же молча
+    // даёт пустоту у подсети без зоны, и проверка превращается в no-op).
+    if (!regionId) return false;
+    return (row.region_id as string | undefined) === regionId;
   };
 }
 
@@ -212,6 +225,9 @@ function FamilyRow({ value, onChange, family }: Props & { family: Family }) {
   // INTERNAL/ZONAL: «Публичный (авто)» не предлагался вовсе, а REGIONAL-подсети
   // не попадали в список кандидатов.
   const placementMode = getByPath(value, "placement") as string | undefined;
+  // Регион балансировщика — из того же объекта формы: подсеть обязана быть его
+  // региона, и пока он не выбран, выбор подсети не имеет смысла.
+  const regionId = getByPath(value, "region_id") as string | undefined;
   const type = lbTypeFromPlacement(placementMode);
   const placement = lbPlacementTypeFromPlacement(placementMode);
   const rawMode = getByPath(value, `vip_source._${family}_mode`) as string | undefined;
@@ -269,10 +285,15 @@ function FamilyRow({ value, onChange, family }: Props & { family: Family }) {
           <RefSelect
             refResource="subnets"
             refProjectScoped
-            refFilter={subnetPlacementMatches(placement)}
+            refFilter={subnetPlacementMatches(placement, regionId)}
             value={getByPath(value, `${base}.subnet_id`) as string | undefined}
             onChange={(uid) => set(`${base}.subnet_id`, uid || undefined)}
-            placeholder={`Подсеть (${placement}) для авто-аллокации VIP`}
+            // Пока регион не выбран, выбирать не из чего: любая подсеть окажется
+            // либо верной, либо из чужого региона, а какая именно — решает
+            // регион. Поле закрыто и САМО ГОВОРИТ, чего ждёт: закрытое поле без
+            // объяснения читается как неисправное.
+            disabled={!regionId}
+            placeholder={regionId ? `Подсеть (${placement}) для авто-аллокации VIP` : "Сначала выберите регион"}
           />
         )}
 
@@ -332,8 +353,12 @@ export function NlbVipSourceField({ value, onChange, editMode }: Props) {
         <FamilyRow value={value} onChange={onChange} family="v6" />
       </Form>
       <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-        <span style={{ color: "#ff4d4f" }}>*</span> Задайте источник хотя бы для одного семейства (IPv4 или IPv6). Сам
-        VIP-адрес назначается после создания (резолвится в связанный Address) — здесь задаётся только источник.
+        {/* Цвет — роль палитры, а не литерал: литерал берётся из одной темы и
+            в другой остаётся собой. Здесь стоял красный набора antd, который
+            со сменой темы не менялся вовсе. */}
+        <span style={{ color: "var(--kc-danger)" }}>*</span> Задайте источник хотя бы для одного семейства (IPv4 или
+        IPv6). Сам VIP-адрес назначается после создания (резолвится в связанный Address) — здесь задаётся только
+        источник.
       </Typography.Text>
     </Section>
   );

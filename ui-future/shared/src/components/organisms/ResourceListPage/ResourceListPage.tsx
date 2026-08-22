@@ -4,33 +4,31 @@
 
 import { useMemo, useState } from "react";
 import { Link, useParams, useLocation, useNavigate } from "react-router";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Button, Checkbox, Input, Modal, Segmented, Select, Typography, Tag } from "antd";
+import { useQuery } from "@tanstack/react-query";
+import { Button, Checkbox, Segmented, Select, Typography } from "antd";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { PlusOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
-import { REGISTRY, getByPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { REGISTRY, getByPath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
 import { RowActionsMenu, resourceHasRowActions } from "@shared/components/molecules/RowActionsMenu";
 import { filterExpressionValue, useDebouncedValue } from "@shared/lib/list-search";
-import { PanelHeader } from "@shared/components/molecules/PanelHeader";
-import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
 import { type ReactNode } from "react";
 import { ResourceEmptyState } from "@shared/components/molecules/ResourceEmptyState";
 import { ProjectRequiredEmpty } from "@shared/components/molecules/ProjectRequiredEmpty";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
-import { ColumnSettings, useHiddenColumns, type ToggleCol } from "@shared/components/molecules/TableToolbar";
-import { useResourceList } from "@shared/lib/use-resource-list";
-import { listViewState, loadedCountLabel } from "@shared/lib/list-view-state";
-import { searchFilterExpression } from "@shared/lib/list-search-filter";
+import { PageHead, PAGE_PADDING } from "@shared/components/organisms/DetailShell/PageHead";
 import {
-  clientScope,
-  narrowingTitle,
-  scopeSuffix,
-  searchPlaceholder,
-  type NarrowingScope,
-} from "@shared/lib/list-scope";
+  ColumnSettings,
+  TableSearch,
+  useHiddenColumns,
+  type ToggleCol,
+} from "@shared/components/molecules/TableToolbar";
+import { useResourceList } from "@shared/lib/use-resource-list";
+import { listViewState } from "@shared/lib/list-view-state";
+import { searchFilterExpression } from "@shared/lib/list-search-filter";
+import { clientScope, scopeSuffix, type NarrowingScope } from "@shared/lib/list-scope";
 
 interface Props {
   spec: ResourceSpec;
@@ -85,15 +83,10 @@ export function ResourceListPage({
   // бы только то, что успело приехать, и выдал бы это за весь список.
   const [serverFilters, setServerFilters] = useState<Record<string, string>>({});
 
-  // Выделение строк и групповое снятие.
-  //
-  // Столбец флажков появляется ТОЛЬКО у ресурса, который вообще можно удалять:
-  // выделение без действия — приглашение к тому, чего нет. Снимаются ровно
-  // выделенные строки, а не «всё, что подошло под фильтр»: второе снесло бы и
-  // то, что осталось за курсором и на экран не приезжало.
-  const [selected, setSelected] = useState<string[]>([]);
-  const [confirming, setConfirming] = useState(false);
-  const canBulkDelete = spec.ops.delete;
+  // Выделения строк и группового удаления ЗДЕСЬ НЕТ — решением владельца
+  // «удаление по чекбоксам убрать для всех ресурсов». Удаляют по одной строке
+  // из её меню действий. Абзац стоит вместо снятого кода намеренно: без него
+  // следующий читатель заводит флажки заново, приняв их отсутствие за упущение.
 
   // Поиск: спрашивает СЕРВЕР, если ресурс это объявил. Способов два, и они НЕ
   // взаимозаменяемы — у них разные операторы и разные предметы:
@@ -147,19 +140,18 @@ export function ResourceListPage({
       return next;
     });
 
+  // КРОШКИ НАЗЫВАЮТ ПУТЬ, ЗАГОЛОВОК — ПРЕДМЕТ, И ДВАЖДЫ ОДНО НЕ ГОВОРЯТ.
+  //
+  // Здесь крошки оканчивались именем раздела — тем же словом, что стоит
+  // заголовком страницы двадцатью точками ниже и вчетверо крупнее. Пока
+  // заголовка у списка не было, это было единственное место, где раздел
+  // назывался; теперь он назван, и последний шаг пути стал повторением.
+  //
+  // На КАРТОЧКЕ ресурса такого повторения нет и крошки остаются полными: там
+  // заголовок — имя экземпляра, а раздел в пути ведёт назад, к списку.
   const breadcrumb = useMemo(
-    () => (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-        {spec.serviceTitle && (
-          <>
-            <Typography.Text type="secondary">{spec.serviceTitle}</Typography.Text>
-            <Typography.Text type="secondary">/</Typography.Text>
-          </>
-        )}
-        <Typography.Text strong>{spec.plural}</Typography.Text>
-      </span>
-    ),
-    [spec.plural, spec.serviceTitle],
+    () => (spec.serviceTitle ? <Typography.Text type="secondary">{spec.serviceTitle}</Typography.Text> : null),
+    [spec.serviceTitle],
   );
   useBreadcrumb(breadcrumb);
 
@@ -174,30 +166,28 @@ export function ResourceListPage({
     return (
       <Link to={createTarget}>
         <Button type="primary" icon={<PlusOutlined />}>
-          Создать {spec.singular.toLowerCase()}
+          {/* Короткое «Создать» — решение владельца. Предмет назван заголовком
+              страницы в двадцати точках левее и вчетверо крупнее; полная подпись
+              повторяла его и занимала пол-строки инструментов.
+
+              Полная форма (`createActionLabel`) остаётся там, где предмет рядом
+              НЕ назван: пункт выпадающего списка и текст отказа. */}
+          Создать
         </Button>
       </Link>
     );
   }, [spec, createTarget]);
-  useHeaderRight(cta);
+  // Слот шапки приложения ПУСТ намеренно: «Создать» переехала в строку
+  // инструментов таблицы (см. `actions` ниже). Оставить её ещё и здесь значило
+  // бы показать одну кнопку дважды — а убрать вызов вовсе нельзя: слот держит
+  // состояние между страницами, и не сброшенный, он донёс бы чужую кнопку на
+  // следующую открытую страницу.
+  useHeaderRight(null);
 
   const basePath = location.pathname.endsWith("/") ? location.pathname.slice(0, -1) : location.pathname;
 
   const items = data?.[spec.payloadKey] ?? [];
 
-  const bulkDelete = useMutation({
-    // По запросу на строку: группового снятия у края нет, и собирать его из
-    // одного запроса значило бы придумать контракт, которого не существует.
-    // Ошибка на одной строке не отменяет остальных — снятие идемпотентно.
-    mutationFn: async (ids: string[]) => {
-      const base = mutationBasePath(spec);
-      await Promise.allSettled(ids.map((id) => api.delete(`${base}/${id}`)));
-    },
-    onSettled: () => {
-      setSelected([]);
-      setConfirming(false);
-    },
-  });
 
   // Дополнительный фильтр "Зона доступности" — для ресурсов, у которых есть
   // понятие zone. Subnet хранит zone напрямую, Address — внутри
@@ -334,48 +324,135 @@ export function ResourceListPage({
   });
   const showWelcome = view === "welcome";
 
-  // Единая шапка списка (PanelHeader) — те же 3 части, что у табов/форм:
-  // [иконка ресурса] + «Список» (действие) + plural (название) + счётчик.
-  // CTA «Создать» — в шапке страницы (useHeaderRight). KAC-246.
-  const listHeader = (right?: ReactNode) => (
-    <PanelHeader
-      icon={<ResourceIcon specId={spec.id} />}
-      eyebrow="Список"
-      title={
-        // height:20 = строка заголовка (16px·1.25) — счётчик-Tag НЕ распирает
-        // строку (был 24px), иначе текст бейджа «скачет» относительно detail
-        // (там тега нет). Tag ≤18px помещается в строку.
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, height: 20, lineHeight: "20px" }}>
-          {spec.plural}
-          {!isLoading && !isError && (
-            <Tag
-              title={hasMore ? "Загружено строк; за курсором есть ещё" : undefined}
-              style={{
-                margin: 0,
-                fontSize: 11.5,
-                fontWeight: 600,
-                lineHeight: "16px",
-                height: 18,
-                paddingInline: 6,
-                borderRadius: 5,
-              }}
-            >
-              {loadedCountLabel(filteredItems.length, hasMore)}
-            </Tag>
-          )}
-        </span>
+  // CTA «Создать» — в шапке страницы (useHeaderRight).
+  //
+  // ─────────────────────────────────────────────────────────────────────────
+  // ПОЧЕМУ У СПИСКА НЕТ НИ ИКОНКИ, НИ НАЗВАНИЯ
+  //
+  // Второй уровень сайдбара называет выбранный тип — иконкой и подписью, — и
+  // подсвечивает его. Хлебные крошки называют его же. Шапка таблицы говорила
+  // ТО ЖЕ САМОЕ третий раз: та же иконка, то же название. Три одинаковых
+  // утверждения на одном экране не сообщают втрое больше, они спорят за
+  // внимание с содержимым, ради которого страницу открыли.
+  //
+  // Осталось то, чего больше не говорит НИКТО: инструменты над таблицей.
+  // Надзаголовок «Список» снят по той же причине — он называл способ показа
+  // вместо предмета и стоял одинаковым на каждой странице списка, то есть не
+  // различал ничего.
+  //
+  // СЧЁТЧИКА СТРОК ЗДЕСЬ БОЛЬШЕ НЕТ — решением владельца «отображать кол-во
+  // элементов не нужно». Прежняя редакция этого абзаца называла его средним
+  // звеном порядка («сузить → прочитать, сколько получилось → сделать
+  // что-нибудь») и пережила его снятие.
+  //
+  // ПОРЯДОК СТРОКИ ИНСТРУМЕНТОВ отвечает порядку работы: сузить (поиск и
+  // отборы) → сделать что-нибудь с показанным (выбор столбцов). Обе группы
+  // прижаты вправо и стоят НАД таблицей — так же, как во встроенной таблице
+  // карточки ресурса.
+  const listToolbar = ({
+    narrowing,
+    actions,
+  }: {
+    narrowing?: ReactNode;
+    actions?: ReactNode;
+  }) => (
+    // ТА ЖЕ ШАПКА, ЧТО У КАРТОЧКИ РЕСУРСА (`PageHead`), решение владельца.
+    //
+    //   список:   ——— VPC                карточка:  ——— ОБЛАЧНАЯ СЕТЬ
+    //             Облачные сети                     networks-722779
+    //
+    // Принцип один на обе страницы: надзаголовок — РОДИТЕЛЬ предмета, заголовок —
+    // сам предмет. У списка родитель — сервис, предмет — тип во множественном
+    // числе; у карточки родитель — тип, предмет — экземпляр. Переход между ними
+    // перестаёт читаться как переход в другой продукт: кегль, вес, межбуквенное
+    // расстояние, высота блока и линия снизу приходят из одного места.
+    //
+    // Здесь стоял собственный заголовок списка — 17px/600 в строке ручек. Он
+    // называл предмет, но конструкцией не совпадал с карточкой ни в чём, и две
+    // страницы одного ресурса выглядели сделанными разными руками.
+    //
+    // Чего в шапке НЕТ и почему — см. `PageHead`: ни надзаголовка «Список» (он
+    // сообщал способ показа вместо предмета и не различал страницы), ни
+    // счётчика (снят решением владельца ВЕЗДЕ), ни иконки-плитки (иконка —
+    // признак идентичности экземпляра, у типа её место в навигации).
+    <PageHead
+      title={spec.plural}
+      right={
+        // Ручки — ОДНОЙ группой, как в правом слоте шапки встроенной таблицы
+        // карточки. Порядок отвечает порядку работы: сузить (поиск, отборы) →
+        // выбрать, что показывать (столбцы) → добавить своё (создать).
+        //
+        // Перенос разрешён: у ресурсов с отбором по зоне и серверными фильтрами
+        // группа шире, чем остаток строки на узком окне, и без переноса она
+        // выдавливала бы заголовок.
+        <div
+          // Класс задаёт ОДНУ высоту и один радиус всем ручкам ряда — см. его
+          // объявление в общем листе. Прежде каждая приносила своё: поле поиска
+          // от antd, отбор-селект, кнопка со значком и первичная кнопка — четыре
+          // разные высоты в одном ряду, и полоса читалась как случайно
+          // составленная.
+          className="kc-list-tools"
+          style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>{narrowing}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{actions}</div>
+        </div>
       }
-      right={right}
     />
   );
 
-  // Welcome (пустой список) — та же surface-подложка, что и заполнённая страница,
-  // чтобы заголовок не «прыгал» и не выглядел инородно (KAC-246).
+  // Пустой список: та же поверхность и ТОТ ЖЕ ЗАГОЛОВОК, что у заполненной
+  // страницы, но БЕЗ строки инструментов.
+  //
+  // Ручек нет: сужать нечего — в это состояние страница приходит только при
+  // пустом наборе и БЕЗ сужения (см. `listViewState`); выбирать столбцы не у
+  // чего. Осталась бы полоса ручек: подпись к тому, чего нет.
+  //
+  // ЗАГОЛОВОК ЕСТЬ, И ЭТО НЕ СИММЕТРИЯ РАДИ СИММЕТРИИ. Крошки перестали называть
+  // раздел последним звеном ИМЕННО потому, что его называет заголовок страницы
+  // (см. разбор у `breadcrumb` выше). Здесь заголовок сняли вместе со строкой
+  // инструментов — и на единственной странице, где нет ни одной строки, по
+  // которой тип угадывается, раздел перестал называться вообще: ни крошкой, ни
+  // заголовком. Два решения, каждое по отдельности верное, сложились в потерю.
+  //
+  // Прежняя редакция этого абзаца объясняла отсутствие заголовка тем, что «ни
+  // заголовка, ни счётчика в полосе не осталось, так что прыгать нечему». Про
+  // счётчик это верно; про заголовок — нет: он въехал в `PageHead` той же
+  // правкой, которая уносила полосу.
   if (showWelcome) {
     return (
-      <div className="kc-surface" style={{ padding: 20, height: "100%", overflow: "auto" }}>
-        {listHeader()}
-        <ResourceEmptyState spec={spec} onCreate={() => navigate(createTarget)} />
+      <div
+        className="kc-surface"
+        // ПУСТОЕ СОСТОЯНИЕ СТОИТ ПО ЦЕНТРУ — по обеим осям (решение владельца).
+        //
+        // Прежде оно жило в блоке с отступом, то есть прижималось к левому
+        // верхнему углу: экран, объясняющий, что смотреть не на что, читался как
+        // сбившаяся вёрстка, а не как обращение к человеку.
+        //
+        // Центровку исполняет сама панель (`StatePanel`), но её `minHeight: 100%`
+        // резолвится, только если высота есть у РОДИТЕЛЯ. Пока между ними стоял
+        // блок по содержимому, процент считался от нуля, и панель оставалась
+        // сверху при заполненной высотой поверхности. Поэтому звеном заполнения
+        // здесь становится сама поверхность — колонка с `flex: 1`.
+        style={{
+          padding: PAGE_PADDING,
+          flex: 1,
+          minHeight: 0,
+          height: "100%",
+          overflow: "auto",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* Заголовок — та же конструкция и та же геометрия, что у заполненного
+            списка и у карточки: высота блока и место под линию в `PageHead`
+            зарезервированы независимо от содержимого правого слота, поэтому
+            переход «пусто → появились строки» не сдвигает заголовок. Правый
+            слот здесь пуст — ручек нет. */}
+        <PageHead title={spec.plural} />
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <ResourceEmptyState spec={spec} onCreate={() => navigate(createTarget)} />
+        </div>
       </div>
     );
   }
@@ -383,85 +460,135 @@ export function ResourceListPage({
   return (
     <div
       className="kc-surface"
-      style={{ padding: 20, height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}
+      // Поля страницы живут ЗДЕСЬ, а не на обёртке рабочей области: та отдана
+      // под боковую панель ресурса, примыкающую к рейлу вплотную.
+      //
+      // `flex: 1` рядом с `height: 100%` — не избыточность. Процентная высота
+      // резолвится, только если у родителя высота определена; звеном заполнения
+      // поверхность становится сама, и тогда она заполняет рабочую область у
+      // любого вызывающего, а не только у того, чья обёртка — колонка с заданной
+      // высотой. У блочного родителя `flex` инертен и ничего не меняет.
+      style={{
+        padding: PAGE_PADDING,
+        flex: 1,
+        minHeight: 0,
+        height: "100%",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
     >
-      {/* Шапка списка (иконка + «Список» + plural + счётчик + фильтры) —
-          фиксирована сверху, НЕ скроллится вместе с телом таблицы. */}
-      <div style={{ flexShrink: 0, marginBottom: 12 }}>
-        {listHeader(
-          <>
-            {/* Одна и та же строка ввода означает на разных страницах разное —
+      {/* Строка инструментов фиксирована сверху и НЕ скроллится вместе с телом
+          таблицы. Отдельной линии под ней нет: полоса во всю ширину с
+          разделителем читалась как ещё одна шапка над шапкой страницы, и
+          решением владельца ручки стоят одной группой у правого края.
+
+          Перечня содержимого здесь больше нет: он назывался «иконка + „Список“ +
+          plural + счётчик + фильтры», пережил снятие первых трёх и остался
+          описанием того, чего в строке уже не было. Четвёртое — счётчик — снято
+          тем же решением, что и полоса. */}
+      <div style={{ flexShrink: 0 }}>
+        {listToolbar({
+          narrowing: (
+            <>
+              {/* Одна и та же строка ввода означает на разных страницах разное —
                 значит она обязана об этом СКАЗАТЬ. Серверный поиск спрашивает
                 весь список; клиентский судит о прочитанных страницах, и молча
                 выдавать второе за первое нельзя: пользователь читает «ничего не
-                найдено» как утверждение об отсутствии ресурса. */}
-            <Input.Search
-              // Перекрытие ресурса называет ПРЕДМЕТ поиска (у пользователя имени
-              // нет вовсе — ищут по почте), область по-прежнему называем мы:
-              // иначе единственный ресурс с перекрытием оказывался бы и
-              // единственным, чья строка поиска о своей области молчит.
-              placeholder={
-                spec.search?.placeholder
-                  ? `${spec.search.placeholder} ${scopeSuffix(searchScope)}`
-                  : searchPlaceholder(searchScope)
-              }
-              title={narrowingTitle(searchScope)}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              style={{ width: 320 }}
-              allowClear
-            />
-            {hasZoneFilter && <Select value={zone} onChange={setZone} options={zoneOptions} style={{ width: 220 }} />}
-            {(spec.listFilters ?? []).map((f) =>
-              f.kind === "toggle" ? (
-                <Checkbox
-                  key={f.param}
-                  checked={serverFilters[f.param] === "true"}
-                  onChange={(e) => setServerFilter(f.param, e.target.checked ? "true" : "")}
-                  title={f.description}
-                >
-                  {f.label}
-                </Checkbox>
-              ) : (
-                <ServerRefFilter
-                  key={f.param}
-                  filter={f}
-                  value={serverFilters[f.param] ?? ""}
-                  onChange={(v) => setServerFilter(f.param, v)}
-                />
-              ),
-            )}
-            {hasSystemFilter && (
-              <Segmented
-                value={roleKind}
-                onChange={(v) => setRoleKind(v as "all" | "system" | "custom")}
-                options={[
-                  { label: "Все", value: "all" },
-                  { label: "Системные", value: "system" },
-                  { label: "Кастомные", value: "custom" },
-                ]}
+                найдено» как утверждение об отсутствии ресурса. Область называет
+                сам TableSearch — тот же, что во встроенных таблицах дочерних
+                ресурсов, поэтому строка поиска в продукте одна. Прежняя
+                Input.Search несла вдобавок кнопку-лупу: второй способ сделать
+                то, что и так происходит на вводе, и единственное поле продукта
+                с приклеенной кнопкой. */}
+              {/* ОТБОРЫ — ПЕРЕД ПОИСКОМ (решение владельца). Сужение по зоне
+                  меняет НАБОР строк, среди которых потом ищут; стоя после поля
+                  поиска, оно читалось как уточнение к нему, хотя порядок
+                  обратный. */}
+              {hasZoneFilter && <Select value={zone} onChange={setZone} options={zoneOptions} style={{ width: 220 }} />}
+              <TableSearch
+                value={query}
+                onChange={setQuery}
+                scope={searchScope}
+                // Перекрытие ресурса называет ПРЕДМЕТ поиска (у пользователя имени
+                // нет вовсе — ищут по почте), область по-прежнему называем мы:
+                // иначе единственный ресурс с перекрытием оказывался бы и
+                // единственным, чья строка поиска о своей области молчит.
+                placeholder={
+                  spec.search?.placeholder ? `${spec.search.placeholder} ${scopeSuffix(searchScope)}` : undefined
+                }
+                width={320}
               />
-            )}
-            {canBulkDelete && selected.length > 0 && (
-              <>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  Выделено: {selected.length}
-                </Typography.Text>
-                <Button danger size="small" onClick={() => setConfirming(true)}>
-                  Удалить выделенные
-                </Button>
-              </>
-            )}
-            <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
-          </>,
-        )}
+              {(spec.listFilters ?? []).map((f) =>
+                f.kind === "toggle" ? (
+                  <Checkbox
+                    key={f.param}
+                    checked={serverFilters[f.param] === "true"}
+                    onChange={(e) => setServerFilter(f.param, e.target.checked ? "true" : "")}
+                    title={f.description}
+                  >
+                    {f.label}
+                  </Checkbox>
+                ) : (
+                  <ServerRefFilter
+                    key={f.param}
+                    filter={f}
+                    value={serverFilters[f.param] ?? ""}
+                    onChange={(v) => setServerFilter(f.param, v)}
+                  />
+                ),
+              )}
+              {hasSystemFilter && (
+                <Segmented
+                  value={roleKind}
+                  onChange={(v) => setRoleKind(v as "all" | "system" | "custom")}
+                  options={[
+                    { label: "Все", value: "all" },
+                    { label: "Системные", value: "system" },
+                    { label: "Кастомные", value: "custom" },
+                  ]}
+                />
+              )}
+            </>
+          ),
+          actions: (
+            <>
+              <ColumnSettings columns={toggleCols} hidden={hidden} onToggle={toggleHidden} />
+              {/* «Создать» — ПОСЛЕДНЕЙ в строке инструментов (решение владельца).
+                  
+                  Прежде она жила в правом слоте шапки приложения, то есть
+                  этажом выше и в другой зоне: рука шла к ней через всю страницу,
+                  а сама кнопка стояла в одном ряду с элементами каркаса (выбор
+                  области, профиль) и читалась как принадлежащая им, а не
+                  таблице.
+                  
+                  Место после «Столбцов» отвечает порядку работы: сузить → выбрать,
+                  что показывать → добавить своё. Действие, ИЗМЕНЯЮЩЕЕ набор,
+                  стоит после всех, которые его только показывают. */}
+              {cta}
+            </>
+          ),
+        })}
       </div>
 
-      {/* Тело таблицы заполняет остаток белой поверхности и скроллится внутри
-          (горизонтально при широких колонках, вертикально при длинном списке). */}
-      <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
+      {/* Тело таблицы заполняет остаток поверхности и скроллится внутри
+          (горизонтально при широких колонках, вертикально при длинном списке).
+          Прокрутка одна и она ЗДЕСЬ: поверхность выше стоит с `overflow: hidden`.
+
+          `display: flex` на этой обёртке — не украшение раскладки, а условие
+          заполнения. Обёртка таблицы (`.kc-table-fill`) просит `height: 100%`, а
+          процентная высота через БЛОЧНУЮ границу, чья высота взялась из `flex`,
+          в Chrome не резолвится — и таблица оседала по высоте строк, оставляя
+          под собой полэкрана пустоты при заполненной высотой поверхности. Ровно
+          это звено уже приходилось чинить этажом выше, у обёртки antd в шапке
+          приложения; здесь тот же случай. */}
+      <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column" }}>
         {view === "error" ? (
-          <ErrorResult error={error} />
+          // Отказ — это текст, а не таблица: он держит отступ сам. У таблицы его
+          // нет намеренно, чтобы границы строк доходили до краёв поверхности.
+          <div style={{ padding: 20 }}>
+            <ErrorResult error={error} />
+          </div>
         ) : (
           <ResourceTable
             rows={filteredItems}
@@ -477,41 +604,27 @@ export function ResourceListPage({
             // Серверный поиск полноты НЕ добавляет: он сужает весь список, но
             // ответ по-прежнему приезжает страницей.
             complete={!hasMore}
-            selection={
-              canBulkDelete
-                ? {
-                    selected,
-                    onChange: setSelected,
-                  }
-                : undefined
-            }
+            // Выбора строк НЕТ (решение владельца): удаление идёт по одной
+            // строке из её же меню действий. Массовое удаление по галочкам —
+            // самая дорогая ошибка в списке: она необратима, а подтверждение
+            // называет число, которое читатель и так видел неверно.
           />
         )}
       </div>
 
-      {/* Подтверждение называет ЧИСЛО, а не перечень имён: перечень из сорока
-          строк не читают — его прокручивают до кнопки. Число же отвечает на
-          единственный вопрос, который здесь задают себе: «столько я и
-          выделял?» Ошибка выделения проявляется именно в числе. */}
-      <Modal
-        open={confirming}
-        title={`Удалить ${selected.length} ${spec.plural.toLowerCase()}?`}
-        okText="Удалить"
-        cancelText="Отмена"
-        okButtonProps={{ danger: true }}
-        confirmLoading={bulkDelete.isPending}
-        onCancel={() => setConfirming(false)}
-        onOk={() => bulkDelete.mutate(selected)}
-      >
-        <Typography.Paragraph style={{ marginBottom: 0 }}>
-          Действие необратимо. Снимаются ровно выделенные строки — {selected.length}.
-        </Typography.Paragraph>
-      </Modal>
-
       {/* Курсорная пагинация: общего числа у List нет, поэтому «ещё» — это
           наличие next_page_token, а не арифметика по общему числу. */}
       {view !== "error" && hasMore && (
-        <div style={{ flexShrink: 0, marginTop: 12, textAlign: "center" }}>
+        <div
+          style={{
+            flexShrink: 0,
+            padding: "12px 18px",
+            textAlign: "center",
+            // Подвал отделён линией так же, как шапка: у поверхности две крышки,
+            // и обе — линией от края до края, а не отступом.
+            borderTop: "1px solid var(--kc-border)",
+          }}
+        >
           <Button loading={isFetchingMore} onClick={() => void fetchMore()}>
             Показать ещё
           </Button>

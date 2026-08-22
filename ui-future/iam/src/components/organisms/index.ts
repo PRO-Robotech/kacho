@@ -26,6 +26,7 @@ export { ResourceTable } from "@shared/components/organisms/ResourceTable";
 export { RoutesEditor } from "@shared/components/organisms/RoutesEditor";
 export { RoutesPanel } from "@shared/components/organisms/RoutesPanel";
 export { SaKeysPanel } from "./SaKeysPanel";
+export { TokensPanel } from "./TokensPanel";
 export { SgRulesPanel } from "@shared/components/organisms/SgRulesPanel";
 export { CidrSection } from "@shared/components/organisms/SubnetCidrManager";
 export { SubnetCidrPanel } from "@shared/components/organisms/SubnetCidrPanel";

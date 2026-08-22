@@ -3,9 +3,10 @@
 // Restart/Start/Stop → POST <spec.apiPath>/{id}:verb → Operation.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { DETAIL_CONTENT_WIDTH } from "@shared/components/organisms/DetailShell";
 import { useNavigate, useParams, Link, useSearchParams, useLocation } from "react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Button, Descriptions, Dropdown, Space, Spin, Typography } from "antd";
+import { Button, Dropdown, Space, Spin, Typography } from "antd";
 import type { MenuProps } from "antd";
 import {
   ArrowLeftOutlined,
@@ -18,7 +19,6 @@ import {
   MoreOutlined,
   DragOutlined,
 } from "@ant-design/icons";
-import { LazyJsonMonacoView } from "@shared/components/molecules/JsonMonacoView";
 import { formatDateTime } from "@shared/lib/datetime";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
@@ -27,11 +27,18 @@ import { InlineResourceEditForm } from "@shared/components/organisms/InlineResou
 import { OperationsTab } from "@shared/components/organisms/OperationsTab";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { BoolFact } from "@shared/components/atoms/BoolFact";
-import { CopyableId } from "@shared/components/atoms/CopyableId";
+import { MonoValue } from "@shared/components/atoms/CopyableId/MonoValue";
 import { DeleteDialog } from "@shared/components/molecules/DeleteDialog";
 import { MoveStubDialog } from "@shared/components/molecules/MoveStubDialog";
 import { OperationDialog, extractOperationId } from "@shared/components/molecules/OperationDialog";
-import { DetailShell, type DetailTab } from "@shared/components/organisms/DetailShell";
+import {
+  DetailShell,
+  DetailSurface,
+  JsonTab,
+  PropertyRows,
+  type DetailTab,
+  type PropertyItem,
+} from "@shared/components/organisms/DetailShell";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { api, ApiError } from "@shared/api/client";
 import { useProjectStore } from "@shared/lib/context-store";
@@ -55,10 +62,10 @@ interface Props {
   /** Подменить primary "Создать <singular>" в default overview-actions на другую кнопку.
    *  Например, на Network detail логично "Создать подсеть" вместо "Создать Network". */
   overviewCreateOverride?: { label: string; onClick: () => void };
-  /** Добавить дополнительные секции в Обзор-tab после "Общее"-Descriptions.
+  /** Добавить дополнительные секции в Обзор-tab после секции «Общее».
    *  Используется для inline-таблиц дочерних ресурсов (Network → Подсети). */
   overviewExtras?: (data: Record<string, unknown>) => React.ReactNode;
-  /** Полностью заменить содержимое Обзор-tab (вместо Descriptions + overviewExtras).
+  /** Полностью заменить содержимое Обзор-tab (вместо «Общее» + overviewExtras).
    *  Используется когда Overview переходит в edit-state inline (например,
    *  Network detail → "Создать подсеть" разворачивает форму на месте "Общее"). */
   overviewReplace?: (data: Record<string, unknown>) => React.ReactNode;
@@ -386,8 +393,11 @@ export function ResourceDetailPage({
   }
 
   const overviewItems = [
-    { label: "ID", value: <CopyableId id={resourceId} /> },
-    { label: "Имя", value: name || "—" },
+    { label: "ID", value: <MonoValue value={resourceId} />, copy: resourceId || undefined },
+    // Копирование у ВСЕХ строк одинаковое — общий значок справа. Прежде у
+    // идентификатора кнопкой служило само значение, и в одной таблице жили два
+    // поведения: у «Имени» отзывался значок, у «Идентификатора» — вся строка.
+    { label: "Имя", value: name || "—", copy: name || undefined },
     statusValue ? { label: "Статус", value: <StatusBadge state={statusValue} /> } : null,
     getByPath<string>(data, "created_at")
       ? {
@@ -396,7 +406,7 @@ export function ResourceDetailPage({
         }
       : null,
     getByPath<string>(data, "project_id")
-      ? { label: "Проект", value: <CopyableId id={getByPath<string>(data, "project_id")!} /> }
+      ? { label: "Проект", value: <MonoValue value={getByPath<string>(data, "project_id")!} />, copy: getByPath<string>(data, "project_id")! || undefined }
       : null,
     getByPath<string>(data, "zone_id")
       ? {
@@ -407,7 +417,7 @@ export function ResourceDetailPage({
     getByPath<string>(data, "network_id")
       ? {
           label: "Сеть",
-          value: <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")} />,
+          value: <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")} copy={false} />, copy: getByPath<string>(data, "network_id") ?? undefined,
         }
       : null,
     getByPath<string>(data, "description")
@@ -419,14 +429,26 @@ export function ResourceDetailPage({
       ? {
           label: "Зарезервирован",
           value: (
-            <BoolFact value={getByPath<boolean>(data, "reserved")} yes="Зарезервирован" no="Не зарезервирован" accent />
+            <BoolFact
+              value={getByPath<boolean>(data, "reserved")}
+              yes="Зарезервирован"
+              no="Не зарезервирован"
+              yesTone="good"
+              yesGlyph="shield"
+            />
           ),
         }
       : null,
     typeof getByPath<boolean>(data, "used") === "boolean"
       ? {
           label: "Используется",
-          value: <BoolFact value={getByPath<boolean>(data, "used")} yes="Используется ресурсом" no="Свободен" />,
+          value: <BoolFact
+            value={getByPath<boolean>(data, "used")}
+            yes="Используется ресурсом"
+            no="Свободен"
+            yesTone="active"
+            yesGlyph="link"
+          />,
         }
       : null,
     // Network-specific: declared supernet (VPC-1) — IPv4 then IPv6, multi-line.
@@ -454,14 +476,14 @@ export function ResourceDetailPage({
     spec.id === "networks" && getByPath<string>(data, "default_security_group_id")
       ? {
           label: "Группа безопасности по умолчанию",
-          value: <RefNameLink specId="security-groups" refId={getByPath<string>(data, "default_security_group_id")} />,
+          value: <RefNameLink specId="security-groups" refId={getByPath<string>(data, "default_security_group_id")} copy={false} />, copy: getByPath<string>(data, "default_security_group_id") ?? undefined,
         }
       : null,
     // Network-specific: system-provisioned default RT (VPC-1, echoed on create).
     spec.id === "networks" && getByPath<string>(data, "default_route_table_id")
       ? {
           label: "Таблица маршрутизации по умолчанию",
-          value: <RefNameLink specId="route-tables" refId={getByPath<string>(data, "default_route_table_id")} />,
+          value: <RefNameLink specId="route-tables" refId={getByPath<string>(data, "default_route_table_id")} copy={false} />, copy: getByPath<string>(data, "default_route_table_id") ?? undefined,
         }
       : null,
     // SecurityGroup-specific: Правила (count + empty state).
@@ -493,6 +515,9 @@ export function ResourceDetailPage({
       ? {
           label: "Размещение",
           value: <PlacementAnchor row={data} maxChars={42} />,
+          // Копируется идентификатор якоря — зоны либо региона: имя меняется,
+          // идентификатор нет, и вставляют в тикет или в вызов именно его.
+          copy: getByPath<string>(data, "zone_id") || getByPath<string>(data, "region_id") || undefined,
         }
       : null,
     // Subnet-specific: IPv4 CIDR — immutable primary anchor + additional ranges
@@ -543,7 +568,7 @@ export function ResourceDetailPage({
     spec.id === "subnets" && getByPath<string>(data, "route_table_id")
       ? {
           label: "Таблица маршрутизации",
-          value: <CopyableId id={getByPath<string>(data, "route_table_id")!} />,
+          value: <MonoValue value={getByPath<string>(data, "route_table_id")!} />, copy: getByPath<string>(data, "route_table_id")! || undefined,
         }
       : null,
     // NetworkInterface: MAC address (output-only, KAC-48). Префикс 0e: + 40 бит
@@ -551,10 +576,10 @@ export function ResourceDetailPage({
     spec.id === "network-interfaces" && getByPath<string>(data, "mac_address")
       ? {
           label: "MAC",
-          value: <CopyableId id={getByPath<string>(data, "mac_address")!} />,
+          value: <MonoValue value={getByPath<string>(data, "mac_address")!} />, copy: getByPath<string>(data, "mac_address")! || undefined,
         }
       : null,
-  ].filter(Boolean) as { label: string; value: React.ReactNode }[];
+  ].filter(Boolean) as PropertyItem[];
 
   const tabs: DetailTab[] = [
     {
@@ -578,18 +603,24 @@ export function ResourceDetailPage({
               overviewReplace(data)
             ) : (
               <>
-                <Descriptions
-                  title="Общее"
-                  bordered
-                  column={1}
-                  size="small"
-                  labelStyle={{ width: 200 }}
-                  items={overviewItems.map((it, i) => ({
-                    key: String(i),
-                    label: it.label,
-                    children: it.value,
-                  }))}
-                />
+                {/* Обзор — поверхность-секция со строками «ключ · значение»
+                    (эталон). Прежде здесь стоял `Descriptions` antd: он рисует
+                    таблицу с рамкой на КАЖДОЙ ячейке, то есть решётку там, где
+                    язык карточки держит одну линию между строками. */}
+                <div style={{ maxWidth: DETAIL_CONTENT_WIDTH }}>
+                  {/* Заголовок секции — «Общее», а НЕ «Обзор»: «Обзор» уже
+                      стоит ярлыком активной вкладки в десятке пикселей выше, и
+                      второй такой же назвал бы один предмет дважды. Отличать
+                      секцию от соседних надо здесь всерьёз: под ней идут
+                      «Используется» и доменные секции вкладки. */}
+                  {/* Заголовок секции НЕ повторяет имя вкладки. Вкладка над ней уже
+                говорит «Обзор»; секция, назвавшая себя так же, сообщала бы это
+                во второй раз подряд и ничего не добавляла. Здесь — что именно
+                лежит в секции, а не в каком разделе мы находимся. */}
+              <DetailSurface title="Основные свойства">
+                    <PropertyRows items={overviewItems} />
+                  </DetailSurface>
+                </div>
                 {/* Generic — рендерится для любого ресурса с непустым used_by
                   (kacho.cloud.reference.Reference[]). Для Address — кто
                   использует адрес (ephemeral compute NIC, и т.д.). */}
@@ -634,7 +665,7 @@ export function ResourceDetailPage({
           {
             id: "raw",
             label: "JSON",
-            render: () => <LazyJsonMonacoView data={data} />,
+            render: () => <JsonTab data={data} />,
           },
         ]),
   ];
@@ -642,9 +673,7 @@ export function ResourceDetailPage({
   return (
     <>
       <DetailShell
-        resourceLabel={spec.genitive ?? spec.plural}
         resourceName={name || resourceId}
-        nameEyebrow={spec.singular}
         badges={statusValue ? <StatusBadge state={statusValue} /> : null}
         tabs={tabs}
         secondaryActions={secondaryActions ? secondaryActions(data) : undefined}
@@ -711,7 +740,10 @@ function JsonIntTab({ path, queryKey }: { path: string; queryKey: unknown[] }) {
       />
     );
   }
-  return <LazyJsonMonacoView data={data} />;
+  // Служебная проекция читается и копируется ТЕМ ЖЕ способом, что обычная:
+  // разный вид у двух вкладок одного вида заставлял бы искать копирование
+  // заново на каждой.
+  return <JsonTab data={data} />;
 }
 
 // UsedByBlock — generic "Used by" rendering for any resource whose API response
@@ -734,20 +766,31 @@ function UsedByBlock({ data }: { data: Record<string, unknown> }) {
     referrer?: { type?: string; id?: string };
     type?: string;
   }>;
+  // Та же поверхность-секция, что у «Общего»: заголовок в шапке, содержимое под
+  // ней. Прежде блок рисовался своей карточкой с другим радиусом и другим
+  // кеглем заголовка — соседний факт о том же ресурсе выглядел другим местом.
   return (
-    <div className="rounded-lg border border-border p-4 space-y-2">
-      <h3 className="font-semibold text-sm">Используется</h3>
-      <ul className="space-y-1 text-sm">
-        {items.map((r, i) => {
-          const type = r.referrer?.type ?? "?";
-          const id = r.referrer?.id ?? "";
-          return (
-            <li key={`${type}-${id}-${i}`} className="flex items-center gap-2">
-              <ReferrerLink projectId={projectId} referrer={r.referrer} />
-            </li>
-          );
-        })}
-      </ul>
+    <div style={{ maxWidth: DETAIL_CONTENT_WIDTH }}>
+      {/* Счётчик — СЛОВАМИ и в той же форме, что над списками («Всего: N»):
+          голое число рядом с заголовком читатель достраивает сам, а форма
+          «Всего» не склоняется ни при каком числе и потому годится всем
+          ресурсам без объявления счётных форм. */}
+      <DetailSurface title="Используется" note={`Всего: ${items.length}`}>
+        <ul style={{ listStyle: "none", margin: 0, padding: "10px 16px" }}>
+          {items.map((r, i) => {
+            const type = r.referrer?.type ?? "?";
+            const id = r.referrer?.id ?? "";
+            return (
+              <li
+                key={`${type}-${id}-${i}`}
+                style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 26, fontSize: 12 }}
+              >
+                <ReferrerLink projectId={projectId} referrer={r.referrer} />
+              </li>
+            );
+          })}
+        </ul>
+      </DetailSurface>
     </div>
   );
 }
