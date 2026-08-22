@@ -19,6 +19,21 @@ import (
 	"testing"
 )
 
+// scanSynth — обход синтетического дерева ТЕМ ЖЕ кодом, которым судит гейт,
+// включая ВЫВЕДЕНИЕ каталогов из дерева. Перечень не подставляется: подставив
+// его, инъекция перестала бы проверять именно то, чем гейт снимался прежде.
+func scanSynth(root string) (found []collapsedCheck, questions, files int, err error) {
+	roots, rerr := prodGoRoots(root)
+	if rerr != nil {
+		return nil, 0, 0, rerr
+	}
+	rep, serr := scanCollapsedRelationChecks(root, roots)
+	if serr != nil {
+		return nil, 0, 0, serr
+	}
+	return rep.found, rep.questions, rep.files, nil
+}
+
 // collapsedSrc — форма, в которой ошибка НЕВЫРАЗИМА: связана в `Init` условного
 // оператора и поглощена конъюнкцией. Так выглядел гейт читателя пределов.
 const collapsedSrc = `package limit
@@ -142,7 +157,7 @@ func TestCheckLaneGateRedOnACollapsedOutcome(t *testing.T) {
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/apps/kacho/api/limit/gate.go": collapsedSrc,
 	})
-	found, questions, files, _, err := scanCollapsedRelationChecks(root)
+	found, questions, files, err := scanSynth(root)
 	if err != nil {
 		t.Fatalf("обход синтетического дерева: %v", err)
 	}
@@ -169,7 +184,7 @@ func TestCheckLaneGateRedOnADiscardedError(t *testing.T) {
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/gate.go": discardedSrc,
 	})
-	found, _, _, _, err := scanCollapsedRelationChecks(root)
+	found, _, _, err := scanSynth(root)
 	if err != nil {
 		t.Fatalf("обход синтетического дерева: %v", err)
 	}
@@ -184,7 +199,7 @@ func TestCheckLaneGateSilentWhenTheOutcomesAreSeparated(t *testing.T) {
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/apps/kacho/api/limit/gate.go": separatedSrc,
 	})
-	found, questions, files, _, err := scanCollapsedRelationChecks(root)
+	found, questions, files, err := scanSynth(root)
 	if err != nil {
 		t.Fatalf("обход синтетического дерева: %v", err)
 	}
@@ -205,7 +220,7 @@ func TestCheckLaneGateSilentOnABranchOverTheError(t *testing.T) {
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/gate.go": branchOnErrorSrc,
 	})
-	found, questions, _, _, err := scanCollapsedRelationChecks(root)
+	found, questions, _, err := scanSynth(root)
 	if err != nil {
 		t.Fatalf("обход синтетического дерева: %v", err)
 	}
@@ -224,7 +239,7 @@ func TestCheckLaneGateIgnoresAnUnrelatedCheck(t *testing.T) {
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/health.go": unrelatedCheckSrc,
 	})
-	found, questions, _, _, err := scanCollapsedRelationChecks(root)
+	found, questions, _, err := scanSynth(root)
 	if err != nil {
 		t.Fatalf("обход синтетического дерева: %v", err)
 	}
@@ -241,7 +256,7 @@ func TestCheckLaneGateIgnoresTheFormInAComment(t *testing.T) {
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/doc.go": commentOnlySrc,
 	})
-	found, questions, files, _, err := scanCollapsedRelationChecks(root)
+	found, questions, files, err := scanSynth(root)
 	if err != nil {
 		t.Fatalf("обход синтетического дерева: %v", err)
 	}
@@ -261,11 +276,284 @@ func TestCheckLaneGateIgnoresProbes(t *testing.T) {
 	root := synthCarrierTree(t, map[string]string{
 		"services/x/internal/gate_test.go": collapsedSrc,
 	})
-	found, questions, _, _, err := scanCollapsedRelationChecks(root)
+	found, questions, _, err := scanSynth(root)
 	if err != nil {
 		t.Fatalf("обход синтетического дерева: %v", err)
 	}
 	if questions != 0 || len(found) != 0 {
 		t.Fatalf("проба осмотрена как прод-код: вопросов=%d, находок=%v", questions, found)
+	}
+}
+
+// ── формы, которыми гейт снимался у рецензента ──────────────────────────────
+
+// separateAssignCollapsedSrc — ФОРМА B: раздельное присваивание, самая
+// идиоматичная запись того же дефекта. Ошибка доступна ниже по функции, но
+// НИ ОДНО её употребление ветвью по ней не является.
+//
+// Взято дословно из дерева: так выглядел `fgaHoldsScopeAdmin`, питавший шесть
+// списочных путей. Прежняя редакция гейта считала это ВОПРОСОМ и молчала.
+const separateAssignCollapsedSrc = `package ab
+
+import "context"
+
+type checker interface {
+	Check(ctx context.Context, subject, relation, object string) (bool, error)
+}
+
+func holds(ctx context.Context, c checker, subject, object string) bool {
+	allowed, err := c.Check(ctx, subject, "admin", object)
+	return err == nil && allowed
+}
+`
+
+// separateAssignNestedSrc — та же форма B, но схлопывание спрятано в условии
+// глубже по телу: `if cerr == nil && allowed { return nil }`, а ниже безусловный
+// отказ. Второй живой экземпляр из дерева (`list_all_operations`).
+const separateAssignNestedSrc = `package acct
+
+import "context"
+
+type checker interface {
+	Check(ctx context.Context, subject, relation, object string) (bool, error)
+}
+
+func authorize(ctx context.Context, c checker, subject, object string) error {
+	allowed, cerr := c.Check(ctx, subject, "admin", object)
+	if cerr == nil && allowed {
+		return nil
+	}
+	return errDeniedB
+}
+
+var errDeniedB = context.Canceled
+`
+
+// separateAssignLegitSrc — законный близнец ФОРМЫ B: то же раздельное
+// присваивание, но ошибка уходит ЗНАЧЕНИЕМ. Без этой стороны гейт краснел бы на
+// всяком раздельном присваивании, то есть ловил бы запись, а не свойство.
+const separateAssignLegitSrc = `package ab
+
+import "context"
+
+type checker interface {
+	Check(ctx context.Context, subject, relation, object string) (bool, error)
+}
+
+func holds(ctx context.Context, c checker, subject, object string) (bool, error) {
+	allowed, err := c.Check(ctx, subject, "admin", object)
+	if err != nil {
+		return false, err
+	}
+	return allowed, nil
+}
+`
+
+// renamedCtxSrc — ТО ЖЕ схлопывание, контекст назван `cctx`. Именно этим
+// написанием рецензент снял прежний гейт: перепись просела с 24 до 23, площадка
+// уехала из наблюдения, вердикт стал зелёным. Написание в дереве живое —
+// `pkg/authz/interceptor.go` пользуется им сегодня.
+const renamedCtxSrc = `package authz
+
+import "context"
+
+type checker interface {
+	Check(ctx context.Context, subject, relation, object string) (bool, error)
+}
+
+func gate(cctx context.Context, c checker, subject string) error {
+	if allowed, err := c.Check(cctx, subject, "viewer", "cluster:root"); err == nil && allowed {
+		return nil
+	}
+	return errDeniedC
+}
+
+var errDeniedC = context.Canceled
+`
+
+// generatedSrc — порождённый файл с вызовом той же формы. Вопросом о правах он
+// не является: у него нет автора, которому адресован упрёк, а `Check` в нём —
+// заглушка транспорта. Прежняя перепись включала два таких файла и завышала
+// число вопросов.
+const generatedSrc = `// Code generated by protoc-gen-grpc-gateway. DO NOT EDIT.
+
+package genpb
+
+import "context"
+
+type checker interface {
+	Check(ctx context.Context, subject, relation, object string) (bool, error)
+}
+
+func request(ctx context.Context, c checker, subject string) bool {
+	allowed, _ := c.Check(ctx, subject, "viewer", "cluster:root")
+	return allowed
+}
+`
+
+// TestCheckLaneGateRedOnASeparateAssignment — Б1: форма B краснеет.
+func TestCheckLaneGateRedOnASeparateAssignment(t *testing.T) {
+	root := synthCarrierTree(t, map[string]string{
+		"services/x/internal/apps/kacho/api/access_binding/helpers.go": separateAssignCollapsedSrc,
+		"services/x/internal/apps/kacho/api/account/list_all.go":       separateAssignNestedSrc,
+	})
+	found, questions, _, err := scanSynth(root)
+	if err != nil {
+		t.Fatalf("обход синтетического дерева: %v", err)
+	}
+	if questions != 2 {
+		t.Fatalf("вопросов насчитано %d — ожидалось два", questions)
+	}
+	if len(found) != 2 {
+		t.Fatalf("раздельное присваивание схлопыванием не засчитано: %v — гейт держит подформу "+
+			"класса, а сообщение коммита обещает класс", found)
+	}
+	for _, c := range found {
+		if c.line == 0 || c.file == "" {
+			t.Fatalf("координата не названа: %+v", c)
+		}
+	}
+}
+
+// TestCheckLaneGateSilentWhenTheErrorLeavesAsAValue — законный близнец формы B.
+func TestCheckLaneGateSilentWhenTheErrorLeavesAsAValue(t *testing.T) {
+	root := synthCarrierTree(t, map[string]string{
+		"services/x/internal/ab/holds.go": separateAssignLegitSrc,
+	})
+	found, questions, _, err := scanSynth(root)
+	if err != nil {
+		t.Fatalf("обход синтетического дерева: %v", err)
+	}
+	if questions != 1 {
+		t.Fatalf("вопрос не распознан: %d", questions)
+	}
+	if len(found) != 0 {
+		t.Fatalf("гейт краснеет на законном раздельном присваивании: %v — он ловит запись, "+
+			"а не выразимость исхода", found)
+	}
+}
+
+// TestCheckLaneGateSurvivesRenamingTheContext — Б2: переименование переменной
+// гейт не снимает.
+func TestCheckLaneGateSurvivesRenamingTheContext(t *testing.T) {
+	root := synthCarrierTree(t, map[string]string{
+		"services/x/internal/authz/gate.go": renamedCtxSrc,
+	})
+	found, questions, _, err := scanSynth(root)
+	if err != nil {
+		t.Fatalf("обход синтетического дерева: %v", err)
+	}
+	if questions != 1 {
+		t.Fatalf("вопрос с контекстом по имени cctx не распознан: насчитано %d — "+
+			"узнавание привязано к имени переменной, а не к вызываемому", questions)
+	}
+	if len(found) != 1 {
+		t.Fatalf("схлопывание уехало из наблюдения переименованием переменной: %v", found)
+	}
+}
+
+// TestCheckLaneGateWatchesEveryProdRootOfTheTree — сужение области невозможно:
+// перечень каталогов ВЫВОДИТСЯ из дерева.
+//
+// Прежняя редакция держала литерал из трёх имён и проверяла лишь, что
+// объявленный каталог existует. Вычеркнув из литерала два имени, рецензент
+// получил PASS при одном прочитанном каталоге. Здесь схлопывание кладётся в
+// каталог, которого в том литерале не было ВОВСЕ (`tools`), — и обязано быть
+// найдено.
+func TestCheckLaneGateWatchesEveryProdRootOfTheTree(t *testing.T) {
+	root := synthCarrierTree(t, map[string]string{
+		"tools/x/gate.go":     separateAssignCollapsedSrc,
+		"terraform/y/gate.go": renamedCtxSrc,
+	})
+	roots, err := prodGoRoots(root)
+	if err != nil {
+		t.Fatalf("вывод каталогов: %v", err)
+	}
+	if len(roots) != 2 {
+		t.Fatalf("каталоги выведены неверно: %v", roots)
+	}
+	found, questions, _, serr := scanSynth(root)
+	if serr != nil {
+		t.Fatalf("обход: %v", serr)
+	}
+	if questions != 2 || len(found) != 2 {
+		t.Fatalf("каталог вне прежнего литерала остался без наблюдения: вопросов=%d, находок=%v",
+			questions, found)
+	}
+}
+
+// TestCheckLaneGateDoesNotCountGeneratedFiles — перепись не завышается
+// порождённым кодом.
+func TestCheckLaneGateDoesNotCountGeneratedFiles(t *testing.T) {
+	root := synthCarrierTree(t, map[string]string{
+		"pkg/api/x/service.pb.gw.go": generatedSrc,
+	})
+	found, questions, files, err := scanSynth(root)
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if questions != 0 || len(found) != 0 {
+		t.Fatalf("порождённый файл засчитан вопросом о правах: вопросов=%d, находок=%v",
+			questions, found)
+	}
+	if files != 0 {
+		t.Fatalf("порождённый файл засчитан прочитанным прод-файлом: %d", files)
+	}
+}
+
+// TestCheckLaneGateFailsOnAnEmptyTree — предпосылка обхода: пустое дерево не
+// выдаётся за чистое.
+func TestCheckLaneGateFailsOnAnEmptyTree(t *testing.T) {
+	root := synthCarrierTree(t, map[string]string{"docs/readme.md": "нет кода"})
+	roots, err := prodGoRoots(root)
+	if err != nil {
+		t.Fatalf("вывод каталогов: %v", err)
+	}
+	if len(roots) != 0 {
+		t.Fatalf("каталоги с кодом Go выведены из дерева, где его нет: %v", roots)
+	}
+}
+
+// typeCheckerSrc — одноимённый метод ТОЙ ЖЕ арности, вопросом о правах не
+// являющийся: проверяльщик типов Go. Первым доводом у него поле, а не
+// переменная-контекст.
+//
+// Взято из дерева дословно (`tools/unreadfieldaudit`): расширив узнавание до
+// класса, я снял привязку к имени `ctx` — и этот вызов немедленно попал в
+// перепись и в находки. Перепись по дереву показала, что он там ровно один и
+// единственный отличается формой первого довода.
+const typeCheckerSrc = `package idx
+
+type conf struct{}
+
+func (conf) Check(path string, a, b, c int) (bool, error) { return path != "", nil }
+
+type pkg struct{ ImportPath string }
+
+func run(cfg conf, p pkg, fset, syn, info int) {
+	_, _ = cfg.Check(p.ImportPath, fset, syn, info)
+}
+`
+
+// TestCheckLaneGateIgnoresATypeCheckerOfTheSameArity — отрицательный контроль
+// РАСПОЗНАВАНИЯ для расширенной формы: снятие привязки к имени `ctx` не должно
+// втягивать посторонние методы.
+func TestCheckLaneGateIgnoresATypeCheckerOfTheSameArity(t *testing.T) {
+	root := synthCarrierTree(t, map[string]string{
+		"tools/unreadfieldaudit/index.go": typeCheckerSrc,
+	})
+	found, questions, files, err := scanSynth(root)
+	if err != nil {
+		t.Fatalf("обход: %v", err)
+	}
+	if files == 0 {
+		t.Fatal("синтетическое дерево не прочитано")
+	}
+	if questions != 0 {
+		t.Fatalf("проверяльщик типов засчитан вопросом о правах: %d — перепись раздувается, "+
+			"и предпосылка «вопросы в дереве есть» перестаёт что-либо значить", questions)
+	}
+	if len(found) != 0 {
+		t.Fatalf("проверяльщик типов объявлен схлопыванием: %v", found)
 	}
 }
