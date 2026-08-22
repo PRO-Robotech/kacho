@@ -136,6 +136,11 @@ mk finding-ceph  "$(emit 'go test -short' 1 \
     'FAIL	github.com/PRO-Robotech/kacho/services/storage/internal/clients/cephrbd')"
 mk finding-empty "$(emit 'go vet' 1)"
 mk finding-prose "$(emit 'helm template' 1 'warning: disk space is low on this machine')"
+# Проба, УТВЕРЖДАЮЩАЯ про снятый процесс: фразу она упоминает, но строку ею не
+# замыкает. Это и есть предмет якоря `$` у признака про снятие.
+mk finding-signal "$(emit 'go test -short' 1 \
+    '--- FAIL: TestWorkerStopDrainsBacklog' \
+    '    worker_test.go:88: ждали "signal: killed", получили ""')"
 
 # ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ обычного пропуска: «предмета нет» — это по-прежнему
 # третий исход, но прогон он НЕДЕЙСТВИТЕЛЬНЫМ не делает и кода не меняет.
@@ -207,6 +212,7 @@ assert_all() { # assert_all <копия> <метка> <файл для числ�
     want "$copy" "$tag" finding-ceph  1 'отказов 1' 'НЕ выполнено 0' 'красное:' "!$NEDEYST"
     want "$copy" "$tag" finding-empty 1 'отказов 1' 'НЕ выполнено 0' 'красное:' "!$NEDEYST"
     want "$copy" "$tag" finding-prose 1 'отказов 1' 'НЕ выполнено 0' 'красное:' "!$NEDEYST"
+    want "$copy" "$tag" finding-signal 1 'отказов 1' 'НЕ выполнено 0' 'красное:' "!$NEDEYST"
 
     # Обычный пропуск кода не меняет — иначе всякий прогон группы ui стал бы
     # красным на исправном дереве.
