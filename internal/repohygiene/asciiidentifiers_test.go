@@ -1,3 +1,6 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
 package repohygiene
 
 import (
@@ -144,6 +147,38 @@ var label = "Облачные сети"
 
 var byKey = map[string]int{"имя": 1}
 `
+	// Формы имени, которые легко ускользают: разбор видит их все как *ast.Ident,
+	// но утверждать это надо, а не полагать. Способность этой проверки упасть
+	// доказана инъекцией: латинское имя в синтетике при кириллическом ожидании
+	// даёт красное с названием формы.
+	forms := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"поле структуры", "package p\n\ntype T struct{ поле string }\n", "поле"},
+		{"метод", "package p\n\ntype T struct{}\n\nfunc (T) метод() {}\n", "метод"},
+		{"константа", "package p\n\nconst Предел = 1\n", "Предел"},
+		{"параметр типа", "package p\n\nfunc f[Тип any](x Тип) Тип { return x }\n", "Тип"},
+		{"псевдоним импорта", "package p\n\nimport фмт \"fmt\"\n\nvar _ = фмт.Sprint\n", "фмт"},
+	}
+	for _, form := range forms {
+		_, found, err := nonASCIIIdents("form.go", []byte(form.src))
+		if err != nil {
+			t.Errorf("%s: синтетика не разобралась: %v", form.name, err)
+			continue
+		}
+		var hit bool
+		for _, f := range found {
+			if strings.Contains(f, form.want) {
+				hit = true
+			}
+		}
+		if !hit {
+			t.Errorf("%s: имя %q обязано находиться, найдено: %v", form.name, form.want, found)
+		}
+	}
+
 	// Омоглиф: кириллическое «с» вместо латинского «c». Глазом два имени
 	// неотличимы — ради этого случая гейт и заведён.
 	const homoglyph = `package p
