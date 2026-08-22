@@ -1219,7 +1219,12 @@ kratos:
     # subPath — два тома на один каталог не поставить.
     extraArgs:
       - --config
-      - /etc/kacho-identity/kratos.yaml
+      - /etc/kacho-identity-rendered/kratos.yaml
+    # Величина обратного вызова подставляется в поде ДО старта процесса —
+    # объяснение и отказ по закрытой стороне живут в одном месте, в шаблоне
+    # `kacho.identity.configRenderInitContainer` (задача #948).
+    extraInitContainers: |
+      {{- include "kacho.identity.configRenderInitContainer" . | nindent 0 }}
     # ─── ОТПЕЧАТКИ СОДЕРЖИМОГО: без них правка настроек НЕ ПЕРЕКАТЫВАЕТ под ────
     #
     # Настройки приезжают томом и читаются процессом ОДИН РАЗ — на старте.
@@ -1255,6 +1260,9 @@ kratos:
       - name: kacho-identity-config
         configMap:
           name: kacho-iam-kratos-config
+      # Отрендеренная конфигурация: её пишет init-контейнер, читает процесс.
+      - name: kacho-identity-rendered
+        emptyDir: {}
       - name: kacho-identity-hooks
         configMap:
           name: kacho-iam-kratos-hooks
@@ -1268,9 +1276,11 @@ kratos:
             - key: ca.crt
               path: ca.crt
     extraVolumeMounts:
-      - name: kacho-identity-config
-        mountPath: /etc/kacho-identity/kratos.yaml
-        subPath: kratos.yaml
+      # Шаблон конфигурации главному контейнеру НЕ монтируется: он читает
+      # отрендеренное. Смонтировать оба значило бы держать рядом два файла, из
+      # которых рабочий один, — и следующая правка `--config` вернула бы дефект.
+      - name: kacho-identity-rendered
+        mountPath: /etc/kacho-identity-rendered
         readOnly: true
       - name: kacho-identity-schema
         mountPath: /etc/kacho-identity/identity.schema.json

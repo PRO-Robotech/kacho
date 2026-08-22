@@ -400,3 +400,65 @@ function(ctx) {
 }
 {{- end -}}
 
+{{/*
+kacho.identity.configRenderInitContainer — подстановка величины обратного вызова
+ДО старта процесса личности.
+
+ЗАЧЕМ. Конфигурация объявляет учётные данные обратных вызовов как
+`${KACHO_IAM_HOOK_TOKEN}`, то есть рассчитывает на подстановку. Служба личности
+подстановки в ЗНАЧЕНИЯХ конфигурации не делает: она переопределяет ключи
+переменными по пути ключа, а элемент массива хуков таким путём невыразим.
+Строка уезжала в заголовок ДОСЛОВНО, служба прав отвечала 401, провайдер — 502;
+вход паролем не проходил, посев церемонии не вставал, девять коллекций
+оставались без отчёта (прогон 32532668160, задача #948).
+
+ГДЕ ЖИВЁТ ВЕЛИЧИНА. Только в памяти этих двух контейнеров: в карту настроек она
+не попадает, в рендер чарта — тоже. Secret заводится посевом стенда, чарту его
+величина неизвестна by construction.
+
+ОТКАЗ ЗАКРЫТЫЙ. Пустая величина и любая неподставленная ссылка роняют запуск с
+текстом, называющим ручку. Молчаливый проход означал бы ровно тот дефект,
+который здесь чинится: полоса исполняется и отвергается.
+
+ОБРАЗ — ТОТ ЖЕ, что у главного контейнера: ничего нового не тянем, и версия
+совпадает by construction.
+*/}}
+{{- define "kacho.identity.configRenderInitContainer" -}}
+- name: identity-config-render
+  image: {{ include "kratos.image" . }}
+  imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 10000
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+  command: ["sh", "-euc"]
+  args:
+    - |
+      : "${KACHO_IAM_HOOK_TOKEN:?величина обратного вызова пуста: Secret kacho-iam-hook-token/token не доехал до пода — полоса обратных вызовов была бы отвергнута службой прав}"
+      awk -v tok="$KACHO_IAM_HOOK_TOKEN" \
+          'BEGIN { gsub(/[&\\]/, "\\\\&", tok) }
+           { gsub(/\$\{KACHO_IAM_HOOK_TOKEN\}/, tok); print }' \
+          /etc/kacho-identity-src/kratos.yaml > /etc/kacho-identity-rendered/kratos.yaml
+      if grep -q 'KACHO_IAM_HOOK_TOKEN' /etc/kacho-identity-rendered/kratos.yaml; then
+        echo "ОТКАЗ: в конфигурации осталась неподставленная ссылка на величину обратного вызова" >&2
+        exit 1
+      fi
+      echo "подстановка исполнена: $(wc -l < /etc/kacho-identity-rendered/kratos.yaml) строк"
+  env:
+    - name: KACHO_IAM_HOOK_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: kacho-iam-hook-token
+          key: token
+  volumeMounts:
+    - name: kacho-identity-config
+      mountPath: /etc/kacho-identity-src
+      readOnly: true
+    - name: kacho-identity-rendered
+      mountPath: /etc/kacho-identity-rendered
+{{- end -}}
