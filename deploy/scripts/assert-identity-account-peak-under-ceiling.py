@@ -48,6 +48,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib.util
 import json
 import os
@@ -82,6 +83,29 @@ CEILING = re.compile(
 # Базовый уровень выводится из ДВУХ источников, и оба самоистекают.
 BOOTSTRAP_ON_FIRST_LOGIN = re.compile(r"ownedAccounts == 0")
 SEED_OWN_ACCOUNT = re.compile(r'_req\(\s*"POST",\s*f"\{[A-Z_]+\}/iam/v1/accounts"')
+
+
+# ТРЕБУЕМЫЙ ЗАПАС. Две единицы, а не одна: запас в единицу означает, что ЛЮБОЙ
+# следующий аккаунт под тем же человеком где угодно в волне снова упрёт в потолок.
+# При двух для этого нужно ДВА новых создания — а такое изменение видно в обзоре.
+HEADROOM_REQUIRED = 2
+
+
+def decide(peak: int, ceiling: int) -> tuple[int, bool]:
+    """Вердикт по паре «пик, потолок» → (код возврата, находка ли).
+
+    ЕДИНСТВЕННЫЙ производитель вердикта, и зовут его ОБА пути — прод и
+    самопроверка. Второй кодек здесь запрещён: он расходится с первым молча и
+    именно там, где расхождение не видно.
+
+    Цена измерена, а не предположена. Прежняя редакция сравнивала литералы,
+    написанные в самой пробе, вместо того чтобы звать предикат: правка ОДНОЙ
+    прод-строки (`peak >= ceiling - 1` → `peak >= ceiling`) оставляла
+    самопроверку ЗЕЛЁНОЙ и пропускала коллекцию с пиком 4 при потолке 5. Порог —
+    единственный предмет этого гейта, и его не держало ничего.
+    """
+    finding = ceiling - peak < HEADROOM_REQUIRED
+    return (1 if finding else 0), finding
 
 
 class PremiseError(RuntimeError):
@@ -300,7 +324,8 @@ def main(argv=None) -> int:
     print(f"потолок {ceiling} ({QUOTA_MIGRATION}); пик одновременно живых {peak}, "
           f"запас {ceiling - peak}")
 
-    if peak >= ceiling - 1:
+    code, finding = decide(peak, ceiling)
+    if finding:
         where = " / ".join(at) if at else "базовый уровень"
         print(f"\nНАХОДКА: пик {peak} при потолке {ceiling} — запас {ceiling - peak}.",
               file=sys.stderr)
@@ -312,10 +337,11 @@ def main(argv=None) -> int:
         print("  Чинится волной, а не потолком: разнесите долгоживущий аккаунт и",
               file=sys.stderr)
         print("  недолговечные так, чтобы они не пересекались.", file=sys.stderr)
-        return 1
+        return code
 
-    print("запас не меньше двух: одиночное новое создание в волну помещается.")
-    return 0
+    print(f"запас не меньше {HEADROOM_REQUIRED}: одиночное новое создание в волну "
+          f"помещается.")
+    return code
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -329,15 +355,49 @@ def _ev(sign, var, step="шаг"):
     return (sign, var, "коллекция", "кейс", step)
 
 
+def _threshold_sites(source: str) -> list[str]:
+    """Имена функций, где пик сравнивается с потолком. Судит РАЗБОР, а не поиск
+    по образцу: слова `peak` и `ceiling` стоят в этом файле десятками, в том
+    числе в текстах и комментариях, и предикат по подстроке краснел бы на
+    собственных объяснениях."""
+    tree = ast.parse(source)
+    owner: dict[int, str] = {}
+    for fn in ast.walk(tree):
+        if isinstance(fn, ast.FunctionDef):
+            for node in ast.walk(fn):
+                if isinstance(node, ast.Compare):
+                    owner.setdefault(id(node), fn.name)
+    sites = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        names = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+        if {"peak", "ceiling"} <= names:
+            sites.append(owner.get(id(node), "<уровень модуля>"))
+    return sorted(sites)
+
+
 def self_test() -> int:
     ok = True
+    asserts = 0
 
     def check(label, got, want):
-        nonlocal ok
+        nonlocal ok, asserts
+        asserts += 1
         if got == want:
             print(f"  ok   {label}")
         else:
             print(f"  FAIL {label}: получили {got}, ждали {want}")
+            ok = False
+
+    def note(passed, label):
+        """Утверждение, у которого нет пары «получили/ждали» (исключения)."""
+        nonlocal ok, asserts
+        asserts += 1
+        if passed:
+            print(f"  ok   {label}")
+        else:
+            print(f"  FAIL {label}")
             ok = False
 
     print("── пик считается по ленте событий")
@@ -364,10 +424,9 @@ def self_test() -> int:
     print("── переменная, принимающая ВТОРОЙ аккаунт, — отказ, а не приблизительный счёт")
     try:
         peak_of([_ev("+", "a"), _ev("-", "a"), _ev("+", "a")], 2)
-        print("  FAIL повторное создание в ту же переменную прошло молча")
-        ok = False
+        note(False, "повторное создание в ту же переменную прошло молча")
     except PremiseError:
-        print("  ok   повторное создание в ту же переменную: ОТКАЗ")
+        note(True, "повторное создание в ту же переменную: ОТКАЗ")
     # Законный близнец той же формы: РАЗНЫЕ переменные считаются как обычно.
     check("две разные переменные подряд считаются (пик 3)",
           peak_of([_ev("+", "a"), _ev("-", "a"), _ev("+", "b")], 2)[0], 3)
@@ -376,10 +435,20 @@ def self_test() -> int:
     foreign = [_ev("+", "mine"), _ev("-", "seeded"), _ev("+", "second")]
     check("снятие незнакомой переменной пропущено (пик 4)", peak_of(foreign, 2)[0], 4)
 
-    print("── предикат вердикта: находка ровно при запасе меньше двух")
-    for peak, ceiling, want in ((4, 5, True), (3, 5, False), (5, 5, True), (2, 5, False)):
-        check(f"пик {peak} при потолке {ceiling} → находка={want}",
-              peak >= ceiling - 1, want)
+    print("── предикат вердикта: ЗОВЁТСЯ тот же, что на прод-пути")
+    # Утверждается ПАРА (код возврата, находка), а не пересчитанное здесь
+    # неравенство: сравнение литералов проверяло бы работу оператора `>=`, а не
+    # гейт, и правка порога в проде оставалась бы незамеченной.
+    for peak, ceiling, want in ((4, 5, (1, True)), (3, 5, (0, False)),
+                                (5, 5, (1, True)), (2, 5, (0, False)),
+                                (0, 1, (1, True))):
+        check(f"пик {peak} при потолке {ceiling} → {want}", decide(peak, ceiling), want)
+
+    print("── сравнение пика с потолком в модуле РОВНО ОДНО, и живёт оно в decide")
+    # Иначе предикат можно обойти, вписав своё неравенство рядом с вызовом: тогда
+    # утверждения выше остались бы зелёными, а вердикт производился бы не ими.
+    sites = _threshold_sites(open(os.path.abspath(__file__), encoding="utf-8").read())
+    check("мест сравнения", sites, ["decide"])
 
     print("── лента строится из коллекции, а не из выдумки")
     coll = {"item": [{"name": "CASE-A — заголовок", "item": [
@@ -412,7 +481,7 @@ def self_test() -> int:
     try:
         _decl, gate = load_declarations(REPO)
     except PremiseError as exc:
-        print(f"  FAIL предпосылка самопроверки: {exc}")
+        note(False, f"предпосылка самопроверки: {exc}")
         return 1
     events, cases, steps = timeline_of([("синт", coll)], gate)
     check("захвативший идентификатор создатель учтён", [e[0] for e in events].count("+"), 1)
@@ -430,10 +499,9 @@ def self_test() -> int:
     ):
         try:
             fn()
-            print(f"  FAIL {label}: прошло молча")
-            ok = False
+            note(False, f"{label}: прошло молча")
         except PremiseError:
-            print(f"  ok   {label}: ОТКАЗ")
+            note(True, f"{label}: ОТКАЗ")
 
     print("── настоящее дерево читается, перепись непуста")
     try:
@@ -441,16 +509,15 @@ def self_test() -> int:
         for label, got in (("коллекций", census["collections"]), ("шагов", census["steps"]),
                            ("созданий", census["created"]), ("потолок", ceiling),
                            ("базовый уровень", base)):
-            if got > 0:
-                print(f"  ok   {label} > 0 ({got})")
-            else:
-                print(f"  FAIL {label} == 0 — предикат ослеп")
-                ok = False
+            note(got > 0, f"{label} > 0 ({got})" if got > 0
+                 else f"{label} == 0 — предикат ослеп")
     except PremiseError as exc:
-        print(f"  FAIL настоящее дерево: {exc}")
-        ok = False
+        note(False, f"настоящее дерево: {exc}")
 
     print()
+    # Перепись СВОЯ, а не только дерева: «ноль провалов» обязано быть отличимо от
+    # «ноль прогнанного», и число обязано быть посчитанным, а не выписанным.
+    print(f"утверждений исполнено: {asserts}")
     print("PASS: пик аккаунтов личности" if ok else "FAIL: пик аккаунтов личности")
     return 0 if ok else 1
 
