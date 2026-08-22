@@ -57,10 +57,10 @@ function fullPath(prefix: string, name: string): string {
 //  • `custom` / `array` / `labels` / `sg-rules` — своё поддерево, одного ввода нет;
 //  • `bool` — переключатель антд, то есть `<button>`: подпись не вправе именовать
 //    через `for` элемент, который подписи не принимает.
-const НАЗЫВАЕМЫЕ_ПОДПИСЬЮ = new Set(["string", "text", "int", "enum", "ref"]);
+const NAMED_BY_LABEL = new Set(["string", "text", "int", "enum", "ref"]);
 
-function называетсяПодписью(field: FF): boolean {
-  return НАЗЫВАЕМЫЕ_ПОДПИСЬЮ.has(field.type);
+function isNamedByLabel(field: FF): boolean {
+  return NAMED_BY_LABEL.has(field.type);
 }
 
 export function FormFieldRenderer({
@@ -176,14 +176,14 @@ function ScalarFieldRenderer({
   // ЗДЕСЬ, а не только звёздочкой у подписи: звёздочку рисуют `aria-hidden`
   // (она украшение), поэтому без `aria-required` читающий с экрана не узнавал
   // об обязательности вовсе — ни до отправки, ни после.
-  const состояние = {
+  const state = {
     "aria-required": field.required ? true : undefined,
     "aria-invalid": invalid ? true : undefined,
     "aria-describedby": invalid ? describedBy : undefined,
   };
   // Линия отказа — свойство виджета библиотеки, а не атрибут DOM, поэтому она
   // отделена от `aria-*`: переключатель её не принимает.
-  const линияОтказа = invalid ? ("error" as const) : undefined;
+  const errorLine = invalid ? ("error" as const) : undefined;
 
   return (
     <div className={hideLabel ? "" : "space-y-1.5"}>
@@ -206,8 +206,8 @@ function ScalarFieldRenderer({
           placeholder={field.placeholder}
           pattern={field.pattern}
           disabled={disabled}
-          status={линияОтказа}
-          {...состояние}
+          status={errorLine}
+          {...state}
         />
       )}
       {field.type === "text" && (
@@ -218,8 +218,8 @@ function ScalarFieldRenderer({
           placeholder={field.placeholder}
           rows={field.rows ?? 3}
           disabled={disabled}
-          status={линияОтказа}
-          {...состояние}
+          status={errorLine}
+          {...state}
         />
       )}
       {field.type === "int" && (
@@ -231,8 +231,8 @@ function ScalarFieldRenderer({
           min={field.min}
           max={field.max}
           disabled={disabled}
-          status={линияОтказа}
-          {...состояние}
+          status={errorLine}
+          {...state}
         />
       )}
       {field.type === "bool" && (
@@ -243,7 +243,7 @@ function ScalarFieldRenderer({
           checked={Boolean(cur ?? field.default)}
           onChange={(checked) => set(checked)}
           disabled={disabled}
-          {...состояние}
+          {...state}
         />
       )}
       {field.type === "enum" && (
@@ -258,8 +258,8 @@ function ScalarFieldRenderer({
           style={{ width: "100%" }}
           optionFilterProp="label"
           options={field.options.map((o) => ({ value: o.value, label: o.label }))}
-          status={линияОтказа}
-          {...состояние}
+          status={errorLine}
+          {...state}
         />
       )}
       {field.type === "ref" && (
@@ -467,7 +467,7 @@ function ArrayFieldRenderer({
               return (
                 <ArrayItemField
                   key={sub.name}
-                  htmlFor={называетсяПодписью(sub) ? subId : undefined}
+                  htmlFor={isNamedByLabel(sub) ? subId : undefined}
                   label={sub.label}
                   required={!!sub.required}
                   description={sub.description}

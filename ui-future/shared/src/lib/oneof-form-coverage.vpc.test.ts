@@ -25,7 +25,7 @@ function branchesInBody(body: Record<string, unknown>, at: string[] = []): strin
 
 describe("адрес: каждая ветвь спецификации выразима формой", () => {
   const spec = REGISTRY["addresses"];
-  const форма: Record<string, string> = {
+  const form: Record<string, string> = {
     external_ipv4_address_spec: "external",
     external_ipv6_address_spec: "external_v6",
     internal_ipv4_address_spec: "internal",
@@ -34,8 +34,8 @@ describe("адрес: каждая ветвь спецификации выра�
 
   it("перечень контракта совпадает с перечнем, который даёт форма", () => {
     const contract = oneofBranches("vpc/v1/address_service.proto", "CreateAddressRequest", "address_spec");
-    const выразимо = contract.filter((branch) => {
-      const kind = форма[branch];
+    const expressible = contract.filter((branch) => {
+      const kind = form[branch];
       if (!kind) return false;
       const body = spec.sanitize!({
         project_id: "prj-1",
@@ -44,7 +44,7 @@ describe("адрес: каждая ветвь спецификации выра�
       });
       return branchesInBody(body).includes(branch);
     });
-    expect(выразимо).toEqual(contract);
+    expect(expressible).toEqual(contract);
   });
 
   it("выбранная ветвь остаётся в теле ОДНА — отрицание в паре с положительным", () => {
@@ -79,15 +79,15 @@ describe("шлюз: каждая ветвь вида выразима формо
 
   it("перечень контракта совпадает с перечнем, который даёт форма", () => {
     const contract = oneofBranches("vpc/v1/gateway_service.proto", "CreateGatewayRequest", "gateway");
-    const форма: Record<string, string> = {
+    const form: Record<string, string> = {
       nat_gateway_spec: "nat",
       egress_only_gateway_spec: "egress_only",
     };
-    const выразимо = contract.filter((branch) => {
-      const body = spec.sanitize!({ project_id: "prj-1", subnet_id: "sub-1", _kind: форма[branch] });
+    const expressible = contract.filter((branch) => {
+      const body = spec.sanitize!({ project_id: "prj-1", subnet_id: "sub-1", _kind: form[branch] });
       return branchesInBody(body).includes(branch);
     });
-    expect(выразимо).toEqual(contract);
+    expect(expressible).toEqual(contract);
   });
 
   it("вторая ветвь в теле не появляется — отрицание в паре с положительным", () => {
@@ -102,12 +102,12 @@ describe("вид машины: каждая ветвь спецификации 
 
   it("перечень контракта совпадает с перечнем, который даёт форма", () => {
     const contract = oneofBranches("compute/v1/instance_service.proto", "CreateInstanceRequest", "spec");
-    const форма: Record<string, Record<string, unknown>> = {
+    const form: Record<string, Record<string, unknown>> = {
       vm_spec: instanceBody(spec, "VM"),
       container_spec: instanceBody(spec, "CONTAINER"),
     };
-    const выразимо = contract.filter((branch) => (форма[branch] ?? {})[branch] !== undefined);
-    expect(выразимо).toEqual(contract);
+    const expressible = contract.filter((branch) => (form[branch] ?? {})[branch] !== undefined);
+    expect(expressible).toEqual(contract);
   });
 
   it("вторая ветвь в теле не появляется — отрицание в паре с положительным", () => {
@@ -143,7 +143,7 @@ describe("балансировщик: каждая ветвь источника
   const spec = REGISTRY["load-balancers"];
 
   /** Тело создания при выбранном источнике семейства IPv4. */
-  function тело(mode: string, placement: string, fam: Record<string, unknown> = {}): Record<string, unknown> {
+  function makeBody(mode: string, placement: string, fam: Record<string, unknown> = {}): Record<string, unknown> {
     return spec.sanitize!({
       project_id: "prj-1",
       region_id: "reg-1",
@@ -157,17 +157,17 @@ describe("балансировщик: каждая ветвь источника
 
   it("перечень контракта совпадает с перечнем, который даёт форма", () => {
     const contract = oneofBranches("loadbalancer/v1/network_load_balancer.proto", "VipSource", "source");
-    const форма: Record<string, Record<string, unknown>> = {
-      public: тело("public", "EXTERNAL_REGIONAL"),
-      subnet_id: тело("subnet", "INTERNAL_REGIONAL", { subnet_id: "sub-1" }),
-      address_id: тело("address", "EXTERNAL_REGIONAL", { address_id: "adr-1" }),
+    const form: Record<string, Record<string, unknown>> = {
+      public: makeBody("public", "EXTERNAL_REGIONAL"),
+      subnet_id: makeBody("subnet", "INTERNAL_REGIONAL", { subnet_id: "sub-1" }),
+      address_id: makeBody("address", "EXTERNAL_REGIONAL", { address_id: "adr-1" }),
     };
-    const выразимо = contract.filter((branch) => branchesInBody(форма[branch] ?? {}, ["v4_source"]).includes(branch));
-    expect(выразимо).toEqual(contract);
+    const expressible = contract.filter((branch) => branchesInBody(form[branch] ?? {}, ["v4_source"]).includes(branch));
+    expect(expressible).toEqual(contract);
   });
 
   it("семейство без источника в тело не уезжает — отрицание в паре с положительным", () => {
-    const body = тело("public", "EXTERNAL_REGIONAL");
+    const body = makeBody("public", "EXTERNAL_REGIONAL");
     expect(body).toHaveProperty("v4_source");
     expect(body).not.toHaveProperty("v6_source");
   });
@@ -177,7 +177,7 @@ describe("правило группы безопасности: каждая в�
   const spec = REGISTRY["security-groups"];
 
   /** Тело правила, как его отдаёт форма группы при выбранном виде цели. */
-  function правило(rule: Record<string, unknown>): Record<string, unknown> {
+  function makeRule(rule: Record<string, unknown>): Record<string, unknown> {
     const body = spec.sanitize!({
       project_id: "prj-1",
       network_id: "net-1",
@@ -188,30 +188,30 @@ describe("правило группы безопасности: каждая в�
 
   it("перечень ветвей цели совпадает с перечнем, который даёт форма", () => {
     const contract = oneofBranches("vpc/v1/security_group_service.proto", "SecurityGroupRuleSpec", "target");
-    const форма: Record<string, [string, unknown]> = {
+    const form: Record<string, [string, unknown]> = {
       cidr_blocks: ["cidr", { v4_cidr_blocks: ["10.0.0.0/8"] }],
       security_group_id: ["sg", "sg-1"],
       cidr_group_id: ["cidr-group", "cg-1"],
     };
-    const выразимо = contract.filter((branch) => {
-      const [kind, value] = форма[branch] ?? [];
+    const expressible = contract.filter((branch) => {
+      const [kind, value] = form[branch] ?? [];
       if (!kind) return false;
-      const out = правило({ _target_kind: kind, [branch]: value });
+      const out = makeRule({ _target_kind: kind, [branch]: value });
       return out[branch] !== undefined;
     });
-    expect(выразимо).toEqual(contract);
+    expect(expressible).toEqual(contract);
   });
 
   it("перечень ветвей протокола совпадает с перечнем, который даёт форма", () => {
     const contract = oneofBranches("vpc/v1/security_group_service.proto", "SecurityGroupRuleSpec", "protocol");
-    const форма: Record<string, [string, unknown]> = {
+    const form: Record<string, [string, unknown]> = {
       protocol_name: ["name", "tcp"],
       protocol_number: ["number", 47],
     };
-    const выразимо = contract.filter((branch) => {
-      const [mode, value] = форма[branch] ?? [];
+    const expressible = contract.filter((branch) => {
+      const [mode, value] = form[branch] ?? [];
       if (!mode) return false;
-      const out = правило({
+      const out = makeRule({
         _protocol_mode: mode,
         [branch]: value,
         _target_kind: "cidr",
@@ -219,11 +219,11 @@ describe("правило группы безопасности: каждая в�
       });
       return out[branch] !== undefined;
     });
-    expect(выразимо).toEqual(contract);
+    expect(expressible).toEqual(contract);
   });
 
   it("две ветви цели в одном правиле не уезжают — отрицание в паре с положительным", () => {
-    const out = правило({ _target_kind: "sg", security_group_id: "sg-1", cidr_group_id: "cg-1" });
+    const out = makeRule({ _target_kind: "sg", security_group_id: "sg-1", cidr_group_id: "cg-1" });
     expect(out.security_group_id).toBe("sg-1");
     expect(out).not.toHaveProperty("cidr_group_id");
   });

@@ -88,23 +88,23 @@ func TestIntegration_Address_ListByValue_CoversAllOwnershipForms(t *testing.T) {
 	defer func() { _ = rd.Close() }()
 
 	for _, tc := range []struct {
-		значение string
-		ждём     string
+		value string
+		want  string
 	}{
 		{"10.1.0.5", "adrintv400000000000a"},
 		{"fd00::5", "adrintv600000000000b"},
 		{"203.0.113.5", "adrextv400000000000c"},
 		{"2001:db8::5", "adrextv600000000000d"},
 	} {
-		t.Run(tc.значение, func(t *testing.T) {
+		t.Run(tc.value, func(t *testing.T) {
 			got, _, lerr := rd.Addresses().List(ctx,
-				kacho.AddressFilter{ProjectID: proj, IPAddress: tc.значение},
+				kacho.AddressFilter{ProjectID: proj, IPAddress: tc.value},
 				kacho.Pagination{PageSize: 10})
 			require.NoError(t, lerr)
 			require.Len(t, got, 1,
 				"сужение по значению обязано находить адрес В ЛЮБОЙ форме владения: "+
 					"покрывающее только внутренние отвечало бы «не найдено» на законный внешний")
-			require.Equal(t, tc.ждём, got[0].ID)
+			require.Equal(t, tc.want, got[0].ID)
 		})
 	}
 

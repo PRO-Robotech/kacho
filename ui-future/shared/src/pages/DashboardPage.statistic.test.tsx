@@ -34,7 +34,7 @@ const realFetch = globalThis.fetch;
  * которая перепутала счётчики местами (регресс KAC-171, из-за которого lookup в
  * продукте ведётся ПО КЛЮЧУ, а не по индексу).
  */
-const РАЗМЕРЫ: Record<string, { key: string; n: number }> = {
+const SIZES: Record<string, { key: string; n: number }> = {
   "/vpc/v1/networks": { key: "networks", n: 2 },
   "/vpc/v1/subnets": { key: "subnets", n: 5 },
   "/vpc/v1/securityGroups": { key: "security_groups", n: 1 },
@@ -47,7 +47,7 @@ function stub(pending: string[] = []) {
   globalThis.fetch = (input: RequestInfo | URL) => {
     const url = requestUrl(input);
     if (pending.some((p) => url.includes(p))) return new Promise<Response>(() => undefined);
-    const hit = Object.entries(РАЗМЕРЫ).find(([path]) => url.includes(path));
+    const hit = Object.entries(SIZES).find(([path]) => url.includes(path));
     const body = hit ? { [hit[1].key]: Array.from({ length: hit[1].n }, (_, i) => ({ id: `x-${i}` })) } : {};
     return Promise.resolve({
       ok: true,
@@ -83,20 +83,20 @@ afterEach(() => {
   contextApi.setProject(null);
 });
 
-const плашка = (key: string) => screen.getByTestId(`dashboard-tile-${key}`);
+const tile = (key: string) => screen.getByTestId(`dashboard-tile-${key}`);
 
 describe("DashboardPage — сводка на плашке сервиса", () => {
   it("показывает ПАРУ «подпись — значение» по каждой метрике модуля", async () => {
     renderDashboard();
 
-    const vpc = плашка("vpc");
+    const vpc = tile("vpc");
     // Ждём первого числа: до ответа края у метрик стоит прочерк.
     expect(await within(vpc).findByText("2")).toBeInTheDocument();
-    for (const подпись of ["Сетей", "Подсетей", "Групп безопасности"]) {
-      expect(within(vpc).getByText(подпись)).toBeInTheDocument();
+    for (const caption of ["Сетей", "Подсетей", "Групп безопасности"]) {
+      expect(within(vpc).getByText(caption)).toBeInTheDocument();
     }
-    for (const значение of ["2", "5", "1"]) {
-      expect(within(vpc).getByText(значение)).toBeInTheDocument();
+    for (const value of ["2", "5", "1"]) {
+      expect(within(vpc).getByText(value)).toBeInTheDocument();
     }
   });
 
@@ -106,10 +106,10 @@ describe("DashboardPage — сводка на плашке сервиса", () =
     // которого продукт ищет счётчики по ключу, а не по индексу).
     renderDashboard();
 
-    const vpc = плашка("vpc");
+    const vpc = tile("vpc");
     await within(vpc).findByText("2");
-    expect(within(плашка("compute")).queryByText("Сетей")).not.toBeInTheDocument();
-    expect(within(плашка("iam")).queryByText("Подсетей")).not.toBeInTheDocument();
+    expect(within(tile("compute")).queryByText("Сетей")).not.toBeInTheDocument();
+    expect(within(tile("iam")).queryByText("Подсетей")).not.toBeInTheDocument();
   });
 
   it("метрика без ответа края подписана ПРОЧЕРКОМ, а не нулём", async () => {
@@ -122,8 +122,8 @@ describe("DashboardPage — сводка на плашке сервиса", () =
     stub(["/compute/v1/instances"]);
     renderDashboard();
 
-    await within(плашка("vpc")).findByText("2");
-    const compute = плашка("compute");
+    await within(tile("vpc")).findByText("2");
+    const compute = tile("compute");
     expect(within(compute).getByText("Машин")).toBeInTheDocument();
     expect(within(compute).getByText("—")).toBeInTheDocument();
     expect(within(compute).queryByText("0")).not.toBeInTheDocument();
@@ -132,16 +132,16 @@ describe("DashboardPage — сводка на плашке сервиса", () =
   it("ответивший край показывает ЧИСЛО там, где молчащий показывал прочерк", async () => {
     // Контроль в обратную сторону к утверждению выше: без него «прочерк» было
     // бы верно и на консоли, которая не показывает чисел никогда.
-    РАЗМЕРЫ["/compute/v1/instances"] = { key: "instances", n: 7 };
+    SIZES["/compute/v1/instances"] = { key: "instances", n: 7 };
     try {
       stub();
       renderDashboard();
 
-      const compute = плашка("compute");
+      const compute = tile("compute");
       expect(await within(compute).findByText("7")).toBeInTheDocument();
       expect(within(compute).queryByText("—")).not.toBeInTheDocument();
     } finally {
-      delete РАЗМЕРЫ["/compute/v1/instances"];
+      delete SIZES["/compute/v1/instances"];
     }
   });
 });

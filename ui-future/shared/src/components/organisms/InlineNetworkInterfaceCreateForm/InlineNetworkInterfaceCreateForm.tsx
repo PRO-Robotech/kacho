@@ -160,14 +160,14 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
 
   // Отказ подсети стоит У ПОЛЯ, а не всплывашкой в углу: подсеть — первое поле
   // формы, и сообщение о ней читается там же, где её выбирают.
-  const [пробовалиОтправить, setПробовалиОтправить] = useState(false);
-  const отказПодсети =
-    пробовалиОтправить && !subnetId
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const subnetError =
+    submitAttempted && !subnetId
       ? "«Подсеть»: поле обязательное — интерфейс создаётся внутри подсети."
       : undefined;
 
   const submit = () => {
-    setПробовалиОтправить(true);
+    setSubmitAttempted(true);
     if (!subnetId) return;
     mutation.mutate({
       project_id: projectId,
@@ -222,11 +222,11 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
             // «нет совпадений» на месте «нет среди загруженных».
             notFoundContent={subnetsLoading ? undefined : subnetScope.emptyText}
             disabled={subnetLocked}
-            status={отказПодсети ? "error" : undefined}
+            status={subnetError ? "error" : undefined}
             aria-required
-            aria-invalid={отказПодсети ? true : undefined}
+            aria-invalid={subnetError ? true : undefined}
           />
-          <FieldError message={отказПодсети} />
+          <FieldError message={subnetError} />
         </Form.Item>
 
         <Form.Item label={labelWithInfo("IPv4 адрес", "Один Address-ресурс с internal_ipv4. KAC-55: максимум один.")}>

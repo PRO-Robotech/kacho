@@ -35,12 +35,12 @@ import { tenantWithProject, createdResourceId, runTag } from "./fixtures";
  */
 
 /** Четыре страницы одного ресурса: список, форма создания, карточка, правка. */
-interface Страницы {
-  список: string;
-  создание: string;
-  карточка: string;
-  правка: string;
-  имяСети: string;
+interface Pages {
+  list: string;
+  create: string;
+  card: string;
+  edit: string;
+  networkName: string;
 }
 
 /**
@@ -49,39 +49,39 @@ interface Страницы {
  * кириллические «у» и «р» сюда не поставить; латинские выносные проверяют ту же
  * величину — высоту строки заголовка.
  */
-async function ресурсСВыноснымиБуквами(page: Page, projectId: string): Promise<Страницы> {
-  const имяСети = `gypq-net-${runTag()}`;
-  const ответ = await page.request.post("/vpc/v1/networks", {
-    data: { projectId, name: имяСети, ipv4CidrBlocks: ["10.94.0.0/16"] },
+async function resourceWithDescenders(page: Page, projectId: string): Promise<Pages> {
+  const networkName = `gypq-net-${runTag()}`;
+  const response = await page.request.post("/vpc/v1/networks", {
+    data: { projectId, name: networkName, ipv4CidrBlocks: ["10.94.0.0/16"] },
   });
   const id = await createdResourceId(
     page,
-    ответ,
+    response,
     "networkId",
     (n) => `/vpc/v1/networks/${n}`,
     "сеть под пробу заголовка",
   );
-  const база = `/projects/${projectId}/vpc/networks`;
+  const base = `/projects/${projectId}/vpc/networks`;
   return {
-    список: база,
-    создание: `${база}/create`,
-    карточка: `${база}/${id}`,
-    правка: `${база}/${id}/edit`,
-    имяСети,
+    list: base,
+    create: `${base}/create`,
+    card: `${base}/${id}`,
+    edit: `${base}/${id}/edit`,
+    networkName,
   };
 }
 
-interface ЗамерШапки {
+interface HeaderMeasurement {
   /** Заголовок: где стоит, каким кеглем набран, какой высоты его строка. */
   x: number;
   y: number;
-  высотаСтроки: number;
-  кегль: number;
-  текст: string;
+  lineHeight: number;
+  fontSize: number;
+  text: string;
   /** Низ блока шапки — та самая линия под заголовком. */
-  низШапки: number;
+  headerBottom: number;
   /** Видимый текст шапки ПОМИМО заголовка: содержимое правого слота. */
-  соседи: Array<{ текст: string; верх: number; низ: number }>;
+  neighbours: Array<{ text: string; top: number; bottom: number }>;
 }
 
 /**
@@ -93,48 +93,48 @@ interface ЗамерШапки {
  * Замер такого промежуточного состояния сравнивался бы с замером готовой
  * страницы — и расхождение читалось бы как дефект геометрии.
  */
-async function откройИЗамерь(page: Page, адрес: string, ожидаемыйЗаголовок: string | RegExp): Promise<ЗамерШапки> {
-  await page.goto(адрес, { waitUntil: "domcontentloaded" });
+async function openAndMeasure(page: Page, url: string, expectedTitle: string | RegExp): Promise<HeaderMeasurement> {
+  await page.goto(url, { waitUntil: "domcontentloaded" });
 
-  const заголовок = page.locator("h3").first();
+  const title = page.locator("h3").first();
   await expect(
-    заголовок,
-    `${адрес}: страница не назвала свой предмет заголовком — мерить нечего, ` +
+    title,
+    `${url}: страница не назвала свой предмет заголовком — мерить нечего, ` +
       `и вердикта о геометрии такой прогон не даёт`,
-  ).toHaveText(ожидаемыйЗаголовок, { timeout: 40_000 });
+  ).toHaveText(expectedTitle, { timeout: 40_000 });
 
-  return замерь(заголовок);
+  return measure(title);
 }
 
-async function замерь(заголовок: Locator): Promise<ЗамерШапки> {
-  return заголовок.evaluate((el) => {
+async function measure(title: Locator): Promise<HeaderMeasurement> {
+  return title.evaluate((el) => {
     // Шапка — первый предок, рисующий линию под заголовком. Место под линию
     // зарезервировано всегда: там, где её роль исполняет полоса вкладок, она
     // прозрачна, но по-прежнему занимает свою точку — иначе карточка поднимала
     // бы содержимое относительно списка.
-    let шапка: Element | null = el.parentElement;
-    while (шапка && getComputedStyle(шапка).borderBottomWidth === "0px") шапка = шапка.parentElement;
-    if (!шапка) throw new Error("под заголовком нет блока с нижней границей — шапку не по чему опознать");
+    let header: Element | null = el.parentElement;
+    while (header && getComputedStyle(header).borderBottomWidth === "0px") header = header.parentElement;
+    if (!header) throw new Error("под заголовком нет блока с нижней границей — шапку не по чему опознать");
 
     const r = el.getBoundingClientRect();
-    const соседи: Array<{ текст: string; верх: number; низ: number }> = [];
-    шапка.querySelectorAll("*").forEach((n) => {
+    const neighbours: Array<{ text: string; top: number; bottom: number }> = [];
+    header.querySelectorAll("*").forEach((n) => {
       if (n === el || n.contains(el) || el.contains(n)) return;
-      const т = (n.textContent ?? "").trim();
-      if (!т || n.children.length > 0) return;
+      const txt = (n.textContent ?? "").trim();
+      if (!txt || n.children.length > 0) return;
       const rr = n.getBoundingClientRect();
       if (rr.width === 0 && rr.height === 0) return;
-      соседи.push({ текст: т, верх: Math.round(rr.top), низ: Math.round(rr.bottom) });
+      neighbours.push({ text: txt, top: Math.round(rr.top), bottom: Math.round(rr.bottom) });
     });
 
     return {
       x: Math.round(r.x),
       y: Math.round(r.y),
-      высотаСтроки: Math.round(r.height),
-      кегль: parseFloat(getComputedStyle(el).fontSize),
-      текст: (el.textContent ?? "").trim(),
-      низШапки: Math.round(шапка.getBoundingClientRect().bottom),
-      соседи,
+      lineHeight: Math.round(r.height),
+      fontSize: parseFloat(getComputedStyle(el).fontSize),
+      text: (el.textContent ?? "").trim(),
+      headerBottom: Math.round(header.getBoundingClientRect().bottom),
+      neighbours,
     };
   });
 }
@@ -150,23 +150,23 @@ test("заголовок ресурса стоит на одной вертик�
   // открывает все четыре подряд и сравнивает их между собой.
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
-  const с = await ресурсСВыноснымиБуквами(page, projectId);
+  const pages = await resourceWithDescenders(page, projectId);
 
-  const список = await откройИЗамерь(page, с.список, "Облачные сети");
-  const создание = await откройИЗамерь(page, с.создание, "Создать облачную сеть");
-  const карточка = await откройИЗамерь(page, с.карточка, с.имяСети);
-  const правка = await откройИЗамерь(page, с.правка, с.имяСети);
+  const list = await openAndMeasure(page, pages.list, "Облачные сети");
+  const create = await openAndMeasure(page, pages.create, "Создать облачную сеть");
+  const card = await openAndMeasure(page, pages.card, pages.networkName);
+  const edit = await openAndMeasure(page, pages.edit, pages.networkName);
 
-  const все = { список, создание, карточка, правка };
-  for (const [имя, з] of Object.entries(все)) {
-    expect(з.x, `${имя}: заголовок стоит на x=${з.x} против ${список.x} у списка — при переходе текст дёргается по горизонтали`).toBe(
-      список.x,
+  const all = { list, create, card, edit };
+  for (const [name, meas] of Object.entries(all)) {
+    expect(meas.x, `${name}: заголовок стоит на x=${meas.x} против ${list.x} у списка — при переходе текст дёргается по горизонтали`).toBe(
+      list.x,
     );
-    expect(з.y, `${имя}: заголовок стоит на y=${з.y} против ${список.y} у списка — при переходе текст прыгает по вертикали`).toBe(
-      список.y,
+    expect(meas.y, `${name}: заголовок стоит на y=${meas.y} против ${list.y} у списка — при переходе текст прыгает по вертикали`).toBe(
+      list.y,
     );
-    expect(з.кегль, `${имя}: кегль заголовка ${з.кегль} против ${список.кегль} у списка — страницы набраны разным шрифтом`).toBe(
-      список.кегль,
+    expect(meas.fontSize, `${name}: кегль заголовка ${meas.fontSize} против ${list.fontSize} у списка — страницы набраны разным шрифтом`).toBe(
+      list.fontSize,
     );
   }
 });
@@ -182,33 +182,33 @@ test("линия под шапкой стоит на одной высоте, ч
   // низа блока.
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
-  const с = await ресурсСВыноснымиБуквами(page, projectId);
+  const pages = await resourceWithDescenders(page, projectId);
 
-  const список = await откройИЗамерь(page, с.список, "Облачные сети");
-  const создание = await откройИЗамерь(page, с.создание, "Создать облачную сеть");
-  const карточка = await откройИЗамерь(page, с.карточка, с.имяСети);
+  const list = await openAndMeasure(page, pages.list, "Облачные сети");
+  const create = await openAndMeasure(page, pages.create, "Создать облачную сеть");
+  const card = await openAndMeasure(page, pages.card, pages.networkName);
 
   // Положительный контроль: слоты действительно различаются наполнением.
   expect(
-    список.соседи.length,
+    list.neighbours.length,
     "в шапке списка нет ни одной ручки — сравнивать нечего, и совпадение низа " +
       "доказывало бы лишь то, что обе шапки пусты",
   ).toBeGreaterThan(0);
   expect(
-    создание.соседи.map((n) => n.текст),
+    create.neighbours.map((n) => n.text),
     "в шапке формы создания появилось содержимое правого слота — предмет пробы исчез",
   ).toEqual([]);
 
   expect(
-    создание.низШапки,
-    `форма: линия под шапкой на y=${создание.низШапки} против ${список.низШапки} у списка — ` +
+    create.headerBottom,
+    `форма: линия под шапкой на y=${create.headerBottom} против ${list.headerBottom} у списка — ` +
       `пустой правый слот сжал шапку, и содержимое страницы поехало вверх`,
-  ).toBe(список.низШапки);
+  ).toBe(list.headerBottom);
   expect(
-    карточка.низШапки,
-    `карточка: низ шапки ${карточка.низШапки} против ${список.низШапки} у списка — ` +
+    card.headerBottom,
+    `карточка: низ шапки ${card.headerBottom} против ${list.headerBottom} у списка — ` +
       `место под линию не зарезервировано там, где её роль исполняют вкладки`,
-  ).toBe(список.низШапки);
+  ).toBe(list.headerBottom);
 });
 
 test("заголовок называет предмет: тип на списке, имя экземпляра на карточке, действие на форме", async ({ page }) => {
@@ -219,26 +219,26 @@ test("заголовок называет предмет: тип на списк
   // своего вида, то есть не различают ничего.
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
-  const с = await ресурсСВыноснымиБуквами(page, projectId);
+  const pages = await resourceWithDescenders(page, projectId);
 
-  const список = await откройИЗамерь(page, с.список, /\S/);
+  const list = await openAndMeasure(page, pages.list, /\S/);
   expect(
-    список.текст,
-    `список назвал себя «${список.текст}» — заголовок списка обязан называть ТИП во множественном`,
+    list.text,
+    `список назвал себя «${list.text}» — заголовок списка обязан называть ТИП во множественном`,
   ).toBe("Облачные сети");
 
-  const создание = await откройИЗамерь(page, с.создание, /\S/);
+  const create = await openAndMeasure(page, pages.create, /\S/);
   expect(
-    создание.текст,
-    `форма назвала себя «${создание.текст}» — заголовок формы обязан называть действие ВМЕСТЕ с предметом`,
+    create.text,
+    `форма назвала себя «${create.text}» — заголовок формы обязан называть действие ВМЕСТЕ с предметом`,
   ).toBe("Создать облачную сеть");
 
-  const карточка = await откройИЗамерь(page, с.карточка, /\S/);
+  const card = await openAndMeasure(page, pages.card, /\S/);
   expect(
-    карточка.текст,
-    `карточка назвала себя «${карточка.текст}» вместо имени экземпляра «${с.имяСети}» — ` +
+    card.text,
+    `карточка назвала себя «${card.text}» вместо имени экземпляра «${pages.networkName}» — ` +
       `заголовок называет вид ресурса там, где обязан называть сам ресурс`,
-  ).toBe(с.имяСети);
+  ).toBe(pages.networkName);
 });
 
 test("над заголовком нет надзаголовка, а сам заголовок на месте", async ({ page }) => {
@@ -254,22 +254,22 @@ test("над заголовком нет надзаголовка, а сам з�
   // рейла; четвёртое место занимало строку над каждым заголовком продукта.
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
-  const с = await ресурсСВыноснымиБуквами(page, projectId);
+  const pages = await resourceWithDescenders(page, projectId);
 
-  for (const [имя, адрес, ожидание] of [
-    ["список", с.список, "Облачные сети"],
-    ["форма создания", с.создание, "Создать облачную сеть"],
-    ["карточка", с.карточка, с.имяСети],
+  for (const [name, url, expected] of [
+    ["список", pages.list, "Облачные сети"],
+    ["форма создания", pages.create, "Создать облачную сеть"],
+    ["карточка", pages.card, pages.networkName],
   ] as const) {
-    const з = await откройИЗамерь(page, адрес, ожидание);
+    const meas = await openAndMeasure(page, url, expected);
 
     // Положительный контроль: предмет назван — значит есть чему предшествовать.
-    expect(з.текст, `${имя}: заголовок пуст, отрицание ниже утверждало бы о пустой странице`).not.toBe("");
+    expect(meas.text, `${name}: заголовок пуст, отрицание ниже утверждало бы о пустой странице`).not.toBe("");
 
-    const выше = з.соседи.filter((n) => n.низ <= з.y);
+    const above = meas.neighbours.filter((n) => n.bottom <= meas.y);
     expect(
-      выше.map((n) => n.текст),
-      `${имя}: над заголовком «${з.текст}» стоит строка — надзаголовок вернулся и занял ` +
+      above.map((n) => n.text),
+      `${name}: над заголовком «${meas.text}» стоит строка — надзаголовок вернулся и занял ` +
         `строку над каждым заголовком продукта`,
     ).toEqual([]);
   }
@@ -289,27 +289,27 @@ test("раздел назван один раз: на списке крошки 
   // только снятие звена, зеленела бы и на крошках, снятых везде.
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
-  const с = await ресурсСВыноснымиБуквами(page, projectId);
-  const крошки = page.locator(".context-breadcrumb").first();
+  const pages = await resourceWithDescenders(page, projectId);
+  const breadcrumb = page.locator(".context-breadcrumb").first();
 
-  const список = await откройИЗамерь(page, с.список, "Облачные сети");
-  const путьСписка = await крошки.innerText();
+  const list = await openAndMeasure(page, pages.list, "Облачные сети");
+  const listPath = await breadcrumb.innerText();
   expect(
-    путьСписка,
-    `список: крошки «${путьСписка.replace(/\n/g, " / ")}» пусты — сравнивать не с чем, ` +
+    listPath,
+    `список: крошки «${listPath.replace(/\n/g, " / ")}» пусты — сравнивать не с чем, ` +
       `и отрицание ниже ничего не утверждает`,
   ).toContain("VPC");
   expect(
-    путьСписка,
-    `список: крошки повторяют заголовок «${список.текст}» — раздел назван дважды на одной странице`,
-  ).not.toContain(список.текст);
+    listPath,
+    `список: крошки повторяют заголовок «${list.text}» — раздел назван дважды на одной странице`,
+  ).not.toContain(list.text);
 
-  const карточка = await откройИЗамерь(page, с.карточка, с.имяСети);
-  const путьКарточки = await крошки.innerText();
+  const card = await openAndMeasure(page, pages.card, pages.networkName);
+  const cardPath = await breadcrumb.innerText();
   expect(
-    путьКарточки,
+    cardPath,
     `карточка: в крошках нет раздела «Облачные сети» — путь назад к списку оборван, ` +
-      `а повторения с заголовком «${карточка.текст}» здесь и не было`,
+      `а повторения с заголовком «${card.text}» здесь и не было`,
   ).toContain("Облачные сети");
 });
 
@@ -326,24 +326,24 @@ test("имени модуля во втором сайдбаре нет, а пе
   // вслух.
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
-  const с = await ресурсСВыноснымиБуквами(page, projectId);
+  const pages = await resourceWithDescenders(page, projectId);
 
-  await откройИЗамерь(page, с.список, "Облачные сети");
+  await openAndMeasure(page, pages.list, "Облачные сети");
 
-  const панель = page.locator('nav[aria-label^="Ресурсы:"]').first();
-  await expect(панель, "второго сайдбара нет вовсе — утверждать о его содержимом нечего").toBeVisible({
+  const panel = page.locator('nav[aria-label^="Ресурсы:"]').first();
+  await expect(panel, "второго сайдбара нет вовсе — утверждать о его содержимом нечего").toBeVisible({
     timeout: 30_000,
   });
 
   // Положительный контроль: панель показывает то, ради чего заведена.
-  const видимыйТекст = await панель.innerText();
+  const visibleText = await panel.innerText();
   expect(
-    видимыйТекст,
+    visibleText,
     "во втором сайдбаре нет перечня ресурсов модуля — отрицание ниже зеленело бы на пустой колонке",
   ).toContain("Облачные сети");
 
-  const имяМодуля = (await панель.getAttribute("aria-label"))?.replace(/^Ресурсы:\s*/, "") ?? "";
-  expect(имяМодуля, "панель не назвала модуль даже доступным именем — сравнивать не с чем").not.toBe("");
+  const moduleName = (await panel.getAttribute("aria-label"))?.replace(/^Ресурсы:\s*/, "") ?? "";
+  expect(moduleName, "панель не назвала модуль даже доступным именем — сравнивать не с чем").not.toBe("");
 
   // СВЕРКА БЕЗ ОГЛЯДКИ НА РЕГИСТР, И ЭТО НЕ ПРИДИРКА К ФОРМЕ ЗАПИСИ.
   //
@@ -353,14 +353,14 @@ test("имени модуля во втором сайдбаре нет, а пе
   // CLOUD»), а доступное имя приходит как есть («Virtual Private Cloud»). То
   // есть проба не поймала бы РОВНО ТУ форму, которая в продукте и стояла:
   // надпись прописными. Регистр здесь — оформление, а не другое слово.
-  const прописными = (t: string) => t.toUpperCase().replace(/\s+/g, " ");
+  const upper = (t: string) => t.toUpperCase().replace(/\s+/g, " ");
   expect(
-    прописными(видимыйТекст),
-    `второй сайдбар печатает имя модуля «${имяМодуля}» — модуль назван третий раз ` +
+    upper(visibleText),
+    `второй сайдбар печатает имя модуля «${moduleName}» — модуль назван третий раз ` +
       `(иконкой рейла, крошками и здесь), и набран он заметнее перечня, ради которого колонка стоит`,
-  ).not.toContain(прописными(имяМодуля));
+  ).not.toContain(upper(moduleName));
   expect(
-    прописными(видимыйТекст),
+    upper(visibleText),
     "второй сайдбар печатает короткое имя модуля отдельной строкой — тот же надзаголовок, только сбоку",
   ).not.toMatch(/(^| )VPC( |$)/);
 });
@@ -379,27 +379,27 @@ test("строка заголовка вмещает шрифт целиком �
   // блок шапки, если блок посчитан отдельно от неё.
   test.setTimeout(240_000);
   const { projectId } = await tenantWithProject(page);
-  const с = await ресурсСВыноснымиБуквами(page, projectId);
+  const pages = await resourceWithDescenders(page, projectId);
 
-  const карточка = await откройИЗамерь(page, с.карточка, с.имяСети);
+  const card = await openAndMeasure(page, pages.card, pages.networkName);
 
   expect(
-    /[gypq]/.test(карточка.текст),
-    `в заголовке «${карточка.текст}» нет ни одной выносной буквы — проба мерила бы строку, ` +
+    /[gypq]/.test(card.text),
+    `в заголовке «${card.text}» нет ни одной выносной буквы — проба мерила бы строку, ` +
       `которой нечем вылезти, и молчала бы при любой её высоте`,
   ).toBe(true);
 
-  const отношение = карточка.высотаСтроки / карточка.кегль;
+  const ratio = card.lineHeight / card.fontSize;
   expect(
-    отношение,
-    `строка заголовка ${карточка.высотаСтроки} при кегле ${карточка.кегль} — это ${отношение.toFixed(2)} ` +
+    ratio,
+    `строка заголовка ${card.lineHeight} при кегле ${card.fontSize} — это ${ratio.toFixed(2)} ` +
       `от кегля. Ниже базовой линии шрифт уводит до 0.22 кегля, поэтому при таком множителе ` +
-      `хвосты «${карточка.текст}» выходят за свою строку и наползают на то, что стоит ниже`,
+      `хвосты «${card.text}» выходят за свою строку и наползают на то, что стоит ниже`,
   ).toBeGreaterThanOrEqual(1.3);
 
   expect(
-    карточка.y + карточка.высотаСтроки,
-    `низ строки заголовка ${карточка.y + карточка.высотаСтроки} против низа шапки ${карточка.низШапки} — ` +
+    card.y + card.lineHeight,
+    `низ строки заголовка ${card.y + card.lineHeight} против низа шапки ${card.headerBottom} — ` +
       `заголовок выходит за свой блок и наползает на полосу вкладок`,
-  ).toBeLessThanOrEqual(карточка.низШапки);
+  ).toBeLessThanOrEqual(card.headerBottom);
 });

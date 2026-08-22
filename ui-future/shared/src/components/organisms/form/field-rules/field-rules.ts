@@ -33,7 +33,7 @@ export type FieldErrors = Record<string, string>;
  * отсутствие ответа. Считать его пустотой значило бы требовать от арендатора
  * включить то, что он осознанно выключил.
  */
-function пусто(value: unknown, field: FormField): boolean {
+function isEmpty(value: unknown, field: FormField): boolean {
   if (field.type === "bool") return false;
   if (value === undefined || value === null) return true;
   if (typeof value === "string") return value.trim() === "";
@@ -43,7 +43,7 @@ function пусто(value: unknown, field: FormField): boolean {
 }
 
 /** Имя поля в сообщении — в кавычках-ёлочках, как везде в консоли. */
-function имя(field: FormField): string {
+function labelOf(field: FormField): string {
   return `«${field.label}»`;
 }
 
@@ -55,10 +55,10 @@ function имя(field: FormField): string {
  * исправлять.
  */
 export function checkField(field: FormField, value: unknown): string | null {
-  if (field.required && пусто(value, field)) {
-    return `${имя(field)}: поле обязательное — без него ресурс не создать.`;
+  if (field.required && isEmpty(value, field)) {
+    return `${labelOf(field)}: поле обязательное — без него ресурс не создать.`;
   }
-  if (пусто(value, field)) return null;
+  if (isEmpty(value, field)) return null;
 
   if (field.type === "string" && field.pattern) {
     const text = typeof value === "string" ? value : String(value);
@@ -71,30 +71,30 @@ export function checkField(field: FormField, value: unknown): string | null {
       return null;
     }
     if (!re.test(text)) {
-      return `${имя(field)}: значение «${text}» не подходит под правило поля.`;
+      return `${labelOf(field)}: значение «${text}» не подходит под правило поля.`;
     }
   }
 
   if (field.type === "int" && typeof value === "number" && Number.isFinite(value)) {
     const { min, max } = field;
     if (min !== undefined && max !== undefined && (value < min || value > max)) {
-      return `${имя(field)}: допустимо от ${min} до ${max}, введено ${value}.`;
+      return `${labelOf(field)}: допустимо от ${min} до ${max}, введено ${value}.`;
     }
     if (min !== undefined && value < min) {
-      return `${имя(field)}: не меньше ${min}, введено ${value}.`;
+      return `${labelOf(field)}: не меньше ${min}, введено ${value}.`;
     }
     if (max !== undefined && value > max) {
-      return `${имя(field)}: не больше ${max}, введено ${value}.`;
+      return `${labelOf(field)}: не больше ${max}, введено ${value}.`;
     }
   }
 
   if (field.type === "array" && Array.isArray(value)) {
     const { minItems, maxItems } = field;
     if (minItems !== undefined && value.length < minItems) {
-      return `${имя(field)}: нужно не меньше ${minItems} — сейчас ${value.length}.`;
+      return `${labelOf(field)}: нужно не меньше ${minItems} — сейчас ${value.length}.`;
     }
     if (maxItems !== undefined && value.length > maxItems) {
-      return `${имя(field)}: не больше ${maxItems} — сейчас ${value.length}.`;
+      return `${labelOf(field)}: не больше ${maxItems} — сейчас ${value.length}.`;
     }
   }
 

@@ -384,10 +384,10 @@ describe("RefNameLink спрашивает чужой ресурс по ЕГО �
   it("каждый найденный файл ОПОЗНАН — реализация либо прослойка", () => {
     // Непонятый файл — находка, а не пропуск: молчание разбора о нём не
     // означает ничего, и именно под этим молчанием прошёл бы переписанный форк.
-    const неопознанные = FILES.filter((f) => KIND.get(f) === "неопознан").map(
+    const unrecognized = FILES.filter((f) => KIND.get(f) === "неопознан").map(
       (f) => path.relative(consoleRoot, f),
     );
-    expect(неопознанные).toEqual([]);
+    expect(unrecognized).toEqual([]);
   });
 
   it("реализация ОДНА, и она в shared", () => {
@@ -418,16 +418,16 @@ describe("RefNameLink спрашивает чужой ресурс по ЕГО �
   it("каждый потребитель приходит к общей реализации — охват ВЫВЕДЕН из дерева", () => {
     // Список потребителей здесь не выписан: рукописный пережил бы сведение
     // форка (и уже пережил — registry сняли, а пин остался требовать его).
-    const находки: string[] = [];
+    const findings: string[] = [];
     for (const [app, how] of CONSUMERS) {
       if (how.shared && !how.local) continue; // спрашивает общий адрес напрямую
-      const свои = SHIMS.filter((f) => appOf(f) === app);
-      if (свои.length === 0)
-        находки.push(
+      const own = SHIMS.filter((f) => appOf(f) === app);
+      if (own.length === 0)
+        findings.push(
           `${app}: спрашивает RefNameLink по адресу модуля, а прослойки на общую реализацию в нём нет`,
         );
     }
-    expect(находки).toEqual([]);
+    expect(findings).toEqual([]);
   });
 
   it("собственная предпосылка: детектор ловит прежнюю форму и молчит на нынешней", () => {

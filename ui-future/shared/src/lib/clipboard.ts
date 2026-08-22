@@ -55,22 +55,22 @@ export async function copyText(value: string): Promise<boolean> {
  */
 function copyViaSelection(value: string): boolean {
   if (typeof document === "undefined") return false;
-  const поле = document.createElement("textarea");
-  поле.value = value;
-  поле.setAttribute("readonly", "");
-  поле.setAttribute("aria-hidden", "true");
-  поле.tabIndex = -1;
-  поле.style.position = "fixed";
-  поле.style.top = "-1000px";
-  поле.style.opacity = "0";
-  document.body.appendChild(поле);
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.setAttribute("aria-hidden", "true");
+  textarea.tabIndex = -1;
+  textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
   try {
-    поле.select();
-    поле.setSelectionRange(0, value.length);
+    textarea.select();
+    textarea.setSelectionRange(0, value.length);
     return document.execCommand("copy");
   } catch {
     return false;
   } finally {
-    поле.remove();
+    textarea.remove();
   }
 }

@@ -16,14 +16,14 @@ import { MonoValue } from "./MonoValue";
 /** Тело CSS-правила по селектору. jsdom тему не грузит, поэтому «переход задан
  *  токенами» проверяется по ОБЪЯВЛЕНИЮ: вычисленный стиль здесь пуст у любого
  *  узла и доказал бы ровно ничего. */
-function блокПравила(css: string, селектор: string): string {
-  const i = css.indexOf(селектор + " {");
+function ruleBlock(css: string, selector: string): string {
+  const i = css.indexOf(selector + " {");
   if (i < 0) return "";
   const j = css.indexOf("}", i);
   return j < 0 ? "" : css.slice(i, j + 1);
 }
 
-function темаCss(): string {
+function themeCss(): string {
   return readFileSync(
     new URL("../../../index.css", import.meta.url).pathname,
     "utf8",
@@ -190,7 +190,7 @@ describe("CopyableId — одна строка", () => {
   it("кнопка не растягивает ячейку, а переход и отступы объявлены КЛАССОМ", () => {
     render(<CopyableId id={ID} />);
     const button = screen.getByRole("button");
-    const классы = button.getAttribute("class") ?? "";
+    const classes = button.getAttribute("class") ?? "";
 
     expect(button.style.maxWidth).toBe("100%");
     expect(parseFloat(button.style.minWidth)).toBe(0);
@@ -200,21 +200,21 @@ describe("CopyableId — одна строка", () => {
     expect(button.style.padding).toBe("");
     expect(button.style.borderRadius).toBe("");
     // ...но и не рассыпан по утилитам со своими числами.
-    expect(классы).not.toContain("transition-colors");
-    expect(классы).toContain("kc-copyable-id");
+    expect(classes).not.toContain("transition-colors");
+    expect(classes).toContain("kc-copyable-id");
 
-    const css = темаCss();
+    const css = themeCss();
     // Контроль разбора в обе стороны: без него «правило содержит токен» было бы
     // верно и на разборе, возвращающем весь файл, и ложно — на сломанном.
-    expect(блокПравила(css, ".kc-selector-which-does-not-exist")).toBe("");
-    const правило = блокПравила(css, ".kc-copyable-id");
-    expect(правило).not.toBe("");
+    expect(ruleBlock(css, ".kc-selector-which-does-not-exist")).toBe("");
+    const rule = ruleBlock(css, ".kc-copyable-id");
+    expect(rule).not.toBe("");
 
-    expect(правило).toMatch(/transition:/);
-    expect(правило).toContain("var(--kc-duration)");
-    expect(правило).toContain("var(--kc-ease)");
-    expect(правило).toMatch(/padding:/);
-    expect(правило).toMatch(/border-radius:/);
+    expect(rule).toMatch(/transition:/);
+    expect(rule).toContain("var(--kc-duration)");
+    expect(rule).toContain("var(--kc-ease)");
+    expect(rule).toMatch(/padding:/);
+    expect(rule).toMatch(/border-radius:/);
   });
 });
 
@@ -250,20 +250,20 @@ describe("CopyableId — признак места", () => {
     writeText.mockReset();
   });
 
-  function вСтрокеСвойств(ui: React.ReactNode) {
+  function inPropertyRow(ui: React.ReactNode) {
     return render(<PropertyRowProvider value={true}>{ui}</PropertyRowProvider>);
   }
 
   it("в строке свойств значение не кнопка и на клик не отзывается", () => {
-    вСтрокеСвойств(<CopyableId id={ID} />);
+    inPropertyRow(<CopyableId id={ID} />);
 
     expect(screen.queryByRole("button")).toBeNull();
 
-    const значение = screen.getByText(ID);
+    const value = screen.getByText(ID);
     // Обрезка остаётся показом: полное значение по-прежнему в подсказке —
     // копировать его будет общая кнопка строки, и ей нужно ИСХОДНОЕ.
-    expect(значение).toHaveAttribute("title", ID);
-    fireEvent.click(значение);
+    expect(value).toHaveAttribute("title", ID);
+    fireEvent.click(value);
     expect(writeText).not.toHaveBeenCalled();
   });
 
@@ -278,25 +278,25 @@ describe("CopyableId — признак места", () => {
     // Канон §9: двух реализаций одного вида не бывает — форк отстаёт молча.
     // Утверждается РАЗМЕТКА целиком, а не «оба моноширинные»: разойдясь хоть
     // подсказкой, хоть тоном, они дадут в одной карточке два поведения.
-    const { container: черезИдентификатор } = вСтрокеСвойств(
+    const { container: viaId } = inPropertyRow(
       <CopyableId id={ID} />,
     );
-    const { container: черезЗначение } = вСтрокеСвойств(
+    const { container: viaValue } = inPropertyRow(
       <MonoValue value={ID} />,
     );
 
-    expect(черезИдентификатор.innerHTML).toBe(черезЗначение.innerHTML);
+    expect(viaId.innerHTML).toBe(viaValue.innerHTML);
     // Контроль: сравниваются не две пустоты.
-    expect(черезИдентификатор.innerHTML).toContain(ID);
+    expect(viaId.innerHTML).toContain(ID);
   });
 
   it("пустое значение и там, и там — прочерк без кнопки (близнец)", () => {
-    const { container: черезИдентификатор } = вСтрокеСвойств(
+    const { container: viaId } = inPropertyRow(
       <CopyableId id="" />,
     );
-    const { container: черезЗначение } = вСтрокеСвойств(<MonoValue value="" />);
+    const { container: viaValue } = inPropertyRow(<MonoValue value="" />);
 
-    expect(черезИдентификатор.innerHTML).toBe(черезЗначение.innerHTML);
+    expect(viaId.innerHTML).toBe(viaValue.innerHTML);
     expect(screen.getAllByText("—")).toHaveLength(2);
     expect(screen.queryByRole("button")).toBeNull();
   });

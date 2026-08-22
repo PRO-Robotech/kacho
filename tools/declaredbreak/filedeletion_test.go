@@ -258,22 +258,22 @@ func TestFileDeletionSymbolMismatchIsItsOwnOutcome(t *testing.T) {
 // разрывом.
 func TestSubjectPathIsNotGuessed(t *testing.T) {
 	for _, c := range []struct {
-		имя  string
+		name string
 		json string
 		want string
 	}{
 		{
-			имя:  "форма сообщения изменилась — путей в кавычках нет",
+			name: "форма сообщения изменилась — путей в кавычках нет",
 			json: `{"start_line":1,"type":"FILE_NO_DELETE","message":"Previously present file was deleted."}`,
 			want: "не называет ни одного пути .proto",
 		},
 		{
-			имя:  "сообщение называет два файла — предмет неопределим",
+			name: "сообщение называет два файла — предмет неопределим",
 			json: `{"start_line":1,"type":"FILE_NO_DELETE","message":"file \"a/b.proto\" moved to \"a/c.proto\"."}`,
 			want: "решить нечем",
 		},
 	} {
-		t.Run(c.имя, func(t *testing.T) {
+		t.Run(c.name, func(t *testing.T) {
 			_, err := ParseFindings(strings.NewReader(c.json + "\n"))
 			if err == nil {
 				t.Fatal("находка без пути принята — путь был бы либо пуст, либо угадан")

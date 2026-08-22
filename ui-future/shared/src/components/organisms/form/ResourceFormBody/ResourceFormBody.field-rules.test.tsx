@@ -64,33 +64,33 @@ const VPC_IDS = [
  * значит проверить правило само собой. Подпись — то слово, которое арендатор
  * видит в левой колонке; отказ обязан стоять в блоке этого поля.
  *
- * `вСтроке` — отказ относится не к полю целиком, а к ОДНОЙ строке его списка, и
+ * `inRow` — отказ относится не к полю целиком, а к ОДНОЙ строке его списка, и
  * стоять обязан у той строки, чей ввод не заполнен. Значение — точный текст
  * сообщения: у строки списка оно называет ПОДПОЛЕ и номер строки, а не имя поля,
  * поэтому «называет поле» без дословной сверки означало бы здесь другое.
  */
-const ОЖИДАНИЕ: Record<
+const EXPECTED: Record<
   (typeof VPC_IDS)[number],
-  { блокируется: boolean; подпись?: string; вСтроке?: string }
+  { blocked: boolean; label?: string; inRow?: string }
 > = {
   networks: {
-    блокируется: true,
-    подпись: "CIDR IPv4",
-    вСтроке: "Строка 1. «CIDR»: поле обязательное — без него ресурс не создать.",
+    blocked: true,
+    label: "CIDR IPv4",
+    inRow: "Строка 1. «CIDR»: поле обязательное — без него ресурс не создать.",
   },
-  subnets: { блокируется: true, подпись: "Облачная сеть" },
-  addresses: { блокируется: true, подпись: "Зона" },
-  "route-tables": { блокируется: true, подпись: "Сеть" },
-  "security-groups": { блокируется: true, подпись: "Облачная сеть" },
-  "network-interfaces": { блокируется: true, подпись: "Подсеть" },
-  gateways: { блокируется: true, подпись: "Подсеть" },
+  subnets: { blocked: true, label: "Облачная сеть" },
+  addresses: { blocked: true, label: "Зона" },
+  "route-tables": { blocked: true, label: "Сеть" },
+  "security-groups": { blocked: true, label: "Облачная сеть" },
+  "network-interfaces": { blocked: true, label: "Подсеть" },
+  gateways: { blocked: true, label: "Подсеть" },
   // Набор блоков у группы префиксов пуст и законен: пустой список — это список,
   // а не незаполненное поле. Положительный контроль всей переписи.
-  "cidr-groups": { блокируется: false },
+  "cidr-groups": { blocked: false },
 };
 
 /** Значение, законное по объявлению поля. Ни у одного обязательного поля сети нет образца. */
-function правдоподобное(f: FormField): unknown {
+function plausible(f: FormField): unknown {
   switch (f.type) {
     case "enum":
       return f.options[0]?.value ?? "";
@@ -101,20 +101,20 @@ function правдоподобное(f: FormField): unknown {
     case "labels":
       return { env: "prod" };
     case "array":
-      return [заполненнаяСтрока(f)];
+      return [filledRow(f)];
     default:
       return "ref-1";
   }
 }
 
-function заполненнаяСтрока(f: ArrayField): Record<string, unknown> {
+function filledRow(f: ArrayField): Record<string, unknown> {
   const item: Record<string, unknown> = f.newItem ? f.newItem() : {};
-  for (const sub of f.itemFields) item[sub.name] = правдоподобное(sub);
+  for (const sub of f.itemFields) item[sub.name] = plausible(sub);
   return item;
 }
 
 /** Кладёт значение по dotted-пути (пути обязательных полей адреса вложенные). */
-function положить(obj: Record<string, unknown>, path: string, value: unknown): void {
+function put(obj: Record<string, unknown>, path: string, value: unknown): void {
   const keys = path.split(".");
   let cur = obj;
   for (const k of keys.slice(0, -1)) {
@@ -124,23 +124,23 @@ function положить(obj: Record<string, unknown>, path: string, value: unk
   cur[keys[keys.length - 1]] = value;
 }
 
-function начальное(id: string): Record<string, unknown> {
+function initial(id: string): Record<string, unknown> {
   const spec = REGISTRY[id];
   const tpl = spec.template({ projectId: "prj-1" }) as Record<string, unknown>;
   return applyFieldDefaults(spec.fields, { ...tpl });
 }
 
-function заполненное(id: string): Record<string, unknown> {
+function filled(id: string): Record<string, unknown> {
   const spec = REGISTRY[id];
-  const obj = начальное(id);
+  const obj = initial(id);
   for (const f of spec.fields ?? []) {
     if (f.hidden) continue;
-    if (f.required) положить(obj, f.name, правдоподобное(f));
+    if (f.required) put(obj, f.name, plausible(f));
     // Строки списков заполняются и там, где сам список необязателен: пустая
     // строка внутри уже заведённой — это отказ, а шаблон сети её и кладёт.
     if (f.type === "array") {
       const rows = obj[f.name];
-      if (Array.isArray(rows) && rows.length > 0) obj[f.name] = rows.map(() => заполненнаяСтрока(f));
+      if (Array.isArray(rows) && rows.length > 0) obj[f.name] = rows.map(() => filledRow(f));
     }
   }
   return obj;
@@ -151,15 +151,15 @@ function заполненное(id: string): Record<string, unknown> {
  * оболочка нужна даже там, где запрос не уходит: без выбранного проекта он
  * выключен, но сам хук всё равно вызывается.
  */
-function вОболочке(node: React.ReactNode) {
+function inShell(node: React.ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={client}>{node}</QueryClientProvider>;
 }
 
-function показать(id: string, obj: Record<string, unknown>, spec = REGISTRY[id]) {
+function show(id: string, obj: Record<string, unknown>, spec = REGISTRY[id]) {
   const onSubmit = jest.fn();
   const view = render(
-    вОболочке(
+    inShell(
       <ResourceFormBody
         spec={spec}
         mode="create"
@@ -175,7 +175,7 @@ function показать(id: string, obj: Record<string, unknown>, spec = REGIS
   return { onSubmit, view };
 }
 
-const отправить = () => fireEvent.click(screen.getByRole("button", { name: "Создать" }));
+const submit = () => fireEvent.click(screen.getByRole("button", { name: "Создать" }));
 
 /**
  * Блок поля в сетке формы — тот узел, у которого есть СВОЯ подпись.
@@ -184,21 +184,21 @@ const отправить = () => fireEvent.click(screen.getByRole("button", { na
  * проверка «где-то выше по дереву встретилось это слово» приняла бы любой отказ
  * формы за отказ этого поля — то есть перестала бы утверждать место.
  */
-const блокПоля = (узел: HTMLElement): { подпись: string } | null => {
-  for (let p: HTMLElement | null = узел.parentElement; p; p = p.parentElement) {
-    const метка = p.querySelector(":scope > label");
-    if (метка) return { подпись: (метка.textContent ?? "").trim() };
+const fieldBlock = (node: HTMLElement): { label: string } | null => {
+  for (let p: HTMLElement | null = node.parentElement; p; p = p.parentElement) {
+    const labelEl = p.querySelector(":scope > label");
+    if (labelEl) return { label: (labelEl.textContent ?? "").trim() };
   }
   return null;
 };
 
 /** Отказ, показанный ВНУТРИ блока поля с этой подписью. */
-const отказУПоля = (подпись: string): HTMLElement | undefined =>
-  screen.queryAllByRole("alert").find((el) => (блокПоля(el)?.подпись ?? "").includes(подпись));
+const errorAtField = (label: string): HTMLElement | undefined =>
+  screen.queryAllByRole("alert").find((el) => (fieldBlock(el)?.label ?? "").includes(label));
 
 /** Строка списка, в которой стоит отказ: ближайшая обёртка со СВОИМ вводом. */
-const строкаОтказа = (отказ: HTMLElement): HTMLElement | null => {
-  for (let p: HTMLElement | null = отказ.parentElement; p; p = p.parentElement) {
+const errorRow = (error: HTMLElement): HTMLElement | null => {
+  for (let p: HTMLElement | null = error.parentElement; p; p = p.parentElement) {
     if (p.querySelector("input, textarea")) return p;
   }
   return null;
@@ -207,46 +207,46 @@ const строкаОтказа = (отказ: HTMLElement): HTMLElement | null =
 describe("правила полей читаются на всех восьми ресурсах сети", () => {
   it("перепись непуста и покрывает ровно восемь типов", () => {
     expect(VPC_IDS).toHaveLength(8);
-    expect(Object.keys(ОЖИДАНИЕ)).toHaveLength(8);
+    expect(Object.keys(EXPECTED)).toHaveLength(8);
     for (const id of VPC_IDS) expect(REGISTRY[id]?.fields?.length ?? 0).toBeGreaterThan(0);
   });
 
   for (const id of VPC_IDS) {
-    const ждём = ОЖИДАНИЕ[id];
+    const expected = EXPECTED[id];
 
-    it(`${id}: нетронутая форма ${ждём.блокируется ? "не отправляется и называет поле" : "отправляется"}`, () => {
-      const { onSubmit, view } = показать(id, начальное(id));
+    it(`${id}: нетронутая форма ${expected.blocked ? "не отправляется и называет поле" : "отправляется"}`, () => {
+      const { onSubmit, view } = show(id, initial(id));
 
-      отправить();
+      submit();
 
-      if (!ждём.блокируется) {
+      if (!expected.blocked) {
         expect(onSubmit).toHaveBeenCalledTimes(1);
         expect(screen.queryAllByRole("alert")).toHaveLength(0);
         view.unmount();
         return;
       }
       expect(onSubmit).not.toHaveBeenCalled();
-      const отказ = отказУПоля(ждём.подпись!);
-      expect(отказ).toBeDefined();
+      const error = errorAtField(expected.label!);
+      expect(error).toBeDefined();
       // Отказ называет ПОЛЕ и ПРАВИЛО, а не «проверьте введённые данные».
-      expect(отказ!.textContent).toMatch(/«[^»]+»:/);
+      expect(error!.textContent).toMatch(/«[^»]+»:/);
 
-      if (ждём.вСтроке !== undefined) {
+      if (expected.inRow !== undefined) {
         // Отказ подполя стоит У СВОЕЙ СТРОКИ, а не у поля целиком: прямым
         // потомком блока поля он оказался бы ровно во втором случае.
-        expect(отказ!.parentElement?.querySelector(":scope > label")).toBeFalsy();
-        expect(отказ!.textContent).toBe(ждём.вСтроке);
+        expect(error!.parentElement?.querySelector(":scope > label")).toBeFalsy();
+        expect(error!.textContent).toBe(expected.inRow);
         // Претензия ОДНА — и сказана она один раз. Всплытие к полю целиком
         // (снято решением владельца) давало то же сообщение вторым местом, и
         // читатель искал незаполненный ввод глазами по всему списку.
         expect(screen.queryAllByRole("alert")).toHaveLength(1);
         // Читающий с экрана слышит причину вместе с вводом, а не отдельной
         // репликой неизвестно о чём: ссылка ведёт в ЭТО сообщение.
-        const ввод = document.querySelector('input[aria-invalid="true"]');
-        expect(ввод).not.toBeNull();
-        expect(ввод).toHaveValue("");
-        expect(отказ!.id).not.toBe("");
-        expect(ввод!.getAttribute("aria-describedby")).toBe(отказ!.id);
+        const input = document.querySelector('input[aria-invalid="true"]');
+        expect(input).not.toBeNull();
+        expect(input).toHaveValue("");
+        expect(error!.id).not.toBe("");
+        expect(input!.getAttribute("aria-describedby")).toBe(error!.id);
         // У КАКОЙ строки он стоит — отдельной пробой ниже: шаблон кладёт ровно
         // одну строку, и на одной строке «у своей строки» неотличимо от «под
         // всей таблицей». Здесь это утверждать нечем.
@@ -255,9 +255,9 @@ describe("правила полей читаются на всех восьми 
     });
 
     it(`${id}: заполненная форма отправляется`, () => {
-      const { onSubmit, view } = показать(id, заполненное(id));
+      const { onSubmit, view } = show(id, filled(id));
 
-      отправить();
+      submit();
 
       expect(onSubmit).toHaveBeenCalledTimes(1);
       view.unmount();
@@ -288,34 +288,34 @@ describe("отказ списка стоит у ТОЙ строки, где не
   } as unknown as (typeof REGISTRY)["networks"];
 
   it("сообщение — в обёртке своей строки, а не под таблицей", () => {
-    показать("networks", { ipv4_cidr_blocks: [{ value: "10.0.0.0/16" }, { value: "" }] }, spec);
+    show("networks", { ipv4_cidr_blocks: [{ value: "10.0.0.0/16" }, { value: "" }] }, spec);
 
-    отправить();
+    submit();
 
     // Незаполненная строка одна — значит и сообщение на странице ровно одно:
     // всплытие того же отказа к полю целиком ловится здесь.
-    const всеотказы = screen.queryAllByRole("alert");
-    expect(всеотказы).toHaveLength(1);
-    const отказ = отказУПоля("CIDR IPv4");
-    expect(отказ).toBeDefined();
-    expect(отказ!.textContent).toBe("Строка 2. «CIDR»: поле обязательное — без него ресурс не создать.");
+    const allErrors = screen.queryAllByRole("alert");
+    expect(allErrors).toHaveLength(1);
+    const error = errorAtField("CIDR IPv4");
+    expect(error).toBeDefined();
+    expect(error!.textContent).toBe("Строка 2. «CIDR»: поле обязательное — без него ресурс не создать.");
 
     // Ближайшая обёртка со вводом — это СТРОКА, а не таблица: у таблицы вводов
     // два, и сообщение, уехавшее под неё, здесь и ловится.
-    const строка = строкаОтказа(отказ!);
-    expect(строка).not.toBeNull();
-    const вводы = [...строка!.querySelectorAll("input")];
-    expect(вводы).toHaveLength(1);
-    expect(вводы[0]).toHaveValue("");
+    const row = errorRow(error!);
+    expect(row).not.toBeNull();
+    const inputs = [...row!.querySelectorAll("input")];
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]).toHaveValue("");
 
     // Положительный контроль: заполненная строка отказа не несёт и негодной не
     // помечена — иначе «помечает негодным» зеленело бы на разметке, метящей всё.
-    const все = [...document.querySelectorAll("input")];
-    expect(все).toHaveLength(2);
-    expect(все[0]).toHaveValue("10.0.0.0/16");
-    expect(все[0]).not.toHaveAttribute("aria-invalid");
-    expect(все[1]).toHaveAttribute("aria-invalid", "true");
-    expect(все[1].getAttribute("aria-describedby")).toBe(отказ!.id);
+    const all = [...document.querySelectorAll("input")];
+    expect(all).toHaveLength(2);
+    expect(all[0]).toHaveValue("10.0.0.0/16");
+    expect(all[0]).not.toHaveAttribute("aria-invalid");
+    expect(all[1]).toHaveAttribute("aria-invalid", "true");
+    expect(all[1].getAttribute("aria-describedby")).toBe(error!.id);
   });
 });
 
@@ -349,19 +349,19 @@ describe("отказ живёт ровно столько, сколько его
   }
 
   it("не показывается, пока отправку не пробовали", () => {
-    render(вОболочке(<LiveForm />));
+    render(inShell(<LiveForm />));
 
     expect(screen.queryAllByRole("alert")).toHaveLength(0);
   });
 
   it("гаснет, как только поле поправили, — не дожидаясь второй отправки", () => {
-    render(вОболочке(<LiveForm />));
-    отправить();
-    expect(отказУПоля("Идентификатор")).toBeDefined();
+    render(inShell(<LiveForm />));
+    submit();
+    expect(errorAtField("Идентификатор")).toBeDefined();
 
     fireEvent.change(document.querySelector("input")!, { target: { value: "rtb-1" } });
 
-    expect(отказУПоля("Идентификатор")).toBeUndefined();
+    expect(errorAtField("Идентификатор")).toBeUndefined();
   });
 });
 
@@ -370,18 +370,18 @@ describe("обязательность видна ДО отправки, а не
   // программы чтения с экрана берут из САМОГО ввода. Пока `aria-required` не
   // ставил никто, читающий с экрана не узнавал об обязательности вовсе: ни до
   // отправки, ни после неё.
-  const схема = (required: boolean) =>
+  const schema = (required: boolean) =>
     ({
       ...REGISTRY["route-tables"],
       fields: [{ name: "id", label: "Идентификатор", type: "string", required }],
     }) as unknown as (typeof REGISTRY)["route-tables"];
 
-  const ввод = () => document.querySelector("input")!;
+  const input = () => document.querySelector("input")!;
 
   it("ввод обязательного поля объявляет обязательность сразу", () => {
-    render(вОболочке(
+    render(inShell(
       <ResourceFormBody
-        spec={схема(true)}
+        spec={schema(true)}
         mode="create"
         obj={{ id: "" }}
         onChange={() => {}}
@@ -392,15 +392,15 @@ describe("обязательность видна ДО отправки, а не
       />,
     ));
 
-    expect(ввод()).toHaveAttribute("aria-required", "true");
+    expect(input()).toHaveAttribute("aria-required", "true");
     // И это ДО отправки: отказов на экране ещё нет.
     expect(screen.queryAllByRole("alert")).toHaveLength(0);
   });
 
   it("ввод необязательного поля обязательность не объявляет", () => {
-    render(вОболочке(
+    render(inShell(
       <ResourceFormBody
-        spec={схема(false)}
+        spec={schema(false)}
         mode="create"
         obj={{ id: "" }}
         onChange={() => {}}
@@ -411,13 +411,13 @@ describe("обязательность видна ДО отправки, а не
       />,
     ));
 
-    expect(ввод()).not.toHaveAttribute("aria-required");
+    expect(input()).not.toHaveAttribute("aria-required");
   });
 
   it("после отказа ввод помечен негодным и указывает на своё сообщение", () => {
-    render(вОболочке(
+    render(inShell(
       <ResourceFormBody
-        spec={схема(true)}
+        spec={schema(true)}
         mode="create"
         obj={{ id: "" }}
         onChange={() => {}}
@@ -428,14 +428,14 @@ describe("обязательность видна ДО отправки, а не
       />,
     ));
 
-    отправить();
+    submit();
 
-    expect(ввод()).toHaveAttribute("aria-invalid", "true");
-    const адрес = ввод().getAttribute("aria-describedby");
-    expect(адрес).toBeTruthy();
+    expect(input()).toHaveAttribute("aria-invalid", "true");
+    const describedBy = input().getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
     // Ссылка ведёт в СВОЁ сообщение, а не в пустоту: непроверенный
     // `aria-describedby` — та же форма без содержания.
-    expect(document.getElementById(адрес!)).toHaveTextContent("«Идентификатор»:");
+    expect(document.getElementById(describedBy!)).toHaveTextContent("«Идентификатор»:");
   });
 });
 
@@ -454,18 +454,18 @@ describe("обязательность нечем показать у поля �
   // покраснеет и назовёт его. Тогда сначала учат форму показывать
   // обязательность, и только потом заводят поле.
   it("ни одного обязательного поля во всю ширину во всём реестре", () => {
-    const найдено: string[] = [];
-    let всего = 0;
+    const found: string[] = [];
+    let total = 0;
     for (const [id, spec] of Object.entries(REGISTRY)) {
       for (const f of spec.fields ?? []) {
-        всего++;
-        if (f.required && !f.hidden && isFullWidthField(f)) найдено.push(`${id}.${f.name} (${f.type})`);
+        total++;
+        if (f.required && !f.hidden && isFullWidthField(f)) found.push(`${id}.${f.name} (${f.type})`);
       }
     }
 
     // Объём осмотренного — отдельным утверждением: «ноль находок» обязано быть
     // отличимо от «ноль прочитанных полей».
-    expect(всего).toBeGreaterThan(100);
-    expect(найдено).toEqual([]);
+    expect(total).toBeGreaterThan(100);
+    expect(found).toEqual([]);
   });
 });

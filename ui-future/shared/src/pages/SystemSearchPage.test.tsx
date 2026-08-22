@@ -68,7 +68,7 @@ function renderPage() {
   );
 }
 
-function типЗапроса(path: string): { filter: string | null; projectId: string | null } | null {
+function queryKind(path: string): { filter: string | null; projectId: string | null } | null {
   const u = urls.find((x) => x.split("?")[0] === path);
   if (!u) return null;
   const qs = new URLSearchParams(u.split("?")[1] ?? "");
@@ -97,9 +97,9 @@ describe("глобальный поиск", () => {
     renderPage();
     fireEvent.change(screen.getByPlaceholderText(/Поиск|Найти/i), { target: { value: "прод" } });
 
-    const сеть = SEARCH_DOMAINS.find((d) => d.specId === "networks")!;
-    await waitFor(() => expect(типЗапроса(сеть.path)).not.toBeNull());
-    expect(типЗапроса(сеть.path)!.filter).toBe('name CONTAINS "прод"');
+    const network = SEARCH_DOMAINS.find((d) => d.specId === "networks")!;
+    await waitFor(() => expect(queryKind(network.path)).not.toBeNull());
+    expect(queryKind(network.path)!.filter).toBe('name CONTAINS "прод"');
   });
 
   it("project-scoped область несёт project_id выбранного проекта (#465)", async () => {
@@ -110,10 +110,10 @@ describe("глобальный поиск", () => {
     renderPage();
     fireEvent.change(screen.getByPlaceholderText(/Поиск|Найти/i), { target: { value: "прод" } });
 
-    const сеть = SEARCH_DOMAINS.find((d) => d.specId === "networks")!;
-    expect(сеть.scope).toBe("project");
-    await waitFor(() => expect(типЗапроса(сеть.path)).not.toBeNull());
-    expect(типЗапроса(сеть.path)!.projectId).toBe("prj-1");
+    const network = SEARCH_DOMAINS.find((d) => d.specId === "networks")!;
+    expect(network.scope).toBe("project");
+    await waitFor(() => expect(queryKind(network.path)).not.toBeNull());
+    expect(queryKind(network.path)!.projectId).toBe("prj-1");
   });
 
   it("без выбранного проекта project-scoped область НЕ спрашивается вовсе", async () => {
@@ -125,7 +125,7 @@ describe("глобальный поиск", () => {
     renderPage();
     fireEvent.change(screen.getByPlaceholderText(/Поиск|Найти/i), { target: { value: "прод" } });
 
-    const сеть = SEARCH_DOMAINS.find((d) => d.specId === "networks")!;
+    const network = SEARCH_DOMAINS.find((d) => d.specId === "networks")!;
     // Молчание сделало бы «Найдено: 0» неотличимым от «ресурса нет»: страница
     // называет непросмотренные project-scoped области поимённо и числом —
     // тем же приёмом, что клиентскую неполноту (PARTIAL_DOMAINS) выше. Ждём
@@ -134,7 +134,7 @@ describe("глобальный поиск", () => {
     expect(PROJECT_SCOPED_DOMAINS.length).toBeGreaterThan(0);
     await screen.findByText(new RegExp(String(PROJECT_SCOPED_DOMAINS.length)));
     expect(screen.getByText(/выберите проект/i)).toBeTruthy();
-    expect(типЗапроса(сеть.path)).toBeNull();
+    expect(queryKind(network.path)).toBeNull();
   });
 
   it("а там, где не разбирает, фильтр НЕ отправляется", async () => {
@@ -144,10 +144,10 @@ describe("глобальный поиск", () => {
     renderPage();
     fireEvent.change(screen.getByPlaceholderText(/Поиск|Найти/i), { target: { value: "прод" } });
 
-    const проекты = SEARCH_DOMAINS.find((d) => d.specId === "projects")!;
-    expect(REGISTRY[проекты.specId]?.serverSearchField).toBeUndefined();
-    await waitFor(() => expect(типЗапроса(проекты.path)).not.toBeNull());
-    expect(типЗапроса(проекты.path)!.filter).toBeNull();
+    const projects = SEARCH_DOMAINS.find((d) => d.specId === "projects")!;
+    expect(REGISTRY[projects.specId]?.serverSearchField).toBeUndefined();
+    await waitFor(() => expect(queryKind(projects.path)).not.toBeNull());
+    expect(queryKind(projects.path)!.filter).toBeNull();
   });
 
   it("области, где поиск неполон, названы поимённо", async () => {

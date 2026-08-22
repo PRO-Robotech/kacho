@@ -267,7 +267,7 @@ describe("ResourceFormBody — порядок полей один на все ф
   // Схема ниже намеренно перечислена ВРАЗБРОС: проба, поданная уже
   // упорядоченной схемой, зеленела бы и на теле, которое ничего не
   // переставляет, — то есть не утверждала бы ничего.
-  const вразброс = [
+  const scattered = [
     str({ name: "network_id", label: "поле сеть" }),
     str({ name: "labels", label: "поле метки" }),
     str({ name: "description", label: "поле описание" }),
@@ -275,22 +275,22 @@ describe("ResourceFormBody — порядок полей один на все ф
   ];
 
   it("общие поля идут первыми и в объявленном порядке, поля ресурса — за ними", () => {
-    show(вразброс);
+    show(scattered);
 
     expect(labels()).toEqual(["поле имя", "поле описание", "поле метки", "поле сеть"]);
   });
 
   it("черта стоит между общими полями и полями ресурса", () => {
-    const { container } = show(вразброс);
+    const { container } = show(scattered);
 
-    const [черта] = formDividers(container);
-    expect(черта).toBeDefined();
+    const [divider] = formDividers(container);
+    expect(divider).toBeDefined();
 
     // Утверждается МЕСТО черты, а не её наличие: черта, уехавшая в конец формы,
     // тоже «есть», и ничего при этом не отделяет. Сравниваются позиции в DOM.
-    const позиция = (el: Element) => [...container.querySelectorAll("*")].indexOf(el);
-    expect(позиция(screen.getByText("поле метки"))).toBeLessThan(позиция(черта));
-    expect(позиция(черта)).toBeLessThan(позиция(screen.getByText("поле сеть")));
+    const position = (el: Element) => [...container.querySelectorAll("*")].indexOf(el);
+    expect(position(screen.getByText("поле метки"))).toBeLessThan(position(divider));
+    expect(position(divider)).toBeLessThan(position(screen.getByText("поле сеть")));
   });
 
   it("отделять нечего — черты нет: у ресурса только общие поля", () => {
@@ -318,10 +318,10 @@ describe("ResourceFormBody — порядок полей один на все ф
     ]);
 
     expect(labels()).toEqual(["поле имя", "поле описание", "поле тип"]);
-    const [черта] = formDividers(container);
-    expect(черта).toBeDefined();
-    const позиция = (el: Element) => [...container.querySelectorAll("*")].indexOf(el);
-    expect(позиция(screen.getByText("поле описание"))).toBeLessThan(позиция(черта));
-    expect(позиция(черта)).toBeLessThan(позиция(screen.getByText("поле тип")));
+    const [divider] = formDividers(container);
+    expect(divider).toBeDefined();
+    const position = (el: Element) => [...container.querySelectorAll("*")].indexOf(el);
+    expect(position(screen.getByText("поле описание"))).toBeLessThan(position(divider));
+    expect(position(divider)).toBeLessThan(position(screen.getByText("поле тип")));
   });
 });

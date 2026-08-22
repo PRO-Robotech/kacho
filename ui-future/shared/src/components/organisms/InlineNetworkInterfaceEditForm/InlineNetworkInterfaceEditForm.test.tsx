@@ -138,12 +138,12 @@ describe("InlineNetworkInterfaceEditForm — черта", () => {
     show();
     await screen.findByText("Подсеть");
 
-    const [черта] = formDividers();
-    expect(черта).toBeDefined();
+    const [divider] = formDividers();
+    expect(divider).toBeDefined();
 
-    const позиция = (el: Element) => [...document.body.querySelectorAll("*")].indexOf(el);
-    expect(позиция(screen.getByText("Метки"))).toBeLessThan(позиция(черта));
-    expect(позиция(черта)).toBeLessThan(позиция(screen.getByText("Подсеть")));
+    const position = (el: Element) => [...document.body.querySelectorAll("*")].indexOf(el);
+    expect(position(screen.getByText("Метки"))).toBeLessThan(position(divider));
+    expect(position(divider)).toBeLessThan(position(screen.getByText("Подсеть")));
   });
 });
 
@@ -151,7 +151,7 @@ describe("InlineNetworkInterfaceEditForm — занятость адреса", (
   // Занятые адреса скрыты — КРОМЕ тех, что держит этот же интерфейс. Скрыв их
   // заодно, форма правки потеряла бы собственное текущее значение: адрес занят,
   // и занят им самим.
-  const адреса = () =>
+  const addresses = () =>
     Promise.resolve({
       addresses: [
         { id: "adr-a", name: "мой", used: true, internal_ipv4_address: { subnet_id: "sub-1", address: "10.0.0.1" } },
@@ -161,7 +161,7 @@ describe("InlineNetworkInterfaceEditForm — занятость адреса", (
     });
 
   it("свой адрес остаётся в списке, чужой занятый — нет, свободный — да", async () => {
-    list.mockImplementation((path: string) => (path.includes("/addresses") ? адреса() : Promise.resolve({})));
+    list.mockImplementation((path: string) => (path.includes("/addresses") ? addresses() : Promise.resolve({})));
     show();
 
     // Три утверждения — три РАЗНЫХ исхода предиката, и ни одно не выводится из

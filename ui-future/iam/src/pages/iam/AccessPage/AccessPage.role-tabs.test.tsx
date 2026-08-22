@@ -71,9 +71,9 @@ describe("AccessGrantPage — наборы ролей объявлены вкл�
     // Ждём ответа края: до него счётчик в подписи равен нулю, и утверждение
     // «наборы названы» прошло бы на странице, которая ролей ещё не видела.
     await screen.findByRole("tab", { name: "Системные (1)" });
-    const набор = screen.getByRole("tablist");
+    const tabList = screen.getByRole("tablist");
     expect(
-      within(набор)
+      within(tabList)
         .getAllByRole("tab")
         .map((t) => t.textContent),
     ).toEqual(["Системные (1)", "Свои роли (0)"]);
@@ -92,9 +92,9 @@ describe("AccessGrantPage — наборы ролей объявлены вкл�
     // Выбор ролей — множественный, поэтому наружу он объявлен списком, а не
     // полем со значением; внутри — модуль из ответа края. «Панель есть» без
     // содержимого зеленело бы на пустой панели.
-    const панель = screen.getByRole("tabpanel");
-    expect(within(панель).getByRole("listbox")).toBeInTheDocument();
-    expect(within(панель).getByText("vpc")).toBeInTheDocument();
+    const panel = screen.getByRole("tabpanel");
+    expect(within(panel).getByRole("listbox")).toBeInTheDocument();
+    expect(within(panel).getByText("vpc")).toBeInTheDocument();
   });
 
   it("выбор вкладки меняет и пометку выбранного, и содержимое", async () => {
@@ -105,9 +105,9 @@ describe("AccessGrantPage — наборы ролей объявлены вкл�
 
     expect(screen.getByRole("tab", { name: "Свои роли (0)" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Системные (1)" })).toHaveAttribute("aria-selected", "false");
-    const панель = screen.getByRole("tabpanel");
-    expect(within(панель).getByText("У вашей организации пока нет своих ролей.")).toBeInTheDocument();
+    const panel = screen.getByRole("tabpanel");
+    expect(within(panel).getByText("У вашей организации пока нет своих ролей.")).toBeInTheDocument();
     // Парный контроль: содержимое прежней вкладки ушло, а не осталось под новой.
-    expect(within(панель).queryByRole("listbox")).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("listbox")).not.toBeInTheDocument();
   });
 });

@@ -30,7 +30,7 @@ import { registerAndSignIn } from "./fixtures";
  * `tbody`; это верно и в режиме БЕЗ фиксированной шапки, где обе части живут в
  * одном `<table>` (`:has(tbody)` матчит и его).
  */
-function таблицаДанных(page: Page): Locator {
+function dataTable(page: Page): Locator {
   return page.locator("table").filter({ has: page.locator("tbody") });
 }
 
@@ -38,19 +38,19 @@ test("витрина квот показывает пределы проекта
   // verifies #364
   const { projectId } = await registerAndSignIn(page);
 
-  const [ответ] = await Promise.all([
+  const [response] = await Promise.all([
     page.waitForResponse((r) => new URL(r.url()).pathname === "/vpc/v1/quotas", { timeout: 30_000 }),
     page.goto(`/projects/${projectId}/quotas`, { waitUntil: "domcontentloaded" }),
   ]);
 
-  expect(ответ.status(), `край не отдал пределы: ${await ответ.text()}`).toBe(200);
+  expect(response.status(), `край не отдал пределы: ${await response.text()}`).toBe(200);
 
-  const тело = (await ответ.json()) as { quotas?: unknown[] };
+  const body = (await response.json()) as { quotas?: unknown[] };
   // Контракт обещает полный набор всегда — даже проекту, где ничего не создано.
   // Пустой ответ означал бы, что витрине нечего показать не по своей вине.
-  expect(тело.quotas?.length ?? 0, "край вернул пустой набор пределов").toBeGreaterThan(0);
+  expect(body.quotas?.length ?? 0, "край вернул пустой набор пределов").toBeGreaterThan(0);
 
-  await expect(таблицаДанных(page)).toBeVisible({ timeout: 20_000 });
+  await expect(dataTable(page)).toBeVisible({ timeout: 20_000 });
   // Источник значения обязателен: без него упёршийся не знает, куда идти.
   await expect(page.getByText(/умолчание|Аккаунт |Проект /).first()).toBeVisible({ timeout: 20_000 });
 });
@@ -66,9 +66,9 @@ test("витрина квот не предлагает арендатору м�
   // verifies #364
   const { projectId } = await registerAndSignIn(page);
   await page.goto(`/projects/${projectId}/quotas`, { waitUntil: "domcontentloaded" });
-  await expect(таблицаДанных(page)).toBeVisible({ timeout: 30_000 });
+  await expect(dataTable(page)).toBeVisible({ timeout: 30_000 });
 
-  for (const подпись of [/Изменить предел/i, /Поднять квоту/i, /Редактировать/i]) {
-    expect(await page.getByRole("button", { name: подпись }).count()).toBe(0);
+  for (const label of [/Изменить предел/i, /Поднять квоту/i, /Редактировать/i]) {
+    expect(await page.getByRole("button", { name: label }).count()).toBe(0);
   }
 });

@@ -23,7 +23,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { detailExtension } from "./ResourceDetailExtensions";
 
 /** Тоны канона §5. Дословно, а не «то, что вернул код»: они часть контракта. */
-const ТОН = {
+const TONE = {
   neutral: "var(--kc-text-tertiary)",
   active: "var(--kc-cyan)",
   good: "var(--status-ok-fg)",
@@ -31,7 +31,7 @@ const ТОН = {
 } as const;
 
 /** Нейтральный текст тише глифа — отдельный токен. */
-const НЕЙТРАЛЬНЫЙ_ТЕКСТ = "var(--kc-text-secondary)";
+const NEUTRAL_TEXT = "var(--kc-text-secondary)";
 
 function rows(data: Record<string, unknown>) {
   const ext = detailExtension("addresses");
@@ -58,8 +58,8 @@ function showRow(data: Record<string, unknown>, label: string) {
 
 /** Цвет показанного текста — то, чем тон наблюдаем. Утверждается он, а не проп:
  *  проп можно передать и не отрисовать. */
-function цвет(фраза: string): string {
-  return screen.getByText(фраза).style.color;
+function color(phrase: string): string {
+  return screen.getByText(phrase).style.color;
 }
 
 const ADDRESS = {
@@ -74,25 +74,25 @@ describe("карточка адреса — тон факта следует з�
   it("«Используется ресурсом» несёт тон задействованности, а не приглушение (#446)", () => {
     showRow(ADDRESS, "Занятость");
 
-    expect(цвет("Используется ресурсом")).toBe(ТОН.active);
+    expect(color("Используется ресурсом")).toBe(TONE.active);
     // Исходная жалоба дословно: «выглядит неактивным». Утверждение выше её
     // закрывает, но проверку на приглушение оставляем явной — она и есть предмет.
-    expect(цвет("Используется ресурсом")).not.toBe(НЕЙТРАЛЬНЫЙ_ТЕКСТ);
+    expect(color("Используется ресурсом")).not.toBe(NEUTRAL_TEXT);
   });
 
   it("защита и занятость — РАЗНЫЕ тона: это разные события", () => {
     const { unmount } = showRow(ADDRESS, "Занятость");
-    const занятость = цвет("Используется ресурсом");
+    const occupancy = color("Используется ресурсом");
     unmount();
 
     showRow(ADDRESS, "Защита от удаления");
-    const защита = цвет("Удаление запрещено");
+    const protection = color("Удаление запрещено");
 
-    expect(защита).toBe(ТОН.good);
+    expect(protection).toBe(TONE.good);
     // Прежняя редакция требовала здесь РАВЕНСТВА. Канон §5 назвал равенство
     // признаком нарушения: одинаково окрашенные, охрана и занятость читались
     // одним событием.
-    expect(защита).not.toBe(занятость);
+    expect(protection).not.toBe(occupancy);
   });
 
   it("снятая защита — сторона, о которой стоит знать, и она окрашена", () => {
@@ -100,7 +100,7 @@ describe("карточка адреса — тон факта следует з�
 
     // «Удаление разрешено» приглушённым и было тем вторым признаком нарушения:
     // из двух сторон это единственная, о которой стоит знать.
-    expect(цвет("Удаление разрешено")).toBe(ТОН.attention);
+    expect(color("Удаление разрешено")).toBe(TONE.attention);
   });
 
   it("тон принадлежит СТОРОНЕ, а не строке: свободный адрес тона занятости не получает", () => {
@@ -110,6 +110,6 @@ describe("карточка адреса — тон факта следует з�
     showRow({ ...ADDRESS, used: false }, "Занятость");
 
     expect(screen.getByText("Свободен")).toBeInTheDocument();
-    expect(цвет("Свободен")).not.toBe(ТОН.active);
+    expect(color("Свободен")).not.toBe(TONE.active);
   });
 });

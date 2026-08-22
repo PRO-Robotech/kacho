@@ -35,43 +35,43 @@ import (
 
 func TestSubnetRefusedWhenNetworkDeclaresNoSupernetOfThatFamily(t *testing.T) {
 	for _, tc := range []struct {
-		имя       string
-		netV4     []string
-		netV6     []string
-		subV4     []string
-		subV6     []string
-		отказ     bool
-		семейство string
+		name    string
+		netV4   []string
+		netV6   []string
+		subV4   []string
+		subV6   []string
+		wantErr bool
+		family  string
 	}{
 		{
-			имя:       "v4-подсеть в сети без v4-супернета",
-			subV4:     []string{"10.77.7.0/24"},
-			отказ:     true,
-			семейство: "IPv4",
+			name:    "v4-подсеть в сети без v4-супернета",
+			subV4:   []string{"10.77.7.0/24"},
+			wantErr: true,
+			family:  "IPv4",
 		},
 		{
-			имя:       "v6-подсеть в сети без v6-супернета",
-			netV4:     []string{"10.0.0.0/8"},
-			subV6:     []string{"fd00::/64"},
-			отказ:     true,
-			семейство: "IPv6",
+			name:    "v6-подсеть в сети без v6-супернета",
+			netV4:   []string{"10.0.0.0/8"},
+			subV6:   []string{"fd00::/64"},
+			wantErr: true,
+			family:  "IPv6",
 		},
 		{
 			// Отсутствие супернета ЧУЖОГО семейства не касается: подсеть его не
 			// использует, и отказ был бы про то, чего не просили.
-			имя:   "v4-подсеть в сети, объявившей только v4",
+			name:  "v4-подсеть в сети, объявившей только v4",
 			netV4: []string{"10.0.0.0/8"},
 			subV4: []string{"10.77.7.0/24"},
 		},
 		{
-			имя:   "v6-подсеть в сети, объявившей только v6",
+			name:  "v6-подсеть в сети, объявившей только v6",
 			netV6: []string{"fd00::/48"},
 			subV6: []string{"fd00::/64"},
 		},
 		{
 			// Положительное рядом с отрицаниями: без него «отказ» зеленел бы и на
 			// реализации, отвергающей всё подряд.
-			имя:   "обе семьи объявлены и подсеть в них укладывается",
+			name:  "обе семьи объявлены и подсеть в них укладывается",
 			netV4: []string{"10.0.0.0/8"},
 			netV6: []string{"fd00::/48"},
 			subV4: []string{"10.77.7.0/24"},
@@ -80,16 +80,16 @@ func TestSubnetRefusedWhenNetworkDeclaresNoSupernetOfThatFamily(t *testing.T) {
 		{
 			// Прежнее поведение проверки сохраняется: блок вне объявленного
 			// супернета отвергается по-прежнему.
-			имя:       "блок вне объявленного супернета",
-			netV4:     []string{"10.0.0.0/8"},
-			subV4:     []string{"192.168.0.0/24"},
-			отказ:     true,
-			семейство: "within",
+			name:    "блок вне объявленного супернета",
+			netV4:   []string{"10.0.0.0/8"},
+			subV4:   []string{"192.168.0.0/24"},
+			wantErr: true,
+			family:  "within",
 		},
 	} {
-		t.Run(tc.имя, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			err := validateSubnetWithinSupernet(tc.netV4, tc.netV6, tc.subV4, tc.subV6)
-			if !tc.отказ {
+			if !tc.wantErr {
 				if err != nil {
 					t.Fatalf("законная подсеть отвергнута: %v", err)
 				}
@@ -99,14 +99,14 @@ func TestSubnetRefusedWhenNetworkDeclaresNoSupernetOfThatFamily(t *testing.T) {
 				t.Fatalf("подсеть принята сетью, которой нечего ей выделить. Контракт "+
 					"заявляет вложенность безусловно, а поле супернета не обязательно на "+
 					"создании сети — значит ограничение просто не действовало (семейство %s)",
-					tc.семейство)
+					tc.family)
 			}
 			st, ok := status.FromError(err)
 			if !ok || st.Code() != codes.InvalidArgument {
 				t.Fatalf("отказ не того рода: %v — вызывающий обязан отличить неверный ввод "+
 					"от состояния ресурса", err)
 			}
-			if tc.семейство != "within" && !strings.Contains(st.Message(), tc.семейство) {
+			if tc.family != "within" && !strings.Contains(st.Message(), tc.family) {
 				t.Errorf("в отказе не названо семейство: %q — не понять, какие блоки "+
 					"объявлять через :add-cidr-blocks", st.Message())
 			}
@@ -133,41 +133,41 @@ func TestSubnetRefusedWhenNetworkDeclaresNoSupernetOfThatFamily(t *testing.T) {
 // можно ли из этого нарезать.
 func TestSubnetRefusedWhenNoDeclaredBlockIsReadable(t *testing.T) {
 	for _, tc := range []struct {
-		имя   string
-		netV4 []string
-		subV4 []string
-		отказ bool
+		name    string
+		netV4   []string
+		subV4   []string
+		wantErr bool
 	}{
 		{
-			имя:   "единственный объявленный блок не разбирается",
-			netV4: []string{"10.0.0.0/8/24"},
-			subV4: []string{"10.77.7.0/24"},
-			отказ: true,
+			name:    "единственный объявленный блок не разбирается",
+			netV4:   []string{"10.0.0.0/8/24"},
+			subV4:   []string{"10.77.7.0/24"},
+			wantErr: true,
 		},
 		{
-			имя:   "все объявленные блоки не разбираются",
-			netV4: []string{"не-cidr", "10.0.0.0/33"},
-			subV4: []string{"10.77.7.0/24"},
-			отказ: true,
+			name:    "все объявленные блоки не разбираются",
+			netV4:   []string{"не-cidr", "10.0.0.0/33"},
+			subV4:   []string{"10.77.7.0/24"},
+			wantErr: true,
 		},
 		{
 			// Законный близнец той же формы: часть блоков нечитаема, но набор
 			// читаемых непуст — по нему и судим. Без этого случая «отказ» зеленел
 			// бы и на реализации, отвергающей всё, где встретился мусор.
-			имя:   "нечитаемый блок рядом с читаемым, подсеть в читаемом",
+			name:  "нечитаемый блок рядом с читаемым, подсеть в читаемом",
 			netV4: []string{"не-cidr", "10.0.0.0/8"},
 			subV4: []string{"10.77.7.0/24"},
 		},
 		{
-			имя:   "нечитаемый блок рядом с читаемым, подсеть ВНЕ читаемого",
-			netV4: []string{"не-cidr", "10.0.0.0/8"},
-			subV4: []string{"192.168.0.0/24"},
-			отказ: true,
+			name:    "нечитаемый блок рядом с читаемым, подсеть ВНЕ читаемого",
+			netV4:   []string{"не-cidr", "10.0.0.0/8"},
+			subV4:   []string{"192.168.0.0/24"},
+			wantErr: true,
 		},
 	} {
-		t.Run(tc.имя, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			err := validateSubnetWithinSupernet(tc.netV4, nil, tc.subV4, nil)
-			if !tc.отказ {
+			if !tc.wantErr {
 				if err != nil {
 					t.Fatalf("законная подсеть отвергнута: %v", err)
 				}

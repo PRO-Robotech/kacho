@@ -25,12 +25,12 @@ describe("DirectionFact", () => {
   });
 
   it("оба направления одинаково штатны — цветом ни одно не выделено", () => {
-    const { container: вход } = render(<DirectionFact value="INGRESS" />);
-    const { container: выход } = render(<DirectionFact value="EGRESS" />);
+    const { container: ingress } = render(<DirectionFact value="INGRESS" />);
+    const { container: egress } = render(<DirectionFact value="EGRESS" />);
 
-    const цвет = (c: HTMLElement) => c.querySelector<HTMLElement>("[style*='color']")!.style.color;
-    expect(цвет(вход)).toBe("var(--kc-text-tertiary)");
-    expect(цвет(выход)).toBe(цвет(вход));
+    const color = (c: HTMLElement) => c.querySelector<HTMLElement>("[style*='color']")!.style.color;
+    expect(color(ingress)).toBe("var(--kc-text-tertiary)");
+    expect(color(egress)).toBe(color(ingress));
   });
 
   it("незнакомое значение показывается как есть (близнец)", () => {

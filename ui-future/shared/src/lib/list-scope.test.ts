@@ -3,7 +3,7 @@
 import { clientScope, rowsAreComplete, searchPlaceholder, narrowingTitle, noMatchesText } from "./list-scope";
 import type { NarrowingScope } from "./list-scope";
 
-const ВСЕ: NarrowingScope[] = ["server", "whole", "loaded"];
+const ALL: NarrowingScope[] = ["server", "whole", "loaded"];
 
 describe("область клиентской ручки выводится из дочитанности курсора", () => {
   it("за курсором есть страницы — сужается прочитанная часть", () => {
@@ -40,7 +40,7 @@ describe("порядок предлагается ТОЛЬКО на полном
 });
 
 describe("каждая область называется своими словами", () => {
-  it.each(ВСЕ)("плейсхолдер области %s непуст и называет область", (scope) => {
+  it.each(ALL)("плейсхолдер области %s непуст и называет область", (scope) => {
     expect(searchPlaceholder(scope).length).toBeGreaterThan(0);
     expect(searchPlaceholder(scope)).toMatch(/по всему списку|среди загруженных/);
   });
@@ -49,11 +49,11 @@ describe("каждая область называется своими слов
     // Отрицание в паре с положительным: если бы подписи совпали, проба выше
     // осталась бы зелёной на списке, который врёт одинаково во всех трёх
     // состояниях.
-    expect(new Set(ВСЕ.map(searchPlaceholder)).size).toBe(3);
+    expect(new Set(ALL.map(searchPlaceholder)).size).toBe(3);
   });
 
   it("три области дают три РАЗНЫЕ подсказки", () => {
-    expect(new Set(ВСЕ.map(narrowingTitle)).size).toBe(3);
+    expect(new Set(ALL.map(narrowingTitle)).size).toBe(3);
   });
 
   it("только над прочитанной частью промах поиска говорит про курсор", () => {

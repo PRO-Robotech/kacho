@@ -50,7 +50,7 @@ function show(at: string) {
   );
 }
 
-const ПУНКТЫ = ["Регионы", "Зоны", "Пулы адресов", "Администраторы кластера"];
+const ITEMS = ["Регионы", "Зоны", "Пулы адресов", "Администраторы кластера"];
 
 describe("раздел «Администрирование»", () => {
   it("показывает содержимое открытого адреса", () => {
@@ -72,8 +72,8 @@ describe("раздел «Администрирование»", () => {
     // Ни вкладок, ни пунктов меню, ни ссылок на части раздела — иначе они
     // встанут поверх колонки, и в разделе снова окажется две навигации.
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
-    for (const п of ПУНКТЫ) {
-      expect(screen.queryByText(п)).not.toBeInTheDocument();
+    for (const item of ITEMS) {
+      expect(screen.queryByText(item)).not.toBeInTheDocument();
     }
   });
 

@@ -25,7 +25,7 @@ import type { FormField } from "@shared/lib/form-schema";
 import { FormFieldRenderer } from "./FormField";
 
 /** Составной список: подполей больше одного ⇒ строка рисует мелкие подписи. */
-const цели: FormField = {
+const targetsField: FormField = {
   name: "targets",
   label: "Цели",
   type: "array",
@@ -52,7 +52,7 @@ const цели: FormField = {
 
 /** Список из ОДНОГО подполя нескалярного вида: имя несёт левая колонка формы,
  *  своей подписи у подполя нет и быть не должно. */
-const веса: FormField = {
+const weightsField: FormField = {
   name: "weights",
   label: "Веса",
   type: "array",
@@ -70,7 +70,7 @@ function show(field: FormField, value: Record<string, unknown>) {
 
 describe("подполе составного списка именует свой ввод", () => {
   it("подпись подполя — доступное имя контрола, а не текст рядом", () => {
-    show(цели, { targets: [{ _identity_kind: "external_ip" }] });
+    show(targetsField, { targets: [{ _identity_kind: "external_ip" }] });
 
     // Ввод адреса и список вида — РАЗНЫЕ контролы с разными именами. Прежде оба
     // были безымянны, и различить их можно было только по порядку в разметке.
@@ -79,7 +79,7 @@ describe("подполе составного списка именует сво
   });
 
   it("именованный ввод — тот самый: правка доносит значение по своему пути", () => {
-    const { onChange } = show(цели, { targets: [{ _identity_kind: "external_ip" }] });
+    const { onChange } = show(targetsField, { targets: [{ _identity_kind: "external_ip" }] });
 
     // Положительный контроль к предыдущему: имя могло бы достаться СОСЕДНЕМУ
     // контролу, и «поле найдено» зеленело бы на неверной связи.
@@ -93,20 +93,20 @@ describe("подполе составного списка именует сво
   });
 
   it("две строки — две РАЗНЫЕ связи, а не одна на обе", () => {
-    const { onChange } = show(цели, {
+    const { onChange } = show(targetsField, {
       targets: [
         { _identity_kind: "external_ip" },
         { _identity_kind: "external_ip" },
       ],
     });
 
-    const адреса = screen.getAllByLabelText("Внешний адрес");
-    expect(адреса).toHaveLength(2);
+    const addressInputs = screen.getAllByLabelText("Внешний адрес");
+    expect(addressInputs).toHaveLength(2);
     // Совпадение идентификаторов связало бы ОБЕ подписи с первым вводом: проба,
     // заполняющая «второй», молча писала бы в первый.
-    expect((адреса[0] as HTMLInputElement).id).not.toBe((адреса[1] as HTMLInputElement).id);
+    expect((addressInputs[0] as HTMLInputElement).id).not.toBe((addressInputs[1] as HTMLInputElement).id);
 
-    fireEvent.change(адреса[1], { target: { value: "203.0.113.8" } });
+    fireEvent.change(addressInputs[1], { target: { value: "203.0.113.8" } });
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({
         targets: [{ _identity_kind: "external_ip" }, expect.objectContaining({ external_ip: { address: "203.0.113.8" } })],
@@ -115,7 +115,7 @@ describe("подполе составного списка именует сво
   });
 
   it("у списка из одного подполя своей подписи НЕТ — её несёт левая колонка", () => {
-    show(веса, { weights: [{}] });
+    show(weightsField, { weights: [{}] });
 
     // Отрицание в паре с положительным выше: связь заводится там, где строка
     // рисует свои подписи, и не заводится там, где канон формы их не рисует.
@@ -123,7 +123,7 @@ describe("подполе составного списка именует сво
   });
 
   it("подполе со своим поддеревом подписью НЕ именуется — `for` указывал бы в пустоту", () => {
-    const свой: FormField = {
+    const customField: FormField = {
       name: "specs",
       label: "Спецификации",
       type: "array",
@@ -139,7 +139,7 @@ describe("подполе составного списка именует сво
       ],
     };
     const { container } = render(
-      <FormFieldRenderer field={свой} pathPrefix="" value={{ specs: [{}] }} onChange={jest.fn()} hideLabel />,
+      <FormFieldRenderer field={customField} pathPrefix="" value={{ specs: [{}] }} onChange={jest.fn()} hideLabel />,
     );
 
     // Текст подписи на месте — виджет по-прежнему подписан для глаза.
@@ -149,8 +149,8 @@ describe("подполе составного списка именует сво
     expect(screen.queryByLabelText("Группы безопасности")).not.toBeInTheDocument();
     // Ни одна подпись строки не ведёт в пустоту.
     for (const l of Array.from(container.querySelectorAll("label[for]"))) {
-      const цель = l.getAttribute("for") ?? "";
-      expect(container.querySelector(`[id="${цель}"]`)).not.toBeNull();
+      const forTarget = l.getAttribute("for") ?? "";
+      expect(container.querySelector(`[id="${forTarget}"]`)).not.toBeNull();
     }
     // Положительный контроль той же строки: скалярное подполе рядом — именуется.
     expect(screen.getByLabelText("Заметка")).toBeInTheDocument();

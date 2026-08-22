@@ -38,64 +38,64 @@ import (
 
 func TestIncoherent(t *testing.T) {
 	// Находки в форме «из корня» — с лишним сегментом впереди.
-	изКорня := []Finding{
+	fromRoot := []Finding{
 		{Type: "RPC_NO_DELETE", Path: "proto/kacho/cloud/vpc/v1/a.proto", Message: `RPC "X" was deleted.`},
 		{Type: "FIELD_NO_DELETE", Path: "proto/kacho/cloud/vpc/v1/b.proto", Message: `field "y" was deleted.`},
 	}
 	// Перечень в форме «изнутри каталога» — как его пишут и как читает конвейер.
-	изнутри := []Declaration{
+	fromInside := []Declaration{
 		{Rule: "RPC_NO_DELETE", Path: "kacho/cloud/vpc/v1/a.proto", Symbol: "X"},
 		{Rule: "FIELD_NO_DELETE", Path: "kacho/cloud/vpc/v1/b.proto", Symbol: "y"},
 	}
 
 	for _, tc := range []struct {
-		имя      string
+		name     string
 		findings []Finding
 		decls    []Declaration
-		ждём     bool
-		почему   string
+		want     bool
+		why      string
 	}{
 		{
-			имя:      "расхождение префикса пути — гейт не смог работать",
-			findings: изКорня, decls: изнутри, ждём: true,
-			почему: "две половины вердикта исключают друг друга: разрывы одновременно " +
+			name:     "расхождение префикса пути — гейт не смог работать",
+			findings: fromRoot, decls: fromInside, want: true,
+			why: "две половины вердикта исключают друг друга: разрывы одновременно " +
 				"необъявлены и не существуют. Это утверждение о ВХОДЕ, а не о контракте",
 		},
 		{
-			имя: "тот же вход в согласованной форме — обычная работа",
+			name: "тот же вход в согласованной форме — обычная работа",
 			findings: []Finding{
 				{Type: "RPC_NO_DELETE", Path: "kacho/cloud/vpc/v1/a.proto", Message: `RPC "X" was deleted.`},
 				{Type: "FIELD_NO_DELETE", Path: "kacho/cloud/vpc/v1/b.proto", Message: `field "y" was deleted.`},
 			},
-			decls: изнутри, ждём: false,
-			почему: "положительный контроль: без него подпись зеленела бы на любом входе, " +
+			decls: fromInside, want: false,
+			why: "положительный контроль: без него подпись зеленела бы на любом входе, " +
 				"а мы утверждаем именно НЕСОВМЕСТИМОСТЬ, а не «что-то не сошлось»",
 		},
 		{
-			имя:      "первое снятие при пустом перечне — законный ноль сопоставленного",
-			findings: изКорня, decls: nil, ждём: false,
-			почему: "«ноль сопоставлено» само по себе НЕ подпись: так выглядит разрыв, " +
+			name:     "первое снятие при пустом перечне — законный ноль сопоставленного",
+			findings: fromRoot, decls: nil, want: false,
+			why: "«ноль сопоставлено» само по себе НЕ подпись: так выглядит разрыв, " +
 				"который автор ещё не объявил. Записей нет — истекать нечему",
 		},
 		{
-			имя:      "перечень есть, разрывов нет — тоже законно",
-			findings: nil, decls: изнутри, ждём: false,
-			почему: "так выглядит перечень, переживший свой предмет: он обязан дать " +
+			name:     "перечень есть, разрывов нет — тоже законно",
+			findings: nil, decls: fromInside, want: false,
+			why: "так выглядит перечень, переживший свой предмет: он обязан дать " +
 				"находку «истекло», а не отказ гейта",
 		},
 		{
-			имя: "часть сопоставилась — расхождение не систематическое",
+			name: "часть сопоставилась — расхождение не систематическое",
 			findings: append([]Finding{
 				{Type: "RPC_NO_DELETE", Path: "kacho/cloud/vpc/v1/a.proto", Message: `RPC "X" was deleted.`},
-			}, изКорня...),
-			decls: изнутри, ждём: false,
-			почему: "одно совпадение доказывает, что формы путей СОВМЕСТИМЫ, значит " +
+			}, fromRoot...),
+			decls: fromInside, want: false,
+			why: "одно совпадение доказывает, что формы путей СОВМЕСТИМЫ, значит " +
 				"остальное — содержательная находка, и подавлять её нельзя",
 		},
 	} {
-		t.Run(tc.имя, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			res := Adjudicate(tc.findings, tc.decls)
-			assert.Equal(t, tc.ждём, res.Incoherent(), tc.почему)
+			assert.Equal(t, tc.want, res.Incoherent(), tc.why)
 		})
 	}
 }

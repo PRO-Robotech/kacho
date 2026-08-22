@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, test } from "@playwright/test";
-import { createdResourceId, подписьКопирования, runTag, tenantWithProject } from "./fixtures";
+import { createdResourceId, copyToast, runTag, tenantWithProject } from "./fixtures";
 
 /**
  * Доступность действий консоли с КЛАВИАТУРЫ.
@@ -20,30 +20,30 @@ import { createdResourceId, подписьКопирования, runTag, tenant
  * результат. Ровно так же, как это делал бы тот, кто мышью не пользуется.
  */
 
-const КЛЮЧ = "env";
-const ЗНАЧЕНИЕ = "prod";
+const KEY = "env";
+const VALUE = "prod";
 
 test("метка списка достижима клавишей Tab и срабатывает по Enter", async ({ page }) => {
   // verifies #925
   const { projectId } = await tenantWithProject(page);
 
-  const имя = `a11y-net-${runTag()}`;
-  const ответ = await page.request.post("/vpc/v1/networks", {
-    data: { projectId, name: имя, labels: { [КЛЮЧ]: ЗНАЧЕНИЕ } },
+  const name = `a11y-net-${runTag()}`;
+  const response = await page.request.post("/vpc/v1/networks", {
+    data: { projectId, name: name, labels: { [KEY]: VALUE } },
   });
-  await createdResourceId(page, ответ, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть с меткой");
+  await createdResourceId(page, response, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть с меткой");
 
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
 
-  const метка = page.locator(`[title="Скопировать ${КЛЮЧ}=${ЗНАЧЕНИЕ}"]`).first();
+  const label = page.locator(`[title="Скопировать ${KEY}=${VALUE}"]`).first();
   await expect(
-    метка,
-    `метки ${КЛЮЧ}=${ЗНАЧЕНИЕ} нет в списке: предмет пробы не создан либо метки не показываются`,
+    label,
+    `метки ${KEY}=${VALUE} нет в списке: предмет пробы не создан либо метки не показываются`,
   ).toBeVisible({ timeout: 30_000 });
 
   // 1. Метка ОБЪЯВЛЕНА действием — её видит и программа чтения с экрана.
   await expect(
-    метка,
+    label,
     "метка не объявлена кнопкой: она совершает действие, но для клавиатуры и для " +
       "программы чтения с экрана этого действия не существует",
   ).toHaveRole("button");
@@ -51,11 +51,11 @@ test("метка списка достижима клавишей Tab и сра�
   // 2. До неё ДОХОДИТ обход с клавиатуры. Это отдельное утверждение: роль может
   //    быть верной, а элемент — исключён из обхода либо накрыт слоем.
   await page.locator("body").press("Tab");
-  const дошли = await expect
+  const reached = await expect
     .poll(
       async () => {
         for (let i = 0; i < 60; i++) {
-          if (await метка.evaluate((el) => el === document.activeElement)) return true;
+          if (await label.evaluate((el) => el === document.activeElement)) return true;
           await page.keyboard.press("Tab");
         }
         return false;
@@ -68,7 +68,7 @@ test("метка списка достижима клавишей Tab и сра�
       },
     )
     .toBe(true);
-  void дошли;
+  void reached;
 
   // 3. И СРАБАТЫВАЕТ по клавише — с тем же результатом, что по указателю.
   await page.keyboard.press("Enter");
@@ -77,7 +77,7 @@ test("метка списка достижима клавишей Tab и сра�
   // здесь не спрашивается — вне защищённого контекста его нет вовсе, и такая
   // проба утверждала бы о посадке стенда, а не о консоли.
   await expect(
-    подписьКопирования(page, `${КЛЮЧ}=${ЗНАЧЕНИЕ}`),
+    copyToast(page, `${KEY}=${VALUE}`),
     "Enter на метке не дал результата: до кнопки дошли, но копирование не " +
       "состоялось либо ушла не та строка",
   ).toBeVisible({ timeout: 15_000 });
@@ -92,23 +92,23 @@ test("счётчик скрытых меток в обход клавишей Н
   // дойти до нужного действия, приходится миновать десяток недействий.
   const { projectId } = await tenantWithProject(page);
 
-  const имя = `a11y-many-${runTag()}`;
-  const ответ = await page.request.post("/vpc/v1/networks", {
-    data: { projectId, name: имя, labels: { a: "1", b: "2", c: "3", d: "4", e: "5" } },
+  const name = `a11y-many-${runTag()}`;
+  const response = await page.request.post("/vpc/v1/networks", {
+    data: { projectId, name: name, labels: { a: "1", b: "2", c: "3", d: "4", e: "5" } },
   });
-  await createdResourceId(page, ответ, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть с пятью метками");
+  await createdResourceId(page, response, "networkId", (id) => `/vpc/v1/networks/${id}`, "сеть с пятью метками");
 
   await page.goto(`/projects/${projectId}/vpc/networks`, { waitUntil: "domcontentloaded" });
 
-  const счётчик = page.locator("text=/^\\+\\d+$/").first();
+  const counter = page.locator("text=/^\\+\\d+$/").first();
   await expect(
-    счётчик,
+    counter,
     "счётчика скрытых меток нет: предмет пробы не создан — значит утверждение ниже " +
       "было бы вакуумным",
   ).toBeVisible({ timeout: 30_000 });
 
   await expect(
-    счётчик,
+    counter,
     "счётчик скрытых меток объявлен кнопкой, хотя ничего не делает: обход с " +
       "клавиатуры получает лишнюю остановку без действия",
   ).not.toHaveRole("button");

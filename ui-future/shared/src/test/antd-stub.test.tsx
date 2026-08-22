@@ -140,10 +140,10 @@ describe("Menu доносит РОЛЬ, объявленную вызывающ�
       />,
     );
 
-    const набор = screen.getByRole("tablist");
-    expect(набор).toHaveAttribute("aria-orientation", "vertical");
+    const tabList = screen.getByRole("tablist");
+    expect(tabList).toHaveAttribute("aria-orientation", "vertical");
     expect(
-      within(набор)
+      within(tabList)
         .getAllByRole("tab")
         .map((t) => [t.textContent, t.getAttribute("aria-selected")]),
     ).toEqual([

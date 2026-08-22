@@ -36,7 +36,7 @@ import { BoolFact, type FactTone } from "./BoolFact";
 
 /** Токены тонов — из канона §5. Пишутся здесь дословно: они часть контракта, и
  *  подстановка «того, что вернул код» лишила бы пробу предмета. */
-const ТОН: Record<FactTone, string> = {
+const TONE: Record<FactTone, string> = {
   neutral: "var(--kc-text-tertiary)",
   active: "var(--kc-cyan)",
   good: "var(--status-ok-fg)",
@@ -45,23 +45,23 @@ const ТОН: Record<FactTone, string> = {
 
 /** Нейтральный ТЕКСТ тише глифа: он остаётся читаемым, а не уходит в тон
  *  подсказки. Это отдельный токен, и путать его с тоном нельзя. */
-const НЕЙТРАЛЬНЫЙ_ТЕКСТ = "var(--kc-text-secondary)";
+const NEUTRAL_TEXT = "var(--kc-text-secondary)";
 
 /** Цвет текста факта — то, чем тон наблюдаем: класса компонент не меняет. */
-function цветТекста(фраза: string): string {
-  return screen.getByText(фраза).style.color;
+function textColor(phrase: string): string {
+  return screen.getByText(phrase).style.color;
 }
 
 /** Глиф стороны — узел непосредственно перед текстом. Обращение через соседа
  *  заодно утверждает, что глиф вообще нарисован: пропав, он оставил бы `null`. */
-function цветГлифа(фраза: string): string {
-  const глиф = screen.getByText(фраза)
+function glyphColor(phrase: string): string {
+  const glyph = screen.getByText(phrase)
     .previousElementSibling as HTMLElement | null;
-  if (!глиф)
+  if (!glyph)
     throw new Error(
-      `у факта «${фраза}» нет глифа — предмет утверждения отсутствует`,
+      `у факта «${phrase}» нет глифа — предмет утверждения отсутствует`,
     );
-  return глиф.style.color;
+  return glyph.style.color;
 }
 
 describe("BoolFact", () => {
@@ -106,16 +106,16 @@ describe("BoolFact", () => {
       </>,
     );
 
-    expect(цветТекста("Удаление запрещено")).toBe(ТОН.good);
-    expect(цветТекста("Используется ресурсом")).toBe(ТОН.active);
+    expect(textColor("Удаление запрещено")).toBe(TONE.good);
+    expect(textColor("Используется ресурсом")).toBe(TONE.active);
     // Тот самый признак нарушения из канона §5: сливались — значит охрана и
     // занятость читались одним событием.
-    expect(цветТекста("Удаление запрещено")).not.toBe(
-      цветТекста("Используется ресурсом"),
+    expect(textColor("Удаление запрещено")).not.toBe(
+      textColor("Используется ресурсом"),
     );
     // Близнец: сторона БЕЗ объявленного тона цвета не получает. Без него оба
     // утверждения выше зеленели бы на компоненте, красящем вообще всё.
-    expect(цветТекста("Задействован")).toBe(НЕЙТРАЛЬНЫЙ_ТЕКСТ);
+    expect(textColor("Задействован")).toBe(NEUTRAL_TEXT);
   });
 
   it("ложная сторона получает СВОЙ тон, а не приглушение по построению", () => {
@@ -129,7 +129,7 @@ describe("BoolFact", () => {
       />,
     );
     // «Защиты нет» — единственная из двух сторон, о которой стоит знать.
-    expect(цветТекста("Удаление разрешено")).toBe(ТОН.attention);
+    expect(textColor("Удаление разрешено")).toBe(TONE.attention);
 
     // Близнец: та же ложь БЕЗ объявленного тона остаётся нейтральной — палитра
     // по-прежнему скупа, изменилось лишь то, КТО решает.
@@ -141,7 +141,7 @@ describe("BoolFact", () => {
         yesTone="good"
       />,
     );
-    expect(цветТекста("Удаление разрешено")).toBe(НЕЙТРАЛЬНЫЙ_ТЕКСТ);
+    expect(textColor("Удаление разрешено")).toBe(NEUTRAL_TEXT);
   });
 
   it("глиф стоит в тоне своей стороны, а не прибит к приглушённому", () => {
@@ -156,7 +156,7 @@ describe("BoolFact", () => {
     );
     // Прежде глиф лжи был прибит к третичному цвету на всех ветках: смысл нёс
     // текст, а картинка рядом с ним спорила.
-    expect(цветГлифа("Удаление разрешено")).toBe(ТОН.attention);
+    expect(glyphColor("Удаление разрешено")).toBe(TONE.attention);
 
     rerender(
       <BoolFact
@@ -166,7 +166,7 @@ describe("BoolFact", () => {
         noGlyph="unlock"
       />,
     );
-    expect(цветГлифа("Удаление разрешено")).toBe(ТОН.neutral);
+    expect(glyphColor("Удаление разрешено")).toBe(TONE.neutral);
   });
 
   it('прежняя форма `accent` — ровно `yesTone="active"`, а не третий цвет', () => {
@@ -195,13 +195,13 @@ describe("BoolFact", () => {
       </>,
     );
 
-    expect(цветТекста("Группа по умолчанию для сети")).toBe(ТОН.active);
-    expect(цветТекста("Группа по умолчанию для сети")).toBe(
-      цветТекста("Занят интерфейсом"),
+    expect(textColor("Группа по умолчанию для сети")).toBe(TONE.active);
+    expect(textColor("Группа по умолчанию для сети")).toBe(
+      textColor("Занят интерфейсом"),
     );
     // Ложь прежней формы тона не получает: `accent` объявлял ИСТИНУ, и перенос
     // его в тон не вправе был расширить область.
-    expect(цветТекста("Назначается явно")).toBe(НЕЙТРАЛЬНЫЙ_ТЕКСТ);
+    expect(textColor("Назначается явно")).toBe(NEUTRAL_TEXT);
   });
 
   it("каждый тон назван токеном, объявленным в теме", () => {
@@ -212,31 +212,31 @@ describe("BoolFact", () => {
       new URL("../../../index.css", import.meta.url).pathname,
       "utf8",
     );
-    const объявлено = new Set(
+    const declared = new Set(
       Array.from(css.matchAll(/^\s*(--[\w-]+)\s*:/gm), (m) => m[1]),
     );
 
     // Контроль в обратную сторону: разбор, признающий объявленным что угодно,
     // сделал бы утверждение ниже вакуумным.
-    expect(объявлено.has("--kc-cyan")).toBe(true);
-    expect(объявлено.has("--kc-tone-which-does-not-exist")).toBe(false);
+    expect(declared.has("--kc-cyan")).toBe(true);
+    expect(declared.has("--kc-tone-which-does-not-exist")).toBe(false);
 
-    const тоны: FactTone[] = ["neutral", "active", "good", "attention"];
+    const tones: FactTone[] = ["neutral", "active", "good", "attention"];
     render(
       <>
-        {тоны.map((t) => (
+        {tones.map((t) => (
           <BoolFact key={t} value={true} yes={`тон ${t}`} no="—" yesTone={t} />
         ))}
       </>,
     );
 
-    const цвета = тоны.map((t) => цветГлифа(`тон ${t}`));
-    expect(цвета).toEqual(тоны.map((t) => ТОН[t]));
+    const colors = tones.map((t) => glyphColor(`тон ${t}`));
+    expect(colors).toEqual(tones.map((t) => TONE[t]));
     // Четыре тона — четыре РАЗНЫХ цвета: слипшиеся тоны и есть тот дефект,
     // ради которого тон отделён от истинности.
-    expect(new Set(цвета).size).toBe(тоны.length);
-    for (const цвет of цвета) {
-      expect(объявлено.has(цвет.replace(/^var\(|\)$/g, ""))).toBe(true);
+    expect(new Set(colors).size).toBe(tones.length);
+    for (const color of colors) {
+      expect(declared.has(color.replace(/^var\(|\)$/g, ""))).toBe(true);
     }
   });
 });

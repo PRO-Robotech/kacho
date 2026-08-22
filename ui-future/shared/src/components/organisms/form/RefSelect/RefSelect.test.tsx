@@ -184,13 +184,13 @@ describe("RefSelect", () => {
   // выглядит как утверждение о мире: продолжения у выпадающего списка нет, и
   // пользователь заключает, что ресурса не существует.
 
-  const ввод = () => screen.getByLabelText("select-search");
+  const input = () => screen.getByLabelText("select-search");
 
   it("ввод уходит запросом, если владелец умеет сужать список", async () => {
     show();
     await waitFor(() => expect(list).toHaveBeenCalledWith("/vpc/v1/networks", { project_id: "prj-1" }));
 
-    fireEvent.change(ввод(), { target: { value: "front" } });
+    fireEvent.change(input(), { target: { value: "front" } });
 
     // Выражение собрано по грамматике владельца: поле из его белого списка и
     // оператор подстроки. Точное равенство здесь бесполезно — набирающий имя по
@@ -205,7 +205,7 @@ describe("RefSelect", () => {
 
   it("сужение сервером не пересеивается ещё раз в браузере", async () => {
     show();
-    fireEvent.change(ввод(), { target: { value: "front" } });
+    fireEvent.change(input(), { target: { value: "front" } });
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
 
     // Край ответил по вводу; всё, что он прислал, обязано остаться в выборе.
@@ -220,7 +220,7 @@ describe("RefSelect", () => {
 
     // Сервер ответил по вводу, и выбранного в ответе нет — обычное дело.
     list.mockResolvedValue({ networks: [{ id: "net-2", name: "backend" }] });
-    fireEvent.change(ввод(), { target: { value: "back" } });
+    fireEvent.change(input(), { target: { value: "back" } });
 
     await waitFor(() => expect(optionLabels()).toContain("backend"));
     // Без запоминания метки поле показало бы `net-1` — идентификатор вместо
@@ -244,7 +244,7 @@ describe("RefSelect", () => {
     show({ refResource: "machine-types", refProjectScoped: false });
 
     await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
-    fireEvent.change(ввод(), { target: { value: "чего-нет" } });
+    fireEvent.change(input(), { target: { value: "чего-нет" } });
 
     expect(await screen.findByText(/нет среди загруженных/i)).toBeInTheDocument();
     expect(list).toHaveBeenCalledTimes(1);
