@@ -589,9 +589,11 @@ func NewMux(
 
 		// --- compute admin — kacho-only, internal-port (9091) ---
 		// Доступен только через cluster-internal REST listener для UI/admin-tooling.
-		// InternalWatchService — gRPC server-streaming (outbox), через
-		// grpc-gateway REST не проксируется; consumer'ы ходят в compute.kacho.svc:9091
-		// напрямую gRPC. Admin Region/Zone обслуживает geo.v1.
+		// Серверных стримов у compute больше нет: подписка на журнал изменений
+		// снята вместе со своей поверхностью (#813) — подписчика у неё не было ни
+		// одного дня. Прежде здесь стояла оговорка, почему этот стрим не
+		// проксируется через REST; оговорка пережила бы свой предмет.
+		// Admin Region/Zone обслуживает geo.v1.
 		if mux == internalMux && computeInternalAddr != "" {
 			// InternalMachineTypeService — admin CRUD над каталогом MachineType
 			// (POST/PATCH/DELETE на /compute/v1/internal/machineTypes; async Operation,

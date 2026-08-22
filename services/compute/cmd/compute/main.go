@@ -273,7 +273,7 @@ func runServe(cfg config.Config) error {
 	// что порт сверки существования живёт НА пуле, и принести его раньше значило бы
 	// принести порт, отвечающий «соединения нет». Открытие пула обратимо (`defer`
 	// выше) и дешевле ложной сверки.
-	desc, err := describe(cfg, logger, listFilter, bootGate, repo.NewExistenceProbe(pool), authzCache.Install, metricsAdapter.Registerer())
+	desc, err := describe(cfg, logger, bootGate, repo.NewExistenceProbe(pool), authzCache.Install, metricsAdapter.Registerer())
 	if err != nil {
 		return err
 	}
@@ -479,8 +479,7 @@ func runServe(cfg config.Config) error {
 				registerPublicServices(handler.PublicRegistrar(reg, productionMode), svcs, opsRepo, listFilter)
 			},
 			func(reg grpc.ServiceRegistrar) {
-				registerInternalServices(handler.InternalRegistrar(reg, productionMode),
-					svcs, pool, cfg.MigrateDSN(), logger, cfg.WatchMaxStreams, listFilter)
+				registerInternalServices(handler.InternalRegistrar(reg, productionMode), svcs)
 			},
 		)
 		if serr != nil {
@@ -1226,8 +1225,7 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*ownerregister.
 // (`internal/check/permission_map.go`), а для потока журнала изменений — сужение по
 // правам вызывающего на КАЖДУЮ отдаваемую строку. Сетевая политика была бы
 // эшелонированием поверх этого, а не заменой ему.
-func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int, vis *authzfilter.Narrower) {
-	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams, vis))
+func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services) {
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInternalRealizationServiceServer(srv, handler.NewInternalRealizationHandler(svcs.realization))
 	computev1.RegisterInternalNodeOwnershipServiceServer(srv, handler.NewInternalNodeOwnershipHandler(svcs.nodeOwnership))
