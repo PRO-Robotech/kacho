@@ -210,8 +210,17 @@ api-gateway:
   # it, KACHO_HYDRA_ISSUER derives the unreachable external default and every
   # real login token fails the iss check → AUTHN_REQUIRED persists.
   hydra:
-    jwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
-    issuer: "http://localhost:28080/.ory/hydra/public/"
+    # ─── Ф3 (#899): скалярный пин СНЯТ — перечень издателей объявлен выше
+    #
+    # Здесь стояли `jwksUrl` и `issuer` прежнего провайдера. Пока перечня не
+    # было, край строил из них единственную запись; теперь перечень есть, и
+    # держать оба значило бы иметь ДВА объявления одного предмета. Старшинство
+    # между ними не назначается молча: значение, которое принято и не
+    # действует, хуже отвергнутого — поэтому страж старта отказывает, а не
+    # выбирает. Прежний издатель никуда не делся, он назван записью перечня.
+    #
+    # Что осталось ниже — адрес отзыва: это ДРУГОЙ предмет (административная
+    # поверхность провайдера), и перечень издателей о нём ничего не говорит.
     # ─── Revocation path (ADMIN API — a different Service from the two above) ──
     # Where the gateway asks whether an access token has been revoked, and where
     # the logout handler ends the provider-side session. Neither is derivable:
@@ -1583,11 +1592,29 @@ registry:
   # gateway.hydra.issuer) — включая завершающий слеш: `iss` сверяется целиком.
   # Адрес набора ОБЪЯВЛЕН, а не выведен из издателя: издатель приходит от
   # предъявителя, и производный адрес получался бы у всякого.
+  # ─── Ф3 (#899): плоскость данных объявляет ТО ЖЕ, что край
+  #
+  # Здесь принимался только прежний издатель, и это было верно ровно до третьей
+  # фазы. Она наступила: своя чеканка включена (`kacho-iam.config.authn.tokenSigning`),
+  # значит наш набор ключей и авторитет отзыва существуют — принимать есть что и
+  # проверять есть чем.
+  #
+  # ОБЕ конфигурации проверяющего в одном профиле обязаны называть ОДНУ платформу:
+  # разойдись они, ключ одной не проверит токен, выпущенный для другой, — и
+  # арендатор получил бы отказ на одной поверхности и успех на другой при одном
+  # и том же удостоверении. Держит это `gateway/deploy`
+  # `TestF1b_BothVerifierConfigurationsInOneProfileNameOnePlatform`; он и нашёл
+  # это расхождение, когда край перевели, а плоскость данных — нет.
+  #
+  # Запись НАШЕГО издателя ведёт на `/.well-known/kacho/jwks.json` — это наш
+  # набор; соседняя запись ведёт на `/.well-known/jwks.json`, зеркало набора
+  # прежнего провайдера. Пути разные намеренно: один адрес на два набора означал
+  # бы, что подпись любого из двух проверяется ключами другого.
   tokenAcceptance:
-    issuers: "http://localhost:28080/.ory/hydra/public/"
-    issuerKeySets: "http://localhost:28080/.ory/hydra/public/=http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
-    platformIssuer: ""
-    revocationUrl: ""
+    issuers: "https://iam.kacho.local,http://localhost:28080/.ory/hydra/public/"
+    issuerKeySets: "https://iam.kacho.local=http://kacho-iam-internal.kacho.svc:9097/.well-known/kacho/jwks.json,http://localhost:28080/.ory/hydra/public/=http://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
+    platformIssuer: "https://iam.kacho.local"
+    revocationUrl: "http://kacho-iam-internal.kacho.svc:9091/iam/v1/introspect"
   mtls:
     enable: true
     edges:
