@@ -515,7 +515,7 @@ func TestAZD019_CatalogCount_26(t *testing.T) {
 	for _, p := range cat {
 		uniq[p] = struct{}{}
 	}
-	require.Len(t, uniq, 30, catalogCountRationale)
+	require.Len(t, uniq, 29, catalogCountRationale)
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -647,60 +647,11 @@ func TestAZD024_CacheHit_FastPath(t *testing.T) {
 		"warm cache hit must short-circuit well under the slow-peer delay")
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// InternalResourceLifecycleService.Subscribe на internal :9091
-// проходит РЕАЛЬНЫЙ per-RPC Check (system_viewer @ cluster:cluster_kacho_root).
-//
-// Security-инвариант (security.md «authN+authZ на ОБОИХ listener'ах»): internal-
-// листенер гоняет тот же authzIntr. Subscribe стримит resource_id/project_id ВСЕХ
-// проектов; без записи в PermissionMap он fail-closed'ился бы как unmapped (ломая
-// легитимного kacho-iam consumer'а) ИЛИ — при name-based methodIsInternal-skip —
-// стримил бы всё без Check. Поэтому он явно замаплен на cluster-floor system_viewer:
-// non-privileged principal → PermissionDenied, internal-reader SA (как seed'ится в
-// kacho-iam SystemViewerFloor) → allowed.
-// ────────────────────────────────────────────────────────────────────────────
-
-func TestAZD025_InternalSubscribe_SystemViewerFloor(t *testing.T) {
-	const fm = "/kacho.cloud.loadbalancer.v1.InternalResourceLifecycleService/Subscribe"
-
-	m := check.PermissionMap()
-	entry, ok := m[fm]
-	require.True(t, ok, "Subscribe must be mapped — internal :9091 runs the same per-RPC Check as public")
-	require.False(t, entry.Public, "Subscribe must NOT be Public — it streams resource_id/project_id of ALL projects")
-	require.Equal(t, "system_viewer", entry.Relation, "Subscribe must be gated by the cluster-floor read relation")
-
-	// Non-privileged principal (Check → false): stream rejected, и Check РЕАЛЬНО
-	// вызван с (system_viewer, cluster:cluster_kacho_root) — не skip, не blind-deny.
-	t.Run("non_privileged_denied", func(t *testing.T) {
-		intr, n, calls := newTestInterceptor(t, func(_ context.Context, _, rel, obj string) (bool, error) {
-			require.Equal(t, "system_viewer", rel)
-			require.Equal(t, "cluster:cluster_kacho_root", obj)
-			return false, nil
-		})
-		ss := &fakeServerStream{ctx: principalCtx("service_account", "sva_intruder")}
-		err := intr.Stream()(nil, ss, &grpc.StreamServerInfo{FullMethod: fm},
-			func(any, grpc.ServerStream) error { t.Fatal("handler must not run on deny"); return nil })
-		st, _ := status.FromError(err)
-		require.Equal(t, codes.PermissionDenied, st.Code())
-		require.Equal(t, 1, *n, "a real Check must run (not skipped via methodIsInternal)")
-		require.Len(t, *calls, 1)
-	})
-
-	// Privileged internal-reader (system_viewer@cluster) → stream allowed.
-	t.Run("system_viewer_allowed", func(t *testing.T) {
-		intr, _, _ := newTestInterceptor(t, func(_ context.Context, _, rel, obj string) (bool, error) {
-			require.Equal(t, "system_viewer", rel)
-			require.Equal(t, "cluster:cluster_kacho_root", obj)
-			return true, nil
-		})
-		ss := &fakeServerStream{ctx: principalCtx("service_account", "sva_kacho_iam")}
-		handled := false
-		err := intr.Stream()(nil, ss, &grpc.StreamServerInfo{FullMethod: fm},
-			func(any, grpc.ServerStream) error { handled = true; return nil })
-		require.NoError(t, err)
-		require.True(t, handled)
-	})
-}
+// Проба потока подписки снята вместе со своим предметом (#814): у потока не
+// было ни одного потребителя, и он снят с контракта вместе с реализацией.
+// Оставить утверждение о его записи в карте прав значило бы требовать
+// присутствия того, чего в дереве нет, — а такое утверждение не может ни
+// упасть по делу, ни пройти по делу.
 
 // ────────────────────────────────────────────────────────────────────────────
 // Operations: per-resource ListOperations — viewer на ресурсе.

@@ -159,11 +159,12 @@ func TestGateway_D8_LoadbalancerActive(t *testing.T) {
 		})
 	}
 
-	internalMethods := []string{
-		// streaming gRPC-direct only — никаких HTTP-аннотаций, REST не регистрируется,
-		// внешний gRPC-proxy блокирует через HasInternalSuffix (Internal не на external).
-		"/kacho.cloud.loadbalancer.v1.InternalResourceLifecycleService/Subscribe",
-	}
+	// Перечень пуст: единственный метод, который здесь стоял, снят вместе со
+	// своим потоком (#814) — у него не было ни одного потребителя. Пустой
+	// перечень объявляется ЯВНО, а не удаляется вместе с проверкой: свойство
+	// «внутренний метод не попадает на внешнюю поверхность» остаётся нормой, и
+	// следующий такой метод обязан попасть сюда, а не завестись молча.
+	internalMethods := []string{}
 	for _, m := range internalMethods {
 
 		t.Run("internal/"+m, func(t *testing.T) {
