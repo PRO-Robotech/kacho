@@ -685,3 +685,131 @@ updates:
 			"неотличимый от «нечего исключать»")
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ЧЕТВЁРТЫЙ ЭКЗЕМПЛЯР КЛАССА: ПОДПОРКА, ВНЕСЁННАЯ МОЛЧА.
+//
+// Три экземпляра выше — послабления, сужающие ОХВАТ проверки. Этот — послабление,
+// зеленящее ВЕРДИКТ: поднятый предел ресурса, проглоченный отказ шага, повтор.
+// Оно отличается от них тем, что после него конвейер становится зелёным, то есть
+// исчезает единственный сигнал, что работа не закончена.
+//
+// Ban #11 такое не ловит: он держится маркером отложенной работы (`TODO:`), а
+// подпорка маркера не несёт — это настройка.
+//
+// # Что требует гейт — и чего НЕ требует
+//
+// Требует ОДНОГО: рядом с послаблением сказано, зачем оно. Не «номер задачи» —
+// потому что решение и отсрочка машинно неразличимы: `continue-on-error` бывает
+// законным исходом (отсутствие артефакта шарда), а бывает проглоченным отказом.
+// Различает их только человек, и он обязан это написать.
+//
+// Значит гейт ловит ровно один, зато главный путь: послабление, внесённое МОЛЧА.
+// Граница названа честно — молчаливое внесение он ловит, неверное обоснование нет.
+func relaxationsWithoutReason(dir string) (finds []string, files, relaxations int, err error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	// Формы, в которых подпорка приходит в объявление конвейера. Перечень — часть
+	// предпосылки гейта: появится новая форма, и она пройдёт молча, поэтому список
+	// стоит рядом с проверкой, а не спрятан.
+	forms := []string{"continue-on-error: true", "max-old-space-size", "max_attempts", "retries:"}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yml") && !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		raw, readErr := os.ReadFile(filepath.Join(dir, e.Name())) // #nosec G304 — путь из каталога конвейеров
+		if readErr != nil {
+			return nil, 0, 0, readErr
+		}
+		files++
+		lines := strings.Split(string(raw), "\n")
+		for i, line := range lines {
+			code := line
+			if idx := strings.Index(line, "#"); idx >= 0 {
+				code = line[:idx] // сказанное в комментарии послаблением не является
+			}
+			var hit string
+			for _, f := range forms {
+				if strings.Contains(code, f) {
+					hit = f
+					break
+				}
+			}
+			if hit == "" {
+				continue
+			}
+			relaxations++
+			// Объяснение ищем в шести строках выше: столько занимает шаг вместе с
+			// его именем, и дальше начинается уже соседний.
+			explained := false
+			for back := i - 1; back >= 0 && back >= i-6; back-- {
+				t := strings.TrimSpace(lines[back])
+				if strings.HasPrefix(t, "#") && len(t) > 3 {
+					explained = true
+					break
+				}
+			}
+			if !explained {
+				finds = append(finds, fmt.Sprintf("%s:%d: %s — послабление внесено молча", e.Name(), i+1, hit))
+			}
+		}
+	}
+	return finds, files, relaxations, nil
+}
+
+func TestCiRelaxationSaysWhyItIsThere(t *testing.T) {
+	dir := filepath.Join(repoRoot(t), ".github", "workflows")
+	finds, files, relaxations, err := relaxationsWithoutReason(dir)
+	if err != nil {
+		t.Fatalf("обход конвейеров: %v", err)
+	}
+	t.Logf("перепись: файлов конвейера прочитано %d, послаблений найдено %d, без объяснения %d",
+		files, relaxations, len(finds))
+	if files == 0 {
+		t.Fatal("прочитано НОЛЬ файлов конвейера — «ноль находок» означало бы «ноль прочитанного»")
+	}
+	if len(finds) > 0 {
+		t.Errorf("послабление обязано говорить, зачем оно, — найдено %d:\n  %s\n\n"+
+			"Подпорка зеленит вердикт, поэтому после неё исчезает единственный сигнал, что "+
+			"работа не закончена. Скажи рядом: это решение (и почему исход законный) либо "+
+			"отсрочка (и тогда с номером задачи и предикатом снятия).",
+			len(finds), strings.Join(finds, "\n  "))
+	}
+}
+
+// Собственная предпосылка: гейт ловит молчаливое послабление и молчит на объяснённом.
+func TestCiRelaxationGateProvenByInjection(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatalf("фикстура %s: %v", name, err)
+		}
+	}
+	// Молчаливое: ни слова рядом.
+	write("silent.yml", "jobs:\n  a:\n    steps:\n      - run: make\n        continue-on-error: true\n")
+	// Объяснённое: та же форма, но сказано зачем. Гейт обязан молчать — иначе он
+	// ловил бы форму, а не существо, и первый же ложный срабат его отключил бы.
+	write("explained.yml", "jobs:\n  a:\n    steps:\n      # отсутствие артефакта шарда — законный исход скачивания\n      - run: make\n        continue-on-error: true\n")
+	// Слово в комментарии послаблением не является: иначе гейт краснел бы на
+	// собственном объяснении, как это уже случалось с проверками по подстроке.
+	write("prose.yml", "jobs:\n  a:\n    steps:\n      # здесь когда-то стоял continue-on-error: true\n      - run: make\n")
+
+	finds, files, relaxations, err := relaxationsWithoutReason(dir)
+	if err != nil {
+		t.Fatalf("обход синтетики: %v", err)
+	}
+	if files != 3 {
+		t.Fatalf("перепись синтетики разошлась: файлов %d, ожидалось 3", files)
+	}
+	if relaxations != 2 {
+		t.Errorf("послаблений в синтетике %d, ожидалось 2 — проза комментария не должна считаться", relaxations)
+	}
+	if len(finds) != 1 {
+		t.Errorf("находок %d, ожидалась одна (молчаливое послабление): %v", len(finds), finds)
+	}
+	if len(finds) == 1 && !strings.Contains(finds[0], "silent.yml") {
+		t.Errorf("находка обязана называть молчаливый файл, а названо: %s", finds[0])
+	}
+}
