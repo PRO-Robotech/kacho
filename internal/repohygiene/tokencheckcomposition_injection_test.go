@@ -178,6 +178,7 @@ var implementedChecks = []tokenpolicy.Check{
 	tokenpolicy.CheckAudience,
 	tokenpolicy.CheckTokenType,
 	tokenpolicy.CheckNotBefore,
+	tokenpolicy.CheckCriticalHeaders,
 	tokenpolicy.CheckRevocation,
 }
 
@@ -199,6 +200,7 @@ var implementedChecks = []tokenpolicy.Check{
 	tokenpolicy.CheckTokenType,
 	tokenpolicy.CheckExpiry,
 	tokenpolicy.CheckNotBefore,
+	tokenpolicy.CheckCriticalHeaders,
 	tokenpolicy.CheckRevocation,
 }
 
@@ -227,6 +229,7 @@ const (
 	CheckExpiry Check = "expiry"
 	CheckNotBefore Check = "not-before"
 	CheckKeyID Check = "key-id"
+	CheckCriticalHeaders Check = "critical-headers"
 	CheckRevocation Check = "revocation"
 	CheckSenderBinding Check = "sender-binding"
 )
