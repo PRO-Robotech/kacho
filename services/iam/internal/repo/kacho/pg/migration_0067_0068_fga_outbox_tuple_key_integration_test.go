@@ -56,60 +56,26 @@ func TestMigration0067_FGAOutbox_TupleKeyPartition(t *testing.T) {
 		assert.Equal(t, "text", dataType)
 	})
 
-	// The trigger is the single source of truth for ALL emit sites — the Go
-	// emitters, the access_binding writer, the boot backfill and the data
-	// migrations. A per-caller computation would drift the moment one of them
-	// forgot, and a drifted key silently splits one tuple across partitions, which
-	// is the ordering hole this whole mechanism exists to close.
-	t.Run("trigger_fills_key_for_every_writer", func(t *testing.T) {
-		var got string
-		require.NoError(t, pool.QueryRow(ctx,
-			`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
-			 VALUES ('fga.tuple.write',
-			         '{"user":"user:usr01","relation":"v_get","object":"vpc_network:net01"}'::jsonb,
-			         now())
-			 RETURNING tuple_key`,
-		).Scan(&got))
-		assert.Equal(t, "user:usr01 vpc_network:net01", got,
-			"the BEFORE INSERT trigger must render `user object` — the GRANT key (migration "+
-				"0099). The drainer's claim compares this value between rows, so a different "+
-				"rendering per writer would put two events of ONE grant into two partitions "+
-				"and drop the ordering between a grant and its revoke. It must NOT include the "+
-				"relation: one row carries a subject's whole relation set, and a key naming a "+
-				"single relation would split that row's own successors away from it.")
-	})
-
-	// The set form of the row must key exactly like the single-relation form: both are
-	// events on ONE grant, and they are ordered against each other or they are not
-	// ordered at all.
-	t.Run("trigger_keys_the_set_form_the_same", func(t *testing.T) {
-		var got string
-		require.NoError(t, pool.QueryRow(ctx,
-			`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
-			 VALUES ('fga.tuple.write',
-			         '{"user":"user:usr01","object":"vpc_network:net01","relation":"v_get","relations":["v_get","v_update"]}'::jsonb,
-			         now())
-			 RETURNING tuple_key`,
-		).Scan(&got))
-		assert.Equal(t, "user:usr01 vpc_network:net01", got,
-			"a set row and a single-relation row naming the same (subject, object) must land "+
-				"in the SAME partition — otherwise a revoke of the set could be applied ahead "+
-				"of the grant it supersedes and the tuple would survive its own removal")
-	})
-
-	// A payload missing a component cannot produce a key, and a NULL key never
-	// blocks a successor (NULL = NULL is not true) — such a row would silently opt
-	// out of ordering. The NOT VALID check turns that into a loud failure at emit
-	// time instead.
-	t.Run("incomplete_payload_rejected_at_emit", func(t *testing.T) {
-		_, err := pool.Exec(ctx,
-			`INSERT INTO kacho_iam.fga_outbox (event_type, payload, created_at)
-			 VALUES ('fga.tuple.write', '{"relation":"v_get","object":"vpc_network:net01"}'::jsonb, now())`)
-		require.Error(t, err,
-			"a tuple payload missing a component must be rejected at INSERT: it cannot yield "+
-				"a partition key, and a NULL-keyed row silently escapes the ordering predicate")
-		assert.Contains(t, err.Error(), "fga_outbox_tuple_key_present_check")
-	})
+	// Здесь стояли три подпробы, закреплявшие ПИСАТЕЛЯ ключа и его сторожа:
+	// «триггер заполняет ключ каждому писателю», «набор ключуется как одиночное
+	// отношение» и «полезная нагрузка без составляющей отвергается на вставке».
+	//
+	// Они сняты вместе со своим предметом (kacho#1033). Ключ существовал ради
+	// клейма дренажа; дренажа не стало вместе с внешним движком прав (стадия S6
+	// эпика #747, `a4b6cfba9`), а колонку `tuple_key` сняла миграция
+	// 20260822160000 (kacho#917). Триггер `fga_outbox_tuple_key_trigger`, его
+	// функция и ограничение `fga_outbox_tuple_key_present_check` пережили обоих —
+	// и после снятия колонки отвергали КАЖДУЮ вставку в журнал (42703), то есть
+	// каждую выдачу и каждый отзыв доступа. Все трое сняты миграцией
+	// 20260823001000.
+	//
+	// Оставшиеся подпробы этого файла закрепляют КОЛОНКУ и ИНДЕКСЫ — предмет
+	// kacho#917, а не этой задачи, и снимаются вместе с ним.
+	//
+	// Что журнал по-прежнему принимает строку и что ни один триггер схемы не
+	// называет полей, которых у строки нет, утверждают
+	// TestJournalAcceptsAWriteAfterEveryMigration и TestTriggerBodyMatchesRowShape
+	// (trigger_body_matches_row_shape_integration_test.go).
 
 	t.Run("partition_head_index_on_tuple_key", func(t *testing.T) {
 		var cnt int

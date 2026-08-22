@@ -32,17 +32,29 @@ let urls: string[] = [];
  * где настоящий край отдаёт разные виды разных доменов. Проба на таком дублёре
  * краснела бы на исправной странице — то есть измеряла бы фикстуру, а не предмет.
  */
-function stub(body: unknown, ok = true) {
+/** Владелец, чьи виды называет тело проб: все они из домена vpc. */
+const BODY_OWNER = "/vpc/v1/quotas";
+
+function stub(body: unknown, ok = true, owner = BODY_OWNER) {
   urls = [];
   globalThis.fetch = (input: RequestInfo | URL) => {
     const url = requestUrl(input);
-    const first = urls.length === 0;
     urls.push(url);
+    // Тело достаётся владельцу ПО АДРЕСУ, а не по позиции в очереди.
+    //
+    // Здесь стоял счётчик (`urls.length === 0`). Недетерминированным дублёр от
+    // этого НЕ был — замер показал пять вызовов подряд, ровно в порядке
+    // объявления доменов, без повторов, — но получатель тела зависел от порядка
+    // объявления на странице, к предмету пробы отношения не имеющего.
+    //
+    // Адрес такой связи не имеет: тело принадлежит домену, чьи виды в нём
+    // названы, и это видно из самого тела.
+    const mine = url.includes(owner);
     return Promise.resolve({
       ok,
       status: ok ? 200 : 500,
       statusText: ok ? "OK" : "Internal Server Error",
-      text: () => Promise.resolve(JSON.stringify(first ? body : { quotas: [] })),
+      text: () => Promise.resolve(JSON.stringify(mine ? body : { quotas: [] })),
     } as Response);
   };
 }
