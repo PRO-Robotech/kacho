@@ -1,3 +1,5 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 # Разбор рендера для identity-hook-credential-source-test.sh.
 # Живёт отдельным файлом, а не встроенным текстом: встроенный боролся бы за
 # стандартный ввод с данными, которые ему же и подаются.

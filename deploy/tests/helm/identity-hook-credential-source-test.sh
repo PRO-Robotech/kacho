@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 #
 # identity-hook-credential-source-test.sh — величина, которую ОБЪЯВЛЯЕТ
 # конфигурация личности, обязана иметь ИСТОЧНИК В ПОДЕ.
@@ -36,19 +38,34 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 CHART=./helm/umbrella
-# Перечень профилей можно сузить извне — этим пользуется проба способности
-# упасть (`identity-hook-credential-source-inject.sh`), подавая синтетический
-# профиль с возвращённым дефектом. Умолчание — оба настоящих профиля.
-read -r -a PROFILES <<< "${IDENTITY_SOURCE_PROFILES:-values.dev.yaml values.prod.yaml}"
+# Перечень профилей ВЫВОДИТСЯ из общего источника цепочек стенда, а не
+# выписывается здесь: выписанный стал бы второй копией и разошёлся бы с ним
+# молча — ровно то, что запрещает `TestNoSecondCopyOfAStackChain`.
+# Сузить извне можно (этим пользуется проба способности упасть, подавая
+# синтетический профиль с возвращённым дефектом).
+if [ -n "${IDENTITY_SOURCE_PROFILES:-}" ]; then
+  read -r -a PROFILES <<< "$IDENTITY_SOURCE_PROFILES"
+else
+  mapfile -t PROFILES < <(bash tests/helm/stacks.sh --chain dev 2>/dev/null
+                          bash tests/helm/stacks.sh --chain prod 2>/dev/null)
+  [ "${#PROFILES[@]}" -gt 0 ] || { echo "ОТКАЗ: общий источник цепочек не дал ни одного профиля — судить не о чем"; exit 1; }
+fi
 rc=0
 seen_profiles=0
 seen_refs=0
 
 for prof in "${PROFILES[@]}"; do
-  [ -f "$CHART/$prof" ] || { echo "ПРОПУСК: нет $prof"; continue; }
+  # Профиль приходит либо именем (тогда он лежит в чарте), либо готовым путём —
+  # так подаёт синтетические профили проба способности упасть, и они живут во
+  # временном каталоге, а не в дереве.
+  case "$prof" in
+    /*) pf="$prof" ;;
+    *)  pf="$CHART/$prof" ;;
+  esac
+  [ -f "$pf" ] || { echo "ПРОПУСК: нет $prof"; continue; }
   seen_profiles=$((seen_profiles + 1))
 
-  out="$(helm template kacho-umbrella "$CHART" -f "$CHART/$prof" 2>/dev/null)" || {
+  out="$(helm template kacho-umbrella "$CHART" -f "$pf" 2>/dev/null)" || {
     echo "ОТКАЗ [$prof]: рендер не удался — вердикта о посадке нет"; rc=1; continue
   }
 
