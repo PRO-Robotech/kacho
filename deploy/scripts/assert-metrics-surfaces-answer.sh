@@ -92,6 +92,25 @@ for ((i=0; i<${#args[@]}; i++)); do
   esac
 done
 
+# Поднятие пробника: в режиме none кластера нет — `wait` отказывает, и гейт
+# обязан назвать это «условие не создано», а не вердиктом о поверхностях.
+case "${1:-}" in
+  run)
+    [[ "${STUB_MODE:-live}" == none ]] && exit 1
+    exit 0 ;;
+  wait)
+    [[ "${STUB_MODE:-live}" == none ]] && exit 1
+    exit 0 ;;
+  delete) exit 0 ;;
+esac
+for a in "$@"; do
+  case "$a" in
+    run|wait|delete)
+      [[ "${STUB_MODE:-live}" == none ]] && exit 1
+      exit 0 ;;
+  esac
+done
+
 if [[ "$want_exec" == 1 ]]; then
   case "${STUB_SURFACE:-ok}" in
     ok)      printf 'kacho_build_info{service="x"} 1\n200\n' ;;
@@ -147,10 +166,15 @@ STUB
   echo "== самопроверка гейта поверхностей величин =="
   run_case "стенд как живой → зелёный, опрошены все" \
            0 "все 8 поверхностей отвечают" STUB_MODE=live
-  run_case "только форма app.kubernetes.io/name → опросчика нет" \
-           2 "нет пода, из которого можно опросить" STUB_MODE=narrow
+  # Тот самый дефект, ради которого перебор форм и заведён: на стенде, где поды
+  # помечены ТОЛЬКО рекомендованной схемой, резолвится меньшинство. Пробник свой
+  # и поднимается всегда, поэтому исход теперь другой — «поды не найдены», а не
+  # «опросчика нет», — но третьей категорией он остаётся: вердикта о поверхностях
+  # не вынесено ни одного.
+  run_case "поды только с формой app.kubernetes.io/name → опрос не выполнился" \
+           2 "под не найден" STUB_MODE=narrow
   run_case "кластера нет → не выполнилось, а НЕ красное" \
-           2 "нет пода, из которого можно опросить" STUB_MODE=none
+           2 "под-пробник не поднялся" STUB_MODE=none
   run_case "поверхность отвечает 500 → красное" \
            1 "вместо 200" STUB_MODE=live STUB_SURFACE=http500
   run_case "200 без серий платформы → красное" \
@@ -245,19 +269,39 @@ failed=0
 not_run=0
 declare -a red=() unknown=()
 
+PROBE_IMAGE="${PROBE_IMAGE:-docker.io/alpine/k8s:1.36.2}"
+PROBE_POD="kacho-metrics-probe-$$"
+
 probe_pod=""
-probe_sel=""
-pick_probe_pod() {
-  # Опрос идёт ИЗНУТРИ кластера: диагностическая поверхность выставлена только
-  # внутрь, и снаружи её не должно быть видно by construction.
-  #
-  # Опросчик выбирается ТЕМ ЖЕ механизмом, что и опрашиваемые. Своя копия
-  # селектора здесь была вторым местом об одном предмете — и разошлась с
-  # дeревом ровно так же, как первое.
-  local row; row="$(resolve_pod api-gateway)"
-  probe_sel="$(printf '%s' "$row" | cut -f1)"
-  probe_pod="$(printf '%s' "$row" | cut -f2)"
+probe_ready=0
+
+# start_probe — поднять СВОЙ под с инструментом опроса.
+#
+# ПОЧЕМУ НЕ `kubectl exec` В ПОД ПРОДУКТА. Именно так гейт и работал, и это
+# ошибка построения: образы служб собраны без оболочки и без curl. Опрос
+# отвечал «нечем или некуда» по ВСЕМ восьми процессам — то есть гейт не выносил
+# вердикта ни разу, сколько бы поверхностей ни отвечало на самом деле.
+#
+# Пробник снимает зависимость от содержимого чужого образа: инструмент есть
+# потому, что мы его принесли. Заодно «проверка работает» перестаёт быть
+# неотличимым от «в образе края случайно остался curl».
+#
+# Опрос по-прежнему ИЗНУТРИ кластера: поверхность выставлена только внутрь, и
+# снаружи её не должно быть видно by construction.
+start_probe() {
+  kubectl -n "$NS" run "$PROBE_POD" \
+    --image="$PROBE_IMAGE" --restart=Never --command -- sleep 600 >/dev/null 2>&1 || true
+  if kubectl -n "$NS" wait --for=condition=Ready "pod/$PROBE_POD" --timeout=90s >/dev/null 2>&1; then
+    probe_pod="$PROBE_POD"
+    probe_ready=1
+  fi
 }
+
+stop_probe() {
+  [[ "$probe_ready" == 1 ]] || return 0
+  kubectl -n "$NS" delete pod "$PROBE_POD" --wait=false >/dev/null 2>&1 || true
+}
+trap stop_probe EXIT
 
 if [[ "${1:-}" == "--self-test" ]]; then
   self_test
@@ -265,11 +309,12 @@ if [[ "${1:-}" == "--self-test" ]]; then
 fi
 
 echo "== диагностические поверхности: опрос изнутри кластера (ns=$NS) =="
-pick_probe_pod
-[[ -n "$probe_pod" ]] && echo "  опросчик: $probe_pod (по метке $probe_sel)"
+start_probe
+[[ -n "$probe_pod" ]] && echo "  опросчик: под-пробник $probe_pod (образ $PROBE_IMAGE)"
 if [[ -z "$probe_pod" ]]; then
-  echo "НЕ ВЫПОЛНИЛОСЬ: в ns=$NS нет пода, из которого можно опросить поверхности."
-  echo "Спрошены формы метки: $(selector_candidates api-gateway | tr '\n' ' ')"
+  echo "НЕ ВЫПОЛНИЛОСЬ: под-пробник не поднялся в ns=$NS за 90 с."
+  echo "Образ: $PROBE_IMAGE. Кластер недоступен либо образ не тянется — это"
+  echo "условие прогона, а не вердикт о поверхностях."
   echo "Вердикта нет ни у одного процесса — это не зелёный и не красный исход."
   exit 2
 fi
