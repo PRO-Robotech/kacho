@@ -34,13 +34,28 @@
 
   6. карта «компонент → образ» называет образы, которые знает сборка;
   7. имя, которым шард объявляет отсутствие сервиса, понимает гейт посадки;
-  8. объединение доменов ban #6 по шардам покрывает ВСЕ домены с Internal*-контрактом
-     (проба ban #6 сужается составом стенда — без этого домен мог бы не измеряться
-     ни на одном шарде, оставаясь зелёным везде).
+  8. объединение доменов ban #6 по шардам покрывает КАЖДЫЙ домен, у которого этот
+     запрет имеет ПРЕДМЕТ (проба ban #6 сужается составом стенда — без этой
+     проверки домен мог бы не измеряться ни на одном шарде, оставаясь зелёным
+     везде).
 
-Самопроверка (`--self-test`) вносит семь дефектов по одному и требует красного
-на каждом, плюс держит рядом ЗАКОННОГО близнеца (нетронутое дерево ⇒ зелёный).
-Гейт, который не покраснел на внесённом дефекте, — не гейт.
+     ПРЕДМЕТ — не «есть Internal*-контракт», а «контракт кто-то регистрирует».
+     Контракт, который не провязан ни одним композиционным корнем, недостижим на
+     внешнем листенере by construction, и требовать его измерения значило бы
+     требовать зелёного из отсутствия: встречный контроль пробы такой домен не
+     подтвердит, а уронит прогон как невыполненное измерение. Принадлежность к
+     предмету ВЫВОДИТСЯ ИЗ ДЕРЕВА одним предикатом с пробой
+     (`e2e-ban6-domains.py`), поэтому ведомости прощённых здесь нет ни одной
+     строки, а послабление истекает само: появится регистрация — домен войдёт в
+     охват, и гейт покраснеет, пока его не возьмёт шард. Непровязанный домен при
+     этом НАЗЫВАЕТСЯ переписью на каждом прогоне: «нечего измерять» и «забыли
+     измерить» обязаны быть различимы.
+
+Самопроверка (`--self-test`) вносит дефекты по одному и требует красного на
+каждом, плюс держит рядом ЗАКОННЫХ близнецов. Состав СЧИТАЕТСЯ, а не выписывается:
+`--self-test | grep -c 'ждали красного'` и то же про зелёный. Гейт, который не
+покраснел на внесённом дефекте, — не гейт; гейт, у которого нет молчащей стороны,
+доказывает лишь чувствительность к правке.
 """
 from __future__ import annotations
 
@@ -117,27 +132,39 @@ def gated_deps(path: pathlib.Path) -> set[str]:
     return gated
 
 
-def internal_listener_domains(root: pathlib.Path) -> set[str]:
-    """Домены proto, объявляющие хотя бы один `service Internal…` — предмет ban #6.
+_BAN6_MOD = None
 
-    Читается ИЗ ДЕРЕВА, а не списком здесь: список разъехался бы с proto молча, и
-    новый домен с Internal-контрактом выпал бы из охвата, не покраснев нигде.
+
+def _ban6_module():
+    """Тот же предикат популяции ban #6, что исполняет проба, — не вторая его реализация.
+
+    Гейт и проба обязаны отвечать на «у каких доменов ban #6 имеет ПРЕДМЕТ» ОДНИМ
+    предикатом. Здесь это не теория: до сведения гейт обходил каталог домена
+    целиком (9 доменов), проба адресовала только `*/v1/*.proto` (8), и девятый не
+    измерял НИКТО — заметить это можно было лишь сложением двух чисел, которых
+    рядом никто не печатал.
     """
-    out: set[str] = set()
-    base = root / "proto" / "kacho" / "cloud"
-    if not base.is_dir():
-        return out
-    for dom in base.iterdir():
-        if not dom.is_dir():
-            continue
-        for f in dom.rglob("*.proto"):
-            if re.search(r'^\s*service\s+Internal\w*\s*\{', f.read_text(encoding="utf-8"), re.M):
-                out.add(dom.name)
-                break
-    return out
+    global _BAN6_MOD
+    if _BAN6_MOD is None:
+        path = HERE / "e2e-ban6-domains.py"
+        spec = importlib.util.spec_from_file_location("e2e_ban6_domains", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _BAN6_MOD = mod
+    return _BAN6_MOD
 
 
-def check(root: pathlib.Path, manifest_path: pathlib.Path) -> tuple[list[str], dict]:
+def check(root: pathlib.Path, manifest_path: pathlib.Path, *,
+          ban6: dict | None = None) -> tuple[list[str], dict]:
+    """`ban6` — перепись популяции запрета #6; по умолчанию берётся из дерева.
+
+    Параметр существует ради самопроверки: инъекция на СИНТЕТИЧЕСКОЙ переписи
+    не привязана к сегодняшнему состоянию дерева и переживёт тот день, когда
+    сегодняшний непровязанный домен провяжут. Фикстура, привязанная к
+    снимаемому предмету, истекает вместе с ним и уносит доказательство.
+    Сам предикат по дереву доказывается отдельной парой — на синтетическом
+    дереве, см. `_self_test_population`.
+    """
     findings: list[str] = []
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     shards = manifest["shards"]
@@ -268,17 +295,42 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path) -> tuple[list[str], d
     union_b6 = set(core_b6)
     for sh in shards:
         union_b6 |= {gate_b6[c] for c in sh["components"] if c in gate_b6}
-    want_b6 = internal_listener_domains(root)
-    if not want_b6:
-        findings.append("не удалось перечислить домены с внутренним листенером — "
+
+    # ПОПУЛЯЦИЯ — «домены, у которых ban #6 имеет ПРЕДМЕТ», а не «домены, у
+    # которых есть Internal*-контракт». Разница не формальная: контракт, который
+    # не регистрирует НИ ОДИН композиционный корень, недостижим на внешнем
+    # листенере by construction, и потребовать его измерения значит потребовать
+    # зелёного из отсутствия — проба на таком домене не подтвердит изоляцию, а
+    # уронит прогон встречным контролем («метода нет на внешнем» неотличимо от
+    # «метода нет нигде»).
+    #
+    # Ведомости прощённых при этом НЕТ НИ ОДНОЙ СТРОКИ: принадлежность к
+    # популяции ВЫВОДИТСЯ ИЗ ДЕРЕВА, поэтому послабление истекает само — в тот
+    # день, когда регистрация появится в прод-коде, домен войдёт в популяцию, и
+    # этот гейт покраснеет, пока его не возьмёт шард.
+    b6 = ban6 if ban6 is not None else _ban6_module().census(root)
+    contract_b6 = set(b6["services"])
+    want_b6 = set(b6["served"])
+    unserved_b6 = dict(b6["unserved"])
+    if not contract_b6:
+        findings.append("не удалось перечислить домены с Internal*-контрактом — "
                         "сверить охват ban #6 не с чем; это отказ, а не «сошлось»")
+    if contract_b6 and not want_b6:
+        findings.append("ни один Internal*-контракт дерева не регистрируется прод-кодом — "
+                        "предикат провязки не нашёл предмет; это отказ, а не «нечего измерять»")
     for d in sorted(want_b6 - union_b6):
-        findings.append(f"домен '{d}' несёт Internal*-контракт, но ban #6 для него не "
-                        f"измеряет НИ ОДИН шард — метод остался бы «изолированным» "
-                        f"просто потому, что его никто не спрашивал")
-    for d in sorted(union_b6 - want_b6):
+        findings.append(f"домен '{d}' несёт Internal*-контракт, ПРОВЯЗАННЫЙ прод-кодом, "
+                        f"но ban #6 для него не измеряет НИ ОДИН шард — метод остался бы "
+                        f"«изолированным» просто потому, что его никто не спрашивал")
+    for d in sorted(union_b6 - contract_b6):
         findings.append(f"шарды заявляют ban #6 для домена '{d}', у которого нет "
                         f"Internal*-контракта в proto — измерять нечего")
+    for d in sorted((union_b6 & contract_b6) - want_b6):
+        findings.append(f"шарды заявляют ban #6 для домена '{d}', чей Internal*-контракт "
+                        f"({', '.join(unserved_b6.get(d, []))}) не регистрирует НИ ОДИН "
+                        f"композиционный корень: встречный контроль пробы его не "
+                        f"подтвердит и уронит прогон как НЕВЫПОЛНЕННОЕ ИЗМЕРЕНИЕ, "
+                        f"а не как изоляцию")
     for g in sorted(set(gates) - {x for x in gates if x.startswith("pg-")} - set(non_service)):
         if g not in gate_b6:
             findings.append(f"компонент '{g}' переключаемый, но домена ban #6 за ним "
@@ -336,8 +388,12 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path) -> tuple[list[str], d
     stats = {
         "transports_declared": len(transports),
         "transport_dialers": transport_dialers,
+        "ban6_domains_with_contract": len(contract_b6),
         "ban6_domains_needed": len(want_b6),
         "ban6_domains_covered": len(union_b6 & want_b6),
+        "ban6_domains_unserved": {d: list(v) for d, v in sorted(unserved_b6.items())},
+        "ban6_proto_files_read": b6["proto_files_read"],
+        "ban6_registrations_found": b6["registrations_found"],
         "suites_tree": len(tree_suites),
         "suites_assigned": len([s for s in seen if s in tree_suites]),
         "collections_tree": tree_total,
@@ -354,8 +410,18 @@ def report(root: pathlib.Path, manifest_path: pathlib.Path) -> int:
     print("=== покрытие шардов (единица счёта — отслеживаемая git коллекция) ===")
     print(f"осмотрено: суит {st['suites_tree']}, коллекций {st['collections_tree']}, "
           f"шардов {st['shards']}, переключаемых компонентов {st['gates']}")
-    print(f"ban #6: доменов с Internal*-контрактом {st['ban6_domains_needed']}, "
+    print(f"ban #6: прочитано .proto {st['ban6_proto_files_read']}, регистраций "
+          f"Internal*-служб в прод-коде {st['ban6_registrations_found']}")
+    print(f"ban #6: доменов с Internal*-контрактом {st['ban6_domains_with_contract']}, "
+          f"из них провязано прод-кодом {st['ban6_domains_needed']}, "
           f"покрыто шардами {st['ban6_domains_covered']}")
+    # Домен, чей контракт приземлён, но не провязан, НАЗЫВАЕТСЯ на каждом прогоне.
+    # Умолчать его значило бы завести невидимое послабление: разница между «нечего
+    # измерять» и «забыли измерить» видна только когда обе величины напечатаны.
+    for dom, svcs in st["ban6_domains_unserved"].items():
+        print(f"   {dom:12s} контракт приземлён ({', '.join(svcs)}), но НЕ провязан ни "
+              f"одним композиционным корнем — у ban #6 нет предмета; провяжут → домен "
+              f"войдёт в охват сам, и этот гейт покраснеет, пока его не возьмёт шард")
     print(f"транспортов к компонентам объявлено {st['transports_declared']}:")
     for var, dialers in sorted(st["transport_dialers"].items()):
         print(f"   {var} ← набирают: {', '.join(dialers) if dialers else '—'}")
@@ -375,6 +441,139 @@ def report(root: pathlib.Path, manifest_path: pathlib.Path) -> int:
     return 0
 
 
+def _self_test_population() -> bool:
+    """Пара для ПРЕДИКАТА ПОПУЛЯЦИИ — на синтетическом дереве, а не на сегодняшнем.
+
+    Предмет здесь другой, чем у инъекций манифеста ниже: там проверяется, что
+    пункт 8 реагирует на перепись, здесь — что сама перепись читает дерево. Без
+    этой пары «домен не провязан» держалось бы на честном слове модуля.
+
+    Дерево СИНТЕТИЧЕСКОЕ и лежит вне репозитория (`tempfile` + явный `git -C`):
+    проба не имеет права писать в индекс, настройки и дерево репозитория, из
+    которого запущена. Привязать фикстуру к живому `subscription` было бы
+    ошибкой того же рода, что и ведомость прощённых: она истекла бы в день, когда
+    его провяжут, и унесла бы доказательство с собой.
+
+    Утверждается ЧЕТЫРЕ вещи, и каждая — сторона пары:
+      alpha  — контракт в `v1/` + вызов регистрации в прод-коде  ⇒ ПРОВЯЗАН;
+      beta   — контракт ВНЕ `v1/` + регистрация только в `_test.go` и объявление
+               в `pkg/api/`                                       ⇒ НЕ ПРОВЯЗАН
+               (обе половины важны: раскладка вне `v1/` обязана быть видна, а
+               внутрипроцессный харнесс и сгенерированное объявление обязаны НЕ
+               считаться провязкой);
+      gamma  — контракт без `Internal*`-службы                    ⇒ ВНЕ популяции;
+      delta  — контракт + регистрация ВТОРОЙ законной формой
+               (`RegisterService(&…_ServiceDesc, …)`) при том, что объявление
+               дескриптора лежит в `pkg/api/`                      ⇒ ПРОВЯЗАН
+               (предикат обязан отвечать про регистрацию, а не про сегодняшнюю
+               привычку её записывать: второй формы в дереве нет ни одной, и
+               непризнание её сделало бы сужение маской);
+      beta после появления прод-регистрации                       ⇒ ПРОВЯЗАН
+               (самоистечение: послабление снимается появлением предмета).
+    """
+    import tempfile
+
+    mod = _ban6_module()
+    ok = True
+
+    def say(label: str, good: bool, detail: str) -> None:
+        nonlocal ok
+        ok = ok and good
+        print(f"  [{'ok ' if good else 'FAIL'}] {label} — {detail}")
+
+    with tempfile.TemporaryDirectory(prefix="kacho-ban6-population-") as tmp:
+        root = pathlib.Path(tmp)
+
+        def put(rel: str, body: str) -> None:
+            f = root / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(body, encoding="utf-8")
+
+        put("proto/kacho/cloud/alpha/v1/alpha.proto",
+            "package kacho.cloud.alpha.v1;\nservice InternalAlphaService {\n"
+            "  rpc Peek(Req) returns (Res);\n}\n")
+        put("proto/kacho/cloud/beta/beta.proto",
+            "package kacho.cloud.beta;\nservice InternalBetaService {\n"
+            "  rpc Peek(Req) returns (Res);\n}\n")
+        put("proto/kacho/cloud/gamma/v1/gamma.proto",
+            "package kacho.cloud.gamma.v1;\nservice GammaService {\n"
+            "  rpc Get(Req) returns (Res);\n}\n")
+        put("services/alpha/cmd/alpha/main.go",
+            "package main\nfunc wire(srv S, h H) {\n"
+            "\talphav1.RegisterInternalAlphaServiceServer(srv, h)\n}\n")
+        put("pkg/beta/harness_test.go",
+            "package beta\nfunc harness(srv S, h H) {\n"
+            "\tbetav1.RegisterInternalBetaServiceServer(srv, h)\n}\n")
+        put("pkg/api/kacho/cloud/beta/beta_grpc.pb.go",
+            "package betav1\nfunc RegisterInternalBetaServiceServer(s grpc.ServiceRegistrar, "
+            "srv InternalBetaServiceServer) {\n\ts.RegisterService(&x, srv)\n}\n")
+        put("proto/kacho/cloud/delta/v1/delta.proto",
+            "package kacho.cloud.delta.v1;\nservice InternalDeltaService {\n"
+            "  rpc Peek(Req) returns (Res);\n}\n")
+        put("services/delta/cmd/delta/main.go",
+            "package main\nfunc wire(srv grpc.ServiceRegistrar, h H) {\n"
+            "\tsrv.RegisterService(&deltav1.InternalDeltaService_ServiceDesc, h)\n}\n")
+        put("pkg/api/kacho/cloud/delta/v1/delta_grpc.pb.go",
+            "package deltav1\nvar InternalDeltaService_ServiceDesc = grpc.ServiceDesc{}\n")
+
+        for args in (("init", "-q"), ("add", "-A")):
+            r = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+            if r.returncode != 0:
+                say("синтетическое дерево заведено", False, r.stderr.strip())
+                return False
+
+        c = mod.census(root)
+        say("alpha: контракт в v1/ + прод-регистрация ⇒ ПРОВЯЗАН",
+            "alpha" in c["served"], f"провязано={sorted(c['served'])}")
+        say("beta: контракт ВНЕ v1/ виден предикатом",
+            "beta" in c["services"], f"доменов={sorted(c['services'])}")
+        say("beta: регистрация в _test.go и объявление в pkg/api ⇒ НЕ провязан",
+            "beta" in c["unserved"] and "beta" not in c["served"],
+            f"не провязано={sorted(c['unserved'])}")
+        say("gamma: контракт без Internal*-службы ⇒ вне популяции",
+            "gamma" not in c["services"], f"доменов={sorted(c['services'])}")
+        say("delta: регистрация второй законной формой ⇒ ПРОВЯЗАН",
+            "delta" in c["served"], f"провязано={sorted(c['served'])}")
+        say("объём осмотренного напечатан, а не подразумевается",
+            c["proto_files_read"] == 4 and c["registrations_found"] == 2,
+            f"прочитано .proto={c['proto_files_read']} регистраций={c['registrations_found']}")
+
+        # САМОИСТЕЧЕНИЕ: появился прод-вызов ⇒ домен обязан войти в популяцию сам.
+        put("services/beta/cmd/beta/main.go",
+            "package main\nfunc wire(srv S, h H) {\n"
+            "\tbetav1.RegisterInternalBetaServiceServer(srv, h)\n}\n")
+        subprocess.run(["git", "-C", str(root), "add", "-A"], capture_output=True, text=True)
+        mod.invalidate()
+        c2 = mod.census(root)
+        say("beta провязали ⇒ домен вошёл в популяцию САМ (послабление истекло)",
+            "beta" in c2["served"] and "beta" not in c2["unserved"],
+            f"провязано={sorted(c2['served'])}")
+    return ok
+
+
+def _census_plus(base: dict, domain: str, *, served: bool) -> dict:
+    """Синтетическая перепись: базовая плюс один домен в заданном состоянии.
+
+    Нужна затем, чтобы инъекции пункта 8 не зависели от того, какие домены дерева
+    сегодня провязаны: фикстура, привязанная к сегодняшнему непровязанному домену,
+    истекла бы вместе с ним.
+    """
+    import copy
+
+    svc = "Internal" + domain[:1].upper() + domain[1:] + "Service"
+    out = copy.deepcopy(base)
+    out["services"] = dict(out["services"], **{domain: [svc]})
+    out["served"] = set(out["served"])
+    out["unserved"] = dict(out["unserved"])
+    if served:
+        out["served"].add(domain)
+        out["unserved"].pop(domain, None)
+    else:
+        out["served"].discard(domain)
+        out["unserved"][domain] = [svc]
+    return out
+
+
 def _self_test() -> int:
     """Инъекция: четыре дефекта по одному ⇒ красный на каждом; законный близнец ⇒ зелёный."""
     import copy
@@ -383,7 +582,8 @@ def _self_test() -> int:
     base = json.loads(MANIFEST.read_text(encoding="utf-8"))
     ok = True
 
-    def run(m: dict, label: str, want_red: bool, expect: str | None = None) -> None:
+    def run(m: dict, label: str, want_red: bool, expect: str | None = None,
+            ban6: dict | None = None) -> None:
         """`expect` — подстрока, которая ОБЯЗАНА встретиться среди находок.
 
         Без неё инъекция доказывает лишь чувствительность гейта к правке манифеста,
@@ -398,7 +598,7 @@ def _self_test() -> int:
             json.dump(m, fh)
             p = pathlib.Path(fh.name)
         try:
-            findings, _ = check(ROOT, p)
+            findings, _ = check(ROOT, p, ban6=ban6)
         finally:
             p.unlink(missing_ok=True)
         red = bool(findings)
@@ -483,12 +683,14 @@ def _self_test() -> int:
     # такого домена остался бы «изолированным» просто потому, что его не спросили.
     m = copy.deepcopy(base)
     m["gate_ban6_domains"] = {k: v for k, v in m["gate_ban6_domains"].items() if k != "registry"}
-    run(m, "(е) домен registry не измеряет ни один шард", want_red=True)
+    run(m, "(е) домен registry не измеряет ни один шард", want_red=True,
+        expect="не измеряет НИ ОДИН шард")
 
     # (ж) КОНТРОЛЬ: домен, который шарды заявляют, а Internal*-контракта у него нет.
     m = copy.deepcopy(base)
     m["core_ban6_domains"] = m["core_ban6_domains"] + ["operation"]
-    run(m, "(ж) заявлен домен без Internal*-контракта", want_red=True)
+    run(m, "(ж) заявлен домен без Internal*-контракта", want_red=True,
+        expect="измерять нечего")
 
     # (з) ТОТ САМЫЙ ДЕФЕКТ, воспроизведённый: шард гоняет суиту, которая набирает
     # транспорт к компоненту, а компонент не поднимает. Именно в этой форме четыре
@@ -526,6 +728,58 @@ def _self_test() -> int:
         if "registry" not in sh["components"]:
             sh["components"] = sh["components"] + ["registry", "pg-registry"]
     run(m, "(к) близнец: компонент поднят ВЕЗДЕ, где его набирают", want_red=False)
+
+    # ── популяция ban #6: пара на СИНТЕТИЧЕСКОЙ переписи ────────────────────
+    #
+    # Пункт 8 спрашивает у переписи, а не у дерева, поэтому его инъекции идут
+    # переписью. Домен `alpha` в дереве не существует ни в каком виде — это и
+    # нужно: фикстура не привязана к тому, что завтра провяжут.
+    live = _ban6_module().census(ROOT)
+
+    # (л) провязанный домен, которого не берёт НИ ОДИН шард — то самое послабление,
+    # ради невозможности которого пункт 8 и написан.
+    run(base, "(л) провязанный домен не берёт ни один шард", want_red=True,
+        expect="домен 'alpha' несёт Internal*-контракт, ПРОВЯЗАННЫЙ прод-кодом",
+        ban6=_census_plus(live, "alpha", served=True))
+
+    # (м) ЗАКОННЫЙ БЛИЗНЕЦ: контракт приземлён, но не провязан ни одним
+    # композиционным корнем — у ban #6 нет предмета, и гейт обязан МОЛЧАТЬ.
+    # Без этой стороны (л) доказывал бы лишь чувствительность к переписи.
+    run(base, "(м) близнец: контракт приземлён, но не провязан — предмета нет",
+        want_red=False, ban6=_census_plus(live, "alpha", served=False))
+
+    # (н) САМОИСТЕЧЕНИЕ послабления: тот же домен ПРОВЯЗАЛИ. Молчание (м) обязано
+    # кончиться в тот же миг — иначе послабление пережило бы свой предмет.
+    run(base, "(н) тот же домен провязали ⇒ молчание кончилось", want_red=True,
+        expect="домен 'alpha' несёт Internal*-контракт, ПРОВЯЗАННЫЙ прод-кодом",
+        ban6=_census_plus(live, "alpha", served=True))
+
+    # (о) обратная сторона: шард ЗАЯВЛЯЕТ домен, которого не провязал никто.
+    # Это не «покрыто», а невыполненное измерение: встречный контроль пробы такой
+    # домен не подтвердит и уронит прогон.
+    m = copy.deepcopy(base)
+    m["core_ban6_domains"] = m["core_ban6_domains"] + ["alpha"]
+    run(m, "(о) шард заявляет домен, которого не провязал никто", want_red=True,
+        expect="НЕВЫПОЛНЕННОЕ ИЗМЕРЕНИЕ",
+        ban6=_census_plus(live, "alpha", served=False))
+
+    # (п) ПРЕДПОСЫЛКА ПРЕДИКАТА: «ноль доменов» — отказ, а не «всё покрыто».
+    empty = {"services": {}, "registrations": {}, "served": set(), "unserved": {},
+             "proto_files_read": 0, "domains_with_contract": 0, "registrations_found": 0}
+    run(base, "(п) популяция пуста ⇒ отказ, а не «сошлось»", want_red=True,
+        expect="это отказ, а не «сошлось»", ban6=empty)
+
+    # (р) ВТОРАЯ ПОЛОВИНА той же предпосылки: контракты есть, а провязки не нашлось
+    # ни одной — предикат провязки сломался, и это тоже отказ, а не «нечего мерить».
+    broken = dict(empty, services={d: list(v) for d, v in live["services"].items()},
+                  domains_with_contract=len(live["services"]),
+                  unserved={d: list(v) for d, v in live["services"].items()},
+                  proto_files_read=live["proto_files_read"])
+    run(base, "(р) контракты есть, провязок ноль ⇒ отказ предиката", want_red=True,
+        expect="предикат провязки не нашёл предмет", ban6=broken)
+
+    print("\n=== самопроверка предиката популяции (синтетическое дерево) ===")
+    ok = _self_test_population() and ok
 
     print("самопроверка:", "OK" if ok else "FAIL")
     return 0 if ok else 1

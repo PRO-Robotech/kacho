@@ -126,8 +126,10 @@ from __future__ import annotations
 
 import argparse
 import glob
+import importlib.util
 import json
 import os
+import pathlib
 import re
 import shutil
 import socket
@@ -136,7 +138,10 @@ import sys
 import time
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-PROTO_GLOB = os.path.join(REPO_ROOT, "proto", "kacho", "cloud", "*", "v1", "*.proto")
+# Образец адресует каталог домена ЦЕЛИКОМ. Прежняя редакция брала только
+# `*/v1/*.proto`, и домен, положивший контракт рядом с формой, выпадал из
+# предмета молча: раскладка `v1/` — соглашение, а не инвариант.
+PROTO_GLOB = os.path.join(REPO_ROOT, "proto", "kacho", "cloud", "**", "*.proto")
 FIXTURES = os.path.join(REPO_ROOT, "tests", "authz-fixtures", "out", "authz-fixtures.json")
 
 # Вердикты классификации одной пробы.
@@ -275,7 +280,7 @@ def counterpart_verdict(transcript: str) -> tuple[str, str]:
 def internal_rpcs(proto_glob: str = PROTO_GLOB) -> list[tuple[str, str, str]]:
     """(package, ServiceName, MethodName) для каждого `service Internal*` в proto."""
     rows: list[tuple[str, str, str]] = []
-    for path in sorted(glob.glob(proto_glob)):
+    for path in sorted(glob.glob(proto_glob, recursive=True)):
         txt = open(path, encoding="utf-8").read()
         m = re.search(r"^package\s+([\w.]+)\s*;", txt, re.M)
         if not m:
@@ -298,6 +303,41 @@ def internal_rpcs(proto_glob: str = PROTO_GLOB) -> list[tuple[str, str, str]]:
 def domain_of(pkg: str) -> str:
     parts = pkg.split(".")
     return parts[2] if len(parts) > 2 else pkg
+
+
+def _ban6_module():
+    """Тот же предикат популяции, что исполняет `assert-shard-coverage.py`.
+
+    Два места об одном предмете здесь разошлись бы молча — и разошлись бы именно
+    там, где расхождение не видно: обе реализации отвечают «да» на очевидном
+    входе. Замер 2026-08-23: гейт покрытия видел 9 доменов, эта проба — 8, и
+    девятый не измерял НИКТО.
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "e2e-ban6-domains.py")
+    spec = importlib.util.spec_from_file_location("e2e_ban6_domains", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def subject_rpcs() -> tuple[list[tuple[str, str, str]], dict]:
+    """Предмет пробы: Internal*-методы доменов, у которых ban #6 ИМЕЕТ предмет.
+
+    Домен, чей контракт не регистрирует ни один композиционный корень, недостижим
+    на внешнем листенере by construction. Засчитать это в изоляцию значило бы
+    получить зелёное из отсутствия — ровно то, ради невозможности чего заведён
+    CONTROL-COUNTERPART, который на таком домене роняет прогон, а не подтверждает
+    его. Поэтому такой домен из предмета ИСКЛЮЧАЕТСЯ — и это НЕ послабление:
+    исключение выведено из дерева и истекает само, как только регистрация
+    появится в прод-коде.
+
+    Перепись возвращается рядом с предметом: «ноль находок» обязано быть отличимо
+    от «ноль прочитанного», а сужение — быть НАПЕЧАТАННЫМ, а не выведенным из
+    тишины.
+    """
+    census = _ban6_module().census(pathlib.Path(REPO_ROOT))
+    rows = [r for r in internal_rpcs() if domain_of(r[0]) in census["served"]]
+    return rows, census
 
 
 # ─────────────────────────── живой прогон ────────────────────────────────────
@@ -488,11 +528,18 @@ def main(argv: list[str]) -> int:
         print("HARNESS: в посеве нет jwtBootstrap", file=sys.stderr)
         return 2
 
-    rows = internal_rpcs()
+    rows, b6 = subject_rpcs()
     if not rows:
         print("HARNESS: в proto не найдено ни одного service Internal* — предмет пуст",
               file=sys.stderr)
         return 2
+    print(f"ПРЕДМЕТ: прочитано .proto {b6['proto_files_read']}, доменов с "
+          f"Internal*-контрактом {b6['domains_with_contract']}, из них провязано "
+          f"прод-кодом {len(b6['served'])}")
+    for dom, svcs in sorted(b6["unserved"].items()):
+        print(f"   {dom}: контракт приземлён ({', '.join(svcs)}), но не провязан ни одним "
+              f"композиционным корнем — у ban #6 нет предмета; полноту охвата держит "
+              f"assert-shard-coverage.py")
 
     gw_authority = "api-gateway.kacho.svc.cluster.local"
     rc = 0
@@ -805,20 +852,52 @@ def self_test() -> int:
     rc |= 0 if ok else 1
 
     print("\nсамопроверка карты внутренних эндпоинтов:")
-    # Домен без эндпоинта роняет прогон, поэтому карта обязана покрывать ВСЕ
-    # домены, у которых есть Internal*-методы. Расхождение — находка здесь, а не
-    # «непокрытый домен» на живом стенде.
-    doms = {domain_of(p) for p, _, _ in internal_rpcs()}
+    # Домен без эндпоинта роняет прогон, поэтому карта обязана покрывать каждый
+    # домен ПРЕДМЕТА. Предмет — не «все домены с Internal*-контрактом», а те, чей
+    # контракт кто-то регистрирует: у эндпоинта непровязанного домена нет
+    # координаты by construction, и требовать её значило бы требовать адреса того,
+    # чего нет. Полноту охвата держит assert-shard-coverage.py — он же покраснеет
+    # в день, когда домен провяжут и его никто не возьмёт.
+    subject, b6 = subject_rpcs()
+    doms = {domain_of(p) for p, _, _ in subject}
     gap = sorted(doms - set(INTERNAL_ENDPOINTS))
-    print(f"  доменов с Internal*-методами: {len(doms)}; без эндпоинта: "
+    print(f"  доменов с Internal*-контрактом: {b6['domains_with_contract']}; "
+          f"из них провязано прод-кодом: {len(b6['served'])}; без эндпоинта: "
           f"{', '.join(gap) if gap else 'нет'} — {'ПРОВАЛ' if gap else 'ОК'}")
+    for dom, svcs in sorted(b6["unserved"].items()):
+        print(f"    вне предмета: {dom} ({', '.join(svcs)}) — не провязан ни одним "
+              f"композиционным корнем")
     rc |= 1 if gap else 0
+
+    # ОБРАТНАЯ СТОРОНА, без которой сужение выше было бы маской: домен, чей
+    # cluster-internal эндпоинт МЫ ЗНАЕМ, обязан быть признан провязанным. Не
+    # признан — значит сломался предикат провязки (например, регистрацию завели
+    # через обёртку), и сужение начало съедать настоящий предмет. Это находка
+    # здесь, а не тихо уменьшившийся охват на живом стенде.
+    known = set(INTERNAL_ENDPOINTS)
+    lost = sorted(known - set(b6["served"]))
+    print(f"  контроль в обратную сторону: доменов с известным эндпоинтом {len(known)}; "
+          f"не признаны провязанными: {', '.join(lost) if lost else 'нет'} — "
+          f"{'ПРОВАЛ' if lost else 'ОК'}")
+    rc |= 1 if lost else 0
+
+    # ПРЕДПОСЫЛКА ПЕРЕЧИСЛЕНИЯ: каждый провязанный домен обязан быть ПРЕДСТАВЛЕН в
+    # предмете хотя бы одним методом. Не представлен — значит образец перестал
+    # видеть его контракт (ровно тот дефект, из которого выведен общий предикат:
+    # образец адресовал только раскладку `v1/`). Без этой стороны сужение
+    # предмета проверялось бы лишь там, где эндпоинт уже известен, и возврат
+    # узкого образца прошёл бы молча.
+    missing = sorted(set(b6["served"]) - doms)
+    print(f"  предпосылка перечисления: провязанных доменов {len(b6['served'])}; "
+          f"нет ни одного метода в предмете: {', '.join(missing) if missing else 'нет'} — "
+          f"{'ПРОВАЛ' if missing else 'ОК'}")
+    rc |= 1 if missing else 0
 
     print("\nсамопроверка перечисления предмета:")
     rows = internal_rpcs()
     ok = len(rows) > 0 and all(s.startswith("Internal") for _, s, _ in rows)
-    print(f"  Internal*-методов найдено: {len(rows)}; все сервисы Internal* — "
-          f"{'ОК' if ok else 'ПРОВАЛ'}")
+    print(f"  Internal*-методов в дереве: {len(rows)}; из них в предмете: {len(subject)}; "
+          f"все сервисы Internal* — {'ОК' if ok else 'ПРОВАЛ'}")
     rc |= 0 if ok else 1
 
     print("\nсамопроверка: " + ("ПРОЙДЕНА" if rc == 0 else "ПРОВАЛЕНА"))
