@@ -79,8 +79,10 @@ export interface User {
   email?: string;
   display_name?: string;
   created_at?: string;
-  // KAC-125 — User per-Account; nullable для backward compat.
-  account_id?: string;
+  // Аккаунта у пользователя больше нет (kacho#471): принадлежность выражается
+  // членствами, которых у человека может быть несколько, и край это поле не
+  // отдаёт — номер и имя зарезервированы в контракте. Оставить его объявленным
+  // значило бы обещать значение, которого в ответе не бывает.
   invite_status?: InviteStatus;
   invited_by?: string;
 }

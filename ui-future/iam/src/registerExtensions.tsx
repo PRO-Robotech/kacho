@@ -862,7 +862,6 @@ registerDetailExtension("users", {
         <span className="text-muted-foreground">—</span>
       ),
     },
-    { label: "Аккаунт", value: <IamRefLink specId="accounts" refId={getByPath<string>(data, "account_id")} /> },
     {
       label: "Пригласил",
       value: <IamRefLink specId="users" refId={getByPath<string>(data, "invited_by")} nameField="email" />,
