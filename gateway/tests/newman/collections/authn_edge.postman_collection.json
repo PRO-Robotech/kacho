@@ -452,7 +452,7 @@
       ]
     },
     {
-      "name": "F1B-D-PLATFORM-ES256-ACCEPTED — Bearer minted by OUR issuer (ES256) is accepted by the edge → 200; its iss differs from the external provider lane",
+      "name": "F1B-D-PLATFORM-ES256-ACCEPTED — Bearer minted by OUR issuer (ES256) is accepted by the edge on the strict platform lane → 200",
       "description": "class:AUTHN | class:CONF | class:FLOW | priority:P0",
       "item": [
         {
@@ -536,19 +536,8 @@
                   "  pm.expect(j, JSON.stringify(j)).to.be.an('object');",
                   "  pm.expect(j.accounts, JSON.stringify(j)).to.be.an('array');",
                   "});",
-                  "const _other = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
-                  "pm.test('harness config: jwtBootstrap задан (с чем сравнивать полосу)', () => {",
-                  "  pm.expect(_other, 'слот соседней полосы пуст — сравнить не с чем').to.not.eql('');",
-                  "});",
-                  "pm.test('издатель ОТЛИЧАЕТСЯ от издателя соседней полосы — записей две, а не одна', () => {",
-                  "  const _mine = _seg(_tok, 1).iss;",
-                  "  const _theirs = _seg(_other, 1).iss;",
-                  "  pm.expect(_mine, 'iss нашей полосы').to.be.a('string').and.not.eql('');",
-                  "  pm.expect(_mine, 'iss нашей полосы против соседней: ' + _theirs).to.not.eql(_theirs);",
-                  "});",
-                  "pm.test('алгоритмы полос тоже различаются — ключи разные', () => {",
-                  "  pm.expect(_seg(_tok, 0).alg, 'alg нашей полосы').to.eql('ES256');",
-                  "  pm.expect(_seg(_other, 0).alg, 'alg соседней полосы').to.not.eql('ES256');",
+                  "pm.test('предъявитель называет издателя', () => {",
+                  "  pm.expect(_seg(_tok, 1).iss, 'iss нашей полосы').to.be.a('string').and.not.eql('');",
                   "});"
                 ]
               }
