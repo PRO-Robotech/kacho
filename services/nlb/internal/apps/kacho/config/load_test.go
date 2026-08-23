@@ -103,9 +103,6 @@ func TestLoad_DefaultsApplied(t *testing.T) {
 	if cfg.FGA.RegisterDrainer.MaxAttempts != 10 {
 		t.Errorf("default FGA.RegisterDrainer.MaxAttempts: got %d, want 10", cfg.FGA.RegisterDrainer.MaxAttempts)
 	}
-	if cfg.InternalLifecycle.MaxStreams != 32 {
-		t.Errorf("default InternalLifecycle.MaxStreams: got %d, want 32", cfg.InternalLifecycle.MaxStreams)
-	}
 }
 
 // TestLoad_DefaultMode_FailsClosedProduction — безопасный дефолт fail-closed:

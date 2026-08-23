@@ -220,9 +220,15 @@ owner Geography». С этапа S7 это неверно: Geography — дом�
 
 - `operations` — per-сервисная таблица long-running operations (схема как у
   corelib `0001_operations.sql`, включена в `0001_initial.sql`). prefix `epd`.
-- `compute_outbox` / `compute_watch_cursors` — outbox-таблица событий
-  (`resource_kind` ∈ {Instance}, `event_type` ∈
-  {CREATED, UPDATED, DELETED}) + триггер `compute_outbox_notify_trg` →
-  `pg_notify('compute_outbox', sequence_no::text)`. Читатель — восстановление
-  наблюдаемого состояния сервиса; подписки снаружи нет (серверный стрим снят, #813).
+- `compute_outbox` — outbox-таблица событий (`resource_kind` ∈ {Instance},
+  `event_type` ∈ {CREATED, UPDATED, DELETED}) + триггер
+  `compute_outbox_notify_trg` → `pg_notify('compute_outbox', sequence_no::text)`.
+  Читатель — восстановление наблюдаемого состояния сервиса; подписки снаружи нет
+  (серверный стрим снят, #813).
   См. [модель данных](../../content/architecture/data-model.mdx).
+
+  Таблицы серверных курсоров подписки рядом с ним **нет** — она снята (#1046).
+  Позиция подписки принадлежит КЛИЕНТУ: он присылает курсор, сервер состояния не
+  держит, и поэтому поток переживает переподключение к другой реплике. Курсоры по
+  подписчику на стороне сервера это свойство отменяют, поэтому их место — не в
+  схеме, а в этой строке.

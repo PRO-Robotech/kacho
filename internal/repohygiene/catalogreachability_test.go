@@ -51,7 +51,13 @@ import (
 // что каталог целиком состоит из строк, за которыми стоит обслуживаемый метод.
 // Способность анализатора находить инертные строки от этой пустоты не зависит —
 // она доказана инъекцией, см. TestCatalogReachability_RedOnAnUnmountedService.
-var knownInertCatalogRows = []string{}
+var knownInertCatalogRows = []string{
+	// Следствие записи `mountAllow` про глагол подписки (kacho#1018): полоса
+	// авторизации объявлена, а вызова, который до края дойдёт, ещё нет — его
+	// заводит kacho#1019. Разбор — там же, у записи `mountAllow`; здесь только
+	// инвентарь, и он обязан сходиться с ней строка в строку.
+	"kacho.cloud.subscription.InternalSubscriptionService/Subscribe",
+}
 
 // catalogReachabilityOptions — вход на НАСТОЯЩЕМ дереве. Список исключений
 // передаётся из mountAllow: сервис, намеренно не поднимаемый по gRPC, — это ОДНО

@@ -167,9 +167,4 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("jobs.free-ip.interval", "30s")
 	v.SetDefault("jobs.free-ip.age-threshold", "5m")
 
-	// InternalLifecycle (stream к kacho-iam).
-	// 32 одновременных стрима — достаточно для одного-двух iam-pod'ов (по
-	// одному стриму на pod, обычно), с запасом на дублирование при rollout
-	// и admin-tooling. Каждый стрим = +1 dedicated pgx.Conn к Postgres.
-	v.SetDefault("internal-lifecycle.max-streams", 32)
 }

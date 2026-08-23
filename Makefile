@@ -243,7 +243,8 @@ PG_OUTSIDE_SELECTION_PKGS ?= \
 	./services/iam/internal/authzmap \
 	./services/iam/internal/service \
 	./services/iam/internal/testsupport/accesssnapshot \
-	./gateway/internal/idempotencypg
+	./gateway/internal/idempotencypg \
+	./pkg/subscription
 
 # ─── Хуки git ────────────────────────────────────────────────────────────────
 #
