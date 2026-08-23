@@ -121,7 +121,19 @@ def ensure_certs() -> None:
         raise SystemExit(
             f"[prodseed] FATAL: no client certificate for kacho-iam :9091. Expected secret "
             f"'{m.GATEWAY_CLIENT_SECRET}' in ns/{NS} or IAM_INTERNAL_GRPC_MTLS_CERT/_KEY.")
-    log(f"client certs ready: operator={m.BOOTSTRAP_MINT_MTLS_CERT} gateway={m.IAM_INTERNAL_MTLS_CERT}")
+    # Корень внутреннего удостоверяющего — для обмена у НАШЕГО издателя (#1014).
+    # Материал ПУБЛИЧНЫЙ и нужен ровно затем, чтобы проверка подписи сертификата
+    # слушателя выдачи осталась на месте: снять её было бы послаблением, а не
+    # обходом несовпадающего имени (SAN листа — имена служб, проброс идёт на петлю).
+    ok_ca = m.ensure_iam_server_ca(namespace=NS)
+    if not ok_ca:
+        raise SystemExit(
+            f"[prodseed] FATAL: нет корня внутреннего удостоверяющего. Обмен у нашего "
+            f"издателя (POST /iam/v1/token) идёт по TLS, и проверять подпись листа нечем; "
+            f"ожидался секрет '{m.IAM_SERVER_SECRET}' в ns/{NS} либо IAM_SERVER_CA_FILE, "
+            f"указывающий на заранее извлечённый корень.")
+    log(f"client certs ready: operator={m.BOOTSTRAP_MINT_MTLS_CERT} gateway={m.IAM_INTERNAL_MTLS_CERT} "
+        f"iam-ca={m.IAM_SERVER_CA_FILE}")
 
 
 def _hydra_serves(port: int) -> bool:
