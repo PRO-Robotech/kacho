@@ -140,6 +140,25 @@ be provisioned BEFORE first-deploy of this chart. Two supported patterns:
 > Production refuses to start without it, and what stops working when it is
 > absent is now token minting.
 
+> [!warning] This key MUST SURVIVE every re-deploy, and the service now enforces
+> it. Whatever is already wrapped is readable by THIS key and by no other: rolling
+> it makes every stored private half unrecoverable — there is no re-wrap path, and
+> a fresh signing key generated over the unreadable ones would silently void every
+> token already issued. Provision it ONCE and reuse it.
+>
+> Since #1062 iam proves this at startup: it reads the key set first and, if the
+> presented key does not open what is stored, it REFUSES TO START naming the knob
+> and the keys that did not open, instead of quietly generating a replacement.
+> A stand that will not come up after a secret change is telling you the previous
+> value is still the only one that opens the store — restore it.
+>
+> Practical consequences for the two patterns below: pin the remote value (do not
+> point `refreshInterval` at a rotating source), and never regenerate the secret
+> as part of re-running a bootstrap script. On the local kind stand the same rule
+> is held by `deploy/scripts/dev-prod-secrets.sh`, which generates the key once
+> and reuses it afterwards; the discipline is gated by
+> `deploy/tests/helm/secret-material-survives-recreation-test.sh`.
+
 ### Pattern A: external-secrets-operator (recommended)
 
 ```yaml
