@@ -75,13 +75,21 @@
 // следует из того, что подпроба есть у каждого вида, а не из отдельного замера.
 //
 // Предикаты пересчёта — по местам внесения, по видам и по покрытию ОТДЕЛЬНО,
-// иначе число снова станет двусмысленным:
+// иначе число снова станет двусмысленным. Каждый анкерён НА НАЧАЛО СТРОКИ, и это
+// не педантизм: предикат без якоря считает СВОЁ ЖЕ объяснение — три строки ниже
+// содержат `add(` текстом, и наивный счёт даёт 25 вместо 22. Проверено на этом
+// самом абзаце в момент его написания.
 //
-//	grep -c 'add("' internal/repohygiene/subscriptionformshape.go
-//	grep -o 'add("[a-z-]*"' internal/repohygiene/subscriptionformshape.go | sort -u | wc -l
-//	# вид без подпробы — находка (`missing-message` требуется своей пробой по полю Kind):
-//	comm -23 <(grep -o 'add("[a-z-]*"' subscriptionformshape.go | sed 's/add("//;s/"//' | sort -u) \
-//	         <(grep -o '"[a-z-]*"' subscriptionformshape_injection_test.go | tr -d '"' | sort -u)
+//	cd internal/repohygiene
+//	grep -cE '^[[:space:]]+add\("' subscriptionformshape.go                    # мест: 22
+//	grep -oE '^[[:space:]]+add\("[a-z-]*"' subscriptionformshape.go |
+//		grep -o '"[a-z-]*"' | sort -u | wc -l                             # видов: 20
+//	# вид без подпробы — находка. `missing-message` требуется своей пробой по
+//	# полю Kind, поэтому правая сторона берёт литералы, а не вызов помощника:
+//	comm -23 <(grep -oE '^[[:space:]]+add\("[a-z-]*"' subscriptionformshape.go |
+//		grep -o '"[a-z-]*"' | tr -d '"' | sort -u) \
+//		<(grep -o '"[a-z-]*"' subscriptionformshape_injection_test.go |
+//			tr -d '"' | sort -u)
 //
 // # Требование к тексту — не то же, что поиск слова в комментарии
 //
