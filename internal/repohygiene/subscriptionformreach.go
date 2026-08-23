@@ -1,0 +1,367 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// subscriptionformreach.go — анализатор «у объявленной формы есть, кому её взять».
+//
+// # Предмет
+//
+// Общая форма подписки объявлена фазой, которая НЕ объявляет глагола: сервер её
+// берёт следующей фазой (kacho#1018). До тех пор у трёх её типов ноль ссылок —
+// и это законное, СРОЧНОЕ состояние, а не мёртвый код.
+//
+// Отличие от мёртвого кода названо приёмкой прямо, и оно ровно в двух вещах:
+// у похороненной поверхности не было НИ СРОКА, НИ ПРЕДМЕТА, который её возьмёт;
+// у этой формы есть и то и другое. Значит послабление обязано истекать ОТ
+// ЗАКРЫТИЯ ПРЕДМЕТА, а не от чьей-то памяти: закрыли задачу-берущего, а ссылок
+// так и ноль — форму надлежит снять, а не оставить «на будущее» (ban #11: три
+// исхода, и «полежит» среди них нет).
+//
+// # Почему это ОТДЕЛЬНЫЙ механизм, а не запись в ведомости транспортных сообщений
+//
+// Ведомость транспортных сообщений судит по СУФФИКСУ ИМЕНИ (`Request`,
+// `Response`, `Metadata`) и потому видит ОДИН тип из трёх: `SubscriptionOpened`
+// и `SubscriptionEvent` вне её предмета by construction — не по недосмотру, а по
+// устройству её дискриминатора. Этот анализатор судит по ПАКЕТУ и потому
+// покрывает все три. DoD фазы требует оба механизма и прямо называет подмену
+// одного другим ошибкой: она сузила бы наблюдение с трёх типов до одного.
+//
+// # Направление истечения у двух механизмов РАЗНОЕ, и это несущее
+//
+// Ведомость транспортных сообщений истекает ПО УСПЕХУ: объявит следующая фаза
+// глагол — сообщение окажется названо глаголом, и запись уронит прогон как
+// истёкшая. Этот гейт срабатывает ПО ОТКАЗУ ОТ ПРЕДМЕТА: задача закрыта, а
+// ссылок нет. Ни один из двух не заменяет другого, потому что они ловят
+// противоположные исходы одного ожидания.
+//
+// # Кто считается ссылкой, а кто нет
+//
+//	ДА   другой контракт дерева, называющий тип полным именем
+//	     (`kacho.cloud.subscription.SubscriptionRequest`);
+//	ДА   прод-код Go, импортирующий сгенерённый пакет ИМЕНОВАННО и
+//	     употребляющий тип.
+//	НЕТ  сами файлы общего пакета — тип не ссылается на себя;
+//	НЕТ  сгенерённые стабы (`pkg/api/`) — они существуют оттого, что объявление
+//	     есть, и потому ссылкой на его нужность не являются;
+//	НЕТ  пробы (`_test.go`) — проба живёт ради гейта, а гейт ради этой формы:
+//	     засчитать её значило бы замкнуть наблюдение на само себя;
+//	НЕТ  ПУСТОЙ импорт (`_ "…"`) в любом файле — он наполняет реестр
+//	     дескрипторов и об употреблении типа не говорит ничего.
+//
+// Последние два исключения — не педантизм: на сегодняшнем дереве пустых
+// импортов сгенерённого пакета ровно два, оба в пробах, и без этих двух правил
+// гейт был бы зелёным навсегда, ничего при этом не наблюдая.
+//
+// # Пустой обход — отказ
+//
+// Ноль прочитанных контрактов, ноль объявленных типов общего пакета — и «ноль
+// находок» становится неотличимо от «ноль прочитанного».
+package repohygiene
+
+import (
+	"fmt"
+	"io"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+)
+
+// SubscriptionGoPackage — импортный путь сгенерённого пакета общей формы.
+const SubscriptionGoPackage = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+
+// SubscriptionGoDefaultAlias — имя пакета Go по умолчанию (из `go_package`).
+const SubscriptionGoDefaultAlias = "subscriptionv1"
+
+// SubscriptionFormTaker — задача, чья работа состоит в том, чтобы форму ВЗЯТЬ.
+//
+// Номер стоит здесь, а не в тексте находки, потому что он же печатается
+// переписью на КАЖДОМ прогоне: «сверено 0» никогда не должно выглядеть как
+// «сверено и в порядке».
+const SubscriptionFormTaker = 1018
+
+// SubscriptionFormType — один объявленный тип общего пакета и его ссылки.
+type SubscriptionFormType struct {
+	// Name — имя типа верхнего уровня (`SubscriptionRequest`).
+	Name string
+	// Kind — "message" | "enum".
+	Kind string
+	// Where — файл контракта, где тип объявлен (путь относительно корня).
+	Where string
+	// ProtoReferrers — контракты дерева, называющие тип полным именем.
+	ProtoReferrers []string
+	// GoReferrers — прод-файлы Go, употребляющие тип.
+	GoReferrers []string
+}
+
+// Referrers — сколько ссылок у типа всего.
+func (t SubscriptionFormType) Referrers() int {
+	return len(t.ProtoReferrers) + len(t.GoReferrers)
+}
+
+// SubscriptionReachOptions — вход анализатора.
+type SubscriptionReachOptions struct {
+	// Root — корень репозитория.
+	Root string
+	// ProtoRoot — путь (относительно Root) к дереву исходного контракта.
+	ProtoRoot string
+	// GoRoots — каталоги (относительно Root), в которых ищутся ссылки из кода.
+	// Пустой список означает «весь корень».
+	GoRoots []string
+}
+
+// SubscriptionReachCensus — то, что анализатор прочитал.
+type SubscriptionReachCensus struct {
+	ProtoFiles int
+	GoFiles    int
+	// CommonTypes — типов верхнего уровня объявлено общим пакетом.
+	CommonTypes int
+	// Unreferenced — из них с нулём ссылок.
+	Unreferenced int
+	// BlankImports — пустых импортов сгенерённого пакета (в счёт ссылок НЕ идут,
+	// но печатаются: иначе их отсутствие в переписи выглядело бы как их отсутствие
+	// в дереве).
+	BlankImports int
+	// TestReferrers — употреблений типа в пробах (в счёт ссылок НЕ идут).
+	TestReferrers int
+}
+
+var (
+	subReachEnumRe = regexp.MustCompile(`\benum\s+([A-Za-z0-9_]+)`)
+	// subReachGoImportRe ловит ИМЕНОВАННЫЙ импорт сгенерённого пакета и отдаёт
+	// псевдоним, если он задан. Пустой импорт (`_ "…"`) сюда НЕ попадает: у него
+	// в первой группе стоит `_`, и он отсеивается явной веткой.
+	subReachGoImportRe = regexp.MustCompile(
+		`(?m)^\s*(?:([A-Za-z_][A-Za-z0-9_]*)\s+)?"` + regexp.QuoteMeta(SubscriptionGoPackage) + `"`)
+)
+
+// AuditSubscriptionFormReach читает дерево и возвращает состав типов общего
+// пакета вместе с их ссылками.
+//
+// Вердикта («находка это или нет») он НЕ выносит: вердикт зависит от состояния
+// задачи-берущего, а это измерение сетевое. Решение живёт отдельной чистой
+// функцией `SubscriptionReachFindings`, чья способность упасть доказывается без
+// сети.
+func AuditSubscriptionFormReach(
+	opts SubscriptionReachOptions, out io.Writer,
+) ([]SubscriptionFormType, SubscriptionReachCensus, error) {
+	var c SubscriptionReachCensus
+
+	byName := map[string]*SubscriptionFormType{}
+	var order []string
+	// commonFiles — файлы САМОГО общего пакета: ссылка типа на себя ссылкой не
+	// является, поэтому они исключаются из поиска употреблений.
+	commonFiles := map[string]bool{}
+
+	// ── проход 1: что объявлено общим пакетом ────────────────────────────────
+	err := rootedWalk(filepath.Join(opts.Root, opts.ProtoRoot), func(rel string) bool {
+		return strings.HasSuffix(rel, ".proto")
+	}, func(path string, b []byte) error {
+		c.ProtoFiles++
+		clean := stripProtoComments(string(b))
+		m := protoPackageRe.FindStringSubmatch(clean)
+		if m == nil || m[1] != SubscriptionCommonPackage {
+			return nil
+		}
+		rel := subRelTo(opts.Root, path)
+		commonFiles[rel] = true
+		for _, kind := range []struct {
+			re   *regexp.Regexp
+			name string
+		}{{subMessageRe, "message"}, {subReachEnumRe, "enum"}} {
+			for _, loc := range kind.re.FindAllStringSubmatchIndex(clean, -1) {
+				depth := strings.Count(clean[:loc[0]], "{") - strings.Count(clean[:loc[0]], "}")
+				if depth != 0 {
+					continue // вложенный тип адресуется через внешний — отдельной ссылки не имеет
+				}
+				name := clean[loc[2]:loc[3]]
+				if _, seen := byName[name]; seen {
+					continue
+				}
+				byName[name] = &SubscriptionFormType{Name: name, Kind: kind.name, Where: rel}
+				order = append(order, name)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, c, err
+	}
+	c.CommonTypes = len(byName)
+
+	if c.ProtoFiles == 0 || c.CommonTypes == 0 {
+		return nil, c, fmt.Errorf(
+			"в дереве контракта %q прочитано файлов %d, типов пакета %s объявлено %d — "+
+				"наблюдать нечего, и «ноль находок» неотличимо от «ноль прочитанного»",
+			opts.ProtoRoot, c.ProtoFiles, SubscriptionCommonPackage, c.CommonTypes)
+	}
+
+	// ── проход 2: кто называет их в контрактах ───────────────────────────────
+	err = rootedWalk(filepath.Join(opts.Root, opts.ProtoRoot), func(rel string) bool {
+		return strings.HasSuffix(rel, ".proto")
+	}, func(path string, b []byte) error {
+		rel := subRelTo(opts.Root, path)
+		if commonFiles[rel] {
+			return nil
+		}
+		clean := stripProtoComments(string(b))
+		for _, name := range order {
+			if subReachNames(clean, SubscriptionCommonPackage+"."+name) {
+				byName[name].ProtoReferrers = append(byName[name].ProtoReferrers, rel)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, c, err
+	}
+
+	// ── проход 3: кто употребляет их в коде ──────────────────────────────────
+	goRoots := opts.GoRoots
+	if len(goRoots) == 0 {
+		goRoots = []string{"."}
+	}
+	for _, gr := range goRoots {
+		err = rootedWalk(filepath.Join(opts.Root, gr), func(rel string) bool {
+			return strings.HasSuffix(rel, ".go")
+		}, func(path string, b []byte) error {
+			rel := subRelTo(opts.Root, path)
+			// Сгенерённые стабы существуют ОТТОГО, что объявление есть, и потому
+			// ссылкой на его нужность не являются.
+			if strings.HasPrefix(filepath.ToSlash(rel), "pkg/api/") {
+				return nil
+			}
+			body := string(b)
+			loc := subReachGoImportRe.FindStringSubmatchIndex(body)
+			if loc == nil {
+				// Пустой импорт именованное выражение не матчит; считаем его
+				// отдельно, чтобы он был ВИДЕН в переписи, а не выглядел как
+				// отсутствие импорта вовсе.
+				if strings.Contains(body, `_ "`+SubscriptionGoPackage+`"`) {
+					c.BlankImports++
+				}
+				return nil
+			}
+			alias := SubscriptionGoDefaultAlias
+			if loc[2] >= 0 {
+				alias = body[loc[2]:loc[3]]
+			}
+			if alias == "_" {
+				c.BlankImports++
+				return nil
+			}
+			c.GoFiles++
+			isTest := strings.HasSuffix(rel, "_test.go")
+			for _, name := range order {
+				if !subReachNames(body, alias+"."+name) {
+					continue
+				}
+				if isTest {
+					// Проба живёт ради гейта, а гейт — ради этой формы. Засчитать
+					// её значило бы замкнуть наблюдение на само себя.
+					c.TestReferrers++
+					continue
+				}
+				byName[name].GoReferrers = append(byName[name].GoReferrers, rel)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, c, err
+		}
+	}
+
+	sort.Strings(order)
+	types := make([]SubscriptionFormType, 0, len(order))
+	for _, name := range order {
+		t := *byName[name]
+		sort.Strings(t.ProtoReferrers)
+		sort.Strings(t.GoReferrers)
+		if t.Referrers() == 0 {
+			c.Unreferenced++
+		}
+		types = append(types, t)
+	}
+
+	if out != nil {
+		_, _ = fmt.Fprintf(out,
+			"перепись: файлов контракта %d; типов пакета %s объявлено %d, из них без ссылок %d; "+
+				"файлов Go с именованным импортом %d, пустых импортов %d, употреблений в пробах %d\n",
+			c.ProtoFiles, SubscriptionCommonPackage, c.CommonTypes, c.Unreferenced,
+			c.GoFiles, c.BlankImports, c.TestReferrers)
+		for _, t := range types {
+			_, _ = fmt.Fprintf(out, "  %s %s (%s): ссылок %d %v%v\n",
+				t.Kind, t.Name, t.Where, t.Referrers(), t.ProtoReferrers, t.GoReferrers)
+		}
+	}
+	return types, c, nil
+}
+
+// SubscriptionReachFindings — РЕШЕНИЕ, отделённое от измерения.
+//
+// takerState — состояние задачи-берущего, как его назвал трекер: "OPEN",
+// "CLOSED" либо пустая строка, если состояние выяснить не удалось или сверку не
+// запрашивали.
+//
+// Несостоявшееся измерение находкой НЕ становится: иначе временная
+// недоступность трекера роняла бы прогон, и гейт научились бы обходить
+// (`security.md` §Hardening-инварианты, п. 8 — отказ считается и печатается, а
+// не проглатывается и не превращается в вердикт).
+func SubscriptionReachFindings(types []SubscriptionFormType, takerState string) []string {
+	if takerState != "CLOSED" {
+		return nil
+	}
+	var out []string
+	for _, t := range types {
+		if t.Referrers() > 0 {
+			continue
+		}
+		out = append(out, fmt.Sprintf(
+			"%s %s (%s): ссылок ноль, а задача #%d, чья работа состояла в том, чтобы форму "+
+				"взять, ЗАКРЫТА. Срок послабления истёк вместе со своим предметом: форму "+
+				"надлежит СНЯТЬ, а не оставить «на будущее». Другой исход — вернуть задачу "+
+				"в работу, и тогда запись оживает вместе с ней",
+			t.Kind, t.Name, t.Where, SubscriptionFormTaker))
+	}
+	sort.Strings(out)
+	return out
+}
+
+// subReachNames — назван ли символ `sym` в тексте как ОТДЕЛЬНОЕ имя.
+//
+// Проверка границ обязательна: без неё `SubscriptionRequest` находился бы
+// внутри `SubscriptionRequestV2`, и переименованный сосед засчитывался бы
+// ссылкой на снятый тип.
+func subReachNames(body, sym string) bool {
+	for i := 0; ; {
+		j := strings.Index(body[i:], sym)
+		if j < 0 {
+			return false
+		}
+		at := i + j
+		end := at + len(sym)
+		if end >= len(body) || !isSubIdentRune(body[end]) {
+			return true
+		}
+		i = end
+	}
+}
+
+func isSubIdentRune(b byte) bool {
+	return b == '_' || (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+// stripProtoComments снимает комментарии, чтобы слово в прозе не засчиталось за
+// объявление и чтобы скобка в комментарии не сбила глубину вложенности на весь
+// остаток файла.
+func stripProtoComments(s string) string {
+	s = subBlockRe.ReplaceAllString(s, "")
+	return subLineRe.ReplaceAllString(s, "")
+}
+
+func subRelTo(root, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return path
+	}
+	return filepath.ToSlash(rel)
+}
