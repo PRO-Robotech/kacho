@@ -70,6 +70,11 @@ var nonCreatingVerbs = map[string]bool{
 	"SimulateMaintenanceEvent": true, "Start": true, "Stop": true, "Unblock": true, "Update": true, "UpdateAccessBindings": true,
 	"UpdateMetadata": true, "UpdateNetworkInterface": true, "UpdateRepository": true, "UpdateRoute": true, "UpdateRule": true,
 	"UpdateRules": true, "WhoAmI": true,
+	// Subscribe — глагол подписки платформы (kacho#1018). Ресурса он не заводит
+	// и заводить не может by construction: он ЧИТАЕТ журнал изменений и ничего
+	// не пишет. Ресурса провайдера ему тоже не отвечает — декларативное описание
+	// инфраструктуры подписок не держит.
+	"Subscribe": true,
 }
 
 var tfCoverage = map[string]string{

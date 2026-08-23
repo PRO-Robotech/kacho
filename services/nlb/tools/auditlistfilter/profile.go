@@ -34,9 +34,15 @@
 //
 // Nothing here is excluded, and the census says so out loud: it names every listing
 // method it judged, so a passing run reads as "these six were judged" rather than as
-// the word OK. `announce`, `internal_lifecycle` and `operation` are not excluded
-// either — they declare no listing method at all, so they are outside the gate by
-// construction rather than by exception.
+// the word OK. `announce`, `operation` and `shared` are not excluded either — they
+// declare no listing method at all, so they are outside the gate by construction
+// rather than by exception.
+//
+// That list follows the tree and is not a fixed set: it carried a fourth name until
+// that package went out with its contract (kacho#1043). The dead name is not spelled
+// here, because a name in backticks reads as a coordinate and would send the next
+// reader looking for a package the tree does not have. A package name outlives its
+// package silently — nothing here reads this list, so nothing here can go red on it.
 //
 // The three ListOperations were invisible to the previous gate, which matched the
 // method name `List` exactly. They are SubjectScoped: the handler delegates to a

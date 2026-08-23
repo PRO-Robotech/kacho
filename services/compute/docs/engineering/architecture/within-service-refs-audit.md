@@ -203,7 +203,7 @@
 | `disk_id` invariant «один disk → 0 или 1 instance» (i.e. не может быть в `attached_disks` дважды для разных instance) | ❌ **нет partial UNIQUE on `disk_id`** — двое разных instances могут параллельно вставить `(instA, diskX)` и `(instB, diskX)` если оба прошли software `IsAttached(diskX) == false` (TOCTOU) | sync `IsAttached` в `InstanceService.resolveDiskSource` / `AttachDisk` (через service-слой); 23503-RESTRICT при delete disk не спасает от двойного attach | **G1** (high — parity с KAC-52) |
 | `mode` (TEXT: READ_ONLY/READ_WRITE/MODE_UNSPECIFIED) | значение из enum | ❌ нет CHECK | sync mapping в `attachedDiskModeName` | **G9** (minor) |
 
-### 1.10 `operations`, `compute_outbox`, `compute_watch_cursors`
+### 1.10 `operations`, `compute_outbox`
 
 | Table.field / invariant | Что гарантируется | DB constraint | Решение |
 |---|---|---|---|
@@ -211,7 +211,6 @@
 | `compute_outbox.sequence_no` PK + BIGSERIAL | строго возрастающий, уникальный | `PRIMARY KEY` + sequence default ✅ | OK |
 | `compute_outbox_notify_trg` AFTER INSERT | каждый INSERT → `pg_notify('compute_outbox', sequence_no)` | trigger ✅ | OK |
 | outbox row atomicity с ресурс-row | в одной tx | все `emitCompute` вызовы — в той же tx, что INSERT/UPDATE ресурса; review-rule ✅ | OK |
-| `compute_watch_cursors.subscriber_id` PK | один cursor на subscriber | PK ✅ | OK |
 
 ---
 

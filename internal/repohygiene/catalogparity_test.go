@@ -52,6 +52,7 @@ import (
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 )
@@ -87,6 +88,12 @@ var catalogProtoPackages = []string{
 	// осталась бы без источника, а гейт назвал бы находкой сам каталог.
 	"kacho.cloud.quota.v1",
 	"kacho.cloud.operation",
+	// Пакет ОБЩЕЙ формы подписки. До kacho#1018 он нёс только сообщения и потому
+	// здесь не значился; с этой задачи в нём объявлен глагол платформы —
+	// единственный на всю подписку, — и его аннотация обязана сверяться так же,
+	// как всякая другая. Пропусти его здесь, и строка каталога осталась бы без
+	// источника, а гейт назвал бы находкой сам каталог.
+	"kacho.cloud.subscription",
 }
 
 // domainsWithoutAWiredMap — домены, у которых каталог несёт строки
@@ -104,6 +111,22 @@ var catalogProtoPackages = []string{
 // объявляет исключением то, чего больше нет.
 var domainsWithoutAWiredMap = []string{
 	"kacho.cloud.iam.v1",
+
+	// Общая форма подписки (kacho#1018). Её единственная строка `scope_filtered`
+	// принадлежит глаголу, чей сервер живёт в фундаменте (`pkg/subscription`), а
+	// не в домене, — поэтому доменной карты интерсепторов у неё нет и быть не
+	// может: сужение делает САМ СЕРВЕР, на каждую отдаваемую строку.
+	//
+	// И оно там не «провязано», а НЕОТКЛЮЧАЕМО: конструктор сервера отказывает в
+	// подъёме, если сужателя нет либо он не сужает, и то же условие заявлено
+	// второй раз в цикле чтения. Это строго сильнее записи в карте — карту можно
+	// объявить и не позвать.
+	//
+	// ЗАПИСЬ ИСТЕКАЕТ ВМЕСТЕ С ПРЕДМЕТОМ: пока глагол не смонтирован ни одним
+	// композиционным корнем (это делает kacho#1019), обещание края не действует
+	// ни для кого, потому что вызвать некого. Смонтируют — предметом записи
+	// станет уже провязка, и её придётся пересмотреть здесь же.
+	"kacho.cloud.subscription",
 }
 
 // TestCatalogMatchesTheAnnotationsItWasGeneratedFrom — закоммиченный каталог
