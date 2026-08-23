@@ -13,6 +13,7 @@ package narrowtest
 
 import (
 	"context"
+	"sync"
 
 	"google.golang.org/grpc"
 
@@ -45,11 +46,25 @@ type Peer struct {
 	Subject, ResourceType, Action string
 	IDs                           []string
 	Relations                     []string
+
+	// mu защищает перепись выше от ОДНОВРЕМЕННЫХ вопросов.
+	//
+	// Настоящий сужатель спрашивать конкурентно можно — он для того и устроен
+	// (`atomic` на счётчиках, `sync.Mutex` на окне вердиктов), и в бою его
+	// зовут параллельные обработчики одного процесса. Дублёр, который этого не
+	// умеет, СНИСХОДИТЕЛЬНЕЕ продукта наоборот: он роняет пробу там, где
+	// продукт исправен, и первым же таким падением толкает автора пробы
+	// развести вызовы вместо того, чтобы проверять то, ради чего проба
+	// написана. Замок стоит ТОЛЬКО вокруг записи: поля читаются после прогона,
+	// в одну горутину, и добавлять к ним доступ через метод значило бы править
+	// каждого читателя дублёра в дереве.
+	mu sync.Mutex
 }
 
 // BatchCheck — см. listnarrow.AuthorizeClient.
 func (p *Peer) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
 	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
+	p.mu.Lock()
 	p.Calls++
 	p.Checks += len(in.GetChecks())
 	for _, c := range in.GetChecks() {
@@ -61,14 +76,18 @@ func (p *Peer) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckReques
 			p.Relations = append(p.Relations, c.GetRequiredRelation())
 		}
 	}
-	if p.Err != nil {
-		return nil, p.Err
+	err := p.Err
+	allow, allowRel, allowAll := p.Allow, p.AllowRel, p.AllowAll
+	p.mu.Unlock()
+
+	if err != nil {
+		return nil, err
 	}
 	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
 	for _, c := range in.GetChecks() {
-		allowed := p.AllowAll || p.Allow[c.GetResource().GetId()]
-		if !allowed && p.AllowRel != nil {
-			allowed = p.AllowRel[c.GetResource().GetId()][c.GetRequiredRelation()]
+		allowed := allowAll || allow[c.GetResource().GetId()]
+		if !allowed && allowRel != nil {
+			allowed = allowRel[c.GetResource().GetId()][c.GetRequiredRelation()]
 		}
 		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: allowed})
 	}
