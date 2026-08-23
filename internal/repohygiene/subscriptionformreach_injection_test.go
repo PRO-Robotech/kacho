@@ -357,28 +357,60 @@ func TestSubscriptionReachCountsOnlyRealReferrers(t *testing.T) {
 	})
 }
 
+// reachWalkableStand — стенд, у которого каталог кода СУЩЕСТВУЕТ и непуст.
+//
+// Это несущая деталь, а не аккуратность. Проход по коду у анализатора третий, и
+// на отсутствующем каталоге он падает сам («нет такого каталога»). Стенд без
+// `services/` давал бы `err != nil` НЕЗАВИСИМО от проверяемого отказа: подпроба
+// зеленела бы на снятом отказе, не наблюдая при этом ничего.
+//
+// Измерено опытом, а не выведено: со снятым отказом и пустым каталогом кода
+// подпроба «контрактов ноль» проходила; с этим файлом в стенде — краснеет.
+func reachWalkableStand(files map[string]string) map[string]string {
+	files["services/demo/doc.go"] = "package demo\n"
+	return files
+}
+
 // TestSubscriptionReachRefusesAnEmptyWalk — премиса анализатора: пустой обход
 // есть ОТКАЗ, а не чистота.
+//
+// # Утверждается ТЕКСТ отказа, а не факт ошибки
+//
+// Отказов у анализатора несколько, и «ошибка была» выполняется у соседнего так
+// же, как у своего. Каждая подпроба называет СВОЁ сообщение — иначе снятый
+// отказ молча подхватывается чужим, и краснеет не та подпроба, а то и никакая.
 func TestSubscriptionReachRefusesAnEmptyWalk(t *testing.T) {
 	t.Run("контрактов ноль", func(t *testing.T) {
-		root := subscriptionStand(t, map[string]string{"proto/.keep": ""})
-		if _, _, err := AuditSubscriptionFormReach(reachOptions(root), nil); err == nil {
+		root := subscriptionStand(t, reachWalkableStand(map[string]string{"proto/.keep": ""}))
+		_, _, err := AuditSubscriptionFormReach(reachOptions(root), nil)
+		if err == nil {
 			t.Fatal("обход без единого контракта прошёл молча — «ноль находок» " +
 				"стало неотличимо от «ноль прочитанного»")
+		}
+		if !strings.Contains(err.Error(), "прочитано файлов 0") {
+			t.Fatalf("отказ не называет ПУСТОГО ОБХОДА — сработал другой, "+
+				"и подпроба зелена не о том: %v", err)
 		}
 	})
 
 	t.Run("контракты есть, общего пакета нет", func(t *testing.T) {
-		root := subscriptionStand(t, map[string]string{
+		root := subscriptionStand(t, reachWalkableStand(map[string]string{
 			"proto/kacho/cloud/other/v1/thing.proto": reachFiller,
-		})
+		}))
 		_, _, err := AuditSubscriptionFormReach(reachOptions(root), nil)
 		if err == nil {
 			t.Fatal("дерево без общего пакета прошло молча — дискриминатор мог " +
 				"сломаться, и это было бы прочитано как чистота")
 		}
-		if !strings.Contains(err.Error(), SubscriptionCommonPackage) {
+		// Имени пакета мало: оно стоит в ОБОИХ отказах — они собраны одной и той
+		// же строкой формата. Эту подпробу отличает пара «файлы прочитаны, а
+		// типов ноль», и обе её половины утверждаются.
+		if !strings.Contains(err.Error(), "типов пакета "+SubscriptionCommonPackage+" объявлено 0") {
 			t.Fatalf("отказ не называет предмета: %v", err)
+		}
+		if strings.Contains(err.Error(), "прочитано файлов 0") {
+			t.Fatalf("отказ говорит о пустом обходе, а контракт в стенде ЕСТЬ — "+
+				"сработал не тот отказ: %v", err)
 		}
 	})
 }

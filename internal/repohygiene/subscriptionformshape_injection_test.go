@@ -181,6 +181,43 @@ func requireKind(t *testing.T, findings []SubscriptionShapeFinding, kind string)
 	return SubscriptionShapeFinding{}
 }
 
+// requireKindSaying требует находку названного вида, чей ТЕКСТ называет ИМЕННО
+// проверяемую ветвь.
+//
+// Вида МАЛО там, где вид вносится не одной ветвью. Единица счёта у этого
+// анализатора двойная и её нельзя смешивать: ВИДОВ находок двадцать, а МЕСТ
+// внесения двадцать два — два вида несут по две ветви каждый
+// (`carrier-not-a-choice`, `anchor-not-in-envelope`). Подпроба, утверждающая
+// только вид, зеленеет, когда снятую ветвь подхватывает её соседка.
+//
+// Это измерено, а не предположено: сделав первую ветвь носителя недостижимой,
+// прогон остался ПОЛНОСТЬЮ зелёным — у несуществующего ветвления ноль ветвей,
+// ноль не равен двум, и находку того же вида выдавала вторая ветвь. Различает
+// их только текст.
+func requireKindSaying(
+	t *testing.T, findings []SubscriptionShapeFinding, kind, saying string,
+) SubscriptionShapeFinding {
+	t.Helper()
+	var sameKind []string
+	for _, f := range findings {
+		if f.Kind != kind {
+			continue
+		}
+		if strings.Contains(f.Reason, saying) {
+			return f
+		}
+		sameKind = append(sameKind, f.String())
+	}
+	if len(sameKind) > 0 {
+		t.Fatalf("вид %q выдан ДРУГОЙ его ветвью — проверяемая не наблюдаема "+
+			"независимо. Ждали текст %q, а получили:\n  %s",
+			kind, saying, strings.Join(sameKind, "\n  "))
+	}
+	t.Fatalf("гейт промолчал на дефекте: находки %v, а ждали %q со словами %q",
+		kinds(findings), kind, saying)
+	return SubscriptionShapeFinding{}
+}
+
 // requireSilence требует молчания — законный близнец не должен краснеть.
 func requireSilence(t *testing.T, findings []SubscriptionShapeFinding) {
 	t.Helper()
@@ -420,7 +457,7 @@ func TestSubscriptionShapeCarrierCanFail(t *testing.T) {
 			"  oneof carrier {\n    google.protobuf.Any state = 10;\n    StateUnavailable state_unavailable = 11;\n  }",
 			"  google.protobuf.Any state = 10;\n  StateUnavailable state_unavailable = 11;", 1)
 		findings, _ := shapeAudit(t, f, shapeStandLedger(), shapeStandAbsent())
-		requireKind(t, findings, "carrier-not-a-choice")
+		requireKindSaying(t, findings, "carrier-not-a-choice", "не выражен ветвлением")
 	})
 
 	t.Run("ветвей три — находка", func(t *testing.T) {
@@ -429,7 +466,7 @@ func TestSubscriptionShapeCarrierCanFail(t *testing.T) {
 			"    StateUnavailable state_unavailable = 11;",
 			"    StateUnavailable state_unavailable = 11;\n    string state_summary = 12;", 1)
 		findings, _ := shapeAudit(t, f, shapeStandLedger(), shapeStandAbsent())
-		requireKind(t, findings, "carrier-not-a-choice")
+		requireKindSaying(t, findings, "carrier-not-a-choice", "а обязано ровно две")
 	})
 
 	t.Run("состояние свободной структурой — находка", func(t *testing.T) {
@@ -475,7 +512,7 @@ func TestSubscriptionShapeAnchorCanFail(t *testing.T) {
 		f.Event = strings.Replace(f.Event,
 			"  // project_id — авторизуемый якорь, поле ОБОЛОЧКИ.\n  string project_id = 4;", "", 1)
 		findings, _ := shapeAudit(t, f, shapeStandLedger(), shapeStandAbsent())
-		requireKind(t, findings, "anchor-not-in-envelope")
+		requireKindSaying(t, findings, "anchor-not-in-envelope", "оболочка события не несёт")
 	})
 
 	t.Run("якорь ветвью ветвления — находка", func(t *testing.T) {
@@ -486,7 +523,7 @@ func TestSubscriptionShapeAnchorCanFail(t *testing.T) {
 			"    StateUnavailable state_unavailable = 11;",
 			"    StateUnavailable state_unavailable = 11;\n    string project_id = 12;", 1)
 		findings, _ := shapeAudit(t, f, shapeStandLedger(), shapeStandAbsent())
-		requireKind(t, findings, "anchor-not-in-envelope")
+		requireKindSaying(t, findings, "anchor-not-in-envelope", "стоит ветвью ветвления")
 	})
 
 	t.Run("якорь ВНУТРИ нагрузки — находка", func(t *testing.T) {
@@ -612,6 +649,14 @@ func TestSubscriptionShapeOwnerVocabularyCanFail(t *testing.T) {
 }
 
 // TestSubscriptionShapeRefusesAnEmptyRead — премиса: разбор пуст — ОТКАЗ.
+//
+// # Утверждается ТЕКСТ отказа, а не факт ошибки
+//
+// Отказов у анализатора три, и они стоят цепочкой: не прочитан файл → разбор
+// пуст → судится не тот файл. Снимешь первый — сработает второй, и `err != nil`
+// выполнится за него: подпроба останется зелёной, ничего не наблюдая. Поэтому
+// каждая называет СВОЁ сообщение, и снятие отказа краснит ту подпробу, которая
+// его и проверяет.
 func TestSubscriptionShapeRefusesAnEmptyRead(t *testing.T) {
 	t.Run("контракта нет", func(t *testing.T) {
 		root := subscriptionStand(t, map[string]string{"proto/.keep": ""})
@@ -623,6 +668,10 @@ func TestSubscriptionShapeRefusesAnEmptyRead(t *testing.T) {
 		if err == nil {
 			t.Fatal("отсутствие контракта прошло молча — «находок ноль» стало " +
 				"неотличимо от «прочитано ноль»")
+		}
+		if !strings.Contains(err.Error(), "не прочитан") {
+			t.Fatalf("отказ не про ЧТЕНИЕ файла — сработал следующий в цепочке, "+
+				"и подпроба зелена не о том: %v", err)
 		}
 	})
 
@@ -643,6 +692,10 @@ package kacho.cloud.subscription;
 			t.Fatal("пустой разбор прошёл молча — всякое утверждение о форме было бы " +
 				"утверждением ни о чём")
 		}
+		if !strings.Contains(err.Error(), "разбор пуст") {
+			t.Fatalf("отказ не про ПУСТОЙ РАЗБОР — файл прочитан, значит сработал "+
+				"чужой отказ: %v", err)
+		}
 	})
 
 	t.Run("судится не тот файл", func(t *testing.T) {
@@ -659,6 +712,13 @@ package kacho.cloud.subscription;
 		if err == nil {
 			t.Fatal("контракт чужого пакета принят за общую форму — вердикт относился бы " +
 				"не к тому предмету")
+		}
+		// Отказ обязан назвать ОБА пакета — прочитанный и ожидаемый: иначе
+		// «судит не тот файл» неотличимо от «файл не разобрался».
+		if !strings.Contains(err.Error(), "не тот файл") ||
+			!strings.Contains(err.Error(), f.Package) {
+			t.Fatalf("отказ не называет ЧУЖОГО ПАКЕТА — сработал отказ разбора, "+
+				"а не дискриминатора предмета: %v", err)
 		}
 	})
 }
