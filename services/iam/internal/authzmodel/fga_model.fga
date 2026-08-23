@@ -78,9 +78,12 @@ model
 # (identity facts — no tier ever CONFERS ownership; the refinement above reads
 # `owner` as a source of verbs, it never grants the relation itself),
 # `member` (membership), `announce_writer` (data plane only),
-# `fga_writer` (proxy), `use` / `token_creator` / `ssh` / `console` (these derive
-# from `admin`/`editor` on their own types and so follow the tier, by their
-# pre-existing definition — not by anything added here).
+# `fga_writer` (proxy), `use` / `ssh` / `console` (these derive from
+# `admin`/`editor` on their own types and so follow the tier, by their
+# pre-existing definition — not by anything added here). `token_creator` stood in
+# this list until #1101 removed the relation itself; the name is not kept here,
+# because a list naming a relation the body no longer declares reads as an
+# assertion about the surface of access and is simply false.
 #
 # What is KEPT and why:
 #   - direct relation-tuples on every type (`v_*`, tier viewer/editor/admin) —
@@ -381,6 +384,70 @@ type iam_user
     define v_list: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
+    # `token_issuer` — ДЕЙСТВОВАТЬ ОТ ИМЕНИ человека, и это НЕ то же, что править
+    # его запись (#1086).
+    #
+    # Персональный токен делает предъявителя САМИМ ЧЕЛОВЕКОМ: всюду, где действует
+    # он, и во ВСЕХ аккаунтах, где он состоит. Личность здесь глобальна — одна
+    # строка `iam_user` на все аккаунты человека (миграция
+    # 20260822234500_identity_rows_merge_and_rights_travel), — поэтому право,
+    # взятое ВНУТРИ одного аккаунта, вышло бы за его границу. Правка же записи
+    # (имя, почта, состояние) — управление строкой, и её границей аккаунт быть
+    # может.
+    #
+    # ИСТОЧНИКОВ УРОВНЯ АККАУНТА ЗДЕСЬ БЫТЬ НЕ ДОЛЖНО — ни делегированного
+    # администратора, ни владельца аккаунта, ни пообъектной выдачи, которую
+    # реконсайлер материализует на строке личности. Все три — права ВНУТРИ
+    # аккаунта, а выданное ими удостоверение действует за его границей.
+    # `security.md` §«Авторизация живёт в МОДЕЛИ» говорит это прямо: токен
+    # человека, оказавшийся у другого, действует ВЕЗДЕ, а не на той операции,
+    # ради которой его выдали (#1086).
+    #
+    # ПОЧЕМУ БЕЗ ПРЯМОГО СПИСКА СУБЪЕКТОВ. Отношение вычисляемое, значит его
+    # нельзя ВЫДАТЬ: ни кортежем, ни выдачей, ни материализацией. Единственный
+    # способ им обладать — БЫТЬ этим человеком. Прямой список («на будущее»)
+    # завёл бы путь выдачи, которого никто не производит, и вернул бы ровно ту
+    # дверь, которая здесь закрывается.
+    #
+    # ПОЧЕМУ НЕ `v_issuetoken`. Приставка `v_` объявляет ГЛАГОЛ типа, а глаголы
+    # разворачивает подстановка `*` в правиле роли (authzmap.GrantedVerbs): роль
+    # `*.*` владельца аккаунта немедленно материализовала бы его на каждой строке
+    # своего аккаунта — то есть имя вернуло бы дефект под другим написанием.
+    # Имя-без-приставки этого не допускает by construction: реконсайлер эмитит
+    # только `v_*`.
+    #
+    # УРОВЕНЬ 1 ЗДЕСЬ НЕ НАЗВАН, И ЭТО НЕ ПРОПУСК. Надзор администратора облака —
+    # плоское короткое замыкание СЛУЖБЫ (`authzguard.SubjectIsClusterAdmin`,
+    # зовётся из `AuthorizeService.verdict` после ответа формы), одинаковое для
+    # каждого отношения модели. Повторить его здесь значило бы завести второе
+    # место об одном предмете. Наблюдаемо это утверждается пробой
+    # `services/iam/internal/service/acting_as_a_person_integration_test.go`.
+    #
+    # Обе стороны держит `authzmap/acting_as_a_person_is_not_editing_his_record_test.go`:
+    # у отношения, которым каталог гейтит выпуск и отзыв, не должно быть источников
+    # уровня аккаунта, а сам человек источником быть ОБЯЗАН.
+    define token_issuer: subject
+    # `token_reader` — ВИДЕТЬ перечень СВОИХ удостоверений.
+    #
+    # Заведено вместе с `token_issuer` и по той же причине: человек, который
+    # выпускает и отзывает свои токены, обязан их ВИДЕТЬ. Иначе идентификатор
+    # выданного удостоверения существует ровно один раз — в ответе на выпуск, — и
+    # потерявший его теряет возможность отозвать: удостоверение живёт до конца
+    # своего срока, а владелец не может его снять. Отзыв, недостижимый владельцу,
+    # — не отзыв.
+    #
+    # НАДМНОЖЕСТВО `v_list`, а не замена: держатель перечисления на личности
+    # (администратор аккаунта, владелец, администратор облака) видит перечень как
+    # и раньше — сужать здесь нечего, метаданные токена ключа не раскрывают. Форма
+    # `or v_list` означает, что переключение гейта не требует ре-материализации ни
+    # одной выдачи и не имеет окна, в котором прежний держатель отказан.
+    #
+    # ПОЧЕМУ НЕ `subject` ПРЯМО В `v_list`. Это отношение читает ещё и
+    # `UserService.ListOperations`, и списочная видимость личностей; добавление
+    # источника туда меняло бы исход вопросов, которых здесь никто не задавал.
+    # Отдельное имя ограничивает изменение ровно тем гейтом, ради которого оно
+    # сделано.
+    define token_reader: subject or v_list
 
 type iam_service_account
   relations
@@ -390,7 +457,28 @@ type iam_service_account
     define editor: [user, service_account, group#member] or admin
     define viewer: [user, service_account, group#member] or editor
     define user: [user, service_account] or editor
-    define token_creator: [user, service_account] or admin
+    # ЗДЕСЬ СТОЯЛО `token_creator`, И ОНО СНЯТО (#1101). Отношение объявлялось,
+    # но его не требовала ни одна запись каталога, не читало ни одно объявление
+    # модели и не называл ни один прод-файл: выпуск и отзыв ключа служебной
+    # учётки (`SAKeyService.Issue`/`Revoke`) гейтятся `v_update` — тем же
+    # отношением, что и правка её записи.
+    #
+    # ПОЧЕМУ СНЯТО, А НЕ НАЧАЛО ТРЕБОВАТЬСЯ. Решение «выпуск ключа служебной
+    # учётки остаётся при `v_update`» уже принято и записано — им обосновано
+    # отделение выпуска ЛИЧНОГО токена в #1086 (`user_token_service.proto`:
+    # служебная учётка есть ресурс аккаунта, а не глобальная личность, и
+    # «действовать от её имени» границы аккаунта не покидает, поэтому SAKeyService
+    # этому не зеркалит). Отношение, объявленное вопреки принятому решению,
+    # оставляет два места об одном предмете, из которых верно одно.
+    #
+    # ЧТО СНЯТИЕ МЕНЯЕТ В ПОВЕДЕНИИ — ничего, и это сказано прямо. Отношение не
+    # требовалось, не писалось материализацией и не спрашивалось Check'ом ни разу
+    # за свою жизнь: снятие не ослабляет и не ужесточает доступ, оно убирает ВИД
+    # защиты там, где защиты не было.
+    #
+    # Класс держит гейт `nonverb_relation_has_reader_test.go`: неглагольное
+    # отношение без единого читателя — находка, и перечень его исключений
+    # истекает сам.
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin

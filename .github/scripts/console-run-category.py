@@ -79,6 +79,7 @@ def categorize(
     probe: str,
     verdict_ids: list[str],
     bookkeeping_ids: list[str],
+    verdict_unmet: bool = False,
 ) -> tuple[str, list[str], int]:
     """Возвращает (категория, строки вывода, код возврата).
 
@@ -146,6 +147,30 @@ def categorize(
     if probe_state == "failure" or verdict_broken:
         if verdict_broken:
             log.append(f"вердиктные шаги с отказом: {', '.join(verdict_broken)}")
+
+        # СВИДЕТЕЛЬСТВО ВЕРДИКТНОГО ШАГА ПЕРЕВЕШИВАЕТ ИСХОДЫ ШАГОВ (#1041).
+        #
+        # Условные шаги отработали — значит стенд был достижим В МОМЕНТ, КОГДА ИХ
+        # СПРАШИВАЛИ. Это не то же, что «был достижим во время прогона»: имя может
+        # перестать разрешаться после проверки и до проб, и тогда все пробы падают
+        # на навигации, не дойдя до продукта.
+        #
+        # Разметчик такого различить не может — он видит только исходы шагов. А
+        # гейт по отчёту может: он читает ТЕКСТ каждого отказа и отличает падение
+        # на навигации от падения по существу. Его вывод сюда и приезжает.
+        #
+        # Наблюдалось (прогон 32599157014): 66 проб упали за 500–800 мс с одним и
+        # тем же `ERR_NAME_NOT_RESOLVED`, вердикт пришёл красным, и разбор ушёл в
+        # консоль — при том что ветка проб не касалась НИ СТРОКОЙ.
+        if verdict_unmet:
+            log.append(
+                "гейт по отчёту сообщил ТРЕТЬЮ категорию: до продукта не дошла ни "
+                "одна проба. Условные шаги при этом отработали — значит стенд был "
+                "достижим, когда их спрашивали, и перестал быть достижим позже. "
+                "Разбирать надо достижимость стенда для браузера, а не консоль."
+            )
+            return UNMET, log, 0
+
         log.append(f"прогон проб: {probe_state}; все условные шаги отработали")
         log.append("Условие было создано — значит красное относится к продукту.")
         return RED, log, 0
@@ -214,8 +239,9 @@ def _steps(**kw: str) -> dict:
 def self_test() -> int:
     cases: list[tuple[str, bool, object, object]] = []
 
-    def check(name: str, steps: dict, want_cat: str, want_rc: int, probe: str = "probes") -> None:
-        cat, _, rc = categorize(steps, probe, _VERDICT, _BOOK)
+    def check(name: str, steps: dict, want_cat: str, want_rc: int, probe: str = "probes",
+              unmet: bool = False) -> None:
+        cat, _, rc = categorize(steps, probe, _VERDICT, _BOOK, verdict_unmet=unmet)
         ok = (cat == want_cat) and (rc == want_rc)
         cases.append((name, ok, (want_cat or "отказ", want_rc), (cat or "отказ", rc)))
 
@@ -241,6 +267,29 @@ def self_test() -> int:
 
     # КРАСНОЕ — пробы прошли, но гейт по отчёту нашёл недосчёт исполненного.
     check("гейт отчёта нашёл недосчёт → красное", _steps(**{"report-gate": "failure"}), RED, 0)
+
+    # ─── СВИДЕТЕЛЬСТВО ВЕРДИКТНОГО ШАГА (#1041), ОБЕ СТОРОНЫ ───────────────
+    #
+    # (а) пробы упали, условные шаги чисты, а гейт по отчёту говорит «до продукта
+    #     не дошла ни одна» → НЕ ВЫПОЛНИЛОСЬ, а не красное.
+    check("пробы упали + гейт назвал третью категорию → не выполнилось",
+          _steps(probes="failure", **{"report-gate": "failure"}), UNMET, 0, unmet=True)
+
+    # (б) ЗАКОННЫЙ БЛИЗНЕЦ: те же исходы шагов БЕЗ свидетельства → красное.
+    #     Без этой пары послабление стало бы маской: любое падение проб уводило бы
+    #     прогон в «условие не создано».
+    check("те же исходы без свидетельства → красное",
+          _steps(probes="failure", **{"report-gate": "failure"}), RED, 0, unmet=False)
+
+    # (в) ЗАКОННЫЙ БЛИЗНЕЦ: свидетельство не красит ЗЕЛЁНЫЙ прогон. Флаг обязан
+    #     влиять только там, где уже есть отказ, — иначе он меняет исход сам.
+    check("свидетельство при зелёном прогоне ничего не меняет", _steps(), GREEN, 0, unmet=True)
+
+    # (г) сломанный УСЛОВНЫЙ шаг остаётся третьей категорией и без свидетельства:
+    #     эта ветка решает раньше и от флага не зависит.
+    check("сломанное условие → не выполнилось независимо от свидетельства",
+          _steps(**{"stand": "failure", "probes": "skipped", "report-gate": "skipped"}),
+          UNMET, 0, unmet=False)
 
     # НЕ ВЫПОЛНИЛОСЬ — пробы не запускались, а условие отказа не назвало.
     # Отдельный случай: «пропущено» не есть «прошло».
@@ -291,6 +340,12 @@ def main() -> int:
     ap.add_argument("--probe-step", required=True, help="id шага, выносящего вердикт прогоном проб")
     ap.add_argument("--verdict-step", default="", help="id-ы вердиктных шагов через запятую")
     ap.add_argument("--bookkeeping", default="", help="id-ы служебных шагов через запятую")
+    # Свидетельство вердиктного шага: он один читает ТЕКСТЫ отказов и потому один
+    # может отличить «продукт ответил не то» от «до продукта не дошли». Значение
+    # приходит выходом шага; пустое и любое, кроме `true`, читается как «нет
+    # свидетельства» — умолчание обязано быть тем, что НЕ выдаёт послаблений.
+    ap.add_argument("--verdict-unmet", default="",
+                    help="`true`, если гейт по отчёту сообщил третью категорию")
     args = ap.parse_args()
 
     def ids(raw: str) -> list[str]:
@@ -303,7 +358,10 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
-    category, log, rc = categorize(steps, args.probe_step, ids(args.verdict_step), ids(args.bookkeeping))
+    category, log, rc = categorize(
+        steps, args.probe_step, ids(args.verdict_step), ids(args.bookkeeping),
+        verdict_unmet=args.verdict_unmet.strip().lower() == "true",
+    )
     if rc != 0:
         print("\n".join(log), file=sys.stderr)
         return rc

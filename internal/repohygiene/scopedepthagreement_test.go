@@ -26,6 +26,7 @@
 package repohygiene
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -39,6 +40,13 @@ import (
 const (
 	scopeDepthConstFile = "services/iam/internal/repo/kacho/pg/relverdict/query.go"
 	scopeDepthMigration = "services/iam/internal/migrations/0082_resource_parent_edge.sql"
+
+	// Третья величина названа координатой затем, чтобы находка о ней называла
+	// МЕСТО, а не только число. Обходу этот путь не нужен — он ищет по всему
+	// дереву и найдёт величину, куда бы она ни переехала; здесь путь служит
+	// только тексту находки, и его устаревание гейт заметит сам:
+	// `TestScopeDepthPlanFileCoordinateIsAlive` ниже.
+	scopeDepthPlanFile = "internal/authzplan/compile.go"
 )
 
 var (
@@ -66,18 +74,51 @@ func TestScopeDepthBoundsAgreeAcrossAllThreePlaces(t *testing.T) {
 		goDepth, scopeDepthConstFile, sqlDepth, scopeDepthMigration,
 		planDepthText(planDepth, planFound))
 
-	if goDepth != sqlDepth {
-		t.Errorf("предел обхода %d не равен границе схемы %d.\n"+
+	for _, finding := range adjudicateScopeDepth(scopeDepthTriple{
+		goDepth: goDepth, sqlDepth: sqlDepth,
+		planDepth: planDepth, planFound: planFound,
+	}) {
+		t.Error(finding)
+	}
+}
+
+// scopeDepthTriple — три величины, которые обязаны совпадать, и признак того,
+// найдена ли третья.
+type scopeDepthTriple struct {
+	goDepth   int
+	sqlDepth  int
+	planDepth int
+	planFound bool
+}
+
+// adjudicateScopeDepth — СУЖДЕНИЕ О ТРЁХ ВЕЛИЧИНАХ, отделённое от их добычи.
+//
+// Отделено намеренно: пока сверка жила внутри пробы, доказать её способность
+// упасть можно было только испортив настоящее дерево — то есть никак. Гейт,
+// который нельзя уронить нарочно, не отличается от гейта, который не может
+// упасть вовсе; сверка величин ЗЕЛЕНЕЛА БЫ на любой из них, если бы предикат
+// однажды перестал находить своё число.
+//
+// Находка называет ОБЕ координаты: расхождение — это всегда пара, и «предел
+// обхода 4» без второго числа не говорит, что чинить.
+func adjudicateScopeDepth(tr scopeDepthTriple) []string {
+	var out []string
+	if tr.goDepth != tr.sqlDepth {
+		out = append(out, fmt.Sprintf("предел обхода %d (%s) не равен границе схемы %d (%s).\n"+
 			"    Тем же числом ограничена выборка внутри соединения вбок, и довод «предел не "+
 			"усекает» держится ровно их равенством. При меньшем пределе выборка молча "+
 			"отбросит рёбра, причём по ORDER BY pe.depth — ДАЛЬНИХ предков первыми, то есть "+
 			"аккаунт и кластер. Область схлопнется вверх, ответ останется «нет», и отказ "+
-			"будет неотличим от честного.", goDepth, sqlDepth)
+			"будет неотличим от честного.",
+			tr.goDepth, scopeDepthConstFile, tr.sqlDepth, scopeDepthMigration))
 	}
-	if planFound && planDepth != goDepth {
-		t.Errorf("предел компилятора модели %d не равен пределу обхода %d: модель выводит "+
-			"права на глубину, до которой обход не доходит (или наоборот)", planDepth, goDepth)
+	if tr.planFound && tr.planDepth != tr.goDepth {
+		out = append(out, fmt.Sprintf("предел компилятора модели %d (%s) не равен пределу "+
+			"обхода %d (%s): модель выводит права на глубину, до которой обход не доходит "+
+			"(или наоборот)",
+			tr.planDepth, scopeDepthPlanFile, tr.goDepth, scopeDepthConstFile))
 	}
+	return out
 }
 
 func readFileForDepth(t *testing.T, path string) string {

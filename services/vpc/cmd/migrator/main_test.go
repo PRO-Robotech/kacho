@@ -61,8 +61,8 @@ func TestRootCmd_HelpDoesNotError(t *testing.T) {
 			t.Errorf("в перечне команд нет %q: %q", sub, block)
 		}
 	}
-	// Глагол create снят (#566): имя миграции выводится из номера задачи и
-	// пишется рукой. Обещать его в помощи нельзя — обещание не исполнимо.
+	// Глагол create снят (#566): имя миграции пишется рукой. Обещать его в
+	// помощи нельзя — обещание не исполнимо.
 	if strings.Contains(block, "create") {
 		t.Errorf("в перечне команд снова есть create: %q", block)
 	}
@@ -109,8 +109,8 @@ func TestCreateVerbIsGone(t *testing.T) {
 		"create", "probe_name",
 	}, nil)
 	if err == nil {
-		t.Fatal("глагол create снова принимается — имя миграции выводится из номера " +
-			"задачи и пишется рукой, см. docs/architecture/migration-version-namespace.md")
+		t.Fatal("глагол create снова принимается — имя миграции пишется рукой, см. " +
+			"docs/architecture/migration-version-namespace.md")
 	}
 	if !strings.Contains(err.Error(), "unknown command") {
 		t.Fatalf("ожидался отказ cobra «unknown command», получено: %v", err)

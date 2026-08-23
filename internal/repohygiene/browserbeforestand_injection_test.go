@@ -151,3 +151,52 @@ func TestBrowserBeforeStandGateReportsUnparsableFile(t *testing.T) {
 		t.Errorf("перепись не засчитала прочитанный файл: %d", census.Files)
 	}
 }
+
+// TestSelfTestStepIsNotCountedAsAcquisition — доказательство в обе стороны для
+// различения «добыл браузер» и «прогнал самопроверку скрипта добычи».
+//
+// Без него гейт можно обойти, не тронув ни одной его строки: оставить
+// самопроверку впереди подъёма стенда, а настоящую добычу увести за него.
+// Порядок при этом «соблюдён» — по шагу, который браузера не добывает.
+func TestSelfTestStepIsNotCountedAsAcquisition(t *testing.T) {
+	// (а) ДЕФЕКТ: настоящая добыча ПОСЛЕ стенда, самопроверка — до.
+	broken := `
+jobs:
+  probes:
+    steps:
+      - name: самопроверка
+        run: bash .github/scripts/install-pinned-browser.sh --self-test
+      - name: стенд
+        run: make dev-up
+      - name: браузер
+        run: bash .github/scripts/install-pinned-browser.sh
+`
+	findings, census := checkBrowserBeforeStand("синтетика.yml", broken)
+	if census.Browser != 1 {
+		t.Fatalf("самопроверка засчитана добычей: шагов добычи %d, ждали 1", census.Browser)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("порядок нарушен, а гейт молчит: находок %d — самопроверка замаскировала "+
+			"настоящую добычу", len(findings))
+	}
+
+	// (б) ЗАКОННЫЙ БЛИЗНЕЦ: то же дерево, но добыча на своём месте.
+	fine := `
+jobs:
+  probes:
+    steps:
+      - name: самопроверка
+        run: bash .github/scripts/install-pinned-browser.sh --self-test
+      - name: браузер
+        run: bash .github/scripts/install-pinned-browser.sh
+      - name: стенд
+        run: make dev-up
+`
+	findings, census = checkBrowserBeforeStand("синтетика.yml", fine)
+	if len(findings) != 0 {
+		t.Fatalf("ложное срабатывание на исправном порядке: %v", findings)
+	}
+	if census.Browser != 1 {
+		t.Fatalf("перепись добычи %d, ждали 1 (самопроверка не считается)", census.Browser)
+	}
+}
