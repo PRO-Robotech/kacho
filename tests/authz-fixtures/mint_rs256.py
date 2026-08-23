@@ -20,8 +20,14 @@ uses, no dev-bypass, no direct Hydra-admin:
      (`aud=https://{API_DOMAIN}`) → a per-subject RS256 token whose `kacho_principal_*`
      claims (token-hook enrichment) resolve to that subject's User/SA + its bindings.
 
-Hydra remains the issuer/signer throughout; we only broker exchanges. Requires
-PyJWT + cryptography (ES256 signing). Usable as a library (import) or a CLI.
+ИЗДАТЕЛЬ БОЛЬШЕ НЕ ОДИН, И ЭТО НЕ ДЕТАЛЬ (задача #1119). Шаг 1 чеканим МЫ: iam
+подписывает бутстрап-удостоверение своим ключом из ключницы, издателем стоит наш
+`authn.token-signing.issuer`, а к внешнему поставщику на этом пути не идёт ни
+один вызов. Шаг 2 пока остаётся за поставщиком. Читателю, разбирающему отказ
+шага 1, идти в журналы поставщика бесполезно — его там нет; смотреть надо
+издателя токена (`iss`) и наш набор проверочных ключей.
+
+Requires PyJWT + cryptography (ES256 signing). Usable as a library (import) or a CLI.
 
 STATUS (Phase C, #59) — UNBLOCKED + PROVEN end-to-end:
   - `mint_bootstrap` (bootstrap admin) — PROVEN: MintBootstrapToken → RS256 →
@@ -554,6 +560,38 @@ def sa_platform_token(base_url: str, admin_token: str, sva_id: str,
     return exchange_at_platform(token_url, assertion, api_audience)
 
 
+# ── сквозная проверка: край ПРИНИМАЕТ наше бутстрап-удостоверение ───────────
+def assert_bootstrap_accepted_by_the_edge(base_url: str, token: str) -> dict:
+    """Предъявляет бутстрап-удостоверение краю и ПАДАЕТ, если тот его не принял.
+
+    ЗАЧЕМ ОТДЕЛЬНЫМ ШАГОМ, а не «дальше по посеву само выяснится». Отказ края на
+    первом же предъявлении сегодня проявляется через два-три шага и обвиняет
+    невиновного: падает то, что честно сделало своё дело при отсутствующем
+    предмете. Шаг, создающий ПРЕДМЕТ всего посева, обязан нести собственное
+    утверждение.
+
+    ЧТО ИМЕННО УТВЕРЖДАЕТСЯ — исход, а не факт вызова. Токен, который край
+    отверг, неотличим от невыпущенного по всему, что можно спросить у iam:
+    удостоверение выдано, подпись стоит, срок идёт. Различает их только
+    предъявление.
+
+    Утверждение стало нужнее с задачи #1119: подпись теперь НАША, и вместе с ней
+    к нам переехали три величины, которые край сверяет, — издатель, набор
+    проверочных ключей и объявленный тип токена. Расхождение любой из них
+    производит ровно этот отказ.
+    """
+    url = base_url.rstrip("/") + "/iam/v1/accounts"
+    status, body = _get_json(url, bearer=token)
+    if status != 200:
+        raise RuntimeError(
+            "край НЕ принял бутстрап-удостоверение: GET {} ответил {} {}\n"
+            "сверьте три величины, которые край сравнивает с токеном: издателя "
+            "(`iss` против api-gateway.tokenAcceptance.issuers), адрес нашего "
+            "набора ключей (issuerKeySets) и адресат (`aud` против домена API)".format(
+                url, status, body))
+    return body
+
+
 # ── CLI ─────────────────────────────────────────────────────────────────────
 def main() -> int:
     p = argparse.ArgumentParser(description="Production-mode RS256 token minter (#59)")
@@ -577,7 +615,9 @@ def main() -> int:
                         "HYDRA_ASSERTION_AUDIENCE")
     p.add_argument("--api-audience", default="https://api.kacho.cloud",
                    help="requested token audience (gateway ExpectedAudience)")
-    p.add_argument("--mode", choices=["bootstrap", "user", "sa"], required=True)
+    p.add_argument("--mode", choices=["bootstrap", "bootstrap-verify", "user", "sa"], required=True,
+                   help="bootstrap — напечатать удостоверение; bootstrap-verify — "
+                        "напечатать И утвердить, что край его принял")
     p.add_argument("--subject", help="user_id (user) or sva_id (sa)")
     p.add_argument("--created-by", help="created_by_user_id for Issue")
     # `--ttl-seconds` removed with the request field it fed: the issuer owns the
@@ -587,6 +627,11 @@ def main() -> int:
     mint_kwargs = {"grpc_addr": args.iam_grpc, "cert": args.mtls_cert, "key": args.mtls_key}
     if args.mode == "bootstrap":
         print(mint_bootstrap(**mint_kwargs))
+        return 0
+    if args.mode == "bootstrap-verify":
+        tok = mint_bootstrap(**mint_kwargs)
+        assert_bootstrap_accepted_by_the_edge(args.base_url, tok)
+        print(tok)
         return 0
 
     admin = mint_bootstrap(**mint_kwargs)

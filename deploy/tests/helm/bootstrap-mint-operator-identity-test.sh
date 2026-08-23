@@ -6,7 +6,8 @@
 # has EXACTLY ONE caller, and both halves of that statement are rendered by Helm.
 #
 # BACKGROUND. `iam.v1.InternalBootstrapTokenService/MintBootstrapToken` issues a
-# Hydra-signed RS256 Bearer for a cluster `system_admin` ServiceAccount. It has no
+# Bearer for a cluster `system_admin` ServiceAccount, подписанный НАШИМ
+# подписантом (задача #1119 — прежде его выдавал внешний поставщик). It has no
 # ReBAC gate (it exists to obtain the FIRST token, before any relation exists) and
 # no api-gateway REST route (on the plain-HTTP internal listener a route would be a
 # credential-free takeover). Its only credential is the CALLER'S CLIENT CERTIFICATE:
