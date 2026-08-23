@@ -59,6 +59,13 @@
       "note": "The earlier, non-working quota mechanism. Zero rows by construction: no production path ever inserted one — the only INSERT statements against this table live in tests (measured on the branch base: 0 in non-test code, 2 in tests). Because the ceiling row was never written, the charge always read zero rows, took that for 'no limit assigned' and let the create through, so the mechanism never refused anything in its whole life. The canonical accounting that replaces it lives in the same migration and keys on (carrier, carrier id, kind); nothing a caller created is lost, because nothing a caller created was ever here."
     },
     {
+      "version": 20260823221500,
+      "table": "compute_watch_cursors",
+      "kind": "retire",
+      "expect_rows": 0,
+      "note": "Server-side subscription cursors, keyed by subscriber. Zero rows by construction: the table had no reader and no writer in its whole life — no query, no insert, no update in production code, and no surface on any listener through which a caller could have created one. It is dropped for what its shape says rather than for what it costs: the position of a subscription belongs to the CLIENT, which is what lets a stream survive reconnecting to a different replica, and a table of per-subscriber cursors reads as an instruction to hold it on the server instead. Left in place it would not be picked up and discarded like ordinary dead code; it would quietly reverse a decision, and the reversal would surface on a run where the stream failed to survive a reconnect."
+    },
+    {
       "version": 22,
       "table": "disk_types",
       "kind": "retire",
