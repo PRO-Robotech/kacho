@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // The external-isolation gate enumerates its subject from the proto tree — every
@@ -39,13 +40,23 @@ var (
 
 func TestRefusalCoversEveryInternalRPCInTheProtoTree(t *testing.T) {
 	root := repoRoot(t)
-	protos, err := filepath.Glob(filepath.Join(root, "proto", "kacho", "cloud", "*", "v1", "*.proto"))
+	// The subject is the whole contract tree, not the `v1/` layout. A domain that
+	// puts its contract next to the form rather than under `v1/` used to fall out
+	// of the subject silently — measured 2026-08-23: one such domain existed, its
+	// Internal* method was in no gate's subject, and the refusal's coverage of it
+	// was a promise rather than a walk. `v1/` is a convention, not an invariant.
+	//
+	// The corpus comes from the git index, not from a disk walk: a walk would read
+	// whatever the working copy happens to hold, and the verdict would become a
+	// property of the machine rather than of the commit.
+	protos, err := treecorpus.UnderWithSuffix(filepath.Join(root, "proto", "kacho", "cloud"), ".proto")
 	if err != nil {
-		t.Fatalf("glob: %v", err)
+		t.Fatalf("proto corpus: %v", err)
 	}
 	if len(protos) == 0 {
 		t.Fatal("no proto files found — this test would then vacuously pass, which is the one outcome it must not have")
 	}
+	t.Logf("proto files in the index under the contract tree: %d", len(protos))
 
 	var methods []string
 	for _, p := range protos {
