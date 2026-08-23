@@ -30,7 +30,9 @@ STATUS (Phase C, #59) — UNBLOCKED + PROVEN end-to-end:
     (the gateway REST route is gone) — the token it returns is unchanged.
   - `sa_rs256` (per-subject SA) — PROVEN end-to-end against the production-strict
     stand: SAKeyService.Issue (WITH `audience:[https://api.kacho.cloud]` — the
-    SA-key resolveAudience honours caller audiences, unlike user-tokens) → sign
+    SA-key resolveAudience honours caller audiences; персональный токен адресата
+    у внешнего поставщика не объявляет вовсе с #1121, поэтому прежнее сравнение
+    «в отличие от пользовательских» больше не о чем) → sign
     client_assertion → client_credentials exchange → RS256 SA token whose
     token-hook `kacho_principal_type=service_account` enrichment makes it
     acr-EXEMPT (stepup_gate O-1) and reachable on acr=1 resource RPCs. The
@@ -567,14 +569,16 @@ def sa_platform_token(base_url: str, admin_token: str, sva_id: str,
                       assertion_audience: str | None = None) -> str:
     """Ключ служебной учётки → утверждение НАШЕМУ издателю → токен НАШЕЙ чеканки.
 
-    КЛИЕНТОМ ЗДЕСЬ НАЗЫВАЕТСЯ СТРОКА НАШЕГО РЕЕСТРА, А НЕ КЛИЕНТ ПОСТАВЩИКА, и
-    это единственное, чем полосы различаются по существу. Одна выдача ключа
-    заводит ДВЕ записи: клиента у внешнего поставщика (идентификатор — UUID, поле
-    `clientId`) и строку у нас (идентификатор с префиксом реестра, поле `keyId`).
-    Резолвер нашего проверяющего читает СВОИ таблицы, поэтому утверждение,
-    назвавшееся идентификатором поставщика, отвергается как «клиент не
-    разрешается» — измерено вызовом: `client-unknown` в журнале iam против
-    `200` на том же ключе с идентификатором нашей строки.
+    КЛИЕНТОМ ЗДЕСЬ НАЗЫВАЕТСЯ СТРОКА НАШЕГО РЕЕСТРА. Резолвер нашего проверяющего
+    читает СВОИ таблицы по нашему идентификатору (`keyId`), поэтому именно он и
+    подписывается в `iss`/`sub`. Измерено вызовом: утверждение, назвавшееся чужим
+    идентификатором, отвергается как «клиент не разрешается».
+
+    ЭТО ЕДИНСТВЕННАЯ ПОЛОСА ОБМЕНА КЛЮЧА СЛУЖЕБНОЙ УЧЁТКИ (задача #1120). Прежде
+    одна выдача заводила ДВЕ записи — клиента у внешнего поставщика и строку у
+    нас, — и обменять ключ можно было у обоих. На переведённом контуре зеркала у
+    поставщика не заводится, и `clientId` в ответе выдачи называет ту же строку
+    нашего реестра, что и `keyId`.
     """
     resp = issue_sa_oauth(base_url, admin_token, sva_id, created_by_user_id)
     _, key, registry_client_id = _extract_oauth(resp)
@@ -628,8 +632,13 @@ def main() -> int:
         print(user_platform_token(args.base_url, admin, args.subject, created_by,
                                   PLATFORM_TOKEN_URL, args.api_audience))
     else:
-        print(sa_rs256(args.base_url, admin, args.subject, created_by,
-                       args.hydra_token_url, args.assertion_audience, args.api_audience))
+        # Ключ служебной учётки обменивается У НАШЕГО издателя и только у него
+        # (задача #1120): зеркала клиента у поставщика больше не заводится,
+        # поэтому `--hydra-token-url`/`--assertion-audience` этой полосы не
+        # касаются вовсе. Оставить прежний вызов значило бы держать режим,
+        # отвечающий `invalid_client` при любом входе.
+        print(sa_platform_token(args.base_url, admin, args.subject, created_by,
+                                PLATFORM_TOKEN_URL, args.api_audience))
     return 0
 
 

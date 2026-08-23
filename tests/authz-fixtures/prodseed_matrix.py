@@ -85,21 +85,13 @@ from principal_pairings import unpaired_principals  # noqa: E402
 INTERNAL = os.environ.get("INTERNAL_BASE_URL", "http://localhost:18081")
 PUBLIC = os.environ.get("BASE_URL", "http://localhost:18080")
 IAM_GRPC = os.environ.get("IAM_INTERNAL_GRPC", "localhost:19091")
-# POST target of the OAuth2 client_credentials exchange (the ONE sanctioned
-# direct-Hydra hop — security.md §"iam — единый фасад": everything else, issuance
-# included, goes through iam).
-HYDRA_TOKEN = os.environ.get("HYDRA_TOKEN_URL", "http://localhost:14444/oauth2/token")
-# `aud` of the private_key_jwt client_assertion = Hydra's advertised token endpoint
-# (self.issuer + /oauth2/token). A STRING, not a dialled URL — the POST goes to
-# HYDRA_TOKEN above, which is a different address entirely.
+# ЗДЕСЬ СТОЯЛИ АДРЕС ОБМЕНА У ПРЕЖНЕГО ИЗДАТЕЛЯ И АДРЕСАТ ЕГО УТВЕРЖДЕНИЯ —
+# у них не осталось читателя (задача #1120).
 #
-# The scheme tracks the provider's ISSUER IDENTITY, not the transport. On a stand whose
-# provider runs without its development flag the issuer must be https (the provider
-# refuses to start otherwise), so this audience is https too even though the listener is
-# reached over plain http through a port-forward. Getting this wrong does not degrade
-# anything — the provider answers `invalid_client` and the seed cannot obtain a single
-# subject token.
-ASSERT_AUD = m.ASSERTION_AUDIENCE
+# Ключ служебной учётки на переведённом контуре зеркала у прежнего издателя не
+# заводит, поэтому обменять его там нельзя ни при каком входе: клиента с таким
+# именем он не знает. Обе величины поэтому сняты, а не оставлены «на случай» —
+# оставленная величина читается следующим как действующая полоса.
 # Requested token audience = api-gateway ExpectedAudience ("https://"+APIDomain).
 API_AUD = os.environ.get("API_AUDIENCE", "https://api.kacho.cloud")
 # ── ВТОРАЯ ПОЛОСА КРАЯ: НАШ издатель (задача #1014) ───────────────────────
@@ -298,35 +290,20 @@ def custom_role(account_id, name, module, resources, verbs):
 
 
 def sa_token_with_key(sva):
-    """Issue an api-audience SA-key, exchange it -> (RS256 bearer, key id).
+    """Выдать ключ служебной учётке и обменять его У НАШЕГО издателя → (токен, id ключа).
 
-    The key id is returned because REVOCATION is part of the contract some cases probe:
-    a token whose backing key was revoked must stop being accepted. You cannot revoke a
-    key you did not keep the id of.
-    """
-    kr = _curl("POST", f"/iam/v1/serviceAccounts/{sva}/keys", boot,
-               {"serviceAccountId": sva, "audience": [API_AUD]})
-    done = _poll(kr.get("id"), boot)
-    if done.get("error"):
-        raise RuntimeError(f"SA-key issue errored for {sva}: {done['error']}")
-    resp = done.get("response", {})
-    cid, key, kid = m._extract_oauth(resp)
-    assertion = m.sign_client_assertion(cid, key, kid, ASSERT_AUD)
-    return m.exchange(HYDRA_TOKEN, assertion, API_AUD), kid
+    ПОЛОСА ОДНА, И ЭТО ФАКТ О ПРОДУКТЕ, А НЕ ВЫБОР ПОСЕВА (задача #1120). Выдача
+    ключа на переведённом контуре зеркала у прежнего издателя не заводит, поэтому
+    обменять ключ там нельзя ни при каком входе — клиента с таким именем он не
+    знает. Прежде полос было две, и посев держал обе.
 
+    КЛИЕНТОМ НАЗЫВАЕТСЯ СТРОКА НАШЕГО РЕЕСТРА. Утверждение называет себя `iss`/`sub`
+    именем клиента, а резолвер нашего проверяющего читает СВОИ таблицы по нашему
+    идентификатору (`keyId`). Зеркальная колонка на этом пути не участвует вовсе.
 
-def sa_token(sva):
-    """Issue an api-audience SA-key, sign client_assertion, exchange -> RS256."""
-    return sa_token_with_key(sva)[0]
-
-
-def sa_platform_token(sva):
-    """Тот же ключ, ДРУГОЙ издатель: токен НАШЕЙ чеканки (ES256, iss=наш).
-
-    Это и есть вторая полоса края, и обменивается она ТЕМ ЖЕ ключом, что первая:
-    ключ выдаёт `SAKeyService.Issue`, а кому предъявить подписанное им утверждение
-    — решает `aud` утверждения. Отдельного реестра клиентов у нашего издателя нет
-    by construction (резолвер читает те же две таблицы ключей).
+    ID КЛЮЧА ВОЗВРАЩАЕТСЯ, потому что ОТЗЫВ — часть контракта, который проверяют
+    кейсы: токен, чей ключ снят, обязан перестать приниматься. Снять ключ, id
+    которого не сохранили, нечем.
 
     ОТКАЗ ПОДНИМАЕТСЯ, А НЕ ПРОГЛАТЫВАЕТСЯ. Пустая величина в посеве доехала бы до
     пробы отказом доступа — то есть вердиктом о продукте там, где предмет оснастка
@@ -337,13 +314,17 @@ def sa_platform_token(sva):
     done = _poll(kr.get("id"), boot)
     if done.get("error"):
         raise RuntimeError(f"SA-key issue errored for {sva}: {done['error']}")
-    # Клиент НАШЕГО реестра — это `keyId`, а не `clientId`: вторая величина
-    # принадлежит внешнему поставщику. Разбор — в godoc `m.sa_platform_token`.
     _, key, registry_client_id = m._extract_oauth(done.get("response", {}))
     assertion = m.sign_client_assertion(
         registry_client_id, key, registry_client_id, PLATFORM_ASSERT_AUD,
         token_type=m.CLIENT_ASSERTION_TOKEN_TYPE)
-    return m.exchange_at_platform(PLATFORM_TOKEN_URL, assertion, API_AUD)
+    return (m.exchange_at_platform(PLATFORM_TOKEN_URL, assertion, API_AUD),
+            registry_client_id)
+
+
+def sa_token(sva):
+    """Тот же выпуск, когда id ключа вызывающему не нужен."""
+    return sa_token_with_key(sva)[0]
 
 
 def grant_user(uid, role_id, scope_type, scope_id):
@@ -731,14 +712,17 @@ def seed() -> dict:
     # переждать срок) — она ЕСТЬ: `services/iam/tests/newman/scripts/run-expired-bearer.sh`.
     # В общий параллельный прогон она не входит: идёт столько, сколько живёт предъявитель.
     #
-    # СРОК — 14400 с (4 ч), А НЕ 900 с: здесь стояло 900, и это было неверно. Замер
-    # 2026-08-04 тремя независимыми способами — `exp - iat` четырёх выпущенных токенов,
-    # настройка провайдера (`ttl.access_token: 4h`) и отсутствие per-client override на
-    # этом стенде (`KACHO_IAM_SAKEY_ACCESSTOKENTTL` не задан → `accessTokenLifespan()`
-    # пуст → берётся умолчание провайдера). Величина здесь и есть смысл записи: тому, кто
-    # ставит волну в расписание, «переждать 15 минут» и «переждать 4 часа» — разные
-    # решения. `IssueSAKeyRequest.ttl_seconds` срок токена НЕ укорачивает: это поле
-    # ограничивает срок самого КЛЮЧА, а не `access_token_lifespan` OAuth-клиента.
+    # СРОК ТЕПЕРЬ ЗАДАЁМ МЫ, И ЭТО СМЕНИЛО ВЕЛИЧИНУ (задача #1120). Здесь стояло
+    # 14400 с (4 ч) — умолчание прежнего издателя, замеренное 2026-08-04. Ключ
+    # служебной учётки больше не обменивается у него вовсе, а наш выпуск берёт срок
+    # из объявления посадки (`authn.client-token.token-ttl`, 15m в профилях dev-prod
+    # и prod) и УКОРАЧИВАЕТ его до остатка жизни самого ключа. Тому, кто ставит волну
+    # в расписание, эта величина и есть смысл записи; перемерять её надо по профилю
+    # стенда, а не по этой строке.
+    #
+    # СЛЕДСТВИЕ, КОТОРОЕ ВАЖНЕЕ ЧИСЛА: `IssueSAKeyRequest.ttl_seconds` теперь СРЕЗАЕТ
+    # и срок токена — наш выпуск не выдаёт токен, переживающий свой ключ. Прежде это
+    # поле ограничивало только сам ключ.
     #
     # ОТЗЫВ ПРОВЕРЯЕТСЯ ПО-НАСТОЯЩЕМУ. `apiTokenRevoked` — это выпущенный токен, чей
     # ключ затем снят `SAKeyService.Revoke`. Если край такой предъявитель всё ещё
@@ -750,14 +734,18 @@ def seed() -> dict:
     tok_apirev, key_apirev = sa_token_with_key(sva_apirev)
     _curl("DELETE", f"/iam/v1/serviceAccounts/{sva_apirev}/keys/{key_apirev}", boot)
 
-    # ВТОРАЯ ПОЛОСА КРАЯ — предъявитель НАШЕЙ чеканки (#1014).
+    # ПРЕДЪЯВИТЕЛЬ НАШЕЙ ЧЕКАНКИ ДЛЯ СУИТЫ КРАЯ (#1014).
     #
-    # Учётка та же, что у `jwtSAA`, и это осознанно: полосы различаются ИЗДАТЕЛЕМ,
-    # а не субъектом, и держать под второй издатель отдельного субъекта значило бы
-    # сравнивать две вещи сразу. Ключ выдаётся СВОЙ (ключи аддитивны), поэтому
+    # Слот остаётся отдельным, хотя полоса выдачи ключа теперь одна: суита края
+    # сравнивает издателя ЭТОГО предъявителя с издателем соседней полосы
+    # (`jwtBootstrap`, чеканит прежний издатель) и требует, чтобы они разошлись.
+    # Держать сравнение на слоте, который кто-то однажды переиспользует под другой
+    # предмет, значило бы менять смысл кейса чужой правкой.
+    #
+    # Учётка та же, что у `jwtSAA`, а ключ выдаётся СВОЙ (ключи аддитивны), поэтому
     # снятие ключа у `apiTokenRevoked` — другая учётка — этого предъявителя не
     # задевает.
-    tok_platform = sa_platform_token(sva_saA)
+    tok_platform = sa_token(sva_saA)
 
     # ТА ЖЕ полоса, ДРУГОЙ субъект — человек (#1121). Держатся обе, потому что
     # край выводит принципала из утверждений токена, а у человека и машины они
@@ -778,8 +766,8 @@ def seed() -> dict:
 
     fixtures = {
         "jwtBootstrap": boot,
-        # Предъявитель ВТОРОЙ полосы: `iss` — наш издатель, подпись ES256, ключ из
-        # нашего же реестра. Слот читает суита края (gateway/tests/newman).
+        # `iss` — наш издатель, подпись ES256, ключ из нашего же реестра. Слот
+        # читает суита края (gateway/tests/newman).
         "jwtPlatformIssuer": tok_platform,
         # Предъявитель второй полосы, чей принципал — ЧЕЛОВЕК: персональный токен,
         # обменянный у нашего издателя. Слот читает суита края.
