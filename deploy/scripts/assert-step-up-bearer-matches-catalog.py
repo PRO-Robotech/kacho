@@ -74,6 +74,7 @@ import sys
 import tempfile
 
 CATALOG_REL = "gateway/internal/middleware/embed/permission_catalog.json"
+ROUTE_TABLE_REL = "gateway/internal/middleware/rest_route_table_gen.go"
 CEREMONY_SEED_REL = "tests/authz-fixtures/prodseed_ceremony.py"
 CEREMONY_DECL_REL = "tests/authz-fixtures/ceremony_credentials.py"
 COLLECTION_GLOBS = (
@@ -97,16 +98,23 @@ CEREMONY_BEARER_LEVEL = {
 # REST-сегмент ресурса → gRPC-служба. Держится узким НАМЕРЕННО: шаг, чью ручку
 # сопоставить не удалось, гейт не судит и честно исключает из переписи, а не
 # засчитывает как пройденный.
-RESOURCE_SERVICE = {
-    "accounts": "AccountService",
-    "projects": "ProjectService",
-    "roles": "RoleService",
-    "accessBindings": "AccessBindingService",
-    "serviceAccounts": "ServiceAccountService",
-    "users": "UserService",
-    "groups": "GroupService",
-}
-METHOD_VERB = {"POST": "Create", "PATCH": "Update", "DELETE": "Delete"}
+# Маршрут шага разрешается ПОРОЖДЁННОЙ таблицей края, а не рукописным словарём.
+#
+# ЗДЕСЬ СТОЯЛ СЛОВАРЬ ИЗ СЕМИ РЕСУРСОВ И ТРЁХ ГЛАГОЛОВ, а адрес разбирался
+# регуляркой на ДВА сегмента. Для под-ресурса это давало неверный ответ молча:
+# `DELETE /iam/v1/users/{id}/tokens/{tid}` (отзыв персонального удостоверения,
+# порог 2) опознавался как `UserService/Delete` (порог 1) — то есть верный шаг
+# объявлялся расхождением; а `POST /iam/v1/users/{id}/tokens` (выпуск, порог 2)
+# давал имя, которого в каталоге нет вовсе, и выпадал из суждения БЕЗ СЛЕДА.
+# Второе хуже первого: ручка с поднятым порогом — ровно тот предмет, ради
+# которого гейт заведён, и он её не видел.
+#
+# Таблица `generatedRestRoutes` порождается из тех же аннотаций `google.api.http`,
+# по которым маршрутизирует сам край, и её свежесть held отдельным гейтом того же
+# задания (`make -C gateway rest-route-table-check`). Значит второго места об
+# одном предмете больше нет: разойтись с краем разбору нечем.
+_ROUTE_RE = re.compile(
+    r'\{Method:\s*"([A-Z]+)",\s*Template:\s*"([^"]+)",\s*FQN:\s*"([^"]+)"\}')
 
 _BEARER_RE = re.compile(r"bearer from env '([^']+)'")
 
@@ -139,17 +147,69 @@ def _bearer_var(item) -> str | None:
     return None
 
 
-def _fqn(method: str, raw_url: str) -> str | None:
-    m = re.match(r"^/iam/v1/([A-Za-z]+)(/([^/?]+))?", raw_url)
-    if not m:
+def load_routes(root: str) -> list[tuple[str, str, str]]:
+    """Порождённая таблица края: (HTTP-метод, шаблон пути, gRPC-FQN)."""
+    try:
+        with open(os.path.join(root, ROUTE_TABLE_REL), encoding="utf-8") as fh:
+            return _ROUTE_RE.findall(fh.read())
+    except OSError:
+        return []
+
+
+def _segments(path: str) -> list[str]:
+    return [seg for seg in path.split("?", 1)[0].split("/") if seg]
+
+
+def _template_matches(template: str, segs: list[str]) -> bool:
+    """Шаблон маршрута против сегментов адреса шага.
+
+    Место поля (`{user_id}`) накрывает РОВНО ОДИН сегмент, поэтому длины совпадают
+    и разбор однозначен: под-ресурс и его родитель различаются числом сегментов, а
+    не порядком перебора. Суффикс-действие (`{id}:addCidrBlocks`) сверяется
+    дословно — иначе шаг действия совпал бы с обычной правкой того же ресурса.
+    """
+    tsegs = _segments(template)
+    if len(tsegs) != len(segs):
+        return False
+    for want, got in zip(tsegs, segs):
+        if want.startswith("{") and want.endswith("}"):
+            continue
+        if "{" in want and ":" in want:
+            if not got.endswith(":" + want.split(":", 1)[1]):
+                return False
+            continue
+        if want != got:
+            return False
+    return True
+
+
+def _step_path(template: str) -> str:
+    """Адрес шага по шаблону маршрута: места полей — под подстановку.
+
+    Суффикс-действие СОХРАНЯЕТСЯ (`{group_id}:addMember` → `{{x}}:addMember`).
+    Первая редакция этой сборки его теряла, и построенный адрес совпадал с
+    обычной правкой того же ресурса — то есть проба строила НЕ ту форму, которую
+    собиралась проверить. Поймано собственной пробой под-ресурса, а не чтением.
+    """
+    out = []
+    for seg in _segments(template):
+        if seg.startswith("{") and seg.endswith("}"):
+            out.append("{{x}}")
+        elif "{" in seg and ":" in seg:
+            out.append("{{x}}:" + seg.split(":", 1)[1])
+        else:
+            out.append(seg)
+    return "/" + "/".join(out)
+
+
+def _fqn(method: str, raw_url: str, routes) -> str | None:
+    segs = _segments(raw_url)
+    if not segs:
         return None
-    svc = RESOURCE_SERVICE.get(m.group(1))
-    if not svc:
-        return None
-    verb = "Get" if method == "GET" and m.group(3) else METHOD_VERB.get(method)
-    if not verb:
-        return None
-    return f"kacho.cloud.iam.v1.{svc}/{verb}"
+    for rmethod, template, fqn in routes:
+        if rmethod == method and _template_matches(template, segs):
+            return fqn
+    return None
 
 
 def load_declaration(root: str):
@@ -193,7 +253,8 @@ def load_catalog(root: str) -> dict:
 def scan(root: str, catalog: dict) -> dict:
     findings: list[str] = []
     levels = bearer_levels(root)
-    files_read = leaves_read = mapped = 0
+    routes = load_routes(root)
+    files_read = leaves_read = mapped = undeclared = 0
     for g in COLLECTION_GLOBS:
         for f in sorted(glob.glob(os.path.join(root, g))):
             try:
@@ -211,8 +272,26 @@ def scan(root: str, catalog: dict) -> dict:
                 req = item.get("request") or {}
                 url = req.get("url")
                 raw = url.get("raw") if isinstance(url, dict) else str(url or "")
-                fqn = _fqn(req.get("method") or "", re.sub(r"^\{\{baseUrl\}\}", "", raw or ""))
+                fqn = _fqn(req.get("method") or "",
+                           re.sub(r"^\{\{baseUrl\}\}", "", raw or ""), routes)
                 if not fqn or fqn not in catalog:
+                    continue
+                # ПОРОГ, КОТОРОГО КАТАЛОГ НЕ ОБЪЯВЛЯЕТ, ГЕЙТОМ НЕ СУДИТСЯ.
+                #
+                # Пустое значение — не «уровень 1», а ОТСУТСТВИЕ требования: край
+                # на нём проходит открыто (`stepup_gate.go`: «An empty
+                # RequiredACRMin means NO step-up requirement — Check fails OPEN»).
+                # Требовать от такого шага обычного уровня значит утверждать
+                # правило, которого продукт не заводил, — и утверждение это
+                # НЕИСПОЛНИМО: опрос операции наследует предъявителя той мутации,
+                # которая операцию породила, а операция принципал-областная и
+                # чужому отвечает 404. Гейт, требующий понизить уровень поллера,
+                # требовал бы сломать шаг.
+                #
+                # Число несудимых печатается отдельной строкой: «не судили» обязано
+                # быть отличимо от «расхождений нет».
+                if catalog[fqn] not in ("1", "2"):
+                    undeclared += 1
                     continue
                 mapped += 1
                 needs_two = catalog[fqn] == "2"
@@ -230,6 +309,7 @@ def scan(root: str, catalog: dict) -> dict:
                     )
     return {"findings": findings, "files_read": files_read,
             "leaves_read": leaves_read, "mapped": mapped,
+            "undeclared": undeclared, "routes": len(routes),
             "bearers": len(levels)}
 
 
@@ -242,6 +322,21 @@ def check_premises(root: str, catalog: dict) -> list[str]:
             f"в каталоге НЕТ ни одной записи с поднятым порогом — предмет запрета исчез; "
             f"«находок нет» тут означало бы «искать было нечего»"
         )
+    # Таблица маршрутов — источник сопоставления. Пустая либо неразобранная
+    # означает, что НИ ОДИН шаг не будет сопоставлен, а гейт при этом промолчит:
+    # «нечего судить» стало бы неотличимо от «всё сошлось».
+    routes = load_routes(root)
+    if not routes:
+        bad.append(
+            f"таблица маршрутов {ROUTE_TABLE_REL} пуста или не разобрана — ни один шаг "
+            f"не будет сопоставлен с каталогом, и молчание гейта означало бы «не читал»")
+    elif not any(len(_segments(t)) >= 4 for _m, t, _f in routes):
+        # Контроль СПОСОБНОСТИ, а не наличия конкретного имени: под-ресурс — ровно
+        # та форма адреса, на которой прежний разбор давал неверный ответ молча.
+        # Разбор, потерявший её, вернул бы слепое пятно, оставаясь зелёным.
+        bad.append(
+            f"в {ROUTE_TABLE_REL} не разобрано ни одного маршрута ПОД-РЕСУРСА "
+            f"(≥4 сегментов) — разбор потерял ту форму адреса, ради которой он здесь")
     seed = os.path.join(root, CEREMONY_SEED_REL)
     try:
         with open(seed, encoding="utf-8") as fh:
@@ -281,8 +376,10 @@ def run(root: str) -> int:
             print(f"  ПРОВАЛ {p}")
         return 2
     res = scan(root, catalog)
-    print(f"осмотрено: {res['files_read']} коллекц(ий), {res['leaves_read']} шаг(ов); "
-          f"сопоставлено с каталогом под человеческим предъявителем: {res['mapped']}")
+    print(f"осмотрено: {res['files_read']} коллекц(ий), {res['leaves_read']} шаг(ов), "
+          f"маршрутов в таблице края {res['routes']}; сопоставлено с каталогом под "
+          f"человеческим предъявителем: {res['mapped']}; "
+          f"не судимо (порог не объявлен): {res['undeclared']}")
     if res["mapped"] == 0:
         print("  ПРОВАЛ ни один шаг не сопоставлен — это «ничего не прочитано», "
               "а не «расхождений нет»")
@@ -327,16 +424,44 @@ def self_test() -> int:
             print(f"  ПРОВАЛ предпосылка: {p}")
         return 1
 
-    # Ручки берутся ИЗ КАТАЛОГА, а не вписываются литералом: инъекция обязана
-    # остаться настоящей, когда пороги однажды пересмотрят.
-    sensitive = next((f for f, v in sorted(catalog.items())
-                      if v == "2" and f.startswith("kacho.cloud.iam.v1.AccountService/Delete")), None)
-    routine = next((f for f, v in sorted(catalog.items())
-                    if v != "2" and f.startswith("kacho.cloud.iam.v1.AccountService/Create")), None)
-    if not sensitive or not routine:
-        print("  ПРОВАЛ в каталоге не нашлось пары «чувствительная/обычная» на одном "
-              "ресурсе — инъекцию не на чем построить")
+    # Ручки и ИХ АДРЕСА берутся из каталога и порождённой таблицы, а не вписываются
+    # литералом: инъекция обязана остаться настоящей, когда пороги пересмотрят, а
+    # маршрут переименуют. Прежде адрес стоял литералом (`/iam/v1/accounts`), и
+    # инъекция проверяла ровно ту форму адреса, на которой разбор и так работал.
+    routes = load_routes(root)
+    if not routes:
+        print(f"  ПРОВАЛ таблица маршрутов {ROUTE_TABLE_REL} не разобрана — "
+              f"инъекцию не на чем построить")
         return 1
+
+    def path_of(fqn: str, min_segments: int = 0) -> str | None:
+        """Адрес шага для ручки: шаблон маршрута с местами полей под подстановку."""
+        for _m, template, f in routes:
+            if f != fqn or len(_segments(template)) < min_segments:
+                continue
+            return _step_path(template)
+        return None
+
+    def pick(level: str, min_segments: int = 0):
+        for f, v in sorted(catalog.items()):
+            if v != level:
+                continue
+            path = path_of(f, min_segments)
+            if not path:
+                continue
+            method = next(m for m, t, ff in routes
+                          if ff == f and len(_segments(t)) >= min_segments)
+            return f, method, path
+        return None, None, None
+
+    sensitive, sens_method, sens_path = pick("2")
+    routine, rout_method, rout_path = pick("1")
+    if not sensitive or not routine:
+        print("  ПРОВАЛ в каталоге не нашлось пары ручек с ОБЪЯВЛЕННЫМИ порогами "
+              "2 и 1 — инъекцию не на чем построить")
+        return 1
+    print(f"  инъекция строится на: чувствительная {sensitive} ({sens_method} {sens_path}), "
+          f"обычная {routine} ({rout_method} {rout_path})")
 
     tmp = tempfile.mkdtemp()
     coll_dir = os.path.join(tmp, "services", "selftest", "tests", "newman", "collections")
@@ -345,6 +470,8 @@ def self_test() -> int:
     # проверять гейт против фикстуры, а не против мира.
     os.makedirs(os.path.join(tmp, os.path.dirname(CATALOG_REL)))
     os.symlink(os.path.join(root, CATALOG_REL), os.path.join(tmp, CATALOG_REL))
+    os.makedirs(os.path.join(tmp, os.path.dirname(ROUTE_TABLE_REL)), exist_ok=True)
+    os.symlink(os.path.join(root, ROUTE_TABLE_REL), os.path.join(tmp, ROUTE_TABLE_REL))
     os.makedirs(os.path.join(tmp, os.path.dirname(CEREMONY_SEED_REL)))
     os.symlink(os.path.join(root, CEREMONY_SEED_REL), os.path.join(tmp, CEREMONY_SEED_REL))
     os.symlink(os.path.join(root, CEREMONY_DECL_REL), os.path.join(tmp, CEREMONY_DECL_REL))
@@ -382,8 +509,8 @@ def self_test() -> int:
     os.symlink(os.path.join(root, CEREMONY_DECL_REL), os.path.join(tmp, CEREMONY_DECL_REL))
 
     print("=== инъекция: чувствительная ручка обычным предъявителем ===")
-    write("defect.json", [_step("delete-undergraded", "DELETE",
-                                "/iam/v1/accounts/{{x}}", "jwtHumanCeremony")])
+    write("defect.json", [_step("delete-undergraded", sens_method,
+                                sens_path, "jwtHumanCeremony")])
     res = scan(tmp, catalog)
     if len(res["findings"]) != 1 or "delete-undergraded" not in res["findings"][0]:
         print(f"  ПРОВАЛ дефект не найден либо без координаты: {res['findings']}")
@@ -392,8 +519,8 @@ def self_test() -> int:
         print(f"  OK найден с координатой: {res['findings'][0]}")
 
     print("=== инъекция: обычная ручка ПОДНЯТЫМ предъявителем (перебор) ===")
-    write("defect.json", [_step("create-overgraded", "POST",
-                                "/iam/v1/accounts", "jwtHumanCeremonyStepUp")])
+    write("defect.json", [_step("create-overgraded", rout_method,
+                                rout_path, "jwtHumanCeremonyStepUp")])
     res = scan(tmp, catalog)
     if len(res["findings"]) != 1 or "create-overgraded" not in res["findings"][0]:
         print(f"  ПРОВАЛ перебор уровня не найден: {res['findings']}")
@@ -404,23 +531,134 @@ def self_test() -> int:
     print("=== законные близнецы той же формы — гейт обязан ПРОМОЛЧАТЬ ===")
     write("defect.json", [
         # тот же маршрут, верный уровень
-        _step("delete-correct", "DELETE", "/iam/v1/accounts/{{x}}", "jwtHumanCeremonyStepUp"),
-        _step("create-correct", "POST", "/iam/v1/accounts", "jwtHumanCeremony"),
+        _step("delete-correct", sens_method, sens_path, "jwtHumanCeremonyStepUp"),
+        _step("create-correct", rout_method, rout_path, "jwtHumanCeremony"),
         # МАШИННЫЙ предъявитель на чувствительной ручке — освобождён от порога
-        _step("delete-machine", "DELETE", "/iam/v1/accounts/{{x}}", "jwtAccountAdminA"),
+        _step("delete-machine", sens_method, sens_path, "jwtAccountAdminA"),
         # анонимный шаг — предъявителя нет вовсе
-        _step("delete-anon", "DELETE", "/iam/v1/accounts/{{x}}"),
+        _step("delete-anon", sens_method, sens_path),
         # ПРОЗА: имя предъявителя только в описании. Обязан НЕ найтись, иначе гейт
         # читает текст и краснеет на объяснении самого себя.
-        _step("delete-prose", "DELETE", "/iam/v1/accounts/{{x}}", "jwtAccountAdminA",
+        _step("delete-prose", sens_method, sens_path, "jwtAccountAdminA",
               description="раньше здесь стоял jwtHumanCeremony без поднятого уровня"),
     ])
     res = scan(tmp, catalog)
     if res["findings"]:
         print(f"  ПРОВАЛ гейт краснеет на законном: {res['findings']}")
         rc = 1
+    elif res["mapped"] == 0:
+        # Молчание на НУЛЕ сопоставленных — не свидетельство. Прежняя редакция
+        # печатала «OK промолчал на 0» и засчитывала это в успех: ровно та форма
+        # без содержания, которую гейт заведён ловить.
+        print("  ПРОВАЛ ни один законный шаг не сопоставлен — молчание вакуумно")
+        rc = 1
     else:
         print(f"  OK промолчал на {res['mapped']} сопоставленных законных шагах")
+
+    # ── ПОД-РЕСУРС: ровно тот класс, на котором прежний разбор молча лгал ─────
+    #
+    # Пара выводится из дерева, а не выписывается: нужен маршрут ПОД-РЕСУРСА,
+    # чей объявленный порог ОТЛИЧАЕТСЯ от порога его родительского маршрута того
+    # же метода. Именно на такой паре ошибка разбора наблюдаема: сопоставив
+    # под-ресурс с родителем, гейт объявляет верный шаг расхождением, а неверный —
+    # законным. Пары нет — сказать об этом, а не пропустить молча: без неё
+    # утверждение ниже вакуумно.
+    print("=== под-ресурс сопоставляется СО СВОИМ маршрутом, а не с родительским ===")
+    pair = None
+    # Вложенный под-ресурс — ровно та форма, на которой разбор лгал, поэтому он
+    # рассматривается ПЕРВЫМ; суффикс-действие остаётся запасным вариантом, чтобы
+    # проба не исчезла, если вложенных пар в дереве однажды не станет.
+    ordered = sorted(routes, key=lambda r: ":" in _segments(r[1])[-1])
+    for method, template, fqn in ordered:
+        tsegs = _segments(template)
+        if len(tsegs) < 4 or catalog.get(fqn) not in ("1", "2"):
+            continue
+        for pmethod, ptemplate, pfqn in routes:
+            psegs = _segments(ptemplate)
+            if pmethod != method or len(psegs) >= len(tsegs):
+                continue
+            if psegs != tsegs[:len(psegs)] or catalog.get(pfqn) not in ("1", "2"):
+                continue
+            if catalog[pfqn] != catalog[fqn]:
+                pair = (method, template, fqn, ptemplate, pfqn)
+                break
+        if pair:
+            break
+    if not pair:
+        print("  ПРОВАЛ в дереве нет под-ресурсного маршрута, чей порог отличается от "
+              "родительского — утверждение о разборе под-ресурса не на чем построить")
+        rc = 1
+    else:
+        method, template, fqn, ptemplate, pfqn = pair
+        path = _step_path(template)
+        right = "jwtHumanCeremonyStepUp" if catalog[fqn] == "2" else "jwtHumanCeremony"
+        wrong = "jwtHumanCeremony" if catalog[fqn] == "2" else "jwtHumanCeremonyStepUp"
+        print(f"  пара: {method} {template} → {fqn} (порог {catalog[fqn]}) "
+              f"над {ptemplate} → {pfqn} (порог {catalog[pfqn]})")
+
+        # (а) верный уровень ПОД-РЕСУРСА — гейт обязан промолчать. Прежний разбор
+        #     краснел здесь, потому что мерил порогом родителя.
+        write("defect.json", [_step("subresource-correct", method, path, right)])
+        res = scan(tmp, catalog)
+        if res["findings"]:
+            print(f"  ПРОВАЛ верный под-ресурсный шаг объявлен расхождением: {res['findings']}")
+            rc = 1
+        elif res["mapped"] != 1:
+            print(f"  ПРОВАЛ под-ресурсный шаг вообще не сопоставлен (mapped={res['mapped']}) — "
+                  f"это слепое пятно, а не согласие")
+            rc = 1
+        else:
+            print("  OK верный под-ресурсный шаг сопоставлен со своим маршрутом и не оговорён")
+
+        # (б) неверный уровень — красное, и координата называет ПОД-РЕСУРС.
+        write("defect.json", [_step("subresource-wrong", method, path, wrong)])
+        res = scan(tmp, catalog)
+        if len(res["findings"]) != 1 or fqn not in res["findings"][0]:
+            print(f"  ПРОВАЛ дефект под-ресурса не найден либо назван чужим именем: "
+                  f"{res['findings']}")
+            rc = 1
+        elif pfqn in res["findings"][0]:
+            print(f"  ПРОВАЛ находка называет РОДИТЕЛЬСКУЮ ручку: {res['findings'][0]}")
+            rc = 1
+        else:
+            print(f"  OK найден и назван своим именем: {res['findings'][0]}")
+
+    # ── ручка БЕЗ объявленного порога не судится, но и не исчезает из переписи ──
+    print("=== порог не объявлен — гейт не судит, но говорит, скольких не судил ===")
+    silent = next((f for f, v in sorted(catalog.items())
+                   if v not in ("1", "2") and path_of(f)), None)
+    if not silent:
+        print("  ПРОВАЛ в каталоге нет ручки без объявленного порога — "
+              "утверждать не на чем")
+        rc = 1
+    else:
+        smethod = next(m for m, _t, ff in routes if ff == silent)
+        write("defect.json", [_step("undeclared-stepup", smethod, path_of(silent),
+                                    "jwtHumanCeremonyStepUp")])
+        res = scan(tmp, catalog)
+        if res["findings"]:
+            print(f"  ПРОВАЛ гейт судит порог, которого каталог не объявлял: {res['findings']}")
+            rc = 1
+        elif res["undeclared"] < 1:
+            print("  ПРОВАЛ несудимый шаг не попал в перепись — «не судили» стало "
+                  "неотличимо от «расхождений нет»")
+            rc = 1
+        else:
+            print(f"  OK {silent} не судится, и это названо числом "
+                  f"(не судимо: {res['undeclared']})")
+
+    print("=== предпосылка: таблица маршрутов пуста — гейт обязан СКАЗАТЬ ===")
+    os.remove(os.path.join(tmp, ROUTE_TABLE_REL))
+    with open(os.path.join(tmp, ROUTE_TABLE_REL), "w", encoding="utf-8") as fh:
+        fh.write("package middleware\n\nvar generatedRestRoutes = []restRoute{}\n")
+    bad_routes = check_premises(tmp, catalog)
+    if not any(ROUTE_TABLE_REL in b for b in bad_routes):
+        print(f"  ПРОВАЛ пропажа таблицы маршрутов прошла молча: {bad_routes}")
+        rc = 1
+    else:
+        print("  OK пустая таблица маршрутов названа предпосылкой")
+    os.remove(os.path.join(tmp, ROUTE_TABLE_REL))
+    os.symlink(os.path.join(root, ROUTE_TABLE_REL), os.path.join(tmp, ROUTE_TABLE_REL))
 
     print("=== предпосылка: посев без поднятого предъявителя обязан РОНЯТЬ гейт ===")
     os.remove(os.path.join(tmp, CEREMONY_SEED_REL))
