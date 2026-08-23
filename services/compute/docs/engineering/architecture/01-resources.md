@@ -223,5 +223,6 @@ owner Geography». С этапа S7 это неверно: Geography — дом�
 - `compute_outbox` / `compute_watch_cursors` — outbox-таблица событий
   (`resource_kind` ∈ {Instance}, `event_type` ∈
   {CREATED, UPDATED, DELETED}) + триггер `compute_outbox_notify_trg` →
-  `pg_notify('compute_outbox', sequence_no::text)`. Подписчик —
-  `InternalWatchService.Watch`. См. [модель данных](../../content/architecture/data-model.mdx).
+  `pg_notify('compute_outbox', sequence_no::text)`. Читатель — восстановление
+  наблюдаемого состояния сервиса; подписки снаружи нет (серверный стрим снят, #813).
+  См. [модель данных](../../content/architecture/data-model.mdx).

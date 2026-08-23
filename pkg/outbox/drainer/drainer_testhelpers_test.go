@@ -29,9 +29,18 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
-// fgaOutboxSchema — the `kacho_iam.fga_outbox` pieces the drainer exercises,
-// assembled from the migrations that produce them in
-// `services/iam/internal/migrations/`:
+// fgaOutboxSchema — СИНТЕТИЧЕСКАЯ очередь, на которой прогоняется ОБЩИЙ дренаж.
+//
+// ВНИМАНИЕ, ЭТО БОЛЬШЕ НЕ ЗЕРКАЛО ЖИВОЙ ТАБЛИЦЫ iam. Журнал `kacho_iam.fga_outbox`
+// потерял и колонки доставки (`sent_at`, `attempt_count`, `last_error`), и ключ
+// `tuple_key` с его триггером и сторожем: дренажа у него нет с момента снятия
+// внешнего движка отношений (стадия S6 эпика #747), колонки сняла миграция
+// 20260822160000 (kacho#917), писателя ключа — 20260823001000 (kacho#1033).
+// Форма ниже сохранена как ФИКСТУРА общего дренажа: его продолжают звать
+// compute/vpc/nlb/storage/registry, чьи очереди эту форму несут. Имена миграций
+// iam ниже — происхождение формы, а не описание её сегодняшней таблицы.
+//
+// Происхождение (`services/iam/internal/migrations/`):
 //
 //   - `0001_initial.sql` — the table itself and the NOTIFY trigger on the
 //     channel `kacho_iam_fga_outbox` (the table has never had a migration of its
@@ -43,13 +52,12 @@ import (
 //   - `0068_fga_outbox_drop_decoy_pending_idx.sql` — the absence of any third
 //     partial index (the NOTE below).
 //
-// NOT a byte copy, and the difference is deliberate: 0067 also adds
-// `CHECK (tuple_key IS NOT NULL) NOT VALID`, which is what makes an incomplete
-// payload fail LOUDLY at emit in iam. It is omitted here because this fixture
+// NOT a byte copy, and the difference is deliberate: 0067 also added
+// `CHECK (tuple_key IS NOT NULL) NOT VALID`, omitted here because this fixture
 // serves the GENERIC drainer, whose decode-poison probes must be able to enqueue
-// a malformed payload on some table. The production constraint is not left
-// unguarded — it is asserted where it lives, against the real migration, by
-// `services/iam/internal/repo/kacho/pg/migration_0067_0068_fga_outbox_tuple_key_integration_test.go`.
+// a malformed payload on some table. Здесь стояла ссылка на пробу iam, которая
+// это ограничение сторожила; ни ограничения, ни пробы нет — оба сняты вместе с
+// ключом (kacho#1033 и kacho#1042), поэтому охранять в iam больше нечего.
 // Also omitted: subject_change_outbox / fga_model_version / watch_cursors — not
 // used by the drainer.
 const fgaOutboxSchema = `

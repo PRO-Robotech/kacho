@@ -107,46 +107,20 @@ func TestPermissionMap_CatalogAdmin_EnforcedByInterceptor(t *testing.T) {
 	require.Equal(t, 1, *calls, "catalog mutation must trigger exactly one Check, not be bypassed")
 }
 
-// TestPermissionMap_InternalWatch_NotExemptFromAuthorization — the outbox stream
-// must be marked as authorised at the DATA level, never as exempt.
+// Здесь стояла проба записи каталога для потока журнала изменений: она требовала
+// `ScopeFiltered` и запрещала `Public`. Поток снят, карта прав выводится из
+// контракта, поэтому запись исчезла вместе с ним, а проба осталась бы утверждать
+// про несуществующее.
 //
-// # Why this test says the opposite of what it used to
+// РАЗБОР, ради которого этот абзац написан, а не удалён. `Public` отвечает allow
+// ДО чтения субъекта: субъект не извлекается, модель не спрашивается. Для соседних
+// RPC операций это защитимо — там авторизация живёт в данных, владелец стоит
+// предикатом в условии выборки, и не-владелец получает промах. У потока такого
+// предиката не было: его запрос не называл ни субъекта, ни проекта, а телом шёл
+// снимок ресурса целиком. `Public` на нём означал отсутствие авторизации вовсе.
+// Комментарий рядом при этом заявлял паритет с операциями — механизм был тот же,
+// а то, что делало его безопасным, отсутствовало.
 //
-// It previously required `Public == true` and called that the exempt mechanism. That
-// requirement was wrong, and the reason is worth writing down so it is not restored
-// by someone reading only the diff.
-//
-// `Public` makes the interceptor answer allow BEFORE the subject is read — the
-// subject is not extracted and the model is not consulted. That is defensible for
-// the two RPCs that sit next to it, `OperationService.Get/Cancel`, because those
-// authorise on the data: the owning principal is a predicate in the SQL WHERE
-// clause, so a non-owner gets NotFound (see internal/handler/operation_handler.go).
-// The stream had no such predicate. Its request carries neither a subject nor a
-// project, and its payload is the whole resource snapshot, so `Public` on it meant
-// no authorisation at all — one call returned the change journal of every tenant.
-// The comment claiming parity with the operation service was therefore false: the
-// mechanism was the same, the thing that made it safe was absent.
-//
-// `ScopeFiltered` is the correct marker: the interceptor still performs no
-// single-object Check — it cannot, because the rows belong to individually-owned
-// objects the caller never names, so there is no one object to ask about — and the
-// handler narrows the stream per row instead
-// (internal/handler/internal_watch_handler.go). It also puts the RPC under the
-// production boot guard for the per-object filter, which `Public` did not.
-//
-// The entry must still EXIST: the pinned corelib authz.Interceptor has no
-// name-based "methodIsInternal" fallback, so an unmapped RPC — stream included —
-// fails closed as `PermissionDenied (rpc not mapped)`.
-func TestPermissionMap_InternalWatch_NotExemptFromAuthorization(t *testing.T) {
-	m := check.PermissionMap()
-	entry, ok := m["/kacho.cloud.compute.v1.InternalWatchService/Watch"]
-	require.True(t, ok,
-		"InternalWatchService/Watch must be present in PermissionMap (no methodIsInternal fallback exists in the pinned corelib)")
-	require.False(t, entry.Public,
-		"Watch must NOT be Public: that answers allow before the subject is even read, and unlike "+
-			"OperationService.Get/Cancel this RPC has no owner predicate to authorise on instead")
-	require.True(t, entry.ScopeFiltered,
-		"Watch must be ScopeFiltered: rows belong to individually-owned objects the caller does not "+
-			"name, so authorisation happens per row in the handler — and the marker is what puts the "+
-			"RPC under the production boot guard for that filter")
-}
+// Урок применим к ЛЮБОМУ будущему стриму: «как у соседа» — не довод, пока не
+// назван предикат, на котором сосед авторизует. Имя снятого RPC стоит в надгробии
+// `retiredRPCSurface`, поэтому вернуться молча оно не может.

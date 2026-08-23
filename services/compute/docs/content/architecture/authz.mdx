@@ -82,7 +82,7 @@ flowchart LR
 | Listener | Кто ходит | Что доступно |
 |---|---|---|
 | `:9090` public | tenant через api-gateway (TLS+JWT) | `InstanceService` + read-only `MachineTypeService` |
-| `:9091` internal | peer-сервисы / admin (mTLS) | admin-CRUD каталога (`InternalMachineTypeService`), `InternalWatchService` |
+| `:9091` internal | peer-сервисы / admin (mTLS) | admin-CRUD каталога (`InternalMachineTypeService`), `InternalMachineTypeService` |
 
 `Internal*`-сервисы **не публикуются** на external TLS endpoint. Их REST-проекция в
 api-gateway доступна только на cluster-internal mux. Так admin-функции (управление каталогом

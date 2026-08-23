@@ -273,7 +273,8 @@ func Test_CursorIndexGate_PredicateComparisonKeepsLiteralCase(t *testing.T) {
 // Test_CursorIndexGate_RedsOnDeepEqualityPrefix — префикс глубже одной колонки
 // обслуживает обход только тогда, когда запрос несёт ОБА равенства. Зачесть его
 // общему списку значило бы объявить покрытым то, что покрыто не будет (в дереве
-// такой индекс есть — `addresses_project_subnet_page_idx`).
+// такой индекс БЫЛ — постраничный по паре (проект, подсеть), снят по #963
+// именно потому, что второе равенство несёт не всякое чтение).
 func Test_CursorIndexGate_RedsOnDeepEqualityPrefix(t *testing.T) {
 	tree := cursorInjectionTree(t,
 		"CREATE INDEX widgets_deep_idx ON kacho_alpha.widgets (project_id, zone_id, created_at, id);",

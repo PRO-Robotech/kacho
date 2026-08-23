@@ -22,6 +22,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -33,23 +34,9 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
-	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
 )
-
-// watchMethod — единственный метод compute, чья авторизация переехала на уровень
-// ДАННЫХ (`scope_filtered` в каталоге прав): поток журнала изменений не называет
-// ни одного ресурса, поэтому единичного объекта, про который можно спросить
-// заранее, у него нет by construction — сужение идёт на КАЖДУЮ отдаваемую строку.
-//
-// Имя собирается из дескриптора службы, а не выписывается строкой: переименуют
-// службу — не соберётся, а не разойдётся молча. Перечня сужаемых методов
-// дескриптор НЕ объявляет: его даёт каталог, и носитель сверяет проводку с ним в
-// обе стороны (О3/О4) — потерянная проводка и лишняя одинаково роняют старт.
-var watchMethod = servicecontract.MethodFQN(
-	"/" + computev1.InternalWatchService_ServiceDesc.ServiceName + "/Watch")
 
 // hideExistenceForms — формы отказа для типов compute, которые скрывает рантайм.
 //
@@ -101,7 +88,6 @@ func hideExistenceForms() map[servicecontract.ObjectType]servicecontract.NotFoun
 func describe(
 	cfg config.Config,
 	logger *slog.Logger,
-	narrower *authzfilter.Narrower,
 	gate *bootgate.Gate,
 	existence servicecontract.ExistenceProbe,
 	authzObserve func(read func() authz.Metrics),
@@ -179,20 +165,22 @@ func describe(
 		// фикстуры, и на боевой посадке дескриптор его отвергает.
 		Admission: servicecontract.Value(admission),
 
-		// Срок жизни подписки — ВЕЛИЧИНА, а не изъятие: compute служит серверный
-		// стрим `InternalWatchService/Watch` (провязан в registerInternalServices).
-		// Изъятие здесь было бы ложным заявлением, и носитель уронил бы старт (О11),
-		// назвав метод.
+		// Серверных стримов сервис НЕ СЛУЖИТ — изъятие, а не величина.
 		//
-		// Величина обязана ЗАМЕТНО превосходить границу обработки одиночного вызова
-		// (30 с): у подписки свой срок — она живёт, пока живёт наблюдатель, — и
-		// потолок запроса рвал бы её каждые полминуты, причём клиент видел бы это
-		// сетевым сбоем, а не нашим отказом. Час — это ПОТОЛОК на случай забытого
-		// наблюдателя, а не цель: здоровая подписка закрывается раньше своим
-		// контекстом. Предмет потолка назван у ручки: каждый стрим держит выделенное
-		// соединение под LISTEN (KACHO_COMPUTE_WATCH_MAX_STREAMS, 32), поэтому
-		// брошенные подписки исчерпывают лимит и новые наблюдатели не подключаются.
-		StreamBudget: servicecontract.Value(cfg.WatchStreamBudget),
+		// Здесь стоял час: столько жила подписка на журнал изменений
+		// (`InternalWatchService/Watch`), и рядом объяснялось, почему потолок
+		// одиночного запроса ей не годится. Подписки больше нет — она снята
+		// вместе со своей поверхностью, потому что подписчика у неё не было ни
+		// одного дня, — и величина срока пережила бы свой предмет: читатель
+		// нашёл бы объявленный час и стал бы искать, что именно столько живёт.
+		//
+		// Изъятие — ЗАЯВЛЕНИЕ, а не умолчание: носитель роняет старт на
+		// необъявленной оси, поэтому «стримов не служу» обязано быть сказано
+		// вслух. Появится серверный стрим — ось потребует величину, и ложным
+		// станет уже изъятие.
+		StreamBudget: servicecontract.NotApplicable[time.Duration](
+			"серверных стримов сервис не служит: подписка на журнал изменений снята вместе " +
+				"со своей поверхностью, других стримов у compute нет"),
 
 		DBSSLMode:     coredb.SSLModeFromDSN(cfg.DSN()),
 		PublicAddr:    ":" + cfg.GrpcPort,
@@ -221,9 +209,16 @@ func describe(
 		// сужаемым. Он же единственный серверный стрим сервиса: за ним пообъектной
 		// проверки на крае нет вовсе, поэтому отсутствующий сужатель означал бы не
 		// «строже», а «без рубежа».
-		Narrowers: servicecontract.Value(map[servicecontract.MethodFQN]servicecontract.ListNarrower{
-			watchMethod: narrower,
-		}),
+		// Сужаемых методов у сервиса БОЛЬШЕ НЕТ, и пустая карта здесь — не
+		// упущение, а утверждение: единственным был поток журнала изменений,
+		// снятый вместе со своей поверхностью. Носитель сверяет проводку
+		// с каталогом в обе стороны, поэтому пустая карта и пустой перечень
+		// сужаемых записей обязаны сойтись — лишний сужатель роняет так же, как
+		// потерянный.
+		//
+		// Публичные списки сужаются НЕ здесь: у них пообъектная проверка стоит
+		// в самих обработчиках (`registerPublicServices` отдаёт им `listFilter`).
+		Narrowers: servicecontract.Value(map[servicecontract.MethodFQN]servicecontract.ListNarrower{}),
 
 		// Скрытие существования у compute ЕСТЬ, хотя аннотаций в каталоге нет ни
 		// одной: рантайм скрывает и ПО ФОРМЕ. Разбор — у hideExistenceForms.
