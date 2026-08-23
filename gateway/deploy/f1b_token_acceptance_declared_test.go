@@ -104,6 +104,10 @@ func f1bReadProfiles(t *testing.T) []f1bProfile {
 			p.Cfg.TokenIssuerKeySets, _ = ta["issuerKeySets"].(string)
 			p.Cfg.PlatformTokenIssuer, _ = ta["platformIssuer"].(string)
 			p.Cfg.PlatformTokenRevocationURL, _ = ta["revocationUrl"].(string)
+			if rc, rok := ta["revocationClientCert"].(map[string]any); rok {
+				p.Cfg.PlatformTokenRevocationCertFile, _ = rc["certFile"].(string)
+				p.Cfg.PlatformTokenRevocationKeyFile, _ = rc["keyFile"].(string)
+			}
 		}
 		out = append(out, p)
 	}
@@ -446,5 +450,61 @@ func TestF1b_ProfilesAcceptingOurIssuerCanMintForTheEdge(t *testing.T) {
 				"край примет, нельзя ни при каком входе: полоса объявлена и неисполнима",
 				d.name, want, d.allowedAudiences)
 		}
+	}
+}
+
+// TestF1b_ProfilesNamingAnAuthorityAlsoDeclareHowTheyIntroduceThemselves —
+// профиль, назвавший авторитет отзыва, обязан назвать и КЛИЕНТСКУЮ ПАРУ хопа.
+//
+// # Почему это ПАРА требований, а не два независимых
+//
+// Авторитет отзыва — наш, и он опознаёт спрашивающего: слушатель, на котором он
+// выставлен, запрашивает сертификат, а сам он отвечает опознавательным словом
+// тому, кто проверенной цепочки не предъявил. Это не настройка стенда, а
+// свойство ПРОДУКТА: iam ОТКАЗЫВАЕТСЯ СТАРТОВАТЬ, если выставляет авторитет на
+// слушателе, который сертификата не спрашивает. Значит адрес без личности —
+// состояние, в котором контроль собран, провязан, исполняется на каждом запросе
+// и не может ответить «действует» НИ РАЗУ.
+//
+// # Почему это не ловится ничем другим
+//
+// Отказ fail-closed ПРАВИЛЬНЫЙ, поэтому ни страж старта края, ни рендер чарта
+// не краснеют: каждый по отдельности исправен. Расходятся они только вместе —
+// у одного вопрос, у другого ответ, и вопрос не тот. Наблюдалось на стенде:
+// каждый предъявитель нашей чеканки получал `503`, а журнал называл настройку.
+func TestF1b_ProfilesNamingAnAuthorityAlsoDeclareHowTheyIntroduceThemselves(t *testing.T) {
+	profiles := f1bReadProfiles(t)
+	if len(profiles) == 0 {
+		t.Fatal("профилей не прочитано — вердикта нет: «ноль находок» здесь неотличимо от «ноль прочитанного»")
+	}
+
+	named, checked := 0, 0
+	for _, p := range profiles {
+		if strings.TrimSpace(p.Cfg.PlatformTokenRevocationURL) == "" {
+			continue // авторитет не назван — предмета у требования нет
+		}
+		named++
+		cert := strings.TrimSpace(p.Cfg.PlatformTokenRevocationCertFile)
+		key := strings.TrimSpace(p.Cfg.PlatformTokenRevocationKeyFile)
+		switch {
+		case cert == "" && key == "":
+			t.Errorf("%s: назван авторитет отзыва %q, но не названа клиентская пара хопа "+
+				"(tokenAcceptance.revocationClientCert.certFile/keyFile). Авторитет "+
+				"спрашивает проверенную цепочку и без неё отвечает отказом — то есть "+
+				"КАЖДЫЙ предъявитель нашей чеканки получит 503, а контроль будет "+
+				"выглядеть настроенным",
+				p.Name, p.Cfg.PlatformTokenRevocationURL)
+		case cert == "" || key == "":
+			t.Errorf("%s: клиентская пара хопа названа НАПОЛОВИНУ (certFile=%q keyFile=%q) — "+
+				"процесс откажется стартовать", p.Name, cert, key)
+		default:
+			checked++
+		}
+	}
+	t.Logf("перепись: профилей %d · назвали авторитет %d · пара объявлена у %d",
+		len(profiles), named, checked)
+	if named == 0 {
+		t.Fatal("ни один профиль не назвал авторитета отзыва — предмет проверки исчез; " +
+			"либо ручка переехала, либо предикат перестал её читать")
 	}
 }

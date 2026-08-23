@@ -190,8 +190,22 @@ func TestStacks_DeclareAdminEndpoint(t *testing.T) {
 // no template emitted it.
 func TestChart_EmitsRevocationEnv(t *testing.T) {
 	deployment := readRepoFile(t, "gateway", "deploy", "templates", "deployment.yaml")
-	for _, name := range []string{"KACHO_HYDRA_INTROSPECTION_URL", "KACHO_HYDRA_ADMIN_URL"} {
-		if !strings.Contains(deployment, "name: "+name) {
+	// Пара клиентской личности стоит здесь по той же причине, что и адреса:
+	// профиль её ОБЪЯВЛЯЕТ (это утверждает соседний declared-тест), но пока
+	// шаблон её не эмитит, объявление ничего не меняет — ручка инертна, а
+	// контроль выглядит настроенным. Ровно этим и отличалось состояние, при
+	// котором каждый предъявитель нашей чеканки получал отказ.
+	for _, name := range []string{
+		"KACHO_HYDRA_INTROSPECTION_URL", "KACHO_HYDRA_ADMIN_URL",
+		"KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CERT_FILE",
+		"KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_KEY_FILE",
+	} {
+		// Имя сверяется ДО КОНЦА СТРОКИ, а не вхождением: подстрока
+		// удовлетворяется и удлинённым именем, поэтому переименование
+		// `…_CERT_FILE` → `…_CERT_FILE_X` оставляло гейт зелёным. Найдено
+		// инъекцией при заведении второй пары — до неё гейт три имени из трёх
+		// «проверял» так же.
+		if !strings.Contains(deployment, "name: "+name+"\n") {
 			t.Errorf("the api-gateway template no longer emits %s — the values knob would be "+
 				"silently inert and the profiles above would assert nothing", name)
 		}

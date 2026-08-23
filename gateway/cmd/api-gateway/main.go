@@ -348,6 +348,8 @@ func main() {
 	if platformAccepted {
 		platformHopClient, phErr := newPlatformRevocationHopClient(
 			cfg.PlatformTokenRevocationCAFile,
+			cfg.PlatformTokenRevocationCertFile,
+			cfg.PlatformTokenRevocationKeyFile,
 			time.Duration(cfg.IntrospectionTimeoutMs)*time.Millisecond)
 		if phErr != nil {
 			log.Fatalf("platform revocation authority client: %v", phErr)
@@ -368,6 +370,10 @@ func main() {
 		authInterceptor = authInterceptor.WithPlatformRevocationCheck(platformCache, 0)
 		logger.Info("revocation of OUR OWN tokens is read on presentation",
 			"authority_pinned", strings.TrimSpace(cfg.PlatformTokenRevocationCAFile) != "",
+			// Личность на хопе — в самоотчёте, а не только в настройках:
+			// авторитет спрашивает сертификат, и «предъявлять нечем» обязано
+			// быть видно ДО первого отказа арендатору.
+			"client_identity_presented", strings.TrimSpace(cfg.PlatformTokenRevocationCertFile) != "",
 			"cache_ttl_s", cfg.IntrospectionCacheTTLSeconds,
 			"unanswered_verdict", "refuse")
 	}

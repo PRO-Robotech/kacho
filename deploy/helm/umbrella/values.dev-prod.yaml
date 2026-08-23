@@ -94,6 +94,17 @@ api-gateway:
       secretName: kacho-iam-server-tls
       key: ca.crt
       mountPath: /etc/api-gateway/platform-revocation-ca
+    # ЧЕМ край предъявляет СЕБЯ авторитету. Якоря выше НЕ ДОСТАТОЧНО: он
+    # проверяет ЕГО, а не представляет НАС. Авторитет выставлен на слушателе,
+    # который сертификат ЗАПРАШИВАЕТ (iam отказывается стартовать иначе), и
+    # спрашивающему без проверенной цепочки отвечает отказом — то есть без этой
+    # пары КАЖДЫЙ предъявитель нашей чеканки получал бы 503 при исправном на вид
+    # контроле. Пути — на УЖЕ смонтированную клиентскую личность края
+    # (mtls.mountPath); своего тома у пары нет намеренно, вторая копия той же
+    # личности разъехалась бы с первой молча.
+    revocationClientCert:
+      certFile: /etc/api-gateway/mtls/tls.crt
+      keyFile: /etc/api-gateway/mtls/tls.key
   # Composition-root prod-guard (validateProductionAuthzConfig): an env NOT labelled
   # dev-class is treated as production → it REFUSES to boot if authn.mode=dev or a
   # dev HMAC secret is present (CWE-347 symmetric-key principal forgery). Flip the
