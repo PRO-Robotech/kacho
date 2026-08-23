@@ -292,6 +292,52 @@ func TestSubscriptionShapeCategoryMarkCanFail(t *testing.T) {
 	})
 }
 
+// TestSubscriptionShapeMandatoryAxisCanFail — ни одна ось не обязательна.
+//
+// Ось эта не вакуумна, и это ИЗМЕРЕНО: ключевого слова `required` в proto3 нет,
+// но обязательность в этом дереве выражается ОПЦИЕЙ поля, и такие опции в
+// контрактах живут. Первая редакция гейта объявляла проверку невозможной по
+// построению — основание оказалось фольклором.
+func TestSubscriptionShapeMandatoryAxisCanFail(t *testing.T) {
+	t.Run("ось помечена обязательной ОДНОЙ СТРОКОЙ — находка", func(t *testing.T) {
+		f := baseShapeForm()
+		f.Axes = strings.Replace(f.Axes,
+			"  string project_id = 2;",
+			"  string project_id = 2 [(required) = true];", 1)
+		findings, _ := shapeAudit(t, f, shapeStandLedger(), shapeStandAbsent())
+		got := requireKind(t, findings, "axis-made-mandatory")
+		if !strings.Contains(got.Reason, "project_id") {
+			t.Fatalf("находка не называет оси: %s", got.String())
+		}
+		t.Logf("%s", got.String())
+	})
+
+	t.Run("пометка ПЕРЕНЕСЕНА на другую строку — находка", func(t *testing.T) {
+		// Отдельная ось, и она несущая: именно так помечают поля в этом дереве —
+		// блоком опций на несколько строк. Разбор, читающий только строку
+		// объявления, промолчал бы на живой форме записи.
+		f := baseShapeForm()
+		f.Axes = strings.Replace(f.Axes,
+			"  string project_id = 2;",
+			"  string project_id = 2 [\n    (immutable) = true,\n    (required) = true\n  ];", 1)
+		findings, _ := shapeAudit(t, f, shapeStandLedger(), shapeStandAbsent())
+		requireKind(t, findings, "axis-made-mandatory")
+	})
+
+	t.Run("опции ЕСТЬ, но обязательности среди них нет — молчание", func(t *testing.T) {
+		// Близнец не побайтовый: блок опций стоит, он многострочный, и слово
+		// `required` встречается рядом — в комментарии, объясняющем, почему его
+		// здесь нет. Гейт, ищущий слово в сыром тексте, покраснеет.
+		f := baseShapeForm()
+		f.Axes = strings.Replace(f.Axes,
+			"  string project_id = 2;",
+			"  // Обязательной эта ось не помечается: (required) = true здесь стоять\n"+
+				"  // не вправе — незаданная ось не сужает.\n"+
+				"  string project_id = 2 [\n    (immutable) = true\n  ];", 1)
+		requireSilence(t, first(shapeAudit(t, f, shapeStandLedger(), shapeStandAbsent())))
+	})
+}
+
 // TestSubscriptionShapeAbsentAxisCanFail — ось, которой нет ПО РЕШЕНИЮ.
 func TestSubscriptionShapeAbsentAxisCanFail(t *testing.T) {
 	t.Run("объявленная отсутствующей ось ЗАВЕДЕНА — находка", func(t *testing.T) {

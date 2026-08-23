@@ -99,6 +99,9 @@ func subscriptionShapeExpectation() SubscriptionShapeExpectation {
 		StopReasonNames:     []string{"stop_reason", "termination_reason", "close_reason", "reason", "error", "status"},
 		OwnerVocabularyAxis: "kinds",
 		OwnerVocabularyType: "string",
+		// Обязательность в этом дереве выражается ОПЦИЕЙ поля, а не ключевым
+		// словом: `required` из proto3 убрано, а опция жива и употребляется.
+		MandatoryOption: "(required) = true",
 	}
 }
 

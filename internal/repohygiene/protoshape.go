@@ -44,6 +44,9 @@ type ProtoField struct {
 	Oneof string
 	// Comment — ведущий комментарий, склеенный без маркеров `//`.
 	Comment string
+	// Options — текст блока опций поля (`[...]`), как он записан, включая
+	// перенесённый на несколько строк. Пусто, если опций нет.
+	Options string
 	Line    int
 }
 
@@ -192,7 +195,32 @@ func ParseProtoFile(rel, body string) *ProtoFile {
 		return c
 	}
 
-	for i, raw := range lines {
+	// takeOptions дочитывает блок опций поля, начиная со строки i. Возвращает
+	// текст блока и индекс последней прочитанной строки: опции переносятся на
+	// несколько строк, и поле, помеченное на второй из них, иначе осталось бы
+	// невидимым — а именно так помечают поле обязательным в этом дереве.
+	takeOptions := func(i int) (string, int) {
+		open := strings.Index(lines[i], "[")
+		if open < 0 {
+			return "", i
+		}
+		var b strings.Builder
+		for j := i; j < len(lines); j++ {
+			seg := lines[j]
+			if j == i {
+				seg = seg[open:]
+			}
+			b.WriteString(seg)
+			b.WriteString("\n")
+			if strings.Contains(seg, "]") {
+				return b.String(), j
+			}
+		}
+		return b.String(), len(lines) - 1
+	}
+
+	for i := 0; i < len(lines); i++ {
+		raw := lines[i]
 		line := raw
 		lineNo := i + 1
 
@@ -278,18 +306,22 @@ func ParseProtoFile(rel, body string) *ProtoFile {
 		if k >= 0 && f.Types[k].Kind == "message" {
 			if m := psMapFieldRe.FindStringSubmatch(line); m != nil {
 				n, _ := strconv.Atoi(m[3])
+				opts, last := takeOptions(i)
 				f.Types[k].Fields = append(f.Types[k].Fields, ProtoField{
 					Name: m[2], Type: strings.Join(strings.Fields(m[1]), ""), Number: n,
-					Oneof: oneofOf(), Comment: take(), Line: lineNo,
+					Oneof: oneofOf(), Comment: take(), Options: opts, Line: lineNo,
 				})
+				i = last
 				continue
 			}
 			if m := psFieldRe.FindStringSubmatch(line); m != nil {
 				n, _ := strconv.Atoi(m[4])
+				opts, last := takeOptions(i)
 				f.Types[k].Fields = append(f.Types[k].Fields, ProtoField{
 					Name: m[3], Type: m[2], Label: m[1], Number: n,
-					Oneof: oneofOf(), Comment: take(), Line: lineNo,
+					Oneof: oneofOf(), Comment: take(), Options: opts, Line: lineNo,
 				})
+				i = last
 				continue
 			}
 		}
