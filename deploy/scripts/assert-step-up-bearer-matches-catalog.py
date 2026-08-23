@@ -75,14 +75,21 @@ import tempfile
 
 CATALOG_REL = "gateway/internal/middleware/embed/permission_catalog.json"
 CEREMONY_SEED_REL = "tests/authz-fixtures/prodseed_ceremony.py"
+CEREMONY_DECL_REL = "tests/authz-fixtures/ceremony_credentials.py"
 COLLECTION_GLOBS = (
     "gateway/tests/newman/collections/*.json",
     "services/*/tests/newman/collections/*.json",
 )
 
-# Уровень предъявителя. Имена — те же, что кладёт в окружение посев церемонии;
-# предпосылка 2 проверяет, что он их всё ещё кладёт.
-BEARER_LEVEL = {
+# Уровень предъявителя ЧЕЛОВЕКА ЦЕРЕМОНИИ. Имена — те же, что кладёт в окружение
+# посев церемонии; предпосылка 2 проверяет, что он их всё ещё кладёт.
+#
+# ЭТО НЕ ВЕСЬ НАБОР. Люди, заводящие аккаунт, приходят СЛОТАМИ из объявления
+# церемонии (`ADMISSION_SLOTS`), и их имена здесь не выписываются: выписанный
+# перечень отстал бы от объявления МОЛЧА, а «отстал» тут значит «шаги слота под
+# гейт не подпадают» — то есть гейт перестал бы судить ровно то, ради чего заведён,
+# и выглядел бы при этом зелёным. Полный набор строит `bearer_levels()`.
+CEREMONY_BEARER_LEVEL = {
     "jwtHumanCeremony": 1,
     "jwtHumanCeremonyStepUp": 2,
 }
@@ -145,6 +152,38 @@ def _fqn(method: str, raw_url: str) -> str | None:
     return f"kacho.cloud.iam.v1.{svc}/{verb}"
 
 
+def load_declaration(root: str):
+    """Объявление церемонии как модуль. Единственный источник имён слотов."""
+    import importlib.util  # noqa: PLC0415 — нужен только здесь
+
+    path = os.path.join(root, CEREMONY_DECL_REL)
+    spec = importlib.util.spec_from_file_location("kacho_ceremony_decl_stepup", path)
+    if spec is None or spec.loader is None:
+        return None
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:  # noqa: BLE001 — предпосылка, а не логика: судит check_premises
+        return None
+    return mod
+
+
+def bearer_levels(root: str) -> dict[str, int]:
+    """Все человеческие предъявители и их уровни — ВЫВЕДЕННЫЕ, а не выписанные.
+
+    Человек церемонии плюс пара на каждый слот заведения. Слот, добавленный в
+    объявление, попадает под гейт САМ; выписанный перечень пришлось бы править
+    вторым заходом, и забытая правка была бы неотличима от «шагов нет».
+    """
+    levels = dict(CEREMONY_BEARER_LEVEL)
+    decl = load_declaration(root)
+    for slot, _slug, _subject in getattr(decl, "ADMISSION_SLOTS", ()) or ():
+        lvl1, lvl2 = decl.admission_bearers(slot)
+        levels[lvl1] = 1
+        levels[lvl2] = 2
+    return levels
+
+
 def load_catalog(root: str) -> dict:
     with open(os.path.join(root, CATALOG_REL), encoding="utf-8") as fh:
         entries = json.load(fh)
@@ -153,6 +192,7 @@ def load_catalog(root: str) -> dict:
 
 def scan(root: str, catalog: dict) -> dict:
     findings: list[str] = []
+    levels = bearer_levels(root)
     files_read = leaves_read = mapped = 0
     for g in COLLECTION_GLOBS:
         for f in sorted(glob.glob(os.path.join(root, g))):
@@ -165,7 +205,7 @@ def scan(root: str, catalog: dict) -> dict:
             rel = os.path.relpath(f, root)
             for item, _path in _walk(doc.get("item", []) or [], []):
                 leaves_read += 1
-                lvl = BEARER_LEVEL.get(_bearer_var(item) or "")
+                lvl = levels.get(_bearer_var(item) or "")
                 if lvl is None:
                     continue  # машинный / анонимный — порог его не касается
                 req = item.get("request") or {}
@@ -189,7 +229,8 @@ def scan(root: str, catalog: dict) -> dict:
                         f"перестаёт проверять, что порога здесь нет"
                     )
     return {"findings": findings, "files_read": files_read,
-            "leaves_read": leaves_read, "mapped": mapped}
+            "leaves_read": leaves_read, "mapped": mapped,
+            "bearers": len(levels)}
 
 
 def check_premises(root: str, catalog: dict) -> list[str]:
@@ -209,12 +250,25 @@ def check_premises(root: str, catalog: dict) -> list[str]:
         bad.append(f"посев церемонии {CEREMONY_SEED_REL} не читается — "
                    f"предъявителей, которых требует гейт, может уже не быть")
         return bad
-    for name in BEARER_LEVEL:
+    for name in CEREMONY_BEARER_LEVEL:
         if f'"{name}"' not in src:
             bad.append(
                 f"посев церемонии больше не кладёт {name!r} — требовать его значит "
                 f"требовать несуществующего; уровни надо пересобрать, а не молчать"
             )
+    # Предъявители СЛОТОВ посев не пишет литералами — он строит их из объявления.
+    # Поэтому предпосылка здесь другая и проверяет ровно ту связь, на которой всё
+    # держится: посев ЧИТАЕТ объявление, а объявление называет хотя бы один слот.
+    decl = load_declaration(root)
+    slots = getattr(decl, "ADMISSION_SLOTS", None)
+    if not slots:
+        bad.append(
+            f"в {CEREMONY_DECL_REL} нет `ADMISSION_SLOTS` — люди, заводящие аккаунт, "
+            f"под гейт не подпадут, и он замолчит о них, оставаясь зелёным")
+    elif "ADMISSION_SLOTS" not in src or "admission_bearers" not in src:
+        bad.append(
+            f"посев церемонии не читает `ADMISSION_SLOTS`/`admission_bearers` из "
+            f"{CEREMONY_DECL_REL} — предъявителей слотов он не выдаёт, а гейт их ждёт")
     return bad
 
 
@@ -293,10 +347,39 @@ def self_test() -> int:
     os.symlink(os.path.join(root, CATALOG_REL), os.path.join(tmp, CATALOG_REL))
     os.makedirs(os.path.join(tmp, os.path.dirname(CEREMONY_SEED_REL)))
     os.symlink(os.path.join(root, CEREMONY_SEED_REL), os.path.join(tmp, CEREMONY_SEED_REL))
+    os.symlink(os.path.join(root, CEREMONY_DECL_REL), os.path.join(tmp, CEREMONY_DECL_REL))
 
     def write(name, items):
         with open(os.path.join(coll_dir, name), "w", encoding="utf-8") as fh:
             json.dump(_collection(items), fh)
+
+    print("=== предъявители СЛОТОВ попадают в набор уровней, а не выпадают из него ===")
+    # Положительный контроль к самому выводу: пропусти гейт слот, и его шаги
+    # перестали бы судиться МОЛЧА — он остался бы зелёным, ничего не прочитав.
+    levels = bearer_levels(tmp)
+    decl_live = load_declaration(tmp)
+    slots = list(getattr(decl_live, "ADMISSION_SLOTS", ()) or ())
+    missing = [b for slot, _s, _p in slots
+               for b in decl_live.admission_bearers(slot) if b not in levels]
+    if not slots:
+        print("  ПРОВАЛ объявление не отдало ни одного слота — выводить нечего")
+        rc = 1
+    elif missing:
+        print(f"  ПРОВАЛ предъявители слотов вне набора уровней: {missing}")
+        rc = 1
+    else:
+        print(f"  OK слот(ов) {len(slots)}, предъявителей в наборе {len(levels)} "
+              f"(человек церемонии + пара на слот)")
+
+    print("=== предпосылка: объявления слотов нет — гейт обязан СКАЗАТЬ, а не молчать ===")
+    os.remove(os.path.join(tmp, CEREMONY_DECL_REL))
+    bad_decl = check_premises(tmp, catalog)
+    if not any("ADMISSION_SLOTS" in b for b in bad_decl):
+        print(f"  ПРОВАЛ пропажа объявления слотов прошла молча: {bad_decl}")
+        rc = 1
+    else:
+        print("  OK пропажа объявления слотов названа предпосылкой")
+    os.symlink(os.path.join(root, CEREMONY_DECL_REL), os.path.join(tmp, CEREMONY_DECL_REL))
 
     print("=== инъекция: чувствительная ручка обычным предъявителем ===")
     write("defect.json", [_step("delete-undergraded", "DELETE",
