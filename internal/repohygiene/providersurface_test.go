@@ -86,6 +86,40 @@ var providerSurfaceLedger = []ProviderLedgerEntry{
 	},
 }
 
+// providerSurfaceExemptions — послабления гейта.
+//
+// Послабление — НЕ ведомость. Ведомость называет законный разговор с
+// поставщиком; послабление снимает файл с рассмотрения целиком, и потому у него
+// обязан быть предикат снятия и проба, что предмет ещё есть.
+var providerSurfaceExemptions = []struct {
+	// Prefix — путь либо его начало.
+	Prefix string
+	// Why — почему исключено.
+	Why string
+	// Until — при каком факте о дереве запись обязана быть снята.
+	Until string
+}{
+	{
+		Prefix: "internal/repohygiene/providersurface.go",
+		Why: "здесь живёт САМ СЛОВАРЬ путей поставщика: гейт разбирает строковые " +
+			"литералы, а словарь и есть перечень строковых литералов. Без послабления " +
+			"гейт находит собственное объявление — то есть краснеет на исправном дереве " +
+			"и снимается первым же обходом. Прятать словарь склейкой по частям нельзя: " +
+			"проверка, спрятавшаяся от себя самой, перестаёт быть читаемой",
+		Until: "словарь перестал быть перечнем строковых литералов — например, " +
+			"переехал в отдельные данные, которых разбор исполняемой части не читает",
+	},
+}
+
+func exemptFromProviderSurface(path string) bool {
+	for _, e := range providerSurfaceExemptions {
+		if strings.HasPrefix(path, e.Prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // providerSurfaceSources — непроверочное дерево Go, спрошенное У ИНДЕКСА.
 //
 // Обход диска не знает правил игнорирования и судит чужой рабочий каталог —
@@ -120,7 +154,7 @@ func providerSurfaceSources(t *testing.T) map[string]string {
 func TestProviderSurfaceIsBoundedByTheLedger(t *testing.T) {
 	sources := providerSurfaceSources(t)
 
-	findings, census, err := FindProviderSurface(sources, providerSurfaceLedger)
+	findings, census, err := FindProviderSurface(sources, providerSurfaceLedger, exemptFromProviderSurface)
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
@@ -168,5 +202,48 @@ func TestProviderSurfaceIsBoundedByTheLedger(t *testing.T) {
 		default:
 			t.Errorf("%s:%d: неизвестный вид находки %q", f.File, f.Line, f.Kind)
 		}
+	}
+}
+
+// TestProviderSurfaceExemptionsStillHaveASubject — послабление живёт, пока у него
+// есть предмет.
+//
+// «Предмет» здесь — НЕ «под префиксом лежит файл». Такой предикат зеленел бы на
+// послаблении, которому нечего исключать: файл существует, разговоров в нём нет,
+// а запись стоит и молча накроет следующую слепую зону.
+//
+// Предмет — «без этой записи гейт нашёл бы ЗДЕСЬ находку». Поэтому разбор
+// прогоняется БЕЗ послаблений, и от каждой записи требуется хотя бы одна
+// находка под её префиксом.
+func TestProviderSurfaceExemptionsStillHaveASubject(t *testing.T) {
+	sources := providerSurfaceSources(t)
+
+	bare, census, err := FindProviderSurface(sources, providerSurfaceLedger, nil)
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	t.Logf("разбор без послаблений: файлов %d, находок %d, послаблений объявлено %d",
+		census.Files, len(bare), len(providerSurfaceExemptions))
+
+	if len(providerSurfaceExemptions) == 0 {
+		// Пустой перечень — цель, а не поломка.
+		t.Log("послаблений ноль — исключать нечего, и это исход, к которому проба ведёт")
+		return
+	}
+	for _, e := range providerSurfaceExemptions {
+		covered := 0
+		for _, f := range bare {
+			if strings.HasPrefix(f.File, e.Prefix) {
+				covered++
+			}
+		}
+		if covered == 0 {
+			t.Errorf("послабление %q не исключает НИ ОДНОЙ находки — предмета у него нет, "+
+				"и оно обязано быть снято. Оставленное, оно молча накроет следующую слепую "+
+				"зону.\nПричина записи: %s\nПредикат снятия: %s",
+				e.Prefix, e.Why, e.Until)
+			continue
+		}
+		t.Logf("послабление %q: находок под ним %d", e.Prefix, covered)
 	}
 }

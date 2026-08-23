@@ -27,7 +27,7 @@ func injectFinding(fs []ProviderFinding, file, kind, surface string) bool {
 
 func injectRun(t *testing.T, src map[string]string, ledger []ProviderLedgerEntry) ([]ProviderFinding, ProviderCensus) {
 	t.Helper()
-	fs, c, err := FindProviderSurface(src, ledger)
+	fs, c, err := FindProviderSurface(src, ledger, nil)
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
@@ -232,7 +232,38 @@ func TestProviderSurfaceInjection_ProseCounterCountsTheProvidersName(t *testing.
 // класс, который гейт ловит.
 func TestProviderSurfaceInjection_UnparseableSourceIsAnError(t *testing.T) {
 	src := map[string]string{"services/x/internal/broken.go": "не Go вовсе {{{"}
-	if _, _, err := FindProviderSurface(src, nil); err == nil {
+	if _, _, err := FindProviderSurface(src, nil, nil); err == nil {
 		t.Fatal("нечитаемый исходник пропущен молча")
+	}
+}
+
+// TestProviderSurfaceInjection_ExemptFileIsSkippedAndCounted — З: послабление
+// снимает файл с рассмотрения И СЧИТАЕТСЯ.
+//
+// Молча пропущенный файл превратил бы «не смотрели» в «нарушений нет» — то
+// самое различие, ради которого перепись и печатается.
+func TestProviderSurfaceInjection_ExemptFileIsSkippedAndCounted(t *testing.T) {
+	src := map[string]string{
+		"internal/repohygiene/providersurface.go": `package repohygiene
+const dict = "/admin/clients"
+`,
+		"services/x/internal/other.go": `package x
+const s = "/admin/clients"
+`,
+	}
+	exempt := func(p string) bool { return p == "internal/repohygiene/providersurface.go" }
+	fs, c, err := FindProviderSurface(src, nil, exempt)
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	if c.Exempt != 1 {
+		t.Fatalf("исключённый файл не сосчитан: Exempt=%d", c.Exempt)
+	}
+	if injectFinding(fs, "internal/repohygiene/providersurface.go", ProviderFindingUnledgered, "") {
+		t.Fatalf("исключённый файл всё равно объявлен находкой: %+v", fs)
+	}
+	// Обратная сторона: послабление накрывает НАЗВАННЫЙ путь, а не всё дерево.
+	if !injectFinding(fs, "services/x/internal/other.go", ProviderFindingUnledgered, "/admin/clients") {
+		t.Fatalf("послабление накрыло чужой файл: %+v", fs)
 	}
 }

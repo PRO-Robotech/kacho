@@ -150,6 +150,8 @@ type ProviderCensus struct {
 	LedgerEntries int
 	// LedgerSurfaces — объявлений поверхностей в ведомости.
 	LedgerSurfaces int
+	// Exempt — файлов, снятых с рассмотрения перечнем послаблений.
+	Exempt int
 	// ProseMentions — файлов, называющих поставщика ТОЛЬКО в комментарии.
 	// Считается отдельно и находкой НЕ является: разбор переезда — законная
 	// проза, и гейт, который её ловит, краснеет на собственном объяснении.
@@ -169,8 +171,12 @@ type providerReach struct {
 // Возвращает находки трёх видов и перепись осмотренного. Ошибка — только на
 // неразбираемом исходнике: молчаливый пропуск нечитаемого файла превратил бы
 // «не прочитали» в «нарушений нет».
+//
+// exempt — предикат послабления по пути файла. Послабление ОБЯЗАНО истекать
+// само: перечень, которому больше нечего исключать, — находка, и это проверяет
+// проба гейта, а не внимательность.
 func FindProviderSurface(
-	sources map[string]string, ledger []ProviderLedgerEntry,
+	sources map[string]string, ledger []ProviderLedgerEntry, exempt func(path string) bool,
 ) ([]ProviderFinding, ProviderCensus, error) {
 	census := ProviderCensus{LedgerEntries: len(ledger)}
 
@@ -195,6 +201,10 @@ func FindProviderSurface(
 		reaches  []providerReach
 	)
 	for _, name := range names {
+		if exempt != nil && exempt(name) {
+			census.Exempt++
+			continue
+		}
 		src := sources[name]
 		fset := token.NewFileSet()
 		file, err := parser.ParseFile(fset, name, src, parser.ParseComments)
