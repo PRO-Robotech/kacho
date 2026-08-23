@@ -34,6 +34,10 @@ const (
 	allowedClockSkew = 30 * time.Second
 	// maxAssertionLifetime — потолок длительности утверждения.
 	maxAssertionLifetime = 10 * time.Minute
+	// maxFederatedAssertionLifetime — потолок федеративной полосы. Величина
+	// ДРУГАЯ, и в синтетике она одна: инъекция вносит дефект ровно в одну
+	// величину, иначе непонятно, на что гейт отозвался.
+	maxFederatedAssertionLifetime = 2 * time.Hour
 )
 `
 
@@ -51,15 +55,20 @@ const (
 //   - `graceWithSlack` — та же величина, но с числом в слагаемых: единицу
 //     называет, значит попадает в перепись — и попадает НЕРАЗОБРАННОЙ;
 //   - `skewSeconds` — целое, а не длительность: числом величины оно не
-//     объявляет.
+//     объявляет;
+//   - `MaxFederatedAssertionLifetime` — имя, подходящее под образец ОБЕИХ
+//     величин потолка. Оно обязано опознаваться как федеративная и НЕ
+//     удваивать счёт базовой: без исключающего образца гейт объявил бы две
+//     разные величины одной и покраснел бы на исправном дереве (#1124).
 const quantityInjectedDistinctQuantities = `package tokenpolicy
 
 import "time"
 
 const (
-	ClockSkew            = 60 * time.Second
-	MaxAssertionLifetime = 5 * time.Minute
-	MaxTokenTTL          = 30 * time.Minute
+	ClockSkew                     = 60 * time.Second
+	MaxAssertionLifetime          = 5 * time.Minute
+	MaxFederatedAssertionLifetime = time.Hour
+	MaxTokenTTL                   = 30 * time.Minute
 	CacheCeiling         = time.Hour
 	readTimeout          = 3 * time.Second
 	dialTimeout          = 2 * time.Second
@@ -79,8 +88,13 @@ func TestQuantityScannerFindsASecondDeclarationOfTheSameQuantity(t *testing.T) {
 	if census.ValueSpecs == 0 {
 		t.Fatalf("осмотрено ноль объявлений — разбирается не то дерево")
 	}
-	if len(decls) != 2 {
-		t.Fatalf("объявлений длительности найдено %d, ожидалось 2: %+v", len(decls), decls)
+	// Три объявления: внесённый дубль допуска, потолок полосы клиента и потолок
+	// федеративной полосы. Последний стоит здесь не для полноты, а по
+	// требованию перебора ниже: он проходит по КАЖДОЙ стерегомой величине и
+	// требует от каждой ровно одного опознанного объявления. Величина, которой
+	// в синтетике нет, оставила бы свою сторону инъекции недоказанной.
+	if len(decls) != 3 {
+		t.Fatalf("объявлений длительности найдено %d, ожидалось 3: %+v", len(decls), decls)
 	}
 
 	for _, q := range tokenPolicyQuantities {

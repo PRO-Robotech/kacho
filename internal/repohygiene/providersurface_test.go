@@ -78,14 +78,6 @@ var providerSurfaceLedger = []ProviderLedgerEntry{
 			"`sa_keys`, `interactive_client`), и зеркалу нечего отражать. " +
 			"`bootstrap_token` из перечня выбыл: зеркала он не заводит (#1119)",
 	},
-	{
-		File:     "services/iam/internal/clients/hydra_trust_grants.go",
-		Surfaces: []string{"/admin/trust/grants/jwt-bearer/issuers"},
-		Why: "доверие ВНЕШНЕМУ издателю утверждения для федеративного ключа служебной " +
-			"учётной записи: сегодня перечень доверенных издателей ведёт поставщик",
-		Until: "перечень доверенных издателей стал нашей таблицей и читается нашей " +
-			"проверкой утверждения",
-	},
 }
 
 // providerSurfaceExemptions — послабления гейта.

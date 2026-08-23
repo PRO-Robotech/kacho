@@ -75,10 +75,28 @@ type tokenPolicyQuantity struct {
 	// политики: вторая копия числа внутри проверки числа была бы тем самым
 	// дефектом, который проверка ищет.
 	Want time.Duration
+	// Not — имена, которые под Concept подходят, а величиной ЭТОЙ не являются.
+	//
+	// Введено с задачи #1124, где рядом с потолком длительности утверждения
+	// появился ВТОРОЙ, федеративный: величины разные (у полос разные подписанты
+	// и разные сроки), а имя второй подходит под образец первой. Без
+	// исключающего образца гейт объявил бы две разные величины одной — то есть
+	// краснел бы на исправном дереве и был бы снят первым же обходом.
+	//
+	// Отрицающий образец, а не порядок перебора: порядок был бы неявным
+	// свойством перечня, а исключение обязано быть ВИДНО у той величины,
+	// которой оно принадлежит. RE2 не умеет заглядывать вперёд, поэтому
+	// отдельным полем.
+	Not *regexp.Regexp
 }
 
 // Matches отвечает, называет ли идентификатор эту величину.
-func (q tokenPolicyQuantity) Matches(name string) bool { return q.Concept.MatchString(name) }
+func (q tokenPolicyQuantity) Matches(name string) bool {
+	if q.Not != nil && q.Not.MatchString(name) {
+		return false
+	}
+	return q.Concept.MatchString(name)
+}
 
 // tokenPolicyQuantities — стережённые величины.
 //
@@ -93,7 +111,14 @@ var tokenPolicyQuantities = []tokenPolicyQuantity{
 	{
 		Name:    "потолок длительности утверждения",
 		Concept: regexp.MustCompile(`(?i)assertion.*(lifetime|ttl|maxage)|(max|ceiling).*assertion`),
-		Want:    tokenpolicy.MaxAssertionLifetime,
+		// Федеративный потолок — ДРУГАЯ величина, и стережётся он записью ниже.
+		Not:  regexp.MustCompile(`(?i)federated`),
+		Want: tokenpolicy.MaxAssertionLifetime,
+	},
+	{
+		Name:    "федеративный потолок длительности утверждения",
+		Concept: regexp.MustCompile(`(?i)federated.*(lifetime|ttl|maxage)|(max|ceiling).*federated`),
+		Want:    tokenpolicy.MaxFederatedAssertionLifetime,
 	},
 }
 
