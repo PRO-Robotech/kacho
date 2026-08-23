@@ -448,6 +448,12 @@ dev-up: preflight
 	  --wait --timeout 5m; \
 	echo "=== ждём вебхук cert-manager (до применения Issuer/Certificate) ==="; \
 	kubectl -n kacho rollout status deploy/$(CERT_MANAGER_RELEASE)-webhook --timeout=180s; \
+	echo "=== prerequisite secrets: ПРЕДУСЛОВИЕ, а не следствие ==="; \
+	echo "    Величина обратного вызова личности подставляется в под ДО старта"; \
+	echo "    процесса и объявлена обязательной: без Secret под личности не"; \
+	echo "    поднимется вовсе. Значит посев идёт ПЕРЕД первым прогоном helm,"; \
+	echo "    а не между ним и боевой посадкой (задача #948)."; \
+	./scripts/dev-prod-secrets.sh; \
 	echo "=== продукт: ОДИН helm-прогон, сразу в боевой посадке (mTLS включён) ==="; \
 	helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho --create-namespace \
 	  $(call STACK_ARGS,dev) \
@@ -456,8 +462,6 @@ dev-up: preflight
 	  --wait --timeout 10m; \
 	echo "Waiting for ingress-nginx admission webhook..."; \
 	kubectl -n kacho wait --for=condition=ready pod -l app.kubernetes.io/component=controller --timeout=60s; \
-	echo "=== prerequisite secrets (без них production-посадка не поднимается) ==="; \
-	./scripts/dev-prod-secrets.sh; \
 	echo "=== helm phase 3: PRODUCTION posture (values.dev-prod.yaml поверх dev) ==="; \
 	helm upgrade kacho-umbrella ./helm/umbrella -n kacho \
 	  $(call STACK_ARGS,dev-prod) \

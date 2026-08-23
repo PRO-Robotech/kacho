@@ -4,7 +4,7 @@
 C4 — Kratos web_hook body templates (Jsonnet).
 
 The registration/login provisioning web_hook in kratos-config-configmap.yaml
-references `file:///etc/config/kratos/hooks/identity-payload.jsonnet`. Kratos
+references `file:///etc/kacho-identity/hooks/identity-payload.jsonnet`. Kratos
 renders this Jsonnet against the flow context (the `ctx` top-level object that
 Kratos injects: `ctx.identity`, `ctx.flow`, `ctx.request_*`, …) and POSTs the
 result to the kacho-iam provisioning route `/iam/v1/hooks/provision` on the
@@ -20,7 +20,7 @@ keys.
   - email        = ctx.identity.traits.email
   - display_name = ctx.identity.traits.display_name (optional; "" when unset).
 
-This ConfigMap is mounted into the Kratos pod at /etc/config/kratos/hooks/
+This ConfigMap is mounted into the Kratos pod at /etc/kacho-identity/hooks/
 (alongside kratos.yaml + identity.schema.json) by the Kratos sub-chart's
 extraVolumes/extraVolumeMounts wiring — see values.<cluster>.yaml.
 
@@ -41,29 +41,7 @@ metadata:
     kacho.cloud/component: kratos-hooks
 data:
   identity-payload.jsonnet: |
-    function(ctx) {
-      // Kratos identity id (UUID) — used as the kacho external_id / OIDC sub.
-      external_id: ctx.identity.id,
-      // Primary email trait (required by identity.schema.json).
-      email: ctx.identity.traits.email,
-      // Optional human-readable name; default to empty string when absent so
-      // the handler always receives a well-formed object.
-      display_name: if std.objectHas(ctx.identity.traits, "display_name")
-        then ctx.identity.traits.display_name
-        else "",
-    }
+    {{- include "kacho.identity.hookIdentityPayload" . | nindent 4 }}
   recovery-payload.jsonnet: |
-    function(ctx) {
-      // Kratos identity id (UUID) — тот же external_id, что у заведения
-      // пользователя: обе стороны обязаны называть человека одинаково, иначе
-      // восстановление найдёт не ту строку либо не найдёт ни одной.
-      external_id: ctx.identity.id,
-      // Адрес, по которому шло восстановление.
-      email: ctx.identity.traits.email,
-      // Идентификатор события восстановления — ключ идемпотентности: провайдер
-      // вправе повторить доставку, и повтор обязан быть no-op, а не вторым
-      // сдвигом отсечки сессий. Берётся id потока, а не время: время у двух
-      // доставок одного события разное, и повтор перестал бы опознаваться.
-      recovery_jti: ctx.flow.id,
-    }
+    {{- include "kacho.identity.hookRecoveryPayload" . | nindent 4 }}
 {{- end }}

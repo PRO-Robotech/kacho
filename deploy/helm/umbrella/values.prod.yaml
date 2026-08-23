@@ -79,6 +79,34 @@
 # NB: on a cluster that already runs cert-manager, set `cert-manager.enabled=false`
 # and point `mtls.internalCA.caNamespace` at that controller's
 # --cluster-resource-namespace (see values.fe3455.yaml) via a per-cluster overlay.
+# ─── Обратные вызовы службы личности — под тем же TLS, что и слушатель ────────
+#
+# Слушатель хуков этого стенда работает под TLS (kacho-iam.mtls.httpListeners
+# ниже), значит и полосы к нему обязаны идти https. Прежде две из четырёх полос
+# (заведение пользователя и завершение восстановления доступа) были выписаны в
+# шаблоне чарта буквой `http`, и профиль переопределить их не мог ВООБЩЕ — то
+# есть боевая посадка не была в состоянии объявить их защищёнными.
+#
+# Узел и порт здесь не объявляются: их умолчания выводятся из имени подчарта и
+# порта слушателя и совпадают с прежним адресом байт в байт. Объявляется ровно
+# то, что решает профиль, — транспорт.
+#
+# ПОЧЕМУ В `global`, А НЕ В ЗНАЧЕНИЯХ ПОДЧАРТА. Содержимое настроек службы
+# личности читается из ДВУХ контекстов: нашего подчарта (там рендерится карта
+# настроек) и подчарта провайдера (там в шаблон пода кладётся отпечаток её
+# содержимого, без которого правка карты не перекатывает под). Общими для обоих
+# являются только `.Values.global` и `.Release`.
+#
+# Согласие полосы со слушателем держит deploy/identity_callback_transport_test.go:
+# он выводит перечень полос из конфигурации и краснеет и на открытой полосе при
+# слушателе под TLS, и на обратном — https к открытому слушателю.
+global:
+  kacho:
+    identity:
+      hooks:
+        scheme: https
+
+
 mtls:
   enabled: true
   # ─── Postgres SERVER-TLS from the same internal CA (templates/pg-certificates.yaml) ─
@@ -494,10 +522,6 @@ kacho-iam:
     # Both HTTP edges run server-tls-only (default; restated here for prod clarity).
     hooksClientAuthMode: server-tls-only
     metricsClientAuthMode: server-tls-only
-  kratos:
-    config:
-      hooks:
-        scheme: https
   kacho:
     iam:
       # Route to the provider's ADMIN API. DECLARED, never derived: the fallback
@@ -1232,10 +1256,79 @@ kratos:
   # сертификатом (например, почтовый шлюз по TLS), и корни придётся объединять,
   # а не подменять.
   deployment:
+    # ─── КОНФИГУРАЦИЯ ДОЛЖНА ДОЕЗЖАТЬ ДО ПРОЦЕССА, А НЕ ТОЛЬКО РЕНДЕРИТЬСЯ ─────
+    #
+    # Карты настроек `kacho-iam-kratos-{config,hooks,identity-schema}` собирает
+    # наш подчарт, и до этой провязки их НИКТО не монтировал: служба личности
+    # работала на конфигурации подчарта поставщика, где есть только `courier` и
+    # `serve`. Практическое следствие — обе полосы обратных вызовов (заведение
+    # пользователя и завершение восстановления доступа) не исполнялись ни на
+    # одном стенде, а схема личности подменялась умолчанием поставщика.
+    #
+    # Со стороны это выглядело исправным: шаблоны рендерились, карты в кластере
+    # присутствовали, транспорт полос был объявлен защищённым и проверялся
+    # соседней пробой. Не хватало ровно одного — чтения.
+    #
+    # Служба принимает НЕСКОЛЬКО файлов конфигурации и сливает их по порядку,
+    # поэтому наш файл идёт ВТОРЫМ и дополняет базовый, а не заменяет его: DSN,
+    # адреса слушателей и почтовая полоса остаются за подчартом поставщика.
+    #
+    # Пути не выдуманы здесь: они те же, что уже стоят внутри самой
+    # конфигурации (`file:///etc/config/kratos/...`), поэтому провязка сводится
+    # к монтированию каталога, а не к правке ссылок. Отдельные файлы монтируются через
+    # subPath — два тома на один каталог не поставить.
+    extraArgs:
+      - --config
+      - /etc/kacho-identity-rendered/kratos.yaml
+    # Величина обратного вызова подставляется в поде ДО старта процесса —
+    # объяснение и отказ по закрытой стороне живут в одном месте, в шаблоне
+    # `kacho.identity.configRenderInitContainer` (задача #948).
+    extraInitContainers: |
+      {{- include "kacho.identity.configRenderInitContainer" . | nindent 0 }}
+    # ─── ОТПЕЧАТКИ СОДЕРЖИМОГО: без них правка настроек НЕ ПЕРЕКАТЫВАЕТ под ────
+    #
+    # Настройки приезжают томом и читаются процессом ОДИН РАЗ — на старте.
+    # Правка карты настроек не меняет шаблон пода, значит Kubernetes под НЕ
+    # перекатывает, и процесс продолжает жить со старым содержимым, пока его не
+    # перезапустит что-нибудь постороннее. Дерево и работающая система
+    # расходятся МОЛЧА, а любой гейт, читающий рендер, отчитается новым значением.
+    #
+    # ПОЧЕМУ ПЕРЕМЕННЫЕ, А НЕ АННОТАЦИЯ. Из ручек чарта провайдера через
+    # шаблонизацию (`tpl`) проходит РОВНО ОДНА — `deployment.extraEnv`;
+    # `deployment.annotations` и `podMetadata.annotations` идут прямым `toYaml`,
+    # и вычислить в них sha256 не из чего. Тот же вывод и та же развилка, что у
+    # соседа-терминатора административного перехода (_hydra-admin-tls.tpl).
+    #
+    # Значения НЕ читаются процессом — они существуют ради того, чтобы шаблон
+    # пода менялся вместе с содержимым. Отпечаток берётся с ТОГО ЖЕ
+    # именованного шаблона, из которого рендерится сама карта настроек, поэтому
+    # соответствие доказано построением, а не заявлено.
+    #
+    # Курьер наследует эти переменные тем же способом, каким наследует тома
+    # (`statefulSet.extraEnv` пуст ⇒ берётся `deployment.extraEnv`), поэтому
+    # привязку получают ОБА рабочих объекта.
     extraEnv:
       - name: SSL_CERT_FILE
         value: /etc/kacho-iam-ca/ca.crt
+      - name: KACHO_IDENTITY_CONFIG_SHA256
+        value: '{{ printf "%s\n" (include "kacho.identity.configYaml" .) | sha256sum }}'
+      - name: KACHO_IDENTITY_SCHEMA_SHA256
+        value: '{{ printf "%s\n" (include "kacho.identity.schemaJSON" .) | sha256sum }}'
+      - name: KACHO_IDENTITY_HOOKS_SHA256
+        value: '{{ printf "%s\n%s\n" (include "kacho.identity.hookIdentityPayload" .) (include "kacho.identity.hookRecoveryPayload" .) | sha256sum }}'
     extraVolumes:
+      - name: kacho-identity-config
+        configMap:
+          name: kacho-iam-kratos-config
+      # Отрендеренная конфигурация: её пишет init-контейнер, читает процесс.
+      - name: kacho-identity-rendered
+        emptyDir: {}
+      - name: kacho-identity-hooks
+        configMap:
+          name: kacho-iam-kratos-hooks
+      - name: kacho-identity-schema
+        configMap:
+          name: kacho-iam-kratos-identity-schema
       - name: kacho-iam-internal-ca
         secret:
           secretName: kacho-iam-server-tls
@@ -1243,9 +1336,45 @@ kratos:
             - key: ca.crt
               path: ca.crt
     extraVolumeMounts:
+      # Шаблон конфигурации главному контейнеру НЕ монтируется: он читает
+      # отрендеренное. Смонтировать оба значило бы держать рядом два файла, из
+      # которых рабочий один, — и следующая правка `--config` вернула бы дефект.
+      - name: kacho-identity-rendered
+        mountPath: /etc/kacho-identity-rendered
+        readOnly: true
+      - name: kacho-identity-schema
+        mountPath: /etc/kacho-identity/identity.schema.json
+        subPath: identity.schema.json
+        readOnly: true
+      - name: kacho-identity-hooks
+        mountPath: /etc/kacho-identity/hooks
+        readOnly: true
       - name: kacho-iam-internal-ca
         mountPath: /etc/kacho-iam-ca
         readOnly: true
+  # ─── ПОЧТОВЫЙ ПРОЦЕСС ЧИТАЕТ ТО ЖЕ, ЧТО ОСНОВНОЙ ─────────────────────────
+  #
+  # Раздача настроек двум рабочим объектам службы личности НЕСИММЕТРИЧНА, и это
+  # свойство ЧУЖОГО чарта, а не наше решение: тома, монтирования, переменные и
+  # init-контейнеры почтовый процесс НАСЛЕДУЕТ от основного, когда своих не
+  # объявлено, — а аргументы командной строки НЕ наследует: у него своя ручка.
+  #
+  # Поэтому строки ниже — не дубль ради симметрии, и снимать их как избыточные
+  # нельзя. Без них карты настроек до почтового процесса ДОЕЗЖАЮТ томами, а
+  # указание их читать — нет: со стороны кластера всё смонтировано, со стороны
+  # процесса не изменилось ничего. Письма шлёт именно он, а раздел
+  # `courier.smtp` живёт в той самой конфигурации — значит отправителя и шлюз
+  # мы бы объявляли, применялись бы чужие умолчания, и заметить это неоткуда:
+  # письма продолжают уходить.
+  #
+  # Путь тот же, что у основного процесса, и это обязано остаться так: файл
+  # один. Согласие двух ручек держит
+  # deploy/identity_courier_reads_what_it_mounts_test.go, а не внимание;
+  # предпосылку о чужом чарте перемеряет deploy/identity_courier_arg_premise_test.go.
+  statefulSet:
+    extraArgs:
+      - --config
+      - /etc/kacho-identity-rendered/kratos.yaml
 hydra:
   enabled: true
   # Sub-phase 5.5 (kacho-iam#137) — prod transport hardening for the :9092 hooks
