@@ -54,13 +54,24 @@ message User {
   // invite-status.
   // PENDING — invited, еще не login'нулся.
   // ACTIVE  — login'нулся через Kratos, external_id заполнен.
-  // BLOCKED — участие в ЭТОМ Account'е запрещено администратором
-  //   (`UserService.Block`; снимается `UserService.Unblock`).
+  // BLOCKED — вход на платформу запрещён (`UserService.Block`; снимается
+  //   `UserService.Unblock`).
   //
-  // Состояние принадлежит СТРОКЕ ЧЛЕНСТВА, а не человеку: одна личность держит
-  // по строке на каждый Account, и запрет в одном Account'е не отключает её в
-  // остальных. Выдача токена перебирает набор членств и обслуживает первое
-  // аутентифицирующееся; отказ приходит, только когда ни одно не может.
+  // Состояние принадлежит ЛИЧНОСТИ, и действует оно ВЕЗДЕ, где человек состоит.
+  //
+  // > Здесь стояло обратное — «состояние принадлежит СТРОКЕ ЧЛЕНСТВА… запрет в
+  // > одном Account'е не отключает её в остальных». Это было верно, пока строка
+  // > `users` и была членством, и пережило свой предмет: строк у человека теперь
+  // > одна на всю платформу (глобальные ключи `users_identity_email_uniq` /
+  // > `users_identity_external_id_uniq`, миграция 20260823050000), а
+  // > принадлежность аккаунтам выражают строки `memberships`. Утверждение не
+  // > удалено, а перевёрнуто на месте: оно читалось как ГРАНИЦА БЕЗОПАСНОСТИ, и
+  // > следующий, кто пришёл бы за радиусом запрета, принял бы его за факт. Ту же
+  // > правку с той же причиной несёт проза `UserService.Block`.
+  //
+  // Пер-аккаунтное исключение — ОТДЕЛЬНОЕ действие и отдельное поле не занимает:
+  // `UserService.RemoveFromAccount` снимает строку членства и этого состояния не
+  // касается (#1127).
   //
   // НЕ ИЗМЕНЯЕТСЯ через Update: у пустой `update_mask` семантика полной замены
   // объекта, а enum в proto3 неотличим от незаданного — клиент, не приславший
@@ -71,19 +82,34 @@ message User {
   // User.id того, кто пригласил (nullable для self-signup bootstrap-row).
   string invited_by = 8;
 
-  // Tenant-facing метки. Единая модель видимости IAM-ресурсов: User —
-  // label-selectable, как account/project; ARM_LABELS-грант на iam.user
-  // материализует глаголы своей роли на объектах, чьи `labels` покрывают
-  // `matchLabels` (iam-direct same-DB), а страница List сужается тем же
-  // отношением, которым каталог гейтит одиночное чтение — `v_get`; строка
-  // попадает в выдачу ровно тогда, когда вызывающий вправе прочитать её по id.
-  // Роль, дающая только `list` без `get`, объект в списке не показывает — иначе
-  // выдача раскрывала бы содержимое, которое чтение по id отказывает (List
-  // возвращает то же сообщение ресурса, что и Get). Mutable через
-  // UserService.Update (`labels` в update_mask). Аннотации (size/key/value
-  // pattern) энфорсят sync-INVALID_ARGUMENT на request-layer — паритет
-  // account/project/group request `labels`; это request-input для UpdateUser
-  // (тело UpdateUserRequest.user).
+  // Метки человека — ПЛАТФОРМЕННАЯ величина, и владелец у них назван (#1126).
+  //
+  // КТО ИХ ПИШЕТ. Только надзор облака: `UserService.Update` гейтится
+  // `iam_user.record_writer`, у которого источников уровня аккаунта нет ни
+  // одного (#1102). Распорядитель аккаунта своих людей размечать НЕ МОЖЕТ, и это
+  // решение, а не недоделка: строка `iam_user` — глобальная личность, одна на все
+  // аккаунты человека, поэтому метка, поставленная из одного аккаунта, была бы
+  // фактом о нём во всех.
+  //
+  // ЧЕМ ОНИ НЕ ЯВЛЯЮТСЯ. Не «как МОЙ аккаунт помечает этого человека». Такому
+  // прочтению негде жить: носитель метки ровно один и он не пер-аккаунтный
+  // (проба `repo/kacho/pg/person_labels_are_a_platform_value_integration_test.go`
+  // краснеет на появлении второго). Пер-аккаунтная разметка людей — исход 1
+  // задачи #1126, и она требует ресурса членства (#1085): пока у чтения нет
+  // аргумента аккаунта, «метки этого человека в этом аккаунте» нечем адресовать.
+  //
+  // ЧТО ОНИ ДЕЛАЮТ. User — label-selectable наравне с account/project:
+  // ARM_LABELS-грант на iam.user материализует глаголы своей роли на объектах,
+  // чьи `labels` покрывают `matchLabels` (iam-direct same-DB), а страница List
+  // сужается тем же отношением, которым каталог гейтит одиночное чтение —
+  // `v_get`; строка попадает в выдачу ровно тогда, когда вызывающий вправе
+  // прочитать её по id. Роль, дающая только `list` без `get`, объект в списке не
+  // показывает — иначе выдача раскрывала бы содержимое, которое чтение по id
+  // отказывает (List возвращает то же сообщение ресурса, что и Get).
+  //
+  // Mutable через UserService.Update (`labels` в update_mask). Аннотации
+  // (size/key/value pattern) энфорсят sync-INVALID_ARGUMENT на request-layer —
+  // паритет account/project/group request `labels`.
   map<string, string> labels = 9 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
 
   enum InviteStatus {
@@ -139,6 +165,16 @@ message UnblockUserMetadata {
 }
 
 // Invite-flow.
+message RemoveUserFromAccountMetadata {
+  // ID of the person whose membership is being removed. First field so the
+  // corelib resource_id extractor (first `_id`-suffix match) picks it.
+  string user_id = 1;
+
+  // ID of the Account the person is being removed from. Never empty: the
+  // membership is the pair, and the call names both halves.
+  string account_id = 2;
+}
+
 message InviteUserMetadata {
   string user_id = 1;
   string account_id = 2;

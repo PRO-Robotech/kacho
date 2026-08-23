@@ -266,6 +266,14 @@ var AllowedMethods = map[string]struct{}{
 	// Приглашение по адресу почты (REST POST /iam/v1/users:invite) — единственный
 	// публичный путь появления пользователя; Create по-прежнему только internal.
 	"/kacho.cloud.iam.v1.UserService/Invite": {},
+	// Исключение человека из аккаунта (REST POST
+	// /iam/v1/users/{user_id}:removeFromAccount) — ПАРА к приглашению выше, и
+	// стоять они обязаны обе: аккаунт, который умеет только вводить людей и не
+	// умеет выводить, копит участников, которых не может убрать (#1127).
+	// Гейтится `member_remover` на АККАУНТЕ (тот же круг, что у Invite), acr 2;
+	// строку личности не трогает — её снятие спрашивает `identity_remover`
+	// (#1131).
+	"/kacho.cloud.iam.v1.UserService/RemoveFromAccount": {},
 	// iam.v1 — UserTokenService (REST .../users/{user_id}/tokens) —
 	// выдача, перечисление и отзыв неинтерактивных токенов пользователя.
 	"/kacho.cloud.iam.v1.UserTokenService/Issue":  {},

@@ -15,6 +15,7 @@ import { DeleteDialog, requiresNameConfirm } from "@shared/components/molecules/
 import { MoveStubDialog } from "@shared/components/molecules/MoveStubDialog";
 import { RowVerbDialog } from "@shared/components/molecules/RowActionsMenu/RowVerbDialog";
 import { useSelfUserId } from "@shared/contexts/AuthContext";
+import { useContext } from "@shared/lib/context-store";
 import { getByPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 
 interface Props {
@@ -140,6 +141,11 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
   // и флаг не сказал бы, который из них подтверждают.
   const [openVerb, setOpenVerb] = useState<string | null>(null);
   const selfId = useSelfUserId();
+  // Аккаунт выбранной области — вторая половина предмета у глаголов, чей
+  // предмет ПАРА (исключение человека из аккаунта). Берётся из того же
+  // хранилища области, что и у страниц: выводить его из строки нельзя — у
+  // человека аккаунтов бывает несколько, а на строке личности их больше нет.
+  const scopeAccountId = useContext((st) => st.account)?.id;
 
   const id = getByPath<string>(row, "id") ?? "";
   const name = getByPath<string>(row, "name") ?? id;
@@ -161,7 +167,7 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
   // строке не относится вовсе» — и такой пункт не рисуется; недоступность с
   // названной причиной — это другое состояние, и оно остаётся видимым.
   const verbs = (spec.rowVerbs ?? [])
-    .map((verb) => ({ verb, state: verb.resolve(row, { selfId }) }))
+    .map((verb) => ({ verb, state: verb.resolve(row, { selfId, accountId: scopeAccountId }) }))
     .filter((entry): entry is { verb: (typeof entry)["verb"]; state: NonNullable<(typeof entry)["state"]> } =>
       entry.state !== null,
     );

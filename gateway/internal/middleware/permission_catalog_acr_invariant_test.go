@@ -55,7 +55,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 31 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 32 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root + shared-resource
 // ceiling, domain-agnostic). Any drift (an RPC added or dropped) fails this
 // test. Categories A–J per the APPROVED acceptance docs.
@@ -122,6 +122,15 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.iam.v1.AccessBindingService/Delete",
 		"kacho.cloud.iam.v1.AccessBindingService/Revoke",
 		"kacho.cloud.iam.v1.UserService/Invite",
+		// RemoveFromAccount — ПАРА к Invite, и на этой полосе она стоит по тому же
+		// доводу, что и он: обе меняют СОСТАВ УЧАСТНИКОВ аккаунта. Invite вводит
+		// человека и вместе с ним может выдать право; исключение выводит его и
+		// требует, чтобы прав у него в этом аккаунте уже не было (отложенный
+		// триггер `membership_carrying_rights_is_kept` отвергает снятие членства,
+		// несущего живую выдачу). Соседняя по смыслу `AccessBindingService/Revoke`
+		// стоит здесь же, поэтому оставить исключение на нижнем пороге значило бы
+		// сделать более дешёвую дверь к тому же исходу (#1127).
+		"kacho.cloud.iam.v1.UserService/RemoveFromAccount",
 		// C — compute per-resource grant. Поверхность выдачи на самой машине снята
 		// целиком вместе с остальной мёртвой: ни `SetAccessBindings`, ни
 		// `UpdateAccessBindings` у машины больше нет — выдача на ресурс идёт
@@ -207,7 +216,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	// «чувствительное» — назначение, изменение и отзыв предела. Число утверждается,
 	// а не выводится из списка: молчаливое сокращение — ровно то, что произошло бы
 	// при случайно выпавшей записи.
-	require.Len(t, sensitive, 31, "the acceptance-doc sensitive set must contain exactly 31 FQNs")
+	require.Len(t, sensitive, 32, "the acceptance-doc sensitive set must contain exactly 32 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -228,7 +237,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 31, "exactly 31 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 32, "exactly 32 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -642,10 +651,14 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// говорит: множество записей с пустым порогом есть СТРОГОЕ ПОДМНОЖЕСТВО
 	// освобождённых (две освобождённые несут порог явно). Прежняя подпись
 	// называла его «exempt count» — верно для предиката и неверно по составу.
-	assert.Equal(t, 31, n2, "sensitive count")
-	// ДВЕ линии завели по одной записи каждая, и объяснения обеих остаются —
+	// 31→32: заведено исключение человека из аккаунта
+	// (`UserService/RemoveFromAccount`, #1127) — вторая половина пары к Invite,
+	// и порог у неё тот же, что у Invite и у отзыва выдачи: обе меняют СОСТАВ
+	// участников аккаунта.
+	assert.Equal(t, 32, n2, "sensitive count")
+	// ТРИ линии завели по одной записи каждая, и объяснения всех трёх остаются —
 	// они про разные глаголы. Числа ниже ЗАМЕРЕНЫ по дереву после слияния,
-	// а не сложены в уме: арифметика двух переписей даёт совпадение, которое
+	// а не сложены в уме: арифметика трёх переписей даёт совпадение, которое
 	// нечем проверить.
 	//
 	// Линия identity: заведён `InternalSessionRevocationsService/SessionCutoffOf`
@@ -671,13 +684,14 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// nlb, #814), у обоих не было ни одного потребителя. Общий заведён взамен двух
 	// частных.
 	//
-	// ИТОГ 341, а не 340: обе ветки по отдельности писали «итог 340» и обе были
-	// правы ДЛЯ СВОЕЙ ветки — каждая добавила по одной записи к общему предку
-	// (339). Число ЗАМЕРЕНО прогоном после слияния; сложение двух переписей в уме
-	// дало бы 340 и совпало бы с обеими сторонами, будучи неверным.
+	// ИТОГ 342, а не 341: три ветки по отдельности писали «итог» каждая для СВОЕЙ
+	// — и каждая была права. Общий предок нёс 339, три линии добавили по одной
+	// записи: подписка платформы, отсечка сессии, исключение из аккаунта. Число
+	// ЗАМЕРЕНО прогоном после слияния; сложение переписей в уме совпало бы со
+	// всеми тремя сторонами, будучи неверным.
 	assert.Equal(t, 285, n1, "routine count")
 	assert.Equal(t, 25, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 341, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 342, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

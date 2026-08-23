@@ -92,8 +92,20 @@ func ownerGuardModelGatedRPCs() []ownerGuardRPC {
 			req: &iamv1.UpdateUserRequest{UserId: usrID}, targetObjID: usrID,
 		},
 		{
+			// #1131: снятие строки личности ушло с `v_delete` на `identity_remover`
+			// — отношение БЕЗ источников уровня аккаунта, ровно как соседняя правка
+			// записи ушла на `record_writer` (#1102). Утверждение перевёрнуто, а не
+			// снято: пообъектный гейт края никуда не делся, и его перепись здесь и
+			// утверждается — меняется ИМЯ спрашиваемого отношения, а не наличие
+			// вопроса. Удалить строку значило бы перестать стеречь то, что она
+			// стерегла: что край спрашивает PDP про объект, который назвал
+			// вызывающий (анти-BOLA).
+			//
+			// Что распорядителю аккаунта осталось вместо удаления — исключение из
+			// аккаунта (`UserService/RemoveFromAccount`, #1127): оно снимает
+			// членство и не трогает глобальную строку.
 			fullMethod: "/kacho.cloud.iam.v1.UserService/Delete",
-			relation:   "v_delete", objectType: "iam_user", scopeField: "user_id",
+			relation:   "identity_remover", objectType: "iam_user", scopeField: "user_id",
 			req: &iamv1.DeleteUserRequest{UserId: usrID}, targetObjID: usrID,
 		},
 		{
