@@ -27,7 +27,8 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 // `user_oauth_clients`; подпись проверяется по публичному ключу в OAuth2-обмене.
 //
 // authz: parent-scoped на `iam_user`. Мутации требуют `token_issuer`, чтение —
-// `v_list`.
+// `token_reader` (надмножество `v_list`: прежние держатели перечисления видят
+// перечень как и раньше, плюс сам человек).
 //
 // `token_issuer` — ВЫЧИСЛЯЕМОЕ отношение (`iam_user.token_issuer: subject`), то
 // есть его нельзя выдать ни кортежем, ни выдачей, ни материализацией:
@@ -82,7 +83,7 @@ service UserTokenService {
       get: "/iam/v1/users/{user_id}/tokens"
     };
     option (kacho.iam.authz.v1.permission)        = "iam.user_tokens.list";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
+    option (kacho.iam.authz.v1.required_relation) = "token_reader";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"

@@ -44,7 +44,8 @@ const (
 // `user_oauth_clients`; подпись проверяется по публичному ключу в OAuth2-обмене.
 //
 // authz: parent-scoped на `iam_user`. Мутации требуют `token_issuer`, чтение —
-// `v_list`.
+// `token_reader` (надмножество `v_list`: прежние держатели перечисления видят
+// перечень как и раньше, плюс сам человек).
 //
 // `token_issuer` — ВЫЧИСЛЯЕМОЕ отношение (`iam_user.token_issuer: subject`), то
 // есть его нельзя выдать ни кортежем, ни выдачей, ни материализацией:
@@ -135,7 +136,8 @@ func (c *userTokenServiceClient) Revoke(ctx context.Context, in *RevokeUserToken
 // `user_oauth_clients`; подпись проверяется по публичному ключу в OAuth2-обмене.
 //
 // authz: parent-scoped на `iam_user`. Мутации требуют `token_issuer`, чтение —
-// `v_list`.
+// `token_reader` (надмножество `v_list`: прежние держатели перечисления видят
+// перечень как и раньше, плюс сам человек).
 //
 // `token_issuer` — ВЫЧИСЛЯЕМОЕ отношение (`iam_user.token_issuer: subject`), то
 // есть его нельзя выдать ни кортежем, ни выдачей, ни материализацией:
