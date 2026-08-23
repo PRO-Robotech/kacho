@@ -59,6 +59,9 @@ package repohygiene
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"path/filepath"
 	"regexp"
@@ -123,15 +126,13 @@ type SubscriptionReachCensus struct {
 	BlankImports int
 	// TestReferrers — употреблений типа в пробах (в счёт ссылок НЕ идут).
 	TestReferrers int
+	// GoUnparsed — файлов Go, которые не разобрались. Печатаются, а не
+	// проглатываются: непрочитанный файл не есть отсутствие ссылки.
+	GoUnparsed int
 }
 
 var (
 	subReachEnumRe = regexp.MustCompile(`\benum\s+([A-Za-z0-9_]+)`)
-	// subReachGoImportRe ловит ИМЕНОВАННЫЙ импорт сгенерённого пакета и отдаёт
-	// псевдоним, если он задан. Пустой импорт (`_ "…"`) сюда НЕ попадает: у него
-	// в первой группе стоит `_`, и он отсеивается явной веткой.
-	subReachGoImportRe = regexp.MustCompile(
-		`(?m)^\s*(?:([A-Za-z_][A-Za-z0-9_]*)\s+)?"` + regexp.QuoteMeta(SubscriptionGoPackage) + `"`)
 )
 
 // AuditSubscriptionFormReach читает дерево и возвращает состав типов общего
@@ -220,6 +221,7 @@ func AuditSubscriptionFormReach(
 	if len(goRoots) == 0 {
 		goRoots = []string{"."}
 	}
+	fset := token.NewFileSet()
 	for _, gr := range goRoots {
 		err = rootedWalk(filepath.Join(opts.Root, gr), func(rel string) bool {
 			return strings.HasSuffix(rel, ".go")
@@ -230,29 +232,27 @@ func AuditSubscriptionFormReach(
 			if strings.HasPrefix(filepath.ToSlash(rel), "pkg/api/") {
 				return nil
 			}
-			body := string(b)
-			loc := subReachGoImportRe.FindStringSubmatchIndex(body)
-			if loc == nil {
-				// Пустой импорт именованное выражение не матчит; считаем его
-				// отдельно, чтобы он был ВИДЕН в переписи, а не выглядел как
-				// отсутствие импорта вовсе.
-				if strings.Contains(body, `_ "`+SubscriptionGoPackage+`"`) {
-					c.BlankImports++
-				}
+			file, perr := parser.ParseFile(fset, rel, b, parser.SkipObjectResolution)
+			if perr != nil {
+				// Файл, который не разбирается, ссылкой не считается — но и
+				// молча не пропускается: он попадает в перепись, иначе
+				// «ссылок ноль» стало бы неотличимо от «не прочитано».
+				c.GoUnparsed++
 				return nil
 			}
-			alias := SubscriptionGoDefaultAlias
-			if loc[2] >= 0 {
-				alias = body[loc[2]:loc[3]]
-			}
-			if alias == "_" {
+			alias, blank := subReachAlias(file)
+			if blank {
 				c.BlankImports++
+				return nil
+			}
+			if alias == "" {
 				return nil
 			}
 			c.GoFiles++
 			isTest := strings.HasSuffix(rel, "_test.go")
+			used := subReachUsedTypes(file, alias)
 			for _, name := range order {
-				if !subReachNames(body, alias+"."+name) {
+				if !used[name] {
 					continue
 				}
 				if isTest {
@@ -285,9 +285,10 @@ func AuditSubscriptionFormReach(
 	if out != nil {
 		_, _ = fmt.Fprintf(out,
 			"перепись: файлов контракта %d; типов пакета %s объявлено %d, из них без ссылок %d; "+
-				"файлов Go с именованным импортом %d, пустых импортов %d, употреблений в пробах %d\n",
+				"файлов Go с именованным импортом %d, пустых импортов %d, употреблений в пробах %d, "+
+				"не разобралось файлов Go %d\n",
 			c.ProtoFiles, SubscriptionCommonPackage, c.CommonTypes, c.Unreferenced,
-			c.GoFiles, c.BlankImports, c.TestReferrers)
+			c.GoFiles, c.BlankImports, c.TestReferrers, c.GoUnparsed)
 		for _, t := range types {
 			_, _ = fmt.Fprintf(out, "  %s %s (%s): ссылок %d %v%v\n",
 				t.Kind, t.Name, t.Where, t.Referrers(), t.ProtoReferrers, t.GoReferrers)
@@ -324,6 +325,55 @@ func SubscriptionReachFindings(types []SubscriptionFormType, takerState string) 
 	}
 	sort.Strings(out)
 	return out
+}
+
+// subReachAlias — под каким именем файл импортирует сгенерённый пакет.
+//
+// Читается РАЗБОР, а не текст: путь импорта встречается и внутри строковых
+// литералов (фикстуры проб, шаблоны генераторов), и поиск по образцу засчитал бы
+// такой файл ссылкой — то есть замолчал бы ровно там, где обязан говорить.
+// Первая редакция этого анализатора так и делала, и находка нашлась на его же
+// собственной переписи.
+func subReachAlias(file *ast.File) (alias string, blank bool) {
+	want := `"` + SubscriptionGoPackage + `"`
+	for _, imp := range file.Imports {
+		if imp.Path == nil || imp.Path.Value != want {
+			continue
+		}
+		if imp.Name == nil {
+			return SubscriptionGoDefaultAlias, false
+		}
+		if imp.Name.Name == "_" {
+			return "", true
+		}
+		if imp.Name.Name == "." {
+			// Точечный импорт: имена пакета входят в область файла без
+			// префикса. Такой формы в этом дереве нет, и притворяться, что
+			// анализатор её понимает, он не станет — она попадёт в «не
+			// разобралось» через отсутствие псевдонима.
+			return "", false
+		}
+		return imp.Name.Name, false
+	}
+	return "", false
+}
+
+// subReachUsedTypes — какие типы пакета файл действительно употребляет.
+func subReachUsedTypes(file *ast.File, alias string) map[string]bool {
+	used := map[string]bool{}
+	ast.Inspect(file, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		id, ok := sel.X.(*ast.Ident)
+		if !ok || id.Name != alias {
+			return true
+		}
+		used[sel.Sel.Name] = true
+		return true
+	})
+	return used
 }
 
 // subReachNames — назван ли символ `sym` в тексте как ОТДЕЛЬНОЕ имя.

@@ -62,6 +62,21 @@ message DemoWiring {
 }
 `
 
+// reachProtoNearMissName — НЕ ссылка: контракт называет тип с ПОХОЖИМ именем.
+//
+// Ось отдельная от такой же у кода: там имена сравнивает разбор и точность
+// получается by construction, а здесь поиск идёт по тексту контракта, и границы
+// слова приходится держать руками. Без них `SubscriptionRequestV2` засчитался бы
+// ссылкой на `SubscriptionRequest`, и гейт замолчал бы на снятом типе.
+const reachProtoNearMissName = `syntax = "proto3";
+package kacho.cloud.legacy.v1;
+message LegacyWiring {
+  kacho.cloud.subscription.SubscriptionRequestV2 request = 1;
+  kacho.cloud.subscription.SubscriptionOpenedV2 opened = 2;
+  kacho.cloud.subscription.SubscriptionEventV2 event = 3;
+}
+`
+
 // reachGoReferrer — ЗАКОННАЯ ссылка из прод-кода: сервер употребляет типы.
 const reachGoReferrer = `package server
 
@@ -134,6 +149,26 @@ var _ = subscriptionv1.SubscriptionRequestV2{}
 
 // reachOptions — вход анализатора на стенде. Каталоги кода перечисляются явно:
 // стенд мелкий, и обход всего корня скрыл бы промах в отборе файлов.
+// reachGoImportInsideAString — НЕ ссылка, и это ось, найденная на собственной
+// переписи гейта: путь импорта стоит внутри СТРОКОВОГО ЛИТЕРАЛА.
+//
+// Так выглядит фикстура пробы и шаблон генератора. Поиск по образцу засчитывает
+// такой файл ссылкой и замолкает ровно там, где обязан говорить, — поэтому
+// импорты читаются разбором, а не текстом.
+const reachGoImportInsideAString = `package template
+
+const fixture = ` + "`" + `package server
+
+import (
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+)
+
+var _ = subscriptionv1.SubscriptionRequest{}
+var _ = subscriptionv1.SubscriptionOpened{}
+var _ = subscriptionv1.SubscriptionEvent{}
+` + "`" + `
+`
+
 func reachOptions(root string, goRoots ...string) SubscriptionReachOptions {
 	if len(goRoots) == 0 {
 		goRoots = []string{"services"}
@@ -276,6 +311,35 @@ func TestSubscriptionReachCountsOnlyRealReferrers(t *testing.T) {
 		}
 		if got := SubscriptionReachFindings(types, "CLOSED"); len(got) != 3 {
 			t.Fatalf("гейт замолчал на стабе — находок %d вместо трёх", len(got))
+		}
+	})
+
+	t.Run("путь импорта внутри СТРОКИ — НЕ ссылка", func(t *testing.T) {
+		files := baseStand()
+		files["services/demo/template/fixture.go"] = reachGoImportInsideAString
+		types, census := reachAudit(t, files)
+		if census.GoFiles != 0 {
+			t.Fatalf("строковый литерал засчитан импортом: файлов с именованным импортом %d",
+				census.GoFiles)
+		}
+		if census.Unreferenced != 3 {
+			t.Fatalf("строковый литерал засчитан ссылкой: без ссылок %d из 3", census.Unreferenced)
+		}
+		if got := SubscriptionReachFindings(types, "CLOSED"); len(got) != 3 {
+			t.Fatalf("гейт замолчал на строковом литерале — находок %d вместо трёх", len(got))
+		}
+	})
+
+	t.Run("похожее имя В КОНТРАКТЕ — НЕ ссылка", func(t *testing.T) {
+		files := baseStand()
+		files["proto/kacho/cloud/legacy/v1/wiring.proto"] = reachProtoNearMissName
+		types, census := reachAudit(t, files)
+		if census.Unreferenced != 3 {
+			t.Fatalf("`SubscriptionRequestV2` засчитан ссылкой на `SubscriptionRequest`: "+
+				"без ссылок %d из 3", census.Unreferenced)
+		}
+		if got := SubscriptionReachFindings(types, "CLOSED"); len(got) != 3 {
+			t.Fatalf("гейт замолчал на похожем имени в контракте — находок %d вместо трёх", len(got))
 		}
 	})
 
