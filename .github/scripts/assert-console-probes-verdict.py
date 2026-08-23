@@ -44,6 +44,16 @@ from pathlib import Path
 # вторая обязана ловиться отдельным запретом на пропуски, а не считаться пробой.
 DECL = re.compile(r"^[ \t]*test\(", re.MULTILINE)
 
+# Управляющие последовательности цвета из вывода playwright. В журнале шага они
+# читаются как мусор и разрывают строку диагноза, поэтому снимаются перед
+# печатью — но НЕ перед сверкой: сверка идёт по подстрокам, которых цвет не
+# касается.
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def plain(text: str) -> str:
+    return ANSI.sub("", text)
+
 SPECS_GLOB = "*.spec.ts"
 
 
@@ -63,31 +73,45 @@ def walk_specs(node: dict) -> list[dict]:
     return out
 
 
-def outcomes(report: dict) -> list[tuple[str, str, str]]:
-    """Тройки «имя пробы → исход → текст отказа».
+def outcomes(report: dict) -> list[tuple[str, str, str, int]]:
+    """Четвёрки «имя пробы → исход → текст отказа → сколько раз запускалась».
 
     Текст нужен третьей категории (#935): падение НА НАВИГАЦИИ означает, что
     проба до продукта не дошла, и вердикт о продукте по ней не выносится.
+
+    Число запусков — ЕДИНСТВЕННЫЙ признак, отличающий пробу, которая не
+    стартовала вовсе (прогон остановился раньше неё), от намеренного
+    `test.skip`: исход у обеих один и тот же — `skipped`, — а запусков у первой
+    НОЛЬ, у второй ровно один. Признак замерен на playwright 1.56.1, а не
+    выведен из документации: сравнивать пришлось два отчёта, отличающихся
+    только этим (#1050).
     """
-    res: list[tuple[str, str, str]] = []
+    res: list[tuple[str, str, str, int]] = []
     for spec in walk_specs(report):
         title = spec.get("title") or "(без имени)"
         status = "не исполнена"
         message = ""
+        started = 0
         for t in spec.get("tests", []) or []:
             runs = t.get("results", []) or []
+            started += len(runs)
             if runs:
                 last = runs[-1]
                 status = last.get("status") or "не исполнена"
-                err = last.get("error") or {}
-                message = err.get("message") or ""
-                if not message:
-                    errs = last.get("errors") or []
-                    if errs:
-                        message = errs[0].get("message") or ""
+                # САМЫЙ СОДЕРЖАТЕЛЬНЫЙ из доступных текстов, а не первый.
+                # Замерено (#1050): при снятии пробы по времени `error.message`
+                # несёт голое «Test timeout of Nms exceeded», а журнал ожидания
+                # с ИМЕНЕМ ЛОКАТОРА лежит во ВТОРОЙ записи `errors[]`. Взяв
+                # первую, гейт печатает диагноз, по которому ничего не
+                # разобрать, — то есть выполняет форму и не даёт содержания.
+                candidates = [(last.get("error") or {}).get("message") or ""]
+                candidates += [
+                    (e or {}).get("message") or "" for e in (last.get("errors") or [])
+                ]
+                message = max(candidates, key=len, default="")
             elif t.get("status"):
                 status = t["status"]
-        res.append((title, status, message))
+        res.append((title, status, message, started))
     return res
 
 
@@ -134,7 +158,10 @@ def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
         return 1, log
 
     got = outcomes(report)
+    started = [g for g in got if g[3] > 0]
+    not_started = [g for g in got if g[3] == 0]
     log.append(f"=== разобрано записей отчёта: {len(got)} ===")
+    log.append(f"=== исполнено проб {len(started)} из {declared} объявленных ===")
     rc = 0
 
     if len(got) != declared:
@@ -145,9 +172,12 @@ def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
         )
         rc = 1
 
-    bad = [(n, s, m) for n, s, m in got if s != "passed"]
-    for name, status, _ in got:
-        log.append(f"  {'✓' if status == 'passed' else '✗'} {status:<12} {name}")
+    bad = [(n, s, m) for n, s, m, _ in got if s != "passed"]
+    bad_started = [(n, s, m) for n, s, m, r in got if s != "passed" and r > 0]
+    for name, status, _, runs in got:
+        mark = "✓" if status == "passed" else ("·" if runs == 0 else "✗")
+        shown = "не стартовала" if runs == 0 else status
+        log.append(f"  {mark} {shown:<14} {name}")
 
     # ТРЕТЬЯ КАТЕГОРИЯ (#935): ни одна проба не дошла до продукта.
     #
@@ -156,13 +186,45 @@ def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
     # продукте не сказано ничего. Код возврата остаётся ненулевым (вычета нет,
     # прогон не зелёный), но причина названа своя: иначе разбор уходит в
     # продукт, которого запрос не касался.
-    if bad and len(bad) == len(got) and all(unreached(m) for _, _, m in bad):
+    if bad_started and len(bad_started) == len(started) and all(
+        unreached(m) for _, _, m in bad_started
+    ):
         log.append(
-            f"НЕ ВЫПОЛНИЛОСЬ: все {len(got)} проб отвалились на навигации — до "
+            f"НЕ ВЫПОЛНИЛОСЬ: все {len(started)} стартовавших проб отвалились на навигации — до "
             "продукта не дошла ни одна. Это НЕ вердикт по продукту: разбирать "
             "надо достижимость стенда для браузера. Шаг «браузер видит консоль» "
             "задаёт тот же вопрос ДО прогона и обязан был поймать это раньше."
         )
+        return 1, log
+
+    # ТРЕТЬЯ КАТЕГОРИЯ: прогон ОСТАНОВИЛСЯ САМ, не дойдя до конца набора (#1050).
+    #
+    # Проба с нулём запусков не стартовала вовсе. Это ни «пропуск» (тот несёт
+    # ровно один запуск с исходом `skipped` — и остаётся провалом), ни «выпала
+    # из набора» (той нет в отчёте совсем — это ловит сверка числа выше). Это
+    # набор, не исполненный целиком, и вердикта по продукту у непрогнанных проб
+    # нет: зелёным такой исход не становится, но и красным ПО ПРОДУКТУ не
+    # называется — иначе разбор уйдёт в продукт, которого проба не касалась.
+    if not_started:
+        cap = (report.get("config") or {}).get("maxFailures") or 0
+        first = next(((n, st, m) for n, st, m, r in got
+                      if r > 0 and st != "passed"), None)
+        log.append(
+            f"НЕ ВЫПОЛНИЛОСЬ: исполнено {len(started)} проб из {declared} "
+            f"объявленных, не стартовало {len(not_started)}. Прогон остановлен "
+            f"ранней остановкой (предел падений: {cap or 'не объявлен'}). Набор "
+            "не исполнен целиком — это ТРЕТЬЯ категория исхода, она не "
+            "вычитается из вердикта и не зачитывается в зелёное."
+        )
+        if first:
+            log.append(f"  диагноз — первое падение: {first[0]}")
+            for line in plain(first[2] or "(текст отказа пуст)").strip().splitlines()[:6]:
+                log.append(f"    {line}")
+        else:
+            log.append(
+                "  диагноз назвать НЕЧЕМ: ни одна стартовавшая проба не упала, "
+                "а прогон всё же оборвался — разбирать надо сам прогон."
+            )
         return 1, log
 
     if bad:
@@ -186,6 +248,23 @@ _SPEC = 'test("одна", async () => {});\ntest("две", async () => {});\n'
 _SPEC_WITH_GROUP = (
     'test.describe("группа", () => {\n  test("три", async () => {});\n});\n'
 )
+
+
+def _spec(title: str, status: str, message: str = "", runs: int = 1) -> dict:
+    """Запись пробы. `runs=0` — проба не стартовала (ранняя остановка прогона);
+    `runs=1, status="skipped"` — намеренный `test.skip`. Различие замерено на
+    настоящем отчёте playwright, а не придумано (#1050)."""
+    t: dict = {"status": status, "results": []}
+    if runs:
+        t["results"] = [{"status": status, "error": {"message": message}}]
+    return {"title": title, "tests": [t]}
+
+
+def _report_of(*specs: dict, max_failures: int = 0) -> str:
+    return json.dumps({
+        "config": {"maxFailures": max_failures},
+        "suites": [{"title": "s", "specs": list(specs)}],
+    })
 
 
 def _report(*statuses: str, message: str = "") -> str:
@@ -283,6 +362,98 @@ def self_test() -> int:
         cases.append(("частичная недостижимость третьей категорией НЕ считается",
                       got == 1 and not any("НЕ ВЫПОЛНИЛОСЬ" in ln for ln in log),
                       "1 без «НЕ ВЫПОЛНИЛОСЬ»", got))
+
+        # ТРЕТЬЯ КАТЕГОРИЯ (#1050): прогон остановился сам, не дойдя до конца
+        # набора. Гейт обязан назвать исход «не выполнилось» И дать диагноз —
+        # текст первого падения. Без диагноза ранняя остановка не лучше снятия
+        # по времени: отчёт есть, а разбирать по нему нечего.
+        rep.write_text(
+            _report_of(
+                _spec("упала-1", "failed", 'waiting for locator("input[name=x]")'),
+                _spec("упала-2", "failed", 'waiting for locator("input[name=x]")'),
+                _spec("не-стартовала", "skipped", runs=0),
+                max_failures=2,
+            ),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        joined = "\n".join(log)
+        cases.append((
+            "ранняя остановка названа третьей категорией",
+            got == 1 and "НЕ ВЫПОЛНИЛОСЬ: исполнено 2 проб из 3" in joined,
+            "1 + «исполнено 2 из 3»", got))
+        cases.append((
+            "ранняя остановка несёт ДИАГНОЗ первого падения",
+            'waiting for locator("input[name=x]")' in joined,
+            "текст первого отказа в выводе", "нет" if 'locator' not in joined else "есть"))
+        cases.append((
+            "ранняя остановка называет объявленный предел",
+            "предел падений: 2" in joined, "предел падений: 2",
+            "назван" if "предел падений: 2" in joined else "НЕ назван"))
+
+        # ДИАГНОЗ БЕРЁТСЯ САМЫЙ СОДЕРЖАТЕЛЬНЫЙ, а не первый: при снятии по
+        # времени имя локатора лежит во второй записи `errors[]`, и гейт,
+        # печатающий первую, даёт форму без содержания. Цвет снимается.
+        rep.write_text(
+            json.dumps({
+                "config": {"maxFailures": 1},
+                "suites": [{"title": "s", "specs": [
+                    {"title": "снята по времени", "tests": [{"status": "timedOut", "results": [{
+                        "status": "timedOut",
+                        "error": {"message": "\x1b[31mTest timeout of 10000ms exceeded.\x1b[39m"},
+                        "errors": [
+                            {"message": "Test timeout of 10000ms exceeded."},
+                            {"message": 'Error: page.fill: Test timeout.\nCall log:\n  - waiting for locator(\'input[name="traits.email"]\')'},
+                        ],
+                    }]}]},
+                    {"title": "не-стартовала", "tests": [{"status": "skipped", "results": []}]},
+                ]}],
+            }),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        joined = "\n".join(log)
+        cases.append((
+            "диагноз берёт самый содержательный текст, а не первый",
+            'waiting for locator' in joined,
+            "имя локатора в выводе",
+            "есть" if 'waiting for locator' in joined else "НЕТ"))
+        cases.append((
+            "цвет из чужого вывода снят",
+            "\x1b[" not in joined, "без управляющих последовательностей",
+            "чисто" if "\x1b[" not in joined else "остались"))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: намеренный `test.skip` несёт РОВНО ОДИН запуск.
+        # Он остаётся провалом (отсутствующая проверка) и третьей категорией
+        # НЕ объявляется — иначе ранняя остановка станет маской для пропусков.
+        rep.write_text(
+            _report_of(
+                _spec("прошла", "passed"),
+                _spec("намеренно пропущена", "skipped"),
+                _spec("прошла-2", "passed"),
+            ),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        joined = "\n".join(log)
+        cases.append((
+            "намеренный пропуск третьей категорией НЕ считается",
+            got == 1 and "НЕ ВЫПОЛНИЛОСЬ" not in joined,
+            "1 без «НЕ ВЫПОЛНИЛОСЬ»", got))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: полный зелёный прогон — перепись исполненного
+        # печатается и здесь, иначе «ноль находок» неотличимо от «ноль
+        # прочитанного».
+        rep.write_text(
+            _report_of(_spec("а", "passed"), _spec("б", "passed"), _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        joined = "\n".join(log)
+        cases.append((
+            "перепись исполненного печатается и на зелёном",
+            got == 0 and "исполнено проб 3 из 3" in joined,
+            "0 + «исполнено проб 3 из 3»", got))
 
         # КРАСНЕЕТ: дерево проб пусто — «ноль упавших» из ничего.
         empty = root / "empty"
