@@ -333,6 +333,7 @@ if [ "$SEED" = "true" ]; then
   env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
       IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" HYDRA_PUBLIC_PORT="$HYDRA_PORT" \
       HYDRA_TOKEN_URL="http://localhost:$HYDRA_PORT/oauth2/token" \
+      PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
       SERVICES="$SEED_SERVICES" \
       PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
       bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"

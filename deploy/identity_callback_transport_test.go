@@ -180,7 +180,19 @@ func schemeSource(prefix, subchartKey string) (literal string, valuesPath []stri
 	}
 	if act := trailingAction.FindString(head); act != "" {
 		if vp := valuesPathInAction.FindStringSubmatch(act); vp != nil {
-			return "", append([]string{subchartKey}, strings.Split(vp[1], ".")...)
+			parts := strings.Split(vp[1], ".")
+			// `global` — КОРНЕВОЙ узел значений, а не узел подчарта. Helm
+			// раздаёт его каждому подчарту, поэтому `.Values.global.X`,
+			// написанное в шаблоне подчарта, читается из корня как `global.X`.
+			// Приписывать ему ключ подчарта значит искать `<чарт>.global.X`,
+			// чего в дереве значений нет НИКОГДА — и тогда объявление, схему
+			// которого профиль задаёт вполне определённо, объявляется
+			// «схему взять неоткуда». Проверка при этом краснеет на исправном
+			// дереве, то есть перестаёт что-либо измерять.
+			if parts[0] == "global" {
+				return "", parts
+			}
+			return "", append([]string{subchartKey}, parts...)
 		}
 	}
 	return "", nil
@@ -526,6 +538,14 @@ func TestSchemeSource_ReadsTheHeadOfTheAddress(t *testing.T) {
 		"://kacho-iam-internal.{{ .Release.Namespace }}.svc:"+port, "kacho-iam")
 	if lit != "" || strings.Join(path, ".") != "kacho-iam.kratos.config.hooks.scheme" {
 		t.Fatalf("схема из значений прочитана неверно: lit=%q path=%v", lit, path)
+	}
+
+	// (б2) схема из ГЛОБАЛЬНЫХ значений — путь корневой, ключом подчарта не
+	//      предваряется: `global` раздаётся подчартам, но живёт в корне.
+	lit, path = schemeSource("                    url: {{ .Values.global.kacho.identity.hooks.scheme }}"+
+		"://kacho-iam-internal.{{ .Release.Namespace }}.svc:"+port, "kacho-iam")
+	if lit != "" || strings.Join(path, ".") != "global.kacho.identity.hooks.scheme" {
+		t.Fatalf("глобальный путь схемы прочитан как путь подчарта: lit=%q path=%v", lit, path)
 	}
 
 	// (в) строка называет маршрут, но адресом не является — схему взять неоткуда.

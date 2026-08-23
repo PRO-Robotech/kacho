@@ -31,6 +31,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -192,8 +193,69 @@ type Syncer struct {
 	// синхронизирована за всё время» было ЗАМЕТНО. Механизм, не тронувший ни
 	// одной строки за всю свою жизнь, — находка, а не тишина; без счётчика он
 	// неотличим от исправно работающего на неизменной конфигурации.
+	// mu защищает накопленное. Заведён вместе с экспортом `Health`: писатель —
+	// горутина цикла, а читатель теперь может быть любым, и «сегодня гонки нет»
+	// есть свойство нынешних вызывающих, а не типа. Экспорт приглашает второго.
+	mu         sync.Mutex
 	pullsTotal int64
 	rowsTotal  int64
+	// lastSuccess — когда проход состоялся в последний раз. Нулевое значение
+	// означает «ни разу за всю жизнь» и отличимо от любого настоящего момента
+	// (#666).
+	lastSuccess time.Time
+	// now — часы. Поле, а не прямой вызов, чтобы возраст снимка проверялся
+	// пробой без ожидания реального времени.
+	now func() time.Time
+}
+
+// Health — состояние тянущего, каким его читает наблюдатель.
+//
+// Тип заведён потому, что у накопительных счётчиков ДОЛЖЕН быть читатель:
+// величина, которую никто не читает, ничего не делает заметным. Читатель в
+// прод-коде — сам `Run`: он называет эти поля в строке отказа и в строке
+// останова.
+type Health struct {
+	// Pulls / Rows — сколько проходов состоялось и сколько строк снимка они
+	// затронули за всю жизнь процесса.
+	Pulls, Rows int64
+	// LastSuccess — момент последнего состоявшегося прохода; нулевой, если его
+	// не было ни разу.
+	LastSuccess time.Time
+	// NeverSynchronised — за всю жизнь не состоялось НИ ОДНОГО прохода.
+	//
+	// Отдельным полем, а не выводом «Pulls == 0» у каждого читателя: вывод,
+	// сделанный в двух местах, разойдётся в третьем.
+	NeverSynchronised bool
+}
+
+// Health отдаёт накопленное вместе с признаком «ни одного прохода за всю жизнь».
+func (s *Syncer) Health() Health {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return Health{
+		Pulls:             s.pullsTotal,
+		Rows:              s.rowsTotal,
+		LastSuccess:       s.lastSuccess,
+		NeverSynchronised: s.pullsTotal == 0,
+	}
+}
+
+// healthAttrs — состояние тянущего в виде полей журнальной строки.
+//
+// Одно место, потому что это РЕШЕНИЕ («что делает мёртвого тянущего заметным»),
+// а не механика: две копии разошлись бы на признаке, и одна из строк перестала
+// бы отличать «предел не меняли» от «тянущий мёртв».
+func (s *Syncer) healthAttrs() []any {
+	h := s.Health()
+	attrs := []any{
+		slog.Int64("rows_total", h.Rows),
+		slog.Int64("pulls_total", h.Pulls),
+		slog.Bool("never_synchronised", h.NeverSynchronised),
+	}
+	if !h.NeverSynchronised {
+		attrs = append(attrs, slog.Duration("last_success_age", s.now().Sub(h.LastSuccess)))
+	}
+	return attrs
 }
 
 // NewSyncer собирает синхронизатор. Отказывает сразу, если подключать нечего:
@@ -209,7 +271,20 @@ func NewSyncer(src Source, proj Projection, cfg Config, log *slog.Logger) (*Sync
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Syncer{src: src, proj: proj, cfg: cfg.withDefaults(), log: log}, nil
+	return &Syncer{src: src, proj: proj, cfg: cfg.withDefaults(), log: log, now: time.Now}, nil
+}
+
+// RunOnceBudgeted делает один проход ПОД СВОИМ СРОКОМ.
+//
+// Единственная точка, где срок прохода назначается. Прежде его ставил цикл, а
+// подъём звал `RunOnce` голым контекстом процесса — то есть первый проход, тот
+// самый, что случается в загрузочную бурю, шёл без срока вовсе, и замолчавший
+// сосед держал бы подъём сервиса сколько угодно (#666). Владеть сроком обязано
+// одно место, иначе следующий вызывающий снова его забудет.
+func (s *Syncer) RunOnceBudgeted(ctx context.Context) (int64, bool, error) {
+	runCtx, cancel := context.WithTimeout(ctx, s.cfg.PullTimeout)
+	defer cancel()
+	return s.RunOnce(runCtx)
 }
 
 // RunOnce делает один догоняющий проход и отдаёт число затронутых строк снимка.
@@ -285,8 +360,11 @@ func (s *Syncer) RunOnce(ctx context.Context) (int64, bool, error) {
 		return rows, true, fmt.Errorf("heartbeat: %w", err)
 	}
 
+	s.mu.Lock()
 	s.pullsTotal++
 	s.rowsTotal += rows
+	s.lastSuccess = s.now()
+	s.mu.Unlock()
 	return rows, true, nil
 }
 
@@ -299,7 +377,27 @@ func (s *Syncer) RunOnce(ctx context.Context) (int64, bool, error) {
 //
 // РЕПЛИКИ: клейм — проход берёт одна реплика условной правкой строки курсора
 // (Projection.ClaimPass); проигравший пропускает тик.
-func (s *Syncer) Run(ctx context.Context) {
+func (s *Syncer) Run(ctx context.Context) { s.run(ctx, true) }
+
+// RunAfterInterval — то же, что Run, но первый проход откладывается на один тик.
+//
+// Зовётся тем, кто проход УЖЕ СДЕЛАЛ сам (подъём). Прежде такого глагола не
+// было, и подъём вместе с циклом давали ровно ДВА прохода на старт с разницей в
+// десятки миллисекунд — оба про одно событие, оба в загрузочную бурю, когда
+// сосед и без того на пределе (#666).
+//
+// Отдельный глагол, а не скрытое поле «уже ходили»: исход цикла не должен
+// зависеть от состояния, которого вызывающий не назвал.
+func (s *Syncer) RunAfterInterval(ctx context.Context) { s.run(ctx, false) }
+
+// run — само тело цикла; `passNow` говорит, делать ли проход немедленно или
+// дождаться первого тика.
+//
+// РЕПЛИКИ: клейм — проход берёт одна реплика условной правкой строки курсора
+// (Projection.ClaimPass); проигравший пропускает тик. Отложенный первый проход
+// (`passNow == false`) этого не меняет: он сдвигает МОМЕНТ первого вопроса, а не
+// то, кому достанется проход.
+func (s *Syncer) run(ctx context.Context, passNow bool) {
 	t := time.NewTicker(s.cfg.Interval)
 	defer t.Stop()
 
@@ -307,17 +405,27 @@ func (s *Syncer) Run(ctx context.Context) {
 		slog.Duration("interval", s.cfg.Interval),
 		slog.Int("page_size", int(s.cfg.PageSize)))
 
+	if !passNow {
+		// Проход только что сделал вызывающий. Ждём тика, а не повторяем его.
+		select {
+		case <-ctx.Done():
+			s.log.Info("quota limit syncer stopped", s.healthAttrs()...)
+			return
+		case <-t.C:
+		}
+	}
+
 	for {
-		runCtx, cancel := context.WithTimeout(ctx, s.cfg.PullTimeout)
-		rows, ran, err := s.RunOnce(runCtx)
-		cancel()
+		rows, ran, err := s.RunOnceBudgeted(ctx)
 
 		switch {
 		case err != nil:
+			// Состояние тянущего идёт В ТОЙ ЖЕ строке, что и отказ: разбирающий
+			// читает отказ, и именно здесь ему нужно знать, случался ли удачный
+			// проход хоть раз. Отдельной строкой это было бы двумя записями об
+			// одном событии, и вторую пришлось бы искать.
 			s.log.Error("quota limit sync failed",
-				slog.String("error", err.Error()),
-				slog.Int64("rows_total", s.rowsTotal),
-				slog.Int64("pulls_total", s.pullsTotal))
+				append([]any{slog.String("error", err.Error())}, s.healthAttrs()...)...)
 		case !ran:
 			// Проход исполняет другая реплика. Отдельная строка от «нечего
 			// применять»: иначе «нас развели» и «дельта пуста» выглядели бы
@@ -331,14 +439,9 @@ func (s *Syncer) Run(ctx context.Context) {
 
 		select {
 		case <-ctx.Done():
-			s.log.Info("quota limit syncer stopped",
-				slog.Int64("rows_total", s.rowsTotal),
-				slog.Int64("pulls_total", s.pullsTotal))
+			s.log.Info("quota limit syncer stopped", s.healthAttrs()...)
 			return
 		case <-t.C:
 		}
 	}
 }
-
-// Stats отдаёт накопленное — для наблюдаемости и для проб.
-func (s *Syncer) Stats() (pulls, rows int64) { return s.pullsTotal, s.rowsTotal }
