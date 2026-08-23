@@ -79,7 +79,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  все-проверки-зелены:
+  all-checks-green:
     name: сводный вердикт (все проверки завершились и зелены)
     # Предмет джобы — набор проверок ЗАПРОСА НА СЛИЯНИЕ. На push такого набора
     # нет by construction, и `github.event.pull_request.head.sha` пуст — опрос
