@@ -144,6 +144,7 @@ func AuditSubscriptionServerSingularity(
 
 	declared := map[string]string{} // глагол → файл
 	for _, path := range protoFiles {
+		// #nosec G304 -- путь получен обходом каталога контракта ЭТОГО дерева, не извне
 		raw, rerr := os.ReadFile(path)
 		if rerr != nil {
 			return nil, census, rerr
@@ -182,7 +183,7 @@ func AuditSubscriptionServerSingularity(
 	sort.Strings(impls)
 	census.ServerImpls = len(impls)
 
-	fmt.Fprintf(log, "осмотрено: файлов контракта %d · потоковых глаголов %d · файлов прод-кода Go %d · серверов глагола %d · послаблений %d\n",
+	_, _ = fmt.Fprintf(log, "осмотрено: файлов контракта %d · потоковых глаголов %d · файлов прод-кода Go %d · серверов глагола %d · послаблений %d\n",
 		census.ProtoFiles, census.StreamRPCs, census.GoFiles, census.ServerImpls, census.Allowances)
 
 	if census.ProtoFiles == 0 || census.GoFiles == 0 {
