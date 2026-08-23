@@ -49,7 +49,6 @@ var servedPublicServiceDescs = []grpc.ServiceDesc{
 // «Internal = trusted» — запрещённое допущение), поэтому их RPC тоже обязаны быть
 // в карте — с Relation либо с явным Public=true.
 var servedInternalServiceDescs = []grpc.ServiceDesc{
-	computev1.InternalWatchService_ServiceDesc,
 	computev1.InternalMachineTypeService_ServiceDesc,
 	computev1.InternalRealizationService_ServiceDesc,
 	computev1.InternalNodeOwnershipService_ServiceDesc,
@@ -198,26 +197,19 @@ func TestPermissionMap_ServedEntriesWellFormed(t *testing.T) {
 	}
 }
 
-// TestPermissionMap_WellFormedGateSeesStreams — предпосылка гейта выше: он имеет
-// смысл, только пока перепись действительно содержит стримы. Утверждение, что
-// стримовая часть непуста и что каждый её элемент попал в общую перепись, —
-// защита от тихого возврата слепой зоны: обход, снова сузившийся до unary,
-// оставит этот тест красным вместо того, чтобы молча ничего не проверять.
-func TestPermissionMap_WellFormedGateSeesStreams(t *testing.T) {
-	streams := servedStreamFullMethods()
-	require.NotEmpty(t, streams,
-		"compute serves no streaming RPC — the stream half of the census has no subject; "+
-			"if that is now true by design, retire this gate deliberately instead of leaving it vacuous")
-
-	all := make(map[string]struct{})
-	for _, fm := range servedFullMethods() {
-		all[fm] = struct{}{}
-	}
-	for _, fm := range streams {
-		require.Containsf(t, all, fm,
-			"streaming RPC %s is missing from the shared census — the well-formedness gate would not see it", fm)
-	}
-}
+// Здесь стоял гейт `TestPermissionMap_WellFormedGateSeesStreams` — он требовал,
+// чтобы стримовая часть переписи была НЕПУСТА, и сам оговаривал исход: «если это
+// теперь верно по замыслу, сними гейт осознанно».
+//
+// Именно это и произошло: единственный серверный стрим сервиса снят вместе со
+// своей поверхностью, потому что подписчика у него не было ни одного дня.
+// Гейт защищал от тихого возврата слепой зоны в переписи; предмета у него больше
+// нет, и оставленный он краснел бы вечно на достижении собственной цели.
+//
+// Свойство «стримов нет» держится не молчанием, а утверждением: обход обоих
+// слушателей в `cmd/compute` (`TestComputeServesNoServerStreams`) и изъятая ось
+// срока жизни стрима у носителя, которая роняет старт, будучи необъявленной.
+// Появится стрим — обе стороны заговорят, и этот гейт вернётся вместе с ними.
 
 // TestPermissionMap_EveryComputeServiceClassified — исчерпывающая классификация
 // пакета: каждый сервис `kacho.cloud.compute.v1` либо в served-списках, либо в

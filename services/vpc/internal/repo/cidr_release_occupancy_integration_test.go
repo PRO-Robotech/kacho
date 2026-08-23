@@ -296,7 +296,11 @@ func TestIntegration_Subnet_ReadPathCost_Bounded(t *testing.T) {
 	}
 	rows.Close()
 	require.NoError(t, rows.Err())
-	require.Contains(t, plan, "addresses_internal_subnet_idx",
+	// Индекс назван ТОТ, что остался: одноколоночный по подсети снят (#963) —
+	// его ключ целиком лежит префиксом курсорного, и план идёт по нему, читая
+	// только индекс (`Index Only Scan`). Утверждение сохраняет свой предмет:
+	// страница подсети не читает таблицу адресов всех проектов.
+	require.Contains(t, plan, "addresses_subnet_cursor_idx",
 		"страница адресов подсети обязана идти по индексу подсети, а не читать таблицу всех проектов: %s", plan)
 }
 

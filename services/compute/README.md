@@ -46,8 +46,8 @@ Clean Architecture (`internal/domain` → `internal/apps/kacho/api/<resource>` �
 возвращают `Operation` (LRO), выполнение worker'ом через `pkg/operations`.`Run`
 (общий фундамент лежит в каталоге `pkg/` монорепо; прежнее имя отдельного
 репозитория фундамента здесь не воспроизводится — координатой оно не является).
-Outbox + LISTEN/NOTIFY дают event stream через
-`InternalWatchService` (для admin-tooling / UI). Подробности по слоям и
+Outbox + LISTEN/NOTIFY питают восстановление наблюдаемого состояния сервиса;
+подписки снаружи нет (серверный стрим снят, #813). Подробности по слоям и
 паттернам — правила воркспейса и `docs/engineering/architecture/`.
 
 ### Dual gRPC ports
@@ -55,7 +55,7 @@ Outbox + LISTEN/NOTIFY дают event stream через
 | Порт   | Сервисы                                                                  | Кто использует                  |
 |--------|--------------------------------------------------------------------------|----------------------------------|
 | `:9090`| `InstanceService`, `MachineTypeService`, `OperationService` | api-gateway (external + UI) |
-| `:9091`| `InternalWatchService`, `InternalMachineTypeService` | admin-tooling / UI (через api-gateway internal mux) — НЕ на external TLS endpoint |
+| `:9091`| `InternalMachineTypeService`, `InternalRealizationService`, `InternalNodeOwnershipService` | admin-tooling / UI (через api-gateway internal mux) — НЕ на external TLS endpoint |
 
 ## Тесты
 

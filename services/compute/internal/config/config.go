@@ -39,13 +39,10 @@ type Config struct {
 
 	GrpcPort string `envconfig:"KACHO_COMPUTE_GRPC_PORT" default:"9090"`
 
-	// InternalGrpcPort — порт для cluster-internal RPC (InternalWatchService).
+	// InternalGrpcPort — порт для cluster-internal RPC (админ-каталог, реализация,
+	// владение узлом).
 	// НЕ выставляется через api-gateway external endpoint.
 	InternalGrpcPort string `envconfig:"KACHO_COMPUTE_INTERNAL_PORT" default:"9091"`
-
-	// WatchMaxStreams — максимум одновременных Watch streams (каждый держит
-	// dedicated pgx.Conn под LISTEN).
-	WatchMaxStreams int `envconfig:"KACHO_COMPUTE_WATCH_MAX_STREAMS" default:"32"`
 
 	// MetricsAddr — адрес cluster-internal diagnostic HTTP-listener'а
 	// (/metrics + /healthz + /readyz). Default ":9095" — отдельный internal-порт
@@ -214,22 +211,6 @@ type Config struct {
 	// К серверному стриму эта величина НЕ применяется — у подписки своя
 	// (KACHO_COMPUTE_WATCH_STREAM_BUDGET).
 	HandlingBudget time.Duration `envconfig:"KACHO_COMPUTE_HANDLING_BUDGET" default:"30s"`
-
-	// WatchStreamBudget — СРОК ЖИЗНИ серверного стрима журнала изменений
-	// (`InternalWatchService/Watch`): столько живёт подписка, прежде чем носитель
-	// оборвёт её истечением контекста.
-	//
-	// Отдельная величина, а не граница обработки вызова: подписка держит
-	// соединение по построению — столько, сколько наблюдатель хочет слушать
-	// события, — и потолок ОДИНОЧНОГО запроса рвал бы её каждые полминуты, причём
-	// клиент видел бы это сетевым сбоем, а не нашим отказом.
-	//
-	// Час — это ПОТОЛОК на случай забытого наблюдателя, а не цель: здоровая
-	// подписка закрывается раньше своим контекстом. Предмет потолка — стрим,
-	// который никто не закрыл: каждый держит выделенное соединение под LISTEN
-	// (см. WatchMaxStreams, 32), поэтому брошенные подписки исчерпывают этот
-	// лимит и новые наблюдатели перестают подключаться вовсе.
-	WatchStreamBudget time.Duration `envconfig:"KACHO_COMPUTE_WATCH_STREAM_BUDGET" default:"1h"`
 
 	// AuthZTrustedForwarderSANs — allow-list cert-identity SAN'ов, которым разрешено
 	// форвардить end-user principal в x-kacho-principal-* metadata (обычно

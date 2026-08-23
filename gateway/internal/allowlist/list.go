@@ -441,8 +441,8 @@ func IsAllowed(methodPath string) bool {
 // Покрывает обе принятые в kacho-proto конвенции именования internal-сервисов:
 //   - суффикс  "<Xxx>InternalService" (resource-manager: FolderInternalService);
 //   - префикс  "Internal<Xxx>Service" (vpc: InternalAddressPoolService,
-//     InternalNetworkService; compute: InternalDiskTypeService,
-//     InternalWatchService; geo: InternalRegionService, InternalZoneService).
+//     InternalNetworkService; compute: InternalMachineTypeService,
+//     InternalRealizationService; geo: InternalRegionService, InternalZoneService).
 //
 // Путь имеет вид "/kacho.cloud.<domain>.v1.<Service>/<Method>"; проверяем сегмент
 // между последней "." и "/".

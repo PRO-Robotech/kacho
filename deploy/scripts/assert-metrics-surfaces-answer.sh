@@ -54,6 +54,137 @@ any_line_matches() {
 
 NS="${KACHO_NS:-kacho}"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# САМОПРОВЕРКА: доказать, что гейт умеет краснеть на дефекте и молчать на
+# законной конструкции той же формы.
+#
+# Предмет доказательства — РЕЗОЛВ ПОДА, а не текст скрипта: гейт восемь ночей
+# подряд выходил «НЕ ВЫПОЛНИЛОСЬ» именно потому, что селектор не резолвился, и
+# ни одна проверка этого не ловила. Заглушка отвечает МЕТКАМИ ЖИВОГО СТЕНДА
+# (замер в шапке selector_candidates), поэтому «зелёный на заглушке» означает
+# «зелёный на том, что реально развёрнуто», а не на удобной выдумке.
+#
+# Пять случаев, и три из них — контроль в обратную сторону:
+#   1. стенд как живой                     → зелёный, опрошены ВСЕ процессы;
+#   2. поды только с формой app.k8s.io/name (как гейт думал) → «не выполнилось»;
+#   3. кластера нет вовсе                  → «не выполнилось», НЕ красное;
+#   4. поверхность отвечает 500            → КРАСНОЕ (это уже вердикт);
+#   5. поверхность отвечает 200 без серий  → КРАСНОЕ.
+# Случай 2 — тот самый дефект: без него самопроверка зеленела бы и на прежнем
+# селекторе, то есть не доказывала бы ничего.
+self_test() {
+  local root tmp rc out fails=0
+  root="$(repo_root)"
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$tmp/bin"
+
+  cat >"$tmp/bin/kubectl" <<'STUB'
+#!/usr/bin/env bash
+# Заглушка kubectl для самопроверки. Знает ровно то, что знает живой стенд:
+# какие метки у каких подов, и что отвечает поверхность.
+sel=""; want_exec=0
+args=("$@")
+for ((i=0; i<${#args[@]}; i++)); do
+  case "${args[$i]}" in
+    -l)   sel="${args[$((i+1))]}" ;;
+    exec) want_exec=1 ;;
+  esac
+done
+
+# Поднятие пробника: в режиме none кластера нет — `wait` отказывает, и гейт
+# обязан назвать это «условие не создано», а не вердиктом о поверхностях.
+case "${1:-}" in
+  run)
+    [[ "${STUB_MODE:-live}" == none ]] && exit 1
+    exit 0 ;;
+  wait)
+    [[ "${STUB_MODE:-live}" == none ]] && exit 1
+    exit 0 ;;
+  delete) exit 0 ;;
+esac
+for a in "$@"; do
+  case "$a" in
+    run|wait|delete)
+      [[ "${STUB_MODE:-live}" == none ]] && exit 1
+      exit 0 ;;
+  esac
+done
+
+if [[ "$want_exec" == 1 ]]; then
+  case "${STUB_SURFACE:-ok}" in
+    ok)      printf 'kacho_build_info{service="x"} 1\n200\n' ;;
+    http500) printf 'nope\n500\n' ;;
+    nokacho) printf 'go_goroutines 12\n200\n' ;;
+  esac
+  exit 0
+fi
+
+# Таблица меток. LIVE — как на стенде; NARROW — только форма app.k8s.io/name
+# (ей отвечают лишь iam и nlb, края среди них нет); NONE — кластера нет.
+case "${STUB_MODE:-live}" in
+  none) exit 0 ;;
+  narrow)
+    case "$sel" in
+      app.kubernetes.io/name=kacho-iam) echo "kacho-iam-1 10.0.0.4 9102" ;;
+      app.kubernetes.io/name=kacho-nlb) echo "kacho-nlb-1 10.0.0.5 9102" ;;
+      *) : ;;
+    esac ;;
+  live)
+    case "$sel" in
+      app=api-gateway)                  echo "api-gateway-1 10.0.0.1 9102" ;;
+      app=compute)                      echo "compute-1 10.0.0.2 9102" ;;
+      app=registry)                     echo "registry-1 10.0.0.3 9102" ;;
+      app=vpc)                          echo "vpc-1 10.0.0.6 9102" ;;
+      app=kacho-geo)                    echo "geo-1 10.0.0.7 9102" ;;
+      app=kacho-storage)                echo "storage-1 10.0.0.8 9102" ;;
+      app.kubernetes.io/name=kacho-iam) echo "kacho-iam-1 10.0.0.4 9102" ;;
+      app.kubernetes.io/name=kacho-nlb) echo "kacho-nlb-1 10.0.0.5 9102" ;;
+      *) : ;;
+    esac ;;
+esac
+exit 0
+STUB
+  chmod +x "$tmp/bin/kubectl"
+
+  run_case() {  # <имя> <ожидаемый код> <обязательная подстрока> <env…>
+    local name="$1" want="$2" needle="$3"; shift 3
+    out="$(cd "$root" && env PATH="$tmp/bin:$PATH" "$@" bash "$root/deploy/scripts/assert-metrics-surfaces-answer.sh" 2>&1)" && rc=0 || rc=$?
+    # Сравнение БЕЗ внешнего процесса: `grep -q` выходит до конца входа, писатель
+    # слева получает SIGPIPE, и под `pipefail` найденное объявляется ненайденным
+    # (задача #658). Держит это гейт `TestPipefailVerdictNeverComesFromAPipe` —
+    # он и поймал эту строку в первой редакции самопроверки.
+    if [[ "$rc" == "$want" && "$out" == *"$needle"* ]]; then
+      echo "  ОК  $name (ждали код $want и «$needle», получили код $rc)"
+    else
+      echo "  ПРОВАЛ  $name: ждали код $want и «$needle», получили код $rc"
+      printf '%s\n' "$out" | sed 's/^/        /' | tail -12
+      fails=$((fails + 1))
+    fi
+  }
+
+  echo "== самопроверка гейта поверхностей величин =="
+  run_case "стенд как живой → зелёный, опрошены все" \
+           0 "все 8 поверхностей отвечают" STUB_MODE=live
+  # Тот самый дефект, ради которого перебор форм и заведён: на стенде, где поды
+  # помечены ТОЛЬКО рекомендованной схемой, резолвится меньшинство. Пробник свой
+  # и поднимается всегда, поэтому исход теперь другой — «поды не найдены», а не
+  # «опросчика нет», — но третьей категорией он остаётся: вердикта о поверхностях
+  # не вынесено ни одного.
+  run_case "поды только с формой app.kubernetes.io/name → опрос не выполнился" \
+           2 "под не найден" STUB_MODE=narrow
+  run_case "кластера нет → не выполнилось, а НЕ красное" \
+           2 "под-пробник не поднялся" STUB_MODE=none
+  run_case "поверхность отвечает 500 → красное" \
+           1 "вместо 200" STUB_MODE=live STUB_SURFACE=http500
+  run_case "200 без серий платформы → красное" \
+           1 "ни одной серии kacho_" STUB_MODE=live STUB_SURFACE=nokacho
+
+  echo "утверждений проверено: 5, провалов: $fails"
+  [[ "$fails" -eq 0 ]]
+}
+
+
 # ПЕРЕЧЕНЬ ВЫВОДИТСЯ ИЗ ДЕРЕВА, а не выписывается здесь: процесс, чей
 # композиционный корень несёт обработчик экспозиции, попадает под опрос в момент
 # появления обработчика — без правки этого файла.
@@ -72,13 +203,64 @@ processes_with_a_surface() {
     | sort -u
 }
 
-# label_of — метка выбора пода процесса. Одно место, где имя процесса
-# превращается в селектор.
-label_of() {
+# selector_candidates — ФОРМЫ метки, которыми чарты платформы помечают под
+# процесса. Их три, и это факт дерева, а не вкус: чарты разошлись по способу
+# именования, и селектор в одной форме резолвит МЕНЬШИНСТВО подов.
+#
+# Замер на живом стенде (kind-kacho, ns=kacho, 2026-08-22) — восемь процессов
+# с поверхностью, по каждому спрошены все три формы:
+#
+#   процесс      app.kubernetes.io/name   app=<имя>   app=kacho-<имя>
+#   api-gateway            0                  1              0
+#   compute                0                  1              0
+#   geo                    0                  0              1
+#   iam                    3                  0              3
+#   nlb                    1                  0              1
+#   registry               0                  1              0
+#   storage                0                  0              1
+#   vpc                    0                  1              0
+#
+# То есть форма `app.kubernetes.io/name` резолвит ДВА процесса из восьми, и
+# именно на ней гейт стоял. Опросчик (край) в неё не попадает вовсе, поэтому
+# гейт выходил «НЕ ВЫПОЛНИЛОСЬ» ещё до первого опроса — восемь ночных прогонов
+# подряд (задача #957).
+#
+# ПОЧЕМУ ПЕРЕБОР, А НЕ ОДНА ВЕРНАЯ ФОРМА. Одна форма означала бы, что гейт
+# знает раскладку меток лучше чартов; он её не знает и знать не должен —
+# метку объявляет чарт. Перебор спрашивает кластер и печатает, ЧЕМ резолвился
+# каждый процесс, поэтому расхождение меток остаётся ВИДНЫМ, а не замазанным.
+# Единообразие меток — предмет отдельной задачи #1007, а не этого гейта.
+selector_candidates() {
   case "$1" in
-    api-gateway) echo "app.kubernetes.io/name=api-gateway" ;;
-    *)           echo "app.kubernetes.io/name=kacho-$1" ;;
+    api-gateway) printf '%s\n' "app.kubernetes.io/name=api-gateway" \
+                                "app=api-gateway" ;;
+    *)           printf '%s\n' "app.kubernetes.io/name=kacho-$1" \
+                                "app=kacho-$1" \
+                                "app=$1" ;;
   esac
+}
+
+# resolve_pod <процесс> — печатает «селектор<TAB>имя<TAB>ip<TAB>порт» у первой
+# формы, которая дала под. Пусто — ни одна форма не резолвится.
+#
+# Три поля берутся ОДНИМ обращением на форму: спрашивать их по отдельности
+# значит допустить, что между запросами под сменится, и получить ip одного
+# экземпляра с портом другого.
+resolve_pod() {
+  local process="$1" sel line
+  while read -r sel; do
+    [[ -n "$sel" ]] || continue
+    line="$(kubectl -n "$NS" get pods -l "$sel" \
+      -o jsonpath='{.items[0].metadata.name} {.items[0].status.podIP} {.items[0].metadata.annotations.prometheus\.io/port}' \
+      2>/dev/null || true)"
+    local name ip port
+    read -r name ip port <<<"$line"
+    if [[ -n "${name:-}" && -n "${ip:-}" ]]; then
+      printf '%s\t%s\t%s\t%s\n' "$sel" "$name" "$ip" "${port:-}"
+      return 0
+    fi
+  done < <(selector_candidates "$process")
+  return 0
 }
 
 expected=0
@@ -87,18 +269,56 @@ failed=0
 not_run=0
 declare -a red=() unknown=()
 
+PROBE_IMAGE="${PROBE_IMAGE:-docker.io/alpine/k8s:1.36.2}"
+PROBE_POD="kacho-metrics-probe-$$"
+
 probe_pod=""
-pick_probe_pod() {
-  # Опрос идёт ИЗНУТРИ кластера: диагностическая поверхность выставлена только
-  # внутрь, и снаружи её не должно быть видно by construction.
-  probe_pod="$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=api-gateway \
-    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+probe_ready=0
+
+# start_probe — поднять СВОЙ под с инструментом опроса.
+#
+# ПОЧЕМУ НЕ `kubectl exec` В ПОД ПРОДУКТА. Именно так гейт и работал, и опрос
+# отвечал «нечем или некуда» по ВСЕМ восьми процессам — то есть гейт не выносил
+# вердикта ни разу, сколько бы поверхностей ни отвечало на самом деле.
+#
+# Точная причина названа замером, а не догадкой: в образе края `curl` нет, а
+# `wget` есть. То есть «инструмента нет» верно ровно для того инструмента,
+# который гейт звал, и зависит от того, что попало в образ, — а это меняется
+# правкой Dockerfile, о которой гейт не узнает.
+#
+# Пробник снимает зависимость от содержимого чужого образа: инструмент есть
+# потому, что мы его принесли. Заодно «проверка работает» перестаёт быть
+# неотличимым от «в образе края случайно остался curl».
+#
+# Опрос по-прежнему ИЗНУТРИ кластера: поверхность выставлена только внутрь, и
+# снаружи её не должно быть видно by construction.
+start_probe() {
+  kubectl -n "$NS" run "$PROBE_POD" \
+    --image="$PROBE_IMAGE" --restart=Never --command -- sleep 600 >/dev/null 2>&1 || true
+  if kubectl -n "$NS" wait --for=condition=Ready "pod/$PROBE_POD" --timeout=90s >/dev/null 2>&1; then
+    probe_pod="$PROBE_POD"
+    probe_ready=1
+  fi
 }
 
+stop_probe() {
+  [[ "$probe_ready" == 1 ]] || return 0
+  kubectl -n "$NS" delete pod "$PROBE_POD" --wait=false >/dev/null 2>&1 || true
+}
+trap stop_probe EXIT
+
+if [[ "${1:-}" == "--self-test" ]]; then
+  self_test
+  exit $?
+fi
+
 echo "== диагностические поверхности: опрос изнутри кластера (ns=$NS) =="
-pick_probe_pod
+start_probe
+[[ -n "$probe_pod" ]] && echo "  опросчик: под-пробник $probe_pod (образ $PROBE_IMAGE)"
 if [[ -z "$probe_pod" ]]; then
-  echo "НЕ ВЫПОЛНИЛОСЬ: в ns=$NS нет пода, из которого можно опросить поверхности."
+  echo "НЕ ВЫПОЛНИЛОСЬ: под-пробник не поднялся в ns=$NS за 90 с."
+  echo "Образ: $PROBE_IMAGE. Кластер недоступен либо образ не тянется — это"
+  echo "условие прогона, а не вердикт о поверхностях."
   echo "Вердикта нет ни у одного процесса — это не зелёный и не красный исход."
   exit 2
 fi
@@ -106,14 +326,13 @@ fi
 while read -r process; do
   [[ -n "$process" ]] || continue
   expected=$((expected + 1))
-  label="$(label_of "$process")"
-  pod_ip="$(kubectl -n "$NS" get pods -l "$label" \
-    -o jsonpath='{.items[0].status.podIP}' 2>/dev/null || true)"
   # Порт берётся из ОБЪЯВЛЕНИЯ СБОРА этого же пода: аннотация и есть то место,
   # которое говорит собирателю, куда идти. Читая её, гейт проверяет ровно тот
   # адрес, по которому придёт агент, а не тот, который мы предполагаем.
-  port="$(kubectl -n "$NS" get pods -l "$label" \
-    -o jsonpath='{.items[0].metadata.annotations.prometheus\.io/port}' 2>/dev/null || true)"
+  row="$(resolve_pod "$process")"
+  sel="$(printf '%s' "$row" | cut -f1)"
+  pod_ip="$(printf '%s' "$row" | cut -f3)"
+  port="$(printf '%s' "$row" | cut -f4)"
   if [[ -z "$pod_ip" || -z "$port" ]]; then
     not_run=$((not_run + 1))
     unknown+=("$process (под не найден либо объявления сбора у него нет: ip='$pod_ip' port='$port')")
@@ -138,7 +357,10 @@ while read -r process; do
     continue
   fi
   answered=$((answered + 1))
-  echo "  OK  $process → $pod_ip:$port"
+  # Селектор печатается ВСЕГДА: он и есть то место, где расхождение меток
+  # чартов становится видимым. Молчащий гейт скрыл бы, что половина процессов
+  # резолвится не той формой, которой резолвится другая половина.
+  echo "  OK  $process → $pod_ip:$port  (по метке $sel)"
 done < <(processes_with_a_surface)
 
 echo

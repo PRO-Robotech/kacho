@@ -196,7 +196,7 @@ func TestGateway_D8b_ComputeActive(t *testing.T) {
 	}
 
 	internalMethods := []string{
-		"/kacho.cloud.compute.v1.InternalWatchService/Watch",
+		"/kacho.cloud.compute.v1.InternalMachineTypeService/Create",
 	}
 	for _, m := range internalMethods {
 

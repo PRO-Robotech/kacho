@@ -57,7 +57,7 @@ domain-поля на верхнем уровне сообщения, без K8s-
   <thead><tr><th>Порт</th><th>Listener</th><th>Кто ходит</th><th>Что доступно</th></tr></thead>
   <tbody>
     <tr><td><code>:9090</code></td><td>public</td><td>Tenant-клиенты через <code>api-gateway</code> (TLS + JWT)</td><td>Публичный <code>InstanceService</code> + read-only <code>MachineTypeService</code></td></tr>
-    <tr><td><code>:9091</code></td><td>internal</td><td>Peer-сервисы и admin-UI (cluster-internal, mTLS)</td><td>Admin-CRUD справочника <code>MachineType</code>, outbox-stream <code>InternalWatchService</code></td></tr>
+    <tr><td><code>:9091</code></td><td>internal</td><td>Peer-сервисы и admin-UI (cluster-internal, mTLS)</td><td>Admin-CRUD справочника <code>MachineType</code>, outbox-stream <code>InternalMachineTypeService</code></td></tr>
   </tbody>
 </table>
 
