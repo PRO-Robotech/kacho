@@ -55,11 +55,6 @@ type Config struct {
 	FGA         FGAConfig         `mapstructure:"fga"`
 	MTLS        MTLSConfig        `mapstructure:"mtls"`
 	Jobs        JobsConfig        `mapstructure:"jobs"`
-
-	// InternalLifecycle — параметры InternalResourceLifecycleService.Subscribe
-	// (server-stream к kacho-iam, см.
-	// `internal/apps/kacho/api/internal_lifecycle`).
-	InternalLifecycle InternalLifecycleConfig `mapstructure:"internal-lifecycle"`
 }
 
 // Mode возвращает резолвленный enum-режим (после `Validate`).
@@ -464,19 +459,6 @@ type FreeIPConfig struct {
 	// считается «застрявшей»: свежий in-flight create/delete (моложе порога) не
 	// трогается, пока легитимный worker дорабатывает. Default 5m. Должен быть > 0.
 	AgeThreshold time.Duration `mapstructure:"age-threshold"`
-}
-
-// ─── InternalLifecycle (stream) ─────────────────────────────────────────
-
-// InternalLifecycleConfig — параметры InternalResourceLifecycleService.Subscribe.
-// Server-stream к kacho-iam для FGA tuple-sync; cluster-internal
-// only (port 9091, Internal-only).
-type InternalLifecycleConfig struct {
-	// MaxStreams — максимальное число одновременных Subscribe-стримов.
-	// Каждый стрим держит dedicated pgx.Conn для LISTEN/NOTIFY (вне pool'а),
-	// поэтому слот ≈ +1 conn'у к Postgres. Default 32 (см. RegisterDefaults).
-	// Должен быть > 0.
-	MaxStreams int `mapstructure:"max-streams"`
 }
 
 // TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в
