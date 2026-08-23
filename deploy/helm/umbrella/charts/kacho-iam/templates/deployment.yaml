@@ -334,9 +334,18 @@ spec:
                   name: {{ .Values.kacho.hooks.tokenHookSecretName }}
                   key: {{ .Values.kacho.hooks.tokenHookSecretKey }}
                   optional: true
-            # AES-GCM key для encrypt-at-rest JWKS private_key_pem (acceptance §2.4).
-            # В prod — KMS-CMK через external-secrets; в dev — раз-сгенерированный
-            # 32-byte base64url в Secret kacho-iam-jwks-enc-key.
+            # Ключ ОБЁРТКИ приватной половины подписного ключа (AES-256-GCM).
+            #
+            # Форма значения — HEX, 64 знака на ключ: резолв
+            # (authn.jwks-encryption-key-hex) декодирует hex и требует ровно 32
+            # байта. Здесь стояло «32-byte base64url» — кодировка, которой резолв
+            # не читает; шедший по этому комментарию получал отказ старта про
+            # длину ключа и искал дефект не там.
+            #
+            # Значение может быть ПЕРЕЧНЕМ через запятую: первый ключ
+            # оборачивает, все открывают. Так и меняется ключ обёртки — без
+            # простоя и без переписывания хранилища (задача #1065); порядок
+            # смены — README чарта, раздел «Changing the wrapping key».
             - name: KACHO_IAM_JWKS_ENC_KEY
               valueFrom:
                 secretKeyRef:
