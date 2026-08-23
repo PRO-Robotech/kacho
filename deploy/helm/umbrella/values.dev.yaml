@@ -1004,7 +1004,27 @@ hydra:
         # token_hook + refresh_hook → kacho-iam HTTP hooks listener (acceptance §5.4).
         # KAC-127 (deploy#39): URL исправлен — webhook'и обслуживает HTTP-listener
         # на :9092 Service'а `kacho-iam-internal` (НЕ gRPC :9091 на `kacho-iam`).
-        # Shared secret через KACHO_IAM_HOOK_TOKEN env (см. Secret kacho-iam-hook-token).
+        #
+        # ─── ВЕЛИЧИНА УЧЁТНЫХ ДАННЫХ ПУСТА НАМЕРЕННО (задача #948) ────────────
+        #
+        # Здесь стояло `${KACHO_IAM_HOOK_TOKEN}`, и этот профиль НЕ объявлял ни
+        # одного источника — то есть провайдер отправлял ЭТУ САМУЮ СТРОКУ в
+        # заголовке, служба прав её отвергала (`401`), а край переводил отказ
+        # арендатору как `502`. Профиль поднимается первой фазой `make dev-up` и
+        # ждёт готовности в этом состоянии, поэтому полоса обратных вызовов на
+        # нём была мертва целиком.
+        #
+        # Подстановки в значениях конфигурации провайдер не делает — ИЗМЕРЕНО на
+        # oryd/hydra:v26.2.0 и oryd/kratos:v26.2.0 при переменной, ЗАВЕДЁННОЙ в
+        # поде: ссылка доживает до чтения дословно. Значит доставка переменной с
+        # этим именем предмет бы не закрыла.
+        #
+        # Величину задаёт переменная по ПУТИ КЛЮЧА (`deployment.extraEnv` ниже) —
+        # она перекрывает файл конфигурации. Пустая строка здесь остаётся потому,
+        # что ключ `value` требует схема провайдера (измерено: без ключа
+        # конфигурация отвергается целиком), и потому, что пустое значение
+        # никогда не читается как рабочее — в отличие от ссылки, обещающей
+        # подстановку, которой не будет.
         token_hook:
           url: "http://kacho-iam-internal.kacho.svc:9092/iam/v1/hooks/token"
           auth:
@@ -1012,7 +1032,7 @@ hydra:
             config:
               in: header
               name: X-Kacho-Hook-Token
-              value: ${KACHO_IAM_HOOK_TOKEN}
+              value: ""
         refresh_token_hook:
           url: "http://kacho-iam-internal.kacho.svc:9092/iam/v1/hooks/refresh"
           auth:
@@ -1020,7 +1040,7 @@ hydra:
             config:
               in: header
               name: X-Kacho-Hook-Token
-              value: ${KACHO_IAM_HOOK_TOKEN}
+              value: ""
       # JWKS целиком принадлежат Hydra: она и генерирует keypair, и подписывает.
       # iam ключи НЕ чеканит и НЕ ротирует — он лишь проксирует публичный JWKS
       # Hydra байт-в-байт (:9097) для data-plane.
@@ -1040,6 +1060,37 @@ hydra:
           otlp:
             server_url: otel-collector.observability.svc:4317
             insecure: true
+  # ─── ИСТОЧНИК ВЕЛИЧИНЫ ОБРАТНОГО ВЫЗОВА (задача #948) ──────────────────────
+  #
+  # Провайдер читает величину учётных данных ТОЛЬКО отсюда: подстановки `${…}`
+  # в значениях конфигурации он не делает (измерено — см. блок token_hook выше),
+  # а переменная по ПУТИ КЛЮЧА конфигурации файл перекрывает. Имя переменной —
+  # это и есть путь `oauth2.{token,refresh_token}_hook.auth.config.value`,
+  # заглавными и через подчёркивание; своей формой его не заменить.
+  #
+  # ССЫЛКА ОБЯЗАТЕЛЬНАЯ, А НЕ `optional: true`, И ЭТО ОСОЗНАННО. Необязательная
+  # ссылка на отсутствующий секрет даёт ПУСТУЮ величину — то есть ровно тот
+  # дефект, который здесь чинится: полоса исполняется и отвергается, а стенд
+  # выглядит поднятым. Обязательная не даёт контейнеру стартовать вовсе.
+  #
+  # Цена названа: секрет обязан существовать ДО первого прогона helm. Он и
+  # существует — `make dev-up` зовёт scripts/dev-prod-secrets.sh перед выкаткой
+  # продукта, и выполнимость этой ссылки держит deploy/tests/helm/
+  # prerequisite-secrets-test.sh (секрет заводит скрипт, который цель реально
+  # исполняет).
+  deployment:
+    extraEnv:
+      - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
+        valueFrom:
+          secretKeyRef:
+            name: kacho-iam-hook-token
+            key: token
+      - name: OAUTH2_REFRESH_TOKEN_HOOK_AUTH_CONFIG_VALUE
+        valueFrom:
+          secretKeyRef:
+            name: kacho-iam-hook-token
+            key: token
+
   # Phase 3c — Federation OUT: public Hydra ingress for external IdP federation.
   # The counterpart is any OIDC-conformant workload-identity endpoint that
   # exchanges a signed workload assertion for its own credential; Kachō speaks

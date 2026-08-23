@@ -136,6 +136,7 @@ deploy/tests/helm/makefile-destructive-guarded-test.sh
 deploy/tests/helm/neighbour-address-form-test.sh
 deploy/tests/helm/networkpolicy-egress-test.sh
 deploy/tests/helm/outbox-autovacuum-naptime-test.sh
+deploy/tests/helm/identity-callback-credential-source-test.sh
 deploy/tests/helm/prerequisite-secrets-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
 gateway/tests/newman/scripts/selftest_tamper_mutation.py

@@ -1371,6 +1371,30 @@ hydra:
       oauth2:
         # token/refresh webhooks → https on the kacho-iam-internal Service :9092
         # HTTP hooks listener (NOT the gRPC :9091). api_key HMAC header unchanged.
+        #
+        # ─── ВЕЛИЧИНА УЧЁТНЫХ ДАННЫХ ЗДЕСЬ ПУСТА НАМЕРЕННО (задача #948) ──────
+        #
+        # Здесь стояло `${KACHO_IAM_HOOK_TOKEN}` — форма, которая ЧИТАЕТСЯ как
+        # «будет подставлено». Провайдер подстановки в значениях конфигурации
+        # НЕ делает: ИЗМЕРЕНО на oryd/hydra:v26.2.0 — при переменной, ЗАВЕДЁННОЙ
+        # в поде, ссылка в поле `urls.self.issuer` дожила до проверки схемы
+        # дословно («"${…}" is not valid "uri"»). То же измерено на
+        # oryd/kratos:v26.2.0: ссылка вернулась в адресе действия потока.
+        #
+        # Значит литерал уезжал бы в заголовок как есть, служба прав отвечала бы
+        # `401`, а край переводил бы это арендатору в `502`. Полоса работает
+        # ТОЛЬКО потому, что величину задаёт переменная по ПУТИ КЛЮЧА
+        # (`OAUTH2_{TOKEN,REFRESH_TOKEN}_HOOK_AUTH_CONFIG_VALUE`, ниже в
+        # `deployment.extraEnv`) — она перекрывает файл.
+        #
+        # Пустая строка оставлена потому, что ключ `value` схема ТРЕБУЕТ
+        # (измерено: без него провайдер отвергает конфигурацию целиком). Пустое
+        # значение ни при каком чтении не выглядит рабочим — в отличие от
+        # ссылки, которая обещает подстановку, которой не будет.
+        #
+        # Профиль, объявивший полосу без переменной-источника, НЕ РЕНДЕРИТСЯ:
+        # templates/identity-callback-credential-guard.yaml роняет рендер с
+        # текстом, называющим ручку.
         token_hook:
           url: "https://kacho-iam-internal.kacho.svc:9092/iam/v1/hooks/token"
           auth:
@@ -1378,7 +1402,7 @@ hydra:
             config:
               in: header
               name: X-Kacho-Hook-Token
-              value: ${KACHO_IAM_HOOK_TOKEN}
+              value: ""
         refresh_token_hook:
           url: "https://kacho-iam-internal.kacho.svc:9092/iam/v1/hooks/refresh"
           auth:
@@ -1386,7 +1410,7 @@ hydra:
             config:
               in: header
               name: X-Kacho-Hook-Token
-              value: ${KACHO_IAM_HOOK_TOKEN}
+              value: ""
   service:
     admin:
       # Service провайдера СНЯТ: после увода на петлю он целился бы в порт,
@@ -1476,19 +1500,26 @@ hydra:
     # профиле — байт в байт. Два экземпляра расходятся; один экземпляр не может.
     extraContainers: |
       {{ include "kacho.hydraAdminTls.sidecar" . }}
-    # Inject the shared HMAC secret (for the ${KACHO_IAM_HOOK_TOKEN} expansion in
-    # the webhook config above) + point the Go TLS client at the mounted
-    # internal-CA bundle so Hydra trusts the kacho-iam server cert.
+    # Величина учётных данных обратного вызова + корень доверия для исходящего
+    # TLS к службе прав.
+    #
+    # ЗДЕСЬ СТОЯЛА ЕЩЁ ОДНА ПЕРЕМЕННАЯ — `KACHO_IAM_HOOK_TOKEN`, и её НИКТО НЕ
+    # ЧИТАЛ (задача #948). Её собственный комментарий объявлял её источником
+    # подстановки в конфигурации, а комментарий строкой ниже — в том же файле —
+    # утверждал обратное: провайдер не интерполирует. Два места об одном
+    # предмете, из которых верно одно; неверное при этом стояло ПЕРВЫМ и
+    # делало ссылку `${…}` в конфигурации похожей на обеспеченную. Именно из-за
+    # этого сходства дефект и прожил незамеченным: величина «объявлена» была,
+    # источника у неё не было.
+    #
+    # Измерено, а не выведено: при заведённой в поде переменной ссылка `${…}`
+    # доживает до проверки схемы дословно (oryd/hydra:v26.2.0), то есть
+    # переменная с этим именем не участвует в чтении конфигурации ничем.
+    #
+    # Осталось РОВНО ТО, что провайдер читает: переменные по ПУТИ КЛЮЧА
+    # (config-путь oauth2.{token,refresh_token}_hook.auth.config.value), которые
+    # перекрывают файл конфигурации.
     extraEnv:
-      - name: KACHO_IAM_HOOK_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: kacho-iam-hook-token
-            key: token
-      # Ory Hydra НЕ интерполирует ${KACHO_IAM_HOOK_TOKEN} в config-YAML — плейсхолдер
-      # уехал бы в X-Kacho-Hook-Token как литерал и HMAC-верификация hook'а падала бы.
-      # Значение auth-токена задаём через Ory env-override имена (config-путь
-      # oauth2.{token,refresh_token}_hook.auth.config.value), которые перекрывают YAML.
       - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
         valueFrom:
           secretKeyRef:
