@@ -53,6 +53,7 @@ import base64
 import json
 import os
 import shutil
+import ssl
 import subprocess
 import sys
 import time
@@ -113,12 +114,13 @@ def _post_json(url: str, payload: dict, bearer: str | None = None, timeout: int 
             return e.code, {"raw": body}
 
 
-def _post_form(url: str, form: dict, timeout: int = 15) -> tuple[int, dict]:
+def _post_form(url: str, form: dict, timeout: int = 15,
+               context: ssl.SSLContext | None = None) -> tuple[int, dict]:
     data = urllib.parse.urlencode(form).encode()
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with urllib.request.urlopen(req, timeout=timeout, context=context) as r:
             return r.status, json.loads(r.read().decode() or "{}")
     except urllib.error.HTTPError as e:
         body = e.read().decode()
@@ -366,8 +368,25 @@ def _extract_oauth(resp: dict) -> tuple[str, str, str]:
     return client_id, private_key, key_id
 
 
+# Тип утверждения, который ТРЕБУЕТ наш проверяющий. Внешний поставщик его не
+# требует и не запрещает, но объявлять тип ему мы не начинаем: полосы обязаны
+# отличаться ровно тем, чем отличаются, и лишняя правка чужой полосы означала бы
+# менять то, что сегодня работает, без предмета.
+CLIENT_ASSERTION_TOKEN_TYPE = "client-authentication+jwt"
+
+
 def sign_client_assertion(client_id: str, private_key_pem: str, key_id: str,
-                          assertion_audience: str, ttl_s: int = 120) -> str:
+                          assertion_audience: str, ttl_s: int = 120,
+                          token_type: str | None = None) -> str:
+    """Подписать `client_assertion` (RFC 7521/7523) выданным приватным ключом.
+
+    `token_type` — ЗАГОЛОВОЧНЫЙ `typ`. Пусто ⇒ не объявляем: полоса внешнего
+    поставщика работает без него и работала так всегда. НАШ проверяющий тип
+    ТРЕБУЕТ (`token-type-mismatch` — отдельный исход его закрытого словаря), и
+    без него обмен отвергается ещё до сверки подписи. Измерено вызовом:
+    `POST /iam/v1/token` без `typ` отвечает `401 invalid_client`, а журнал iam
+    называет исход прямо.
+    """
     now = int(time.time())
     claims = {
         "iss": client_id,
@@ -377,7 +396,10 @@ def sign_client_assertion(client_id: str, private_key_pem: str, key_id: str,
         "exp": now + ttl_s,
         "jti": uuid.uuid4().hex,
     }
-    return pyjwt.encode(claims, private_key_pem, algorithm="ES256", headers={"kid": key_id})
+    headers = {"kid": key_id}
+    if token_type:
+        headers["typ"] = token_type
+    return pyjwt.encode(claims, private_key_pem, algorithm="ES256", headers=headers)
 
 
 def exchange(hydra_token_url: str, assertion: str, api_audience: str, scope: str = "") -> str:
@@ -392,6 +414,103 @@ def exchange(hydra_token_url: str, assertion: str, api_audience: str, scope: str
     code, body = _post_form(hydra_token_url, form)
     if code != 200 or "access_token" not in body:
         raise RuntimeError(f"Hydra client_credentials exchange failed ({code}): {body}")
+    return body["access_token"]
+
+
+# ── Обмен у НАШЕГО издателя — ВТОРАЯ полоса края (задача #1014) ────────────
+#
+# Полоса ВНЕШНЕГО поставщика (`exchange` выше) и полоса НАШЕГО издателя
+# отличаются ровно двумя вещами, и обе — величины, а не код:
+#
+#   * адресат УТВЕРЖДЕНИЯ (`aud` внутри client_assertion) — у нас это
+#     ИДЕНТИФИКАТОР ИЗДАТЕЛЯ, а не адрес эндпоинта. Проверяющий сверяет его с
+#     `signer.Issuer()`, и адрес эндпоинта отвергается как несовпадение;
+#   * адрес обмена — наш `POST /iam/v1/token` на поверхности выдачи (:9096).
+#
+# Всё остальное — ключ, подпись, форма запроса — то же самое, и это не
+# совпадение: обе полосы обслуживает ОДИН выданный ключ. Поэтому здесь нет
+# второй подписи и второго разбора ответа операции; переиспользуются те же.
+PLATFORM_ASSERTION_AUDIENCE = os.environ.get(
+    "PLATFORM_ASSERTION_AUDIENCE", "https://iam.kacho.local")
+# Умолчание — порт, который прогонщики newman пробрасывают ВСЕГДА
+# (deploy/scripts/newman-{parallel,e2e}.sh, IAM_REGTOKEN_PORT).
+PLATFORM_TOKEN_URL = os.environ.get(
+    "PLATFORM_TOKEN_URL", "https://127.0.0.1:19096/iam/v1/token")
+
+IAM_SERVER_SECRET = os.environ.get("IAM_SERVER_SECRET", "kacho-iam-server-tls")
+_IAM_SERVER_CA_DIR = os.environ.get("IAM_SERVER_CA_DIR", "/tmp/kacho-iam-server-ca")
+IAM_SERVER_CA_FILE = os.environ.get(
+    "IAM_SERVER_CA_FILE", os.path.join(_IAM_SERVER_CA_DIR, "ca.crt"))
+
+
+def ensure_iam_server_ca(namespace: str | None = None) -> bool:
+    """Вынуть корень внутреннего удостоверяющего из Secret слушателя выдачи.
+
+    Тот же порядок и та же причина, что у `ensure_client_cert`: свежий подъём
+    перевыпускает корень, поэтому лежащий с прошлого стенда не годится и повтор
+    его не чинит. Материал ПУБЛИЧНЫЙ (только `ca.crt`), пишется 0600 вне дерева.
+    """
+    ns = namespace or BOOTSTRAP_OPERATOR_NS
+    if shutil.which("kubectl"):
+        out = subprocess.run(
+            ["kubectl", "-n", ns, "get", "secret", IAM_SERVER_SECRET,
+             "-o", r"jsonpath={.data.ca\.crt}"],
+            capture_output=True, text=True)
+        if out.returncode == 0 and out.stdout.strip():
+            os.makedirs(os.path.dirname(IAM_SERVER_CA_FILE), mode=0o700, exist_ok=True)
+            with open(IAM_SERVER_CA_FILE, "wb") as fh:
+                os.chmod(IAM_SERVER_CA_FILE, 0o600)
+                fh.write(base64.b64decode(out.stdout.strip()))
+    return os.path.exists(IAM_SERVER_CA_FILE)
+
+
+def platform_tls_context(ca_file: str | None = None) -> ssl.SSLContext:
+    """TLS к нашему слушателю выдачи через локальный проброс.
+
+    ПРОВЕРКА ПОДПИСИ СЕРТИФИКАТА ОСТАЁТСЯ, ПРОВЕРКА ИМЕНИ — СНЯТА, и это не
+    послабление ради удобства, а следствие измеренного факта: у листа
+    `kacho-iam-server-tls` в SAN ТОЛЬКО имена служб кластера
+    (`kacho-iam.kacho.svc…`), адреса петли там нет и быть не может, а проброс
+    ходит на `127.0.0.1`. Снятие ПОДПИСИ приняло бы любой сертификат, включая
+    самоподписанный посторонним, — вот это было бы послаблением; здесь пир
+    по-прежнему обязан предъявить лист НАШЕГО внутреннего удостоверяющего.
+
+    Отсутствие корня — ОТКАЗ, а не переход на непроверяемое соединение.
+    """
+    path = ca_file or IAM_SERVER_CA_FILE
+    if not os.path.exists(path):
+        raise RuntimeError(
+            f"корень внутреннего удостоверяющего не найден ({path}): обмен у нашего "
+            f"издателя идёт по TLS, и проверять подпись нечем. Секрет {IAM_SERVER_SECRET} "
+            "читается из кластера — проверьте доступ kubectl либо задайте IAM_SERVER_CA_FILE")
+    ctx = ssl.create_default_context(cafile=path)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    return ctx
+
+
+def exchange_at_platform(token_url: str, assertion: str, api_audience: str,
+                         scope: str = "", ca_file: str | None = None) -> str:
+    """`client_credentials` у НАШЕГО издателя → токен нашей чеканки (ES256).
+
+    Отказ поднимается ИСКЛЮЧЕНИЕМ вместе с телом ответа: пустая величина в
+    посеве превратилась бы в отказ доступа на стороне пробы, то есть в вердикт
+    о продукте там, где предмет — оснастка.
+    """
+    form = {
+        "grant_type": "client_credentials",
+        "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+        "client_assertion": assertion,
+        "audience": api_audience,
+    }
+    if scope:
+        form["scope"] = scope
+    code, body = _post_form(token_url, form, context=platform_tls_context(ca_file))
+    if code != 200 or "access_token" not in body:
+        raise RuntimeError(
+            f"обмен у нашего издателя не состоялся ({code}) на {token_url}: {body}. "
+            "Полоса включена профилем (iam authn.client-token/token-signing) и требует, "
+            "чтобы запрошенный адресат стоял в объявленном перечне адресатов")
     return body["access_token"]
 
 
@@ -410,6 +529,29 @@ def sa_rs256(base_url: str, admin_token: str, sva_id: str, created_by_user_id: s
     cid, key, kid = _extract_oauth(resp)
     assertion = sign_client_assertion(cid, key, kid, assertion_audience)
     return exchange(hydra_token_url, assertion, api_audience)
+
+
+def sa_platform_token(base_url: str, admin_token: str, sva_id: str,
+                      created_by_user_id: str, token_url: str, api_audience: str,
+                      assertion_audience: str | None = None) -> str:
+    """Ключ служебной учётки → утверждение НАШЕМУ издателю → токен НАШЕЙ чеканки.
+
+    КЛИЕНТОМ ЗДЕСЬ НАЗЫВАЕТСЯ СТРОКА НАШЕГО РЕЕСТРА, А НЕ КЛИЕНТ ПОСТАВЩИКА, и
+    это единственное, чем полосы различаются по существу. Одна выдача ключа
+    заводит ДВЕ записи: клиента у внешнего поставщика (идентификатор — UUID, поле
+    `clientId`) и строку у нас (идентификатор с префиксом реестра, поле `keyId`).
+    Резолвер нашего проверяющего читает СВОИ таблицы, поэтому утверждение,
+    назвавшееся идентификатором поставщика, отвергается как «клиент не
+    разрешается» — измерено вызовом: `client-unknown` в журнале iam против
+    `200` на том же ключе с идентификатором нашей строки.
+    """
+    resp = issue_sa_oauth(base_url, admin_token, sva_id, created_by_user_id)
+    _, key, registry_client_id = _extract_oauth(resp)
+    assertion = sign_client_assertion(
+        registry_client_id, key, registry_client_id,
+        assertion_audience or PLATFORM_ASSERTION_AUDIENCE,
+        token_type=CLIENT_ASSERTION_TOKEN_TYPE)
+    return exchange_at_platform(token_url, assertion, api_audience)
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────

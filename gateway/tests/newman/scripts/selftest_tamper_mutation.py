@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -58,7 +59,14 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 COLLECTION = HERE.parent / "collections" / "authn_edge.postman_collection.json"
-STEP_NAME = "list-accounts-with-tampered-signature"
+ENV_TEMPLATE = (HERE.parent / "environments"
+                / "local.postman_environment.template.json")
+# ПОЛОС У КРАЯ ДВЕ, И ПОДСТАНОВКА У НИХ ОДНА. Шаг опознаётся СУФФИКСОМ имени, а
+# не полным именем: кейс порчи подписи заведён на каждую полосу издателя
+# (`cases/authn_edge.py::tampered_signature_case`), и гейт, искавший ровно одно
+# имя, проверял бы ОДНУ из них, оставаясь зелёным. Свойство «подпись расходится
+# в БАЙТАХ» требуется от каждой; ноль найденных шагов — отказ, а не тишина.
+STEP_NAME_SUFFIX = "-with-tampered-signature"
 
 # Длины подписи в БАЙТАХ, на которых проверяется свойство. Первая — то, что
 # чеканит стенд сегодня (наблюдено в отчётах: сегмент подписи 683 символа = 512
@@ -115,12 +123,16 @@ _SHIM = r"""
 'use strict';
 const MUTATION = process.argv[2];
 const INPUT = JSON.parse(require('fs').readFileSync(process.argv[3], 'utf8'));
+// Слот предъявителя — ВЕЛИЧИНА, а не константа: полос у края две, и каждая
+// читает свой слот. Имя приходит извне, чтобы подставной pm не отвечал на
+// ЛЮБОЕ имя: тогда опечатка в имени слота осталась бы незамеченной.
+const SLOT = process.argv[4];
 const run = new Function('pm', MUTATION);
 const out = [];
 for (const item of INPUT) {
   const rec = { id: item.id, header: null, skipped: false, failures: [] };
   const pm = {
-    environment: { get: (k) => (k === 'jwtBootstrap' ? item.token : undefined) },
+    environment: { get: (k) => (k === SLOT ? item.token : undefined) },
     variables: { get: () => undefined },
     request: { headers: { upsert: (h) => {
       if (String(h.key).toLowerCase() === 'authorization') rec.header = h.value;
@@ -137,25 +149,30 @@ process.stdout.write(JSON.stringify(out));
 """
 
 
-def load_mutation(collection: Path) -> str:
-    """Подстановка берётся из СГЕНЕРИРОВАННОЙ коллекции — из того, что исполнится."""
+def load_mutations(collection: Path) -> dict[str, str]:
+    """Подстановки берутся из СГЕНЕРИРОВАННОЙ коллекции — из того, что исполнится.
+
+    Возвращает отображение «имя шага → его pre-request» по ВСЕМ шагам порчи
+    подписи. Пустой ответ — отказ: свойство осталось непроверенным, и это не
+    «находок нет».
+    """
     doc = json.loads(collection.read_text(encoding="utf-8"))
-    found: list[str] = []
+    found: dict[str, str] = {}
 
     def walk(items):
         for it in items:
             if "item" in it:
                 walk(it["item"])
-            elif it.get("name") == STEP_NAME:
+            elif str(it.get("name", "")).endswith(STEP_NAME_SUFFIX):
                 for ev in it.get("event", []):
                     if ev.get("listen") == "prerequest":
-                        found.append("\n".join(ev["script"]["exec"]))
+                        found[it["name"]] = "\n".join(ev["script"]["exec"])
 
     walk(doc["item"])
-    if len(found) != 1:
-        premise(f"в {collection.name} ожидался ровно один шаг «{STEP_NAME}» "
-                f"с pre-request, найдено {len(found)}")
-    return found[0]
+    if not found:
+        premise(f"в {collection.name} нет ни одного шага с именем на «{STEP_NAME_SUFFIX}» "
+                f"и pre-request — порча подписи из коллекции исчезла, а гейт молчал бы")
+    return found
 
 
 def premise(msg: str) -> None:
@@ -164,7 +181,33 @@ def premise(msg: str) -> None:
     sys.exit(2)
 
 
-def run_mutation(mutation: str, tokens: list[dict], tmp: Path) -> list[dict]:
+SLOT_READ = re.compile(r"pm\.environment\.get\('([^']+)'\)")
+
+
+def mutation_slot(step: str, mutation: str) -> str:
+    """Имя слота предъявителя, который читает подстановка.
+
+    Выводится из самой подстановки, а не выписывается: шаг заводится на каждую
+    полосу издателя, и выписанный перечень разошёлся бы с коллекцией молча.
+    Ровно одно имя — требование: два означали бы, что шаг портит не тот
+    предъявитель, который отправляет.
+    """
+    names = sorted(set(SLOT_READ.findall(mutation)))
+    if len(names) != 1:
+        premise(f"шаг «{step}» читает слотов предъявителя {len(names)} ({names}) — "
+                "подстановка обязана портить РОВНО тот предъявитель, который отправляет")
+    return names[0]
+
+
+def declared_slots(template: Path) -> set[str]:
+    """Слоты, объявленные шаблоном окружения суиты."""
+    if not template.exists():
+        premise(f"нет {template} — проверить объявление слота нечем")
+    doc = json.loads(template.read_text(encoding="utf-8"))
+    return {v["key"] for v in doc.get("values", [])}
+
+
+def run_mutation(mutation: str, tokens: list[dict], tmp: Path, slot: str) -> list[dict]:
     node = shutil.which("node")
     if not node:
         premise("в PATH нет node — исполнить подстановку нечем")
@@ -172,18 +215,19 @@ def run_mutation(mutation: str, tokens: list[dict], tmp: Path) -> list[dict]:
     payload.write_text(json.dumps(tokens), encoding="utf-8")
     shim = tmp / "shim.js"
     shim.write_text(_SHIM, encoding="utf-8")
-    proc = subprocess.run([node, str(shim), mutation, str(payload)],
+    proc = subprocess.run([node, str(shim), mutation, str(payload), slot],
                           capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         premise(f"node вышел с кодом {proc.returncode}: {proc.stderr.strip()[:400]}")
     return json.loads(proc.stdout)
 
 
-def audit(mutation: str, tokens: list[dict], tmp: Path) -> list[str]:
+def audit(mutation: str, tokens: list[dict], tmp: Path,
+          slot: str = "jwtBootstrap") -> list[str]:
     """Находки: где подстановка НЕ поменяла байты подписи (или поломала форму)."""
     findings: list[str] = []
     by_id = {t["id"]: t["token"] for t in tokens}
-    for rec in run_mutation(mutation, tokens, tmp):
+    for rec in run_mutation(mutation, tokens, tmp, slot):
         base = by_id[rec["id"]]
         if rec["failures"]:
             findings.append(f"{rec['id']}: подстановка упала — {rec['failures'][0]}")
@@ -280,21 +324,38 @@ def main() -> int:
         if "--self-test" in sys.argv:
             return self_test(tokens, tmp)
 
-        mutation = load_mutation(COLLECTION)
-        findings = audit(mutation, tokens, tmp)
+        mutations = load_mutations(COLLECTION)
+        declared = declared_slots(ENV_TEMPLATE)
+        findings: list[str] = []
+        slots: dict[str, str] = {}
+        for step_name in sorted(mutations):
+            slot = mutation_slot(step_name, mutations[step_name])
+            slots[step_name] = slot
+            # Опечатка в имени слота даёт шаг, который НИКОГДА не портит
+            # предъявителя: страж внутри подстановки отказывается от запроса, и
+            # кейс перестаёт что-либо утверждать. Ловится здесь, а не прогоном.
+            if slot not in declared:
+                findings.append(f"{step_name}: слот «{slot}» не объявлен шаблоном "
+                                f"окружения {ENV_TEMPLATE.name} — посев его не наполнит, "
+                                "и шаг не отправит ни одного испорченного предъявителя")
+                continue
+            for f in audit(mutations[step_name], tokens, tmp, slot):
+                findings.append(f"{step_name}: {f}")
 
         # Объём осмотренного печатается ВСЕГДА: «ноль находок» обязано быть
         # отличимо от «ноль прочитанного».
-        print(f"осмотрено: коллекция {COLLECTION.name}, шаг «{STEP_NAME}», "
+        print(f"осмотрено: коллекция {COLLECTION.name}, шагов порчи подписи "
+              f"{len(mutations)} ({', '.join(f'{k}→{v}' for k, v in sorted(slots.items()))}), "
+              f"слотов объявлено шаблоном {len(declared)}, "
               f"длин подписи {len(SIG_LENS)} ({', '.join(str(n) for n in SIG_LENS)} байт), "
               f"значений краевого байта {len(BYTE_VALUES)}, "
-              f"предъявителей исполнено {len(tokens)}")
+              f"предъявителей исполнено {len(tokens)} на каждый шаг")
         for f in findings:
             print(f"::error::{f}")
         if findings:
             print(f"✖ находок: {len(findings)}")
             return 1
-        print("✔ подстановка меняет подпись побайтово на каждом входе")
+        print("✔ подстановка меняет подпись побайтово на каждом входе, на каждой полосе")
         return 0
 
 
