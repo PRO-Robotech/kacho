@@ -135,20 +135,24 @@ message IssueUserTokenRequest {
 
 message IssueUserTokenResponse {
   UserOAuthClient token = 1;
-  // Публичный OAuth client_id (зарегистрированный в Hydra).
+  // OAuth client_id выпущенного удостоверения — идентификатор строки реестра,
+  // то есть `token.id`. Им заполняются `iss` и `sub` подписанного
+  // `client_assertion`; именно его разрешает издатель платформы.
+  //
+  // Совпадает с `key_id` дословно, и это не избыточность: одно и то же имя
+  // называет и клиента, и ключ, потому что второго имени у удостоверения нет.
   string client_id = 2;
   // PEM-encoded PKCS#8 ECDSA P-256 приватный ключ — ПОКАЗЫВАЕТСЯ ОДИН РАЗ;
-  // невосстановим. Вызывающий подписывает им `client_assertion` (RFC 7521/7523)
-  // в OAuth2 client_credentials-запросах к Hydra.
+  // невосстановим. Вызывающий подписывает им `client_assertion`
+  // (RFC 7521/7523) при обмене на access-токен.
   string private_key_pem = 3;
-  // PEM-encoded SPKI публичный ключ (информационно; Hydra держит каноническую
-  // копию как JWK в метаданных зарегистрированного клиента).
+  // PEM-encoded SPKI публичный ключ (информационно; каноническая копия — в
+  // строке реестра, по ней и проверяется подпись утверждения).
   string public_key_pem = 4;
   // JOSE signing algorithm приватного ключа. Всегда "ES256".
   string algorithm = 5;
-  // JWK `kid` зарегистрированного публичного ключа. Вызывающий ОБЯЗАН выставить
-  // `kid`-header подписанных assertion'ов в это значение, чтобы Hydra выбрала
-  // правильный ключ.
+  // JWK `kid` публичного ключа. Вызывающий ОБЯЗАН выставить `kid`-header
+  // подписанных assertion'ов в это значение. Совпадает с `client_id`.
   string key_id = 6;
 }
 

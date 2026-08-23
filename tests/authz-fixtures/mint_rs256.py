@@ -30,7 +30,9 @@ STATUS (Phase C, #59) — UNBLOCKED + PROVEN end-to-end:
     (the gateway REST route is gone) — the token it returns is unchanged.
   - `sa_rs256` (per-subject SA) — PROVEN end-to-end against the production-strict
     stand: SAKeyService.Issue (WITH `audience:[https://api.kacho.cloud]` — the
-    SA-key resolveAudience honours caller audiences, unlike user-tokens) → sign
+    SA-key resolveAudience honours caller audiences; персональный токен адресата
+    у внешнего поставщика не объявляет вовсе с #1121, поэтому прежнее сравнение
+    «в отличие от пользовательских» больше не о чем) → sign
     client_assertion → client_credentials exchange → RS256 SA token whose
     token-hook `kacho_principal_type=service_account` enrichment makes it
     acr-EXEMPT (stepup_gate O-1) and reachable on acr=1 resource RPCs. The
@@ -38,13 +40,17 @@ STATUS (Phase C, #59) — UNBLOCKED + PROVEN end-to-end:
     records created_by = the target SA's account owner (see sa_keys handler/
     usecase). The whole vpc `network` newman collection runs GREEN with an
     RS256-SA seed under production-strict (see prodseed_network.py).
-  - `user_rs256` (per-subject USER) — DOES NOT authenticate resource RPCs in
-    production-strict: a user client_credentials token carries no `acr` (fails the
-    acr>=1 floor — user principals are NOT acr-exempt) AND UserTokenService.Issue
-    hardcodes the kacho-internal audience (resolveAudience ignores caller audience)
-    so its `aud` never matches the gateway ExpectedAudience. User tokens with `acr`
-    require interactive OIDC login (Kratos→Hydra) — the "production-user-gated"
-    class (#59 follow-up). Machine e2e is SA by nature; use `sa_rs256`.
+  - `user_platform_token` (per-subject USER) — персональный токен пользователя,
+    обменянный у НАШЕГО издателя. Прежний помощник той же роли обменивал его у
+    внешнего поставщика и СНЯТ вместе со своим предметом: выпуск персонального
+    токена больше не заводит там клиента (#1121), поэтому обмен у поставщика
+    отвечает `invalid_client` при любом входе, а помощник, который не может
+    сработать никогда, — хуже отсутствующего.
+
+    Осталось верным и не изменилось: человеческий предъявитель НЕ освобождён от
+    порога повышения, поэтому ручки с `required_acr_min=2` им не вызвать —
+    для них нужен интерактивный вход. Машинная сквозная проба по природе
+    служебная; для неё `sa_rs256` / `sa_platform_token`.
 """
 from __future__ import annotations
 
@@ -515,12 +521,47 @@ def exchange_at_platform(token_url: str, assertion: str, api_audience: str,
 
 
 # ── Composed one-shot helpers ───────────────────────────────────────────────
-def user_rs256(base_url: str, admin_token: str, user_id: str, created_by_user_id: str,
-               hydra_token_url: str, assertion_audience: str, api_audience: str) -> str:
-    resp = issue_user_oauth(base_url, admin_token, user_id, created_by_user_id)
+def sa_rs256(base_url: str, admin_token: str, sva_id: str, created_by_user_id: str,
+             hydra_token_url: str, assertion_audience: str, api_audience: str) -> str:
+    resp = issue_sa_oauth(base_url, admin_token, sva_id, created_by_user_id)
     cid, key, kid = _extract_oauth(resp)
     assertion = sign_client_assertion(cid, key, kid, assertion_audience)
     return exchange(hydra_token_url, assertion, api_audience)
+
+
+def user_platform_token(base_url: str, admin_token: str, user_id: str,
+                        created_by_user_id: str, token_url: str, api_audience: str,
+                        assertion_audience: str | None = None) -> str:
+    """Персональный токен пользователя → утверждение НАШЕМУ издателю → токен НАШЕЙ чеканки.
+
+    Полоса та же, что у `sa_platform_token`, и субъект — другой: человек, а не
+    машина. Держать обе нужно именно поэтому — принципал у них разный, и краю
+    он приезжает разными утверждениями (`kacho_principal_type` = `user` против
+    `service_account`).
+
+    ОДНО ИМЯ, А НЕ ДВА (#1121). Выпуск персонального токена больше не заводит
+    клиента у внешнего поставщика, поэтому `clientId` и `keyId` в ответе несут
+    ОДНО значение — идентификатор строки нашего реестра, и подписывается им же.
+    Прежде `clientId` принадлежал поставщику и нашим издателем не разрешался
+    вовсе; проверка ниже — не украшение, а ровно та величина, ради которой
+    задача заведена, и она обязана упасть, если два имени вернутся.
+
+    ОТКАЗ ПОДНИМАЕТСЯ, А НЕ ПРОГЛАТЫВАЕТСЯ: пустая величина в посеве доехала бы
+    до пробы отказом доступа — вердиктом о продукте там, где предмет оснастка.
+    """
+    resp = issue_user_oauth(base_url, admin_token, user_id, created_by_user_id)
+    client_id, key, registry_client_id = _extract_oauth(resp)
+    if client_id != registry_client_id:
+        raise RuntimeError(
+            "выпуск персонального токена вернул ДВА имени: clientId="
+            f"{client_id!r} против keyId={registry_client_id!r}. Наш издатель "
+            "разрешает клиента по строке реестра, поэтому первое имя не годится "
+            "для обмена ни при каком входе")
+    assertion = sign_client_assertion(
+        registry_client_id, key, registry_client_id,
+        assertion_audience or PLATFORM_ASSERTION_AUDIENCE,
+        token_type=CLIENT_ASSERTION_TOKEN_TYPE)
+    return exchange_at_platform(token_url, assertion, api_audience)
 
 
 def sa_platform_token(base_url: str, admin_token: str, sva_id: str,
@@ -586,8 +627,10 @@ def main() -> int:
     admin = mint_bootstrap(**mint_kwargs)
     created_by = args.created_by or args.subject
     if args.mode == "user":
-        print(user_rs256(args.base_url, admin, args.subject, created_by,
-                         args.hydra_token_url, args.assertion_audience, args.api_audience))
+        # Персональный токен обменивается у НАШЕГО издателя, и другого пути у него
+        # нет: клиента у внешнего поставщика выпуск не заводит (#1121).
+        print(user_platform_token(args.base_url, admin, args.subject, created_by,
+                                  PLATFORM_TOKEN_URL, args.api_audience))
     else:
         # Ключ служебной учётки обменивается У НАШЕГО издателя и только у него
         # (задача #1120): зеркала клиента у поставщика больше не заводится,

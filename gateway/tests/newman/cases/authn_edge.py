@@ -645,6 +645,112 @@ CASES.append(Case(
 ))
 
 
+# ---------------------------------------------------------------------------
+# ТА ЖЕ ПОЛОСА, ДРУГОЙ СУБЪЕКТ — ЧЕЛОВЕК (задача #1121).
+#
+# ЗАЧЕМ ВТОРОЙ КЕЙС НА ТУ ЖЕ ПОЛОСУ. Полосу нашего издателя доказал кейс выше, и
+# доказал он её МАШИННЫМ предъявителем. Принципала край выводит из утверждений
+# токена, и у человека они ДРУГИЕ (`kacho_principal_type` = `user` против
+# `service_account`) — настолько другие, что машинный принципал идёт по
+# отдельной ветке резолва и по отдельной ветке требований к предъявлению. То
+# есть «полоса работает» на машине не говорит о человеке ничего, и обратное
+# верно тоже.
+#
+# ЧТО ИМЕННО ЗАКРЫВАЕТ ЭТОТ КЕЙС. Выпуск персонального токена перестал заводить
+# клиента у внешнего поставщика (#1121). До этого вызывающему возвращалось ДВА
+# имени — `clientId` поставщика и `keyId` строки нашего реестра, — и обмен у
+# НАШЕГО издателя проходил только по второму: первое не разрешалось ни при каком
+# входе. Здесь утверждается ИСХОД этой правки, а не отсутствие вызова: посев
+# подписывает утверждение тем именем, которое выдача вернула в `clientId`, и
+# край обязан ответить успехом. Вернутся два имени — посев упадёт на своей
+# проверке, а этот кейс останется без предъявителя и покраснеет.
+#
+# ЧЕГО КЕЙС НЕ ДУБЛИРУЕТ. Отрицания полосы (анонимный, испорченная подпись)
+# заведены выше и проверяют ПРОВЕРЯЮЩЕГО, который у обоих субъектов один. Второй
+# экземпляр каждого стоил бы шага и не утверждал бы ничего нового.
+# ---------------------------------------------------------------------------
+CASES.append(Case(
+    id="F1B-D-PLATFORM-USER-TOKEN-ACCEPTED",
+    title="Personal user token minted by OUR issuer (ES256) is accepted by the edge "
+          "→ 200; its principal is a HUMAN, not a service account",
+    classes=["AUTHN", "CONF", "FLOW"],
+    priority="P0",
+    steps=[
+        Step(
+            name="list-accounts-as-platform-issued-user-token",
+            method="GET",
+            path=PROBE_PATH,
+            mux="public",
+            auth="jwtUserTokenPlatformIssuer",
+            test_script=[
+                *_assert_sent_bearer_shape(segments=3, alg="ES256", sig_len=None),
+                "const _cj3 = require('crypto-js');",
+                "function _seg3(t, i) {",
+                "  const b = t.split('.')[i].replace(/-/g, '+').replace(/_/g, '/');",
+                "  return JSON.parse(_cj3.enc.Utf8.stringify(_cj3.enc.Base64.parse(b)));",
+                "}",
+                "function _claim3(p, k) {",
+                "  if (p && p[k]) { return p[k]; }",
+                "  const e = (p && p.ext_claims) || {};",
+                "  return e[k] || '';",
+                "}",
+                "pm.test('заголовок объявляет тип токена доступа (at+jwt)', () => {",
+                "  const _h = _seg3(_tok, 0);",
+                "  pm.expect(_h.typ, JSON.stringify(_h)).to.eql('at+jwt');",
+                "});",
+                "pm.test('край принял ПЕРСОНАЛЬНЫЙ токен нашей чеканки', () => {",
+                "  pm.expect(pm.response.code, pm.response.text()).to.eql(200);",
+                "});",
+                # Та же оговорка, что у соседнего кейса полосы: без доступного
+                # авторитета отзыва край отвечает 503, и тогда 200 выше говорил бы
+                # меньше, чем кажется.
+                "pm.test('вердикт отзыва ПОЛУЧЕН: край не ответил 503', () => {",
+                "  pm.expect(pm.response.code, 'неотвеченный вердикт отзыва даёт 503')"
+                ".to.not.eql(503);",
+                "});",
+                "pm.test('ответ — страница аккаунтов, а не пустое тело', () => {",
+                "  const j = pm.response.json();",
+                "  pm.expect(j, JSON.stringify(j)).to.be.an('object');",
+                "  pm.expect(j.accounts, JSON.stringify(j)).to.be.an('array');",
+                "});",
+                # ПРЕДЪЯВИТЕЛЬ — ЧЕЛОВЕК. Это и есть то, чем кейс отличается от
+                # соседнего: без этой строки он утверждал бы ровно то же самое.
+                "pm.test('принципал предъявителя — человек, а не служебная учётка', () => {",
+                "  const _p = _seg3(_tok, 1);",
+                "  pm.expect(_claim3(_p, 'kacho_principal_type'), JSON.stringify(_p))"
+                ".to.eql('user');",
+                "});",
+                "pm.test('токен назван персональным — несёт id выпустившей его строки', () => {",
+                "  const _p = _seg3(_tok, 1);",
+                "  const _tid = _claim3(_p, 'kacho_user_token_id');",
+                "  pm.expect(_tid, JSON.stringify(_p)).to.be.a('string').and.not.eql('');",
+                "  pm.expect(_tid.slice(0, 3), _tid).to.eql('uoc');",
+                "});",
+                # Издатель тот же, что у машинной полосы, и это утверждается прямо:
+                # иначе «человек тоже проходит» могло бы означать, что он прошёл
+                # ЧУЖОЙ полосой, а про нашу кейс не сказал бы ничего.
+                "const _mach = pm.environment.get('jwtPlatformIssuer')"
+                " || pm.variables.get('jwtPlatformIssuer') || '';",
+                "pm.test('harness config: jwtPlatformIssuer задан (с чем сравнивать издателя)',"
+                " () => {",
+                "  pm.expect(_mach, 'слот машинной полосы пуст — сравнить не с чем')"
+                ".to.not.eql('');",
+                "});",
+                "pm.test('издатель ТОТ ЖЕ, что у машинного предъявителя нашей полосы', () => {",
+                "  pm.expect(_seg3(_tok, 1).iss, 'iss человека против машины')"
+                ".to.eql(_seg3(_mach, 1).iss);",
+                "});",
+                "pm.test('принципалы полос РАЗНЫЕ — иначе сравнивались бы два одинаковых',"
+                " () => {",
+                "  pm.expect(_claim3(_seg3(_mach, 1), 'kacho_principal_type'),"
+                " 'тип принципала машинной полосы').to.eql('service_account');",
+                "});",
+            ],
+        ),
+    ],
+))
+
+
 CASES.append(tampered_signature_case(
     case_id="F1B-D-PLATFORM-TAMPERED-SIGNATURE-REJECTED",
     title="Bearer minted by OUR issuer with one signature byte flipped → 401",

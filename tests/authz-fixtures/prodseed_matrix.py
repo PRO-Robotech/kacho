@@ -327,6 +327,38 @@ def sa_token(sva):
     return sa_token_with_key(sva)[0]
 
 
+def grant_user(uid, role_id, scope_type, scope_id):
+    """Выдача, субъект которой — ЧЕЛОВЕК, а не машина.
+
+    Отдельная функция, а не параметр у `grant`: у той вид субъекта зашит, и все
+    её вызывающие — служебные учётки. Область называется точечным именем по той
+    же причине, что и там (сервер отвергает голое `project`/`account`).
+
+    Отказ громкий по той же причине, что у `grant`: выдача — предмет фикстуры, и
+    молчаливо не созданная готовит субъекта без права.
+    """
+    dotted = scope_type if "." in scope_type else f"iam.{scope_type}"
+    rb = _curl("POST", "/iam/v1/accessBindings", boot, {
+        "subjectType": "user", "subjectId": uid, "roleId": role_id,
+        "scopeType": dotted, "scopeId": scope_id, "target": {"allInScope": {}}})
+    if not isinstance(rb, dict) or not rb.get("id"):
+        raise SystemExit(
+            f"[prodseed] выдача ОТВЕРГНУТА: субъект user:{uid}, роль {role_id}, "
+            f"область {dotted}:{scope_id}.\n  ответ края: {rb}")
+    _poll(rb["id"], boot)
+
+
+def user_platform_token(uid, created_by):
+    """Персональный токен пользователя, обменянный у НАШЕГО издателя (#1121).
+
+    Полоса та же, что у `sa_platform_token`; отличие — субъект: человек, а не
+    машина. Разбор и проверка «одно имя, а не два» — в godoc
+    `m.user_platform_token`.
+    """
+    return m.user_platform_token(PUBLIC, boot, uid, created_by,
+                                 PLATFORM_TOKEN_URL, API_AUD, PLATFORM_ASSERT_AUD)
+
+
 CLUSTER_ROOT_OBJECT = "cluster:cluster_kacho_root"
 
 
@@ -715,11 +747,32 @@ def seed() -> dict:
     # задевает.
     tok_platform = sa_token(sva_saA)
 
+    # ТА ЖЕ полоса, ДРУГОЙ субъект — человек (#1121). Держатся обе, потому что
+    # край выводит принципала из утверждений токена, а у человека и машины они
+    # разные (`kacho_principal_type`): полоса, доказанная машиной, о человеке не
+    # говорит ничего.
+    #
+    # Субъект СВОЙ, а не один из матричных: выпуск персонального токена — это
+    # мутация над `iam_user`, и вешать её на пользователя, чью видимость
+    # утверждают чужие кейсы, значило бы менять их фикстуру ради этой.
+    usr_utok = upsert_user(f"prodseed-utok-{RID}@example.com")
+    acct_utok, _ = db_lookup(f"prodseed-utok-{RID}@example.com")
+    grant_user(usr_utok, ROLE_ADMIN, A, acct_utok)
+    # Тот же пол каталога, что у матричных субъектов: без `viewer@cluster`
+    # глобальный справочник читать нельзя, и 200 на маршруте края ничего бы не
+    # сказал о полосе.
+    seed_fga_cluster(f"user:{usr_utok}", "system_viewer")
+    tok_user_platform = user_platform_token(usr_utok, usr_utok)
+
     fixtures = {
         "jwtBootstrap": boot,
         # `iss` — наш издатель, подпись ES256, ключ из нашего же реестра. Слот
         # читает суита края (gateway/tests/newman).
         "jwtPlatformIssuer": tok_platform,
+        # Предъявитель второй полосы, чей принципал — ЧЕЛОВЕК: персональный токен,
+        # обменянный у нашего издателя. Слот читает суита края.
+        "jwtUserTokenPlatformIssuer": tok_user_platform,
+        "userTokenPlatformUserId": usr_utok,
         # no-grant slots
         "jwtNoBindings": tok_nogrant,
         "jwtSANoGrant": tok_nogrant,

@@ -120,20 +120,24 @@ func (x *IssueUserTokenRequest) GetLabels() map[string]string {
 type IssueUserTokenResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Token *UserOAuthClient       `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
-	// Публичный OAuth client_id (зарегистрированный в Hydra).
+	// OAuth client_id выпущенного удостоверения — идентификатор строки реестра,
+	// то есть `token.id`. Им заполняются `iss` и `sub` подписанного
+	// `client_assertion`; именно его разрешает издатель платформы.
+	//
+	// Совпадает с `key_id` дословно, и это не избыточность: одно и то же имя
+	// называет и клиента, и ключ, потому что второго имени у удостоверения нет.
 	ClientId string `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
 	// PEM-encoded PKCS#8 ECDSA P-256 приватный ключ — ПОКАЗЫВАЕТСЯ ОДИН РАЗ;
-	// невосстановим. Вызывающий подписывает им `client_assertion` (RFC 7521/7523)
-	// в OAuth2 client_credentials-запросах к Hydra.
+	// невосстановим. Вызывающий подписывает им `client_assertion`
+	// (RFC 7521/7523) при обмене на access-токен.
 	PrivateKeyPem string `protobuf:"bytes,3,opt,name=private_key_pem,json=privateKeyPem,proto3" json:"private_key_pem,omitempty"`
-	// PEM-encoded SPKI публичный ключ (информационно; Hydra держит каноническую
-	// копию как JWK в метаданных зарегистрированного клиента).
+	// PEM-encoded SPKI публичный ключ (информационно; каноническая копия — в
+	// строке реестра, по ней и проверяется подпись утверждения).
 	PublicKeyPem string `protobuf:"bytes,4,opt,name=public_key_pem,json=publicKeyPem,proto3" json:"public_key_pem,omitempty"`
 	// JOSE signing algorithm приватного ключа. Всегда "ES256".
 	Algorithm string `protobuf:"bytes,5,opt,name=algorithm,proto3" json:"algorithm,omitempty"`
-	// JWK `kid` зарегистрированного публичного ключа. Вызывающий ОБЯЗАН выставить
-	// `kid`-header подписанных assertion'ов в это значение, чтобы Hydra выбрала
-	// правильный ключ.
+	// JWK `kid` публичного ключа. Вызывающий ОБЯЗАН выставить `kid`-header
+	// подписанных assertion'ов в это значение. Совпадает с `client_id`.
 	KeyId         string `protobuf:"bytes,6,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
