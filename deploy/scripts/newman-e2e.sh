@@ -157,6 +157,7 @@ fi
 echo "[e2e] seeding auth fixtures (idempotent) + patching newman envs"
 env BASE_URL="http://localhost:$GW_PORT" \
 IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
+PLATFORM_TOKEN_URL="https://127.0.0.1:$IAM_REGTOKEN_PORT/iam/v1/token" \
 PATCH_ENV=true SETUP_NS="$NS" \
 "${MTLS_ENV[@]}" \
   bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"

@@ -274,3 +274,177 @@ func f1bKeySetOf(decl map[string]any, issuer string) string {
 	}
 	return ""
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ПРИНЯТЬ ИЗДАТЕЛЯ И НЕ МОЧЬ ВЫПУСТИТЬ ЕГО ТОКЕН — НЕИСПОЛНИМАЯ ВОЗМОЖНОСТЬ.
+//
+// ПРЕДМЕТ. Профиль объявляет край принимающим НАШЕГО издателя, и одновременно
+// объявляет наш токен-эндпоинт с ПЕРЕЧНЕМ допустимых адресатов. Величины эти
+// живут в разных подчартах и по отдельности защитимы; неисполнимость появляется
+// только НА СТЫКЕ: край принимает токен лишь с адресатом `https://<домен>`, а
+// перечень называет другой адресат — значит выпустить токен, который край
+// примет, нельзя НИ ПРИ КАКОМ входе. Полоса объявлена, задокументирована,
+// покрыта типами — и не работает (`api-conventions.md` §«ДВА ПРАВИЛА ОБ ОДНОМ
+// ПОЛЕ»).
+//
+// ИЗМЕРЕНО ВЫЗОВОМ, А НЕ ВЫВЕДЕНО (#1014, живой стенд): подписанное утверждение
+// принято, токен выпущен (`alg=ES256`, `typ=at+jwt`, `iss` — наш издатель), а
+// край ответил `401`, и его собственная строка назвала причину — адресат. То же
+// утверждение с испорченной подписью дало у края ошибку проверки подписи, то
+// есть до подписи дело доходило: единственным препятствием был перечень.
+//
+// ЧТО СЧИТАЕТСЯ ОЖИДАЕМЫМ АДРЕСАТОМ. `https://` + `kacho.domain` профиля (или
+// базовых значений). Это ТА ЖЕ величина, из которой чарт личности рендерит
+// адресат бутстрап-токена — то есть адресат, на котором ПЕРВАЯ полоса края
+// работает сегодня. Предпосылка вывода — что край не переопределяет домен своей
+// переменной окружения — проверяется здесь же: объявись она где-нибудь в дереве
+// профилей, вывод стал бы ложным, и проба обязана об этом сказать.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// f1bMintDecl — объявление одного профиля о ВЫПУСКЕ токена нашим издателем.
+type f1bMintDecl struct {
+	name             string
+	platformAccepted bool
+	mintEnabled      bool
+	allowedAudiences []string
+	domain           string
+}
+
+// f1bReadMintDecls читает стык двух подчартов по каждому профилю зонта.
+func f1bReadMintDecls(t *testing.T) []f1bMintDecl {
+	t.Helper()
+	dir := filepath.Join("..", "..", "deploy", "helm", "umbrella")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("каталог профилей зонта не прочитан: %v", err)
+	}
+	// Базовые значения дают домен профилям, которые его не переопределяют.
+	baseDomain := ""
+	if raw, rerr := os.ReadFile(filepath.Join(dir, "values.yaml")); rerr == nil {
+		var base map[string]any
+		if yaml.Unmarshal(raw, &base) == nil {
+			if k, ok := base["kacho"].(map[string]any); ok {
+				baseDomain, _ = k["domain"].(string)
+			}
+		}
+	}
+	if baseDomain == "" {
+		t.Fatal("в базовых значениях зонта не объявлен `kacho.domain` — вывести ожидаемый " +
+			"адресат неоткуда, и «ноль находок» означало бы «ноль прочитанного»")
+	}
+
+	var out []f1bMintDecl
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasPrefix(name, "values") || !strings.HasSuffix(name, ".yaml") {
+			continue
+		}
+		raw, rerr := os.ReadFile(filepath.Join(dir, name)) // #nosec G304 -- путь собран из имени файла в каталоге профилей дерева
+		if rerr != nil {
+			t.Fatalf("профиль %s не прочитан: %v", name, rerr)
+		}
+		// Переменная окружения края, задающая домен, сделала бы вывод ниже
+		// ложным. Её появление — находка, а не деталь.
+		if strings.Contains(string(raw), "KACHO_API_DOMAIN") {
+			t.Errorf("%s: профиль называет KACHO_API_DOMAIN — ожидаемый краем адресат "+
+				"перестал выводиться из `kacho.domain`, и эта проба судит не о том. "+
+				"Либо снимите переопределение, либо научите пробу читать его", name)
+		}
+		var tree map[string]any
+		if yerr := yaml.Unmarshal(raw, &tree); yerr != nil {
+			t.Fatalf("профиль %s не разбирается как YAML: %v", name, yerr)
+		}
+		d := f1bMintDecl{name: name, domain: baseDomain}
+		if k, ok := tree["kacho"].(map[string]any); ok {
+			if dom, ok := k["domain"].(string); ok && dom != "" {
+				d.domain = dom
+			}
+		}
+		if gw, ok := tree[edgeChartKey].(map[string]any); ok {
+			if ta, ok := gw["tokenAcceptance"].(map[string]any); ok {
+				iss, _ := ta["platformIssuer"].(string)
+				d.platformAccepted = strings.TrimSpace(iss) != ""
+			}
+		}
+		if ct := f1bClientTokenOf(tree); ct != nil {
+			d.mintEnabled, _ = ct["enabled"].(bool)
+			list, _ := ct["allowedAudiences"].(string)
+			for _, a := range strings.Split(list, ",") {
+				if a = strings.TrimSpace(a); a != "" {
+					d.allowedAudiences = append(d.allowedAudiences, a)
+				}
+			}
+		}
+		out = append(out, d)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
+	return out
+}
+
+// f1bClientTokenOf — объявление токен-эндпоинта в подчарте личности.
+func f1bClientTokenOf(tree map[string]any) map[string]any {
+	iam, ok := tree["kacho-iam"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	cfg, ok := iam["config"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	authn, ok := cfg["authn"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	ct, _ := authn["clientToken"].(map[string]any)
+	return ct
+}
+
+// TestF1b_ProfilesAcceptingOurIssuerCanMintForTheEdge — принятая полоса ИСПОЛНИМА.
+func TestF1b_ProfilesAcceptingOurIssuerCanMintForTheEdge(t *testing.T) {
+	decls := f1bReadMintDecls(t)
+	if len(decls) == 0 {
+		t.Fatal("прочитано НОЛЬ профилей зонта — судить нечего")
+	}
+
+	accepting := 0
+	for _, d := range decls {
+		if d.platformAccepted {
+			accepting++
+		}
+	}
+	t.Logf("осмотрено: профилей %d, принимают НАШЕГО издателя на крае %d", len(decls), accepting)
+	for _, d := range decls {
+		t.Logf("%s: наш издатель принят=%v, выпуск включён=%v, домен=%s, допустимые адресаты=%v",
+			d.name, d.platformAccepted, d.mintEnabled, d.domain, d.allowedAudiences)
+	}
+	if accepting == 0 {
+		t.Fatal("ни один профиль не принимает нашего издателя на крае — предмет пробы исчез " +
+			"из дерева, и её молчание сказано ни о чём")
+	}
+
+	for _, d := range decls {
+		if !d.platformAccepted {
+			continue
+		}
+		want := "https://" + d.domain
+		if !d.mintEnabled {
+			t.Errorf("%s: край принимает НАШЕГО издателя, а токен-эндпоинт выключен — "+
+				"выпустить предъявителя этой полосы нечем, и полоса объявлена неисполнимой",
+				d.name)
+			continue
+		}
+		found := false
+		for _, a := range d.allowedAudiences {
+			if a == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%s: край принимает НАШЕГО издателя и принимает токен ТОЛЬКО с адресатом "+
+				"%q, а перечень допустимых адресатов выпуска — %v. Выпустить токен, который "+
+				"край примет, нельзя ни при каком входе: полоса объявлена и неисполнима",
+				d.name, want, d.allowedAudiences)
+		}
+	}
+}

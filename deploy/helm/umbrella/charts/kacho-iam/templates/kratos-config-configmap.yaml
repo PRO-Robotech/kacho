@@ -31,6 +31,40 @@ ENV substitution (`$KACHO_IAM_HOOK_TOKEN`) — Kratos выполняет на с
 `config.envsubst` (если включён) ИЛИ через KRATOS_*-env-binding (kratos sub-chart
 по умолчанию делает upper-case mapping). В dev это работает через ENV-vars
 проброшенные в Kratos pod из Secret `kacho-iam-hook-token`.
+─────────────────────────────────────────────────────────────────────────────
+ПОТОКИ ОБЪЯВЛЯЮТСЯ В КОРНЕ, А НЕ ПОД ОТДЕЛЬНЫМ СЕГМЕНТОМ (#1048)
+
+Здесь у всех шести потоков стоял лишний сегмент `/auth`. Раздача консоли
+обслуживает потоки в КОРНЕ — регулярка `^/(login|registration|…)(/|$)` в
+`ui-future/deploy/templates/configmap-nginx.yaml` — и проксирует их отдельной
+службе `kratos-selfservice-ui`. Путь с лишним сегментом в эту регулярку не
+попадает и уезжает в SPA-заглушку `location /`.
+
+ЧТО «РАЗРЕШАЛО» ЛИШНИЙ СЕГМЕНТ — ИЗМЕРЕНО 2026-08-23, И ОТВЕТ: НИЧТО.
+Вопрос стоило задать прямо, потому что расхождение прожило долго и вход при
+этом работал. Замер на боевом стенде: карт настроек службы личности в
+пространстве имён две, смонтирована ОДНА, и это не та, что рендерит этот
+шаблон, — монтирований у неё НОЛЬ. Смонтированная объявляет потоки в корне,
+и по ним браузер ходит: поток входа уводит на `/login?flow=…`, корневой
+`/registration` отвечает `303` в поток Ory. То есть лишний сегмент был
+безвреден ровно потому, что не доезжал до процесса, — а не потому, что его
+кто-то умел обслужить.
+
+Отсюда два следствия, и второе важнее первого:
+  1. верно то место, которое ОТВЕЧАЕТ ПОЛЬЗОВАТЕЛЮ, — раздача; значит адреса
+     выводятся в корень, и они выведены;
+  2. как только эта карта настроек будет смонтирована (её предмет — #931),
+     прежняя редакция стала бы ЖИВЫМ отказом. Причём отказ выглядит успехом:
+     заглушка отдаёт `200` с оболочкой консоли, маршрутизатор такого пути не
+     знает и уводит на `/dashboard`. Ни `404`, ни записи в журнале.
+
+Держится гейтом `deploy/identity_flow_path_is_served_test.go`: он выводит
+множество обслуживаемых сегментов из самой регулярки раздачи и сверяет с ним
+каждое `ui_url:` дерева. Перечень путей там не выписан ни одной строкой,
+поэтому расширение раздачи гейта не касается, а сужение немедленно делает его
+строже. Путь, начало которого вычисляет шаблон, гейт объявляет неразрешимым и
+роняет прогон: «не смогли установить» обязано быть отличимо от «установили,
+что верно».
 */}}
 {{- if .Values.kratos.config.enabled }}
 {{- /* Схема обратных вызовов обязана быть ОБЪЯВЛЕНА: без неё адрес отрендерился
@@ -132,7 +166,7 @@ data:
         # ─── Registration ────────────────────────────────────────────
         registration:
           enabled: true
-          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/auth/registration
+          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/registration
           lifespan: 30m
           after:
             webauthn:
@@ -175,7 +209,7 @@ data:
 
         # ─── Login ───────────────────────────────────────────────────
         login:
-          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/auth/login
+          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/login
           lifespan: 30m
           after:
             webauthn:
@@ -213,7 +247,7 @@ data:
         # ─── Settings ────────────────────────────────────────────────
         # Privileged flow — re-authentication every 15min.
         settings:
-          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/auth/settings
+          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/settings
           lifespan: 30m
           privileged_session_max_age: 15m
           required_aal: highest_available
@@ -224,7 +258,7 @@ data:
         # в Phase 2; relaxed /24 — Phase 12 hardening per §10 Q5).
         recovery:
           enabled: true
-          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/auth/recovery
+          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/recovery
           lifespan: 5m
           use: code
           after:
@@ -258,7 +292,7 @@ data:
         # ─── Verification ────────────────────────────────────────────
         verification:
           enabled: true
-          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/auth/verification
+          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/verification
           lifespan: 15m
           use: code
 
@@ -269,7 +303,7 @@ data:
 
         # ─── Error ───────────────────────────────────────────────────
         error:
-          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/auth/error
+          ui_url: https://{{ .Values.kacho.subdomains.app }}.{{ .Values.kacho.domain }}/error
 
     # ─── Session ────────────────────────────────────────────────────────
     session:

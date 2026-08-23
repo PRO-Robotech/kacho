@@ -68,7 +68,7 @@ func TestStatesOfALiveProjectComeFromItsOwnRows(t *testing.T) {
 	}}
 	limits := &stubLimits{}
 
-	got, err := newBand(t, rows, limits).States(context.Background(), "prj-1")
+	got, err := newBand(t, rows, limits).States(context.Background(), quotaread.ProjectCarrier("prj-1"))
 	require.NoError(t, err)
 
 	require.Equal(t, rows.states, got)
@@ -94,7 +94,7 @@ func TestStatesOfAFreshProjectAreResolvedAndNeverEmpty(t *testing.T) {
 			SourceScope: "ACCOUNT", SourceScopeID: "acc-7"},
 	}}
 
-	got, err := newBand(t, rows, limits).States(context.Background(), "prj-2")
+	got, err := newBand(t, rows, limits).States(context.Background(), quotaread.ProjectCarrier("prj-2"))
 	require.NoError(t, err)
 
 	require.Len(t, got, 2, "проект, ещё ничего не создавший, читает ПОЛНЫЙ набор своих видов: "+
@@ -128,7 +128,7 @@ func TestStatesOmitKindsCountedInAParent(t *testing.T) {
 		{Kind: "loadbalancer.orphan", Value: 1, Carrier: ""},
 	}}
 
-	got, err := newBand(t, rows, limits).States(context.Background(), "prj-3")
+	got, err := newBand(t, rows, limits).States(context.Background(), quotaread.ProjectCarrier("prj-3"))
 	require.NoError(t, err)
 
 	require.Len(t, got, 1)
@@ -145,7 +145,7 @@ func TestStatesRefuseWhenTheLimitOwnerCannotBeReached(t *testing.T) {
 	rows := &stubRows{}
 	limits := &stubLimits{err: status.Error(codes.Unavailable, "iam is down")}
 
-	_, err := newBand(t, rows, limits).States(context.Background(), "prj-4")
+	_, err := newBand(t, rows, limits).States(context.Background(), quotaread.ProjectCarrier("prj-4"))
 	require.Error(t, err)
 	require.Equal(t, codes.Unavailable, status.Code(err),
 		"полоса недоступности повторяема и обязана быть отличима от промаха")
@@ -161,7 +161,7 @@ func TestStatesPropagateOwnStorageFailureUnchanged(t *testing.T) {
 	rows := &stubRows{err: own}
 	limits := &stubLimits{}
 
-	_, err := newBand(t, rows, limits).States(context.Background(), "prj-5")
+	_, err := newBand(t, rows, limits).States(context.Background(), quotaread.ProjectCarrier("prj-5"))
 	require.ErrorIs(t, err, own,
 		"своя беда, названная чужой полосой, уводит отладку к соседу, у которого всё в порядке")
 	require.Zero(t, limits.calls)
@@ -190,4 +190,163 @@ func TestNewBandRefusesToAssembleWithoutItsParts(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+// ── #705: полоса отвечает про НАЗВАННОГО носителя ───────────────────────────
+
+// TestStatesAnswerAboutTheCarrierAsked — обе стороны на одном и том же ответе
+// владельца величин: спросили про проект — получили проектные виды; спросили
+// про родительский ресурс — получили вложенные, и ни разу не наоборот.
+//
+// ПРЕДМЕТ. Полоса спрашивала РОВНО ОДИН тип носителя и остальные отбрасывала,
+// поэтому предел, считаемый в родительском ресурсе, арендатор увидеть не мог
+// вовсе — узнать о нём получалось только из текста отказа, то есть уже упёршись.
+//
+// Отрицание («чужую величину не видит») стоит здесь же и на том же входе: без
+// него положительная половина зеленела бы и на полосе, отдающей всё подряд с
+// неверно названным носителем.
+func TestStatesAnswerAboutTheCarrierAsked(t *testing.T) {
+	t.Parallel()
+
+	answer := []quotaread.ResolvedLimit{
+		{Kind: "loadbalancer.networkLoadBalancers", Value: 16, Carrier: quotaread.CarrierProject,
+			SourceScope: "DEFAULT"},
+		{Kind: "loadbalancer.networkLoadBalancers.listeners", Value: 8,
+			Carrier: "loadbalancer.networkLoadBalancers", SourceScope: "PROJECT", SourceScopeID: "prj-9"},
+	}
+
+	t.Run("носитель — проект", func(t *testing.T) {
+		rows := &stubRows{}
+		got, err := newBand(t, rows, &stubLimits{limits: answer}).
+			States(context.Background(), quotaread.ProjectCarrier("prj-9"))
+		require.NoError(t, err)
+
+		require.Len(t, got, 1)
+		require.Equal(t, "loadbalancer.networkLoadBalancers", got[0].Kind)
+		require.Equal(t, quotaread.CarrierProject, rows.gotCarrierType)
+		require.Equal(t, "prj-9", rows.gotCarrierID)
+	})
+
+	t.Run("носитель — родительский ресурс", func(t *testing.T) {
+		rows, limits := &stubRows{}, &stubLimits{limits: answer}
+		got, err := newBand(t, rows, limits).States(context.Background(),
+			quotaread.Carrier{Type: "loadbalancer.networkLoadBalancers", ID: "nlb-1", ScopeID: "prj-9"})
+		require.NoError(t, err)
+
+		require.Len(t, got, 1, "предел, считаемый в родителе, обязан быть виден тому, кого он отвергает")
+		require.Equal(t, "loadbalancer.networkLoadBalancers.listeners", got[0].Kind)
+		require.EqualValues(t, 8, got[0].Limit)
+		require.Equal(t, "loadbalancer.networkLoadBalancers", got[0].CarrierType)
+		require.Equal(t, "nlb-1", got[0].CarrierID,
+			"носителем названа та строка, чьё потребление считается, а не проект")
+		require.Equal(t, "PROJECT", got[0].SourceScope)
+		require.Equal(t, "prj-9", got[0].SourceScopeID)
+
+		// Строки учёта спрошены у ЭТОГО носителя, а не у проекта: иначе ответ
+		// показывал бы чужое потребление под своим именем.
+		require.Equal(t, "loadbalancer.networkLoadBalancers", rows.gotCarrierType)
+		require.Equal(t, "nlb-1", rows.gotCarrierID)
+
+		// Область величин — по-прежнему ПРОЕКТ, а не идентификатор родителя.
+		// Различие несущее: вложенная величина назначается на проект («по
+		// скольку детей на родителя в этом проекте») и считается в родителе.
+		// Спросив соседа про идентификатор сети как про область, полоса получила
+		// бы пустой набор — то есть «пределов нет» вместо величины.
+		require.Equal(t, "prj-9", limits.gotScopeID)
+		require.Equal(t, "loadbalancer", limits.gotService)
+	})
+}
+
+// TestStatesRefuseRatherThanPassAFilteredSetOffAsTheWholeList — отбор, оставивший
+// пусто, ОТКАЗЫВАЕТ и называет, где величины лежат.
+//
+// Пустой массив на проводе читается арендатором как «пределов нет», то есть
+// «можно сколько угодно». Контракт прямо говорит, что такого утверждения этот
+// ответ не делает. А действительность обратная: вид без назначенной величины
+// отвергается на КАЖДОЙ вставке («потолок не назван» есть отказ, а не
+// бесконечность), — значит пустой ответ сообщает ровно противоположное тому,
+// что произойдёт.
+func TestStatesRefuseRatherThanPassAFilteredSetOffAsTheWholeList(t *testing.T) {
+	t.Parallel()
+
+	rows := &stubRows{}
+	limits := &stubLimits{limits: []quotaread.ResolvedLimit{
+		{Kind: "loadbalancer.networkLoadBalancers.listeners", Value: 8,
+			Carrier: "loadbalancer.networkLoadBalancers"},
+	}}
+
+	_, err := newBand(t, rows, limits).States(context.Background(), quotaread.ProjectCarrier("prj-6"))
+	require.Error(t, err, "пустой отбор нельзя выдать за полный перечень")
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	msg := status.Convert(err).Message()
+	require.Contains(t, msg, "prj-6")
+	require.Contains(t, msg, "loadbalancer.networkLoadBalancers",
+		"отказ обязан назвать носителя, у которого величины ЕСТЬ: иначе «пределов нет» "+
+			"и «этот вид сюда не попадает» снова неразличимы")
+}
+
+// TestStatesRefuseWhenNoCeilingIsStatedAtAll — величин не назначено вовсе: тоже
+// отказ, а не пустой набор.
+//
+// Отличается от предыдущего входом и текстом, но не выводом: и там и там пустой
+// ответ был бы утверждением, которого владелец не делал.
+func TestStatesRefuseWhenNoCeilingIsStatedAtAll(t *testing.T) {
+	t.Parallel()
+
+	_, err := newBand(t, &stubRows{}, &stubLimits{}).
+		States(context.Background(), quotaread.ProjectCarrier("prj-7"))
+	require.Error(t, err)
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "prj-7")
+}
+
+// TestStatesRefuseAnUnnamedCarrier — носитель без имени либо без идентификатора
+// не спрашивается у хранилища вовсе.
+//
+// Пустое значение в предикате чтения не отказывает громко: оно совпадёт с той
+// строкой, у которой это поле однажды окажется пустым, — то есть покажет чужое
+// под своим именем. Отказ дешевле.
+func TestStatesRefuseAnUnnamedCarrier(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range []struct {
+		name    string
+		carrier quotaread.Carrier
+	}{
+		{"тип не назван", quotaread.Carrier{ID: "prj-8", ScopeID: "prj-8"}},
+		{"носитель не назван", quotaread.Carrier{Type: quotaread.CarrierProject, ScopeID: "prj-8"}},
+		{"область не названа", quotaread.Carrier{Type: quotaread.CarrierProject, ID: "prj-8"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			rows := &stubRows{}
+			_, err := newBand(t, rows, &stubLimits{}).States(context.Background(), c.carrier)
+			require.Error(t, err)
+			require.Zero(t, rows.calls, "к хранилищу с невыразимым вопросом не ходят")
+		})
+	}
+}
+
+// TestStatesNameACeilingWhoseCarrierIsUnnamed — величина с пустым носителем не
+// исчезает бесследно.
+//
+// Пустое поле носителя приходит на рассинхроне версий: владелец величин знает
+// вид, чей носитель здешнему словарю ещё неизвестен. Прежде такая величина
+// выпадала И из ответа, И из перечня в отказе, поэтому отказ утверждал «величин
+// нет вовсе» — при существующей величине. Пустое обязано означать «не назван».
+func TestStatesNameACeilingWhoseCarrierIsUnnamed(t *testing.T) {
+	t.Parallel()
+
+	limits := &stubLimits{limits: []quotaread.ResolvedLimit{
+		{Kind: "loadbalancer.somethingNew", Value: 4, Carrier: ""},
+	}}
+
+	_, err := newBand(t, &stubRows{}, limits).
+		States(context.Background(), quotaread.ProjectCarrier("prj-10"))
+	require.Error(t, err)
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	msg := status.Convert(err).Message()
+	require.Contains(t, msg, "prj-10")
+	require.Contains(t, msg, "не назван",
+		"величина существует, и отказ обязан это признать: «носитель не назван» и "+
+			"«величин нет» — разные утверждения, и второе ложно")
 }

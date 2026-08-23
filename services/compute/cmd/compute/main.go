@@ -329,14 +329,22 @@ func runServe(cfg config.Config) error {
 
 	// Сканер состояния ЖУРНАЛА АУДИТА. Провязан безусловно и намеренно: журнал
 	// наполняется каждой мутацией репозитория, независимо от того, включён ли
-	// дренаж очереди регистраций ниже. Доставки у журнала нет и сегодня быть не
-	// может (приёмника аудита в продукте не существует), поэтому сканер здесь —
-	// единственное, чем «ноль доставленных строк за всю жизнь очереди» вообще
-	// заметно. Подробности и предикат пересмотра — audit_outbox_metrics.go.
+	// дренаж очереди регистраций ниже. У журнала теперь есть доставка (вывоз
+	// следующей задачей), поэтому величины сканера читаются как обычно: глубина
+	// падает, возраст головы ограничен сверху.
 	background = append(background, bgWorker{"audit-outbox-metrics", func(c context.Context) error {
 		runAuditOutboxMetrics(c, pool, outboxRec, logger)
 		return nil
 	}})
+
+	// Вывоз журнала аудита в приёмник. Строится ДО запуска задач: ошибка сборки
+	// обязана останавливать старт, а не всплывать фоном — журнал, который не
+	// вывозится, снаружи неотличим от журнала, в котором нечего вывозить.
+	auditShipper, ashErr := buildAuditShipper(pool, outboxRec, logger)
+	if ashErr != nil {
+		return fmt.Errorf("audit shipper wiring: %w", ashErr)
+	}
+	background = append(background, bgWorker{"audit-shipper", auditShipper.Run})
 
 	// register-drainer — applies FGA owner-tuple register/unregister intents
 	// (compute_fga_register_outbox, written transactionally by repo.Insert/Delete)

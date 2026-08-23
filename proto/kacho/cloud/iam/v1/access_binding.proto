@@ -287,6 +287,96 @@ enum SubjectType {
   SUBJECT_TYPE_GROUP             = 3;
 }
 
+// GrantSurfaceKind — ВИД записи поверхности выдач (#914, решение 2).
+//
+// Поверхностей ВЫДАЧИ три, и они остаются раздельными: выдача заводится и
+// отзывается своим глаголом, состав группы — своим, кластерный администратор —
+// своим. Сводить их в одну поверхность было бы неверно: у членства нет ни роли,
+// ни области, ни срока, а у кластерного администратора свой порядок выдачи —
+// это единственный доступ, обязанный работать, когда сломано всё остальное.
+//
+// Раздельными остаются ПОВЕРХНОСТИ, но не ЧТЕНИЕ. Две поверхности об одном
+// предмете расходятся молча: спрашивающий «кто имеет доступ» получает ответ с
+// одной из них и считает его полным. Поэтому перечисление выдач возвращает
+// записи всех трёх видов, называя вид каждой.
+//
+// Решение и его обоснование —
+// `services/iam/docs/engineering/architecture/grant-surface-boundaries.md`.
+enum GrantSurfaceKind {
+  GRANT_SURFACE_KIND_UNSPECIFIED = 0;
+
+  // Выдача: обычная (роль на области) либо системная (именованное отношение).
+  GRANT_SURFACE_KIND_ACCESS_BINDING = 1;
+
+  // Состав группы: членство доносит до члена то, что выдано группе.
+  GRANT_SURFACE_KIND_GROUP_MEMBERSHIP = 2;
+
+  // Кластерный администратор: верхний ярус супер-доступа, действующий каскадом.
+  GRANT_SURFACE_KIND_CLUSTER_ADMIN = 3;
+}
+
+// GroupMembershipRecord — одно членство в группе.
+//
+// Это НЕ выдача, и полей выдачи у него нет: роли, области и срока у членства не
+// бывает. Пустые поля читатель принимает за «не задано», а не за «неприменимо»,
+// — поэтому у вида своя форма, а не общая с вырезанной серединой.
+message GroupMembershipRecord {
+  // ID группы, чей это состав.
+  string group_id = 1;
+
+  // Тип члена: "user" | "service_account".
+  string member_type = 2;
+
+  // ID члена.
+  string member_id = 3;
+
+  // Когда член добавлен.
+  google.protobuf.Timestamp added_at = 4;
+}
+
+// ClusterAdminRecord — один действующий кластерный администратор.
+//
+// Форма своя по той же причине: выдаётся и отзывается он собственным глаголом,
+// роли у него нет, а область — весь кластер по построению.
+message ClusterAdminRecord {
+  // ID записи о выдаче администраторских прав на кластере.
+  string id = 1;
+
+  // Тип субъекта: "user" | "service_account".
+  string subject_type = 2;
+
+  // ID субъекта.
+  string subject_id = 3;
+
+  // Когда выдано.
+  google.protobuf.Timestamp granted_at = 4;
+}
+
+// GrantSurfaceRecord — одна запись поверхности выдач вместе со своим ВИДОМ.
+//
+// Вид назван ДВАЖДЫ — полем `kind` и ветвью `record`, — и это осознанно: ветвь
+// читает тот, кто разбирает запись по её форме, `kind` — тот, кто раскладывает
+// перечисление по видам, не заглядывая внутрь. Согласие двух прочтений — не
+// пожелание: его держит проба
+// (`services/iam/internal/apps/kacho/api/access_binding`), потому что запись, чей
+// `kind` разошёлся с ветвью, читается разными вызывающими по-разному.
+message GrantSurfaceRecord {
+  // Вид записи. UNSPECIFIED не производится: запись без вида означала бы, что
+  // перечисление вернуло что-то, чего само назвать не может.
+  GrantSurfaceKind kind = 1;
+
+  oneof record {
+    // Вид ACCESS_BINDING.
+    AccessBinding binding = 2;
+
+    // Вид GROUP_MEMBERSHIP.
+    GroupMembershipRecord group_membership = 3;
+
+    // Вид CLUSTER_ADMIN.
+    ClusterAdminRecord cluster_admin = 4;
+  }
+}
+
 message CreateAccessBindingMetadata {
   // ID of the AccessBinding that is being created.
   string access_binding_id = 1;
