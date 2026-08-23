@@ -247,12 +247,3 @@ func TestCeremonySeedWritesTraitsOfTheChartsIdentitySchema(t *testing.T) {
 		"посев шлёт %d (%s)", chartID, len(names), strings.Join(names, ", "), strict,
 		len(schema.Properties.Traits.Required), len(seedTraits), strings.Join(seedTraits, ", "))
 }
-
-func contains(hay []string, needle string) bool {
-	for _, h := range hay {
-		if h == needle {
-			return true
-		}
-	}
-	return false
-}
