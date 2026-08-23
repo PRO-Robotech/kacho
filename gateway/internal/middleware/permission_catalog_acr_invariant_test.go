@@ -95,13 +95,23 @@ func sensitiveACR2Set() map[string]struct{} {
 		// personal token would otherwise reach a strictly larger outcome (all of
 		// someone's access into a tenancy, at once) through the cheaper door.
 		//
-		// Scope, so the classification is not read as more than it is: these two
-		// write ONE membership row, not the whole identity. The person keeps
-		// working wherever else they are active. The floor is likewise INTERACTIVE-
-		// only and INERT for machine callers, exactly as for the pair above: a
-		// service account holding `v_update` on the target blocks it with no
-		// step-up whatsoever. WHO may do it is decided by the model (`v_update` on
-		// `iam_user`, i.e. the account admin and the cloud-admin cascade).
+		// Scope, stated as it now is rather than as it once was: these two write the
+		// state of the WHOLE identity. A person is one `users` row for the entire
+		// platform, so the block reaches every Account they belong to at once.
+		//
+		// > This comment used to say the opposite — "these two write ONE membership
+		// > row, not the whole identity; the person keeps working wherever else they
+		// > are active". That was true until the row stopped being a membership, and
+		// > it outlived its subject. It is corrected rather than deleted because a
+		// > stale claim about the radius of a security control is read as an active
+		// > boundary.
+		//
+		// The floor is likewise INTERACTIVE-only and INERT for machine callers,
+		// exactly as for the pair above: a service account holding the relation on
+		// the target blocks it with no step-up whatsoever. WHO may do it is decided
+		// by the model — `identity_suspender` on `iam_user`, which has NO
+		// account-level source (#1102): the account administrator is not among the
+		// holders, and the cloud administrator reaches it as he reaches everything.
 		"kacho.cloud.iam.v1.UserService/Block",
 		"kacho.cloud.iam.v1.UserService/Unblock",
 		// B — iam binding grant (5; Create is exempt-permission + acr=2, net-strengthening).

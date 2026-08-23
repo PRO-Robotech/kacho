@@ -94,6 +94,17 @@ service UserService {
   // — IdP `sub`, и иные IdP-projected identity-ключи) hard-immutable: их наличие
   // в update_mask → INVALID_ARGUMENT "<field> is immutable after User.Create".
   // Async — возвращает Operation (как Update всех iam-ресурсов).
+  //
+  // WHO may call it is `record_writer` on `iam_user`, and it carries NO
+  // account-level source (#1102). The row is a GLOBAL identity — one per person
+  // for the whole platform — so `labels`, its only mutable field, decides which
+  // selector grants match the person in EVERY Account, not just the one the label
+  // was set from. A label being per-Account in meaning while living on a global
+  // row is its own subject (#1126); the right to write it stopped being an
+  // account-level one already.
+  //
+  // Reading the record keeps its account-level sources on purpose: seeing the
+  // people of your own Account is the Account's business (`v_get` / `v_list`).
   rpc Update (UpdateUserRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/iam/v1/users/{user_id}" body: "*" };
     option (kacho.cloud.api.operation) = {
@@ -101,7 +112,7 @@ service UserService {
       response: "User"
     };
     option (kacho.iam.authz.v1.permission)        = "iam.users.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.required_relation) = "record_writer";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
@@ -125,17 +136,29 @@ service UserService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Blocks the specified User membership: it may no longer authenticate into
-  // the Account that row belongs to.
+  // Blocks the specified person: the identity may no longer authenticate
+  // anywhere on the platform.
   //
   // WHAT IT IS SCOPED TO, because getting this wrong is a cross-tenant outage.
-  // A `users` row is a MEMBERSHIP — one pair of (identity, Account) — and one
-  // identity holds one row per Account it belongs to. This call blocks ONE such
-  // row. The identity keeps working wherever else it is active: token issuance
-  // walks the membership set and serves the first row that may authenticate, and
-  // refuses only when NONE can. A block therefore belongs to the Account that
-  // issued it, and the admin of Account A cannot switch a person off in
-  // Account B.
+  // A `users` row is NO LONGER a membership. One person is ONE row for the whole
+  // platform (global keys `users_identity_email_uniq` /
+  // `users_identity_external_id_uniq`, migration 20260823050000), and belonging
+  // to Accounts is expressed by `memberships` rows, of which there may be many.
+  // The state written here therefore reaches EVERY Account the person is in:
+  // token issuance walks the membership set and serves the first row that may
+  // authenticate, and now "none can" arrives at once, because the state is one
+  // per person. This is the owner's decision "a block is a property of the
+  // identity" (question В-8 of the IAM-ID-1 acceptance), not a side effect.
+  //
+  // > This paragraph used to say the opposite — that a block belonged to the
+  // > Account that issued it and that the admin of Account A could not switch a
+  // > person off in Account B. That was true until the row stopped being a
+  // > membership, and it outlived its subject. It is restated here rather than
+  // > deleted because it reads as an active security boundary: the next reader
+  // > looking for the radius of a block would have taken it for a fact. The code
+  // > side of the same correction is in the Block use-case
+  // > (`api/user/set_blocked.go`); the observable one is
+  // > `api/audit/user_block_integration_test.go`.
   //
   // WHY AN ACTION AND NOT A FIELD ON Update. This is the reason the state was
   // never ADDED to UpdateUserRequest, not a description of a bug that was there:
@@ -155,16 +178,26 @@ service UserService {
   // RPC costs exactly what Update costs. It raises assurance for people; it is
   // not a second authorization gate.
   //
-  // WHO may call it is `v_update` on `iam_user` — the same relation Update
-  // carries, on the same object, which resolves to the admin of the owning
-  // Account (`super_admin: admin from account`) and, by cascade, to the cloud
-  // admin. Deliberate: whoever may rename a membership may also suspend it, and
-  // by the editor projection may already delete it outright. A relation of its
-  // own would leave every existing operator unable to use the control until
-  // someone re-granted them — the wrong failure mode for something reached for
-  // during an incident. An ordinary member does NOT hold it on their own row
-  // (`subject` feeds `viewer`, not `v_update`), which is what keeps self-lifting
-  // impossible.
+  // WHO may call it is `identity_suspender` on `iam_user` — a relation of its
+  // own, with NO account-level source: neither a per-object grant, nor the
+  // delegated Account administrator, nor the Account owner (#1102).
+  //
+  // It used to be `v_update`, shared with Update, and the argument for sharing
+  // was that whoever may rename a membership may also suspend it. That argument
+  // died with the membership: the state now switches the person off on the whole
+  // platform, so an Account administrator holding it decides for Accounts he has
+  // nothing to do with. What the person who invited him keeps is what the owner's
+  // directive names — adding and removing rights in his own Account
+  // (`iam_access_binding`), plus reading his people (`v_get` / `v_list` keep
+  // their account-level sources deliberately).
+  //
+  // An ordinary member does NOT hold it on their own row, and neither does the
+  // person himself: `subject` is not a source here, so self-lifting is
+  // impossible by construction.
+  //
+  // Per-account exclusion as an ACTION does not exist yet — `memberships` has no
+  // suspended state and no removal RPC — so "block within my Account" is
+  // expressed by withdrawing the grants. Subject and removal predicate: #1127.
   //
   // IDEMPOTENT: the argument is the STATE, not a transition. Blocking a
   // membership that is already blocked succeeds and reports it blocked — the
@@ -185,7 +218,7 @@ service UserService {
       response: "User"
     };
     option (kacho.iam.authz.v1.permission)        = "iam.users.block";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.required_relation) = "identity_suspender";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
@@ -214,7 +247,7 @@ service UserService {
       response: "User"
     };
     option (kacho.iam.authz.v1.permission)        = "iam.users.unblock";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.required_relation) = "identity_suspender";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"

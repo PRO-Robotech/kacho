@@ -253,7 +253,7 @@ var AllowedMethods = map[string]struct{}{
 	// immutable), возвращает Operation; parity с RoleService/ServiceAccountService.
 	"/kacho.cloud.iam.v1.UserService/Get":            {},
 	"/kacho.cloud.iam.v1.UserService/List":           {},
-	"/kacho.cloud.iam.v1.UserService/Update":         {}, // public labels-only mutation (REST PATCH /iam/v1/users/{user_id}); v_update on iam_user, acr 2
+	"/kacho.cloud.iam.v1.UserService/Update":         {}, // public labels-only mutation (REST PATCH /iam/v1/users/{user_id}); record_writer on iam_user, acr 1
 	"/kacho.cloud.iam.v1.UserService/Delete":         {},
 	"/kacho.cloud.iam.v1.UserService/ListOperations": {}, // per-resource ops (REST GET /iam/v1/users/{user_id}/operations)
 	// Административный запрет участию и его снятие (REST POST
@@ -261,8 +261,8 @@ var AllowedMethods = map[string]struct{}{
 	// записи в этом списке директор отвергает метод раньше, чем что-либо о нём
 	// узнают каталог и таблица маршрутов, и односторонний недосмотр оставил бы
 	// заблокированного без пути снятия.
-	"/kacho.cloud.iam.v1.UserService/Block":   {}, // v_update on iam_user, acr 2
-	"/kacho.cloud.iam.v1.UserService/Unblock": {}, // v_update on iam_user, acr 2
+	"/kacho.cloud.iam.v1.UserService/Block":   {}, // identity_suspender on iam_user, acr 2
+	"/kacho.cloud.iam.v1.UserService/Unblock": {}, // identity_suspender on iam_user, acr 2
 	// Приглашение по адресу почты (REST POST /iam/v1/users:invite) — единственный
 	// публичный путь появления пользователя; Create по-прежнему только internal.
 	"/kacho.cloud.iam.v1.UserService/Invite": {},
