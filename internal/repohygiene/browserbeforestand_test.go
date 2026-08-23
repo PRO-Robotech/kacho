@@ -99,7 +99,27 @@ type standWorkflowDoc struct {
 // `playwright install-deps` под это НЕ подпадает намеренно: он ставит системные
 // пакеты через apt, весит секунды и предметом правила не является. Граница
 // проходит по символу после `install`: у `install-deps` там дефис.
-var reBrowserAcquire = regexp.MustCompile(`playwright\s+install(?:\s|$)`)
+//
+// ВТОРАЯ ФОРМА — вызов скрипта добычи (#1047). Команда переехала из тела шага в
+// `.github/scripts/install-pinned-browser.sh`, потому что двум фазам нужны два
+// РАЗДЕЛЬНЫХ предела, а различить их можно только сторожа журнал установки.
+// Предикат обязан следовать за механизмом: сразу после переезда гейт нашёл ноль
+// шагов добычи и упал — честно, громко и по делу. Оставить его в таком виде
+// значило бы либо снять гейт, либо загнать команду обратно в YAML ради того,
+// чтобы предикат её увидел, то есть подогнать дерево под инструмент.
+//
+// Имя скрипта здесь — координата, и её живость проверяется отдельно
+// (`TestBrowserAcquireScriptCoordinateIsAlive`): предикат, ссылающийся на
+// несуществующий файл, снова считал бы ноль шагов добычи.
+var reBrowserAcquire = regexp.MustCompile(`playwright\s+install(?:\s|$)|` +
+	regexp.QuoteMeta(browserAcquireScript))
+
+// browserAcquireScript — скрипт, в котором сегодня живёт добыча браузера.
+const browserAcquireScript = "install-pinned-browser.sh"
+
+// reSelfTestInvocation — вызов скрипта РАДИ ЕГО САМОПРОВЕРКИ. Такой шаг ничего
+// не добывает и добычей считаться не должен.
+var reSelfTestInvocation = regexp.MustCompile(`--self-test\b`)
 
 // reStandUp — подъём стенда. Цель `dev-up` поднимает kind-кластер целиком и
 // занимает ранер до конца задания.
@@ -139,7 +159,18 @@ func checkBrowserBeforeStand(path, raw string) ([]string, browserStandCensus) {
 			if st.Run == "" {
 				continue
 			}
-			if reBrowserAcquire.MatchString(st.Run) {
+			// САМОПРОВЕРКА СКРИПТА — НЕ ДОБЫЧА, и различать их обязательно.
+			//
+			// Шаг `install-pinned-browser.sh --self-test` называет тот же скрипт,
+			// но браузера не добывает: он гоняет заглушки и весит секунды.
+			// Засчитав его добычей, гейт взял бы ЕГО за «первую добычу» — и
+			// пропустил бы ровно тот дефект, который стережёт: настоящую добычу
+			// можно было бы увести за подъём стенда, оставив самопроверку
+			// впереди, и порядок выглядел бы соблюдённым.
+			//
+			// Найдено на себе, при переезде добычи в скрипт: перепись выросла с
+			// 1 до 2, и вторым оказался шаг, ничего не добывающий.
+			if reBrowserAcquire.MatchString(st.Run) && !reSelfTestInvocation.MatchString(st.Run) {
 				census.Browser++
 				if firstBrowser < 0 {
 					firstBrowser, browserName = i, st.Name
@@ -207,4 +238,26 @@ func TestBrowserIsAcquiredBeforeTheStandTakesTheRunner(t *testing.T) {
 	for _, f := range all {
 		t.Error(f)
 	}
+}
+
+// TestBrowserAcquireScriptCoordinateIsAlive — вторая форма предиката ссылается
+// на ФАЙЛ, и его исчезновение обязано быть красным здесь, а не проявиться
+// молчаливым «шагов добычи браузера 0» в соседнем гейте.
+//
+// Класс знакомый: предикат, разошедшийся со своим предметом, не перестаёт
+// работать — он начинает уверенно отвечать «не найдено».
+func TestBrowserAcquireScriptCoordinateIsAlive(t *testing.T) {
+	root := repoRoot(t)
+	rel := filepath.Join(".github", "scripts", browserAcquireScript)
+	st, err := os.Stat(filepath.Join(root, rel))
+	if err != nil {
+		t.Fatalf("скрипт добычи браузера %s не найден: %v.\n"+
+			"    Предикат гейта ссылается на него по имени; пока файла нет, гейт "+
+			"считает шаги добычи и находит ноль — то есть перестаёт измерять свой "+
+			"предмет, продолжая выглядеть исправным.", rel, err)
+	}
+	if st.Size() == 0 {
+		t.Fatalf("скрипт добычи браузера %s пуст", rel)
+	}
+	t.Logf("ОБЪЁМ ОСМОТРЕННОГО: координата %s жива, %d байт", rel, st.Size())
 }
