@@ -26,17 +26,19 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// UserOAuthClient — персональный access-токен пользователя (Hydra static
-// client, поток private_key_jwt).
+// UserOAuthClient — персональный access-токен пользователя (поток
+// private_key_jwt).
 //
-// kacho-iam генерирует пару ключей ECDSA P-256 на каждый токен, регистрирует
-// публичный JWK в Hydra (`token_endpoint_auth_method = private_key_jwt`) и
-// возвращает приватный PEM вызывающему ровно один раз. Hydra хранит только JWK;
-// kacho-iam держит SPKI public PEM (для диагностики) плюс алгоритм. Секрет
-// (private key) не хранится нигде.
+// kacho-iam генерирует пару ключей ECDSA P-256 на каждый токен и возвращает
+// приватный PEM вызывающему ровно один раз; у себя держит SPKI public PEM плюс
+// алгоритм. Секрет (private key) не хранится нигде.
+//
+// Клиентом это удостоверение называется по `id` ЭТОЙ строки: им подписывается
+// `client_assertion`, и по нему же издатель платформы разрешает клиента.
+// Второго имени у него нет.
 //
 // N:1 — у одного User может быть несколько токенов (в отличие от 1:1 SA-key до
-// релакса). `hydra_client_id` UNIQUE по всем строкам.
+// релакса).
 //
 // FK на `users(id) ON DELETE CASCADE` — при удалении пользователя его токены
 // снимаются вместе с ним.
@@ -51,7 +53,16 @@ type UserOAuthClient struct {
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// ID пользователя, которому принадлежит токен.
 	UserId string `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	// Hydra OAuth 2.0 client id, зарегистрированный в Ory Hydra. UNIQUE.
+	// Идентификатор клиента у ВНЕШНЕГО поставщика удостоверений.
+	//
+	// ПУСТО у токенов, выпущенных платформой: она больше не заводит клиента у
+	// внешнего поставщика, и пустое значение здесь означает ровно это —
+	// регистрации нет. Непустое значение принадлежит токену прежнего выпуска;
+	// отчеканенные для него поставщиком токены действительны до собственного
+	// истечения.
+	//
+	// Адресацией НЕ является ни в каком случае: подписывать `client_assertion`
+	// надо `id` строки.
 	HydraClientId string `protobuf:"bytes,3,opt,name=hydra_client_id,json=hydraClientId,proto3" json:"hydra_client_id,omitempty"`
 	// Свободное описание (например `laptop CLI`). 0-256 символов.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
@@ -64,7 +75,8 @@ type UserOAuthClient struct {
 	CreatedByUserId string `protobuf:"bytes,7,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"`
 	// Время создания.
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	// SPKI-encoded ECDSA P-256 публичный ключ, зарегистрированный в Hydra как JWK.
+	// SPKI-encoded ECDSA P-256 публичный ключ удостоверения. По нему проверяется
+	// подпись `client_assertion`.
 	PublicKeyPem string `protobuf:"bytes,9,opt,name=public_key_pem,json=publicKeyPem,proto3" json:"public_key_pem,omitempty"`
 	// JOSE alg зарегистрированного ключа. Всегда "ES256" для новых токенов.
 	KeyAlgorithm string `protobuf:"bytes,10,opt,name=key_algorithm,json=keyAlgorithm,proto3" json:"key_algorithm,omitempty"`
@@ -195,11 +207,11 @@ var File_kacho_cloud_iam_v1_user_oauth_client_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_user_oauth_client_proto_rawDesc = "" +
 	"\n" +
-	"*kacho/cloud/iam/v1/user_oauth_client.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\xc0\x05\n" +
+	"*kacho/cloud/iam/v1/user_oauth_client.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\xbc\x05\n" +
 	"\x0fUserOAuthClient\x12F\n" +
 	"\x02id\x18\x01 \x01(\tB6\xe8\xc71\x01\xf2\xc71&uoc(_[0-9a-z]+|[0-9a-hjkmnp-tv-z]{17})\x8a\xc81\x04<=21R\x02id\x12%\n" +
-	"\auser_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x125\n" +
-	"\x0fhydra_client_id\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x051-128R\rhydraClientId\x12+\n" +
+	"\auser_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x121\n" +
+	"\x0fhydra_client_id\x18\x03 \x01(\tB\t\x8a\xc81\x05<=128R\rhydraClientId\x12+\n" +
 	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x129\n" +
 	"\n" +
 	"expires_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12<\n" +
