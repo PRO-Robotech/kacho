@@ -348,24 +348,36 @@ func TestIntegration_AddressList_NarrowBySubnet_PlanIsPagePriced(t *testing.T) {
 	// содержит искомую подстроку целиком, поэтому утверждение о вхождении осталось
 	// зелёным на дереве, где предмета уже не было.
 	used := make([]string, 0, len(nodes))
+	subnetDriven := false
 	for _, n := range nodes {
 		if n.indexName != "" {
-			used = append(used, n.indexName)
+			used = append(used, fmt.Sprintf("%s[%s]", n.indexName, n.indexCond))
+		}
+		if n.indexName != "" && strings.Contains(n.indexCond, subnetColumn) {
+			subnetDriven = true
 		}
 	}
-	// Индекс, покрывающий ЭТОТ предикат, в дереве ОДИН — `addresses_subnet_cursor_idx`.
-	// Утверждение вернулось к ИМЕНИ (#963): пока индексов было два, планировщик
-	// выбирал между ними по статистике, и утверждение об одном имени падало не
-	// на дефекте, а на распределении данных — поэтому его временно перевели на
-	// предикат «любой из двух». Второй снят миграцией, обход снят вместе с ним.
+	// Утверждается СВОЙСТВО спуска, а не имя индекса: подсеть обязана стоять в
+	// УСЛОВИИ ИНДЕКСА, то есть вести спуск по дереву, а не отбираться фильтром
+	// после него.
 	//
-	// Имя строже предиката: оно ловит и подмену индекса на общий проектный, и
-	// молчаливое возвращение дубля. Предикат «любой из перечисленных» на дереве
-	// с одним индексом выродился бы в проверку существования.
-	const narrowIdx = "addresses_subnet_cursor_idx"
-	assert.Containsf(t, used, narrowIdx,
-		"сужение обязано опираться на индекс своего предиката (%s); план использовал %v:\n%s",
-		narrowIdx, used, plan)
+	// Здесь стояло имя (#963) — под то дерево, где индекс с этим предикатом был
+	// один. Посылка была верна про данные и неверна про планировщик: равенств в
+	// запросе ДВА, и пока каждый индекс покрывал ровно одно, выбор между ними
+	// решала статистика. Замер: восемь прогонов дали один красный, а конвейер —
+	// семь красных на ветках, каталога vpc не касавшихся. Индекс своего
+	// предиката возвращён миграцией 20260823080000, и индексов, ведущих спуск
+	// подсетью, снова два.
+	//
+	// Возвращать «любое из двух имён» нельзя — на дереве с одним индексом такой
+	// предикат вырождается в проверку существования, и это уже было названо
+	// обходом. Условие индекса от числа индексов не зависит вовсе: оно ловит и
+	// подмену на общий проектный (там подсеть уходит в `Filter`), и любой
+	// будущий индекс, который подсетью спуск не ведёт.
+	assert.Truef(t, subnetDriven,
+		"сужение обязано вести спуск по подсети: ни у одного индексного узла %s не стоит в условии индекса; "+
+			"план использовал %v:\n%s",
+		subnetColumn, used, plan)
 	for _, n := range nodes {
 		assert.NotContains(t, n.nodeType, "Sort",
 			"порядок обязан приходить из индекса, а не из сортировки страницы подсети: %s", plan)
@@ -382,11 +394,19 @@ func TestIntegration_AddressList_NarrowBySubnet_PlanIsPagePriced(t *testing.T) {
 // «Actual Rows», а его настоящая цена лежит в «Rows Removed by Filter». Проба
 // инъекции это и показала: без индекса утверждение о цене оставалось зелёным.
 type planNode struct {
-	nodeType   string
-	indexName  string
+	nodeType  string
+	indexName string
+	// indexCond — условие ИНДЕКСА узла, то есть то, чем ведётся спуск по дереву.
+	// Отличать его от `Filter` обязательно: обе строки называют одни и те же
+	// колонки, но первая сужает обход, а вторая отбрасывает уже прочитанное —
+	// и именно в этой разнице лежит цена страницы.
+	indexCond  string
 	actualRows int
 	touched    int
 }
+
+// subnetColumn — колонка, которой обязан вестись спуск при сужении по подсети.
+const subnetColumn = "internal_subnet_id"
 
 // explainAnalyze исполняет захваченный оператор под EXPLAIN ANALYZE и возвращает
 // печатный план (для сообщения об отказе) и его узлы (для утверждений).
@@ -404,11 +424,12 @@ func explainAnalyze(t *testing.T, ctx context.Context, pool *pgxpool.Pool, stmt 
 		nt, _ := m["Node Type"].(string)
 		ar, _ := m["Actual Rows"].(float64)
 		ix, _ := m["Index Name"].(string)
+		ic, _ := m["Index Cond"].(string)
 		rr, _ := m["Rows Removed by Filter"].(float64)
 		ri, _ := m["Rows Removed by Index Recheck"].(float64)
 		if nt != "" {
 			nodes = append(nodes, planNode{
-				nodeType: nt, indexName: ix,
+				nodeType: nt, indexName: ix, indexCond: ic,
 				actualRows: int(ar), touched: int(ar + rr + ri),
 			})
 		}
