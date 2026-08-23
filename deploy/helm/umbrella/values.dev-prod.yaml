@@ -94,6 +94,17 @@ api-gateway:
       secretName: kacho-iam-server-tls
       key: ca.crt
       mountPath: /etc/api-gateway/platform-revocation-ca
+    # ЧЕМ край предъявляет СЕБЯ авторитету. Якоря выше НЕ ДОСТАТОЧНО: он
+    # проверяет ЕГО, а не представляет НАС. Авторитет выставлен на слушателе,
+    # который сертификат ЗАПРАШИВАЕТ (iam отказывается стартовать иначе), и
+    # спрашивающему без проверенной цепочки отвечает отказом — то есть без этой
+    # пары КАЖДЫЙ предъявитель нашей чеканки получал бы 503 при исправном на вид
+    # контроле. Пути — на УЖЕ смонтированную клиентскую личность края
+    # (mtls.mountPath); своего тома у пары нет намеренно, вторая копия той же
+    # личности разъехалась бы с первой молча.
+    revocationClientCert:
+      certFile: /etc/api-gateway/mtls/tls.crt
+      keyFile: /etc/api-gateway/mtls/tls.key
   # Composition-root prod-guard (validateProductionAuthzConfig): an env NOT labelled
   # dev-class is treated as production → it REFUSES to boot if authn.mode=dev or a
   # dev HMAC secret is present (CWE-347 symmetric-key principal forgery). Flip the
@@ -351,9 +362,23 @@ kacho-iam:
       # невидима на положительном пути: пустой перечень адресатов означает
       # «выдаём токен, адресованный чему угодно», нулевой потолок тела — «читаем
       # сколько прислали». Страж старта отказывает в пуске на любой из них.
+      #
+      # АДРЕСАТ КРАЯ СТОИТ В ПЕРЕЧНЕ — ИНАЧЕ ВТОРАЯ ПОЛОСА НЕИСПОЛНИМА (#1014).
+      #
+      # Край объявлен принимающим ДВУХ издателей (`api-gateway.tokenAcceptance`
+      # выше), и наш — второй из них. Но принимает он токен только с адресатом
+      # `https://` + собственным доменом API (`ExpectedAudience()`), а перечень
+      # здесь называл ОДИН адресат — реестр. Токен нашей чеканки поэтому
+      # отвергался краем по адресату, ни разу не дойдя до проверки подписи: полоса
+      # объявлена, задокументирована, покрыта типами — и не работала ни при каком
+      # входе (`api-conventions.md` §«ДВА ПРАВИЛА ОБ ОДНОМ ПОЛЕ»).
+      #
+      # УМОЛЧАНИЕ НЕ ТРОНУТО: докерная полоса продолжает получать адресат реестра,
+      # не называя его. Расширен ровно перечень ДОПУСТИМЫХ — то есть то, что
+      # клиент вправе попросить явно.
       clientToken:
         enabled: true
-        allowedAudiences: "registry.kacho.local"
+        allowedAudiences: "https://api.kacho.cloud,registry.kacho.local"
         defaultAudience: "registry.kacho.local"
         tokenTtl: "15m"
         bodyCeiling: 65536
@@ -727,17 +752,23 @@ pg-registry:
       work_mem = 4MB
       autovacuum_naptime = 5s
 
-# ── Hydra OAuth2 token-hook auth → kacho-iam :9092 (the REAL client_credentials fix) ──
-# The token_hook URL + auth-header shape already come from values.dev.yaml (http://…:9092,
-# X-Kacho-Hook-Token). The bug: the header VALUE there is the literal YAML placeholder
-# `${KACHO_IAM_HOOK_TOKEN}` — and Ory Hydra does NOT interpolate env into config-YAML, so
-# Hydra shipped the literal string as the HMAC → iam's hook 401'd → Hydra 500 → EVERY
-# client_credentials exchange failed (registry SA-keys AND the #58 bootstrap-token mint),
-# independent of #58. FIX: the OAUTH2_*_HOOK_AUTH_CONFIG_VALUE env-overrides (Ory's
-# config-path → env-var naming) replace the placeholder with the real secret at runtime.
-# This is the ONLY thing the overlay needs — transport stays PLAINTEXT http (see the iam
-# mtls note above: TLS-ing the iam HTTP listeners would break the gateway's :9097 JWKS
-# fetch). The `deployment` block is a TOP-LEVEL Ory chart key → hydra.deployment.
+# ── Величина учётных данных обратного вызова провайдера → служба прав :9092 ──
+# Адрес полосы и форма заголовка приезжают из values.dev.yaml; здесь — только
+# ВЕЛИЧИНА, переменной по пути ключа конфигурации.
+#
+# ЗДЕСЬ БЫЛ ЗАПИСАН ДЕФЕКТ, КОТОРЫЙ ЭТОТ ЖЕ ФАЙЛ И ЛЕЧИЛ — ТОЛЬКО У СЕБЯ.
+# Прежняя редакция объясняла: в базовом профиле величиной стоит литерал
+# `${KACHO_IAM_HOOK_TOKEN}`, провайдер подстановки не делает, значит литерал
+# уезжает в заголовок и служба прав отвечает `401`. Всё верно — и починено было
+# только в этом наложении. Базовый профиль остался с литералом и без источника,
+# а `make dev-up` поднимает СНАЧАЛА его и ждёт готовности в этом состоянии
+# (задача #948). Сегодня источник объявлен в ОБОИХ профилях, литерала нет ни в
+# одном, а профиль, объявивший полосу без источника, не рендерится вовсе —
+# templates/identity-callback-credential-guard.yaml.
+#
+# Транспорт остаётся ОТКРЫТЫМ http — см. заметку про mtls службы прав выше:
+# TLS на её HTTP-листенерах сломал бы чтение ключей проверки краем (:9097).
+# Блок `deployment` — ключ ВЕРХНЕГО уровня чарта провайдера → hydra.deployment.
 hydra:
   hydra:
     # THE FLAG THAT MADE ALL OF THE BELOW INERT.

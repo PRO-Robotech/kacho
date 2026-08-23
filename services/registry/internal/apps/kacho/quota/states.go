@@ -47,5 +47,8 @@ func (g *Guard) States(ctx context.Context, projectID string) ([]quotaread.State
 	if err != nil {
 		return nil, err
 	}
-	return band.States(ctx, projectID)
+	// Носитель называется ЯВНО: полоса отвечает про того, о ком спросили, и вид,
+	// считаемый в другом носителе, в этот ответ не попадает. Договор и цена —
+	// у самой полосы.
+	return band.States(ctx, quotaread.ProjectCarrier(projectID))
 }

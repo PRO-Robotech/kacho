@@ -84,15 +84,66 @@ func newJWKSHopClient(caFile string, timeout time.Duration) (*http.Client, error
 // platformRevocationCAEnv — ручка якоря доверия хопа к НАШЕМУ авторитету отзыва.
 const platformRevocationCAEnv = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CA_FILE"
 
+// platformRevocationCertEnv / platformRevocationKeyEnv — ручки КЛИЕНТСКОЙ пары
+// этого хопа.
+//
+// ПОЧЕМУ ЗДЕСЬ ОНА НУЖНА, А НА ДВУХ СОСЕДНИХ ХОПАХ НЕТ. Авторитет отзыва —
+// НАШ, он живёт на внутреннем слушателе и спрашивающего опознаёт: слушатель
+// запрашивает сертификат, а сам авторитет отвечает опознавательным словом
+// тому, кто проверенной цепочки не предъявил. Соседние хопы идут к внешнему
+// поставщику, который нас так не спрашивает.
+//
+// ПОЧЕМУ РУЧКА, А НЕ ВЫВОД ИЗ УЖЕ НАСТРОЕННОЙ ЛИЧНОСТИ. Выведенная пара всегда
+// непуста — значит контроль выглядел бы настроенным в любом профиле, включая
+// тот, где пары нет, и «предъявляем сертификат» стало бы неотличимо от
+// «предъявлять нечего». Адрес и якорь доверия на этом хопе заданы явно по той
+// же причине; личность — третья величина того же рода.
+const (
+	platformRevocationCertEnv = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CERT_FILE"
+	platformRevocationKeyEnv  = "KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_KEY_FILE"
+)
+
 // newPlatformRevocationHopClient — тот же клиент для хопа к нашему авторитету
-// отзыва.
+// отзыва, но ПРЕДЪЯВЛЯЮЩИЙ клиентскую пару, когда она задана.
 //
 // По этому хопу едет ПРЕДЪЯВЛЕННЫЙ токен, а не только административный вызов:
 // авторитет спрашивают, посылая ему само удостоверение. Значит требование к
 // транспорту здесь то же, что у административного хопа, и по той же причине —
 // прочитанное с провода удостоверение пригодно тому, кто его прочитал.
-func newPlatformRevocationHopClient(caFile string, timeout time.Duration) (*http.Client, error) {
-	return newPinnedHopClient(platformRevocationCAEnv, caFile, timeout)
+//
+// Пара пуста ⇒ хоп идёт без сертификата: профиль, где авторитет его не
+// спрашивает, законен и отказывать ему нечем. Пара задана НАПОЛОВИНУ ⇒ отказ в
+// старте: половина означает намерение оператора, а молча не исполненное
+// намерение здесь стоит вечного fail-closed на каждом предъявителе нашей
+// чеканки — того самого состояния, которое нельзя увидеть, не спросив
+// авторитета.
+func newPlatformRevocationHopClient(
+	caFile, certFile, keyFile string, timeout time.Duration,
+) (*http.Client, error) {
+	certFile, keyFile = strings.TrimSpace(certFile), strings.TrimSpace(keyFile)
+	switch {
+	case certFile == "" && keyFile == "":
+		return newPinnedHopClientWithIdentity(platformRevocationCAEnv, caFile, nil, timeout)
+	case keyFile == "":
+		return nil, fmt.Errorf(
+			"%s=%q задан без %s — отказ в старте: авторитет отзыва спрашивает "+
+				"проверенную цепочку, половина пары её не даёт, и хоп ушёл бы в "+
+				"постоянный отказ каждому предъявителю нашей чеканки",
+			platformRevocationCertEnv, certFile, platformRevocationKeyEnv)
+	case certFile == "":
+		return nil, fmt.Errorf(
+			"%s=%q задан без %s — отказ в старте: ключ без сертификата предъявить нечего",
+			platformRevocationKeyEnv, keyFile, platformRevocationCertEnv)
+	}
+
+	pair, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"%s=%q / %s=%q не читаются как пара (%v) — отказ в старте: продолжить "+
+				"без сертификата значило бы объявить личность на хопе и не предъявлять её",
+			platformRevocationCertEnv, certFile, platformRevocationKeyEnv, keyFile, err)
+	}
+	return newPinnedHopClientWithIdentity(platformRevocationCAEnv, caFile, &pair, timeout)
 }
 
 // newPinnedHopClient строит клиент, доверяющий ТОЛЬКО указанной связке.
@@ -100,11 +151,30 @@ func newPlatformRevocationHopClient(caFile string, timeout time.Duration) (*http
 // `envName` попадает в текст отказа: оператор, читающий отказ, обязан узнать, какую
 // ручку ему править, не открывая исходник.
 func newPinnedHopClient(envName, caFile string, timeout time.Duration) (*http.Client, error) {
+	return newPinnedHopClientWithIdentity(envName, caFile, nil, timeout)
+}
+
+// newPinnedHopClientWithIdentity — та же связка плюс НЕОБЯЗАТЕЛЬНАЯ клиентская
+// пара. Одна реализация на все хопы: два экземпляра одного кода разъезжаются, и
+// разъезжается ровно тот, где дефект ещё не нашли.
+func newPinnedHopClientWithIdentity(
+	envName, caFile string, identity *tls.Certificate, timeout time.Duration,
+) (*http.Client, error) {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
 	if strings.TrimSpace(caFile) == "" {
-		return &http.Client{Timeout: timeout}, nil
+		if identity == nil {
+			return &http.Client{Timeout: timeout}, nil
+		}
+		// Якоря нет, а личность есть: связку сузить нечем, но предъявить пару
+		// мы обязаны — иначе заданная оператором личность молча не доедет.
+		tr := http.DefaultTransport.(*http.Transport).Clone()
+		tr.TLSClientConfig = &tls.Config{
+			Certificates: []tls.Certificate{*identity},
+			MinVersion:   tls.VersionTLS12,
+		}
+		return &http.Client{Timeout: timeout, Transport: tr}, nil
 	}
 
 	// #nosec G304 -- путь к корневому сертификату задаёт оператор в настройках процесса;
@@ -126,5 +196,8 @@ func newPinnedHopClient(envName, caFile string, timeout time.Duration) (*http.Cl
 
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	if identity != nil {
+		tr.TLSClientConfig.Certificates = []tls.Certificate{*identity}
+	}
 	return &http.Client{Timeout: timeout, Transport: tr}, nil
 }

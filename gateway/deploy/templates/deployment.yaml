@@ -255,6 +255,15 @@ spec:
             - name: KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CA_FILE
               value: {{ printf "%s/%s" .Values.tokenAcceptance.revocationCa.mountPath .Values.tokenAcceptance.revocationCa.key | quote }}
             {{- end }}
+            {{- if (.Values.tokenAcceptance.revocationClientCert | default dict).certFile }}
+            # Клиентская пара хопа к авторитету отзыва. Своего тома нет: пути
+            # указывают на уже смонтированную клиентскую личность края, потому
+            # что вторая копия той же личности разъехалась бы с первой молча.
+            - name: KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CERT_FILE
+              value: {{ .Values.tokenAcceptance.revocationClientCert.certFile | quote }}
+            - name: KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_KEY_FILE
+              value: {{ .Values.tokenAcceptance.revocationClientCert.keyFile | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.hydra }}
             # Revocation path. A verified signature says who minted the token and

@@ -844,8 +844,13 @@ registerDetailExtension("service-accounts", {
   childCreate: privilegesChildCreate({ kind: "subject", subjectType: "service_account" }),
 });
 
-// User — субъект типа user. Обзор: статус приглашения, external id, аккаунт,
+// User — субъект типа user. Обзор: статус приглашения, external id,
 // пригласивший (output-only). Вкладки: «Привилегии» + «Токены».
+//
+// Аккаунта в обзоре НЕТ: поле снято с ресурса пользователя (#471), источника у
+// подписи не осталось ни на одном чтении. Строка была убрана вместе с полем, а
+// эта шапка продолжала её обещать — то есть описывала свойство, которого у
+// кода нет. Вернётся вместе с ресурсом членства (#1085), не раньше.
 registerDetailExtension("users", {
   overviewExtra: ({ data }) => [
     { label: "Статус приглашения", value: <StatusBadge state={getByPath<string>(data, "invite_status")} /> },
@@ -862,7 +867,6 @@ registerDetailExtension("users", {
         <span className="text-muted-foreground">—</span>
       ),
     },
-    { label: "Аккаунт", value: <IamRefLink specId="accounts" refId={getByPath<string>(data, "account_id")} /> },
     {
       label: "Пригласил",
       value: <IamRefLink specId="users" refId={getByPath<string>(data, "invited_by")} nameField="email" />,

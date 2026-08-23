@@ -448,6 +448,12 @@ dev-up: preflight
 	  --wait --timeout 5m; \
 	echo "=== ждём вебхук cert-manager (до применения Issuer/Certificate) ==="; \
 	kubectl -n kacho rollout status deploy/$(CERT_MANAGER_RELEASE)-webhook --timeout=180s; \
+	echo "=== предусловные секреты: ПЕРЕД первым прогоном helm, а не между прогонами ==="; \
+	echo "    Общий секрет обратных вызовов провайдер берёт ОБЯЗАТЕЛЬНОЙ ссылкой уже в"; \
+	echo "    базовом профиле: необязательная ссылка на отсутствующий секрет дала бы"; \
+	echo "    пустую величину, полосу отвергли бы на первом обращении, а стенд выглядел"; \
+	echo "    бы поднятым (задача #948). Значит секрет — предусловие, а не следствие."; \
+	./scripts/dev-prod-secrets.sh; \
 	echo "=== продукт: ОДИН helm-прогон, сразу в боевой посадке (mTLS включён) ==="; \
 	helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho --create-namespace \
 	  $(call STACK_ARGS,dev) \
@@ -456,8 +462,6 @@ dev-up: preflight
 	  --wait --timeout 10m; \
 	echo "Waiting for ingress-nginx admission webhook..."; \
 	kubectl -n kacho wait --for=condition=ready pod -l app.kubernetes.io/component=controller --timeout=60s; \
-	echo "=== prerequisite secrets (без них production-посадка не поднимается) ==="; \
-	./scripts/dev-prod-secrets.sh; \
 	echo "=== helm phase 3: PRODUCTION posture (values.dev-prod.yaml поверх dev) ==="; \
 	helm upgrade kacho-umbrella ./helm/umbrella -n kacho \
 	  $(call STACK_ARGS,dev-prod) \
@@ -529,12 +533,16 @@ dev-down:
 # ЛЮБОЙ поднятый стенд несёт боевую посадку. Порядок шагов при этом не менялся —
 # он ровно тот, который эта цель исполняла и раньше, просто на шаг раньше по файлу.
 #
-# ПРЕДУСЛОВИЕ — СЕКРЕТЫ, И ОНО ИСПОЛНЯЕТСЯ, А НЕ ОПИСЫВАЕТСЯ. Профиль
-# values.dev-prod.yaml ссылается на `kacho-iam-hook-token` ОБЯЗАТЕЛЬНОЙ ссылкой
-# (secretKeyRef без optional) из пода Hydra и её automigrate-Job'а; он же приносит
-# подписной ключ бутстрап-выдачи, без которого харнесс не получит НИ ОДНОГО токена
-# (форжить ему больше нечем). Ни один шаблон чарта эти секреты не создаёт — их
-# заводит только scripts/dev-prod-secrets.sh, и вызов стоит в рецепте `dev-up`.
+# ПРЕДУСЛОВИЕ — СЕКРЕТЫ, И ОНО ИСПОЛНЯЕТСЯ, А НЕ ОПИСЫВАЕТСЯ. На
+# `kacho-iam-hook-token` ОБЯЗАТЕЛЬНОЙ ссылкой (secretKeyRef без optional) из пода
+# провайдера и его automigrate-контейнера ссылается уже БАЗОВЫЙ профиль
+# values.dev.yaml — с задачи #948, потому что необязательная ссылка дала бы пустую
+# величину обратного вызова и полосу отвергли бы на первом обращении; профиль
+# боевой посадки её лишь подтверждает. Он же приносит подписной ключ
+# бутстрап-выдачи, без которого харнесс не получит НИ ОДНОГО токена (форжить ему
+# больше нечем). Ни один шаблон чарта эти секреты не создаёт — их заводит только
+# scripts/dev-prod-secrets.sh, и вызов стоит в рецепте `dev-up` ПЕРЕД первым
+# прогоном helm.
 # ГДЕ СТОИТ СТРАЖ КОНТЕКСТА, И ПОЧЕМУ НЕ В ЗАВИСИМОСТЯХ. Страж обязан стоять
 # МЕЖДУ созданием кластера и действиями на нём. Записанный зависимостью рядом с
 # `dev-up`, он исполнялся РАНЬШЕ создания (make проходит зависимости до рецепта, а

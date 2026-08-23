@@ -18,6 +18,22 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 //
 // Resource id prefix: `usr-`.
 message User {
+  // Аккаунт снят с ресурса пользователя (kacho#471, IAM-ID-1-19).
+  //
+  // Поле объявляло, что у человека РОВНО ОДИН аккаунт, — так было, пока человек
+  // был строкой В аккаунте. После отрыва принадлежность выражается членствами,
+  // которых у него может быть несколько, и одно значение из множества читалось
+  // бы вызывающим как факт о человеке.
+  //
+  // Резервируются И номер, И имя: номер — чтобы следующее поле не переиспользовало
+  // его и старый клиент не прочитал чужое значение как аккаунт; имя — потому что
+  // JSON разбирается по имени, и один резерв номера от воскрешения имени не спасает.
+  //
+  // «Кто состоит в этом аккаунте» спрашивается списком пользователей, суженным
+  // аккаунтом: этот фильтр читает членства, а не снятую колонку.
+  reserved 6;
+  reserved "account_id";
+
   // ID of the user (kacho-iam internal id).
   string id = 1;
 
@@ -34,10 +50,6 @@ message User {
 
   // Creation timestamp.
   google.protobuf.Timestamp created_at = 5;
-
-  // Account-scope. NOT NULL — каждый User-row принадлежит ровно одному
-  // Account. Один Kratos identity может иметь N User-rows (по одному per Account).
-  string account_id = 6;
 
   // invite-status.
   // PENDING — invited, еще не login'нулся.

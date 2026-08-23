@@ -111,6 +111,8 @@ deploy/scripts/assert-delete-steps-are-asserted.py
 deploy/scripts/assert-dialled-transports-have-a-producer.py
 deploy/scripts/assert-fixture-role-verbs-exist.py
 deploy/scripts/assert-generated-scripts-parse.js
+deploy/scripts/assert-identity-account-peak-under-ceiling.py
+deploy/scripts/assert-identity-admission-rate-headroom.py
 deploy/scripts/assert-outbox-autovacuum.sh
 deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-refusal-lane-has-a-reader.py
@@ -136,7 +138,9 @@ deploy/tests/helm/makefile-destructive-guarded-test.sh
 deploy/tests/helm/neighbour-address-form-test.sh
 deploy/tests/helm/networkpolicy-egress-test.sh
 deploy/tests/helm/outbox-autovacuum-naptime-test.sh
+deploy/tests/helm/identity-callback-credential-source-test.sh
 deploy/tests/helm/prerequisite-secrets-test.sh
+deploy/tests/helm/secret-material-survives-recreation-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
 gateway/tests/newman/scripts/selftest_tamper_mutation.py
 services/compute/tests/newman/scripts/validate-cases.py

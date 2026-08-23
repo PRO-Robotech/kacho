@@ -99,9 +99,6 @@ type User struct {
 	DisplayName string `protobuf:"bytes,4,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	// Creation timestamp.
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	// Account-scope. NOT NULL — каждый User-row принадлежит ровно одному
-	// Account. Один Kratos identity может иметь N User-rows (по одному per Account).
-	AccountId string `protobuf:"bytes,6,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	// invite-status.
 	// PENDING — invited, еще не login'нулся.
 	// ACTIVE  — login'нулся через Kratos, external_id заполнен.
@@ -202,13 +199,6 @@ func (x *User) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
-}
-
-func (x *User) GetAccountId() string {
-	if x != nil {
-		return x.AccountId
-	}
-	return ""
 }
 
 func (x *User) GetInviteStatus() User_InviteStatus {
@@ -527,7 +517,7 @@ var File_kacho_cloud_iam_v1_user_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_user_proto_rawDesc = "" +
 	"\n" +
-	"\x1dkacho/cloud/iam/v1/user.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\xc0\x04\n" +
+	"\x1dkacho/cloud/iam/v1/user.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\xb3\x04\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vexternal_id\x18\x02 \x01(\tR\n" +
@@ -535,9 +525,7 @@ const file_kacho_cloud_iam_v1_user_proto_rawDesc = "" +
 	"\x05email\x18\x03 \x01(\tR\x05email\x12!\n" +
 	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\x129\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1d\n" +
-	"\n" +
-	"account_id\x18\x06 \x01(\tR\taccountId\x12J\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12J\n" +
 	"\rinvite_status\x18\a \x01(\x0e2%.kacho.cloud.iam.v1.User.InviteStatusR\finviteStatus\x12\x1d\n" +
 	"\n" +
 	"invited_by\x18\b \x01(\tR\tinvitedBy\x12y\n" +
@@ -550,7 +538,8 @@ const file_kacho_cloud_iam_v1_user_proto_rawDesc = "" +
 	"\aPENDING\x10\x01\x12\n" +
 	"\n" +
 	"\x06ACTIVE\x10\x02\x12\v\n" +
-	"\aBLOCKED\x10\x03\"L\n" +
+	"\aBLOCKED\x10\x03J\x04\b\x06\x10\aR\n" +
+	"account_id\"L\n" +
 	"\x12DeleteUserMetadata\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1d\n" +
 	"\n" +

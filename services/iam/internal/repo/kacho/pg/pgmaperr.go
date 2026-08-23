@@ -17,6 +17,7 @@ package pg
 import (
 	stderrors "errors"
 	"fmt"
+	"net"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -42,6 +43,14 @@ func wrapPgErr(err error, kindHint, idHint string) error {
 	}
 	var pgErr *pgconn.PgError
 	if !stderrors.As(err, &pgErr) {
+		// Отказ БЕЗ строки состояния — сервер не ответил вовсе. Единственный его
+		// осмысленный класс здесь — не дозвонились (#666); всё остальное
+		// возвращается нетронутым, чтобы «непонятное» не выдавалось за
+		// «временное»: обещание повтора там, где повторять нечего, хуже
+		// молчания.
+		if isConnectionFailure(err) {
+			return iamerr.Wrapf(iamerr.ErrUnavailable, "database unavailable")
+		}
 		return err
 	}
 	switch pgErr.Code {
@@ -62,6 +71,16 @@ func wrapPgErr(err error, kindHint, idHint string) error {
 		return iamerr.Wrapf(iamerr.ErrQuotaNotProvisioned, "%s", pgErr.Message)
 	case "KQ003": // строка ресурса не несёт носителя — дефект схемы, не арендатора
 		return iamerr.Wrapf(iamerr.ErrInternal, "quota accounting")
+	// Полоса ТЕМПА (`kacho_rate_refuse`, миграция задачи #618). Её производитель
+	// отдельный: тот, что выше, рендерится из общего шаблона шести владельцев и
+	// говорит о строке учёта ОБЪЁМА, а этой полосы нет больше ни у кого.
+	case "KQ004": // окно полно: за текущее окно принято столько, сколько названо
+		return iamerr.Wrapf(iamerr.ErrQuotaRateExceeded, "%s", pgErr.Message)
+	case "KQ005": // величина темпа не названа — администратору требуется ЗАВЕСТИ её
+		// Тот же sentinel, что у не названного предела объёма, и это не небрежность:
+		// действие администратора одно и то же — назначить величину, — а какую
+		// именно, говорит текст производителя, который доезжает дословно.
+		return iamerr.Wrapf(iamerr.ErrQuotaNotProvisioned, "%s", pgErr.Message)
 	case "23505": // unique_violation
 		return iamerr.Wrapf(iamerr.ErrAlreadyExists, "%s", uniqueText(pgErr, kindHint, idHint))
 	case "23503": // foreign_key_violation
@@ -88,12 +107,57 @@ func wrapPgErr(err error, kindHint, idHint string) error {
 	if strings.HasPrefix(pgErr.Code, "08") {
 		return iamerr.Wrapf(iamerr.ErrUnavailable, "database unavailable")
 	}
+	// Отказ ПРИНЯТЬ соединение, поднятый самим сервером (#666). Оба класса лежат
+	// вне восьмого семейства, поэтому проверка выше их не ловила, и они уезжали в
+	// `Internal` — то есть «сервис сломан» на состояние, которое проходит само за
+	// секунды и повторяется успешно.
+	//
+	// Это не редкость и не край: пул строится без нижней границы, соединения
+	// открываются лениво на первом обращении, готовности базы служебный бинарь не
+	// ждёт — значит быстрый транзиторный отказ открытия в загрузочной буре
+	// ожидаем ПО ПОСТРОЕНИЮ.
+	switch pgErr.Code {
+	case "53300": // too_many_connections — слоты сервера исчерпаны
+		return iamerr.Wrapf(iamerr.ErrUnavailable, "database unavailable")
+	case "57P03": // cannot_connect_now — сервер ещё поднимается
+		return iamerr.Wrapf(iamerr.ErrUnavailable, "database unavailable")
+	}
 	// Unmapped SQLSTATE — never return the raw *pgconn.PgError: its Error()
 	// carries table/constraint/column/SQLSTATE and would surface verbatim as the
 	// gRPC INTERNAL message (data-integrity.md: no pgx leak, fixed INTERNAL text).
 	// A new constraint that should produce a tenant-facing message must be added
 	// to the constraint-aware switches above.
-	return iamerr.Wrapf(iamerr.ErrInternal, "database error")
+	//
+	// КОД СОСТОЯНИЯ ОСТАЁТСЯ В ЦЕПОЧКЕ, и это не послабление утечки (#666).
+	// Клиенту достаётся фиксированный текст: перевод sentinel'а в статус
+	// заменяет сообщение `Internal` целиком. А журналу сервера без кода назвать
+	// причину нечем вовсе — комментарии на этом пути обещают журналу деталь, и
+	// обещание держится, только если деталь в цепочке ЕСТЬ. Пять символов кода
+	// состояния разведки схемы не дают: ни имени таблицы, ни ограничения, ни
+	// столбца, ни текста сервера здесь нет.
+	return iamerr.Wrapf(iamerr.ErrInternal, "database error: sqlstate %s", pgErr.Code)
+}
+
+// isConnectionFailure — отказ, случившийся ДО того, как сервер что-либо сказал.
+//
+// Три формы, и каждая встречается в этом дереве: собственный тип драйвера
+// (`ConnectError`), сетевая операция (`net.OpError` — так приходит «в
+// соединении отказано») и закрытое драйвером соединение. Все три означают одно:
+// повтор осмыслен, потому что состояние временное.
+//
+// Списком форм, а не «всё непонятное — недоступность»: корзина «прочее»
+// обещала бы повтор там, где повторять нечего, и прятала бы настоящие поломки
+// под кодом, который вызывающий обязан игнорировать.
+func isConnectionFailure(err error) bool {
+	var connErr *pgconn.ConnectError
+	if stderrors.As(err, &connErr) {
+		return true
+	}
+	var opErr *net.OpError
+	if stderrors.As(err, &opErr) {
+		return true
+	}
+	return stderrors.Is(err, pgconn.ErrConnClosed)
 }
 
 func uniqueText(pgErr *pgconn.PgError, kindHint, idHint string) string {
@@ -101,13 +165,28 @@ func uniqueText(pgErr *pgconn.PgError, kindHint, idHint string) string {
 	case "accounts_name_unique":
 		return fmt.Sprintf("Account with name %s already exists", idHint)
 	case "users_external_id_unique",
-		// users_active_external_id_uniq — migration 0011's global partial
-		// UNIQUE on (external_id) WHERE invite_status='ACTIVE'. A lost
-		// concurrent-bootstrap race (two first-logins for the same Kratos sub)
-		// hits this 23505; map it to the canonical text so the raw pgx
-		// constraint name never leaks (data-integrity.md).
-		"users_active_external_id_uniq":
+		// users_active_external_id_uniq — глобальный частичный ключ 0011 по
+		// (external_id) WHERE invite_status='ACTIVE'. Проигранная гонка
+		// конкурентного первого входа (два входа одного внешнего субъекта)
+		// приходит этим 23505.
+		"users_active_external_id_uniq",
+		// users_identity_external_id_uniq — тот же предмет, но строго шире
+		// (миграция 20260823050000): ключ накрывает и запрещённую строку, у
+		// которой внешний субъект непуст по тому же CHECK. Отображается в ТОТ ЖЕ
+		// текст намеренно: тон сообщения есть часть контракта, и вызывающему
+		// безразлично, каким из двух ключей платформа держит одно и то же
+		// свойство. Не добавив имя сюда, мы сменили бы контракт-тон на generic
+		// МОЛЧА — отказ остался бы верным по коду и перестал бы называть предмет.
+		"users_identity_external_id_uniq":
 		return "User with external_id already exists"
+	case "users_account_email_unique",
+		// users_identity_email_uniq — глобальный ключ почты (миграция
+		// 20260823050000). Пер-аккаунтный лежит рядом и остаётся законным
+		// производителем этого же отказа, пока экспанд не свёрнут, поэтому
+		// названы оба: перечень обязан покрывать КАЖДОГО производителя, иначе
+		// непокрытый молча отвечает своей, отличимой формой.
+		"users_identity_email_uniq":
+		return "User with email already exists"
 	case "projects_account_name_unique":
 		return fmt.Sprintf("Project with name %s already exists", idHint)
 	case "service_accounts_account_name_unique":

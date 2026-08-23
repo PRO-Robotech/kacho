@@ -45,8 +45,13 @@ export async function register(page: Page): Promise<string> {
 
   // Шаг 1 — профиль. Пароля здесь НЕТ по построению провайдера.
   await page.fill('input[name="traits.email"]', email);
-  await page.fill('input[name="traits.name.first"]', "E2E");
-  await page.fill('input[name="traits.name.last"]', "Probe");
+  // Имя — ОДНО поле `display_name`, а не пара «первое/последнее». Схема
+  // личности продукта (`kacho_user_v2`) объявляет ровно `email` +
+  // `display_name` и несёт `additionalProperties: false`, поэтому полей
+  // `traits.name.*` под ней не бывает ни при каком вводе. Пара жила здесь
+  // потому, что до провязки настроек в процесс служба личности работала на
+  // схеме подчарта поставщика; проба закрепляла её, а не контракт продукта.
+  await page.fill('input[name="traits.display_name"]', "E2E Probe");
   await page.click('button[type="submit"]');
 
   // Шаг 2 — способ входа. Ждём ПОЛЕ, а не время: ожидание временем даёт

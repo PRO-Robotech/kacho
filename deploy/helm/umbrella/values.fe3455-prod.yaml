@@ -362,9 +362,16 @@ kacho-iam:
       # невидима на положительном пути: пустой перечень адресатов означает
       # «выдаём токен, адресованный чему угодно», нулевой потолок тела — «читаем
       # сколько прислали». Страж старта отказывает в пуске на любой из них.
+      #
+      # АДРЕСАТ КРАЯ СТОИТ В ПЕРЕЧНЕ — ИНАЧЕ ВТОРАЯ ПОЛОСА НЕИСПОЛНИМА (#1014).
+      # Край принимает нашего издателя (`api-gateway.tokenAcceptance.platformIssuer`),
+      # но токен — только с адресатом `https://` + `kacho.domain`. Перечень называл
+      # один адресат — реестр, — поэтому токен нашей чеканки отвергался краем ПО
+      # АДРЕСАТУ, не дойдя до проверки подписи. Умолчание не тронуто: докерная
+      # полоса по-прежнему получает адресат реестра, не называя его.
       clientToken:
         enabled: true
-        allowedAudiences: "registry.in-cloud.io"
+        allowedAudiences: "https://api.kacho.cloud,registry.in-cloud.io"
         defaultAudience: "registry.in-cloud.io"
         tokenTtl: "15m"
         bodyCeiling: 65536
@@ -446,6 +453,17 @@ api-gateway:
       secretName: kacho-iam-server-tls
       key: ca.crt
       mountPath: /etc/api-gateway/platform-revocation-ca
+    # ЧЕМ край предъявляет СЕБЯ авторитету. Якоря выше НЕ ДОСТАТОЧНО: он
+    # проверяет ЕГО, а не представляет НАС. Авторитет выставлен на слушателе,
+    # который сертификат ЗАПРАШИВАЕТ (iam отказывается стартовать иначе), и
+    # спрашивающему без проверенной цепочки отвечает отказом — то есть без этой
+    # пары КАЖДЫЙ предъявитель нашей чеканки получал бы 503 при исправном на вид
+    # контроле. Пути — на УЖЕ смонтированную клиентскую личность края
+    # (mtls.mountPath); своего тома у пары нет намеренно, вторая копия той же
+    # личности разъехалась бы с первой молча.
+    revocationClientCert:
+      certFile: /etc/api-gateway/mtls/tls.crt
+      keyFile: /etc/api-gateway/mtls/tls.key
   # FORWARD ROLL: main-c7dce40d (kacho-api-gateway origin/main HEAD, Docker Hub-verified
   # 2026-07-15T14:02) — strict forward from the live main-a7c82963 (a7c82963 IS an
   # ancestor of c7dce40d, no revert). Adds RG-1 #145: registers the 6 public Repository

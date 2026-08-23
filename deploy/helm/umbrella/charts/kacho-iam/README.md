@@ -120,6 +120,16 @@ For production deployments, the 32-byte AES-GCM key
 (`KACHO_IAM_JWKS_ENC_KEY`, default Secret name `kacho-iam-jwks-enc-key`) must
 be provisioned BEFORE first-deploy of this chart. Two supported patterns:
 
+> [!important] THE VALUE IS HEX — 64 hexadecimal characters, nothing else.
+> `authn.jwks-encryption-key-hex` decodes what it is given as hex and demands
+> exactly 32 bytes; anything minted under another encoding is refused at startup
+> with a message about the key length, so the operator who followed a wrong
+> example ends up looking for the defect in the wrong place. Both examples below
+> mint hex, and a gate RUNS them and feeds the result to the real resolver
+> (`services/iam/internal/apps/kacho/config`,
+> `TestREADMEExampleMintsAValueTheResolverAccepts`) — this page cannot drift from
+> the code again without going red.
+
 > [!important] This key WRAPS THE PRIVATE HALF of the platform's token signing
 > key. The name is unchanged and the meaning is not: it used to encrypt rows of a
 > key store that had no reader at all, and it now wraps the private half held in
@@ -130,6 +140,25 @@ be provisioned BEFORE first-deploy of this chart. Two supported patterns:
 > Production refuses to start without it, and what stops working when it is
 > absent is now token minting.
 
+> [!warning] This key MUST SURVIVE every re-deploy, and the service now enforces
+> it. Whatever is already wrapped is readable by THIS key and by no other: rolling
+> it makes every stored private half unrecoverable — there is no re-wrap path, and
+> a fresh signing key generated over the unreadable ones would silently void every
+> token already issued. Provision it ONCE and reuse it.
+>
+> Since #1062 iam proves this at startup: it reads the key set first and, if the
+> presented key does not open what is stored, it REFUSES TO START naming the knob
+> and the keys that did not open, instead of quietly generating a replacement.
+> A stand that will not come up after a secret change is telling you the previous
+> value is still the only one that opens the store — restore it.
+>
+> Practical consequences for the two patterns below: pin the remote value (do not
+> point `refreshInterval` at a rotating source), and never regenerate the secret
+> as part of re-running a bootstrap script. On the local kind stand the same rule
+> is held by `deploy/scripts/dev-prod-secrets.sh`, which generates the key once
+> and reuses it afterwards; the discipline is gated by
+> `deploy/tests/helm/secret-material-survives-recreation-test.sh`.
+
 ### Pattern A: external-secrets-operator (recommended)
 
 ```yaml
@@ -139,7 +168,10 @@ metadata:
   name: kacho-iam-jwks-enc-key
   namespace: kacho-system
 spec:
-  refreshInterval: 1h
+  # Pinned, NOT a rotating window: see "Changing the wrapping key" below. A
+  # source that swaps this value on a timer replaces the whole list, and a pod
+  # restarted afterwards would face a store it cannot open.
+  refreshInterval: 0
   secretStoreRef:
     name: vault-backend
     kind: ClusterSecretStore
@@ -150,13 +182,17 @@ spec:
     - secretKey: enc_key
       remoteRef:
         key: kacho/prod/iam/jwks-enc-key
-        property: aes_gcm_b64url
+        # The remote property holds the hex list the resolver reads: the current
+        # key first, previous keys after it, separated by commas. The property
+        # NAME says hex so that whoever fills the remote store cannot mint the
+        # value in another encoding by following this example.
+        property: aes_gcm_hex_list
 ```
 
 ### Pattern B: sealed-secrets (legacy)
 
 ```bash
-echo -n "$(openssl rand -base64 32 | tr -d '=')" | \
+openssl rand -hex 32 | tr -d '\n' | \
   kubeseal --raw --namespace kacho-system --name kacho-iam-jwks-enc-key > enc_key.sealed
 ```
 
@@ -167,6 +203,60 @@ extraSecrets:
     sealedData:
       enc_key: <contents of enc_key.sealed>
 ```
+
+### Changing the wrapping key
+
+The knob takes a LIST, separated by commas: the FIRST key wraps every new
+private half, ALL of them are tried when opening a stored one. A single value —
+what every profile carries today — is a list of one, and nothing about it
+changes.
+
+So a change is an edit, not a migration. Put the new key first and KEEP the
+previous one:
+
+```
+KACHO_IAM_JWKS_ENC_KEY=<new key>,<the key that is in use today>
+```
+
+Restart iam. Nothing in the store is touched, no window is needed, and every
+signing key written under the previous key keeps opening. From then on each key
+the store writes is wrapped under the new one, so the store migrates itself as
+keys rotate on their own lifetime (`config.authn.tokenSigning.keyLifetime`)
+and retired ones are swept after the removal grace.
+
+What this does NOT do — say it out loud, because it is the reason to read on:
+
+- **It does not WITHDRAW a key.** A leaked key keeps opening every row that was
+  wrapped with it, and dropping it from the list before the store has turned
+  over costs those signing keys outright. "Superseded" and "withdrawn" are
+  different things, and only the first has a path today.
+- **It does not tell you when the tail is safe to drop.** The store has turned
+  over once every key present at the change has been retired AND swept — one
+  `key-lifetime` plus the removal grace, at the earliest. Nothing measures that
+  for you yet.
+- **The list only grows** until someone does the above deliberately. iam prints
+  how many keys were declared at every start (`private-half wrapping keys
+  declared keys=N`) precisely so that growth is visible from the outside.
+
+### If the remote source changes the value under a running deployment
+
+It cannot affect a RUNNING pod: the value arrives through `secretKeyRef`, which
+is read once at process start, so a Secret rewritten underneath is not seen
+until the pod is replaced. The next restart is where it lands, and that is the
+whole reason `refreshInterval` is pinned above.
+
+At that restart the outcome depends on ONE thing — whether the new value still
+names a key that opens the store:
+
+| The new value | What iam does |
+|---|---|
+| current key first, previous key still listed | starts; store opens; previously issued tokens keep verifying |
+| replaced the value outright, previous key dropped | cannot open the store: every private half wrapped with the dropped key is unrecoverable and every token already issued becomes unverifiable. Restore the previous key INTO THE LIST — no other key can be substituted for it |
+| unchanged | starts, unchanged |
+
+A source that rewrites this value on a schedule therefore breaks the deployment
+at the next unrelated restart — hours or days after the change, with nothing
+connecting the two. Pin it, and drive changes through the list above.
 
 ## Troubleshooting
 
