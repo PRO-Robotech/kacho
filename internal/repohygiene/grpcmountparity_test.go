@@ -43,7 +43,24 @@ import (
 // Способность анализатора видеть несмонтированный сервис от этой пустоты не
 // зависит — она доказана инъекцией, см.
 // TestGRPCMountParity_SeesAnUnmountedServiceAsUnmounted.
-var mountAllow = []string{}
+//
+// ПЕРЕЧЕНЬ СНОВА НЕПУСТ, и запись ниже — не исключение из правила выше, а его
+// применение: предмет есть, причина и задача названы, истечение проверяется.
+var mountAllow = []string{
+	// Глагол подписки платформы (kacho#1018). Сервер написан и живёт в
+	// фундаменте (`pkg/subscription`); композиционные корни владельцев берут его
+	// СЛЕДУЮЩЕЙ фазой (kacho#1019 — первый домен, kacho#1023 — остальные).
+	//
+	// Чем эта запись отличается от четырёх снятых выше — тем единственным, что
+	// делает её защитимой: у тех не было НИ СЕРВЕРА, ни клиента, ни одной
+	// неgenerated-ссылки, и не существовало задачи, чья работа состояла бы в том,
+	// чтобы их взять. Здесь сервер написан, покрыт пробами и импортирует эти
+	// самые типы, а взять его — DoD названной задачи.
+	//
+	// ИСТЕКАЕТ САМА: смонтирует первый владелец — записи станет нечего исключать,
+	// и анализатор уронит прогон на ней.
+	"kacho.cloud.subscription.InternalSubscriptionService",
+}
 
 func mountOptions(t *testing.T) MountOptions {
 	t.Helper()
@@ -226,4 +243,85 @@ func TestGRPCMountParity_EmptySubjectIsAnError(t *testing.T) {
 	if _, _, err := AuditGRPCMountParity(tinyOptions(t.TempDir()), nil); err == nil {
 		t.Fatal("на пустом дереве анализатор вернул успех — ноль находок стал неотличим от нуля прочитанного")
 	}
+}
+
+// TestGRPCMountParity_AnAllowForAnUnownedPackageIsOutOfSubject — граница
+// анализатора, названная его же шапкой: домен, у которого не смонтирован НИ ОДИН
+// сервис, этим правилом не покрыт.
+//
+// # Зачем отдельная проба, и почему она стоит ПАРОЙ
+//
+// Прежде запись про такой сервис объявлялась истёкшей. Это было утверждением о
+// том, о чём анализатор судить не берётся: пропуск целого домена он не ловит by
+// construction, а значит и «запись лишняя» доказать не может. Хуже того, вердикт
+// становился НЕИСПОЛНИМЫМ в паре с гейтом достижимости каталога: тот требует,
+// чтобы решение «не монтируем» было записано в `mountAllow` и нигде больше, — и
+// домен, чей сервер написан, а корни его ещё не берут, не имел законного
+// состояния НИ С ЗАПИСЬЮ, НИ БЕЗ НЕЁ.
+//
+// Обе половины обязательны. Без первой молчание нельзя отличить от слепоты; без
+// второй послабление перестало бы истекать — а истечение и есть то, ради чего
+// ведомость ведут.
+func TestGRPCMountParity_AnAllowForAnUnownedPackageIsOutOfSubject(t *testing.T) {
+	root := tinyTree(t, true, "")
+	write := func(rel, content string) {
+		t.Helper()
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	// Пакет, объявленный контрактом и НЕ смонтированный ни одним корнем.
+	write("pkg/api/kacho/cloud/lonely/lonely_grpc.pb.go", `package lonely
+
+var SoloService_ServiceDesc = struct{ ServiceName string }{ServiceName: "kacho.cloud.lonely.SoloService"}
+
+func RegisterSoloServiceServer(s any, i any) {}
+`)
+
+	t.Run("запись про сервис невладеемого пакета — молчание и перепись", func(t *testing.T) {
+		f, c, err := AuditGRPCMountParity(tinyOptions(root, "kacho.cloud.lonely.SoloService"), nil)
+		if err != nil {
+			t.Fatalf("анализатор не отработал: %v", err)
+		}
+		if len(f) != 0 {
+			t.Fatalf("запись вне предмета названа находкой: %v", f)
+		}
+		// «Промолчали» обязано быть отличимо от «рассмотрели и не нашли».
+		if c.UnownedAllow != 1 {
+			t.Fatalf("исключений вне предмета насчитано %d, ожидалась одна — молчание не переписано",
+				c.UnownedAllow)
+		}
+	})
+
+	t.Run("та же запись СТАНОВИТСЯ находкой, как только пакетом начинают владеть", func(t *testing.T) {
+		// Корень монтирует сервис одинокого пакета — пакет становится владеемым,
+		// сервис смонтированным, и записи больше нечего исключать.
+		write("services/lonely/cmd/lonely/main.go", `package main
+
+import (
+	"github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/lonely"
+)
+
+var srv any
+
+func main() {
+	lonely.RegisterSoloServiceServer(srv, nil)
+}
+`)
+		f, c, err := AuditGRPCMountParity(tinyOptions(root, "kacho.cloud.lonely.SoloService"), nil)
+		if err != nil {
+			t.Fatalf("анализатор не отработал: %v", err)
+		}
+		if c.UnownedAllow != 0 {
+			t.Fatalf("запись всё ещё считается вне предмета (%d), хотя пакетом уже владеют", c.UnownedAllow)
+		}
+		if len(f) != 1 || f[0].Kind != "stale-allow" ||
+			f[0].FQN != "kacho.cloud.lonely.SoloService" {
+			t.Fatalf("ожидалась находка про протухшее исключение, получено: %v", f)
+		}
+	})
 }
