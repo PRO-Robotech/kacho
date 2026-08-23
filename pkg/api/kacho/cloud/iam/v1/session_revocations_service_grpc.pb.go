@@ -23,9 +23,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	InternalSessionRevocationsService_Revoke_FullMethodName     = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/Revoke"
-	InternalSessionRevocationsService_IsRevoked_FullMethodName  = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked"
-	InternalSessionRevocationsService_ListByUser_FullMethodName = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/ListByUser"
+	InternalSessionRevocationsService_Revoke_FullMethodName          = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/Revoke"
+	InternalSessionRevocationsService_IsRevoked_FullMethodName       = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked"
+	InternalSessionRevocationsService_ListByUser_FullMethodName      = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/ListByUser"
+	InternalSessionRevocationsService_SessionCutoffOf_FullMethodName = "/kacho.cloud.iam.v1.InternalSessionRevocationsService/SessionCutoffOf"
 )
 
 // InternalSessionRevocationsServiceClient is the client API for InternalSessionRevocationsService service.
@@ -97,6 +98,23 @@ type InternalSessionRevocationsServiceClient interface {
 	// `system_viewer@cluster` held by that module's own service account — and
 	// neither of them reads `user_id`.
 	ListByUser(ctx context.Context, in *ListByUserRequest, opts ...grpc.CallOption) (*ListByUserResponse, error)
+	// SessionCutoffOf — момент, раньше которого сессии человека недействительны.
+	//
+	// ЗАЧЕМ ОТДЕЛЬНЫЙ ВОПРОС, ЕСЛИ РЯДОМ СТОИТ `IsRevoked`. Тот спрашивает про
+	// ОДНО удостоверение по его идентификатору. У браузерной сессии удостоверения
+	// нет вовсе: человек предъявляет cookie, у которой нет ни `jti`, ни подписи,
+	// которую край мог бы прочитать. Спросить про неё можно только по СУБЪЕКТУ и
+	// моменту, в который эта сессия аутентифицировалась, — и это ровно та величина,
+	// которую пишет наш выход и административный принудительный выход
+	// (`user_token_revocations.revoke_before`).
+	//
+	// Без этого вопроса запись, которую делает наш глагол, не участвовала в решении
+	// на браузерной полосе ВОВСЕ: её читали только хуки выдачи, то есть отзыв
+	// действовал на выдаче и не действовал на предъявлении.
+	//
+	// Отсечка действует ВПЕРЁД: сессия, аутентифицировавшаяся ПОЗЖЕ момента, снова
+	// законна. Поэтому отзыв снимает выданное, а не блокирует человека навсегда.
+	SessionCutoffOf(ctx context.Context, in *SessionCutoffOfRequest, opts ...grpc.CallOption) (*SessionCutoffOfResponse, error)
 }
 
 type internalSessionRevocationsServiceClient struct {
@@ -131,6 +149,16 @@ func (c *internalSessionRevocationsServiceClient) ListByUser(ctx context.Context
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListByUserResponse)
 	err := c.cc.Invoke(ctx, InternalSessionRevocationsService_ListByUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *internalSessionRevocationsServiceClient) SessionCutoffOf(ctx context.Context, in *SessionCutoffOfRequest, opts ...grpc.CallOption) (*SessionCutoffOfResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SessionCutoffOfResponse)
+	err := c.cc.Invoke(ctx, InternalSessionRevocationsService_SessionCutoffOf_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +234,23 @@ type InternalSessionRevocationsServiceServer interface {
 	// `system_viewer@cluster` held by that module's own service account — and
 	// neither of them reads `user_id`.
 	ListByUser(context.Context, *ListByUserRequest) (*ListByUserResponse, error)
+	// SessionCutoffOf — момент, раньше которого сессии человека недействительны.
+	//
+	// ЗАЧЕМ ОТДЕЛЬНЫЙ ВОПРОС, ЕСЛИ РЯДОМ СТОИТ `IsRevoked`. Тот спрашивает про
+	// ОДНО удостоверение по его идентификатору. У браузерной сессии удостоверения
+	// нет вовсе: человек предъявляет cookie, у которой нет ни `jti`, ни подписи,
+	// которую край мог бы прочитать. Спросить про неё можно только по СУБЪЕКТУ и
+	// моменту, в который эта сессия аутентифицировалась, — и это ровно та величина,
+	// которую пишет наш выход и административный принудительный выход
+	// (`user_token_revocations.revoke_before`).
+	//
+	// Без этого вопроса запись, которую делает наш глагол, не участвовала в решении
+	// на браузерной полосе ВОВСЕ: её читали только хуки выдачи, то есть отзыв
+	// действовал на выдаче и не действовал на предъявлении.
+	//
+	// Отсечка действует ВПЕРЁД: сессия, аутентифицировавшаяся ПОЗЖЕ момента, снова
+	// законна. Поэтому отзыв снимает выданное, а не блокирует человека навсегда.
+	SessionCutoffOf(context.Context, *SessionCutoffOfRequest) (*SessionCutoffOfResponse, error)
 	mustEmbedUnimplementedInternalSessionRevocationsServiceServer()
 }
 
@@ -224,6 +269,9 @@ func (UnimplementedInternalSessionRevocationsServiceServer) IsRevoked(context.Co
 }
 func (UnimplementedInternalSessionRevocationsServiceServer) ListByUser(context.Context, *ListByUserRequest) (*ListByUserResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListByUser not implemented")
+}
+func (UnimplementedInternalSessionRevocationsServiceServer) SessionCutoffOf(context.Context, *SessionCutoffOfRequest) (*SessionCutoffOfResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SessionCutoffOf not implemented")
 }
 func (UnimplementedInternalSessionRevocationsServiceServer) mustEmbedUnimplementedInternalSessionRevocationsServiceServer() {
 }
@@ -301,6 +349,24 @@ func _InternalSessionRevocationsService_ListByUser_Handler(srv interface{}, ctx 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InternalSessionRevocationsService_SessionCutoffOf_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SessionCutoffOfRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InternalSessionRevocationsServiceServer).SessionCutoffOf(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InternalSessionRevocationsService_SessionCutoffOf_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InternalSessionRevocationsServiceServer).SessionCutoffOf(ctx, req.(*SessionCutoffOfRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InternalSessionRevocationsService_ServiceDesc is the grpc.ServiceDesc for InternalSessionRevocationsService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -319,6 +385,10 @@ var InternalSessionRevocationsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListByUser",
 			Handler:    _InternalSessionRevocationsService_ListByUser_Handler,
+		},
+		{
+			MethodName: "SessionCutoffOf",
+			Handler:    _InternalSessionRevocationsService_SessionCutoffOf_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

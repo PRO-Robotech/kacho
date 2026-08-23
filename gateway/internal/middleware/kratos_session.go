@@ -32,6 +32,12 @@ type KratosWhoamiResult struct {
 	Email       string // session.identity.traits.email
 	DisplayName string // составное имя из traits.name.{first,last} либо email
 	Active      bool   // session.active — false → ignore
+	// AuthenticatedAt — момент, в который ЭТА сессия аутентифицировалась
+	// (`session.authenticated_at`). Нужен полосе отзыва: у браузерной сессии нет
+	// удостоверения, и спросить про неё можно только по паре (субъект, момент).
+	// Нулевое значение означает «провайдер момента не назвал» — это НЕ «давно» и
+	// не «только что», поэтому читатель обязан различать его отдельно.
+	AuthenticatedAt time.Time
 }
 
 // KratosClient — minimal HTTP-обертка для GET /sessions/whoami.
@@ -128,10 +134,11 @@ func (c *KratosClient) fetch(ctx context.Context, cookieHeader string) KratosWho
 		dn = strings.TrimSpace(fmt.Sprintf("%s %s", first, last))
 	}
 	return KratosWhoamiResult{
-		IdentityID:  s.Identity.ID,
-		Email:       s.Identity.Traits.Email,
-		DisplayName: dn,
-		Active:      s.Active,
+		IdentityID:      s.Identity.ID,
+		Email:           s.Identity.Traits.Email,
+		DisplayName:     dn,
+		Active:          s.Active,
+		AuthenticatedAt: s.AuthenticatedAt,
 	}
 }
 
@@ -139,6 +146,10 @@ func (c *KratosClient) fetch(ctx context.Context, cookieHeader string) KratosWho
 type kratosSession struct {
 	Active   bool           `json:"active"`
 	Identity kratosIdentity `json:"identity"`
+	// AuthenticatedAt — RFC3339 из `session.authenticated_at`. Читается как
+	// time.Time: отсутствующее поле даёт нулевой момент, и это отдельный
+	// наблюдаемый исход, а не «эпоха».
+	AuthenticatedAt time.Time `json:"authenticated_at"`
 }
 
 type kratosIdentity struct {

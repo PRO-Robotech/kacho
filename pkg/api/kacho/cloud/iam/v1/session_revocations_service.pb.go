@@ -405,6 +405,120 @@ func (x *ListByUserResponse) GetNextPageToken() string {
 	return ""
 }
 
+// SessionCutoffOfRequest — вопрос про СУБЪЕКТА, а не про удостоверение.
+type SessionCutoffOfRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Человек, про сессии которого спрашивают (`users.id`).
+	UserId        string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SessionCutoffOfRequest) Reset() {
+	*x = SessionCutoffOfRequest{}
+	mi := &file_kacho_cloud_iam_v1_session_revocations_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionCutoffOfRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionCutoffOfRequest) ProtoMessage() {}
+
+func (x *SessionCutoffOfRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_session_revocations_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionCutoffOfRequest.ProtoReflect.Descriptor instead.
+func (*SessionCutoffOfRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_session_revocations_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *SessionCutoffOfRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+// SessionCutoffOfResponse — отсечка субъекта.
+type SessionCutoffOfResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Есть ли отсечка вообще. ОТДЕЛЬНОЕ поле, а не «нулевая отметка времени»:
+	// пустое обязано означать пусто, и вызывающий, читающий нулевой момент как
+	// «отозвано всё», закрылся бы на каждом человеке, которого никто не отзывал.
+	Found bool `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
+	// Момент отсечки. Сессия, аутентифицировавшаяся В ЭТОТ момент или раньше,
+	// недействительна; аутентифицировавшаяся позже — законна.
+	RevokeBefore *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=revoke_before,json=revokeBefore,proto3" json:"revoke_before,omitempty"`
+	// Причина, записанная вместе с отсечкой. Для диагностики оператору; решение
+	// принимается по паре (found, revoke_before), а не по разбору этой строки.
+	Reason        string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SessionCutoffOfResponse) Reset() {
+	*x = SessionCutoffOfResponse{}
+	mi := &file_kacho_cloud_iam_v1_session_revocations_service_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionCutoffOfResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionCutoffOfResponse) ProtoMessage() {}
+
+func (x *SessionCutoffOfResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_session_revocations_service_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionCutoffOfResponse.ProtoReflect.Descriptor instead.
+func (*SessionCutoffOfResponse) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_session_revocations_service_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SessionCutoffOfResponse) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *SessionCutoffOfResponse) GetRevokeBefore() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RevokeBefore
+	}
+	return nil
+}
+
+func (x *SessionCutoffOfResponse) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
 var File_kacho_cloud_iam_v1_session_revocations_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_session_revocations_service_proto_rawDesc = "" +
@@ -434,14 +548,21 @@ const file_kacho_cloud_iam_v1_session_revocations_service_proto_rawDesc = "" +
 	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x85\x01\n" +
 	"\x12ListByUserResponse\x12G\n" +
 	"\vrevocations\x18\x01 \x03(\v2%.kacho.cloud.iam.v1.SessionRevocationR\vrevocations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xf2\x03\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"?\n" +
+	"\x16SessionCutoffOfRequest\x12%\n" +
+	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\"\x88\x01\n" +
+	"\x17SessionCutoffOfResponse\x12\x14\n" +
+	"\x05found\x18\x01 \x01(\bR\x05found\x12?\n" +
+	"\rrevoke_before\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\frevokeBefore\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason2\x82\x05\n" +
 	"!InternalSessionRevocationsService\x12\x97\x01\n" +
 	"\x06Revoke\x12!.kacho.cloud.iam.v1.RevokeRequest\x1a .kacho.cloud.operation.Operation\"H\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\xb2\xd2*#\n" +
 	"\x0eRevokeMetadata\x12\x11SessionRevocation\x12{\n" +
 	"\tIsRevoked\x12$.kacho.cloud.iam.v1.IsRevokedRequest\x1a%.kacho.cloud.iam.v1.IsRevokedResponse\"!\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\x12\xb5\x01\n" +
 	"\n" +
 	"ListByUser\x12%.kacho.cloud.iam.v1.ListByUserRequest\x1a&.kacho.cloud.iam.v1.ListByUserResponse\"X\x8a\xb5\x18\"iam.session_revocations.listByUser\x92\xb5\x18\x0esession_reader\x9a\xb5\x18\x13\n" +
-	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\xa8\xb5\x18\x01B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\xa8\xb5\x18\x01\x12\x8d\x01\n" +
+	"\x0fSessionCutoffOf\x12*.kacho.cloud.iam.v1.SessionCutoffOfRequest\x1a+.kacho.cloud.iam.v1.SessionCutoffOfResponse\"!\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENERB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_session_revocations_service_proto_rawDescOnce sync.Once
@@ -455,33 +576,38 @@ func file_kacho_cloud_iam_v1_session_revocations_service_proto_rawDescGZIP() []b
 	return file_kacho_cloud_iam_v1_session_revocations_service_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_session_revocations_service_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_kacho_cloud_iam_v1_session_revocations_service_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_kacho_cloud_iam_v1_session_revocations_service_proto_goTypes = []any{
-	(*RevokeRequest)(nil),         // 0: kacho.cloud.iam.v1.RevokeRequest
-	(*RevokeMetadata)(nil),        // 1: kacho.cloud.iam.v1.RevokeMetadata
-	(*IsRevokedRequest)(nil),      // 2: kacho.cloud.iam.v1.IsRevokedRequest
-	(*IsRevokedResponse)(nil),     // 3: kacho.cloud.iam.v1.IsRevokedResponse
-	(*ListByUserRequest)(nil),     // 4: kacho.cloud.iam.v1.ListByUserRequest
-	(*ListByUserResponse)(nil),    // 5: kacho.cloud.iam.v1.ListByUserResponse
-	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
-	(*SessionRevocation)(nil),     // 7: kacho.cloud.iam.v1.SessionRevocation
-	(*operation.Operation)(nil),   // 8: kacho.cloud.operation.Operation
+	(*RevokeRequest)(nil),           // 0: kacho.cloud.iam.v1.RevokeRequest
+	(*RevokeMetadata)(nil),          // 1: kacho.cloud.iam.v1.RevokeMetadata
+	(*IsRevokedRequest)(nil),        // 2: kacho.cloud.iam.v1.IsRevokedRequest
+	(*IsRevokedResponse)(nil),       // 3: kacho.cloud.iam.v1.IsRevokedResponse
+	(*ListByUserRequest)(nil),       // 4: kacho.cloud.iam.v1.ListByUserRequest
+	(*ListByUserResponse)(nil),      // 5: kacho.cloud.iam.v1.ListByUserResponse
+	(*SessionCutoffOfRequest)(nil),  // 6: kacho.cloud.iam.v1.SessionCutoffOfRequest
+	(*SessionCutoffOfResponse)(nil), // 7: kacho.cloud.iam.v1.SessionCutoffOfResponse
+	(*timestamppb.Timestamp)(nil),   // 8: google.protobuf.Timestamp
+	(*SessionRevocation)(nil),       // 9: kacho.cloud.iam.v1.SessionRevocation
+	(*operation.Operation)(nil),     // 10: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_iam_v1_session_revocations_service_proto_depIdxs = []int32{
-	6, // 0: kacho.cloud.iam.v1.RevokeRequest.ttl_expires_at:type_name -> google.protobuf.Timestamp
-	6, // 1: kacho.cloud.iam.v1.IsRevokedResponse.revoked_at:type_name -> google.protobuf.Timestamp
-	7, // 2: kacho.cloud.iam.v1.ListByUserResponse.revocations:type_name -> kacho.cloud.iam.v1.SessionRevocation
-	0, // 3: kacho.cloud.iam.v1.InternalSessionRevocationsService.Revoke:input_type -> kacho.cloud.iam.v1.RevokeRequest
-	2, // 4: kacho.cloud.iam.v1.InternalSessionRevocationsService.IsRevoked:input_type -> kacho.cloud.iam.v1.IsRevokedRequest
-	4, // 5: kacho.cloud.iam.v1.InternalSessionRevocationsService.ListByUser:input_type -> kacho.cloud.iam.v1.ListByUserRequest
-	8, // 6: kacho.cloud.iam.v1.InternalSessionRevocationsService.Revoke:output_type -> kacho.cloud.operation.Operation
-	3, // 7: kacho.cloud.iam.v1.InternalSessionRevocationsService.IsRevoked:output_type -> kacho.cloud.iam.v1.IsRevokedResponse
-	5, // 8: kacho.cloud.iam.v1.InternalSessionRevocationsService.ListByUser:output_type -> kacho.cloud.iam.v1.ListByUserResponse
-	6, // [6:9] is the sub-list for method output_type
-	3, // [3:6] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	8,  // 0: kacho.cloud.iam.v1.RevokeRequest.ttl_expires_at:type_name -> google.protobuf.Timestamp
+	8,  // 1: kacho.cloud.iam.v1.IsRevokedResponse.revoked_at:type_name -> google.protobuf.Timestamp
+	9,  // 2: kacho.cloud.iam.v1.ListByUserResponse.revocations:type_name -> kacho.cloud.iam.v1.SessionRevocation
+	8,  // 3: kacho.cloud.iam.v1.SessionCutoffOfResponse.revoke_before:type_name -> google.protobuf.Timestamp
+	0,  // 4: kacho.cloud.iam.v1.InternalSessionRevocationsService.Revoke:input_type -> kacho.cloud.iam.v1.RevokeRequest
+	2,  // 5: kacho.cloud.iam.v1.InternalSessionRevocationsService.IsRevoked:input_type -> kacho.cloud.iam.v1.IsRevokedRequest
+	4,  // 6: kacho.cloud.iam.v1.InternalSessionRevocationsService.ListByUser:input_type -> kacho.cloud.iam.v1.ListByUserRequest
+	6,  // 7: kacho.cloud.iam.v1.InternalSessionRevocationsService.SessionCutoffOf:input_type -> kacho.cloud.iam.v1.SessionCutoffOfRequest
+	10, // 8: kacho.cloud.iam.v1.InternalSessionRevocationsService.Revoke:output_type -> kacho.cloud.operation.Operation
+	3,  // 9: kacho.cloud.iam.v1.InternalSessionRevocationsService.IsRevoked:output_type -> kacho.cloud.iam.v1.IsRevokedResponse
+	5,  // 10: kacho.cloud.iam.v1.InternalSessionRevocationsService.ListByUser:output_type -> kacho.cloud.iam.v1.ListByUserResponse
+	7,  // 11: kacho.cloud.iam.v1.InternalSessionRevocationsService.SessionCutoffOf:output_type -> kacho.cloud.iam.v1.SessionCutoffOfResponse
+	8,  // [8:12] is the sub-list for method output_type
+	4,  // [4:8] is the sub-list for method input_type
+	4,  // [4:4] is the sub-list for extension type_name
+	4,  // [4:4] is the sub-list for extension extendee
+	0,  // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_session_revocations_service_proto_init() }
@@ -496,7 +622,7 @@ func file_kacho_cloud_iam_v1_session_revocations_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_session_revocations_service_proto_rawDesc), len(file_kacho_cloud_iam_v1_session_revocations_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

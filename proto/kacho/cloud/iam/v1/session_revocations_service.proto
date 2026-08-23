@@ -111,6 +111,30 @@ service InternalSessionRevocationsService {
     // it hides only `/Get` on a `v_get` scope — so the flag has to be explicit.
     option (kacho.iam.authz.v1.hide_existence) = true;
   }
+
+  // SessionCutoffOf — момент, раньше которого сессии человека недействительны.
+  //
+  // ЗАЧЕМ ОТДЕЛЬНЫЙ ВОПРОС, ЕСЛИ РЯДОМ СТОИТ `IsRevoked`. Тот спрашивает про
+  // ОДНО удостоверение по его идентификатору. У браузерной сессии удостоверения
+  // нет вовсе: человек предъявляет cookie, у которой нет ни `jti`, ни подписи,
+  // которую край мог бы прочитать. Спросить про неё можно только по СУБЪЕКТУ и
+  // моменту, в который эта сессия аутентифицировалась, — и это ровно та величина,
+  // которую пишет наш выход и административный принудительный выход
+  // (`user_token_revocations.revoke_before`).
+  //
+  // Без этого вопроса запись, которую делает наш глагол, не участвовала в решении
+  // на браузерной полосе ВОВСЕ: её читали только хуки выдачи, то есть отзыв
+  // действовал на выдаче и не действовал на предъявлении.
+  //
+  // Отсечка действует ВПЕРЁД: сессия, аутентифицировавшаяся ПОЗЖЕ момента, снова
+  // законна. Поэтому отзыв снимает выданное, а не блокирует человека навсегда.
+  rpc SessionCutoffOf (SessionCutoffOfRequest) returns (SessionCutoffOfResponse) {
+    // Cluster-internal listener-protected; called by api-gateway itself on the
+    // authN layer — before authz can possibly run. Same chicken-and-egg as
+    // `IsRevoked` above, and the same lane.
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
+  }
 }
 
 // RevokeRequest — input to InternalSessionRevocationsService.Revoke.
@@ -187,4 +211,26 @@ message ListByUserResponse {
 
   // Continuation token.
   string next_page_token = 2;
+}
+
+// SessionCutoffOfRequest — вопрос про СУБЪЕКТА, а не про удостоверение.
+message SessionCutoffOfRequest {
+  // Человек, про сессии которого спрашивают (`users.id`).
+  string user_id = 1 [(required) = true, (length) = "<=20"];
+}
+
+// SessionCutoffOfResponse — отсечка субъекта.
+message SessionCutoffOfResponse {
+  // Есть ли отсечка вообще. ОТДЕЛЬНОЕ поле, а не «нулевая отметка времени»:
+  // пустое обязано означать пусто, и вызывающий, читающий нулевой момент как
+  // «отозвано всё», закрылся бы на каждом человеке, которого никто не отзывал.
+  bool found = 1;
+
+  // Момент отсечки. Сессия, аутентифицировавшаяся В ЭТОТ момент или раньше,
+  // недействительна; аутентифицировавшаяся позже — законна.
+  google.protobuf.Timestamp revoke_before = 2;
+
+  // Причина, записанная вместе с отсечкой. Для диагностики оператору; решение
+  // принимается по паре (found, revoke_before), а не по разбору этой строки.
+  string reason = 3;
 }

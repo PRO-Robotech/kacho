@@ -21,11 +21,23 @@
 // The signature is verified exactly once, by the caller, and the verified token
 // is handed here: revocation must not pay for a second parse of the same bearer.
 //
-// Scope, stated plainly: this asks about BEARER credentials. A browser holding a
-// live provider session cookie is authenticated on that cookie instead (the
-// session is re-checked with the provider on every request, so it needs no
-// separate revocation question), and a service→service caller authenticated by
-// its client certificate presents no token at all.
+// Scope, stated plainly: this asks about BEARER credentials. A service→service
+// caller authenticated by its client certificate presents no token at all, and a
+// browser is authenticated on the provider's session cookie instead — that lane
+// asks its OWN revocation question, in auth_session_cutoff.go.
+//
+// ЗДЕСЬ СТОЯЛО, ЧТО БРАУЗЕРНОЙ ПОЛОСЕ ОТДЕЛЬНЫЙ ВОПРОС НЕ НУЖЕН, — и это было
+// неверно (#1122). Довод звучал: сессия перепроверяется у провайдера на каждом
+// запросе. Про отзывы САМОГО провайдера он верен. Про запись, которую делает наш
+// глагол выхода и административный принудительный выход, он неверен и не может
+// быть верным: тот, у кого спрашивают про сессию, о нашей записи не знает by
+// construction. Следствие было наблюдаемым — администратор получал успех, а
+// человек продолжал работать в консоли.
+//
+// Урок, ради которого абзац не удалён, а переписан: комментарий, объясняющий
+// ОТСУТСТВИЕ проверки, живёт дольше своего основания и читается как решение.
+// Свойство, обязательное для одной полосы, проверяется СРАВНЕНИЕМ полос
+// (session_lanes_agree_test.go), а не доводом в шапке.
 package middleware
 
 import (
