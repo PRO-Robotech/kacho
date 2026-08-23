@@ -523,27 +523,21 @@ def user_rs256(base_url: str, admin_token: str, user_id: str, created_by_user_id
     return exchange(hydra_token_url, assertion, api_audience)
 
 
-def sa_rs256(base_url: str, admin_token: str, sva_id: str, created_by_user_id: str,
-             hydra_token_url: str, assertion_audience: str, api_audience: str) -> str:
-    resp = issue_sa_oauth(base_url, admin_token, sva_id, created_by_user_id)
-    cid, key, kid = _extract_oauth(resp)
-    assertion = sign_client_assertion(cid, key, kid, assertion_audience)
-    return exchange(hydra_token_url, assertion, api_audience)
-
-
 def sa_platform_token(base_url: str, admin_token: str, sva_id: str,
                       created_by_user_id: str, token_url: str, api_audience: str,
                       assertion_audience: str | None = None) -> str:
     """Ключ служебной учётки → утверждение НАШЕМУ издателю → токен НАШЕЙ чеканки.
 
-    КЛИЕНТОМ ЗДЕСЬ НАЗЫВАЕТСЯ СТРОКА НАШЕГО РЕЕСТРА, А НЕ КЛИЕНТ ПОСТАВЩИКА, и
-    это единственное, чем полосы различаются по существу. Одна выдача ключа
-    заводит ДВЕ записи: клиента у внешнего поставщика (идентификатор — UUID, поле
-    `clientId`) и строку у нас (идентификатор с префиксом реестра, поле `keyId`).
-    Резолвер нашего проверяющего читает СВОИ таблицы, поэтому утверждение,
-    назвавшееся идентификатором поставщика, отвергается как «клиент не
-    разрешается» — измерено вызовом: `client-unknown` в журнале iam против
-    `200` на том же ключе с идентификатором нашей строки.
+    КЛИЕНТОМ ЗДЕСЬ НАЗЫВАЕТСЯ СТРОКА НАШЕГО РЕЕСТРА. Резолвер нашего проверяющего
+    читает СВОИ таблицы по нашему идентификатору (`keyId`), поэтому именно он и
+    подписывается в `iss`/`sub`. Измерено вызовом: утверждение, назвавшееся чужим
+    идентификатором, отвергается как «клиент не разрешается».
+
+    ЭТО ЕДИНСТВЕННАЯ ПОЛОСА ОБМЕНА КЛЮЧА СЛУЖЕБНОЙ УЧЁТКИ (задача #1120). Прежде
+    одна выдача заводила ДВЕ записи — клиента у внешнего поставщика и строку у
+    нас, — и обменять ключ можно было у обоих. На переведённом контуре зеркала у
+    поставщика не заводится, и `clientId` в ответе выдачи называет ту же строку
+    нашего реестра, что и `keyId`.
     """
     resp = issue_sa_oauth(base_url, admin_token, sva_id, created_by_user_id)
     _, key, registry_client_id = _extract_oauth(resp)
@@ -595,8 +589,13 @@ def main() -> int:
         print(user_rs256(args.base_url, admin, args.subject, created_by,
                          args.hydra_token_url, args.assertion_audience, args.api_audience))
     else:
-        print(sa_rs256(args.base_url, admin, args.subject, created_by,
-                       args.hydra_token_url, args.assertion_audience, args.api_audience))
+        # Ключ служебной учётки обменивается У НАШЕГО издателя и только у него
+        # (задача #1120): зеркала клиента у поставщика больше не заводится,
+        # поэтому `--hydra-token-url`/`--assertion-audience` этой полосы не
+        # касаются вовсе. Оставить прежний вызов значило бы держать режим,
+        # отвечающий `invalid_client` при любом входе.
+        print(sa_platform_token(args.base_url, admin, args.subject, created_by,
+                                PLATFORM_TOKEN_URL, args.api_audience))
     return 0
 
 

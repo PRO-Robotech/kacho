@@ -24,8 +24,13 @@ import mint_rs256 as m  # noqa: E402
 
 PUBLIC = "http://localhost:18080"     # api-gateway public
 IAM_GRPC = "localhost:19091"          # iam-internal :9091 (mTLS)
-HYDRA_TOKEN = "http://localhost:14444/oauth2/token"
-ASSERT_AUD = m.ASSERTION_AUDIENCE   # single source (mint_rs256) — was a stale copy
+# Адрес обмена и адресат утверждения — НАШЕГО издателя. Обе величины объявлены в
+# mint_rs256 и здесь только читаются: вторая копия разошлась бы молча, а
+# разошлась бы она ровно там, где расхождение не видно (обе выглядят валидным
+# адресом). Прежний издатель ключ служебной учётки больше не обменивает: зеркала
+# клиента у него не заводится (задача #1120).
+PLATFORM_TOKEN_URL = m.PLATFORM_TOKEN_URL
+PLATFORM_ASSERT_AUD = m.PLATFORM_ASSERTION_AUDIENCE
 API_AUD = "https://api.kacho.cloud"
 MTLS_CERT = "/tmp/iam-mtls/client.crt"
 MTLS_KEY = "/tmp/iam-mtls/client.key"
@@ -110,8 +115,12 @@ def _grant(sva, role_id, scope_type, scope_id):
 
 
 def make_sa_token(account_id, name, role_id=None, scope_type=None, scope_id=None):
-    """Create an SA in account_id, optionally grant role on scope, issue an
-    api-audience SA-key, and complete the client_credentials exchange → RS256."""
+    """Завести службу, при нужде выдать ей роль на области, выпустить ключ и
+    обменять его У НАШЕГО издателя → (id службы, предъявитель).
+
+    Клиентом называется строка НАШЕГО реестра (`keyId`): утверждение называет себя
+    её идентификатором, и по нему же резолвит проверяющий. Зеркальная колонка на
+    этом пути не участвует, а на переведённом контуре её и не заполняет никто."""
     r = _curl("POST", "/iam/v1/serviceAccounts", boot,
               {"accountId": account_id, "name": name})
     sva = _await(r, boot, "serviceAccountId")
@@ -125,10 +134,11 @@ def make_sa_token(account_id, name, role_id=None, scope_type=None, scope_id=None
     done = _poll(kr.get("id"), boot)
     if done.get("error"):
         raise RuntimeError(f"SA-key issue errored for {sva}: {done['error']}")
-    resp = done.get("response", {})
-    cid, key, kid = m._extract_oauth(resp)
-    assertion = m.sign_client_assertion(cid, key, kid, ASSERT_AUD)
-    return sva, m.exchange(HYDRA_TOKEN, assertion, API_AUD)
+    _, key, registry_client_id = m._extract_oauth(done.get("response", {}))
+    assertion = m.sign_client_assertion(
+        registry_client_id, key, registry_client_id, PLATFORM_ASSERT_AUD,
+        token_type=m.CLIENT_ASSERTION_TOKEN_TYPE)
+    return sva, m.exchange_at_platform(PLATFORM_TOKEN_URL, assertion, API_AUD)
 
 
 ROLE_EDIT = "rolde95b43bceeb4b998"  # md5('edit')[:17] → FGA editor
