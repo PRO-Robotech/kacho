@@ -83,8 +83,12 @@ func ownerGuardModelGatedRPCs() []ownerGuardRPC {
 			req: &iamv1.DeleteProjectRequest{ProjectId: projID}, targetObjID: projID,
 		},
 		{
+			// #1102: правка записи человека ушла с `v_update` на `record_writer` —
+			// отношение БЕЗ источников уровня аккаунта. Пообъектный гейт края от
+			// этого никуда не делся, и именно его перепись здесь и утверждает:
+			// меняется имя спрашиваемого отношения, а не наличие вопроса.
 			fullMethod: "/kacho.cloud.iam.v1.UserService/Update",
-			relation:   "v_update", objectType: "iam_user", scopeField: "user_id",
+			relation:   "record_writer", objectType: "iam_user", scopeField: "user_id",
 			req: &iamv1.UpdateUserRequest{UserId: usrID}, targetObjID: usrID,
 		},
 		{
