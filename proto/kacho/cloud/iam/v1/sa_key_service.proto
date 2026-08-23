@@ -95,21 +95,19 @@ message IssueSAKeyRequest {
   int64 ttl_seconds = 3 [(value) = "<=63072000"];
   string created_by_user_id = 4 [(required) = true, (length) = "<=20"];
 
-  // Federation IN. When non-empty, the SA-key is registered in
-  // FEDERATED mode: kacho-iam does NOT mint a keypair, the Hydra OAuth2
-  // client is registered with `grant_types=[urn:ietf:params:oauth:grant-
-  // type:jwt-bearer]` + `token_endpoint_auth_method=none`, and the response
-  // contains NO `private_key_pem` / `public_key_pem`. External workloads
-  // (CI runners, Kubernetes pods, customer OIDC IdPs)
-  // present their OWN OIDC JWT to Hydra `/oauth2/token` via the RFC 7521 /
-  // 7523 jwt-bearer grant — Hydra validates the assertion against the
-  // configured trusted issuers (helm umbrella `hydra.config.oauth2.grant.jwt`
-  // + admin trust-grants), maps the asserting client to this Hydra client by
-  // `client_id`, and mints a kacho-issued access_token. Each entry restricts
-  // *which* external subjects are allowed to assert this SA: `issuer` is the
-  // external OIDC `iss` URL, `subject_pattern` is a regex the external `sub`
-  // claim must match. Empty slice = `private_key_jwt` mode (legacy
-  // default).
+  // Федеративный вид ключа. Непустой перечень означает: ключевой пары мы не
+  // чеканим, а удостоверение предъявляет ВНЕШНИЙ издатель — ответ выдачи не
+  // несёт ни `private_key_pem`, ни `public_key_pem`.
+  //
+  // Внешняя нагрузка (сборочный конвейер, под кластера, издатель арендатора)
+  // подписывает СВОЁ утверждение и предъявляет его нашему токен-эндпоинту с
+  // видом выдачи `urn:ietf:params:oauth:grant-type:jwt-bearer` (RFC 7523 §2.1).
+  // Мы принимаем его тогда и только тогда, когда пара `(iss, sub)` есть в
+  // НАШЕМ перечне доверенных издателей и подпись сошлась с записанным там
+  // ключом издателя (задача #1124).
+  //
+  // Каждый элемент сужает, какая внешняя пара вправе выступать за этот ключ.
+  // Пустой перечень — обычный вид с ключевым материалом.
   repeated TrustedSubject trusted_subjects = 5;
 
   // Federation OUT. When non-empty, the kacho-minted access_token
@@ -152,6 +150,27 @@ message TrustedSubject {
   //   ^repo:acme/infra:ref:refs/heads/main$
   //   ^system:serviceaccount:kacho-prod:ci-runner$
   string subject_pattern = 2 [(required) = true, (length) = "<=512"];
+
+  // Открытый ключ ИЗДАТЕЛЯ в форме SPKI PEM — тот, которым подписано внешнее
+  // утверждение (задача #1124).
+  //
+  // ПОЧЕМУ КЛЮЧ, А НЕ АДРЕС НАБОРА КЛЮЧЕЙ. Перечень доверенных издателей — наша
+  // таблица, и читает её наша проверка утверждения на пути запроса. Адрес
+  // означал бы обращение к постороннему хосту, выбранному арендатором, из
+  // процесса, принимающего решение о доступе: поверхность запросов наружу,
+  // выбираемая тем, кого мы проверяем. Ключ, названный при выдаче, решения о
+  // доступе никуда не выносит.
+  //
+  // Цена названа: смена ключа издателем требует новой выдачи. Она та же, что
+  // была у прежнего перечня, — он тоже хранил ключ, а не адрес.
+  string public_key_pem = 3 [(required) = true, (length) = "<=8192"];
+
+  // JOSE-алгоритм ключа издателя: один из {"RS256", "ES256", "EdDSA"}.
+  //
+  // Обязателен, и пустое значение означает «ключа нет», а НЕ «любой алгоритм»:
+  // перечень допустимых алгоритмов строится из ЭТОЙ записи, поэтому подмена
+  // параметра внутри одного семейства тоже отвергается.
+  string key_algorithm = 4 [(required) = true, (length) = "<=16"];
 }
 
 message IssueSAKeyResponse {

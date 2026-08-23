@@ -37,21 +37,19 @@ type IssueSAKeyRequest struct {
 	// Optional ISO duration in seconds; if 0 → no expiry.
 	TtlSeconds      int64  `protobuf:"varint,3,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
 	CreatedByUserId string `protobuf:"bytes,4,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"`
-	// Federation IN. When non-empty, the SA-key is registered in
-	// FEDERATED mode: kacho-iam does NOT mint a keypair, the Hydra OAuth2
-	// client is registered with `grant_types=[urn:ietf:params:oauth:grant-
-	// type:jwt-bearer]` + `token_endpoint_auth_method=none`, and the response
-	// contains NO `private_key_pem` / `public_key_pem`. External workloads
-	// (CI runners, Kubernetes pods, customer OIDC IdPs)
-	// present their OWN OIDC JWT to Hydra `/oauth2/token` via the RFC 7521 /
-	// 7523 jwt-bearer grant — Hydra validates the assertion against the
-	// configured trusted issuers (helm umbrella `hydra.config.oauth2.grant.jwt`
-	// + admin trust-grants), maps the asserting client to this Hydra client by
-	// `client_id`, and mints a kacho-issued access_token. Each entry restricts
-	// *which* external subjects are allowed to assert this SA: `issuer` is the
-	// external OIDC `iss` URL, `subject_pattern` is a regex the external `sub`
-	// claim must match. Empty slice = `private_key_jwt` mode (legacy
-	// default).
+	// Федеративный вид ключа. Непустой перечень означает: ключевой пары мы не
+	// чеканим, а удостоверение предъявляет ВНЕШНИЙ издатель — ответ выдачи не
+	// несёт ни `private_key_pem`, ни `public_key_pem`.
+	//
+	// Внешняя нагрузка (сборочный конвейер, под кластера, издатель арендатора)
+	// подписывает СВОЁ утверждение и предъявляет его нашему токен-эндпоинту с
+	// видом выдачи `urn:ietf:params:oauth:grant-type:jwt-bearer` (RFC 7523 §2.1).
+	// Мы принимаем его тогда и только тогда, когда пара `(iss, sub)` есть в
+	// НАШЕМ перечне доверенных издателей и подпись сошлась с записанным там
+	// ключом издателя (задача #1124).
+	//
+	// Каждый элемент сужает, какая внешняя пара вправе выступать за этот ключ.
+	// Пустой перечень — обычный вид с ключевым материалом.
 	TrustedSubjects []*TrustedSubject `protobuf:"bytes,5,rep,name=trusted_subjects,json=trustedSubjects,proto3" json:"trusted_subjects,omitempty"`
 	// Federation OUT. When non-empty, the kacho-minted access_token
 	// is issued with these values in the `aud` claim, making the token
@@ -182,8 +180,27 @@ type TrustedSubject struct {
 	//	^repo:acme/infra:ref:refs/heads/main$
 	//	^system:serviceaccount:kacho-prod:ci-runner$
 	SubjectPattern string `protobuf:"bytes,2,opt,name=subject_pattern,json=subjectPattern,proto3" json:"subject_pattern,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Открытый ключ ИЗДАТЕЛЯ в форме SPKI PEM — тот, которым подписано внешнее
+	// утверждение (задача #1124).
+	//
+	// ПОЧЕМУ КЛЮЧ, А НЕ АДРЕС НАБОРА КЛЮЧЕЙ. Перечень доверенных издателей — наша
+	// таблица, и читает её наша проверка утверждения на пути запроса. Адрес
+	// означал бы обращение к постороннему хосту, выбранному арендатором, из
+	// процесса, принимающего решение о доступе: поверхность запросов наружу,
+	// выбираемая тем, кого мы проверяем. Ключ, названный при выдаче, решения о
+	// доступе никуда не выносит.
+	//
+	// Цена названа: смена ключа издателем требует новой выдачи. Она та же, что
+	// была у прежнего перечня, — он тоже хранил ключ, а не адрес.
+	PublicKeyPem string `protobuf:"bytes,3,opt,name=public_key_pem,json=publicKeyPem,proto3" json:"public_key_pem,omitempty"`
+	// JOSE-алгоритм ключа издателя: один из {"RS256", "ES256", "EdDSA"}.
+	//
+	// Обязателен, и пустое значение означает «ключа нет», а НЕ «любой алгоритм»:
+	// перечень допустимых алгоритмов строится из ЭТОЙ записи, поэтому подмена
+	// параметра внутри одного семейства тоже отвергается.
+	KeyAlgorithm  string `protobuf:"bytes,4,opt,name=key_algorithm,json=keyAlgorithm,proto3" json:"key_algorithm,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TrustedSubject) Reset() {
@@ -226,6 +243,20 @@ func (x *TrustedSubject) GetIssuer() string {
 func (x *TrustedSubject) GetSubjectPattern() string {
 	if x != nil {
 		return x.SubjectPattern
+	}
+	return ""
+}
+
+func (x *TrustedSubject) GetPublicKeyPem() string {
+	if x != nil {
+		return x.PublicKeyPem
+	}
+	return ""
+}
+
+func (x *TrustedSubject) GetKeyAlgorithm() string {
+	if x != nil {
+		return x.KeyAlgorithm
 	}
 	return ""
 }
@@ -708,10 +739,12 @@ const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"\x06labels\x18\b \x03(\v21.kacho.cloud.iam.v1.IssueSAKeyRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"o\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd8\x01\n" +
 	"\x0eTrustedSubject\x12%\n" +
 	"\x06issuer\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x06issuer\x126\n" +
-	"\x0fsubject_pattern\x18\x02 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x0esubjectPattern\"\xbc\x02\n" +
+	"\x0fsubject_pattern\x18\x02 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x0esubjectPattern\x124\n" +
+	"\x0epublic_key_pem\x18\x03 \x01(\tB\x0e\xe8\xc71\x01\x8a\xc81\x06<=8192R\fpublicKeyPem\x121\n" +
+	"\rkey_algorithm\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=16R\fkeyAlgorithm\"\xbc\x02\n" +
 	"\x12IssueSAKeyResponse\x12?\n" +
 	"\x03key\x18\x01 \x01(\v2-.kacho.cloud.iam.v1.ServiceAccountOAuthClientR\x03key\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12'\n" +

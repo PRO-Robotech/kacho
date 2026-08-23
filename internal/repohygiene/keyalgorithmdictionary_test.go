@@ -24,6 +24,11 @@
 // означает, что состояние, которое читатель считает законным, схема больше не
 // допускает.
 //
+// Исключение из этого — ограничения, перечисленные в keyAlgorithmKeyRequired:
+// таблицы, где ключевой материал ОБЯЗАТЕЛЕН по решению, и «ключа нет» состоянием
+// строки не является вовсе. Запись самоистекает: ограничение, которое перестало
+// существовать либо начало допускать пустое, — находка.
+//
 // # Что здесь считается деревом
 //
 // Индекс git — то же множество, которое увидит свежий клон и CI.
@@ -50,6 +55,23 @@ const (
 	// объявлен у каждой; ноль означал бы, что разбор перестал видеть предмет.
 	keyAlgorithmConstraintFloor = 1
 )
+
+// keyAlgorithmKeyRequired — ограничения, у которых пустое значение НЕ законно.
+//
+// Общее правило («пустое означает ключа нет и обязано допускаться») выведено из
+// таблиц клиентов: там ключевой материал есть не у всякой строки. Есть таблицы
+// с обратным решением, и у них пустое значение означало бы не «ключа нет», а
+// «принимаем без проверки подписи».
+//
+// Ключ — имя ограничения; значение — причина. Перечень закрыт: ограничение,
+// которого здесь нет, судится общим правилом.
+var keyAlgorithmKeyRequired = map[string]string{
+	"federated_trusted_issuers_alg_ck": "" +
+		"перечень доверенных издателей (задача #1124): запись доверия БЕЗ ключа издателя " +
+		"не отвергала бы ничего — она принимала бы всё, что называет её пару, то есть " +
+		"доверие издателю выродилось бы в доверие строке таблицы. «Ключа нет» здесь не " +
+		"состояние строки, а её отсутствие: строки без ключа не существует",
+}
 
 // TestKeyAlgorithmDictionaryMatchesTheCode — сам гейт.
 func TestKeyAlgorithmDictionaryMatchesTheCode(t *testing.T) {
@@ -133,17 +155,30 @@ func TestKeyAlgorithmDictionaryMatchesTheCode(t *testing.T) {
 
 	// (3) Находка: словарь схемы разошёлся с перечнем кода.
 	var problems []string
+	seenKeyRequired := map[string]bool{}
 	for _, name := range names {
 		c := live[name]
 		algorithms, hasEmpty := SplitAlgorithmValues(c.Values)
 
-		if !hasEmpty {
+		reason, keyRequired := keyAlgorithmKeyRequired[name]
+		switch {
+		case !hasEmpty && !keyRequired:
 			problems = append(problems, fmt.Sprintf(
 				"%s:%d %s — словарь БОЛЬШЕ НЕ ДОПУСКАЕТ пустое значение (%v). Пустое значение "+
 					"означает «ключа нет», и на нём стоит целый вид клиента, заведённый без "+
 					"ключевого материала: его исчезновение означает, что состояние, которое "+
 					"читатель считает законным, схема больше не допускает",
 				c.File, c.Line, name, c.Values))
+		case hasEmpty && keyRequired:
+			// Запись самоистекает: ограничение начало допускать пустое, значит
+			// решение, ради которого запись стояла, отменено — а отменять его
+			// молча нельзя, иначе следующая слепая зона унаследует запись.
+			problems = append(problems, fmt.Sprintf(
+				"%s:%d %s — ограничение объявлено требующим ключа, а словарь ДОПУСКАЕТ пустое "+
+					"значение (%v). Причина записи: %s",
+				c.File, c.Line, name, c.Values, reason))
+		case keyRequired:
+			seenKeyRequired[name] = true
 		}
 
 		extra := setDifference(algorithms, code)
@@ -160,6 +195,16 @@ func TestKeyAlgorithmDictionaryMatchesTheCode(t *testing.T) {
 		}
 		problems = append(problems, fmt.Sprintf("%s:%d %s — %s (схема %v, код %v)",
 			c.File, c.Line, name, strings.Join(parts, "; "), algorithms, code))
+	}
+
+	// Запись о требуемом ключе живёт, ПОКА живо её ограничение. Оставленная без
+	// предмета, она молча накроет следующее ограничение того же имени.
+	for name, reason := range keyAlgorithmKeyRequired {
+		if !seenKeyRequired[name] {
+			problems = append(problems, fmt.Sprintf(
+				"запись о требуемом ключе %q больше нечего исключать: действующего ограничения "+
+					"с таким именем в схеме нет. Причина записи: %s", name, reason))
+		}
 	}
 
 	if len(problems) > 0 {
