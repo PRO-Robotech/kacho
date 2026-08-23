@@ -71,12 +71,26 @@ type InternalSessionRevocationsServiceClient interface {
 	// (internal/apps/kacho/api/session_revocations). The record below states that
 	// lane, so any future route inherits it rather than a bypass.
 	//
-	// The relation is the READ TIER on the user, not a `v_*` verb: `v_*` is
-	// object-level access to the USER RECORD ITSELF, while a session history is that
-	// user's CONTENTS — the same distinction top-level list reads already follow.
-	// `iam_user.viewer` admits the user themselves structurally (`subject`), plus
-	// anyone holding editor/admin over them; no wildcard tuple satisfies it, so it
-	// narrows for real.
+	// The relation is `session_reader` — the person themselves plus cloud
+	// oversight, and nobody else (#1140). It used to be the READ TIER `viewer`,
+	// which the model compiler expands into SEVEN sources: the person, three
+	// direct subject lists (the viewer/editor/admin tiers the reconciler writes a
+	// back-compat tuple into), the delegated account steward, the account owner
+	// and cloud oversight. A session history is information ABOUT A PERSON, not a
+	// right over an account: identity is global here (one `iam_user` row across
+	// all of a person's accounts, and the identity→account link is taken from
+	// membership), so a right held inside ONE account disclosed the whole
+	// history — including sessions the person used in accounts that holder has
+	// nothing to do with. Owner's directive, 2026-08-23: the inviter may add and
+	// remove rights, not act for the invitee nor read facts about them.
+	//
+	// Same circle as `token_reader` (#1133) — a session and a credential are
+	// neighbouring sides of one identity, and differing width would be a decision
+	// nobody took. That the two agree is asserted by a gate, not by this comment.
+	//
+	// Narrowing the READ takes nothing away from TERMINATION: `Revoke` and
+	// `ForceLogout` are `<exempt>`/`INTERNAL_LISTENER` and carry no relation on
+	// the identity row at all — the calling MODULE's lane decides them.
 	//
 	// It is deliberately NOT `<exempt>`, and the listener's own gates do not supply
 	// the decision: they narrow the CALLING MODULE — a verified certificate, plus
@@ -166,12 +180,26 @@ type InternalSessionRevocationsServiceServer interface {
 	// (internal/apps/kacho/api/session_revocations). The record below states that
 	// lane, so any future route inherits it rather than a bypass.
 	//
-	// The relation is the READ TIER on the user, not a `v_*` verb: `v_*` is
-	// object-level access to the USER RECORD ITSELF, while a session history is that
-	// user's CONTENTS — the same distinction top-level list reads already follow.
-	// `iam_user.viewer` admits the user themselves structurally (`subject`), plus
-	// anyone holding editor/admin over them; no wildcard tuple satisfies it, so it
-	// narrows for real.
+	// The relation is `session_reader` — the person themselves plus cloud
+	// oversight, and nobody else (#1140). It used to be the READ TIER `viewer`,
+	// which the model compiler expands into SEVEN sources: the person, three
+	// direct subject lists (the viewer/editor/admin tiers the reconciler writes a
+	// back-compat tuple into), the delegated account steward, the account owner
+	// and cloud oversight. A session history is information ABOUT A PERSON, not a
+	// right over an account: identity is global here (one `iam_user` row across
+	// all of a person's accounts, and the identity→account link is taken from
+	// membership), so a right held inside ONE account disclosed the whole
+	// history — including sessions the person used in accounts that holder has
+	// nothing to do with. Owner's directive, 2026-08-23: the inviter may add and
+	// remove rights, not act for the invitee nor read facts about them.
+	//
+	// Same circle as `token_reader` (#1133) — a session and a credential are
+	// neighbouring sides of one identity, and differing width would be a decision
+	// nobody took. That the two agree is asserted by a gate, not by this comment.
+	//
+	// Narrowing the READ takes nothing away from TERMINATION: `Revoke` and
+	// `ForceLogout` are `<exempt>`/`INTERNAL_LISTENER` and carry no relation on
+	// the identity row at all — the calling MODULE's lane decides them.
 	//
 	// It is deliberately NOT `<exempt>`, and the listener's own gates do not supply
 	// the decision: they narrow the CALLING MODULE — a verified certificate, plus
