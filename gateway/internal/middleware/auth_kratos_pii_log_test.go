@@ -52,8 +52,9 @@ func TestTryKratosSession_DoesNotLogEmail(t *testing.T) {
 	}
 	req.Header.Set("Cookie", "ory_kratos_session=abc")
 
-	if ok := a.tryKratosSession(req); !ok {
-		t.Fatal("expected principal to be injected from the active Kratos session")
+	if ok, handled := a.tryKratosSession(httptest.NewRecorder(), req); !ok || handled {
+		t.Fatalf("expected principal to be injected from the active Kratos session (injected=%v handled=%v)",
+			ok, handled)
 	}
 
 	logged := buf.String()

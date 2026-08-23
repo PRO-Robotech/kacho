@@ -10,8 +10,13 @@ package clients
 
 import (
 	"context"
+	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 )
@@ -59,4 +64,39 @@ func (a *SessionRevocationsAdapter) IsSessionRevoked(ctx context.Context, jti st
 		return false, err
 	}
 	return resp.GetRevoked(), nil
+}
+
+// SessionCutoffOf спрашивает НАШ авторитет про СУБЪЕКТА: момент, раньше которого
+// его сессии недействительны.
+//
+// ЗАЧЕМ ОТДЕЛЬНЫЙ ВОПРОС, ЕСЛИ РЯДОМ ЕСТЬ `IsSessionRevoked`. Тот спрашивает про
+// одно удостоверение по его идентификатору. У браузерной сессии удостоверения
+// нет вовсе — ни `jti`, ни подписи, которую край мог бы прочитать; спросить про
+// неё можно только по паре (субъект, момент аутентификации). До появления этого
+// вызывающего запись, которую делает наш выход, на браузерной полосе не читал
+// никто, и административный принудительный выход человека из консоли не выводил.
+//
+// Три исхода несёт ПАРА возвращаемых значений вместе с ошибкой: «отсечки нет»
+// (found=false) и «спросить не удалось» (err) — разные состояния, и слитые в
+// одно они дали бы либо мягкий проход на молчащем авторитете, либо отказ
+// каждому, кого никто не отзывал.
+func (a *SessionRevocationsAdapter) SessionCutoffOf(
+	ctx context.Context, userID string,
+) (time.Time, bool, error) {
+	resp, err := a.client.SessionCutoffOf(ctx, &iamv1.SessionCutoffOfRequest{UserId: userID})
+	if err != nil {
+		// «Метода нет» — НЕ «не ответил». Раскат не атомарен: реплика края
+		// поднимается раньше, чем докатится служба прав, и в этом окне она
+		// отвечает именно так. Знание о кодах транспорта принадлежит адаптеру,
+		// поэтому перевод в типизированный признак делается здесь, а решение —
+		// на слое, который им пользуется.
+		if status.Code(err) == codes.Unimplemented {
+			return time.Time{}, false, middleware.ErrSessionCutoffUnsupported
+		}
+		return time.Time{}, false, err
+	}
+	if !resp.GetFound() {
+		return time.Time{}, false, nil
+	}
+	return resp.GetRevokeBefore().AsTime(), true, nil
 }

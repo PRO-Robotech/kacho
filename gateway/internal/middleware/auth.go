@@ -144,6 +144,15 @@ type AuthInterceptor struct {
 	// авторитет молчит» и «чужой авторитет молчит» суть разные неисправности с
 	// разными исправлениями и разными читателями.
 	platformRevocationFailures *introspectionFailureReporter
+	// sessionCutoff — НАШ авторитет отзыва, спрошенный про СУБЪЕКТА, на полосе
+	// браузерной сессии. У неё нет удостоверения, поэтому спрашивать про неё по
+	// идентификатору токена нечем; спрашивают по паре (субъект, момент
+	// аутентификации). См. auth_session_cutoff.go.
+	sessionCutoff SessionCutoffReader
+	// sessionCutoffFailures — своё окно доклада: у этой полосы свой читатель и
+	// своё последствие, и слитое с полосой предъявителя окно подавляло бы первый
+	// доклад одной из них.
+	sessionCutoffFailures *introspectionFailureReporter
 	// stepUp / stepUpLookup / stepUpRoutes — the per-RPC authentication floor,
 	// applied on this always-running layer rather than behind a feature toggle.
 	// All three or none; see auth_stepup.go for why the floor cannot live where
@@ -776,7 +785,14 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 		// a 401 or serve `next` themselves and report handled=true.
 		a.stripForgeableIdentityHeaders(r)
 
-		injected := a.tryKratosSession(r)
+		// Полоса cookie ТЕРМИНАЛЬНА так же, как полоса предъявителя: она вправе
+		// сама ответить отказом. Прежде она умела только «резолвил / не
+		// резолвил», и отвергнуть сессию ей было нечем — оттого наш отзыв на ней
+		// и не действовал (auth_session_cutoff.go).
+		injected, handled := a.tryKratosSession(w, r)
+		if handled {
+			return
+		}
 
 		if !injected {
 			if a.tryHydraJWT(w, r, next) {
@@ -805,18 +821,24 @@ func (a *AuthInterceptor) stripForgeableIdentityHeaders(r *http.Request) {
 
 // tryKratosSession resolves a Kratos session cookie (ory_kratos_session) to a
 // principal BEFORE the JWT paths so SPA users without a Bearer get a principal.
-// Returns true when a principal was injected (which suppresses the JWT paths).
-func (a *AuthInterceptor) tryKratosSession(r *http.Request) bool {
+//
+// Возвращает ДВА значения, и это не косметика. `injected` — резолвилась ли
+// личность (подавляет полосы предъявителя, как прежде). `handled` — полоса
+// ответила САМА и вызывающий обязан вернуться: сессия отвергнута нашим отзывом
+// либо вопрос о нём остался без ответа. Прежде второго исхода у полосы не
+// существовало вовсе, и отвергнуть сессию ей было нечем — оттого наш глагол
+// выхода на браузерной полосе не действовал ни разу (auth_session_cutoff.go).
+func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Request) (injected, handled bool) {
 	if a.kratos == nil {
-		return false
+		return false, false
 	}
 	cookieHdr := r.Header.Get("Cookie")
 	if !strings.Contains(cookieHdr, "ory_kratos_session") {
-		return false
+		return false, false
 	}
 	res := a.kratos.Whoami(r.Context(), cookieHdr)
 	if !res.Active || res.IdentityID == "" {
-		return false
+		return false, false
 	}
 	var subj Subject
 	var err error
@@ -830,7 +852,28 @@ func (a *AuthInterceptor) tryKratosSession(r *http.Request) bool {
 	if err != nil {
 		a.logger.Debug("auth.HTTP: Kratos SubjectLookup failed",
 			"identity_id", res.IdentityID, "err", err.Error())
-		return false
+		return false, false
+	}
+	// Отзыв спрашивается ДО того, как личность попадёт в заголовки: принципал,
+	// выставленный отвергнутой сессии, доехал бы до прав и до backend прежде,
+	// чем отказ успел бы что-то значить.
+	switch a.sessionCutoffCheck(r.Context(), subj, res, r.URL.Path) {
+	case sessionCutoffEnded:
+		// Отказ И окончание носителя — вместе. Порознь первое даёт СТОЯЩИЙ
+		// отказ: сессия жива, момент её аутентификации прежний, и повторной
+		// аутентификации ничто не запросит.
+		endSessionCarrier(w)
+		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
+		return false, true
+	case sessionCutoffUnanswered:
+		// Носителя НЕ гасим: заминка своего же соседа не повод выкидывать тех,
+		// кого никто не отзывал.
+		writeHTTPUnauthorized(w, sessionCutoffUnavailableReason)
+		return false, true
+	case sessionCutoffNotAsked, sessionCutoffLive, sessionCutoffUnsupported:
+		// Полоса продолжается. `unsupported` — окно раската, а не решение: край
+		// впереди службы прав, и отвергать здесь значило бы уронить консоль на
+		// время раската. Состояние сходится само и докладывается громко.
 	}
 	r.Header.Set(principalmeta.HeaderPrincipalType, subj.Type)
 	r.Header.Set(principalmeta.HeaderPrincipalID, subj.ID)
@@ -840,7 +883,7 @@ func (a *AuthInterceptor) tryKratosSession(r *http.Request) bool {
 	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalDisplay, subj.DisplayName)
 	a.logger.Info("auth.HTTP: Principal injected (Kratos)",
 		"type", subj.Type, "id", subj.ID, "identity_id", res.IdentityID)
-	return true
+	return true, false
 }
 
 // tryHydraJWT validates a Hydra-issued asymmetric (RS256/ES256/EdDSA) access JWT

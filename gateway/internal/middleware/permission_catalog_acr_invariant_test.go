@@ -648,8 +648,15 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// Прежняя правка этих чисел: 286→285, итог 341→340: снят поток жизненного цикла nlb (#814) — у него не
 	// было ни одного потребителя, и вместе с контрактом ушла его запись каталога.
 	assert.Equal(t, 284, n1, "routine count")
-	assert.Equal(t, 24, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 339, n2+n1+nEmpty, "catalog total")
+	// 24→25, итог 339→340: заведён `InternalSessionRevocationsService/SessionCutoffOf`
+	// (#1122) — вопрос края к НАШЕМУ авторитету отзыва про субъекта браузерной
+	// сессии. Запись освобождённая и БЕЗ порога подтверждения личности, как и её
+	// соседи по этому сервису: край задаёт вопрос НА СЛОЕ АУТЕНТИФИКАЦИИ, до
+	// того как у запроса появится решённая личность, — порог там требовать не у
+	// кого. Полосы «чувствительное» и «рутина» не двигаются: снятие сессии
+	// прав не выдаёт и не отзывает, а спрашивает про уже принятое решение.
+	assert.Equal(t, 25, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
+	assert.Equal(t, 340, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

@@ -44,6 +44,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -62,6 +63,8 @@ type SessionIdentityHandler struct {
 	kratos        *KratosClient
 	subjectLookup SubjectLookuper // resolves identity.id → User/SA mirror in kacho-iam
 	adminCheck    AdminChecker    // optional admin-tuple lookup
+	// sessionCutoff — НАШ авторитет отзыва. См. WithSessionCutoff.
+	sessionCutoff SessionCutoffReader
 }
 
 func NewSessionIdentityHandler(logger *slog.Logger) *SessionIdentityHandler {
@@ -72,6 +75,22 @@ func NewSessionIdentityHandler(logger *slog.Logger) *SessionIdentityHandler {
 func (h *SessionIdentityHandler) WithKratos(c *KratosClient, lookup SubjectLookuper) *SessionIdentityHandler {
 	h.kratos = c
 	h.subjectLookup = lookup
+	return h
+}
+
+// WithSessionCutoff — подключает читателя НАШЕЙ отсечки отзыва.
+//
+// ПОЧЕМУ ЭТОТ МАРШРУТ ТОЖЕ СПРАШИВАЕТ. Полос, читающих одну и ту же сессию, две:
+// эта и полоса личности на пути запроса (`auth_session_cutoff.go`). Свойство,
+// обязательное для одной, обязано быть проверено СРАВНЕНИЕМ полос, а не по
+// каждой отдельно: консоль решает «вошёл ли я» именно отсюда, и маршрут,
+// продолжающий называть человека вошедшим после принудительного выхода,
+// оставляет его в системе с точки зрения того, кто смотрит на экран, — при том
+// что каждый его вызов API уже отвергается.
+//
+// nil оставляет маршрут как прежде.
+func (h *SessionIdentityHandler) WithSessionCutoff(r SessionCutoffReader) *SessionIdentityHandler {
+	h.sessionCutoff = r
 	return h
 }
 
@@ -115,6 +134,14 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 						subj, lerr = h.subjectLookup.LookupByExternalID(r.Context(), res.IdentityID)
 					}
 					if lerr == nil {
+						// Отозванная сессия — не «вошедший без прав», а НЕ
+						// вошедший: анонимный ответ здесь и отказ на пути
+						// запроса суть одно состояние, названное двумя полосами
+						// одинаково.
+						if h.sessionRevoked(r.Context(), subj, res) {
+							_, _ = w.Write([]byte(`{"user":null}`))
+							return
+						}
 						userObj["id"] = subj.ID
 						userObj["subjectType"] = subj.Type
 						if subj.DisplayName != "" {
@@ -140,4 +167,38 @@ func (h *SessionIdentityHandler) Me(w http.ResponseWriter, r *http.Request) {
 	// Никакой второй ветки нет: единственный носитель личности на этом маршруте —
 	// сессия развёрнутого провайдера. Не нашли её — отвечаем анонимом.
 	_, _ = w.Write([]byte(`{"user":null}`))
+}
+
+// sessionRevoked — отвергнута ли эта сессия НАШЕЙ отсечкой.
+//
+// Fail-closed по обоим неопределённым исходам, и это то же решение, что на
+// полосе личности: авторитет наш, молчит он тогда же, когда край и так
+// отказывает по правам, а сессия без момента аутентификации при живой отсечке
+// доказать своё непревышение не может. Обратное — мягкий проход — означало бы
+// «отзываем и свой же отзыв не исполняем».
+func (h *SessionIdentityHandler) sessionRevoked(
+	ctx context.Context, subj Subject, sess KratosWhoamiResult,
+) bool {
+	if h.sessionCutoff == nil || subj.Type != "user" || subj.ID == "" {
+		return false
+	}
+	cutoff, found, err := h.sessionCutoff.SessionCutoffOf(ctx, subj.ID)
+	if errors.Is(err, ErrSessionCutoffUnsupported) {
+		// Окно раската — та же посадка, что на полосе личности: проходим, громко.
+		h.logger.Error("/me: session revocation not enforced — the authority does not " +
+			"offer this question (image skew)")
+		return false
+	}
+	if err != nil {
+		h.logger.Error("/me: session revocation check unanswered; answering anonymous",
+			"err", err.Error())
+		return true
+	}
+	if !found {
+		return false
+	}
+	if sess.AuthenticatedAt.IsZero() {
+		return true
+	}
+	return !sess.AuthenticatedAt.After(cutoff)
 }

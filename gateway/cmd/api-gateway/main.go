@@ -378,6 +378,34 @@ func main() {
 			"unanswered_verdict", "refuse")
 	}
 
+	// ─── НАШ ОТЗЫВ ЧИТАЕТСЯ И НА БРАУЗЕРНОЙ ПОЛОСЕ (#1122) ─────────────────
+	//
+	// Полос личности человека здесь ДВЕ, и до этой провязки они объявляли разное.
+	// Полоса предъявителя спрашивала про отзыв — свой и чужой. Полоса cookie не
+	// спрашивала НИЧЕГО, и разницу никто не решал: обоснование звучало «сессия
+	// перепроверяется у провайдера на каждом запросе». Про отзывы САМОГО
+	// провайдера это верно; про запись, которую делает НАШ глагол выхода и
+	// административный принудительный выход, — неверно и не может быть верным:
+	// тот, у кого спрашивают про сессию, о нашей записи не знает by construction.
+	//
+	// Наблюдаемое следствие: администратор получал успех, а человек продолжал
+	// работать в консоли.
+	//
+	// Отдельной ветки «а вдруг соединения нет» здесь не заводится по той же
+	// причине, что у блока выше: соединение к службе прав критическое — без него
+	// край не обслуживает ни одного запроса, потому что она фронтит и личность, и
+	// права. Ветка была бы веткой, в которой край всё равно не работает.
+	if kratosURL != "disabled" {
+		if iamConn := backends["iamInternal"]; iamConn != nil {
+			authInterceptor = authInterceptor.WithSessionCutoffCheck(
+				clients.NewSessionRevocationsAdapter(iamConn), 0)
+			logger.Info("session revocation is read on the browser lane",
+				"keyed_by", "subject + authentication instant",
+				"unanswered_verdict", "refuse",
+				"revoked_verdict", "refuse and end the carrier")
+		}
+	}
+
 	// --- Per-RPC authentication floor, on the layer that always runs ---
 	//
 	// The catalog says, per RPC, how strongly a caller must have authenticated.
@@ -876,7 +904,11 @@ func main() {
 	sessionIdentity := middleware.NewSessionIdentityHandler(logger)
 	// /me читает Kratos session если есть cookie ory_kratos_session.
 	if kratosURL != "disabled" {
-		sessionIdentity = sessionIdentity.WithKratos(middleware.NewKratosClient(kratosURL), iamSubjectClient).
+		sessionIdentity = sessionIdentity.
+			// Тот же вопрос, что на полосе личности: две полосы, читающие одну
+			// сессию, обязаны отвечать про неё одинаково.
+			WithSessionCutoff(clients.NewSessionRevocationsAdapter(backends["iamInternal"])).
+			WithKratos(middleware.NewKratosClient(kratosURL), iamSubjectClient).
 			WithAdminChecker(iamSubjectClient) // permissions = ["*","admin"] для system-admin
 	}
 	sessionIdentity.Register(httpMux)
