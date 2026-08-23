@@ -414,7 +414,207 @@
                   "const _sent = (pm.request.headers.get('Authorization') || '');",
                   "const _tok = _sent.replace(/^Bearer /, '');",
                   "const _base = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
-                  "pm.test('отправлен предъявитель, отличный от исходного', () => {",
+                  "pm.test('полоса «внешний поставщик»: отправлен предъявитель, отличный от исходного', () => {",
+                  "  pm.expect(_tok, 'отправленный предъявитель').to.not.eql(_base);",
+                  "});",
+                  "pm.test('заголовок и тело совпадают с исходными — испорчена ТОЛЬКО подпись', () => {",
+                  "  const _a = _tok.split('.');",
+                  "  const _b = _base.split('.');",
+                  "  pm.expect(_a[0], 'заголовок').to.eql(_b[0]);",
+                  "  pm.expect(_a[1], 'тело').to.eql(_b[1]);",
+                  "  pm.expect(_a[2], 'подпись').to.not.eql(_b[2]);",
+                  "  pm.expect(_a[2].length, 'длина подписи').to.eql(_b[2].length);",
+                  "});",
+                  "pm.test('изменён ровно один символ подписи, и он НЕ последний (у последнего часть бит — заполнение, байты совпали бы)', () => {",
+                  "  const _a = _tok.split('.')[2];",
+                  "  const _b = _base.split('.')[2];",
+                  "  const _diff = [];",
+                  "  for (let i = 0; i < _b.length; i++) { if (_a[i] !== _b[i]) _diff.push(i); }",
+                  "  pm.expect(_diff.length, 'позиции расхождения: ' + JSON.stringify(_diff)).to.eql(1);",
+                  "  pm.expect(_diff[0], 'позиция расхождения (последняя — ' + (_b.length - 1) + ')').to.not.eql(_b.length - 1);",
+                  "});",
+                  "pm.test('край ответил 401 — предъявитель не принят', () => {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(401);",
+                  "});",
+                  "pm.test('grpc code 16 (Unauthenticated), а не 7 (PermissionDenied)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('ответ несёт вызов RFC 6750 (WWW-Authenticate: Bearer …)', () => {",
+                  "  const h = pm.response.headers.get('WWW-Authenticate') || '';",
+                  "  pm.expect(h.startsWith('Bearer'), 'WWW-Authenticate: ' + h).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "F1B-D-PLATFORM-ES256-ACCEPTED — Bearer minted by OUR issuer (ES256) is accepted by the edge → 200; its iss differs from the external provider lane",
+      "description": "class:AUTHN | class:CONF | class:FLOW | priority:P0",
+      "item": [
+        {
+          "name": "list-accounts-as-platform-issuer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtPlatformIssuer'",
+                  "const __t = pm.environment.get('jwtPlatformIssuer') || pm.variables.get('jwtPlatformIssuer') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtPlatformIssuer is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtPlatformIssuer is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ПРОИЗВОДИТЕЛЬ ВХОДА: сначала — что отправили, потом — что ответили.",
+                  "const _sent = (pm.request.headers.get('Authorization') || '');",
+                  "const _tok = _sent.replace(/^Bearer /, '');",
+                  "pm.test('проба отправила Bearer (иначе это анонимный кейс, а не этот)', () => {",
+                  "  pm.expect(_sent.startsWith('Bearer '), 'Authorization как отправлен: ' + _sent).to.eql(true);",
+                  "});",
+                  "pm.test('отправленный предъявитель — JWS из 3 сегментов', () => {",
+                  "  pm.expect(_tok.split('.').length, _tok).to.eql(3);",
+                  "});",
+                  "pm.test(\"заголовок отправленного предъявителя объявляет alg=ES256\", () => {",
+                  "  const _cj = require('crypto-js');",
+                  "  const _b64 = _tok.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  const _h = JSON.parse(_cj.enc.Utf8.stringify(_cj.enc.Base64.parse(_b64)));",
+                  "  pm.expect(_h.alg, JSON.stringify(_h)).to.eql('ES256');",
+                  "});",
+                  "const _cj2 = require('crypto-js');",
+                  "function _seg(t, i) {",
+                  "  const b = t.split('.')[i].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  return JSON.parse(_cj2.enc.Utf8.stringify(_cj2.enc.Base64.parse(b)));",
+                  "}",
+                  "pm.test('заголовок объявляет тип токена доступа (at+jwt)', () => {",
+                  "  const _h = _seg(_tok, 0);",
+                  "  pm.expect(_h.typ, JSON.stringify(_h)).to.eql('at+jwt');",
+                  "});",
+                  "pm.test('край принял предъявителя НАШЕЙ чеканки', () => {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200);",
+                  "});",
+                  "pm.test('вердикт отзыва ПОЛУЧЕН: край не ответил 503', () => {",
+                  "  pm.expect(pm.response.code, 'неотвеченный вердикт отзыва даёт 503').to.not.eql(503);",
+                  "});",
+                  "pm.test('ответ — страница аккаунтов, а не пустое тело', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j, JSON.stringify(j)).to.be.an('object');",
+                  "  pm.expect(j.accounts, JSON.stringify(j)).to.be.an('array');",
+                  "});",
+                  "const _other = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "pm.test('harness config: jwtBootstrap задан (с чем сравнивать полосу)', () => {",
+                  "  pm.expect(_other, 'слот соседней полосы пуст — сравнить не с чем').to.not.eql('');",
+                  "});",
+                  "pm.test('издатель ОТЛИЧАЕТСЯ от издателя соседней полосы — записей две, а не одна', () => {",
+                  "  const _mine = _seg(_tok, 1).iss;",
+                  "  const _theirs = _seg(_other, 1).iss;",
+                  "  pm.expect(_mine, 'iss нашей полосы').to.be.a('string').and.not.eql('');",
+                  "  pm.expect(_mine, 'iss нашей полосы против соседней: ' + _theirs).to.not.eql(_theirs);",
+                  "});",
+                  "pm.test('алгоритмы полос тоже различаются — ключи разные', () => {",
+                  "  pm.expect(_seg(_tok, 0).alg, 'alg нашей полосы').to.eql('ES256');",
+                  "  pm.expect(_seg(_other, 0).alg, 'alg соседней полосы').to.not.eql('ES256');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "F1B-D-PLATFORM-TAMPERED-SIGNATURE-REJECTED — Bearer minted by OUR issuer with one signature byte flipped → 401",
+      "description": "class:AUTHN | class:NEG | class:SEC | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "list-accounts-platform-with-tampered-signature",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const _base = pm.environment.get('jwtPlatformIssuer') || pm.variables.get('jwtPlatformIssuer') || '';",
+                  "if (!_base) {",
+                  "  pm.test('harness config: jwtPlatformIssuer is set (нечего портить)', () => {",
+                  "    pm.expect.fail('jwtPlatformIssuer не задан — посев фикстур (tests/authz-fixtures/setup.sh) не выдал предъявителя. Испортить подпись не у чего, а запрос без заголовка проверил бы анонимный доступ, то есть другой кейс.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "} else {",
+                  "  const _s = _base.split('.');",
+                  "  const _sig = _s[2];",
+                  "  const _c = _sig[0];",
+                  "  const _flipped = (_c === 'A' ? 'B' : 'A') + _sig.slice(1);",
+                  "  pm.request.headers.upsert({ key: 'Authorization',",
+                  "    value: 'Bearer ' + _s[0] + '.' + _s[1] + '.' + _flipped });",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const _sent = (pm.request.headers.get('Authorization') || '');",
+                  "const _tok = _sent.replace(/^Bearer /, '');",
+                  "const _base = pm.environment.get('jwtPlatformIssuer') || pm.variables.get('jwtPlatformIssuer') || '';",
+                  "pm.test('полоса «наш издатель»: отправлен предъявитель, отличный от исходного', () => {",
                   "  pm.expect(_tok, 'отправленный предъявитель').to.not.eql(_base);",
                   "});",
                   "pm.test('заголовок и тело совпадают с исходными — испорчена ТОЛЬКО подпись', () => {",

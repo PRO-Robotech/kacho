@@ -44,6 +44,13 @@
 с поднятым уровнем (уровень 2), их идентификаторы — и `apiTokenExpired`, предъявитель
 с УЖЕ прошедшим сроком (стадия 10, делегирует `prodseed_expired_bearer.py`).
 
+Плюс ЛИЧНОСТИ, ЗАВОДЯЩИЕ АККАУНТ (стадия 8г): по одному человеку на каждый слот
+`ceremony_credentials.ADMISSION_SLOTS`, каждый — с парой предъявителей и своим
+идентификатором. Они существуют потому, что заведение аккаунта списывается с ТЕМПА
+личности (три в час на внешний идентификатор входа): восемь заведений волны под одним
+человеком давали десять списаний при потолке три. Человек заводит СЕБЕ аккаунт, а не
+восемь подряд, — и каждая личность слота заводит ровно один.
+
 ЗДЕСЬ БЫЛ ОТКРЫТЫЙ ДОЛГ, И ОН ЗАКРЫТ — 2026-08-04, ВЫЗОВОМ, А НЕ ПРОЧТЕНИЕМ.
 Прежняя редакция утверждала: срок назначает выдающий, «укоротить его на один выпуск
 нельзя», поэтому волна идёт 14400 с и в общий прогон не входит. Первая половина верна
@@ -79,6 +86,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mint_rs256 as m  # noqa: E402
+import ceremony_credentials as cc  # noqa: E402
 
 # ─── адреса ──────────────────────────────────────────────────────────────────
 PUBLIC = os.environ.get("BASE_URL", "http://localhost:18080")
@@ -789,6 +797,74 @@ def stage_own_account(bearer: str) -> str:
     raise StageError("8б-аккаунт", "операция создания аккаунта не завершилась за отведённое время")
 
 
+def stage_admission_pool(client_id: str, admin: str) -> dict[str, str]:
+    """Личности, заводящие аккаунт: ОДНА личность — ОДИН аккаунт волны.
+
+    ЗАЧЕМ ОНИ ЕСТЬ. Заведение аккаунта списывается с ТЕМПА личности (три в час) и с
+    ОБЪЁМА личности (пять одновременно живых); носитель обоих — внешний идентификатор
+    входа. Пока вся волна шла под человеком церемонии, восемь её заведений ложились
+    на одного носителя, у которого посев уже занял два места, — и семь получали отказ
+    по темпу. Отказ был ВЕРЕН; неверна была форма пробы: человек заводит себе аккаунт,
+    а не восемь подряд.
+
+    БАЛАНС КАЖДОЙ ЛИЧНОСТИ НАЗВАН ЧИСЛОМ, А НЕ ПОДРАЗУМЕВАЕТСЯ. Зеркало заводит ей
+    личный аккаунт первого входа — это +1 и оно безусловно (ветвь вставки окна
+    допуска). Проба заводит один — это +2 при потолке 3. Запас — единица; она
+    намеренная: одиночное новое заведение в волну помещается, а два подряд роняют
+    гейт запаса, то есть видны в обзоре, а не на стенде через сорок минут.
+
+    ПОЧЕМУ УРОВЕНЬ 2 ТОЖЕ. Уборка за собой снимает аккаунт и его дочерний проект, а
+    необратимое снятие объявлено чувствительным (`required_acr_min`): без поднятого
+    входа проба заводила бы аккаунт и не могла его снять, то есть меняла бы отказ по
+    темпу на рост объёма.
+
+    ПЕРЕЧЕНЬ СЛОТОВ НЕ ВЫПИСАН ЗДЕСЬ. Он читается у единственного объявления
+    (`ceremony_credentials.ADMISSION_SLOTS`), которое читают и кейсы, и гейты
+    потолков: выписанный второй раз, он разошёлся бы с ними молча.
+    """
+    values: dict[str, str] = {}
+    for slot, slug, subject in cc.ADMISSION_SLOTS:
+        ident, email = stage_identity(slug)
+        logged_in = stage_password_login(email)
+        if logged_in != ident:
+            raise StageError("8г-личности-заведения",
+                             f"слот {slot}: вошёл не тот, кого завели: {logged_in} != {ident}")
+        user_id = stage_mirror(admin, logged_in, email)
+        lvl1, lvl2 = stage_ceremony(client_id, logged_in)
+
+        # Утверждается ПАРА, а не факт выпуска: предъявитель, которого край не
+        # принимает, отдал бы волне слот, выглядящий заполненным. Проверка та же,
+        # что у главного человека, — своей копии здесь нет.
+        stage_edge_accepts(lvl1)
+
+        # И состав предъявителя обязан называть ТОГО человека, чьё зеркало ждали.
+        # Стадия 6 при исчерпании бюджета отдаёт подсказку из метаданных и говорит
+        # это вслух — то есть возвращает НЕподтверждённый идентификатор. Без этой
+        # сверки такой слот уехал бы в волну, и кейс упал бы утверждением о
+        # ВЛАДЕЛЬЦЕ заведённого аккаунта — то есть назвал бы дефектом продукта то,
+        # что случилось в посеве. У главного человека эта сверка стоит в main; здесь
+        # она своя, потому что слот минтится в другом месте.
+        claims = _jwt_payload(lvl1)
+        ext_claims = ((claims.get("ext") or {}).get("ext_claims")
+                      or claims.get("ext_claims") or {})
+        if ext_claims.get("kacho_user_id") != user_id:
+            raise StageError(
+                "8г-личности-заведения",
+                f"слот {slot}: предъявитель принадлежит не тому человеку: "
+                f"{ext_claims.get('kacho_user_id')} != {user_id}")
+
+        l1_var, l2_var = cc.admission_bearers(slot)
+        values[l1_var] = lvl1
+        values[l2_var] = lvl2
+        values[cc.admission_user_id_var(slot)] = user_id
+        print(f"[ceremony] 8г-личности-заведения: слот {slot} — человек {user_id} "
+              f"({subject})")
+
+    print(f"[ceremony] 8г-личности-заведения: заведено личностей {len(cc.ADMISSION_SLOTS)}, "
+          f"переменных {len(values)}; каждая заводит РОВНО ОДИН аккаунт волны")
+    return values
+
+
 def stage_edge_accepts(bearer: str) -> None:
     """Край ПРИНИМАЕТ предъявителя — то есть аудитория и подпись сошлись.
 
@@ -876,7 +952,10 @@ def main() -> int:
         stage_edge_accepts(nb_lvl1)
         print(f"[ceremony] 8в-без-выдач: второй человек {nb_user_id} заведён и НЕ гранчен")
 
+        pool = stage_admission_pool(client_id, admin)
+
         stage_write_env({
+            **pool,
             "jwtHumanCeremony": lvl1,
             "jwtHumanCeremonyStepUp": lvl2,
             "ceremonyUserId": user_id,
@@ -1043,7 +1122,7 @@ def _st_sequence(stage, clock: dict) -> tuple[dict, StageError | None]:
 
 
 def _st_mint_follows_mirror() -> tuple[bool, str]:
-    """`main` чеканит предъявителя ТОЛЬКО ТОМУ, чьё зеркало уже дождались — по AST.
+    """Предъявитель чеканится ТОЛЬКО ТОМУ, чьё зеркало уже дождались — по AST.
 
     Разбор дерева, а не текста: строка в комментарии или в литерале порядком
     исполнения не является, а regexp этого не различает (testing.md §гейт читает
@@ -1085,9 +1164,9 @@ def _st_mint_follows_mirror() -> tuple[bool, str]:
 
     tree = ast.parse(open(os.path.abspath(__file__), encoding="utf-8").read())
     defs = {n.name: n for n in ast.walk(tree)
-            if isinstance(n, ast.FunctionDef) and n.name in ("main", "stage_mirror",
+            if isinstance(n, ast.FunctionDef) and n.name in ("stage_mirror",
                                                              "stage_ceremony")}
-    for want in ("main", "stage_mirror", "stage_ceremony"):
+    for want in ("stage_mirror", "stage_ceremony"):
         if want not in defs:
             return False, f"в дереве нет `{want}` — замок не прочитал НИЧЕГО"
     # Имя параметра-субъекта берётся из подписи стадии, а не зашивается номером.
@@ -1098,76 +1177,106 @@ def _st_mint_follows_mirror() -> tuple[bool, str]:
             return False, (f"у `{name}` меньше двух параметров ({params}) — замок не "
                            f"может назвать субъект, предпосылка правила отпала")
         subj_param[name] = params[1]
-    main_fn = defs["main"]
+    # ОБЛАСТЬ ЧТЕНИЯ — КАЖДАЯ функция, которая ЧЕКАНИТ, а не одна названная.
+    #
+    # Прежняя редакция читала только `main`, и это было верно ровно до того дня,
+    # когда чеканка появилась во второй функции: посев личностей, заводящих
+    # аккаунт, минтит предъявителей в цикле, и `main` о его порядке не знает
+    # ничего. Замок при этом остался бы ЗЕЛЁНЫМ — он честно проверял бы `main`,
+    # где чеканок две, — то есть перестал бы читать целый вид предмета молча.
+    # Имя `main` здесь больше не зашито: область выводится из самих вызовов.
+    minting_scopes = [
+        fn for fn in ast.walk(tree)
+        if isinstance(fn, ast.FunctionDef)
+        and fn.name not in ("stage_mirror", "stage_ceremony")
+        and any(isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
+                and c.func.id == "stage_ceremony" for c in ast.walk(fn))
+    ]
+    if not minting_scopes:
+        return False, ("ни одна функция дерева не чеканит предъявителя — замок не "
+                       "прочитал НИЧЕГО, и это находка, а не чистота")
 
-    def subject_of(call: ast.Call, fname: str) -> tuple[str, str]:
-        """Имя субъекта вызова либо причина, по которой связать его нельзя."""
-        arg = None
-        if len(call.args) >= 2:
-            arg = call.args[1]
-        for kw in call.keywords:
-            if kw.arg == subj_param[fname]:
-                arg = kw.value
-        if arg is None:
-            return "", f"субъект не передан (ни позиционно, ни как `{subj_param[fname]}`)"
-        if not isinstance(arg, ast.Name):
-            return "", (f"субъект задан выражением `{ast.unparse(arg)}`, а не именем — "
-                        f"связать его с ожиданием нельзя; свяжите именем")
-        return arg.id, ""
+    seen_calls = seen_mirrors = seen_mints = 0
+    pair_lines: list[str] = []
+    for main_fn in minting_scopes:
 
-    # Ожидание обязано быть присвоено ОДНОМУ имени, и это имя обязано читаться ниже.
-    bound: dict[int, str] = {}
-    for node in ast.walk(main_fn):
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) \
-                and isinstance(node.value.func, ast.Name) \
-                and node.value.func.id == "stage_mirror" \
-                and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            bound[node.value.lineno] = node.targets[0].id
-    reads: list[tuple[str, int]] = [
-        (n.id, n.lineno) for n in ast.walk(main_fn)
-        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)]
+        def subject_of(call: ast.Call, fname: str) -> tuple[str, str]:
+            """Имя субъекта вызова либо причина, по которой связать его нельзя."""
+            arg = None
+            if len(call.args) >= 2:
+                arg = call.args[1]
+            for kw in call.keywords:
+                if kw.arg == subj_param[fname]:
+                    arg = kw.value
+            if arg is None:
+                return "", f"субъект не передан (ни позиционно, ни как `{subj_param[fname]}`)"
+            if not isinstance(arg, ast.Name):
+                return "", (f"субъект задан выражением `{ast.unparse(arg)}`, а не именем — "
+                            f"связать его с ожиданием нельзя; свяжите именем")
+            return arg.id, ""
 
-    calls: list[tuple[str, int, str]] = []      # (стадия, строка, субъект)
-    for node in ast.walk(main_fn):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
-                and node.func.id in subj_param:
-            subj, why = subject_of(node, node.func.id)
-            if why:
-                return False, f"строка {node.lineno}, `{node.func.id}`: {why}"
-            calls.append((node.func.id, node.lineno, subj))
-    calls.sort(key=lambda it: it[1])
-    mirrors = [c for c in calls if c[0] == "stage_mirror"]
-    mints = [c for c in calls if c[0] == "stage_ceremony"]
-    if not mirrors or not mints:
-        return False, (f"замок не нашёл предмета: ожиданий {len(mirrors)}, чеканок "
-                       f"{len(mints)} — вызовы переименованы или уехали из main")
+        # Ожидание обязано быть присвоено ОДНОМУ имени, и это имя обязано читаться ниже.
+        bound: dict[int, str] = {}
+        for node in ast.walk(main_fn):
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) \
+                    and isinstance(node.value.func, ast.Name) \
+                    and node.value.func.id == "stage_mirror" \
+                    and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                bound[node.value.lineno] = node.targets[0].id
+        reads: list[tuple[str, int]] = [
+            (n.id, n.lineno) for n in ast.walk(main_fn)
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)]
 
-    for _fn, line, subj in mirrors:
-        name = bound.get(line)
-        if name is None:
-            return False, (f"строка {line}: ответ владельца по `{subj}` НЕ присвоен "
-                           f"имени — дождались и выбросили, дальше пошла бы подсказка")
-        if not any(rid == name and rline > line for rid, rline in reads):
-            return False, (f"строка {line}: `{name}` (ответ владельца по `{subj}`) ниже "
-                           f"нигде не читается — ожидание есть, следствия у него нет")
+        calls: list[tuple[str, int, str]] = []      # (стадия, строка, субъект)
+        for node in ast.walk(main_fn):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+                    and node.func.id in subj_param:
+                subj, why = subject_of(node, node.func.id)
+                if why:
+                    return False, f"строка {node.lineno}, `{node.func.id}`: {why}"
+                calls.append((node.func.id, node.lineno, subj))
+        calls.sort(key=lambda it: it[1])
+        mirrors = [c for c in calls if c[0] == "stage_mirror"]
+        mints = [c for c in calls if c[0] == "stage_ceremony"]
+        if not mirrors or not mints:
+            return False, (f"в `{main_fn.name}` замок не нашёл предмета: ожиданий "
+                           f"{len(mirrors)}, чеканок {len(mints)} — функция чеканит "
+                           f"предъявителя, не дождавшись ни одного зеркала")
 
-    for _fn, line, subj in mints:
-        earlier = [m for m in mirrors if m[2] == subj and m[1] < line]
-        if not earlier:
-            waited = sorted({m[2] for m in mirrors if m[1] < line})
-            return False, (f"строка {line}: чеканим предъявителя субъекту `{subj}`, "
-                           f"а его зеркала выше НЕ дождались (выше дождались: "
-                           f"{waited or 'никого'}) — предъявитель выпускается без "
-                           f"человека")
-    pairs = ", ".join(f"{s}: ожидание строка {ml}, чеканка строка {cl}"
-                      for _f, cl, s in mints
-                      for ml in [max(m[1] for m in mirrors if m[2] == s and m[1] < cl)])
-    return True, (f"осмотрено вызовов {len(calls)}: ожиданий {len(mirrors)}, чеканок "
-                  f"{len(mints)}; связаны субъекты — {pairs}")
+        for _fn, line, subj in mirrors:
+            name = bound.get(line)
+            if name is None:
+                return False, (f"строка {line}: ответ владельца по `{subj}` НЕ присвоен "
+                               f"имени — дождались и выбросили, дальше пошла бы подсказка")
+            if not any(rid == name and rline > line for rid, rline in reads):
+                return False, (f"строка {line}: `{name}` (ответ владельца по `{subj}`) ниже "
+                               f"нигде не читается — ожидание есть, следствия у него нет")
+
+        for _fn, line, subj in mints:
+            earlier = [m for m in mirrors if m[2] == subj and m[1] < line]
+            if not earlier:
+                waited = sorted({m[2] for m in mirrors if m[1] < line})
+                return False, (f"строка {line}: чеканим предъявителя субъекту `{subj}`, "
+                               f"а его зеркала выше НЕ дождались (выше дождались: "
+                               f"{waited or 'никого'}) — предъявитель выпускается без "
+                               f"человека")
+        pairs = ", ".join(f"{s}: ожидание строка {ml}, чеканка строка {cl}"
+                          for _f, cl, s in mints
+                          for ml in [max(m[1] for m in mirrors if m[2] == s and m[1] < cl)])
+        seen_calls += len(calls)
+        seen_mirrors += len(mirrors)
+        seen_mints += len(mints)
+        pair_lines.append(f"{main_fn.name} — {pairs}")
+
+    return True, (f"осмотрено функц(ий) {len(minting_scopes)}, вызовов {seen_calls}: "
+                  f"ожиданий {seen_mirrors}, чеканок {seen_mints}; связаны субъекты — "
+                  + "; ".join(pair_lines))
+
 
 
 def _self_test() -> int:
-    """Стадия 6 не отдаёт идентификатор раньше, чем его подтвердил ВЛАДЕЛЕЦ.
+    """Стадия 6 не отдаёт идентификатор раньше, чем его подтвердил ВЛАДЕЛЕЦ;
+    стадия 8г заводит по одной личности на слот и роняет чужой состав.
 
     Сеть не трогается: подменяется единственная точка выхода `_req`, а вместе с
     ней часы — иначе исчерпание бюджета заняло бы в проверке минуту реального
@@ -1452,7 +1561,7 @@ def _self_test() -> int:
     #     измерено инъекцией, не предположено. Утверждение названо тем, что замок
     #     ПРОВЕРЯЕТ: не «чеканка не первая», а «чеканим тому, кого дождались».
     order_ok, order_detail = _st_mint_follows_mirror()
-    check("предъявителя чеканят ТОМУ, чьё зеркало дождались (AST `main`)",
+    check("предъявителя чеканят ТОМУ, чьё зеркало дождались (AST, все чеканящие функции)",
           order_ok, order_detail)
 
     # ПРЕДПОСЫЛКА САМОЙ ПРОВЕРКИ (1/2): стадия спрашивала ровно то, что обещала —
@@ -1470,13 +1579,70 @@ def _self_test() -> int:
           f"осмотрено {len(covered)} из {len(declared)}: {sorted(covered)}"
           + ("" if covered == declared else f"; не покрыто {sorted(declared - covered)}"))
 
+    # ── СТАДИЯ 8г: личности, заводящие аккаунт ───────────────────────────────
+    #
+    # Сеть здесь не трогается тем же приёмом, что выше: подменяются сами стадии, а
+    # не их внутренности. Предмет проверки — не HTTP, а ТРИ свойства стадии:
+    # (а) слоты берутся у объявления, а не выписаны здесь; (б) имена переменных
+    # строятся его же помощниками; (в) предъявитель, чей состав называет ДРУГОГО
+    # человека, стадию РОНЯЕТ, а не уезжает в волну.
+    print("=== самопроверка стадии 8г: одна личность — один аккаунт ===")
+    real_stages = (stage_identity, stage_password_login, stage_mirror,
+                   stage_ceremony, stage_edge_accepts, _jwt_payload)
+    minted: list[str] = []
+    try:
+        globals()["stage_identity"] = lambda slot="": (f"ident-{slot}", f"{slot}@x")
+        globals()["stage_password_login"] = lambda email: f"ident-{email.split('@')[0]}"
+        globals()["stage_mirror"] = lambda _a, ext, _e: f"usr-{ext}"
+        globals()["stage_ceremony"] = lambda _c, subj: (f"l1-{subj}", f"l2-{subj}")
+        globals()["stage_edge_accepts"] = lambda bearer: minted.append(bearer)
+        globals()["_jwt_payload"] = lambda b: {
+            "ext_claims": {"kacho_user_id": "usr-" + b[len("l1-"):]}}
+
+        pool = stage_admission_pool("клиент", "админ")
+        slots = list(cc.ADMISSION_SLOTS)
+        want = set()
+        for slot, _slug, _subject in slots:
+            lvl1, lvl2 = cc.admission_bearers(slot)
+            want |= {lvl1, lvl2, cc.admission_user_id_var(slot)}
+        tally["сценариев"] += 1
+        check("слоты взяты у объявления, а не выписаны в посеве",
+              len(slots) > 0 and len(pool) == 3 * len(slots),
+              f"слот(ов) {len(slots)}, переменных {len(pool)}")
+        check("имена переменных строит объявление", set(pool) == want,
+              f"лишние {sorted(set(pool) - want)}, недостающие {sorted(want - set(pool))}")
+        check("край спрошен о КАЖДОМ выданном предъявителе", len(minted) == len(slots),
+              f"проверок края {len(minted)} при слотах {len(slots)}")
+        first_slot = slots[0][0]
+        check("идентификатор человека отдан вместе с предъявителем",
+              pool[cc.admission_user_id_var(first_slot)].startswith("usr-"),
+              f"{first_slot}: {pool[cc.admission_user_id_var(first_slot)]}")
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ УЖЕ ПРОВЕРЕН ВЫШЕ (состав совпал — стадия прошла).
+        # Теперь дефект во плоти: состав называет ДРУГОГО человека.
+        globals()["_jwt_payload"] = lambda _b: {
+            "ext_claims": {"kacho_user_id": "usr-кто-то-другой"}}
+        try:
+            stage_admission_pool("клиент", "админ")
+            check("состав, называющий другого человека, роняет стадию", False,
+                  "прошло молча — слот уехал бы в волну, и падение досталось бы кейсу")
+        except StageError as exc:
+            tally["двойников"] += 1
+            check("состав, называющий другого человека, роняет стадию",
+                  "принадлежит не тому человеку" in str(exc), str(exc)[:120])
+    finally:
+        (globals()["stage_identity"], globals()["stage_password_login"],
+         globals()["stage_mirror"], globals()["stage_ceremony"],
+         globals()["stage_edge_accepts"], globals()["_jwt_payload"]) = real_stages
+
     print()
     print(f"объём осмотренного: {tally['утверждений']} утверждени(й), "
           f"{tally['сценариев']} прогон(ов) стадии 6 (из них {tally['двойников']} — "
           f"на довправочном двойнике), {len(declared)} исход(ов) классификатора "
           f"покрыто {len(covered)}")
-    print("PASS: стадия 6 ждёт подтверждения ВЛАДЕЛЬЦА" if rc == 0
-          else "FAIL: стадия 6 ждёт подтверждения ВЛАДЕЛЬЦА")
+    label = ("стадия 6 ждёт подтверждения ВЛАДЕЛЬЦА; стадия 8г даёт одной "
+             "личности один аккаунт")
+    print(("PASS: " if rc == 0 else "FAIL: ") + label)
     return rc
 
 

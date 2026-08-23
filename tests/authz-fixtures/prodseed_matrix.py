@@ -102,6 +102,13 @@ HYDRA_TOKEN = os.environ.get("HYDRA_TOKEN_URL", "http://localhost:14444/oauth2/t
 ASSERT_AUD = m.ASSERTION_AUDIENCE
 # Requested token audience = api-gateway ExpectedAudience ("https://"+APIDomain).
 API_AUD = os.environ.get("API_AUDIENCE", "https://api.kacho.cloud")
+# ── ВТОРАЯ ПОЛОСА КРАЯ: НАШ издатель (задача #1014) ───────────────────────
+# Адресат УТВЕРЖДЕНИЯ у нашей полосы — идентификатор издателя, а не адрес
+# эндпоинта (проверяющий сверяет его с `signer.Issuer()`); адрес обмена — наш
+# `POST /iam/v1/token` на поверхности выдачи. Обе величины живут в mint_rs256,
+# здесь только читаются, чтобы объявление осталось в ОДНОМ месте.
+PLATFORM_ASSERT_AUD = m.PLATFORM_ASSERTION_AUDIENCE
+PLATFORM_TOKEN_URL = m.PLATFORM_TOKEN_URL
 # GATEWAY-identity client cert for the iam :9091 grpcurl calls (NOT the mint's
 # operator identity — see mint_rs256.ensure_iam_internal_cert).
 MTLS_CERT = m.IAM_INTERNAL_MTLS_CERT
@@ -311,6 +318,32 @@ def sa_token_with_key(sva):
 def sa_token(sva):
     """Issue an api-audience SA-key, sign client_assertion, exchange -> RS256."""
     return sa_token_with_key(sva)[0]
+
+
+def sa_platform_token(sva):
+    """Тот же ключ, ДРУГОЙ издатель: токен НАШЕЙ чеканки (ES256, iss=наш).
+
+    Это и есть вторая полоса края, и обменивается она ТЕМ ЖЕ ключом, что первая:
+    ключ выдаёт `SAKeyService.Issue`, а кому предъявить подписанное им утверждение
+    — решает `aud` утверждения. Отдельного реестра клиентов у нашего издателя нет
+    by construction (резолвер читает те же две таблицы ключей).
+
+    ОТКАЗ ПОДНИМАЕТСЯ, А НЕ ПРОГЛАТЫВАЕТСЯ. Пустая величина в посеве доехала бы до
+    пробы отказом доступа — то есть вердиктом о продукте там, где предмет оснастка
+    либо профиль (перечень объявленных адресатов).
+    """
+    kr = _curl("POST", f"/iam/v1/serviceAccounts/{sva}/keys", boot,
+               {"serviceAccountId": sva, "audience": [API_AUD]})
+    done = _poll(kr.get("id"), boot)
+    if done.get("error"):
+        raise RuntimeError(f"SA-key issue errored for {sva}: {done['error']}")
+    # Клиент НАШЕГО реестра — это `keyId`, а не `clientId`: вторая величина
+    # принадлежит внешнему поставщику. Разбор — в godoc `m.sa_platform_token`.
+    _, key, registry_client_id = m._extract_oauth(done.get("response", {}))
+    assertion = m.sign_client_assertion(
+        registry_client_id, key, registry_client_id, PLATFORM_ASSERT_AUD,
+        token_type=m.CLIENT_ASSERTION_TOKEN_TYPE)
+    return m.exchange_at_platform(PLATFORM_TOKEN_URL, assertion, API_AUD)
 
 
 CLUSTER_ROOT_OBJECT = "cluster:cluster_kacho_root"
@@ -685,8 +718,20 @@ def seed() -> dict:
     tok_apirev, key_apirev = sa_token_with_key(sva_apirev)
     _curl("DELETE", f"/iam/v1/serviceAccounts/{sva_apirev}/keys/{key_apirev}", boot)
 
+    # ВТОРАЯ ПОЛОСА КРАЯ — предъявитель НАШЕЙ чеканки (#1014).
+    #
+    # Учётка та же, что у `jwtSAA`, и это осознанно: полосы различаются ИЗДАТЕЛЕМ,
+    # а не субъектом, и держать под второй издатель отдельного субъекта значило бы
+    # сравнивать две вещи сразу. Ключ выдаётся СВОЙ (ключи аддитивны), поэтому
+    # снятие ключа у `apiTokenRevoked` — другая учётка — этого предъявителя не
+    # задевает.
+    tok_platform = sa_platform_token(sva_saA)
+
     fixtures = {
         "jwtBootstrap": boot,
+        # Предъявитель ВТОРОЙ полосы: `iss` — наш издатель, подпись ES256, ключ из
+        # нашего же реестра. Слот читает суита края (gateway/tests/newman).
+        "jwtPlatformIssuer": tok_platform,
         # no-grant slots
         "jwtNoBindings": tok_nogrant,
         "jwtSANoGrant": tok_nogrant,

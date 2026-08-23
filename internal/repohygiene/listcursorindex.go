@@ -75,15 +75,26 @@ import (
 // несёт ОБА равенства, и зачесть его общему списку значило бы объявить покрытым
 // то, что покрыто не будет.
 //
-// # Объявленная слепая зона: частичный индекс не засчитывается
+// # Частичный индекс: засчитывается ТОЛЬКО дословному чтению
 //
 // Частичный индекс обслуживает только строки своего предиката. Выводится ли этот
-// предикат из условий запроса — вопрос к условиям, а они собираются динамически
-// (см. выше). Поэтому частичный индекс покрытием НЕ считается. Сужение
-// осознанное и в безопасную сторону: на дереве оно не даёт ни одной ложной
-// находки (все зачтённые сегодня курсорные индексы — полные), а обратное решение
-// зачло бы `operations_account_id_idx (account_id, created_at, id) WHERE
-// account_id IS NOT NULL` общему списку операций, который по счёту не фильтрует.
+// предикат из условий запроса — вопрос к условиям, а они у списочных чтений
+// собираются динамически (см. выше), и доказать импликацию по тексту нельзя.
+//
+// Есть, однако, случай, где доказывать нечего: запрос несёт предикат индекса
+// ДОСЛОВНО и всегда — не как одну из собираемых веток, а как константную часть
+// оператора. Тогда множество строк запроса и множество строк индекса совпадают
+// by construction. Такой индекс засчитывается; всякий другой частичный — нет.
+//
+// Здесь ДОЛГО стояло безусловное «частичный индекс покрытием не считается» с
+// обоснованием «на дереве не даёт ни одной ложной находки». Обоснование
+// истекло: вывоз журнала аудита (#812) читает голову очереди константным
+// предикатом `status <> 'sent'` и обслуживается частичным индексом ровно по
+// нему — и безусловное правило дало ДВЕ ложные находки, по одной на службу.
+// Сужение осталось безопасным в прежнюю сторону: `operations_account_id_idx
+// (account_id, created_at, id) WHERE account_id IS NOT NULL` общему списку
+// операций по-прежнему не засчитывается — тот список по счёту не фильтрует и
+// предиката индекса не несёт.
 
 // CursorKey — один ключ порядка: колонка и направление.
 type CursorKey struct {
@@ -110,8 +121,11 @@ func cursorSignature(keys []CursorKey) string {
 
 // CursorRead — курсорное чтение страницы, найденное в прод-коде.
 type CursorRead struct {
-	File   string // путь относительно корня репозитория
-	Line   int
+	File string // путь относительно корня репозитория
+	Line int
+	// SQL — текст запроса, приведённый к сравнимому виду. Нужен ровно для
+	// одного вопроса: несёт ли чтение предикат частичного индекса.
+	SQL    string
 	Table  string // имя таблицы без схемы; пусто, если не разрешилось
 	Keys   []CursorKey
 	Shared bool // чтение под `pkg/` — общее для КАЖДОГО сервиса, у кого есть такая таблица
@@ -124,7 +138,10 @@ type DeclaredIndex struct {
 	Table   string
 	Cols    []CursorKey
 	Partial bool
-	File    string
+	// Predicate — предикат частичного индекса, приведённый к сравнимому виду
+	// (нижний регистр, схлопнутые пробелы). Пусто у полного индекса.
+	Predicate string
+	File      string
 }
 
 // String — индекс в том виде, в каком его читает человек.
@@ -200,7 +217,10 @@ var (
 	dropTblRe       = regexp.MustCompile(`(?is)DROP\s+TABLE(?:\s+IF\s+EXISTS)?\s+([\w."]+)`)
 	renameTblRe     = regexp.MustCompile(`(?is)ALTER\s+TABLE(?:\s+IF\s+EXISTS)?\s+([\w."]+)\s+RENAME\s+TO\s+([\w."]+)`)
 	// indexPredicateRe — предикат частичного индекса сразу за списком колонок.
-	indexPredicateRe = regexp.MustCompile(`(?is)^\s*WHERE\b`)
+	// Вторая группа — САМ предикат: он нужен, чтобы отличить частичный индекс,
+	// чей предикат читающий запрос несёт дословно, от частичного индекса, о
+	// применимости которого судить нечем (см. §«Частичный индекс» в шапке).
+	indexPredicateRe = regexp.MustCompile(`(?is)^\s*WHERE\b(.*)$`)
 )
 
 // SurveyCursorIndexes сводит курсорные чтения прод-кода с индексами, которые
@@ -289,7 +309,7 @@ func SurveyCursorIndexes(tree *treecorpus.Tree) (CursorCensus, error) {
 			if indexMentions(ix, want[0].Column) {
 				candidates = append(candidates, ix)
 			}
-			if indexServesCursor(ix, want) {
+			if indexServesCursor(ix, want, pairs[k]) {
 				served = true
 			}
 		}
@@ -313,15 +333,19 @@ func SurveyCursorIndexes(tree *treecorpus.Tree) (CursorCensus, error) {
 //
 // Условия, все обязательны:
 //
-//   - индекс не частичный (объявленная слепая зона — см. шапку файла);
+//   - индекс полный ЛИБО частичный, чей предикат КАЖДОЕ чтение пары несёт
+//     дословно (см. §«Частичный индекс» в шапке файла);
 //   - ключи `want` лежат в нём ПОДРЯД, теми же колонками и в том же порядке;
 //   - перед ними стоит не более ОДНОЙ колонки (ведущее равенство);
 //   - направления совпадают ЦЕЛИКОМ либо инвертированы ЦЕЛИКОМ. Второе законно:
 //     btree читается в обе стороны, и `(created_at DESC, id DESC)` отдаёт
 //     `created_at ASC, id ASC` обратным чтением. Смешанное — не отдаёт ни
 //     прямым, ни обратным, и это тот самый случай, который выглядит сделанным.
-func indexServesCursor(ix DeclaredIndex, want []CursorKey) bool {
-	if ix.Partial || len(want) == 0 {
+func indexServesCursor(ix DeclaredIndex, want []CursorKey, reads []CursorRead) bool {
+	if len(want) == 0 {
+		return false
+	}
+	if ix.Partial && !partialIndexApplies(ix, reads) {
 		return false
 	}
 	for k := 0; k <= 1; k++ {
@@ -536,22 +560,25 @@ func schemaOpsInTextOrder(up, file string) []schemaOp {
 		if !ok {
 			continue
 		}
-		partial := false
+		partial, predicate := false, ""
 		if tail := up[end:]; len(tail) > 0 {
 			stop := strings.IndexByte(tail, ';')
 			if stop < 0 {
 				stop = len(tail)
 			}
-			partial = indexPredicateRe.MatchString(tail[:stop])
+			if m := indexPredicateRe.FindStringSubmatch(tail[:stop]); m != nil {
+				partial, predicate = true, normalizeSQLText(m[1])
+			}
 		}
 		ops = append(ops, schemaOp{
 			at: m[0], kind: opCreateIndex, name: unqualifyIdent(up[m[4]:m[5]]),
 			index: DeclaredIndex{
-				Name:    unqualifyIdent(up[m[4]:m[5]]),
-				Table:   unqualifyIdent(up[m[6]:m[7]]),
-				Cols:    parseIndexColumns(cols),
-				Partial: partial,
-				File:    file,
+				Name:      unqualifyIdent(up[m[4]:m[5]]),
+				Table:     unqualifyIdent(up[m[6]:m[7]]),
+				Cols:      parseIndexColumns(cols),
+				Partial:   partial,
+				Predicate: predicate,
+				File:      file,
 			},
 		})
 	}
@@ -723,6 +750,7 @@ func collectCursorReads(tree *treecorpus.Tree) ([]CursorRead, int, int, error) {
 			reads = append(reads, CursorRead{
 				File:   rel,
 				Line:   l.line,
+				SQL:    normalizeSQLText(l.text),
 				Table:  table,
 				Keys:   keys,
 				Shared: !strings.HasPrefix(rel, "services/"),
@@ -804,6 +832,276 @@ func resolveCursorTable(sql string, keys []CursorKey, aliases map[string]string,
 		return marker, true
 	}
 	return "", false
+}
+
+// partialIndexApplies — обслуживает ли частичный индекс ЭТИ чтения.
+//
+// Предикат индекса обязан стоять КОНЪЮНКТОМ ВЕРХНЕГО УРОВНЯ в `WHERE` каждого
+// чтения пары. Это и есть тот единственный случай, где импликация доказывается
+// текстом: строки запроса — подмножество строк индекса, потому что запрос
+// требует того же условия И ещё чего-то.
+//
+// > Здесь стояло `strings.Contains`, и оно было ШИРЕ починки. Опыт на харнессе
+// > самого гейта: индекс `WHERE project_id <> ”` засчитывался чтению
+// > `WHERE project_id <> ” OR created_at < $1` (чтение ШИРЕ индекса), чтению
+// > `WHERE NOT (project_id <> ”)` (дополнение множества) и даже тексту, где
+// > предикат стоял в КОММЕНТАРИИ, — то есть на стороне чтения возвращался ровно
+// > тот класс, который сосед по файлу закрывает на стороне индекса
+// > (Test_CursorIndexGate_RedsOnIndexNamedOnlyInAComment).
+//
+// Пустой набор чтений — НЕ основание засчитать: «нечего проверить» и «проверено»
+// обязаны различаться.
+func partialIndexApplies(ix DeclaredIndex, reads []CursorRead) bool {
+	if ix.Predicate == "" || len(reads) == 0 {
+		return false
+	}
+	want := trimOuterParens(ix.Predicate)
+	if want == "" {
+		return false
+	}
+	for _, r := range reads {
+		if r.SQL == "" {
+			return false
+		}
+		found := false
+		for _, c := range whereConjuncts(r.SQL) {
+			if c == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// whereConjuncts — конъюнкты `WHERE`, УПРАВЛЯЮЩЕГО упорядоченным обходом.
+//
+// Уровень выбирается не «нулевой», а ТОТ ЖЕ, на котором стоит `ORDER BY`, — и
+// это не педантизм: клейм очереди журнала отбирает строки подзапросом
+// (`WHERE id IN (SELECT … WHERE status <> 'sent' … ORDER BY created_at, id)`),
+// поэтому предикат индекса живёт на глубине один, а на нулевой стоит совсем
+// другое условие. Разбор, знающий только нулевую глубину, объявил бы такое
+// чтение непокрытым — то есть ровно свой предмет.
+//
+// Внутри выбранного уровня конъюнкты режутся по `AND` на ЭТОЙ глубине и вне
+// строковых литералов: `AND` в скобках или в литерале конъюнктом уровня не
+// является, а `OR` на уровне оставляет всю часть одним конъюнктом — и она с
+// предикатом индекса не совпадёт, что и требуется.
+func whereConjuncts(sql string) []string {
+	type mark struct {
+		at, depth, width int
+		order            bool
+	}
+	var marks []mark
+	depth, inStr := 0, false
+	for k := 0; k < len(sql); k++ {
+		switch c := sql[k]; {
+		case c == '\'':
+			inStr = !inStr
+		case inStr:
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+		case isWordAt(sql, k, "where"):
+			marks = append(marks, mark{at: k, depth: depth, width: len("where")})
+		case isWordAt(sql, k, "order by"):
+			marks = append(marks, mark{at: k, depth: depth, width: len("order by"), order: true})
+		}
+	}
+
+	// Управляющий `WHERE` — последний перед первым `ORDER BY` на ЕГО глубине.
+	// Нет `ORDER BY` (курсорным чтением такой запрос быть не может, но разбор
+	// обязан быть тотальным) — берём первый `WHERE` нулевой глубины.
+	var w *mark
+	var stopAt = len(sql)
+	for i := range marks {
+		if !marks[i].order {
+			continue
+		}
+		for j := i - 1; j >= 0; j-- {
+			if !marks[j].order && marks[j].depth == marks[i].depth {
+				w, stopAt = &marks[j], marks[i].at
+				break
+			}
+		}
+		break
+	}
+	if w == nil {
+		for i := range marks {
+			if !marks[i].order && marks[i].depth == 0 {
+				w = &marks[i]
+				break
+			}
+		}
+	}
+	if w == nil {
+		return nil
+	}
+
+	body := sql[w.at+w.width : stopAt]
+	// Хвост отрезается по первому слову, которым `WHERE` заканчивается, если
+	// `ORDER BY` его не отрезал. Список закрытый: неизвестное слово останется в
+	// последнем конъюнкте, и он просто не совпадёт — в безопасную сторону.
+	for _, stop := range []string{"group by", "having", "window", "limit", "offset",
+		"fetch", "for update", "for share", "returning", "union"} {
+		if j := indexOfWordAtDepth(body, stop, 0); j >= 0 {
+			body = body[:j]
+		}
+	}
+
+	var out []string
+	depth, inStr = 0, false
+	startIdx := 0
+	for k := 0; k < len(body); k++ {
+		switch c := body[k]; {
+		case c == '\'':
+			inStr = !inStr
+		case inStr:
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+			if depth < 0 {
+				return append(out, trimOuterParens(strings.TrimSpace(body[startIdx:k])))
+			}
+		case depth == 0 && isWordAt(body, k, "and"):
+			out = append(out, trimOuterParens(strings.TrimSpace(body[startIdx:k])))
+			k += len("and") - 1
+			startIdx = k + 1
+		}
+	}
+	return append(out, trimOuterParens(strings.TrimSpace(body[startIdx:])))
+}
+
+// indexOfWordAtDepth — позиция слова на заданной скобочной глубине вне литерала.
+func indexOfWordAtDepth(s, word string, want int) int {
+	depth, inStr := 0, false
+	for k := 0; k < len(s); k++ {
+		switch c := s[k]; {
+		case c == '\'':
+			inStr = !inStr
+		case inStr:
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+		case depth == want && isWordAt(s, k, word):
+			return k
+		}
+	}
+	return -1
+}
+
+// isWordAt — стоит ли в позиции k слово word ЦЕЛИКОМ (не часть идентификатора).
+func isWordAt(s string, k int, word string) bool {
+	if k+len(word) > len(s) || s[k:k+len(word)] != word {
+		return false
+	}
+	isIdent := func(c byte) bool {
+		return c == '_' || c == '$' || (c >= 'a' && c <= 'z') ||
+			(c >= '0' && c <= '9') || c >= 0x80
+	}
+	if k > 0 && isIdent(s[k-1]) {
+		return false
+	}
+	if e := k + len(word); e < len(s) && isIdent(s[e]) {
+		return false
+	}
+	return true
+}
+
+// trimOuterParens снимает скобки, охватывающие выражение ЦЕЛИКОМ.
+func trimOuterParens(s string) string {
+	for len(s) >= 2 && s[0] == '(' && s[len(s)-1] == ')' {
+		depth, inStr, whole := 0, false, true
+		for k := 0; k < len(s); k++ {
+			switch c := s[k]; {
+			case c == '\'':
+				inStr = !inStr
+			case inStr:
+			case c == '(':
+				depth++
+			case c == ')':
+				depth--
+				if depth == 0 && k != len(s)-1 {
+					whole = false
+				}
+			}
+			if !whole {
+				break
+			}
+		}
+		if !whole {
+			return s
+		}
+		s = strings.TrimSpace(s[1 : len(s)-1])
+	}
+	return s
+}
+
+// normalizeSQLText приводит текст к сравнимому виду: комментарии сняты, пробелы
+// схлопнуты, регистр опущен ВНЕ строковых литералов.
+//
+// Каждое из трёх — необходимость, а не удобство. Комментарий не исполняется, и
+// предикат, стоящий в нём, обслуживанием не является. Регистр внутри литерала
+// СОХРАНЯЕТСЯ: `'SENT'` и `'sent'` — разные значения, и опускать их к одному
+// значило бы засчитывать индекс, построенный по другому множеству строк.
+func normalizeSQLText(s string) string {
+	var b strings.Builder
+	inStr, line, block, pendingSpace := false, false, false, false
+	space := func() {
+		if b.Len() > 0 {
+			pendingSpace = true
+		}
+	}
+	for k := 0; k < len(s); k++ {
+		c := s[k]
+		switch {
+		case line:
+			if c == '\n' {
+				line = false
+				space()
+			}
+			continue
+		case block:
+			if c == '*' && k+1 < len(s) && s[k+1] == '/' {
+				block = false
+				k++
+				space()
+			}
+			continue
+		case !inStr && c == '-' && k+1 < len(s) && s[k+1] == '-':
+			line = true
+			k++
+			continue
+		case !inStr && c == '/' && k+1 < len(s) && s[k+1] == '*':
+			block = true
+			k++
+			continue
+		}
+		if !inStr && (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+			space()
+			continue
+		}
+		if pendingSpace {
+			b.WriteByte(' ')
+			pendingSpace = false
+		}
+		if c == '\'' {
+			inStr = !inStr
+			b.WriteByte(c)
+			continue
+		}
+		if !inStr && c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b.WriteByte(c)
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // normalizeSQLTable отбрасывает схему, кавычки и глаголы форматирования:

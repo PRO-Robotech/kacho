@@ -158,6 +158,7 @@ var shortGatedOutsideSelection = []string{
 	// (см. замер в шапке файла), а у Postgres-половины НЕ перемерена — переносить на
 	// неё чужой вывод было бы ровно тем классом, который этот файл ловит.
 	"internal/pgtest",
+	"pkg/audit",
 	"pkg/authz",
 	"pkg/db",
 	"pkg/grpcsrv",
