@@ -32,9 +32,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ЧТО ИМЕННО УТВЕРЖДАЕТСЯ
 //
-//	A. ЧИТАЕТ ТО ЖЕ. Каждый файл настроек, названный основному процессу
-//	   (`--config <путь>` в `kratos.deployment.extraArgs`), назван и почтовому
-//	   (`kratos.statefulSet.extraArgs`).
+//	A. ЧИТАЮТ ОДНО И ТО ЖЕ — в ОБЕ стороны. Множество файлов настроек,
+//	   названных основному процессу (`--config <путь>` в
+//	   `kratos.deployment.extraArgs`), СОВПАДАЕТ с множеством, названным
+//	   почтовому (`kratos.statefulSet.extraArgs`). Считаются обе разности, и
+//	   каждая непустая — находка.
+//
+//	   Направление проверяется ОБА, потому что предмет — согласие двух
+//	   процессов о том, что они читают, а не «основной впереди почтового».
+//	   Прежняя редакция считала одну разность: она закрывала ту половину
+//	   класса, которая уже случилась, и о симметричной не утверждала ничего —
+//	   файл, названный только почтовому, проходил молча. Ломается при этом
+//	   зеркальное: наша конфигурация объявляет ОСНОВНОМУ процессу схему
+//	   личности, потоки самообслуживания и адреса возврата, а применяются
+//	   чужие умолчания поставщика.
 //
 //	B. НЕ ПОЛУЧАЕТ ЛИШНЕГО. Каждый том, доезжающий до почтового процесса, имеет
 //	   в нём читателя — монтирование либо контейнер, который его называет. Том
@@ -55,8 +66,9 @@
 // ГРАНИЦА ПРЕДМЕТА (названа, чтобы «зелено» не читалось шире, чем есть)
 //
 //   - Проверяется СОГЛАСИЕ двух ручек, а не решение профиля вообще что-то
-//     провязывать. Профиль, ничего не объявивший обоим процессам, приходит сюда
-//     законным: оба читают файл поставщика, и это один файл.
+//     провязывать. Профиль, ничего не объявивший ни одному из процессов,
+//     приходит сюда законным: оба читают файл поставщика, и это один файл.
+//     Незаконно РАСХОЖДЕНИЕ — в любую сторону.
 //   - Проверяется наличие ЧИТАТЕЛЯ у тома, а не осмысленность содержимого. Том,
 //     смонтированный и не нужный по существу, отсюда виден census-строкой, а не
 //     находкой.
@@ -86,10 +98,20 @@ import (
 // «координата переехала», а не молчит.
 const identityProviderKey = "kratos"
 
+// Виды находок. Направление расхождения — ЧАСТЬ вида, а не подробность текста:
+// «назван основному и не назван почтовому» и «назван почтовому и не назван
+// основному» ломают разное и чинятся разными ручками, поэтому один вид на оба
+// сделал бы направление нарушения неразличимым в отчёте.
+const (
+	kindConfigNotInCourier  = "файл настроек, не названный почтовому процессу"
+	kindConfigNotInMain     = "файл настроек, не названный основному процессу"
+	kindVolumeWithoutReader = "том без читателя"
+)
+
 // courierFinding — одна находка с координатой, по которой её можно открыть.
 type courierFinding struct {
 	profile string
-	kind    string // "config" | "volume"
+	kind    string // один из kind* выше
 	subject string // путь файла настроек либо имя тома
 	detail  string
 }
@@ -105,6 +127,8 @@ type courierCensus struct {
 	declares       bool
 	mainConfigs    []string
 	courierConfigs []string
+	onlyMain       []string // названы основному и НЕ названы почтовому
+	onlyCourier    []string // названы почтовому и НЕ названы основному
 	volumes        []string // тома, доезжающие до почтового процесса
 	secretVolumes  []string // из них собранные из секрета
 	inherited      bool     // тома пришли наследованием от основного процесса
@@ -146,20 +170,37 @@ func scanCourierWiring(profiles map[string]map[string]any, defs map[string]strin
 		dep, _ := providerMap["deployment"].(map[string]any)
 		sts, _ := providerMap["statefulSet"].(map[string]any)
 
-		// ── A. читает то же ────────────────────────────────────────────────
+		// ── A. читают ОДНО И ТО ЖЕ ─────────────────────────────────────────
+		// Предмет — СОГЛАСИЕ двух процессов о том, что они читают, а не
+		// «основной впереди почтового». Поэтому считаются ОБЕ разности
+		// множеств: односторонняя проверка закрывает ту половину класса,
+		// которая уже случилась, и молчит о симметричной.
 		c.mainConfigs = configPaths(stringList(dep["extraArgs"]))
 		c.courierConfigs = configPaths(stringList(sts["extraArgs"]))
-		for _, path := range c.mainConfigs {
-			if !contains(c.courierConfigs, path) {
-				findings = append(findings, courierFinding{
-					profile: name, kind: "файл настроек", subject: path,
-					detail: "назван основному процессу (`" + identityProviderKey +
-						".deployment.extraArgs`) и НЕ назван почтовому (`" + identityProviderKey +
-						".statefulSet.extraArgs`). Аргументы почтовый процесс не наследует: " +
-						"карты доедут томами, указание читать их — нет, и раздел `courier.smtp` " +
-						"нашей конфигурации останется без читателя",
-				})
-			}
+		c.onlyMain = missingFrom(c.mainConfigs, c.courierConfigs)
+		c.onlyCourier = missingFrom(c.courierConfigs, c.mainConfigs)
+
+		for _, path := range c.onlyMain {
+			findings = append(findings, courierFinding{
+				profile: name, kind: kindConfigNotInCourier, subject: path,
+				detail: "назван основному процессу (`" + identityProviderKey +
+					".deployment.extraArgs`) и НЕ назван почтовому (`" + identityProviderKey +
+					".statefulSet.extraArgs`). Аргументы почтовый процесс не наследует: " +
+					"карты доедут томами, указание читать их — нет, и раздел `courier.smtp` " +
+					"нашей конфигурации останется без читателя",
+			})
+		}
+		for _, path := range c.onlyCourier {
+			findings = append(findings, courierFinding{
+				profile: name, kind: kindConfigNotInMain, subject: path,
+				detail: "назван почтовому процессу (`" + identityProviderKey +
+					".statefulSet.extraArgs`) и НЕ назван основному (`" + identityProviderKey +
+					".deployment.extraArgs`). Процессы читают РАЗНОЕ: то, что наша " +
+					"конфигурация объявляет основному процессу — схему личности, потоки " +
+					"самообслуживания, адреса возврата, — применяются чужие умолчания " +
+					"поставщика, и заметить это неоткуда: процесс поднимается и отвечает. " +
+					"Либо назовите файл обоим, либо снимите его у почтового",
+			})
 		}
 
 		// ── B. не получает лишнего ─────────────────────────────────────────
@@ -203,7 +244,7 @@ func scanCourierWiring(profiles map[string]map[string]any, defs map[string]strin
 					"разрешите вызов, а не снимайте проверку"
 			}
 			findings = append(findings, courierFinding{
-				profile: name, kind: "том без читателя", subject: vname, detail: detail,
+				profile: name, kind: kindVolumeWithoutReader, subject: vname, detail: detail,
 			})
 		}
 		census = append(census, c)
@@ -377,6 +418,19 @@ func configPaths(args []string) []string {
 	return out
 }
 
+// missingFrom — элементы `want`, которых нет в `have`. Одна функция на оба
+// направления: две рукописные петли разошлись бы молча — ровно так односторонняя
+// проверка и появилась.
+func missingFrom(want, have []string) []string {
+	var out []string
+	for _, w := range want {
+		if !contains(have, w) {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
 func contains(hay []string, needle string) bool {
 	for _, h := range hay {
 		if h == needle {
@@ -408,7 +462,7 @@ func TestIdentityCourierReadsWhatItMounts(t *testing.T) {
 
 	findings, census := scanCourierWiring(profiles, defs)
 
-	var declaring, withVolumes, withSecrets int
+	var declaring, withVolumes, withSecrets, onlyMain, onlyCourier int
 	for _, c := range census {
 		if c.declares {
 			declaring++
@@ -419,9 +473,16 @@ func TestIdentityCourierReadsWhatItMounts(t *testing.T) {
 		if len(c.secretVolumes) > 0 {
 			withSecrets++
 		}
+		onlyMain += len(c.onlyMain)
+		onlyCourier += len(c.onlyCourier)
 	}
 	t.Logf("осмотрено: профилей %d, объявляют `%s` %d, доносят тома до почтового процесса %d, "+
 		"из них тома из секретов %d", len(profiles), identityProviderKey, declaring, withVolumes, withSecrets)
+	// Величины по НАПРАВЛЕНИЯМ, а не одной суммой: сумма 0 не отличает
+	// «расхождений нет» от «есть по одному в каждую сторону», и направление
+	// нарушения по ней не читается.
+	t.Logf("осмотрено: расхождений файлов настроек — названо только основному %d, "+
+		"только почтовому %d", onlyMain, onlyCourier)
 
 	if declaring == 0 {
 		t.Fatalf("ни один профиль не объявляет ключ `%s` — координата переехала, и проверка "+
@@ -436,9 +497,10 @@ func TestIdentityCourierReadsWhatItMounts(t *testing.T) {
 		if c.inherited {
 			src = "УНАСЛЕДОВАНЫ от основного процесса"
 		}
-		t.Logf("%s: файлы настроек основному %v, почтовому %v; тома почтового %v (%s), из секретов %v, "+
-			"неразрешённых вызовов шаблонов %v",
-			c.profile, c.mainConfigs, c.courierConfigs, c.volumes, src, c.secretVolumes, c.unresolved)
+		t.Logf("%s: файлы настроек основному %v, почтовому %v (только основному %v, только почтовому %v); "+
+			"тома почтового %v (%s), из секретов %v, неразрешённых вызовов шаблонов %v",
+			c.profile, c.mainConfigs, c.courierConfigs, c.onlyMain, c.onlyCourier,
+			c.volumes, src, c.secretVolumes, c.unresolved)
 	}
 
 	for _, f := range findings {
@@ -479,7 +541,12 @@ func TestScanCourierWiring_SelfTest(t *testing.T) {
 		{
 			what:     "дефект: файл назван основному и не назван почтовому",
 			tree:     profile(map[string]any{"extraArgs": args(ourConfig)}, nil),
-			wantKind: "файл настроек", wantSubj: ourConfig,
+			wantKind: kindConfigNotInCourier, wantSubj: ourConfig,
+		},
+		{
+			what:     "дефект: файл назван ТОЛЬКО почтовому и не назван основному",
+			tree:     profile(nil, map[string]any{"extraArgs": args(ourConfig)}),
+			wantKind: kindConfigNotInMain, wantSubj: ourConfig,
 		},
 		{
 			what: "законный близнец: тот же файл назван обоим",
@@ -491,11 +558,15 @@ func TestScanCourierWiring_SelfTest(t *testing.T) {
 			tree: profile(map[string]any{"extraArgs": []any{"--dev"}}, nil),
 		},
 		{
+			what: "законный близнец: аргумент почтового не является файлом настроек",
+			tree: profile(nil, map[string]any{"extraArgs": []any{"--watch-courier"}}),
+		},
+		{
 			what: "дефект: том из секрета доезжает и не читается",
 			tree: profile(map[string]any{
 				"extraVolumes": []any{vol("ca", "secret")},
 			}, nil),
-			wantKind: "том без читателя", wantSubj: "ca",
+			wantKind: kindVolumeWithoutReader, wantSubj: "ca",
 		},
 		{
 			what: "законный близнец: тот же том смонтирован",
@@ -528,7 +599,7 @@ func TestScanCourierWiring_SelfTest(t *testing.T) {
 				"extraInitContainers": `{{- include "provider.image" . | nindent 0 }}`,
 			}, nil),
 			defs:     map[string]string{},
-			wantKind: "том без читателя", wantSubj: "src",
+			wantKind: kindVolumeWithoutReader, wantSubj: "src",
 		},
 		{
 			what: "законный близнец: вызов чужого шаблона не разрешён, но том читается",
