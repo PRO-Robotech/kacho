@@ -112,6 +112,7 @@ deploy/scripts/assert-dialled-transports-have-a-producer.py
 deploy/scripts/assert-fixture-role-verbs-exist.py
 deploy/scripts/assert-generated-scripts-parse.js
 deploy/scripts/assert-identity-account-peak-under-ceiling.py
+deploy/scripts/assert-identity-admission-rate-headroom.py
 deploy/scripts/assert-outbox-autovacuum.sh
 deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-refusal-lane-has-a-reader.py

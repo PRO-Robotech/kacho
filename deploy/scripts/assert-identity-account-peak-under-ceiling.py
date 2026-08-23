@@ -145,17 +145,24 @@ def read_ceiling(root: str) -> int:
     return int(m.group(1))
 
 
-def read_base_level(root: str) -> tuple[int, list[str]]:
-    """Сколько аккаунтов у личности церемонии ДО первого шага волны.
+def read_base_components(root: str) -> tuple[int, int, list[str]]:
+    """Базовый уровень ПО СОСТАВУ: (общий на всех, заводимый посевом, объяснение).
 
     Выводится, а не выписывается: выписанное число пережило бы свой предмет молча.
 
-    НАПРАВЛЕНИЕ ОШИБКИ НАЗВАНО. Создания посева считаются ВСЕ, без разбора, какому
-    человеку они достаются: сегодня человек в посеве один, а разбирать вызывающего
-    разбором питона значило бы завести второй, хрупкий предикат. Если посев заведёт
-    аккаунт ВТОРОМУ человеку, базовый уровень окажется завышен — гейт станет строже
-    и скажет об этом громко. Обратная ошибка (занижение) здесь была бы тихой и
-    опасной, поэтому размен выбран в эту сторону сознательно.
+    СОСТАВНЫХ ЧАСТЕЙ ДВЕ, И ОНИ ДОСТАЮТСЯ РАЗНЫМ ЛИЧНОСТЯМ.
+      * личный аккаунт первого входа — КАЖДОЙ вошедшей личности, безусловно
+        (ветвь вставки; отказ по темпу на первом входе был бы отказом во входе);
+      * аккаунты, которые заводит САМ посев, — только той личности, для которой он
+        их заводит, и это объявлено (`ceremony_credentials.SEED_OWNED_ACCOUNTS`).
+
+    ЗДЕСЬ БЫЛО «СЧИТАЕМ ВСЕ, БЕЗ РАЗБОРА, КОМУ». Пока личность волны была одна, разницы
+    не существовало. С появлением личностей у заводящих проб она стала наблюдаемой и
+    ЛОЖНОЙ В ОПАСНУЮ СТОРОНУ — не в объявленную: завышенный на единицу базовый уровень
+    у восьми личностей превращал настоящий запас (единица) в нулевой, то есть гейт
+    сообщал находку там, где её нет. Инструмент, у которого находки ложные, перестают
+    читать. Разбор «кому достался аккаунт посева» по-прежнему НЕ делается разбором
+    питона — он объявлен, а объявление держится сверкой сумм (`seeded_by_identity`).
     """
     why: list[str] = []
     src = os.path.join(root, BOOTSTRAP_SOURCE)
@@ -167,8 +174,7 @@ def read_base_level(root: str) -> tuple[int, list[str]]:
         raise PremiseError(
             f"в {BOOTSTRAP_SOURCE} нет ветки «аккаунтов ноль ⇒ завести личный» — "
             f"базовый уровень выведен быть не может")
-    base = 1
-    why.append(f"личный аккаунт первого входа (+1, {BOOTSTRAP_SOURCE})")
+    why.append(f"личный аккаунт первого входа — каждой личности (+1, {BOOTSTRAP_SOURCE})")
 
     seed = os.path.join(root, CEREMONY_SEED)
     try:
@@ -177,11 +183,38 @@ def read_base_level(root: str) -> tuple[int, list[str]]:
         raise PremiseError(f"посев церемонии не прочитан: {exc}") from exc
     seeded = len(SEED_OWN_ACCOUNT.findall(seed_text))
     if seeded:
-        base += seeded
-        why.append(f"аккаунты посева церемонии (+{seeded}, {CEREMONY_SEED})")
+        why.append(f"аккаунты посева церемонии — названным личностям (+{seeded} всего, "
+                   f"{CEREMONY_SEED})")
     else:
         why.append(f"посев церемонии аккаунтов не заводит (+0, {CEREMONY_SEED})")
-    return base, why
+    return 1, seeded, why
+
+
+def read_base_level(root: str) -> tuple[int, list[str]]:
+    """Наибольший базовый уровень среди личностей — совместимая форма ответа."""
+    common, seeded, why = read_base_components(root)
+    return common + seeded, why
+
+
+def seeded_by_identity(decl, seeded_total: int) -> dict[str, int]:
+    """Объявленное «кому достаются аккаунты посева» + СВЕРКА с выведенной суммой.
+
+    Объявление без сверки устарело бы тихо: посев завёл бы второй аккаунт, и он
+    достался бы никому. Сверка делает расхождение отказом.
+    """
+    got = getattr(decl, "SEED_OWNED_ACCOUNTS", None)
+    if got is None:
+        raise PremiseError(
+            f"в {CEREMONY_DECL} нет `SEED_OWNED_ACCOUNTS` — кому достаются аккаунты "
+            f"посева, сказать нечем, а раздать их всем значило бы выдумать базовый "
+            f"уровень")
+    declared = dict(got)
+    if sum(declared.values()) != seeded_total:
+        raise PremiseError(
+            f"объявление `SEED_OWNED_ACCOUNTS` называет {sum(declared.values())} "
+            f"аккаунт(ов) посева, а в {CEREMONY_SEED} их {seeded_total} — объявление "
+            f"разошлось с посевом, и базовый уровень был бы о выдуманном составе")
+    return declared
 
 
 def _pre_code(step) -> str:
@@ -276,28 +309,75 @@ def peak_of(events, base):
     return peak, at, n_created, n_released
 
 
+def identities_of(decl) -> dict[str, tuple[str, ...]]:
+    """Личность → её предъявители, ИЗ ОБЪЯВЛЕНИЯ, а не из копии здесь.
+
+    Пик считается ПО ЛИЧНОСТИ, а не по всей волне: потолок носит личность, и
+    складывать чужие аккаунты в одну сумму значит выдумывать пик, которого нет.
+    Прежняя редакция знала ровно одну личность — человека церемонии, — и это было
+    верно ровно до того дня, когда заводящие кейсы получили СВОИХ людей: гейт
+    честно нашёл бы ноль созданий под церемонией и объявил бы предикат ослепшим.
+    Ослеп бы он и наоборот — при десяти личностях счёт по одной оставил бы девять
+    вне наблюдения молча.
+    """
+    got = getattr(decl, "HUMAN_IDENTITIES", None)
+    if not got:
+        raise PremiseError(
+            f"в {CEREMONY_DECL} нет `HUMAN_IDENTITIES` — разбить предъявителей по "
+            f"личностям не на чем, а счёт по всем сразу выдумал бы пик")
+    out = dict(got)
+    for name, bearers in out.items():
+        if not bearers:
+            raise PremiseError(
+                f"у личности {name!r} не объявлено ни одного предъявителя — её "
+                f"создания не попали бы в счёт, и это молчание, а не ноль")
+    return out
+
+
 def audit(root: str):
     decl, gate = load_declarations(root)
-    for b in CEREMONY_IDENTITY_BEARERS:
-        if b not in decl.CEREMONY_ONLY_ENV:
-            raise PremiseError(
-                f"предъявитель {b!r} не объявлен в CEREMONY_ONLY_ENV — счёт видел бы "
-                f"не все создания под личностью церемонии")
+    identities = identities_of(decl)
+    for name, bearers in identities.items():
+        for b in bearers:
+            if b not in decl.CEREMONY_ONLY_ENV:
+                raise PremiseError(
+                    f"предъявитель {b!r} (личность {name!r}) не объявлен в "
+                    f"CEREMONY_ONLY_ENV — счёт видел бы не все создания этой личности")
     ceiling = read_ceiling(root)
-    base, why = read_base_level(root)
+    common, seeded_total, why = read_base_components(root)
+    seeded = seeded_by_identity(decl, seeded_total)
+    for name in seeded:
+        if name not in identities:
+            raise PremiseError(
+                f"`SEED_OWNED_ACCOUNTS` называет личность {name!r}, которой нет в "
+                f"`HUMAN_IDENTITIES` — её аккаунты не попали бы ни в чей счёт")
+    base = common + max(seeded.values(), default=0)
     wave = wave_collections(root, decl)
-    events, cases, steps = timeline_of(wave, gate)
-    peak, at, n_created, n_released = peak_of(events, base)
-    if n_created == 0:
+
+    per_identity: list[tuple[str, int, tuple | None, int, int]] = []
+    cases = steps = 0
+    for name, bearers in sorted(identities.items()):
+        events, cases, steps = timeline_of(wave, gate, bearers)
+        peak, at, n_created, n_released = peak_of(events, common + seeded.get(name, 0))
+        per_identity.append((name, peak, at, n_created, n_released))
+
+    total_created = sum(row[3] for row in per_identity)
+    if total_created == 0:
         raise PremiseError(
-            "созданий аккаунта под личностью церемонии НЕ НАЙДЕНО ни одного — "
+            "созданий аккаунта НЕ НАЙДЕНО ни под одной объявленной личностью — "
             "предикат ослеп, чинить надо гейт, а не выходить успехом")
+
+    # Вердикт выносит САМАЯ НАГРУЖЕННАЯ личность: потолок у каждой свой, поэтому
+    # запас волны равен наименьшему запасу среди них.
+    worst = max(per_identity, key=lambda row: row[1])
     census = {
         "collections": len(wave), "cases": cases, "steps": steps,
-        "created": n_created, "released": n_released,
+        "created": total_created,
+        "released": sum(row[4] for row in per_identity),
+        "identities": per_identity,
         "order": [stem for stem, _ in wave],
     }
-    return peak, at, ceiling, base, why, census
+    return worst[1], worst[2], ceiling, base, why, census
 
 
 def main(argv=None) -> int:
@@ -318,11 +398,14 @@ def main(argv=None) -> int:
     print(f"волна церемонии выведена из {CEREMONY_DECL} (--stems, порядок исполнения):")
     print(f"  {' → '.join(census['order'])}")
     print(f"осмотрено: {census['collections']} коллекц(ий), {census['cases']} кейс(ов), "
-          f"{census['steps']} шаг(ов); созданий аккаунта под личностью церемонии "
-          f"{census['created']}, освобождений {census['released']}")
+          f"{census['steps']} шаг(ов); личност(ей) {len(census['identities'])}, "
+          f"созданий аккаунта {census['created']}, освобождений {census['released']}")
     print("базовый уровень " + str(base) + ": " + "; ".join(why))
-    print(f"потолок {ceiling} ({QUOTA_MIGRATION}); пик одновременно живых {peak}, "
-          f"запас {ceiling - peak}")
+    for name, ipeak, _iat, icreated, ireleased in census["identities"]:
+        print(f"  личность {name}: создани(й) {icreated}, освобождени(й) {ireleased}, "
+              f"пик {ipeak}, запас {ceiling - ipeak}")
+    print(f"потолок {ceiling} ({QUOTA_MIGRATION}); наибольший пик одновременно живых "
+          f"{peak}, наименьший запас {ceiling - peak}")
 
     code, finding = decide(peak, ceiling)
     if finding:
@@ -496,12 +579,26 @@ def self_test() -> int:
         ("потолка нет в дереве", lambda: read_ceiling(os.path.join(REPO, "нет-такого"))),
         ("источника базового уровня нет",
          lambda: read_base_level(os.path.join(REPO, "нет-такого"))),
+        # Разбиение по личностям — предпосылка вердикта, а не удобство: без него
+        # счёт идёт по одной личности и не видит остальных.
+        ("разбиения по личностям нет", lambda: identities_of(_NoIdentitiesDecl())),
+        ("у личности ноль предъявителей", lambda: identities_of(_EmptyBearersDecl())),
     ):
         try:
             fn()
             note(False, f"{label}: прошло молча")
         except PremiseError:
             note(True, f"{label}: ОТКАЗ")
+
+    # Положительный контроль к двум предыдущим: настоящее объявление читается и
+    # даёт больше одной личности. Без него «отказ на пустом» зеленел бы на
+    # предикате, который отказывает всегда.
+    try:
+        _decl_live, _ = load_declarations(REPO)
+        live = identities_of(_decl_live)
+        note(len(live) > 1, f"настоящее объявление даёт личност(ей) {len(live)} (> 1)")
+    except PremiseError as exc:
+        note(False, f"настоящее объявление личностей: {exc}")
 
     print("── настоящее дерево читается, перепись непуста")
     try:
@@ -520,6 +617,19 @@ def self_test() -> int:
     print(f"утверждений исполнено: {asserts}")
     print("PASS: пик аккаунтов личности" if ok else "FAIL: пик аккаунтов личности")
     return 0 if ok else 1
+
+
+class _NoIdentitiesDecl:
+    """Объявление БЕЗ разбиения по личностям — фикстура предпосылки."""
+
+    CEREMONY_ONLY_ENV: dict[str, str] = {}
+
+
+class _EmptyBearersDecl:
+    """Личность объявлена, а предъявителей у неё ноль — фикстура предпосылки."""
+
+    CEREMONY_ONLY_ENV: dict[str, str] = {}
+    HUMAN_IDENTITIES: dict[str, tuple[str, ...]] = {"пустая": ()}
 
 
 class _EmptyDecl:
