@@ -71,7 +71,6 @@ var classifiedServices = []grpc.ServiceDesc{
 	computev1.InstanceService_ServiceDesc,
 	computev1.MachineTypeService_ServiceDesc,
 	computev1.InternalMachineTypeService_ServiceDesc,
-	computev1.InternalWatchService_ServiceDesc,
 }
 
 // rejectionHelperPrefix — префикс функций, которые ОТВЕРГАЮТ поле. Их тела

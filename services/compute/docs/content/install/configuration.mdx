@@ -72,7 +72,6 @@ fail-closed), `SSLMODE=require` для БД и boot-gate `REQUIRE_IAM`. Плей
 | `KACHO_COMPUTE_LIST_FILTER_TIMEOUT_MS` | Таймаут фильтрации |
 | `KACHO_COMPUTE_LIST_FILTER_CACHE_TTL_MS` / `..._MAX_ENTRIES` | Кэш решений фильтрации |
 | `KACHO_COMPUTE_FGA_REGISTER_DRAINER_ENABLED` | Включить drainer outbox регистрации owner-tuple |
-| `KACHO_COMPUTE_WATCH_MAX_STREAMS` | Лимит одновременных стримов `InternalWatchService.Watch` |
 
 :::note List-filter — CI-гейт
 Публичный `List<Resource>` обязан фильтровать выдачу через listauthz; в проде фильтрация

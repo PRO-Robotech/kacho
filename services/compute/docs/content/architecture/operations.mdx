@@ -57,17 +57,16 @@ flowchart TD
   tx --> ob["INSERT compute_outbox"]
   tx --> commit["COMMIT"]
   commit --> notify["trigger → pg_notify(compute_outbox)"]
-  notify --> watch["InternalWatchService.Watch (LISTEN)"]
-  watch --> peer["server-to-server консюмер"]
+  notify --> apply["восстановление наблюдаемого состояния"]
 ```
 
-## InternalWatchService
+## Кто читает журнал
 
-`InternalWatchService.Watch` (на internal-порту `:9091`) отдаёт поток событий outbox через
-LISTEN/NOTIFY: клиент получает `Event{sequenceNo, resourceKind, resourceId, eventType,
-payload, createdAt}`, при необходимости — с указанной точки (`from_sequence_no`). Это
-**server-to-server** механизм (не публикуется в api-gateway REST), для внутренних интеграций.
-Публичного Watch в API нет — tenant-клиенты используют поллинг.
+Журнал читает **сам сервис** — восстановление наблюдаемого состояния
+(`internal/repo/observed_state.go`). Подписки снаружи нет: серверный стрим
+`InternalWatchService` снят задачей #813, потому что подписчика у него не было ни одного
+дня. Публичного Watch в API нет и не планируется — клиенты поллят
+`OperationService.Get` и списки (см. конвенции продукта).
 
 ## Маршрутизация OperationService.Get
 

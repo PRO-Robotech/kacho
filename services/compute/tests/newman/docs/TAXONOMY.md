@@ -72,7 +72,7 @@
 
 | Зона | Причина | Альтернатива |
 |---|---|---|
-| Internal RPC (`:9091`) — `InternalWatchService`, `InternalDiskType/ZoneService` | Не публичный API | unit/integration; отдельная suite (вне scope newman v1) |
+| Internal RPC (`:9091`) — `InternalMachineTypeService`, `InternalRealizationService` | Не публичный API | unit/integration; отдельная suite (вне scope newman v1) |
 | `kms_key_id` в Disk/Image Create | Нет `kacho-kms` | `blocked:kacho-kms` issue; покрыть после реализации |
 | `os_product_ids` | Нет `kacho-marketplace` | `blocked:kacho-marketplace` |
 | `Instance.Relocate` | Нужен cross-zone disk move + cross-service оркестрация | `blocked` |

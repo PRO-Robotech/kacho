@@ -273,7 +273,7 @@ func runServe(cfg config.Config) error {
 	// что порт сверки существования живёт НА пуле, и принести его раньше значило бы
 	// принести порт, отвечающий «соединения нет». Открытие пула обратимо (`defer`
 	// выше) и дешевле ложной сверки.
-	desc, err := describe(cfg, logger, listFilter, bootGate, repo.NewExistenceProbe(pool), authzCache.Install, metricsAdapter.Registerer())
+	desc, err := describe(cfg, logger, bootGate, repo.NewExistenceProbe(pool), authzCache.Install, metricsAdapter.Registerer())
 	if err != nil {
 		return err
 	}
@@ -479,8 +479,7 @@ func runServe(cfg config.Config) error {
 				registerPublicServices(handler.PublicRegistrar(reg, productionMode), svcs, opsRepo, listFilter)
 			},
 			func(reg grpc.ServiceRegistrar) {
-				registerInternalServices(handler.InternalRegistrar(reg, productionMode),
-					svcs, pool, cfg.MigrateDSN(), logger, cfg.WatchMaxStreams, listFilter)
+				registerInternalServices(handler.InternalRegistrar(reg, productionMode), svcs)
 			},
 		)
 		if serr != nil {
@@ -663,12 +662,16 @@ func requireDBSSLMode(cfg config.Config) error {
 // Предмет стражи ШИРЕ публичных List'ов, хотя имя историческое. Под ней все RPC,
 // помеченные `ScopeFiltered` в `internal/check/permission_map.go`, — то есть те, у
 // которых per-RPC Check снят и сужение живёт на уровне данных. Для List'а страж —
-// вторая линия: под ним остаётся Check на проектном ярусе, поэтому выключенный фильтр
-// даёт over-show, но не полный обход. Для потока журнала изменений
-// (`InternalWatchService/Watch`) второй линии НЕТ по построению: запрос не называет ни
-// одного ресурса, единого объекта для одного вопроса не существует, и выключенный
-// фильтр означал бы отсутствие авторизации вовсе. Совпадение вердикта стражи и
-// способности потока открыться проверяется в обе стороны — `scope_filtered_boot_guard_test.go`.
+// вторая линия: под ним остаётся Check на проектном ярусе, поэтому выключение
+// даёт over-show, но не полный обход.
+//
+// Прежде здесь стоял случай, где второй линии НЕТ по построению, — поток журнала
+// изменений: его запрос не называл ни одного ресурса, единого объекта для одного
+// вопроса не существовало, и выключенный фильтр означал бы отсутствие авторизации
+// вовсе. Поток снят, поэтому у стражи сегодня остаются только List'ы, и
+// сказанное про «полного обхода не даёт» относится ко всем её подопечным.
+// Совпадение вердикта стражи и способности подопечных открыться проверяется в обе
+// стороны — `scope_filtered_boot
 //
 // Условия: master-switch включён (ListFilterEnabled=true), задан
 // authz-endpoint (AuthZIAMGRPCAddr непуст — иначе authzConn=nil → buildListFilter
@@ -1226,8 +1229,7 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*ownerregister.
 // (`internal/check/permission_map.go`), а для потока журнала изменений — сужение по
 // правам вызывающего на КАЖДУЮ отдаваемую строку. Сетевая политика была бы
 // эшелонированием поверх этого, а не заменой ему.
-func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int, vis *authzfilter.Narrower) {
-	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams, vis))
+func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services) {
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInternalRealizationServiceServer(srv, handler.NewInternalRealizationHandler(svcs.realization))
 	computev1.RegisterInternalNodeOwnershipServiceServer(srv, handler.NewInternalNodeOwnershipHandler(svcs.nodeOwnership))

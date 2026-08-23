@@ -12,7 +12,7 @@
 | Слои, границы сервиса, рёбра к соседям, поток запроса | `../../content/architecture/overview.mdx` |
 | Таблицы, FK, статусы, ID-префиксы, маппинг SQLSTATE, миграции | `../../content/architecture/data-model.mdx` |
 | State-машина Instance, предусловия, тексты ошибок | `../../content/architecture/instance-lifecycle.mdx` |
-| Модель Operation, outbox, `InternalWatchService` | `../../content/architecture/operations.mdx` |
+| Модель Operation, outbox, журнал изменений | `../../content/architecture/operations.mdx` |
 | AuthN/AuthZ, owner-tuple, фильтрация List, граница public/internal | `../../content/architecture/authz.mdx` |
 | Поверхность RPC, формат ошибок, `update_mask`, пагинация, фильтр | `../../content/api/overview.mdx` |
 | Поля и RPC ресурсов | `../../content/api/instance.mdx`, `../../content/api/machine-type.mdx` |
