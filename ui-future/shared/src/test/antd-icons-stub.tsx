@@ -89,6 +89,7 @@ export const TagsOutlined = Icon;
 export const TeamOutlined = Icon;
 export const UnlockOutlined = Icon;
 export const UserAddOutlined = Icon;
+export const UserDeleteOutlined = Icon;
 export const UserOutlined = Icon;
 export const WarningFilled = Icon;
 export const WarningOutlined = Icon;

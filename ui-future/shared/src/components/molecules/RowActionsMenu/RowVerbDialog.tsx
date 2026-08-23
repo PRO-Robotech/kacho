@@ -43,7 +43,10 @@ export function RowVerbDialog({ state, resourceId, projectId, onClose }: Props) 
     // Глаголы Kachō отвечают `Operation` (ban #9). Ответ без операции — не
     // «выполнено синхронно», а нарушение контракта: подтверждать нечем.
     expectOperation: true,
-    mutationFn: () => api.action(state.path),
+    // Тело передаётся, когда глагол его требует: у исключения из аккаунта
+    // предмет — ПАРА, и вторая её половина едет телом (см. `RowVerbState.body`).
+    // `undefined` оставляет прежнюю форму запроса без тела дословно.
+    mutationFn: () => api.action(state.path, state.body),
     onSucceeded: () => {
       invalidate(resourceId, projectId);
       onClose();

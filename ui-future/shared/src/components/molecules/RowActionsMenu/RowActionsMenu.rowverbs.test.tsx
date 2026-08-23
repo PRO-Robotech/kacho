@@ -44,6 +44,10 @@ jest.unstable_mockModule("@shared/contexts/AuthContext", () => ({
 }));
 
 const { REGISTRY } = await import("@shared/lib/resource-registry");
+// Хранилище области — НАСТОЯЩЕЕ, а не дублёр: предмет утверждений ниже в том,
+// что пункт исключения читает выбранный аккаунт оттуда же, откуда его читают
+// страницы. Дублёр доказывал бы, что работает дублёр.
+const { contextApi } = await import("@shared/lib/context-store");
 const { RowActionsMenu, resourceHasRowActions } = await import("./RowActionsMenu");
 
 // Пункт меню — `<li role="menuitem">`, как у настоящего antd, а не кнопка:
@@ -83,6 +87,10 @@ beforeEach(() => {
   apiAction.mockReset();
   apiAction.mockResolvedValue({ operation: { id: "op-1", done: false } });
   selfUserId.current = undefined;
+  // Область сбрасывается МЕЖДУ пробами: хранилище общее на весь файл, и
+  // аккаунт, оставшийся от соседа, сделал бы «пункта нет без области» зелёным
+  // по случайности порядка.
+  contextApi.setAccount(null);
 });
 
 describe("действие-глагол на строке пользователя", () => {
@@ -148,14 +156,67 @@ describe("действие-глагол на строке пользовател
     renderUsersMenu({ id: "usr-1", email: "a@kacho.local", invite_status: "ACTIVE" });
     fireEvent.click(itemByLabel("Запретить участие")!);
     fireEvent.click(screen.getByRole("button", { name: "Запретить" }));
-    await waitFor(() => expect(apiAction).toHaveBeenCalledWith("/iam/v1/users/usr-1:block"));
+    // Второй довод — `undefined`, и он утверждается ЯВНО (#1127). У глагола
+    // появилась возможность нести тело; у ЭТОГО глагола тела нет, и «нет тела»
+    // обязано быть сказано, а не подразумеваться: `toHaveBeenCalledWith` с одним
+    // доводом покраснел бы, а с двумя — закрепляет, что запрет не начал слать
+    // ничего лишнего.
+    await waitFor(() => expect(apiAction).toHaveBeenCalledWith("/iam/v1/users/usr-1:block", undefined));
   });
 
   it("возврат участия уходит своим глаголом", async () => {
     renderUsersMenu({ id: "usr-2", email: "b@kacho.local", invite_status: "BLOCKED" });
     fireEvent.click(itemByLabel("Вернуть участие")!);
     fireEvent.click(screen.getByRole("button", { name: "Вернуть" }));
-    await waitFor(() => expect(apiAction).toHaveBeenCalledWith("/iam/v1/users/usr-2:unblock"));
+    await waitFor(() => expect(apiAction).toHaveBeenCalledWith("/iam/v1/users/usr-2:unblock", undefined));
+  });
+
+  // ── исключение из аккаунта (#1127) ─────────────────────────────────────────
+  //
+  // ПОЧЕМУ ЭТО ВТОРОЙ ГЛАГОЛ, А НЕ ПЕРЕНАЦЕЛЕННЫЙ ПЕРВЫЙ. Запрет выше выключает
+  // человеку вход НА ПЛАТФОРМУ (одна строка личности на все его аккаунты) и
+  // требует прав администратора облака; исключение снимает строку ЧЛЕНСТВА в
+  // названном аккаунте и остаётся распорядителю аккаунта. Разные предметы,
+  // разные адресаты, разные отношения — значит и пункта два.
+  //
+  // ПАРА ОБЯЗАТЕЛЬНА: пункт ПОЯВЛЯЕТСЯ, когда область выбрана, и ЕГО НЕТ, когда
+  // не выбрана. Без второй половины «пункт есть» зеленело бы и на реестре,
+  // который показывает его всегда, — а такой пункт отправил бы запрос без
+  // половины предмета.
+  it("исключение из аккаунта предлагается, когда область выбрана", () => {
+    contextApi.setAccount({ id: "acc-9", name: "acme" });
+    renderUsersMenu({ id: "usr-1", email: "a@kacho.local", invite_status: "ACTIVE" });
+    expect(menuLabels()).toContain("Исключить из аккаунта");
+    // Контроль соседа: запрет остаётся рядом и своим предметом.
+    expect(menuLabels()).toContain("Запретить участие");
+  });
+
+  it("без выбранной области пункта исключения НЕТ вовсе", () => {
+    renderUsersMenu({ id: "usr-1", email: "a@kacho.local", invite_status: "ACTIVE" });
+    expect(menuLabels()).not.toContain("Исключить из аккаунта");
+  });
+
+  it("исключение уходит своим глаголом И НЕСЁТ АККАУНТ ТЕЛОМ", async () => {
+    // Тело — не оформление: предмет исключения ПАРА, у человека аккаунтов
+    // бывает несколько, и запрос без второй половины вывел бы его не оттуда.
+    contextApi.setAccount({ id: "acc-9", name: "acme" });
+    renderUsersMenu({ id: "usr-1", email: "a@kacho.local", invite_status: "ACTIVE" });
+    fireEvent.click(itemByLabel("Исключить из аккаунта")!);
+    fireEvent.click(screen.getByRole("button", { name: "Исключить" }));
+    await waitFor(() =>
+      expect(apiAction).toHaveBeenCalledWith("/iam/v1/users/usr-1:removeFromAccount", { accountId: "acc-9" }),
+    );
+  });
+
+  it("подтверждение исключения называет цену и НЕ обещает того, чего действие не делает", () => {
+    contextApi.setAccount({ id: "acc-9", name: "acme" });
+    renderUsersMenu({ id: "usr-1", email: "a@kacho.local", invite_status: "ACTIVE" });
+    fireEvent.click(itemByLabel("Исключить из аккаунта")!);
+    const text = screen.getByRole("dialog").textContent ?? "";
+    // Границу действия текст обязан назвать: личность сохраняется.
+    expect(text).toMatch(/личност/i);
+    // И порядок, который держит база: пока права есть, край откажет.
+    expect(text).toMatch(/прав/i);
   });
 });
 
