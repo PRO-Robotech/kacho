@@ -323,16 +323,21 @@ func TestCredentialCeilingAnchor_CarrierIsNamedTheSameEverywhere(t *testing.T) {
 		"ограничение носителя не найдено ни в одной миграции — предикат мерит форму записи, а не факт")
 	require.NotEmpty(t, accepted)
 
-	// Носители, которые называет триггер списания: второй аргумент.
-	reTriggerCarrier := regexp.MustCompile(`kacho_quota_count\(\s*'([a-zA-Z0-9.]+)'\s*,\s*'([a-zA-Z0-9.]+)'`)
-	byKind := map[string]string{}
+	// Виды, у которых списание СТОИТ: первый аргумент вызова.
+	//
+	// Носитель вторым аргументом здесь НЕ передаётся и передаваться не должен:
+	// он выводится из вида (его родительская часть), а строка в кавычках рядом с
+	// видом неотличима от вида для гейтов дерева, читающих аргументы списания, —
+	// два таких гейта на этом и споткнулись.
+	reTriggerKind := regexp.MustCompile(`kacho_quota_count\(\s*'([a-zA-Z0-9.]+)'`)
+	chargedKinds := map[string]bool{}
 	for _, name := range names {
 		flat := reSpace.ReplaceAllString(bodies[name], " ")
-		for _, m := range reTriggerCarrier.FindAllStringSubmatch(flat, -1) {
-			byKind[m[1]] = m[2]
+		for _, m := range reTriggerKind.FindAllStringSubmatch(flat, -1) {
+			chargedKinds[m[1]] = true
 		}
 	}
-	require.NotEmpty(t, byKind, "ни один триггер не называет носителя вторым аргументом")
+	require.NotEmpty(t, chargedKinds, "ни один триггер не называет вида — предикат мерит форму, а не факт")
 
 	checked := 0
 	for _, e := range domain.CountableEntries() {
@@ -343,18 +348,21 @@ func TestCredentialCeilingAnchor_CarrierIsNamedTheSameEverywhere(t *testing.T) {
 		require.Truef(t, accepted[carrier],
 			"каталог считает вид %q в носителе %q, а ограничение схемы такого значения НЕ ПРИНИМАЕТ: "+
 				"строка учёта не вставится вовсе, и потолок молча перестанет действовать", e.Kind, carrier)
-		require.Equalf(t, carrier, byKind[string(e.Kind)],
-			"каталог называет носителем вида %q значение %q, а триггер списания — %q: "+
-				"списание и чтение разойдутся по строкам, и ни одна сторона этого не увидит",
-			e.Kind, carrier, byKind[string(e.Kind)])
+		require.Truef(t, chargedKinds[string(e.Kind)],
+			"каталог объявляет вид %q, а триггера списания с таким именем в дереве нет: "+
+				"величина задаётся и не применяется никогда", e.Kind)
+		require.Equalf(t, string(e.Kind.ParentKind()), carrier,
+			"носитель вида %q не совпадает с его родительской частью, а списание ВЫВОДИТ "+
+				"носитель именно из неё: строка учёта заведётся под одним значением, "+
+				"а списание будет искать её под другим", e.Kind)
 		checked++
 	}
 	require.NotZero(t, checked,
 		"ни один вид не опирается на подчинённый ресурс — проба стала вакуумной и должна "+
 			"сниматься вместе со своим предметом, а не держаться зелёной")
 
-	t.Logf("перепись: миграций прочитано %d, объявлений ограничения носителя %d, принимаемых значений %d, видов сверено %d",
-		read, declarations, len(accepted), checked)
+	t.Logf("перепись: миграций прочитано %d, объявлений ограничения носителя %d, принимаемых значений %d, видов со списанием %d, видов сверено %d",
+		read, declarations, len(accepted), len(chargedKinds), checked)
 }
 
 // migrationNamesInVersionOrder — имена миграций в том порядке, в каком их

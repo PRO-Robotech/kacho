@@ -152,7 +152,11 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     v_kind         text := TG_ARGV[0];
-    v_carrier_type text := TG_ARGV[1];
+    -- Носитель выводится из вида по тому же правилу, что и в списании: у
+    -- вложенного вида он ЕСТЬ его родительская часть. Два места об одном
+    -- предмете здесь разошлись бы молча — строка учёта завелась бы под одним
+    -- носителем, а списание искало бы её под другим.
+    v_carrier_type text := substring(TG_ARGV[0] from '^(.*)\.[^.]+$');
     v_account      text := '';
 BEGIN
     IF TG_OP = 'DELETE' THEN
@@ -201,8 +205,24 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     v_kind         text := TG_ARGV[0];
-    v_carrier_type text := COALESCE(TG_ARGV[1], '');
-    v_carrier_col  text := COALESCE(TG_ARGV[2], '');
+    -- Носитель ВЫВОДИТСЯ из вида, а не передаётся отдельным аргументом.
+    --
+    -- У вложенного вида носитель ЕСТЬ его родительская часть — этого требует
+    -- гейт каталога от КАЖДОЙ записи, поэтому вывод здесь не догадка, а чтение
+    -- того же правила. Отдельный аргумент был бы вторым местом об одном
+    -- предмете и разошёлся бы с каталогом молча.
+    --
+    -- Плюс цена, замеренная сразу: носитель, стоящий в объявлении триггера
+    -- строкой в кавычках, неотличим от ВИДА для гейтов дерева, которые читают
+    -- аргументы списания. Два таких гейта объявили `iam.user` и
+    -- `iam.serviceAccount` «получившими производителя списания» — то есть форма
+    -- записи начала подменять факт.
+    v_carrier_type text := CASE
+        WHEN array_length(string_to_array(TG_ARGV[0], '.'), 1) = 3
+        THEN substring(TG_ARGV[0] from '^(.*)\.[^.]+$')
+        ELSE ''
+    END;
+    v_carrier_col  text := COALESCE(TG_ARGV[1], '');
     v_row          jsonb;
     v_owner        text;
     v_identity     text;
@@ -424,25 +444,25 @@ DROP TRIGGER IF EXISTS users_quota_carrier_credential ON kacho_iam.users;
 CREATE TRIGGER users_quota_carrier_credential
     AFTER INSERT OR DELETE ON kacho_iam.users
     FOR EACH ROW EXECUTE FUNCTION kacho_iam.kacho_quota_carrier_lifecycle(
-        'iam.user.credential', 'iam.user');
+        'iam.user.credential');
 
 DROP TRIGGER IF EXISTS service_accounts_quota_carrier_credential ON kacho_iam.service_accounts;
 CREATE TRIGGER service_accounts_quota_carrier_credential
     AFTER INSERT OR DELETE ON kacho_iam.service_accounts
     FOR EACH ROW EXECUTE FUNCTION kacho_iam.kacho_quota_carrier_lifecycle(
-        'iam.serviceAccount.credential', 'iam.serviceAccount');
+        'iam.serviceAccount.credential');
 
 DROP TRIGGER IF EXISTS user_oauth_clients_quota_count ON kacho_iam.user_oauth_clients;
 CREATE TRIGGER user_oauth_clients_quota_count
     AFTER INSERT OR DELETE ON kacho_iam.user_oauth_clients
     FOR EACH ROW EXECUTE FUNCTION kacho_iam.kacho_quota_count(
-        'iam.user.credential', 'iam.user', 'user_id');
+        'iam.user.credential', 'user_id');
 
 DROP TRIGGER IF EXISTS sa_oauth_clients_quota_count ON kacho_iam.service_account_oauth_clients;
 CREATE TRIGGER sa_oauth_clients_quota_count
     AFTER INSERT OR DELETE ON kacho_iam.service_account_oauth_clients
     FOR EACH ROW EXECUTE FUNCTION kacho_iam.kacho_quota_count(
-        'iam.serviceAccount.credential', 'iam.serviceAccount', 'sva_id');
+        'iam.serviceAccount.credential', 'sva_id');
 -- +goose StatementEnd
 
 -- +goose Down
