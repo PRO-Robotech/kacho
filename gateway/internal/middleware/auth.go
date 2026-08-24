@@ -160,6 +160,12 @@ type AuthInterceptor struct {
 	// его вовсе). Состояние означает «пол на этой полосе не удовлетворить
 	// ничем», и оно не исчезает само — см. auth_session_stepup.go.
 	sessionAssuranceUnknown *introspectionFailureReporter
+	// basicAssuranceUnknown — то же окно доклада для полосы базового
+	// удостоверения: величина уровня уехала с оси каталога, и полоса больше не
+	// может поручиться ни за один уровень (auth_basic_stepup.go). Окно своё, а
+	// не общее с полосой сессии: диагнозы и починки у них разные, а слитое окно
+	// подавляло бы первый доклад одной из них.
+	basicAssuranceUnknown *introspectionFailureReporter
 	// stepUp / stepUpLookup / stepUpRoutes — the per-RPC authentication floor,
 	// applied on this always-running layer rather than behind a feature toggle.
 	// All three or none; see auth_stepup.go for why the floor cannot live where
@@ -263,6 +269,9 @@ func (a *AuthInterceptor) WithKratos(c *KratosClient) *AuthInterceptor {
 // это и есть посадка до появления авторитета, а не мягкий проход.
 func (a *AuthInterceptor) WithBasicCredentialLane(l *BasicCredentialLane) *AuthInterceptor {
 	a.basicLane = l
+	if l != nil {
+		a.basicAssuranceUnknown = newIntrospectionFailureReporter(0, nil)
+	}
 	return a
 }
 
@@ -381,12 +390,27 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 			// неспособность установить его состояние.
 			return nil, status.Error(codes.Unavailable, "credential state could not be established")
 		case err != nil:
-			return nil, status.Error(codes.Unauthenticated, "credential refused")
+			return nil, status.Error(codes.Unauthenticated, basicCredentialRefusalText())
+		}
+		// ДОСТАТОЧНО ЛИ СИЛЬНО АУТЕНТИФИЦИРОВАН ВЫЗЫВАЮЩИЙ ДЛЯ ЭТОГО ГЛАГОЛА
+		// (#1215). Спрашивается ровно там же, где на прочих полосах, — ДО
+		// записи личности, чтобы не прошедший пол запрос не доехал ни до прав,
+		// ни до backend. Освобождения этой полосы by design нет: пол есть
+		// свойство ВСЯКОГО обращения, а не свойство того, чем его подписали.
+		as := a.basicCredentialAssurance(cred, fullMethod)
+		if suErr := a.stepUpVerdictGRPC(fullMethod, as, stepUpLaneBasic); suErr != nil {
+			// Отказ рендерится ЕДИНЫМ отказом полосы — байт-в-байт тем же, что
+			// на негодном секрете. Различимый подтверждал бы годность
+			// предъявленного, а церемонии, которая подняла бы уровень, у этой
+			// полосы нет (auth_basic_stepup.go, разбор оракула).
+			return nil, status.Error(codes.Unauthenticated, basicCredentialRefusalText())
 		}
 		ctx = a.injectPrincipal(ctx, cred.PrincipalType, cred.PrincipalID, cred.DisplayName)
 		// Уровень удостоверения — вместе с принципалом и по той же причине
-		// (см. развёрнутый разбор у REST-половины полосы).
-		return withBasicCredentialLevel(ctx, cred.AuthenticationLevel), nil
+		// (см. развёрнутый разбор у REST-половины полосы). Едет ОТОБРАЖЁННАЯ на
+		// ось величина, а не сырая константа: второй замок обязан читать то же
+		// значение, по которому вынес вердикт первый.
+		return withBasicCredentialLevel(ctx, as.ACR), nil
 	}
 
 	// Hydra-issued RS256/ES256/EdDSA access JWT → validate via JWKS
@@ -907,7 +931,25 @@ func (a *AuthInterceptor) tryBasicCredential(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "credential state could not be established", http.StatusServiceUnavailable)
 		return true
 	case err != nil:
-		writeHTTPUnauthorized(w, "credential refused")
+		writeHTTPUnauthorized(w, basicCredentialRefusalText())
+		return true
+	}
+	// ДОСТАТОЧНО ЛИ СИЛЬНО АУТЕНТИФИЦИРОВАН ВЫЗЫВАЮЩИЙ ДЛЯ ЭТОГО ОБРАЩЕНИЯ
+	// (#1215). Спрашивается ДО записи личности — ровно там же и по тем же
+	// причинам, что на полосах сессии и предъявителя.
+	//
+	// До #1215 этого вопроса здесь не было вовсе, при том что полоса уровень
+	// СТАВИЛА: заголовок для второго замка выставлялся, а первый замок не
+	// спрашивался. Наблюдаемое следствие — глагол с полом «2» выполнялся по
+	// базовому секрету уровня «1», то есть предъявительское удостоверение
+	// чеканило себе смену вопреки объявлению `BasicCredentialLevel`.
+	as := a.basicCredentialAssurance(cred, r.URL.Path)
+	if _, suErr := a.stepUpVerdictHTTP(r, as, stepUpLaneBasic); suErr != nil {
+		// Отказ рендерится ЕДИНЫМ отказом полосы, а не вызовом RFC 9470 —
+		// байт-в-байт тем же ответом, что на негодном секрете. Разбор — в
+		// auth_basic_stepup.go: различимый исход подтверждал бы годность
+		// предъявленного по глаголу, который вызывающему недоступен.
+		writeHTTPUnauthorized(w, basicCredentialRefusalText())
 		return true
 	}
 	setPrincipalHeaders(r, cred.PrincipalType, cred.PrincipalID, cred.DisplayName)
@@ -921,8 +963,14 @@ func (a *AuthInterceptor) tryBasicCredential(w http.ResponseWriter, r *http.Requ
 	// удостоверение, ни отозвать существующее (обоим глаголам объявлен порог
 	// «2»), но обычное чтение с порогом «1» ему ДОСТУПНО. Долгоживущий
 	// предъявительский секрет не должен уметь чеканить себе смену.
-	r.Header.Set(principalmeta.HeaderTokenACR, cred.AuthenticationLevel)
-	r.Header.Set(principalmeta.HeaderGRPCMetaTokenACR, cred.AuthenticationLevel)
+	//
+	// Едет ОТОБРАЖЁННАЯ на ось каталога величина, а не сырая константа полосы:
+	// второй замок обязан читать то же значение, по которому вынес вердикт
+	// первый. Съехавшая с оси величина приезжает сюда пустой строкой — общее
+	// правило ранжирует её нулём, и внутренний замок отказывает по той же
+	// причине, по которой отказал бы внешний.
+	r.Header.Set(principalmeta.HeaderTokenACR, as.ACR)
+	r.Header.Set(principalmeta.HeaderGRPCMetaTokenACR, as.ACR)
 	next.ServeHTTP(w, r)
 	return true
 }
