@@ -136,6 +136,7 @@ deploy/tests/helm/admin-hop-transport-test.sh
 deploy/tests/helm/config-rollout-binding-test.sh
 deploy/tests/helm/geo-authz-edge-armed-test.sh
 deploy/tests/helm/image-rollout-binding-test.sh
+deploy/tests/helm/kratos-selfservice-ui-hardening-test.sh
 deploy/tests/helm/makefile-destructive-guarded-test.sh
 deploy/tests/helm/neighbour-address-form-test.sh
 deploy/tests/helm/networkpolicy-egress-test.sh
