@@ -1056,6 +1056,83 @@ def _assert_delete_operation_outcome(steps: List[Step]) -> List[Step]:
     return out
 
 
+_ENV_WRITE_TPL = r"environment\.set\(\s*['\"]%s['\"]\s*,"
+_ENV_CLEAR_TPL = r"environment\.unset\(\s*['\"]%s['\"]\s*\)"
+_ENV_EMPTY_TPL = r"environment\.set\(\s*['\"]%s['\"]\s*,\s*(''|\"\")\s*\)"
+
+
+def _writes_env(code: str, var: str) -> bool:
+    return re.search(_ENV_WRITE_TPL % re.escape(var), code) is not None
+
+
+def _clears_env(code: str, var: str) -> bool:
+    """Снятие имени — либо `unset`, либо присвоение ПУСТОЙ строки.
+
+    Обе формы решают одну задачу: устаревшее значение не переживает шаг. Пустая
+    строка — законная запись помощника синхронного отказа: имя остаётся
+    ОПРЕДЕЛЁННЫМ, и страж неразрешённой подстановки не роняет опрос там, где
+    отсутствия операции и ждали.
+    """
+    return (re.search(_ENV_CLEAR_TPL % re.escape(var), code) is not None
+            or re.search(_ENV_EMPTY_TPL % re.escape(var), code) is not None)
+
+
+def _reset_captured_operation_id(steps: List[Step]) -> List[Step]:
+    """Захват идентификатора операции — ЗАМЕНА, а не дозапись: имя снимается первым.
+
+    ЧТО ИНАЧЕ ПРОИСХОДИТ. Имя, которое читает следующий опрос, пишется телом
+    ответа мутации. У ОТВЕРГНУТОЙ мутации тела с `id` нет — запись не
+    выполняется, и в имени остаётся значение ПРЕДЫДУЩЕЙ операции. Опрос уезжает
+    на чужую, давно завершённую операцию: `done === true` держится, зелёный
+    приходит быстро и уверенно, а мутация, ради которой кейс написан, не
+    проверена вовсе.
+
+    ПОЧЕМУ ПРОХОДОМ ПО ШАГАМ, А НЕ ТОЛЬКО В `save_from_response`. Помощник
+    снятие уже делает — но захват в дереве пишут и РУКАМИ, прямо в кейсе
+    (`pm.environment.set('opId', pm.response.json().id)`). Требование,
+    предъявленное только помощнику, обходится тем, что помощника не позвали, и
+    обходится молча. Проход задаёт ТОТ ЖЕ вопрос, что гейт
+    `deploy/scripts/assert-delete-operation-outcome.py`, и по тому же признаку:
+    имя берётся из адреса опроса, а не из соглашения об именовании — общий
+    `opId` в дереве не единственный, кейсы заводят собственные имена, и часть их
+    не оканчивается на `OpId` (`_opGetAnon_opId`, `_igBindAnchorOp`).
+
+    ПРЕДМЕТ — ЛЮБАЯ МУТАЦИЯ, НЕ ТОЛЬКО УДАЛЕНИЕ. Подмена чужой операцией
+    происходит от отказа захвата, а не от глагола: перепись по дереву на
+    1577829c7 дала 205 таких цепочек — DELETE 1, PATCH 18, POST 186.
+
+    КУДА ВСТАВЛЯЕТСЯ. В начало того скрипта, где стоит сам захват: снятие после
+    захвата было бы не снятием, а стиранием только что захваченного.
+    """
+    out = list(steps)
+    chains: Dict[int, List[int]] = {}
+    subject: Optional[int] = None
+    for idx, st in enumerate(out):
+        if st.method == "GET" and _OP_POLL_PATH.search(st.path):
+            if subject is not None:
+                chains.setdefault(subject, []).append(idx)
+            continue
+        if st.method in _MUTATION_METHODS:
+            subject = idx
+    for sidx, polls in chains.items():
+        m = _OP_POLL_PATH.search(out[polls[0]].path)
+        if not m:
+            continue
+        var = m.group(1)
+        pre = _strip_js_comments("\n".join(out[sidx].pre_script))
+        test = _strip_js_comments("\n".join(out[sidx].test_script))
+        if not (_writes_env(pre, var) or _writes_env(test, var)):
+            continue
+        if _clears_env(pre, var) or _clears_env(test, var):
+            continue
+        reset = [f"pm.environment.unset({js_str(var)});"]
+        if _writes_env(pre, var):
+            out[sidx] = replace(out[sidx], pre_script=reset + list(out[sidx].pre_script))
+        else:
+            out[sidx] = replace(out[sidx], test_script=reset + list(out[sidx].test_script))
+    return out
+
+
 def _js_code_and_literals(src: str):
     """Разложить скрипт на ИСПОЛНЯЕМУЮ часть и значения строковых литералов.
 
@@ -1487,7 +1564,7 @@ def case_to_postman(case: Case) -> Dict:
         "description": " | ".join(tags),
         "item": [step_to_postman(s) for s in
                  _assert_published_id_outcome(
-                     _assert_delete_operation_outcome(_wrap_own_fresh_reads(case.steps)))],
+                     _reset_captured_operation_id(_assert_delete_operation_outcome(_wrap_own_fresh_reads(case.steps))))],
     }
 
 
