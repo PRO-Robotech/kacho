@@ -31,39 +31,42 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 DEV="$UMBRELLA/values.dev.yaml"
 TMPL="templates/networkpolicy-datastore.yaml"
-N=0
-fail() { echo "FAIL: $1"; exit 1; }
-ok() { N=$((N + 1)); }
 
-# yq MUST be mikefarah v4. On many machines /usr/bin/yq is the python jq-wrapper
-# of the SAME NAME: its filter syntax is incompatible, so it errors to stderr and
-# prints NOTHING on stdout. Assertions shaped like `[ -z "$(yq ... 2>/dev/null)" ]`
-# then pass VACUOUSLY — the check reports success having verified nothing at all.
-# That false-green is the exact class these hardening tests exist to prevent, so
-# detect the impostor explicitly instead of trusting `command -v`.
-command -v yq >/dev/null 2>&1 || fail "yq not installed (mikefarah yq v4 required)"
-# Сравнение — БЕЗ трубы: `… | grep -q` под `set -o pipefail` возвращает ОТКАЗ
-# НА СОВПАДЕНИИ (grep выходит по первому попаданию, писатель получает SIGPIPE,
-# и `pipefail` поднимает ЕГО статус до статуса конвейера). Задача #658.
-YQ_VER="$(yq --version 2>&1 || true)"
-[[ "${YQ_VER,,}" == *mikefarah* ]] || fail \
-  "wrong 'yq' on PATH ($(command -v yq)): '$(yq --version 2>&1 | head -1)'. \
-mikefarah yq v4 is required — the python-yq jq wrapper emits empty output on these \
-filters, which would make the assertions below pass without checking anything."
+# ТРИ ИСХОДА (0 зелено · 1 находка о дереве · 2 условие не создано) — общей
+# реализацией на весь каталог. До #1195 здесь были ОБЕ половины одного дефекта:
+# `ON=$(render …)` под `set -e` убивал прогон молча (код 1, ноль байт), а
+# секция 1 — ОТРИЦАНИЕ «по умолчанию не рендерится ничего» — до него проходила
+# ВАКУУМНО, потому что `render || true` не отличал пустой успешный рендер от
+# отказа helm: на дереве без собранных зависимостей не рендерится ВООБЩЕ ничто.
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$(dirname "$0")/outcome.sh"
+EXPECTED_ASSERTIONS=7
 
+require_helm
+require_mikefarah_yq
+
+[ -f "$DEV" ] || fatal "values.dev.yaml нет на диске ($DEV)"
+
+# render [extra helm args...] — результат в $HELM_OUT. Отказ рендера — код 2
+# плюс ТЕКСТ helm, а не «пусто» и не молчаливая смерть под `set -e`.
 render() {
-  helm template kacho-umbrella "$UMBRELLA" -f "$DEV" "$@" \
-    --show-only "$TMPL" 2>/dev/null
+  helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" "$@" --show-only "$TMPL"
+  render_or_fatal "values.dev.yaml → $TMPL${*:+ [$*]}"
 }
 
 # ── 1. Default-off: nothing renders ──────────────────────────────────────────
-OFF=$(render || true)
+# ОТРИЦАНИЕ, и его положительный контроль — секция 2 ниже: тот же рендер с
+# включённой ручкой ОБЯЗАН дать непустой результат. Без пары «по умолчанию
+# пусто» неотличимо от «пусто всегда».
+render
+OFF="$HELM_OUT"
 [ -z "$(echo "$OFF" | yq 'select(.kind == "NetworkPolicy") | .metadata.name' 2>/dev/null)" ] \
   || fail "datastore NetworkPolicy rendered while networkPolicy.datastore.enabled=false"
 ok
 
 # ── 2. Opt-in: one Ingress NetworkPolicy per pg instance ─────────────────────
-ON=$(render --set networkPolicy.datastore.enabled=true)
+render --set networkPolicy.datastore.enabled=true
+ON="$HELM_OUT"
 [ -n "$ON" ] || fail "no datastore NetworkPolicy rendered with datastore.enabled=true"
 
 # every rendered doc is a NetworkPolicy scoped to a single pg pod on :5432, ingress-only
@@ -97,4 +100,4 @@ check_instance pg-iam "app=kacho-iam"
 check_instance pg-geo "app=kacho-geo"
 check_instance pg-nlb "app=kacho-nlb"
 
-echo "$SCRIPT: all green ($N assertions)"
+outcome_verdict "профилей прочитано: 1 (dev); экземпляров pg осмотрено: 5"

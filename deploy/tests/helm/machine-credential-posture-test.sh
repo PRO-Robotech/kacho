@@ -69,9 +69,16 @@ DEV="$UMBRELLA/values.dev.yaml"
 IAM_TPL="$UMBRELLA/charts/kacho-iam/templates/deployment.yaml"
 GW_TPL="$REPO_ROOT/../gateway/deploy/templates/deployment.yaml"
 GW_VALUES="$REPO_ROOT/../gateway/deploy/values.yaml"
-N=0
-fail() { echo "FAIL: $1"; exit 1; }
-ok() { N=$((N + 1)); }
+
+# ТРИ ИСХОДА (0 зелено · 1 находка о дереве · 2 условие не создано) — общей
+# реализацией на весь каталог. До #1195 отказ helm по причине, НЕ относящейся к
+# предмету проверки (зависимости умбреллы не собраны), убивал прогон на первом
+# же `HYDRA_CM_PROD="$(render_only …)"` под `set -e`, НЕ СКАЗАВ НИЧЕГО: код 1,
+# ноль байт вывода — при том что этот файл специально написан так, чтобы
+# «ноль находок» было отличимо от «ноль прочитанного».
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$(dirname "$0")/outcome.sh"
+EXPECTED_ASSERTIONS=6
 
 # Перечень профилей ВЫВОДИТСЯ из каталога, а не выписывается: выписанный список
 # разошёлся бы с деревом молча, и разошёлся бы в сторону непроверенного профиля.
@@ -81,7 +88,7 @@ PROFILE_DIR="${MACHINE_POSTURE_PROFILE_DIR:-$UMBRELLA}"
 PROFILES=()
 while IFS= read -r _p; do PROFILES+=("$_p"); done < <(ls -1 "$PROFILE_DIR"/values*.yaml 2>/dev/null)
 [ "${#PROFILES[@]}" -gt 0 ] \
-  || fail "no values*.yaml under $PROFILE_DIR — a census over zero profiles is not a green verdict"
+  || fatal "no values*.yaml under $PROFILE_DIR — a census over zero profiles is not a green verdict (условие не создано, не находка о дереве)"
 
 # bind_of / translated_of — ОДИН предикат на обе секции. Две копии одного
 # условия разошлись бы там, где расхождение не видно.
@@ -95,23 +102,18 @@ enforce_of()    { yq '.["api-gateway"].authn.requireMachineTokenBinding // false
 # return differently-quoted output and the gate would verify nothing. That
 # false-green is precisely the class this gate exists to prevent, so detect the
 # impostor explicitly rather than trusting `command -v`.
-command -v yq >/dev/null 2>&1 || fail "yq not installed (mikefarah yq v4 required)"
-# Сравнение — БЕЗ трубы: `… | grep -q` под `set -o pipefail` возвращает ОТКАЗ
-# НА СОВПАДЕНИИ (grep выходит по первому попаданию, писатель получает SIGPIPE,
-# и `pipefail` поднимает ЕГО статус до статуса конвейера). Задача #658.
-YQ_VER="$(yq --version 2>&1 || true)"
-[[ "${YQ_VER,,}" == *mikefarah* ]] || fail \
-  "wrong 'yq' on PATH ($(command -v yq)): '$(yq --version 2>&1 | head -1)'. \
-mikefarah yq v4 is required — the python-yq jq wrapper's output would make the \
-assertions below pass without checking anything."
+require_helm
+require_mikefarah_yq
+[ -f "$PROD" ]    || fatal "values.prod.yaml нет на диске ($PROD)"
+[ -f "$DEV" ]     || fatal "values.dev.yaml нет на диске ($DEV)"
+[ -f "$IAM_TPL" ] || fatal "шаблона kacho-iam нет на диске ($IAM_TPL)"
+[ -f "$GW_TPL" ]  || fatal "шаблона api-gateway нет на диске ($GW_TPL)"
 
-[ -f "$PROD" ]    || fail "values.prod.yaml not found at $PROD"
-[ -f "$DEV" ]     || fail "values.dev.yaml not found at $DEV"
-[ -f "$IAM_TPL" ] || fail "kacho-iam deployment template not found at $IAM_TPL"
-[ -f "$GW_TPL" ]  || fail "api-gateway deployment template not found at $GW_TPL"
-
+# render_only <values> <show-only-template> — результат в $HELM_OUT.
+# Отказ рендера — код 2 плюс ТЕКСТ helm, а не молчаливая смерть под `set -e`.
 render_only() {
-  helm template kacho-umbrella "$UMBRELLA" -f "$1" --show-only "$2" 2>/dev/null
+  helm_try kacho-umbrella "$UMBRELLA" -f "$1" --show-only "$2"
+  render_or_fatal "$(basename "$1") → $2"
 }
 
 # ── 1. PROD access-token TTL is explicit and short ───────────────────────────
@@ -124,7 +126,7 @@ case "$prod_at" in
   *m) ;; # minutes — short-lived, as documented
   *)  fail "prod: access_token TTL='$prod_at' — the documented production lifetime is minutes, not $prod_at" ;;
 esac
-HYDRA_CM_PROD="$(render_only "$PROD" charts/hydra/templates/configmap.yaml)"
+render_only "$PROD" charts/hydra/templates/configmap.yaml; HYDRA_CM_PROD="$HELM_OUT"
 [ -n "$HYDRA_CM_PROD" ] || fail "hydra configmap did not render in prod profile"
 any_line_matches "$HYDRA_CM_PROD" "access_token: *$prod_at" \
   || fail "prod: the rendered Hydra config does not carry access_token: $prod_at"
@@ -133,7 +135,7 @@ ok
 # ── 2. PROD machine-credential lifetime envs ─────────────────────────────────
 # The SA key IS the machine's credential; machine principals are exempt from
 # step-up, which holds only while the credential is time-bounded.
-IAM_PROD="$(render_only "$PROD" charts/kacho-iam/templates/deployment.yaml)"
+render_only "$PROD" charts/kacho-iam/templates/deployment.yaml; IAM_PROD="$HELM_OUT"
 [ -n "$IAM_PROD" ] || fail "kacho-iam deployment did not render in prod profile"
 [[ "$IAM_PROD" == *'KACHO_IAM_SAKEY_DEFAULT_TTL'* ]] \
   || fail "prod: KACHO_IAM_SAKEY_DEFAULT_TTL absent — an omitted ttl_seconds would mint a never-expiring key"
@@ -145,7 +147,7 @@ prod_atl="$(yq '.["kacho-iam"].kacho.iam.saKey.accessTokenTtl // ""' "$PROD")"
 ok
 
 # ── 3. DEV keeps bounded keys but does NOT pin the per-client token lifespan ──
-IAM_DEV="$(render_only "$DEV" charts/kacho-iam/templates/deployment.yaml)"
+render_only "$DEV" charts/kacho-iam/templates/deployment.yaml; IAM_DEV="$HELM_OUT"
 [ -n "$IAM_DEV" ] || fail "kacho-iam deployment did not render in dev profile"
 [[ "$IAM_DEV" == *'KACHO_IAM_SAKEY_MAX_TTL'* ]] \
   || fail "dev: the SA-key ceiling must apply on the local stand too"
@@ -209,4 +211,4 @@ for f in "${PROFILES[@]}"; do
 done
 ok
 
-echo "OK: $SCRIPT — $N/6 machine-credential posture assertions passed"
+outcome_verdict "профилей прочитано: ${#PROFILES[@]}"

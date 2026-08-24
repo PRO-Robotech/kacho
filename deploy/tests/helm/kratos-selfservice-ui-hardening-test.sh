@@ -71,73 +71,33 @@
 set -euo pipefail
 
 SCRIPT="$(basename "$0")"
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 DEV="$UMBRELLA/values.dev.yaml"
 PROD="$UMBRELLA/values.prod.yaml"
 UI_TMPL="charts/kratos-selfservice-ui/templates/deployment.yaml"
 
-# ── Перепись и вердикт — по счётчикам, никогда по «дошли до конца» ───────────
-N=0
-RENDERS=0
+# ── Три исхода — ОБЩЕЙ реализацией на весь каталог ───────────────────────────
+# Механика, которую разбирает шапка выше (счётчики · stderr · результат рендера
+# глобальной переменной · код возврата helm как ДАННЫЕ), заведена этим файлом в
+# рамках #1187 и с тех пор вынесена в `outcome.sh`: у #1195 нашлись ещё шесть
+# скриптов того же класса, и держать контракт исходов копиями значило бы
+# завести два места об одном предмете. Разбор остаётся здесь — он объясняет,
+# ПОЧЕМУ так; реализация одна и лежит рядом.
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$(dirname "$0")/outcome.sh"
 EXPECTED_ASSERTIONS=6
-census() { echo "  перепись: утверждений выполнено $N из $EXPECTED_ASSERTIONS; рендеров helm: $RENDERS" >&2; }
-fail()  { echo "FAIL: $1" >&2; census; exit 1; }
-fatal() { echo "FATAL: $1" >&2; census; exit 2; }
-ok() { N=$((N + 1)); }
 
-# ── Предпосылки инструмента — это «условие не создано», а не находка ─────────
-command -v helm >/dev/null 2>&1 || fatal "нужен helm — рендерить нечем"
-# yq MUST be mikefarah v4. On many machines /usr/bin/yq is the python jq-wrapper
-# of the SAME NAME: its filter syntax is incompatible, so it errors to stderr and
-# prints NOTHING on stdout. Assertions shaped like `[ -z "$(yq ... 2>/dev/null)" ]`
-# then pass VACUOUSLY — the check reports success having verified nothing at all.
-# That false-green is the exact class these hardening tests exist to prevent, so
-# detect the impostor explicitly instead of trusting `command -v`.
-command -v yq >/dev/null 2>&1 || fatal "yq not installed (mikefarah yq v4 required)"
-# Сравнение — БЕЗ трубы: `… | grep -q` под `set -o pipefail` возвращает ОТКАЗ
-# НА СОВПАДЕНИИ (grep выходит по первому попаданию, писатель получает SIGPIPE,
-# и `pipefail` поднимает ЕГО статус до статуса конвейера). Задача #658.
-YQ_VER="$(yq --version 2>&1 || true)"
-[[ "${YQ_VER,,}" == *mikefarah* ]] || fatal \
-  "wrong 'yq' on PATH ($(command -v yq)): '$(yq --version 2>&1 | head -1)'. \
-mikefarah yq v4 is required — the python-yq jq wrapper emits empty output on these \
-filters, which would make the assertions below pass without checking anything."
+require_helm
+require_mikefarah_yq
 
-# helm_try <values> <tmpl> [доп. -f …] — рендер, чей КОД ВОЗВРАТА берётся КАК
-# ДАННЫЕ, а не как условие продолжения. Сама ничего не решает: «отказал» и
-# «отказал по НАШЕЙ причине» — разные вопросы, и второй решает вызывающий.
-#
-# РЕЗУЛЬТАТ ОТДАЁТСЯ ГЛОБАЛЬНОЙ ПЕРЕМЕННОЙ, А НЕ В stdout — и это не вкус.
-# Вызов вида `V=$(helm_try …)` исполняет функцию в ПОДОБОЛОЧКЕ: и код возврата
-# helm, и текст его отказа, и счётчик рендеров остались бы там и до вызывающего
-# не доехали. Тогда различать три исхода было бы нечем — то есть вернулся бы
-# ровно тот дефект, ради которого эта правка сделана.
-HELM_OUT=""
-HELM_ERR=""
-HELM_RC=0
-helm_try() {
+# render <values> <tmpl> [доп. -f …] — результат в $HELM_OUT, код возврата helm
+# в $HELM_RC. Ничего не решает: «отказал» и «отказал по НАШЕЙ причине» — разные
+# вопросы, и второй решает вызывающий.
+render() {
   local values="$1" tmpl="$2"; shift 2
-  local errf
-  errf="$(mktemp)"
-  HELM_OUT="$(helm template kacho-umbrella "$UMBRELLA" -f "$values" "$@" --show-only "$tmpl" 2>"$errf")" \
-    && HELM_RC=0 || HELM_RC=$?
-  RENDERS=$((RENDERS + 1))
-  # Предупреждение про kubeconfig helm печатает всегда, и оно не про отказ.
-  HELM_ERR="$(grep -vE 'WARNING: Kubernetes configuration' "$errf" || true)"
-  rm -f "$errf"
-}
-
-# render_or_fatal <что рендерили> — превращает отказ helm в исход «условие не
-# создано» (код 2) и ПЕЧАТАЕТ ТЕКСТ, который сказал сам helm. Без этого текста
-# читатель получает голое «render failed» и идёт искать дефект в дереве.
-render_or_fatal() {
-  [ "$HELM_RC" -eq 0 ] && return 0
-  echo "--- helm отказал: $1 ---" >&2
-  if [ -n "$HELM_ERR" ]; then printf '%s\n' "$HELM_ERR" >&2; else echo "(helm не сказал ничего)" >&2; fi
-  echo "--- конец текста helm ---" >&2
-  fatal "helm template отказал на «$1» — это УСЛОВИЕ прогона, а не свойство дерева. \
-Зависимости умбреллы в git не лежат; соберите их: bash deploy/scripts/helm-umbrella-deps.sh"
+  helm_try kacho-umbrella "$UMBRELLA" -f "$values" "$@" --show-only "$tmpl"
 }
 
 # env_val <doc> <container> <env-name> — prints .value of the named env var.
@@ -189,6 +149,9 @@ if [ "${1:-}" = "--self-test" ]; then
   cp -r "$REPO_ROOT/helm" "$WORK/helm" || fatal "копия чартов не собрана — инъекциям некуда идти"
   [ -d "$WORK/helm/umbrella" ] || fatal "в копии нет умбреллы ($WORK/helm/umbrella)"
   cp "$0" "$WORK/tests/helm/$SCRIPT"
+  # Общая реализация исходов едет вместе с испытуемым: он сорсит её по
+  # `dirname "$0"`, и без неё в копии самопроверка мерила бы отсутствие файла.
+  cp "$HERE/outcome.sh" "$WORK/tests/helm/outcome.sh"
   SUT="$WORK/tests/helm/$SCRIPT"
 
   # probe <метка> <ожидаемый код> <обязательная подстрока> — гоняет ИСПЫТУЕМЫЙ
@@ -281,7 +244,7 @@ fi
 # 1a засчитывалась, а прогон умирал следующей строкой, ничего не напечатав.
 #
 # Отказ здесь — исход «условие не создано» (код 2), а не находка о дереве.
-helm_try "$DEV" "$UI_TMPL"
+render "$DEV" "$UI_TMPL"
 render_or_fatal "values.dev.yaml → $UI_TMPL (положительный контроль)"
 UI_DEV="$HELM_OUT"
 [ -n "$UI_DEV" ] || fatal "рендер values.dev.yaml → $UI_TMPL ПУСТ — подчарт kratos-selfservice-ui выключен на этом профиле, проверять нечего"
@@ -300,23 +263,17 @@ kratos-selfservice-ui:
       existingSecretKey: cookieSecret
       value: ""
 EOF
-helm_try "$DEV" "$UI_TMPL" -f "$EMPTY_OVERLAY"
-[ "$HELM_RC" -ne 0 ] || fail "kratos-ui: render succeeded with cookieSecret unset — expected fail-closed"
-# И отказал ПО ТОЙ ПРИЧИНЕ, о которой секция. Текст — наш собственный (`fail` в
+render "$DEV" "$UI_TMPL" -f "$EMPTY_OVERLAY"
+# Отказал ПО ТОЙ ПРИЧИНЕ, о которой секция. Текст — наш собственный (`fail` в
 # шаблоне подчарта), не helm'а, поэтому сверка с ним не хрупка к версии helm, а
 # является сверкой с контрактом чарта. Без неё утверждение принимает ЛЮБОЙ
 # отказ — включая тот, которым #1187 и был.
-case "$HELM_ERR" in
-  *cookieSecret*) ;;
-  *) echo "--- helm отказал: values.dev.yaml + пустой cookieSecret ---" >&2
-     printf '%s\n' "${HELM_ERR:-(helm не сказал ничего)}" >&2
-     echo "--- конец текста helm ---" >&2
-     fail "kratos-ui: рендер отказал НЕ из-за cookieSecret — отрицание секции 1a проходило бы вакуумно" ;;
-esac
+render_must_fail_because cookieSecret "values.dev.yaml + пустой cookieSecret" \
+  "kratos-ui: render succeeded with cookieSecret unset — expected fail-closed"
 ok
 
 # ── 1b. prod profile wires COOKIE_SECRET + CSRF_COOKIE_SECRET via secretKeyRef ─
-helm_try "$PROD" "$UI_TMPL"
+render "$PROD" "$UI_TMPL"
 render_or_fatal "values.prod.yaml → $UI_TMPL"
 UI_PROD="$HELM_OUT"
 [ -n "$UI_PROD" ] || fatal "kratos-ui: prod profile rendered empty (sub-chart disabled?)"
@@ -356,8 +313,4 @@ ok
 # Секция, которую удалили или закомментировали, НЕ имеет права оставить за собой
 # зелёный вердикт: её утверждения не исполнялись, и молчание о них ничего не
 # доказывает. Это находка о дереве (код 1), а не «условие не создано».
-if [ "$N" -ne "$EXPECTED_ASSERTIONS" ]; then
-  echo "FAIL: $SCRIPT — утверждений выполнено $N из $EXPECTED_ASSERTIONS: секция пропущена или удалена, её утверждения не исполнялись" >&2
-  exit 1
-fi
-echo "PASS: $SCRIPT ($N assertions) — рендеров helm: $RENDERS; профилей прочитано: 2 (dev, prod)"
+outcome_verdict "профилей прочитано: 2 (dev, prod)"
