@@ -14,18 +14,26 @@ uses, no dev-bypass, no direct Hydra-admin:
      `mint_bootstrap`). A cluster `system_admin` ServiceAccount Bearer (acr-EXEMPT),
      the entry point that seeds everything else.
   2. per-subject      — with the admin Bearer, UserTokenService.Issue /
-     SAKeyService.Issue provision a per-principal Hydra OAuth client and hand back
-     an ES256 (P-256) private key ONCE. We sign a private_key_jwt `client_assertion`
-     (RFC 7521/7523) with it and run the OAuth2 client_credentials exchange at Hydra
-     (`aud=https://{API_DOMAIN}`) → a per-subject RS256 token whose `kacho_principal_*`
-     claims (token-hook enrichment) resolve to that subject's User/SA + its bindings.
+     SAKeyService.Issue заводят строку в НАШЕМ реестре и отдают ES256 (P-256)
+     приватный ключ ОДИН раз. Мы подписываем им утверждение клиента
+     (private_key_jwt, RFC 7521/7523) и обмениваем его У НАШЕГО ИЗДАТЕЛЯ
+     (`POST /iam/v1/token`, `aud=https://{API_DOMAIN}`) → токен субъекта нашей
+     чеканки, чьи утверждения `kacho_principal_*` резолвятся в его User/SA и
+     привязки.
 
-ИЗДАТЕЛЬ БОЛЬШЕ НЕ ОДИН, И ЭТО НЕ ДЕТАЛЬ (задача #1119). Шаг 1 чеканим МЫ: iam
+ОБА ШАГА ЧЕКАНИМ МЫ, И ЭТО НЕ ДЕТАЛЬ (задачи #1119, #1120, #1121). Шаг 1: iam
 подписывает бутстрап-удостоверение своим ключом из ключницы, издателем стоит наш
-`authn.token-signing.issuer`, а к внешнему поставщику на этом пути не идёт ни
-один вызов. Шаг 2 пока остаётся за поставщиком. Читателю, разбирающему отказ
-шага 1, идти в журналы поставщика бесполезно — его там нет; смотреть надо
-издателя токена (`iss`) и наш набор проверочных ключей.
+`authn.token-signing.issuer`. Шаг 2: выдача больше не заводит зеркала клиента у
+внешнего поставщика ни для служебной учётки (#1120), ни для человека (#1121),
+поэтому обменивается ключ только у нас. К поставщику этот модуль не идёт НИ ОДНИМ
+вызовом. Читателю, разбирающему отказ любого из шагов, идти в журналы поставщика
+бесполезно — его там нет; смотреть надо издателя токена (`iss`) и наш набор
+проверочных ключей.
+
+Живой контур прежнего издателя в дереве ОСТАЛСЯ, и он не здесь: интерактивный вход
+человека (`authorization_code` + PKCE, посев церемонии). Он и есть предмет
+требования держать прежнего издателя принятым на крае — см.
+`deploy/scripts/assert-legacy-issuer-acceptance-has-a-subject.py`.
 
 Requires PyJWT + cryptography (ES256 signing). Usable as a library (import) or a CLI.
 
@@ -34,18 +42,22 @@ STATUS (Phase C, #59) — UNBLOCKED + PROVEN end-to-end:
     api-gateway GET /iam/v1/accounts = 200 (IBT-04). Since the #58 hardening the
     call is gRPC-over-mTLS to iam :9091 with the bootstrap-operator client cert
     (the gateway REST route is gone) — the token it returns is unchanged.
-  - `sa_rs256` (per-subject SA) — PROVEN end-to-end against the production-strict
-    stand: SAKeyService.Issue (WITH `audience:[https://api.kacho.cloud]` — the
-    SA-key resolveAudience honours caller audiences; персональный токен адресата
-    у внешнего поставщика не объявляет вовсе с #1121, поэтому прежнее сравнение
-    «в отличие от пользовательских» больше не о чем) → sign
-    client_assertion → client_credentials exchange → RS256 SA token whose
-    token-hook `kacho_principal_type=service_account` enrichment makes it
-    acr-EXEMPT (stepup_gate O-1) and reachable on acr=1 resource RPCs. The
-    created_by FK blocker (#60) is fixed for SA-keys: an SA-principal caller
-    records created_by = the target SA's account owner (see sa_keys handler/
-    usecase). The whole vpc `network` newman collection runs GREEN with an
-    RS256-SA seed under production-strict (see prodseed_network.py).
+  - `sa_platform_token` (per-subject SA) — ключ служебной учётки, обменянный у
+    НАШЕГО издателя. Прежний помощник той же роли обменивал его у
+    внешнего поставщика и СНЯТ вместе со своим предметом: выдача ключа больше не
+    заводит там клиента (#1120), поэтому обмен у поставщика отвечает
+    `invalid_client` при любом входе, а помощник, который не может сработать
+    никогда, — хуже отсутствующего. Снята вместе с ним и его величина
+    (`ASSERTION_AUDIENCE`) — читателя у неё не осталось.
+
+    Осталось верным и не изменилось: SAKeyService.Issue принимает
+    `audience:[https://api.kacho.cloud]` (resolveAudience служебного ключа
+    считается с адресатами вызывающего); утверждение `kacho_principal_type=
+    service_account` от обогащения делает токен acr-EXEMPT (stepup_gate O-1) и
+    достижимым на ручках с acr=1. Блокер `created_by` (#60) для служебных ключей
+    закрыт: вызывающий-машина записывает `created_by` = владелец аккаунта целевой
+    учётки (см. обработчик/use-case sa_keys). Коллекция vpc `network` проходит
+    ЗЕЛЕНО на машинном посеве под production-strict (см. prodseed_network.py).
   - `user_platform_token` (per-subject USER) — персональный токен пользователя,
     обменянный у НАШЕГО издателя. Прежний помощник той же роли обменивал его у
     внешнего поставщика и СНЯТ вместе со своим предметом: выпуск персонального
@@ -56,7 +68,7 @@ STATUS (Phase C, #59) — UNBLOCKED + PROVEN end-to-end:
     Осталось верным и не изменилось: человеческий предъявитель НЕ освобождён от
     порога повышения, поэтому ручки с `required_acr_min=2` им не вызвать —
     для них нужен интерактивный вход. Машинная сквозная проба по природе
-    служебная; для неё `sa_rs256` / `sa_platform_token`.
+    служебная; для неё `sa_platform_token`.
 """
 from __future__ import annotations
 
@@ -221,19 +233,17 @@ def _refresh_operator_cert(cert_path: str, key_path: str) -> None:
     ensure_client_cert(BOOTSTRAP_OPERATOR_SECRET, cert_path, key_path)
 
 
-# ── the ONE assertion audience ───────────────────────────────────────────────
-# `aud` of the private_key_jwt client_assertion: the provider's ADVERTISED token
-# endpoint, i.e. its issuer identity + "/oauth2/token". A STRING that is compared, not
-# an address that is dialled (the POST goes wherever the caller says).
+# ── АДРЕСАТ УТВЕРЖДЕНИЯ У ПРЕЖНЕГО ИЗДАТЕЛЯ СНЯТ ВМЕСТЕ СО СВОЕЙ ПОЛОСОЙ ─────
+# Здесь стоял `ASSERTION_AUDIENCE` — `aud` утверждения, адресованного прежнему
+# издателю. Его единственным читателем была полоса обмена у поставщика, снятая
+# вместе с предметом (#1120): выдача ключа служебной учётки больше не заводит
+# зеркала клиента у поставщика, поэтому обмен там отвечает отказом опознания при
+# любом входе. Величина, оставшаяся без читателя, — не «про запас», а имя,
+# которое следующий читатель примет за действующую настройку.
 #
-# IT LIVES HERE BECAUSE IT USED TO LIVE IN FOUR PLACES, with three different mechanisms:
-# env-overridable in one seed module, a hard-coded literal in another, an argparse default
-# here, and prose in the values file. When the provider's issuer scheme changed, the
-# env-overridable copy was updated and the hard-coded one silently kept the old value —
-# which does not degrade anything, it makes the provider answer `invalid_client` and the
-# seed obtains no subject token at all. One definition, one override point.
-ASSERTION_AUDIENCE = os.environ.get(
-    "HYDRA_ASSERTION_AUDIENCE", "https://localhost:28080/.ory/hydra/public/oauth2/token")
+# Адресат утверждения НАШЕЙ полосы — `PLATFORM_ASSERTION_AUDIENCE` ниже, и он
+# читается тем же `sign_client_assertion`: техника обмена (private_key_jwt +
+# `client_credentials`) никуда не делась, сменился адресат.
 
 
 def mint_bootstrap(*, grpc_addr: str | None = None,
@@ -414,21 +424,6 @@ def sign_client_assertion(client_id: str, private_key_pem: str, key_id: str,
     return pyjwt.encode(claims, private_key_pem, algorithm="ES256", headers=headers)
 
 
-def exchange(hydra_token_url: str, assertion: str, api_audience: str, scope: str = "") -> str:
-    form = {
-        "grant_type": "client_credentials",
-        "client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-        "client_assertion": assertion,
-        "audience": api_audience,
-    }
-    if scope:
-        form["scope"] = scope
-    code, body = _post_form(hydra_token_url, form)
-    if code != 200 or "access_token" not in body:
-        raise RuntimeError(f"Hydra client_credentials exchange failed ({code}): {body}")
-    return body["access_token"]
-
-
 # ── Обмен у НАШЕГО издателя — ВТОРАЯ полоса края (задача #1014) ────────────
 #
 # Полоса ВНЕШНЕГО поставщика (`exchange` выше) и полоса НАШЕГО издателя
@@ -527,14 +522,6 @@ def exchange_at_platform(token_url: str, assertion: str, api_audience: str,
 
 
 # ── Composed one-shot helpers ───────────────────────────────────────────────
-def sa_rs256(base_url: str, admin_token: str, sva_id: str, created_by_user_id: str,
-             hydra_token_url: str, assertion_audience: str, api_audience: str) -> str:
-    resp = issue_sa_oauth(base_url, admin_token, sva_id, created_by_user_id)
-    cid, key, kid = _extract_oauth(resp)
-    assertion = sign_client_assertion(cid, key, kid, assertion_audience)
-    return exchange(hydra_token_url, assertion, api_audience)
-
-
 def user_platform_token(base_url: str, admin_token: str, user_id: str,
                         created_by_user_id: str, token_url: str, api_audience: str,
                         assertion_audience: str | None = None) -> str:
@@ -642,12 +629,6 @@ def main() -> int:
                    help="bootstrap-operator client key")
     p.add_argument("--base-url", default="http://localhost:18080",
                    help="api-gateway public (UserTokenService/SAKeyService)")
-    p.add_argument("--hydra-token-url", default="http://localhost:14444/oauth2/token",
-                   help="Hydra public token endpoint POST target (in-cluster / port-forward)")
-    p.add_argument("--assertion-audience", default=ASSERTION_AUDIENCE,
-                   help="client_assertion aud (the provider's advertised token endpoint = "
-                        "its issuer identity + /oauth2/token); default follows "
-                        "HYDRA_ASSERTION_AUDIENCE")
     p.add_argument("--api-audience", default="https://api.kacho.cloud",
                    help="requested token audience (gateway ExpectedAudience)")
     p.add_argument("--mode", choices=["bootstrap", "bootstrap-verify", "user", "sa"], required=True,
@@ -678,10 +659,10 @@ def main() -> int:
                                   PLATFORM_TOKEN_URL, args.api_audience))
     else:
         # Ключ служебной учётки обменивается У НАШЕГО издателя и только у него
-        # (задача #1120): зеркала клиента у поставщика больше не заводится,
-        # поэтому `--hydra-token-url`/`--assertion-audience` этой полосы не
-        # касаются вовсе. Оставить прежний вызов значило бы держать режим,
-        # отвечающий `invalid_client` при любом входе.
+        # (задача #1120): зеркала клиента у поставщика больше не заводится.
+        # Ручки прежней полосы сняты вместе с ней: пока они разбирались, но не
+        # читались ни одной веткой, командная строка обещала выбор, которого нет.
+        # Теперь такой ввод ОТВЕРГАЕТСЯ разбором аргументов, а не проглатывается.
         print(sa_platform_token(args.base_url, admin, args.subject, created_by,
                                 PLATFORM_TOKEN_URL, args.api_audience))
     return 0
