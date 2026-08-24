@@ -30,34 +30,73 @@ from typing import List, Dict, Optional
 
 
 def js_str(value: str) -> str:
-    """JS-литерал строки — СЕРИАЛИЗАЦИЕЙ, а не вклейкой между кавычками (#1181).
+    r"""Строковый литерал JavaScript, произведённый СЕРИАЛИЗАТОРОМ (#1181).
 
-    Текст вызывающего (пояснение, фрагмент контракт-тона, подпись шага) уезжает в
-    ПОРОЖДАЕМЫЙ скрипт шага. Апостроф закрывает литерал, перевод строки рвёт
-    строку: ломается не текст, а СИНТАКСИС файла, которого автор фразы не видит.
-    Отказ при этом не виден в вердикте — newman пишет исключение скрипта в
-    `testScripts`, а НЕ в `assertions.failed`, поэтому шаг с неразобранным
-    скриптом даёт НОЛЬ упавших утверждений: кейс перестаёт проверять что бы то ни
-    было и продолжает отчитываться зелёным по этой величине.
+    Текст вызывающего — пояснение, фрагмент контракт-тона, подпись шага, имя
+    переменной — уезжает в ПОРОЖДАЕМЫЙ скрипт шага. Апостроф закрывает литерал,
+    перевод строки рвёт строку, `</script>` закрывает элемент: ломается не
+    текст, а СИНТАКСИС файла, которого автор фразы не видит.
 
-    Кодирует СЕРИАЛИЗАТОР, а не рукописная замена знаков: рукописная всегда
-    неполна — geo экранировал `\\` и `\'`, но не перевод строки, и потому
-    закрывал ровно тот случай, который однажды заметили. Синтаксис строки JSON —
-    подмножество синтаксиса строки JS, поэтому результат вставляется литералом
-    как есть. Сверх JSON закрыты два случая, которых JSON не знает:
+    ПОЧЕМУ ЭТО НЕ ВИДНО В ВЕРДИКТЕ. newman пишет исключение скрипта в
+    `testScripts`, а НЕ в `assertions.failed`. Шаг, чей скрипт не разобрался,
+    даёт НОЛЬ упавших утверждений: кейс перестаёт проверять что бы то ни было и
+    продолжает отчитываться зелёным по этой величине. Это третья категория
+    исхода («не выполнилось»), зачтённая в «прошло».
+
+    ПОЧЕМУ СЕРИАЛИЗАТОР, А НЕ ЗАМЕНА ЗНАКОВ. Рукописная замена всегда неполна:
+    geo экранировал обратный слэш и апостроф, но не перевод строки, и потому
+    закрывал ровно тот случай, который однажды заметили. Полный набор — обратный
+    слэш, управляющие знаки, кавычка — делает `json.dumps`. Сверх него закрыты
+    три случая, которых JSON не знает, и каждый ЗНАЧЕНИЯ литерала не меняет:
 
       * U+2028/U+2029 — законный JSON, но до ES2019 рвали литерал JS;
-      * `</` — закрыл бы элемент `script`, если коллекцию встроят в документ;
-        `\/` в JS тождественно `/`, поэтому ЗНАЧЕНИЕ литерала не меняется.
+      * `</` → `<\/` — иначе закрылся бы элемент `script`, если текст шага
+        встроят в отчёт-документ; `\/` в JS тождественно `/`;
+      * апостроф → `\'` — литерал одинарно-кавычечный (ниже о том, почему).
+        Правило применяется ПОСЛЕ сериализатора, когда каждый обратный слэш уже
+        удвоен, поэтому оно не может ни пропустить случай, ни съесть чужой
+        экранирующий знак.
 
-    Обратимость (`json.loads(js_str(s)) == s` для любого `s`) закреплена пробой
-    `services/iam/tests/newman/scripts/js_literal_escape_test.py`; там же — швы,
-    через которые текст вызывающего попадает в скрипт, и враждебный вход по
-    каждому из них.
+    ПОЧЕМУ ОДИНАРНАЯ КАВЫЧКА, А НЕ ДВОЙНАЯ ИЗ `json.dumps`. Порождаемый скрипт
+    цитирует одинарной; двойная кавычка сменила бы БАЙТЫ 91 закоммиченной
+    коллекции, которые читают два десятка гейтов, ничего не изменив по существу.
+    Одинарная форма даёт байт-в-байт то же, что вклейка, на всяком входе, где
+    вклейка была законна, — поэтому перегенерация после этой правки обязана дать
+    ПУСТОЙ diff, и это единственное, что доказывает: экранирование ничего не
+    исказило.
+
+    ЧЕМ ДЕРЖИТСЯ. Проба
+    `services/iam/tests/newman/scripts/js_literal_escape_test.py` — одна на все
+    восемь генераторов, потому что шов один, а восемь копий разошлись бы. Она
+    утверждает четыре разных вещи: ФОРМУ по всему дереву (ни одной подстановки
+    в литерал помимо этих двух помощников), СУЩЕСТВО по швам (враждебный вход
+    даёт РАЗБИРАЕМЫЙ скрипт), положительный контроль (безобидная фраза читается
+    дословно) и ОБРАТИМОСТЬ настоящим движком — node, а не `json.loads`: судить
+    надо тем языком, который литерал и будет исполнять.
     """
-    literal = json.dumps(str(value), ensure_ascii=False)
-    literal = literal.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
-    return literal.replace("</", "<\\/")
+    body = json.dumps(str(value), ensure_ascii=False)[1:-1]
+    body = body.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+    body = body.replace("</", "<\\/")
+    body = body.replace('\\"', '"').replace("'", "\\'")
+    return "'" + body + "'"
+
+
+def js_comment(value: str) -> str:
+    r"""Текст вызывающего ВНУТРИ комментария порождаемого скрипта (#1181).
+
+    У комментария опасен ровно один класс знаков — КОНЕЦ СТРОКИ: он закрывает
+    комментарий, и остаток значения становится КОДОМ. Кавычки внутри комментария
+    безвредны, поэтому литерала тут не строят — строку вставляют в текст, и
+    внешние кавычки сериализатора снимаются.
+
+    Концов строки у JavaScript ЧЕТЫРЕ, а у JSON два: сверх `\n` и `\r` строку
+    завершают U+2028 и U+2029, и `json.dumps` их не трогает — они законный JSON.
+    Именно на этом правило и ловилось: враждебное имя с U+2028 закрывало
+    комментарий, и `${...}` за ним разбирался как выражение. Поэтому два знака
+    дописываются к набору сериализатора явно — не вместо него, а поверх.
+    """
+    text = json.dumps(str(value), ensure_ascii=False)[1:-1]
+    return text.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -211,13 +250,13 @@ PRE_GLOBAL = [
 
 def assert_status(code: int) -> List[str]:
     return [
-        f"pm.test('status {code}', () => pm.expect(pm.response.code).to.eql({code}));",
+        f"pm.test({js_str(f'status {code}')}, () => pm.expect(pm.response.code).to.eql({code}));",
     ]
 
 
 def assert_grpc_code(code: int, code_name: str) -> List[str]:
     return [
-        f"pm.test('grpc code {code} ({code_name})', () => {{",
+        f"pm.test({js_str(f'grpc code {code} ({code_name})')}, () => {{",
         "  const j = pm.response.json();",
         f"  pm.expect(j.code, JSON.stringify(j)).to.eql({code});",
         "});",
@@ -243,7 +282,7 @@ def assert_answered(label: str) -> List[str]:
     (там же перепись восьми негативов ban #6, проживших так неизвестно сколько).
     """
     return [
-        f"pm.test('{label}: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {{",
+        f"pm.test({js_str(f'{label}: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)')}, () => {{",
         "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ сервиса')"
         ".to.not.be.undefined;",
         "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
@@ -277,16 +316,17 @@ def require_env_url(var: str, path: str, why: str = "") -> List[str]:
     """
     reason = f" — {why}" if why else ""
     return [
-        f"// HARNESS-CONFIG GUARD — {var} передаёт прогонщик (--env-var).",
+        f"// HARNESS-CONFIG GUARD — {js_comment(var)} передаёт прогонщик (--env-var).",
         "// Нет значения = харнесс сломан, а НЕ законный режим: сперва упасть, потом пропустить.",
-        f"const __cfgUrl = pm.environment.get('{var}') || pm.variables.get('{var}') || '';",
+        f"const __cfgUrl = pm.environment.get({js_str(var)}) || pm.variables.get({js_str(var)}) || '';",
         "if (__cfgUrl) {",
-        f"  pm.request.url = __cfgUrl + pm.variables.replaceIn('{path}');",
+        f"  pm.request.url = __cfgUrl + pm.variables.replaceIn({js_str(path)});",
         "} else {",
-        f"  pm.test('harness config: {var} задана{reason}', () => {{",
-        f"    pm.expect.fail('{var} не задана — прогонщик "
-        "(deploy/scripts/newman-parallel.sh --env-var) её не передал. Шаг исполнен быть не может, "
-        "а проверка, которая не может исполниться, НЕ ВПРАВЕ быть молча выброшенной.');",
+        f"  pm.test({js_str(f'harness config: {var} задана{reason}')}, () => {{",
+        "    pm.expect.fail(" + js_str(
+            f"{var} не задана — прогонщик "
+            "(deploy/scripts/newman-parallel.sh --env-var) её не передал. Шаг исполнен быть не может, "
+            "а проверка, которая не может исполниться, НЕ ВПРАВЕ быть молча выброшенной.") + ");",
         "  });",
         "  pm.execution.skipRequest();",
         "}",
@@ -295,12 +335,12 @@ def require_env_url(var: str, path: str, why: str = "") -> List[str]:
 
 def assert_field_violation(field_name: str) -> List[str]:
     return [
-        f"pm.test('field violation on \"{field_name}\"', () => {{",
+        f"pm.test({js_str(f'field violation on \"{field_name}\"')}, () => {{",
         "  const j = pm.response.json();",
         "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
         "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
-        f"  const fv = (det.fieldViolations || []).find(v => v.field === '{field_name}');",
-        f"  pm.expect(fv, 'fieldViolation for {field_name}').to.be.an('object');",
+        f"  const fv = (det.fieldViolations || []).find(v => v.field === {js_str(field_name)});",
+        f"  pm.expect(fv, {js_str(f'fieldViolation for {field_name}')}).to.be.an('object');",
         "});",
     ]
 
@@ -347,13 +387,13 @@ def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     был закрыт первым; гейт по дереву на обе половины пары «удаление → опрос» —
     `deploy/scripts/assert-delete-operation-outcome.py`.
     """
-    reset = [f"pm.environment.set('{env_var}', '');"] if _is_operation_id_var(env_var) else []
+    reset = [f"pm.environment.set({js_str(env_var)}, '');"] if _is_operation_id_var(env_var) else []
     return [
         *reset,
         "try {",
         "  const j = pm.response.json();",
         f"  const v = ({jsonpath});",
-        f"  if (v !== undefined && v !== null) pm.environment.set('{env_var}', String(v));",
+        f"  if (v !== undefined && v !== null) pm.environment.set({js_str(env_var)}, String(v));",
         "} catch (e) {}",
     ]
 
@@ -648,8 +688,8 @@ def _auth_pre_script(auth: str) -> List[str]:
             "pm.request.headers.remove('Authorization');",
         ]
     return [
-        f"// AZD per-step: bearer from env '{auth}'",
-        f"const __t = pm.environment.get('{auth}') || pm.variables.get('{auth}') || '';",
+        f"// AZD per-step: bearer from env '{js_comment(auth)}'",
+        f"const __t = pm.environment.get({js_str(auth)}) || pm.variables.get({js_str(auth)}) || '';",
         "if (__t) {",
         "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
         "} else {",
@@ -672,10 +712,11 @@ def _auth_pre_script(auth: str) -> List[str]:
         # pre-request assertion above has ALREADY run and keeps the skip RECORDED as
         # a failure naming the variable, never a mute one. (`auth="anonymous"` is the
         # DELIBERATE anonymous case and takes the branch above — never affected.)
-        f"  pm.test('harness config: {auth} is set (subject under test)', () => {{",
-        f"    pm.expect.fail('{auth} is not set — the authz-fixture seed "
-        "(tests/authz-fixtures/setup.sh) did not provide this subject. Running the step "
-        "anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+        f"  pm.test({js_str(f'harness config: {auth} is set (subject under test)')}, () => {{",
+        "    pm.expect.fail(" + js_str(
+            f"{auth} is not set — the authz-fixture seed "
+            "(tests/authz-fixtures/setup.sh) did not provide this subject. Running the step "
+            "anonymously would test a DIFFERENT principal and pass for the wrong reason.") + ");",
         "  });",
         "  pm.execution.skipRequest();",
         "}",

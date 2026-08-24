@@ -30,34 +30,73 @@ from typing import List, Dict, Optional
 
 
 def js_str(value: str) -> str:
-    """JS-литерал строки — СЕРИАЛИЗАЦИЕЙ, а не вклейкой между кавычками (#1181).
+    r"""Строковый литерал JavaScript, произведённый СЕРИАЛИЗАТОРОМ (#1181).
 
-    Текст вызывающего (пояснение, фрагмент контракт-тона, подпись шага) уезжает в
-    ПОРОЖДАЕМЫЙ скрипт шага. Апостроф закрывает литерал, перевод строки рвёт
-    строку: ломается не текст, а СИНТАКСИС файла, которого автор фразы не видит.
-    Отказ при этом не виден в вердикте — newman пишет исключение скрипта в
-    `testScripts`, а НЕ в `assertions.failed`, поэтому шаг с неразобранным
-    скриптом даёт НОЛЬ упавших утверждений: кейс перестаёт проверять что бы то ни
-    было и продолжает отчитываться зелёным по этой величине.
+    Текст вызывающего — пояснение, фрагмент контракт-тона, подпись шага, имя
+    переменной — уезжает в ПОРОЖДАЕМЫЙ скрипт шага. Апостроф закрывает литерал,
+    перевод строки рвёт строку, `</script>` закрывает элемент: ломается не
+    текст, а СИНТАКСИС файла, которого автор фразы не видит.
 
-    Кодирует СЕРИАЛИЗАТОР, а не рукописная замена знаков: рукописная всегда
-    неполна — geo экранировал `\\` и `\'`, но не перевод строки, и потому
-    закрывал ровно тот случай, который однажды заметили. Синтаксис строки JSON —
-    подмножество синтаксиса строки JS, поэтому результат вставляется литералом
-    как есть. Сверх JSON закрыты два случая, которых JSON не знает:
+    ПОЧЕМУ ЭТО НЕ ВИДНО В ВЕРДИКТЕ. newman пишет исключение скрипта в
+    `testScripts`, а НЕ в `assertions.failed`. Шаг, чей скрипт не разобрался,
+    даёт НОЛЬ упавших утверждений: кейс перестаёт проверять что бы то ни было и
+    продолжает отчитываться зелёным по этой величине. Это третья категория
+    исхода («не выполнилось»), зачтённая в «прошло».
+
+    ПОЧЕМУ СЕРИАЛИЗАТОР, А НЕ ЗАМЕНА ЗНАКОВ. Рукописная замена всегда неполна:
+    geo экранировал обратный слэш и апостроф, но не перевод строки, и потому
+    закрывал ровно тот случай, который однажды заметили. Полный набор — обратный
+    слэш, управляющие знаки, кавычка — делает `json.dumps`. Сверх него закрыты
+    три случая, которых JSON не знает, и каждый ЗНАЧЕНИЯ литерала не меняет:
 
       * U+2028/U+2029 — законный JSON, но до ES2019 рвали литерал JS;
-      * `</` — закрыл бы элемент `script`, если коллекцию встроят в документ;
-        `\/` в JS тождественно `/`, поэтому ЗНАЧЕНИЕ литерала не меняется.
+      * `</` → `<\/` — иначе закрылся бы элемент `script`, если текст шага
+        встроят в отчёт-документ; `\/` в JS тождественно `/`;
+      * апостроф → `\'` — литерал одинарно-кавычечный (ниже о том, почему).
+        Правило применяется ПОСЛЕ сериализатора, когда каждый обратный слэш уже
+        удвоен, поэтому оно не может ни пропустить случай, ни съесть чужой
+        экранирующий знак.
 
-    Обратимость (`json.loads(js_str(s)) == s` для любого `s`) закреплена пробой
-    `services/iam/tests/newman/scripts/js_literal_escape_test.py`; там же — швы,
-    через которые текст вызывающего попадает в скрипт, и враждебный вход по
-    каждому из них.
+    ПОЧЕМУ ОДИНАРНАЯ КАВЫЧКА, А НЕ ДВОЙНАЯ ИЗ `json.dumps`. Порождаемый скрипт
+    цитирует одинарной; двойная кавычка сменила бы БАЙТЫ 91 закоммиченной
+    коллекции, которые читают два десятка гейтов, ничего не изменив по существу.
+    Одинарная форма даёт байт-в-байт то же, что вклейка, на всяком входе, где
+    вклейка была законна, — поэтому перегенерация после этой правки обязана дать
+    ПУСТОЙ diff, и это единственное, что доказывает: экранирование ничего не
+    исказило.
+
+    ЧЕМ ДЕРЖИТСЯ. Проба
+    `services/iam/tests/newman/scripts/js_literal_escape_test.py` — одна на все
+    восемь генераторов, потому что шов один, а восемь копий разошлись бы. Она
+    утверждает четыре разных вещи: ФОРМУ по всему дереву (ни одной подстановки
+    в литерал помимо этих двух помощников), СУЩЕСТВО по швам (враждебный вход
+    даёт РАЗБИРАЕМЫЙ скрипт), положительный контроль (безобидная фраза читается
+    дословно) и ОБРАТИМОСТЬ настоящим движком — node, а не `json.loads`: судить
+    надо тем языком, который литерал и будет исполнять.
     """
-    literal = json.dumps(str(value), ensure_ascii=False)
-    literal = literal.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
-    return literal.replace("</", "<\\/")
+    body = json.dumps(str(value), ensure_ascii=False)[1:-1]
+    body = body.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+    body = body.replace("</", "<\\/")
+    body = body.replace('\\"', '"').replace("'", "\\'")
+    return "'" + body + "'"
+
+
+def js_comment(value: str) -> str:
+    r"""Текст вызывающего ВНУТРИ комментария порождаемого скрипта (#1181).
+
+    У комментария опасен ровно один класс знаков — КОНЕЦ СТРОКИ: он закрывает
+    комментарий, и остаток значения становится КОДОМ. Кавычки внутри комментария
+    безвредны, поэтому литерала тут не строят — строку вставляют в текст, и
+    внешние кавычки сериализатора снимаются.
+
+    Концов строки у JavaScript ЧЕТЫРЕ, а у JSON два: сверх `\n` и `\r` строку
+    завершают U+2028 и U+2029, и `json.dumps` их не трогает — они законный JSON.
+    Именно на этом правило и ловилось: враждебное имя с U+2028 закрывало
+    комментарий, и `${...}` за ним разбирался как выражение. Поэтому два знака
+    дописываются к набору сериализатора явно — не вместо него, а поверх.
+    """
+    text = json.dumps(str(value), ensure_ascii=False)[1:-1]
+    return text.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -391,24 +430,25 @@ def _carve_guard(plan_var: str, cidr_var: str) -> List[str]:
         # долю. Исходов два (расширить план посева либо разбить набор), и отказ
         # обязан их различать, иначе читатель начнёт чинить не то.
         f"if ({cidr_var} === '!band') {{",
-        f"  pm.test('FIXTURE REQUIRED: {plan_var} band exhausted', () => pm.expect.fail("
-        f"'the suite asked for carve #' + __seq + ' but its band inside {plan_var} "
-        f"holds fewer. The plan is split into __bands equal bands, one per suite "
-        f"(CIDR_BANDS in services/nlb/tests/newman/scripts/gen.py), so that two suites "
-        f"of one run can never carve the same /24. Widen the plan the seeder declares, "
-        f"or split the suite — do NOT go back to drawing the position, that is the "
-        f"collision this band exists to kill.'));",
+        f"  pm.test({js_str(f'FIXTURE REQUIRED: {plan_var} band exhausted')}, () => pm.expect.fail("
+        "'the suite asked for carve #' + __seq + " + js_str(
+            f" but its band inside {plan_var} "
+            "holds fewer. The plan is split into __bands equal bands, one per suite "
+            "(CIDR_BANDS in services/nlb/tests/newman/scripts/gen.py), so that two suites "
+            "of one run can never carve the same /24. Widen the plan the seeder declares, "
+            "or split the suite — do NOT go back to drawing the position, that is the "
+            "collision this band exists to kill.") + "));",
         "  pm.execution.skipRequest();",
         "  return;",
         "}",
         f"if (!{cidr_var}) {{",
-        f"  pm.test('FIXTURE REQUIRED: {plan_var}', () => pm.expect.fail("
-        f"'{plan_var} is empty or not a CIDR the suite can carve a subnet from. "
-        f"The seeder that creates existingNetworkId publishes the address plan it "
-        f"declared (deploy/scripts/seed-nlb-fixtures.sh, tests/authz-fixtures/"
-        f"prodseed_nlb_ext.py). Hardcoding an address instead would restore the very "
-        f"defect this helper exists to kill: a CIDR unrelated to the plan, which lands "
-        f"inside it only by coincidence.'));",
+        f"  pm.test({js_str(f'FIXTURE REQUIRED: {plan_var}')}, () => pm.expect.fail(" + js_str(
+            f"{plan_var} is empty or not a CIDR the suite can carve a subnet from. "
+            "The seeder that creates existingNetworkId publishes the address plan it "
+            "declared (deploy/scripts/seed-nlb-fixtures.sh, tests/authz-fixtures/"
+            "prodseed_nlb_ext.py). Hardcoding an address instead would restore the very "
+            "defect this helper exists to kill: a CIDR unrelated to the plan, which lands "
+            "inside it only by coincidence.") + "));",
         "  pm.execution.skipRequest();",
         "  return;",
         "}",
@@ -440,7 +480,7 @@ def carve_cidr_pre(scope: str, v4_var: str = "_subnetCidr",
         f"  var __bandIndex = {CIDR_BANDS[scope]};",
         f"  var __bands = {len(CIDR_BANDS)};",
         "  var __runOnly = pm.environment.get('runId') || 'x0';",
-        f"  var __run = __runOnly + '/{scope}';",
+        f"  var __run = __runOnly + {js_str(f'/{scope}')};",
         "  var __h = 0;",
         "  for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
         "  __h = __h & 0x7fffffff;",
@@ -453,13 +493,13 @@ def carve_cidr_pre(scope: str, v4_var: str = "_subnetCidr",
         *["  " + ln for ln in _CARVE_HELPERS],
         "  var __v4 = __carve4(pm.environment.get('existingNetworkV4Plan'));",
         *["  " + ln for ln in _carve_guard("existingNetworkV4Plan", "__v4")],
-        f"  pm.environment.set('{v4_var}', __v4);",
+        f"  pm.environment.set({js_str(v4_var)}, __v4);",
     ]
     if v6_var:
         out += [
             "  var __v6 = __carve6(pm.environment.get('existingNetworkV6Plan'));",
             *["  " + ln for ln in _carve_guard("existingNetworkV6Plan", "__v6")],
-            f"  pm.environment.set('{v6_var}', __v6);",
+            f"  pm.environment.set({js_str(v6_var)}, __v6);",
         ]
     out.append("})();")
     return out
@@ -471,13 +511,13 @@ def carve_cidr_pre(scope: str, v4_var: str = "_subnetCidr",
 
 def assert_status(code: int) -> List[str]:
     return [
-        f"pm.test('status {code}', () => pm.expect(pm.response.code).to.eql({code}));",
+        f"pm.test({js_str(f'status {code}')}, () => pm.expect(pm.response.code).to.eql({code}));",
     ]
 
 
 def assert_grpc_code(code: int, code_name: str) -> List[str]:
     return [
-        f"pm.test('grpc code {code} ({code_name})', () => {{",
+        f"pm.test({js_str(f'grpc code {code} ({code_name})')}, () => {{",
         "  const j = pm.response.json();",
         f"  pm.expect(j.code, JSON.stringify(j)).to.eql({code});",
         "});",
@@ -486,12 +526,12 @@ def assert_grpc_code(code: int, code_name: str) -> List[str]:
 
 def assert_field_violation(field_name: str) -> List[str]:
     return [
-        f"pm.test('field violation on \"{field_name}\"', () => {{",
+        f"pm.test({js_str(f'field violation on \"{field_name}\"')}, () => {{",
         "  const j = pm.response.json();",
         "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
         "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
-        f"  const fv = (det.fieldViolations || []).find(v => v.field === '{field_name}');",
-        f"  pm.expect(fv, 'fieldViolation for {field_name}').to.be.an('object');",
+        f"  const fv = (det.fieldViolations || []).find(v => v.field === {js_str(field_name)});",
+        f"  pm.expect(fv, {js_str(f'fieldViolation for {field_name}')}).to.be.an('object');",
         "});",
     ]
 
@@ -664,13 +704,13 @@ def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     был закрыт первым; гейт по дереву на обе половины пары «удаление → опрос» —
     `deploy/scripts/assert-delete-operation-outcome.py`.
     """
-    reset = [f"pm.environment.set('{env_var}', '');"] if _is_operation_id_var(env_var) else []
+    reset = [f"pm.environment.set({js_str(env_var)}, '');"] if _is_operation_id_var(env_var) else []
     return [
         *reset,
         "try {",
         "  const j = pm.response.json();",
         f"  const v = ({jsonpath});",
-        f"  if (v !== undefined && v !== null) pm.environment.set('{env_var}', String(v));",
+        f"  if (v !== undefined && v !== null) pm.environment.set({js_str(env_var)}, String(v));",
         "} catch (e) {}",
     ]
 
@@ -1208,7 +1248,7 @@ def poll_operation_until_done(
         # reaches a downstream step.
         script += [
             "if (j.error) {",
-            *[f"  pm.environment.unset('{v}');" for v in ids],
+            *[f"  pm.environment.unset({js_str(v)});" for v in ids],
             "}",
         ]
 
@@ -1235,7 +1275,7 @@ def poll_operation_until_done(
             "  pm.environment.unset('_crRetryCount');",
             "  pm.environment.unset('opId');",
             f"  const _ord = Date.now(); while (Date.now() - _ord < {retry_interval_ms}) {{ /* peer-visibility wait */ }}",
-            f"  pm.execution.setNextRequest('{retry_from}');",
+            f"  pm.execution.setNextRequest({js_str(retry_from)});",
             "  return;",
             "}",
             "pm.environment.unset('_opRedriveCount');",
@@ -1367,8 +1407,8 @@ def _auth_pre_script(auth: str) -> List[str]:
             "pm.request.headers.remove('Authorization');",
         ]
     return [
-        f"// AZD per-step: bearer from env '{auth}'",
-        f"const __t = pm.environment.get('{auth}') || pm.variables.get('{auth}') || '';",
+        f"// AZD per-step: bearer from env '{js_comment(auth)}'",
+        f"const __t = pm.environment.get({js_str(auth)}) || pm.variables.get({js_str(auth)}) || '';",
         "if (__t) {",
         "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
         "} else {",
@@ -1391,10 +1431,11 @@ def _auth_pre_script(auth: str) -> List[str]:
         # pre-request assertion above has ALREADY run and keeps the skip RECORDED as
         # a failure naming the variable, never a mute one. (`auth="anonymous"` is the
         # DELIBERATE anonymous case and takes the branch above — never affected.)
-        f"  pm.test('harness config: {auth} is set (subject under test)', () => {{",
-        f"    pm.expect.fail('{auth} is not set — the authz-fixture seed "
-        "(tests/authz-fixtures/setup.sh) did not provide this subject. Running the step "
-        "anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+        f"  pm.test({js_str(f'harness config: {auth} is set (subject under test)')}, () => {{",
+        "    pm.expect.fail(" + js_str(
+            f"{auth} is not set — the authz-fixture seed "
+            "(tests/authz-fixtures/setup.sh) did not provide this subject. Running the step "
+            "anonymously would test a DIFFERENT principal and pass for the wrong reason.") + ");",
         "  });",
         "  pm.execution.skipRequest();",
         "}",
