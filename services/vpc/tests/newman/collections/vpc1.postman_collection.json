@@ -97,7 +97,16 @@
               "  pm.environment.set('existingZoneId', at(0));",
               "  pm.environment.set('existingZoneAltId', at(1));",
               "  pm.environment.set('_zoneResolved', '1');",
-              "}"
+              "}",
+              "if (code === 200) {",
+              "  pm.test('каталог размещения ответил — пригодные зоны разрешены', function () {",
+              "    pm.expect(pick.length, pm.response.text()).to.be.above(0);",
+              "  });",
+              "}",
+              "pm.test('координата зоны непуста после резолва (живой каталог либо закоммиченное умолчание окружения)', function () {",
+              "  pm.expect(String(pm.environment.get('existingZoneId') || ''), 'existingZoneId').to.not.eql('');",
+              "  pm.expect(String(pm.environment.get('existingZoneAltId') || ''), 'existingZoneAltId').to.not.eql('');",
+              "});"
             ]
           }
         }
@@ -13164,7 +13173,7 @@
                   "  pm.expect(j.error, JSON.stringify(j)).to.be.an('object');",
                   "});",
                   "pm.test('op.error.code 3 (INVALID_ARGUMENT)', () => pm.expect(pm.response.json().error.code, JSON.stringify(pm.response.json())).to.eql(3));",
-                  "pm.test('op.error.message matches /^ipv4_cidr_primary is immutable after Subnet\\.Create$/', () => pm.expect(pm.response.json().error.message, JSON.stringify(pm.response.json())).to.match(/^ipv4_cidr_primary is immutable after Subnet\\.Create$/));"
+                  "pm.test('op.error.message matches /^ipv4_cidr_primary is immutable after Subnet\\\\.Create$/', () => pm.expect(pm.response.json().error.message, JSON.stringify(pm.response.json())).to.match(/^ipv4_cidr_primary is immutable after Subnet\\.Create$/));"
                 ]
               }
             }

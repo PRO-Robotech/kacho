@@ -20,31 +20,26 @@ SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 DEV="$UMBRELLA/values.dev.yaml"
-N=0
-fail() { echo "FAIL: $1"; exit 1; }
-ok() { N=$((N + 1)); }
 
-# yq MUST be mikefarah v4. On many machines /usr/bin/yq is the python jq-wrapper
-# of the SAME NAME: its filter syntax is incompatible, so it errors to stderr and
-# prints NOTHING on stdout. Assertions shaped like `[ -z "$(yq ... 2>/dev/null)" ]`
-# then pass VACUOUSLY — the check reports success having verified nothing at all.
-# That false-green is the exact class these hardening tests exist to prevent, so
-# detect the impostor explicitly instead of trusting `command -v`.
-command -v yq >/dev/null 2>&1 || fail "yq not installed (mikefarah yq v4 required)"
-# Сверка — БЕЗ трубы: `… | grep -qi` под pipefail даёт ОТКАЗ НА СОВПАДЕНИИ
-# (grep выходит первым, писатель получает SIGPIPE, pipefail поднимает его
-# статус до статуса конвейера). Задача #658.
-YQ_VER="$(yq --version 2>&1 || true)"
-[[ "${YQ_VER,,}" == *mikefarah* ]] || fail \
-  "wrong 'yq' on PATH ($(command -v yq)): '$(yq --version 2>&1 | head -1)'. \
-mikefarah yq v4 is required — the python-yq jq wrapper emits empty output on these \
-filters, which would make the assertions below pass without checking anything."
+# ТРИ ИСХОДА (0 зелено · 1 находка о дереве · 2 условие не создано) — общей
+# реализацией на весь каталог. До #1195 отказ helm по причине, НЕ относящейся к
+# предмету проверки (зависимости умбреллы не собраны), убивал прогон на первом
+# же `IAM=$(render …)` под `set -e`, НЕ СКАЗАВ НИЧЕГО: код 1, ноль байт вывода.
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$(dirname "$0")/outcome.sh"
+EXPECTED_ASSERTIONS=8
 
-# render <show-only-template> [extra helm args...] — silence helm kubeconfig warns.
+require_helm
+require_mikefarah_yq
+
+[ -f "$DEV" ] || fatal "values.dev.yaml нет на диске ($DEV)"
+
+# render <show-only-template> [extra helm args...] — результат в $HELM_OUT.
+# Отказ рендера — код 2 плюс ТЕКСТ helm, а не молчаливая смерть под `set -e`.
 render() {
   local tmpl="$1"; shift
-  helm template kacho-umbrella "$UMBRELLA" -f "$DEV" "$@" \
-    --show-only "$tmpl" 2>/dev/null
+  helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" "$@" --show-only "$tmpl"
+  render_or_fatal "values.dev.yaml → $tmpl${*:+ [$*]}"
 }
 
 # assert_container_hardened <rendered-doc> <container-jsonpath-name>
@@ -64,7 +59,7 @@ assert_sc() {
 }
 
 # ── 1. kacho-iam workload hardening ──────────────────────────────────────────
-IAM=$(render charts/kacho-iam/templates/deployment.yaml)
+render charts/kacho-iam/templates/deployment.yaml; IAM="$HELM_OUT"
 POD_SC=$(echo "$IAM" | yq 'select(.kind == "Deployment") | .spec.template.spec.securityContext')
 [ "$(echo "$POD_SC" | yq '.runAsNonRoot')" = "true" ] || fail "kacho-iam: pod securityContext.runAsNonRoot != true"
 [ "$(echo "$POD_SC" | yq '.seccompProfile.type')" = "RuntimeDefault" ] || fail "kacho-iam: pod seccompProfile != RuntimeDefault"
@@ -73,7 +68,7 @@ assert_sc "$IAM" "kacho-iam" "kacho-iam"
 assert_sc "$IAM" "migrate" "kacho-iam"
 
 # ── 2. kacho-geo workload hardening ──────────────────────────────────────────
-GEO=$(render charts/kacho-geo/templates/deployment.yaml)
+render charts/kacho-geo/templates/deployment.yaml; GEO="$HELM_OUT"
 GPOD_SC=$(echo "$GEO" | yq 'select(.kind == "Deployment") | .spec.template.spec.securityContext')
 [ "$(echo "$GPOD_SC" | yq '.runAsNonRoot')" = "true" ] || fail "kacho-geo: pod securityContext.runAsNonRoot != true"
 ok
@@ -81,7 +76,7 @@ assert_sc "$GEO" "kacho-geo" "kacho-geo"
 assert_sc "$GEO" "migrate" "kacho-geo"
 
 # ── 3. Pod Security Admission namespace labels (warn+audit=restricted) ────────
-NS=$(render templates/namespace.yaml --set namespace.create=true)
+render templates/namespace.yaml --set namespace.create=true; NS="$HELM_OUT"
 [ "$(echo "$NS" | yq 'select(.kind == "Namespace") | .metadata.labels."pod-security.kubernetes.io/warn"')" = "restricted" ] \
   || fail "namespace: pod-security warn label != restricted"
 [ "$(echo "$NS" | yq 'select(.kind == "Namespace") | .metadata.labels."pod-security.kubernetes.io/audit"')" = "restricted" ] \
@@ -90,14 +85,14 @@ ok
 
 # ── 4. Image digest-pin override (repository@sha256:...) ──────────────────────
 DIG="sha256:0000000000000000000000000000000000000000000000000000000000000000"
-IAM_DIG=$(render charts/kacho-iam/templates/deployment.yaml --set kacho-iam.image.digest="$DIG")
+render charts/kacho-iam/templates/deployment.yaml --set kacho-iam.image.digest="$DIG"; IAM_DIG="$HELM_OUT"
 IAM_DIG_IMAGE="$(echo "$IAM_DIG" | yq 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image')"
 [[ "$IAM_DIG_IMAGE" == *"@$DIG"* ]] \
   || fail "kacho-iam: image.digest override not honoured (expected repository@$DIG)"
-GEO_DIG=$(render charts/kacho-geo/templates/deployment.yaml --set kacho-geo.imageDigest="$DIG")
+render charts/kacho-geo/templates/deployment.yaml --set kacho-geo.imageDigest="$DIG"; GEO_DIG="$HELM_OUT"
 GEO_DIG_IMAGE="$(echo "$GEO_DIG" | yq 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image')"
 [[ "$GEO_DIG_IMAGE" == *"@$DIG"* ]] \
   || fail "kacho-geo: imageDigest override not honoured (expected repository@$DIG)"
 ok
 
-echo "$SCRIPT: all green ($N assertions)"
+outcome_verdict "профилей прочитано: 1 (dev)"

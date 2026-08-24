@@ -3126,6 +3126,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.environment.unset('opId');",
                   "// bounded read-your-writes retry over the cross-service peer-visibility window",
                   "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
                   "// SELF only while the sync create says the PEER REFERENCE did not resolve:",

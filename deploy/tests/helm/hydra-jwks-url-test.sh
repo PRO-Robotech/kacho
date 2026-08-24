@@ -50,8 +50,25 @@ any_line_matches() {
 }
 
 SCRIPT="$(basename "$0")"
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 MONOREPO="$(cd "$REPO_ROOT/.." && pwd)"
+
+# Три исхода — ОДНОЙ реализацией на весь каталог: 0 зелено · 1 находка о дереве ·
+# 2 условие не создано (плюс текст самого helm).
+#
+# ЗДЕСЬ ЭТО БЫЛО НЕ ФОРМАЛЬНОСТЬЮ, А ЖИВЫМ ДЕФЕКТОМ #1195. Рендер стоял внутри
+# ПОДСТАНОВКИ (`DEV="$(helm template … 2>/dev/null)"`) под `set -e`: на дереве без
+# собранных зависимостей умбреллы скрипт умирал НА ПРИСВАИВАНИИ, кодом 1 и с НУЛЁМ
+# БАЙТ вывода, а собственная диагностика строкой ниже («dep not built? run helm dep
+# update») не исполнялась НИКОГДА. Гейт класса этого не видел: его предикат
+# исключений считал упоминание `helm dep update` В ТЕКСТЕ СООБЩЕНИЯ признаком
+# того, что скрипт собирает зависимости сам (задача #1214).
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$HERE/outcome.sh"
+EXPECTED_ASSERTIONS=7
+require_helm
+require_mikefarah_yq
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 # Путь берётся из Chart.yaml умбреллы, а не пишется рядом второй раз: пока чарт
 # шлюза жил соседним репозиторием, тут стояло `../kacho-api-gateway/deploy`, и
@@ -75,20 +92,19 @@ WANT="http://kacho-umbrella-hydra-public.kacho.svc:4444/.well-known/jwks.json"
 WANT_PROD="https://kacho-iam-internal.kacho.svc:9097/.well-known/jwks.json"
 # Написания адреса ПРОВАЙДЕРА: любое из них в боевом профиле — обход фасада.
 PROVIDER_SPELLING='hydra-public|hydra\.api\.'
-N=0
-fail() { echo "FAIL: $1"; exit 1; }
-ok() { N=$((N + 1)); }
-
 # env_val <ENV_NAME> <render> — value of the named container env entry ("" if absent).
 env_val() {
   echo "$2" | yq eval-all \
     "select(.kind==\"Deployment\") | .spec.template.spec.containers[].env[] | select(.name==\"$1\") | .value" -
 }
 
-[ -d "$AGW" ] || fail "api-gateway chart not found at $AGW (объявлен в $UMBRELLA/Chart.yaml)"
+[ -d "$AGW" ] \
+  || fatal "чарта края нет по пути $AGW (объявлен в $UMBRELLA/Chart.yaml) — судить не о чем"
 
 # ── (1) sibling chart standalone — hydra.jwksUrl drives the env ───────────────
-ON="$(helm template ag "$AGW" --set hydra.jwksUrl="$WANT" 2>/dev/null)"
+helm_try ag "$AGW" --set hydra.jwksUrl="$WANT"
+render_or_fatal "чарт края, hydra.jwksUrl задан"
+ON="$HELM_OUT"
 jw="$(env_val KACHO_HYDRA_JWKS_URL "$ON")"
 [ -n "$jw" ] || fail "sibling chart did not render KACHO_HYDRA_JWKS_URL env when hydra.jwksUrl set"
 [ "$jw" = "$WANT" ] || fail "sibling KACHO_HYDRA_JWKS_URL=$jw (want $WANT)"; ok
@@ -99,16 +115,20 @@ esac; ok
 
 # Default (no hydra.jwksUrl) must NOT leak the env — Go config default applies,
 # zero regression for overlays that don't opt in.
-OFF="$(helm template ag "$AGW" 2>/dev/null)"
+helm_try ag "$AGW"
+render_or_fatal "чарт края, умолчание"
+OFF="$HELM_OUT"
 [ -z "$(env_val KACHO_HYDRA_JWKS_URL "$OFF")" ] || fail "sibling leaks KACHO_HYDRA_JWKS_URL when hydra.jwksUrl unset"; ok
 
 # ── (2) umbrella + values.dev.yaml — the actual dev stand ─────────────────────
 # `helm template` resolves the file:// api-gateway dep from the vendored .tgz; if
 # the dep is stale this still renders the committed chart. Restrict to the
 # api-gateway Deployment via --show-only.
-DEV="$(helm template kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.dev.yaml" \
-        --show-only charts/api-gateway/templates/deployment.yaml 2>/dev/null)"
-[ -n "$DEV" ] || fail "umbrella render of api-gateway deployment is empty (dep not built? run helm dep update)"
+helm_try kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.dev.yaml" \
+        --show-only charts/api-gateway/templates/deployment.yaml
+render_or_fatal "умбрелла + values.dev.yaml, шаблон пода края"
+DEV="$HELM_OUT"
+[ -n "$DEV" ] || fail "рендер шаблона пода края (dev) ПУСТ при успешном helm template"
 # ФОРМ ОБЪЯВЛЕНИЯ ДВЕ, СВОЙСТВО ОДНО — то же, что для боевого профиля ниже.
 # Здесь проба требовала одиночную ручку ИМЕНЕМ и потому краснела на верной
 # посадке: третья фаза (#899) объявляет обоих издателей записью, а одиночную
@@ -171,9 +191,11 @@ ok
 #        not the public ingress hairpin and not the provider's own Service.
 #        The expected `iss` stays the public issuer: the provider remains the
 #        SIGNER, only key distribution goes through iam.
-PROD="$(helm template kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.prod.yaml" \
-         --show-only charts/api-gateway/templates/deployment.yaml 2>/dev/null)"
-[ -n "$PROD" ] || fail "umbrella render of api-gateway deployment (prod) is empty"
+helm_try kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.prod.yaml" \
+         --show-only charts/api-gateway/templates/deployment.yaml
+render_or_fatal "умбрелла + values.prod.yaml, шаблон пода края"
+PROD="$HELM_OUT"
+[ -n "$PROD" ] || fail "рендер шаблона пода края (prod) ПУСТ при успешном helm template"
 # ФОРМ ОБЪЯВЛЕНИЯ ДВЕ, СВОЙСТВО ОДНО. Адрес набора ключей объявляется либо
 # прежней одиночной ручкой, либо записью издателей (Ф1б, #926: платформа
 # принимает ДВУХ издателей, и у каждого свой набор). Проба обязана судить
@@ -236,4 +258,4 @@ else
   fail "prod не объявляет издателя НИ ОДНОЙ формой — токен принимается без сверки того, кто его выпустил"
 fi; ok
 
-echo "PASS: $SCRIPT ($N assertions)"
+outcome_verdict "профилей прочитано: 2 (dev, prod) + чарт края отдельно"

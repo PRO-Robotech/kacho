@@ -110,8 +110,10 @@ type TokenVerifier interface {
 
 // AuthInterceptor — JWT validate + subject lookup + Principal injection.
 type AuthInterceptor struct {
-	mode          AuthMode
-	devSecret     []byte // HMAC-secret для mode=dev (если пуст — Bearer reject в dev/production-strict).
+	mode      AuthMode
+	devSecret []byte // HMAC-secret для mode=dev (если пуст — Bearer reject в dev/production-strict).
+	// basicLane — полоса базового секрета (#1142). nil → полосы нет.
+	basicLane     *BasicCredentialLane
 	subjectLookup SubjectLookuper
 	kratos        *KratosClient // optional Ory Kratos /whoami client (nil → disabled)
 	verifier      TokenVerifier // JWKS-валидатор Hydra RS256 access JWT (nil → disabled, HMAC-only)
@@ -153,6 +155,17 @@ type AuthInterceptor struct {
 	// своё последствие, и слитое с полосой предъявителя окно подавляло бы первый
 	// доклад одной из них.
 	sessionCutoffFailures *introspectionFailureReporter
+	// sessionAssuranceUnknown — своё окно доклада для полосы сессии, назвавшей
+	// уровень уверенности, который край перевести не может (или не назвавшей
+	// его вовсе). Состояние означает «пол на этой полосе не удовлетворить
+	// ничем», и оно не исчезает само — см. auth_session_stepup.go.
+	sessionAssuranceUnknown *introspectionFailureReporter
+	// basicAssuranceUnknown — то же окно доклада для полосы базового
+	// удостоверения: величина уровня уехала с оси каталога, и полоса больше не
+	// может поручиться ни за один уровень (auth_basic_stepup.go). Окно своё, а
+	// не общее с полосой сессии: диагнозы и починки у них разные, а слитое окно
+	// подавляло бы первый доклад одной из них.
+	basicAssuranceUnknown *introspectionFailureReporter
 	// stepUp / stepUpLookup / stepUpRoutes — the per-RPC authentication floor,
 	// applied on this always-running layer rather than behind a feature toggle.
 	// All three or none; see auth_stepup.go for why the floor cannot live where
@@ -238,6 +251,10 @@ func (a *AuthInterceptor) machineBindingViolationFor(vt *VerifiedToken, principa
 // ory_kratos_session cookie; при отсутствии cookie / 401 — fallback на JWT.
 func (a *AuthInterceptor) WithKratos(c *KratosClient) *AuthInterceptor {
 	a.kratos = c
+	// Полоса смонтирована — значит у неё есть и доклад о непереводимом уровне
+	// уверенности. Заводить его позже было бы нечем: своей ручки у этого
+	// состояния нет, оно свойство ОТВЕТА провайдера, а не настройки края.
+	a.sessionAssuranceUnknown = newIntrospectionFailureReporter(0, nil)
 	return a
 }
 
@@ -247,6 +264,17 @@ func (a *AuthInterceptor) WithKratos(c *KratosClient) *AuthInterceptor {
 // Principal строится из верифицированных `kacho_principal_*` claims напрямую
 // (top-level или ext_claims); SubjectLookuper — fallback только при их
 // отсутствии. nil → JWKS-path выключен (HMAC-only).
+// WithBasicCredentialLane провязывает полосу базового секрета. nil → полосы
+// нет вовсе, и строка с нашей маркой уходит прочими полосами как негодная —
+// это и есть посадка до появления авторитета, а не мягкий проход.
+func (a *AuthInterceptor) WithBasicCredentialLane(l *BasicCredentialLane) *AuthInterceptor {
+	a.basicLane = l
+	if l != nil {
+		a.basicAssuranceUnknown = newIntrospectionFailureReporter(0, nil)
+	}
+	return a
+}
+
 func (a *AuthInterceptor) WithVerifier(v TokenVerifier) *AuthInterceptor {
 	a.verifier = v
 	return a
@@ -344,6 +372,45 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		default: // production / production-strict
 			return nil, status.Error(codes.Unauthenticated, "missing Bearer token")
 		}
+	}
+
+	// ПОЛОСА БАЗОВОГО СЕКРЕТА — ПЕРВОЙ ПОСЛЕ ПУСТОГО ВХОДА И ТЕРМИНАЛЬНАЯ
+	// (задача #1142, приёмка BAT-1 §5.1).
+	//
+	// Полоса выбирается ПО МАРКЕ, а не по неудаче разбора подписанного токена.
+	// Стой она последней «на всякий случай» — всякая негодная строка приходила
+	// бы к ней входом, и диагностика стала бы невозможной. Стой она без
+	// терминальности — негодное удостоверение уезжало бы дальше как
+	// «удостоверения нет вовсе», и вызывающий получал бы отказ не той природы.
+	if a.basicLane != nil && a.basicLane.Owns(bearer) {
+		cred, err := a.basicLane.Verify(ctx, bearer)
+		switch {
+		case errors.Is(err, ErrCredentialStateUnknown):
+			// Отдельный исход и наружу тоже: это не отказ в удостоверении, а
+			// неспособность установить его состояние.
+			return nil, status.Error(codes.Unavailable, "credential state could not be established")
+		case err != nil:
+			return nil, status.Error(codes.Unauthenticated, basicCredentialRefusalText())
+		}
+		// ДОСТАТОЧНО ЛИ СИЛЬНО АУТЕНТИФИЦИРОВАН ВЫЗЫВАЮЩИЙ ДЛЯ ЭТОГО ГЛАГОЛА
+		// (#1215). Спрашивается ровно там же, где на прочих полосах, — ДО
+		// записи личности, чтобы не прошедший пол запрос не доехал ни до прав,
+		// ни до backend. Освобождения этой полосы by design нет: пол есть
+		// свойство ВСЯКОГО обращения, а не свойство того, чем его подписали.
+		as := a.basicCredentialAssurance(cred, fullMethod)
+		if suErr := a.stepUpVerdictGRPC(fullMethod, as, stepUpLaneBasic); suErr != nil {
+			// Отказ рендерится ЕДИНЫМ отказом полосы — байт-в-байт тем же, что
+			// на негодном секрете. Различимый подтверждал бы годность
+			// предъявленного, а церемонии, которая подняла бы уровень, у этой
+			// полосы нет (auth_basic_stepup.go, разбор оракула).
+			return nil, status.Error(codes.Unauthenticated, basicCredentialRefusalText())
+		}
+		ctx = a.injectPrincipal(ctx, cred.PrincipalType, cred.PrincipalID, cred.DisplayName)
+		// Уровень удостоверения — вместе с принципалом и по той же причине
+		// (см. развёрнутый разбор у REST-половины полосы). Едет ОТОБРАЖЁННАЯ на
+		// ось величина, а не сырая константа: второй замок обязан читать то же
+		// значение, по которому вынес вердикт первый.
+		return withBasicCredentialLevel(ctx, as.ACR), nil
 	}
 
 	// Hydra-issued RS256/ES256/EdDSA access JWT → validate via JWKS
@@ -725,6 +792,24 @@ func (a *AuthInterceptor) validateJWT(tokenStr string) (jwt.MapClaims, error) {
 // both the plain form (read by restmux WithMetadata → outgoing gRPC metadata)
 // and the legacy grpc-gateway convention form (fallback path). Shared by the
 // Hydra-JWT branch with the Kratos and SA-token paths.
+// withBasicCredentialLevel кладёт уровень удостоверения во ВХОДЯЩИЕ метаданные —
+// туда же, откуда его читает страж повышения (`verifiedTokenFromCtxOrHTTP`).
+// Входящие уже очищены от подделываемых клиентом заголовков выше по цепочке,
+// поэтому это доверенная простановка, а не подмена.
+func withBasicCredentialLevel(ctx context.Context, level string) context.Context {
+	if level == "" {
+		return ctx
+	}
+	inMD, _ := metadata.FromIncomingContext(ctx)
+	if inMD == nil {
+		inMD = metadata.MD{}
+	} else {
+		inMD = inMD.Copy()
+	}
+	inMD.Set(principalmeta.MetaTokenACR, level)
+	return metadata.NewIncomingContext(ctx, inMD)
+}
+
 func setPrincipalHeaders(r *http.Request, pType, pID, displayName string) {
 	r.Header.Set(principalmeta.HeaderPrincipalType, pType)
 	r.Header.Set(principalmeta.HeaderPrincipalID, pID)
@@ -808,6 +893,13 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 		}
 
 		if !injected {
+			// Полоса базового секрета — ПЕРЕД полосами подписанного и
+			// терминальная, ровно как на нативной поверхности. Обе поверхности
+			// края обязаны отвечать одинаково: расхождение между ними никто бы
+			// не решал, оно возникло бы побочным эффектом.
+			if a.tryBasicCredential(w, r, next) {
+				return
+			}
 			if a.tryHydraJWT(w, r, next) {
 				return
 			}
@@ -817,6 +909,70 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// tryBasicCredential — полоса базового секрета на REST-поверхности края.
+//
+// Возвращает true, когда полоса ВЫНЕСЛА вердикт (положительный или
+// отрицательный) и вызывающий обязан вернуться. Полоса ТЕРМИНАЛЬНА: строка с
+// нашей маркой не уходит дальше как «удостоверения нет вовсе».
+func (a *AuthInterceptor) tryBasicCredential(w http.ResponseWriter, r *http.Request, next http.Handler) bool {
+	if a.basicLane == nil {
+		return false
+	}
+	tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || !a.basicLane.Owns(tok) {
+		return false
+	}
+	cred, err := a.basicLane.Verify(r.Context(), tok)
+	switch {
+	case errors.Is(err, ErrCredentialStateUnknown):
+		// 503, а не 401: вызывающему нечего исправлять сменой удостоверения.
+		http.Error(w, "credential state could not be established", http.StatusServiceUnavailable)
+		return true
+	case err != nil:
+		writeHTTPUnauthorized(w, basicCredentialRefusalText())
+		return true
+	}
+	// ДОСТАТОЧНО ЛИ СИЛЬНО АУТЕНТИФИЦИРОВАН ВЫЗЫВАЮЩИЙ ДЛЯ ЭТОГО ОБРАЩЕНИЯ
+	// (#1215). Спрашивается ДО записи личности — ровно там же и по тем же
+	// причинам, что на полосах сессии и предъявителя.
+	//
+	// До #1215 этого вопроса здесь не было вовсе, при том что полоса уровень
+	// СТАВИЛА: заголовок для второго замка выставлялся, а первый замок не
+	// спрашивался. Наблюдаемое следствие — глагол с полом «2» выполнялся по
+	// базовому секрету уровня «1», то есть предъявительское удостоверение
+	// чеканило себе смену вопреки объявлению `BasicCredentialLevel`.
+	as := a.basicCredentialAssurance(cred, r.URL.Path)
+	if _, suErr := a.stepUpVerdictHTTP(r, as, stepUpLaneBasic); suErr != nil {
+		// Отказ рендерится ЕДИНЫМ отказом полосы, а не вызовом RFC 9470 —
+		// байт-в-байт тем же ответом, что на негодном секрете. Разбор — в
+		// auth_basic_stepup.go: различимый исход подтверждал бы годность
+		// предъявленного по глаголу, который вызывающему недоступен.
+		writeHTTPUnauthorized(w, basicCredentialRefusalText())
+		return true
+	}
+	setPrincipalHeaders(r, cred.PrincipalType, cred.PrincipalID, cred.DisplayName)
+	// УРОВЕНЬ УДОСТОВЕРЕНИЯ ДОЕЗЖАЕТ ДО СТРАЖА ПОВЫШЕНИЯ, и это несущее
+	// (приёмка BAT-1 §5.2): поле, которое полоса не заполнила, делает
+	// нижележащий контроль ПРОЙДЕННЫМ МИМО, а не успешно, — и это неотличимо
+	// от исправной работы.
+	//
+	// Величина — константа «1» (BasicCredentialLevel), и следствие названо:
+	// человек, предъявивший базовый секрет, не может ни выпустить новое
+	// удостоверение, ни отозвать существующее (обоим глаголам объявлен порог
+	// «2»), но обычное чтение с порогом «1» ему ДОСТУПНО. Долгоживущий
+	// предъявительский секрет не должен уметь чеканить себе смену.
+	//
+	// Едет ОТОБРАЖЁННАЯ на ось каталога величина, а не сырая константа полосы:
+	// второй замок обязан читать то же значение, по которому вынес вердикт
+	// первый. Съехавшая с оси величина приезжает сюда пустой строкой — общее
+	// правило ранжирует её нулём, и внутренний замок отказывает по той же
+	// причине, по которой отказал бы внешний.
+	r.Header.Set(principalmeta.HeaderTokenACR, as.ACR)
+	r.Header.Set(principalmeta.HeaderGRPCMetaTokenACR, as.ACR)
+	next.ServeHTTP(w, r)
+	return true
 }
 
 // stripForgeableIdentityHeaders removes incoming X-Kacho-Principal-* (and the
@@ -837,10 +993,18 @@ func (a *AuthInterceptor) stripForgeableIdentityHeaders(r *http.Request) {
 //
 // Возвращает ДВА значения, и это не косметика. `injected` — резолвилась ли
 // личность (подавляет полосы предъявителя, как прежде). `handled` — полоса
-// ответила САМА и вызывающий обязан вернуться: сессия отвергнута нашим отзывом
-// либо вопрос о нём остался без ответа. Прежде второго исхода у полосы не
-// существовало вовсе, и отвергнуть сессию ей было нечем — оттого наш глагол
-// выхода на браузерной полосе не действовал ни разу (auth_session_cutoff.go).
+// ответила САМА и вызывающий обязан вернуться. Прежде второго исхода у полосы
+// не существовало вовсе, и отвергнуть сессию ей было нечем.
+//
+// Причин ответить самой ДВЕ, и обе — свой дефект того же класса «полоса не
+// спрашивала того, что спрашивает соседняя»:
+//
+//   - сессия отвергнута НАШИМ отзывом либо вопрос о нём остался без ответа —
+//     оттого наш глагол выхода на браузерной полосе не действовал ни разу
+//     (auth_session_cutoff.go);
+//   - предъявленный уровень уверенности не дотягивает до пола, объявленного
+//     каталогом прав для вызываемого глагола, — оттого действие с полом уровня
+//     «2» выполнялось из браузера без второго фактора (auth_session_stepup.go).
 func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Request) (injected, handled bool) {
 	if a.kratos == nil {
 		return false, false
@@ -888,6 +1052,22 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 		// впереди службы прав, и отвергать здесь значило бы уронить консоль на
 		// время раската. Состояние сходится само и докладывается громко.
 	}
+	// Достаточно ли СИЛЬНО человек аутентифицировался ДЛЯ ЭТОГО обращения?
+	// Спрашивается ровно там же, где на полосе предъявителя, и по тем же
+	// причинам: до записи личности, чтобы не прошедший пол запрос не доехал ни
+	// до прав, ни до backend.
+	//
+	// До #1201 этого вопроса здесь не было вовсе, и полоса не могла его задать:
+	// уровень уверенности провайдера край не разбирал. Освобождения этой полосы
+	// by design нет — пол есть свойство ВСЯКОГО обращения человека.
+	assurance := a.sessionAssurance(subj, res, r.URL.Path)
+	if a.enforceStepUpHTTP(w, r, assurance, stepUpLaneSession) {
+		return false, true
+	}
+	// Уровень едет вперёд к ВТОРОМУ замку (iam `authzguard.ACRFloor`) — по тем же
+	// именам, что у полосы предъявителя. Полоса, не выставляющая его, оставляет
+	// внутренний замок без входа.
+	setSessionAssuranceHeaders(r, assurance.ACR)
 	r.Header.Set(principalmeta.HeaderPrincipalType, subj.Type)
 	r.Header.Set(principalmeta.HeaderPrincipalID, subj.ID)
 	r.Header.Set(principalmeta.HeaderPrincipalDisplay, subj.DisplayName)
@@ -970,7 +1150,7 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 	// principal is written, so a request that has not met the floor never reaches
 	// authz or a backend. The floor lives here, not in the sender-constrained
 	// middleware, because it is a question about every token — see auth_stepup.go.
-	if a.enforceStepUpHTTP(w, r, vt) {
+	if a.enforceStepUpHTTP(w, r, assuranceFromVerifiedToken(vt), stepUpLaneBearer) {
 		return true
 	}
 	// The credential's own context travels either way: it describes the token, not

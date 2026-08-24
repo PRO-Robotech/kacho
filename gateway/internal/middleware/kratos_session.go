@@ -38,6 +38,17 @@ type KratosWhoamiResult struct {
 	// Нулевое значение означает «провайдер момента не назвал» — это НЕ «давно» и
 	// не «только что», поэтому читатель обязан различать его отдельно.
 	AuthenticatedAt time.Time
+	// AssuranceLevel — уровень уверенности, С КОТОРЫМ эта сессия
+	// аутентифицировалась (`session.authenticator_assurance_level`): словарь
+	// провайдера, `aal0`…`aal3`.
+	//
+	// Читает его пол ступенчатой аутентификации (auth_session_stepup.go). До
+	// #1201 поля здесь не было вовсе, и полоса сессии не смогла бы вычислить пол,
+	// даже если бы его спросила: у неё не было ВХОДА решения.
+	//
+	// Пустая строка означает «провайдер уровня не назвал» — это НЕ «низкий» и не
+	// «высокий», а отдельный исход, и читатель обязан различать его сам.
+	AssuranceLevel string
 }
 
 // KratosClient — minimal HTTP-обертка для GET /sessions/whoami.
@@ -139,6 +150,7 @@ func (c *KratosClient) fetch(ctx context.Context, cookieHeader string) KratosWho
 		DisplayName:     dn,
 		Active:          s.Active,
 		AuthenticatedAt: s.AuthenticatedAt,
+		AssuranceLevel:  s.AuthenticatorAssuranceLevel,
 	}
 }
 
@@ -150,6 +162,10 @@ type kratosSession struct {
 	// time.Time: отсутствующее поле даёт нулевой момент, и это отдельный
 	// наблюдаемый исход, а не «эпоха».
 	AuthenticatedAt time.Time `json:"authenticated_at"`
+	// AuthenticatorAssuranceLevel — `session.authenticator_assurance_level`,
+	// словарь провайдера (`aal0`…`aal3`). Вход пола ступенчатой аутентификации на
+	// этой полосе; перевод на ось каталога делает acrFromAssuranceLevel.
+	AuthenticatorAssuranceLevel string `json:"authenticator_assurance_level"`
 }
 
 type kratosIdentity struct {

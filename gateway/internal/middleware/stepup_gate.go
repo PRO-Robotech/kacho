@@ -75,35 +75,81 @@ func NewStepUpGate(now func() time.Time) *StepUpGate {
 	return &StepUpGate{now: now}
 }
 
-// Check enforces both `acr` floor and `auth_time` freshness. Returns nil on
-// pass, a sentinel + descriptive error on fail.
+// StepUpAssurance — то, ЧТО предъявил носитель личности, извлечённое из своего
+// транспорта и пригодное для общего правила.
 //
-// It decides nothing itself: it builds the shared grpcsrv.StepUpInput from the
-// verified token and renders grpcsrv.EvaluateStepUp's verdict as this
-// transport's sentinel errors. The machine-principal exemption (O-1 / #58) is an
-// arm of that shared rule — see grpcsrv.EvaluateStepUp for why a service
-// principal is exempt and why the exemption grants no permission.
+// ЗАЧЕМ ОТДЕЛЬНЫЙ ТИП. Носителей личности у этого края ДВА — подписанный
+// предъявитель и сессия развёрнутого провайдера, — и пол обязан спрашиваться на
+// обеих (#1201). У сессии нет ни удостоверения, ни claim'ов, поэтому вход пола
+// нельзя было выразить `*VerifiedToken`, а второй строитель grpcsrv.StepUpInput
+// рядом с первым и есть то расхождение, которое сторожат пробы паритета. Тип
+// вводит ОДНУ форму входа: каждая полоса извлекает свои три величины (переноска
+// её транспорта), а решает по ним по-прежнему одна функция.
+//
+// Все три величины обязаны быть уже отфильтрованы доверием вызывающим — см.
+// grpcsrv.StepUpInput: подставленный клиентом уровень или тип принципала купил
+// бы освобождение.
+type StepUpAssurance struct {
+	// PrincipalType — `kacho_principal_type` предъявителя либо тип субъекта,
+	// резолвленного полосой сессии. Единственное значение, снимающее пол, —
+	// grpcsrv.PrincipalTypeServiceAccount; решает это общее правило, не полоса.
+	PrincipalType string
+	// ACR — уровень уверенности НА ОСИ КАТАЛОГА ("0".."3"). Пустое / нераспознанное
+	// ранжируется нулём и не удовлетворяет ни одному положительному полу.
+	ACR string
+	// AuthTime — момент аутентификации. У предъявителя это `auth_time` токена, у
+	// сессии — `authenticated_at` провайдера. Читается только при MFAMaxAge > 0.
+	AuthTime time.Time
+}
+
+// assuranceFromVerifiedToken извлекает вход пола из подписанного предъявителя.
+// Размещение claim'а (верхний уровень против вложенного `ext_claims`) — забота
+// края и Hydra, поэтому разбор остаётся здесь; вердикт по нему — нет.
+func assuranceFromVerifiedToken(token *VerifiedToken) StepUpAssurance {
+	return StepUpAssurance{
+		PrincipalType: verifiedClaim(token, "kacho_principal_type"),
+		ACR:           token.ACR,
+		AuthTime:      token.AuthTime,
+	}
+}
+
+// Check enforces both `acr` floor and `auth_time` freshness for a verified
+// bearer token. Returns nil on pass, a sentinel + descriptive error on fail.
+//
+// It decides nothing itself: it extracts this transport's inputs and hands them
+// to CheckAssurance, which renders grpcsrv.EvaluateStepUp's verdict. The
+// machine-principal exemption (O-1 / #58) is an arm of that shared rule — see
+// grpcsrv.EvaluateStepUp for why a service principal is exempt and why the
+// exemption grants no permission.
 func (g *StepUpGate) Check(token *VerifiedToken, req PermissionRequirement) error {
 	if token == nil {
 		return errors.New("stepup: token required")
 	}
+	return g.CheckAssurance(assuranceFromVerifiedToken(token), req)
+}
 
+// CheckAssurance — единственная точка вычисления пола на этом крае, общая для
+// ВСЕХ полос носителя личности (здесь стояло «обеих» — полос стало три, #1215).
+//
+// Она НЕ решает ничего сама: строит общий grpcsrv.StepUpInput и переводит его
+// вердикт в сигнальные ошибки этого транспорта. Ни ранжирования, ни
+// освобождения, ни умолчания здесь заводить нельзя — ровно это расхождение и
+// сторожат пробы паритета вердикта (обе стороны привязаны к одной функции).
+func (g *StepUpGate) CheckAssurance(a StepUpAssurance, req PermissionRequirement) error {
 	switch grpcsrv.EvaluateStepUp(grpcsrv.StepUpInput{
-		// Claim plumbing stays here (top-level vs nested ext_claims placement is a
-		// gateway/Hydra concern); the verdict on it does not.
-		PrincipalType: verifiedClaim(token, "kacho_principal_type"),
-		PresentedACR:  token.ACR,
-		AuthTime:      token.AuthTime,
+		PrincipalType: a.PrincipalType,
+		PresentedACR:  a.ACR,
+		AuthTime:      a.AuthTime,
 		RequiredACR:   req.RequiredACRMin,
 		MFAMaxAge:     req.MFAMaxAge,
 		Now:           g.now(),
 	}) {
 	case grpcsrv.StepUpDenyACR:
-		return fmt.Errorf("%w: presented=%q required=%q", ErrStepUpRequired, token.ACR, req.RequiredACRMin)
+		return fmt.Errorf("%w: presented=%q required=%q", ErrStepUpRequired, a.ACR, req.RequiredACRMin)
 	case grpcsrv.StepUpDenyAuthTimeMissing:
 		return fmt.Errorf("%w: auth_time missing in token", ErrMFAStale)
 	case grpcsrv.StepUpDenyMFAStale:
-		return fmt.Errorf("%w: age=%s max=%s", ErrMFAStale, g.now().Sub(token.AuthTime), req.MFAMaxAge)
+		return fmt.Errorf("%w: age=%s max=%s", ErrMFAStale, g.now().Sub(a.AuthTime), req.MFAMaxAge)
 	case grpcsrv.StepUpAllow:
 	}
 	return nil

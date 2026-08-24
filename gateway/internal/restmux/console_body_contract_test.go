@@ -855,14 +855,13 @@ var bespokeConsoleMutationSites = map[string]string{
 	// Копий в модулях (compute/nlb/registry/storage) здесь больше нет: #405 свёл
 	// их к ре-экспорту из `shared/`, тела запроса они не собирают, и освобождать
 	// у них стало нечего. Реализация — одна, и она названа строкой ниже.
-	"shared/src/lib/kratos.ts":           "клиент провайдера личности, не наш край",
-	"shared/src/pages/auth/Register.tsx": "регистрация идёт в провайдер личности (csrf+webauthn), не на наш край",
-	"shared/src/api/iam.ts":              "тонкая обёртка над RPC IAM, тело — аргумент вызывающего",
-	"shared/src/api/tokens.ts":           "тонкая обёртка над RPC токенов, тело — аргумент вызывающего",
-	"compute/src/api/resources.ts":       "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
-	"nlb/src/api/resources.ts":           "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
-	"registry/src/api/resources.ts":      "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
-	"storage/src/api/resources.ts":       "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+	"shared/src/lib/kratos.ts":      "клиент провайдера личности, не наш край",
+	"shared/src/api/iam.ts":         "тонкая обёртка над RPC IAM, тело — аргумент вызывающего",
+	"shared/src/api/tokens.ts":      "тонкая обёртка над RPC токенов, тело — аргумент вызывающего",
+	"compute/src/api/resources.ts":  "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+	"nlb/src/api/resources.ts":      "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+	"registry/src/api/resources.ts": "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+	"storage/src/api/resources.ts":  "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
 }
 
 // TestConsoleMutationSurfaceIsAccountedFor — каждая точка, из которой консоль

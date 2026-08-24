@@ -63,7 +63,7 @@ data-plane invariant assertion.
 
 | Flow | happy | negative | corner | authz | data-plane |
 |---|---|---|---|---|---|
-| docker `private_key_jwt` shim | ▢ TX-DOCKER-LOGIN-HAPPY | ▢ TX-DOCKER-ANON-401 / -INVALID-SAKEY-401 / -AUDIENCE-401 | ▢ TX-TOKEN-RATE-LIMIT | ▢ TX-IDENTITY-ONLY-CHECK | ✅ |
+| docker `/iam/token` shim (базовый токен доступа) | ✅ IBT-15-DOCKER-BASIC-TOKEN-LOGIN-OK | ✅ IBT-15 (ключевой материал → 401) · ▢ TX-DOCKER-ANON-401 / -AUDIENCE-401 | ▢ TX-TOKEN-RATE-LIMIT | ▢ TX-IDENTITY-ONLY-CHECK | ✅ |
 | k8s `jwt-bearer` | ▢ TX-K8S-JWT-BEARER-HAPPY | ▢ TX-K8S-NO-TRUSTED-SUBJECT / -BADTOKEN / -AUDIENCE-MISMATCH | ⚪ | ▢ TX-IDENTITY-ONLY-CHECK | ✅ |
 | `SAKeyService.Issue` | ▢ TX-SAKEY-ISSUE-STANDARD / -FEDERATED | ▢ TX-SAKEY-ISSUE-VALIDATION-AUTHZ | ⚪ | ▢ authz on Issue | ⚪ |
 | `SAKeyService.Revoke` | ▢ | ▢ TX-SAKEY-REVOKE (deny after revoke) | ⚪ | ⚪ | ✅ |
@@ -165,7 +165,8 @@ cd tests/newman
 # docker push/pull through authz + IAM /iam/token shim + Hydra federation
 ./scripts/dataplane-e2e.sh --env environments/fe3455.postman_environment.json
 #   (drives docker login/push/pull + raw-HTTP /v2/ and /iam/token; requires the
-#    docker CLI, registry.kacho.local reachability, an SA-key, and live Hydra)
+#    docker CLI, registry.kacho.local reachability, a SECRET-kind credential for
+#    the docker lane, and live Hydra)
 ```
 
 The harness is the **functional-gate** for REG-TX-22: unit/integration green ≠ works.
@@ -183,7 +184,7 @@ Report its outcome into `RESULTS.md` alongside the newman summary.
 | `jwtStranger` | subject with no bindings (existence-hiding target) |
 | `jwtServiceAccountEditor` | SA subject for owner-tuple / SA-key flows |
 | `runId` | per-run isolation suffix (set by `run.sh`) |
-| `saKeyStandard` / `saKeyFederated` | data-plane: docker + k8s SA-keys (harness only) |
+| `saKeyStandard` / `saKeyFederated` | data-plane: k8s SA-keys (harness only). Докер-вход ими НЕ выполняется — полоса принимает только базовый токен доступа (#1143) |
 | `registryHost` | data-plane: `registry.kacho.local` ingress host (harness only) |
 | `hydraTokenUrl` | data-plane: Hydra `/oauth2/token` (harness only) |
 

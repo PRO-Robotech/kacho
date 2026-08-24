@@ -34,8 +34,25 @@ type IssueSAKeyRequest struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	ServiceAccountId string                 `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
 	Description      string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
-	// Optional ISO duration in seconds; if 0 → no expiry.
-	TtlSeconds      int64  `protobuf:"varint,3,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	// Optional ISO duration in seconds. Смысл ЗНАЧЕНИЯ 0 ЗАВИСИТ ОТ ВИДА:
+	//   - KEYPAIR / FEDERATED — 0 означает БЕССРОЧНО (прежнее поведение);
+	//   - SECRET — 0 означает «срок не назван», применяется умолчание политики;
+	//     БЕССРОЧНОГО СЕКРЕТА НЕ БЫВАЕТ НИ В КАКОМ НАПИСАНИИ, и срок сверх
+	//     потолка политики ОТВЕРГАЕТСЯ, а не урезается молча.
+	TtlSeconds int64 `protobuf:"varint,3,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	// Ответственный за выпуск. ОБЯЗАТЕЛЬНЫМ НЕ ОБЪЯВЛЯЕТСЯ И НЕ ЯВЛЯЕТСЯ: край
+	// подставляет его сам — вызывающему-человеку его собственный принципал,
+	// вызывающей машине владельца аккаунта целевой учётки. Присланное значение
+	// сверяется с тем, которое будет записано; у вызывающего-машины поле обязано
+	// быть ПУСТЫМ, потому что записываемое значение краю недоступно (резолв идёт
+	// в use-case, из репозитория), и несовпавшее отвергается `INVALID_ARGUMENT`
+	// с именем поля.
+	//
+	// Здесь стояло `(required) = true` — утверждение, ОБРАТНОЕ действительному, и
+	// машиночитаемое. Исполнителя у этой опции нет ни одного (потребителей вне
+	// сгенерированных стабов — ноль по всему дереву), поэтому отказа она никогда
+	// не давала; но её читают генераторы клиентов, и вызывающий получал параметр,
+	// объявленный обязательным, при сервисе, который просит его не слать.
 	CreatedByUserId string `protobuf:"bytes,4,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"`
 	// Федеративный вид ключа. Непустой перечень означает: ключевой пары мы не
 	// чеканим, а удостоверение предъявляет ВНЕШНИЙ издатель — ответ выдачи не
@@ -83,9 +100,18 @@ type IssueSAKeyRequest struct {
 	// выпуске, immutable (у токена нет Update RPC). Пусто допустимо.
 	Name string `protobuf:"bytes,7,opt,name=name,proto3" json:"name,omitempty"`
 	// Пользовательские метки токена. Задаются при выпуске, immutable.
-	Labels        map[string]string `protobuf:"bytes,8,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Labels map[string]string `protobuf:"bytes,8,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Вид выдаваемого удостоверения (§2.5 приёмки BAT-1).
+	//
+	// Не назван — СОХРАНЯЕТСЯ ПРЕЖНЕЕ ПОВЕДЕНИЕ ДОСЛОВНО: пустой перечень
+	// доверенных субъектов даёт KEYPAIR, непустой — FEDERATED. Названный явно вид
+	// АВТОРИТЕТЕН, и несогласие с перечнем отвергается с именем поля.
+	//
+	// LEGACY, названный явно, отвергается ВСЕГДА: его не производит ни один
+	// глагол.
+	CredentialKind CredentialKind `protobuf:"varint,9,opt,name=credential_kind,json=credentialKind,proto3,enum=kacho.cloud.iam.v1.CredentialKind" json:"credential_kind,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *IssueSAKeyRequest) Reset() {
@@ -172,6 +198,13 @@ func (x *IssueSAKeyRequest) GetLabels() map[string]string {
 		return x.Labels
 	}
 	return nil
+}
+
+func (x *IssueSAKeyRequest) GetCredentialKind() CredentialKind {
+	if x != nil {
+		return x.CredentialKind
+	}
+	return CredentialKind_CREDENTIAL_KIND_UNSPECIFIED
 }
 
 // TrustedSubject — one (issuer, subject_pattern) tuple allowed to assert this
@@ -282,11 +315,19 @@ type IssueSAKeyResponse struct {
 	// longer exists; this field is always empty for new keys. Kept for wire
 	// compatibility only. Removed in a future major.
 	//
+	// Помечен носителем секрета: пока поле стоит на проводе, ЛЮБОЙ путь записи
+	// может положить в него значение, и подметальщик обязан его знать. Пометка
+	// говорит о ВИДЕ поля, а не о том, заполняется ли оно сегодня.
+	//
 	// Deprecated: Marked as deprecated in kacho/cloud/iam/v1/sa_key_service.proto.
 	ClientSecret string `protobuf:"bytes,3,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`
 	// PEM-encoded PKCS#8 ECDSA P-256 private key — SHOWN ONCE; never
 	// recoverable. Caller uses it to sign `client_assertion` (RFC 7521/7523)
 	// in OAuth2 client_credentials requests against Hydra.
+	//
+	// Помечен носителем секрета: приватная половина — предъявительский секрет
+	// ровно в том же смысле, что и однострочный базовый, и оседать в строке
+	// операции, журнале аудита, ленте подписки или строке ресурса не имеет права.
 	PrivateKeyPem string `protobuf:"bytes,4,opt,name=private_key_pem,json=privateKeyPem,proto3" json:"private_key_pem,omitempty"`
 	// PEM-encoded SPKI public key (informational; Hydra holds the canonical
 	// copy as a JWK in the registered client metadata).
@@ -306,7 +347,16 @@ type IssueSAKeyResponse struct {
 	//
 	// Пустой перечень на переведённом контуре — утверждение, а не умолчание:
 	// сужения ключ не объявлял, действует перечень посадки.
-	Audiences     []string `protobuf:"bytes,8,rep,name=audiences,proto3" json:"audiences,omitempty"`
+	Audiences []string `protobuf:"bytes,8,rep,name=audiences,proto3" json:"audiences,omitempty"`
+	// Базовый секрет — ПОКАЗЫВАЕТСЯ ОДИН РАЗ и невосстановим. Заполнен ТОЛЬКО у
+	// вида SECRET; у KEYPAIR и FEDERATED пуст.
+	//
+	// Предъявляется КАК ЕСТЬ: `Authorization: Bearer <строка>` на крае и полем
+	// пароля `docker login -p`.
+	//
+	// Помечен носителем секрета: значение не имеет права осесть НИ В СТРОКЕ
+	// ОПЕРАЦИИ, ни в журнале аудита, ни в ленте подписки, ни в строке ресурса.
+	Secret        string `protobuf:"bytes,9,opt,name=secret,proto3" json:"secret,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -396,6 +446,13 @@ func (x *IssueSAKeyResponse) GetAudiences() []string {
 		return x.Audiences
 	}
 	return nil
+}
+
+func (x *IssueSAKeyResponse) GetSecret() string {
+	if x != nil {
+		return x.Secret
+	}
+	return ""
 }
 
 type IssueSAKeyMetadata struct {
@@ -742,18 +799,19 @@ var File_kacho_cloud_iam_v1_sa_key_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/iam/v1/sa_key_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a5kacho/cloud/iam/v1/service_account_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x82\x04\n" +
+	"'kacho/cloud/iam/v1/sa_key_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a$kacho/cloud/api/secret_options.proto\x1a(kacho/cloud/iam/v1/credential_kind.proto\x1a5kacho/cloud/iam/v1/service_account_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xcb\x04\n" +
 	"\x11IssueSAKeyRequest\x12:\n" +
 	"\x12service_account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x10serviceAccountId\x12+\n" +
 	"\vdescription\x18\x02 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12/\n" +
 	"\vttl_seconds\x18\x03 \x01(\x03B\x0e\xfa\xc71\n" +
 	"<=63072000R\n" +
-	"ttlSeconds\x129\n" +
-	"\x12created_by_user_id\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0fcreatedByUserId\x12M\n" +
+	"ttlSeconds\x125\n" +
+	"\x12created_by_user_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=20R\x0fcreatedByUserId\x12M\n" +
 	"\x10trusted_subjects\x18\x05 \x03(\v2\".kacho.cloud.iam.v1.TrustedSubjectR\x0ftrustedSubjects\x12%\n" +
 	"\baudience\x18\x06 \x03(\tB\t\x8a\xc81\x05<=512R\baudience\x12\x1c\n" +
 	"\x04name\x18\a \x01(\tB\b\x8a\xc81\x04<=63R\x04name\x12I\n" +
-	"\x06labels\x18\b \x03(\v21.kacho.cloud.iam.v1.IssueSAKeyRequest.LabelsEntryR\x06labels\x1a9\n" +
+	"\x06labels\x18\b \x03(\v21.kacho.cloud.iam.v1.IssueSAKeyRequest.LabelsEntryR\x06labels\x12K\n" +
+	"\x0fcredential_kind\x18\t \x01(\x0e2\".kacho.cloud.iam.v1.CredentialKindR\x0ecredentialKind\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd8\x01\n" +
@@ -761,16 +819,17 @@ const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"\x06issuer\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x06issuer\x126\n" +
 	"\x0fsubject_pattern\x18\x02 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x0esubjectPattern\x124\n" +
 	"\x0epublic_key_pem\x18\x03 \x01(\tB\x0e\xe8\xc71\x01\x8a\xc81\x06<=8192R\fpublicKeyPem\x121\n" +
-	"\rkey_algorithm\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=16R\fkeyAlgorithm\"\xbc\x02\n" +
+	"\rkey_algorithm\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=16R\fkeyAlgorithm\"\xe4\x02\n" +
 	"\x12IssueSAKeyResponse\x12?\n" +
 	"\x03key\x18\x01 \x01(\v2-.kacho.cloud.iam.v1.ServiceAccountOAuthClientR\x03key\x12\x1b\n" +
-	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12'\n" +
-	"\rclient_secret\x18\x03 \x01(\tB\x02\x18\x01R\fclientSecret\x12&\n" +
-	"\x0fprivate_key_pem\x18\x04 \x01(\tR\rprivateKeyPem\x12$\n" +
+	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12+\n" +
+	"\rclient_secret\x18\x03 \x01(\tB\x06\xc0\xc81\x01\x18\x01R\fclientSecret\x12,\n" +
+	"\x0fprivate_key_pem\x18\x04 \x01(\tB\x04\xc0\xc81\x01R\rprivateKeyPem\x12$\n" +
 	"\x0epublic_key_pem\x18\x05 \x01(\tR\fpublicKeyPem\x12\x1c\n" +
 	"\talgorithm\x18\x06 \x01(\tR\talgorithm\x12\x15\n" +
 	"\x06key_id\x18\a \x01(\tR\x05keyId\x12\x1c\n" +
-	"\taudiences\x18\b \x03(\tR\taudiences\"x\n" +
+	"\taudiences\x18\b \x03(\tR\taudiences\x12\x1c\n" +
+	"\x06secret\x18\t \x01(\tB\x04\xc0\xc81\x01R\x06secret\"x\n" +
 	"\x12IssueSAKeyMetadata\x12,\n" +
 	"\x12service_account_id\x18\x01 \x01(\tR\x10serviceAccountId\x12\x15\n" +
 	"\x06key_id\x18\x02 \x01(\tR\x05keyId\x12\x1d\n" +
@@ -831,27 +890,29 @@ var file_kacho_cloud_iam_v1_sa_key_service_proto_goTypes = []any{
 	(*RevokeSAKeyResponse)(nil),       // 7: kacho.cloud.iam.v1.RevokeSAKeyResponse
 	(*RevokeSAKeyMetadata)(nil),       // 8: kacho.cloud.iam.v1.RevokeSAKeyMetadata
 	nil,                               // 9: kacho.cloud.iam.v1.IssueSAKeyRequest.LabelsEntry
-	(*ServiceAccountOAuthClient)(nil), // 10: kacho.cloud.iam.v1.ServiceAccountOAuthClient
-	(*timestamppb.Timestamp)(nil),     // 11: google.protobuf.Timestamp
-	(*operation.Operation)(nil),       // 12: kacho.cloud.operation.Operation
+	(CredentialKind)(0),               // 10: kacho.cloud.iam.v1.CredentialKind
+	(*ServiceAccountOAuthClient)(nil), // 11: kacho.cloud.iam.v1.ServiceAccountOAuthClient
+	(*timestamppb.Timestamp)(nil),     // 12: google.protobuf.Timestamp
+	(*operation.Operation)(nil),       // 13: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_iam_v1_sa_key_service_proto_depIdxs = []int32{
 	1,  // 0: kacho.cloud.iam.v1.IssueSAKeyRequest.trusted_subjects:type_name -> kacho.cloud.iam.v1.TrustedSubject
 	9,  // 1: kacho.cloud.iam.v1.IssueSAKeyRequest.labels:type_name -> kacho.cloud.iam.v1.IssueSAKeyRequest.LabelsEntry
-	10, // 2: kacho.cloud.iam.v1.IssueSAKeyResponse.key:type_name -> kacho.cloud.iam.v1.ServiceAccountOAuthClient
-	10, // 3: kacho.cloud.iam.v1.ListSAKeysResponse.keys:type_name -> kacho.cloud.iam.v1.ServiceAccountOAuthClient
-	11, // 4: kacho.cloud.iam.v1.RevokeSAKeyResponse.revoked_at:type_name -> google.protobuf.Timestamp
-	0,  // 5: kacho.cloud.iam.v1.SAKeyService.Issue:input_type -> kacho.cloud.iam.v1.IssueSAKeyRequest
-	4,  // 6: kacho.cloud.iam.v1.SAKeyService.List:input_type -> kacho.cloud.iam.v1.ListSAKeysRequest
-	6,  // 7: kacho.cloud.iam.v1.SAKeyService.Revoke:input_type -> kacho.cloud.iam.v1.RevokeSAKeyRequest
-	12, // 8: kacho.cloud.iam.v1.SAKeyService.Issue:output_type -> kacho.cloud.operation.Operation
-	5,  // 9: kacho.cloud.iam.v1.SAKeyService.List:output_type -> kacho.cloud.iam.v1.ListSAKeysResponse
-	12, // 10: kacho.cloud.iam.v1.SAKeyService.Revoke:output_type -> kacho.cloud.operation.Operation
-	8,  // [8:11] is the sub-list for method output_type
-	5,  // [5:8] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	10, // 2: kacho.cloud.iam.v1.IssueSAKeyRequest.credential_kind:type_name -> kacho.cloud.iam.v1.CredentialKind
+	11, // 3: kacho.cloud.iam.v1.IssueSAKeyResponse.key:type_name -> kacho.cloud.iam.v1.ServiceAccountOAuthClient
+	11, // 4: kacho.cloud.iam.v1.ListSAKeysResponse.keys:type_name -> kacho.cloud.iam.v1.ServiceAccountOAuthClient
+	12, // 5: kacho.cloud.iam.v1.RevokeSAKeyResponse.revoked_at:type_name -> google.protobuf.Timestamp
+	0,  // 6: kacho.cloud.iam.v1.SAKeyService.Issue:input_type -> kacho.cloud.iam.v1.IssueSAKeyRequest
+	4,  // 7: kacho.cloud.iam.v1.SAKeyService.List:input_type -> kacho.cloud.iam.v1.ListSAKeysRequest
+	6,  // 8: kacho.cloud.iam.v1.SAKeyService.Revoke:input_type -> kacho.cloud.iam.v1.RevokeSAKeyRequest
+	13, // 9: kacho.cloud.iam.v1.SAKeyService.Issue:output_type -> kacho.cloud.operation.Operation
+	5,  // 10: kacho.cloud.iam.v1.SAKeyService.List:output_type -> kacho.cloud.iam.v1.ListSAKeysResponse
+	13, // 11: kacho.cloud.iam.v1.SAKeyService.Revoke:output_type -> kacho.cloud.operation.Operation
+	9,  // [9:12] is the sub-list for method output_type
+	6,  // [6:9] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_sa_key_service_proto_init() }
@@ -859,6 +920,7 @@ func file_kacho_cloud_iam_v1_sa_key_service_proto_init() {
 	if File_kacho_cloud_iam_v1_sa_key_service_proto != nil {
 		return
 	}
+	file_kacho_cloud_iam_v1_credential_kind_proto_init()
 	file_kacho_cloud_iam_v1_service_account_oauth_client_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{

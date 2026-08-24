@@ -158,7 +158,24 @@ kratosPublicUrl: ""
 #   3. confirm machine tokens carry `cnf`, and rotate any pre-existing SA keys
 #      (a key registered before step 1 keeps minting unbound tokens)
 #   4. gateway:   authn.requireMachineTokenBinding=true → unbound machine ⇒ 401
-authn: {}
+authn:
+  # ─── посадка личности (#1125) ──────────────────────────────────────────────
+  # ЧЕМ СТЕНД ПРОВЕРЯЕТ ЧЕЛОВЕКА: `external` — внешний поставщик удостоверений,
+  # `own` — наша собственная чеканка.
+  #
+  # На крае она разводит требование АДМИНИСТРАТИВНОГО адреса поставщика: этот
+  # адрес нужен ровно затем, чтобы выход человека снял сессию на его стороне, а
+  # под `own` такой сессии не существует. Полосу интроспекции поле НЕ разводит —
+  # авторитет отзыва остаётся обязательным на обеих полосах.
+  #
+  # УМОЛЧАНИЯ У ПРОЦЕССА НЕТ намеренно, поэтому оно живёт здесь: профиль,
+  # объявивший посадку у службы прав и забывший её на крае, получит отказ
+  # старта края — а не тихо разъехавшиеся половины одного стенда.
+  #
+  # Значение обязано СОВПАДАТЬ с тем, что объявила служба прав: две половины
+  # одного стенда, объявившие разное, — расхождение, которого никто не решал.
+  # Держит это deploy/identity_posture_profiles_test.go.
+  identityProvider: external
 
 # Hydra — OAuth2/OIDC token verification.
 # The auth path verifies Hydra-issued RS256 access tokens by fetching Hydra's

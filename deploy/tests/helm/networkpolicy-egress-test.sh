@@ -36,14 +36,20 @@ set -uo pipefail
 # Своей копии цепочек здесь нет: копии разъезжались молча.
 . "$(dirname "$0")/stacks.sh"
 
-SCRIPT="$(basename "$0")"
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 
-fail() { echo "FAIL: $1"; exit 1; }
+# Три исхода — ОДНОЙ реализацией на весь каталог: 0 зелено · 1 находка о дереве ·
+# 2 условие не создано (плюс текст самого helm). Прежде «<стек> не рендерится» и
+# нехватка инструмента объявлялись находкой — тем же кодом 1, что и под, отрезанный
+# политикой от своей базы, — и вызывающий не мог их различить машинно (#1214).
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$HERE/outcome.sh"
+require_helm
 
-command -v python3 >/dev/null || fail "нужен python3"
-python3 -c 'import yaml' 2>/dev/null || fail "нужен PyYAML"
+command -v python3 >/dev/null || fatal "нужен python3 — разбирать рендер нечем"
+python3 -c 'import yaml' 2>/dev/null || fatal "нужен PyYAML — разбирать рендер нечем"
 
 # check <render-файл> → печатает нарушения (пусто = чисто)
 check() {
@@ -109,12 +115,19 @@ for d in docs:
 PY
 }
 
-# render <values-флаги…>
+# render <метка> <values-флаги…> → путь к файлу с манифестом.
+# Отказ рендера — УСЛОВИЕ прогона, а не свойство политики: код 2 и текст helm.
+# Вызов идёт ВНЕ подстановки — иначе `render_or_fatal` вышел бы из ПОДОБОЛОЧКИ,
+# и её код с текстом до вызывающего не доехали бы (см. шапку outcome.sh).
+RENDER_FILE=""
 render() {
+  local what="$1"; shift
   local out; out="$(mktemp)"
   # shellcheck disable=SC2086
-  helm template kacho-umbrella "$UMBRELLA" "$@" 2>/dev/null > "$out" || { rm -f "$out"; return 1; }
-  printf '%s' "$out"
+  helm_try kacho-umbrella "$UMBRELLA" "$@"
+  render_or_fatal "$what"
+  printf '%s\n' "$HELM_OUT" > "$out"
+  RENDER_FILE="$out"
 }
 
 if [ "${1:-}" = "--self-test" ]; then
@@ -163,7 +176,8 @@ if [ "${1:-}" = "--self-test" ]; then
     printf '%s' "$b"
   }
   # (0) профиль, включающий политику, — как есть
-  r="$(render -f "$UMBRELLA/values.prod.yaml")" || fail "values.prod не рендерится"
+  render "профиль values.prod (самопроверка, случай 0)" -f "$UMBRELLA/values.prod.yaml"
+  r="$RENDER_FILE"
   out="$(check "$r")"
   [ -z "$out" ] && echo "  (0) values.prod как есть                       → МОЛЧИТ" \
                 || { echo "  (0) values.prod как есть                       → красный: $out"; rc=1; }
@@ -219,8 +233,9 @@ p = sys.argv[1]; s = open(p).read()
 s = re.sub(r'    - to:\n        - podSelector:\n            \{\{- toYaml \.Values\.opaSidecar\.networkPolicy\.datastorePodSelector[^\n]*\n      ports:\n        - protocol: TCP\n          port: 5432\n', '', s, count=1)
 open(p, 'w').write(s)
 PY
-  r="$(render -f "$UMBRELLA/values.prod.yaml" --set kacho-iam.opaSidecar.enabled=true)" \
-    || fail "инъекция A2 сломала рендер"
+  render "инъекция A2 (боевой профиль, сайдкар включён)" \
+    -f "$UMBRELLA/values.prod.yaml" --set kacho-iam.opaSidecar.enabled=true
+  r="$RENDER_FILE"
   out="$(check "$r")"
   if [[ "$out" == *"отрезан от собственной базы"* ]]; then
     echo "  (A2) снято правило :5432 (сайдкар включён)     → КРАСНЫЙ с координатой"
@@ -229,15 +244,17 @@ PY
 
   # (B) КОНТРОЛЬ той же формы: сайдкар ВКЛЮЧЁН, список полон — законная
   #     конструкция, ради которой политика и написана. Гейт обязан смолчать.
-  r="$(render -f "$UMBRELLA/values.prod.yaml" --set kacho-iam.opaSidecar.enabled=true)" \
-    || fail "контроль B не рендерится"
+  render "контроль B (боевой профиль, сайдкар включён)" \
+    -f "$UMBRELLA/values.prod.yaml" --set kacho-iam.opaSidecar.enabled=true
+  r="$RENDER_FILE"
   out="$(check "$r")"
   [ -z "$out" ] && echo "  (B) сайдкар включён, список полон             → МОЛЧИТ" \
                 || { echo "  (B) сайдкар включён, список полон             → ЛОЖНОЕ СРАБАТЫВАНИЕ: $out"; rc=1; }
   rm -f "$r"
 
   # (C) КОНТРОЛЬ: профиль, где политика выключена вовсе — молчит
-  r="$(render -f "$UMBRELLA/values.dev.yaml")" || fail "контроль C не рендерится"
+  render "контроль C (профиль dev)" -f "$UMBRELLA/values.dev.yaml"
+  r="$RENDER_FILE"
   out="$(check "$r")"
   [ -z "$out" ] && echo "  (C) политика выключена (dev)                  → МОЛЧИТ" \
                 || { echo "  (C) политика выключена (dev)                  → ЛОЖНОЕ СРАБАТЫВАНИЕ: $out"; rc=1; }
@@ -247,25 +264,29 @@ PY
   exit $rc
 fi
 
-N=0
 # Профили проверяем ВСЕ разворачиваемые: политика включается ровно в одном из них,
 # и именно поэтому дефект прожил незамеченным. Состав каждого стека — из
 # единственной таблицы дерева: здесь стояли два имени файлов, и стенд, чья
 # цепочка длиннее одного слоя, рендерился бы не тем составом.
-for stack in $(stacks_names); do
+STACKS="$(stacks_names)"
+EXPECTED_ASSERTIONS="$(printf '%s\n' "$STACKS" | grep -c . || true)"
+[ "$EXPECTED_ASSERTIONS" -ge 1 ] || fatal "таблица стеков не дала ни одного имени — обходить нечего"
+for stack in $STACKS; do
   prof="$(stacks_chain "$stack" ' ')"
   # shellcheck disable=SC2046,SC2086
-  r="$(render $(stacks_args "$stack" "$UMBRELLA"))" || fail "$stack не рендерится"
+  render "стек $stack" $(stacks_args "$stack" "$UMBRELLA")
+  r="$RENDER_FILE"
   out="$(check "$r")"
   rm -f "$r"
   if [ -n "$out" ]; then
-    echo "FAIL: $prof — Egress-политика отрезает то, без чего под не работает:"
-    printf '        %s\n' "$out"
-    echo "      NetworkPolicy действует на ПОД, а не на контейнер: выбранный под"
-    echo "      получает default-deny целиком, вместе с основным контейнером."
-    exit 1
+    {
+      printf '        %s\n' "$out"
+      echo "      NetworkPolicy действует на ПОД, а не на контейнер: выбранный под"
+      echo "      получает default-deny целиком, вместе с основным контейнером."
+    } >&2
+    fail "$prof — Egress-политика отрезает то, без чего под не работает (перечень выше)"
   fi
-  N=$((N + 1))
+  ok
 done
 
-echo "PASS: $SCRIPT ($N assertions)"
+outcome_verdict "стеков осмотрено: $N"

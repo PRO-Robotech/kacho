@@ -70,9 +70,35 @@ def _assert_op_in_response():
     ]
 
 
-def _assert_op_error(code, code_name, msg_regex):
+def _assert_op_error(code, code_name, msg_text, *, anchored=False):
     """Negative, поднятый ВНУТРИ worker-fn (RunSync) → embedded в Operation.error;
-    HTTP 200 + Operation{done:true, error:{code,message}} прямо в ответе мутации."""
+    HTTP 200 + Operation{done:true, error:{code,message}} прямо в ответе мутации.
+
+    ДВЕ ПОЗИЦИИ ОДНОГО ЗНАЧЕНИЯ — ДВА СРЕДСТВА (#1209). Прежняя редакция брала у
+    вызывающего готовый литерал `/…/` и сажала его СРАЗУ в две позиции: в подпись
+    шага (литерал СТРОКИ) и в `to.match(…)` (позиция КОДА). Ни одна не была
+    закрыта, а средства у них разные, потому что языки разные:
+
+      * `msg_text` — это ТЕКСТ контракт-тона, и внутри `/…/` каждый его знак
+        работал бы ОПЕРАТОРОМ (`.` — «любой знак», `(` — группа, `/` закрыл бы
+        литерал и хвост стал бы кодом). Экранирует его `js_regex_literal_text` —
+        по правилам ВЫРАЖЕНИЯ, не строки;
+      * подпись шага — литерал строки, и там опасны другие знаки: апостроф
+        закрывает её, перевод строки рвёт. Их закрывает сериализатор `js_str`.
+
+    Одного средства не хватает НИ В КАКУЮ сторону, и это измерено: образец
+    `won't be found$` — ЗАКОННОЕ выражение (апостроф в нём не значим), поэтому
+    проверка «код» его пропускает, — а подпись шага он закрывал, и порождённый
+    файл переставал разбираться. Отказ разбора newman пишет в `testScripts`, а НЕ
+    в `assertions.failed`: шаг даёт НОЛЬ упавших утверждений и отчитывается
+    зелёным по этой величине.
+
+    `anchored=True` привязывает совпадение к НАЧАЛУ сообщения. Якорь стоит в
+    статической части f-строки, а не подставляется: подстановка «то ли `^`, то ли
+    пусто» была бы значением вызывающего в литерале выражения — ровно тем, что
+    здесь и закрывается.
+    """
+    title = f"op.error.message matches /{'^' if anchored else ''}{js_regex_literal_text(msg_text)}$/"
     return [
         *assert_status(200),
         "pm.test('op done:true with embedded error', () => {",
@@ -82,8 +108,10 @@ def _assert_op_error(code, code_name, msg_regex):
         "});",
         f"pm.test('op.error.code {code} ({code_name})', () => "
         f"pm.expect(pm.response.json().error.code, JSON.stringify(pm.response.json())).to.eql({code}));",
-        f"pm.test('op.error.message matches {msg_regex}', () => "
-        f"pm.expect(pm.response.json().error.message, JSON.stringify(pm.response.json())).to.match({msg_regex}));",
+        f"pm.test({js_str(title)}, () => "
+        + (f"pm.expect(pm.response.json().error.message, JSON.stringify(pm.response.json())).to.match(/^{js_regex_literal_text(msg_text)}$/));"
+           if anchored else
+           f"pm.expect(pm.response.json().error.message, JSON.stringify(pm.response.json())).to.match(/{js_regex_literal_text(msg_text)}$/));"),
     ]
 
 
@@ -384,7 +412,7 @@ CASES.append(Case(
         retry_until_authorized(Step(name="remove-covering", method="POST",
             path="/vpc/v1/networks/{{netId}}:remove-cidr-blocks",
             body={"ipv4CidrBlocks": [_SUPERNET_V4]},
-            test_script=_assert_op_error(9, "FAILED_PRECONDITION", "/still contains subnets$/")),
+            test_script=_assert_op_error(9, "FAILED_PRECONDITION", "still contains subnets")),
             retry_on=(403,)),
         _cleanup_subnet(),
         poll_operation_until_done(),
@@ -811,7 +839,7 @@ CASES.append(Case(
         # 172.31.0.0/24 вне 10.oct.0.0/16; проверка containment внутри worker → op-error 3.
         retry_until_authorized(Step(name="add-sub-outside", method="POST", path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
             body={"ipv4CidrBlocks": ["172.31.0.0/24"]},
-            test_script=_assert_op_error(3, "INVALID_ARGUMENT", "/is not within any network CIDR block$/")),
+            test_script=_assert_op_error(3, "INVALID_ARGUMENT", "is not within any network CIDR block")),
             retry_on=(403,)),
         _cleanup_subnet(),
         poll_operation_until_done(),
@@ -834,7 +862,9 @@ CASES.append(Case(
         retry_until_authorized(Step(name="remove-primary", method="POST",
             path="/vpc/v1/subnets/{{subId}}:remove-cidr-blocks",
             body={"ipv4CidrBlocks": ["10.{{vpc1oct}}.0.0/24"]},
-            test_script=_assert_op_error(3, "INVALID_ARGUMENT", "/^ipv4_cidr_primary is immutable after Subnet\\.Create$/")),
+            test_script=_assert_op_error(3, "INVALID_ARGUMENT",
+                                         "ipv4_cidr_primary is immutable after Subnet.Create",
+                                         anchored=True)),
             retry_on=(403,)),
         _cleanup_subnet(),
         poll_operation_until_done(),

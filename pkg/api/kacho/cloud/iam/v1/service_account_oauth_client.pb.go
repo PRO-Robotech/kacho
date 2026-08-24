@@ -68,9 +68,13 @@ type ServiceAccountOAuthClient struct {
 	// показывается description/id. Человекочитаемая метка ключа, не идентификатор.
 	Name string `protobuf:"bytes,9,opt,name=name,proto3" json:"name,omitempty"`
 	// Пользовательские метки токена (задаются при выпуске, immutable).
-	Labels        map[string]string `protobuf:"bytes,10,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Labels map[string]string `protobuf:"bytes,10,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Вид удостоверения — ЧЕМ ОНО СЕБЯ ПРЕДЪЯВЛЯЕТ. Записывается при вставке;
+	// читателем НЕ вычисляется и из состава прочих полей не выводится. По нему
+	// читатель узнаёт, какое поле ответа выдачи было заполнено.
+	CredentialKind CredentialKind `protobuf:"varint,11,opt,name=credential_kind,json=credentialKind,proto3,enum=kacho.cloud.iam.v1.CredentialKind" json:"credential_kind,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ServiceAccountOAuthClient) Reset() {
@@ -173,11 +177,18 @@ func (x *ServiceAccountOAuthClient) GetLabels() map[string]string {
 	return nil
 }
 
+func (x *ServiceAccountOAuthClient) GetCredentialKind() CredentialKind {
+	if x != nil {
+		return x.CredentialKind
+	}
+	return CredentialKind_CREDENTIAL_KIND_UNSPECIFIED
+}
+
 var File_kacho_cloud_iam_v1_service_account_oauth_client_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_service_account_oauth_client_proto_rawDesc = "" +
 	"\n" +
-	"5kacho/cloud/iam/v1/service_account_oauth_client.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\x87\x05\n" +
+	"5kacho/cloud/iam/v1/service_account_oauth_client.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a(kacho/cloud/iam/v1/credential_kind.proto\x1a\x1ckacho/cloud/validation.proto\"\xd4\x05\n" +
 	"\x19ServiceAccountOAuthClient\x12F\n" +
 	"\x02id\x18\x01 \x01(\tB6\xe8\xc71\x01\xf2\xc71&soc(_[0-9a-z]+|[0-9a-hjkmnp-tv-z]{17})\x8a\xc81\x04<=21R\x02id\x12#\n" +
 	"\x06sva_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x05svaId\x125\n" +
@@ -192,7 +203,8 @@ const file_kacho_cloud_iam_v1_service_account_oauth_client_proto_rawDesc = "" +
 	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1c\n" +
 	"\x04name\x18\t \x01(\tB\b\x8a\xc81\x04<=63R\x04name\x12Q\n" +
 	"\x06labels\x18\n" +
-	" \x03(\v29.kacho.cloud.iam.v1.ServiceAccountOAuthClient.LabelsEntryR\x06labels\x1a9\n" +
+	" \x03(\v29.kacho.cloud.iam.v1.ServiceAccountOAuthClient.LabelsEntryR\x06labels\x12K\n" +
+	"\x0fcredential_kind\x18\v \x01(\x0e2\".kacho.cloud.iam.v1.CredentialKindR\x0ecredentialKind\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
@@ -214,17 +226,19 @@ var file_kacho_cloud_iam_v1_service_account_oauth_client_proto_goTypes = []any{
 	(*ServiceAccountOAuthClient)(nil), // 0: kacho.cloud.iam.v1.ServiceAccountOAuthClient
 	nil,                               // 1: kacho.cloud.iam.v1.ServiceAccountOAuthClient.LabelsEntry
 	(*timestamppb.Timestamp)(nil),     // 2: google.protobuf.Timestamp
+	(CredentialKind)(0),               // 3: kacho.cloud.iam.v1.CredentialKind
 }
 var file_kacho_cloud_iam_v1_service_account_oauth_client_proto_depIdxs = []int32{
 	2, // 0: kacho.cloud.iam.v1.ServiceAccountOAuthClient.expires_at:type_name -> google.protobuf.Timestamp
 	2, // 1: kacho.cloud.iam.v1.ServiceAccountOAuthClient.last_used_at:type_name -> google.protobuf.Timestamp
 	2, // 2: kacho.cloud.iam.v1.ServiceAccountOAuthClient.created_at:type_name -> google.protobuf.Timestamp
 	1, // 3: kacho.cloud.iam.v1.ServiceAccountOAuthClient.labels:type_name -> kacho.cloud.iam.v1.ServiceAccountOAuthClient.LabelsEntry
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	3, // 4: kacho.cloud.iam.v1.ServiceAccountOAuthClient.credential_kind:type_name -> kacho.cloud.iam.v1.CredentialKind
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_service_account_oauth_client_proto_init() }
@@ -232,6 +246,7 @@ func file_kacho_cloud_iam_v1_service_account_oauth_client_proto_init() {
 	if File_kacho_cloud_iam_v1_service_account_oauth_client_proto != nil {
 		return
 	}
+	file_kacho_cloud_iam_v1_credential_kind_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

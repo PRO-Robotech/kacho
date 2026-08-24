@@ -238,6 +238,16 @@ func (c *IAMSubjectClient) IsSystemAdmin(ctx context.Context, subject string) (b
 func (c *IAMSubjectClient) InvalidateAll() { c.cache.InvalidateAll() }
 func (c *IAMSubjectClient) Close() error   { return c.conn.Close() }
 
+// BasicCredentialStub — тот же клиент внутреннего слушателя, что уже держит эта
+// связь, поданный как узкий порт авторитета о предъявленном базовом секрете
+// (#1142). Второй связи под это ребро НЕ заводится: адрес, якорь доверия и
+// удостоверение края у него ТЕ ЖЕ — «отзыв действует не позже N» обязано
+// означать одно и то же на всех полосах, а вторая связь со своими величинами
+// это разошла бы молча.
+func (c *IAMSubjectClient) BasicCredentialStub() iamv1.InternalIAMServiceClient {
+	return iamv1.NewInternalIAMServiceClient(c.conn)
+}
+
 func pickDisplayName(displayName, email string) string {
 	if displayName != "" {
 		return displayName

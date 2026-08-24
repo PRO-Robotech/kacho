@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
@@ -92,10 +93,31 @@ func (r *saKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 			"service_account_id": schema.StringAttribute{Required: true, PlanModifiers: replace,
 				MarkdownDescription: "Учётка, которой выдаётся ключ."},
-			"created_by_user_id": schema.StringAttribute{Required: true, PlanModifiers: replace,
-				MarkdownDescription: "Пользователь, от чьего имени выпущен ключ. Край требует " +
-					"его явно: у выданного доступа обязан быть названный ответственный, и " +
-					"выводить его из предъявителя токена значило бы терять эту связь."},
+			// Optional, а не Required, и это не послабление: назвать ответственного
+			// вправе ТОЛЬКО человек, и только самого себя, — а конвейер, ходящий
+			// служебной учёткой, не вправе назвать никого. Край подставляет его сам:
+			// человеку — вызывающего, машине — владельца аккаунта учётки, потому что
+			// служебная учётка строкой пользователей не является и ответственным быть
+			// не может. Требование поля делало ресурс неисполнимым у машины ПРИ ЛЮБОМ
+			// входе: непустое значение край отвергает синхронно, а пустого требование
+			// не допускает.
+			"created_by_user_id": schema.StringAttribute{Optional: true, Computed: true,
+				PlanModifiers: []planmodifier.String{
+					// Порядок обязателен: без UseStateForUnknown вычисляемое поле
+					// приходило бы в план неизвестным, а «изменение требует замены»
+					// считало бы неизвестное другим значением — ключ отзывался бы и
+					// выпускался заново от правки чего угодно.
+					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplace()},
+				Validators: []validator.String{notEmptyIfSet(
+					"Уберите поле вовсе: край подставит ответственного сам. Пустая строка " +
+						"не означает ни «не назвал», ни «назвал» — на провод она уезжает " +
+						"неотличимо от отсутствия, и состояние осталось бы утверждать " +
+						"пустоту про ключ, у которого ответственный есть.")},
+				MarkdownDescription: "Кто выпустил ключ (аудит). Не задавайте это поле: край " +
+					"подставит ответственного сам — человеку вызывающего, служебной учётке " +
+					"владельца аккаунта. Чужой идентификатор он отвергает, а от служебной " +
+					"учётки не принимает НИКАКОЙ: выпустить ключ «от чужого имени» нельзя."},
 			"name": schema.StringAttribute{Optional: true, Computed: true,
 				Default: stringdefault.StaticString(""), PlanModifiers: replace},
 			"description": schema.StringAttribute{Optional: true, Computed: true,
@@ -143,6 +165,10 @@ func (r *saKeyResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
+	// Пустой ответственный — законный и ЕДИНСТВЕННЫЙ вход служебной учётки: край
+	// подставит его сам. ValueString() отдаёт пустую строку и для null, и для
+	// неизвестного, и оба случая здесь означают одно — «оператор ответственного не
+	// называл»; пустое поле сборка тела на провод не выносит.
 	body := &iamv1.IssueSAKeyRequest{
 		ServiceAccountId: plan.ServiceAccountID.ValueString(),
 		CreatedByUserId:  plan.CreatedByUserID.ValueString(),
@@ -170,10 +196,20 @@ func (r *saKeyResource) Create(ctx context.Context, req resource.CreateRequest, 
 	if out := client.Classify(httpResp); out.Kind != client.OutcomeOK {
 		detail := out.Message
 		if out.Kind == client.OutcomeDenied {
-			detail += "\n\nВыпуск ключа требует ПОВЫШЕННОГО уровня подтверждения личности " +
-				"(step-up). Токен служебной учётки его не несёт: машина не проходит второй " +
-				"фактор. Заводите ключи под человеческой личностью — это осознанное " +
-				"ограничение платформы, а не дефект провайдера."
+			// Причин ровно ДВЕ, и они чинятся в разных местах: одна — выдачей права,
+			// другая — повторным входом человека. Назвать одну значит отправить
+			// половину читателей чинить не то.
+			//
+			// Здесь стояло «машина второй фактор не проходит, заводите ключи под
+			// человеческой личностью». Это неверно: машинный принципал освобождён от
+			// порога уровня доверия, и текст отговаривал от полосы, ради которой
+			// машинная личность и заводится.
+			detail += "\n\nОтказ приходит по одной из двух причин:\n" +
+				"  • вызывающему не выдано право на эту служебную учётку — проверьте выдачу;\n" +
+				"  • вызывающий-ЧЕЛОВЕК не подтвердил личность повышенным уровнем (step-up): " +
+				"выпуск ключа требует его от людей.\n" +
+				"Служебная учётка от этого порога освобождена — конвейер, ходящий машинной " +
+				"личностью, получает такой отказ из-за прав, а не из-за второго фактора."
 		}
 		resp.Diagnostics.AddError("Выпуск ключа отвергнут", detail)
 		return
@@ -240,6 +276,13 @@ func applySAKeyResponse(ctx context.Context, m *saKeyModel, r map[string]any) {
 	get := func(k string) types.String {
 		v, _ := r[k].(string)
 		return types.StringValue(v)
+	}
+	// Ответственный приезжает ИЗ ОТВЕТА: на машинной полосе настройка его не называла,
+	// и другого источника у состояния нет. Пустой ответ значения НЕ затирает — поле
+	// пересоздающее, и стёртое пустотой следующий план прочитал бы как другое значение,
+	// то есть отозвал бы живой ключ и выпустил новый материал.
+	if by := nestedString(r, "key", "createdByUserId"); by != "" {
+		m.CreatedByUserID = types.StringValue(by)
 	}
 	m.ClientID = get("clientId")
 	m.KeyID = get("keyId")

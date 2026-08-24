@@ -98,6 +98,8 @@ var consoleFilesystemWriterAllowance = map[string]string{
 	"ui-future/shared/src/test/shared-organisms-single-source.test.ts": "пересобирает ведомость форков под ручкой KACHO_REGEN_FORK_LEDGER=1",
 	"ui-future/shared/src/test/module-reachability.injection.test.ts": "строит СИНТЕТИЧЕСКОЕ дерево модулей в своём mkdtemp-каталоге и снимает его в afterEach: " +
 		"предмет пробы — обходчик реального дерева, и подмена node:fs сделала бы фикстуру снисходительнее продукта",
+	"ui-future/shared/src/test/identity-ceremony-carriers.injection.test.ts": "строит СИНТЕТИЧЕСКОЕ дерево носителей церемонии в своём mkdtemp-каталоге и снимает его в afterEach: " +
+		"предмет пробы — обходчик реального дерева, и подмена node:fs сделала бы фикстуру снисходительнее продукта",
 }
 
 type fsWriteFinding struct {

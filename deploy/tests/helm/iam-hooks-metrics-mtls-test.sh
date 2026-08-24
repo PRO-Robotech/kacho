@@ -63,16 +63,28 @@ UMBRELLA="$REPO_ROOT/helm/umbrella"
 PROD="$UMBRELLA/values.prod.yaml"
 DEV="$UMBRELLA/values.dev.yaml"
 TPL="$UMBRELLA/charts/kacho-iam/templates/deployment.yaml"
-N=0
-fail() { echo "FAIL: $1"; exit 1; }
-ok() { N=$((N + 1)); }
 
-[ -f "$PROD" ] || fail "values.prod.yaml not found at $PROD"
-[ -f "$DEV" ]  || fail "values.dev.yaml not found at $DEV"
-[ -f "$TPL" ]  || fail "kacho-iam deployment template not found at $TPL"
+# ТРИ ИСХОДА (0 зелено · 1 находка о дереве · 2 условие не создано) — общей
+# реализацией на весь каталог. До #1195 отказ helm по причине, НЕ относящейся к
+# предмету проверки (зависимости умбреллы не собраны), убивал прогон на первом
+# же `HYDRA_CM_PROD="$(render_only …)"` под `set -e`, НЕ СКАЗАВ НИЧЕГО: код 1,
+# ноль байт. Утверждение секции 2 `[ -n "$HYDRA_CM_PROD" ] || fail …` до этого
+# места просто не доезжало.
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$(dirname "$0")/outcome.sh"
+EXPECTED_ASSERTIONS=5
 
+require_helm
+require_mikefarah_yq
+
+[ -f "$PROD" ] || fatal "values.prod.yaml нет на диске ($PROD)"
+[ -f "$DEV" ]  || fatal "values.dev.yaml нет на диске ($DEV)"
+[ -f "$TPL" ]  || fatal "шаблона kacho-iam нет на диске ($TPL)"
+
+# render_only <values> <show-only-template> — результат в $HELM_OUT.
 render_only() {
-  helm template kacho-umbrella "$UMBRELLA" -f "$1" --show-only "$2" 2>/dev/null
+  helm_try kacho-umbrella "$UMBRELLA" -f "$1" --show-only "$2"
+  render_or_fatal "$(basename "$1") → $2"
 }
 
 # Full per-edge env set, INCLUDING the new CLIENTAUTHMODE (M2): the prior array
@@ -107,7 +119,7 @@ prod_enable="$(yq '.["kacho-iam"].mtls.enable' "$PROD")"
 ok
 
 # ── 2. PROD Hydra — token/refresh webhook URLs https://…:9092 + HMAC kept ────
-HYDRA_CM_PROD="$(render_only "$PROD" charts/hydra/templates/configmap.yaml)"
+render_only "$PROD" charts/hydra/templates/configmap.yaml; HYDRA_CM_PROD="$HELM_OUT"
 [ -n "$HYDRA_CM_PROD" ] || fail "hydra configmap did not render in prod profile"
 any_line_matches "$HYDRA_CM_PROD" 'https://[^"]*:9092/iam/v1/hooks/token' \
   || fail "prod: Hydra token_hook URL must be https://…:9092/iam/v1/hooks/token (got plaintext or missing)"
@@ -121,7 +133,7 @@ fi
 ok
 
 # ── 3. PROD Hydra pod mounts the internal-CA bundle (trusts kacho-iam server cert) ─
-HYDRA_DEPLOY_PROD="$(render_only "$PROD" charts/hydra/templates/deployment.yaml)"
+render_only "$PROD" charts/hydra/templates/deployment.yaml; HYDRA_DEPLOY_PROD="$HELM_OUT"
 [ -n "$HYDRA_DEPLOY_PROD" ] || fail "hydra deployment did not render in prod profile"
 [[ "$HYDRA_DEPLOY_PROD" == *'kacho-iam-server-tls'* ]] \
   || fail "prod: Hydra pod must mount the SEC-F internal-CA bundle (kacho-iam-server-tls) for webhook CA-trust"
@@ -133,7 +145,7 @@ ok
 dev_http="$(yq '.["kacho-iam"].mtls.httpListeners // false' "$DEV")"
 [ "$dev_http" != "true" ] \
   || fail "dev: kacho-iam.mtls.httpListeners=$dev_http (dev hooks/metrics listener must stay PLAINTEXT — regression!)"
-HYDRA_CM_DEV="$(render_only "$DEV" charts/hydra/templates/configmap.yaml)"
+render_only "$DEV" charts/hydra/templates/configmap.yaml; HYDRA_CM_DEV="$HELM_OUT"
 any_line_matches "$HYDRA_CM_DEV" 'http://[^"]*:9092/iam/v1/hooks/token' \
   || fail "dev: Hydra token_hook URL must stay plaintext http://…:9092 (newman stand unchanged)"
 ok
@@ -150,10 +162,13 @@ ok
 # его. Пара обязательна: одно положительное не отличило бы гейт от безусловного блока.
 # Рендерится ПОД-ЧАРТ отдельно — в отличие от умбреллы (см. DETERMINISM NOTE выше) он
 # детерминирован: пять подряд рендеров дают один и тот же состав ручек.
-gate_render() { helm template iam "$UMBRELLA/charts/kacho-iam" --set mtls.enable=true "$@" \
-                  --show-only templates/deployment.yaml 2>/dev/null; }
-GATE_ON="$(gate_render --set mtls.httpListeners=true)"
-GATE_OFF="$(gate_render)"
+gate_render() {
+  helm_try iam "$UMBRELLA/charts/kacho-iam" --set mtls.enable=true "$@" \
+    --show-only templates/deployment.yaml
+  render_or_fatal "под-чарт kacho-iam standalone${*:+ [$*]}"
+}
+gate_render --set mtls.httpListeners=true; GATE_ON="$HELM_OUT"
+gate_render; GATE_OFF="$HELM_OUT"
 for name in KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE KACHO_IAM_METRICS_SERVER_MTLS_ENABLE; do
   [[ "$GATE_ON" == *"name: $name"* ]] \
     || fail "capability: mtls.httpListeners=true НЕ включает $name — способность потеряна, боевой профиль отгрузил бы открытый листенер"
@@ -175,4 +190,4 @@ done
   || fail "capability: hooks certfile must reuse the mounted server tls.crt (SEC-F)"
 ok
 
-echo "PASS: $SCRIPT ($N assertions)"
+outcome_verdict "профилей прочитано: 2 (dev, prod)"

@@ -35,7 +35,16 @@
 # Идеал не превращается в поломку.
 
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+HERE="$(cd "$(dirname "$0")" && pwd)"
+cd "$HERE/../.."
+
+# Три исхода — ОДНОЙ реализацией на весь каталог: 0 зелено · 1 находка о дереве ·
+# 2 условие не создано (и текст, который сказал сам helm). До этого рендер, не
+# удавшийся из-за НЕСОБРАННЫХ зависимостей умбреллы, объявлялся находкой — тем же
+# кодом 1, каким объявляется настоящий дефект (задача #1214).
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$HERE/outcome.sh"
+require_helm
 
 CHART=./helm/umbrella
 # Перечень профилей ВЫВОДИТСЯ из общего источника цепочек стенда, а не
@@ -48,8 +57,9 @@ if [ -n "${IDENTITY_SOURCE_PROFILES:-}" ]; then
 else
   mapfile -t PROFILES < <(bash tests/helm/stacks.sh --chain dev 2>/dev/null
                           bash tests/helm/stacks.sh --chain prod 2>/dev/null)
-  [ "${#PROFILES[@]}" -gt 0 ] || { echo "ОТКАЗ: общий источник цепочек не дал ни одного профиля — судить не о чем"; exit 1; }
+  [ "${#PROFILES[@]}" -gt 0 ] || fatal "общий источник цепочек не дал ни одного профиля — судить не о чем"
 fi
+EXPECTED_ASSERTIONS="${#PROFILES[@]}"
 rc=0
 seen_profiles=0
 seen_refs=0
@@ -62,14 +72,20 @@ for prof in "${PROFILES[@]}"; do
     /*) pf="$prof" ;;
     *)  pf="$CHART/$prof" ;;
   esac
-  [ -f "$pf" ] || { echo "ПРОПУСК: нет $prof"; continue; }
+  # Профиля нет на диске — это УСЛОВИЕ прогона, а не свойство дерева: пропустить
+  # его значило бы вычесть измерение из вердикта молча.
+  [ -f "$pf" ] || fatal "профиля $prof нет на диске — вердикта по нему не будет"
   seen_profiles=$((seen_profiles + 1))
 
-  out="$(helm template kacho-umbrella "$CHART" -f "$pf" 2>/dev/null)" || {
-    echo "ОТКАЗ [$prof]: рендер не удался — вердикта о посадке нет"; rc=1; continue
-  }
+  # Рендер — ПРЕДПОСЫЛКА измерения. Его отказ (несобранные зависимости умбреллы,
+  # нет helm) находкой о дереве не является: код 2 плюс текст самого helm.
+  helm_try kacho-umbrella "$CHART" -f "$pf"
+  render_or_fatal "профиль $prof"
+  out="$HELM_OUT"
 
-  verdict="$(printf '%s' "$out" | python3 tests/helm/identity-hook-credential-source.py "$prof")" || { echo "ОТКАЗ [$prof]: разбор рендера не удался"; rc=1; continue; }
+  verdict="$(printf '%s' "$out" | python3 tests/helm/identity-hook-credential-source.py "$prof")" \
+    || fatal "разбор рендера профиля $prof не удался — вердикта о посадке нет (нужен python3)"
+  ok
 
   while IFS='|' read -r kind msg n; do
     case "$kind" in
@@ -83,9 +99,7 @@ for prof in "${PROFILES[@]}"; do
 done
 
 echo "осмотрено: профилей $seen_profiles, ссылок $seen_refs"
-if [ "$seen_profiles" -eq 0 ]; then
-  echo "ОТКАЗ: ни один профиль не осмотрен — «ноль находок» здесь означало бы «ноль прочитанного»"
-  exit 1
-fi
-[ "$rc" -eq 0 ] && echo "OK: каждая объявленная ссылка имеет источник в поде"
-exit "$rc"
+[ "$seen_profiles" -gt 0 ] \
+  || fatal "ни один профиль не осмотрен — «ноль находок» здесь означало бы «ноль прочитанного»"
+[ "$rc" -eq 0 ] || fail "ссылка без источника в поде — см. строки ОТКАЗ выше"
+outcome_verdict "ссылок осмотрено: $seen_refs"

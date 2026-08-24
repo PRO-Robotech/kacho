@@ -4,6 +4,8 @@
 package main
 
 import (
+	"github.com/PRO-Robotech/kacho/pkg/identityposture"
+
 	"bytes"
 	"encoding/json"
 	"os"
@@ -53,7 +55,7 @@ func TestBootPosture_Production(t *testing.T) {
 		HybridMTLSExternal: true,
 	}
 
-	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, true)), map[string]any{
+	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, true, identityposture.External)), map[string]any{
 		"msg":           observability.BootPostureMsg,
 		"service":       "api-gateway",
 		"auth_mode":     "production-strict",
@@ -74,7 +76,7 @@ func TestBootPosture_PublicMTLSNeedsTheTLSListener(t *testing.T) {
 		HybridMTLSExternal: true, // no cert/key/addr → TLS listener never starts
 	}
 
-	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, true)), map[string]any{
+	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, true, identityposture.External)), map[string]any{
 		"public_mtls": false,
 	})
 }
@@ -84,7 +86,7 @@ func TestBootPosture_PublicMTLSNeedsTheTLSListener(t *testing.T) {
 func TestBootPosture_InsecureIsReportedHonestly(t *testing.T) {
 	cfg := config.Config{AuthNMode: "dev"}
 
-	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, false)), map[string]any{
+	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, false, identityposture.External)), map[string]any{
 		"service":       "api-gateway",
 		"auth_mode":     "dev",
 		"db_sslmode":    "n/a",
@@ -105,10 +107,10 @@ func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	}
 	root := string(src)
 
-	call := strings.Index(root, "observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled))")
+	call := strings.Index(root, "observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled, identityLane))")
 	if call < 0 {
 		t.Fatal("composition root must emit the posture line with the RESOLVED internal-listener security: " +
-			"observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled))")
+			"observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled, identityLane))")
 	}
 	guard := strings.Index(root, "validateProductionInternalListener(")
 	if guard < 0 || call < guard {

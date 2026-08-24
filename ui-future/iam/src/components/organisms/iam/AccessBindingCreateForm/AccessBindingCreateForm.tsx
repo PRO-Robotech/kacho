@@ -900,7 +900,7 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
             </Form.Item>
           ) : (
             <Form.Item
-              label={scope === "PROJECT" ? "Project" : "Account"}
+              label={scope === "PROJECT" ? "Проект" : "Аккаунт"}
               name="scope_ref_id"
               required
               rules={[{ required: true, message: "Выберите объект области" }]}

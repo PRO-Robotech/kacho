@@ -4,6 +4,8 @@
 package config
 
 import (
+	"github.com/PRO-Robotech/kacho/pkg/identityposture"
+
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -160,6 +162,21 @@ type Config struct {
 	// Дефолт — production (secure-by-default, core rule #16): незаданный env НЕ должен
 	// поднимать edge в anonymous-fallback posture. dev — явный opt-in dev-профиля.
 	AuthNMode string `envconfig:"KACHO_API_GATEWAY_AUTHN_MODE" default:"production"`
+
+	// IdentityProvider — ПОСАДКА ЛИЧНОСТИ, объявленная профилем: проверяет ли
+	// человека внешний поставщик удостоверений (`external`) или наша
+	// собственная чеканка (`own`). Задача #1125.
+	//
+	// УМОЛЧАНИЯ НЕТ НАМЕРЕННО, и это отличает поле от всех соседних. Каждое из
+	// двух возможных умолчаний неверно по-своему: `external` заставило бы
+	// профиль, поля не объявивший, требовать адресов поставщика, которых у него
+	// нет; `own` МОЛЧА сняло бы эти требования с профиля, который просто забыли
+	// обновить. Умолчание живёт в ПРОФИЛЕ, а не здесь.
+	//
+	// Значение разбирается ОБЩИМ словарём (pkg/identityposture): служба прав и
+	// край читают одно и то же поле, и второй словарь разошёлся бы с первым на
+	// первом же новом значении — молча, потому что обе стороны компилируются.
+	IdentityProvider string `envconfig:"KACHO_API_GATEWAY_IDENTITY_PROVIDER" default:""`
 
 	// AuthNDevSecret — HMAC-secret для подписи dev-JWT (mode=dev).
 	// Если пуст — Bearer-токены в dev-режиме игнорируются (всегда anonymous).
@@ -395,6 +412,15 @@ type Config struct {
 	// Обязателен, когда наш издатель принимается: прежний провайдер о наших
 	// токенах не знает by construction, и его ответ на наш токен есть
 	// утверждение о чужом предмете. Задаётся явно, никогда не выводится.
+	//
+	// ИСХОД при незаданном названо здесь, чтобы его не приходилось выводить:
+	// наш издатель принимается, адрес пуст ⇒ ОТКАЗ В СТАРТЕ (TokenAcceptance →
+	// requirePlatformRevocationAuthority → os.Exit в композиционном корне).
+	// МЯГКОГО ПРОХОДА на этой полосе нет и не было НИ РАЗУ — в отличие от полосы
+	// прежнего провайдера, где пустой адрес даёт предупреждение и неподключённое
+	// чтение. Разница намеренная: там отзывы чужие и провайдер их проверяет сам,
+	// здесь производитель отзыва МЫ, и «спросить некого» означало бы «выпустили
+	// то, что не умеем отозвать».
 	PlatformTokenRevocationURL string `envconfig:"KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL" default:""`
 
 	// PlatformTokenRevocationCAFile — якорь доверия хопа к нашему авторитету
@@ -718,6 +744,24 @@ func (c Config) ResolvedHydraJWKSURL() string {
 // refuses to start a production-class gateway in that state.
 func (c Config) ResolvedHydraIntrospectionURL() string {
 	return strings.TrimSpace(c.HydraIntrospectionURL)
+}
+
+// IdentityProviderKnob — имя ручки посадки личности НА КРАЕ. Объявлено один
+// раз: его называют текст отказа старта и документация профиля; две копии
+// разошлись бы на той, которую забыли поправить.
+const IdentityProviderKnob = "KACHO_API_GATEWAY_IDENTITY_PROVIDER"
+
+// ResolvedIdentityProvider разбирает объявленную посадку личности.
+//
+// Незаданное значение возвращается как «не задано» БЕЗ ошибки: отказ старта
+// производит страж, называя ручку и оба законных значения. Отказ здесь назвал
+// бы то же самое вторым текстом.
+func (c Config) ResolvedIdentityProvider() (identityposture.Provider, error) {
+	raw := c.IdentityProvider
+	if strings.TrimSpace(raw) == "" {
+		return identityposture.Unset, nil
+	}
+	return identityposture.Parse(IdentityProviderKnob, raw)
 }
 
 // ResolvedHydraAdminURL returns the admin API base, or the empty string when

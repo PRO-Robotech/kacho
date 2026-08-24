@@ -96,16 +96,15 @@ DECLARED="
 .github/scripts/check-pinned-tools.sh
 .github/scripts/check-volume-mounts.py
 .github/scripts/console-run-category.py
+.github/scripts/go-test-verdict.py
 .github/scripts/install-browser-deps.sh
 .github/scripts/install-pinned-browser.sh
 .github/scripts/newman-live.py
 .github/scripts/run-python-probes.py
 deploy/scripts/assert-admin-hop-transport.sh
-deploy/scripts/assert-metrics-surfaces-answer.sh
 deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py
 deploy/scripts/assert-burst-waits-for-materialization.py
-deploy/scripts/classify-integration-outcome.sh
 deploy/scripts/assert-cocreated-child-is-torn-down.py
 deploy/scripts/assert-delete-operation-outcome.py
 deploy/scripts/assert-delete-steps-are-asserted.py
@@ -116,6 +115,7 @@ deploy/scripts/assert-identity-account-peak-under-ceiling.py
 deploy/scripts/assert-identity-admission-rate-headroom.py
 deploy/scripts/assert-legacy-issuer-acceptance-has-a-subject.py
 deploy/scripts/assert-machine-minter-has-no-dead-exchange-lane.py
+deploy/scripts/assert-metrics-surfaces-answer.sh
 deploy/scripts/assert-outbox-autovacuum.sh
 deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-refusal-lane-has-a-reader.py
@@ -127,6 +127,7 @@ deploy/scripts/assert-teardown-frees-parent.py
 deploy/scripts/assert-verdict-aggregators-honest.sh
 deploy/scripts/assert-waiters-name-their-target.sh
 deploy/scripts/assert-wave-scheduler-terminates.sh
+deploy/scripts/classify-integration-outcome.sh
 deploy/scripts/gen-managed-image-pins.sh
 deploy/scripts/helm-umbrella-deps.sh
 deploy/scripts/remeasure-provider-listener-tls.sh
@@ -136,15 +137,16 @@ deploy/tests/helm/admin-hop-port-policy-test.sh
 deploy/tests/helm/admin-hop-transport-test.sh
 deploy/tests/helm/config-rollout-binding-test.sh
 deploy/tests/helm/geo-authz-edge-armed-test.sh
+deploy/tests/helm/identity-callback-credential-source-test.sh
 deploy/tests/helm/image-rollout-binding-test.sh
 deploy/tests/helm/kratos-selfservice-ui-hardening-test.sh
 deploy/tests/helm/makefile-destructive-guarded-test.sh
 deploy/tests/helm/neighbour-address-form-test.sh
 deploy/tests/helm/networkpolicy-egress-test.sh
 deploy/tests/helm/outbox-autovacuum-naptime-test.sh
-deploy/tests/helm/identity-callback-credential-source-test.sh
 deploy/tests/helm/prerequisite-secrets-test.sh
 deploy/tests/helm/secret-material-survives-recreation-test.sh
+deploy/tests/helm/three-outcomes-distinguishable-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
 gateway/tests/newman/scripts/selftest_tamper_mutation.py
 services/compute/tests/newman/scripts/validate-cases.py
@@ -435,6 +437,7 @@ if [ "$scanned" -eq 0 ]; then
 fi
 
 failed=""
+unmet=""
 ran=0
 for f in $FOUND; do
   echo
@@ -444,20 +447,34 @@ for f in $FOUND; do
     *.js) cmd=(node "$f" --self-test) ;;
     *)    cmd=(bash "$f" --self-test) ;;
   esac
-  if "${cmd[@]}"; then
-    ran=$((ran + 1))
-  else
-    failed="$failed $f"
-  fi
+  # КОД ВОЗВРАТА БЕРЁТСЯ КАК ДАННЫЕ. Исходов три, и третий — «условие не создано»
+  # (код 2: нет инструмента, не собраны зависимости, нет профиля на диске) — не
+  # вердикт о дереве: `tests/helm/README.md` §«Три исхода», `e2e-flow.md` §1. Пока
+  # здесь стояло `if "${cmd[@]}"`, единица и двойка схлопывались в одно
+  # «самопроверка провалена», и отсутствие условия читалось как «гейт не доказал,
+  # что умеет краснеть» — то есть как находка о дереве.
+  "${cmd[@]}" && rc=0 || rc=$?
+  case "$rc" in
+    0) ran=$((ran + 1)) ;;
+    2) unmet="$unmet $f" ;;
+    *) failed="$failed $f" ;;
+  esac
 done
 
 echo
+if [ -n "$unmet" ]; then
+  echo "!!! УСЛОВИЕ НЕ СОЗДАНО (код 2):$unmet"
+  echo "    Не вердикт о дереве и не «самопроверка провалена»: нет инструмента,"
+  echo "    не собраны зависимости умбреллы, нет профиля на диске. В зачёт «прошло»"
+  echo "    это не идёт — прогон ниже выйдет кодом 2."
+fi
 if [ -n "$failed" ]; then
   echo "!!! самопроверки провалены:$failed"
   echo "    Гейт, чья самопроверка красная, не доказал, что умеет краснеть на дефекте —"
   echo "    и его зелёный обычный проход ничего не значит."
   exit 1
 fi
+[ -z "$unmet" ] || exit 2
 
 # «Ноль находок» обязано быть отличимо от «ноль прочитанного».
 if [ "$ran" -eq 0 ]; then

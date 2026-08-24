@@ -21,7 +21,7 @@ import uuid
 import importlib.util
 from pathlib import Path
 from dataclasses import dataclass, field, replace
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 
 def js_str(value: str) -> str:
@@ -92,6 +92,48 @@ def js_comment(value: str) -> str:
     """
     text = json.dumps(str(value), ensure_ascii=False)[1:-1]
     return text.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
+
+# Знаки, значимые в регулярном выражении, плюс разделитель литерала. `-` сюда НЕ
+# входит намеренно: вне класса символов он и так буква, а `\-` под флагом `u`
+# был бы синтаксической ошибкой — то есть «на всякий случай» сломало бы литерал.
+_REGEX_META = "^$\\.*+?()[]{}|/"
+
+
+def js_regex_literal_text(value: str) -> str:
+    r"""ТЕКСТ вызывающего внутри литерала регулярного выражения (#1202).
+
+    Имя ресурса, фрагмент контракт-тона, подпись — это ТЕКСТ, а стоит он внутри
+    `/…/`, где каждый знак выражения работает ОПЕРАТОРОМ. Без экранирования
+    `Route table (v2)` стал бы группой, `a.b` — «любой знак», а `/` закрыл бы
+    литерал и хвост стал бы КОДОМ.
+
+    ПОЧЕМУ НЕ `js_str`. Сериализатор строки экранирует по правилам СТРОКИ:
+    апостроф, кавычку, обратный слэш. Скобка и точка для него безобидны, а здесь
+    именно они и опасны. Правила разные, потому что языки разные — литерал
+    строки и литерал выражения.
+
+    ПОЧЕМУ НЕ `re.escape`. Питонов набор — другой язык: он экранирует и то, чего
+    в JavaScript экранировать нельзя под флагом `u`, и не экранирует разделитель
+    `/`, которого у Python вовсе нет.
+
+    ЧЕМ ДЕРЖИТСЯ. Проба
+    `services/iam/tests/newman/scripts/js_regex_literal_test.py`: враждебный
+    текст не рвёт синтаксис, собранное выражение совпадает с текстом ДОСЛОВНО и
+    НЕ совпадает со строкой, где те же знаки сработали бы операторами.
+    """
+    out = []
+    for ch in str(value):
+        code = ord(ch)
+        # Разделители строк — экранированными: знаками они невидимы в
+        # исходнике, и первый же редактор молча их съест.
+        if code < 0x20 or code == 0x7F or ch in ("\u2028", "\u2029"):
+            out.append("\\u%04x" % code)
+        elif ch in _REGEX_META:
+            out.append("\\" + ch)
+        else:
+            out.append(ch)
+    return "".join(out)
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -599,7 +641,7 @@ def conf_not_found_text(prefix, get_path, resource_name):
                         *assert_status(404),
                         *assert_grpc_code(5, "NOT_FOUND"),
                         f"pm.test({js_str(f'text matches \"{resource_name} ... not found\"')}, () => "
-                        f"pm.expect(pm.response.json().message).to.match(/^{resource_name} .* not found$/));",
+                        f"pm.expect(pm.response.json().message).to.match(/^{js_regex_literal_text(resource_name)} .* not found$/));",
                     ])],
     )
 
@@ -3006,6 +3048,83 @@ def _assert_delete_operation_outcome(steps: List[Step]) -> List[Step]:
     return out
 
 
+_ENV_WRITE_TPL = r"environment\.set\(\s*['\"]%s['\"]\s*,"
+_ENV_CLEAR_TPL = r"environment\.unset\(\s*['\"]%s['\"]\s*\)"
+_ENV_EMPTY_TPL = r"environment\.set\(\s*['\"]%s['\"]\s*,\s*(''|\"\")\s*\)"
+
+
+def _writes_env(code: str, var: str) -> bool:
+    return re.search(_ENV_WRITE_TPL % re.escape(var), code) is not None
+
+
+def _clears_env(code: str, var: str) -> bool:
+    """Снятие имени — либо `unset`, либо присвоение ПУСТОЙ строки.
+
+    Обе формы решают одну задачу: устаревшее значение не переживает шаг. Пустая
+    строка — законная запись помощника синхронного отказа: имя остаётся
+    ОПРЕДЕЛЁННЫМ, и страж неразрешённой подстановки не роняет опрос там, где
+    отсутствия операции и ждали.
+    """
+    return (re.search(_ENV_CLEAR_TPL % re.escape(var), code) is not None
+            or re.search(_ENV_EMPTY_TPL % re.escape(var), code) is not None)
+
+
+def _reset_captured_operation_id(steps: List[Step]) -> List[Step]:
+    """Захват идентификатора операции — ЗАМЕНА, а не дозапись: имя снимается первым.
+
+    ЧТО ИНАЧЕ ПРОИСХОДИТ. Имя, которое читает следующий опрос, пишется телом
+    ответа мутации. У ОТВЕРГНУТОЙ мутации тела с `id` нет — запись не
+    выполняется, и в имени остаётся значение ПРЕДЫДУЩЕЙ операции. Опрос уезжает
+    на чужую, давно завершённую операцию: `done === true` держится, зелёный
+    приходит быстро и уверенно, а мутация, ради которой кейс написан, не
+    проверена вовсе.
+
+    ПОЧЕМУ ПРОХОДОМ ПО ШАГАМ, А НЕ ТОЛЬКО В `save_from_response`. Помощник
+    снятие уже делает — но захват в дереве пишут и РУКАМИ, прямо в кейсе
+    (`pm.environment.set('opId', pm.response.json().id)`). Требование,
+    предъявленное только помощнику, обходится тем, что помощника не позвали, и
+    обходится молча. Проход задаёт ТОТ ЖЕ вопрос, что гейт
+    `deploy/scripts/assert-delete-operation-outcome.py`, и по тому же признаку:
+    имя берётся из адреса опроса, а не из соглашения об именовании — общий
+    `opId` в дереве не единственный, кейсы заводят собственные имена, и часть их
+    не оканчивается на `OpId` (`_opGetAnon_opId`, `_igBindAnchorOp`).
+
+    ПРЕДМЕТ — ЛЮБАЯ МУТАЦИЯ, НЕ ТОЛЬКО УДАЛЕНИЕ. Подмена чужой операцией
+    происходит от отказа захвата, а не от глагола: перепись по дереву на
+    1577829c7 дала 205 таких цепочек — DELETE 1, PATCH 18, POST 186.
+
+    КУДА ВСТАВЛЯЕТСЯ. В начало того скрипта, где стоит сам захват: снятие после
+    захвата было бы не снятием, а стиранием только что захваченного.
+    """
+    out = list(steps)
+    chains: Dict[int, List[int]] = {}
+    subject: Optional[int] = None
+    for idx, st in enumerate(out):
+        if st.method == "GET" and _OP_POLL_PATH.search(st.path):
+            if subject is not None:
+                chains.setdefault(subject, []).append(idx)
+            continue
+        if st.method in _MUTATION_METHODS:
+            subject = idx
+    for sidx, polls in chains.items():
+        m = _OP_POLL_PATH.search(out[polls[0]].path)
+        if not m:
+            continue
+        var = m.group(1)
+        pre = _strip_js_comments("\n".join(out[sidx].pre_script))
+        test = _strip_js_comments("\n".join(out[sidx].test_script))
+        if not (_writes_env(pre, var) or _writes_env(test, var)):
+            continue
+        if _clears_env(pre, var) or _clears_env(test, var):
+            continue
+        reset = [f"pm.environment.unset({js_str(var)});"]
+        if _writes_env(pre, var):
+            out[sidx] = replace(out[sidx], pre_script=reset + list(out[sidx].pre_script))
+        else:
+            out[sidx] = replace(out[sidx], test_script=reset + list(out[sidx].test_script))
+    return out
+
+
 def _js_code_and_literals(src: str):
     """Разложить скрипт на ИСПОЛНЯЕМУЮ часть и значения строковых литералов.
 
@@ -3053,6 +3172,26 @@ def _js_code_and_literals(src: str):
 
 _PUB_SET_RE = re.compile(r"pm\.environment\.set\(\s*@S(\d+)@\s*,")
 _PUB_BIND_RE = re.compile(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=")
+# Объявление БЕЗ инициализатора (`let j;`) и присваивание отдельным оператором
+# (`j = pm.response.json()`). Форма `let j; try { j = pm.response.json(); } catch (e)
+# { j = null; }` — самая частая запись безопасного разбора тела в этом корпусе, и
+# `_PUB_BIND_RE` её не узнаёт вовсе: она требует `=` В ОБЪЯВЛЕНИИ. Пока узнавалось
+# только объявление-с-инициализатором, цепочка происхождения рвалась на первом
+# звене, и проход не видел ни публикации, ни всего, что от этого имени
+# производилось дальше. Тот же распознаватель и по той же причине расширен в гейте
+# `internal/repohygiene/artifactgates` — проход и гейт обязаны считать ОДНО И ТО ЖЕ,
+# иначе они разойдутся на первом же шаге, записанном не по канону.
+_PUB_DECL_RE = re.compile(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*[;,]")
+# Имя непосредственно перед `=`: `a.b = c` отсекается предшествующей точкой,
+# `==`/`===`/`=>` — заглядыванием вперёд, `+=`/`!==`/`>=` — тем, что между именем и
+# `=` у них стоит оператор.
+_PUB_ASSIGN_RE = re.compile(r"(?:^|[^.\w$])([A-Za-z_$][\w$]*)\s*=(?![=>])")
+# Слова, за которыми `имя =` связыванием значения не является. Перечень закрытый:
+# «что-нибудь похожее на ключевое слово» отсекло бы имя, начинающееся так же.
+_PUB_RESERVED = frozenset((
+    "if", "for", "while", "switch", "return", "function", "const", "let", "var",
+    "catch", "typeof", "new", "delete", "void", "in", "of",
+))
 
 
 def _published_resource_vars(src: str, op_var: str) -> List[str]:
@@ -3089,11 +3228,42 @@ def _published_resource_vars(src: str, op_var: str) -> List[str]:
                 return True
         return False
 
+    # ОБЛАСТЬ ВИДИМОСТИ БЕРЁТСЯ У ОБЪЯВЛЕНИЯ, А НЕ У ПРИСВАИВАНИЯ. `let j;` стоит на
+    # верхнем уровне скрипта, а значение ему присваивают внутри `try { … }` — то
+    # есть глубже. Считать глубиной связывания глубину присваивания значило бы
+    # закрывать имя вместе с блоком `try`, и все последующие чтения `j` оказались бы
+    # «вне области» — ровно наоборот тому, как это работает в JavaScript.
+    decl_depth = {}
+    for m in _PUB_DECL_RE.finditer(code):
+        decl_depth[m.group(1)] = depth[m.start()]
     for m in _PUB_BIND_RE.finditer(code):
-        semi = code.find(";", m.end())
-        expr = code[m.end():semi if semi >= 0 else len(code)]
-        binds.append((m.start(), depth[m.start()], m.group(1),
-                      "metadata" in expr or visible(m.start(), expr)))
+        decl_depth[m.group(1)] = depth[m.start()]
+
+    sites = []  # (offset, depth, name, expr_at)
+    for m in _PUB_BIND_RE.finditer(code):
+        sites.append((m.start(), depth[m.start()], m.group(1), m.end()))
+    for m in _PUB_ASSIGN_RE.finditer(code):
+        name = m.group(1)
+        if name in _PUB_RESERVED:
+            continue
+        at = m.start(1)
+        # Объявление-с-инициализатором уже учтено выше: `const v = …` матчится и
+        # сюда. Считать его дважды безвредно для вердикта, но смещение связывания
+        # разошлось бы на длину `const `, а от смещения зависит проверка
+        # «объявлено ДО использования».
+        head = code[:at].rstrip()
+        if head.endswith(("const", "let", "var")) and len(head) < at:
+            tail = "const" if head.endswith("const") else ("let" if head.endswith("let") else "var")
+            j = len(head) - len(tail)
+            if j == 0 or not (code[j - 1].isalnum() or code[j - 1] in "_$"):
+                continue
+        sites.append((at, decl_depth.get(name, 0), name, m.end()))
+    sites.sort(key=lambda s: s[0])
+
+    for off, d, name, expr_at in sites:
+        semi = code.find(";", expr_at)
+        expr = code[expr_at:semi if semi >= 0 else len(code)]
+        binds.append((off, d, name, "metadata" in expr or visible(off, expr)))
 
     def arg_tail(pos: int) -> str:
         lvl = 1
@@ -3398,9 +3568,9 @@ def normalize_steps(steps: List[Step]) -> List[Step]:
     """
     return _poll_reads_under_the_actor_that_published_it(
         _assert_published_id_outcome(
-            _assert_delete_operation_outcome(
+            _reset_captured_operation_id(_assert_delete_operation_outcome(
                 _declare_supernet_where_a_subnet_is_carved(
-                    _wrap_own_fresh_reads(steps)))))
+                    _wrap_own_fresh_reads(steps))))))
 
 
 def case_to_postman(case: Case) -> Dict:
@@ -3425,8 +3595,28 @@ def case_to_postman(case: Case) -> Dict:
 # per deploy and are NOT the legacy literals zone-a..d. Resolve them ONCE,
 # synchronously, as the FIRST item of every collection (a real request, so newman
 # blocks on its response before running any case) and publish zoneA..zoneD +
-# existingZoneId/existingZoneAltId. Best-effort: no failing assertion — if geo is
-# unreachable (standalone vpc), the committed env defaults stay in effect.
+# existingZoneId/existingZoneAltId.
+#
+# ШАГ НАЗЫВАЕТ СВОЙ ИСХОД — И ПОЛОС У НЕГО ДВЕ, РАЗЛИЧИМЫХ ПО СУЩЕСТВУ.
+#
+# Здесь стояло «best-effort: no failing assertion — if geo is unreachable
+# (standalone vpc), the committed env defaults stay in effect». Довод про умолчания
+# верен и сохранён (они закоммичены в шаблоне окружения и непусты), но из него
+# следовало не «утверждать нечего», а «утверждать надо ДРУГОЕ»: шаг публикует
+# координату, на которой стоит каждый размещаемый ресурс набора, и при молчании
+# отказ каталога был неотличим от отказа резолва и от пустого каталога.
+#
+#   полоса 1 (условная): каталог ОТВЕТИЛ — значит зоны обязаны разрешиться. Ответ
+#     200 с нулём пригодных зон это не «geo недоступен», это непригодный каталог:
+#     мягкий проход в этом месте превращал бы постоянную неготовность стенда в
+#     штатный режим, а падали бы кейсы, которым нечего размещать;
+#   полоса 2 (безусловная): после шага координата зоны НЕПУСТА — резолвом ли,
+#     закоммиченным ли умолчанием. Это и есть предмет шага, и утверждение о нём
+#     верно на ОБЕИХ полосах, поэтому оно не `oneOf` на взаимоисключающие исходы.
+#
+# Недоступность geo по-прежнему НЕ роняет набор: полоса 1 при ней не берётся, а
+# полоса 2 держится умолчанием. Красным станет ровно то, что и должно, — стенд, где
+# ни каталога, ни умолчаний.
 _ZONE_SETUP_TEST = [
     "const code = (pm.response && pm.response.code) || 0;",
     "let zs = [];",
@@ -3455,6 +3645,18 @@ _ZONE_SETUP_TEST = [
     "  pm.environment.set('existingZoneAltId', at(1));",
     "  pm.environment.set('_zoneResolved', '1');",
     "}",
+    "if (code === 200) {",
+    "  pm.test('каталог размещения ответил — пригодные зоны разрешены', function () {",
+    "    pm.expect(pick.length, pm.response.text()).to.be.above(0);",
+    "  });",
+    "}",
+    "pm.test('координата зоны непуста после резолва "
+    "(живой каталог либо закоммиченное умолчание окружения)', function () {",
+    "  pm.expect(String(pm.environment.get('existingZoneId') || ''), "
+    "'existingZoneId').to.not.eql('');",
+    "  pm.expect(String(pm.environment.get('existingZoneAltId') || ''), "
+    "'existingZoneAltId').to.not.eql('');",
+    "});",
 ]
 
 
@@ -3745,6 +3947,100 @@ _ADMIN_DEFAULT_PRE = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# ИСХОД ПОДЗАПРОСА ЧИТАЕТСЯ — ИЛИ ЗДЕСЬ, ИЛИ ПО ЦЕПОЧКЕ НАКОПИТЕЛЕЙ
+# ---------------------------------------------------------------------------
+# Шаг, шлющий запросы САМ (`pm.sendRequest`), стоит вне всех проверок, которые
+# судят шаг по его собственному ответу: он ходит на служебный путь `/healthz`,
+# а предмет уезжает подзапросом. Значит его исход не прочтёт никто, кроме него
+# самого либо шага, читающего его накопитель.
+#
+# Гейт дерева `internal/repohygiene/artifactgates` `TestCapturedVariableStepCarriesAnAssertion`
+# такой шаг НЕ судит и не должен: его предмет — захват из СВОЕГО ответа. В его
+# перечне законных близнецов эта форма прямо объявлена молчащей, и довод там
+# стоял такой: «утверждает о нём следующий шаг». Довод верен для залпа
+# (`burst-* → resolve-* → assert-*`) и был НЕВЕРЕН для уборки: у пяти шагов
+# уборки состязательных кейсов следующего утверждающего шага не было вовсе, а
+# у одного обработчик ответа был пуст — `() => {}`. Обещание, которого никто не
+# проверял, и есть предмет этой проверки: она делает довод ПРОВЕРЯЕМЫМ там, где
+# кейс собирается.
+#
+# Предикат ТРАНЗИТИВЕН по накопителям: залп публикует `burstResults`, резолв
+# читает его и публикует `nicCollected`, и только третий шаг утверждает. Требуй
+# мы утверждения от НЕПОСРЕДСТВЕННОГО читателя — законная трёхзвенная цепочка
+# стала бы находкой, то есть ловилась бы форма вместо существа.
+#
+# Замер на дереве в день заведения (ревизия 8eb824e58, 91 коллекция, 9181 шаг):
+# шагов с подзапросом 18, находок 5 — все пять в `cases/concurrency.py`
+# (`cleanup-all-subs`, `wait-cleanup`, `cleanup-addresses`, `cleanup-nics`,
+# `wait-nic-cleanup`). Контроль в другую сторону на той же переписи: 13 шагов
+# подзапроса предикат НЕ помечает — значит он различает форму, а не метит всё
+# подряд.
+_SUBREQUEST_MARK = "pm.sendRequest"
+_ENV_SET_RE = re.compile(r"pm\.environment\.set\(\s*['\"]([A-Za-z_][\w]*)['\"]")
+
+
+def _env_reads(code: str, name: str) -> bool:
+    """Скрипт ЧИТАЕТ имя окружения — и в исполняемой части, а не в объяснении."""
+    return re.search(r"environment\.get\(\s*['\"]%s['\"]" % re.escape(name), code) is not None
+
+
+def _step_test_code(item: Dict) -> str:
+    """Исполняемая часть test-скрипта шага сериализованной коллекции."""
+    for ev in item.get("event", []):
+        if ev.get("listen") == "test":
+            return _strip_js_comments("\n".join(ev.get("script", {}).get("exec", [])))
+    return ""
+
+
+def audit_subrequest_outcome_readers(service: str, col: Dict) -> Tuple[List[str], Dict[str, int]]:
+    """Находки и перепись: у каждого шага с подзапросом есть читатель его исхода.
+
+    Возвращает (перечень находок, перепись). Перепись печатается ВСЕГДА, чтобы
+    «ноль находок» было отличимо от «ноль прочитанного»: предикат, переставший
+    узнавать подзапрос, молча стал бы вечнозелёным.
+    """
+    findings: List[str] = []
+    census = {"cases": 0, "steps": 0, "subrequest": 0, "self": 0, "chained": 0}
+
+    def walk(items: List[Dict], path: List[str]) -> None:
+        steps = [it for it in items if "item" not in it]
+        for it in items:
+            if "item" in it:
+                census["cases"] += 1
+                walk(it["item"], path + [it.get("name", "")])
+        for i, it in enumerate(steps):
+            census["steps"] += 1
+            code = _step_test_code(it)
+            if _SUBREQUEST_MARK not in code:
+                continue
+            census["subrequest"] += 1
+            if any(form in code for form in _ASSERT_FORMS):
+                census["self"] += 1
+                continue
+            carried = set(_ENV_SET_RE.findall(code))
+            reached = False
+            for later in steps[i + 1:]:
+                lcode = _step_test_code(later)
+                if not any(_env_reads(lcode, name) for name in carried):
+                    continue
+                if any(form in lcode for form in _ASSERT_FORMS):
+                    reached = True
+                    break
+                carried |= set(_ENV_SET_RE.findall(lcode))
+            if reached:
+                census["chained"] += 1
+                continue
+            findings.append(
+                "  %s :: %s :: %s — шлёт подзапросы, сам ничего не утверждает, и ни один "
+                "последующий шаг кейса не читает его накопитель (%s), чтобы утвердить исход"
+                % (service, " / ".join(path) or "(корень)", it.get("name"),
+                   ", ".join(sorted(carried)) or "накопителя нет вовсе"))
+
+    walk(col.get("item", []), [])
+    return findings, census
+
+
 def build_collection(service: str, cases: List[Case]) -> Dict:
     setup_items = [_zone_setup_item()]
     if service in _POOL_SEED_SERVICES:
@@ -3864,6 +4160,10 @@ def load_cases_module(path: Path):
     mod.pairwise_subnet_pack = pairwise_subnet_pack
     mod.security_injection_block = security_injection_block
     mod.conformance_lifecycle_pack = conformance_lifecycle_pack
+    # Помощники экранирования — тем же впрыском (#1209): декларация тоже
+    # порождает JavaScript, и вторая копия предиката разошлась бы с первой молча.
+    mod.js_str = js_str
+    mod.js_regex_literal_text = js_regex_literal_text
     spec.loader.exec_module(mod)
     return mod
 
@@ -3903,6 +4203,8 @@ def main(argv: List[str]) -> int:
         return 1
     if _check_duplicate_ids() != 0:
         return 1
+    findings: List[str] = []
+    census = {"cases": 0, "steps": 0, "subrequest": 0, "self": 0, "chained": 0}
     for f in found:
         svc = f.stem
         if want and svc not in want:
@@ -3913,6 +4215,34 @@ def main(argv: List[str]) -> int:
         out = OUT_DIR / f"{svc}.postman_collection.json"
         out.write_text(json.dumps(col, indent=2, ensure_ascii=False))
         print(f"[{svc}] {len(cases)} cases → {out.relative_to(ROOT)}")
+        # Проверка идёт по СОБРАННОЙ коллекции, а не по объявлению кейса: утверждения
+        # дописывают проходы сериализации (`_assert_delete_operation_outcome`,
+        # автообёртки), и предикат по исходнику судил бы не то, что уезжает в дерево.
+        f_svc, c_svc = audit_subrequest_outcome_readers(svc, col)
+        findings += f_svc
+        for k in census:
+            census[k] += c_svc[k]
+
+    # Перепись печатается ВСЕГДА — «ноль находок» обязано быть отличимо от «ноль
+    # прочитанного»: предикат, переставший узнавать подзапрос, молча стал бы
+    # вечнозелёным.
+    print("[gen] исход подзапроса: кейсов %d, шагов %d, из них с подзапросом %d "
+          "(утверждают сами %d, читаются по цепочке накопителей %d)"
+          % (census["cases"], census["steps"], census["subrequest"],
+             census["self"], census["chained"]))
+    if census["steps"] == 0:
+        sys.stderr.write("gen: FAIL — обход не узнал ни одного шага; перепись беспредметна\n")
+        return 1
+    if findings:
+        sys.stderr.write(
+            "gen: FAIL — шаги, чей исход не прочтёт никто: %d\n\n" % len(findings))
+        sys.stderr.write(
+            "Шаг ходит на служебный путь, а предмет уезжает подзапросом, поэтому его\n"
+            "ответ не судит ни одна проверка, читающая ответ ШАГА. Исход обязан быть\n"
+            "назван: либо утверждением в самом шаге (в том числе внутри обработчика\n"
+            "подзапроса), либо последующим шагом кейса, который читает его накопитель.\n\n")
+        sys.stderr.write("\n".join(findings) + "\n")
+        return 1
     return 0
 
 

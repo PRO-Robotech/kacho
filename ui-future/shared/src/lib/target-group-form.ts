@@ -57,7 +57,7 @@ function healthCheckAppFields(branch: "http" | "https"): FormField[] {
     },
     {
       name: `health_check.${branch}.host`,
-      label: branch === "https" ? "HC: имя узла (Host / SNI)" : "HC: имя узла (Host)",
+      label: branch === "https" ? "HC: имя узла (SNI)" : "HC: имя узла",
       type: "string",
       required: false,
       visibleWhen: when,

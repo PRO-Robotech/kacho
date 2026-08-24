@@ -143,12 +143,12 @@ export function RolesPage() {
             type="text"
             icon={<EditOutlined />}
             disabled={row.is_system}
-            title={row.is_system ? "system roles read-only" : "Изменить"}
+            title={row.is_system ? "Системную роль изменить нельзя" : "Изменить"}
             onClick={() => navigate(`/iam/roles/${row.id}/edit`)}
           />
           <Popconfirm
             title="Удалить роль?"
-            description={`Удалить «${row.name}»? Custom role с активными AccessBinding → FailedPrecondition.`}
+            description={`Удалить «${row.name}»? Свою роль с действующими выдачами доступа удалить нельзя.`}
             okText="Удалить"
             okButtonProps={{ danger: true }}
             cancelText="Отмена"
@@ -161,7 +161,7 @@ export function RolesPage() {
               danger
               icon={<DeleteOutlined />}
               disabled={row.is_system}
-              title={row.is_system ? "system roles read-only" : "Удалить"}
+              title={row.is_system ? "Системную роль удалить нельзя" : "Удалить"}
             />
           </Popconfirm>
         </Space>

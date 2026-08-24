@@ -112,6 +112,25 @@ func main() {
 		logger,
 	)
 
+	// ПОЛОСА БАЗОВОГО СЕКРЕТА (#1142). Авторитет — тот же внутренний слушатель
+	// iam, та же связь, тот же якорь доверия и то же окно вердикта: своей
+	// величины полоса НЕ заводит.
+	//
+	// Провязка безусловна намеренно. Полоса, объявленная и не провязанная, —
+	// мёртвый контроль: строка с нашей маркой уходила бы прочими полосами и
+	// отвергалась бы как негодный подписанный токен, то есть отказом не той
+	// природы, и заметить это можно было бы только по жалобе клиента.
+	basicLane := middleware.NewBasicCredentialLane(
+		middleware.NewBasicAuthorityFromStub(iamSubjectClient.BasicCredentialStub()),
+	).WithLogger(logger)
+	authInterceptor = authInterceptor.WithBasicCredentialLane(basicLane)
+	logger.Info("basic credential lane wired",
+		"authority", cfg.IAMInternalAddr,
+		"verdict_window", middleware.BasicCredentialVerdictWindow.String(),
+		// Потолок объявляется при старте: «сколько там записей» обязано быть
+		// известно ДО того, как рост станет предметом разбора (#1218).
+		"verdict_cache_capacity", basicLane.CacheStats().Capacity)
+
 	// Kratos session-based auth для SPA (cookie ory_kratos_session).
 	// Env KACHO_API_GATEWAY_KRATOS_PUBLIC_URL — base URL Kratos public API.
 	// Default = cluster-internal kratos-public service.
@@ -249,10 +268,20 @@ func main() {
 	// answer is "nothing pinned" whatever the operator configured, and the refusal
 	// names the knob that is already set. Locked by
 	// admin_hop_wiring_test.go::TestCompositionRoot_FeedsTheTrustAnchorToTheRevocationGuard.
+	//
+	// ПОСАДКА ЛИЧНОСТИ подаётся тем же стражем (задача #1125): она разводит
+	// требование АДМИНИСТРАТИВНОГО адреса, и только его. Негодное значение
+	// отвергается здесь же — откат к «безопасному» не производится, потому что
+	// безопасного среди двух значений нет: каждое снимает требования другого.
+	identityLane, ipErr := cfg.ResolvedIdentityProvider()
+	if ipErr != nil {
+		log.Fatalf("identity posture startup-validation: %v", ipErr)
+	}
 	if rvErr := validateProductionRevocationConfig(cfg.AppEnv, RevocationConfig{
 		IntrospectionURL: cfg.ResolvedHydraIntrospectionURL(),
 		AdminURL:         cfg.ResolvedHydraAdminURL(),
 		AdminCAFile:      cfg.HydraAdminCAFile,
+		IdentityProvider: identityLane,
 	}); rvErr != nil {
 		log.Fatalf("revocation config startup-validation: %v", rvErr)
 	}
@@ -718,6 +747,16 @@ func main() {
 			"не заводится в реестре края", "err", elErr)
 		os.Exit(1)
 	}
+	// Заполнение кэша вердиктов базовой полосы — ТРЕТЬЯ величина сверх двух уже
+	// объявленных (#1221). Объявление потолка при старте и однократное
+	// предупреждение при его достижении отвечают «дошли ли», и ни одно —
+	// «насколько близко и как быстро растём». Потолок сегодня константа, и
+	// превратить его в ручку должно НАБЛЮДЕНИЕ: пока величины нет, решение
+	// принимать не на чем.
+	//
+	// Провязка безусловна: полоса собрана выше безусловно, и величина, никем не
+	// читаемая, считалась бы в никуда — её ноль не утверждал бы ничего.
+	diagMetrics.RegisterBasicCredentialCache(basicLane.CacheStats)
 	diagMetrics.RegisterAuthz(func() gwmetrics.AuthzSnapshot {
 		snap := gwmetrics.AuthzSnapshot{Counts: authz.metrics.Counts()}
 		if authz.calls != nil {
@@ -1018,7 +1057,7 @@ func main() {
 	// internal_mtls comes from the RESOLVED listener security, not from the raw
 	// enable flag. The production-posture gate must assert on this observed fact
 	// rather than on stored configuration (see observability.BootPosture).
-	observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled))
+	observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled, identityLane))
 	if !internalSec.mtlsEnabled {
 		logger.Warn("SECURITY: internal gRPC listener running INSECURE (no mTLS)",
 			"addr", cfg.InternalGRPCAddr,

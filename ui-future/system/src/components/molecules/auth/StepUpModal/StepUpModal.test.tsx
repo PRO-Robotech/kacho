@@ -98,17 +98,45 @@ describe("StepUpModal — что видит пользователь", () => {
   });
 
   it("объясняет, чем подтверждать, а не только что нужно подтвердить", async () => {
+    // ПРОБА ЗАМЕНЕНА ВМЕСТЕ СО СВОИМ МЕХАНИЗМОМ (#1213), а не ослаблена.
+    //
+    // Прежняя редакция утверждала, что окно называет ключ доступа СРАЗУ ПРИ
+    // ОТКРЫТИИ. Это было верно ровно потому, что окно вело единственный способ
+    // и объявляло его константой — а настройки объявляют ключ доступа ПЕРВЫМ
+    // фактором, которого в потоке `aal=aal2` нет вовсе. То есть окно называло
+    // способ, которым подтвердить было НЕЛЬЗЯ.
+    //
+    // Существо утверждения сохранено и стало строже: окно обязано назвать тот
+    // способ, которым оно САМО и отправит подтверждение, а способ этот приходит
+    // от службы личности. Поэтому проба сперва даёт поток.
+    const fetchMock = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          id: "flw-1",
+          type: "browser",
+          ui: {
+            action: "/x",
+            method: "POST",
+            nodes: [
+              { type: "input", group: "default", attributes: { name: "csrf_token", value: "c" } },
+              { type: "input", group: "totp", attributes: { name: "totp_code" } },
+            ],
+          },
+        }),
+    }));
+    (globalThis as unknown as { fetch: unknown }).fetch = fetchMock;
+
     render(<StepUpModal />);
 
     await act(async () => {
       void currentHandler()("2");
     });
 
-    // Способ подтверждения назван И в пояснении, И на самой кнопке: заменитель
-    // окна теперь рисует его действия, поэтому совпадений два — и это ровно то,
-    // что видит человек.
-    expect(screen.getByText(/Подтвердите запрос вашим passkey/i)).toBeInTheDocument();
-    expect(screen.getByTestId("stepup-confirm").textContent).toMatch(/passkey/i);
+    expect(await screen.findByText(/приложение-аутентификатор/i)).toBeInTheDocument();
+    expect(screen.getByTestId("stepup-code")).toBeInTheDocument();
+    expect(screen.getByTestId("stepup-confirm")).toBeInTheDocument();
   });
 });
 

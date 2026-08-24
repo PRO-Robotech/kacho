@@ -25,6 +25,14 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UMBRELLA="$(cd "$HERE/../../helm/umbrella" && pwd)"
 
+# Три исхода — ОДНОЙ реализацией на весь каталог: 0 зелено · 1 находка о дереве ·
+# 2 условие не создано (плюс текст, который сказал сам helm). Прежде «профиль не
+# отрендерился» объявлялось находкой — тем же кодом 1, что и настоящий дефект
+# посадки, — и несобранные зависимости умбреллы читались как дефект vpc (#1214).
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$HERE/outcome.sh"
+require_helm
+
 # Профили, которыми РЕАЛЬНО поднимается стенд, — из единственной таблицы дерева.
 # `<имя>|<файлы через запятую>`. Здесь стоял свой список из трёх стеков: новый
 # стенд приходил бы под проверку только правкой этого файла, то есть его «ноль
@@ -32,12 +40,15 @@ UMBRELLA="$(cd "$HERE/../../helm/umbrella" && pwd)"
 # вспомнит.
 PROFILES="$(stacks_table | tr ':' '|')"
 
+# render <файлы через запятую> <имя профиля> — манифест профиля в $HELM_OUT.
+# Отказ рендера — УСЛОВИЕ прогона, а не свойство дерева: код 2 и текст helm.
 render() {
   local args=() f
   local IFS=,
   for f in $1; do args+=(-f "$UMBRELLA/$f"); done
   unset IFS
-  helm template kacho-umbrella "$UMBRELLA" "${args[@]}" 2>/dev/null
+  helm_try kacho-umbrella "$UMBRELLA" "${args[@]}"
+  render_or_fatal "профиль $2"
 }
 
 # inspect <файл-манифеста> — печатает три поля через пробел: режим, включён ли
@@ -118,17 +129,19 @@ PY
 
 fails=0
 examined=0
+# Ожидание объявляется ДО обхода: «утверждений выполнено 0 из 0» зеленело бы на
+# пустой таблице стендов.
+EXPECTED_ASSERTIONS="$(printf '%s\n' "$PROFILES" | grep -c . || true)"
 while read -r line; do
   [ -n "$line" ] || continue
   profile="${line%%|*}"
   files="${line#*|}"
 
-  manifest="$(render "$files")"
-  if [ -z "$manifest" ]; then
-    echo "FAIL — профиль $profile не отрендерился (проверка ничего не осмотрела)"
-    fails=1
-    continue
-  fi
+  render "$files" "$profile"
+  manifest="$HELM_OUT"
+  # Успешный рендер, отдавший ПУСТО, — это уже свойство дерева, а не условие:
+  # helm ответил, и ответил ничем.
+  [ -n "$manifest" ] || fail "профиль $profile отрендерился ПУСТЫМ — проверка ничего не осмотрела"
   examined=$((examined + 1))
 
   tmp="$(mktemp)"
@@ -146,10 +159,11 @@ while read -r line; do
 
   case "$mode" in
     production|production-strict) ;;
-    *) echo "  ok — не боевой режим, гардрейл не действует"; continue ;;
+    *) echo "  ok — не боевой режим, гардрейл не действует"; ok; continue ;;
   esac
   if [ "$filter" != "on" ]; then
     echo "  ok — фильтр видимости выключен, соединение не поднимается"
+    ok
     continue
   fi
   if [ "$armed" != "armed" ]; then
@@ -161,16 +175,11 @@ while read -r line; do
     continue
   fi
   echo "  ok — транспорт соединения фильтра вооружён"
+  ok
 done <<<"$PROFILES"
 
 # «Ноль находок» обязано быть отличимо от «ноль осмотренного».
-if [ "$examined" -eq 0 ]; then
-  echo "FAIL — ни один профиль не осмотрен; проверка ничего не доказывает"
-  exit 1
-fi
+[ "$examined" -gt 0 ] || fatal "ни один профиль не осмотрен; проверка ничего не доказывает"
 
-if [ "$fails" -ne 0 ]; then
-  echo "vpc-list-filter-edge-transport: ПРОВАЛЕНО (осмотрено профилей: $examined)"
-  exit 1
-fi
-echo "vpc-list-filter-edge-transport: OK (осмотрено профилей: $examined)"
+[ "$fails" -eq 0 ] || fail "$SCRIPT — профилей осмотрено $examined, нарушения перечислены выше"
+outcome_verdict "профилей осмотрено: $examined"

@@ -67,6 +67,7 @@ export const MinusCircleOutlined = Icon;
 export const MinusOutlined = Icon;
 export const MoreOutlined = Icon;
 export const NodeIndexOutlined = Icon;
+export const NumberOutlined = Icon;
 export const PauseCircleOutlined = Icon;
 export const PlayCircleOutlined = Icon;
 export const PlusOutlined = Icon;

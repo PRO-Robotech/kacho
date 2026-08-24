@@ -1083,16 +1083,28 @@ helm-manifest-test: gate-self-test
 	echo "=== зависимости умбреллы (проверки рендерят её; charts/*.tgz не в git) ==="; \
 	bash scripts/helm-umbrella-deps.sh; \
 	rm -rf helm/umbrella/tmpcharts-*; \
-	failed=""; total=0; \
+	failed=""; unmet=""; total=0; \
 	for t in tests/helm/*-test.sh; do \
 	  total=$$((total+1)); \
 	  echo "=== $$t ==="; \
-	  if ! bash "$$t"; then failed="$$failed $$(basename $$t)"; fi; \
+	  bash "$$t" && rc=0 || rc=$$?; \
+	  case "$$rc" in \
+	    0) ;; \
+	    2) unmet="$$unmet $$(basename $$t)" ;; \
+	    *) failed="$$failed $$(basename $$t)" ;; \
+	  esac; \
 	done; \
 	rm -rf helm/umbrella/tmpcharts-*; \
+	if [ -n "$$unmet" ]; then \
+	  echo; echo "!!! helm-manifest-test: УСЛОВИЕ НЕ СОЗДАНО$$unmet"; \
+	  echo "    Код 2 — не вердикт о дереве (tests/helm/README.md §«Три исхода»):"; \
+	  echo "    нет инструмента, не собраны зависимости умбреллы, нет профиля на диске."; \
+	  echo "    В зачёт «прошло» это не идёт и находкой не является."; \
+	fi; \
 	if [ -n "$$failed" ]; then \
 	  echo; echo "!!! helm-manifest-test: провалено$$failed (из $$total)"; exit 1; \
 	fi; \
+	if [ -n "$$unmet" ]; then exit 2; fi; \
 	echo; echo "helm-manifest-test: all green ($$total проверок)"
 
 # guard-kind-context: цель делает `kind load` (пинится к kind по имени) И

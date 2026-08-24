@@ -23,31 +23,26 @@ SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 DEV="$UMBRELLA/values.dev.yaml"
-N=0
-fail() { echo "FAIL: $1"; exit 1; }
-ok() { N=$((N + 1)); }
 
-# yq MUST be mikefarah v4. On many machines /usr/bin/yq is the python jq-wrapper
-# of the SAME NAME: its filter syntax is incompatible, so it errors to stderr and
-# prints NOTHING on stdout. Assertions shaped like `[ -z "$(yq ... 2>/dev/null)" ]`
-# then pass VACUOUSLY — the check reports success having verified nothing at all.
-# That false-green is the exact class these hardening tests exist to prevent, so
-# detect the impostor explicitly instead of trusting `command -v`.
-command -v yq >/dev/null 2>&1 || fail "yq not installed (mikefarah yq v4 required)"
-# Сравнение — БЕЗ трубы: `… | grep -q` под `set -o pipefail` возвращает ОТКАЗ
-# НА СОВПАДЕНИИ (grep выходит по первому попаданию, писатель получает SIGPIPE,
-# и `pipefail` поднимает ЕГО статус до статуса конвейера). Задача #658.
-YQ_VER="$(yq --version 2>&1 || true)"
-[[ "${YQ_VER,,}" == *mikefarah* ]] || fail \
-  "wrong 'yq' on PATH ($(command -v yq)): '$(yq --version 2>&1 | head -1)'. \
-mikefarah yq v4 is required — the python-yq jq wrapper emits empty output on these \
-filters, which would make the assertions below pass without checking anything."
+# ТРИ ИСХОДА (0 зелено · 1 находка о дереве · 2 условие не создано) — общей
+# реализацией на весь каталог. До #1195 отказ helm по причине, НЕ относящейся к
+# предмету проверки (зависимости умбреллы не собраны), убивал прогон на первом
+# же `GEODM=$(render …)` под `set -e`, НЕ СКАЗАВ НИЧЕГО: код 1, ноль байт.
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$(dirname "$0")/outcome.sh"
+EXPECTED_ASSERTIONS=3
 
-# render <show-only-template> [extra helm args...] — silence helm kubeconfig warns.
+require_helm
+require_mikefarah_yq
+
+[ -f "$DEV" ] || fatal "values.dev.yaml нет на диске ($DEV)"
+
+# render <show-only-template> [extra helm args...] — результат в $HELM_OUT.
+# Отказ рендера — код 2 плюс ТЕКСТ helm, а не молчаливая смерть под `set -e`.
 render() {
   local tmpl="$1"; shift
-  helm template kacho-umbrella "$UMBRELLA" -f "$DEV" "$@" \
-    --show-only "$tmpl" 2>/dev/null
+  helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" "$@" --show-only "$tmpl"
+  render_or_fatal "values.dev.yaml → $tmpl${*:+ [$*]}"
 }
 
 # assert_pod_sc <rendered-doc> <podspec-jsonpath> <where>
@@ -89,15 +84,18 @@ POD=".spec.template.spec"
 # нечего. Проверять PSS-floor больше не на чем — секция снята вместе с шаблоном.
 
 # ── 3. kacho-geo data-migration Job ──────────────────────────────────────────
-GEODM=$(render charts/kacho-geo/templates/geo-data-migration-job.yaml \
-  --set kacho-geo.dataMigration.enabled=true)
+render charts/kacho-geo/templates/geo-data-migration-job.yaml \
+  --set kacho-geo.dataMigration.enabled=true
+GEODM="$HELM_OUT"
 assert_pod_sc "$GEODM" "$POD" "geo-data-migration-job"
 assert_ctr_sc "$GEODM" "$POD" "copy" "geo-data-migration-job"
 
 # ── 4. api-gateway external ingress → external-marked TLS listener ────────────
 # Render the FULL umbrella and select the effective api-gateway Ingress, so the
 # assertion is agnostic to which template produces it (sub-chart vs umbrella).
-ALL=$(helm template kacho-umbrella "$UMBRELLA" -f "$DEV" 2>/dev/null)
+helm_try kacho-umbrella "$UMBRELLA" -f "$DEV"
+render_or_fatal "values.dev.yaml → умбрелла целиком"
+ALL="$HELM_OUT"
 ING=$(echo "$ALL" | yq eval-all \
   'select(.kind == "Ingress" and .metadata.name == "api-gateway")' - 2>/dev/null)
 [ -n "$ING" ] || fail "api-gateway ingress: no Ingress named 'api-gateway' rendered"
@@ -110,4 +108,4 @@ COUNT=$(echo "$ALL" | yq eval-all 'select(.kind == "Ingress" and .metadata.name 
 [ "$COUNT" = "1" ] || fail "api-gateway ingress: expected exactly 1, found $COUNT (sub-chart ingress must be disabled)"
 ok
 
-echo "$SCRIPT: all green ($N assertions)"
+outcome_verdict "профилей прочитано: 1 (dev)"

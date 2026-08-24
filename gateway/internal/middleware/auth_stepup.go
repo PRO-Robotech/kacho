@@ -28,6 +28,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -89,40 +90,134 @@ func (a *AuthInterceptor) stepUpRequirementForHTTP(r *http.Request) PermissionRe
 	return a.stepUpLookup.Lookup(fqn)
 }
 
-// enforceStepUpHTTP applies the floor on the REST arm. It reports true when the
-// request was refused and the response already written.
+// Имена полос носителя личности. Они попадают в КАЖДУЮ строку отказа, и это не
+// украшение: дефект #1201 был найден именно тем, что журнал не отвечал на
+// вопрос «какая полоса отказала». За всю жизнь процесса личность вносилась
+// полосой сессии 5252 раза, полосой предъявителя 0 раз, а отказов по полу было
+// 0 — и это выглядело исправной работой, потому что перепись по полосам никем
+// не велась.
+const (
+	stepUpLaneBearer  = "bearer"  // подписанный предъявитель (Authorization)
+	stepUpLaneSession = "session" // сессия развёрнутого провайдера (cookie)
+	stepUpLaneBasic   = "basic"   // базовое удостоверение (однострочный секрет)
+)
+
+// enforceStepUpHTTP выносит вердикт о поле на REST-поверхности И РЕНДЕРИТ вызов
+// RFC 9470. Возвращает true, когда запрос отвергнут и ответ уже написан.
+//
+// `as` — то, что предъявила ЭТА полоса; `lane` — которая именно. ПОЛ обязаны
+// спрашивать ВСЕ полосы: он свойство ВСЯКОГО обращения, а не свойство того, чем
+// его подписали. А вот СЮДА приходят не все — только те, кому вызов RFC 9470
+// адресуем; остальные зовут `stepUpVerdictHTTP` и рендерят свой отказ сами
+// (`tryBasicCredential`). Разделение вердикта и рендеринга введено #1215, и
+// довод — в auth_basic_stepup.go.
+//
+// Здесь стояло «полос две, и обе обязаны сюда приходить». Полос стало три, и
+// третья приходить сюда не должна — утверждение пережило свой предмет ровно за
+// то время, пока две работы шли параллельно.
+func (a *AuthInterceptor) enforceStepUpHTTP(w http.ResponseWriter, r *http.Request, as StepUpAssurance, lane string) bool {
+	req, err := a.stepUpVerdictHTTP(r, as, lane)
+	if err == nil {
+		return false
+	}
+	if !stepUpCeremonyReachable(lane) {
+		// ЗАДВИЖКА, А НЕ ВЕЖЛИВОСТЬ. Вызов RFC 9470 сообщает, что предъявленное
+		// ГОДНО и лишь недостаточно сильно, — по глаголу, который вызывающему
+		// недоступен. Полосе, у носителя которой церемонии повышения нет, такой
+		// ответ запрещён: он подтверждает годность строки и советует
+		// невозможное (разбор — auth_basic_stepup.go).
+		//
+		// Полоса, ведущая СВОЙ единый отказ, обязана отрендерить его сама — так
+		// байт-идентичность держится построением (см. tryBasicCredential).
+		// Сюда попадает лишь та, что этого не сделала: ей достаётся общий
+		// отказ, ничего не подтверждающий. Умолчание в сторону выдачи вызова
+		// сделало бы следующую полосу оракулом молча.
+		writeHTTPUnauthorized(w, authFailedMsg)
+		return true
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("WWW-Authenticate", BuildStepUpChallenge(req, as.ACR))
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = w.Write([]byte(`{"code":16,"message":"` + stepUpDenyMessage + `"}`))
+	return true
+}
+
+// errStepUpNotMet — ВЕРДИКТ «пол не пройден», отделённый от его РЕНДЕРИНГА.
+//
+// Разделение введено #1215 и оно несущее. Вердикт обязан быть один на все
+// полосы — иначе заводится второе ранжирование, второе освобождение и второе
+// умолчание, что и сторожат пробы паритета вердикта. А вот ТЕКСТ отказа
+// принадлежит полосе: полоса, для носителя которой церемонии повышения не
+// существует, обязана отвечать СВОИМ единым отказом, иначе вызов RFC 9470
+// подтверждает годность предъявленного (см. auth_basic_stepup.go, разбор
+// оракула).
+var errStepUpNotMet = errors.New("stepup: authentication floor not met")
+
+// stepUpVerdictHTTP выносит вердикт о поле для REST-обращения и НИЧЕГО не пишет
+// в ответ. Возвращает требование каталога (нужно рендерящему) и ошибку.
 //
 // The pre-auth allow-list is exempt for the same reason the revocation check
 // exempts it: those endpoints act on nobody's authority, and a caller who cannot
 // re-authenticate must still be able to complete a sign-out.
-func (a *AuthInterceptor) enforceStepUpHTTP(w http.ResponseWriter, r *http.Request, vt *VerifiedToken) bool {
+func (a *AuthInterceptor) stepUpVerdictHTTP(r *http.Request, as StepUpAssurance, lane string) (PermissionRequirement, error) {
 	if !a.StepUpMounted() || isPublicHTTPPath(r.URL.Path) {
-		return false
+		return PermissionRequirement{}, nil
 	}
 	req := a.stepUpRequirementForHTTP(r)
-	if err := a.stepUp.Check(vt, req); err != nil {
+	if err := a.stepUp.CheckAssurance(as, req); err != nil {
 		a.logger.Info("auth: authentication floor not met",
-			"path", r.URL.Path, "presented_acr", vt.ACR, "required", req.RequiredACRMin)
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("WWW-Authenticate", BuildStepUpChallenge(req, vt.ACR))
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"code":16,"message":"` + stepUpDenyMessage + `"}`))
-		return true
+			"lane", lane, "path", r.URL.Path, "presented_acr", as.ACR, "required", req.RequiredACRMin)
+		return req, errStepUpNotMet
 	}
-	return false
+	return req, nil
 }
 
 // enforceStepUpGRPC applies the same floor on the native gRPC arm, where the
-// method is named by the transport and needs no route resolution.
+// method is named by the transport and needs no route resolution — для полосы
+// ПОДПИСАННОГО ПРЕДЪЯВИТЕЛЯ.
+//
+// Сессии развёрнутого провайдера на этом транспорте нет by construction (cookie
+// сюда не приходит), а вот полоса базового удостоверения есть: она зовёт
+// `stepUpVerdictGRPC` напрямую и рендерит свой отказ сама (`authorize`). Здесь
+// стояло «полоса всегда одна» — верно было до #1142 и перестало быть верным,
+// не покраснев.
 func (a *AuthInterceptor) enforceStepUpGRPC(fullMethod string, vt *VerifiedToken) error {
 	if !a.StepUpMounted() {
 		return nil
 	}
-	req := a.stepUpRequirement(fullMethod)
-	if err := a.stepUp.Check(vt, req); err != nil {
-		a.logger.Info("auth: authentication floor not met",
-			"method", fullMethod, "presented_acr", vt.ACR, "required", req.RequiredACRMin)
+	if vt == nil {
+		// Пустой предъявитель — не «пол не применим», а отсутствующий вход
+		// решения. Общая форма ниже отвергнет его пустым уровнем; собирать
+		// здесь второе умолчание нельзя.
+		return a.enforceStepUpGRPCAssurance(fullMethod, StepUpAssurance{}, stepUpLaneBearer)
+	}
+	return a.enforceStepUpGRPCAssurance(fullMethod, assuranceFromVerifiedToken(vt), stepUpLaneBearer)
+}
+
+// enforceStepUpGRPCAssurance — та же полоса решения для транспорта, у которого
+// носитель личности НЕ подписанный токен (базовое удостоверение).
+//
+// Существует, чтобы у нативной поверхности была ОДНА точка применения пола на
+// все полосы: второй вызов `CheckAssurance` из другого места завёл бы второй
+// текст отказа и второе место, где можно забыть про полосу, — ровно тот
+// механизм, который и породил #1215.
+func (a *AuthInterceptor) enforceStepUpGRPCAssurance(fullMethod string, as StepUpAssurance, lane string) error {
+	if err := a.stepUpVerdictGRPC(fullMethod, as, lane); err != nil {
 		return status.Error(codes.Unauthenticated, stepUpDenyMessage)
+	}
+	return nil
+}
+
+// stepUpVerdictGRPC — тот же вердикт для нативной поверхности, без рендеринга.
+func (a *AuthInterceptor) stepUpVerdictGRPC(fullMethod string, as StepUpAssurance, lane string) error {
+	if !a.StepUpMounted() {
+		return nil
+	}
+	req := a.stepUpRequirement(fullMethod)
+	if err := a.stepUp.CheckAssurance(as, req); err != nil {
+		a.logger.Info("auth: authentication floor not met",
+			"lane", lane, "method", fullMethod, "presented_acr", as.ACR, "required", req.RequiredACRMin)
+		return errStepUpNotMet
 	}
 	return nil
 }
@@ -153,6 +248,28 @@ func setTokenContextHeaders(r *http.Request, t *VerifiedToken) {
 	if !t.ExpiresAt.IsZero() {
 		r.Header.Set(principalmeta.HeaderTokenExp, strconv.FormatInt(t.ExpiresAt.Unix(), 10))
 	}
+}
+
+// setSessionAssuranceHeaders writes the SESSION lane's contribution to the same
+// token-context family: the assurance level, and only it.
+//
+// Почему только уровень. Заголовки этого семейства описывают ПРЕДЪЯВЛЕННОЕ, и у
+// браузерной сессии нет ни `jti`, ни `scope`, ни `exp` — писать их пустыми
+// значило бы утверждать про сессию то, чего про неё не знают. Уровень же
+// внутреннему замку (`authzguard.ACRFloor`) нужен, и до #1201 эта полоса не
+// выставляла его никогда: замок читал отсутствующее значение на каждом
+// браузерном обращении.
+//
+// Подделать заголовок клиент не может: `stripForgeableIdentityHeaders` сносит
+// весь namespace `x-kacho-` в обеих поверхностных формах ДО того, как выберется
+// полоса.
+//
+// Нераспознанный уровень приезжает сюда пустой строкой — и это верно: пустое
+// ранжируется нулём и не удовлетворяет ни одному положительному полу, то есть
+// второй замок отказывает по той же причине, по которой отказал бы первый.
+func setSessionAssuranceHeaders(r *http.Request, acr string) {
+	r.Header.Set(principalmeta.HeaderTokenACR, acr)
+	r.Header.Set(principalmeta.HeaderGRPCMetaTokenACR, acr)
 }
 
 // withTokenContextMetadata carries the same context onto the native gRPC arm,

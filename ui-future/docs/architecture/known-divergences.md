@@ -4,30 +4,34 @@ Deliberate, reviewed deviations from a lint/style default. Each entry explains
 why the deviation is intentional and not latent tech-debt, so audits do not
 re-flag it.
 
-## Client-side HIBP breach check is a progressive enhancement (not the enforcement point)
+## Client-side HIBP breach check: the console no longer has one
 
-**Status:** accepted / by-design (best-effort UX; server-side is authoritative).
+**Status:** subject removed (#1225); the CSP decision below stands on its own.
 
-`shared/src/pages/auth/Register.tsx` runs a debounced client-side
-have-i-been-pwned (HIBP) k-anonymity check (`checkHibp`) that `fetch`es
-`https://api.pwnedpasswords.com/range/<SHA1-prefix>` and warns the user before
-submit. The app's own CSP is `connect-src 'self'`
+The console **used to** carry a debounced client-side have-i-been-pwned (HIBP)
+k-anonymity check on its own registration page — it `fetch`ed
+`https://api.pwnedpasswords.com/range/<SHA1-prefix>` and warned before submit.
+That page is gone: the console never mounted it by any route, and registration
+belongs to the identity provider, which serves the address (see
+`shared/src/pages/auth/README.md`). So there is nothing left to fail open, and
+this entry is kept only because the reasoning under it is still load-bearing:
+it is the recorded argument for **not** widening the egress allow-list. The
+app's CSP is `connect-src 'self'`
 (`deploy/values.yaml` / the five `*/nginx.conf` that emit it — count measured
 2026-08-12 by `git grep -lI Content-Security-Policy -- '*nginx.conf'`, not
 remembered: here stood «four», and it was already wrong when written — the same
 commit that carried the sentence in also carried the fifth file), so **in the deployed image this
-cross-origin fetch is blocked** and `checkHibp` fail-opens (its `catch` returns
-`false`), so the inline warning does not render in production.
+cross-origin fetch would be blocked** in the deployed image anyway — which is
+why removing the page cost no enforcement.
 
-**Why this is intended, not a broken control:** the authoritative breach
+**Where the control actually lives:** the authoritative breach
 rejection is enforced **server-side** by Kratos —
 `kacho-deploy/.../kratos-config-configmap.yaml` sets
 `password.config.haveibeenpwned_enabled: true` (host `api.pwnedpasswords.com`).
 A breached password is rejected on submit and the Kratos flow message surfaces
-through the existing error path (`err.ui?.messages?.[0]?.text` → `setError`). The
-client check is a *progressive enhancement*: it fires only where CSP is absent
-(local `vite` dev — no nginx header) to give an earlier hint, and degrades
-silently where CSP is present because the server still rejects.
+through the provider's own flow UI. The client check never was the enforcement
+point — it was a hint that fired only where CSP is absent (local `vite` dev, no
+nginx header).
 
 **Why the CSP is deliberately not relaxed for `pwnedpasswords.com`:** granting a
 `connect-src` exception would (a) widen the strict egress allow-list of an
@@ -138,9 +142,11 @@ nginx наследует `add_header` с внешнего уровня, пока
 - подставлять чужому скрипту `nonce` — то же ослабление, названное иначе: nonce,
   выдаваемый любому встроенному скрипту, который прислал провайдер, доверяет всей
   его разметке, и именно на странице ввода пароля;
-- отдавать вход собственными страницами консоли (`shared/src/pages/auth/`) — смена
-  того, кто отдаёт вход; это отдельный предмет со своей приёмкой, а не правка
-  политики.
+- отдавать вход собственными страницами консоли — смена того, кто отдаёт вход;
+  это отдельный предмет со своей приёмкой, а не правка политики. Заготовки под
+  него в дереве больше нет: страницы, лежавшие здесь мёртвыми, сняты (#1225), и
+  такой ход означал бы написать их заново — уже под собственного поставщика, а
+  не под протокол внешнего.
 
 **Цена бездействия названа честно:** постоянная ошибка в журнале приучает не
 смотреть на нарушения политики, и настоящее нарушение потеряется среди этого.

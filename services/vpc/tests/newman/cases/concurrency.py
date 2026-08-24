@@ -96,6 +96,189 @@ def _poll_op_js(op_id_var: str, result_var: str, max_tries: int = 8):
     ]
 
 
+# ---------------------------------------------------------------------------
+# УБОРКА ПОДЗАПРОСАМИ: СОСТАВ ЗАКОННЫХ ИСХОДОВ НАЗВАН, А НЕ ПОДОБРАН
+# ---------------------------------------------------------------------------
+# Состязательный кейс убирает за собой не отдельными шагами, а залпом из
+# `pm.sendRequest`: идентификаторы известны только в рантайме (их вернул список
+# либо резолв операций). Шаг при этом ходит на `/healthz`, поэтому НИ ОДНА
+# проверка, судящая шаг по его СОБСТВЕННОМУ ответу, его исход не видит —
+# ни гейт дерева `TestCapturedVariableStepCarriesAnAssertion`, ни обёртка окна
+# видимости (`retry_until_authorized` решает по коду ответа ШАГА), ни проход,
+# дописывающий утверждение шагу удаления (`_assert_delete_operation_outcome`
+# смотрит на метод шага, а он здесь GET).
+#
+# Значит исход обязан назвать сам шаг. Ниже — состав, который считается законным,
+# и довод по каждой строке. Состав УЖЕ, чем у `assert_cleanup_delete`, и это не
+# придирка: там предмет уборки мог не существовать вовсе (кейс про поведение
+# Create), а здесь его существование УТВЕРЖДЕНО предыдущим шагом — списком
+# подсетей, «все 5 адресов созданы», «10 интерфейсов резолвнуто».
+#
+# СИНХРОННЫЙ ОТВЕТ УДАЛЕНИЯ
+#
+#   200 + непустой `id`  — удаление ПРИНЯТО, чеканена Operation. Единственный
+#                          исход, после которого имеет смысл читать операцию.
+#   403                  — окно материализации owner-tuple: право `v_delete` на
+#                          свежесозданный объект ещё не видно. ПЕРЕХОДНОЕ
+#                          состояние, а не исход: пережидается повтором в
+#                          пределах бюджета (25×500 мс ≈ 12.5 с — тот же бюджет,
+#                          что у `retry_until_authorized`). Терминальный 403 —
+#                          КРАСНОЕ: предмет остался жить.
+#   404                  — две причины неотличимы by construction: то же окно,
+#                          поданное как hide-existence (`security.md` §6 требует
+#                          от отказа байт-идентичности настоящему «не найдено»),
+#                          и «ресурса уже нет». Поэтому 404 тоже пережидается, а
+#                          терминальный — КРАСНОЕ: предмет создан ЭТИМ кейсом, и
+#                          исчезнуть сам он не мог.
+#   400 (любой код), 409, 5xx, ответа нет — КРАСНОЕ. Отдельно про 400 с кодом 9
+#                          («ресурс занят»): у этих кейсов подсети пусты, адреса
+#                          ни к чему не привязаны, интерфейсы не приаттачены —
+#                          то есть «занят» здесь означает ровно ту утечку, ради
+#                          которой шаг существует. Принять его значило бы принять
+#                          дефект.
+#
+# ИСХОД ОПЕРАЦИИ УБОРКИ
+#
+#   done=true без `error` — успех.
+#   done=true с `error`   — КРАСНОЕ: воркер отказался убирать.
+#   не done за бюджет     — КРАСНОЕ. «Неизвестный исход — не то же самое, что
+#                           успешный» (дословно из `poll_operation_until_done`).
+#                           Бюджет 30×500 мс ≈ 15 с — покрытие асинхронного
+#                           хвоста, то же, что у общего опроса.
+#   ответ опроса не 200   — пережидается тем же бюджетом, терминальный — КРАСНОЕ.
+#
+# ЧЕГО В СОСТАВЕ НЕТ. Толерантного `oneOf`, принимающего и приём, и отказ:
+# он не читает НИ ОДНУ полосу и потому принял бы и залипший отказ в правах, и
+# смену контракта удаления. Повтора всей пробы. И молчания при нулевом числе
+# предметов: ноль предметов законен только там, где предыдущий шаг его допускает
+# (список подсетей — `at.most(1)`), и он всё равно назван числом в следующем шаге.
+#
+# ПОЧЕМУ УТВЕРЖДЕНИЕ СТОИТ ВНУТРИ ОБРАБОТЧИКА. Это форма, уже принятая деревом
+# (`cases/operation.py` `poll-and-verify-shape`, `cases/internal-pool.py`
+# `verify-1..3`, `cases/subnet.py` `poll-fail-v6`): newman дожидается
+# незавершённых обработчиков до конца шага, и упавшее там утверждение попадает в
+# `run.stats.assertions` наравне с синхронным. Падение при этом называет
+# КОНКРЕТНЫЙ идентификатор, а не «уборка не удалась».
+#
+# ПОЧЕМУ ЭТОГО МАЛО И РЯДОМ СТОИТ СИНХРОННОЕ УТВЕРЖДЕНИЕ. Обработчик, который не
+# отстрелил вовсе (запрос завис, ответа нет), утверждения не исполнит, и шаг
+# зеленел бы «по отсутствию проверок» — третья категория исхода, зачтённая в
+# «прошло». Поэтому уборка публикует НАКОПИТЕЛЬ, а следующий шаг СИНХРОННО
+# требует, чтобы в нём было столько же записей, сколько было предметов.
+
+
+def _cleanup_burst_js(ids_var: str, path_prefix: str, what: str,
+                      ops_var: str, outcomes_var: str,
+                      budget: int = 25, interval_ms: int = 500):
+    """Залп DELETE по идентификаторам из `ids_var`, с утверждением исхода КАЖДОГО.
+
+    Публикует `ops_var` (идентификаторы принятых Operation) и `outcomes_var`
+    (по записи на предмет) — их читает и сверяет по числу шаг ожидания.
+    """
+    w = js_str(what)
+    return [
+        f"const _cuIds = JSON.parse(pm.environment.get({js_str(ids_var)}) || '[]');",
+        "const _cuBase = pm.environment.get('baseUrl');",
+        "const _cuTok = pm.environment.get('jwtProjectAdminA1');",
+        "const _cuOps = [];",
+        "const _cuOutcomes = [];",
+        "const _cuTotal = _cuIds.length;",
+        "let _cuPending = _cuTotal;",
+        # Синхронное утверждение: исполняется ВСЕГДА, поэтому шаг не может
+        # оказаться зелёным «по отсутствию проверок» — в том числе когда
+        # обработчики не отстрелили ни разу.
+        f"pm.test('уборка (' + {w} + '): перечень предметов прочитан (' + _cuTotal + ')', () => "
+        f"  pm.expect(_cuIds, pm.environment.get({js_str(ids_var)}) || '').to.be.an('array'));",
+        "const _cuPublish = () => {",
+        f"  pm.environment.set({js_str(ops_var)}, JSON.stringify(_cuOps));",
+        f"  pm.environment.set({js_str(outcomes_var)}, JSON.stringify(_cuOutcomes));",
+        "};",
+        "if (_cuTotal === 0) { _cuPublish(); }",
+        "const _cuOne = (id, attempt) => {",
+        "  pm.sendRequest({",
+        f"    url: _cuBase + {js_str(path_prefix)} + '/' + id,",
+        "    method: 'DELETE',",
+        "    header: { 'Authorization': 'Bearer ' + _cuTok },",
+        "  }, (err, res) => {",
+        "    const code = res ? res.code : 0;",
+        # Окно материализации owner-tuple: 403 у мутации, 404 у скрытого
+        # существования. ПЕРЕХОДНОЕ состояние — пережидается; терминальное
+        # роняет утверждение ниже (fail-closed, никогда не бесконечно).
+        f"    if ((code === 403 || code === 404) && attempt < {budget}) {{",
+        f"      setTimeout(() => _cuOne(id, attempt + 1), {interval_ms});",
+        "      return;",
+        "    }",
+        "    let body = null; try { body = res ? res.json() : null; } catch (e) {}",
+        "    const seen = JSON.stringify({code: code, body: body, "
+        "      err: err ? String(err) : null, attempts: attempt + 1});",
+        f"    pm.test('уборка (' + {w} + ') ' + id + ': принято — 200 и конверт Operation', () => {{",
+        "      pm.expect(code, seen).to.eql(200);",
+        "      pm.expect(body && body.id, seen).to.be.a('string').and.to.have.length.above(0);",
+        "    });",
+        "    if (body && body.id) _cuOps.push(body.id);",
+        "    _cuOutcomes.push({id: id, code: code});",
+        "    if (--_cuPending === 0) {",
+        "      _cuPublish();",
+        f"      pm.test('уборка (' + {w} + '): ответ получен по всем ' + _cuTotal + ' предметам', () => "
+        "        pm.expect(_cuOutcomes.length, JSON.stringify(_cuOutcomes)).to.eql(_cuTotal));",
+        "    }",
+        "  });",
+        "};",
+        "_cuIds.forEach(id => _cuOne(id, 0));",
+    ]
+
+
+def _await_cleanup_ops_js(ids_var: str, ops_var: str, outcomes_var: str, what: str,
+                          budget: int = 30, interval_ms: int = 500):
+    """Ожидание операций уборки с утверждением ИСХОДА каждой.
+
+    Первое утверждение СИНХРОННОЕ и закрывает случай «обработчик предыдущего шага
+    не отстрелил»: накопителей столько же, сколько было предметов.
+    """
+    w = js_str(what)
+    return [
+        f"const _awIds = JSON.parse(pm.environment.get({js_str(ids_var)}) || '[]');",
+        f"const _awOutcomes = JSON.parse(pm.environment.get({js_str(outcomes_var)}) || 'null');",
+        f"const _awOps = JSON.parse(pm.environment.get({js_str(ops_var)}) || 'null');",
+        f"pm.test('уборка (' + {w} + '): предыдущий шаг отчитался по всем ' + _awIds.length + "
+        "  ' предметам', () => {",
+        "  pm.expect(_awOutcomes, 'накопитель исходов уборки').to.be.an('array');",
+        "  pm.expect(_awOutcomes.length, JSON.stringify(_awOutcomes)).to.eql(_awIds.length);",
+        "  pm.expect(_awOps, 'накопитель операций уборки').to.be.an('array');",
+        "  pm.expect(_awOps.length, JSON.stringify(_awOps)).to.eql(_awIds.length);",
+        "});",
+        "const _awBase = pm.environment.get('baseUrl');",
+        "const _awTok = pm.environment.get('jwtProjectAdminA1');",
+        "const _awList = Array.isArray(_awOps) ? _awOps : [];",
+        "const _awOne = (oid, attempt) => {",
+        "  pm.sendRequest({",
+        "    url: _awBase + '/operations/' + oid,",
+        "    method: 'GET',",
+        "    header: { 'Authorization': 'Bearer ' + _awTok },",
+        "  }, (err, res) => {",
+        "    const code = res ? res.code : 0;",
+        "    let j = null; try { j = res ? res.json() : null; } catch (e) {}",
+        "    if (code === 200 && j && j.done) {",
+        f"      pm.test('операция уборки (' + {w} + ') ' + oid + ': завершилась БЕЗ ошибки', () => "
+        "        pm.expect(j.error && JSON.stringify(j.error), JSON.stringify(j)).to.eql(undefined));",
+        "      return;",
+        "    }",
+        f"    if (attempt < {budget}) {{",
+        f"      setTimeout(() => _awOne(oid, attempt + 1), {interval_ms});",
+        "      return;",
+        "    }",
+        # Бюджет исчерпан. Исход НЕИЗВЕСТЕН — и это не то же самое, что успешный.
+        f"    pm.test('операция уборки (' + {w} + ') ' + oid + ': прочитана и завершилась "
+        f"в пределах бюджета', () => {{",
+        "      pm.expect(code, res ? res.text() : 'ответа не пришло').to.eql(200);",
+        "      pm.expect(j && j.done, JSON.stringify(j)).to.eql(true);",
+        "    });",
+        "  });",
+        "};",
+        "_awList.forEach(oid => _awOne(oid, 0));",
+    ]
+
+
 # Setup helpers — Network + Subnet для тестов, нуждающихся в parent.
 
 def _setup_net(suffix):
@@ -322,47 +505,20 @@ CASES.append(Case(
         ),
         Step(
             name="cleanup-all-subs", method="GET", path="/healthz",
-            test_script=[
-                "const ids = JSON.parse(pm.environment.get('subToCleanupIds') || '[]');",
-                "const base = pm.environment.get('baseUrl');",
-                "const tok = pm.environment.get('jwtProjectAdminA1');",
-                "let pending = ids.length;",
-                "if (pending === 0) { pm.environment.set('cleanupOpIds', '[]'); }",
-                "const opIds = [];",
-                "ids.forEach(id => {",
-                "  pm.sendRequest({",
-                "    url: base + '/vpc/v1/subnets/' + id,",
-                "    method: 'DELETE',",
-                "    header: { 'Authorization': 'Bearer ' + tok },",
-                "  }, (err, res) => {",
-                "    try { const j = res.json(); if (j.id) opIds.push(j.id); } catch (e) {}",
-                "    if (--pending === 0) pm.environment.set('cleanupOpIds', JSON.stringify(opIds));",
-                "  });",
-                "});",
-            ],
+            test_script=_cleanup_burst_js(
+                ids_var="subToCleanupIds", path_prefix="/vpc/v1/subnets",
+                what="подсети гонки", ops_var="cleanupOpIds",
+                outcomes_var="cleanupOutcomes"),
         ),
-        # Best-effort wait for cleanup ops to finish before net delete (no strict assert).
+        # Уборка обязана ДОЕХАТЬ до удаления сети: сеть с живой подсетью отвечает
+        # `FAILED_PRECONDITION`, и прежняя редакция этого шага — «дождались как
+        # получилось, ничего не утверждаем» — превращала отказ уборки в тихий
+        # переход к следующему шагу.
         Step(
             name="wait-cleanup", method="GET", path="/healthz",
-            test_script=[
-                "const opIds = JSON.parse(pm.environment.get('cleanupOpIds') || '[]');",
-                "const base = pm.environment.get('baseUrl');",
-                "const tok = pm.environment.get('jwtProjectAdminA1');",
-                "let pending = opIds.length;",
-                "if (pending === 0) { return; }",
-                "const tryOne = (oid, attempt) => {",
-                "  pm.sendRequest({",
-                "    url: base + '/operations/' + oid,",
-                "    method: 'GET',",
-                "    header: { 'Authorization': 'Bearer ' + tok },",
-                "  }, (err, res) => {",
-                "    let j = null; try { j = res.json(); } catch (e) {}",
-                "    if ((j && j.done) || attempt >= 10) { pending--; }",
-                "    else { setTimeout(() => tryOne(oid, attempt + 1), 400); return; }",
-                "  });",
-                "};",
-                "opIds.forEach(oid => tryOne(oid, 0));",
-            ],
+            test_script=_await_cleanup_ops_js(
+                ids_var="subToCleanupIds", ops_var="cleanupOpIds",
+                outcomes_var="cleanupOutcomes", what="подсети гонки"),
         ),
         _cleanup_net(),
         poll_operation_until_done(),
@@ -454,20 +610,32 @@ CASES.append(Case(
                 "pm.environment.set('cleanupAddrIds', JSON.stringify(items.map(i => i.addrId).filter(Boolean)));",
             ],
         ),
+        # АДРЕС ИЗ ОГРАНИЧЕННОГО ПУЛА: невозвращённый адрес пул не пополняет.
+        # Прежняя редакция этого шага несла ПУСТОЙ обработчик ответа (`() => {}`),
+        # то есть слот молча утекал: под параллельным прогоном пул исчерпывается,
+        # следующее выделение отвечает отказом, кейс получает фантомный ресурс —
+        # и дальше каскад (`data-integrity.md` §Lease-recycle-on-delete,
+        # `testing.md` §«утечка → пул растёт, контракты списков плывут»).
         Step(
             name="cleanup-addresses", method="GET", path="/healthz",
-            test_script=[
-                "const ids = JSON.parse(pm.environment.get('cleanupAddrIds') || '[]');",
-                "const base = pm.environment.get('baseUrl');",
-                "const tok = pm.environment.get('jwtProjectAdminA1');",
-                "ids.forEach(id => {",
-                "  pm.sendRequest({",
-                "    url: base + '/vpc/v1/addresses/' + id,",
-                "    method: 'DELETE',",
-                "    header: { 'Authorization': 'Bearer ' + tok },",
-                "  }, () => {});",
-                "});",
-            ],
+            test_script=_cleanup_burst_js(
+                ids_var="cleanupAddrIds", path_prefix="/vpc/v1/addresses",
+                what="адреса гонки", ops_var="addrCleanupOpIds",
+                outcomes_var="addrCleanupOutcomes"),
+        ),
+        # «Удаление принято» и «адрес высвобожден» — РАЗНЫЕ утверждения: первое
+        # говорит о синхронном ответе, второе об исходе воркера, который и снимает
+        # слот. Кейс кончался на первом, поэтому отказ воркера был невидим.
+        #
+        # ГРАНИЦА, названная прямо: здесь утверждается «операция удаления
+        # завершилась без ошибки», а НЕ «слот снова выделяется». Второе
+        # доказывается повторным выделением, и это предмет отдельного кейса
+        # исчерпания пула (`cases/internal-pool.py`).
+        Step(
+            name="wait-addr-cleanup", method="GET", path="/healthz",
+            test_script=_await_cleanup_ops_js(
+                ids_var="cleanupAddrIds", ops_var="addrCleanupOpIds",
+                outcomes_var="addrCleanupOutcomes", what="адреса гонки"),
         ),
     ],
 ))
@@ -551,49 +719,19 @@ CASES.append(Case(
         ),
         Step(
             name="cleanup-nics", method="GET", path="/healthz",
-            test_script=[
-                "const ids = JSON.parse(pm.environment.get('cleanupNicIds') || '[]');",
-                "const base = pm.environment.get('baseUrl');",
-                "const tok = pm.environment.get('jwtProjectAdminA1');",
-                "let pending = ids.length;",
-                "if (pending === 0) { pm.environment.set('nicCleanupDone', '1'); return; }",
-                "const opIds = [];",
-                "ids.forEach(id => {",
-                "  pm.sendRequest({",
-                "    url: base + '/vpc/v1/networkInterfaces/' + id,",
-                "    method: 'DELETE',",
-                "    header: { 'Authorization': 'Bearer ' + tok },",
-                "  }, (err, res) => {",
-                "    try { const j = res.json(); if (j.id) opIds.push(j.id); } catch (e) {}",
-                "    if (--pending === 0) {",
-                "      pm.environment.set('nicCleanupOpIds', JSON.stringify(opIds));",
-                "      pm.environment.set('nicCleanupDone', '1');",
-                "    }",
-                "  });",
-                "});",
-            ],
+            test_script=_cleanup_burst_js(
+                ids_var="cleanupNicIds", path_prefix="/vpc/v1/networkInterfaces",
+                what="интерфейсы гонки", ops_var="nicCleanupOpIds",
+                outcomes_var="nicCleanupOutcomes"),
         ),
+        # Дальше идёт удаление ПОДСЕТИ, в которой эти интерфейсы жили: подсеть с
+        # живым интерфейсом отвечает отказом по состоянию. Значит утверждение об
+        # исходе уборки интерфейсов — предусловие следующего шага, а не украшение.
         Step(
             name="wait-nic-cleanup", method="GET", path="/healthz",
-            test_script=[
-                "const opIds = JSON.parse(pm.environment.get('nicCleanupOpIds') || '[]');",
-                "const base = pm.environment.get('baseUrl');",
-                "const tok = pm.environment.get('jwtProjectAdminA1');",
-                "let pending = opIds.length;",
-                "if (pending === 0) return;",
-                "const tryOne = (oid, attempt) => {",
-                "  pm.sendRequest({",
-                "    url: base + '/operations/' + oid,",
-                "    method: 'GET',",
-                "    header: { 'Authorization': 'Bearer ' + tok },",
-                "  }, (err, res) => {",
-                "    let j = null; try { j = res.json(); } catch (e) {}",
-                "    if ((j && j.done) || attempt >= 10) { pending--; }",
-                "    else { setTimeout(() => tryOne(oid, attempt + 1), 400); return; }",
-                "  });",
-                "};",
-                "opIds.forEach(oid => tryOne(oid, 0));",
-            ],
+            test_script=_await_cleanup_ops_js(
+                ids_var="cleanupNicIds", ops_var="nicCleanupOpIds",
+                outcomes_var="nicCleanupOutcomes", what="интерфейсы гонки"),
         ),
         _cleanup_subnet(),
         poll_operation_until_done(),

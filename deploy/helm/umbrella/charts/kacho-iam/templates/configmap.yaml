@@ -98,6 +98,19 @@ data:
 
     authn:
       mode: {{ default "production" .Values.config.authn.mode | quote }}
+      {{- /* ПОСАДКА ЛИЧНОСТИ (задача #1125): чем стенд проверяет человека —
+           внешним поставщиком удостоверений (`external`) или своей чеканкой
+           (`own`). Разводит ТРЕБОВАНИЯ СТАРТА: под `external` обязательны три
+           адреса поставщика, под `own` — ни одного.
+
+           УМОЛЧАНИЯ ЗДЕСЬ НЕТ НАМЕРЕННО, и `default` не ставится: у процесса
+           умолчания тоже нет, поэтому профиль, не объявивший посадку, обязан
+           получить отказ старта с именем поля — а не тихо унаследовать чужой
+           выбор от шаблона. Умолчание живёт в БАЗОВОМ ПРОФИЛЕ чарта, где его
+           видно тому, кто профиль читает. */}}
+      {{- with .Values.config.authn.identityProvider }}
+      identity-provider: {{ . | quote }}
+      {{- end }}
       {{- with .Values.config.authn.hydraIssuer }}
       # Explicit Hydra issuer override (ResolveHydraIssuer highest precedence, ahead of
       # the KACHO_IAM_HYDRA_ISSUER env + the domain-derived default). Set it when Hydra

@@ -158,3 +158,43 @@ func (v exactlyOneOfValidator) check(ctx context.Context, cfg tfsdk.Config, diag
 			"Ожидался ровно один из: "+strings.Join(names, ", ")+". Не задан ни один.")
 	}
 }
+
+// notEmptyIfSetValidator — ЗАДАННОЕ значение не может быть пустым.
+type notEmptyIfSetValidator struct{ hint string }
+
+// notEmptyIfSet — проверка «либо не задавай, либо назови».
+//
+// Отличается от обязательности тем, ЧТО отвергает. Незаданное поле здесь законно и
+// означает «край подставит значение сам»; заданная пустая строка не означает НИ ТОГО, НИ
+// ДРУГОГО — на провод она уезжает неотличимо от незаданного, край подставляет своё, а
+// настройка продолжает утверждать пустоту. Без этой проверки такой ввод доходит до
+// применения и возвращается отказом каркаса «провайдер выдал несогласованный результат»,
+// в котором вызывающему предлагают сообщить об ошибке ПРОВАЙДЕРА за собственную опечатку.
+//
+// hint — что делать вместо: он и есть единственная полезная часть отказа.
+func notEmptyIfSet(hint string) validator.String {
+	return notEmptyIfSetValidator{hint: hint}
+}
+
+func (v notEmptyIfSetValidator) Description(_ context.Context) string {
+	return "непустое значение либо отсутствие поля"
+}
+
+func (v notEmptyIfSetValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (v notEmptyIfSetValidator) ValidateString(
+	_ context.Context, req validator.StringRequest, resp *validator.StringResponse,
+) {
+	// Неизвестное пропускается: о вычисляемом на этапе плана нельзя утверждать ничего.
+	// Незаданное пропускается тоже — оно и есть законный вход.
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	if strings.TrimSpace(req.ConfigValue.ValueString()) != "" {
+		return
+	}
+	resp.Diagnostics.AddAttributeError(req.Path, "Пустое значение",
+		fmt.Sprintf("%s задано пустым. %s", req.Path, v.hint))
+}

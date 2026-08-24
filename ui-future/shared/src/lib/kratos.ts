@@ -195,6 +195,25 @@ export const kratos = {
     return `${kratosUrl(`/self-service/${flow}/browser`)}${qs ? `?${qs}` : ""}`;
   },
 
+  /**
+   * Инициировать браузерный поток и получить его СРАЗУ, без чтения заголовка
+   * перенаправления.
+   *
+   * Служба личности отдаёт браузерному потоку `303`, и заголовок `Location`
+   * читать из одностраничного приложения НЕЛЬЗЯ: ответ перенаправления
+   * непрозрачен, `headers.get("Location")` возвращает `null` — то есть путь,
+   * построенный на этом чтении, не срабатывает НИ РАЗУ и всегда уходит в свою
+   * запасную ветку. Со стороны это выглядит как «иногда не сработало».
+   *
+   * Заголовок `Accept: application/json` (его ставит `kratosFetch`) переводит
+   * тот же адрес в режим одностраничного приложения: приходит `200` и тело
+   * потока. Печенья при этом ставятся так же, как в обычном браузерном потоке.
+   */
+  async initFlow<T = SelfServiceFlow>(flow: FlowType, params?: Record<string, string>): Promise<T> {
+    const qs = new URLSearchParams(params ?? {}).toString();
+    return kratosFetch<T>("GET", `/self-service/${flow}/browser${qs ? `?${qs}` : ""}`);
+  },
+
   /** Получить flow по ID (после init redirect). */
   async getFlow<T = SelfServiceFlow>(flow: FlowType, id: string): Promise<T> {
     const params = new URLSearchParams({ id });

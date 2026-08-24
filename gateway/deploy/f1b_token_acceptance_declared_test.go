@@ -61,6 +61,47 @@ type f1bProfile struct {
 	Cfg    config.Config
 }
 
+// f1bGatewayConfig — ЕДИНСТВЕННОЕ место, где объявление профиля переводится в
+// Config, который читает процесс.
+//
+// Читателей у перевода ДВА, и они спрашивают разное: пофайловая проба ниже
+// («объявление ЭТОГО файла даёт поднимающийся процесс») и стендовая
+// (revocation_endpoint_test.go, где цепочка профилей сливается так, как её
+// сливает helm, — «объявление ЭТОГО стенда даёт поднимающийся процесс»).
+// Предметы разные, перевод один: второй перевод, написанный заново, разошёлся
+// бы с первым молча и разошёлся бы там, где расхождение не видно — на
+// вырожденном значении, где один говорит «непусто», а другой «пусто».
+//
+// Ключи читаются ТОЧНЫМ ИМЕНЕМ карты, а не вхождением подстроки: переименование
+// ключа с суффиксом обязано читаться как «ключа нет», а не удовлетворять
+// проверку.
+func f1bGatewayConfig(gw map[string]any) (config.Config, bool) {
+	var cfg config.Config
+	cfg.AppEnv, _ = gw["appEnv"].(string)
+	// APIDomain нужен запасной ветке разбора (перечень издателей не объявлен —
+	// запись строится из сегодняшнего пина). Значение фиктивно намеренно: оно
+	// не должно быть неотличимо от боевого, иначе проба кормит собственный
+	// предмет правдоподобным входом.
+	cfg.APIDomain = "api.kacho.test"
+	if hydra, ok := gw["hydra"].(map[string]any); ok {
+		cfg.HydraIssuer, _ = hydra["issuer"].(string)
+		cfg.HydraJWKSURL, _ = hydra["jwksUrl"].(string)
+	}
+	ta, declares := gw["tokenAcceptance"].(map[string]any)
+	if !declares {
+		return cfg, false
+	}
+	cfg.TokenIssuers, _ = ta["issuers"].(string)
+	cfg.TokenIssuerKeySets, _ = ta["issuerKeySets"].(string)
+	cfg.PlatformTokenIssuer, _ = ta["platformIssuer"].(string)
+	cfg.PlatformTokenRevocationURL, _ = ta["revocationUrl"].(string)
+	if rc, rok := ta["revocationClientCert"].(map[string]any); rok {
+		cfg.PlatformTokenRevocationCertFile, _ = rc["certFile"].(string)
+		cfg.PlatformTokenRevocationKeyFile, _ = rc["keyFile"].(string)
+	}
+	return cfg, true
+}
+
 // f1bReadProfiles читает объявления края из всех профилей зонта.
 //
 // Перечень профилей ВЫВОДИТСЯ из дерева, а не выписывается: рукописный список
@@ -90,26 +131,13 @@ func f1bReadProfiles(t *testing.T) []f1bProfile {
 		if gw == nil {
 			continue
 		}
-		p := f1bProfile{Name: name}
-		p.AppEnv, _ = gw["appEnv"].(string)
-		p.Cfg.AppEnv = p.AppEnv
-		p.Cfg.APIDomain = "api.kacho.test"
-		if hydra, ok := gw["hydra"].(map[string]any); ok {
-			p.Cfg.HydraIssuer, _ = hydra["issuer"].(string)
-			p.Cfg.HydraJWKSURL, _ = hydra["jwksUrl"].(string)
-		}
-		if ta, ok := gw["tokenAcceptance"].(map[string]any); ok {
-			p.Declares = true
-			p.Cfg.TokenIssuers, _ = ta["issuers"].(string)
-			p.Cfg.TokenIssuerKeySets, _ = ta["issuerKeySets"].(string)
-			p.Cfg.PlatformTokenIssuer, _ = ta["platformIssuer"].(string)
-			p.Cfg.PlatformTokenRevocationURL, _ = ta["revocationUrl"].(string)
-			if rc, rok := ta["revocationClientCert"].(map[string]any); rok {
-				p.Cfg.PlatformTokenRevocationCertFile, _ = rc["certFile"].(string)
-				p.Cfg.PlatformTokenRevocationKeyFile, _ = rc["keyFile"].(string)
-			}
-		}
-		out = append(out, p)
+		cfg, declares := f1bGatewayConfig(gw)
+		out = append(out, f1bProfile{
+			Name:     name,
+			Declares: declares,
+			AppEnv:   cfg.AppEnv,
+			Cfg:      cfg,
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
