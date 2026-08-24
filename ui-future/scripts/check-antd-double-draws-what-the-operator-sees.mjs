@@ -15,7 +15,7 @@
  *
  * Замер в день заведения гейта: восемь имён, 31 употребление, 27 файлов.
  *
- * ЧТО ПРОВЕРЯЕТСЯ — ДВЕ ПОЛОВИНЫ ОДНОГО ПРЕДМЕТА.
+ * ЧТО ПРОВЕРЯЕТСЯ — ТРИ ЧАСТИ ОДНОГО ПРЕДМЕТА.
  *
  * ПЕРВАЯ (#570). Имя, подменённое пустым `<div>`, не должно употребляться в
  * продуктовом коде с пропом из списка «несёт видимое оператору». Исходов два:
@@ -30,6 +30,15 @@
  * дублёра и переживает продукт. Поэтому каждый вид, приведённый к настоящей
  * форме ради наблюдаемости, назван в перечне `PROBED_BY` вместе с пробой,
  * которая утверждает его НА ПРОДУКТОВОЙ ПОВЕРХНОСТИ.
+ *
+ * ТРЕТЬЯ (#1225). Вид, приведённый к настоящей форме, может остаться БЕЗ
+ * продуктового потребителя — носитель снят, приведение осталось. Тогда его
+ * запись из `PROBED_BY` обязана уйти: пробы рядом с носителем не бывает, когда
+ * носителя нет, и вторая часть говорит это сама («держать нечего»). Но
+ * молчаливое снятие теряет предмет — заменитель продолжает рисовать, а обещание
+ * «появится носитель, появится и проба» не держится ничем. Поэтому вид уходит в
+ * перечень `AWAITING_CARRIER` с причиной, и первое же его употребление с видимым
+ * пропом роняет прогон, требуя записи в `PROBED_BY` вместе с пробой.
  *
  * ГРАНИЦА ТОЧНОСТИ ВТОРОЙ ПОЛОВИНЫ, названная честно: гейт держит СУЩЕСТВОВАНИЕ
  * пробы у поверхности, а не содержание её утверждений. Содержание доказано
@@ -115,7 +124,6 @@ const PROBED_BY = {
   Badge: "shared/src/components/organisms/DetailShell/DetailShell.badge.test.tsx",
   Collapse: "shared/src/components/organisms/form/SgRulesEditor/SgRulesEditor.test.tsx",
   Dropdown: "shared/src/components/molecules/RowActionsMenu/RowActionsMenu.test.tsx",
-  List: "shared/src/pages/auth/Settings.passkeys-list.test.tsx",
   Menu: "shared/src/components/organisms/DetailShell/DetailShell.test.tsx",
   // Переехало вслед за предметом: панель ключей сведена к тонкой обёртке и
   // `Popconfirm` больше не рисует — его рисует общая реализация, и проба
@@ -126,6 +134,42 @@ const PROBED_BY = {
   Statistic: "shared/src/pages/DashboardPage.statistic.test.tsx",
   Tabs: "iam/src/pages/iam/AccessPage/AccessPage.role-tabs.test.tsx",
   Tree: "shared/src/components/organisms/DependencyTreePanel/DependencyTreePanel.test.tsx",
+};
+
+/**
+ * Виды, приведённые к настоящей форме, у которых СЕГОДНЯ нет ни одного
+ * продуктового потребителя, — с причиной по каждому.
+ *
+ * ЗАЧЕМ ОТДЕЛЬНЫЙ ПЕРЕЧЕНЬ, А НЕ ПРОСТО СНЯТИЕ ЗАПИСИ. Вид, приведённый ради
+ * наблюдаемости, но никем не употребляемый, из `PROBED_BY` обязан уйти: пробу
+ * рядом с носителем не написать, когда носителя нет, и гейт говорит это сам
+ * («держать нечего»). Но молчаливое снятие теряет предмет: заменитель
+ * продолжает рисовать вид, а обещание «появится носитель — появится и проба»
+ * не держится ничем. Здесь оно держится ЛОВУШКОЙ: запись падает ровно в тот
+ * день, когда носитель возвращается.
+ *
+ * Перечень счётный и самоистекающий по двум осям: запись падает, если
+ * (а) продукт СНОВА употребляет вид с видимым пропом — тогда её место в
+ * `PROBED_BY` вместе с пробой рядом с носителем, (б) заменитель перестал вид
+ * рисовать — тогда ждать возврата нечему.
+ *
+ * Пустой перечень — ЦЕЛЬ, а не поломка: на нём гейт проходит.
+ */
+const AWAITING_CARRIER = {
+  // Носителем был перечень ключей доступа на странице параметров личности
+  // (`shared/src/pages/auth/Settings.tsx`). Каталог из семи страниц церемоний
+  // сняли целиком (a85792df0, #1225): ни один из 162 маршрутов дерева их не
+  // монтировал, а те же адреса раздача отдаёт внешнему поставщику личности.
+  // Проба перечня уехала вместе с ними — и правильно: она утверждала о
+  // странице, которой оператор не видел никогда.
+  //
+  // Заменитель `List` при этом рисовать НЕ перестал, и снимать его не за что:
+  // форма верна и ждёт первого настоящего потребителя.
+  //
+  // Предикат возврата — ловушка ниже: первое же `<List>` с видимым пропом в
+  // продуктовом коде уронит прогон и потребует записи в `PROBED_BY`.
+  List:
+    "носитель (страница параметров личности) снят вместе с каталогом церемоний как не монтируемый ни одним маршрутом — a85792df0, #1225",
 };
 
 const uiRoot = process.cwd();
@@ -200,11 +244,12 @@ function productFiles() {
  * имён, и здесь намеренно не рассматриваются: перечень заменителя объявляет их
  * отдельно.
  */
-function usages(files, names) {
+function usages(files, names, extraSources = []) {
   const found = [];
   let parsed = 0;
-  for (const f of files) {
-    const src = fs.readFileSync(path.join(uiRoot, f), "utf8");
+  const inputs = [...files.map((f) => [f, null]), ...extraSources];
+  for (const [f, virtualSrc] of inputs) {
+    const src = virtualSrc === null ? fs.readFileSync(path.join(uiRoot, f), "utf8") : virtualSrc;
     const sf = ts.createSourceFile(f, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     parsed += 1;
     const walk = (node) => {
@@ -229,12 +274,12 @@ function usages(files, names) {
 }
 
 /** Разбор одного состояния дерева. Чистая функция — её же зовёт `--self-test`. */
-function analyze(stubSource, files) {
+function analyze(stubSource, files, extraSources = []) {
   const { names, drawn } = stubNames(stubSource);
-  const { found, parsed } = usages(files, names);
+  const { found, parsed } = usages(files, names, extraSources);
   // Употребления НАРИСОВАННЫХ имён с видимым пропом — предмет второй половины:
   // именно у них обязана быть проба на продуктовой поверхности.
-  const { found: drawnFound } = usages(files, drawn);
+  const { found: drawnFound } = usages(files, drawn, extraSources);
   return { names, drawn, found, drawnFound, parsed };
 }
 
@@ -273,6 +318,47 @@ function probeFindings({ drawn, drawnFound }, trackedProbes) {
       out.push(
         `проба ${probe} для «${kind}» не лежит рядом ни с одним его продуктовым потребителем ` +
           `(${users.map((h) => h.file).slice(0, 3).join(", ")}) — проба в стороне утверждает о заменителе, а не о продукте`,
+      );
+    }
+  }
+  return out;
+}
+
+/**
+ * ТРЕТЬЯ ЧАСТЬ — ЛОВУШКА НА ВОЗВРАТ НОСИТЕЛЯ. Тоже чистая функция, и её же
+ * зовёт `--self-test`: доказательство способности упасть относится к тому
+ * самому коду, который судит дерево.
+ *
+ * Вид, приведённый к настоящей форме, но никем не употребляемый, из `PROBED_BY`
+ * уходит — пробы рядом с носителем не бывает, когда носителя нет. Уходя, он
+ * попадает СЮДА, и первое же его употребление с видимым пропом роняет прогон:
+ * тогда наблюдаемость снова есть что держать, и держать её обязана проба.
+ */
+function awaitingFindings({ drawn, drawnFound }) {
+  const out = [];
+  for (const [kind, reason] of Object.entries(AWAITING_CARRIER)) {
+    if (kind in PROBED_BY) {
+      out.push(
+        `«${kind}» назван сразу в PROBED_BY и в AWAITING_CARRIER — два места об одном предмете, ` +
+          `из которых верно одно; оставить то, что описывает дерево`,
+      );
+      continue;
+    }
+    if (!drawn.has(kind)) {
+      out.push(
+        `перечень AWAITING_CARRIER ждёт носителя для «${kind}», а заменитель его уже НЕ рисует ` +
+          `(снова проходной <div> либо имя ушло) — ждать возврата нечему, запись снять`,
+      );
+      continue;
+    }
+    const users = drawnFound.filter((h) => h.name === kind);
+    if (users.length) {
+      out.push(
+        `у «${kind}» СНОВА есть продуктовый носитель (${users
+          .map((h) => `${h.file}:${h.line}`)
+          .slice(0, 3)
+          .join(", ")}) — запись из AWAITING_CARRIER снять и внести «${kind}» в PROBED_BY ` +
+          `вместе с пробой РЯДОМ с носителем; причина ожидания была: ${reason}`,
       );
     }
   }
@@ -350,12 +436,66 @@ if (process.argv.includes("--self-test")) {
     console.error(`::error::самопроверка: вторая половина краснеет на ЗАКОННОМ дереве: ${greenProbe[0]}`);
     process.exit(1);
   }
+  // ТРЕТЬЯ ЧАСТЬ, инъекция тем же способом и в обе стороны. Дефект вносится
+  // НАСТОЯЩИМ входом — исходником `.tsx`, который разбирается тем же путём, что
+  // и файлы дерева; на диск он не кладётся, потому что предмет ловушки — то,
+  // чего в дереве ещё нет. Законный близнец рядом: тот же вид БЕЗ видимого
+  // пропа носителем не является и молчать обязан.
+  const awaitKinds = Object.keys(AWAITING_CARRIER);
+  if (awaitKinds.length) {
+    const awaited = awaitKinds[0];
+    const carrier = [
+      "__self-test__/CarrierReturned.tsx",
+      `export const CarrierReturned = () => <${awaited} dataSource={[]} renderItem={() => null} />;\n`,
+    ];
+    const bystander = [
+      "__self-test__/LawfulTwin.tsx",
+      `export const LawfulTwin = () => <${awaited} className="x" />;\n`,
+    ];
+    const redAwait = awaitingFindings(analyze(stubSource, files, [carrier]));
+    if (!redAwait.some((f) => f.includes(`«${awaited}»`))) {
+      console.error(
+        `::error::самопроверка: вернувшийся носитель «${awaited}» НЕ пойман третьей частью — ловушка не способна упасть`,
+      );
+      process.exit(1);
+    }
+    const greenAwait = awaitingFindings(analyze(stubSource, files, [bystander]));
+    if (greenAwait.length > 0) {
+      console.error(
+        `::error::самопроверка: третья часть краснеет на ЗАКОННОМ близнеце (${awaited} без видимого пропа): ${greenAwait[0]}`,
+      );
+      process.exit(1);
+    }
+    const greenTree = awaitingFindings(green);
+    if (greenTree.length > 0) {
+      console.error(`::error::самопроверка: третья часть краснеет на ЗАКОННОМ дереве: ${greenTree[0]}`);
+      process.exit(1);
+    }
+    // Вторая ось того же перечня: заменитель перестал рисовать ожидаемый вид —
+    // ждать возврата нечему.
+    const unDrawn = stubSource.replace(new RegExp(`\\n {4}${awaited},\\n`), `\n    ${awaited}: Component,\n`);
+    if (unDrawn === stubSource) {
+      console.error(
+        `::error::самопроверка третьей части не смогла внести дефект: в перечне заменителя нет строки «    ${awaited},» — ` +
+          "предпосылка самопроверки исчезла вместе с формой файла, чинить надо её, а не гейт",
+      );
+      process.exit(1);
+    }
+    if (!awaitingFindings(analyze(unDrawn, files)).some((f) => f.includes(`«${awaited}»`))) {
+      console.error(
+        `::error::самопроверка: возвращённый в <div> «${awaited}» НЕ пойман третьей частью — вторая её ось не способна упасть`,
+      );
+      process.exit(1);
+    }
+  }
 
   console.log(
     `самопроверка: с внесённым дефектом находок про Dropdown ${redHits.length} ` +
       `(первая — ${redHits[0].file}:${redHits[0].line}), на законном заменителе 0; ` +
       `вторая половина на возвращённом в <div> «${kind}» дала «${redProbe[0].slice(0, 80)}…», на законном дереве 0; ` +
-      `осмотрено файлов ${green.parsed}, видов в PROBED_BY ${Object.keys(PROBED_BY).length}`,
+      `третья часть проверена на ${awaitKinds.length} видах, ждущих носителя (обе оси + законный близнец); ` +
+      `осмотрено файлов ${green.parsed}, видов в PROBED_BY ${Object.keys(PROBED_BY).length}, ` +
+      `в AWAITING_CARRIER ${awaitKinds.length}`,
   );
   process.exit(0);
 }
@@ -390,6 +530,8 @@ for (const name of Object.keys(NOT_DRAWN)) {
 
 // ВТОРАЯ ПОЛОВИНА (#625): у приведённого вида есть проба на продуктовой поверхности.
 findings.push(...probeFindings({ drawn, drawnFound }, trackedProbes));
+// ТРЕТЬЯ ЧАСТЬ: вид, ждущий носителя, обязан упасть в день его возврата.
+findings.push(...awaitingFindings({ drawn, drawnFound }));
 
 console.log(
   `осмотрено: продуктовых .tsx ${parsed}, имён с пустым заменителем ${names.size}, ` +
@@ -397,6 +539,7 @@ console.log(
     `употреблений «пустое имя × видимый проп» ${found.length}, ` +
     `названо намеренно не рисующими ${Object.keys(NOT_DRAWN).length}; ` +
     `видов с пробой на продуктовой поверхности ${Object.keys(PROBED_BY).length}, ` +
+    `видов, ждущих возврата носителя ${Object.keys(AWAITING_CARRIER).length}, ` +
     `отслеживаемых проб в дереве ${trackedProbes.size}`,
 );
 
