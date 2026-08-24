@@ -79,12 +79,11 @@ func scanRegistryTokenAudience(profiles map[string]map[string]any, base map[stri
 			continue
 		}
 		raw, _ := ct["allowedAudiences"].(string)
-		declared := make([]string, 0, 4)
-		for _, part := range strings.Split(raw, ",") {
-			if p := strings.TrimSpace(part); p != "" {
-				declared = append(declared, p)
-			}
-		}
+		// ТОТ ЖЕ разбор перечня, что у соседней проверки членства умолчания
+		// (client_token_default_audience_membership_test.go): две копии
+		// разошлись бы на вырожденном значении — одинокой запятой — и разошлись
+		// бы молча.
+		declared := declaredAudiences(raw)
 		if len(declared) == 0 {
 			// Пустой перечень при включённом эндпоинте — предмет соседней
 			// проверки, и она о нём говорит. Второе сообщение о том же
