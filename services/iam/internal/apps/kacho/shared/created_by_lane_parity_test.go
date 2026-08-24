@@ -79,7 +79,6 @@ func TestCreatedByLanes_AnswerTheSameOnTheSameInput(t *testing.T) {
 	require.NotEmpty(t, cases, "пустая таблица зеленеет на любом правиле")
 
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			verdicts := make(map[string]error, len(lanes))
 			for _, l := range lanes {
