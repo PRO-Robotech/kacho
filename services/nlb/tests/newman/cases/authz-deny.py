@@ -650,15 +650,36 @@ CASES.append(Case(
         # PermissionCatalogService; the RPC is `<exempt>` from project-scope, so any
         # authenticated principal may read it — anonymous is still refused). It answers
         # with the grantable taxonomy the rule compiler actually honours: modules ->
-        # `(module, resource)` tokens, plus the closed verb set. So the case reads it.
+        # `(module, resource)` tokens plus the verb set OF EACH TYPE. So the case reads it.
         #
         # WHY THAT IS THE RIGHT ARTEFACT. A permission string is `module.resource.verb`; it
         # is grantable only if `(module, resource)` is in the catalog — the compiler
         # fail-closed-SKIPs anything else, making the grant a silent no-op. So the three
         # loadbalancer resources are what the nlb suite's authorization rests on, and they
         # are asserted by NAME (their spelling travels on the wire and is never renamed),
-        # together with the closed verb set. `verb-bearing` is asserted too: a tier-only
-        # type would make per-object rules skip.
+        # together with the verb set each of them declares. `verb-bearing` is asserted too:
+        # a tier-only type would make per-object rules skip.
+        #
+        # ПОЧЕМУ ГЛАГОЛЫ СПРАШИВАЮТСЯ У РЕСУРСА, А НЕ У `closedVerbs` (#1128).
+        # Здесь стояло `closedVerbs ⊇ [get,list,update,delete]`. Это утверждение не про
+        # nlb: `closed_verbs` — ПЕРЕСЕЧЕНИЕ наборов ВСЕХ типов платформы, и его
+        # собственный контракт объявляет СУЖЕНИЕ нормой, а не поломкой
+        # (proto/kacho/cloud/iam/v1/permission_catalog_service.proto, поле `closed_verbs`).
+        # Сняв `v_update` у ОДНОГО чужого типа (`iam_user` — правку его записи
+        # спрашивает другое отношение), платформа вынула глагол из пересечения —
+        # и эта проба покраснела, не изменившись в том, что она измеряла.
+        #
+        # Замена — СТРОГО СИЛЬНЕЕ, а не слабее. Прежнее утверждение о наборе nlb
+        # не говорило ничего: оно краснеет от чужого типа и не различает, у какого
+        # именно глагол пропал. Новое падает тогда и только тогда, когда глагол теряет
+        # ОДИН ИЗ ТРЁХ ТИПОВ nlb — то есть ровно тогда, когда строка права этого
+        # домена перестаёт что-либо значить, — и называет виновный тип по имени.
+        #
+        # Контракт самого поля `closedVerbs` здесь НЕ утверждается вовсе: его владелец —
+        # набор iam (CONF-G-01-catalog-happy, services/iam/tests/newman/cases/
+        # iam-permission-catalog.py), и там он уже утверждает ровно то, что верно по
+        # построению (общие — только `get` и `list`). Два места об одном предмете
+        # разошлись бы снова — и разошлись именно так.
         #
         # The compiled per-RPC table (which method demands which permission) is a different
         # artefact, gated where it lives: GENERATED from proto, with both embedded copies
@@ -682,17 +703,25 @@ CASES.append(Case(
                  "  pm.test('loadbalancer.' + r + ' is verb-bearing (per-object rules compile)', () => "
                  "    pm.expect(((lb || {}).resources || []).find(x => x.resource === r).hasVerbRelations)"
                  "      .to.eql(true));",
+                 "  pm.test('глаголы прав nlb объявлены ТИПОМ loadbalancer.' + r, () => {",
+                 "    const res = ((lb || {}).resources || []).find(x => x.resource === r) || {};",
+                 "    // Приведение к нижнему регистру — не вкус: набор приезжает именем",
+                 "    // отношения без приставки (`v_addtargets` → `addtargets`), и продукт",
+                 "    // сам сравнивает глаголы нормализованными (domain.NormalizeVerb).",
+                 "    const verbs = (res.verbs || []).map(v => String(v).toLowerCase());",
+                 "    pm.expect(verbs, JSON.stringify(res)).to.be.an('array').that.is.not.empty;",
+                 "    pm.expect(verbs, 'набор глаголов типа loadbalancer.' + r)",
+                 "      .to.include.members(['get','list','update','delete']);",
+                 "  });",
                  "});",
-                 "pm.test('закрытый набор — тот, из которого строятся строки прав nlb', () => {",
-                 "  // Литеральный перечень пережил бы своё изменение молча: он был",
-                 "  // [get,list,create,update,delete] и остался бы им после того, как глагол",
-                 "  // создания перестал быть общим для типов. Утверждается СВОЙСТВО.",
-                 "  const verbs = j.closedVerbs || [];",
-                 "  pm.expect(verbs, JSON.stringify(j)).to.be.an('array').that.is.not.empty;",
-                 "  // Строки прав nlb строятся из глаголов чтения, перечисления, правки и",
-                 "  // удаления — каждый обязан быть общим, иначе гейты домена нечем описать.",
-                 "  pm.expect(verbs, 'глаголы, из которых строятся права nlb')",
-                 "    .to.include.members(['get','list','update','delete']);",
+                 "pm.test('составом группы целей распоряжаются СВОИ глаголы типа', () => {",
+                 "  // Роль управления целями (AZD-CUSTOM-ROLE-TARGET-MANAGER ниже) строится",
+                 "  // ровно из них. Не будь их в наборе ТИПА, реконсайлер отбросил бы правило",
+                 "  // молча, и положительная половина той пробы не прошла бы ни при каком",
+                 "  // исправном продукте.",
+                 "  const tg = ((lb || {}).resources || []).find(x => x.resource === 'targetGroups') || {};",
+                 "  const verbs = (tg.verbs || []).map(v => String(v).toLowerCase());",
+                 "  pm.expect(verbs, JSON.stringify(tg)).to.include.members(['addtargets','removetargets']);",
                  "});",
              ]),
     ],
