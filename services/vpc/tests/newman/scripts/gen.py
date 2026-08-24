@@ -21,7 +21,7 @@ import uuid
 import importlib.util
 from pathlib import Path
 from dataclasses import dataclass, field, replace
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 
 def js_str(value: str) -> str:
@@ -3947,6 +3947,100 @@ _ADMIN_DEFAULT_PRE = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# ИСХОД ПОДЗАПРОСА ЧИТАЕТСЯ — ИЛИ ЗДЕСЬ, ИЛИ ПО ЦЕПОЧКЕ НАКОПИТЕЛЕЙ
+# ---------------------------------------------------------------------------
+# Шаг, шлющий запросы САМ (`pm.sendRequest`), стоит вне всех проверок, которые
+# судят шаг по его собственному ответу: он ходит на служебный путь `/healthz`,
+# а предмет уезжает подзапросом. Значит его исход не прочтёт никто, кроме него
+# самого либо шага, читающего его накопитель.
+#
+# Гейт дерева `internal/repohygiene/artifactgates` `TestCapturedVariableStepCarriesAnAssertion`
+# такой шаг НЕ судит и не должен: его предмет — захват из СВОЕГО ответа. В его
+# перечне законных близнецов эта форма прямо объявлена молчащей, и довод там
+# стоял такой: «утверждает о нём следующий шаг». Довод верен для залпа
+# (`burst-* → resolve-* → assert-*`) и был НЕВЕРЕН для уборки: у пяти шагов
+# уборки состязательных кейсов следующего утверждающего шага не было вовсе, а
+# у одного обработчик ответа был пуст — `() => {}`. Обещание, которого никто не
+# проверял, и есть предмет этой проверки: она делает довод ПРОВЕРЯЕМЫМ там, где
+# кейс собирается.
+#
+# Предикат ТРАНЗИТИВЕН по накопителям: залп публикует `burstResults`, резолв
+# читает его и публикует `nicCollected`, и только третий шаг утверждает. Требуй
+# мы утверждения от НЕПОСРЕДСТВЕННОГО читателя — законная трёхзвенная цепочка
+# стала бы находкой, то есть ловилась бы форма вместо существа.
+#
+# Замер на дереве в день заведения (ревизия 8eb824e58, 91 коллекция, 9181 шаг):
+# шагов с подзапросом 18, находок 5 — все пять в `cases/concurrency.py`
+# (`cleanup-all-subs`, `wait-cleanup`, `cleanup-addresses`, `cleanup-nics`,
+# `wait-nic-cleanup`). Контроль в другую сторону на той же переписи: 13 шагов
+# подзапроса предикат НЕ помечает — значит он различает форму, а не метит всё
+# подряд.
+_SUBREQUEST_MARK = "pm.sendRequest"
+_ENV_SET_RE = re.compile(r"pm\.environment\.set\(\s*['\"]([A-Za-z_][\w]*)['\"]")
+
+
+def _env_reads(code: str, name: str) -> bool:
+    """Скрипт ЧИТАЕТ имя окружения — и в исполняемой части, а не в объяснении."""
+    return re.search(r"environment\.get\(\s*['\"]%s['\"]" % re.escape(name), code) is not None
+
+
+def _step_test_code(item: Dict) -> str:
+    """Исполняемая часть test-скрипта шага сериализованной коллекции."""
+    for ev in item.get("event", []):
+        if ev.get("listen") == "test":
+            return _strip_js_comments("\n".join(ev.get("script", {}).get("exec", [])))
+    return ""
+
+
+def audit_subrequest_outcome_readers(service: str, col: Dict) -> Tuple[List[str], Dict[str, int]]:
+    """Находки и перепись: у каждого шага с подзапросом есть читатель его исхода.
+
+    Возвращает (перечень находок, перепись). Перепись печатается ВСЕГДА, чтобы
+    «ноль находок» было отличимо от «ноль прочитанного»: предикат, переставший
+    узнавать подзапрос, молча стал бы вечнозелёным.
+    """
+    findings: List[str] = []
+    census = {"cases": 0, "steps": 0, "subrequest": 0, "self": 0, "chained": 0}
+
+    def walk(items: List[Dict], path: List[str]) -> None:
+        steps = [it for it in items if "item" not in it]
+        for it in items:
+            if "item" in it:
+                census["cases"] += 1
+                walk(it["item"], path + [it.get("name", "")])
+        for i, it in enumerate(steps):
+            census["steps"] += 1
+            code = _step_test_code(it)
+            if _SUBREQUEST_MARK not in code:
+                continue
+            census["subrequest"] += 1
+            if any(form in code for form in _ASSERT_FORMS):
+                census["self"] += 1
+                continue
+            carried = set(_ENV_SET_RE.findall(code))
+            reached = False
+            for later in steps[i + 1:]:
+                lcode = _step_test_code(later)
+                if not any(_env_reads(lcode, name) for name in carried):
+                    continue
+                if any(form in lcode for form in _ASSERT_FORMS):
+                    reached = True
+                    break
+                carried |= set(_ENV_SET_RE.findall(lcode))
+            if reached:
+                census["chained"] += 1
+                continue
+            findings.append(
+                "  %s :: %s :: %s — шлёт подзапросы, сам ничего не утверждает, и ни один "
+                "последующий шаг кейса не читает его накопитель (%s), чтобы утвердить исход"
+                % (service, " / ".join(path) or "(корень)", it.get("name"),
+                   ", ".join(sorted(carried)) or "накопителя нет вовсе"))
+
+    walk(col.get("item", []), [])
+    return findings, census
+
+
 def build_collection(service: str, cases: List[Case]) -> Dict:
     setup_items = [_zone_setup_item()]
     if service in _POOL_SEED_SERVICES:
@@ -4109,6 +4203,8 @@ def main(argv: List[str]) -> int:
         return 1
     if _check_duplicate_ids() != 0:
         return 1
+    findings: List[str] = []
+    census = {"cases": 0, "steps": 0, "subrequest": 0, "self": 0, "chained": 0}
     for f in found:
         svc = f.stem
         if want and svc not in want:
@@ -4119,6 +4215,34 @@ def main(argv: List[str]) -> int:
         out = OUT_DIR / f"{svc}.postman_collection.json"
         out.write_text(json.dumps(col, indent=2, ensure_ascii=False))
         print(f"[{svc}] {len(cases)} cases → {out.relative_to(ROOT)}")
+        # Проверка идёт по СОБРАННОЙ коллекции, а не по объявлению кейса: утверждения
+        # дописывают проходы сериализации (`_assert_delete_operation_outcome`,
+        # автообёртки), и предикат по исходнику судил бы не то, что уезжает в дерево.
+        f_svc, c_svc = audit_subrequest_outcome_readers(svc, col)
+        findings += f_svc
+        for k in census:
+            census[k] += c_svc[k]
+
+    # Перепись печатается ВСЕГДА — «ноль находок» обязано быть отличимо от «ноль
+    # прочитанного»: предикат, переставший узнавать подзапрос, молча стал бы
+    # вечнозелёным.
+    print("[gen] исход подзапроса: кейсов %d, шагов %d, из них с подзапросом %d "
+          "(утверждают сами %d, читаются по цепочке накопителей %d)"
+          % (census["cases"], census["steps"], census["subrequest"],
+             census["self"], census["chained"]))
+    if census["steps"] == 0:
+        sys.stderr.write("gen: FAIL — обход не узнал ни одного шага; перепись беспредметна\n")
+        return 1
+    if findings:
+        sys.stderr.write(
+            "gen: FAIL — шаги, чей исход не прочтёт никто: %d\n\n" % len(findings))
+        sys.stderr.write(
+            "Шаг ходит на служебный путь, а предмет уезжает подзапросом, поэтому его\n"
+            "ответ не судит ни одна проверка, читающая ответ ШАГА. Исход обязан быть\n"
+            "назван: либо утверждением в самом шаге (в том числе внутри обработчика\n"
+            "подзапроса), либо последующим шагом кейса, который читает его накопитель.\n\n")
+        sys.stderr.write("\n".join(findings) + "\n")
+        return 1
     return 0
 
 
