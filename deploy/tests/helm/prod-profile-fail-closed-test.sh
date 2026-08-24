@@ -40,39 +40,42 @@ DEV="$UMBRELLA/values.dev.yaml"
 # The verdict is the VIOLATION COUNT, never "the script reached the end".
 #
 #   violation — a posture assertion failed. Counted, reported, execution CONTINUES
-#               so one run lists every violation instead of only the first.
-#   fatal     — a precondition failed (profile absent, does not render, wrong yq).
-#               Nothing downstream can be judged, so abort — but abort LOUDLY and
-#               never as PASS.
+#               so one run lists every violation instead of only the first (exit 1).
+#   fail      — a finding that ends the run right there (exit 1).
+#   fatal     — a precondition failed (no helm, wrong yq, profile absent, does not
+#               render). Nothing downstream can be judged, so abort — but abort
+#               LOUDLY, with helm's own words, and never as PASS (exit 2).
 #
-# SECTIONS counts sections that actually executed and is compared against
-# EXPECTED_SECTIONS at the end: a section that gets deleted, commented out or
+# All three come from the directory-wide `outcome.sh`, not from a local copy.
+#
+# N counts assertions that actually executed and is compared against
+# EXPECTED_ASSERTIONS at the end: a section that gets deleted, commented out or
 # skipped must NOT be able to leave a green verdict behind. A gate that prints
 # and exits zero is the exact class this file exists to prevent.
-SECTIONS=0
-VIOLATIONS=0
-EXPECTED_SECTIONS=11
-violation() { echo "FAIL: $1"; VIOLATIONS=$((VIOLATIONS + 1)); }
-fatal() { echo "FATAL: $1"; exit 2; }
-ok() { SECTIONS=$((SECTIONS + 1)); }
+# ── Три исхода — ОБЩЕЙ реализацией каталога, а не своей копией ───────────────
+#
+# `violation` (накопительная находка), `fail`/`fatal` (коды 1 и 2), перепись,
+# предпосылки инструмента и текст, который сказал сам helm, живут в `outcome.sh`.
+# До сведения этот файл нёс СВОЮ копию всех пяти решений — и копия уже разошлась:
+# `command -v helm` в ней не было ВОВСЕ (отсутствие helm давало код 2 лишь по
+# случайности — через отказ первого же рендера), а перепись выполненных секций
+# печаталась своим текстом, не сходящимся с остальным каталогом.
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$(dirname "$0")/outcome.sh"
+EXPECTED_ASSERTIONS=11
 
-# ── Preflight: the right yq ──────────────────────────────────────────────────
+# ── Preflight: the right tools ───────────────────────────────────────────────
 # Every assertion below is expressed in mikefarah yq v4 syntax (`yq ea`, `select(...)`).
 # The unrelated jq-wrapper `yq` (python kislyuk/yq) parses those filters as jq and
 # dies mid-pipe with "Cannot index string with string" — a cryptic exit that tells
 # the operator nothing about which posture bit was checked. Fail on the TOOL
 # explicitly, so a tooling mismatch can never be mistaken for a policy result
 # (and, just as important, can never be mistaken for a pass).
-command -v yq >/dev/null 2>&1 || fatal "yq not found — install mikefarah yq v4 (https://github.com/mikefarah/yq)"
-# Сравнение — БЕЗ трубы: `… | grep -q` под `set -o pipefail` возвращает ОТКАЗ
-# НА СОВПАДЕНИИ (grep выходит по первому попаданию, писатель получает SIGPIPE,
-# и `pipefail` поднимает ЕГО статус до статуса конвейера). Задача #658.
-YQ_VER="$(yq --version 2>&1 || true)"
-[[ "${YQ_VER,,}" == *mikefarah* ]] \
-  || fatal "wrong yq flavour: $(yq --version 2>&1 | head -1) — this guard needs mikefarah yq v4, not the jq wrapper"
+require_helm
+require_mikefarah_yq
 
-[ -f "$PROD" ] || fatal "values.prod.yaml not found at $PROD — production profile missing"
-[ -f "$DEV" ]  || fatal "values.dev.yaml not found at $DEV"
+require_file_present "$PROD" "боевой профиль values.prod.yaml"
+require_file_present "$DEV"  "профиль стенда values.dev.yaml"
 
 # render_only <values-file> <show-only-template> — silence helm's kubeconfig warns.
 render_only() {
@@ -94,10 +97,13 @@ cm_val() {
 }
 
 # ── 0. The whole prod profile must render without error ──────────────────────
-FULL="$(helm template kacho-umbrella "$UMBRELLA" -f "$PROD" 2>/tmp/prod-guard.err)" \
-  || { echo "--- helm error ---"; grep -vE "WARNING: Kubernetes configuration" /tmp/prod-guard.err; \
-       fatal "values.prod.yaml does not render via helm template"; }
-[ -n "$FULL" ] || fatal "values.prod.yaml render is empty (sibling deps not built? run helm dep update)"; ok
+# Вызов идёт ВНЕ подстановки: `render_nonempty_or_fatal` внутри `$( )` вышла бы из
+# ПОДОБОЛОЧКИ, и ни код, ни текст helm до вызывающего не доехали бы. Заодно снят
+# ФИКСИРОВАННЫЙ путь `/tmp/prod-guard.err`: на общей машине два прогона писали в
+# один файл, и текст отказа мог принадлежать чужому прогону.
+helm_try kacho-umbrella "$UMBRELLA" -f "$PROD"
+render_nonempty_or_fatal "values.prod.yaml (полный профиль)"
+FULL="$HELM_OUT"; ok
 
 # ── 1. kacho-iam — production-strict + ssl-mode != disable ───────────────────
 IAM_CM="$(render_only "$PROD" charts/kacho-iam/templates/configmap.yaml)"
@@ -264,18 +270,11 @@ DS_POLICIES="$(echo "$FULL" | yq ea 'select(.kind=="NetworkPolicy" and .metadata
 [ "$DS_POLICIES" -ge 6 ] || violation "production render has only $DS_POLICIES datastore NetworkPolicies (networkPolicy.datastore.enabled not set in values.prod.yaml — every pg-*:5432 stays reachable namespace-wide)"; ok
 
 # ── Verdict — by the counters, never by "we got here" ────────────────────────
-# Two independent ways to be red:
-#   VIOLATIONS > 0                  — the profile asserts something insecure;
-#   SECTIONS  != EXPECTED_SECTIONS  — a section did not run, so its posture bits
-#                                     were never examined and silence proves nothing.
+# Two independent ways to be red, and BOTH are now judged by the shared
+# implementation (`outcome_verdict`):
+#   VIOLATIONS > 0                        — the profile asserts something insecure;
+#   N != EXPECTED_ASSERTIONS              — a section did not run, so its posture bits
+#                                           were never examined and silence proves nothing.
 # The second is the guard on the guard: without it, deleting a whole section is
 # indistinguishable from passing it.
-if [ "$SECTIONS" -ne "$EXPECTED_SECTIONS" ]; then
-  echo "FAIL: $SCRIPT executed $SECTIONS of $EXPECTED_SECTIONS sections — a section was skipped or removed; its assertions did not run"
-  VIOLATIONS=$((VIOLATIONS + 1))
-fi
-if [ "$VIOLATIONS" -gt 0 ]; then
-  echo "FAIL: $SCRIPT — $VIOLATIONS violation(s) in $SECTIONS section(s)"
-  exit 1
-fi
-echo "PASS: $SCRIPT ($SECTIONS sections, 0 violations)"
+outcome_verdict "секций объявлено: $EXPECTED_ASSERTIONS"

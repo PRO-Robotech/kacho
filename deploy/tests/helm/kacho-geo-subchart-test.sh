@@ -26,15 +26,56 @@ set -euo pipefail
 
 SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-GEO="$REPO_ROOT/helm/umbrella/charts/kacho-geo"
-N=0
-fail() { echo "FAIL: $1"; exit 1; }
-ok() { N=$((N + 1)); }
+UMBRELLA="$REPO_ROOT/helm/umbrella"
+GEO="$UMBRELLA/charts/kacho-geo"
 
-[ -d "$GEO" ] || fail "kacho-geo sub-chart not found at $GEO"
+# ── Три исхода — ОБЩЕЙ реализацией каталога, а не своей копией ───────────────
+#
+# 0 зелено · 1 находка о дереве · 2 условие не создано (плюс текст самого helm).
+# Здесь лежали свои `fail`, `ok` и `N`, и разошлись они с каталогом по двум осям:
+#
+#   • ОТКАЗ РЕНДЕРА был находкой о дереве. `DEF="$(render)" || fail "…does not
+#     render…"` выходил кодом 1 — тем же, каким объявляется настоящий дефект, —
+#     хотя несобранные зависимости или отсутствующий helm суть УСЛОВИЕ прогона;
+#   • ТЕКСТ HELM НЕ ДОЕЗЖАЛ ДО ЧИТАТЕЛЯ ВООБЩЕ: `render()` глушила stderr
+#     (`2>/dev/null`) и звалась ИЗ ПОДСТАНОВКИ, а всё, что печатается в stdout
+#     изнутри `$( )`, попадает в переменную, а не читателю. Наблюдаемый результат
+#     у «гейт нашёл дефект», «гейт сам сломан» и «условие не создано» совпадал.
+#
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$(dirname "$0")/outcome.sh"
+EXPECTED_ASSERTIONS=10
 
-# render <values-override...> — render the standalone sub-chart; silence kubeconfig warns.
-render() { helm template kacho-geo "$GEO" "$@" 2>/dev/null; }
+require_helm
+# yq здесь не проверялся ВООБЩЕ, и это не мелочь: под именем `yq` в PATH бывает
+# питонья обёртка над jq, которая на этих фильтрах не ругается, а молча отдаёт
+# ПУСТО. Тогда `nz` и `nj` (обе считаются `grep -c .` над пустым выводом) равны
+# нулю, и утверждения «Certificate'ов ноль» / «Job'ов ноль» проходят ВАКУУМНО —
+# проверка отчитывается успехом, не сверив ничего.
+require_mikefarah_yq
+# Сабчарт вендорится КАТАЛОГОМ в charts/ и в зависимостях умбреллы НАМЕРЕННО не
+# объявлен (Chart.yaml умбреллы называет причину: объявленный `file://` чарт helm
+# материализует в тот же каталог, и он существует там ДВАЖДЫ — каталогом и
+# архивом, а какая копия попадёт в рендер, не определено). Отсюда именно
+# `require_dir_present`, а не `require_dep_chart`: последний на отказе советует
+# собрать зависимости, а этот чарт зависимостью не является — совет увёл бы
+# читателя к команде, которая его не вернёт.
+#
+# Само отсутствие чарта — «судить не о чем» (условие не создано), а не дефект
+# дерева; прежде здесь стоял `fail`, то есть код находки.
+require_dir_present "$GEO" "сабчарт kacho-geo (вендорится каталогом в charts/)"
+
+# render <что рендерим> <values-override...> — рендер отдельно стоящего сабчарта.
+#
+# Результат приезжает в $HELM_OUT, а НЕ в stdout, и это не стиль: `V="$(render …)"`
+# исполнил бы функцию в ПОДОБОЛОЧКЕ, откуда ни код возврата helm, ни текст его
+# отказа, ни счётчик рендеров до вызывающего не доедут. Пустой успешный рендер —
+# тоже условие, а не «ничего не нашли»: по нему все утверждения прошли бы вакуумно.
+render() {
+  local what="$1"; shift
+  helm_try kacho-geo "$GEO" "$@"
+  render_nonempty_or_fatal "$what"
+}
 # env_val <ENV_NAME> <render> — value of the named container env entry ("" if absent).
 env_val() {
   echo "$2" | yq eval-all \
@@ -47,8 +88,8 @@ init_env_val() {
 }
 
 # ── 0. default render is non-empty + valid ───────────────────────────────────
-DEF="$(render)" || fail "kacho-geo sub-chart does not render via helm template"
-[ -n "$DEF" ] || fail "kacho-geo render is empty"; ok
+render "kacho-geo (умолчания чарта)"
+DEF="$HELM_OUT"; ok
 
 # ── 1. Deployment ports: public :9090 + internal :9091 ───────────────────────
 DEP="$(echo "$DEF" | yq ea 'select(.kind=="Deployment")' -)"
@@ -76,19 +117,24 @@ case "$authz_addr" in *kacho-iam-internal*:9091) ;; *) fail "KACHO_GEO_AUTHZ_IAM
 # небезопасный режим ЯВНО.
 am="$(env_val KACHO_GEO_AUTH_MODE "$DEF")"
 [ "$am" = "production" ] || fail "умолчание KACHO_GEO_AUTH_MODE=$am (ожидается production — secure-by-default)"; ok
-DEVMODE="$(render --set authMode=dev)"
+render "kacho-geo (authMode=dev)" --set authMode=dev
+DEVMODE="$HELM_OUT"
 dam="$(env_val KACHO_GEO_AUTH_MODE "$DEVMODE")"
 [ "$dam" = "dev" ] || fail "явный opt-in KACHO_GEO_AUTH_MODE=$dam (ожидается dev)"; ok
 
 # ── 5. production override: AUTH_MODE=production + DB ssl require ──────────────
-PROD="$(render --set authMode=production --set db.sslmode=require)"
+render "kacho-geo (authMode=production, db.sslmode=require)" \
+  --set authMode=production --set db.sslmode=require
+PROD="$HELM_OUT"
 pam="$(env_val KACHO_GEO_AUTH_MODE "$PROD")"
 pssl="$(env_val KACHO_GEO_DB_SSLMODE "$PROD")"
 [ "$pam" = "production" ] || fail "prod KACHO_GEO_AUTH_MODE=$pam (want production)"
 [ "$pssl" = "require" ] || fail "prod KACHO_GEO_DB_SSLMODE=$pssl (want require)"; ok
 
 # ── 6. mTLS ON → server + client Certificates + *_MTLS_* env on BOTH listeners ─
-M="$(render --set mtls.enable=true --set mtls.edges.iamAuthz=true)"
+render "kacho-geo (mtls.enable=true, mtls.edges.iamAuthz=true)" \
+  --set mtls.enable=true --set mtls.edges.iamAuthz=true
+M="$HELM_OUT"
 ncerts="$(echo "$M" | yq ea 'select(.kind=="Certificate") | .metadata.name' - | grep -c . || true)"
 [ "$ncerts" -ge 2 ] || fail "mTLS-on render has $ncerts Certificates (want >=2: server + client)"
 pub_mtls="$(env_val KACHO_GEO_PUBLIC_SERVER_MTLS_ENABLE "$M")"
@@ -107,7 +153,8 @@ case "$svc_names" in *kacho-geo-internal*) ;; *) fail "internal Service kacho-ge
 case "$svc_names" in *kacho-geo\ *|*kacho-geo) ;; *) fail "public Service kacho-geo missing (got: $svc_names)";; esac; ok
 
 # ── 8. data-migration Job — Helm hook + id-preserving + idempotent ───────────
-DM="$(render --set dataMigration.enabled=true)"
+render "kacho-geo (dataMigration.enabled=true)" --set dataMigration.enabled=true
+DM="$HELM_OUT"
 JOB="$(echo "$DM" | yq ea 'select(.kind=="Job")' -)"
 [ -n "$JOB" ] || fail "dataMigration.enabled=true rendered no Job"
 hook="$(echo "$JOB" | yq '.metadata.annotations."helm.sh/hook"' -)"
@@ -121,4 +168,4 @@ case "$jobspec" in *"id, region_id, status, name, created_at"*) ;; *) fail "data
 nj="$(echo "$DEF" | yq ea 'select(.kind=="Job") | .metadata.name' - | grep -c . || true)"
 [ "$nj" -eq 0 ] || fail "default render still has $nj data-migration Jobs (should be 0)"; ok
 
-echo "PASS: $SCRIPT ($N assertions)"
+outcome_verdict "накладок рендера: 5 (умолчания · authMode=dev · production+ssl · mTLS · миграция данных)"
