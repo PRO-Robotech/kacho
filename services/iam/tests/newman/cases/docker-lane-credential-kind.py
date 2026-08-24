@@ -69,10 +69,20 @@ CASES.append(Case(
             method="POST",
             path="/iam/v1/serviceAccounts/{{svaAId}}/keys",
             auth="jwtBootstrap",
+            # `createdByUserId` ЗДЕСЬ НЕ ШЛЁТСЯ, и это не упрощение тела.
+            # Предъявитель полосы — служебная учётка (`jwtBootstrap`), а у неё
+            # это поле отвергается СИНХРОННО и с именем поля: происхождение
+            # выводится из владельца аккаунта целевой учётки, и принять
+            # присланное значило бы вернуть запрещённый третий исход
+            # («принято-и-проигнорировано»). Прогон 32768969536 ответил на это
+            # тело `400 Illegal argument created_by_user_id: must be empty for a
+            # service-account caller`, и девять утверждений упали каскадом от
+            # одного отказа. Продукт прав; образец рядом —
+            # `iam-token-facade-conformance.py` :: issue-sa-key, тот же RPC под
+            # тем же предъявителем БЕЗ этого поля, зелёный в том же прогоне.
             body={
                 "serviceAccountId": "{{svaAId}}",
                 "description": "docker lane credential kind {{runId}}",
-                "createdByUserId": "{{userAAAId}}",
                 "credentialKind": "CREDENTIAL_KIND_SECRET",
                 "ttlSeconds": 2592000,
             },
@@ -105,9 +115,22 @@ CASES.append(Case(
                 "pm.test('строка называет своё удостоверение', () => {",
                 "  pm.expect(_credId, 'идентификатор из строки').to.be.a('string').with.length.greaterThan(0);",
                 "});",
-                "pm.environment.set('dockerLaneSecret', _r.secret);",
-                "pm.environment.set('dockerLaneCredId', _credId);",
-                "pm.environment.set('dockerLaneKeyId', _r.keyId || (_r.key && _r.key.id) || _credId);",
+                # КООРДИНАТЫ НЕ ЗАПИСЫВАЮТСЯ ПУСТЫМИ. Страж незакреплённой
+                # переменной (gen.py) намеренно узок: он ловит имя, не
+                # определённое НИ В ОДНОЙ области, и переменная, заданная пустой
+                # строкой, проходит мимо него by construction — пустое значение
+                # это законный отрицательный вход. Прежняя редакция вычисляла
+                # `_credId` из отказа (`String(undefined).split('_')` → '') и
+                # записывала пустую строку безусловно; адрес отзыва собирался как
+                # `…/keys/` без последнего сегмента, край не находил маршрута и
+                # отвечал `403` с пустыми `subject`/`action` — отказ, к правам
+                # отношения не имеющий, шестнадцать раз подряд через обёртку
+                # повтора. Записываем только непустое: тогда о пропаже говорит
+                # страж, называя имя, а не чужая полоса чужим кодом.
+                "if (_r.secret) { pm.environment.set('dockerLaneSecret', _r.secret); }",
+                "if (_credId) { pm.environment.set('dockerLaneCredId', _credId); }",
+                "const _keyId = _r.keyId || (_r.key && _r.key.id) || _credId;",
+                "if (_keyId) { pm.environment.set('dockerLaneKeyId', _keyId); }",
             ],
         ),
 
