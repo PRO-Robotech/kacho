@@ -111,7 +111,7 @@ var knobRefDotted = regexp.MustCompile(`\.Values\.([A-Za-z_][\w]*(?:\.[A-Za-z_][
 
 // knobRefIndexed — ссылка вида `index .Values "a" "b"`. Нужна не для полноты:
 // именно так родитель добирается до сабчарта, чьё имя содержит дефис
-// (`index .Values "kacho-iam" "federationIn"`), а дефис в точечной форме
+// (`index .Values "api-gateway"`), а дефис в точечной форме
 // шаблонизатором не разбирается. Без этой формы такие ключи выглядели бы
 // непрочитанными — то есть проверка ловила бы синтаксис записи, а не предмет.
 var knobRefIndexed = regexp.MustCompile(`index\s+\$?\.Values((?:\s+"[^"]+")+)`)

@@ -328,7 +328,14 @@ func TestRolloutSitePredicates_SelfTest(t *testing.T) {
 	}
 
 	// (в) законный близнец — ручная команда: helm зовёт, таблицу не читает.
-	hand := "\thelm upgrade --install kacho-umbrella . -f values.prod.yaml -f values.a8f60d.yaml\n"
+	//
+	// Имена профилей здесь НАМЕРЕННО вымышленные. Соседний гейт
+	// (TestNoSecondCopyOfAStackChain) считает две РЕАЛЬНЫХ строки профилей в
+	// одной логической строке второй копией цепочки — и он прав: фикстура с
+	// настоящими именами неотличима от выписанного состава стенда. Он поймал
+	// эту фикстуру в первой редакции файла; чиню фикстуру, а не расширяю его
+	// список исключений — исключение стоило бы дороже, чем два вымышленных имени.
+	hand := "\thelm upgrade --install kacho-umbrella . -f values.alpha.yaml -f values.beta.yaml\n"
 	if chainReaderFor("prod").MatchString(hand) {
 		t.Error("выписанная руками цепочка принята за чтение таблицы")
 	}
