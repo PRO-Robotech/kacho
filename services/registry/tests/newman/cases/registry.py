@@ -33,6 +33,22 @@ REG = "/registry/v1/registries"
 OP_ENVELOPE = "^(rop|reo)[a-z0-9]+$"
 
 
+def _delete_idempotent_op_match(op_envelope):
+    """Строка утверждения о конверте Operation внутри ветки `200` (#1209).
+
+    Между косыми чертами стоит КОД: знаки образца значимы, и сериализатор строки
+    сменил бы смысл. Поэтому образец едет ДОСЛОВНО, а исход у него другой — он
+    проверяется ПРИ ГЕНЕРАЦИИ (`js_regex_src`), и негодный роняет её с именем
+    места, вместо того чтобы порвать СИНТАКСИС коллекции там, где автор значения
+    этого не увидит.
+
+    Отдельной функцией — чтобы место можно было ПОДАТЬ негодным входом: константа,
+    прочитанная прямо в теле `Case`, вычисляется на импорте, и шва у неё нет.
+    """
+    return ("    pm.expect(j && j.id, 'конверт Operation: ' + pm.response.text())"
+            f".to.match(/{js_regex_src(op_envelope, where='registry/_delete_idempotent_op_match/op_envelope')}/);")
+
+
 # ---------------------------------------------------------------------------
 # Shared setup / cleanup helpers (self-contained, idempotent)
 # ---------------------------------------------------------------------------
@@ -810,7 +826,7 @@ CASES.append(Case(
                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
                  "pm.test('[REG-DEL-IDEM-DOUBLE] исход названной ветки утверждён, а не принят', () => {",
                  "  if (pm.response.code === 200) {",
-                 f"    pm.expect(j && j.id, 'конверт Operation: ' + pm.response.text()).to.match(/{OP_ENVELOPE}/);",
+                 _delete_idempotent_op_match(OP_ENVELOPE),
                  "    pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                  "    return;",
                  "  }",

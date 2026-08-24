@@ -1558,6 +1558,9 @@ def load_cases_module(path: Path):
     mod.retry_until_authorized = retry_until_authorized
     mod.retry_until_present = retry_until_present
     mod.http_method_not_allowed_block = http_method_not_allowed_block
+    # Помощники экранирования — тем же впрыском (#1209): декларация тоже
+    # порождает JavaScript, и вторая копия предиката разошлась бы с первой молча.
+    mod.js_regex_src = js_regex_src
     spec.loader.exec_module(mod)
     return mod
 
