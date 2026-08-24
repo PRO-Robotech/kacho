@@ -93,6 +93,48 @@ def js_comment(value: str) -> str:
     text = json.dumps(str(value), ensure_ascii=False)[1:-1]
     return text.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
+
+# Знаки, значимые в регулярном выражении, плюс разделитель литерала. `-` сюда НЕ
+# входит намеренно: вне класса символов он и так буква, а `\-` под флагом `u`
+# был бы синтаксической ошибкой — то есть «на всякий случай» сломало бы литерал.
+_REGEX_META = "^$\\.*+?()[]{}|/"
+
+
+def js_regex_literal_text(value: str) -> str:
+    r"""ТЕКСТ вызывающего внутри литерала регулярного выражения (#1202).
+
+    Имя ресурса, фрагмент контракт-тона, подпись — это ТЕКСТ, а стоит он внутри
+    `/…/`, где каждый знак выражения работает ОПЕРАТОРОМ. Без экранирования
+    `Route table (v2)` стал бы группой, `a.b` — «любой знак», а `/` закрыл бы
+    литерал и хвост стал бы КОДОМ.
+
+    ПОЧЕМУ НЕ `js_str`. Сериализатор строки экранирует по правилам СТРОКИ:
+    апостроф, кавычку, обратный слэш. Скобка и точка для него безобидны, а здесь
+    именно они и опасны. Правила разные, потому что языки разные — литерал
+    строки и литерал выражения.
+
+    ПОЧЕМУ НЕ `re.escape`. Питонов набор — другой язык: он экранирует и то, чего
+    в JavaScript экранировать нельзя под флагом `u`, и не экранирует разделитель
+    `/`, которого у Python вовсе нет.
+
+    ЧЕМ ДЕРЖИТСЯ. Проба
+    `services/iam/tests/newman/scripts/js_regex_literal_test.py`: враждебный
+    текст не рвёт синтаксис, собранное выражение совпадает с текстом ДОСЛОВНО и
+    НЕ совпадает со строкой, где те же знаки сработали бы операторами.
+    """
+    out = []
+    for ch in str(value):
+        code = ord(ch)
+        # Разделители строк — экранированными: знаками они невидимы в
+        # исходнике, и первый же редактор молча их съест.
+        if code < 0x20 or code == 0x7F or ch in ("\u2028", "\u2029"):
+            out.append("\\u%04x" % code)
+        elif ch in _REGEX_META:
+            out.append("\\" + ch)
+        else:
+            out.append(ch)
+    return "".join(out)
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = Path(__file__).resolve().parent
 CASES_DIR = ROOT / "cases"
@@ -599,7 +641,7 @@ def conf_not_found_text(prefix, get_path, resource_name):
                         *assert_status(404),
                         *assert_grpc_code(5, "NOT_FOUND"),
                         f"pm.test({js_str(f'text matches \"{resource_name} ... not found\"')}, () => "
-                        f"pm.expect(pm.response.json().message).to.match(/^{resource_name} .* not found$/));",
+                        f"pm.expect(pm.response.json().message).to.match(/^{js_regex_literal_text(resource_name)} .* not found$/));",
                     ])],
     )
 
