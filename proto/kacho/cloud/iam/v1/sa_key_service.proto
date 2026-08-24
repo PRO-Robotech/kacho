@@ -208,11 +208,19 @@ message IssueSAKeyResponse {
   // DEPRECATED — with private_key_jwt client auth the secret no
   // longer exists; this field is always empty for new keys. Kept for wire
   // compatibility only. Removed in a future major.
-  string client_secret = 3 [deprecated = true];
+  //
+  // Помечен носителем секрета: пока поле стоит на проводе, ЛЮБОЙ путь записи
+  // может положить в него значение, и подметальщик обязан его знать. Пометка
+  // говорит о ВИДЕ поля, а не о том, заполняется ли оно сегодня.
+  string client_secret = 3 [deprecated = true, (kacho.cloud.api.secret_bearing) = true];
   // PEM-encoded PKCS#8 ECDSA P-256 private key — SHOWN ONCE; never
   // recoverable. Caller uses it to sign `client_assertion` (RFC 7521/7523)
   // in OAuth2 client_credentials requests against Hydra.
-  string private_key_pem = 4;
+  //
+  // Помечен носителем секрета: приватная половина — предъявительский секрет
+  // ровно в том же смысле, что и однострочный базовый, и оседать в строке
+  // операции, журнале аудита, ленте подписки или строке ресурса не имеет права.
+  string private_key_pem = 4 [(kacho.cloud.api.secret_bearing) = true];
   // PEM-encoded SPKI public key (informational; Hydra holds the canonical
   // copy as a JWK in the registered client metadata).
   string public_key_pem = 5;

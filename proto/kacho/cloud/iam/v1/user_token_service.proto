@@ -163,7 +163,10 @@ message IssueUserTokenResponse {
   // PEM-encoded PKCS#8 ECDSA P-256 приватный ключ — ПОКАЗЫВАЕТСЯ ОДИН РАЗ;
   // невосстановим. Вызывающий подписывает им `client_assertion`
   // (RFC 7521/7523) при обмене на access-токен.
-  string private_key_pem = 3;
+  //
+  // Помечен носителем секрета: приватная половина — предъявительский секрет
+  // ровно в том же смысле, что и однострочный базовый.
+  string private_key_pem = 3 [(kacho.cloud.api.secret_bearing) = true];
   // PEM-encoded SPKI публичный ключ (информационно; каноническая копия — в
   // строке реестра, по ней и проверяется подпись утверждения).
   string public_key_pem = 4;

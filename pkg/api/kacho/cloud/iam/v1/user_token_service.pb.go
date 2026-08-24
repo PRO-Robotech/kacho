@@ -152,6 +152,9 @@ type IssueUserTokenResponse struct {
 	// PEM-encoded PKCS#8 ECDSA P-256 приватный ключ — ПОКАЗЫВАЕТСЯ ОДИН РАЗ;
 	// невосстановим. Вызывающий подписывает им `client_assertion`
 	// (RFC 7521/7523) при обмене на access-токен.
+	//
+	// Помечен носителем секрета: приватная половина — предъявительский секрет
+	// ровно в том же смысле, что и однострочный базовый.
 	PrivateKeyPem string `protobuf:"bytes,3,opt,name=private_key_pem,json=privateKeyPem,proto3" json:"private_key_pem,omitempty"`
 	// PEM-encoded SPKI публичный ключ (информационно; каноническая копия — в
 	// строке реестра, по ней и проверяется подпись утверждения).
@@ -611,11 +614,11 @@ const file_kacho_cloud_iam_v1_user_token_service_proto_rawDesc = "" +
 	"\x0fcredential_kind\x18\a \x01(\x0e2\".kacho.cloud.iam.v1.CredentialKindR\x0ecredentialKind\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x91\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x97\x02\n" +
 	"\x16IssueUserTokenResponse\x129\n" +
 	"\x05token\x18\x01 \x01(\v2#.kacho.cloud.iam.v1.UserOAuthClientR\x05token\x12\x1b\n" +
-	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12&\n" +
-	"\x0fprivate_key_pem\x18\x03 \x01(\tR\rprivateKeyPem\x12$\n" +
+	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12,\n" +
+	"\x0fprivate_key_pem\x18\x03 \x01(\tB\x04\xc0\xc81\x01R\rprivateKeyPem\x12$\n" +
 	"\x0epublic_key_pem\x18\x04 \x01(\tR\fpublicKeyPem\x12\x1c\n" +
 	"\talgorithm\x18\x05 \x01(\tR\talgorithm\x12\x15\n" +
 	"\x06key_id\x18\x06 \x01(\tR\x05keyId\x12\x1c\n" +
