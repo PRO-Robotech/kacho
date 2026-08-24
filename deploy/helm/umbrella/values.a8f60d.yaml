@@ -56,7 +56,7 @@
 # Какой коммит здесь стоит — решение оператора о том, что развёрнуто на стенде,
 # а не свойство дерева. Проверка утверждает не свежесть, а невозможность
 # разойтись: пин, собранный рукой мимо записи, был неотличим от выведенного.
-# порождено-от: main b6f69436e6ff414c064a76ee4df953cb3582d58e
+# порождено-от: main 7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
 cert-manager:
   enabled: false
 mtls:
@@ -250,15 +250,15 @@ vpc:
       memory: 64Mi
     limits:
       memory: 448Mi
-  image: docker.io/prorobotech/kacho-vpc:main-b6f69436
+  image: docker.io/prorobotech/kacho-vpc:main-7bb0a6e1
 compute:
   resources: *id002
-  image: docker.io/prorobotech/kacho-compute:main-b6f69436
+  image: docker.io/prorobotech/kacho-compute:main-7bb0a6e1
 storage:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-storage
-    tag: main-b6f69436
+    tag: main-7bb0a6e1
     pullPolicy: IfNotPresent
 # ── ПРИЁМ ТОКЕНА ЗДЕСЬ НЕ ОБЪЯВЛЕН, И ЭТО НАСЛЕДОВАНИЕ, А НЕ ПРОПУСК ────────
 #
@@ -275,7 +275,7 @@ registry:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-registry
-    tag: main-b6f69436
+    tag: main-7bb0a6e1
     pullPolicy: IfNotPresent
   zot:
     # ⚠ ШАГ ОПЕРАТОРА (до раската): Secret `zot-auth` в ns kacho с ключами
@@ -304,21 +304,21 @@ registry:
     resources: *id002
 api-gateway:
   resources: *id002
-  image: docker.io/prorobotech/kacho-api-gateway:main-b6f69436
+  image: docker.io/prorobotech/kacho-api-gateway:main-7bb0a6e1
 kacho-iam:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-iam
-    tag: main-b6f69436
+    tag: main-7bb0a6e1
     pullPolicy: IfNotPresent
 kacho-geo:
   resources: *id002
-  image: docker.io/prorobotech/kacho-geo:main-b6f69436
+  image: docker.io/prorobotech/kacho-geo:main-7bb0a6e1
 kacho-nlb:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-nlb
-    tag: main-b6f69436
+    tag: main-7bb0a6e1
     pullPolicy: IfNotPresent
 hydra:
   deployment:
@@ -335,30 +335,30 @@ kratos-selfservice-ui:
       memory: 512Mi
 uif:
   enabled: true
-  image: docker.io/prorobotech/kacho-ui-future-host:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+  image: docker.io/prorobotech/kacho-ui-future-host:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
   imagePullPolicy: IfNotPresent
   resources: *id002
   dashboard:
-    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   vpc:
-    image: docker.io/prorobotech/kacho-ui-future-vpc:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-vpc:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   compute:
-    image: docker.io/prorobotech/kacho-ui-future-compute:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-compute:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   storage:
-    image: docker.io/prorobotech/kacho-ui-future-storage:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-storage:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   nlb:
-    image: docker.io/prorobotech/kacho-ui-future-nlb:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-nlb:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   registry:
-    image: docker.io/prorobotech/kacho-ui-future-registry:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-registry:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   iam:
-    image: docker.io/prorobotech/kacho-ui-future-iam:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-iam:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   system:
-    image: docker.io/prorobotech/kacho-ui-future-system:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-system:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
