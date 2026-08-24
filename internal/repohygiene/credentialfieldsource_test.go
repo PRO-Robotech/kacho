@@ -144,36 +144,32 @@ type openCredentialFieldFinding struct {
 	owner string
 }
 
-// openCredentialFieldFindings — НАСТОЯЩИЕ НАХОДКИ ПЕРВОГО ЖЕ ПРОГОНА, лежащие
-// в чужой области работы (край, `gateway/**`; полоса #1217 его не правит).
+// openCredentialFieldFindings — ведомость читаемых полей, у которых источник
+// ещё не назван и которые оставлены ЧУЖОЙ полосе работы.
 //
-// Полоса подписанного предъявителя (`JWTVerifier` → `VerifiedToken`) объявляет
-// 18 полей, из них 17 кто-то читает, и у 11 источник не назван. Это не
-// косметика: `Issuer`, `Subject`, `ExpiresAt` и `Scope` читают ровно те
-// контроли, ради которых §5.2 требование и вводит, — а «здесь всегда пусто» и
-// «здесь забыли заполнить» на них сегодня неразличимы.
+// # СЕГОДНЯ ОНА ПУСТА, И ЭТО ЕЁ ЦЕЛЬ, А НЕ ПОЛОМКА
 //
-// Предмет заведён задачей #1227 с предикатом снятия: назвать источник каждого
-// поля в объявлении носителя. Записи ниже гейт ПЕЧАТАЕТ на каждом прогоне и
-// роняет прогон, как только любая из них потеряет предмет.
-// credentialFieldOwner — один владелец на все одиннадцать записей: предмет у них
-// один, и написать его одиннадцатью строками значило бы завести одиннадцать
-// мест, расходящихся молча.
-const credentialFieldOwner = "#1227, домен gateway; чинится названием источника в объявлении"
-
-var openCredentialFieldFindings = []openCredentialFieldFinding{
-	{carrier: "VerifiedToken", field: "AMR", owner: credentialFieldOwner},
-	{carrier: "VerifiedToken", field: "Alg", owner: credentialFieldOwner},
-	{carrier: "VerifiedToken", field: "Audience", owner: credentialFieldOwner},
-	{carrier: "VerifiedToken", field: "AuthTime", owner: credentialFieldOwner},
-	{carrier: "VerifiedToken", field: "ExpiresAt", owner: credentialFieldOwner},
-	{carrier: "VerifiedToken", field: "IssuedAt", owner: credentialFieldOwner},
-	{carrier: "VerifiedToken", field: "Issuer", owner: credentialFieldOwner},
-	{carrier: "VerifiedToken", field: "JTI", owner: credentialFieldOwner},
-	{carrier: "VerifiedToken", field: "Kid", owner: credentialFieldOwner},
-	{carrier: "VerifiedToken", field: "Scope", owner: credentialFieldOwner},
-	{carrier: "VerifiedToken", field: "Subject", owner: credentialFieldOwner},
-}
+// Заводилась она непустой: первый же прогон гейта нашёл 11 полей носителя
+// подписанного предъявителя (`JWTVerifier` → `VerifiedToken`) без названного
+// источника, и они лежали в чужой области (край, `gateway/**`; полоса #1217 его
+// не правит). Источник у всех одиннадцати назван задачей #1227, поэтому записи
+// сняты: запись, которой нечего прощать, наследует слепую зону следующему.
+//
+// Пустая ведомость гейт НЕ роняет — сравните с полем `read`, где ноль означает
+// ослепший предикат и потому объявлен отказом. Здесь ноль означает, что
+// прощать больше нечего, и падение на нём подталкивало бы держать запись ради
+// зелёного.
+//
+// # САМОИСТЕЧЕНИЕ РАБОТАЕТ В ОБЕ СТОРОНЫ
+//
+// Запись обязана нести предмет и владельца, и гейт роняет прогон, как только
+// прощать станет нечего: поле снято — запись потеряла предмет; поле получило
+// источник — тоже. Именно так эти одиннадцать и снялись: назвать источник и
+// забыть про ведомость было НЕЛЬЗЯ — прогон краснел, пока запись стояла.
+//
+// Заводя новую запись, назовите номер задачи и предикат снятия в `owner`:
+// «оставлено чужой полосе» без предмета — это прощение, а не ведомость.
+var openCredentialFieldFindings []openCredentialFieldFinding
 
 // id — координата поля одной строкой; ключ сверки с таблицей находок.
 func (f openCredentialFieldFinding) id() string { return f.carrier + "." + f.field }
