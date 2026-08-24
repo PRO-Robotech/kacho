@@ -35,6 +35,27 @@
 #   - deploy/identity_dev_flag_declaration_test.go — режим разработки провайдера
 #     личности на стеке, объявившем боевую посадку.
 
+# ─── СХЕМЫ, УНАСЛЕДОВАННЫЕ ОТ СЛОЯ ПОД НАМИ ─────────────────────────────────
+#
+# Служба личности получает ДВА файла настроек; наш (карта `kacho-iam-kratos-config`)
+# идёт вторым, и его `identity.schemas` — СПИСОК: он замещает объявленное ниже
+# целиком, а не дополняет. Строки личностей, заведённые до смены схемы,
+# ссылаются на неё ПО ИМЕНИ, и без объявления их чтение отвечает
+# `500 invalid_configuration` — то есть арендатор перестаёт читаться вовсе.
+#
+# Тело схемы объявлено ЗДЕСЬ и ровно ОДИН раз; ниже, в объявлении провайдера,
+# стоит ССЫЛКА на этот узел. Копия литерала разошлась бы молча и разошлась бы в
+# одну сторону — процесс берёт ту, что позже, то есть нашу. Якорь делает
+# расхождение невозможным by construction.
+#
+# Покрытие держит deploy/identity_inherited_schemas_are_declared_test.go.
+global:
+  kacho:
+    identity:
+      inheritedSchemas: &kachoInheritedIdentitySchemas
+        - id: default
+          url: "base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMua2FjaG8ubG9jYWwvaWRlbnRpdHkvdjEuMC4wL2RlZmF1bHQuanNvbiIsIiRzY2hlbWEiOiJodHRwOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LTA3L3NjaGVtYSMiLCJ0aXRsZSI6IlBlcnNvbiIsInR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7InRyYWl0cyI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJlbWFpbCI6eyJ0eXBlIjoic3RyaW5nIiwiZm9ybWF0IjoiZW1haWwiLCJ0aXRsZSI6IkUtTWFpbCIsIm9yeS5zaC9rcmF0b3MiOnsiY3JlZGVudGlhbHMiOnsicGFzc3dvcmQiOnsiaWRlbnRpZmllciI6dHJ1ZX19LCJyZWNvdmVyeSI6eyJ2aWEiOiJlbWFpbCJ9LCJ2ZXJpZmljYXRpb24iOnsidmlhIjoiZW1haWwifX19LCJuYW1lIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImZpcnN0Ijp7InR5cGUiOiJzdHJpbmciLCJ0aXRsZSI6IkZpcnN0IE5hbWUifSwibGFzdCI6eyJ0eXBlIjoic3RyaW5nIiwidGl0bGUiOiJMYXN0IE5hbWUifX19fSwicmVxdWlyZWQiOlsiZW1haWwiXSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX19"
+
 hydra:
   enabled: true
   hydra:
@@ -127,9 +148,8 @@ kratos:
         lifespan: "24h"
       identity:
         default_schema_id: default
-        schemas:
-          - id: default
-            url: "base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMua2FjaG8ubG9jYWwvaWRlbnRpdHkvdjEuMC4wL2RlZmF1bHQuanNvbiIsIiRzY2hlbWEiOiJodHRwOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LTA3L3NjaGVtYSMiLCJ0aXRsZSI6IlBlcnNvbiIsInR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7InRyYWl0cyI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJlbWFpbCI6eyJ0eXBlIjoic3RyaW5nIiwiZm9ybWF0IjoiZW1haWwiLCJ0aXRsZSI6IkUtTWFpbCIsIm9yeS5zaC9rcmF0b3MiOnsiY3JlZGVudGlhbHMiOnsicGFzc3dvcmQiOnsiaWRlbnRpZmllciI6dHJ1ZX19LCJyZWNvdmVyeSI6eyJ2aWEiOiJlbWFpbCJ9LCJ2ZXJpZmljYXRpb24iOnsidmlhIjoiZW1haWwifX19LCJuYW1lIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImZpcnN0Ijp7InR5cGUiOiJzdHJpbmciLCJ0aXRsZSI6IkZpcnN0IE5hbWUifSwibGFzdCI6eyJ0eXBlIjoic3RyaW5nIiwidGl0bGUiOiJMYXN0IE5hbWUifX19fSwicmVxdWlyZWQiOlsiZW1haWwiXSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX19"
+        # Ссылка на единственный узел тела — см. global.kacho.identity выше.
+        schemas: *kachoInheritedIdentitySchemas
       courier:
         smtp:
           connection_uri: "smtp://mailhog.kacho.svc:1025/?disable_starttls=true"

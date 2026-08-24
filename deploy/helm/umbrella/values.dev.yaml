@@ -58,6 +58,27 @@ global:
       # целиком, и сессия не держится вовсе.
       cookieDomain: "kacho.local"
       webauthnRpId: "kacho.local"
+      # ─── СХЕМЫ, УНАСЛЕДОВАННЫЕ ОТ СЛОЯ ПОД НАМИ ─────────────────────────
+      #
+      # Служба личности получает ДВА файла настроек; наш — второй, и его
+      # секция `identity.schemas` СПИСОК, то есть замещает чужую целиком, а
+      # не дополняет. Всё, что объявил подчарт провайдера ниже, из
+      # конфигурации исчезает — а строки личностей, созданные до смены
+      # схемы, ссылаются на неё ПО ИМЕНИ и без объявления не читаются
+      # (`500 invalid_configuration`).
+      #
+      # Поэтому здесь стоит ЯКОРЬ, а ниже — ССЫЛКА на него: тело схемы
+      # объявлено ОДИН раз и одним узлом YAML. Копия расходится молча, и
+      # разойтись она может только в одну сторону — процесс возьмёт ту,
+      # что стоит позже, то есть нашу. Якорь делает расхождение
+      # невозможным by construction, а не проверяемым.
+      #
+      # Правя объявление провайдера ниже, правьте ЭТОТ узел: alias
+      # подхватит правку сам. Покрытие держит
+      # deploy/identity_inherited_schemas_are_declared_test.go.
+      inheritedSchemas: &kachoInheritedIdentitySchemas
+        - id: default
+          url: "base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMua2FjaG8ubG9jYWwvaWRlbnRpdHkvdjEuMC4wL2RlZmF1bHQuanNvbiIsIiRzY2hlbWEiOiJodHRwOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LTA3L3NjaGVtYSMiLCJ0aXRsZSI6IlBlcnNvbiIsInR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7InRyYWl0cyI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJlbWFpbCI6eyJ0eXBlIjoic3RyaW5nIiwiZm9ybWF0IjoiZW1haWwiLCJ0aXRsZSI6IkUtTWFpbCIsIm9yeS5zaC9rcmF0b3MiOnsiY3JlZGVudGlhbHMiOnsicGFzc3dvcmQiOnsiaWRlbnRpZmllciI6dHJ1ZX19LCJyZWNvdmVyeSI6eyJ2aWEiOiJlbWFpbCJ9LCJ2ZXJpZmljYXRpb24iOnsidmlhIjoiZW1haWwifX19LCJuYW1lIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImZpcnN0Ijp7InR5cGUiOiJzdHJpbmciLCJ0aXRsZSI6IkZpcnN0IE5hbWUifSwibGFzdCI6eyJ0eXBlIjoic3RyaW5nIiwidGl0bGUiOiJMYXN0IE5hbWUifX19fSwicmVxdWlyZWQiOlsiZW1haWwiXSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX19"
 
 # ─── cluster-internal mTLS (default ON for the dev stand) ──────────────────
 # The whole scheme runs on mTLS: cert-manager mints an internal-CA, every
@@ -965,10 +986,11 @@ kratos:
         lifespan: "24h"
       identity:
         default_schema_id: default
-        schemas:
-          # Inline schema через base64 — не зависим от extra ConfigMap.
-          - id: default
-            url: "base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMua2FjaG8ubG9jYWwvaWRlbnRpdHkvdjEuMC4wL2RlZmF1bHQuanNvbiIsIiRzY2hlbWEiOiJodHRwOi8vanNvbi1zY2hlbWEub3JnL2RyYWZ0LTA3L3NjaGVtYSMiLCJ0aXRsZSI6IlBlcnNvbiIsInR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7InRyYWl0cyI6eyJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJlbWFpbCI6eyJ0eXBlIjoic3RyaW5nIiwiZm9ybWF0IjoiZW1haWwiLCJ0aXRsZSI6IkUtTWFpbCIsIm9yeS5zaC9rcmF0b3MiOnsiY3JlZGVudGlhbHMiOnsicGFzc3dvcmQiOnsiaWRlbnRpZmllciI6dHJ1ZX19LCJyZWNvdmVyeSI6eyJ2aWEiOiJlbWFpbCJ9LCJ2ZXJpZmljYXRpb24iOnsidmlhIjoiZW1haWwifX19LCJuYW1lIjp7InR5cGUiOiJvYmplY3QiLCJwcm9wZXJ0aWVzIjp7ImZpcnN0Ijp7InR5cGUiOiJzdHJpbmciLCJ0aXRsZSI6IkZpcnN0IE5hbWUifSwibGFzdCI6eyJ0eXBlIjoic3RyaW5nIiwidGl0bGUiOiJMYXN0IE5hbWUifX19fSwicmVxdWlyZWQiOlsiZW1haWwiXSwiYWRkaXRpb25hbFByb3BlcnRpZXMiOmZhbHNlfX19"
+        # Тело схемы объявлено ОДНИМ узлом — в global.kacho.identity.inheritedSchemas
+        # (см. разбор там же). Здесь стоит ссылка на него, потому что нашей
+        # секции настроек значения подчарта провайдера не видны, а копия
+        # литерала разошлась бы молча.
+        schemas: *kachoInheritedIdentitySchemas
       courier:
         smtp:
           connection_uri: "smtp://mailhog.kacho.svc:1025/?disable_starttls=true"

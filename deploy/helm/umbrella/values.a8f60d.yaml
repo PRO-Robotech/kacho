@@ -35,6 +35,9 @@
 #  4. Узлов 4 по 1500m/3Gi, и 84%% процессора уже заняты компонентами самого
 #     кластера — потолки здесь ниже, чем на стенде разработчика. Это решение о
 #     РАЗМЕРЕ, а не о посадке: посадка остаётся production.
+#  5. Доменного имени у стенда НЕТ: консоль отвечает на голом IP-литерале
+#     `http://46.173.29.131`, внешнего TLS тоже нет. Отсюда блок службы
+#     личности ниже — см. «ВНЕШНИЙ ORIGIN КОНСОЛИ».
 #
 # ── ОБРАЗЫ ПРОДУКТА: ПИНЫ ПОРОЖДАЮТСЯ, ПРАВИТСЯ ПОРОЖДАЮЩИЙ ────────────────
 #
@@ -56,7 +59,7 @@
 # Какой коммит здесь стоит — решение оператора о том, что развёрнуто на стенде,
 # а не свойство дерева. Проверка утверждает не свежесть, а невозможность
 # разойтись: пин, собранный рукой мимо записи, был неотличим от выведенного.
-# порождено-от: main b6f69436e6ff414c064a76ee4df953cb3582d58e
+# порождено-от: main 7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
 cert-manager:
   enabled: false
 mtls:
@@ -65,6 +68,45 @@ mtls:
     caNamespace: beget-cert-manager
 ingress-nginx:
   enabled: false
+# ─── ВНЕШНИЙ ORIGIN КОНСОЛИ: ГОЛЫЙ IP, БЕЗ ИМЕНИ И БЕЗ TLS СНАРУЖИ ──────────
+#
+# Консоль этого кластера доступна по `http://46.173.29.131` — Service типа
+# LoadBalancer с адресом от площадки (см. п.2 шапки: IngressClass в кластере нет
+# ни одного, объекты Ingress инертны). Доменного имени у стенда НЕТ, внешнего
+# TLS тоже нет.
+#
+# ЧТО ЧИНИТСЯ ЭТИМ БЛОКОМ. Ствол впервые монтирует нашу конфигурацию службы
+# личности вторым `--config`, то есть она впервые ЧИТАЕТСЯ процессом. До этого
+# профиль мог о ней молчать безнаказанно; теперь молчание означает наследование
+# адресов стенда разработки из values.dev.yaml — `http://console.kacho.local:28080`
+# и `kacho.local`. Это имя вне kind не разрешается: браузер уходил бы на чужой
+# адрес, а печенье сессии выписывалось бы на чужой домен.
+#
+# ПОЧЕМУ `domainless`, А НЕ ПРОСТО ДРУГОЙ ДОМЕН. Домена нет вовсе, и это не
+# «не настроили», а свойство площадки. Два следствия вынуждены стандартами:
+# печенье сессии обязано быть host-only (RFC 6265 §5.1.3: domain-match с
+# IP-литералом ложен ВСЕГДА, поэтому любое значение `domain` заставляет браузер
+# отбросить печенье целиком — вход не состоится, и молча), а ключи доступа
+# невыразимы (WebAuthn L3 §5.1.3 требует у RP ID валидное доменное имя).
+# Вход на этом стенде идёт паролем; это сказано здесь, а не выведено читателем
+# из отсутствия ключа.
+#
+# ОЧИСТКА ДВУХ РУЧЕК — НЕ ФОРМАЛЬНОСТЬ. `cookieDomain`/`webauthnRpId` объявляет
+# слой под нами (values.dev.yaml, `kacho.local`). Оставить их значило бы принять
+# величину и молча её выбросить; рендер такое ОТКАЗЫВАЕТ и называет обе.
+#
+# `kratosPublicBaseURL` здесь НЕ объявлен намеренно: относительный
+# `/.ory/kratos/public/` приходит из values.dev.yaml, и именно он работает на
+# живом стенде (консоль проксирует службу через себя же, same-origin). Второе
+# объявление того же предмета разошлось бы с первым молча — тот же довод, что у
+# предела процессора pg-iam ниже.
+global:
+  kacho:
+    identity:
+      appBaseURL: "http://46.173.29.131"
+      domainless: true
+      cookieDomain: ""
+      webauthnRpId: ""
 # ─── БЮДЖЕТ ПАМЯТИ БАЗ НА ЭТОМ КЛАСТЕРЕ (#808) ───────────────────────────────
 #
 # Потолок здесь 640Mi — вчетверо-вшестеро ниже, чем на стенде разработчика (см.
@@ -250,15 +292,15 @@ vpc:
       memory: 64Mi
     limits:
       memory: 448Mi
-  image: docker.io/prorobotech/kacho-vpc:main-b6f69436
+  image: docker.io/prorobotech/kacho-vpc:main-7bb0a6e1
 compute:
   resources: *id002
-  image: docker.io/prorobotech/kacho-compute:main-b6f69436
+  image: docker.io/prorobotech/kacho-compute:main-7bb0a6e1
 storage:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-storage
-    tag: main-b6f69436
+    tag: main-7bb0a6e1
     pullPolicy: IfNotPresent
 # ── ПРИЁМ ТОКЕНА ЗДЕСЬ НЕ ОБЪЯВЛЕН, И ЭТО НАСЛЕДОВАНИЕ, А НЕ ПРОПУСК ────────
 #
@@ -275,7 +317,7 @@ registry:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-registry
-    tag: main-b6f69436
+    tag: main-7bb0a6e1
     pullPolicy: IfNotPresent
   zot:
     # ⚠ ШАГ ОПЕРАТОРА (до раската): Secret `zot-auth` в ns kacho с ключами
@@ -304,21 +346,21 @@ registry:
     resources: *id002
 api-gateway:
   resources: *id002
-  image: docker.io/prorobotech/kacho-api-gateway:main-b6f69436
+  image: docker.io/prorobotech/kacho-api-gateway:main-7bb0a6e1
 kacho-iam:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-iam
-    tag: main-b6f69436
+    tag: main-7bb0a6e1
     pullPolicy: IfNotPresent
 kacho-geo:
   resources: *id002
-  image: docker.io/prorobotech/kacho-geo:main-b6f69436
+  image: docker.io/prorobotech/kacho-geo:main-7bb0a6e1
 kacho-nlb:
   resources: *id002
   image:
     repository: docker.io/prorobotech/kacho-nlb
-    tag: main-b6f69436
+    tag: main-7bb0a6e1
     pullPolicy: IfNotPresent
 hydra:
   deployment:
@@ -335,30 +377,30 @@ kratos-selfservice-ui:
       memory: 512Mi
 uif:
   enabled: true
-  image: docker.io/prorobotech/kacho-ui-future-host:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+  image: docker.io/prorobotech/kacho-ui-future-host:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
   imagePullPolicy: IfNotPresent
   resources: *id002
   dashboard:
-    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-dashboard:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   vpc:
-    image: docker.io/prorobotech/kacho-ui-future-vpc:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-vpc:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   compute:
-    image: docker.io/prorobotech/kacho-ui-future-compute:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-compute:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   storage:
-    image: docker.io/prorobotech/kacho-ui-future-storage:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-storage:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   nlb:
-    image: docker.io/prorobotech/kacho-ui-future-nlb:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-nlb:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   registry:
-    image: docker.io/prorobotech/kacho-ui-future-registry:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-registry:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   iam:
-    image: docker.io/prorobotech/kacho-ui-future-iam:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-iam:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
   system:
-    image: docker.io/prorobotech/kacho-ui-future-system:main-b6f69436e6ff414c064a76ee4df953cb3582d58e
+    image: docker.io/prorobotech/kacho-ui-future-system:main-7bb0a6e14a67d31c64f77caa86aa5d5481bdff76
     resources: *id002
