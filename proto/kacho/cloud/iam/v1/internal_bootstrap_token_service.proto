@@ -58,6 +58,7 @@ syntax = "proto3";
 package kacho.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
+import "kacho/cloud/api/secret_options.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -116,7 +117,13 @@ message MintBootstrapTokenRequest {
 message MintBootstrapTokenResponse {
   // The RS256 JWT access-token (Hydra-signed; `alg=RS256`, Hydra `kid`). The
   // gateway accepts it as a valid production-mode Bearer.
-  string access_token = 1;
+  //
+  // Помечен носителем секрета: это привилегированный предъявитель. Ответ
+  // СИНХРОННЫЙ, в строку операции не попадает вовсе — поэтому перечня
+  // подметальщика он не требует (ось 1 гейта сужена типами-ответами операций).
+  // Пометка здесь объявляет ВИД поля: любой заведённый завтра путь записи
+  // увидит её, не зная про этот глагол.
+  string access_token = 1 [(kacho.cloud.api.secret_bearing) = true];
 
   // OAuth2 token type — always `"Bearer"`.
   string token_type = 2;

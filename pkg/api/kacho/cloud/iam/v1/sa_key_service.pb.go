@@ -302,11 +302,19 @@ type IssueSAKeyResponse struct {
 	// longer exists; this field is always empty for new keys. Kept for wire
 	// compatibility only. Removed in a future major.
 	//
+	// Помечен носителем секрета: пока поле стоит на проводе, ЛЮБОЙ путь записи
+	// может положить в него значение, и подметальщик обязан его знать. Пометка
+	// говорит о ВИДЕ поля, а не о том, заполняется ли оно сегодня.
+	//
 	// Deprecated: Marked as deprecated in kacho/cloud/iam/v1/sa_key_service.proto.
 	ClientSecret string `protobuf:"bytes,3,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`
 	// PEM-encoded PKCS#8 ECDSA P-256 private key — SHOWN ONCE; never
 	// recoverable. Caller uses it to sign `client_assertion` (RFC 7521/7523)
 	// in OAuth2 client_credentials requests against Hydra.
+	//
+	// Помечен носителем секрета: приватная половина — предъявительский секрет
+	// ровно в том же смысле, что и однострочный базовый, и оседать в строке
+	// операции, журнале аудита, ленте подписки или строке ресурса не имеет права.
 	PrivateKeyPem string `protobuf:"bytes,4,opt,name=private_key_pem,json=privateKeyPem,proto3" json:"private_key_pem,omitempty"`
 	// PEM-encoded SPKI public key (informational; Hydra holds the canonical
 	// copy as a JWK in the registered client metadata).
@@ -798,12 +806,12 @@ const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"\x06issuer\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x06issuer\x126\n" +
 	"\x0fsubject_pattern\x18\x02 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x0esubjectPattern\x124\n" +
 	"\x0epublic_key_pem\x18\x03 \x01(\tB\x0e\xe8\xc71\x01\x8a\xc81\x06<=8192R\fpublicKeyPem\x121\n" +
-	"\rkey_algorithm\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=16R\fkeyAlgorithm\"\xda\x02\n" +
+	"\rkey_algorithm\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=16R\fkeyAlgorithm\"\xe4\x02\n" +
 	"\x12IssueSAKeyResponse\x12?\n" +
 	"\x03key\x18\x01 \x01(\v2-.kacho.cloud.iam.v1.ServiceAccountOAuthClientR\x03key\x12\x1b\n" +
-	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12'\n" +
-	"\rclient_secret\x18\x03 \x01(\tB\x02\x18\x01R\fclientSecret\x12&\n" +
-	"\x0fprivate_key_pem\x18\x04 \x01(\tR\rprivateKeyPem\x12$\n" +
+	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12+\n" +
+	"\rclient_secret\x18\x03 \x01(\tB\x06\xc0\xc81\x01\x18\x01R\fclientSecret\x12,\n" +
+	"\x0fprivate_key_pem\x18\x04 \x01(\tB\x04\xc0\xc81\x01R\rprivateKeyPem\x12$\n" +
 	"\x0epublic_key_pem\x18\x05 \x01(\tR\fpublicKeyPem\x12\x1c\n" +
 	"\talgorithm\x18\x06 \x01(\tR\talgorithm\x12\x15\n" +
 	"\x06key_id\x18\a \x01(\tR\x05keyId\x12\x1c\n" +

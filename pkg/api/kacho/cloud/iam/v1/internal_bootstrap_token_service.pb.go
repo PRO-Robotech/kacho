@@ -63,6 +63,7 @@
 package iamv1
 
 import (
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -125,6 +126,12 @@ type MintBootstrapTokenResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The RS256 JWT access-token (Hydra-signed; `alg=RS256`, Hydra `kid`). The
 	// gateway accepts it as a valid production-mode Bearer.
+	//
+	// Помечен носителем секрета: это привилегированный предъявитель. Ответ
+	// СИНХРОННЫЙ, в строку операции не попадает вовсе — поэтому перечня
+	// подметальщика он не требует (ось 1 гейта сужена типами-ответами операций).
+	// Пометка здесь объявляет ВИД поля: любой заведённый завтра путь записи
+	// увидит её, не зная про этот глагол.
 	AccessToken string `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
 	// OAuth2 token type — always `"Bearer"`.
 	TokenType string `protobuf:"bytes,2,opt,name=token_type,json=tokenType,proto3" json:"token_type,omitempty"`
@@ -219,10 +226,10 @@ var File_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto protoreflect.
 
 const file_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto_rawDesc = "" +
 	"\n" +
-	"9kacho/cloud/iam/v1/internal_bootstrap_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a&kacho/iam/authz/v1/authz_options.proto\".\n" +
-	"\x19MintBootstrapTokenRequestJ\x04\b\x01\x10\x02R\vttl_seconds\"\x94\x02\n" +
-	"\x1aMintBootstrapTokenResponse\x12!\n" +
-	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12\x1d\n" +
+	"9kacho/cloud/iam/v1/internal_bootstrap_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a$kacho/cloud/api/secret_options.proto\x1a&kacho/iam/authz/v1/authz_options.proto\".\n" +
+	"\x19MintBootstrapTokenRequestJ\x04\b\x01\x10\x02R\vttl_seconds\"\x9a\x02\n" +
+	"\x1aMintBootstrapTokenResponse\x12'\n" +
+	"\faccess_token\x18\x01 \x01(\tB\x04\xc0\xc81\x01R\vaccessToken\x12\x1d\n" +
 	"\n" +
 	"token_type\x18\x02 \x01(\tR\ttokenType\x12\x1d\n" +
 	"\n" +
