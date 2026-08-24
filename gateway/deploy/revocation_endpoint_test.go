@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -195,10 +196,13 @@ func TestChart_EmitsRevocationEnv(t *testing.T) {
 	// шаблон её не эмитит, объявление ничего не меняет — ручка инертна, а
 	// контроль выглядит настроенным. Ровно этим и отличалось состояние, при
 	// котором каждый предъявитель нашей чеканки получал отказ.
+	// Ручки НАШЕЙ полосы (KACHO_API_GATEWAY_..._TOKEN_...) отсюда выведены и
+	// сверяются ВЫВОДИМО — TestChart_EmitsEveryDeclaredTokenAcceptanceKnob
+	// читает их перечень из объявления config. Выписанный список рядом с
+	// выводимым дал бы два места об одном предмете, и разошлись бы они молча:
+	// новая ручка попадала бы в одно и не попадала в другое.
 	for _, name := range []string{
 		"KACHO_HYDRA_INTROSPECTION_URL", "KACHO_HYDRA_ADMIN_URL",
-		"KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_CERT_FILE",
-		"KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_KEY_FILE",
 	} {
 		// Имя сверяется ДО КОНЦА СТРОКИ, а не вхождением: подстрока
 		// удовлетворяется и удлинённым именем, поэтому переименование
@@ -231,4 +235,247 @@ func checkAdminEndpoint(raw, wantPath string) error {
 			wantPath, u.Path)
 	}
 	return nil
+}
+
+// ─── НАША ПОЛОСА ОТЗЫВА: СТЕНД, А НЕ ФАЙЛ ───────────────────────────────────
+
+// resolveStackGateway сливает профили стенда так, как их сливает helm, и отдаёт
+// поддерево края.
+func resolveStackGateway(t *testing.T, stack []string) (map[string]any, bool) {
+	t.Helper()
+	merged := map[string]any{}
+	for _, profile := range stack {
+		merged = mergeInto(merged, umbrellaValues(t, profile))
+	}
+	gw, ok := merged["api-gateway"].(map[string]any)
+	return gw, ok
+}
+
+// TestStacks_AcceptingOurIssuerNameTheRevocationAuthority — стенд, принимающий
+// НАШЕГО издателя, обязан назвать НАШ авторитет отзыва и то, чем край
+// представляется ему.
+//
+// # Почему СТЕНД, а не файл — соседняя проба спрашивает не то же самое
+//
+// f1b_token_acceptance_declared_test.go спрашивает каждый ФАЙЛ: «объявление
+// этого файла даёт поднимающийся процесс». Это верное свойство и оно остаётся.
+// Но стенд поднимается ЦЕПОЧКОЙ (deploy/stacks.txt), и накладка вправе
+// переопределить любое значение базового слоя одной строкой. Накладка, ГАСЯЩАЯ
+// адрес авторитета, пофайловому чтению невидима by construction: сама она
+// нашего издателя не объявляет (значит пропускается), а базовый слой объявляет
+// оба значения (значит проходит). Померено инъекцией при заведении этой пробы:
+// накладка `revocationUrl: ""` у одного стенда оставляла ВЕСЬ пакет зелёным.
+//
+// # Почему зовётся НАСТОЯЩИЙ читатель, а не свой предикат
+//
+// Вердикт выносит config.Config.TokenAcceptance — тот же предикат, который
+// исполняет процесс при старте. Он же держит запрет п.9 (адрес объявляется, а
+// не выводится из чужого базового): относительный адрес отвергается, потому что
+// выведенный адрес всегда непуст и потому контроль выглядел бы включённым.
+//
+// # Чего здесь НЕ утверждается
+//
+// Не утверждается, что адрес разрешается и отвечает: это свойство поднятого
+// кластера. И ноль стендов, принимающих нашего издателя, — состояние ЗАКОННОЕ,
+// а не поломка: откат полосы состоит ровно в снятии нашего издателя. Поэтому
+// перепись печатает ОБЕ величины, а падает проба только на нуле прочитанных
+// стендов — там «ноль находок» означало бы «ноль прочитанного».
+func TestStacks_AcceptingOurIssuerNameTheRevocationAuthority(t *testing.T) {
+	stacks := deployableStacks(t)
+	names := make([]string, 0, len(stacks))
+	for name := range stacks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	read, declaringOurIssuer, namingAuthority := 0, 0, 0
+	for _, name := range names {
+		stack := stacks[name]
+		gw, ok := resolveStackGateway(t, stack)
+		if !ok {
+			continue
+		}
+		read++
+		cfg, _ := f1bGatewayConfig(gw)
+		chain := strings.Join(stack, " + ")
+
+		// Намерение и адрес считаются ОТДЕЛЬНО от вердикта: иначе обе колонки
+		// переписи совпадали бы тождественно (расхождение уже отвергнуто
+		// читателем выше), и перепись перестала бы что-либо измерять.
+		wantsOurIssuer := strings.TrimSpace(cfg.PlatformTokenIssuer) != ""
+		hasAuthority := strings.TrimSpace(cfg.PlatformTokenRevocationURL) != ""
+		if wantsOurIssuer {
+			declaringOurIssuer++
+		}
+		if hasAuthority {
+			namingAuthority++
+		}
+
+		bindings, err := cfg.TokenAcceptance()
+		if err != nil {
+			t.Errorf("стенд %s (%s): объявление приёма, с которым процесс НЕ ПОДНИМЕТСЯ: %v\n\n"+
+				"Отказ верен и не смягчается: контроль, действующий только там, где "+
+				"удостоверение ВЫДАЮТ, отзывом не является.", name, chain, err)
+			continue
+		}
+		reads := false
+		for _, b := range bindings {
+			reads = reads || b.ReadRevocation
+		}
+		if !reads {
+			if wantsOurIssuer {
+				t.Errorf("стенд %s (%s): назван НАШ издатель %q, а полоса чтения отзыва не "+
+					"включилась — объявление не доезжает до читателя",
+					name, chain, cfg.PlatformTokenIssuer)
+			}
+			continue
+		}
+
+		cert := strings.TrimSpace(cfg.PlatformTokenRevocationCertFile)
+		key := strings.TrimSpace(cfg.PlatformTokenRevocationKeyFile)
+		switch {
+		case cert == "" && key == "":
+			t.Errorf("стенд %s (%s): назван авторитет отзыва %q, но не названа клиентская "+
+				"пара хопа (tokenAcceptance.revocationClientCert.certFile/keyFile). "+
+				"Авторитет спрашивает проверенную цепочку и без неё отвечает отказом — "+
+				"контроль будет выглядеть настроенным, отказывая КАЖДОМУ предъявителю",
+				name, chain, cfg.PlatformTokenRevocationURL)
+		case cert == "" || key == "":
+			t.Errorf("стенд %s (%s): клиентская пара хопа названа НАПОЛОВИНУ "+
+				"(certFile=%q keyFile=%q) — процесс откажется стартовать; половина пары "+
+				"хуже отсутствия обеих, потому что выглядит настроенной",
+				name, chain, cert, key)
+		}
+	}
+
+	t.Logf("перепись: стендов прочитано %d · объявляют НАШЕГО издателя %d · называют авторитет %d",
+		read, declaringOurIssuer, namingAuthority)
+	if read == 0 {
+		t.Fatalf("прочитано НОЛЬ стендов, называющих край (%s) — «ноль находок» на таком "+
+			"объёме означает «ноль прочитанного», и молчание этой пробы сказано ни о чём",
+			stacksTable)
+	}
+}
+
+// tokenLaneKnob — объявление ручки полосы приёма токена в config.
+//
+// Перечень ВЫВОДИТСЯ из объявления, а не выписывается: выписанный разошёлся бы
+// с деревом молча, и новая ручка осталась бы непровязанной в чарте — ровно тот
+// случай, когда ручка задокументирована всю свою жизнь, а шаблон её не эмитит.
+var tokenLaneKnob = regexp.MustCompile(
+	`envconfig:"(KACHO_API_GATEWAY_(?:TOKEN_ISSUER[A-Z_]*|PLATFORM_TOKEN[A-Z_]*))"`)
+
+// tokenLaneEnv — то же имя, как его эмитит шаблон.
+var tokenLaneEnv = regexp.MustCompile(
+	`name: (KACHO_API_GATEWAY_(?:TOKEN_ISSUER[A-Z_]*|PLATFORM_TOKEN[A-Z_]*))\n`)
+
+// TestChart_EmitsEveryDeclaredTokenAcceptanceKnob — каждая объявленная ручка
+// полосы приёма токена обязана доезжать до процесса, и наоборот.
+//
+// # Почему это ПАРА утверждений, а не одно
+//
+// Ручка, объявленная config и НЕ эмитируемая шаблоном, инертна: профиль её
+// задаёт, процесс её не видит, и решение не доезжает. Для адреса авторитета
+// исход был бы шумным (страж старта отказывает на пустом), а для САМОГО НАШЕГО
+// ИЗДАТЕЛЯ — тихим: без него полоса не включается вовсе, отзыв не читается ни
+// разу, и НИЧТО не отказывает — состояние выглядит исправным.
+//
+// Обратное — имя, которое шаблон эмитит, а config не читает, — переживает свой
+// предмет так же тихо: значение принято и никогда не прочитано.
+//
+// # Почему до конца строки, а не вхождением
+//
+// Подстрока удовлетворяется и УДЛИНЁННЫМ именем, поэтому переименование
+// `…_ISSUER` → `…_ISSUER_X` оставляло гейт зелёным. Найдено инъекцией.
+func TestChart_EmitsEveryDeclaredTokenAcceptanceKnob(t *testing.T) {
+	declaration := readRepoFile(t, "gateway", "internal", "config", "config.go")
+	deployment := readRepoFile(t, "gateway", "deploy", "templates", "deployment.yaml")
+
+	declared := map[string]bool{}
+	for _, m := range tokenLaneKnob.FindAllStringSubmatch(declaration, -1) {
+		declared[m[1]] = true
+	}
+	emitted := map[string]bool{}
+	for _, m := range tokenLaneEnv.FindAllStringSubmatch(deployment, -1) {
+		emitted[m[1]] = true
+	}
+
+	if len(declared) == 0 {
+		t.Fatal("в объявлении config не распознано НИ ОДНОЙ ручки полосы приёма токена — " +
+			"это не «полосы нет», а «предикат перестал её узнавать»; вердикта у этой пробы нет")
+	}
+
+	wired := 0
+	for _, name := range sortedKeys(declared) {
+		if !emitted[name] {
+			t.Errorf("config объявляет %s, а шаблон края её НЕ ЭМИТИТ — профиль задаёт "+
+				"значение, процесс его не видит, и решение не доезжает вовсе", name)
+			continue
+		}
+		wired++
+	}
+	for _, name := range sortedKeys(emitted) {
+		if !declared[name] {
+			t.Errorf("шаблон края эмитит %s, а config такой ручки НЕ ЧИТАЕТ — значение "+
+				"принято и не прочитано ни разу; переменная пережила свой предмет", name)
+		}
+	}
+
+	t.Logf("перепись: ручек полосы объявлено %d · шаблон эмитит %d · сходятся %d",
+		len(declared), len(emitted), wired)
+}
+
+// sortedKeys — детерминированный порядок обхода набора имён.
+func sortedKeys(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// tokenLaneEnvValue — пара «имя переменной полосы → выражение её значения» в
+// шаблоне.
+var tokenLaneEnvValue = regexp.MustCompile(
+	`name: (KACHO_API_GATEWAY_(?:TOKEN_ISSUER[A-Z_]*|PLATFORM_TOKEN[A-Z_]*))\n\s*value: \{\{([^}]*)\}\}`)
+
+// TestChart_TokenLaneEnvIsWiredToItsOwnKnob — переменная полосы приёма токена
+// обязана брать значение из СВОЕГО объявления профиля, а не из соседнего.
+//
+// # Что это закрывает и почему одного «имя эмитится» мало
+//
+// Читателей объявления двое: проба выше спрашивает КЛЮЧ ПРОФИЛЯ, процесс читает
+// ПЕРЕМЕННУЮ ОКРУЖЕНИЯ, и связывает их ровно одно место — эта строка шаблона.
+// Перевесив её на адрес соседа (`.Values.hydra.introspectionUrl`), получаем
+// состояние, в котором обе проверки зелены, профиль объявляет одно, а процесс
+// получает другое — и адрес контроля безопасности оказывается ВЫВЕДЕННЫМ из
+// чужого. Выведенный адрес всегда непуст, поэтому страж старта молчит, контроль
+// выглядит включённым и ведёт в никуда; ни один профиль не обязан ничего
+// задавать, чтобы это заметить.
+//
+// # Границы
+//
+// Утверждается происхождение выражения, а НЕ то, что адрес разрешается и
+// отвечает: последнее — свойство поднятого кластера.
+func TestChart_TokenLaneEnvIsWiredToItsOwnKnob(t *testing.T) {
+	deployment := readRepoFile(t, "gateway", "deploy", "templates", "deployment.yaml")
+	pairs := tokenLaneEnvValue.FindAllStringSubmatch(deployment, -1)
+	if len(pairs) == 0 {
+		t.Fatal("в шаблоне края не распознано НИ ОДНОЙ пары «переменная полосы → значение» — " +
+			"это не «полосы нет», а «предикат перестал её узнавать»")
+	}
+	own := 0
+	for _, m := range pairs {
+		name, expr := m[1], strings.TrimSpace(m[2])
+		if !strings.Contains(expr, ".Values.tokenAcceptance") {
+			t.Errorf("%s берёт значение из %q — это не её объявление. Адрес контроля "+
+				"безопасности, выведенный из чужого, всегда непуст: страж старта молчит, "+
+				"контроль выглядит включённым и ведёт в никуда", name, expr)
+			continue
+		}
+		own++
+	}
+	t.Logf("перепись: пар «переменная полосы → значение» %d · берут из своего объявления %d",
+		len(pairs), own)
 }
