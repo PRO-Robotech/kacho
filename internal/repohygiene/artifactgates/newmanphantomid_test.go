@@ -165,8 +165,20 @@ func (it nmItem) testScript() string {
 var (
 	nmOpPollPath = regexp.MustCompile(`/operations/\{\{(\w+)\}\}`)
 	nmBindRe     = regexp.MustCompile(`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=`)
-	nmEnvSetRe   = regexp.MustCompile(`pm\.environment\.set\(\s*'`)
-	nmExpectRe   = regexp.MustCompile(`pm\.expect\(`)
+	// Объявление БЕЗ инициализатора (`let j;`) и присваивание отдельным оператором
+	// (`j = pm.response.json()`). Форма `let j; try { j = pm.response.json(); }
+	// catch (e) { j = null; }` — самая частая запись безопасного разбора тела в этом
+	// корпусе; `nmBindRe` её не узнаёт вовсе, потому что требует `=` В ОБЪЯВЛЕНИИ.
+	// Пока узнавалось только объявление-с-инициализатором, цепочка происхождения
+	// рвалась на первом звене, и захват из собственного ответа был для гейта
+	// невидим — вместе со всем, что от этого имени производилось дальше.
+	nmDeclRe = regexp.MustCompile(`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*[;,]`)
+	// Имя непосредственно перед `=`: `a.b = c` отсекается предшествующей точкой,
+	// `==`/`===`/`=>` — заглядыванием вперёд, `+=`/`!==`/`>=` — тем, что между
+	// именем и `=` у них стоит оператор.
+	nmAssignRe = regexp.MustCompile(`(^|[^.\w$])([A-Za-z_$][\w$]*)\s*=([^=>]|$)`)
+	nmEnvSetRe = regexp.MustCompile(`pm\.environment\.set\(\s*'`)
+	nmExpectRe = regexp.MustCompile(`pm\.expect\(`)
 )
 
 var nmMutationMethods = map[string]bool{"POST": true, "PUT": true, "PATCH": true, "DELETE": true}
@@ -243,6 +255,41 @@ type nmBinding struct {
 	derived    bool
 }
 
+// nmReservedWord — слова, за которыми `имя =` не является связыванием значения.
+// Перечень закрытый: «что-нибудь похожее на ключевое слово» пропустило бы имя
+// переменной, начинающееся так же.
+var nmReservedWord = map[string]bool{
+	"if": true, "for": true, "while": true, "switch": true, "return": true,
+	"function": true, "const": true, "let": true, "var": true, "catch": true,
+	"typeof": true, "new": true, "delete": true, "void": true, "in": true, "of": true,
+}
+
+// nmPrecededByDeclarator — имя на смещении `at` объявлено прямо здесь
+// (`const|let|var NAME = …`), а не присвоено отдельным оператором.
+func nmPrecededByDeclarator(code string, at int) bool {
+	i := at
+	for i > 0 && (code[i-1] == ' ' || code[i-1] == '\t' || code[i-1] == '\n') {
+		i--
+	}
+	if i == at {
+		return false // между объявителем и именем обязан быть пробел
+	}
+	for _, kw := range []string{"const", "let", "var"} {
+		if i >= len(kw) && code[i-len(kw):i] == kw {
+			j := i - len(kw)
+			if j == 0 {
+				return true
+			}
+			c := code[j-1]
+			if !(c == '_' || c == '$' || ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') ||
+				('0' <= c && c <= '9')) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // nmPublishedResourceVars — имена переменных окружения, которые шаг выставляет
 // ЗНАЧЕНИЕМ, происходящим из `metadata` операции.
 //
@@ -295,15 +342,57 @@ func nmDerivedEnvSets(src, seed string, skip func(name string) bool) []string {
 		return false
 	}
 
-	var bindings []nmBinding
+	// ОБЛАСТЬ ВИДИМОСТИ БЕРЁТСЯ У ОБЪЯВЛЕНИЯ, А НЕ У ПРИСВАИВАНИЯ. `let j;` стоит
+	// на верхнем уровне скрипта, а значение ему присваивают внутри `try { … }` —
+	// то есть глубже. Считать глубиной связывания глубину присваивания значило бы
+	// закрывать имя вместе с блоком `try`, и все последующие чтения `j` оказались
+	// бы «вне области» — ровно наоборот тому, как это работает в JavaScript.
+	declDepth := map[string]int{}
+	for _, m := range nmDeclRe.FindAllStringSubmatchIndex(code, -1) {
+		declDepth[code[m[2]:m[3]]] = depth[m[0]]
+	}
 	for _, m := range nmBindRe.FindAllStringSubmatchIndex(code, -1) {
-		semi := strings.IndexByte(code[m[1]:], ';')
-		if semi < 0 {
-			semi = len(code) - m[1]
+		declDepth[code[m[2]:m[3]]] = depth[m[0]]
+	}
+
+	type nmBindSite struct {
+		off, depth, exprAt int
+		name               string
+	}
+	var sites []nmBindSite
+	for _, m := range nmBindRe.FindAllStringSubmatchIndex(code, -1) {
+		name := code[m[2]:m[3]]
+		sites = append(sites, nmBindSite{off: m[0], depth: depth[m[0]], exprAt: m[1], name: name})
+	}
+	for _, m := range nmAssignRe.FindAllStringSubmatchIndex(code, -1) {
+		name := code[m[4]:m[5]]
+		if nmReservedWord[name] {
+			continue
 		}
-		expr := code[m[1] : m[1]+semi]
-		b := nmBinding{off: m[0], depth: depth[m[0]], name: code[m[2]:m[3]]}
-		b.derived = strings.Contains(expr, seed) || visible(bindings, m[0], expr)
+		// Объявление-с-инициализатором уже учтено выше: `const v = …` матчится и
+		// сюда, и в `nmBindRe`. Считать его дважды безвредно для вердикта, но
+		// смещение связывания разошлось бы на длину `const `, а от смещения
+		// зависит проверка «объявлено ДО использования».
+		if nmPrecededByDeclarator(code, m[4]) {
+			continue
+		}
+		d, ok := declDepth[name]
+		if !ok {
+			d = 0 // присваивание без объявления — имя живёт до конца скрипта
+		}
+		sites = append(sites, nmBindSite{off: m[4], depth: d, exprAt: m[5] + 1, name: name})
+	}
+	sort.Slice(sites, func(i, j int) bool { return sites[i].off < sites[j].off })
+
+	var bindings []nmBinding
+	for _, st := range sites {
+		semi := strings.IndexByte(code[st.exprAt:], ';')
+		if semi < 0 {
+			semi = len(code) - st.exprAt
+		}
+		expr := code[st.exprAt : st.exprAt+semi]
+		b := nmBinding{off: st.off, depth: st.depth, name: st.name}
+		b.derived = strings.Contains(expr, seed) || visible(bindings, st.off, expr)
 		bindings = append(bindings, b)
 	}
 

@@ -1527,6 +1527,26 @@ def _js_code_and_literals(src: str):
 
 _PUB_SET_RE = re.compile(r"pm\.environment\.set\(\s*@S(\d+)@\s*,")
 _PUB_BIND_RE = re.compile(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=")
+# Объявление БЕЗ инициализатора (`let j;`) и присваивание отдельным оператором
+# (`j = pm.response.json()`). Форма `let j; try { j = pm.response.json(); } catch (e)
+# { j = null; }` — самая частая запись безопасного разбора тела в этом корпусе, и
+# `_PUB_BIND_RE` её не узнаёт вовсе: она требует `=` В ОБЪЯВЛЕНИИ. Пока узнавалось
+# только объявление-с-инициализатором, цепочка происхождения рвалась на первом
+# звене, и проход не видел ни публикации, ни всего, что от этого имени
+# производилось дальше. Тот же распознаватель и по той же причине расширен в гейте
+# `internal/repohygiene/artifactgates` — проход и гейт обязаны считать ОДНО И ТО ЖЕ,
+# иначе они разойдутся на первом же шаге, записанном не по канону.
+_PUB_DECL_RE = re.compile(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*[;,]")
+# Имя непосредственно перед `=`: `a.b = c` отсекается предшествующей точкой,
+# `==`/`===`/`=>` — заглядыванием вперёд, `+=`/`!==`/`>=` — тем, что между именем и
+# `=` у них стоит оператор.
+_PUB_ASSIGN_RE = re.compile(r"(?:^|[^.\w$])([A-Za-z_$][\w$]*)\s*=(?![=>])")
+# Слова, за которыми `имя =` связыванием значения не является. Перечень закрытый:
+# «что-нибудь похожее на ключевое слово» отсекло бы имя, начинающееся так же.
+_PUB_RESERVED = frozenset((
+    "if", "for", "while", "switch", "return", "function", "const", "let", "var",
+    "catch", "typeof", "new", "delete", "void", "in", "of",
+))
 
 
 def _published_resource_vars(src: str, op_var: str) -> List[str]:
@@ -1563,11 +1583,42 @@ def _published_resource_vars(src: str, op_var: str) -> List[str]:
                 return True
         return False
 
+    # ОБЛАСТЬ ВИДИМОСТИ БЕРЁТСЯ У ОБЪЯВЛЕНИЯ, А НЕ У ПРИСВАИВАНИЯ. `let j;` стоит на
+    # верхнем уровне скрипта, а значение ему присваивают внутри `try { … }` — то
+    # есть глубже. Считать глубиной связывания глубину присваивания значило бы
+    # закрывать имя вместе с блоком `try`, и все последующие чтения `j` оказались бы
+    # «вне области» — ровно наоборот тому, как это работает в JavaScript.
+    decl_depth = {}
+    for m in _PUB_DECL_RE.finditer(code):
+        decl_depth[m.group(1)] = depth[m.start()]
     for m in _PUB_BIND_RE.finditer(code):
-        semi = code.find(";", m.end())
-        expr = code[m.end():semi if semi >= 0 else len(code)]
-        binds.append((m.start(), depth[m.start()], m.group(1),
-                      "metadata" in expr or visible(m.start(), expr)))
+        decl_depth[m.group(1)] = depth[m.start()]
+
+    sites = []  # (offset, depth, name, expr_at)
+    for m in _PUB_BIND_RE.finditer(code):
+        sites.append((m.start(), depth[m.start()], m.group(1), m.end()))
+    for m in _PUB_ASSIGN_RE.finditer(code):
+        name = m.group(1)
+        if name in _PUB_RESERVED:
+            continue
+        at = m.start(1)
+        # Объявление-с-инициализатором уже учтено выше: `const v = …` матчится и
+        # сюда. Считать его дважды безвредно для вердикта, но смещение связывания
+        # разошлось бы на длину `const `, а от смещения зависит проверка
+        # «объявлено ДО использования».
+        head = code[:at].rstrip()
+        if head.endswith(("const", "let", "var")) and len(head) < at:
+            tail = "const" if head.endswith("const") else ("let" if head.endswith("let") else "var")
+            j = len(head) - len(tail)
+            if j == 0 or not (code[j - 1].isalnum() or code[j - 1] in "_$"):
+                continue
+        sites.append((at, decl_depth.get(name, 0), name, m.end()))
+    sites.sort(key=lambda s: s[0])
+
+    for off, d, name, expr_at in sites:
+        semi = code.find(";", expr_at)
+        expr = code[expr_at:semi if semi >= 0 else len(code)]
+        binds.append((off, d, name, "metadata" in expr or visible(off, expr)))
 
     def arg_tail(pos: int) -> str:
         lvl = 1
