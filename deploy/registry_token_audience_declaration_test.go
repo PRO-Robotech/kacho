@@ -27,9 +27,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ГРАНИЦА ПРЕДМЕТА (названа, чтобы «зелено» не читалось шире, чем есть)
 //
-//   - проверяются ТОЛЬКО профили, объявившие ОБЕ величины. Профиль, не
-//     назвавший перечня платформы, сверять не с чем — его внешней границей
-//     остаётся собственный объявленный адресат полосы;
+//   - проверяются профили, назвавшие перечень платформы. Не назвавший сверять
+//     не с чем — его внешней границей остаётся собственный объявленный адресат
+//     полосы. Адресат при этом берётся ДЕЙСТВУЮЩИЙ: собственное объявление
+//     подчарта либо единый источник `global.kacho.registry.serviceAud`. Прежде
+//     профиль без собственного объявления был здесь НЕ СУДИМ — адресат
+//     приезжал из умолчания, жившего в закрытом для этого пакета дереве
+//     сервиса. Умолчания больше нет, величина живёт в каталоге развёртывания,
+//     и «унаследовано» перестало означать «не проверено»;
 //   - проверяется ЧЛЕНСТВО, а не содержание: какой именно адресат у стенда —
 //     решение профиля;
 //   - перечень профилей берётся КАТАЛОГОМ: новый профиль приходит под проверку
@@ -37,6 +42,7 @@
 package deploy_test
 
 import (
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -56,7 +62,7 @@ func (f registryAudienceFinding) String() string { return f.profile + ": " + f.w
 //
 // Возвращает находки И число профилей, у которых сверять БЫЛО ЧТО: «ноль
 // находок» обязано быть отличимо от «ноль прочитанного».
-func scanRegistryTokenAudience(profiles map[string]map[string]any) (findings []registryAudienceFinding, comparable, inherited int) {
+func scanRegistryTokenAudience(profiles map[string]map[string]any, base map[string]any) (findings []registryAudienceFinding, comparable, unresolved int) {
 	names := make([]string, 0, len(profiles))
 	for n := range profiles {
 		names = append(names, n)
@@ -64,8 +70,7 @@ func scanRegistryTokenAudience(profiles map[string]map[string]any) (findings []r
 	sort.Strings(names)
 
 	for _, name := range names {
-		service, _ := dig(profiles[name], "kacho-iam", "config", "apiServer", "registryToken", "service").(string)
-		service = strings.TrimSpace(service)
+		service := laneAddressee(profiles[name], base)
 		ct, _ := dig(profiles[name], "kacho-iam", "config", "authn", "clientToken").(map[string]any)
 		if ct == nil {
 			continue
@@ -87,15 +92,13 @@ func scanRegistryTokenAudience(profiles map[string]map[string]any) (findings []r
 			continue
 		}
 		if service == "" {
-			// Профиль перечень платформы объявил, а адресат полосы — нет:
-			// действует встроенное умолчание процесса. Судить его ЗДЕСЬ нечем
-			// — значение живёт в закрытом для этого пакета дереве сервиса, и
-			// выписанная сюда копия разошлась бы с ним молча. Сверку делает
-			// страж старта, который читает ДЕЙСТВУЮЩУЮ величину.
-			//
-			// Считается и печатается отдельно: пропуск, невидимый в переписи,
-			// неотличим от проверенного.
-			inherited++
+			// Адресат не резолвится НИ ВО ЧТО: ни собственного объявления, ни
+			// единого источника. Подставить его нечем — умолчания у величины
+			// нет ни в чарте, ни в коде, — поэтому сверять здесь не с чем, а
+			// отказ в пуске выносит страж старта процесса. Считается и
+			// печатается отдельно: пропуск, невидимый в переписи, неотличим от
+			// проверенного.
+			unresolved++
 			continue
 		}
 		comparable++
@@ -112,20 +115,28 @@ func scanRegistryTokenAudience(profiles map[string]map[string]any) (findings []r
 				"адресат докерной полосы " + service + " вне перечня адресатов платформы " + raw})
 		}
 	}
-	return findings, comparable, inherited
+	return findings, comparable, unresolved
 }
 
 // TestRegistryTokenAudienceIsInsideThePlatformDeclaration — сама проверка.
 func TestRegistryTokenAudienceIsInsideThePlatformDeclaration(t *testing.T) {
 	files := profileFiles(t)
 	profiles := make(map[string]map[string]any, len(files))
+	var base map[string]any
 	for _, f := range files {
-		profiles[f] = readYAML(t, f)
+		v := readYAML(t, f)
+		profiles[f] = v
+		if filepath.Base(f) == "values.yaml" {
+			base = v
+		}
+	}
+	if base == nil {
+		t.Fatal("базовых значений умбреллы (values.yaml) нет — предпосылка проверки не выполняется")
 	}
 
-	findings, comparable, inherited := scanRegistryTokenAudience(profiles)
-	t.Logf("перепись: профилей осмотрено %d · сверено здесь %d · адресат полосы унаследован от умолчания %d "+
-		"(эти сверяет страж старта по ДЕЙСТВУЮЩЕЙ величине)", len(files), comparable, inherited)
+	findings, comparable, unresolved := scanRegistryTokenAudience(profiles, base)
+	t.Logf("перепись: профилей осмотрено %d · сверено здесь %d · адресат не резолвится %d "+
+		"(эти отвергает страж старта процесса)", len(files), comparable, unresolved)
 
 	if comparable == 0 {
 		// Предпосылка проверки: она обоснована тем, что обе величины где-то
@@ -154,17 +165,18 @@ func TestRegistryTokenAudienceScannerSeesTheDriftAndIsSilentOnAgreement(t *testi
 	}
 
 	// (а) законный близнец — молчание.
-	got, comparable, inherited := scanRegistryTokenAudience(map[string]map[string]any{
+	noBase := map[string]any{}
+	got, comparable, unresolved := scanRegistryTokenAudience(map[string]map[string]any{
 		"agree.yaml": profile("registry.kacho.local", "https://api.kacho.cloud,registry.kacho.local", true),
-	})
-	if len(got) != 0 || comparable != 1 || inherited != 0 {
+	}, noBase)
+	if len(got) != 0 || comparable != 1 || unresolved != 0 {
 		t.Fatalf("на сошедшихся объявлениях сканер обязан молчать, получено %v (сравнимых %d)", got, comparable)
 	}
 
 	// (б) расхождение — находка, называющая профиль И оба значения.
 	got, comparable, _ = scanRegistryTokenAudience(map[string]map[string]any{
 		"drift.yaml": profile("sts.example.com", "https://api.kacho.cloud,registry.kacho.local", true),
-	})
+	}, noBase)
 	if len(got) != 1 || comparable != 1 {
 		t.Fatalf("расхождение обязано быть находкой, получено %v (сравнимых %d)", got, comparable)
 	}
@@ -179,21 +191,43 @@ func TestRegistryTokenAudienceScannerSeesTheDriftAndIsSilentOnAgreement(t *testi
 		"endpoint-off.yaml": profile("sts.example.com", "registry.kacho.local", false),
 		"degenerate.yaml":   profile("sts.example.com", " , ", true),
 	} {
-		got, comparable, inherited = scanRegistryTokenAudience(map[string]map[string]any{name: p})
-		if len(got) != 0 || comparable != 0 || inherited != 0 {
-			t.Fatalf("%s: предмета нет, но сканер сказал %v (сравнимых %d, унаследованных %d)",
-				name, got, comparable, inherited)
+		got, comparable, unresolved = scanRegistryTokenAudience(map[string]map[string]any{name: p}, noBase)
+		if len(got) != 0 || comparable != 0 || unresolved != 0 {
+			t.Fatalf("%s: предмета нет, но сканер сказал %v (сравнимых %d, нерезолвящихся %d)",
+				name, got, comparable, unresolved)
 		}
 	}
 
-	// (г) адресат полосы унаследован от умолчания — не находка, но и НЕ
-	// «сверено»: он обязан попасть в отдельную величину переписи, иначе
-	// пропуск неотличим от проверенного.
-	got, comparable, inherited = scanRegistryTokenAudience(map[string]map[string]any{
-		"inherited.yaml": profile("", "registry.kacho.local", true),
-	})
-	if len(got) != 0 || comparable != 0 || inherited != 1 {
-		t.Fatalf("унаследованный адресат обязан считаться отдельно, получено %v (сравнимых %d, унаследованных %d)",
-			got, comparable, inherited)
+	// (г) собственного объявления нет, но ЕДИНЫЙ ИСТОЧНИК объявлен базой —
+	// профиль обязан быть СУДИМ, а не отложен: это штатный вид пяти профилей
+	// из шести, и именно он прежде уходил из-под проверки.
+	base := map[string]any{"global": map[string]any{"kacho": map[string]any{
+		"registry": map[string]any{"serviceAud": "sts.example.com"},
+	}}}
+	got, comparable, unresolved = scanRegistryTokenAudience(map[string]map[string]any{
+		"from-source.yaml": profile("", "registry.kacho.local", true),
+	}, base)
+	if len(got) != 1 || comparable != 1 || unresolved != 0 {
+		t.Fatalf("адресат из единого источника обязан судиться, получено %v (сравнимых %d, нерезолвящихся %d)",
+			got, comparable, unresolved)
+	}
+	if !strings.Contains(got[0].String(), "sts.example.com") {
+		t.Fatalf("находка не называет действующий адресат: %s", got[0])
+	}
+	// ...и молчать, когда он в перечне: без этой половины предыдущая ловила бы форму.
+	got, comparable, unresolved = scanRegistryTokenAudience(map[string]map[string]any{
+		"from-source-ok.yaml": profile("", "sts.example.com,registry.kacho.local", true),
+	}, base)
+	if len(got) != 0 || comparable != 1 || unresolved != 0 {
+		t.Fatalf("адресат из единого источника внутри перечня обязан молчать, получено %v", got)
+	}
+
+	// (д) адресат не резолвится НИ ВО ЧТО — отдельная величина переписи.
+	got, comparable, unresolved = scanRegistryTokenAudience(map[string]map[string]any{
+		"unresolved.yaml": profile("", "registry.kacho.local", true),
+	}, noBase)
+	if len(got) != 0 || comparable != 0 || unresolved != 1 {
+		t.Fatalf("нерезолвящийся адресат обязан считаться отдельно, получено %v (сравнимых %d, нерезолвящихся %d)",
+			got, comparable, unresolved)
 	}
 }
