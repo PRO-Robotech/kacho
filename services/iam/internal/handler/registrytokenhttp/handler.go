@@ -53,9 +53,14 @@ import (
 // форма базового удостоверения. Второй её копии здесь не заводится: копия
 // разошлась бы молча, и разошлась бы именно в подсказке, которую читают вместо
 // документации.
+// Формулировка НЕ утверждает, отвергнут ли прежний вид НА ЭТОМ контуре: пока
+// открыто окно перехода #1143, он принимается, и текст, объявивший обратное,
+// был бы ложью для одной посадки и оракулом ручки для другой (по нему
+// перебором узнают, объявлено ли окно). Поэтому тело говорит о ГОДНОМ виде и
+// только о нём — то же, что говорит страница документации.
 var unauthorizedBody = `{"error":"unauthorized","error_description":` +
-	`"this lane accepts only the Kacho basic access token: docker login -u <credential id> -p ` +
-	credsecret.Mark + `<credential id>_<secret>; a private-key PEM is no longer accepted as the password"}`
+	`"this lane issues registry tokens for the Kacho basic access token: docker login -u <credential id> -p ` +
+	credsecret.Mark + `<credential id>_<secret>"}`
 
 // TokenPath — the token endpoint path. MUST equal the data-plane's Bearer realm
 // path (the WWW-Authenticate realm), so verifiers and docker clients resolve the

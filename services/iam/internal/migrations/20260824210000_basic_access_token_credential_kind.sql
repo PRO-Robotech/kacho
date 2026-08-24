@@ -61,6 +61,20 @@
 --     числом объявить негодным то, что было годным, — и сломать выдачу.
 -- Требование поэтому ставится ровно там, где оно верно.
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- ОБРАТНЫЙ ХОД ОТКАЗЫВАЕТСЯ, А НЕ УДАЛЯЕТ
+--
+-- Откат описан как ШТАТНАЯ процедура развёртывания, поэтому предупреждения
+-- здесь недостаточно: комментарий не читают в момент набора команды и он ничего
+-- не останавливает. Обратный ход, встретив хоть одну строку вида SECRET,
+-- ОТКАЗЫВАЕТСЯ выполняться — до первого разрушающего оператора — и называет
+-- последствие: секрет показан один раз, в хранилище только свёртка, удалённое
+-- удостоверение не восстановимо ни резервной копией, ни повторной выдачей.
+-- Без строк этого вида откат проходит ровно как прежде. Разбор — у самого
+-- стража, в начале секции обратного хода ниже. (Разметку goose эта строка
+-- намеренно НЕ цитирует: аннотация распознаётся в любом комментарии, и цитата
+-- сделала бы файл неразбираемым.)
+
 -- +goose Up
 -- +goose StatementBegin
 
@@ -193,6 +207,85 @@ END $$;
 -- +goose StatementEnd
 
 -- +goose Down
+
+-- ОБРАТНЫЙ ХОД ОТКАЗЫВАЕТСЯ ВЫПОЛНЯТЬСЯ ПРИ ЖИВЫХ УДОСТОВЕРЕНИЯХ ВИДА SECRET.
+--
+-- Страж стоит ПЕРВЫМ — до единого разрушающего оператора. Отказ, наступивший
+-- после первого DROP, оставил бы схему разобранной, и оператор чинил бы уже
+-- две беды вместо одной.
+--
+-- Почему отказ, а не удаление. Секрет вида SECRET предъявляется арендатору ОДИН
+-- раз; в хранилище лежит только его свёртка. Значит удалённая строка не
+-- восстанавливается НИЧЕМ: резервной копии секрета не существует by
+-- construction, а повторная выдача даёт другое удостоверение с другим
+-- идентификатором — то есть работу по перенастройке каждого предъявителя.
+-- Обычное удаление данных обратимо восстановлением; это — нет.
+--
+-- Почему не «предупредить комментарием». Обратный ход описан как ШТАТНАЯ
+-- процедура на странице развёртывания каждого сервиса, то есть набирается не
+-- задумываясь. Комментарий в файле миграции не читают в этот момент и он ничего
+-- не останавливает: единственный исход, который останавливает, — отказ.
+--
+-- Почему не «сохранить строки и откатить схему». Это невыразимо: у строки вида
+-- SECRET колонка зеркала поставщика ПУСТА by construction (в этом предмет
+-- фазы), а обратный ход возвращает ей требование непустоты. Сохранённая строка
+-- уронила бы ALTER ... SET NOT NULL непрозрачной ошибкой Postgres вместо
+-- внятного текста — тот же отказ, но без объяснения.
+--
+-- ШТАТНЫЙ ВЫХОД НАЗВАН В ТЕКСТЕ ОТКАЗА: снять удостоверения продуктовым
+-- глаголом отзыва (это осознанное действие оператора, о котором арендатор
+-- узнаёт), после чего обратный ход проходит. Без единой строки вида SECRET
+-- откат остаётся ровно той штатной процедурой, какой он описан, — и это
+-- утверждается положительным контролем BAT-1-DOWN-2: страж, отказывающий
+-- всегда, отнял бы процедуру там, где она безопасна.
+--
+-- Предикат снятия САМОГО стража: он уходит вместе с этой миграцией и не раньше.
+-- Пока колонка `credential_kind` заводится здесь, здесь же и живёт её защита.
+
+-- +goose StatementBegin
+DO $$
+DECLARE
+    sa_secrets   bigint;
+    user_secrets bigint;
+BEGIN
+    SELECT count(*) INTO sa_secrets
+      FROM kacho_iam.service_account_oauth_clients WHERE credential_kind = 'SECRET';
+    SELECT count(*) INTO user_secrets
+      FROM kacho_iam.user_oauth_clients WHERE credential_kind = 'SECRET';
+
+    -- Перепись печатается ВСЕГДА, включая ноль: иначе «удостоверений вида
+    -- SECRET нет» неотличимо от «их не считали».
+    RAISE NOTICE 'обратный ход 20260824210000: удостоверений вида SECRET — service_account_oauth_clients %, user_oauth_clients %',
+        sa_secrets, user_secrets;
+
+    IF sa_secrets > 0 OR user_secrets > 0 THEN
+        -- ВСЁ СУЩЕСТВЕННОЕ — В ОСНОВНОМ СООБЩЕНИИ, а не в DETAIL/HINT.
+        --
+        -- Измерено, а не предположено: goose оборачивает отказ и доносит до
+        -- оператора ТОЛЬКО основное сообщение — DETAIL и HINT в его вывод не
+        -- попадают. Штатный выход, положенный туда, не доехал бы ни до кого, и
+        -- оператор, прочитав «откат невозможен», обошёл бы страж вместо того
+        -- чтобы отозвать удостоверения. DETAIL/HINT оставлены для psql, где их
+        -- видно, но НИ ОДНО существенное слово не живёт только в них.
+        RAISE EXCEPTION
+            'REFUSING to roll back 20260824210000: it would IRREVERSIBLY destroy % live SECRET credential(s) '
+            '(service_account_oauth_clients %, user_oauth_clients %). Such a credential is shown to the tenant '
+            'ONCE and only its digest is stored, so a deleted row cannot be restored from any backup, and '
+            're-issuing yields a DIFFERENT credential every holder must be reconfigured for. WAY OUT: revoke '
+            'these credentials deliberately through the product verb first (so their holders learn about it), '
+            'then roll back — with zero SECRET rows this migration rolls back cleanly. The rollback is safe '
+            'exactly when both counts above are 0.',
+            sa_secrets + user_secrets, sa_secrets, user_secrets
+        USING
+            DETAIL =
+                'A SECRET credential is shown to the tenant exactly once and only its digest is stored. '
+                'This is not ordinary data loss — it is irreversible.',
+            HINT =
+                'Revoke the credentials through the product verb, then roll back. Safe when both counts are 0.';
+    END IF;
+END $$;
+-- +goose StatementEnd
+
 -- +goose StatementBegin
 
 DROP INDEX IF EXISTS kacho_iam.user_oauth_clients_secret_hash_unique;
@@ -205,9 +298,6 @@ ALTER TABLE kacho_iam.user_oauth_clients
 ALTER TABLE kacho_iam.service_account_oauth_clients
     DROP CONSTRAINT IF EXISTS service_account_oauth_clients_credential_shape_ck,
     DROP CONSTRAINT IF EXISTS service_account_oauth_clients_credential_kind_ck;
-
-DELETE FROM kacho_iam.service_account_oauth_clients WHERE credential_kind = 'SECRET';
-DELETE FROM kacho_iam.user_oauth_clients WHERE credential_kind = 'SECRET';
 
 ALTER TABLE kacho_iam.service_account_oauth_clients
     DROP CONSTRAINT IF EXISTS service_account_oauth_clients_hydra_client_id_check,

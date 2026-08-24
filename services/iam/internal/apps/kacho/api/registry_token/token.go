@@ -63,6 +63,39 @@ var ErrUnauthenticated = errors.New("registry token: unauthenticated")
 // бы оракулом; различимость нужна ЖУРНАЛУ, и она здесь.
 var ErrAudienceNotAllowed = errors.New("registry token: requested audience is not allowed")
 
+// Credential — личность, проверенная ПРЕЖНЕЙ полосой (ключевой материал).
+//
+// Живёт только ради окна перехода #1143 и уходит вместе с ним: предикат снятия
+// — снятие ручки `api-server.registry-token.key-material-window-until`.
+type Credential struct {
+	// ClientID — the Hydra OAuth2 client_id; lands in the assertion iss & sub
+	// and is the identity the data-plane resolves to a ServiceAccount.
+	ClientID string
+	// KeyID — the registered JWK kid (the SA-OAuth-client id); the assertion
+	// protected-header kid so Hydra selects the right verification key.
+	KeyID string
+	// Subject — the owning ServiceAccount id (informational / audit).
+	Subject string
+	// DeclaredAudiences — сужение адресатов, ОБЪЯВЛЕННОЕ заказчиком при выдаче
+	// ключа (`IssueSAKeyRequest.audience`, задача #1136). Внутренняя граница
+	// выдачи: она говорит, для чего заведён ЭТОТ ключ.
+	//
+	// Пустой перечень означает «сужения не объявлено», а НЕ «любой адресат»:
+	// внешняя граница (`Config.AllowedAudiences`) остаётся и требуется
+	// непустой при сборке полосы.
+	DeclaredAudiences []string
+}
+
+// CredentialValidator — verifies the presented Basic credential (client_id +
+// SA-key private PEM) and resolves the assertion identity. An unsupported or
+// invalid credential MUST return ErrInvalidCredentials (never a partial-detail
+// error that leaks which half was wrong).
+//
+// Зовётся ТОЛЬКО при открытом окне перехода (#1143); разбор — key_material_window.go.
+type CredentialValidator interface {
+	Validate(ctx context.Context, clientID, privateKeyPEM string) (Credential, error)
+}
+
 // ErrCredentialKindNotAccepted — предъявлен вид удостоверения, которого эта
 // полоса не принимает: в поле пароля приехал не базовый токен доступа, а
 // что-то другое — прежде всего ключевой материал (задача #1143).
@@ -216,8 +249,16 @@ type IssueRegistryTokenUseCase struct {
 	// basicResolver — авторитет о предъявленном базовом секрете (#1142).
 	// nil → полосы нет.
 	basicResolver basicCredentialResolver
-	now           func() time.Time
-	jti           func() (string, error)
+	// kmValidator/kmWindowUntil — ОКНО ПЕРЕХОДА #1143: проверяющий прежней
+	// полосы и мгновение, до которого она принимается. Разбор, цена обоих
+	// умолчаний и предикат снятия — key_material_window.go. Порознь не
+	// заполняются: их ставит один вызов WithKeyMaterialWindow.
+	kmValidator   CredentialValidator
+	kmWindowUntil time.Time
+	// kindObserver — счётчик исходов полос. nil → счёта нет.
+	kindObserver CredentialKindObserver
+	now          func() time.Time
+	jti          func() (string, error)
 }
 
 // NewIssueRegistryTokenUseCase — builder. AssertionTTL is clamped to
@@ -269,9 +310,21 @@ func (u *IssueRegistryTokenUseCase) Execute(ctx context.Context, in IssueInput) 
 	// другого: путь, срабатывающий на неудаче, превратил бы всякий негодный
 	// вход во вход соседней полосы, а снятый приём — в тихий запасной путь.
 	if !credsecret.HasMark(in.Password) {
+		// ОКНО ПЕРЕХОДА (#1143). Открыто — прежний вид принимается, пока
+		// оператор переводит клиентов; закрыто либо истекло — отвергается.
+		// Спрашивается на КАЖДОМ запросе: окно закрывает время, а не
+		// перезапуск. Разбор и цена умолчания — key_material_window.go.
+		if u.keyMaterialWindowOpen() {
+			return u.executeKeyMaterialInWindow(ctx, in)
+		}
 		// ЛОМАЮЩЕЕ ИЗМЕНЕНИЕ, объявленное задачей #1143: клиент, настроенный на
 		// прежний вход, получает отказ. Причина уходит в журнал; наружу —
 		// единый 401-вызов с фиксированным телом, называющим годный вид.
+		//
+		// Счёт ЗДЕСЬ, а не в журнале: вопрос оператора количественный —
+		// «скольких я ещё не перевёл». Ноль по этому исходу вместе с ненулевым
+		// знаменателем и означает, что окно больше никому не нужно.
+		u.observeKind(OutcomeKeyMaterialRefused)
 		return IssueOutput{}, fmt.Errorf("%w: %w", ErrUnauthenticated, ErrCredentialKindNotAccepted)
 	}
 	if u.basicResolver == nil {
@@ -290,10 +343,16 @@ type basicCredentialResolver interface {
 	ResolveBasic(ctx context.Context, presented string) (domain.BasicCredential, error)
 }
 
-// WithBasicCredentialResolver провязывает полосу базового секрета. nil → полосы
-// нет, и строка с нашей маркой уходит валидатору ключевого материала, где
-// отвергается как негодный PEM. Это посадка ДО появления авторитета, а не
-// мягкий проход.
+// WithBasicCredentialResolver провязывает полосу базового секрета.
+//
+// nil → отвечать по существу нечем, и Execute отдаёт НЕДОСТУПНОСТЬ ИЗДАТЕЛЯ, а
+// не отказ в удостоверении: предъявитель ни при чём, и повтор после починки
+// сборки осмыслен. Это посадка ДО появления авторитета, а не мягкий проход.
+//
+// (Здесь стояло «строка с нашей маркой уходит валидатору ключевого материала,
+// где отвергается как негодный PEM» — верно до задачи #1143 и неверно после:
+// того запасного пути в Execute нет, и комментарий про безопасность,
+// противоречащий коду, провоцирует «починку» кода под себя.)
 func (u *IssueRegistryTokenUseCase) WithBasicCredentialResolver(r basicCredentialResolver) *IssueRegistryTokenUseCase {
 	u.basicResolver = r
 	return u
@@ -370,7 +429,95 @@ func (u *IssueRegistryTokenUseCase) executeBasic(ctx context.Context, in IssueIn
 	if merr != nil {
 		return IssueOutput{}, fmt.Errorf("%w: %w", ErrIssuerUnavailable, merr)
 	}
+	// ЗНАМЕНАТЕЛЬ. Без него ноль отказов прежнему виду неотличим от полосы,
+	// не обслужившей ни одного входа вообще.
+	u.observeKind(OutcomeBasicAccepted)
 	return IssueOutput{Token: out.AccessToken, ExpiresIn: out.ExpiresIn, IssuedAt: u.now().Unix()}, nil
+}
+
+// executeKeyMaterialInWindow — ПРЕЖНЯЯ полоса, доступная только через открытое
+// окно перехода (#1143). Тело восстановлено ДОСЛОВНО из ревизии до снятия:
+// окно обязано принимать ровно то, что принимала прежняя полоса, а не
+// «похожее». Уходит вместе с ручкой окна одним изменением.
+func (u *IssueRegistryTokenUseCase) executeKeyMaterialInWindow(ctx context.Context, in IssueInput) (IssueOutput, error) {
+	cred, err := u.kmValidator.Validate(ctx, in.Username, in.Password)
+	if err != nil || cred.ClientID == "" || cred.KeyID == "" {
+		// Collapse every validator error to ErrUnauthenticated — the client must
+		// not learn whether the subject exists or which half of the credential
+		// was wrong (no auth oracle).
+		//
+		// Счёта здесь НЕТ намеренно: предъявлен прежний вид, окно его приняло,
+		// и отказ этот — «негодные учётные данные», а не «вид не принимается».
+		// Смешав их, мы получили бы счётчик отказов вида, растущий на обычном
+		// переборе пароля, — то есть тревогу без предмета.
+		return IssueOutput{}, ErrUnauthenticated
+	}
+
+	// Адресат — ИЗ ЗАПРОСА, в пределах объявленного ПОСАДКОЙ перечня,
+	// сужённого тем, что объявил при выдаче сам КЛЮЧ (#1136/#1184).
+	// Решается ПОСЛЕ проверки учётных данных: перечень адресатов — сведение о
+	// посадке, и отвечать им неаутентифицированному незачем.
+	service, err := u.resolveAudienceDeclared(cred.Subject, cred.DeclaredAudiences, in.Service)
+	if err != nil {
+		return IssueOutput{}, err
+	}
+	now := u.now()
+
+	// Контур переведён на НАШУ чеканку — токен выпускает наш подписант, и
+	// утверждение для прежнего издателя не строится вовсе.
+	if u.mintsLocally() {
+		out, merr := u.minter.MintToken(ctx, MintInput{
+			Subject:  cred.Subject,
+			Audience: service,
+			Scope:    u.cfg.Scope,
+			// Материал привязки — ровно тот, что предъявлен транспортом.
+			ConfirmationX5TS256: in.ConfirmationX5TS256,
+		})
+		if merr != nil {
+			// Неисправность СВОЕЙ чеканки — недоступность издателя, а не
+			// негодные учётные данные: предъявитель ни при чём, и повтор
+			// осмыслен.
+			return IssueOutput{}, fmt.Errorf("%w: %w", ErrIssuerUnavailable, merr)
+		}
+		u.observeKind(OutcomeKeyMaterialAcceptedInWindow)
+		return IssueOutput{Token: out.AccessToken, ExpiresIn: out.ExpiresIn, IssuedAt: now.Unix()}, nil
+	}
+
+	jti, jerr := u.jti()
+	if jerr != nil {
+		return IssueOutput{}, jerr
+	}
+	assertion, serr := u.signer.Sign(AssertionInput{
+		KeyID:         cred.KeyID,
+		ClientID:      cred.ClientID,
+		Audience:      u.cfg.AssertionAudience,
+		PrivateKeyPEM: in.Password,
+		IssuedAt:      now.Unix(),
+		ExpiresAt:     now.Add(u.cfg.AssertionTTL).Unix(),
+		JTI:           jti,
+	})
+	if serr != nil {
+		// The presented key could not sign — treat as an invalid credential
+		// (fail-closed 401), never leaking the crypto failure detail.
+		return IssueOutput{}, ErrUnauthenticated
+	}
+
+	out, xerr := u.exchanger.Exchange(ctx, ExchangeInput{
+		ClientAssertion: assertion,
+		Audience:        service,
+		Scope:           u.cfg.Scope,
+	})
+	if xerr != nil {
+		if errors.Is(xerr, ErrIssuerUnavailable) {
+			// Причина ОБОРАЧИВАЕТСЯ: наружу обработчик всё равно отдаст
+			// фиксированное тело, а вот в журнал без неё не уходило бы ничего.
+			return IssueOutput{}, fmt.Errorf("%w: %w", ErrIssuerUnavailable, xerr)
+		}
+		// Провайдер отверг обмен (негодный/истёкший/отозванный ключ) — 401.
+		return IssueOutput{}, ErrUnauthenticated
+	}
+	u.observeKind(OutcomeKeyMaterialAcceptedInWindow)
+	return IssueOutput{Token: out.AccessToken, ExpiresIn: out.ExpiresIn, IssuedAt: now.Unix()}, nil
 }
 
 // AnonymousEnabled reports whether anonymous-pull issuance is configured. When
@@ -492,16 +639,28 @@ func (u *IssueRegistryTokenUseCase) ExecuteAnonymous(ctx context.Context, servic
 // посадки. Подставлять умолчание ДО этого места нельзя: тогда ключ, объявивший
 // своё назначение, получал бы чужой адресат и отвергался собственной проверкой.
 func (u *IssueRegistryTokenUseCase) resolveAudience(subject, requested string) (string, error) {
+	// Declared намеренно пуст: см. разбор выше. Пустой перечень тут —
+	// объявление «сужения не бывает у этого вида», а не пропуск.
+	return u.resolveAudienceDeclared(subject, nil, requested)
+}
+
+// resolveAudienceDeclared — тот же резолв, но с сужением, ОБЪЯВЛЕННЫМ ключом
+// при выдаче (#1136). Зовётся прежней полосой из окна перехода #1143: сужение
+// приезжает той же строкой реестра, что и ключевой материал, и уронить его
+// значило бы задним числом снять то, что объявил заказчик.
+//
+// Реализация ОДНА на обе полосы: свойство, обязательное для одной, держится
+// общим источником, а не одинаковой проверкой в двух местах.
+func (u *IssueRegistryTokenUseCase) resolveAudienceDeclared(subject string, declared []string, requested string) (string, error) {
 	var want []string
 	if requested != "" {
 		want = []string{requested}
 	}
 	out, err := audiencepolicy.Resolve(audiencepolicy.Scope{
-		Landing: u.cfg.AllowedAudiences,
-		Default: u.cfg.DefaultService,
-		// Declared намеренно не задан: см. разбор выше. Пустой перечень тут —
-		// объявление «сужения не бывает у этого вида», а не пропуск.
-		Subject: subject,
+		Landing:  u.cfg.AllowedAudiences,
+		Default:  u.cfg.DefaultService,
+		Declared: declared,
+		Subject:  subject,
 	}, want)
 	if err != nil {
 		// Причина ОБОРАЧИВАЕТСЯ: наружу уйдёт единый 401-вызов, а в журнал —
