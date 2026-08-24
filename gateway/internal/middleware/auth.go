@@ -153,6 +153,11 @@ type AuthInterceptor struct {
 	// своё последствие, и слитое с полосой предъявителя окно подавляло бы первый
 	// доклад одной из них.
 	sessionCutoffFailures *introspectionFailureReporter
+	// sessionAssuranceUnknown — своё окно доклада для полосы сессии, назвавшей
+	// уровень уверенности, который край перевести не может (или не назвавшей
+	// его вовсе). Состояние означает «пол на этой полосе не удовлетворить
+	// ничем», и оно не исчезает само — см. auth_session_stepup.go.
+	sessionAssuranceUnknown *introspectionFailureReporter
 	// stepUp / stepUpLookup / stepUpRoutes — the per-RPC authentication floor,
 	// applied on this always-running layer rather than behind a feature toggle.
 	// All three or none; see auth_stepup.go for why the floor cannot live where
@@ -238,6 +243,10 @@ func (a *AuthInterceptor) machineBindingViolationFor(vt *VerifiedToken, principa
 // ory_kratos_session cookie; при отсутствии cookie / 401 — fallback на JWT.
 func (a *AuthInterceptor) WithKratos(c *KratosClient) *AuthInterceptor {
 	a.kratos = c
+	// Полоса смонтирована — значит у неё есть и доклад о непереводимом уровне
+	// уверенности. Заводить его позже было бы нечем: своей ручки у этого
+	// состояния нет, оно свойство ОТВЕТА провайдера, а не настройки края.
+	a.sessionAssuranceUnknown = newIntrospectionFailureReporter(0, nil)
 	return a
 }
 
@@ -837,10 +846,18 @@ func (a *AuthInterceptor) stripForgeableIdentityHeaders(r *http.Request) {
 //
 // Возвращает ДВА значения, и это не косметика. `injected` — резолвилась ли
 // личность (подавляет полосы предъявителя, как прежде). `handled` — полоса
-// ответила САМА и вызывающий обязан вернуться: сессия отвергнута нашим отзывом
-// либо вопрос о нём остался без ответа. Прежде второго исхода у полосы не
-// существовало вовсе, и отвергнуть сессию ей было нечем — оттого наш глагол
-// выхода на браузерной полосе не действовал ни разу (auth_session_cutoff.go).
+// ответила САМА и вызывающий обязан вернуться. Прежде второго исхода у полосы
+// не существовало вовсе, и отвергнуть сессию ей было нечем.
+//
+// Причин ответить самой ДВЕ, и обе — свой дефект того же класса «полоса не
+// спрашивала того, что спрашивает соседняя»:
+//
+//   - сессия отвергнута НАШИМ отзывом либо вопрос о нём остался без ответа —
+//     оттого наш глагол выхода на браузерной полосе не действовал ни разу
+//     (auth_session_cutoff.go);
+//   - предъявленный уровень уверенности не дотягивает до пола, объявленного
+//     каталогом прав для вызываемого глагола, — оттого действие с полом уровня
+//     «2» выполнялось из браузера без второго фактора (auth_session_stepup.go).
 func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Request) (injected, handled bool) {
 	if a.kratos == nil {
 		return false, false
@@ -888,6 +905,22 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 		// впереди службы прав, и отвергать здесь значило бы уронить консоль на
 		// время раската. Состояние сходится само и докладывается громко.
 	}
+	// Достаточно ли СИЛЬНО человек аутентифицировался ДЛЯ ЭТОГО обращения?
+	// Спрашивается ровно там же, где на полосе предъявителя, и по тем же
+	// причинам: до записи личности, чтобы не прошедший пол запрос не доехал ни
+	// до прав, ни до backend.
+	//
+	// До #1201 этого вопроса здесь не было вовсе, и полоса не могла его задать:
+	// уровень уверенности провайдера край не разбирал. Освобождения этой полосы
+	// by design нет — пол есть свойство ВСЯКОГО обращения человека.
+	assurance := a.sessionAssurance(subj, res, r.URL.Path)
+	if a.enforceStepUpHTTP(w, r, assurance, stepUpLaneSession) {
+		return false, true
+	}
+	// Уровень едет вперёд к ВТОРОМУ замку (iam `authzguard.ACRFloor`) — по тем же
+	// именам, что у полосы предъявителя. Полоса, не выставляющая его, оставляет
+	// внутренний замок без входа.
+	setSessionAssuranceHeaders(r, assurance.ACR)
 	r.Header.Set(principalmeta.HeaderPrincipalType, subj.Type)
 	r.Header.Set(principalmeta.HeaderPrincipalID, subj.ID)
 	r.Header.Set(principalmeta.HeaderPrincipalDisplay, subj.DisplayName)
@@ -970,7 +1003,7 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 	// principal is written, so a request that has not met the floor never reaches
 	// authz or a backend. The floor lives here, not in the sender-constrained
 	// middleware, because it is a question about every token — see auth_stepup.go.
-	if a.enforceStepUpHTTP(w, r, vt) {
+	if a.enforceStepUpHTTP(w, r, assuranceFromVerifiedToken(vt), stepUpLaneBearer) {
 		return true
 	}
 	// The credential's own context travels either way: it describes the token, not
