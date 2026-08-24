@@ -34,7 +34,13 @@ data:
       internal-endpoint: {{ printf "tcp://0.0.0.0:%v" .Values.ports.internalGrpc | quote }}
       graceful-shutdown: {{ default "10s" .Values.config.apiServer.gracefulShutdown | quote }}
       {{- $rt := .Values.config.apiServer.registryToken | default dict }}
-      {{- if or $rt.issuer $rt.service }}
+      {{- /* Адресат полосы ВЫВОДИТСЯ из объявленной стороны реестра — одно
+           объявление на обе стороны, см. kacho-iam.laneServiceAud. Прежде здесь
+           стояла только собственная ручка, а незаданная резолвилась встроенным
+           умолчанием процесса: второе объявление того же предмета, молча
+           расходившееся с именем, которое реестр называет докер-клиенту. */}}
+      {{- $laneService := include "kacho-iam.laneServiceAud" . }}
+      {{- if or $rt.issuer $laneService }}
       # Docker Registry v2 token shim. `service` также whitelist'ится как audience в
       # Hydra-клиенте каждого выпускаемого SA-ключа (#321) — расхождение с тем, что
       # docker шлёт в `?service=`, ломает login (Hydra: audience not whitelisted).
@@ -42,7 +48,7 @@ data:
         {{- with $rt.issuer }}
         issuer: {{ . | quote }}
         {{- end }}
-        {{- with $rt.service }}
+        {{- with $laneService }}
         service: {{ . | quote }}
         {{- end }}
       {{- end }}

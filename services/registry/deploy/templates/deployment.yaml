@@ -214,8 +214,12 @@ spec:
               value: "{{ .Values.dataplaneTLSTerminatedExternally }}"
             - name: KACHO_REGISTRY_TOKEN_REALM
               value: "{{ .Values.tokenRealm }}"
+            # Имя службы полосы — ОДНО объявление на обе её стороны
+            # (см. registry.laneServiceAud). То же имя чеканит в `aud` подписант
+            # iam; разойтись им нечем, а объявленные врозь и по-разному роняют
+            # рендер с текстом, называющим обе величины.
             - name: KACHO_REGISTRY_SERVICE_AUD
-              value: "{{ .Values.serviceAud }}"
+              value: {{ include "registry.laneServiceAud" . | quote }}
             - name: KACHO_REGISTRY_ENDPOINT_BASE
               value: "{{ .Values.endpointBase }}"
             {{- if or .Values.mtls.enable (and .Values.service.dataplaneLB.enabled .Values.service.dataplaneLB.tlsSidecar.enabled) }}

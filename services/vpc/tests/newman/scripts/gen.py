@@ -23,6 +23,76 @@ from pathlib import Path
 from dataclasses import dataclass, field, replace
 from typing import List, Dict, Optional
 
+
+def js_str(value: str) -> str:
+    r"""Строковый литерал JavaScript, произведённый СЕРИАЛИЗАТОРОМ (#1181).
+
+    Текст вызывающего — пояснение, фрагмент контракт-тона, подпись шага, имя
+    переменной — уезжает в ПОРОЖДАЕМЫЙ скрипт шага. Апостроф закрывает литерал,
+    перевод строки рвёт строку, `</script>` закрывает элемент: ломается не
+    текст, а СИНТАКСИС файла, которого автор фразы не видит.
+
+    ПОЧЕМУ ЭТО НЕ ВИДНО В ВЕРДИКТЕ. newman пишет исключение скрипта в
+    `testScripts`, а НЕ в `assertions.failed`. Шаг, чей скрипт не разобрался,
+    даёт НОЛЬ упавших утверждений: кейс перестаёт проверять что бы то ни было и
+    продолжает отчитываться зелёным по этой величине. Это третья категория
+    исхода («не выполнилось»), зачтённая в «прошло».
+
+    ПОЧЕМУ СЕРИАЛИЗАТОР, А НЕ ЗАМЕНА ЗНАКОВ. Рукописная замена всегда неполна:
+    geo экранировал обратный слэш и апостроф, но не перевод строки, и потому
+    закрывал ровно тот случай, который однажды заметили. Полный набор — обратный
+    слэш, управляющие знаки, кавычка — делает `json.dumps`. Сверх него закрыты
+    три случая, которых JSON не знает, и каждый ЗНАЧЕНИЯ литерала не меняет:
+
+      * U+2028/U+2029 — законный JSON, но до ES2019 рвали литерал JS;
+      * `</` → `<\/` — иначе закрылся бы элемент `script`, если текст шага
+        встроят в отчёт-документ; `\/` в JS тождественно `/`;
+      * апостроф → `\'` — литерал одинарно-кавычечный (ниже о том, почему).
+        Правило применяется ПОСЛЕ сериализатора, когда каждый обратный слэш уже
+        удвоен, поэтому оно не может ни пропустить случай, ни съесть чужой
+        экранирующий знак.
+
+    ПОЧЕМУ ОДИНАРНАЯ КАВЫЧКА, А НЕ ДВОЙНАЯ ИЗ `json.dumps`. Порождаемый скрипт
+    цитирует одинарной; двойная кавычка сменила бы БАЙТЫ 91 закоммиченной
+    коллекции, которые читают два десятка гейтов, ничего не изменив по существу.
+    Одинарная форма даёт байт-в-байт то же, что вклейка, на всяком входе, где
+    вклейка была законна, — поэтому перегенерация после этой правки обязана дать
+    ПУСТОЙ diff, и это единственное, что доказывает: экранирование ничего не
+    исказило.
+
+    ЧЕМ ДЕРЖИТСЯ. Проба
+    `services/iam/tests/newman/scripts/js_literal_escape_test.py` — одна на все
+    восемь генераторов, потому что шов один, а восемь копий разошлись бы. Она
+    утверждает четыре разных вещи: ФОРМУ по всему дереву (ни одной подстановки
+    в литерал помимо этих двух помощников), СУЩЕСТВО по швам (враждебный вход
+    даёт РАЗБИРАЕМЫЙ скрипт), положительный контроль (безобидная фраза читается
+    дословно) и ОБРАТИМОСТЬ настоящим движком — node, а не `json.loads`: судить
+    надо тем языком, который литерал и будет исполнять.
+    """
+    body = json.dumps(str(value), ensure_ascii=False)[1:-1]
+    body = body.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+    body = body.replace("</", "<\\/")
+    body = body.replace('\\"', '"').replace("'", "\\'")
+    return "'" + body + "'"
+
+
+def js_comment(value: str) -> str:
+    r"""Текст вызывающего ВНУТРИ комментария порождаемого скрипта (#1181).
+
+    У комментария опасен ровно один класс знаков — КОНЕЦ СТРОКИ: он закрывает
+    комментарий, и остаток значения становится КОДОМ. Кавычки внутри комментария
+    безвредны, поэтому литерала тут не строят — строку вставляют в текст, и
+    внешние кавычки сериализатора снимаются.
+
+    Концов строки у JavaScript ЧЕТЫРЕ, а у JSON два: сверх `\n` и `\r` строку
+    завершают U+2028 и U+2029, и `json.dumps` их не трогает — они законный JSON.
+    Именно на этом правило и ловилось: враждебное имя с U+2028 закрывало
+    комментарий, и `${...}` за ним разбирался как выражение. Поэтому два знака
+    дописываются к набору сериализатора явно — не вместо него, а поверх.
+    """
+    text = json.dumps(str(value), ensure_ascii=False)[1:-1]
+    return text.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = Path(__file__).resolve().parent
 CASES_DIR = ROOT / "cases"
@@ -167,13 +237,13 @@ PRE_GLOBAL = [
 
 def assert_status(code: int) -> List[str]:
     return [
-        f"pm.test('status {code}', () => pm.expect(pm.response.code).to.eql({code}));",
+        f"pm.test({js_str(f'status {code}')}, () => pm.expect(pm.response.code).to.eql({code}));",
     ]
 
 
 def assert_grpc_code(code: int, code_name: str) -> List[str]:
     return [
-        f"pm.test('grpc code {code} ({code_name})', () => {{",
+        f"pm.test({js_str(f'grpc code {code} ({code_name})')}, () => {{",
         "  const j = pm.response.json();",
         f"  pm.expect(j.code, JSON.stringify(j)).to.eql({code});",
         "});",
@@ -198,12 +268,12 @@ def assert_transcode_error() -> List[str]:
 
 def assert_field_violation(field_name: str) -> List[str]:
     return [
-        f"pm.test('field violation on \"{field_name}\"', () => {{",
+        f"pm.test({js_str(f'field violation on \"{field_name}\"')}, () => {{",
         "  const j = pm.response.json();",
         "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
         "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
-        f"  const fv = (det.fieldViolations || []).find(v => v.field === '{field_name}');",
-        f"  pm.expect(fv, 'fieldViolation for {field_name}').to.be.an('object');",
+        f"  const fv = (det.fieldViolations || []).find(v => v.field === {js_str(field_name)});",
+        f"  pm.expect(fv, {js_str(f'fieldViolation for {field_name}')}).to.be.an('object');",
         "});",
     ]
 
@@ -382,13 +452,13 @@ def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     был закрыт первым; гейт по дереву на обе половины пары «удаление → опрос» —
     `deploy/scripts/assert-delete-operation-outcome.py`.
     """
-    reset = [f"pm.environment.set('{env_var}', '');"] if _is_operation_id_var(env_var) else []
+    reset = [f"pm.environment.set({js_str(env_var)}, '');"] if _is_operation_id_var(env_var) else []
     return [
         *reset,
         "try {",
         "  const j = pm.response.json();",
         f"  const v = ({jsonpath});",
-        f"  if (v !== undefined && v !== null) pm.environment.set('{env_var}', String(v));",
+        f"  if (v !== undefined && v !== null) pm.environment.set({js_str(env_var)}, String(v));",
         "} catch (e) {}",
     ]
 
@@ -422,7 +492,7 @@ def assert_empty_page(why: str) -> List[str]:
     """
     return [
         "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-        f"pm.test('страница пуста: {why}', () => {{",
+        f"pm.test({js_str(f'страница пуста: {why}')}, () => {{",
         "  const j = pm.response.json();",
         "  const keys = Object.keys(j).filter(k => Array.isArray(j[k]));",
         "  pm.expect(keys, JSON.stringify(j)).to.have.lengthOf(1);",
@@ -460,12 +530,12 @@ def assert_cleanup_delete(what: str, refusal: str) -> List[str]:
         "const _cuT = pm.response.text();",
         "let _cuJ; try { _cuJ = pm.response.json(); } catch (e) { _cuJ = {}; }",
         "if (pm.response.code === 200) {",
-        f"  pm.test('уборка ({what}): принято — 200 и конверт Operation', () => {{",
+        f"  pm.test({js_str(f'уборка ({what}): принято — 200 и конверт Operation')}, () => {{",
         "    pm.expect(pm.response.code, _cuT).to.eql(200);",
         "    pm.expect(_cuJ.id, _cuT).to.be.a('string').and.to.have.length.above(0);",
         "  });",
         "} else {",
-        f"  pm.test('уборка ({what}): отказ по СОСТОЯНИЮ — 400 и код 9 ({refusal})', () => {{",
+        f"  pm.test({js_str(f'уборка ({what}): отказ по СОСТОЯНИЮ — 400 и код 9 ({refusal})')}, () => {{",
         "    pm.expect(pm.response.code, _cuT).to.eql(400);",
         "    pm.expect(_cuJ.code, _cuT).to.eql(9);",
         "  });",
@@ -528,7 +598,7 @@ def conf_not_found_text(prefix, get_path, resource_name):
                     test_script=[
                         *assert_status(404),
                         *assert_grpc_code(5, "NOT_FOUND"),
-                        f"pm.test('text matches \"{resource_name} ... not found\"', () => "
+                        f"pm.test({js_str(f'text matches \"{resource_name} ... not found\"')}, () => "
                         f"pm.expect(pm.response.json().message).to.match(/^{resource_name} .* not found$/));",
                     ])],
     )
@@ -1903,14 +1973,14 @@ def pairwise_subnet_pack():
                     Step(name="verify-pw", method="GET", path="/vpc/v1/subnets/{{subId}}",
                          test_script=[
                              *assert_status(200),
-                             f"pm.test('префикс доехал: ipv4CidrPrimary == {ipbase}{prefix}', () => "
-                             f"pm.expect(pm.response.json().ipv4CidrPrimary, pm.response.text()).to.eql('{ipbase}{prefix}'));",
+                             f"pm.test({js_str(f'префикс доехал: ipv4CidrPrimary == {ipbase}{prefix}')}, () => "
+                             f"pm.expect(pm.response.json().ipv4CidrPrimary, pm.response.text()).to.eql({js_str(f'{ipbase}{prefix}')}));",
                              # Имя переменной, а не её значение: Postman подставляет
                              # `{{...}}` в ПОЛЯХ ЗАПРОСА, но не внутри test-script'а —
                              # литерал в утверждении сравнивался бы с самой строкой
                              # «{{zoneA}}» и не мог пройти никогда.
                              "pm.test('зона доехала', () => "
-                             f"pm.expect(pm.response.json().zoneId, pm.response.text()).to.eql(pm.environment.get('{zone.strip('{}')}')));",
+                             f"pm.expect(pm.response.json().zoneId, pm.response.text()).to.eql(pm.environment.get({js_str(zone.strip('{}'))})));",
                          ])),
                 Step(name="cleanup-pw", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
                      test_script=["pm.test('cleanup', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
@@ -2584,7 +2654,7 @@ def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
         # исполняется РОВНО тогда, когда Operation существует.
         if must_fail_code:
             tail.append(
-                f"pm.test('refusal carries gRPC code {must_fail_code}', () => "
+                f"pm.test({js_str(f'refusal carries gRPC code {must_fail_code}')}, () => "
                 f"  pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql({must_fail_code}));")
         if must_fail_message:
             tail.append(
@@ -2606,11 +2676,11 @@ def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
             "  pm.expect(j.error && JSON.stringify(j.error), 'operation.error')"
             "    .to.eql(undefined));",
             "if (j.error) {",
-            f"  pm.environment.unset('{capture_id_to}');",
+            f"  pm.environment.unset({js_str(capture_id_to)});",
             "} else {",
             f"  const _cid = ({expr});",
-            f"  if (_cid) pm.environment.set('{capture_id_to}', String(_cid));",
-            f"  else pm.environment.unset('{capture_id_to}');",
+            f"  if (_cid) pm.environment.set({js_str(capture_id_to)}, String(_cid));",
+            f"  else pm.environment.unset({js_str(capture_id_to)});",
             "}",
         ]
     return Step(
@@ -2631,7 +2701,7 @@ def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
             # response is non-200, skip all poll assertions cleanly.
             # Nothing to poll: the preceding step was refused synchronously and minted no
             # Operation. This is the ONLY case in which the step asserts nothing.
-            f"if (!pm.environment.get('{op_var}')) {{",
+            f"if (!pm.environment.get({js_str(op_var)})) {{",
             "  pm.environment.unset('_pollCount');",
             "  return;",
             "}",
@@ -2689,8 +2759,8 @@ def _auth_pre_script(auth: str) -> List[str]:
             "pm.request.headers.remove('Authorization');",
         ]
     return [
-        f"// authz-deny: bearer from env '{auth}'",
-        f"const __t = pm.environment.get('{auth}') || pm.variables.get('{auth}') || '';",
+        f"// authz-deny: bearer from env '{js_comment(auth)}'",
+        f"const __t = pm.environment.get({js_str(auth)}) || pm.variables.get({js_str(auth)}) || '';",
         "if (__t) {",
         "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
         "} else {",
@@ -2713,10 +2783,11 @@ def _auth_pre_script(auth: str) -> List[str]:
         # pre-request assertion above has ALREADY run and keeps the skip RECORDED as
         # a failure naming the variable, never a mute one. (`auth="anonymous"` is the
         # DELIBERATE anonymous case and takes the branch above — never affected.)
-        f"  pm.test('harness config: {auth} is set (subject under test)', () => {{",
-        f"    pm.expect.fail('{auth} is not set — the authz-fixture seed "
-        "(tests/authz-fixtures/setup.sh) did not provide this subject. Running the step "
-        "anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+        f"  pm.test({js_str(f'harness config: {auth} is set (subject under test)')}, () => {{",
+        "    pm.expect.fail(" + js_str(
+            f"{auth} is not set — the authz-fixture seed "
+            "(tests/authz-fixtures/setup.sh) did not provide this subject. Running the step "
+            "anonymously would test a DIFFERENT principal and pass for the wrong reason.") + ");",
         "  });",
         "  pm.execution.skipRequest();",
         "}",
@@ -3609,7 +3680,7 @@ def _gw_anchor_steps() -> List[Step]:
                          "pm.test('якорь создан и несёт IPv4', () => {",
                          "  const j = pm.response.json();",
                          "  pm.expect(j.id, pm.response.text()).to.eql("
-                         f"pm.environment.get('{GW_ANCHOR_SUBNET_VAR}'));",
+                         f"pm.environment.get({js_str(GW_ANCHOR_SUBNET_VAR)}));",
                          "  pm.expect(j.ipv4CidrPrimary, 'IPv4 у якоря').to.be.a('string').and.not.empty;",
                          "});"])),
     ]
