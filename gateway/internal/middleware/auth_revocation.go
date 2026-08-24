@@ -46,6 +46,8 @@ import (
 	"errors"
 	"net/http"
 	"time"
+
+	"google.golang.org/grpc/codes"
 )
 
 // TokenRevocationChecker — port: does the identity provider still consider this
@@ -243,11 +245,21 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 // of its OWN configuration. No WWW-Authenticate header: this is not an
 // authentication challenge, and offering one would invite the caller to
 // re-authenticate against a fault no credential of theirs can clear.
+//
+// Поле `code` — код gRPC (`google.rpc.Status.code`), а НЕ номер HTTP-статуса:
+// клиент ключуется машинно именно на него, и оба числа тут разные по смыслу.
+// Здесь стоял `http.StatusServiceUnavailable`, то есть 503 в поле, где кода 503
+// не существует вовсе, — вызывающий вместо «повтори позже» (14, UNAVAILABLE)
+// получал величину вне словаря. Соседние писатели отказа края поле заполняют
+// верно и служат образцом: 401 → 16 (`writeHTTPUnauthorized`), 403 → 7
+// (`writeHTTPDeny`), отказ слоя прав при недоступном источнике вердикта → 14
+// (`authz.go`, ветвь `outcomeError`) — то же число, что и здесь.
+// Закреплено `TestRefusalBodyCarriesTheGRPCCodeNotTheHTTPStatus`.
 func writeHTTPServiceUnavailable(w http.ResponseWriter, reason string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusServiceUnavailable)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"code":    http.StatusServiceUnavailable,
+		"code":    int(codes.Unavailable),
 		"message": reason,
 	})
 }
