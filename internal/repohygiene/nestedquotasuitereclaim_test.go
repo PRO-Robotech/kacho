@@ -117,6 +117,16 @@ var nestedChildEndpoints = map[string]nestedChildEndpoint{
 	"loadbalancer.networkLoadBalancers.listeners": {
 		Base: "/nlb/v1/listeners", ParentField: "loadBalancerId",
 	},
+	// Удостоверения принципала (`PRO-Robotech/kacho#1191`). Родитель назван
+	// сегментом пути у обоих: у человека это его строка, у служебной учётки —
+	// она сама. Под-коллекций у удостоверения нет — оно лист.
+	"iam.user.credential": {
+		Base: "/iam/v1/users/{parent}/tokens",
+	},
+	"iam.serviceAccount.credential": {
+		Base: "/iam/v1/serviceAccounts/{parent}/keys",
+	},
+
 	// Родитель назван ПУТЁМ, а не телом, и у ребёнка есть своя под-коллекция.
 	"registry.registries.repositories": {
 		Base:           "/registry/v1/registries/{parent}/repositories",

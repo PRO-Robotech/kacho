@@ -43,6 +43,10 @@ type stubUserClientRepo struct {
 	// caller who asked.
 	blocked    bool
 	blockedIDs map[domain.UserID]bool
+	// insertErr — запись отвергнута хранилищем. Заведено пробой отказа учёта
+	// (#1191): решение о потолке принимает атомарный оператор вставки, поэтому
+	// подать его в use-case можно только отказом самой записи.
+	insertErr error
 }
 
 // AccountForUser — резолвер account'а User (порт UserClientRepo). Дефолт —
@@ -59,6 +63,9 @@ func (s *stubUserClientRepo) AccountForUser(ctx context.Context, id domain.UserI
 }
 
 func (s *stubUserClientRepo) Insert(ctx context.Context, tx service.Tx, c domain.UserOAuthClient) (domain.UserOAuthClient, error) {
+	if s.insertErr != nil {
+		return domain.UserOAuthClient{}, s.insertErr
+	}
 	s.inserted = c
 	c.CreatedAt = time.Now().UTC()
 	return c, nil

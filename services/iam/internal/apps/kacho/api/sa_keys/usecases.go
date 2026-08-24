@@ -1519,6 +1519,20 @@ func mapPGErr(err error) error {
 	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
 		return err
 	}
+	// Отказ учёта — ПЕРЕД общим разбором и ЧУЖИМ производителем.
+	//
+	// Полосу учёта различает не только код: клиент ключуется на признак
+	// `google.rpc.ErrorInfo`, и приклеивает его один производитель на весь домен
+	// (`shared.MapRepoErr`). Разобрать эти признаки здесь своими словами значило
+	// бы завести второе место об одном контракте — и разойтись с ним на первом же
+	// уточнении текста. Без этой ветви отказ уходил бы в фиксированный INTERNAL:
+	// вызывающий видел бы поломку платформы там, где платформа сработала как
+	// задумана, и не узнал бы ни носителя, ни предела, ни вида.
+	if errors.Is(err, iamerr.ErrQuotaExceeded) ||
+		errors.Is(err, iamerr.ErrQuotaRateExceeded) ||
+		errors.Is(err, iamerr.ErrQuotaNotProvisioned) {
+		return shared.MapRepoErr(err)
+	}
 	switch {
 	case errors.Is(err, iamerr.ErrNotFound):
 		return status.Error(codes.NotFound, iamerr.StripSentinel(err))
