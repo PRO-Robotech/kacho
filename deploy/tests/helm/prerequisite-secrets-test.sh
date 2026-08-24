@@ -42,15 +42,20 @@ set -uo pipefail
 # Своей копии цепочек здесь нет: копии разъезжались молча.
 . "$(dirname "$0")/stacks.sh"
 
-SCRIPT="$(basename "$0")"
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 MAKEFILE="$REPO_ROOT/Makefile"
 SECRETS_SH="scripts/dev-prod-secrets.sh"
 
-N=0
-fail() { echo "FAIL: $1"; exit 1; }
-ok() { N=$((N + 1)); }
+# Три исхода — ОДНОЙ реализацией на весь каталог: 0 зелено · 1 находка о дереве ·
+# 2 условие не создано (плюс текст самого helm). Прежде «профиль цели не
+# рендерится» и «нет python3/PyYAML» объявлялись находкой — тем же кодом 1, что и
+# невыполнимое предусловие стенда, — и вызывающий не мог их различить машинно
+# (задача #1214).
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$HERE/outcome.sh"
+require_helm
 
 # Цели Makefile, которые реально разворачивают стенд, и СТЕК, которым каждая это
 # делает. Формат: <make-цель>|<стек>. Сама цепочка `-f` берётся из единственной
@@ -61,6 +66,7 @@ PROFILES=(
   "dev-up|$(stacks_args dev "$UMBRELLA")"
   "dev-prod-up|$(stacks_args dev-prod "$UMBRELLA")"
 )
+EXPECTED_ASSERTIONS="${#PROFILES[@]}"
 
 # target_body <make-цель> — рецепт цели: строка объявления + все строки-команды
 # (в Makefile они начинаются с таба), до первой строки левого края.
@@ -113,8 +119,14 @@ PY
 self_test() {
   local rc=0 render prov
   render="$(mktemp)"; trap 'rm -f "$render"' RETURN
+  # Рендер — ПРЕДПОСЫЛКА самопроверки. Прежде его отказ уезжал в пустой файл, и
+  # самопроверка «проходила» по нулю документов: инъекция (A) не нашла бы своего
+  # секрета и объявила бы гейт пропустившим дефект — то есть красный вердикт о
+  # дереве по причине, к дереву отношения не имеющей.
   # shellcheck disable=SC2046,SC2086
-  helm template kacho-umbrella "$UMBRELLA" $(stacks_args dev-prod "$UMBRELLA") 2>/dev/null > "$render"
+  helm_try kacho-umbrella "$UMBRELLA" $(stacks_args dev-prod "$UMBRELLA")
+  render_or_fatal "стек dev-prod (самопроверка)"
+  printf '%s\n' "$HELM_OUT" > "$render"
   prov="$(provisioned_by dev-prod-up)"
 
   echo "  (0) дерево как есть                    → $( [ -z "$(unmet "$render" "$prov")" ] && echo МОЛЧИТ || { echo "красный:"; unmet "$render" "$prov"; rc=1; } )"
@@ -201,31 +213,33 @@ YAML
 
 [ "${1:-}" = "--self-test" ] && { self_test; exit $?; }
 
-command -v python3 >/dev/null || fail "нужен python3 (разбор рендера)"
-python3 -c 'import yaml' 2>/dev/null || fail "нужен PyYAML (python3 -c 'import yaml')"
+command -v python3 >/dev/null || fatal "нужен python3 (разбор рендера) — судить нечем"
+python3 -c 'import yaml' 2>/dev/null || fatal "нужен PyYAML (python3 -c 'import yaml') — судить нечем"
 
 for entry in "${PROFILES[@]}"; do
   target="${entry%%|*}"; flags="${entry#*|}"
   render="$(mktemp)"
+  # Отказ рендера — УСЛОВИЕ прогона (несобранные зависимости умбреллы, нет helm),
+  # а не невыполнимое предусловие стенда, о котором эта проверка и написана.
   # shellcheck disable=SC2086  # flags — намеренно раскрываемый набор -f
-  helm template kacho-umbrella "$UMBRELLA" $flags 2>/dev/null > "$render" \
-    || fail "профиль цели $target не рендерится"
+  helm_try kacho-umbrella "$UMBRELLA" $flags
+  render_or_fatal "профиль цели $target"
+  printf '%s\n' "$HELM_OUT" > "$render"
   prov="$(provisioned_by "$target")"
   out="$(unmet "$render" "$prov")"
   if [ -n "$out" ]; then
     rm -f "$render"
-    echo "FAIL: цель $target разворачивает профиль с НЕВЫПОЛНИМЫМ предусловием:"
     printf '%s\n' "$out" | while read -r s c; do
-      echo "        секрет '$s' обязателен для '$c', но его не создаёт ни чарт, ни цель"
+      echo "        секрет '$s' обязателен для '$c', но его не создаёт ни чарт, ни цель" >&2
     done
-    echo "      Под не стартует (CreateContainerConfigError), а \`helm --wait\` выстоит"
-    echo "      таймаут и упадёт «не дождался», не назвав причины."
-    echo "      Либо создай секрет в чарте, либо заведи его в $SECRETS_SH и позови"
-    echo "      этот скрипт из цели $target. Комментарий в values предусловием не является."
-    exit 1
+    echo "      Под не стартует (CreateContainerConfigError), а \`helm --wait\` выстоит" >&2
+    echo "      таймаут и упадёт «не дождался», не назвав причины." >&2
+    echo "      Либо создай секрет в чарте, либо заведи его в $SECRETS_SH и позови" >&2
+    echo "      этот скрипт из цели $target. Комментарий в values предусловием не является." >&2
+    fail "цель $target разворачивает профиль с НЕВЫПОЛНИМЫМ предусловием (перечень выше)"
   fi
   ok
   rm -f "$render"
 done
 
-echo "PASS: $SCRIPT ($N assertions)"
+outcome_verdict "целей развёртки осмотрено: $N"

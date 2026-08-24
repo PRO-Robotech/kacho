@@ -21,10 +21,21 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 rc=0
+# RED здесь означает РОВНО код 1 — «находка о дереве», — а не «ненулевой код».
+# Различие не педантское: у пробы теперь три исхода (задача #1214), и код 2
+# («условие не создано»: зависимости умбреллы не собраны, нет helm) приходит на
+# ЛЮБОМ профиле, включая законных близнецов. Пока «RED» значило «не ноль»,
+# доказательство способности упасть засчитывало бы отказ, к внесённому дефекту
+# отношения не имеющий, — то есть было бы доказательством ни о чём.
 assert() { # имя · ожидание(RED|GREEN) · файл профиля
-  local name="$1" want="$2" prof="$3" got
-  if IDENTITY_SOURCE_PROFILES="$prof" bash tests/helm/identity-hook-credential-source-test.sh >"$TMP/out" 2>&1
-  then got=GREEN; else got=RED; fi
+  local name="$1" want="$2" prof="$3" got code
+  IDENTITY_SOURCE_PROFILES="$prof" bash tests/helm/identity-hook-credential-source-test.sh \
+    >"$TMP/out" 2>&1 && code=0 || code=$?
+  case "$code" in
+    0) got=GREEN ;;
+    1) got=RED ;;
+    *) got="УСЛОВИЕ-НЕ-СОЗДАНО(код=$code)" ;;
+  esac
   if [ "$got" = "$want" ]; then
     echo "  ok   $name → $got"
   else

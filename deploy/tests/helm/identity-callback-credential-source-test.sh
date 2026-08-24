@@ -39,12 +39,17 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 CHECKER="$HERE/identity-callback-credential-source.py"
 
-fail() { echo "FAIL: $1" >&2; exit 1; }
-refuse() { echo "FATAL: $1" >&2; exit 2; }
+# Три исхода — ОДНОЙ реализацией на весь каталог. Здесь они были СВОИ (`fail` и
+# `refuse`), то есть вторым местом об одном предмете: коды совпадали, а «что
+# сказал helm» терялось, и «стек не рендерится» уходило кодом 1 — тем же, каким
+# объявляется полоса без источника величины (задача #1214).
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$HERE/outcome.sh"
+require_helm
 
-command -v python3 >/dev/null || refuse "нужен python3 (разбор рендера)"
-python3 -c 'import yaml' 2>/dev/null || refuse "нужен PyYAML (python3 -c 'import yaml')"
-[ -r "$CHECKER" ] || refuse "разбор $CHECKER не читается"
+command -v python3 >/dev/null || fatal "нужен python3 (разбор рендера)"
+python3 -c 'import yaml' 2>/dev/null || fatal "нужен PyYAML (python3 -c 'import yaml')"
+[ -r "$CHECKER" ] || fatal "разбор $CHECKER не читается"
 
 # ── самопроверка ────────────────────────────────────────────────────────────
 # Вход синтезируется на уровне МАНИФЕСТА, а не значений: страж чарта
@@ -204,30 +209,35 @@ echo "--- самопроверка разбора ---"
 self_test || fail "самопроверка провалена: разбор не доказал способности упасть и смолчать"
 
 # ── собственно проверка: каждый развёртываемый стенд ─────────────────────────
-N=0
-for stack in $(stacks_names); do
+STACKS="$(stacks_names)"
+EXPECTED_ASSERTIONS="$(printf '%s\n' "$STACKS" | grep -c . || true)"
+[ "$EXPECTED_ASSERTIONS" -ge 1 ] || fatal "таблица стендов не дала ни одного имени — обходить нечего"
+for stack in $STACKS; do
   args="$(stacks_args "$stack" "$UMBRELLA")"
   render="$(mktemp)"
+  # Отказ рендера — УСЛОВИЕ прогона (несобранные зависимости умбреллы, нет helm),
+  # а не свойство полосы обратного вызова, о которой эта проверка написана.
   # shellcheck disable=SC2086  # args — намеренно раскрываемый набор -f
-  helm template kacho-umbrella "$UMBRELLA" $args > "$render" 2>/dev/null \
-    || { rm -f "$render"; fail "стек $stack не рендерится — судить нечего"; }
+  helm_try kacho-umbrella "$UMBRELLA" $args
+  render_or_fatal "стек $stack"
+  printf '%s\n' "$HELM_OUT" > "$render"
   echo "--- стек $stack ---"
   python3 "$CHECKER" < "$render"
   code=$?
   rm -f "$render"
   case "$code" in
-    0) N=$((N + 1)) ;;
-    2) refuse "стек $stack: разбору нечего осматривать (см. строку выше)" ;;
+    0) ok ;;
+    2) fatal "стек $stack: разбору нечего осматривать (см. строку выше)" ;;
     *)
       echo "FAIL: стек $stack разворачивает полосу обратного вызова без источника величины." >&2
       echo "      Процесс отправит пустой либо дословный заголовок, служба прав ответит 401," >&2
       echo "      а край переведёт это арендатору в 502. Объяви величину переменной по пути" >&2
       echo "      ключа конфигурации из secretKeyRef, либо готовь конфигурацию шагом ДО" >&2
       echo "      старта процесса. Комментарий в профиле источником не является." >&2
-      exit 1
+      fail "стек $stack разворачивает полосу обратного вызова без источника величины"
       ;;
   esac
 done
 
-[ "$N" -ge 1 ] || refuse "не осмотрено ни одного стека — таблица стендов пуста"
-echo "PASS: $SCRIPT ($N стеков)"
+[ "$N" -ge 1 ] || fatal "не осмотрено ни одного стека — таблица стендов пуста"
+outcome_verdict "стеков осмотрено: $N"

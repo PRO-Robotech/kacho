@@ -38,16 +38,22 @@ set -uo pipefail
 . "$(dirname "$0")/stacks.sh"
 
 SCRIPT="$(basename "$0")"
-DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+DEPLOY_ROOT="$(cd "$HERE/../.." && pwd)"
 UMBRELLA="$DEPLOY_ROOT/helm/umbrella"
 
-ASSERTIONS=0
-FAILURES=0
-fail() { echo "FAIL: $1"; FAILURES=$((FAILURES + 1)); }
-ok()   { ASSERTIONS=$((ASSERTIONS + 1)); }
-fatal() { echo "FATAL: $1"; exit 2; }
+# Три исхода — ОДНОЙ реализацией на весь каталог. Свой `fatal` здесь уже был, а
+# `fail` НАКАПЛИВАЛ нарушения и потому выходил кодом 1 в самом конце — вместе с
+# отказом рендера, который свойством дерева не является (задача #1214). Накопитель
+# остался, но зовётся `violation`: имя `fail` в этом каталоге означает ровно одно —
+# «находка о дереве, выходим кодом 1».
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$HERE/outcome.sh"
+require_helm
 
-command -v helm >/dev/null 2>&1 || fatal "helm не найден"
+FAILURES=0
+violation() { echo "FAIL: $1" >&2; FAILURES=$((FAILURES + 1)); }
+
 command -v python3 >/dev/null 2>&1 || fatal "python3 не найден"
 python3 -c 'import yaml' 2>/dev/null || fatal "нужен PyYAML (python3 -c 'import yaml')"
 
@@ -99,13 +105,17 @@ if [ -f "$UMBRELLA/$OPTIONAL_ORY" ]; then
 fe3455+ory|$(stacks_chain fe3455 ','),$OPTIONAL_ORY"
 fi
 
-# render <файлы-через-запятую> — рендер умбреллы; пустой вывод считаем сорванным.
+# render <файлы-через-запятую> <имя профиля> — манифест профиля в $HELM_OUT.
+# Отказ рендера — УСЛОВИЕ прогона (несобранные зависимости умбреллы, нет helm), а
+# не свойство круга отправителей: код 2 и текст, который сказал сам helm. Прежде он
+# приходил сюда пустым выводом и объявлялся нарушением наравне с пустым кругом.
 render() {
   local args=() f
   local IFS=,
   for f in $1; do args+=(-f "$UMBRELLA/$f"); done
   unset IFS
-  helm template kacho-umbrella "$UMBRELLA" "${args[@]}" 2>/dev/null
+  helm_try kacho-umbrella "$UMBRELLA" "${args[@]}"
+  render_or_fatal "профиль $2"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -212,7 +222,7 @@ PY
 count_rows() { printf '%s\n' $1 | grep -c . ; }
 
 # verify_all <подпись> — прогоняет все профили из PROFILES по карте MEASURED.
-# Читает и меняет ASSERTIONS/FAILURES. Вынесено в функцию, чтобы самопроверка
+# Читает и меняет N/FAILURES. Вынесено в функцию, чтобы самопроверка
 # могла прогнать ТОТ ЖЕ путь на подменённой карте: инъекция обязана проверять
 # работающий вердикт, а не его копию.
 verify_all() {
@@ -222,15 +232,16 @@ verify_all() {
     echo "--- профиль $name ($files)"
 
     tmp="$(mktemp)"
-    render "$files" >"$tmp"
+    render "$files" "$name"
+    printf '%s\n' "$HELM_OUT" >"$tmp"
     if [ ! -s "$tmp" ]; then
       rm -f "$tmp"
-      fail "профиль $name не рендерится — измерение НЕ ВЫПОЛНЕНО (пустой рендер это не «чисто»)"
+      violation "профиль $name отрендерился ПУСТЫМ — измерение НЕ ВЫПОЛНЕНО (пустой рендер это не «чисто»)"
       continue
     fi
     if ! measured="$(extract "$tmp")" || [ -z "$measured" ]; then
       rm -f "$tmp"
-      fail "профиль $name: разбор рендера СОРВАЛСЯ — измерение НЕ ВЫПОЛНЕНО"
+      violation "профиль $name: разбор рендера СОРВАЛСЯ — измерение НЕ ВЫПОЛНЕНО"
       continue
     fi
     rm -f "$tmp"
@@ -238,9 +249,9 @@ verify_all() {
     while read -r svc count; do
       [ -z "$svc" ] && continue
       case "$count" in
-        "")  fail "$name/$svc: объекта развёртывания НЕТ в рендере профиля — сервис выпал из-под гейта, хотя переданную личность он принимать не перестал. Либо объект переименован (тогда карта измерения в $SCRIPT устарела), либо профиль его действительно не разворачивает — и тогда это надо объявить здесь с причиной, а не пропускать молча." ;;
-        -1)  fail "$name/$svc: ручка круга отправителей НЕ НАЙДЕНА в рендере — карта измерения в $SCRIPT устарела, и «не нашли» здесь означает «не проверили», а не «всё хорошо»" ;;
-        0)   fail "$name/$svc: круг отправителей ПУСТ — переданную личность примет ЛЮБОЙ пир с сертификатом внутреннего CA. Профиль обязан объявить круг по фактическим отправителям сервиса." ;;
+        "")  violation "$name/$svc: объекта развёртывания НЕТ в рендере профиля — сервис выпал из-под гейта, хотя переданную личность он принимать не перестал. Либо объект переименован (тогда карта измерения в $SCRIPT устарела), либо профиль его действительно не разворачивает — и тогда это надо объявить здесь с причиной, а не пропускать молча." ;;
+        -1)  violation "$name/$svc: ручка круга отправителей НЕ НАЙДЕНА в рендере — карта измерения в $SCRIPT устарела, и «не нашли» здесь означает «не проверили», а не «всё хорошо»" ;;
+        0)   violation "$name/$svc: круг отправителей ПУСТ — переданную личность примет ЛЮБОЙ пир с сертификатом внутреннего CA. Профиль обязан объявить круг по фактическим отправителям сервиса." ;;
         *)   ok; echo "  ✓ $name/$svc: круг сужен ($count записей)" ;;
       esac
     done <<EOF
@@ -279,9 +290,11 @@ EOF
     args=(); IFS=,
     for f in $files; do args+=(-f "$UMBRELLA/$f"); done
     unset IFS
-    r="$(helm template kacho-umbrella "$UMBRELLA" "${args[@]}" -f "$inj" 2>/dev/null)"
+    helm_try kacho-umbrella "$UMBRELLA" "${args[@]}" -f "$inj"
+    render_or_fatal "профиль $name с инъекцией (самопроверка)"
+    r="$HELM_OUT"
     if [ -z "$r" ]; then
-      echo "  ПРОВАЛ $name: рендер с инъекцией сорвался — профиль объявлен, но не измеряется"
+      echo "  ПРОВАЛ $name: рендер с инъекцией отдал ПУСТО — профиль объявлен, но не измеряется"
       rc=1; continue
     fi
     tmp="$(mktemp)"; printf '%s' "$r" >"$tmp"
@@ -315,11 +328,11 @@ compute|compute|env:KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS
 this-deployment-does-not-exist|ghost|env:KACHO_GHOST_AUTHZ_TRUSTED_FORWARDER_SANS
 "
   # Вывод уходит в ФАЙЛ, а не в подстановку команды: `$(verify_all)` исполняет
-  # функцию в подоболочке, и её ASSERTIONS/FAILURES наружу не возвращаются —
+  # функцию в подоболочке, и её N/FAILURES наружу не возвращаются —
   # утверждения о числах читали бы нули и проходили всегда. Поймано этой же
   # инъекцией: сообщение о нарушении печаталось, а счётчик оставался нулём.
   log="$(mktemp)"; trap 'rm -f "$inj" "$log"' EXIT
-  ASSERTIONS=0; FAILURES=0
+  N=0; FAILURES=0
   verify_all >"$log" 2>&1
   if [ "$FAILURES" -ge 1 ] && grep -q "ghost" "$log"; then
     echo "  ОК     отсутствующий объект развёртывания → нарушение ($FAILURES), сервис назван"
@@ -335,13 +348,13 @@ this-deployment-does-not-exist|ghost|env:KACHO_GHOST_AUTHZ_TRUSTED_FORWARDER_SAN
   MEASURED="
 compute|compute|env:KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS
 "
-  ASSERTIONS=0; FAILURES=0
+  N=0; FAILURES=0
   verify_all >"$log" 2>&1
   want=$(( $(count_rows "$PROFILES") * $(count_rows "$MEASURED") ))
-  if [ "$FAILURES" -eq 0 ] && [ "$ASSERTIONS" -eq "$want" ]; then
-    echo "  ОК     карта без призрака → молчание, утверждений $ASSERTIONS из $want"
+  if [ "$FAILURES" -eq 0 ] && [ "$N" -eq "$want" ]; then
+    echo "  ОК     карта без призрака → молчание, утверждений $N из $want"
   else
-    echo "  ПРОВАЛ законная карта: нарушений $FAILURES, утверждений $ASSERTIONS из $want"
+    echo "  ПРОВАЛ законная карта: нарушений $FAILURES, утверждений $N из $want"
     sed 's/^/         /' "$log"
     rc=1
   fi
@@ -372,23 +385,26 @@ echo "=== круг отправителей чужой личности: по п
 PROFILE_COUNT="$(count_rows "$PROFILES")"
 SERVICE_COUNT="$(count_rows "$MEASURED")"
 EXPECTED=$((PROFILE_COUNT * SERVICE_COUNT))
+EXPECTED_ASSERTIONS="$EXPECTED"
+[ "$EXPECTED" -ge 1 ] || fatal "профилей $PROFILE_COUNT × сервисов $SERVICE_COUNT = 0 — измерять нечего"
 
 verify_all
 
 echo
 echo "осмотрено: профилей $PROFILE_COUNT, сервисов $SERVICE_COUNT, ожидалось утверждений $EXPECTED"
-if [ "$FAILURES" -ne 0 ]; then
-  echo "FAILED: $SCRIPT — $FAILURES нарушений (утверждений выполнено $ASSERTIONS из $EXPECTED)"
-  exit 1
-fi
+[ "$FAILURES" -eq 0 ] \
+  || fail "$SCRIPT — $FAILURES нарушений (утверждений выполнено $N из $EXPECTED)"
 
 # Число утверждений СВЕРЯЕТСЯ, а не печатается. Каждый профиль обязан дать по
 # одному утверждению на каждый измеряемый сервис; недобор означает, что часть
 # карты не осматривалась — при нулевых нарушениях это выглядело бы как чистота.
-if [ "$ASSERTIONS" -ne "$EXPECTED" ]; then
-  echo "FAILED: $SCRIPT — утверждений выполнено $ASSERTIONS, ожидалось $EXPECTED"
-  echo "        (профилей $PROFILE_COUNT × сервисов $SERVICE_COUNT). Нарушений нет, но"
-  echo "        осмотрено НЕ ВСЁ — а это не то же самое, что «всё хорошо»."
-  exit 1
+# Тот же счёт делает `outcome_verdict` ниже; здесь он остаётся ради ИМЕНИ причины
+# (профилей × сервисов), которого общая реализация знать не может.
+if [ "$N" -ne "$EXPECTED" ]; then
+  {
+    echo "        (профилей $PROFILE_COUNT × сервисов $SERVICE_COUNT). Нарушений нет, но"
+    echo "        осмотрено НЕ ВСЁ — а это не то же самое, что «всё хорошо»."
+  } >&2
+  fail "$SCRIPT — утверждений выполнено $N, ожидалось $EXPECTED"
 fi
-echo "PASS: $SCRIPT ($ASSERTIONS assertions из $EXPECTED ожидаемых)"
+outcome_verdict "профилей $PROFILE_COUNT × сервисов $SERVICE_COUNT"
