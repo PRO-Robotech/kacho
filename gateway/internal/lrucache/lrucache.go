@@ -25,6 +25,7 @@ package lrucache
 import (
 	"container/list"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -37,6 +38,20 @@ type Cache[K comparable, V any] struct {
 	ttl     time.Duration
 	now     func() time.Time
 	gen     uint64
+
+	// evictions — записей, снятых ПОД ДАВЛЕНИЕМ ПОТОЛКА, и только их.
+	//
+	// Истечение окна сюда не считается, и это решение, а не недосмотр. Обе
+	// причины снимают запись, но отвечают на разные вопросы: оборот окна идёт и
+	// на пустом кэше, поэтому смешанная величина росла бы всегда и о нехватке
+	// места не сообщала бы ничего. Величина заводится ровно ради решения
+	// «хватает ли потолка» (#1221) — знаменателя чужого оборота в ней быть не
+	// должно. Сброс по отзыву (Invalidate*) — тем более: это решение, а не
+	// давление.
+	//
+	// Монотонна, поэтому её производная по времени и есть СКОРОСТЬ заполнения —
+	// то, чего однократная запись в журнал не даёт by construction.
+	evictions atomic.Uint64
 }
 
 type entry[K comparable, V any] struct {
@@ -208,6 +223,10 @@ func (c *Cache[K, V]) putLocked(key K, value V, ttl time.Duration) {
 		if back := c.order.Back(); back != nil {
 			c.order.Remove(back)
 			delete(c.items, back.Value.(*entry[K, V]).key)
+			// Считается ЗДЕСЬ и только здесь: это единственная ветка, где запись
+			// снимается из-за нехватки места. Ветки истечения и сброса по отзыву
+			// счётчика не трогают — см. поле `evictions`.
+			c.evictions.Add(1)
 		}
 	}
 }
@@ -267,6 +286,14 @@ func (c *Cache[K, V]) Len() int {
 	}
 	return n
 }
+
+// Evictions returns how many entries were dropped BECAUSE THE CEILING WAS FULL,
+// over the life of the cache. Monotonic, so its derivative over time is the
+// fill rate — the number a ceiling decision is actually made on.
+//
+// TTL turnover and revocation flushes are NOT counted: they answer a different
+// question, and folding them in would make this value grow on an idle cache.
+func (c *Cache[K, V]) Evictions() uint64 { return c.evictions.Load() }
 
 // Keys returns every key the cache is currently HOLDING, including entries
 // whose TTL has elapsed but which have not yet been lazily evicted.

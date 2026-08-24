@@ -308,6 +308,11 @@ func (l *BasicCredentialLane) noteCapacity() {
 		"entries", st.Entries,
 		"capacity", st.Capacity,
 		"window", BasicCredentialVerdictWindow.String(),
+		// Число вытеснений НА МОМЕНТ ЗАЩЁЛКИВАНИЯ. Имя серии здесь намеренно НЕ
+		// называется: оно жило бы вторым местом об одном предмете и разошлось бы
+		// с коллектором молча. Скорость читается сериями, а не журналом, — на то
+		// они и заведены (#1221).
+		"evictions", st.Evictions,
 		"consequence", "least-recently-used verdicts are evicted; an evicted credential is re-checked against the authority, never waved through")
 }
 
@@ -326,6 +331,18 @@ type BasicCredentialCacheStats struct {
 	// заполненный кэш продолжает отвечать правильно — он лишь чаще спрашивает
 	// авторитета.
 	AtCapacity bool
+	// Evictions — вердиктов, снятых ПОД ДАВЛЕНИЕМ ПОТОЛКА, за жизнь процесса.
+	//
+	// Третья величина заведена ради решения, которое по первым двум не
+	// принимается (#1221): защёлка отвечает «дошли ли до потолка», занятость —
+	// «сколько там сейчас», и ни одна не отвечает «насколько быстро растём».
+	// Между тем потолок, достигнутый раз в сутки, и потолок, перемалывающий
+	// сотню записей в минуту, требуют разного, а защёлка у них ОДНА И ТА ЖЕ.
+	//
+	// Величина монотонна, поэтому её производная по времени и есть искомая
+	// скорость. Оборот окна сюда не считается — иначе она росла бы и на
+	// незаполненном кэше (`lrucache.Cache.Evictions`).
+	Evictions uint64
 }
 
 // CacheStats отдаёт величины кэша. Читатель — оператор: заполнение обязано быть
@@ -335,6 +352,7 @@ func (l *BasicCredentialLane) CacheStats() BasicCredentialCacheStats {
 		Entries:    l.cache.Len(),
 		Capacity:   basicCredentialCacheMaxEntries,
 		AtCapacity: l.atCapacity.Load(),
+		Evictions:  l.cache.Evictions(),
 	}
 }
 
