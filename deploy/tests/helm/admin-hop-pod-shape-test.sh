@@ -77,15 +77,33 @@ set -uo pipefail
 . "$(dirname "$0")/stacks.sh"
 
 SCRIPT="$(basename "$0")"
-DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+DEPLOY_ROOT="$(cd "$HERE/../.." && pwd)"
 UMBRELLA="$DEPLOY_ROOT/helm/umbrella"
+
+# Три исхода — ОДНОЙ реализацией на весь каталог: 0 зелено · 1 находка о дереве ·
+# 2 условие не создано (плюс текст самого helm). Прежде «[<стек>] рендер не
+# собрался» накапливалось наравне с находками о форме пода и выходило кодом 1 —
+# тем же, каким объявляется настоящий дефект, — а несобранные зависимости умбреллы
+# читались как «терминатор не включён ни в одном профиле» (задача #1214).
+#
+# Счёт утверждений этот скрипт ведёт САМ (их число зависит от того, в скольких
+# профилях терминатор включён), поэтому `EXPECTED_ASSERTIONS` он не объявляет и
+# `outcome_verdict` не зовёт — вердикт печатается ниже своими числами. `assertion`
+# бумкает и общий счётчик, чтобы перепись при коде 2 была правдой, а не нулём.
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$HERE/outcome.sh"
+require_helm
 
 FAILURES=0
 ASSERTIONS=0
-fail() { echo "  ✗ $1"; FAILURES=$((FAILURES + 1)); }
-ok()   { echo "  ✓ $1"; }
+# `violation` НАКАПЛИВАЕТ находку и продолжает; `fail` из общей реализации выходит
+# кодом 1 немедленно. Разные глаголы — разные имена: пока накопитель звался `fail`,
+# два действия в одном каталоге назывались одинаково.
+violation() { echo "  ✗ $1"; FAILURES=$((FAILURES + 1)); }
+good() { echo "  ✓ $1"; }
 note() { echo "    $1"; }
-assertion() { ASSERTIONS=$((ASSERTIONS + 1)); }
+assertion() { ASSERTIONS=$((ASSERTIONS + 1)); ok; }
 
 SIDECAR_NAME="${SIDECAR_NAME:-admin-tls}"
 PROVIDER_NAME="${PROVIDER_NAME:-hydra}"
@@ -310,9 +328,9 @@ assert_shape() { # <метка> <вывод предиката>
   proxy_all="$(grep -c '^CONF_LOCATION=/|proxy$' <<<"$info")"
   static_locs="$(grep -c '^CONF_LOCATION=.*|static$' <<<"$info")"
   if [ "$locs" = "1" ] && [ "$proxy_all" = "1" ]; then
-    ok "[$tag] ПОЛОЖИТЕЛЬНОЕ: единственный location «/» проксирует — путь пробы «$ready_path» покрыт им"
+    good "[$tag] ПОЛОЖИТЕЛЬНОЕ: единственный location «/» проксирует — путь пробы «$ready_path» покрыт им"
   else
-    fail "[$tag] путь пробы «$ready_path» НЕ покрыт единственным проксирующим location'ом"
+    violation "[$tag] путь пробы «$ready_path» НЕ покрыт единственным проксирующим location'ом"
     note "location'ов: ${locs:-0}, из них «/»-проксирующих: $proxy_all"
     note "проба пода направлена СЮДА; если её путь обслуживает не проксирующий блок,"
     note "готовность перестаёт зависеть от провайдера."
@@ -322,9 +340,9 @@ assert_shape() { # <метка> <вывод предиката>
   # ── 2. ОТРИЦАТЕЛЬНОЕ: статического ответа нет ни в одном location ─────────
   assertion
   if [ "$static_locs" = "0" ]; then
-    ok "[$tag] ОТРИЦАТЕЛЬНОЕ: статического ответа у соседа нет ни на одном пути"
+    good "[$tag] ОТРИЦАТЕЛЬНОЕ: статического ответа у соседа нет ни на одном пути"
   else
-    fail "[$tag] у соседа появился ответ, НЕ ЗАВИСЯЩИЙ от апстрима ($static_locs шт.)"
+    violation "[$tag] у соседа появился ответ, НЕ ЗАВИСЯЩИЙ от апстрима ($static_locs шт.)"
     note "это первый инстинкт: в образце, с которого списан приём, путь здоровья"
     note "возвращал константу. Здесь это означает «под готов» при повисшем провайдере."
     grep '^CONF_LOCATION=.*|static$' <<<"$info" | sed 's/^/      /'
@@ -337,12 +355,12 @@ assert_shape() { # <метка> <вывод предиката>
     assertion
     case "$got" in
       httpGet:HTTPS:"$sidecar_port":/health/*)
-        ok "[$tag] проба $what: HTTPS на порт соседа $sidecar_port, путь ${got##*:}" ;;
+        good "[$tag] проба $what: HTTPS на порт соседа $sidecar_port, путь ${got##*:}" ;;
       none)
-        fail "[$tag] пробы $what НЕТ — умолчание чарта бьёт по адресу пода в"
+        violation "[$tag] пробы $what НЕТ — умолчание чарта бьёт по адресу пода в"
         note "административный порт, который слушает только петлю: под не станет готовым." ;;
       *)
-        fail "[$tag] проба $what имеет вид «$got»"
+        violation "[$tag] проба $what имеет вид «$got»"
         note "ожидалось httpGet:HTTPS:$sidecar_port:/health/… — через соседа, по TLS,"
         note "на путь здоровья ПРОВАЙДЕРА (не на путь, который сосед обслуживает сам)." ;;
     esac
@@ -351,16 +369,16 @@ assert_shape() { # <метка> <вывод предиката>
   # ── 4. Числа, которые обязаны быть ОДНИМ числом ───────────────────────────
   assertion
   if [ -n "$sidecar_port" ] && [ "$sidecar_port" = "$conf_listen" ]; then
-    ok "[$tag] порт соседа в поде и в его конфигурации — одно число ($sidecar_port)"
+    good "[$tag] порт соседа в поде и в его конфигурации — одно число ($sidecar_port)"
   else
-    fail "[$tag] порт соседа расходится: в поде «$sidecar_port», в конфигурации «$conf_listen»"
+    violation "[$tag] порт соседа расходится: в поде «$sidecar_port», в конфигурации «$conf_listen»"
   fi
 
   assertion
   if [ -n "$conf_up_port" ] && [ "$conf_up_port" = "$prov_admin" ]; then
-    ok "[$tag] апстрим соседа и административный листенер провайдера — одно число ($conf_up_port)"
+    good "[$tag] апстрим соседа и административный листенер провайдера — одно число ($conf_up_port)"
   else
-    fail "[$tag] РАССИНХРОН ПОРТОВ: сосед проксирует на «$conf_up_port», листенер провайдера «$prov_admin»"
+    violation "[$tag] РАССИНХРОН ПОРТОВ: сосед проксирует на «$conf_up_port», листенер провайдера «$prov_admin»"
     note "правка одной стороны не перекатывает под: конфигурация читается один раз при"
     note "старте, поэтому дерево и работающая система разъедутся МОЛЧА — до следующего"
     note "несвязанного рестарта, который унесёт конечные точки обоих сервисов."
@@ -368,37 +386,37 @@ assert_shape() { # <метка> <вывод предиката>
 
   assertion
   if [ "$conf_up_host" = "127.0.0.1" ]; then
-    ok "[$tag] апстрим соседа — петля этого же пода ($conf_up_host)"
+    good "[$tag] апстрим соседа — петля этого же пода ($conf_up_host)"
   else
-    fail "[$tag] апстрим соседа не петля, а «$conf_up_host» — открытый участок покидает под"
+    violation "[$tag] апстрим соседа не петля, а «$conf_up_host» — открытый участок покидает под"
   fi
 
   assertion
   if [ "$(val "$info" CFG_ADMIN_HOST)" = "127.0.0.1" ]; then
-    ok "[$tag] листенер провайдера слушает только петлю"
+    good "[$tag] листенер провайдера слушает только петлю"
   else
-    fail "[$tag] листенер провайдера слушает «$(val "$info" CFG_ADMIN_HOST)», а не петлю"
+    violation "[$tag] листенер провайдера слушает «$(val "$info" CFG_ADMIN_HOST)», а не петлю"
   fi
 
   assertion
   if [ "$svc_port" = "$sidecar_port:$sidecar_port" ]; then
-    ok "[$tag] Service терминатора целится в порт соседа ($svc_port)"
+    good "[$tag] Service терминатора целится в порт соседа ($svc_port)"
   else
-    fail "[$tag] Service терминатора: «$svc_port», а сосед слушает «$sidecar_port»"
+    violation "[$tag] Service терминатора: «$svc_port», а сосед слушает «$sidecar_port»"
   fi
 
   # ── 5. Привязка содержимого к шаблону пода — ДОКАЗАННАЯ, не счётная ───────
   assertion
   if [ -z "$digest" ]; then
-    fail "[$tag] в спецификации соседа НЕТ отпечатка его конфигурации"
+    violation "[$tag] в спецификации соседа НЕТ отпечатка его конфигурации"
     note "аннотацию шаблона пода через значения чарта провайдера добавить нельзя —"
     note "через шаблонизацию проходит только список дополнительных контейнеров."
     note "Поэтому отпечаток живёт в спецификации САМОГО соседа; без него правка"
     note "настроек даёт новый объект настроек и побайтово тот же шаблон пода."
   elif [ "$digest" = "$conf_sha" ]; then
-    ok "[$tag] отпечаток в спецификации соседа = sha256 его конфигурации (${digest:0:12}…)"
+    good "[$tag] отпечаток в спецификации соседа = sha256 его конфигурации (${digest:0:12}…)"
   else
-    fail "[$tag] отпечаток соседа «${digest:0:12}…» НЕ равен sha256 конфигурации «${conf_sha:0:12}…»"
+    violation "[$tag] отпечаток соседа «${digest:0:12}…» НЕ равен sha256 конфигурации «${conf_sha:0:12}…»"
     note "отпечаток, привязанный не к тому содержимому, — та же дыра, что и его отсутствие,"
     note "только незаметнее."
   fi
@@ -409,13 +427,13 @@ assert_shape() { # <метка> <вывод предиката>
     who="${pair%%:*}"; got="${pair#*:}"
     assertion
     if [ "$got" = "none" ]; then
-      fail "[$tag] у контейнера «$who» НЕТ пробы живости"
+      violation "[$tag] у контейнера «$who» НЕТ пробы живости"
       note "упавший процесс kubelet перезапустит сам, ЗАВИСШИЙ — нет: под останется"
       note "неготовым бессрочно, унося конечные точки обоих сервисов."
     elif [ "$got" = "absent-container" ]; then
-      fail "[$tag] контейнера «$who» в поде нет вовсе"
+      violation "[$tag] контейнера «$who» в поде нет вовсе"
     else
-      ok "[$tag] проба живости «$who»: $got"
+      good "[$tag] проба живости «$who»: $got"
     fi
   done
 
@@ -424,11 +442,11 @@ assert_shape() { # <метка> <вывод предиката>
     who="${pair%%:*}"; got="${pair#*:}"
     assertion
     if [ "$got" = "none" ] || [ "$got" = "absent-container" ]; then
-      fail "[$tag] у контейнера «$who» НЕТ предостановочного хука"
+      violation "[$tag] у контейнера «$who» НЕТ предостановочного хука"
       note "сигнал приходит контейнерам сразу, а снятие конечных точек идёт асинхронно —"
       note "на хвосте КАЖДОГО переката запросы ещё приезжают в умирающий под."
     else
-      ok "[$tag] предостановочный хук «$who»: $got"
+      good "[$tag] предостановочный хук «$who»: $got"
     fi
   done
 
@@ -438,16 +456,16 @@ assert_shape() { # <метка> <вывод предиката>
   plive="$(val "$info" PROVIDER_LIVENESS)"
   case "$plive" in
     *":$sidecar_port:"*|*":$sidecar_port")
-      fail "[$tag] проба живости провайдера идёт через порт СОСЕДА ($sidecar_port)"
+      violation "[$tag] проба живости провайдера идёт через порт СОСЕДА ($sidecar_port)"
       note "тогда сломанный сосед перезапускал бы провайдера — сцепление в ту сторону,"
       note "в которую его не хотели." ;;
     none|absent-container)
       note "[$tag] (проба живости провайдера отсутствует — учтено выше)"
-      ok "[$tag] независимость пробы живости провайдера: предмета нет" ;;
+      good "[$tag] независимость пробы живости провайдера: предмета нет" ;;
     *":$prov_public:"*)
-      ok "[$tag] проба живости провайдера идёт по его СОБСТВЕННОМУ листенеру ($prov_public)" ;;
+      good "[$tag] проба живости провайдера идёт по его СОБСТВЕННОМУ листенеру ($prov_public)" ;;
     *)
-      fail "[$tag] проба живости провайдера «$plive» — ни порт соседа, ни его публичный листенер ($prov_public)" ;;
+      violation "[$tag] проба живости провайдера «$plive» — ни порт соседа, ни его публичный листенер ($prov_public)" ;;
   esac
 }
 
@@ -625,7 +643,7 @@ PY
   checked=$((checked + 1))
   mk_render "$tmp/legit.yaml"
   if grep -q 'return' "$tmp/legit.yaml" && [ "$(val "$(analyze_render "$tmp/legit.yaml")" CONF_LOCATIONS)" = "1" ]; then
-    ok "слово «return» в комментарии конфигурации предикат НЕ считает статическим ответом"
+    good "слово «return» в комментарии конфигурации предикат НЕ считает статическим ответом"
   else
     echo "  ✗ предикат читает текст, а не исполняемую часть"; rc=1
   fi
@@ -640,7 +658,7 @@ PY
   checked=$((checked + 1))
   printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\n' >"$tmp/empty.yaml"
   if [ "$(val "$(analyze_render "$tmp/empty.yaml")" PROVIDER_POD)" = "" ]; then
-    ok "под провайдера не найден — предикат говорит это прямо, а не молчит"
+    good "под провайдера не найден — предикат говорит это прямо, а не молчит"
   else
     echo "  ✗ предикат выдумал под провайдера"; rc=1
   fi
@@ -654,8 +672,7 @@ fi
 # ═════════════════════════════════════════════════════════════════════════════
 # ОСНОВНОЙ ПРОХОД
 # ═════════════════════════════════════════════════════════════════════════════
-command -v helm >/dev/null 2>&1 || { echo "FATAL: нужен helm"; exit 2; }
-python3 -c 'import yaml' 2>/dev/null || { echo "FATAL: нужен python3 с PyYAML"; exit 2; }
+python3 -c 'import yaml' 2>/dev/null || fatal "нужен python3 с PyYAML — разбирать рендер нечем"
 
 # ПРОФИЛИ ЧИТАЮТСЯ ИЗ ЕДИНСТВЕННОЙ ТАБЛИЦЫ, а не перечислены здесь: расхождение
 # составов было слепой зоной, о которой никто бы не узнал, — и оно наступило.
@@ -673,12 +690,18 @@ while IFS= read -r line; do
   IFS=','; for f in $files; do args="$args -f $UMBRELLA/$f"; done; unset IFS
 
   render="$work/$stack.yaml"
+  # Отказ рендера — УСЛОВИЕ прогона (несобранные зависимости умбреллы, нет helm),
+  # а не свойство формы пода: код 2 и текст, который сказал сам helm. Прежде он
+  # копился как находка, а на дереве без зависимостей давал вердикт «терминатор не
+  # включён НИ В ОДНОМ профиле» — утверждение о дереве, которого никто не измерял.
+  # Прежде рендер шёл `cd "$UMBRELLA" && helm template … .` в ПОДОБОЛОЧКЕ; здесь
+  # чарт назван путём, потому что HELM_OUT/HELM_RC общей реализации из подоболочки
+  # наружу не выходят. Аргументы `-f` абсолютные, поэтому рабочий каталог на исход
+  # не влияет.
   # shellcheck disable=SC2086
-  if ! (cd "$UMBRELLA" && helm template kacho-umbrella . $args --namespace kacho) >"$render" 2>"$work/$stack.err"; then
-    assertion; fail "[$stack] рендер не собрался — утверждения НЕ ВЫПОЛНЕНЫ, а не чисты"
-    sed 's/^/        /' "$work/$stack.err" | tail -4
-    continue
-  fi
+  helm_try kacho-umbrella "$UMBRELLA" $args --namespace kacho
+  render_or_fatal "стек $stack"
+  printf '%s\n' "$HELM_OUT" >"$render"
 
   info="$(analyze_render "$render")"
   if [ "$(val "$info" CONF_PRESENT)" != "yes" ]; then
@@ -710,13 +733,18 @@ assertion
 base="$work/roll-base.yaml"; ctrl="$work/roll-ctrl.yaml"; bumped="$work/roll-bumped.yaml"
 render_prod() { # <файл> [доп. аргументы]
   local f="$1"; shift
-  (cd "$UMBRELLA" && helm template kacho-umbrella . -f "$UMBRELLA/values.prod.yaml" \
-     --namespace kacho "$@") >"$f" 2>/dev/null
+  helm_try kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.prod.yaml" \
+     --namespace kacho "$@"
+  render_or_fatal "боевой профиль (поведенческая половина)"
+  printf '%s\n' "$HELM_OUT" >"$f"
 }
-if ! render_prod "$base" || ! render_prod "$ctrl" \
-   || ! render_prod "$bumped" --set global.kacho.hydraAdminTls.upstreamTimeout=31s; then
-  fail "рендер боевого профиля не собрался — перекат НЕ ПРОВЕРЕН, а не подтверждён"
-else
+# Отказ любого из трёх рендеров сюда не доходит: render_prod выходит кодом 2
+# («условие не создано») с текстом helm. Прежде он копился находкой наравне с
+# «перекат не подтверждён» — двумя разными вещами под одним кодом.
+render_prod "$base"
+render_prod "$ctrl"
+render_prod "$bumped" --set global.kacho.hydraAdminTls.upstreamTimeout=31s
+{
   roll="$(python3 - "$base" "$ctrl" "$bumped" <<'PY'
 import sys, yaml, json
 
@@ -754,34 +782,34 @@ PY
   bumped_r="$(val "$roll" BUMPED)"
   note "нестабильные сами по себе аннотации (исключены по контрольному рендеру): ${noisy:--}"
   if [ "$(val "$roll" RESULT)" = "no-pod-template" ]; then
-    fail "шаблон пода провайдера не найден в одном из рендеров — сравнивать НЕЧЕГО"
+    violation "шаблон пода провайдера не найден в одном из рендеров — сравнивать НЕЧЕГО"
   elif [ "$control" != "equal" ]; then
-    fail "КОНТРОЛЬ не сошёлся: два рендера с ОДНИМИ значениями дали разные шаблоны пода"
+    violation "КОНТРОЛЬ не сошёлся: два рендера с ОДНИМИ значениями дали разные шаблоны пода"
     note "значит сравнение ничего не различает, и «шаблон изменился» истинно всегда."
   elif [ "$bumped_r" = "differs" ]; then
-    ok "контроль равен, а правка формирующего значения меняет шаблон пода → под перекатится"
+    good "контроль равен, а правка формирующего значения меняет шаблон пода → под перекатится"
   else
-    fail "правка настроек соседа НЕ изменила шаблон пода — переката не будет"
+    violation "правка настроек соседа НЕ изменила шаблон пода — переката не будет"
     note "nginx читает конфигурацию ОДИН РАЗ при старте: живой терминатор останется"
     note "со старой, а любой гейт, читающий рендер, отчитается новым значением."
   fi
-fi
+}
 
 echo
 echo "── объём осмотренного ──"
 echo "  стеков отрендерено: $stacks_total; из них с терминатором: $stacks_with_terminator"
+if [ "$stacks_total" -eq 0 ]; then
+  fatal "таблица стеков не дала ни одной строки — обходить нечего"
+fi
 if [ "$stacks_with_terminator" -eq 0 ]; then
-  echo
-  echo "FAIL: терминатор не включён НИ В ОДНОМ профиле — проверять было нечего."
-  echo "      Пустой результат НЕ означает «всё хорошо»."
-  exit 1
+  echo >&2
+  echo "      Пустой результат НЕ означает «всё хорошо»." >&2
+  fail "терминатор не включён НИ В ОДНОМ профиле (осмотрено стеков $stacks_total) — проверять было нечего"
 fi
 
 echo
 echo "=== вердикт: утверждений $ASSERTIONS, находок $FAILURES ==="
-if [ "$ASSERTIONS" -eq 0 ]; then
-  echo "FAIL: не выполнено НИ ОДНОГО утверждения — это провал, а не чистота."
-  exit 1
-fi
-[ "$FAILURES" -ne 0 ] && { echo "FAIL: $SCRIPT"; exit 1; }
-echo "PASS: $SCRIPT"
+[ "$ASSERTIONS" -gt 0 ] \
+  || fail "не выполнено НИ ОДНОГО утверждения — это провал, а не чистота"
+[ "$FAILURES" -eq 0 ] || fail "$SCRIPT — находок $FAILURES (перечень выше)"
+echo "PASS: $SCRIPT ($ASSERTIONS утверждений; стеков $stacks_total, из них с терминатором $stacks_with_terminator; рендеров helm: $RENDERS)"

@@ -36,22 +36,31 @@ set -euo pipefail
 # зелёного добавить не может.
 line_in() { [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]; }
 
-SCRIPT="$(basename "$0")"
-DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+DEPLOY_ROOT="$(cd "$HERE/../.." && pwd)"
 REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 CHART="$DEPLOY_ROOT/helm/umbrella/charts/kacho-iam"
 PROD="$DEPLOY_ROOT/helm/umbrella/values.prod.yaml"
 GATE="$DEPLOY_ROOT/scripts/assert-production-posture.sh"
 
+# Три исхода — ОДНОЙ реализацией на весь каталог: 0 зелено · 1 находка о дереве ·
+# 2 условие не создано (плюс текст самого helm). Прежде отказ рендера соседнего
+# чарта объявлялся находкой — тем же кодом 1, что и настоящий дефект круга
+# отправителей, — и вызывающий не мог их различить машинно (задача #1214).
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$HERE/outcome.sh"
+EXPECTED_ASSERTIONS=9
+require_helm
+command -v jq >/dev/null 2>&1 \
+  || fatal "нужен jq — вердикт гейта посадки прогоняется его же программой, переписать её здесь нельзя"
+
 GATEWAY_SAN="spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 
-N=0
-fail() { echo "FAIL: $1"; exit 1; }
-ok() { N=$((N + 1)); }
-
-[ -d "$CHART" ] || fail "iam chart not found at $CHART"
-[ -f "$PROD" ] || fail "values.prod.yaml not found at $PROD"
-[ -f "$GATE" ] || fail "posture gate not found at $GATE"
+# Отсутствие чарта, профиля или самого гейта — УСЛОВИЕ прогона (дерево урезано,
+# зеркало собрано неполно), а не свойство того, что мы проверяем.
+[ -d "$CHART" ] || fatal "чарта iam нет по пути $CHART — судить не о чем"
+[ -f "$PROD" ] || fatal "values.prod.yaml нет по пути $PROD — судить не о чем"
+[ -f "$GATE" ] || fatal "гейта посадки нет по пути $GATE — судить не о чем"
 
 # rendered_list <render> — записи списка trusted-forwarder-sans из отрендеренного
 # config.yaml. Читаем текстом, а не через yq: в разных средах под этим именем
@@ -71,33 +80,40 @@ rendered_list() {
 # молчаливый: пир остаётся собой, переданная им личность снимается, и его чтение
 # отвечает как неаутентифицированному.
 #
-# ВЫЗЫВАЕТСЯ ТОЛЬКО ЧЕРЕЗ peer_san_or_empty (ниже): под `set -e` присваивание из
-# подстановки, чей конвейер отказал, ОБРЫВАЕТ скрипт — и страж «чарт не отрендерил
-# сертификат» ниже становился недостижимым. Наблюдалось живьём: чарт реестра
-# перестал рендериться без учётных данных хранилища слоёв, конвейер отдал отказ, и
-# весь тест вышел кодом 1 БЕЗ ЕДИНОЙ СТРОКИ вывода — «не выполнилось», неотличимое
-# от «упало по существу».
-peer_san() {
+# РЕЗУЛЬТАТ — В ГЛОБАЛЬНОЙ ПЕРЕМЕННОЙ, А НЕ В stdout, и это не стиль. Прежде
+# значение забиралось подстановкой; под `set -e` присваивание из подстановки, чей
+# конвейер отказал, ОБРЫВАЕТ скрипт — и страж «чарт не отрендерил сертификат» ниже
+# становился недостижимым. Наблюдалось живьём: чарт реестра перестал рендериться
+# без учётных данных хранилища слоёв, конвейер отдал отказ, и весь тест вышел кодом
+# 1 БЕЗ ЕДИНОЙ СТРОКИ вывода — «не выполнилось», неотличимое от «упало по существу».
+# Обходной приём «|| true» это лечил наполовину: отказ рендера становился ПУСТЫМ
+# значением, то есть по-прежнему объявлялся находкой о дереве. Теперь рендер идёт
+# через общую реализацию исходов, и код отказа у него свой (2).
+PEER_SAN=""
+peer_san() { # peer_san <chart-path> → $PEER_SAN
   # Заглушки обязательных значений: без них рендер падает ещё до сертификата.
   #   db.password       — у части чартов;
   #   zot.auth.*        — чарт реестра ОТКАЗЫВАЕТ в рендере без учётных данных
   #                       хранилища слоёв (развернуть открытое он не умеет).
   # К предмету проверки (кто вправе передавать чужую личность) отношения не имеют.
-  helm template x "$1" --namespace kacho --set mtls.enable=true --set db.password=x \
+  helm_try x "$1" --namespace kacho --set mtls.enable=true --set db.password=x \
     --set zot.auth.username=selftest --set zot.auth.password=selftest \
-    --show-only templates/certificate.yaml 2>/dev/null \
-    | grep -oE 'spiffe://[^"]+' | head -1
+    --show-only templates/certificate.yaml
+  # ДВА РАЗНЫХ ВОПРОСА, и раньше они давали один ответ: «чарт не отрендерился»
+  # (условие прогона) и «отрендерился, а сертификата в нём нет» (свойство дерева).
+  # Первое уходит кодом 2 с текстом helm, второе — кодом 1 у вызывающего.
+  render_or_fatal "сертификат чарта $1"
+  local hits
+  hits="$(grep -oE 'spiffe://[^"]+' <<<"$HELM_OUT" || true)"
+  PEER_SAN="${hits%%$'\n'*}"
 }
-
-# peer_san_or_empty <chart-path> — то же, но отказ рендера возвращает ПУСТО вместо
-# обрыва скрипта, чтобы страж ниже мог назвать чарт по имени.
-peer_san_or_empty() { peer_san "$1" || true; }
 
 # ── 1. Дефолт чарта непуст и совпадает с сертификатами, которые выдают соседи ─
 # Круг установлен по рёбрам (кто зовёт ProjectService.Get / Check под личностью
 # конечного пользователя), а сами строки — по чартам этих соседей.
-DEFAULT_RENDER="$(helm template iam "$CHART" --show-only templates/configmap.yaml 2>/dev/null)" \
-  || fail "iam chart does not render"
+helm_try iam "$CHART" --show-only templates/configmap.yaml
+render_or_fatal "чарт iam, дефолт"
+DEFAULT_RENDER="$HELM_OUT"
 def_list="$(rendered_list "$DEFAULT_RENDER")"
 [ -n "$def_list" ] \
   || fail "trusted-forwarder-sans отсутствует в конфиге пода ИЛИ пуст по умолчанию: профиль, не задавший ручку, отгрузил бы «доверяем любому пиру с сертификатом» (в боевом режиме — отказ старта)"
@@ -106,8 +122,8 @@ for chart in "$REPO_ROOT/gateway/deploy" "$REPO_ROOT/services/vpc/deploy" \
              "$REPO_ROOT/services/compute/deploy" "$REPO_ROOT/services/nlb/deploy" \
              "$REPO_ROOT/services/storage/deploy" "$REPO_ROOT/services/registry/deploy" \
              "$DEPLOY_ROOT/helm/umbrella/charts/kacho-geo"; do
-  san="$(peer_san_or_empty "$chart")"
-  [ -n "$san" ] || fail "чарт $chart не отрендерил сертификат — тест разошёлся с деревом, обнови его"
+  peer_san "$chart"; san="$PEER_SAN"
+  [ -n "$san" ] || fail "чарт $chart отрендерился, но сертификата в нём нет — тест разошёлся с деревом, обнови его"
   line_in "$def_list" "$san" \
     || fail "дефолт iam не содержит $san (чарт $chart) — этот пир перестал бы говорить за пользователя, и его путь под личностью тенанта молча отвечал бы как неаутентифицированный"
   EXPECTED_SANS="$EXPECTED_SANS$san
@@ -137,8 +153,10 @@ ok
 # Чарт не решает за стражу: пусто он отрендерит, а откажет в старте боевой режим
 # (Config.Validate → validateProductionTrustedForwarders). Так «пусто» остаётся
 # наблюдаемым, а не подменяется чартом на дефолт втихую.
-EMPTY_RENDER="$(helm template iam "$CHART" --set 'config.authn.trustedForwarderSANs=[]' \
-  --show-only templates/configmap.yaml 2>/dev/null)" || fail "render with an empty override failed"
+helm_try iam "$CHART" --set 'config.authn.trustedForwarderSANs=[]' \
+  --show-only templates/configmap.yaml
+render_or_fatal "чарт iam, явно пустая ручка"
+EMPTY_RENDER="$HELM_OUT"
 [ -z "$(rendered_list "$EMPTY_RENDER")" ] \
   || fail "явно пустая ручка отрендерилась непустой — чарт подменяет намерение оператора"
 ok
@@ -163,11 +181,14 @@ first_matching() {
   done <<<"$1"
   return 0
 }
-RENDER_A="$(helm template iam "$CHART" --show-only templates/deployment.yaml 2>/dev/null)" \
-  || fail "deployment does not render"
+helm_try iam "$CHART" --show-only templates/deployment.yaml
+render_or_fatal "чарт iam, шаблон пода"
+RENDER_A="$HELM_OUT"
 POD_ANNOT_A="$(first_matching "$RENDER_A" 'kacho.cloud/config-checksum:')"
-RENDER_B="$(helm template iam "$CHART" --set 'config.authn.trustedForwarderSANs[0]=spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway' \
-  --show-only templates/deployment.yaml 2>/dev/null)"
+helm_try iam "$CHART" --set 'config.authn.trustedForwarderSANs[0]=spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway' \
+  --show-only templates/deployment.yaml
+render_or_fatal "чарт iam, шаблон пода со сменённым списком"
+RENDER_B="$HELM_OUT"
 POD_ANNOT_B="$(first_matching "$RENDER_B" 'kacho.cloud/config-checksum:')"
 [ -n "$POD_ANNOT_A" ] \
   || fail "у пода нет аннотации с хешем конфига — правка списка не перекатит его, и процесс останется со старой посадкой"
@@ -182,8 +203,9 @@ ok
 IAM_BLOCK="$(mktemp)"; trap 'rm -f "$IAM_BLOCK"' EXIT
 awk '/^kacho-iam:[[:space:]]*$/{i=1;next} i&&/^[A-Za-z0-9_.-]+:/{exit} i{sub(/^  /,"");print}' "$PROD" > "$IAM_BLOCK"
 [ -s "$IAM_BLOCK" ] || fail "в $PROD нет блока kacho-iam — тест разошёлся с профилем"
-PROD_RENDER="$(helm template iam "$CHART" -f "$IAM_BLOCK" --show-only templates/configmap.yaml 2>/dev/null)" \
-  || fail "iam chart does not render with the production profile"
+helm_try iam "$CHART" -f "$IAM_BLOCK" --show-only templates/configmap.yaml
+render_or_fatal "чарт iam с боевым профилем"
+PROD_RENDER="$HELM_OUT"
 prod_list="$(rendered_list "$PROD_RENDER")"
 # Та же обратная проверка на боевом профиле: круг не шире фактических отправителей.
 # Здесь стояло требование держать в профиле запись под компонент вне дерева; предмета
@@ -196,7 +218,7 @@ for chart in "$REPO_ROOT/gateway/deploy" "$REPO_ROOT/services/vpc/deploy" \
              "$REPO_ROOT/services/compute/deploy" "$REPO_ROOT/services/nlb/deploy" \
              "$REPO_ROOT/services/storage/deploy" "$REPO_ROOT/services/registry/deploy" \
              "$DEPLOY_ROOT/helm/umbrella/charts/kacho-geo"; do
-  san="$(peer_san_or_empty "$chart")"
+  peer_san "$chart"; san="$PEER_SAN"
   line_in "$prod_list" "$san" \
     || fail "боевой профиль потерял отправителя $san (чарт $chart) — его путь под личностью пользователя встанет"
 done
@@ -261,4 +283,4 @@ v="$(verdict "$(line '')" true)"
 case "$v" in *trusted_forwarders*) ;; *) fail "самоотчёт без поля прошёл вердикт: '$v'";; esac
 ok
 
-echo "$SCRIPT: OK ($N assertions)"
+outcome_verdict "измерений в программе вердикта: $(printf '%s\n' "$judged" | grep -c .)"

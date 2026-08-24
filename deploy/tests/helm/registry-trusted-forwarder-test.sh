@@ -23,23 +23,32 @@
 # здесь — копия разъехалась бы с оригиналом и снова ничего не проверяла).
 set -euo pipefail
 
-SCRIPT="$(basename "$0")"
-DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+DEPLOY_ROOT="$(cd "$HERE/../.." && pwd)"
 REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
 CHART="$REPO_ROOT/services/registry/deploy"
 PROD="$DEPLOY_ROOT/helm/umbrella/values.prod.yaml"
 GATE="$DEPLOY_ROOT/scripts/assert-production-posture.sh"
 
+# Три исхода — ОДНОЙ реализацией на весь каталог: 0 зелено · 1 находка о дереве ·
+# 2 условие не создано (плюс текст самого helm). Прежде отказ рендера и нехватка
+# инструмента объявлялись находкой — тем же кодом 1, что и настоящий дефект
+# посадки, — и вызывающий не мог их различить машинно (задача #1214).
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$HERE/outcome.sh"
+EXPECTED_ASSERTIONS=9
+require_helm
+command -v jq >/dev/null 2>&1 \
+  || fatal "нужен jq — вердикт гейта посадки прогоняется его же программой, переписать её здесь нельзя"
+
 GATEWAY_SAN="spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 KNOB="KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS"
 
-N=0
-fail() { echo "FAIL: $1"; exit 1; }
-ok() { N=$((N + 1)); }
-
-[ -d "$CHART" ] || fail "registry chart not found at $CHART"
-[ -f "$PROD" ] || fail "values.prod.yaml not found at $PROD"
-[ -f "$GATE" ] || fail "posture gate not found at $GATE"
+# Отсутствие чарта, профиля или самого гейта — УСЛОВИЕ прогона (дерево урезано,
+# зеркало собрано неполно), а не свойство того, что мы проверяем.
+[ -d "$CHART" ] || fatal "чарта registry нет по пути $CHART — судить не о чем"
+[ -f "$PROD" ] || fatal "values.prod.yaml нет по пути $PROD — судить не о чем"
+[ -f "$GATE" ] || fatal "гейта посадки нет по пути $GATE — судить не о чем"
 
 # env_val <render> — значение ручки в контейнере (пусто, если её нет). Читаем
 # текстом, а не через yq: в разных средах под этим именем стоят два разных
@@ -73,8 +82,9 @@ ZOT_STUB=(--set zot.auth.username=selftest --set zot.auth.password=selftest)
 # Единственный законный отправитель установлен по графу импортов: заглушки
 # pkg/api/kacho/cloud/registry/v1 вне самого сервиса импортирует только
 # gateway/internal/restmux, и он же держит адреса ОБОИХ листенеров.
-DEFAULT_RENDER="$(helm template registry "$CHART" "${ZOT_STUB[@]}" --show-only templates/deployment.yaml 2>/dev/null)" \
-  || fail "registry chart does not render"
+helm_try registry "$CHART" "${ZOT_STUB[@]}" --show-only templates/deployment.yaml
+render_or_fatal "чарт registry, дефолт"
+DEFAULT_RENDER="$HELM_OUT"
 def_val="$(env_val "$DEFAULT_RENDER")"
 [ -n "$def_val" ] && [ "$def_val" != "null" ] \
   || fail "$KNOB отсутствует у пода ИЛИ пуст по умолчанию: профиль, не задавший ручку, отгрузил бы «доверяем любому пиру с сертификатом» (в боевом режиме — отказ старта)"
@@ -86,8 +96,10 @@ ok
 # Чарт не решает за стражу: пусто он отрендерит, а откажет в старте боевой режим
 # (Config.Validate → grpcsrv.TrustedForwarders.Require). Так «пусто» остаётся
 # наблюдаемым, а не подменяется чартом на дефолт втихую.
-EMPTY_RENDER="$(helm template registry "$CHART" "${ZOT_STUB[@]}" --set authz.trustedForwarderSANs="" \
-  --show-only templates/deployment.yaml 2>/dev/null)" || fail "render with an empty override failed"
+helm_try registry "$CHART" "${ZOT_STUB[@]}" --set authz.trustedForwarderSANs="" \
+  --show-only templates/deployment.yaml
+render_or_fatal "чарт registry, явно пустая ручка"
+EMPTY_RENDER="$HELM_OUT"
 empty_val="$(env_val "$EMPTY_RENDER")"
 [ -z "$empty_val" ] || [ "$empty_val" = "null" ] \
   || fail "явно пустая ручка отрендерилась как '$empty_val' — чарт подменяет намерение оператора"
@@ -121,8 +133,8 @@ JQPROG="${JQPROG%\')\"}"
 #
 # Перечень измерений ВЫВОДИТСЯ из программы, а не выписывается: выписанный был бы
 # второй копией и разошёлся бы с ней молча — тем же способом, каким разошлась эта.
-# `identity_provider` — «n/a»: у реестра нет человека, которого он проверял бы;
-# из трёх принимаемых гейтом значений это единственное верное для него.
+# `identity_provider` — «n/a»: у реестра нет человека, которого он проверял бы; из
+# трёх принимаемых гейтом значений это единственное верное для него.
 line() { # line <trusted_forwarders-фрагмент>
   printf '{"msg":"boot security posture","service":"registry","auth_mode":"production-strict",'
   printf '"db_sslmode":"require","public_mtls":true,"internal_mtls":true,"authz_check":true,'
@@ -162,4 +174,4 @@ v="$(verdict "$(line ',"trusted_forwarders":false')" false)"
 [ -z "$v" ] || fail "сервис вне списка градуируемых забракован по чужому измерению: '$v'"
 ok
 
-echo "$SCRIPT: OK ($N assertions)"
+outcome_verdict "измерений в программе вердикта: $(printf '%s\n' "$judged" | grep -c .)"
