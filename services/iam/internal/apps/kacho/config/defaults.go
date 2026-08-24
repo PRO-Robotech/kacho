@@ -38,6 +38,14 @@ func RegisterDefaults(v *viper.Viper) {
 	// (`global.kacho.registry.serviceAud`), см. registry_token.go. Незаданное
 	// при поднятом слушателе отвергается стражем старта.
 	v.SetDefault("api-server.registry-token.ttl", 5*time.Minute)
+	// ОКНО ПЕРЕХОДА #1143 — ПУСТО, ТО ЕСТЬ ЗАКРЫТО. Умолчание объявляется здесь
+	// ЯВНО, хотя пустая строка и есть нулевое значение поля: viper связывает с
+	// переменной окружения только те ключи, о которых знает, и ключ без
+	// объявленного умолчания даёт документированную ручку БЕЗ ЧИТАТЕЛЯ —
+	// оператор её задаёт, а исход загрузки не меняется. Держит это
+	// TestDocumentedEnvName_KeyMaterialWindowUntil.
+	// ENV: KACHO_IAM_API_SERVER__REGISTRY_TOKEN__KEY_MATERIAL_WINDOW_UNTIL
+	v.SetDefault("api-server.registry-token.key-material-window-until", "")
 	// Cluster-INTERNAL Hydra-JWKS proxy HTTP listener (`GET /.well-known/jwks.json`)
 	// — a SEPARATE cluster-internal port (default `tcp://0.0.0.0:9097`), served ONLY
 	// on the kacho-iam-internal Service (never external, ban #6) over one-way

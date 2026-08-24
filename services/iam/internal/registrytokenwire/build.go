@@ -59,6 +59,26 @@ type BuildConfig struct {
 	// TokenTTL — срок выпускаемого токена контура. Слагаемое арифметики
 	// отсрочки снятия ключа, поэтому объявлено числом, а не выведено.
 	TokenTTL time.Duration
+
+	// KeyMaterialWindowUntil — ОКНО ПЕРЕХОДА ЛОМАЮЩЕГО ИЗМЕНЕНИЯ #1143:
+	// мгновение, до которого полоса ПРОДОЛЖАЕТ принимать ключевой материал в
+	// поле пароля наряду с базовым токеном доступа. Нулевое — окна нет
+	// (умолчание, fail-closed).
+	//
+	// Приезжает РАЗОБРАННЫМ из настройки: разбор живёт у стража старта, а не
+	// здесь, иначе неразборчивое значение доживало бы до первого входа клиента.
+	// Разбор нормы, цена обоих умолчаний и предикат снятия —
+	// registry_token/key_material_window.go.
+	KeyMaterialWindowUntil time.Time
+
+	// CredentialKindObserver — счётчик исходов полос по виду предъявленного
+	// удостоверения. nil → счёта нет; решения полосы это не меняет.
+	//
+	// Единственное НАБЛЮДАЕМОЕ различие между закрытым и открытым окном: наружу
+	// оба отвечают одинаково (различимость снаружи была бы оракулом посадки).
+	// Без него оператор не знает ни скольких ломает закрытое окно, ни когда
+	// открытое можно закрыть.
+	CredentialKindObserver registrytokenuc.CredentialKindObserver
 }
 
 // Build assembles the registry `/iam/token` shim from a pgx pool: the authority
@@ -125,6 +145,26 @@ func Build(pool *pgxpool.Pool, cfg BuildConfig) (*http.ServeMux, error) {
 	// КАЖДЫЙ вход в реестр, и заметить это можно было бы только по жалобе
 	// клиента.
 	useCase = useCase.WithBasicCredentialResolver(kachopg.NewBasicCredentialRepo(pool))
+
+	// СЧЁТЧИК ИСХОДОВ — до окна: он обязан считать и отказы прежнему виду,
+	// то есть работать ИМЕННО ТОГДА, когда окна нет. Счётчик, провязываемый
+	// вместе с окном, молчал бы ровно на той посадке, ради которой заведён.
+	useCase = useCase.WithCredentialKindObserver(cfg.CredentialKindObserver)
+
+	// ОКНО ПЕРЕХОДА #1143. Мгновение и проверяющий уезжают ОДНИМ вызовом:
+	// порознь они дают два неисправных состояния, и оба выглядят настроенными
+	// (разбор — registry_token/key_material_window.go).
+	//
+	// Проверяющий строится ТОЛЬКО при объявленном окне: собранный безусловно,
+	// он был бы полосой приёма снятого вида, ждущей одного флажка, — а
+	// объявленное и неисполнимое окно, наоборот, обещало бы оператору приём,
+	// которого нет.
+	if !cfg.KeyMaterialWindowUntil.IsZero() {
+		useCase = useCase.WithKeyMaterialWindow(
+			cfg.KeyMaterialWindowUntil,
+			registrytokenuc.NewSAKeyValidator(NewSAClientLookup(kachopg.NewSAOAuthClientRepo(pool))),
+		)
+	}
 
 	if cfg.Signer != nil {
 		// Контур переводится на СВОЮ чеканку. Прежний издатель на нём больше
