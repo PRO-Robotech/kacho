@@ -300,6 +300,14 @@ func TestAuthJWKS_DisallowedAlg_Rejected(t *testing.T) {
 }
 
 // --- Scenario E: JWKS unreachable → fail-closed reject (not anonymous) -----
+//
+// ЗДЕСЬ УТВЕРЖДАЛСЯ КОД 16, И ОН СМЕНИЛСЯ НА 14 (#1194). Предмет сценария —
+// «недостижимый набор ключей НЕ пропускает запрос анонимно» — не изменился и
+// закреплён здесь по-прежнему: отказ есть, обработчик не исполняется. Изменилась
+// КЛАССИФИКАЦИЯ отказа: недоступность источника ключей — сбой зависимости
+// («повтори позже», UNAVAILABLE), а не приговор удостоверению предъявителя
+// («войди заново», UNAUTHENTICATED). Разбор и парный положительный контроль —
+// auth_keysource_unavailable_test.go.
 
 func TestAuthJWKS_JWKSUnreachable_FailClosed(t *testing.T) {
 	fix := newJWKSFixture(t, "RS256")
@@ -322,7 +330,8 @@ func TestAuthJWKS_JWKSUnreachable_FailClosed(t *testing.T) {
 	_, verr := auth.Unary()(ctx, nil, &grpc.UnaryServerInfo{FullMethod: "/iam/WhoAmI"}, handler)
 	require.Error(t, verr, "JWKS unreachable + empty cache must fail-closed, not anonymous")
 	st, _ := status.FromError(verr)
-	assert.Equal(t, codes.Unauthenticated, st.Code())
+	assert.Equal(t, codes.Unavailable, st.Code(),
+		"источник ключей не ответил — это сбой зависимости, а не негодное удостоверение (#1194)")
 	assert.False(t, called)
 }
 
