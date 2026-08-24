@@ -15,6 +15,7 @@
 // (api-gateway допускает анонимный доступ). Operations.principal_* — пусто/stub.
 
 import { api } from "./client";
+import type { CredentialKind } from "@shared/lib/tokens-util";
 import { snakeToCamelPath } from "@shared/lib/update-mask";
 
 // ====== IAM-1 redesign: dotted tier / scope discriminators ======
@@ -125,12 +126,18 @@ export interface ServiceAccountOAuthClient {
   last_used_at?: string;
   created_by_user_id?: string;
   created_at?: string;
+  /** Вид удостоверения — ЧЕМ оно себя предъявляет. От него зависит смысл
+   *  пустого `expires_at`: у ключевой пары «бессрочно», у секрета такой строки
+   *  не бывает вовсе. */
+  credential_kind?: CredentialKind;
 }
 export interface ListSAKeysResponse {
   keys?: ServiceAccountOAuthClient[];
   next_page_token?: string;
 }
-// Ответ Issue-операции (Operation.response). Несет одноразовый секрет private_key_pem.
+// Ответ Issue-операции (Operation.response). Несёт ОДНОРАЗОВОЕ значение, и форм
+// у него ДВЕ: `private_key_pem` у ключевой пары либо `secret` у секрета —
+// заполнено ровно одно, и решает это вид.
 export interface IssueSAKeyResponse {
   key?: ServiceAccountOAuthClient;
   client_id?: string;
@@ -139,6 +146,8 @@ export interface IssueSAKeyResponse {
   algorithm?: string;
   key_id?: string;
   audiences?: string[];
+  /** ПОКАЗЫВАЕТСЯ ОДИН РАЗ. Заполнен ТОЛЬКО у вида SECRET. */
+  secret?: string;
 }
 // Тело Issue-запроса. created_by_user_id проставляет backend из принципала — не шлем.
 export interface IssueSAKeyBody {
@@ -164,12 +173,15 @@ export interface UserOAuthClient {
   last_used_at?: string;
   created_by_user_id?: string;
   created_at?: string;
+  /** Вид удостоверения — см. `ServiceAccountOAuthClient.credential_kind`. */
+  credential_kind?: CredentialKind;
 }
 export interface ListUserTokensResponse {
   tokens?: UserOAuthClient[];
   next_page_token?: string;
 }
-// Ответ Issue-операции (Operation.response). Несет одноразовый секрет private_key_pem.
+// Ответ Issue-операции (Operation.response) — см. IssueSAKeyResponse: форм две,
+// заполнено ровно одно поле, и решает это вид.
 export interface IssueUserTokenResponse {
   key?: UserOAuthClient;
   client_id?: string;
@@ -178,6 +190,8 @@ export interface IssueUserTokenResponse {
   algorithm?: string;
   key_id?: string;
   audiences?: string[];
+  /** ПОКАЗЫВАЕТСЯ ОДИН РАЗ. Заполнен ТОЛЬКО у вида SECRET. */
+  secret?: string;
 }
 // Тело Issue-запроса. created_by_user_id проставляет backend из принципала — не шлем.
 export interface IssueUserTokenBody {

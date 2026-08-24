@@ -44,6 +44,13 @@ jest.unstable_mockModule("@/components/organisms/iam/IamListShell", () => ({
   useTableScrollY: () => ({ wrapRef: { current: null }, scrollY: 100 }),
 }));
 
+// Тост подменяем, чтобы утверждать САМ ТЕКСТ, который читает арендатор: «сказано
+// прямо» иначе неотличимо от «промолчали».
+const toastError = jest.fn();
+jest.unstable_mockModule("@shared/lib/toast", () => ({
+  toast: { error: toastError, success: jest.fn(), info: jest.fn(), warning: jest.fn() },
+}));
+
 let UserTokensPanel: typeof UserTokensPanelExport;
 
 const token = (over: Record<string, unknown> = {}) => ({
@@ -79,6 +86,21 @@ describe("UserTokensPanel", () => {
     mutations.length = 0;
     listUserTokens.mockResolvedValue({ tokens: [] });
     run.mockResolvedValue(undefined);
+  });
+
+  // ЦЕПОЧКА, А НЕ ОДНО ЗВЕНО (#1235). Вид объявлен в контракте, читается
+  // проекцией, едет краем, типизирован в `api/iam` и рисуется столбцом. Проба
+  // здесь спрашивает про ЗВЕНО ОБЁРТКИ — переживает ли вид разворот ответа и
+  // приведение к строке панели: значение, которое пишут и не читают, невидимо
+  // отовсюду, и обрыв на любом звене выглядит одинаково.
+  it("вид удостоверения доезжает из ответа края до столбца списка", async () => {
+    listUserTokens.mockResolvedValue({
+      tokens: [token({ id: "tok-7", credential_kind: "CREDENTIAL_KIND_SECRET" })],
+    });
+
+    const { container } = renderPanel();
+
+    await waitFor(() => expect(table(container)).toHaveTextContent("Секрет"));
   });
 
   it("спрашивает токены именно того пользователя, который открыт", async () => {
@@ -162,7 +184,7 @@ describe("UserTokensPanel", () => {
   // Что осталось здесь — предмет ОБЁРТКИ: чей список спрашивается, на какую
   // коллекцию уходит выпуск и отзыв, как разворачивается ответ.
 
-  it("секрет показывается ОДИН раз — с ключом, предупреждением и идентификаторами", () => {
+  it("ключевая пара показывается ОДИН раз — с ключом, предупреждением и идентификаторами", () => {
     const { container } = renderPanel();
 
     expect(container).not.toHaveTextContent("Приватный ключ (PEM)");
@@ -175,21 +197,36 @@ describe("UserTokensPanel", () => {
       } as unknown as Operation);
     });
 
-    expect(container).toHaveTextContent("Сохраните ключ — он больше не будет показан");
+    expect(container).toHaveTextContent("Сохраните значение — оно больше не будет показано");
     expect(container).toHaveTextContent("Приватный ключ (PEM)");
     expect(container).toHaveTextContent("tok-9");
     expect(container).toHaveTextContent("cli-9");
     expect(container.querySelector("textarea")).toHaveValue("-----BEGIN PRIVATE KEY-----");
   });
 
-  it("если операция не принесла секрета, окно всё равно открывается — молча терять его нельзя", () => {
+  // ЗДЕСЬ СТОЯЛА ПРОБА «окно всё равно открывается» — она закрепляла ФАНТОМ.
+  //
+  // Прежний код звал показ безусловно, поэтому операция без значения открывала
+  // ПУСТУЮ рамку с подписью «Приватный ключ (PEM)» и алгоритмом ES256. Это
+  // утверждение о том, что значение показано, — при том что показывать было
+  // нечего; арендатор закрывал окно с мыслью, что ключ у него есть.
+  //
+  // Опасность выросла вместе с видом SECRET (#1235): у него строка операции
+  // секрета НЕ НЕСЁТ НИКОГДА, и опрос приходит с телом без значения ШТАТНО.
+  // Прежнее поведение открывало бы пустое окно поверх уже показанного секрета
+  // при каждой исправной выдаче.
+  //
+  // Предмет пробы — «молча терять нельзя» — сохранён и усилен: значение
+  // потеряно ⇒ об этом СКАЗАНО, и сказано, что делать.
+  it("значение не пришло ни одним путём — сказано прямо, а не показано пустое окно", () => {
     const { container } = renderPanel();
 
     act(() => {
       issueOpts().onSuccess?.({ id: "opr-1", done: true } as unknown as Operation);
     });
 
-    expect(container).toHaveTextContent("Приватный ключ (PEM)");
-    expect(container).toHaveTextContent("ES256");
+    expect(container).not.toHaveTextContent("Приватный ключ (PEM)");
+    expect(toastError).toHaveBeenCalledWith(expect.stringContaining("значение не пришло"));
+    expect(toastError).toHaveBeenCalledWith(expect.stringContaining("выпустите новый"));
   });
 });
