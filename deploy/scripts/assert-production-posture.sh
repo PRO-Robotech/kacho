@@ -276,7 +276,18 @@ for row in $SERVICES; do
         (if ($all_dims | not) or (.internal_mtls == true) then empty else "internal_mtls=\(shown("internal_mtls"))" end),
         (if ($all_dims | not) or (.authz_check   == true) then empty else "authz_check=\(shown("authz_check"))"   end),
         (if ($need_fwd | not) or (.trusted_forwarders == true) then empty
-         else "trusted_forwarders=\(shown("trusted_forwarders"))" end)
+         else "trusted_forwarders=\(shown("trusted_forwarders"))" end),
+        # ПОСАДКА ЛИЧНОСТИ (задача #1125). Судится НЕ «какая именно» — стенд
+        # вправе быть на любой из двух полос, — а «объявлена ли она вообще».
+        # Незаданная посадка означает, что процесс не выбрал, чем проверять
+        # человека, и требования старта по ней не предъявлялись ни одни.
+        #
+        # Сервис без этого измерения печатает "n/a" и проходит: у него нет
+        # человека, которого можно проверять. Отсутствие поля целиком —
+        # ОТКАЗ, а не пропуск: так выглядит процесс со СТАРЫМ образом, и
+        # молчание тут читалось бы как согласие.
+        (if (.identity_provider // "" | test("^(external|own|n/a)$")) then empty
+         else "identity_provider=\(shown("identity_provider"))" end)
       ] | join(", ")')"
 
     if [ -n "$verdict" ]; then
@@ -305,7 +316,7 @@ for row in $SERVICES; do
       # у сервисов без этого измерения).
       ok "$svc/$p $(printf '%s' "$line" | jq -r '
         def shown($k): if has($k) then (.[$k] | tostring) else "<нет>" end;
-        "auth_mode=\(shown("auth_mode")) db_sslmode=\(shown("db_sslmode")) public_mtls=\(shown("public_mtls")) internal_mtls=\(shown("internal_mtls")) authz_check=\(shown("authz_check")) trusted_forwarders=\(shown("trusted_forwarders"))"')"
+        "auth_mode=\(shown("auth_mode")) db_sslmode=\(shown("db_sslmode")) public_mtls=\(shown("public_mtls")) internal_mtls=\(shown("internal_mtls")) authz_check=\(shown("authz_check")) trusted_forwarders=\(shown("trusted_forwarders")) identity_provider=\(shown("identity_provider"))"')"
     fi
   done
 done

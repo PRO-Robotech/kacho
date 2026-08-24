@@ -5,6 +5,7 @@ package main
 
 import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
+	"github.com/PRO-Robotech/kacho/pkg/identityposture"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 )
 
@@ -27,7 +28,13 @@ import (
 //   - authz_check   — whether the per-RPC authz middleware enforces. With
 //     KACHO_API_GATEWAY_AUTHZ_ENABLED=false it mounts as a pass-through, i.e. no
 //     per-RPC Check happens at all.
-func bootPosture(cfg config.Config, internalListenerMTLS bool) observability.BootPosture {
+//   - identity_provider — the identity posture the process accepted: `external`
+//     (a person is checked by the external provider) or `own` (by our own
+//     minting). Read by the posture gate off the LIVE process, because the
+//     posture decides which start-up demands apply and a values map answers that
+//     question with intent: its knobs arrive through envFrom and are read once at
+//     start-up, so editing the map changes the map, not the process.
+func bootPosture(cfg config.Config, internalListenerMTLS bool, lane identityposture.Provider) observability.BootPosture {
 	return observability.BootPosture{
 		Service:      "api-gateway",
 		AuthMode:     cfg.AuthNMode,
@@ -35,5 +42,9 @@ func bootPosture(cfg config.Config, internalListenerMTLS bool) observability.Boo
 		PublicMTLS:   cfg.TLSEnabled() && cfg.HybridMTLSEnabled(),
 		InternalMTLS: internalListenerMTLS,
 		AuthZCheck:   cfg.AuthZEnabled,
+		// Посадка личности, ПРИНЯТАЯ процессом: незаданное и негодное значения
+		// до этой строки не доживают — страж старта на них не пускает. Значит
+		// поле отчитывается об исходе, а не о намерении профиля (задача #1125).
+		IdentityProvider: lane.String(),
 	}
 }

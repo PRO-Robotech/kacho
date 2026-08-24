@@ -820,7 +820,10 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 func mustProviderAdminClient(cfg config.Config) *clients.HydraAdminClient {
 	c, err := clients.NewHydraAdminClientWithCA(
 		cfg.AuthN.ResolveHydraAdminURL(),
-		os.Getenv("KACHO_IAM_HYDRA_ADMIN_TOKEN"),
+		// Читается ЧЕРЕЗ НАСТРОЙКУ, а не прямым обращением к окружению: ручка,
+		// прочитанная здесь напрямую, невидима проверке настройки при старте, и
+		// полосность посадки оказалась бы неполной ровно на неё (задача #1125).
+		cfg.AuthN.ResolveHydraAdminToken(),
 		cfg.AuthN.ResolveHydraAdminCAFile(),
 	)
 	if err != nil {

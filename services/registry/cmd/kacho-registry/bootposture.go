@@ -38,5 +38,9 @@ func bootPosture(cfg config.Config) observability.BootPosture {
 		InternalMTLS:      cfg.InternalServerMTLS.Enable,
 		AuthZCheck:        cfg.AuthZIAMGRPCAddr != "",
 		TrustedForwarders: cfg.TrustedForwarders().IsNarrowed(),
+		// Личность человека этот сервис не проверяет — он принимает уже
+		// проверенного вызывающего. Литерал, а не пустая строка: «измерения
+		// нет» обязано быть отличимо от «поле не заполнено».
+		IdentityProvider: observability.IdentityProviderNotApplicable,
 	}
 }

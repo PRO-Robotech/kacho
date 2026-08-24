@@ -13,6 +13,8 @@
 package main
 
 import (
+	"github.com/PRO-Robotech/kacho/pkg/identityposture"
+
 	"strings"
 	"testing"
 )
@@ -32,6 +34,7 @@ const (
 // good for its full lifetime no matter what anyone revokes.
 func TestProdRefusesUnsetIntrospectionEndpoint(t *testing.T) {
 	err := validateProductionRevocationConfig("production", RevocationConfig{
+		IdentityProvider: identityposture.External,
 		IntrospectionURL: "",
 		AdminURL:         testAdminURL,
 	})
@@ -53,6 +56,7 @@ func TestProdRefusesUnsetIntrospectionEndpoint(t *testing.T) {
 // session kill is silently disabled, so signing out leaves the session alive.
 func TestProdRefusesUnsetAdminEndpoint(t *testing.T) {
 	err := validateProductionRevocationConfig("prod", RevocationConfig{
+		IdentityProvider: identityposture.External,
 		IntrospectionURL: testIntrospectURL,
 		AdminURL:         "",
 	})
@@ -70,14 +74,14 @@ func TestProdRefusesUnsetAdminEndpoint(t *testing.T) {
 // An empty/unset environment label is production-class — a forgotten label must
 // not silently downgrade the guard (same rule as the sibling authz guard).
 func TestUnlabelledEnvIsProductionClass(t *testing.T) {
-	if err := validateProductionRevocationConfig("", RevocationConfig{}); err == nil {
+	if err := validateProductionRevocationConfig("", RevocationConfig{IdentityProvider: identityposture.External}); err == nil {
 		t.Fatalf("an unset KACHO_APP_ENV must be treated as production-class, got nil")
 	}
 }
 
 // Staging is production-class too.
 func TestStagingRefusesUnsetEndpoints(t *testing.T) {
-	if err := validateProductionRevocationConfig("staging", RevocationConfig{AdminURL: testAdminURL}); err == nil {
+	if err := validateProductionRevocationConfig("staging", RevocationConfig{IdentityProvider: identityposture.External, AdminURL: testAdminURL}); err == nil {
 		t.Fatalf("expected refusal in staging, got nil")
 	}
 }
@@ -86,7 +90,7 @@ func TestStagingRefusesUnsetEndpoints(t *testing.T) {
 // local stand may run without the provider's admin API reachable at all.
 func TestDevClassToleratesUnsetEndpoints(t *testing.T) {
 	for _, env := range []string{"dev", "local", "test"} {
-		if err := validateProductionRevocationConfig(env, RevocationConfig{}); err != nil {
+		if err := validateProductionRevocationConfig(env, RevocationConfig{IdentityProvider: identityposture.External}); err != nil {
 			t.Fatalf("%s: expected tolerance, got: %v", env, err)
 		}
 	}
@@ -99,6 +103,7 @@ func TestDevClassToleratesUnsetEndpoints(t *testing.T) {
 // from one that fires at random, and the first false refusal gets it removed.
 func TestProdAcceptsBothEndpoints(t *testing.T) {
 	err := validateProductionRevocationConfig("production", RevocationConfig{
+		IdentityProvider: identityposture.External,
 		IntrospectionURL: tlsIntrospectURL,
 		AdminURL:         tlsAdminURL,
 		AdminCAFile:      "/etc/api-gateway/hydra-admin-ca/ca.crt",
@@ -116,6 +121,7 @@ func TestProdAcceptsBothEndpoints(t *testing.T) {
 // request instead of waving them through.
 func TestProdRefusesTLSHopWithoutTrustAnchor(t *testing.T) {
 	err := validateProductionRevocationConfig("production", RevocationConfig{
+		IdentityProvider: identityposture.External,
 		IntrospectionURL: tlsIntrospectURL,
 		AdminURL:         tlsAdminURL,
 		AdminCAFile:      "",
@@ -135,6 +141,7 @@ func TestProdRefusesTLSHopWithoutTrustAnchor(t *testing.T) {
 func TestDevClassToleratesPlaintextHop(t *testing.T) {
 	for _, env := range []string{"dev", "local", "test"} {
 		if err := validateProductionRevocationConfig(env, RevocationConfig{
+			IdentityProvider: identityposture.External,
 			IntrospectionURL: testIntrospectURL,
 			AdminURL:         testAdminURL,
 		}); err != nil {
@@ -149,6 +156,7 @@ func TestDevClassToleratesPlaintextHop(t *testing.T) {
 // Refusing the shape turns a silent runtime fail-open into a startup message.
 func TestProdRefusesNonAdminIntrospectionPath(t *testing.T) {
 	err := validateProductionRevocationConfig("production", RevocationConfig{
+		IdentityProvider: identityposture.External,
 		IntrospectionURL: "https://hydra.api.kacho.cloud/oauth2/introspect",
 		AdminURL:         testAdminURL,
 	})
@@ -174,6 +182,7 @@ func TestProdRefusesNonAdminIntrospectionPath(t *testing.T) {
 // Production-class + a plaintext introspection address MUST be refused.
 func TestProdRefusesPlaintextIntrospectionHop(t *testing.T) {
 	err := validateProductionRevocationConfig("production", RevocationConfig{
+		IdentityProvider: identityposture.External,
 		IntrospectionURL: testIntrospectURL, // http://…
 		AdminURL:         tlsAdminURL,
 	})
@@ -189,6 +198,7 @@ func TestProdRefusesPlaintextIntrospectionHop(t *testing.T) {
 // Production-class + a plaintext admin base MUST be refused.
 func TestProdRefusesPlaintextAdminHop(t *testing.T) {
 	err := validateProductionRevocationConfig("production", RevocationConfig{
+		IdentityProvider: identityposture.External,
 		IntrospectionURL: tlsIntrospectURL,
 		AdminURL:         testAdminURL, // http://…
 	})
@@ -204,6 +214,7 @@ func TestProdRefusesPlaintextAdminHop(t *testing.T) {
 // hostname without a scheme gets told at startup, not on the first request.
 func TestProdRefusesUnparseableIntrospectionURL(t *testing.T) {
 	err := validateProductionRevocationConfig("production", RevocationConfig{
+		IdentityProvider: identityposture.External,
 		IntrospectionURL: "kacho-umbrella-hydra-admin:4445/admin/oauth2/introspect",
 		AdminURL:         testAdminURL,
 	})

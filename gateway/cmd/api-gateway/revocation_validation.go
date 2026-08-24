@@ -30,6 +30,9 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/config"
+	"github.com/PRO-Robotech/kacho/pkg/identityposture"
 )
 
 // introspectionAdminPath — the path the identity provider's admin API serves
@@ -49,6 +52,18 @@ type RevocationConfig struct {
 	IntrospectionURL string
 	// AdminURL — resolved admin API base for the logout session-kill (empty ⇒ unset).
 	AdminURL string
+	// IdentityProvider — ПОСАДКА ЛИЧНОСТИ, объявленная профилем (задача #1125).
+	//
+	// Разводит требование АДМИНИСТРАТИВНОГО адреса, и только его: этот адрес
+	// нужен ровно затем, чтобы выход человека снял сессию НА СТОРОНЕ ВНЕШНЕГО
+	// ПОСТАВЩИКА. Под `own` такой сессии не существует вовсе, и требовать адрес
+	// значило бы не пускать в старт край, которому он не нужен ни для чего.
+	//
+	// Полоса ИНТРОСПЕКЦИИ этим полем НЕ разводится и остаётся обязательной на
+	// обеих полосах — её предмет (перестал ли край принимать издателя-
+	// поставщика) принадлежит соседней задаче. Снять требование заодно значило
+	// бы убрать защиту побочным эффектом смены посадки.
+	IdentityProvider identityposture.Provider
 	// AdminCAFile — the trust anchor the admin hop is verified against
 	// (KACHO_HYDRA_ADMIN_CA_FILE; empty ⇒ none pinned). Read here because on
 	// this hop TLS without a pinned anchor is not a partial improvement — see
@@ -121,6 +136,15 @@ func validateProductionRevocationConfig(env string, cfg RevocationConfig) error 
 	}
 
 	var problems []string
+	// Посадка личности обязана быть ОБЪЯВЛЕНА прежде, чем по ней что-то
+	// требовать: пока она неизвестна, неизвестно и то, нужен ли краю
+	// административный адрес поставщика. Отказ производится первым и в
+	// одиночку.
+	if !cfg.IdentityProvider.IsSet() {
+		return fmt.Errorf(
+			"revocation path invalid in %q env: %v (refuse to start)",
+			env, identityposture.NotDeclared(config.IdentityProviderKnob))
+	}
 	if strings.TrimSpace(cfg.IntrospectionURL) == "" {
 		problems = append(problems,
 			"KACHO_HYDRA_INTROSPECTION_URL is empty — with no introspection endpoint the "+
@@ -133,11 +157,16 @@ func validateProductionRevocationConfig(env string, cfg RevocationConfig) error 
 		problems = append(problems, p)
 	}
 
-	if strings.TrimSpace(cfg.AdminURL) == "" {
+	if strings.TrimSpace(cfg.AdminURL) == "" && cfg.IdentityProvider != identityposture.Own {
 		problems = append(problems,
 			"KACHO_HYDRA_ADMIN_URL is empty — the logout handler's provider-side session "+
 				"kill is disabled when it is unset, so signing out leaves the session alive "+
-				"at the identity provider")
+				"at the identity provider [required because "+config.IdentityProviderKnob+"="+
+				"external; declare "+config.IdentityProviderKnob+"=own and this requirement is lifted]")
+	} else if strings.TrimSpace(cfg.AdminURL) == "" {
+		// Посадка `own`: сессии у внешнего поставщика не существует, снимать
+		// нечего. Адрес не требуется — и это НЕ послабление транспорта: заданный
+		// адрес проверяется теми же правилами ниже на любой полосе.
 	} else if err := validateAdminEndpoint(cfg.AdminURL, ""); err != nil {
 		problems = append(problems, "KACHO_HYDRA_ADMIN_URL "+err.Error())
 	} else if p := validateAdminHopTransport(
