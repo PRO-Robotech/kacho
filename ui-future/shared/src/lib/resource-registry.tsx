@@ -3016,7 +3016,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refResource: "machine-types",
         required: true,
         description:
-          "Единый канал размера инстанса (vCPU/память/GPU) — каталог MachineType. Сменить размер можно на " +
+          "Единый канал размера инстанса (vCPU/память/GPU) — каталог «Типы машин». Сменить размер можно на " +
           "остановленном (STOPPED) инстансе.",
       },
       {
@@ -3191,7 +3191,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         visibleWhen: { field: "use_default_network", equals: "false" },
         description:
           "Минимум один сетевой интерфейс. Выберите сеть → подсеть → внутренний адрес (Cascader) и режим " +
-          "публичного IP (Segmented); либо переключитесь на «существующий NetworkInterface» (тогда подсеть/SG/" +
+          "публичного IP (Segmented); либо переключитесь на «существующий сетевой интерфейс» (тогда подсеть/SG/" +
           "адрес берутся из него). Подсеть должна быть в той же зоне, что и ВМ.",
         editHidden: true,
         // Дефолт NIC-айтема: пустой spec, external-IP = «без адреса».

@@ -192,7 +192,7 @@ function ScalarFieldRenderer({
           htmlFor={id}
           required={field.required}
           description={
-            disabled ? `${field.description ? field.description + " " : ""}(immutable после Create)` : field.description
+            disabled ? `${field.description ? field.description + " " : ""}(неизменяемо после создания)` : field.description
           }
         >
           {field.label}

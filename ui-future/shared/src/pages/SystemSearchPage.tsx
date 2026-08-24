@@ -288,7 +288,7 @@ export function SystemSearchPage() {
                   <td className="px-3 py-2 text-xs uppercase">{h.resource}</td>
                   <td className="px-3 py-2">
                     <Link to={h.link} className="text-blue-400 hover:underline font-medium">
-                      {h.name || "(unnamed)"}
+                      {h.name || "(без имени)"}
                     </Link>
                     <div className="text-[10px] font-mono text-muted-foreground">{h.id}</div>
                   </td>

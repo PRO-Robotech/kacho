@@ -72,7 +72,7 @@ describe("FormFieldRenderer", () => {
     show({ ...nameField, immutable: true }, { name: "web" }, true);
 
     expect(screen.getByDisplayValue<HTMLInputElement>("web").disabled).toBe(true);
-    expect(screen.getByText(/immutable после Create/)).toBeInTheDocument();
+    expect(screen.getByText(/неизменяемо после создания/)).toBeInTheDocument();
   });
 
   it("в создании то же поле открыто — контроль в обратную сторону", () => {
@@ -81,7 +81,7 @@ describe("FormFieldRenderer", () => {
     show({ ...nameField, immutable: true }, { name: "web" }, false);
 
     expect(screen.getByDisplayValue<HTMLInputElement>("web").disabled).toBe(false);
-    expect(screen.queryByText(/immutable после Create/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/неизменяемо после создания/)).not.toBeInTheDocument();
   });
 
   it("поле, скрытое только в правке, в создании видно", () => {

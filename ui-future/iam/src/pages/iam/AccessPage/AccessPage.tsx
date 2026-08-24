@@ -383,7 +383,7 @@ export function AccessGrantPage() {
       <Form form={form} layout="vertical">
         <Form.Item label="Ресурс">
           <Tag color={scope === "cloud" ? "blue" : "geekblue"}>
-            {scope === "cloud" ? "Account (Облако)" : "Project (Каталог)"}
+            {scope === "cloud" ? "Аккаунт" : "Проект"}
           </Tag>
           <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
             {scope === "cloud" ? accountId : projectId}
