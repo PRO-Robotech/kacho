@@ -123,8 +123,13 @@ function isStepUpError(err: unknown): boolean {
   return ["acr", "step-up", "step up", "stepup", "mfa", "assurance", "aal2"].some((n) => hay.includes(n));
 }
 
+// Способ входа назван ТЕМ ЖЕ словом, что и в окне подтверждения
+// (`StepUpModal`): один предмет — одно имя. Прежняя редакция говорила
+// «passkey (Touch ID / Windows Hello / security key)», тогда как окно рядом
+// говорит «ключом доступа … (аппаратный ключ)» — то самое расхождение, ради
+// которого заведён гейт языка.
 const STEP_UP_MESSAGE =
-  "Действие требует усиленной аутентификации (step-up MFA, ACR≥2). Подтвердите вход через passkey (Touch ID / Windows Hello / security key) и повторите выпуск.";
+  "Действие требует усиленной аутентификации (step-up MFA, ACR≥2). Подтвердите вход ключом доступа (Touch ID / Windows Hello / аппаратный ключ) и повторите выпуск.";
 
 /**
  * Ресурс субъекта в реестре — чтобы область поиска читалась ОТТУДА.

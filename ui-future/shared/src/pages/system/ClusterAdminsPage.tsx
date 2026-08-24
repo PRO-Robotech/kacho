@@ -156,7 +156,7 @@ export default function ClusterAdminsPage() {
         const isSelf = row.subject_id === currentUserId;
         const isLast = adminsCount === 1;
         const disabled = isSelf || isLast;
-        const tooltip = isSelf ? "Нельзя отозвать самого себя" : isLast ? "Нельзя отозвать последнего admin'а" : "";
+        const tooltip = isSelf ? "Нельзя отозвать самого себя" : isLast ? "Нельзя отозвать последнего администратора" : "";
         const button = (
           <Button
             size="small"

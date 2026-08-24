@@ -31,7 +31,7 @@ interface SectionProps {
 
 export function CidrSection({ kind, blocks, onChange, hideTitle }: SectionProps) {
   const [draft, setDraft] = useState("");
-  const label = kind === "v4" ? "IPv4 CIDR blocks" : "IPv6 CIDR blocks";
+  const label = kind === "v4" ? "Блоки IPv4 CIDR" : "Блоки IPv6 CIDR";
   const placeholder = kind === "v4" ? "10.0.1.0/24" : "fd00:1234::/64";
   const tagColor = kind === "v4" ? "blue" : "geekblue";
 

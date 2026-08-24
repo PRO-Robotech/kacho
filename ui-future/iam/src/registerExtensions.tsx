@@ -658,7 +658,7 @@ function roleRulesView(rules: RoleRule[] | undefined): ReactNode {
             ? "По именам (resourceNames)"
             : arm === "ARM_LABELS"
               ? "По меткам (matchLabels)"
-              : "Все инстансы в scope";
+              : "Все инстансы в области";
         const armColor = arm === "ARM_NAMES" ? "geekblue" : arm === "ARM_LABELS" ? "purple" : "default";
         return (
           <div
