@@ -34,11 +34,22 @@ import (
 
 // downOneIAMMigration откатывает ПОСЛЕДНЮЮ миграцию цепочки и возвращает исход
 // как значение: отказ здесь — предмет утверждения, а не сбой пробы.
-func downOneIAMMigration(t *testing.T, db *sql.DB) error {
+// downToBeforeBasicTokenMigration откатывает всё, что нумеровано ВЫШЕ миграции
+// вида удостоверения, и её саму.
+//
+// Здесь стоял откат ОДНОЙ последней миграции, и это связывало пробу не с её
+// предметом, а с ПОЛОЖЕНИЕМ файла в очереди: первая же миграция, вставшая
+// следом, забирала откат себе, и проба зеленела бы (или краснела) о чужой
+// работе. Так и вышло — потолок числа удостоверений (#1191) сместил её предмет.
+//
+// Версия названа числом: вывести её из дерева можно только поиском по имени
+// файла, то есть тем же действием, предмет которого проба и стережёт.
+func downToBeforeBasicTokenMigration(t *testing.T, db *sql.DB) error {
 	t.Helper()
 	goose.SetBaseFS(migrations.FS)
 	require.NoError(t, goose.SetDialect("postgres"))
-	return goose.Down(db, ".")
+	const basicTokenVersion int64 = 20260824210000
+	return goose.DownTo(db, ".", basicTokenVersion-1)
 }
 
 // credentialKindColumnExists — присутствует ли колонка вида. Ею измеряется, что
@@ -92,7 +103,7 @@ func TestBAT1_DOWN_1_RefusesWhileSecretCredentialsExistAndDestroysNothing(t *tes
 		insertUserCred(db, "uoc_00000000000000d01", "SECRET", otherHash, "", "", nil, 30),
 		"Given неисполним, если законная строка вида SECRET не записывается")
 
-	err := downOneIAMMigration(t, db)
+	err := downToBeforeBasicTokenMigration(t, db)
 
 	// (а) отказ случился.
 	require.Error(t, err,
@@ -164,7 +175,7 @@ func TestBAT1_DOWN_2_ProceedsWhenNoSecretCredentialsExist(t *testing.T) {
 		insertUserCred(db, "uoc_00000000000000d02", "KEYPAIR", noHash, pem, "ES256", nil, 0),
 		"Given неисполним, если законная строка вида KEYPAIR не записывается")
 
-	require.NoError(t, downOneIAMMigration(t, db),
+	require.NoError(t, downToBeforeBasicTokenMigration(t, db),
 		"обратный ход обязан проходить там, где ему нечего уничтожать: страж, "+
 			"отказывающий всегда, отнял бы у оператора штатную процедуру")
 
