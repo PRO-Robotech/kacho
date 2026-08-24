@@ -69,10 +69,13 @@ func newExpirySAEnricher(t *testing.T, expiresAt *time.Time, now time.Time) *Tok
 	t.Helper()
 	sa := stubSAPort{
 		soc: domain.ServiceAccountOAuthClient{
-			ID:            domain.SAOAuthClientID(expirySocID),
-			SvaID:         domain.ServiceAccountID(expirySvaID),
-			OAuthClientID: domain.OAuthClientID(expiryClientID),
-			ExpiresAt:     expiresAt,
+			// Вид ЗАПИСЫВАЕТСЯ каждым писателем (#1142): закрытый
+			// словарь таблицы отвергает строку, вида не назвавшую.
+			CredentialKind: domain.CredentialKindKeypair,
+			ID:             domain.SAOAuthClientID(expirySocID),
+			SvaID:          domain.ServiceAccountID(expirySvaID),
+			OAuthClientID:  domain.OAuthClientID(expiryClientID),
+			ExpiresAt:      expiresAt,
 		},
 		sa: domain.ServiceAccount{
 			ID:        domain.ServiceAccountID(expirySvaID),
@@ -174,10 +177,13 @@ func TestEnrichClaims_FederatedSAKey_Expired_Denied(t *testing.T) {
 	expired := now.Add(-time.Hour)
 	port := expiryFedSAPort{
 		soc: domain.ServiceAccountOAuthClient{
-			ID:            domain.SAOAuthClientID(expirySocID),
-			SvaID:         domain.ServiceAccountID(expirySvaID),
-			OAuthClientID: domain.OAuthClientID(expiryClientID),
-			ExpiresAt:     &expired,
+			// Вид ЗАПИСЫВАЕТСЯ каждым писателем (#1142): закрытый
+			// словарь таблицы отвергает строку, вида не назвавшую.
+			CredentialKind: domain.CredentialKindKeypair,
+			ID:             domain.SAOAuthClientID(expirySocID),
+			SvaID:          domain.ServiceAccountID(expirySvaID),
+			OAuthClientID:  domain.OAuthClientID(expiryClientID),
+			ExpiresAt:      &expired,
 		},
 		sa: domain.ServiceAccount{
 			ID:        domain.ServiceAccountID(expirySvaID),
@@ -211,9 +217,12 @@ func TestEnrichClaims_UserToken_Expired_Denied(t *testing.T) {
 	expired := now.Add(-time.Minute)
 	ut := stubUserTokenPort{
 		uoc: domain.UserOAuthClient{
-			ID:        domain.UserOAuthClientID("uoc-123"),
-			UserID:    domain.UserID("usr-abc"),
-			ExpiresAt: &expired,
+			// Вид ЗАПИСЫВАЕТСЯ каждым писателем (#1142): закрытый
+			// словарь таблицы отвергает строку, вида не назвавшую.
+			CredentialKind: domain.CredentialKindKeypair,
+			ID:             domain.UserOAuthClientID("uoc-123"),
+			UserID:         domain.UserID("usr-abc"),
+			ExpiresAt:      &expired,
 		},
 		user: domain.User{ID: domain.UserID("usr-abc"), AccountID: domain.AccountID("acc-xyz"),
 			// A personal token is its owner's authority: the owner's state is

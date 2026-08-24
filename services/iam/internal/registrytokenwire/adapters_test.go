@@ -41,12 +41,15 @@ func (f fakeSAByID) GetServiceAccount(_ context.Context, id domain.ServiceAccoun
 func TestSAClientLookup_MapsRegisteredKey(t *testing.T) {
 	exp := time.Now().Add(time.Hour)
 	row := domain.ServiceAccountOAuthClient{
-		ID:            "soc_01abcdefghjkmnpqr",
-		SvaID:         "sva_ci",
-		OAuthClientID: "cid-ci",
-		PublicKeyPEM:  "PEM-A",
-		KeyAlgorithm:  "ES256",
-		ExpiresAt:     &exp,
+		// Вид ЗАПИСЫВАЕТСЯ каждым писателем (#1142): закрытый
+		// словарь таблицы отвергает строку, вида не назвавшую.
+		CredentialKind: domain.CredentialKindKeypair,
+		ID:             "soc_01abcdefghjkmnpqr",
+		SvaID:          "sva_ci",
+		OAuthClientID:  "cid-ci",
+		PublicKeyPEM:   "PEM-A",
+		KeyAlgorithm:   "ES256",
+		ExpiresAt:      &exp,
 		// Сужение адресатов, объявленное при выдаче ключа (#1136). В фикстуре
 		// оно НЕПУСТО намеренно: с пустым перечнем проба зеленела бы и на
 		// адаптере, который поле не переносит вовсе, — а именно этот перенос и
