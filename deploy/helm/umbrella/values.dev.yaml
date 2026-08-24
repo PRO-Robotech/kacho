@@ -1108,7 +1108,7 @@ hydra:
             # crashes Hydra on boot ("additionalProperties scope_claim not
             # allowed"). Per-issuer scope handling is governed by the
             # admin-API trust-grant `scope` array, not by a global claim
-            # mapping — see docs/components/21-federation-in.md.
+            # mapping.
             iat_optional: false      # assertion MUST carry `iat`
             jti_optional: false      # assertion MUST carry `jti` (anti-replay)
             max_ttl: 720h            # assertion `exp - iat` upper bound
@@ -1485,42 +1485,6 @@ kacho-iam:
       limits:
         cpu: 100m
         memory: 256Mi
-  # ─── Phase 3b — Federation IN (external IdP → kacho via Hydra jwt-bearer) ──
-  # Hydra v26.2.0 does NOT load trusted issuers from `hydra.config.*` — they
-  # are registered at runtime via the admin trust-grant API
-  # (`POST /admin/trust/grants/jwt-bearer/issuers`). The list below is consumed
-  # by the `hydra-trust-grant-bootstrap` Job (templates/hydra-trust-grants-job.yaml)
-  # which POSTs each entry on chart install/upgrade. Idempotent — on conflict
-  # falls back to PATCH/Delete-Recreate to converge.
-  #
-  # For dev: pre-register GitHub Actions, GitLab CI, and in-cluster k8s SA
-  # tokens. A customer's own identity provider is registered per-tenant via
-  # admin tooling — NOT here in shared helm values.
-  federationIn:
-    # Default OFF in dev too. The Phase 3b bootstrap Job needs REAL JWKs for
-    # each trusted issuer (Hydra v26 rejects the placeholder JWK template),
-    # and CI runners cannot reach external IdP JWKS endpoints reliably (rate
-    # limits, network policies). Operators enable + replace the JWK template
-    # with real fetched keys per docs/components/21-federation-in.md
-    # §«Хранение IdP JWKS keys». The Go-side federation IN code-path is
-    # covered by integration tests in kacho-iam regardless of this flag.
-    enabled: false
-    trustedIssuers:
-      # Reference template — operators copy + replace `jwksUrl` results into
-      # the bootstrap Job's JWK array before enabling. Kept here as
-      # operator-discoverable documentation of the expected shape.
-      - issuer: "https://token.actions.githubusercontent.com"
-        jwksUrl: "https://token.actions.githubusercontent.com/.well-known/jwks"
-        allowedSubjects:
-          - "^repo:.+:ref:refs/heads/main$"
-      - issuer: "https://gitlab.com"
-        jwksUrl: "https://gitlab.com/oauth/discovery/keys"
-        allowedSubjects:
-          - "^project_path:.+:ref_type:branch:ref:main$"
-      - issuer: "https://kubernetes.default.svc.cluster.local"
-        jwksUrl: "https://kubernetes.default.svc.cluster.local/openid/v1/jwks"
-        allowedSubjects:
-          - "^system:serviceaccount:kacho-.+:.+$"
 
 # ─── Cross-cutting authz NetworkPolicy (umbrella template networkpolicy-authz) ─
 # The OPA sidecar config itself now lives in the kacho-iam sub-chart

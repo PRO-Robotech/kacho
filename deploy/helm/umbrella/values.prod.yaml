@@ -11,10 +11,19 @@
 # deploy#80). A bare `helm install` of the umbrella therefore lands on the
 # insecure dev posture. PRODUCTION DEPLOYMENTS MUST pass this file explicitly:
 #
-#   helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho \
-#     -f ./helm/umbrella/values.prod.yaml \
-#     [-f ./helm/umbrella/values.prorobotech.yaml]   # image-tag overlay (optional)
-#     --wait --timeout 15m
+#   make -C deploy stack-up STACK=prod
+#
+# The chain is NOT written out here on purpose. It is declared once, in
+# deploy/stacks.txt, and the target reads it from there. A command copied into
+# a comment cannot be executed and drifts from the table in silence: that is
+# exactly how a knob declared in a profile failed to reach the cluster — the
+# operator repeated the previous command, the start guard refused, and the
+# service went on serving the PREVIOUS image while the stand looked fully
+# rolled out (#1161).
+#
+# An image-tag overlay on top is passed as an extra argument, e.g.
+#   make -C deploy stack-up STACK=prorobotech
+# which is its own declared stand rather than an optional flag on this one.
 #
 # Layer the image-tag overlay (values.prorobotech.yaml / a per-cluster overlay)
 # AFTER this file. This profile is image-tag-agnostic — it sets ONLY the
@@ -1762,11 +1771,3 @@ networkPolicy:
   datastore:
     enabled: true
 
-# ─── Хук выдачи доверия внешним эмитентам — адрес административного API ────
-# Объявляется значением (реестр потребителей его резолвит), поэтому перевод
-# перехода на терминатор его больше не минует. Хук латентен (federationIn
-# выключен), но латентность от проверки не освобождает: гейты рендерят его с
-# включённым ключом.
-hydraTrustGrants:
-  adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
-  adminCaFile: /etc/hydra-admin-ca/ca.crt

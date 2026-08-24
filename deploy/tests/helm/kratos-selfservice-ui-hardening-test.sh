@@ -5,8 +5,13 @@
 #
 # Covers the second-audit INFRA findings on the umbrella-owned auxiliary
 # workloads that the first sec-hardening pass (sec-hardening-test.sh) did NOT
-# reach — the Ory kratos-selfservice-ui sub-chart, and
-# the hydra-trust-grants federation-in bootstrap Job:
+# reach — the Ory kratos-selfservice-ui sub-chart.
+#
+# Здесь же проверялся этаж PSS у задания доверия издателям (federation-in).
+# Задание снято вместе со своим предметом: перечень доверенных издателей стал
+# нашей таблицей (#1124), и запись у поставщика на решение о доступе не влияет.
+# Утверждение о нём снято ВМЕСТЕ с ним — проба, чей предмет исчез, либо
+# утверждает несуществующее, либо не может упасть.
 #
 #   1. kratos-selfservice-ui COOKIE_SECRET / CSRF_COOKIE_SECRET no longer ship a
 #      git-committed default. The chart FAILS render when the cookie secret is
@@ -15,7 +20,7 @@
 #   2. NODE_TLS_REJECT_UNAUTHORIZED=0 is gated behind insecureSkipTLSVerify — it
 #      is ABSENT under the prod profile (cert verification stays ON) and present
 #      only on the dev stand.
-#   3. kratos-selfservice-ui and hydra-trust-grants-job carry the
+#   3. kratos-selfservice-ui carries the
 #      restricted securityContext floor (runAsNonRoot, runAsUser!=0,
 #      readOnlyRootFilesystem, drop ALL caps, allowPrivilegeEscalation=false,
 #      seccompProfile RuntimeDefault) on every container.
@@ -136,31 +141,6 @@ UI_POD_SC=$(echo "$UI_DEV" | yq 'select(.kind=="Deployment") | .spec.template.sp
 [ "$(echo "$UI_POD_SC" | yq '.seccompProfile.type')" = "RuntimeDefault" ] || fail "kratos-ui: pod seccomp != RuntimeDefault"
 ok
 
-
-# hydraTrustGrants.adminUrl — ОБЯЗАТЕЛЕН при включённом federationIn: шаблон
-# роняет РЕНДЕР, если адрес не объявлен (он внесён в перепись потребителей
-# перехода, и незаполненный обязан быть виден до развёртывания). Профиль dev его
-# не объявляет, потому что хук латентен и включается отдельным ключом — здесь мы
-# включаем его сами, значит и адрес обязаны задать сами.
-#
-# Без этой строки рендер падал, `render` (со сбросом stderr) отдавала пусто, и
-# проверка ниже сообщала «container not found» — то есть красное с ложной
-# причиной. Так эта проверка и стояла красной с той правки; предмет её утверждений
-# (этаж PSS у Job'а) к адресу отношения не имеет.
-#
-# ЗНАЧЕНИЕ АДРЕСА — ЗАВЕДОМО ЧУЖОЕ. Правдоподобный вреден дважды: перепись
-# потребителей (admin-hop-address-census-test.sh) справедливо считает его
-# упоминанием и краснеет, а читатель принимает фикстуру за объявление. Первая
-# редакция этой правки поставила сюда настоящий адрес — перепись покраснела
-# сразу же и была права.
-TRUST=$(render "$DEV" "templates/hydra-trust-grants-job.yaml" \
-  --set kacho-iam.federationIn.enabled=true \
-  --set hydraTrustGrants.adminUrl=http://fixture-not-a-consumer.invalid/ \
-  --set kacho-iam.federationIn.trustedIssuers[0].issuer=https://idp.example.com \
-  --set kacho-iam.federationIn.trustedIssuers[0].jwksUrl=https://idp.example.com/jwks \
-  --set kacho-iam.federationIn.trustedIssuers[0].allowedSubjects[0]='*')
-[ -n "$TRUST" ] || fail "hydra-trust-grants: рендер пуст — утверждения НЕ ВЫПОЛНЕНЫ, а не чисты"
-assert_sc "$TRUST" trust-grants "hydra-trust-grants"
 
 
 echo "$SCRIPT: all green ($N assertions)"

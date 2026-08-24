@@ -1042,11 +1042,3 @@ kratos-selfservice-ui:
       key: ca.crt
       mountPath: /etc/kratos-ui-ca
 
-# ─── Хук выдачи доверия внешним эмитентам — адрес административного API ────
-# Объявляется значением (реестр потребителей его резолвит), поэтому перевод
-# перехода на терминатор его больше не минует. Хук латентен (federationIn
-# выключен), но латентность от проверки не освобождает: гейты рендерят его с
-# включённым ключом.
-hydraTrustGrants:
-  adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
-  adminCaFile: /etc/hydra-admin-ca/ca.crt

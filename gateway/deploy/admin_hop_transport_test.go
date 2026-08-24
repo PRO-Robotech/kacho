@@ -189,11 +189,6 @@ var adminHopConsumers = map[string][]string{
 	"api-gateway.hydra.adminUrl":          {"api-gateway", "hydra", "adminUrl"},
 	"kacho-iam.kacho.iam.hydraAdminUrl":   {"kacho-iam", "kacho", "iam", "hydraAdminUrl"},
 	"kratos-selfservice-ui…hydraAdminUrl": {"kratos-selfservice-ui", "kratosSelfServiceUI", "hydraAdminUrl"},
-	// Was baked into templates/hydra-trust-grants-job.yaml with no values key,
-	// i.e. invisible to this registry by construction. Now declared, so the hop
-	// gates cover it like the rest. Latent (federationIn is off everywhere) —
-	// latency does not exempt it: the census renders it with the key forced on.
-	"hydraTrustGrants.adminUrl": {"hydraTrustGrants", "adminUrl"},
 }
 
 // Once a stack fronts the admin hop with TLS, EVERY consumer that names it must
