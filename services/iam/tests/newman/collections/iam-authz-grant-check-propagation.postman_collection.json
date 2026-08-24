@@ -1650,7 +1650,8 @@
                   "  return;",
                   "}",
                   "pm.environment.unset('_pollCount');",
-                  "pm.environment.unset('_pollStarted');"
+                  "pm.environment.unset('_pollStarted');",
+                  "pm.test('create op done', () => pm.expect(j.done).to.eql(true));"
                 ]
               }
             }

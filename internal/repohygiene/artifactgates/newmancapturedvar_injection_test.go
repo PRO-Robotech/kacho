@@ -290,3 +290,157 @@ func TestCapturedVarGateRedOnStrippedTreeStep(t *testing.T) {
 			"(%s :: %s): находок %d", donorCol, donorStep, len(findings))
 	}
 }
+
+// ─── ось ОТЛОЖЕННОЙ ИНИЦИАЛИЗАЦИИ ────────────────────────────────────────────
+//
+// Пробы выше доказывают свойство гейта на форме `const j = pm.response.json()` —
+// объявление С инициализатором. Ровно её и узнавал распознаватель связывания, и
+// потому 114 шагов дерева публиковали координату НЕВИДИМО для него: разбор тела
+// они записывают иначе — объявляют имя, а значение присваивают отдельным
+// оператором внутри `try`.
+//
+// Форма не экзотическая и не выдуманная: это стандартная запись безопасного
+// разбора в этом корпусе (`let j; try { j = pm.response.json(); } catch (e) { j =
+// null; }`), и в ней класс жил при зелёном гейте. Ось проверяется отдельно,
+// потому что молчание гейта на ней было неотличимо от чистого дерева.
+
+// nmDeferredCaptureLines — захват с ОТЛОЖЕННОЙ инициализацией: имя объявлено на
+// верхнем уровне, значение присвоено внутри `try`. Утверждений нет — предмет тот
+// же, что у `nmCaptureLines`, отличается только запись связывания.
+func nmDeferredCaptureLines(envVar string) []string {
+	return []string{
+		"let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+		"const meta = j.metadata || {};",
+		"const v = meta.subnetId || '';",
+		"if (v) pm.environment.set('" + envVar + "', String(v));",
+	}
+}
+
+func TestCapturedVarGateRedOnDeferredInitCapture(t *testing.T) {
+	findings, cen := nmCapturedVarAudit(t, nmFolder("LST-CR-CRUD-OK — создание слушателя",
+		nmStep("setup-subnet", "POST", "{{baseUrl}}/vpc/v1/subnets",
+			nmDeferredCaptureLines("lstSubnetId")...),
+	))
+	if cen.capturing != 1 {
+		t.Fatalf("захват с отложенной инициализацией не распознан: capturing=%d — "+
+			"именно в этой слепоте класс и жил при зелёном гейте", cen.capturing)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("ожидалась ровно одна находка, получено %d: %v", len(findings), findings)
+	}
+	got := findings[0].String()
+	for _, want := range []string{"LST-CR-CRUD-OK", "setup-subnet", "lstSubnetId"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("находка не называет %q: %s", want, got)
+		}
+	}
+}
+
+// ПЕРЕПРИСВАИВАНИЕ УЖЕ ИНИЦИАЛИЗИРОВАННОГО ИМЕНИ — вторая запись той же слепоты и
+// более коварная: имя объявлено с инициализатором, поэтому распознаватель его
+// ВИДИТ, но связывает с безобидным начальным значением (`[]`), а присваивание из
+// ответа приходит позже и глубже. Так устроен резолв каталога размещения в vpc,
+// публикующий координату зоны для всего набора.
+//
+// Отдельно проверяется ОБЛАСТЬ ВИДИМОСТИ: присваивание стоит внутри `if { try { …
+// } }`, а чтение — снаружи, на верхнем уровне. Считать глубиной связывания
+// глубину присваивания значило бы закрыть имя вместе с блоком `try` — и гейт
+// снова промолчал бы, теперь уже по другой причине.
+func TestCapturedVarGateRedOnReassignedInitialisedName(t *testing.T) {
+	findings, cen := nmCapturedVarAudit(t, nmFolder("SETUP — резолв каталога размещения",
+		nmStep("_SETUP-ZONES", "GET", "{{baseUrl}}/geo/v1/zones",
+			"const code = (pm.response && pm.response.code) || 0;",
+			"let zs = [];",
+			"if (code === 200) { try { zs = (pm.response.json().zones) || []; } catch (e) {} }",
+			"const pick = zs.filter(z => !z.status);",
+			"if (pick.length) {",
+			"  pm.environment.set('existingZoneId', pick[0].id);",
+			"}",
+		),
+	))
+	if cen.capturing != 1 {
+		t.Fatalf("переприсваивание инициализированного имени не распознано: capturing=%d", cen.capturing)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("ожидалась ровно одна находка, получено %d: %v", len(findings), findings)
+	}
+	if got := findings[0].String(); !strings.Contains(got, "existingZoneId") {
+		t.Errorf("находка не называет опубликованное имя: %s", got)
+	}
+}
+
+// ─── законные близнецы новой оси ─────────────────────────────────────────────
+//
+// Каждый утверждает ОЖИДАЕМОЕ число увиденных захватов: без этого «находок ноль»
+// значило бы и «гейт промолчал по существу», и «гейт смотрел мимо».
+func TestCapturedVarGateSilentOnLawfulDeferredShapes(t *testing.T) {
+	cases := []struct {
+		name          string
+		lines         []string
+		wantCapturing int
+		why           string
+	}{
+		{
+			name: "отложенная инициализация рядом с утверждением",
+			lines: append([]string{
+				"pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+			}, nmDeferredCaptureLines("lstSubnetId")...),
+			wantCapturing: 1,
+			why:           "утверждение есть — предмета запрета нет",
+		},
+		{
+			// Значение НЕ происходит от ответа: имя объявлено, присвоено из
+			// окружения. Требовать за такую публикацию утверждения значило бы
+			// ловить форму записи вместо существа — фантом отсюда не родится.
+			name: "отложенная инициализация НЕ из ответа",
+			lines: []string{
+				"let v; try { v = pm.environment.get('runId'); } catch (e) { v = ''; }",
+				"pm.environment.set('derivedName', 'sub-' + v);",
+			},
+			wantCapturing: 0,
+			why:           "источник значения — окружение, а не ответ шага",
+		},
+		{
+			// Присваивание ПОЛЮ объекта, а не имени: `acc.body = pm.response…`
+			// связывает поле, а публикуется несвязанная константа. Распознаватель
+			// обязан отсечь это предшествующей точкой, иначе первое же накопление
+			// ответов в объект давало бы ложную находку.
+			name: "присваивание полю объекта, публикация константы",
+			lines: []string{
+				"const acc = {};",
+				"acc.body = pm.response.json();",
+				"pm.environment.set('_marker', 'done');",
+			},
+			wantCapturing: 0,
+			why:           "публикуется константа — координата ниоткуда не происходит",
+		},
+		{
+			// Сравнение, а не присваивание: `code === 200` не связывает имя.
+			// Заглядывание вперёд в распознавателе существует ради этого случая.
+			name: "сравнение не считается связыванием",
+			lines: []string{
+				"let code; code = pm.response.code;",
+				"if (code === 200) { pm.environment.set('_seen', '1'); }",
+			},
+			wantCapturing: 0,
+			why:           "публикуется литерал; сравнение имени с числом связыванием не является",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			findings, cen := nmCapturedVarAudit(t, nmFolder("CASE-ID — синтетический кейс",
+				nmStep("step", "POST", "{{baseUrl}}/vpc/v1/subnets", tc.lines...)))
+			if cen.steps != 1 {
+				t.Fatalf("обход не прочитал шаг: steps=%d", cen.steps)
+			}
+			if cen.capturing != tc.wantCapturing {
+				t.Fatalf("захватов увидено %d, ожидалось %d — молчание гейта значило бы "+
+					"не то, что проверяется", cen.capturing, tc.wantCapturing)
+			}
+			if len(findings) != 0 {
+				t.Fatalf("гейт нашёл находку там, где её нет (%s): %v", tc.why, findings)
+			}
+		})
+	}
+}
