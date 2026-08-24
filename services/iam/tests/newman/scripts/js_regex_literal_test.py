@@ -75,6 +75,59 @@
           sum(x.state in L.IN_STRING + L.IN_COMMENT for x in pl))
     PY
 
+Так же названы числом ещё три зоны, у каждой в дереве сегодня ноль вхождений —
+а ноль, который не назван, читается как «искали и не нашли», хотя означает «не
+искали»:
+
+  * СОСТОЯНИЕ СЧИТАЕТСЯ НА f-СТРОКУ. Литерал, открытый в одном элементе списка и
+    закрытый в соседнем, разбору невидим. Это единственная из четырёх границ,
+    которая держится не числом в докстроке, а УТВЕРЖДЕНИЕМ: перепись печатает
+    «f-строк, оставляющих литерал открытым, N» и падает на N > 0. Сегодня N = 0.
+    Строчный комментарий из счёта исключён by construction — элемент списка это
+    ОДНА строка скрипта, и `//` закрывается её концом; без этого исключения
+    счётчик давал 13 «находок», все тринадцать — законная подпись шага;
+  * ОСМАТРИВАЕТСЯ ТОЛЬКО `ast.JoinedStr`. Скрипт, собранный `%`-форматом,
+    `.format` или конкатенацией, под перепись не подпадает. Замер (единица —
+    узел разбора; конкатенация посчитана тремя предикатами, потому что цепочка
+    `a + b + c` — это два узла): `%`-формат 26, `.format` 1, конкатенация 137
+    узлов / 97 внешних выражений / 77 внешних с прямым строковым операндом. С
+    открывателем литерала выражения (`to.match(/`, `.test(/`, `RegExp(`) среди
+    них — 0 в каждой из трёх форм;
+  * ПРЕДФИЛЬТР ПО МАРКЕРАМ. f-строка без маркера JavaScript в статической части
+    (путь, идентификатор, JSON) переписью не судится: отсеяно 473, из них с
+    открывателем литерала выражения — 0.
+
+Предикат для двух последних:
+
+    python3 - <<'PY'
+    import ast, sys
+    from pathlib import Path
+    sys.path.insert(0, "services/iam/tests/newman/scripts")
+    import newman_js_lexer as L
+    OPEN = ("to.match(/", ".test(/", "RegExp(", "match(/")
+    pct = cat = fmt = skipped = hits = 0
+    for g in ("services/*/tests/newman/scripts/gen.py",
+              "gateway/tests/newman/scripts/gen.py"):
+        for p in sorted(Path(".").glob(g)):
+            tree = ast.parse(p.read_text(encoding="utf-8"))
+            drop = L._not_generated_javascript(tree)
+            for n in ast.walk(tree):
+                if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mod):
+                    pct += isinstance(n.left, ast.Constant)
+                elif isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add):
+                    cat += any(isinstance(s, ast.Constant) and
+                               isinstance(s.value, str) for s in (n.left, n.right))
+                elif isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
+                    fmt += n.func.attr == "format"
+                elif isinstance(n, ast.JoinedStr) and id(n) not in drop:
+                    st = "".join(v.value for v in n.values
+                                 if isinstance(v, ast.Constant))
+                    if not any(m in st for m in L.JS_MARKERS):
+                        skipped += 1
+                        hits += any(o in st for o in OPEN)
+    print(pct, fmt, cat, skipped, hits)
+    PY
+
 Граница названа здесь именно затем, чтобы «ноль находок» этой пробы не читалось
 шире, чем она осматривает.
 
@@ -236,7 +289,14 @@ def test_every_regex_substitution_carries_a_recorded_outcome():
           f"из них порождающих JS {total['js_fstrings']}, подстановок "
           f"{total['interpolations']}, из них в литерале регулярного выражения "
           f"{len(places)}; исходы: код {per_outcome[CODE]}, текст "
-          f"{per_outcome[TEXT]}, снято {len(RECORDED) - sum(per_outcome.values())}")
+          f"{per_outcome[TEXT]}, снято {len(RECORDED) - sum(per_outcome.values())}; "
+          f"f-строк, оставляющих литерал открытым, {total['open_at_end']}")
+    assert total["open_at_end"] == 0, (
+        f"f-строк, где литерал остаётся открытым до конца строки: "
+        f"{total['open_at_end']}. Состояние считается НА f-СТРОКУ, поэтому "
+        f"продолжение такого литерала в соседнем элементе списка разбору "
+        f"НЕВИДИМО, и перепись занизит молча. Предпосылка задета: либо закройте "
+        f"литерал в той же f-строке, либо научите разбор переносить состояние")
     assert not findings, (
         f"мест без записанного исхода либо без помощника своего исхода: "
         f"{len(findings)}\n  " + "\n  ".join(findings))
@@ -397,9 +457,13 @@ def test_bad_pattern_fails_generation_naming_the_place():
             try:
                 source = _render(svc, call, pattern)
             except ValueError as exc:
-                if label.split("/")[0] not in str(exc):
+                # Место — это ПОЛНАЯ координата «сервис/помощник/параметр», а не
+                # имя функции: помощник у трёх сюит одноимённый, и проверка по
+                # имени зеленела бы на `where=`, называющем ЧУЖОЙ сервис.
+                if f"{svc}/{label}" not in str(exc):
                     leaked.append(
-                        f"{svc}::{label} отверг «{why}», НЕ НАЗВАВ место: {exc}")
+                        f"{svc}::{label} отверг «{why}», НЕ НАЗВАВ место "
+                        f"(ждали «{svc}/{label}»): {exc}")
                 continue
             ok, message = _parse_as_function_body(source)
             leaked.append(
@@ -528,4 +592,19 @@ def test_the_lexer_reads_each_state_the_way_javascript_does():
         '    raise ValueError(f"pm.x: образец /{p}/ не разбирается")\n',
         "<проба>")
     assert places == [], f"сообщение отказа прочитано как код: {[str(p) for p in places]}"
-    print(f"осмотрено: состояний {len(_LEXER_CASES)} + два контроля «это не скрипт»")
+
+    # Счётчик задетой предпосылки — в обе стороны. Без этой пары он тихо стал бы
+    # вакуумным: сузить его до «никогда не срабатывает» ничего не стоит.
+    carried, _pl = jslex.scan_source(
+        'S = f"pm.test(\'не закрыт {p}"\n', "<проба>")
+    assert carried["open_at_end"] == 1, (
+        f"незакрытый литерал НЕ засчитан как задетая предпосылка: {carried}")
+    for why, source in (
+            ("строчный комментарий закрывается концом строки",
+             'S = f"// pm.x {p}"\n'),
+            ("закрытый литерал предпосылки не задевает",
+             'S = f"pm.test(\'закрыт {p}\');"\n')):
+        ok, _pl = jslex.scan_source(source, "<проба>")
+        assert ok["open_at_end"] == 0, f"{why}: засчитано как задетая предпосылка"
+    print(f"осмотрено: состояний {len(_LEXER_CASES)}, контролей «это не скрипт» 2, "
+          f"контролей предпосылки 3")

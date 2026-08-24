@@ -122,7 +122,8 @@ def scan_source(source: str, path_label: str) -> tuple[dict, list]:
     """
     tree = ast.parse(source, filename=path_label)
     skip = _not_generated_javascript(tree)
-    seen = {"fstrings": 0, "js_fstrings": 0, "interpolations": 0}
+    seen = {"fstrings": 0, "js_fstrings": 0, "interpolations": 0,
+            "open_at_end": 0}
     places: list = []
 
     for node in ast.walk(tree):
@@ -190,6 +191,21 @@ def scan_source(source: str, path_label: str) -> tuple[dict, list]:
                     # Подставленное значение — лексема как всякая другая: после
                     # неё `/` делит, а не открывает регулярное выражение.
                     prev, word = "x", ""
+        if state not in (CODE, LINE_COMMENT):
+            # ПРЕДПОСЫЛКА разбора: состояние считается НА f-СТРОКУ. Литерал,
+            # открытый здесь и закрытый в соседнем элементе списка, разбору
+            # невидим — следующая f-строка начнётся с состояния «код». Пока это
+            # число ноль, граница предпосылки предметом не задета; вызывающий
+            # обязан его печатать и на нём падать, иначе перепись занизит молча.
+            #
+            # СТРОЧНЫЙ КОММЕНТАРИЙ ИСКЛЮЧЁН, и это не послабление: элемент списка
+            # — это ОДНА строка порождаемого скрипта (они склеиваются через
+            # `\n`), поэтому `//` закрывается концом строки by construction и
+            # ни на какой соседний элемент не переносится. Первая редакция этого
+            # счётчика исключения не делала и дала 13 «находок» — все тринадцать
+            # оказались подписью шага вида `// per-step auth: …`, то есть
+            # законной формой, а не задетой предпосылкой.
+            seen["open_at_end"] += 1
     return seen, places
 
 
@@ -205,7 +221,8 @@ def scan_tree(root: Path, globs) -> tuple[list, dict, list]:
     генератор был невидим для всех её утверждений сразу.
     """
     paths = [p for g in globs for p in sorted(root.glob(g))]
-    total = {"fstrings": 0, "js_fstrings": 0, "interpolations": 0}
+    total = {"fstrings": 0, "js_fstrings": 0, "interpolations": 0,
+             "open_at_end": 0}
     places: list = []
     for path in paths:
         seen, found = scan_source(path.read_text(encoding="utf-8"),
