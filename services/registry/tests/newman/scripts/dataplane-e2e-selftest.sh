@@ -39,10 +39,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Приватный ключ-заглушка: харнесс требует существующий файл, содержимое не читает
-# (оно уезжает в Basic-заголовок к заглушке выдачи токена).
-printf 'stub-not-a-real-key\n' > "$TMP/sa.pem"
-
 # ---------------------------------------------------------------------------
 # Заглушка плоскости данных + плоскости управления. STUB_MODE управляет ровно
 # одним ответом — всё остальное отвечает как исправный стенд.
@@ -190,8 +186,8 @@ run_case() {
   DATAPLANE_URL="http://127.0.0.1:${port}" \
   GATEWAY_URL="http://127.0.0.1:${port}" \
   ADMIN_JWT="stub-admin-jwt" \
-  CLIENT_ID="stub-client" \
-  SA_KEY_PEM="$TMP/sa.pem" \
+  CREDENTIAL_ID="soc_selftest000000001" \
+  CREDENTIAL_SECRET="kacho_soc_selftest000000001_0000000000000000000000000000000000" \
   REGISTRY_ID="regselftest000000000" \
     bash "$HARNESS" > "$out" 2>&1
   local rc=$?
@@ -246,6 +242,50 @@ run_case helm-no-session nonzero "инициализация загрузки а
 
 # Тот же класс на выдаче токена: без токена сняты все шаги, требующие личности.
 run_case no-token        nonzero "выдача не отдала токен → прогон КРАСНЫЙ"
+
+
+# ── страж вида удостоверения (#1143) ────────────────────────────────────────
+#
+# Полоса отвергает негодный вид ТЕМ ЖЕ 401, что и неверный секрет, — снаружи это
+# неотличимо, и это правильно. Значит различить «настроен по-старому» обязан
+# харнесс, у которого строка на руках. Проба ПАРНАЯ: строка без марки — отказ с
+# именем переменной; строка с маркой — молчание (её проходимость утверждают
+# случаи выше).
+_guard_case() {
+  local label="$1" secret="$2" expect="$3"
+  local out="$TMP/guard.out"
+  RUN="selftest" \
+  REG_TOKEN_URL="http://127.0.0.1:1" \
+  DATAPLANE_URL="http://127.0.0.1:1" \
+  GATEWAY_URL="http://127.0.0.1:1" \
+  ADMIN_JWT="stub-admin-jwt" \
+  CREDENTIAL_ID="soc_selftest000000001" \
+  CREDENTIAL_SECRET="$secret" \
+  REGISTRY_ID="regselftest000000000" \
+    bash "$HARNESS" > "$out" 2>&1
+  local rc=$?
+  if [[ "$expect" == "refused" ]]; then
+    if [[ "$rc" -eq 2 ]] && grep -q "CREDENTIAL_SECRET" "$out"; then
+      echo "PASS [$label] — exit=2 и отказ называет переменную"; PASS=$((PASS + 1))
+    else
+      echo "FAIL [$label] — exit=$rc, вывод:"; sed 's/^/    | /' "$out"; FAIL=$((FAIL + 1))
+    fi
+  else
+    # Законный близнец: страж вида молчит, и прогон уходит дальше — до сети,
+    # которой в этой пробе нет. Отказ ДРУГОЙ природы (не 2) и есть доказательство
+    # того, что страж не сработал вхолостую.
+    if [[ "$rc" -ne 2 ]]; then
+      echo "PASS [$label] — страж пропустил годную марку (exit=$rc)"; PASS=$((PASS + 1))
+    else
+      echo "FAIL [$label] — страж отверг годную марку; вывод:"; sed 's/^/    | /' "$out"; FAIL=$((FAIL + 1))
+    fi
+  fi
+}
+
+_guard_case "ключевой материал в поле пароля отвергается харнессом" \
+  "-----BEGIN PRIVATE KEY-----" refused
+_guard_case "строка с маркой стражем вида пропускается" \
+  "kacho_soc_selftest000000001_0000000000000000000000000000000000" passes
 
 echo
 echo "=== итог самопроверки: pass=${PASS} fail=${FAIL} ==="

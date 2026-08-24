@@ -61,10 +61,12 @@ type BuildConfig struct {
 	TokenTTL time.Duration
 }
 
-// Build assembles the registry `/iam/token` shim from a pgx pool: the SA-key
-// credential validator (reverse lookup by client_id), the ES256 client_assertion
-// signer, and the Hydra token exchanger, wired into the token HTTP handler. The
-// caller mounts the returned mux on an EXTERNAL-reachable HTTP listener.
+// Build assembles the registry `/iam/token` shim from a pgx pool: the authority
+// on the presented BASIC ACCESS TOKEN (the only credential kind this lane accepts,
+// задача #1143), plus the ES256 client_assertion signer and the Hydra token
+// exchanger the ANONYMOUS flow still needs on a contour not yet moved to our own
+// minting. The caller mounts the returned mux on an EXTERNAL-reachable HTTP
+// listener.
 //
 // Composition root only — this is the single wire-up call for serve.go. Unlike
 // the deprecated RS256 signer, the shim needs NO JWKS encryption key: it does not
@@ -85,9 +87,6 @@ func Build(pool *pgxpool.Pool, cfg BuildConfig) (*http.ServeMux, error) {
 			"registrytokenwire: api-server.registry-token.service is empty — it is the audience this " +
 				"lane is declared to mint for, and an unset one means «mint for whatever the caller names»")
 	}
-	saRepo := kachopg.NewSAOAuthClientRepo(pool)
-
-	validator := registrytokenuc.NewSAKeyValidator(NewSAClientLookup(saRepo))
 	signer := registrytokenuc.ES256AssertionSigner{}
 	// Полоса обмена выбирается по тому, ПЕРЕВЕДЁН ли контур на свою чеканку:
 	// переведённый к прежнему издателю не ходит ни одним путём, поэтому дорога к
@@ -115,15 +114,16 @@ func Build(pool *pgxpool.Pool, cfg BuildConfig) (*http.ServeMux, error) {
 			KeyID:         cfg.AnonymousKeyID,
 			PrivateKeyPEM: cfg.AnonymousPrivateKeyPEM,
 		},
-	}, validator, signer, exchanger)
+	}, signer, exchanger)
 
-	// ПОЛОСА БАЗОВОГО СЕКРЕТА (#1142). Авторитет — тот же пул, что и у прочих
+	// ПОЛОСА БАЗОВОГО СЕКРЕТА (#1142) — ЕДИНСТВЕННАЯ полоса предъявленного
+	// удостоверения после задачи #1143. Авторитет — тот же пул, что и у прочих
 	// читателей: своей связи и своих величин полоса не заводит.
 	//
 	// Провязка безусловна: полоса, объявленная и не провязанная, — мёртвый
-	// контроль. Строка с нашей маркой уходила бы валидатору ключевого
-	// материала и отвергалась бы как негодный PEM, то есть отказом не той
-	// природы, и заметить это можно было бы только по жалобе клиента.
+	// контроль. Непровязанная, она отвечала бы недоступностью издателя на
+	// КАЖДЫЙ вход в реестр, и заметить это можно было бы только по жалобе
+	// клиента.
 	useCase = useCase.WithBasicCredentialResolver(kachopg.NewBasicCredentialRepo(pool))
 
 	if cfg.Signer != nil {

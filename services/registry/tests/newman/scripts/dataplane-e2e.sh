@@ -10,15 +10,21 @@
 # (deny → 404), register-on-first-push, запрет деструктивного DELETE на data-plane
 # (405, удаление — только control-plane DeleteTag), URL-encoded traversal guard (400).
 #
-# Токены НЕ минтятся здесь (SA-key показывается один раз при создании): caller
-# передаёт CLIENT_ID + путь к приватному PEM. Harness лишь брокерит identity-JWT
-# у шима /iam/token (Basic client_id:PEM → Hydra client_credentials → identity-JWT).
+# Удостоверения НЕ чеканятся здесь (строка секрета показывается один раз при выдаче):
+# caller передаёт идентификатор удостоверения и саму строку. Harness лишь получает
+# identity-JWT у шима /iam/token (Basic <id удостоверения>:<строка секрета>).
+#
+# КЛЮЧЕВОЙ МАТЕРИАЛ ЭТОЙ ПОЛОСОЙ НЕ ПРИНИМАЕТСЯ (задача #1143): приватная половина
+# пары не должна ходить по сети и оседать в конфигурации клиента. Выпустите
+# удостоверение вида CREDENTIAL_KIND_SECRET (`SAKeyService.Issue`) и подставьте его
+# строку — прежние CLIENT_ID/SA_KEY_PEM полоса отвергает тем же 401, что и неверный
+# секрет.
 #
 # Параметризация (env):
 #   REG_TOKEN_URL   базовый URL шима iam /token (:9096), к нему добавляется /iam/token
 #   DATAPLANE_URL   базовый URL data-plane OCI-прокси (:8080)
-#   CLIENT_ID       OAuth client_id SA-ключа (из IssueSAKey, show-once)
-#   SA_KEY_PEM      путь к приватному PEM SA-ключа (из IssueSAKey, show-once)
+#   CREDENTIAL_ID   идентификатор базового удостоверения (soc…; его же несёт строка)
+#   CREDENTIAL_SECRET  строка базового токена доступа (из IssueSAKey вида SECRET, show-once)
 #   REGISTRY_ID     id реестра-namespace (reg…) с гранта push/pull на caller-SA
 #   ADMIN_JWT       Bearer control-plane для cross-check ListRepositories
 #   GATEWAY_URL     базовый URL api-gateway REST для control-plane cross-check
@@ -26,7 +32,7 @@
 #
 # Вызов:
 #   REG_TOKEN_URL=http://localhost:9096 DATAPLANE_URL=http://localhost:8080 \
-#   CLIENT_ID=sva… SA_KEY_PEM=/path/sa.pem REGISTRY_ID=reg… \
+#   CREDENTIAL_ID=soc… CREDENTIAL_SECRET=kacho_soc…_… REGISTRY_ID=reg… \
 #   ADMIN_JWT="$JWT" GATEWAY_URL=http://localhost:38080 \
 #   ./scripts/dataplane-e2e.sh 1720000000
 #
@@ -73,8 +79,8 @@ REPO="e2e-app-${RUN}"
 TAG="v1"
 
 fail_env() { echo "FATAL: missing required env $1" >&2; exit 2; }
-[[ -n "${CLIENT_ID:-}" ]]   || fail_env CLIENT_ID
-[[ -n "${SA_KEY_PEM:-}" ]]  || fail_env SA_KEY_PEM
+[[ -n "${CREDENTIAL_ID:-}" ]]     || fail_env CREDENTIAL_ID
+[[ -n "${CREDENTIAL_SECRET:-}" ]] || fail_env CREDENTIAL_SECRET
 [[ -n "${REGISTRY_ID:-}" ]] || fail_env REGISTRY_ID
 # Cross-check плоскости управления (шаг 10) проверяет register-on-first-push и
 # классификацию артефакта — инварианты того же потока, не украшение. Прежде они были
@@ -82,7 +88,17 @@ fail_env() { echo "FATAL: missing required env $1" >&2; exit 2; }
 # механизм маски. Отсутствие фикстуры обязано быть ОТКАЗОМ, а не пропуском.
 [[ -n "${ADMIN_JWT:-}" ]]   || fail_env ADMIN_JWT
 [[ -n "${GATEWAY_URL:-}" ]] || fail_env GATEWAY_URL
-[[ -f "$SA_KEY_PEM" ]]      || { echo "FATAL: SA_KEY_PEM not a file: $SA_KEY_PEM" >&2; exit 2; }
+# Вид удостоверения проверяется ЗДЕСЬ, а не по отказу шима: полоса отвергает
+# негодный вид тем же 401, что и неверный секрет (и это правильно — иначе отказ был
+# бы оракулом), поэтому «настроен по-старому» и «секрет неверен» с этой стороны
+# неотличимы. Отличить их обязан харнесс, у которого строка на руках.
+case "$CREDENTIAL_SECRET" in
+  kacho_*) : ;;
+  *) echo "FATAL: CREDENTIAL_SECRET не несёт марки базового токена доступа (kacho_…).
+       Докер-полоса принимает ТОЛЬКО этот вид (#1143); ключевой материал в поле пароля
+       снят. Выпустите удостоверение SAKeyService.Issue с credentialKind=CREDENTIAL_KIND_SECRET
+       и подставьте показанную один раз строку." >&2; exit 2 ;;
+esac
 command -v curl    >/dev/null || { echo "FATAL: curl not found"    >&2; exit 2; }
 command -v python3 >/dev/null || { echo "FATAL: python3 not found" >&2; exit 2; }
 
@@ -149,10 +165,10 @@ unverified() { echo "UNVERIFIED $*"; UNVERIFIED=$((UNVERIFIED + 1)); }
 body_contains() { grep -qF -- "$1" "$BODY"; }
 
 # ---------------------------------------------------------------------------
-# 1. Mint identity-JWT: POST {REG_TOKEN_URL}/iam/token?service=… Basic(client_id:PEM)
+# 1. Mint identity-JWT: POST {REG_TOKEN_URL}/iam/token?service=… Basic(id:секрет)
 # ---------------------------------------------------------------------------
-echo "--- 1. mint token (/iam/token, Basic SA-key) ---"
-BASIC="$({ printf '%s:' "$CLIENT_ID"; cat "$SA_KEY_PEM"; } | base64 | tr -d '\n\r')"
+echo "--- 1. mint token (/iam/token, Basic <id>:<строка секрета>) ---"
+BASIC="$(printf '%s:%s' "$CREDENTIAL_ID" "$CREDENTIAL_SECRET" | base64 | tr -d '\n\r')"
 code="$(do_req POST "${REG_TOKEN_URL}/iam/token?service=${SERVICE_AUD}" \
   -H "Authorization: Basic ${BASIC}")"
 assert_hard "token mint" "$code" 200 || true

@@ -2,19 +2,31 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package registry_token — the IAM Docker Registry v2 auth-server use-case:
-// authenticate an SA-key (Basic client_id/private-PEM), then BROKER a token from
-// Ory Hydra. kacho-iam does not mint the registry token itself — it signs a
-// short-lived ES256 client_assertion from the presented SA-key and exchanges it
-// with Hydra (`client_credentials` + `private_key_jwt`), relaying Hydra's
-// access_token to the docker client. Hydra is the issuer; the data-plane verifies
-// against Hydra's JWKS.
+// authenticate the presented Basic credential and issue a registry token.
+//
+// # Принимаемый вид удостоверения ОДИН (задача #1143)
+//
+// Полоса принимает БАЗОВЫЙ ТОКЕН ДОСТУПА Kachō — однострочный секрет с маркой
+// продукта (`pkg/credsecret`, задача #1142). Ключевой материал — приватную
+// половину пары ключей служебной учётки — она принимала до этой работы и не
+// принимает больше: приватная половина не должна ходить по сети и оседать в
+// конфигурации клиента, где живёт `docker login`.
+//
+// Порядок снятия был обязателен и исполнен именно в нём: ввести новый вид
+// (#1142) → перевести клиентов и документацию → снять приём (#1143). Обратный
+// порядок сломал бы работающий вход раньше, чем появилась замена.
+//
+// Сужение адресатов, ОБЪЯВЛЕННОЕ ключом при выдаче (#1136/#1184), уходит с той
+// полосой, на которой оно жило: у базового токена поля адресатов нет — оно
+// отвергается на выдаче. Внешняя граница посадки (`Config.AllowedAudiences`)
+// остаётся и остаётся обязательной.
 //
 // The token carries IDENTITY only (Вариант B): kacho-registry re-checks
 // authorization per request against IAM, so no registry scope is embedded.
 //
-// Clean-arch: this package defines the ports (CredentialValidator, AssertionSigner,
-// TokenExchanger) and the use-case; the infra-touching halves (SA-key store lookup,
-// Hydra HTTP) live behind the ports, wired in the composition root.
+// Clean-arch: this package defines the ports (LocalMinter, AssertionSigner,
+// TokenExchanger, basicCredentialResolver) and the use-case; the infra-touching
+// halves live behind the ports, wired in the composition root.
 package registry_token
 
 import (
@@ -28,26 +40,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/registrytoken"
 )
-
-// Credential — the verified SA-key identity a client_assertion is built from.
-type Credential struct {
-	// ClientID — the Hydra OAuth2 client_id; lands in the assertion iss & sub
-	// and is the identity the data-plane resolves to a ServiceAccount.
-	ClientID string
-	// KeyID — the registered JWK kid (the SA-OAuth-client id); the assertion
-	// protected-header kid so Hydra selects the right verification key.
-	KeyID string
-	// Subject — the owning ServiceAccount id (informational / audit).
-	Subject string
-	// DeclaredAudiences — сужение адресатов, ОБЪЯВЛЕННОЕ заказчиком при выдаче
-	// ключа (`IssueSAKeyRequest.audience`, задача #1136). Внутренняя граница
-	// выдачи: она говорит, для чего заведён ЭТОТ ключ.
-	//
-	// Пустой перечень означает «сужения не объявлено», а НЕ «любой адресат»:
-	// внешняя граница (`Config.AllowedAudiences`) остаётся и требуется
-	// непустой при сборке полосы.
-	DeclaredAudiences []string
-}
 
 // ErrInvalidCredentials — a validator's rejection (bad/unknown/expired/
 // unsupported credential). Never surfaced verbatim to the client (no oracle);
@@ -71,18 +63,21 @@ var ErrUnauthenticated = errors.New("registry token: unauthenticated")
 // бы оракулом; различимость нужна ЖУРНАЛУ, и она здесь.
 var ErrAudienceNotAllowed = errors.New("registry token: requested audience is not allowed")
 
+// ErrCredentialKindNotAccepted — предъявлен вид удостоверения, которого эта
+// полоса не принимает: в поле пароля приехал не базовый токен доступа, а
+// что-то другое — прежде всего ключевой материал (задача #1143).
+//
+// Отдельный от ErrUnauthenticated исход нужен ЖУРНАЛУ и только ему: «клиент
+// настроен по-старому» и «секрет неверен» чинятся в разных местах и разными
+// людьми, а без этой строки они выглядят одинаково. Наружу обработчик отдаёт
+// тот же 401-вызов и то же фиксированное тело — различимость снаружи сказала
+// бы предъявителю, как именно разобран его вход, то есть была бы оракулом.
+var ErrCredentialKindNotAccepted = errors.New("registry token: the presented credential kind is not accepted on this lane")
+
 // ErrIssuerUnavailable — Hydra (the token issuer, a hard mint-path dependency)
 // is unreachable / misbehaving. The handler maps it to 503 (fail-closed): peer
 // unavailability must NOT yield a token and must NOT open-fail.
 var ErrIssuerUnavailable = errors.New("registry token: issuer unavailable")
-
-// CredentialValidator — verifies the presented Basic credential (client_id +
-// SA-key private PEM) and resolves the assertion identity. An unsupported or
-// invalid credential MUST return ErrInvalidCredentials (never a partial-detail
-// error that leaks which half was wrong).
-type CredentialValidator interface {
-	Validate(ctx context.Context, clientID, privateKeyPEM string) (Credential, error)
-}
 
 // AssertionInput — the RFC 7523 client_assertion parameters.
 type AssertionInput struct {
@@ -183,8 +178,13 @@ const (
 
 // IssueInput — the parsed docker token request.
 type IssueInput struct {
-	Username string // Basic-auth user — the Hydra client_id.
-	Password string // Basic-auth pass — the SA-key private-key PEM.
+	// Username — Basic-auth user. Обязан совпадать с идентификатором, который
+	// несёт сама строка секрета: разбор ниже это сверяет.
+	Username string
+	// Password — Basic-auth pass. ЕДИНСТВЕННЫЙ принимаемый вид — базовый токен
+	// доступа Kachō (строка с маркой `credsecret.Mark`). Ключевой материал
+	// здесь больше не принимается (#1143).
+	Password string
 	Service  string // ?service= — the registry service name (→ requested aud).
 
 	// ConfirmationX5TS256 — отпечаток ПРОВЕРЕННОГО клиентского сертификата,
@@ -208,7 +208,6 @@ type IssueOutput struct {
 // broker a Hydra token.
 type IssueRegistryTokenUseCase struct {
 	cfg       Config
-	validator CredentialValidator
 	signer    AssertionSigner
 	exchanger TokenExchanger
 	// minter — НАШ подписант. nil означает «контур ещё на прежнем издателе»;
@@ -223,13 +222,17 @@ type IssueRegistryTokenUseCase struct {
 
 // NewIssueRegistryTokenUseCase — builder. AssertionTTL is clamped to
 // (0, MaxAssertionTTL].
-func NewIssueRegistryTokenUseCase(cfg Config, v CredentialValidator, s AssertionSigner, ex TokenExchanger) *IssueRegistryTokenUseCase {
+//
+// Подписант и обмен остаются параметрами: их зовёт АНОНИМНЫЙ поток на контуре,
+// ещё не переведённом на нашу чеканку. Полоса предъявленного удостоверения ими
+// не пользуется — подписывать утверждение нечем: ключевого материала у
+// принимаемого вида не существует.
+func NewIssueRegistryTokenUseCase(cfg Config, s AssertionSigner, ex TokenExchanger) *IssueRegistryTokenUseCase {
 	if cfg.AssertionTTL <= 0 || cfg.AssertionTTL > MaxAssertionTTL {
 		cfg.AssertionTTL = MaxAssertionTTL
 	}
 	return &IssueRegistryTokenUseCase{
 		cfg:       cfg,
-		validator: v,
 		signer:    s,
 		exchanger: ex,
 		now:       time.Now,
@@ -249,111 +252,37 @@ func (u *IssueRegistryTokenUseCase) WithJTIFunc(f func() (string, error)) *Issue
 	return u
 }
 
-// Execute verifies the credential, signs a client_assertion, and brokers a Hydra
-// token. A missing/rejected credential yields ErrUnauthenticated (fail-closed);
-// an unreachable issuer yields ErrIssuerUnavailable (503, no token).
+// Execute выдаёт удостоверение реестра по предъявленному Basic-удостоверению.
+//
+// Принимаемый вид ОДИН — базовый токен доступа Kachō. Всё прочее в поле пароля
+// отвергается ЯВНО и до любого обращения к авторитету: ключевой материал,
+// который эта полоса принимала до задачи #1143, среди прочего.
+//
+// Отсутствие удостоверения даёт ErrUnauthenticated (fail-closed); недоступный
+// издатель — ErrIssuerUnavailable (503, без токена).
 func (u *IssueRegistryTokenUseCase) Execute(ctx context.Context, in IssueInput) (IssueOutput, error) {
 	if in.Username == "" || in.Password == "" {
 		return IssueOutput{}, ErrUnauthenticated
 	}
 
-	// ПОЛОСА БАЗОВОГО СЕКРЕТА (#1142, приёмка BAT-1 §5.5). Классификация — ПО
-	// МАРКЕ в поле пароля, а не по неудаче разбора ключевого материала:
-	// запасной путь, срабатывающий на неудаче, превратил бы всякий негодный
-	// PEM во вход второй полосы.
-	//
-	// Ключевой материал при этом принимается ПО-ПРЕЖНЕМУ: его снятие — предмет
-	// #1143, и порядок обязателен (ввести → перевести клиентов → снять приём).
-	// Обратный порядок ломает работающий вход раньше, чем появляется замена.
-	if u.basicResolver != nil && credsecret.HasMark(in.Password) {
-		return u.executeBasic(ctx, in)
+	// Классификация — ПО МАРКЕ в поле пароля, а не по неудаче разбора чего-то
+	// другого: путь, срабатывающий на неудаче, превратил бы всякий негодный
+	// вход во вход соседней полосы, а снятый приём — в тихий запасной путь.
+	if !credsecret.HasMark(in.Password) {
+		// ЛОМАЮЩЕЕ ИЗМЕНЕНИЕ, объявленное задачей #1143: клиент, настроенный на
+		// прежний вход, получает отказ. Причина уходит в журнал; наружу —
+		// единый 401-вызов с фиксированным телом, называющим годный вид.
+		return IssueOutput{}, fmt.Errorf("%w: %w", ErrUnauthenticated, ErrCredentialKindNotAccepted)
 	}
-
-	cred, err := u.validator.Validate(ctx, in.Username, in.Password)
-	if err != nil || cred.ClientID == "" || cred.KeyID == "" {
-		// Collapse every validator error to ErrUnauthenticated — the client must
-		// not learn whether the subject exists or which half of the credential
-		// was wrong (no auth oracle).
-		return IssueOutput{}, ErrUnauthenticated
+	if u.basicResolver == nil {
+		// Полоса собрана без авторитета — отвечать по существу нечем.
+		// Fail-closed недоступностью издателя, а не отказом в удостоверении:
+		// предъявитель ни при чём, и повтор после починки сборки осмыслен.
+		return IssueOutput{}, fmt.Errorf(
+			"%w: the basic-credential authority is not wired — this lane cannot answer for the presented credential",
+			ErrIssuerUnavailable)
 	}
-
-	// Адресат — ИЗ ЗАПРОСА, в пределах объявленного ПОСАДКОЙ перечня,
-	// сужённого тем, что объявил при выдаче сам КЛЮЧ. Тем же предикатом, что и
-	// на соседней полосе выдачи: свойство, обязательное для одной, держится
-	// общим источником, а не одинаковой проверкой в двух местах.
-	//
-	// Решается ПОСЛЕ проверки учётных данных: перечень адресатов — сведение о
-	// посадке, и отвечать им неаутентифицированному незачем.
-	service, err := u.resolveAudience(cred, in.Service)
-	if err != nil {
-		return IssueOutput{}, err
-	}
-	now := u.now()
-
-	// Контур переведён на НАШУ чеканку — токен выпускает наш подписант, и
-	// утверждение для прежнего издателя не строится вовсе: подписывать его
-	// было бы работой без адресата.
-	if u.mintsLocally() {
-		out, merr := u.minter.MintToken(ctx, MintInput{
-			Subject:  cred.Subject,
-			Audience: service,
-			Scope:    u.cfg.Scope,
-			// Материал привязки — ровно тот, что предъявлен транспортом.
-			// Контур его переносит и не выбирает: привязка, которую назначает
-			// себе предъявитель, не привязывает ни к чему.
-			ConfirmationX5TS256: in.ConfirmationX5TS256,
-		})
-		if merr != nil {
-			// Неисправность СВОЕЙ чеканки — недоступность издателя, а не
-			// негодные учётные данные: предъявитель ни при чём, и повтор
-			// осмыслен. Откатываться к прежнему издателю здесь нельзя —
-			// это было бы молчаливым снятием перевода контура.
-			return IssueOutput{}, fmt.Errorf("%w: %w", ErrIssuerUnavailable, merr)
-		}
-		return IssueOutput{Token: out.AccessToken, ExpiresIn: out.ExpiresIn, IssuedAt: now.Unix()}, nil
-	}
-
-	jti, err := u.jti()
-	if err != nil {
-		return IssueOutput{}, err
-	}
-	assertion, err := u.signer.Sign(AssertionInput{
-		KeyID:         cred.KeyID,
-		ClientID:      cred.ClientID,
-		Audience:      u.cfg.AssertionAudience,
-		PrivateKeyPEM: in.Password,
-		IssuedAt:      now.Unix(),
-		ExpiresAt:     now.Add(u.cfg.AssertionTTL).Unix(),
-		JTI:           jti,
-	})
-	if err != nil {
-		// The presented key could not sign — treat as an invalid credential
-		// (fail-closed 401), never leaking the crypto failure detail.
-		return IssueOutput{}, ErrUnauthenticated
-	}
-
-	out, err := u.exchanger.Exchange(ctx, ExchangeInput{
-		ClientAssertion: assertion,
-		Audience:        service,
-		Scope:           u.cfg.Scope,
-	})
-	if err != nil {
-		if errors.Is(err, ErrIssuerUnavailable) {
-			// Причина ОБОРАЧИВАЕТСЯ: наружу обработчик всё равно отдаст
-			// фиксированное тело (`{"error":"unavailable"}`), а вот в журнал
-			// без неё не уходило НИЧЕГО — ни здесь, ни этажом выше. Тогда
-			// «провайдер лежит», «стучимся не туда» и «имя не резолвится»
-			// выглядят одинаково, а чинятся противоположно.
-			return IssueOutput{}, fmt.Errorf("%w: %w", ErrIssuerUnavailable, err)
-		}
-		// Hydra rejected the exchange (bad/expired/revoked key) — fail-closed 401.
-		return IssueOutput{}, ErrUnauthenticated
-	}
-	return IssueOutput{
-		Token:     out.AccessToken,
-		ExpiresIn: out.ExpiresIn,
-		IssuedAt:  now.Unix(),
-	}, nil
+	return u.executeBasic(ctx, in)
 }
 
 // basicCredentialResolver — порт авторитета о предъявленном базовом секрете.
@@ -417,7 +346,7 @@ func (u *IssueRegistryTokenUseCase) executeBasic(ctx context.Context, in IssueIn
 	// и отвечать им неаутентифицированному незачем. Сужения на самом секрете
 	// нет (поле адресатов у этого вида отвергается на выдаче), поэтому здесь
 	// действует только внешняя граница посадки.
-	service, aerr := u.resolveAudience(Credential{Subject: cred.PrincipalID}, in.Service)
+	service, aerr := u.resolveAudience(cred.PrincipalID, in.Service)
 	if aerr != nil {
 		return IssueOutput{}, aerr
 	}
@@ -473,7 +402,7 @@ func (u *IssueRegistryTokenUseCase) ExecuteAnonymous(ctx context.Context, servic
 	// Сужения ключа здесь нет ПО ПОСТРОЕНИЮ — учётных данных не предъявляли, —
 	// поэтому остаётся внешняя граница. Она действует и тут: анонимный поток
 	// той же полосы адресата себе не назначает.
-	service, err := u.resolveAudience(Credential{ClientID: u.cfg.Anonymous.ClientID}, service)
+	service, err := u.resolveAudience(u.cfg.Anonymous.ClientID, service)
 	if err != nil {
 		return IssueOutput{}, err
 	}
@@ -547,6 +476,14 @@ func (u *IssueRegistryTokenUseCase) ExecuteAnonymous(ctx context.Context, servic
 // обе полосы по отдельности выглядят исправными, неверна их РАЗНИЦА. Поэтому
 // решение принимает `audiencepolicy`, а здесь остаётся перевод входа и исхода.
 //
+// # Сужения, объявленного удостоверением, здесь больше нет
+//
+// Внутренняя граница (`Declared`) жила на ключе служебной учётки и уехала
+// вместе с полосой, которая ключи принимала (#1143): у базового токена поля
+// адресатов нет — оно отвергается на выдаче, — а анонимный поток удостоверения
+// не предъявляет вовсе. Остаётся внешняя граница посадки, и она обязательна:
+// сборка полосы без неё отвергается.
+//
 // # Почему пустой `?service=` — законный вход
 //
 // Докер-клиент шлёт то, что назвал ему реестр в вызове на аутентификацию, но
@@ -554,16 +491,17 @@ func (u *IssueRegistryTokenUseCase) ExecuteAnonymous(ctx context.Context, servic
 // адресат берётся из сужения ключа, а при его отсутствии — из умолчания
 // посадки. Подставлять умолчание ДО этого места нельзя: тогда ключ, объявивший
 // своё назначение, получал бы чужой адресат и отвергался собственной проверкой.
-func (u *IssueRegistryTokenUseCase) resolveAudience(cred Credential, requested string) (string, error) {
+func (u *IssueRegistryTokenUseCase) resolveAudience(subject, requested string) (string, error) {
 	var want []string
 	if requested != "" {
 		want = []string{requested}
 	}
 	out, err := audiencepolicy.Resolve(audiencepolicy.Scope{
-		Landing:  u.cfg.AllowedAudiences,
-		Default:  u.cfg.DefaultService,
-		Declared: cred.DeclaredAudiences,
-		Subject:  cred.ClientID,
+		Landing: u.cfg.AllowedAudiences,
+		Default: u.cfg.DefaultService,
+		// Declared намеренно не задан: см. разбор выше. Пустой перечень тут —
+		// объявление «сужения не бывает у этого вида», а не пропуск.
+		Subject: subject,
 	}, want)
 	if err != nil {
 		// Причина ОБОРАЧИВАЕТСЯ: наружу уйдёт единый 401-вызов, а в журнал —
