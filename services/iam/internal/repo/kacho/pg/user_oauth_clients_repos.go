@@ -198,19 +198,36 @@ func (r *UserOAuthClientRepo) List(ctx context.Context, userID domain.UserID, pa
 	return out, nextToken, nil
 }
 
-// DeleteByID удаляет одну строку токена. Идемпотентно — ErrNotFound если нет.
-// Принимает непрозрачный service.Tx (порт use-case), восстанавливает pgx.Tx
-// через txAsPgx.
-func (r *UserOAuthClientRepo) DeleteByID(ctx context.Context, txh service.Tx, id domain.UserOAuthClientID) error {
+// DeleteOwnedByID снимает строку удостоверения ОДНИМ оператором, суженным
+// владельцем, и возвращает снятую строку.
+//
+// Владелец стоит в самом `WHERE`, а не в проверке перед ним: «прочитать, свериться,
+// удалить» — software check-then-act, запрещённый ban #10, и под конкуренцией два
+// отзыва проходят проверку оба. Здесь строку выбирает и снимает один оператор под
+// row-lock: второй писатель видит уже снятую строку и получает ноль строк.
+//
+// found=false — ЗАКОННЫЙ исход, а не ошибка. Он покрывает три случая сразу:
+// строки не было никогда, строку уже сняли, строка принадлежит другому владельцу.
+// Различить их отсюда нельзя BY CONSTRUCTION, и это не упущение, а требование:
+// вызывающий, которому вернули бы разные исходы, узнавал бы по различию,
+// существует ли ЧУЖОЕ удостоверение (security.md §Hardening #6). Ветки, в
+// которой они могли бы разойтись, здесь просто нет.
+func (r *UserOAuthClientRepo) DeleteOwnedByID(
+	ctx context.Context, txh service.Tx,
+	ownerID domain.UserID, id domain.UserOAuthClientID,
+) (domain.UserOAuthClient, bool, error) {
 	tx := txAsPgx(txh)
-	tag, err := tx.Exec(ctx, `DELETE FROM user_oauth_clients WHERE id = $1`, string(id))
+	row := tx.QueryRow(ctx,
+		fmt.Sprintf(`DELETE FROM user_oauth_clients WHERE id = $1 AND user_id = $2 RETURNING %s`, uocCols),
+		string(id), string(ownerID))
+	out, err := scanUserOAuthClient(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.UserOAuthClient{}, false, nil
+	}
 	if err != nil {
-		return mapErr(err, "UserOAuthClient.DeleteByID", string(id))
+		return domain.UserOAuthClient{}, false, mapErr(err, "UserOAuthClient.DeleteOwnedByID", string(id))
 	}
-	if tag.RowsAffected() == 0 {
-		return iamerr.Wrapf(iamerr.ErrNotFound, "UserToken %s not found", id)
-	}
-	return nil
+	return out, true, nil
 }
 
 // TouchLastUsed — атомарное обновление last_used_at (RETURNING для проверки exists).
