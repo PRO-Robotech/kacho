@@ -117,10 +117,7 @@ func TestNewMigrationCitesAnApprovedAcceptance(t *testing.T) {
 	root := repoRoot(t)
 	l := loadLedger(t, root)
 
-	base, ok := ledgerTrunkRef(root)
-	if !ok {
-		t.Skip("ствол не разрешается — сравнивать добавленное не с чем")
-	}
+	base := requireTrunkRef(t, root)
 
 	added, findings, err := auditNewMigrations(root, base, l)
 	if err != nil {
@@ -289,16 +286,4 @@ func auditLedgerEntries(l ledger, citedDocs, citedPrefixes map[string]bool) []st
 		}
 	}
 	return findings
-}
-
-// ledgerTrunkRef — ссылка на ствол, от которой считается «добавленное этим
-// изменением». Отсутствие ссылки — не находка: у поверхностного клона её может
-// не быть вовсе, и обвинять дерево за это нельзя.
-func ledgerTrunkRef(root string) (string, bool) {
-	for _, ref := range []string{"origin/main", "main"} {
-		if err := gitenv.Command(root, "rev-parse", "--verify", "--quiet", ref).Run(); err == nil {
-			return ref, true
-		}
-	}
-	return "", false
 }
