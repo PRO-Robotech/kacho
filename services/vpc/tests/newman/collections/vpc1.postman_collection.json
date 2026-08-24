@@ -13164,7 +13164,7 @@
                   "  pm.expect(j.error, JSON.stringify(j)).to.be.an('object');",
                   "});",
                   "pm.test('op.error.code 3 (INVALID_ARGUMENT)', () => pm.expect(pm.response.json().error.code, JSON.stringify(pm.response.json())).to.eql(3));",
-                  "pm.test('op.error.message matches /^ipv4_cidr_primary is immutable after Subnet\\.Create$/', () => pm.expect(pm.response.json().error.message, JSON.stringify(pm.response.json())).to.match(/^ipv4_cidr_primary is immutable after Subnet\\.Create$/));"
+                  "pm.test('op.error.message matches /^ipv4_cidr_primary is immutable after Subnet\\\\.Create$/', () => pm.expect(pm.response.json().error.message, JSON.stringify(pm.response.json())).to.match(/^ipv4_cidr_primary is immutable after Subnet\\.Create$/));"
                 ]
               }
             }

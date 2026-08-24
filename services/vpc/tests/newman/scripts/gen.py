@@ -3906,6 +3906,10 @@ def load_cases_module(path: Path):
     mod.pairwise_subnet_pack = pairwise_subnet_pack
     mod.security_injection_block = security_injection_block
     mod.conformance_lifecycle_pack = conformance_lifecycle_pack
+    # Помощники экранирования — тем же впрыском (#1209): декларация тоже
+    # порождает JavaScript, и вторая копия предиката разошлась бы с первой молча.
+    mod.js_str = js_str
+    mod.js_regex_literal_text = js_regex_literal_text
     spec.loader.exec_module(mod)
     return mod
 

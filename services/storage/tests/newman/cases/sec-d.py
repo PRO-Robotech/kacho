@@ -164,6 +164,11 @@ def _lifecycle_case(case_id, title, base_path, obj_type, id_var, id_prefix,
                     create_body, pre_steps=(), post_cleanup=()):
     """Полный SEC-D-цикл одного ресурса: Create → op done+success → Get владельцем
     (не cluster-admin'ом) → прямая проба tuple → Delete → Get 404 → проба снятия."""
+    # Между косыми чертами стоит КОД, а не текст: знаки образца значимы. Образец
+    # собирается здесь ЦЕЛИКОМ и целиком же проверяется при генерации
+    # (`js_regex_src`) — негодный префикс роняет генерацию с именем места, а не
+    # рвёт СИНТАКСИС коллекции там, где автор значения этого не увидит (#1209).
+    id_pattern = f"^{id_prefix}"
     return Case(
         id=case_id, title=title,
         classes=["SECD", "CONF", "IDM", "AUTHZ"], priority="P0",
@@ -185,7 +190,7 @@ def _lifecycle_case(case_id, title, base_path, obj_type, id_var, id_prefix,
                                   "const j = pm.response.json();",
                                   f"pm.test('id matches & {id_prefix} prefix', () => {{ "
                                   f"pm.expect(j.id).to.eql(pm.environment.get('{id_var}')); "
-                                  f"pm.expect(j.id).to.match(/^{id_prefix}/); }});",
+                                  f"pm.expect(j.id).to.match(/{js_regex_src(id_pattern, where='storage/_lifecycle_case/id_prefix')}/); }});",
                                   "pm.test('projectId matches the suite project', "
                                   "() => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                                   *assert_created_at_seconds()])),

@@ -1807,6 +1807,9 @@ def load_cases_module(path: Path):
     mod.security_injection_block = security_injection_block
     mod.http_method_block = http_method_block
     mod.malformed_body_block = malformed_body_block
+    # Помощники экранирования — тем же впрыском (#1209): декларация тоже
+    # порождает JavaScript, и вторая копия предиката разошлась бы с первой молча.
+    mod.js_regex_src = js_regex_src
     spec.loader.exec_module(mod)
     return mod
 
