@@ -148,7 +148,33 @@ run "empty_name_is_rejected" {
   expect_failures = [var.name]
 }
 
-run "issuer_without_a_name_is_rejected" {
+# Полоса, ради которой машинная личность и заводится: КОНВЕЙЕР применяет модуль СЛУЖЕБНОЙ
+# УЧЁТКОЙ и ответственного не называет — назвать он не вправе никого. Прежняя редакция
+# этой пробы требовала обратного (пустое отвергалось) и закрепляла ровно тот дефект,
+# из-за которого модуль был неприменим тем, кому адресован.
+run "machine_caller_needs_no_issuer" {
+  command = plan
+
+  variables {
+    created_by_user_id = null
+  }
+
+  assert {
+    condition     = length(kacho_iam_service_account_key.this) == 1
+    error_message = "без названного ответственного план не собрался — конвейер модуль не применит"
+  }
+  assert {
+    condition     = kacho_iam_service_account_key.this["default"].name == "probe-machine-default"
+    error_message = "ключ собран не из основы и ключа записи"
+  }
+}
+
+# Отрицание к полосе выше: ПУСТАЯ СТРОКА — не «не назвал».
+#
+# На провод она уезжает неотличимо от отсутствия, край подставит своё, а настройка
+# продолжит утверждать пустоту: применение кончится отказом, называющим ошибкой ПРОВАЙДЕРА
+# чужую опечатку. Отказ обязан приходить на plan и называть переменную.
+run "empty_issuer_string_is_rejected" {
   command = plan
 
   variables {

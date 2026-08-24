@@ -58,6 +58,11 @@ resource "kacho_iam_service_account_key" "this" {
   for_each = var.keys
 
   service_account_id = kacho_iam_service_account.this.id
+
+  # `null` означает «не называть»: край подставит ответственного сам. Пробрасывается КАК
+  # ЕСТЬ, без подстановки пустой строки вместо null, — пустая строка на проводе от
+  # отсутствия неотличима, но в состоянии осталась бы утверждать пустоту про ключ, у
+  # которого ответственный есть, и apply кончился бы отказом о несогласованном результате.
   created_by_user_id = var.created_by_user_id
 
   name        = "${var.name}-${each.key}"
