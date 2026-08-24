@@ -267,3 +267,21 @@ func (c *Cache[K, V]) Len() int {
 	}
 	return n
 }
+
+// Keys returns every key the cache is currently HOLDING, including entries
+// whose TTL has elapsed but which have not yet been lazily evicted.
+//
+// This is deliberately a different question from Len(), which counts only LIVE
+// entries. Len() answers "how much is cached"; Keys() answers "how much is
+// occupied" — and the two diverge exactly where a leak would live, so a probe
+// asserting that dead entries are reclaimed must read this one. Order is
+// unspecified (map iteration).
+func (c *Cache[K, V]) Keys() []K {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]K, 0, len(c.items))
+	for k := range c.items {
+		out = append(out, k)
+	}
+	return out
+}
