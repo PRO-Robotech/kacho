@@ -54,14 +54,18 @@ func (f *fakeMinter) MintToken(_ context.Context, in MintInput) (MintOutput, err
 	return f.out, f.err
 }
 
-func basicDockerLane(t *testing.T, res *fakeBasicResolver, val CredentialValidator) (*IssueRegistryTokenUseCase, *fakeMinter) {
+func basicDockerLane(t *testing.T, res *fakeBasicResolver) (*IssueRegistryTokenUseCase, *fakeMinter) {
 	t.Helper()
 	m := &fakeMinter{out: MintOutput{AccessToken: "minted", ExpiresIn: 300}}
 	uc := NewIssueRegistryTokenUseCase(Config{
-		Scope:             "registry",
-		AllowedAudiences:  []string{"registry"},
+		Scope:            "registry",
+		AllowedAudiences: []string{"registry"},
+		// Умолчание объявлено НЕПУСТЫМ намеренно: с пустым запрос, адресата не
+		// назвавший, получал бы пустой адресат — то есть «любой», — и проба
+		// умолчания зеленела бы, ничего не утверждая.
+		DefaultService:    "registry",
 		AssertionAudience: "https://issuer.invalid/oauth2/token",
-	}, val, &fakeSigner{}, &fakeExchanger{}).
+	}, &fakeSigner{}, &fakeExchanger{}).
 		WithLocalMinter(m).
 		WithBasicCredentialResolver(res)
 	return uc, m
@@ -79,8 +83,7 @@ func TestBAT1_37_DockerLoginWithTheBasicSecretSucceeds(t *testing.T) {
 		live:  map[string]string{credID: secret},
 		svaOf: map[string]string{credID: svaID},
 	}
-	val := &fakeValidator{err: ErrInvalidCredentials}
-	uc, minter := basicDockerLane(t, res, val)
+	uc, minter := basicDockerLane(t, res)
 
 	out, err := uc.Execute(context.Background(), IssueInput{
 		Username: credID,
@@ -104,11 +107,6 @@ func TestBAT1_37_DockerLoginWithTheBasicSecretSucceeds(t *testing.T) {
 	if minter.got.ConfirmationX5TS256 != "" {
 		t.Error("вид предъявительский — материала привязки у него нет")
 	}
-	// Полоса классифицирована ПО МАРКЕ: валидатор ключевого материала не
-	// звался вовсе.
-	if val.gotPass != "" {
-		t.Error("строка нашей марки ушла валидатору ключевого материала — классификация по неудаче разбора")
-	}
 	if res.calls != 1 {
 		t.Errorf("обращений к авторитету %d, ожидалось 1", res.calls)
 	}
@@ -123,7 +121,7 @@ func TestBAT1_38_UsernameMustNameTheCredentialAndTheRefusalIsNoOracle(t *testing
 		live:  map[string]string{credID: secret},
 		svaOf: map[string]string{credID: svaID},
 	}
-	uc, _ := basicDockerLane(t, res, &fakeValidator{err: ErrInvalidCredentials})
+	uc, _ := basicDockerLane(t, res)
 
 	_, mismatch := uc.Execute(context.Background(), IssueInput{
 		Username: "soc_0000000000000bat9",
@@ -156,32 +154,13 @@ func TestBAT1_38_UsernameMustNameTheCredentialAndTheRefusalIsNoOracle(t *testing
 	}
 }
 
-// BAT-1-39 — зеркальный контроль: ключевой материал по-прежнему принимается В
-// ЭТОЙ ФАЗЕ. Его снятие принадлежит #1143 и здесь НЕ выполняется.
-func TestBAT1_39_KeyMaterialIsStillAcceptedInThisPhase(t *testing.T) {
-	val := &fakeValidator{cred: Credential{
-		ClientID: "soc_0000000000000old1",
-		KeyID:    "soc_0000000000000old1",
-		Subject:  "sva0000000000000old1",
-	}}
-	res := &fakeBasicResolver{}
-	uc, minter := basicDockerLane(t, res, val)
-
-	const pem = "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----"
-	if _, err := uc.Execute(context.Background(), IssueInput{
-		Username: "soc_0000000000000old1",
-		Password: pem,
-		Service:  "registry",
-	}); err != nil {
-		t.Fatalf("ключевой материал перестал приниматься — это предмет #1143, не этой фазы: %v", err)
-	}
-	if minter.got.Subject != "sva0000000000000old1" {
-		t.Errorf("прежняя полоса сменила принципала: %q", minter.got.Subject)
-	}
-	if res.calls != 0 {
-		t.Errorf("ключевой материал ушёл на полосу секрета (%d обращений) — классификация не по марке", res.calls)
-	}
-}
+// BAT-1-39 СНЯТ ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ.
+//
+// Он был зеркальным контролём фазы #1142: «ключевой материал по-прежнему
+// принимается», и нёс предикат снятия прямо в тексте — «его снятие принадлежит
+// #1143». Предикат сработал: приём снят, и проба, утверждавшая обратное, стала
+// бы утверждением о несуществующем. Обратное свойство утверждается там, где
+// живёт его предмет, — key_material_refused_test.go.
 
 // BAT-1-40 — отозванное / истёкшее / принадлежащее неактивному владельцу
 // отвергается ТЕМ ЖЕ отказом; живое проходит (положительный контроль).
@@ -193,7 +172,7 @@ func TestBAT1_40_RevokedOrExpiredIsRefusedByTheSameRefusal(t *testing.T) {
 		live:  map[string]string{credID: secret},
 		svaOf: map[string]string{credID: "sva0000000000000bat1"},
 	}
-	ucLive, _ := basicDockerLane(t, live, &fakeValidator{err: ErrInvalidCredentials})
+	ucLive, _ := basicDockerLane(t, live)
 	if _, err := ucLive.Execute(context.Background(), IssueInput{
 		Username: credID, Password: secret, Service: "registry",
 	}); err != nil {
@@ -202,7 +181,7 @@ func TestBAT1_40_RevokedOrExpiredIsRefusedByTheSameRefusal(t *testing.T) {
 
 	// Отозвано: авторитет строки не находит.
 	revoked := &fakeBasicResolver{live: map[string]string{}}
-	ucRevoked, _ := basicDockerLane(t, revoked, &fakeValidator{err: ErrInvalidCredentials})
+	ucRevoked, _ := basicDockerLane(t, revoked)
 	_, err := ucRevoked.Execute(context.Background(), IssueInput{
 		Username: credID, Password: secret, Service: "registry",
 	})

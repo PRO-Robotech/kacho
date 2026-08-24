@@ -11,14 +11,15 @@ package service
 // path — client → Hydra /oauth2/token (private_key_jwt client_assertion) →
 // this enricher via the token hook — never read it. Hydra authenticates the
 // assertion against the registered JWK, which does not expire, so a key past
-// its stated expiry kept minting tokens indefinitely. The docker path
-// (registry_token.SAKeyValidator) already refuses an expired key; these tests
-// hold the provider path to the same predicate.
+// its stated expiry kept minting tokens indefinitely. Докерная полоса отвергала
+// просроченный ключ своим проверяющим; тот снят вместе с приёмом ключевого
+// материала в поле пароля (задача #1143), и путь провайдера остался
+// ЕДИНСТВЕННЫМ, где срок ключа вообще проверяется. Эти пробы его и держат.
 //
 // Boundary and nil semantics are asserted explicitly because both are
 // load-bearing:
-//   - expires_at == now is EXPIRED (deny at the instant), byte-identical to
-//     SAKeyValidator's `!ExpiresAt.After(now)`;
+//   - expires_at == now is EXPIRED (deny at the instant): `!ExpiresAt.After(now)`,
+//     дословно тот предикат, которым отвергала снятая ныне докерная проверка;
 //   - expires_at IS NULL is NON-EXPIRING, not invalid — the bootstrap-admin
 //     mint (#58) inserts its mapping with a NULL expiry, as does every row
 //     predating the TTL knobs. Reading NULL as invalid would revoke the

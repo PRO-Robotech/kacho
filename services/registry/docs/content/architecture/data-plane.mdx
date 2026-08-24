@@ -66,12 +66,17 @@ sequenceDiagram
 <table>
   <thead><tr><th>Клиент</th><th>Grant у Hydra</th><th>Как логинится</th></tr></thead>
   <tbody>
-    <tr><td><code>docker</code> / <code>helm</code> (CI)</td><td><code>client_credentials</code> (<code>private_key_jwt</code> шим)</td><td><code>docker login</code> учётными данными SA-key</td></tr>
+    <tr><td><code>docker</code> / <code>helm</code> (CI)</td><td>выпуск шимом <code>/iam/token</code></td><td><code>docker login</code> базовым токеном доступа (одна строка в поле пароля)</td></tr>
     <tr><td>Kubernetes workload</td><td><code>jwt-bearer</code> (projected token)</td><td>FEDERATED SA-key (trusted_subjects, без приватного ключа)</td></tr>
   </tbody>
 </table>
 
-Отзыв SA-key немедленно закрывает последующий обмен (docker и k8s) — токен больше не выдаётся.
+Отзыв удостоверения немедленно закрывает последующий обмен (docker и k8s) — токен больше не
+выдаётся.
+
+Ключевой материал в поле пароля докер-полоса **не принимает**: приватная половина пары не должна
+ходить по сети и оседать в конфигурации клиента. Пара ключей остаётся видом удостоверения для
+полосы провайдера (`client_assertion` → `/oauth2/token`) и для federated-потока Kubernetes.
 
 ## Verb-map push/pull
 

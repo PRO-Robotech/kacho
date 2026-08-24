@@ -4,14 +4,16 @@
 // Package registrytokenwire — composition-root adapters binding the registry
 // `/iam/token` shim use-case to iam infrastructure:
 //
-//   - SAClientLookupAdapter — resolves the SA-key registered for a Hydra
-//     client_id (reverse lookup), so the shim can build the client_assertion.
 //   - HydraExchangeAdapter — brokers the client_credentials + private_key_jwt
 //     exchange with Hydra's public token endpoint, mapping issuer-unavailability
-//     to the use-case's fail-closed sentinel.
+//     to the use-case's fail-closed sentinel. Пользуется им АНОНИМНЫЙ поток на
+//     контуре, ещё не переведённом на нашу чеканку.
 //
-// These are thin adapters over already-tested primitives (the SA repo + the Hydra
-// token client); they carry no policy.
+// Обратного резолва ключа служебной учётки по client_id здесь больше нет: полоса
+// предъявленного удостоверения принимает только базовый токен доступа, и ключевого
+// материала в поле пароля не бывает (задача #1143).
+//
+// These are thin adapters over already-tested primitives; they carry no policy.
 package registrytokenwire
 
 import (
@@ -21,63 +23,7 @@ import (
 
 	registrytokenuc "github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/registry_token"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 )
-
-// saClientByIDReader — reverse lookup of an SA-OAuth-client by Hydra client_id,
-// plus the ServiceAccount it belongs to (satisfied by the SA repo). The account
-// read is part of this port because the docker path decides on the account's
-// state, and a port that could not answer for it would leave that decision
-// resting on a field nobody loaded.
-type saClientByIDReader interface {
-	GetByOAuthClientID(ctx context.Context, hydraClientID domain.OAuthClientID) (domain.ServiceAccountOAuthClient, error)
-	GetServiceAccount(ctx context.Context, id domain.ServiceAccountID) (domain.ServiceAccount, error)
-}
-
-// ── SA-key lookup by client_id ──────────────────────────────────────────────
-
-// SAClientLookupAdapter — resolves the registered SA-key for a Hydra client_id.
-type SAClientLookupAdapter struct {
-	repo saClientByIDReader
-}
-
-// NewSAClientLookup — builder.
-func NewSAClientLookup(repo saClientByIDReader) *SAClientLookupAdapter {
-	return &SAClientLookupAdapter{repo: repo}
-}
-
-var _ registrytokenuc.SAClientLookup = (*SAClientLookupAdapter)(nil)
-
-// KeyByClientID returns the registered key material for a Hydra client_id,
-// together with whether the owning ServiceAccount may authenticate.
-//
-// The owner's state is resolved here, on the lookup, because the validator
-// decides on it: a lookup that returned only key material would hand back a
-// zero value for the state, and every docker login in the platform would be
-// refused by a check that never saw a row.
-func (a *SAClientLookupAdapter) KeyByClientID(ctx context.Context, clientID string) (registrytokenuc.RegisteredKey, error) {
-	row, err := a.repo.GetByOAuthClientID(ctx, domain.OAuthClientID(clientID))
-	if err != nil {
-		return registrytokenuc.RegisteredKey{}, fmt.Errorf("registrytokenwire: lookup client %s: %w", clientID, err)
-	}
-	sa, err := a.repo.GetServiceAccount(ctx, row.SvaID)
-	if err != nil {
-		return registrytokenuc.RegisteredKey{}, fmt.Errorf("registrytokenwire: lookup service account %s: %w", row.SvaID, err)
-	}
-	return registrytokenuc.RegisteredKey{
-		ClientID:       string(row.OAuthClientID),
-		KeyID:          string(row.ID),
-		Subject:        string(row.SvaID),
-		PublicKeyPEM:   row.PublicKeyPEM,
-		KeyAlgorithm:   row.KeyAlgorithm,
-		ExpiresAt:      row.ExpiresAt,
-		SubjectEnabled: sa.MayAuthenticate(),
-		// Сужение адресатов, объявленное при выдаче ключа (#1136). Читается ЗДЕСЬ
-		// и уезжает в выдачу: колонка, которую пишут и не читают, невидима
-		// отовсюду — её нет ни в ответе, ни в решении.
-		DeclaredAudiences: row.DeclaredAudiences,
-	}, nil
-}
 
 // ── Hydra token exchange ────────────────────────────────────────────────────
 

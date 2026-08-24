@@ -245,20 +245,20 @@ the data-plane per-request Check.
 | Intended scenario id | Classes | Prio | Meaning | Verifies |
 |---|---|---|---|---|
 | `TX-HYDRA-DISCOVERY-JWKS` | TX | P0 | Hydra OIDC-discovery + JWKS reachable (verify-source for data-plane) | REG-TX-01 |
-| `TX-DOCKER-LOGIN-HAPPY` | TX, DP | P0 | docker login → `/iam/token` `private_key_jwt` shim → Hydra `client_credentials` → JWT | REG-TX-02 |
+| `TX-DOCKER-LOGIN-HAPPY` | TX, DP | P0 | docker login базовым токеном доступа → `/iam/token` → identity-JWT | REG-TX-02 |
 | `TX-DOCKER-ANON-401` | TX, NEG | P0 | `/iam/token` shim without Basic → 401 + `WWW-Authenticate` (docker-CLI contract) | REG-TX-03 |
-| `TX-DOCKER-INVALID-SAKEY-401` | TX, NEG | P1 | docker with invalid/revoked SA-key → 401 | REG-TX-04 |
+| `TX-DOCKER-INVALID-CREDENTIAL-401` | TX, NEG | P1 | docker с негодным/отозванным удостоверением → 401; ключевой материал в поле пароля → тот же 401 (#1143) | REG-TX-04 |
 | `TX-DOCKER-AUDIENCE-401` | TX, NEG | P1 | `?service=` outside allowlist / wrong audience → 401 | REG-TX-05 |
 | `TX-K8S-JWT-BEARER-HAPPY` | TX, DP | P0 | k8s pull via `jwt-bearer`/trusted_subject (no imagePullSecrets) | REG-TX-06 |
 | `TX-K8S-NO-TRUSTED-SUBJECT-DENY` | TX, NEG | P0 | no FEDERATED-client / subject mismatch → deny (`invalid_grant`) | REG-TX-07 |
 | `TX-K8S-BADTOKEN-DENY` | TX, NEG | P1 | expired / wrong-issuer / bad-signature projected-token → deny | REG-TX-08 |
 | `TX-K8S-AUDIENCE-MISMATCH-DENY` | TX, NEG | P1 | projected-token audience mismatch → deny (anti-confused-deputy) | REG-TX-09 |
 | `TX-IDENTITY-ONLY-CHECK` | TX, AZ | P1 | identity-only token — per-request Check still enforces authZ (docker + k8s) | REG-TX-10 |
-| `TX-SAKEY-ISSUE-STANDARD` | TX, CRUD | P1 | Issue SA-key STANDARD (docker) — async Operation | REG-TX-11 |
+| `TX-SAKEY-ISSUE-STANDARD` | TX, CRUD | P1 | Issue SA-key STANDARD (полоса провайдера; докер-вход им НЕ выполняется, #1143) — async Operation | REG-TX-11 |
 | `TX-SAKEY-ISSUE-FEDERATED` | TX, CRUD | P1 | Issue SA-key FEDERATED (k8s) — trusted_subjects, no private key | REG-TX-12 |
 | `TX-DP-HYDRA-JWKS-SWITCH` | TX, DP | P0 | data-plane verifies Hydra JWKS (switched off IAM RS256 — CRIT) | REG-TX-13 |
 | `TX-SAKEY-ISSUE-VALIDATION-AUTHZ` | TX, VAL, AZ | P1 | federation-config validation (literal-anchored subject, https issuer) + authz on Issue | REG-TX-14 |
-| `TX-SAKEY-REVOKE` | TX, NEG | P1 | Revoke SA-key → subsequent docker + k8s exchange denied | REG-TX-15 |
+| `TX-SAKEY-REVOKE` | TX, NEG | P1 | Revoke SA-key → subsequent provider + k8s exchange denied | REG-TX-15 |
 | `TX-HYDRA-WIRING` | TX | P1 | fe3455 iam→hydra-admin cluster-internal wiring fix present | REG-TX-16 |
 | `TX-RS256-DEPRECATION` | TX | P2 | IAM-native RS256 registry-token deprecated / removed | REG-TX-17 |
 | `TX-TOKEN-RATE-LIMIT` | TX | P2 | rate-limit on `/iam/token` shim and `/v2/` | REG-TX-18, REG-43 |

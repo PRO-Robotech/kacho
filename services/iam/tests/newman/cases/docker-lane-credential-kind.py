@@ -1,0 +1,235 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+
+"""Case-set docker-lane-credential-kind — ДОКЕР-ПОЛОСА ПРИНИМАЕТ ОДИН ВИД (#1143).
+
+ЧТО ЗДЕСЬ ПРОВЕРЯЕТСЯ
+---------------------
+Вопрос ставится СКВОЗЬ ВЕСЬ ТРАКТ: выдали удостоверение вида SECRET → вошли им
+в докер-полосу → получили удостоверение реестра → предъявили ключевой материал
+в том же поле пароля → отказ. Половина этого («полоса принимает секрет») не
+доказывает ничего о снятии прежнего входа, а вторая половина без первой верна и
+о полосе, сломанной целиком.
+
+ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ СТОИТ ПЕРВЫМ и в том же прогоне — иначе «ключевой
+материал отвергнут» зеленело бы на выдаче, отвергающей всё.
+
+ОТКАЗ НЕ ОРАКУЛ, И ЭТО УТВЕРЖДАЕТСЯ СРАВНЕНИЕМ
+-----------------------------------------------
+Снятие приёма — ЛОМАЮЩЕЕ изменение, и клиент, настроенный по-старому, обязан
+получить ТОТ ЖЕ отказ, что и клиент с неверным секретом. Отдельный отказ на
+«негодный вид» сказал бы предъявителю, что его строка разобрана как ключ, — то
+есть подтвердил бы существование учётной записи, на которую он не
+аутентифицировался. Поэтому сверяются ТЕЛА двух отказов, а не только коды.
+
+Годный вид отказ называет СТАТИЧЕСКИ — так же, как называет его страница
+документации, — и из тела нельзя узнать ничего о предъявленном.
+
+ПОЧЕМУ ЛАНА ЖИВЁТ В СУИТЕ IAM
+------------------------------
+Её предмет — полоса выдачи kacho-iam, а не данные реестра: адрес `:9096` —
+собственная ручка iam, и раннер открывает к ней проброс БЕЗУСЛОВНО (iam входит
+в ядро каждого шарда). Кейс IBT-14 уехал в суиту реестра потому, что дополнительно
+дозванивался до ДАННЫХ реестра — компонента, который шард может не поднимать.
+Здесь такого адреса нет.
+
+  {{iamRegistryTokenBaseUrl}} — ручка докер-токена iam (:9096), server-TLS с
+                                листом внутреннего центра → шаги несут
+                                `insecure_tls`: предмет пробы — ЧТО ОТДАЁТСЯ,
+                                а не цепочка доверия туннеля.
+
+Идемпотентность: удостоверение выпускается своё на прогон и отзывается тем же
+кейсом. За собой не остаётся ничего.
+"""
+
+CASES = []
+
+# Служба реестра, объявленная посадкой полосы. Ровно её реестр называет
+# докер-клиенту в вызове на аутентификацию, и ровно её клиент возвращает.
+_SERVICE = "registry.kacho.local"
+_TOKEN_PATH = "/iam/token?service=" + _SERVICE + "&scope=repository:kacho/km-{{runId}}:pull"
+
+# Ключевой материал: нарочито НЕ похож на настоящий ключ. Правдоподобная
+# фикстура сделала бы «прошло» неотличимым от исправного потока. Записывается
+# литералом JS прямо в шаге — помощник экранирования в пространство имён
+# case-модуля не передаётся.
+
+
+CASES.append(Case(
+    id="IAM-DOCKER-LANE-BASIC-TOKEN-ONLY",
+    title=(
+        "Докер-полоса принимает базовый токен доступа и отвергает ключевой "
+        "материал в поле пароля тем же отказом, что и неверный секрет"
+    ),
+    classes=["SEC", "CONF", "NEG"],
+    priority="P0",
+    steps=[
+        Step(
+            name="issue-secret-credential-for-a-service-account",
+            method="POST",
+            path="/iam/v1/serviceAccounts/{{svaAId}}/keys",
+            auth="jwtBootstrap",
+            body={
+                "serviceAccountId": "{{svaAId}}",
+                "description": "docker lane credential kind {{runId}}",
+                "createdByUserId": "{{userAAAId}}",
+                "credentialKind": "CREDENTIAL_KIND_SECRET",
+                "ttlSeconds": 2592000,
+            },
+            test_script=[
+                *assert_answered("SAKeyService.Issue вида SECRET"),
+                *assert_status(200),
+                # Вид SECRET завершается НА ПУТИ ЗАПРОСА: строка показывается
+                # один раз, и второго чтения у неё не существует.
+                "pm.test('операция завершена в ответе самого Issue (done=true)', () => {",
+                "  const j = pm.response.json();",
+                "  pm.expect(j.done, 'operation.done').to.eql(true);",
+                "  pm.expect(j.error, 'operation.error: ' + JSON.stringify(j.error)).to.be.undefined;",
+                "});",
+                "const _r = pm.response.json().response || {};",
+                # ПАРА: что есть и чего нет. «Секрет непуст» в одиночку зеленело
+                # бы на ответе, который ВДОБАВОК отдал ключевой материал.
+                "pm.test('ответ несёт непустую строку секрета', () => {",
+                "  pm.expect(_r.secret, 'response.secret').to.be.a('string').with.length.greaterThan(0);",
+                "});",
+                "pm.test('ответ вида SECRET НЕ несёт ключевого материала ни в одном поле', () => {",
+                "  pm.expect(_r.privateKeyPem || '', 'response.privateKeyPem').to.eql('');",
+                "  pm.expect(_r.publicKeyPem || '', 'response.publicKeyPem').to.eql('');",
+                "  pm.expect(_r.algorithm || '', 'response.algorithm').to.eql('');",
+                "});",
+                # Имя докер-входа — идентификатор, который несёт САМА строка.
+                # Берётся из неё, а не из соседнего поля: у полосы ровно один
+                # источник имени, и проба обязана пользоваться тем же.
+                "const _p = String(_r.secret).split('_');",
+                "const _credId = _p.slice(1, _p.length - 1).join('_');",
+                "pm.test('строка называет своё удостоверение', () => {",
+                "  pm.expect(_credId, 'идентификатор из строки').to.be.a('string').with.length.greaterThan(0);",
+                "});",
+                "pm.environment.set('dockerLaneSecret', _r.secret);",
+                "pm.environment.set('dockerLaneCredId', _credId);",
+                "pm.environment.set('dockerLaneKeyId', _r.keyId || (_r.key && _r.key.id) || _credId);",
+            ],
+        ),
+
+        # ── ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ ─────────────────────────────────────────
+        Step(
+            name="docker-login-with-the-basic-access-token",
+            method="GET",
+            path=_TOKEN_PATH,
+            auth="anonymous",
+            insecure_tls=True,
+            pre_script=require_env_url(
+                "iamRegistryTokenBaseUrl", _TOKEN_PATH,
+                "докер-полоса — ручка, которую реестр называет докер-клиенту",
+            ) + [
+                "pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' +",
+                "  CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(",
+                "    pm.environment.get('dockerLaneCredId') + ':' + pm.environment.get('dockerLaneSecret')))});",
+            ],
+            test_script=[
+                *assert_answered("докер-вход базовым токеном доступа"),
+                "pm.test('живой базовый токен доступа принят докер-полосой', () => {",
+                "  pm.expect(pm.response.code, '401 здесь означает, что полоса не приняла годную '",
+                "    + 'строку; 503 — что авторитет не ответил. Тело: ' + pm.response.text()).to.eql(200);",
+                "});",
+                "pm.test('выдано удостоверение реестра', () => {",
+                "  const j = pm.response.json();",
+                "  pm.expect(j.token, 'token').to.be.a('string').with.length.greaterThan(0);",
+                "  pm.expect(j.access_token, 'access_token — докер-клиент читает оба поля')",
+                "    .to.be.a('string').with.length.greaterThan(0);",
+                "});",
+                # Секрет не имеет права уехать в выданное удостоверение.
+                "pm.test('предъявленная строка не уехала в выданный токен', () => {",
+                "  pm.expect(pm.response.text()).to.not.include(pm.environment.get('dockerLaneSecret'));",
+                "});",
+            ],
+        ),
+
+        # ── ОТРИЦАНИЕ: снятый вид ──────────────────────────────────────────
+        Step(
+            name="docker-login-with-key-material-is-refused",
+            method="GET",
+            path=_TOKEN_PATH,
+            auth="anonymous",
+            insecure_tls=True,
+            pre_script=require_env_url(
+                "iamRegistryTokenBaseUrl", _TOKEN_PATH,
+                "докер-полоса — прежний вход ключевым материалом",
+            ) + [
+                "const _km = '-----BEGIN PRIVATE KEY-----\\n'",
+                "  + 'not-a-real-key-1143\\n-----END PRIVATE KEY-----';",
+                "pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' +",
+                "  CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(",
+                "    pm.environment.get('dockerLaneCredId') + ':' + _km))});",
+            ],
+            test_script=[
+                *assert_answered("докер-вход ключевым материалом"),
+                "pm.test('ключевой материал в поле пароля отвергнут (#1143)', () => {",
+                "  pm.expect(pm.response.code, pm.response.text()).to.eql(401);",
+                "});",
+                "pm.test('удостоверение реестра не выдано', () => {",
+                "  let j = null; try { j = pm.response.json(); } catch (e) { j = null; }",
+                "  pm.expect(j && j.token, JSON.stringify(j)).to.be.oneOf([undefined, null]);",
+                "});",
+                # Отказ обязан НАЗЫВАТЬ годный вид: без этого арендатор,
+                # настроенный по-старому, не узнает, чем заменить вход.
+                "pm.test('отказ называет годный вид удостоверения', () => {",
+                "  pm.expect(pm.response.text(), 'тело отказа').to.include('kacho_');",
+                "});",
+                "pm.environment.set('dockerLaneRefusalKind', pm.response.text());",
+                "pm.environment.set('dockerLaneRefusalKindWWW',",
+                "  pm.response.headers.get('WWW-Authenticate') || '');",
+            ],
+        ),
+
+        # ── ОТРИЦАНИЕ: неверный секрет, и СРАВНЕНИЕ отказов ────────────────
+        Step(
+            name="docker-login-with-a-wrong-secret-is-refused-identically",
+            method="GET",
+            path=_TOKEN_PATH,
+            auth="anonymous",
+            insecure_tls=True,
+            pre_script=require_env_url(
+                "iamRegistryTokenBaseUrl", _TOKEN_PATH,
+                "докер-полоса — контроль неразличимости отказа",
+            ) + [
+                # Строка НАШЕЙ марки, но не та: чтобы отказ пришёл с той же
+                # полосы, что и у годной строки, а не из соседней ветки.
+                "const _wrong = 'kacho_' + pm.environment.get('dockerLaneCredId')",
+                "  + '_00000000000000000000000000000000';",
+                "pm.request.headers.upsert({key: 'Authorization', value: 'Basic ' +",
+                "  CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(",
+                "    pm.environment.get('dockerLaneCredId') + ':' + _wrong))});",
+            ],
+            test_script=[
+                *assert_answered("докер-вход неверным секретом"),
+                "pm.test('неверный секрет отвергнут', () => {",
+                "  pm.expect(pm.response.code, pm.response.text()).to.eql(401);",
+                "});",
+                # ЭТО И ЕСТЬ УТВЕРЖДЕНИЕ О НЕОРАКУЛЬНОСТИ: два разных по природе
+                # входа обязаны быть НЕОТЛИЧИМЫ снаружи — по телу и по вызову.
+                "pm.test('отказ снятому виду и отказ неверному секрету НЕРАЗЛИЧИМЫ', () => {",
+                "  pm.expect(pm.response.text(), 'тело: различимые тела сказали бы предъявителю, '",
+                "    + 'как разобран его вход').to.eql(pm.environment.get('dockerLaneRefusalKind'));",
+                "  pm.expect(pm.response.headers.get('WWW-Authenticate') || '', 'WWW-Authenticate')",
+                "    .to.eql(pm.environment.get('dockerLaneRefusalKindWWW'));",
+                "});",
+            ],
+        ),
+
+        # ── уборка: удостоверение живёт ровно этот прогон ──────────────────
+        Step(
+            name="revoke-the-credential",
+            method="DELETE",
+            path="/iam/v1/serviceAccounts/{{svaAId}}/keys/{{dockerLaneKeyId}}",
+            auth="jwtBootstrap",
+            test_script=[
+                *assert_answered("SAKeyService.Revoke"),
+                *assert_status(200),
+                *assert_operation_envelope(),
+                *save_from_response("pm.response.json().id", "opId"),
+            ],
+        ),
+        poll_operation_until_done(auth="jwtBootstrap"),
+    ],
+))
