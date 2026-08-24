@@ -89,22 +89,37 @@ func (a *AuthInterceptor) stepUpRequirementForHTTP(r *http.Request) PermissionRe
 	return a.stepUpLookup.Lookup(fqn)
 }
 
+// Имена полос носителя личности. Они попадают в КАЖДУЮ строку отказа, и это не
+// украшение: дефект #1201 был найден именно тем, что журнал не отвечал на
+// вопрос «какая полоса отказала». За всю жизнь процесса личность вносилась
+// полосой сессии 5252 раза, полосой предъявителя 0 раз, а отказов по полу было
+// 0 — и это выглядело исправной работой, потому что перепись по полосам никем
+// не велась.
+const (
+	stepUpLaneBearer  = "bearer"  // подписанный предъявитель (Authorization)
+	stepUpLaneSession = "session" // сессия развёрнутого провайдера (cookie)
+)
+
 // enforceStepUpHTTP applies the floor on the REST arm. It reports true when the
 // request was refused and the response already written.
+//
+// `as` — то, что предъявила ЭТА полоса; `lane` — которая именно. Полос две, и
+// обе обязаны сюда приходить: пол — свойство ВСЯКОГО обращения человека, а не
+// свойство того, чем он его подписал.
 //
 // The pre-auth allow-list is exempt for the same reason the revocation check
 // exempts it: those endpoints act on nobody's authority, and a caller who cannot
 // re-authenticate must still be able to complete a sign-out.
-func (a *AuthInterceptor) enforceStepUpHTTP(w http.ResponseWriter, r *http.Request, vt *VerifiedToken) bool {
+func (a *AuthInterceptor) enforceStepUpHTTP(w http.ResponseWriter, r *http.Request, as StepUpAssurance, lane string) bool {
 	if !a.StepUpMounted() || isPublicHTTPPath(r.URL.Path) {
 		return false
 	}
 	req := a.stepUpRequirementForHTTP(r)
-	if err := a.stepUp.Check(vt, req); err != nil {
+	if err := a.stepUp.CheckAssurance(as, req); err != nil {
 		a.logger.Info("auth: authentication floor not met",
-			"path", r.URL.Path, "presented_acr", vt.ACR, "required", req.RequiredACRMin)
+			"lane", lane, "path", r.URL.Path, "presented_acr", as.ACR, "required", req.RequiredACRMin)
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("WWW-Authenticate", BuildStepUpChallenge(req, vt.ACR))
+		w.Header().Set("WWW-Authenticate", BuildStepUpChallenge(req, as.ACR))
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"code":16,"message":"` + stepUpDenyMessage + `"}`))
 		return true
@@ -114,6 +129,9 @@ func (a *AuthInterceptor) enforceStepUpHTTP(w http.ResponseWriter, r *http.Reque
 
 // enforceStepUpGRPC applies the same floor on the native gRPC arm, where the
 // method is named by the transport and needs no route resolution.
+//
+// Полоса здесь всегда одна: cookie на этот транспорт не приходит, у него нет
+// сессии развёрнутого провайдера by construction.
 func (a *AuthInterceptor) enforceStepUpGRPC(fullMethod string, vt *VerifiedToken) error {
 	if !a.StepUpMounted() {
 		return nil
@@ -121,7 +139,7 @@ func (a *AuthInterceptor) enforceStepUpGRPC(fullMethod string, vt *VerifiedToken
 	req := a.stepUpRequirement(fullMethod)
 	if err := a.stepUp.Check(vt, req); err != nil {
 		a.logger.Info("auth: authentication floor not met",
-			"method", fullMethod, "presented_acr", vt.ACR, "required", req.RequiredACRMin)
+			"lane", stepUpLaneBearer, "method", fullMethod, "presented_acr", vt.ACR, "required", req.RequiredACRMin)
 		return status.Error(codes.Unauthenticated, stepUpDenyMessage)
 	}
 	return nil
@@ -153,6 +171,28 @@ func setTokenContextHeaders(r *http.Request, t *VerifiedToken) {
 	if !t.ExpiresAt.IsZero() {
 		r.Header.Set(principalmeta.HeaderTokenExp, strconv.FormatInt(t.ExpiresAt.Unix(), 10))
 	}
+}
+
+// setSessionAssuranceHeaders writes the SESSION lane's contribution to the same
+// token-context family: the assurance level, and only it.
+//
+// Почему только уровень. Заголовки этого семейства описывают ПРЕДЪЯВЛЕННОЕ, и у
+// браузерной сессии нет ни `jti`, ни `scope`, ни `exp` — писать их пустыми
+// значило бы утверждать про сессию то, чего про неё не знают. Уровень же
+// внутреннему замку (`authzguard.ACRFloor`) нужен, и до #1201 эта полоса не
+// выставляла его никогда: замок читал отсутствующее значение на каждом
+// браузерном обращении.
+//
+// Подделать заголовок клиент не может: `stripForgeableIdentityHeaders` сносит
+// весь namespace `x-kacho-` в обеих поверхностных формах ДО того, как выберется
+// полоса.
+//
+// Нераспознанный уровень приезжает сюда пустой строкой — и это верно: пустое
+// ранжируется нулём и не удовлетворяет ни одному положительному полу, то есть
+// второй замок отказывает по той же причине, по которой отказал бы первый.
+func setSessionAssuranceHeaders(r *http.Request, acr string) {
+	r.Header.Set(principalmeta.HeaderTokenACR, acr)
+	r.Header.Set(principalmeta.HeaderGRPCMetaTokenACR, acr)
 }
 
 // withTokenContextMetadata carries the same context onto the native gRPC arm,
