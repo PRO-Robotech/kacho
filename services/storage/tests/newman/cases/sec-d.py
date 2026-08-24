@@ -132,7 +132,19 @@ def _check_step(name, obj_type, id_var, expect_allowed, budget=90, interval_ms=5
     формулируется как `allowed !== true`, а не `allowed === false`.
     """
     want = "true" if expect_allowed else "false"
-    counter = f"_ck_{name.replace('-', '_')}"
+    # ИМЯ переменной прогона больше НЕ выводится из ПРОЗЫ (#1220). Прежде ключ
+    # собирался из подписи шага — `_ck_{name.replace('-','_')}`, — и это давало
+    # два тихих вреда сразу: подпись с апострофом рвала СИНТАКСИС коллекции (а
+    # newman пишет отказ разбора в testScripts, не в assertions.failed, поэтому
+    # шаг отчитывался НУЛЁМ упавших утверждений), а отображение `-`→`_` было
+    # неоднозначным — `tuple-present-vol` и `tuple_present_vol` сходились в ОДИН
+    # счётчик, и две пробы молча делили один бюджет повторов. Экранировать тут
+    # нечего: имя либо годно, либо файл не разбирается. Поэтому исход — снятие
+    # подстановки: ключ выводится из `id_var`, который именем УЖЕ является по
+    # контракту шва (его же читает `pm.environment.get` двумя строками ниже), а
+    # годность проверяется при генерации и называет место.
+    counter = ("_ck_" + js_name(id_var, where="storage/sec-d/_check_step/id_var")
+               + ("_present" if expect_allowed else "_withdrawn"))
     return Step(
         name=name, method="POST", path="/iam/v1/internal/iam:check", auth=_PROBE,
         body={"subjectId": _SUBJ, "relation": "v_get",
