@@ -89,6 +89,10 @@ kacho-iam:
         # enable this, rotate existing SA keys, and only THEN set the gateway's
         # api-gateway.authn.requireMachineTokenBinding. The reverse order rejects
         # every service-account token.
+        #
+        # Its reader is the client MIRROR at the previous issuer, so a profile
+        # that translates the contour (`kacho-iam.config.authn.clientToken.enabled`)
+        # has no reader for it at all: iam refuses to start with both set (#1137).
         bindDpop: false
     hooks:
       tokenHookSecretName: kacho-iam-hook-token

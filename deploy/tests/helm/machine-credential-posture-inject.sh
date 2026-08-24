@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# machine-credential-posture-inject.sh — доказательство того, что
+# `machine-credential-posture-test.sh` СПОСОБНА упасть, и что она молчит на
+# законном близнеце. Без этого «зелено» неотличимо от «ничего не проверяет».
+#
+# ПОЧЕМУ БЛИЗНЕЦ ЗДЕСЬ НЕ УКРАШЕНИЕ. Предмет секции 6 — не «ручка включена», а
+# «ручка включена ТАМ, ГДЕ У НЕЁ НЕТ ЧИТАТЕЛЯ». Проба, краснеющая на всяком
+# включении, сняла бы работающий контроль вместо неработающего: на
+# непереведённом контуре обмен идёт у прежнего издателя, и связанность решает
+# его регистрация. Поэтому инъекций две — на переведённом профиле и на
+# непереведённом, — и ожидания у них ПРОТИВОПОЛОЖНЫЕ.
+#
+# Инъекции идут по временным копиям профилей; дерево не трогается.
+
+set -uo pipefail
+cd "$(dirname "$0")/../.."
+
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+rc=0
+assert() { # имя · ожидание(RED|GREEN) · каталог профилей
+  local name="$1" want="$2" dir="$3" got
+  if MACHINE_POSTURE_PROFILE_DIR="$dir" bash tests/helm/machine-credential-posture-test.sh >"$TMP/out" 2>&1
+  then got=GREEN; else got=RED; fi
+  if [ "$got" = "$want" ]; then
+    echo "  ok   $name → $got"
+  else
+    echo "  ОТКАЗ $name → $got, ожидалось $want"; sed 's/^/       /' "$TMP/out"; rc=1
+  fi
+}
+
+# say <файл> <фраза> — вывод последнего прогона обязан НАЗЫВАТЬ виновника.
+# Красное без имени профиля читателю бесполезно: у него десять файлов.
+says() {
+  if grep -qF -- "$1" "$TMP/out"; then
+    echo "  ok   вывод называет $1"
+  else
+    echo "  ОТКАЗ вывод не называет $1"; sed 's/^/       /' "$TMP/out"; rc=1
+  fi
+}
+
+mkprofiles() { # каталог ← копия профилей дерева
+  mkdir -p "$1"
+  cp helm/umbrella/values*.yaml "$1"/
+}
+
+# setval <файл-во-временном-каталоге> <выражение> — правка ВРЕМЕННОЙ копии.
+#
+# Пишет через перенаправление, а не правкой на месте. Правка на месте берёт
+# целью ПЕРВЫЙ аргумент, а он у этого инструмента — выражение; всякий, кто такую
+# строку читает — человек и гейт `TestShellProbesDoNotWriteIntoTheTreeTheyRunFrom`
+# одинаково, — видит запись по пути, производному от корня ЖИВОГО дерева. Форма
+# с перенаправлением называет цель прямо, и цель эта — временный каталог.
+setval() {
+  local f="$1" expr="$2"
+  yq "$expr" "$f" > "$TMP/edited.yaml"
+  mv "$TMP/edited.yaml" "$f"
+}
+
+# (1) законный близнец: профили дерева как есть — проба обязана МОЛЧАТЬ.
+mkprofiles "$TMP/asis"
+assert "профили дерева как есть" GREEN "$TMP/asis"
+
+# (2) дефект #1137 возвращён: требование связанного токена включено на
+#     ПЕРЕВЕДЁННОМ контуре — у него там нет читателя вовсе.
+mkprofiles "$TMP/no-reader"
+setval "$TMP/no-reader/values.prod.yaml" '.["kacho-iam"].kacho.iam.saKey.bindDpop = true'
+assert "ручка включена на переведённом контуре" RED "$TMP/no-reader"
+says "values.prod.yaml"
+
+# (3) ЗАКОННЫЙ БЛИЗНЕЦ той же формы: та же ручка на НЕпереведённом контуре.
+#     Читатель у неё там есть — регистрация клиента у прежнего издателя, —
+#     и проба обязана молчать.
+mkprofiles "$TMP/has-reader"
+setval "$TMP/has-reader/values.dev.yaml" '.["kacho-iam"].kacho.iam.saKey.bindDpop = true'
+assert "та же ручка на непереведённом контуре" GREEN "$TMP/has-reader"
+
+# (4) секция 4 по-прежнему способна упасть — и теперь по ЛЮБОМУ профилю, а не
+#     по двум. Профиль выбран из тех восьми, которых она раньше не читала.
+mkprofiles "$TMP/order"
+setval "$TMP/order/values.fe3455-prod.yaml" '.["api-gateway"].authn.requireMachineTokenBinding = true'
+assert "энфорсмент впереди выдачи (профиль вне прежней пары)" RED "$TMP/order"
+says "values.fe3455-prod.yaml"
+
+# (5) перепись по пустому набору — НЕ зелёный вердикт. «Ноль находок» обязано
+#     быть отличимо от «ноль прочитанного».
+mkdir -p "$TMP/empty"
+assert "профилей ноль" RED "$TMP/empty"
+
+# (6) перепись печатается ВСЕГДА, и её числа читаемы. Без этого предыдущее
+#     требование выполнялось бы формально: отказ на пустом наборе есть, а
+#     объёма осмотренного на непустом не видно.
+MACHINE_POSTURE_PROFILE_DIR="$TMP/asis" bash tests/helm/machine-credential-posture-test.sh >"$TMP/out" 2>&1
+says "census: profiles read"
+
+exit "$rc"
