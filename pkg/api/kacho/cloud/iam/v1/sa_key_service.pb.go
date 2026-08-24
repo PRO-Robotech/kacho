@@ -51,16 +51,28 @@ type IssueSAKeyRequest struct {
 	// Каждый элемент сужает, какая внешняя пара вправе выступать за этот ключ.
 	// Пустой перечень — обычный вид с ключевым материалом.
 	TrustedSubjects []*TrustedSubject `protobuf:"bytes,5,rep,name=trusted_subjects,json=trustedSubjects,proto3" json:"trusted_subjects,omitempty"`
-	// Federation OUT. When non-empty, the kacho-minted access_token
-	// is issued with these values in the `aud` claim, making the token
-	// verifiable by external OIDC-trust-federation consumers — external STS
-	// services (which require a specific `aud` value), external workload-
-	// identity-federation providers (which require an `aud` naming the
-	// federation pool/provider), generic OIDC RPs, etc. The list is
-	// stored on the Hydra OAuth2 client and applied to every token minted for
-	// it. Empty → kacho-internal audience only (legacy `AudiencePrefix`
-	// behaviour: `kacho:iam:/sa/<sva_id>`); the resulting token is NOT
-	// accepted by external IdPs. Order is preserved; duplicates are dropped.
+	// Federation OUT — и СУЖЕНИЕ адресатов этого ключа (задача #1136).
+	//
+	// Непустой перечень называет, для чего заведён ключ: токен по нему выдаётся
+	// ТОЛЬКО тем адресатам, которые здесь названы. Это нужно внешней федерации —
+	// внешние службы обмена и провайдеры федеративной идентичности требуют в
+	// `aud` строго своего значения, — и одновременно ограничивает ключ: выданный
+	// «для реестра» не получит токена, адресованного краю платформы.
+	//
+	// ПЕРЕЧНЕЙ В ТРАКТЕ ДВА, И ЭТОТ — ВНУТРЕННИЙ. Внешняя граница объявлена
+	// посадкой (`authn.client-token.allowed-audiences`) и говорит, каким
+	// поверхностям платформа вообще чеканит удостоверения. Здешний перечень
+	// действует ВНУТРИ неё и никогда её не расширяет: адресат, которого посадка
+	// не объявила, не выдаётся ни одному ключу, как бы он ни объявился. Ключ,
+	// чей перечень не пересекается с объявленным посадкой, токена не получит —
+	// отказ наступает на обмене, потому что перечень посадки меняет оператор и
+	// после выдачи ключа.
+	//
+	// Пустой перечень означает «сужения не объявлено»: действует перечень
+	// посадки целиком, как было до появления этого читателя. Порядок
+	// сохраняется, пустые элементы снимаются, повторы схлопываются; первый
+	// объявленный (из числа допущенных посадкой) становится адресатом обмена,
+	// не назвавшего адресата явно.
 	// Examples:
 	//
 	//	audience: ["sts.example.com"]
@@ -284,11 +296,16 @@ type IssueSAKeyResponse struct {
 	// JWK `kid` of the registered public key. Caller MUST set the `kid`
 	// header of signed assertions to this value so Hydra picks the right key.
 	KeyId string `protobuf:"bytes,7,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
-	// Federation OUT. Echoes back the resolved `aud` claim list
-	// that will appear in every token minted for this SA. Informational —
-	// operators can confirm the audience binding without re-reading Hydra
-	// admin. Empty list signals kacho-internal-only audience (the request
-	// omitted `audience`).
+	// Перечень адресатов, которые этот ключ вправе заказать.
+	//
+	// Величина зависит от контура выдачи, и это не деталь реализации, а ответ на
+	// вопрос «что этот ключ сможет заказать». Пока клиент зеркалится у прежнего
+	// издателя, решает перечень зеркала — обмен идёт у него, и он сверяет с ним.
+	// На переведённом контуре зеркала нет вовсе, и решает записанное на ключе
+	// сужение (`audience` запроса, задача #1136).
+	//
+	// Пустой перечень на переведённом контуре — утверждение, а не умолчание:
+	// сужения ключ не объявлял, действует перечень посадки.
 	Audiences     []string `protobuf:"bytes,8,rep,name=audiences,proto3" json:"audiences,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
