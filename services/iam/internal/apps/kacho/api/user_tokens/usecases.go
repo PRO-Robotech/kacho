@@ -78,9 +78,12 @@ import (
 // adapter'а через txAsPgx), чтобы этот use-case-пакет оставался свободен от
 // pgx-драйвера.
 type UserClientRepo interface {
-	Get(ctx context.Context, id domain.UserOAuthClientID) (domain.UserOAuthClient, error)
 	Insert(ctx context.Context, tx service.Tx, c domain.UserOAuthClient) (domain.UserOAuthClient, error)
-	DeleteByID(ctx context.Context, tx service.Tx, id domain.UserOAuthClientID) error
+	// DeleteOwnedByID снимает строку удостоверения ОДНИМ оператором, суженным
+	// владельцем, и возвращает снятую строку. found=false — законный исход:
+	// строки нет ЛИБО она чужая, и эти случаи здесь неразличимы by construction
+	// (см. реализацию и §«Скрытие существования» ниже, у doRevoke).
+	DeleteOwnedByID(ctx context.Context, tx service.Tx, ownerID domain.UserID, id domain.UserOAuthClientID) (domain.UserOAuthClient, bool, error)
 	List(ctx context.Context, userID domain.UserID, pageToken string, pageSize int32) ([]domain.UserOAuthClient, string, error)
 	// AccountForUser резолвит account владельца-User, чтобы Issue/Revoke стемпили
 	// `account_id` на Operation-метаданных (account-scoped /iam/operations feed),
@@ -642,15 +645,29 @@ func (u *RevokeUserTokenUseCase) Execute(ctx context.Context, in RevokeInput) (*
 	return &op, nil
 }
 
+// doRevoke снимает удостоверение и ИДЕМПОТЕНТЕН: повторный отзыв, отзыв
+// никогда не существовавшего и отзыв ЧУЖОГО удостоверения дают один и тот же
+// исход — успех, при котором ничего не снято.
+//
+// Почему это ОДИН исход, а не три. Приёмка базового токена (BAT-1-44) требует,
+// чтобы повторный отзыв отвечал успехом. Скрытие существования (security.md
+// §Hardening #6) требует, чтобы отказ по чужому удостоверению был неотличим от
+// промаха. Эти два требования тянут в разные стороны ровно до тех пор, пока
+// исходов больше одного: как только «уже отозвано» отвечает успехом, а «чужое»
+// отказом, вызывающий узнаёт по различию, существует ли ЧУЖОЕ удостоверение —
+// то есть добивавшись идемпотентности, мы бы завели оракул.
+//
+// Разрешено это не подгонкой текстов друг под друга, а снятием ветки: владение
+// стоит в самом операторе снятия (`WHERE id AND user_id`), поэтому места, где
+// «чужое» и «нет такого» могли бы разойтись, в коде НЕТ. Строка чужого
+// владельца при этом переживает вызов — успех означает «в пространстве
+// вызывающего такого удостоверения нет», а не право снять чужое.
+//
+// Право распоряжаться удостоверениями ИМЕННО ЭТОГО человека проверено на крае
+// до вызова: `scope_extractor` берёт объект `iam_user` из поля `user_id`
+// (user_token_service.proto). Идентификатор удостоверения край не проверяет —
+// его и сужает оператор ниже.
 func (u *RevokeUserTokenUseCase) doRevoke(ctx context.Context, in RevokeInput, actor string) (*anypb.Any, error) {
-	cur, err := u.repo.Get(ctx, in.TokenID)
-	if err != nil {
-		return nil, mapPGErr(err)
-	}
-	// Cross-user isolation — проверяем владение перед delete.
-	if cur.UserID != in.UserID {
-		return nil, status.Errorf(codes.NotFound, "UserToken %s not found for user %s", in.TokenID, in.UserID)
-	}
 	tx, err := u.tx.Begin(ctx)
 	if err != nil {
 		return nil, mapPGErr(err)
@@ -661,8 +678,15 @@ func (u *RevokeUserTokenUseCase) doRevoke(ctx context.Context, in RevokeInput, a
 			_ = tx.Rollback(ctx)
 		}
 	}()
-	if err := u.repo.DeleteByID(ctx, tx, in.TokenID); err != nil {
+	cur, found, err := u.repo.DeleteOwnedByID(ctx, tx, in.UserID, in.TokenID)
+	if err != nil {
 		return nil, mapPGErr(err)
+	}
+	if !found {
+		// Снимать было нечего. Транзакция откатывается (снятого нет, писать
+		// нечего), audit не эмитится — события без изменения состояния не
+		// бывает, — и ответ ниже собирается тот же, что на успешном снятии.
+		return revokeUserTokenResponse(in.TokenID)
 	}
 	// Durable iam.user_token.revoked audit-строка в ТОЙ ЖЕ tx, что маппинг-delete
 	// (атомарно, запрет #10): нет key material в payload.
@@ -698,11 +722,22 @@ func (u *RevokeUserTokenUseCase) doRevoke(ctx context.Context, in RevokeInput, a
 	// Чего отзыв не делает — не отзывает уже выданное ПОСТАВЩИКОМ: такой токен
 	// самодостаточен и живёт до своего истечения. Это и есть окно двух издателей,
 	// и величина у него одна — срок уже выданных токенов.
-	resp := &iamv1.RevokeUserTokenResponse{
-		TokenId:   string(in.TokenID),
+	return revokeUserTokenResponse(in.TokenID)
+}
+
+// revokeUserTokenResponse — ЕДИНСТВЕННЫЙ производитель тела успешного отзыва.
+//
+// Производитель один намеренно. Два места, собирающих ответ, разошлись бы на
+// первой же правке — и разошлись бы ровно там, где расхождение и опасно: по
+// различию тел вызывающий узнавал бы, сняли ли что-нибудь на самом деле, то
+// есть существует ли удостоверение. Отметка времени проставляется ВСЕГДА по
+// той же причине: пустая отметка на безрезультатном отзыве читается прямо из
+// тела как «снимать было нечего».
+func revokeUserTokenResponse(tokenID domain.UserOAuthClientID) (*anypb.Any, error) {
+	return anypb.New(&iamv1.RevokeUserTokenResponse{
+		TokenId:   string(tokenID),
 		RevokedAt: timestamppb.Now(),
-	}
-	return anypb.New(resp)
+	})
 }
 
 // ───────────────── List use-case ─────────────────

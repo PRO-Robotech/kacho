@@ -68,9 +68,12 @@ import (
 // opaque service.Tx handle (the concrete pgx.Tx is recovered inside the pg
 // adapter via txAsPgx) so this use-case package stays free of the pgx driver.
 type SAClientRepo interface {
-	Get(ctx context.Context, id domain.SAOAuthClientID) (domain.ServiceAccountOAuthClient, error)
 	Insert(ctx context.Context, tx service.Tx, c domain.ServiceAccountOAuthClient) (domain.ServiceAccountOAuthClient, error)
-	DeleteByID(ctx context.Context, tx service.Tx, id domain.SAOAuthClientID) error
+	// DeleteOwnedByID removes the credential row with ONE statement narrowed by
+	// its owning service account, and returns the row it removed. found=false is
+	// a legal outcome: the row is absent OR it belongs to another owner, and the
+	// two are indistinguishable from here by construction (see doRevoke).
+	DeleteOwnedByID(ctx context.Context, tx service.Tx, ownerID domain.ServiceAccountID, id domain.SAOAuthClientID) (domain.ServiceAccountOAuthClient, bool, error)
 	List(ctx context.Context, svaID domain.ServiceAccountID, pageToken string, pageSize int32) ([]domain.ServiceAccountOAuthClient, string, error)
 	// AccountForServiceAccount resolves the owning account of a ServiceAccount so
 	// Issue/Revoke can stamp `account_id` on the Operation metadata (account-scoped
@@ -1285,15 +1288,30 @@ func (u *RevokeSAKeyUseCase) Execute(ctx context.Context, in RevokeInput) (*oper
 	return &op, nil
 }
 
+// doRevoke removes the key and is IDEMPOTENT: revoking twice, revoking an id
+// that never existed, and revoking SOMEONE ELSE'S key all produce the same
+// outcome — success with nothing removed.
+//
+// Why one outcome and not three. The basic-access-token acceptance (BAT-1-44)
+// requires a repeat revoke to answer success. Hide-existence (security.md
+// §Hardening #6) requires a refusal on a foreign credential to be
+// indistinguishable from a genuine miss. The two pull apart only while there is
+// more than one outcome: the moment "already revoked" answers success and
+// "foreign" answers a refusal, the caller learns from the difference whether
+// SOMEONE ELSE'S credential exists — chasing idempotency would have installed
+// an oracle.
+//
+// This is settled by removing the branch, not by matching two texts to each
+// other: ownership sits inside the removal statement itself (`WHERE id AND
+// sva_id`), so the place where "foreign" and "absent" could diverge does not
+// exist in the code. The foreign row survives the call — success means "no such
+// credential in the caller's namespace", never a licence to remove another's.
+//
+// The right to manage THIS service account's keys is checked at the edge before
+// the call: `scope_extractor` takes the `iam_service_account` object out of the
+// `service_account_id` field (sa_key_service.proto). The key id is not checked
+// there — narrowing it is what the statement below does.
 func (u *RevokeSAKeyUseCase) doRevoke(ctx context.Context, in RevokeInput, actor string) (*anypb.Any, error) {
-	cur, err := u.repo.Get(ctx, in.KeyID)
-	if err != nil {
-		return nil, mapPGErr(err)
-	}
-	// Cross-SA isolation — verify ownership before delete.
-	if cur.SvaID != in.ServiceAccountID {
-		return nil, status.Errorf(codes.NotFound, "ServiceAccountKey %s not found for service account %s", in.KeyID, in.ServiceAccountID)
-	}
 	tx, err := u.tx.Begin(ctx)
 	if err != nil {
 		return nil, mapPGErr(err)
@@ -1304,8 +1322,16 @@ func (u *RevokeSAKeyUseCase) doRevoke(ctx context.Context, in RevokeInput, actor
 			_ = tx.Rollback(ctx)
 		}
 	}()
-	if err := u.repo.DeleteByID(ctx, tx, in.KeyID); err != nil {
+	cur, found, err := u.repo.DeleteOwnedByID(ctx, tx, in.ServiceAccountID, in.KeyID)
+	if err != nil {
 		return nil, mapPGErr(err)
+	}
+	if !found {
+		// Nothing to remove. The tx rolls back (there is no removal to persist),
+		// no audit row is emitted — there is no event without a state change —
+		// and no provider call is made: calling out on a foreign or absent id
+		// would be the same oracle again, only in someone else's log.
+		return revokeSAKeyResponse(in.KeyID)
 	}
 	// Emit the durable iam.sa_key.revoked audit row in the SAME tx as the
 	// mapping delete (atomic, запрет #10): no key material in payload (5.2-36).
@@ -1361,11 +1387,22 @@ func (u *RevokeSAKeyUseCase) doRevoke(ctx context.Context, in RevokeInput, actor
 			)
 		}
 	}
-	resp := &iamv1.RevokeSAKeyResponse{
-		KeyId:     string(in.KeyID),
+	return revokeSAKeyResponse(in.KeyID)
+}
+
+// revokeSAKeyResponse is the SINGLE producer of a successful revoke body.
+//
+// One producer on purpose. Two assembly sites would drift on the first edit —
+// and drift exactly where drift is dangerous: from the difference in bodies the
+// caller would learn whether anything was actually removed, i.e. whether the
+// credential exists. The timestamp is stamped ALWAYS for the same reason: an
+// empty timestamp on a no-op revoke reads straight off the body as "there was
+// nothing to remove".
+func revokeSAKeyResponse(keyID domain.SAOAuthClientID) (*anypb.Any, error) {
+	return anypb.New(&iamv1.RevokeSAKeyResponse{
+		KeyId:     string(keyID),
 		RevokedAt: timestamppb.Now(),
-	}
-	return anypb.New(resp)
+	})
 }
 
 // ───────────────── List use-case ─────────────────

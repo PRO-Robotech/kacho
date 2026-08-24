@@ -309,19 +309,36 @@ func (r *SAOAuthClientRepo) List(ctx context.Context, svaID domain.ServiceAccoun
 	return out, nextToken, nil
 }
 
-// DeleteByID removes a single SA OAuth client row. Idempotent — returns
-// ErrNotFound if missing. Accepts the opaque service.Tx (sa_keys use-case port)
-// and recovers the concrete pgx.Tx via txAsPgx.
-func (r *SAOAuthClientRepo) DeleteByID(ctx context.Context, txh service.Tx, id domain.SAOAuthClientID) error {
+// DeleteOwnedByID removes the credential row with ONE statement narrowed by its
+// owning service account, and returns the row it removed.
+//
+// The owner sits in the `WHERE`, not in a check ahead of it: read-then-check-then-
+// delete is the software check-then-act ban #10 forbids, and under concurrency both
+// revokes pass the check. Here one statement selects and removes under a row lock;
+// the second writer sees the row gone and gets zero rows.
+//
+// found=false is a LEGAL outcome, not an error. It covers three cases at once: the
+// row never existed, the row was already removed, the row belongs to another owner.
+// They cannot be told apart from here BY CONSTRUCTION — which is the requirement,
+// not an omission: a caller handed different outcomes would learn from the
+// difference whether SOMEONE ELSE'S credential exists (security.md §Hardening #6).
+// The branch on which they could diverge simply does not exist.
+func (r *SAOAuthClientRepo) DeleteOwnedByID(
+	ctx context.Context, txh service.Tx,
+	ownerID domain.ServiceAccountID, id domain.SAOAuthClientID,
+) (domain.ServiceAccountOAuthClient, bool, error) {
 	tx := txAsPgx(txh)
-	tag, err := tx.Exec(ctx, `DELETE FROM service_account_oauth_clients WHERE id = $1`, string(id))
+	row := tx.QueryRow(ctx,
+		fmt.Sprintf(`DELETE FROM service_account_oauth_clients WHERE id = $1 AND sva_id = $2 RETURNING %s`, socCols),
+		string(id), string(ownerID))
+	out, err := scanSAOAuthClient(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ServiceAccountOAuthClient{}, false, nil
+	}
 	if err != nil {
-		return mapErr(err, "SAOAuthClient.DeleteByID", string(id))
+		return domain.ServiceAccountOAuthClient{}, false, mapErr(err, "SAOAuthClient.DeleteOwnedByID", string(id))
 	}
-	if tag.RowsAffected() == 0 {
-		return iamerr.Wrapf(iamerr.ErrNotFound, "SAOAuthClient %s not found", id)
-	}
-	return nil
+	return out, true, nil
 }
 
 // TouchLastUsed — atomic update last_used_at (RETURNING для проверки exists).
