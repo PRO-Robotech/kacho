@@ -120,14 +120,16 @@ func main() {
 	// мёртвый контроль: строка с нашей маркой уходила бы прочими полосами и
 	// отвергалась бы как негодный подписанный токен, то есть отказом не той
 	// природы, и заметить это можно было бы только по жалобе клиента.
-	authInterceptor = authInterceptor.WithBasicCredentialLane(
-		middleware.NewBasicCredentialLane(
-			middleware.NewBasicAuthorityFromStub(iamSubjectClient.BasicCredentialStub()),
-		),
-	)
+	basicLane := middleware.NewBasicCredentialLane(
+		middleware.NewBasicAuthorityFromStub(iamSubjectClient.BasicCredentialStub()),
+	).WithLogger(logger)
+	authInterceptor = authInterceptor.WithBasicCredentialLane(basicLane)
 	logger.Info("basic credential lane wired",
 		"authority", cfg.IAMInternalAddr,
-		"verdict_window", middleware.BasicCredentialVerdictWindow.String())
+		"verdict_window", middleware.BasicCredentialVerdictWindow.String(),
+		// Потолок объявляется при старте: «сколько там записей» обязано быть
+		// известно ДО того, как рост станет предметом разбора (#1218).
+		"verdict_cache_capacity", basicLane.CacheStats().Capacity)
 
 	// Kratos session-based auth для SPA (cookie ory_kratos_session).
 	// Env KACHO_API_GATEWAY_KRATOS_PUBLIC_URL — base URL Kratos public API.
