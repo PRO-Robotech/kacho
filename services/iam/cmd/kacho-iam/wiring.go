@@ -590,6 +590,11 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		WithSubjectChange(service.NewSubjectChangeService(kachopg.NewSubjectChangeRepo(pool))).
 		// SEC-C — FGA-proxy RPCs + ReBAC authz gate.
 		WithResourceRegistrar(registerResourceUC, regGate).
+		// #1142 — авторитет о предъявленном базовом секрете. Край зовёт его на
+		// промахе своего кэша вердикта; отзыв доходит до предъявления тем, что
+		// резолв не находит СНЯТОЙ строки.
+		WithBasicCredentialResolver(kachopg.NewBasicCredentialRepo(pool)).
+		WithLogger(logger).
 		// ForceLogout records a session revocation.
 		WithSessionRevoker(sessionRevAdapter).
 		// ...and ENDS the session at the provider. The cutoff alone stops tokens

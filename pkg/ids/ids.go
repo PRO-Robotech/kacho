@@ -243,6 +243,10 @@ func IsValid(id, prefix string) bool {
 var domainStringPrefixes = []string{
 	// iam: Account/Project/User/ServiceAccount/Group/Role/AccessBinding/Operation/UserOAuthClient/Condition
 	"acc", "prj", "usr", "sva", "grp", "rol", "acb", "iop", "uoc", "cnd",
+	// iam: ServiceAccountOAuthClient — удостоверение служебной учётки. Отсутствие
+	// его префикса в каталоге найдено пробой BAT-1-67: идентификатор одного из
+	// двух видов принципала не классифицировался там, где второй классифицировался.
+	"soc",
 	// legacy shared vpc prefix
 	"e9b",
 }

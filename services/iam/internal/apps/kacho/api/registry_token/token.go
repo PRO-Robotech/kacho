@@ -23,7 +23,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/pkg/credsecret"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/audiencepolicy"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/registrytoken"
 )
 
@@ -212,8 +214,11 @@ type IssueRegistryTokenUseCase struct {
 	// minter — НАШ подписант. nil означает «контур ещё на прежнем издателе»;
 	// это законное состояние до перевода, а не полусобранная зависимость.
 	minter LocalMinter
-	now    func() time.Time
-	jti    func() (string, error)
+	// basicResolver — авторитет о предъявленном базовом секрете (#1142).
+	// nil → полосы нет.
+	basicResolver basicCredentialResolver
+	now           func() time.Time
+	jti           func() (string, error)
 }
 
 // NewIssueRegistryTokenUseCase — builder. AssertionTTL is clamped to
@@ -251,6 +256,19 @@ func (u *IssueRegistryTokenUseCase) Execute(ctx context.Context, in IssueInput) 
 	if in.Username == "" || in.Password == "" {
 		return IssueOutput{}, ErrUnauthenticated
 	}
+
+	// ПОЛОСА БАЗОВОГО СЕКРЕТА (#1142, приёмка BAT-1 §5.5). Классификация — ПО
+	// МАРКЕ в поле пароля, а не по неудаче разбора ключевого материала:
+	// запасной путь, срабатывающий на неудаче, превратил бы всякий негодный
+	// PEM во вход второй полосы.
+	//
+	// Ключевой материал при этом принимается ПО-ПРЕЖНЕМУ: его снятие — предмет
+	// #1143, и порядок обязателен (ввести → перевести клиентов → снять приём).
+	// Обратный порядок ломает работающий вход раньше, чем появляется замена.
+	if u.basicResolver != nil && credsecret.HasMark(in.Password) {
+		return u.executeBasic(ctx, in)
+	}
+
 	cred, err := u.validator.Validate(ctx, in.Username, in.Password)
 	if err != nil || cred.ClientID == "" || cred.KeyID == "" {
 		// Collapse every validator error to ErrUnauthenticated — the client must
@@ -336,6 +354,94 @@ func (u *IssueRegistryTokenUseCase) Execute(ctx context.Context, in IssueInput) 
 		ExpiresIn: out.ExpiresIn,
 		IssuedAt:  now.Unix(),
 	}, nil
+}
+
+// basicCredentialResolver — порт авторитета о предъявленном базовом секрете.
+type basicCredentialResolver interface {
+	ResolveBasic(ctx context.Context, presented string) (domain.BasicCredential, error)
+}
+
+// WithBasicCredentialResolver провязывает полосу базового секрета. nil → полосы
+// нет, и строка с нашей маркой уходит валидатору ключевого материала, где
+// отвергается как негодный PEM. Это посадка ДО появления авторитета, а не
+// мягкий проход.
+func (u *IssueRegistryTokenUseCase) WithBasicCredentialResolver(r basicCredentialResolver) *IssueRegistryTokenUseCase {
+	u.basicResolver = r
+	return u
+}
+
+// executeBasic — вход в реестр базовым секретом.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ИМЯ ОБЯЗАТЕЛЬНО И ОБЯЗАНО СОВПАДАТЬ — АСИММЕТРИЯ С КРАЕМ ОБЪЯВЛЕНА
+//
+// На крае личность несёт САМА строка, и второго поля не требуется. Протокол
+// докера требует непустого имени и хранит пару целиком; поля, которое можно не
+// заполнять, у него нет. Из трёх законных исходов выбран третий:
+//
+//	имя игнорируется       — «принято-и-проигнорировано», запрещено прямо;
+//	имя — постоянный литерал — журнал и история команд перестают говорить,
+//	                          КАКОЕ удостоверение в игре;
+//	имя = идентификатор     — ✔ выбран.
+//
+// Это НЕ второе написание одного значения: идентификатор хранится в ОДНОМ
+// месте — в строке реестра; на входе он предъявляется дважды НА ОДНОЙ
+// поверхности. Роль второго предъявления та же, что у контрольной суммы:
+// перепутанная вставка отвергается сразу и внятно.
+//
+// Цена названа: пользователь копирует два значения вместо одного. Отказ при
+// расхождении ДОСЛОВНО ТОТ ЖЕ, что при неверном секрете, — иначе имя стало бы
+// оракулом существования.
+func (u *IssueRegistryTokenUseCase) executeBasic(ctx context.Context, in IssueInput) (IssueOutput, error) {
+	p, perr := credsecret.Parse(in.Password)
+	if perr != nil || p.CredentialID != in.Username {
+		return IssueOutput{}, ErrUnauthenticated
+	}
+
+	cred, rerr := u.basicResolver.ResolveBasic(ctx, in.Password)
+	if rerr != nil {
+		if errors.Is(rerr, domain.ErrBasicCredentialRefused) {
+			return IssueOutput{}, ErrUnauthenticated
+		}
+		// Недоступность авторитета — НЕ отказ в удостоверении: предъявитель ни
+		// при чём, и повтор осмыслен.
+		return IssueOutput{}, fmt.Errorf("%w: %w", ErrIssuerUnavailable, rerr)
+	}
+	if cred.PrincipalType != "service_account" || cred.PrincipalID == "" {
+		// Докерная полоса выдаёт удостоверение реестра машинному принципалу.
+		// Вид, не принимаемый ЭТОЙ поверхностью, отвергается ТЕМ ЖЕ отказом.
+		return IssueOutput{}, ErrUnauthenticated
+	}
+
+	// Адресат решается ПОСЛЕ проверки: перечень адресатов — сведение о посадке,
+	// и отвечать им неаутентифицированному незачем. Сужения на самом секрете
+	// нет (поле адресатов у этого вида отвергается на выдаче), поэтому здесь
+	// действует только внешняя граница посадки.
+	service, aerr := u.resolveAudience(Credential{Subject: cred.PrincipalID}, in.Service)
+	if aerr != nil {
+		return IssueOutput{}, aerr
+	}
+
+	// Обмена НЕТ и быть не может: подписывать утверждение нечем — ключевого
+	// материала у этого вида не существует. Значит токен обязан чеканить НАШ
+	// подписант; непереведённый контур честно отвечает недоступностью издателя,
+	// а не тихо отдаёт что-нибудь.
+	if !u.mintsLocally() {
+		return IssueOutput{}, fmt.Errorf(
+			"%w: basic credential requires our own minting — there is no key material to sign an assertion with",
+			ErrIssuerUnavailable)
+	}
+	out, merr := u.minter.MintToken(ctx, MintInput{
+		Subject:  cred.PrincipalID,
+		Audience: service,
+		Scope:    u.cfg.Scope,
+		// Материала привязки у предъявительского вида нет НИКОГДА, и пустое
+		// здесь — объявление, а не пропуск.
+	})
+	if merr != nil {
+		return IssueOutput{}, fmt.Errorf("%w: %w", ErrIssuerUnavailable, merr)
+	}
+	return IssueOutput{Token: out.AccessToken, ExpiresIn: out.ExpiresIn, IssuedAt: u.now().Unix()}, nil
 }
 
 // AnonymousEnabled reports whether anonymous-pull issuance is configured. When

@@ -6,6 +6,7 @@ syntax = "proto3";
 package kacho.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
+import "kacho/cloud/iam/v1/credential_kind.proto";
 import "kacho/cloud/validation.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -79,4 +80,9 @@ message UserOAuthClient {
 
   // Пользовательские метки токена (задаются при выпуске, immutable).
   map<string, string> labels = 12;
+
+  // Вид удостоверения — ЧЕМ ОНО СЕБЯ ПРЕДЪЯВЛЯЕТ. Записывается при вставке;
+  // читателем НЕ вычисляется и из состава прочих полей не выводится. По нему
+  // читатель узнаёт, какое поле ответа выдачи было заполнено.
+  CredentialKind credential_kind = 13;
 }

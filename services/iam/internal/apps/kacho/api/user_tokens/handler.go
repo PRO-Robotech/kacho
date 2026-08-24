@@ -76,6 +76,8 @@ func (h *Handler) Issue(ctx context.Context, req *iamv1.IssueUserTokenRequest) (
 		// (ресурс несёт только Issue/List/Revoke — нет Update).
 		Name:   req.GetName(),
 		Labels: labelsFromProto(req.GetLabels()),
+		// Вид удостоверения. Не назван — прежнее поведение дословно.
+		CredentialKind: CredentialKindFromProto(req.GetCredentialKind()),
 	})
 	if err != nil {
 		return nil, err

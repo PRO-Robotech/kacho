@@ -120,6 +120,18 @@ var tokenPolicyQuantities = []tokenPolicyQuantity{
 		Concept: regexp.MustCompile(`(?i)federated.*(lifetime|ttl|maxage)|(max|ceiling).*federated`),
 		Want:    tokenpolicy.MaxFederatedAssertionLifetime,
 	},
+	// Задача #1142, приёмка BAT-1 §7: величина, которой в перечне нет, не
+	// стережётся ничем. Обе внесены решением, а не умолчанием.
+	{
+		Name:    "потолок срока базового секрета",
+		Concept: regexp.MustCompile(`(?i)secret.*(credential)?.*ttl.*ceiling|ceiling.*secret.*ttl`),
+		Want:    tokenpolicy.SecretCredentialTTLCeiling,
+	},
+	{
+		Name:    "умолчание срока базового секрета",
+		Concept: regexp.MustCompile(`(?i)secret.*(credential)?.*ttl.*default|default.*secret.*ttl`),
+		Want:    tokenpolicy.SecretCredentialTTLDefault,
+	},
 }
 
 // TestTokenPolicyQuantityIsDeclaredOnce — сам гейт.

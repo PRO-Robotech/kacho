@@ -42,6 +42,9 @@ import (
 // hydra_client_id (по suffix).
 func newUOC(userID domain.UserID, suffix string) domain.UserOAuthClient {
 	return domain.UserOAuthClient{
+		// Вид ЗАПИСЫВАЕТСЯ каждым писателем (#1142): закрытый
+		// словарь таблицы отвергает строку, вида не назвавшую.
+		CredentialKind:  domain.CredentialKindKeypair,
 		ID:              domain.UserOAuthClientID(domain.NewKac127ID(domain.PrefixUserOAuthClient)),
 		UserID:          userID,
 		OAuthClientID:   domain.OAuthClientID("hydra-uoc-" + suffix),

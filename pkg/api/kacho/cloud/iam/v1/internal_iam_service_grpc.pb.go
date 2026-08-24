@@ -23,13 +23,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	InternalIAMService_LookupSubject_FullMethodName      = "/kacho.cloud.iam.v1.InternalIAMService/LookupSubject"
-	InternalIAMService_Check_FullMethodName              = "/kacho.cloud.iam.v1.InternalIAMService/Check"
-	InternalIAMService_ForceLogout_FullMethodName        = "/kacho.cloud.iam.v1.InternalIAMService/ForceLogout"
-	InternalIAMService_PollSubjectChanges_FullMethodName = "/kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges"
-	InternalIAMService_RegisterResource_FullMethodName   = "/kacho.cloud.iam.v1.InternalIAMService/RegisterResource"
-	InternalIAMService_UnregisterResource_FullMethodName = "/kacho.cloud.iam.v1.InternalIAMService/UnregisterResource"
-	InternalIAMService_GetRoleCompiled_FullMethodName    = "/kacho.cloud.iam.v1.InternalIAMService/GetRoleCompiled"
+	InternalIAMService_LookupSubject_FullMethodName          = "/kacho.cloud.iam.v1.InternalIAMService/LookupSubject"
+	InternalIAMService_Check_FullMethodName                  = "/kacho.cloud.iam.v1.InternalIAMService/Check"
+	InternalIAMService_ForceLogout_FullMethodName            = "/kacho.cloud.iam.v1.InternalIAMService/ForceLogout"
+	InternalIAMService_PollSubjectChanges_FullMethodName     = "/kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges"
+	InternalIAMService_RegisterResource_FullMethodName       = "/kacho.cloud.iam.v1.InternalIAMService/RegisterResource"
+	InternalIAMService_UnregisterResource_FullMethodName     = "/kacho.cloud.iam.v1.InternalIAMService/UnregisterResource"
+	InternalIAMService_ResolveBasicCredential_FullMethodName = "/kacho.cloud.iam.v1.InternalIAMService/ResolveBasicCredential"
+	InternalIAMService_GetRoleCompiled_FullMethodName        = "/kacho.cloud.iam.v1.InternalIAMService/GetRoleCompiled"
 )
 
 // InternalIAMServiceClient is the client API for InternalIAMService service.
@@ -103,6 +104,27 @@ type InternalIAMServiceClient interface {
 	// (they expose only authored `rules[]`). A label-only role compiles to an empty
 	// set (all rules ARM_LABELS are not compiled). cluster-internal listener only —
 	// no google.api.http; admin-UI authz gating happens at the internal mux layer.
+	// ResolveBasicCredential — АВТОРИТЕТ О ПРЕДЪЯВЛЕННОМ БАЗОВОМ СЕКРЕТЕ
+	// (задача #1142, приёмка BAT-1 §5.3, §6).
+	//
+	// Край зовёт этот глагол на промахе своего кэша вердикта и получает ответ на
+	// ОДИН вопрос: годно ли предъявленное СЕЙЧАС и чей это принципал.
+	//
+	// ОТЗЫВ ДОХОДИТ ДО ПРЕДЪЯВЛЕНИЯ КОНСТРУКЦИЕЙ, А НЕ ВТОРЫМ МЕХАНИЗМОМ. Отзыв
+	// есть СНЯТИЕ строки; резолв ищет строку по первичному ключу, и предикат его
+	// единственного оператора включает существование строки, вид, непросроченность
+	// и активность владельца. Нет строки — нет удостоверения. Поэтому под отзыв
+	// попадают и поводы, о которых глагол отзыва не знает: снятие владельца,
+	// снятие участия, перевод владельца в неактивное состояние — повод привязан к
+	// САМОМУ поводу, а не к перечню обязанных писать.
+	//
+	// ОТКАЗ ЕДИНЫЙ. Неизвестный идентификатор, неверный секрет, истёкший срок,
+	// отозванное удостоверение, неактивный владелец — ОДИН И ТОТ ЖЕ код и ОДИН И
+	// ТОТ ЖЕ текст. Различимый текст есть оракул: по нему отличают «нет такого» от
+	// «есть, но не ваш». Различимость живёт ВНУТРЬ — в счётчиках по причинам.
+	//
+	// REST exposed ONLY on the cluster-internal listener.
+	ResolveBasicCredential(ctx context.Context, in *ResolveBasicCredentialRequest, opts ...grpc.CallOption) (*ResolveBasicCredentialResponse, error)
 	GetRoleCompiled(ctx context.Context, in *GetRoleCompiledRequest, opts ...grpc.CallOption) (*GetRoleCompiledResponse, error)
 }
 
@@ -168,6 +190,16 @@ func (c *internalIAMServiceClient) UnregisterResource(ctx context.Context, in *U
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(UnregisterResourceResponse)
 	err := c.cc.Invoke(ctx, InternalIAMService_UnregisterResource_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *internalIAMServiceClient) ResolveBasicCredential(ctx context.Context, in *ResolveBasicCredentialRequest, opts ...grpc.CallOption) (*ResolveBasicCredentialResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveBasicCredentialResponse)
+	err := c.cc.Invoke(ctx, InternalIAMService_ResolveBasicCredential_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -255,6 +287,27 @@ type InternalIAMServiceServer interface {
 	// (they expose only authored `rules[]`). A label-only role compiles to an empty
 	// set (all rules ARM_LABELS are not compiled). cluster-internal listener only —
 	// no google.api.http; admin-UI authz gating happens at the internal mux layer.
+	// ResolveBasicCredential — АВТОРИТЕТ О ПРЕДЪЯВЛЕННОМ БАЗОВОМ СЕКРЕТЕ
+	// (задача #1142, приёмка BAT-1 §5.3, §6).
+	//
+	// Край зовёт этот глагол на промахе своего кэша вердикта и получает ответ на
+	// ОДИН вопрос: годно ли предъявленное СЕЙЧАС и чей это принципал.
+	//
+	// ОТЗЫВ ДОХОДИТ ДО ПРЕДЪЯВЛЕНИЯ КОНСТРУКЦИЕЙ, А НЕ ВТОРЫМ МЕХАНИЗМОМ. Отзыв
+	// есть СНЯТИЕ строки; резолв ищет строку по первичному ключу, и предикат его
+	// единственного оператора включает существование строки, вид, непросроченность
+	// и активность владельца. Нет строки — нет удостоверения. Поэтому под отзыв
+	// попадают и поводы, о которых глагол отзыва не знает: снятие владельца,
+	// снятие участия, перевод владельца в неактивное состояние — повод привязан к
+	// САМОМУ поводу, а не к перечню обязанных писать.
+	//
+	// ОТКАЗ ЕДИНЫЙ. Неизвестный идентификатор, неверный секрет, истёкший срок,
+	// отозванное удостоверение, неактивный владелец — ОДИН И ТОТ ЖЕ код и ОДИН И
+	// ТОТ ЖЕ текст. Различимый текст есть оракул: по нему отличают «нет такого» от
+	// «есть, но не ваш». Различимость живёт ВНУТРЬ — в счётчиках по причинам.
+	//
+	// REST exposed ONLY on the cluster-internal listener.
+	ResolveBasicCredential(context.Context, *ResolveBasicCredentialRequest) (*ResolveBasicCredentialResponse, error)
 	GetRoleCompiled(context.Context, *GetRoleCompiledRequest) (*GetRoleCompiledResponse, error)
 	mustEmbedUnimplementedInternalIAMServiceServer()
 }
@@ -283,6 +336,9 @@ func (UnimplementedInternalIAMServiceServer) RegisterResource(context.Context, *
 }
 func (UnimplementedInternalIAMServiceServer) UnregisterResource(context.Context, *UnregisterResourceRequest) (*UnregisterResourceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UnregisterResource not implemented")
+}
+func (UnimplementedInternalIAMServiceServer) ResolveBasicCredential(context.Context, *ResolveBasicCredentialRequest) (*ResolveBasicCredentialResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveBasicCredential not implemented")
 }
 func (UnimplementedInternalIAMServiceServer) GetRoleCompiled(context.Context, *GetRoleCompiledRequest) (*GetRoleCompiledResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetRoleCompiled not implemented")
@@ -416,6 +472,24 @@ func _InternalIAMService_UnregisterResource_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InternalIAMService_ResolveBasicCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveBasicCredentialRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InternalIAMServiceServer).ResolveBasicCredential(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InternalIAMService_ResolveBasicCredential_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InternalIAMServiceServer).ResolveBasicCredential(ctx, req.(*ResolveBasicCredentialRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _InternalIAMService_GetRoleCompiled_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetRoleCompiledRequest)
 	if err := dec(in); err != nil {
@@ -464,6 +538,10 @@ var InternalIAMService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UnregisterResource",
 			Handler:    _InternalIAMService_UnregisterResource_Handler,
+		},
+		{
+			MethodName: "ResolveBasicCredential",
+			Handler:    _InternalIAMService_ResolveBasicCredential_Handler,
 		},
 		{
 			MethodName: "GetRoleCompiled",

@@ -44,10 +44,12 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/credsecret"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
@@ -305,6 +307,11 @@ type IssueInput struct {
 	// Labels — произвольные метки ключа (create-only, immutable). Пусто → {}.
 	Labels domain.Labels
 
+	// CredentialKind — вид выдаваемого удостоверения. Не назван — сохраняется
+	// прежнее поведение ДОСЛОВНО: пустой перечень доверенных субъектов даёт
+	// KEYPAIR, непустой — FEDERATED.
+	CredentialKind domain.CredentialKind
+
 	// TrustedSubjects — Federation IN. When non-empty, the use-case
 	// switches to FEDERATED mode: no keypair is generated, the Hydra OAuth2
 	// client is registered with `grant_types=[urn:ietf:params:oauth:grant-
@@ -342,6 +349,30 @@ func (u *IssueSAKeyUseCase) Execute(ctx context.Context, in IssueInput) (*operat
 	}
 	if in.TTLSeconds < 0 {
 		return nil, status.Error(codes.InvalidArgument, "ttl_seconds must be >= 0")
+	}
+	// Вид разрешается СИНХРОННО, до любой записи. У служебной учётки
+	// федеративный вид достижим — поле, которым он задаётся, у неё есть.
+	kind, kerr := domain.ResolveIssuedKind(in.CredentialKind, len(in.TrustedSubjects) > 0, true)
+	if kerr != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "%v", kerr)
+	}
+	var secretTTL time.Duration
+	if kind == domain.CredentialKindSecret {
+		// Поля, осмысленные не для этого вида, отвергаются ЯВНО и с именем
+		// поля: молча принять и выбросить запрещено — вызывающий получил бы
+		// успех и был бы уверен, что его параметр применён.
+		if len(in.Audience) > 0 {
+			return nil, status.Errorf(codes.InvalidArgument,
+				"audience: not meaningful for credential_kind %s — its holder presents the secret itself and asks for no audience",
+				domain.CredentialKindSecret)
+		}
+		ttl, ok := tokenpolicy.ResolveSecretCredentialTTL(time.Duration(in.TTLSeconds) * time.Second)
+		if !ok {
+			return nil, status.Errorf(codes.InvalidArgument,
+				"ttl_seconds: exceeds the %s ceiling of %d seconds for credential_kind SECRET",
+				domain.CredentialKindSecret, int64(tokenpolicy.SecretCredentialTTLCeiling.Seconds()))
+		}
+		secretTTL = ttl
 	}
 	// Ceiling. A machine credential is exempt from interactive re-authentication
 	// (a machine has no second factor), which is only defensible while the
@@ -421,6 +452,17 @@ func (u *IssueSAKeyUseCase) Execute(ctx context.Context, in IssueInput) (*operat
 	// goroutine is spawned) — the audit actor must be the authenticated
 	// principal (anti-spoofing, acceptance 5.2-40), never a request-body field.
 	actor := authzguard.PrincipalUserID(ctx)
+
+	// Вид SECRET завершается НА ПУТИ ЗАПРОСА: секрет показывается ОДИН РАЗ, и
+	// второго чтения у него нет — строка операции его не несёт ни в какой
+	// момент (§4.3.1 приёмки BAT-1).
+	if kind == domain.CredentialKindSecret {
+		if err := u.issueSecretSync(ctx, &op, keyID, in, actor, secretTTL); err != nil {
+			return nil, err
+		}
+		return &op, nil
+	}
+
 	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
 		resp, derr := u.doIssue(ctx, keyID, in, actor)
 		// Schedule post-completion redact. The worker is about to invoke
@@ -578,6 +620,73 @@ func (u *IssueSAKeyUseCase) doIssue(ctx context.Context, keyID domain.SAOAuthCli
 	return u.doIssuePrivateKeyJWT(ctx, keyID, in, actor)
 }
 
+// issueSecretSync чеканит базовый секрет служебной учётки. Зеркалит полосу
+// личности: строка коммитится, тело для строки операции секрета НЕ НЕСЁТ, тело
+// для вызывающего его несёт.
+//
+// Регистрации у внешнего поставщика этот вид не заводит и заводить не может —
+// в этом и состоит предмет фазы, — поэтому колонка зеркала остаётся пустой, а
+// не получает синтетического значения.
+func (u *IssueSAKeyUseCase) issueSecretSync(
+	ctx context.Context,
+	op *operations.Operation,
+	keyID domain.SAOAuthClientID,
+	in IssueInput,
+	actor string,
+	ttl time.Duration,
+) error {
+	var shownAny *anypb.Any
+	if err := operations.RunSync(ctx, u.opsRepo, op, func(ctx context.Context) (*anypb.Any, error) {
+		secret, hash, err := credsecret.Mint(string(keyID))
+		if err != nil {
+			return nil, status.Error(codes.Internal, "credential minting failed")
+		}
+		expires := u.now().UTC().Add(ttl)
+		row := domain.ServiceAccountOAuthClient{
+			ID:              keyID,
+			SvaID:           in.ServiceAccountID,
+			Description:     domain.Description(in.Description),
+			CreatedByUserID: domain.UserID(in.CreatedByUserID),
+			Name:            domain.OAuthClientName(in.Name),
+			Labels:          in.Labels,
+			CredentialKind:  domain.CredentialKindSecret,
+			SecretHash:      hash,
+			ExpiresAt:       &expires,
+		}
+		persisted, err := u.commitMapping(ctx, row, "", actor, "")
+		if err != nil {
+			return nil, err
+		}
+		pbKey, err := saClientToProto(persisted)
+		if err != nil {
+			return nil, err
+		}
+		stored := &iamv1.IssueSAKeyResponse{
+			Key:      pbKey,
+			ClientId: string(keyID),
+			KeyId:    string(keyID),
+		}
+		storedAny, err := anypb.New(stored)
+		if err != nil {
+			return nil, err
+		}
+		shown := proto.Clone(stored).(*iamv1.IssueSAKeyResponse)
+		shown.Secret = secret
+		shownAny2, err := anypb.New(shown)
+		if err != nil {
+			return nil, err
+		}
+		shownAny = shownAny2
+		return storedAny, nil
+	}); err != nil {
+		return err
+	}
+	if shownAny != nil && op.Error == nil {
+		op.Response = shownAny
+	}
+	return nil
+}
+
 // hydraUnavailable maps a failed Hydra-admin call to a fixed, opaque
 // codes.Unavailable status and logs the raw cause.
 //
@@ -661,6 +770,8 @@ func (u *IssueSAKeyUseCase) doIssuePrivateKeyJWT(ctx context.Context, keyID doma
 		Labels:          in.Labels,
 		// Сужение адресатов — то, что назвал ЗАКАЗЧИК, и ничего сверх (#1136).
 		DeclaredAudiences: declaredAudiences(in),
+		// Вид ЗАПИСЫВАЕТСЯ, а не вычисляется читателем.
+		CredentialKind: domain.CredentialKindKeypair,
 	}
 	if exp := u.resolveExpiry(in); exp != nil {
 		row.ExpiresAt = exp
@@ -920,6 +1031,8 @@ func (u *IssueSAKeyUseCase) doIssueFederated(ctx context.Context, keyID domain.S
 		// Сужение записывается и здесь. Разойдись две полосы, федеративный ключ
 		// стал бы несужаемой дорогой внутрь — ровно та форма, которую ищут.
 		DeclaredAudiences: declaredAudiences(in),
+		// Вид ЗАПИСЫВАЕТСЯ, а не вычисляется читателем.
+		CredentialKind: domain.CredentialKindFederated,
 	}
 	if exp := u.resolveExpiry(in); exp != nil {
 		row.ExpiresAt = exp
@@ -1317,6 +1430,7 @@ func saClientToProto(c domain.ServiceAccountOAuthClient) (*iamv1.ServiceAccountO
 		CreatedAt:       shared.TimestampProto(c.CreatedAt),
 		Name:            string(c.Name),
 		Labels:          labelsToProto(c.Labels),
+		CredentialKind:  credentialKindToProto(c.CredentialKind),
 	}
 	if c.ExpiresAt != nil {
 		pb.ExpiresAt = shared.TimestampProto(*c.ExpiresAt)
@@ -1325,6 +1439,40 @@ func saClientToProto(c domain.ServiceAccountOAuthClient) (*iamv1.ServiceAccountO
 		pb.LastUsedAt = shared.TimestampProto(*c.LastUsedAt)
 	}
 	return pb, nil
+}
+
+// credentialKindToProto / CredentialKindFromProto — отображение вида домена в
+// вид контракта и обратно. Объявлено ОДНИМ местом на пакет: второе отображение
+// разошлось бы с первым молча.
+func credentialKindToProto(k domain.CredentialKind) iamv1.CredentialKind {
+	switch k {
+	case domain.CredentialKindKeypair:
+		return iamv1.CredentialKind_CREDENTIAL_KIND_KEYPAIR
+	case domain.CredentialKindSecret:
+		return iamv1.CredentialKind_CREDENTIAL_KIND_SECRET
+	case domain.CredentialKindFederated:
+		return iamv1.CredentialKind_CREDENTIAL_KIND_FEDERATED
+	case domain.CredentialKindLegacy:
+		return iamv1.CredentialKind_CREDENTIAL_KIND_LEGACY
+	default:
+		return iamv1.CredentialKind_CREDENTIAL_KIND_UNSPECIFIED
+	}
+}
+
+// CredentialKindFromProto — обратное отображение, для входа выдачи.
+func CredentialKindFromProto(k iamv1.CredentialKind) domain.CredentialKind {
+	switch k {
+	case iamv1.CredentialKind_CREDENTIAL_KIND_KEYPAIR:
+		return domain.CredentialKindKeypair
+	case iamv1.CredentialKind_CREDENTIAL_KIND_SECRET:
+		return domain.CredentialKindSecret
+	case iamv1.CredentialKind_CREDENTIAL_KIND_FEDERATED:
+		return domain.CredentialKindFederated
+	case iamv1.CredentialKind_CREDENTIAL_KIND_LEGACY:
+		return domain.CredentialKindLegacy
+	default:
+		return domain.CredentialKindUnspecified
+	}
 }
 
 func mapPGErr(err error) error {
