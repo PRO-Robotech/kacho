@@ -38,6 +38,12 @@ const (
 	// ДРУГАЯ, и в синтетике она одна: инъекция вносит дефект ровно в одну
 	// величину, иначе непонятно, на что гейт отозвался.
 	maxFederatedAssertionLifetime = 2 * time.Hour
+	// Величины базового секрета (#1142). Стоят здесь по требованию перебора
+	// ниже: он проходит по КАЖДОЙ стерегомой величине и требует от каждой
+	// ровно одного опознанного объявления — величина, которой в синтетике нет,
+	// оставила бы свою сторону инъекции недоказанной.
+	secretCredentialTTLCeiling = 90 * 24 * time.Hour
+	secretCredentialTTLDefault = 30 * 24 * time.Hour
 )
 `
 
@@ -72,6 +78,8 @@ const (
 	CacheCeiling         = time.Hour
 	readTimeout          = 3 * time.Second
 	dialTimeout          = 2 * time.Second
+	SecretCredentialTTLCeiling = 90 * 24 * time.Hour
+	SecretCredentialTTLDefault = 30 * 24 * time.Hour
 	keyRemovalGrace      = MaxTokenTTL + CacheCeiling
 	graceWithSlack       = MaxTokenTTL + 15*time.Minute
 	skewSeconds          = 60
@@ -93,8 +101,8 @@ func TestQuantityScannerFindsASecondDeclarationOfTheSameQuantity(t *testing.T) {
 	// требованию перебора ниже: он проходит по КАЖДОЙ стерегомой величине и
 	// требует от каждой ровно одного опознанного объявления. Величина, которой
 	// в синтетике нет, оставила бы свою сторону инъекции недоказанной.
-	if len(decls) != 3 {
-		t.Fatalf("объявлений длительности найдено %d, ожидалось 3: %+v", len(decls), decls)
+	if len(decls) != 5 {
+		t.Fatalf("объявлений длительности найдено %d, ожидалось 5: %+v", len(decls), decls)
 	}
 
 	for _, q := range tokenPolicyQuantities {

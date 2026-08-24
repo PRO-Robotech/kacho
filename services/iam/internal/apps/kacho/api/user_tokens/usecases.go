@@ -54,12 +54,15 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/credsecret"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
@@ -165,6 +168,10 @@ type IssueInput struct {
 	Name string
 	// Labels — произвольные метки токена (create-only, immutable). Пусто → {}.
 	Labels domain.Labels
+
+	// CredentialKind — вид выдаваемого удостоверения. Не назван — сохраняется
+	// прежнее поведение ДОСЛОВНО (KEYPAIR).
+	CredentialKind domain.CredentialKind
 }
 
 // Execute возвращает стартованную Operation.
@@ -189,6 +196,25 @@ func (u *IssueUserTokenUseCase) Execute(ctx context.Context, in IssueInput) (*op
 	}
 	if in.TTLSeconds < 0 {
 		return nil, status.Error(codes.InvalidArgument, "ttl_seconds must be >= 0")
+	}
+	// Вид разрешается СИНХРОННО, до любой записи: у личности федеративного вида
+	// нет by construction — в её контракте нет поля, которым он задаётся.
+	kind, kerr := domain.ResolveIssuedKind(in.CredentialKind, false, false)
+	if kerr != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "%v", kerr)
+	}
+	// Срок вида SECRET разрешается ТАМ ЖЕ и ТЕМ ЖЕ объявлением, что у второго
+	// глагола выдачи: сверх потолка ОТВЕРГАЕТСЯ, а не урезается молча — иначе
+	// вызывающий получает успех при неприменённом параметре.
+	var secretTTL time.Duration
+	if kind == domain.CredentialKindSecret {
+		ttl, ok := tokenpolicy.ResolveSecretCredentialTTL(time.Duration(in.TTLSeconds) * time.Second)
+		if !ok {
+			return nil, status.Errorf(codes.InvalidArgument,
+				"ttl_seconds: exceeds the %s ceiling of %d seconds for credential_kind SECRET",
+				domain.CredentialKindSecret, int64(tokenpolicy.SecretCredentialTTLCeiling.Seconds()))
+		}
+		secretTTL = ttl
 	}
 	if len(in.Description) > 256 {
 		return nil, status.Error(codes.InvalidArgument, "description too long (max 256)")
@@ -257,6 +283,18 @@ func (u *IssueUserTokenUseCase) Execute(ctx context.Context, in IssueInput) (*op
 	// — audit-actor обязан быть аутентифицированным принципалом (anti-spoofing),
 	// никогда полем тела запроса.
 	actor := authzguard.PrincipalUserID(ctx)
+
+	// Вид SECRET завершается НА ПУТИ ЗАПРОСА, и это не отступление от ban #9:
+	// предмет мутации закоммичен, а `done` означает ровно это. Асинхронный путь
+	// здесь невыразим — секрет показывается ОДИН РАЗ, и второго чтения у него
+	// нет: строка операции его не несёт НИ В КАКОЙ МОМЕНТ (§4.3.1).
+	if kind == domain.CredentialKindSecret {
+		if err := u.issueSecretSync(ctx, &op, tokenID, in, actor, secretTTL); err != nil {
+			return nil, err
+		}
+		return &op, nil
+	}
+
 	operations.Run(ctx, u.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
 		resp, derr := u.doIssue(ctx, tokenID, in, actor)
 		// Планируем post-completion редакцию: worker сейчас вызовет MarkDone(opID,
@@ -269,6 +307,87 @@ func (u *IssueUserTokenUseCase) Execute(ctx context.Context, in IssueInput) (*op
 		return resp, derr
 	})
 	return &op, nil
+}
+
+// issueSecretSync чеканит базовый секрет, коммитит строку и разводит ДВА тела
+// ответа: то, что уходит вызывающему, и то, что ложится в строку операции.
+//
+// РАЗВЕДЕНИЕ — НЕСУЩЕЕ, а не оптимизация. Рядом живёт отложенное стирание
+// одноразового ключевого материала, и оно остаётся механизмом СУЩЕСТВУЮЩИХ
+// видов. К секрету оно не годится by construction: величина отсрочки от
+// нагрузки не зависит и сама себя не сокращает, то есть «показан один раз»
+// стало бы означать «показан ещё столько-то». Здесь секрет в записываемое тело
+// НЕ КЛАДЁТСЯ ВОВСЕ.
+func (u *IssueUserTokenUseCase) issueSecretSync(
+	ctx context.Context,
+	op *operations.Operation,
+	tokenID domain.UserOAuthClientID,
+	in IssueInput,
+	actor string,
+	ttl time.Duration,
+) error {
+	// Тело для вызывающего живёт в ЗАМЫКАНИИ, а не в поле use-case: use-case
+	// один на все запросы, и поле стало бы общим состоянием — секрет одного
+	// вызывающего мог бы уйти другому.
+	var shownAny *anypb.Any
+	if err := operations.RunSync(ctx, u.opsRepo, op, func(ctx context.Context) (*anypb.Any, error) {
+		secret, hash, err := credsecret.Mint(string(tokenID))
+		if err != nil {
+			// Сорванный источник случайности даёт ОТКАЗ, а не строку
+			// предсказуемого вида: угадываемое удостоверение хуже отсутствующего.
+			return nil, status.Error(codes.Internal, "credential minting failed")
+		}
+		expires := u.now().UTC().Add(ttl)
+		row := domain.UserOAuthClient{
+			ID:              tokenID,
+			UserID:          in.UserID,
+			Description:     domain.Description(in.Description),
+			CreatedByUserID: domain.UserID(in.CreatedByUserID),
+			Name:            domain.OAuthClientName(in.Name),
+			Labels:          in.Labels,
+			CredentialKind:  domain.CredentialKindSecret,
+			SecretHash:      hash,
+			ExpiresAt:       &expires,
+		}
+		persisted, err := u.commitMapping(ctx, row, actor, "")
+		if err != nil {
+			return nil, err
+		}
+		pbToken, err := userTokenToProto(persisted)
+		if err != nil {
+			return nil, err
+		}
+		// Тело, которое ЛОЖИТСЯ В СТРОКУ операции: без поля секрета.
+		stored := &iamv1.IssueUserTokenResponse{
+			Token:    pbToken,
+			ClientId: string(tokenID),
+			KeyId:    string(tokenID),
+		}
+		storedAny, err := anypb.New(stored)
+		if err != nil {
+			return nil, err
+		}
+		// Тело, которое УХОДИТ ВЫЗЫВАЮЩЕМУ: то же самое плюс секрет. Оно
+		// подменяется в памяти ПОСЛЕ того, как RunSync записал `stored`, —
+		// поэтому в базу секрет не попадает ни одним путём, включая срыв
+		// между записью и ответом.
+		shown := proto.Clone(stored).(*iamv1.IssueUserTokenResponse)
+		shown.Secret = secret
+		shown2, err := anypb.New(shown)
+		if err != nil {
+			return nil, err
+		}
+		shownAny = shown2
+		return storedAny, nil
+	}); err != nil {
+		return err
+	}
+	// Подмена ПОСЛЕ записи: в базе лежит тело без секрета, вызывающий получает
+	// тело с секретом. Если операция завершилась ошибкой, подменять нечего.
+	if shownAny != nil && op.Error == nil {
+		op.Response = shownAny
+	}
+	return nil
 }
 
 // redactCtxMargin — запас поверх grace-окна для ctx-таймаута redact-goroutine.
@@ -381,6 +500,8 @@ func (u *IssueUserTokenUseCase) doIssue(ctx context.Context, tokenID domain.User
 		KeyAlgorithm:    key.Algorithm,
 		Name:            domain.OAuthClientName(in.Name),
 		Labels:          in.Labels,
+		// Вид ЗАПИСЫВАЕТСЯ, а не вычисляется читателем.
+		CredentialKind: domain.CredentialKindKeypair,
 	}
 	if in.TTLSeconds > 0 {
 		t := u.now().Add(time.Duration(in.TTLSeconds) * time.Second)
@@ -650,6 +771,7 @@ func userTokenToProto(c domain.UserOAuthClient) (*iamv1.UserOAuthClient, error) 
 		CreatedAt:       shared.TimestampProto(c.CreatedAt),
 		Name:            string(c.Name),
 		Labels:          labelsToProto(c.Labels),
+		CredentialKind:  credentialKindToProto(c.CredentialKind),
 	}
 	if c.ExpiresAt != nil {
 		pb.ExpiresAt = shared.TimestampProto(*c.ExpiresAt)
@@ -658,6 +780,39 @@ func userTokenToProto(c domain.UserOAuthClient) (*iamv1.UserOAuthClient, error) 
 		pb.LastUsedAt = shared.TimestampProto(*c.LastUsedAt)
 	}
 	return pb, nil
+}
+
+// credentialKindToProto — отображение вида домена в вид контракта. Объявлено
+// ОДНИМ местом на сервис: второе отображение разошлось бы с первым молча.
+func credentialKindToProto(k domain.CredentialKind) iamv1.CredentialKind {
+	switch k {
+	case domain.CredentialKindKeypair:
+		return iamv1.CredentialKind_CREDENTIAL_KIND_KEYPAIR
+	case domain.CredentialKindSecret:
+		return iamv1.CredentialKind_CREDENTIAL_KIND_SECRET
+	case domain.CredentialKindFederated:
+		return iamv1.CredentialKind_CREDENTIAL_KIND_FEDERATED
+	case domain.CredentialKindLegacy:
+		return iamv1.CredentialKind_CREDENTIAL_KIND_LEGACY
+	default:
+		return iamv1.CredentialKind_CREDENTIAL_KIND_UNSPECIFIED
+	}
+}
+
+// CredentialKindFromProto — обратное отображение, для входа выдачи.
+func CredentialKindFromProto(k iamv1.CredentialKind) domain.CredentialKind {
+	switch k {
+	case iamv1.CredentialKind_CREDENTIAL_KIND_KEYPAIR:
+		return domain.CredentialKindKeypair
+	case iamv1.CredentialKind_CREDENTIAL_KIND_SECRET:
+		return domain.CredentialKindSecret
+	case iamv1.CredentialKind_CREDENTIAL_KIND_FEDERATED:
+		return domain.CredentialKindFederated
+	case iamv1.CredentialKind_CREDENTIAL_KIND_LEGACY:
+		return domain.CredentialKindLegacy
+	default:
+		return domain.CredentialKindUnspecified
+	}
 }
 
 func mapPGErr(err error) error {

@@ -49,7 +49,8 @@ func NewUserOAuthClientRepo(pool *pgxpool.Pool) *UserOAuthClientRepo {
 
 const uocCols = `id, user_id, hydra_client_id, description, created_by_user_id,
                  created_at, expires_at, last_used_at,
-                 public_key_pem, key_algorithm, name, labels`
+                 public_key_pem, key_algorithm, name, labels,
+                 credential_kind, secret_hash`
 
 func (r *UserOAuthClientRepo) Get(ctx context.Context, id domain.UserOAuthClientID) (domain.UserOAuthClient, error) {
 	row := r.pool.QueryRow(ctx,
@@ -103,8 +104,10 @@ func (r *UserOAuthClientRepo) Insert(ctx context.Context, txh service.Tx, c doma
 		INSERT INTO user_oauth_clients (
 		    id, user_id, hydra_client_id, description, created_by_user_id,
 		    created_at, expires_at, last_used_at,
-		    public_key_pem, key_algorithm, name, labels
-		) VALUES ($1, $2, $3, $4, $5, COALESCE($6, now()), $7, $8, $9, $10, $11, $12::jsonb)
+		    public_key_pem, key_algorithm, name, labels,
+		    credential_kind, secret_hash
+		) VALUES ($1, $2, $3, $4, $5, COALESCE($6, now()), $7, $8, $9, $10, $11, $12::jsonb,
+		          $13, COALESCE($14, ''::bytea))
 		RETURNING ` + uocCols
 	labelsJSON, err := marshalLabels(c.Labels)
 	if err != nil {
@@ -115,6 +118,10 @@ func (r *UserOAuthClientRepo) Insert(ctx context.Context, txh service.Tx, c doma
 		string(c.Description), string(c.CreatedByUserID),
 		nullableTime(c.CreatedAt), nullableTimePtr(c.ExpiresAt), nullableTimePtr(c.LastUsedAt),
 		c.PublicKeyPEM, c.KeyAlgorithm, string(c.Name), labelsJSON,
+		// Вид ЗАПИСЫВАЕТСЯ. Пустой вид сюда доехать не может — глагол выдачи
+		// разрешает его синхронно, до вставки, — но ограничение таблицы всё
+		// равно отвергнет пустую строку: словарь закрыт.
+		string(c.CredentialKind), c.SecretHash,
 	)
 	out, err := scanUserOAuthClient(row)
 	if err != nil {
@@ -233,6 +240,7 @@ func scanUserOAuthClient(row pgx.Row) (domain.UserOAuthClient, error) {
 		(*string)(&c.Description), (*string)(&c.CreatedByUserID),
 		&c.CreatedAt, &expiresAt, &lastUsedAt,
 		&c.PublicKeyPEM, &c.KeyAlgorithm, (*string)(&c.Name), &labelsBody,
+		(*string)(&c.CredentialKind), &c.SecretHash,
 	); err != nil {
 		return domain.UserOAuthClient{}, err
 	}

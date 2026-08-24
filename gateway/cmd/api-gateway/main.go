@@ -112,6 +112,23 @@ func main() {
 		logger,
 	)
 
+	// ПОЛОСА БАЗОВОГО СЕКРЕТА (#1142). Авторитет — тот же внутренний слушатель
+	// iam, та же связь, тот же якорь доверия и то же окно вердикта: своей
+	// величины полоса НЕ заводит.
+	//
+	// Провязка безусловна намеренно. Полоса, объявленная и не провязанная, —
+	// мёртвый контроль: строка с нашей маркой уходила бы прочими полосами и
+	// отвергалась бы как негодный подписанный токен, то есть отказом не той
+	// природы, и заметить это можно было бы только по жалобе клиента.
+	authInterceptor = authInterceptor.WithBasicCredentialLane(
+		middleware.NewBasicCredentialLane(
+			middleware.NewBasicAuthorityFromStub(iamSubjectClient.BasicCredentialStub()),
+		),
+	)
+	logger.Info("basic credential lane wired",
+		"authority", cfg.IAMInternalAddr,
+		"verdict_window", middleware.BasicCredentialVerdictWindow.String())
+
 	// Kratos session-based auth для SPA (cookie ory_kratos_session).
 	// Env KACHO_API_GATEWAY_KRATOS_PUBLIC_URL — base URL Kratos public API.
 	// Default = cluster-internal kratos-public service.

@@ -110,8 +110,10 @@ type TokenVerifier interface {
 
 // AuthInterceptor — JWT validate + subject lookup + Principal injection.
 type AuthInterceptor struct {
-	mode          AuthMode
-	devSecret     []byte // HMAC-secret для mode=dev (если пуст — Bearer reject в dev/production-strict).
+	mode      AuthMode
+	devSecret []byte // HMAC-secret для mode=dev (если пуст — Bearer reject в dev/production-strict).
+	// basicLane — полоса базового секрета (#1142). nil → полосы нет.
+	basicLane     *BasicCredentialLane
 	subjectLookup SubjectLookuper
 	kratos        *KratosClient // optional Ory Kratos /whoami client (nil → disabled)
 	verifier      TokenVerifier // JWKS-валидатор Hydra RS256 access JWT (nil → disabled, HMAC-only)
@@ -247,6 +249,14 @@ func (a *AuthInterceptor) WithKratos(c *KratosClient) *AuthInterceptor {
 // Principal строится из верифицированных `kacho_principal_*` claims напрямую
 // (top-level или ext_claims); SubjectLookuper — fallback только при их
 // отсутствии. nil → JWKS-path выключен (HMAC-only).
+// WithBasicCredentialLane провязывает полосу базового секрета. nil → полосы
+// нет вовсе, и строка с нашей маркой уходит прочими полосами как негодная —
+// это и есть посадка до появления авторитета, а не мягкий проход.
+func (a *AuthInterceptor) WithBasicCredentialLane(l *BasicCredentialLane) *AuthInterceptor {
+	a.basicLane = l
+	return a
+}
+
 func (a *AuthInterceptor) WithVerifier(v TokenVerifier) *AuthInterceptor {
 	a.verifier = v
 	return a
@@ -344,6 +354,30 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		default: // production / production-strict
 			return nil, status.Error(codes.Unauthenticated, "missing Bearer token")
 		}
+	}
+
+	// ПОЛОСА БАЗОВОГО СЕКРЕТА — ПЕРВОЙ ПОСЛЕ ПУСТОГО ВХОДА И ТЕРМИНАЛЬНАЯ
+	// (задача #1142, приёмка BAT-1 §5.1).
+	//
+	// Полоса выбирается ПО МАРКЕ, а не по неудаче разбора подписанного токена.
+	// Стой она последней «на всякий случай» — всякая негодная строка приходила
+	// бы к ней входом, и диагностика стала бы невозможной. Стой она без
+	// терминальности — негодное удостоверение уезжало бы дальше как
+	// «удостоверения нет вовсе», и вызывающий получал бы отказ не той природы.
+	if a.basicLane != nil && a.basicLane.Owns(bearer) {
+		cred, err := a.basicLane.Verify(ctx, bearer)
+		switch {
+		case errors.Is(err, ErrCredentialStateUnknown):
+			// Отдельный исход и наружу тоже: это не отказ в удостоверении, а
+			// неспособность установить его состояние.
+			return nil, status.Error(codes.Unavailable, "credential state could not be established")
+		case err != nil:
+			return nil, status.Error(codes.Unauthenticated, "credential refused")
+		}
+		ctx = a.injectPrincipal(ctx, cred.PrincipalType, cred.PrincipalID, cred.DisplayName)
+		// Уровень удостоверения — вместе с принципалом и по той же причине
+		// (см. развёрнутый разбор у REST-половины полосы).
+		return withBasicCredentialLevel(ctx, cred.AuthenticationLevel), nil
 	}
 
 	// Hydra-issued RS256/ES256/EdDSA access JWT → validate via JWKS
@@ -725,6 +759,24 @@ func (a *AuthInterceptor) validateJWT(tokenStr string) (jwt.MapClaims, error) {
 // both the plain form (read by restmux WithMetadata → outgoing gRPC metadata)
 // and the legacy grpc-gateway convention form (fallback path). Shared by the
 // Hydra-JWT branch with the Kratos and SA-token paths.
+// withBasicCredentialLevel кладёт уровень удостоверения во ВХОДЯЩИЕ метаданные —
+// туда же, откуда его читает страж повышения (`verifiedTokenFromCtxOrHTTP`).
+// Входящие уже очищены от подделываемых клиентом заголовков выше по цепочке,
+// поэтому это доверенная простановка, а не подмена.
+func withBasicCredentialLevel(ctx context.Context, level string) context.Context {
+	if level == "" {
+		return ctx
+	}
+	inMD, _ := metadata.FromIncomingContext(ctx)
+	if inMD == nil {
+		inMD = metadata.MD{}
+	} else {
+		inMD = inMD.Copy()
+	}
+	inMD.Set(principalmeta.MetaTokenACR, level)
+	return metadata.NewIncomingContext(ctx, inMD)
+}
+
 func setPrincipalHeaders(r *http.Request, pType, pID, displayName string) {
 	r.Header.Set(principalmeta.HeaderPrincipalType, pType)
 	r.Header.Set(principalmeta.HeaderPrincipalID, pID)
@@ -808,6 +860,13 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 		}
 
 		if !injected {
+			// Полоса базового секрета — ПЕРЕД полосами подписанного и
+			// терминальная, ровно как на нативной поверхности. Обе поверхности
+			// края обязаны отвечать одинаково: расхождение между ними никто бы
+			// не решал, оно возникло бы побочным эффектом.
+			if a.tryBasicCredential(w, r, next) {
+				return
+			}
 			if a.tryHydraJWT(w, r, next) {
 				return
 			}
@@ -817,6 +876,46 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// tryBasicCredential — полоса базового секрета на REST-поверхности края.
+//
+// Возвращает true, когда полоса ВЫНЕСЛА вердикт (положительный или
+// отрицательный) и вызывающий обязан вернуться. Полоса ТЕРМИНАЛЬНА: строка с
+// нашей маркой не уходит дальше как «удостоверения нет вовсе».
+func (a *AuthInterceptor) tryBasicCredential(w http.ResponseWriter, r *http.Request, next http.Handler) bool {
+	if a.basicLane == nil {
+		return false
+	}
+	tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || !a.basicLane.Owns(tok) {
+		return false
+	}
+	cred, err := a.basicLane.Verify(r.Context(), tok)
+	switch {
+	case errors.Is(err, ErrCredentialStateUnknown):
+		// 503, а не 401: вызывающему нечего исправлять сменой удостоверения.
+		http.Error(w, "credential state could not be established", http.StatusServiceUnavailable)
+		return true
+	case err != nil:
+		writeHTTPUnauthorized(w, "credential refused")
+		return true
+	}
+	setPrincipalHeaders(r, cred.PrincipalType, cred.PrincipalID, cred.DisplayName)
+	// УРОВЕНЬ УДОСТОВЕРЕНИЯ ДОЕЗЖАЕТ ДО СТРАЖА ПОВЫШЕНИЯ, и это несущее
+	// (приёмка BAT-1 §5.2): поле, которое полоса не заполнила, делает
+	// нижележащий контроль ПРОЙДЕННЫМ МИМО, а не успешно, — и это неотличимо
+	// от исправной работы.
+	//
+	// Величина — константа «1» (BasicCredentialLevel), и следствие названо:
+	// человек, предъявивший базовый секрет, не может ни выпустить новое
+	// удостоверение, ни отозвать существующее (обоим глаголам объявлен порог
+	// «2»), но обычное чтение с порогом «1» ему ДОСТУПНО. Долгоживущий
+	// предъявительский секрет не должен уметь чеканить себе смену.
+	r.Header.Set(principalmeta.HeaderTokenACR, cred.AuthenticationLevel)
+	r.Header.Set(principalmeta.HeaderGRPCMetaTokenACR, cred.AuthenticationLevel)
+	next.ServeHTTP(w, r)
+	return true
 }
 
 // stripForgeableIdentityHeaders removes incoming X-Kacho-Principal-* (and the

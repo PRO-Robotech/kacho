@@ -41,7 +41,7 @@ func NewSAOAuthClientRepo(pool *pgxpool.Pool) *SAOAuthClientRepo {
 const socCols = `id, sva_id, hydra_client_id, description, created_by_user_id,
                  created_at, expires_at, last_used_at,
                  public_key_pem, key_algorithm, trusted_subjects, name, labels,
-                 declared_audiences`
+                 declared_audiences, credential_kind, secret_hash`
 
 func (r *SAOAuthClientRepo) Get(ctx context.Context, id domain.SAOAuthClientID) (domain.ServiceAccountOAuthClient, error) {
 	row := r.pool.QueryRow(ctx,
@@ -84,9 +84,9 @@ func (r *SAOAuthClientRepo) Insert(ctx context.Context, txh service.Tx, c domain
 		    id, sva_id, hydra_client_id, description, created_by_user_id,
 		    created_at, expires_at, last_used_at,
 		    public_key_pem, key_algorithm, trusted_subjects, name, labels,
-		    declared_audiences
+		    declared_audiences, credential_kind, secret_hash
 		) VALUES ($1, $2, $3, $4, $5, COALESCE($6, now()), $7, $8, $9, $10, $11::jsonb, $12, $13::jsonb,
-		          $14::text[])
+		          $14::text[], $15, COALESCE($16, ''::bytea))
 		RETURNING ` + socCols
 	tsJSON, err := marshalTrustedSubjects(c.TrustedSubjects)
 	if err != nil {
@@ -97,7 +97,7 @@ func (r *SAOAuthClientRepo) Insert(ctx context.Context, txh service.Tx, c domain
 		return domain.ServiceAccountOAuthClient{}, mapErr(err, "", string(c.ID))
 	}
 	row := tx.QueryRow(ctx, q,
-		string(c.ID), string(c.SvaID), string(c.OAuthClientID),
+		string(c.ID), string(c.SvaID), nullableProviderMirror(c.OAuthClientID),
 		string(c.Description), string(c.CreatedByUserID),
 		nullableTime(c.CreatedAt), nullableTimePtr(c.ExpiresAt), nullableTimePtr(c.LastUsedAt),
 		c.PublicKeyPEM, c.KeyAlgorithm, tsJSON, string(c.Name), labelsJSON,
@@ -106,6 +106,8 @@ func (r *SAOAuthClientRepo) Insert(ctx context.Context, txh service.Tx, c domain
 		// отвергся ограничением — то есть выдача ключа без перечня перестала
 		// бы работать вовсе.
 		declaredAudiencesParam(c.DeclaredAudiences),
+		// Вид ЗАПИСЫВАЕТСЯ. Словарь закрыт ограничением таблицы.
+		string(c.CredentialKind), c.SecretHash,
 	)
 	out, err := scanSAOAuthClient(row)
 	if err != nil {
@@ -344,15 +346,23 @@ func scanSAOAuthClient(row pgx.Row) (domain.ServiceAccountOAuthClient, error) {
 		tsBody     []byte
 		labelsBody []byte
 		audiences  []string
+		// Колонка зеркала стала NULL-абельной вместе с введением вида SECRET:
+		// регистрации у внешнего поставщика у него нет by construction.
+		// Скан в обычную строку упал бы на КАЖДОЙ такой строке — то есть вид
+		// был бы выпускаем и нечитаем.
+		mirror sql.NullString
 	)
 	if err := row.Scan(
-		(*string)(&c.ID), (*string)(&c.SvaID), (*string)(&c.OAuthClientID),
+		(*string)(&c.ID), (*string)(&c.SvaID), &mirror,
 		(*string)(&c.Description), (*string)(&c.CreatedByUserID),
 		&c.CreatedAt, &expiresAt, &lastUsedAt,
 		&c.PublicKeyPEM, &c.KeyAlgorithm, &tsBody, (*string)(&c.Name), &labelsBody,
-		&audiences,
+		&audiences, (*string)(&c.CredentialKind), &c.SecretHash,
 	); err != nil {
 		return domain.ServiceAccountOAuthClient{}, err
+	}
+	if mirror.Valid {
+		c.OAuthClientID = domain.OAuthClientID(mirror.String)
 	}
 	if expiresAt.Valid {
 		t := expiresAt.Time

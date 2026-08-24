@@ -112,6 +112,8 @@ func (h *Handler) Issue(ctx context.Context, req *iamv1.IssueSAKeyRequest) (*ope
 		// (the resource carries only Issue/List/Revoke — no Update).
 		Name:   req.GetName(),
 		Labels: labelsFromProto(req.GetLabels()),
+		// Вид удостоверения. Не назван — прежнее поведение дословно.
+		CredentialKind: CredentialKindFromProto(req.GetCredentialKind()),
 		// Federation OUT — caller-supplied external audience(s).
 		// Empty → use-case falls back to AudiencePrefix (kacho-internal).
 		Audience: req.GetAudience(),

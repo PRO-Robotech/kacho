@@ -113,6 +113,7 @@ var generatedRestRoutes = []restRoute{
 	{Method: "DELETE", Template: "/iam/v1/internal/cluster/admins/{subject_id}", FQN: "kacho.cloud.iam.v1.InternalClusterService/RevokeAdmin"},
 	{Method: "POST", Template: "/iam/v1/internal/iam:check", FQN: "kacho.cloud.iam.v1.InternalIAMService/Check"},
 	{Method: "POST", Template: "/iam/v1/internal/iam:lookupSubject", FQN: "kacho.cloud.iam.v1.InternalIAMService/LookupSubject"},
+	{Method: "POST", Template: "/iam/v1/internal/iam:resolveBasicCredential", FQN: "kacho.cloud.iam.v1.InternalIAMService/ResolveBasicCredential"},
 	{Method: "GET", Template: "/iam/v1/internal/interactiveClients", FQN: "kacho.cloud.iam.v1.InternalInteractiveClientService/List"},
 	{Method: "POST", Template: "/iam/v1/internal/interactiveClients", FQN: "kacho.cloud.iam.v1.InternalInteractiveClientService/Create"},
 	{Method: "DELETE", Template: "/iam/v1/internal/interactiveClients/{interactive_client_id}", FQN: "kacho.cloud.iam.v1.InternalInteractiveClientService/Delete"},

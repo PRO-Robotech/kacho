@@ -8,6 +8,8 @@ package kacho.cloud.iam.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/api/operation.proto";
+import "kacho/cloud/api/secret_options.proto";
+import "kacho/cloud/iam/v1/credential_kind.proto";
 import "kacho/cloud/iam/v1/user_oauth_client.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/validation.proto";
@@ -124,13 +126,29 @@ service UserTokenService {
 message IssueUserTokenRequest {
   string user_id = 1 [(required) = true, (length) = "<=20"];
   string description = 2 [(length) = "<=256"];
-  // Опциональный TTL в секундах; 0 → бессрочный.
+  // Опциональный TTL в секундах. Смысл ЗНАЧЕНИЯ 0 ЗАВИСИТ ОТ ВИДА, и это
+  // сказано здесь, потому что комментарий у контроля, противоречащий коду,
+  // провоцирует «починку» кода под неверный комментарий:
+  //   * KEYPAIR — 0 означает БЕССРОЧНО (прежнее поведение, дословно);
+  //   * SECRET  — 0 означает «срок не назван», применяется умолчание политики;
+  //     БЕССРОЧНОГО СЕКРЕТА НЕ БЫВАЕТ НИ В КАКОМ НАПИСАНИИ, и срок сверх
+  //     потолка политики ОТВЕРГАЕТСЯ, а не урезается молча.
   int64 ttl_seconds = 3 [(value) = "<=63072000"];
   string created_by_user_id = 4 [(required) = true, (length) = "<=20"];
   // Tenant-facing имя токена (человекочитаемая метка). Задаётся при выпуске, immutable.
   string name = 5 [(length) = "<=63"];
   // Пользовательские метки токена. Задаются при выпуске, immutable.
   map<string, string> labels = 6;
+
+  // Вид выдаваемого удостоверения (§2.5 приёмки BAT-1).
+  //
+  // Не назван — СОХРАНЯЕТСЯ ПРЕЖНЕЕ ПОВЕДЕНИЕ ДОСЛОВНО: пустой перечень
+  // доверенных субъектов даёт KEYPAIR, непустой — FEDERATED. Названный явно вид
+  // АВТОРИТЕТЕН, и несогласие с перечнем отвергается с именем поля.
+  //
+  // LEGACY, названный явно, отвергается ВСЕГДА: его не производит ни один
+  // глагол.
+  CredentialKind credential_kind = 7;
 }
 
 message IssueUserTokenResponse {
@@ -154,6 +172,17 @@ message IssueUserTokenResponse {
   // JWK `kid` публичного ключа. Вызывающий ОБЯЗАН выставить `kid`-header
   // подписанных assertion'ов в это значение. Совпадает с `client_id`.
   string key_id = 6;
+
+  // Базовый секрет — ПОКАЗЫВАЕТСЯ ОДИН РАЗ и невосстановим. Заполнен ТОЛЬКО у
+  // вида SECRET; у KEYPAIR и FEDERATED пуст.
+  //
+  // Предъявляется КАК ЕСТЬ: `Authorization: Bearer <строка>` на крае и полем
+  // пароля `docker login -p`. Ни библиотеки JOSE, ни сборки утверждения, ни
+  // обмена.
+  //
+  // Помечен носителем секрета: значение не имеет права осесть НИ В СТРОКЕ
+  // ОПЕРАЦИИ, ни в журнале аудита, ни в ленте подписки, ни в строке ресурса.
+  string secret = 7 [(kacho.cloud.api.secret_bearing) = true];
 }
 
 message IssueUserTokenMetadata {
