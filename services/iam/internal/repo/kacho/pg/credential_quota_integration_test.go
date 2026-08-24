@@ -578,7 +578,13 @@ func TestCredQuota_18_AWithdrawnCeilingRefusesWithADifferentCode(t *testing.T) {
 		"KQ002", "has no ceiling stated for iam.user.credential")
 }
 
-// CRED-CAP-20/21 — строка учёта заводится ВМЕСТЕ с принципалом.
+// CRED-CAP-20 и CRED-CAP-21 — строка учёта заводится ВМЕСТЕ с принципалом, у
+// обоих видов, и несёт зеркало аккаунта ровно там, где принадлежность
+// однозначна.
+//
+// Два сценария приёмки в одной пробе НАМЕРЕННО: они утверждают не два поведения,
+// а его РАЗЛИЧИЕ между человеком и машиной, а различие наблюдаемо только когда
+// обе стороны сняты с одного стенда.
 func TestCredQuota_20_TheAccountingRowIsBornWithItsPrincipal(t *testing.T) {
 	pool, ctx := newCredQuotaDB(t)
 	userID, svaID, accountID := credQuotaFixture(t, ctx, pool, "lifecycle")

@@ -197,3 +197,33 @@ func TestSubordinateResourceGateCanFail(t *testing.T) {
 			"законный близнец: носитель среди родителей — молчание")
 	})
 }
+
+// CRED-CAP-33 — расширенный резолвер частей вида по-прежнему ОТВЕРГАЕТ то, что
+// отвергал до расширения.
+//
+// Это вторая половина утверждения «расширение, а не ослабление»: первая
+// (подчинённый ресурс принимается) без неё неотличима от «принимается всё».
+// Действующий гейт каталога проверяет старый предикат и о новом не утверждает
+// ничего — он был написан раньше.
+func TestResolvesKindPartAcceptsSubordinatesAndStillRefusesInventions(t *testing.T) {
+	t.Parallel()
+
+	for _, dotted := range []string{"iam.user", "iam.serviceAccount", "vpc.network"} {
+		require.Truef(t, resolvesKindPart(dotted),
+			"настоящий тип модели прав %q перестал резолвиться: расширение сломало то, "+
+				"ради чего гейт существует", dotted)
+	}
+	require.True(t, resolvesKindPart("iam.credential"),
+		"объявленный подчинённый ресурс не резолвится: вид `iam.user.credential` не пройдёт "+
+			"гейт каталога, и потолок нельзя будет назвать")
+
+	for _, dotted := range []string{
+		"iam.nonesuch",    // выдуманное имя
+		"iam.credentials", // множественное — та форма, на которой уже спотыкались
+		"vpc.serviceEndpoint",
+	} {
+		require.Falsef(t, resolvesKindPart(dotted),
+			"имя %q резолвится, хотя его нет НИ В ОДНОМ из двух источников: расширение "+
+				"стало ослаблением, и опечатка доедет до арендатора", dotted)
+	}
+}
