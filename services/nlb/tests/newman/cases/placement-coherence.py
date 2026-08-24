@@ -283,6 +283,20 @@ CASES.append(Case(
                  # определённом ни в одной области. Заданное пустым — законный
                  # негативный случай по его собственному предикату.
                  "pm.environment.set('zcLeakLbId', '');",
+                 # ТО ЖЕ САМОЕ И ДЛЯ `opId`, и по той же причине. Строгая полоса этого
+                 # кейса — sync 400: Operation не чеканится, захватывать нечего. Без
+                 # этой строки имя доставалось соседним опросам ЗНАЧЕНИЕМ ПРЕДЫДУЩЕЙ
+                 # операции — той, что создавала подсеть фикстуры, — и `poll-op-12`
+                 # с `poll-op-13` шесть раз зеленели, утверждая «operation done» и
+                 # «delete operation succeeded» о ЧУЖОЙ, давно завершённой операции
+                 # создания подсети (наблюдалось в отчёте прогона на origin/main:
+                 # poll-op-11, poll-op-12 и poll-op-13 опрашивали ОДИН И ТОТ ЖЕ
+                 # `operations/enp…`, при том что шаг удаления между ними был пропущен).
+                 # Оба сиблинга этого файла — `create-same-zone` и `create-same-region` —
+                 # ту же величину объявляют; не объявлял её только этот кейс, у которого
+                 # отсутствие операции и есть предмет. Пустое, а не снятое: снятие роняет
+                 # страж неразрешённых подстановок там, где отсутствия операции и ждали.
+                 "pm.environment.set('opId', '');",
                  "if (pm.environment.get('zcSubR2Id') && _altR && _r && _altR !== _r) {",
                  "  pm.test('cross-region subnet rejected sync 400', () => pm.expect(pm.response.code).to.eql(400));",
                  "  const j = pm.response.json();",
@@ -300,7 +314,16 @@ CASES.append(Case(
                  "  pm.test('single-region: a same-region subnet is accepted (cross-region needs a 2nd geo region)', () => "
                  "    pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  "  const j = pm.response.json();",
-                 "  if (pm.response.code === 200) { if (j.id) pm.environment.set('opId', j.id); if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('zcLeakLbId', j.metadata.networkLoadBalancerId); }",
+                 # Приём объявлен Operation'ом — значит конверт обязан приехать. Молчаливое
+                 # `if (j.id)` без утверждения делало 200 БЕЗ идентификатора операции
+                 # неотличимым от строгой полосы: `opId` оставался пустым, опрос ниже
+                 # выходил на своём же страже, и о незавершённой мутации не говорил никто.
+                 "  if (pm.response.code === 200) {",
+                 "    pm.test('single-region: accepted create returns an Operation id', () => "
+                 "      pm.expect(j.id, 'operation.id').to.be.a('string').and.not.empty);",
+                 "    if (j.id) pm.environment.set('opId', j.id);",
+                 "    if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('zcLeakLbId', j.metadata.networkLoadBalancerId);",
+                 "  }",
                  "}",
              ])),
         # drain the op + clean up any LB the single-region branch lawfully created

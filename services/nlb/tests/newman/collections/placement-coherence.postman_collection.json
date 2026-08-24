@@ -2288,7 +2288,6 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
                   "// bounded read-your-writes retry over the cross-service peer-visibility window",
                   "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
                   "// SELF only while the sync create says the PEER REFERENCE did not resolve:",
@@ -2318,6 +2317,7 @@
                   "var _altR = pm.environment.get('existingRegionAltId') || '';",
                   "var _r = pm.environment.get('existingRegionId') || '';",
                   "pm.environment.set('zcLeakLbId', '');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.environment.get('zcSubR2Id') && _altR && _r && _altR !== _r) {",
                   "  pm.test('cross-region subnet rejected sync 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "  const j = pm.response.json();",
@@ -2333,7 +2333,11 @@
                   "  // check that started refusing its OWN region would still have passed.",
                   "  pm.test('single-region: a same-region subnet is accepted (cross-region needs a 2nd geo region)', () =>     pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "  const j = pm.response.json();",
-                  "  if (pm.response.code === 200) { if (j.id) pm.environment.set('opId', j.id); if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('zcLeakLbId', j.metadata.networkLoadBalancerId); }",
+                  "  if (pm.response.code === 200) {",
+                  "    pm.test('single-region: accepted create returns an Operation id', () =>       pm.expect(j.id, 'operation.id').to.be.a('string').and.not.empty);",
+                  "    if (j.id) pm.environment.set('opId', j.id);",
+                  "    if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('zcLeakLbId', j.metadata.networkLoadBalancerId);",
+                  "  }",
                   "}"
                 ]
               }
