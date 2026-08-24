@@ -91,12 +91,34 @@ var verbLiteralRoster = []verbLiteral{
 		retireWhen: "объявление удалено (тип вернулся к общему набору либо перечисляет его иначе)",
 	},
 	{
+		path: "services/iam/internal/authzmap/fga_types.go", varName: "identityVerbRelations",
+		claims: "набор ОДНОГО типа — iam_user: операции над объектом БЕЗ правки. Полноты платформы " +
+			"НЕ утверждает; это первое в дереве СУЖЕНИЕ набора — `v_update` снят, потому что правку " +
+			"записи личности спрашивает `record_writer`, а запрет — `identity_suspender` (#1102), и " +
+			"читателя у глагола не осталось (#1128)",
+		checkedBy: "authzmap: TestDrift_TypeVerbSetsMatchModelExactly (потиповое равенство набора и " +
+			"модели) + TestVerbRelation_DeclaredOnlyWhereRead (у объявленного есть читатель)",
+		retireWhen: "объявление удалено (тип вернулся к общему набору либо перечисляет его иначе)",
+	},
+	{
 		path: "services/iam/internal/authzmap/fga_types.go", varName: "targetGroupVerbRelations",
 		claims: "набор ОДНОГО типа — nlb_target_group: операции над объектом плюс два отношения " +
 			"управления составом группы (NLB-TGT-1); полноты платформы НЕ утверждает — это первый " +
 			"в дереве набор, отличающийся от общего",
 		checkedBy:  "authzmap: TestDrift_TypeVerbSetsMatchModelExactly — потиповое равенство набора и модели",
 		retireWhen: "объявление удалено (тип вернулся к общему набору либо перечисляет его иначе)",
+	},
+	{
+		path:    "services/iam/internal/apps/kacho/api/permission_catalog/resource_verbs_test.go",
+		varName: "previouslyOfferedToEveryResource",
+		claims: "что выпадающий список редактора ролей предлагал КАЖДОМУ ресурсу до появления " +
+			"словаря по ресурсу (#1128) — база сравнения «никто не потерял», а не словарь платформы. " +
+			"Литерал здесь намеренный: сверка поля с его собственным источником зеленела бы при " +
+			"любом сужении",
+		checkedBy: "тот же файл: TestCatalogResourceVerbs_DescribeTheTypesOwnSets — каждый " +
+			"глагольный ресурс предлагает не меньше прежнего, кроме поимённо суженных с причиной; " +
+			"способность предиката упасть доказана рядом (resource_verbs_injection_test.go)",
+		retireWhen: "объявление удалено (сравнивать с прежним предложением стало не с чем)",
 	},
 	{
 		path: "services/iam/internal/domain/role_effective_verbs.go", varName: "verbDisplayPrecedence",

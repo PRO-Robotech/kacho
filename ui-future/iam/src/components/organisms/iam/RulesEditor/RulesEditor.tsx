@@ -328,8 +328,14 @@ export function RulesEditor({
                   testid={`role-rule-${i}-verbs`}
                   placeholder="Выберите глагол(ы)"
                   value={rule.verbs}
-                  // verb-`*` РАЗРЕШЁН в custom-роли — если каталог разрешает.
-                  options={verbOptions(catalog, isSystem)}
+                  // Опции — глаголы ВЫБРАННЫХ ТИПОВ, а не общий словарь каталога
+                  // (#1128): набор глаголов принадлежит типу, и пересечение по
+                  // всем типам платформы не выражает ни расширения (у групп целей
+                  // есть свои `addTargets`/`removeTargets`), ни сужения (у
+                  // `iam.user` снят `update`). Пока тип не выбран, предлагается
+                  // общее для модуля. verb-`*` РАЗРЕШЁН в custom-роли — если
+                  // каталог разрешает.
+                  options={verbOptions(catalog, isSystem, rule.module, rule.resources)}
                   systemOnlyWildcardHint={false}
                   onChange={(verbs) => patchRule(i, { verbs })}
                 />
