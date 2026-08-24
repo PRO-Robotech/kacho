@@ -1,9 +1,11 @@
 // Повторное подтверждение личности — ОДНА реализация на продукт.
 //
 // Копий было две, в iam и в system, и различались они ровно одной строкой —
-// алиасом импорта (`@/pages/auth/Login` против `@shared/pages/auth/Login`), —
-// причём обе вели к одному и тому же файлу в shared. То есть дублировались 368
-// строк ради разницы, которой по существу не было.
+// алиасом импорта страницы входа, — причём обе вели к одному и тому же файлу в
+// shared. То есть дублировались 368 строк ради разницы, которой по существу не
+// было. Сама та страница с тех пор снята (#1225): продукт её не монтировал ни
+// одним маршрутом, а адрес входа принадлежит поставщику личности. Кодировщик
+// двоичных полей, единственное, что окно оттуда брало, живёт своим модулем.
 //
 // Дом здесь потому, что подтверждение личности принадлежит не модулю, а
 // продукту: его просит любое действие, меняющее посадку безопасности, и просить
@@ -47,7 +49,7 @@ import { Modal, Button, Alert, Space, Typography, Input } from "antd";
 import { SafetyOutlined, KeyOutlined, NumberOutlined, SettingOutlined } from "@ant-design/icons";
 import { useAuth } from "@shared/contexts/AuthContext";
 import { kratos, findNode, csrfToken, type SelfServiceFlow } from "@shared/lib/kratos";
-import { bufferToBase64Url } from "@shared/pages/auth/Login";
+import { bufferToBase64Url } from "@shared/lib/webauthn";
 import { STEP_UP_METHODS, STEP_UP_METHOD_NODES, type StepUpMethod } from "@shared/lib/step-up-methods";
 
 const { Paragraph, Text } = Typography;
