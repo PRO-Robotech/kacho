@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 import uuid
 import importlib.util
@@ -98,6 +99,126 @@ def js_comment(value: str) -> str:
     """
     text = json.dumps(str(value), ensure_ascii=False)[1:-1]
     return text.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
+
+_REGEX_FLAGS = "dgimsuvy"
+_REGEX_PARSE_CACHE: Dict[tuple, str] = {}
+
+
+def js_regex_src(pattern: str, *, where: str, flags: str = "") -> str:
+    r"""ОБРАЗЕЦ вызывающего внутри литерала регулярного выражения (#1202).
+
+    Здесь вызывающий даёт КОД, а не текст: знаки выражения значимы, и
+    сериализатор строки (`js_str`) СМЕНИЛ БЫ СМЫСЛ — образец перестал бы
+    совпадать. Поэтому образец возвращается ДОСЛОВНО, а исход у него другой:
+    он проверяется ПРИ ГЕНЕРАЦИИ, и негодный роняет её С ИМЕНЕМ МЕСТА.
+
+    ПОЧЕМУ ЭТО НЕ ВИДНО В ВЕРДИКТЕ. Негодный образец ломает не текст, а
+    СИНТАКСИС порождаемого файла, которого автор значения не видит. newman
+    пишет отказ разбора в `testScripts`, а НЕ в `assertions.failed`: шаг с
+    неразобранным скриптом даёт НОЛЬ упавших утверждений и отчитывается зелёным
+    по этой величине. Третья категория исхода, зачтённая в «прошло».
+
+    ПРОВЕРОК ДВЕ, И ОДНОЙ НЕ ХВАТАЕТ — ЭТО ИЗМЕРЕНО, А НЕ ПРЕДПОЛОЖЕНО.
+    `new Function("return /" + образец + "/;")` на образце
+    `x/; process.exit(1); //` разбирается УСПЕШНО: литерал закрылся на первом же
+    разделителе, а хвост стал КОДОМ. То есть проверка «разбирается ли» пропускает
+    ровно ту подмену, ради которой заведена. Поэтому:
+
+      1. ОХВАТ — литерал обязан вобрать ВЕСЬ образец. Это лексический разбор
+         тела выражения, свой, без движка: спросить движок «где кончился
+         литерал» можно только исполнив собранную строку, а исполнять чужой код
+         в генераторе нельзя;
+      2. РАЗБИРАЕМОСТЬ — грамматику судит НАСТОЯЩИЙ движок, тот самый, который
+         будет исполнять литерал. Питонов `re` — другой язык: он не знает ни
+         `\p{L}`, ни именованных групп JavaScript, и отвергал бы законное.
+
+    Порядок именно такой: охват доказан ДО того, как строка попадает в node,
+    поэтому подмена туда не доезжает by construction.
+
+    ЧЕМ ДЕРЖИТСЯ. Проба
+    `services/iam/tests/newman/scripts/js_regex_literal_test.py` — одна на все
+    генераторы: перепись по дереву (каждая подстановка в литерал выражения несёт
+    ЗАПИСАННЫЙ исход), инъекция негодным образцом (обязан упасть, назвав место) и
+    положительный контроль законным (обязан пройти молча и остаться ДОСЛОВНЫМ).
+    """
+    if not isinstance(pattern, str) or pattern == "":
+        raise ValueError(
+            f"{where}: образец регулярного выражения пуст. Пустой литерал `//` —"
+            f" это КОММЕНТАРИЙ JavaScript, а не выражение: остаток строки станет"
+            f" прозой, и утверждение не исполнится вовсе")
+    unknown = sorted({f for f in flags if f not in _REGEX_FLAGS})
+    if unknown or len(set(flags)) != len(flags):
+        raise ValueError(
+            f"{where}: негодные флаги выражения {flags!r}"
+            + (f" — неизвестны: {unknown}" if unknown else " — флаг повторён"))
+    _regex_literal_must_contain_the_whole_pattern(pattern, where)
+    _regex_must_parse_in_javascript(pattern, flags, where)
+    return pattern
+
+
+def _regex_literal_must_contain_the_whole_pattern(pattern: str, where: str) -> None:
+    """Литерал `/…/` обязан кончиться ТАМ, где кончился образец, и не раньше."""
+    in_class, i = False, 0
+    while i < len(pattern):
+        ch = pattern[i]
+        # Разделители строк — экранированными: знаками они невидимы в
+        # исходнике, и первый же редактор молча их съест.
+        if ch in "\n\r\u2028\u2029":
+            raise ValueError(
+                f"{where}: образец несёт конец строки (U+{ord(ch):04X}) —"
+                f" литерал регулярного выражения его не переживёт, скрипт"
+                f" порвётся на этой строке")
+        if ch == "\\":
+            if i + 1 >= len(pattern):
+                raise ValueError(
+                    f"{where}: образец кончается одиноким обратным слэшем —"
+                    f" он экранирует закрывающий разделитель, и литерал не"
+                    f" закроется")
+            i += 2
+            continue
+        if in_class:
+            if ch == "]":
+                in_class = False
+        elif ch == "[":
+            in_class = True
+        elif ch == "/":
+            raise ValueError(
+                f"{where}: образец несёт НЕэкранированный разделитель `/` —"
+                f" литерал закроется на нём, а хвост образца станет КОДОМ."
+                f" Напишите `\\/`: в регулярном выражении это тот же знак")
+        i += 1
+    if in_class:
+        raise ValueError(
+            f"{where}: в образце незакрытый класс символов `[` — движок дочитает"
+            f" его до закрывающего разделителя и объявит литерал незавершённым")
+
+
+def _regex_must_parse_in_javascript(pattern: str, flags: str, where: str) -> None:
+    """Грамматику судит движок, который литерал и будет исполнять."""
+    key = (pattern, flags)
+    verdict = _REGEX_PARSE_CACHE.get(key)
+    if verdict is None:
+        driver = ("const a=JSON.parse(process.argv[1]);"
+                  "try{new Function('return /'+a.p+'/'+a.f+';');"
+                  "process.stdout.write('OK');}"
+                  "catch(e){process.stdout.write('ERR '+e.message);}")
+        payload = json.dumps({"p": pattern, "f": flags})
+        try:
+            proc = subprocess.run(["node", "-e", driver, payload],
+                                  capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ValueError(
+                f"{where}: образец проверить НЕЧЕМ — node не запускается ({exc})."
+                f" Это «ноль прочитанного», а не «ноль находок»: генерация"
+                f" отказывает, а не пропускает непроверенный образец") from None
+        verdict = (proc.stdout.strip() if proc.returncode == 0
+                   else f"ERR node {proc.returncode}: {proc.stderr[:200]}")
+        _REGEX_PARSE_CACHE[key] = verdict
+    if verdict != "OK":
+        raise ValueError(
+            f"{where}: образец /{pattern}/{flags} не разбирается как регулярное"
+            f" выражение JavaScript — {verdict}")
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES_DIR = ROOT / "cases"
@@ -1195,7 +1316,7 @@ def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
     if msg_substr is not None:
         body.append(f"pm.test({js_str(f'error text includes \"{msg_substr}\"')}, () => pm.expect((j.error && j.error.message || '').toLowerCase(), JSON.stringify(j)).to.include({js_str(msg_substr.lower())}));")
     if msg_regex is not None:
-        body.append(f"pm.test({js_str(f'error text matches /{msg_regex}/')}, () => pm.expect(j.error && j.error.message || '', JSON.stringify(j)).to.match(/{msg_regex}/));")
+        body.append(f"pm.test({js_str(f'error text matches /{msg_regex}/')}, () => pm.expect(j.error && j.error.message || '', JSON.stringify(j)).to.match(/{js_regex_src(msg_regex, where='iam/assert_op_error/msg_regex')}/));")
     return Step(name="assert-op-error", method="GET", path="/operations/{{" + op_var + "}}",
                 auth=auth, op_var=op_var, pre_script=_op_id_guard(op_var, True), test_script=body)
 
