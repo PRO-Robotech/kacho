@@ -42,6 +42,13 @@ jest.unstable_mockModule("@shared/components/organisms/DetailShell", () => ({
   HeaderSlotPortal: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+// Тост подменяем, чтобы утверждать САМ ТЕКСТ, который читает арендатор:
+// «сказано прямо» иначе неотличимо от «промолчали».
+const toastError = jest.fn();
+jest.unstable_mockModule("@shared/lib/toast", () => ({
+  toast: { error: toastError, success: jest.fn(), info: jest.fn(), warning: jest.fn() },
+}));
+
 jest.unstable_mockModule("@/components/organisms/iam/IamListShell", () => ({
   useTableScrollY: () => ({ wrapRef: { current: null }, scrollY: 100 }),
 }));
@@ -186,6 +193,7 @@ describe("SaKeysPanel", () => {
       } as unknown as Operation);
     });
 
+    expect(container).toHaveTextContent("Сохраните значение — оно больше не будет показано");
     expect(container).toHaveTextContent("Приватный ключ (PEM)");
     expect(container).toHaveTextContent("sak-9");
     expect(container).toHaveTextContent("cli-9");
@@ -194,15 +202,28 @@ describe("SaKeysPanel", () => {
     expect(screen.getByRole("button", { name: "Скачать" })).toBeInTheDocument();
   });
 
-  it("если операция не принесла секрета, окно всё равно открывается — молча терять его нельзя", () => {
+  // ЗДЕСЬ СТОЯЛА ПРОБА «окно всё равно открывается» — она закрепляла ФАНТОМ.
+  //
+  // Прежний код открывал показ безусловно, поэтому операция без значения давала
+  // ПУСТУЮ рамку с подписью «Приватный ключ (PEM)» и алгоритмом ES256 — то есть
+  // утверждение, что ключ показан, при том что показывать было нечего.
+  //
+  // С видом SECRET (#1235) это стало опаснее: строка операции секрета НЕ НЕСЁТ
+  // НИКОГДА, и опрос приходит с телом без значения ШТАТНО — пустое окно
+  // перекрывало бы уже показанный секрет при каждой исправной выдаче.
+  //
+  // Предмет пробы — «молча терять нельзя» — сохранён и усилен: значение
+  // потеряно ⇒ об этом сказано, и сказано, что делать. Близнец в
+  // `UserTokensPanel.test.tsx` утверждает то же самое: панель у них одна.
+  it("значение не пришло ни одним путём — сказано прямо, а не показано пустое окно", () => {
     const { container } = renderPanel();
 
     act(() => {
       issueOpts().onSuccess?.({ id: "opr-1", done: true } as unknown as Operation);
     });
 
-    expect(container).toHaveTextContent("Приватный ключ (PEM)");
-    // Алгоритм по умолчанию назван, а не пуст.
-    expect(container).toHaveTextContent("ES256");
+    expect(container).not.toHaveTextContent("Приватный ключ (PEM)");
+    expect(toastError).toHaveBeenCalledWith(expect.stringContaining("значение не пришло"));
+    expect(toastError).toHaveBeenCalledWith(expect.stringContaining("выпустите новый"));
   });
 });

@@ -365,6 +365,8 @@ function domAttrs(props: Record<string, unknown>): Record<string, unknown> {
 export function antdStub(): Record<string, unknown> {
   const Component = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
     React.createElement("div", props, children);
+  // Молчаливая заглушка для всплывающих уведомлений `App.useApp()` (см. ниже).
+  const noop = () => undefined;
   // Настоящая кнопка antd в состоянии `loading` НЕ принимает нажатий (защита от
   // повторной отправки), а её вид задаётся `type`/`size`/`danger` — это
   // параметры виджета, а не атрибуты DOM. Заменитель, отдававший всё в DOM,
@@ -958,7 +960,18 @@ export function antdStub(): Record<string, unknown> {
     // заменитель ронял их в атрибуты, и текст предупреждения был ненаблюдаем.
     Alert: ({ children, message, description }: AlertProps) =>
       React.createElement("div", { role: "alert" }, message, description, children),
-    App: Component,
+    // Настоящий `App` несёт `useApp()` — через него компоненты берут `message`
+    // и `notification`. Заменитель-компонент без него роняет КАЖДУЮ пробу, чей
+    // граф доходит до такого потребителя, ещё до первого утверждения, то есть
+    // сообщением не про свой предмет. Заглушки молчаливые: наблюдаемое здесь —
+    // разметка, а не всплывающие уведомления.
+    App: Object.assign(Component, {
+      useApp: () => ({
+        message: { success: noop, error: noop, info: noop, warning: noop, loading: noop, open: noop },
+        notification: { success: noop, error: noop, info: noop, warning: noop, open: noop },
+        modal: { confirm: noop, info: noop, success: noop, error: noop, warning: noop },
+      }),
+    }),
     AutoComplete: Input,
     Avatar: Component,
     Badge,

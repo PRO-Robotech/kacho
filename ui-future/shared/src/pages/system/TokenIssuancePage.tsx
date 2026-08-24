@@ -8,9 +8,14 @@
 //      иметь его под рукой).
 //   2. Список существующих credential'ов субъекта (id / описание / создан /
 //      истекает / посл. использование) + Revoke per-row.
-//   3. «Выпустить» → форма (описание + опц. TTL) → POST Issue → Operation →
-//      poll GET /operations/{id} до done → Operation.response несёт one-time
-//      private_key_pem → OneTimeSecretModal (показать ОДИН раз).
+//   3. «Выпустить» → форма (ВИД + описание + срок) → POST Issue → Operation.
+//      Одноразовое значение читается ПО ВИДУ:
+//        * SECRET  — выдача завершается на пути запроса, и секрет живёт ТОЛЬКО
+//          в теле немедленного ответа: строка операции его не несёт ни в какой
+//          момент, поэтому опрос вернул бы тело БЕЗ секрета;
+//        * KEYPAIR — асинхронный путь, значение приезжает опросом
+//          GET /operations/{id} до done.
+//      → OneTimeSecretModal (показать ОДИН раз).
 //
 // required_acr_min="2": без свежего step-up api-gateway вернёт 401/403 — ловим и
 // показываем friendly step-up notice (полноценный replay через StepUpModal не
@@ -25,6 +30,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Segmented,
   Select,
   Space,
   Spin,
@@ -39,6 +45,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@shared/api/client";
 import type { Operation } from "@shared/api/types";
 import { issuedCredentialFromOperation, type IssuedCredential, type IssueTokenBody } from "@shared/api/tokens";
+import {
+  CREDENTIAL_KIND_KEYPAIR,
+  CREDENTIAL_KIND_SECRET,
+  MAX_TTL_SECONDS,
+  SECRET_RADIUS_NOTICE,
+  SECRET_TTL_CEILING_SECONDS,
+  SECRET_TTL_DEFAULT_DAYS,
+  credentialKindLabel,
+  maxTtlSecondsFor,
+  type IssuableCredentialKind,
+} from "@shared/lib/tokens-util";
 import { OneTimeSecretModal } from "@shared/components/organisms/system/OneTimeSecretModal";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { CopyableMonoId, fmtTs } from "@shared/components/organisms/iam/IamCommon";
@@ -58,6 +75,8 @@ export interface CredentialRow {
   created_at?: string;
   expires_at?: string;
   last_used_at?: string;
+  /** Вид удостоверения. Край, который о видах не говорит, оставляет его пустым. */
+  credential_kind?: string;
 }
 
 /** Опция выбора субъекта (ServiceAccount / User). */
@@ -130,6 +149,10 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [issued, setIssued] = useState<IssuedCredential | null>(null);
   const [stepUpNotice, setStepUpNotice] = useState<string | null>(null);
+  // Вид живёт в состоянии страницы, а не в форме: от него зависят и потолок
+  // срока, и текст рядом с ним, и предупреждение о радиусе — то есть форма
+  // ПЕРЕРИСОВЫВАЕТСЯ от его смены, а не только читается на отправке.
+  const [kind, setKind] = useState<IssuableCredentialKind>(CREDENTIAL_KIND_SECRET);
   const [form] = Form.useForm<{ description?: string; ttl_seconds?: number }>();
 
   // ---- Субъекты (best-effort) ----
@@ -200,6 +223,22 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
   const issueMut = useMutation({
     mutationFn: (body: IssueTokenBody) => config.issue(subjectId, body),
     onSuccess: (resp) => {
+      // СНАЧАЛА читаем НЕМЕДЛЕННЫЙ ответ, и только потом заводим опрос.
+      //
+      // У вида SECRET выдача завершается на пути запроса, а секрет подменяется
+      // в теле ответа ПОСЛЕ записи строки: сама строка операции его не несёт
+      // ни в какой момент. Опрос вернул бы тело без секрета — то есть при
+      // исправной выдаче невосстановимое значение было бы потеряно, а на экране
+      // появилось бы «Операция завершена, но секрет не получен».
+      const immediate = issuedCredentialFromOperation(resp as unknown as Operation);
+      if (immediate) {
+        setIssued(immediate);
+        setIssueOpen(false);
+        form.resetFields();
+        toast.success(`${cap(config.credentialSingular)} выпущен`);
+        void invalidateCreds();
+        return;
+      }
       // Единственная из четырёх точек, что уже отказывалась считать «нет
       // операции» успехом; общий разбор нужен ей ради ВТОРОЙ формы конверта —
       // край отдаёт Operation верхним уровнем, и по вложенному ключу выпуск
@@ -295,6 +334,10 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
           description: vals.description?.trim() || undefined,
           ttl_seconds: vals.ttl_seconds && vals.ttl_seconds > 0 ? vals.ttl_seconds : undefined,
           created_by_user_id: createdByUserId,
+          // Вид называет КОНСОЛЬ, а не умолчание сервера: не названный вид
+          // сервер разрешает прежним поведением и выпускает ключевую пару —
+          // ровно тот вид, который докерная полоса больше не принимает.
+          credential_kind: kind,
         });
       })
       .catch(() => {
@@ -324,7 +367,17 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
       dataIndex: "expires_at",
       key: "expires_at",
       width: 170,
-      render: (v?: string) => (v ? fmtTs(v) : <Typography.Text type="secondary">бессрочный</Typography.Text>),
+      // Пустой срок означает РАЗНОЕ у разных видов: у ключевой пары «бессрочно»,
+      // у секрета такой строки не бывает вовсе. Слово подставляется по виду
+      // СТРОКИ, а не одно на всех.
+      render: (_v: unknown, row: CredentialRow) =>
+        row.expires_at ? (
+          fmtTs(row.expires_at)
+        ) : (
+          <Typography.Text type="secondary">
+            {row.credential_kind === CREDENTIAL_KIND_SECRET ? "срок не получен" : "бессрочный"}
+          </Typography.Text>
+        ),
     },
     {
       title: "Посл. использование",
@@ -476,6 +529,8 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
         form={form}
         issuing={issuing}
         stepUpNotice={stepUpNotice}
+        kind={kind}
+        onKindChange={setKind}
         onCancel={() => setIssueOpen(false)}
         onSubmit={submitIssue}
       />
@@ -497,6 +552,8 @@ function IssueModal({
   form,
   issuing,
   stepUpNotice,
+  kind,
+  onKindChange,
   onCancel,
   onSubmit,
 }: {
@@ -505,9 +562,13 @@ function IssueModal({
   form: FormInstance<{ description?: string; ttl_seconds?: number }>;
   issuing: boolean;
   stepUpNotice: string | null;
+  kind: IssuableCredentialKind;
+  onKindChange: (k: IssuableCredentialKind) => void;
   onCancel: () => void;
   onSubmit: () => void;
 }) {
+  const isSecret = kind === CREDENTIAL_KIND_SECRET;
+  const maxTtl = maxTtlSecondsFor(kind);
   return (
     <Modal
       open={open}
@@ -526,17 +587,57 @@ function IssueModal({
       data-testid="token-issue-modal"
     >
       <Form form={form} layout="vertical" preserve={false}>
+        <Form.Item label="Вид удостоверения">
+          <Segmented
+            value={kind}
+            onChange={(v) => onKindChange(v)}
+            options={[
+              { label: credentialKindLabel(CREDENTIAL_KIND_SECRET), value: CREDENTIAL_KIND_SECRET },
+              { label: credentialKindLabel(CREDENTIAL_KIND_KEYPAIR), value: CREDENTIAL_KIND_KEYPAIR },
+            ]}
+          />
+        </Form.Item>
+        {/* Радиус называется В ОКНЕ ВЫДАЧИ, а не оставляется умолчанием: секрет
+            предъявительский, сужения по адресатам у его полосы нет, и «утёк
+            секрет сборочного конвейера» означает не доступ к реестру, а всё,
+            что может учётная запись. */}
+        {isSecret && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Что открывает этот секрет"
+            description={SECRET_RADIUS_NOTICE}
+          />
+        )}
         <Form.Item name="description" label="Описание" rules={[{ max: 256, message: "Не более 256 символов" }]}>
           <Input placeholder="Например: CI runner prod" maxLength={256} />
         </Form.Item>
         <Form.Item
           name="ttl_seconds"
-          label="Срок действия (секунды, необязательно)"
-          tooltip="Пусто или 0 — бессрочный. Максимум 63 072 000 (2 года)."
-          rules={[{ type: "number", min: 0, max: 63072000, message: "0…63072000" }]}
+          label="Срок действия (секунды)"
+          // Смысл нуля ЗАВИСИТ ОТ ВИДА, и подсказка обязана говорить о том виде,
+          // который выбран: одна фраза на оба означала бы, что о ней не спросили
+          // ни у одного.
+          tooltip={
+            isSecret
+              ? `Бессрочного секрета не бывает. Пусто или 0 — платформа поставит ${SECRET_TTL_DEFAULT_DAYS} дней; максимум ${SECRET_TTL_CEILING_SECONDS} (90 дней).`
+              : `Пусто или 0 — бессрочный. Максимум ${MAX_TTL_SECONDS} (2 года).`
+          }
+          rules={[{ type: "number", min: 0, max: maxTtl, message: `0…${maxTtl}` }]}
         >
-          <InputNumber style={{ width: "100%" }} min={0} max={63072000} placeholder="бессрочный" />
+          <InputNumber
+            style={{ width: "100%" }}
+            min={0}
+            max={maxTtl}
+            placeholder={isSecret ? `${SECRET_TTL_DEFAULT_DAYS} дней по умолчанию` : "бессрочный"}
+          />
         </Form.Item>
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 12 }}>
+          {isSecret
+            ? `Срок обязателен: бессрочного секрета не бывает. Не назовёте — платформа поставит ${SECRET_TTL_DEFAULT_DAYS} дней, дольше 90 дней выпустить нельзя.`
+            : `Пусто или 0 — ключ бессрочный: действует, пока его не отзовут. Максимум ${MAX_TTL_SECONDS} секунд (2 года).`}
+        </Typography.Paragraph>
         {stepUpNotice && <Alert type="warning" showIcon message={stepUpNotice} style={{ marginTop: 4 }} />}
       </Form>
     </Modal>

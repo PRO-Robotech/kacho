@@ -141,3 +141,179 @@ describe("TokensPanel — отзыв за подтверждением", () => {
     expect((revoke?.path as (b: unknown) => string)({ id: "tok-1" })).toBe("/iam/v1/users/usr-42/tokens/tok-1");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ВЫПУСК: вид, срок числом, радиус (#1235)
+//
+// Консоль выдавала СНЯТЫЙ вид (ключевую пару) и называла его бессрочным. Полоса
+// докера ключевой материал в поле пароля больше не принимает — окно перехода
+// закрыто по умолчанию, — поэтому арендатор, у которого перестал работать вход
+// в реестр, получал в консоли ровно то, что платформа отвергает.
+describe("TokensPanel — выпуск называет вид, срок и радиус", () => {
+  beforeEach(() => {
+    run.mockReset();
+    run.mockResolvedValue({});
+    mutations.length = 0;
+  });
+
+  const openCreate = () => fireEvent.click(screen.getByRole("button", { name: /Создать токен/ }));
+
+  const issueBody = () => (run.mock.calls.at(-1)?.[0] ?? {}) as Record<string, unknown>;
+
+  it("по умолчанию выпускается СЕКРЕТ — вид, который принимает докерная полоса", async () => {
+    renderPanel([]);
+    openCreate();
+
+    fireEvent.click(screen.getByRole("button", { name: "Создать" }));
+
+    await waitFor(() => expect(run).toHaveBeenCalled());
+    expect(issueBody().credential_kind).toBe("CREDENTIAL_KIND_SECRET");
+  });
+
+  // Положительный контроль: прежний вид не снят, он выбирается явно. Без этой
+  // пары «по умолчанию секрет» зеленело бы на форме, где другого вида нет
+  // вовсе, — а он нужен внешней федерации.
+  it("ключевая пара по-прежнему выпускается — но по ЯВНОМУ выбору", async () => {
+    renderPanel([]);
+    openCreate();
+
+    fireEvent.click(screen.getByRole("radio", { name: /Ключевая пара/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Создать" }));
+
+    await waitFor(() => expect(run).toHaveBeenCalled());
+    expect(issueBody().credential_kind).toBe("CREDENTIAL_KIND_KEYPAIR");
+  });
+
+  it("у секрета нет варианта «Без срока» — бессрочного секрета не бывает", () => {
+    renderPanel([]);
+    openCreate();
+
+    expect(screen.queryByRole("radio", { name: "Без срока" })).not.toBeInTheDocument();
+    // Срок назван ЧИСЛОМ, а не словом.
+    expect(screen.getByRole("radio", { name: "90 дней" })).toBeInTheDocument();
+  });
+
+  it("у ключевой пары «Без срока» остаётся — там это правда", () => {
+    renderPanel([]);
+    openCreate();
+    fireEvent.click(screen.getByRole("radio", { name: /Ключевая пара/ }));
+
+    expect(screen.getByRole("radio", { name: "Без срока" })).toBeInTheDocument();
+  });
+
+  it("радиус секрета назван в самом окне выпуска, а не оставлен умолчанием", () => {
+    const { container } = renderPanel([]);
+    openCreate();
+
+    expect(container).toHaveTextContent(/не только в реестре/);
+    expect(container).toHaveTextContent(/учётная запись/);
+  });
+
+  // Потолок срока — СВОЙ у каждого вида, и «30 дней» в подсказке этого не
+  // доказывает: такой вариант есть у обоих. Различает ПОТОЛОК своего срока,
+  // и утверждается он там, где вводится число.
+  //
+  // Утверждается АТРИБУТ поля ввода, а не подсказка рядом с ним: общий
+  // заменитель antd `help` у `Form.Item` не рисует, поэтому проба на подсказку
+  // говорила бы о дублёре, а не о продукте. `max` при этом и есть действующее
+  // ограничение — оно уезжает в разметку у настоящего antd тоже.
+  const customDaysInput = (root: HTMLElement) => root.querySelector('input[type="number"]')!;
+
+  it("свой срок секрета ограничен 90 днями, а не двумя годами ключевой пары", () => {
+    const { container } = renderPanel([]);
+    openCreate();
+    fireEvent.click(screen.getByRole("radio", { name: "Свой срок" }));
+
+    expect(customDaysInput(container)).toHaveAttribute("max", "90");
+    // Умолчание платформы названо ЧИСЛОМ, а не словом «бессрочно».
+    expect(container).toHaveTextContent("платформа поставит 30 дней");
+    expect(container).toHaveTextContent("бессрочного секрета не бывает");
+  });
+
+  it("свой срок ключевой пары по-прежнему до 730 дней — отрицание выше не вакуумно", () => {
+    const { container } = renderPanel([]);
+    openCreate();
+    fireEvent.click(screen.getByRole("radio", { name: /Ключевая пара/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Свой срок" }));
+
+    expect(customDaysInput(container)).toHaveAttribute("max", "730");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СЕКРЕТ ЧИТАЕТСЯ ИЗ НЕМЕДЛЕННОГО ОТВЕТА, А НЕ ИЗ ОПРОШЕННОЙ ОПЕРАЦИИ (#1235)
+//
+// Выдача секрета завершается на пути запроса, и секрет подменяется в теле
+// ответа ПОСЛЕ записи: строка операции его не несёт ни в какой момент. Читатель,
+// ждущий опроса, получит тело без секрета — то есть невосстановимое значение
+// будет потеряно при исправной выдаче.
+describe("TokensPanel — одноразовый секрет берётся из ответа выдачи", () => {
+  beforeEach(() => {
+    run.mockReset();
+    mutations.length = 0;
+  });
+
+  it("секрет из немедленного ответа показывается целиком", async () => {
+    run.mockResolvedValue({
+      id: "opr-1",
+      done: true,
+      response: { key_id: "tok-9", client_id: "tok-9", secret: "kc.s.ZZZZ" },
+    });
+    renderPanel([]);
+    fireEvent.click(screen.getByRole("button", { name: /Создать токен/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Создать" }));
+
+    await waitFor(() => expect(screen.getByDisplayValue("kc.s.ZZZZ")).toBeInTheDocument());
+  });
+
+  // Положительный контроль к утверждению выше: прежняя форма читается тем же
+  // путём. Без пары «секрет показан» зеленело бы на окне, которое показывает
+  // что угодно.
+  it("ключ ключевой пары из немедленного ответа показывается целиком", async () => {
+    run.mockResolvedValue({
+      id: "opr-2",
+      done: true,
+      response: { key_id: "tok-8", client_id: "tok-8", algorithm: "ES256", private_key_pem: "-----BEGIN PRIVATE" },
+    });
+    renderPanel([]);
+    fireEvent.click(screen.getByRole("button", { name: /Создать токен/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Создать" }));
+
+    await waitFor(() => expect(screen.getByDisplayValue("-----BEGIN PRIVATE")).toBeInTheDocument());
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// СПИСОК НАЗЫВАЕТ ВИД И НЕ ЛЖЁТ ПРО СРОК (#1235)
+describe("TokensPanel — список называет вид", () => {
+  beforeEach(() => {
+    run.mockReset();
+    run.mockResolvedValue({});
+    mutations.length = 0;
+  });
+
+  it("вид строки назван словами клиента", async () => {
+    const { container } = renderPanel([token({ id: "tok-9", credential_kind: "CREDENTIAL_KIND_SECRET" })]);
+
+    await waitFor(() => expect(table(container)).toHaveTextContent("Секрет"));
+  });
+
+  it("строка секрета без срока НЕ называется бессрочной", async () => {
+    const { container } = renderPanel([
+      token({ id: "tok-9", credential_kind: "CREDENTIAL_KIND_SECRET", expires_at: undefined }),
+    ]);
+
+    await waitFor(() => expect(table(container)).toHaveTextContent("tok-9"));
+    expect(table(container)).not.toHaveTextContent("Бессрочный");
+  });
+
+  // Положительный контроль: слово не вычищено отовсюду, оно осталось там, где
+  // контракт его допускает.
+  it("строка ключевой пары без срока по-прежнему бессрочная", async () => {
+    const { container } = renderPanel([
+      token({ id: "tok-8", credential_kind: "CREDENTIAL_KIND_KEYPAIR", expires_at: undefined }),
+    ]);
+
+    await waitFor(() => expect(table(container)).toHaveTextContent("Бессрочный"));
+  });
+});
