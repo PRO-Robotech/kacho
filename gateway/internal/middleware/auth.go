@@ -351,11 +351,24 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 	// token the Principal is derived directly from the `kacho_principal_*`
 	// claims (top-level or ext_claims) — no SubjectLookuper round-trip unless
 	// those claims are absent. A present-but-bad token (bad sig / expired /
-	// wrong iss / disallowed alg) or an unreachable JWKS endpoint is REJECTED
-	// Unauthenticated (fail-closed), NEVER downgraded to anonymous.
+	// wrong iss / disallowed alg) is REJECTED Unauthenticated (fail-closed),
+	// NEVER downgraded to anonymous.
+	//
+	// ЗДЕСЬ СТОЯЛО «или недостижимый источник ключей — тоже Unauthenticated», и
+	// это было неверно (#1194): недоступность зависимости — не приговор
+	// удостоверению. Она отвечает `Unavailable`, как и соседняя ветвь чтения
+	// отзыва ниже, чей довод дословно тот же. Fail-closed при этом не ослаблен:
+	// отказ остаётся отказом, обработчик не исполняется.
 	if a.verifier != nil && isAsymmetricJWT(bearer) {
 		vt, verr := a.verifier.Verify(ctx, bearer)
 		if verr != nil {
+			// Тот же разбор, что и на полосе REST, и по той же причине: пробел на
+			// одной поверхности обессмысливает другую.
+			if keySourceUnanswerable(verr) {
+				a.logger.Error("auth: token key source unanswerable; refusing Unavailable",
+					"method", fullMethod, "err", verr)
+				return nil, status.Error(codes.Unavailable, keySourceUnavailableReason)
+			}
 			a.logger.Warn("auth: Hydra JWT validation failed (JWKS)",
 				"method", fullMethod, "err", verr)
 			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
@@ -890,7 +903,8 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 // over REST via the JWKS verifier (parity with the gRPC interceptor path) and
 // derives the principal from the verified `kacho_principal_*` claims (top-level
 // or ext_claims), falling back to SubjectLookuper on the verified sub. A
-// present-but-bad token or unreachable JWKS → 401 fail-closed, never anonymous.
+// present-but-bad token → 401 fail-closed, never anonymous; a key set that could
+// not be fetched → 503 (see keySourceUnanswerable — #1194), also fail-closed.
 // Returns true when this path was terminal (401 written, or principal resolved
 // and `next` served) — i.e. the caller must return. Returns false when the path
 // does not apply (no verifier / not an asymmetric Bearer) so the next strategy
@@ -905,6 +919,19 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 	}
 	vt, verr := a.verifier.Verify(r.Context(), tok)
 	if verr != nil {
+		// ЧЬЯ ЭТО ОШИБКА — вопрос, который здесь задаётся до выбора кода (#1194).
+		// Набор проверочных ключей не добыт ⇒ сбой зависимости: «повтори позже»
+		// (503 / 14), и удостоверение предъявителя тут ни при чём. Всё
+		// остальное — негодный токен: «войди заново» (401 / 16).
+		if keySourceUnanswerable(verr) {
+			// Громко: сюда попадает и ответ не по адресу, то есть неверная
+			// настройка, которая иначе живёт вечно тихим предупреждением
+			// (`security.md` §Hardening инв. 8).
+			a.logger.Error("auth.HTTP: token key source unanswerable; refusing Unavailable",
+				"path", r.URL.Path, "err", verr.Error())
+			writeHTTPServiceUnavailable(w, keySourceUnavailableReason)
+			return true
+		}
 		a.logger.Warn("auth.HTTP: Hydra JWT validate failed (JWKS)", "err", verr.Error())
 		writeHTTPUnauthorized(w, "token validation failed")
 		return true
