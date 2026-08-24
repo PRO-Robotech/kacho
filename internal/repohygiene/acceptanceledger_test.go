@@ -21,9 +21,15 @@ import (
 const ledgerPath = "docs/acceptance-ledger.yaml"
 
 type ledgerEntry struct {
-	Acceptance        string `yaml:"acceptance"`
-	Prefix            string `yaml:"prefix"`
-	Verdict           string `yaml:"verdict"`
+	Acceptance string `yaml:"acceptance"`
+	Prefix     string `yaml:"prefix"`
+	Verdict    string `yaml:"verdict"`
+	// VerdictWithdrawn — санкция БЫЛА вынесена и снята позже, а не «ещё не
+	// выносилась». Различие не косметическое: отставшая запись чинится
+	// перечитыванием шапки на свежей ревизии воркспейса, а отозванная — не
+	// чинится им вовсе (на названной ревизии там по-прежнему APPROVED), и
+	// требует нового круга ревью.
+	VerdictWithdrawn  bool   `yaml:"verdict_withdrawn"`
 	VerdictDated      string `yaml:"verdict_dated"`
 	WorkspaceRevision string `yaml:"workspace_revision"`
 	DebtIssue         int    `yaml:"debt_issue"`
@@ -186,10 +192,20 @@ func check(findings *[]string, rel, what string, e ledgerEntry, byDoc map[string
 		return
 	}
 	if e.Verdict != "APPROVED" {
+		// Два состояния выглядят в записи одинаково («не APPROVED») и требуют
+		// РАЗНОГО: отставшую запись чинит перечитывание шапки на свежем стволе
+		// воркспейса, отозванную — не чинит вовсе, потому что на названной
+		// ревизии там по-прежнему стоит прежний вердикт.
+		why := "санкции не было; если запись отстала — перечитай шапку документа " +
+			"на свежей ревизии ствола воркспейса"
+		if e.VerdictWithdrawn {
+			why = "санкция БЫЛА и ОТОЗВАНА: запись не устарела, и обновление копии " +
+				"её не починит — нужен новый круг ревью"
+		}
 		*findings = append(*findings, rel+": "+what+" — вердикт «"+e.Verdict+
 			"» на "+e.VerdictDated+" (ревизия воркспейса "+e.WorkspaceRevision+
-			"). Кодировать без APPROVED запрещено (ban #1): либо получить вердикт, "+
-			"либо не вносить миграцию")
+			"); "+why+". Кодировать без APPROVED запрещено (ban #1): либо получить "+
+			"вердикт, либо не вносить миграцию")
 	}
 }
 
@@ -238,22 +254,41 @@ func TestAcceptanceLedgerEntriesHaveASubject(t *testing.T) {
 			"«ноль прочитанного»")
 	}
 
+	for _, f := range auditLedgerEntries(l, citedDocs, citedPrefixes) {
+		t.Error(f)
+	}
+}
+
+// auditLedgerEntries — ядро пообъектного разбора записей, отделённое от корня
+// дерева НАМЕРЕННО: инъекция обязана прогнать его на синтетических записях, а не
+// на тех, что лежат в этом дереве.
+func auditLedgerEntries(l ledger, citedDocs, citedPrefixes map[string]bool) []string {
+	var findings []string
 	for _, e := range l.Entries {
 		if !citedDocs[e.Acceptance] && !citedPrefixes[e.Prefix] {
-			t.Errorf("%s: запись «%s» не цитируется ни одной миграцией дерева — "+
-				"у послабления нет предмета, и оно переживёт то, ради чего заведено",
-				ledgerPath, e.Acceptance)
+			findings = append(findings, ledgerPath+": запись «"+e.Acceptance+
+				"» не цитируется ни одной миграцией дерева — у послабления нет "+
+				"предмета, и оно переживёт то, ради чего заведено")
 		}
 		if e.Verdict != "APPROVED" && e.DebtIssue == 0 {
-			t.Errorf("%s: запись «%s» несёт вердикт «%s» и не называет задачи — "+
-				"за долгом никто не отвечает", ledgerPath, e.Acceptance, e.Verdict)
+			findings = append(findings, ledgerPath+": запись «"+e.Acceptance+
+				"» несёт вердикт «"+e.Verdict+"» и не называет задачи — за долгом "+
+				"никто не отвечает")
 		}
 		if e.WorkspaceRevision == "" || e.VerdictDated == "" {
-			t.Errorf("%s: запись «%s» не называет ревизию воркспейса или дату "+
-				"вердикта — утверждение о неизвестном моменте",
-				ledgerPath, e.Acceptance)
+			findings = append(findings, ledgerPath+": запись «"+e.Acceptance+
+				"» не называет ревизию воркспейса или дату вердикта — утверждение "+
+				"о неизвестном моменте")
+		}
+		// Отзыв истекает САМ: вернулся APPROVED — поле обязано уйти вместе с ним,
+		// иначе запись объявляет действующую санкцию и её отсутствие разом.
+		if e.Verdict == "APPROVED" && e.VerdictWithdrawn {
+			findings = append(findings, ledgerPath+": запись «"+e.Acceptance+
+				"» объявляет вердикт APPROVED и отзыв санкции разом — два "+
+				"утверждения об одном предмете, из которых верно одно")
 		}
 	}
+	return findings
 }
 
 // ledgerTrunkRef — ссылка на ствол, от которой считается «добавленное этим
