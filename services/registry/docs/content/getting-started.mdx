@@ -18,6 +18,9 @@ import dedent from 'ts-dedent'
 Go-тулчейн (для сборки из исходников), доступный PostgreSQL, запущенный **zot**-бэкенд, `curl` и
 `docker`. Control-plane REST-примеры идут через `api-gateway` (порт `18080` для локального стенда —
 подставьте свой). Data-plane — через host `registry.kacho.local` (ingress/port-forward).
+
+Control-plane-примеры подставляют ваше удостоверение вместо `<JWT>`; для `docker login` нужен
+**базовый токен доступа** (шаг 5). Удостоверения ещё нет? Путь от учётной записи до строки, которую кладут в `Authorization: Bearer`, описан страницей «Первое удостоверение» документации kacho-iam.
 :::
 
 ## 1. Собрать сервис и мигратор
