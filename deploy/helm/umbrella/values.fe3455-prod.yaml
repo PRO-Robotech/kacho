@@ -508,6 +508,16 @@ api-gateway:
 # running registry). zot image = the stand's running ghcr.io/project-zot:latest.
 registry:
   enabled: true
+  # Имя службы реестра ОБЪЯВЛЯЕТСЯ, а не наследуется от умолчания чарта
+  # (задача #1184). У докерной полосы выдачи ДВЕ стороны: реестр называет это
+  # имя докер-клиенту в вызове на аутентификацию, а iam чеканит удостоверение
+  # адресату, которого объявил сам (`kacho-iam.config.apiServer.registryToken.
+  # service` ниже). Пока iam адресата не сверял, расхождение сторон было
+  # невидимо — клиент echo-ит услышанное от реестра, и совпадения никто не
+  # выбирал. Теперь оно значимо, поэтому обе стороны стоят объявленными.
+  #
+  # Значение то же, что действовало умолчанием чарта: посадка не меняется.
+  serviceAud: "registry.in-cloud.io"
   image:
     # FORWARD ROLL: main-af0eacae (kacho-registry origin/main HEAD, Docker Hub-verified
     # 2026-07-15T14:00) — STRICT forward from the live main-5eb21d25 (5eb21d25 IS an
