@@ -215,11 +215,36 @@ JQPROG="$(awk '/verdict="\$\(printf/{f=1} f{print} /join\(", "\)/{if(f) exit}' "
 JQPROG="${JQPROG%\')\"}"
 [ -n "$JQPROG" ] || fail "не удалось вынуть программу вердикта из $GATE (гейт изменил форму — обнови тест)"
 
+# ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ ниже («сузивший круг проходит») обязан нести КАЖДОЕ
+# измерение, которое судит вынутая программа, — иначе он краснеет по чужому
+# измерению и говорит об этом голым текстом вердикта, из которого не видно, чего
+# не хватает. Ровно это и случилось: гейт завёл `identity_provider` (задача
+# #1125), фикстура о нём не знала, и обе проверки круга отправителей стали
+# красными по причине, к кругу отношения не имеющей.
+#
+# Перечень измерений ВЫВОДИТСЯ из программы, а не выписывается: выписанный был бы
+# второй копией и разошёлся бы с ней молча — тем же способом, каким разошлась эта.
+# `identity_provider` — «own»: значение выбрано только чтобы измерение было
+# ЗАЯВЛЕНО (гейт принимает external|own|n/a); какая полоса верна для конкретного
+# стенда, этот тест не решает и не проверяет.
 line() { # line <trusted_forwarders-фрагмент>
   printf '{"msg":"boot security posture","service":"iam","auth_mode":"production-strict",'
-  printf '"db_sslmode":"require","public_mtls":true,"internal_mtls":true,"authz_check":true%s}' "$1"
+  printf '"db_sslmode":"require","public_mtls":true,"internal_mtls":true,"authz_check":true,'
+  printf '"identity_provider":"own"%s}' "$1"
 }
 verdict() { echo "$1" | jq -r --argjson need_fwd "$2" "$JQPROG"; }
+
+# grep -o дочитывает вход до конца, поэтому SIGPIPE-класса задачи #658 здесь нет.
+judged="$(printf '%s\n' "$JQPROG" | grep -oE 'shown\("[a-z_]+"\)' | sed 's/.*"\(.*\)".*/\1/' | sort -u)"
+[ -n "$judged" ] || fail "в программе вердикта $GATE не нашлось ни одного измерения — тест разошёлся с гейтом"
+control="$(line ',"trusted_forwarders":true')"
+missing=""
+for dim in $judged; do
+  printf '%s' "$control" | jq -e --arg d "$dim" 'has($d)' >/dev/null || missing="$missing $dim"
+done
+[ -z "$missing" ] || fail "положительный контроль не несёт измерения, которые судит гейт посадки:$missing \
+— добавьте их в line(), иначе «сузивший круг проходит» краснеет по чужому измерению"
+ok
 
 # сузивший круг под проходит…
 v="$(verdict "$(line ',"trusted_forwarders":true')" true)"
