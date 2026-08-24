@@ -39,7 +39,10 @@ func basicCredPool(t *testing.T) *pgxpool.Pool {
 	}
 	pool, err := pgxpool.New(context.Background(), appendSearchPathOptions(pgtest.NewDB(t)))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	// Закрытие пула — С ПРЕДЕЛОМ. Голый `pool.Close` на удерживаемом соединении
+	// висит без срока: пакет умирает по таймауту целиком, и вердикта не остаётся
+	// НИ У ОДНОЙ пробы, включая прошедшие.
+	pgtest.ClosePoolAtEnd(t, pool)
 	return pool
 }
 
