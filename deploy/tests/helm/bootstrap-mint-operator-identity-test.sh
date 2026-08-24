@@ -41,8 +41,14 @@ DEVPROD="$UMBRELLA/values.dev-prod.yaml"
 CERT_TPL="templates/bootstrap-operator-certificate.yaml"
 IAM_CM_TPL="charts/kacho-iam/templates/configmap.yaml"
 GATEWAY_SAN="spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
-N=0
-fail() { echo "FAIL: $1"; exit 1; }
+# ТРИ ИСХОДА (0 зелено · 1 находка о дереве · 2 условие не создано) — общей
+# реализацией на весь каталог. До #1195 отказ helm по причине, НЕ относящейся к
+# предмету проверки (зависимости умбреллы не собраны), убивал прогон на первом
+# же `CERT="$(render …)"` под `set -e`, НЕ СКАЗАВ НИЧЕГО: код 1, ноль байт.
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$(dirname "$0")/outcome.sh"
+EXPECTED_ASSERTIONS=15
+
 # line_in <многострочное значение> <строка> — есть ли СТРОКА ЦЕЛИКОМ в значении.
 #
 # Замена `grep -qx`: под `set -o pipefail` конвейер `echo … | grep -qx` возвращает
@@ -53,18 +59,20 @@ fail() { echo "FAIL: $1"; exit 1; }
 # не может.
 line_in() { [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]; }
 
-ok() { N=$((N + 1)); }
+require_helm
 
-[ -f "$DEV" ] || fail "values.dev.yaml not found at $DEV"
-[ -f "$DEVPROD" ] || fail "values.dev-prod.yaml not found at $DEVPROD"
+[ -f "$DEV" ] || fatal "values.dev.yaml нет на диске ($DEV)"
+[ -f "$DEVPROD" ] || fatal "values.dev-prod.yaml нет на диске ($DEVPROD)"
 
-# render <show-only-template> <values-file...> — silence helm's kubeconfig warns.
+# render <show-only-template> <values-file...> — результат в $HELM_OUT.
+# Отказ рендера — код 2 плюс ТЕКСТ helm, а не молчаливая смерть под `set -e`.
 render() {
   local tpl="$1"; shift
   local args=()
   local f
   for f in "$@"; do args+=(-f "$f"); done
-  helm template kacho-umbrella "$UMBRELLA" "${args[@]}" --show-only "$tpl" 2>/dev/null
+  helm_try kacho-umbrella "$UMBRELLA" "${args[@]}" --show-only "$tpl"
+  render_or_fatal "$* → $tpl"
 }
 
 # spiffe_uris <text> — every spiffe:// URI, deduped, one per line (may be empty).
@@ -80,7 +88,7 @@ allowlist_of() {
 # ── 1. dev-prod (production posture) — the operator Certificate renders ───────
 # This profile ENABLES the mint (bootstrapToken.signingKeySecretName is set), so a
 # missing/uncallable caller identity is a boot failure, not a cosmetic gap.
-CERT="$(render "$CERT_TPL" "$DEV" "$DEVPROD")"
+render "$CERT_TPL" "$DEV" "$DEVPROD"; CERT="$HELM_OUT"
 [[ "$CERT" == *"kind: Certificate"* ]] \
   || fail "values.dev-prod renders no bootstrap-operator Certificate — the mint would have no caller identity"; ok
 [[ "$CERT" == *"client auth"* ]] \
@@ -98,7 +106,7 @@ CERT_SAN="$(spiffe_uris "$CERT")"
   || fail "bootstrap-operator reuses the api-gateway SAN ($GATEWAY_SAN) — 'is the api-gateway' must never license a cluster-admin mint"; ok
 
 # ── 3. kacho-iam allow-lists EXACTLY that SAN (dev-prod) ─────────────────────
-IAM_CM="$(render "$IAM_CM_TPL" "$DEV" "$DEVPROD")"
+render "$IAM_CM_TPL" "$DEV" "$DEVPROD"; IAM_CM="$HELM_OUT"
 [[ "$IAM_CM" == *"allowed-client-sans"* ]] \
   || fail "kacho-iam config.yaml has no authn.bootstrap-mint.allowed-client-sans — the mint gate is unconfigurable"; ok
 ALLOWED="$(allowlist_of "$IAM_CM")"
@@ -111,11 +119,11 @@ if line_in "$ALLOWED" "$GATEWAY_SAN"; then
 fi; ok
 
 # ── 4. dev stand — arm 3 is enforced in EVERY mode, so dev needs it too ──────
-DEV_CM="$(render "$IAM_CM_TPL" "$DEV")"
+render "$IAM_CM_TPL" "$DEV"; DEV_CM="$HELM_OUT"
 DEV_ALLOWED="$(allowlist_of "$DEV_CM")"
 line_in "$DEV_ALLOWED" "$CERT_SAN" \
   || fail "values.dev.yaml does not allow-list the operator SAN — the SAN gate is enforced in dev too, so the dev mint would deny everyone"; ok
-DEV_CERT_SAN="$(spiffe_uris "$(render "$CERT_TPL" "$DEV")")"
+render "$CERT_TPL" "$DEV"; DEV_CERT_SAN="$(spiffe_uris "$HELM_OUT")"
 [ "$DEV_CERT_SAN" = "$CERT_SAN" ] \
   || fail "dev issues SAN '$DEV_CERT_SAN' but dev-prod issues '$CERT_SAN' — the operator identity must be profile-stable"; ok
 
@@ -124,9 +132,11 @@ DEV_CERT_SAN="$(spiffe_uris "$(render "$CERT_TPL" "$DEV")")"
 # default caller. Override the profile's list back to empty and assert the render
 # carries no SAN at all (but still carries the key, so the fail-closed setting
 # stays visible in the deployed config rather than silently vanishing).
-EMPTY_CM="$(helm template kacho-umbrella "$UMBRELLA" -f "$DEV" \
+helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" \
   --set-json 'kacho-iam.config.authn.bootstrapMint.allowedClientSANs=[]' \
-  --show-only "$IAM_CM_TPL" 2>/dev/null)"
+  --show-only "$IAM_CM_TPL"
+render_or_fatal "values.dev.yaml + пустой allowedClientSANs → $IAM_CM_TPL"
+EMPTY_CM="$HELM_OUT"
 EMPTY_ALLOWED="$(allowlist_of "$EMPTY_CM")"
 [ -z "$EMPTY_ALLOWED" ] \
   || fail "an empty allowedClientSANs still renders callers ($EMPTY_ALLOWED) — the mint must have no default caller"; ok
@@ -136,11 +146,17 @@ EMPTY_ALLOWED="$(allowlist_of "$EMPTY_CM")"
 # ── 6. mTLS off → no operator identity is minted ─────────────────────────────
 # The leaf is internal-CA material; without the PKI there is nothing to issue and
 # nothing to trust.
-NOMTLS="$(helm template kacho-umbrella "$UMBRELLA" -f "$DEV" \
+# `|| true` здесь БЫЛО и было второй половиной того же дефекта: оно не
+# отличало пустой УСПЕШНЫЙ рендер от отказа helm, поэтому на дереве без
+# собранных зависимостей отрицание проходило вакуумно. Положительный контроль —
+# секция 1 выше: тот же шаблон с включённым mTLS обязан дать Certificate.
+helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" \
   --set mtls.enabled=false --set cert-manager.enabled=false \
-  --show-only "$CERT_TPL" 2>/dev/null || true)"
+  --show-only "$CERT_TPL"
+render_or_fatal "values.dev.yaml + mtls.enabled=false → $CERT_TPL"
+NOMTLS="$HELM_OUT"
 if [[ "$NOMTLS" == *"kind: Certificate"* ]]; then
   fail "bootstrap-operator Certificate renders with mtls.enabled=false — there is no internal CA to sign it"
 fi; ok
 
-echo "PASS: $SCRIPT ($N assertions)"
+outcome_verdict "профилей прочитано: 2 (dev, dev-prod)"

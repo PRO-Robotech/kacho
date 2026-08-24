@@ -145,6 +145,7 @@ deploy/tests/helm/outbox-autovacuum-naptime-test.sh
 deploy/tests/helm/identity-callback-credential-source-test.sh
 deploy/tests/helm/prerequisite-secrets-test.sh
 deploy/tests/helm/secret-material-survives-recreation-test.sh
+deploy/tests/helm/three-outcomes-distinguishable-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
 gateway/tests/newman/scripts/selftest_tamper_mutation.py
 services/compute/tests/newman/scripts/validate-cases.py
