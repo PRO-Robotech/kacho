@@ -15,6 +15,7 @@
 // hasPermission` плюс новые расширения. Старые consumers продолжают работать.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { setStepUpRequester } from "@shared/api/step-up";
 import { authApi, hasPermission as checkPerm, type AuthUser, type WhoAmIResponse } from "@shared/api/auth";
 import { kratos, type KratosSession } from "@shared/lib/kratos";
 import { config } from "@shared/lib/config";
@@ -64,7 +65,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Refs для apiClient callbacks (mutable без re-render-ов).
   const tokenRef = useRef<string | null>(null);
-  const stepUpHandlerRef = useRef<((acr?: string) => Promise<void>) | null>(null);
 
   tokenRef.current = accessToken;
 
@@ -169,8 +169,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = useCallback((perm: string) => checkPerm(user, perm), [user]);
 
+  // Обработчик ОБЪЯВЛЯЕТСЯ клиенту API — он и есть его читатель (#1213).
+  //
+  // Прежде обработчик клали в ссылку провайдера, и читателя у неё не было НИ
+  // ОДНОГО во всём дереве консоли: окно подтверждения регистрировалось и не
+  // открывалось никогда, то есть уровень из консоли поднять было нечем.
+  // Ссылка снята вместе с дефектом — держать её рядом с работающим объявлением
+  // значило бы завести два места об одном предмете, из которых читают одно.
   const setStepUpHandler = useCallback((handler: ((acr?: string) => Promise<void>) | null) => {
-    stepUpHandlerRef.current = handler;
+    setStepUpRequester(handler);
   }, []);
 
   const value = useMemo<AuthContextValue>(
