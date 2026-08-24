@@ -64,6 +64,10 @@ JS_MARKERS = ("pm.", "console.", "=>", "const ", "let ", "var ", "if (", "//",
 # комментарий или как регулярное выражение — то есть проба судила бы прозу.
 TEXT_ARGUMENT_HELPERS = ("js_str", "js_comment", "js_regex_literal_text")
 
+# Сколько знаков кода помнить для вопроса «чем открыт литерал». Хвост, а не вся
+# строка: предмет — ближайший вызов (`pm.environment.get(`), а не история шага.
+_TAIL = 64
+
 # После этих слов `/` начинает регулярное выражение, а не делит.
 _REGEX_PRECEDING_KEYWORDS = frozenset((
     "return", "typeof", "case", "in", "of", "new", "delete", "void", "do",
@@ -72,11 +76,21 @@ _REGEX_PRECEDING_KEYWORDS = frozenset((
 
 
 class Place(NamedTuple):
-    """Одна подстановка: где стоит, в каком состоянии и что подставляется."""
+    """Одна подстановка: где стоит, в каком состоянии и что подставляется.
+
+    Три последних поля отвечают на вопрос, который состояния не различают:
+    садится ли значение в ИМЯ. Литерал закрывается экранированием, имя — нет
+    (#1220), поэтому пробе про имена нужны соседние знаки и то, чем открыт
+    текущий литерал. Поля добавлены с умолчаниями: прежние вызывающие читают
+    `state`/`expr` и об этих полях не знают.
+    """
     path: str          # путь относительно корня дерева
     lineno: int
     state: str
     expr: str          # исходный текст выражения подстановки
+    before: str = ""   # знак ПОРОЖДАЕМОГО текста непосредственно слева
+    after: str = ""    # он же справа ("" — конец f-строки, "\x00" — соседняя подстановка)
+    opener: str = ""   # хвост КОДА: чем открыт литерал, а в коде — что стоит слева
 
     def __str__(self) -> str:  # координата в форме, пригодной для перехода
         return f"{self.path}:{self.lineno} состояние {self.state}: {{{self.expr}}}"
@@ -140,11 +154,15 @@ def scan_source(source: str, path_label: str) -> tuple[dict, list]:
         state = CODE
         prev = ""    # предыдущая значащая лексема (последний её символ)
         word = ""    # накопленное слово — чтобы узнать ключевое слово перед `/`
-        for part in node.values:
+        last = ""    # последний знак ПОРОЖДАЕМОГО текста, в любом состоянии
+        code_tail = ""   # хвост кода — для вопроса «чем открыт литерал»
+        open_ctx = ""    # снимок этого хвоста в точке открытия литерала
+        for idx, part in enumerate(node.values):
             if isinstance(part, ast.Constant):
                 text, i = str(part.value), 0
                 while i < len(text):
                     c, step = text[i], 1
+                    was = state
                     # Экранирование действует в литералах строки и выражения.
                     if state in IN_STRING + IN_REGEX and c == "\\" and i + 1 < len(text):
                         i += 2
@@ -181,16 +199,36 @@ def scan_source(source: str, path_label: str) -> tuple[dict, list]:
                     if state == CODE and not c.isspace():
                         prev = c
                         word = word + c if (c.isalnum() or c in "_$") else ""
+                    if was == CODE:
+                        if state == CODE:
+                            code_tail = (code_tail + c)[-_TAIL:]
+                        else:
+                            # Литерал/комментарий открылся ЭТИМ знаком, поэтому
+                            # хвост кода снимается ДО него: он и есть «чем открыт».
+                            open_ctx = code_tail
+                    last = text[i + step - 1]
                     i += step
             else:
                 seen["interpolations"] += 1
                 expr = part.value
+                nxt = node.values[idx + 1] if idx + 1 < len(node.values) else None
+                if nxt is None:
+                    after = ""
+                elif isinstance(nxt, ast.Constant):
+                    t = str(nxt.value)
+                    after = t[0] if t else ""
+                else:
+                    after = "\x00"   # соседняя подстановка, знака между ними нет
                 places.append(Place(path_label, part.lineno, state,
-                                    _source_of(source, expr)))
+                                    _source_of(source, expr),
+                                    before=last, after=after,
+                                    opener=code_tail if state == CODE else open_ctx))
+                last = "\x00"
                 if state == CODE:
                     # Подставленное значение — лексема как всякая другая: после
                     # неё `/` делит, а не открывает регулярное выражение.
                     prev, word = "x", ""
+                    code_tail = (code_tail + "\x00")[-_TAIL:]
         if state not in (CODE, LINE_COMMENT):
             # ПРЕДПОСЫЛКА разбора: состояние считается НА f-СТРОКУ. Литерал,
             # открытый здесь и закрытый в соседнем элементе списка, разбору
