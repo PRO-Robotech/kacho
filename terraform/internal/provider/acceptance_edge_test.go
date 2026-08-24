@@ -45,8 +45,9 @@ package provider
 //
 //  1. АВТОРИЗАЦИЮ. Токен не проверяется вовсе. Решение о доступе принимает модель прав
 //     края; подделка «да/нет» доказывала бы только саму подделку, а не право. Отказ в
-//     доступе здесь ЗАКАЗЫВАЕТСЯ пробой (denyList / hideRead) как СОБЫТИЕ, потому что
-//     предмет проверки — поведение ПРОВАЙДЕРА на таком ответе.
+//     доступе здесь ЗАКАЗЫВАЕТСЯ пробой (denyList / hideRead / rejectCreate /
+//     rejectDelete) как СОБЫТИЕ, потому что предмет проверки — поведение ПРОВАЙДЕРА
+//     на таком ответе.
 //  2. ВАЛИДАЦИЮ ТЕЛА ПО СУЩЕСТВУ (форма блока адресов, диапазоны портов, совпадение
 //     зон). Край-подделка, повторяющая её, стала бы второй реализацией контракта и
 //     разошлась бы с настоящей молча — ровно там, где расхождение не видно. Отказ по
@@ -229,6 +230,7 @@ type fakeEdge struct {
 	hideList     map[string]bool
 	denyList     map[string]bool // ключ — путь коллекции
 	rejectCreate map[string]*edgeStatus
+	rejectDelete map[string]*edgeStatus
 }
 
 func newFakeEdge(t *testing.T, kinds ...*edgeKind) *fakeEdge {
@@ -244,6 +246,7 @@ func newFakeEdge(t *testing.T, kinds ...*edgeKind) *fakeEdge {
 		hideList:     map[string]bool{},
 		denyList:     map[string]bool{},
 		rejectCreate: map[string]*edgeStatus{},
+		rejectDelete: map[string]*edgeStatus{},
 	}
 	for _, k := range kinds {
 		for _, seed := range k.Seed {
@@ -319,6 +322,30 @@ func (e *fakeEdge) RejectCreate(collection string, s edgeStatus) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.rejectCreate[collection] = &s
+}
+
+// RejectDelete — всякое удаление в коллекции отвергается названным отказом.
+//
+// Отдельный заказ, а не Forget: Forget УБИРАЕТ строку, и провайдер, читающий список,
+// снимет ресурс из состояния ещё на обновлении — удаление не отправится вовсе. Здесь
+// строка ЖИВА и видна чтением, а отказ приходит именно на отзыве. Различие не
+// педантское: у этих двух событий разные тексты у провайдера, и предмет пробы —
+// именно тот, что приходит на отказе.
+func (e *fakeEdge) RejectDelete(collection string, s edgeStatus) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.rejectDelete[collection] = &s
+}
+
+// AllowDelete — удаление в коллекции снова доезжает.
+//
+// Нужен ровно затем, чтобы проба, утверждавшая отказ, могла ЗА СОБОЙ УБРАТЬ: уборка
+// набора идёт тем же удалением, и невзятый обратно отказ уронил бы пробу на её
+// собственной уборке — то есть по причине, к предмету не относящейся.
+func (e *fakeEdge) AllowDelete(collection string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	delete(e.rejectDelete, collection)
 }
 
 // Forget — строки у края больше НЕТ: её удалили мимо Terraform.
@@ -702,6 +729,10 @@ func (e *fakeEdge) verb(w http.ResponseWriter, k *edgeKind, id, verb string, req
 }
 
 func (e *fakeEdge) delete(w http.ResponseWriter, k *edgeKind, id string) {
+	if s, deny := e.rejectDelete[k.Path]; deny {
+		e.write(w, *s)
+		return
+	}
 	row, ok := e.rows[id]
 	if !ok {
 		e.writeRaw(w, http.StatusNotFound, edgeNotFoundBody(k.Name, id))
