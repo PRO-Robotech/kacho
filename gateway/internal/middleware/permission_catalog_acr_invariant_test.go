@@ -55,7 +55,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 31 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 32 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root + shared-resource
 // ceiling, domain-agnostic). Any drift (an RPC added or dropped) fails this
 // test. Categories A–J per the APPROVED acceptance docs.
@@ -95,13 +95,23 @@ func sensitiveACR2Set() map[string]struct{} {
 		// personal token would otherwise reach a strictly larger outcome (all of
 		// someone's access into a tenancy, at once) through the cheaper door.
 		//
-		// Scope, so the classification is not read as more than it is: these two
-		// write ONE membership row, not the whole identity. The person keeps
-		// working wherever else they are active. The floor is likewise INTERACTIVE-
-		// only and INERT for machine callers, exactly as for the pair above: a
-		// service account holding `v_update` on the target blocks it with no
-		// step-up whatsoever. WHO may do it is decided by the model (`v_update` on
-		// `iam_user`, i.e. the account admin and the cloud-admin cascade).
+		// Scope, stated as it now is rather than as it once was: these two write the
+		// state of the WHOLE identity. A person is one `users` row for the entire
+		// platform, so the block reaches every Account they belong to at once.
+		//
+		// > This comment used to say the opposite — "these two write ONE membership
+		// > row, not the whole identity; the person keeps working wherever else they
+		// > are active". That was true until the row stopped being a membership, and
+		// > it outlived its subject. It is corrected rather than deleted because a
+		// > stale claim about the radius of a security control is read as an active
+		// > boundary.
+		//
+		// The floor is likewise INTERACTIVE-only and INERT for machine callers,
+		// exactly as for the pair above: a service account holding the relation on
+		// the target blocks it with no step-up whatsoever. WHO may do it is decided
+		// by the model — `identity_suspender` on `iam_user`, which has NO
+		// account-level source (#1102): the account administrator is not among the
+		// holders, and the cloud administrator reaches it as he reaches everything.
 		"kacho.cloud.iam.v1.UserService/Block",
 		"kacho.cloud.iam.v1.UserService/Unblock",
 		// B — iam binding grant (5; Create is exempt-permission + acr=2, net-strengthening).
@@ -112,6 +122,15 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.iam.v1.AccessBindingService/Delete",
 		"kacho.cloud.iam.v1.AccessBindingService/Revoke",
 		"kacho.cloud.iam.v1.UserService/Invite",
+		// RemoveFromAccount — ПАРА к Invite, и на этой полосе она стоит по тому же
+		// доводу, что и он: обе меняют СОСТАВ УЧАСТНИКОВ аккаунта. Invite вводит
+		// человека и вместе с ним может выдать право; исключение выводит его и
+		// требует, чтобы прав у него в этом аккаунте уже не было (отложенный
+		// триггер `membership_carrying_rights_is_kept` отвергает снятие членства,
+		// несущего живую выдачу). Соседняя по смыслу `AccessBindingService/Revoke`
+		// стоит здесь же, поэтому оставить исключение на нижнем пороге значило бы
+		// сделать более дешёвую дверь к тому же исходу (#1127).
+		"kacho.cloud.iam.v1.UserService/RemoveFromAccount",
 		// C — compute per-resource grant. Поверхность выдачи на самой машине снята
 		// целиком вместе с остальной мёртвой: ни `SetAccessBindings`, ни
 		// `UpdateAccessBindings` у машины больше нет — выдача на ресурс идёт
@@ -197,7 +216,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	// «чувствительное» — назначение, изменение и отзыв предела. Число утверждается,
 	// а не выводится из списка: молчаливое сокращение — ровно то, что произошло бы
 	// при случайно выпавшей записи.
-	require.Len(t, sensitive, 31, "the acceptance-doc sensitive set must contain exactly 31 FQNs")
+	require.Len(t, sensitive, 32, "the acceptance-doc sensitive set must contain exactly 32 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -218,7 +237,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 31, "exactly 31 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 32, "exactly 32 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -632,26 +651,47 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// говорит: множество записей с пустым порогом есть СТРОГОЕ ПОДМНОЖЕСТВО
 	// освобождённых (две освобождённые несут порог явно). Прежняя подпись
 	// называла его «exempt count» — верно для предиката и неверно по составу.
-	assert.Equal(t, 31, n2, "sensitive count")
-	// 284→285, итог 339→340: объявлен ЕДИНЫЙ глагол подписки платформы
-	// (`kacho.cloud.subscription.InternalSubscriptionService/Subscribe`,
-	// kacho#1018) — запись каталога одна на всех владельцев журналов, потому что
-	// одно и полное имя метода: сервис объявлен однажды и регистрируется каждым
-	// владельцем на своём внутреннем слушателе.
+	// 31→32: заведено исключение человека из аккаунта
+	// (`UserService/RemoveFromAccount`, #1127) — вторая половина пары к Invite,
+	// и порог у неё тот же, что у Invite и у отзыва выдачи: обе меняют СОСТАВ
+	// участников аккаунта.
+	assert.Equal(t, 32, n2, "sensitive count")
+	// ТРИ линии завели по одной записи каждая, и объяснения всех трёх остаются —
+	// они про разные глаголы. Числа ниже ЗАМЕРЕНЫ по дереву после слияния,
+	// а не сложены в уме: арифметика трёх переписей даёт совпадение, которое
+	// нечем проверить.
 	//
-	// Порог «1», а не «2»: подписка ЧИТАЕТ и не меняет посадку прав — поверхности
-	// повышения привилегий у неё нет. Отношения в записи нет вовсе: метод
-	// `scope_filtered`, край пообъектного вопроса не задаёт, а владелец сужает
-	// поток по правам вызывающего НА КАЖДОЙ отдаваемой строке.
+	// Линия identity: заведён `InternalSessionRevocationsService/SessionCutoffOf`
+	// (#1122) — вопрос края к НАШЕМУ авторитету отзыва про субъекта браузерной
+	// сессии. Запись освобождённая и БЕЗ порога подтверждения личности, как и её
+	// соседи по этому сервису: край задаёт вопрос НА СЛОЕ АУТЕНТИФИКАЦИИ, до
+	// того как у запроса появится решённая личность, — порог там требовать не у
+	// кого. Полосы «чувствительное» и «рутина» от неё не двигаются: снятие сессии
+	// прав не выдаёт и не отзывает, а спрашивает про уже принятое решение.
 	//
-	// Прирост, а не замена, и это стоит сказать прямо: два прежних потока сняты
-	// ДО этой задачи (285→284 — журнал изменений compute, kacho#813; 286→285 —
-	// поток жизненного цикла nlb, kacho#814), у обоих не было ни одного
-	// потребителя. Здесь заводится один общий взамен двух частных — то есть
-	// каталог возвращается к 340 с ОДНОЙ записью там, где их было две.
+	// Линия watch: объявлен ЕДИНЫЙ глагол подписки платформы
+	// (`kacho.cloud.subscription.InternalSubscriptionService/Subscribe`, #1018) —
+	// запись каталога одна на всех владельцев журналов, потому что одно и полное
+	// имя метода: сервис объявлен однажды и регистрируется каждым владельцем на
+	// своём внутреннем слушателе. Порог «1», а не «2»: подписка ЧИТАЕТ и не
+	// меняет посадку прав — поверхности повышения привилегий у неё нет. Отношения
+	// в записи нет вовсе: метод `scope_filtered`, край пообъектного вопроса не
+	// задаёт, а владелец сужает поток по правам вызывающего НА КАЖДОЙ отдаваемой
+	// строке.
+	//
+	// Предыстория обеих: два прежних частных потока сняты ДО этих задач
+	// (285→284 — журнал изменений compute, #813; 286→285 — поток жизненного цикла
+	// nlb, #814), у обоих не было ни одного потребителя. Общий заведён взамен двух
+	// частных.
+	//
+	// ИТОГ 342, а не 341: три ветки по отдельности писали «итог» каждая для СВОЕЙ
+	// — и каждая была права. Общий предок нёс 339, три линии добавили по одной
+	// записи: подписка платформы, отсечка сессии, исключение из аккаунта. Число
+	// ЗАМЕРЕНО прогоном после слияния; сложение переписей в уме совпало бы со
+	// всеми тремя сторонами, будучи неверным.
 	assert.Equal(t, 285, n1, "routine count")
-	assert.Equal(t, 24, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 340, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 25, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
+	assert.Equal(t, 342, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

@@ -21,11 +21,23 @@
 // The signature is verified exactly once, by the caller, and the verified token
 // is handed here: revocation must not pay for a second parse of the same bearer.
 //
-// Scope, stated plainly: this asks about BEARER credentials. A browser holding a
-// live provider session cookie is authenticated on that cookie instead (the
-// session is re-checked with the provider on every request, so it needs no
-// separate revocation question), and a service→service caller authenticated by
-// its client certificate presents no token at all.
+// Scope, stated plainly: this asks about BEARER credentials. A service→service
+// caller authenticated by its client certificate presents no token at all, and a
+// browser is authenticated on the provider's session cookie instead — that lane
+// asks its OWN revocation question, in auth_session_cutoff.go.
+//
+// ЗДЕСЬ СТОЯЛО, ЧТО БРАУЗЕРНОЙ ПОЛОСЕ ОТДЕЛЬНЫЙ ВОПРОС НЕ НУЖЕН, — и это было
+// неверно (#1122). Довод звучал: сессия перепроверяется у провайдера на каждом
+// запросе. Про отзывы САМОГО провайдера он верен. Про запись, которую делает наш
+// глагол выхода и административный принудительный выход, он неверен и не может
+// быть верным: тот, у кого спрашивают про сессию, о нашей записи не знает by
+// construction. Следствие было наблюдаемым — администратор получал успех, а
+// человек продолжал работать в консоли.
+//
+// Урок, ради которого абзац не удалён, а переписан: комментарий, объясняющий
+// ОТСУТСТВИЕ проверки, живёт дольше своего основания и читается как решение.
+// Свойство, обязательное для одной полосы, проверяется СРАВНЕНИЕМ полос
+// (session_lanes_agree_test.go), а не доводом в шапке.
 package middleware
 
 import (
@@ -34,6 +46,8 @@ import (
 	"errors"
 	"net/http"
 	"time"
+
+	"google.golang.org/grpc/codes"
 )
 
 // TokenRevocationChecker — port: does the identity provider still consider this
@@ -231,11 +245,21 @@ func (a *AuthInterceptor) revocationCheck(ctx context.Context, vt *VerifiedToken
 // of its OWN configuration. No WWW-Authenticate header: this is not an
 // authentication challenge, and offering one would invite the caller to
 // re-authenticate against a fault no credential of theirs can clear.
+//
+// Поле `code` — код gRPC (`google.rpc.Status.code`), а НЕ номер HTTP-статуса:
+// клиент ключуется машинно именно на него, и оба числа тут разные по смыслу.
+// Здесь стоял `http.StatusServiceUnavailable`, то есть 503 в поле, где кода 503
+// не существует вовсе, — вызывающий вместо «повтори позже» (14, UNAVAILABLE)
+// получал величину вне словаря. Соседние писатели отказа края поле заполняют
+// верно и служат образцом: 401 → 16 (`writeHTTPUnauthorized`), 403 → 7
+// (`writeHTTPDeny`), отказ слоя прав при недоступном источнике вердикта → 14
+// (`authz.go`, ветвь `outcomeError`) — то же число, что и здесь.
+// Закреплено `TestRefusalBodyCarriesTheGRPCCodeNotTheHTTPStatus`.
 func writeHTTPServiceUnavailable(w http.ResponseWriter, reason string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusServiceUnavailable)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"code":    http.StatusServiceUnavailable,
+		"code":    int(codes.Unavailable),
 		"message": reason,
 	})
 }

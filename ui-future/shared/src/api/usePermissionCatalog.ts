@@ -81,15 +81,71 @@ export function isLabelSelectable(catalog: PermissionCatalog | undefined, module
 }
 
 /**
- * Опции глаголов для verb-dropdown: closed_verbs из каталога + verb-`*`, если
- * политика каталога разрешает его в custom (verb_wildcard_allowed_custom). В
- * system-роли `*` доступен всегда (seed-path).
+ * Опции глаголов для verb-dropdown — набор ВЫБРАННЫХ РЕСУРСОВ, а не общий
+ * словарь каталога (#1128).
+ *
+ * ПОЧЕМУ НЕ `closed_verbs`. Оно есть ПЕРЕСЕЧЕНИЕ наборов всех типов. Пока набор
+ * глаголов был платформенной константой, пересечение равнялось ему и различие не
+ * наблюдалось; с набором, ставшим атрибутом ТИПА, оно наблюдается в обе стороны:
+ * глагол, который объявляет один тип, в пересечение не попадает и не
+ * предлагается ему самому (`addTargets`/`removeTargets` у групп целей, `create` у
+ * реестров), а снятие глагола у одного типа вынимает его из списка у всех
+ * остальных.
+ *
+ * ПОЧЕМУ ПЕРЕСЕЧЕНИЕ ВЫБРАННЫХ, а не объединение. Правило несёт один модуль и
+ * НЕСКОЛЬКО типов. Глагол, которого нет у одного из названных типов, на нём не
+ * материализуется — материализация сверяется с набором типа и молча его
+ * отбрасывает. Предложить такой глагол значило бы обещать право, которого правило
+ * не даст.
+ *
+ * ПОРЯДОК берётся у края и не пересортировывается: он канонический и есть часть
+ * контракта поля.
+ *
+ * СОВМЕСТИМОСТЬ СО СТАРЫМ КРАЕМ названа, а не подразумевается: proto3 опускает
+ * пустой repeated, поэтому «набора нет» и «набор пуст» на проводе неразличимы.
+ * Различает их `has_verb_relations` — глагольный ресурс без набора означает
+ * старый край, и тогда для него берётся общий словарь. Пустой список здесь
+ * означал бы «правило нельзя дописать», то есть поломку редактора.
+ *
+ * verb-`*` добавляется, если политика каталога разрешает его в custom; в
+ * system-роли он доступен всегда (seed-path).
  */
-export function verbOptions(catalog: PermissionCatalog | undefined, isSystem: boolean): string[] {
-  const verbs = [...(catalog?.closed_verbs ?? [])];
+export function verbOptions(
+  catalog: PermissionCatalog | undefined,
+  isSystem: boolean,
+  module: string,
+  resources: string[],
+): string[] {
+  const common = catalog?.closed_verbs ?? [];
+  const verbs = [...verbsForSelection(catalog, module, resources, common)];
   const verbWildcardAllowed = isSystem || !!catalog?.wildcard_policy?.verb_wildcard_allowed_custom;
   if (verbWildcardAllowed) verbs.push(WILDCARD);
   return verbs;
+}
+
+/** Набор глаголов выбранной пары (module, resources) — см. verbOptions. */
+function verbsForSelection(
+  catalog: PermissionCatalog | undefined,
+  module: string,
+  resources: string[],
+  common: string[],
+): string[] {
+  if (!catalog) return [];
+  const entries = (catalog.modules ?? []).find((m) => m.module === module)?.resources ?? [];
+  if (!module || module === WILDCARD || entries.length === 0) return common;
+
+  // Названный `*` и пустой выбор означают одно: тип ещё не назван, поэтому
+  // предлагается то, что даёт ЛЮБОЙ ресурс этого модуля.
+  const named = resources.filter((r) => r && r !== WILDCARD);
+  const selected = named.length > 0 ? entries.filter((e) => named.includes(e.resource)) : entries;
+  if (selected.length === 0) return common;
+
+  const setsOf = (e: CatalogResource): string[] =>
+    e.verbs && e.verbs.length > 0 ? e.verbs : e.has_verb_relations ? common : [];
+
+  // Порядок — из первого набора; членство — во всех остальных.
+  const [first, ...rest] = selected.map(setsOf);
+  return first.filter((v) => rest.every((s) => s.includes(v)));
 }
 
 /**

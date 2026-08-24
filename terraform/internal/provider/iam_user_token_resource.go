@@ -177,7 +177,8 @@ func (r *userTokenResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 
 			"client_id": schema.StringAttribute{Computed: true,
 				MarkdownDescription: "Идентификатор клиента OAuth2 — им токен представляется " +
-					"при обмене подписанного утверждения на access-токен."},
+					"при обмене подписанного утверждения на access-токен. Совпадает с `id` " +
+					"токена: у удостоверения одно имя, а не два."},
 			"key_id": schema.StringAttribute{Computed: true,
 				MarkdownDescription: "Идентификатор ключа подписи (`kid`). Совпадает с `id` " +
 					"токена — так подписанное утверждение само называет свой ключ."},
@@ -206,8 +207,11 @@ func (r *userTokenResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 // ЗАПРОСА при этом остаётся сгенерённым — именно там опечатка в имени поля прошла бы
 // молча.
 type userTokenWire struct {
-	ID              string            `json:"id"`
-	UserID          string            `json:"userId"`
+	ID     string `json:"id"`
+	UserID string `json:"userId"`
+	// HydraClientID — зеркало клиента у ВНЕШНЕГО поставщика. У токенов нового
+	// выпуска пусто; в состояние не берётся ни одним полем (#1121). Оставлено в
+	// разборе тела, чтобы форма ответа края читалась целиком, а не выборочно.
 	HydraClientID   string            `json:"hydraClientId"`
 	Description     string            `json:"description"`
 	ExpiresAt       string            `json:"expiresAt"`
@@ -250,7 +254,14 @@ func applyUserToken(ctx context.Context, m *userTokenModel, w *userTokenWire) {
 	m.Name = types.StringValue(w.Name)
 	m.Description = types.StringValue(w.Description)
 	m.Labels = mapToTF(ctx, w.Labels)
-	m.ClientID = types.StringValue(w.HydraClientID)
+	// Идентификатор клиента — это `id` СТРОКИ токена, а не зеркало у внешнего
+	// поставщика (#1121). Им подписывается утверждение, и по нему издатель
+	// платформы разрешает клиента; зеркало на этом пути не участвует и у токенов
+	// нового выпуска пусто вовсе. Прежняя редакция брала зеркало — и после
+	// перевода выдачи отдала бы сюда пустоту, то есть атрибут, которым, по
+	// собственному описанию, «токен представляется при обмене», нечем было бы
+	// представиться.
+	m.ClientID = types.StringValue(w.ID)
 	m.KeyID = types.StringValue(w.ID)
 	m.Algorithm = types.StringValue(w.KeyAlgorithm)
 	m.PublicKeyPEM = types.StringValue(w.PublicKeyPEM)

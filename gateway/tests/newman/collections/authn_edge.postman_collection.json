@@ -452,7 +452,7 @@
       ]
     },
     {
-      "name": "F1B-D-PLATFORM-ES256-ACCEPTED — Bearer minted by OUR issuer (ES256) is accepted by the edge → 200; its iss differs from the external provider lane",
+      "name": "F1B-D-PLATFORM-ES256-ACCEPTED — Bearer minted by OUR issuer (ES256) is accepted by the edge on the strict platform lane → 200",
       "description": "class:AUTHN | class:CONF | class:FLOW | priority:P0",
       "item": [
         {
@@ -536,19 +536,125 @@
                   "  pm.expect(j, JSON.stringify(j)).to.be.an('object');",
                   "  pm.expect(j.accounts, JSON.stringify(j)).to.be.an('array');",
                   "});",
-                  "const _other = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
-                  "pm.test('harness config: jwtBootstrap задан (с чем сравнивать полосу)', () => {",
-                  "  pm.expect(_other, 'слот соседней полосы пуст — сравнить не с чем').to.not.eql('');",
+                  "pm.test('предъявитель называет издателя', () => {",
+                  "  pm.expect(_seg(_tok, 1).iss, 'iss нашей полосы').to.be.a('string').and.not.eql('');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "F1B-D-PLATFORM-USER-TOKEN-ACCEPTED — Personal user token minted by OUR issuer (ES256) is accepted by the edge → 200; its principal is a HUMAN, not a service account",
+      "description": "class:AUTHN | class:CONF | class:FLOW | priority:P0",
+      "item": [
+        {
+          "name": "list-accounts-as-platform-issued-user-token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtUserTokenPlatformIssuer'",
+                  "const __t = pm.environment.get('jwtUserTokenPlatformIssuer') || pm.variables.get('jwtUserTokenPlatformIssuer') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtUserTokenPlatformIssuer is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtUserTokenPlatformIssuer is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ПРОИЗВОДИТЕЛЬ ВХОДА: сначала — что отправили, потом — что ответили.",
+                  "const _sent = (pm.request.headers.get('Authorization') || '');",
+                  "const _tok = _sent.replace(/^Bearer /, '');",
+                  "pm.test('проба отправила Bearer (иначе это анонимный кейс, а не этот)', () => {",
+                  "  pm.expect(_sent.startsWith('Bearer '), 'Authorization как отправлен: ' + _sent).to.eql(true);",
                   "});",
-                  "pm.test('издатель ОТЛИЧАЕТСЯ от издателя соседней полосы — записей две, а не одна', () => {",
-                  "  const _mine = _seg(_tok, 1).iss;",
-                  "  const _theirs = _seg(_other, 1).iss;",
-                  "  pm.expect(_mine, 'iss нашей полосы').to.be.a('string').and.not.eql('');",
-                  "  pm.expect(_mine, 'iss нашей полосы против соседней: ' + _theirs).to.not.eql(_theirs);",
+                  "pm.test('отправленный предъявитель — JWS из 3 сегментов', () => {",
+                  "  pm.expect(_tok.split('.').length, _tok).to.eql(3);",
                   "});",
-                  "pm.test('алгоритмы полос тоже различаются — ключи разные', () => {",
-                  "  pm.expect(_seg(_tok, 0).alg, 'alg нашей полосы').to.eql('ES256');",
-                  "  pm.expect(_seg(_other, 0).alg, 'alg соседней полосы').to.not.eql('ES256');",
+                  "pm.test(\"заголовок отправленного предъявителя объявляет alg=ES256\", () => {",
+                  "  const _cj = require('crypto-js');",
+                  "  const _b64 = _tok.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  const _h = JSON.parse(_cj.enc.Utf8.stringify(_cj.enc.Base64.parse(_b64)));",
+                  "  pm.expect(_h.alg, JSON.stringify(_h)).to.eql('ES256');",
+                  "});",
+                  "const _cj3 = require('crypto-js');",
+                  "function _seg3(t, i) {",
+                  "  const b = t.split('.')[i].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  return JSON.parse(_cj3.enc.Utf8.stringify(_cj3.enc.Base64.parse(b)));",
+                  "}",
+                  "function _claim3(p, k) {",
+                  "  if (p && p[k]) { return p[k]; }",
+                  "  const e = (p && p.ext_claims) || {};",
+                  "  return e[k] || '';",
+                  "}",
+                  "pm.test('заголовок объявляет тип токена доступа (at+jwt)', () => {",
+                  "  const _h = _seg3(_tok, 0);",
+                  "  pm.expect(_h.typ, JSON.stringify(_h)).to.eql('at+jwt');",
+                  "});",
+                  "pm.test('край принял ПЕРСОНАЛЬНЫЙ токен нашей чеканки', () => {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200);",
+                  "});",
+                  "pm.test('вердикт отзыва ПОЛУЧЕН: край не ответил 503', () => {",
+                  "  pm.expect(pm.response.code, 'неотвеченный вердикт отзыва даёт 503').to.not.eql(503);",
+                  "});",
+                  "pm.test('ответ — страница аккаунтов, а не пустое тело', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j, JSON.stringify(j)).to.be.an('object');",
+                  "  pm.expect(j.accounts, JSON.stringify(j)).to.be.an('array');",
+                  "});",
+                  "pm.test('принципал предъявителя — человек, а не служебная учётка', () => {",
+                  "  const _p = _seg3(_tok, 1);",
+                  "  pm.expect(_claim3(_p, 'kacho_principal_type'), JSON.stringify(_p)).to.eql('user');",
+                  "});",
+                  "pm.test('токен назван персональным — несёт id выпустившей его строки', () => {",
+                  "  const _p = _seg3(_tok, 1);",
+                  "  const _tid = _claim3(_p, 'kacho_user_token_id');",
+                  "  pm.expect(_tid, JSON.stringify(_p)).to.be.a('string').and.not.eql('');",
+                  "  pm.expect(_tid.slice(0, 3), _tid).to.eql('uoc');",
+                  "});",
+                  "const _mach = pm.environment.get('jwtPlatformIssuer') || pm.variables.get('jwtPlatformIssuer') || '';",
+                  "pm.test('harness config: jwtPlatformIssuer задан (с чем сравнивать издателя)', () => {",
+                  "  pm.expect(_mach, 'слот машинной полосы пуст — сравнить не с чем').to.not.eql('');",
+                  "});",
+                  "pm.test('издатель ТОТ ЖЕ, что у машинного предъявителя нашей полосы', () => {",
+                  "  pm.expect(_seg3(_tok, 1).iss, 'iss человека против машины').to.eql(_seg3(_mach, 1).iss);",
+                  "});",
+                  "pm.test('принципалы полос РАЗНЫЕ — иначе сравнивались бы два одинаковых', () => {",
+                  "  pm.expect(_claim3(_seg3(_mach, 1), 'kacho_principal_type'), 'тип принципала машинной полосы').to.eql('service_account');",
                   "});"
                 ]
               }

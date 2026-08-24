@@ -102,14 +102,25 @@ type User struct {
 	// invite-status.
 	// PENDING — invited, еще не login'нулся.
 	// ACTIVE  — login'нулся через Kratos, external_id заполнен.
-	// BLOCKED — участие в ЭТОМ Account'е запрещено администратором
+	// BLOCKED — вход на платформу запрещён (`UserService.Block`; снимается
 	//
-	//	(`UserService.Block`; снимается `UserService.Unblock`).
+	//	`UserService.Unblock`).
 	//
-	// Состояние принадлежит СТРОКЕ ЧЛЕНСТВА, а не человеку: одна личность держит
-	// по строке на каждый Account, и запрет в одном Account'е не отключает её в
-	// остальных. Выдача токена перебирает набор членств и обслуживает первое
-	// аутентифицирующееся; отказ приходит, только когда ни одно не может.
+	// Состояние принадлежит ЛИЧНОСТИ, и действует оно ВЕЗДЕ, где человек состоит.
+	//
+	// > Здесь стояло обратное — «состояние принадлежит СТРОКЕ ЧЛЕНСТВА… запрет в
+	// > одном Account'е не отключает её в остальных». Это было верно, пока строка
+	// > `users` и была членством, и пережило свой предмет: строк у человека теперь
+	// > одна на всю платформу (глобальные ключи `users_identity_email_uniq` /
+	// > `users_identity_external_id_uniq`, миграция 20260823050000), а
+	// > принадлежность аккаунтам выражают строки `memberships`. Утверждение не
+	// > удалено, а перевёрнуто на месте: оно читалось как ГРАНИЦА БЕЗОПАСНОСТИ, и
+	// > следующий, кто пришёл бы за радиусом запрета, принял бы его за факт. Ту же
+	// > правку с той же причиной несёт проза `UserService.Block`.
+	//
+	// Пер-аккаунтное исключение — ОТДЕЛЬНОЕ действие и отдельное поле не занимает:
+	// `UserService.RemoveFromAccount` снимает строку членства и этого состояния не
+	// касается (#1127).
 	//
 	// НЕ ИЗМЕНЯЕТСЯ через Update: у пустой `update_mask` семантика полной замены
 	// объекта, а enum в proto3 неотличим от незаданного — клиент, не приславший
@@ -118,19 +129,34 @@ type User struct {
 	InviteStatus User_InviteStatus `protobuf:"varint,7,opt,name=invite_status,json=inviteStatus,proto3,enum=kacho.cloud.iam.v1.User_InviteStatus" json:"invite_status,omitempty"`
 	// User.id того, кто пригласил (nullable для self-signup bootstrap-row).
 	InvitedBy string `protobuf:"bytes,8,opt,name=invited_by,json=invitedBy,proto3" json:"invited_by,omitempty"`
-	// Tenant-facing метки. Единая модель видимости IAM-ресурсов: User —
-	// label-selectable, как account/project; ARM_LABELS-грант на iam.user
-	// материализует глаголы своей роли на объектах, чьи `labels` покрывают
-	// `matchLabels` (iam-direct same-DB), а страница List сужается тем же
-	// отношением, которым каталог гейтит одиночное чтение — `v_get`; строка
-	// попадает в выдачу ровно тогда, когда вызывающий вправе прочитать её по id.
-	// Роль, дающая только `list` без `get`, объект в списке не показывает — иначе
-	// выдача раскрывала бы содержимое, которое чтение по id отказывает (List
-	// возвращает то же сообщение ресурса, что и Get). Mutable через
-	// UserService.Update (`labels` в update_mask). Аннотации (size/key/value
-	// pattern) энфорсят sync-INVALID_ARGUMENT на request-layer — паритет
-	// account/project/group request `labels`; это request-input для UpdateUser
-	// (тело UpdateUserRequest.user).
+	// Метки человека — ПЛАТФОРМЕННАЯ величина, и владелец у них назван (#1126).
+	//
+	// КТО ИХ ПИШЕТ. Только надзор облака: `UserService.Update` гейтится
+	// `iam_user.record_writer`, у которого источников уровня аккаунта нет ни
+	// одного (#1102). Распорядитель аккаунта своих людей размечать НЕ МОЖЕТ, и это
+	// решение, а не недоделка: строка `iam_user` — глобальная личность, одна на все
+	// аккаунты человека, поэтому метка, поставленная из одного аккаунта, была бы
+	// фактом о нём во всех.
+	//
+	// ЧЕМ ОНИ НЕ ЯВЛЯЮТСЯ. Не «как МОЙ аккаунт помечает этого человека». Такому
+	// прочтению негде жить: носитель метки ровно один и он не пер-аккаунтный
+	// (проба `repo/kacho/pg/person_labels_are_a_platform_value_integration_test.go`
+	// краснеет на появлении второго). Пер-аккаунтная разметка людей — исход 1
+	// задачи #1126, и она требует ресурса членства (#1085): пока у чтения нет
+	// аргумента аккаунта, «метки этого человека в этом аккаунте» нечем адресовать.
+	//
+	// ЧТО ОНИ ДЕЛАЮТ. User — label-selectable наравне с account/project:
+	// ARM_LABELS-грант на iam.user материализует глаголы своей роли на объектах,
+	// чьи `labels` покрывают `matchLabels` (iam-direct same-DB), а страница List
+	// сужается тем же отношением, которым каталог гейтит одиночное чтение —
+	// `v_get`; строка попадает в выдачу ровно тогда, когда вызывающий вправе
+	// прочитать её по id. Роль, дающая только `list` без `get`, объект в списке не
+	// показывает — иначе выдача раскрывала бы содержимое, которое чтение по id
+	// отказывает (List возвращает то же сообщение ресурса, что и Get).
+	//
+	// Mutable через UserService.Update (`labels` в update_mask). Аннотации
+	// (size/key/value pattern) энфорсят sync-INVALID_ARGUMENT на request-layer —
+	// паритет account/project/group request `labels`.
 	Labels        map[string]string `protobuf:"bytes,9,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -451,6 +477,62 @@ func (x *UnblockUserMetadata) GetAccountId() string {
 }
 
 // Invite-flow.
+type RemoveUserFromAccountMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the person whose membership is being removed. First field so the
+	// corelib resource_id extractor (first `_id`-suffix match) picks it.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// ID of the Account the person is being removed from. Never empty: the
+	// membership is the pair, and the call names both halves.
+	AccountId     string `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveUserFromAccountMetadata) Reset() {
+	*x = RemoveUserFromAccountMetadata{}
+	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveUserFromAccountMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveUserFromAccountMetadata) ProtoMessage() {}
+
+func (x *RemoveUserFromAccountMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveUserFromAccountMetadata.ProtoReflect.Descriptor instead.
+func (*RemoveUserFromAccountMetadata) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_user_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *RemoveUserFromAccountMetadata) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *RemoveUserFromAccountMetadata) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
 type InviteUserMetadata struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	UserId    string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
@@ -464,7 +546,7 @@ type InviteUserMetadata struct {
 
 func (x *InviteUserMetadata) Reset() {
 	*x = InviteUserMetadata{}
-	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -476,7 +558,7 @@ func (x *InviteUserMetadata) String() string {
 func (*InviteUserMetadata) ProtoMessage() {}
 
 func (x *InviteUserMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[5]
+	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -489,7 +571,7 @@ func (x *InviteUserMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InviteUserMetadata.ProtoReflect.Descriptor instead.
 func (*InviteUserMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_user_proto_rawDescGZIP(), []int{5}
+	return file_kacho_cloud_iam_v1_user_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *InviteUserMetadata) GetUserId() string {
@@ -555,6 +637,10 @@ const file_kacho_cloud_iam_v1_user_proto_rawDesc = "" +
 	"\x13UnblockUserMetadata\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1d\n" +
 	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\"W\n" +
+	"\x1dRemoveUserFromAccountMetadata\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1d\n" +
+	"\n" +
 	"account_id\x18\x02 \x01(\tR\taccountId\"r\n" +
 	"\x12InviteUserMetadata\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1d\n" +
@@ -575,22 +661,23 @@ func file_kacho_cloud_iam_v1_user_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_iam_v1_user_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kacho_cloud_iam_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_kacho_cloud_iam_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_kacho_cloud_iam_v1_user_proto_goTypes = []any{
-	(User_InviteStatus)(0),        // 0: kacho.cloud.iam.v1.User.InviteStatus
-	(*User)(nil),                  // 1: kacho.cloud.iam.v1.User
-	(*DeleteUserMetadata)(nil),    // 2: kacho.cloud.iam.v1.DeleteUserMetadata
-	(*UpdateUserMetadata)(nil),    // 3: kacho.cloud.iam.v1.UpdateUserMetadata
-	(*BlockUserMetadata)(nil),     // 4: kacho.cloud.iam.v1.BlockUserMetadata
-	(*UnblockUserMetadata)(nil),   // 5: kacho.cloud.iam.v1.UnblockUserMetadata
-	(*InviteUserMetadata)(nil),    // 6: kacho.cloud.iam.v1.InviteUserMetadata
-	nil,                           // 7: kacho.cloud.iam.v1.User.LabelsEntry
-	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
+	(User_InviteStatus)(0),                // 0: kacho.cloud.iam.v1.User.InviteStatus
+	(*User)(nil),                          // 1: kacho.cloud.iam.v1.User
+	(*DeleteUserMetadata)(nil),            // 2: kacho.cloud.iam.v1.DeleteUserMetadata
+	(*UpdateUserMetadata)(nil),            // 3: kacho.cloud.iam.v1.UpdateUserMetadata
+	(*BlockUserMetadata)(nil),             // 4: kacho.cloud.iam.v1.BlockUserMetadata
+	(*UnblockUserMetadata)(nil),           // 5: kacho.cloud.iam.v1.UnblockUserMetadata
+	(*RemoveUserFromAccountMetadata)(nil), // 6: kacho.cloud.iam.v1.RemoveUserFromAccountMetadata
+	(*InviteUserMetadata)(nil),            // 7: kacho.cloud.iam.v1.InviteUserMetadata
+	nil,                                   // 8: kacho.cloud.iam.v1.User.LabelsEntry
+	(*timestamppb.Timestamp)(nil),         // 9: google.protobuf.Timestamp
 }
 var file_kacho_cloud_iam_v1_user_proto_depIdxs = []int32{
-	8, // 0: kacho.cloud.iam.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	9, // 0: kacho.cloud.iam.v1.User.created_at:type_name -> google.protobuf.Timestamp
 	0, // 1: kacho.cloud.iam.v1.User.invite_status:type_name -> kacho.cloud.iam.v1.User.InviteStatus
-	7, // 2: kacho.cloud.iam.v1.User.labels:type_name -> kacho.cloud.iam.v1.User.LabelsEntry
+	8, // 2: kacho.cloud.iam.v1.User.labels:type_name -> kacho.cloud.iam.v1.User.LabelsEntry
 	3, // [3:3] is the sub-list for method output_type
 	3, // [3:3] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
@@ -609,7 +696,7 @@ func file_kacho_cloud_iam_v1_user_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_user_proto_rawDesc), len(file_kacho_cloud_iam_v1_user_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

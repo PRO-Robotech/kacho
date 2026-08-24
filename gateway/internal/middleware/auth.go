@@ -144,6 +144,15 @@ type AuthInterceptor struct {
 	// авторитет молчит» и «чужой авторитет молчит» суть разные неисправности с
 	// разными исправлениями и разными читателями.
 	platformRevocationFailures *introspectionFailureReporter
+	// sessionCutoff — НАШ авторитет отзыва, спрошенный про СУБЪЕКТА, на полосе
+	// браузерной сессии. У неё нет удостоверения, поэтому спрашивать про неё по
+	// идентификатору токена нечем; спрашивают по паре (субъект, момент
+	// аутентификации). См. auth_session_cutoff.go.
+	sessionCutoff SessionCutoffReader
+	// sessionCutoffFailures — своё окно доклада: у этой полосы свой читатель и
+	// своё последствие, и слитое с полосой предъявителя окно подавляло бы первый
+	// доклад одной из них.
+	sessionCutoffFailures *introspectionFailureReporter
 	// stepUp / stepUpLookup / stepUpRoutes — the per-RPC authentication floor,
 	// applied on this always-running layer rather than behind a feature toggle.
 	// All three or none; see auth_stepup.go for why the floor cannot live where
@@ -342,11 +351,24 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 	// token the Principal is derived directly from the `kacho_principal_*`
 	// claims (top-level or ext_claims) — no SubjectLookuper round-trip unless
 	// those claims are absent. A present-but-bad token (bad sig / expired /
-	// wrong iss / disallowed alg) or an unreachable JWKS endpoint is REJECTED
-	// Unauthenticated (fail-closed), NEVER downgraded to anonymous.
+	// wrong iss / disallowed alg) is REJECTED Unauthenticated (fail-closed),
+	// NEVER downgraded to anonymous.
+	//
+	// ЗДЕСЬ СТОЯЛО «или недостижимый источник ключей — тоже Unauthenticated», и
+	// это было неверно (#1194): недоступность зависимости — не приговор
+	// удостоверению. Она отвечает `Unavailable`, как и соседняя ветвь чтения
+	// отзыва ниже, чей довод дословно тот же. Fail-closed при этом не ослаблен:
+	// отказ остаётся отказом, обработчик не исполняется.
 	if a.verifier != nil && isAsymmetricJWT(bearer) {
 		vt, verr := a.verifier.Verify(ctx, bearer)
 		if verr != nil {
+			// Тот же разбор, что и на полосе REST, и по той же причине: пробел на
+			// одной поверхности обессмысливает другую.
+			if keySourceUnanswerable(verr) {
+				a.logger.Error("auth: token key source unanswerable; refusing Unavailable",
+					"method", fullMethod, "err", verr)
+				return nil, status.Error(codes.Unavailable, keySourceUnavailableReason)
+			}
 			a.logger.Warn("auth: Hydra JWT validation failed (JWKS)",
 				"method", fullMethod, "err", verr)
 			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
@@ -776,7 +798,14 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 		// a 401 or serve `next` themselves and report handled=true.
 		a.stripForgeableIdentityHeaders(r)
 
-		injected := a.tryKratosSession(r)
+		// Полоса cookie ТЕРМИНАЛЬНА так же, как полоса предъявителя: она вправе
+		// сама ответить отказом. Прежде она умела только «резолвил / не
+		// резолвил», и отвергнуть сессию ей было нечем — оттого наш отзыв на ней
+		// и не действовал (auth_session_cutoff.go).
+		injected, handled := a.tryKratosSession(w, r)
+		if handled {
+			return
+		}
 
 		if !injected {
 			if a.tryHydraJWT(w, r, next) {
@@ -805,18 +834,24 @@ func (a *AuthInterceptor) stripForgeableIdentityHeaders(r *http.Request) {
 
 // tryKratosSession resolves a Kratos session cookie (ory_kratos_session) to a
 // principal BEFORE the JWT paths so SPA users without a Bearer get a principal.
-// Returns true when a principal was injected (which suppresses the JWT paths).
-func (a *AuthInterceptor) tryKratosSession(r *http.Request) bool {
+//
+// Возвращает ДВА значения, и это не косметика. `injected` — резолвилась ли
+// личность (подавляет полосы предъявителя, как прежде). `handled` — полоса
+// ответила САМА и вызывающий обязан вернуться: сессия отвергнута нашим отзывом
+// либо вопрос о нём остался без ответа. Прежде второго исхода у полосы не
+// существовало вовсе, и отвергнуть сессию ей было нечем — оттого наш глагол
+// выхода на браузерной полосе не действовал ни разу (auth_session_cutoff.go).
+func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Request) (injected, handled bool) {
 	if a.kratos == nil {
-		return false
+		return false, false
 	}
 	cookieHdr := r.Header.Get("Cookie")
 	if !strings.Contains(cookieHdr, "ory_kratos_session") {
-		return false
+		return false, false
 	}
 	res := a.kratos.Whoami(r.Context(), cookieHdr)
 	if !res.Active || res.IdentityID == "" {
-		return false
+		return false, false
 	}
 	var subj Subject
 	var err error
@@ -830,7 +865,28 @@ func (a *AuthInterceptor) tryKratosSession(r *http.Request) bool {
 	if err != nil {
 		a.logger.Debug("auth.HTTP: Kratos SubjectLookup failed",
 			"identity_id", res.IdentityID, "err", err.Error())
-		return false
+		return false, false
+	}
+	// Отзыв спрашивается ДО того, как личность попадёт в заголовки: принципал,
+	// выставленный отвергнутой сессии, доехал бы до прав и до backend прежде,
+	// чем отказ успел бы что-то значить.
+	switch a.sessionCutoffCheck(r.Context(), subj, res, r.URL.Path) {
+	case sessionCutoffEnded:
+		// Отказ И окончание носителя — вместе. Порознь первое даёт СТОЯЩИЙ
+		// отказ: сессия жива, момент её аутентификации прежний, и повторной
+		// аутентификации ничто не запросит.
+		endSessionCarrier(w)
+		writeHTTPUnauthorized(w, sessionCutoffDenyDescription)
+		return false, true
+	case sessionCutoffUnanswered:
+		// Носителя НЕ гасим: заминка своего же соседа не повод выкидывать тех,
+		// кого никто не отзывал.
+		writeHTTPUnauthorized(w, sessionCutoffUnavailableReason)
+		return false, true
+	case sessionCutoffNotAsked, sessionCutoffLive, sessionCutoffUnsupported:
+		// Полоса продолжается. `unsupported` — окно раската, а не решение: край
+		// впереди службы прав, и отвергать здесь значило бы уронить консоль на
+		// время раската. Состояние сходится само и докладывается громко.
 	}
 	r.Header.Set(principalmeta.HeaderPrincipalType, subj.Type)
 	r.Header.Set(principalmeta.HeaderPrincipalID, subj.ID)
@@ -840,14 +896,15 @@ func (a *AuthInterceptor) tryKratosSession(r *http.Request) bool {
 	r.Header.Set(principalmeta.HeaderGRPCMetaPrincipalDisplay, subj.DisplayName)
 	a.logger.Info("auth.HTTP: Principal injected (Kratos)",
 		"type", subj.Type, "id", subj.ID, "identity_id", res.IdentityID)
-	return true
+	return true, false
 }
 
 // tryHydraJWT validates a Hydra-issued asymmetric (RS256/ES256/EdDSA) access JWT
 // over REST via the JWKS verifier (parity with the gRPC interceptor path) and
 // derives the principal from the verified `kacho_principal_*` claims (top-level
 // or ext_claims), falling back to SubjectLookuper on the verified sub. A
-// present-but-bad token or unreachable JWKS → 401 fail-closed, never anonymous.
+// present-but-bad token → 401 fail-closed, never anonymous; a key set that could
+// not be fetched → 503 (see keySourceUnanswerable — #1194), also fail-closed.
 // Returns true when this path was terminal (401 written, or principal resolved
 // and `next` served) — i.e. the caller must return. Returns false when the path
 // does not apply (no verifier / not an asymmetric Bearer) so the next strategy
@@ -862,6 +919,19 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 	}
 	vt, verr := a.verifier.Verify(r.Context(), tok)
 	if verr != nil {
+		// ЧЬЯ ЭТО ОШИБКА — вопрос, который здесь задаётся до выбора кода (#1194).
+		// Набор проверочных ключей не добыт ⇒ сбой зависимости: «повтори позже»
+		// (503 / 14), и удостоверение предъявителя тут ни при чём. Всё
+		// остальное — негодный токен: «войди заново» (401 / 16).
+		if keySourceUnanswerable(verr) {
+			// Громко: сюда попадает и ответ не по адресу, то есть неверная
+			// настройка, которая иначе живёт вечно тихим предупреждением
+			// (`security.md` §Hardening инв. 8).
+			a.logger.Error("auth.HTTP: token key source unanswerable; refusing Unavailable",
+				"path", r.URL.Path, "err", verr.Error())
+			writeHTTPServiceUnavailable(w, keySourceUnavailableReason)
+			return true
+		}
 		a.logger.Warn("auth.HTTP: Hydra JWT validate failed (JWKS)", "err", verr.Error())
 		writeHTTPUnauthorized(w, "token validation failed")
 		return true

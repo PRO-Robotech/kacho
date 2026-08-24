@@ -89,6 +89,10 @@ kacho-iam:
         # enable this, rotate existing SA keys, and only THEN set the gateway's
         # api-gateway.authn.requireMachineTokenBinding. The reverse order rejects
         # every service-account token.
+        #
+        # Its reader is the client MIRROR at the previous issuer, so a profile
+        # that translates the contour (`kacho-iam.config.authn.clientToken.enabled`)
+        # has no reader for it at all: iam refuses to start with both set (#1137).
         bindDpop: false
     hooks:
       tokenHookSecretName: kacho-iam-hook-token
@@ -305,6 +309,38 @@ global:
     domain: ""                             # umbrella-level kacho.domain overrides
     region: ""
     cluster: ""
+    # ─── докерная полоса выдачи: ЕДИНСТВЕННОЕ объявление имени службы реестра ──
+    #
+    # У полосы ДВЕ стороны. Реестр называет это имя докер-клиенту в вызове на
+    # аутентификацию (`KACHO_REGISTRY_SERVICE_AUD` → `service=` в
+    # WWW-Authenticate); клиент возвращает его в `?service=`; iam чеканит
+    # удостоверение адресату, которого объявил сам
+    # (`api-server.registry-token.service`). Стороны обязаны СОВПАДАТЬ, иначе
+    # вход докера отвергается.
+    #
+    # ЗАЧЕМ ОДНО ОБЪЯВЛЕНИЕ, А НЕ ДВА СВЕДЁННЫХ УМОЛЧАНИЯ. Имя — тенант-фейсинг
+    # DNS реестра, оно законно СВОЁ у каждого кластера, поэтому «сделать
+    # умолчания равными» не решает ничего: первый же профиль, сменивший имя у
+    # себя, разводит стороны снова. Пока iam адресата не сверял, расхождение
+    # было НЕВИДИМО — клиент echo-ит услышанное от реестра, реестр это и ждёт,
+    # подписант чеканил что просят, — и совпадения не выбирал никто. Со сверкой
+    # то же расхождение означает отказ во входе на КАЖДОМ запросе арендатора.
+    #
+    # Живёт в `global`, потому что читается из ДВУХ контекстов сабчартов
+    # (`registry` и `kacho-iam`), а общим для них является только `.Values.global`
+    # — тот же довод, что у формирующих значений службы личности ниже.
+    #
+    # Объявить вторую сторону ОТДЕЛЬНО по-прежнему можно (одиночная установка
+    # любого из двух чартов), но объявить её ИНАЧЕ — нельзя: рендер отказывает и
+    # называет обе величины. Держат это
+    # services/registry/deploy/lane_service_aud_test.go и
+    # deploy/helm/umbrella/iam_lane_service_aud_test.go, а значения профилей —
+    # deploy/registry_token_lane_sides_agree_test.go.
+    #
+    # Величина здесь — та, что действовала умолчанием чарта реестра: посадка ни
+    # одного профиля не меняется.
+    registry:
+      serviceAud: "registry.in-cloud.io"
     # ─── административный переход: ЕДИНСТВЕННОЕ объявление формирующих значений ─
     #
     # Живёт в `global`, потому что читается из ДВУХ контекстов: шаблонами умбреллы
@@ -473,19 +509,6 @@ apiGatewayIngress:
 # set `uif.enabled: true` and reproduce the host/remote images below.
 uif:
   enabled: false
-
-# ─── Хук выдачи доверия внешним эмитентам (templates/hydra-trust-grants-job.yaml)
-# Адрес административного API — ОБЪЯВЛЯЕМОЕ ЗНАЧЕНИЕ, а не зашитая в шаблон
-# строка. Пока он был зашит, перепись потребителей по объявлениям его не видела:
-# она резолвит пути в файлах значений. Путь `hydraTrustGrants.adminUrl` внесён в
-# реестр потребителей (gateway/deploy/admin_hop_transport_test.go).
-#
-# Пусто по умолчанию НАМЕРЕННО: `required` в шаблоне роняет РЕНДЕР, если хук
-# включён, а адрес не назван. Профиль, включающий federationIn, обязан назвать
-# адрес терминатора и якорь доверия — молча уехать на неверный адрес нельзя.
-hydraTrustGrants:
-  adminUrl: ""
-  adminCaFile: /etc/hydra-admin-ca/ca.crt
 
 # ─── Ory Hydra sub-chart — базовые значения умбреллы ───────────────────────
 hydra:

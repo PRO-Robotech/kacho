@@ -10,17 +10,19 @@ import "kacho/cloud/validation.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
 
-// UserOAuthClient — персональный access-токен пользователя (Hydra static
-// client, поток private_key_jwt).
+// UserOAuthClient — персональный access-токен пользователя (поток
+// private_key_jwt).
 //
-// kacho-iam генерирует пару ключей ECDSA P-256 на каждый токен, регистрирует
-// публичный JWK в Hydra (`token_endpoint_auth_method = private_key_jwt`) и
-// возвращает приватный PEM вызывающему ровно один раз. Hydra хранит только JWK;
-// kacho-iam держит SPKI public PEM (для диагностики) плюс алгоритм. Секрет
-// (private key) не хранится нигде.
+// kacho-iam генерирует пару ключей ECDSA P-256 на каждый токен и возвращает
+// приватный PEM вызывающему ровно один раз; у себя держит SPKI public PEM плюс
+// алгоритм. Секрет (private key) не хранится нигде.
+//
+// Клиентом это удостоверение называется по `id` ЭТОЙ строки: им подписывается
+// `client_assertion`, и по нему же издатель платформы разрешает клиента.
+// Второго имени у него нет.
 //
 // N:1 — у одного User может быть несколько токенов (в отличие от 1:1 SA-key до
-// релакса). `hydra_client_id` UNIQUE по всем строкам.
+// релакса).
 //
 // FK на `users(id) ON DELETE CASCADE` — при удалении пользователя его токены
 // снимаются вместе с ним.
@@ -36,8 +38,17 @@ message UserOAuthClient {
   // ID пользователя, которому принадлежит токен.
   string user_id = 2 [(required) = true, (length) = "<=20"];
 
-  // Hydra OAuth 2.0 client id, зарегистрированный в Ory Hydra. UNIQUE.
-  string hydra_client_id = 3 [(required) = true, (length) = "1-128"];
+  // Идентификатор клиента у ВНЕШНЕГО поставщика удостоверений.
+  //
+  // ПУСТО у токенов, выпущенных платформой: она больше не заводит клиента у
+  // внешнего поставщика, и пустое значение здесь означает ровно это —
+  // регистрации нет. Непустое значение принадлежит токену прежнего выпуска;
+  // отчеканенные для него поставщиком токены действительны до собственного
+  // истечения.
+  //
+  // Адресацией НЕ является ни в каком случае: подписывать `client_assertion`
+  // надо `id` строки.
+  string hydra_client_id = 3 [(length) = "<=128"];
 
   // Свободное описание (например `laptop CLI`). 0-256 символов.
   string description = 4 [(length) = "<=256"];
@@ -55,7 +66,8 @@ message UserOAuthClient {
   // Время создания.
   google.protobuf.Timestamp created_at = 8;
 
-  // SPKI-encoded ECDSA P-256 публичный ключ, зарегистрированный в Hydra как JWK.
+  // SPKI-encoded ECDSA P-256 публичный ключ удостоверения. По нему проверяется
+  // подпись `client_assertion`.
   string public_key_pem = 9;
 
   // JOSE alg зарегистрированного ключа. Всегда "ES256" для новых токенов.

@@ -41,7 +41,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzcascade"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/bootstraptokenwire"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/observability/metrics"
@@ -49,6 +48,7 @@ import (
 	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg/relverdict"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/tokensigner"
 )
 
 // services — собранный набор бизнес-сервисов (один composition-point вместо
@@ -188,7 +188,7 @@ func ownGateWiringComplaint(store *authzcascade.Client) string {
 func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	kachoRepo kachorepo.Repository,
 	metricsReg *metrics.Registry,
-	cfg config.Config, logger *slog.Logger) *services {
+	cfg config.Config, tokenSigner *tokensigner.Signer, logger *slog.Logger) *services {
 	_ = slavePool // kachoRepo is built and passed in by main()
 
 	// relationStore — ТО значение, которое получают собственные стражи iam, и
@@ -305,8 +305,11 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	// тихо ставший своей противоположностью.
 	userBlock := userapp.NewBlockUserUseCase(kachoRepo, opsRepo)
 	userUnblock := userapp.NewUnblockUserUseCase(kachoRepo, opsRepo)
+	// Исключение из аккаунта — пара к приглашению: тот вводит человека в
+	// аккаунт, этот выводит (#1127). Строку личности не трогает.
+	userRemoveFromAccount := userapp.NewRemoveFromAccountUseCase(kachoRepo, opsRepo)
 	userHandler := userapp.NewHandler(userGet, userList, userUpdate, userDelete, userInvite,
-		userBlock, userUnblock).
+		userBlock, userUnblock, userRemoveFromAccount).
 		WithListOperations(shared.NewListOperationsUseCase(opsRepo))
 	internalUserHandler := userapp.NewInternalHandler(userUpsert, userGet, userOnRecovery)
 
@@ -623,37 +626,27 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 	sessionRevocationsHandler := sessionrevapp.NewHandler(
 		sessionrevapp.NewRevokeUseCase(sessionRevAdapter, opsRepo),
 		sessionRevAdapter,
-	).WithRelationStore(relationStore)
+	).WithRelationStore(relationStore).
+		// SessionCutoffOf — отсечка субъекта на полосу БРАУЗЕРНОЙ сессии края.
+		// Читатель ТОТ ЖЕ, которым пользуются хуки выдачи: два ответа об одной
+		// отсечке разошлись бы молча, и разошлись бы там, где расхождение
+		// означает «выведен по одной полосе и работает по другой».
+		WithCutoffReader(kachopg.NewUserTokenRevocationRepo(pool))
 
 	// ── SAKey wiring (Class A static SA keys via Hydra) ───────────────────
 	saKeysH := buildSAKeysHandler(pool, opsRepo, cfg, metricsReg.CompensationRecorder(), logger)
 
 	// ── UserToken wiring (персональные access-токены пользователя via Hydra) ──
-	userTokensH := buildUserTokensHandler(pool, opsRepo, cfg, metricsReg.CompensationRecorder(), logger)
+	userTokensH := buildUserTokensHandler(pool, opsRepo, cfg, logger)
 
 	// ── InternalBootstrapTokenService — non-interactive bootstrap token mint (#58) ──
-	// The requested token audience is the gateway audience (https://{API_DOMAIN});
-	// override via KACHO_IAM_BOOTSTRAP_TOKEN_AUDIENCE, else derived from the domain.
-	bootstrapAudience := os.Getenv("KACHO_IAM_BOOTSTRAP_TOKEN_AUDIENCE")
-	if bootstrapAudience == "" {
-		bootstrapAudience = "https://" + cfg.AuthN.ResolveDomain()
-	}
-	// SigningKeyPEM comes from authn.bootstrap-mint.signing-key-env (default
-	// KACHO_IAM_BOOTSTRAP_SA_PRIVATE_KEY_PEM) — the SAME accessor Config.Validate
-	// uses to decide whether the mint is enabled, so the boot-guard and the
-	// runtime can never disagree about it. Empty → mint disabled (fail-closed).
-	bootstrapTokenH, bootstrapErr := bootstraptokenwire.Build(pool, bootstraptokenwire.BuildConfig{
-		SigningKeyPEM:     cfg.AuthN.BootstrapMint.ResolveSigningKeyPEM(),
-		HydraAdmin:        mustProviderAdminClient(cfg),
-		HydraTokenURL:     cfg.AuthN.ResolveHydraTokenURL(),
-		HydraTokenCAFile:  cfg.AuthN.ResolveHydraTokenCAFile(),
-		AssertionAudience: cfg.AuthN.ResolveHydraTokenEndpoint(),
-		GatewayAudience:   bootstrapAudience,
-		Logger:            logger,
-	})
-	// Same reasoning as mustProviderAdminClient: an anchor that is named but
-	// unreadable is only discoverable by opening the file, and carrying on against
-	// the system root store is the state nobody can see.
+	// Чеканит НАШ подписант: дороги к внешнему поставщику на этом пути нет ни
+	// одной (задача #1119). Сборка — bootstrap_token.go.
+	bootstrapTokenH, bootstrapErr := buildBootstrapTokenHandler(pool, cfg, tokenSigner, logger)
+	// Отказ построения здесь — «контур включён, а выпускать нечем». Это отказ в
+	// СТАРТЕ, а не деградация: стенд, поднявшийся Ready с неработающей чеканкой
+	// бутстрапа, сообщает о беде на первом запросе — то есть тогда, когда
+	// кластер поднимают и чинить уже поздно.
 	if bootstrapErr != nil {
 		log.Fatalf("bootstrap-token mint: %v", bootstrapErr)
 	}
@@ -831,6 +824,27 @@ func mustProviderAdminClient(cfg config.Config) *clients.HydraAdminClient {
 	return c
 }
 
+// saKeyIssuanceIsOurs — переведён ли контур выдачи ключей служебных учёток на
+// свою чеканку (задача #1120, подфаза Ф4б эпика #896).
+//
+// ПРЕДИКАТ — ЭНДПОИНТ ОБМЕНА, А НЕ ПОДПИСАНТ. Ключ служебной учётки предъявляет
+// подписанное утверждение ВНЕШНИЙ вызывающий, и обменивает он его на нашем
+// токен-эндпоинте. Подписант без эндпоинта дал бы ключ, которому некуда пойти:
+// зеркала уже нет, а своей дороги ещё нет. Настройка при этом требует включённой
+// чеканки от включённого эндпоинта (`ClientTokenConfig.Validate`), поэтому
+// «эндпоинт включён» влечёт «подписант есть», а не наоборот.
+//
+// Отдельная функция, а не ветка внутри сборки: выбор полосы — утверждение о том,
+// как посадка выдаёт удостоверение, и его надо уметь спросить, не собирая контур
+// целиком (тот же довод, что у выбора полосы обмена докер-токена).
+func saKeyIssuanceIsOurs(cfg config.Config) bool {
+	// Само условие живёт в настройке (`Config.SAKeyIssuanceIsOurs`), а не здесь:
+	// читателей у него два — эта сборка и страж старта над требованием
+	// связанного токена (задача #1137), — и две копии одного условия разошлись
+	// бы молча. Функция остаётся точкой, которую спрашивают, не собирая контур.
+	return cfg.SAKeyIssuanceIsOurs()
+}
+
 // buildSAKeysHandler wires the SAKeyService handler — Class A static SA-keys
 // via Hydra OAuth2 client_credentials.
 func buildSAKeysHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg config.Config,
@@ -846,15 +860,22 @@ func buildSAKeysHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg config.
 	auditEmitter := kachopg.NewAuditOutboxEmitter(pool)
 
 	issueUC := sakeysapp.NewIssueSAKeyUseCase(saClientRepo, kachopg.NewPoolTxBeginner(pool), hydraAdmin, opsRepo)
+	// Переведён ли контур выдачи ключей на свою чеканку (задача #1120). Решается
+	// ЗДЕСЬ, в единственном месте сборки: «переведён» — свойство посадки, и
+	// use-case его не выводит.
+	ownIssuance := saKeyIssuanceIsOurs(cfg)
+	if ownIssuance {
+		issueUC.WithOwnIssuance()
+	}
 	// Always whitelist the configured registry service audience on every issued
 	// SA-key's Hydra client (#320) — the SAME value the `/iam/token` Docker-
 	// Registry shim requests during the client_credentials exchange
 	// (serve.go passes it as registrytokenwire.BuildConfig.Service). Without it
 	// Hydra rejects a docker-login exchange as an un-whitelisted audience.
 	issueUC.RegistryAudience = cfg.APIServer.RegistryToken.TokenService()
-	// Register exact-subject jwt-bearer trust-grants for federated (k8s/CI) keys —
-	// the same Hydra admin client carries the trust-grant endpoint.
-	issueUC.WithTrustGrantAdmin(hydraAdmin)
+	// Перечень доверенных издателей федеративного ключа — НАША таблица (#1124):
+	// писатель провязан здесь, читает её проверка утверждения на пути запроса.
+	issueUC.WithTrustedIssuerWriter(kachopg.NewTrustedIssuerRepo(pool))
 	// Wire the post-Issue secret redactor. After the Operation is
 	// MarkDone'd with plaintext client_secret, this pg adapter clears the
 	// client_secret field in the proto-marshalled response_data (BYTEA) via a
@@ -894,27 +915,34 @@ func buildSAKeysHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg config.
 	revokeUC.WithLogger(logger)
 	listKeysUC := sakeysapp.NewListSAKeysUseCase(saClientRepo)
 
-	logger.Info("sa_keys wired", "hydra_admin", hydraAdminURL)
+	// Посадка контура печатается ВСЕГДА, включая непереведённую: «зеркала больше
+	// не заводим» иначе невидимо ниоткуда, а оператору, разбирающему выдачу, это
+	// первое, что нужно знать — у ключа, выданного переведённым контуром, записи у
+	// прежнего издателя нет и искать её негде.
+	logger.Info("sa_keys wired",
+		"hydra_admin", hydraAdminURL,
+		"own_issuance", ownIssuance)
 
 	return sakeysapp.NewHandler(issueUC, revokeUC, listKeysUC)
 }
 
 // buildUserTokensHandler wires the UserTokenService handler — персональные
-// access-токены пользователя via Hydra OAuth2 client_credentials + private_key_jwt.
-// Зеркалит buildSAKeysHandler, подставляя User вместо ServiceAccount.
+// access-токены пользователя (поток private_key_jwt к НАШЕМУ издателю).
+//
+// Клиента у внешнего поставщика этот контур не заводит и не снимает (#1121),
+// поэтому ни клиента администрирования поставщика, ни приёмника компенсирующих
+// намерений здесь нет: компенсировать нечего — единственный след выдачи это своя
+// строка, и она либо закоммичена, либо откачена.
 func buildUserTokensHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg config.Config,
-	compObs clients.CompensationEmitObserver, logger *slog.Logger) *usertokensapp.Handler {
+	logger *slog.Logger) *usertokensapp.Handler {
 	userClientRepo := kachopg.NewUserOAuthClientRepo(pool)
-
-	hydraAdminURL := cfg.AuthN.ResolveHydraAdminURL()
-	hydraAdmin := mustProviderAdminClient(cfg)
 
 	// Durable audit_outbox emitter — эмитит iam.user_token.{issued,revoked} строки
 	// внутри worker-tx, атомарно с token-mapping-мутацией (запрет #10). Payload без
 	// key material.
 	auditEmitter := kachopg.NewAuditOutboxEmitter(pool)
 
-	issueUC := usertokensapp.NewIssueUserTokenUseCase(userClientRepo, kachopg.NewPoolTxBeginner(pool), hydraAdmin, opsRepo)
+	issueUC := usertokensapp.NewIssueUserTokenUseCase(userClientRepo, kachopg.NewPoolTxBeginner(pool), opsRepo)
 	// Post-Issue секрет-редактор: после MarkDone с plaintext private_key_pem этот
 	// pg-adapter затирает поле в proto-marshalled response_data (BYTEA) одним UPDATE.
 	issueUC.WithResponseRedactor(kachopg.NewOpsResponseRedactor(pool, "kacho_iam"))
@@ -924,16 +952,11 @@ func buildUserTokensHandler(pool *pgxpool.Pool, opsRepo operations.Repo, cfg con
 	issueUC.WithRedactGrace(cfg.AuthN.UserTokenRedactGrace)
 	// Surface redaction-сбоев detached redaction-goroutine.
 	issueUC.WithLogger(logger)
-	// Durable-приёмник компенсирующих намерений — см. buildSAKeysHandler:
-	// та же сага, тот же провайдер, тот же повод.
-	issueUC.WithCompensationEmitter(clients.NewProviderCompensationOutbox(pool).WithEmitObserver(compObs))
-	revokeUC := usertokensapp.NewRevokeUserTokenUseCase(userClientRepo, kachopg.NewPoolTxBeginner(pool), hydraAdmin, opsRepo)
+	revokeUC := usertokensapp.NewRevokeUserTokenUseCase(userClientRepo, kachopg.NewPoolTxBeginner(pool), opsRepo)
 	revokeUC.WithAuditEmitter(auditEmitter)
-	// Surface the post-commit Hydra orphan-cleanup warning (eventual-consistency).
-	revokeUC.WithLogger(logger)
 	listUC := usertokensapp.NewListUserTokensUseCase(userClientRepo)
 
-	logger.Info("user_tokens wired", "hydra_admin", hydraAdminURL)
+	logger.Info("user_tokens wired", "provider_client_registration", "none")
 
 	return usertokensapp.NewHandler(issueUC, revokeUC, listUC)
 }

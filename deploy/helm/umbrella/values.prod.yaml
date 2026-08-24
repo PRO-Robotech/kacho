@@ -11,10 +11,19 @@
 # deploy#80). A bare `helm install` of the umbrella therefore lands on the
 # insecure dev posture. PRODUCTION DEPLOYMENTS MUST pass this file explicitly:
 #
-#   helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho \
-#     -f ./helm/umbrella/values.prod.yaml \
-#     [-f ./helm/umbrella/values.prorobotech.yaml]   # image-tag overlay (optional)
-#     --wait --timeout 15m
+#   make -C deploy stack-up STACK=prod
+#
+# The chain is NOT written out here on purpose. It is declared once, in
+# deploy/stacks.txt, and the target reads it from there. A command copied into
+# a comment cannot be executed and drifts from the table in silence: that is
+# exactly how a knob declared in a profile failed to reach the cluster — the
+# operator repeated the previous command, the start guard refused, and the
+# service went on serving the PREVIOUS image while the stand looked fully
+# rolled out (#1161).
+#
+# An image-tag overlay on top is passed as an extra argument, e.g.
+#   make -C deploy stack-up STACK=prorobotech
+# which is its own declared stand rather than an optional flag on this one.
 #
 # Layer the image-tag overlay (values.prorobotech.yaml / a per-cluster overlay)
 # AFTER this file. This profile is image-tag-agnostic — it sets ONLY the
@@ -652,12 +661,35 @@ kacho-iam:
       # Край принимает нашего издателя (`api-gateway.tokenAcceptance.platformIssuer`),
       # но токен — только с адресатом `https://` + `kacho.domain`. Перечень называл
       # один адресат — реестр, — поэтому токен нашей чеканки отвергался краем ПО
-      # АДРЕСАТУ, не дойдя до проверки подписи. Умолчание не тронуто: докерная
-      # полоса по-прежнему получает адресат реестра, не называя его.
+      # АДРЕСАТУ, не дойдя до проверки подписи.
+      #
+      # Здесь стояло «умолчание не тронуто: докерная полоса по-прежнему получает
+      # адресат реестра, не называя его». Умолчания больше нет, и оно не было
+      # адресатом реестра: реестр объявлял другое имя (задача #1184).
       clientToken:
         enabled: true
-        allowedAudiences: "https://api.kacho.cloud,registry.kacho.local"
-        defaultAudience: "registry.kacho.local"
+        # АДРЕСАТ ДОКЕРНОЙ ПОЛОСЫ НАЗВАН ЗДЕСЬ ЯВНО (задача #1184). Прежде тут
+        # стоял `registry.kacho.local` — встроенное умолчание процесса iam, — а
+        # реестр объявлял докер-клиенту `registry.in-cloud.io`. Стороны полосы
+        # расходились, и это было НЕВИДИМО: клиент echo-ит услышанное от
+        # реестра, подписант чеканил что просят, перечень сверял третье имя,
+        # которого не называл никто. Со сверкой адресата то же расхождение
+        # означает отказ во входе докера, поэтому перечень называет ДЕЙСТВУЮЩЕЕ
+        # имя полосы — то самое `global.kacho.registry.serviceAud`.
+        allowedAudiences: "https://api.kacho.cloud,registry.in-cloud.io"
+        # АДРЕСАТ ПО УМОЛЧАНИЮ — ЧЛЕН ПЕРЕЧНЯ ВЫШЕ, и это проверяет страж старта.
+        #
+        # Здесь оставалось `registry.kacho.local` — имя снятого встроенного
+        # умолчания процесса iam. Перечень #1184 перевёл на действующее имя
+        # полосы, а его двойника — нет, и две величины ОДНОГО профиля разошлись:
+        # адресат по умолчанию отвергался бы нашей же сверкой, то есть выдача не
+        # работала бы НИ ПРИ КАКОМ входе, где адресат не назван (`api-conventions.md`
+        # §«ДВА ПРАВИЛА ОБ ОДНОМ ПОЛЕ»). Страж старта iam именно это и говорит,
+        # поэтому под не доходил бы до готовности, а стенд — до подъёма.
+        #
+        # Значение — действующее имя полосы, то самое `global.kacho.registry.serviceAud`:
+        # запрос докерной полосы адресата не называет и получает этот.
+        defaultAudience: "registry.in-cloud.io"
         tokenTtl: "15m"
         bodyCeiling: 65536
 # ─── kacho-nlb (L4 NLB control-plane) ───────────────────────────────────────
@@ -1762,11 +1794,3 @@ networkPolicy:
   datastore:
     enabled: true
 
-# ─── Хук выдачи доверия внешним эмитентам — адрес административного API ────
-# Объявляется значением (реестр потребителей его резолвит), поэтому перевод
-# перехода на терминатор его больше не минует. Хук латентен (federationIn
-# выключен), но латентность от проверки не освобождает: гейты рендерят его с
-# включённым ключом.
-hydraTrustGrants:
-  adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
-  adminCaFile: /etc/hydra-admin-ca/ca.crt

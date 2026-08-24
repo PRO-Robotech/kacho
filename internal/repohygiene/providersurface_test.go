@@ -57,7 +57,9 @@ var providerSurfaceLedger = []ProviderLedgerEntry{
 		Surfaces: []string{"/oauth2/token"},
 		Why:      "вывод адреса его токен-эндпоинта из объявленного издателя",
 		Until: "ни один контур выдачи не обменивает утверждение у поставщика: сегодня " +
-			"это ещё делает бутстрап-удостоверение (`bootstraptokenwire`)",
+			"это ещё делает контур выдачи докер-токена на посадке БЕЗ своей чеканки " +
+			"(`registrytokenwire.providerExchangeFor`). Бутстрап-удостоверение из этого " +
+			"перечня выбыло — оно чеканится нами (#1119)",
 	},
 	{
 		File:     "services/iam/internal/clients/hydra_login_sessions.go",
@@ -73,16 +75,8 @@ var providerSurfaceLedger = []ProviderLedgerEntry{
 			"его, и пока чеканит он — зеркало обязано заводиться и сниматься вместе с " +
 			"нашей строкой",
 		Until: "выдача переехала на свою чеканку по ВСЕМ контурам (`user_tokens`, " +
-			"`sa_keys`, `interactive_client`, `bootstrap_token`), и зеркалу нечего " +
-			"отражать",
-	},
-	{
-		File:     "services/iam/internal/clients/hydra_trust_grants.go",
-		Surfaces: []string{"/admin/trust/grants/jwt-bearer/issuers"},
-		Why: "доверие ВНЕШНЕМУ издателю утверждения для федеративного ключа служебной " +
-			"учётной записи: сегодня перечень доверенных издателей ведёт поставщик",
-		Until: "перечень доверенных издателей стал нашей таблицей и читается нашей " +
-			"проверкой утверждения",
+			"`sa_keys`, `interactive_client`), и зеркалу нечего отражать. " +
+			"`bootstrap_token` из перечня выбыл: зеркала он не заводит (#1119)",
 	},
 }
 

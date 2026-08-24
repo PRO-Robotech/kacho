@@ -23,14 +23,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	UserService_Get_FullMethodName            = "/kacho.cloud.iam.v1.UserService/Get"
-	UserService_List_FullMethodName           = "/kacho.cloud.iam.v1.UserService/List"
-	UserService_Invite_FullMethodName         = "/kacho.cloud.iam.v1.UserService/Invite"
-	UserService_Update_FullMethodName         = "/kacho.cloud.iam.v1.UserService/Update"
-	UserService_Delete_FullMethodName         = "/kacho.cloud.iam.v1.UserService/Delete"
-	UserService_Block_FullMethodName          = "/kacho.cloud.iam.v1.UserService/Block"
-	UserService_Unblock_FullMethodName        = "/kacho.cloud.iam.v1.UserService/Unblock"
-	UserService_ListOperations_FullMethodName = "/kacho.cloud.iam.v1.UserService/ListOperations"
+	UserService_Get_FullMethodName               = "/kacho.cloud.iam.v1.UserService/Get"
+	UserService_List_FullMethodName              = "/kacho.cloud.iam.v1.UserService/List"
+	UserService_Invite_FullMethodName            = "/kacho.cloud.iam.v1.UserService/Invite"
+	UserService_Update_FullMethodName            = "/kacho.cloud.iam.v1.UserService/Update"
+	UserService_Delete_FullMethodName            = "/kacho.cloud.iam.v1.UserService/Delete"
+	UserService_RemoveFromAccount_FullMethodName = "/kacho.cloud.iam.v1.UserService/RemoveFromAccount"
+	UserService_Block_FullMethodName             = "/kacho.cloud.iam.v1.UserService/Block"
+	UserService_Unblock_FullMethodName           = "/kacho.cloud.iam.v1.UserService/Unblock"
+	UserService_ListOperations_FullMethodName    = "/kacho.cloud.iam.v1.UserService/ListOperations"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -59,20 +60,122 @@ type UserServiceClient interface {
 	// — IdP `sub`, и иные IdP-projected identity-ключи) hard-immutable: их наличие
 	// в update_mask → INVALID_ARGUMENT "<field> is immutable after User.Create".
 	// Async — возвращает Operation (как Update всех iam-ресурсов).
+	//
+	// WHO may call it is `record_writer` on `iam_user`, and it carries NO
+	// account-level source (#1102). The row is a GLOBAL identity — one per person
+	// for the whole platform — so `labels`, its only mutable field, decides which
+	// selector grants match the person in EVERY Account, not just the one the label
+	// was set from. A label being per-Account in meaning while living on a global
+	// row is its own subject (#1126); the right to write it stopped being an
+	// account-level one already.
+	//
+	// Reading the record keeps its account-level sources on purpose: seeing the
+	// people of your own Account is the Account's business (`v_get` / `v_list`).
 	Update(ctx context.Context, in *UpdateUserRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// Deletes the specified user.
+	// Deletes the specified person: the identity row itself, everywhere.
+	//
+	// WHAT IT IS SCOPED TO, because getting this wrong is irreversible. A `users`
+	// row is NO LONGER a membership. One person is ONE row for the whole platform
+	// (global keys `users_identity_email_uniq` /
+	// `users_identity_external_id_uniq`, migration 20260823050000), and belonging
+	// to Accounts is expressed by `memberships` rows, of which there may be many.
+	// Deleting the row from Account A therefore erases the person in Account B as
+	// well: he loses the identity itself, not his participation in one tenant.
+	//
+	// WHO may call it is `identity_remover` on `iam_user` — the person himself and
+	// the cloud, and nobody else. It used to be `v_delete`, which carried THREE
+	// account-level sources: the per-object grant the reconciler materializes on
+	// an invitee's row, the delegated Account administrator, and the Account
+	// owner. That is strictly worse than the block #1102 already took out of the
+	// Account's hands — a block is reversible, a deletion is not (#1131).
+	//
+	// WHAT THE PERSON WHO INVITED HIM KEEPS is what the owner's directive names —
+	// adding and removing rights in his own Account (`iam_access_binding`), seeing
+	// his people (`v_get` / `v_list` keep their account-level sources
+	// deliberately), and now REMOVING A PERSON FROM HIS ACCOUNT
+	// (`RemoveFromAccount` below, #1127). The last one is what he actually wanted
+	// when he reached for Delete: it drops the membership and leaves the identity
+	// alone.
+	//
+	// SELF-DELETION IS UNAFFECTED and stays permitted: `subject` is a source here.
+	// The narrowing takes away the right to erase SOMEONE ELSE, never one's own
+	// row.
+	//
+	// Deleting an identity that still owns Accounts is refused by the database
+	// (`accounts_owner_fk`) → FAILED_PRECONDITION "User <id> owns accounts and
+	// cannot be deleted"; that is unchanged.
 	Delete(ctx context.Context, in *DeleteUserRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// Blocks the specified User membership: it may no longer authenticate into
-	// the Account that row belongs to.
+	// Removes the specified person from the specified Account: the MEMBERSHIP
+	// goes, the identity stays.
+	//
+	// THE COUNTERPART OF Invite, and the second row of the scope table the owner's
+	// directive (2026-08-23) drew: the person's own fields are his, the block of an
+	// IDENTITY is the cloud's, and who takes part in MY Account is the Account's.
+	// Until this RPC existed the third row had no action at all — `memberships`
+	// carries no suspended state and had no removal verb — so "block him in my
+	// Account" could only be expressed by withdrawing the grants. That is NOT an
+	// exclusion, and the difference is observable: the membership stayed, the
+	// person stayed in the Account's people list, and `account_admission_rate` kept
+	// counting him (#1127).
+	//
+	// WHAT IT MUST NOT TOUCH, stated as a boundary rather than a hope: not one
+	// field of the `iam_user` row. A person removed from Account A goes on working
+	// in Account B with his record unchanged — same id, same email, same state,
+	// same labels. If you need the identity itself gone, that is Delete above, and
+	// it is not an Account-level right.
+	//
+	// ORDER IS ENFORCED BY THE DATABASE, not by the caller's memory: the deferred
+	// constraint trigger `membership_carrying_rights_is_kept` (migration 472002)
+	// refuses to drop a membership that still carries an ACTIVE access binding in
+	// that Account. So "withdraw the rights first, then exclude" is a constraint,
+	// and the refusal is FAILED_PRECONDITION with the grants named, never a silent
+	// orphaning of a right whose bearer is gone.
+	//
+	// IDEMPOTENT: the argument is the ABSENCE of the membership, not a transition.
+	// Excluding a person who is not in that Account succeeds and reports him
+	// absent — the safe direction of this control must never be the one that fails
+	// on retry.
+	//
+	// THE LAST MEMBERSHIP MAY GO TOO. An identity with no memberships is a legal
+	// state in this tree (the row exists, it belongs to no Account) and it is what
+	// a person who has been removed from everywhere IS. Refusing the last removal
+	// would make the Account unable to finish the job it is entitled to do, and
+	// would leave the identity attached to a tenant that no longer wants it.
+	//
+	// WHO may call it is `member_remover` on `account` — by definition the same
+	// circle that may `Invite` into it. Whoever may bring a person in must be able
+	// to take him out; an Account that can only accumulate people is the state this
+	// RPC exists to leave. The two are separate relation NAMES so that narrowing
+	// one without the other is a red gate rather than a silent drift.
+	//
+	// Step-up (acr=2) — same floor as its two neighbours on this surface: Invite,
+	// which admits a person, and AccessBindingService/Revoke, which withdraws a
+	// right. Changing who takes part in an Account is a membership-posture change,
+	// not routine lifecycle.
+	RemoveFromAccount(ctx context.Context, in *RemoveUserFromAccountRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Blocks the specified person: the identity may no longer authenticate
+	// anywhere on the platform.
 	//
 	// WHAT IT IS SCOPED TO, because getting this wrong is a cross-tenant outage.
-	// A `users` row is a MEMBERSHIP — one pair of (identity, Account) — and one
-	// identity holds one row per Account it belongs to. This call blocks ONE such
-	// row. The identity keeps working wherever else it is active: token issuance
-	// walks the membership set and serves the first row that may authenticate, and
-	// refuses only when NONE can. A block therefore belongs to the Account that
-	// issued it, and the admin of Account A cannot switch a person off in
-	// Account B.
+	// A `users` row is NO LONGER a membership. One person is ONE row for the whole
+	// platform (global keys `users_identity_email_uniq` /
+	// `users_identity_external_id_uniq`, migration 20260823050000), and belonging
+	// to Accounts is expressed by `memberships` rows, of which there may be many.
+	// The state written here therefore reaches EVERY Account the person is in:
+	// token issuance walks the membership set and serves the first row that may
+	// authenticate, and now "none can" arrives at once, because the state is one
+	// per person. This is the owner's decision "a block is a property of the
+	// identity" (question В-8 of the IAM-ID-1 acceptance), not a side effect.
+	//
+	// > This paragraph used to say the opposite — that a block belonged to the
+	// > Account that issued it and that the admin of Account A could not switch a
+	// > person off in Account B. That was true until the row stopped being a
+	// > membership, and it outlived its subject. It is restated here rather than
+	// > deleted because it reads as an active security boundary: the next reader
+	// > looking for the radius of a block would have taken it for a fact. The code
+	// > side of the same correction is in the Block use-case
+	// > (`api/user/set_blocked.go`); the observable one is
+	// > `api/audit/user_block_integration_test.go`.
 	//
 	// WHY AN ACTION AND NOT A FIELD ON Update. This is the reason the state was
 	// never ADDED to UpdateUserRequest, not a description of a bug that was there:
@@ -92,16 +195,32 @@ type UserServiceClient interface {
 	// RPC costs exactly what Update costs. It raises assurance for people; it is
 	// not a second authorization gate.
 	//
-	// WHO may call it is `v_update` on `iam_user` — the same relation Update
-	// carries, on the same object, which resolves to the admin of the owning
-	// Account (`super_admin: admin from account`) and, by cascade, to the cloud
-	// admin. Deliberate: whoever may rename a membership may also suspend it, and
-	// by the editor projection may already delete it outright. A relation of its
-	// own would leave every existing operator unable to use the control until
-	// someone re-granted them — the wrong failure mode for something reached for
-	// during an incident. An ordinary member does NOT hold it on their own row
-	// (`subject` feeds `viewer`, not `v_update`), which is what keeps self-lifting
-	// impossible.
+	// WHO may call it is `identity_suspender` on `iam_user` — a relation of its
+	// own, with NO account-level source: neither a per-object grant, nor the
+	// delegated Account administrator, nor the Account owner (#1102).
+	//
+	// It used to be `v_update`, shared with Update, and the argument for sharing
+	// was that whoever may rename a membership may also suspend it. That argument
+	// died with the membership: the state now switches the person off on the whole
+	// platform, so an Account administrator holding it decides for Accounts he has
+	// nothing to do with. What the person who invited him keeps is what the owner's
+	// directive names — adding and removing rights in his own Account
+	// (`iam_access_binding`), plus reading his people (`v_get` / `v_list` keep
+	// their account-level sources deliberately).
+	//
+	// An ordinary member does NOT hold it on their own row, and neither does the
+	// person himself: `subject` is not a source here, so self-lifting is
+	// impossible by construction.
+	//
+	// Per-account exclusion as an ACTION now EXISTS, and that changes who this
+	// paragraph points at. It used to say that no such action existed and that
+	// "block within my Account" therefore had to be expressed by withdrawing the
+	// grants. `RemoveFromAccount` (above, #1127) is that action: it drops the
+	// membership row, leaves the identity untouched, and is gated by
+	// `member_remover` on the ACCOUNT — the same circle that may invite into it.
+	// The sentence is rewritten rather than deleted because the reason it gave is
+	// still true: an Account administrator has no business switching a person off
+	// platform-wide. He simply has his own verb now instead of a substitute.
 	//
 	// IDEMPOTENT: the argument is the STATE, not a transition. Blocking a
 	// membership that is already blocked succeeds and reports it blocked — the
@@ -193,6 +312,16 @@ func (c *userServiceClient) Delete(ctx context.Context, in *DeleteUserRequest, o
 	return out, nil
 }
 
+func (c *userServiceClient) RemoveFromAccount(ctx context.Context, in *RemoveUserFromAccountRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, UserService_RemoveFromAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *userServiceClient) Block(ctx context.Context, in *BlockUserRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(operation.Operation)
@@ -249,20 +378,122 @@ type UserServiceServer interface {
 	// — IdP `sub`, и иные IdP-projected identity-ключи) hard-immutable: их наличие
 	// в update_mask → INVALID_ARGUMENT "<field> is immutable after User.Create".
 	// Async — возвращает Operation (как Update всех iam-ресурсов).
+	//
+	// WHO may call it is `record_writer` on `iam_user`, and it carries NO
+	// account-level source (#1102). The row is a GLOBAL identity — one per person
+	// for the whole platform — so `labels`, its only mutable field, decides which
+	// selector grants match the person in EVERY Account, not just the one the label
+	// was set from. A label being per-Account in meaning while living on a global
+	// row is its own subject (#1126); the right to write it stopped being an
+	// account-level one already.
+	//
+	// Reading the record keeps its account-level sources on purpose: seeing the
+	// people of your own Account is the Account's business (`v_get` / `v_list`).
 	Update(context.Context, *UpdateUserRequest) (*operation.Operation, error)
-	// Deletes the specified user.
+	// Deletes the specified person: the identity row itself, everywhere.
+	//
+	// WHAT IT IS SCOPED TO, because getting this wrong is irreversible. A `users`
+	// row is NO LONGER a membership. One person is ONE row for the whole platform
+	// (global keys `users_identity_email_uniq` /
+	// `users_identity_external_id_uniq`, migration 20260823050000), and belonging
+	// to Accounts is expressed by `memberships` rows, of which there may be many.
+	// Deleting the row from Account A therefore erases the person in Account B as
+	// well: he loses the identity itself, not his participation in one tenant.
+	//
+	// WHO may call it is `identity_remover` on `iam_user` — the person himself and
+	// the cloud, and nobody else. It used to be `v_delete`, which carried THREE
+	// account-level sources: the per-object grant the reconciler materializes on
+	// an invitee's row, the delegated Account administrator, and the Account
+	// owner. That is strictly worse than the block #1102 already took out of the
+	// Account's hands — a block is reversible, a deletion is not (#1131).
+	//
+	// WHAT THE PERSON WHO INVITED HIM KEEPS is what the owner's directive names —
+	// adding and removing rights in his own Account (`iam_access_binding`), seeing
+	// his people (`v_get` / `v_list` keep their account-level sources
+	// deliberately), and now REMOVING A PERSON FROM HIS ACCOUNT
+	// (`RemoveFromAccount` below, #1127). The last one is what he actually wanted
+	// when he reached for Delete: it drops the membership and leaves the identity
+	// alone.
+	//
+	// SELF-DELETION IS UNAFFECTED and stays permitted: `subject` is a source here.
+	// The narrowing takes away the right to erase SOMEONE ELSE, never one's own
+	// row.
+	//
+	// Deleting an identity that still owns Accounts is refused by the database
+	// (`accounts_owner_fk`) → FAILED_PRECONDITION "User <id> owns accounts and
+	// cannot be deleted"; that is unchanged.
 	Delete(context.Context, *DeleteUserRequest) (*operation.Operation, error)
-	// Blocks the specified User membership: it may no longer authenticate into
-	// the Account that row belongs to.
+	// Removes the specified person from the specified Account: the MEMBERSHIP
+	// goes, the identity stays.
+	//
+	// THE COUNTERPART OF Invite, and the second row of the scope table the owner's
+	// directive (2026-08-23) drew: the person's own fields are his, the block of an
+	// IDENTITY is the cloud's, and who takes part in MY Account is the Account's.
+	// Until this RPC existed the third row had no action at all — `memberships`
+	// carries no suspended state and had no removal verb — so "block him in my
+	// Account" could only be expressed by withdrawing the grants. That is NOT an
+	// exclusion, and the difference is observable: the membership stayed, the
+	// person stayed in the Account's people list, and `account_admission_rate` kept
+	// counting him (#1127).
+	//
+	// WHAT IT MUST NOT TOUCH, stated as a boundary rather than a hope: not one
+	// field of the `iam_user` row. A person removed from Account A goes on working
+	// in Account B with his record unchanged — same id, same email, same state,
+	// same labels. If you need the identity itself gone, that is Delete above, and
+	// it is not an Account-level right.
+	//
+	// ORDER IS ENFORCED BY THE DATABASE, not by the caller's memory: the deferred
+	// constraint trigger `membership_carrying_rights_is_kept` (migration 472002)
+	// refuses to drop a membership that still carries an ACTIVE access binding in
+	// that Account. So "withdraw the rights first, then exclude" is a constraint,
+	// and the refusal is FAILED_PRECONDITION with the grants named, never a silent
+	// orphaning of a right whose bearer is gone.
+	//
+	// IDEMPOTENT: the argument is the ABSENCE of the membership, not a transition.
+	// Excluding a person who is not in that Account succeeds and reports him
+	// absent — the safe direction of this control must never be the one that fails
+	// on retry.
+	//
+	// THE LAST MEMBERSHIP MAY GO TOO. An identity with no memberships is a legal
+	// state in this tree (the row exists, it belongs to no Account) and it is what
+	// a person who has been removed from everywhere IS. Refusing the last removal
+	// would make the Account unable to finish the job it is entitled to do, and
+	// would leave the identity attached to a tenant that no longer wants it.
+	//
+	// WHO may call it is `member_remover` on `account` — by definition the same
+	// circle that may `Invite` into it. Whoever may bring a person in must be able
+	// to take him out; an Account that can only accumulate people is the state this
+	// RPC exists to leave. The two are separate relation NAMES so that narrowing
+	// one without the other is a red gate rather than a silent drift.
+	//
+	// Step-up (acr=2) — same floor as its two neighbours on this surface: Invite,
+	// which admits a person, and AccessBindingService/Revoke, which withdraws a
+	// right. Changing who takes part in an Account is a membership-posture change,
+	// not routine lifecycle.
+	RemoveFromAccount(context.Context, *RemoveUserFromAccountRequest) (*operation.Operation, error)
+	// Blocks the specified person: the identity may no longer authenticate
+	// anywhere on the platform.
 	//
 	// WHAT IT IS SCOPED TO, because getting this wrong is a cross-tenant outage.
-	// A `users` row is a MEMBERSHIP — one pair of (identity, Account) — and one
-	// identity holds one row per Account it belongs to. This call blocks ONE such
-	// row. The identity keeps working wherever else it is active: token issuance
-	// walks the membership set and serves the first row that may authenticate, and
-	// refuses only when NONE can. A block therefore belongs to the Account that
-	// issued it, and the admin of Account A cannot switch a person off in
-	// Account B.
+	// A `users` row is NO LONGER a membership. One person is ONE row for the whole
+	// platform (global keys `users_identity_email_uniq` /
+	// `users_identity_external_id_uniq`, migration 20260823050000), and belonging
+	// to Accounts is expressed by `memberships` rows, of which there may be many.
+	// The state written here therefore reaches EVERY Account the person is in:
+	// token issuance walks the membership set and serves the first row that may
+	// authenticate, and now "none can" arrives at once, because the state is one
+	// per person. This is the owner's decision "a block is a property of the
+	// identity" (question В-8 of the IAM-ID-1 acceptance), not a side effect.
+	//
+	// > This paragraph used to say the opposite — that a block belonged to the
+	// > Account that issued it and that the admin of Account A could not switch a
+	// > person off in Account B. That was true until the row stopped being a
+	// > membership, and it outlived its subject. It is restated here rather than
+	// > deleted because it reads as an active security boundary: the next reader
+	// > looking for the radius of a block would have taken it for a fact. The code
+	// > side of the same correction is in the Block use-case
+	// > (`api/user/set_blocked.go`); the observable one is
+	// > `api/audit/user_block_integration_test.go`.
 	//
 	// WHY AN ACTION AND NOT A FIELD ON Update. This is the reason the state was
 	// never ADDED to UpdateUserRequest, not a description of a bug that was there:
@@ -282,16 +513,32 @@ type UserServiceServer interface {
 	// RPC costs exactly what Update costs. It raises assurance for people; it is
 	// not a second authorization gate.
 	//
-	// WHO may call it is `v_update` on `iam_user` — the same relation Update
-	// carries, on the same object, which resolves to the admin of the owning
-	// Account (`super_admin: admin from account`) and, by cascade, to the cloud
-	// admin. Deliberate: whoever may rename a membership may also suspend it, and
-	// by the editor projection may already delete it outright. A relation of its
-	// own would leave every existing operator unable to use the control until
-	// someone re-granted them — the wrong failure mode for something reached for
-	// during an incident. An ordinary member does NOT hold it on their own row
-	// (`subject` feeds `viewer`, not `v_update`), which is what keeps self-lifting
-	// impossible.
+	// WHO may call it is `identity_suspender` on `iam_user` — a relation of its
+	// own, with NO account-level source: neither a per-object grant, nor the
+	// delegated Account administrator, nor the Account owner (#1102).
+	//
+	// It used to be `v_update`, shared with Update, and the argument for sharing
+	// was that whoever may rename a membership may also suspend it. That argument
+	// died with the membership: the state now switches the person off on the whole
+	// platform, so an Account administrator holding it decides for Accounts he has
+	// nothing to do with. What the person who invited him keeps is what the owner's
+	// directive names — adding and removing rights in his own Account
+	// (`iam_access_binding`), plus reading his people (`v_get` / `v_list` keep
+	// their account-level sources deliberately).
+	//
+	// An ordinary member does NOT hold it on their own row, and neither does the
+	// person himself: `subject` is not a source here, so self-lifting is
+	// impossible by construction.
+	//
+	// Per-account exclusion as an ACTION now EXISTS, and that changes who this
+	// paragraph points at. It used to say that no such action existed and that
+	// "block within my Account" therefore had to be expressed by withdrawing the
+	// grants. `RemoveFromAccount` (above, #1127) is that action: it drops the
+	// membership row, leaves the identity untouched, and is gated by
+	// `member_remover` on the ACCOUNT — the same circle that may invite into it.
+	// The sentence is rewritten rather than deleted because the reason it gave is
+	// still true: an Account administrator has no business switching a person off
+	// platform-wide. He simply has his own verb now instead of a substitute.
 	//
 	// IDEMPOTENT: the argument is the STATE, not a transition. Blocking a
 	// membership that is already blocked succeeds and reports it blocked — the
@@ -347,6 +594,9 @@ func (UnimplementedUserServiceServer) Update(context.Context, *UpdateUserRequest
 }
 func (UnimplementedUserServiceServer) Delete(context.Context, *DeleteUserRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedUserServiceServer) RemoveFromAccount(context.Context, *RemoveUserFromAccountRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveFromAccount not implemented")
 }
 func (UnimplementedUserServiceServer) Block(context.Context, *BlockUserRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Block not implemented")
@@ -468,6 +718,24 @@ func _UserService_Delete_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_RemoveFromAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveUserFromAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).RemoveFromAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_RemoveFromAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).RemoveFromAccount(ctx, req.(*RemoveUserFromAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _UserService_Block_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(BlockUserRequest)
 	if err := dec(in); err != nil {
@@ -548,6 +816,10 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _UserService_Delete_Handler,
+		},
+		{
+			MethodName: "RemoveFromAccount",
+			Handler:    _UserService_RemoveFromAccount_Handler,
 		},
 		{
 			MethodName: "Block",

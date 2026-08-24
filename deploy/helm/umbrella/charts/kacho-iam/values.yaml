@@ -129,6 +129,14 @@ kacho:
       # default and deliberately NOT flipped here: it only affects keys issued
       # after it is on, so it must be enabled first, existing keys rotated, and
       # only then may the gateway require binding.
+      #
+      # AND IT HAS A READER ONLY WHILE THE CONTOUR IS NOT TRANSLATED (#1137).
+      # Binding is registration metadata for the client MIRROR at the previous
+      # issuer. A profile that turns on `config.authn.clientToken.enabled`
+      # creates no mirror at all, so there this knob is read by nothing — the
+      # operator would declare a control that nothing enforces. iam REFUSES TO
+      # START in that combination, and tests/helm/machine-credential-posture-test.sh
+      # refuses the profile before any pod is created.
       bindDpop: false
   hooks:
     tokenHookSecretName: kacho-iam-hook-token
@@ -318,9 +326,19 @@ config:
   apiServer:
     gracefulShutdown: 10s
     # ─── Docker Registry v2 token shim (`/iam/token`, :9096) ──────────────────
-    # Пусто → built-in дефолты (service: registry.kacho.local / issuer:
-    # api.kacho.local), пригодные лишь для локального стенда. На развёрнутом
-    # окружении ОБА поля обязаны нести РЕАЛЬНЫЙ публичный хост реестра.
+    # `issuer` пусто → built-in умолчание (api.kacho.local), пригодное лишь для
+    # локального стенда; на развёрнутом окружении оно обязано нести РЕАЛЬНЫЙ
+    # публичный хост реестра.
+    #
+    # `service` УМОЛЧАНИЯ НЕ ИМЕЕТ — ни здесь, ни в процессе (задача #1184).
+    # Это имя службы РЕЕСТРА, у него две стороны, и объявляет его посадка ОДИН
+    # раз: `global.kacho.registry.serviceAud`. Отсюда оно и приезжает
+    # (см. kacho-iam.laneServiceAud). Встроенное умолчание, стоявшее прежде,
+    # было вторым объявлением того же предмета и молча расходилось с именем,
+    # которое реестр называет докер-клиенту. Задать ключ ниже можно — но только
+    # при ОДИНОЧНОЙ установке чарта; задать его И источник, но по-разному, —
+    # отказ рендера с обеими величинами. Полоса поднята, а имени нет нигде —
+    # отказ старта процесса.
     #
     # `service` — это НЕ только fallback для `?service=`: оно же уходит в
     # issueUC.RegistryAudience (#321) → whitelist'ится как audience в Hydra-клиенте

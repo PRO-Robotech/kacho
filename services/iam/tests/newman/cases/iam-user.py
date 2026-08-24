@@ -3,7 +3,8 @@
 
 """Case-set для UserService.
 
-Covered RPCs:  Get, List, Invite, Delete (public UserService).
+Covered RPCs:  Get, List, Invite, Delete + глаголы-действия :block / :unblock /
+  :removeFromAccount (public UserService).
 Not covered here: InternalUserService.UpsertFromIdentity, InternalUserService.Get —
   those are internal-port-only RPCs covered in iam-internal-only-check.py.
 
@@ -96,18 +97,38 @@ def assert_iam_operation_envelope():
 # Определение стоит ЗДЕСЬ, а не рядом с первым потребителем: потребителей теперь
 # двое — кейсы `:block`/`:unblock` ниже и IAM-USR-INV-FLOW-INVITEE-GETS-ACCESS
 # выше, — а python читает файл сверху вниз.
-def _invite_probe(var: str, email_tag: str):
+#
+# `with_grant` — НЕСУЩИЙ параметр, а не удобство вызывающего. Пара «проект +
+# роль» заводит членство И ЖИВУЮ ВЫДАЧУ на него, а членство, несущее живую
+# выдачу, НЕ СНИМАЕТСЯ: отложенный триггер `membership_carrying_rights_is_kept`
+# (миграция 472002) отвергает снятие НА КОММИТЕ, потому что порядок «сперва
+# права, потом участие» — конструкция базы, а не дисциплина вызывающего (#1127).
+#
+# Поэтому кейсу, чей предмет — само ИСКЛЮЧЕНИЕ, нужна жертва БЕЗ выдачи: иначе
+# он падает на страже, к его предмету отношения не имеющем, и называет виновником
+# невиновного. Тот же приём и по той же причине стоит у IAM-USR-DL-CRUD-OK — там
+# строку личности держит RESTRICT по тем же самым выдачам.
+#
+# Умолчание оставлено ПРЕЖНИМ (`True`) намеренно: прочие потребители приглашают
+# РАДИ доступа, и снятие роли сменило бы предмет их кейсов. Сам страж при этом
+# покрытия не теряет — он утверждается через край отдельным кейсом
+# IAM-USR-EXCL-NEG-LIVE-GRANT, где живая выдача и есть предмет.
+def _invite_probe(var: str, email_tag: str, with_grant: bool = True):
+    body = {
+        "accountId": "{{accountAId}}",
+        "email": f"{email_tag}-{{{{runId}}}}@kacho.local",
+    }
+    if with_grant:
+        # `role_id` обязателен ТОГДА И ТОЛЬКО ТОГДА, когда назван `project_id`
+        # (см. InviteUserInput): половина пары — синхронный INVALID_ARGUMENT.
+        body["projectId"] = "{{projectA1Id}}"
+        body["roleId"] = ROLE_VIEW
     return [
         Step(
             name=f"invite-{email_tag}",
             method="POST",
             path="/iam/v1/users:invite",
-            body={
-                "accountId": "{{accountAId}}",
-                "projectId": "{{projectA1Id}}",
-                "email": f"{email_tag}-{{{{runId}}}}@kacho.local",
-                "roleId": ROLE_VIEW,
-            },
+            body=body,
             auth="jwtAccountAdminAStepUp",
             test_script=[
                 *assert_answered(f"invite-{email_tag}"),
@@ -1069,14 +1090,35 @@ CASES.append(Case(
 #
 # So the fixture is the defect, not the product: the case has to target a user that
 # is genuinely deletable. It self-seeds one — an invite WITHOUT `roleId` creates a
-# PENDING user row and no AccessBinding — and deletes it as the account owner (the
-# non-self branch of the Delete guard: owner of the target's account). Run-unique
-# email keeps it idempotent across runs.
+# PENDING user row and no AccessBinding. Run-unique email keeps it idempotent
+# across runs.
+#
+# ЗДЕСЬ УДАЛЯЛ РАСПОРЯДИТЕЛЬ АККАУНТА, И ТАКОЙ ПОЛОСЫ БОЛЬШЕ НЕТ (#1131). Абзац
+# выше называл её «non-self branch of the Delete guard: owner of the target's
+# account» — на дереве этой ветви не осталось: строка `iam_user` ГЛОБАЛЬНА, одна
+# на все аккаунты человека, поэтому её снятие из аккаунта A стирает человека и в
+# аккаунте B. Снятие переведено на `iam_user.identity_remover`, у которого
+# источников уровня аккаунта НЕТ ВОВСЕ: круг — сам человек либо надзор облака.
+# Ни делегированный распорядитель, ни ВЛАДЕЛЕЦ аккаунта туда не входят, так что
+# смена предъявителя на владельца прежнюю редакцию не спасла бы.
+#
+# ПОЧЕМУ ЭТО НЕ ОСЛАБЛЕНИЕ. Утверждения не тронуты: операция обязана ЗАВЕРШИТЬСЯ
+# УСПЕХОМ, и человека после этого не должно быть. Сменился предъявитель — с того,
+# кто права лишён, на того, кто им располагает; иначе кейс проверял бы отказ
+# модели, а не удаление. Отказ распорядителю аккаунта не потерян и утверждается
+# отдельно — `IAM-USR-RMID-NEG-ACCOUNT-ADMIN::identity-delete-denied`.
+#
+# ЧТЕНИЕ ПОСЛЕ УДАЛЕНИЯ — ТЕМ ЖЕ ПРЕДЪЯВИТЕЛЕМ, и это чинит вторую половину
+# дефекта (b), названного выше. Прежде «gone» снимал посторонний принципал, у
+# которого 403/404 приходит независимо от того, существует ли строка, — то есть
+# утверждение удовлетворялось скрытием существования, а не удалением. У надзора
+# облака путь к строке есть всегда, поэтому его `404` означает ровно то, что
+# кейс обещает: строки нет.
 # ---------------------------------------------------------------------------
 
 CASES.append(Case(
     id="IAM-USR-DL-CRUD-OK",
-    title="Delete a binding-free user as the owner of its account → Operation SUCCEEDS, Get returns 404",
+    title="Delete a binding-free user as the cloud administrator → Operation SUCCEEDS, Get returns 404",
     classes=["CRUD"],
     priority="P0",
     steps=[
@@ -1116,7 +1158,7 @@ CASES.append(Case(
             name="delete-user",
             method="DELETE",
             path="/iam/v1/users/{{delUserId}}",
-            auth="jwtAccountAdminA",
+            auth="jwtBootstrap",
             test_script=[
                 *assert_status(200),
                 *assert_iam_operation_envelope(),
@@ -1129,7 +1171,7 @@ CASES.append(Case(
         assert_op_success(),
         # Poll the GET until the user is actually gone (async delete + FGA
         # tuple removal can lag the Operation→done a beat).
-        get_until_gone("/iam/v1/users/{{delUserId}}", "User"),
+        get_until_gone("/iam/v1/users/{{delUserId}}", "User", auth="jwtBootstrap"),
     ],
 ))
 
@@ -1252,8 +1294,20 @@ CASES.append(Case(
 # IAM-USR-UP-CRUD-OK-LABELS — UpdateUser sets labels (updateMask=labels) →
 # Operation done, Get confirms labels round-trip.
 # The public UpdateUser RPC: labels are the only mutable field.
-# jwtAccountAdminA is the owner of accountAId and of userAAAId's home account, so
-# the owner-matches-principal authz passes.
+#
+# ДЕЙСТВУЮЩЕЕ ЛИЦО — АДМИНИСТРАТОР ОБЛАКА, и это изменение #1102, а не выбор
+# удобной учётки. Строка `iam_user` — ГЛОБАЛЬНАЯ личность, одна на все аккаунты
+# человека, поэтому её метки решают состав селекторных выдач в КАЖДОМ его
+# аккаунте. Правка записи перестала быть правом уровня аккаунта: край гейтит её
+# отношением `record_writer`, у которого нет ни пообъектной выдачи, ни
+# администратора аккаунта, ни его владельца.
+#
+# Прежде здесь стоял `jwtAccountAdminA`, и кейс пиннил ровно то поведение,
+# которое директива владельца запрещает. Он не удалён, а ПЕРЕНАЦЕЛЕН: путь
+# правки обязан остаться проверенным — иначе «отказано всем» стало бы
+# неотличимо от «работает у того, кому положено». Отказ распорядителю аккаунта
+# утверждается отдельно — IAM-USR-GOV-NEG-ACCOUNT-ADMIN ниже.
+#
 # verifies: labels set via update_mask round-trip through users.labels.
 # ---------------------------------------------------------------------------
 
@@ -1268,19 +1322,19 @@ CASES.append(Case(
             method="PATCH",
             path="/iam/v1/users/{{userAAAId}}",
             body={"labels": {"tier": "gold-{{runId}}"}, "updateMask": "labels"},
-            auth="jwtAccountAdminA",
+            auth="jwtBootstrap",
             test_script=[
                 *assert_status(200),
                 *assert_iam_operation_envelope(),
                 *save_from_response("j.id", "opId"),
             ],
         ),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtBootstrap"),
         Step(
             name="get-confirms-labels",
             method="GET",
             path="/iam/v1/users/{{userAAAId}}",
-            auth="jwtAccountAdminA",
+            auth="jwtBootstrap",
             test_script=[
                 *assert_status(200),
                 "pm.test('User.labels.tier updated', () => {",
@@ -1311,7 +1365,7 @@ CASES.append(Case(
             method="PATCH",
             path="/iam/v1/users/{{userAAAId}}",
             body={"updateMask": "external_id"},
-            auth="jwtAccountAdminA",
+            auth="jwtBootstrap",
             test_script=[
                 *assert_status(400),
                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
@@ -1377,7 +1431,25 @@ CASES.append(Case(
             method="POST",
             path="/iam/v1/users/{{blkPendingId}}:block",
             body={},
-            auth="jwtAccountAdminAStepUp",
+            # ЗДЕСЬ СТОЯЛ РАСПОРЯДИТЕЛЬ АККАУНТА, И ОН БОЛЬШЕ НЕ ДЕРЖИТ ЭТОГО
+            # ПРАВА (#1102). Запрет пишется в состояние ГЛОБАЛЬНОЙ строки и
+            # останавливает выдачу удостоверений человеку ВЕЗДЕ, поэтому
+            # `iam_user.identity_suspender` источников уровня аккаунта не имеет:
+            # круг — надзор облака, и только он.
+            #
+            # ПОЧЕМУ ЭТО НЕ ОСЛАБЛЕНИЕ, А ВОССТАНОВЛЕНИЕ ПРЕДМЕТА. Кейс утверждает,
+            # что решает СОСТОЯНИЕ: `400`+`code=9`+«is not active». Отказ модели
+            # (`403`+`code=7`) до состояния не доходит вовсе, то есть на прежнем
+            # предъявителе кейс перестал проверять то, ради чего написан. Отказ
+            # распорядителю аккаунта при этом НЕ потерян и утверждается по-прежнему —
+            # `IAM-USR-GOV-NEG-ACCOUNT-ADMIN::identity-block-denied`, тем же
+            # предъявителем `jwtAccountAdminAStepUp`.
+            #
+            # Порог повышения (`required_acr_min=2`) этому предъявителю не помеха и
+            # не подделка: `grpcsrv.EvaluateStepUp` ПЕРВОЙ ветвью освобождает
+            # машинного принципала до всякого сравнения acr, а `jwtBootstrap` —
+            # служебная учётка кластерного администратора.
+            auth="jwtBootstrap",
             test_script=[
                 *assert_answered("block-pending"),
                 # 400/9 — единственный исход, который НЕЛЬЗЯ получить ни промахом
@@ -1436,7 +1508,10 @@ CASES.append(Case(
             method="POST",
             path="/iam/v1/users/{{ubkPendingId}}:unblock",
             body={},
-            auth="jwtAccountAdminAStepUp",
+            # Надзор облака — по той же причине, что у парного кейса выше
+            # (`identity_suspender` без источников уровня аккаунта, #1102); здесь
+            # она не пересказывается, иначе заведутся два места об одном предмете.
+            auth="jwtBootstrap",
             test_script=[
                 *assert_answered("unblock-pending"),
                 # 400, не 412 — см. парный кейс выше и таблицу отображения в
@@ -1582,6 +1657,533 @@ CASES.append(Case(
                 "});",
             ],
         ),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# IAM-USR-GOV-NEG-ACCOUNT-ADMIN — пригласивший распоряжается ПРАВАМИ, но не
+# СТРОКОЙ ЛИЧНОСТИ (#1102, вторая половина директивы владельца 2026-08-23).
+#
+# Директива дословно: «тот кто пригласил может только удалить/добавить права».
+#
+# ПОЧЕМУ ПОЛОЖИТЕЛЬНОЕ ИДЁТ ПЕРВЫМ, А НЕ ДЛЯ ПОЛНОТЫ. Отказ, снятый в одиночку,
+# зеленеет одинаково и на верном дереве, и на дереве, где у распорядителя аккаунта
+# отняли всё. Поэтому кейс начинается с того, что директива ему ОСТАВЛЯЕТ:
+# приглашение с ролью — это выдача прав, создаваемая атомарно со строкой
+# приглашения, то есть ровно «добавить права» в своём аккаунте. Шаг несёт
+# `assert_op_success`, поэтому «права выданы» утверждается ИСХОДОМ операции, а не
+# фактом вызова.
+#
+# ЧТО ИМЕННО ОТКАЗЫВАЕТСЯ. Правка записи и запрет личности. Обе — распоряжение
+# ГЛОБАЛЬНОЙ строкой: у человека она одна на все его аккаунты, поэтому метки
+# решают состав селекторных выдач в каждом из них, а состояние решает вход на
+# платформу целиком. Распорядитель ОДНОГО аккаунта, получив это право, решал бы
+# за аккаунты, к которым отношения не имеет.
+#
+# ЖЕРТВА НЕ ТРОНУТА — отдельным шагом. Отказ, у которого остался эффект, не
+# отказ; и тот же шаг несёт второй положительный контроль: ЧИТАТЬ своих людей
+# распорядитель аккаунта по-прежнему вправе (`v_get` источники уровня аккаунта
+# сохраняет намеренно). Если бы сужение задело чтение, кейс покраснел бы здесь.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="IAM-USR-GOV-NEG-ACCOUNT-ADMIN",
+    title="Пригласивший добавляет права в своём аккаунте — успех; правит запись "
+          "человека и запрещает его — отказ",
+    classes=["AUTHZ", "NEG"],
+    priority="P0",
+    steps=[
+        # ПОЛОЖИТЕЛЬНОЕ: «добавить права» — приглашение с ролью.
+        *_invite_probe("govVictimId", "govprobe"),
+        # ОТРИЦАНИЕ 1 — правка записи.
+        Step(
+            name="record-edit-denied",
+            method="PATCH",
+            path="/iam/v1/users/{{govVictimId}}",
+            body={"labels": {"tier": "gold-{{runId}}"}, "updateMask": "labels"},
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_answered("record-edit-denied"),
+                *assert_scoped_authz_deny(
+                    "iam.users.update",
+                    "'iam_user:' + pm.environment.get('govVictimId')",
+                ),
+            ],
+        ),
+        # ОТРИЦАНИЕ 2 — запрет личности. Ступень доверия здесь ни при чём:
+        # предъявитель несёт её (`jwtAccountAdminAStepUp`), поэтому отказ приходит
+        # от модели прав, а не от порога acr — иначе кейс утверждал бы о пороге.
+        Step(
+            name="identity-block-denied",
+            method="POST",
+            path="/iam/v1/users/{{govVictimId}}:block",
+            body={},
+            auth="jwtAccountAdminAStepUp",
+            test_script=[
+                *assert_answered("identity-block-denied"),
+                *assert_scoped_authz_deny(
+                    "iam.users.block",
+                    "'iam_user:' + pm.environment.get('govVictimId')",
+                ),
+            ],
+        ),
+        # ЖЕРТВА НЕ ТРОНУТА + чтение своих людей осталось.
+        Step(
+            name="victim-untouched-and-still-readable",
+            method="GET",
+            path="/iam/v1/users/{{govVictimId}}",
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_answered("victim-untouched-and-still-readable"),
+                *assert_status(200),
+                "pm.test('читать своих людей распорядитель аккаунта по-прежнему вправе', () => {",
+                "  const j = pm.response.json();",
+                "  pm.expect(j.id, JSON.stringify(j)).to.eql(pm.environment.get('govVictimId'));",
+                "});",
+                "pm.test('состояние не изменилось: запрет не доехал', () => {",
+                "  const j = pm.response.json();",
+                "  pm.expect(j.inviteStatus, JSON.stringify(j)).to.eql('PENDING');",
+                "});",
+                "pm.test('метки не изменились: правка не доехала', () => {",
+                "  const j = pm.response.json();",
+                "  const labels = j.labels || {};",
+                "  pm.expect(labels.tier, JSON.stringify(j)).to.be.undefined;",
+                "});",
+            ],
+        ),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# IAM-USR-EXCL-CRUD-OK — распорядитель аккаунта ВЫВОДИТ человека из своего
+# аккаунта, и человек при этом остаётся человеком (#1127).
+#
+# ПРЕДМЕТ. Вторая строка таблицы областей директивы владельца (2026-08-23): кто
+# участвует в МОЁМ аккаунте — дело аккаунта. До этого изменения действия не было
+# вовсе, и «исключить» выражалось снятием выдач: членство оставалось, человек
+# оставался в списке людей аккаунта, а предел приёма продолжал его считать.
+#
+# ПАРА, А НЕ ОДИН ШАГ. Кейс утверждает ОБА конца: человека в аккаунте больше нет
+# (список аккаунта его не показывает) И человек по-прежнему существует как
+# личность (надзор облака читает его строку). Первое без второго зеленело бы и на
+# дереве, где исключение стирает личность целиком, — то есть на дефекте, который
+# #1131 закрывает соседним изменением.
+#
+# СПИСОК — ИМЕННО ТОТ ПРЕДИКАТ, который менялся: `UserService.List` сужается
+# ЧЛЕНСТВАМИ, поэтому «его нет в списке аккаунта» есть наблюдаемое следствие
+# снятой строки членства, а не пересказ того же вызова.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="IAM-USR-EXCL-CRUD-OK",
+    title="Пригласивший исключает человека из своего аккаунта: списка аккаунта он "
+          "больше не в нём, а личность цела",
+    classes=["CRUD", "AUTHZ"],
+    priority="P0",
+    steps=[
+        # Свой расходуемый приглашённый: чужая фикстура сделала бы порядок кейсов
+        # контрактом.
+        #
+        # БЕЗ ВЫДАЧИ, и это предмет, а не мелочь фикстуры. Предмет кейса —
+        # ИСКЛЮЧЕНИЕ; приглашение с ролью завело бы вдобавок живую выдачу, а
+        # членство, её несущее, страж `membership_carrying_rights_is_kept`
+        # (миграция 472002) снять не даёт — кейс падал бы на порядке «сперва
+        # права, потом участие», к его предмету отношения не имеющем. Сам
+        # порядок утверждается там, где он и есть предмет:
+        # IAM-USR-EXCL-NEG-LIVE-GRANT.
+        *_invite_probe("exclVictimId", "exclprobe", with_grant=False),
+        # ПРЕДПОСЫЛКА: он ДЕЙСТВИТЕЛЬНО в списке аккаунта. Без неё «его нет»
+        # ниже истинно и на дереве, где список сломан целиком.
+        Step(
+            name="victim-is-listed-before",
+            method="GET",
+            path="/iam/v1/users?accountId={{accountAId}}&pageSize=1000",
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_answered("victim-is-listed-before"),
+                *assert_status(200),
+                "pm.test('ПРЕДПОСЫЛКА: приглашённый есть в списке аккаунта', () => {",
+                "  const j = pm.response.json();",
+                "  const ids = (j.users || []).map(u => u.id);",
+                "  pm.expect(ids, JSON.stringify(j)).to.include(pm.environment.get('exclVictimId'));",
+                "});",
+            ],
+        ),
+        # ДЕЙСТВИЕ. Ступень доверия несётся предъявителем: порог acr=2 у этого RPC
+        # тот же, что у приглашения и у отзыва выдачи, и кейс утверждает решение
+        # МОДЕЛИ, а не порог.
+        Step(
+            name="exclude-from-account",
+            method="POST",
+            path="/iam/v1/users/{{exclVictimId}}:removeFromAccount",
+            body={"accountId": "{{accountAId}}"},
+            auth="jwtAccountAdminAStepUp",
+            test_script=[
+                *assert_answered("exclude-from-account"),
+                *assert_status(200),
+                *assert_iam_operation_envelope(),
+                *save_from_response("j.id", "opId"),
+            ],
+        ),
+        poll_operation_until_done(auth="jwtAccountAdminA"),
+        # Исход операции, а не факт вызова: предвыделенный id приезжает в
+        # metadata и у операции, завершившейся ошибкой.
+        assert_op_success(auth="jwtAccountAdminA"),
+        # ПОЛОВИНА ПЕРВАЯ — его нет в аккаунте.
+        Step(
+            name="victim-is-not-listed-after",
+            method="GET",
+            path="/iam/v1/users?accountId={{accountAId}}&pageSize=1000",
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_answered("victim-is-not-listed-after"),
+                *assert_status(200),
+                "pm.test('исключённого в списке аккаунта больше нет', () => {",
+                "  const j = pm.response.json();",
+                "  const ids = (j.users || []).map(u => u.id);",
+                "  pm.expect(ids, JSON.stringify(j)).to.not.include(pm.environment.get('exclVictimId'));",
+                "});",
+                "pm.test('КОНТРОЛЬ: список не опустел — снято одно членство, а не все', () => {",
+                "  const j = pm.response.json();",
+                "  pm.expect((j.users || []).length, JSON.stringify(j)).to.be.above(0);",
+                "});",
+            ],
+        ),
+        # ПОЛОВИНА ВТОРАЯ — личность цела. Спрашивает НАДЗОР ОБЛАКА: у
+        # распорядителя аккаунта после исключения нет пути к этой строке, и это
+        # правильно, но тогда его отказ ничего не сказал бы о существовании.
+        Step(
+            name="identity-survived",
+            method="GET",
+            path="/iam/v1/users/{{exclVictimId}}",
+            auth="jwtBootstrap",
+            test_script=[
+                *assert_answered("identity-survived"),
+                *assert_status(200),
+                "pm.test('человек остался человеком: исключение сняло членство, не личность', () => {",
+                "  const j = pm.response.json();",
+                "  pm.expect(j.id, JSON.stringify(j)).to.eql(pm.environment.get('exclVictimId'));",
+                "});",
+            ],
+        ),
+        # ИДЕМПОТЕНТНОСТЬ. Аргумент — ОТСУТСТВИЕ членства, а не переход:
+        # направление, делающее систему строже, не может падать на повторе.
+        Step(
+            name="exclude-again-is-idempotent",
+            method="POST",
+            path="/iam/v1/users/{{exclVictimId}}:removeFromAccount",
+            body={"accountId": "{{accountAId}}"},
+            auth="jwtAccountAdminAStepUp",
+            test_script=[
+                *assert_answered("exclude-again-is-idempotent"),
+                *assert_status(200),
+                *assert_iam_operation_envelope(),
+                *save_from_response("j.id", "opId"),
+            ],
+        ),
+        poll_operation_until_done(auth="jwtAccountAdminA"),
+        assert_op_success(auth="jwtAccountAdminA"),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# IAM-USR-EXCL-NEG-CROSS-ACCOUNT — исключать можно ИЗ СВОЕГО аккаунта, и область
+# решения не выходит за его границу (#1127).
+#
+# Отрицание к кейсу выше и его необходимая половина: право, проверенное только
+# положительно, зеленеет и на отношении, разрешающем всё.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="IAM-USR-EXCL-NEG-CROSS-ACCOUNT",
+    title="Распорядитель аккаунта A исключает из аккаунта B — отказ",
+    classes=["AUTHZ", "NEG"],
+    priority="P0",
+    steps=[
+        Step(
+            name="cross-account-exclusion-denied",
+            method="POST",
+            path="/iam/v1/users/{{userINVId}}:removeFromAccount",
+            body={"accountId": "{{accountBId}}"},
+            auth="jwtAccountAdminAStepUp",
+            test_script=[
+                *assert_answered("cross-account-exclusion-denied"),
+                *assert_scoped_authz_deny(
+                    "iam.users.removeFromAccount",
+                    "'account:' + pm.environment.get('accountBId')",
+                ),
+            ],
+        ),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# IAM-USR-EXCL-NEG-LIVE-GRANT — членство, несущее ЖИВУЮ ВЫДАЧУ, не снимается:
+# порядок «сперва права, потом участие» (#1127, миграция 472002).
+#
+# ПОЧЕМУ ЭТОТ КЕЙС ЗАВЕДЁН. До него это поведение через край не проверялось
+# НИЧЕМ. Оно закрыто пробой репозитория
+# (`TestIntegration_MembershipCarryingRightsIsRefusedWithContractTone`), но она
+# судит СНЯТИЕ СТРОКИ, а не то, что видит вызывающий: между стражем и ответом
+# лежат два слоя, каждый со своим способом разъехаться молча, —
+# отображение 23000 → FAILED_PRECONDITION с контракт-тоном
+# (`repo/kacho/pg/pgmaperr.go`) и доставка отказа ИСХОДОМ ОПЕРАЦИИ, а не
+# синхронным кодом (страж отложенный, он срабатывает на КОММИТЕ). Проба
+# репозитория остаётся зелёной при любом расхождении в обоих.
+#
+# ПОЧЕМУ ОН ПОЯВЛЯЕТСЯ ВМЕСТЕ С ПРАВКОЙ ФИКСТУР. Положительные плечи
+# IAM-USR-EXCL-CRUD-OK и IAM-USR-RMID-NEG-ACCOUNT-ADMIN переведены на жертву БЕЗ
+# выдачи — иначе они падают на страже, к их предмету отношения не имеющем.
+# Перенос без этого кейса просто СНЯЛ БЫ покрытие: страж перестал бы
+# срабатывать хоть где-нибудь на пути через край.
+#
+# ПАРА НА ОДНОЙ ПЕРЕМЕННОЙ. Плечи различаются РОВНО ОДНИМ — наличием живой
+# выдачи; аккаунт, предъявитель, глагол и предикат наблюдения у них общие.
+# Поэтому «отказано» здесь не может пройти на дереве, где исключение сломано
+# для всех: второе плечо тем же вызовом проходит. Обратное тоже верно — успех
+# второго плеча не зачитывается за работоспособность стража, его утверждает
+# первое.
+#
+# УЧАСТИЕ СОХРАНЕНО — ОТДЕЛЬНОЕ УТВЕРЖДЕНИЕ. Отказ, у которого остался эффект,
+# отказом не является; страж отложенный, поэтому строка членства успевает быть
+# удалённой ВНУТРИ транзакции и возвращается только откатом. Наблюдается тем же
+# предикатом, что и в положительном кейсе: `UserService.List` сужается
+# ЧЛЕНСТВАМИ, значит «он всё ещё в списке аккаунта» есть следствие уцелевшей
+# строки, а не пересказ того же вызова.
+#
+# ОТКАЗ НАЗЫВАЕТ ИМЕННО ЭТОГО ЧЕЛОВЕКА И ИМЕННО ЭТОТ АККАУНТ. Страж — триггер:
+# он срабатывает на коммите, и назвать пару в тексте можно только тем, что
+# писатель оставил в подсказке (`userWriter.RemoveMembership` →
+# `splitBindingHint`). Утверждение формы текста этого не ловит: пустая подсказка
+# даёт ЗАКОННЫЙ обобщённый текст той же ветви, и он прошёл бы. Поэтому пара
+# идентификаторов сверяется с переменными окружения.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="IAM-USR-EXCL-NEG-LIVE-GRANT",
+    title="Исключение из аккаунта человека с живой выдачей — отказ FAILED_PRECONDITION (9) "
+          "с контракт-тоном, участие сохранено; без выдачи то же исключение проходит",
+    classes=["NEG", "CRUD"],
+    priority="P0",
+    steps=[
+        # ── ПЛЕЧО ОТКАЗА: жертва С живой выдачей ─────────────────────────────
+        # `with_grant=True` (умолчание) — приглашение с парой «проект + роль»
+        # заводит членство И выдачу на проект аккаунта A, то есть ровно то
+        # состояние, которое страж охраняет.
+        *_invite_probe("holdVictimId", "holdprobe"),
+        # ПРЕДПОСЫЛКА: он ДЕЙСТВИТЕЛЬНО в аккаунте. Без неё «участие сохранено»
+        # ниже истинно и на дереве, где приглашение членства не завело вовсе.
+        Step(
+            name="granted-victim-is-listed-before",
+            method="GET",
+            path="/iam/v1/users?accountId={{accountAId}}&pageSize=1000",
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_answered("granted-victim-is-listed-before"),
+                *assert_status(200),
+                "pm.test('ПРЕДПОСЫЛКА: приглашённый с выдачей есть в списке аккаунта', () => {",
+                "  const j = pm.response.json();",
+                "  const ids = (j.users || []).map(u => u.id);",
+                "  pm.expect(ids, JSON.stringify(j)).to.include(pm.environment.get('holdVictimId'));",
+                "});",
+            ],
+        ),
+        Step(
+            name="exclude-while-grant-is-live",
+            method="POST",
+            path="/iam/v1/users/{{holdVictimId}}:removeFromAccount",
+            body={"accountId": "{{accountAId}}"},
+            auth="jwtAccountAdminAStepUp",
+            test_script=[
+                *assert_answered("exclude-while-grant-is-live"),
+                # Отказ приходит ИСХОДОМ ОПЕРАЦИИ, а не синхронным кодом: страж
+                # отложенный и срабатывает на коммите — то есть уже внутри
+                # асинхронного шага. Синхронный ответ здесь обязан быть 200 с
+                # конвертом операции, и это утверждается, чтобы «отказ» не
+                # зачёлся за отказ КРАЯ.
+                *assert_status(200),
+                *assert_iam_operation_envelope(),
+                *save_from_response("j.id", "opId"),
+            ],
+        ),
+        # Код И текст. Текст прибит целиком, а не подстрокой: обобщённая ветвь
+        # той же карты («user still has active access bindings in this account…»)
+        # подстроку содержит, поэтому подстрока прошла бы на потерянной подсказке.
+        assert_op_error(
+            9, "FAILED_PRECONDITION",
+            msg_regex=r"^User usr[a-z0-9]+ still has active access bindings in "
+                      r"Account acc[a-z0-9]+ and cannot be removed from it$",
+        ),
+        # Пара идентификаторов — ТА САМАЯ. Операция уже `done` (шаг выше довёл
+        # её поллингом), поэтому чтение одиночное.
+        Step(
+            name="refusal-names-this-user-and-this-account",
+            method="GET",
+            path="/operations/{{opId}}",
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_answered("refusal-names-this-user-and-this-account"),
+                *assert_status(200),
+                "pm.test('отказ называет ЭТОГО человека и ЭТОТ аккаунт', () => {",
+                "  const j = pm.response.json();",
+                "  const m = (j.error && j.error.message) || '';",
+                "  pm.expect(m, JSON.stringify(j)).to.include(pm.environment.get('holdVictimId'));",
+                "  pm.expect(m, JSON.stringify(j)).to.include(pm.environment.get('accountAId'));",
+                "});",
+            ],
+        ),
+        # УЧАСТИЕ СОХРАНЕНО: отказ, у которого остался эффект, не отказ.
+        Step(
+            name="membership-survived-the-refusal",
+            method="GET",
+            path="/iam/v1/users?accountId={{accountAId}}&pageSize=1000",
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_answered("membership-survived-the-refusal"),
+                *assert_status(200),
+                "pm.test('отвергнутое исключение участия не сняло', () => {",
+                "  const j = pm.response.json();",
+                "  const ids = (j.users || []).map(u => u.id);",
+                "  pm.expect(ids, JSON.stringify(j)).to.include(pm.environment.get('holdVictimId'));",
+                "});",
+            ],
+        ),
+        # ── ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: та же полоса, жертва БЕЗ выдачи ──────────
+        # Тот же аккаунт, тот же предъявитель, тот же глагол. Единственное
+        # отличие — отсутствие живой выдачи, и его достаточно, чтобы исключение
+        # прошло. Без этого плеча отказ выше был бы неотличим от дерева, где
+        # исключение не работает ни для кого.
+        *_invite_probe("freeVictimId", "freeprobe", with_grant=False),
+        Step(
+            name="exclude-without-a-grant",
+            method="POST",
+            path="/iam/v1/users/{{freeVictimId}}:removeFromAccount",
+            body={"accountId": "{{accountAId}}"},
+            auth="jwtAccountAdminAStepUp",
+            test_script=[
+                *assert_answered("exclude-without-a-grant"),
+                *assert_status(200),
+                *assert_iam_operation_envelope(),
+                *save_from_response("j.id", "opId"),
+            ],
+        ),
+        poll_operation_until_done(auth="jwtAccountAdminA"),
+        assert_op_success(auth="jwtAccountAdminA"),
+        Step(
+            name="ungranted-victim-is-not-listed-after",
+            method="GET",
+            path="/iam/v1/users?accountId={{accountAId}}&pageSize=1000",
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_answered("ungranted-victim-is-not-listed-after"),
+                *assert_status(200),
+                "pm.test('КОНТРОЛЬ: без выдачи исключение состоялось', () => {",
+                "  const j = pm.response.json();",
+                "  const ids = (j.users || []).map(u => u.id);",
+                "  pm.expect(ids, JSON.stringify(j)).to.not.include(pm.environment.get('freeVictimId'));",
+                "});",
+                "pm.test('КОНТРОЛЬ: снято одно членство, а не все — держатель выдачи на месте', () => {",
+                "  const j = pm.response.json();",
+                "  const ids = (j.users || []).map(u => u.id);",
+                "  pm.expect(ids, JSON.stringify(j)).to.include(pm.environment.get('holdVictimId'));",
+                "});",
+            ],
+        ),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# IAM-USR-RMID-NEG-ACCOUNT-ADMIN — распорядитель аккаунта НЕ стирает строку
+# личности, а выводит человека из своего аккаунта (#1131).
+#
+# ПРЕДМЕТ. Строка `iam_user` — ГЛОБАЛЬНАЯ личность: одна на все аккаунты
+# человека. Удаление её из аккаунта A стирает человека и в аккаунте B — он теряет
+# личность целиком, а не участие в одном тенанте. Это строго тяжелее запрета,
+# который #1102 из рук аккаунта уже забрал: запрет обратим, удаление нет.
+#
+# ПОЛОЖИТЕЛЬНОЕ ИДЁТ ВТОРЫМ И ЗАМЫКАЕТ ПАРУ: тот же распорядитель тем же
+# предъявителем делает то, что директива ему ОСТАВЛЯЕТ, — исключает человека из
+# своего аккаунта. Без этой половины «отказано» было бы неотличимо от дерева, где
+# у распорядителя аккаунта отняли всё.
+#
+# ЗАГОЛОВОК НАЗЫВАЕТ ОБА ИСХОДА, И ЭТО НЕСУЩЕЕ, А НЕ СТИЛЬ (#1178). Гейт смешанного
+# исхода (`tools/mixedoutcomeaudit/`) читает направление кейса ПО ЗАГОЛОВКУ, и кейс,
+# объявивший себя отрицательным токеном `-NEG-`, обязан читаться хоть одним словом
+# направления: пока не читается, пустая корзина REJECT означает «не умею прочитать»,
+# а не «чисто». Прежний заголовок («не стирает … ему остаётся») не называл НИ ОДНОГО
+# исхода и ронял задание конвейера. Перепись, по которой правился именно заголовок, а
+# не словарь: в этом файле 24 объявленно отрицательных кейса, 23 из них читаются
+# словом В ЗАГОЛОВКЕ (коды 400/401/403/404, `deny`, «отказ», «запрещ», «не получ»), и
+# ни один — токеном идентификатора; этот был единственным исключением. Оборот «не
+# стирает» при этом сохранён: он и есть предмет кейса.
+#
+# ЧИТАЕТСЯ КАК BOTH — и это верно по существу: кейс обещает ОБА исхода (отказ на
+# снятие личности, успех на исключение из аккаунта). Приписать ему чистый REJECT
+# значило бы объявить его положительное плечо нарушением собственной метки.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="IAM-USR-RMID-NEG-ACCOUNT-ADMIN",
+    title="Пригласивший не стирает строку личности — отказ; исключение из своего "
+          "аккаунта проходит",
+    classes=["AUTHZ", "NEG"],
+    priority="P0",
+    steps=[
+        # БЕЗ ВЫДАЧИ: положительное плечо ниже ИСКЛЮЧАЕТ этого человека из
+        # аккаунта, а членство с живой выдачей не снимается (страж
+        # `membership_carrying_rights_is_kept`, миграция 472002). Отрицательное
+        # плечо от роли не зависит вовсе — оно про право снять ЛИЧНОСТЬ.
+        *_invite_probe("rmidVictimId", "rmidprobe", with_grant=False),
+        # ОТРИЦАНИЕ — снятие ЛИЧНОСТИ.
+        Step(
+            name="identity-delete-denied",
+            method="DELETE",
+            path="/iam/v1/users/{{rmidVictimId}}",
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_answered("identity-delete-denied"),
+                *assert_scoped_authz_deny(
+                    "iam.users.delete",
+                    "'iam_user:' + pm.environment.get('rmidVictimId')",
+                ),
+            ],
+        ),
+        # ЖЕРТВА НЕ ТРОНУТА: отказ, у которого остался эффект, не отказ.
+        Step(
+            name="victim-still-exists",
+            method="GET",
+            path="/iam/v1/users/{{rmidVictimId}}",
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_answered("victim-still-exists"),
+                *assert_status(200),
+                "pm.test('строка личности на месте: удаление не доехало', () => {",
+                "  const j = pm.response.json();",
+                "  pm.expect(j.id, JSON.stringify(j)).to.eql(pm.environment.get('rmidVictimId'));",
+                "});",
+            ],
+        ),
+        # ПОЛОЖИТЕЛЬНОЕ — то, что директива распорядителю ОСТАВЛЯЕТ.
+        Step(
+            name="exclusion-is-what-he-keeps",
+            method="POST",
+            path="/iam/v1/users/{{rmidVictimId}}:removeFromAccount",
+            body={"accountId": "{{accountAId}}"},
+            auth="jwtAccountAdminAStepUp",
+            test_script=[
+                *assert_answered("exclusion-is-what-he-keeps"),
+                *assert_status(200),
+                *assert_iam_operation_envelope(),
+                *save_from_response("j.id", "opId"),
+            ],
+        ),
+        poll_operation_until_done(auth="jwtAccountAdminA"),
+        assert_op_success(auth="jwtAccountAdminA"),
     ],
 ))
 
@@ -1739,7 +2341,11 @@ CASES.append(Case(
             name="dual-cleanup",
             method="DELETE",
             path="/iam/v1/users/{{dualUserFromA}}",
-            auth="jwtAccountAdminA",
+            # Снятие строки личности — не право аккаунта (#1131,
+            # `iam_user.identity_remover`). Уборка за собой обязана идти тем, кто
+            # это право держит, иначе она молча не убирает: отказ пришёл бы на
+            # шаг, чей предмет — вовсе не модель прав.
+            auth="jwtBootstrap",
             test_script=[
                 *assert_status(200),
                 *save_from_response("j.id", "opId"),
@@ -1878,5 +2484,242 @@ CASES.append(Case(
         ),
         poll_operation_until_done(),
         assert_op_success(),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# IAM-USR-TOK-READ-* — ВИДЕТЬ перечень удостоверений человека вправе он сам, а не
+# распорядитель его аккаунта (задача kacho#1133).
+#
+# ПРЕДМЕТ. Третья сторона той же директивы владельца (2026-08-23), что закрыли
+# #1086 (выпуск и отзыв) и #1102 (правка строки личности): «тот кто пригласил
+# может только удалить/добавить права». Перечень персональных токенов — не право
+# на аккаунт, а СВЕДЕНИЯ О ЛИЧНОСТИ: сколько удостоверений живо, когда выпущены,
+# когда истекают, чем названы. Раскрытие сведений — тоже действие за человека.
+#
+# Личность здесь ГЛОБАЛЬНА: одна строка на все аккаунты человека, а звено
+# «личность → аккаунт» вердикт берёт из членства, которых у него может быть
+# несколько. Значит право уровня ОДНОГО аккаунта раскрывало бы удостоверения
+# человека целиком — включая те, которыми он действует там, куда держатель этого
+# права не вхож.
+#
+# ЧТО ЗДЕСЬ ЧЕМУ КОНТРОЛЬ, СКАЗАНО ПРЯМО. Отрицание, снятое в одиночку, зеленеет
+# и на сломанном чтении: «никто не видит» неотличимо от «никому и не положено».
+# Поэтому:
+#   * IAM-USR-TOK-READ-POS-SELF — положительная половина обоих отрицаний: чтение
+#     ПРОДОЛЖАЕТ работать у того, кому оно принадлежит, и возвращает именно тот
+#     токен, который человек только что выпустил;
+#   * у каждого отрицания СВОЙ контроль внутри кейса — шаг, доказывающий, что
+#     отказанный предъявитель имеет к этому человеку и этому аккаунту настоящий
+#     доступ. Без него «403» неотличимо от «у него вообще ничего нет».
+#
+# ПОЧЕМУ У ЦЕЛИ ОТРИЦАНИЙ НЕТ СВОИХ ТОКЕНОВ, И ПОЧЕМУ ЭТО НИЧЕГО НЕ ОСЛАБЛЯЕТ.
+# Цель — свежеприглашённый человек, у которого предъявителя нет by construction:
+# приглашение это не учётные данные. Решение о доступе принимает КРАЙ, по объекту
+# личности из адреса, ДО того как служба увидит запрос, — поэтому наличие или
+# отсутствие строк в перечне на исход не влияет. Ровно тем же рассуждением
+# пользуется соседний IAM-USR-TOK-ACTAS-NEG-INVITER с вымышленным токеном.
+#
+# ЧЕГО ЭТИ КЕЙСЫ НЕ УТВЕРЖДАЮТ. Чтение ЗАПИСИ приглашённого (`UserService.Get`) и
+# перечень людей аккаунта распорядитель по-прежнему держит — видеть своих людей
+# законное дело аккаунта. Это не забыто, а намеренно: контроль первого отрицания
+# на этом и стоит.
+# ---------------------------------------------------------------------------
+
+CASES.append(Case(
+    id="IAM-USR-TOK-READ-POS-SELF",
+    title="Человек видит СВОЙ перечень персональных токенов и находит в нём только что "
+          "выпущенный (положительная половина запретов ниже)",
+    classes=["AUTHZ", "CRUD"],
+    priority="P0",
+    steps=[
+        Step(
+            name="read-self-issues-own-token",
+            method="POST",
+            path="/iam/v1/users/{{ceremonyUserId}}/tokens",
+            auth="jwtHumanCeremonyStepUp",
+            body={
+                "userId": "{{ceremonyUserId}}",
+                "createdByUserId": "{{ceremonyUserId}}",
+                "description": "read probe {{runId}}",
+                "name": "read-self-{{runId}}",
+            },
+            test_script=[
+                *assert_answered("UserTokenService.Issue самому себе (фикстура чтения)"),
+                *assert_status(200),
+                *assert_iam_operation_envelope(),
+                *save_from_response("j.id", "opId"),
+                # Идентификатор берётся из metadata, где он предвыделен ДО
+                # асинхронного исхода, — поэтому следующим шагом стоит проверка
+                # самого исхода, а не только `done`.
+                *save_from_response("j.metadata && j.metadata.keyId", "readSelfTokenId"),
+            ],
+        ),
+        poll_operation_until_done(),
+        assert_op_success(),
+        # Первое чтение СВОЕГО свежего ресурса — законное место ограниченного
+        # ожидания: строка токена коммитится своей операцией, и её появление
+        # гарантировано. На отрицания ниже ожидание НЕ ставится: там оно было бы
+        # маскировкой отказа.
+        poll_request_until_status(
+            name="read-self-lists-own-tokens",
+            method="GET",
+            path="/iam/v1/users/{{ceremonyUserId}}/tokens?pageSize=1000",
+            auth="jwtHumanCeremony",
+            retry_predicate="(() => { const j = pm.response.json();"
+                            " const id = pm.environment.get('readSelfTokenId');"
+                            " return !!id && !(j.tokens || []).some(t => t.id === id); })()",
+            test_script=[
+                *assert_answered("UserTokenService.List своего перечня"),
+                *assert_status(200),
+                "pm.test('человек ВИДИТ свой перечень удостоверений: сужение чтения не имеет "
+                "права отнимать у владельца обзор собственных ключей — идентификатор выданного "
+                "существует ровно один раз, в ответе на выпуск, и без перечня отзыв стал бы "
+                "недостижим', () => {",
+                "  const j = pm.response.json();",
+                "  const id = pm.environment.get('readSelfTokenId');",
+                "  pm.expect(id, 'фикстура не захватила идентификатор выпущенного токена')"
+                ".to.be.a('string').with.length.greaterThan(0);",
+                "  pm.expect((j.tokens || []).map(t => t.id), JSON.stringify(j)).to.include(id);",
+                "});",
+                "pm.test('перечень отдаёт только метаданные — приватной части в нём нет', () => {",
+                "  const raw = pm.response.text();",
+                "  pm.expect(raw).to.not.include('PRIVATE KEY');",
+                "  pm.expect(raw).to.not.include('privateKeyPem');",
+                "});",
+            ],
+        ),
+        Step(
+            name="read-self-revokes-own-token",
+            method="DELETE",
+            path="/iam/v1/users/{{ceremonyUserId}}/tokens/{{readSelfTokenId}}",
+            auth="jwtHumanCeremonyStepUp",
+            test_script=[
+                *assert_answered("UserTokenService.Revoke своего токена (уборка за собой)"),
+                *assert_status(200),
+                *assert_iam_operation_envelope(),
+                *save_from_response("j.id", "opId"),
+            ],
+        ),
+        poll_operation_until_done(),
+        assert_op_success(),
+    ],
+))
+
+
+CASES.append(Case(
+    id="IAM-USR-TOK-READ-NEG-ACCOUNT-ADMIN",
+    title="Распорядитель аккаунта видит своих людей, но перечень персональных токенов "
+          "приглашённого им человека НЕ получает",
+    classes=["AUTHZ", "NEG"],
+    priority="P0",
+    steps=[
+        *_invite_probe("readInvitedUserId", "read-invitee"),
+        # КОНТРОЛЬ. Доказывает сразу два условия, без которых отказ ниже ничего не
+        # значит: предъявитель распорядителя жив, и человек, чей перечень у него
+        # запрашивается, ДЕЙСТВИТЕЛЬНО состоит в аккаунте, которым тот
+        # распоряжается. Именно это членство и давало прежде право читать его
+        # удостоверения — через каскад распорядителя аккаунта.
+        poll_request_until_status(
+            name="read-admin-sees-the-person-in-his-account",
+            method="GET",
+            path="/iam/v1/users?accountId={{accountAId}}&pageSize=1000",
+            auth="jwtAccountAdminA",
+            retry_predicate="(() => { const j = pm.response.json();"
+                            " const id = pm.environment.get('readInvitedUserId');"
+                            " return !!id && !(j.users || []).some(u => u.id === id); })()",
+            test_script=[
+                *assert_answered("UserService.List людей своего аккаунта"),
+                *assert_status(200),
+                "pm.test('КОНТРОЛЬ: распорядитель ВИДИТ этого человека среди людей своего "
+                "аккаунта — значит отказ ниже про перечень удостоверений, а не про отсутствие "
+                "доступа вообще', () => {",
+                "  const j = pm.response.json();",
+                "  const id = pm.environment.get('readInvitedUserId');",
+                "  pm.expect((j.users || []).map(u => u.id), JSON.stringify(j)).to.include(id);",
+                "});",
+            ],
+        ),
+        Step(
+            name="read-admin-lists-tokens-of-the-invited-person",
+            method="GET",
+            path="/iam/v1/users/{{readInvitedUserId}}/tokens",
+            auth="jwtAccountAdminA",
+            test_script=[
+                *assert_answered("UserTokenService.List от распорядителя аккаунта"),
+                # Утверждается ПАРА, а не один статус: HTTP-код — механическое
+                # следствие отображения края, смысл несёт код модели. Полоса здесь
+                # ОДНА и она выводится, а не угадывается: скрытие существования край
+                # применяет к чтению по идентификатору (`/Get` + `v_get`), а этот RPC
+                # ни тем, ни другим не является и явного признака в каталоге не несёт,
+                # — значит отказ приходит как PERMISSION_DENIED. Толерантность
+                # `403|404` здесь перечисляла бы исход без производителя.
+                "pm.test('распорядитель аккаунта НЕ получает перечень персональных удостоверений "
+                "приглашённого: удостоверение действует всюду, где действует человек, включая "
+                "аккаунты, к которым распорядитель отношения не имеет, а сколько их и когда они "
+                "истекают — сведения о личности, а не право на аккаунт', "
+                # `.to.eql`, а не `.to.equal`: генератор ЧИТАЕТ объявленный исход шага
+                # именно в этой форме и по нему решает, оборачивать ли шаг ожиданием
+                # видимости. Объявленный 403 отключает ожидание by construction —
+                # ретрай на отрицании был бы маскировкой отказа, а не терпимостью к
+                # окну.
+                "() => pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
+                *assert_grpc_code(7, "PERMISSION_DENIED"),
+                "pm.test('в ответе нет ни одного удостоверения — отказ не отдал перечень частично', "
+                "() => {",
+                "  let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                "  pm.expect(j && j.tokens, JSON.stringify(j)).to.be.oneOf([undefined, null]);",
+                "});",
+            ],
+        ),
+    ],
+))
+
+
+CASES.append(Case(
+    id="IAM-USR-TOK-READ-NEG-TENANT",
+    title="Другой арендатор того же аккаунта перечень персональных токенов человека "
+          "НЕ получает",
+    classes=["AUTHZ", "NEG"],
+    priority="P0",
+    steps=[
+        *_invite_probe("readTenantTargetUserId", "read-tenant-target"),
+        # КОНТРОЛЬ. Предъявитель арендатора жив и имеет настоящий доступ ВНУТРИ
+        # того же аккаунта — он редактор проекта A1. Без этого шага отказ ниже
+        # неотличим от «этому предъявителю вообще ничего не выдано», а такое
+        # отрицание зеленеет на любом сломанном доступе.
+        Step(
+            name="read-tenant-control-reads-his-project",
+            method="GET",
+            path="/iam/v1/projects/{{projectA1Id}}",
+            auth="jwtInvitee",
+            test_script=[
+                *assert_answered("ProjectService.Get проекта, где арендатор — редактор"),
+                *assert_status(200),
+                "pm.test('КОНТРОЛЬ: арендатор имеет настоящий доступ внутри этого аккаунта — "
+                "значит отказ ниже про сведения о чужой личности, а не про пустую выдачу', () => {",
+                "  const j = pm.response.json();",
+                "  pm.expect(j.id).to.eql(pm.environment.get('projectA1Id'));",
+                "});",
+            ],
+        ),
+        Step(
+            name="read-tenant-lists-tokens-of-another-person",
+            method="GET",
+            path="/iam/v1/users/{{readTenantTargetUserId}}/tokens",
+            auth="jwtInvitee",
+            test_script=[
+                *assert_answered("UserTokenService.List от другого арендатора аккаунта"),
+                "pm.test('арендатор НЕ получает перечень удостоверений другого человека того же "
+                "аккаунта: круг читателей — сам человек и надзор облака, и соседство по аккаунту "
+                "в него не входит', "
+                # `.to.eql` — по той же причине, что у соседнего кейса: объявленный
+                # исход отключает ожидание видимости, и отрицание остаётся
+                # одноразовым.
+                "() => pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
+                *assert_grpc_code(7, "PERMISSION_DENIED"),
+            ],
+        ),
     ],
 ))

@@ -51,6 +51,7 @@ family. Those need a real step-up/interactive credential — see the report.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import pathlib
@@ -491,6 +492,69 @@ def _self_test() -> int:
         if pp.token_principal_id(junk) != "":
             print(f"SELF-TEST FAIL: {junk!r} yielded a principal id", file=sys.stderr)
             ok = False
+
+    # ── THE PLACEMENT HALF: both issuing lanes, not just the provider's ──────
+    #
+    # WHY THIS DIRECTION EXISTS. Every assertion above uses `make_token`, which
+    # nests — the shape the external provider emits. That made the whole self-test
+    # blind to the lane the platform now issues on ITSELF, and the blindness was
+    # not theoretical: it aborted four shards with zero of eighteen collections
+    # executed, naming five SOUND service-account channels as breaches
+    # (run 32669585825). A check that condemns the sound is worse than absent —
+    # it stops the run and points at the wrong thing.
+    #
+    # WHY BOTH SHAPES ARE LEGITIMATE, i.e. why widening the reader is a fix and
+    # not a relaxation: our own issuer signs the composed claims FLAT at the top
+    # level (asserted by the product itself in
+    # `TestClaimsComeFromTheSingleDeclarationAndCarryTheClientIdentifier`), the
+    # provider nests them, and the EDGE already treats the two as equivalent —
+    # top level first, then nested (`verifiedClaim`, gateway auth middleware).
+    # This reader predicts what the edge will make of a token, so it must read
+    # exactly what the edge reads.
+    def _flat(pid, **extra):
+        """A token of OUR issuance: `kacho_*` at the top level, nothing nested."""
+        claims = {"iss": "https://iam.kacho.local", "sub": "usr_owner_of_the_key",
+                  "kacho_principal_type": "service_account",
+                  "kacho_principal_id": pid, **extra}
+        body = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+        return "eyJhbGciOiJub25lIn0." + body + ".not-a-signature"
+
+    if pp.token_principal_id(_flat("sva_flat")) != "sva_flat":
+        print("SELF-TEST FAIL: the FLAT placement of our own issuer is not read — "
+              "every channel on that lane would be condemned as carrying no "
+              "principal, and the seed aborts the whole run", file=sys.stderr)
+        ok = False
+
+    # The sound flat channel stays quiet — the direction that actually failed.
+    if pp.unpaired_principals({"svaAId": "sva_f", "jwtSAA": _flat("sva_f")},
+                              {"svaAId": "jwtSAA"}):
+        print("SELF-TEST FAIL: a SOUND channel on the platform's own issuance lane "
+              "was reported broken", file=sys.stderr)
+        ok = False
+
+    # ...and the defect is STILL caught on that same lane. Widening the reader must
+    # not cost the property the reader exists for: a token authenticating as
+    # somebody other than the bound subject remains a finding that NAMES both.
+    got = pp.unpaired_principals({"svaAId": "sva_bound", "jwtSAA": _flat("sva_other")},
+                                 {"svaAId": "jwtSAA"})
+    if len(got) != 1 or "sva_bound" not in got[0] or "sva_other" not in got[0]:
+        print(f"SELF-TEST FAIL: on the flat lane a mismatched principal is no longer "
+              f"caught, or the finding does not name both: {got}", file=sys.stderr)
+        ok = False
+
+    # Precedence, stated rather than left to accident: when a token carries BOTH
+    # placements, the top level wins — because that is the edge's order. A reader
+    # that resolved the other way would judge the seed against a principal the
+    # request will not speak as.
+    both = _flat("sva_top", ext_claims={"kacho_principal_id": "sva_nested"})
+    if pp.token_principal_id(both) != "sva_top":
+        print("SELF-TEST FAIL: with both placements present the reader disagrees "
+              "with the edge about which one wins", file=sys.stderr)
+        ok = False
+
+    # Census, so "no findings" stays distinguishable from "nothing examined".
+    print(f"principal pairings: {len(pp.PRINCIPAL_PAIRINGS)} declared, "
+          f"both placements exercised (flat = our issuer, nested = provider)")
 
     # And the live tree: whatever the answer, it must be MEASURED, not assumed. This
     # prints it, so a change of disposition is visible in the self-test output too.

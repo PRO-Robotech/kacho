@@ -37,32 +37,42 @@ type IssueSAKeyRequest struct {
 	// Optional ISO duration in seconds; if 0 → no expiry.
 	TtlSeconds      int64  `protobuf:"varint,3,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
 	CreatedByUserId string `protobuf:"bytes,4,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"`
-	// Federation IN. When non-empty, the SA-key is registered in
-	// FEDERATED mode: kacho-iam does NOT mint a keypair, the Hydra OAuth2
-	// client is registered with `grant_types=[urn:ietf:params:oauth:grant-
-	// type:jwt-bearer]` + `token_endpoint_auth_method=none`, and the response
-	// contains NO `private_key_pem` / `public_key_pem`. External workloads
-	// (CI runners, Kubernetes pods, customer OIDC IdPs)
-	// present their OWN OIDC JWT to Hydra `/oauth2/token` via the RFC 7521 /
-	// 7523 jwt-bearer grant — Hydra validates the assertion against the
-	// configured trusted issuers (helm umbrella `hydra.config.oauth2.grant.jwt`
-	// + admin trust-grants), maps the asserting client to this Hydra client by
-	// `client_id`, and mints a kacho-issued access_token. Each entry restricts
-	// *which* external subjects are allowed to assert this SA: `issuer` is the
-	// external OIDC `iss` URL, `subject_pattern` is a regex the external `sub`
-	// claim must match. Empty slice = `private_key_jwt` mode (legacy
-	// default).
+	// Федеративный вид ключа. Непустой перечень означает: ключевой пары мы не
+	// чеканим, а удостоверение предъявляет ВНЕШНИЙ издатель — ответ выдачи не
+	// несёт ни `private_key_pem`, ни `public_key_pem`.
+	//
+	// Внешняя нагрузка (сборочный конвейер, под кластера, издатель арендатора)
+	// подписывает СВОЁ утверждение и предъявляет его нашему токен-эндпоинту с
+	// видом выдачи `urn:ietf:params:oauth:grant-type:jwt-bearer` (RFC 7523 §2.1).
+	// Мы принимаем его тогда и только тогда, когда пара `(iss, sub)` есть в
+	// НАШЕМ перечне доверенных издателей и подпись сошлась с записанным там
+	// ключом издателя (задача #1124).
+	//
+	// Каждый элемент сужает, какая внешняя пара вправе выступать за этот ключ.
+	// Пустой перечень — обычный вид с ключевым материалом.
 	TrustedSubjects []*TrustedSubject `protobuf:"bytes,5,rep,name=trusted_subjects,json=trustedSubjects,proto3" json:"trusted_subjects,omitempty"`
-	// Federation OUT. When non-empty, the kacho-minted access_token
-	// is issued with these values in the `aud` claim, making the token
-	// verifiable by external OIDC-trust-federation consumers — external STS
-	// services (which require a specific `aud` value), external workload-
-	// identity-federation providers (which require an `aud` naming the
-	// federation pool/provider), generic OIDC RPs, etc. The list is
-	// stored on the Hydra OAuth2 client and applied to every token minted for
-	// it. Empty → kacho-internal audience only (legacy `AudiencePrefix`
-	// behaviour: `kacho:iam:/sa/<sva_id>`); the resulting token is NOT
-	// accepted by external IdPs. Order is preserved; duplicates are dropped.
+	// Federation OUT — и СУЖЕНИЕ адресатов этого ключа (задача #1136).
+	//
+	// Непустой перечень называет, для чего заведён ключ: токен по нему выдаётся
+	// ТОЛЬКО тем адресатам, которые здесь названы. Это нужно внешней федерации —
+	// внешние службы обмена и провайдеры федеративной идентичности требуют в
+	// `aud` строго своего значения, — и одновременно ограничивает ключ: выданный
+	// «для реестра» не получит токена, адресованного краю платформы.
+	//
+	// ПЕРЕЧНЕЙ В ТРАКТЕ ДВА, И ЭТОТ — ВНУТРЕННИЙ. Внешняя граница объявлена
+	// посадкой (`authn.client-token.allowed-audiences`) и говорит, каким
+	// поверхностям платформа вообще чеканит удостоверения. Здешний перечень
+	// действует ВНУТРИ неё и никогда её не расширяет: адресат, которого посадка
+	// не объявила, не выдаётся ни одному ключу, как бы он ни объявился. Ключ,
+	// чей перечень не пересекается с объявленным посадкой, токена не получит —
+	// отказ наступает на обмене, потому что перечень посадки меняет оператор и
+	// после выдачи ключа.
+	//
+	// Пустой перечень означает «сужения не объявлено»: действует перечень
+	// посадки целиком, как было до появления этого читателя. Порядок
+	// сохраняется, пустые элементы снимаются, повторы схлопываются; первый
+	// объявленный (из числа допущенных посадкой) становится адресатом обмена,
+	// не назвавшего адресата явно.
 	// Examples:
 	//
 	//	audience: ["sts.example.com"]
@@ -182,8 +192,27 @@ type TrustedSubject struct {
 	//	^repo:acme/infra:ref:refs/heads/main$
 	//	^system:serviceaccount:kacho-prod:ci-runner$
 	SubjectPattern string `protobuf:"bytes,2,opt,name=subject_pattern,json=subjectPattern,proto3" json:"subject_pattern,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Открытый ключ ИЗДАТЕЛЯ в форме SPKI PEM — тот, которым подписано внешнее
+	// утверждение (задача #1124).
+	//
+	// ПОЧЕМУ КЛЮЧ, А НЕ АДРЕС НАБОРА КЛЮЧЕЙ. Перечень доверенных издателей — наша
+	// таблица, и читает её наша проверка утверждения на пути запроса. Адрес
+	// означал бы обращение к постороннему хосту, выбранному арендатором, из
+	// процесса, принимающего решение о доступе: поверхность запросов наружу,
+	// выбираемая тем, кого мы проверяем. Ключ, названный при выдаче, решения о
+	// доступе никуда не выносит.
+	//
+	// Цена названа: смена ключа издателем требует новой выдачи. Она та же, что
+	// была у прежнего перечня, — он тоже хранил ключ, а не адрес.
+	PublicKeyPem string `protobuf:"bytes,3,opt,name=public_key_pem,json=publicKeyPem,proto3" json:"public_key_pem,omitempty"`
+	// JOSE-алгоритм ключа издателя: один из {"RS256", "ES256", "EdDSA"}.
+	//
+	// Обязателен, и пустое значение означает «ключа нет», а НЕ «любой алгоритм»:
+	// перечень допустимых алгоритмов строится из ЭТОЙ записи, поэтому подмена
+	// параметра внутри одного семейства тоже отвергается.
+	KeyAlgorithm  string `protobuf:"bytes,4,opt,name=key_algorithm,json=keyAlgorithm,proto3" json:"key_algorithm,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TrustedSubject) Reset() {
@@ -230,6 +259,20 @@ func (x *TrustedSubject) GetSubjectPattern() string {
 	return ""
 }
 
+func (x *TrustedSubject) GetPublicKeyPem() string {
+	if x != nil {
+		return x.PublicKeyPem
+	}
+	return ""
+}
+
+func (x *TrustedSubject) GetKeyAlgorithm() string {
+	if x != nil {
+		return x.KeyAlgorithm
+	}
+	return ""
+}
+
 type IssueSAKeyResponse struct {
 	state protoimpl.MessageState     `protogen:"open.v1"`
 	Key   *ServiceAccountOAuthClient `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
@@ -253,11 +296,16 @@ type IssueSAKeyResponse struct {
 	// JWK `kid` of the registered public key. Caller MUST set the `kid`
 	// header of signed assertions to this value so Hydra picks the right key.
 	KeyId string `protobuf:"bytes,7,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
-	// Federation OUT. Echoes back the resolved `aud` claim list
-	// that will appear in every token minted for this SA. Informational —
-	// operators can confirm the audience binding without re-reading Hydra
-	// admin. Empty list signals kacho-internal-only audience (the request
-	// omitted `audience`).
+	// Перечень адресатов, которые этот ключ вправе заказать.
+	//
+	// Величина зависит от контура выдачи, и это не деталь реализации, а ответ на
+	// вопрос «что этот ключ сможет заказать». Пока клиент зеркалится у прежнего
+	// издателя, решает перечень зеркала — обмен идёт у него, и он сверяет с ним.
+	// На переведённом контуре зеркала нет вовсе, и решает записанное на ключе
+	// сужение (`audience` запроса, задача #1136).
+	//
+	// Пустой перечень на переведённом контуре — утверждение, а не умолчание:
+	// сужения ключ не объявлял, действует перечень посадки.
 	Audiences     []string `protobuf:"bytes,8,rep,name=audiences,proto3" json:"audiences,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -708,10 +756,12 @@ const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"\x06labels\x18\b \x03(\v21.kacho.cloud.iam.v1.IssueSAKeyRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"o\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd8\x01\n" +
 	"\x0eTrustedSubject\x12%\n" +
 	"\x06issuer\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x06issuer\x126\n" +
-	"\x0fsubject_pattern\x18\x02 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x0esubjectPattern\"\xbc\x02\n" +
+	"\x0fsubject_pattern\x18\x02 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x0esubjectPattern\x124\n" +
+	"\x0epublic_key_pem\x18\x03 \x01(\tB\x0e\xe8\xc71\x01\x8a\xc81\x06<=8192R\fpublicKeyPem\x121\n" +
+	"\rkey_algorithm\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=16R\fkeyAlgorithm\"\xbc\x02\n" +
 	"\x12IssueSAKeyResponse\x12?\n" +
 	"\x03key\x18\x01 \x01(\v2-.kacho.cloud.iam.v1.ServiceAccountOAuthClientR\x03key\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12'\n" +

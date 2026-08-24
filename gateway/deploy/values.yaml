@@ -149,6 +149,11 @@ kratosPublicUrl: ""
 # clients accordingly (kacho-iam `kacho.iam.saKey.bindDpop`):
 #
 #   1. kacho-iam: saKey.bindDpop=true      → newly issued keys mint bound tokens
+#      (reader caveat, #1137: that knob is registration metadata for the client
+#      MIRROR at the previous issuer. On a stand whose SA-key contour is
+#      TRANSLATED to iam's own token endpoint no mirror is created, so the knob
+#      has no reader — iam refuses to start with both set. Step 1 is available
+#      only while the contour is not translated.)
 #   2. gateway:   authn.enableDpop=true    → the proof of possession is verified
 #   3. confirm machine tokens carry `cnf`, and rotate any pre-existing SA keys
 #      (a key registered before step 1 keeps minting unbound tokens)

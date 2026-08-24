@@ -250,9 +250,12 @@ describe("console addresses only verb-routes the contract serves", () => {
     // слепого пятна больше нет, а место остаётся — поверхность API домена и без
     // того законный дом такого литерала (так же устроены глаголы машины в
     // compute).
+    // 29→30 распознанных адресов и 32→33 использования: заведено исключение
+    // человека из аккаунта (`:removeFromAccount`, #1127) — третий глагол
+    // пользователя, и строится он там же, в поверхности API домена.
     const distinct = new Set(uses.map((u) => u.resolved));
-    expect(distinct.size).toBe(29);
-    expect(uses.length).toBe(32);
+    expect(distinct.size).toBe(30);
+    expect(uses.length).toBe(33);
   });
 
   it("every verb-route the console addresses exists in the contract", () => {

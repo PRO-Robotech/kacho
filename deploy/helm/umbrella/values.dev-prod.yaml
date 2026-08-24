@@ -302,7 +302,7 @@ kacho-iam:
       # Hydra's advertised self.issuer on this kind stand is the localhost nodeport
       # (hydra.config.urls.self.issuer = http://localhost:28080/.ory/hydra/public/), NOT
       # the domain-derived https://hydra.api.kacho.cloud. Without this, the private_key_jwt
-      # client_assertion iam signs for the bootstrap-mint / registry-token exchange carries
+      # client_assertion iam signs for the registry-token exchange carries
       # aud=<derived>/oauth2/token → Hydra rejects it ("audience must match the token
       # endpoint http://localhost:28080/.ory/hydra/public/oauth2/token", invalid_client).
       # Set as a CONFIG value (ResolveHydraIssuer highest precedence) — the env passthrough
@@ -373,13 +373,33 @@ kacho-iam:
       # объявлена, задокументирована, покрыта типами — и не работала ни при каком
       # входе (`api-conventions.md` §«ДВА ПРАВИЛА ОБ ОДНОМ ПОЛЕ»).
       #
-      # УМОЛЧАНИЕ НЕ ТРОНУТО: докерная полоса продолжает получать адресат реестра,
-      # не называя его. Расширен ровно перечень ДОПУСТИМЫХ — то есть то, что
-      # клиент вправе попросить явно.
+      # Здесь стояло «умолчание не тронуто: докерная полоса по-прежнему получает
+      # адресат реестра, не называя его». Умолчания больше нет, и оно не было
+      # адресатом реестра: реестр объявлял другое имя (задача #1184).
       clientToken:
         enabled: true
-        allowedAudiences: "https://api.kacho.cloud,registry.kacho.local"
-        defaultAudience: "registry.kacho.local"
+        # АДРЕСАТ ДОКЕРНОЙ ПОЛОСЫ НАЗВАН ЗДЕСЬ ЯВНО (задача #1184). Прежде тут
+        # стоял `registry.kacho.local` — встроенное умолчание процесса iam, — а
+        # реестр объявлял докер-клиенту `registry.in-cloud.io`. Стороны полосы
+        # расходились, и это было НЕВИДИМО: клиент echo-ит услышанное от
+        # реестра, подписант чеканил что просят, перечень сверял третье имя,
+        # которого не называл никто. Со сверкой адресата то же расхождение
+        # означает отказ во входе докера, поэтому перечень называет ДЕЙСТВУЮЩЕЕ
+        # имя полосы — то самое `global.kacho.registry.serviceAud`.
+        allowedAudiences: "https://api.kacho.cloud,registry.in-cloud.io"
+        # АДРЕСАТ ПО УМОЛЧАНИЮ — ЧЛЕН ПЕРЕЧНЯ ВЫШЕ, и это проверяет страж старта.
+        #
+        # Здесь оставалось `registry.kacho.local` — имя снятого встроенного
+        # умолчания процесса iam. Перечень #1184 перевёл на действующее имя
+        # полосы, а его двойника — нет, и две величины ОДНОГО профиля разошлись:
+        # адресат по умолчанию отвергался бы нашей же сверкой, то есть выдача не
+        # работала бы НИ ПРИ КАКОМ входе, где адресат не назван (`api-conventions.md`
+        # §«ДВА ПРАВИЛА ОБ ОДНОМ ПОЛЕ»). Страж старта iam именно это и говорит,
+        # поэтому под не доходил до готовности, а стенд — до подъёма.
+        #
+        # Значение — действующее имя полосы, то самое `global.kacho.registry.serviceAud`:
+        # запрос докерной полосы адресата не называет и получает этот.
+        defaultAudience: "registry.in-cloud.io"
         tokenTtl: "15m"
         bodyCeiling: 65536
     repository:
@@ -802,8 +822,9 @@ hydra:
           # the issuer identity (the token `iss`). `public` (browser-facing base URL, kept
           # in dev.yaml) is a SEPARATE knob and keeps its slash for routing. iam's assertion
           # audience (ResolveHydraTokenEndpoint = TrimRight(issuer)+"/oauth2/token") is
-          # unaffected — it already trims — so the bootstrap-mint exchange still matches
-          # Hydra's token endpoint. Scoped to the production-mode overlay (dev-mode authn
+          # unaffected — it already trims — so the registry-token exchange still matches
+          # Hydra's token endpoint. (Контур бутстрапа с 2026-08-23 в этом перечне НЕ
+          # участвует: он чеканит сам, задача #1119.) Scoped to the production-mode overlay (dev-mode authn
           # accepts HS256 and never verifies the Hydra `iss`, so dev.yaml is untouched).
           # SCHEME IS https BECAUSE THE PROVIDER REFUSES ANYTHING ELSE WITHOUT ITS
           # DEVELOPMENT FLAG (see `dev: false` above): «Scheme from configuration key
@@ -832,7 +853,10 @@ hydra:
           # harness) therefore sent an https audience to a provider advertising an http
           # token endpoint, and every exchange came back «hydra rejected the token
           # exchange» → iam answered `bootstrap token issuer unavailable` → the seed could
-          # not obtain its first token.
+          # not obtain its first token. (ИСТОРИЯ. С задачи #1119 контур бутстрапа
+          # чеканит сам и этой ошибки не производит — искать её текст в дереве
+          # бесполезно; разбор оставлен потому, что тот же класс живёт у остальных
+          # потребителей пары issuer/public.)
           #
           # This was self-inflicted: `issuer` had to become https (the provider refuses a
           # non-https issuer without its development flag) and `public` was left behind, so
@@ -1038,11 +1062,3 @@ kratos-selfservice-ui:
       key: ca.crt
       mountPath: /etc/kratos-ui-ca
 
-# ─── Хук выдачи доверия внешним эмитентам — адрес административного API ────
-# Объявляется значением (реестр потребителей его резолвит), поэтому перевод
-# перехода на терминатор его больше не минует. Хук латентен (federationIn
-# выключен), но латентность от проверки не освобождает: гейты рендерят его с
-# включённым ключом.
-hydraTrustGrants:
-  adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445"
-  adminCaFile: /etc/hydra-admin-ca/ca.crt

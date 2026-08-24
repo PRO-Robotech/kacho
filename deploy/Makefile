@@ -12,7 +12,7 @@
         dialled-transport-discipline delete-step-discipline \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
         seed-vpc-pools-check e2e-newman stand-provenance \
-        managed-image-pins managed-image-pins-check
+        managed-image-pins managed-image-pins-check stack-up
 
 SHELL := bash
 
@@ -47,6 +47,13 @@ DEV_UP_VALUES ?=
 # `$(shell …)` вычисляется при разборе Makefile — отказ чтения таблицы виден
 # сразу и до первого действия над кластером.
 STACK_ARGS = $(shell bash tests/helm/stacks.sh --args $(1) ./helm/umbrella)
+# Параметры цели stack-up. STACK умолчания НЕ имеет намеренно: цель меняет
+# кластер, и «наверное, dev» выбором стенда не является.
+STACK ?=
+STACK_RELEASE ?= kacho-umbrella
+STACK_NAMESPACE ?= kacho
+STACK_TIMEOUT ?= 15m
+STACK_EXTRA_ARGS ?=
 # POSTURE_SKIP — сервисы, которых на этом стенде НЕТ по решению оператора.
 # Пусто = стенд полный (умолчание, локальный `make dev-up`).
 POSTURE_SKIP ?=
@@ -559,6 +566,77 @@ dev-prod-up: dev-up
 	$(MAKE) --no-print-directory assert-metrics-surfaces-answer; \
 	$(MAKE) --no-print-directory assert-outbox-autovacuum; \
 	echo "production-posture stand is UP and READY"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# stack-up — раскатать ОБЪЯВЛЕННЫЙ стенд, а не набранную рукой команду.
+#
+# ПРЕДМЕТ. Состав стенда объявлен в единственной таблице (stacks.txt), но
+# раскатывали её не все. У prod, prorobotech и a8f60d команда выкатки жила
+# КОММЕНТАРИЕМ в шапке собственного профиля — то есть её набирали рукой.
+# Комментарий исполнить нельзя, и проверки его не читают намеренно, поэтому
+# ручка, объявленная в профиле, доезжала до кластера только если раскатывающий
+# о ней вспомнит. Наблюдалось вживую: не вспомнили — страж старта отказал,
+# сервис остался работать на ПРЕДЫДУЩЕМ образе, а стенд выглядел выкаченным
+# полностью и не был им.
+#
+# Цепочка здесь НЕ ВЫПИСАНА: она читается из таблицы тем же единственным
+# читателем, что и у всех остальных. Другого источника `-f` у этой цели нет,
+# поэтому пройти мимо объявленного состава ею нельзя by construction.
+#
+# guard-destructive, а НЕ guard-kind-context: цель по замыслу исполняется на
+# НАСТОЯЩЕМ кластере (prod / prorobotech / a8f60d — управляемые), и запрещать
+# чужой контекст ей нельзя. Можно и нужно требовать, чтобы человек УВИДЕЛ
+# названную цель — контекст, кластер, адрес apiserver'а — и подтвердил её.
+#
+# Цепочка читается В РЕЦЕПТЕ, а не через $(shell): раскрытие $(shell) случается
+# при разборе рецепта — то есть и на отказном пути, где стенда ещё нет, — и
+# печатало отказ чтения таблицы поверх собственного сообщения цели.
+#
+#   make -C deploy stack-up STACK=a8f60d
+#   make -C deploy stack-up STACK=prod STACK_EXTRA_ARGS='-f ./helm/umbrella/values.digests.yaml'
+stack-up:
+	@[ -n "$(STACK)" ] || { \
+	  echo "ABORT: STACK не задан — раскатывать нечего."; \
+	  echo "       Умолчания здесь быть не может: цель меняет кластер, а"; \
+	  echo "       «наверное, dev» — не выбор стенда."; \
+	  echo "       Объявленные стенды:"; \
+	  bash tests/helm/stacks.sh --names | sed 's/^/         /'; \
+	  exit 2; }
+	@known="$$(bash tests/helm/stacks.sh --names)"; \
+	case " $$(echo $$known) " in \
+	  *" $(STACK) "*) ;; \
+	  *) echo "ABORT: стенда '$(STACK)' в таблице stacks.txt нет."; \
+	     echo "       Состав стенда объявляет таблица; имя вне её значит, что цепочку"; \
+	     echo "       взять неоткуда, а не что её можно досочинить здесь."; \
+	     echo "       Объявленные стенды:"; \
+	     echo "$$known" | sed 's/^/         /'; \
+	     exit 2 ;; \
+	esac
+	@if [ "$(STACK)" = "fe3455" ]; then \
+	  echo "ABORT: fe3455 раскатывается своим скриптом, а не этой целью."; \
+	  echo "       Его цепочка требует слоя учётных данных площадки, который лежит"; \
+	  echo "       ВНЕ дерева и в таблицу попасть не может. Эта цель добавить его не"; \
+	  echo "       умеет — стенд поднялся бы без учётных данных, и это было бы видно"; \
+	  echo "       не сразу."; \
+	  echo "       Раскатывать:  bash helm/umbrella/cutover-fe3455.sh"; \
+	  exit 2; \
+	fi
+	@$(MAKE) --no-print-directory guard-destructive OP="stack-up STACK=$(STACK)" TOKEN="UP-$(STACK)" \
+	  WHAT="состав кластера будет приведён к объявленной цепочке стенда $(STACK) из stacks.txt"
+	@set -e; \
+	args="$$(bash tests/helm/stacks.sh --args "$(STACK)" ./helm/umbrella)"; \
+	[ -n "$$args" ] || { \
+	  echo "ABORT: цепочка стенда '$(STACK)' прочиталась ПУСТОЙ."; \
+	  echo "       Это отказ чтения таблицы, а НЕ стенд без профилей: helm без единого"; \
+	  echo "       -f сядет на умолчания чарта, то есть на посадку РАЗРАБОТКИ"; \
+	  echo "       (анонимный доступ, plaintext БД). Почини stacks.txt."; \
+	  exit 1; }; \
+	echo "=== стенд $(STACK): цепочка ПРОЧИТАНА из stacks.txt ==="; \
+	printf '  %s\n' $$args; \
+	set -x; \
+	helm upgrade --install $(STACK_RELEASE) ./helm/umbrella -n $(STACK_NAMESPACE) --create-namespace \
+	  $$args $(UMBRELLA_OPTS) $(STACK_EXTRA_ARGS) --wait --timeout $(STACK_TIMEOUT)
+
 
 # assert-rollout-ready — КАЖДЫЙ workload в ns kacho обязан быть rollout-complete.
 #

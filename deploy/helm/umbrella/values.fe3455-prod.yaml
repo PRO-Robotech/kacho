@@ -82,6 +82,17 @@ global:
   imageRegistry: ""
   security:
     allowInsecureImages: true
+  kacho:
+    registry:
+      # Имя службы реестра — ОДНО объявление на ОБЕ стороны докерной полосы
+      # (задача #1184). Реестр называет его докер-клиенту в вызове на
+      # аутентификацию, iam чеканит его в `aud` и всё прочее отвергает; отсюда
+      # его читают оба подчарта. Прежде здесь стояли ДВЕ копии —
+      # `registry.serviceAud` и `kacho-iam.config.apiServer.registryToken.service`
+      # — и разойтись им мешало только внимание.
+      #
+      # Значение то же, что действовало прежде: посадка не меняется.
+      serviceAud: "registry.in-cloud.io"
 
 # ── each bitnami pg-<svc>: bitnamilegacy image + os-shell init + cert-manager TLS
 #    (5 core) + operator-provisioned secret. auth.existingSecret points at the
@@ -333,7 +344,9 @@ kacho-iam:
     apiServer:
       registryToken:
         issuer: https://registry.in-cloud.io/iam/token
-        service: registry.in-cloud.io
+        # `service` здесь НЕ объявляется — он ВЫВОДИТСЯ из
+        # `global.kacho.registry.serviceAud`, то есть из объявленной стороны
+        # реестра. Второе объявление того же предмета расходилось бы молча.
     authn:
       # СВОЯ ЧЕКАНКА ТОКЕНОВ (F1, задача #897)
       #
@@ -508,6 +521,9 @@ api-gateway:
 # running registry). zot image = the stand's running ghcr.io/project-zot:latest.
 registry:
   enabled: true
+  # `serviceAud` здесь НЕ объявляется: имя службы полосы объявлено один раз в
+  # `global.kacho.registry.serviceAud` (см. выше) и читается обоими подчартами.
+  # Объявить его и здесь, но иначе, — отказ рендера с обеими величинами.
   image:
     # FORWARD ROLL: main-af0eacae (kacho-registry origin/main HEAD, Docker Hub-verified
     # 2026-07-15T14:00) — STRICT forward from the live main-5eb21d25 (5eb21d25 IS an

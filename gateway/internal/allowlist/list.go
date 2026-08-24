@@ -253,7 +253,7 @@ var AllowedMethods = map[string]struct{}{
 	// immutable), возвращает Operation; parity с RoleService/ServiceAccountService.
 	"/kacho.cloud.iam.v1.UserService/Get":            {},
 	"/kacho.cloud.iam.v1.UserService/List":           {},
-	"/kacho.cloud.iam.v1.UserService/Update":         {}, // public labels-only mutation (REST PATCH /iam/v1/users/{user_id}); v_update on iam_user, acr 2
+	"/kacho.cloud.iam.v1.UserService/Update":         {}, // public labels-only mutation (REST PATCH /iam/v1/users/{user_id}); record_writer on iam_user, acr 1
 	"/kacho.cloud.iam.v1.UserService/Delete":         {},
 	"/kacho.cloud.iam.v1.UserService/ListOperations": {}, // per-resource ops (REST GET /iam/v1/users/{user_id}/operations)
 	// Административный запрет участию и его снятие (REST POST
@@ -261,11 +261,19 @@ var AllowedMethods = map[string]struct{}{
 	// записи в этом списке директор отвергает метод раньше, чем что-либо о нём
 	// узнают каталог и таблица маршрутов, и односторонний недосмотр оставил бы
 	// заблокированного без пути снятия.
-	"/kacho.cloud.iam.v1.UserService/Block":   {}, // v_update on iam_user, acr 2
-	"/kacho.cloud.iam.v1.UserService/Unblock": {}, // v_update on iam_user, acr 2
+	"/kacho.cloud.iam.v1.UserService/Block":   {}, // identity_suspender on iam_user, acr 2
+	"/kacho.cloud.iam.v1.UserService/Unblock": {}, // identity_suspender on iam_user, acr 2
 	// Приглашение по адресу почты (REST POST /iam/v1/users:invite) — единственный
 	// публичный путь появления пользователя; Create по-прежнему только internal.
 	"/kacho.cloud.iam.v1.UserService/Invite": {},
+	// Исключение человека из аккаунта (REST POST
+	// /iam/v1/users/{user_id}:removeFromAccount) — ПАРА к приглашению выше, и
+	// стоять они обязаны обе: аккаунт, который умеет только вводить людей и не
+	// умеет выводить, копит участников, которых не может убрать (#1127).
+	// Гейтится `member_remover` на АККАУНТЕ (тот же круг, что у Invite), acr 2;
+	// строку личности не трогает — её снятие спрашивает `identity_remover`
+	// (#1131).
+	"/kacho.cloud.iam.v1.UserService/RemoveFromAccount": {},
 	// iam.v1 — UserTokenService (REST .../users/{user_id}/tokens) —
 	// выдача, перечисление и отзыв неинтерактивных токенов пользователя.
 	"/kacho.cloud.iam.v1.UserTokenService/Issue":  {},

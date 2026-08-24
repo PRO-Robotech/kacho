@@ -67,6 +67,11 @@ var nonCreatingVerbs = map[string]bool{
 	"ListSubjectPrivileges": true, "ListSubjects": true, "ListSubnets": true, "ListTags": true, "ListUsedAddresses": true,
 	"Move": true, "Relocate": true, "RemoveCidrBlocks": true, "RemoveMember": true, "RemoveOneToOneNat": true, "RemoveRoutes": true,
 	"RemoveTargets": true, "RenameRepository": true, "Restart": true, "Revoke": true, "SetAccessBindings": true,
+	// RemoveFromAccount — глагол СНИМАЮЩИЙ, и это не спорный случай: он выводит
+	// человека из аккаунта, не заводя ничего. Провайдер зовёт его уничтожением
+	// ресурса `kacho_iam_user_invitation` — ресурс моделирует ЧЛЕНСТВО, поэтому
+	// снятие членства и есть его destroy (#1127).
+	"RemoveFromAccount":        true,
 	"SimulateMaintenanceEvent": true, "Start": true, "Stop": true, "Unblock": true, "Update": true, "UpdateAccessBindings": true,
 	"UpdateMetadata": true, "UpdateNetworkInterface": true, "UpdateRepository": true, "UpdateRoute": true, "UpdateRule": true,
 	"UpdateRules": true, "WhoAmI": true,

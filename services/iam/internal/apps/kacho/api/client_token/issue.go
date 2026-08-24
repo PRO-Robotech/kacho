@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/audiencepolicy"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/clientassertion"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/service"
@@ -59,10 +60,15 @@ type Config struct {
 	// AllowedAudiences — объявленный конфигурацией перечень адресатов
 	// платформы. Пустой означал бы «любой», поэтому он обязателен.
 	//
-	// Сверка идёт с ЭТИМ перечнем, а не с перечнем клиента: колонки адресатов у
-	// клиентов, способных к утверждению, в схеме НЕТ, и требовать состояния,
-	// которого схема не допускает, нельзя. Появится колонка — появится сужение
-	// поверх этого перечня, но не раньше.
+	// Это ВНЕШНЯЯ граница выдачи: перечень поверхностей, которым платформа
+	// вообще чеканит удостоверения. Он объявлен посадкой, и расширить его
+	// заказчик ключа не может ничем.
+	//
+	// Прежняя редакция этого комментария говорила, что сверка идёт с ЭТИМ
+	// перечнем «и ничем больше, потому что колонки адресатов у клиентов в схеме
+	// нет». Колонка теперь есть (задача #1136), и сужение поверх этого перечня
+	// действует — см. `resolveAudience`. Внешней границей перечень при этом
+	// быть не перестал: сужение работает внутри него.
 	AllowedAudiences []string
 	// DefaultAudience — адресат, когда запрос его не назвал.
 	DefaultAudience string
@@ -169,8 +175,9 @@ func (u *UseCase) Issue(ctx context.Context, in Input) (Output, clientassertion.
 		}
 	}
 
-	// (3) Адресат — ИЗ ЗАПРОСА, в пределах объявленного перечня.
-	audience, err := u.resolveAudience(in.RequestedAudience)
+	// (3) Адресат — ИЗ ЗАПРОСА, в пределах объявленного ПОСАДКОЙ перечня,
+	// сужённого тем, что объявил при выдаче сам КЛЮЧ (задача #1136).
+	audience, err := u.resolveAudience(in.Client, in.RequestedAudience)
 	if err != nil {
 		return Output{}, clientassertion.OutcomeAudienceNotAllowed, err
 	}
@@ -212,26 +219,31 @@ func (u *UseCase) Issue(ctx context.Context, in Input) (Output, clientassertion.
 }
 
 // resolveAudience выбирает адресат выпускаемого токена.
-func (u *UseCase) resolveAudience(requested []string) ([]string, error) {
-	if len(requested) == 0 {
-		return []string{u.cfg.DefaultAudience}, nil
+//
+// Решение принимает ОДИН предикат на все полосы выдачи (`audiencepolicy`), а не
+// копия здесь: полос две, и пока предикат жил копией у одной, вторая чеканила
+// адресату из запроса. Две копии разошлись бы снова и разошлись бы молча —
+// неверна не полоса, неверна их РАЗНИЦА (задача #1184).
+//
+// Отказы двух границ РАЗЛИЧАЮТСЯ ТЕКСТОМ — не наружу (там ответ единый), а в
+// журнале: «посадка такого адресата не объявляла» и «ключ выдавался не под этот
+// адресат» чинятся в разных местах и разными людьми.
+func (u *UseCase) resolveAudience(client domain.AssertionClient, requested []string) ([]string, error) {
+	out, err := audiencepolicy.Resolve(audiencepolicy.Scope{
+		Landing:  u.cfg.AllowedAudiences,
+		Default:  u.cfg.DefaultAudience,
+		Declared: client.DeclaredAudiences,
+		Subject:  client.ID,
+	}, requested)
+	if err != nil {
+		return nil, fmt.Errorf("client_token: %w", err)
 	}
-	for _, a := range requested {
-		if !allowed(u.cfg.AllowedAudiences, a) {
-			return nil, fmt.Errorf("client_token: requested audience %q is not in the declared list", a)
-		}
-	}
-	return requested, nil
+	return out, nil
 }
 
-func allowed(list []string, want string) bool {
-	for _, a := range list {
-		if a == want {
-			return true
-		}
-	}
-	return false
-}
+// allowed — членство в перечне. Тем же предикатом, что исполняет выбор
+// адресата: два сравнения одного предмета разошлись бы на вырожденном значении.
+func allowed(list []string, want string) bool { return audiencepolicy.Contains(list, want) }
 
 func confirmationJKT(c *tokensigner.Confirmation) string {
 	if c == nil {

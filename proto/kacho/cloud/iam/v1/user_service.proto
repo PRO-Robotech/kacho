@@ -94,6 +94,17 @@ service UserService {
   // — IdP `sub`, и иные IdP-projected identity-ключи) hard-immutable: их наличие
   // в update_mask → INVALID_ARGUMENT "<field> is immutable after User.Create".
   // Async — возвращает Operation (как Update всех iam-ресурсов).
+  //
+  // WHO may call it is `record_writer` on `iam_user`, and it carries NO
+  // account-level source (#1102). The row is a GLOBAL identity — one per person
+  // for the whole platform — so `labels`, its only mutable field, decides which
+  // selector grants match the person in EVERY Account, not just the one the label
+  // was set from. A label being per-Account in meaning while living on a global
+  // row is its own subject (#1126); the right to write it stopped being an
+  // account-level one already.
+  //
+  // Reading the record keeps its account-level sources on purpose: seeing the
+  // people of your own Account is the Account's business (`v_get` / `v_list`).
   rpc Update (UpdateUserRequest) returns (operation.Operation) {
     option (google.api.http) = { patch: "/iam/v1/users/{user_id}" body: "*" };
     option (kacho.cloud.api.operation) = {
@@ -101,7 +112,7 @@ service UserService {
       response: "User"
     };
     option (kacho.iam.authz.v1.permission)        = "iam.users.update";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.required_relation) = "record_writer";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
@@ -109,7 +120,38 @@ service UserService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Deletes the specified user.
+  // Deletes the specified person: the identity row itself, everywhere.
+  //
+  // WHAT IT IS SCOPED TO, because getting this wrong is irreversible. A `users`
+  // row is NO LONGER a membership. One person is ONE row for the whole platform
+  // (global keys `users_identity_email_uniq` /
+  // `users_identity_external_id_uniq`, migration 20260823050000), and belonging
+  // to Accounts is expressed by `memberships` rows, of which there may be many.
+  // Deleting the row from Account A therefore erases the person in Account B as
+  // well: he loses the identity itself, not his participation in one tenant.
+  //
+  // WHO may call it is `identity_remover` on `iam_user` — the person himself and
+  // the cloud, and nobody else. It used to be `v_delete`, which carried THREE
+  // account-level sources: the per-object grant the reconciler materializes on
+  // an invitee's row, the delegated Account administrator, and the Account
+  // owner. That is strictly worse than the block #1102 already took out of the
+  // Account's hands — a block is reversible, a deletion is not (#1131).
+  //
+  // WHAT THE PERSON WHO INVITED HIM KEEPS is what the owner's directive names —
+  // adding and removing rights in his own Account (`iam_access_binding`), seeing
+  // his people (`v_get` / `v_list` keep their account-level sources
+  // deliberately), and now REMOVING A PERSON FROM HIS ACCOUNT
+  // (`RemoveFromAccount` below, #1127). The last one is what he actually wanted
+  // when he reached for Delete: it drops the membership and leaves the identity
+  // alone.
+  //
+  // SELF-DELETION IS UNAFFECTED and stays permitted: `subject` is a source here.
+  // The narrowing takes away the right to erase SOMEONE ELSE, never one's own
+  // row.
+  //
+  // Deleting an identity that still owns Accounts is refused by the database
+  // (`accounts_owner_fk`) → FAILED_PRECONDITION "User <id> owns accounts and
+  // cannot be deleted"; that is unchanged.
   rpc Delete (DeleteUserRequest) returns (operation.Operation) {
     option (google.api.http) = { delete: "/iam/v1/users/{user_id}" };
     option (kacho.cloud.api.operation) = {
@@ -117,7 +159,7 @@ service UserService {
       response: "google.protobuf.Empty"
     };
     option (kacho.iam.authz.v1.permission)        = "iam.users.delete";
-    option (kacho.iam.authz.v1.required_relation) = "v_delete";
+    option (kacho.iam.authz.v1.required_relation) = "identity_remover";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
@@ -125,17 +167,94 @@ service UserService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // Blocks the specified User membership: it may no longer authenticate into
-  // the Account that row belongs to.
+  // Removes the specified person from the specified Account: the MEMBERSHIP
+  // goes, the identity stays.
+  //
+  // THE COUNTERPART OF Invite, and the second row of the scope table the owner's
+  // directive (2026-08-23) drew: the person's own fields are his, the block of an
+  // IDENTITY is the cloud's, and who takes part in MY Account is the Account's.
+  // Until this RPC existed the third row had no action at all — `memberships`
+  // carries no suspended state and had no removal verb — so "block him in my
+  // Account" could only be expressed by withdrawing the grants. That is NOT an
+  // exclusion, and the difference is observable: the membership stayed, the
+  // person stayed in the Account's people list, and `account_admission_rate` kept
+  // counting him (#1127).
+  //
+  // WHAT IT MUST NOT TOUCH, stated as a boundary rather than a hope: not one
+  // field of the `iam_user` row. A person removed from Account A goes on working
+  // in Account B with his record unchanged — same id, same email, same state,
+  // same labels. If you need the identity itself gone, that is Delete above, and
+  // it is not an Account-level right.
+  //
+  // ORDER IS ENFORCED BY THE DATABASE, not by the caller's memory: the deferred
+  // constraint trigger `membership_carrying_rights_is_kept` (migration 472002)
+  // refuses to drop a membership that still carries an ACTIVE access binding in
+  // that Account. So "withdraw the rights first, then exclude" is a constraint,
+  // and the refusal is FAILED_PRECONDITION with the grants named, never a silent
+  // orphaning of a right whose bearer is gone.
+  //
+  // IDEMPOTENT: the argument is the ABSENCE of the membership, not a transition.
+  // Excluding a person who is not in that Account succeeds and reports him
+  // absent — the safe direction of this control must never be the one that fails
+  // on retry.
+  //
+  // THE LAST MEMBERSHIP MAY GO TOO. An identity with no memberships is a legal
+  // state in this tree (the row exists, it belongs to no Account) and it is what
+  // a person who has been removed from everywhere IS. Refusing the last removal
+  // would make the Account unable to finish the job it is entitled to do, and
+  // would leave the identity attached to a tenant that no longer wants it.
+  //
+  // WHO may call it is `member_remover` on `account` — by definition the same
+  // circle that may `Invite` into it. Whoever may bring a person in must be able
+  // to take him out; an Account that can only accumulate people is the state this
+  // RPC exists to leave. The two are separate relation NAMES so that narrowing
+  // one without the other is a red gate rather than a silent drift.
+  //
+  // Step-up (acr=2) — same floor as its two neighbours on this surface: Invite,
+  // which admits a person, and AccessBindingService/Revoke, which withdraws a
+  // right. Changing who takes part in an Account is a membership-posture change,
+  // not routine lifecycle.
+  rpc RemoveFromAccount (RemoveUserFromAccountRequest) returns (operation.Operation) {
+    option (google.api.http) = {
+      post: "/iam/v1/users/{user_id}:removeFromAccount"
+      body: "*"
+    };
+    option (kacho.cloud.api.operation) = {
+      metadata: "RemoveUserFromAccountMetadata"
+      response: "google.protobuf.Empty"
+    };
+    option (kacho.iam.authz.v1.permission)        = "iam.users.removeFromAccount";
+    option (kacho.iam.authz.v1.required_relation) = "member_remover";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "account"
+      from_request_field: "account_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Blocks the specified person: the identity may no longer authenticate
+  // anywhere on the platform.
   //
   // WHAT IT IS SCOPED TO, because getting this wrong is a cross-tenant outage.
-  // A `users` row is a MEMBERSHIP — one pair of (identity, Account) — and one
-  // identity holds one row per Account it belongs to. This call blocks ONE such
-  // row. The identity keeps working wherever else it is active: token issuance
-  // walks the membership set and serves the first row that may authenticate, and
-  // refuses only when NONE can. A block therefore belongs to the Account that
-  // issued it, and the admin of Account A cannot switch a person off in
-  // Account B.
+  // A `users` row is NO LONGER a membership. One person is ONE row for the whole
+  // platform (global keys `users_identity_email_uniq` /
+  // `users_identity_external_id_uniq`, migration 20260823050000), and belonging
+  // to Accounts is expressed by `memberships` rows, of which there may be many.
+  // The state written here therefore reaches EVERY Account the person is in:
+  // token issuance walks the membership set and serves the first row that may
+  // authenticate, and now "none can" arrives at once, because the state is one
+  // per person. This is the owner's decision "a block is a property of the
+  // identity" (question В-8 of the IAM-ID-1 acceptance), not a side effect.
+  //
+  // > This paragraph used to say the opposite — that a block belonged to the
+  // > Account that issued it and that the admin of Account A could not switch a
+  // > person off in Account B. That was true until the row stopped being a
+  // > membership, and it outlived its subject. It is restated here rather than
+  // > deleted because it reads as an active security boundary: the next reader
+  // > looking for the radius of a block would have taken it for a fact. The code
+  // > side of the same correction is in the Block use-case
+  // > (`api/user/set_blocked.go`); the observable one is
+  // > `api/audit/user_block_integration_test.go`.
   //
   // WHY AN ACTION AND NOT A FIELD ON Update. This is the reason the state was
   // never ADDED to UpdateUserRequest, not a description of a bug that was there:
@@ -155,16 +274,32 @@ service UserService {
   // RPC costs exactly what Update costs. It raises assurance for people; it is
   // not a second authorization gate.
   //
-  // WHO may call it is `v_update` on `iam_user` — the same relation Update
-  // carries, on the same object, which resolves to the admin of the owning
-  // Account (`super_admin: admin from account`) and, by cascade, to the cloud
-  // admin. Deliberate: whoever may rename a membership may also suspend it, and
-  // by the editor projection may already delete it outright. A relation of its
-  // own would leave every existing operator unable to use the control until
-  // someone re-granted them — the wrong failure mode for something reached for
-  // during an incident. An ordinary member does NOT hold it on their own row
-  // (`subject` feeds `viewer`, not `v_update`), which is what keeps self-lifting
-  // impossible.
+  // WHO may call it is `identity_suspender` on `iam_user` — a relation of its
+  // own, with NO account-level source: neither a per-object grant, nor the
+  // delegated Account administrator, nor the Account owner (#1102).
+  //
+  // It used to be `v_update`, shared with Update, and the argument for sharing
+  // was that whoever may rename a membership may also suspend it. That argument
+  // died with the membership: the state now switches the person off on the whole
+  // platform, so an Account administrator holding it decides for Accounts he has
+  // nothing to do with. What the person who invited him keeps is what the owner's
+  // directive names — adding and removing rights in his own Account
+  // (`iam_access_binding`), plus reading his people (`v_get` / `v_list` keep
+  // their account-level sources deliberately).
+  //
+  // An ordinary member does NOT hold it on their own row, and neither does the
+  // person himself: `subject` is not a source here, so self-lifting is
+  // impossible by construction.
+  //
+  // Per-account exclusion as an ACTION now EXISTS, and that changes who this
+  // paragraph points at. It used to say that no such action existed and that
+  // "block within my Account" therefore had to be expressed by withdrawing the
+  // grants. `RemoveFromAccount` (above, #1127) is that action: it drops the
+  // membership row, leaves the identity untouched, and is gated by
+  // `member_remover` on the ACCOUNT — the same circle that may invite into it.
+  // The sentence is rewritten rather than deleted because the reason it gave is
+  // still true: an Account administrator has no business switching a person off
+  // platform-wide. He simply has his own verb now instead of a substitute.
   //
   // IDEMPOTENT: the argument is the STATE, not a transition. Blocking a
   // membership that is already blocked succeeds and reports it blocked — the
@@ -185,7 +320,7 @@ service UserService {
       response: "User"
     };
     option (kacho.iam.authz.v1.permission)        = "iam.users.block";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.required_relation) = "identity_suspender";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
@@ -214,7 +349,7 @@ service UserService {
       response: "User"
     };
     option (kacho.iam.authz.v1.permission)        = "iam.users.unblock";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.required_relation) = "identity_suspender";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "iam_user"
       from_request_field: "user_id"
@@ -316,6 +451,21 @@ message UpdateUserRequest {
 message DeleteUserRequest {
   // ID of the User resource to delete.
   string user_id = 1 [(required) = true, (length) = "<=20"];
+}
+
+// Removes a person from one Account. Both ids are required: the membership is
+// the PAIR, and neither half may be inferred. Deriving the Account from the
+// person's row would pick `users.account_id` — the column that names ONE of his
+// Accounts and is a leftover of the time when the row WAS the membership; the
+// caller would then remove a membership he did not name.
+message RemoveUserFromAccountRequest {
+  // ID of the person whose membership is removed. The identity row is not
+  // touched by this call.
+  string user_id = 1 [(required) = true, (length) = "<=20"];
+
+  // ID of the Account the person is removed from. This is also the scope of the
+  // authorization decision (`member_remover` on this Account).
+  string account_id = 2 [(required) = true, (length) = "<=20"];
 }
 
 message BlockUserRequest {

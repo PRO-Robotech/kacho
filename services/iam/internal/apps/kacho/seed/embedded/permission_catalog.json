@@ -1113,7 +1113,7 @@
   {
     "fqn": "kacho.cloud.iam.v1.InternalSessionRevocationsService/ListByUser",
     "permission": "iam.session_revocations.listByUser",
-    "required_relation": "viewer",
+    "required_relation": "session_reader",
     "scope_extractor": {
       "object_type": "iam_user",
       "from_request_field": "user_id"
@@ -1123,6 +1123,16 @@
   },
   {
     "fqn": "kacho.cloud.iam.v1.InternalSessionRevocationsService/Revoke",
+    "permission": "\u003cexempt\u003e",
+    "required_relation": "",
+    "scope_extractor": {
+      "object_type": "",
+      "from_request_field": ""
+    },
+    "exempt_reason": "INTERNAL_LISTENER"
+  },
+  {
+    "fqn": "kacho.cloud.iam.v1.InternalSessionRevocationsService/SessionCutoffOf",
     "permission": "\u003cexempt\u003e",
     "required_relation": "",
     "scope_extractor": {
@@ -1454,7 +1464,7 @@
   {
     "fqn": "kacho.cloud.iam.v1.UserService/Block",
     "permission": "iam.users.block",
-    "required_relation": "v_update",
+    "required_relation": "identity_suspender",
     "scope_extractor": {
       "object_type": "iam_user",
       "from_request_field": "user_id"
@@ -1464,7 +1474,7 @@
   {
     "fqn": "kacho.cloud.iam.v1.UserService/Delete",
     "permission": "iam.users.delete",
-    "required_relation": "v_delete",
+    "required_relation": "identity_remover",
     "scope_extractor": {
       "object_type": "iam_user",
       "from_request_field": "user_id"
@@ -1512,9 +1522,19 @@
     "required_acr_min": "1"
   },
   {
+    "fqn": "kacho.cloud.iam.v1.UserService/RemoveFromAccount",
+    "permission": "iam.users.removeFromAccount",
+    "required_relation": "member_remover",
+    "scope_extractor": {
+      "object_type": "account",
+      "from_request_field": "account_id"
+    },
+    "required_acr_min": "2"
+  },
+  {
     "fqn": "kacho.cloud.iam.v1.UserService/Unblock",
     "permission": "iam.users.unblock",
-    "required_relation": "v_update",
+    "required_relation": "identity_suspender",
     "scope_extractor": {
       "object_type": "iam_user",
       "from_request_field": "user_id"
@@ -1524,7 +1544,7 @@
   {
     "fqn": "kacho.cloud.iam.v1.UserService/Update",
     "permission": "iam.users.update",
-    "required_relation": "v_update",
+    "required_relation": "record_writer",
     "scope_extractor": {
       "object_type": "iam_user",
       "from_request_field": "user_id"

@@ -114,6 +114,8 @@ deploy/scripts/assert-fixture-role-verbs-exist.py
 deploy/scripts/assert-generated-scripts-parse.js
 deploy/scripts/assert-identity-account-peak-under-ceiling.py
 deploy/scripts/assert-identity-admission-rate-headroom.py
+deploy/scripts/assert-legacy-issuer-acceptance-has-a-subject.py
+deploy/scripts/assert-machine-minter-has-no-dead-exchange-lane.py
 deploy/scripts/assert-outbox-autovacuum.sh
 deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-refusal-lane-has-a-reader.py
@@ -135,6 +137,7 @@ deploy/tests/helm/admin-hop-transport-test.sh
 deploy/tests/helm/config-rollout-binding-test.sh
 deploy/tests/helm/geo-authz-edge-armed-test.sh
 deploy/tests/helm/image-rollout-binding-test.sh
+deploy/tests/helm/kratos-selfservice-ui-hardening-test.sh
 deploy/tests/helm/makefile-destructive-guarded-test.sh
 deploy/tests/helm/neighbour-address-form-test.sh
 deploy/tests/helm/networkpolicy-egress-test.sh
