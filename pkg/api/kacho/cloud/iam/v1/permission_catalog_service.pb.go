@@ -72,22 +72,19 @@ type ListPermissionCatalogResponse struct {
 	// keys of backend `objectTypes` (e.g. iam, vpc, compute, loadbalancer).
 	// Deterministic order.
 	Modules []*CatalogModule `protobuf:"bytes,1,rep,name=modules,proto3" json:"modules,omitempty"`
-	// Набор глаголов, ОБЩИЙ ДЛЯ ВСЕХ ресурсов: пересечение наборов всех типов,
-	// сегодня ["get","list","update","delete"]. Порядок канонический и
-	// фиксированный — он часть контракта поля.
+	// Набор глаголов, ОБЩИЙ ДЛЯ ВСЕХ ресурсов: пересечение наборов всех типов.
+	// Порядок канонический и фиксированный — он часть контракта поля.
 	//
-	// Набор глаголов — атрибут ТИПА, а не платформы. Поле показывает то, что даёт
-	// ЛЮБОЙ ресурс; ресурс вправе объявлять более широкий набор, и такой глагол сюда
-	// не попадёт — обещать его от имени всех ресурсов поле не может. Словарь ПО
-	// РЕСУРСУ — предмет отдельной под-фазы; имя поля сохранено, чтобы не ломать
-	// существующих клиентов.
+	// ЭТО ПОЛЕ БОЛЬШЕ НЕ СЛОВАРЬ РЕДАКТОРА РОЛЕЙ. Набор глаголов — атрибут ТИПА, и
+	// спрашивать его надо у ресурса: `CatalogResource.verbs`. Пересечение остаётся
+	// как совместимость с уже написанными клиентами и как честный ответ на вопрос
+	// «что даёт ЛЮБОЙ ресурс», но строить из него выпадающий список нельзя ни в
+	// одну сторону: у ресурса с более широким набором глагол не предлагался бы,
+	// хотя энфорсится, а сужение набора у ОДНОГО ресурса вынимало бы глагол из
+	// списка у всех остальных (#1128).
 	//
-	// Сегодня шире общего объявлены ТРИ пары: `addTargets`/`removeTargets` у
-	// `loadbalancer.targetGroups` и `create` у `registry.registries`. Такой глагол
-	// энфорсится, но не предлагается редактором ролей — роль с ним авторуется через
-	// API. Радиус прибит гейтом (kacho-iam authzmap, «enforced verbs absent from
-	// closed_verbs»): четвёртая пара покраснеет, и покраснеет же запись, которую
-	// словарь по ресурсу сделает ненужной.
+	// Поле поэтому СУЖАЕТСЯ по мере того, как наборы типов расходятся, и это его
+	// объявленное поведение, а не поломка.
 	ClosedVerbs []string `protobuf:"bytes,2,rep,name=closed_verbs,json=closedVerbs,proto3" json:"closed_verbs,omitempty"`
 	// Platform-wide wildcard policy flags.
 	WildcardPolicy *WildcardPolicy `protobuf:"bytes,3,opt,name=wildcard_policy,json=wildcardPolicy,proto3" json:"wildcard_policy,omitempty"`
@@ -233,8 +230,25 @@ type CatalogResource struct {
 	// INVALID_ARGUMENT "type %s is not selectable (no resource feed)"). E.g.
 	// vpc.addressPool is grantable+verb-bearing but NOT label-selectable.
 	LabelSelectable bool `protobuf:"varint,4,opt,name=label_selectable,json=labelSelectable,proto3" json:"label_selectable,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Глаголы, которые правило роли вправе назвать НА ЭТОМ ресурсе, в каноническом
+	// порядке показа (`get`,`list`,`create`,`update`,`delete`, далее по алфавиту).
+	// Зеркало набора, объявленного типом в канонической модели прав; пусто ровно
+	// тогда, когда `has_verb_relations` = false.
+	//
+	// ЭТО — ИСТОЧНИК ВЫПАДАЮЩЕГО СПИСКА редактора ролей, а не `closed_verbs`
+	// (#1128). Набор глаголов принадлежит ТИПУ: `loadbalancer.targetGroups` несёт
+	// сверх обычного `addTargets`/`removeTargets`, `registry.registries` — `create`,
+	// а у `iam.user` `update` снят (правку записи спрашивает другое отношение).
+	// Общее пересечение не выражает ни одного из этих трёх случаев: из него
+	// широкий глагол выпадает, а сужение у одного ресурса отнимает глагол у всех.
+	//
+	// Правило, назвавшее глагол ВНЕ этого набора, не даёт на этом типе ничего:
+	// материализация сверяется с тем же набором и молча его отбрасывает. Поэтому
+	// редактор обязан предлагать именно его — иначе роль авторуется в форме,
+	// которая ничего не значит.
+	Verbs         []string `protobuf:"bytes,5,rep,name=verbs,proto3" json:"verbs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CatalogResource) Reset() {
@@ -293,6 +307,13 @@ func (x *CatalogResource) GetLabelSelectable() bool {
 		return x.LabelSelectable
 	}
 	return false
+}
+
+func (x *CatalogResource) GetVerbs() []string {
+	if x != nil {
+		return x.Verbs
+	}
+	return nil
 }
 
 // WildcardPolicy carries the catalog's wildcard policy flags, in parity with
@@ -367,12 +388,13 @@ const file_kacho_cloud_iam_v1_permission_catalog_service_proto_rawDesc = "" +
 	"\x0fwildcard_policy\x18\x03 \x01(\v2\".kacho.cloud.iam.v1.WildcardPolicyR\x0ewildcardPolicy\"j\n" +
 	"\rCatalogModule\x12\x16\n" +
 	"\x06module\x18\x01 \x01(\tR\x06module\x12A\n" +
-	"\tresources\x18\x02 \x03(\v2#.kacho.cloud.iam.v1.CatalogResourceR\tresources\"\xb2\x01\n" +
+	"\tresources\x18\x02 \x03(\v2#.kacho.cloud.iam.v1.CatalogResourceR\tresources\"\xc8\x01\n" +
 	"\x0fCatalogResource\x12\x1a\n" +
 	"\bresource\x18\x01 \x01(\tR\bresource\x12,\n" +
 	"\x12has_verb_relations\x18\x02 \x01(\bR\x10hasVerbRelations\x12*\n" +
 	"\x11has_list_endpoint\x18\x03 \x01(\bR\x0fhasListEndpoint\x12)\n" +
-	"\x10label_selectable\x18\x04 \x01(\bR\x0flabelSelectable\"\xa1\x01\n" +
+	"\x10label_selectable\x18\x04 \x01(\bR\x0flabelSelectable\x12\x14\n" +
+	"\x05verbs\x18\x05 \x03(\tR\x05verbs\"\xa1\x01\n" +
 	"\x0eWildcardPolicy\x12?\n" +
 	"\x1cverb_wildcard_allowed_custom\x18\x01 \x01(\bR\x19verbWildcardAllowedCustom\x12N\n" +
 	"$module_resource_wildcard_system_only\x18\x02 \x01(\bR moduleResourceWildcardSystemOnly2\xf3\x01\n" +

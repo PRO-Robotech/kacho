@@ -370,6 +370,18 @@ export interface CatalogResource {
   // тип label-selectable (есть resource-feed для match_labels-реконсайла). false →
   // match_labels по этому типу запрещён backend'ом; RulesEditor блокирует submit.
   label_selectable?: boolean;
+  // Глаголы, которые правило роли вправе назвать НА ЭТОМ ресурсе, в каноническом
+  // порядке показа. ЭТО источник выпадающего списка редактора ролей, а не
+  // `closed_verbs` (#1128): набор глаголов принадлежит ТИПУ, и пересечение не
+  // выражает ни расширения (`addTargets` у групп целей), ни сужения (`update`
+  // снят у `iam.user`).
+  //
+  // Поле отсутствует у ресурса, который глаголов не несёт (ярусный предок), и у
+  // ответа СТАРОГО края — на wire proto3 опускает пустой repeated, поэтому «нет
+  // набора» и «набор пуст» на проводе неразличимы. Различает их
+  // `has_verb_relations`: глагольный ресурс без набора — это старый край, и
+  // редактор откатывается на общий словарь.
+  verbs?: string[];
 }
 export interface CatalogModule {
   module: string; // 1-й сегмент токена (iam/vpc/compute/loadbalancer)
