@@ -108,7 +108,7 @@ Region/Zone, AddressPool, internal-проекции ресурсов) регис
 | `KACHO_API_GATEWAY_TOKEN_ISSUERS` | не объявлено | принимаемые издатели через запятую; вырожденное значение — отказ в старте |
 | `KACHO_API_GATEWAY_TOKEN_ISSUER_KEYSETS` | пусто | привязка «издатель=адрес его набора ключей»; адрес объявляется, не выводится |
 | `KACHO_API_GATEWAY_PLATFORM_TOKEN_ISSUER` | пусто | наш издатель; выбирает строгую полосу приёма и чтение отзыва |
-| `KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL` | пусто | наш авторитет отзыва; обязателен при принимаемом нашем издателе |
+| `KACHO_API_GATEWAY_PLATFORM_TOKEN_REVOCATION_URL` | пусто | наш авторитет отзыва; при принимаемом нашем издателе не задан ⇒ **отказ в старте**, мягкого прохода на этой полосе нет |
 | `KACHO_HYDRA_ISSUER` | derived | прежний скалярный пин; действует, пока `_TOKEN_ISSUERS` не объявлен |
 
 В production-окружении (`KACHO_APP_ENV=production`) gateway **отказывается стартовать**
