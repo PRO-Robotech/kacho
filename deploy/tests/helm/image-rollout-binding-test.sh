@@ -39,15 +39,30 @@ UMBRELLA="$DEPLOY_ROOT/helm/umbrella"
 MAKEFILE="$DEPLOY_ROOT/Makefile"
 DEV="$UMBRELLA/values.dev.yaml"
 
-fatal() { echo "FATAL: $1"; exit 2; }
-command -v helm >/dev/null 2>&1 || fatal "helm не найден"
-python3 -c 'import yaml' 2>/dev/null || fatal "нужен python3 с PyYAML"
-[ -f "$DEV" ] || fatal "values.dev.yaml не найден ($DEV)"
-[ -f "$MAKEFILE" ] || fatal "deploy/Makefile не найден — предмет проверки берётся из него"
+# ── Три исхода — ОБЩЕЙ реализацией каталога, а не своей копией ───────────────
+#
+# 0 зелено · 1 находка о дереве · 2 условие не создано (плюс текст самого helm).
+# Свой `fatal` категорию РАЗЛИЧАЛ верно и потому был почти прав; неверна была
+# ВТОРАЯ половина контракта — текст. `render()` глушила stderr (`2>/dev/null`),
+# поэтому оба «рендер сорвался» уезжали читателю голыми: на дереве без собранных
+# зависимостей умбреллы «гейт нашёл дефект», «гейт сам сломан» и «условие не
+# создано» давали один наблюдаемый результат. Теперь причину называет сам helm.
+#
+# Утверждений ровно три и число их от состава стендов не зависит, поэтому
+# вердикт печатает `outcome_verdict` с объявленным ожиданием.
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$(dirname "$0")/outcome.sh"
+EXPECTED_ASSERTIONS=3
+
+require_helm
+require_python_yaml
+require_file_present "$DEV" "values.dev.yaml"
+require_file_present "$MAKEFILE" "deploy/Makefile — предмет проверки берётся из него"
 
 # Локально собираемые сервисы — из Makefile, а не из копии списка здесь.
 SERVICES="$(sed -n 's/^SERVICES *:= *//p' "$MAKEFILE" | head -1)"
 [ -n "$SERVICES" ] || fatal "в deploy/Makefile не найден SERVICES — предпосылка проверки не выполняется"
+SERVICES_N="$(wc -w <<<"$SERVICES" | tr -d '[:space:]')"
 
 # Две карты идентификаторов, отличающиеся ВСЕМИ значениями.
 mk_ids() { # $1 — суффикс
@@ -60,13 +75,23 @@ TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT
 mk_ids aaaa >"$TMPD/ids-a.yaml"
 mk_ids bbbb >"$TMPD/ids-b.yaml"
 
-render() { # $1 — файл карты, $2 — куда
-  helm template kacho-umbrella "$UMBRELLA" -f "$DEV" -f "$1" ${EXTRA_SET:-} >"$2" 2>/dev/null
+# render <файл карты> <куда> <что рендерим> — рендер умбреллы.
+#
+# Зовётся НЕ из подстановки: `helm_try` и `render_nonempty_or_fatal` пишут в
+# глобальные переменные, и из подоболочки ни код возврата helm, ни текст его
+# отказа наружу не отдались бы. Успешный, но ПУСТОЙ рендер тоже условие, а не
+# «ничего не нашли»: по нему разбор насчитал бы ноль workload'ов и объявил бы
+# находкой отсутствие предмета.
+render() {
+  # shellcheck disable=SC2086
+  helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" -f "$1" ${EXTRA_SET:-}
+  render_nonempty_or_fatal "$3"
+  printf '%s\n' "$HELM_OUT" >"$2"
 }
 
 echo "=== $SCRIPT: рендер с двумя разными идентификаторами содержимого образов ==="
-render "$TMPD/ids-a.yaml" "$TMPD/a.yaml" || fatal "рендер (A) сорвался — проверка НЕ ВЫПОЛНЕНА"
-render "$TMPD/ids-b.yaml" "$TMPD/b.yaml" || fatal "рендер (B) сорвался — проверка НЕ ВЫПОЛНЕНА"
+render "$TMPD/ids-a.yaml" "$TMPD/a.yaml" "values.dev.yaml + карта идентификаторов A"; ok
+render "$TMPD/ids-b.yaml" "$TMPD/b.yaml" "values.dev.yaml + карта идентификаторов B"; ok
 
 SERVICES="$SERVICES" python3 - "$TMPD/a.yaml" "$TMPD/b.yaml" <<'PY'
 import os, sys, yaml
@@ -174,8 +199,16 @@ PY
 rc=$?
 
 if [ "${1:-}" != "--self-test" ]; then
-  [ $rc -eq 0 ] && echo "PASS: $SCRIPT" || echo "FAILED: $SCRIPT"
-  exit $rc
+  # Третье утверждение — сам разбор двух рендеров. Его находки уже перечислены
+  # разборщиком выше; здесь они получают КОД: 1 — находка о дереве. Прежде тот же
+  # код 1 приезжал и от сорванного рендера, то есть от условия прогона.
+  [ "$rc" -eq 0 ] || fail "$SCRIPT — привязка workload'ов к содержимому их образов нарушена (перечень выше)"
+  ok
+  outcome_verdict "сервисов в SERVICES: $SERVICES_N"
+  # `outcome_verdict` печатает PASS и ВОЗВРАЩАЕТ 0 (выходит он только на находке),
+  # тогда как прежний вердикт здесь ВЫХОДИЛ. Без этой строки обычный прогон
+  # проваливался бы в ветку самопроверки ниже — и отчитывался бы её вердиктом.
+  exit 0
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

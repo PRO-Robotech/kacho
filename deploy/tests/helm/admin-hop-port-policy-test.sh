@@ -47,12 +47,27 @@ SCRIPT="$(basename "$0")"
 DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 UMBRELLA="$DEPLOY_ROOT/helm/umbrella"
 
-FAILURES=0
+# ── Три исхода — ОБЩЕЙ реализацией каталога, а не своей копией ───────────────
+#
+# 0 зелено · 1 находка о дереве · 2 условие не создано (плюс текст самого helm).
+# Прежде здесь лежала СВОЯ копия всех трёх решений, разошедшаяся с каталогом по
+# двум осям: имя `fail` означало НАКОПИТЬ И ПРОДОЛЖИТЬ (в общей реализации оно
+# ОБРЫВАЕТ кодом 1), а отказ рендера копился находкой о дереве — тем же кодом,
+# каким объявляется настоящий дефект (класс #1214).
+#
+# Счёт утверждений скрипт ведёт САМ (число зависит от состава стендов), поэтому
+# вердикт печатает `findings_verdict`, а не `outcome_verdict`.
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$(dirname "$0")/outcome.sh"
+
 ASSERTIONS=0
-fail() { echo "  ✗ $1"; FAILURES=$((FAILURES + 1)); }
-ok()   { echo "  ✓ $1"; }
+# `violation` (накопить находку и продолжить) и `fail` (оборвать кодом 1) берутся
+# ИЗ ОБЩЕЙ РЕАЛИЗАЦИИ. Своей копии `violation` здесь не заводится: она отличалась
+# бы от общей только именем счётчика, и это ровно та форма расхождения, которую
+# сведение снимает.
+good() { echo "  ✓ $1"; }
 note() { echo "    $1"; }
-assertion() { ASSERTIONS=$((ASSERTIONS + 1)); }
+assertion() { ASSERTIONS=$((ASSERTIONS + 1)); ok; }
 
 SIDECAR_NAME="${SIDECAR_NAME:-admin-tls}"
 
@@ -223,7 +238,7 @@ EOF
   probe "политика, регулирующая переход, найдена" "POLICY=consumer-egress:4444,4445" "$tmp/legit.yaml"
   checked=$((checked + 1))
   if grep -qxF 'POLICIES=1' <<<"$(analyze_render "$tmp/legit.yaml")"; then
-    ok "число регулирующих политик утверждается (1)"
+    good "число регулирующих политик утверждается (1)"
   else echo "  ✗ число регулирующих политик не утверждается"; rc=1; fi
 
   # ИНЪЕКЦИЯ: сосед сел на порт, которого политика не разрешает.
@@ -233,7 +248,7 @@ EOF
   sp="$(sed -n 's/^SIDECAR_PORT=//p' <<<"$out")"
   pp="$(sed -n 's/^POLICY=[^:]*://p' <<<"$out")"
   if [ "$sp" = 8445 ] && ! grep -q "\b8445\b" <<<"$pp"; then
-    ok "инъекция: порт соседа ($sp) вне разрешённых политикой ($pp) — различимо"
+    good "инъекция: порт соседа ($sp) вне разрешённых политикой ($pp) — различимо"
   else
     echo "  ✗ инъекция не различена: sp=$sp, разрешено=$pp"; rc=1
   fi
@@ -326,7 +341,7 @@ print("declared" if dev is not None else "default", str(bool(dev)).lower() if de
   checked=$((checked + 1))
   a="$(prodclass "$tmp/v-dev.yaml")"; b="$(prodclass "$tmp/v-prod.yaml")"; c="$(prodclass "$tmp/v-silent.yaml")"
   if [ "$a" = "declared true" ] && [ "$b" = "declared false" ] && [ "$c" = "default " ]; then
-    ok "класс профиля читается по объявлению И по его отсутствию (умолчание чарта)"
+    good "класс профиля читается по объявлению И по его отсутствию (умолчание чарта)"
   else
     echo "  ✗ класс профиля читается неверно: '$a' / '$b' / '$c'"; rc=1
   fi
@@ -340,16 +355,13 @@ fi
 # ═════════════════════════════════════════════════════════════════════════════
 # ОСНОВНОЙ ПРОХОД
 # ═════════════════════════════════════════════════════════════════════════════
-command -v helm >/dev/null 2>&1 || { echo "FATAL: нужен helm"; exit 2; }
-python3 -c 'import yaml' 2>/dev/null || { echo "FATAL: нужен python3 с PyYAML"; exit 2; }
+require_helm
+require_python_yaml
 
+# ПРЕДУСЛОВИЕ: чарт провайдера материализован — иначе умолчание отладочного флага
+# и список источников терминации читать НЕ ОТКУДА.
+require_dep_chart "$UMBRELLA" hydra
 CHART_TGZ="$(ls "$UMBRELLA"/charts/hydra-*.tgz 2>/dev/null | head -1)"
-if [ -z "$CHART_TGZ" ] && [ ! -d "$UMBRELLA/charts/hydra" ]; then
-  echo "FATAL: чарт провайдера не материализован — умолчание отладочного флага и"
-  echo "       список источников терминации читать НЕ ОТКУДА. Собрать:"
-  echo "       (cd $UMBRELLA && helm dep update)"
-  exit 2
-fi
 
 # УМОЛЧАНИЕ ЧАРТА ЧИТАЕТСЯ ИЗ ЧАРТА, а не вписано сюда числом.
 if [ -n "$CHART_TGZ" ]; then
@@ -388,11 +400,13 @@ while IFS= read -r line; do
   IFS=','; for f in $files; do args="$args -f $UMBRELLA/$f"; vfiles="$vfiles $UMBRELLA/$f"; done; unset IFS
 
   render="$work/$stack.yaml"
-  if ! (cd "$UMBRELLA" && helm template kacho-umbrella . $args --namespace kacho) >"$render" 2>"$work/$stack.err"; then
-    assertion; fail "[$stack] рендер не собрался — утверждения НЕ ВЫПОЛНЕНЫ, а не чисты"
-    sed 's/^/        /' "$work/$stack.err" | tail -4
-    continue
-  fi
+  # Отказ рендера — УСЛОВИЕ прогона, а не свойство дерева: код 2 и текст самого helm.
+  # Сломанный шаблон при этом не прячется — его ловит шаг «umbrella template — каждый
+  # стек таблицы», идущий в той же джобе РАНЬШЕ этого.
+  # shellcheck disable=SC2086
+  helm_try kacho-umbrella "$UMBRELLA" $args --namespace kacho
+  render_or_fatal "стек $stack"
+  printf '%s\n' "$HELM_OUT" >"$render"
 
   info="$(analyze_render "$render")"
   sidecar_port="$(sed -n 's/^SIDECAR_PORT=//p' <<<"$info")"
@@ -441,7 +455,7 @@ print("unset" if dev is None else str(bool(dev)).lower())
     stacks_with_policies=$((stacks_with_policies + 1))
     assertion
     if [ -z "$sidecar_port" ]; then
-      fail "[$stack] соседа-терминатора в рендере НЕТ, а политики переход регулируют —"
+      violation "[$stack] соседа-терминатора в рендере НЕТ, а политики переход регулируют —"
       note "сверять нечего: это «не проверили», а не «порт разрешён»."
     else
       bad=""
@@ -454,9 +468,9 @@ print("unset" if dev is None else str(bool(dev)).lower())
         esac
       done <<<"$(sed -n 's/^POLICY=//p' <<<"$info")"
       if [ -z "$bad" ]; then
-        ok "[$stack] порт соседа $sidecar_port разрешён каждой из $npolicies политик, регулирующих переход"
+        good "[$stack] порт соседа $sidecar_port разрешён каждой из $npolicies политик, регулирующих переход"
       else
-        fail "[$stack] политика запрещает порт, который переход РЕАЛЬНО использует:"
+        violation "[$stack] политика запрещает порт, который переход РЕАЛЬНО использует:"
         printf '%s' "$bad"
         note "профиль, на котором это ломается, живыми сценариями не гоняется —"
         note "гейт на стенде без политик этого не увидел бы."
@@ -490,15 +504,15 @@ except Exception:
 print("" if lst is None else ",".join(lst))
 ' $vfiles)"
       if [ -z "$term" ]; then
-        fail "[$stack] боевой класс: список источников терминации НЕ ОБЪЯВЛЕН →"
+        violation "[$stack] боевой класс: список источников терминации НЕ ОБЪЯВЛЕН →"
         note "действует умолчание чарта [$DEFAULT_TERMINATION], петли в нём нет."
         note "После увода листенера на петлю источником станет 127.0.0.1 — вне списка."
         note "Ключ: hydra.hydra.config.serve.tls.allow_termination_from"
       elif ! grep -q '127\.0\.0\.1/32' <<<"$term"; then
-        fail "[$stack] боевой класс: в источниках терминации нет петли ([$term])"
+        violation "[$stack] боевой класс: в источниках терминации нет петли ([$term])"
         note "Ключ: hydra.hydra.config.serve.tls.allow_termination_from — добавить 127.0.0.1/32"
       else
-        ok "[$stack] боевой класс: петля объявлена в источниках терминации ([$term])"
+        good "[$stack] боевой класс: петля объявлена в источниках терминации ([$term])"
         # СПИСОК ЗАМЕЩАЕТСЯ ЦЕЛИКОМ (helm сливает карты, но заменяет списки), и это
         # НАЗЫВАЕТСЯ, а не проверяется на совпадение с умолчанием.
         #
@@ -520,9 +534,9 @@ print("" if lst is None else ",".join(lst))
       # плейнтекст даже от разрешённого источника.
       assertion
       if grep -qiE 'X-Forwarded-Proto[^\n]*https' "$render"; then
-        ok "[$stack] конфигурация соседа объявляет X-Forwarded-Proto: https"
+        good "[$stack] конфигурация соседа объявляет X-Forwarded-Proto: https"
       else
-        fail "[$stack] боевой класс: сосед НЕ объявляет X-Forwarded-Proto: https —"
+        violation "[$stack] боевой класс: сосед НЕ объявляет X-Forwarded-Proto: https —"
         note "провайдер отвергнет плейнтекст даже от разрешённого источника."
       fi
     fi
@@ -550,10 +564,5 @@ if [ "$prodclass_live" -eq 0 ]; then
 fi
 
 echo
-echo "=== вердикт: утверждений $ASSERTIONS, находок $FAILURES ==="
-if [ "$ASSERTIONS" -eq 0 ]; then
-  echo "FAIL: не выполнено НИ ОДНОГО утверждения — это провал, а не чистота."
-  exit 1
-fi
-[ "$FAILURES" -ne 0 ] && { echo "FAIL: $SCRIPT"; exit 1; }
-echo "PASS: $SCRIPT"
+echo "=== вердикт: утверждений $ASSERTIONS, находок $VIOLATIONS ==="
+findings_verdict "стеков осмотрено: $stacks_total"
