@@ -21,13 +21,13 @@ jest.unstable_mockModule("@shared/contexts/AuthContext", () => ({
 }));
 
 // Мок отдаёт ВСЁ, что берёт цепочка импорта, а не только то, что зовёт сам
-// компонент. Окно подтверждения тянет `@shared/pages/auth/Login` (за
-// `bufferToBase64Url`), а тот берёт из kratos ещё и `flowMessages` — под ESM
-// недостающий экспорт кладёт всю суиту сразу: «does not provide an export named».
+// компонент: под ESM недостающий экспорт кладёт всю суиту сразу — «does not
+// provide an export named».
 //
-// Раньше это не проявлялось только потому, что здесь лежала своя копия окна с
-// импортом из модульного `@/pages/auth/Login`; копия снята, цепочка стала общей,
-// и мок правится ВМЕСТЕ с предметом.
+// Цепочка с тех пор укоротилась (#1225). За кодировщиком двоичных полей окно
+// тянуло целую страницу входа, а та брала из kratos ещё и `flowMessages` —
+// поэтому подменять приходилось и его. Страница снята, кодировщик переехал в
+// `@shared/lib/webauthn`, и подмена стала ровно тем, что зовёт компонент.
 jest.unstable_mockModule("@shared/lib/kratos", () => ({
   kratos: {
     loginUrl: () => "#idp",
@@ -41,7 +41,7 @@ jest.unstable_mockModule("@shared/lib/kratos", () => ({
   flowMessages: () => [],
 }));
 
-jest.unstable_mockModule("@shared/pages/auth/Login", () => ({
+jest.unstable_mockModule("@shared/lib/webauthn", () => ({
   bufferToBase64Url: () => "",
 }));
 

@@ -36,7 +36,7 @@ const auth = { setStepUpHandler, markMfaFresh, refresh } as unknown as AuthConte
 jest.unstable_mockModule("@shared/contexts/AuthContext", () => ({ useAuth: () => auth }));
 // Кодировщик — чистая функция; подменяется, чтобы не тянуть страницу входа
 // вместе с её деревом импортов.
-jest.unstable_mockModule("@shared/pages/auth/Login", () => ({
+jest.unstable_mockModule("@shared/lib/webauthn", () => ({
   bufferToBase64Url: () => "AAAA",
 }));
 
