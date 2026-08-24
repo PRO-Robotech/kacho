@@ -16,6 +16,7 @@
 //   POST   /<domain>/v1/<plural>/{id}:verb → Custom verb → Operation
 
 import { snakeToCamel, camelToSnake } from "@shared/lib/case";
+import { acrFromChallenge, challengeOf, isStepUpDenial, requestStepUp } from "./step-up";
 import type { Operation } from "./types";
 
 const API_BASE = ""; // относительный путь, ingress/proxy сделают остальное
@@ -91,7 +92,14 @@ function makeRequestId(): string {
   );
 }
 
-async function fetchJson<T>(method: string, path: string, body?: unknown): Promise<T> {
+/**
+ * `replayed` — этот запрос уже повторяли после подтверждения уровня.
+ *
+ * Повтор РОВНО ОДИН. Отказ, который подтверждением не лечится (пол выше, чем
+ * даёт любой доступный способ), иначе открывал бы окно бесконечно — состояние
+ * хуже исходного отказа, потому что из него нет выхода вовсе.
+ */
+async function fetchJson<T>(method: string, path: string, body?: unknown, replayed = false): Promise<T> {
   const url = `${API_BASE}${path}`;
   const init: RequestInit = {
     method,
@@ -107,6 +115,15 @@ async function fetchJson<T>(method: string, path: string, body?: unknown): Promi
   const res = await fetch(url, init);
   const text = await res.text();
   if (!res.ok) {
+    // Край объявляет «поднимите уровень» вызовом RFC 9470, и это ЕДИНСТВЕННОЕ
+    // место консоли, где такой отказ доходит до окна подтверждения. Без него
+    // окно регистрировалось и не открывалось никогда (#1213).
+    const challenge = challengeOf(res);
+    if (!replayed && isStepUpDenial(res.status, challenge)) {
+      if (await requestStepUp(acrFromChallenge(challenge))) {
+        return fetchJson<T>(method, path, body, true);
+      }
+    }
     throw apiErrorFromBody(res.status, res.statusText, text);
   }
   let parsed: unknown = null;

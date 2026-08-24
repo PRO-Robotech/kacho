@@ -29,7 +29,13 @@ jest.unstable_mockModule("@shared/contexts/AuthContext", () => ({
 // импортом из модульного `@/pages/auth/Login`; копия снята, цепочка стала общей,
 // и мок правится ВМЕСТЕ с предметом.
 jest.unstable_mockModule("@shared/lib/kratos", () => ({
-  kratos: { loginUrl: () => "#idp", getFlow: jest.fn(), submitFlow: jest.fn() },
+  kratos: {
+    loginUrl: () => "#idp",
+    settingsUrl: () => "#settings",
+    initFlow: jest.fn(),
+    getFlow: jest.fn(),
+    submitFlow: jest.fn(),
+  },
   findNode: jest.fn(),
   csrfToken: jest.fn(),
   flowMessages: () => [],

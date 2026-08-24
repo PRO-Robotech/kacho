@@ -47,13 +47,16 @@ describe("api client preserves non-JSON error bodies", () => {
   });
 
   function mockFetch(status: number, statusText: string, body: string) {
-    // jsdom has no global Response; a minimal Response-like object is enough
-    // for fetchJson (it only calls res.ok / status / statusText / text()).
+    // jsdom has no global Response; заменитель обязан отдавать всё, что читает
+    // `fetchJson`, — иначе он СНИСХОДИТЕЛЬНЕЕ продукта и падает на первой же
+    // правке клиента. Так и вышло: клиент научился читать `WWW-Authenticate`
+    // (вызов повышения уровня, #1213), а у заменителя заголовков не было вовсе.
     globalThis.fetch = (() =>
       Promise.resolve({
         ok: status >= 200 && status < 300,
         status,
         statusText,
+        headers: { get: () => null },
         text: () => Promise.resolve(body),
       })) as unknown as typeof fetch;
   }
