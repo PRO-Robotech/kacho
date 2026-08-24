@@ -39,7 +39,20 @@ type IssueSAKeyRequest struct {
 	//   - SECRET — 0 означает «срок не назван», применяется умолчание политики;
 	//     БЕССРОЧНОГО СЕКРЕТА НЕ БЫВАЕТ НИ В КАКОМ НАПИСАНИИ, и срок сверх
 	//     потолка политики ОТВЕРГАЕТСЯ, а не урезается молча.
-	TtlSeconds      int64  `protobuf:"varint,3,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	TtlSeconds int64 `protobuf:"varint,3,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	// Ответственный за выпуск. ОБЯЗАТЕЛЬНЫМ НЕ ОБЪЯВЛЯЕТСЯ И НЕ ЯВЛЯЕТСЯ: край
+	// подставляет его сам — вызывающему-человеку его собственный принципал,
+	// вызывающей машине владельца аккаунта целевой учётки. Присланное значение
+	// сверяется с тем, которое будет записано; у вызывающего-машины поле обязано
+	// быть ПУСТЫМ, потому что записываемое значение краю недоступно (резолв идёт
+	// в use-case, из репозитория), и несовпавшее отвергается `INVALID_ARGUMENT`
+	// с именем поля.
+	//
+	// Здесь стояло `(required) = true` — утверждение, ОБРАТНОЕ действительному, и
+	// машиночитаемое. Исполнителя у этой опции нет ни одного (потребителей вне
+	// сгенерированных стабов — ноль по всему дереву), поэтому отказа она никогда
+	// не давала; но её читают генераторы клиентов, и вызывающий получал параметр,
+	// объявленный обязательным, при сервисе, который просит его не слать.
 	CreatedByUserId string `protobuf:"bytes,4,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"`
 	// Федеративный вид ключа. Непустой перечень означает: ключевой пары мы не
 	// чеканим, а удостоверение предъявляет ВНЕШНИЙ издатель — ответ выдачи не
@@ -786,14 +799,14 @@ var File_kacho_cloud_iam_v1_sa_key_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/iam/v1/sa_key_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a$kacho/cloud/api/secret_options.proto\x1a(kacho/cloud/iam/v1/credential_kind.proto\x1a5kacho/cloud/iam/v1/service_account_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xcf\x04\n" +
+	"'kacho/cloud/iam/v1/sa_key_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a$kacho/cloud/api/secret_options.proto\x1a(kacho/cloud/iam/v1/credential_kind.proto\x1a5kacho/cloud/iam/v1/service_account_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xcb\x04\n" +
 	"\x11IssueSAKeyRequest\x12:\n" +
 	"\x12service_account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x10serviceAccountId\x12+\n" +
 	"\vdescription\x18\x02 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12/\n" +
 	"\vttl_seconds\x18\x03 \x01(\x03B\x0e\xfa\xc71\n" +
 	"<=63072000R\n" +
-	"ttlSeconds\x129\n" +
-	"\x12created_by_user_id\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0fcreatedByUserId\x12M\n" +
+	"ttlSeconds\x125\n" +
+	"\x12created_by_user_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=20R\x0fcreatedByUserId\x12M\n" +
 	"\x10trusted_subjects\x18\x05 \x03(\v2\".kacho.cloud.iam.v1.TrustedSubjectR\x0ftrustedSubjects\x12%\n" +
 	"\baudience\x18\x06 \x03(\tB\t\x8a\xc81\x05<=512R\baudience\x12\x1c\n" +
 	"\x04name\x18\a \x01(\tB\b\x8a\xc81\x04<=63R\x04name\x12I\n" +

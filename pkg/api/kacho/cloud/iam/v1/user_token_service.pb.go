@@ -41,7 +41,19 @@ type IssueUserTokenRequest struct {
 	//   - SECRET  — 0 означает «срок не назван», применяется умолчание политики;
 	//     БЕССРОЧНОГО СЕКРЕТА НЕ БЫВАЕТ НИ В КАКОМ НАПИСАНИИ, и срок сверх
 	//     потолка политики ОТВЕРГАЕТСЯ, а не урезается молча.
-	TtlSeconds      int64  `protobuf:"varint,3,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	TtlSeconds int64 `protobuf:"varint,3,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	// Ответственный за выпуск. ОБЯЗАТЕЛЬНЫМ НЕ ОБЪЯВЛЯЕТСЯ И НЕ ЯВЛЯЕТСЯ: край
+	// подставляет его сам — вызывающему-человеку его собственный принципал,
+	// вызывающей машине целевого пользователя (`user_id` этого же запроса).
+	// Присланное значение сверяется с тем, которое будет записано, и совпавшее
+	// применяется дословно; несовпавшее отвергается `INVALID_ARGUMENT` с именем
+	// поля.
+	//
+	// Здесь стояло `(required) = true` — утверждение, ОБРАТНОЕ действительному, и
+	// машиночитаемое. Исполнителя у этой опции нет ни одного (потребителей вне
+	// сгенерированных стабов — ноль по всему дереву), поэтому отказа она никогда
+	// не давала; но её читают генераторы клиентов, и вызывающий получал параметр,
+	// объявленный обязательным, при сервисе, который просит его не слать.
 	CreatedByUserId string `protobuf:"bytes,4,opt,name=created_by_user_id,json=createdByUserId,proto3" json:"created_by_user_id,omitempty"`
 	// Tenant-facing имя токена (человекочитаемая метка). Задаётся при выпуске, immutable.
 	Name string `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
@@ -601,14 +613,14 @@ var File_kacho_cloud_iam_v1_user_token_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_user_token_service_proto_rawDesc = "" +
 	"\n" +
-	"+kacho/cloud/iam/v1/user_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a$kacho/cloud/api/secret_options.proto\x1a(kacho/cloud/iam/v1/credential_kind.proto\x1a*kacho/cloud/iam/v1/user_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xcc\x03\n" +
+	"+kacho/cloud/iam/v1/user_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a$kacho/cloud/api/secret_options.proto\x1a(kacho/cloud/iam/v1/credential_kind.proto\x1a*kacho/cloud/iam/v1/user_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xc8\x03\n" +
 	"\x15IssueUserTokenRequest\x12%\n" +
 	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12+\n" +
 	"\vdescription\x18\x02 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12/\n" +
 	"\vttl_seconds\x18\x03 \x01(\x03B\x0e\xfa\xc71\n" +
 	"<=63072000R\n" +
-	"ttlSeconds\x129\n" +
-	"\x12created_by_user_id\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0fcreatedByUserId\x12\x1c\n" +
+	"ttlSeconds\x125\n" +
+	"\x12created_by_user_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=20R\x0fcreatedByUserId\x12\x1c\n" +
 	"\x04name\x18\x05 \x01(\tB\b\x8a\xc81\x04<=63R\x04name\x12M\n" +
 	"\x06labels\x18\x06 \x03(\v25.kacho.cloud.iam.v1.IssueUserTokenRequest.LabelsEntryR\x06labels\x12K\n" +
 	"\x0fcredential_kind\x18\a \x01(\x0e2\".kacho.cloud.iam.v1.CredentialKindR\x0ecredentialKind\x1a9\n" +
