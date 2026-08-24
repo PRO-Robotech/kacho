@@ -167,6 +167,20 @@ spec:
             {{- if .Values.authn }}
             - name: KACHO_API_GATEWAY_AUTHN_MODE
               value: {{ .Values.authn.mode | default "production" | quote }}
+            {{- /* ПОСАДКА ЛИЧНОСТИ (задача #1125): чем стенд проверяет человека.
+                 Разводит требование АДМИНИСТРАТИВНОГО адреса поставщика — того,
+                 которым выход человека снимает сессию на его стороне; под `own`
+                 такой сессии не существует. Полосу интроспекции это поле НЕ
+                 разводит: её предмет принадлежит соседней задаче.
+
+                 `default` НЕ ставится намеренно: у процесса умолчания нет, и
+                 профиль, поля не объявивший, обязан получить отказ старта с
+                 именем ручки — а не тихо унаследовать чужой выбор от шаблона.
+                 Умолчание живёт в базовом профиле чарта. */}}
+            {{- with .Values.authn.identityProvider }}
+            - name: KACHO_API_GATEWAY_IDENTITY_PROVIDER
+              value: {{ . | quote }}
+            {{- end }}
             # There is deliberately NO way here to hand the gateway a shared signing
             # key. The chart used to offer one (inline and via a Secret reference) for
             # the local stand; both are gone, and this comment stands in their place so

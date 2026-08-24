@@ -266,10 +266,20 @@ func main() {
 	// answer is "nothing pinned" whatever the operator configured, and the refusal
 	// names the knob that is already set. Locked by
 	// admin_hop_wiring_test.go::TestCompositionRoot_FeedsTheTrustAnchorToTheRevocationGuard.
+	//
+	// ПОСАДКА ЛИЧНОСТИ подаётся тем же стражем (задача #1125): она разводит
+	// требование АДМИНИСТРАТИВНОГО адреса, и только его. Негодное значение
+	// отвергается здесь же — откат к «безопасному» не производится, потому что
+	// безопасного среди двух значений нет: каждое снимает требования другого.
+	identityLane, ipErr := cfg.ResolvedIdentityProvider()
+	if ipErr != nil {
+		log.Fatalf("identity posture startup-validation: %v", ipErr)
+	}
 	if rvErr := validateProductionRevocationConfig(cfg.AppEnv, RevocationConfig{
 		IntrospectionURL: cfg.ResolvedHydraIntrospectionURL(),
 		AdminURL:         cfg.ResolvedHydraAdminURL(),
 		AdminCAFile:      cfg.HydraAdminCAFile,
+		IdentityProvider: identityLane,
 	}); rvErr != nil {
 		log.Fatalf("revocation config startup-validation: %v", rvErr)
 	}
@@ -1035,7 +1045,7 @@ func main() {
 	// internal_mtls comes from the RESOLVED listener security, not from the raw
 	// enable flag. The production-posture gate must assert on this observed fact
 	// rather than on stored configuration (see observability.BootPosture).
-	observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled))
+	observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled, identityLane))
 	if !internalSec.mtlsEnabled {
 		logger.Warn("SECURITY: internal gRPC listener running INSECURE (no mTLS)",
 			"addr", cfg.InternalGRPCAddr,

@@ -294,6 +294,19 @@ func runServe(cfg config.Config) error {
 	// PDP-бэкенда (iam гейтит свои RPC внутренними floor'ами поверх relation-store,
 	// а не чужим Check). Production-posture гейт обязан утверждать на этом
 	// наблюдаемом факте, а не на хранимом конфиге (см. observability.BootPosture).
+	// Половина ПОЛНОТЫ ПРОВЯЗКИ у полосности посадки личности (задача #1125).
+	// Стоит ЗДЕСЬ, а не в config.Validate(): настройка собранных объектов не
+	// видит и выразить их отсутствие не может. Отказ — отдельный текст, и он
+	// НЕ заменяется посадочной проверкой.
+	//
+	// Перепись печатается и на успешном старте: «ноль недостижимых записей»
+	// обязано быть отличимо от «каталог не читали».
+	laneWiring := observeLaneWiring(ctx, tokenSigner, logger)
+	logger.Info("identity posture lane wiring", laneWiringCensus(laneWiring)...)
+	if err := config.ValidateLaneWiring(cfg, laneWiring); err != nil {
+		return fmt.Errorf("identity posture lane: %w", err)
+	}
+
 	observability.LogBootPosture(logger,
 		bootPosture(cfg, mtlsCfg, svcs.ownGates.FormReachable()))
 
