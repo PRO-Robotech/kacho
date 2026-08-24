@@ -50,21 +50,20 @@ import (
 // нести метку времени. Унаследованные 302 файла остаются как есть — переномеровать
 // применённое нельзя, и правило действует ВПЕРЁД.
 //
-// Граница названа честно: без ссылки на ствол сравнивать не с чем, и тогда
-// проверка объявляет себя беспредметной, а не зелёной.
+// Граница названа честно и ОТДЕЛЕНА от отказа предпосылки: ствол, который не
+// разрешается в клоне с рабочим деревом git, — это настройка клона (мелкий
+// checkout), а не отсутствие предмета, и такой исход обязан быть красным. Разбор
+// и цена — [requireTrunkRef].
 func TestNewMigrationOutranksEveryAppliedOne(t *testing.T) {
 	root := repoRoot(t)
 
-	base := resolveTrunkRef(t, root)
-	if base == "" {
-		t.Skip("ссылка на ствол не резолвится — сравнивать новые файлы не с чем; " +
-			"это граница проверки, а не её зелёный исход")
-	}
+	base := requireTrunkRef(t, root)
 
 	out, err := gitenv.Command(root, "diff", "--name-only",
 		"--diff-filter=A", base+"...HEAD").Output()
 	if err != nil {
-		t.Skipf("состав добавленного относительно %s не прочитан: %v", base, err)
+		t.Fatalf("состав добавленного относительно %s не прочитан: %v — это отказ "+
+			"предпосылки, а не пустой список", base, err)
 	}
 
 	timestamped := regexp.MustCompile(`^(\d{14})_`)
@@ -98,15 +97,4 @@ func TestNewMigrationOutranksEveryAppliedOne(t *testing.T) {
 	for _, f := range findings {
 		t.Error(f)
 	}
-}
-
-// resolveTrunkRef — ссылка на ствол, если она есть в этом клоне.
-func resolveTrunkRef(t *testing.T, root string) string {
-	t.Helper()
-	for _, ref := range []string{"origin/main", "main"} {
-		if err := gitenv.Command(root, "rev-parse", "--verify", "--quiet", ref).Run(); err == nil {
-			return ref
-		}
-	}
-	return ""
 }
