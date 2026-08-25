@@ -238,3 +238,105 @@ func TestRetentionSweeperGateIsSilentOnForeignInjectionFixtures(t *testing.T) {
 			"станет находкой, а «починка» сломает гейт, которому фикстура принадлежит", foreign)
 	}
 }
+
+// retentionLoopFile — координата фоновой петли уборки.
+const retentionLoopFile = "services/iam/internal/apps/kacho/retention/sweeper.go"
+
+// TestRetentionLoopIsVisibleToTheFanoutGate — RET-SWP-09.
+//
+// # Почему это отдельное утверждение, а не следствие зелёного соседа
+//
+// Гейт раскладки по репликам требует запись `РЕПЛИКИ:` у КАЖДОЙ РАСПОЗНАННОЙ
+// петли. Петля, которую он не распознал, требований не получает и молчит вместе
+// с ним: «записи нет» и «петли нет» дают один и тот же зелёный. Ровно так в
+// этом дереве уже невидима одна петля — и её невидимость нашли не гейтом, а
+// глазами.
+//
+// Форма чтения канала здесь поэтому не вкус, а несущая деталь: распознаватель
+// признаёт `<-ticker.C` (селектор с полем-каналом) и НЕ признаёт `<-c` (голый
+// идентификатор). Петля уборки написана первой формой намеренно.
+func TestRetentionLoopIsVisibleToTheFanoutGate(t *testing.T) {
+	root := repoRoot(t)
+	tt := newTrackedTree(t, root)
+	if !tt.hasFile(retentionLoopFile) {
+		t.Fatalf("файла петли уборки (%s) в составе дерева нет: либо уборка снята — тогда "+
+			"снимается и это утверждение вместе с ней, — либо она переехала, и проба "+
+			"стережёт координату, которой больше не существует", retentionLoopFile)
+	}
+
+	census, err := scanBackgroundLoops(root)
+	if err != nil {
+		t.Fatalf("обход фоновых петель: %v", err)
+	}
+	if census.FilesRead == 0 {
+		t.Fatal("обход прочитал ноль файлов — его молчание ничего не значит")
+	}
+
+	var found *bgLoop
+	for i := range census.Loops {
+		if census.Loops[i].File == retentionLoopFile {
+			found = &census.Loops[i]
+			break
+		}
+	}
+	t.Logf("перепись: фоновых петель в дереве %d; петля уборки распознана: %v",
+		len(census.Loops), found != nil)
+
+	if found == nil {
+		t.Fatalf("петля уборки (%s) гейтом раскладки по репликам НЕ РАСПОЗНАНА. "+
+			"Требований она не получает, и её молчание неотличимо от молчания петли с "+
+			"годной записью. Чаще всего причина — форма чтения канала: распознаётся "+
+			"`<-ticker.C`, а `<-c` по голому идентификатору — нет", retentionLoopFile)
+	}
+	if found.Driver == "" {
+		t.Errorf("петля уборки распознана без движителя — разбор её не читал")
+	}
+	if found.Kind != "на-реплику" {
+		t.Errorf("вид исхода петли уборки = %q, ожидался «на-реплику»: уборка есть условный "+
+			"оператор с пределом партии и клеймом строк, поэтому вторая реплика уносит "+
+			"только остаток", found.Kind)
+	}
+	if found.Bad != "" {
+		t.Errorf("запись петли уборки негодна: %s", found.Bad)
+	}
+}
+
+// TestRetentionLoopFormIsTheRecognisedOne — инъекция в обе стороны для САМОГО
+// признака видимости.
+//
+// Проба выше утверждает, что петля видна. Эта — что видимость держится ФОРМОЙ
+// ЧТЕНИЯ, а не совпадением: селектор распознаётся, голый идентификатор нет.
+// Вторая половина пиннит СЛЕПОЕ ПЯТНО распознавателя намеренно: расширив его,
+// следующий читатель узнает отсюда, что выбор формы в петле уборки перестал
+// быть несущим.
+func TestRetentionLoopFormIsTheRecognisedOne(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "чтение через селектор с полем-каналом — распознаётся",
+			body: "ticker := time.NewTicker(d)\nfor {\nselect {\ncase <-ctx.Done():\nreturn\ncase <-ticker.C:\nf()\n}\n}",
+			want: true,
+		},
+		{
+			name: "чтение по голому идентификатору — НЕ распознаётся (слепое пятно)",
+			body: "c := time.NewTicker(d).C\nfor {\nselect {\ncase <-ctx.Done():\nreturn\ncase <-c:\nf()\n}\n}",
+			want: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := "package p\n\nimport \"time\"\n\nfunc Start() {\n" + tc.body + "\n}\n"
+			fset := token.NewFileSet()
+			f, err := parser.ParseFile(fset, "p.go", src, parser.ParseComments)
+			if err != nil {
+				t.Fatalf("разбор синтетики: %v", err)
+			}
+			got := len(loopsInFile(fset, f, "p.go")) > 0
+			if got != tc.want {
+				t.Fatalf("распознана=%v, ожидалось %v", got, tc.want)
+			}
+		})
+	}
+}
