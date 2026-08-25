@@ -14,10 +14,24 @@
 package middleware
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+// newDPoPProbeMiddleware — слой в наименьшей сборке, достаточной для инъекции
+// заголовков. Метод, а не свободная функция, потому что доклад о непереданном
+// способе подтверждения идёт в окно ЭТОГО слоя; предмет проб ниже от этого не
+// меняется.
+func newDPoPProbeMiddleware(t *testing.T) *DPoPMiddleware {
+	t.Helper()
+	return &DPoPMiddleware{
+		logger:              slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		authMethodsUnusable: newIntrospectionFailureReporter(0, nil),
+	}
+}
 
 func TestInjectVerifiedTokenHeaders_PrefersKachoPrincipalIDOverSub(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/iam/v1/users/x", nil)
@@ -29,7 +43,7 @@ func TestInjectVerifiedTokenHeaders_PrefersKachoPrincipalIDOverSub(t *testing.T)
 			"kacho_principal_id":   "usr_abc123", // canonical kacho id — must win
 		},
 	}
-	injectVerifiedTokenHeaders(r, vt)
+	newDPoPProbeMiddleware(t).injectVerifiedTokenHeaders(r, vt)
 
 	if got := r.Header.Get("X-Kacho-Principal-Id"); got != "usr_abc123" {
 		t.Fatalf("X-Kacho-Principal-Id = %q, want kacho id usr_abc123 (not raw sub)", got)
@@ -53,7 +67,7 @@ func TestInjectVerifiedTokenHeaders_TopLevelClaimWins(t *testing.T) {
 			"kacho_principal_id":   "sa_xyz",
 		},
 	}
-	injectVerifiedTokenHeaders(r, vt)
+	newDPoPProbeMiddleware(t).injectVerifiedTokenHeaders(r, vt)
 	if got := r.Header.Get("X-Kacho-Principal-Id"); got != "sa_xyz" {
 		t.Fatalf("X-Kacho-Principal-Id = %q, want sa_xyz", got)
 	}
@@ -74,7 +88,7 @@ func TestInjectVerifiedTokenHeaders_TopLevelClaimWins(t *testing.T) {
 func TestInjectVerifiedTokenHeaders_NoClaims_NamesNobody(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/iam/v1/users/x", nil)
 	vt := &VerifiedToken{Subject: "sub-only", ACR: "2"}
-	injectVerifiedTokenHeaders(r, vt)
+	newDPoPProbeMiddleware(t).injectVerifiedTokenHeaders(r, vt)
 	if got := r.Header.Get("X-Kacho-Principal-Id"); got != "" {
 		t.Fatalf("X-Kacho-Principal-Id = %q, want no principal at all", got)
 	}
@@ -100,7 +114,7 @@ func TestInjectVerifiedTokenHeaders_TypeWithoutID_NamesNobody(t *testing.T) {
 			"kacho_principal_type": "user",
 		},
 	}
-	injectVerifiedTokenHeaders(r, vt)
+	newDPoPProbeMiddleware(t).injectVerifiedTokenHeaders(r, vt)
 	if got := r.Header.Get("X-Kacho-Principal-Id"); got != "" {
 		t.Fatalf("X-Kacho-Principal-Id = %q, want no principal (the token names none)", got)
 	}

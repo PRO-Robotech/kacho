@@ -29,9 +29,11 @@ package middleware
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -229,15 +231,23 @@ func (a *AuthInterceptor) stepUpVerdictGRPC(fullMethod string, as StepUpAssuranc
 const stepUpDenyMessage = "insufficient_user_authentication"
 
 // setTokenContextHeaders writes the credential's own context — acr, jti, scope,
-// exp — onto a REST request.
+// exp — and the two arguments the rights model's freshness condition asks of the
+// caller: the methods the presenter authenticated with and the instant they did.
 //
 // It describes the CREDENTIAL, never who anyone is, which is why it travels
 // independently of how the principal was resolved. The cluster-internal floor
 // decides on the acr it finds here; this is the single producer, and it now sits
 // on a layer that runs.
-func setTokenContextHeaders(r *http.Request, t *VerifiedToken) {
+//
+// ДОВОДЫ УСЛОВИЯ ЕДУТ БЕЗ МОСТОВОЙ ФОРМЫ, и это решение (см. principalmeta):
+// их читает страж прав ЭТОГО ЖЕ края, восстанавливая удостоверение из
+// заголовков, а за краем их не читает никто.
+//
+// Возвращает способы, которые край передать не смог: молча выброшенное значение
+// поставщика — «принято-и-проигнорировано», и вызывающий обязан о нём доложить.
+func setTokenContextHeaders(r *http.Request, t *VerifiedToken) (unusableMethods []string) {
 	if t == nil {
-		return
+		return nil
 	}
 	r.Header.Set(principalmeta.HeaderTokenACR, t.ACR)
 	r.Header.Set(principalmeta.HeaderTokenJti, t.JTI)
@@ -248,17 +258,31 @@ func setTokenContextHeaders(r *http.Request, t *VerifiedToken) {
 	if !t.ExpiresAt.IsZero() {
 		r.Header.Set(principalmeta.HeaderTokenExp, strconv.FormatInt(t.ExpiresAt.Unix(), 10))
 	}
+	amr, unusable := principalmeta.EncodeAuthMethods(t.AMR)
+	if amr != "" {
+		r.Header.Set(principalmeta.HeaderTokenAMR, amr)
+	}
+	// Момент подтверждения берётся ОТТУДА ЖЕ, откуда его читает сборка доводов
+	// (`kacho_mfa_at`), а не из соседнего утверждения о времени входа: два
+	// источника одной величины разошлись бы молча, и разошлись бы они на
+	// удостоверении, где значения не совпадают.
+	if at, ok := coerceUnixSeconds(t.ExtClaims["kacho_mfa_at"]); ok && at > 0 {
+		r.Header.Set(principalmeta.HeaderTokenMfaAt, strconv.FormatInt(at, 10))
+	}
+	return unusable
 }
 
 // setSessionAssuranceHeaders writes the SESSION lane's contribution to the same
-// token-context family: the assurance level, and only it.
+// token-context family: the assurance level, the methods that produced it and
+// the instant it was produced.
 //
-// Почему только уровень. Заголовки этого семейства описывают ПРЕДЪЯВЛЕННОЕ, и у
-// браузерной сессии нет ни `jti`, ни `scope`, ни `exp` — писать их пустыми
+// Почему не всё семейство. Заголовки этого семейства описывают ПРЕДЪЯВЛЕННОЕ, и
+// у браузерной сессии нет ни `jti`, ни `scope`, ни `exp` — писать их пустыми
 // значило бы утверждать про сессию то, чего про неё не знают. Уровень же
 // внутреннему замку (`authzguard.ACRFloor`) нужен, и до #1201 эта полоса не
 // выставляла его никогда: замок читал отсутствующее значение на каждом
-// браузерном обращении.
+// браузерном обращении. Способ и момент нужны условию модели прав — и до #1252
+// их не выставлял никто.
 //
 // Подделать заголовок клиент не может: `stripForgeableIdentityHeaders` сносит
 // весь namespace `x-kacho-` в обеих поверхностных формах ДО того, как выберется
@@ -267,18 +291,36 @@ func setTokenContextHeaders(r *http.Request, t *VerifiedToken) {
 // Нераспознанный уровень приезжает сюда пустой строкой — и это верно: пустое
 // ранжируется нулём и не удовлетворяет ни одному положительному полу, то есть
 // второй замок отказывает по той же причине, по которой отказал бы первый.
-func setSessionAssuranceHeaders(r *http.Request, acr string) {
-	r.Header.Set(principalmeta.HeaderTokenACR, acr)
-	r.Header.Set(principalmeta.HeaderGRPCMetaTokenACR, acr)
+func setSessionAssuranceHeaders(r *http.Request, as StepUpAssurance, methods []string) (unusableMethods []string) {
+	r.Header.Set(principalmeta.HeaderTokenACR, as.ACR)
+	r.Header.Set(principalmeta.HeaderGRPCMetaTokenACR, as.ACR)
+
+	// ДОВОДЫ УСЛОВИЯ. Ступени уверенности условию `mfa_fresh` мало: оно
+	// спрашивает ещё и ВИД способа, и свежесть подтверждения. До #1252 браузерная
+	// полоса не давала ни того, ни другого — условие было объявлено и
+	// неисполнимо при любом входе.
+	amr, unusable := principalmeta.EncodeAuthMethods(methods)
+	if amr != "" {
+		r.Header.Set(principalmeta.HeaderTokenAMR, amr)
+	}
+	// Момент подтверждения у браузерной сессии — тот же, что читает полоса
+	// отзыва и арм свежести: момент, в который эта сессия аутентифицировалась.
+	// Нулевой не ставится вовсе: «провайдер момента не назвал» обязано остаться
+	// отсутствием довода, а не подтверждением в 1970 году.
+	if !as.AuthTime.IsZero() {
+		r.Header.Set(principalmeta.HeaderTokenMfaAt,
+			strconv.FormatInt(as.AuthTime.UTC().Truncate(time.Second).Unix(), 10))
+	}
+	return unusable
 }
 
 // withTokenContextMetadata carries the same context onto the native gRPC arm,
 // where there is no request to stamp. Written to BOTH directions for the reason
 // injectPrincipal states: the proxy hop rebuilds outgoing from incoming, while a
 // native handler forwards its own outgoing context.
-func withTokenContextMetadata(ctx context.Context, vt *VerifiedToken) context.Context {
+func withTokenContextMetadata(ctx context.Context, vt *VerifiedToken) (context.Context, []string) {
 	if vt == nil {
-		return ctx
+		return ctx, nil
 	}
 	pairs := [][2]string{
 		{principalmeta.MetaTokenACR, vt.ACR},
@@ -301,5 +343,49 @@ func withTokenContextMetadata(ctx context.Context, vt *VerifiedToken) context.Co
 		inMD.Set(p[0], p[1])
 		outMD.Set(p[0], p[1])
 	}
-	return metadata.NewOutgoingContext(metadata.NewIncomingContext(ctx, inMD), outMD)
+	// Доводы условия кладутся ТОЛЬКО во входящие: их читает страж прав этого же
+	// края, а за краем их не читает никто (см. principalmeta — мостовой формы у
+	// них нет по той же причине). Та же посадка, что у уровня базового
+	// удостоверения (`withBasicCredentialLevel`).
+	amr, unusable := principalmeta.EncodeAuthMethods(vt.AMR)
+	if amr != "" {
+		inMD.Set(principalmeta.MetaTokenAMR, amr)
+	}
+	if at, ok := coerceUnixSeconds(vt.ExtClaims["kacho_mfa_at"]); ok && at > 0 {
+		inMD.Set(principalmeta.MetaTokenMfaAt, strconv.FormatInt(at, 10))
+	}
+	return metadata.NewOutgoingContext(metadata.NewIncomingContext(ctx, inMD), outMD), unusable
+}
+
+// reportUnusableAuthMethods докладывает о способах подтверждения, которые край
+// НЕ СМОГ передать дальше.
+//
+// Почему громко. Способ, отброшенный формой провода, — это НАСТРОЙКА поставщика
+// личности, а не заминка: он не исчезает сам и повторяется на каждом запросе.
+// Молчание здесь дало бы условие модели прав, которое не выполняется по
+// причине, не записанной нигде, — и разбирались бы с ним по чужим отказам.
+//
+// Почему с нарастающим итогом, а не строкой на запрос. Состояние постоянное;
+// строка на каждый запрос вытеснила бы из журнала всё остальное, а одна строка
+// в начале ничего не сказала бы о длительности.
+//
+// Отброшенные значения печатаются как есть: они пришли от нашего же поставщика
+// и не являются ни секретом, ни персональными данными, а без них диагноз
+// «почему условие не выполняется» пришлось бы добывать заново.
+func reportUnusableAuthMethods(
+	lg *slog.Logger, rep *introspectionFailureReporter, lane, route string, dropped []string,
+) {
+	if len(dropped) == 0 || lg == nil || rep == nil {
+		return
+	}
+	if report, total, represents := rep.observe(); report {
+		lg.Error("authentication method(s) could not be carried to the rights model; "+
+			"a condition asking for the method will not be satisfied on this lane",
+			"lane", lane,
+			"route", route,
+			"dropped", dropped,
+			"unusable_auth_methods_total", total,
+			"occurrences_since_last_report", represents,
+			"predicate", "исчезает, когда словарь поставщика и форма провода сойдутся")
+	}
 }
