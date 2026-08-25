@@ -284,6 +284,72 @@ OUT_DIR = ROOT / "collections"
 
 
 # ---------------------------------------------------------------------------
+# Форма базового удостоверения — ЧИТАЕТСЯ ИЗ ОБЪЯВЛЕНИЯ, не выписывается (#1253)
+# ---------------------------------------------------------------------------
+
+# CREDENTIAL_SECRET_FORM — единственное объявление формы однострочного секрета.
+# Его же читает `scripts/credsecretmint/form_test.go`, который сверяет образец с
+# тем, что ЧЕКАНИТ ПРОДУКТ (`pkg/credsecret` вместе с `pkg/ids`).
+CREDENTIAL_SECRET_FORM = ROOT / "credential-secret-form.json"
+
+# Место подстановки вида удостоверения. Ровно одно; что оно одно — утверждает
+# Go-проба, читающая то же объявление.
+_CREDENTIAL_KIND_PLACEHOLDER = "<KIND_PREFIX>"
+
+_credential_secret_form_cache: Dict[str, Dict] = {}
+
+
+def credential_secret_pattern(kind: str, *, where: str) -> str:
+    """Образец формы базового удостоверения для названного ВИДА.
+
+    ПОЧЕМУ ИЗ ОБЪЯВЛЕНИЯ, А НЕ ИЗ КЕЙСА. Образец, выписанный в кейсе, — вторая
+    копия предиката, и разойтись с продуктом она может молча. Один раз уже
+    разошлась: образец ждал разделитель после префикса (`kacho_uoc_…`), тогда как
+    `ids.NewID` чеканит префикс СЛИТНО с телом. Совпасть такое утверждение не
+    могло НИ ПРИ КАКОМ ответе, и незаметно это было ровно потому, что
+    положительного прохода не существовало вовсе — первым отвечал отказ в правах
+    (задача #1253).
+
+    Здесь копии нет: объявление одно, и вторая сторона, читающая его же, —
+    `scripts/credsecretmint/form_test.go` — подставляет ОБА вида и требует, чтобы
+    образец принимал значения, отчеканенные `credsecret.Mint`, и отвергал
+    подделки. То есть форма проверена против ЗНАЧЕНИЯ ПРОДУКТА, а не против
+    текста чужого исходника.
+
+    Возвращает образец, уже прогнанный через `js_regex_src`: негодный роняет
+    ГЕНЕРАЦИЮ с именем места, а не уезжает в коллекцию неисполнимым скриптом.
+    """
+    if not _credential_secret_form_cache:
+        try:
+            _credential_secret_form_cache.update(
+                json.loads(CREDENTIAL_SECRET_FORM.read_text(encoding="utf-8")))
+        except FileNotFoundError as exc:
+            raise ValueError(
+                f"{where}: объявления формы базового удостоверения нет "
+                f"({CREDENTIAL_SECRET_FORM}). Это единственное место, где форма "
+                f"объявлена; без него кейс утверждал бы её собственной копией "
+                f"образца — тем, из-за чего заведена задача #1253") from exc
+    decl = _credential_secret_form_cache
+
+    prefixes = decl.get("idPrefixByKind") or {}
+    if kind not in prefixes:
+        raise ValueError(
+            f"{where}: объявление формы не знает вида {kind!r}; названы "
+            f"{sorted(prefixes)}. Вид не выдумывается здесь: он берётся из "
+            f"констант продукта, и их согласие с объявлением держит "
+            f"scripts/credsecretmint/form_test.go")
+
+    template = decl.get("jsPatternTemplate") or ""
+    if _CREDENTIAL_KIND_PLACEHOLDER not in template:
+        raise ValueError(
+            f"{where}: образец объявления не несёт места подстановки "
+            f"{_CREDENTIAL_KIND_PLACEHOLDER} — вид не был бы назван, и секрет "
+            f"чужого вида прошёл бы утверждение")
+    pattern = template.replace(_CREDENTIAL_KIND_PLACEHOLDER, prefixes[kind])
+    return js_regex_src(pattern, where=where)
+
+
+# ---------------------------------------------------------------------------
 # Декларативные структуры
 # ---------------------------------------------------------------------------
 
@@ -3058,6 +3124,9 @@ def load_cases_module(path: Path):
     # Тем же впрыском — проверка ИМЕНИ (#1220): у имени исхода
     # «экранировать» нет, поэтому годность проверяется при генерации.
     mod.js_name = js_name
+    # Тем же впрыском — ФОРМА базового удостоверения (#1253): она объявлена
+    # один раз и сверяется с чеканкой продукта, поэтому кейс её не выписывает.
+    mod.credential_secret_pattern = credential_secret_pattern
     spec.loader.exec_module(mod)
     return mod
 
