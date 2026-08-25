@@ -13,8 +13,9 @@
 //
 // The source changed in kacho#1255 and the change is not cosmetic. This used to
 // read `the (required) = true set of each Create*Request` — an option of the
-// kacho.cloud.validation family, which has now been retired from the contracts
-// in full: it had no enforcer anywhere on the request path, so it constrained
+// field-constraint extension family, which has now been retired from the
+// contracts in full (the file declaring it is gone, so the option no longer
+// compiles): it had no enforcer anywhere on the request path, so it constrained
 // nothing while looking like a guarantee, and on two credential-issue fields it
 // declared the exact OPPOSITE of what the edge does. Refusal is the only source
 // that cannot silently diverge from behaviour.
