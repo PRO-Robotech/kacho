@@ -7,6 +7,10 @@ MIGRATOR_BIN   := kacho-migrator
 MIGRATOR_CMD   := ./cmd/migrator
 IMAGE          := kacho-registry:dev
 
+# Ревизия дерева уезжает в образ аргументом сборки (IMAGE_BUILD_ARGS).
+# Объявление одно на дерево — см. разбор в самом файле.
+include ../../provenance.mk
+
 .PHONY: build build-migrator test test-short vet lint docker audit-list-filter
 
 build:
@@ -45,7 +49,7 @@ lint:
 	golangci-lint run ./...
 
 docker:
-	docker build -f Dockerfile -t $(IMAGE) .
+	docker build $(IMAGE_BUILD_ARGS) -f Dockerfile -t $(IMAGE) .
 
 # audit-list-filter — CI-гейт listauthz: публичный List обязан отдавать только те
 # объекты, которые вызывающему видеть можно.

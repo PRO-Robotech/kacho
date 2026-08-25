@@ -7,6 +7,10 @@ CMD_API        := ./cmd/kacho-loadbalancer
 CMD_MIG        := ./cmd/migrator
 IMAGE          := kacho-nlb:dev
 
+# Ревизия дерева уезжает в образ аргументом сборки (IMAGE_BUILD_ARGS).
+# Объявление одно на дерево — см. разбор в самом файле.
+include ../../provenance.mk
+
 .PHONY: build build-api build-migrator test test-short vet lint docker helm-lint helm-render-guard audit-list-filter proto-install-plugins proto-vendor proto-lint proto-gen
 
 build: build-api build-migrator
@@ -107,7 +111,7 @@ audit-list-filter:
 	@./tools/audit-list-filter.sh
 
 docker:
-	cd .. && docker build -f kacho-nlb/Dockerfile -t $(IMAGE) .
+	cd .. && docker build $(IMAGE_BUILD_ARGS) -f kacho-nlb/Dockerfile -t $(IMAGE) .
 
 # ---- Helm deploy-chart render guards (offline `helm template`/`lint`) -------
 

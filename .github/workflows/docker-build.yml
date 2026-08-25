@@ -152,6 +152,11 @@ jobs:
             echo "ref=$ref"
             echo "branch=$(echo "$branch" | sed 's/\//-/g')"
             echo "sha=${sha:0:8}"
+            # ПОЛНЫЙ коммит — ОТДЕЛЬНЫЙ вывод, и это не дублирование. В ТЕГ идёт
+            # восьмизначный (так пинятся профили посадки), а в ПРОВЕНАНС образа —
+            # полный: тег отвечает «что собрали», провенанс — «из чего собрали»,
+            # и совпадают они лишь пока никто не пересобирал под тем же именем.
+            echo "sha_full=$sha"
           } >> "$GITHUB_OUTPUT"
           echo "ветка=$branch коммит=${sha:0:8}"
 
@@ -238,9 +243,19 @@ jobs:
           for entry in $images; do
             image="${entry%%:*}"; dir="${entry##*:}"
             echo "::group::$image"
+            # ПРОВЕНАНС. Без этих двух аргументов образ уезжает в реестр, не неся
+            # ревизии вовсе: `--provenance=false` выше снимает вложение buildkit, а
+            # своей величины у образа не было ни в клейме, ни в файле. Тогда
+            # `make -C deploy stand-provenance` на управляемом кластере отвечает
+            # «не установлена», и «какой код там работает» снова выводится ИЗ ИМЕНИ
+            # образа — то есть из величины, которая лжёт при пересборке под прежним
+            # тегом. Что аргументы переданы КАЖДОЙ сборкой дерева, держит
+            # deploy/stand_provenance_declaration_test.go.
             if docker buildx build \
                  --platform linux/amd64,linux/arm64 \
                  --provenance=false \
+                 --build-arg KACHO_IMAGE_REVISION="${{ steps.subject.outputs.sha_full }}" \
+                 --build-arg KACHO_IMAGE_VERSION="${{ steps.subject.outputs.branch }}" \
                  --cache-from "type=gha,scope=$image" \
                  --cache-to "type=gha,mode=max,scope=$image" \
                  -f "./$dir/Dockerfile" \
