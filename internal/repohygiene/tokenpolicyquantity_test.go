@@ -132,6 +132,20 @@ var tokenPolicyQuantities = []tokenPolicyQuantity{
 		Concept: regexp.MustCompile(`(?i)secret.*(credential)?.*ttl.*default|default.*secret.*ttl`),
 		Want:    tokenpolicy.SecretCredentialTTLDefault,
 	},
+	// Задача #1264, приёмка снятия истёкших §3, сценарий CRED-RCL-15.
+	//
+	// Стережётся ВЕРХНЯЯ отсрочка — она объявлена ЧИСЛОМ, и второе её
+	// объявление разошлось бы с первым молча. Нижняя граница
+	// (MinExpiredCredentialReclaimDelay) в перечень НЕ входит, и это не
+	// пропуск: она ВЫЧИСЛЯЕТСЯ из слагаемых функцией, числа у неё нет вовсе,
+	// и стеречь тут нечего. Каждое её слагаемое стережётся само по себе —
+	// допуск часов записью выше, срок докерного токена живёт в конфигурации
+	// сервиса и приходит аргументом.
+	{
+		Name:    "отсрочка снятия истёкшего удостоверения",
+		Concept: regexp.MustCompile(`(?i)reclaim.*grace|grace.*reclaim`),
+		Want:    tokenpolicy.ExpiredCredentialReclaimGrace,
+	},
 }
 
 // TestTokenPolicyQuantityIsDeclaredOnce — сам гейт.
