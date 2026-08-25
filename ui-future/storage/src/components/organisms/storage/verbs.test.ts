@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -41,29 +41,130 @@ const { volumesApi } = await import("../../../api/resources");
  * то, ЧТО ему передали, — адрес и поля тела.
  */
 
+/**
+ * REFUSED_WHEN_MISSING — поля, БЕЗ КОТОРЫХ КРАЙ ОТВЕРГАЕТ запрос, по глаголам.
+ *
+ * ПЕРЕОСНОВАНО (kacho#1255). Прежде перечень извлекался из контракта: функция
+ * `requiredFields()` читала `.proto` и выбирала поля с опцией `(required)`.
+ * Семейство, которому опция принадлежала, снято с контрактов — исполнителя на
+ * пути запроса у него не было ни одного, и объявление не ограничивало ничего.
+ *
+ * Предмет пробы НЕ изменился: тело запроса обязано нести всё, без чего край его
+ * отвергает. Изменился ИСТОЧНИК перечня — не «контракт объявил», а «край
+ * отвергает без этого».
+ *
+ * ПЕРЕЧЕНЬ ДОКАЗЫВАЕТСЯ, А НЕ ОБЪЯВЛЯЕТСЯ, и доказательств у него два, разной
+ * силы, оба названы координатой:
+ *
+ *   `refusal` — строка отказа в прод-коде владельца. Проверяется пробой
+ *               предпосылки ниже: исчезнет — перечень станет описанием
+ *               вчерашнего дерева, и краснеет ИМЕННО предпосылка;
+ *   `e2e`     — сквозной кейс, посылающий запрос БЕЗ этого поля и требующий
+ *               отказа. Это и есть доказательство того, что перечень описывает
+ *               край, а не сам себя.
+ *
+ * ЧЕСТНО НАЗВАНО, ЧЕГО НЕТ: у `project_id` сквозного кейса в дереве нет ни на
+ * одном из двух глаголов копирования — отказ прод-кода проверен, сквозной нет.
+ * `e2e: null` означает «не доказано сквозным», а не «доказательство не нужно»,
+ * и предпосылка это различает.
+ */
+const REFUSED_WHEN_MISSING: ReadonlyArray<{
+  readonly verb: string;
+  readonly field: string;
+  readonly refusal: readonly [string, string];
+  readonly e2e: readonly [string, string] | null;
+}> = [
+  {
+    verb: "ChangeDiskType",
+    field: "disk_type_id",
+    refusal: ["services/storage/internal/apps/kacho/api/volume/volume.go", "disk_type_id: required"],
+    e2e: ["services/storage/tests/newman/cases/volume.py", "disk_type_id: required"],
+  },
+  {
+    verb: "CopySnapshot",
+    field: "project_id",
+    refusal: ["services/storage/internal/apps/kacho/api/snapshot/snapshot.go", "project_id: required"],
+    e2e: null,
+  },
+  {
+    verb: "CopySnapshot",
+    field: "target_zone_id",
+    refusal: ["services/storage/internal/apps/kacho/api/snapshot/snapshot.go", "target_zone_id: required"],
+    e2e: ["services/storage/tests/newman/cases/snapshot.py", "target_zone_id: required"],
+  },
+  {
+    verb: "CopyImage",
+    field: "project_id",
+    refusal: ["services/storage/internal/apps/kacho/api/image/image.go", "project_id: required"],
+    e2e: null,
+  },
+  {
+    verb: "CopyImage",
+    field: "target_region_id",
+    refusal: ["services/storage/internal/apps/kacho/api/image/image.go", "target_region_id: required"],
+    e2e: ["services/storage/tests/newman/cases/image.py", "target_region_id: required"],
+  },
+];
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../../../..");
-const protoDir = path.join(repoRoot, "proto/kacho/cloud/storage/v1");
 
-/** Поля `(required) = true` одного сообщения запроса. */
-function requiredFields(protoFile: string, message: string): string[] {
-  const src = readFileSync(path.join(protoDir, protoFile), "utf8");
-  const block = new RegExp(`message ${message} \\{([\\s\\S]*?)\\n\\}`).exec(src);
-  if (block === null) return [];
-  return [
-    ...block[1].matchAll(/(?:^|\n)\s*(?:[\w.<>, ]+?)\s+([a-z_]+)\s*=\s*\d+\s*\[[^\]]*?\(required\)\s*=\s*true/g),
-  ].map((m) => m[1]);
+/** Поля, без которых край отвергает названный глагол. */
+function refusedWhenMissing(verb: string): string[] {
+  return REFUSED_WHEN_MISSING.filter((r) => r.verb === verb).map((r) => r.field);
 }
 
 describe("объём осмотренного", () => {
-  it("контракт и исходник вызовов прочитаны", () => {
-    // «Ноль находок» обязано быть отличимо от «ноль прочитанного».
+  it("перечень непуст и покрывает все три глагола", () => {
+    // «Ноль находок» обязано быть отличимо от «ноль прочитанного»: пустой
+    // перечень сделал бы каждое утверждение ниже вакуумным.
     expect(typeof volumesApi.changeDiskType).toBe("function");
-    expect(requiredFields("volume_service.proto", "ChangeDiskTypeRequest").length).toBeGreaterThan(0);
-    expect(requiredFields("snapshot_service.proto", "CopySnapshotRequest").length).toBeGreaterThan(0);
-    expect(requiredFields("image_service.proto", "CopyImageRequest").length).toBeGreaterThan(0);
-    // Контроль извлекателя: необязательное поле не должно попадать в список.
-    expect(requiredFields("snapshot_service.proto", "CopySnapshotRequest")).not.toContain("description");
+    expect(refusedWhenMissing("ChangeDiskType").length).toBeGreaterThan(0);
+    expect(refusedWhenMissing("CopySnapshot").length).toBeGreaterThan(0);
+    expect(refusedWhenMissing("CopyImage").length).toBeGreaterThan(0);
+  });
+
+  it("у КАЖДОЙ записи предпосылка на месте: отказ владельца существует", () => {
+    // Перечень выведен из поведения края, и поведение живёт в названных файлах.
+    // Исчезнет отказ — запись станет описанием вчерашнего дерева.
+    const stale: string[] = [];
+    for (const rec of REFUSED_WHEN_MISSING) {
+      const [rel, marker] = rec.refusal;
+      const abs = path.join(repoRoot, rel);
+      if (!existsSync(abs)) {
+        stale.push(`${rec.verb}.${rec.field}: ${rel} исчез`);
+        continue;
+      }
+      if (!readFileSync(abs, "utf8").includes(marker)) {
+        stale.push(`${rec.verb}.${rec.field}: ${rel} больше не отвечает «${marker}»`);
+      }
+    }
+    expect(stale).toEqual([]);
+  });
+
+  it("сквозное доказательство: названо там, где оно есть, и НЕ выдумано там, где его нет", () => {
+    // Запись, объявившая сквозной кейс, обязана его иметь; запись без кейса
+    // объявляет это прямо (`e2e: null`). Молчаливое «доказано» и честное
+    // «не доказано» обязаны быть различимы.
+    const broken: string[] = [];
+    let proven = 0;
+    for (const rec of REFUSED_WHEN_MISSING) {
+      if (rec.e2e === null) continue;
+      const [rel, marker] = rec.e2e;
+      const abs = path.join(repoRoot, rel);
+      if (!existsSync(abs) || !readFileSync(abs, "utf8").includes(marker)) {
+        broken.push(`${rec.verb}.${rec.field}: ${rel} не несёт «${marker}»`);
+        continue;
+      }
+      proven += 1;
+    }
+    expect(broken).toEqual([]);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[#1255] полей в перечне ${REFUSED_WHEN_MISSING.length} · доказано сквозным ${proven} · ` +
+        `не доказано ${REFUSED_WHEN_MISSING.filter((r) => r.e2e === null).length}`,
+    );
+    expect(proven).toBeGreaterThan(0);
   });
 });
 
@@ -91,7 +192,7 @@ describe("тело запроса несёт всё, что контракт о�
   it("смена типа диска шлёт disk_type_id", async () => {
     // `volume_id` едет сегментом пути, а не телом, — его требование выполняется
     // самим адресом.
-    const required = requiredFields("volume_service.proto", "ChangeDiskTypeRequest").filter((f) => f !== "volume_id");
+    const required = refusedWhenMissing("ChangeDiskType").filter((f) => f !== "volume_id");
     expect(required).toEqual(["disk_type_id"]);
 
     sent.length = 0;
@@ -112,9 +213,9 @@ describe("тело запроса несёт всё, что контракт о�
     // `project_id` обязателен, хотя выглядит выводимым из источника: именно он —
     // объект вопроса о правах («создать» спрашивают у проекта). Забыв его,
     // консоль получала бы отказ, у которого нет поля, на которое сослаться.
-    const snap = requiredFields("snapshot_service.proto", "CopySnapshotRequest").filter((f) => f !== "snapshot_id");
+    const snap = refusedWhenMissing("CopySnapshot").filter((f) => f !== "snapshot_id");
     expect(snap.sort()).toEqual(["project_id", "target_zone_id"]);
-    const img = requiredFields("image_service.proto", "CopyImageRequest").filter((f) => f !== "image_id");
+    const img = refusedWhenMissing("CopyImage").filter((f) => f !== "image_id");
     expect(img.sort()).toEqual(["project_id", "target_region_id"]);
   });
 });
