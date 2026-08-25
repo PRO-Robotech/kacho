@@ -310,3 +310,111 @@ func TestNestedReclaimGateRefusesUnparsableCollection(t *testing.T) {
 	require.Error(t, err, "негодная коллекция обязана быть отказом, а не пустотой")
 	require.Contains(t, err.Error(), "synth/broken.json", "отказ обязан называть координату")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ГРАНИЦА УТВЕРЖДЕНИЯ О КОДЕ — та же, что у генератора (`PRO-Robotech/kacho#1278`)
+//
+// Один предмет — «шаг утверждает код ответа» — разбирают ДВА механизма: генератор
+// (`_accepted_http_codes` в `scripts/gen.py`) и этот гейт. Пока границы у них
+// разные, фраза «шаг утверждает отказ» означает у них РАЗНОЕ, и расхождение
+// приходит находкой об утечке там, где её нет.
+//
+// Границей служит `;` — конец стейтмента, — а не конец строки: перенос внутри
+// одного выражения законен и встречается в дереве (генератор сам пишет
+// `pm.expect(pm.response.code, pm.response.text())` с продолжением на следующей
+// строке). Обе стороны границы проверяются здесь: перенос ВНУТРИ стейтмента
+// обязан читаться, а соседний стейтмент за `;` — НЕ обязан подмешиваться.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ДЕФЕКТ 3. Утверждение об ОТКАЗЕ, записанное с переносом строки. Построчный
+// разбор видит `response.code` на первой строке и код — на второй, поэтому не
+// читает НИ ОДНОГО кода и считает создание успешным: находка об утечке там, где
+// шаг ничего не создаёт.
+func TestNestedReclaimGateReadsARefusalSplitAcrossLines(t *testing.T) {
+	t.Parallel()
+
+	src := collection(
+		step("cr-subnet-garbage-parent", "POST", subnetsPath,
+			`{"networkId":"{{garbageVpcId}}","name":"s"}`,
+			"pm.test('rejected', () => pm.expect(pm.response.code, pm.response.text())",
+			"  .to.eql(400));"),
+	)
+
+	census, findings, err := auditNestedQuotaReclaim(
+		map[string]string{"synth/split.json": src}, synthEndpoints)
+	require.NoError(t, err)
+	require.Empty(t, findings,
+		"шаг утверждает 400 — он ничего не создаёт; находка здесь ложная и уводит "+
+			"разбор к утечке, которой нет")
+	require.Equal(t, 0, census.Creates)
+	require.Equal(t, 1, census.Refusals,
+		"перепись обязана НАЗВАТЬ его отказом, как это делает генератор")
+	require.Equal(t, 0, census.Unparsed,
+		"форма разобрана — слепой зоны здесь нет, и объявлять её значило бы лгать "+
+			"в переписи")
+}
+
+// ДЕФЕКТ 4. Тот же перенос на стороне СНЯТИЯ. Симметрия обязательна: разбор один
+// и тот же, и половинчатая починка оставила бы класс открытым ровно наполовину.
+func TestNestedReclaimGateReadsAReclaimSplitAcrossLines(t *testing.T) {
+	t.Parallel()
+
+	src := collection(
+		step("provision-subnet", "POST", subnetsPath, seededBody, okAssert),
+		step("cleanup-subnet", "DELETE",
+			append(append([]string{}, subnetsPath...), "{{vpcSubnetId}}"), "",
+			"pm.test('subnet reclaim best-effort', () => pm.expect(pm.response.code, pm.response.text())",
+			"  .to.be.oneOf([200, 404]));"),
+	)
+
+	census, findings, err := auditNestedQuotaReclaim(
+		map[string]string{"synth/splitdel.json": src}, synthEndpoints)
+	require.NoError(t, err)
+	require.Empty(t, findings, "снятие объявлено — 200 в его перечне есть")
+	require.Equal(t, 1, census.Deletes)
+	require.Equal(t, 0, census.Unparsed)
+}
+
+// ЗАКОННЫЙ БЛИЗНЕЦ 5 — граница обязана ГРАНИЧИТЬ. Соседний стейтмент за `;`
+// говорит о ДРУГОМ пространстве чисел (gRPC-код в теле ответа), и подмешивать
+// его в набор HTTP-исходов нельзя: тогда отвергаемое создание с `j.code` = 200
+// прочиталось бы успешным. Генератор это оговаривает прямо, и здесь то же.
+func TestNestedReclaimGateDoesNotBleedTheNextStatementIntoTheCodeSet(t *testing.T) {
+	t.Parallel()
+
+	src := collection(
+		step("cr-subnet-garbage-parent", "POST", subnetsPath,
+			`{"networkId":"{{garbageVpcId}}","name":"s"}`,
+			"pm.expect(pm.response.code).to.eql(400); pm.expect(j.code).to.eql(200);"),
+	)
+
+	census, findings, err := auditNestedQuotaReclaim(
+		map[string]string{"synth/bleed.json": src}, synthEndpoints)
+	require.NoError(t, err)
+	require.Empty(t, findings,
+		"шаг утверждает HTTP 400; 200 относится к gRPC-коду тела и в набор исходов "+
+			"не входит")
+	require.Equal(t, 1, census.Refusals)
+}
+
+// ЗАКОННЫЙ БЛИЗНЕЦ 6 — форма, которую разбор ДЕЙСТВИТЕЛЬНО не читает, обязана
+// остаться названной числом. Расширение границы не вправе выхолостить перепись
+// слепых зон: «ноль неразобранных» обязано означать «все прочитаны», а не «мы
+// перестали считать».
+func TestNestedReclaimGateStillNamesAGenuinelyUnparsableForm(t *testing.T) {
+	t.Parallel()
+
+	src := collection(
+		step("provision-subnet", "POST", subnetsPath, seededBody,
+			"pm.test('healthy', () => pm.expect(pm.response.code).to.be.below(300));"),
+	)
+
+	census, _, err := auditNestedQuotaReclaim(
+		map[string]string{"synth/opaque.json": src}, synthEndpoints)
+	require.NoError(t, err)
+	require.Equal(t, 1, census.Unparsed,
+		"слепая зона обязана быть НАЗВАНА числом, иначе «находок 0» по ней означает "+
+			"«не смотрели»")
+	require.Equal(t, 1, census.Creates,
+		"на непонятом входе ошибаться надо в сторону находки — шаг считается создающим")
+}

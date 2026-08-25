@@ -2409,7 +2409,7 @@ _VAR_REF_RE = re.compile(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}")
 # `pm.response.code`, поэтому набор gRPC-кодов (`pm.expect(j.code, …).to.be
 # .oneOf([5, 9])`) сюда не попадает: числа там из другого пространства и на
 # полосу видимости не отображаются. Границей служит `;` — конец стейтмента.
-_HTTP_EQ_RE = re.compile(r"pm\.response\.code[^;]*?\.to\.eql\((\d{3})\)")
+_HTTP_EQ_RE = re.compile(r"pm\.response\.code[^;]*?\.to\.(?:be\.)?(?:eql|equal)\((\d{3})\)")
 _HTTP_ONEOF_RE = re.compile(r"pm\.response\.code[^;]*?\.to\.be\.oneOf\(\[([0-9,\s]+)\]\)")
 
 

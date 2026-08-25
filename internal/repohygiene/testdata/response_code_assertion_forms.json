@@ -1,0 +1,129 @@
+{
+  "note": [
+    "ОБЩИЙ ИСТОЧНИК для двух механизмов, разбирающих ОДИН предмет — «какие коды",
+    "ответа шаг объявляет приемлемым исходом».",
+    "",
+    "Механизма два: `_accepted_http_codes` в scripts/gen.py каждого набора",
+    "(решает, оборачивать ли шаг ограниченным ретраем) и разбор гейта дерева",
+    "internal/repohygiene/nestedquotasuitereclaim_test.go (решает, создал ли шаг",
+    "ребёнка). Пока они расходятся, фраза «шаг утверждает отказ» означает у них",
+    "РАЗНОЕ — и расхождение приезжает находкой об утечке там, где её нет.",
+    "",
+    "Копий предиката две (Go и Python) и свести их в одну нельзя — языки разные.",
+    "Свести можно ОЖИДАНИЕ: обе стороны судятся этим перечнем, поэтому",
+    "расхождение нельзя внести молча — краснеет та сторона, которая разошлась.",
+    "",
+    "ГРАНИЦА СТЕЙТМЕНТА — `;`, а не конец строки. Перенос внутри одного",
+    "выражения законен и в дереве обычен: генератор сам пишет",
+    "`pm.expect(pm.response.code, pm.response.text())` с продолжением на",
+    "следующей строке.",
+    "",
+    "Заводя новую форму утверждения о коде — добавь её сюда. Форма, которой",
+    "здесь нет, не проверена ни на одной стороне."
+  ],
+  "forms": [
+    {
+      "id": "eql-single-line",
+      "why": "каноничная форма генератора: равенство одному коду",
+      "lines": ["pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"],
+      "accepted": [200]
+    },
+    {
+      "id": "eql-with-message-argument",
+      "why": "второй аргумент expect несёт тело ответа — между кодом и .to. стоит текст",
+      "lines": ["pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"],
+      "accepted": [200]
+    },
+    {
+      "id": "equal-spelling",
+      "why": "второе написание равенства; в дереве 724 вхождения (compute, iam, storage, vpc). Пока Python его не читал, шаг, УТВЕРЖДАЮЩИЙ 403, попадал под обёртку ретрая ПО 403",
+      "lines": ["pm.test('status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));"],
+      "accepted": [403]
+    },
+    {
+      "id": "be-eql-spelling",
+      "why": "форма `.to.be.eql(` — в дереве сегодня 0 вхождений, но обе стороны обязаны читать её ОДИНАКОВО, а не «как получится»",
+      "lines": ["pm.expect(pm.response.code).to.be.eql(201);"],
+      "accepted": [201]
+    },
+    {
+      "id": "oneof-single-line",
+      "why": "перечень исходов — уборка best-effort записана так сплошь",
+      "lines": ["pm.test('cleanup', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"],
+      "accepted": [200, 404]
+    },
+    {
+      "id": "eql-split-across-lines",
+      "why": "ПРЕДМЕТ #1278: перенос ВНУТРИ стейтмента. Построчный разбор не видит здесь ни одного кода и считает шаг успешным — то есть объявляет утечку там, где шаг ничего не создаёт",
+      "lines": [
+        "pm.test('rejected', () => pm.expect(pm.response.code, pm.response.text())",
+        "  .to.eql(400));"
+      ],
+      "accepted": [400]
+    },
+    {
+      "id": "oneof-split-across-lines",
+      "why": "тот же перенос на стороне снятия: разбор один, и половинчатая починка оставила бы класс открытым наполовину",
+      "lines": [
+        "pm.test('reclaim best-effort', () => pm.expect(pm.response.code, pm.response.text())",
+        "  .to.be.oneOf([200, 404]));"
+      ],
+      "accepted": [200, 404]
+    },
+    {
+      "id": "neighbouring-statement-not-bled-in",
+      "why": "граница обязана ГРАНИЧИТЬ: код в теле ответа (gRPC) — другое пространство чисел и в набор HTTP-исходов не входит",
+      "lines": ["pm.expect(pm.response.code).to.eql(400); pm.expect(j.code).to.eql(200);"],
+      "accepted": [400]
+    },
+    {
+      "id": "grpc-code-only",
+      "why": "утверждение вовсе не про HTTP-код: набор обязан быть ПУСТ, а не «какие числа нашлись»",
+      "lines": ["pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([5, 9]);"],
+      "accepted": []
+    },
+    {
+      "id": "negated-equality-is-not-acceptance",
+      "why": "`to.not.equal(401)` означает «что угодно, кроме 401» — читать это как принятие 401 значит перевернуть смысл",
+      "lines": ["pm.expect(pm.response.code, pm.response.text()).to.not.equal(401);"],
+      "accepted": []
+    },
+    {
+      "id": "negated-eql-is-not-acceptance",
+      "why": "то же во втором написании",
+      "lines": ["pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));"],
+      "accepted": []
+    },
+    {
+      "id": "control-flow-is-not-an-assertion",
+      "why": "ветка по коду ответа исходом ничего не объявляет; счесть её утверждением значило бы принять 200 за объявленный исход поллера",
+      "lines": [
+        "if (pm.response.code === 200 && _present) {",
+        "  pm.execution.setNextRequest(null);",
+        "}"
+      ],
+      "accepted": []
+    },
+    {
+      "id": "message-argument-carries-a-number",
+      "why": "текст сообщения несёт трёхзначное число; оно не исход, и подмешивать его нельзя",
+      "lines": ["pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(403);"],
+      "accepted": [403]
+    },
+    {
+      "id": "two-assertions-in-one-step",
+      "why": "шаг вправе утверждать про код дважды; набор — объединение, а не последнее выражение",
+      "lines": [
+        "pm.expect(pm.response.code).to.be.oneOf([200, 202]);",
+        "pm.expect(pm.response.code).to.not.eql(500);"
+      ],
+      "accepted": [200, 202]
+    },
+    {
+      "id": "no-mention-of-response-code",
+      "why": "шаг про код не говорит вовсе — пустой набор есть ЦЕЛЬ такого шага, а не поломка разбора",
+      "lines": ["pm.test('body shape', () => pm.expect(pm.response.json()).to.have.property('id'));"],
+      "accepted": []
+    }
+  ]
+}
