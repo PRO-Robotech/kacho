@@ -49,6 +49,19 @@ type KratosWhoamiResult struct {
 	// Пустая строка означает «провайдер уровня не назвал» — это НЕ «низкий» и не
 	// «высокий», а отдельный исход, и читатель обязан различать его сам.
 	AssuranceLevel string
+	// AuthenticationMethods — СПОСОБЫ, которыми эта сессия себя подтвердила
+	// (`session.authentication_methods[].method`): словарь провайдера —
+	// `password`, `webauthn`, `totp`, `code`, `oidc`, …
+	//
+	// Довод условия модели прав `mfa_fresh`, которое спрашивает не только
+	// ступень уверенности, но и ВИД способа. До #1252 край этого поля не читал
+	// вовсе, и условие оставалось объявленным и неисполнимым на браузерной
+	// полосе при любом входе.
+	//
+	// Набор, а не список: условие спрашивает о членстве, порядок не значим и не
+	// сохраняется. Пустой означает «провайдер способов не назвал» — отдельный
+	// исход, ранжируемый как отсутствие довода, а не как его отрицание.
+	AuthenticationMethods []string
 }
 
 // KratosClient — minimal HTTP-обертка для GET /sessions/whoami.
@@ -144,13 +157,20 @@ func (c *KratosClient) fetch(ctx context.Context, cookieHeader string) KratosWho
 	if first != "" || last != "" {
 		dn = strings.TrimSpace(fmt.Sprintf("%s %s", first, last))
 	}
+	methods := make([]string, 0, len(s.AuthenticationMethods))
+	for _, am := range s.AuthenticationMethods {
+		if am.Method != "" {
+			methods = append(methods, am.Method)
+		}
+	}
 	return KratosWhoamiResult{
-		IdentityID:      s.Identity.ID,
-		Email:           s.Identity.Traits.Email,
-		DisplayName:     dn,
-		Active:          s.Active,
-		AuthenticatedAt: s.AuthenticatedAt,
-		AssuranceLevel:  s.AuthenticatorAssuranceLevel,
+		IdentityID:            s.Identity.ID,
+		Email:                 s.Identity.Traits.Email,
+		DisplayName:           dn,
+		Active:                s.Active,
+		AuthenticatedAt:       s.AuthenticatedAt,
+		AssuranceLevel:        s.AuthenticatorAssuranceLevel,
+		AuthenticationMethods: methods,
 	}
 }
 
@@ -166,6 +186,13 @@ type kratosSession struct {
 	// словарь провайдера (`aal0`…`aal3`). Вход пола ступенчатой аутентификации на
 	// этой полосе; перевод на ось каталога делает acrFromAssuranceLevel.
 	AuthenticatorAssuranceLevel string `json:"authenticator_assurance_level"`
+	// AuthenticationMethods — `session.authentication_methods`. Каждая запись
+	// несёт применённый способ, его ступень и момент завершения; краю нужен
+	// СПОСОБ: момент сессии в целом уже назван полем выше, и второй его
+	// источник завёл бы два места об одном предмете.
+	AuthenticationMethods []struct {
+		Method string `json:"method"`
+	} `json:"authentication_methods"`
 }
 
 type kratosIdentity struct {

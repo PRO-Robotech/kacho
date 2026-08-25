@@ -35,6 +35,22 @@ const (
 	HeaderTokenJti         = "X-Kacho-Token-Jti"   // #nosec G101 -- HTTP header name (token jti claim), not a credential
 	HeaderTokenScope       = "X-Kacho-Token-Scope" // #nosec G101 -- HTTP header name (token scope claim), not a credential
 	HeaderTokenExp         = "X-Kacho-Token-Exp"   // #nosec G101 -- HTTP header name (token exp claim), not a credential
+
+	// HeaderTokenAMR — ПЕРЕЧЕНЬ СПОСОБОВ, которыми предъявитель себя подтвердил
+	// (`amr` у подписанного предъявителя, `authentication_methods` у браузерной
+	// сессии). Довод условия модели прав `mfa_fresh`.
+	//
+	// Форма значения — набор, разделённый пробелом (см. EncodeAuthMethods):
+	// ПОРЯДОК НЕ ЗНАЧИМ и не сохраняется, читатель обязан спрашивать о членстве.
+	HeaderTokenAMR = "X-Kacho-Token-Amr" // #nosec G101 -- HTTP header name (authentication methods), not a credential
+
+	// HeaderTokenMfaAt — МОМЕНТ ПОДТВЕРЖДЕНИЯ личности, секунды эпохи. Второй
+	// довод того же условия: без него свежесть не с чем сравнивать.
+	//
+	// Отсутствующий заголовок означает «источник момента не назвал» — это НЕ
+	// ноль и не «давно»: ноль читался бы как подтверждение в 1970 году, то есть
+	// как величина, над которой можно считать. Довода нет ⇒ довода нет.
+	HeaderTokenMfaAt = "X-Kacho-Token-Mfa-At" // #nosec G101 -- HTTP header name (authentication instant), not a credential
 )
 
 // Grpc-Metadata-prefixed HTTP header names (grpc-gateway → gRPC metadata bridge).
@@ -46,6 +62,12 @@ const (
 	HeaderGRPCMetaTokenJti         = "Grpc-Metadata-" + HeaderTokenJti
 	HeaderGRPCMetaTokenScope       = "Grpc-Metadata-" + HeaderTokenScope
 )
+
+// Мостовой формы у доводов условия (`amr` / `mfa-at`) НЕТ, и одного её
+// отсутствия НЕ ДОСТАТОЧНО, чтобы они остались на краю: мост снимает префикс
+// сам, поэтому голая форма пересекает его наравне с префиксованной (замерено —
+// см. пробу отбора в restmux). Решение «остаются на краю» поэтому объявлено
+// явно, ниже (edgeOnlyKeys), а не выведено из формы имени.
 
 // Lowercase gRPC metadata keys (metadata.MD.Get/Append lowercases its argument;
 // backends read exactly these).
@@ -62,9 +84,11 @@ const (
 	// gRPC кодирует значение сам. Тип и идентификатор остаются обычными
 	// ключами — они латиница by construction.
 	MetaPrincipalDisplayBin = "x-kacho-principal-display-name-bin"
-	MetaTokenACR            = "x-kacho-token-acr"   // #nosec G101 -- gRPC metadata key name (token ACR claim), not a credential
-	MetaTokenJti            = "x-kacho-token-jti"   // #nosec G101 -- gRPC metadata key name (token jti claim), not a credential
-	MetaTokenScope          = "x-kacho-token-scope" // #nosec G101 -- gRPC metadata key name (token scope claim), not a credential
+	MetaTokenACR            = "x-kacho-token-acr"    // #nosec G101 -- gRPC metadata key name (token ACR claim), not a credential
+	MetaTokenJti            = "x-kacho-token-jti"    // #nosec G101 -- gRPC metadata key name (token jti claim), not a credential
+	MetaTokenScope          = "x-kacho-token-scope"  // #nosec G101 -- gRPC metadata key name (token scope claim), not a credential
+	MetaTokenAMR            = "x-kacho-token-amr"    // #nosec G101 -- gRPC metadata key name (authentication methods), not a credential
+	MetaTokenMfaAt          = "x-kacho-token-mfa-at" // #nosec G101 -- gRPC metadata key name (authentication instant), not a credential
 )
 
 // Lowercase prefixes used to strip forgeable client-supplied identity
@@ -93,8 +117,10 @@ const (
 //
 //   - `x-kacho-principal-` (type / id / display-name) — set by the Bearer, Kratos,
 //     DPoP and mTLS auth paths (setPrincipalHeaders / injectVerifiedTokenHeaders).
-//   - `x-kacho-token-` (acr / jti / scope / exp) — validated JWT claims, consumed
-//     by the step-up gate and the iam acr-floor on the internal re-dial.
+//   - `x-kacho-token-` (acr / jti / scope / exp / amr / mfa-at) — the validated
+//     credential's own context, consumed by the step-up gate, by the iam
+//     acr-floor on the internal re-dial, and — for amr / mfa-at — by the
+//     condition arguments the edge builds for the rights model.
 //
 // Everything else in the namespace — `x-kacho-admin`, `x-kacho-project-id`,
 // `x-kacho-actor`, and any key added tomorrow — is client-forgeable input and is
@@ -148,9 +174,13 @@ func KachoNamespaceKey(key string) (string, bool) {
 //
 // # Что мост продолжает пропускать
 //
-// Остальные ключи закрытого набора (`x-kacho-token-jti`/`-scope`/`-exp`):
-// аннотатор их не кладёт, и мост — их ЕДИНСТВЕННЫЙ производитель. Снять его
-// целиком значило бы потерять их молча.
+// Ключи закрытого набора, у которых есть потребитель за краем
+// (`x-kacho-token-jti`/`-scope`/`-exp`): аннотатор их не кладёт, и мост — их
+// ЕДИНСТВЕННЫЙ производитель. Снять его целиком значило бы потерять их молча.
+//
+// Доводы условия модели прав (`-amr`/`-mfa-at`) мост не пропускает вовсе — не
+// потому, что у них нет мостовой формы (её отсутствия для этого мало: префикс
+// мост снимает сам), а потому что так объявлено — см. edgeOnlyKeys.
 var annotatorProducedKeys = map[string]bool{
 	MetaPrincipalType:    true,
 	MetaPrincipalID:      true,
@@ -164,6 +194,33 @@ var annotatorProducedKeys = map[string]bool{
 // так его отдаёт KachoNamespaceKey, и обе формы заголовка сводятся к одному
 // имени ещё до этого вопроса.
 func IsAnnotatorProducedKey(name string) bool { return annotatorProducedKeys[name] }
+
+// edgeOnlyKeys — ключи, которые край производит ДЛЯ СЕБЯ и за мост не пускает.
+//
+// Оба несут доводы условия модели прав: перечень способов подтверждения и его
+// момент. Решение о правах, ради которого они собраны, принимает САМ край —
+// восстанавливая удостоверение из этих же заголовков перед вопросом к модели.
+// За краем их сегодня не читает никто.
+//
+// ПОЧЕМУ НЕ ПУСТИТЬ «НА ВСЯКИЙ СЛУЧАЙ». Ключ, доехавший до соседа без
+// потребителя, — мёртвая поверхность: завтра её прочтут, не разобравшись, кто
+// её ставит и при каких условиях, и она станет входом решения, за которым никто
+// не следит. Появится потребитель за краем — запись уходит отсюда вместе с
+// заведением мостовой формы, и это осознанное изменение, а не умолчание.
+//
+// НАБОР ОБЯЗАН ИМЕТЬ ПРЕДМЕТ: запись про ключ, которого нет среди производимых
+// краем, — исключение, потерявшее предмет, и гейт пакета считает её находкой.
+var edgeOnlyKeys = map[string]bool{
+	MetaTokenAMR:   true,
+	MetaTokenMfaAt: true,
+}
+
+// IsEdgeOnlyKey — остаётся ли этот ключ на краю (мост его не пропускает).
+//
+// Имя приходит нормализованным (нижний регистр, без мостового префикса) — так
+// его отдаёт KachoNamespaceKey, и обе поверхностные формы сводятся к одному
+// имени ещё до этого вопроса.
+func IsEdgeOnlyKey(name string) bool { return edgeOnlyKeys[name] }
 
 func IsGatewayProducedKey(name string) bool {
 	for _, p := range gatewayProducedPrefixes {

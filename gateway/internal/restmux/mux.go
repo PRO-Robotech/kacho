@@ -219,6 +219,13 @@ func principalHeaderMatcher(key string) (string, bool) {
 		if principalmeta.IsAnnotatorProducedKey(name) {
 			return "", false
 		}
+		// Ключ, который край производит ДЛЯ СЕБЯ, мост не пропускает: у доводов
+		// условия модели прав нет потребителя за краем, и отсутствия мостовой
+		// формы для этого мало — префикс мост снимает сам, поэтому голая форма
+		// пересекла бы его наравне с префиксованной.
+		if principalmeta.IsEdgeOnlyKey(name) {
+			return "", false
+		}
 		if principalmeta.IsGatewayProducedKey(name) {
 			return name, true
 		}

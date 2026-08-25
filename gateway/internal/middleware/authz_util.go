@@ -11,6 +11,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc/metadata"
@@ -98,23 +99,39 @@ func grpcMetaForwardedFor(md metadata.MD) string {
 	return ""
 }
 
-// verifiedTokenFromCtxOrHTTP — the DPoP middleware stores the verified token in
-// the request headers (X-Kacho-Token-Acr / Jti / Scope / Exp) and in the
-// gRPC metadata after it ran. We reconstruct a thin
-// VerifiedToken from the headers when needed. When the HTTP request is
-// nil we fall back to gRPC metadata.
+// verifiedTokenFromCtxOrHTTP — the authN layer stores the credential's own
+// context in the request headers (X-Kacho-Token-Acr / Jti / Scope / Exp / Amr /
+// Mfa-At) and in the gRPC metadata after it ran. We reconstruct a VerifiedToken
+// from them when the live one is no longer in hand. When the HTTP request is nil
+// we fall back to gRPC metadata.
 //
-// This is a best-effort reconstruction — the upstream middleware propagates
-// principal + ACR + JTI + scope + exp; ext_claims would need a richer payload.
-// We accept the limited view; the
-// extractor degrades gracefully (empty AMR slices, missing mfa_at).
+// ЭТО ВХОД РЕШЕНИЯ О ПРАВАХ, А НЕ СЛЕПОК ДЛЯ ЖУРНАЛА. Восстановленное
+// удостоверение уходит в `ContextExtractor`, который собирает из него доводы
+// условий модели прав, — поэтому величина, которой здесь нет, делает условие,
+// её спрашивающее, НЕИСПОЛНИМЫМ при любом входе.
+//
+// Так и было до #1252: перечня способов и момента подтверждения среди
+// проброшенных величин не существовало, обе наполнялись только из утверждений
+// настоящего токена, и условие `mfa_fresh` не могло быть выполнено ни на
+// браузерной полосе, ни на полосе предъявителя, дошедшей сюда. Прежняя редакция
+// этого комментария называла такой вид «ограниченным» и признавала пустые
+// способы и отсутствующий момент штатным исходом — то есть описывала неисполнимую
+// возможность как решение.
+//
+// Остальное восстановление по-прежнему частичное и названо им: прочие ext_claims
+// (соответствие устройства, опознаватель ключа доступа) сюда не едут, и условия,
+// которые их спрашивают, на восстановленном удостоверении не выполняются. Это
+// НЕ умолчание: у каждого такого довода свой производитель, и заводится он
+// вместе со своим потребителем, а не «про запас».
 func verifiedTokenFromCtxOrHTTP(ctx context.Context, r *http.Request) (*VerifiedToken, bool) {
 	var (
-		acr   string
-		jti   string
-		scope string
-		sub   string
-		pType string
+		acr    string
+		jti    string
+		scope  string
+		sub    string
+		pType  string
+		amrRaw string
+		mfaRaw string
 	)
 	if r != nil {
 		acr = r.Header.Get(principalmeta.HeaderTokenACR)
@@ -122,6 +139,8 @@ func verifiedTokenFromCtxOrHTTP(ctx context.Context, r *http.Request) (*Verified
 		scope = r.Header.Get(principalmeta.HeaderTokenScope)
 		pType = r.Header.Get(principalmeta.HeaderPrincipalType)
 		sub = r.Header.Get(principalmeta.HeaderPrincipalID)
+		amrRaw = r.Header.Get(principalmeta.HeaderTokenAMR)
+		mfaRaw = r.Header.Get(principalmeta.HeaderTokenMfaAt)
 	}
 	if sub == "" || acr == "" {
 		md := incomingMD(ctx)
@@ -141,6 +160,12 @@ func verifiedTokenFromCtxOrHTTP(ctx context.Context, r *http.Request) (*Verified
 			if v := md.Get(principalmeta.MetaPrincipalType); len(v) > 0 {
 				pType = v[0]
 			}
+			if v := md.Get(principalmeta.MetaTokenAMR); len(v) > 0 {
+				amrRaw = v[0]
+			}
+			if v := md.Get(principalmeta.MetaTokenMfaAt); len(v) > 0 {
+				mfaRaw = v[0]
+			}
 		}
 	}
 	if sub == "" {
@@ -150,13 +175,40 @@ func verifiedTokenFromCtxOrHTTP(ctx context.Context, r *http.Request) (*Verified
 		"kacho_principal_type": defaultIfEmptyStr(pType, "user"),
 		"kacho_principal_id":   sub,
 	}
+	// Момент подтверждения кладётся под тем же именем, под которым его читает
+	// сборка доводов (`kacho_mfa_at`), — а не под вторым, «своим». Второе имя
+	// одной величины разошлось бы с первым молча.
+	//
+	// Непрочитанное и неположительное значение НЕ кладутся: «довода нет» и
+	// «подтверждено в 1970 году» — разные утверждения, и второе поддаётся
+	// арифметике, которой нечего опровергнуть.
+	if at, ok := parseUnixSecondsHeader(mfaRaw); ok {
+		extClaims["kacho_mfa_at"] = at
+	}
 	return &VerifiedToken{
 		Subject:   sub,
 		JTI:       jti,
 		ACR:       acr,
 		Scope:     scope,
+		AMR:       principalmeta.DecodeAuthMethods(amrRaw),
 		ExtClaims: extClaims,
 	}, true
+}
+
+// parseUnixSecondsHeader читает момент из значения заголовка.
+//
+// Отдельная функция, а не строка на месте: «нечитаемое», «нулевое» и
+// «отрицательное» обязаны давать ОДИН исход — довода нет, — и держать это
+// правило в одном месте дешевле, чем сверять две его копии.
+func parseUnixSecondsHeader(v string) (int64, bool) {
+	if v == "" {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
 }
 
 // defaultIfEmptyStr — tiny helper.
