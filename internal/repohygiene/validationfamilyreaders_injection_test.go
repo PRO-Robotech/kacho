@@ -177,3 +177,45 @@ func TestFamilyReaderCensusIsQuietOnLegalTwins(t *testing.T) {
 		})
 	}
 }
+
+// TestFamilyReaderExemptionExpiresWithItsSubject — послабление живёт РОВНО пока
+// живёт его предмет.
+//
+// Запись, которой больше нечего исключать, — находка, а не безобидный остаток:
+// иначе она молча унаследует следующую слепую зону. Проверяются обе стороны.
+func TestFamilyReaderExemptionExpiresWithItsSubject(t *testing.T) {
+	const exempt = "internal/repohygiene/validationfamilyreaders_injection_test.go"
+	if _, ok := familyReaderExemptions[exempt]; !ok {
+		t.Fatalf("предпосылка пробы исчезла: %s больше не значится в ведомости", exempt)
+	}
+
+	t.Run("предмет ЕСТЬ — послабление молчит и засчитано", func(t *testing.T) {
+		corpus := injectionCorpusWithout()
+		corpus[exempt] = "package x\n\nvar _ = os.ReadFile(\"x.proto\")\n" +
+			"var re = regexp.MustCompile(`\\(\\s*required\\s*\\)\\s*=\\s*true`)\n"
+		findings, c := auditValidationFamilyReaders(corpus)
+		if len(findings) != 0 {
+			t.Fatalf("файл с живым предметом объявлен находкой: %v", findings)
+		}
+		if c.exempt != 1 {
+			t.Fatalf("освобождений засчитано %d, ждали 1 — послабление не сработало", c.exempt)
+		}
+	})
+
+	t.Run("предмет ИСЧЕЗ — послабление объявлено просроченным", func(t *testing.T) {
+		corpus := injectionCorpusWithout()
+		// Тот же путь, но опции в нём больше нет: исключать стало нечего.
+		corpus[exempt] = "package x\n\nvar _ = os.ReadFile(\"x.proto\")\n"
+		findings, c := auditValidationFamilyReaders(corpus)
+		if len(findings) != 1 || !strings.Contains(findings[0], "ПОСЛАБЛЕНИЕ ПОТЕРЯЛО ПРЕДМЕТ") {
+			t.Fatalf("истёкшее послабление не объявлено находкой: %v", findings)
+		}
+		if !strings.Contains(findings[0], exempt) {
+			t.Fatalf("находка не называет записи: %v", findings)
+		}
+		if c.exempt != 0 {
+			t.Fatalf("освобождений засчитано %d при исчезнувшем предмете", c.exempt)
+		}
+		t.Logf("просрочено: %s", findings[0])
+	})
+}

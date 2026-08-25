@@ -100,11 +100,30 @@ var contractReach = regexp.MustCompile(
 	`\.proto|protoreflect|GetExtension|MessageDescriptor|FileDescriptor|` +
 		`readdirSync|readFileSync|filepath\.Walk|os\.ReadFile|ReadDir|glob|ProtoRoot|PROTO_ROOT`)
 
+// familyReaderExemptions — ЕДИНСТВЕННОЕ послабление, и у него есть предмет.
+//
+// Инъекция, доказывающая способность этой переписи падать, обязана вносить
+// снятую опцию — иначе она доказывала бы способность падать на чём-то другом.
+// Поэтому файл инъекции называет опцию по построению и находкой не является.
+//
+// ПОСЛАБЛЕНИЕ САМОИСТЕКАЮЩЕЕ. Если названный файл перестанет нести опцию — либо
+// он переписан, либо переехал, — запись теряет предмет, и это НАХОДКА, а не
+// безобидный остаток: иначе она молча унаследует следующую слепую зону.
+//
+// Отдельно названо, чего послабление НЕ покрывает: снять находку, дописав сюда
+// строку, нельзя — запись обязана нести причину, а причина здесь ровно одна и
+// проверяема (файл есть инъекция ЭТОГО гейта).
+var familyReaderExemptions = map[string]string{
+	"internal/repohygiene/validationfamilyreaders_injection_test.go": "инъекция самой этой переписи: " +
+		"вносит снятую опцию по построению, доказывая способность гейта падать",
+}
+
 type familyReaderCensus struct {
 	scanned    int
 	skippedDoc int
 	named      int
 	reaching   int
+	exempt     int
 	findings   int
 }
 
@@ -113,6 +132,7 @@ type familyReaderCensus struct {
 func auditValidationFamilyReaders(corpus map[string]string) ([]string, familyReaderCensus) {
 	var c familyReaderCensus
 	var findings []string
+	seenExempt := map[string]bool{}
 	for path, body := range corpus {
 		if strings.HasSuffix(path, ".md") || strings.HasSuffix(path, ".mdx") {
 			c.skippedDoc++
@@ -128,8 +148,27 @@ func auditValidationFamilyReaders(corpus map[string]string) ([]string, familyRea
 			continue
 		}
 		c.reaching++
+		if _, ok := familyReaderExemptions[path]; ok {
+			c.exempt++
+			seenExempt[path] = true
+			continue
+		}
 		c.findings++
 		findings = append(findings, path)
+	}
+
+	// Запись, которой больше нечего исключать, — находка. Послабление живёт
+	// ровно пока живёт его предмет.
+	for path := range familyReaderExemptions {
+		if _, inCorpus := corpus[path]; !inCorpus {
+			continue // файла нет в этом корпусе — судить не о чем (инъекция)
+		}
+		if !seenExempt[path] {
+			findings = append(findings, path+
+				" — ПОСЛАБЛЕНИЕ ПОТЕРЯЛО ПРЕДМЕТ: файл больше не несёт снятой опции, "+
+				"значит запись в familyReaderExemptions ничего не исключает и молча "+
+				"унаследует следующую слепую зону. Снимите запись")
+		}
 	}
 	sort.Strings(findings)
 	return findings, c
@@ -192,8 +231,8 @@ func TestNoCheckReadsTheRetiredValidationFamily(t *testing.T) {
 		t.Fatal("осмотрено НОЛЬ файлов — «находок ноль» здесь означало бы «ноль прочитанного»")
 	}
 	t.Logf("перепись: файлов осмотрено %d (документации пропущено %d); называют опцию семейства "+
-		"в исполняемой части %d; из них обращаются к контрактам %d; находок %d",
-		c.scanned, c.skippedDoc, c.named, c.reaching, c.findings)
+		"в исполняемой части %d; из них обращаются к контрактам %d; освобождено %d (из %d записей); находок %d",
+		c.scanned, c.skippedDoc, c.named, c.reaching, c.exempt, len(familyReaderExemptions), c.findings)
 
 	if len(findings) > 0 {
 		t.Errorf("проверок, читающих СНЯТОЕ семейство ограничений полей: %d\n  %s\n\n"+
