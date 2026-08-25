@@ -50,7 +50,7 @@ func TestUpdateUser_NonOwnerPrincipal_NotRejectedInService(t *testing.T) {
 				UpdateMask: []string{"labels"},
 			})
 			require.NoError(t, err,
-				"UserService.Update is gated by v_update@iam_user at the gateway; "+
+				"UserService.Update is gated by record_writer@iam_user at the gateway; "+
 					"the use-case must not re-decide access from accounts.owner_user_id")
 			assert.NotNil(t, op)
 		})
