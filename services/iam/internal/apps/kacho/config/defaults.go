@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+
+	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 )
 
 // RegisterDefaults sets default values for every config key (defaults are
@@ -149,6 +151,24 @@ func RegisterDefaults(v *viper.Viper) {
 	// default instead of "never expires", and requests carry an inclusive
 	// ceiling. Overrides: KACHO_IAM_SAKEY_DEFAULT_TTL / KACHO_IAM_SAKEY_MAX_TTL.
 	v.SetDefault("authn.sakey-default-ttl", 90*24*time.Hour)
+
+	// ── Фоновые задания ────────────────────────────────────────────────────
+	//
+	// Снятие истёкших удостоверений (задача #1264). Умолчания названы вместе с
+	// основанием, а не выбраны: интервал — из точности относительно отсрочки
+	// (час даёт около четырёх процентов от суток); отсрочка — продуктовое
+	// решение о НАБЛЮДАЕМОСТИ (человек, у которого доступ перестал работать
+	// ночью, приходит утром и обязан увидеть ПРИЧИНУ — истёкшую строку в
+	// перечне, — а не пустоту); партия ограничивает длительность транзакции.
+	//
+	// Включено ПО УМОЛЧАНИЮ: гигиена истёкших была обязанностью арендатора
+	// ровно потому, что платформа её не делала, и выключенное по умолчанию
+	// умолчание оставило бы её там же.
+	v.SetDefault("jobs.expired-credential-reclaim.enabled", true)
+	v.SetDefault("jobs.expired-credential-reclaim.interval", time.Hour)
+	v.SetDefault("jobs.expired-credential-reclaim.grace", tokenpolicy.ExpiredCredentialReclaimGrace)
+	v.SetDefault("jobs.expired-credential-reclaim.batch-size", 200)
+	v.SetDefault("jobs.expired-credential-reclaim.dry-run", false)
 	v.SetDefault("authn.sakey-max-ttl", 365*24*time.Hour)
 	// Per-client access_token_lifespan for the SA-key OAuth2 client. Default 0 =
 	// omit the field and inherit the provider-global TTL, so an existing

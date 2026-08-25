@@ -67,6 +67,13 @@ func (c Config) Validate() error {
 		}
 	}
 
+	// Страж уборщика истёкших удостоверений (задача #1264). Срок докерного
+	// токена — СЛАГАЕМОЕ вычисляемой нижней границы отсрочки, поэтому он
+	// приходит стражу параметром из живой конфигурации: константа здесь
+	// вывела бы отсрочку из-под её же основания при поднятом сроке.
+	errs = multierr.Append(errs,
+		c.Jobs.ExpiredCredentialReclaim.Validate(c.APIServer.RegistryToken.TokenTTL()))
+
 	// logger.level must be a known level so a typo fails fast at boot rather
 	// than silently degrading observability. SlogLevel reports the allowed set.
 	if _, err := c.Logger.SlogLevel(); err != nil {
