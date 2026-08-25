@@ -139,12 +139,12 @@ func TestDPoPReplay_PurgeRemovesOnlyExpired(t *testing.T) {
 	}
 	time.Sleep(20 * time.Millisecond)
 
-	removed, err := s.PurgeExpiredDPoPProofs(ctx)
+	sw, err := s.PurgeExpiredDPoPProofs(ctx)
 	if err != nil {
 		t.Fatalf("уборка: %v", err)
 	}
-	if removed != 1 {
-		t.Fatalf("убрано %d записей, ожидалась одна просроченная", removed)
+	if sw.Removed != 1 {
+		t.Fatalf("убрано %d записей, ожидалась одна просроченная", sw.Removed)
 	}
 	// Живая запись уцелела: повтор по ней по-прежнему отвергается.
 	if err := s.AddDPoPProof(ctx, "jti-909-live", time.Hour); !errors.Is(err, idempotencypg.ErrDPoPReplay) {
