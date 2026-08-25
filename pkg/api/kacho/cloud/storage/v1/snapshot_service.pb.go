@@ -10,7 +10,6 @@
 package storagev1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -218,6 +217,7 @@ type CreateSnapshotRequest struct {
 	// Description of the snapshot.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// Resource labels as `key:value` pairs.
+	// At most 64 pairs.
 	Labels        map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -367,6 +367,7 @@ type CopySnapshotRequest struct {
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// Метки копии. Метки источника не наследуются: перенос данных не переносит
 	// смысл, который арендатор вложил в метки исходного снимка.
+	// At most 64 pairs.
 	Labels        map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -513,6 +514,7 @@ type UpdateSnapshotRequest struct {
 	// Resource labels as `key:value` pairs.
 	//
 	// Existing set of `labels` is completely replaced by the provided set.
+	// At most 64 pairs.
 	Labels        map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -841,79 +843,76 @@ var File_kacho_cloud_storage_v1_snapshot_service_proto protoreflect.FileDescript
 
 const file_kacho_cloud_storage_v1_snapshot_service_proto_rawDesc = "" +
 	"\n" +
-	"-kacho/cloud/storage/v1/snapshot_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a%kacho/cloud/storage/v1/snapshot.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"C\n" +
-	"\x12GetSnapshotRequest\x12-\n" +
-	"\vsnapshot_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"snapshotId\"\xca\x01\n" +
-	"\x14ListSnapshotsRequest\x12+\n" +
+	"-kacho/cloud/storage/v1/snapshot_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a%kacho/cloud/storage/v1/snapshot.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"5\n" +
+	"\x12GetSnapshotRequest\x12\x1f\n" +
+	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
+	"snapshotId\"\x99\x01\n" +
+	"\x14ListSnapshotsRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
-	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filterJ\x04\b\x05\x10\x06R\border_by\"\x7f\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x04 \x01(\tR\x06filterJ\x04\b\x05\x10\x06R\border_by\"\x7f\n" +
 	"\x15ListSnapshotsResponse\x12>\n" +
 	"\tsnapshots\x18\x01 \x03(\v2 .kacho.cloud.storage.v1.SnapshotR\tsnapshots\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb8\x03\n" +
-	"\x15CreateSnapshotRequest\x12+\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xa4\x02\n" +
+	"\x15CreateSnapshotRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x126\n" +
-	"\x10source_volume_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x0esourceVolumeId\x129\n" +
-	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x96\x01\n" +
-	"\x06labels\x18\x05 \x03(\v29.kacho.cloud.storage.v1.CreateSnapshotRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12(\n" +
+	"\x10source_volume_id\x18\x02 \x01(\tR\x0esourceVolumeId\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12Q\n" +
+	"\x06labels\x18\x05 \x03(\v29.kacho.cloud.storage.v1.CreateSnapshotRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"c\n" +
 	"\x16CreateSnapshotMetadata\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\x12(\n" +
-	"\x10source_volume_id\x18\x02 \x01(\tR\x0esourceVolumeId\"\xdf\x03\n" +
-	"\x13CopySnapshotRequest\x12+\n" +
+	"\x10source_volume_id\x18\x02 \x01(\tR\x0esourceVolumeId\"\xbd\x02\n" +
+	"\x13CopySnapshotRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x06 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12-\n" +
-	"\vsnapshot_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"snapshotId\x122\n" +
-	"\x0etarget_zone_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\ftargetZoneId\x129\n" +
-	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x94\x01\n" +
-	"\x06labels\x18\x05 \x03(\v27.kacho.cloud.storage.v1.CopySnapshotRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"project_id\x18\x06 \x01(\tR\tprojectId\x12\x1f\n" +
+	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
+	"snapshotId\x12$\n" +
+	"\x0etarget_zone_id\x18\x02 \x01(\tR\ftargetZoneId\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12O\n" +
+	"\x06labels\x18\x05 \x03(\v27.kacho.cloud.storage.v1.CopySnapshotRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"e\n" +
 	"\x14CopySnapshotMetadata\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\x12,\n" +
-	"\x12source_snapshot_id\x18\x02 \x01(\tR\x10sourceSnapshotId\"\xbf\x03\n" +
-	"\x15UpdateSnapshotRequest\x12-\n" +
-	"\vsnapshot_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"\x12source_snapshot_id\x18\x02 \x01(\tR\x10sourceSnapshotId\"\xb9\x02\n" +
+	"\x15UpdateSnapshotRequest\x12\x1f\n" +
+	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x129\n" +
-	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x96\x01\n" +
-	"\x06labels\x18\x05 \x03(\v29.kacho.cloud.storage.v1.UpdateSnapshotRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12Q\n" +
+	"\x06labels\x18\x05 \x03(\v29.kacho.cloud.storage.v1.UpdateSnapshotRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"9\n" +
 	"\x16UpdateSnapshotMetadata\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
-	"snapshotId\"F\n" +
-	"\x15DeleteSnapshotRequest\x12-\n" +
-	"\vsnapshot_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"snapshotId\"8\n" +
+	"\x15DeleteSnapshotRequest\x12\x1f\n" +
+	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
 	"snapshotId\"9\n" +
 	"\x16DeleteSnapshotMetadata\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
-	"snapshotId\"\xa1\x01\n" +
-	"\x1dListSnapshotOperationsRequest\x12-\n" +
-	"\vsnapshot_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"snapshotId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"snapshotId\"|\n" +
+	"\x1dListSnapshotOperationsRequest\x12\x1f\n" +
+	"\vsnapshot_id\x18\x01 \x01(\tR\n" +
+	"snapshotId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x8a\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8a\x01\n" +
 	"\x1eListSnapshotOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +

@@ -12,7 +12,6 @@ import "kacho/cloud/api/secret_options.proto";
 import "kacho/cloud/iam/v1/service_account.proto";
 import "kacho/cloud/iam/v1/user.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -221,20 +220,20 @@ message CheckRequest {
   //   "user:<usr_xxx>"
   //   "service_account:<sva_xxx>"
   //   "group:<grp_xxx>#member"
-  string subject_id = 1 [(required) = true, (length) = "<=128"];
+  string subject_id = 1;
 
   // FGA-relation: "viewer" | "editor" | "admin" | "use" | "member" | etc.
   // Допустимые значения зависят от authorization-model.
-  string relation = 2 [(required) = true, (length) = "<=32"];
+  string relation = 2;
 
   // FGA-object string. Формат "<type>:<id>", например:
   //   "project:<prj_xxx>"
   //   "vpc_network:<enp_xxx>"
   //   "account:<acc_xxx>"
-  string object = 3 [(required) = true, (length) = "<=128"];
+  string object = 3;
 
   // Trace-id для correlation в логах (optional).
-  string trace_id = 4 [(length) = "<=64"];
+  string trace_id = 4;
 
   // consistency — how fresh the caller needs the answer to be.
   //
@@ -284,18 +283,18 @@ message RegisterResourceRequest {
   //   "user:<usr_xxx>"
   //   "service_account:<sva_xxx>"
   //   "<owner-type>:<id>"
-  string subject_id = 1 [(required) = true, (length) = "<=128"];
+  string subject_id = 1;
 
   // FGA-relation для owner-tuple (как правило "admin" / "parent").
-  string relation = 2 [(required) = true, (length) = "<=32"];
+  string relation = 2;
 
   // Объект решения. Формат "<type>:<id>" словарём МОДЕЛИ прав
   // (НЕ permission-каталог), напр. "vpc_network:<enp_xxx>",
   // "compute_instance:<...>".
-  string object = 3 [(required) = true, (length) = "<=128"];
+  string object = 3;
 
   // Trace-id для correlation в логах (модуль ↔ IAM ↔ FGA). Optional.
-  string trace_id = 4 [(length) = "<=64"];
+  string trace_id = 4;
 
   // Tenant labels зеркала ресурса. Output-only mirror в
   // `kacho_iam.resource_mirror`; source of truth = owner-сервис. Питает
@@ -306,11 +305,11 @@ message RegisterResourceRequest {
   // Parent project id ресурса (`prj-…`), если ресурс project-scoped.
   // Кладется в mirror ради containment (объект «под scope») SAME-DB, без ребра
   // iam→owner. Пусто для не-project-scoped объектов.
-  string parent_project_id = 6 [(length) = "<=64"];
+  string parent_project_id = 6;
 
   // Parent account id ресурса (`acc-…`), если применимо. Mirror /
   // containment на account-scope.
-  string parent_account_id = 7 [(length) = "<=64"];
+  string parent_account_id = 7;
 
   // Монотонный per-object source-version. Маркер «версии
   // состояния» ресурса у владельца (compute), проставляемый в момент эмита
@@ -366,23 +365,25 @@ message RegisterResourceResponse {}
 // «когда-нибудь», потому что расхождение в прозе не даёт конфликта слияния.
 message UnregisterResourceRequest {
   // FGA-subject string (см. RegisterResourceRequest.subject_id).
-  string subject_id = 1 [(required) = true, (length) = "<=128"];
+  string subject_id = 1;
 
   // FGA-relation owner-tuple (см. RegisterResourceRequest.relation).
-  string relation = 2 [(required) = true, (length) = "<=32"];
+  string relation = 2;
 
   // FGA-object string (см. RegisterResourceRequest.object).
-  string object = 3 [(required) = true, (length) = "<=128"];
+  string object = 3;
 
   // Trace-id для correlation в логах. Optional.
-  string trace_id = 4 [(length) = "<=64"];
+  string trace_id = 4;
 
   // Поля 5/6/7 зарезервированы под форму-симметрию с RegisterResourceRequest.
   // Unregister удаляет mirror-строку по `object`; эти поля
   // игнорируются на приеме (симметрия shape, не семантики).
   map<string, string> labels = 5;
-  string parent_project_id = 6 [(length) = "<=64"];
-  string parent_account_id = 7 [(length) = "<=64"];
+  // Project the resource belonged to. Empty when the resource is not project-scoped.
+  string parent_project_id = 6;
+  // Account the resource belonged to. Empty when the resource is not account-scoped.
+  string parent_account_id = 7;
 
   // Tombstone-version: момент Delete у владельца (now() на
   // эмите unregister-intent). IAM удаляет mirror-строку ТОЛЬКО если этот
@@ -401,16 +402,16 @@ message UnregisterResourceResponse {}
 // ForceLogoutRequest — admin force-logout payload.
 message ForceLogoutRequest {
   // User to log out from every active session. Required.
-  string user_id = 1 [(required) = true, (length) = "<=20"];
+  string user_id = 1;
 
   // Free-form reason recorded in audit_outbox + each session_revocations row
   // (default "admin-force-logout").
-  string reason = 2 [(length) = "<=128"];
+  string reason = 2;
 
   // ID of the admin user (or service account) triggering the force-logout.
   // Captured for audit; the authz check itself is performed at the gateway
   // (admin must hold `iam.users.forceLogout` permission on the user's account).
-  string actor_id = 3 [(length) = "<=128"];
+  string actor_id = 3;
 }
 
 // ForceLogoutMetadata — Operation.metadata payload.
@@ -452,7 +453,7 @@ message PollSubjectChangesResponse {
 // GetRoleCompiledRequest — the role whose compiled permissions to read (F5).
 message GetRoleCompiledRequest {
   // ID of the Role.
-  string role_id = 1 [(required) = true, (length) = "<=20"];
+  string role_id = 1;
 }
 
 // GetRoleCompiledResponse — the Internal-only compiled permission projection (F5).
@@ -472,7 +473,7 @@ message ResolveBasicCredentialRequest {
   //
   // Помечена носителем секрета: значение не имеет права осесть ни в строке
   // операции, ни в журнале, ни в ленте.
-  string presented = 1 [(required) = true, (length) = "<=256", (kacho.cloud.api.secret_bearing) = true];
+  string presented = 1 [(kacho.cloud.api.secret_bearing) = true];
 }
 
 // ResolveBasicCredentialResponse — вердикт о годном удостоверении.

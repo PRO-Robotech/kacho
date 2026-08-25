@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -608,7 +607,7 @@ var File_kacho_cloud_iam_v1_role_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"\n" +
-	"\x1dkacho/cloud/iam/v1/role.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\xe4\a\n" +
+	"\x1dkacho/cloud/iam/v1/role.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xda\a\n" +
 	"\x04Role\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -623,8 +622,8 @@ const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"cluster_id\x18\b \x01(\tR\tclusterId\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\n" +
-	" \x01(\tR\tprojectId\x128\n" +
-	"\x05rules\x18\v \x03(\v2\x18.kacho.cloud.iam.v1.RuleB\b\x82\xc81\x041-64R\x05rules\x12)\n" +
+	" \x01(\tR\tprojectId\x12.\n" +
+	"\x05rules\x18\v \x03(\v2\x18.kacho.cloud.iam.v1.RuleR\x05rules\x12)\n" +
 	"\x10resource_version\x18\f \x01(\tR\x0fresourceVersion\x12+\n" +
 	"\x12created_by_user_id\x18\r \x01(\tR\x0fcreatedByUserId\x129\n" +
 	"\n" +
@@ -646,13 +645,13 @@ const file_kacho_cloud_iam_v1_role_proto_rawDesc = "" +
 	"R\x0forganization_id\"F\n" +
 	"\x0eDefinitionTier\x12\x1b\n" +
 	"\ttier_type\x18\x01 \x01(\tR\btierType\x12\x17\n" +
-	"\atier_id\x18\x02 \x01(\tR\x06tierId\"\xe1\x02\n" +
-	"\x04Rule\x12.\n" +
-	"\tresources\x18\x02 \x03(\tB\x10\x82\xc81\x041-16\x8a\xc81\x041-64R\tresources\x12&\n" +
-	"\x05verbs\x18\x03 \x03(\tB\x10\x82\xc81\x041-16\x8a\xc81\x041-64R\x05verbs\x128\n" +
-	"\x0eresource_names\x18\x04 \x03(\tB\x11\x82\xc81\x05<=256\x8a\xc81\x041-64R\rresourceNames\x12V\n" +
-	"\fmatch_labels\x18\x05 \x03(\v2).kacho.cloud.iam.v1.Rule.MatchLabelsEntryB\b\x82\xc81\x04<=16R\vmatchLabels\x12 \n" +
-	"\x06module\x18\x06 \x01(\tB\b\x8a\xc81\x041-64R\x06module\x1a>\n" +
+	"\atier_id\x18\x02 \x01(\tR\x06tierId\"\x96\x02\n" +
+	"\x04Rule\x12\x1c\n" +
+	"\tresources\x18\x02 \x03(\tR\tresources\x12\x14\n" +
+	"\x05verbs\x18\x03 \x03(\tR\x05verbs\x12%\n" +
+	"\x0eresource_names\x18\x04 \x03(\tR\rresourceNames\x12L\n" +
+	"\fmatch_labels\x18\x05 \x03(\v2).kacho.cloud.iam.v1.Rule.MatchLabelsEntryR\vmatchLabels\x12\x16\n" +
+	"\x06module\x18\x06 \x01(\tR\x06module\x1a>\n" +
 	"\x10MatchLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x01\x10\x02R\amodules\"-\n" +

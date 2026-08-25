@@ -8,7 +8,6 @@ package kacho.cloud.vpc.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
@@ -332,10 +331,7 @@ message UpdateAddressPoolRequest {
 
 message AddAddressPoolCidrBlocksRequest {
   // ID пула, в который добавляются CIDR-блоки.
-  string address_pool_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string address_pool_id = 1;
 
   // IPv4 CIDR-блоки для добавления (host-bits=0). Может быть пустым, если
   // добавляются только v6-блоки.
@@ -348,10 +344,7 @@ message AddAddressPoolCidrBlocksRequest {
 
 message RemoveAddressPoolCidrBlocksRequest {
   // ID пула, из которого удаляются CIDR-блоки.
-  string address_pool_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string address_pool_id = 1;
 
   // IPv4 CIDR-блоки для удаления. Может быть пустым, если удаляются только
   // v6-блоки.

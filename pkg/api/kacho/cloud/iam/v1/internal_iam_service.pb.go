@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -659,9 +658,11 @@ type UnregisterResourceRequest struct {
 	// Поля 5/6/7 зарезервированы под форму-симметрию с RegisterResourceRequest.
 	// Unregister удаляет mirror-строку по `object`; эти поля
 	// игнорируются на приеме (симметрия shape, не семантики).
-	Labels          map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	ParentProjectId string            `protobuf:"bytes,6,opt,name=parent_project_id,json=parentProjectId,proto3" json:"parent_project_id,omitempty"`
-	ParentAccountId string            `protobuf:"bytes,7,opt,name=parent_account_id,json=parentAccountId,proto3" json:"parent_account_id,omitempty"`
+	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Project the resource belonged to. Empty when the resource is not project-scoped.
+	ParentProjectId string `protobuf:"bytes,6,opt,name=parent_project_id,json=parentProjectId,proto3" json:"parent_project_id,omitempty"`
+	// Account the resource belonged to. Empty when the resource is not account-scoped.
+	ParentAccountId string `protobuf:"bytes,7,opt,name=parent_account_id,json=parentAccountId,proto3" json:"parent_account_id,omitempty"`
 	// Tombstone-version: момент Delete у владельца (now() на
 	// эмите unregister-intent). IAM удаляет mirror-строку ТОЛЬКО если этот
 	// source_version >= хранимого (tombstone не старше последнего примененного
@@ -1373,7 +1374,7 @@ var File_kacho_cloud_iam_v1_internal_iam_service_proto protoreflect.FileDescript
 
 const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\n" +
-	"-kacho/cloud/iam/v1/internal_iam_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a$kacho/cloud/api/secret_options.proto\x1a(kacho/cloud/iam/v1/service_account.proto\x1a\x1dkacho/cloud/iam/v1/user.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"j\n" +
+	"-kacho/cloud/iam/v1/internal_iam_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a$kacho/cloud/api/secret_options.proto\x1a(kacho/cloud/iam/v1/service_account.proto\x1a\x1dkacho/cloud/iam/v1/user.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"j\n" +
 	"\x14LookupSubjectRequest\x12!\n" +
 	"\vexternal_id\x18\x01 \x01(\tH\x00R\n" +
 	"externalId\x12\x10\n" +
@@ -1383,13 +1384,13 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\x15LookupSubjectResponse\x12.\n" +
 	"\x04user\x18\x01 \x01(\v2\x18.kacho.cloud.iam.v1.UserH\x00R\x04user\x12M\n" +
 	"\x0fservice_account\x18\x02 \x01(\v2\".kacho.cloud.iam.v1.ServiceAccountH\x00R\x0eserviceAccountB\t\n" +
-	"\asubject\"\xdc\x02\n" +
-	"\fCheckRequest\x12,\n" +
+	"\asubject\"\xa6\x02\n" +
+	"\fCheckRequest\x12\x1d\n" +
 	"\n" +
-	"subject_id\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\tsubjectId\x12(\n" +
-	"\brelation\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\brelation\x12%\n" +
-	"\x06object\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\x06object\x12#\n" +
-	"\btrace_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=64R\atraceId\x12N\n" +
+	"subject_id\x18\x01 \x01(\tR\tsubjectId\x12\x1a\n" +
+	"\brelation\x18\x02 \x01(\tR\brelation\x12\x16\n" +
+	"\x06object\x18\x03 \x01(\tR\x06object\x12\x19\n" +
+	"\btrace_id\x18\x04 \x01(\tR\atraceId\x12N\n" +
 	"\vconsistency\x18\x05 \x01(\x0e2,.kacho.cloud.iam.v1.CheckRequest.ConsistencyR\vconsistency\"X\n" +
 	"\vConsistency\x12\x1b\n" +
 	"\x17CONSISTENCY_UNSPECIFIED\x10\x00\x12\x14\n" +
@@ -1397,40 +1398,40 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\x12HIGHER_CONSISTENCY\x10\x02\"A\n" +
 	"\rCheckResponse\x12\x18\n" +
 	"\aallowed\x18\x01 \x01(\bR\aallowed\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\"\x9b\x04\n" +
-	"\x17RegisterResourceRequest\x12,\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xd1\x03\n" +
+	"\x17RegisterResourceRequest\x12\x1d\n" +
 	"\n" +
-	"subject_id\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\tsubjectId\x12(\n" +
-	"\brelation\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\brelation\x12%\n" +
-	"\x06object\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\x06object\x12#\n" +
-	"\btrace_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=64R\atraceId\x12O\n" +
-	"\x06labels\x18\x05 \x03(\v27.kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntryR\x06labels\x124\n" +
-	"\x11parent_project_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=64R\x0fparentProjectId\x124\n" +
-	"\x11parent_account_id\x18\a \x01(\tB\b\x8a\xc81\x04<=64R\x0fparentAccountId\x12A\n" +
+	"subject_id\x18\x01 \x01(\tR\tsubjectId\x12\x1a\n" +
+	"\brelation\x18\x02 \x01(\tR\brelation\x12\x16\n" +
+	"\x06object\x18\x03 \x01(\tR\x06object\x12\x19\n" +
+	"\btrace_id\x18\x04 \x01(\tR\atraceId\x12O\n" +
+	"\x06labels\x18\x05 \x03(\v27.kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntryR\x06labels\x12*\n" +
+	"\x11parent_project_id\x18\x06 \x01(\tR\x0fparentProjectId\x12*\n" +
+	"\x11parent_account_id\x18\a \x01(\tR\x0fparentAccountId\x12A\n" +
 	"\x0esource_version\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\rsourceVersion\x12!\n" +
 	"\fparent_chain\x18\t \x03(\tR\vparentChain\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x1a\n" +
-	"\x18RegisterResourceResponse\"\xfc\x03\n" +
-	"\x19UnregisterResourceRequest\x12,\n" +
+	"\x18RegisterResourceResponse\"\xb2\x03\n" +
+	"\x19UnregisterResourceRequest\x12\x1d\n" +
 	"\n" +
-	"subject_id\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\tsubjectId\x12(\n" +
-	"\brelation\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\brelation\x12%\n" +
-	"\x06object\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\x06object\x12#\n" +
-	"\btrace_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=64R\atraceId\x12Q\n" +
-	"\x06labels\x18\x05 \x03(\v29.kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntryR\x06labels\x124\n" +
-	"\x11parent_project_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=64R\x0fparentProjectId\x124\n" +
-	"\x11parent_account_id\x18\a \x01(\tB\b\x8a\xc81\x04<=64R\x0fparentAccountId\x12A\n" +
+	"subject_id\x18\x01 \x01(\tR\tsubjectId\x12\x1a\n" +
+	"\brelation\x18\x02 \x01(\tR\brelation\x12\x16\n" +
+	"\x06object\x18\x03 \x01(\tR\x06object\x12\x19\n" +
+	"\btrace_id\x18\x04 \x01(\tR\atraceId\x12Q\n" +
+	"\x06labels\x18\x05 \x03(\v29.kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntryR\x06labels\x12*\n" +
+	"\x11parent_project_id\x18\x06 \x01(\tR\x0fparentProjectId\x12*\n" +
+	"\x11parent_account_id\x18\a \x01(\tR\x0fparentAccountId\x12A\n" +
 	"\x0esource_version\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\rsourceVersion\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x1c\n" +
-	"\x1aUnregisterResourceResponse\"\x84\x01\n" +
-	"\x12ForceLogoutRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12!\n" +
-	"\x06reason\x18\x02 \x01(\tB\t\x8a\xc81\x05<=128R\x06reason\x12$\n" +
-	"\bactor_id\x18\x03 \x01(\tB\t\x8a\xc81\x05<=128R\aactorId\".\n" +
+	"\x1aUnregisterResourceResponse\"`\n" +
+	"\x12ForceLogoutRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x19\n" +
+	"\bactor_id\x18\x03 \x01(\tR\aactorId\".\n" +
 	"\x13ForceLogoutMetadata\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\"8\n" +
 	"\x11ForceLogoutResult\x12#\n" +
@@ -1445,14 +1446,14 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\x02op\x18\x03 \x01(\tR\x02op\"r\n" +
 	"\x1aPollSubjectChangesResponse\x12;\n" +
 	"\achanges\x18\x01 \x03(\v2!.kacho.cloud.iam.v1.SubjectChangeR\achanges\x12\x17\n" +
-	"\ahead_id\x18\x02 \x01(\x03R\x06headId\"?\n" +
-	"\x16GetRoleCompiledRequest\x12%\n" +
-	"\arole_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06roleId\"T\n" +
+	"\ahead_id\x18\x02 \x01(\x03R\x06headId\"1\n" +
+	"\x16GetRoleCompiledRequest\x12\x17\n" +
+	"\arole_id\x18\x01 \x01(\tR\x06roleId\"T\n" +
 	"\x17GetRoleCompiledResponse\x12\x17\n" +
 	"\arole_id\x18\x01 \x01(\tR\x06roleId\x12 \n" +
-	"\vpermissions\x18\x02 \x03(\tR\vpermissions\"P\n" +
-	"\x1dResolveBasicCredentialRequest\x12/\n" +
-	"\tpresented\x18\x01 \x01(\tB\x11\xe8\xc71\x01\x8a\xc81\x05<=256\xc0\xc81\x01R\tpresented\"\xed\x01\n" +
+	"\vpermissions\x18\x02 \x03(\tR\vpermissions\"C\n" +
+	"\x1dResolveBasicCredentialRequest\x12\"\n" +
+	"\tpresented\x18\x01 \x01(\tB\x04\xc0\xc81\x01R\tpresented\"\xed\x01\n" +
 	"\x1eResolveBasicCredentialResponse\x12%\n" +
 	"\x0eprincipal_type\x18\x01 \x01(\tR\rprincipalType\x12!\n" +
 	"\fprincipal_id\x18\x02 \x01(\tR\vprincipalId\x12!\n" +

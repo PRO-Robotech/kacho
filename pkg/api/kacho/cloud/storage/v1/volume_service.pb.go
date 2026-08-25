@@ -10,7 +10,6 @@
 package storagev1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -218,6 +217,7 @@ type CreateVolumeRequest struct {
 	// Description of the volume.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	// Resource labels as `key:value` pairs.
+	// At most 64 pairs.
 	Labels map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// ID of the availability zone where the volume resides. Peer-validated against
 	// kacho-geo.
@@ -389,6 +389,7 @@ type UpdateVolumeRequest struct {
 	// Resource labels as `key:value` pairs.
 	//
 	// Existing set of `labels` is completely replaced by the provided set.
+	// At most 64 pairs.
 	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// New size of the volume, specified in bytes. Increase only; a smaller value is
 	// rejected with InvalidArgument "Volume size can only be increased".
@@ -831,73 +832,70 @@ var File_kacho_cloud_storage_v1_volume_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_volume_service_proto_rawDesc = "" +
 	"\n" +
-	"+kacho/cloud/storage/v1/volume_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a#kacho/cloud/storage/v1/volume.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"=\n" +
-	"\x10GetVolumeRequest\x12)\n" +
-	"\tvolume_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bvolumeId\"\xc8\x01\n" +
-	"\x12ListVolumesRequest\x12+\n" +
+	"+kacho/cloud/storage/v1/volume_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a#kacho/cloud/storage/v1/volume.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"/\n" +
+	"\x10GetVolumeRequest\x12\x1b\n" +
+	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\"\x97\x01\n" +
+	"\x12ListVolumesRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
-	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filterJ\x04\b\x05\x10\x06R\border_by\"w\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x04 \x01(\tR\x06filterJ\x04\b\x05\x10\x06R\border_by\"w\n" +
 	"\x13ListVolumesResponse\x128\n" +
 	"\avolumes\x18\x01 \x03(\v2\x1e.kacho.cloud.storage.v1.VolumeR\avolumes\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xf6\x04\n" +
-	"\x13CreateVolumeRequest\x12+\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb8\x03\n" +
+	"\x13CreateVolumeRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x129\n" +
-	"\x04name\x18\x02 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x94\x01\n" +
-	"\x06labels\x18\x04 \x03(\v27.kacho.cloud.storage.v1.CreateVolumeRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x12%\n" +
-	"\azone_id\x18\x05 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x06zoneId\x12.\n" +
-	"\fdisk_type_id\x18\x06 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"diskTypeId\x12%\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12O\n" +
+	"\x06labels\x18\x04 \x03(\v27.kacho.cloud.storage.v1.CreateVolumeRequest.LabelsEntryR\x06labels\x12\x17\n" +
+	"\azone_id\x18\x05 \x01(\tR\x06zoneId\x12 \n" +
+	"\fdisk_type_id\x18\x06 \x01(\tR\n" +
+	"diskTypeId\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\a \x01(\x03B\x06\xfa\xc71\x02>0R\tsizeBytes\x126\n" +
-	"\x12source_snapshot_id\x18\t \x01(\tB\b\x8a\xc81\x04<=50R\x10sourceSnapshotId\x120\n" +
+	"size_bytes\x18\a \x01(\x03R\tsizeBytes\x12,\n" +
+	"\x12source_snapshot_id\x18\t \x01(\tR\x10sourceSnapshotId\x12&\n" +
 	"\x0fsource_image_id\x18\n" +
-	" \x01(\tB\b\x8a\xc81\x04<=50R\rsourceImageId\x1a9\n" +
+	" \x01(\tR\rsourceImageId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tR\n" +
 	"block_size\"3\n" +
 	"\x14CreateVolumeMetadata\x12\x1b\n" +
-	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\"\xde\x03\n" +
-	"\x13UpdateVolumeRequest\x12)\n" +
-	"\tvolume_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bvolumeId\x12;\n" +
+	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\"\xd0\x02\n" +
+	"\x13UpdateVolumeRequest\x12\x1b\n" +
+	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x129\n" +
-	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x94\x01\n" +
-	"\x06labels\x18\x05 \x03(\v27.kacho.cloud.storage.v1.UpdateVolumeRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x12%\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12O\n" +
+	"\x06labels\x18\x05 \x03(\v27.kacho.cloud.storage.v1.UpdateVolumeRequest.LabelsEntryR\x06labels\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\x06 \x01(\x03B\x06\xfa\xc71\x02>0R\tsizeBytes\x1a9\n" +
+	"size_bytes\x18\x06 \x01(\x03R\tsizeBytes\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"3\n" +
 	"\x14UpdateVolumeMetadata\x12\x1b\n" +
-	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\"@\n" +
-	"\x13DeleteVolumeRequest\x12)\n" +
-	"\tvolume_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bvolumeId\"3\n" +
+	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\"2\n" +
+	"\x13DeleteVolumeRequest\x12\x1b\n" +
+	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\"3\n" +
 	"\x14DeleteVolumeMetadata\x12\x1b\n" +
-	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\"\x9b\x01\n" +
-	"\x1bListVolumeOperationsRequest\x12)\n" +
-	"\tvolume_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bvolumeId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\"v\n" +
+	"\x1bListVolumeOperationsRequest\x12\x1b\n" +
+	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x88\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x88\x01\n" +
 	"\x1cListVolumeOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"r\n" +
-	"\x15ChangeDiskTypeRequest\x12)\n" +
-	"\tvolume_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bvolumeId\x12.\n" +
-	"\fdisk_type_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"V\n" +
+	"\x15ChangeDiskTypeRequest\x12\x1b\n" +
+	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId\x12 \n" +
+	"\fdisk_type_id\x18\x02 \x01(\tR\n" +
 	"diskTypeId\"5\n" +
 	"\x16ChangeDiskTypeMetadata\x12\x1b\n" +
 	"\tvolume_id\x18\x01 \x01(\tR\bvolumeId2\xf7\f\n" +

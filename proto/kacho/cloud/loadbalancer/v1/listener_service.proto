@@ -10,7 +10,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/loadbalancer/v1/listener.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1";
@@ -121,29 +120,28 @@ service ListenerService {
 }
 
 message GetListenerRequest {
-  string listener_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  // ID of the Listener.
+  string listener_id = 1;
 }
 
 message ListListenersRequest {
   // ID of the project whose listeners are listed (KAC-229: project-scoped,
   // parity with NLB/TG List).
-  string project_id = 5 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 5;
 
   // Optional filter: restrict to listeners of a single parent load balancer.
   // Empty = all listeners in the project.
-  string load_balancer_id = 1 [(length) = "<=50"];
+  string load_balancer_id = 1;
 
-  int64 page_size = 2 [(value) = "<=1000"];
-  string page_token = 3 [(length) = "<=100"];
+  // Maximum number of results per page. 0 selects the service default (50);
+  // a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+  int64 page_size = 2;
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListListenersResponse.next_page_token] returned by a previous list request.
+  string page_token = 3;
 
   // Filter currently supports `name = "..."`.
-  string filter = 4 [(length) = "<=1000"];
+  string filter = 4;
 }
 
 message ListListenersResponse {
@@ -168,32 +166,31 @@ message CreateListenerRequest {
   reserved 7, 8, 9, 10;
   reserved "target_port", "ip_version", "address_spec", "proxy_protocol_v2";
 
-  string load_balancer_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  // ID of the parent NetworkLoadBalancer. Immutable after Listener.Create.
+  string load_balancer_id = 1;
 
-  string name = 2 [(pattern) = "|[a-z][-a-z0-9]{1,61}[a-z0-9]"];
-  string description = 3 [(length) = "<=256"];
-  map<string, string> labels = 4 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_0-9a-z]*"
-  ];
+  // Name of the Listener. Must be a DNS label (lowercase letters, digits and
+  // hyphens, 1-63 characters) and is unique within the project. Empty on Create
+  // makes the server derive the name from the assigned id.
+  string name = 2;
+  // Description of the Listener.
+  string description = 3;
+  // Resource labels as `` key:value `` pairs.
+  map<string, string> labels = 4;
 
-  Listener.Protocol protocol = 5 [(required) = true];
-  int64 port = 6 [(value) = "1-65535"];
+  // Transport protocol of the listener. Immutable after Listener.Create.
+  Listener.Protocol protocol = 5;
+  // Port the listener accepts traffic on. Must be 1-65535 and unique within the load balancer.
+  int64 port = 6;
 
   // Default target group ID — soft reference to a TG attached to the parent
   // LB. Optional; can be set later via Update.
-  string default_target_group_id = 11 [(length) = "<=50"];
+  string default_target_group_id = 11;
 
   // target_group_id — NLB-1b EXPAND (additive, optional): the target group the
   // listener wires to. When set it takes precedence over default_target_group_id
   // (both coexist in EXPAND). resolved_backend_port°/substatus° echo the wired TG.
-  string target_group_id = 12 [(length) = "<=50"];
+  string target_group_id = 12;
 }
 
 message CreateListenerMetadata {
@@ -208,32 +205,31 @@ message UpdateListenerRequest {
   reserved 6;
   reserved "proxy_protocol_v2";
 
-  string listener_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  // ID of the Listener.
+  string listener_id = 1;
 
   // Immutable fields rejected here: load_balancer_id, protocol, port (design
   // §3.3). Адресных полей у листенера больше нет — address_id/ip_version из
   // immutable-списка ушли вместе с переездом VIP на LoadBalancer.
   google.protobuf.FieldMask update_mask = 2;
 
-  string name = 3 [(pattern) = "|[a-z][-a-z0-9]{1,61}[a-z0-9]"];
-  string description = 4 [(length) = "<=256"];
-  map<string, string> labels = 5 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_0-9a-z]*"
-  ];
+  // Name of the Listener. Must be a DNS label (lowercase letters, digits and
+  // hyphens, 1-63 characters) and is unique within the project. Empty on Create
+  // makes the server derive the name from the assigned id.
+  string name = 3;
+  // Description of the Listener.
+  string description = 4;
+  // Resource labels as `` key:value `` pairs.
+  map<string, string> labels = 5;
 
-  string default_target_group_id = 7 [(length) = "<=50"];
+  // ID of the TargetGroup traffic is sent to when no rule matches. Present in
+  // update_mask, it rewires the listener; empty clears the wiring.
+  string default_target_group_id = 7;
 
   // target_group_id — NLB-1b EXPAND (additive, LIVE-mutable): repoint the
   // listener to another target group. When present in update_mask it takes
   // precedence over default_target_group_id.
-  string target_group_id = 8 [(length) = "<=50"];
+  string target_group_id = 8;
 }
 
 message UpdateListenerMetadata {
@@ -241,10 +237,8 @@ message UpdateListenerMetadata {
 }
 
 message DeleteListenerRequest {
-  string listener_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  // ID of the Listener.
+  string listener_id = 1;
 }
 
 message DeleteListenerMetadata {
@@ -253,12 +247,14 @@ message DeleteListenerMetadata {
 }
 
 message ListListenerOperationsRequest {
-  string listener_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
-  int64 page_size = 2 [(value) = "<=1000"];
-  string page_token = 3 [(length) = "<=100"];
+  // ID of the Listener.
+  string listener_id = 1;
+  // Maximum number of results per page. 0 selects the service default (50);
+  // a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+  int64 page_size = 2;
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListListenerOperationsResponse.next_page_token] returned by a previous list request.
+  string page_token = 3;
 }
 
 message ListListenerOperationsResponse {

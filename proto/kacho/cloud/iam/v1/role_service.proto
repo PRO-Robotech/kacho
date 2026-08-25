@@ -10,7 +10,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/iam/v1/role.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -154,24 +153,24 @@ service RoleService {
 
 message GetRoleRequest {
   // ID of the Role resource to return.
-  string role_id = 1 [(required) = true, (length) = "<=20"];
+  string role_id = 1;
 }
 
 message ListRolesRequest {
   // The maximum number of results per page to return. Default value: 100.
-  int64 page_size = 1 [(value) = "<=1000"];
+  int64 page_size = 1;
 
   // Page token.
-  string page_token = 2 [(length) = "<=100"];
+  string page_token = 2;
 
   // A filter expression. Supports filtering by is_system / name.
-  string filter = 3 [(length) = "<=1000"];
+  string filter = 3;
 
   // Scope the role catalog to a single Account.
   // When set, the response contains system roles (always visible, account_id is
   // empty) PLUS the custom roles owned by this Account — never another Account's
   // custom roles. Empty → unscoped catalog (subject to per-object visibility).
-  string account_id = 4 [(length) = "<=20"];
+  string account_id = 4;
 }
 
 message ListRolesResponse {
@@ -192,35 +191,35 @@ message CreateRoleRequest {
   // No longer (required): a project-scoped role leaves account_id empty. The XOR
   // (account XOR project, both-empty and both-set → INVALID_ARGUMENT) is
   // enforced in the Role.Create use-case + DB CHECK `roles_scope_xor`.
-  string account_id = 1 [(length) = "<=20"];
+  string account_id = 1;
 
   // Name of the role. 1-41 characters long.
-  string name = 2 [(required) = true, (length) = "1-41", (pattern) = "[a-z]([-a-z0-9_]{0,39}[a-z0-9])?"];
+  string name = 2;
 
   // Description of the role.
-  string description = 3 [(length) = "<=256"];
+  string description = 3;
 
   // DEPRECATED: compiled-форма output-only. На входе
   // Create НЕ принимается (client-sent non-empty → INVALID_ARGUMENT). Tag
   // сохранен append-only; политика теперь авторится через `rules`.
-  repeated string permissions = 4 [deprecated = true, (kacho.cloud.size) = "<=1024", (length) = "<=128"];
+  repeated string permissions = 4 [deprecated = true];
 
   // Authored-политика роли: 1..64 правил.
   // permissions[] на входе НЕ принимается — политика задается только здесь.
-  repeated Rule rules = 5 [(kacho.cloud.size) = "1-64"];
+  repeated Rule rules = 5;
 
   // ID of the Project that a PROJECT-scoped custom Role belongs to. Mutually
   // exclusive with account_id (XOR — see account_id). A project-scoped role is
   // assignable only on its OWN project (`project:<project_id>`, STRICT — no
   // hierarchy-down), unblocking the project-anchor materialization path.
   // The read-side Role message already carries project_id.
-  string project_id = 6 [(length) = "<=20"];
+  string project_id = 6;
 
   // Tenant-facing метки самого ресурса Role (НЕ путать с `Rule.match_labels`,
   // которое отбирает ОБЪЕКТЫ под грантом). Делают Role label-selectable
   // наравне с account/project. Аннотации (size/key/value pattern) — паритет
   // account/project/group request `labels`.
-  map<string, string> labels = 7 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 7;
 
   // Definition tier (redesign-2026 F4) — the CANONICAL scope input, superseding the
   // legacy account_id/project_id pair: `tier_type` dotted (`iam.account` |
@@ -233,7 +232,7 @@ message CreateRoleRequest {
 
 message UpdateRoleRequest {
   // ID of the Role resource to update.
-  string role_id = 1 [(required) = true, (length) = "<=20"];
+  string role_id = 1;
 
   // Field mask. Allowed fields: name, description, rules, labels.
   // is_system / account_id / project_id / cluster_id / permissions (derived)
@@ -241,18 +240,18 @@ message UpdateRoleRequest {
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the role.
-  string name = 3 [(pattern) = "|[a-z]([-a-z0-9_]{0,39}[a-z0-9])?"];
+  string name = 3;
 
   // Description of the role.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // DEPRECATED: compiled-форма derived/immutable. В
   // update_mask → INVALID_ARGUMENT. Tag сохранен append-only.
-  repeated string permissions = 5 [deprecated = true, (kacho.cloud.size) = "<=1024", (length) = "<=128"];
+  repeated string permissions = 5 [deprecated = true];
 
   // Authored-политика роли: 1..64 правил.
   // Применяется когда update_mask содержит `rules`.
-  repeated Rule rules = 6 [(kacho.cloud.size) = "1-64"];
+  repeated Rule rules = 6;
 
   // Optimistic-concurrency token (xmin-backed). Обязателен, когда update_mask
   // содержит `rules` (OCC под конкуренцией); mismatch →
@@ -262,23 +261,23 @@ message UpdateRoleRequest {
   // Tenant-facing метки самого ресурса Role (mutable; `labels` в update_mask).
   // НЕ путать с `Rule.match_labels`. Аннотации (size/key/value pattern) —
   // паритет account/project/group request `labels`.
-  map<string, string> labels = 8 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 8;
 }
 
 message DeleteRoleRequest {
   // ID of the Role resource to delete.
-  string role_id = 1 [(required) = true, (length) = "<=20"];
+  string role_id = 1;
 }
 
 message ListRoleOperationsRequest {
   // ID of the Role resource to list operations for.
-  string role_id = 1 [(required) = true, (length) = "<=20"];
+  string role_id = 1;
 
   // The maximum number of results per page that should be returned.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListRoleOperationsResponse {

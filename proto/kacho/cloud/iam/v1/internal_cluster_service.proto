@@ -34,7 +34,6 @@ import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/iam/v1/cluster.proto";
 import "kacho/cloud/iam/v1/cluster_admin_grant.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -147,11 +146,11 @@ message GetClusterRequest {}
 message GrantClusterAdminRequest {
   // Subject type. Only `USER` is accepted in this version; other values
   // return InvalidArgument `"Illegal argument subject_type: only 'user' supported in this version"`.
-  ClusterGrantSubjectType subject_type = 1 [(required) = true];
+  ClusterGrantSubjectType subject_type = 1;
 
   // User id of the new admin. Must match `^usr_[0-9a-hjkmnp-tv-z]{17}$` and
   // exist in `kacho_iam.users` (missing user returns InvalidArgument).
-  string subject_id = 2 [(required) = true, (length) = "<=20", (pattern) = "usr_[0-9a-hjkmnp-tv-z]+"];
+  string subject_id = 2;
 }
 
 // GrantClusterAdminMetadata — Operation.metadata payload. Captures the
@@ -169,14 +168,14 @@ message GrantClusterAdminMetadata {
 // RevokeClusterAdminRequest — payload for `RevokeAdmin`.
 message RevokeClusterAdminRequest {
   // Subject type. Only `USER` is accepted in this version.
-  ClusterGrantSubjectType subject_type = 1 [(required) = true];
+  ClusterGrantSubjectType subject_type = 1;
 
   // User id of the admin being revoked. Must match
   // `^usr_[0-9a-hjkmnp-tv-z]{17}$`. Self-revoke is rejected
   // (FailedPrecondition); last-admin revoke is rejected
   // (FailedPrecondition); non-existent / already-revoked admin returns
   // NotFound.
-  string subject_id = 2 [(required) = true, (length) = "<=20", (pattern) = "usr_[0-9a-hjkmnp-tv-z]+"];
+  string subject_id = 2;
 }
 
 // RevokeClusterAdminMetadata — Operation.metadata payload. Mirror of

@@ -6,7 +6,6 @@ syntax = "proto3";
 package kacho.cloud.vpc.v1;
 
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/cloud/reference/reference.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
@@ -114,7 +113,7 @@ message SecurityGroupRule {
     map<string, string> labels = 3;
 
     // The direction of network traffic allowed by this rule.
-    Direction direction = 4 [(required) = true];
+    Direction direction = 4;
 
     // The range of ports that allow traffic to pass through. Null value means any.
     PortRange ports = 5;
@@ -128,7 +127,6 @@ message SecurityGroupRule {
 
     oneof target {
         // Target of the security rule.
-        option (exactly_one) = true;
 
         // CIDR blocks to allow to recieve or send traffic.
         CidrBlocks cidr_blocks = 8;
@@ -160,10 +158,10 @@ message SecurityGroupRule {
 
 message PortRange {
     // The lowest port in the range.
-    int64 from_port = 1 [(value) = "0-65535"];
+    int64 from_port = 1;
 
     // The highest port in the range.
-    int64 to_port = 2 [(value) = "0-65535"];
+    int64 to_port = 2;
 }
 
 message CidrBlocks {

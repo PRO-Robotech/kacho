@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -123,14 +122,14 @@ var File_kacho_cloud_iam_v1_session_revocation_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_session_revocation_proto_rawDesc = "" +
 	"\n" +
-	"+kacho/cloud/iam/v1/session_revocation.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\x89\x02\n" +
-	"\x11SessionRevocation\x12)\n" +
-	"\ttoken_jti\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=64R\btokenJti\x12%\n" +
-	"\auser_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x129\n" +
+	"+kacho/cloud/iam/v1/session_revocation.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xde\x01\n" +
+	"\x11SessionRevocation\x12\x1b\n" +
+	"\ttoken_jti\x18\x01 \x01(\tR\btokenJti\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x129\n" +
 	"\n" +
 	"revoked_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt\x12@\n" +
-	"\x0ettl_expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\fttlExpiresAt\x12%\n" +
-	"\x06reason\x18\x05 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x051-128R\x06reasonB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\x0ettl_expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\fttlExpiresAt\x12\x16\n" +
+	"\x06reason\x18\x05 \x01(\tR\x06reasonB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_session_revocation_proto_rawDescOnce sync.Once

@@ -8,7 +8,6 @@ package kacho.cloud.storage.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "kacho/cloud/storage/v1/disk_type.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
@@ -160,16 +159,16 @@ service InternalDiskTypeService {
 
 message GetDiskTypeRequest {
   // ID of the disk type to return information about.
-  string disk_type_id = 1 [(required) = true];
+  string disk_type_id = 1;
 }
 
 message ListDiskTypesRequest {
   // The maximum number of results per page to return.
-  int64 page_size = 1 [(value) = "<=1000"];
+  int64 page_size = 1;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListDiskTypesResponse.next_page_token] returned by a previous list request.
-  string page_token = 2 [(length) = "<=100"];
+  string page_token = 2;
 }
 
 message ListDiskTypesResponse {
@@ -182,7 +181,7 @@ message ListDiskTypesResponse {
 
 message CreateDiskTypeRequest {
   // DiskType ID — admin sets it explicitly (e.g. "network-ssd"). Primary key, immutable.
-  string id = 1 [(required) = true];
+  string id = 1;
 
   // Human-readable name of the disk type.
   string name = 2;
@@ -221,7 +220,7 @@ message CreateDiskTypeRequest {
 
 message UpdateDiskTypeRequest {
   // ID изменяемого класса. Неизменяем: адресация идёт по нему.
-  string disk_type_id = 1 [(required) = true];
+  string disk_type_id = 1;
 
   string name = 2;
   string description = 3;
@@ -258,16 +257,17 @@ message UpdateDiskTypeRequest {
 
 message SetDiskTypeLifecycleRequest {
   // ID класса, состояние обращения которого меняется.
-  string disk_type_id = 1 [(required) = true];
+  string disk_type_id = 1;
 
   // Новое состояние обращения. Обязательно и называется явно: у этого запроса нет
   // умолчания — «не указано» здесь неотличимо от «верни в обращение», а такой
   // исход обязан быть выбран, а не получен по недосмотру.
-  DiskType.Lifecycle lifecycle = 2 [(required) = true];
+  DiskType.Lifecycle lifecycle = 2;
 }
 
 message DeleteDiskTypeRequest {
-  string disk_type_id = 1 [(required) = true];
+  // ID of the DiskType.
+  string disk_type_id = 1;
 }
 
 message DeleteDiskTypeResponse {}

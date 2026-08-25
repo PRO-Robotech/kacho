@@ -10,7 +10,6 @@
 package vpcv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -1391,7 +1390,7 @@ var File_kacho_cloud_vpc_v1_internal_address_pool_service_proto protoreflect.Fil
 
 const file_kacho_cloud_vpc_v1_internal_address_pool_service_proto_rawDesc = "" +
 	"\n" +
-	"6kacho/cloud/vpc/v1/internal_address_pool_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xbe\x05\n" +
+	"6kacho/cloud/vpc/v1/internal_address_pool_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xbe\x05\n" +
 	"\vAddressPool\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x129\n" +
 	"\n" +
@@ -1465,13 +1464,13 @@ const file_kacho_cloud_vpc_v1_internal_address_pool_service_proto_rawDesc = "" +
 	"\x13SelectorLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x04\x10\x05J\x04\b\a\x10\bJ\x04\b\t\x10\n" +
-	"J\x04\b\v\x10\fR\vcidr_blocksR\x0ev4_cidr_blocksR\x0ev6_cidr_blocksR\x16replace_v4_cidr_blocksR\x16replace_v6_cidr_blocksR\x0ereplace_labelsR\x11update_is_defaultR\x17replace_selector_labelsR\x18update_selector_priority\"\xa3\x01\n" +
-	"\x1fAddAddressPoolCidrBlocksRequest\x124\n" +
-	"\x0faddress_pool_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\raddressPoolId\x12$\n" +
+	"J\x04\b\v\x10\fR\vcidr_blocksR\x0ev4_cidr_blocksR\x0ev6_cidr_blocksR\x16replace_v4_cidr_blocksR\x16replace_v6_cidr_blocksR\x0ereplace_labelsR\x11update_is_defaultR\x17replace_selector_labelsR\x18update_selector_priority\"\x95\x01\n" +
+	"\x1fAddAddressPoolCidrBlocksRequest\x12&\n" +
+	"\x0faddress_pool_id\x18\x01 \x01(\tR\raddressPoolId\x12$\n" +
 	"\x0ev4_cidr_blocks\x18\x02 \x03(\tR\fv4CidrBlocks\x12$\n" +
-	"\x0ev6_cidr_blocks\x18\x03 \x03(\tR\fv6CidrBlocks\"\xa6\x01\n" +
-	"\"RemoveAddressPoolCidrBlocksRequest\x124\n" +
-	"\x0faddress_pool_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\raddressPoolId\x12$\n" +
+	"\x0ev6_cidr_blocks\x18\x03 \x03(\tR\fv6CidrBlocks\"\x98\x01\n" +
+	"\"RemoveAddressPoolCidrBlocksRequest\x12&\n" +
+	"\x0faddress_pool_id\x18\x01 \x01(\tR\raddressPoolId\x12$\n" +
 	"\x0ev4_cidr_blocks\x18\x02 \x03(\tR\fv4CidrBlocks\x12$\n" +
 	"\x0ev6_cidr_blocks\x18\x03 \x03(\tR\fv6CidrBlocks\"3\n" +
 	"\x18DeleteAddressPoolRequest\x12\x17\n" +

@@ -3,12 +3,34 @@
 
 // declaredcardinality_test.go — гейт против объявленного предела без исполнителя.
 //
-// Предмет. В объявлениях сообщений есть семейство расширений-проверок
-// (`(size)`, `(length)`, `(required)`, `(pattern)`…). Их не читает НИ ОДНА строка
-// прод-кода: генератор кода их не разбирает, интерсептора-проверяльщика нет ни в
-// одном сервисе, а единственный читатель расширений в дереве разбирает совсем
-// другие опции — про права. То есть объявление `(size) = "<=8"` было обещанием,
-// за которым не стоял никто: поле принимало сколько угодно элементов.
+// Предмет. Предел кратности повторяемого поля обязан иметь ИСПОЛНИТЕЛЯ:
+// объявление, за которым никто не стоит, поле не ограничивает и при этом
+// выглядит гарантией — вызывающий читает `<=8` и шлёт восемь, а сервис примет
+// восемьсот.
+//
+// # ОТКУДА ГЕЙТ БЕРЁТ ОБЪЯВЛЕННЫЙ ПРЕДЕЛ (переоснован, задача #1255)
+//
+// Прежде предел читался из САМОГО контракта — расширения `(size) = "<=N"`
+// семейства `kacho.cloud.validation`. Семейство снято с контрактов целиком:
+// исполнителя на пути запроса у него не было ни одного, грамматика его значений
+// нигде не определена, а на полях имени объявленный образец отвергал законный
+// вход. Файл, объявлявший расширения, удалён.
+//
+// Свойство, которое гейт держал, при этом НЕ снято — снят лишь его источник.
+// Величина переехала в поимённую таблицу `declaredCardinality` НИЖЕ, в этом же
+// файле; форма уже была в нём же (`labelsMapLimit` с отдельной пробой
+// предпосылки). Сверка «объявлено ↔ исполнитель» осталась дословно той же,
+// исчезла только сверка с местом, которого больше нет.
+//
+// Вторым адресом та же величина переехала в ПРОЗАИЧЕСКИЙ комментарий поля — там
+// её видит вызывающий, чего частное расширение с частными номерами не давало
+// никогда: ни один существующий генератор клиента о нём не знал и знать не мог.
+// Что комментарий величину называет, проверяет `TestDeclaredCardinalityLimitIsAlsoStatedInProse`.
+//
+// ПОЧЕМУ ТАБЛИЦА, А НЕ «ПРОСТО СНЯТЬ ГЕЙТ». Кратность повторяемого поля
+// умножает работу за пределами процесса, и это не абстракция: список
+// интерфейсов машины стоит ОДНОГО обращения к соседу на элемент, а сосед каждое
+// такое обращение ещё и авторизует у себя.
 //
 // Это особенно дорого там, где кратность повторяемого поля умножает работу за
 // пределами процесса: список интерфейсов машины стоит ОДНОГО обращения к соседу на
@@ -38,12 +60,69 @@ import (
 	"testing"
 )
 
-// scannedPackages — область гейта: пакеты объявлений, за которые отвечает эта
-// зона. Расширение области — отдельная работа с владельцем соответствующего
-// домена, а не строчка сюда.
+// scannedPackages — область гейта: домены, за пределы которых он не судит.
+//
+// Обходом каталогов это больше не является (обходить нечего — объявлений в
+// контрактах нет), но ОБЛАСТЬ по-прежнему обязана быть названа: перечень ниже
+// печатается в переписи, чтобы «находок ноль» было отличимо от «эта зона вне
+// охвата». Остальные домены — открытый остаток, а не молчание.
 var scannedPackages = []string{
-	"proto/kacho/cloud/compute/v1",
-	"proto/kacho/cloud/storage/v1",
+	"compute/v1",
+	"storage/v1",
+}
+
+// declaredCardinality — ОБЪЯВЛЕННЫЙ предел кратности: «<сообщение>.<поле>» → предел.
+//
+// Это то самое место, куда величина переехала с контракта. Единица записи —
+// ПАРА «сообщение, поле», а не одно поле: имя `labels` живёт в четырнадцати
+// сообщениях, и ключ без сообщения свёл бы их в одну запись, потеряв различие
+// пределов, если оно когда-нибудь появится.
+//
+// Запись здесь — ОБЪЯВЛЕНИЕ. Исполнителя ей даёт либо `cardinalityEnforcer`
+// (поимённая константа), либо общий исполнитель меток (`labelsMapLimit`), и
+// расхождение между объявлением и исполнителем краснит гейт по имени поля.
+// Запись без исполнителя — тоже находка: ровно тот дефект, ради которого гейт
+// заведён, только теперь оба конца лежат в дереве, а не один из них в контракте.
+var declaredCardinality = map[string]string{
+	// Машины.
+	"CreateInstanceRequest.guest_access_key_ids":   "<=32",
+	"UpdateInstanceRequest.guest_access_key_ids":   "<=32",
+	"CreateInstanceRequest.secondary_volume_specs": "<=8",
+	"CreateInstanceRequest.labels":                 "<=64",
+	"UpdateInstanceRequest.labels":                 "<=64",
+	// Блочное хранение.
+	"CreateVolumeRequest.labels":   "<=64",
+	"UpdateVolumeRequest.labels":   "<=64",
+	"CreateSnapshotRequest.labels": "<=64",
+	"UpdateSnapshotRequest.labels": "<=64",
+	"CopySnapshotRequest.labels":   "<=64",
+	"CreateImageRequest.labels":    "<=64",
+	"UpdateImageRequest.labels":    "<=64",
+	"CopyImageRequest.labels":      "<=64",
+	"RegisterImageRequest.labels":  "<=64",
+}
+
+// prosePlacement — где та же величина названа ПРОЗОЙ, для вызывающего.
+//
+// Ключ тот же, что у `declaredCardinality`; значение — файл контракта и имя
+// поля, чей комментарий обязан назвать число. Без этой связи «величина переехала
+// в комментарий» осталось бы обещанием: комментарий никем не читается и потому
+// стареет молча.
+var prosePlacement = map[string]string{
+	"CreateInstanceRequest.guest_access_key_ids":   "proto/kacho/cloud/compute/v1/instance_service.proto",
+	"UpdateInstanceRequest.guest_access_key_ids":   "proto/kacho/cloud/compute/v1/instance_service.proto",
+	"CreateInstanceRequest.secondary_volume_specs": "proto/kacho/cloud/compute/v1/instance_service.proto",
+	"CreateInstanceRequest.labels":                 "proto/kacho/cloud/compute/v1/instance_service.proto",
+	"UpdateInstanceRequest.labels":                 "proto/kacho/cloud/compute/v1/instance_service.proto",
+	"CreateVolumeRequest.labels":                   "proto/kacho/cloud/storage/v1/volume_service.proto",
+	"UpdateVolumeRequest.labels":                   "proto/kacho/cloud/storage/v1/volume_service.proto",
+	"CreateSnapshotRequest.labels":                 "proto/kacho/cloud/storage/v1/snapshot_service.proto",
+	"UpdateSnapshotRequest.labels":                 "proto/kacho/cloud/storage/v1/snapshot_service.proto",
+	"CopySnapshotRequest.labels":                   "proto/kacho/cloud/storage/v1/snapshot_service.proto",
+	"CreateImageRequest.labels":                    "proto/kacho/cloud/storage/v1/image_service.proto",
+	"UpdateImageRequest.labels":                    "proto/kacho/cloud/storage/v1/image_service.proto",
+	"CopyImageRequest.labels":                      "proto/kacho/cloud/storage/v1/image_service.proto",
+	"RegisterImageRequest.labels":                  "proto/kacho/cloud/storage/v1/internal_image_service.proto",
 }
 
 // enforcer — где живёт исполнитель объявленного предела и как он называется.
@@ -262,55 +341,25 @@ func TestExemptionMarkerProducerJudgeCutsBothWays(t *testing.T) {
 // (TestLabelsLimitPremiseHolds).
 const labelsMapLimit = 64
 
-// sizeAnnotation — объявление предела кратности: `(size) = "<=N"` либо
-// `(kacho.cloud.size) = "<=N"`.
-var sizeAnnotation = regexp.MustCompile(`\((?:kacho\.cloud\.)?size\)\s*=\s*"([^"]+)"`)
-
-// fieldNameRe — имя повторяемого поля / карты в строке объявления.
-var fieldNameRe = regexp.MustCompile(`(?m)^\s*(?:repeated\s+\S+|map<[^>]+>)\s+([a-z_0-9]+)\s*=`)
-
-// messageNameRe — начало объявления сообщения.
-var messageNameRe = regexp.MustCompile(`(?m)^message\s+([A-Za-z0-9_]+)\s*\{`)
-
 // TestDeclaredCardinalityLimitsHaveAnEnforcer — сам гейт.
 func TestDeclaredCardinalityLimitsHaveAnEnforcer(t *testing.T) {
 	root := repoRoot(t)
 
-	type decl struct{ key, bound, file string }
-	var decls []decl
-	scannedFiles := 0
-
-	for _, pkg := range scannedPackages {
-		dir := filepath.Join(root, pkg)
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			t.Fatalf("%s не читается (%v) — область обхода гейта сломана", pkg, err)
-		}
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".proto") {
-				continue
-			}
-			body, rerr := os.ReadFile(filepath.Join(dir, e.Name()))
-			if rerr != nil {
-				t.Fatalf("%s/%s: %v", pkg, e.Name(), rerr)
-			}
-			scannedFiles++
-			for _, d := range sizeDeclarations(string(body)) {
-				decls = append(decls, decl{key: d.message + "." + d.field, bound: d.bound, file: e.Name()})
-			}
-		}
+	type decl struct{ key, bound string }
+	decls := make([]decl, 0, len(declaredCardinality))
+	for key, bound := range declaredCardinality {
+		decls = append(decls, decl{key: key, bound: bound})
 	}
+	sort.Slice(decls, func(i, j int) bool { return decls[i].key < decls[j].key })
 
-	if scannedFiles == 0 {
-		t.Fatalf("гейт не прочитал ни одного объявления в %v — молчание ничего не доказывает", scannedPackages)
-	}
-	t.Logf("осмотрено файлов объявлений: %d (области: %s); объявленных пределов кратности: %d; "+
-		"освобождений (поле без читателя): %d",
-		scannedFiles, strings.Join(scannedPackages, ", "), len(decls), len(unreadFields))
+	t.Logf("объявленных пределов кратности: %d (области: %s); освобождений (поле без читателя): %d; "+
+		"мест, где та же величина названа прозой: %d",
+		len(decls), strings.Join(scannedPackages, ", "), len(unreadFields), len(prosePlacement))
 
 	if len(decls) == 0 {
-		t.Fatal("ни одного объявленного предела кратности не найдено — распознавание сломано " +
-			"(пределы в этих объявлениях есть)")
+		t.Fatal("таблица объявленных пределов ПУСТА — гейту нечего сверять, и его молчание " +
+			"ничего не доказывает. Либо пределы кратности из продукта исчезли (тогда снимите " +
+			"гейт вместе с предметом), либо таблицу опустошили, чтобы позеленело")
 	}
 
 	var problems []string
@@ -458,37 +507,6 @@ func hasProductionReader(t *testing.T, root, marker string) bool {
 	return found
 }
 
-type sizeDecl struct{ message, field, bound string }
-
-// sizeDeclarations выбирает из текста объявления тройки «сообщение → поле →
-// объявленный предел». Сообщение в ключе обязательно: одно и то же имя поля живёт
-// в разных сообщениях одного файла с РАЗНЫМИ пределами, и ключ без сообщения
-// сводил бы их в одну запись.
-func sizeDeclarations(text string) []sizeDecl {
-	lines := strings.Split(text, "\n")
-	var out []sizeDecl
-	msg := ""
-	for i, line := range lines {
-		if m := messageNameRe.FindStringSubmatch(line); m != nil {
-			msg = m[1]
-			continue
-		}
-		m := fieldNameRe.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-		// Блок опций поля: от строки объявления до ближайшего «;».
-		block := line
-		for j := i + 1; j < len(lines) && !strings.Contains(block, ";"); j++ {
-			block += "\n" + lines[j]
-		}
-		if s := sizeAnnotation.FindStringSubmatch(block); s != nil {
-			out = append(out, sizeDecl{message: msg, field: m[1], bound: strings.TrimSpace(s[1])})
-		}
-	}
-	return out
-}
-
 // goConstValue читает целочисленное значение именованной константы из Go-файла.
 func goConstValue(root, rel, ident string) (int, error) {
 	body, err := os.ReadFile(filepath.Join(root, rel))
@@ -501,4 +519,118 @@ func goConstValue(root, rel, ident string) (int, error) {
 		return 0, os.ErrNotExist
 	}
 	return strconv.Atoi(m[1])
+}
+
+// TestDeclaredCardinalityLimitIsAlsoStatedInProse — ВТОРОЙ адрес величины: она
+// названа словами в комментарии поля, там где её читает вызывающий.
+//
+// # Зачем второй адрес, если есть таблица
+//
+// Таблица `declaredCardinality` держит СВОЙСТВО (у предела есть исполнитель) и
+// живёт внутри дерева; вызывающий её не видит. Прежде предел стоял в самом
+// контракте — расширением `(size) = "<=N"`, — но и оно вызывающему ничего не
+// давало: расширение частное, с частными номерами, и ни один существующий
+// генератор клиента о нём не знает. Проза видна ВСЕМ и не требует ничего, кроме
+// умения читать контракт.
+//
+// # Что именно проверяется, и почему число, а не фраза
+//
+// Что в собственном ведущем комментарии поля встречается ЧИСЛО предела. Требовать
+// заданную фразу значило бы диктовать язык описания; требовать число — значит
+// требовать факт. Комментарий, потерявший число при правке предела, краснит гейт
+// по имени поля: величина, названная в двух местах, обязана быть одной.
+func TestDeclaredCardinalityLimitIsAlsoStatedInProse(t *testing.T) {
+	root := repoRoot(t)
+
+	if len(prosePlacement) != len(declaredCardinality) {
+		t.Fatalf("мест прозы %d, объявленных пределов %d — у части пределов адреса прозы нет вовсе, "+
+			"и об этих полях гейт сказал бы «находок ноль», ничего не прочитав",
+			len(prosePlacement), len(declaredCardinality))
+	}
+
+	var problems []string
+	checked := 0
+	for key, bound := range declaredCardinality {
+		file, ok := prosePlacement[key]
+		if !ok {
+			problems = append(problems, key+": адрес прозы не назван")
+			continue
+		}
+		dot := strings.LastIndex(key, ".")
+		message, field := key[:dot], key[dot+1:]
+
+		body, err := os.ReadFile(filepath.Join(root, file))
+		if err != nil {
+			t.Fatalf("%s не читается: %v — гейту не на чем исполниться", file, err)
+		}
+		comment, found := leadingFieldComment(string(body), message, field)
+		if !found {
+			problems = append(problems, key+": поля нет в "+file+
+				" — утверждение о его комментарии беспредметно")
+			continue
+		}
+		checked++
+		number := strings.TrimPrefix(bound, "<=")
+		if !strings.Contains(comment, number) {
+			problems = append(problems, key+": комментарий поля не называет предела "+number+
+				" (в "+file+"). Величина обязана быть названа прозой — там её видит вызывающий")
+		}
+	}
+
+	if checked == 0 {
+		t.Fatal("не прочитано НИ ОДНОГО комментария поля — «находок ноль» здесь означало бы " +
+			"«ноль прочитанного»")
+	}
+	t.Logf("перепись: пределов %d, комментариев полей прочитано %d", len(declaredCardinality), checked)
+
+	if len(problems) > 0 {
+		sort.Strings(problems)
+		t.Errorf("пределов, не названных прозой: %d\n  %s", len(problems), strings.Join(problems, "\n  "))
+	}
+}
+
+// leadingFieldComment — собственный ведущий комментарий поля внутри названного
+// сообщения. Второй результат отличает «поля нет» от «поле без комментария»: на
+// первом утверждение о комментарии вакуумно, и молчать об этом нельзя.
+func leadingFieldComment(src, message, field string) (string, bool) {
+	msgStart := regexp.MustCompile(`(?m)^\s*message\s+` + regexp.QuoteMeta(message) + `\s*\{`).
+		FindStringIndex(src)
+	if msgStart == nil {
+		return "", false
+	}
+	// Граница сообщения — по балансу фигурных скобок от его открывающей.
+	depth, end := 0, len(src)
+	for i := msgStart[1] - 1; i < len(src); i++ {
+		switch src[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				end = i
+				i = len(src)
+			}
+		}
+	}
+	block := src[msgStart[1]:end]
+
+	decl := regexp.MustCompile(`(?m)^[ \t]*(?:repeated\s+[\w.]+|map<[^>]+>|[\w.]+)\s+` +
+		regexp.QuoteMeta(field) + `\s*=\s*\d+`).FindStringIndex(block)
+	if decl == nil {
+		return "", false
+	}
+
+	lines := strings.Split(block[:decl[0]], "\n")
+	var comment []string
+	for i := len(lines) - 1; i >= 0; i-- {
+		l := strings.TrimSpace(lines[i])
+		if l == "" && len(comment) == 0 {
+			continue
+		}
+		if !strings.HasPrefix(l, "//") {
+			break
+		}
+		comment = append(comment, l)
+	}
+	return strings.Join(comment, "\n"), true
 }

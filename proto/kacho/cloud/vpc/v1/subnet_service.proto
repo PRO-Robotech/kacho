@@ -10,7 +10,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/reference/reference.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/cloud/vpc/v1/subnet.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
@@ -176,36 +175,30 @@ service SubnetService {
 message GetSubnetRequest {
   // ID of the Subnet resource to return.
   // To get the subnet ID use a [SubnetService.List] request.
-  string subnet_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string subnet_id = 1;
 }
 
 message ListSubnetsRequest {
   // ID of the project to list subnets in.
   // To get the project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available
   // results is larger than [page_size],
   // the service returns a [ListSubnetsResponse.next_page_token]
   // that can be used to get the next page of results in subsequent list requests. Default value: 100.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListSubnetsResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 
   // A filter expression that filters resources listed in the response.
   // The expression must specify:
   // 1. The field name. Currently you can use filtering only on [Subnet.name] field.
   // 2. An `=` operator.
   // 3. The value in double quotes (`"`). Must be 3-63 characters long and match the regular expression `[a-z][-a-z0-9]{1,61}[a-z0-9]`.
-  string filter = 4 [(length) = "<=1000"];
+  string filter = 4;
 }
 
 message ListSubnetsResponse {
@@ -230,32 +223,20 @@ message CreateSubnetRequest {
   reserved "dhcp_options";
   // ID of the project to create a subnet in.
   // To get project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 1;
 
   // Name of the subnet.
   // The name must be unique within the folder.
-  string name = 2 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
+  string name = 2;
 
   // Description of the subnet.
-  string description = 3 [(length) = "<=256"];
+  string description = 3;
 
   // Resource labels, `` key:value `` pairs.
-  map<string, string> labels = 4 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_0-9a-z]*"
-  ];
+  map<string, string> labels = 4;
 
   // ID of the network to create subnet in.
-  string network_id = 5 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string network_id = 5;
 
   // Placement discriminator — SERVER-DERIVED, НЕ ВХОД.
   //
@@ -277,11 +258,11 @@ message CreateSubnetRequest {
 
   // ID of the availability zone (set iff placement_type == ZONAL).
   // To get a list of available zones, use the [kacho.cloud.geo.v1.ZoneService.List] request.
-  string zone_id = 6 [(length) = "<=50"];
+  string zone_id = 6;
 
   // ID of the region (set iff placement_type == REGIONAL).
   // To get a list of available regions, use the [kacho.cloud.geo.v1.RegionService.List] request.
-  string region_id = 12 [(length) = "<=50"];
+  string region_id = 12;
 
   // Primary IPv4 CIDR anchor (immutable placement-anchor). Must be a subset of one
   // of the parent network's ipv4_cidr_blocks supernet blocks. Optional: a subnet
@@ -293,7 +274,7 @@ message CreateSubnetRequest {
   string ipv6_cidr_primary = 15;
 
   // ID of route table the subnet is linked to.
-  string route_table_id = 9 [(length) = "<=50"];
+  string route_table_id = 9;
 }
 
 message CreateSubnetMetadata {
@@ -303,32 +284,23 @@ message CreateSubnetMetadata {
 
 message UpdateSubnetRequest {
   // ID of the Subnet resource to update.
-  string subnet_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string subnet_id = 1;
 
   // Field mask that specifies which fields of the Subnet resource are going to be updated.
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the subnet.
   // The name must be unique within the folder.
-  string name = 3 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
+  string name = 3;
 
   // Description of the subnet.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Resource labels as `` key:value `` pairs.
-  map<string, string> labels = 5 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_0-9a-z]*"
-  ];
+  map<string, string> labels = 5;
 
   // ID of route table the subnet is linked to.
-  string route_table_id = 6 [(length) = "<=50"];
+  string route_table_id = 6;
 
   // 7 — legacy dhcp_options (retired VPC-1-43: DHCP/DNS knobs dropped by
   // design). 8/9 — legacy v4_cidr_blocks/v6_cidr_blocks (retired VPC-1 F7).
@@ -345,10 +317,7 @@ message UpdateSubnetMetadata {
 
 message AddSubnetCidrBlocksRequest {
   // ID of the Subnet resource that is being updated.
-  string subnet_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string subnet_id = 1;
 
   // CIDR block.
   // The range of internal addresses that should be added to this subnet.
@@ -362,10 +331,7 @@ message AddSubnetCidrBlocksRequest {
 
 message RemoveSubnetCidrBlocksRequest {
   // ID of the Subnet resource that is being updated.
-  string subnet_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string subnet_id = 1;
 
   // CIDR block.
   // The range of internal addresses that are removed from this subnet.
@@ -378,10 +344,7 @@ message RemoveSubnetCidrBlocksRequest {
 message DeleteSubnetRequest {
   // ID of the subnet to delete.
   // To get the subnet ID use a [SubnetService.List] request.
-  string subnet_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string subnet_id = 1;
 }
 
 message DeleteSubnetMetadata {
@@ -391,19 +354,16 @@ message DeleteSubnetMetadata {
 
 message ListSubnetOperationsRequest {
   // ID of the Subnet resource to list operations for.
-  string subnet_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string subnet_id = 1;
 
   // The maximum number of results per page that should be returned. If the number of available
   // results is larger than [page_size], the service returns a [ListSubnetOperationsResponse.next_page_token]
   // that can be used to get the next page of results in subsequent list requests. Default value: 100.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListSubnetOperationsResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListSubnetOperationsResponse {
@@ -418,8 +378,11 @@ message ListSubnetOperationsResponse {
 }
 
 message ListUsedAddressesRequest {
-  string subnet_id = 1 [(required) = true];
-  int64 page_size = 2 [(value) = "0-1000"];
+  // ID of the Subnet whose allocated addresses are listed.
+  string subnet_id = 1;
+  // Maximum number of results per page. 0 selects the service default (50);
+  // a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+  int64 page_size = 2;
   string page_token = 3;
 
   // NOT ACCEPTED. The response is a subnet occupancy projection

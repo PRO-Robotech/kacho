@@ -12,7 +12,8 @@
 // расхождением.
 //
 // Ground truth: proto/kacho/cloud/compute/v1/instance_service.proto —
-// `guest_access_key_ids` (номер 39, `[(size) = "<=32"]`), `boot_source` (29).
+// `guest_access_key_ids` (номер 39; предел 32 держит константа домена
+// MaxGuestAccessKeysPerInstance), `boot_source` (29).
 // Сервер принимает в `boot_source.id` ровно `img-<base32>`:
 // `validateBootSource` зовёт `corevalidate.ResourceID("Image", "img", …)`.
 

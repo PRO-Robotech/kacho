@@ -7,7 +7,6 @@ package kacho.cloud.geo.v1;
 
 import "google/api/annotations.proto";
 import "kacho/cloud/geo/v1/zone.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
@@ -61,11 +60,11 @@ message ListZonesRequest {
   // results is larger than [page_size], the service returns a
   // [ListZonesResponse.next_page_token] that can be used to get the next page of
   // results in subsequent list requests.
-  int64 page_size = 1 [(value) = "<=1000"];
+  int64 page_size = 1;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListZonesResponse.next_page_token] returned by a previous list request.
-  string page_token = 2 [(length) = "<=100"];
+  string page_token = 2;
 
   // If non-empty, return only zones belonging to this region.
   string region_id = 3;
@@ -88,5 +87,5 @@ message ListZonesResponse {
 
 message GetZoneRequest {
   // ID of the zone to return information about.
-  string zone_id = 1 [(required) = true, (length) = "<=50"];
+  string zone_id = 1;
 }

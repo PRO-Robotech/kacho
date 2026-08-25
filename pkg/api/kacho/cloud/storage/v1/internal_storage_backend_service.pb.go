@@ -10,7 +10,6 @@
 package storagev1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -747,7 +746,7 @@ var File_kacho_cloud_storage_v1_internal_storage_backend_service_proto protorefl
 
 const file_kacho_cloud_storage_v1_internal_storage_backend_service_proto_rawDesc = "" +
 	"\n" +
-	"=kacho/cloud/storage/v1/internal_storage_backend_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xc0\x04\n" +
+	"=kacho/cloud/storage/v1/internal_storage_backend_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xc0\x04\n" +
 	"\x0eStorageBackend\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12F\n" +
@@ -770,37 +769,36 @@ const file_kacho_cloud_storage_v1_internal_storage_backend_service_proto_rawDesc
 	"\n" +
 	"\x06ACTIVE\x10\x01\x12\f\n" +
 	"\bDRAINING\x10\x02\x12\f\n" +
-	"\bDISABLED\x10\x03\"\xcd\x03\n" +
-	"\x1bCreateStorageBackendRequest\x12<\n" +
-	"\x04name\x18\x01 \x01(\tB(\xe8\xc71\x01\xf2\xc71 [a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12L\n" +
-	"\x04kind\x18\x02 \x01(\x0e22.kacho.cloud.storage.v1.StorageBackend.BackendKindB\x04\xe8\xc71\x01R\x04kind\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12#\n" +
-	"\bzone_ids\x18\x04 \x03(\tB\b\x8a\xc81\x04<=50R\azoneIds\x12=\n" +
-	"\bendpoint\x18\x05 \x01(\tB!\xe8\xc71\x01\xf2\xc71\x19[a-z][a-z0-9+.-]*://[^ ]+R\bendpoint\x12J\n" +
-	"\x0fcredentials_ref\x18\x06 \x01(\tB!\xe8\xc71\x01\xf2\xc71\x19[a-z][a-z0-9+.-]*://[^ ]+R\x0ecredentialsRef\x12E\n" +
-	"\x06status\x18\a \x01(\x0e2-.kacho.cloud.storage.v1.StorageBackend.StatusR\x06status\"N\n" +
-	"\x18GetStorageBackendRequest\x122\n" +
-	"\x12storage_backend_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\x10storageBackendId\"o\n" +
-	"\x1aListStorageBackendsRequest\x12'\n" +
-	"\tpage_size\x18\x01 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\bDISABLED\x10\x03\"\xc2\x02\n" +
+	"\x1bCreateStorageBackendRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12F\n" +
+	"\x04kind\x18\x02 \x01(\x0e22.kacho.cloud.storage.v1.StorageBackend.BackendKindR\x04kind\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x19\n" +
+	"\bzone_ids\x18\x04 \x03(\tR\azoneIds\x12\x1a\n" +
+	"\bendpoint\x18\x05 \x01(\tR\bendpoint\x12'\n" +
+	"\x0fcredentials_ref\x18\x06 \x01(\tR\x0ecredentialsRef\x12E\n" +
+	"\x06status\x18\a \x01(\x0e2-.kacho.cloud.storage.v1.StorageBackend.StatusR\x06status\"H\n" +
+	"\x18GetStorageBackendRequest\x12,\n" +
+	"\x12storage_backend_id\x18\x01 \x01(\tR\x10storageBackendId\"X\n" +
+	"\x1aListStorageBackendsRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x98\x01\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"\x98\x01\n" +
 	"\x1bListStorageBackendsResponse\x12Q\n" +
 	"\x10storage_backends\x18\x01 \x03(\v2&.kacho.cloud.storage.v1.StorageBackendR\x0fstorageBackends\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xe7\x03\n" +
-	"\x1bUpdateStorageBackendRequest\x122\n" +
-	"\x12storage_backend_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\x10storageBackendId\x129\n" +
-	"\x04name\x18\x02 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12#\n" +
-	"\bzone_ids\x18\x04 \x03(\tB\b\x8a\xc81\x04<=50R\azoneIds\x12:\n" +
-	"\bendpoint\x18\x05 \x01(\tB\x1e\xf2\xc71\x1a|[a-z][a-z0-9+.-]*://[^ ]+R\bendpoint\x12G\n" +
-	"\x0fcredentials_ref\x18\x06 \x01(\tB\x1e\xf2\xc71\x1a|[a-z][a-z0-9+.-]*://[^ ]+R\x0ecredentialsRef\x12E\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xe5\x02\n" +
+	"\x1bUpdateStorageBackendRequest\x12,\n" +
+	"\x12storage_backend_id\x18\x01 \x01(\tR\x10storageBackendId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x19\n" +
+	"\bzone_ids\x18\x04 \x03(\tR\azoneIds\x12\x1a\n" +
+	"\bendpoint\x18\x05 \x01(\tR\bendpoint\x12'\n" +
+	"\x0fcredentials_ref\x18\x06 \x01(\tR\x0ecredentialsRef\x12E\n" +
 	"\x06status\x18\a \x01(\x0e2-.kacho.cloud.storage.v1.StorageBackend.StatusR\x06status\x12;\n" +
 	"\vupdate_mask\x18\b \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\"Q\n" +
-	"\x1bDeleteStorageBackendRequest\x122\n" +
-	"\x12storage_backend_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\x10storageBackendId\"\x1e\n" +
+	"updateMask\"K\n" +
+	"\x1bDeleteStorageBackendRequest\x12,\n" +
+	"\x12storage_backend_id\x18\x01 \x01(\tR\x10storageBackendId\"\x1e\n" +
 	"\x1cDeleteStorageBackendResponse2\x9c\t\n" +
 	"\x1dInternalStorageBackendService\x12\xd5\x01\n" +
 	"\x06Create\x123.kacho.cloud.storage.v1.CreateStorageBackendRequest\x1a&.kacho.cloud.storage.v1.StorageBackend\"n\x8a\xb5\x18\x1fstorage.storage_backends.create\x92\xb5\x18\fsystem_admin\x9a\xb5\x18\f\n" +

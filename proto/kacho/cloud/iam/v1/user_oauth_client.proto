@@ -7,7 +7,6 @@ package kacho.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/iam/v1/credential_kind.proto";
-import "kacho/cloud/validation.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
 
@@ -34,10 +33,10 @@ message UserOAuthClient {
   // Конвенция Kachō: новый формат `uoc<17-crockford>` (ids.NewID, без underscore);
   // legacy `uoc_<body>` принимается для существующих строк (credential-id/JWK kid,
   // неизменяем). Оба формата валидны.
-  string id = 1 [(required) = true, (length) = "<=21", (pattern) = "uoc(_[0-9a-z]+|[0-9a-hjkmnp-tv-z]{17})"];
+  string id = 1;
 
   // ID пользователя, которому принадлежит токен.
-  string user_id = 2 [(required) = true, (length) = "<=20"];
+  string user_id = 2;
 
   // Идентификатор клиента у ВНЕШНЕГО поставщика удостоверений.
   //
@@ -49,10 +48,10 @@ message UserOAuthClient {
   //
   // Адресацией НЕ является ни в каком случае: подписывать `client_assertion`
   // надо `id` строки.
-  string hydra_client_id = 3 [(length) = "<=128"];
+  string hydra_client_id = 3;
 
   // Свободное описание (например `laptop CLI`). 0-256 символов.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Опциональный срок действия. Не заполнен = бессрочный токен.
   google.protobuf.Timestamp expires_at = 5;
@@ -62,7 +61,7 @@ message UserOAuthClient {
   google.protobuf.Timestamp last_used_at = 6;
 
   // ID пользователя, создавшего токен (audit).
-  string created_by_user_id = 7 [(required) = true, (length) = "<=20"];
+  string created_by_user_id = 7;
 
   // Время создания.
   google.protobuf.Timestamp created_at = 8;
@@ -76,7 +75,7 @@ message UserOAuthClient {
 
   // Tenant-facing имя токена (задаётся при выпуске, immutable). Пусто → в UI
   // показывается description/id. Человекочитаемая метка токена, не идентификатор.
-  string name = 11 [(length) = "<=63"];
+  string name = 11;
 
   // Пользовательские метки токена (задаются при выпуске, immutable).
   map<string, string> labels = 12;

@@ -35,7 +35,6 @@ package kacho.cloud.iam.v1;
 
 import "google/api/annotations.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -64,14 +63,14 @@ service InternalOperationsService {
 message ListIamOperationsRequest {
   // The maximum number of results per page that should be returned. Default
   // value: 100. Clamped to a max of 1000 (no single-shot cluster-wide dump).
-  int64 page_size = 1 [(value) = "<=1000"];
+  int64 page_size = 1;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListIamOperationsResponse.next_page_token] returned by a previous list request.
-  string page_token = 2 [(length) = "<=100"];
+  string page_token = 2;
 
   // Optional: filter by owning account_id. Empty = no filter (all clusters).
-  string account_id = 3 [(length) = "<=20"];
+  string account_id = 3;
 }
 
 message ListIamOperationsResponse {

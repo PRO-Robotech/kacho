@@ -101,7 +101,6 @@ func subscriptionShapeExpectation() SubscriptionShapeExpectation {
 		OwnerVocabularyType: "string",
 		// Обязательность в этом дереве выражается ОПЦИЕЙ поля, а не ключевым
 		// словом: `required` из proto3 убрано, а опция жива и употребляется.
-		MandatoryOption: "(required) = true",
 	}
 }
 

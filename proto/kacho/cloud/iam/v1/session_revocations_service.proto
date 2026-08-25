@@ -9,7 +9,6 @@ import "google/protobuf/timestamp.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/iam/v1/session_revocation.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -143,15 +142,15 @@ message RevokeRequest {
   // token; may be empty when `revoke_all_user_tokens=true` is set (then the
   // RPC enumerates active tokens via Hydra introspection and revokes each
   // individually).
-  string token_jti = 1 [(length) = "<=64"];
+  string token_jti = 1;
 
   // User whose token is revoked. Required.
-  string user_id = 2 [(required) = true, (length) = "<=20"];
+  string user_id = 2;
 
   // Free-form reason — see SessionRevocation.reason for the canonical
   // vocabulary (`user-logout`, `password-change`, `caep-event`,
   // `admin-revoke`, `back-channel-logout`, `force-logout`).
-  string reason = 3 [(required) = true, (length) = "1-128"];
+  string reason = 3;
 
   // After this timestamp the revocation row may be pruned (defaults to
   // `now() + 30d`). Should be ≥ original token's `exp` claim so the cache
@@ -177,7 +176,7 @@ message RevokeMetadata {
 // IsRevokedRequest — sync hot-path lookup.
 message IsRevokedRequest {
   // JWT `jti` to look up.
-  string token_jti = 1 [(required) = true, (length) = "<=64"];
+  string token_jti = 1;
 }
 
 // IsRevokedResponse — sync hot-path response.
@@ -195,13 +194,13 @@ message IsRevokedResponse {
 // ListByUserRequest — admin/audit enumeration.
 message ListByUserRequest {
   // User whose revocations to list.
-  string user_id = 1 [(required) = true, (length) = "<=20"];
+  string user_id = 1;
 
   // Page size (default 100, max 1000).
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 // ListByUserResponse — admin/audit page.
@@ -216,7 +215,7 @@ message ListByUserResponse {
 // SessionCutoffOfRequest — вопрос про СУБЪЕКТА, а не про удостоверение.
 message SessionCutoffOfRequest {
   // Человек, про сессии которого спрашивают (`users.id`).
-  string user_id = 1 [(required) = true, (length) = "<=20"];
+  string user_id = 1;
 }
 
 // SessionCutoffOfResponse — отсечка субъекта.

@@ -89,8 +89,8 @@ silent-ignore (не меняется). Нет RPC attach/detach/reassign. `List`
 см. REQ-SG-RULE-SAME-NETWORK; Move-guard — REQ-SG-MOVE-NETWORK-BOUND.
 - Validated-by: `SG-NET-01-NEG-CREATE-NO-NETWORK`, `SG-NET-02-CREATE-OK`, `SG-NET-03-NEG-NETWORK-NOTFOUND`,
  `SG-NET-04-NEG-UPDATE-MASK-NETWORK`, `SG-CR-WITH-NETWORK-OK`, `SG-LIST-FILTER-NETWORK-OK`
-- Проверка: `proto/kacho/cloud/vpc/v1/security_group_service.proto` (`CreateSecurityGroupRequest.network_id`
- `(required)=true`; `network_id` НЕ в `UpdateSecurityGroupRequest`); `internal/apps/kacho/api/securitygroup/create.go`
+- Проверка: `proto/kacho/cloud/vpc/v1/security_group_service.proto` (`network_id` НЕ в
+ `UpdateSecurityGroupRequest`); `internal/apps/kacho/api/securitygroup/create.go`
  (`network_id required` sync + `networkReader.Get`); `validateSGUpdate`/`applySGMask` (network_id не в known-mask,
  silent-ignore); `internal/repo/kacho/pg/security_group.go` List (фильтр `network_id`).
 

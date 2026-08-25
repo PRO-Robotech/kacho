@@ -10,7 +10,6 @@
 package vpcv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -832,28 +831,26 @@ var File_kacho_cloud_vpc_v1_network_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\n" +
-	"(kacho/cloud/vpc/v1/network_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a kacho/cloud/vpc/v1/network.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"@\n" +
-	"\x11GetNetworkRequest\x12+\n" +
+	"(kacho/cloud/vpc/v1/network_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a kacho/cloud/vpc/v1/network.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"2\n" +
+	"\x11GetNetworkRequest\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\"\xb9\x01\n" +
-	"\x13ListNetworksRequest\x12+\n" +
+	"network_id\x18\x01 \x01(\tR\tnetworkId\"\x88\x01\n" +
+	"\x13ListNetworksRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
-	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\"w\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x04 \x01(\tR\x06filter\"w\n" +
 	"\x14ListNetworksResponse\x127\n" +
 	"\bnetworks\x18\x01 \x03(\v2\x1b.kacho.cloud.vpc.v1.NetworkR\bnetworks\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xf4\x03\n" +
-	"\x14CreateNetworkRequest\x12+\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xed\x02\n" +
+	"\x14CreateNetworkRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12B\n" +
-	"\x04name\x18\x02 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x89\x01\n" +
-	"\x06labels\x18\x04 \x03(\v24.kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12(\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12L\n" +
+	"\x06labels\x18\x04 \x03(\v24.kacho.cloud.vpc.v1.CreateNetworkRequest.LabelsEntryR\x06labels\x12(\n" +
 	"\x10ipv4_cidr_blocks\x18\x06 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
 	"\x10ipv6_cidr_blocks\x18\a \x03(\tR\x0eipv6CidrBlocks\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
@@ -861,44 +858,43 @@ const file_kacho_cloud_vpc_v1_network_service_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06R\x1dcreate_default_security_group\"6\n" +
 	"\x15CreateNetworkMetadata\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x01 \x01(\tR\tnetworkId\"\xb8\x03\n" +
-	"\x14UpdateNetworkRequest\x12+\n" +
+	"network_id\x18\x01 \x01(\tR\tnetworkId\"\xb1\x02\n" +
+	"\x14UpdateNetworkRequest\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\x12;\n" +
+	"network_id\x18\x01 \x01(\tR\tnetworkId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x12B\n" +
-	"\x04name\x18\x03 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x89\x01\n" +
-	"\x06labels\x18\x05 \x03(\v24.kacho.cloud.vpc.v1.UpdateNetworkRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12L\n" +
+	"\x06labels\x18\x05 \x03(\v24.kacho.cloud.vpc.v1.UpdateNetworkRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"6\n" +
 	"\x15UpdateNetworkMetadata\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x01 \x01(\tR\tnetworkId\"\x9e\x01\n" +
-	"\x1bAddNetworkCidrBlocksRequest\x12+\n" +
+	"network_id\x18\x01 \x01(\tR\tnetworkId\"\x90\x01\n" +
+	"\x1bAddNetworkCidrBlocksRequest\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\x12(\n" +
+	"network_id\x18\x01 \x01(\tR\tnetworkId\x12(\n" +
 	"\x10ipv4_cidr_blocks\x18\x02 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
-	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"\xa1\x01\n" +
-	"\x1eRemoveNetworkCidrBlocksRequest\x12+\n" +
+	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"\x93\x01\n" +
+	"\x1eRemoveNetworkCidrBlocksRequest\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\x12(\n" +
+	"network_id\x18\x01 \x01(\tR\tnetworkId\x12(\n" +
 	"\x10ipv4_cidr_blocks\x18\x02 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
-	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"C\n" +
-	"\x14DeleteNetworkRequest\x12+\n" +
+	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"5\n" +
+	"\x14DeleteNetworkRequest\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\"6\n" +
+	"network_id\x18\x01 \x01(\tR\tnetworkId\"6\n" +
 	"\x15DeleteNetworkMetadata\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x01 \x01(\tR\tnetworkId\"\x9e\x01\n" +
-	"\x1cListNetworkOperationsRequest\x12+\n" +
+	"network_id\x18\x01 \x01(\tR\tnetworkId\"y\n" +
+	"\x1cListNetworkOperationsRequest\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"network_id\x18\x01 \x01(\tR\tnetworkId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x89\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x89\x01\n" +
 	"\x1dListNetworkOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +

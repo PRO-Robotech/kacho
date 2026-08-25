@@ -7,7 +7,6 @@ package kacho.cloud.compute.v1;
 
 import "google/api/annotations.proto";
 import "kacho/cloud/compute/v1/machine_type.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
@@ -71,21 +70,21 @@ service MachineTypeService {
 
 message GetMachineTypeRequest {
   // ID of the machine type to return (mt-<base32>).
-  string machine_type_id = 1 [(required) = true, (length) = "<=50"];
+  string machine_type_id = 1;
 }
 
 message ListMachineTypesRequest {
   // The maximum number of results per page. See ListMachineTypesResponse.next_page_token.
-  int64 page_size = 1 [(value) = "<=1000"];
+  int64 page_size = 1;
 
   // Page token from a previous ListMachineTypesResponse.next_page_token.
-  string page_token = 2 [(length) = "<=100"];
+  string page_token = 2;
 
   // Filter (whitelist): exact machine type name (e.g. "std-v3-2"). Empty = no filter.
-  string name = 3 [(length) = "<=63"];
+  string name = 3;
 
   // Filter (whitelist): family (e.g. "GPU"). Empty = no filter.
-  string family = 4 [(length) = "<=32"];
+  string family = 4;
 
   // Filter (whitelist): minimum GPU count (e.g. 4). 0 = no filter.
   int32 min_gpus = 5;

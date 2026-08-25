@@ -10,7 +10,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/storage/v1/volume.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
@@ -160,33 +159,27 @@ service VolumeService {
 message GetVolumeRequest {
   // ID of the Volume resource to return.
   // To get the volume ID, use a [VolumeService.List] request.
-  string volume_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string volume_id = 1;
 }
 
 message ListVolumesRequest {
   // ID of the project to list volumes in.
   // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available
   // results is larger than [page_size], the service returns a
   // [ListVolumesResponse.next_page_token] that can be used to get the next page of
   // results in subsequent list requests.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListVolumesResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 
   // A filter expression that filters resources listed in the response. Currently
   // filtering is supported on the `name` field only.
-  string filter = 4 [(length) = "<=1000"];
+  string filter = 4;
 
   // Field 5 held `order_by`, a free-form sort expression. It was accepted,
   // length-checked and then read by nothing: no handler, use-case or repository
@@ -213,41 +206,27 @@ message ListVolumesResponse {
 message CreateVolumeRequest {
   // ID of the project to create a volume in.
   // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 1;
 
   // Name of the volume.
-  string name = 2 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+  string name = 2;
 
   // Description of the volume.
-  string description = 3 [(length) = "<=256"];
+  string description = 3;
 
   // Resource labels as `key:value` pairs.
-  map<string, string> labels = 4 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_./\\@0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
-  ];
+  // At most 64 pairs.
+  map<string, string> labels = 4;
 
   // ID of the availability zone where the volume resides. Peer-validated against
   // kacho-geo.
-  string zone_id = 5 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string zone_id = 5;
 
   // ID of the disk type.
-  string disk_type_id = 6 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string disk_type_id = 6;
 
   // Size of the volume, specified in bytes. Must be > 0.
-  int64 size_bytes = 7 [(value) = ">0"];
+  int64 size_bytes = 7;
 
   // Номер 8 занимал block_size — размер блока создаваемого тома.
   //
@@ -261,11 +240,11 @@ message CreateVolumeRequest {
 
   // ID of the source snapshot to restore the volume from. Optional; empty = a fresh
   // volume. Mutually exclusive with source_image_id.
-  string source_snapshot_id = 9 [(length) = "<=50"];
+  string source_snapshot_id = 9;
 
   // ID of the source image to materialise a boot volume from. Optional; empty = a
   // non-boot volume. Mutually exclusive with source_snapshot_id.
-  string source_image_id = 10 [(length) = "<=50"];
+  string source_image_id = 10;
 }
 
 message CreateVolumeMetadata {
@@ -276,35 +255,27 @@ message CreateVolumeMetadata {
 message UpdateVolumeRequest {
   // ID of the Volume resource to update.
   // To get the volume ID, use a [VolumeService.List] request.
-  string volume_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string volume_id = 1;
 
   // Field mask that specifies which fields of the Volume resource are going to be
   // updated.
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the volume.
-  string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+  string name = 3;
 
   // Description of the volume.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Resource labels as `key:value` pairs.
   //
   // Existing set of `labels` is completely replaced by the provided set.
-  map<string, string> labels = 5 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_./\\@0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
-  ];
+  // At most 64 pairs.
+  map<string, string> labels = 5;
 
   // New size of the volume, specified in bytes. Increase only; a smaller value is
   // rejected with InvalidArgument "Volume size can only be increased".
-  int64 size_bytes = 6 [(value) = ">0"];
+  int64 size_bytes = 6;
 }
 
 message UpdateVolumeMetadata {
@@ -315,10 +286,7 @@ message UpdateVolumeMetadata {
 message DeleteVolumeRequest {
   // ID of the volume to delete.
   // To get the volume ID, use a [VolumeService.List] request.
-  string volume_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string volume_id = 1;
 }
 
 message DeleteVolumeMetadata {
@@ -328,17 +296,14 @@ message DeleteVolumeMetadata {
 
 message ListVolumeOperationsRequest {
   // ID of the Volume resource to list operations for.
-  string volume_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string volume_id = 1;
 
   // The maximum number of results per page to return.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListVolumeOperationsResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListVolumeOperationsResponse {
@@ -351,10 +316,7 @@ message ListVolumeOperationsResponse {
 
 message ChangeDiskTypeRequest {
   // ID тома, класс диска которого меняется.
-  string volume_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string volume_id = 1;
 
   // ID целевого класса диска. Обязателен: пустое значение — это не «оставить
   // как есть», а запрос без предмета, и трактовать его умолчанием значило бы
@@ -362,10 +324,7 @@ message ChangeDiskTypeRequest {
   //
   // Класс обязан быть ACTIVE и предлагаться в зоне тома. Зона глаголом не
   // меняется — целевой класс ищется в той же зоне, где том уже стоит.
-  string disk_type_id = 2 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string disk_type_id = 2;
 }
 
 message ChangeDiskTypeMetadata {

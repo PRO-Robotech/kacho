@@ -6,7 +6,6 @@ syntax = "proto3";
 package kacho.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/validation.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
 
@@ -91,7 +90,7 @@ message Role {
   // однородный грант `{verbs}` над `{module} × resources` (ровно один модуль
   // на правило), опц. суженный `resource_names` XOR `match_labels`.
   // Роль, покрывающая несколько модулей = несколько правил (по одному на модуль).
-  repeated Rule rules = 11 [(kacho.cloud.size) = "1-64"];
+  repeated Rule rules = 11;
 
   // Optimistic-concurrency token (xmin-backed) для Role.Update под
   // конкуренцией. Output на Get/List; обязателен на входе Update при
@@ -184,19 +183,19 @@ message Rule {
 
   // Типы ресурсов гранта. 1..16; lowercase. Literal `"*"` — SYSTEM-ONLY;
   // только как единственный элемент.
-  repeated string resources = 2 [(kacho.cloud.size) = "1-16", (length) = "1-64"];
+  repeated string resources = 2;
 
   // Глаголы гранта. 1..16; lowercase. Literal `"*"` — SYSTEM-ONLY; только как
   // единственный элемент.
-  repeated string verbs = 3 [(kacho.cloud.size) = "1-16", (length) = "1-64"];
+  repeated string verbs = 3;
 
   // Pin-by-id селекция инстансов (K8s-native). ≤256; opaque-id; literal `"*"`
   // запрещен как элемент. Взаимоисключающе с `match_labels`.
-  repeated string resource_names = 4 [(kacho.cloud.size) = "<=256", (length) = "1-64"];
+  repeated string resource_names = 4;
 
   // Label-equality селекция инстансов (наше расширение; AND-equality). ≤16
   // ключей; если задано — непусто. Взаимоисключающе с `resource_names`.
-  map<string, string> match_labels = 5 [(kacho.cloud.size) = "<=16"];
+  map<string, string> match_labels = 5;
 
   // Domain-модуль гранта (ровно один). lowercase; грамматика
   // `^[a-z][a-z0-9-]*$`; член закрытого набора модулей платформы
@@ -204,7 +203,7 @@ message Rule {
   // (в custom-роли → INVALID_ARGUMENT). `(size)` не переносится из
   // прежнего repeated `modules` — это cardinality repeated-поля, у scalar ее
   // нет. tag 6 — первый свободный (1–5 заняты).
-  string module = 6 [(length) = "1-64"];
+  string module = 6;
 }
 
 message CreateRoleMetadata {

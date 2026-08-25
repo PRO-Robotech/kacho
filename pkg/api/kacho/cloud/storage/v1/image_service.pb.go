@@ -10,7 +10,6 @@
 package storagev1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -221,6 +220,7 @@ type CreateImageRequest struct {
 	// Description of the image.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// Resource labels as `key:value` pairs.
+	// At most 64 pairs.
 	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// ID of the source snapshot to create the image from. Exactly one of
 	// source_snapshot_id / source_volume_id must be set.
@@ -371,6 +371,7 @@ type UpdateImageRequest struct {
 	// Resource labels as `key:value` pairs.
 	//
 	// Existing set of `labels` is completely replaced by the provided set.
+	// At most 64 pairs.
 	Labels        map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -603,6 +604,7 @@ type CopyImageRequest struct {
 	// Описание копии.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// Resource labels as `key:value` pairs.
+	// At most 64 pairs.
 	Labels        map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -852,70 +854,67 @@ var File_kacho_cloud_storage_v1_image_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_storage_v1_image_service_proto_rawDesc = "" +
 	"\n" +
-	"*kacho/cloud/storage/v1/image_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a\"kacho/cloud/storage/v1/image.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\":\n" +
-	"\x0fGetImageRequest\x12'\n" +
-	"\bimage_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\aimageId\"\xc7\x01\n" +
-	"\x11ListImagesRequest\x12+\n" +
+	"*kacho/cloud/storage/v1/image_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a\"kacho/cloud/storage/v1/image.proto\x1a&kacho/iam/authz/v1/authz_options.proto\",\n" +
+	"\x0fGetImageRequest\x12\x19\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\x96\x01\n" +
+	"\x11ListImagesRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
-	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filterJ\x04\b\x05\x10\x06R\border_by\"s\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x04 \x01(\tR\x06filterJ\x04\b\x05\x10\x06R\border_by\"s\n" +
 	"\x12ListImagesResponse\x125\n" +
 	"\x06images\x18\x01 \x03(\v2\x1d.kacho.cloud.storage.v1.ImageR\x06images\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x91\x04\n" +
-	"\x12CreateImageRequest\x12+\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xe9\x02\n" +
+	"\x12CreateImageRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12)\n" +
-	"\tregion_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bregionId\x129\n" +
-	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x93\x01\n" +
-	"\x06labels\x18\x05 \x03(\v26.kacho.cloud.storage.v1.CreateImageRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x126\n" +
-	"\x12source_snapshot_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=50R\x10sourceSnapshotId\x122\n" +
-	"\x10source_volume_id\x18\a \x01(\tB\b\x8a\xc81\x04<=50R\x0esourceVolumeId\x1a9\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tregion_id\x18\x02 \x01(\tR\bregionId\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12N\n" +
+	"\x06labels\x18\x05 \x03(\v26.kacho.cloud.storage.v1.CreateImageRequest.LabelsEntryR\x06labels\x12,\n" +
+	"\x12source_snapshot_id\x18\x06 \x01(\tR\x10sourceSnapshotId\x12(\n" +
+	"\x10source_volume_id\x18\a \x01(\tR\x0esourceVolumeId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"0\n" +
 	"\x13CreateImageMetadata\x12\x19\n" +
-	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\xb3\x03\n" +
-	"\x12UpdateImageRequest\x12'\n" +
-	"\bimage_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\aimageId\x12;\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\xad\x02\n" +
+	"\x12UpdateImageRequest\x12\x19\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x129\n" +
-	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x93\x01\n" +
-	"\x06labels\x18\x05 \x03(\v26.kacho.cloud.storage.v1.UpdateImageRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12N\n" +
+	"\x06labels\x18\x05 \x03(\v26.kacho.cloud.storage.v1.UpdateImageRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"0\n" +
 	"\x13UpdateImageMetadata\x12\x19\n" +
-	"\bimage_id\x18\x01 \x01(\tR\aimageId\"=\n" +
-	"\x12DeleteImageRequest\x12'\n" +
-	"\bimage_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\aimageId\"0\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\"/\n" +
+	"\x12DeleteImageRequest\x12\x19\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\"0\n" +
 	"\x13DeleteImageMetadata\x12\x19\n" +
-	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\xd7\x03\n" +
-	"\x10CopyImageRequest\x12+\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\xb5\x02\n" +
+	"\x10CopyImageRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x06 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
-	"\bimage_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\aimageId\x126\n" +
-	"\x10target_region_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x0etargetRegionId\x129\n" +
-	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x91\x01\n" +
-	"\x06labels\x18\x05 \x03(\v24.kacho.cloud.storage.v1.CopyImageRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"project_id\x18\x06 \x01(\tR\tprojectId\x12\x19\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\x12(\n" +
+	"\x10target_region_id\x18\x02 \x01(\tR\x0etargetRegionId\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12L\n" +
+	"\x06labels\x18\x05 \x03(\v24.kacho.cloud.storage.v1.CopyImageRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\".\n" +
 	"\x11CopyImageMetadata\x12\x19\n" +
-	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\x98\x01\n" +
-	"\x1aListImageOperationsRequest\x12'\n" +
-	"\bimage_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\aimageId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\"s\n" +
+	"\x1aListImageOperationsRequest\x12\x19\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x87\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x87\x01\n" +
 	"\x1bListImageOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +

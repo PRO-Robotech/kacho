@@ -12,7 +12,6 @@ import "kacho/cloud/api/secret_options.proto";
 import "kacho/cloud/iam/v1/credential_kind.proto";
 import "kacho/cloud/iam/v1/user_oauth_client.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -124,8 +123,10 @@ service UserTokenService {
 }
 
 message IssueUserTokenRequest {
-  string user_id = 1 [(required) = true, (length) = "<=20"];
-  string description = 2 [(length) = "<=256"];
+  // ID of the User.
+  string user_id = 1;
+  // Description of the UserToken.
+  string description = 2;
   // Опциональный TTL в секундах. Смысл ЗНАЧЕНИЯ 0 ЗАВИСИТ ОТ ВИДА, и это
   // сказано здесь, потому что комментарий у контроля, противоречащий коду,
   // провоцирует «починку» кода под неверный комментарий:
@@ -133,7 +134,7 @@ message IssueUserTokenRequest {
   //   * SECRET  — 0 означает «срок не назван», применяется умолчание политики;
   //     БЕССРОЧНОГО СЕКРЕТА НЕ БЫВАЕТ НИ В КАКОМ НАПИСАНИИ, и срок сверх
   //     потолка политики ОТВЕРГАЕТСЯ, а не урезается молча.
-  int64 ttl_seconds = 3 [(value) = "<=63072000"];
+  int64 ttl_seconds = 3;
   // Ответственный за выпуск. ОБЯЗАТЕЛЬНЫМ НЕ ОБЪЯВЛЯЕТСЯ И НЕ ЯВЛЯЕТСЯ: край
   // подставляет его сам — вызывающему-человеку его собственный принципал,
   // вызывающей машине целевого пользователя (`user_id` этого же запроса).
@@ -141,14 +142,15 @@ message IssueUserTokenRequest {
   // применяется дословно; несовпавшее отвергается `INVALID_ARGUMENT` с именем
   // поля.
   //
-  // Здесь стояло `(required) = true` — утверждение, ОБРАТНОЕ действительному, и
-  // машиночитаемое. Исполнителя у этой опции нет ни одного (потребителей вне
-  // сгенерированных стабов — ноль по всему дереву), поэтому отказа она никогда
-  // не давала; но её читают генераторы клиентов, и вызывающий получал параметр,
-  // объявленный обязательным, при сервисе, который просит его не слать.
-  string created_by_user_id = 4 [(length) = "<=20"];
+  // Обязательным это поле НЕ ЯВЛЯЕТСЯ, и объявлять его таким нечем: семейство
+  // расширений, которым обязательность выражалась, снято с контрактов целиком
+  // (kacho#1255) — исполнителя на пути запроса у него не было ни одного. Здесь
+  // оно стояло и утверждало ОБРАТНОЕ действительному: отказа не давало никогда,
+  // а генератор клиента объявлял бы параметр обязательным при сервисе, который
+  // просит его не слать.
+  string created_by_user_id = 4;
   // Tenant-facing имя токена (человекочитаемая метка). Задаётся при выпуске, immutable.
-  string name = 5 [(length) = "<=63"];
+  string name = 5;
   // Пользовательские метки токена. Задаются при выпуске, immutable.
   map<string, string> labels = 6;
 
@@ -209,9 +211,14 @@ message IssueUserTokenMetadata {
 }
 
 message ListUserTokensRequest {
-  string user_id    = 1 [(required) = true, (length) = "<=20"];
-  int64  page_size  = 2 [(value) = "<=1000"];
-  string page_token = 3 [(length) = "<=100"];
+  // ID of the User.
+  string user_id    = 1;
+  // Maximum number of results per page. 0 selects the service default (50);
+  // a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+  int64  page_size  = 2;
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListUserTokensResponse.next_page_token] returned by a previous list request.
+  string page_token = 3;
 }
 
 message ListUserTokensResponse {
@@ -220,8 +227,10 @@ message ListUserTokensResponse {
 }
 
 message RevokeUserTokenRequest {
-  string user_id  = 1 [(required) = true, (length) = "<=20"];
-  string token_id = 2 [(required) = true, (length) = "<=21"];
+  // ID of the User.
+  string user_id  = 1;
+  // ID of the UserToken.
+  string token_id = 2;
 }
 
 message RevokeUserTokenResponse {

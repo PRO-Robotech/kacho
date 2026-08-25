@@ -10,7 +10,6 @@
 package vpcv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -1106,30 +1105,29 @@ var File_kacho_cloud_vpc_v1_address_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"\n" +
-	"(kacho/cloud/vpc/v1/address_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a kacho/cloud/vpc/v1/address.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"@\n" +
-	"\x11GetAddressRequest\x12+\n" +
+	"(kacho/cloud/vpc/v1/address_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a kacho/cloud/vpc/v1/address.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"2\n" +
+	"\x11GetAddressRequest\x12\x1d\n" +
 	"\n" +
-	"address_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\taddressId\"\xfe\x01\n" +
-	"\x14ListAddressesRequest\x12+\n" +
+	"address_id\x18\x01 \x01(\tR\taddressId\"\xc5\x01\n" +
+	"\x14ListAddressesRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\x16\n" +
-	"\x06filter\x18\x04 \x01(\tR\x06filter\x12%\n" +
-	"\tsubnet_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=50R\bsubnetId\x12'\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x04 \x01(\tR\x06filter\x12\x1b\n" +
+	"\tsubnet_id\x18\x05 \x01(\tR\bsubnetId\x12\x1d\n" +
 	"\n" +
-	"ip_address\x18\x06 \x01(\tB\b\x8a\xc81\x04<=45R\tipAddress\"z\n" +
+	"ip_address\x18\x06 \x01(\tR\tipAddress\"z\n" +
 	"\x15ListAddressesResponse\x129\n" +
 	"\taddresses\x18\x01 \x03(\v2\x1b.kacho.cloud.vpc.v1.AddressR\taddresses\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x8a\a\n" +
-	"\x14CreateAddressRequest\x12+\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x83\x06\n" +
+	"\x14CreateAddressRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12B\n" +
-	"\x04name\x18\x02 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x89\x01\n" +
-	"\x06labels\x18\x04 \x03(\v24.kacho.cloud.vpc.v1.CreateAddressRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12j\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12L\n" +
+	"\x06labels\x18\x04 \x03(\v24.kacho.cloud.vpc.v1.CreateAddressRequest.LabelsEntryR\x06labels\x12j\n" +
 	"\x1aexternal_ipv4_address_spec\x18\x05 \x01(\v2+.kacho.cloud.vpc.v1.ExternalIpv4AddressSpecH\x00R\x17externalIpv4AddressSpec\x12j\n" +
 	"\x1ainternal_ipv4_address_spec\x18\x06 \x01(\v2+.kacho.cloud.vpc.v1.InternalIpv4AddressSpecH\x00R\x17internalIpv4AddressSpec\x12j\n" +
 	"\x1ainternal_ipv6_address_spec\x18\f \x01(\v2+.kacho.cloud.vpc.v1.InternalIpv6AddressSpecH\x00R\x17internalIpv6AddressSpec\x12j\n" +
@@ -1143,29 +1141,29 @@ const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"J\x04\b\v\x10\fR\x10dns_record_specs\"`\n" +
 	"\x17ExternalIpv4AddressSpec\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x17\n" +
-	"\azone_id\x18\x02 \x01(\tR\x06zoneIdJ\x04\b\x03\x10\x04R\frequirements\"u\n" +
-	"\x17InternalIpv4AddressSpec\x12\"\n" +
-	"\aaddress\x18\x01 \x01(\tB\b\x8a\xc81\x04<=16R\aaddress\x12'\n" +
-	"\tsubnet_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50H\x00R\bsubnetIdB\r\n" +
-	"\x05scope\x12\x04\xc0\xc11\x01\"u\n" +
-	"\x17InternalIpv6AddressSpec\x12\"\n" +
-	"\aaddress\x18\x01 \x01(\tB\b\x8a\xc81\x04<=16R\aaddress\x12'\n" +
-	"\tsubnet_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50H\x00R\bsubnetIdB\r\n" +
-	"\x05scope\x12\x04\xc0\xc11\x01\"t\n" +
-	"\x17ExternalIpv6AddressSpec\x12\"\n" +
-	"\aaddress\x18\x01 \x01(\tB\b\x8a\xc81\x04<=45R\aaddress\x12!\n" +
-	"\azone_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50R\x06zoneIdJ\x04\b\x03\x10\x04R\frequirements\"6\n" +
+	"\azone_id\x18\x02 \x01(\tR\x06zoneIdJ\x04\b\x03\x10\x04R\frequirements\"[\n" +
+	"\x17InternalIpv4AddressSpec\x12\x18\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x1d\n" +
+	"\tsubnet_id\x18\x02 \x01(\tH\x00R\bsubnetIdB\a\n" +
+	"\x05scope\"[\n" +
+	"\x17InternalIpv6AddressSpec\x12\x18\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x1d\n" +
+	"\tsubnet_id\x18\x02 \x01(\tH\x00R\bsubnetIdB\a\n" +
+	"\x05scope\"`\n" +
+	"\x17ExternalIpv6AddressSpec\x12\x18\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x17\n" +
+	"\azone_id\x18\x02 \x01(\tR\x06zoneIdJ\x04\b\x03\x10\x04R\frequirements\"6\n" +
 	"\x15CreateAddressMetadata\x12\x1d\n" +
 	"\n" +
-	"address_id\x18\x01 \x01(\tR\taddressId\"\x9d\x04\n" +
-	"\x14UpdateAddressRequest\x12+\n" +
+	"address_id\x18\x01 \x01(\tR\taddressId\"\x96\x03\n" +
+	"\x14UpdateAddressRequest\x12\x1d\n" +
 	"\n" +
-	"address_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\taddressId\x12;\n" +
+	"address_id\x18\x01 \x01(\tR\taddressId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x12B\n" +
-	"\x04name\x18\x03 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x89\x01\n" +
-	"\x06labels\x18\x05 \x03(\v24.kacho.cloud.vpc.v1.UpdateAddressRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12\x1a\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12L\n" +
+	"\x06labels\x18\x05 \x03(\v24.kacho.cloud.vpc.v1.UpdateAddressRequest.LabelsEntryR\x06labels\x12\x1a\n" +
 	"\breserved\x18\x06 \x01(\bR\breserved\x12/\n" +
 	"\x13deletion_protection\x18\a \x01(\bR\x12deletionProtection\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
@@ -1173,20 +1171,19 @@ const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tR\x10dns_record_specs\"6\n" +
 	"\x15UpdateAddressMetadata\x12\x1d\n" +
 	"\n" +
-	"address_id\x18\x01 \x01(\tR\taddressId\"C\n" +
-	"\x14DeleteAddressRequest\x12+\n" +
+	"address_id\x18\x01 \x01(\tR\taddressId\"5\n" +
+	"\x14DeleteAddressRequest\x12\x1d\n" +
 	"\n" +
-	"address_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\taddressId\"6\n" +
+	"address_id\x18\x01 \x01(\tR\taddressId\"6\n" +
 	"\x15DeleteAddressMetadata\x12\x1d\n" +
 	"\n" +
-	"address_id\x18\x01 \x01(\tR\taddressId\"\x9e\x01\n" +
-	"\x1cListAddressOperationsRequest\x12+\n" +
+	"address_id\x18\x01 \x01(\tR\taddressId\"y\n" +
+	"\x1cListAddressOperationsRequest\x12\x1d\n" +
 	"\n" +
-	"address_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\taddressId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"address_id\x18\x01 \x01(\tR\taddressId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x89\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x89\x01\n" +
 	"\x1dListAddressOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +

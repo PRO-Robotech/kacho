@@ -6,7 +6,6 @@ syntax = "proto3";
 package kacho.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/validation.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
 
@@ -110,7 +109,7 @@ message User {
   // Mutable через UserService.Update (`labels` в update_mask). Аннотации
   // (size/key/value pattern) энфорсят sync-INVALID_ARGUMENT на request-layer —
   // паритет account/project/group request `labels`.
-  map<string, string> labels = 9 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 9;
 
   enum InviteStatus {
     INVITE_STATUS_UNSPECIFIED = 0;

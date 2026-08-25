@@ -860,7 +860,7 @@ selector_priority)` — резолв возвращает первый по phys
 | `SubnetService` (доп.) | AddCidrBlocks / RemoveCidrBlocks принимают обе семьи (`ipv4_cidr_blocks`/`ipv6_cidr_blocks`); на Create — только якоря `ipv4_cidr_primary`/`ipv6_cidr_primary`, immutable; в `Update` CIDR-полей нет (номера зарезервированы) | async | — |
 | `NetworkInterfaceService` | Get, List, ListOperations (переживает удаление) | sync | Чтения |
 | `NetworkInterfaceService` | Create, Update, Delete | async | Мутации; Create — `subnet_id` обязателен, адреса/SG опциональны; `used_by` — денормализованное зеркало |
-| `SecurityGroupService` (доп.) | Create — `network_id` **обязателен** (`[(required) = true]`, пустой → `InvalidArgument "network_id required"`) и immutable; `List?filter=network_id="<id>"` | — | — |
+| `SecurityGroupService` (доп.) | Create — `network_id` **обязателен** (пустой → `InvalidArgument "network_id required"`, синхронно в use-case) и immutable; `List?filter=network_id="<id>"` | — | — |
 | `RouteTableService` | Get, List, ListOperations | sync | Чтения |
 | `RouteTableService` | Create, Update, Delete, AddRoutes, RemoveRoutes, UpdateRoute | async | Мутации |
 | `SecurityGroupService` | Get, List, ListOperations | sync | Чтения |

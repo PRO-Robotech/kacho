@@ -10,7 +10,6 @@
 package geov1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -196,14 +195,13 @@ var File_kacho_cloud_geo_v1_region_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_geo_v1_region_service_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/geo/v1/region_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"=\n" +
-	"\x10GetRegionRequest\x12)\n" +
-	"\tregion_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bregionId\"\x95\x01\n" +
-	"\x12ListRegionsRequest\x12'\n" +
-	"\tpage_size\x18\x01 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"'kacho/cloud/geo/v1/region_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/geo/v1/region.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"/\n" +
+	"\x10GetRegionRequest\x12\x1b\n" +
+	"\tregion_id\x18\x01 \x01(\tR\bregionId\"~\n" +
+	"\x12ListRegionsRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12,\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\x12,\n" +
 	"\x12open_for_placement\x18\x03 \x01(\bR\x10openForPlacement\"s\n" +
 	"\x13ListRegionsResponse\x124\n" +
 	"\aregions\x18\x01 \x03(\v2\x1a.kacho.cloud.geo.v1.RegionR\aregions\x12&\n" +
