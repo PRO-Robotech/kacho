@@ -65,7 +65,8 @@ func TestDeleteUser_NonSelfNonOwnerPrincipal_NotRejectedInService(t *testing.T) 
 			uc := NewDeleteUserUseCase(newUpdUserRepo(), newUpdOpsRepo())
 			op, err := uc.Execute(ctx, domain.UserID(updUserID))
 			require.NoError(t, err,
-				"UserService.Delete is gated by v_delete@iam_user at the gateway; "+
+				"UserService.Delete is gated by identity_remover@iam_user at the gateway "+
+					"(#1131 — the verb v_delete named here before is gone from the type, #1189); "+
 					"deleting someone else's user must not require being the account owner")
 			assert.NotNil(t, op)
 		})
