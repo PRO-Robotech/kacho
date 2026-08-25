@@ -419,6 +419,63 @@ function prove() {
     problems.push('предикат C не поймал опрос под субъектом, которому операция не видна');
   }
 
+  // --- предикат E: инъекция в обе стороны (четыре оси) ---
+  // Порождаемые строки воспроизводятся ЗДЕСЬ в той форме, какую даёт `_budget_ledger`
+  // генератора. Это вторая копия, и она названа вслух: гейт на JS не может
+  // импортировать генератор на python, а сверять их ТЕКСТАМИ значило бы читать чужой
+  // исходник как текст. Расхождение копии с оригиналом ловит не эта пара, а обход
+  // коллекций ниже — он судит ПОРОЖДЁННОЕ, а не воспроизведённое здесь.
+  const warmGuard = (tail) => [
+    "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+    "  pm.environment.set('_authRetryCount', '0');",
+    "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+    "}",
+    "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+    "if ([403,404].includes(pm.response.code) && _arc < 3) {",
+    "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+    "  pm.execution.setNextRequest(pm.info.requestName);",
+    "  return;",
+    "}",
+  ].concat(tail).concat([
+    "pm.environment.unset('_authRetryCount');",
+    "pm.environment.unset('_authRetryStarted');",
+    "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+  ]);
+  const LEDGER = [
+    "if ([403,404].includes(pm.response.code) && _arc >= 3) {",
+    "  const _wbE = (parseInt(pm.environment.get('warmBudgetExhausted'), 10) || 0) + 1;",
+    "  pm.environment.set('warmBudgetExhausted', String(_wbE));",
+    "  const _wbL = pm.environment.get('warmBudgetExhaustedSteps') || '';",
+    "  pm.environment.set('warmBudgetExhaustedSteps',",
+    "    (_wbL ? _wbL + ' ' : '') + pm.info.requestName);",
+    "}",
+  ];
+
+  // E(а) дефект — концовка ДО задачи #1251: оба исхода сливаются в сброс счётчиков.
+  if (!checkStepE(mkStep('warm-before-rya1', warmGuard([])))) {
+    problems.push('предикат E не поймал возвращённый дефект (исчерпание бюджета не оставляет следа)');
+  }
+  // E(б) законная форма — ведомость ведётся: дефекта нет, гейт обязан молчать.
+  if (checkStepE(mkStep('warm-after-rya2', warmGuard(LEDGER)))) {
+    problems.push('предикат E ошибочно поймал законную форму (ведомость ведётся)');
+  }
+  // E(в) счётчик, растущий БЕЗУСЛОВНО, — тоже дефект: величина, ненулевая всегда,
+  // о бюджете не говорит ничего. Первое утверждение E прошло бы её одну.
+  if (!checkStepE(mkStep('warm-always-rya3', warmGuard([
+    "const _wbE = (parseInt(pm.environment.get('warmBudgetExhausted'), 10) || 0) + 1;",
+    "pm.environment.set('warmBudgetExhausted', String(_wbE));",
+    "pm.environment.set('warmBudgetExhaustedSteps', pm.info.requestName);",
+  ])))) {
+    problems.push('предикат E не поймал безусловный счётчик (растёт и там, где ждать было нечего)');
+  }
+  // E(г) сменившаяся форма обёртки: полоса повтора из скрипта не читается — судить
+  // вслепую нельзя, и молчать об этом тоже.
+  if (!checkStepE(mkStep('warm-shapeless-rya4', [
+    "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+  ]))) {
+    problems.push('предикат E не заметил, что полоса повтора из скрипта не читается');
+  }
+
   return problems;
 }
 
@@ -541,6 +598,81 @@ function checkStepD(step) {
   return null;
 }
 
+// --- предикат E: ведомость ожидания отличает ИСЧЕРПАНИЕ от НЕНАДОБНОСТИ -------
+//
+// ПРЕДМЕТ (задача #1251). У обёрток ожидания концовка вела оба исхода — «повторять
+// больше не нужно» и «повторять уже нельзя» — в один и тот же сброс счётчиков.
+// След у них получался одинаковый, то есть никакой: «прогреть не удалось» и
+// «прогрев не понадобился» становились неразличимы. У шага без собственного
+// утверждения исчерпание проходило вовсе бесследно, а отказ доезжал до следующего
+// шага — атрибуция сохранялась, наблюдаемость нет. Это то самое окно, из которого
+// вырос исходный разбор: отказ в правах получило создание, а обвинён был шаг,
+// проверявший запрет удаления.
+//
+// ЧТО ПРОВЕРЯЕТСЯ — ИСПОЛНЕНИЕМ, В ОБЕ СТОРОНЫ. Шаг гоняется дважды:
+//   переходный ответ, держащийся всегда → бюджет обязан ИСЧЕРПАТЬСЯ и оставить след
+//                                          (счётчик плюс имя шага в перечне);
+//   ответ вне полосы повтора             → следа быть НЕ ДОЛЖНО, иначе счётчик
+//                                          растёт там, где ждать было нечего, и
+//                                          величина перестаёт что-либо значить.
+// Одного первого мало: счётчик, инкрементируемый безусловно, прошёл бы его и лгал
+// бы на каждом здоровом прогоне.
+//
+// ГРАНИЦА НАЗВАНА ЧИСЛОМ, А НЕ УМОЛЧАНИЕМ. Предикат смотрит обёртку окна
+// материализации прав (суффикс `-rya`) — прямой предмет задачи и большинство
+// ожиданий дерева. У прочих видов переходность задаётся не кодом ответа, а
+// содержимым тела (наличие своего id в списке, сходимость поля, машинный признак
+// промаха соседа), поэтому один и тот же подставной ответ для них не строится.
+// Их число печатается отдельной строкой переписи: «не осмотрено» обязано быть
+// отличимо от «осмотрено и чисто».
+const WRAPPED_WARM = /-rya\d+$/;
+const RETRY_BAND_RE = /\[([\d,\s]+)\]\.includes\(pm\.response\.code\)/;
+
+function warmLedgerAfter(step, code) {
+  const exec = scriptOf(step, 'test');
+  if (!exec) return null;
+  const env = baseEnv();
+  const body = { code: 7, message: 'permission denied', details: [] };
+  // Петля доводится до конца: пока обёртка повторяет, шаг молчит by construction.
+  for (let i = 0; i < 400; i += 1) {
+    const r = runScript(exec, { response: { code, body }, env, name: step.name });
+    if (!r.retried) break;
+  }
+  return {
+    count: parseInt(env.get('warmBudgetExhausted'), 10) || 0,
+    steps: env.get('warmBudgetExhaustedSteps') || '',
+  };
+}
+
+function checkStepE(step) {
+  const exec = scriptOf(step, 'test');
+  if (!exec) return null;
+  const band = RETRY_BAND_RE.exec(exec.join('\n'));
+  if (!band) {
+    return `${step.name}: полоса повтора не читается из порождённого скрипта — `
+      + 'обёртка сменила форму, и предикат E судил бы вслепую';
+  }
+  const codes = band[1].split(',').map((x) => parseInt(x.trim(), 10)).filter((x) => x);
+  const transient = codes[0];
+  const quiet = [200, 201, 204].find((c) => !codes.includes(c));
+
+  const spent = warmLedgerAfter(step, transient);
+  if (!spent || spent.count < 1) {
+    return `${step.name}: переходный ответ ${transient} держится всегда, бюджет исчерпан — `
+      + 'а следа нет: «прогреть не удалось» неотличимо от «прогрев не понадобился»';
+  }
+  if (!spent.steps.includes(step.name)) {
+    return `${step.name}: исчерпание сосчитано, но шаг НЕ НАЗВАН — по величине не видно, `
+      + 'где именно бюджета не хватило, и разбор снова начинается с гипотезы';
+  }
+  const quietRun = warmLedgerAfter(step, quiet);
+  if (quietRun && quietRun.count > 0) {
+    return `${step.name}: ответ ${quiet} вне полосы повтора — ждать было нечего, `
+      + 'а ведомость всё равно записала исчерпание: счётчик, растущий всегда, не величина';
+  }
+  return null;
+}
+
 const proveProblems = prove();
 if (proveProblems.length > 0) {
   console.error('SELFTEST FAIL: гейт не прошёл собственную проверку предпосылки:');
@@ -572,10 +704,13 @@ const problemsA = [];
 const problemsB = [];
 const problemsC = [];
 const problemsD = [];
+const problemsE = [];
 let nCases = 0;
 let nSteps = 0;
 let nAuthedSteps = 0;   // перепись предмета предиката C: «ноль находок» != «ноль осмотренного»
 let nWrappedCreates = 0; // перепись предмета предиката D (то же требование)
+let nWarmSteps = 0;      // перепись предмета предиката E (осмотренные ожидания окна прав)
+let nOtherWaits = 0;     // ожидания ПРОЧИХ видов: предикат E их не судит — граница числом
 
 for (const file of collections) {
   const label = file.replace('.postman_collection.json', '');
@@ -596,6 +731,20 @@ for (const file of collections) {
       const d = checkStepD(st);
       if (d) problemsD.push(`${trail.join(' :: ')}: ${d}`);
     }
+    for (const st of steps) {
+      // Отбор — ПО ПРИЗНАКУ ОЖИДАНИЯ (суффикс обёртки), а не по наличию ведомости.
+      // Обратный порядок («смотрим тех, кто ведомость несёт») спрашивал бы лишь
+      // «правильно ли ведут те, кто ведёт», и снятие ведомости с ОДНОГО шага прошло
+      // бы мимо: он просто выпал бы из осмотренных. Проверено возвратом дефекта.
+      if (!WRAPPED_WARM.test(st.name || '')) {
+        const ex = scriptOf(st, 'test');
+        if (ex && ex.join('\n').includes('warmBudgetExhausted')) nOtherWaits += 1;
+        continue;
+      }
+      nWarmSteps += 1;
+      const e = checkStepE(st);
+      if (e) problemsE.push(`${trail.join(' :: ')}: ${e}`);
+    }
     for (const c of checkCaseC(steps)) problemsC.push(`${trail.join(' :: ')}: ${c}`);
   }
 }
@@ -608,8 +757,10 @@ console.log(`  предикат C (опрос ведёт не тот субъе�
   + `   [шагов с явным субъектом осмотрено: ${nAuthedSteps}]`);
 console.log(`  предикат D (ретрай peer-полосы: ловит переходное / не глотает терминальное): ${problemsD.length}`
   + `   [обёрнутых create-шагов осмотрено: ${nWrappedCreates}]`);
+console.log(`  предикат E (ведомость ожидания: исчерпание отличимо от ненадобности): ${problemsE.length}`
+  + `   [ожиданий окна прав осмотрено: ${nWarmSteps}; ожиданий прочих видов НЕ осмотрено: ${nOtherWaits}]`);
 
-const fatal = problemsA.concat(problemsB).concat(problemsC).concat(problemsD);
+const fatal = problemsA.concat(problemsB).concat(problemsC).concat(problemsD).concat(problemsE);
 if (fatal.length > 0) {
   console.error(`SELFTEST FAIL: ${fatal.length} находка(ок):`);
   for (const p of fatal) console.error('  - ' + p);
@@ -624,6 +775,14 @@ if (nWrappedCreates === 0) {
   // либо снятая защита от окна видимости, либо сменившийся суффикс обёртки; и то и
   // другое обязано быть отказом, а не тихим «ноль находок».
   console.error('SELFTEST FAIL: ни одного обёрнутого create-шага — предикату D нечего проверять');
+  process.exit(1);
+}
+if (nWarmSteps === 0) {
+  // Предпосылка предиката E: ожидания окна материализации прав в дереве ЕСТЬ, и они
+  // ведут ведомость. Их исчезновение — либо снятая ведомость (тогда исчерпание снова
+  // бесследно), либо сменившийся суффикс обёртки; и то и другое обязано быть отказом,
+  // а не тихим «ноль находок».
+  console.error('SELFTEST FAIL: ни одного ожидания с ведомостью — предикату E нечего проверять');
   process.exit(1);
 }
 if (nAuthedSteps === 0) {
