@@ -258,7 +258,7 @@ export function GrantAdminModal({ open, onClose }: Props) {
             </Form.Item>
           )}
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0, marginLeft: 160 }}>
-            Cluster admin получает все права на ресурсы кластера (FGA-relation
+            Администратор облака получает все права на ресурсы кластера (роль
             <Typography.Text code style={{ fontSize: 12 }}>
               system_admin
             </Typography.Text>

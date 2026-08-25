@@ -126,7 +126,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
-import ts from "typescript";
+import { collectLabels } from "./label-resolver.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Позиции, чей строковый литерал видит пользователь.
@@ -376,201 +376,19 @@ function adjudicate(value, usedTerms, usedVerbatim) {
 const TS_FILE = /\.(ts|tsx)$/;
 const TEST_FILE = /\.test\.|\.spec\.|\/test\/|\/__tests__\//;
 
-/** Подстановка на месте вычисляемой части. Не буква и не цифра — разбору не мешает. */
-const HOLE = "\u2026";
-/** Предел раскрытия имён: защита от взаимных ссылок, а не ограничение смысла. */
-const MAX_RESOLVE_DEPTH = 8;
-
 /**
- * Содержимое элемента верно́ ДОСЛОВНО и подписью не является. `code` здесь —
- * атрибут antd `Typography.Text code`, который рендерится в `<code>`.
- */
-const VERBATIM_CONTENT_TAGS = new Set(["style", "script", "pre", "code"]);
-
-/**
- * Имена файла, объявленные значением: `const X = …`.
+ * РАЗБОР ПОДПИСЕЙ ЖИВЁТ В ОБЩЕМ ИСТОЧНИКЕ — `./label-resolver.mjs`.
  *
- * Имя, объявленное ДВАЖДЫ, а также имя параметра и элемента деструктуризации,
- * из карты СНИМАЕТСЯ. Причина не в аккуратности: `{ label }` в пропсах
- * компонента затеняет модульный `const label`, и без этого правила подпись
- * судилась бы по чужому объявлению. Разбор областей видимости здесь не нужен —
- * достаточно отказаться судить неоднозначное: не судить безопаснее, чем судить
- * не то.
- */
-function collectBindings(sf) {
-  const bound = new Map();
-  const ambiguous = new Set();
-  const claim = (name, init) => {
-    if (bound.has(name) || ambiguous.has(name)) {
-      bound.delete(name);
-      ambiguous.add(name);
-      return;
-    }
-    if (init) bound.set(name, init);
-    else ambiguous.add(name);
-  };
-  const walk = (n) => {
-    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name)) claim(n.name.text, n.initializer);
-    else if (ts.isParameter(n) && ts.isIdentifier(n.name)) claim(n.name.text, null);
-    else if (ts.isBindingElement(n) && ts.isIdentifier(n.name)) claim(n.name.text, null);
-    ts.forEachChild(n, walk);
-  };
-  walk(sf);
-  return bound;
-}
-
-/** Прямой литерал — ровно то, что читала первая редакция гейта. */
-function isDirectLiteral(node) {
-  if (!node) return false;
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return true;
-  if (ts.isJsxExpression(node) && node.expression) return isDirectLiteral(node.expression);
-  return false;
-}
-
-/**
- * Все строки, которыми выражение МОЖЕТ оказаться перед пользователем.
+ * Он заведён здесь (#478, #1249) и дал +220 подписей при неизменной полосе
+ * разметки. Ту же слепоту нёс гейт внутреннего словаря, судящий те же позиции
+ * (#1259), — и починена она ПЕРЕИСПОЛЬЗОВАНИЕМ, а не вторым разбором: два
+ * разбора одного предмета расходятся молча и именно там, где расхождение не
+ * видно, потому что оба отвечают «пусто» на пустом входе.
  *
- * Тернарник даёт обе ветви — обе показываются, в разных состояниях. `||`/`??`
- * дают обе стороны: правая и есть подпись по умолчанию. Шаблон и склейка —
- * свой текст с `HOLE` на месте подстановки: так соседство слов сохраняется
- * («Создание: …»), а вычисленная часть не выдаётся за подпись.
- *
- * Вызов, обращение к полю, всё остальное — ПУСТО. Это граница, и она названа
- * числом в переписи, а не умолчана.
+ * Наборы имён остались ЗДЕСЬ: они и есть предмет этого гейта. Общим сделан
+ * вопрос «какими строками это выражение может оказаться перед пользователем», а
+ * не вопрос «чем считать полученную строку».
  */
-function literalsOf(node, bound, depth = 0, seen = new Set()) {
-  if (!node || depth > MAX_RESOLVE_DEPTH) return [];
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [node.text];
-  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isNonNullExpression(node))
-    return literalsOf(node.expression, bound, depth + 1, seen);
-  if (ts.isSatisfiesExpression(node)) return literalsOf(node.expression, bound, depth + 1, seen);
-  if (ts.isJsxExpression(node)) return node.expression ? literalsOf(node.expression, bound, depth + 1, seen) : [];
-  if (ts.isConditionalExpression(node))
-    return [
-      ...literalsOf(node.whenTrue, bound, depth + 1, seen),
-      ...literalsOf(node.whenFalse, bound, depth + 1, seen),
-    ];
-  if (ts.isBinaryExpression(node)) {
-    const op = node.operatorToken.kind;
-    if (op === ts.SyntaxKind.BarBarToken || op === ts.SyntaxKind.QuestionQuestionToken)
-      return [
-        ...literalsOf(node.left, bound, depth + 1, seen),
-        ...literalsOf(node.right, bound, depth + 1, seen),
-      ];
-    if (op === ts.SyntaxKind.PlusToken) {
-      const left = literalsOf(node.left, bound, depth + 1, seen);
-      const right = literalsOf(node.right, bound, depth + 1, seen);
-      return [(left[0] ?? HOLE) + (right[0] ?? HOLE)];
-    }
-    return [];
-  }
-  if (ts.isTemplateExpression(node)) {
-    let out = node.head.text;
-    for (const span of node.templateSpans) out += HOLE + span.literal.text;
-    return [out];
-  }
-  if (ts.isIdentifier(node)) {
-    if (seen.has(node.text)) return [];
-    const init = bound.get(node.text);
-    if (!init) return [];
-    const deeper = new Set(seen);
-    deeper.add(node.text);
-    return literalsOf(init, bound, depth + 1, deeper);
-  }
-  return [];
-}
-
-/** Элемент, чьё содержимое дословно (`<style>`, `<pre>`, `<code>`, antd `code`). */
-function isVerbatimContent(el) {
-  if (!ts.isJsxElement(el)) return false;
-  const opening = el.openingElement;
-  const tag = opening.tagName.getText();
-  if (VERBATIM_CONTENT_TAGS.has(tag) || VERBATIM_CONTENT_TAGS.has(tag.split(".").pop() ?? "")) return true;
-  return opening.attributes.properties.some(
-    (a) => ts.isJsxAttribute(a) && ts.isIdentifier(a.name) && a.name.text === "code",
-  );
-}
-
-/**
- * Выражение — ЕДИНСТВЕННОЕ содержимое элемента, то есть его текст целиком.
- *
- * Различитель не косметический, он и держит границу между подписью и данными
- * в тексте JSX. Стоящее в одиночку выражение пользователь читает как текст
- * элемента; стоящее среди других детей — как значение, вставленное в фразу, а
- * фразу гейт уже прочитал сам.
- */
-function isSoleChild(expr) {
-  const el = expr.parent;
-  if (!el || !(ts.isJsxElement(el) || ts.isJsxFragment(el))) return false;
-  if (isVerbatimContent(el)) return false;
-  return el.children.every((c) => c === expr || (ts.isJsxText(c) && c.text.trim() === ""));
-}
-
-/** Собирает подписи одного файла: `{ line, kind, key, value, origin }`. */
-function collectLabels(rel, source) {
-  const sf = ts.createSourceFile(
-    rel,
-    source,
-    ts.ScriptTarget.Latest,
-    /* setParentNodes */ true,
-    rel.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  );
-  const bound = collectBindings(sf);
-  const labels = [];
-  let valueSites = 0;
-  let proseSites = 0;
-  let dataSites = 0;
-
-  const at = (node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
-
-  /**
-   * Кладёт подпись из уже объявленной ПОЗИЦИИ, разрешая её значение.
-   *
-   * `countData` считает границу: позиция подписи есть, а текста в ней нет —
-   * значение приходит из данных. У текста JSX это не считается: там кандидатов
-   * сотни, и почти все они — данные по замыслу, а не потерянная подпись.
-   */
-  const push = (node, kind, key, init, countData) => {
-    const origin = isDirectLiteral(init) ? "разметка" : "вычислено";
-    const values = literalsOf(init, bound);
-    if (values.length === 0) {
-      if (countData) dataSites++;
-      return;
-    }
-    for (const value of values) labels.push({ line: at(node), kind, key, value, origin });
-  };
-
-  const walk = (node) => {
-    if (ts.isJsxAttribute(node) && node.name && ts.isIdentifier(node.name)) {
-      const key = node.name.text;
-      if (VALUE_KEYS.has(key)) valueSites++;
-      else if (LABEL_KEYS.has(key) || LABEL_ATTRS_ONLY.has(key))
-        push(node, "атрибут JSX", key, node.initializer, true);
-    }
-    if (ts.isPropertyAssignment(node) && (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))) {
-      const key = node.name.text;
-      if (VALUE_KEYS.has(key)) valueSites++;
-      else if (LABEL_KEYS.has(key)) push(node, "свойство", key, node.initializer, true);
-    }
-    if (ts.isJsxText(node) && node.text.trim() !== "") {
-      labels.push({ line: at(node), kind: "текст JSX", key: "", value: node.text.trim(), origin: "разметка" });
-    }
-    // Текст элемента, пришедший ВЫЧИСЛЕНИЕМ: `<Text>{valueLabel}</Text>`.
-    // Только единственное содержимое элемента — см. `isSoleChild`.
-    if (ts.isJsxExpression(node) && node.expression && isSoleChild(node)) {
-      push(node, "текст JSX", "", node.expression, false);
-    }
-    // Подпись, собранная помощником: `labelWithInfo("Имя", "…")`.
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && LABEL_HELPERS.has(node.expression.text)) {
-      for (const arg of node.arguments) push(arg, `аргумент ${node.expression.text}`, "", arg, true);
-    }
-    ts.forEachChild(node, walk);
-  };
-  walk(sf);
-  for (const l of labels) if (isProse(l.value.replace(ENTITY, " ").trim())) proseSites++;
-  return { labels, valueSites, proseSites, dataSites };
-}
-
 /** Прогон по перечню файлов. Возвращает находки и перепись. */
 export function scan(root, files) {
   const findings = [];
@@ -580,7 +398,16 @@ export function scan(root, files) {
 
   for (const rel of files) {
     const source = fs.readFileSync(path.join(root, rel), "utf8");
-    const { labels, valueSites, proseSites, dataSites } = collectLabels(rel, source);
+    const { labels, valueSites, dataSites } = collectLabels(rel, source, {
+      labelKeys: LABEL_KEYS,
+      labelAttrsOnly: LABEL_ATTRS_ONLY,
+      valueKeys: VALUE_KEYS,
+      labelHelpers: LABEL_HELPERS,
+      jsxText: true,
+    });
+    // Проза — предмет ЭТОГО гейта (правило 1 её не судит), поэтому и считается
+    // здесь: общий разбор о ней не знает и знать не должен.
+    const proseSites = labels.filter((l) => isProse(l.value.replace(ENTITY, " ").trim())).length;
     census.files++;
     census.valueSites += valueSites;
     census.proseSites += proseSites;
