@@ -114,6 +114,10 @@
                   "  pm.expect(_wa, 'WWW-Authenticate header').to.match(/^Bearer /);",
                   "  pm.expect(_wa, _wa).to.match(/service=\"[^\"]+\"/);",
                   "});",
+                  "const _svc = (_wa.match(/service=\"([^\"]+)\"/) || [])[1] || '';",
+                  "pm.test('the challenge NAMES the audience the docker client will quote back',",
+                  "  () => pm.expect(_svc, _wa).to.be.a('string').with.length.greaterThan(0));",
+                  "if (_svc) { pm.environment.set('ibtServiceAud', _svc); }",
                   "const _m = _wa.match(/realm=\"([^\"]+)\"/);",
                   "pm.test('the challenge names a realm', () => pm.expect(_m && _m[1], _wa).to.be.a('string'));",
                   "const _realm = (_m && _m[1]) || '';",
@@ -132,7 +136,7 @@
           ]
         },
         {
-          "name": "facade-token-handle-is-a-gate",
+          "name": "facade-names-the-same-audience-as-the-data-plane",
           "request": {
             "method": "GET",
             "header": [
@@ -142,13 +146,86 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/iam/token?service=registry.kacho.local&scope=repository:ibt/{{runId}}:pull",
+              "raw": "{{baseUrl}}/iam/token",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "iam",
-                "token?service=registry.kacho.local&scope=repository:ibt",
+                "token"
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "strictSSL": false
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: anonymous (strip Authorization header)",
+                  "pm.request.headers.remove('Authorization');",
+                  "// HARNESS-CONFIG GUARD — iamRegistryTokenBaseUrl передаёт прогонщик (--env-var).",
+                  "// Нет значения = харнесс сломан, а НЕ законный режим: сперва упасть, потом пропустить.",
+                  "const __cfgUrl = pm.environment.get('iamRegistryTokenBaseUrl') || pm.variables.get('iamRegistryTokenBaseUrl') || '';",
+                  "if (__cfgUrl) {",
+                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/token');",
+                  "} else {",
+                  "  pm.test('harness config: iamRegistryTokenBaseUrl задана — докер-полоса — у неё же и спрашиваем, кому она чеканит', () => {",
+                  "    pm.expect.fail('iamRegistryTokenBaseUrl не задана — прогонщик (deploy/scripts/newman-parallel.sh --env-var) её не передал. Шаг исполнен быть не может, а проверка, которая не может исполниться, НЕ ВПРАВЕ быть молча выброшенной.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('facade docker-token handle, no service parameter: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
+                  "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ сервиса').to.not.be.undefined;",
+                  "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
+                  "});",
+                  "pm.test('the handle challenges an anonymous caller (401)',",
+                  "  () => pm.expect(pm.response.code, pm.response.text()).to.eql(401));",
+                  "const _fwa = pm.response.headers.get('WWW-Authenticate') || '';",
+                  "const _fsvc = (_fwa.match(/service=\"([^\"]+)\"/) || [])[1] || '';",
+                  "pm.test('the handle NAMES the audience it mints for — its own default, not an echo: this request named none', () => {",
+                  "  pm.expect(_fsvc, 'WWW-Authenticate: ' + _fwa).to.be.a('string')",
+                  "    .with.length.greaterThan(0);",
+                  "});",
+                  "pm.test('BOTH sides of the lane name the SAME audience — the data plane tells it to the docker client, the facade mints it into aud', () => {",
+                  "  pm.expect(_fsvc, 'facade says \"' + _fsvc + '\", data plane says \"'",
+                  "    + pm.environment.get('ibtServiceAud') + '\"')",
+                  "    .to.eql(pm.environment.get('ibtServiceAud'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "facade-token-handle-is-a-gate-rya1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/token?service={{ibtServiceAud}}&scope=repository:ibt/{{runId}}:pull",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "token?service={{ibtServiceAud}}&scope=repository:ibt",
                 "{{runId}}:pull"
               ]
             }
@@ -168,7 +245,7 @@
                   "// Нет значения = харнесс сломан, а НЕ законный режим: сперва упасть, потом пропустить.",
                   "const __cfgUrl = pm.environment.get('iamRegistryTokenBaseUrl') || pm.variables.get('iamRegistryTokenBaseUrl') || '';",
                   "if (__cfgUrl) {",
-                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/token?service=registry.kacho.local&scope=repository:ibt/{{runId}}:pull');",
+                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/token?service={{ibtServiceAud}}&scope=repository:ibt/{{runId}}:pull');",
                   "} else {",
                   "  pm.test('harness config: iamRegistryTokenBaseUrl задана — docker lane — the facade handle the challenge points at', () => {",
                   "    pm.expect.fail('iamRegistryTokenBaseUrl не задана — прогонщик (deploy/scripts/newman-parallel.sh --env-var) её не передал. Шаг исполнен быть не может, а проверка, которая не может исполниться, НЕ ВПРАВЕ быть молча выброшенной.');",
@@ -183,6 +260,48 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "",
+                  "// ЖДАТЬ МОЖНО ТОЛЬКО ПРАВА, А НЕ ИМЯ. Если адрес шага собран из переменной,",
+                  "// которую предыдущий шаг не захватил, в пути стоит пустой сегмент либо сама",
+                  "// подстановка — и запрос спрашивает НЕ О РЕСУРСЕ. Окно видимости прав такой",
+                  "// адрес не наполнит никогда, поэтому повтор здесь — ожидание, которое не может",
+                  "// сработать: та самая форма без содержания, которую эта функция уже отказывается",
+                  "// строить выше (вырожденный retry_on). Хуже того, отказ по пустому адресу",
+                  "// приходит кодом 403 — он в полосе ожидания, и шаг выжигает ВЕСЬ бюджет.",
+                  "// Замер прогона 31951162447, часть registry: 1863 запроса из 3903 (48%) ушли",
+                  "// по пустому сегменту в 23 обёрнутых шагах — около 18 минут стенда на вопросы",
+                  "// ни о чём, при этом ни одно утверждение о продукте не проверялось.",
+                  "// Отказ здесь называет ПРЕДМЕТ (переменная не захвачена), а не следствие",
+                  "// («ожидал 200, получил 403») — падение уборки виновника не называет.",
+                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
+                  "  return String(s && s.value !== undefined ? s.value : s);",
+                  "});",
+                  "const _rblank = _rpath.some(function (v) { return v === '' || /\\{\\{[^}]*\\}\\}/.test(v); });",
+                  "if (_rblank) {",
+                  "  pm.environment.unset('_authRetryCount');",
+                  "  pm.environment.unset('_authRetryStarted');",
+                  "  pm.test('step addresses a captured variable', function () {",
+                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
+                  "      '): предыдущий шаг не захватил её, повторять нечего — ждать можно право на существующее имя, а не появление самого имени');",
+                  "  });",
+                  "}",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('facade docker-token handle: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
                   "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ сервиса').to.not.be.undefined;",
                   "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
@@ -203,7 +322,7 @@
           ]
         },
         {
-          "name": "facade-token-handle-rejects-garbage-credentials",
+          "name": "facade-token-handle-rejects-garbage-credentials-rya2",
           "request": {
             "method": "GET",
             "header": [
@@ -213,13 +332,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/iam/token?service=registry.kacho.local&scope=repository:ibt/{{runId}}:pull",
+              "raw": "{{baseUrl}}/iam/token?service={{ibtServiceAud}}&scope=repository:ibt/{{runId}}:pull",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "iam",
-                "token?service=registry.kacho.local&scope=repository:ibt",
+                "token?service={{ibtServiceAud}}&scope=repository:ibt",
                 "{{runId}}:pull"
               ]
             }
@@ -239,7 +358,7 @@
                   "// Нет значения = харнесс сломан, а НЕ законный режим: сперва упасть, потом пропустить.",
                   "const __cfgUrl = pm.environment.get('iamRegistryTokenBaseUrl') || pm.variables.get('iamRegistryTokenBaseUrl') || '';",
                   "if (__cfgUrl) {",
-                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/token?service=registry.kacho.local&scope=repository:ibt/{{runId}}:pull');",
+                  "  pm.request.url = __cfgUrl + pm.variables.replaceIn('/iam/token?service={{ibtServiceAud}}&scope=repository:ibt/{{runId}}:pull');",
                   "} else {",
                   "  pm.test('harness config: iamRegistryTokenBaseUrl задана — docker lane — the handle must verify credentials, not merely accept them', () => {",
                   "    pm.expect.fail('iamRegistryTokenBaseUrl не задана — прогонщик (deploy/scripts/newman-parallel.sh --env-var) её не передал. Шаг исполнен быть не может, а проверка, которая не может исполниться, НЕ ВПРАВЕ быть молча выброшенной.');",
@@ -257,6 +376,48 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "",
+                  "// ЖДАТЬ МОЖНО ТОЛЬКО ПРАВА, А НЕ ИМЯ. Если адрес шага собран из переменной,",
+                  "// которую предыдущий шаг не захватил, в пути стоит пустой сегмент либо сама",
+                  "// подстановка — и запрос спрашивает НЕ О РЕСУРСЕ. Окно видимости прав такой",
+                  "// адрес не наполнит никогда, поэтому повтор здесь — ожидание, которое не может",
+                  "// сработать: та самая форма без содержания, которую эта функция уже отказывается",
+                  "// строить выше (вырожденный retry_on). Хуже того, отказ по пустому адресу",
+                  "// приходит кодом 403 — он в полосе ожидания, и шаг выжигает ВЕСЬ бюджет.",
+                  "// Замер прогона 31951162447, часть registry: 1863 запроса из 3903 (48%) ушли",
+                  "// по пустому сегменту в 23 обёрнутых шагах — около 18 минут стенда на вопросы",
+                  "// ни о чём, при этом ни одно утверждение о продукте не проверялось.",
+                  "// Отказ здесь называет ПРЕДМЕТ (переменная не захвачена), а не следствие",
+                  "// («ожидал 200, получил 403») — падение уборки виновника не называет.",
+                  "const _rpath = ((pm.request.url && pm.request.url.path) || []).map(function (s) {",
+                  "  return String(s && s.value !== undefined ? s.value : s);",
+                  "});",
+                  "const _rblank = _rpath.some(function (v) { return v === '' || /\\{\\{[^}]*\\}\\}/.test(v); });",
+                  "if (_rblank) {",
+                  "  pm.environment.unset('_authRetryCount');",
+                  "  pm.environment.unset('_authRetryStarted');",
+                  "  pm.test('step addresses a captured variable', function () {",
+                  "    pm.expect.fail('адрес шага собран из НЕЗАХВАЧЕННОЙ переменной (/' + _rpath.join('/') +",
+                  "      '): предыдущий шаг не захватил её, повторять нечего — ждать можно право на существующее имя, а не появление самого имени');",
+                  "  });",
+                  "}",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if (!_rblank && [403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('facade docker-token handle, garbage credentials: запрос получил ОТВЕТ (пусто ⇒ транспорт, а не поведение)', () => {",
                   "  pm.expect(pm.response, 'ответа нет вовсе — сеть/TLS/таймаут, а не отказ сервиса').to.not.be.undefined;",
                   "  pm.expect(pm.response.code, 'HTTP-кода нет — обмен не завершился').to.be.a('number');",
