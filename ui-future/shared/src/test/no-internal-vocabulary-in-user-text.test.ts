@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { stripComments } from "@shared/test/strip-comments";
+import { collectLabels } from "../../../scripts/label-resolver.mjs";
 
 /**
  * Гейт: внутренний словарь не выходит на поверхность, которую читает арендатор.
@@ -20,29 +20,39 @@ import { stripComments } from "@shared/test/strip-comments";
  *
  * # Что утверждается
  *
- * Строковый литерал, стоящий значением у ключа или атрибута, который читает
- * пользователь (`description` · `placeholder` · `label` · `title` · `reason` ·
- * `subTitle` · `message` · `aria-label`), не содержит слов из словаря ниже.
+ * Текст, который пользователь ВИДИТ, не содержит слов из словаря ниже. Видимым
+ * считается значение ключа или атрибута из `USER_FACING_KEYS` и текст элемента.
  *
- * Читается ИСПОЛНЯЕМАЯ часть: комментарии снимаются, иначе гейт падал бы на
- * объяснении самого запрета — на этом файле в первую очередь. По той же причине
- * из области выведены пробы: разбор в пробе называет предмет и обязан это делать.
+ * # Что здесь изменилось и почему (#1259)
  *
- * # Чего гейт НЕ видит — названо, а не умолчано
+ * Прежняя редакция читала исходник ПОСТРОЧНО регулярным выражением по форме
+ * `ключ: "литерал"`. Отсюда две слепоты, и обе она объявляла отсутствующими:
  *
- * Текст, склеенный из переменных, и текст, приезжающий с сервера, он не
- * рассматривает: первого в этих ключах на момент заведения нет (склейка живёт в
- * `errorText`), второе — контракт сервиса, и правится на сервере. Три
- * задокументированных исключения `security.md` — комментарий у гейта, текст
- * отказа при старте и текст падения пробы — в область не входят by construction:
- * первое снимается разбором, второе живёт в Go, третье выведено вместе с пробами.
+ *   1. **вычисленный текст** — подпись, вынесенная в переменную, собранная
+ *      шаблоном, склейкой `+`, тернарником или умолчанием `??`/`||`, регулярным
+ *      выражением не видна вовсе. Шапка утверждала, что такого текста в этих
+ *      ключах нет; замер на том же дереве давал шаблонов 67, склеек 10, имён 90,
+ *      тернарников 56 — то есть утверждение о прошлом пережило свой предмет;
+ *   2. **текст элемента** — «Cluster admin получает все права (FGA-relation …)»
+ *      стоит не значением ключа, а текстом абзаца, и потому не судился ничем.
  *
- * # Объём осмотренного
+ * Обе закрыты ОДНИМ разбором: `collectLabels` из `scripts/label-resolver.mjs` —
+ * тот самый, которым читает подписи гейт языка (`scripts/check-ui-language.mjs`).
+ * Второго разбора здесь намеренно нет: два разбора одного предмета расходятся
+ * молча, и в этом дереве такое уже случалось.
  *
- * Числа прочитанных пакетов, файлов и извлечённых литералов утверждаются
- * непустыми: «ноль находок» обязано быть отличимо от «ноль прочитанного».
- * Извлекатель проверяется в обе стороны — он обязан найти запрещённое и обязан
- * не находить законного.
+ * Комментарии из области выведены by construction: разбор их не видит, а не
+ * снимает текстом. Пробы выведены обходом: разбор в пробе называет предмет и
+ * обязан это делать.
+ *
+ * # Граница — числами, а не утверждением о прошлом
+ *
+ * Позиция подписи, значение которой приходит из ДАННЫХ (`title={row.name}`),
+ * текста не несёт: резолвить нечего. Число таких позиций утверждается отдельно —
+ * «ноль находок» обязано быть отличимо и от «ноль прочитанного», и от «прочитано
+ * не то». Каждая полоса — разметка, вычисление, текст элемента — считается
+ * отдельно: одно число скрыло бы ровно ту потерю покрытия, ради которой полосы и
+ * заведены.
  */
 
 const consoleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -84,7 +94,16 @@ const INTERNAL_LEXICON: { re: RegExp; why: string; onlyIn?: RegExp }[] = [
 ];
 
 /** Ключи и атрибуты, значение которых читает пользователь. */
-const USER_FACING_KEY = /(?:description|placeholder|label|title|reason|subTitle|message|aria-label)\s*[:=]\s*"([^"]{3,})"/g;
+const USER_FACING_KEYS = new Set([
+  "description",
+  "placeholder",
+  "label",
+  "title",
+  "reason",
+  "subTitle",
+  "message",
+  "aria-label",
+]);
 
 function consolePackages(): string[] {
   return readdirSync(consoleRoot)
@@ -115,25 +134,31 @@ export interface VocabularyFinding {
   line: number;
   text: string;
   why: string;
+  /** Откуда текст пришёл: «разметка» — литерал на месте, «вычислено» — резолвер. */
+  origin: string;
 }
 
-/** Литералы пользовательских ключей, несущие слово из внутреннего словаря. */
-export function internalVocabularyHits(source: string): VocabularyFinding[] {
+/**
+ * Тексты одного файла, видимые пользователю, — вместе с тем, как они собраны.
+ *
+ * Имя файла нужно разбору только для координаты; фикстуре достаточно умолчания.
+ */
+function userFacingTexts(source: string, rel = "fixture.tsx") {
+  return collectLabels(rel, source, { labelKeys: USER_FACING_KEYS, jsxText: true });
+}
+
+/** Тексты пользовательской поверхности, несущие слово из внутреннего словаря. */
+export function internalVocabularyHits(source: string, rel = "fixture.tsx"): VocabularyFinding[] {
   const out: VocabularyFinding[] = [];
-  stripComments(source, { keepLines: true })
-    .split("\n")
-    .forEach((line, i) => {
-      for (const m of line.matchAll(USER_FACING_KEY)) {
-        const value = m[1];
-        for (const { re, why, onlyIn } of INTERNAL_LEXICON) {
-          if (onlyIn && !onlyIn.test(value)) continue;
-          if (re.test(value)) {
-            out.push({ line: i + 1, text: value.slice(0, 90), why });
-            break;
-          }
-        }
+  for (const label of userFacingTexts(source, rel).labels) {
+    for (const { re, why, onlyIn } of INTERNAL_LEXICON) {
+      if (onlyIn && !onlyIn.test(label.value)) continue;
+      if (re.test(label.value)) {
+        out.push({ line: label.line, text: label.value.slice(0, 90), why, origin: label.origin });
+        break;
       }
-    });
+    }
+  }
   return out;
 }
 
@@ -141,40 +166,58 @@ describe("внутренний словарь не выходит на поль�
   const packages = consolePackages();
   const files = packages.flatMap((p) => walk(path.join(consoleRoot, p, "src"), []));
 
+  /** Перепись по полосам: одно число скрыло бы потерю покрытия в любой из них. */
+  const census = { markup: 0, computed: 0, jsxText: 0, dataSites: 0, valueSites: 0 };
+  for (const f of files) {
+    const rel = path.relative(consoleRoot, f);
+    const read = userFacingTexts(readFileSync(f, "utf8"), rel);
+    census.dataSites += read.dataSites;
+    census.valueSites += read.valueSites;
+    for (const l of read.labels) {
+      if (l.kind === "текст JSX") census.jsxText++;
+      else if (l.origin === "вычислено") census.computed++;
+      else census.markup++;
+    }
+  }
+
   it("прочитано непустое дерево", () => {
     expect(packages.length).toBeGreaterThanOrEqual(9);
     expect(files.length).toBeGreaterThan(500);
   });
 
-  it("извлекатель находит непустой набор литералов (иначе «ноль находок» ничего не значит)", () => {
-    const total = files.reduce(
-      (n, f) => n + [...stripComments(readFileSync(f, "utf8"), { keepLines: true }).matchAll(USER_FACING_KEY)].length,
-      0,
-    );
-    expect(total).toBeGreaterThan(300);
+  it("каждая полоса непуста — иначе «ноль находок» означало бы «ноль прочитанного»", () => {
+    // Литералом в разметке — то единственное, что читала прежняя редакция.
+    expect(census.markup).toBeGreaterThan(1000);
+    // Вычислением — полоса, которой прежняя редакция не видела и объявляла пустой.
+    expect(census.computed).toBeGreaterThan(100);
+    // Текстом элемента — вторая невидимая полоса; в ней и стояла живая находка.
+    expect(census.jsxText).toBeGreaterThan(300);
+    // Граница названа числом: позиция подписи есть, текста в ней нет.
+    expect(census.dataSites).toBeGreaterThan(100);
   });
 
-  it("ни одна подпись, подсказка и причина отказа не говорит языком реализации", () => {
+  it("ни одна подпись, подсказка, причина отказа и надпись не говорит языком реализации", () => {
     const findings: string[] = [];
     for (const f of files) {
       const rel = path.relative(consoleRoot, f);
-      for (const h of internalVocabularyHits(readFileSync(f, "utf8"))) {
-        findings.push(`${rel}:${h.line} [${h.why}] ${h.text}`);
+      for (const h of internalVocabularyHits(readFileSync(f, "utf8"), rel)) {
+        findings.push(`${rel}:${h.line} [${h.why}] (${h.origin}) ${h.text}`);
       }
     }
     expect(findings).toEqual([]);
   });
 
-  // Инъекция в обе стороны, на синтетике: доказательство не должно зависеть от
-  // фикстуры, которая истекает вместе со своим предметом.
+  // Инъекция в обе стороны. Форма фикстуры — объявление объекта либо элемент:
+  // разбор читает СИНТАКСИС, и строка «ключ: значение» сама по себе свойством
+  // объекта не является.
   it("предикат краснеет на каждой записи словаря", () => {
     const cases = [
-      'description: "Балансировщик-родитель. Within-service FK → load_balancers."',
-      'description: "Зона размещения (immutable после Create)."',
-      'subTitle="Требуется FGA-relation admin@cluster:cluster_kacho_root."',
-      'message: "Backend не вернул ответа"',
-      'title: "Смотри KAC-246"',
-      'label: "Значение project_id"',
+      'export const C = { description: "Балансировщик-родитель. Within-service FK → load_balancers." };',
+      'export const C = { description: "Зона размещения (immutable после Create)." };',
+      'export const C = () => <Result subTitle="Требуется FGA-relation admin@cluster:cluster_kacho_root." />;',
+      'export const C = { message: "Backend не вернул ответа" };',
+      'export const C = { title: "Смотри KAC-246" };',
+      'export const C = { label: "Значение project_id" };',
     ];
     for (const c of cases) {
       expect(internalVocabularyHits(c)).toHaveLength(1);
@@ -183,19 +226,79 @@ describe("внутренний словарь не выходит на поль�
 
   it("и молчит на законной формулировке той же формы", () => {
     const legal = [
-      'description: "Балансировщик, которому принадлежит слушатель. Неизменяем после создания."',
-      'description: "Зона размещения машины. Неизменяема после создания."',
-      'subTitle="Недостаточно прав для просмотра администраторов облака."',
-      'message: "Сервер не вернул ответа"',
-      'label: "Идентификатор проекта"',
+      'export const C = { description: "Балансировщик, которому принадлежит слушатель. Неизменяем после создания." };',
+      'export const C = { description: "Зона размещения машины. Неизменяема после создания." };',
+      'export const C = () => <Result subTitle="Недостаточно прав для просмотра администраторов облака." />;',
+      'export const C = { message: "Сервер не вернул ответа" };',
+      'export const C = { label: "Идентификатор проекта" };',
       // Образец значения, которое форма и требует ввести: имя роли ограничено
       // строчными латинскими буквами, цифрами и подчёркиванием.
-      'placeholder="my_role"',
-      // Разбор в комментарии — объяснение, а не подпись на экране.
-      '// description: "Within-service FK → load_balancers" — так было до правки',
+      'export const C = () => <Input placeholder="my_role" />;',
+      // Разбор в комментарии — объяснение, а не подпись на экране. Разбор его не
+      // видит by construction: комментарий не является узлом выражения.
+      '// export const C = { description: "Within-service FK → load_balancers" }; — так было до правки',
     ];
     for (const c of legal) {
       expect(internalVocabularyHits(c)).toEqual([]);
     }
+  });
+
+  // ── Полоса вычисленного текста: пять форм, каждая с законным близнецом ──────
+  //
+  // Значения взяты дословно из дерева (текст отказа, который гейт научился
+  // видеть); синтетическая здесь только ФОРМА сборки — иначе оси было бы нечем
+  // различить, живых нарушений этих форм в дереве на день правки нет.
+  it("видит текст, собранный переменной, тернарником, шаблоном, склейкой и умолчанием", () => {
+    const forms = [
+      ['const t = "Требуется FGA-relation admin@cluster."; export const C = () => <Text>{t}</Text>;', "переменная"],
+      ['export const C = () => <Alert message={bad ? "Backend не вернул ответа" : "Готово"} />;', "тернарник"],
+      ["export const C = () => <Alert message={`Удалить «${name}»? AccessBinding активен.`} />;", "шаблон"],
+      ['export const C = { description: "Смотри " + "KAC-246 про размер." };', "склейка"],
+      ['export const C = () => <Text>{name || "Значение project_id"}</Text>;', "умолчание"],
+    ] as const;
+    for (const [source, form] of forms) {
+      const hits = internalVocabularyHits(source);
+      expect(`${form}: ${hits.length}`).toBe(`${form}: 1`);
+      expect(hits[0].origin).toBe("вычислено");
+    }
+  });
+
+  it("и молчит на тех же формах, собранных законным текстом", () => {
+    const legal = [
+      'const t = "Недостаточно прав для просмотра."; export const C = () => <Text>{t}</Text>;',
+      'export const C = () => <Alert message={bad ? "Сервер не вернул ответа" : "Готово"} />;',
+      "export const C = () => <Alert message={`Удалить «${name}»? Привязка активна.`} />;",
+      'export const C = { description: "Смотри " + "раздел про размер." };',
+      'export const C = () => <Text>{name || "Идентификатор проекта"}</Text>;',
+      // Значение, вставленное В ФРАЗУ, текстом элемента не считается: там данные,
+      // а не надпись. Без этой границы имя тома требовало бы перевода.
+      "export const C = () => <Text>Том {volume.name} отключён</Text>;",
+    ];
+    for (const c of legal) {
+      expect(internalVocabularyHits(c)).toEqual([]);
+    }
+  });
+
+  // ── Текст элемента: полоса, в которой стояла живая находка ──────────────────
+  it("видит надпись, стоящую текстом элемента, а не значением ключа", () => {
+    // Дословно из дерева на день, когда гейт научился это видеть: окно выдачи
+    // прав администратора облака объясняло арендатору устройство модели прав.
+    const asItWas =
+      "export const C = () => (\n" +
+      "  <Typography.Paragraph>\n" +
+      "    Cluster admin получает все права на ресурсы кластера (FGA-relation\n" +
+      "  </Typography.Paragraph>\n" +
+      ");\n";
+    const hits = internalVocabularyHits(asItWas);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].why).toBe("устройство модели прав");
+  });
+
+  it("и молчит на дословном значении, показанном как значение", () => {
+    // Содержимое `<code>` — параметр фильтра, который оператор и копирует;
+    // переводить его нельзя, а разбор видит его отдельным токеном без пробела,
+    // поэтому правило «имя колонки в тексте» к нему не применяется.
+    const legal = 'export const C = () => <Typography.Text code>resource_type=cluster</Typography.Text>;';
+    expect(internalVocabularyHits(legal)).toEqual([]);
   });
 });

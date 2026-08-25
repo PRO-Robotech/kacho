@@ -251,8 +251,8 @@ export default function ClusterAdminsPage() {
         description={
           <>
             Права администратора кластера видны и на странице <Link to="/iam/access-bindings">Привязки доступа</Link>{" "}
-            (фильтр
-            <code> resource_type=cluster, resource_id=cluster_kacho_root</code>). Выдать их можно и кнопкой
+            (фильтр <code>resource_type=cluster</code>, <code>resource_id=cluster_kacho_root</code>). Выдать их можно и
+            кнопкой
             &quot;Добавить администратора (устаревший путь)&quot; (POST <code>/iam/v1/internal/cluster/admins</code>), и
             через &quot;Выдать через привязку доступа&quot; — оба пути идемпотентны.
           </>
