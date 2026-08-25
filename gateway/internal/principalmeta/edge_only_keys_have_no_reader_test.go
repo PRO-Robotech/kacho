@@ -25,6 +25,12 @@ package principalmeta_test
 // подсистем (внутренний пол уровня уверенности объясняет, откуда берёт свой), и
 // поиск по подстроке краснел бы на чужом объяснении. Гейт судит по строковому
 // литералу разобранного дерева.
+//
+// СОСТАВ БЕРЁТСЯ У ИНДЕКСА, А НЕ У ДИСКА. Обход диском подхватывает то, что на
+// машине со стендом лежит рядом с деревом и деревом не является — распакованные
+// чарты, сборочные каталоги, отчёты прогонов, — и находка из такого каталога
+// говорит о чужой копии, а не о нашем коде. Общий корпус (internal/treecorpus)
+// спрашивает индекс git и потому отвечает про отслеживаемое.
 
 import (
 	"go/ast"
@@ -40,6 +46,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // edgeOnlyKeyNames — ключи, чьё отсутствие за краем утверждается.
@@ -74,27 +81,26 @@ func TestEdgeOnlyKeys_HaveNoReaderOutsideTheEdge(t *testing.T) {
 	var filesRead, literalsSeen int
 	var findings []string
 	for _, sub := range []string{"services", "pkg"} {
-		base := filepath.Join(root, sub)
-		require.DirExists(t, base, "каталог %s отсутствует — обход был бы пустым и гейт зелёным ни о чём", sub)
-		err := filepath.WalkDir(base, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
+		files, err := treecorpus.UnderWithSuffix(filepath.Join(root, sub), ".go")
+		require.NoError(t, err, "состав %s не получен у индекса — обход был бы пустым "+
+			"и гейт зелёным ни о чём", sub)
+		require.NotEmpty(t, files, "в %s ноль отслеживаемых файлов Go", sub)
+		for _, path := range files {
+			rel, rerr := filepath.Rel(root, path)
+			require.NoError(t, rerr, "путь %s вне дерева", path)
+			rel = filepath.ToSlash(rel)
+			if strings.HasSuffix(rel, "_test.go") {
+				continue
 			}
-			if d.IsDir() {
-				// Сгенерённые стабы контрактов руками не правятся и читателем
-				// стать не могут; их разбор стоил бы дороже всего остального.
-				if d.Name() == "api" && filepath.Dir(path) == filepath.Join(root, "pkg") {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return nil
+			// Сгенерённые стабы контрактов руками не правятся и читателем стать
+			// не могут; их разбор стоил бы дороже всего остального.
+			if strings.HasPrefix(rel, "pkg/api/") {
+				continue
 			}
 			fset := token.NewFileSet()
 			f, perr := parser.ParseFile(fset, path, nil, 0)
 			if perr != nil {
-				return nil // не наш предмет: несобирающийся файл поймает сборка
+				continue // не наш предмет: несобирающийся файл поймает сборка
 			}
 			filesRead++
 			ast.Inspect(f, func(n ast.Node) bool {
@@ -109,16 +115,13 @@ func TestEdgeOnlyKeys_HaveNoReaderOutsideTheEdge(t *testing.T) {
 				}
 				for _, k := range keys {
 					if strings.EqualFold(strings.TrimSpace(v), k) {
-						rel, _ := filepath.Rel(root, path)
 						findings = append(findings,
 							rel+":"+strconv.Itoa(fset.Position(lit.Pos()).Line)+" — "+k)
 					}
 				}
 				return true
 			})
-			return nil
-		})
-		require.NoError(t, err, "обход %s прерван", sub)
+		}
 	}
 
 	require.NotZero(t, filesRead, "прочитано ноль файлов Go — «ноль находок» здесь означало бы "+
