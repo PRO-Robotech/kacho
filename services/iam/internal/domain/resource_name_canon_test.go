@@ -109,7 +109,6 @@ func TestNamedTypesObeyTheSingleNameForm(t *testing.T) {
 
 	checked := 0
 	for _, nt := range canonNamedTypes {
-		nt := nt
 		t.Run(nt.label, func(t *testing.T) {
 			for _, s := range canonAccepted {
 				if err := nt.validate(s.value); err != nil {

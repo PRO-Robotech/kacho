@@ -38,7 +38,6 @@ var nameFormTables = []string{
 // TestWrapPgErr_NameForm_IsOurDefectNotCallerInput — полоса формы имени.
 func TestWrapPgErr_NameForm_IsOurDefectNotCallerInput(t *testing.T) {
 	for _, tbl := range nameFormTables {
-		tbl := tbl
 		t.Run(tbl, func(t *testing.T) {
 			pgErr := &pgconn.PgError{
 				Code:           "23514",
@@ -79,7 +78,6 @@ func TestWrapPgErr_OtherCheck_StaysCallerInput(t *testing.T) {
 		{"users_display_name_check", "display_name"},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.constraint, func(t *testing.T) {
 			pgErr := &pgconn.PgError{
 				Code:           "23514",

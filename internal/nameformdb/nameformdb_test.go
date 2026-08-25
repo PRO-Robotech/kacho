@@ -177,7 +177,6 @@ func (e censusExecer) Exec(_ context.Context, sql string, args ...any) (pgconn.C
 func probeOver(rows []censusRow, probed []string, excluded, other map[string]string) (Probe, Execer) {
 	tables := make([]Table, 0, len(probed))
 	for _, t := range probed {
-		t := t
 		tables = append(tables, Table{
 			Name: t,
 			Row:  func(name string, _ int) (string, []any) { return t, []any{name} },
