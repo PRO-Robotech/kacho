@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { test, expect, type Page } from "@playwright/test";
-import { tenantWithProject, createdResourceId, runTag } from "./fixtures";
+import { expect, type Page } from "@playwright/test";
+import { createdResourceId, runTag, tenantWithProject, test } from "./fixtures";
 
 /**
  * Канон консоли, разделы 3 («Строка инструментов списка») и 4 («Таблица и строки

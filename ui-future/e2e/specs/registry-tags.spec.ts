@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { test, expect } from "@playwright/test";
-import { registerAndSignIn, createdResourceId, runTag, apiCalls } from "./fixtures";
+import { expect } from "@playwright/test";
+import { apiCalls, createdResourceId, registerAndSignIn, runTag, test } from "./fixtures";
 
 /**
  * Вкладка «Теги» на карточке репозитория — против развёрнутого продукта.

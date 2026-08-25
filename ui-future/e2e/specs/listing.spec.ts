@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { test, expect, type Page } from "@playwright/test";
-import { registerAndSignIn, createdResourceId, runTag } from "./fixtures";
+import { expect, type Page } from "@playwright/test";
+import { createdResourceId, registerAndSignIn, runTag, test } from "./fixtures";
 
 /**
  * Свежий арендатор пуст, и пустой список — НЕ страница списка.

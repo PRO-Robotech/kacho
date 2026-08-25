@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { test, expect, type Page, type Locator } from "@playwright/test";
-import { tenantWithProject, runTag } from "./fixtures";
+import { expect, type Page, type Locator } from "@playwright/test";
+import { runTag, tenantWithProject, test } from "./fixtures";
 import { dataRowSelector } from "../../shared/src/test/console-table-rows";
 
 /**
