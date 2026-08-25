@@ -230,3 +230,76 @@ func TestInjection_TwoLoopsInOneFunctionNeedOneRecord(t *testing.T) {
 		t.Fatalf("находкой обязана быть ровно вторая функция, получено %+v", f)
 	}
 }
+
+// F. КАНАЛ ТИКЕРА В ПЕРЕМЕННОЙ — форма, которой распознаватель не знал (задача
+// #1264, сценарий CRED-RCL-17).
+//
+// Управляемые часы нужны всякой петле, у которой есть детерминированная проба, и
+// ради них канал кладут в переменную. Узел тогда — ИДЕНТИФИКАТОР, а не селектор,
+// и петля была гейту невидима: ни красного, ни зелёного, молчание. Утверждение
+// идёт ПАРОЙ, иначе расширение ловило бы форму, а не существо.
+func TestInjection_TickerChannelInAVariableIsBackgroundWork(t *testing.T) {
+	// Дефект: петля с подменяемыми часами и БЕЗ записи об исходе.
+	swappable := "package svc\n\nimport (\n\t\"context\"\n\t\"time\"\n)\n\n" +
+		"func work(context.Context) {}\n\n" +
+		"func Run(ctx context.Context) {\n" +
+		"\tvar (\n\t\tc    <-chan time.Time\n\t\tstop func()\n\t)\n" +
+		"\tt := time.NewTicker(time.Second)\n\tc, stop = t.C, t.Stop\n\tdefer stop()\n" +
+		"\tfor {\n\t\tselect {\n\t\tcase <-ctx.Done():\n\t\t\treturn\n" +
+		"\t\tcase <-c:\n\t\t\twork(ctx)\n\t\t}\n\t}\n}\n"
+
+	c := scanFor(t, map[string]string{"services/x/internal/jobs/swappable.go": swappable})
+	if len(c.Loops) != 1 {
+		t.Fatalf("петля с каналом тикера в переменной обязана считаться фоновой, найдено %d: %+v",
+			len(c.Loops), c.Loops)
+	}
+	if c.Loops[0].Driver != "тик" {
+		t.Fatalf("движима обязана быть тиком, получено %q", c.Loops[0].Driver)
+	}
+	if len(c.Findings()) != 1 {
+		t.Fatalf("петля без записи об исходе обязана быть находкой, находок %d", len(c.Findings()))
+	}
+}
+
+// F (законный близнец) — петля, движимая каналом ИЗ ДАННЫХ ВЫЗОВА, фоновой НЕ
+// является.
+//
+// Без этой половины расширение объявило бы фоновой всякую петлю, читающую канал
+// из переменной, — то есть краснело бы на исправном дереве и было бы снято
+// первым же обходом.
+func TestInjection_ChannelFromCallDataIsNotBackgroundWork(t *testing.T) {
+	fromCaller := "package svc\n\nimport \"context\"\n\n" +
+		"func work(context.Context, int) {}\n\n" +
+		"func Consume(ctx context.Context, in <-chan int) {\n" +
+		"\tch := in\n" +
+		"\tfor {\n\t\tselect {\n\t\tcase <-ctx.Done():\n\t\t\treturn\n" +
+		"\t\tcase v := <-ch:\n\t\t\twork(ctx, v)\n\t\t}\n\t}\n}\n"
+
+	c := scanFor(t, map[string]string{"services/x/internal/jobs/consume.go": fromCaller})
+	if c.FilesRead != 1 {
+		t.Fatalf("предпосылка: файл обязан быть прочитан, прочитано %d", c.FilesRead)
+	}
+	if len(c.Loops) != 0 {
+		t.Fatalf("петля по данным вызова фоновой не является, найдено %d: %+v", len(c.Loops), c.Loops)
+	}
+}
+
+// F (третья сторона) — переменная, в которую канал тикера НЕ клали, не делает
+// приём из неё тиком даже в той же функции.
+//
+// Признак узкий намеренно, и здесь это утверждается: узнаётся ровно тот
+// идентификатор, в который канал положили.
+func TestInjection_OnlyTheVariableThatGotTheTickerCounts(t *testing.T) {
+	mixed := "package svc\n\nimport (\n\t\"context\"\n\t\"time\"\n)\n\n" +
+		"func work(context.Context) {}\n\n" +
+		"func Run(ctx context.Context, other <-chan int) {\n" +
+		"\tt := time.NewTicker(time.Second)\n\tdefer t.Stop()\n\tunrelated := other\n" +
+		"\tfor {\n\t\tselect {\n\t\tcase <-ctx.Done():\n\t\t\treturn\n" +
+		"\t\tcase <-unrelated:\n\t\t\twork(ctx)\n\t\t}\n\t}\n}\n"
+
+	c := scanFor(t, map[string]string{"services/x/internal/jobs/mixed.go": mixed})
+	if len(c.Loops) != 0 {
+		t.Fatalf("приём из посторонней переменной тиком не является, найдено %d: %+v",
+			len(c.Loops), c.Loops)
+	}
+}

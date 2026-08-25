@@ -181,6 +181,12 @@ func loopsInFile(fset *token.FileSet, f *ast.File, rel string) []bgLoop {
 		}
 		kind, reason, bad := readFanoutMarker(doc)
 
+		// Канал тикера кладут в переменную ДО петли, поэтому собирается он по
+		// телу ФУНКЦИИ, а не по телу цикла. Первая редакция этой правки читала
+		// тело цикла — и не находила ничего: присваивание стоит выше `for`, и
+		// расширение было холостым, о чём сказала перепись (она не изменилась).
+		tickVars := tickerChannelVars(d.Body)
+
 		seen := false
 		ast.Inspect(d.Body, func(m ast.Node) bool {
 			var body *ast.BlockStmt
@@ -192,7 +198,7 @@ func loopsInFile(fset *token.FileSet, f *ast.File, rel string) []bgLoop {
 			default:
 				return true
 			}
-			driver := loopDriver(body)
+			driver := loopDriver(body, tickVars)
 			if driver == "" {
 				return true
 			}
@@ -266,7 +272,20 @@ func kindList() string {
 // Перечень закрыт и назван: тик таймера, ожидание уведомления базы, пауза. Это и
 // есть механическое определение «фоновой» работы — та, что повторяется по
 // ВРЕМЕНИ или по внешнему событию, а не по данным вызова.
-func loopDriver(b *ast.BlockStmt) string {
+//
+// # Канал тикера В ПЕРЕМЕННОЙ — вторая законная форма записи того же предмета
+//
+// Распознаватель видел `<-тикер.C` только как СЕЛЕКТОР. Петля, кладущая канал в
+// переменную ради подменяемых часов (`c, stop = t.C, t.Stop`, затем `case <-c:`),
+// давала узел-ИДЕНТИФИКАТОР и была гейту НЕВИДИМА — не нарушением, а
+// невидимостью: ни красного, ни зелёного, молчание.
+//
+// Форма эта не край и не редкость: управляемые часы нужны всякой петле, у
+// которой есть детерминированная проба. Поэтому распознаётся и она — но не
+// «всякий приём из переменной»: узнаётся ровно тот идентификатор, в который
+// канал тикера ПОЛОЖИЛИ в этой же функции. Петля, движимая каналом из данных
+// вызова, фоновой по-прежнему не считается, и это утверждается инъекцией.
+func loopDriver(b *ast.BlockStmt, tickVars map[string]bool) string {
 	var found []string
 	add := func(s string) {
 		for _, x := range found {
@@ -283,6 +302,11 @@ func loopDriver(b *ast.BlockStmt) string {
 				return true
 			}
 			switch src := x.X.(type) {
+			case *ast.Ident:
+				// Канал тикера, положенный в переменную (см. шапку).
+				if tickVars[src.Name] {
+					add("тик")
+				}
 			case *ast.SelectorExpr:
 				if src.Sel.Name == "C" {
 					add("тик")
@@ -311,6 +335,45 @@ func loopDriver(b *ast.BlockStmt) string {
 	})
 	sort.Strings(found)
 	return strings.Join(found, "+")
+}
+
+// tickerChannelVars собирает имена переменных, в которые в ЭТОЙ ЖЕ функции
+// положили канал тикера.
+//
+// Признак — правая часть присваивания вида `<что-то>.C`. Он узкий намеренно:
+// широкое «всякий приём из переменной-канала» объявило бы фоновой любую петлю,
+// читающую канал из данных вызова, и гейт краснел бы на исправном дереве — то
+// есть был бы снят первым же обходом.
+func tickerChannelVars(b *ast.BlockStmt) map[string]bool {
+	vars := map[string]bool{}
+	record := func(lhs, rhs []ast.Expr) {
+		for i, r := range rhs {
+			if i >= len(lhs) {
+				break
+			}
+			sel, ok := r.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "C" {
+				continue
+			}
+			if id, ok := lhs[i].(*ast.Ident); ok && id.Name != "_" {
+				vars[id.Name] = true
+			}
+		}
+	}
+	ast.Inspect(b, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.AssignStmt:
+			record(x.Lhs, x.Rhs)
+		case *ast.ValueSpec:
+			lhs := make([]ast.Expr, 0, len(x.Names))
+			for _, nm := range x.Names {
+				lhs = append(lhs, nm)
+			}
+			record(lhs, x.Values)
+		}
+		return true
+	})
+	return vars
 }
 
 // receiverName — имя типа получателя, для координаты в отказе.
