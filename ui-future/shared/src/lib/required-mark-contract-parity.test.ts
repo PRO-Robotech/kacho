@@ -1,12 +1,27 @@
 // Звёздочка обязательности обязана сходиться с КОНТРАКТОМ владельца (#608).
 //
 // ПРЕДМЕТ. Значок «*» у подписи сообщает арендатору: без этого поля запрос не
-// примут. Утверждение проверяемое — обязательность поля объявляет контракт
-// владельца (`(required) = true` у поля запроса). Форма, ставящая значок там,
-// где контракт поле обязательным не делает, утверждает неправду; хуже того, она
-// обесценивает значок вообще: если он стоит безотносительно обязательности, по
-// нему нельзя понять, что заполнить обязан, — а это единственное, ради чего он
-// нарисован (решение владельца #562).
+// примут. Форма, ставящая значок там, где сервер поле не требует, утверждает
+// неправду; хуже того, она обесценивает значок вообще: если он стоит
+// безотносительно обязательности, по нему нельзя понять, что заполнить обязан, —
+// а это единственное, ради чего он нарисован (решение владельца #562).
+//
+// ОТКУДА БЕРЁТСЯ ОБЯЗАТЕЛЬНОСТЬ — ПЕРЕОСНОВАНО (kacho#1255). Прежде гейт читал
+// её из КОНТРАКТА: обходил дерево `.proto`, снимал комментарии и извлекал у поля
+// опцию `(required)`. Семейство расширений, которому эта опция принадлежала,
+// снято с контрактов целиком — исполнителя на пути запроса у него не было ни
+// одного, и объявление ничего не ограничивало.
+//
+// Это НЕ равноценная замена, а строгое улучшение, и вот почему. Прежнее
+// основание бывало ОБРАТНЫМ действительному: на двух полях выдачи удостоверений
+// контракт объявлял обязательным ровно то, что край подставляет сам и присланным
+// отвергает. Ошибка такого рода транслировалась бы арендатору НА ЭКРАН — гейт
+// требовал бы звёздочку там, где поле слать не надо.
+//
+// Теперь источник — ПОВЕДЕНИЕ СЕРВЕРА: поле обязательно ровно тогда, когда
+// запрос без него отвергается. Перечень назван ниже (`REQUIRED_BY_SERVER`) и
+// ДОКАЗЫВАЕТСЯ, а не объявляется: у каждой записи назван отказывающий код
+// продукта, и его существование проверяется отдельной пробой предпосылки.
 //
 // ПОЧЕМУ ЭТО ГЕЙТ, А НЕ ПРОБА ОДНОЙ ФОРМЫ. Класс найден переписью, а не диффом:
 // пять форм арендатора объявляли «Имя» обязательным, тогда как контракт vpc не
@@ -15,7 +30,8 @@
 // (`e2e/specs/findings.spec.ts`, `verifies #562`) видит одну форму из пяти:
 // остальные четыре остались бы без держащего артефакта.
 //
-// ПОЧЕМУ ЧТЕНИЕМ ДЕРЕВА. Общий стенд проб подменяет `antd` (`test/antd-stub.ts`):
+// ПОЧЕМУ ЧТЕНИЕМ ДЕРЕВА (сторона КОНСОЛИ — читается по-прежнему деревом).
+// Общий стенд проб подменяет `antd` (`test/antd-stub.ts`):
 // `Form.Item` рисуется без разметки библиотеки, звёздочки в jsdom нет как узла —
 // утверждать о ней рендером здесь нельзя ни при каком написании пробы. Поэтому
 // сверяются ОБЪЯВЛЕНИЯ: что объявила форма и что объявил контракт. Это перепись
@@ -52,7 +68,6 @@ import { REGISTRY } from "./resource-registry";
 const APP_DIR = process.cwd();
 const REPO_ROOT = resolve(APP_DIR, "../..");
 const UI_ROOT = resolve(APP_DIR, "..");
-const PROTO_ROOT = join(REPO_ROOT, "proto", "kacho", "cloud");
 
 // ── разбор исходного текста: строки, теги, атрибуты ──────────────────────────
 
@@ -191,49 +206,78 @@ function withoutNested(body: string): string {
   return out;
 }
 
+/**
+ * REQUIRED_BY_SERVER — поле обязательно ровно тогда, когда СЕРВЕР отвергает
+ * запрос без него. Ключ — REST-адрес записи, значение — имена таких полей.
+ *
+ * Это ЗАМЕНА чтения контракта, а не его копия. Прежде обязательность бралась из
+ * опции `(required)` у поля запроса; семейство, которому опция принадлежала,
+ * снято (kacho#1255), и — что важнее — оно расходилось с поведением.
+ *
+ * У КАЖДОЙ ЗАПИСИ НАЗВАН ОТКАЗЫВАЮЩИЙ КОД, и его существование проверяется
+ * пробой предпосылки ниже: перечень, который нельзя опровергнуть, был бы
+ * утверждением о себе самом.
+ *
+ * ОБЛАСТЬ — поле `name`, ровно как и прежде (см. шапку). Адрес, которого здесь
+ * нет, означает «не знаю», а не «не требует»: молчание и незнание обязаны быть
+ * различимы, и `contractRequires` возвращает для такого адреса `null`.
+ */
+const REQUIRED_BY_SERVER: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  // iam: пустое имя отвергается формой имени — `nameform.OK("")` ложно, и
+  // `validateResourceName` отвечает `Illegal argument name: must match …`.
+  // Сервер имени НЕ подставляет: `NameOrDefault` в services/iam не зовётся.
+  ["/iam/v1/accounts", new Set(["name"])],
+  ["/iam/v1/groups", new Set(["name"])],
+  ["/iam/v1/projects", new Set(["name"])],
+  ["/iam/v1/roles", new Set(["name"])],
+  ["/iam/v1/serviceAccounts", new Set(["name"])],
+  ["/iam/v1/internal/interactiveClients", new Set(["name"])],
+  // storage: административный ресурс, имя обязательно (домен отвергает пустое).
+  ["/storage/v1/storageBackends", new Set(["name"])],
+  // vpc и compute: имя НЕ обязательно — сервер производит его от `id`
+  // (`NameOrDefault`), поэтому пустое имя законный вход, а звёздочка была бы
+  // ложью. Пустой набор — это УТВЕРЖДЕНИЕ «не требует», а не «не знаю».
+  ["/vpc/v1/networks", new Set<string>()],
+  ["/vpc/v1/subnets", new Set<string>()],
+  ["/vpc/v1/securityGroups", new Set<string>()],
+  ["/vpc/v1/routeTables", new Set<string>()],
+  ["/vpc/v1/addresses", new Set<string>()],
+  ["/vpc/v1/gateways", new Set<string>()],
+  ["/vpc/v1/networkInterfaces", new Set<string>()],
+  ["/vpc/v1/cidrGroups", new Set<string>()],
+  ["/compute/v1/instances", new Set<string>()],
+  ["/compute/v1/placementGroups", new Set<string>()],
+]);
+
+/**
+ * Отказывающий (либо, наоборот, подставляющий имя) код продукта — предпосылка
+ * каждой записи. Исчезнет он — перечень станет описанием вчерашнего дерева, и
+ * проба предпосылки краснеет по имени файла.
+ */
+const REQUIRED_BY_SERVER_SOURCES: ReadonlyArray<readonly [string, string]> = [
+  ["services/iam/internal/domain/types.go", "func validateResourceName("],
+  ["pkg/validate/nameform/nameform.go", "func OK("],
+  ["services/vpc/internal/domain/types.go", "NameOrDefault"],
+  ["services/compute/internal/apps/kacho/api/instance/instance.go", "NameOrDefault"],
+];
+
 interface Contract {
-  /** REST-путь записи → имена сообщений запроса. */
-  writePaths: Map<string, Set<string>>;
-  /** Сообщение → набор полей, объявленных `(required) = true`. */
-  requiredFields: Map<string, Set<string>>;
-  filesRead: number;
+  /** Адрес записи → поля, без которых сервер запрос отвергает. */
+  requiredByPath: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Сколько адресов перечень называет ВООБЩЕ. */
+  pathsKnown: number;
+  /** Сколько из них несут хотя бы одно обязательное поле. */
+  pathsWithRequired: number;
 }
 
 function readContract(): Contract {
-  const writePaths = new Map<string, Set<string>>();
-  const requiredFields = new Map<string, Set<string>>();
-  const files = existsSync(PROTO_ROOT) ? walk(PROTO_ROOT, /\.proto$/) : [];
-
-  for (const file of files) {
-    const src = stripComments(readFileSync(file, "utf8"));
-
-    // rpc → REST-адреса записи. Тело rpc берётся до следующего `rpc `: другого
-    // rpc внутри него быть не может.
-    const rpcs = [...src.matchAll(/\brpc\s+\w+\s*\(\s*([\w.]+)\s*\)/g)];
-    rpcs.forEach((m, k) => {
-      const chunk = src.slice(m.index, k + 1 < rpcs.length ? rpcs[k + 1].index : src.length);
-      const input = m[1].split(".").pop()!;
-      for (const h of chunk.matchAll(/\b(?:post|put|patch)\s*:\s*"([^"]+)"/g)) {
-        const set = writePaths.get(h[1]) ?? new Set<string>();
-        set.add(input);
-        writePaths.set(h[1], set);
-      }
-    });
-
-    // message → поля с `(required) = true`.
-    for (const m of src.matchAll(/\bmessage\s+(\w+)\s*\{/g)) {
-      const body = withoutNested(readBraced(src, m.index + m[0].length - 1));
-      const required = new Set<string>();
-      for (const f of body.matchAll(/\b[\w.<>, ]+?\s(\w+)\s*=\s*\d+\s*(?=[[;])/g)) {
-        const after = f.index + f[0].length;
-        if (body[after] !== "[") continue;
-        if (/\(required\)\s*=\s*true/.test(readBracketed(body, after))) required.add(f[1]);
-      }
-      requiredFields.set(m[1], required);
-    }
-  }
-
-  return { writePaths, requiredFields, filesRead: files.length };
+  let withRequired = 0;
+  for (const fields of REQUIRED_BY_SERVER.values()) if (fields.size > 0) withRequired += 1;
+  return {
+    requiredByPath: REQUIRED_BY_SERVER,
+    pathsKnown: REQUIRED_BY_SERVER.size,
+    pathsWithRequired: withRequired,
+  };
 }
 
 const contract = readContract();
@@ -245,13 +289,16 @@ const contract = readContract();
  * не «не требует»: молчание и незнание обязаны быть различимы.
  */
 function contractRequires(apiPath: string, field: string): boolean | null {
-  const messages = new Set<string>();
-  for (const [path, msgs] of contract.writePaths) {
-    if (path === apiPath || path.startsWith(`${apiPath}/`)) for (const m of msgs) messages.add(m);
+  let known = false;
+  let required = false;
+  for (const [path, fields] of contract.requiredByPath) {
+    if (path === apiPath || apiPath.startsWith(`${path}/`) || path.startsWith(`${apiPath}/`)) {
+      known = true;
+      if (fields.has(field)) required = true;
+    }
   }
-  if (messages.size === 0) return null;
-  for (const m of messages) if (contract.requiredFields.get(m)?.has(field)) return true;
-  return false;
+  if (!known) return null;
+  return required;
 }
 
 // ── сторона консоли: что объявила форма ─────────────────────────────────────
@@ -378,12 +425,33 @@ const treeForms = readForms(treeSources);
 const treeVerdict = adjudicate(treeForms);
 
 describe("объём осмотренного — «ноль находок» отличимо от «ноль прочитанного»", () => {
-  it("контракт прочитан, и обязательность в нём вообще встречается", () => {
-    // Пустой разбор контракта дал бы «ничего не обязательно» и объявил находкой
-    // КАЖДУЮ звёздочку — то есть гейт лгал бы уверенно.
-    expect(contract.filesRead).toBeGreaterThan(20);
-    expect(contract.writePaths.size).toBeGreaterThan(20);
-    expect([...contract.requiredFields.values()].filter((s) => s.size > 0).length).toBeGreaterThan(20);
+  it("источник обязательности непуст, и обязательность в нём вообще встречается", () => {
+    // Пустой источник дал бы «ничего не обязательно» и объявил находкой КАЖДУЮ
+    // звёздочку — то есть гейт лгал бы уверенно. Премиса ловит это ПЕРВОЙ, до
+    // вердикта, и потому ослаблять её ради зелёного нельзя.
+    expect(contract.pathsKnown).toBeGreaterThan(10);
+    expect(contract.pathsWithRequired).toBeGreaterThan(0);
+  });
+
+  it("у перечня есть ПРЕДПОСЫЛКА: отказывающий код продукта на месте", () => {
+    // Перечень выведен из поведения, и поведение это живёт в названных файлах.
+    // Исчезнет любой — перечень станет описанием вчерашнего дерева, и краснеет
+    // ИМЕННО эта проба, а не вердикт: незнание и молчание обязаны быть
+    // различимы.
+    expect(REQUIRED_BY_SERVER_SOURCES.length).toBeGreaterThan(0);
+    // Находки собираются в перечень, а не утверждаются по одной: `expect` этого
+    // прогонщика второго довода не принимает, и падение без имени файла
+    // заставило бы читателя искать предмет вручную.
+    const stale: string[] = [];
+    for (const [rel, marker] of REQUIRED_BY_SERVER_SOURCES) {
+      const abs = join(REPO_ROOT, rel);
+      if (!existsSync(abs)) {
+        stale.push(`${rel} — файла нет`);
+        continue;
+      }
+      if (!readFileSync(abs, "utf8").includes(marker)) stale.push(`${rel} — нет «${marker}»`);
+    }
+    expect(stale).toEqual([]);
   });
 
   it("формы консоли прочитаны, и объявления обязательности в них найдены", () => {
