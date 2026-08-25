@@ -146,7 +146,13 @@ discover_mirror() { # зеркальная перепись: «inject» в им�
   done | LC_ALL=C sort
 }
 
-ledger_paths() { printf '%s\n' "$NOT_A_PROOF" | sed -e '/^[[:space:]]*$/d' -e 's/|.*$//' | LC_ALL=C sort; }
+# Ведомость переопределяется ТОЛЬКО самопроверкой: без этого зеркальную половину
+# нельзя прогнать на синтетическом дереве, и «пустая ведомость — не поломка»
+# осталось бы утверждением о коде, а не о поведении гейта.
+ledger_paths() {
+  printf '%s\n' "${INJECTION_PROOFS_LEDGER-$NOT_A_PROOF}" \
+    | sed -e '/^[[:space:]]*$/d' -e 's/|.*$//' | LC_ALL=C sort
+}
 
 # ── Достижимость из конвейера ────────────────────────────────────────────────
 # Этот обходчик закрывает «доказательство лежит и не вызывается». Ровно тот же
@@ -300,11 +306,11 @@ tools/zz-gamma-inject.sh"
   # ── ВЕРДИКТ: три исхода доказательства обязаны РАЗЛИЧАТЬСЯ вызывающим ──────
   # Это вторая половина предмета: мало найти доказательство — его ОТКАЗ обязан
   # ронять прогон, а «условие не создано» обязано не зачитываться в успех.
-  verdict_probe() { # <метка> <ожидаемый код> <каталог дерева> <обязательная подстрока>
+  verdict_probe() { # <метка> <ожидаемый код> <каталог дерева> <подстрока> [ведомость]
     probe
     local label="$1" want_rc="$2" tree="$3" want_txt="$4" out got
     out="$(INJECTION_PROOFS_TREE="$tree" INJECTION_PROOFS_DECLARED="$(discover "$tree")" \
-            bash "$0" 2>&1)" && got=0 || got=$?
+            INJECTION_PROOFS_LEDGER="${5-}" bash "$0" 2>&1)" && got=0 || got=$?
     if [ "$got" -ne "$want_rc" ]; then
       echo "  ПРОВАЛ $label — код $got, ожидался $want_rc"; printf '%s\n' "$out" | sed 's/^/      /'; rc=1; return
     fi
@@ -328,11 +334,25 @@ tools/zz-gamma-inject.sh"
   verdict_probe "доказательство провалено → красное" 1 "$tmp/red"   "zz-broken-inject.sh"
   verdict_probe "условие не создано → код 2"         2 "$tmp/unmet" "zz-unmet-inject.sh"
 
+  # ЗЕРКАЛО НА УРОВНЕ ГЕЙТА, обе стороны. Слева — дерево, где не-доказательств нет
+  # вовсе: ведомость пуста, и это ЦЕЛЬ, а не поломка. Справа — то же дерево плюс
+  # файл со словом в имени и без формы: он обязан быть назван, а не пропущен.
+  # Проба «все зелены → зелено» выше уже прогоняет левую сторону (ведомость там
+  # пуста), поэтому здесь остаётся правая.
+  mkdir -p "$tmp/mirror/deploy/scripts"
+  printf '#!/usr/bin/env bash\necho "инъекция зелена"\nexit 0\n' >"$tmp/mirror/deploy/scripts/zz-ok-inject.sh"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$tmp/mirror/deploy/scripts/zz-${sfx}or-2.sh"
+  verdict_probe "не-доказательство не опознано → красное" 1 "$tmp/mirror" \
+    "zz-${sfx}or-2.sh"
+  verdict_probe "то же дерево с ведомостью → зелено" 0 "$tmp/mirror" \
+    "PASS: доказательства инъекцией" "deploy/scripts/zz-${sfx}or-2.sh|синтетика самопроверки"
+
   # ПУСТОЙ обход — НЕ зелёный вердикт: совпадение пустого состава с пустым списком
   # не доказывает ничего.
   mkdir -p "$tmp/blind/deploy"
   probe
-  out="$(INJECTION_PROOFS_TREE="$tmp/blind" INJECTION_PROOFS_DECLARED="" bash "$0" 2>&1)" && got=0 || got=$?
+  out="$(INJECTION_PROOFS_TREE="$tmp/blind" INJECTION_PROOFS_DECLARED="" \
+          INJECTION_PROOFS_LEDGER="" bash "$0" 2>&1)" && got=0 || got=$?
   case "$got:$out" in
     2:*"НИ ОДНОГО доказательства"*) echo "  ОК  пустой обход → условие не создано, а не зелено" ;;
     *) echo "  ПРОВАЛ пустой обход дал код $got:"; printf '%s\n' "$out" | sed 's/^/      /'; rc=1 ;;
@@ -340,7 +360,7 @@ tools/zz-gamma-inject.sh"
 
   echo
   echo "случаев проверено: $checked"
-  [ "$checked" -eq 16 ] || { echo "ПРОВАЛ исполнено $checked случаев из 16"; rc=1; }
+  [ "$checked" -eq 18 ] || { echo "ПРОВАЛ исполнено $checked случаев из 18"; rc=1; }
   [ $rc -eq 0 ] && echo "PASS: обход доказательств инъекцией" || echo "FAIL: обход доказательств инъекцией"
   exit $rc
 fi
@@ -394,22 +414,23 @@ if [ "$TREE" = "$REPO_ROOT" ]; then
 fi
 
 # ── Зеркальная перепись: соглашение об именовании держится с ДВУХ сторон ────
-if [ "$TREE" = "$REPO_ROOT" ]; then
-  MIRROR="$(discover_mirror "$TREE")"
-  LEDGER="$(ledger_paths)"
-  if [ "$MIRROR" != "$LEDGER" ]; then
-    echo "FAIL: зеркальная перепись разошлась с ведомостью."
-    unknown="$(LC_ALL=C comm -23 <(printf '%s\n' "$MIRROR") <(printf '%s\n' "$LEDGER"))"
-    stale="$(LC_ALL=C comm -13 <(printf '%s\n' "$MIRROR") <(printf '%s\n' "$LEDGER"))"
-    [ -n "$unknown" ] && { echo "  «inject» в имени есть, формы доказательства нет, и файл не опознан:";
-      printf '    %s\n' $unknown
-      echo "  Либо это доказательство — назови его <тема>-inject.sh, и обход подхватит его сам;"
-      echo "  либо это не доказательство — внеси в NOT_A_PROOF с причиной."; }
-    [ -n "$stale" ] && { echo "  запись ведомости потеряла предмет (файла нет либо он переименован):";
-      printf '    %s\n' $stale
-      echo "  Исключение живёт, пока у него есть предмет; запись без предмета — находка."; }
-    exit 1
-  fi
+# ПУСТАЯ ведомость при пустом зеркале — законное состояние и НЕ поломка: это
+# цель, а не отсутствие проверки. Падать на достигнутой цели значит толкать
+# держать запись ради зелёного.
+MIRROR="$(discover_mirror "$TREE")"
+LEDGER="$(ledger_paths)"
+if [ "$MIRROR" != "$LEDGER" ]; then
+  echo "FAIL: зеркальная перепись разошлась с ведомостью."
+  unknown="$(LC_ALL=C comm -23 <(printf '%s\n' "$MIRROR") <(printf '%s\n' "$LEDGER"))"
+  stale="$(LC_ALL=C comm -13 <(printf '%s\n' "$MIRROR") <(printf '%s\n' "$LEDGER"))"
+  [ -n "$unknown" ] && { echo "  «inject» в имени есть, формы доказательства нет, и файл не опознан:";
+    printf '    %s\n' $unknown
+    echo "  Либо это доказательство — назови его <тема>-inject.sh, и обход подхватит его сам;"
+    echo "  либо это не доказательство — внеси в NOT_A_PROOF с причиной."; }
+  [ -n "$stale" ] && { echo "  запись ведомости потеряла предмет (файла нет либо он переименован):";
+    printf '    %s\n' $stale
+    echo "  Исключение живёт, пока у него есть предмет; запись без предмета — находка."; }
+  exit 1
 fi
 
 count="$(printf '%s\n' "$FOUND" | grep -c .)"
