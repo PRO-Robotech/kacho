@@ -69,7 +69,7 @@ conformance suite that must stay fully green.
 
 GROUP-NAME NOTE: the ExpandAccess case creates a REAL group whose name is
 kebab-case (`rbac-e31-grp-{{runId}}`). Group.name is validated by domain
-GroupName.Validate → ^[a-z][-a-z0-9]{2,62}$ (parity with Account/Project/
+GroupName.Validate → the single resource-name form of the tree (parity with Account/Project/
 SvcAccount). An underscore in the name is rejected sync 400 INVALID_ARGUMENT
 before the Operation is created — keep this name hyphenated, never `rbac_e31_*`.
 """
@@ -896,7 +896,7 @@ CASES.append(Case(
             path="/iam/v1/groups",
             body={
                 # Group.name is kebab-case (domain GroupName.Validate →
-                # ^[a-z][-a-z0-9]{2,62}$, same as Account/Project/SvcAccount).
+                # the single resource-name form of the tree, same as Account/Project/SvcAccount).
                 # Underscores are rejected sync 400 — keep this hyphenated.
                 "accountId": "{{accountAId}}",
                 "name": "rbac-e31-grp-{{runId}}",

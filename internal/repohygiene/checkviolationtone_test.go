@@ -17,7 +17,8 @@
 //
 //  1. язык СУБД не производится прод-кодом как текст ДЛЯ ВЫЗЫВАЮЩЕГО;
 //  2. предпосылка разбора — согласие константы `nameform.ConstraintSuffix` с
-//     тем, как имя ограничения строит миграция 715001 в каждой из пяти схем.
+//     тем, как имя ограничения строит миграция формы имени в каждой схеме, её
+//     прошедшей.
 //
 // Второе — проверка СВОЕЙ предпосылки, а не украшение: разбор полос опирается на
 // конструкцию имени. Поменяй миграция суффикс — и отображение перестало бы
@@ -50,8 +51,16 @@ const dbTonePhrase = "violates check constraint"
 // миграций, и взяв её из того же пакета, он сверял бы значение сам с собой.
 const nameFormConstraintSuffix = "_name_check"
 
-// migration715001 — файл, которым форма имени пришла в схемы сервисов.
-const migration715001 = "715001_resource_name_single_form.sql"
+// migrationNameFormSuffix — ХВОСТ имени файла, которым форма имени пришла в
+// схему сервиса.
+//
+// Отбор идёт по ПРЕДМЕТУ миграции, а не по её номеру. Пять первых схем несут
+// номер задачи (`715001_…`), iam пришёл позже и обязан нести метку времени:
+// номер задачи меньше уже применённых у него версий, и мигратор такую версию не
+// применит вовсе (гейт `TestNewMigrationOutranksEveryAppliedOne`). Предикат по
+// номеру объявил бы шестую схему несуществующей — то есть «ноль находок» стало
+// бы «ноль прочитанного» ровно на той схеме, которая пришла последней.
+const migrationNameFormSuffix = "_resource_name_single_form.sql"
 
 // TestCheckViolationNeverSpeaksTheDBTone — ни один прод-файл не собирает
 // сообщение для вызывающего из фразы Postgres.
@@ -93,7 +102,7 @@ func TestCheckViolationNeverSpeaksTheDBTone(t *testing.T) {
 
 // TestNameFormConstraintSuffixMatchesMigrations — предпосылка разбора полос.
 //
-// Каждая из пяти схем, прошедших 715001, обязана строить имя ограничения тем же
+// Каждая из схем, прошедших 715001, обязана строить имя ограничения тем же
 // суффиксом, который читает отображение ошибки. Гейт падает и когда суффикс
 // разошёлся, и когда файлов миграции не нашлось вовсе: «ноль находок» обязано
 // быть отличимо от «ноль прочитанного».
@@ -107,7 +116,7 @@ func TestNameFormConstraintSuffixMatchesMigrations(t *testing.T) {
 
 	var seen []string
 	for _, abs := range tracked {
-		if filepath.Base(abs) != migration715001 {
+		if !strings.HasSuffix(filepath.Base(abs), migrationNameFormSuffix) {
 			continue
 		}
 		src, rerr := os.ReadFile(abs)
@@ -126,8 +135,12 @@ func TestNameFormConstraintSuffixMatchesMigrations(t *testing.T) {
 		seen = append(seen, rel)
 	}
 
-	t.Logf("осмотрено миграций %s: %d — %s", migration715001, len(seen), strings.Join(seen, ", "))
-	const want = 5 // vpc, compute, storage, nlb, geo
+	t.Logf("осмотрено миграций *%s: %d — %s", migrationNameFormSuffix, len(seen), strings.Join(seen, ", "))
+	// iam пришёл к канону последним (#1279): его форма имени была объявлена
+	// СВОИМ текстом, поэтому гейт единственности формы её не видел, а разбор
+	// полос ничего не знал о шестой схеме. Число обязано двигаться вместе с
+	// деревом — оно и есть перепись, а не украшение.
+	const want = 6 // vpc, compute, storage, nlb, geo, iam
 	if len(seen) != want {
 		t.Fatalf("миграций формы имени найдено %d, ожидалось %d: перепись беспредметна "+
 			"либо схема прибавилась/убыла, и разбор полос про неё ничего не знает", len(seen), want)
