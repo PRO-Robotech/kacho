@@ -42,6 +42,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -68,6 +69,40 @@ const (
 	// Партия ограничена намеренно: одиночный DELETE по огромному хвосту держал
 	// бы блокировки дольше, чем живёт запрос.
 	reapBatch = 1000
+
+	// DPoPPurgeBatch — сколько просроченных доказательств уборка уносит ОДНИМ
+	// оператором. Та же величина и та же причина, что у `reapBatch`: партия
+	// ограничена ради блокировок, а не ради темпа.
+	//
+	// Экспортирована, потому что предметом пробы является именно граница партии:
+	// проба, ставящая свою, утверждала бы о числе, которого в проде нет.
+	DPoPPurgeBatch = 1000
+
+	// DefaultDPoPPurgeInterval — запасной шаг уборки доказательств.
+	//
+	// # Откуда величина
+	//
+	// Нужное содержимое таблицы — доказательства за последнее окно свежести
+	// (TTL строки, по умолчанию 120 с): всё, что старше, читателем уже не
+	// принимается. Уборка с шагом P оставляет в таблице до (TTL+P) секунд
+	// записей, то есть множитель над нужным равен (TTL+P)/TTL. При P=TTL это
+	// 2×; при P=1 ч и TTL=120 с — 31×, и платится он ни за что.
+	//
+	// Поэтому шаг = TTL строки: самый крупный шаг, при котором множитель
+	// остаётся малой константой. Значение здесь — ЗАПАСНОЕ: композиционный
+	// корень выводит шаг из фактического TTL (`config.Config.DPoPReplayTTL`) и
+	// задаёт его всегда, поэтому в проде это умолчание не исполняется.
+	DefaultDPoPPurgeInterval = 2 * time.Minute
+
+	// DefaultDPoPPurgeMaxBatches — сторож от бесконечного цикла уборки, а НЕ
+	// ограничитель её темпа.
+	//
+	// Темп ограничивать этой величиной нельзя: он задан внешней стороной, и
+	// всякая постоянная граница ёмкости означала бы «догоняем до такого-то
+	// темпа, дальше молча отстаём». Сверху уборку держит срок вызывающего;
+	// счётчик партий нужен затем, чтобы цикл был конечен даже при часах базы,
+	// ушедших назад. Тысяча партий — миллион строк за уборку.
+	DefaultDPoPPurgeMaxBatches = 1000
 )
 
 // Config — параметры построения хранилища.
@@ -84,6 +119,14 @@ type Config struct {
 	PollInterval time.Duration
 	// ReapInterval — с каким шагом сборщик уносит просроченные записи.
 	ReapInterval time.Duration
+	// DPoPPurgeInterval — с каким шагом сборщик уносит просроченные записи
+	// однократности предъявления. Выводится из TTL этих записей, а не из
+	// `ReapInterval`: у двух таблиц разная жизнь строки (сутки против двух
+	// минут), и один шаг на обе означал бы тридцатикратный запас у одной.
+	DPoPPurgeInterval time.Duration
+	// DPoPPurgeMaxBatches — сколько партий уборка вправе унести за один заход.
+	// Сторож от бесконечного цикла; см. DefaultDPoPPurgeMaxBatches.
+	DPoPPurgeMaxBatches int
 	// Logger — куда писать о сборщике. nil → slog.Default().
 	Logger *slog.Logger
 }
@@ -100,6 +143,12 @@ func (c Config) withDefaults() Config {
 	}
 	if c.ReapInterval <= 0 {
 		c.ReapInterval = DefaultReapInterval
+	}
+	if c.DPoPPurgeInterval <= 0 {
+		c.DPoPPurgeInterval = DefaultDPoPPurgeInterval
+	}
+	if c.DPoPPurgeMaxBatches <= 0 {
+		c.DPoPPurgeMaxBatches = DefaultDPoPPurgeMaxBatches
 	}
 	if c.Logger == nil {
 		c.Logger = slog.Default()
@@ -120,6 +169,61 @@ type Store struct {
 	cancel    context.CancelFunc
 	stopped   chan struct{}
 	closeOnce bool
+
+	// Величины уборки доказательств. Атомарные, потому что пишет их сборщик, а
+	// читает диагностическая поверхность, и замка между ними быть не должно:
+	// сбор величин не имеет права ждать уборку.
+	dpopSweeps    atomic.Uint64
+	dpopRemoved   atomic.Uint64
+	dpopLagMillis atomic.Int64
+	dpopDrained   atomic.Bool
+}
+
+// DPoPSweepStats — снимок уборки доказательств для диагностической поверхности.
+//
+// # Почему четыре величины, а не одно отставание
+//
+// Ноль отставания отвечает сразу на два вопроса и одинаково: «уборка догоняет»
+// и «уборка не исполнялась ни разу». Различает их `Sweeps`, и без него нулевое
+// отставание означало бы тишину, а не благополучие — ровно тот класс, который
+// корпус велит делать заметным.
+//
+// `RemovedTotal` монотонен, поэтому по нему берётся производная — темп уборки;
+// `Lag` колеблется и производной не имеет смысла. `Drained` — состояние
+// последнего захода; на исправном пути оно избыточно к нулевому отставанию и
+// расходится с ним ровно там, где отставание измерить не удалось: заход,
+// оборванный отказом хранилища, вернёт ноль, не означающий благополучия.
+type DPoPSweepStats struct {
+	// Sweeps — сколько уборок исполнено за жизнь процесса.
+	Sweeps uint64
+	// RemovedTotal — сколько строк унесено за жизнь процесса.
+	RemovedTotal uint64
+	// Lag — отставание, измеренное последней уборкой.
+	Lag time.Duration
+	// Drained — догнала ли последняя уборка хвост.
+	Drained bool
+}
+
+// DPoPSweepStats отдаёт снимок величин уборки.
+func (s *Store) DPoPSweepStats() DPoPSweepStats {
+	return DPoPSweepStats{
+		Sweeps:       s.dpopSweeps.Load(),
+		RemovedTotal: s.dpopRemoved.Load(),
+		Lag:          time.Duration(s.dpopLagMillis.Load()) * time.Millisecond,
+		Drained:      s.dpopDrained.Load(),
+	}
+}
+
+// recordDPoPSweep запоминает исход уборки. Зовётся и на отказе тоже: заход,
+// оборвавшийся на середине, унёс сколько-то строк и хвоста не догнал — обе
+// величины обязаны это сказать.
+func (s *Store) recordDPoPSweep(sw DPoPSweep) {
+	s.dpopSweeps.Add(1)
+	if sw.Removed > 0 {
+		s.dpopRemoved.Add(uint64(sw.Removed))
+	}
+	s.dpopLagMillis.Store(sw.Lag.Milliseconds())
+	s.dpopDrained.Store(sw.Drained)
 }
 
 // Убедиться при сборке, что хранилище удовлетворяет порту середины: интерфейс
@@ -418,6 +522,13 @@ func (s *Store) reapLoop() {
 	defer close(s.stopped)
 	t := time.NewTicker(s.cfg.ReapInterval)
 	defer t.Stop()
+	// ВТОРОЙ шаг, а не второй сборщик: таблицы две, и жизнь строки у них разная
+	// (сутки против окна свежести доказательства), поэтому один шаг на обе
+	// означал бы либо уборку раз в сутки, либо перебор запросов к первой.
+	// Горутина при этом одна — «два расписания об одном предмете» так и не
+	// заводится, предметов действительно два.
+	dpop := time.NewTicker(s.cfg.DPoPPurgeInterval)
+	defer dpop.Stop()
 	for {
 		select {
 		case <-s.baseCtx.Done():
@@ -430,7 +541,49 @@ func (s *Store) reapLoop() {
 				s.cfg.Logger.Info("idempotency store: expired records removed", "removed", n)
 			}
 			cancel()
+		case <-dpop.C:
+			s.purgeDPoPOnce()
 		}
+	}
+}
+
+// purgeDPoPOnce — один заход уборки доказательств вместе с его отчётом.
+//
+// Отчёт разделён на три исхода намеренно. Отказ хранилища — отказ. НЕ ДОГНАЛА —
+// тоже находка, и она обязана прозвучать: уборка, унёсшая свою партию и
+// смолчавшая, по журналу неотличима от догоняющей, а таблица при этом растёт.
+// Молча проходит только третий исход — догнала и унесла ноль строк.
+func (s *Store) purgeDPoPOnce() {
+	// Останов — не находка. Тикер и отмена приходят в один `select`, и на
+	// закрытии хранилища заход успел бы стартовать с уже отменённым контекстом:
+	// уборка честно вернула бы отказ, а журнал назвал бы штатное завершение
+	// неисправностью. «Не выполнилось» не зачитывается ни в успех, ни в отказ.
+	if s.baseCtx.Err() != nil {
+		return
+	}
+
+	// Срок захода не превышает его же шага: заход, переживший собственный
+	// период, накладывался бы на следующий.
+	budget := s.cfg.DPoPPurgeInterval
+	if budget > 30*time.Second {
+		budget = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(s.baseCtx, budget)
+	defer cancel()
+
+	sw, err := s.PurgeExpiredDPoPProofs(ctx)
+	switch {
+	case err != nil:
+		s.cfg.Logger.Warn("dpop replay store: purge failed",
+			"error", err, "removed", sw.Removed)
+	case !sw.Drained:
+		s.cfg.Logger.Warn("dpop replay store: purge did not keep up with the write rate",
+			"removed", sw.Removed,
+			"oldest_expired_age", sw.Lag,
+			"interval", s.cfg.DPoPPurgeInterval,
+			"batch", DPoPPurgeBatch)
+	case sw.Removed > 0:
+		s.cfg.Logger.Info("dpop replay store: expired proofs removed", "removed", sw.Removed)
 	}
 }
 

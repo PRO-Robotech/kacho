@@ -34,7 +34,13 @@ func buildIdempotencyStore(
 			DSN:      cfg.IdempotencyDSN,
 			TTL:      middleware.IdempotencyTTL,
 			LeaseTTL: middleware.IdempotencyLeaseTTL,
-			Logger:   logger,
+			// Шаг уборки доказательств ВЫВЕДЕН из жизни их строки, а не взят у
+			// соседней таблицы: та живёт сутки, эта — окно свежести, и общий шаг
+			// оставлял бы в ней тридцатикратный запас просроченного. Задаётся
+			// здесь ВСЕГДА, поэтому запасная величина хранилища в проде не
+			// исполняется.
+			DPoPPurgeInterval: cfg.DPoPReplayTTL(),
+			Logger:            logger,
 		})
 		if err != nil {
 			return nil, nil, nil, err
