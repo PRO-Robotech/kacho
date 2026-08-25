@@ -89,7 +89,6 @@ message HealthCheck {
   // the extended 4-way oneof below (tags reused within the same oneof: tcp/http
   // keep 6/7, https/grpc add 8/9).
   oneof options {
-
     // (1) TCP connect probe.
     TcpOptions tcp = 6;
     // (2) HTTP probe.

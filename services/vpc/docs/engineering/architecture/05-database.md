@@ -210,7 +210,7 @@ kacho-vpc нет.
 
 `security_groups.network_id` — **обязателен на Create и immutable после него**: комментарий
 самой колонки в `0001_initial.sql` объявляет её `mandatory and immutable after Create`,
-контракт несёт `[(required) = true]`, use-case отвергает пустое значение синхронно
+use-case отвергает пустое значение синхронно
 (`InvalidArgument "network_id required"`). Колонка объявлена NULLABLE только ради FK
 (ON DELETE RESTRICT): пустая строка сломала бы ссылку, а use-case пустую и не пропускает.
 Прежняя редакция читала NULLABLE-объявление как разрешение на network-less SG — форма

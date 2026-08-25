@@ -77,10 +77,13 @@ CASES = []
 # testing the wrong branch. UserExistenceChecker.ExistsUser therefore had NO
 # coverage at any level; this id is what actually reaches it.
 #
-# NB the proto annotation on subject_id says `(pattern) = "usr_[0-9a-hjkmnp-tv-z]+"`
-# with `(length) = "<=20"` — self-contradictory (`usr_` + 17 = 21 > 20) and at odds
-# with the implementation. The implementation matches the real id format
-# (`usrn3948g8m19j2mn8wr`); the annotation is wrong. Reported, not worked around.
+# NB the contract used to carry two machine-readable constraints on subject_id
+# that CONTRADICTED EACH OTHER: a pattern demanding an underscore after the
+# prefix, and a length cap one character shorter than that pattern's own shortest
+# match. No input satisfied both, so the pair was unsatisfiable by construction —
+# and neither was enforced anywhere, which is the only reason nobody noticed. The
+# whole family was retired in kacho#1255; the implementation, which matches the
+# real id format (`usrn3948g8m19j2mn8wr`), was and remains the only source.
 ABSENT_USER_ID = "usr00000000000000zzz"
 
 

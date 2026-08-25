@@ -692,7 +692,6 @@ message DetachInstanceDiskRequest {
   string instance_id = 1;
 
   oneof disk {
-
     // ID of the storage Volume (prefix "vol") that should be detached.
     string volume_id = 2;
 
@@ -755,7 +754,6 @@ message DetachInstanceNetworkInterfaceRequest {
   string instance_id = 1;
 
   oneof network_interface {
-
     // ID of the kacho-vpc NetworkInterface (NIC, prefix "enp") to detach.
     string nic_id = 3;
 

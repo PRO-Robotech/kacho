@@ -261,7 +261,6 @@ message InternalIpv4AddressSpec {
   string address = 1; // if unspecified, one will be automatically allocated from the subnet
 
   oneof scope {
-
     // Subnet from which the address will be allocated.
     string subnet_id = 2;
   }
@@ -272,7 +271,6 @@ message InternalIpv6AddressSpec {
   string address = 1; // if unspecified, one will be automatically allocated from the subnet
 
   oneof scope {
-
     // Subnet from which the address will be allocated.
     string subnet_id = 2;
   }

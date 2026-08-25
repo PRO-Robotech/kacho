@@ -60,7 +60,6 @@ message Address {
   map<string, string> labels = 6;
 
   oneof address {
-
     // External ipv4 address specification.
     ExternalIpv4Address external_ipv4_address = 7;
     // Internal ipv4 address specification
@@ -178,7 +177,6 @@ message InternalIpv4Address {
   string address = 1;
 
   oneof scope {
-
     // Subnet from which the address will be allocated
     string subnet_id = 2;
   }
@@ -189,7 +187,6 @@ message InternalIpv6Address {
   string address = 1;
 
   oneof scope {
-
     // Subnet (with a v6_cidr_block) from which the address will be allocated
     string subnet_id = 2;
   }
