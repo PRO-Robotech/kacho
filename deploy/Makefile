@@ -11,7 +11,7 @@
         verdict-aggregator-discipline ceremony-declaration-discipline \
         dialled-transport-discipline delete-step-discipline \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo seed-storage seed-vpc-pools \
-        seed-vpc-pools-check e2e-newman stand-provenance \
+        seed-vpc-pools-check e2e-newman stand-provenance stand-provenance-self-test \
         managed-image-pins managed-image-pins-check stack-up
 
 SHELL := bash
@@ -101,17 +101,22 @@ BUILD_UI ?= 1
 # answers "when was it built", a different question, and one that goes wrong the
 # moment two builds happen in a session or a rebuild is skipped.
 #
-# These labels are applied on the `docker build` command line, so no Dockerfile
-# changes are needed and every service gets them uniformly. Read them back with
-# `make stand-provenance`, which reports the RUNNING pods' images, not the
-# intended ones.
+# Величина передаётся `--build-arg` (см. IMAGE_BUILD_ARGS ниже), а Dockerfile из
+# неё делает ДВА носителя: клеймо образа и файл /etc/kacho/image-revision.
+# Читает их `make stand-provenance` — у РАБОТАЮЩИХ подов, а не у намеренных.
 #
-# NB: the Go binaries declare `buildVersion`/`buildCommit` (four services do, and
-# feed them to a Prometheus `*_build_info` metric) with a comment saying they are
-# injected via `-ldflags -X`. No build in this repo does that, so those metrics
-# report version="dev" commit="unknown" everywhere. Populating them means editing
-# the Dockerfiles, which is outside this change; the image labels below are the
-# part that can be done from the build command alone.
+# ЗДЕСЬ СТОЯЛО «клейма ставятся из командной строки, править Dockerfile не надо».
+# Довод был верен ровно до вопроса «кто это прочтёт»: клеймо у работающего
+# контейнера не достать ничем, кроме демона хоста или реестра. Демона хоста у
+# управляемого кластера нет, а образы стенда в реестр не публикуются — то есть
+# ответ существовал только там, где его и так можно было получить иначе.
+#
+# NB: бинари Go объявляют `buildVersion`/`buildCommit` (четыре сервиса, и кормят
+# ими метрику `*_build_info`), а комментарий рядом обещает подстановку через
+# `-ldflags -X`. Ни одна сборка дерева этого не делает, поэтому метрики везде
+# сообщают version="dev" commit="unknown". Это ОТДЕЛЬНЫЙ предмет и он не закрыт
+# здесь: провенанс стенда отвечает на «какое дерево исполняется», а метрика — на
+# «что бинарь о себе говорит», и второе по-прежнему говорит неправду.
 #
 # ОТМЕТКИ ВРЕМЕНИ СБОРКИ ЗДЕСЬ НЕТ — И ЭТО РЕШЕНИЕ, А НЕ ПРОПУСК.
 #
@@ -138,12 +143,9 @@ BUILD_UI ?= 1
 # по-прежнему. Читателей у снятой метки в дереве нет ни одного (единственное
 # совпадение — клиент zot, читающий одноимённую OCI-аннотацию у образов
 # арендатора; к меткам наших образов оно отношения не имеет).
-GIT_COMMIT := $(shell git -C .. rev-parse HEAD 2>/dev/null || echo unknown)
-GIT_DIRTY  := $(shell test -n "$$(git -C .. status --porcelain 2>/dev/null)" && echo "-dirty" || echo "")
-GIT_REF    := $(shell git -C .. rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
-IMAGE_LABELS := \
-  --label org.opencontainers.image.revision="$(GIT_COMMIT)$(GIT_DIRTY)" \
-  --label org.opencontainers.image.version="$(GIT_REF)"
+# Величина провенанса объявлена ОДИН раз на дерево — иначе девять рецептов,
+# собирающих `kacho-<svc>:dev`, несли бы девять копий одного предиката.
+include ../provenance.mk
 
 # IMAGE_IDS_VALUES — карта «сервис → идентификатор СОДЕРЖИМОГО его образа».
 #
@@ -166,7 +168,7 @@ build-services:
 	@for svc in $(IMAGES); do \
 	  echo "=== build kacho-$$svc:dev ==="; \
 	  d=$$(test "$$svc" = api-gateway && echo gateway || echo services/$$svc); \
-	  ( cd .. && docker build -f $$d/Dockerfile $(IMAGE_LABELS) -t kacho-$$svc:dev . ) || exit 1; \
+	  ( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t kacho-$$svc:dev . ) || exit 1; \
 	  kind load docker-image kacho-$$svc:dev --name $(CLUSTER_NAME) || exit 1; \
 	done
 	@# Идентификатор содержимого берётся у демона ПОСЛЕ сборки: это то, что реально
@@ -207,34 +209,41 @@ build-ui:
 	@echo "=== модулей консоли: $(words $(UI_PROJECTS)) [$(UI_PROJECTS)] ==="
 	@for p in $(UI_PROJECTS); do \
 	  echo "=== build kacho-ui-future-$$p:dev ==="; \
-	  ( cd ../ui-future && docker build -f $$p/Dockerfile $(IMAGE_LABELS) \
+	  ( cd ../ui-future && docker build -f $$p/Dockerfile $(IMAGE_BUILD_ARGS) \
 	      -t kacho-ui-future-$$p:dev . ) || exit 1; \
 	  kind load docker-image kacho-ui-future-$$p:dev --name $(CLUSTER_NAME) || exit 1; \
 	done
 	@echo "=== консоль собрана и загружена в kind ==="
 
-# stand-provenance — what commit is the stand ACTUALLY running?
+# stand-provenance — какую РЕВИЗИЮ дерева исполняет каждый контейнер стенда.
 #
-# Deliberately keyed on the image id of the RUNNING container, not on the local
-# `:dev` tag: the tag is mutable, so a rebuild that was never loaded into kind, or
-# a pod that was never restarted, would otherwise be reported as the new commit
-# while serving the old one. That is the same "intent vs outcome" mistake the
-# posture gate made. If the running image id is not present in the host daemon,
-# say so rather than guessing.
+# Логика вынесена в deploy/scripts/stand-provenance.sh целиком, и это не вкус:
+# рецепт make нельзя ни прогнать без кластера, ни доказать инъекцией. Скрипт
+# несёт `--self-test`, подменяющий kubectl и docker заглушками, и потому
+# способность цели ПОКРАСНЕТЬ проверяема без стенда.
+#
+# Коды возврата различают три исхода (0 — у всех установлена, 1 — у части нет,
+# 2 — предпосылка исчезла). Прежняя редакция на недоступном кластере печатала
+# заголовок и выходила успехом.
+# ТРИ ИСХОДА СКРИПТА СХЛОПЫВАЮТСЯ В ОДИН КОД MAKE — ПОЭТОМУ ОНИ НАЗВАНЫ СЛОВАМИ.
+# make выходит кодом 2 на ЛЮБОМ отказе рецепта, поэтому различие «у части не
+# установлена» (1) и «стенд не опрошен» (2) через него не проходит. Читающему
+# машинно — звать scripts/stand-provenance.sh напрямую; читающему глазами — строка
+# ВЕРДИКТ ниже.
 stand-provenance:
-	@echo "workspace: $(GIT_REF) @ $(GIT_COMMIT)$(GIT_DIRTY)"
-	@printf "%-14s %-26s %s\n" "CONTAINER" "IMAGE" "REVISION (label on the RUNNING image)"
-	@kubectl -n kacho get pods -o json 2>/dev/null \
-	  | jq -r '.items[] | select(.status.phase=="Running") | .status.containerStatuses[]? | select(.image|test("kacho-")) | "\(.name) \(.image) \(.imageID)"' \
-	  | sort -u \
-	  | while read -r name image imageid; do \
-	      sha=$${imageid##*@}; \
-	      rev=$$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$$sha" 2>/dev/null); \
-	      case "$$rev" in \
-	        ""|"<no value>") rev="(no revision label — image predates provenance, or is not in the host daemon)" ;; \
-	      esac; \
-	      printf "%-14s %-26s %s\n" "$$name" "$${image##*/}" "$$rev"; \
-	    done
+	@echo "рабочая копия: $(GIT_REF) @ $(GIT_COMMIT)$(GIT_DIRTY)"
+	@bash scripts/stand-provenance.sh --namespace kacho; rc=$$?; \
+	  case $$rc in \
+	    0) echo "ВЕРДИКТ: ревизия установлена у каждого осмотренного контейнера (код 0)" ;; \
+	    1) echo "ВЕРДИКТ: у части контейнеров ревизия НЕ установлена (код 1) — они названы выше" ;; \
+	    2) echo "ВЕРДИКТ: стенд НЕ опрошен, предпосылка исчезла (код 2) — это не «сходится»" ;; \
+	    *) echo "ВЕРДИКТ: неожиданный код $$rc" ;; \
+	  esac; \
+	  exit $$rc
+
+## stand-provenance-self-test — доказательство инъекцией, кластера не требует.
+stand-provenance-self-test:
+	@bash scripts/stand-provenance.sh --self-test
 
 # KAC-127: CI docker-compose stack (ci-images / ci-up / ci-seed / ci-down /
 # ci-logs) удалён — он был построен на упразднённом kacho-resource-manager
@@ -1153,7 +1162,7 @@ endif
 		: ; \
 	else \
 		d=$$(test "$(SVC)" = api-gateway && echo gateway || echo services/$(SVC)); \
-		( cd .. && docker build -f $$d/Dockerfile $(IMAGE_LABELS) -t kacho-$(SVC):dev . ); \
+		( cd .. && docker build -f $$d/Dockerfile $(IMAGE_BUILD_ARGS) -t kacho-$(SVC):dev . ); \
 	fi && \
 	kind load docker-image kacho-$(SVC):dev --name $(CLUSTER_NAME) && \
 	kubectl rollout restart -n kacho deployment/$$DEPLOY_NAME

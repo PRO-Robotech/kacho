@@ -30,10 +30,19 @@
 //     кейса: `NLB-CR-VAL-NAME-UPPERCASE` шлёт `EdgePublic-…` именно затем, чтобы
 //     получить отказ. Различитель полярности — общая деталь, его собственная
 //     способность ошибаться доказана отдельно (`newmanrefusalpolarity_injection_test.go`).
-//  2. Сервис, НЕ мигрировавший под канон (iam, registry), — у него своя форма, и
-//     судить его этой мерой значило бы требовать свойства, которого контракт не
-//     обещает. Перечень мигрировавших ВЫВОДИТСЯ из дерева по наличию миграции, а не
-//     выписывается: выписанный разошёлся бы молча в тот день, когда мигрирует шестой.
+//  2. Сервис, НЕ мигрировавший под канон (registry), — у него своя форма, и судить
+//     его этой мерой значило бы требовать свойства, которого контракт не обещает.
+//     Перечень мигрировавших ВЫВОДИТСЯ из дерева по наличию миграции, а не
+//     выписывается: выписанный разошёлся бы молча в тот день, когда мигрирует
+//     следующий. Шестым мигрировал iam (#1279).
+//  3. Ресурс, чьё имя — ДРУГОЙ РЕФЕРЕНТ, а не косметическая метка. Такой ресурс
+//     живёт в мигрировавшем сервисе и формой имени не судится: идентификатор роли
+//     (`roles/vpc.admin`) — то, на что ссылаются привязки, и подчёркивание в нём
+//     законно по его собственной форме (записанное решение владельца, #715; та же
+//     граница проведена миграцией формы имени в iam и пробой её ограничения).
+//     Освобождение даётся по ЦЕЛИ ЗАПРОСА, а не по имени шага: имя шага — проза, и
+//     предикат по нему стал бы маской. Перечень проверяется в обе стороны: запись,
+//     которой больше нечего освобождать, — находка.
 //
 // # Предпосылка проверяется, объём печатается
 //
@@ -57,6 +66,18 @@ import (
 // продуктовая форма ослабла. Расхождение между этими двумя формами — само по себе
 // находка, и его ловит `nameform`-проба на стороне продукта.
 var nameFormCanon = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`)
+
+// nameFormOtherReferents — цели запроса, чьё поле `name` формой имени НЕ судится:
+// значение — причина. Ключ сравнивается как подстрока пути, потому что адрес шага
+// несёт подстановку базы (`{{baseUrl}}`) и хвост идентификатора.
+//
+// Перечень намеренно КРОШЕЧНЫЙ и обязан таким остаться: каждая запись — слепая
+// зона, выданная вперёд. Заводя новую, назови, ЧЕМ имя этого ресурса судится
+// вместо канона, — иначе это не другой референт, а забытая фикстура.
+var nameFormOtherReferents = map[string]string{
+	"/iam/v1/roles": "идентификатор роли, а не косметическая метка: на него ссылаются " +
+		"привязки, и он судится своей формой (`^[a-z][a-z0-9_]{0,40}$` либо `roles/<модуль>.<роль>`)",
+}
 
 // reMustache — подстановка окружения. Её значение гейту неизвестно, поэтому вместо
 // неё подставляется образец, отвечающий канону: судим ФОРМУ обрамления, а не значение.
@@ -127,8 +148,16 @@ func walkItems(items []pmItem, fn func(pmItem)) {
 // входе, СОБРАННОМ пробой, а не снятом с дерева (дерево движется, проба истекла бы
 // вместе с ним).
 //
-// Возвращает: находки, число шагов с именем в теле, число судимых из них.
-func judgeFixtureNames(rel string, c pmCollection) (findings []string, withName, judged int) {
+// Возвращает: находки, число шагов с именем в теле, число судимых из них и
+// сколько шагов освобождено по каждому другому референту.
+//
+// Последнее — не украшение отчёта: перечень освобождений обязан истекать сам, а
+// «сколько раз он сработал» есть единственный способ отличить запись, у которой
+// есть предмет, от записи, пережившей его.
+func judgeFixtureNames(rel string, c pmCollection) (
+	findings []string, withName, judged int, spared map[string]int,
+) {
+	spared = map[string]int{}
 	walkItems(c.Item, func(it pmItem) {
 		names := bodyNames(it)
 		if len(names) == 0 {
@@ -137,6 +166,10 @@ func judgeFixtureNames(rel string, c pmCollection) (findings []string, withName,
 		withName++
 		if expectsRefusal(it) {
 			return // негодное имя здесь и есть предмет кейса
+		}
+		if ref := otherReferent(it); ref != "" {
+			spared[ref]++
+			return // имя этого ресурса судится не каноном
 		}
 		judged++
 		for _, n := range names {
@@ -149,7 +182,23 @@ func judgeFixtureNames(rel string, c pmCollection) (findings []string, withName,
 			}
 		}
 	})
-	return findings, withName, judged
+	return findings, withName, judged, spared
+}
+
+// otherReferent — цель шага, чьё имя формой имени не судится; пусто, если шаг
+// обычный. Судится АДРЕС запроса: имя шага — проза, и предикат по ней стал бы
+// маской для любой забытой фикстуры, которую назвали «create-role-…».
+func otherReferent(it pmItem) string {
+	if it.Request == nil {
+		return ""
+	}
+	url := strings.TrimSpace(rawURL(it.Request.URL))
+	for path := range nameFormOtherReferents {
+		if strings.Contains(url, path) {
+			return path
+		}
+	}
+	return ""
 }
 
 func TestFixtureNamesObeyTheCanonWhereTheServiceMigrated(t *testing.T) {
@@ -164,6 +213,7 @@ func TestFixtureNamesObeyTheCanonWhereTheServiceMigrated(t *testing.T) {
 		collections, stepsWithName, judged int
 		findings                           []string
 	)
+	spared := map[string]int{}
 
 	for svc := range migrated {
 		base := filepath.Join(root, "services", svc, "tests", "newman", "collections")
@@ -179,10 +229,13 @@ func TestFixtureNamesObeyTheCanonWhereTheServiceMigrated(t *testing.T) {
 				return fmt.Errorf("коллекция %s не разбирается: %w", abs, err)
 			}
 			rel, _ := filepath.Rel(root, abs)
-			f, withName, j := judgeFixtureNames(filepath.ToSlash(rel), c)
+			f, withName, j, sp := judgeFixtureNames(filepath.ToSlash(rel), c)
 			findings = append(findings, f...)
 			stepsWithName += withName
 			judged += j
+			for k, v := range sp {
+				spared[k] += v
+			}
 			return nil
 		})
 		if err != nil {
@@ -196,13 +249,30 @@ func TestFixtureNamesObeyTheCanonWhereTheServiceMigrated(t *testing.T) {
 	}
 	sort.Strings(svcNames)
 
+	sparedWhy := make([]string, 0, len(nameFormOtherReferents))
+	for path, why := range nameFormOtherReferents {
+		sparedWhy = append(sparedWhy, fmt.Sprintf("%s ×%d — %s", path, spared[path], why))
+	}
+	sort.Strings(sparedWhy)
+
 	t.Logf("осмотрено: сервисов под каноном %d (%s), коллекций %d, шагов с именем в теле %d, "+
-		"из них судимых (не утверждающих отказ) %d",
-		len(migrated), strings.Join(svcNames, " "), collections, stepsWithName, judged)
+		"из них судимых (не утверждающих отказ) %d; освобождено по другому референту %d [%s]",
+		len(migrated), strings.Join(svcNames, " "), collections, stepsWithName, judged,
+		len(spared), strings.Join(sparedWhy, "; "))
 
 	if collections == 0 || stepsWithName == 0 {
 		t.Fatal("прочитано ноль коллекций либо ноль шагов с именем — гейт беспредметен, " +
 			"его зелёное ничего не означает")
+	}
+
+	// Освобождение живёт, пока у него есть предмет. Запись, не освободившая НИ
+	// ОДНОГО шага, — находка: она переживает свой предмет и достанется в
+	// наследство следующей слепой зоне.
+	for path := range nameFormOtherReferents {
+		if spared[path] == 0 {
+			t.Errorf("освобождение %q не освободило ни одного шага — оно потеряло предмет "+
+				"и подлежит снятию, иначе станет слепой зоной для следующей фикстуры", path)
+		}
 	}
 
 	if len(findings) > 0 {

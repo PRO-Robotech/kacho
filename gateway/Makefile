@@ -5,6 +5,10 @@ BINARY := api-gateway
 CMD    := ./cmd/api-gateway
 IMAGE  := kacho-api-gateway:dev
 
+# Ревизия дерева уезжает в образ аргументом сборки (IMAGE_BUILD_ARGS).
+# Объявление одно на дерево — см. разбор в самом файле.
+include ../provenance.mk
+
 # Permission catalog — рантайм source-of-truth для per-RPC authz-middleware.
 # Генерируется ЗДЕСЬ (api-gateway импортирует proto всех доменов) скриптом
 # scripts/gen-permission-catalog.sh из единого внутрирепозиторного proto-дерева
@@ -53,7 +57,7 @@ lint:
 	golangci-lint run ./...
 
 docker:
-	cd .. && docker build -f kacho-api-gateway/Dockerfile -t $(IMAGE) .
+	cd .. && docker build $(IMAGE_BUILD_ARGS) -f kacho-api-gateway/Dockerfile -t $(IMAGE) .
 
 helm-lint:
 	helm lint deploy/

@@ -98,6 +98,22 @@ type Probe struct {
 	Schema   string
 	Tables   []Table
 	Excluded map[string]string
+	// OtherForm — таблицы схемы, которые несут форму имени НАМЕРЕННО ДРУГУЮ,
+	// чем канон; значение — причина. Отличается от Excluded по существу:
+	// исключённая таблица формы не несёт ВОВСЕ, а эта несёт СВОЮ, и та форма
+	// действует.
+	//
+	// Категория заведена схемой iam, где рядом с шестью именуемыми ресурсами
+	// живёт идентификатор роли (`roles/vpc.admin`): он не косметическая метка,
+	// а то, на что ссылаются привязки, и формой имени не судится — записанное
+	// решение владельца (#715). Без третьей категории такую таблицу пришлось бы
+	// либо привести к канону (сломав ссылки), либо объявить исключением
+	// (соврав: форму она несёт).
+	//
+	// Перечень проверяется в ОБЕ стороны: запись, чья таблица формы не несёт
+	// вовсе, и запись, чья таблица пришла К КАНОНУ, — обе находка. Так
+	// послабление истекает само, а не переживает свой предмет.
+	OtherForm map[string]string
 }
 
 // Report — исход прогона: объём осмотренного и перечень находок.
@@ -114,6 +130,10 @@ type Report struct {
 	BareInDB []string
 	// Excluded — объявленные намеренные исключения.
 	Excluded []string
+	// OtherForm — таблицы, объявленные несущими намеренно иную форму.
+	OtherForm []string
+	// OtherFormWhy — причина по каждой такой таблице.
+	OtherFormWhy map[string]string
 	// ExcludedWhy — причина по каждому исключению. Поле читается переписью и
 	// печатается: причина, которую никто не читает, — то же «принято и
 	// проигнорировано», только в оснастке.
@@ -131,11 +151,17 @@ func (r Report) Census() string {
 	for _, tbl := range r.Excluded {
 		why = append(why, fmt.Sprintf("%s — %s", tbl, r.ExcludedWhy[tbl]))
 	}
+	other := make([]string, 0, len(r.OtherForm))
+	for _, tbl := range r.OtherForm {
+		other = append(other, fmt.Sprintf("%s — %s", tbl, r.OtherFormWhy[tbl]))
+	}
 	return fmt.Sprintf(
 		"схема %s: осмотрено таблиц с формой имени — %d (%v); на каждой отвергнуто значений — %d, "+
-			"принято — %d; намеренных исключений — %d [%s]; находок — %d",
+			"принято — %d; намеренных исключений — %d [%s]; таблиц с намеренно иной формой — %d [%s]; "+
+			"находок — %d",
 		r.Schema, len(r.Probed), r.Probed, r.RejectedPerTable, r.AcceptedPerTable,
-		len(r.Excluded), strings.Join(why, "; "), len(r.Findings))
+		len(r.Excluded), strings.Join(why, "; "),
+		len(r.OtherForm), strings.Join(other, "; "), len(r.Findings))
 }
 
 // rejected — имена ВНЕ канона. Каждое отвергается формой, и каждое покрывает
@@ -242,6 +268,8 @@ func (p Probe) Check(ctx context.Context, db Execer) (Report, error) {
 		BareInDB:         []string{},
 		Excluded:         []string{},
 		ExcludedWhy:      map[string]string{},
+		OtherForm:        []string{},
+		OtherFormWhy:     map[string]string{},
 		RejectedPerTable: len(rejected),
 		AcceptedPerTable: len(accepted),
 		Findings:         []string{},
@@ -262,6 +290,18 @@ func (p Probe) Check(ctx context.Context, db Execer) (Report, error) {
 		rep.ExcludedWhy[tbl] = why
 	}
 	sort.Strings(rep.Excluded)
+	for tbl, why := range p.OtherForm {
+		rep.OtherForm = append(rep.OtherForm, tbl)
+		rep.OtherFormWhy[tbl] = why
+	}
+	sort.Strings(rep.OtherForm)
+	for _, tbl := range rep.OtherForm {
+		if _, dup := p.Excluded[tbl]; dup {
+			rep.Findings = append(rep.Findings, fmt.Sprintf(
+				"схема %s, таблица %s: объявлена И исключением (формы нет), И носителем иной формы — "+
+					"две записи об одном предмете, из которых верна одна", p.Schema, tbl))
+		}
+	}
 
 	// Образцы сверяются с ЕДИНСТВЕННЫМ объявлением формы, а не с представлением
 	// автора о ней. Иначе перечень значений стал бы вторым местом об одном
@@ -301,11 +341,18 @@ func (p Probe) Check(ctx context.Context, db Execer) (Report, error) {
 	sort.Strings(rep.BareInDB)
 
 	// ── 1. Перепись: что несёт форму — и что её не несёт ────────────────────
-	if !equalSets(rep.Probed, rep.CarriedInDB) {
+	// Форму в базе несут ДВА объявленных множества: те, что проба обходит, и
+	// те, что несут намеренно иную форму. Сверять надо их объединение — иначе
+	// вторая категория читалась бы как «таблица получила форму, а проба о ней
+	// не знает».
+	declaredCarriers := append(append([]string{}, rep.Probed...), rep.OtherForm...)
+	sort.Strings(declaredCarriers)
+	if !equalSets(declaredCarriers, rep.CarriedInDB) {
 		rep.Findings = append(rep.Findings, fmt.Sprintf(
-			"схема %s: перечень таблиц с формой имени в БАЗЕ разошёлся с перечнем, который обходит проба. "+
+			"схема %s: перечень таблиц с формой имени в БАЗЕ разошёлся с объявленным. "+
 				"Таблица, получившая форму позже, осталась бы недоказанной; таблица, её потерявшая, — незамеченной.\n"+
-				"  проба обходит: %v\n  база несёт:    %v", p.Schema, rep.Probed, rep.CarriedInDB))
+				"  объявлено (проба + иная форма): %v\n  база несёт:                     %v",
+			p.Schema, declaredCarriers, rep.CarriedInDB))
 	}
 	if !equalSets(rep.Excluded, rep.BareInDB) {
 		rep.Findings = append(rep.Findings, fmt.Sprintf(
@@ -319,7 +366,37 @@ func (p Probe) Check(ctx context.Context, db Execer) (Report, error) {
 	// Две разные формы у соседних таблиц одного сервиса — ровно то состояние,
 	// которое снимала #715. Сверяется определение, а не имя ограничения.
 	sample, sampleFrom := "", ""
+	// Образец формы берётся у таблицы, которую проба ОБХОДИТ: она и есть носитель
+	// канона. Возьми его у первой попавшейся из CarriedInDB — и на схеме, где
+	// первой по алфавиту стоит таблица с намеренно иной формой, канон сравнивался
+	// бы с не-каноном, а находка пришлась бы на все остальные разом.
+	for _, tbl := range rep.Probed {
+		fc, ok := found[tbl]
+		if ok && len(fc.defs) == 1 {
+			sample, sampleFrom = fc.defs[0], tbl
+			break
+		}
+	}
+	for _, tbl := range rep.OtherForm {
+		fc, ok := found[tbl]
+		if !ok || len(fc.names) == 0 {
+			rep.Findings = append(rep.Findings, fmt.Sprintf(
+				"схема %s, таблица %s: объявлена носителем намеренно иной формы (%s), но формы имени "+
+					"НЕ НЕСЁТ вовсе — запись потеряла предмет: либо таблица его лишилась, либо ей место "+
+					"в перечне исключений", p.Schema, tbl, rep.OtherFormWhy[tbl]))
+			continue
+		}
+		if sample != "" && len(fc.defs) == 1 && fc.defs[0] == sample {
+			rep.Findings = append(rep.Findings, fmt.Sprintf(
+				"схема %s, таблица %s: объявлена носителем намеренно иной формы (%s), но несёт ТУ ЖЕ, что %s — "+
+					"запись пережила свой предмет и должна быть снята, а таблица переведена под пробу",
+				p.Schema, tbl, rep.OtherFormWhy[tbl], sampleFrom))
+		}
+	}
 	for _, tbl := range rep.CarriedInDB {
+		if _, other := p.OtherForm[tbl]; other {
+			continue
+		}
 		fc := found[tbl]
 		if len(fc.names) > 1 {
 			rep.Findings = append(rep.Findings, fmt.Sprintf(
@@ -327,11 +404,10 @@ func (p Probe) Check(ctx context.Context, db Execer) (Report, error) {
 					"правила, и какое из них действует, читатель не выведет", p.Schema, tbl, len(fc.names), fc.names))
 			continue
 		}
-		if sample == "" {
-			sample, sampleFrom = fc.defs[0], tbl
+		if tbl == sampleFrom {
 			continue
 		}
-		if fc.defs[0] != sample {
+		if sample != "" && fc.defs[0] != sample {
 			rep.Findings = append(rep.Findings, fmt.Sprintf(
 				"схема %s: таблица %s несёт ФОРМУ, отличную от %s.\n  %s: %s\n  %s: %s",
 				p.Schema, tbl, sampleFrom, tbl, fc.defs[0], sampleFrom, sample))
