@@ -41,8 +41,9 @@ package expiredcredsweep
 
 import (
 	"context"
+	"crypto/rand"
 	"log/slog"
-	"math/rand/v2"
+	"math/big"
 	"time"
 )
 
@@ -213,7 +214,17 @@ func (s *Sweeper) startupJitter() time.Duration {
 	if cap <= 0 {
 		return 0
 	}
-	return time.Duration(rand.Int64N(int64(cap)))
+	// Источник — криптографический, и это НЕ про стойкость разъезда: разъезд
+	// реплик тайной не является. Слабый источник здесь дал бы находку статического
+	// разбора, а подавлять её пометкой значило бы заводить послабление ради одной
+	// строки, исполняемой один раз за жизнь процесса. Дешевле взять сильный.
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(cap)))
+	if err != nil {
+		// Отказ источника не повод не пойти: без разъезда реплики начнут обход
+		// разом — это хуже по нагрузке, но не по корректности.
+		return 0
+	}
+	return time.Duration(n.Int64())
 }
 
 // SweepOnce делает один прогон и печатает перепись — ВСЕГДА, а не только при

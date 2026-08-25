@@ -30,6 +30,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
+
 	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 )
 
@@ -43,7 +45,10 @@ func newReclaimFixture(t *testing.T) *reclaimFixture {
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	// Закрытие С ПРЕДЕЛОМ, а не `t.Cleanup(pool.Close)`: отложенное закрытие ждёт
+	// соединение, которое проба, упавшая внутри открытой транзакции, не вернёт
+	// никогда, — и уносит с собой вердикт ВСЕГО пакета.
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	// Аккаунт и владелец ссылаются друг на друга — посев одной транзакцией с
 	// отложенными ограничениями.
