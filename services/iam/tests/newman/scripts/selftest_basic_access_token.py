@@ -321,6 +321,84 @@ def run_folder(stand: Stand, folder: str) -> Outcome:
         return res
 
 
+def outcome_from_stats(stats: dict, *, report: bool = True,
+                       failures: list[str] | None = None) -> Outcome:
+    """Исход, собранный из сводки, — без newman.
+
+    Нужен самопроверке ниже: способность ПОЛА упасть доказывается на
+    синтетической сводке, а не подъёмом подставного края.
+    """
+    res = Outcome()
+    res.report = report
+    if not report:
+        return res
+    res.assertions = int(stats.get("assertions", 0))
+    res.failed = int(stats.get("failed", 0))
+    res.requests_failed = int(stats.get("requests_failed", 0))
+    res.executions = int(stats.get("requests", 0))
+    res.script_errors = int(stats.get("script_errors", 0))
+    res.texts = list(failures or [])
+    return res
+
+
+def self_test() -> int:
+    """Доказательство ПОЛА в обе стороны — стенда и newman не требует.
+
+    Пол («законный вход обязан быть исполнен, а не только не упасть») сам есть
+    утверждение о дереве, и утверждение это обязано уметь падать. Проверять его
+    настоящим прогоном нельзя: чтобы получить отчёт с нулём утверждений, нужна
+    коллекция, которой в дереве нет и заводить которую ради пробы значило бы
+    завести вторую копию предмета.
+
+    Каждая ось названа парой: вход, на котором свойство обязано ДЕРЖАТЬСЯ, и
+    вход, на котором оно обязано ОТКАЗАТЬ. Односторонняя проба зеленела бы на
+    предикате, отвергающем всё.
+    """
+    green = {"assertions": 23, "failed": 0, "requests": 9,
+             "requests_failed": 0, "script_errors": 0}
+    axes = [
+        # (имя, исход, ожидание: clean, silent, caught)
+        ("законный вход исполнен и не упал",
+         outcome_from_stats(green), True, False, False),
+        ("ОТЧЁТ С НУЛЁМ УТВЕРЖДЕНИЙ — не зелёное и не красное",
+         outcome_from_stats({**green, "assertions": 0, "requests": 0}), False, True, False),
+        ("отчёта нет вовсе — прогон не состоялся",
+         outcome_from_stats(green, report=False), False, False, False),
+        ("упавшее утверждение — не проход",
+         outcome_from_stats({**green, "failed": 1}), False, False, True),
+        ("отказ скрипта — не проход, хотя упавших ноль",
+         outcome_from_stats({**green, "script_errors": 1}), False, False, True),
+        ("безответный запрос — не проход, хотя упавших ноль",
+         outcome_from_stats({**green, "requests_failed": 1}), False, False, False),
+        ("инъекция поймана: исполнилось И упало",
+         outcome_from_stats({**green, "failed": 4}), False, False, True),
+        ("инъекция на пустом отчёте ловлей НЕ считается",
+         outcome_from_stats({**green, "assertions": 0, "failed": 0, "requests": 0}),
+         False, True, False),
+    ]
+
+    findings = []
+    for name, got, want_clean, want_silent, want_caught in axes:
+        for what, have, want in (("clean", got.clean(), want_clean),
+                                 ("silent", got.silent, want_silent),
+                                 ("caught", got.caught(), want_caught)):
+            if have != want:
+                findings.append(f"{name}: {what} = {have}, ожидалось {want}")
+
+    print(f"самопроверка пола: осей {len(axes)} · утверждений {len(axes) * 3} · "
+          f"находок {len(findings)}")
+    if not axes:
+        print("ПРЕДПОСЫЛКА: осей ноль — самопроверка не проверила ничего")
+        return 2
+    if findings:
+        print("\nНАХОДКИ:")
+        for f in findings:
+            print("  •", f)
+        return 1
+    print("самопроверка: OK — пол отличает исполненное от неисполненного в обе стороны")
+    return 0
+
+
 def main() -> int:
     if not shutil.which("newman"):
         print("ПРЕДПОСЫЛКА: newman не установлен — проба не проверила ничего")
@@ -430,4 +508,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(self_test() if "--self-test" in sys.argv[1:] else main())
