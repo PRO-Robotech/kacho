@@ -25,6 +25,7 @@
 package treecorpus
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,6 +48,11 @@ type Tree struct {
 // бы это невидимо: на машине без git проверка продолжала бы «работать», читая
 // игнорируемые каталоги.
 func NewTree(root string) (*Tree, error) {
+	// То же, что у Under: кешированный вердикт проверки дерева недействителен.
+	// Разбор и замеры — cachedverdict.go.
+	if msg := CachedVerdictRefusal(); msg != "" {
+		return nil, errors.New("treecorpus: " + msg)
+	}
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		return nil, fmt.Errorf("treecorpus: абсолютный путь для %s: %w", root, err)
