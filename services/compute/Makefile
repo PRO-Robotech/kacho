@@ -5,6 +5,10 @@ BINARY         := kacho-compute
 CMD            := ./cmd/compute
 IMAGE          := kacho-compute:dev
 
+# Ревизия дерева уезжает в образ аргументом сборки (IMAGE_BUILD_ARGS).
+# Объявление одно на дерево — см. разбор в самом файле.
+include ../../provenance.mk
+
 .PHONY: build test test-short vet lint docker audit-list-filter proto-install-plugins proto-lint proto-vendor proto-gen
 
 build:
@@ -65,7 +69,7 @@ lint:
 	golangci-lint run ./...
 
 docker:
-	cd .. && docker build -f kacho-compute/Dockerfile -t $(IMAGE) .
+	cd .. && docker build $(IMAGE_BUILD_ARGS) -f kacho-compute/Dockerfile -t $(IMAGE) .
 
 # proto-install-plugins — ставит protoc-плагины в $GOBIN (lookup через $PATH для buf).
 # Доменный proto compute генерируется этими тремя плагинами; permission-catalog для compute —

@@ -427,6 +427,15 @@ jobs:
           # слэш ветки переводится в дефис и результат проверяется; сырой ref_name
           # сюда подставлять нельзя (см. разбор в том шаге).
           tags: ${{ steps.gate.outputs.ns }}/kacho-ui-future-${{ matrix.project }}:${{ steps.gate.outputs.tag }}
+          # ПРОВЕНАНС — из какого дерева собран образ. Модулей консоли на стенде
+          # девять из семнадцати контейнеров продукта; без этих аргументов ответ на
+          # «что исполняет стенд» был бы половинчатым, а половинчатый ответ на этот
+          # вопрос ничем не лучше отсутствующего: смешанный стенд читался бы как
+          # один коммит. Что аргументы переданы КАЖДОЙ сборкой дерева, держит
+          # deploy/stand_provenance_declaration_test.go.
+          build-args: |
+            KACHO_IMAGE_REVISION=${{ github.sha }}
+            KACHO_IMAGE_VERSION=${{ steps.gate.outputs.tag }}
           cache-from: type=gha,scope=uif-${{ matrix.project }}
           cache-to: type=gha,scope=uif-${{ matrix.project }},mode=max
 

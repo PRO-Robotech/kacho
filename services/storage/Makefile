@@ -7,6 +7,10 @@ MIGRATOR_BIN   := kacho-migrator
 MIGRATOR_CMD   := ./cmd/migrator
 IMAGE          := kacho-storage:dev
 
+# Ревизия дерева уезжает в образ аргументом сборки (IMAGE_BUILD_ARGS).
+# Объявление одно на дерево — см. разбор в самом файле.
+include ../../provenance.mk
+
 # Local polyrepo: go.mod pins kacho-proto/kacho-corelib via `replace ../` → docker
 # build-context is the PARENT dir (siblings must be COPY-able). See Dockerfile.
 DOCKER_CONTEXT ?= ..
@@ -88,7 +92,7 @@ audit-known-failing:
 # docker — multi-stage образ (storage + kacho-migrator). Контекст — родительский
 # каталог, чтобы COPY подтянул siblings kacho-proto/kacho-corelib (replace ../).
 docker:
-	docker build -f Dockerfile -t $(IMAGE) $(DOCKER_CONTEXT)
+	docker build $(IMAGE_BUILD_ARGS) -f Dockerfile -t $(IMAGE) $(DOCKER_CONTEXT)
 
 # generate-mocks — port-моки hand-written (function-field, internal/repo/repomock);
 # таргет компилирует их как guard соответствия портам use-case.

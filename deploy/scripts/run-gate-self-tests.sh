@@ -132,6 +132,7 @@ deploy/scripts/gen-managed-image-pins.sh
 deploy/scripts/helm-umbrella-deps.sh
 deploy/scripts/remeasure-provider-listener-tls.sh
 deploy/scripts/run-injection-proofs.sh
+deploy/scripts/stand-provenance.sh
 deploy/tests/helm/admin-hop-address-census-test.sh
 deploy/tests/helm/admin-hop-pod-shape-test.sh
 deploy/tests/helm/admin-hop-port-policy-test.sh

@@ -58,6 +58,21 @@ FROM nginxinc/nginx-unprivileged:1.31-alpine
 COPY host/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/host/dist /usr/share/nginx/html
 
+# ПРОВЕНАНС ОБРАЗА — из какого дерева он собран. Клеймо и файл берут величину из
+# ОДНОГО `ARG`, поэтому разойтись не могут. Файл нужен потому, что у РАБОТАЮЩЕГО
+# контейнера клеймо не прочесть ничем, кроме демона хоста или реестра, — а у
+# управляемого кластера нет ни того, ни другого, тогда как `kubectl exec … cat`
+# есть всегда. Пустое умолчание намеренно: сборка руками ревизии знать не обязана,
+# а цель провенанса скажет словами, что величина не проставлена.
+# Разбор целиком — deploy/scripts/stand-provenance.sh; что величину проставляет
+# КАЖДАЯ сборка дерева — deploy/stand_provenance_declaration_test.go.
+ARG KACHO_IMAGE_REVISION=""
+ARG KACHO_IMAGE_VERSION=""
+LABEL org.opencontainers.image.revision="$KACHO_IMAGE_REVISION" \
+      org.opencontainers.image.version="$KACHO_IMAGE_VERSION"
+USER root
+RUN mkdir -p /etc/kacho && printf '%s\n' "$KACHO_IMAGE_REVISION" > /etc/kacho/image-revision
+
 # Явный non-root USER (trivy DS-0002: контейнер не должен работать под root).
 USER 101
 
