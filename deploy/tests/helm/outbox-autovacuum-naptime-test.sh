@@ -44,8 +44,20 @@ set -euo pipefail
 . "$(dirname "$0")/stacks.sh"
 
 SCRIPT="$(basename "$0")"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
+
+# Общий контракт исходов каталога. Здесь стояла СВОЯ копия `fail` (накопительная)
+# и три частных предпосылки, отдававших код 1 — «находка о дереве» — там, где
+# условие не создано: нет PyYAML, нет helm, не материализованы зависимости,
+# сорвался рендер профиля. Гейт `three-outcomes-distinguishable` этого не видел:
+# он исключает из ПРОГОНА тех, кто материализует зависимости сам, а исключение из
+# прогона работало и как освобождение от контракта. Счёт утверждений скрипт ведёт
+# САМ (профилей столько, сколько их в таблице стендов), поэтому вердикт —
+# `findings_verdict`, а не `outcome_verdict`.
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$HERE/outcome.sh"
 
 # Верхняя граница. Значение выбрано так, чтобы launcher перестал быть
 # ОГРАНИЧИВАЮЩИМ звеном: 5 с < ~5.4 с, за которые на замеренном пике продюсера
@@ -82,11 +94,8 @@ NON_QUEUE_INSTANCES="pg-geo pg-kratos pg-hydra"
 # может (он вне git), но набора pg-* не касается.
 PROFILES="$(stacks_table | tr ':,' '| ')"
 
-fail() { echo "FAIL: $1"; FAILED=1; }
-FAILED=0
-
-python3 -c 'import yaml' 2>/dev/null || { echo "FAIL: нужен python3 с PyYAML"; exit 1; }
-command -v helm >/dev/null || { echo "FAIL: нужен helm"; exit 1; }
+require_python_yaml
+require_helm
 
 # ОБЯЗАТЕЛЬНО перед рендером: сервисные сабчарты вендорятся в charts/*.tgz, и
 # `helm template` берёт ИМЕННО их. Сбой материализации — КРАСНОЕ: непроверенный
@@ -100,7 +109,7 @@ command -v helm >/dev/null || { echo "FAIL: нужен helm"; exit 1; }
 # повторно, если зависимости уже на месте.
 echo "=== $SCRIPT: зависимости умбреллы ==="
 bash "$REPO_ROOT/scripts/helm-umbrella-deps.sh" "$UMBRELLA" \
-  || { echo "FAIL: зависимости умбреллы не материализованы (причина — выводом выше)"; exit 1; }
+  || fatal "зависимости умбреллы не материализованы (причина — выводом выше)"
 
 TMPD="$(mktemp -d)"; trap 'rm -rf "$TMPD"' EXIT
 
@@ -187,14 +196,17 @@ PY
 #    сам является формой без содержания.
 if [ "${1:-}" = "--self-test" ]; then
   echo "=== $SCRIPT: self-test (инъекция дефекта в рендер) ==="
-  helm template kacho-umbrella "$UMBRELLA" -n kacho -f "$UMBRELLA/values.dev.yaml" >"$TMPD/dev.yaml"
+  # Рендер — через `helm_try`, а не подстановкой с погашенным stderr: под `set -e`
+  # отказ здесь обрывал бы самопроверку с НУЛЁМ БАЙТ причины (дефект #1195).
+  helm_try kacho-umbrella "$UMBRELLA" -n kacho -f "$UMBRELLA/values.dev.yaml"
+  render_or_fatal "dev-профиль для самопроверки"
+  printf '%s\n' "$HELM_OUT" >"$TMPD/dev.yaml"
   python3 "$TMPD/check.py" "$TMPD/dev.yaml" dev "$MAX_NAPTIME_S" "$QUEUE_INSTANCES" "$NON_QUEUE_INSTANCES" >/dev/null \
-    || { echo "FAIL: self-test — целый рендер обязан быть ЗЕЛЁНЫМ"; exit 1; }
+    || fail "self-test — целый рендер обязан быть ЗЕЛЁНЫМ"
   echo "  зелёный на целом рендере: OK"
   grep -v 'autovacuum_naptime' "$TMPD/dev.yaml" >"$TMPD/dev-broken.yaml"
   if python3 "$TMPD/check.py" "$TMPD/dev-broken.yaml" dev-injected "$MAX_NAPTIME_S" "$QUEUE_INSTANCES" "$NON_QUEUE_INSTANCES" >/dev/null 2>&1; then
-    echo "FAIL: self-test — рендер БЕЗ настройки прошёл проверку; гейт ничего не проверяет"
-    exit 1
+    fail "self-test — рендер БЕЗ настройки прошёл проверку; гейт ничего не проверяет"
   fi
   echo "  красный на рендере без настройки: OK"
   echo "$SCRIPT: self-test green"
@@ -209,21 +221,25 @@ while IFS= read -r row; do
   for f in $files; do
     if [ -f "$UMBRELLA/$f" ]; then args="$args -f $UMBRELLA/$f"; else missing="$missing $f"; fi
   done
-  if [ -n "$missing" ]; then fail "$name: нет values-файлов:$missing"; continue; fi
+  if [ -n "$missing" ]; then violation "$name: нет values-файлов:$missing"; continue; fi
 
   echo "=== профиль $name ($files) ==="
   # shellcheck disable=SC2086
-  if ! helm template kacho-umbrella "$UMBRELLA" -n kacho $args >"$TMPD/$name.yaml" 2>"$TMPD/$name.err"; then
-    fail "$name: рендер не удался — $(head -3 "$TMPD/$name.err" | tr '\n' ' ')"
-    continue
-  fi
+  helm_try kacho-umbrella "$UMBRELLA" -n kacho $args
+  # Отказ рендера — «условие не создано», а не находка о дереве: раньше он
+  # накапливался как находка и уводил прогон в код 1, а текст helm обрезался
+  # тремя строками. Теперь текст доезжает целиком, и код различает категории.
+  render_or_fatal "профиль $name"
+  printf '%s\n' "$HELM_OUT" >"$TMPD/$name.yaml"
   python3 "$TMPD/check.py" "$TMPD/$name.yaml" "$name" "$MAX_NAPTIME_S" \
-    "$QUEUE_INSTANCES" "$NON_QUEUE_INSTANCES" || FAILED=1
+    "$QUEUE_INSTANCES" "$NON_QUEUE_INSTANCES" \
+    || violation "$name: перечень выше"
+  ok
   JUDGED=$((JUDGED + 1))
 done <"$TMPD/profiles"
 
-# FAILED и JUDGED выставляются в теле while, который здесь исполняется в ТЕКУЩЕЙ
-# оболочке (перенаправление из файла, не пайп) — значения переживают цикл.
+# VIOLATIONS, N и JUDGED выставляются в теле while, который здесь исполняется в
+# ТЕКУЩЕЙ оболочке (перенаправление из файла, не пайп) — значения переживают цикл.
 #
 # ОБЪЁМ ОСМОТРЕННОГО называется числом, а не подразумевается: профили берутся из
 # таблицы стендов, и её опустевшая или переименованная колонка сделала бы эту
@@ -233,9 +249,7 @@ QUEUES_DECLARED="$(printf '%s\n' "$QUEUE_INSTANCES" | grep -c .)"
 echo "$SCRIPT: осмотрено профилей $JUDGED из $(grep -c . "$TMPD/profiles"), " \
      "баз с клеймимой очередью объявлено $QUEUES_DECLARED, без очереди $(printf '%s\n' $NON_QUEUE_INSTANCES | grep -c .)"
 if [ "$JUDGED" -eq 0 ]; then
-  echo "$SCRIPT: RED — не отсужено НИ ОДНОГО профиля; таблица стендов пуста или её"
-  echo "         колонка переименована. Ноль находок на нуле прочитанного — это провал."
-  exit 1
+  fail "$SCRIPT — не отсужено НИ ОДНОГО профиля; таблица стендов пуста или её \
+колонка переименована. Ноль находок на нуле прочитанного — это провал."
 fi
-[ "$FAILED" -eq 0 ] || { echo "$SCRIPT: RED"; exit 1; }
-echo "$SCRIPT: all green"
+findings_verdict "профилей отсужено $JUDGED"
