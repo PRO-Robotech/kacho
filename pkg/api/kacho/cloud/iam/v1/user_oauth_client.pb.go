@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -218,23 +217,23 @@ var File_kacho_cloud_iam_v1_user_oauth_client_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_user_oauth_client_proto_rawDesc = "" +
 	"\n" +
-	"*kacho/cloud/iam/v1/user_oauth_client.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a(kacho/cloud/iam/v1/credential_kind.proto\x1a\x1ckacho/cloud/validation.proto\"\x89\x06\n" +
-	"\x0fUserOAuthClient\x12F\n" +
-	"\x02id\x18\x01 \x01(\tB6\xe8\xc71\x01\xf2\xc71&uoc(_[0-9a-z]+|[0-9a-hjkmnp-tv-z]{17})\x8a\xc81\x04<=21R\x02id\x12%\n" +
-	"\auser_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x121\n" +
-	"\x0fhydra_client_id\x18\x03 \x01(\tB\t\x8a\xc81\x05<=128R\rhydraClientId\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x129\n" +
+	"*kacho/cloud/iam/v1/user_oauth_client.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a(kacho/cloud/iam/v1/credential_kind.proto\"\x95\x05\n" +
+	"\x0fUserOAuthClient\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12&\n" +
+	"\x0fhydra_client_id\x18\x03 \x01(\tR\rhydraClientId\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x129\n" +
 	"\n" +
 	"expires_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12<\n" +
 	"\flast_used_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"lastUsedAt\x129\n" +
-	"\x12created_by_user_id\x18\a \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0fcreatedByUserId\x129\n" +
+	"lastUsedAt\x12+\n" +
+	"\x12created_by_user_id\x18\a \x01(\tR\x0fcreatedByUserId\x129\n" +
 	"\n" +
 	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12$\n" +
 	"\x0epublic_key_pem\x18\t \x01(\tR\fpublicKeyPem\x12#\n" +
 	"\rkey_algorithm\x18\n" +
-	" \x01(\tR\fkeyAlgorithm\x12\x1c\n" +
-	"\x04name\x18\v \x01(\tB\b\x8a\xc81\x04<=63R\x04name\x12G\n" +
+	" \x01(\tR\fkeyAlgorithm\x12\x12\n" +
+	"\x04name\x18\v \x01(\tR\x04name\x12G\n" +
 	"\x06labels\x18\f \x03(\v2/.kacho.cloud.iam.v1.UserOAuthClient.LabelsEntryR\x06labels\x12K\n" +
 	"\x0fcredential_kind\x18\r \x01(\x0e2\".kacho.cloud.iam.v1.CredentialKindR\x0ecredentialKind\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +

@@ -10,7 +10,6 @@
 package vpcv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	reference "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -514,7 +513,7 @@ var File_kacho_cloud_vpc_v1_security_group_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_security_group_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/vpc/v1/security_group.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a%kacho/cloud/reference/reference.proto\"\x99\x04\n" +
+	"'kacho/cloud/vpc/v1/security_group.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\"\x99\x04\n" +
 	"\rSecurityGroup\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -532,12 +531,12 @@ const file_kacho_cloud_vpc_v1_security_group_proto_rawDesc = "" +
 	"\aused_by\x18\v \x03(\v2 .kacho.cloud.reference.ReferenceR\x06usedBy\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tJ\x04\b\f\x10\rR\x06statusR\vapply_state\"\xa4\x05\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tJ\x04\b\f\x10\rR\x06statusR\vapply_state\"\x98\x05\n" +
 	"\x11SecurityGroupRule\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12I\n" +
-	"\x06labels\x18\x03 \x03(\v21.kacho.cloud.vpc.v1.SecurityGroupRule.LabelsEntryR\x06labels\x12S\n" +
-	"\tdirection\x18\x04 \x01(\x0e2/.kacho.cloud.vpc.v1.SecurityGroupRule.DirectionB\x04\xe8\xc71\x01R\tdirection\x123\n" +
+	"\x06labels\x18\x03 \x03(\v21.kacho.cloud.vpc.v1.SecurityGroupRule.LabelsEntryR\x06labels\x12M\n" +
+	"\tdirection\x18\x04 \x01(\x0e2/.kacho.cloud.vpc.v1.SecurityGroupRule.DirectionR\tdirection\x123\n" +
 	"\x05ports\x18\x05 \x01(\v2\x1d.kacho.cloud.vpc.v1.PortRangeR\x05ports\x12#\n" +
 	"\rprotocol_name\x18\x06 \x01(\tR\fprotocolName\x12'\n" +
 	"\x0fprotocol_number\x18\a \x01(\x03R\x0eprotocolNumber\x12A\n" +
@@ -552,12 +551,12 @@ const file_kacho_cloud_vpc_v1_security_group_proto_rawDesc = "" +
 	"\x15DIRECTION_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aINGRESS\x10\x01\x12\n" +
 	"\n" +
-	"\x06EGRESS\x10\x02B\x0e\n" +
-	"\x06target\x12\x04\xc0\xc11\x01J\x04\b\n" +
-	"\x10\vR\x11predefined_target\"[\n" +
-	"\tPortRange\x12(\n" +
-	"\tfrom_port\x18\x01 \x01(\x03B\v\xfa\xc71\a0-65535R\bfromPort\x12$\n" +
-	"\ato_port\x18\x02 \x01(\x03B\v\xfa\xc71\a0-65535R\x06toPort\"X\n" +
+	"\x06EGRESS\x10\x02B\b\n" +
+	"\x06targetJ\x04\b\n" +
+	"\x10\vR\x11predefined_target\"A\n" +
+	"\tPortRange\x12\x1b\n" +
+	"\tfrom_port\x18\x01 \x01(\x03R\bfromPort\x12\x17\n" +
+	"\ato_port\x18\x02 \x01(\x03R\x06toPort\"X\n" +
 	"\n" +
 	"CidrBlocks\x12$\n" +
 	"\x0ev4_cidr_blocks\x18\x01 \x03(\tR\fv4CidrBlocks\x12$\n" +

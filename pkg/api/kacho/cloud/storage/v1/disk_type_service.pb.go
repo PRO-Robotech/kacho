@@ -10,7 +10,6 @@
 package storagev1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -447,8 +446,9 @@ func (x *SetDiskTypeLifecycleRequest) GetLifecycle() DiskType_Lifecycle {
 }
 
 type DeleteDiskTypeRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DiskTypeId    string                 `protobuf:"bytes,1,opt,name=disk_type_id,json=diskTypeId,proto3" json:"disk_type_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the DiskType.
+	DiskTypeId    string `protobuf:"bytes,1,opt,name=disk_type_id,json=diskTypeId,proto3" json:"disk_type_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -530,29 +530,28 @@ var File_kacho_cloud_storage_v1_disk_type_service_proto protoreflect.FileDescrip
 
 const file_kacho_cloud_storage_v1_disk_type_service_proto_rawDesc = "" +
 	"\n" +
-	".kacho/cloud/storage/v1/disk_type_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a&kacho/cloud/storage/v1/disk_type.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"<\n" +
-	"\x12GetDiskTypeRequest\x12&\n" +
-	"\fdisk_type_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\n" +
-	"diskTypeId\"i\n" +
-	"\x14ListDiskTypesRequest\x12'\n" +
-	"\tpage_size\x18\x01 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	".kacho/cloud/storage/v1/disk_type_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a&kacho/cloud/storage/v1/disk_type.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"6\n" +
+	"\x12GetDiskTypeRequest\x12 \n" +
+	"\fdisk_type_id\x18\x01 \x01(\tR\n" +
+	"diskTypeId\"R\n" +
+	"\x14ListDiskTypesRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x80\x01\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"\x80\x01\n" +
 	"\x15ListDiskTypesResponse\x12?\n" +
 	"\n" +
 	"disk_types\x18\x01 \x03(\v2 .kacho.cloud.storage.v1.DiskTypeR\tdiskTypes\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xeb\x02\n" +
-	"\x15CreateDiskTypeRequest\x12\x14\n" +
-	"\x02id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\x02id\x12\x12\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xe5\x02\n" +
+	"\x15CreateDiskTypeRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x19\n" +
 	"\bzone_ids\x18\x04 \x03(\tR\azoneIds\x12D\n" +
 	"\x04tier\x18\x06 \x01(\x0e20.kacho.cloud.storage.v1.DiskType.PerformanceTierR\x04tier\x12H\n" +
 	"\tlifecycle\x18\a \x01(\x0e2*.kacho.cloud.storage.v1.DiskType.LifecycleR\tlifecycle\x12C\n" +
-	"\x06limits\x18\b \x01(\v2+.kacho.cloud.storage.v1.DiskType.SizeLimitsR\x06limitsJ\x04\b\x05\x10\x06R\x10performance_tier\"\xf0\x02\n" +
-	"\x15UpdateDiskTypeRequest\x12&\n" +
-	"\fdisk_type_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\n" +
+	"\x06limits\x18\b \x01(\v2+.kacho.cloud.storage.v1.DiskType.SizeLimitsR\x06limitsJ\x04\b\x05\x10\x06R\x10performance_tier\"\xea\x02\n" +
+	"\x15UpdateDiskTypeRequest\x12 \n" +
+	"\fdisk_type_id\x18\x01 \x01(\tR\n" +
 	"diskTypeId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x19\n" +
@@ -560,13 +559,13 @@ const file_kacho_cloud_storage_v1_disk_type_service_proto_rawDesc = "" +
 	"\vupdate_mask\x18\x06 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
 	"updateMask\x12D\n" +
 	"\x04tier\x18\a \x01(\x0e20.kacho.cloud.storage.v1.DiskType.PerformanceTierR\x04tier\x12C\n" +
-	"\x06limits\x18\b \x01(\v2+.kacho.cloud.storage.v1.DiskType.SizeLimitsR\x06limitsJ\x04\b\x05\x10\x06R\x10performance_tier\"\x95\x01\n" +
-	"\x1bSetDiskTypeLifecycleRequest\x12&\n" +
-	"\fdisk_type_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\n" +
-	"diskTypeId\x12N\n" +
-	"\tlifecycle\x18\x02 \x01(\x0e2*.kacho.cloud.storage.v1.DiskType.LifecycleB\x04\xe8\xc71\x01R\tlifecycle\"?\n" +
-	"\x15DeleteDiskTypeRequest\x12&\n" +
-	"\fdisk_type_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\n" +
+	"\x06limits\x18\b \x01(\v2+.kacho.cloud.storage.v1.DiskType.SizeLimitsR\x06limitsJ\x04\b\x05\x10\x06R\x10performance_tier\"\x89\x01\n" +
+	"\x1bSetDiskTypeLifecycleRequest\x12 \n" +
+	"\fdisk_type_id\x18\x01 \x01(\tR\n" +
+	"diskTypeId\x12H\n" +
+	"\tlifecycle\x18\x02 \x01(\x0e2*.kacho.cloud.storage.v1.DiskType.LifecycleR\tlifecycle\"9\n" +
+	"\x15DeleteDiskTypeRequest\x12 \n" +
+	"\fdisk_type_id\x18\x01 \x01(\tR\n" +
 	"diskTypeId\"\x18\n" +
 	"\x16DeleteDiskTypeResponse2\x8d\x03\n" +
 	"\x0fDiskTypeService\x12\xba\x01\n" +

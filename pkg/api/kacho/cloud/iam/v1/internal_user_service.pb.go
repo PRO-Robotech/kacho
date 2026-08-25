@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -272,20 +271,20 @@ var File_kacho_cloud_iam_v1_internal_user_service_proto protoreflect.FileDescrip
 
 const file_kacho_cloud_iam_v1_internal_user_service_proto_rawDesc = "" +
 	"\n" +
-	".kacho/cloud/iam/v1/internal_user_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a\x1dkacho/cloud/iam/v1/user.proto\x1a%kacho/cloud/iam/v1/user_service.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x9e\x01\n" +
-	"\x19UpsertFromIdentityRequest\x12.\n" +
-	"\vexternal_id\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\n" +
-	"externalId\x12#\n" +
-	"\x05email\x18\x02 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=320R\x05email\x12,\n" +
-	"\fdisplay_name\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdisplayName\"O\n" +
+	".kacho/cloud/iam/v1/internal_user_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a\x1dkacho/cloud/iam/v1/user.proto\x1a%kacho/cloud/iam/v1/user_service.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"u\n" +
+	"\x19UpsertFromIdentityRequest\x12\x1f\n" +
+	"\vexternal_id\x18\x01 \x01(\tR\n" +
+	"externalId\x12\x14\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\x12!\n" +
+	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\"O\n" +
 	"\x1aUpsertFromIdentityMetadata\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x18\n" +
-	"\acreated\x18\x02 \x01(\bR\acreated\"\xa3\x01\n" +
-	"\x1aOnRecoveryCompletedRequest\x12.\n" +
-	"\vexternal_id\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\n" +
-	"externalId\x120\n" +
-	"\frecovery_jti\x18\x02 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\vrecoveryJti\x12#\n" +
-	"\x05email\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=320R\x05email\"j\n" +
+	"\acreated\x18\x02 \x01(\bR\acreated\"v\n" +
+	"\x1aOnRecoveryCompletedRequest\x12\x1f\n" +
+	"\vexternal_id\x18\x01 \x01(\tR\n" +
+	"externalId\x12!\n" +
+	"\frecovery_jti\x18\x02 \x01(\tR\vrecoveryJti\x12\x14\n" +
+	"\x05email\x18\x03 \x01(\tR\x05email\"j\n" +
 	"\x1bOnRecoveryCompletedMetadata\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x122\n" +
 	"\x15revoked_session_count\x18\x02 \x01(\x05R\x13revokedSessionCount2\x96\x04\n" +

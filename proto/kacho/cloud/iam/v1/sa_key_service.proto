@@ -12,7 +12,6 @@ import "kacho/cloud/api/secret_options.proto";
 import "kacho/cloud/iam/v1/credential_kind.proto";
 import "kacho/cloud/iam/v1/service_account_oauth_client.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -91,14 +90,16 @@ service SAKeyService {
 }
 
 message IssueSAKeyRequest {
-  string service_account_id = 1 [(required) = true, (length) = "<=20"];
-  string description = 2 [(length) = "<=256"];
+  // ID of the ServiceAccount.
+  string service_account_id = 1;
+  // Description of the SAKey.
+  string description = 2;
   // Optional ISO duration in seconds. Смысл ЗНАЧЕНИЯ 0 ЗАВИСИТ ОТ ВИДА:
   //   * KEYPAIR / FEDERATED — 0 означает БЕССРОЧНО (прежнее поведение);
   //   * SECRET — 0 означает «срок не назван», применяется умолчание политики;
   //     БЕССРОЧНОГО СЕКРЕТА НЕ БЫВАЕТ НИ В КАКОМ НАПИСАНИИ, и срок сверх
   //     потолка политики ОТВЕРГАЕТСЯ, а не урезается молча.
-  int64 ttl_seconds = 3 [(value) = "<=63072000"];
+  int64 ttl_seconds = 3;
   // Ответственный за выпуск. ОБЯЗАТЕЛЬНЫМ НЕ ОБЪЯВЛЯЕТСЯ И НЕ ЯВЛЯЕТСЯ: край
   // подставляет его сам — вызывающему-человеку его собственный принципал,
   // вызывающей машине владельца аккаунта целевой учётки. Присланное значение
@@ -107,12 +108,13 @@ message IssueSAKeyRequest {
   // в use-case, из репозитория), и несовпавшее отвергается `INVALID_ARGUMENT`
   // с именем поля.
   //
-  // Здесь стояло `(required) = true` — утверждение, ОБРАТНОЕ действительному, и
-  // машиночитаемое. Исполнителя у этой опции нет ни одного (потребителей вне
-  // сгенерированных стабов — ноль по всему дереву), поэтому отказа она никогда
-  // не давала; но её читают генераторы клиентов, и вызывающий получал параметр,
-  // объявленный обязательным, при сервисе, который просит его не слать.
-  string created_by_user_id = 4 [(length) = "<=20"];
+  // Обязательным это поле НЕ ЯВЛЯЕТСЯ, и объявлять его таким нечем: семейство
+  // расширений, которым обязательность выражалась, снято с контрактов целиком
+  // (kacho#1255) — исполнителя на пути запроса у него не было ни одного. Здесь
+  // оно стояло и утверждало ОБРАТНОЕ действительному: отказа не давало никогда,
+  // а генератор клиента объявлял бы параметр обязательным при сервисе, который
+  // просит его не слать.
+  string created_by_user_id = 4;
 
   // Федеративный вид ключа. Непустой перечень означает: ключевой пары мы не
   // чеканим, а удостоверение предъявляет ВНЕШНИЙ издатель — ответ выдачи не
@@ -155,11 +157,11 @@ message IssueSAKeyRequest {
   //   audience: ["sts.example.com"]
   //   audience: ["//iam.example.com/projects/123/locations/global/workloadIdentityPools/kacho/providers/main"]
   //   audience: ["api://acme-prod"]          // external federated credential
-  repeated string audience = 6 [(length) = "<=512"];
+  repeated string audience = 6;
 
   // Tenant-facing имя токена (человекочитаемая метка ключа). Задаётся один раз при
   // выпуске, immutable (у токена нет Update RPC). Пусто допустимо.
-  string name = 7 [(length) = "<=63"];
+  string name = 7;
 
   // Пользовательские метки токена. Задаются при выпуске, immutable.
   map<string, string> labels = 8;
@@ -184,13 +186,13 @@ message TrustedSubject {
   //   https://gitlab.com                            (GitLab CI)
   //   https://kubernetes.default.svc.cluster.local  (in-cluster k8s SAs)
   //   https://idp.example.com/<tenant>/v2.0          (external OIDC IdP)
-  string issuer = 1 [(required) = true, (length) = "<=512"];
+  string issuer = 1;
 
   // RE2 regex the external `sub` claim must match. Anchor with ^ and $ to
   // avoid substring footguns. Examples:
   //   ^repo:acme/infra:ref:refs/heads/main$
   //   ^system:serviceaccount:kacho-prod:ci-runner$
-  string subject_pattern = 2 [(required) = true, (length) = "<=512"];
+  string subject_pattern = 2;
 
   // Открытый ключ ИЗДАТЕЛЯ в форме SPKI PEM — тот, которым подписано внешнее
   // утверждение (задача #1124).
@@ -204,14 +206,14 @@ message TrustedSubject {
   //
   // Цена названа: смена ключа издателем требует новой выдачи. Она та же, что
   // была у прежнего перечня, — он тоже хранил ключ, а не адрес.
-  string public_key_pem = 3 [(required) = true, (length) = "<=8192"];
+  string public_key_pem = 3;
 
   // JOSE-алгоритм ключа издателя: один из {"RS256", "ES256", "EdDSA"}.
   //
   // Обязателен, и пустое значение означает «ключа нет», а НЕ «любой алгоритм»:
   // перечень допустимых алгоритмов строится из ЭТОЙ записи, поэтому подмена
   // параметра внутри одного семейства тоже отвергается.
-  string key_algorithm = 4 [(required) = true, (length) = "<=16"];
+  string key_algorithm = 4;
 }
 
 message IssueSAKeyResponse {
@@ -274,9 +276,14 @@ message IssueSAKeyMetadata {
 }
 
 message ListSAKeysRequest {
-  string service_account_id = 1 [(required) = true, (length) = "<=20"];
-  int64  page_size           = 2 [(value) = "<=1000"];
-  string page_token          = 3 [(length) = "<=100"];
+  // ID of the ServiceAccount.
+  string service_account_id = 1;
+  // Maximum number of results per page. 0 selects the service default (50);
+  // a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+  int64  page_size           = 2;
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListSAKeysResponse.next_page_token] returned by a previous list request.
+  string page_token          = 3;
 }
 
 message ListSAKeysResponse {
@@ -285,8 +292,10 @@ message ListSAKeysResponse {
 }
 
 message RevokeSAKeyRequest {
-  string service_account_id = 1 [(required) = true, (length) = "<=20"];
-  string key_id              = 2 [(required) = true, (length) = "<=21"];
+  // ID of the ServiceAccount.
+  string service_account_id = 1;
+  // ID of the SAKey.
+  string key_id              = 2;
 }
 
 message RevokeSAKeyResponse {

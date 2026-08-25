@@ -10,7 +10,6 @@
 package computev1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -340,6 +339,7 @@ type CreateInstanceRequest struct {
 	// Description of the instance.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	// Resource labels as `key:value` pairs.
+	// At most 64 pairs.
 	Labels map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// ID of the availability zone where the instance resides.
 	// To get a list of available zones, use the [kacho.cloud.geo.v1.ZoneService.List] request.
@@ -395,9 +395,13 @@ type CreateInstanceRequest struct {
 	//
 	// Ключ обязан принадлежать ТОМУ ЖЕ проекту, что машина; это условие стоит
 	// внутри самой вставки связи, а не отдельной проверкой перед ней.
+	// At most 32 entries: each key is resolved at launch, and the cost of the launch
+	// grows with the count.
 	GuestAccessKeyIds []string `protobuf:"bytes,39,rep,name=guest_access_key_ids,json=guestAccessKeyIds,proto3" json:"guest_access_key_ids,omitempty"`
 	// Secondary Volumes to attach (F6 launch skeleton). Structurally validated in
 	// COMP-1 (size_gib > 0, mount_path); materialize is COMP-2.
+	// At most 8 entries: every spec costs one call to the storage owner, and that
+	// owner authorizes each call on its side.
 	SecondaryVolumeSpecs []*SecondaryVolumeSpec `protobuf:"bytes,34,rep,name=secondary_volume_specs,json=secondaryVolumeSpecs,proto3" json:"secondary_volume_specs,omitempty"`
 	// Use the project-default subnet+SG instead of network_interface_specs (F6). One of
 	// network_interface_specs / use_default_network is required.
@@ -793,6 +797,7 @@ type UpdateInstanceRequest struct {
 	// Description of the instance (LIVE-mutable).
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// Resource labels; the existing set is completely replaced (LIVE-mutable).
+	// At most 64 pairs.
 	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// ID of the service account used inside the instance (LIVE-mutable, F4).
 	ServiceAccountId string `protobuf:"bytes,9,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
@@ -821,6 +826,8 @@ type UpdateInstanceRequest struct {
 	// Пустой набор при названной маске означает «снять все ключи», и это
 	// осмысленное намерение, а не пропуск: иначе снять последний ключ было бы
 	// нечем.
+	// At most 32 entries: each key is resolved on write, and the cost of the write
+	// grows with the count.
 	GuestAccessKeyIds []string `protobuf:"bytes,25,rep,name=guest_access_key_ids,json=guestAccessKeyIds,proto3" json:"guest_access_key_ids,omitempty"`
 	// VM spec (next-boot deferred class, F10 — user_data/metadata_options).
 	VmSpec        *VmSpec `protobuf:"bytes,24,opt,name=vm_spec,json=vmSpec,proto3" json:"vm_spec,omitempty"`
@@ -2056,8 +2063,9 @@ func (x *DetachInstanceNetworkInterfaceMetadata) GetNicId() string {
 }
 
 type SimulateInstanceMaintenanceEventRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	InstanceId    string                 `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Instance the simulated maintenance event is delivered to.
+	InstanceId    string `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2751,53 +2759,50 @@ var File_kacho_cloud_compute_v1_instance_service_proto protoreflect.FileDescript
 
 const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\n" +
-	"-kacho/cloud/compute/v1/instance_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/compute/v1/instance.proto\x1a(kacho/cloud/compute/v1/maintenance.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"O\n" +
-	"\x12GetInstanceRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"instanceIdJ\x04\b\x02\x10\x03R\x04view\"\xca\x01\n" +
-	"\x14ListInstancesRequest\x12+\n" +
+	"-kacho/cloud/compute/v1/instance_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/compute/v1/instance.proto\x1a(kacho/cloud/compute/v1/maintenance.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"A\n" +
+	"\x12GetInstanceRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
+	"instanceIdJ\x04\b\x02\x10\x03R\x04view\"\x99\x01\n" +
+	"\x14ListInstancesRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
-	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filterJ\x04\b\x05\x10\x06R\border_by\"\x7f\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x04 \x01(\tR\x06filterJ\x04\b\x05\x10\x06R\border_by\"\x7f\n" +
 	"\x15ListInstancesResponse\x12>\n" +
 	"\tinstances\x18\x01 \x03(\v2 .kacho.cloud.compute.v1.InstanceR\tinstances\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xe3\x11\n" +
-	"\x15CreateInstanceRequest\x12+\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xeb\x0f\n" +
+	"\x15CreateInstanceRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x129\n" +
-	"\x04name\x18\x02 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x96\x01\n" +
-	"\x06labels\x18\x04 \x03(\v29.kacho.cloud.compute.v1.CreateInstanceRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x12%\n" +
-	"\azone_id\x18\x05 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x06zoneId\x12d\n" +
-	"\x17network_interface_specs\x18\v \x03(\v2,.kacho.cloud.compute.v1.NetworkInterfaceSpecR\x15networkInterfaceSpecs\x12A\n" +
-	"\bhostname\x18\f \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\bhostname\x126\n" +
-	"\x12service_account_id\x18\x0e \x01(\tB\b\x8a\xc81\x04<=50R\x10serviceAccountId\x12R\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12Q\n" +
+	"\x06labels\x18\x04 \x03(\v29.kacho.cloud.compute.v1.CreateInstanceRequest.LabelsEntryR\x06labels\x12\x17\n" +
+	"\azone_id\x18\x05 \x01(\tR\x06zoneId\x12d\n" +
+	"\x17network_interface_specs\x18\v \x03(\v2,.kacho.cloud.compute.v1.NetworkInterfaceSpecR\x15networkInterfaceSpecs\x12\x1a\n" +
+	"\bhostname\x18\f \x01(\tR\bhostname\x12,\n" +
+	"\x12service_account_id\x18\x0e \x01(\tR\x10serviceAccountId\x12R\n" +
 	"\x10network_settings\x18\x0f \x01(\v2'.kacho.cloud.compute.v1.NetworkSettingsR\x0fnetworkSettings\x12Y\n" +
 	"\x10filesystem_specs\x18\x11 \x03(\v2..kacho.cloud.compute.v1.AttachedFilesystemSpecR\x0ffilesystemSpecs\x12W\n" +
 	"\x10local_disk_specs\x18\x12 \x03(\v2-.kacho.cloud.compute.v1.AttachedLocalDiskSpecR\x0elocalDiskSpecs\x12X\n" +
-	"\x12maintenance_policy\x18\x15 \x01(\x0e2).kacho.cloud.compute.v1.MaintenancePolicyR\x11maintenancePolicy\x12_\n" +
-	"\x18maintenance_grace_period\x18\x16 \x01(\v2\x19.google.protobuf.DurationB\n" +
-	"\xfa\xc71\x061s-24hR\x16maintenanceGracePeriod\x12\\\n" +
+	"\x12maintenance_policy\x18\x15 \x01(\x0e2).kacho.cloud.compute.v1.MaintenancePolicyR\x11maintenancePolicy\x12S\n" +
+	"\x18maintenance_grace_period\x18\x16 \x01(\v2\x19.google.protobuf.DurationR\x16maintenanceGracePeriod\x12\\\n" +
 	"\x14serial_port_settings\x18\x17 \x01(\v2*.kacho.cloud.compute.v1.SerialPortSettingsR\x12serialPortSettings\x12I\n" +
-	"\rinstance_kind\x18\x1b \x01(\x0e2$.kacho.cloud.compute.v1.InstanceKindR\finstanceKind\x120\n" +
-	"\x0fmachine_type_id\x18\x1c \x01(\tB\b\x8a\xc81\x04<=63R\rmachineTypeId\x12C\n" +
+	"\rinstance_kind\x18\x1b \x01(\x0e2$.kacho.cloud.compute.v1.InstanceKindR\finstanceKind\x12&\n" +
+	"\x0fmachine_type_id\x18\x1c \x01(\tR\rmachineTypeId\x12C\n" +
 	"\vboot_source\x18\x1d \x01(\v2\".kacho.cloud.compute.v1.BootSourceR\n" +
 	"bootSource\x129\n" +
 	"\avm_spec\x18\x1e \x01(\v2\x1e.kacho.cloud.compute.v1.VmSpecH\x00R\x06vmSpec\x12N\n" +
 	"\x0econtainer_spec\x18\x1f \x01(\v2%.kacho.cloud.compute.v1.ContainerSpecH\x00R\rcontainerSpec\x122\n" +
 	"\x15cpu_guarantee_percent\x18  \x01(\x05R\x13cpuGuaranteePercent\x12&\n" +
-	"\x0fssh_public_keys\x18! \x03(\tR\rsshPublicKeys\x129\n" +
-	"\x14guest_access_key_ids\x18' \x03(\tB\b\x82\xc81\x04<=32R\x11guestAccessKeyIds\x12j\n" +
-	"\x16secondary_volume_specs\x18\" \x03(\v2+.kacho.cloud.compute.v1.SecondaryVolumeSpecB\a\x82\xc81\x03<=8R\x14secondaryVolumeSpecs\x12.\n" +
+	"\x0fssh_public_keys\x18! \x03(\tR\rsshPublicKeys\x12/\n" +
+	"\x14guest_access_key_ids\x18' \x03(\tR\x11guestAccessKeyIds\x12a\n" +
+	"\x16secondary_volume_specs\x18\" \x03(\v2+.kacho.cloud.compute.v1.SecondaryVolumeSpecR\x14secondaryVolumeSpecs\x12.\n" +
 	"\x13use_default_network\x18# \x01(\bR\x11useDefaultNetwork\x126\n" +
 	"\x17assign_external_address\x18$ \x01(\bR\x15assignExternalAddress\x127\n" +
-	"\x17acknowledge_unreachable\x18% \x01(\bR\x16acknowledgeUnreachable\x126\n" +
-	"\x12placement_group_id\x18& \x01(\tB\b\x8a\xc81\x04<=50R\x10placementGroupId\x1a9\n" +
+	"\x17acknowledge_unreachable\x18% \x01(\bR\x16acknowledgeUnreachable\x12,\n" +
+	"\x12placement_group_id\x18& \x01(\tR\x10placementGroupId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x06\n" +
@@ -2810,162 +2815,159 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\n" +
 	"mount_path\x18\x03 \x01(\tR\tmountPath\x12\x1f\n" +
 	"\vauto_delete\x18\x04 \x01(\bR\n" +
-	"autoDelete\"C\n" +
-	"\x16CreateInstanceMetadata\x12)\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\b\x8a\xc81\x04<=50R\n" +
-	"instanceId\"\xe1\n" +
-	"\n" +
-	"\x15UpdateInstanceRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"autoDelete\"9\n" +
+	"\x16CreateInstanceMetadata\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
+	"instanceId\"\xa7\t\n" +
+	"\x15UpdateInstanceRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x129\n" +
-	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x96\x01\n" +
-	"\x06labels\x18\x05 \x03(\v29.kacho.cloud.compute.v1.UpdateInstanceRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x126\n" +
-	"\x12service_account_id\x18\t \x01(\tB\b\x8a\xc81\x04<=50R\x10serviceAccountId\x12R\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12Q\n" +
+	"\x06labels\x18\x05 \x03(\v29.kacho.cloud.compute.v1.UpdateInstanceRequest.LabelsEntryR\x06labels\x12,\n" +
+	"\x12service_account_id\x18\t \x01(\tR\x10serviceAccountId\x12R\n" +
 	"\x10network_settings\x18\n" +
 	" \x01(\v2'.kacho.cloud.compute.v1.NetworkSettingsR\x0fnetworkSettings\x12X\n" +
-	"\x12maintenance_policy\x18\x0e \x01(\x0e2).kacho.cloud.compute.v1.MaintenancePolicyR\x11maintenancePolicy\x12_\n" +
-	"\x18maintenance_grace_period\x18\x0f \x01(\v2\x19.google.protobuf.DurationB\n" +
-	"\xfa\xc71\x061s-24hR\x16maintenanceGracePeriod\x12\\\n" +
-	"\x14serial_port_settings\x18\x10 \x01(\v2*.kacho.cloud.compute.v1.SerialPortSettingsR\x12serialPortSettings\x120\n" +
-	"\x0fmachine_type_id\x18\x14 \x01(\tB\b\x8a\xc81\x04<=63R\rmachineTypeId\x122\n" +
-	"\x15cpu_guarantee_percent\x18\x15 \x01(\x05R\x13cpuGuaranteePercent\x126\n" +
-	"\x12placement_group_id\x18\x16 \x01(\tB\b\x8a\xc81\x04<=50R\x10placementGroupId\x12&\n" +
-	"\x0fssh_public_keys\x18\x17 \x03(\tR\rsshPublicKeys\x129\n" +
-	"\x14guest_access_key_ids\x18\x19 \x03(\tB\b\x82\xc81\x04<=32R\x11guestAccessKeyIds\x127\n" +
+	"\x12maintenance_policy\x18\x0e \x01(\x0e2).kacho.cloud.compute.v1.MaintenancePolicyR\x11maintenancePolicy\x12S\n" +
+	"\x18maintenance_grace_period\x18\x0f \x01(\v2\x19.google.protobuf.DurationR\x16maintenanceGracePeriod\x12\\\n" +
+	"\x14serial_port_settings\x18\x10 \x01(\v2*.kacho.cloud.compute.v1.SerialPortSettingsR\x12serialPortSettings\x12&\n" +
+	"\x0fmachine_type_id\x18\x14 \x01(\tR\rmachineTypeId\x122\n" +
+	"\x15cpu_guarantee_percent\x18\x15 \x01(\x05R\x13cpuGuaranteePercent\x12,\n" +
+	"\x12placement_group_id\x18\x16 \x01(\tR\x10placementGroupId\x12&\n" +
+	"\x0fssh_public_keys\x18\x17 \x03(\tR\rsshPublicKeys\x12/\n" +
+	"\x14guest_access_key_ids\x18\x19 \x03(\tR\x11guestAccessKeyIds\x127\n" +
 	"\avm_spec\x18\x18 \x01(\v2\x1e.kacho.cloud.compute.v1.VmSpecR\x06vmSpec\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x11\x10\x12J\x04\b\x12\x10\x13J\x04\b\x13\x10\x14J\x04\b\b\x10\tR\vplatform_idR\x0eresources_specR\x10placement_policyR\x11scheduling_policyR\x10metadata_optionsR\x19reserved_instance_pool_idR\vapplicationR\x05imageR\bmetadata\"9\n" +
 	"\x16UpdateInstanceMetadata\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
-	"instanceId\"F\n" +
-	"\x15DeleteInstanceRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"instanceId\"8\n" +
+	"\x15DeleteInstanceRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\"9\n" +
 	"\x16DeleteInstanceMetadata\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
-	"instanceId\"t\n" +
-	"\"GetInstanceSerialPortOutputRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"instanceId\x12\x1f\n" +
-	"\x04port\x18\x02 \x01(\x03B\v\xfa\xc71\a1,2,3,4R\x04port\"A\n" +
+	"instanceId\"Y\n" +
+	"\"GetInstanceSerialPortOutputRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
+	"instanceId\x12\x12\n" +
+	"\x04port\x18\x02 \x01(\x03R\x04port\"A\n" +
 	"#GetInstanceSerialPortOutputResponse\x12\x1a\n" +
-	"\bcontents\x18\x01 \x01(\tR\bcontents\"D\n" +
-	"\x13StopInstanceRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"\bcontents\x18\x01 \x01(\tR\bcontents\"6\n" +
+	"\x13StopInstanceRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\"7\n" +
 	"\x14StopInstanceMetadata\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
-	"instanceId\"E\n" +
-	"\x14StartInstanceRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"instanceId\"7\n" +
+	"\x14StartInstanceRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\"8\n" +
 	"\x15StartInstanceMetadata\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
-	"instanceId\"G\n" +
-	"\x16RestartInstanceRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"instanceId\"9\n" +
+	"\x16RestartInstanceRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\":\n" +
 	"\x17RestartInstanceMetadata\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
-	"instanceId\"\xa8\x01\n" +
-	"\x19AttachInstanceDiskRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"instanceId\x12\\\n" +
-	"\x12attached_disk_spec\x18\x02 \x01(\v2(.kacho.cloud.compute.v1.AttachedDiskSpecB\x04\xe8\xc71\x01R\x10attachedDiskSpec\"Z\n" +
+	"instanceId\"\x94\x01\n" +
+	"\x19AttachInstanceDiskRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
+	"instanceId\x12V\n" +
+	"\x12attached_disk_spec\x18\x02 \x01(\v2(.kacho.cloud.compute.v1.AttachedDiskSpecR\x10attachedDiskSpec\"Z\n" +
 	"\x1aAttachInstanceDiskMetadata\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x12\x1b\n" +
-	"\tvolume_id\x18\x02 \x01(\tR\bvolumeId\"\xbe\x01\n" +
-	"\x19DetachInstanceDiskRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"instanceId\x12'\n" +
-	"\tvolume_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50H\x00R\bvolumeId\x12;\n" +
-	"\vdevice_name\x18\x03 \x01(\tB\x18\xf2\xc71\x14[a-z][a-z0-9-_]{,19}H\x00R\n" +
-	"deviceNameB\f\n" +
-	"\x04disk\x12\x04\xc0\xc11\x01\"Z\n" +
+	"\tvolume_id\x18\x02 \x01(\tR\bvolumeId\"\x86\x01\n" +
+	"\x19DetachInstanceDiskRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
+	"instanceId\x12\x1d\n" +
+	"\tvolume_id\x18\x02 \x01(\tH\x00R\bvolumeId\x12!\n" +
+	"\vdevice_name\x18\x03 \x01(\tH\x00R\n" +
+	"deviceNameB\x06\n" +
+	"\x04disk\"Z\n" +
 	"\x1aDetachInstanceDiskMetadata\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x12\x1b\n" +
-	"\tvolume_id\x18\x02 \x01(\tR\bvolumeId\"L\n" +
-	"\x0fAttachedNicSpec\x12#\n" +
-	"\x06nic_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x05nicId\x12\x14\n" +
-	"\x05index\x18\x02 \x01(\x05R\x05index\"\xa0\x02\n" +
-	"%AttachInstanceNetworkInterfaceRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"instanceId\x12Y\n" +
-	"\x11attached_nic_spec\x18\a \x01(\v2'.kacho.cloud.compute.v1.AttachedNicSpecB\x04\xe8\xc71\x01R\x0fattachedNicSpecJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\x17network_interface_indexR\tsubnet_idR\x17primary_v4_address_specR\x12security_group_ids\"\x7f\n" +
+	"\tvolume_id\x18\x02 \x01(\tR\bvolumeId\">\n" +
+	"\x0fAttachedNicSpec\x12\x15\n" +
+	"\x06nic_id\x18\x01 \x01(\tR\x05nicId\x12\x14\n" +
+	"\x05index\x18\x02 \x01(\x05R\x05index\"\x8c\x02\n" +
+	"%AttachInstanceNetworkInterfaceRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
+	"instanceId\x12S\n" +
+	"\x11attached_nic_spec\x18\a \x01(\v2'.kacho.cloud.compute.v1.AttachedNicSpecR\x0fattachedNicSpecJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\x17network_interface_indexR\tsubnet_idR\x17primary_v4_address_specR\x12security_group_ids\"\x7f\n" +
 	"&AttachInstanceNetworkInterfaceMetadata\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x12\x15\n" +
-	"\x06nic_id\x18\x03 \x01(\tR\x05nicIdJ\x04\b\x02\x10\x03R\x17network_interface_index\"\xcb\x01\n" +
-	"%DetachInstanceNetworkInterfaceRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"instanceId\x12!\n" +
-	"\x06nic_id\x18\x03 \x01(\tB\b\x8a\xc81\x04<=50H\x00R\x05nicId\x12\x16\n" +
-	"\x05index\x18\x04 \x01(\x05H\x00R\x05indexB\x19\n" +
-	"\x11network_interface\x12\x04\xc0\xc11\x01J\x04\b\x02\x10\x03R\x17network_interface_index\"\x7f\n" +
+	"\x06nic_id\x18\x03 \x01(\tR\x05nicIdJ\x04\b\x02\x10\x03R\x17network_interface_index\"\xad\x01\n" +
+	"%DetachInstanceNetworkInterfaceRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
+	"instanceId\x12\x17\n" +
+	"\x06nic_id\x18\x03 \x01(\tH\x00R\x05nicId\x12\x16\n" +
+	"\x05index\x18\x04 \x01(\x05H\x00R\x05indexB\x13\n" +
+	"\x11network_interfaceJ\x04\b\x02\x10\x03R\x17network_interface_index\"\x7f\n" +
 	"&DetachInstanceNetworkInterfaceMetadata\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\x12\x15\n" +
-	"\x06nic_id\x18\x03 \x01(\tR\x05nicIdJ\x04\b\x02\x10\x03R\x17network_interface_index\"X\n" +
-	"'SimulateInstanceMaintenanceEventRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"\x06nic_id\x18\x03 \x01(\tR\x05nicIdJ\x04\b\x02\x10\x03R\x17network_interface_index\"J\n" +
+	"'SimulateInstanceMaintenanceEventRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\"K\n" +
 	"(SimulateInstanceMaintenanceEventMetadata\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
-	"instanceId\"\xa1\x01\n" +
-	"\x1dListInstanceOperationsRequest\x12-\n" +
-	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"instanceId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"instanceId\"|\n" +
+	"\x1dListInstanceOperationsRequest\x12\x1f\n" +
+	"\vinstance_id\x18\x01 \x01(\tR\n" +
+	"instanceId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x8a\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8a\x01\n" +
 	"\x1eListInstanceOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xaa\x02\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x82\x02\n" +
 	"\x10AttachedDiskSpec\x12A\n" +
-	"\x04mode\x18\x01 \x01(\x0e2-.kacho.cloud.compute.v1.AttachedDiskSpec.ModeR\x04mode\x129\n" +
-	"\vdevice_name\x18\x02 \x01(\tB\x18\xf2\xc71\x14[a-z][a-z0-9-_]{,19}R\n" +
+	"\x04mode\x18\x01 \x01(\x0e2-.kacho.cloud.compute.v1.AttachedDiskSpec.ModeR\x04mode\x12\x1f\n" +
+	"\vdevice_name\x18\x02 \x01(\tR\n" +
 	"deviceName\x12\x1f\n" +
 	"\vauto_delete\x18\x03 \x01(\bR\n" +
-	"autoDelete\x12)\n" +
-	"\tvolume_id\x18\x05 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bvolumeId\";\n" +
+	"autoDelete\x12\x1b\n" +
+	"\tvolume_id\x18\x05 \x01(\tR\bvolumeId\";\n" +
 	"\x04Mode\x12\x14\n" +
 	"\x10MODE_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tREAD_ONLY\x10\x01\x12\x0e\n" +
 	"\n" +
-	"READ_WRITE\x10\x02J\x04\b\x04\x10\x05R\tdisk_spec\"\x9a\x01\n" +
-	"\x15AttachedLocalDiskSpec\x12\x18\n" +
-	"\x04size\x18\x01 \x01(\x03B\x04\xe8\xc71\x01R\x04size\x12_\n" +
+	"READ_WRITE\x10\x02J\x04\b\x04\x10\x05R\tdisk_spec\"\x94\x01\n" +
+	"\x15AttachedLocalDiskSpec\x12\x12\n" +
+	"\x04size\x18\x01 \x01(\x03R\x04size\x12_\n" +
 	"\x13physical_local_disk\x18\x02 \x01(\v2-.kacho.cloud.compute.v1.PhysicalLocalDiskSpecH\x00R\x11physicalLocalDiskB\x06\n" +
 	"\x04type\"5\n" +
 	"\x15PhysicalLocalDiskSpec\x12\x1c\n" +
 	"\n" +
-	"kms_key_id\x18\x01 \x01(\tR\bkmsKeyId\"\x88\x02\n" +
+	"kms_key_id\x18\x01 \x01(\tR\bkmsKeyId\"\xe4\x01\n" +
 	"\x16AttachedFilesystemSpec\x12G\n" +
-	"\x04mode\x18\x01 \x01(\x0e23.kacho.cloud.compute.v1.AttachedFilesystemSpec.ModeR\x04mode\x129\n" +
-	"\vdevice_name\x18\x02 \x01(\tB\x18\xf2\xc71\x14[a-z][a-z0-9-_]{,19}R\n" +
-	"deviceName\x12-\n" +
-	"\rfilesystem_id\x18\x03 \x01(\tB\b\x8a\xc81\x04<=50R\ffilesystemId\";\n" +
+	"\x04mode\x18\x01 \x01(\x0e23.kacho.cloud.compute.v1.AttachedFilesystemSpec.ModeR\x04mode\x12\x1f\n" +
+	"\vdevice_name\x18\x02 \x01(\tR\n" +
+	"deviceName\x12#\n" +
+	"\rfilesystem_id\x18\x03 \x01(\tR\ffilesystemId\";\n" +
 	"\x04Mode\x12\x14\n" +
 	"\x10MODE_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tREAD_ONLY\x10\x01\x12\x0e\n" +
 	"\n" +
-	"READ_WRITE\x10\x02\"\xee\x02\n" +
-	"\x14NetworkInterfaceSpec\x12%\n" +
-	"\tsubnet_id\x18\x01 \x01(\tB\b\x8a\xc81\x04<=50R\bsubnetId\x12a\n" +
+	"READ_WRITE\x10\x02\"\xda\x02\n" +
+	"\x14NetworkInterfaceSpec\x12\x1b\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\x12a\n" +
 	"\x17primary_v4_address_spec\x18\x02 \x01(\v2*.kacho.cloud.compute.v1.PrimaryAddressSpecR\x14primaryV4AddressSpec\x12a\n" +
 	"\x17primary_v6_address_spec\x18\x03 \x01(\v2*.kacho.cloud.compute.v1.PrimaryAddressSpecR\x14primaryV6AddressSpec\x12,\n" +
 	"\x12security_group_ids\x18\x06 \x03(\tR\x10securityGroupIds\x12\x14\n" +
-	"\x05index\x18\a \x01(\tR\x05index\x12\x1f\n" +
-	"\x06nic_id\x18\b \x01(\tB\b\x8a\xc81\x04<=50R\x05nicIdJ\x04\b\x04\x10\x06\"\x9d\x01\n" +
+	"\x05index\x18\a \x01(\tR\x05index\x12\x15\n" +
+	"\x06nic_id\x18\b \x01(\tR\x05nicIdJ\x04\b\x04\x10\x06\"\x9d\x01\n" +
 	"\x12PrimaryAddressSpec\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12U\n" +
 	"\x13one_to_one_nat_spec\x18\x02 \x01(\v2'.kacho.cloud.compute.v1.OneToOneNatSpecR\x0foneToOneNatSpecJ\x04\b\x03\x10\x04R\x10dns_record_specs\"\x85\x01\n" +

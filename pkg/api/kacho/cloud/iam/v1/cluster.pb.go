@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -114,11 +113,11 @@ var File_kacho_cloud_iam_v1_cluster_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_cluster_proto_rawDesc = "" +
 	"\n" +
-	" kacho/cloud/iam/v1/cluster.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\xbb\x01\n" +
-	"\aCluster\x12*\n" +
-	"\x02id\x18\x01 \x01(\tB\x1a\xe8\xc71\x01\xf2\xc71\x12cluster_kacho_rootR\x02id\x12\x1c\n" +
-	"\x04name\x18\x02 \x01(\tB\b\x8a\xc81\x043-63R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x129\n" +
+	" kacho/cloud/iam/v1/cluster.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8a\x01\n" +
+	"\aCluster\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x129\n" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAtB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 

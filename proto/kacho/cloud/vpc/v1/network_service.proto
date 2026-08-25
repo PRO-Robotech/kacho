@@ -10,7 +10,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/vpc/v1/network.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
@@ -177,30 +176,30 @@ service NetworkService {
 message GetNetworkRequest {
   // ID of the Network resource to return.
   // To get the network ID, use a [NetworkService.List] request.
-  string network_id = 1 [(required) = true, (length) = "<=50"];
+  string network_id = 1;
 }
 
 message ListNetworksRequest {
   // ID of the project to list networks in.
   // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [(required) = true, (length) = "<=50"];
+  string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available
   // results is larger than [page_size],
   // the service returns a [ListNetworksResponse.next_page_token]
   // that can be used to get the next page of results in subsequent list requests. Default value: 100.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListNetworksResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 
   // A filter expression that filters resources listed in the response.
   // The expression must specify:
   // 1. The field name. Currently you can use filtering only on the [Network.name] field.
   // 2. An `=` operator.
   // 3. The value in double quotes (`"`). Must be 3-63 characters long and match the regular expression `[a-z][-a-z0-9]{1,61}[a-z0-9]`.
-  string filter = 4 [(length) = "<=1000"];
+  string filter = 4;
 }
 
 message ListNetworksResponse {
@@ -219,17 +218,17 @@ message ListNetworksResponse {
 message CreateNetworkRequest {
   // ID of the project for this request to create a network in.
   // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [(required) = true, (length) = "<=50"];
+  string project_id = 1;
 
   // Name of the network.
   // The name must be unique within the folder.
-  string name = 2 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
+  string name = 2;
 
   // Description of the network.
-  string description = 3 [(length) = "<=256"];
+  string description = 3;
 
   // Resource labels as `` key:value `` pairs.
-  map<string, string> labels = 4 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 4;
   // 5 — create_default_security_group, СНЯТО с контракта.
   //
   // Поле позволяло сети остаться БЕЗ группы правил по умолчанию, а по решению
@@ -267,20 +266,20 @@ message CreateNetworkMetadata {
 message UpdateNetworkRequest {
   // ID of the Network resource to update.
   // To get the network ID use a [NetworkService.List] request.
-  string network_id = 1 [(required) = true, (length) = "<=50"];
+  string network_id = 1;
 
   // Field mask that specifies which fields of the Network resource are going to be updated.
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the network.
   // The name must be unique within the folder.
-  string name = 3 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
+  string name = 3;
 
   // Description of the network.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Resource labels as `` key:value `` pairs.
-  map<string, string> labels = 5 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 5;
 }
 
 message UpdateNetworkMetadata {
@@ -290,10 +289,7 @@ message UpdateNetworkMetadata {
 
 message AddNetworkCidrBlocksRequest {
   // ID of the Network resource whose declared supernet is being extended.
-  string network_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string network_id = 1;
 
   // IPv4 supernet block(s) to add to the network's declared supernet
   // (canonical network form, host-bits zero). For example, 10.30.0.0/16.
@@ -305,10 +301,7 @@ message AddNetworkCidrBlocksRequest {
 
 message RemoveNetworkCidrBlocksRequest {
   // ID of the Network resource whose declared supernet is being shrunk.
-  string network_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string network_id = 1;
 
   // IPv4 supernet block(s) to remove from the network's declared supernet.
   // A block that still contains a live subnet cannot be removed.
@@ -321,7 +314,7 @@ message RemoveNetworkCidrBlocksRequest {
 message DeleteNetworkRequest {
   // ID of the Network resource to update.
   // To get the network ID, use a [NetworkService.List] request.
-  string network_id = 1 [(required) = true, (length) = "<=50"];
+  string network_id = 1;
 }
 
 message DeleteNetworkMetadata {
@@ -331,16 +324,16 @@ message DeleteNetworkMetadata {
 
 message ListNetworkOperationsRequest {
   // ID of the Network resource to list operations for.
-  string network_id = 1 [(required) = true, (length) = "<=50"];
+  string network_id = 1;
 
   // The maximum number of results per page that should be returned. If the number of available
   // results is larger than [page_size], the service returns a [ListNetworkOperationsResponse.next_page_token]
   // that can be used to get the next page of results in subsequent list requests. Default value: 100.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListNetworkOperationsResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListNetworkOperationsResponse {

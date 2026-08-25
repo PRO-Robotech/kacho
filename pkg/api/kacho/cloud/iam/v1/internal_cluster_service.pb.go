@@ -34,7 +34,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -533,20 +532,20 @@ var File_kacho_cloud_iam_v1_internal_cluster_service_proto protoreflect.FileDesc
 
 const file_kacho_cloud_iam_v1_internal_cluster_service_proto_rawDesc = "" +
 	"\n" +
-	"1kacho/cloud/iam/v1/internal_cluster_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a kacho/cloud/iam/v1/cluster.proto\x1a,kacho/cloud/iam/v1/cluster_admin_grant.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x13\n" +
-	"\x11GetClusterRequest\"\xb8\x01\n" +
-	"\x18GrantClusterAdminRequest\x12T\n" +
-	"\fsubject_type\x18\x01 \x01(\x0e2+.kacho.cloud.iam.v1.ClusterGrantSubjectTypeB\x04\xe8\xc71\x01R\vsubjectType\x12F\n" +
+	"1kacho/cloud/iam/v1/internal_cluster_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a kacho/cloud/iam/v1/cluster.proto\x1a,kacho/cloud/iam/v1/cluster_admin_grant.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x13\n" +
+	"\x11GetClusterRequest\"\x89\x01\n" +
+	"\x18GrantClusterAdminRequest\x12N\n" +
+	"\fsubject_type\x18\x01 \x01(\x0e2+.kacho.cloud.iam.v1.ClusterGrantSubjectTypeR\vsubjectType\x12\x1d\n" +
 	"\n" +
-	"subject_id\x18\x02 \x01(\tB'\xe8\xc71\x01\xf2\xc71\x17usr_[0-9a-hjkmnp-tv-z]+\x8a\xc81\x04<=20R\tsubjectId\"o\n" +
+	"subject_id\x18\x02 \x01(\tR\tsubjectId\"o\n" +
 	"\x19GrantClusterAdminMetadata\x123\n" +
 	"\x16cluster_admin_grant_id\x18\x01 \x01(\tR\x13clusterAdminGrantId\x12\x1d\n" +
 	"\n" +
-	"subject_id\x18\x02 \x01(\tR\tsubjectId\"\xb9\x01\n" +
-	"\x19RevokeClusterAdminRequest\x12T\n" +
-	"\fsubject_type\x18\x01 \x01(\x0e2+.kacho.cloud.iam.v1.ClusterGrantSubjectTypeB\x04\xe8\xc71\x01R\vsubjectType\x12F\n" +
+	"subject_id\x18\x02 \x01(\tR\tsubjectId\"\x8a\x01\n" +
+	"\x19RevokeClusterAdminRequest\x12N\n" +
+	"\fsubject_type\x18\x01 \x01(\x0e2+.kacho.cloud.iam.v1.ClusterGrantSubjectTypeR\vsubjectType\x12\x1d\n" +
 	"\n" +
-	"subject_id\x18\x02 \x01(\tB'\xe8\xc71\x01\xf2\xc71\x17usr_[0-9a-hjkmnp-tv-z]+\x8a\xc81\x04<=20R\tsubjectId\"p\n" +
+	"subject_id\x18\x02 \x01(\tR\tsubjectId\"p\n" +
 	"\x1aRevokeClusterAdminMetadata\x123\n" +
 	"\x16cluster_admin_grant_id\x18\x01 \x01(\tR\x13clusterAdminGrantId\x12\x1d\n" +
 	"\n" +

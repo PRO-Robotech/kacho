@@ -7,7 +7,6 @@ package kacho.cloud.geo.v1;
 
 import "google/api/annotations.proto";
 import "kacho/cloud/geo/v1/region.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1;geov1";
@@ -56,16 +55,16 @@ service RegionService {
 
 message GetRegionRequest {
   // ID of the region to return information about.
-  string region_id = 1 [(required) = true, (length) = "<=50"];
+  string region_id = 1;
 }
 
 message ListRegionsRequest {
   // The maximum number of results per page to return.
-  int64 page_size = 1 [(value) = "<=1000"];
+  int64 page_size = 1;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListRegionsResponse.next_page_token] returned by a previous list request.
-  string page_token = 2 [(length) = "<=100"];
+  string page_token = 2;
 
   // If true, return only regions that are open for placement (derived
   // open_for_placement°=true, i.e. status==UP). This is the ONLY placement

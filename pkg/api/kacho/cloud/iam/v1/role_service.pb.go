@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -623,56 +622,53 @@ var File_kacho_cloud_iam_v1_role_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_role_service_proto_rawDesc = "" +
 	"\n" +
-	"%kacho/cloud/iam/v1/role_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a\x1dkacho/cloud/iam/v1/role.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"7\n" +
-	"\x0eGetRoleRequest\x12%\n" +
-	"\arole_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06roleId\"\xb2\x01\n" +
-	"\x10ListRolesRequest\x12'\n" +
-	"\tpage_size\x18\x01 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"%kacho/cloud/iam/v1/role_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a\x1dkacho/cloud/iam/v1/role.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\")\n" +
+	"\x0eGetRoleRequest\x12\x17\n" +
+	"\arole_id\x18\x01 \x01(\tR\x06roleId\"\x85\x01\n" +
+	"\x10ListRolesRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
-	"\x06filter\x18\x03 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\x12'\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x03 \x01(\tR\x06filter\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=20R\taccountId\"k\n" +
+	"account_id\x18\x04 \x01(\tR\taccountId\"k\n" +
 	"\x11ListRolesResponse\x12.\n" +
 	"\x05roles\x18\x01 \x03(\v2\x18.kacho.cloud.iam.v1.RoleR\x05roles\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xdc\x04\n" +
-	"\x11CreateRoleRequest\x12'\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb0\x03\n" +
+	"\x11CreateRoleRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tB\b\x8a\xc81\x04<=20R\taccountId\x12D\n" +
-	"\x04name\x18\x02 \x01(\tB0\xe8\xc71\x01\xf2\xc71 [a-z]([-a-z0-9_]{0,39}[a-z0-9])?\x8a\xc81\x041-41R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x127\n" +
-	"\vpermissions\x18\x04 \x03(\tB\x15\x82\xc81\x06<=1024\x8a\xc81\x05<=128\x18\x01R\vpermissions\x128\n" +
-	"\x05rules\x18\x05 \x03(\v2\x18.kacho.cloud.iam.v1.RuleB\b\x82\xc81\x041-64R\x05rules\x12'\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12$\n" +
+	"\vpermissions\x18\x04 \x03(\tB\x02\x18\x01R\vpermissions\x12.\n" +
+	"\x05rules\x18\x05 \x03(\v2\x18.kacho.cloud.iam.v1.RuleR\x05rules\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=20R\tprojectId\x12\x86\x01\n" +
-	"\x06labels\x18\a \x03(\v21.kacho.cloud.iam.v1.CreateRoleRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12K\n" +
+	"project_id\x18\x06 \x01(\tR\tprojectId\x12I\n" +
+	"\x06labels\x18\a \x03(\v21.kacho.cloud.iam.v1.CreateRoleRequest.LabelsEntryR\x06labels\x12K\n" +
 	"\x0fdefinition_tier\x18\b \x01(\v2\".kacho.cloud.iam.v1.DefinitionTierR\x0edefinitionTier\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc1\x04\n" +
-	"\x11UpdateRoleRequest\x12%\n" +
-	"\arole_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06roleId\x12;\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa6\x03\n" +
+	"\x11UpdateRoleRequest\x12\x17\n" +
+	"\arole_id\x18\x01 \x01(\tR\x06roleId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x129\n" +
-	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-a-z0-9_]{0,39}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x127\n" +
-	"\vpermissions\x18\x05 \x03(\tB\x15\x82\xc81\x06<=1024\x8a\xc81\x05<=128\x18\x01R\vpermissions\x128\n" +
-	"\x05rules\x18\x06 \x03(\v2\x18.kacho.cloud.iam.v1.RuleB\b\x82\xc81\x041-64R\x05rules\x12)\n" +
-	"\x10resource_version\x18\a \x01(\tR\x0fresourceVersion\x12\x86\x01\n" +
-	"\x06labels\x18\b \x03(\v21.kacho.cloud.iam.v1.UpdateRoleRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12$\n" +
+	"\vpermissions\x18\x05 \x03(\tB\x02\x18\x01R\vpermissions\x12.\n" +
+	"\x05rules\x18\x06 \x03(\v2\x18.kacho.cloud.iam.v1.RuleR\x05rules\x12)\n" +
+	"\x10resource_version\x18\a \x01(\tR\x0fresourceVersion\x12I\n" +
+	"\x06labels\x18\b \x03(\v21.kacho.cloud.iam.v1.UpdateRoleRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\":\n" +
-	"\x11DeleteRoleRequest\x12%\n" +
-	"\arole_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06roleId\"\x95\x01\n" +
-	"\x19ListRoleOperationsRequest\x12%\n" +
-	"\arole_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06roleId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\",\n" +
+	"\x11DeleteRoleRequest\x12\x17\n" +
+	"\arole_id\x18\x01 \x01(\tR\x06roleId\"p\n" +
+	"\x19ListRoleOperationsRequest\x12\x17\n" +
+	"\arole_id\x18\x01 \x01(\tR\x06roleId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x86\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x86\x01\n" +
 	"\x1aListRoleOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +

@@ -9,7 +9,6 @@ import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/cloud/vpc/v1/address.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
@@ -122,30 +121,24 @@ message GetAddressRequest {
   // ID of the Address resource to return.
   //
   // To get Address resource ID make a [AddressService.List] request.
-  string address_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string address_id = 1;
 }
 
 message ListAddressesRequest {
   // ID of the project to list addresses in.
   //
   // To get the project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available
   // results is larger than `page_size`, the service returns a [ListAddressesResponse.next_page_token]
   // that can be used to get the next page of results in subsequent list requests.
   // Default value: 100.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set `page_token` to the
   // [ListAddressesResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 
   // A filter expression that filters Address listed in the response.
   //
@@ -159,7 +152,7 @@ message ListAddressesRequest {
   // Optional: list only addresses allocated from this subnet (internal_ipv4 /
   // internal_ipv6 with this subnet_id). Used by the UI ref-picker for a NIC's
   // addresses in a given subnet.
-  string subnet_id = 5 [(length) = "<=50"];
+  string subnet_id = 5;
 
   // Optional: list only the address whose allocated value equals this IP.
   //
@@ -172,7 +165,7 @@ message ListAddressesRequest {
   //
   // Сужение применяется к ОБОИМ семействам и к обеим формам владения (внутренний
   // адрес подсети и внешний из пула): «чей это адрес» — один вопрос, а не четыре.
-  string ip_address = 6 [(length) = "<=45"];
+  string ip_address = 6;
 }
 
 message ListAddressesResponse {
@@ -192,26 +185,17 @@ message CreateAddressRequest {
   // ID of the project to create a address in.
   //
   // To get a project ID make a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 1;
 
   // Name of the address.
   // The name must be unique within the folder.
-  string name = 2 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
+  string name = 2;
 
   // Description of the address.
-  string description = 3 [(length) = "<=256"];
+  string description = 3;
 
   // Address labels as `key:value` pairs.
-  map<string, string> labels = 4 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_0-9a-z]*"
-  ];
+  map<string, string> labels = 4;
 
   
   oneof address_spec {
@@ -274,25 +258,23 @@ message ExternalIpv4AddressSpec {
 
 message InternalIpv4AddressSpec {
   // Value of address.
-  string address = 1 [(length) = "<=16"]; // if unspecified, one will be automatically allocated from the subnet
+  string address = 1; // if unspecified, one will be automatically allocated from the subnet
 
   oneof scope {
-    option (exactly_one) = true;
 
     // Subnet from which the address will be allocated.
-    string subnet_id = 2 [(length) = "<=50"];
+    string subnet_id = 2;
   }
 }
 
 message InternalIpv6AddressSpec {
   // Value of address.
-  string address = 1 [(length) = "<=16"]; // if unspecified, one will be automatically allocated from the subnet
+  string address = 1; // if unspecified, one will be automatically allocated from the subnet
 
   oneof scope {
-    option (exactly_one) = true;
 
     // Subnet from which the address will be allocated.
-    string subnet_id = 2 [(length) = "<=50"];
+    string subnet_id = 2;
   }
 }
 
@@ -302,10 +284,10 @@ message InternalIpv6AddressSpec {
 message ExternalIpv6AddressSpec {
   // Value of address. If unspecified, one will be automatically allocated.
   // Length cap is generous since v6 textual form can reach 39 chars.
-  string address = 1 [(length) = "<=45"];
+  string address = 1;
 
   // Availability zone from which the address will be allocated.
-  string zone_id = 2 [(length) = "<=50"]; // only if address unspecified
+  string zone_id = 2; // only if address unspecified
 
   // Parameters of the allocated address. Same shape as v4 even if some
   // attributes (e.g. SMTP capability) may not apply for v6 — kept symmetric
@@ -343,20 +325,17 @@ message UpdateAddressRequest {
   // ID of the address to update.
   //
   // To get the address ID make a [AddressService.List] request.
-  string address_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string address_id = 1;
 
   // Field mask that specifies which attributes of the Address should be updated.
   google.protobuf.FieldMask update_mask = 2;
 
   // New name for the address.
   // The name must be unique within the folder.
-  string name = 3 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
+  string name = 3;
 
   // New description of the address.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Address labels as `key:value` pairs.
   //
@@ -365,13 +344,7 @@ message UpdateAddressRequest {
   // 1. Get the current set of labels with a [AddressService.Get] request.
   // 2. Add or remove a label in this set.
   // 3. Send the new set in this field.
-  map<string, string> labels = 5 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_0-9a-z]*"
-  ];
+  map<string, string> labels = 5;
 
   // Whether the address is held by the project in its own right. See
   // [Address.reserved] for what that means and what it does not.
@@ -401,10 +374,7 @@ message DeleteAddressRequest {
   // ID of the address to delete.
   //
   // To get a address ID make a [AddressService.List] request.
-  string address_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string address_id = 1;
 }
 
 message DeleteAddressMetadata {
@@ -416,20 +386,17 @@ message ListAddressOperationsRequest {
   // ID of the address to list operations for.
   //
   // To get a address ID make a [AddressService.List] request.
-  string address_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string address_id = 1;
 
   // The maximum number of results per page to return. If the number of available
   // results is larger than [page_size], the service returns a [ListAddressOperationsResponse.next_page_token]
   // that can be used to get the next page of results in subsequent list requests.
   // Default value: 100.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListAddressOperationsResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListAddressOperationsResponse {

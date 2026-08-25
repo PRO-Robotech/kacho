@@ -43,7 +43,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/iam/v1/limit.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -219,16 +218,16 @@ service InternalLimitService {
 
 message GetLimitRequest {
   // ID of the Limit to return. Form `lim-<17 crockford-base32>` (21 chars).
-  string limit_id = 1 [(required) = true, (length) = "<=21"];
+  string limit_id = 1;
 }
 
 message ListLimitsRequest {
   // The maximum number of results per page. 0 → default; >1000 is REJECTED,
   // not clamped (api-conventions).
-  int64 page_size = 1 [(value) = "<=1000"];
+  int64 page_size = 1;
 
   // Opaque cursor from a previous response.
-  string page_token = 2 [(length) = "<=100"];
+  string page_token = 2;
 
   // Narrow to one scope. SCOPE_UNSPECIFIED → every scope.
   Limit.Scope scope = 3;
@@ -236,7 +235,7 @@ message ListLimitsRequest {
   // Narrow to the limits stated for one account / project. Empty → no narrowing
   // by object. Supplying it WITHOUT `scope` is legal and means "wherever this
   // object is named".
-  string scope_id = 4 [(length) = "<=21"];
+  string scope_id = 4;
 
   // Narrow to one kind. Empty → every kind.
   //
@@ -244,7 +243,7 @@ message ListLimitsRequest {
   // expression on purpose: the vocabulary here is closed and three-valued, and a
   // parser would introduce a second grammar whose only job is to be told the same
   // three things.
-  string kind = 5 [(length) = "<=64"];
+  string kind = 5;
 }
 
 message ListLimitsResponse {
@@ -259,15 +258,15 @@ message CreateLimitRequest {
   // Scope this limit is stated at. Required — SCOPE_UNSPECIFIED is refused by
   // name rather than defaulted, because every default here would be a guess
   // about the blast radius of the ceiling.
-  Limit.Scope scope = 1 [(required) = true];
+  Limit.Scope scope = 1;
 
   // Id of the account (ACCOUNT) or project (PROJECT) the scope names. MUST be
   // empty for DEFAULT and non-empty otherwise; the pairing is refused by name.
-  string scope_id = 2 [(length) = "<=21"];
+  string scope_id = 2;
 
   // Kind this limit governs. Must be a member of the platform's closed
   // catalogue of countable kinds.
-  string kind = 3 [(required) = true, (length) = "<=64"];
+  string kind = 3;
 
   // The ceiling. Zero is legal ("none of this kind"); negative is refused by
   // name.
@@ -276,7 +275,7 @@ message CreateLimitRequest {
 
 message UpdateLimitRequest {
   // ID of the Limit to update.
-  string limit_id = 1 [(required) = true, (length) = "<=21"];
+  string limit_id = 1;
 
   // Fields to update. Empty mask → full-object PATCH over mutable fields;
   // immutable fields present in the body are silently ignored. A mask naming an
@@ -290,7 +289,7 @@ message UpdateLimitRequest {
 
 message DeleteLimitRequest {
   // ID of the Limit to withdraw.
-  string limit_id = 1 [(required) = true, (length) = "<=21"];
+  string limit_id = 1;
 }
 
 message ResolveLimitsRequest {
@@ -298,12 +297,12 @@ message ResolveLimitsRequest {
   // or an account id. The kind of object is established by LOOKING IT UP, never
   // by reading its prefix — a prefix is a routing hint, not a statement about
   // what exists.
-  string scope_id = 1 [(required) = true, (length) = "<=21"];
+  string scope_id = 1;
 
   // Service whose kinds are wanted (`vpc`, `iam`, …). The answer carries one row
   // per kind that service owns, so the caller never has to know which kinds
   // exist — that catalogue is the platform's, not the caller's copy of it.
-  string service = 2 [(required) = true, (length) = "<=32"];
+  string service = 2;
 }
 
 message ResolveLimitsResponse {
@@ -314,10 +313,10 @@ message ResolveLimitsResponse {
 message ListChangedLimitsRequest {
   // Opaque cursor from a previous response. Empty → from the beginning of time,
   // which is what a projection that has never synchronised needs.
-  string cursor = 1 [(length) = "<=100"];
+  string cursor = 1;
 
   // The maximum number of entries per page. 0 → default; >1000 is REJECTED.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 }
 
 message ListChangedLimitsResponse {

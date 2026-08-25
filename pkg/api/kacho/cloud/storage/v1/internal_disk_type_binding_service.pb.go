@@ -10,7 +10,6 @@
 package storagev1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -773,7 +772,7 @@ var File_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto protore
 
 const file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_rawDesc = "" +
 	"\n" +
-	"?kacho/cloud/storage/v1/internal_disk_type_binding_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/api/annotations.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xa1\x04\n" +
+	"?kacho/cloud/storage/v1/internal_disk_type_binding_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/api/annotations.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xa1\x04\n" +
 	"\x0fDiskTypeBinding\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
 	"\fdisk_type_id\x18\x02 \x01(\tR\n" +
@@ -816,23 +815,22 @@ const file_kacho_cloud_storage_v1_internal_disk_type_binding_service_proto_rawDe
 	"\bmax_iops\x18\x03 \x01(\x03R\amaxIops\x12:\n" +
 	"\x19baseline_throughput_mibps\x18\x04 \x01(\x03R\x17baselineThroughputMibps\x127\n" +
 	"\x18throughput_per_gib_mibps\x18\x05 \x01(\x01R\x15throughputPerGibMibps\x120\n" +
-	"\x14max_throughput_mibps\x18\x06 \x01(\x03R\x12maxThroughputMibps\"\xf7\x02\n" +
-	"\x1cCreateDiskTypeBindingRequest\x12.\n" +
-	"\fdisk_type_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"diskTypeId\x12%\n" +
-	"\azone_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x06zoneId\x12+\n" +
+	"\x14max_throughput_mibps\x18\x06 \x01(\x03R\x12maxThroughputMibps\"\xc1\x02\n" +
+	"\x1cCreateDiskTypeBindingRequest\x12 \n" +
+	"\fdisk_type_id\x18\x01 \x01(\tR\n" +
+	"diskTypeId\x12\x17\n" +
+	"\azone_id\x18\x02 \x01(\tR\x06zoneId\x12\x1d\n" +
 	"\n" +
-	"backend_id\x18\x03 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tbackendId\x12F\n" +
-	"\alocator\x18\x04 \x01(\v2&.kacho.cloud.storage.v1.BackendLocatorB\x04\xe8\xc71\x01R\alocator\x12U\n" +
-	"\fcapabilities\x18\x05 \x01(\v2+.kacho.cloud.storage.v1.BindingCapabilitiesB\x04\xe8\xc71\x01R\fcapabilities\x124\n" +
-	"\x03qos\x18\x06 \x01(\v2\".kacho.cloud.storage.v1.BindingQoSR\x03qos\"R\n" +
-	"\x19GetDiskTypeBindingRequest\x125\n" +
-	"\x14disk_type_binding_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\x11diskTypeBindingId\"p\n" +
-	"\x1bListDiskTypeBindingsRequest\x12'\n" +
-	"\tpage_size\x18\x01 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"backend_id\x18\x03 \x01(\tR\tbackendId\x12@\n" +
+	"\alocator\x18\x04 \x01(\v2&.kacho.cloud.storage.v1.BackendLocatorR\alocator\x12O\n" +
+	"\fcapabilities\x18\x05 \x01(\v2+.kacho.cloud.storage.v1.BindingCapabilitiesR\fcapabilities\x124\n" +
+	"\x03qos\x18\x06 \x01(\v2\".kacho.cloud.storage.v1.BindingQoSR\x03qos\"L\n" +
+	"\x19GetDiskTypeBindingRequest\x12/\n" +
+	"\x14disk_type_binding_id\x18\x01 \x01(\tR\x11diskTypeBindingId\"Y\n" +
+	"\x1bListDiskTypeBindingsRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x9d\x01\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"\x9d\x01\n" +
 	"\x1cListDiskTypeBindingsResponse\x12U\n" +
 	"\x12disk_type_bindings\x18\x01 \x03(\v2'.kacho.cloud.storage.v1.DiskTypeBindingR\x10diskTypeBindings\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xc8\x05\n" +

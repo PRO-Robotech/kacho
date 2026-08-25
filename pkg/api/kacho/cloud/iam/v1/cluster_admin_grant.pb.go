@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -180,14 +179,14 @@ var File_kacho_cloud_iam_v1_cluster_admin_grant_proto protoreflect.FileDescripto
 
 const file_kacho_cloud_iam_v1_cluster_admin_grant_proto_rawDesc = "" +
 	"\n" +
-	",kacho/cloud/iam/v1/cluster_admin_grant.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\xe4\x02\n" +
-	"\x11ClusterAdminGrant\x12-\n" +
-	"\x02id\x18\x01 \x01(\tB\x1d\xe8\xc71\x01\xf2\xc71\rcag_[0-9a-z]+\x8a\xc81\x04<=20R\x02id\x12T\n" +
-	"\fsubject_type\x18\x02 \x01(\x0e2+.kacho.cloud.iam.v1.ClusterGrantSubjectTypeB\x04\xe8\xc71\x01R\vsubjectType\x12+\n" +
+	",kacho/cloud/iam/v1/cluster_admin_grant.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x98\x02\n" +
+	"\x11ClusterAdminGrant\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12N\n" +
+	"\fsubject_type\x18\x02 \x01(\x0e2+.kacho.cloud.iam.v1.ClusterGrantSubjectTypeR\vsubjectType\x12\x1d\n" +
 	"\n" +
-	"subject_id\x18\x03 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\tsubjectId\x129\n" +
-	"\x12granted_by_user_id\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x0fgrantedByUserId\x12'\n" +
-	"\trationale\x18\x05 \x01(\tB\t\x8a\xc81\x05<=512R\trationale\x129\n" +
+	"subject_id\x18\x03 \x01(\tR\tsubjectId\x12+\n" +
+	"\x12granted_by_user_id\x18\x04 \x01(\tR\x0fgrantedByUserId\x12\x1c\n" +
+	"\trationale\x18\x05 \x01(\tR\trationale\x129\n" +
 	"\n" +
 	"granted_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tgrantedAt*d\n" +
 	"\x17ClusterGrantSubjectType\x12*\n" +

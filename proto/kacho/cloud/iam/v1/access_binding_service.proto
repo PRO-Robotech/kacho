@@ -11,7 +11,6 @@ import "google/protobuf/timestamp.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/iam/v1/access_binding.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -355,28 +354,28 @@ service AccessBindingService {
 
 message GetAccessBindingRequest {
   // ID of the AccessBinding resource to return.
-  string access_binding_id = 1 [(required) = true, (length) = "<=20"];
+  string access_binding_id = 1;
 }
 
 message CreateAccessBindingRequest {
   // Тип subject'а: "user" | "service_account" | "group".
-  string subject_type = 1 [(required) = true, (length) = "<=32"];
+  string subject_type = 1;
 
   // ID subject'а.
-  string subject_id = 2 [(required) = true, (length) = "<=20"];
+  string subject_id = 2;
 
   // ID of the Role to assign.
-  string role_id = 3 [(required) = true, (length) = "<=20"];
+  string role_id = 3;
 
   // Scope-anchor TYPE in dotted form: `iam.cluster` | `iam.account` |
   // `iam.project` (redesign-2026 F7 — renamed from `resource_type`; «resource» is
   // reserved for `target`). REQUIRED (pre-Phase-0: prefix-derivation from scope_id
   // is B3-gated, so the tier must be given explicitly). An empty / non-dotted /
   // unknown value → sync INVALID_ARGUMENT.
-  string scope_type = 4 [(required) = true, (length) = "<=32"];
+  string scope_type = 4;
 
   // Scope-anchor ID — the anchor object id (`cluster_kacho_root` | `acc…` | `prj…`).
-  string scope_id = 5 [(required) = true, (length) = "<=64"];
+  string scope_id = 5;
 
   // TOMBSTONE. Tags 6/7 held an ABAC condition overlay on the binding
   // (`condition_id` / `builtin_condition`). Nothing evaluated it: no decision
@@ -434,7 +433,7 @@ message CreateAccessBindingRequest {
   // label-selectable наравне с account/project). Аннотации (size/key/value
   // pattern) — паритет account/project/group request `labels`. Tags 9/10/11
   // зарезервированы (target/target_ref/scope_ref tombstone) — 14 первый свободный.
-  map<string, string> labels = 14 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 14;
 
   // Which objects UNDER the scope-anchor the grant applies to (redesign-2026 F8,
   // least-privilege spine). REQUIRED — a Create with no `target` (neither
@@ -446,12 +445,12 @@ message CreateAccessBindingRequest {
 
 message DeleteAccessBindingRequest {
   // ID of the AccessBinding resource to delete.
-  string access_binding_id = 1 [(required) = true, (length) = "<=20"];
+  string access_binding_id = 1;
 }
 
 message RevokeAccessBindingRequest {
   // ID of the AccessBinding resource to soft-revoke (status ACTIVE→REVOKED).
-  string access_binding_id = 1 [(required) = true, (length) = "<=20"];
+  string access_binding_id = 1;
 }
 
 // UpdateAccessBindingRequest carries the mutable-field update for an
@@ -460,7 +459,7 @@ message RevokeAccessBindingRequest {
 // (role/subjects/scope/resource_type/resource_id — Delete+Create).
 message UpdateAccessBindingRequest {
   // ID of the AccessBinding resource to update.
-  string access_binding_id = 1 [(required) = true, (length) = "<=20"];
+  string access_binding_id = 1;
 
   // Field mask of fields to update. Allowed fields: `deletion_protection`,
   // `labels`. Any other field referenced in the mask → INVALID_ARGUMENT. An
@@ -475,17 +474,17 @@ message UpdateAccessBindingRequest {
   // Tenant-facing метки самого ресурса AccessBinding (mutable; `labels` в
   // update_mask). Аннотации (size/key/value pattern) — паритет
   // account/project/group request `labels`.
-  map<string, string> labels = 4 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 4;
 }
 
 message ListAccessBindingsRequest {
   // The maximum number of results per page to return. Default 100; >1000 →
   // INVALID_ARGUMENT (rejected, not clamped).
-  int64 page_size = 1 [(value) = "<=1000"];
+  int64 page_size = 1;
 
   // Page token. A malformed token → INVALID_ARGUMENT (validated before the
   // listauthz row-filter).
-  string page_token = 2 [(length) = "<=100"];
+  string page_token = 2;
 
   // Optional whitelist filter expression (redesign-2026 F11). Exactly one
   // predicate of the form `<key>="<value>"`, key ∈ {subject, role, scope, scopeId}
@@ -495,7 +494,7 @@ message ListAccessBindingsRequest {
   // Lifecycle status is NOT a filter key — it is the dedicated
   // `include_revoked` flag below, so it composes with any predicate (the filter
   // expression carries exactly ONE predicate).
-  string filter = 3 [(length) = "<=1000"];
+  string filter = 3;
 
   // Optional: include soft-revoked bindings (`status='REVOKED'`). Default false
   // (only PENDING/ACTIVE are returned).
@@ -519,16 +518,16 @@ message ListAccessBindingsByScopeRequest {
   // `target` (which objects UNDER the anchor a grant applies to), while this
   // pair names the ANCHOR — the exact opposite. Still accepted and still the
   // fallback when `scope_type` is empty.
-  string resource_type = 1 [(length) = "<=32"];
+  string resource_type = 1;
 
   // DEPRECATED — use `scope_id` (field 6). Scope-anchor id.
-  string resource_id = 2 [(length) = "<=64"];
+  string resource_id = 2;
 
   // The maximum number of results per page to return. Default value: 100.
-  int64 page_size = 3 [(value) = "<=1000"];
+  int64 page_size = 3;
 
   // Page token.
-  string page_token = 4 [(length) = "<=100"];
+  string page_token = 4;
 
   // Scope-anchor TYPE in the canonical DOTTED form — `iam.cluster` |
   // `iam.account` | `iam.project` — identical in name, form and meaning to
@@ -545,42 +544,42 @@ message ListAccessBindingsByScopeRequest {
   // send BOTH pairs over REST. The kacho-iam handler itself is already
   // new-pair-first (it prefers scope_type/scope_id and falls back to the legacy
   // pair), so the backend needs no further change.
-  string scope_type = 5 [(length) = "<=32"];
+  string scope_type = 5;
 
   // Scope-anchor ID (`cluster_kacho_root` | `acc…` | `prj…`). Paired with
   // `scope_type`; supersedes the legacy `resource_id`. Same migration caveat.
-  string scope_id = 6 [(length) = "<=64"];
+  string scope_id = 6;
 }
 
 message ListAccessBindingsBySubjectRequest {
   // Тип subject'а.
-  string subject_type = 1 [(required) = true, (length) = "<=32"];
+  string subject_type = 1;
 
   // ID subject'а.
-  string subject_id = 2 [(required) = true, (length) = "<=20"];
+  string subject_id = 2;
 
   // The maximum number of results per page to return. Default value: 100.
-  int64 page_size = 3 [(value) = "<=1000"];
+  int64 page_size = 3;
 
   // Page token.
-  string page_token = 4 [(length) = "<=100"];
+  string page_token = 4;
 }
 
 message ListAccessBindingsByAccountRequest {
   // ID of the Account whose access bindings are listed. Includes bindings
   // directly attached to the account AND bindings on every project owned by
   // the account.
-  string account_id = 1 [(required) = true, (length) = "<=20"];
+  string account_id = 1;
 
   // The maximum number of results per page to return. Default value: 100.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 
   // Optional: filter by subject_type ("user" | "service_account" | "group").
   // Empty = no filter.
-  string subject_type_filter = 4 [(length) = "<=32"];
+  string subject_type_filter = 4;
 
   // Optional: include revoked bindings (status='REVOKED'). Default false
   // (only PENDING/ACTIVE are returned).
@@ -630,13 +629,13 @@ message ListAccessBindingsResponse {
 
 message ListAccessBindingOperationsRequest {
   // ID of the AccessBinding resource to list operations for.
-  string access_binding_id = 1 [(required) = true, (length) = "<=20"];
+  string access_binding_id = 1;
 
   // The maximum number of results per page that should be returned.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListAccessBindingOperationsResponse {
@@ -658,17 +657,17 @@ message ListSubjectPrivilegesRequest {
   // (`derivation=DIRECT`), И гранты, полученные через членство в группе
   // (`derivation=GROUP`, `via_group_id` называет группу). Для "group" ответ —
   // гранты самой группы (DIRECT); группы не вкладываются друг в друга.
-  string subject_type = 1 [(required) = true, (length) = "<=32"];
+  string subject_type = 1;
 
   // ID subject'а (User id `usr-…` / ServiceAccount id `sva-…`).
-  string subject_id = 2 [(required) = true, (length) = "<=20"];
+  string subject_id = 2;
 
   // The maximum number of results per page to return. Default value: 50,
   // max 1000.
-  int64 page_size = 3 [(value) = "<=1000"];
+  int64 page_size = 3;
 
   // Opaque base64 cursor (created_at, id) для следующей страницы.
-  string page_token = 4 [(length) = "<=100"];
+  string page_token = 4;
 }
 
 message ListSubjectPrivilegesResponse {
@@ -769,19 +768,19 @@ message ListAssignableRolesRequest {
   // else → INVALID_ARGUMENT. Legacy name (see
   // ListAccessBindingsByScopeRequest.resource_type); still accepted as the
   // fallback when `scope_type` is empty.
-  string resource_type = 1 [(length) = "<=32"];
+  string resource_type = 1;
 
   // DEPRECATED — use `scope_id` (field 6). Scope-anchor id; must match the
   // type's prefix (account⇒acc, project⇒prj; cluster⇒exactly
   // cluster_kacho_root) — otherwise INVALID_ARGUMENT.
-  string resource_id = 2 [(length) = "<=64"];
+  string resource_id = 2;
 
   // The maximum number of results per page to return. Default value: 50,
   // max 1000.
-  int64 page_size = 3 [(value) = "<=1000"];
+  int64 page_size = 3;
 
   // Opaque base64 cursor (created_at, id) для следующей страницы.
-  string page_token = 4 [(length) = "<=100"];
+  string page_token = 4;
 
   // Scope-anchor TYPE in the canonical DOTTED form (`iam.cluster` |
   // `iam.account` | `iam.project`) — same name/form/meaning as
@@ -795,11 +794,11 @@ message ListAssignableRolesRequest {
   // the new pair is denied at the edge. Send BOTH pairs over REST until the
   // gateway extractor learns these names; the kacho-iam handler is already
   // new-pair-first.
-  string scope_type = 5 [(length) = "<=32"];
+  string scope_type = 5;
 
   // Scope-anchor ID; paired with `scope_type`, supersedes `resource_id`. Same
   // migration caveat.
-  string scope_id = 6 [(length) = "<=64"];
+  string scope_id = 6;
 }
 
 message ListAssignableRolesResponse {
@@ -859,14 +858,14 @@ message AssignableRole {
 message ListAccessBindingsByRoleRequest {
   // ID of the Role whose bindings are listed (`rol-…`). Audit "who holds role
   // R". Malformed id → INVALID_ARGUMENT.
-  string role_id = 1 [(required) = true, (length) = "<=20"];
+  string role_id = 1;
 
   // The maximum number of results per page to return. Default value: 50,
   // max 1000.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Opaque base64 cursor (created_at, id) для следующей страницы.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 
   // Optional: include revoked bindings (status='REVOKED'). Default false
   // (only PENDING/ACTIVE are returned).
@@ -890,18 +889,18 @@ message ListAccessBindingsByRoleRequest {
 message ExpandAccessRequest {
   // Object type to expand access on — closed `<module>.<resource>` key or FGA
   // object type. Unknown type → INVALID_ARGUMENT.
-  string object_type = 1 [(required) = true, (length) = "1-64"];
+  string object_type = 1;
 
   // Object id to expand access on. Format-validated only (soft-ref).
-  string object_id = 2 [(required) = true, (length) = "1-64"];
+  string object_id = 2;
 
   // Relation to expand (e.g. "v_delete", "viewer"). Принимается выводимое
   // множество (см. описание сообщения выше); всё остальное — INVALID_ARGUMENT.
-  string relation = 3 [(required) = true, (length) = "1-64"];
+  string relation = 3;
 
   // The maximum number of concrete principals to return. Default 1000, max
   // 10000 (fan-out limit). Truncation sets `truncated=true`.
-  int64 max_results = 4 [(value) = "<=10000"];
+  int64 max_results = 4;
 }
 
 // Principal is a concrete grantee resolved by ExpandAccess — a USER or

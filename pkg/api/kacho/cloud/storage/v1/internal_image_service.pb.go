@@ -10,7 +10,6 @@
 package storagev1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -147,6 +146,7 @@ type RegisterImageRequest struct {
 	// Описание образа.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// Resource labels as `key:value` pairs.
+	// At most 64 pairs.
 	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Имя объекта у бэкенда — тот самый handle, ради которого метод существует.
 	//
@@ -361,20 +361,20 @@ var File_kacho_cloud_storage_v1_internal_image_service_proto protoreflect.FileDe
 
 const file_kacho_cloud_storage_v1_internal_image_service_proto_rawDesc = "" +
 	"\n" +
-	"3kacho/cloud/storage/v1/internal_image_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\"kacho/cloud/storage/v1/image.proto\x1a*kacho/cloud/storage/v1/status_reason.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"4\n" +
+	"3kacho/cloud/storage/v1/internal_image_service.proto\x12\x16kacho.cloud.storage.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\"kacho/cloud/storage/v1/image.proto\x1a*kacho/cloud/storage/v1/status_reason.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"4\n" +
 	"\x17GetInternalImageRequest\x12\x19\n" +
-	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\xb4\x04\n" +
-	"\x14RegisterImageRequest\x12+\n" +
+	"\bimage_id\x18\x01 \x01(\tR\aimageId\"\x81\x03\n" +
+	"\x14RegisterImageRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12)\n" +
-	"\tregion_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bregionId\x129\n" +
-	"\x04name\x18\x03 \x01(\tB%\xf2\xc71!|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x95\x01\n" +
-	"\x06labels\x18\x05 \x03(\v28.kacho.cloud.storage.v1.RegisterImageRequest.LabelsEntryBC\xf2\xc71\x0f[-_./\\@0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x1c\x12\x14[a-z][-_./\\@0-9a-z]*\x1a\x041-63R\x06labels\x124\n" +
-	"\x0ebackend_object\x18\x06 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=255R\rbackendObject\x12%\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tregion_id\x18\x02 \x01(\tR\bregionId\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12P\n" +
+	"\x06labels\x18\x05 \x03(\v28.kacho.cloud.storage.v1.RegisterImageRequest.LabelsEntryR\x06labels\x12%\n" +
+	"\x0ebackend_object\x18\x06 \x01(\tR\rbackendObject\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\a \x01(\x03B\x06\xfa\xc71\x02>0R\tsizeBytes\x12,\n" +
-	"\x0emin_disk_bytes\x18\b \x01(\x03B\x06\xfa\xc71\x02>0R\fminDiskBytes\x1a9\n" +
+	"size_bytes\x18\a \x01(\x03R\tsizeBytes\x12$\n" +
+	"\x0emin_disk_bytes\x18\b \x01(\x03R\fminDiskBytes\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbc\x03\n" +

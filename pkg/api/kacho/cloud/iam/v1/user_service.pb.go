@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -224,7 +223,8 @@ type InviteUserRequest struct {
 	// Optional: project_id + role_id pair to create AccessBinding atomically.
 	// Если оба не заполнены — только invite-row создается (admin позже выдает роли
 	// через AccessBindingService.Create).
-	ProjectId     string `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	ProjectId string `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// ID of the Role granted to the invited user on acceptance. Empty grants nothing.
 	RoleId        string `protobuf:"bytes,5,opt,name=role_id,json=roleId,proto3" json:"role_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -682,53 +682,50 @@ var File_kacho_cloud_iam_v1_user_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_user_service_proto_rawDesc = "" +
 	"\n" +
-	"%kacho/cloud/iam/v1/user_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a\x1dkacho/cloud/iam/v1/user.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"7\n" +
-	"\x0eGetUserRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\"\xb2\x01\n" +
-	"\x10ListUsersRequest\x12'\n" +
+	"%kacho/cloud/iam/v1/user_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a\x1dkacho/cloud/iam/v1/user.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\")\n" +
+	"\x0eGetUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\"\x85\x01\n" +
+	"\x10ListUsersRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=20R\taccountId\x12'\n" +
-	"\tpage_size\x18\x01 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"account_id\x18\x04 \x01(\tR\taccountId\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
-	"\x06filter\x18\x03 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\"k\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x03 \x01(\tR\x06filter\"k\n" +
 	"\x11ListUsersResponse\x12.\n" +
 	"\x05users\x18\x01 \x03(\v2\x18.kacho.cloud.iam.v1.UserR\x05users\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xe0\x01\n" +
-	"\x11InviteUserRequest\x12+\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xa3\x01\n" +
+	"\x11InviteUserRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\taccountId\x12$\n" +
-	"\x05email\x18\x02 \x01(\tB\x0e\xe8\xc71\x01\x8a\xc81\x061..256R\x05email\x12,\n" +
-	"\fdisplay_name\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdisplayName\x12'\n" +
+	"account_id\x18\x01 \x01(\tR\taccountId\x12\x14\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\x12!\n" +
+	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=20R\tprojectId\x12!\n" +
-	"\arole_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=20R\x06roleId\"\xc7\x02\n" +
-	"\x11UpdateUserRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12;\n" +
+	"project_id\x18\x04 \x01(\tR\tprojectId\x12\x17\n" +
+	"\arole_id\x18\x05 \x01(\tR\x06roleId\"\xfb\x01\n" +
+	"\x11UpdateUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x12\x86\x01\n" +
-	"\x06labels\x18\x04 \x03(\v21.kacho.cloud.iam.v1.UpdateUserRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"updateMask\x12I\n" +
+	"\x06labels\x18\x04 \x03(\v21.kacho.cloud.iam.v1.UpdateUserRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x03\x10\x04R\x04user\":\n" +
-	"\x11DeleteUserRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\"r\n" +
-	"\x1cRemoveUserFromAccountRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12+\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x03\x10\x04R\x04user\",\n" +
+	"\x11DeleteUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\"V\n" +
+	"\x1cRemoveUserFromAccountRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\taccountId\"9\n" +
-	"\x10BlockUserRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\";\n" +
-	"\x12UnblockUserRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\"\x95\x01\n" +
-	"\x19ListUserOperationsRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\"+\n" +
+	"\x10BlockUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\"-\n" +
+	"\x12UnblockUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\"p\n" +
+	"\x19ListUserOperationsRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x86\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x86\x01\n" +
 	"\x1aListUserOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +

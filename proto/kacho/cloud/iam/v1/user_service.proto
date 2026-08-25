@@ -10,7 +10,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/iam/v1/user.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -372,19 +371,19 @@ service UserService {
 
 message GetUserRequest {
   // ID of the User resource to return.
-  string user_id = 1 [(required) = true, (length) = "<=20"];
+  string user_id = 1;
 }
 
 message ListUsersRequest {
   // Account-scope filter. Required для регулярного user (default-deny
   // фильтрует Users по Account). system-admin может оставить пустым (видит всех).
-  string account_id = 4 [(length) = "<=20"];
+  string account_id = 4;
 
   // The maximum number of results per page to return. Default value: 100.
-  int64 page_size = 1 [(value) = "<=1000"];
+  int64 page_size = 1;
 
   // Page token.
-  string page_token = 2 [(length) = "<=100"];
+  string page_token = 2;
 
   // A filter expression. Exactly one term, in the form `field="value"`.
   //
@@ -396,7 +395,7 @@ message ListUsersRequest {
   // `search` is the term a console types into: a User has no `name`, and the
   // exact-match terms above only answer someone who already knows the whole
   // value. `%` and `_` in its value are matched literally, not as wildcards.
-  string filter = 3 [(length) = "<=1000"];
+  string filter = 3;
 }
 
 message ListUsersResponse {
@@ -410,20 +409,21 @@ message ListUsersResponse {
 // Invite a user by email.
 message InviteUserRequest {
   // Account where the user is invited. Required.
-  string account_id = 1 [(required) = true, (length) = "<=20"];
+  string account_id = 1;
 
   // Email of the invitee. Required, case-insensitive lookup.
-  string email = 2 [(required) = true, (length) = "1..256"];
+  string email = 2;
 
   // Display name to seed the User-row (optional; will be overwritten on first
   // login from Kratos identity traits).
-  string display_name = 3 [(length) = "<=256"];
+  string display_name = 3;
 
   // Optional: project_id + role_id pair to create AccessBinding atomically.
   // Если оба не заполнены — только invite-row создается (admin позже выдает роли
   // через AccessBindingService.Create).
-  string project_id = 4 [(length) = "<=20"];
-  string role_id = 5 [(length) = "<=20"];
+  string project_id = 4;
+  // ID of the Role granted to the invited user on acceptance. Empty grants nothing.
+  string role_id = 5;
 }
 
 message UpdateUserRequest {
@@ -433,7 +433,7 @@ message UpdateUserRequest {
   reserved "user";
 
   // ID of the User resource to update.
-  string user_id = 1 [(required) = true, (length) = "<=20"];
+  string user_id = 1;
 
   // Field mask. Allowed field: `labels` (единственное mutable-поле).
   // external_id и иные IdP-projected identity-поля immutable: их наличие в
@@ -445,12 +445,12 @@ message UpdateUserRequest {
   // Единственное применяемое mutable-поле; identity-поля (`external_id` и иные
   // IdP-projected) hard-immutable и в request не переносятся. Аннотации
   // (size/key/value pattern) — паритет account/project/group/role request `labels`.
-  map<string, string> labels = 4 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 4;
 }
 
 message DeleteUserRequest {
   // ID of the User resource to delete.
-  string user_id = 1 [(required) = true, (length) = "<=20"];
+  string user_id = 1;
 }
 
 // Removes a person from one Account. Both ids are required: the membership is
@@ -461,33 +461,33 @@ message DeleteUserRequest {
 message RemoveUserFromAccountRequest {
   // ID of the person whose membership is removed. The identity row is not
   // touched by this call.
-  string user_id = 1 [(required) = true, (length) = "<=20"];
+  string user_id = 1;
 
   // ID of the Account the person is removed from. This is also the scope of the
   // authorization decision (`member_remover` on this Account).
-  string account_id = 2 [(required) = true, (length) = "<=20"];
+  string account_id = 2;
 }
 
 message BlockUserRequest {
   // ID of the User membership row to block. The only input: the state is the
   // verb, so there is no field that could be forgotten.
-  string user_id = 1 [(required) = true, (length) = "<=20"];
+  string user_id = 1;
 }
 
 message UnblockUserRequest {
   // ID of the User membership row to unblock.
-  string user_id = 1 [(required) = true, (length) = "<=20"];
+  string user_id = 1;
 }
 
 message ListUserOperationsRequest {
   // ID of the User resource to list operations for.
-  string user_id = 1 [(required) = true, (length) = "<=20"];
+  string user_id = 1;
 
   // The maximum number of results per page that should be returned.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListUserOperationsResponse {

@@ -12,7 +12,6 @@ import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/compute/v1/instance.proto";
 import "kacho/cloud/compute/v1/maintenance.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1;computev1";
@@ -290,10 +289,7 @@ service InstanceService {
 message GetInstanceRequest {
   // ID of the Instance resource to return.
   // To get the instance ID, use a [InstanceService.List] request.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string instance_id = 1;
 
   // Field 2 held `view` (enum InstanceView: BASIC | FULL). Retired together with
   // its only subject.
@@ -316,21 +312,18 @@ message GetInstanceRequest {
 message ListInstancesRequest {
   // ID of the Folder to list instances in.
   // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available
   // results is larger than [page_size],
   // the service returns a [ListInstancesResponse.next_page_token]
   // that can be used to get the next page of results in subsequent list requests.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results,
   // set [page_token] to the [ListInstancesResponse.next_page_token]
   // returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 
   // A filter expression that filters resources listed in the response.
   // The expression consists of one or more conditions united by `AND` operator: `<condition1> [AND <condition2> [<...> AND <conditionN>]]`.
@@ -347,7 +340,7 @@ message ListInstancesRequest {
   // 2. `<operator>` is a logical operator, one of `=`, `!=`, `IN`, `NOT IN`.
   // 3. `<value>` represents a value.
   // String values should be written in double (`"`) or single (`'`) quotes. C-style escape sequences are supported (`\"` turns to `"`, `\'` to `'`, `\\` to backslash).
-  string filter = 4 [(length) = "<=1000"];
+  string filter = 4;
 
   // Field 5 held `order_by`, a free-form sort expression. It was accepted,
   // length-checked and then read by nothing: no handler, use-case or repository
@@ -389,32 +382,21 @@ message CreateInstanceRequest {
     "reserved_instance_pool_id", "application", "image";
 
   // ID of the project to create an instance in.
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 1;
 
   // Name of the instance.
-  string name = 2 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+  string name = 2;
 
   // Description of the instance.
-  string description = 3 [(length) = "<=256"];
+  string description = 3;
 
   // Resource labels as `key:value` pairs.
-  map<string, string> labels = 4 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_./\\@0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
-  ];
+  // At most 64 pairs.
+  map<string, string> labels = 4;
 
   // ID of the availability zone where the instance resides.
   // To get a list of available zones, use the [kacho.cloud.geo.v1.ZoneService.List] request.
-  string zone_id = 5 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string zone_id = 5;
 
   // Поле 8 держало свободную карту данных машины.
   //
@@ -436,11 +418,11 @@ message CreateInstanceRequest {
   repeated NetworkInterfaceSpec network_interface_specs = 11;
 
   // Host name for the instance (used to derive fqdn).
-  string hostname = 12 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+  string hostname = 12;
 
   // ID of the service account to use inside the instance (F4). Optional for public
   // images; echoed as the reference.Referrer on the Instance.
-  string service_account_id = 14 [(length) = "<=50"];
+  string service_account_id = 14;
 
   // Network settings (legacy).
   NetworkSettings network_settings = 15;
@@ -455,7 +437,7 @@ message CreateInstanceRequest {
   MaintenancePolicy maintenance_policy = 21;
 
   // Time between notification via metadata service and maintenance (legacy).
-  google.protobuf.Duration maintenance_grace_period = 22 [(value) = "1s-24h"];
+  google.protobuf.Duration maintenance_grace_period = 22;
 
   // Serial port settings (legacy).
   SerialPortSettings serial_port_settings = 23;
@@ -466,7 +448,7 @@ message CreateInstanceRequest {
   InstanceKind instance_kind = 27;
 
   // The single sizing channel (F2): "mt-" slug OR a stable machine-type name. Required.
-  string machine_type_id = 28 [(length) = "<=63"];
+  string machine_type_id = 28;
 
   // The single OS entry (F3): {type,id} only — output-only fields on input → 400.
   BootSource boot_source = 29;
@@ -498,11 +480,15 @@ message CreateInstanceRequest {
   //
   // Ключ обязан принадлежать ТОМУ ЖЕ проекту, что машина; это условие стоит
   // внутри самой вставки связи, а не отдельной проверкой перед ней.
-  repeated string guest_access_key_ids = 39 [(size) = "<=32"];
+  // At most 32 entries: each key is resolved at launch, and the cost of the launch
+  // grows with the count.
+  repeated string guest_access_key_ids = 39;
 
   // Secondary Volumes to attach (F6 launch skeleton). Structurally validated in
   // COMP-1 (size_gib > 0, mount_path); materialize is COMP-2.
-  repeated SecondaryVolumeSpec secondary_volume_specs = 34 [(size) = "<=8"];
+  // At most 8 entries: every spec costs one call to the storage owner, and that
+  // owner authorizes each call on its side.
+  repeated SecondaryVolumeSpec secondary_volume_specs = 34;
 
   // Use the project-default subnet+SG instead of network_interface_specs (F6). One of
   // network_interface_specs / use_default_network is required.
@@ -518,7 +504,7 @@ message CreateInstanceRequest {
 
   // Opaque placement-group slug (COMP-1 passthrough; existence/coherence → COMP-3).
   // Well-formed "plg-" slug OR empty; malformed → 400.
-  string placement_group_id = 38 [(length) = "<=50"];
+  string placement_group_id = 38;
 }
 
 // SecondaryVolumeSpec — a secondary Volume to attach on launch (F6 skeleton).
@@ -536,7 +522,7 @@ message SecondaryVolumeSpec {
 
 message CreateInstanceMetadata {
   // ID of the instance that is being created.
-  string instance_id = 1 [(length) = "<=50"];
+  string instance_id = 1;
 }
 
 message UpdateInstanceRequest {
@@ -550,28 +536,20 @@ message UpdateInstanceRequest {
     "metadata_options", "reserved_instance_pool_id", "application", "image";
 
   // ID of the Instance resource to update.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string instance_id = 1;
 
   // Field mask specifying which fields of the Instance resource are going to be updated.
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the instance (LIVE-mutable).
-  string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+  string name = 3;
 
   // Description of the instance (LIVE-mutable).
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Resource labels; the existing set is completely replaced (LIVE-mutable).
-  map<string, string> labels = 5 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_./\\@0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
-  ];
+  // At most 64 pairs.
+  map<string, string> labels = 5;
 
   // Поле 8 держало свободную карту данных машины — снято вместе с приёмом на
   // создании. Отказ, стоявший здесь, отсылал к RPC `UpdateMetadata`, которого в
@@ -581,7 +559,7 @@ message UpdateInstanceRequest {
   reserved "metadata";
 
   // ID of the service account used inside the instance (LIVE-mutable, F4).
-  string service_account_id = 9 [(length) = "<=50"];
+  string service_account_id = 9;
 
   // Network settings (legacy).
   NetworkSettings network_settings = 10;
@@ -590,7 +568,7 @@ message UpdateInstanceRequest {
   MaintenancePolicy maintenance_policy = 14;
 
   // Time between notification via metadata service and maintenance (legacy).
-  google.protobuf.Duration maintenance_grace_period = 15 [(value) = "1s-24h"];
+  google.protobuf.Duration maintenance_grace_period = 15;
 
   // Serial port settings (legacy).
   SerialPortSettings serial_port_settings = 16;
@@ -599,13 +577,13 @@ message UpdateInstanceRequest {
 
   // The sizing channel (F2/F10). STOPPED-gated: a real change on a non-STOPPED
   // instance → FAILED_PRECONDITION. Stays in the mask known-set.
-  string machine_type_id = 20 [(length) = "<=63"];
+  string machine_type_id = 20;
 
   // Guaranteed CPU baseline per vCPU, in percent (STOPPED-gated sizing, F10).
   int32 cpu_guarantee_percent = 21;
 
   // Opaque placement-group slug (STOPPED-gated placement, F10; COMP-1 passthrough).
-  string placement_group_id = 22 [(length) = "<=50"];
+  string placement_group_id = 22;
 
   // НЕ ПРИНИМАЕТСЯ — по той же причине, что на создании, и с той же заменой:
   // связь с ключами выражается полем `guest_access_key_ids` ниже. Отказ приходит
@@ -618,7 +596,9 @@ message UpdateInstanceRequest {
   // Пустой набор при названной маске означает «снять все ключи», и это
   // осмысленное намерение, а не пропуск: иначе снять последний ключ было бы
   // нечем.
-  repeated string guest_access_key_ids = 25 [(size) = "<=32"];
+  // At most 32 entries: each key is resolved on write, and the cost of the write
+  // grows with the count.
+  repeated string guest_access_key_ids = 25;
 
   // VM spec (next-boot deferred class, F10 — user_data/metadata_options).
   VmSpec vm_spec = 24;
@@ -632,10 +612,7 @@ message UpdateInstanceMetadata {
 message DeleteInstanceRequest {
   // ID of the instance to delete.
   // To get the instance ID, use a [InstanceService.List] request.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string instance_id = 1;
 }
 
 message DeleteInstanceMetadata {
@@ -645,15 +622,12 @@ message DeleteInstanceMetadata {
 
 message GetInstanceSerialPortOutputRequest {
   // ID of the instance to return the serial port output for.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string instance_id = 1;
 
   // NOT ACCEPTED. The response is control-plane synthetic and does not depend on the
   // port, so accepting a port number promised a choice that does not exist. A non-zero
   // value is refused synchronously with INVALID_ARGUMENT naming this field.
-  int64 port = 2 [(value) = "1,2,3,4"];
+  int64 port = 2;
 }
 
 message GetInstanceSerialPortOutputResponse {
@@ -665,10 +639,7 @@ message GetInstanceSerialPortOutputResponse {
 message StopInstanceRequest {
   // ID of the instance to stop.
   // To get the instance ID, use a [InstanceService.List] request.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string instance_id = 1;
 }
 
 message StopInstanceMetadata {
@@ -679,10 +650,7 @@ message StopInstanceMetadata {
 message StartInstanceRequest {
   // ID of the instance to start.
   // To get the instance ID, use a [InstanceService.List] request.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string instance_id = 1;
 }
 
 message StartInstanceMetadata {
@@ -693,10 +661,7 @@ message StartInstanceMetadata {
 message RestartInstanceRequest {
   // ID of the instance to restart.
   // To get the instance ID, use a [InstanceService.List] request.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string instance_id = 1;
 }
 
 message RestartInstanceMetadata {
@@ -707,13 +672,10 @@ message RestartInstanceMetadata {
 message AttachInstanceDiskRequest {
   // ID of the instance to attach the disk to.
   // To get the instance ID, use a [InstanceService.List] request.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string instance_id = 1;
 
   // Disk that should be attached.
-  AttachedDiskSpec attached_disk_spec = 2 [(required) = true];
+  AttachedDiskSpec attached_disk_spec = 2;
 }
 
 message AttachInstanceDiskMetadata {
@@ -727,20 +689,16 @@ message AttachInstanceDiskMetadata {
 message DetachInstanceDiskRequest {
   // ID of the instance to detach the disk from.
   // To get the instance ID, use a [InstanceService.List] request.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string instance_id = 1;
 
   oneof disk {
-    option (exactly_one) = true;
 
     // ID of the storage Volume (prefix "vol") that should be detached.
-    string volume_id = 2 [(length) = "<=50"];
+    string volume_id = 2;
 
     // Serial number of the disk that should be detached. This value is reflected into the /dev/disk/by-id/ tree
     // of a Linux operating system running within the instance.
-    string device_name = 3 [(pattern) = "[a-z][a-z0-9-_]{,19}"];
+    string device_name = 3;
   }
 }
 
@@ -758,10 +716,7 @@ message DetachInstanceDiskMetadata {
 // it. Re-enables the explicit NIC↔Instance binding deferred in KAC-266.
 message AttachedNicSpec {
   // ID of an existing kacho-vpc NetworkInterface (NIC, prefix "enp") to attach.
-  string nic_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string nic_id = 1;
 
   // Slot index on the instance (eth0=0, eth1=1, …), unique within the instance.
   // Optional: if unset, the server assigns the first free slot atomically.
@@ -775,13 +730,10 @@ message AttachInstanceNetworkInterfaceRequest {
   reserved "network_interface_index", "subnet_id", "primary_v4_address_spec", "security_group_ids";
 
   // ID of the instance to attach the network interface to.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string instance_id = 1;
 
   // NIC to attach (existing kacho-vpc NetworkInterface, referenced by id).
-  AttachedNicSpec attached_nic_spec = 7 [(required) = true];
+  AttachedNicSpec attached_nic_spec = 7;
 }
 
 message AttachInstanceNetworkInterfaceMetadata {
@@ -800,16 +752,12 @@ message DetachInstanceNetworkInterfaceRequest {
   reserved "network_interface_index";
 
   // ID of the instance to detach the network interface from.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string instance_id = 1;
 
   oneof network_interface {
-    option (exactly_one) = true;
 
     // ID of the kacho-vpc NetworkInterface (NIC, prefix "enp") to detach.
-    string nic_id = 3 [(length) = "<=50"];
+    string nic_id = 3;
 
     // Slot index of the network interface to detach.
     int32 index = 4;
@@ -828,10 +776,8 @@ message DetachInstanceNetworkInterfaceMetadata {
 }
 
 message SimulateInstanceMaintenanceEventRequest {
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  // ID of the Instance the simulated maintenance event is delivered to.
+  string instance_id = 1;
 }
 
 message SimulateInstanceMaintenanceEventMetadata {
@@ -840,19 +786,16 @@ message SimulateInstanceMaintenanceEventMetadata {
 
 message ListInstanceOperationsRequest {
   // ID of the Instance resource to list operations for.
-  string instance_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string instance_id = 1;
 
   // The maximum number of results per page to return. If the number of available
   // results is larger than [page_size], the service returns a [ListInstanceOperationsResponse.next_page_token]
   // that can be used to get the next page of results in subsequent list requests.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListInstanceOperationsResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListInstanceOperationsResponse {
@@ -885,16 +828,13 @@ message AttachedDiskSpec {
   //
   // This value can be used to reference the device for mounting, resizing, and so on, from within the instance.
   // If not specified, a random value will be generated.
-  string device_name = 2 [(pattern) = "[a-z][a-z0-9-_]{,19}"];
+  string device_name = 2;
 
   // Specifies whether the disk will be auto-deleted when the instance is deleted.
   bool auto_delete = 3;
 
   // ID of the storage Volume (prefix "vol") that should be attached.
-  string volume_id = 5 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string volume_id = 5;
 
   // Field 4 carried `DiskSpec` — an inline "create a disk while attaching it" form
   // over compute's own Disk resource. That resource is retired: kacho-storage owns
@@ -909,7 +849,7 @@ message AttachedDiskSpec {
 
 message AttachedLocalDiskSpec {
   // Size of the disk, specified in bytes.
-  int64 size = 1 [(required) = true];
+  int64 size = 1;
 
   oneof type {
     // Local disk configuration
@@ -942,10 +882,10 @@ message AttachedFilesystemSpec {
   // when it's being mounted, resized etc.
   //
   // If not specified, a random value will be generated.
-  string device_name = 2 [(pattern) = "[a-z][a-z0-9-_]{,19}"];
+  string device_name = 2;
 
   // ID of the filesystem that should be attached.
-  string filesystem_id = 3 [(length) = "<=50"];
+  string filesystem_id = 3;
 }
 
 // NetworkInterfaceSpec — интерфейс, который compute создаёт в kacho-vpc и
@@ -964,9 +904,7 @@ message AttachedFilesystemSpec {
 message NetworkInterfaceSpec {
   reserved 4 to 5;
   // ID of the subnet. REQUIRED — there is no other way to specify the interface.
-  string subnet_id = 1 [
-    (length) = "<=50"
-  ];
+  string subnet_id = 1;
 
   // NOT SUPPORTED — rejected by name. The address is allocated by the subnet's IPAM
   // in kacho-vpc; compute has no path to pin a requested one.
@@ -985,7 +923,7 @@ message NetworkInterfaceSpec {
   // NOT SUPPORTED AT CREATE — rejected by name. Attaching an EXISTING kacho-vpc
   // NetworkInterface is done by its own implemented RPC,
   // `InstanceService.AttachNetworkInterface`, not through this spec.
-  string nic_id = 8 [(length) = "<=50"];
+  string nic_id = 8;
 }
 
 message PrimaryAddressSpec {

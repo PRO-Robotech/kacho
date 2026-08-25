@@ -10,7 +10,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/vpc/v1/network_interface.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
@@ -119,27 +118,28 @@ service NetworkInterfaceService {
 }
 
 message GetNetworkInterfaceRequest {
-  string network_interface_id = 1 [(required) = true, (length) = "<=50"];
+  // ID of the NetworkInterface.
+  string network_interface_id = 1;
 }
 
 message ListNetworkInterfacesRequest {
   // ID of the folder to list network interfaces in.
-  string project_id = 1 [(required) = true, (length) = "<=50"];
+  string project_id = 1;
 
   // The maximum number of results per page. Default 100.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token from a previous ListNetworkInterfacesResponse.next_page_token.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 
   // Optional: list only interfaces attached to this instance.
-  string instance_id = 4 [(length) = "<=50"];
+  string instance_id = 4;
 
   // Optional: list only interfaces in this subnet.
-  string subnet_id = 5 [(length) = "<=50"];
+  string subnet_id = 5;
 
   // Optional: list only interfaces in this network.
-  string network_id = 6 [(length) = "<=50"];
+  string network_id = 6;
 }
 
 message ListNetworkInterfacesResponse {
@@ -149,20 +149,20 @@ message ListNetworkInterfacesResponse {
 
 message CreateNetworkInterfaceRequest {
   // ID of the folder to create the interface in.
-  string project_id = 1 [(required) = true, (length) = "<=50"];
+  string project_id = 1;
 
   // Name. Must be unique within the folder.
-  string name = 2 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
+  string name = 2;
 
   // Description. 0-256 characters.
-  string description = 3 [(length) = "<=256"];
+  string description = 3;
 
   // Resource labels as `` key:value `` pairs.
-  map<string, string> labels = 4 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 4;
 
   // ID of the subnet the interface belongs to. The interface's Address resources
   // must belong to this subnet's CIDR.
-  string subnet_id = 5 [(required) = true, (length) = "<=50"];
+  string subnet_id = 5;
 
   // IDs of security groups to attach. Empty means no groups: nothing is
   // inherited. Every id must exist, belong to the caller's project and — if the
@@ -175,7 +175,7 @@ message CreateNetworkInterfaceRequest {
   // invariants (same zone, instance ownership, atomic change of owner, slot
   // index). This path cannot enforce them, and accepting the field while
   // silently dropping it would promise an attachment that never happens.
-  string instance_id = 8 [(length) = "<=50"];
+  string instance_id = 8;
 
   // REJECTED on this path: a slot index is meaningful only for an attachment,
   // which this path does not perform (see instance_id).
@@ -202,15 +202,21 @@ message CreateNetworkInterfaceMetadata {
 }
 
 message UpdateNetworkInterfaceRequest {
-  string network_interface_id = 1 [(required) = true, (length) = "<=50"];
+  // ID of the NetworkInterface.
+  string network_interface_id = 1;
 
   // Field mask of the fields to update (name, description, labels, security_group_ids,
   // v4_address_ids, v6_address_ids, bandwidth_limit_mbps).
   google.protobuf.FieldMask update_mask = 2;
 
-  string name = 3 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
-  string description = 4 [(length) = "<=256"];
-  map<string, string> labels = 5 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  // Name of the NetworkInterface. Must be a DNS label (lowercase letters, digits and
+  // hyphens, 1-63 characters) and is unique within the project. Empty on Create
+  // makes the server derive the name from the assigned id.
+  string name = 3;
+  // Description of the NetworkInterface.
+  string description = 4;
+  // Resource labels as `` key:value `` pairs.
+  map<string, string> labels = 5;
   repeated string security_group_ids = 6;
   repeated string v4_address_ids = 9;
   repeated string v6_address_ids = 10;
@@ -225,7 +231,8 @@ message UpdateNetworkInterfaceMetadata {
 }
 
 message DeleteNetworkInterfaceRequest {
-  string network_interface_id = 1 [(required) = true, (length) = "<=50"];
+  // ID of the NetworkInterface.
+  string network_interface_id = 1;
 }
 
 message DeleteNetworkInterfaceMetadata {
@@ -233,9 +240,14 @@ message DeleteNetworkInterfaceMetadata {
 }
 
 message ListNetworkInterfaceOperationsRequest {
-  string network_interface_id = 1 [(required) = true, (length) = "<=50"];
-  int64 page_size = 2 [(value) = "<=1000"];
-  string page_token = 3 [(length) = "<=100"];
+  // ID of the NetworkInterface.
+  string network_interface_id = 1;
+  // Maximum number of results per page. 0 selects the service default (50);
+  // a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+  int64 page_size = 2;
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListNetworkInterfaceOperationsResponse.next_page_token] returned by a previous list request.
+  string page_token = 3;
 }
 
 message ListNetworkInterfaceOperationsResponse {

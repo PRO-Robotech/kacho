@@ -10,7 +10,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/storage/v1/image.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
@@ -149,33 +148,27 @@ service ImageService {
 message GetImageRequest {
   // ID of the Image resource to return.
   // To get the image ID, use an [ImageService.List] request.
-  string image_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string image_id = 1;
 }
 
 message ListImagesRequest {
   // ID of the project to list images in.
   // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available
   // results is larger than [page_size], the service returns a
   // [ListImagesResponse.next_page_token] that can be used to get the next page of
   // results in subsequent list requests.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListImagesResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 
   // A filter expression that filters resources listed in the response. Currently
   // filtering is supported on the `name` field only.
-  string filter = 4 [(length) = "<=1000"];
+  string filter = 4;
 
   // Field 5 held `order_by`, a free-form sort expression. It was accepted,
   // length-checked and then read by nothing: no handler, use-case or repository
@@ -202,40 +195,29 @@ message ListImagesResponse {
 message CreateImageRequest {
   // ID of the project to create an image in.
   // To get the project ID, use a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 1;
 
   // ID of the region the image lives in (REGIONAL/anycast). Peer-validated against
   // kacho-geo.
-  string region_id = 2 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string region_id = 2;
 
   // Name of the image.
-  string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+  string name = 3;
 
   // Description of the image.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Resource labels as `key:value` pairs.
-  map<string, string> labels = 5 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_./\\@0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
-  ];
+  // At most 64 pairs.
+  map<string, string> labels = 5;
 
   // ID of the source snapshot to create the image from. Exactly one of
   // source_snapshot_id / source_volume_id must be set.
-  string source_snapshot_id = 6 [(length) = "<=50"];
+  string source_snapshot_id = 6;
 
   // ID of the source volume to create the image from. Exactly one of
   // source_snapshot_id / source_volume_id must be set.
-  string source_volume_id = 7 [(length) = "<=50"];
+  string source_volume_id = 7;
 }
 
 message CreateImageMetadata {
@@ -246,31 +228,23 @@ message CreateImageMetadata {
 message UpdateImageRequest {
   // ID of the Image resource to update.
   // To get the image ID, use an [ImageService.List] request.
-  string image_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string image_id = 1;
 
   // Field mask that specifies which fields of the Image resource are going to be
   // updated.
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the image.
-  string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+  string name = 3;
 
   // Description of the image.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Resource labels as `key:value` pairs.
   //
   // Existing set of `labels` is completely replaced by the provided set.
-  map<string, string> labels = 5 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_./\\@0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
-  ];
+  // At most 64 pairs.
+  map<string, string> labels = 5;
 }
 
 message UpdateImageMetadata {
@@ -281,10 +255,7 @@ message UpdateImageMetadata {
 message DeleteImageRequest {
   // ID of the image to delete.
   // To get the image ID, use an [ImageService.List] request.
-  string image_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string image_id = 1;
 }
 
 message DeleteImageMetadata {
@@ -300,44 +271,30 @@ message CopyImageRequest {
   // «Создать» спрашивают у родителя (`editor@project`); пообъектного `v_create`
   // в платформе нет. Причина полностью изложена у CopySnapshotRequest — здесь
   // не пересказывается, чтобы два места об одном предмете не разошлись.
-  string project_id = 6 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 6;
 
   // ID образа-источника.
-  string image_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string image_id = 1;
 
   // ID региона, в котором создаётся копия. Peer-валидируется у kacho-geo, как region_id
   // на Create.
   //
   // Обязателен и называется вызывающим: перенос — предмет этого глагола, и пустое
   // значение пришлось бы угадывать, а угаданное умолчание неотличимо от опечатки.
-  string target_region_id = 2 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string target_region_id = 2;
 
   // Имя копии. Пустое допустимо — адресуется копия своим новым id, имя косметическое.
   //
   // Имя источника не наследуется: оно уникально в паре с проектом, а копия остаётся в
   // проекте источника — унаследованное имя столкнулось бы с ним самим.
-  string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+  string name = 3;
 
   // Описание копии.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Resource labels as `key:value` pairs.
-  map<string, string> labels = 5 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_./\\@0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
-  ];
+  // At most 64 pairs.
+  map<string, string> labels = 5;
 }
 
 message CopyImageMetadata {
@@ -352,17 +309,14 @@ message CopyImageMetadata {
 
 message ListImageOperationsRequest {
   // ID of the Image resource to list operations for.
-  string image_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string image_id = 1;
 
   // The maximum number of results per page to return.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListImageOperationsResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListImageOperationsResponse {

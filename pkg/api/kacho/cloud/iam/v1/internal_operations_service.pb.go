@@ -39,7 +39,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
@@ -180,14 +179,13 @@ var File_kacho_cloud_iam_v1_internal_operations_service_proto protoreflect.FileD
 
 const file_kacho_cloud_iam_v1_internal_operations_service_proto_rawDesc = "" +
 	"\n" +
-	"4kacho/cloud/iam/v1/internal_operations_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x96\x01\n" +
-	"\x18ListIamOperationsRequest\x12'\n" +
-	"\tpage_size\x18\x01 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"4kacho/cloud/iam/v1/internal_operations_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"u\n" +
+	"\x18ListIamOperationsRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12'\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x03 \x01(\tB\b\x8a\xc81\x04<=20R\taccountId\"\x85\x01\n" +
+	"account_id\x18\x03 \x01(\tR\taccountId\"\x85\x01\n" +
 	"\x19ListIamOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +

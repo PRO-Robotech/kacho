@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -31,9 +30,11 @@ const (
 )
 
 type IssueSAKeyRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	ServiceAccountId string                 `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
-	Description      string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the ServiceAccount.
+	ServiceAccountId string `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
+	// Description of the SAKey.
+	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
 	// Optional ISO duration in seconds. Смысл ЗНАЧЕНИЯ 0 ЗАВИСИТ ОТ ВИДА:
 	//   - KEYPAIR / FEDERATED — 0 означает БЕССРОЧНО (прежнее поведение);
 	//   - SECRET — 0 означает «срок не назван», применяется умолчание политики;
@@ -518,12 +519,17 @@ func (x *IssueSAKeyMetadata) GetAccountId() string {
 }
 
 type ListSAKeysRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	ServiceAccountId string                 `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
-	PageSize         int64                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken        string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the ServiceAccount.
+	ServiceAccountId string `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
+	// Maximum number of results per page. 0 selects the service default (50);
+	// a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Page token. To get the next page of results, set [page_token] to the
+	// [ListSAKeysResponse.next_page_token] returned by a previous list request.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListSAKeysRequest) Reset() {
@@ -630,11 +636,13 @@ func (x *ListSAKeysResponse) GetNextPageToken() string {
 }
 
 type RevokeSAKeyRequest struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	ServiceAccountId string                 `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
-	KeyId            string                 `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the ServiceAccount.
+	ServiceAccountId string `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
+	// ID of the SAKey.
+	KeyId         string `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RevokeSAKeyRequest) Reset() {
@@ -799,27 +807,26 @@ var File_kacho_cloud_iam_v1_sa_key_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/iam/v1/sa_key_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a$kacho/cloud/api/secret_options.proto\x1a(kacho/cloud/iam/v1/credential_kind.proto\x1a5kacho/cloud/iam/v1/service_account_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xcb\x04\n" +
-	"\x11IssueSAKeyRequest\x12:\n" +
-	"\x12service_account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x10serviceAccountId\x12+\n" +
-	"\vdescription\x18\x02 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12/\n" +
-	"\vttl_seconds\x18\x03 \x01(\x03B\x0e\xfa\xc71\n" +
-	"<=63072000R\n" +
-	"ttlSeconds\x125\n" +
-	"\x12created_by_user_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=20R\x0fcreatedByUserId\x12M\n" +
-	"\x10trusted_subjects\x18\x05 \x03(\v2\".kacho.cloud.iam.v1.TrustedSubjectR\x0ftrustedSubjects\x12%\n" +
-	"\baudience\x18\x06 \x03(\tB\t\x8a\xc81\x05<=512R\baudience\x12\x1c\n" +
-	"\x04name\x18\a \x01(\tB\b\x8a\xc81\x04<=63R\x04name\x12I\n" +
+	"'kacho/cloud/iam/v1/sa_key_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a$kacho/cloud/api/secret_options.proto\x1a(kacho/cloud/iam/v1/credential_kind.proto\x1a5kacho/cloud/iam/v1/service_account_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x83\x04\n" +
+	"\x11IssueSAKeyRequest\x12,\n" +
+	"\x12service_account_id\x18\x01 \x01(\tR\x10serviceAccountId\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x1f\n" +
+	"\vttl_seconds\x18\x03 \x01(\x03R\n" +
+	"ttlSeconds\x12+\n" +
+	"\x12created_by_user_id\x18\x04 \x01(\tR\x0fcreatedByUserId\x12M\n" +
+	"\x10trusted_subjects\x18\x05 \x03(\v2\".kacho.cloud.iam.v1.TrustedSubjectR\x0ftrustedSubjects\x12\x1a\n" +
+	"\baudience\x18\x06 \x03(\tR\baudience\x12\x12\n" +
+	"\x04name\x18\a \x01(\tR\x04name\x12I\n" +
 	"\x06labels\x18\b \x03(\v21.kacho.cloud.iam.v1.IssueSAKeyRequest.LabelsEntryR\x06labels\x12K\n" +
 	"\x0fcredential_kind\x18\t \x01(\x0e2\".kacho.cloud.iam.v1.CredentialKindR\x0ecredentialKind\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd8\x01\n" +
-	"\x0eTrustedSubject\x12%\n" +
-	"\x06issuer\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x06issuer\x126\n" +
-	"\x0fsubject_pattern\x18\x02 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=512R\x0esubjectPattern\x124\n" +
-	"\x0epublic_key_pem\x18\x03 \x01(\tB\x0e\xe8\xc71\x01\x8a\xc81\x06<=8192R\fpublicKeyPem\x121\n" +
-	"\rkey_algorithm\x18\x04 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=16R\fkeyAlgorithm\"\xe4\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9c\x01\n" +
+	"\x0eTrustedSubject\x12\x16\n" +
+	"\x06issuer\x18\x01 \x01(\tR\x06issuer\x12'\n" +
+	"\x0fsubject_pattern\x18\x02 \x01(\tR\x0esubjectPattern\x12$\n" +
+	"\x0epublic_key_pem\x18\x03 \x01(\tR\fpublicKeyPem\x12#\n" +
+	"\rkey_algorithm\x18\x04 \x01(\tR\fkeyAlgorithm\"\xe4\x02\n" +
 	"\x12IssueSAKeyResponse\x12?\n" +
 	"\x03key\x18\x01 \x01(\v2-.kacho.cloud.iam.v1.ServiceAccountOAuthClientR\x03key\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12+\n" +
@@ -834,19 +841,18 @@ const file_kacho_cloud_iam_v1_sa_key_service_proto_rawDesc = "" +
 	"\x12service_account_id\x18\x01 \x01(\tR\x10serviceAccountId\x12\x15\n" +
 	"\x06key_id\x18\x02 \x01(\tR\x05keyId\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x03 \x01(\tR\taccountId\"\xa2\x01\n" +
-	"\x11ListSAKeysRequest\x12:\n" +
-	"\x12service_account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x10serviceAccountId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"account_id\x18\x03 \x01(\tR\taccountId\"}\n" +
+	"\x11ListSAKeysRequest\x12,\n" +
+	"\x12service_account_id\x18\x01 \x01(\tR\x10serviceAccountId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x7f\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x7f\n" +
 	"\x12ListSAKeysResponse\x12A\n" +
 	"\x04keys\x18\x01 \x03(\v2-.kacho.cloud.iam.v1.ServiceAccountOAuthClientR\x04keys\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"u\n" +
-	"\x12RevokeSAKeyRequest\x12:\n" +
-	"\x12service_account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x10serviceAccountId\x12#\n" +
-	"\x06key_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=21R\x05keyId\"g\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"Y\n" +
+	"\x12RevokeSAKeyRequest\x12,\n" +
+	"\x12service_account_id\x18\x01 \x01(\tR\x10serviceAccountId\x12\x15\n" +
+	"\x06key_id\x18\x02 \x01(\tR\x05keyId\"g\n" +
 	"\x13RevokeSAKeyResponse\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x129\n" +
 	"\n" +

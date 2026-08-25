@@ -10,7 +10,6 @@
 package vpcv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -802,65 +801,62 @@ var File_kacho_cloud_vpc_v1_cidr_group_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_cidr_group_service_proto_rawDesc = "" +
 	"\n" +
-	"+kacho/cloud/vpc/v1/cidr_group_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a#kacho/cloud/vpc/v1/cidr_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"G\n" +
-	"\x13GetCidrGroupRequest\x120\n" +
-	"\rcidr_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\vcidrGroupId\"\xbb\x01\n" +
-	"\x15ListCidrGroupsRequest\x12+\n" +
+	"+kacho/cloud/vpc/v1/cidr_group_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a#kacho/cloud/vpc/v1/cidr_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"9\n" +
+	"\x13GetCidrGroupRequest\x12\"\n" +
+	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\"\x8a\x01\n" +
+	"\x15ListCidrGroupsRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
-	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\"\x80\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x04 \x01(\tR\x06filter\"\x80\x01\n" +
 	"\x16ListCidrGroupsResponse\x12>\n" +
 	"\vcidr_groups\x18\x01 \x03(\v2\x1d.kacho.cloud.vpc.v1.CidrGroupR\n" +
 	"cidrGroups\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xcb\x03\n" +
-	"\x16CreateCidrGroupRequest\x12+\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xc4\x02\n" +
+	"\x16CreateCidrGroupRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12B\n" +
-	"\x04name\x18\x02 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x8b\x01\n" +
-	"\x06labels\x18\x04 \x03(\v26.kacho.cloud.vpc.v1.CreateCidrGroupRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12$\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12N\n" +
+	"\x06labels\x18\x04 \x03(\v26.kacho.cloud.vpc.v1.CreateCidrGroupRequest.LabelsEntryR\x06labels\x12$\n" +
 	"\x0ev4_cidr_blocks\x18\x05 \x03(\tR\fv4CidrBlocks\x12$\n" +
 	"\x0ev6_cidr_blocks\x18\x06 \x03(\tR\fv6CidrBlocks\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"=\n" +
 	"\x17CreateCidrGroupMetadata\x12\"\n" +
-	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\"\xc1\x03\n" +
-	"\x16UpdateCidrGroupRequest\x120\n" +
-	"\rcidr_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\vcidrGroupId\x12;\n" +
+	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\"\xba\x02\n" +
+	"\x16UpdateCidrGroupRequest\x12\"\n" +
+	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x12B\n" +
-	"\x04name\x18\x03 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x8b\x01\n" +
-	"\x06labels\x18\x05 \x03(\v26.kacho.cloud.vpc.v1.UpdateCidrGroupRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12N\n" +
+	"\x06labels\x18\x05 \x03(\v26.kacho.cloud.vpc.v1.UpdateCidrGroupRequest.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"=\n" +
 	"\x17UpdateCidrGroupMetadata\x12\"\n" +
-	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\"\x9d\x01\n" +
-	"\x1dAddCidrGroupCidrBlocksRequest\x120\n" +
-	"\rcidr_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\vcidrGroupId\x12$\n" +
+	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\"\x8f\x01\n" +
+	"\x1dAddCidrGroupCidrBlocksRequest\x12\"\n" +
+	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\x12$\n" +
 	"\x0ev4_cidr_blocks\x18\x02 \x03(\tR\fv4CidrBlocks\x12$\n" +
-	"\x0ev6_cidr_blocks\x18\x03 \x03(\tR\fv6CidrBlocks\"\xa0\x01\n" +
-	" RemoveCidrGroupCidrBlocksRequest\x120\n" +
-	"\rcidr_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\vcidrGroupId\x12$\n" +
+	"\x0ev6_cidr_blocks\x18\x03 \x03(\tR\fv6CidrBlocks\"\x92\x01\n" +
+	" RemoveCidrGroupCidrBlocksRequest\x12\"\n" +
+	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\x12$\n" +
 	"\x0ev4_cidr_blocks\x18\x02 \x03(\tR\fv4CidrBlocks\x12$\n" +
-	"\x0ev6_cidr_blocks\x18\x03 \x03(\tR\fv6CidrBlocks\"J\n" +
-	"\x16DeleteCidrGroupRequest\x120\n" +
-	"\rcidr_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\vcidrGroupId\"=\n" +
+	"\x0ev6_cidr_blocks\x18\x03 \x03(\tR\fv6CidrBlocks\"<\n" +
+	"\x16DeleteCidrGroupRequest\x12\"\n" +
+	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\"=\n" +
 	"\x17DeleteCidrGroupMetadata\x12\"\n" +
-	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\"\xa5\x01\n" +
-	"\x1eListCidrGroupOperationsRequest\x120\n" +
-	"\rcidr_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\vcidrGroupId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\"\x80\x01\n" +
+	"\x1eListCidrGroupOperationsRequest\x12\"\n" +
+	"\rcidr_group_id\x18\x01 \x01(\tR\vcidrGroupId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x8b\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8b\x01\n" +
 	"\x1fListCidrGroupOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +

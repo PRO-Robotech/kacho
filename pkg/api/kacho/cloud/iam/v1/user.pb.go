@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -599,7 +598,7 @@ var File_kacho_cloud_iam_v1_user_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_user_proto_rawDesc = "" +
 	"\n" +
-	"\x1dkacho/cloud/iam/v1/user.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\"\xb3\x04\n" +
+	"\x1dkacho/cloud/iam/v1/user.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf6\x03\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
 	"\vexternal_id\x18\x02 \x01(\tR\n" +
@@ -610,8 +609,8 @@ const file_kacho_cloud_iam_v1_user_proto_rawDesc = "" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12J\n" +
 	"\rinvite_status\x18\a \x01(\x0e2%.kacho.cloud.iam.v1.User.InviteStatusR\finviteStatus\x12\x1d\n" +
 	"\n" +
-	"invited_by\x18\b \x01(\tR\tinvitedBy\x12y\n" +
-	"\x06labels\x18\t \x03(\v2$.kacho.cloud.iam.v1.User.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x1a9\n" +
+	"invited_by\x18\b \x01(\tR\tinvitedBy\x12<\n" +
+	"\x06labels\x18\t \x03(\v2$.kacho.cloud.iam.v1.User.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"S\n" +

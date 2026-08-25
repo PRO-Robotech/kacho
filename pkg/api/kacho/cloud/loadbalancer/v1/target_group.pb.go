@@ -10,7 +10,6 @@
 package loadbalancerv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
@@ -582,7 +581,7 @@ var File_kacho_cloud_loadbalancer_v1_target_group_proto protoreflect.FileDescrip
 
 const file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDesc = "" +
 	"\n" +
-	".kacho/cloud/loadbalancer/v1/target_group.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a\x1ckacho/cloud/validation.proto\"\xd7\x06\n" +
+	".kacho/cloud/loadbalancer/v1/target_group.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\"\xca\x06\n" +
 	"\vTargetGroup\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -596,8 +595,8 @@ const file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDesc = "" +
 	"\atargets\x18\t \x03(\v2#.kacho.cloud.loadbalancer.v1.TargetR\atargets\x12K\n" +
 	"\fhealth_check\x18\n" +
 	" \x01(\v2(.kacho.cloud.loadbalancer.v1.HealthCheckR\vhealthCheck\x12G\n" +
-	"\x06status\x18\r \x01(\x0e2/.kacho.cloud.loadbalancer.v1.TargetGroup.StatusR\x06status\x12\x1f\n" +
-	"\x04port\x18\x0e \x01(\x05B\v\xfa\xc71\a1-65535R\x04port\x12L\n" +
+	"\x06status\x18\r \x01(\x0e2/.kacho.cloud.loadbalancer.v1.TargetGroup.StatusR\x06status\x12\x12\n" +
+	"\x04port\x18\x0e \x01(\x05R\x04port\x12L\n" +
 	"\x14deregistration_delay\x18\x0f \x01(\v2\x19.google.protobuf.DurationR\x13deregistrationDelay\x128\n" +
 	"\n" +
 	"slow_start\x18\x10 \x01(\v2\x19.google.protobuf.DurationR\tslowStart\x1a9\n" +
@@ -608,25 +607,24 @@ const file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDesc = "" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
 	"\x06ACTIVE\x10\x01\x12\f\n" +
-	"\bDELETING\x10\x02J\x04\b\b\x10\tJ\x04\b2\x10<J\x04\b\v\x10\fJ\x04\b\f\x10\rR\x1cderegistration_delay_secondsR\x12slow_start_seconds\"\x94\x05\n" +
+	"\bDELETING\x10\x02J\x04\b\b\x10\tJ\x04\b2\x10<J\x04\b\v\x10\fJ\x04\b\f\x10\rR\x1cderegistration_delay_secondsR\x12slow_start_seconds\"\xf4\x04\n" +
 	"\x06Target\x12!\n" +
 	"\vinstance_id\x18\x03 \x01(\tH\x00R\n" +
 	"instanceId\x12\x17\n" +
 	"\x06nic_id\x18\x04 \x01(\tH\x00R\x05nicId\x12F\n" +
 	"\x06ip_ref\x18\x05 \x01(\v2-.kacho.cloud.loadbalancer.v1.Target.InCloudIPH\x00R\x05ipRef\x12Q\n" +
 	"\vexternal_ip\x18\x06 \x01(\v2..kacho.cloud.loadbalancer.v1.Target.ExternalIPH\x00R\n" +
-	"externalIp\x12\"\n" +
-	"\x06weight\x18\a \x01(\x05B\n" +
-	"\xfa\xc71\x060-1000R\x06weight\x12B\n" +
+	"externalIp\x12\x16\n" +
+	"\x06weight\x18\a \x01(\x05R\x06weight\x12B\n" +
 	"\x06status\x18\b \x01(\x0e2*.kacho.cloud.loadbalancer.v1.Target.StatusR\x06status\x12D\n" +
-	"\x10drain_started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x0edrainStartedAt\x1aL\n" +
-	"\tInCloudIP\x12%\n" +
-	"\tsubnet_id\x18\x01 \x01(\tB\b\x8a\xc81\x04<=50R\bsubnetId\x12\x18\n" +
-	"\aaddress\x18\x02 \x01(\tR\aaddress\x1aI\n" +
+	"\x10drain_started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x0edrainStartedAt\x1aB\n" +
+	"\tInCloudIP\x12\x1b\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\x12\x18\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddress\x1a?\n" +
 	"\n" +
 	"ExternalIP\x12\x18\n" +
-	"\aaddress\x18\x01 \x01(\tR\aaddress\x12!\n" +
-	"\azone_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50R\x06zoneId\":\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x17\n" +
+	"\azone_id\x18\x02 \x01(\tR\x06zoneId\":\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +

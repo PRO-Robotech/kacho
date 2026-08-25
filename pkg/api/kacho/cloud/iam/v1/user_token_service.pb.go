@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -31,9 +30,11 @@ const (
 )
 
 type IssueUserTokenRequest struct {
-	state       protoimpl.MessageState `protogen:"open.v1"`
-	UserId      string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	Description string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the User.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// Description of the UserToken.
+	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
 	// Опциональный TTL в секундах. Смысл ЗНАЧЕНИЯ 0 ЗАВИСИТ ОТ ВИДА, и это
 	// сказано здесь, потому что комментарий у контроля, противоречащий коду,
 	// провоцирует «починку» кода под неверный комментарий:
@@ -332,10 +333,15 @@ func (x *IssueUserTokenMetadata) GetAccountId() string {
 }
 
 type ListUserTokensRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	PageSize      int64                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the User.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// Maximum number of results per page. 0 selects the service default (50);
+	// a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Page token. To get the next page of results, set [page_token] to the
+	// [ListUserTokensResponse.next_page_token] returned by a previous list request.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -444,9 +450,11 @@ func (x *ListUserTokensResponse) GetNextPageToken() string {
 }
 
 type RevokeUserTokenRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	TokenId       string                 `protobuf:"bytes,2,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the User.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// ID of the UserToken.
+	TokenId       string `protobuf:"bytes,2,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -613,15 +621,14 @@ var File_kacho_cloud_iam_v1_user_token_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_user_token_service_proto_rawDesc = "" +
 	"\n" +
-	"+kacho/cloud/iam/v1/user_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a$kacho/cloud/api/secret_options.proto\x1a(kacho/cloud/iam/v1/credential_kind.proto\x1a*kacho/cloud/iam/v1/user_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xc8\x03\n" +
-	"\x15IssueUserTokenRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12+\n" +
-	"\vdescription\x18\x02 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12/\n" +
-	"\vttl_seconds\x18\x03 \x01(\x03B\x0e\xfa\xc71\n" +
-	"<=63072000R\n" +
-	"ttlSeconds\x125\n" +
-	"\x12created_by_user_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=20R\x0fcreatedByUserId\x12\x1c\n" +
-	"\x04name\x18\x05 \x01(\tB\b\x8a\xc81\x04<=63R\x04name\x12M\n" +
+	"+kacho/cloud/iam/v1/user_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a$kacho/cloud/api/secret_options.proto\x1a(kacho/cloud/iam/v1/credential_kind.proto\x1a*kacho/cloud/iam/v1/user_oauth_client.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x8b\x03\n" +
+	"\x15IssueUserTokenRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x1f\n" +
+	"\vttl_seconds\x18\x03 \x01(\x03R\n" +
+	"ttlSeconds\x12+\n" +
+	"\x12created_by_user_id\x18\x04 \x01(\tR\x0fcreatedByUserId\x12\x12\n" +
+	"\x04name\x18\x05 \x01(\tR\x04name\x12M\n" +
 	"\x06labels\x18\x06 \x03(\v25.kacho.cloud.iam.v1.IssueUserTokenRequest.LabelsEntryR\x06labels\x12K\n" +
 	"\x0fcredential_kind\x18\a \x01(\x0e2\".kacho.cloud.iam.v1.CredentialKindR\x0ecredentialKind\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
@@ -639,19 +646,18 @@ const file_kacho_cloud_iam_v1_user_token_service_proto_rawDesc = "" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x15\n" +
 	"\x06key_id\x18\x02 \x01(\tR\x05keyId\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x03 \x01(\tR\taccountId\"\x91\x01\n" +
-	"\x15ListUserTokensRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"account_id\x18\x03 \x01(\tR\taccountId\"l\n" +
+	"\x15ListUserTokensRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"}\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"}\n" +
 	"\x16ListUserTokensResponse\x12;\n" +
 	"\x06tokens\x18\x01 \x03(\v2#.kacho.cloud.iam.v1.UserOAuthClientR\x06tokens\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"h\n" +
-	"\x16RevokeUserTokenRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12'\n" +
-	"\btoken_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=21R\atokenId\"o\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"L\n" +
+	"\x16RevokeUserTokenRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x19\n" +
+	"\btoken_id\x18\x02 \x01(\tR\atokenId\"o\n" +
 	"\x17RevokeUserTokenResponse\x12\x19\n" +
 	"\btoken_id\x18\x01 \x01(\tR\atokenId\x129\n" +
 	"\n" +
