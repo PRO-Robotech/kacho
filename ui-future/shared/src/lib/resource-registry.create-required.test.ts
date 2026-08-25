@@ -6,17 +6,29 @@
 // counterpart of resource-registry.request-fields.test.ts, which locks the other
 // direction (a field the form sends that the message does not declare).
 //
-// Ground truth: the `(required) = true` set of each Create*Request under
-// proto/kacho/cloud/**, cited per entry below. A spec is measured by the inputs
-// its form declares — see operatorSettableFields for why that, and not the
-// assembled body, is the thing to measure.
+// Ground truth: the fields WITHOUT WHICH THE EDGE REFUSES the Create call, cited
+// per entry below. A spec is measured by the inputs its form declares — see
+// operatorSettableFields for why that, and not the assembled body, is the thing
+// to measure.
+//
+// The source changed in kacho#1255 and the change is not cosmetic. This used to
+// read `the (required) = true set of each Create*Request` — an option of the
+// kacho.cloud.validation family, which has now been retired from the contracts
+// in full: it had no enforcer anywhere on the request path, so it constrained
+// nothing while looking like a guarantee, and on two credential-issue fields it
+// declared the exact OPPOSITE of what the edge does. Refusal is the only source
+// that cannot silently diverge from behaviour.
+//
+// The entries themselves did not move: each was adjudicated against the refusing
+// code, and the sets came out the same. What changed is what they are answerable
+// to.
 //
 // The table is exhaustive by construction: a create-capable spec with no entry
 // fails, so adding one to the registry forces its contract to be stated here.
 
 import { REGISTRY } from "./resource-registry";
 
-/** apiPath → the `(required) = true` fields of the Create request it posts to. */
+/** apiPath → the fields without which the edge refuses the Create call. */
 const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   // iam.v1 — CreateAccountRequest{name}; Project/ServiceAccount/Group additionally
   // anchor on the account they live in; CreateRoleRequest marks only `name`.
@@ -43,7 +55,7 @@ const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   // CreateImageRequest{project_id} (region_id is the STORAGE image, not this one);
   // CreateSnapshotRequest{project_id,disk_id}; CreateInstanceRequest{project_id,zone_id}.
   "/compute/v1/instances": ["project_id", "zone_id"],
-  // compute.v1 — CreateGuestAccessKeyRequest carries NO `(required) = true`
+  // compute.v1 — the edge refuses CreateGuestAccessKey for NO field
   // annotation on any field. The ground truth for this row is therefore the
   // use-case that refuses the call, not the descriptor: services/compute
   // `guestaccesskey` rejects an absent project_id ("projectId is required"), a
@@ -51,7 +63,7 @@ const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   // unparsable public_key ("publicKey is required …"). Citing the weaker source
   // would have let the form ship a create that cannot succeed.
   "/compute/v1/guestAccessKeys": ["project_id", "name", "public_key"],
-  // CreatePlacementGroupRequest marks no field `(required) = true`: the use-case
+  // CreatePlacementGroup is refused for no field: the use-case
   // refuses an empty name, an unset strategy and an unset anchor itself, naming
   // the field each time. The empty list is the contract as declared.
   "/compute/v1/placementGroups": [],

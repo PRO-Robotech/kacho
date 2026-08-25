@@ -6,10 +6,22 @@
 // counterpart of resource-registry.request-fields.test.ts, which locks the other
 // direction (a field the form sends that the message does not declare).
 //
-// Ground truth: the `(required) = true` set of each Create*Request under
-// proto/kacho/cloud/**, cited per entry below. A spec is measured by the inputs
-// its form declares — see operatorSettableFields for why that, and not the
-// assembled body, is the thing to measure.
+// Ground truth: the fields WITHOUT WHICH THE EDGE REFUSES the Create call, cited
+// per entry below. A spec is measured by the inputs its form declares — see
+// operatorSettableFields for why that, and not the assembled body, is the thing
+// to measure.
+//
+// The source changed in kacho#1255 and the change is not cosmetic. This used to
+// read `the (required) = true set of each Create*Request` — an option of the
+// kacho.cloud.validation family, which has now been retired from the contracts
+// in full: it had no enforcer anywhere on the request path, so it constrained
+// nothing while looking like a guarantee, and on two credential-issue fields it
+// declared the exact OPPOSITE of what the edge does. Refusal is the only source
+// that cannot silently diverge from behaviour.
+//
+// The entries themselves did not move: each was adjudicated against the refusing
+// code, and the sets came out the same. What changed is what they are answerable
+// to.
 //
 // The table is exhaustive by construction: a create-capable spec with no entry
 // fails, so adding one to the registry forces its contract to be stated here.
@@ -20,7 +32,7 @@
 
 import { REGISTRY } from "./resource-registry";
 
-/** apiPath → the `(required) = true` fields of the Create request it posts to. */
+/** apiPath → the fields without which the edge refuses the Create call. */
 const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   // storage.v1 — CreateVolumeRequest requires project_id, zone_id and disk_type_id;
   // a snapshot names the volume it is taken from; an image is regional.
