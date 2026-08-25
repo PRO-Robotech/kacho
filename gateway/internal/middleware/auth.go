@@ -166,6 +166,11 @@ type AuthInterceptor struct {
 	// не общее с полосой сессии: диагнозы и починки у них разные, а слитое окно
 	// подавляло бы первый доклад одной из них.
 	basicAssuranceUnknown *introspectionFailureReporter
+	// authMethodsUnusable — окно доклада о способах подтверждения, которые край
+	// не смог довезти до модели прав. Заводится сразу, а не вместе с полосой:
+	// состояние возможно на ЛЮБОЙ полосе, несущей удостоверение, и своей ручки
+	// у него нет — оно свойство чужого словаря (см. reportUnusableAuthMethods).
+	authMethodsUnusable *introspectionFailureReporter
 	// stepUp / stepUpLookup / stepUpRoutes — the per-RPC authentication floor,
 	// applied on this always-running layer rather than behind a feature toggle.
 	// All three or none; see auth_stepup.go for why the floor cannot live where
@@ -193,6 +198,7 @@ func NewAuthInterceptor(mode AuthMode, devSecret string, lookup SubjectLookuper,
 		mdKeyPrincipalType:    principalmeta.MetaPrincipalType,
 		mdKeyPrincipalID:      principalmeta.MetaPrincipalID,
 		mdKeyPrincipalDisplay: principalmeta.MetaPrincipalDisplay,
+		authMethodsUnusable:   newIntrospectionFailureReporter(0, nil),
 	}
 }
 
@@ -471,7 +477,8 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 		if suErr := a.enforceStepUpGRPC(fullMethod, vt); suErr != nil {
 			return nil, suErr
 		}
-		ctx = withTokenContextMetadata(ctx, vt)
+		ctx, unusableMethods := withTokenContextMetadata(ctx, vt)
+		reportUnusableAuthMethods(a.logger, a.authMethodsUnusable, stepUpLaneBearer, fullMethod, unusableMethods)
 		pType, pID, display, perr := principalFromVerifiedToken(vt)
 		if perr == nil {
 			return a.injectPrincipal(ctx, pType, pID, display), nil
@@ -1067,7 +1074,8 @@ func (a *AuthInterceptor) tryKratosSession(w http.ResponseWriter, r *http.Reques
 	// Уровень едет вперёд к ВТОРОМУ замку (iam `authzguard.ACRFloor`) — по тем же
 	// именам, что у полосы предъявителя. Полоса, не выставляющая его, оставляет
 	// внутренний замок без входа.
-	setSessionAssuranceHeaders(r, assurance.ACR)
+	reportUnusableAuthMethods(a.logger, a.authMethodsUnusable, stepUpLaneSession, r.URL.Path,
+		setSessionAssuranceHeaders(r, assurance, res.AuthenticationMethods))
 	r.Header.Set(principalmeta.HeaderPrincipalType, subj.Type)
 	r.Header.Set(principalmeta.HeaderPrincipalID, subj.ID)
 	r.Header.Set(principalmeta.HeaderPrincipalDisplay, subj.DisplayName)
@@ -1155,7 +1163,8 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 	}
 	// The credential's own context travels either way: it describes the token, not
 	// the person, and the cluster-internal floor decides on the acr it finds here.
-	setTokenContextHeaders(r, vt)
+	reportUnusableAuthMethods(a.logger, a.authMethodsUnusable, stepUpLaneBearer, r.URL.Path,
+		setTokenContextHeaders(r, vt))
 	if pType, pID, display, perr := principalFromVerifiedToken(vt); perr == nil {
 		setPrincipalHeaders(r, pType, pID, display)
 		a.logger.Info("auth.HTTP: Principal injected (Hydra JWT)", "type", pType, "id", pID)

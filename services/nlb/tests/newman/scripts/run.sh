@@ -128,18 +128,34 @@ run_one() {
 # Returns 1 when for ANY stem: out/<stem>.json is absent (MISSING),
 # assertions.failed>0, requests.failed>0 (UNANSWERED), assertions.total==0 (MUTE),
 # or rc!=0. Shape mirrors services/iam/tests/newman/scripts/assert-suites-green.sh.
+# ВЕДОМОСТЬ ОЖИДАНИЯ — ЧЕТВЁРТАЯ ВЕЛИЧИНА, И ОНА НЕ ВЕРДИКТ (задача #1251).
+#
+# Обёртки ожидания (окно материализации прав, видимость соседа, наличие в списке,
+# сходимость состояния, повтор создания) записывают в окружение, сколько раз бюджет
+# ожидания был ИСЧЕРПАН и какое наибольшее число попыток понадобилось. До этого оба
+# исхода — «прогреть не удалось» и «прогрев не понадобился» — давали одинаковый след,
+# то есть никакого, и разбор красного начинался с гипотезы.
+#
+# ПЕЧАТАЕТСЯ ВСЕГДА, В ТОМ ЧИСЛЕ НУЛЁМ: «ноль исчерпаний» обязано быть отличимо от
+# «не измеряли» — иначе величина, ради которой всё и заведено, снова становится
+# ненаблюдаемой. Красным она НЕ делает: fail-open заведён затем, чтобы настоящий
+# отказ падал на своём шаге и по своему предмету, а шаг, чьё окно закрылось на
+# попытку позже бюджета, исправен по существу. Ненулевое значение — сигнал о том,
+# что бюджет выбран на грани, и повод посмотреть на названные шаги.
 aggregate_verdict() {
   local out_dir="$1"; shift
-  local bad=0 stem json rcfile rc total failed requests unanswered
+  local bad=0 stem json rcfile rc total failed requests unanswered warm warmmax
   local n_total=$# reported=0 t_req=0 t_ass=0 t_fail=0 t_unans=0 t_mute=0
-  printf "%-25s %10s %10s %10s %12s %8s\n" "COLLECTION" "ASSERT" "FAILED" "REQUESTS" "UNANSWERED" "RC"
+  local t_warm=0 t_warmmax=0
+  printf "%-25s %10s %10s %10s %12s %9s %8s\n" \
+    "COLLECTION" "ASSERT" "FAILED" "REQUESTS" "UNANSWERED" "WARM-EXH" "RC"
   for stem in "$@"; do
     json="${out_dir}/${stem}.json"
     rcfile="${out_dir}/${stem}.rc"
     rc="n/a"
     [[ -f "$rcfile" ]] && rc="$(cat "$rcfile")"
     if [[ ! -f "$json" ]]; then
-      printf "%-25s %10s %10s %10s %12s %8s\n" "$stem" "-" "-" "-" "-" "MISSING"
+      printf "%-25s %10s %10s %10s %12s %9s %8s\n" "$stem" "-" "-" "-" "-" "-" "MISSING"
       bad=1
       continue
     fi
@@ -152,7 +168,29 @@ aggregate_verdict() {
     [[ "$failed" =~ ^[0-9]+$ ]]     || failed=0
     [[ "$requests" =~ ^[0-9]+$ ]]   || requests=0
     [[ "$unanswered" =~ ^[0-9]+$ ]] || unanswered=0
-    printf "%-25s %10s %10s %10s %12s %8s\n" "$stem" "$total" "$failed" "$requests" "$unanswered" "$rc"
+    # Ведомость лежит в ИТОГОВОМ окружении отчёта: newman сериализует его целиком,
+    # поэтому величина, записанная шагом, доезжает сюда без отдельного репортёра.
+    warm=0; warmmax=0
+    read -r warm warmmax < <(
+      jq -r '(.environment.values // []) as $v
+             | [($v[] | select(.key == "warmBudgetExhausted") | .value // 0)][0] // 0
+             | tostring
+             | . + " " + ((($v[] | select(.key == "warmRetryMaxAttempts") | .value // 0)) // 0 | tostring)' \
+        "$json" 2>/dev/null || echo "0 0"
+    )
+    [[ "$warm" =~ ^[0-9]+$ ]]    || warm=0
+    [[ "$warmmax" =~ ^[0-9]+$ ]] || warmmax=0
+    printf "%-25s %10s %10s %10s %12s %9s %8s\n" \
+      "$stem" "$total" "$failed" "$requests" "$unanswered" "$warm" "$rc"
+    t_warm=$((t_warm + warm))
+    if [[ "$warmmax" -gt "$t_warmmax" ]]; then t_warmmax="$warmmax"; fi
+    if [[ "$warm" -gt 0 ]]; then
+      # НЕ отказ: величина названа, чтобы разбор красного начинался с факта.
+      echo "  ~ ${stem}: бюджет ожидания исчерпан ${warm} раз(а) — шаги:" >&2
+      jq -r '(.environment.values // [])[]
+             | select(.key == "warmBudgetExhaustedSteps") | .value' "$json" 2>/dev/null \
+        | tr " " "\n" | sed "s/^/      /" || true
+    fi
     reported=$((reported + 1))
     t_req=$((t_req + requests)); t_ass=$((t_ass + total))
     t_fail=$((t_fail + failed)); t_unans=$((t_unans + unanswered))
@@ -174,6 +212,8 @@ aggregate_verdict() {
   # The verdict in numbers, on one line. Read the FIRST pair first: a run that
   # stopped early leaves every other counter looking healthy.
   echo "TOTAL: ${reported}/${n_total} collection(s) reported, ${t_req} request(s), ${t_ass} assertion(s), ${t_fail} failed, ${t_unans} UNANSWERED, ${t_mute} mute report(s)"
+  # Печатается и нулём — иначе «ни разу не исчерпан» неотличимо от «не измеряли».
+  echo "WAIT-BUDGET: исчерпан ${t_warm} раз(а); наибольшее число потраченных попыток ${t_warmmax} (не вердикт — величина)"
   return "$bad"
 }
 

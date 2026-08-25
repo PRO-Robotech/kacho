@@ -34,6 +34,12 @@ func TestAuthHTTP_StripsForgedTokenHeaders(t *testing.T) {
 		"Grpc-Metadata-X-Kacho-Token-Acr",
 		"X-Kacho-Token-Jti",
 		"X-Kacho-Token-Scope",
+		// Доводы условия модели прав: подложенный способ подтверждения и его
+		// момент удовлетворяли бы условие свежести без единого фактора.
+		"X-Kacho-Token-Amr",
+		"Grpc-Metadata-X-Kacho-Token-Amr",
+		"X-Kacho-Token-Mfa-At",
+		"Grpc-Metadata-X-Kacho-Token-Mfa-At",
 	}
 	for _, k := range forged {
 		r.Header.Set(k, "forged")
@@ -54,6 +60,8 @@ func TestAuthUnary_StripsForgedTokenMetadata(t *testing.T) {
 		"x-kacho-principal-id": "forged",
 		"x-kacho-token-acr":    "3",
 		"x-kacho-token-scope":  "system_admin",
+		"x-kacho-token-amr":    "webauthn",
+		"x-kacho-token-mfa-at": "1787572800",
 	})
 	ctx := metadata.NewIncomingContext(context.Background(), md)
 
@@ -67,7 +75,12 @@ func TestAuthUnary_StripsForgedTokenMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("interceptor: %v", err)
 	}
-	for _, k := range []string{"x-kacho-token-acr", "x-kacho-token-scope"} {
+	for _, k := range []string{
+		"x-kacho-token-acr", "x-kacho-token-scope",
+		// Доводы условия модели прав: подложенные, они удовлетворяли бы условие
+		// свежести подтверждения без единого предъявленного фактора.
+		"x-kacho-token-amr", "x-kacho-token-mfa-at",
+	} {
 		if vals := seen.Get(k); len(vals) != 0 {
 			t.Errorf("forged incoming metadata %s not stripped (got %v)", k, vals)
 		}

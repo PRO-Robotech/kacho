@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { test, expect, type Locator, type Page } from "@playwright/test";
-import { tenantWithProject, createdResourceId, runTag, copyToast, scopeIsReady } from "./fixtures";
+import { expect, type Locator, type Page } from "@playwright/test";
+import { copyToast, createdResourceId, runTag, scopeIsReady, tenantWithProject, test } from "./fixtures";
 
 /**
  * Пользовательские сценарии консоли: ФАКТЫ, МЕТКИ, ПУСТОЕ СОСТОЯНИЕ.

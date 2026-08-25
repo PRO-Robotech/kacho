@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { createHmac } from "node:crypto";
-import { expect, test, type Page } from "@playwright/test";
-import { register, runTag } from "./fixtures";
+import { expect, type Page } from "@playwright/test";
+import { register, runTag, test } from "./fixtures";
 
 /**
  * Достижимость ВТОРОГО уровня уверенности из браузера.

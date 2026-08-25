@@ -30,19 +30,30 @@
 set -euo pipefail
 
 SCRIPT="$(basename "$0")"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
 DEV="$UMBRELLA/values.dev.yaml"
 DEVPROD="$UMBRELLA/values.dev-prod.yaml"
 
-fail() { echo "FAIL: $1"; exit 1; }
+# Общий контракт исходов каталога. Здесь стояла СВОЯ копия `fail`, и она
+# отдавала код 1 — «находка о дереве» — на КАЖДОЙ предпосылке: нет PyYAML, нет
+# профиля на диске, не материализованы зависимости, сорвался рендер. То есть
+# третья категория («условие не создано») подавалась как вердикт о дереве —
+# ровно дефект #1214. Скрипт был невидим гейту `three-outcomes-distinguishable`,
+# потому что тот исключает из ПРОГОНА материализующих зависимости сам, а
+# исключение из прогона работало и как освобождение от контракта.
+# shellcheck source=deploy/tests/helm/outcome.sh
+. "$HERE/outcome.sh"
+EXPECTED_ASSERTIONS=1
 
+require_helm
 # PyYAML, а НЕ yq: на машинах разработчиков /usr/bin/yq регулярно оказывается
 # python-обёрткой над jq вместо mikefarah yq v4. Её синтаксис несовместим,
 # вызов молча отдаёт пустой вывод — и проверка, сравнивающая с пустотой,
 # «зеленеет», ничего не проверив. Именно этот класс ложного зелёного тут и ловим,
 # так что сами на него наступать не будем.
-python3 -c 'import yaml' 2>/dev/null || fail "нужен python3 с PyYAML (pip install pyyaml)"
+require_python_yaml
 
 # ═════════════════════════════════════════════════════════════════════════════
 # АНАЛИЗ — ОДИН ЭКЗЕМПЛЯР ИСХОДНИКА для боевого прохода И для самопроверки.
@@ -330,8 +341,8 @@ PYGEN
   exit $rc
 fi
 
-[ -f "$DEV" ]     || fail "values.dev.yaml не найден ($DEV)"
-[ -f "$DEVPROD" ] || fail "values.dev-prod.yaml не найден ($DEVPROD)"
+require_file_present "$DEV"     "values.dev.yaml"
+require_file_present "$DEVPROD" "values.dev-prod.yaml"
 
 TMPD="$(mktemp -d)"
 trap 'rm -rf "$TMPD"' EXIT
@@ -348,14 +359,19 @@ trap 'rm -rf "$TMPD"' EXIT
 # стоит, сохранено полностью.
 echo "=== $SCRIPT: зависимости умбреллы (иначе рендерится вендоренная копия) ==="
 bash "$REPO_ROOT/scripts/helm-umbrella-deps.sh" "$UMBRELLA" \
-  || fail "зависимости не материализованы — сабчарты не обновлены из исходников, проверка НЕ ВЫПОЛНЕНА"
+  || fatal "зависимости не материализованы — сабчарты не обновлены из исходников, проверка НЕ ВЫПОЛНЕНА"
 
+# Рендер идёт через `helm_try`/`render_or_fatal`, а не `helm template … 2>/dev/null`.
+# Прежняя форма гасила stderr: отказ приходил кодом 1 и БЕЗ единого слова helm,
+# то есть читатель получал вердикт о дереве вместо причины отказа инструмента.
 echo "=== $SCRIPT: рендер dev-профиля ==="
-helm template kacho-umbrella "$UMBRELLA" -f "$DEV" >"$TMPD/dev.yaml" 2>/dev/null \
-  || fail "helm template (dev) сорвался"
+helm_try kacho-umbrella "$UMBRELLA" -f "$DEV"
+render_or_fatal "dev-профиль"
+printf '%s\n' "$HELM_OUT" >"$TMPD/dev.yaml"
 echo "=== $SCRIPT: рендер production-профиля ==="
-helm template kacho-umbrella "$UMBRELLA" -f "$DEV" -f "$DEVPROD" >"$TMPD/prod.yaml" 2>/dev/null \
-  || fail "helm template (dev-prod) сорвался"
+helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" -f "$DEVPROD"
+render_or_fatal "production-профиль"
+printf '%s\n' "$HELM_OUT" >"$TMPD/prod.yaml"
 
 # Третий рендер — с ВКЛЮЧЁННЫМИ OPA-сайдкарами. В dev/dev-prod они выключены,
 # поэтому потребляемые ими ConfigMap'ы (политика, bundle-сервер, JWKS) в первых
@@ -363,10 +379,15 @@ helm template kacho-umbrella "$UMBRELLA" -f "$DEV" -f "$DEVPROD" >"$TMPD/prod.ya
 # до того дня, когда кто-нибудь включит OPA в проде. Проверять надо конфигурацию,
 # которую чарт СПОСОБЕН выдать, а не только ту, что включена сегодня.
 echo "=== $SCRIPT: рендер с включёнными OPA-сайдкарами ==="
-helm template kacho-umbrella "$UMBRELLA" -f "$DEV" -f "$DEVPROD" \
+helm_try kacho-umbrella "$UMBRELLA" -f "$DEV" -f "$DEVPROD" \
   --set vpc.opa.enabled=true \
   --set compute.opa.enabled=true \
-  --set kacho-iam.opaSidecar.enabled=true >"$TMPD/opa.yaml" 2>/dev/null \
-  || fail "helm template (opa on) сорвался"
+  --set kacho-iam.opaSidecar.enabled=true
+render_or_fatal "профиль с включёнными OPA-сайдкарами"
+printf '%s\n' "$HELM_OUT" >"$TMPD/opa.yaml"
 
-python3 -c "$PY_ROLLOUT_BINDING" "$TMPD/dev.yaml" "$TMPD/prod.yaml" "$TMPD/opa.yaml"
+python3 -c "$PY_ROLLOUT_BINDING" "$TMPD/dev.yaml" "$TMPD/prod.yaml" "$TMPD/opa.yaml" \
+  || fail "привязка pod-template к содержимому настроек нарушена (перечень выше)"
+ok
+
+outcome_verdict "workload'ов и ConfigMap'ов — переписью выше"

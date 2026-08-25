@@ -875,12 +875,79 @@ def retry_until_present(step: Step, id_env_var: str, budget: int = 25,
         "  pm.execution.setNextRequest(pm.info.requestName);",
         "  return;",
         "}",
+        *_budget_ledger("pm.response.code === 200 && !_present", "_lrc", budget),
         "pm.environment.unset('_lstRetryCount');",
         "pm.environment.unset('_lstRetryStarted');",
     ]
     _RYA_SEQ[0] += 1
     return replace(step, name=f"{step.name}-lst{_RYA_SEQ[0]}",
                    test_script=guard + list(step.test_script))
+
+
+# ── ВЕДОМОСТЬ ОЖИДАНИЯ: исчерпание бюджета отличимо от его ненадобности ──────
+#
+# ПРЕДМЕТ (задача #1251). У всякой обёртки ожидания концовка была одна: «повторять
+# больше не нужно ЛИБО уже нельзя» — и оба исхода вели в один и тот же сброс
+# счётчиков. То есть «прогреть не удалось» и «прогрев не понадобился» давали
+# ОДИНАКОВЫЙ след — никакого. У шага, несущего своё утверждение, оно после этого
+# падало (fail-open работает), но по падению не читалось, что причина в исчерпании;
+# у шага БЕЗ своего утверждения исчерпание проходило вовсе бесследно, а отказ
+# доезжал до следующего шага — атрибуция сохранялась, наблюдаемость нет.
+#
+# Это ровно то окно, из которого вырос исходный разбор: создание получило отказ в
+# правах в окне материализации, а журнал обвинил проверку запрета удаления, то есть
+# невиновного. Пока два состояния неразличимы, разбор красного начинается с
+# гипотезы, а не с факта.
+#
+# ЧТО ЗАПИСЫВАЕТСЯ — ТРИ СОСТОЯНИЯ, А НЕ ДВА:
+#   исчерпание   — переходное состояние ДЕРЖИТСЯ, а бюджет израсходован. Считается
+#                  и НАЗЫВАЕТСЯ по имени шага: перечень отвечает на «где именно».
+#   понадобился  — состояние ушло, но попытки были. Обновляется НАИБОЛЬШЕЕ число
+#                  потраченных попыток: это и есть величина, прямо говорящая, верно
+#                  ли выбран бюджет. Её тоже никто не наблюдал.
+#   не понадобился — попыток ноль. Не записывается ничего: событие пустое.
+#
+# ПОЧЕМУ НЕ УТВЕРЖДЕНИЕМ. Утверждение здесь сменило бы ВЕРДИКТ: шаг, чьё окно
+# закрылось на попытку позже бюджета, стал бы красным, хотя его предмет исправен, —
+# а fail-open заведён ровно затем, чтобы настоящий отказ падал на СВОЁМ шаге и по
+# СВОЕМУ предмету. Величина обязана быть видна, но не обязана быть отказом; порог
+# по ней — решение прогонщика, а не обёртки. Вакуумное `pm.test`, зелёное всегда,
+# запрещено отдельно (`testing.md` §«Гейт на класс»): оно заняло бы слот и не
+# сказало бы ничего.
+#
+# ВИДНО ЭТО В ПРОГОНЕ. Величины уезжают в окружение, а newman кладёт итоговое
+# окружение в машинный отчёт (`environment.values`) — оттуда их читает
+# `scripts/run.sh` и печатает вместе с числами вердикта. Проверено: величина,
+# записанная шагом, доезжает до отчёта.
+def _budget_ledger(transient_expr: str, count_var: str, budget: int) -> List[str]:
+    """Строки концовки guard'а, разводящие исчерпание бюджета и его ненадобность.
+
+    `transient_expr` — то же выражение переходности, по которому обёртка решала
+    повторять; `count_var` — её счётчик попыток. Оба берутся у вызывающего, а не
+    воспроизводятся здесь: вторая копия условия разошлась бы с первой молча, и
+    ведомость стала бы считать не то, чего ждала обёртка.
+    """
+    return [
+        # `|| 0` СНАРУЖИ parseInt, а не внутри: величина приходит из окружения, а туда
+        # её может положить кто угодно — прогонщик через `--env-var`, файл окружения,
+        # соседний шаг. `parseInt('что-угодно')` даёт NaN, а NaN+1 остаётся NaN и
+        # записывается строкой «NaN»: ведомость с этого места считает молча в никуда,
+        # и «ноль исчерпаний» становится неотличимо от сломанного счётчика — ровно тот
+        # класс, ради снятия которого она заведена. Поймано инъекцией: харнесс
+        # самопроверки отдаёт для незнакомого ключа строку, а не пустоту.
+        f"if ({transient_expr} && {count_var} >= {budget}) {{",
+        "  const _wbE = (parseInt(pm.environment.get('warmBudgetExhausted'), 10) || 0) + 1;",
+        "  pm.environment.set('warmBudgetExhausted', String(_wbE));",
+        "  const _wbL = pm.environment.get('warmBudgetExhaustedSteps') || '';",
+        "  pm.environment.set('warmBudgetExhaustedSteps',",
+        "    (_wbL ? _wbL + ' ' : '') + pm.info.requestName);",
+        f"}} else if ({count_var} > 0) {{",
+        "  const _wbM = parseInt(pm.environment.get('warmRetryMaxAttempts'), 10) || 0;",
+        f"  if ({count_var} > _wbM) {{",
+        f"    pm.environment.set('warmRetryMaxAttempts', String({count_var}));",
+        "  }",
+        "}",
+    ]
 
 
 def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
@@ -1002,6 +1069,7 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
         "  pm.execution.setNextRequest(pm.info.requestName);",
         "  return;",
         "}",
+        *_budget_ledger(f"[{retry_set}].includes(pm.response.code)", "_arc", budget),
         "pm.environment.unset('_authRetryCount');",
         "pm.environment.unset('_authRetryStarted');",
     ]
@@ -1094,6 +1162,7 @@ def retry_until_state(step: Step, converged_expr: str, budget: int = 25,
         "  pm.execution.setNextRequest(pm.info.requestName);",
         "  return;",
         "}",
+        *_budget_ledger("_stTransient", "_stc", budget),
         "pm.environment.unset('_stRetryCount');",
         "pm.environment.unset('_stRetryStarted');",
     ]
@@ -1178,6 +1247,7 @@ def retry_create_until_present(step: Step, budget: int = 25, interval_ms: int = 
         "  pm.execution.setNextRequest(pm.info.requestName);",
         "  return;",
         "}",
+        *_budget_ledger("_crNotFound", "_crc", budget),
         "pm.environment.unset('_crRetryCount');",
         "pm.environment.unset('_crRetryStarted');",
     ]
@@ -1399,6 +1469,7 @@ def poll_operation_until_done(
             f"  pm.execution.setNextRequest({js_str(retry_from)});",
             "  return;",
             "}",
+            *_budget_ledger("_opTransient", "_orc", retry_budget),
             "pm.environment.unset('_opRedriveCount');",
             "pm.environment.unset('_opRedriveStarted');",
         ]
@@ -2217,10 +2288,26 @@ def step_to_postman(step: Step) -> Dict:
 #      свою и переименован под себя; вторая петля сломала бы резолв имени;
 #   4. шаг ещё не обёрнут вручную (идемпотентность).
 #
-# Доказательство в обе стороны — `scripts/selftest_autowrap.py`: инъекция
-# настоящего пропуска (краснеет без предиката) и ЧЕТЫРЕ законных близнеца
-# (негатив, поллер, уже обёрнутый, чужой id), на которых предикат обязан
-# молчать.
+# ЧТО ЗДЕСЬ ДОКАЗАНО, А ЧТО НЕТ (`PRO-Robotech/kacho#1277`).
+#
+# ПРОВЯЗАННОСТЬ предиката в ЭТОМ генераторе держит гейт дерева
+# `internal/repohygiene/artifactgates/newmanfreshreadwrap_test.go`: генератор, у
+# которого есть `retry_until_authorized`, но нет предиката в сериализации, — его
+# находка.
+#
+# РАБОТОСПОСОБНОСТЬ предиката — инъекция настоящего пропуска и законные близнецы,
+# на которых он обязан молчать, — доказана ТОЛЬКО для копии vpc:
+# `services/vpc/tests/newman/scripts/selftest_autowrap.py` (её зовут `ci.yaml` и
+# `e2e-newman.yml`). ЭТА копия ею НЕ ПОКРЫТА: своей самопроверки у набора нет.
+# Правя предикат здесь, проверяй его сам — обещания, что правка проверена в обе
+# стороны, тут нет.
+#
+# Прежняя редакция обещала обратное: она называла `scripts/selftest_autowrap.py`,
+# то есть путь относительно ЭТОГО набора, где такого файла нет. Утверждение было
+# не о стиле, а о ДОКАЗАННОСТИ, поэтому читатель, правящий предикат, не стал бы
+# проверять сам. Держит правду гейт
+# `internal/repohygiene/newmanproofclaim_test.go`: утверждение о доказательстве
+# обязано называть координату, которая резолвится.
 _FRESH_VAR_SET_RE = re.compile(
     r"pm\.(?:environment|collectionVariables|globals)\.set\(\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]"
 )
@@ -2230,7 +2317,7 @@ _VAR_REF_RE = re.compile(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}")
 # `pm.response.code`, поэтому набор gRPC-кодов (`pm.expect(j.code, …).to.be
 # .oneOf([5, 9])`) сюда не попадает: числа там из другого пространства и на
 # полосу видимости не отображаются. Границей служит `;` — конец стейтмента.
-_HTTP_EQ_RE = re.compile(r"pm\.response\.code[^;]*?\.to\.eql\((\d{3})\)")
+_HTTP_EQ_RE = re.compile(r"pm\.response\.code[^;]*?\.to\.(?:be\.)?(?:eql|equal)\((\d{3})\)")
 _HTTP_ONEOF_RE = re.compile(r"pm\.response\.code[^;]*?\.to\.be\.oneOf\(\[([0-9,\s]+)\]\)")
 
 

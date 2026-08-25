@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { test, expect } from "@playwright/test";
-import { registerAndSignIn, runTag } from "./fixtures";
+import { expect } from "@playwright/test";
+import { registerAndSignIn, runTag, test } from "./fixtures";
 
 /**
  * Мутирующий поток проверяется по РЕСУРСУ, а не по закрытию формы.

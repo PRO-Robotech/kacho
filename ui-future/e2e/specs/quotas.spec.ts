@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { test, expect, type Page, type Locator } from "@playwright/test";
-import { registerAndSignIn } from "./fixtures";
+import { expect, type Page, type Locator } from "@playwright/test";
+import { registerAndSignIn, test } from "./fixtures";
 
 /**
  * Арендатор видит свои пределы — без обращения в поддержку.

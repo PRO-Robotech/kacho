@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { test, expect } from "@playwright/test";
-import { registerAndSignIn } from "./fixtures";
+import { expect } from "@playwright/test";
+import { registerAndSignIn, test } from "./fixtures";
 
 /**
  * Отказ — тоже правильное поведение, и он проверяется НАРАВНЕ с успехом.

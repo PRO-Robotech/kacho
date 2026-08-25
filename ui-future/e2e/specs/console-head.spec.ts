@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { test, expect, type Locator, type Page } from "@playwright/test";
-import { tenantWithProject, createdResourceId, runTag } from "./fixtures";
+import { expect, type Locator, type Page } from "@playwright/test";
+import { createdResourceId, runTag, tenantWithProject, test } from "./fixtures";
 
 /**
  * Заголовок страницы и путь к ней — канон консоли, разделы 1 и 2.

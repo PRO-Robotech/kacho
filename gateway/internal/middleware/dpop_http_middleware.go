@@ -63,6 +63,12 @@ type DPoPMiddleware struct {
 	// requireForAllRequests — when true, missing Bearer/DPoP header
 	// → 401 (production-strict equivalent for the DPoP path).
 	requireForAllRequests bool
+
+	// authMethodsUnusable — своё окно доклада о способах подтверждения, которые
+	// край не смог довезти до модели прав. Своё, а не общее со слоем
+	// аутентификации: слои монтируются независимо, и слитое окно подавляло бы
+	// первый доклад одного из них.
+	authMethodsUnusable *introspectionFailureReporter
 }
 
 // PermissionLookup — port-interface that resolves per-RPC requirements
@@ -162,6 +168,7 @@ func NewDPoPMiddleware(cfg DPoPMiddlewareConfig) (*DPoPMiddleware, error) {
 		logger:                cfg.Logger,
 		apiDomain:             cfg.APIDomain,
 		requireForAllRequests: cfg.RequireForAllRequests,
+		authMethodsUnusable:   newIntrospectionFailureReporter(0, nil),
 	}, nil
 }
 
@@ -252,7 +259,7 @@ func (m *DPoPMiddleware) Wrap(next http.Handler) http.Handler {
 
 		// 5. Inject principal headers — backends consume via corelib's
 		//    PrincipalExtractInterceptor.
-		injectVerifiedTokenHeaders(r, verified)
+		m.injectVerifiedTokenHeaders(r, verified)
 
 		next.ServeHTTP(w, r)
 	})
@@ -394,7 +401,11 @@ func (m *DPoPMiddleware) challenge(w http.ResponseWriter, _ *http.Request, statu
 // injectVerifiedTokenHeaders adds X-Kacho-Principal-* headers from a verified
 // JWT. The downstream restmux WithMetadata callback then forwards them as
 // gRPC metadata.
-func injectVerifiedTokenHeaders(r *http.Request, t *VerifiedToken) {
+//
+// Метод, а не свободная функция: доклад о способе, который край передать не
+// смог, обязан идти в окно ЭТОГО слоя — состояние постоянное, и строка на
+// запрос вытеснила бы из журнала всё остальное.
+func (m *DPoPMiddleware) injectVerifiedTokenHeaders(r *http.Request, t *VerifiedToken) {
 	if t == nil {
 		return
 	}
@@ -439,5 +450,6 @@ func injectVerifiedTokenHeaders(r *http.Request, t *VerifiedToken) {
 	// it mounts behind a toggle no profile sets — so the cluster-internal floor,
 	// which decides on the acr forwarded from here, read an absent value on every
 	// request. One producer is right; one producer that never runs is not.
-	setTokenContextHeaders(r, t)
+	reportUnusableAuthMethods(m.logger, m.authMethodsUnusable, stepUpLaneBearer, r.URL.Path,
+		setTokenContextHeaders(r, t))
 }

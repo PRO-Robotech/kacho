@@ -233,12 +233,35 @@ type nestedReclaimCensus struct {
 
 var (
 	envSetRe = regexp.MustCompile(`environment\.set\(\s*['"](\w+)['"]`)
-	// ОБЕ формы равенства, а не одна. Замер по дереву: `to.eql(` — 6725 вхождений,
-	// `to.equal(` — 673. Первая редакция читала только `eql` и потому объявляла
-	// УСПЕШНЫМ создание, чей кейс утверждает `to.equal(401)`: предикат мерил форму
-	// записи, а не факт, и давал ложные находки на исправных отрицательных кейсах.
-	respCodeEqRe  = regexp.MustCompile(`to\.(?:be\.)?(?:eql|equal)\(\s*(\d{3})`)
-	respCodeOneOf = regexp.MustCompile(`oneOf\(\[([0-9,\s]+)]`)
+
+	// ГРАНИЦА СТЕЙТМЕНТА — `;`, ТА ЖЕ, ЧТО У ГЕНЕРАТОРА (`PRO-Robotech/kacho#1278`).
+	//
+	// Один предмет — «какие коды шаг объявляет приемлемым исходом» — разбирают ДВА
+	// механизма: `_accepted_http_codes` в `scripts/gen.py` каждого набора (решает,
+	// оборачивать ли шаг ограниченным ретраем) и этот разбор (решает, создал ли шаг
+	// ребёнка). Пока границы у них разные, фраза «шаг утверждает отказ» означает у
+	// них РАЗНОЕ, и расхождение приезжает находкой об утечке там, где её нет.
+	//
+	// Прежняя редакция читала ПОСТРОЧНО, и это было неверно дважды:
+	//   - перенос ВНУТРИ выражения (генератор сам пишет
+	//     `pm.expect(pm.response.code, pm.response.text())` с продолжением на
+	//     следующей строке) не читался вовсе — шаг, утверждающий 400, считался
+	//     успешным созданием;
+	//   - привязки к `pm.response.code` не было, поэтому соседний стейтмент о
+	//     gRPC-коде тела (`pm.expect(j.code).to.eql(200)`) подмешивался в набор
+	//     HTTP-исходов и делал отвергаемое создание «успешным».
+	//
+	// ОБЕ формы равенства, а не одна: замер по дереву — `to.eql(` 6725 вхождений,
+	// `to.equal(` 724. Отрицание (`to.not.eql(`, `to.not.equal(`) принятием НЕ
+	// является и сюда не попадает by construction: между `.to.` и написанием
+	// равенства допускается только `be.`.
+	//
+	// Согласие двух сторон держится ОБЩИМ ИСТОЧНИКОМ ожиданий —
+	// `testdata/response_code_assertion_forms.json`; им судятся обе
+	// (`responsecodeformparity_test.go`), поэтому разойтись молча они больше не
+	// могут.
+	respCodeEqRe  = regexp.MustCompile(`pm\.response\.code[^;]*?\.to\.(?:be\.)?(?:eql|equal)\((\d{3})\)`)
+	respCodeOneOf = regexp.MustCompile(`pm\.response\.code[^;]*?\.to\.be\.oneOf\(\[([0-9,\s]+)]\)`)
 	respCodeAnyRe = regexp.MustCompile(`\d{3}`)
 )
 
@@ -281,22 +304,9 @@ func stepScriptLines(s newmanStep) []string {
 // занимает. Шаг без утверждений о коде считается создающим: молчание — не
 // доказательство отказа, и ошибаться здесь надо в сторону находки.
 func stepAssertsSuccess(s newmanStep) (success, unparsed bool) {
-	codes := map[int]bool{}
-	sawCodeAssertion := false
-	for _, ln := range stepScriptLines(s) {
-		if !strings.Contains(ln, "response.code") {
-			continue
-		}
-		sawCodeAssertion = true
-		for _, m := range respCodeEqRe.FindAllStringSubmatch(ln, -1) {
-			codes[atoiSafe(m[1])] = true
-		}
-		for _, m := range respCodeOneOf.FindAllStringSubmatch(ln, -1) {
-			for _, c := range respCodeAnyRe.FindAllString(m[1], -1) {
-				codes[atoiSafe(c)] = true
-			}
-		}
-	}
+	body := strings.Join(stepScriptLines(s), "\n")
+	codes := acceptedResponseCodes(body)
+	sawCodeAssertion := strings.Contains(body, "pm.response.code")
 	// Шаг УТВЕРЖДАЕТ про код, но формой, которую разбор не читает. Считать его
 	// успешным безопасно (ошибаться надо в сторону находки), но МОЛЧА этого делать
 	// нельзя: так заводится слепая зона, и «находок 0» по ней означает «не
@@ -308,6 +318,36 @@ func stepAssertsSuccess(s newmanStep) (success, unparsed bool) {
 		return true, false
 	}
 	return codes[200], false
+}
+
+// acceptedResponseCodes — HTTP-коды, которые шаг объявляет приемлемым исходом.
+//
+// ЯДРО, общее для гейта дерева и для пробы согласия с генератором: проба,
+// повторяющая логику своей копией, доказывала бы свойство копии.
+//
+// Разбор идёт по ТЕКСТУ ЦЕЛИКОМ, а не построчно: границей стейтмента служит `;`
+// (см. блок регулярок выше). Ожидания по каждой форме объявлены в
+// `testdata/response_code_assertion_forms.json` — общем источнике для этой
+// стороны и для `_accepted_http_codes` генераторов.
+func acceptedResponseCodes(body string) map[int]bool {
+	codes := map[int]bool{}
+	for _, m := range respCodeEqRe.FindAllStringSubmatch(body, -1) {
+		codes[atoiSafe(m[1])] = true
+	}
+	for _, m := range respCodeOneOf.FindAllStringSubmatch(body, -1) {
+		for _, c := range respCodeAnyRe.FindAllString(m[1], -1) {
+			codes[atoiSafe(c)] = true
+		}
+	}
+	// Числа вне диапазона HTTP-статусов исходом не являются — та же отсечка, что у
+	// генератора. Без неё перечень gRPC-кодов, записанный формой `oneOf`, попал бы
+	// в набор HTTP-исходов.
+	for c := range codes {
+		if c < 100 || c > 599 {
+			delete(codes, c)
+		}
+	}
+	return codes
 }
 
 func atoiSafe(s string) int {

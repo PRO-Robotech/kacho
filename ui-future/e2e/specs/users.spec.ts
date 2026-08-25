@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { test, expect, type Page } from "@playwright/test";
-import { tenantWithProject } from "./fixtures";
+import { expect, type Page } from "@playwright/test";
+import { tenantWithProject, test } from "./fixtures";
 
 /**
  * Страница пользователей: что на ней можно СДЕЛАТЬ и что на ней НАПИСАНО.

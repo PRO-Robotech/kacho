@@ -92,10 +92,12 @@ var verbLiteralRoster = []verbLiteral{
 	},
 	{
 		path: "services/iam/internal/authzmap/fga_types.go", varName: "identityVerbRelations",
-		claims: "набор ОДНОГО типа — iam_user: операции над объектом БЕЗ правки. Полноты платформы " +
-			"НЕ утверждает; это первое в дереве СУЖЕНИЕ набора — `v_update` снят, потому что правку " +
-			"записи личности спрашивает `record_writer`, а запрет — `identity_suspender` (#1102), и " +
-			"читателя у глагола не осталось (#1128)",
+		claims: "набор ОДНОГО типа — iam_user: ТОЛЬКО ЧТЕНИЕ. Полноты платформы НЕ утверждает; " +
+			"это единственное в дереве СУЖЕНИЕ набора, и оно двойное — снят `v_update` (#1128) и " +
+			"снят `v_delete` (#1189). Распоряжение строкой личности выражено именованными " +
+			"отношениями: правку спрашивает `record_writer`, запрет — `identity_suspender` (#1102), " +
+			"снятие строки — `identity_remover` (#1131), и читателя не осталось ни у одного из " +
+			"двух глаголов",
 		checkedBy: "authzmap: TestDrift_TypeVerbSetsMatchModelExactly (потиповое равенство набора и " +
 			"модели) + TestVerbRelation_DeclaredOnlyWhereRead (у объявленного есть читатель)",
 		retireWhen: "объявление удалено (тип вернулся к общему набору либо перечисляет его иначе)",

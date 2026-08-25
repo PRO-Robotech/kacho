@@ -6,7 +6,7 @@
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam build-services fga-model-embed \
-        guard-kind-context guard-destructive gate-self-test waiter-discipline \
+        guard-kind-context guard-destructive gate-self-test injection-proofs waiter-discipline \
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline ceremony-declaration-discipline \
         dialled-transport-discipline delete-step-discipline \
@@ -915,6 +915,27 @@ managed-image-pins-check:
 gate-self-test:
 	@bash scripts/run-gate-self-tests.sh --verify-discovery
 	@bash scripts/run-gate-self-tests.sh
+
+# injection-proofs — доказательства инъекцией ОТДЕЛЬНЫМ ФАЙЛОМ обязаны исполняться.
+#
+# Вторая форма того же доказательства: у `gate-self-test` предмет — ветка
+# `--self-test` внутри гейта, здесь — скрипт `<тема>-inject.sh` рядом с ним. Форм
+# две, обходчика два, норма одна; сводить их в один предикат нельзя — признаки
+# разные (разбор аргумента против формы имени) и запуск разный.
+#
+# Их не звал НИКТО: десять скриптов доказательств лежали в дереве и не
+# встречались ни в одной джобе конвейера. Доказательство существовало как текст —
+# ровно то, ради борьбы с чем оно и пишется. Класс наблюдался дважды за сутки
+# (гейт зелёный и лживый; гейт, верный лишь из-за узости популяции), и оба раза
+# нашёлся потому, что инъекцию прогнали руками.
+#
+# Перечень ВЫВОДИТСЯ из дерева (git ls-files), а не выписывается: выписанный
+# оставил бы следующее заведённое доказательство вне вызова. Соглашение об
+# именовании держится с двух сторон — зеркальная перепись требует, чтобы файл со
+# словом «inject» в имени был опознан явно.
+injection-proofs:
+	@bash scripts/run-injection-proofs.sh --self-test
+	@bash scripts/run-injection-proofs.sh
 
 # alt-fixture-discipline — «другая» фикстура обязана БЫТЬ другой и иметь
 # производителя.

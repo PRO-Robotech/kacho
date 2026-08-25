@@ -21,8 +21,8 @@
 // утверждается разметка: класс переименуют, компонент заменят — проба останется
 // зелёной, а находка вернётся.
 
-import { test, expect, type Locator, type Page } from "@playwright/test";
-import { createdResourceId, runTag, tenantWithProject } from "./fixtures";
+import { expect, type Locator, type Page } from "@playwright/test";
+import { createdResourceId, runTag, tenantWithProject, test } from "./fixtures";
 
 /** Регион для размещения группы целей. Условие пробы, а не её предмет. */
 async function anyRegionId(page: Page): Promise<string> {

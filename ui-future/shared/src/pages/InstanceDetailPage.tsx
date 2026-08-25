@@ -156,7 +156,7 @@ export function InstanceDetailPage() {
           </div>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
             <input type="checkbox" checked={autoDelete} onChange={(e) => setAutoDelete(e.target.checked)} />
-            Удалять том вместе с ВМ (auto_delete)
+            Удалять том вместе с ВМ
           </label>
         </div>
       </Modal>

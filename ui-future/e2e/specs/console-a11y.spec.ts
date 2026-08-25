@@ -1,8 +1,8 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { expect, test } from "@playwright/test";
-import { createdResourceId, copyToast, runTag, tenantWithProject } from "./fixtures";
+import { expect } from "@playwright/test";
+import { copyToast, createdResourceId, runTag, tenantWithProject, test } from "./fixtures";
 
 /**
  * Доступность действий консоли с КЛАВИАТУРЫ.
