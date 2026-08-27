@@ -206,10 +206,18 @@ type ListFilterConfig struct {
 	// В production: true.
 	Enabled bool `mapstructure:"enabled"`
 
-	// AuthorizeEndpoint — gRPC адрес kacho-iam **public** listener'а
-	// (AuthorizeService на :9090, в отличие от InternalIAMService на :9091).
-	// Пустая строка → fallback на AuthZConfig.IAMEndpoint (для compat'а с
-	// существующими values.yaml; production-mode должен указывать явно).
+	// AuthorizeEndpoint — gRPC адрес kacho-iam, по которому спрашивается
+	// `AuthorizeService.BatchCheck`. Пустая строка → fallback на
+	// AuthZConfig.IAMEndpoint; резолв — в ListFilterAuthorizeEndpoint выше, и на
+	// этот fallback штатно опирается умолчание чарта.
+	//
+	// Слушатель здесь НЕ называется намеренно: AuthorizeService зарегистрирована на
+	// ОБОИХ слушателях iam, поэтому законны оба адреса, а выбор делает профиль.
+	// Состав слушателей описан в одном месте —
+	// services/iam/cmd/kacho-iam/grpc_register.go. Здесь стояло «адрес **public**
+	// listener'а (AuthorizeService на :9090, в отличие от InternalIAMService на
+	// :9091)»: вторая половина подразумевала, что на внутреннем слушателе службы нет,
+	// и это неверно.
 	AuthorizeEndpoint string `mapstructure:"authorize-endpoint"`
 
 	// AuthorizeTLS — TLS на peer-вызов в kacho-iam AuthorizeService.
