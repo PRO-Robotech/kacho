@@ -30,6 +30,8 @@
 package repohygiene
 
 import (
+	"go/parser"
+	"go/token"
 	"path"
 	"path/filepath"
 	"sort"
