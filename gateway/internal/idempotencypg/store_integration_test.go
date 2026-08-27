@@ -244,7 +244,13 @@ func TestExpiredRecordIsReapedAndTheKeyBecomesClaimableAgain(t *testing.T) {
 
 	// TTL исчезающе мал: запись становится просроченной к следующему оператору.
 	// Часы — серверные, поэтому ожидания на стороне пробы не требуется вовсе.
-	s := replica(t, dsn, idempotencypg.Config{TTL: time.Nanosecond})
+	//
+	// Шаг уборки задан ЯВНО и заведомо больше жизни пробы: уборку здесь зовут
+	// САМИ, и исход обязан принадлежать вызову, а не гонке с тикером. Шаг иначе
+	// выводится из TTL (`ReapIntervalFor`), и при исчезающе малом TTL сборщик
+	// унёс бы запись между `Commit` и переписью — проба падала бы на своей
+	// фикстуре, а не на предмете.
+	s := replica(t, dsn, idempotencypg.Config{TTL: time.Nanosecond, ReapInterval: time.Hour})
 
 	res, err := s.Reserve(ctx, "short-lived")
 	if err != nil {
@@ -260,12 +266,15 @@ func TestExpiredRecordIsReapedAndTheKeyBecomesClaimableAgain(t *testing.T) {
 	if n, lerr := s.Len(ctx); lerr != nil || n != 1 {
 		t.Fatalf("после записи в хранилище %d записей (err=%v), ожидалась 1", n, lerr)
 	}
-	removed, err := s.Reap(ctx)
+	sw, err := s.Reap(ctx)
 	if err != nil {
 		t.Fatalf("сборщик: %v", err)
 	}
-	if removed != 1 {
-		t.Fatalf("сборщик унёс %d записей, ожидалась 1", removed)
+	if sw.Removed != 1 {
+		t.Fatalf("сборщик унёс %d записей, ожидалась 1", sw.Removed)
+	}
+	if !sw.Drained {
+		t.Fatalf("сборщик объявил себя недогнавшим, унеся весь хвост (%d)", sw.Removed)
 	}
 	if n, lerr := s.Len(ctx); lerr != nil || n != 0 {
 		t.Fatalf("после сборки в хранилище %d записей (err=%v), ожидалось 0", n, lerr)
