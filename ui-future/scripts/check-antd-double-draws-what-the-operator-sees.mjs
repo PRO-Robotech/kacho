@@ -157,7 +157,15 @@ const PROBED_BY = {
   // Падает на пяти утверждениях правки пар «ключ→значение»: печатать некуда,
   // когда поле ввода подменено <div>.
   Input: "shared/src/components/molecules/EditableKVTable/EditableKVTable.test.tsx",
+  // Заведена под #1285: диапазон портов правила. Держит контракт настоящего —
+  // `onChange` приходит ЧИСЛОМ, а не событием: событие дало бы `NaN`, и порт
+  // выглядел бы заданным, не будучи им.
+  InputNumber: "shared/src/components/organisms/form/SgRulesEditor/SgRulesEditor.input-number.test.tsx",
   Menu: "shared/src/components/organisms/DetailShell/DetailShell.test.tsx",
+  // Заведена под #1285. Соседний `ErrorResult.test.tsx` для этого НЕ годился:
+  // он переопределяет `antd` своим моком и об общем заменителе не говорит
+  // ничего — на возвращённом в <div> `Result` он остаётся зелёным.
+  Result: "shared/src/components/molecules/ErrorResult/ErrorResult.result.test.tsx",
   // Падает на одиннадцати утверждениях окна построчного глагола: заголовок и
   // кнопки согласия/отказа рисует само окно, а не его содержимое.
   Modal: "shared/src/components/molecules/RowActionsMenu/RowActionsMenu.rowverbs.test.tsx",
