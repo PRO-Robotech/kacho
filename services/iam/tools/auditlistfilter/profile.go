@@ -200,10 +200,16 @@ var Profile = listfiltergate.Profile{
 		// уже сделано формой запроса, и это сильнее.
 		"identityquota.List": subjectScoped,
 
+		// ListSubjectPrivileges допускает по ДОМАШНЕМУ аккаунту субъекта, а строки
+		// ответа называют области выдач — в том числе в чужих аккаунтах. Допуск
+		// поэтому полнотой защиты не является, и объявлен здесь именно РЯДНЫЙ
+		// фильтр: полоса распорядителя аккаунта проходит пообъектный вопрос, полосы
+		// собственного чтения и надзора облака его не требуют (#1354).
+		"access_binding.ListSubjectPrivileges": rowFilter,
+
 		// ---- one containing object, checked before the page is read ----
-		"access_binding.ListBySubject":         subjectGate("requireGroupMembership"),
-		"access_binding.ListSubjectPrivileges": subjectGate("IsSelf"),
-		"access_binding.ListAssignableRoles":   subjectGate("requireGrantAuthority"),
+		"access_binding.ListBySubject":       subjectGate("requireGroupMembership"),
+		"access_binding.ListAssignableRoles": subjectGate("requireGrantAuthority"),
 		// ListAllOperations and ListIamOperations both gate first and then call the
 		// UNSCOPED operations repo — the one carrying an explicit IDOR warning — so
 		// the gate preceding the read is the whole of their protection, and a

@@ -12,22 +12,52 @@ package access_binding
 // established requireGrantAuthority pattern but the scope object is the
 // SUBJECT's home Account (account:<subject.account_id>), not a binding's scope.
 //
+// # ДОПУСК И СУЖЕНИЕ — РАЗНЫЕ ВЕЩИ, и раньше здесь стояло только первое (#1354)
+//
+// Допуск отвечает на вопрос «вправе ли вызывающий читать про ЭТОГО субъекта» и
+// решается по ДОМАШНЕМУ аккаунту субъекта. Но строки ответа несут
+// `resource_type`/`resource_id`, то есть называют ОБЛАСТЬ каждой выдачи, а
+// области у одного человека бывают в разных аккаунтах. Пройдя допуск по
+// аккаунту A, распорядитель A получал строки про аккаунты B и C — то есть узнавал
+// о существовании арендаторов, к которым отношения не имеет.
+//
+// Это тот же класс, что закрыт решением по #1085 (перечень аккаунтов человека,
+// отданный распорядителю одного из них), только в другой форме: не членства, а
+// области выдач. Наблюдаемое следствие одно и то же — картирование состава
+// арендаторов, — поэтому и запрет один.
+//
+// Соседнее чтение того же сервиса, ListBySubject, сужения не требует: там
+// вызывающий обязан БЫТЬ названным субъектом, и ответ не шире того, что ему и
+// так принадлежит.
+//
 // Order of sync steps (api-conventions):
 //  1. subject_type whitelist  → InvalidArgument (user | service_account | group;
 //     group resolution is DIRECT-derived bindings whose
 //     subject_type=group, no via-group/transitive resolution).
 //  2. prefix↔type validation  → InvalidArgument FIRST statement (before repo).
-//  3. anti-anonymous guard    → PermissionDenied (catalog is cluster-floor;
+//  3. page format (page_size + page_token) → InvalidArgument. Стоит ДО любого
+//     решения о личности: вопрос «правильно ли составлен запрос» имеет ОДИН
+//     ответ для всех вызывающих, и зависеть от того, что вызывающему выдано, он
+//     не вправе. Хендлер судит СЫРОЙ запрос (до насыщающего сужения int64→int32),
+//     здесь судится уже разобранный фильтр — и судится в ТОЙ ЖЕ функции, которая
+//     ниже замыкается по правам.
+//  4. anti-anonymous guard    → PermissionDenied (catalog is cluster-floor;
 //     the precise self/account-admin policy is authoritative here).
-//  4. subject resolve (Users().Get / ServiceAccounts().Get / Groups().Get) —
+//  5. вызывающий обязан быть НАЗЫВАЕМ модели прав → PermissionDenied иначе.
+//     Безусловно: полоса края у этого чтения — `scope_filtered`, пообъектной
+//     проверки за ним нет, откатиться не на что.
+//  6. subject resolve (Users().Get / ServiceAccounts().Get / Groups().Get) —
 //     yields the home account_id the authz check needs. A subject that does not
-//     resolve does NOT answer here: its NotFound is HELD BACK (step 6).
-//  5. authz: IsSelf OR account-admin (owner of home Account OR FGA admin) OR
-//     cluster-admin → PermissionDenied otherwise. Decided BEFORE existence is
-//     allowed to shape the reply.
-//  6. only now, for a caller who may read the subject: a subject that did not
+//     resolve does NOT answer here: its NotFound is HELD BACK (step 8).
+//  7. authz: IsSelf OR cluster-admin OR account-admin (owner of home Account OR
+//     FGA admin) → PermissionDenied otherwise. Decided BEFORE existence is
+//     allowed to shape the reply. Полоса, которой вызывающий допущен,
+//     ЗАПОМИНАЕТСЯ: от неё зависит шаг 10.
+//  8. only now, for a caller who may read the subject: a subject that did not
 //     resolve → NotFound.
-//  7. repo JOIN read (access_bindings ⋈ roles), keyset paginated.
+//  9. repo JOIN read (access_bindings ⋈ roles), keyset paginated.
+//  10. СУЖЕНИЕ страницы по правам вызывающего — пообъектно, для тех, кого
+//     допустила полоса распорядителя аккаунта.
 //
 // Why authority precedes existence (and not the other way round): the subject id
 // is caller-supplied and every id in the cluster is a legal probe. Answering
@@ -36,6 +66,54 @@ package access_binding
 // separates "exists, not yours" from "does not exist" by the reply alone. So a
 // caller without authority gets ONE answer for both, and only self /
 // account-admin / cluster-admin are told that the subject is missing.
+//
+// # ЧТО ИМЕННО СУЖАЕТСЯ, И ПОЧЕМУ ДВЕ ПОЛОСЫ ОСТАЮТСЯ НЕСУЖЕННЫМИ
+//
+// Строка остаётся на странице ровно тогда, когда вызывающий вправе прочитать её
+// выдачу ПО ИДЕНТИФИКАТОРУ — предикат берётся не отсюда, а из
+// internal/authzfilter, где он привязан к отношению, которым каталог прав гейтит
+// одиночное чтение этого типа. Страница поэтому не может быть шире чтения.
+//
+// Законный обзор при этом НЕ сужается, и это свойство МОДЕЛИ, а не оговорка:
+// `v_get` на выдаче выводится через `super_admin`, а тот — через
+// `admin from account`. Распорядитель аккаунта A держит его на КАЖДОЙ выдаче,
+// чей родитель — A, без единого прямого кортежа; выдача в аккаунте B ему не
+// выводится ниоткуда. То есть сужение снимает ровно чужое.
+//
+// Две полосы проходят несужёнными:
+//
+//   - СОБСТВЕННОЕ чтение (вызывающий и есть субъект) — та же граница, по которой
+//     ListBySubject считается безопасным: ответ не шире того, что вызывающему
+//     принадлежит. Сузить и её значило бы опустошить главное употребление этого
+//     чтения — и опустошить ТИХО, отдав `200` с пустым перечнем: выдачей
+//     распоряжается администратор области, а не тот, кому она выдана, поэтому
+//     прямого кортежа у субъекта на свою же выдачу обычно нет;
+//   - АДМИНИСТРАТОР ОБЛАКА — верхний ярус супер-доступа, паритет с каждым
+//     соседним чтением этого типа (Get / ListByScope / ListByAccount / ListByRole
+//     / List). Вопрос задаётся ОДИН раз на запрос.
+//
+// Цена, названная честно: у полосы распорядителя вопрос надзора задаётся раньше
+// `hasAccountViewAuthority`, который несёт собственное короткое замыкание на тот
+// же надзор, — то есть на этой полосе один лишний вопрос к модели НА ЗАПРОС.
+// Величина постоянная, от размера страницы не зависит и второй формулировки
+// предиката полномочий не заводит.
+//
+// # СТОИМОСТЬ СТРАНИЦЫ ПРИНАДЛЕЖИТ ЗАПРОСУ
+//
+// Сужение спрашивает модель о ТЕХ ЖЕ идентификаторах, что уже прочитаны со
+// страницы, партиями и параллельно (internal/authzfilter). Перечисления «покажи
+// всё, что субъекту видно» здесь нет и быть не может: у него жёсткий серверный
+// предел без продолжения, и остаток становится невидим навсегда при живых правах
+// (security.md §«Фильтрация — страница → проверка страницы»).
+//
+// # ИЗВЕСТНЫЙ РАЗМЕН, НАЗВАННЫЙ, А НЕ СКРЫТЫЙ
+//
+// Страница читается курсором и сужается ПОСЛЕ чтения — та же форма, что у
+// ListByAccount и ListByScope. Следствия два, и оба документированы: страница
+// бывает КОРОЧЕ запрошенной, а `next_page_token` может кодировать строку,
+// недоступную вызывающему (идентификатор и отметка времени; содержимое закрыто —
+// security.md §«Фильтрация»). Обход при этом ничего не теряет: курсор идёт по
+// собственным строкам субъекта, поэтому продолжение доходит до конца перечня.
 
 import (
 	"context"
@@ -98,59 +176,88 @@ func (u *ListSubjectPrivilegesUseCase) Execute(ctx context.Context, subjectType 
 		return nil, "", err
 	}
 
-	// 3. Anti-anonymous guard (catalog entry is cluster-floor; handler is the
+	// 3. Формат страницы — ДО решения о личности и в ТОЙ ЖЕ функции, которая
+	// ниже по правам замыкается. Иначе один и тот же негодный курсор получал бы
+	// разный ответ в зависимости от того, что вызывающему выдано.
+	if err := shared.ValidatePagination(f.PageToken, f.PageSize); err != nil {
+		return nil, "", err
+	}
+
+	// 4. Anti-anonymous guard (catalog entry is cluster-floor; handler is the
 	// authoritative policy — same pattern as ListBySubject / Create).
 	if err := authzguard.RequireAuthenticated(ctx); err != nil {
 		return nil, "", err
 	}
 
-	// 4. Resolve the subject: yields the home account_id the authz check needs.
+	// 5. Вызывающий обязан быть НАЗЫВАЕМ модели прав, и это отсекается
+	// безусловно — до допуска, а не внутри сужения.
+	//
+	// Две проверки личности этого чтения спрашивают разное: допуск по владельцу
+	// аккаунта сверяет голый идентификатор принципала и о его виде не
+	// спрашивает, а сужение строит субъект, который знает лишь человека и
+	// служебную учётку. На принципале иного вида они расходятся — допуск
+	// проходит, а имени для вопроса нет. Пустой субъект `VisibleSet` не
+	// отвергает: он возвращает пустой набор, и страница молча схлопывается в
+	// `200` с пустым перечнем — исход, который вызывающий не отличит от отзыва
+	// прав. Полосы края, на которую можно было бы откатиться, у этого чтения
+	// нет (`scope_filtered`), поэтому исход здесь — отказ.
+	if subject, ok := authzguard.PrincipalSubject(ctx); !ok || subject == "" {
+		return nil, "", authzguard.PermissionDenied()
+	}
+
+	// 6. Resolve the subject: yields the home account_id the authz check needs.
 	// A subject that does not resolve is NOT reported here — res.miss is carried
-	// to step 6 and only surfaces to a caller who may read the subject.
+	// to step 8 and only surfaces to a caller who may read the subject.
 	res, err := u.resolveSubject(ctx, subjectType, subjectID)
 	if err != nil {
 		// A store failure is not a verdict about the subject — surface it as such.
 		return nil, "", err
 	}
 
-	// 5. AuthZ — self OR account-admin of the subject's home Account OR
-	// cluster-admin. Decided before existence is allowed to shape the reply.
+	// 7. AuthZ — self OR cluster-admin OR account-admin of the subject's home
+	// Account. Decided before existence is allowed to shape the reply. Полоса,
+	// которой вызывающий допущен, решает, сужается ли страница (шаг 10).
+	narrow := false
 	if !authzguard.IsSelf(ctx, string(subjectID)) {
-		authorized := false
-		if res.found {
+		// Надзор облака — один вопрос на запрос, вне какого-либо цикла.
+		// E-форма обязательна: за этой ветвью НЕТ пообъектной полосы, которая
+		// сообщила бы о неполадке сама. Проглоченный отказ хранилища прав стал
+		// бы здесь отказом В ПРАВАХ — то есть тем же ответом, что и настоящий
+		// deny, и вызывающий не узнал бы, что повтор осмыслен.
+		clusterAdmin, aerr := authzguard.IsClusterAdminE(ctx, u.relations)
+		if aerr != nil {
+			return nil, "", authzguard.AuthzBackendUnavailable()
+		}
+		switch {
+		case clusterAdmin:
+			// Верхний ярус супер-доступа: перечень целиком, паритет с соседями.
+		case !res.found:
+			// An id that belongs to nobody has no home Account to administer, so
+			// the only authority that can exist over it is the flat cluster-admin
+			// super-gate, and it has just answered "no". Everyone else is refused
+			// with the SAME answer they would get for a subject in a foreign
+			// account — that identity of answers is what closes the oracle.
+			return nil, "", authzguard.PermissionDenied()
+		default:
 			ok, aerr := u.hasAccountViewAuthority(ctx, res.accountID)
 			if aerr != nil {
 				return nil, "", aerr
 			}
-			authorized = ok
-		} else {
-			// An id that belongs to nobody has no home Account to administer, so
-			// the only authority that can exist over it is the flat cluster-admin
-			// super-gate. Everyone else is refused with the SAME answer they would
-			// get for a subject in a foreign account — that identity of answers is
-			// what closes the oracle.
-			//
-			// E-форма обязательна: за этой ветвью НЕТ пообъектной полосы, которая
-			// сообщила бы о неполадке сама. Проглоченный отказ хранилища прав стал
-			// бы здесь отказом В ПРАВАХ — то есть тем же ответом, что и настоящий
-			// deny, и вызывающий не узнал бы, что повтор осмыслен.
-			ok, aerr := authzguard.IsClusterAdminE(ctx, u.relations)
-			if aerr != nil {
-				return nil, "", authzguard.AuthzBackendUnavailable()
+			if !ok {
+				return nil, "", authzguard.PermissionDenied()
 			}
-			authorized = ok
-		}
-		if !authorized {
-			return nil, "", authzguard.PermissionDenied()
+			// Допущен по ДОМАШНЕМУ аккаунту субъекта — а строки могут называть
+			// чужие области. Ровно эту полосу и сужает шаг 10.
+			narrow = true
 		}
 	}
 
-	// 6. Authorized caller, unresolvable subject → the owner's own NotFound.
+	// 8. Authorized caller, unresolvable subject → the owner's own NotFound.
 	if !res.found {
 		return nil, "", res.miss
 	}
 
-	// 7. Enriched repo read (JOIN role_name, keyset paginated).
+	// 9. Enriched repo read (JOIN role_name, keyset paginated).
 	rd, err := u.repo.Reader(ctx)
 	if err != nil {
 		return nil, "", shared.MapRepoErr(err)
@@ -160,7 +267,47 @@ func (u *ListSubjectPrivilegesUseCase) Execute(ctx context.Context, subjectType 
 	if err != nil {
 		return nil, "", shared.MapRepoErr(err)
 	}
-	return out, next, nil
+	if !narrow {
+		return out, next, nil
+	}
+
+	// 10. Сужение страницы: остаются строки, чью выдачу вызывающий вправе
+	// прочитать по идентификатору. Вопрос идёт через ТУ ЖЕ функцию, которой
+	// пользуются List / ListByScope / ListByAccount, — второе написание того же
+	// вопроса разошлось бы с ними молча.
+	visible, wired, verr := visibleBindingIDsOnPage(ctx, u.queries, privilegeBindingIDs(out))
+	if verr != nil {
+		return nil, "", verr
+	}
+	if !wired {
+		// Порт не провязан — вердикта нет. Отдать при этом всё значило бы
+		// потерять сужение целиком и молча; отдать пустое — сказать «прав нет»
+		// там, где мы просто не спросили.
+		return nil, "", shared.MapRepoErr(iamerr.ErrUnavailable)
+	}
+	return filterVisiblePrivileges(out, visible), next, nil
+}
+
+// privilegeBindingIDs projects a privilege page to the ids of the bindings it
+// names — the input of the per-object question.
+func privilegeBindingIDs(rows []domain.SubjectPrivilege) []string {
+	out := make([]string, 0, len(rows))
+	for _, p := range rows {
+		out = append(out, string(p.BindingID))
+	}
+	return out
+}
+
+// filterVisiblePrivileges keeps the rows the caller may read, in the order they
+// were read. Порядок сохраняется, потому что курсор страницы построен на нём.
+func filterVisiblePrivileges(rows []domain.SubjectPrivilege, visible map[string]bool) []domain.SubjectPrivilege {
+	out := make([]domain.SubjectPrivilege, 0, len(rows))
+	for _, p := range rows {
+		if visible[string(p.BindingID)] {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // subjectPrefixAndName maps a subject_type to its id-prefix + human resource

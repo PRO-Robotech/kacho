@@ -125,6 +125,19 @@ func spContains(ids []string, want string) bool {
 	return false
 }
 
+// spVisibleTo — дублёр модели прав, у которого названный вызывающий вправе
+// прочитать по идентификатору ровно перечисленные выдачи.
+//
+// Одно написание на весь пакет: пробы полосы распорядителя обязаны НАЗЫВАТЬ свою
+// предпосылку сужения, а не наследовать её от соседа. Дублёр отвечает тем же
+// оракулом на оба вопроса — пообъектный и партионный, — поэтому шире настоящего
+// он не становится.
+func spVisibleTo(callerID string, bindingIDs ...string) *abQueriesStub {
+	q := newABQueriesStub()
+	q.set("v_get", "user:"+callerID, bindingIDs)
+	return q
+}
+
 // ── ПРЕДМЕТ: распорядитель одного аккаунта видит только свои области ─────────
 
 // TestListSubjectPrivileges_1354_AccountAdminSeesOnlyAdministeredScopes —

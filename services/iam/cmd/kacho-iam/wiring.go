@@ -495,9 +495,14 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		WithRelationQueries(relationStore)
 	// ListSubjectPrivileges — enriched self|account-admin read.
 	// RelationStore wired so the delegated-admin (FGA admin@account) authz path
-	// resolves admins who are not the home-account owner (D-4 path b).
+	// resolves admins who are not the home-account owner (D-4 path b);
+	// RelationQueries — пообъектный вопрос, которым СТРАНИЦА сужается по правам
+	// вызывающего (#1354). Непровязанный порт этим чтением ОТКАЗЫВАЕТ, поэтому
+	// провязка здесь — не удобство, а условие работоспособности полосы
+	// распорядителя аккаунта.
 	abListSubjPriv := accessbindingapp.NewListSubjectPrivilegesUseCase(kachoRepo).
-		WithRelationStore(relationStore, logger)
+		WithRelationStore(relationStore, logger).
+		WithRelationQueries(relationStore)
 	// ListAssignableRoles — roles valid to bind on a resource,
 	// scope_group-annotated. Same grant-authority gate as ListByScope/Create
 	// (RelationStore wired so the delegated-admin + cluster-scope authority paths
