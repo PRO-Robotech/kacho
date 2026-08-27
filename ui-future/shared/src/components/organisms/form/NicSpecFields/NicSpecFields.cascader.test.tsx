@@ -21,7 +21,7 @@
 // заменитель на месте — молчание.
 
 import { jest } from "@jest/globals";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { antdStub } from "@shared/test/antd-stub";
 
