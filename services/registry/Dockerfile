@@ -9,7 +9,7 @@
 # go.mod на GitHub-версии (публикационная фаза), либо собирать из parent-context с
 # COPY ../kacho-corelib и go.work. По умолчанию цель — single-repo build с
 # versioned-модулями (COPY . . + загрузка по графу импортов, см. шаг ниже).
-FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.27-alpine AS builder
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src

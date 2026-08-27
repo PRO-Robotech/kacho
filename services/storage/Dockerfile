@@ -4,7 +4,7 @@
 # Single-repo multi-stage build. kacho-proto / kacho-corelib resolve as VERSIONED
 # modules (go.mod carries no `replace` — see .claude/rules/polyrepo.md), so the
 # build context is THIS repo only. Build: `docker build -t kacho-storage:dev .`
-FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.27-alpine AS builder
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src

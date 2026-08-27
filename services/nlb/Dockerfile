@@ -2,7 +2,7 @@
 # Single-repo build: внутренние зависимости (kacho-corelib, kacho-compute, kacho-geo,
 # kacho-iam, kacho-vpc) тянутся как versioned-модули из GitHub
 # (go.mod без replace), build-context — этот репо.
-FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM mirror.gcr.io/library/golang:1.27-alpine AS builder
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src
