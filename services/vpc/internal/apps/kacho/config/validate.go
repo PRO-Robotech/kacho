@@ -91,17 +91,20 @@ const (
 		"(CWE-319 / MITM tampers with authorization-relevant ownership tuples)"
 
 	// errListFilterPeerTransportRequired — соединение фильтра видимости.
-	// Отдельное от ребра per-RPC Check: свой адрес (iam public :9090 против
-	// internal :9091) и свои ручки транспорта, поэтому защита Check-ребра его НЕ
-	// покрывает. Ответ этого ребра решает, какие объекты вызывающий увидит в List,
+	// Отдельное от ребра per-RPC Check: свой адрес и свои ручки транспорта, поэтому
+	// защита Check-ребра его НЕ покрывает. Какой это адрес — решает профиль (при
+	// пустом authorize-endpoint он наследуется от authz.iam-endpoint), и на
+	// требование это не влияет: гард стережёт ТРАНСПОРТ соединения, а не то, на чей
+	// слушатель оно приходит. Ответ этого ребра решает, какие объекты вызывающий увидит в List,
 	// то есть оно несёт решение о доступе и подпадает под то же требование, что
 	// остальные исходящие. %s = Mode.String().
 	errListFilterPeerTransportRequired = "production mode (%s): outbound vpc→iam list-filter authorize edge " +
 		"(authz.list-filter.authorize-endpoint → AuthorizeService.BatchCheck) requires client mTLS — set " +
 		"KACHO_VPC_AUTHZ__LIST_FILTER__AUTHORIZE_TLS__ENABLE=true (its own client-cert knob) or " +
 		"KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE=true (the client identity shared with the Check edge). This is a " +
-		"SEPARATE connection from the authz Check edge — it targets the iam public listener and carries the " +
-		"per-object visibility decision behind every List, so securing the Check edge alone does not cover it"
+		"SEPARATE connection from the authz Check edge — it has its own address and its own transport knobs, " +
+		"and it carries the per-object visibility decision behind every List, so securing the Check edge alone " +
+		"does not cover it"
 
 	// S5-гардрейлы (профиль возможностей исполнителя датаплейна, см. dataplane.go).
 	//
@@ -499,11 +502,12 @@ func scopeFilteredClause(scopeFiltered []string) string {
 //     ресурсом. Активен, когда register-drainer включён И authz.iam-endpoint задан (иначе не
 //     дилится). Ребро использует ТОЛЬКО client-cert creds (IAMRegisterClientCreds) — server-TLS
 //     варианта нет, поэтому гард требует именно client-mTLS (IAMRegisterMTLS.Enable).
-//   - vpc→iam list-filter authorize edge (authorizeConn → AuthorizeService.BatchCheck, iam
-//     public :9090): per-page фильтр видимости для List. ОТДЕЛЬНОЕ соединение от authz Check
-//     edge — другой листенер и другие ручки транспорта, поэтому защита Check-ребра его НЕ
-//     покрывает; именно на этом расхождении оно и поднималось незащищённым при довольной
-//     страже. Активен, когда фильтр включён И адрес резолвится (ListFilterAuthorizeEndpoint).
+//   - vpc→iam list-filter authorize edge (authorizeConn → AuthorizeService.BatchCheck):
+//     per-page фильтр видимости для List. ОТДЕЛЬНОЕ соединение от authz Check edge — свой
+//     адрес (ListFilterAuthorizeEndpoint) и свои ручки транспорта, поэтому защита Check-ребра
+//     его НЕ покрывает; именно на этом расхождении оно и поднималось незащищённым при
+//     довольной страже. Слушатель здесь не назван намеренно: он свойство профиля и на
+//     требование не влияет. Активен, когда фильтр включён И адрес резолвится (ListFilterAuthorizeEndpoint).
 //     Ребро использует client-cert creds,
 //     поэтому требование — ListFilterEdgeUsesMTLS (тот же предикат, что читает проводка).
 //
