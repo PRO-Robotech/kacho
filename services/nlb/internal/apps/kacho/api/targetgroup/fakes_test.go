@@ -459,10 +459,6 @@ func (q *fakeTGWriter) RemoveTargetsMarkDraining(_ context.Context, tgID string,
 	return affected, nil
 }
 
-func (q *fakeTGWriter) DeleteTargetsDrained(_ context.Context, _ string, _ int32) (int, error) {
-	return 0, nil
-}
-
 // DeleteTargetsDraining removes the DRAINING rows for real, so the FK-RESTRICT
 // emulation in Delete below sees what the database would see. A double that only
 // returned (0, nil) would let TargetGroup.Delete pass the test while the real
