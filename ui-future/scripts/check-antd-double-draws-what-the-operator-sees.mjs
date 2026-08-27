@@ -145,6 +145,10 @@ const PROBED_BY = {
   // правило“ кладёт заготовку»: счётчик и действие живут в шапке карточки
   // (`title`/`extra`), а проходной <div> шапки не рисует вовсе.
   Card: "shared/src/components/organisms/form/SgRulesEditor/SgRulesEditor.test.tsx",
+  // Заведена под #1285: дерево «сеть → подсеть → адрес». Держит СОСТАВ
+  // предложенного — варианты приходят пропом `options`, и «выбора нет» без
+  // такой пробы неотличимо от «выбор пуст».
+  Cascader: "shared/src/components/organisms/form/NicSpecFields/NicSpecFields.cascader.test.tsx",
   // Падает на положительном контроле «флажки на странице находятся» — том
   // самом, без которого отрицание «группового удаления нет» зеленело бы на
   // экране без единого флажка.
@@ -187,6 +191,11 @@ const PROBED_BY = {
   // отказа приходят пропами `dataSource`/`columns`, а не детьми.
   Table: "shared/src/components/molecules/OperationsTable/OperationsTable.test.tsx",
   Tabs: "iam/src/pages/iam/AccessPage/AccessPage.role-tabs.test.tsx",
+  // Заведена под #1285: УЗЛОВОЕ пояснение к полю формы. Строковая ветвь
+  // намеренно не утверждается — заменитель отдаёт её нативным `title`,
+  // которого настоящий antd не производит; узловая же рисуется содержимым,
+  // иначе `String(<узел>)` дал бы «[object Object]» для любого пояснения.
+  Tooltip: "shared/src/components/organisms/form/FieldLabel/FieldLabel.tooltip.test.tsx",
   Tree: "shared/src/components/organisms/DependencyTreePanel/DependencyTreePanel.test.tsx",
 };
 
