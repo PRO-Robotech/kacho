@@ -26,8 +26,9 @@ func TestMembershipReadIsGatedByTheTierRelationNotTheVerbOne(t *testing.T) {
 	}
 
 	t.Logf("перепись: строк каталога прочитано %d · отношений типа %q разобрано %d · "+
-		"рассмотрено RPC %d из %d объявленных",
-		c.CatalogRows, mrrScopeType, c.Relations, len(c.Subjects), len(mrrSubjects))
+		"из них глагольных ВЫВЕДЕНО %d (%v) · рассмотрено RPC %d из %d объявленных",
+		c.CatalogRows, mrrScopeType, c.Relations, len(c.VerbRelations), c.VerbRelations,
+		len(c.Subjects), len(mrrSubjects))
 
 	if c.CatalogRows == 0 || c.Relations == 0 {
 		t.Fatal("каталог прав либо модель прочитаны пустыми: «совпало» здесь означает " +
@@ -41,7 +42,12 @@ func TestMembershipReadIsGatedByTheTierRelationNotTheVerbOne(t *testing.T) {
 	// ВЫБОР ДОКАЗЫВАЕТСЯ СРАВНЕНИЕМ ДВУХ ОБЪЯВЛЕНИЙ, а не присутствием одного.
 	// Без второй половины «ярусное отношение читает ярус» не говорит о выборе
 	// ничего: оно было бы верно и в мире, где ярус читают ВСЕ отношения типа.
-	for _, verb := range mrrVerbRelations {
+	if len(c.VerbRelations) == 0 {
+		t.Fatal("глагольных отношений типа не выведено НИ ОДНОГО — вторая сторона " +
+			"сравнения пуста, и «ярусное отношение читает ярус» перестало что-либо " +
+			"доказывать: оно верно и там, где сравнивать не с чем")
+	}
+	for _, verb := range c.VerbRelations {
 		if c.TierReaders[verb] {
 			t.Errorf("глагольное отношение %q типа %q ЧИТАЕТ ярус распорядителя — "+
 				"сравнение перестало различать два объявления, и выбор отношения "+

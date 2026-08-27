@@ -60,10 +60,29 @@ var mrrSubjects = []string{
 	"kacho.cloud.iam.v1.MembershipService/List",
 }
 
-// mrrVerbRelations — глагольные отношения того же типа. Они нужны гейту как
-// ВТОРАЯ сторона сравнения: без них «ярусное отношение читает ярус» не
-// доказывает выбора — оно доказывает лишь свойство одного объявления.
-var mrrVerbRelations = []string{"v_get", "v_list"}
+// mrrVerbPrefix — приставка, по которой отношение опознаётся как ГЛАГОЛЬНОЕ.
+//
+// Вторая сторона сравнения ВЫВОДИТСЯ ИЗ МОДЕЛИ, а не перечисляется здесь. Это
+// не стилистика: перечень, лежащий в одном пакете с гейтом, гейт вправе
+// импортировать — и тогда ожидаемое значение бралось бы из литерала, а не из
+// предмета. Гарантия «стороны недостижимы» держалась бы добросовестностью;
+// выведенная сторона не требует её вовсе.
+//
+// Следствие, ради которого это и сделано: заведут у типа третий глагол — он
+// попадёт в сравнение САМ, а не будет ждать, пока кто-нибудь допишет его сюда.
+const mrrVerbPrefix = "v_"
+
+// mrrVerbRelationsOf — глагольные отношения типа, выведенные из его объявления.
+func mrrVerbRelationsOf(defs map[string]string) []string {
+	var out []string
+	for rel := range defs {
+		if strings.HasPrefix(rel, mrrVerbPrefix) {
+			out = append(out, rel)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
 
 // MRREntry — запись каталога, как её читает край.
 type MRREntry struct {
@@ -86,7 +105,9 @@ type MRRCensus struct {
 	TierReaders map[string]bool
 	// WildcardSat — какие выполнимы подстановочным субъектом.
 	WildcardSat map[string]bool
-	Findings    []string
+	// VerbRelations — вторая сторона сравнения, ВЫВЕДЕННАЯ из модели.
+	VerbRelations []string
+	Findings      []string
 }
 
 var (
@@ -121,8 +142,10 @@ func SurveyMembershipReadRelation(tree *treecorpus.Tree) (MRRCensus, error) {
 	}
 	c.Relations = len(defs)
 
+	verbs := mrrVerbRelationsOf(defs)
+	c.VerbRelations = verbs
 	want := map[string]bool{}
-	for _, rel := range mrrVerbRelations {
+	for _, rel := range verbs {
 		want[rel] = true
 	}
 

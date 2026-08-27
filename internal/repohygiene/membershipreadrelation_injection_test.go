@@ -168,7 +168,7 @@ func TestMRR_ComparisonOfTwoDeclarationsIsLive(t *testing.T) {
 	if !c.TierReaders["viewer"] {
 		t.Fatal("КОНТРОЛЬ: ярусное отношение обязано читать ярус на законной модели")
 	}
-	for _, verb := range mrrVerbRelations {
+	for _, verb := range c.VerbRelations {
 		if c.TierReaders[verb] {
 			t.Fatalf("КОНТРОЛЬ: глагольное %q не должно читать ярус на законной модели", verb)
 		}
