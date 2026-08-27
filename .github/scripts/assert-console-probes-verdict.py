@@ -9,7 +9,7 @@
 утверждение, а прогон остаётся зелёным. «Ноль упавших» из двух проб и из семи
 выглядит одинаково, и различить их можно только сверкой с деревом.
 
-Поэтому здесь два независимых утверждения:
+Поэтому здесь три независимых утверждения:
 
   1. ЧИСЛО. Проб в отчёте столько же, сколько объявлено в дереве. Объявленное
      считается по исходникам проб (`test(` на своей строке), а не выписывается —
@@ -18,13 +18,21 @@
   2. ИСХОД. Ни одной пробы вне состояния «прошла». Пропуск («skipped») здесь
      ТОЖЕ провал: пропущенная проба — это отсутствующая проверка, и правило
      запрещает её ровно так же, как маску.
+  3. АРТЕФАКТ. У каждой УПАВШЕЙ пробы есть вложение трассы (#1287). Трасса —
+     единственная запись того, что происходило в браузере; теряется она ровно
+     на падении, то есть там, где она и нужна, и теряется ТИХО: код возврата
+     прогона о вложениях не знает. Одна такая потеря уже случалась (#1242) и
+     была найдена вручную — только потому, что кто-то попытался открыть файл.
 
 Отсутствие отчёта — ПРОВАЛ, а не «нечего проверять»: суита, не оставившая
 отчёта, не выполнилась, и эта третья категория из вердикта не вычитается.
 
 Печатается объём осмотренного: сколько исходников прочитано, сколько объявлений
-в них найдено, сколько записей разобрано в отчёте. «Ноль находок» обязано быть
-отличимо от «ноль прочитанного».
+в них найдено, сколько записей разобрано в отчёте, сколько проб упало и у
+скольких из них трасса есть, а у скольких нет. «Ноль находок» обязано быть
+отличимо от «ноль прочитанного», а «упавших без трассы ноль» — от «упавших не
+было вовсе»: первое свойство прогона, второе отсутствие предмета, и различает
+их только ПАРА чисел.
 
 Запуск:
     python3 .github/scripts/assert-console-probes-verdict.py            # вердикт
@@ -38,6 +46,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+from typing import NamedTuple
 
 # Объявление пробы: вызов `test(` в начале логической строки. Форма `test.describe(`
 # и `test.skip(` под неё намеренно не подпадают: первая — группа, а не проба;
@@ -78,6 +87,39 @@ RC_UNMET = 3
 
 SPECS_GLOB = "*.spec.ts"
 
+# ВЛОЖЕНИЕ ТРАССЫ (#1287). Имя задаёт разбор фикстуры `page` в specs/fixtures.ts:
+# он кладёт архив в `testInfo.attachments` под этим именем, а прогонщик переносит
+# запись в отчёт как есть. Сверка идёт по ИМЕНИ вложения в отчёте, а не по файлу
+# на диске: гейт читает отчёт и о диске ранера не знает — да и предмет #1242 был
+# ровно в том, что запись до отчёта НЕ ДОЕХАЛА.
+TRACE_ATTACHMENT = "trace"
+
+# Исходы, на которых трасса ОБЯЗАНА быть. Список ЗАКРЫТЫЙ, и граница проведена по
+# тому, КТО трассу пишет, а не по расплывчатому «проба не прошла»: пишет её ветка
+# «исход не совпал с ожидаемым» в разборе фикстуры `page`. Поэтому сюда не входят
+#   * passed      — архив прошедшей пробы не нужен и НАМЕРЕННО не пишется;
+#   * skipped     — фикстура либо не разворачивалась вовсе (проба не стартовала
+#                   при ранней остановке), либо исход совпал с ожидаемым;
+#   * interrupted — разбор оборван вместе с прогоном, дописывать архив нечем.
+# Включить их значило бы завести проверку, чьи находки ложны все до одной, — а
+# такую перестают читать, и вместе с ней перестают читать настоящую.
+TRACE_EXPECTED = ("failed", "timedOut")
+
+
+class Probe(NamedTuple):
+    """Запись пробы из отчёта.
+
+    Заведена вместо четвёрки-кортежа, когда к исходу добавились ИМЕНА ВЛОЖЕНИЙ
+    (#1287): пятое поле кортежа читалось бы как `g[4]`, а по такому индексу
+    следующая правка ошибётся молча.
+    """
+
+    title: str
+    status: str
+    message: str
+    runs: int
+    attachments: tuple[str, ...]
+
 
 def declared_probes(specs_dir: Path) -> tuple[int, int]:
     """Сколько проб объявлено в дереве и сколько файлов для этого прочитано."""
@@ -95,8 +137,8 @@ def walk_specs(node: dict) -> list[dict]:
     return out
 
 
-def outcomes(report: dict) -> list[tuple[str, str, str, int]]:
-    """Четвёрки «имя пробы → исход → текст отказа → сколько раз запускалась».
+def outcomes(report: dict) -> list[Probe]:
+    """Записи проб: имя, исход, текст отказа, число запусков, имена вложений.
 
     Текст нужен третьей категории (#935): падение НА НАВИГАЦИИ означает, что
     проба до продукта не дошла, и вердикт о продукте по ней не выносится.
@@ -107,19 +149,28 @@ def outcomes(report: dict) -> list[tuple[str, str, str, int]]:
     НОЛЬ, у второй ровно один. Признак замерен на playwright 1.56.1, а не
     выведен из документации: сравнивать пришлось два отчёта, отличающихся
     только этим (#1050).
+
+    Вложения берутся из ТОГО ЖЕ запуска, чей исход попал в `status` (#1287):
+    трасса принадлежит попытке, а не пробе, и при повторах их было бы несколько.
+    Повторов здесь нет (`retries: 0`), но привязка к последнему запуску делает
+    свойство верным и без этой оговорки.
     """
-    res: list[tuple[str, str, str, int]] = []
+    res: list[Probe] = []
     for spec in walk_specs(report):
         title = spec.get("title") or "(без имени)"
         status = "не исполнена"
         message = ""
         started = 0
+        attached: tuple[str, ...] = ()
         for t in spec.get("tests", []) or []:
             runs = t.get("results", []) or []
             started += len(runs)
             if runs:
                 last = runs[-1]
                 status = last.get("status") or "не исполнена"
+                attached = tuple(
+                    (a or {}).get("name") or "" for a in (last.get("attachments") or [])
+                )
                 # САМЫЙ СОДЕРЖАТЕЛЬНЫЙ из доступных текстов, а не первый.
                 # Замерено (#1050): при снятии пробы по времени `error.message`
                 # несёт голое «Test timeout of Nms exceeded», а журнал ожидания
@@ -133,7 +184,7 @@ def outcomes(report: dict) -> list[tuple[str, str, str, int]]:
                 message = max(candidates, key=len, default="")
             elif t.get("status"):
                 status = t["status"]
-        res.append((title, status, message, started))
+        res.append(Probe(title, status, message, started, attached))
     return res
 
 
@@ -180,8 +231,8 @@ def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
         return 1, log
 
     got = outcomes(report)
-    started = [g for g in got if g[3] > 0]
-    not_started = [g for g in got if g[3] == 0]
+    started = [g for g in got if g.runs > 0]
+    not_started = [g for g in got if g.runs == 0]
     log.append(f"=== разобрано записей отчёта: {len(got)} ===")
     log.append(f"=== исполнено проб {len(started)} из {declared} объявленных ===")
     rc = 0
@@ -194,12 +245,52 @@ def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
         )
         rc = 1
 
-    bad = [(n, s, m) for n, s, m, _ in got if s != "passed"]
-    bad_started = [(n, s, m) for n, s, m, r in got if s != "passed" and r > 0]
-    for name, status, _, runs in got:
-        mark = "✓" if status == "passed" else ("·" if runs == 0 else "✗")
-        shown = "не стартовала" if runs == 0 else status
-        log.append(f"  {mark} {shown:<14} {name}")
+    bad = [g for g in got if g.status != "passed"]
+    bad_started = [g for g in got if g.status != "passed" and g.runs > 0]
+    for g in got:
+        mark = "✓" if g.status == "passed" else ("·" if g.runs == 0 else "✗")
+        shown = "не стартовала" if g.runs == 0 else g.status
+        log.append(f"  {mark} {shown:<14} {g.title}")
+
+    # ─── ТРЕТЬЕ УТВЕРЖДЕНИЕ: У УПАВШЕЙ ПРОБЫ ЕСТЬ ТРАССА (#1287) ─────────────
+    #
+    # Текст отказа говорит, ЧТО не сошлось; трасса — что происходило в браузере
+    # до этого. Без неё разбор красного ведётся по имени шага, то есть вслепую,
+    # и потеря эта ТИХАЯ: код возврата прогона о вложениях не знает, а гейт до
+    # сих пор смотрел только на исходы. Одну такую потерю (#1242) нашли ВРУЧНУЮ
+    # — только потому, что кто-то попытался открыть файл. Механизм той потери
+    # закрыт отдельно, но класс шире одного механизма: артефакт теряется и по
+    # другим причинам, а вердикт оставался зелёным по своей части.
+    #
+    # ПЕЧАТАЮТСЯ ДВА ЧИСЛА, а не одно. «Без трассы 0» само по себе неотличимо от
+    # «упавших не было вовсе»: первое — свойство прогона, второе — отсутствие
+    # предмета. Разделяет их только пара «с трассой N, без трассы M», и печатать
+    # её надо ВСЕГДА, в том числе на полностью зелёном прогоне.
+    #
+    # Строка стоит ВЫШЕ ранних возвратов намеренно: перепись обязана печататься и
+    # тогда, когда исход прогона относят к третьей категории. Код возврата в тех
+    # ветках остаётся за КАТЕГОРИЕЙ ИСХОДА — если до продукта не дошла ни одна
+    # проба, разбирать надо достижимость стенда, а находка о трассе своё место в
+    # журнале уже заняла и никуда из него не денется.
+    need_trace = [g for g in got if g.runs > 0 and g.status in TRACE_EXPECTED]
+    lost_trace = [g for g in need_trace if TRACE_ATTACHMENT not in g.attachments]
+    log.append(
+        f"=== трасса: упавших проб {len(need_trace)}, "
+        f"с трассой {len(need_trace) - len(lost_trace)}, без трассы {len(lost_trace)} ==="
+    )
+    for g in lost_trace:
+        shown = ", ".join(a for a in g.attachments if a) or "ни одного"
+        log.append(
+            f"ПРОВАЛ: у упавшей пробы нет вложения «{TRACE_ATTACHMENT}»: {g.title} "
+            f"(исход: {g.status}; вложений в отчёте: {shown})"
+        )
+    if lost_trace:
+        log.append(
+            "  Разбирать такое красное придётся по имени шага и тексту отказа — без "
+            "записи того, что происходило в браузере, то есть без единственного "
+            "артефакта, ради которого трассу и включают."
+        )
+        rc = 1
 
     # ТРЕТЬЯ КАТЕГОРИЯ (#935): ни одна проба не дошла до продукта.
     #
@@ -209,7 +300,7 @@ def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
     # прогон не зелёный), но причина названа своя: иначе разбор уходит в
     # продукт, которого запрос не касался.
     if bad_started and len(bad_started) == len(started) and all(
-        unreached(m) for _, _, m in bad_started
+        unreached(g.message) for g in bad_started
     ):
         log.append(
             f"НЕ ВЫПОЛНИЛОСЬ: все {len(started)} стартовавших проб отвалились на навигации — до "
@@ -229,8 +320,7 @@ def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
     # называется — иначе разбор уйдёт в продукт, которого проба не касалась.
     if not_started:
         cap = (report.get("config") or {}).get("maxFailures") or 0
-        first = next(((n, st, m) for n, st, m, r in got
-                      if r > 0 and st != "passed"), None)
+        first = next((g for g in got if g.runs > 0 and g.status != "passed"), None)
         log.append(
             f"НЕ ВЫПОЛНИЛОСЬ: исполнено {len(started)} проб из {declared} "
             f"объявленных, не стартовало {len(not_started)}. Прогон остановлен "
@@ -239,8 +329,8 @@ def verdict(report_path: Path, specs_dir: Path) -> tuple[int, list[str]]:
             "вычитается из вердикта и не зачитывается в зелёное."
         )
         if first:
-            log.append(f"  диагноз — первое падение: {first[0]}")
-            for line in plain(first[2] or "(текст отказа пуст)").strip().splitlines()[:6]:
+            log.append(f"  диагноз — первое падение: {first.title}")
+            for line in plain(first.message or "(текст отказа пуст)").strip().splitlines()[:6]:
                 log.append(f"    {line}")
         else:
             log.append(
@@ -272,13 +362,33 @@ _SPEC_WITH_GROUP = (
 )
 
 
-def _spec(title: str, status: str, message: str = "", runs: int = 1) -> dict:
+def _trace_attachments() -> list[dict]:
+    """Вложение трассы в той же форме, в какой его пишет прогонщик."""
+    return [{
+        "name": TRACE_ATTACHMENT,
+        "contentType": "application/zip",
+        "path": "/tmp/test-results/x/trace.zip",
+    }]
+
+
+def _spec(title: str, status: str, message: str = "", runs: int = 1,
+          trace: bool | None = None) -> dict:
     """Запись пробы. `runs=0` — проба не стартовала (ранняя остановка прогона);
     `runs=1, status="skipped"` — намеренный `test.skip`. Различие замерено на
-    настоящем отчёте playwright, а не придумано (#1050)."""
+    настоящем отчёте playwright, а не придумано (#1050).
+
+    `trace` по умолчанию воспроизводит ФАКТИЧЕСКОЕ поведение набора: упавшая
+    проба несёт вложение трассы, прошедшая — нет. Это делает все прежние
+    фикстуры ЗАКОННЫМИ близнецами для проверки трассы (#1287): инъекция обязана
+    ронять только своё, иначе красное придёт от соседа и вакуумность новой
+    проверки останется незамеченной. `trace=False` — сама инъекция."""
+    keep = (status in TRACE_EXPECTED) if trace is None else trace
     t: dict = {"status": status, "results": []}
     if runs:
-        t["results"] = [{"status": status, "error": {"message": message}}]
+        res: dict = {"status": status, "error": {"message": message}}
+        if keep:
+            res["attachments"] = _trace_attachments()
+        t["results"] = [res]
     return {"title": title, "tests": [t]}
 
 
@@ -290,14 +400,10 @@ def _report_of(*specs: dict, max_failures: int = 0) -> str:
 
 
 def _report(*statuses: str, message: str = "") -> str:
-    specs = [
-        {
-            "title": f"проба-{i}",
-            "tests": [{"results": [{"status": s, "error": {"message": message}}]}],
-        }
-        for i, s in enumerate(statuses)
-    ]
-    return json.dumps({"suites": [{"title": "s", "specs": specs}]})
+    """Отчёт из исходов. Трасса проставляется по тому же правилу, что в `_spec`."""
+    return json.dumps({"suites": [{"title": "s", "specs": [
+        _spec(f"проба-{i}", st, message) for i, st in enumerate(statuses)
+    ]}]})
 
 
 def self_test() -> int:
@@ -377,7 +483,8 @@ def self_test() -> int:
                 {"title": "прошла", "tests": [{"results": [{"status": "passed"}]}]},
                 {"title": "упала", "tests": [{"results": [
                     {"status": "failed",
-                     "error": {"message": "net::ERR_NAME_NOT_RESOLVED"}}]}]},
+                     "error": {"message": "net::ERR_NAME_NOT_RESOLVED"},
+                     "attachments": _trace_attachments()}]}]},
                 {"title": "прошла-2", "tests": [{"results": [{"status": "passed"}]}]},
             ]}]}),
             encoding="utf-8",
@@ -428,6 +535,7 @@ def self_test() -> int:
                 "suites": [{"title": "s", "specs": [
                     {"title": "снята по времени", "tests": [{"status": "timedOut", "results": [{
                         "status": "timedOut",
+                        "attachments": _trace_attachments(),
                         "error": {"message": "\x1b[31mTest timeout of 10000ms exceeded.\x1b[39m"},
                         "errors": [
                             {"message": "Test timeout of 10000ms exceeded."},
@@ -482,6 +590,150 @@ def self_test() -> int:
             "перепись исполненного печатается и на зелёном",
             got == 0 and "исполнено проб 3 из 3" in joined,
             "0 + «исполнено проб 3 из 3»", got))
+
+        # ─── ТРАССА УПАВШЕЙ ПРОБЫ (#1287) ────────────────────────────────
+        #
+        # ТРИ ПРОГОНА, а не два, и причина не в осторожности. Упавшая проба
+        # КРАСНА САМА ПО СЕБЕ — существующим утверждением об исходе, — поэтому по
+        # КОДУ ВОЗВРАТА новую проверку от старой не отличить ни при какой
+        # инъекции: обе дают единицу. Отличает их ЖУРНАЛ — пара чисел переписи и
+        # строка находки с именем пробы. Отсюда:
+        #   (1) КОНТРОЛЬ — всё цело: молчат оба, перепись объявляет отсутствие
+        #       предмета парой нулей;
+        #   (2) ИНЪЕКЦИЯ НОВОГО — у упавшей пробы снято ТОЛЬКО вложение трассы,
+        #       больше ничего: красное обязано прийти С ИМЕНЕМ пробы;
+        #   (3) ИНЪЕКЦИЯ СУЩЕСТВУЮЩЕГО — та же упавшая проба, но С трассой:
+        #       старое утверждение краснеет, новое обязано МОЛЧАТЬ. Без третьего
+        #       прогона молчание новой проверки неотличимо от её мёртвости.
+
+        # (1) КОНТРОЛЬ. Он же — проверка на ПУСТОМ входе: прогон без единой
+        # упавшей пробы это ЦЕЛЬ, а не поломка, и перепись обязана печататься
+        # именно здесь, иначе «без трассы 0» неотличимо от «не смотрели».
+        rep.write_text(
+            _report_of(_spec("а", "passed"), _spec("б", "passed"), _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        joined = "\n".join(log)
+        census = next((ln for ln in log if ln.startswith("=== трасса")), "строки нет")
+        cases.append((
+            "контроль: перепись трассы печатается и без единой упавшей пробы",
+            got == 0 and "трасса: упавших проб 0, с трассой 0, без трассы 0" in joined,
+            "0 + «упавших проб 0, с трассой 0, без трассы 0»", f"{got} / {census}"))
+
+        # (2) ИНЪЕКЦИЯ НОВОГО.
+        rep.write_text(
+            _report_of(_spec("а", "passed"),
+                       _spec("трасса потеряна", "failed", "expect(x).toBeVisible()",
+                             trace=False),
+                       _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        joined = "\n".join(log)
+        census = next((ln for ln in log if ln.startswith("=== трасса")), "строки нет")
+        cases.append((
+            "потеря трассы у упавшей пробы ловится",
+            got == 1 and "нет вложения «trace»" in joined,
+            "1 + «нет вложения «trace»»", got))
+        cases.append((
+            "находка называет КООРДИНАТУ — имя пробы",
+            "трасса потеряна" in joined, "имя пробы в выводе",
+            "названо" if "трасса потеряна" in joined else "НЕ названо"))
+        cases.append((
+            "перепись называет ОБА числа, а не одно",
+            "трасса: упавших проб 1, с трассой 0, без трассы 1" in joined,
+            "«упавших проб 1, с трассой 0, без трассы 1»", census))
+
+        # (3) ИНЪЕКЦИЯ СУЩЕСТВУЮЩЕГО: та же проба, но трасса на месте.
+        rep.write_text(
+            _report_of(_spec("а", "passed"),
+                       _spec("упала честно", "failed", "expect(x).toBeVisible()"),
+                       _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        joined = "\n".join(log)
+        census = next((ln for ln in log if ln.startswith("=== трасса")), "строки нет")
+        cases.append((
+            "упавшая проба С трассой: СТАРОЕ утверждение краснеет",
+            got == 1 and "проб не в состоянии «прошла»: 1" in joined,
+            "1 + «проб не в состоянии «прошла»: 1»", got))
+        cases.append((
+            "упавшая проба С трассой: НОВОЕ утверждение молчит",
+            "нет вложения" not in joined
+            and "трасса: упавших проб 1, с трассой 1, без трассы 0" in joined,
+            "«с трассой 1, без трассы 0» и ни одной находки", census))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: намеренный пропуск. Фикстура до своего разбора не
+        # дошла, трассы нет by construction. Провал по ПРОПУСКУ остаётся,
+        # находки о трассе быть не должно.
+        rep.write_text(
+            _report_of(_spec("а", "passed"), _spec("пропущена", "skipped"),
+                       _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        joined = "\n".join(log)
+        census = next((ln for ln in log if ln.startswith("=== трасса")), "строки нет")
+        cases.append((
+            "пропуск трассы НЕ требует",
+            got == 1 and "нет вложения" not in joined
+            and "трасса: упавших проб 0, с трассой 0, без трассы 0" in joined,
+            "1 по пропуску, ноль находок о трассе", census))
+
+        # ЗАКОННЫЙ БЛИЗНЕЦ: проба, не стартовавшая вовсе (ранняя остановка).
+        # Фикстура не разворачивалась — спрашивать с неё артефакт не с чего;
+        # с двух УПАВШИХ рядом он спрашивается и находится.
+        rep.write_text(
+            _report_of(_spec("упала-1", "failed", "x"),
+                       _spec("упала-2", "failed", "x"),
+                       _spec("не-стартовала", "skipped", runs=0),
+                       max_failures=2),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        joined = "\n".join(log)
+        census = next((ln for ln in log if ln.startswith("=== трасса")), "строки нет")
+        cases.append((
+            "не стартовавшая проба трассы НЕ требует",
+            "нет вложения" not in joined
+            and "трасса: упавших проб 2, с трассой 2, без трассы 0" in joined,
+            "«упавших проб 2, с трассой 2, без трассы 0»", census))
+
+        # ГРАНИЦА: снятие по времени — тоже падение, и трасса с него
+        # спрашивается. Ровно этим исходом отвечал прогон в #1242.
+        rep.write_text(
+            _report_of(_spec("а", "passed"),
+                       _spec("снята по времени", "timedOut",
+                             "Test timeout of 90000ms exceeded", trace=False),
+                       _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        cases.append((
+            "снятая по времени проба тоже обязана нести трассу",
+            got == 1 and any("нет вложения «trace»" in ln for ln in log),
+            "1 + находка", got))
+
+        # ГРАНИЦА С ДРУГОЙ СТОРОНЫ: прогон оборван, разбор фикстуры оборван
+        # вместе с ним, дописывать архив нечем. Требовать трассу здесь значило бы
+        # краснеть на исправном прогоне — то есть завести проверку, чьи находки
+        # ложны все до одной.
+        rep.write_text(
+            _report_of(_spec("а", "passed"),
+                       _spec("оборвана", "interrupted", trace=False),
+                       _spec("в", "passed")),
+            encoding="utf-8",
+        )
+        got, log = verdict(rep, specs)
+        joined = "\n".join(log)
+        census = next((ln for ln in log if ln.startswith("=== трасса")), "строки нет")
+        cases.append((
+            "оборванная проба трассы НЕ требует",
+            "нет вложения" not in joined
+            and "трасса: упавших проб 0, с трассой 0, без трассы 0" in joined,
+            "ноль находок о трассе", census))
 
         # КРАСНЕЕТ: дерево проб пусто — «ноль упавших» из ничего.
         empty = root / "empty"
