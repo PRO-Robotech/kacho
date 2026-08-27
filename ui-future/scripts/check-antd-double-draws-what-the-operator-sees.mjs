@@ -133,20 +133,101 @@ const NOT_DRAWN = Object.create(null);
  * второй половиной гейта намеренно НЕ засчитываются — они утверждают о дублёре).
  */
 const PROBED_BY = {
+  // Проба падает утверждением «называет радиус секрета прямо в окне выдачи»:
+  // текст предупреждения приходит пропом `message`, и проходной <div> роняет
+  // его в атрибут — оператор видит пустое окно.
+  Alert: "shared/src/components/organisms/system/OneTimeSecretModal/OneTimeSecretModal.test.tsx",
   Badge: "shared/src/components/organisms/DetailShell/DetailShell.badge.test.tsx",
+  // Падает на «копирует ответ края целиком» и «сериализация — с отступами»:
+  // обе жмут кнопку по её РОЛИ, а проходной <div> кнопкой не является.
+  Button: "shared/src/components/organisms/DetailShell/JsonTab.test.tsx",
+  // Падает на «сводка направлений считает то, что в наборе есть» и «„Добавить
+  // правило“ кладёт заготовку»: счётчик и действие живут в шапке карточки
+  // (`title`/`extra`), а проходной <div> шапки не рисует вовсе.
+  Card: "shared/src/components/organisms/form/SgRulesEditor/SgRulesEditor.test.tsx",
+  // Заведена под #1285: дерево «сеть → подсеть → адрес». Держит СОСТАВ
+  // предложенного — варианты приходят пропом `options`, и «выбора нет» без
+  // такой пробы неотличимо от «выбор пуст».
+  Cascader: "shared/src/components/organisms/form/NicSpecFields/NicSpecFields.cascader.test.tsx",
+  // Падает на положительном контроле «флажки на странице находятся» — том
+  // самом, без которого отрицание «группового удаления нет» зеленело бы на
+  // экране без единого флажка.
+  Checkbox: "shared/src/components/organisms/ResourceListPage/ResourceListPage.no-bulk-delete.test.tsx",
   Collapse: "shared/src/components/organisms/form/SgRulesEditor/SgRulesEditor.test.tsx",
   Dropdown: "shared/src/components/molecules/RowActionsMenu/RowActionsMenu.test.tsx",
+  // Падает на «пустое дерево прямо говорит, что удалять можно»: объяснение
+  // пустоты приходит пропом `description`.
+  Empty: "shared/src/components/organisms/DependencyTreePanel/DependencyTreePanel.test.tsx",
+  // Падает на пяти утверждениях правки пар «ключ→значение»: печатать некуда,
+  // когда поле ввода подменено <div>.
+  Input: "shared/src/components/molecules/EditableKVTable/EditableKVTable.test.tsx",
+  // Заведена под #1285: диапазон портов правила. Держит контракт настоящего —
+  // `onChange` приходит ЧИСЛОМ, а не событием: событие дало бы `NaN`, и порт
+  // выглядел бы заданным, не будучи им.
+  InputNumber: "shared/src/components/organisms/form/SgRulesEditor/SgRulesEditor.input-number.test.tsx",
   Menu: "shared/src/components/organisms/DetailShell/DetailShell.test.tsx",
+  // Заведена под #1285. Соседний `ErrorResult.test.tsx` для этого НЕ годился:
+  // он переопределяет `antd` своим моком и об общем заменителе не говорит
+  // ничего — на возвращённом в <div> `Result` он остаётся зелёным.
+  Result: "shared/src/components/molecules/ErrorResult/ErrorResult.result.test.tsx",
+  // Падает на одиннадцати утверждениях окна построчного глагола: заголовок и
+  // кнопки согласия/отказа рисует само окно, а не его содержимое.
+  Modal: "shared/src/components/molecules/RowActionsMenu/RowActionsMenu.rowverbs.test.tsx",
   // Переехало вслед за предметом: панель ключей сведена к тонкой обёртке и
   // `Popconfirm` больше не рисует — его рисует общая реализация, и проба
   // теперь лежит рядом с НЕЙ. Прежняя запись пережила свой предмет, и гейт
   // это назвал сам, второй половиной самопроверки.
   Popconfirm: "iam/src/components/organisms/TokensPanel/TokensPanel.test.tsx",
+  // Падает на трёх утверждениях про снятие выбранного адреса при смене режима:
+  // сами режимы приходят пропом `options`, и выбрать нечего, когда их не рисуют.
+  Segmented: "shared/src/components/organisms/form/NicSpecFields/NicSpecFields.test.tsx",
+  // Падает на паре «своя ветвь у шлюза» + положительный контроль «адрес
+  // открывается полем адреса»: ветвь выбирают списком, чьи варианты приходят
+  // пропом `options`.
+  Select: "shared/src/components/organisms/RoutesPanel/RoutesPanel.test.tsx",
   Spin: "shared/src/components/organisms/ResourceEditPage/ResourceEditPage.loading-caption.test.tsx",
   Statistic: "shared/src/pages/DashboardPage.statistic.test.tsx",
+  // Падает на семи утверждениях журнала операций: строки, столбцы и текст
+  // отказа приходят пропами `dataSource`/`columns`, а не детьми.
+  Table: "shared/src/components/molecules/OperationsTable/OperationsTable.test.tsx",
   Tabs: "iam/src/pages/iam/AccessPage/AccessPage.role-tabs.test.tsx",
+  // Заведена под #1285: УЗЛОВОЕ пояснение к полю формы. Строковая ветвь
+  // намеренно не утверждается — заменитель отдаёт её нативным `title`,
+  // которого настоящий antd не производит; узловая же рисуется содержимым,
+  // иначе `String(<узел>)` дал бы «[object Object]» для любого пояснения.
+  Tooltip: "shared/src/components/organisms/form/FieldLabel/FieldLabel.tooltip.test.tsx",
   Tree: "shared/src/components/organisms/DependencyTreePanel/DependencyTreePanel.test.tsx",
 };
+
+/**
+ * ПОЧЕМУ ДВА ВИДА ОСТАЮТСЯ В ДОЛГЕ (#1285). Перечень выше пополнен по каждому
+ * виду, у которого проба у носителя ВОЗМОЖНА. Двум она сегодня невозможна, и
+ * причина у каждого своя — записана здесь, чтобы её не выводили заново.
+ *
+ * `Tag`. Единственное, чем нарисованный тег отличается от проходного <div>, —
+ * крестик снятия, а он появляется только при `closable`. Ни один носитель,
+ * попадающий в знаменатель, `closable` не несёт: употреблений <Tag> в дереве
+ * 63, с видимым оператору пропом 6, с `closable` 6, и ТО И ДРУГОЕ — 0.
+ * Проверено и прогоном: возврат `Tag` в <div> не роняет НИ ОДНОГО из 906
+ * утверждений в 71 суите его каталогов-носителей. Проба там утверждала бы то,
+ * что истинно при любом заменителе.
+ * Предикат снятия: носитель с видимым пропом И `closable` — тогда крестик
+ * становится наблюдаем, и место записи здесь, вместе с пробой рядом с ним.
+ *
+ * `AutoComplete`. Заменитель отдаёт его псевдонимом текстового поля
+ * (`AutoComplete: Input`), а видимое оператору у него — СПИСОК ПОДСКАЗОК,
+ * приходящий пропом `options`. Список не рисуется вовсе: на общем заменителе
+ * поле получает `options="[object Object]"` атрибутом. Хуже того, настоящий
+ * `AutoComplete` наследует `InternalSelectProps` (antd 6.5.4,
+ * `es/auto-complete/AutoComplete.d.ts`) и зовёт `onChange` ЗНАЧЕНИЕМ, тогда как
+ * текстовое поле зовёт его СОБЫТИЕМ: продукт, написанный под настоящий
+ * контракт, на первом же нажатии кладёт в поле `[object Object]`. Проба,
+ * написанная здесь сейчас, закрепила бы это как норму — то есть была бы прибита
+ * к форме дублёра ровно так, как запрещает шапка этого файла.
+ * Предикат снятия: заменитель рисует `options` и зовёт `onChange` значением —
+ * тогда проба у носителя становится осмысленной, а местная подмена
+ * `AutoComplete` в пробе носителя снимается как ненужная.
+ */
 
 /**
  * Виды, приведённые к настоящей форме, у которых СЕГОДНЯ нет ни одного
@@ -455,7 +536,30 @@ if (process.argv.includes("--self-test")) {
   // возвращается в проходной `<div>` — тогда названная проба утверждает о форме
   // дублёра, и перечень обязан это назвать. На законном заменителе — молчание.
   const tracked = trackedProbeSet();
-  const kind = Object.keys(PROBED_BY)[0];
+  // Вид для инъекции берётся НЕ как первый ключ перечня, а как первый ключ,
+  // объявленный в заменителе СОКРАЩЁННОЙ формой (`    Kind,`), — только её
+  // подмена на `Component` выражается одной строкой.
+  //
+  // Прежняя редакция брала `Object.keys(PROBED_BY)[0]` и тем молча зависела от
+  // того, что первый ключ окажется сокращённым. Предпосылка держалась
+  // алфавитом: пока первым был `Badge`, всё сходилось. Перечень пополнился по
+  // #1285, первым стал `Alert` — объявленный ПОЛНОЙ формой, — и самопроверка
+  // перестала вносить дефект, сообщив об этом сама. То есть способность второй
+  // половины упасть переставала доказываться от одной лишь записи в перечне,
+  // и заметить это можно было только прогоном.
+  //
+  // Предпосылка теперь ВЫРАЖЕНА: если сокращённых ключей не осталось ни одного,
+  // самопроверка говорит это прямо, а не выдаёт молчание за доказательство.
+  const shorthandInStub = (k) => new RegExp(`\\n {4}${k},\\n`).test(stubSource);
+  const kind = Object.keys(PROBED_BY).find(shorthandInStub);
+  if (kind === undefined) {
+    console.error(
+      "::error::самопроверка второй половины не смогла внести дефект: ни один вид из PROBED_BY не объявлен " +
+        "в заменителе сокращённой формой «    Kind,» — вносить дефект одной строкой не во что; " +
+        "чинить надо самопроверку (научить её полной форме), а не гейт",
+    );
+    process.exit(1);
+  }
   const brokenKind = stubSource.replace(new RegExp(`\\n {4}${kind},\\n`), `\n    ${kind}: Component,\n`);
   if (brokenKind === stubSource) {
     console.error(
