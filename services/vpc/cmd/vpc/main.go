@@ -373,10 +373,11 @@ func runServe(cfg config.Config) error {
 	// БД и спрашивает kacho-iam AuthorizeService.BatchCheck, какие её id видимы
 	// caller'у (viewer ∪ v_list; read == enforce). Единичный Get фильтр НЕ
 	// использует — его авторизует прямой per-object Check в authz-interceptor'е.
-	// Фильтр дилит endpoint AuthorizeService (PUBLIC-проекция, :9090) — НЕ conn
-	// InternalIAMService.Check (authzConn → :9091), который AuthorizeService не
-	// обслуживает. Endpoint = authz.list-filter.authorize-endpoint или, если не задан,
-	// authz.iam-endpoint. nil-фильтр (выключен / нет endpoint) → use-case'ы делают
+	//
+	// Соединение у фильтра СВОЁ (authorizeConn), отдельное от ребра per-RPC
+	// InternalIAMService.Check (authzConn). Как резолвится его адрес и почему
+	// слушатель iam здесь не называется — godoc buildAuthorizeConn; тут это не
+	// пересказывается. nil-фильтр (выключен / нет endpoint) → use-case'ы делают
 	// нефильтрованный list.
 	var authorizeConn clients.Conn
 	if cfg.AuthZ.ListFilter.Enabled {
@@ -738,11 +739,26 @@ func runServe(cfg config.Config) error {
 }
 
 // buildAuthorizeConn — дилит endpoint kacho-iam AuthorizeService для per-object
-// List/Get-фильтра. AuthorizeService — это PUBLIC-проекция (:9090), НЕ listener
-// InternalIAMService.Check (:9091, его обслуживает authzConn). Endpoint =
-// authz.list-filter.authorize-endpoint, с fallback на authz.iam-endpoint, если не
-// задан. Пусто → (nil, nil): caller логирует warn, а фильтр деградирует в
-// passthrough.
+// List/Get-фильтра. Соединение ОТДЕЛЬНОЕ от ребра per-RPC
+// InternalIAMService.Check (его держит authzConn): у него свой адрес и свой
+// транспорт. Endpoint = authz.list-filter.authorize-endpoint, с fallback на
+// authz.iam-endpoint, если не задан. Пусто → (nil, nil): caller логирует warn, а
+// фильтр деградирует в passthrough.
+//
+// НА КАКОЙ СЛУШАТЕЛЬ iam приходит этот адрес — свойство ПРОФИЛЯ, а не этого кода:
+// AuthorizeService зарегистрирована на ОБОИХ слушателях iam, поэтому законны и
+// публичный адрес, и внутренний. Состав слушателей описан в ОДНОМ месте —
+// services/iam/cmd/kacho-iam/grpc_register.go (registerPublicServices /
+// registerInternalServices), — и здесь он намеренно не пересказывается: пересказ
+// разошёлся бы с ним молча.
+//
+// Здесь и на месте вызова стояло «AuthorizeService — PUBLIC-проекция :9090, а
+// listener InternalIAMService.Check (:9091) её не обслуживает». Вторая половина
+// ложна безусловно: регистрация на внутреннем слушателе есть. Первая верна лишь
+// там, где профиль задал authorize-endpoint явно; при пустом значении адрес
+// наследуется от authz.iam-endpoint, чьё умолчание в чарте — внутренний
+// kacho-iam-internal:9091. Снято потому, что по этому комментарию делали вывод
+// «публичных служб на внутреннем слушателе нет», и вывод был неверен.
 //
 // mTLS — opt-in через authz.list-filter.authorize-tls; когда выключен, переиспользует
 // тот же vpc→iam authz client-cert, что и ребро Check (IAMAuthzMTLS), чтобы одна
