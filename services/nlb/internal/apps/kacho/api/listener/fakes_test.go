@@ -481,9 +481,6 @@ func (w *fakeTGWriter) AddTargets(context.Context, string, []domain.Target) (int
 func (w *fakeTGWriter) RemoveTargetsMarkDraining(context.Context, string, []string) (int, error) {
 	return 0, errors.New("not implemented")
 }
-func (w *fakeTGWriter) DeleteTargetsDrained(context.Context, string, int32) (int, error) {
-	return 0, errors.New("not implemented")
-}
 func (w *fakeTGWriter) DeleteTargetsDraining(context.Context, string) (int, error) {
 	return 0, errors.New("not implemented")
 }

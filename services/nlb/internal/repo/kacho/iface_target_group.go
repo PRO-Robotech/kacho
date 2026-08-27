@@ -61,12 +61,15 @@ type TargetGroupWriterIface interface {
 	// Для каждого target из targetIDs обновляет status='DRAINING' +
 	// drain_started_at=now (CHECK drain_consistency инфорсит NULL/NOT NULL).
 	// Возвращает количество фактически обновлённых строк (для outbox).
+	//
+	// Фазы B в этом порту НЕТ, и это осознанно: истёкшие дренирующиеся строки
+	// снимает `jobs.TargetDrainRunner` — своим оператором поверх пула, минуя
+	// CQRS-репозиторий (см. шапку `apps/kacho/jobs/target_drain_runner.go`).
+	// Он снимает их по ВСЕМ группам разом и тем же оператором эмитит
+	// `nlb_target_group … UPDATED`; объявить фазу B ещё и здесь значило бы
+	// завести вторую уборку того же предмета — без эмиссии события и способную
+	// разойтись с первой молча.
 	RemoveTargetsMarkDraining(ctx context.Context, tgID string, targetIDs []string) (int, error)
-
-	// DeleteTargetsDrained — фаза B (jobs/target_drain_runner). DELETE targets
-	// WHERE status='DRAINING' AND drain_started_at < now - $delay::interval.
-	// Возвращает количество удалённых строк.
-	DeleteTargetsDrained(ctx context.Context, tgID string, delaySeconds int32) (int, error)
 
 	// DeleteTargetsDraining — снять ВСЕ дренирующиеся строки группы, не дожидаясь
 	// deregistration_delay. Единственный вызывающий — TargetGroup.Delete, в СВОЕЙ
