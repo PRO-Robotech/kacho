@@ -370,7 +370,7 @@ func runServe(cfg config.Config) error {
 			return fmt.Errorf("dial kacho-iam (authz): %w", err)
 		}
 		defer authzConn.Close()
-		logger.Info("vpc→iam Check edge configured (per-RPC gate + list-filter)",
+		logger.Info("vpc→iam Check edge configured (per-RPC gate)",
 			"endpoint", cfg.AuthZ.IAMEndpoint, "mtls", mtlsCfg.IAMAuthzMTLS.Enable)
 	}
 
