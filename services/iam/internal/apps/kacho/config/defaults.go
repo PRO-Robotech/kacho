@@ -56,6 +56,29 @@ func RegisterDefaults(v *viper.Viper) {
 	// Override via KACHO_IAM_API_SERVER__JWKS_PROXY__ENDPOINT.
 	v.SetDefault("api-server.jwks-proxy.endpoint", "tcp://0.0.0.0:9097")
 
+	// retention — фоновая уборка таблиц, чей рост задаёт внешний (задача #1292).
+	//
+	// Порогов здесь НЕТ: они вычисляются из `pkg/tokenpolicy` реестром уборки —
+	// настраиваемый порог развели бы с предикатом читателя молча.
+	//
+	// Интервал: верхняя граница числа строк = темп × (срок строки + интервал);
+	// при сроке до часа пять минут добавляют к ней около 8 %, то есть величина
+	// не определяющая и выбрана по стоимости прогона.
+	// ENV: KACHO_IAM_RETENTION__INTERVAL
+	v.SetDefault("retention.interval", 5*time.Minute)
+	// Партия — длина одного оператора DELETE. Величина того же рода уже живёт в
+	// дереве у уборщика края (`gateway/internal/idempotencypg`), менять её без
+	// замера незачем.
+	// ENV: KACHO_IAM_RETENTION__BATCH
+	v.SetDefault("retention.batch", 1000)
+	// Потолок партий за проход. Одна партия за тик даёт скорость догона
+	// «партия / интервал», и при более высоком темпе записи уборщик не догонит
+	// НИКОГДА, оставаясь зелёным по всякой проверке «вызвался ли». Двадцать
+	// партий по тысяче за пять минут — 240 тыс. строк в час на предмет, при
+	// длительности прохода, ограниченной сверху.
+	// ENV: KACHO_IAM_RETENTION__MAX_BATCHES_PER_PASS
+	v.SetDefault("retention.max-batches-per-pass", 20)
+
 	// repository
 	v.SetDefault("repository.postgres.url", "postgres://iam@localhost:5432/kacho_iam")
 	v.SetDefault("repository.postgres.slave-url", "")

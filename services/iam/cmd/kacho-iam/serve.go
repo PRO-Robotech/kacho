@@ -208,6 +208,13 @@ func runServe(cfg config.Config) error {
 	}
 	startSigningKeySweeper(ctx, signingKeystore, logger)
 
+	// Фоновая уборка таблиц, чей рост задаёт внешний (задача #1292). Три
+	// предмета обслуживает ОДНА петля: три расписания об одном предмете
+	// разошлись бы молча.
+	if err := startRetentionSweeper(ctx, pool, cfg, metricsReg, logger); err != nil {
+		return err
+	}
+
 	svcs := buildServices(pool, slavePool, opsRepo, kachoRepo, metricsReg, cfg, tokenSigner, logger)
 
 	// gRPC servers. PrincipalExtract-interceptor читает
