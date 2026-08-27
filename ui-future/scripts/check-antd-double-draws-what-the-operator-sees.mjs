@@ -15,7 +15,7 @@
  *
  * Замер в день заведения гейта: восемь имён, 31 употребление, 27 файлов.
  *
- * ЧТО ПРОВЕРЯЕТСЯ — ТРИ ЧАСТИ ОДНОГО ПРЕДМЕТА.
+ * ЧТО ПРОВЕРЯЕТСЯ — ЧЕТЫРЕ ЧАСТИ ОДНОГО ПРЕДМЕТА.
  *
  * ПЕРВАЯ (#570). Имя, подменённое пустым `<div>`, не должно употребляться в
  * продуктовом коде с пропом из списка «несёт видимое оператору». Исходов два:
@@ -39,6 +39,26 @@
  * «появится носитель, появится и проба» не держится ничем. Поэтому вид уходит в
  * перечень `AWAITING_CARRIER` с причиной, и первое же его употребление с видимым
  * пропом роняет прогон, требуя записи в `PROBED_BY` вместе с пробой.
+ *
+ * ЧЕТВЁРТАЯ (#1349). У вида ТРИ состояния, а не два, и третье молчит громче
+ * первых. Кроме «рисует своё» и «не рисует» есть «рисует ЧУЖОЕ»: вид, отданный
+ * ПСЕВДОНИМОМ другого вида (`AutoComplete: Input`, `Cascader: Select`). Прежний
+ * разбор знал только форму `X: Component` и всё остальное считал нарисованным,
+ * поэтому псевдоним не давал НИ КРАСНОГО, НИ ЗЕЛЁНОГО — он был вне наблюдения.
+ *
+ * Псевдоним ХУЖЕ пустого `<div>`. Пустой виден сразу: видимое пропом не
+ * рисуется, и проба о составе истинна при любом составе. Псевдоним же рисует
+ * правдоподобное и тем ИСКАЖАЕТ ПОВЕДЕНИЕ ПРОДУКТА: под `AutoComplete: Input`
+ * поле звало `onChange` событием вместо значения, продукт клал в состояние
+ * объект, и оператор читал `[object Object]` вместо своей почты с первого
+ * нажатия (#1348). Проба, написанная поверх, закрепила бы это как норму.
+ *
+ * Псевдонимом считается вид, чья реализация — ГОЛОЕ ИМЯ ДРУГОГО ВИДА ТОГО ЖЕ
+ * перечня. Условие «другого вида того же перечня» несущее, а не косметическое:
+ * та же реализация под своим локальным именем (`Spin: SpinBox`) — это тот же
+ * виджет, а не чужой, и находкой быть не должна. Исходов два: привести вид к
+ * своей форме либо НАЗВАТЬ подмену в перечне `ALIASED` с причиной — а перечень
+ * истекает сам по двум осям (подмены больше нет; подменяет уже не тем видом).
  *
  * ЗНАМЕНАТЕЛЬ (#1265). `PROBED_BY` — ведомость ПРИНЕСЁННОГО, а не покрытие: в
  * неё попадает то, что кто-то однажды внёс, а не то, что употребляется. Строка
@@ -117,6 +137,54 @@ const VISIBLE_PROPS = new Set([
  * Сегодня он ПУСТ, и это цель, а не недосмотр.
  */
 const NOT_DRAWN = Object.create(null);
+
+/**
+ * Виды, которые заменитель НАМЕРЕННО отдаёт псевдонимом другого вида, — с
+ * причиной и предикатом снятия по каждому.
+ *
+ * Перечень счётный и самоистекающий по ДВУМ осям: запись падает, если
+ * (а) подмены больше нет — вид приведён к своей форме, подменён пустым `<div>`
+ * либо имя ушло; (б) вид подменяется УЖЕ НЕ ТЕМ, что записано.
+ *
+ * Третьей оси — «в дереве нет ни одного употребления» — здесь НЕТ, и это
+ * решение, а не пропуск. Псевдоним расходится с настоящим не только тем, что
+ * рисует: он зовёт обработчик значением другой формы, и это видно у носителя
+ * БЕЗ единого видимого пропа. Ось по употреблению с видимым пропом снимала бы
+ * запись, у которой предмет остался.
+ *
+ * Пустой перечень — ЦЕЛЬ, а не поломка: на нём гейт проходит.
+ */
+const ALIASED = {
+  // Настоящий каскадер выбирает ПУТЬ по уровням (`сеть → подсеть → адрес`,
+  // `модуль → ресурс → verb`); заменитель отдаёт его плоским списком `Select`.
+  // Расходятся две вещи, и обе измеримы по дереву.
+  //
+  // ПЕРВОЕ: вложенные уровни (`children` варианта) плоский список не рисует
+  // вовсе — наблюдаем только верхний.
+  //
+  // ВТОРОЕ, и оно про поведение: настоящий каскадер зовёт `onChange` МАССИВОМ
+  // пути, плоский список — строкой. Все четыре продуктовых носителя написаны
+  // под массив (`v as string[][]`, `val as string[]`, `val?.[1]`), то есть на
+  // заменителе значение читается посимвольно. Пробы, которая бы выбирала
+  // вариант, сегодня нет ни одной — и написанная поверх такого заменителя она
+  // закрепила бы строку как норму, ровно как в #1348.
+  //
+  // Почему запись, а не починка здесь: приведение каскадера к своей форме —
+  // это правка ПОВЕДЕНИЯ дублёра со своей пробой у носителя, а не расширение
+  // разбора. Единственная проба, стоящая сегодня на этом виде
+  // (`NicSpecFields.cascader.test.tsx`), подмену называет сама и утверждает
+  // только ТЕКСТ вариантов — то, что плоский список показывает.
+  //
+  // Предикат снятия — ось (а): в день, когда каскадер получит свою форму,
+  // запись падает и снимается вместе с подменой.
+  Cascader: {
+    of: "Select",
+    reason:
+      "#1349: дерево выбора подменено плоским списком — вложенные уровни не рисуются, " +
+      "обработчик зовётся строкой вместо массива пути; своя форма заводится отдельной " +
+      "правкой ПОВЕДЕНИЯ дублёра вместе с пробой у носителя",
+  },
+};
 
 /**
  * Виды, приведённые к настоящей форме ради наблюдаемости, и пробы, которые
@@ -266,8 +334,14 @@ if (!fs.existsSync(path.join(uiRoot, "package.json"))) {
 }
 
 /**
- * Имена, подменённые пустым `<div>`: ПРЯМЫЕ свойства возвращаемого объекта, чьё
- * значение — тот самый `Component`. Берётся разбором, а не текстом.
+ * Разбор ПРЯМЫХ свойств возвращаемого объекта на ТРИ состояния, а не два: рисует
+ * своё · не рисует (пустой `Component`) · рисует ЧУЖОЕ (голое имя другого вида
+ * того же перечня). Берётся разбором, а не текстом.
+ *
+ * Третье состояние требует ДВУХ проходов: чтобы отличить псевдоним другого вида
+ * от той же реализации под локальным именем, надо знать имена всех видов
+ * перечня, а они дочитываются лишь до конца объекта. Проход первый собирает
+ * имена, второй классифицирует.
  *
  * Только прямые — и это несущее ограничение, а не экономия. Внутри заменителя
  * есть пространства имён (`Form.List`, `Typography.Text`), чьи члены совпадают
@@ -281,6 +355,7 @@ function stubNames(stubSource) {
   const sf = ts.createSourceFile(STUB, stubSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const names = new Set();
   const drawn = new Set();
+  const aliased = new Map();
   let returned = null;
   const walk = (node) => {
     if (
@@ -297,19 +372,44 @@ function stubNames(stubSource) {
     ts.forEachChild(node, walk);
   };
   walk(sf);
-  if (returned === null) return { names, drawn };
+  if (returned === null) return { names, drawn, aliased };
+  // ПРОХОД ПЕРВЫЙ — имена видов, которые заменитель отдаёт наружу. Только по ним
+  // и решается, чужая ли реализация: `Cascader: Select` подменяет ВИД, а
+  // `Spin: SpinBox` — та же реализация под локальным именем.
+  const kinds = new Set();
+  for (const p of returned.properties) {
+    if (ts.isShorthandPropertyAssignment(p)) kinds.add(p.name.text);
+    else if (ts.isPropertyAssignment(p) && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))) {
+      kinds.add(p.name.text);
+    }
+  }
   for (const p of returned.properties) {
     // Сокращённая запись (`Dropdown,`) — имя, у которого есть своя реализация:
-    // подставить пустой `Component` таким способом нельзя by construction.
+    // ни пустым `Component`, ни чужим видом её так не подменить by construction —
+    // ключ и реализация здесь ОДНО И ТО ЖЕ имя.
     if (ts.isShorthandPropertyAssignment(p)) {
       drawn.add(p.name.text);
       continue;
     }
     if (!ts.isPropertyAssignment(p) || !(ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))) continue;
-    const empty = ts.isIdentifier(p.initializer) && p.initializer.text === "Component";
-    (empty ? names : drawn).add(p.name.text);
+    const kind = p.name.text;
+    if (ts.isIdentifier(p.initializer)) {
+      const impl = p.initializer.text;
+      if (impl === "Component") {
+        names.add(kind);
+        continue;
+      }
+      // Голое имя ДРУГОГО вида того же перечня — заменитель рисует чужую форму.
+      // `impl !== kind` отсекает `X: X`, членство в `kinds` — локальное имя той
+      // же реализации: у неё своя форма, и находкой она быть не должна.
+      if (impl !== kind && kinds.has(impl)) {
+        aliased.set(kind, impl);
+        continue;
+      }
+    }
+    drawn.add(kind);
   }
-  return { names, drawn };
+  return { names, drawn, aliased };
 }
 
 /**
@@ -362,12 +462,53 @@ function usages(files, names, extraSources = []) {
 
 /** Разбор одного состояния дерева. Чистая функция — её же зовёт `--self-test`. */
 function analyze(stubSource, files, extraSources = []) {
-  const { names, drawn } = stubNames(stubSource);
+  const { names, drawn, aliased } = stubNames(stubSource);
   const { found, parsed } = usages(files, names, extraSources);
-  // Употребления НАРИСОВАННЫХ имён с видимым пропом — предмет второй половины:
-  // именно у них обязана быть проба на продуктовой поверхности.
-  const { found: drawnFound } = usages(files, drawn, extraSources);
-  return { names, drawn, found, drawnFound, parsed };
+  // Употребления имён, которые заменитель рисует ХОТЬ ЧЕМ-ТО, с видимым пропом —
+  // предмет второй половины: именно у них обязана быть проба на продуктовой
+  // поверхности. Псевдоним сюда входит: носитель у него настоящий, а вопрос
+  // «своё ли он рисует» задаёт четвёртая часть, и задавать его дважды незачем.
+  const { found: drawnFound } = usages(files, new Set([...drawn, ...aliased.keys()]), extraSources);
+  return { names, drawn, aliased, found, drawnFound, parsed };
+}
+
+/**
+ * ЧЕТВЁРТАЯ ЧАСТЬ (#1349) как ЧИСТАЯ функция: её же зовёт `--self-test`, поэтому
+ * доказательство способности упасть относится к тому самому коду, который судит
+ * дерево, а не к его копии.
+ *
+ * Подмена вида псевдонимом другого вида — находка, если она не НАЗВАНА. Перечень
+ * `ALIASED` истекает сам по двум осям: подмены больше нет; подменяет уже не тем.
+ */
+function aliasFindings({ aliased }) {
+  const out = [];
+  for (const [kind, impl] of aliased) {
+    const record = ALIASED[kind];
+    if (record === undefined) {
+      out.push(
+        `заменитель отдаёт «${kind}» ПСЕВДОНИМОМ «${impl}» — рисуется ЧУЖОЙ вид: видимое ` +
+          `оператору приходит по контракту «${impl}», а не «${kind}», и обработчик зовётся его ` +
+          `значением. Проба, написанная поверх, закрепит чужое поведение как норму (#1348). ` +
+          `Исходов два: привести «${kind}» к своей форме либо назвать подмену в перечне ALIASED с причиной`,
+      );
+      continue;
+    }
+    if (record.of !== impl) {
+      out.push(
+        `перечень ALIASED держит «${kind}» псевдонимом «${record.of}», а заменитель отдаёт его ` +
+          `псевдонимом «${impl}» — запись описывает не тот вид, и её причина относится к другому предмету`,
+      );
+    }
+  }
+  for (const [kind, record] of Object.entries(ALIASED)) {
+    if (!aliased.has(kind)) {
+      out.push(
+        `перечень ALIASED держит «${kind}» псевдонимом «${record.of}», а заменитель им его уже ` +
+          `не отдаёт — исключать нечего, запись снять`,
+      );
+    }
+  }
+  return out;
 }
 
 /**
@@ -375,15 +516,31 @@ function analyze(stubSource, files, extraSources = []) {
  * доказательство способности упасть относится к тому самому коду, который
  * судит дерево, а не к его копии.
  */
-function probeFindings({ drawn, drawnFound }, trackedProbes) {
+function probeFindings({ drawn, aliased, drawnFound }, trackedProbes) {
   const out = [];
   for (const [kind, probe] of Object.entries(PROBED_BY)) {
+    // Состояний три (#1349). Псевдоним НАЗВАННЫЙ проходит дальше: он рисует
+    // чужую форму, но своего носителя имеет, и решение о подмене записано в
+    // ALIASED. Псевдоним НЕНАЗВАННЫЙ до этой развилки не доходит — его называет
+    // четвёртая часть; здесь он получает своё, потому что запись в PROBED_BY
+    // при неназванной подмене утверждает о ЧУЖОМ виде.
     if (!drawn.has(kind)) {
-      out.push(
-        `перечень PROBED_BY держит «${kind}», а заменитель его НЕ рисует (снова проходной <div> либо имя ушло) — ` +
-          `проба ${probe} утверждает о форме дублёра, а не о том, что видит оператор`,
-      );
-      continue;
+      if (aliased.has(kind)) {
+        if (!(kind in ALIASED)) {
+          out.push(
+            `перечень PROBED_BY держит «${kind}», а заменитель отдаёт его псевдонимом ` +
+              `«${aliased.get(kind)}» — проба ${probe} утверждает о ЧУЖОМ виде; подмену либо снять, ` +
+              `либо назвать в перечне ALIASED вместе с тем, что проба всё-таки держит`,
+          );
+          continue;
+        }
+      } else {
+        out.push(
+          `перечень PROBED_BY держит «${kind}», а заменитель его НЕ рисует (снова проходной <div> либо имя ушло) — ` +
+            `проба ${probe} утверждает о форме дублёра, а не о том, что видит оператор`,
+        );
+        continue;
+      }
     }
     if (!trackedProbes.has(probe)) {
       out.push(
@@ -430,8 +587,13 @@ function probeFindings({ drawn, drawnFound }, trackedProbes) {
  * находка, и закрывается он пробами, которых сегодня нет. Предмет здесь —
  * сделать долг ВИДИМЫМ; молчаливый числитель создавал впечатление полноты.
  */
-function coverageCensus({ drawn, drawnFound }) {
-  const inUse = [...new Set(drawnFound.map((h) => h.name))].filter((k) => drawn.has(k)).sort();
+function coverageCensus({ drawn, aliased, drawnFound }) {
+  // Псевдоним в знаменателе остаётся: у него есть носитель и есть что показать
+  // оператору. То, что показывает он ЧУЖОЕ, — предмет четвёртой части, а не
+  // повод занизить знаменатель покрытия.
+  const inUse = [...new Set(drawnFound.map((h) => h.name))]
+    .filter((k) => drawn.has(k) || aliased.has(k))
+    .sort();
   const probed = inUse.filter((k) => k in PROBED_BY);
   const unprobed = inUse.filter((k) => !(k in PROBED_BY));
   return { inUse, probed, unprobed };
@@ -447,7 +609,7 @@ function coverageCensus({ drawn, drawnFound }) {
  * попадает СЮДА, и первое же его употребление с видимым пропом роняет прогон:
  * тогда наблюдаемость снова есть что держать, и держать её обязана проба.
  */
-function awaitingFindings({ drawn, drawnFound }) {
+function awaitingFindings({ drawn, aliased, drawnFound }) {
   const out = [];
   for (const [kind, reason] of Object.entries(AWAITING_CARRIER)) {
     if (kind in PROBED_BY) {
@@ -457,7 +619,9 @@ function awaitingFindings({ drawn, drawnFound }) {
       );
       continue;
     }
-    if (!drawn.has(kind)) {
+    // Псевдоним (#1349) сюда не проваливается: он рисует — пусть и чужое, — и
+    // говорить «уже НЕ рисует» о нём было бы неверно. Его называет четвёртая часть.
+    if (!drawn.has(kind) && !aliased.has(kind)) {
       out.push(
         `перечень AWAITING_CARRIER ждёт носителя для «${kind}», а заменитель его уже НЕ рисует ` +
           `(снова проходной <div> либо имя ушло) — ждать возврата нечему, запись снять`,
@@ -625,6 +789,149 @@ if (process.argv.includes("--self-test")) {
     }
   }
 
+  // ── ЧЕТВЁРТАЯ ЧАСТЬ (#1349): ПОДМЕНА ВИДА ПСЕВДОНИМОМ, инъекция по каждой оси ─
+  // Дефект вносится НАСТОЯЩИМ входом — тем самым, что был в дереве до #1348
+  // (`AutoComplete: Input`): вид, объявленный сокращённой формой, отдаётся
+  // ГОЛЫМ ИМЕНЕМ другого вида того же перечня.
+  //
+  // Предпосылки ВЫРАЖЕНЫ, а не подразумеваются — урок #1285: самопроверка,
+  // молча положившаяся на форму объявления, перестала вносить дефект в день,
+  // когда перечень пополнился. Здесь их две, и обе проверяются: вид объявлен
+  // сокращённо (иначе подмену не внести одной строкой) и цель подмены — ДРУГОЙ
+  // вид того же перечня (иначе разбор её псевдонимом не считает by construction,
+  // и «дефект не пойман» означало бы «дефекта не вносили»).
+  const aliasKind = Object.keys(PROBED_BY).find((k) => shorthandInStub(k) && !green.aliased.has(k));
+  if (aliasKind === undefined) {
+    console.error(
+      "::error::самопроверка четвёртой части не смогла внести дефект: ни один вид из PROBED_BY не объявлен " +
+        "в заменителе сокращённой формой «    Kind,» — вносить подмену одной строкой не во что; " +
+        "чинить надо самопроверку (научить её полной форме), а не гейт",
+    );
+    process.exit(1);
+  }
+  const aliasTarget = [...green.drawn].find((k) => k !== aliasKind && shorthandInStub(k));
+  if (aliasTarget === undefined) {
+    console.error(
+      "::error::самопроверка четвёртой части не смогла внести дефект: в перечне заменителя не нашлось ВТОРОГО " +
+        "вида, объявленного сокращённой формой, — подменять нечем, и молчание разбора означало бы " +
+        "«дефекта не вносили», а не «дефект не пойман»",
+    );
+    process.exit(1);
+  }
+  const brokenAlias = stubSource.replace(
+    new RegExp(`\\n {4}${aliasKind},\\n`),
+    `\n    ${aliasKind}: ${aliasTarget},\n`,
+  );
+  if (brokenAlias === stubSource) {
+    console.error(
+      `::error::самопроверка четвёртой части не смогла внести дефект: в перечне заменителя нет строки «    ${aliasKind},» — ` +
+        "предпосылка самопроверки исчезла вместе с формой файла, чинить надо её, а не гейт",
+    );
+    process.exit(1);
+  }
+  const redAliasAnalysis = analyze(brokenAlias, files);
+  if (redAliasAnalysis.aliased.get(aliasKind) !== aliasTarget) {
+    console.error(
+      `::error::самопроверка: внесённая подмена «${aliasKind}: ${aliasTarget}» НЕ распознана как псевдоним — ` +
+        "разбор снова знает только форму «X: Component», то есть третье состояние вне наблюдения",
+    );
+    process.exit(1);
+  }
+  const redAlias = aliasFindings(redAliasAnalysis).filter(
+    (f) => f.includes(`«${aliasKind}»`) && f.includes(`«${aliasTarget}»`),
+  );
+  if (redAlias.length === 0) {
+    console.error(
+      `::error::самопроверка: подмена «${aliasKind}» псевдонимом «${aliasTarget}» НЕ поймана четвёртой частью ` +
+        "либо поймана без имени вида и имени подставленного — она не способна упасть внятно",
+    );
+    process.exit(1);
+  }
+  // Законный близнец ПЕРВЫЙ: неизменённый заменитель молчит про тот же вид.
+  if (aliasFindings(green).some((f) => f.includes(`«${aliasKind}»`))) {
+    console.error(
+      `::error::самопроверка: четвёртая часть краснеет на ЗАКОННОМ заменителе про «${aliasKind}» — ` +
+        "она ловит форму, а не существо",
+    );
+    process.exit(1);
+  }
+  // Законный близнец ВТОРОЙ, и он несущий: та же реализация под ЛОКАЛЬНЫМ именем
+  // (`Spin: SpinBox`) — это тот же виджет, а не чужой. Без этого контроля
+  // распознаватель объявлял бы псевдонимом всякое имя, кроме `Component`, то
+  // есть ловил бы форму записи, а не подмену вида.
+  const localImpl = "SpinBox";
+  if (green.drawn.has(localImpl) || green.names.has(localImpl) || green.aliased.has(localImpl)) {
+    console.error(
+      `::error::самопроверка: «${localImpl}» ОКАЗАЛСЯ видом перечня — законный близнец перестал быть законным, ` +
+        "взять для него имя, которого в перечне нет",
+    );
+    process.exit(1);
+  }
+  const localNamed = stubSource.replace(
+    new RegExp(`\\n {4}${aliasKind},\\n`),
+    `\n    ${aliasKind}: ${localImpl},\n`,
+  );
+  const localAnalysis = analyze(localNamed, files);
+  if (localAnalysis.aliased.has(aliasKind)) {
+    console.error(
+      `::error::самопроверка: «${aliasKind}: ${localImpl}» объявлен псевдонимом, хотя «${localImpl}» видом перечня ` +
+        "не является — распознаватель судит форму записи, а не подмену вида",
+    );
+    process.exit(1);
+  }
+  if (!localAnalysis.drawn.has(aliasKind)) {
+    console.error(
+      `::error::самопроверка: «${aliasKind}» с реализацией под локальным именем выпал из нарисованных — ` +
+        "тот же виджет объявлен ненарисованным",
+    );
+    process.exit(1);
+  }
+  // Обе оси самоистечения перечня ALIASED. Пустой перечень — ЦЕЛЬ, поэтому оси
+  // проверяются, только когда в нём есть запись, и об этом говорится вслух.
+  const aliasLedger = Object.entries(ALIASED);
+  for (const [kind, record] of aliasLedger) {
+    const line = new RegExp(`\\n {4}${kind}: ${record.of},\\n`);
+    if (!line.test(stubSource)) {
+      console.error(
+        `::error::самопроверка осей ALIASED не смогла внести дефект: в перечне заменителя нет строки ` +
+          `«    ${kind}: ${record.of},» — предпосылка исчезла вместе с формой файла, чинить надо её, а не гейт`,
+      );
+      process.exit(1);
+    }
+    // Ось (а): подмены больше нет — исключать нечего.
+    const unAliased = stubSource.replace(line, `\n    ${kind},\n`);
+    if (!aliasFindings(analyze(unAliased, files)).some((f) => f.includes(`«${kind}»`))) {
+      console.error(
+        `::error::самопроверка: снятая подмена «${kind}» НЕ уронила свою запись в ALIASED — ` +
+          "перечень не истекает сам",
+      );
+      process.exit(1);
+    }
+    // Ось (б): подменяет уже НЕ ТЕМ, что записано.
+    const other = [...green.drawn].find((k) => k !== kind && k !== record.of && shorthandInStub(k));
+    if (other === undefined) {
+      console.error(
+        "::error::самопроверка оси «подменяет не тем» не смогла внести дефект: в перечне не нашлось ТРЕТЬЕГО " +
+          "вида сокращённой формы — предпосылка исчезла, чинить надо самопроверку",
+      );
+      process.exit(1);
+    }
+    const reAliased = stubSource.replace(line, `\n    ${kind}: ${other},\n`);
+    if (!aliasFindings(analyze(reAliased, files)).some((f) => f.includes(`«${kind}»`) && f.includes(`«${other}»`))) {
+      console.error(
+        `::error::самопроверка: подмена «${kind}» на «${other}» вместо записанного «${record.of}» НЕ поймана — ` +
+          "запись перестала описывать предмет, и гейт этого не заметил",
+      );
+      process.exit(1);
+    }
+  }
+  // И законное дерево целиком: ни одной находки четвёртой части.
+  const greenAlias = aliasFindings(green);
+  if (greenAlias.length > 0) {
+    console.error(`::error::самопроверка: четвёртая часть краснеет на ЗАКОННОМ дереве: ${greenAlias[0]}`);
+    process.exit(1);
+  }
+
   // ── ЗНАМЕНАТЕЛЬ ПОКРЫТИЯ (#1265), инъекция в обе стороны ───────────────────
   // Числитель без знаменателя читается как «9 из 9». Здесь доказывается, что
   // знаменатель считается ПО ДЕРЕВУ, что вид без пробы называется по имени и что
@@ -705,6 +1012,9 @@ if (process.argv.includes("--self-test")) {
       `(первая — ${redHits[0].file}:${redHits[0].line}), на законном заменителе 0; ` +
       `вторая половина на возвращённом в <div> «${kind}» дала «${redProbe[0].slice(0, 80)}…», на законном дереве 0; ` +
       `третья часть проверена на ${awaitKinds.length} видах, ждущих носителя (обе оси + законный близнец); ` +
+      `четвёртая часть: подмена «${aliasKind}: ${aliasTarget}» дала «${redAlias[0].slice(0, 60)}…», ` +
+      `реализация под локальным именем «${aliasKind}: ${localImpl}» псевдонимом НЕ названа, ` +
+      `обе оси ALIASED проверены на ${aliasLedger.length} записях, на законном дереве 0; ` +
       `знаменатель покрытия проверен в обе стороны на «${unprobedKind}» (в долг попал, без видимого свойства — нет); ` +
       `осмотрено файлов ${green.parsed}, видов в PROBED_BY ${Object.keys(PROBED_BY).length}, ` +
       `в AWAITING_CARRIER ${awaitKinds.length}`,
@@ -712,7 +1022,7 @@ if (process.argv.includes("--self-test")) {
   process.exit(0);
 }
 
-const { names, drawn, found, drawnFound, parsed } = analyze(stubSource, files);
+const { names, drawn, aliased, found, drawnFound, parsed } = analyze(stubSource, files);
 
 const trackedProbes = trackedProbeSet();
 
@@ -741,15 +1051,18 @@ for (const name of Object.keys(NOT_DRAWN)) {
 }
 
 // ВТОРАЯ ПОЛОВИНА (#625): у приведённого вида есть проба на продуктовой поверхности.
-findings.push(...probeFindings({ drawn, drawnFound }, trackedProbes));
+findings.push(...probeFindings({ drawn, aliased, drawnFound }, trackedProbes));
 // ТРЕТЬЯ ЧАСТЬ: вид, ждущий носителя, обязан упасть в день его возврата.
-findings.push(...awaitingFindings({ drawn, drawnFound }));
+findings.push(...awaitingFindings({ drawn, aliased, drawnFound }));
+// ЧЕТВЁРТАЯ ЧАСТЬ (#1349): вид, отданный псевдонимом другого вида, назван.
+findings.push(...aliasFindings({ aliased }));
 
-const coverage = coverageCensus({ drawn, drawnFound });
+const coverage = coverageCensus({ drawn, aliased, drawnFound });
 
 console.log(
   `осмотрено: продуктовых .tsx ${parsed}, имён с пустым заменителем ${names.size}, ` +
-    `нарисованных ${drawn.size}, пропов в закрытом списке ${VISIBLE_PROPS.size}; ` +
+    `нарисованных своей формой ${drawn.size}, отданных псевдонимом другого вида ${aliased.size} ` +
+    `(названо намеренными ${Object.keys(ALIASED).length}), пропов в закрытом списке ${VISIBLE_PROPS.size}; ` +
     `употреблений «пустое имя × видимый проп» ${found.length}, ` +
     `названо намеренно не рисующими ${Object.keys(NOT_DRAWN).length}; ` +
     `видов, ждущих возврата носителя ${Object.keys(AWAITING_CARRIER).length}, ` +
@@ -762,8 +1075,8 @@ console.log(
 // закрывается пробами у носителей, а не записями в перечне.
 console.log(
   `покрытие пробами на продуктовой поверхности: ${coverage.probed.length} из ${coverage.inUse.length} ` +
-    `(видов, нарисованных заменителем, ${drawn.size}; из них употребляются продуктом с видимым ` +
-    `оператору свойством ${coverage.inUse.length})`,
+    `(видов, которые заменитель рисует, ${drawn.size + aliased.size}; из них употребляются продуктом ` +
+    `с видимым оператору свойством ${coverage.inUse.length})`,
 );
 if (coverage.unprobed.length) {
   console.log(
@@ -784,7 +1097,7 @@ if (parsed === 0 || names.size === 0) {
   );
   process.exit(1);
 }
-// Пустой NOT_DRAWN — ЦЕЛЬ (и он пуст сегодня). Пустой PROBED_BY — предпосылка:
+// Пустой NOT_DRAWN и пустой ALIASED — ЦЕЛЬ. Пустой PROBED_BY — предпосылка:
 // приведённые виды в дереве есть, и перечень без единой записи означал бы, что
 // вторая половина гейта не судит ни о чём.
 if (Object.keys(PROBED_BY).length === 0) {
@@ -802,6 +1115,7 @@ if (findings.length) {
 
 console.log(
   "✓ ни одно имя с пустым заменителем не получает в продуктовом коде видимого оператору пропа, " +
+    "ни один вид не отдан псевдонимом другого вида без записи в ALIASED, " +
     "и каждая запись перечня PROBED_BY описывает дерево (вид рисуется, проба есть и лежит у носителя). " +
     "О ПОЛНОТЕ покрытия это не говорит — её называет строка «покрытие пробами» выше",
 );
