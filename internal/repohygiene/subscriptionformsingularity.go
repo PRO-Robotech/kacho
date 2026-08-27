@@ -11,12 +11,58 @@
 // послаблений. Снял запись — ожидание уменьшилось само; выписанной константы,
 // которую надо помнить и править, здесь нет.
 //
+// # Чем запрос подписки ОПОЗНАЁТСЯ
+//
+// Тремя признаками, и каждый САМОСТОЯТЕЛЬНО достаточен. Перепись печатает объём
+// по КАЖДОЙ ветви отдельно: ветвь, у которой предмета ноль, не наблюдает ничего,
+// и её молчание обязано быть отличимо от чистого дерева.
+//
+//	ПО УПОТРЕБЛЕНИЮ  сообщение стоит ВХОДОМ серверно-потокового глагола
+//	                 (`rpc … (Msg) returns (stream …)`). Имени не читает вовсе:
+//	                 поток и есть подписка, одиночный ответ так не объявляют.
+//	ПО СОСТАВУ       сообщение несёт ПОЗИЦИЮ ВОЗОБНОВЛЕНИЯ и ОСЬ ВИДОВ предмета,
+//	                 и при этом НЕ несёт размера страницы.
+//	ПО ИМЕНИ         имя из закрытого семейства (`WatchRequest`,
+//	                 `SubscribeRequest`, суффикс `SubscriptionRequest`).
+//
+// # ЧЕМ ЭТОТ ПРИЗНАК НЕ ЯВЛЯЕТСЯ — читать прежде, чем «упростить»
+//
+// Он НЕ ЕСТЬ ИМЯ СООБЩЕНИЯ. Ветвь имени оставлена третьей и не расширяется: она
+// достаточна, но не необходима, и одной её было бы мало. Гейт, судивший ТОЛЬКО
+// по имени, снимался ПЕРЕИМЕНОВАНИЕМ — не злым умыслом, а обычной свободой
+// автора нового домена: имя своему сообщению он выбирает сам, и
+// `WatchNetworksRequest` ничем не хуже прочих. Это проверено опытом, а не
+// прочитано: сообщение подписки под чужим именем читалось анализатором (перепись
+// росла на файл и на сообщение) и НЕ давало ни одной находки.
+//
+// Поэтому: вернуть узнавание к одному имени «для простоты» — значит вернуть
+// слепоту, которой эта редакция и посвящена. Ветвь снимается только вместе со
+// своим предметом, и снятие обязано пройти инъекцию заново.
+//
+// Он НЕ СВОБОДЕН ОТ СЛОВАРЕЙ, и это сказано прямо. Ветвь употребления имён не
+// читает совсем. Ветвь состава читает имена ПОЛЕЙ — и различие с именем
+// сообщения не косметическое: имя поля ЕСТЬ ПРОВОД (оно едет в JSON и
+// перечисляется значениями `SubscriptionOpened.honored_filters`), его смена —
+// ломающее изменение; имя сообщения провода не образует и меняется даром.
+// Словари полей закрыты и объявлены ниже переменными — расширяются они правкой
+// с инъекцией, а не по вкусу читающего.
+//
+// Он НЕ ЛОВИТ ПОДПИСКУ БЕЗ ОСИ ВИДОВ, пока она не провязана глаголом. Узость
+// названа, а не скрыта: ось видов — то, чем подписка структурно отличается от
+// страничного списка (у списка вид предмета задан ГЛАГОЛОМ и в запросе не
+// называется). Подписка на один вид без такой оси опознаётся ветвью
+// употребления, то есть с момента, когда её вообще можно позвать.
+//
 // # Почему не поиск по тексту
 //
 // Слово `message` встречается в комментариях, а комментариев в этом дереве
 // больше, чем объявлений. Поэтому текст сперва вычищается от комментариев, и
 // только потом считаются объявления ВЕРХНЕГО УРОВНЯ — вложенное сообщение с
 // подходящим именем формой подписки не является и в счёт не идёт.
+//
+// По той же причине поля читаются РАЗБОРОМ ТЕЛА, а не построчным поиском: тело
+// вложенного сообщения в счёт полей владельца не идёт, а тело `oneof` — идёт
+// (позиция общей формы лежит именно там).
 //
 // Отдельно: `git grep -c` для этого не годится вовсе — он печатает `файл:число`
 // по каждому файлу, а через `wc -l` считает ФАЙЛЫ, а не объявления. Два запроса
@@ -93,6 +139,21 @@ type SubscriptionSingularityCensus struct {
 	ProtoFiles       int
 	TopLevelMessages int
 	NestedMessages   int
+	// MessagesWithFields — сообщений, у которых разбор тела дал хоть одно поле.
+	// Ноль здесь означает, что ветвь состава НЕ НАБЛЮДАЛА НИЧЕГО: её молчание —
+	// не «чисто», а «не читал».
+	MessagesWithFields int
+	// RPCs — глаголов прочитано; StreamingRPCs — из них серверно-потоковых.
+	// Объём ветви употребления: ноль глаголов означает то же самое.
+	RPCs          int
+	StreamingRPCs int
+	// ByName / ByStreaming / ByShape — сколько сообщений опознала КАЖДАЯ ветвь.
+	// Сумма больше RequestDecls: одно сообщение опознаётся несколькими сразу, и
+	// это не ошибка счёта, а свойство дизъюнкции. Ветвь с нулём — либо предмета
+	// нет, либо распознаватель слеп, и различить это можно только по объёму выше.
+	ByName      int
+	ByStreaming int
+	ByShape     int
 	// RequestDecls — объявлений запроса подписки найдено (общих и доменных вместе).
 	RequestDecls int
 	CommonDecls  int
@@ -124,18 +185,179 @@ var (
 	subMessageRe = regexp.MustCompile(`\bmessage\s+([A-Za-z0-9_]+)`)
 	subLineRe    = regexp.MustCompile(`(?m)//.*$`)
 	subBlockRe   = regexp.MustCompile(`(?s)/\*.*?\*/`)
+	// subFieldRe — поле сообщения: необязательное `repeated`, тип, имя, номер.
+	subFieldRe = regexp.MustCompile(`(?m)^\s*(repeated\s+)?[A-Za-z_][A-Za-z0-9_.]*\s+([a-z_][a-z0-9_]*)\s*=\s*\d+\s*[\[;]`)
+	// subRPCRe — глагол: имя, тип запроса, признак потока в ответе.
+	subRPCRe = regexp.MustCompile(`\brpc\s+[A-Za-z0-9_]+\s*\(\s*(stream\s+)?([A-Za-z0-9_.]+)\s*\)\s*returns\s*\(\s*(stream\s+)?([A-Za-z0-9_.]+)\s*\)`)
 )
 
-// isSubscriptionRequestName — принадлежит ли имя семейству «запрос подписки».
+// subResumePositionFields — СЛОВАРЬ ПОЗИЦИИ ВОЗОБНОВЛЕНИЯ: имена полей, которыми
+// в этом дереве говорят «продолжить отсюда».
 //
-// Семейство закрыто и названо здесь, а не выведено из вкуса: `WatchRequest` —
-// имя, под которым доменная форма жила у compute; `SubscribeRequest` — под
-// которым её заводят чаще всего; суффикс `SubscriptionRequest` покрывает и общую
-// форму, и любую доменную, названную по предмету.
+// Словарь ЗАКРЫТ и намеренно ШИРОК: сюда входит и `page_token`, хотя он же
+// употребляется страничным списком. Отделяет их не он, а РАЗМЕР СТРАНИЦЫ (ниже):
+// выдача, у которой есть размер страницы, конечна, а поток бесконечен и размера
+// не имеет by construction. Сузить словарь, выкинув `page_token`, значило бы
+// снять с проверки исключения ту работу, ради которой она стоит, — и снятие
+// перестало бы быть заметным.
+var subResumePositionFields = map[string]bool{
+	"position": true, "start_position": true, "from_position": true,
+	"cursor": true, "start_cursor": true, "from_cursor": true,
+	"resume_token": true, "resume_from": true, "continuation_token": true,
+	"page_token": true, "next_page_token": true,
+	"from_sequence_no": true, "sequence_no": true, "from_sequence": true,
+	"from_revision": true, "since_revision": true, "since_token": true,
+	"checkpoint": true, "watermark": true, "offset": true,
+}
+
+// subPageSizeFields — СЛОВАРЬ РАЗМЕРА СТРАНИЦЫ: признак КОНЕЧНОЙ выдачи.
+//
+// Сообщение, называющее размер страницы, есть запрос списка, а не подписки:
+// поток не заканчивается, и спрашивать «сколько за раз» у него не о чем. Это и
+// есть дискриминатор между двумя семействами, и он структурный — про форму
+// выдачи, а не про имя сообщения.
+var subPageSizeFields = map[string]bool{
+	"page_size": true, "limit": true, "max_results": true,
+	"max_items": true, "page_limit": true,
+}
+
+// subKindsAxisFields — СЛОВАРЬ ОСИ ВИДОВ: чем подписка структурно отличается от
+// страничного списка.
+//
+// У списка вид предмета задан ГЛАГОЛОМ (`ListNetworks` перечисляет сети) и в
+// запросе не называется вовсе. Подписка одним потоком отдаёт разные виды, потому
+// и вынуждена спрашивать, какие именно, — отсюда ось. Ось МНОЖЕСТВЕННА: одиночное
+// `kind` — это поле СОБЫТИЯ, говорящее, чем оказался предмет, а не ось запроса,
+// сужающая поток (`SubscriptionEvent.kind` — ровно такое поле, и засчитывать его
+// за ось значило бы опознать событие за запрос).
+var subKindsAxisFields = map[string]bool{
+	"kinds": true, "resource_kinds": true, "object_kinds": true,
+	"types": true, "resource_types": true, "object_types": true,
+	"subject_types": true, "event_types": true, "event_kinds": true,
+}
+
+// subFieldDecl — одно поле сообщения.
+type subFieldDecl struct {
+	Name     string
+	Repeated bool
+}
+
+// subMessageDecl — одно объявление сообщения ВЕРХНЕГО УРОВНЯ.
+type subMessageDecl struct {
+	Symbol string
+	Name   string
+	Pkg    string
+	Where  string
+	Fields []subFieldDecl
+}
+
+// subEvidence — ЧЕМ сообщение опознано. Ветви независимы и суммируются: одно
+// сообщение бывает опознано несколькими, и каждая ветвь считается отдельно —
+// иначе прибавка распознавателя неотличима от холостой.
+type subEvidence struct {
+	ByName      bool
+	ByStreaming bool
+	ByShape     bool
+}
+
+func (e subEvidence) any() bool { return e.ByName || e.ByStreaming || e.ByShape }
+
+// Why — чем опознано, словами: читается в находке, чтобы автор понимал, какую
+// именно ветвь он задел, и не «чинил» её переименованием.
+func (e subEvidence) Why() string {
+	var by []string
+	if e.ByStreaming {
+		by = append(by, "стоит входом серверно-потокового глагола")
+	}
+	if e.ByShape {
+		by = append(by, "несёт позицию возобновления и ось видов без размера страницы")
+	}
+	if e.ByName {
+		by = append(by, "названо именем из семейства запроса подписки")
+	}
+	return strings.Join(by, "; ")
+}
+
+// isSubscriptionRequestName — ВЕТВЬ ИМЕНИ: принадлежит ли имя закрытому семейству.
+//
+// Ветвь ДОСТАТОЧНА, но НЕ НЕОБХОДИМА, и это главное про неё. Одной её было
+// мало: гейт, судивший только по имени, снимался переименованием (см. шапку
+// файла). Она оставлена, потому что сообщение, названное так, есть запрос
+// подписки независимо от состава, — а не потому, что признак сводится к имени.
 func isSubscriptionRequestName(name string) bool {
 	return name == "WatchRequest" ||
 		name == "SubscribeRequest" ||
 		strings.HasSuffix(name, "SubscriptionRequest")
+}
+
+// subHasShapeOfSubscriptionRequest — ВЕТВЬ СОСТАВА: позиция возобновления плюс
+// ось видов при отсутствии размера страницы.
+//
+// Все три условия вместе. Позиция без оси видов есть страничный список либо
+// служебное сообщение потока (`SubscriptionOpened.position`); ось видов без
+// позиции — обычный отбор; размер страницы — прямое утверждение о КОНЕЧНОЙ
+// выдаче, то есть о том, что это не поток.
+func subHasShapeOfSubscriptionRequest(fields []subFieldDecl) bool {
+	var position, kindsAxis, pageSize bool
+	for _, f := range fields {
+		switch {
+		case subPageSizeFields[f.Name]:
+			pageSize = true
+		case subResumePositionFields[f.Name]:
+			position = true
+		}
+		if f.Repeated && subKindsAxisFields[f.Name] {
+			kindsAxis = true
+		}
+	}
+	return position && kindsAxis && !pageSize
+}
+
+// subParseFields читает поля тела сообщения: тело `oneof` СЧИТАЕТСЯ своим (там
+// лежит выбор начала общей формы), тело вложенного `message`/`enum` — НЕ
+// считается, оно принадлежит другому типу.
+func subParseFields(body string) []subFieldDecl {
+	var out []subFieldDecl
+	// Вырезаем вложенные message/enum вместе с телом; oneof оставляем.
+	for {
+		loc := subNestedHeadRe.FindStringIndex(body)
+		if loc == nil {
+			break
+		}
+		open := strings.Index(body[loc[0]:], "{")
+		if open < 0 {
+			break
+		}
+		open += loc[0]
+		end := subMatchingBrace(body, open)
+		if end < 0 {
+			break
+		}
+		body = body[:loc[0]] + body[end+1:]
+	}
+	for _, m := range subFieldRe.FindAllStringSubmatch(body, -1) {
+		out = append(out, subFieldDecl{Name: m[2], Repeated: strings.TrimSpace(m[1]) == "repeated"})
+	}
+	return out
+}
+
+var subNestedHeadRe = regexp.MustCompile(`\b(message|enum)\s+[A-Za-z0-9_]+\s*\{`)
+
+// subMatchingBrace возвращает позицию `}`, закрывающей `{` в open, либо -1.
+func subMatchingBrace(s string, open int) int {
+	depth := 0
+	for i := open; i < len(s); i++ {
+		switch s[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // AuditSubscriptionFormSingularity читает дерево контракта и возвращает
@@ -160,10 +382,14 @@ func AuditSubscriptionFormSingularity(
 		allow[a.Symbol] = a
 	}
 
-	// symbol -> файл, где объявлено
-	declaredAt := map[string]string{}
-	var domain []string
-	var common []string
+	// ── Проход 1: собрать объявления и потоковые глаголы ─────────────────────
+	//
+	// Два прохода, а не один, потому что глагол лежит в СОСЕДНЕМ файле: общая
+	// форма объявлена в `subscription.proto`, а `Subscribe(SubscriptionRequest)`
+	// — в `subscription_service.proto`. Решать по ходу обхода значило бы решать
+	// на неполном знании и зависеть от порядка файлов.
+	var decls []subMessageDecl
+	streamingInputs := map[string]bool{}
 
 	err := rootedWalk(filepath.Join(opts.Root, opts.ProtoRoot), func(rel string) bool {
 		return strings.HasSuffix(rel, ".proto")
@@ -179,9 +405,24 @@ func AuditSubscriptionFormSingularity(
 		if m := protoPackageRe.FindStringSubmatch(clean); m != nil {
 			pkg = m[1]
 		}
+		qualify := func(name string) string {
+			if strings.Contains(name, ".") || pkg == "" {
+				return name
+			}
+			return pkg + "." + name
+		}
 		rel, relErr := filepath.Rel(opts.Root, path)
 		if relErr != nil {
 			rel = path
+		}
+
+		for _, m := range subRPCRe.FindAllStringSubmatch(clean, -1) {
+			c.RPCs++
+			if strings.TrimSpace(m[3]) != "stream" {
+				continue
+			}
+			c.StreamingRPCs++
+			streamingInputs[qualify(m[2])] = true
 		}
 
 		for _, loc := range subMessageRe.FindAllStringSubmatchIndex(clean, -1) {
@@ -192,22 +433,17 @@ func AuditSubscriptionFormSingularity(
 				continue
 			}
 			c.TopLevelMessages++
-			if !isSubscriptionRequestName(name) {
-				continue
+			open := strings.Index(clean[loc[1]:], "{")
+			var fields []subFieldDecl
+			if open >= 0 {
+				open += loc[1]
+				if end := subMatchingBrace(clean, open); end > open {
+					fields = subParseFields(clean[open+1 : end])
+				}
 			}
-			symbol := name
-			if pkg != "" {
-				symbol = pkg + "." + name
-			}
-			c.RequestDecls++
-			declaredAt[symbol] = rel
-			if pkg == SubscriptionCommonPackage {
-				c.CommonDecls++
-				common = append(common, symbol)
-				continue
-			}
-			c.DomainDecls++
-			domain = append(domain, symbol)
+			decls = append(decls, subMessageDecl{
+				Symbol: qualify(name), Name: name, Pkg: pkg, Where: rel, Fields: fields,
+			})
 		}
 		return nil
 	})
@@ -219,6 +455,46 @@ func AuditSubscriptionFormSingularity(
 			"в дереве контракта %q прочитано файлов %d, сообщений верхнего уровня %d — "+
 				"гейт не может отличить «ноль находок» от «ноль прочитанного»",
 			opts.ProtoRoot, c.ProtoFiles, c.TopLevelMessages)
+	}
+
+	// ── Проход 2: опознать ───────────────────────────────────────────────────
+	// symbol -> файл, где объявлено
+	declaredAt := map[string]string{}
+	why := map[string]string{}
+	var domain []string
+	var common []string
+
+	for _, d := range decls {
+		if len(d.Fields) > 0 {
+			c.MessagesWithFields++
+		}
+		e := subEvidence{
+			ByName:      isSubscriptionRequestName(d.Name),
+			ByStreaming: streamingInputs[d.Symbol],
+			ByShape:     subHasShapeOfSubscriptionRequest(d.Fields),
+		}
+		if e.ByName {
+			c.ByName++
+		}
+		if e.ByStreaming {
+			c.ByStreaming++
+		}
+		if e.ByShape {
+			c.ByShape++
+		}
+		if !e.any() {
+			continue
+		}
+		c.RequestDecls++
+		declaredAt[d.Symbol] = d.Where
+		why[d.Symbol] = e.Why()
+		if d.Pkg == SubscriptionCommonPackage {
+			c.CommonDecls++
+			common = append(common, d.Symbol)
+			continue
+		}
+		c.DomainDecls++
+		domain = append(domain, d.Symbol)
 	}
 
 	var findings []SubscriptionSingularityFinding
@@ -241,7 +517,8 @@ func AuditSubscriptionFormSingularity(
 		}
 		findings = append(findings, SubscriptionSingularityFinding{
 			Kind: "second-form-in-common-package", Symbol: sym, Where: declaredAt[sym],
-			Reason: "в общем пакете объявлен ВТОРОЙ запрос подписки. Единственная общая форма — " +
+			Reason: "в общем пакете объявлен ВТОРОЙ запрос подписки (опознано: " + why[sym] +
+				"). Единственная общая форма — " +
 				wantCommon + "; второй язык фильтров рядом с ней делает «единую подписку» " +
 				"названием, а не свойством",
 		})
@@ -266,9 +543,11 @@ func AuditSubscriptionFormSingularity(
 		}
 		findings = append(findings, SubscriptionSingularityFinding{
 			Kind: "undeclared-domain-request", Symbol: sym, Where: declaredAt[sym],
-			Reason: "домен объявил СВОЙ запрос подписки со своим набором осей. Подписка " +
-				"объявляется один раз в " + SubscriptionCommonPackage + ", домен её ИМПОРТИРУЕТ. " +
-				"Если перевод отложен — заведи послабление с задачей и предикатом истечения",
+			Reason: "домен объявил СВОЙ запрос подписки со своим набором осей (опознано: " +
+				why[sym] + "). Подписка объявляется один раз в " + SubscriptionCommonPackage +
+				", домен её ИМПОРТИРУЕТ. ПЕРЕИМЕНОВАНИЕМ это не снимается: признак — свойство " +
+				"объявления, а не форма имени. Если перевод отложен — заведи послабление с " +
+				"задачей и предикатом истечения",
 		})
 	}
 
@@ -307,10 +586,13 @@ func AuditSubscriptionFormSingularity(
 
 	if out != nil {
 		_, _ = fmt.Fprintf(out,
-			"перепись: файлов контракта %d; сообщений верхнего уровня %d (вложенных %d); "+
+			"перепись: файлов контракта %d; сообщений верхнего уровня %d (вложенных %d, "+
+				"с разобранными полями %d); глаголов %d (серверно-потоковых %d); "+
+				"опознано ветвями: по имени %d, по употреблению %d, по составу %d; "+
 				"объявлений запроса подписки %d (общих %d, доменных %d); послаблений %d; "+
 				"ожидалось %d; находок %d\n",
-			c.ProtoFiles, c.TopLevelMessages, c.NestedMessages,
+			c.ProtoFiles, c.TopLevelMessages, c.NestedMessages, c.MessagesWithFields,
+			c.RPCs, c.StreamingRPCs, c.ByName, c.ByStreaming, c.ByShape,
 			c.RequestDecls, c.CommonDecls, c.DomainDecls, c.Allowances, c.Expected, len(findings))
 	}
 	return findings, c, nil
