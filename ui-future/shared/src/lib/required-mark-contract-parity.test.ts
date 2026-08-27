@@ -59,7 +59,7 @@
 // Дискриминатор держится одним именем с обеих сторон.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { stripComments } from "@shared/test/strip-comments";
@@ -146,65 +146,7 @@ function lineOf(src: string, index: number): number {
   return src.slice(0, index).split("\n").length;
 }
 
-function walk(dir: string, match: RegExp, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === "dist") continue;
-    const p = join(dir, entry);
-    if (statSync(p).isDirectory()) walk(p, match, out);
-    else if (match.test(p)) out.push(p);
-  }
-  return out;
-}
-
 // ── сторона контракта: что владелец объявил обязательным ────────────────────
-
-/** Тело `{…}`, начинающееся в `open`, без самих скобок. */
-function readBraced(src: string, open: number): string {
-  let depth = 0;
-  let i = open;
-  while (i < src.length) {
-    const c = src[i];
-    if (c === '"' || c === "'") {
-      i = skipString(src, i);
-      continue;
-    }
-    if (c === "{") depth++;
-    else if (c === "}" && --depth === 0) return src.slice(open + 1, i);
-    i++;
-  }
-  return src.slice(open + 1);
-}
-
-/** Опции поля `[…]`, начинающиеся в `open`, вместе со скобками. */
-function readBracketed(src: string, open: number): string {
-  let depth = 0;
-  let i = open;
-  while (i < src.length) {
-    const c = src[i];
-    if (c === '"' || c === "'") {
-      i = skipString(src, i);
-      continue;
-    }
-    if (c === "[") depth++;
-    else if (c === "]" && --depth === 0) return src.slice(open, i + 1);
-    i++;
-  }
-  return src.slice(open);
-}
-
-/** Тело сообщения без вложенных `message`/`oneof`/`enum` блоков. */
-function withoutNested(body: string): string {
-  let out = "";
-  let i = 0;
-  while (i < body.length) {
-    const m = /\b(message|oneof|enum)\s+\w+\s*\{/.exec(body.slice(i));
-    if (!m) return out + body.slice(i);
-    const open = i + m.index + m[0].length - 1;
-    out += body.slice(i, i + m.index);
-    i = open + readBraced(body, open).length + 2;
-  }
-  return out;
-}
 
 /**
  * REQUIRED_BY_SERVER — поле обязательно ровно тогда, когда СЕРВЕР отвергает
