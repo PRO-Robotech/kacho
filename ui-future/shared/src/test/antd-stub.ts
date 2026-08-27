@@ -53,6 +53,29 @@ interface SelectProps {
   [key: string]: unknown;
 }
 
+/**
+ * Вариант ДЕРЕВА выбора. От варианта плоского списка его отличает ровно одно и
+ * оно несущее — УРОВНИ (`children`).
+ */
+interface CascaderOption {
+  value: unknown;
+  label?: React.ReactNode;
+  children?: CascaderOption[];
+}
+
+interface CascaderProps {
+  options?: CascaderOption[];
+  /** Путь целиком (или пути при `multiple`) — форма значения настоящей библиотеки. */
+  value?: unknown;
+  onChange?: (value: unknown, selectOptions: unknown) => void;
+  multiple?: boolean;
+  changeOnSelect?: boolean;
+  placeholder?: React.ReactNode;
+  notFoundContent?: React.ReactNode;
+  displayRender?: (labels: string[]) => React.ReactNode;
+  [key: string]: unknown;
+}
+
 interface TagProps {
   children?: React.ReactNode;
   closable?: boolean;
@@ -613,6 +636,122 @@ export function antdStub(): Record<string, unknown> {
         : null,
     );
   };
+  // Настоящее ДЕРЕВО ВЫБОРА (`Cascader`) отличается от плоского списка дважды,
+  // и вторая разница делает поведение продукта НЕВЕРНЫМ, а не просто
+  // ненаблюдаемым.
+  //
+  // ПЕРВОЕ: оно рисует УРОВНИ. Варианты приходят пропом `options` деревом
+  // (`children` у варианта), и оператор идёт по нему сверху вниз: «сеть →
+  // подсеть → адрес», «модуль → ресурс → verb». Плоский список рисует только
+  // верхний ярус, и всё, что ниже, ненаблюдаемо целиком.
+  //
+  // ВТОРОЕ: настоящее дерево зовёт `onChange` МАССИВОМ ПУТИ, а плоский список —
+  // строкой. Форма взята из САМОЙ библиотеки, а не выведена:
+  // `@rc-component/cascader` (antd 6.5.4), `lib/Cascader.js:111-122` —
+  //   `triggerValues  = multiple ? nextRawValues : nextRawValues[0]`
+  //   `triggerOptions = multiple ? valueOptions  : valueOptions[0]`
+  // где `nextRawValues` — пути `(string|number)[]`, а `valueOptions` — варианты
+  // ВДОЛЬ пути. Все четыре носителя написаны под путь (`v as string[][]`,
+  // `val as string[]`, `val?.[1]`, `arr[0]/arr[1]/arr[2]`), поэтому на строке
+  // индексы читали ЗНАКИ: выбор сети `net-1` клал в форму `subnet_id: "e"` —
+  // второй знак строки, — а `_addr_cascader` становился `["n","e",…]`.
+  //
+  // Разметка тоже НАСТОЯЩЕЙ библиотеки, а не выдуманная: уровень у неё
+  // `<ul role="menu">` (`lib/OptionList/Column.js:98-102`), вариант —
+  // `role="menuitemcheckbox"` (там же, :161). Проба, утверждающая по этим ролям,
+  // утверждает о том, что производит настоящий antd.
+  //
+  // Где заменитель НАМЕРЕННО беднее — и это обеднение, а не искажение: уровни
+  // раскрытого пути видны всегда (у настоящего они в выпадающем окне), а
+  // множественный выбор копит выбранные пути без сведения к родителю
+  // (`showCheckedStrategy`). Форма значения при этом остаётся верной — её
+  // искажение и было предметом починки.
+  const Cascader = ({
+    options,
+    value,
+    onChange,
+    multiple,
+    changeOnSelect,
+    placeholder,
+    notFoundContent,
+    displayRender,
+  }: CascaderProps) => {
+    // Раскрытый путь решает, какие уровни видны. Настоящее дерево ведёт его в
+    // выпадающем окне; здесь оно развёрнуто, потому что видимость окна ни один
+    // носитель не читает, а состав уровней читают все.
+    const [expanded, setExpanded] = React.useState<CascaderOption[]>([]);
+    // Отмеченное при `multiple` — ПУТИ, а не отдельные значения: именно их
+    // настоящая библиотека и отдаёт наружу массивом массивов.
+    const [checkedPaths, setCheckedPaths] = React.useState<CascaderOption[][]>([]);
+    // Выбранное снаружи не перечитывается: заменитель ведёт раскрытый путь сам.
+    // Это обеднение (сброс значения продуктом не свернёт уровни), а не
+    // расхождение по форме значения.
+    void value;
+
+    const columns: CascaderOption[][] = [options ?? []];
+    for (const opt of expanded) {
+      if (opt.children && opt.children.length > 0) columns.push(opt.children);
+    }
+
+    const keyOf = (path: CascaderOption[]) => path.map((o) => String(o.value)).join("\u0000");
+
+    const onPick = (level: number, opt: CascaderOption) => {
+      const path = [...expanded.slice(0, level), opt];
+      setExpanded(path);
+      const isLeaf = !opt.children || opt.children.length === 0;
+      if (multiple) {
+        // При `multiple` настоящая библиотека выбирает ТОЛЬКО лист, а на узле
+        // лишь раскрывает уровень (`lib/OptionList/Column.js`: `if (!multiple ||
+        // isMergedLeaf) triggerSelect()`).
+        if (!isLeaf) return;
+        const key = keyOf(path);
+        const next = checkedPaths.some((p) => keyOf(p) === key)
+          ? checkedPaths.filter((p) => keyOf(p) !== key)
+          : [...checkedPaths, path];
+        setCheckedPaths(next);
+        onChange?.(
+          next.map((p) => p.map((o) => o.value)),
+          next,
+        );
+        return;
+      }
+      // Одиночный выбор: лист — всегда, узел — когда вызывающий попросил
+      // `changeOnSelect` (`lib/OptionList/List.js:105,109`).
+      if (isLeaf || changeOnSelect) {
+        onChange?.(
+          path.map((o) => o.value),
+          path,
+        );
+      }
+    };
+
+    // Подпись закрытого поля — то, что оператор читает, не раскрывая дерева:
+    // выбранное либо приглашение.
+    const labels = expanded.map((o) => (typeof o.label === "string" ? o.label : String(o.value)));
+    const shown = labels.length > 0 ? (displayRender ? displayRender(labels) : labels.join(" / ")) : placeholder;
+
+    return React.createElement(
+      "div",
+      null,
+      React.createElement("div", { key: "__display__" }, shown as React.ReactNode),
+      ...columns.map((col, level) =>
+        React.createElement(
+          "ul",
+          { key: `__level_${level}__`, role: "menu" },
+          ...col.map((o) =>
+            React.createElement(
+              "li",
+              { key: String(o.value), role: "menuitemcheckbox", onClick: () => onPick(level, o) },
+              o.label ?? String(o.value),
+            ),
+          ),
+        ),
+      ),
+      (options ?? []).length === 0 && notFoundContent !== undefined
+        ? React.createElement("div", { key: "__empty__" }, notFoundContent as React.ReactNode)
+        : null,
+    );
+  };
   // Настоящий `Checkbox` — это флажок с подписью. Прежде здесь стоял тот же
   // заменитель, что у текстового поля: у него нет ни роли флажка, ни `checked`
   // у цели события, поэтому настройка видимости колонок была ненаблюдаема
@@ -1056,7 +1195,7 @@ export function antdStub(): Record<string, unknown> {
         React.createElement("div", null, extra),
         children,
       ),
-    Cascader: Select,
+    Cascader,
     Checkbox,
     Col: Component,
     Collapse,
