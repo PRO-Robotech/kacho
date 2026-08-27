@@ -482,7 +482,7 @@ jobs:
       # github_token — по той же причине, что в обоих job'ах ci.yaml: без него
       # релиз buf берётся неаутентифицированно, квота общая на IP ранера, и на её
       # исчерпании проба ban #6 не выполняется вовсе при красной джобе.
-      - uses: bufbuild/buf-setup-action@3e33fea8596569a62fcaa33eb3880b6ac7098941  # v1.9.0
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99  # v1.50.0
         with:
           version: 1.72.0
           github_token: ${{ github.token }}
