@@ -765,6 +765,13 @@ func main() {
 	// что никто не жаловался.
 	if sharedReplayStore != nil {
 		diagMetrics.RegisterDPoPReplaySweep(sharedReplayStore.DPoPSweepStats)
+		// Отставание уборки записей однократности (#1302) — ТОТ ЖЕ носитель и та
+		// же условность: обе таблицы живут в общем хранилище, которого при флоте
+		// в одну реплику нет вовсе. Строку в неё пишет каждая мутация с ключом
+		// однократности, то есть темп задаёт ВЫЗЫВАЮЩИЙ, и «уборка догоняет»
+		// обязано быть видно величиной, а не выводиться из того, что никто не
+		// жаловался.
+		diagMetrics.RegisterIdempotencyReap(sharedReplayStore.ReapSweepStats)
 	}
 	diagMetrics.RegisterAuthz(func() gwmetrics.AuthzSnapshot {
 		snap := gwmetrics.AuthzSnapshot{Counts: authz.metrics.Counts()}
