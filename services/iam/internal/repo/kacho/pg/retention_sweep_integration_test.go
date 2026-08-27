@@ -33,6 +33,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/retention"
@@ -54,7 +55,7 @@ func retentionPool(t *testing.T) (context.Context, *pgxpool.Pool) {
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, setupTestDB(t))
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
+	pgtest.ClosePoolAtEnd(t, pool)
 	return ctx, pool
 }
 
