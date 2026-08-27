@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/internal/pgtest"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
@@ -340,4 +341,144 @@ func TestMembership_PageSizeIsRejectedNotClamped(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, rows, "законная страница обязана проходить — иначе отрицания "+
 		"зеленеют на чтении, отвергающем всякий вход")
+}
+
+// TestMembership_IAMID2_16_InviteTraceSurvivesTheFirstLogin — переход
+// «приглашён → вошёл», как его видит АККАУНТ-СКОУПНОЕ чтение.
+//
+// Наблюдателем перехода является распорядитель, а не сам человек: до первого
+// входа у приглашённого нет внешнего субъекта, то есть нет и вызова.
+//
+// Утверждается ровно то, что §3.1 контракта называет следом приглашения:
+// активация трогает состояние и отметку правки и НЕ трогает ни идентификатор,
+// ни момент выписки, ни пригласившего.
+func TestMembership_IAMID2_16_InviteTraceSurvivesTheFirstLogin(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test requires Docker")
+	}
+	ctx := context.Background()
+	dsn := setupTestDB(t)
+	pool, err := pgxpool.New(ctx, dsn)
+	require.NoError(t, err)
+	pgtest.ClosePoolAtEnd(t, pool)
+	repo := kachopg.New(pool, nil)
+
+	owner := mustSeedUser(t, ctx, pool, "mbr16own")
+	accA := seedAccount(t, ctx, repo, "mbr16-a", owner)
+
+	// Приглашённый: строка человека без внешнего субъекта — конструкция требует
+	// «приглашён ⟺ внешнего субъекта нет».
+	invited := domain.UserID(ids.NewID(domain.PrefixUser))
+	_, err = pool.Exec(ctx, `
+		INSERT INTO users (id, account_id, external_id, email, display_name, invite_status, invited_by)
+		VALUES ($1, $2, '', $3, 'Invited', 'PENDING', $4)`,
+		string(invited), string(accA.ID), "mbr16-inv@example.com", string(owner))
+	require.NoError(t, err, "seed invited user")
+
+	rd, done := membershipReaderOn(t, ctx, repo)
+	rowsBefore, _, err := rd.List(ctx, repomembership.ListFilter{AccountID: accA.ID})
+	require.NoError(t, err)
+	done()
+
+	var before domain.Membership
+	for _, m := range rowsBefore {
+		if m.UserID == invited {
+			before = m
+		}
+	}
+	require.NotEmpty(t, before.ID, "членство приглашённого обязано существовать до входа")
+	require.Equal(t, domain.MembershipStatePending, before.State)
+	require.Equal(t, owner, before.InvitedBy)
+
+	// Первый вход: у строки появляется внешний субъект, и она перестаёт быть
+	// приглашённой.
+	_, err = pool.Exec(ctx, `
+		UPDATE users SET external_id = $2, invite_status = 'ACTIVE' WHERE id = $1`,
+		string(invited), "ext-mbr16-inv")
+	require.NoError(t, err, "first login")
+
+	rd2, done2 := membershipReaderOn(t, ctx, repo)
+	defer done2()
+	after, err := rd2.Get(ctx, accA.ID, before.ID)
+	require.NoError(t, err)
+
+	require.Equal(t, domain.MembershipStateActive, after.State, "вход снимает состояние приглашения")
+	require.Equal(t, before.ID, after.ID, "идентификатор не перечеканивается: активация меняет состояние, а не идентичность")
+	require.Equal(t, before.CreatedAt, after.CreatedAt, "момент выписки приглашения сохраняется")
+	require.Equal(t, owner, after.InvitedBy,
+		"след приглашения ПЕРЕЖИЛ вход — это и есть поле, по которому «позвали» читается после входа")
+	require.True(t, after.UpdatedAt.After(before.UpdatedAt) || after.UpdatedAt.Equal(before.UpdatedAt),
+		"отметка правки не идёт назад")
+}
+
+// TestMembership_IAMID2_17_ReInviteReturnsTheSameIdentifierWithANewCreatedAt —
+// что ВОЗВРАЩАЕТСЯ при повторном приглашении того же человека в тот же аккаунт.
+//
+// Идентификатор вычисляется из пары неизменяемой функцией без соли, а
+// уникальность пары полная — значит снятие есть удаление строки, и повторное
+// приглашение вернёт ТОТ ЖЕ идентификатор. Это не дефект и чинить его нечем; но
+// умолчать нельзя, потому что из этого следует утверждение о признаке «строка
+// заведена заново»: им является `createdAt`, а не идентификатор и не состояние.
+func TestMembership_IAMID2_17_ReInviteReturnsTheSameIdentifierWithANewCreatedAt(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test requires Docker")
+	}
+	ctx := context.Background()
+	dsn := setupTestDB(t)
+	pool, err := pgxpool.New(ctx, dsn)
+	require.NoError(t, err)
+	pgtest.ClosePoolAtEnd(t, pool)
+	repo := kachopg.New(pool, nil)
+
+	owner := mustSeedUser(t, ctx, pool, "mbr17own")
+	person := mustSeedUser(t, ctx, pool, "mbr17per")
+	accA := seedAccount(t, ctx, repo, "mbr17-a", owner)
+
+	first := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	idBefore := seedMembershipRow(t, ctx, pool, person, accA.ID, domain.MembershipStateActive, owner, first)
+
+	rd, done := membershipReaderOn(t, ctx, repo)
+	got, err := rd.Get(ctx, accA.ID, idBefore)
+	require.NoError(t, err)
+	require.Equal(t, first, got.CreatedAt.UTC())
+	done()
+
+	// Исключение — удаление строки.
+	_, err = pool.Exec(ctx, `DELETE FROM memberships WHERE id = $1`, string(idBefore))
+	require.NoError(t, err)
+
+	rdGone, doneGone := membershipReaderOn(t, ctx, repo)
+	_, err = rdGone.Get(ctx, accA.ID, idBefore)
+	require.True(t, stderrors.Is(err, iamerr.ErrNotFound),
+		"после исключения членство отвечает тем же отсутствием, что и никогда не бывшее: %v", err)
+	doneGone()
+
+	// Повторное приглашение того же человека в тот же аккаунт.
+	second := time.Now().UTC().Truncate(time.Second)
+	idAfter := seedMembershipRow(t, ctx, pool, person, accA.ID, domain.MembershipStateActive, owner, second)
+
+	require.Equal(t, idBefore, idAfter,
+		"идентификатор вычислим из пары и потому ПЕРЕИСПОЛЬЗУЕТСЯ — утверждается сравнением "+
+			"с зафиксированным значением, а не проверкой формы: форма совпала бы и у другого членства")
+
+	rd2, done2 := membershipReaderOn(t, ctx, repo)
+	defer done2()
+	back, err := rd2.Get(ctx, accA.ID, idAfter)
+	require.NoError(t, err, "ПОЛОЖИТЕЛЬНЫЙ контроль: строка читается — иначе «ни одно поле не "+
+		"сообщает, что членство уже было» зеленело бы на отсутствии строки")
+	require.Equal(t, accA.ID, back.AccountID)
+	require.Equal(t, person, back.UserID)
+	require.Equal(t, second, back.CreatedAt.UTC(),
+		"createdAt НОВЫЙ: строка заведена заново, и ответ не выдаёт себя за прежний")
+	require.NotEqual(t, first, back.CreatedAt.UTC())
+
+	// Та же запись читается И списком: контроль стоит на ОБЕИХ проекциях, иначе
+	// он подтверждал бы работу одной.
+	rows, _, err := rd2.List(ctx, repomembership.ListFilter{
+		AccountID: accA.ID, Filter: `userId="` + string(person) + `"`,
+	})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, idAfter, rows[0].ID)
+	require.Equal(t, second, rows[0].CreatedAt.UTC())
 }
