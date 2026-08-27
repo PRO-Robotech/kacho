@@ -733,7 +733,7 @@ export function antdStub(): Record<string, unknown> {
     return React.createElement(
       "div",
       null,
-      React.createElement("div", { key: "__display__" }, shown as React.ReactNode),
+      React.createElement("div", { key: "__display__" }, shown),
       ...columns.map((col, level) =>
         React.createElement(
           "ul",
