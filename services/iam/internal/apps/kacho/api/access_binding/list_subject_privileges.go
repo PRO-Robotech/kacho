@@ -56,7 +56,10 @@ import (
 type ListSubjectPrivilegesUseCase struct {
 	repo      Repo
 	relations clients.RelationStore
-	logger    *slog.Logger
+	// queries — порт пообъектного вопроса к модели прав, которым СТРАНИЦА
+	// сужается по правам вызывающего.
+	queries clients.RelationQueries
+	logger  *slog.Logger
 }
 
 func NewListSubjectPrivilegesUseCase(r Repo) *ListSubjectPrivilegesUseCase {
@@ -70,6 +73,12 @@ func NewListSubjectPrivilegesUseCase(r Repo) *ListSubjectPrivilegesUseCase {
 func (u *ListSubjectPrivilegesUseCase) WithRelationStore(relations clients.RelationStore, logger *slog.Logger) *ListSubjectPrivilegesUseCase {
 	u.relations = relations
 	u.logger = logger
+	return u
+}
+
+// WithRelationQueries wires the per-object question the PAGE is narrowed with.
+func (u *ListSubjectPrivilegesUseCase) WithRelationQueries(q clients.RelationQueries) *ListSubjectPrivilegesUseCase {
+	u.queries = q
 	return u
 }
 
