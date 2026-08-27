@@ -345,12 +345,17 @@ func runServe(cfg config.Config) error {
 	geoRegionClient := clients.NewGeoRegionClient(geoConn)
 
 	// authz internal IAM conn: cfg.AuthZ.IAMEndpoint → **internal** listener kacho-iam
-	// (:9091), единственный, что обслуживает InternalIAMService.Check. Общий conn для
-	// per-RPC authz-gate (ниже) и project-level List authz. Пустой endpoint → nil conn
-	// (dev / no-authz: per-RPC gate пропускается, list-filter тоже обязан быть выключен).
+	// (:9091), единственный, что обслуживает InternalIAMService.Check. Пустой endpoint
+	// → nil conn (dev / no-authz: per-RPC gate пропускается).
 	//
-	// Ребро vpc→iam Check — клиентский mTLS. Этот единственный authzConn обслуживает
-	// и per-RPC gate, и list-filter. При KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE=true дилим с
+	// Этот conn обслуживает per-RPC authz-gate — и ТОЛЬКО его. У фильтра видимости
+	// соединение своё (authorizeConn, см. buildAuthorizeConn), и адрес у него свой:
+	// отсюда он наследуется лишь тогда, когда authz.list-filter.authorize-endpoint не
+	// задан. Здесь стояло «общий conn … обслуживает и per-RPC gate, и list-filter», а
+	// рядом — «пустой endpoint ⇒ list-filter тоже обязан быть выключен». Оба
+	// утверждения неверны с тех пор, как у фильтра появился собственный дозвон.
+	//
+	// Ребро vpc→iam Check — клиентский mTLS. При KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE=true дилим с
 	// corelib client-cert creds (ServerName=kacho-iam-internal — SAN dial-host'а :9091;
 	// fail-closed на плохой тройке); enable=false → insecure/server-auth путь через
 	// clients.Build (dev).
