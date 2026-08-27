@@ -1,14 +1,31 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// dpop_replay_cache.go — LRU+TTL store for seen DPoP `jti` values.
+// dpop_replay_cache.go — the record of seen DPoP `jti` values kept in the
+// memory of THIS process.
 //
-// RFC 9449 section 11.1 requires the resource server to reject a DPoP proof whose
-// `jti` has been seen in a window comparable to `iat`-freshness. We implement
-// a per-pod LRU (default capacity 100k, entry TTL 120s = 2× iat-freshness
-// window) over the shared internal/lrucache primitive. Multi-pod distributed
-// replay is mitigated by the 60s `iat` freshness check; the in-process cache is
-// sufficient and no shared external store is introduced.
+// RFC 9449 section 11.1 requires the resource server to reject a DPoP proof
+// whose `jti` has already been seen within a window comparable to
+// `iat`-freshness. This type is ONE of the two implementations of
+// middleware.DPoPReplayGuard (see that port's doc comment): it holds the
+// record in an LRU over the shared internal/lrucache primitive — default
+// capacity 100k, entry TTL 120s = 2× the iat-freshness window. The other
+// implementation holds the record in a table shared by the whole fleet.
+//
+// What this cache promises, and where the promise ends: single presentation
+// holds for THIS replica. A captured proof replayed against a sibling pod
+// finds no entry here and passes. The `iat` freshness check bounds how long
+// such a proof stays usable at all — it does not make single presentation a
+// property of the fleet, and nothing here should be read as claiming that it
+// does.
+//
+// The choice between the two lanes is made at the composition root
+// (gateway/cmd/api-gateway/main.go, the DPoP arm), never here: it follows the
+// same store selection that backs `Idempotency-Key`, and startup validation
+// refuses this in-memory lane when the declared fleet is larger than one
+// replica. Which configuration knob each lane reads is documented on the
+// gateway architecture page (gateway/docs/content/architecture/authn.mdx,
+// «Однократность предъявления») and is not restated here.
 //
 // Set semantics: the jti is the key, the value is empty. Replay detection uses
 // a single atomic add-if-absent (lrucache.AddIfAbsent) so that (a) the
