@@ -72,6 +72,29 @@ ingress:
   host: api.kacho.local
   proxyReadTimeout: "120"
 
+# Проекция потока изменений в браузер — ЕДИНСТВЕННАЯ ручка `/subscription/v1/events`
+# (kacho#1020). Разбор решения и цена отвергнутых способов —
+# gateway/docs/engineering/architecture/subscription-stream-projection.md.
+subscriptionStream:
+  # owners — ЗАКРЫТЫЙ перечень владельцев журналов через запятую; имена совпадают
+  # с ключами `backends` (адрес берётся из уже объявленного внутреннего адреса
+  # домена, второго объявления того же адреса не заводится).
+  #
+  # ПУСТО — «владелец не объявлен», а не «все домены»: ручка отвечает `501` с
+  # названной причиной. Первого владельца заводит kacho#1019 (compute и nlb).
+  owners: ""
+  # streamBudget — срок жизни одного потока. ОБЯЗАН быть меньше
+  # ingress.proxyReadTimeout (сегодня 120 с), иначе поток рвёт посредник и
+  # клиент видит сетевой сбой вместо чистого закрытия. Держит проба
+  # gateway/deploy/subscription_stream_budget_test.go.
+  streamBudget: 90s
+  # heartbeat — период служебного кадра поддержания связи: молчащая подписка
+  # обычный режим, а посредник закрывает молчащее соединение по тому же пределу.
+  heartbeat: 20s
+  # maxStreams — потолок одновременных потоков ОДНОЙ реплики края. Арифметика:
+  # число реплик × потолок обязано помещаться в потолок потоков владельца.
+  maxStreams: 64
+
 # Externally advertised endpoint that clients dial for every service.
 # Production: api.kacho.local:443 (or whatever externally resolvable host:port).
 # Dev (kind + port-forward): override to localhost:18443.

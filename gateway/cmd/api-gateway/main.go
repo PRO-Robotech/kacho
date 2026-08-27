@@ -43,6 +43,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/restmux"
+	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
 	"github.com/PRO-Robotech/kacho/gateway/internal/watcher"
 )
 
@@ -972,6 +973,19 @@ func main() {
 	// best-effort Hydra session-kill (triggers RFC 8254 back-channel logout
 	// to registered SPs).
 	httpMux.Handle("/oauth/logout", logoutHandler)
+
+	// GET /subscription/v1/events — ЕДИНСТВЕННАЯ проекция потока изменений в
+	// браузер. Монтируется ДО `/`, иначе её перебьёт общий обработчик REST.
+	//
+	// Наружу выставляется СВОЯ поверхность края, а не метод владельца: у метода
+	// внешнего пути нет и не заводится (его нет в allowlist, его имя отсекает
+	// HasInternalSuffix, а `google.api.http` контракт не объявляет). Разбор —
+	// gateway/docs/engineering/architecture/subscription-stream-projection.md.
+	subscriptionStream, err := buildSubscriptionStreamHandler(cfg, backends, logger)
+	if err != nil {
+		log.Fatalf("subscription stream projection: %v", err)
+	}
+	httpMux.Handle(subscriptionstream.Path, subscriptionStream)
 
 	httpMux.Handle("/", restHandler)
 
