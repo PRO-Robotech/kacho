@@ -112,6 +112,14 @@ func compareGenerationModes(suiteDir, tmpDir, python string, listFiles fileListe
 	if err := copyTreeExcept(suiteDir, work, listFiles, collectionsSubdir); err != nil {
 		return v, fmt.Errorf("копия набора %s: %w", suiteDir, err)
 	}
+	// Копия обязана нести ЗАВИСИМОСТЬ генератора, а не только его самого.
+	// Общий слой (`tests/newman/kacholib/gen_shared.py`, задача #1367) лежит вне
+	// каталога набора, и генератор ищет его ВВЕРХ ОТ СЕБЯ. Без этого шага копия
+	// исполняется в дереве, где зависимости нет, и гейт сообщал бы о состоянии,
+	// созданном им самим, — том самом, ради которого копия и делается.
+	if err := materializeSharedGenLayer(suiteDir, tmpDir); err != nil {
+		return v, fmt.Errorf("общий слой генератора для копии %s: %w", suiteDir, err)
+	}
 	outDir := filepath.Join(work, collectionsSubdir)
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return v, fmt.Errorf("каталог вывода: %w", err)
@@ -424,4 +432,62 @@ func pythonInterpreter(t *testing.T) string {
 			"а значит их вердикт не существует — это не «ноль находок»", err)
 	}
 	return p
+}
+
+// sharedGenLayerRel — путь общего слоя генератора ОТ КОРНЯ дерева. Тот же, что
+// ищет загрузчик в `scripts/gen.py` каждого набора; расхождение этих двух мест
+// сделало бы копию неисполнимой, поэтому правятся они вместе.
+const sharedGenLayerRel = "tests/newman/kacholib"
+
+// materializeSharedGenLayer кладёт общий слой генератора рядом с копией набора —
+// по ТОМУ ЖЕ правилу, по которому его ищет генератор: вверх от себя до каталога
+// `tests/newman/kacholib`.
+//
+// Набор без общего слоя над собой (синтетический, собранный пробой инъекции во
+// временном каталоге) — законный случай: его генератор общего слоя не
+// импортирует. Поэтому ненайденный слой здесь НЕ отказ; отказ наступит там, где
+// он и должен, — в самом генераторе, если тот попробует импортировать.
+func materializeSharedGenLayer(suiteDir, tmpDir string) error {
+	src := ""
+	for dir := filepath.Clean(suiteDir); ; dir = filepath.Dir(dir) {
+		candidate := filepath.Join(dir, sharedGenLayerRel)
+		if st, err := os.Stat(candidate); err == nil && st.IsDir() {
+			src = candidate
+			break
+		}
+		if parent := filepath.Dir(dir); parent == dir {
+			break
+		}
+	}
+	if src == "" {
+		return nil // синтетический набор — общего слоя над ним нет by construction
+	}
+
+	dst := filepath.Join(tmpDir, sharedGenLayerRel)
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	copied := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".py") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(src, e.Name())) // #nosec G304 -- путь получен обходом каталога дерева
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dst, e.Name()), b, 0o600); err != nil {
+			return err
+		}
+		copied++
+	}
+	if copied == 0 {
+		return fmt.Errorf("каталог общего слоя %s найден, но модулей .py в нём нет: "+
+			"копия набора была бы неисполнима, и вердикт стал бы свойством фикстуры", src)
+	}
+	return nil
 }

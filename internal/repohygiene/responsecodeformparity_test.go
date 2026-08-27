@@ -161,7 +161,7 @@ func generatorsWithAcceptedCodes(t *testing.T, root string) (with, without []str
 		}
 		b, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь из индекса git
 		require.NoErrorf(t, err, "чтение %s", rel)
-		if strings.Contains(string(b), "def _accepted_http_codes") {
+		if generatorCarriesAcceptedCodes(string(b)) {
 			with = append(with, rel)
 			continue
 		}
@@ -281,4 +281,41 @@ func TestResponseCodeFormCorpusIsHonoredByEveryNewmanGenerator(t *testing.T) {
 		"генератор разошёлся с общим источником ожиданий (%s). Пока стороны читают "+
 			"утверждение о коде по-разному, «шаг утверждает отказ» означает у них разное.\n%s",
 		responseCodeCorpusRel, strings.Join(findings, "\n"))
+}
+
+// generatorCarriesAcceptedCodes — несёт ли генератор помощник `_accepted_http_codes`,
+// В ЛЮБОЙ из двух законных форм записи.
+//
+// ПОЧЕМУ ФОРМ ДВЕ. До задачи #1367 помощник объявлял КАЖДЫЙ генератор своей
+// копией; после сведения он живёт в общем слое (`tests/newman/kacholib/gen_shared.py`),
+// и генератор получает его импортом. Обе формы законны и обе дают модулю
+// атрибут `_accepted_http_codes` — драйвер ниже зовёт его у модуля и о способе
+// появления имени не знает by construction.
+//
+// РАСПОЗНАВАТЕЛЬ, ЗНАЮЩИЙ ОДНУ ФОРМУ, НЕ ДАЁТ НИ КРАСНОГО, НИ ЗЕЛЁНОГО — он даёт
+// НЕВИДИМОСТЬ: генератор со второй формой уезжает в `without`, то есть в
+// «предмета нет», и корпус форм перестаёт проверяться ровно там, где он
+// проверялся. Здесь это наблюдалось сразу у всех восьми наборов: перечень `with`
+// стал пуст, и гейт справедливо отказал по своей же предпосылке.
+func generatorCarriesAcceptedCodes(src string) bool {
+	if strings.Contains(src, "def _accepted_http_codes") {
+		return true // форма 1: собственное объявление набора
+	}
+	// Форма 2: имя приходит из общего слоя. Судится ИМПОРТ, а не упоминание:
+	// имя помощника встречается в комментариях и в текстах сообщений, и
+	// проверка по подстроке краснела бы на собственном объяснении.
+	from := strings.Index(src, "from gen_shared import (")
+	if from < 0 {
+		return false
+	}
+	end := strings.Index(src[from:], ")")
+	if end < 0 {
+		return false
+	}
+	for _, line := range strings.Split(src[from:from+end], "\n") {
+		if strings.TrimSpace(line) == "_accepted_http_codes," {
+			return true
+		}
+	}
+	return false
 }
