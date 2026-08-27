@@ -5,52 +5,14 @@ package shared
 
 import (
 	"errors"
-	"time"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
-
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
-
-// OperationToProto — единый domain `operations.Operation` → proto Operation
-// маппер для всех use-case пакетов kacho-nlb (loadbalancer / listener /
-// targetgroup / operation). Раньше был скопирован byte-for-byte в четырёх
-// местах и успел разойтись (часть копий имела nil-guard, часть — нет).
-// Здесь — один источник истины: nil → nil, principal_* заполняются,
-// result-oneof (error|response) выставляется.
-func OperationToProto(op *operations.Operation) *operationpb.Operation {
-	if op == nil {
-		return nil
-	}
-	p := &operationpb.Operation{
-		Id:          op.ID,
-		Description: op.Description,
-		// Усечение до секунды — конвенция продукта для КАЖДОГО proto-ответа:
-		// БД хранит микросекунды, клиент их не видит. Operation — ответ каждой
-		// мутации, то есть самая частая поверхность утечки долей секунды.
-		CreatedAt:            timestamppb.New(op.CreatedAt.Truncate(time.Second)),
-		CreatedBy:            op.CreatedBy,
-		ModifiedAt:           timestamppb.New(op.ModifiedAt.Truncate(time.Second)),
-		Done:                 op.Done,
-		Metadata:             op.Metadata,
-		PrincipalType:        op.Principal.Type,
-		PrincipalId:          op.Principal.ID,
-		PrincipalDisplayName: op.Principal.DisplayName,
-	}
-	if op.Error != nil {
-		p.Result = &operationpb.Operation_Error{Error: op.Error}
-	} else if op.Response != nil {
-		p.Result = &operationpb.Operation_Response{Response: op.Response}
-	}
-	return p
-}
 
 // ErrInvalidArg — InvalidArgument с указанием поля + ошибки. Единый источник
 // истины (раньше идентично продублирован в loadbalancer/targetgroup/announce);

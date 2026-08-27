@@ -680,7 +680,7 @@ sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 ### REQ-OPS-01 — OperationService.Get свежесозданной op → done=true с response [P1]
 После завершения worker'а `OperationService.Get(id)` → `done=true`, `response` = ресурс (для Create/Update) или Empty (Delete), либо `error` (`google.rpc.Status`).
 - Validated-by: `OP-GET-CRUD-OK`
-- Проверка: `internal/handler/operation_handler.go`; `pkg/operations` worker.
+- Проверка: `pkg/operations/operationspb/handler.go`; `pkg/operations` worker.
 
 ### REQ-OPS-02 — OperationService.Get bad id [P1]
 Несуществующий op-id с правильным prefix → `NOT_FOUND "Operation <id> not found"`. Malformed / unknown-prefix id →

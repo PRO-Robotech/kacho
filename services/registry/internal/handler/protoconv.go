@@ -7,6 +7,7 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/shared/prototime"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
@@ -64,29 +65,12 @@ func toProtoStats(s *domain.RegistryStats) *registryv1.RegistryStats {
 	}
 }
 
-// operationToProto конвертирует corelib operations.Operation в proto-форму
-// (OperationService.Get/мутации возвращают её клиенту). oneof result —
-// error|response (заполнен только при done).
+// operationToProto — прослойка к общему слою: перевод строки операции в контракт
+// объявлен в дереве ОДИН раз (`pkg/operations/operationspb`, задача #1369).
+//
+// До сведения объявлений было двенадцать, а смысловых версий — пять; расходились
+// они именем помощника усечения времени и охраной пустого значения, то есть там,
+// где расхождение не ломает сборку и видно только тому, кто сравнит копии.
 func operationToProto(op *operations.Operation) *operationpb.Operation {
-	if op == nil {
-		return nil
-	}
-	p := &operationpb.Operation{
-		Id:                   op.ID,
-		Description:          op.Description,
-		CreatedAt:            prototime.Truncate(op.CreatedAt),
-		CreatedBy:            op.CreatedBy,
-		ModifiedAt:           prototime.Truncate(op.ModifiedAt),
-		Done:                 op.Done,
-		Metadata:             op.Metadata,
-		PrincipalType:        op.Principal.Type,
-		PrincipalId:          op.Principal.ID,
-		PrincipalDisplayName: op.Principal.DisplayName,
-	}
-	if op.Error != nil {
-		p.Result = &operationpb.Operation_Error{Error: op.Error}
-	} else if op.Response != nil {
-		p.Result = &operationpb.Operation_Response{Response: op.Response}
-	}
-	return p
+	return operationspb.ToProto(op)
 }

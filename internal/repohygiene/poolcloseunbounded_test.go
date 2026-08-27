@@ -91,7 +91,7 @@ var poolCloseDebt = map[string]int{
 	// закрывает пул сам. Храповик двусторонний, поэтому упавшее число обязано
 	// быть записано здесь же, а не «замечено потом».
 	"services/iam": 464,
-	"services/nlb": 26,
+	"services/nlb": 24, // 26 → 24: снят пакет api/operation вместе со своими пробами (#1369)
 }
 
 // TestPoolCloseInTestsIsBounded — гейт.

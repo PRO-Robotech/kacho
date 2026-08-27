@@ -13,6 +13,7 @@ import (
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/dto"
@@ -32,10 +33,13 @@ func listenerRecordToPb(rec *kachorepo.ListenerRecord) (*lbv1.Listener, error) {
 	return dst, nil
 }
 
-// operationToProto — тонкий делегатор к единому `shared.OperationToProto`
-// (один источник истины для всех use-case пакетов).
+// operationToProto — прослойка к общему слою: перевод строки операции в контракт
+// объявлен в дереве ОДИН раз (`pkg/operations/operationspb`).
+//
+// Здесь стояло «делегатор к единому `shared.OperationToProto`» — звено, снятое
+// выпрямлением цепочки: комментарий пережил свой предмет ровно на одну правку.
 func operationToProto(op *operations.Operation) *operationpb.Operation {
-	return shared.OperationToProto(op)
+	return operationspb.ToProto(op)
 }
 
 // mapDomainErr — translate domain-sentinel error → gRPC status. Делегирует
