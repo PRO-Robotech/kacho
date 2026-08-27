@@ -63,7 +63,8 @@ describe("форма машины: ключи и образ выбираются
     expect(inner.type).toBe("ref");
     expect(inner.refResource).toBe("guest-access-keys");
     expect(inner.refProjectScoped).toBe(true);
-    // Контракт: `[(size) = "<=32"]`.
+    // Предел держит константа домена MaxGuestAccessKeysPerInstance = 32
+    // (services/compute/internal/domain/constants.go); контракт называет её прозой.
     expect(f!.maxItems).toBe(32);
   });
 

@@ -8,7 +8,6 @@ package kacho.cloud.loadbalancer.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/loadbalancer/v1/network_load_balancer.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
@@ -153,14 +152,22 @@ service NetworkLoadBalancerService {
 }
 
 message GetNetworkLoadBalancerRequest {
-  string network_load_balancer_id = 1 [(length) = "<=50"];
+  // ID of the NetworkLoadBalancer.
+  string network_load_balancer_id = 1;
 }
 
 message ListNetworkLoadBalancersRequest {
-  string project_id = 1 [(required) = true, (length) = "<=50"];
-  int64 page_size = 2 [(value) = "<=1000"];
-  string page_token = 3 [(length) = "<=100"];
-  string filter = 4 [(length) = "<=1000"];
+  // ID of the Project.
+  string project_id = 1;
+  // Maximum number of results per page. 0 selects the service default (50);
+  // a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+  int64 page_size = 2;
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListNetworkLoadBalancersResponse.next_page_token] returned by a previous list request.
+  string page_token = 3;
+  // Filter expression. Currently only the [name] field is filterable: the field
+  // name, an `=` operator, and the value in double quotes.
+  string filter = 4;
 }
 
 message ListNetworkLoadBalancersResponse {
@@ -177,18 +184,19 @@ message CreateNetworkLoadBalancerRequest {
   reserved "listener_specs", "attached_target_groups", "allow_zonal_shift";
   reserved "network_id", "address_spec", "ip_families";
 
-  string project_id = 1 [(required) = true, (length) = "<=50"];
+  // ID of the Project.
+  string project_id = 1;
 
-  string name = 2 [(pattern) = "|[a-z][-a-z0-9]{1,61}[a-z0-9]"];
-  string description = 3 [(length) = "<=256"];
-  map<string, string> labels = 4 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_0-9a-z]*"
-  ];
-  string region_id = 5 [(length) = "<=50"];
+  // Name of the NetworkLoadBalancer. Must be a DNS label (lowercase letters, digits and
+  // hyphens, 1-63 characters) and is unique within the project. Empty on Create
+  // makes the server derive the name from the assigned id.
+  string name = 2;
+  // Description of the NetworkLoadBalancer.
+  string description = 3;
+  // Resource labels as `` key:value `` pairs.
+  map<string, string> labels = 4;
+  // ID of the Region.
+  string region_id = 5;
 
   // type — DERIVED output-only (NLB CONTRACT / NLB-1-08). Retained as a request
   // field ONLY so that a client that sets it gets an EXPLICIT InvalidArgument
@@ -209,7 +217,7 @@ message CreateNetworkLoadBalancerRequest {
 
   // disabled_announce_zones — только для REGIONAL: зоны, из которых anycast-VIP
   // не анонсируется (drain). Каждая зона ∈ регион LB; набор не покрывает все зоны.
-  repeated string disabled_announce_zones = 18 [(length) = "<=50"];
+  repeated string disabled_announce_zones = 18;
 
   // v4_source / v6_source — per-family источник VIP. Хотя бы одно семейство
   // обязательно. subnet_id ⟹ INTERNAL auto; address_id ⟹ link по kind;
@@ -234,7 +242,7 @@ message CreateNetworkLoadBalancerRequest {
   // security_group_ids — NLB-1b MIGRATE (revival, optional): vpc SecurityGroup refs
   // firewalling the VIP. Same-project existence peer-validated via vpc (fail-closed
   // UNAVAILABLE). INTERNAL-only.
-  repeated string security_group_ids = 24 [(length) = "<=50"];
+  repeated string security_group_ids = 24;
 }
 
 message CreateNetworkLoadBalancerMetadata {
@@ -253,17 +261,17 @@ message UpdateNetworkLoadBalancerRequest {
   reserved "listener_specs", "attached_target_groups", "allow_zonal_shift";
   reserved "network_id", "address_id_v4", "address_id_v6", "ip_families";
 
-  string network_load_balancer_id = 1 [(required) = true, (length) = "<=50"];
+  // ID of the NetworkLoadBalancer.
+  string network_load_balancer_id = 1;
   google.protobuf.FieldMask update_mask = 2;
-  string name = 3 [(pattern) = "|[a-z][-a-z0-9]{1,61}[a-z0-9]"];
-  string description = 4 [(length) = "<=256"];
-  map<string, string> labels = 5 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_0-9a-z]*"
-  ];
+  // Name of the NetworkLoadBalancer. Must be a DNS label (lowercase letters, digits and
+  // hyphens, 1-63 characters) and is unique within the project. Empty on Create
+  // makes the server derive the name from the assigned id.
+  string name = 3;
+  // Description of the NetworkLoadBalancer.
+  string description = 4;
+  // Resource labels as `` key:value `` pairs.
+  map<string, string> labels = 5;
 
   bool deletion_protection = 8;
 
@@ -273,7 +281,7 @@ message UpdateNetworkLoadBalancerRequest {
 
   // disabled_announce_zones — mutable (REGIONAL only): drain / re-enable зон.
   // Валидируется по тем же правилам, что Create (зоны ∈ регион, не все зоны).
-  repeated string disabled_announce_zones = 17 [(length) = "<=50"];
+  repeated string disabled_announce_zones = 17;
 
   // admin_state — NLB-1b EXPAND (additive): LIVE-mutable administrative state.
   // Applied only when present in update_mask (Update never auto-ENABLE/DISABLE).
@@ -287,7 +295,7 @@ message UpdateNetworkLoadBalancerRequest {
 
   // security_group_ids — NLB-1b MIGRATE (revival): LIVE-mutable vpc SecurityGroup
   // refs (replace-whole). Same-project existence peer-validated via vpc.
-  repeated string security_group_ids = 20 [(length) = "<=50"];
+  repeated string security_group_ids = 20;
 }
 
 message UpdateNetworkLoadBalancerMetadata {
@@ -295,7 +303,8 @@ message UpdateNetworkLoadBalancerMetadata {
 }
 
 message DeleteNetworkLoadBalancerRequest {
-  string network_load_balancer_id = 1 [(required) = true, (length) = "<=50"];
+  // ID of the NetworkLoadBalancer.
+  string network_load_balancer_id = 1;
 }
 
 message DeleteNetworkLoadBalancerMetadata {
@@ -303,9 +312,10 @@ message DeleteNetworkLoadBalancerMetadata {
 }
 
 message MoveNetworkLoadBalancerRequest {
-  string network_load_balancer_id = 1 [(required) = true, (length) = "<=50"];
+  // ID of the NetworkLoadBalancer being moved.
+  string network_load_balancer_id = 1;
   // Destination project; must be in the same region as the load balancer.
-  string destination_project_id = 2 [(required) = true, (length) = "<=50"];
+  string destination_project_id = 2;
 }
 
 message MoveNetworkLoadBalancerMetadata {
@@ -314,9 +324,14 @@ message MoveNetworkLoadBalancerMetadata {
 }
 
 message ListNetworkLoadBalancerOperationsRequest {
-  string network_load_balancer_id = 1 [(required) = true, (length) = "<=50"];
-  int64 page_size = 2 [(value) = "<=1000"];
-  string page_token = 3 [(length) = "<=100"];
+  // ID of the NetworkLoadBalancer.
+  string network_load_balancer_id = 1;
+  // Maximum number of results per page. 0 selects the service default (50);
+  // a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+  int64 page_size = 2;
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListNetworkLoadBalancerOperationsResponse.next_page_token] returned by a previous list request.
+  string page_token = 3;
 }
 
 message ListNetworkLoadBalancerOperationsResponse {
@@ -325,8 +340,10 @@ message ListNetworkLoadBalancerOperationsResponse {
 }
 
 message GetTargetStatesRequest {
-  string network_load_balancer_id = 1 [(length) = "<=50"];
-  string target_group_id = 2 [(length) = "<=50"];
+  // ID of the NetworkLoadBalancer the target group is attached to.
+  string network_load_balancer_id = 1;
+  // ID of the TargetGroup whose target states are read.
+  string target_group_id = 2;
 }
 
 message GetTargetStatesResponse {

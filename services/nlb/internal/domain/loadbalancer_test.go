@@ -142,8 +142,9 @@ func TestLoadBalancer_Equal(t *testing.T) {
 // security_group_ids. Каждый элемент набора стоит ОДНОГО синхронного peer-Get в
 // vpc (+ FGA-Check) на request-path, поэтому кардинальность обязана быть
 // ограничена доменом: без cap'а один дешёвый Create разворачивался в N внешних
-// round-trip'ов (амплификация; proto-аннотация `[(length) = "<=50"]` в рантайме
-// не энфорсится — protovalidate-интерсептора в цепочке nlb нет).
+// round-trip'ов (амплификация). Предел живёт РОВНО в одном месте — константе
+// домена: прежде ту же величину объявлял и контракт, но не проверял никто, и
+// объявление снято вместе со всем семейством (kacho#1255).
 func TestLoadBalancer_Validate_SecurityGroupsCardinality(t *testing.T) {
 	t.Parallel()
 

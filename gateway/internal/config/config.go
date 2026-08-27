@@ -653,6 +653,16 @@ type Config struct {
 	HybridMTLSExternal bool `envconfig:"KACHO_API_GATEWAY_HYBRID_MTLS_EXTERNAL" default:"false"`
 }
 
+// DPoPReplayTTL — сколько живёт запись о предъявленном доказательстве.
+//
+// Метод, а не выражение по месту: величину читают ДВОЕ — страж однократности
+// (сколько держать запись) и сборщик (с каким шагом её убирать), — и оба обязаны
+// брать её из одного места. Два одинаковых выражения по разным файлам разошлись
+// бы молча, и уборка стала бы либо реже жизни строки, либо чаще, чем нужно.
+func (c Config) DPoPReplayTTL() time.Duration {
+	return time.Duration(c.DPoPReplayCacheTTLSeconds) * time.Second
+}
+
 // TLSEnabled возвращает true, если TLS-listener должен быть запущен.
 // Требует одновременно TLS_LISTEN_ADDR + TLS_CERT_FILE + TLS_KEY_FILE.
 func (c Config) TLSEnabled() bool {

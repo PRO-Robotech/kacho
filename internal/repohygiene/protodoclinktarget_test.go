@@ -603,10 +603,19 @@ func TestProtoDocLinkGate_ProvenByInjection(t *testing.T) {
 	})
 
 	t.Run("строковый литерал — код, а не комментарий", func(t *testing.T) {
-		// Образец значения поля несёт ту же форму в кавычках. Комментария в строке
-		// нет вовсе, значит и ссылки в ней нет.
+		// Комментария в строке нет вовсе, значит и ссылки в ней нет.
+		//
+		// Носитель взят ЖИВОЙ формой из дерева. Прежде здесь стоял образец значения
+		// поля из снятого семейства ограничений; после его снятия (kacho#1255)
+		// строковых опций поля в контрактах не осталось НИ ОДНОЙ, и проба
+		// доказывала бы разбор входа, которого не бывает. Живых носителей
+		// строкового литерала два, и оба здесь: объявление пакета вывода (122
+		// вхождения в дереве) и маршрут края, чьё значение несёт двойную косую —
+		// то самое, что разбор обязан не принять за начало комментария.
 		files := []protoSource{{"proto/kacho/cloud/vpc/v1/gateway_service.proto",
-			[]byte("message M {\n  string name = 2 [(pattern) = \"|[a-z]([-a-z0-9]{0,61}[a-z0-9])?\"];\n}\n")}}
+			[]byte("option go_package = \"github.com/PRO-Robotech/kacho/pkg/api/x;x\";\n" +
+				"service S {\n  rpc Get(R) returns (R) {\n" +
+				"    option (google.api.http) = { get: \"/vpc/v1//gateways\" };\n  }\n}\n")}}
 		_, sites := protoDocLinkFixture(t, "no link here")
 		findings, census := judgeProtoDocLinks(files, sites)
 		if census.commentLines != 0 {

@@ -555,9 +555,6 @@ func (q *fakeTGWriter) AddTargets(ctx context.Context, tgID string, targets []do
 func (q *fakeTGWriter) RemoveTargetsMarkDraining(ctx context.Context, tgID string, targetIDs []string) (int, error) {
 	return 0, errors.New("not implemented in fake")
 }
-func (q *fakeTGWriter) DeleteTargetsDrained(ctx context.Context, tgID string, delaySeconds int32) (int, error) {
-	return 0, nil
-}
 func (q *fakeTGWriter) DeleteTargetsDraining(ctx context.Context, tgID string) (int, error) {
 	return 0, nil
 }

@@ -39,9 +39,16 @@ stage_proto_tree() {
   mkdir -p "${stage}/kacho/cloud" "${stage}/kacho/iam/authz"
 
   # --- общая инфраструктура ---
-  cp -R "${proto_root}/google"                       "${stage}/google"
-  cp    "${proto_root}/kacho/cloud/validation.proto" "${stage}/kacho/cloud/validation.proto"
-  cp -R "${proto_root}/kacho/iam/authz/v1"           "${stage}/kacho/iam/authz/v1"
+  #
+  # Здесь стояла ТРЕТЬЯ строка — безусловное копирование `kacho/cloud/validation.proto`,
+  # объявлявшего семейство ограничений полей. Файл снят вместе с семейством (kacho#1255):
+  # исполнителя на пути запроса у него не было ни одного. Строка была БЕЗУСЛОВНОЙ, а оба
+  # зовущих генератора идут под `set -euo pipefail`, поэтому её пропуск ронял их обоих на
+  # `cp: cannot stat`, то есть раньше, чем они успевали произвести хоть что-нибудь. Ни
+  # `buf breaking`, ни перепись читателей на Go этого пути не видят — он живой и
+  # единственный такой.
+  cp -R "${proto_root}/google"             "${stage}/google"
+  cp -R "${proto_root}/kacho/iam/authz/v1" "${stage}/kacho/iam/authz/v1"
 
   # --- исключения обязаны иметь предмет ---
   local excluded

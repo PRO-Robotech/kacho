@@ -10,7 +10,6 @@
 package vpcv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -31,8 +30,9 @@ const (
 )
 
 type GetNetworkInterfaceRequest struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	NetworkInterfaceId string                 `protobuf:"bytes,1,opt,name=network_interface_id,json=networkInterfaceId,proto3" json:"network_interface_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the NetworkInterface.
+	NetworkInterfaceId string `protobuf:"bytes,1,opt,name=network_interface_id,json=networkInterfaceId,proto3" json:"network_interface_id,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -410,17 +410,23 @@ func (x *CreateNetworkInterfaceMetadata) GetNetworkInterfaceId() string {
 }
 
 type UpdateNetworkInterfaceRequest struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	NetworkInterfaceId string                 `protobuf:"bytes,1,opt,name=network_interface_id,json=networkInterfaceId,proto3" json:"network_interface_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the NetworkInterface.
+	NetworkInterfaceId string `protobuf:"bytes,1,opt,name=network_interface_id,json=networkInterfaceId,proto3" json:"network_interface_id,omitempty"`
 	// Field mask of the fields to update (name, description, labels, security_group_ids,
 	// v4_address_ids, v6_address_ids, bandwidth_limit_mbps).
-	UpdateMask       *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
-	Name             string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	Description      string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
-	Labels           map[string]string      `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	SecurityGroupIds []string               `protobuf:"bytes,6,rep,name=security_group_ids,json=securityGroupIds,proto3" json:"security_group_ids,omitempty"`
-	V4AddressIds     []string               `protobuf:"bytes,9,rep,name=v4_address_ids,json=v4AddressIds,proto3" json:"v4_address_ids,omitempty"`
-	V6AddressIds     []string               `protobuf:"bytes,10,rep,name=v6_address_ids,json=v6AddressIds,proto3" json:"v6_address_ids,omitempty"`
+	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	// Name of the NetworkInterface. Must be a DNS label (lowercase letters, digits and
+	// hyphens, 1-63 characters) and is unique within the project. Empty on Create
+	// makes the server derive the name from the assigned id.
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// Description of the NetworkInterface.
+	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	// Resource labels as “ key:value “ pairs.
+	Labels           map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	SecurityGroupIds []string          `protobuf:"bytes,6,rep,name=security_group_ids,json=securityGroupIds,proto3" json:"security_group_ids,omitempty"`
+	V4AddressIds     []string          `protobuf:"bytes,9,rep,name=v4_address_ids,json=v4AddressIds,proto3" json:"v4_address_ids,omitempty"`
+	V6AddressIds     []string          `protobuf:"bytes,10,rep,name=v6_address_ids,json=v6AddressIds,proto3" json:"v6_address_ids,omitempty"`
 	// Верхняя граница полосы, Мбит/с. Изменяема (настройка, а не идентичность);
 	// ноль снимает ограничение. Условия приёма — те же, что на создании.
 	BandwidthLimitMbps int64 `protobuf:"varint,11,opt,name=bandwidth_limit_mbps,json=bandwidthLimitMbps,proto3" json:"bandwidth_limit_mbps,omitempty"`
@@ -566,8 +572,9 @@ func (x *UpdateNetworkInterfaceMetadata) GetNetworkInterfaceId() string {
 }
 
 type DeleteNetworkInterfaceRequest struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	NetworkInterfaceId string                 `protobuf:"bytes,1,opt,name=network_interface_id,json=networkInterfaceId,proto3" json:"network_interface_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the NetworkInterface.
+	NetworkInterfaceId string `protobuf:"bytes,1,opt,name=network_interface_id,json=networkInterfaceId,proto3" json:"network_interface_id,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -654,12 +661,17 @@ func (x *DeleteNetworkInterfaceMetadata) GetNetworkInterfaceId() string {
 }
 
 type ListNetworkInterfaceOperationsRequest struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	NetworkInterfaceId string                 `protobuf:"bytes,1,opt,name=network_interface_id,json=networkInterfaceId,proto3" json:"network_interface_id,omitempty"`
-	PageSize           int64                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken          string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the NetworkInterface.
+	NetworkInterfaceId string `protobuf:"bytes,1,opt,name=network_interface_id,json=networkInterfaceId,proto3" json:"network_interface_id,omitempty"`
+	// Maximum number of results per page. 0 selects the service default (50);
+	// a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Page token. To get the next page of results, set [page_token] to the
+	// [ListNetworkInterfaceOperationsResponse.next_page_token] returned by a previous list request.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListNetworkInterfaceOperationsRequest) Reset() {
@@ -769,33 +781,32 @@ var File_kacho_cloud_vpc_v1_network_interface_service_proto protoreflect.FileDes
 
 const file_kacho_cloud_vpc_v1_network_interface_service_proto_rawDesc = "" +
 	"\n" +
-	"2kacho/cloud/vpc/v1/network_interface_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a*kacho/cloud/vpc/v1/network_interface.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\\\n" +
-	"\x1aGetNetworkInterfaceRequest\x12>\n" +
-	"\x14network_interface_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x12networkInterfaceId\"\x99\x02\n" +
-	"\x1cListNetworkInterfacesRequest\x12+\n" +
+	"2kacho/cloud/vpc/v1/network_interface_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a*kacho/cloud/vpc/v1/network_interface.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"N\n" +
+	"\x1aGetNetworkInterfaceRequest\x120\n" +
+	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\"\xd6\x01\n" +
+	"\x1cListNetworkInterfacesRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12)\n" +
-	"\vinstance_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=50R\n" +
-	"instanceId\x12%\n" +
-	"\tsubnet_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=50R\bsubnetId\x12'\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x1f\n" +
+	"\vinstance_id\x18\x04 \x01(\tR\n" +
+	"instanceId\x12\x1b\n" +
+	"\tsubnet_id\x18\x05 \x01(\tR\bsubnetId\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=50R\tnetworkId\"\x9c\x01\n" +
+	"network_id\x18\x06 \x01(\tR\tnetworkId\"\x9c\x01\n" +
 	"\x1dListNetworkInterfacesResponse\x12S\n" +
 	"\x12network_interfaces\x18\x01 \x03(\v2$.kacho.cloud.vpc.v1.NetworkInterfaceR\x11networkInterfaces\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xb7\x05\n" +
-	"\x1dCreateNetworkInterfaceRequest\x12+\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x98\x04\n" +
+	"\x1dCreateNetworkInterfaceRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12B\n" +
-	"\x04name\x18\x02 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x92\x01\n" +
-	"\x06labels\x18\x04 \x03(\v2=.kacho.cloud.vpc.v1.CreateNetworkInterfaceRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12)\n" +
-	"\tsubnet_id\x18\x05 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12,\n" +
-	"\x12security_group_ids\x18\a \x03(\tR\x10securityGroupIds\x12)\n" +
-	"\vinstance_id\x18\b \x01(\tB\b\x8a\xc81\x04<=50R\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12U\n" +
+	"\x06labels\x18\x04 \x03(\v2=.kacho.cloud.vpc.v1.CreateNetworkInterfaceRequest.LabelsEntryR\x06labels\x12\x1b\n" +
+	"\tsubnet_id\x18\x05 \x01(\tR\bsubnetId\x12,\n" +
+	"\x12security_group_ids\x18\a \x03(\tR\x10securityGroupIds\x12\x1f\n" +
+	"\vinstance_id\x18\b \x01(\tR\n" +
 	"instanceId\x12\x14\n" +
 	"\x05index\x18\t \x01(\tR\x05index\x12$\n" +
 	"\x0ev4_address_ids\x18\f \x03(\tR\fv4AddressIds\x12$\n" +
@@ -806,14 +817,14 @@ const file_kacho_cloud_vpc_v1_network_interface_service_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aJ\x04\b\n" +
 	"\x10\vJ\x04\b\v\x10\f\"R\n" +
 	"\x1eCreateNetworkInterfaceMetadata\x120\n" +
-	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\"\x95\x05\n" +
-	"\x1dUpdateNetworkInterfaceRequest\x12>\n" +
-	"\x14network_interface_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x12networkInterfaceId\x12;\n" +
+	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\"\x8e\x04\n" +
+	"\x1dUpdateNetworkInterfaceRequest\x120\n" +
+	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x12B\n" +
-	"\x04name\x18\x03 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x92\x01\n" +
-	"\x06labels\x18\x05 \x03(\v2=.kacho.cloud.vpc.v1.UpdateNetworkInterfaceRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12,\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12U\n" +
+	"\x06labels\x18\x05 \x03(\v2=.kacho.cloud.vpc.v1.UpdateNetworkInterfaceRequest.LabelsEntryR\x06labels\x12,\n" +
 	"\x12security_group_ids\x18\x06 \x03(\tR\x10securityGroupIds\x12$\n" +
 	"\x0ev4_address_ids\x18\t \x03(\tR\fv4AddressIds\x12$\n" +
 	"\x0ev6_address_ids\x18\n" +
@@ -823,17 +834,16 @@ const file_kacho_cloud_vpc_v1_network_interface_service_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bJ\x04\b\b\x10\t\"R\n" +
 	"\x1eUpdateNetworkInterfaceMetadata\x120\n" +
-	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\"_\n" +
-	"\x1dDeleteNetworkInterfaceRequest\x12>\n" +
-	"\x14network_interface_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x12networkInterfaceId\"R\n" +
+	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\"Q\n" +
+	"\x1dDeleteNetworkInterfaceRequest\x120\n" +
+	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\"R\n" +
 	"\x1eDeleteNetworkInterfaceMetadata\x120\n" +
-	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\"\xba\x01\n" +
-	"%ListNetworkInterfaceOperationsRequest\x12>\n" +
-	"\x14network_interface_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x12networkInterfaceId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\"\x95\x01\n" +
+	"%ListNetworkInterfaceOperationsRequest\x120\n" +
+	"\x14network_interface_id\x18\x01 \x01(\tR\x12networkInterfaceId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x92\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x92\x01\n" +
 	"&ListNetworkInterfaceOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +

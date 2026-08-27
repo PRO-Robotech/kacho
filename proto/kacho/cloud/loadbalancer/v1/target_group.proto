@@ -8,7 +8,6 @@ package kacho.cloud.loadbalancer.v1;
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/loadbalancer/v1/health_check.proto";
-import "kacho/cloud/validation.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1";
 
@@ -74,7 +73,7 @@ message TargetGroup {
   // backend-port source echoed by Listener.resolved_backend_port (design NLB-1
   // §Listener wiring). Required, range 1..65535. LIVE-mutable in NLB-1c
   // (re-echoes into wired listeners' resolved_backend_port).
-  int32 port = 14 [(value) = "1-65535"];
+  int32 port = 14;
 
   // deregistration_delay — drain timeout applied when a target is removed
   // (design §4.4 two-phase RemoveTargets). NLB-1c (B8): Duration string,
@@ -105,7 +104,7 @@ message Target {
   // primary NIC IP at worker validate time.
   message InCloudIP {
     // VPC subnet the target sits in (soft cross-service ref to kacho-vpc).
-    string subnet_id = 1 [(length) = "<=50"];
+    string subnet_id = 1;
     // Concrete IP within that subnet's CIDR.
     string address = 2;
   }
@@ -115,7 +114,7 @@ message Target {
   message ExternalIP {
     string address = 1;
     // Optional zonal hint for placement decisions; empty means region-default.
-    string zone_id = 2 [(length) = "<=50"];
+    string zone_id = 2;
   }
 
   // Exactly one of the four identity forms must be set (validated in domain).
@@ -132,7 +131,7 @@ message Target {
 
   // Per-target weight inside the group. 0 disables traffic without removing
   // the row (drain-with-keepalive use case). 0-1000.
-  int32 weight = 7 [(value) = "0-1000"];
+  int32 weight = 7;
 
   // Lifecycle state of one target inside the group. RemoveTargets is
   // two-phase (design §4.4): phase A marks the target DRAINING, phase B

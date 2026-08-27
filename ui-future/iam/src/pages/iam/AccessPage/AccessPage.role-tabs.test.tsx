@@ -89,12 +89,16 @@ describe("AccessGrantPage — наборы ролей объявлены вкл�
     expect(screen.queryByText("У вашей организации пока нет своих ролей.")).not.toBeInTheDocument();
     // Активная вкладка показывает выбор системных ролей, и в нём — модуль из
     // ответа края: «панель есть» без содержимого зеленело бы на пустой панели.
-    // Выбор ролей — множественный, поэтому наружу он объявлен списком, а не
-    // полем со значением; внутри — модуль из ответа края. «Панель есть» без
-    // содержимого зеленело бы на пустой панели.
+    //
+    // Роли выбираются ДЕРЕВОМ «модуль → ресурс → verb», и роли берутся из самой
+    // библиотеки: уровень — `role="menu"`, вариант — `role="menuitemcheckbox"`
+    // (`@rc-component/cascader`, `lib/OptionList/Column.js:98-102,161`). Прежде
+    // здесь стоял `listbox` — роль ПЛОСКОГО СПИСКА (`<select multiple>`),
+    // которую производил заменитель, а настоящее дерево не производит никогда:
+    // утверждение было прибито к форме дублёра и пережило её снятие (#1350).
     const panel = screen.getByRole("tabpanel");
-    expect(within(panel).getByRole("listbox")).toBeInTheDocument();
-    expect(within(panel).getByText("vpc")).toBeInTheDocument();
+    expect(within(panel).getByRole("menu")).toBeInTheDocument();
+    expect(within(panel).getByRole("menuitemcheckbox", { name: "vpc" })).toBeInTheDocument();
   });
 
   it("выбор вкладки меняет и пометку выбранного, и содержимое", async () => {
@@ -108,6 +112,8 @@ describe("AccessGrantPage — наборы ролей объявлены вкл�
     const panel = screen.getByRole("tabpanel");
     expect(within(panel).getByText("У вашей организации пока нет своих ролей.")).toBeInTheDocument();
     // Парный контроль: содержимое прежней вкладки ушло, а не осталось под новой.
-    expect(within(panel).queryByRole("listbox")).not.toBeInTheDocument();
+    // Спрашивается та же роль, что утверждается положительно выше, — иначе
+    // отрицание зеленело бы вакуумно, на роли, которой в дереве не бывает.
+    expect(within(panel).queryByRole("menu")).not.toBeInTheDocument();
   });
 });

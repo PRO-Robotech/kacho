@@ -10,7 +10,6 @@
 package loadbalancerv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -31,8 +30,9 @@ const (
 )
 
 type GetNetworkLoadBalancerRequest struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	NetworkLoadBalancerId string                 `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the NetworkLoadBalancer.
+	NetworkLoadBalancerId string `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -75,11 +75,18 @@ func (x *GetNetworkLoadBalancerRequest) GetNetworkLoadBalancerId() string {
 }
 
 type ListNetworkLoadBalancersRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	PageSize      int64                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	Filter        string                 `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Project.
+	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Maximum number of results per page. 0 selects the service default (50);
+	// a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Page token. To get the next page of results, set [page_token] to the
+	// [ListNetworkLoadBalancersResponse.next_page_token] returned by a previous list request.
+	PageToken string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Filter expression. Currently only the [name] field is filterable: the field
+	// name, an `=` operator, and the value in double quotes.
+	Filter        string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -195,12 +202,19 @@ func (x *ListNetworkLoadBalancersResponse) GetNextPageToken() string {
 }
 
 type CreateNetworkLoadBalancerRequest struct {
-	state       protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId   string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Description string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	Labels      map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	RegionId    string                 `protobuf:"bytes,5,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Project.
+	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Name of the NetworkLoadBalancer. Must be a DNS label (lowercase letters, digits and
+	// hyphens, 1-63 characters) and is unique within the project. Empty on Create
+	// makes the server derive the name from the assigned id.
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// Description of the NetworkLoadBalancer.
+	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	// Resource labels as “ key:value “ pairs.
+	Labels map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// ID of the Region.
+	RegionId string `protobuf:"bytes,5,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
 	// type — DERIVED output-only (NLB CONTRACT / NLB-1-08). Retained as a request
 	// field ONLY so that a client that sets it gets an EXPLICIT InvalidArgument
 	// reject rather than a silent grpc-gateway drop; the load balancer mode is set
@@ -428,13 +442,19 @@ func (x *CreateNetworkLoadBalancerMetadata) GetNetworkLoadBalancerId() string {
 }
 
 type UpdateNetworkLoadBalancerRequest struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the NetworkLoadBalancer.
 	NetworkLoadBalancerId string                 `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
 	UpdateMask            *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
-	Name                  string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	Description           string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
-	Labels                map[string]string      `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	DeletionProtection    bool                   `protobuf:"varint,8,opt,name=deletion_protection,json=deletionProtection,proto3" json:"deletion_protection,omitempty"`
+	// Name of the NetworkLoadBalancer. Must be a DNS label (lowercase letters, digits and
+	// hyphens, 1-63 characters) and is unique within the project. Empty on Create
+	// makes the server derive the name from the assigned id.
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// Description of the NetworkLoadBalancer.
+	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	// Resource labels as “ key:value “ pairs.
+	Labels             map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	DeletionProtection bool              `protobuf:"varint,8,opt,name=deletion_protection,json=deletionProtection,proto3" json:"deletion_protection,omitempty"`
 	// session_affinity — mutable; applied when present in update_mask (or under an
 	// empty mask full-PATCH).
 	SessionAffinity NetworkLoadBalancer_SessionAffinity `protobuf:"varint,10,opt,name=session_affinity,json=sessionAffinity,proto3,enum=kacho.cloud.loadbalancer.v1.NetworkLoadBalancer_SessionAffinity" json:"session_affinity,omitempty"`
@@ -608,8 +628,9 @@ func (x *UpdateNetworkLoadBalancerMetadata) GetNetworkLoadBalancerId() string {
 }
 
 type DeleteNetworkLoadBalancerRequest struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	NetworkLoadBalancerId string                 `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the NetworkLoadBalancer.
+	NetworkLoadBalancerId string `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -696,8 +717,9 @@ func (x *DeleteNetworkLoadBalancerMetadata) GetNetworkLoadBalancerId() string {
 }
 
 type MoveNetworkLoadBalancerRequest struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	NetworkLoadBalancerId string                 `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the NetworkLoadBalancer being moved.
+	NetworkLoadBalancerId string `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
 	// Destination project; must be in the same region as the load balancer.
 	DestinationProjectId string `protobuf:"bytes,2,opt,name=destination_project_id,json=destinationProjectId,proto3" json:"destination_project_id,omitempty"`
 	unknownFields        protoimpl.UnknownFields
@@ -801,12 +823,17 @@ func (x *MoveNetworkLoadBalancerMetadata) GetDestinationProjectId() string {
 }
 
 type ListNetworkLoadBalancerOperationsRequest struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	NetworkLoadBalancerId string                 `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
-	PageSize              int64                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken             string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the NetworkLoadBalancer.
+	NetworkLoadBalancerId string `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
+	// Maximum number of results per page. 0 selects the service default (50);
+	// a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Page token. To get the next page of results, set [page_token] to the
+	// [ListNetworkLoadBalancerOperationsResponse.next_page_token] returned by a previous list request.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListNetworkLoadBalancerOperationsRequest) Reset() {
@@ -913,11 +940,13 @@ func (x *ListNetworkLoadBalancerOperationsResponse) GetNextPageToken() string {
 }
 
 type GetTargetStatesRequest struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	NetworkLoadBalancerId string                 `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
-	TargetGroupId         string                 `protobuf:"bytes,2,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the NetworkLoadBalancer the target group is attached to.
+	NetworkLoadBalancerId string `protobuf:"bytes,1,opt,name=network_load_balancer_id,json=networkLoadBalancerId,proto3" json:"network_load_balancer_id,omitempty"`
+	// ID of the TargetGroup whose target states are read.
+	TargetGroupId string `protobuf:"bytes,2,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetTargetStatesRequest) Reset() {
@@ -1012,93 +1041,90 @@ var File_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto protore
 
 const file_kacho_cloud_loadbalancer_v1_network_load_balancer_service_proto_rawDesc = "" +
 	"\n" +
-	"?kacho/cloud/loadbalancer/v1/network_load_balancer_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a%kacho/cloud/operation/operation.proto\x1a7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"b\n" +
-	"\x1dGetNetworkLoadBalancerRequest\x12A\n" +
-	"\x18network_load_balancer_id\x18\x01 \x01(\tB\b\x8a\xc81\x04<=50R\x15networkLoadBalancerId\"\xc5\x01\n" +
-	"\x1fListNetworkLoadBalancersRequest\x12+\n" +
+	"?kacho/cloud/loadbalancer/v1/network_load_balancer_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"X\n" +
+	"\x1dGetNetworkLoadBalancerRequest\x127\n" +
+	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"\x94\x01\n" +
+	"\x1fListNetworkLoadBalancersRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
-	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\"\xb2\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x04 \x01(\tR\x06filter\"\xb2\x01\n" +
 	" ListNetworkLoadBalancersResponse\x12f\n" +
 	"\x16network_load_balancers\x18\x01 \x03(\v20.kacho.cloud.loadbalancer.v1.NetworkLoadBalancerR\x14networkLoadBalancers\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x82\v\n" +
-	" CreateNetworkLoadBalancerRequest\x12+\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xea\t\n" +
+	" CreateNetworkLoadBalancerRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x125\n" +
-	"\x04name\x18\x02 \x01(\tB!\xf2\xc71\x1d|[a-z][-a-z0-9]{1,61}[a-z0-9]R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x9e\x01\n" +
-	"\x06labels\x18\x04 \x03(\v2I.kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12%\n" +
-	"\tregion_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=50R\bregionId\x12I\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12a\n" +
+	"\x06labels\x18\x04 \x03(\v2I.kacho.cloud.loadbalancer.v1.CreateNetworkLoadBalancerRequest.LabelsEntryR\x06labels\x12\x1b\n" +
+	"\tregion_id\x18\x05 \x01(\tR\bregionId\x12I\n" +
 	"\x04type\x18\x06 \x01(\x0e25.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.TypeR\x04type\x12/\n" +
 	"\x13deletion_protection\x18\t \x01(\bR\x12deletionProtection\x12k\n" +
 	"\x10session_affinity\x18\v \x01(\x0e2@.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinityR\x0fsessionAffinity\x12e\n" +
-	"\x0eplacement_type\x18\x11 \x01(\x0e2>.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementTypeR\rplacementType\x12@\n" +
-	"\x17disabled_announce_zones\x18\x12 \x03(\tB\b\x8a\xc81\x04<=50R\x15disabledAnnounceZones\x12C\n" +
+	"\x0eplacement_type\x18\x11 \x01(\x0e2>.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementTypeR\rplacementType\x126\n" +
+	"\x17disabled_announce_zones\x18\x12 \x03(\tR\x15disabledAnnounceZones\x12C\n" +
 	"\tv4_source\x18\x13 \x01(\v2&.kacho.cloud.loadbalancer.v1.VipSourceR\bv4Source\x12C\n" +
 	"\tv6_source\x18\x14 \x01(\v2&.kacho.cloud.loadbalancer.v1.VipSourceR\bv6Source\x12X\n" +
 	"\tplacement\x18\x15 \x01(\x0e2:.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementR\tplacement\x12\\\n" +
 	"\vadmin_state\x18\x16 \x01(\x0e2;.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminStateR\n" +
 	"adminState\x12,\n" +
-	"\x12cross_zone_enabled\x18\x17 \x01(\bR\x10crossZoneEnabled\x126\n" +
-	"\x12security_group_ids\x18\x18 \x03(\tB\b\x8a\xc81\x04<=50R\x10securityGroupIds\x1a9\n" +
+	"\x12cross_zone_enabled\x18\x17 \x01(\bR\x10crossZoneEnabled\x12,\n" +
+	"\x12security_group_ids\x18\x18 \x03(\tR\x10securityGroupIds\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\n" +
 	"\x10\vJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11R\x0elistener_specsR\x16attached_target_groupsR\x11allow_zonal_shiftR\n" +
 	"network_idR\faddress_specR\vip_families\"\\\n" +
 	"!CreateNetworkLoadBalancerMetadata\x127\n" +
-	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"\xb2\b\n" +
-	" UpdateNetworkLoadBalancerRequest\x12E\n" +
-	"\x18network_load_balancer_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x15networkLoadBalancerId\x12;\n" +
+	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"\xa4\a\n" +
+	" UpdateNetworkLoadBalancerRequest\x127\n" +
+	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x125\n" +
-	"\x04name\x18\x03 \x01(\tB!\xf2\xc71\x1d|[a-z][-a-z0-9]{1,61}[a-z0-9]R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x9e\x01\n" +
-	"\x06labels\x18\x05 \x03(\v2I.kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12/\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12a\n" +
+	"\x06labels\x18\x05 \x03(\v2I.kacho.cloud.loadbalancer.v1.UpdateNetworkLoadBalancerRequest.LabelsEntryR\x06labels\x12/\n" +
 	"\x13deletion_protection\x18\b \x01(\bR\x12deletionProtection\x12k\n" +
 	"\x10session_affinity\x18\n" +
-	" \x01(\x0e2@.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinityR\x0fsessionAffinity\x12@\n" +
-	"\x17disabled_announce_zones\x18\x11 \x03(\tB\b\x8a\xc81\x04<=50R\x15disabledAnnounceZones\x12\\\n" +
+	" \x01(\x0e2@.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.SessionAffinityR\x0fsessionAffinity\x126\n" +
+	"\x17disabled_announce_zones\x18\x11 \x03(\tR\x15disabledAnnounceZones\x12\\\n" +
 	"\vadmin_state\x18\x12 \x01(\x0e2;.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminStateR\n" +
 	"adminState\x12,\n" +
-	"\x12cross_zone_enabled\x18\x13 \x01(\bR\x10crossZoneEnabled\x126\n" +
-	"\x12security_group_ids\x18\x14 \x03(\tB\b\x8a\xc81\x04<=50R\x10securityGroupIds\x1a9\n" +
+	"\x12cross_zone_enabled\x18\x13 \x01(\bR\x10crossZoneEnabled\x12,\n" +
+	"\x12security_group_ids\x18\x14 \x03(\tR\x10securityGroupIds\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aJ\x04\b\a\x10\bJ\x04\b\t\x10\n" +
 	"J\x04\b\v\x10\fJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eJ\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11R\x0elistener_specsR\x16attached_target_groupsR\x11allow_zonal_shiftR\n" +
 	"network_idR\raddress_id_v4R\raddress_id_v6R\vip_families\"\\\n" +
 	"!UpdateNetworkLoadBalancerMetadata\x127\n" +
-	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"i\n" +
-	" DeleteNetworkLoadBalancerRequest\x12E\n" +
-	"\x18network_load_balancer_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x15networkLoadBalancerId\"\\\n" +
+	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"[\n" +
+	" DeleteNetworkLoadBalancerRequest\x127\n" +
+	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"\\\n" +
 	"!DeleteNetworkLoadBalancerMetadata\x127\n" +
-	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"\xab\x01\n" +
-	"\x1eMoveNetworkLoadBalancerRequest\x12E\n" +
-	"\x18network_load_balancer_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x15networkLoadBalancerId\x12B\n" +
-	"\x16destination_project_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x14destinationProjectId\"\x90\x01\n" +
+	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\"\x8f\x01\n" +
+	"\x1eMoveNetworkLoadBalancerRequest\x127\n" +
+	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\x124\n" +
+	"\x16destination_project_id\x18\x02 \x01(\tR\x14destinationProjectId\"\x90\x01\n" +
 	"\x1fMoveNetworkLoadBalancerMetadata\x127\n" +
 	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\x124\n" +
-	"\x16destination_project_id\x18\x02 \x01(\tR\x14destinationProjectId\"\xc4\x01\n" +
-	"(ListNetworkLoadBalancerOperationsRequest\x12E\n" +
-	"\x18network_load_balancer_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x15networkLoadBalancerId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\x16destination_project_id\x18\x02 \x01(\tR\x14destinationProjectId\"\x9f\x01\n" +
+	"(ListNetworkLoadBalancerOperationsRequest\x127\n" +
+	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x95\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x95\x01\n" +
 	")ListNetworkLoadBalancerOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x8d\x01\n" +
-	"\x16GetTargetStatesRequest\x12A\n" +
-	"\x18network_load_balancer_id\x18\x01 \x01(\tB\b\x8a\xc81\x04<=50R\x15networkLoadBalancerId\x120\n" +
-	"\x0ftarget_group_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50R\rtargetGroupId\"h\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"y\n" +
+	"\x16GetTargetStatesRequest\x127\n" +
+	"\x18network_load_balancer_id\x18\x01 \x01(\tR\x15networkLoadBalancerId\x12&\n" +
+	"\x0ftarget_group_id\x18\x02 \x01(\tR\rtargetGroupId\"h\n" +
 	"\x17GetTargetStatesResponse\x12M\n" +
 	"\rtarget_states\x18\x01 \x03(\v2(.kacho.cloud.loadbalancer.v1.TargetStateR\ftargetStates2\xa3\x14\n" +
 	"\x1aNetworkLoadBalancerService\x12\xa5\x02\n" +

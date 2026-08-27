@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -937,42 +936,41 @@ var File_kacho_cloud_iam_v1_authorize_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_authorize_service_proto_rawDesc = "" +
 	"\n" +
-	"*kacho/cloud/iam/v1/authorize_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"M\n" +
-	"\vResourceRef\x12 \n" +
-	"\x04type\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x041-32R\x04type\x12\x1c\n" +
-	"\x02id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x041-64R\x02id\"\xb9\x02\n" +
-	"\x15AuthorizeCheckRequest\x12'\n" +
-	"\asubject\x18\x01 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x05<=128R\asubject\x12A\n" +
-	"\bresource\x18\x02 \x01(\v2\x1f.kacho.cloud.iam.v1.ResourceRefB\x04\xe8\xc71\x01R\bresource\x12%\n" +
-	"\x06action\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x051-128R\x06action\x121\n" +
-	"\acontext\x18\x04 \x01(\v2\x17.google.protobuf.StructR\acontext\x12#\n" +
-	"\btrace_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=64R\atraceId\x125\n" +
-	"\x11required_relation\x18\x06 \x01(\tB\b\x8a\xc81\x04<=32R\x10requiredRelation\"\xae\x01\n" +
+	"*kacho/cloud/iam/v1/authorize_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"1\n" +
+	"\vResourceRef\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\"\x81\x02\n" +
+	"\x15AuthorizeCheckRequest\x12\x18\n" +
+	"\asubject\x18\x01 \x01(\tR\asubject\x12;\n" +
+	"\bresource\x18\x02 \x01(\v2\x1f.kacho.cloud.iam.v1.ResourceRefR\bresource\x12\x16\n" +
+	"\x06action\x18\x03 \x01(\tR\x06action\x121\n" +
+	"\acontext\x18\x04 \x01(\v2\x17.google.protobuf.StructR\acontext\x12\x19\n" +
+	"\btrace_id\x18\x05 \x01(\tR\atraceId\x12+\n" +
+	"\x11required_relation\x18\x06 \x01(\tR\x10requiredRelation\"\xae\x01\n" +
 	"\x16AuthorizeCheckResponse\x12\x18\n" +
 	"\aallowed\x18\x01 \x01(\bR\aallowed\x12!\n" +
 	"\fdeny_reasons\x18\x02 \x03(\tR\vdenyReasons\x129\n" +
 	"\n" +
-	"checked_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcheckedAtJ\x04\b\x03\x10\x04R\x16authorization_model_id\"\xaf\x01\n" +
-	"\x1aBatchAuthorizeCheckRequest\x12G\n" +
-	"\x06checks\x18\x01 \x03(\v2).kacho.cloud.iam.v1.AuthorizeCheckRequestB\x04\xe8\xc71\x01R\x06checks\x12#\n" +
-	"\bscope_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=20R\ascopeId\x12#\n" +
-	"\btrace_id\x18\x03 \x01(\tB\b\x8a\xc81\x04<=64R\atraceId\"g\n" +
+	"checked_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcheckedAtJ\x04\b\x03\x10\x04R\x16authorization_model_id\"\x95\x01\n" +
+	"\x1aBatchAuthorizeCheckRequest\x12A\n" +
+	"\x06checks\x18\x01 \x03(\v2).kacho.cloud.iam.v1.AuthorizeCheckRequestR\x06checks\x12\x19\n" +
+	"\bscope_id\x18\x02 \x01(\tR\ascopeId\x12\x19\n" +
+	"\btrace_id\x18\x03 \x01(\tR\atraceId\"g\n" +
 	"\x1bBatchAuthorizeCheckResponse\x12H\n" +
-	"\tresponses\x18\x01 \x03(\v2*.kacho.cloud.iam.v1.AuthorizeCheckResponseR\tresponses\"\x8c\x02\n" +
-	"\x13ListSubjectsRequest\x12A\n" +
-	"\bresource\x18\x01 \x01(\v2\x1f.kacho.cloud.iam.v1.ResourceRefB\x04\xe8\xc71\x01R\bresource\x12%\n" +
-	"\x06action\x18\x02 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x051-128R\x06action\x12'\n" +
-	"\tpage_size\x18\x03 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\tresponses\x18\x01 \x03(\v2*.kacho.cloud.iam.v1.AuthorizeCheckResponseR\tresponses\"\xd6\x01\n" +
+	"\x13ListSubjectsRequest\x12;\n" +
+	"\bresource\x18\x01 \x01(\v2\x1f.kacho.cloud.iam.v1.ResourceRefR\bresource\x12\x16\n" +
+	"\x06action\x18\x02 \x01(\tR\x06action\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x04 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x128\n" +
-	"\x13subject_type_filter\x18\x05 \x01(\tB\b\x8a\xc81\x04<=32R\x11subjectTypeFilter\"Z\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\x12.\n" +
+	"\x13subject_type_filter\x18\x05 \x01(\tR\x11subjectTypeFilter\"Z\n" +
 	"\x14ListSubjectsResponse\x12\x1a\n" +
 	"\bsubjects\x18\x01 \x03(\tR\bsubjects\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x96\x01\n" +
-	"\x16ExpandRelationsRequest\x12A\n" +
-	"\bresource\x18\x01 \x01(\v2\x1f.kacho.cloud.iam.v1.ResourceRefB\x04\xe8\xc71\x01R\bresource\x12(\n" +
-	"\brelation\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x041-32R\brelationJ\x04\b\x03\x10\x04R\tmax_depth\"k\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x82\x01\n" +
+	"\x16ExpandRelationsRequest\x12;\n" +
+	"\bresource\x18\x01 \x01(\v2\x1f.kacho.cloud.iam.v1.ResourceRefR\bresource\x12\x1a\n" +
+	"\brelation\x18\x02 \x01(\tR\brelationJ\x04\b\x03\x10\x04R\tmax_depth\"k\n" +
 	"\vUsersetTree\x12\x16\n" +
 	"\x06leaves\x18\x01 \x03(\tR\x06leaves\x12\x1c\n" +
 	"\ttruncated\x18\x04 \x01(\bR\ttruncatedJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\bcomputedR\x10tuple_to_userset\"\xc5\x01\n" +

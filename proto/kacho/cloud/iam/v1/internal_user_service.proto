@@ -10,7 +10,6 @@ import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/iam/v1/user.proto";
 import "kacho/cloud/iam/v1/user_service.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -73,13 +72,13 @@ service InternalUserService {
 
 message UpsertFromIdentityRequest {
   // OIDC `sub` claim (Ory) — UNIQUE-key.
-  string external_id = 1 [(required) = true, (length) = "<=128"];
+  string external_id = 1;
 
   // Email (case-insensitive). Required.
-  string email = 2 [(required) = true, (length) = "<=320"];
+  string email = 2;
 
   // Human-readable display name (необязателен).
-  string display_name = 3 [(length) = "<=256"];
+  string display_name = 3;
 }
 
 message UpsertFromIdentityMetadata {
@@ -94,16 +93,16 @@ message UpsertFromIdentityMetadata {
 message OnRecoveryCompletedRequest {
   // Kratos identity id (= kacho-iam User.external_id) whose recovery just
   // completed.
-  string external_id = 1 [(required) = true, (length) = "<=128"];
+  string external_id = 1;
 
   // Kratos recovery-flow id (used as idempotency key — `INSERT ... ON
   // CONFLICT (recovery_jti) DO NOTHING`).
-  string recovery_jti = 2 [(required) = true, (length) = "<=128"];
+  string recovery_jti = 2;
 
   // E-mail at which the recovery was completed (echo from Kratos identity
   // traits — kacho-iam matches it against `users.email` to defend against
   // mismatched payloads).
-  string email = 3 [(required) = true, (length) = "<=320"];
+  string email = 3;
 }
 
 message OnRecoveryCompletedMetadata {

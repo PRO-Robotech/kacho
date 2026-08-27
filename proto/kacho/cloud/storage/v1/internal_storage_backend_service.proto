@@ -8,7 +8,6 @@ package kacho.cloud.storage.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
@@ -224,35 +223,26 @@ message StorageBackend {
 
 message CreateStorageBackendRequest {
   // Имя бэкенда. Уникально в реестре.
-  string name = 1 [
-    (required) = true,
-    (pattern) = "[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"
-  ];
+  string name = 1;
 
   // Род бэкенда. Обязателен: неуказанный род — это регистрация без исполнителя.
-  StorageBackend.BackendKind kind = 2 [(required) = true];
+  StorageBackend.BackendKind kind = 2;
 
   // Описание для администратора.
-  string description = 3 [(length) = "<=256"];
+  string description = 3;
 
   // Зоны, которые бэкенд обслуживает. Каждая валидируется peer-вызовом kacho-geo на
   // пути запроса, fail-closed: непроверенная зона означала бы привязку, которую
   // никто не исполнит.
-  repeated string zone_ids = 4 [(length) = "<=50"];
+  repeated string zone_ids = 4;
 
   // Непрозрачная координата бэкенда, форма `<схема>://<путь>`.
-  string endpoint = 5 [
-    (required) = true,
-    (pattern) = "[a-z][a-z0-9+.-]*://[^ ]+"
-  ];
+  string endpoint = 5;
 
   // Ссылка на учётные данные, форма `<схема>://<путь>`. Значение, не похожее на
   // ссылку (в том числе сам секрет), отвергается `INVALID_ARGUMENT` — так материал
   // секрета не доезжает ни до журнала, ни до колонки.
-  string credentials_ref = 6 [
-    (required) = true,
-    (pattern) = "[a-z][a-z0-9+.-]*://[^ ]+"
-  ];
+  string credentials_ref = 6;
 
   // Полоса действия при регистрации. Опущено — `ACTIVE`.
   StorageBackend.Status status = 7;
@@ -260,16 +250,16 @@ message CreateStorageBackendRequest {
 
 message GetStorageBackendRequest {
   // ID бэкенда, о котором спрашивают.
-  string storage_backend_id = 1 [(required) = true];
+  string storage_backend_id = 1;
 }
 
 message ListStorageBackendsRequest {
   // Максимальное число записей на странице.
-  int64 page_size = 1 [(value) = "<=1000"];
+  int64 page_size = 1;
 
   // Курсор страницы: значение [ListStorageBackendsResponse.next_page_token] из
   // предыдущего ответа.
-  string page_token = 2 [(length) = "<=100"];
+  string page_token = 2;
 }
 
 message ListStorageBackendsResponse {
@@ -282,22 +272,22 @@ message ListStorageBackendsResponse {
 
 message UpdateStorageBackendRequest {
   // ID правимого бэкенда.
-  string storage_backend_id = 1 [(required) = true];
+  string storage_backend_id = 1;
 
   // Новое имя.
-  string name = 2 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+  string name = 2;
 
   // Новое описание.
-  string description = 3 [(length) = "<=256"];
+  string description = 3;
 
   // Новый список обслуживаемых зон (замена целиком, не слияние).
-  repeated string zone_ids = 4 [(length) = "<=50"];
+  repeated string zone_ids = 4;
 
   // Новая координата бэкенда.
-  string endpoint = 5 [(pattern) = "|[a-z][a-z0-9+.-]*://[^ ]+"];
+  string endpoint = 5;
 
   // Новая ссылка на учётные данные (ротация ссылки, не секрета).
-  string credentials_ref = 6 [(pattern) = "|[a-z][a-z0-9+.-]*://[^ ]+"];
+  string credentials_ref = 6;
 
   // Новая полоса действия.
   StorageBackend.Status status = 7;
@@ -314,7 +304,7 @@ message UpdateStorageBackendRequest {
 
 message DeleteStorageBackendRequest {
   // ID снимаемого с регистрации бэкенда.
-  string storage_backend_id = 1 [(required) = true];
+  string storage_backend_id = 1;
 }
 
 message DeleteStorageBackendResponse {}

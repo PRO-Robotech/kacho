@@ -140,7 +140,8 @@ describe("spec fields name real request fields", () => {
   });
 
   // iam.v1.CreateAccessBindingRequest: the anchor pair is `scope_type` (dotted)
-  // + `scope_id`, both `(required) = true`. `resource_type`/`resource_id` are not
+  // + `scope_id`, both refused by the use-case when empty.
+  // `resource_type`/`resource_id` are not
   // fields of this message at any tag — the AccessBinding itself tombstones the
   // whole legacy scope projection (`reserved 15,16,17,18; reserved "scope",
   // "scope_ref", …`).

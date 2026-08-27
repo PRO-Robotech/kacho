@@ -112,7 +112,7 @@ UPPERCASE / подчёркивание / дефис по краю / спец-с�
 - Agent-check: `corevalidate.Description` / `corevalidate.Labels` в `Create`/`Update`.
 
 ### REQ-SIZE-01 — Disk size: Create ∈ [4194304, 28587302322176]; Update ∈ [4194304, 4398046511104]   [P1]
-Из proto `(value)`. Вне диапазона → `InvalidArgument`. Update size — только увеличение
+Диапазон отвергает use-case синхронно. Вне диапазона → `InvalidArgument`. Update size — только увеличение
 (`InvalidArgument` при уменьшении). Верхняя граница Update (4 TiB) меньше Create (≈26 TiB).
 - Validated-by: `DISK-CR-BVA-SIZE-{MIN-OK,BELOW-MIN,CREATE-MAX-OK,ABOVE-CREATE-MAX}`, `DISK-UPD-SIZE-{INCREASE-OK,DECREASE-REJECT}`
 - Agent-check: владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются.
@@ -123,7 +123,7 @@ Per-platform валидация. Невалидные → `InvalidArgument`.
 - Agent-check: резолв `machine_type_id` против каталога — `internal/apps/kacho/api/instance/instance.go` (`resolveMachineType`), сам каталог — `internal/apps/kacho/api/machinetype/machine_type.go`. Сырое описание ресурсов и таблица платформ с контракта сняты (`reserved` в `proto/kacho/cloud/compute/v1/instance_service.proto`).
 
 ### REQ-VAL-04 — `boot_disk_spec` / `secondary_disk_specs[i]`: exactly one of {disk_id, disk_spec}   [P1]
-И `disk_id`, и `disk_spec` одновременно → `InvalidArgument` (proto `(exactly_one)`).
+И `disk_id`, и `disk_spec` одновременно → `InvalidArgument` (отвергает use-case синхронно).
 - Validated-by: `INST-CR-VAL-BOOTDISK-EXACTLY-ONE`
 - Agent-check: sync-валидация `AttachedDiskSpec` в `InstanceService.Create`/`AttachDisk`.
 

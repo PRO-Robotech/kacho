@@ -10,7 +10,6 @@
 package loadbalancerv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
@@ -480,12 +479,12 @@ var File_kacho_cloud_loadbalancer_v1_health_check_proto protoreflect.FileDescrip
 
 const file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDesc = "" +
 	"\n" +
-	".kacho/cloud/loadbalancer/v1/health_check.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1ckacho/cloud/validation.proto\"\xe1\t\n" +
+	".kacho/cloud/loadbalancer/v1/health_check.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1egoogle/protobuf/duration.proto\"\xc7\t\n" +
 	"\vHealthCheck\x125\n" +
 	"\binterval\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\binterval\x123\n" +
-	"\atimeout\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x129\n" +
-	"\x13unhealthy_threshold\x18\x04 \x01(\x03B\b\xfa\xc71\x042-10R\x12unhealthyThreshold\x125\n" +
-	"\x11healthy_threshold\x18\x05 \x01(\x03B\b\xfa\xc71\x042-10R\x10healthyThreshold\x12G\n" +
+	"\atimeout\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x12/\n" +
+	"\x13unhealthy_threshold\x18\x04 \x01(\x03R\x12unhealthyThreshold\x12+\n" +
+	"\x11healthy_threshold\x18\x05 \x01(\x03R\x10healthyThreshold\x12G\n" +
 	"\x03tcp\x18\x06 \x01(\v23.kacho.cloud.loadbalancer.v1.HealthCheck.TcpOptionsH\x00R\x03tcp\x12J\n" +
 	"\x04http\x18\a \x01(\v24.kacho.cloud.loadbalancer.v1.HealthCheck.HttpOptionsH\x00R\x04http\x12M\n" +
 	"\x05https\x18\b \x01(\v25.kacho.cloud.loadbalancer.v1.HealthCheck.HttpsOptionsH\x00R\x05https\x12J\n" +
@@ -515,8 +514,8 @@ const file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aD\n" +
 	"\vGrpcOptions\x12\x12\n" +
 	"\x04port\x18\x01 \x01(\x03R\x04port\x12!\n" +
-	"\fservice_name\x18\x02 \x01(\tR\vserviceNameB\x0f\n" +
-	"\aoptions\x12\x04\xc0\xc11\x01J\x04\b\x01\x10\x02R\x04nameBRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
+	"\fservice_name\x18\x02 \x01(\tR\vserviceNameB\t\n" +
+	"\aoptionsJ\x04\b\x01\x10\x02R\x04nameBRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
 
 var (
 	file_kacho_cloud_loadbalancer_v1_health_check_proto_rawDescOnce sync.Once

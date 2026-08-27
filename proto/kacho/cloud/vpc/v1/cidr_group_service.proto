@@ -10,7 +10,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/vpc/v1/cidr_group.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
@@ -174,22 +173,22 @@ service CidrGroupService {
 
 message GetCidrGroupRequest {
   // ID of the CidrGroup resource to return.
-  string cidr_group_id = 1 [(required) = true, (length) = "<=50"];
+  string cidr_group_id = 1;
 }
 
 message ListCidrGroupsRequest {
   // ID of the project to list CIDR groups in.
-  string project_id = 1 [(required) = true, (length) = "<=50"];
+  string project_id = 1;
 
   // The maximum number of results per page to return. Rejected outside [0..1000]
   // rather than clamped; 0 means the service default.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 
   // A filter expression. Filtering is available on [CidrGroup.name].
-  string filter = 4 [(length) = "<=1000"];
+  string filter = 4;
 }
 
 message ListCidrGroupsResponse {
@@ -202,16 +201,16 @@ message ListCidrGroupsResponse {
 
 message CreateCidrGroupRequest {
   // ID of the project to create the CIDR group in.
-  string project_id = 1 [(required) = true, (length) = "<=50"];
+  string project_id = 1;
 
   // Name of the CIDR group. Unique within the project.
-  string name = 2 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
+  string name = 2;
 
   // Description of the CIDR group.
-  string description = 3 [(length) = "<=256"];
+  string description = 3;
 
   // Resource labels as `` key:value `` pairs.
-  map<string, string> labels = 4 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 4;
 
   // Initial IPv4 members, canonical network form (host bits zero). At most 64
   // per family — the cap is what the set becomes as a rule size at the executor.
@@ -228,20 +227,20 @@ message CreateCidrGroupMetadata {
 
 message UpdateCidrGroupRequest {
   // ID of the CidrGroup resource to update.
-  string cidr_group_id = 1 [(required) = true, (length) = "<=50"];
+  string cidr_group_id = 1;
 
   // Field mask specifying which fields are updated. Membership fields are not
   // updatable here — use :add-cidr-blocks / :remove-cidr-blocks.
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the CIDR group.
-  string name = 3 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
+  string name = 3;
 
   // Description of the CIDR group.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Resource labels as `` key:value `` pairs.
-  map<string, string> labels = 5 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 5;
 }
 
 message UpdateCidrGroupMetadata {
@@ -251,7 +250,7 @@ message UpdateCidrGroupMetadata {
 
 message AddCidrGroupCidrBlocksRequest {
   // ID of the CidrGroup whose membership is being extended.
-  string cidr_group_id = 1 [(required) = true, (length) = "<=50"];
+  string cidr_group_id = 1;
 
   // IPv4 block(s) to add, canonical network form (host bits zero).
   repeated string v4_cidr_blocks = 2;
@@ -262,7 +261,7 @@ message AddCidrGroupCidrBlocksRequest {
 
 message RemoveCidrGroupCidrBlocksRequest {
   // ID of the CidrGroup whose membership is being reduced.
-  string cidr_group_id = 1 [(required) = true, (length) = "<=50"];
+  string cidr_group_id = 1;
 
   // IPv4 block(s) to remove.
   repeated string v4_cidr_blocks = 2;
@@ -273,7 +272,7 @@ message RemoveCidrGroupCidrBlocksRequest {
 
 message DeleteCidrGroupRequest {
   // ID of the CidrGroup resource to delete.
-  string cidr_group_id = 1 [(required) = true, (length) = "<=50"];
+  string cidr_group_id = 1;
 }
 
 message DeleteCidrGroupMetadata {
@@ -283,13 +282,13 @@ message DeleteCidrGroupMetadata {
 
 message ListCidrGroupOperationsRequest {
   // ID of the CidrGroup resource to list operations for.
-  string cidr_group_id = 1 [(required) = true, (length) = "<=50"];
+  string cidr_group_id = 1;
 
   // The maximum number of results per page to return.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListCidrGroupOperationsResponse {

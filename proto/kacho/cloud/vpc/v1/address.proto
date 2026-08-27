@@ -7,7 +7,6 @@ package kacho.cloud.vpc.v1;
 
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/reference/reference.proto";
-import "kacho/cloud/validation.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
 
@@ -61,8 +60,6 @@ message Address {
   map<string, string> labels = 6;
 
   oneof address {
-    option (exactly_one) = true;
-
     // External ipv4 address specification.
     ExternalIpv4Address external_ipv4_address = 7;
     // Internal ipv4 address specification
@@ -180,8 +177,6 @@ message InternalIpv4Address {
   string address = 1;
 
   oneof scope {
-    option (exactly_one) = true;
-
     // Subnet from which the address will be allocated
     string subnet_id = 2;
   }
@@ -192,8 +187,6 @@ message InternalIpv6Address {
   string address = 1;
 
   oneof scope {
-    option (exactly_one) = true;
-
     // Subnet (with a v6_cidr_block) from which the address will be allocated
     string subnet_id = 2;
   }

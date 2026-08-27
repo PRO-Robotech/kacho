@@ -10,7 +10,6 @@
 package geov1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -210,19 +209,18 @@ var File_kacho_cloud_geo_v1_zone_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_geo_v1_zone_service_proto_rawDesc = "" +
 	"\n" +
-	"%kacho/cloud/geo/v1/zone_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xb0\x01\n" +
-	"\x10ListZonesRequest\x12'\n" +
-	"\tpage_size\x18\x01 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"%kacho/cloud/geo/v1/zone_service.proto\x12\x12kacho.cloud.geo.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1dkacho/cloud/geo/v1/zone.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\x99\x01\n" +
+	"\x10ListZonesRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\x1b\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\x12\x1b\n" +
 	"\tregion_id\x18\x03 \x01(\tR\bregionId\x12,\n" +
 	"\x12open_for_placement\x18\x04 \x01(\bR\x10openForPlacement\"k\n" +
 	"\x11ListZonesResponse\x12.\n" +
 	"\x05zones\x18\x01 \x03(\v2\x18.kacho.cloud.geo.v1.ZoneR\x05zones\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"7\n" +
-	"\x0eGetZoneRequest\x12%\n" +
-	"\azone_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x06zoneId2\xc2\x02\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\")\n" +
+	"\x0eGetZoneRequest\x12\x17\n" +
+	"\azone_id\x18\x01 \x01(\tR\x06zoneId2\xc2\x02\n" +
 	"\vZoneService\x12\x94\x01\n" +
 	"\x03Get\x12\".kacho.cloud.geo.v1.GetZoneRequest\x1a\x18.kacho.cloud.geo.v1.Zone\"O\x8a\xb5\x18\rgeo.zones.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\f\n" +
 	"\acluster\x12\x01*\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x19\x12\x17/geo/v1/zones/{zone_id}\x12\x9b\x01\n" +

@@ -10,7 +10,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -523,34 +522,33 @@ var File_kacho_cloud_iam_v1_session_revocations_service_proto protoreflect.FileD
 
 const file_kacho_cloud_iam_v1_session_revocations_service_proto_rawDesc = "" +
 	"\n" +
-	"4kacho/cloud/iam/v1/session_revocations_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a+kacho/cloud/iam/v1/session_revocation.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xfb\x01\n" +
-	"\rRevokeRequest\x12%\n" +
-	"\ttoken_jti\x18\x01 \x01(\tB\b\x8a\xc81\x04<=64R\btokenJti\x12%\n" +
-	"\auser_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12%\n" +
-	"\x06reason\x18\x03 \x01(\tB\r\xe8\xc71\x01\x8a\xc81\x051-128R\x06reason\x12@\n" +
+	"4kacho/cloud/iam/v1/session_revocations_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a+kacho/cloud/iam/v1/session_revocation.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"\xd4\x01\n" +
+	"\rRevokeRequest\x12\x1b\n" +
+	"\ttoken_jti\x18\x01 \x01(\tR\btokenJti\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12@\n" +
 	"\x0ettl_expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\fttlExpiresAt\x123\n" +
 	"\x16revoke_all_user_tokens\x18\x05 \x01(\bR\x13revokeAllUserTokens\"N\n" +
 	"\x0eRevokeMetadata\x12#\n" +
 	"\rrevoked_count\x18\x01 \x01(\x05R\frevokedCount\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\tR\x06userId\"=\n" +
-	"\x10IsRevokedRequest\x12)\n" +
-	"\ttoken_jti\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=64R\btokenJti\"\x80\x01\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\"/\n" +
+	"\x10IsRevokedRequest\x12\x1b\n" +
+	"\ttoken_jti\x18\x01 \x01(\tR\btokenJti\"\x80\x01\n" +
 	"\x11IsRevokedResponse\x12\x18\n" +
 	"\arevoked\x18\x01 \x01(\bR\arevoked\x129\n" +
 	"\n" +
 	"revoked_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"\x8d\x01\n" +
-	"\x11ListByUserRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"h\n" +
+	"\x11ListByUserRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x85\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x85\x01\n" +
 	"\x12ListByUserResponse\x12G\n" +
 	"\vrevocations\x18\x01 \x03(\v2%.kacho.cloud.iam.v1.SessionRevocationR\vrevocations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"?\n" +
-	"\x16SessionCutoffOfRequest\x12%\n" +
-	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\"\x88\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"1\n" +
+	"\x16SessionCutoffOfRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\"\x88\x01\n" +
 	"\x17SessionCutoffOfResponse\x12\x14\n" +
 	"\x05found\x18\x01 \x01(\bR\x05found\x12?\n" +
 	"\rrevoke_before\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\frevokeBefore\x12\x16\n" +

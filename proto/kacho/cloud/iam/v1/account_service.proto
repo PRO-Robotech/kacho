@@ -10,7 +10,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/iam/v1/account.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -153,23 +152,23 @@ service AccountService {
 
 message GetAccountRequest {
   // ID of the Account resource to return.
-  string account_id = 1 [(required) = true, (length) = "<=20"];
+  string account_id = 1;
 }
 
 message ListAccountsRequest {
   // The maximum number of results per page to return. Default value: 100.
-  int64 page_size = 1 [(value) = "<=1000"];
+  int64 page_size = 1;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListAccountsResponse.next_page_token] returned by a previous list request.
-  string page_token = 2 [(length) = "<=100"];
+  string page_token = 2;
 
   // A filter expression that filters resources listed in the response.
   // The expression must specify:
   // 1. The field name. Currently you can use filtering only on the [Account.name] field.
   // 2. An `=` operator.
   // 3. The value in double quotes (`"`).
-  string filter = 3 [(length) = "<=1000"];
+  string filter = 3;
 }
 
 message ListAccountsResponse {
@@ -182,13 +181,13 @@ message ListAccountsResponse {
 
 message CreateAccountRequest {
   // Name of the account. Must be unique within the IAM domain. 3-63 characters long.
-  string name = 1 [(required) = true, (length) = "3-63", (pattern) = "[a-z]([-a-z0-9]{0,61}[a-z0-9])?"];
+  string name = 1;
 
   // Description of the account.
-  string description = 2 [(length) = "<=256"];
+  string description = 2;
 
   // Resource labels as `key:value` pairs.
-  map<string, string> labels = 3 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 3;
 
   // OUTPUT-ONLY (redesign-2026 F1). ownerUserId° is derived from the
   // authenticated caller — it MUST NOT be set on input. Supplying ANY value
@@ -196,12 +195,12 @@ message CreateAccountRequest {
   // "Illegal argument ownerUserId (derived from caller)", first statement,
   // before the Operation is minted. The verified principal becomes the owner
   // and the subject of the owner AccessBinding co-committed by the Create saga.
-  string owner_user_id = 4 [(length) = "<=20"];
+  string owner_user_id = 4;
 }
 
 message UpdateAccountRequest {
   // ID of the Account resource to update.
-  string account_id = 1 [(required) = true, (length) = "<=20"];
+  string account_id = 1;
 
   // Field mask that specifies which fields of the Account resource are going to be updated.
   // Allowed fields: name, description, labels.
@@ -209,30 +208,30 @@ message UpdateAccountRequest {
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the account.
-  string name = 3 [(pattern) = "|[a-z]([-a-z0-9]{0,61}[a-z0-9])?"];
+  string name = 3;
 
   // Description of the account.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Resource labels as `key:value` pairs.
-  map<string, string> labels = 5 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 5;
 }
 
 message DeleteAccountRequest {
   // ID of the Account resource to delete.
-  string account_id = 1 [(required) = true, (length) = "<=20"];
+  string account_id = 1;
 }
 
 message ListAccountOperationsRequest {
   // ID of the Account resource to list operations for.
-  string account_id = 1 [(required) = true, (length) = "<=20"];
+  string account_id = 1;
 
   // The maximum number of results per page that should be returned. Default value: 100.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListAccountOperationsResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListAccountOperationsResponse {
@@ -246,14 +245,14 @@ message ListAccountOperationsResponse {
 message ListAllAccountOperationsRequest {
   // ID of the Account whose IAM operations are aggregated. Filters by the
   // denormalized `account_id` column on the operations rows.
-  string account_id = 1 [(required) = true, (length) = "<=20"];
+  string account_id = 1;
 
   // The maximum number of results per page that should be returned. Default value: 100.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListAllAccountOperationsResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListAllAccountOperationsResponse {

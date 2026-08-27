@@ -10,7 +10,6 @@
 package loadbalancerv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -32,8 +31,9 @@ const (
 )
 
 type GetTargetGroupRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetGroupId string                 `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the TargetGroup.
+	TargetGroupId string `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -76,11 +76,18 @@ func (x *GetTargetGroupRequest) GetTargetGroupId() string {
 }
 
 type ListTargetGroupsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	PageSize      int64                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	Filter        string                 `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Project.
+	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Maximum number of results per page. 0 selects the service default (50);
+	// a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Page token. To get the next page of results, set [page_token] to the
+	// [ListTargetGroupsResponse.next_page_token] returned by a previous list request.
+	PageToken string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Filter expression. Currently only the [name] field is filterable: the field
+	// name, an `=` operator, and the value in double quotes.
+	Filter        string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -196,12 +203,19 @@ func (x *ListTargetGroupsResponse) GetNextPageToken() string {
 }
 
 type CreateTargetGroupRequest struct {
-	state       protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId   string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Description string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	Labels      map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	RegionId    string                 `protobuf:"bytes,5,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Project.
+	ProjectId string `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// Name of the TargetGroup. Must be a DNS label (lowercase letters, digits and
+	// hyphens, 1-63 characters) and is unique within the project. Empty on Create
+	// makes the server derive the name from the assigned id.
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// Description of the TargetGroup.
+	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	// Resource labels as “ key:value “ pairs.
+	Labels map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// ID of the Region.
+	RegionId string `protobuf:"bytes,5,opt,name=region_id,json=regionId,proto3" json:"region_id,omitempty"`
 	// Inline initial targets accepted at Create time. Validation: per-target
 	// domain.Validate() + peer-resolve in worker (design §4.3).
 	Targets []*Target `protobuf:"bytes,7,rep,name=targets,proto3" json:"targets,omitempty"`
@@ -366,12 +380,18 @@ func (x *CreateTargetGroupMetadata) GetTargetGroupId() string {
 }
 
 type UpdateTargetGroupRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the TargetGroup.
 	TargetGroupId string                 `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
 	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
-	Labels        map[string]string      `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Name of the TargetGroup. Must be a DNS label (lowercase letters, digits and
+	// hyphens, 1-63 characters) and is unique within the project. Empty on Create
+	// makes the server derive the name from the assigned id.
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// Description of the TargetGroup.
+	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	// Resource labels as “ key:value “ pairs.
+	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Targets list replacement is rejected on this RPC — use AddTargets /
 	// RemoveTargets so each target mutation goes through its own Operation
 	// history and idempotency keys (design §3.4). The refusal is driven by the
@@ -538,8 +558,9 @@ func (x *UpdateTargetGroupMetadata) GetTargetGroupId() string {
 }
 
 type DeleteTargetGroupRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetGroupId string                 `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the TargetGroup.
+	TargetGroupId string `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -626,9 +647,11 @@ func (x *DeleteTargetGroupMetadata) GetTargetGroupId() string {
 }
 
 type MoveTargetGroupRequest struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	TargetGroupId        string                 `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
-	DestinationProjectId string                 `protobuf:"bytes,2,opt,name=destination_project_id,json=destinationProjectId,proto3" json:"destination_project_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the TargetGroup being moved.
+	TargetGroupId string `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
+	// ID of the Project the target group is moved to.
+	DestinationProjectId string `protobuf:"bytes,2,opt,name=destination_project_id,json=destinationProjectId,proto3" json:"destination_project_id,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -730,9 +753,12 @@ func (x *MoveTargetGroupMetadata) GetDestinationProjectId() string {
 }
 
 type AddTargetsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetGroupId string                 `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
-	Targets       []*Target              `protobuf:"bytes,2,rep,name=targets,proto3" json:"targets,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the TargetGroup.
+	TargetGroupId string `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
+	// Targets to add. Membership is a set: order is not preserved and repeating an
+	// existing target is a no-op.
+	Targets       []*Target `protobuf:"bytes,2,rep,name=targets,proto3" json:"targets,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -826,9 +852,11 @@ func (x *AddTargetsMetadata) GetTargetGroupId() string {
 }
 
 type RemoveTargetsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetGroupId string                 `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
-	Targets       []*Target              `protobuf:"bytes,2,rep,name=targets,proto3" json:"targets,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the TargetGroup.
+	TargetGroupId string `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
+	// Targets to remove. Membership is a set: removing an absent target is a no-op.
+	Targets       []*Target `protobuf:"bytes,2,rep,name=targets,proto3" json:"targets,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -922,10 +950,15 @@ func (x *RemoveTargetsMetadata) GetTargetGroupId() string {
 }
 
 type ListTargetGroupOperationsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetGroupId string                 `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
-	PageSize      int64                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the TargetGroup.
+	TargetGroupId string `protobuf:"bytes,1,opt,name=target_group_id,json=targetGroupId,proto3" json:"target_group_id,omitempty"`
+	// Maximum number of results per page. 0 selects the service default (50);
+	// a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Page token. To get the next page of results, set [page_token] to the
+	// [ListTargetGroupOperationsResponse.next_page_token] returned by a previous list request.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1037,31 +1070,29 @@ var File_kacho_cloud_loadbalancer_v1_target_group_service_proto protoreflect.Fil
 
 const file_kacho_cloud_loadbalancer_v1_target_group_service_proto_rawDesc = "" +
 	"\n" +
-	"6kacho/cloud/loadbalancer/v1/target_group_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a.kacho/cloud/loadbalancer/v1/target_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"M\n" +
-	"\x15GetTargetGroupRequest\x124\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\rtargetGroupId\"\xbd\x01\n" +
-	"\x17ListTargetGroupsRequest\x12+\n" +
+	"6kacho/cloud/loadbalancer/v1/target_group_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a.kacho/cloud/loadbalancer/v1/health_check.proto\x1a.kacho/cloud/loadbalancer/v1/target_group.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"?\n" +
+	"\x15GetTargetGroupRequest\x12&\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"\x8c\x01\n" +
+	"\x17ListTargetGroupsRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
-	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\"\x91\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x04 \x01(\tR\x06filter\"\x91\x01\n" +
 	"\x18ListTargetGroupsResponse\x12M\n" +
 	"\rtarget_groups\x18\x01 \x03(\v2(.kacho.cloud.loadbalancer.v1.TargetGroupR\ftargetGroups\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xa9\x06\n" +
-	"\x18CreateTargetGroupRequest\x12+\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x8e\x05\n" +
+	"\x18CreateTargetGroupRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x125\n" +
-	"\x04name\x18\x02 \x01(\tB!\xf2\xc71\x1d|[a-z][-a-z0-9]{1,61}[a-z0-9]R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x96\x01\n" +
-	"\x06labels\x18\x04 \x03(\v2A.kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12%\n" +
-	"\tregion_id\x18\x05 \x01(\tB\b\x8a\xc81\x04<=50R\bregionId\x12=\n" +
-	"\atargets\x18\a \x03(\v2#.kacho.cloud.loadbalancer.v1.TargetR\atargets\x12Q\n" +
-	"\fhealth_check\x18\b \x01(\v2(.kacho.cloud.loadbalancer.v1.HealthCheckB\x04\xe8\xc71\x01R\vhealthCheck\x12#\n" +
-	"\x04port\x18\v \x01(\x05B\x0f\xe8\xc71\x01\xfa\xc71\a1-65535R\x04port\x12L\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12Y\n" +
+	"\x06labels\x18\x04 \x03(\v2A.kacho.cloud.loadbalancer.v1.CreateTargetGroupRequest.LabelsEntryR\x06labels\x12\x1b\n" +
+	"\tregion_id\x18\x05 \x01(\tR\bregionId\x12=\n" +
+	"\atargets\x18\a \x03(\v2#.kacho.cloud.loadbalancer.v1.TargetR\atargets\x12K\n" +
+	"\fhealth_check\x18\b \x01(\v2(.kacho.cloud.loadbalancer.v1.HealthCheckR\vhealthCheck\x12\x12\n" +
+	"\x04port\x18\v \x01(\x05R\x04port\x12L\n" +
 	"\x14deregistration_delay\x18\f \x01(\v2\x19.google.protobuf.DurationR\x13deregistrationDelay\x128\n" +
 	"\n" +
 	"slow_start\x18\r \x01(\v2\x19.google.protobuf.DurationR\tslowStart\x1a9\n" +
@@ -1071,53 +1102,52 @@ const file_kacho_cloud_loadbalancer_v1_target_group_service_proto_rawDesc = "" +
 	"J\x04\b\n" +
 	"\x10\vR\x1cderegistration_delay_secondsR\x12slow_start_seconds\"C\n" +
 	"\x19CreateTargetGroupMetadata\x12&\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"\xb8\x06\n" +
-	"\x18UpdateTargetGroupRequest\x124\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\rtargetGroupId\x12;\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"\xb1\x05\n" +
+	"\x18UpdateTargetGroupRequest\x12&\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x125\n" +
-	"\x04name\x18\x03 \x01(\tB!\xf2\xc71\x1d|[a-z][-a-z0-9]{1,61}[a-z0-9]R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x96\x01\n" +
-	"\x06labels\x18\x05 \x03(\v2A.kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12=\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12Y\n" +
+	"\x06labels\x18\x05 \x03(\v2A.kacho.cloud.loadbalancer.v1.UpdateTargetGroupRequest.LabelsEntryR\x06labels\x12=\n" +
 	"\atargets\x18\x06 \x03(\v2#.kacho.cloud.loadbalancer.v1.TargetR\atargets\x12K\n" +
 	"\fhealth_check\x18\a \x01(\v2(.kacho.cloud.loadbalancer.v1.HealthCheckR\vhealthCheck\x12L\n" +
 	"\x14deregistration_delay\x18\n" +
 	" \x01(\v2\x19.google.protobuf.DurationR\x13deregistrationDelay\x128\n" +
 	"\n" +
-	"slow_start\x18\v \x01(\v2\x19.google.protobuf.DurationR\tslowStart\x12\x1f\n" +
-	"\x04port\x18\f \x01(\x05B\v\xfa\xc71\a1-65535R\x04port\x1a9\n" +
+	"slow_start\x18\v \x01(\v2\x19.google.protobuf.DurationR\tslowStart\x12\x12\n" +
+	"\x04port\x18\f \x01(\x05R\x04port\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\b\x10\tJ\x04\b\t\x10\n" +
 	"R\x1cderegistration_delay_secondsR\x12slow_start_seconds\"C\n" +
 	"\x19UpdateTargetGroupMetadata\x12&\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"P\n" +
-	"\x18DeleteTargetGroupRequest\x124\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\rtargetGroupId\"C\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"B\n" +
+	"\x18DeleteTargetGroupRequest\x12&\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"C\n" +
 	"\x19DeleteTargetGroupMetadata\x12&\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"\x92\x01\n" +
-	"\x16MoveTargetGroupRequest\x124\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\rtargetGroupId\x12B\n" +
-	"\x16destination_project_id\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x14destinationProjectId\"w\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"v\n" +
+	"\x16MoveTargetGroupRequest\x12&\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\x124\n" +
+	"\x16destination_project_id\x18\x02 \x01(\tR\x14destinationProjectId\"w\n" +
 	"\x17MoveTargetGroupMetadata\x12&\n" +
 	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\x124\n" +
-	"\x16destination_project_id\x18\x02 \x01(\tR\x14destinationProjectId\"\x91\x01\n" +
-	"\x11AddTargetsRequest\x124\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\rtargetGroupId\x12F\n" +
-	"\atargets\x18\x02 \x03(\v2#.kacho.cloud.loadbalancer.v1.TargetB\a\x82\xc81\x03>=1R\atargets\"<\n" +
+	"\x16destination_project_id\x18\x02 \x01(\tR\x14destinationProjectId\"z\n" +
+	"\x11AddTargetsRequest\x12&\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\x12=\n" +
+	"\atargets\x18\x02 \x03(\v2#.kacho.cloud.loadbalancer.v1.TargetR\atargets\"<\n" +
 	"\x12AddTargetsMetadata\x12&\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"\x94\x01\n" +
-	"\x14RemoveTargetsRequest\x124\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\rtargetGroupId\x12F\n" +
-	"\atargets\x18\x02 \x03(\v2#.kacho.cloud.loadbalancer.v1.TargetB\a\x82\xc81\x03>=1R\atargets\"?\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"}\n" +
+	"\x14RemoveTargetsRequest\x12&\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\x12=\n" +
+	"\atargets\x18\x02 \x03(\v2#.kacho.cloud.loadbalancer.v1.TargetR\atargets\"?\n" +
 	"\x15RemoveTargetsMetadata\x12&\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"\xab\x01\n" +
-	" ListTargetGroupOperationsRequest\x124\n" +
-	"\x0ftarget_group_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\rtargetGroupId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\"\x86\x01\n" +
+	" ListTargetGroupOperationsRequest\x12&\n" +
+	"\x0ftarget_group_id\x18\x01 \x01(\tR\rtargetGroupId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x8d\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8d\x01\n" +
 	"!ListTargetGroupOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +

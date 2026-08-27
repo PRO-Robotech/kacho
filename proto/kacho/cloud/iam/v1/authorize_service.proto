@@ -8,7 +8,6 @@ package kacho.cloud.iam.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
@@ -200,25 +199,25 @@ service AuthorizeService {
 // the type prefix (i.e. `enp_xxx`, not `vpc_network:enp_xxx`).
 message ResourceRef {
   // FGA object type. 1-32 chars.
-  string type = 1 [(required) = true, (length) = "1-32"];
+  string type = 1;
 
   // Bare resource id (no type prefix). 1-64 chars.
-  string id = 2 [(required) = true, (length) = "1-64"];
+  string id = 2;
 }
 
 message AuthorizeCheckRequest {
   // FGA-style subject string ("user:<usr_xxx>" / "service_account:<sva_xxx>"
   // / "group:<grp_xxx>#member"). Required.
-  string subject = 1 [(required) = true, (length) = "<=128"];
+  string subject = 1;
 
   // Resource the action is being checked against.
-  ResourceRef resource = 2 [(required) = true];
+  ResourceRef resource = 2;
 
   // Permission string in `<domain>.<resource>.<verb>` form
   // ("vpc.networks.create"). Resolved to an FGA relation server-side
   // when `required_relation` is empty (verb → relation: get/list → viewer,
   // create/update → editor, delete → admin). 1-128 chars.
-  string action = 3 [(required) = true, (length) = "1-128"];
+  string action = 3;
 
   // Optional opaque condition-evaluation context.
   // Reserved keys:
@@ -233,7 +232,7 @@ message AuthorizeCheckRequest {
   google.protobuf.Struct context = 4;
 
   // Correlation id for downstream logs / traces. ≤ 64 chars.
-  string trace_id = 5 [(length) = "<=64"];
+  string trace_id = 5;
 
   // Explicit FGA relation override. When set, the
   // server uses this relation verbatim instead of deriving from `action`'s
@@ -243,7 +242,7 @@ message AuthorizeCheckRequest {
   // populates this from the permission catalog's `required_relation` field,
   // which proto annotations declare per-RPC. Empty = legacy behaviour
   // (action-verb derivation). 1-32 chars.
-  string required_relation = 6 [(length) = "<=32"];
+  string required_relation = 6;
 }
 
 message AuthorizeCheckResponse {
@@ -274,15 +273,15 @@ message AuthorizeCheckResponse {
 
 message BatchAuthorizeCheckRequest {
   // Batched checks. ≤ 100 entries.
-  repeated AuthorizeCheckRequest checks = 1 [(required) = true];
+  repeated AuthorizeCheckRequest checks = 1;
 
   // Optional scope id for authz of the batch as a whole. When set, the
   // gateway gates the entire batch on this scope's `iam.authorize.batchCheck`
   // permission instead of per-item.
-  string scope_id = 2 [(length) = "<=20"];
+  string scope_id = 2;
 
   // Correlation id; ≤ 64 chars.
-  string trace_id = 3 [(length) = "<=64"];
+  string trace_id = 3;
 }
 
 message BatchAuthorizeCheckResponse {
@@ -293,20 +292,20 @@ message BatchAuthorizeCheckResponse {
 
 message ListSubjectsRequest {
   // Resource for which to enumerate subjects.
-  ResourceRef resource = 1 [(required) = true];
+  ResourceRef resource = 1;
 
   // Action string. 1-128 chars.
-  string action = 2 [(required) = true, (length) = "1-128"];
+  string action = 2;
 
   // Page size; default 100, max 1000.
-  int64 page_size = 3 [(value) = "<=1000"];
+  int64 page_size = 3;
 
   // Page token.
-  string page_token = 4 [(length) = "<=100"];
+  string page_token = 4;
 
   // Subject-type filter — when set, only return subjects of this type
   // ("user" / "service_account" / "group"). Empty = no filter.
-  string subject_type_filter = 5 [(length) = "<=32"];
+  string subject_type_filter = 5;
 }
 
 message ListSubjectsResponse {
@@ -319,11 +318,11 @@ message ListSubjectsResponse {
 
 message ExpandRelationsRequest {
   // Resource whose subjects to list.
-  ResourceRef resource = 1 [(required) = true];
+  ResourceRef resource = 1;
 
   // Relation name (`viewer` / `editor` / `admin` / domain-specific).
   // 1-32 chars.
-  string relation = 2 [(required) = true, (length) = "1-32"];
+  string relation = 2;
 
   // `max_depth` bounded how far the answer descended while the answer was a
   // TREE. It is one level now — the basis of a right is a flat record — so depth

@@ -12,7 +12,6 @@ import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/loadbalancer/v1/health_check.proto";
 import "kacho/cloud/loadbalancer/v1/target_group.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1";
@@ -174,20 +173,22 @@ service TargetGroupService {
 }
 
 message GetTargetGroupRequest {
-  string target_group_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  // ID of the TargetGroup.
+  string target_group_id = 1;
 }
 
 message ListTargetGroupsRequest {
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
-  int64 page_size = 2 [(value) = "<=1000"];
-  string page_token = 3 [(length) = "<=100"];
-  string filter = 4 [(length) = "<=1000"];
+  // ID of the Project.
+  string project_id = 1;
+  // Maximum number of results per page. 0 selects the service default (50);
+  // a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+  int64 page_size = 2;
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListTargetGroupsResponse.next_page_token] returned by a previous list request.
+  string page_token = 3;
+  // Filter expression. Currently only the [name] field is filterable: the field
+  // name, an `=` operator, and the value in double quotes.
+  string filter = 4;
 }
 
 message ListTargetGroupsResponse {
@@ -202,35 +203,30 @@ message CreateTargetGroupRequest {
   reserved 9, 10;
   reserved "deregistration_delay_seconds", "slow_start_seconds";
 
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
-  string name = 2 [(pattern) = "|[a-z][-a-z0-9]{1,61}[a-z0-9]"];
-  string description = 3 [(length) = "<=256"];
-  map<string, string> labels = 4 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_0-9a-z]*"
-  ];
-  string region_id = 5 [(length) = "<=50"];
+  // ID of the Project.
+  string project_id = 1;
+  // Name of the TargetGroup. Must be a DNS label (lowercase letters, digits and
+  // hyphens, 1-63 characters) and is unique within the project. Empty on Create
+  // makes the server derive the name from the assigned id.
+  string name = 2;
+  // Description of the TargetGroup.
+  string description = 3;
+  // Resource labels as `` key:value `` pairs.
+  map<string, string> labels = 4;
+  // ID of the Region.
+  string region_id = 5;
 
   // Inline initial targets accepted at Create time. Validation: per-target
   // domain.Validate() + peer-resolve in worker (design §4.3).
   repeated Target targets = 7;
 
   // Required — single embedded HC per group (design §2.2).
-  HealthCheck health_check = 8 [(required) = true];
+  HealthCheck health_check = 8;
 
   // Required — single backend port of the group (NLB-1b F6-co-req). Every
   // target receives forwarded traffic on this port; echoed by
   // Listener.resolved_backend_port. Range 1..65535.
-  int32 port = 11 [
-    (required) = true,
-    (value) = "1-65535"
-  ];
+  int32 port = 11;
 
   // Drain timeout for removed targets (design §4.4). NLB-1c (B8): Duration,
   // bounds [0s, 3600s]. Default 300s when unset.
@@ -251,20 +247,17 @@ message UpdateTargetGroupRequest {
   reserved 8, 9;
   reserved "deregistration_delay_seconds", "slow_start_seconds";
 
-  string target_group_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  // ID of the TargetGroup.
+  string target_group_id = 1;
   google.protobuf.FieldMask update_mask = 2;
-  string name = 3 [(pattern) = "|[a-z][-a-z0-9]{1,61}[a-z0-9]"];
-  string description = 4 [(length) = "<=256"];
-  map<string, string> labels = 5 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_0-9a-z]*"
-  ];
+  // Name of the TargetGroup. Must be a DNS label (lowercase letters, digits and
+  // hyphens, 1-63 characters) and is unique within the project. Empty on Create
+  // makes the server derive the name from the assigned id.
+  string name = 3;
+  // Description of the TargetGroup.
+  string description = 4;
+  // Resource labels as `` key:value `` pairs.
+  map<string, string> labels = 5;
 
   // Targets list replacement is rejected on this RPC — use AddTargets /
   // RemoveTargets so each target mutation goes through its own Operation
@@ -286,7 +279,7 @@ message UpdateTargetGroupRequest {
   // port — single backend port of the group. LIVE-mutable (NLB-1c NLB-1-56):
   // updating it re-echoes into wired listeners' resolved_backend_port. Range
   // 1..65535 (validated in domain when present in update_mask).
-  int32 port = 12 [(value) = "1-65535"];
+  int32 port = 12;
 }
 
 message UpdateTargetGroupMetadata {
@@ -294,10 +287,8 @@ message UpdateTargetGroupMetadata {
 }
 
 message DeleteTargetGroupRequest {
-  string target_group_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  // ID of the TargetGroup.
+  string target_group_id = 1;
 }
 
 message DeleteTargetGroupMetadata {
@@ -305,14 +296,10 @@ message DeleteTargetGroupMetadata {
 }
 
 message MoveTargetGroupRequest {
-  string target_group_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
-  string destination_project_id = 2 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  // ID of the TargetGroup being moved.
+  string target_group_id = 1;
+  // ID of the Project the target group is moved to.
+  string destination_project_id = 2;
 }
 
 message MoveTargetGroupMetadata {
@@ -321,11 +308,11 @@ message MoveTargetGroupMetadata {
 }
 
 message AddTargetsRequest {
-  string target_group_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
-  repeated Target targets = 2 [(size) = ">=1"];
+  // ID of the TargetGroup.
+  string target_group_id = 1;
+  // Targets to add. Membership is a set: order is not preserved and repeating an
+  // existing target is a no-op.
+  repeated Target targets = 2;
 }
 
 message AddTargetsMetadata {
@@ -333,11 +320,10 @@ message AddTargetsMetadata {
 }
 
 message RemoveTargetsRequest {
-  string target_group_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
-  repeated Target targets = 2 [(size) = ">=1"];
+  // ID of the TargetGroup.
+  string target_group_id = 1;
+  // Targets to remove. Membership is a set: removing an absent target is a no-op.
+  repeated Target targets = 2;
 }
 
 message RemoveTargetsMetadata {
@@ -345,12 +331,14 @@ message RemoveTargetsMetadata {
 }
 
 message ListTargetGroupOperationsRequest {
-  string target_group_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
-  int64 page_size = 2 [(value) = "<=1000"];
-  string page_token = 3 [(length) = "<=100"];
+  // ID of the TargetGroup.
+  string target_group_id = 1;
+  // Maximum number of results per page. 0 selects the service default (50);
+  // a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+  int64 page_size = 2;
+  // Page token. To get the next page of results, set [page_token] to the
+  // [ListTargetGroupOperationsResponse.next_page_token] returned by a previous list request.
+  string page_token = 3;
 }
 
 message ListTargetGroupOperationsResponse {

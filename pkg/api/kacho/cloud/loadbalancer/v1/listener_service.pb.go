@@ -10,7 +10,6 @@
 package loadbalancerv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -31,8 +30,9 @@ const (
 )
 
 type GetListenerRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ListenerId    string                 `protobuf:"bytes,1,opt,name=listener_id,json=listenerId,proto3" json:"listener_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Listener.
+	ListenerId    string `protobuf:"bytes,1,opt,name=listener_id,json=listenerId,proto3" json:"listener_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -82,8 +82,12 @@ type ListListenersRequest struct {
 	// Optional filter: restrict to listeners of a single parent load balancer.
 	// Empty = all listeners in the project.
 	LoadBalancerId string `protobuf:"bytes,1,opt,name=load_balancer_id,json=loadBalancerId,proto3" json:"load_balancer_id,omitempty"`
-	PageSize       int64  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken      string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Maximum number of results per page. 0 selects the service default (50);
+	// a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Page token. To get the next page of results, set [page_token] to the
+	// [ListListenersResponse.next_page_token] returned by a previous list request.
+	PageToken string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	// Filter currently supports `name = "..."`.
 	Filter        string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -208,13 +212,21 @@ func (x *ListListenersResponse) GetNextPageToken() string {
 }
 
 type CreateListenerRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	LoadBalancerId string                 `protobuf:"bytes,1,opt,name=load_balancer_id,json=loadBalancerId,proto3" json:"load_balancer_id,omitempty"`
-	Name           string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Description    string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	Labels         map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Protocol       Listener_Protocol      `protobuf:"varint,5,opt,name=protocol,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Protocol" json:"protocol,omitempty"`
-	Port           int64                  `protobuf:"varint,6,opt,name=port,proto3" json:"port,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the parent NetworkLoadBalancer. Immutable after Listener.Create.
+	LoadBalancerId string `protobuf:"bytes,1,opt,name=load_balancer_id,json=loadBalancerId,proto3" json:"load_balancer_id,omitempty"`
+	// Name of the Listener. Must be a DNS label (lowercase letters, digits and
+	// hyphens, 1-63 characters) and is unique within the project. Empty on Create
+	// makes the server derive the name from the assigned id.
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// Description of the Listener.
+	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	// Resource labels as “ key:value “ pairs.
+	Labels map[string]string `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Transport protocol of the listener. Immutable after Listener.Create.
+	Protocol Listener_Protocol `protobuf:"varint,5,opt,name=protocol,proto3,enum=kacho.cloud.loadbalancer.v1.Listener_Protocol" json:"protocol,omitempty"`
+	// Port the listener accepts traffic on. Must be 1-65535 and unique within the load balancer.
+	Port int64 `protobuf:"varint,6,opt,name=port,proto3" json:"port,omitempty"`
 	// Default target group ID — soft reference to a TG attached to the parent
 	// LB. Optional; can be set later via Update.
 	DefaultTargetGroupId string `protobuf:"bytes,11,opt,name=default_target_group_id,json=defaultTargetGroupId,proto3" json:"default_target_group_id,omitempty"`
@@ -365,16 +377,24 @@ func (x *CreateListenerMetadata) GetLoadBalancerId() string {
 }
 
 type UpdateListenerRequest struct {
-	state      protoimpl.MessageState `protogen:"open.v1"`
-	ListenerId string                 `protobuf:"bytes,1,opt,name=listener_id,json=listenerId,proto3" json:"listener_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Listener.
+	ListenerId string `protobuf:"bytes,1,opt,name=listener_id,json=listenerId,proto3" json:"listener_id,omitempty"`
 	// Immutable fields rejected here: load_balancer_id, protocol, port (design
 	// §3.3). Адресных полей у листенера больше нет — address_id/ip_version из
 	// immutable-списка ушли вместе с переездом VIP на LoadBalancer.
-	UpdateMask           *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
-	Name                 string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	Description          string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
-	Labels               map[string]string      `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	DefaultTargetGroupId string                 `protobuf:"bytes,7,opt,name=default_target_group_id,json=defaultTargetGroupId,proto3" json:"default_target_group_id,omitempty"`
+	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	// Name of the Listener. Must be a DNS label (lowercase letters, digits and
+	// hyphens, 1-63 characters) and is unique within the project. Empty on Create
+	// makes the server derive the name from the assigned id.
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// Description of the Listener.
+	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	// Resource labels as “ key:value “ pairs.
+	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// ID of the TargetGroup traffic is sent to when no rule matches. Present in
+	// update_mask, it rewires the listener; empty clears the wiring.
+	DefaultTargetGroupId string `protobuf:"bytes,7,opt,name=default_target_group_id,json=defaultTargetGroupId,proto3" json:"default_target_group_id,omitempty"`
 	// target_group_id — NLB-1b EXPAND (additive, LIVE-mutable): repoint the
 	// listener to another target group. When present in update_mask it takes
 	// precedence over default_target_group_id.
@@ -507,8 +527,9 @@ func (x *UpdateListenerMetadata) GetListenerId() string {
 }
 
 type DeleteListenerRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ListenerId    string                 `protobuf:"bytes,1,opt,name=listener_id,json=listenerId,proto3" json:"listener_id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Listener.
+	ListenerId    string `protobuf:"bytes,1,opt,name=listener_id,json=listenerId,proto3" json:"listener_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -603,10 +624,15 @@ func (x *DeleteListenerMetadata) GetLoadBalancerId() string {
 }
 
 type ListListenerOperationsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ListenerId    string                 `protobuf:"bytes,1,opt,name=listener_id,json=listenerId,proto3" json:"listener_id,omitempty"`
-	PageSize      int64                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Listener.
+	ListenerId string `protobuf:"bytes,1,opt,name=listener_id,json=listenerId,proto3" json:"listener_id,omitempty"`
+	// Maximum number of results per page. 0 selects the service default (50);
+	// a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+	PageSize int64 `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Page token. To get the next page of results, set [page_token] to the
+	// [ListListenerOperationsResponse.next_page_token] returned by a previous list request.
+	PageToken     string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -718,32 +744,30 @@ var File_kacho_cloud_loadbalancer_v1_listener_service_proto protoreflect.FileDes
 
 const file_kacho_cloud_loadbalancer_v1_listener_service_proto_rawDesc = "" +
 	"\n" +
-	"2kacho/cloud/loadbalancer/v1/listener_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a*kacho/cloud/loadbalancer/v1/listener.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"C\n" +
-	"\x12GetListenerRequest\x12-\n" +
-	"\vlistener_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"listenerId\"\xee\x01\n" +
-	"\x14ListListenersRequest\x12+\n" +
+	"2kacho/cloud/loadbalancer/v1/listener_service.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a*kacho/cloud/loadbalancer/v1/listener.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"5\n" +
+	"\x12GetListenerRequest\x12\x1f\n" +
+	"\vlistener_id\x18\x01 \x01(\tR\n" +
+	"listenerId\"\xb3\x01\n" +
+	"\x14ListListenersRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x05 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x122\n" +
-	"\x10load_balancer_id\x18\x01 \x01(\tB\b\x8a\xc81\x04<=50R\x0eloadBalancerId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"project_id\x18\x05 \x01(\tR\tprojectId\x12(\n" +
+	"\x10load_balancer_id\x18\x01 \x01(\tR\x0eloadBalancerId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
-	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\"\x84\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x04 \x01(\tR\x06filter\"\x84\x01\n" +
 	"\x15ListListenersResponse\x12C\n" +
 	"\tlisteners\x18\x01 \x03(\v2%.kacho.cloud.loadbalancer.v1.ListenerR\tlisteners\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xbc\x05\n" +
-	"\x15CreateListenerRequest\x126\n" +
-	"\x10load_balancer_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\x0eloadBalancerId\x125\n" +
-	"\x04name\x18\x02 \x01(\tB!\xf2\xc71\x1d|[a-z][-a-z0-9]{1,61}[a-z0-9]R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x93\x01\n" +
-	"\x06labels\x18\x04 \x03(\v2>.kacho.cloud.loadbalancer.v1.CreateListenerRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12P\n" +
-	"\bprotocol\x18\x05 \x01(\x0e2..kacho.cloud.loadbalancer.v1.Listener.ProtocolB\x04\xe8\xc71\x01R\bprotocol\x12\x1f\n" +
-	"\x04port\x18\x06 \x01(\x03B\v\xfa\xc71\a1-65535R\x04port\x12?\n" +
-	"\x17default_target_group_id\x18\v \x01(\tB\b\x8a\xc81\x04<=50R\x14defaultTargetGroupId\x120\n" +
-	"\x0ftarget_group_id\x18\f \x01(\tB\b\x8a\xc81\x04<=50R\rtargetGroupId\x1a9\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x9b\x04\n" +
+	"\x15CreateListenerRequest\x12(\n" +
+	"\x10load_balancer_id\x18\x01 \x01(\tR\x0eloadBalancerId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12V\n" +
+	"\x06labels\x18\x04 \x03(\v2>.kacho.cloud.loadbalancer.v1.CreateListenerRequest.LabelsEntryR\x06labels\x12J\n" +
+	"\bprotocol\x18\x05 \x01(\x0e2..kacho.cloud.loadbalancer.v1.Listener.ProtocolR\bprotocol\x12\x12\n" +
+	"\x04port\x18\x06 \x01(\x03R\x04port\x125\n" +
+	"\x17default_target_group_id\x18\v \x01(\tR\x14defaultTargetGroupId\x12&\n" +
+	"\x0ftarget_group_id\x18\f \x01(\tR\rtargetGroupId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
@@ -753,37 +777,36 @@ const file_kacho_cloud_loadbalancer_v1_listener_service_proto_rawDesc = "" +
 	"\x16CreateListenerMetadata\x12\x1f\n" +
 	"\vlistener_id\x18\x01 \x01(\tR\n" +
 	"listenerId\x12(\n" +
-	"\x10load_balancer_id\x18\x02 \x01(\tR\x0eloadBalancerId\"\xc4\x04\n" +
-	"\x15UpdateListenerRequest\x12-\n" +
-	"\vlistener_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"\x10load_balancer_id\x18\x02 \x01(\tR\x0eloadBalancerId\"\xb6\x03\n" +
+	"\x15UpdateListenerRequest\x12\x1f\n" +
+	"\vlistener_id\x18\x01 \x01(\tR\n" +
 	"listenerId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x125\n" +
-	"\x04name\x18\x03 \x01(\tB!\xf2\xc71\x1d|[a-z][-a-z0-9]{1,61}[a-z0-9]R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x93\x01\n" +
-	"\x06labels\x18\x05 \x03(\v2>.kacho.cloud.loadbalancer.v1.UpdateListenerRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12?\n" +
-	"\x17default_target_group_id\x18\a \x01(\tB\b\x8a\xc81\x04<=50R\x14defaultTargetGroupId\x120\n" +
-	"\x0ftarget_group_id\x18\b \x01(\tB\b\x8a\xc81\x04<=50R\rtargetGroupId\x1a9\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12V\n" +
+	"\x06labels\x18\x05 \x03(\v2>.kacho.cloud.loadbalancer.v1.UpdateListenerRequest.LabelsEntryR\x06labels\x125\n" +
+	"\x17default_target_group_id\x18\a \x01(\tR\x14defaultTargetGroupId\x12&\n" +
+	"\x0ftarget_group_id\x18\b \x01(\tR\rtargetGroupId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aR\x11proxy_protocol_v2\"9\n" +
 	"\x16UpdateListenerMetadata\x12\x1f\n" +
 	"\vlistener_id\x18\x01 \x01(\tR\n" +
-	"listenerId\"F\n" +
-	"\x15DeleteListenerRequest\x12-\n" +
-	"\vlistener_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
+	"listenerId\"8\n" +
+	"\x15DeleteListenerRequest\x12\x1f\n" +
+	"\vlistener_id\x18\x01 \x01(\tR\n" +
 	"listenerId\"c\n" +
 	"\x16DeleteListenerMetadata\x12\x1f\n" +
 	"\vlistener_id\x18\x01 \x01(\tR\n" +
 	"listenerId\x12(\n" +
-	"\x10load_balancer_id\x18\x02 \x01(\tR\x0eloadBalancerId\"\xa1\x01\n" +
-	"\x1dListListenerOperationsRequest\x12-\n" +
-	"\vlistener_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
-	"listenerId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\x10load_balancer_id\x18\x02 \x01(\tR\x0eloadBalancerId\"|\n" +
+	"\x1dListListenerOperationsRequest\x12\x1f\n" +
+	"\vlistener_id\x18\x01 \x01(\tR\n" +
+	"listenerId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x8a\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x8a\x01\n" +
 	"\x1eListListenerOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +

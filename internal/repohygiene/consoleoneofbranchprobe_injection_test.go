@@ -22,8 +22,13 @@ package kacho.cloud.demo.v1;
 message HealthProbe {
   message TcpOptions { int32 port = 1; }
   message HttpOptions { string path = 1; }
+  // Здесь стояла строка групповой опции (option exactly_one) — её разбор
+  // обязан был пропускать, не приняв за ветвь. Форма снята вместе с
+  // семейством ограничений полей (kacho#1255): групповых опций в дереве не
+  // осталось НИ ОДНОЙ, и производителя у такого входа больше нет. Фикстура,
+  // вносящая непроизводимый признак, доказывает способность разбора по образцу,
+  // а не по существу. Появится групповая опция — строка вернётся вместе с ней.
   oneof options {
-    option (exactly_one) = true;
     TcpOptions tcp = 1;
     HttpOptions http = 2;
   }
@@ -33,9 +38,14 @@ message CreateWidgetRequest {
   string project_id = 1;
   HealthProbe probe = 2;
   // Ветвь с хвостом опции: разбор без него молча вернул бы «ветвей нет».
+  //
+  // Хвост взят ЖИВОЙ формой из дерева. Прежде здесь стояли опции снятого
+  // семейства (length); после его снятия такой хвост не
+  // производится ничем, и проба доказывала бы разбор входа, которого не бывает.
+  // Обе оставшиеся формы хвоста в контрактах — эти две.
   oneof anchor {
-    string zone_id = 3 [(length) = "<=50"];
-    string region_id = 4 [(length) = "<=50"];
+    string zone_id = 3 [(kacho.cloud.api.secret_bearing) = true];
+    string region_id = 4 [deprecated = true];
   }
 }
 

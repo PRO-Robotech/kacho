@@ -10,7 +10,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/vpc/v1/route_table.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
@@ -118,30 +117,30 @@ service RouteTableService {
 message GetRouteTableRequest {
   // ID of the RouteTable resource to return.
   // To get the route table ID use a [RouteTableService.List] request.
-  string route_table_id = 1 [(required) = true, (length) = "<=50"];
+  string route_table_id = 1;
 }
 
 message ListRouteTablesRequest {
   // ID of the project that the route table belongs to.
   // To get the project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [(required) = true, (length) = "<=50"];
+  string project_id = 1;
 
   // The maximum number of results per page to return. If the number of available
   // results is larger than [page_size],
   // the service returns a [ListRouteTablesResponse.next_page_token]
   // that can be used to get the next page of results in subsequent list requests. Default value: 100.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListRouteTablesResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 
   // A filter expression that filters resources listed in the response.
   // The expression must specify:
   // 1. The field name. Currently you can use filtering only on [RouteTable.name] field.
   // 2. An `=` operator.
   // 3. The value in double quotes (`"`). Must be 3-63 characters long and match the regular expression `[a-z][-a-z0-9]{1,61}[a-z0-9]`.
-  string filter = 4 [(length) = "<=1000"];
+  string filter = 4;
 }
 
 message ListRouteTablesResponse {
@@ -160,20 +159,20 @@ message ListRouteTablesResponse {
 message CreateRouteTableRequest {
   // ID of the project that the route table belongs to.
   // To get the project ID use a [kacho.cloud.iam.v1.ProjectService.List] request.
-  string project_id = 1 [(required) = true, (length) = "<=50"];
+  string project_id = 1;
 
   // Name of the route table.
   // The name must be unique within the folder.
-  string name = 2 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
+  string name = 2;
 
   // Description of the route table.
-  string description = 3 [(length) = "<=256"];
+  string description = 3;
 
   // Resource labels, `` key:value `` pairs.
-  map<string, string> labels = 4 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 4;
 
   // ID of the network the route table belongs to.
-  string network_id = 5 [(required) = true, (length) = "<=50"];
+  string network_id = 5;
 
   // List of static routes.
   repeated StaticRoute static_routes = 6;
@@ -186,20 +185,20 @@ message CreateRouteTableMetadata {
 
 message UpdateRouteTableRequest {
   // ID of the RouteTable resource to update.
-  string route_table_id = 1 [(required) = true, (length) = "<=50"];
+  string route_table_id = 1;
 
   // Field mask that specifies which fields of the RouteTable resource are going to be updated.
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the route table.
   // The name must be unique within the folder.
-  string name = 3 [(pattern) = "|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?"];
+  string name = 3;
 
   // Description of the route table.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Resource labels as `` key:value `` pairs.
-  map<string, string> labels = 5 [(kacho.cloud.size) = "<=64", (length) = "<=63", (pattern) = "[-_0-9a-z]*", (map_key).length = "1-63", (map_key).pattern = "[a-z][-_0-9a-z]*"];
+  map<string, string> labels = 5;
 
   // List of static routes.
   repeated StaticRoute static_routes = 6;
@@ -213,7 +212,7 @@ message UpdateRouteTableMetadata {
 message DeleteRouteTableRequest {
   // ID of the route table to delete.
   // To get the route table ID use a [RouteTableService.List] request.
-  string route_table_id = 1 [(required) = true, (length) = "<=50"];
+  string route_table_id = 1;
 }
 
 message DeleteRouteTableMetadata {
@@ -223,16 +222,16 @@ message DeleteRouteTableMetadata {
 
 message ListRouteTableOperationsRequest {
   // ID of the RouteTable resource to list operations for.
-  string route_table_id = 1 [(required) = true, (length) = "<=50"];
+  string route_table_id = 1;
 
   // The maximum number of results per page that should be returned. If the number of available
   // results is larger than [page_size], the service returns a [ListRouteTableOperationsResponse.next_page_token]
   // that can be used to get the next page of results in subsequent list requests. Default value: 100.
-  int64 page_size = 2 [(value) = "<=1000"];
+  int64 page_size = 2;
 
   // Page token. To get the next page of results, set [page_token] to the
   // [ListRouteTableOperationsResponse.next_page_token] returned by a previous list request.
-  string page_token = 3 [(length) = "<=100"];
+  string page_token = 3;
 }
 
 message ListRouteTableOperationsResponse {

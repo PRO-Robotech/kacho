@@ -10,7 +10,6 @@
 package vpcv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	reference "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
@@ -900,10 +899,13 @@ func (x *ListSubnetOperationsResponse) GetNextPageToken() string {
 }
 
 type ListUsedAddressesRequest struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	SubnetId  string                 `protobuf:"bytes,1,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
-	PageSize  int64                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the Subnet whose allocated addresses are listed.
+	SubnetId string `protobuf:"bytes,1,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
+	// Maximum number of results per page. 0 selects the service default (50);
+	// a value above 1000 is rejected with INVALID_ARGUMENT rather than clamped.
+	PageSize  int64  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken string `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	// NOT ACCEPTED. The response is a subnet occupancy projection
 	// (address / ipVersion / references), not the Address resource, so there is no
 	// field a filter expression could name. A set value is refused synchronously
@@ -1090,82 +1092,78 @@ var File_kacho_cloud_vpc_v1_subnet_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_subnet_service_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/vpc/v1/subnet_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a%kacho/cloud/reference/reference.proto\x1a\x1ckacho/cloud/validation.proto\x1a\x1fkacho/cloud/vpc/v1/subnet.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"=\n" +
-	"\x10GetSubnetRequest\x12)\n" +
-	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\"\xb8\x01\n" +
-	"\x12ListSubnetsRequest\x12+\n" +
+	"'kacho/cloud/vpc/v1/subnet_service.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/operation/operation.proto\x1a%kacho/cloud/reference/reference.proto\x1a\x1fkacho/cloud/vpc/v1/subnet.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"/\n" +
+	"\x10GetSubnetRequest\x12\x1b\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x87\x01\n" +
+	"\x12ListSubnetsRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x12\"\n" +
-	"\x06filter\x18\x04 \x01(\tB\n" +
-	"\x8a\xc81\x06<=1000R\x06filter\"s\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
+	"\x06filter\x18\x04 \x01(\tR\x06filter\"s\n" +
 	"\x13ListSubnetsResponse\x124\n" +
 	"\asubnets\x18\x01 \x03(\v2\x1a.kacho.cloud.vpc.v1.SubnetR\asubnets\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xee\x05\n" +
-	"\x13CreateSubnetRequest\x12+\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xbb\x04\n" +
+	"\x13CreateSubnetRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tprojectId\x12B\n" +
-	"\x04name\x18\x02 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x03 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x88\x01\n" +
-	"\x06labels\x18\x04 \x03(\v23.kacho.cloud.vpc.v1.CreateSubnetRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12+\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12K\n" +
+	"\x06labels\x18\x04 \x03(\v23.kacho.cloud.vpc.v1.CreateSubnetRequest.LabelsEntryR\x06labels\x12\x1d\n" +
 	"\n" +
-	"network_id\x18\x05 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\tnetworkId\x12N\n" +
-	"\x0eplacement_type\x18\r \x01(\x0e2'.kacho.cloud.vpc.v1.SubnetPlacementTypeR\rplacementType\x12!\n" +
-	"\azone_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=50R\x06zoneId\x12%\n" +
-	"\tregion_id\x18\f \x01(\tB\b\x8a\xc81\x04<=50R\bregionId\x12*\n" +
+	"network_id\x18\x05 \x01(\tR\tnetworkId\x12N\n" +
+	"\x0eplacement_type\x18\r \x01(\x0e2'.kacho.cloud.vpc.v1.SubnetPlacementTypeR\rplacementType\x12\x17\n" +
+	"\azone_id\x18\x06 \x01(\tR\x06zoneId\x12\x1b\n" +
+	"\tregion_id\x18\f \x01(\tR\bregionId\x12*\n" +
 	"\x11ipv4_cidr_primary\x18\x0e \x01(\tR\x0fipv4CidrPrimary\x12*\n" +
-	"\x11ipv6_cidr_primary\x18\x0f \x01(\tR\x0fipv6CidrPrimary\x12.\n" +
-	"\x0eroute_table_id\x18\t \x01(\tB\b\x8a\xc81\x04<=50R\frouteTableId\x1a9\n" +
+	"\x11ipv6_cidr_primary\x18\x0f \x01(\tR\x0fipv6CidrPrimary\x12$\n" +
+	"\x0eroute_table_id\x18\t \x01(\tR\frouteTableId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\n" +
 	"\x10\vJ\x04\b\v\x10\fR\fdhcp_options\"3\n" +
 	"\x14CreateSubnetMetadata\x12\x1b\n" +
-	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x84\x04\n" +
-	"\x13UpdateSubnetRequest\x12)\n" +
-	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12;\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\xf3\x02\n" +
+	"\x13UpdateSubnetRequest\x12\x1b\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x12B\n" +
-	"\x04name\x18\x03 \x01(\tB.\xf2\xc71*|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?R\x04name\x12+\n" +
-	"\vdescription\x18\x04 \x01(\tB\t\x8a\xc81\x05<=256R\vdescription\x12\x88\x01\n" +
-	"\x06labels\x18\x05 \x03(\v23.kacho.cloud.vpc.v1.UpdateSubnetRequest.LabelsEntryB;\xf2\xc71\v[-_0-9a-z]*\x82\xc81\x04<=64\x8a\xc81\x04<=63\xb2\xc81\x18\x12\x10[a-z][-_0-9a-z]*\x1a\x041-63R\x06labels\x12.\n" +
-	"\x0eroute_table_id\x18\x06 \x01(\tB\b\x8a\xc81\x04<=50R\frouteTableId\x1a9\n" +
+	"updateMask\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12K\n" +
+	"\x06labels\x18\x05 \x03(\v23.kacho.cloud.vpc.v1.UpdateSubnetRequest.LabelsEntryR\x06labels\x12$\n" +
+	"\x0eroute_table_id\x18\x06 \x01(\tR\frouteTableId\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\a\x10\bJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
 	"R\fdhcp_options\"3\n" +
 	"\x14UpdateSubnetMetadata\x12\x1b\n" +
-	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x9b\x01\n" +
-	"\x1aAddSubnetCidrBlocksRequest\x12)\n" +
-	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12(\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x8d\x01\n" +
+	"\x1aAddSubnetCidrBlocksRequest\x12\x1b\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\x12(\n" +
 	"\x10ipv4_cidr_blocks\x18\x02 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
-	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"\x9e\x01\n" +
-	"\x1dRemoveSubnetCidrBlocksRequest\x12)\n" +
-	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12(\n" +
+	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"\x90\x01\n" +
+	"\x1dRemoveSubnetCidrBlocksRequest\x12\x1b\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\x12(\n" +
 	"\x10ipv4_cidr_blocks\x18\x02 \x03(\tR\x0eipv4CidrBlocks\x12(\n" +
-	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"@\n" +
-	"\x13DeleteSubnetRequest\x12)\n" +
-	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\"3\n" +
+	"\x10ipv6_cidr_blocks\x18\x03 \x03(\tR\x0eipv6CidrBlocks\"2\n" +
+	"\x13DeleteSubnetRequest\x12\x1b\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"3\n" +
 	"\x14DeleteSubnetMetadata\x12\x1b\n" +
-	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"\x9b\x01\n" +
-	"\x1bListSubnetOperationsRequest\x12)\n" +
-	"\tsubnet_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\bsubnetId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\"v\n" +
+	"\x1bListSubnetOperationsRequest\x12\x1b\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\"\x88\x01\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\x88\x01\n" +
 	"\x1cListSubnetOperationsResponse\x12@\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x9d\x01\n" +
-	"\x18ListUsedAddressesRequest\x12!\n" +
-	"\tsubnet_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\bsubnetId\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x060-1000R\bpageSize\x12\x1d\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x8b\x01\n" +
+	"\x18ListUsedAddressesRequest\x12\x1b\n" +
+	"\tsubnet_id\x18\x01 \x01(\tR\bsubnetId\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
 	"page_token\x18\x03 \x01(\tR\tpageToken\x12\x16\n" +
 	"\x06filter\x18\x04 \x01(\tR\x06filter\"\x82\x01\n" +

@@ -6,7 +6,6 @@ syntax = "proto3";
 package kacho.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/validation.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
 
@@ -27,21 +26,21 @@ enum ClusterGrantSubjectType {
 // Resource id prefix: `cag`.
 message ClusterAdminGrant {
   // ID of the grant.
-  string id = 1 [(required) = true, (length) = "<=20", (pattern) = "cag_[0-9a-z]+"];
+  string id = 1;
 
   // Type of the granted subject.
-  ClusterGrantSubjectType subject_type = 2 [(required) = true];
+  ClusterGrantSubjectType subject_type = 2;
 
   // ID of the subject (User id when subject_type=USER, ServiceAccount id when
   // subject_type=SERVICE_ACCOUNT). Cross-service ref — no DB FK.
-  string subject_id = 3 [(required) = true, (length) = "<=20"];
+  string subject_id = 3;
 
   // ID of the User who granted this admin role. Recorded for audit.
-  string granted_by_user_id = 4 [(required) = true, (length) = "<=20"];
+  string granted_by_user_id = 4;
 
   // Free-form rationale string. 0-512 characters. Recorded for audit /
   // periodic access review.
-  string rationale = 5 [(length) = "<=512"];
+  string rationale = 5;
 
   // Timestamp when the grant was created.
   google.protobuf.Timestamp granted_at = 6;

@@ -333,7 +333,7 @@ RouteTable project-level. UNIQUE `(project_id, name) WHERE name<>''`. FK `networ
 SG project-level. UNIQUE `(project_id, name) WHERE name<>''`. FK `network_id → networks(id)
 ON DELETE RESTRICT`; **`network_id` обязателен на Create и immutable** — комментарий колонки
 в baseline-миграции объявляет её `mandatory and immutable after Create`, контракт несёт
-`[(required) = true]`, use-case отвергает пустую строку синхронно. Колонка объявлена nullable
+use-case отвергает пустую строку синхронно. Колонка объявлена nullable
 **только ради FK** (пустая строка сломала бы ссылку); прежняя редакция читала это как
 разрешение на SG без сети. `default_for_network` покрыт partial UNIQUE
 `security_groups_one_default_per_network` (миграция 0005). Поле `status` дропнуто миграцией

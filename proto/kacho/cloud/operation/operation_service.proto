@@ -7,7 +7,6 @@ package kacho.cloud.operation;
 
 import "google/api/annotations.proto";
 import "kacho/cloud/operation/operation.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation;operationv1";
@@ -33,10 +32,10 @@ service OperationService {
 
 message GetOperationRequest {
   // ID of the Operation resource to return.
-  string operation_id = 1 [(required) = true];
+  string operation_id = 1;
 }
 
 message CancelOperationRequest {
   // ID of the operation to cancel.
-  string operation_id = 1 [(required) = true];
+  string operation_id = 1;
 }

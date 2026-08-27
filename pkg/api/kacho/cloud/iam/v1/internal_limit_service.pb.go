@@ -44,7 +44,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
 	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -659,41 +658,39 @@ var File_kacho_cloud_iam_v1_internal_limit_service_proto protoreflect.FileDescri
 
 const file_kacho_cloud_iam_v1_internal_limit_service_proto_rawDesc = "" +
 	"\n" +
-	"/kacho/cloud/iam/v1/internal_limit_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a\x1ekacho/cloud/iam/v1/limit.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\":\n" +
-	"\x0fGetLimitRequest\x12'\n" +
-	"\blimit_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=21R\alimitId\"\xe0\x01\n" +
-	"\x11ListLimitsRequest\x12'\n" +
-	"\tpage_size\x18\x01 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\x12(\n" +
+	"/kacho/cloud/iam/v1/internal_limit_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1cgoogle/api/annotations.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a\x1ekacho/cloud/iam/v1/limit.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\",\n" +
+	"\x0fGetLimitRequest\x12\x19\n" +
+	"\blimit_id\x18\x01 \x01(\tR\alimitId\"\xb5\x01\n" +
+	"\x11ListLimitsRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x03R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x02 \x01(\tB\t\x8a\xc81\x05<=100R\tpageToken\x125\n" +
-	"\x05scope\x18\x03 \x01(\x0e2\x1f.kacho.cloud.iam.v1.Limit.ScopeR\x05scope\x12#\n" +
-	"\bscope_id\x18\x04 \x01(\tB\b\x8a\xc81\x04<=21R\ascopeId\x12\x1c\n" +
-	"\x04kind\x18\x05 \x01(\tB\b\x8a\xc81\x04<=64R\x04kind\"o\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\x125\n" +
+	"\x05scope\x18\x03 \x01(\x0e2\x1f.kacho.cloud.iam.v1.Limit.ScopeR\x05scope\x12\x19\n" +
+	"\bscope_id\x18\x04 \x01(\tR\ascopeId\x12\x12\n" +
+	"\x04kind\x18\x05 \x01(\tR\x04kind\"o\n" +
 	"\x12ListLimitsResponse\x121\n" +
 	"\x06limits\x18\x01 \x03(\v2\x19.kacho.cloud.iam.v1.LimitR\x06limits\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xae\x01\n" +
-	"\x12CreateLimitRequest\x12;\n" +
-	"\x05scope\x18\x01 \x01(\x0e2\x1f.kacho.cloud.iam.v1.Limit.ScopeB\x04\xe8\xc71\x01R\x05scope\x12#\n" +
-	"\bscope_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=21R\ascopeId\x12 \n" +
-	"\x04kind\x18\x03 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=64R\x04kind\x12\x14\n" +
-	"\x05value\x18\x04 \x01(\x03R\x05value\"\x90\x01\n" +
-	"\x12UpdateLimitRequest\x12'\n" +
-	"\blimit_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=21R\alimitId\x12;\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x90\x01\n" +
+	"\x12CreateLimitRequest\x125\n" +
+	"\x05scope\x18\x01 \x01(\x0e2\x1f.kacho.cloud.iam.v1.Limit.ScopeR\x05scope\x12\x19\n" +
+	"\bscope_id\x18\x02 \x01(\tR\ascopeId\x12\x12\n" +
+	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x14\n" +
+	"\x05value\x18\x04 \x01(\x03R\x05value\"\x82\x01\n" +
+	"\x12UpdateLimitRequest\x12\x19\n" +
+	"\blimit_id\x18\x01 \x01(\tR\alimitId\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
 	"updateMask\x12\x14\n" +
-	"\x05value\x18\x03 \x01(\x03R\x05value\"=\n" +
-	"\x12DeleteLimitRequest\x12'\n" +
-	"\blimit_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=21R\alimitId\"g\n" +
-	"\x14ResolveLimitsRequest\x12'\n" +
-	"\bscope_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=21R\ascopeId\x12&\n" +
-	"\aservice\x18\x02 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=32R\aservice\"S\n" +
+	"\x05value\x18\x03 \x01(\x03R\x05value\"/\n" +
+	"\x12DeleteLimitRequest\x12\x19\n" +
+	"\blimit_id\x18\x01 \x01(\tR\alimitId\"K\n" +
+	"\x14ResolveLimitsRequest\x12\x19\n" +
+	"\bscope_id\x18\x01 \x01(\tR\ascopeId\x12\x18\n" +
+	"\aservice\x18\x02 \x01(\tR\aservice\"S\n" +
 	"\x15ResolveLimitsResponse\x12:\n" +
-	"\x06limits\x18\x01 \x03(\v2\".kacho.cloud.iam.v1.EffectiveLimitR\x06limits\"f\n" +
-	"\x18ListChangedLimitsRequest\x12!\n" +
-	"\x06cursor\x18\x01 \x01(\tB\t\x8a\xc81\x05<=100R\x06cursor\x12'\n" +
-	"\tpage_size\x18\x02 \x01(\x03B\n" +
-	"\xfa\xc71\x06<=1000R\bpageSize\"w\n" +
+	"\x06limits\x18\x01 \x03(\v2\".kacho.cloud.iam.v1.EffectiveLimitR\x06limits\"O\n" +
+	"\x18ListChangedLimitsRequest\x12\x16\n" +
+	"\x06cursor\x18\x01 \x01(\tR\x06cursor\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x03R\bpageSize\"w\n" +
 	"\x19ListChangedLimitsResponse\x129\n" +
 	"\achanges\x18\x01 \x03(\v2\x1f.kacho.cloud.iam.v1.LimitChangeR\achanges\x12\x1f\n" +
 	"\vnext_cursor\x18\x02 \x01(\tR\n" +

@@ -23,7 +23,7 @@ import (
 // `(created_at, id)` token (см. listener_repo.go).
 //
 // Поддерживаемые фильтры (per proto + design):
-//   - load_balancer_id   — required (per proto annotation `(required) = true`)
+//   - load_balancer_id   — required (пустой отвергается use-case синхронно)
 //   - filter=`name="…"`  — optional name-equality filter через общий
 //     shared.ParseNameFilter (kacho-corelib/filter.Parse, whitelist {"name"});
 //     unknown-поле / unquoted / malformed → InvalidArgument.

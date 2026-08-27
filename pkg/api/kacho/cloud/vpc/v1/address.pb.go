@@ -10,7 +10,6 @@
 package vpcv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	reference "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/reference"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -658,7 +657,7 @@ var File_kacho_cloud_vpc_v1_address_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_vpc_v1_address_proto_rawDesc = "" +
 	"\n" +
-	" kacho/cloud/vpc/v1/address.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\x1a\x1ckacho/cloud/validation.proto\"\xed\b\n" +
+	" kacho/cloud/vpc/v1/address.proto\x12\x12kacho.cloud.vpc.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%kacho/cloud/reference/reference.proto\"\xe7\b\n" +
 	"\aAddress\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -689,19 +688,19 @@ const file_kacho_cloud_vpc_v1_address_proto_rawDesc = "" +
 	"\tIpVersion\x12\x1a\n" +
 	"\x16IP_VERSION_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04IPV4\x10\x01\x12\b\n" +
-	"\x04IPV6\x10\x02B\x0f\n" +
-	"\aaddress\x12\x04\xc0\xc11\x01J\x04\b\t\x10\x0fJ\x04\b\x14\x10\x15J\x04\b\x18\x10\x19R\vdns_recordsR\vapply_state\"\\\n" +
+	"\x04IPV6\x10\x02B\t\n" +
+	"\aaddressJ\x04\b\t\x10\x0fJ\x04\b\x14\x10\x15J\x04\b\x18\x10\x19R\vdns_recordsR\vapply_state\"\\\n" +
 	"\x13ExternalIpv4Address\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x17\n" +
-	"\azone_id\x18\x02 \x01(\tR\x06zoneIdJ\x04\b\x03\x10\x04R\frequirements\"]\n" +
+	"\azone_id\x18\x02 \x01(\tR\x06zoneIdJ\x04\b\x03\x10\x04R\frequirements\"W\n" +
 	"\x13InternalIpv4Address\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x1d\n" +
-	"\tsubnet_id\x18\x02 \x01(\tH\x00R\bsubnetIdB\r\n" +
-	"\x05scope\x12\x04\xc0\xc11\x01\"]\n" +
+	"\tsubnet_id\x18\x02 \x01(\tH\x00R\bsubnetIdB\a\n" +
+	"\x05scope\"W\n" +
 	"\x13InternalIpv6Address\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x1d\n" +
-	"\tsubnet_id\x18\x02 \x01(\tH\x00R\bsubnetIdB\r\n" +
-	"\x05scope\x12\x04\xc0\xc11\x01\"\\\n" +
+	"\tsubnet_id\x18\x02 \x01(\tH\x00R\bsubnetIdB\a\n" +
+	"\x05scope\"\\\n" +
 	"\x13ExternalIpv6Address\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x17\n" +
 	"\azone_id\x18\x02 \x01(\tR\x06zoneIdJ\x04\b\x03\x10\x04R\frequirementsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1b\x06proto3"

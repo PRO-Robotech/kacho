@@ -13,61 +13,19 @@
 //  3. отказ края НЕ закрывает окно. Закрывшееся окно читается как успех, и
 //     человек уходит, не выдав ничего.
 //
-// `AutoComplete` общего стенда-заменителя — простое поле ввода: список опций он
-// не рисует, поэтому на нём утверждение о составе подсказки было бы истинным
-// при любом составе. Здесь он переопределён так, чтобы опции были видимы, —
-// заменитель обязан выполнять контракт настоящего в той части, которая и есть
-// предмет пробы.
+// Подсказки рисует ОБЩИЙ стенд-заменитель (#1348): местная подмена
+// `AutoComplete` здесь стояла ровно потому, что общий отдавал его псевдонимом
+// текстового поля и списка не рисовал. Предмет подмены снят — снята и она,
+// иначе это два места об одном предмете, из которых расходиться будет молча.
+// Подсказки ищутся по их роли, а поле — по подсказке-заполнителю: и то и другое
+// производит настоящая библиотека, в отличие от признаков прежней подмены.
 
 import { jest } from "@jest/globals";
-import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { antdStub } from "@shared/test/antd-stub";
 
-interface Option {
-  value: string;
-  label?: React.ReactNode;
-  user?: unknown;
-}
-
-interface AutoCompleteProps {
-  options?: Option[];
-  value?: string;
-  onSelect?: (value: string, option: Option) => void;
-  onChange?: (value: string) => void;
-  placeholder?: string;
-}
-
-jest.unstable_mockModule("antd", () => ({
-  ...antdStub(),
-  // Опции рисуются кнопками: их СОСТАВ и есть предмет пробы.
-  AutoComplete: ({ options, value, onSelect, onChange, placeholder }: AutoCompleteProps) =>
-    React.createElement(
-      "div",
-      null,
-      React.createElement("input", {
-        "aria-label": placeholder ?? "search",
-        value: value ?? "",
-        onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange?.(e.target.value),
-      }),
-      React.createElement(
-        "ul",
-        { "data-testid": "options" },
-        (options ?? []).map((o) =>
-          React.createElement(
-            "li",
-            { key: o.value },
-            React.createElement(
-              "button",
-              { type: "button", onClick: () => onSelect?.(o.value, o) },
-              o.label,
-            ),
-          ),
-        ),
-      ),
-    ),
-}));
+jest.unstable_mockModule("antd", () => antdStub());
 
 const listUsers = jest.fn<() => Promise<{ users: unknown[] }>>();
 const grantAdmin = jest.fn<(id: string) => Promise<{ operation?: { id: string } }>>();
@@ -105,7 +63,7 @@ function show() {
   return { onClose };
 }
 
-const optionLabels = () => [...screen.getByTestId("options").querySelectorAll("button")].map((b) => b.textContent ?? "");
+const optionLabels = () => screen.queryAllByRole("option").map((o) => o.textContent ?? "");
 const submit = () => screen.getByTestId<HTMLButtonElement>("grant-admin-submit");
 
 beforeEach(() => {
@@ -167,7 +125,7 @@ describe("GrantAdminModal", () => {
     show();
 
     await waitFor(() => expect(optionLabels()).toHaveLength(1));
-    fireEvent.click(screen.getByTestId("options").querySelector("button")!);
+    fireEvent.click(screen.getAllByRole("option")[0]);
     await waitFor(() => expect(submit().disabled).toBe(false));
     fireEvent.click(submit());
 
@@ -180,7 +138,7 @@ describe("GrantAdminModal", () => {
     const { onClose } = show();
 
     await waitFor(() => expect(optionLabels()).toHaveLength(1));
-    fireEvent.click(screen.getByTestId("options").querySelector("button")!);
+    fireEvent.click(screen.getAllByRole("option")[0]);
     await waitFor(() => expect(submit().disabled).toBe(false));
     fireEvent.click(submit());
 
@@ -197,7 +155,7 @@ describe("GrantAdminModal", () => {
     show();
     await waitFor(() => expect(listUsers).toHaveBeenCalledTimes(1));
 
-    fireEvent.change(screen.getByLabelText(/ищется по всему списку/i), { target: { value: "ops" } });
+    fireEvent.change(screen.getByPlaceholderText(/ищется по всему списку/i), { target: { value: "ops" } });
 
     // `search="…"`, а НЕ `email CONTAINS "…"`: iam отвергает CONTAINS явно, и
     // подстановка общего механизма списков уронила бы страницу целиком.
@@ -212,7 +170,7 @@ describe("GrantAdminModal", () => {
     show();
     await waitFor(() => expect(optionLabels().join(" ")).toContain("ops@example.com"));
 
-    fireEvent.change(screen.getByLabelText(/ищется по всему списку/i), { target: { value: "usr-9" } });
+    fireEvent.change(screen.getByPlaceholderText(/ищется по всему списку/i), { target: { value: "usr-9" } });
 
     await waitFor(() => expect(listUsers).toHaveBeenCalledTimes(2));
     expect(optionLabels().join(" ")).toContain("ops@example.com");

@@ -10,7 +10,6 @@
 package operationv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -121,11 +120,11 @@ var File_kacho_cloud_operation_operation_service_proto protoreflect.FileDescript
 
 const file_kacho_cloud_operation_operation_service_proto_rawDesc = "" +
 	"\n" +
-	"-kacho/cloud/operation/operation_service.proto\x12\x15kacho.cloud.operation\x1a\x1cgoogle/api/annotations.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\">\n" +
-	"\x13GetOperationRequest\x12'\n" +
-	"\foperation_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\voperationId\"A\n" +
-	"\x16CancelOperationRequest\x12'\n" +
-	"\foperation_id\x18\x01 \x01(\tB\x04\xe8\xc71\x01R\voperationId2\xd4\x02\n" +
+	"-kacho/cloud/operation/operation_service.proto\x12\x15kacho.cloud.operation\x1a\x1cgoogle/api/annotations.proto\x1a%kacho/cloud/operation/operation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"8\n" +
+	"\x13GetOperationRequest\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\";\n" +
+	"\x16CancelOperationRequest\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId2\xd4\x02\n" +
 	"\x10OperationService\x12\x96\x01\n" +
 	"\x03Get\x12*.kacho.cloud.operation.GetOperationRequest\x1a .kacho.cloud.operation.Operation\"A\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x0fHANDLER_DECIDES\x82\xd3\xe4\x93\x02\x1c\x12\x1a/operations/{operation_id}\x12\xa6\x01\n" +
 	"\x06Cancel\x12-.kacho.cloud.operation.CancelOperationRequest\x1a .kacho.cloud.operation.Operation\"K\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x0fHANDLER_DECIDES\x82\xd3\xe4\x93\x02&:\x01*\"!/operations/{operation_id}:cancelBIZGgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation;operationv1b\x06proto3"

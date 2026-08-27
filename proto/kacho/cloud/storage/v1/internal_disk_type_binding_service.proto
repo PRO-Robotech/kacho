@@ -7,7 +7,6 @@ package kacho.cloud.storage.v1;
 
 import "google/protobuf/timestamp.proto";
 import "google/api/annotations.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
@@ -277,29 +276,20 @@ message BindingQoS {
 
 message CreateDiskTypeBindingRequest {
   // ID класса диска, для которого заводится ревизия.
-  string disk_type_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string disk_type_id = 1;
 
   // ID зоны. Обязана входить в список обслуживаемых зон бэкенда.
-  string zone_id = 2 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string zone_id = 2;
 
   // ID бэкенда. Бэкенд в `DRAINING`/`DISABLED` новых ревизий не принимает — в этом
   // и состоит смысл `DRAINING`.
-  string backend_id = 3 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string backend_id = 3;
 
   // Координата объектов у бэкенда.
-  BackendLocator locator = 4 [(required) = true];
+  BackendLocator locator = 4;
 
   // Способности бэкенда под этой ревизией.
-  BindingCapabilities capabilities = 5 [(required) = true];
+  BindingCapabilities capabilities = 5;
 
   // Обещание производительности. Опускается целиком, если бэкенд QoS не энфорсит.
   BindingQoS qos = 6;
@@ -307,16 +297,16 @@ message CreateDiskTypeBindingRequest {
 
 message GetDiskTypeBindingRequest {
   // ID ревизии, о которой спрашивают.
-  string disk_type_binding_id = 1 [(required) = true];
+  string disk_type_binding_id = 1;
 }
 
 message ListDiskTypeBindingsRequest {
   // Максимальное число записей на странице.
-  int64 page_size = 1 [(value) = "<=1000"];
+  int64 page_size = 1;
 
   // Курсор страницы: значение [ListDiskTypeBindingsResponse.next_page_token] из
   // предыдущего ответа.
-  string page_token = 2 [(length) = "<=100"];
+  string page_token = 2;
 }
 
 message ListDiskTypeBindingsResponse {

@@ -153,6 +153,7 @@ deploy/tests/helm/trusted-forwarder-profiles-test.sh
 gateway/tests/newman/scripts/selftest_tamper_mutation.py
 services/compute/tests/newman/scripts/validate-cases.py
 services/iam/tests/newman/scripts/exec-coverage.py
+services/iam/tests/newman/scripts/selftest_basic_access_token.py
 tests/authz-fixtures/ceremony_credentials.py
 tests/authz-fixtures/prodseed_all.py
 tests/authz-fixtures/prodseed_ceremony.py

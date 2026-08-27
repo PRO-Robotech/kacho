@@ -61,7 +61,7 @@ export function oneofBranches(relPath: string, message: string, oneofName: strin
     // `TcpOptions tcp = 6;` — тип, имя, номер. `option (...)` веткой не является.
     //
     // Хвост `[...]` обязателен к разбору: ветвь бывает объявлена с опцией
-    // (`string subnet_id = 2 [(length) = "<=50"];`), и разбор без него молча
+    // (`string subnet_id = 2 [deprecated = true];`), и разбор без него молча
     // возвращал бы для такой группы ПУСТОЙ список — то есть «ветвей нет», и
     // сверка зеленела бы на любой форме.
     const m = /^[A-Za-z_][\w.]*\s+([a-z_][\w]*)\s*=\s*\d+\s*(\[[^\]]*\])?\s*;/.exec(line);

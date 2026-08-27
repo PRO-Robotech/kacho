@@ -8,7 +8,6 @@ package kacho.cloud.storage.v1;
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/storage/v1/image.proto";
 import "kacho/cloud/storage/v1/status_reason.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1";
@@ -71,34 +70,23 @@ message GetInternalImageRequest {
 // обязано знать. Байты через этот запрос не проходят.
 message RegisterImageRequest {
   // ID проекта, которому принадлежит образ. Peer-валидируется у kacho-iam.
-  string project_id = 1 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string project_id = 1;
 
   // ID региона, в котором образ доступен (REGIONAL/anycast). Peer-валидируется у
   // kacho-geo.
-  string region_id = 2 [
-    (required) = true,
-    (length) = "<=50"
-  ];
+  string region_id = 2;
 
   // Имя образа. Границы те же, что у публичного Create: у зарегистрированного и у
   // созданного образа один контракт имени, иначе арендатор увидел бы два разных
   // правила на одном поле.
-  string name = 3 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
+  string name = 3;
 
   // Описание образа.
-  string description = 4 [(length) = "<=256"];
+  string description = 4;
 
   // Resource labels as `key:value` pairs.
-  map<string, string> labels = 5 [
-    (kacho.cloud.size) = "<=64",
-    (length) = "<=63",
-    (pattern) = "[-_./\\@0-9a-z]*",
-    (map_key).length = "1-63",
-    (map_key).pattern = "[a-z][-_./\\@0-9a-z]*"
-  ];
+  // At most 64 pairs.
+  map<string, string> labels = 5;
 
   // Имя объекта у бэкенда — тот самый handle, ради которого метод существует.
   //
@@ -107,20 +95,17 @@ message RegisterImageRequest {
   // принимая, он позволил бы вызывающему адресовать чужой объект. Здесь выводить не из
   // чего: объект внесён ДО того, как у облака появилась строка, и его имя — факт, а не
   // наше решение.
-  string backend_object = 6 [
-    (required) = true,
-    (length) = "<=255"
-  ];
+  string backend_object = 6;
 
   // Виртуальный размер образа в байтах.
-  int64 size_bytes = 7 [(value) = ">0"];
+  int64 size_bytes = 7;
 
   // Минимальный размер принимающего загрузочного тома в байтах. Том меньше этого числа
   // образом не засевается.
   //
   // Оба числа называет регистрирующий: у зарегистрированного образа источника внутри
   // облака нет, выводить их не из чего.
-  int64 min_disk_bytes = 8 [(value) = ">0"];
+  int64 min_disk_bytes = 8;
 }
 
 // ImageInternal — инфра-проекция образа: то, чего на публичном Image нет и не будет

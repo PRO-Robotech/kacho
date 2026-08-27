@@ -238,9 +238,14 @@ func TestTG_DrainConsistency_Trigger(t *testing.T) {
 	assert.Contains(t, err.Error(), "targets_drain_consistency")
 }
 
-// TestTG_DrainLifecycle — фаза A mark DRAINING + фаза B DELETE.
-// Использует «прошлое» drain_started_at чтобы фаза B сразу подобрал target.
-func TestTG_DrainLifecycle(t *testing.T) {
+// TestTG_MarkDraining_SetsStatusAndStamp — фаза A: пометка DRAINING проставляет
+// и статус, и отметку начала дренажа (CHECK drain_consistency требует их вместе).
+//
+// Фазы B здесь НЕТ намеренно: истёкшие строки снимает `jobs.TargetDrainRunner`
+// своим оператором, и утверждается это в его собственном наборе
+// (`apps/kacho/jobs/target_drain_runner_integration_test.go`) — там же, где
+// проверяется эмиссия `nlb_target_group … UPDATED`, которой у репозитория нет.
+func TestTG_MarkDraining_SetsStatusAndStamp(t *testing.T) {
 	tc := newTestCtx(t)
 	repo := tc.Repo
 	pool := tc.Pool
@@ -274,25 +279,15 @@ func TestTG_DrainLifecycle(t *testing.T) {
 		assert.Equal(t, 1, n)
 	})
 
-	// Подкрутим drain_started_at в прошлое (имитация expired delay).
-	_, err = pool.Exec(ctx,
-		`UPDATE kacho_nlb.targets SET drain_started_at = now() - interval '1 hour' WHERE id = $1`,
-		targetID,
-	)
-	require.NoError(t, err)
-
-	// фаза B: DeleteTargetsDrained с delay=60s удалит наш target.
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		n, err := w.TargetGroups().DeleteTargetsDrained(ctx, string(tg.ID), 60)
-		require.NoError(t, err)
-		assert.Equal(t, 1, n)
-	})
-
-	rd2, _ := repo.Reader(ctx)
-	defer func() { _ = rd2.Close() }()
-	targetsAfter, err := rd2.TargetGroups().ListTargets(ctx, string(tg.ID))
-	require.NoError(t, err)
-	assert.Empty(t, targetsAfter)
+	// Строка помечена дренирующейся И несёт отметку начала — обе половины, иначе
+	// оператор раннера (`drain_started_at < now() - delay`) её не подберёт никогда.
+	var status string
+	var drainStartedAt *time.Time
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT status, drain_started_at FROM kacho_nlb.targets WHERE id = $1`,
+		targetID).Scan(&status, &drainStartedAt))
+	assert.Equal(t, "DRAINING", status)
+	assert.NotNil(t, drainStartedAt, "фаза A обязана проставить drain_started_at")
 }
 
 // TestTG_DeleteTargetsDraining_ClearsOnlyDrained — снятие группы не должно ждать
@@ -449,13 +444,9 @@ func TestTG_AddTargets_ReactivatesDrainingTarget(t *testing.T) {
 	require.NoError(t, pool.QueryRow(ctx,
 		`SELECT count(*) FROM kacho_nlb.targets WHERE target_group_id=$1`, string(tg.ID)).Scan(&cnt))
 	assert.Equal(t, 1, cnt, "single target row (reactivated, not duplicated)")
-
-	// Phase-B drain must NOT delete the now-ACTIVE target even at zero delay.
-	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		n, err := w.TargetGroups().DeleteTargetsDrained(ctx, string(tg.ID), 0)
-		require.NoError(t, err)
-		require.Equal(t, 0, n, "reactivated (ACTIVE) target is not drain-deleted")
-	})
+	// Реактивированная строка снята с полосы уборки самими этими двумя полями:
+	// оператор раннера отбирает по `status='DRAINING'`. Что он щадит ACTIVE,
+	// утверждается у него (`TestDrainOnce_ExpiredOnly`), а не здесь.
 }
 
 // TestTG_Delete_FK_RESTRICT — targets есть → нельзя удалить TG.

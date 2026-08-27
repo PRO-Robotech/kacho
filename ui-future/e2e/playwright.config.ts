@@ -1,7 +1,9 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-import { defineConfig } from "@playwright/test";
+import { defineConfig, type PlaywrightTestConfig } from "@playwright/test";
+
+import { remoteBrowserRefusal } from "./remote-browser-policy.ts";
 
 /**
  * Сквозные пробы консоли.
@@ -75,7 +77,16 @@ const hostResolverArgs = (() => {
   return [`--host-resolver-rules=${rules.join(",")}`];
 })();
 
-export default defineConfig({
+/**
+ * УДАЛЁННЫЙ БРАУЗЕР ЗДЕСЬ НЕ ИСПОЛЬЗУЕТСЯ — РЕШЕНИЕМ, А НЕ ПО УМОЛЧАНИЮ (#1288).
+ *
+ * Объявление собирается в переменную и лишь потом уходит в `defineConfig`,
+ * потому что решение обязано читать ЭТО ЖЕ объявление: заведут здесь
+ * `connectOptions` — отказ увидит его и назовёт. Разбор решения, перечень трёх
+ * форм выбора и предикат возврата — в `remote-browser-policy.ts`; здесь они не
+ * пересказываются, чтобы два места об одном предмете не разошлись.
+ */
+const config: PlaywrightTestConfig = {
   testDir: "./specs",
   timeout: 90_000,
   expect: { timeout: 15_000 },
@@ -161,4 +172,11 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "off",
   },
-});
+};
+
+const refusal = remoteBrowserRefusal(process.env, config);
+if (refusal) {
+  throw new Error(refusal);
+}
+
+export default defineConfig(config);
