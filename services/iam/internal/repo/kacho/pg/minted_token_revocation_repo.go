@@ -118,7 +118,7 @@ func (r *MintedTokenRevocationRepo) Revoke(ctx context.Context, subject string, 
 // отсечек — не журнал, и её укорачивание истории не теряет.
 //
 // Обход идёт по индексу `minted_token_revocations_revoke_before_idx` (миграция
-// `1292001`): без него уборка шла бы полным перебором.
+// `20260827112530`): без него уборка шла бы полным перебором.
 func (r *MintedTokenRevocationRepo) SweepStaleCutoffs(ctx context.Context, grace time.Duration, batch int) (int64, bool, error) {
 	const q = `
 DELETE FROM kacho_iam.minted_token_revocations
