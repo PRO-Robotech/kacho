@@ -34,8 +34,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/PRO-Robotech/kacho/pkg/filter"
-
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/membership"
@@ -71,12 +69,6 @@ const membershipCols = `m.id, m.account_id, COALESCE(a.name, ''), m.user_id, m.s
 
 // membershipFrom — источник строк обоих чтений.
 const membershipFrom = `FROM memberships m JOIN accounts a ON a.id = m.account_id`
-
-// membershipFilterField — единственный терм белого списка. Имя КОНТРАКТНОЕ
-// (camelCase, как во всех JSON-полях продукта), колонка — своя; поэтому предикат
-// строится `ToSQLOn` на настоящей колонке, а не на имени поля: `userId` в SQL
-// свернулся бы в несуществующий `userid` и падал бы на каждом вызове.
-const membershipFilterField = "userId"
 
 func scanMembership(row pgx.Row) (domain.Membership, error) {
 	var m domain.Membership
@@ -128,30 +120,21 @@ func (r *membershipReader) List(
 	args := []any{string(f.AccountID)}
 	argIdx := 2
 
-	if f.Filter != "" {
-		ast, ferr := parseListFilter(f.Filter, membershipFilterField)
-		if ferr != nil {
-			return nil, "", ferr
-		}
-		if ast != nil {
-			// ОПЕРАТОР ЧИТАЕТСЯ ЯВНО И НЕ СВОДИТСЯ МОЛЧА К РАВЕНСТВУ.
-			//
-			// Грамматика продукта знает два оператора; эта поверхность заводила
-			// только равенство. Подстрочный поиск по идентификатору человека —
-			// возможность, о которой никто не решал: у неё нет ни кейса, ни
-			// индекса, а обслуживался бы он последовательным обходом аккаунта.
-			// Из трёх законных исходов («реализовать · отвергнуть явно · снять с
-			// контракта») выбран второй, и отказ называет то, что отвергнуто.
-			if ast.Op != filter.OpEquals {
-				return nil, "", iamerr.Wrapf(iamerr.ErrInvalidArg,
-					"Bad expression. Unsupported operator for field %q: only equality is supported",
-					membershipFilterField)
-			}
-			frag, fargs := ast.ToSQLOn("m.user_id", argIdx)
-			conditions = append(conditions, frag)
-			args = append(args, fargs...)
-			argIdx += len(fargs)
-		}
+	// Белый список терма и объявленный оператор живут В ОДНОМ месте
+	// (`membership.ParseListFilter`) и зовутся отсюда же: адаптер остаётся
+	// авторитетным, а разбор не удваивается.
+	ast, ferr := membership.ParseListFilter(f.Filter)
+	if ferr != nil {
+		return nil, "", ferr
+	}
+	if ast != nil {
+		// Оператор уже проверен разбором; здесь применяется РАЗОБРАННЫЙ узел
+		// целиком, а не одно его значение, — иначе оператор потерялся бы вместе
+		// со значением.
+		frag, fargs := ast.ToSQLOn(membership.FilterColumnUserID, argIdx)
+		conditions = append(conditions, frag)
+		args = append(args, fargs...)
+		argIdx += len(fargs)
 	}
 
 	// Курсор. Разобранный имеет приоритет: путь, который его задаёт, токена не

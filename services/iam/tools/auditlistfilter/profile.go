@@ -163,6 +163,7 @@ var Profile = listfiltergate.Profile{
 
 	ProtoFiles: []string{
 		"kacho/cloud/iam/v1/internal_cluster_service.proto",
+		"kacho/cloud/iam/v1/membership_service.proto",
 		"kacho/cloud/iam/v1/sa_key_service.proto",
 		"kacho/cloud/iam/v1/user_token_service.proto",
 	},
@@ -252,6 +253,20 @@ var Profile = listfiltergate.Profile{
 		// declaration names the field and the gate verifies it in the proto.
 		"sa_keys.List":     edgeGate("sa_key_service.proto", "service_account_id"),
 		"user_tokens.List": edgeGate("user_token_service.proto", "user_id"),
+		// membership.List сужает свой SQL аккаунтом из ПУТИ, и никакая проверка
+		// внутри сервиса вызывающего против этого аккаунта не сверяет — это
+		// решение, а не пропуск: у запроса есть ОДИН объект, про который можно
+		// задать ОДИН вопрос, и задаёт его край. Пообъектный фильтр здесь
+		// утверждал бы сужение, которому нечего сужать: строки уже отобраны тем
+		// же аккаунтом, а право на него проверено ДО вызова.
+		//
+		// Поэтому объявление называет ПОЛЕ, и гейт сверяет по контракту, что
+		// на нём действительно стоят `required_relation` и `scope_extractor`.
+		// Отношение — `viewer` @ `account`; подстановочным кортежем оно НЕ
+		// выполнимо (тип объявляет `[user, service_account, group#member] or
+		// editor`, члена `user:*` в нём нет), поэтому оно сужает, а не означает
+		// «аутентифицирован».
+		"membership.List": edgeGate("membership_service.proto", "account_id"),
 
 		// ---- reference data every authenticated caller may read ----
 		"permission_catalog.ListPermissionCatalog": {

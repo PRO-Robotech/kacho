@@ -23,6 +23,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
+
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
 	repomembership "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/membership"
@@ -70,7 +72,7 @@ func TestMembership_IAMID2_14_AccountScopeIsInTheQueryNotAfterTheRead(t *testing
 	dsn := setupTestDB(t)
 	pool, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	owner := mustSeedUser(t, ctx, pool, "mbr14own")
@@ -124,7 +126,7 @@ func TestMembership_IAMID2_13_ForeignMembershipIsIndistinguishableFromAbsent(t *
 	dsn := setupTestDB(t)
 	pool, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	owner := mustSeedUser(t, ctx, pool, "mbr13own")
@@ -176,7 +178,7 @@ func TestMembership_IAMID2_05_CursorNeitherSkipsNorDuplicates(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	owner := mustSeedUser(t, ctx, pool, "mbr05own")
@@ -229,7 +231,7 @@ func TestMembership_IAMID2_04_FilterTermAndOperator(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	owner := mustSeedUser(t, ctx, pool, "mbr04own")
@@ -278,7 +280,7 @@ func TestMembership_IAMID2_02_StateIsCarriedNotConstant(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	owner := mustSeedUser(t, ctx, pool, "mbr02own")
@@ -316,7 +318,7 @@ func TestMembership_PageSizeIsRejectedNotClamped(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	repo := kachopg.New(pool, nil)
 
 	owner := mustSeedUser(t, ctx, pool, "mbrpsown")
