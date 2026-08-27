@@ -393,6 +393,69 @@ export function antdStub(): Record<string, unknown> {
       ? React.createElement("span", null, prefix, React.createElement("input", props), suffix)
       : React.createElement("input", props);
   const Search = (props: AnyProps) => React.createElement("input", { type: "search", ...props });
+  // Настоящее поле с ПОДСКАЗКАМИ (`AutoComplete`) отличается от текстового
+  // дважды, и обе разницы видны снаружи.
+  //
+  // ПЕРВОЕ: видимое оператору у него — СПИСОК ПОДСКАЗОК, приходящий пропом
+  // `options`. Заменитель отдавал его псевдонимом текстового поля, и список не
+  // рисовался вовсе: `options` уезжал в атрибут (`options="[object Object]"`),
+  // а всякое утверждение о составе подсказки было истинным при любом составе,
+  // включая пустой.
+  //
+  // ВТОРОЕ, и оно делает поведение продукта НЕВЕРНЫМ, а не просто ненаблюдаемым:
+  // настоящее поле наследует `InternalSelectProps` (antd 6.5.4,
+  // `es/auto-complete/AutoComplete.d.ts`) и зовёт `onChange` ЗНАЧЕНИЕМ, тогда
+  // как текстовое поле зовёт его СОБЫТИЕМ. Продукт, написанный под настоящий
+  // контракт (`onChange={(v) => setQuery(v)}`), клал в состояние объект — и
+  // поле показывало `[object Object]` С ПЕРВОГО НАЖАТИЯ. Проба, написанная
+  // поверх такого заменителя, закрепила бы это как норму.
+  //
+  // Порядок на выборе подсказки взят из САМОЙ библиотеки, а не выведен:
+  // `@rc-component/select` `onInternalSelect` зовёт `triggerChange` (то есть
+  // `onChange`), и только затем `onSelect`. Обратный порядок оставил бы в поле
+  // идентификатор вместо почты — то есть дублёр расходился бы с настоящим ровно
+  // там, где вызывающий на порядок и рассчитывает.
+  const AutoComplete = ({
+    options,
+    value,
+    onChange,
+    onSearch,
+    onSelect,
+    notFoundContent,
+    children,
+    ...props
+  }: SelectProps & { onSelect?: (value: string, option: SelectOption) => void }) =>
+    React.createElement(
+      "div",
+      null,
+      React.createElement("input", {
+        ...props,
+        role: "combobox",
+        value: value ?? "",
+        onChange: (e: { target: { value: string } }) => {
+          onSearch?.(e.target.value);
+          onChange?.(e.target.value);
+        },
+      }),
+      ...(options ?? []).map((o) =>
+        React.createElement(
+          "div",
+          {
+            key: String(o.value),
+            role: "option",
+            onClick: () => {
+              onChange?.(String(o.value), o);
+              onSelect?.(String(o.value), o);
+            },
+          },
+          o.label ?? String(o.value),
+        ),
+      ),
+      (options ?? []).length === 0 && notFoundContent !== undefined
+        ? React.createElement("div", { key: "__empty__" }, notFoundContent as React.ReactNode)
+        : null,
+      children,
+    );
   // Настоящее ЧИСЛОВОЕ поле зовёт `onChange` с ЧИСЛОМ (или `null` на пустоте), а
   // не с событием. Заменитель, отдававший событие, делал недостижимым весь путь
   // «ввёл число → отправили»: вызывающий, разбирающий число, получал объект,
@@ -972,7 +1035,7 @@ export function antdStub(): Record<string, unknown> {
         modal: { confirm: noop, info: noop, success: noop, error: noop, warning: noop },
       }),
     }),
-    AutoComplete: Input,
+    AutoComplete,
     Avatar: Component,
     Badge,
     // Поставщик темы обёртывает КАЖДЫЙ remote (`shared/src/lib/theme-context`).
