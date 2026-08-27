@@ -215,7 +215,7 @@ func runServe(cfg config.Config) error {
 		return err
 	}
 
-	svcs := buildServices(pool, slavePool, opsRepo, kachoRepo, metricsReg, cfg, tokenSigner, logger)
+	svcs := buildServices(pool, slavePool, opsRepo, kachoRepo, kachoRepo, metricsReg, cfg, tokenSigner, logger)
 
 	// gRPC servers. PrincipalExtract-interceptor читает
 	// x-kacho-principal-* metadata-headers, которые api-gateway auth-interceptor
