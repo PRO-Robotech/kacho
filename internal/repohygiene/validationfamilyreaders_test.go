@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -86,8 +87,12 @@ var retiredFamilyOptionNames = []string{
 // пробел, `[`, `,` или начало строки; в вызове — имя функции. RE2 не знает
 // ретроспективных проверок, поэтому предшествующий знак захватывается явно.
 //
-// Обе границы сужают НАХОДКИ и не трогают ОХВАТ: число осмотренных файлов от
-// них не меняется (7130 до и после) — значит сняты ложные, а не полоса дерева.
+// Обе границы сужают НАХОДКИ и не трогают ОХВАТ, и это свойство построения, а не
+// совпадение замера: осмотренное считается ДО применения выражения, поэтому от
+// его правки измениться не может. Число рядом — размер корпуса на день той
+// правки (7130); сегодня он больше, потому что охват расширен с рукописного
+// перечня каталогов на весь индекс, и это ДРУГАЯ ось — см. разбор у
+// familySubjectPrefixes.
 // Полнота перечня форм доказана инъекцией по КАЖДОЙ, включая обе ложные:
 // validationfamilyreaders_injection_test.go.
 var familyOptionInExecutableForm = regexp.MustCompile(
@@ -116,6 +121,69 @@ var contractReach = regexp.MustCompile(
 var familyReaderExemptions = map[string]string{
 	"internal/repohygiene/validationfamilyreaders_injection_test.go": "инъекция самой этой переписи: " +
 		"вносит снятую опцию по построению, доказывая способность гейта падать",
+}
+
+// familySubjectPrefixes — ПРЕДМЕТ проверки, а не её слепая зона.
+//
+// `proto/` — сами контракты, `pkg/api/` — их производная. Ни то, ни другое
+// проверкой о семействе не является, и у обоих есть СВОЙ судья: что семейства
+// в контрактах нет, утверждает по ОПИСАТЕЛЮ
+// TestValidationFamilyIsRetiredFromTheContracts. Этим исключение предмета
+// отличается от исключения слепой зоны — у второго судьи нет никакого, поэтому
+// число исключённого печатается рядом с осмотренным.
+var familySubjectPrefixes = []string{"proto/", "pkg/api/"}
+
+// corpusCoverage — три исхода, на которые разбивается состав индекса. Печатаются
+// все три: «ноль находок» обязано быть отличимо от «ноль прочитанного».
+type corpusCoverage struct {
+	tracked         int
+	subject         int
+	unreadable      int
+	unreadableNames []string
+}
+
+// partitionTreeCorpus — разбивает состав индекса на корпус · предмет · непрочтённое
+// и ОТКАЗЫВАЕТСЯ отдавать корпус, из которого файлы потерялись молча.
+//
+// Вынесено из пробы отдельной функцией по одной причине: предпосылку охвата
+// нельзя доказать, пока она стоит внутри обхода дерева. Здесь она принимает
+// состав и читателя аргументами, поэтому инъекция подаёт ей потерю файла на
+// синтетике и смотрит, назовёт ли она её.
+func partitionTreeCorpus(
+	root string,
+	tracked []string,
+	subjectPrefixes []string,
+	read func(string) ([]byte, error),
+) (map[string]string, corpusCoverage, error) {
+	corpus := map[string]string{}
+	cov := corpusCoverage{tracked: len(tracked)}
+	for _, f := range tracked {
+		rel, rerr := filepath.Rel(root, f)
+		if rerr != nil {
+			return nil, cov, fmt.Errorf("относительный путь %s: %w", f, rerr)
+		}
+		rel = filepath.ToSlash(rel)
+		if slices.ContainsFunc(subjectPrefixes, func(p string) bool { return strings.HasPrefix(rel, p) }) {
+			cov.subject++
+			continue
+		}
+		body, berr := read(f)
+		if berr != nil {
+			// Отслеживаемый файл, которого не прочесть, — это НЕ «ноль находок»
+			// по нему: он назван и посчитан, иначе пропажа была бы неотличима
+			// от чистоты.
+			cov.unreadable++
+			cov.unreadableNames = append(cov.unreadableNames, rel+" — "+berr.Error())
+			continue
+		}
+		corpus[rel] = string(body)
+	}
+	if got := len(corpus) + cov.subject + cov.unreadable; got != cov.tracked {
+		return nil, cov, fmt.Errorf("не сходится с индексом: в корпусе %d + предмет %d + "+
+			"не прочитано %d = %d, а отслеживается %d — значит часть дерева выпала "+
+			"из наблюдения молча", len(corpus), cov.subject, cov.unreadable, got, cov.tracked)
+	}
+	return corpus, cov, nil
 }
 
 type familyReaderCensus struct {
@@ -197,32 +265,41 @@ func stripLineComments(path, body string) string {
 // TestNoCheckReadsTheRetiredValidationFamily — полоса Л-04.
 func TestNoCheckReadsTheRetiredValidationFamily(t *testing.T) {
 	root := repoRoot(t)
-	corpus := map[string]string{}
 
-	for _, dir := range []string{"internal", "services", "gateway", "pkg", "tools", "ui-future", "deploy", "terraform", "scripts"} {
-		files, err := treecorpus.Under(filepath.Join(root, dir))
-		if err != nil {
-			// Каталога может не быть в индексе — это не молчание гейта, а
-			// отсутствие предмета, и оно называется вслух.
-			t.Logf("каталог %s вне охвата: %v", dir, err)
-			continue
-		}
-		for _, f := range files {
-			rel, rerr := filepath.Rel(root, f)
-			if rerr != nil {
-				t.Fatalf("относительный путь %s: %v", f, rerr)
-			}
-			rel = filepath.ToSlash(rel)
-			// Стабы — производная контрактов, а не проверка о них.
-			if strings.HasPrefix(rel, "pkg/api/") {
-				continue
-			}
-			body, berr := os.ReadFile(f)
-			if berr != nil {
-				continue
-			}
-			corpus[rel] = string(body)
-		}
+	// ОХВАТ ВЫВОДИТСЯ ИЗ ИНДЕКСА ЦЕЛИКОМ, а не выписывается перечнем каталогов.
+	//
+	// Здесь стоял рукописный список из девяти имён верхнего уровня. Он оставлял
+	// вне охвата 89 отслеживаемых файлов — `tests/`, `.github/`, `docs/` и файлы
+	// корня — и не говорил об этом ни строкой: по ним «находок ноль» означало
+	// «ноль прочитанного», то есть ровно тот класс, который этот гейт и ловит,
+	// этажом выше. Перечень ВКЛЮЧАЕМЫХ каталогов расходится с деревом молча:
+	// первый же новый каталог верхнего уровня выпадает из наблюдения, и заметить
+	// это нельзя ничем — гейт остаётся зелёным.
+	//
+	// Исключаются ДВА префикса, и оба — ПРЕДМЕТ проверки, а не слепая зона:
+	// `proto/` — сами контракты, `pkg/api/` — их производная. Ни то, ни другое
+	// проверкой о семействе не является; что семейства в контрактах нет,
+	// утверждает по ОПИСАТЕЛЮ TestValidationFamilyIsRetiredFromTheContracts.
+	// Разница между исключением предмета и исключением слепой зоны в том, что
+	// первое имеет своего судью, а второе — никакого; поэтому число исключённого
+	// печатается рядом с осмотренным.
+	tracked, err := treecorpus.Under(root)
+	if err != nil {
+		t.Fatalf("состав дерева взять неоткуда: %v", err)
+	}
+
+	corpus, cov, cerr := partitionTreeCorpus(root, tracked, familySubjectPrefixes, os.ReadFile)
+	for _, name := range cov.unreadableNames {
+		t.Logf("не прочитан (в охват не вошёл): %s", name)
+	}
+	// ПРЕДПОСЫЛКА ОХВАТА: ни один отслеживаемый файл не потерян молча. Сумма трёх
+	// исходов обязана сойтись с составом индекса — иначе сужение охвата (правкой
+	// префиксов, ошибкой относительного пути) прошло бы незамеченным, а гейт
+	// остался бы зелёным на меньшем дереве. Способность этой предпосылки упасть
+	// доказана инъекцией, а не очевидностью арифметики:
+	// TestTreeCorpusPartitionRefusesToLoseFilesSilently.
+	if cerr != nil {
+		t.Fatalf("охват: %v", cerr)
 	}
 
 	findings, c := auditValidationFamilyReaders(corpus)
@@ -230,8 +307,11 @@ func TestNoCheckReadsTheRetiredValidationFamily(t *testing.T) {
 	if c.scanned == 0 {
 		t.Fatal("осмотрено НОЛЬ файлов — «находок ноль» здесь означало бы «ноль прочитанного»")
 	}
-	t.Logf("перепись: файлов осмотрено %d (документации пропущено %d); называют опцию семейства "+
+
+	t.Logf("перепись: отслеживается %d, из них предмет проверки (%s) %d, не прочитано %d; "+
+		"файлов осмотрено %d (документации пропущено %d); называют опцию семейства "+
 		"в исполняемой части %d; из них обращаются к контрактам %d; освобождено %d (из %d записей); находок %d",
+		cov.tracked, strings.Join(familySubjectPrefixes, ", "), cov.subject, cov.unreadable,
 		c.scanned, c.skippedDoc, c.named, c.reaching, c.exempt, len(familyReaderExemptions), c.findings)
 
 	if len(findings) > 0 {

@@ -219,3 +219,94 @@ func TestFamilyReaderExemptionExpiresWithItsSubject(t *testing.T) {
 		t.Logf("просрочено: %s", findings[0])
 	})
 }
+
+// TestTreeCorpusPartitionRefusesToLoseFilesSilently — доказательство способности
+// ПРЕДПОСЫЛКИ ОХВАТА падать и молчать.
+//
+// # Почему у арифметики отдельная инъекция
+//
+// Предпосылка «сумма трёх исходов сходится с составом индекса» выглядит
+// самоочевидной, и ровно поэтому её никто не проверяет. Между тем она стережёт
+// не описку в сложении, а МОЛЧАЛИВУЮ ПОТЕРЮ: до этой правки охват задавался
+// рукописным перечнем девяти каталогов верхнего уровня, и 89 отслеживаемых
+// файлов (`tests/`, `.github/`, `docs/`, корень) не читались вовсе — при зелёном
+// гейте и без единой строки об этом. Перечень ВКЛЮЧАЕМОГО расходится с деревом
+// молча; сумма, сверенная с индексом, — единственное, что об этом скажет.
+//
+// Оси четыре, и каждая — отдельный исход разбиения, а не оттенок одного.
+func TestTreeCorpusPartitionRefusesToLoseFilesSilently(t *testing.T) {
+	const root = "/repo"
+	ok := func(path string) ([]byte, error) { return []byte("package x\n"), nil }
+
+	t.Run("законный близнец: состав сходится — отказа нет", func(t *testing.T) {
+		tracked := []string{root + "/internal/a.go", root + "/tests/b.py", root + "/.github/c.yml"}
+		corpus, cov, err := partitionTreeCorpus(root, tracked, familySubjectPrefixes, ok)
+		if err != nil {
+			t.Fatalf("отказ на сходящемся составе: %v", err)
+		}
+		if len(corpus) != 3 || cov.tracked != 3 || cov.subject != 0 || cov.unreadable != 0 {
+			t.Fatalf("перепись неверна: корпус %d, отслеживается %d, предмет %d, не прочитано %d",
+				len(corpus), cov.tracked, cov.subject, cov.unreadable)
+		}
+		// Полоса, ради которой охват расширен: она обязана быть В КОРПУСЕ.
+		for _, want := range []string{"tests/b.py", ".github/c.yml"} {
+			if _, in := corpus[want]; !in {
+				t.Fatalf("%s вне корпуса — охват снова сузился до перечня каталогов", want)
+			}
+		}
+	})
+
+	t.Run("ПОТЕРЯ МОЛЧА: два пути схлопнулись в один ключ — отказ назван", func(t *testing.T) {
+		// Реальная форма потери: состав индекса даёт два элемента, а корпус —
+		// отображение, поэтому совпавший ключ поглощает предыдущий и число
+		// осмотренного тихо уменьшается на единицу.
+		tracked := []string{root + "/internal/a.go", root + "/internal/./a.go"}
+		_, cov, err := partitionTreeCorpus(root, tracked, familySubjectPrefixes, ok)
+		if err == nil {
+			t.Fatal("потеря файла не объявлена: разбиение отдало корпус, из которого файл исчез молча")
+		}
+		if !strings.Contains(err.Error(), "выпала из наблюдения молча") {
+			t.Fatalf("отказ не называет предмета: %v", err)
+		}
+		if cov.tracked != 2 {
+			t.Fatalf("перепись не назвала состава индекса: отслеживается %d", cov.tracked)
+		}
+		t.Logf("названо: %v", err)
+	})
+
+	t.Run("ПРЕДМЕТ исключён и ПОСЧИТАН, а не потерян", func(t *testing.T) {
+		tracked := []string{root + "/proto/kacho/cloud/x.proto", root + "/pkg/api/x.pb.go", root + "/internal/a.go"}
+		corpus, cov, err := partitionTreeCorpus(root, tracked, familySubjectPrefixes, ok)
+		if err != nil {
+			t.Fatalf("отказ при исключении предмета: %v", err)
+		}
+		if cov.subject != 2 || len(corpus) != 1 {
+			t.Fatalf("предмет посчитан %d, корпус %d — ждали 2 и 1", cov.subject, len(corpus))
+		}
+	})
+
+	t.Run("НЕПРОЧТЁННОЕ названо поимённо, а не проглочено", func(t *testing.T) {
+		tracked := []string{root + "/internal/a.go", root + "/internal/gone.go"}
+		read := func(path string) ([]byte, error) {
+			if strings.HasSuffix(path, "gone.go") {
+				return nil, errNoSuchFileForInjection{}
+			}
+			return []byte("package x\n"), nil
+		}
+		_, cov, err := partitionTreeCorpus(root, tracked, familySubjectPrefixes, read)
+		if err != nil {
+			t.Fatalf("непрочтённый файл объявлен потерей: %v", err)
+		}
+		if cov.unreadable != 1 || len(cov.unreadableNames) != 1 ||
+			!strings.Contains(cov.unreadableNames[0], "internal/gone.go") {
+			t.Fatalf("непрочтённое не названо: %d — %v", cov.unreadable, cov.unreadableNames)
+		}
+	})
+}
+
+// errNoSuchFileForInjection — отказ чтения для инъекции выше. Своим типом, а не
+// текстовой строкой: инъекция обязана подавать читателю НАСТОЯЩИЙ отказ, а не
+// его изображение.
+type errNoSuchFileForInjection struct{}
+
+func (errNoSuchFileForInjection) Error() string { return "нет такого файла" }
