@@ -35,11 +35,35 @@
 //     целиком — сырой литерал есть ОДИН узел, и построчный предикат его бы
 //     разорвал (RET-SWP-11). Появление собранного оператора видно по счётчику
 //     `Deletes` переписи: удаление признано, уборщиком не стало.
-//  2. **оператор, приехавший из переменной или построителя запросов** — литерала
-//     в теле функции тогда нет вовсе. Форм такого рода в дереве нет; их
-//     появление видно по счётчику распознанных уборщиков в переписи.
+//
+//  2. **оператор, собранный В РАНТАЙМЕ** — построителем запросов либо из
+//     значения, вычисленного по ходу дела. Литерала в теле функции тогда нет, и
+//     собрать текст разбором нельзя by construction.
+//
+//     Здесь стояло шире — «оператор, приехавший ИЗ ПЕРЕМЕННОЙ», с оговоркой
+//     «форм такого рода в дереве нет». Оговорка пережила свой предмет: оператор,
+//     объявленный ПАКЕТНОЙ строковой величиной и позванный по имени, — форма
+//     живая и обычная, и записаны так были ДВА уборщика дерева
+//     (`Store.PurgeExpiredDPoPProofs` шлюза, `TargetDrainRunner.drainOnce`
+//     nlb). Оба имели прод-вызывающего, то есть находками не были, — они были
+//     НЕВИДИМЫ: ни красного, ни зелёного, молчание. Нашлось это не переписью, а
+//     тем, что один из них стоял в ведомости и её запись объявила себя
+//     потерявшей предмет с неверной причиной («уборщика в дереве нет вовсе»).
+//
+//     Поэтому имя пакетного значения ТЕПЕРЬ РАЗБИРАЕТСЯ (см. `packageStrings`),
+//     включая склейку `+` из литералов и таких же имён. Цена расширения
+//     измерена, а не предположена: осмотренных уборщиков 7 → 9, находок 0 → 0.
+//
+//     2а. **пакетное значение из СОСЕДНЕГО файла того же пакета** — разбор идёт по
+//     одному файлу и чужого файла не видит. Остаток назван, а не спрятан: обе
+//     формы дерева объявлены в том же файле, что и уборщик, и появление
+//     разнесённой видно по паре счётчиков переписи — `NamedValues` (пакетных
+//     строк прочитано) против `Named` (из них признаны уборщиками). Полоса, у
+//     которой первое растёт, а второе стоит, и есть эта слепая зона.
+//
 //  3. **вызов косвенный** — метод, положенный в переменную и вызванный оттуда.
 //     Разбор судит вызов по месту, а не по потоку значений.
+//
 //  4. **однофамилец в ЧУЖОМ каталоге**: вызывающий засчитывается только из
 //     СВОЕГО каталога либо из каталога, который его ИМПОРТИРУЕТ. Имя `Reap` в
 //     этом дереве носят два разных типа, и без этой границы вызывающий шлюза
@@ -91,6 +115,14 @@ type RetentionSweeperCensus struct {
 	Deletes int
 	// Sweepers — из них признаны уборщиками ПО СРОКУ.
 	Sweepers int
+	// NamedValues — пакетных строковых значений файла прочитано.
+	//
+	// Объём ВТОРОЙ полосы разбора. Печатается рядом с `Named`, потому что одно
+	// число не различает «полоса пуста» и «полоса не читалась».
+	NamedValues int
+	// Named — из уборщиков признаны по ИМЕНИ пакетного значения, а не по
+	// литералу в теле.
+	Named int
 }
 
 // deleteRe — оператор удаляет строки.
@@ -121,6 +153,13 @@ func IsTimedDelete(sql string) bool {
 // оператор в несколько строк, и построчный предикат увидел бы `DELETE FROM t` и
 // `WHERE expires_at <= now()` порознь, не признав ни одну строку уборкой
 // (RET-SWP-11).
+//
+// # Две законные формы записи оператора, а не одна
+//
+// Уборщик называет свой оператор либо ЛИТЕРАЛОМ в теле, либо ИМЕНЕМ пакетного
+// строкового значения того же файла. Обе формы в этом дереве живые, обе
+// разбираются, и порядок между ними — литерал вперёд: по нему берётся текст для
+// отказа, а находка без предмета неотличима от промаха разбора.
 func ScanRetentionSweepers(path, dir string, src []byte) ([]RetentionSweeper, RetentionSweeperCensus, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, src, parser.SkipObjectResolution)
@@ -132,6 +171,8 @@ func ScanRetentionSweepers(path, dir string, src []byte) ([]RetentionSweeper, Re
 		out    []RetentionSweeper
 		census RetentionSweeperCensus
 	)
+	named := packageStrings(f)
+	census.NamedValues = len(named)
 	for _, decl := range f.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
 		if !ok || fn.Body == nil {
@@ -140,21 +181,38 @@ func ScanRetentionSweepers(path, dir string, src []byte) ([]RetentionSweeper, Re
 		census.Functions++
 
 		var literals []string
+		var names []string
+		// Правая часть селектора — ПОЛЕ или МЕТОД, а не имя пакетного значения:
+		// `s.q` есть `q` чужого типа. Она отмечается и пропускается ПОИМЁННО, а
+		// не отсечением ветки: под селектором лежат и литералы
+		// (`db.Exec(ctx, "…").Scan(…)`), и обход, обрывающийся здесь, терял бы
+		// их — первая редакция этой правки так и сделала, и перепись сказала об
+		// этом сама: литералов 28210 → 27971, удалений 84 → 75.
+		fields := map[*ast.Ident]bool{}
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			lit, ok := n.(*ast.BasicLit)
-			if !ok || lit.Kind != token.STRING {
-				return true
+			switch x := n.(type) {
+			case *ast.BasicLit:
+				if x.Kind != token.STRING {
+					return true
+				}
+				census.Literals++
+				v, uerr := strconv.Unquote(x.Value)
+				if uerr != nil {
+					v = x.Value
+				}
+				literals = append(literals, v)
+			case *ast.SelectorExpr:
+				fields[x.Sel] = true
+			case *ast.Ident:
+				if !fields[x] {
+					names = append(names, x.Name)
+				}
 			}
-			census.Literals++
-			v, uerr := strconv.Unquote(lit.Value)
-			if uerr != nil {
-				v = lit.Value
-			}
-			literals = append(literals, v)
 			return true
 		})
 
 		matched := ""
+		viaName := false
 		for _, v := range literals {
 			if deleteRe.MatchString(v) {
 				census.Deletes++
@@ -165,9 +223,22 @@ func ScanRetentionSweepers(path, dir string, src []byte) ([]RetentionSweeper, Re
 			}
 		}
 		if matched == "" {
+			for _, id := range names {
+				v, ok := named[id]
+				if !ok || !IsTimedDelete(v) {
+					continue
+				}
+				matched, viaName = v, true
+				break
+			}
+		}
+		if matched == "" {
 			continue
 		}
 		census.Sweepers++
+		if viaName {
+			census.Named++
+		}
 		recv := ""
 		if fn.Recv != nil && len(fn.Recv.List) > 0 {
 			recv = receiverName(fn.Recv.List[0].Type)
@@ -182,6 +253,97 @@ func ScanRetentionSweepers(path, dir string, src []byte) ([]RetentionSweeper, Re
 		})
 	}
 	return out, census, nil
+}
+
+// packageStrings — строковые значения, объявленные НА УРОВНЕ ПАКЕТА в этом же
+// файле, уже собранные в текст.
+//
+// # Почему `const` И `var`
+//
+// Предмет — «оператор объявлен отдельно от функции», а не «объявлен
+// неизменяемым». Величина, положенная в `var`, уходит в базу тем же способом, и
+// различать их значило бы завести слепую зону шириной в одно ключевое слово.
+//
+// # Почему склейка здесь разбирается, а в теле функции — нет
+//
+// Склейка ЛИТЕРАЛОВ ФУНКЦИИ была написана и снята: она давала два ложных
+// срабатывания (удаление в одном литерале, слово с `_at` — в соседнем сообщении
+// об ошибке), потому что в теле рядом лежат куски, друг к другу не относящиеся.
+// У объявления величины такого соседства нет by construction: складывается ровно
+// то, из чего эта величина состоит, — поэтому `dpopPurgeSQL` вида
+// «`DELETE …` + предикат срока» читается целиком и без домысла.
+func packageStrings(f *ast.File) map[string]string {
+	exprs := map[string]ast.Expr{}
+	for _, d := range f.Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok || (gd.Tok != token.CONST && gd.Tok != token.VAR) {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, nm := range vs.Names {
+				if i >= len(vs.Values) || nm.Name == "_" {
+					continue
+				}
+				exprs[nm.Name] = vs.Values[i]
+			}
+		}
+	}
+	out := make(map[string]string, len(exprs))
+	for name, e := range exprs {
+		if v, ok := resolveString(e, exprs, 0); ok {
+			out[name] = v
+		}
+	}
+	return out
+}
+
+// resolveString — текст строкового выражения, собираемого из литералов и имён,
+// объявленных здесь же.
+//
+// Глубина ограничена намеренно: перечень имён приходит из того же файла и
+// замкнуться сам на себя может (`const a = b`, `const b = a` компилятор не
+// пропустит, но разбор не компилятор и обязан кончаться при любом входе).
+func resolveString(e ast.Expr, exprs map[string]ast.Expr, depth int) (string, bool) {
+	if depth > 8 {
+		return "", false
+	}
+	switch x := e.(type) {
+	case *ast.BasicLit:
+		if x.Kind != token.STRING {
+			return "", false
+		}
+		v, err := strconv.Unquote(x.Value)
+		if err != nil {
+			v = x.Value
+		}
+		return v, true
+	case *ast.ParenExpr:
+		return resolveString(x.X, exprs, depth+1)
+	case *ast.Ident:
+		inner, ok := exprs[x.Name]
+		if !ok {
+			return "", false
+		}
+		return resolveString(inner, exprs, depth+1)
+	case *ast.BinaryExpr:
+		if x.Op != token.ADD {
+			return "", false
+		}
+		l, lok := resolveString(x.X, exprs, depth+1)
+		if !lok {
+			return "", false
+		}
+		r, rok := resolveString(x.Y, exprs, depth+1)
+		if !rok {
+			return "", false
+		}
+		return l + r, true
+	}
+	return "", false
 }
 
 // ScanMethodCallNames возвращает имена методов, вызванных в файле, вместе с

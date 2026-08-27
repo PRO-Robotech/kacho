@@ -87,6 +87,93 @@ func (r *OrdinaryRepo) ListStale(ctx context.Context) error {
 }
 `
 
+// injectedSweeperViaNamedConst — уборщик, чей оператор объявлен ПАКЕТНОЙ
+// величиной и позван по ИМЕНИ, да ещё собран склейкой из второй такой же.
+//
+// Форма списана с дерева, а не выдумана: так записаны `dpopPurgeSQL` шлюза и
+// `drainSQL` nlb. До разбора имён оба уборщика были гейту НЕВИДИМЫ — не
+// находкой, а молчанием.
+const injectedSweeperViaNamedConst = `package pg
+
+import "context"
+
+const expiredPredicate = "t.expires_at <= now()"
+
+const purgeSQL = "\nDELETE FROM t\n WHERE ctid IN (\n     SELECT ctid FROM t\n      WHERE " +
+	expiredPredicate + "\n      LIMIT $1\n )"
+
+type OrphanRepo struct{ pool any }
+
+func (r *OrphanRepo) Purge(ctx context.Context) (int64, error) {
+	tag, err := r.pool.Exec(ctx, purgeSQL, 100)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+`
+
+// injectedNamedConstWithoutTime — ЗАКОННЫЙ БЛИЗНЕЦ: пакетная величина есть,
+// удаление есть, сравнения со временем нет. Обязан молчать.
+//
+// Без него разбор имён ловил бы «функцию, называющую константу со словом
+// DELETE», и первое же законное удаление по ключу его отключило бы.
+const injectedNamedConstWithoutTime = `package pg
+
+import "context"
+
+const deleteSQL = "DELETE FROM t WHERE id = $1"
+
+type OrdinaryRepo struct{ pool any }
+
+func (r *OrdinaryRepo) Delete(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, deleteSQL, id)
+	return err
+}
+`
+
+// injectedQueryFromCallData — второй законный близнец: оператор приходит
+// ПАРАМЕТРОМ, пакетной величины с таким именем нет.
+//
+// Это и есть узость расширения: узнаётся ровно то имя, которое объявлено ЗДЕСЬ
+// ЖЕ. Широкое «всякий идентификатор, похожий на запрос» объявило бы уборщиком
+// любую обёртку над `Exec`.
+const injectedQueryFromCallData = `package pg
+
+import "context"
+
+type OrdinaryRepo struct{ pool any }
+
+func (r *OrdinaryRepo) Exec(ctx context.Context, purgeSQL string) error {
+	_, err := r.pool.Exec(ctx, purgeSQL)
+	return err
+}
+`
+
+// injectedFieldSharingTheConstName — третий законный близнец: пакетная величина
+// объявлена, но функция читает ОДНОИМЁННОЕ ПОЛЕ, а не её.
+//
+// Правая часть селектора — поле чужого типа, и считать её именем величины
+// значило бы объявить уборщиком функцию, оператора не называющую.
+const injectedFieldSharingTheConstName = `package pg
+
+import "context"
+
+const purgeSQL = "DELETE FROM t WHERE expires_at <= now()"
+
+type cfg struct{ purgeSQL string }
+
+type OrdinaryRepo struct {
+	pool any
+	cfg  cfg
+}
+
+func (r *OrdinaryRepo) Run(ctx context.Context) error {
+	_, err := r.pool.Exec(ctx, r.cfg.purgeSQL)
+	return err
+}
+`
+
 // scanInjected — разбор одного синтетического файла тем же кодом, что и гейт.
 func scanInjected(t *testing.T, name, dir, src string) []RetentionSweeper {
 	t.Helper()
@@ -259,5 +346,112 @@ func TestRetentionSweeperGate_Injection_EmptyLedgerPasses(t *testing.T) {
 	}
 	if wired != 1 {
 		t.Fatalf("провязанных насчитано %d, ожидалась 1", wired)
+	}
+}
+
+// TestRetentionSweeperGate_Injection_NamedValueBand — вторая полоса разбора:
+// оператор, объявленный ПАКЕТНОЙ величиной и позванный по имени.
+//
+// Полоса заведена не про запас: до неё два уборщика дерева
+// (`Store.PurgeExpiredDPoPProofs` шлюза, `TargetDrainRunner.drainOnce` nlb) были
+// вне наблюдения — ни красного, ни зелёного. Цена расширения измерена:
+// осмотренных уборщиков 7 → 9, находок 0 → 0, полоса прежней формы (счётчик
+// `Deletes`) не изменилась — то есть прибавка была слепой зоной, а не
+// регрессией дерева.
+//
+// Утверждение идёт ЧЕТВЕРНЁЙ: дефект и три законных близнеца. Одного мало —
+// каждый закрывает свою ось, и все три оси реальны.
+func TestRetentionSweeperGate_Injection_NamedValueBand(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		src         string
+		wantSweeper int
+		wantNamed   int
+	}{
+		{"оператор пакетной величиной, собранный склейкой, — уборщик", injectedSweeperViaNamedConst, 1, 1},
+		{"пакетная величина без сравнения со временем — не уборщик", injectedNamedConstWithoutTime, 0, 0},
+		{"оператор из ДАННЫХ ВЫЗОВА — не уборщик", injectedQueryFromCallData, 0, 0},
+		{"одноимённое ПОЛЕ вместо величины — не уборщик", injectedFieldSharingTheConstName, 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, census, err := ScanRetentionSweepers("gateway/internal/x/x.go", "gateway/internal/x", []byte(tc.src))
+			if err != nil {
+				t.Fatalf("разбор синтетики: %v", err)
+			}
+			// Объём ВТОРОЙ полосы — отдельное утверждение: «уборщиков ноль»
+			// обязано быть отличимо от «пакетных величин не прочитано ни одной».
+			t.Logf("перепись: функций %d, литералов %d, пакетных строковых значений %d, из них назвали уборщика %d",
+				census.Functions, census.Literals, census.NamedValues, census.Named)
+			if len(got) != tc.wantSweeper {
+				t.Fatalf("распознано уборщиков %d, ожидалось %d: %+v", len(got), tc.wantSweeper, got)
+			}
+			if census.Named != tc.wantNamed {
+				t.Fatalf("признано ПО ИМЕНИ %d, ожидалось %d", census.Named, tc.wantNamed)
+			}
+		})
+	}
+}
+
+// TestRetentionSweeperGate_Injection_NamedValueSweeperIsFoundByName — суждение
+// над второй полосой: уборщик, объявленный пакетной величиной и НЕ позванный
+// никем, есть находка, и находка называет имя, координату И сам оператор.
+//
+// Оператор в отказе обязателен именно здесь: у формы «по имени» текст лежит НЕ
+// в теле функции, и находка без него была бы неотличима от промаха разбора —
+// читателю пришлось бы искать, что именно гейт счёл уборкой.
+func TestRetentionSweeperGate_Injection_NamedValueSweeperIsFoundByName(t *testing.T) {
+	sw := scanInjected(t, "gateway/internal/x/x.go", "gateway/internal/x", injectedSweeperViaNamedConst)
+
+	findings, stale, wired := retentionSweeperVerdict(sw,
+		map[string]map[string][]string{}, map[string]string{})
+
+	if len(findings) != 1 {
+		t.Fatalf("уборщик пакетной величиной без вызывающего находкой НЕ стал: находок %d, провязанных %d",
+			len(findings), wired)
+	}
+	if !strings.Contains(findings[0], "OrphanRepo.Purge") {
+		t.Errorf("находка не называет уборщика по имени: %s", findings[0])
+	}
+	if !strings.Contains(findings[0], "x.go:") {
+		t.Errorf("находка не называет координату: %s", findings[0])
+	}
+	if !strings.Contains(findings[0], "DELETE FROM t") || !strings.Contains(findings[0], "expires_at <= now()") {
+		t.Errorf("находка не называет оператор, СОБРАННЫЙ из склейки: %s", findings[0])
+	}
+	if len(stale) != 0 {
+		t.Errorf("ведомость пуста, а просроченных записей насчитано %d", len(stale))
+	}
+}
+
+// TestRetentionSweeperGate_Injection_SelectorReceiverLiteralsStillCounted —
+// контроль обхода: литерал, лежащий под СЕЛЕКТОРОМ, по-прежнему читается.
+//
+// Первая редакция разбора имён обрывала обход на селекторе, чтобы не считать
+// поле именем величины, — и вместе с полем теряла литералы в его левой части.
+// Сказала об этом перепись, а не проба: литералов 28210 → 27971, удалений
+// 84 → 75. Утверждение стоит здесь, чтобы обрыв не вернулся молча.
+func TestRetentionSweeperGate_Injection_SelectorReceiverLiteralsStillCounted(t *testing.T) {
+	const src = `package pg
+
+import "context"
+
+type OrphanRepo struct{ pool any }
+
+func (r *OrphanRepo) Reap(ctx context.Context) error {
+	return r.pool.Exec(ctx, "DELETE FROM t WHERE expires_at <= now()").Scan()
+}
+`
+	got, census, err := ScanRetentionSweepers("gateway/internal/x/x.go", "gateway/internal/x", []byte(src))
+	if err != nil {
+		t.Fatalf("разбор синтетики: %v", err)
+	}
+	if census.Literals == 0 {
+		t.Fatal("литерал под селектором не прочитан — обход оборвался на селекторе")
+	}
+	if census.Deletes != 1 {
+		t.Fatalf("удалений насчитано %d, ожидалось 1", census.Deletes)
+	}
+	if len(got) != 1 || census.Named != 0 {
+		t.Fatalf("уборщик обязан быть признан ПО ЛИТЕРАЛУ: уборщиков %d, по имени %d", len(got), census.Named)
 	}
 }
