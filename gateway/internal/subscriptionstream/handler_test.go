@@ -4,8 +4,10 @@
 package subscriptionstream_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -635,4 +637,108 @@ func TestPostureRefusalIsCountedApartFromCallerFault(t *testing.T) {
 	if got.RefusedInput != 0 {
 		t.Errorf("отказ посадки посчитан как вина вызывающего: %+v", got)
 	}
+}
+
+// TestTwoCeilingsAreDistinguishableByToken — два потолка называются МАШИННО.
+//
+// Потолок реплики и потолок вызывающего требуют от клиента РАЗНОГО действия:
+// первый значит «подожди, место освободится», второй — «ты сам держишь свои
+// потоки, закрой лишние». Оба отвечают `429` и кодом 8, поэтому различить их по
+// коду нельзя by construction, а различать по прозе клиент не вправе: тон
+// сообщения стабилен, но не разбираем — та же дисциплина, что у полос резолва
+// (`api-conventions.md` §by-lane code-split) и у уже действующего признака
+// утраченной позиции.
+//
+// Утверждается ПАРА и её РАЗЛИЧИЕ: каждый потолок несёт свой признак, и признаки
+// не совпадают. Без второй половины проба зеленела бы на ручке, ставящей один и
+// тот же признак обоим.
+func TestTwoCeilingsAreDistinguishableByToken(t *testing.T) {
+	held := &ownerStub{
+		script: []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)},
+		hold:   true,
+	}
+	// Оба потолка — двойка. Тогда ОДИН вызывающий, открыв два потока, исчерпывает
+	// РЕПЛИКУ и своё СРАЗУ, и обе полосы наблюдаемы на одном стенде: его третий
+	// поток судит предел субъекта (он проверяется первым), а первый поток ЧУЖОГО
+	// вызывающего — предел реплики, своего не выбрав вовсе.
+	h := newHandler(t, held, func(c *subscriptionstream.Config) {
+		c.MaxStreams = 2
+		c.MaxStreamsPerSubject = 2
+		c.StreamBudget = 3 * time.Second
+		c.Heartbeat = time.Second
+	})
+
+	held.started = make(chan struct{}, 2)
+	done := make(chan struct{})
+	var holders sync.WaitGroup
+	for range 2 {
+		holders.Add(1)
+		go func() {
+			defer holders.Done()
+			serve(t, h, request("owner=probe"))
+		}()
+	}
+	go func() { holders.Wait(); close(done) }()
+	for range 2 {
+		select {
+		case <-held.started:
+		case <-time.After(10 * time.Second):
+			t.Fatal("удерживающие потоки не открылись")
+		}
+	}
+
+	// Свой предел: тот же субъект вторым потоком — место реплики ещё занято им
+	// же, но решение принимает предел субъекта, он проверяется первым.
+	mine := serve(t, h, request("owner=probe"))
+	if mine.Code != http.StatusTooManyRequests {
+		t.Fatalf("свой предел ответил %d, ожидался 429 (тело %q)", mine.Code, mine.Body.String())
+	}
+
+	// Чужой при своём свободном пределе упирается в реплику.
+	otherReq := request("owner=probe")
+	otherReq.Header.Set(principalmeta.HeaderPrincipalID, "usr-other")
+	replica := serve(t, h, otherReq)
+	if replica.Code != http.StatusTooManyRequests {
+		t.Fatalf("предел реплики ответил %d, ожидался 429 (тело %q)", replica.Code, replica.Body.String())
+	}
+
+	mineReason := reasonOf(t, mine.Body.String())
+	replicaReason := reasonOf(t, replica.Body.String())
+
+	if mineReason == "" {
+		t.Errorf("исчерпание своего предела не назвало машинного признака: %q", mine.Body.String())
+	}
+	if replicaReason == "" {
+		t.Errorf("исчерпание реплики не назвало машинного признака: %q", replica.Body.String())
+	}
+	if mineReason != "" && mineReason == replicaReason {
+		t.Errorf("оба потолка назвались одним признаком %q — «подожди» и «закрой свои лишние» "+
+			"требуют разного действия, и клиенту нечем их отличить", mineReason)
+	}
+	<-done
+}
+
+// reasonOf достаёт признак полосы из тела отказа.
+//
+// Читается ровно то, на что клиенту разрешено ключеваться, — `reason` внутри
+// `google.rpc.ErrorInfo` в `details`. Проза не читается намеренно: проба, ищущая
+// подстроку в сообщении, закрепила бы ровно ту привычку, которую этот признак и
+// снимает.
+func reasonOf(t *testing.T, body string) string {
+	t.Helper()
+	var decoded struct {
+		Details []struct {
+			Type   string `json:"@type"`
+			Reason string `json:"reason"`
+		} `json:"details"`
+	}
+	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
+		t.Fatalf("тело отказа неразбираемо (%v): %q", err, body)
+	}
+	for _, d := range decoded.Details {
+		if strings.HasSuffix(d.Type, "google.rpc.ErrorInfo") && d.Reason != "" {
+			return d.Reason
+		}
+	}
+	return ""
 }
