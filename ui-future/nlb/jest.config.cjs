@@ -9,8 +9,14 @@ module.exports = {
   preset: "ts-jest",
   testEnvironment: "jsdom",
   extensionsToTreatAsEsm: [".ts", ".tsx"],
+  // Корни прогона — свой `src` И `shared/src`: у общего модуля собственного
+  // прогона нет, его пробы исполняют модули-потребители. Без этой пары строк
+  // домен, взявший из общего полсотни прослоек, о правках в нём не утверждает
+  // ничего: прогон был 24 суиты (146 проб) против 262 суит (2348 проб) с ними.
+  // Держит `src/test/module-runs-shared-suite.test.ts` (#408).
+  roots: ["<rootDir>/src", "<rootDir>/../shared/src"],
   setupFilesAfterEnv: ["<rootDir>/../shared/src/test/setup.ts"],
-  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
+  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}", "<rootDir>/../shared/src/**/*.test.{ts,tsx}"],
   // У `ui-future/shared` собственных node_modules нет: его исходники — часть сборки
   // КАЖДОГО remote'а, и зависимости им даёт remote (так же это делает vite, для
   // которого `@shared/*` — обычный alias внутри одного графа). Без этой строки любой

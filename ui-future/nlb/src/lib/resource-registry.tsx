@@ -99,204 +99,25 @@ const FIELD_LABELS: FormField = {
 };
 
 export const REGISTRY: Record<string, ResourceSpec> = {
-  // ====== geo/compute (read-only справочник для ref region_id) ======
-  // Region — cross-service ref-цель (owner — geo). Read-only: registry-запись
-  // нужна RefSelect'у для резолва apiPath/payloadKey/имени в dropdown'ах.
-  "compute-regions": {
-    id: "compute-regions",
-    // Идентификатор и есть имя: подписи у каталога размещения нет (#716).
-    idIsTheName: true,
-    route: "compute-regions",
-    apiPath: "/geo/v1/regions",
-    payloadKey: "regions",
-    singular: "Регион",
-    accusative: "регион",
-    plural: "Регионы",
-    serviceTitle: SERVICES.compute.title,
-    scope: "global",
-    ops: { create: false, update: false, delete: false },
-    emptyState: {
-      title: "Каталог регионов пуст",
-      body:
-        "Регион — верхний уровень оси размещения Kachō: внутри него живут зоны доступности, " +
-        "и на него ссылаются балансировщики и группы целей. Каталог заводит администратор " +
-        "облака — обратитесь к нему, если список пуст.",
-      docs: ["Регионы и зоны доступности"],
-    },
-    columns: [
-      { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
-      // Здесь стояла колонка «Статус» по полю `status`. Публичный geo.Region
-      // такого поля не несёт и не нёс никогда: состояние региона живёт только
-      // в `InternalRegion` на cluster-internal листенере (two-projection).
-      // Колонка была пуста при любом ответе сервера. Доступность размещения
-      // регион сообщает логическим `open_for_placement`.
-      {
-        header: "Открыт для размещения",
-        path: "open_for_placement",
-        // Следствие, а не ответ «Да» (правило 6 `ui.md`): заголовок задаёт
-        // вопрос, ячейка обязана дать содержательный ответ.
-        //
-        // Рисуется `render`, а не `format:"bool"`, и это НЕ обход общего
-        // словаря: словарь логический вариант уже несёт, но сборщик колонок
-        // этого модуля — форк, своей ветки `bool` у него нет, и колонка
-        // печаталась бы литералом `false` ровно там, где она заводится.
-        // `render` уважают ОБА сборщика, поэтому оба показывают одно и то же —
-        // это и утверждает `spec-columns.bool.test.tsx`. Ветка формата вернётся
-        // сюда вместе со сведением сборщика.
-        //
-        // Отсутствие значения — НЕ «закрыто»: сервер, не приславший поле, ничего
-        // не утверждает, и прочерк здесь остаётся третьим состоянием. `BoolFact`
-        // знает только истину и ложь (у него их ровно два), поэтому отсутствие
-        // отсеивается ДО него — ровно так же, как это делает логическая ветка
-        // общего словаря форматов.
-        render: (row) =>
-          typeof row.open_for_placement === "boolean" ? (
-            <BoolFact
-              value={row.open_for_placement}
-              yes="Размещение доступно"
-              no="Размещение закрыто"
-              yesTone="good"
-              noTone="attention"
-            />
-          ) : (
-            <span style={{ opacity: 0.45 }}>—</span>
-          ),
-      },
-    ],
-    template: () => ({}),
-  },
-
-  // Compute Instance / VPC NIC / Zone — cross-service ref-цели для target-picker'а
-  // TargetsManager (read-only, нужны RefSelect'у для apiPath/payloadKey/имени).
-  "compute-instances": {
-    id: "compute-instances",
-    route: "instances",
-    apiPath: "/compute/v1/instances",
-    payloadKey: "instances",
-    singular: "Виртуальная машина",
-    accusative: "виртуальную машину",
-    plural: "Виртуальные машины",
-    serviceTitle: SERVICES.compute.title,
-    scope: "project",
-    ops: { create: false, update: false, delete: false },
-    emptyState: {
-      title: "Создайте первую виртуальную машину",
-      body:
-        "Виртуальная машина — вычислительный ресурс Kachō с собственными дисками и сетевыми " +
-        "интерфейсами. Балансировщик направляет на неё трафик, когда машина добавлена в целевую группу.",
-      docs: ["Виртуальные машины"],
-    },
-    columns: [
-      { header: "Имя", path: "name", format: "text" },
-      { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
-    ],
-    template: () => ({}),
-  },
-  "network-interfaces": {
-    id: "network-interfaces",
-    route: "network-interfaces",
-    apiPath: "/vpc/v1/networkInterfaces",
-    payloadKey: "network_interfaces",
-    singular: ENTITIES["network-interfaces"].singular,
-    accusative: "сетевой интерфейс",
-    plural: ENTITIES["network-interfaces"].plural,
-    serviceTitle: SERVICES.vpc.title,
-    scope: "project",
-    ops: { create: false, update: false, delete: false },
-    emptyState: {
-      title: "Создайте первый сетевой интерфейс",
-      body:
-        "Сетевой интерфейс — подключение ресурса к подсети Kachō: он держит IP-адреса и группы " +
-        "безопасности. Целевая группа может ссылаться прямо на интерфейс, а не на машину целиком.",
-      docs: ["Сетевые интерфейсы"],
-    },
-    columns: [
-      { header: "Имя", path: "name", format: "text" },
-      { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
-    ],
-    template: () => ({}),
-  },
-  zones: {
-    id: "zones",
-    // Идентификатор и есть имя: подписи у каталога размещения нет (#716).
-    idIsTheName: true,
-    route: "zones",
-    apiPath: "/geo/v1/zones",
-    payloadKey: "zones",
-    singular: ENTITIES.zones.singular,
-    accusative: "зону",
-    plural: ENTITIES.zones.plural,
-    serviceTitle: SERVICES.system.title,
-    scope: "global",
-    ops: { create: false, update: false, delete: false },
-    emptyState: {
-      title: "Каталог зон пуст",
-      body:
-        "Зона доступности — точка размещения внутри региона Kachō: к ней привязаны подсети, машины " +
-        "и зональные балансировщики. Каталог заводит администратор облака — обратитесь к нему, " +
-        "если список пуст.",
-      docs: ["Регионы и зоны доступности"],
-    },
-    columns: [{ header: "Идентификатор", path: "id", format: "text", className: "font-mono" }],
-    template: () => ({}),
-  },
-
-  // ====== vpc (read-only ref-цели для VIP-picker'а) ======
-  // Subnet / Address — cross-service ref-цели (owner — vpc). Read-only
-  // registry-записи нужны RefSelect'у в NlbVipSourceField, чтобы резолвить
-  // apiPath/payloadKey + показать CIDR/IP в dropdown'е (extraInfoFor).
-  subnets: {
-    id: "subnets",
-    route: "subnets",
-    apiPath: "/vpc/v1/subnets",
-    payloadKey: "subnets",
-    singular: ENTITIES.subnets.singular,
-    accusative: "подсеть",
-    plural: ENTITIES.subnets.plural,
-    serviceTitle: SERVICES.vpc.title,
-    scope: "project",
-    ops: { create: false, update: false, delete: false },
-    emptyState: {
-      title: "Создайте первую подсеть",
-      body:
-        "Подсеть — диапазон IP-адресов внутри облачной сети Kachō, привязанный к зоне доступности. " +
-        "Машины и балансировщики получают адреса именно из неё.",
-      docs: ["Облачные сети и подсети"],
-    },
-    columns: [
-      { header: "Имя", path: "name", format: "text" },
-      { header: "Идентификатор", path: "id", format: "uid-short" },
-    ],
-    template: () => ({}),
-  },
-
-  addresses: {
-    id: "addresses",
-    route: "addresses",
-    apiPath: "/vpc/v1/addresses",
-    payloadKey: "addresses",
-    singular: ENTITIES.addresses.singular,
-    // Винительный падеж — от ИМЕНИ сущности, а не от прежней подписи: здесь
-    // стояло «адрес», написанное под старое «Адрес», а имя сведено к «IP-адрес»
-    // (@shared/lib/entity-names). Тот же ресурс в shared-реестре уже так и назван.
-    accusative: "IP-адрес",
-    plural: ENTITIES.addresses.plural,
-    serviceTitle: SERVICES.vpc.title,
-    scope: "project",
-    ops: { create: false, update: false, delete: false },
-    emptyState: {
-      title: "Зарезервируйте первый IP-адрес",
-      body:
-        "IP-адрес — адрес, закреплённый за проектом: внутренний из подсети или публичный для доступа " +
-        "извне. Балансировщик берёт отсюда свой VIP и держит его, пока адрес не освобождён.",
-      docs: ["Адреса облачных ресурсов"],
-    },
-    columns: [
-      { header: "Имя", path: "name", format: "text" },
-      { header: "Идентификатор", path: "id", format: "uid-short" },
-    ],
-    template: () => ({}),
-  },
+  // ── Ссылочные цели чужих доменов — ОТ ВЛАДЕЛЬЦА, а не своей записью ──
+  //
+  // Region/Zone (geo), Instance (compute), NetworkInterface/Subnet/Address (vpc)
+  // модуль не показывает и не создаёт: они стоят здесь только чтобы `RefSelect`
+  // в источнике VIP и в выборе целей, а `RefNameLink` в таблицах и на карточке
+  // резолвили `apiPath`/`payloadKey`/подпись и адрес карточки владельца.
+  //
+  // Прежде на это держались СВОИ записи — шесть заглушек, каждая беднее записи
+  // владельца в разы (`compute-instances` 22 строки против 376, `addresses` 22
+  // против 243, `zones` 21 против 181). Адресация в них совпадала с общей до
+  // буквы, и это ровно тот случай, когда копия расходится тише всего: пока
+  // владелец не правил, обе стороны выглядят исправными, а разойдутся они молча.
+  //
+  // Берётся ОБЪЕКТ владельца, а не разложенная копия его полей: тождество
+  // проверяемо (`===`), а совпадение полей — нет, оно верно ровно до следующей
+  // правки у владельца. Сборки это не удорожает: общий реестр уже лежит в графе
+  // модуля (через оболочку карточки и разбор колонок), то есть до сих пор модуль
+  // возил ДВА реестра сразу.
+  ...refTargets(),
 
   // ====== nlb ======
   // proto: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService. Здесь стояло
