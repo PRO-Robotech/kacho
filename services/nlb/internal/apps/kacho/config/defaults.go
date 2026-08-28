@@ -40,7 +40,7 @@ func RegisterDefaults(v *viper.Viper) {
 	// превосходит границу обработки одиночного вызова — иначе поток закрывался бы
 	// раньше первого события догона; отношение судит носитель.
 	v.SetDefault("api-server.subscription-stream-budget", "1h")
-	v.SetDefault("api-server.subscription-max-streams", 64)
+	v.SetDefault("api-server.subscription-max-streams", 16)
 	v.SetDefault("api-server.subscription-idle-poll", "2s")
 
 	// Metrics / Healthcheck. metrics.address — cluster-internal diagnostic

@@ -70,7 +70,7 @@ func describeCfg() config.Config {
 		// разбор окружения: пропущенное поле дало бы НОЛЬ, а ноль по этой оси
 		// носитель законно отвергает.
 		SubscriptionStreamBudget: time.Hour,
-		SubscriptionMaxStreams:   64,
+		SubscriptionMaxStreams:   16,
 		SubscriptionIdlePoll:     2 * time.Second,
 	}
 }
