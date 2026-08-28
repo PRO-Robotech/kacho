@@ -208,8 +208,17 @@ var Profile = listfiltergate.Profile{
 		// собственного чтения и надзора облака его не требуют (#1354).
 		"access_binding.ListSubjectPrivileges": rowFilter,
 
+		// ListBySubject отвечает на ТОТ ЖЕ вопрос, что и ListSubjectPrivileges, и
+		// с #1352 решает допуск ТЕМ ЖЕ предикатом. Раньше здесь стоял охраняющий
+		// объект: вызывающий обязан был БЫТЬ субъектом, поэтому сужать было
+		// нечего. Теперь чтение допускает и распорядителя аккаунта, чьи строки
+		// называют области выдач — в том числе в чужих аккаунтах, — и полнотой
+		// защиты допуск быть перестал. Объявлен РЯДНЫЙ фильтр: полоса
+		// распорядителя проходит пообъектный вопрос, полосы собственного чтения и
+		// надзора облака его не требуют.
+		"access_binding.ListBySubject": rowFilter,
+
 		// ---- one containing object, checked before the page is read ----
-		"access_binding.ListBySubject":       subjectGate("requireGroupMembership"),
 		"access_binding.ListAssignableRoles": subjectGate("requireGrantAuthority"),
 		// ListAllOperations and ListIamOperations both gate first and then call the
 		// UNSCOPED operations repo — the one carrying an explicit IDOR warning — so

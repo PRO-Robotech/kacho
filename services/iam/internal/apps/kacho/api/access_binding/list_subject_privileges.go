@@ -7,10 +7,11 @@ package access_binding
 // RPC AccessBindingService.ListSubjectPrivileges.
 //
 // Sync, enriched read of a subject's DIRECT privileges with server-resolved
-// role names (JOIN in the repo). Authz is BROADER than ListBySubject:
-// "self OR account-admin of the subject's home Account" — mirrors the
-// established requireGrantAuthority pattern but the scope object is the
-// SUBJECT's home Account (account:<subject.account_id>), not a binding's scope.
+// role names (JOIN in the repo). Допуск — ОДИН предикат с ListBySubject
+// (subject_read_authority.go): «сам субъект ИЛИ распорядитель его ДОМАШНЕГО
+// аккаунта ИЛИ администратор облака». Он зеркалит requireGrantAuthority, но
+// объектом области берёт домашний аккаунт СУБЪЕКТА (account:<subject.account_id>),
+// а не область выдачи.
 //
 // # ДОПУСК И СУЖЕНИЕ — РАЗНЫЕ ВЕЩИ, и раньше здесь стояло только первое (#1354)
 //
@@ -26,9 +27,10 @@ package access_binding
 // области выдач. Наблюдаемое следствие одно и то же — картирование состава
 // арендаторов, — поэтому и запрет один.
 //
-// Соседнее чтение того же сервиса, ListBySubject, сужения не требует: там
-// вызывающий обязан БЫТЬ названным субъектом, и ответ не шире того, что ему и
-// так принадлежит.
+// Соседнее чтение того же сервиса, ListBySubject, сужается ТЕМ ЖЕ вызовом и по
+// той же причине: допуск у них общий, значит и полоса распорядителя аккаунта у
+// него та же. Прежде оно допускало только самого субъекта — тогда сужать было
+// нечего, — и эта разница была не решением, а расхождением (#1352).
 //
 // Order of sync steps (api-conventions):
 //  1. subject_type whitelist  → InvalidArgument (user | service_account | group;
@@ -41,18 +43,13 @@ package access_binding
 //     не вправе. Хендлер судит СЫРОЙ запрос (до насыщающего сужения int64→int32),
 //     здесь судится уже разобранный фильтр — и судится в ТОЙ ЖЕ функции, которая
 //     ниже замыкается по правам.
-//  4. anti-anonymous guard    → PermissionDenied (catalog is cluster-floor;
-//     the precise self/account-admin policy is authoritative here).
-//  5. вызывающий обязан быть НАЗЫВАЕМ модели прав → PermissionDenied иначе.
-//     Безусловно: полоса края у этого чтения — `scope_filtered`, пообъектной
-//     проверки за ним нет, откатиться не на что.
-//  6. subject resolve (Users().Get / ServiceAccounts().Get / Groups().Get) —
-//     yields the home account_id the authz check needs. A subject that does not
-//     resolve does NOT answer here: its NotFound is HELD BACK (step 8).
-//  7. authz: IsSelf OR cluster-admin OR account-admin (owner of home Account OR
-//     FGA admin) → PermissionDenied otherwise. Decided BEFORE existence is
-//     allowed to shape the reply. Полоса, которой вызывающий допущен,
-//     ЗАПОМИНАЕТСЯ: от неё зависит шаг 10.
+//  4-7. допуск — ОДИН предикат, общий с ListBySubject
+//     (`subjectReadAuthority`, subject_read_authority.go). Он несёт: анти-анонимного
+//     стража; требование быть НАЗЫВАЕМЫМ модели прав (безусловно — полоса края у
+//     этого чтения `scope_filtered`, пообъектной проверки за ним нет, откатиться
+//     не на что); резолв субъекта, чей ответ об отсутствии ПРИДЕРЖИВАЕТСЯ до
+//     шага 8; и решение полосы — сам субъект / надзор облака / распорядитель
+//     домашнего аккаунта. Полоса ЗАПОМИНАЕТСЯ: от неё зависит шаг 10.
 //  8. only now, for a caller who may read the subject: a subject that did not
 //     resolve → NotFound.
 //  9. repo JOIN read (access_bindings ⋈ roles), keyset paginated.
@@ -93,10 +90,10 @@ package access_binding
 //     / List). Вопрос задаётся ОДИН раз на запрос.
 //
 // Цена, названная честно: у полосы распорядителя вопрос надзора задаётся раньше
-// `hasAccountViewAuthority`, который несёт собственное короткое замыкание на тот
-// же надзор, — то есть на этой полосе один лишний вопрос к модели НА ЗАПРОС.
-// Величина постоянная, от размера страницы не зависит и второй формулировки
-// предиката полномочий не заводит.
+// предиката авторитета над домашним аккаунтом, а тот несёт собственное короткое
+// замыкание на тот же надзор, — то есть на этой полосе один лишний вопрос к
+// модели НА ЗАПРОС. Величина постоянная, от размера страницы не зависит и второй
+// формулировки предиката полномочий не заводит.
 //
 // # СТОИМОСТЬ СТРАНИЦЫ ПРИНАДЛЕЖИТ ЗАПРОСУ
 //
@@ -117,17 +114,14 @@ package access_binding
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
-	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
-	iamerr "github.com/PRO-Robotech/kacho/services/iam/internal/errors"
 	repoab "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
 )
 
@@ -183,78 +177,23 @@ func (u *ListSubjectPrivilegesUseCase) Execute(ctx context.Context, subjectType 
 		return nil, "", err
 	}
 
-	// 4. Anti-anonymous guard (catalog entry is cluster-floor; handler is the
-	// authoritative policy — same pattern as ListBySubject / Create).
-	if err := authzguard.RequireAuthenticated(ctx); err != nil {
-		return nil, "", err
-	}
-
-	// 5. Вызывающий обязан быть НАЗЫВАЕМ модели прав, и это отсекается
-	// безусловно — до допуска, а не внутри сужения.
+	// 4-7. Допуск — ЕДИНЫМ предикатом, общим с ListBySubject
+	// (subject_read_authority.go). Здесь его нет второй копией намеренно: два
+	// написания одной политики разошлись бы молча, и это ровно то расхождение,
+	// которым была заведена #1352.
 	//
-	// Две проверки личности этого чтения спрашивают разное: допуск по владельцу
-	// аккаунта сверяет голый идентификатор принципала и о его виде не
-	// спрашивает, а сужение строит субъект, который знает лишь человека и
-	// служебную учётку. На принципале иного вида они расходятся — допуск
-	// проходит, а имени для вопроса нет. Пустой субъект `VisibleSet` не
-	// отвергает: он возвращает пустой набор, и страница молча схлопывается в
-	// `200` с пустым перечнем — исход, который вызывающий не отличит от отзыва
-	// прав. Полосы края, на которую можно было бы откатиться, у этого чтения
-	// нет (`scope_filtered`), поэтому исход здесь — отказ.
-	if subject, ok := authzguard.PrincipalSubject(ctx); !ok || subject == "" {
-		return nil, "", authzguard.PermissionDenied()
-	}
-
-	// 6. Resolve the subject: yields the home account_id the authz check needs.
-	// A subject that does not resolve is NOT reported here — res.miss is carried
-	// to step 8 and only surfaces to a caller who may read the subject.
-	res, err := u.resolveSubject(ctx, subjectType, subjectID)
+	// Предикат несёт анти-анонимного стража, требование быть НАЗЫВАЕМЫМ модели
+	// прав, резолв субъекта с ПРИДЕРЖАННЫМ ответом об отсутствии и три полосы
+	// допуска.
+	dec, err := subjectReadAuthority(ctx, u.repo, u.relations, subjectType, subjectID)
 	if err != nil {
-		// A store failure is not a verdict about the subject — surface it as such.
 		return nil, "", err
 	}
 
-	// 7. AuthZ — self OR cluster-admin OR account-admin of the subject's home
-	// Account. Decided before existence is allowed to shape the reply. Полоса,
-	// которой вызывающий допущен, решает, сужается ли страница (шаг 10).
-	narrow := false
-	if !authzguard.IsSelf(ctx, string(subjectID)) {
-		// Надзор облака — один вопрос на запрос, вне какого-либо цикла.
-		// E-форма обязательна: за этой ветвью НЕТ пообъектной полосы, которая
-		// сообщила бы о неполадке сама. Проглоченный отказ хранилища прав стал
-		// бы здесь отказом В ПРАВАХ — то есть тем же ответом, что и настоящий
-		// deny, и вызывающий не узнал бы, что повтор осмыслен.
-		clusterAdmin, aerr := authzguard.IsClusterAdminE(ctx, u.relations)
-		if aerr != nil {
-			return nil, "", authzguard.AuthzBackendUnavailable()
-		}
-		switch {
-		case clusterAdmin:
-			// Верхний ярус супер-доступа: перечень целиком, паритет с соседями.
-		case !res.found:
-			// An id that belongs to nobody has no home Account to administer, so
-			// the only authority that can exist over it is the flat cluster-admin
-			// super-gate, and it has just answered "no". Everyone else is refused
-			// with the SAME answer they would get for a subject in a foreign
-			// account — that identity of answers is what closes the oracle.
-			return nil, "", authzguard.PermissionDenied()
-		default:
-			ok, aerr := u.hasAccountViewAuthority(ctx, res.accountID)
-			if aerr != nil {
-				return nil, "", aerr
-			}
-			if !ok {
-				return nil, "", authzguard.PermissionDenied()
-			}
-			// Допущен по ДОМАШНЕМУ аккаунту субъекта — а строки могут называть
-			// чужие области. Ровно эту полосу и сужает шаг 10.
-			narrow = true
-		}
-	}
-
-	// 8. Authorized caller, unresolvable subject → the owner's own NotFound.
-	if !res.found {
-		return nil, "", res.miss
+	// 8. Только теперь, вызывающему, который вправе читать субъекта: субъект,
+	// который не резолвится → его собственный NotFound.
+	if !dec.resolved.found {
+		return nil, "", dec.resolved.miss
 	}
 
 	// 9. Enriched repo read (JOIN role_name, keyset paginated).
@@ -267,7 +206,7 @@ func (u *ListSubjectPrivilegesUseCase) Execute(ctx context.Context, subjectType 
 	if err != nil {
 		return nil, "", shared.MapRepoErr(err)
 	}
-	if !narrow {
+	if !dec.lane.narrowsPage() {
 		return out, next, nil
 	}
 
@@ -275,15 +214,9 @@ func (u *ListSubjectPrivilegesUseCase) Execute(ctx context.Context, subjectType 
 	// прочитать по идентификатору. Вопрос идёт через ТУ ЖЕ функцию, которой
 	// пользуются List / ListByScope / ListByAccount, — второе написание того же
 	// вопроса разошлось бы с ними молча.
-	visible, wired, verr := visibleBindingIDsOnPage(ctx, u.queries, privilegeBindingIDs(out))
+	visible, verr := visibleOnNarrowedPage(ctx, u.queries, privilegeBindingIDs(out))
 	if verr != nil {
 		return nil, "", verr
-	}
-	if !wired {
-		// Порт не провязан — вердикта нет. Отдать при этом всё значило бы
-		// потерять сужение целиком и молча; отдать пустое — сказать «прав нет»
-		// там, где мы просто не спросили.
-		return nil, "", shared.MapRepoErr(iamerr.ErrUnavailable)
 	}
 	return filterVisiblePrivileges(out, visible), next, nil
 }
@@ -325,115 +258,4 @@ func subjectPrefixAndName(subjectType domain.SubjectType) (prefix, resName strin
 		return "", "", status.Error(codes.InvalidArgument,
 			"Illegal argument subject_type (allowed: user|service_account|group)")
 	}
-}
-
-// subjectResolution — outcome of the subject lookup, with the absence answer
-// held back. `miss` carries the owning repo's OWN NotFound (contract tone
-// "<Resource> <id> not found", never re-composed here — re-composing it is how
-// the hide-existence texts drift apart), and it is returned to the caller only
-// after authority has been established.
-type subjectResolution struct {
-	accountID domain.AccountID
-	found     bool
-	miss      error
-}
-
-// resolveSubject reads the subject (User / ServiceAccount / Group) to return its
-// home account_id for the authz check. All reads are within kacho_iam,
-// same-schema — NOT a cross-domain edge.
-//
-// Three outcomes, deliberately distinct: resolved (found, account id); absent
-// (found=false, miss holds the mapped NotFound — NOT returned as an error here,
-// see the Execute step order); store failure (err — never a statement about the
-// subject).
-func (u *ListSubjectPrivilegesUseCase) resolveSubject(ctx context.Context, subjectType domain.SubjectType, subjectID domain.SubjectID) (subjectResolution, error) {
-	rd, err := u.repo.Reader(ctx)
-	if err != nil {
-		return subjectResolution{}, shared.MapRepoErr(err)
-	}
-	defer func() { _ = rd.Rollback(ctx) }()
-
-	resolved := func(accountID domain.AccountID) (subjectResolution, error) {
-		return subjectResolution{accountID: accountID, found: true}, nil
-	}
-	// classify splits "no such row" (deferred answer) from a real store failure.
-	classify := func(gerr error) (subjectResolution, error) {
-		if errors.Is(gerr, iamerr.ErrNotFound) {
-			return subjectResolution{miss: shared.MapRepoErr(gerr)}, nil
-		}
-		return subjectResolution{}, shared.MapRepoErr(gerr)
-	}
-
-	switch subjectType {
-	case domain.SubjectTypeUser:
-		usr, gerr := rd.Users().Get(ctx, domain.UserID(subjectID))
-		if gerr != nil {
-			return classify(gerr)
-		}
-		return resolved(usr.AccountID)
-	case domain.SubjectTypeServiceAccount:
-		sa, gerr := rd.ServiceAccounts().Get(ctx, domain.ServiceAccountID(subjectID))
-		if gerr != nil {
-			return classify(gerr)
-		}
-		return resolved(sa.AccountID)
-	case domain.SubjectTypeGroup:
-		// A Group is Account-scoped (groups.account_id FK), so its
-		// home account is the gate scope — same self/account-admin policy as User
-		// / SA. Group has no "self" caller, so authority is always the
-		// owner/account-admin path.
-		grp, gerr := rd.Groups().Get(ctx, domain.GroupID(subjectID))
-		if gerr != nil {
-			return classify(gerr)
-		}
-		return resolved(grp.AccountID)
-	default:
-		// Unreachable — subjectPrefixAndName already rejected other types.
-		return subjectResolution{}, authzguard.PermissionDenied()
-	}
-}
-
-// hasAccountViewAuthority — the caller may view another
-// subject's privileges iff they administer the subject's home Account. Authority
-// holds when EITHER:
-//   - the caller owns the home Account (DB owner_user_id == principal), OR
-//   - the caller holds an FGA `admin` relation on account:<homeAccountID>
-//     (delegated admin who is not the owner; fgaHoldsAdmin short-circuits the
-//     flat cluster-admin super-gate).
-//
-// This is the read-side mirror of requireGrantAuthority on the SUBJECT's home
-// account (so "who may grant" == "who may view"). A dangling home account is
-// simply "no owner-path" — false, never a statement about the subject.
-//
-// Returns (false, nil) for "no authority" and (false, err) only for a store
-// failure: the caller must not read an unreachable store as a denial.
-func (u *ListSubjectPrivilegesUseCase) hasAccountViewAuthority(ctx context.Context, accountID domain.AccountID) (bool, error) {
-	if accountID == "" {
-		return false, nil
-	}
-
-	rd, err := u.repo.Reader(ctx)
-	if err != nil {
-		return false, shared.MapRepoErr(err)
-	}
-	defer func() { _ = rd.Rollback(ctx) }()
-
-	// Path 1 — owner of the home Account.
-	acct, gerr := rd.Accounts().Get(ctx, accountID)
-	if gerr == nil && acct.OwnerUserID != "" && authzguard.IsSelf(ctx, string(acct.OwnerUserID)) {
-		return true, nil
-	}
-	// A missing account row is treated as "no owner-path" — fall through to the
-	// FGA delegated-admin path; ultimately unauthorized if neither holds.
-	if gerr != nil && !errors.Is(gerr, iamerr.ErrNotFound) {
-		return false, shared.MapRepoErr(gerr)
-	}
-
-	// Path 2 — delegated admin: principal holds `admin` on account:<id> in FGA
-	// (shared predicate — the single authority gate used by every site).
-	//
-	// E-форма обязательна: этот путь строит СТРАНИЦУ видимого. Проглотив
-	// неполадку хранилища прав, он вернул бы well-formed `200` с молча суженным
-	// набором, который вызывающий не отличит от отзыва прав.
-	return fgaHoldsAdminE(ctx, u.relations, "account", string(accountID))
 }
