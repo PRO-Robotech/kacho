@@ -18,9 +18,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
@@ -716,8 +716,8 @@ func (r *VolumeRepo) attachOnce(ctx context.Context, a *domain.VolumeAttachment,
 // isDeviceCollision — сырая ошибка 23505 на UNIQUE(instance_id,device_name)? Только на
 // этот класс auto-путь ретраит (пересчитать имя); прочие ошибки — терминальны.
 func isDeviceCollision(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == cnAttachDeviceUniq
+	f := pgfault.Classify(err)
+	return f.Is(pgfault.Unique) && f.Constraint == cnAttachDeviceUniq
 }
 
 // disambiguateAttach разбирает 0-row исход CAS (§3.2, в той же tx): конфликт-строка

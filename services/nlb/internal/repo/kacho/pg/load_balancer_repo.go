@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg/dto"
@@ -334,14 +334,11 @@ func (w *loadBalancerWriter) AttachVIP(
 // 23505 → generic FailedPrecondition (анти-oracle); status-aware CHECK 23514 →
 // InvalidArgument (sequencing: семейство не в ip_families до persist).
 func mapAttachVIPErr(err error) error {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23505":
-			return fmt.Errorf("%w: could not assign address to load balancer", kacho.ErrFailedPrecondition)
-		case "23514":
-			return fmt.Errorf("%w: load balancer violates address constraint", kacho.ErrInvalidArg)
-		}
+	switch pgfault.Classify(err).Class {
+	case pgfault.Unique:
+		return fmt.Errorf("%w: could not assign address to load balancer", kacho.ErrFailedPrecondition)
+	case pgfault.Check:
+		return fmt.Errorf("%w: load balancer violates address constraint", kacho.ErrInvalidArg)
 	}
 	return mapPgErr(err, "NetworkLoadBalancer", "")
 }

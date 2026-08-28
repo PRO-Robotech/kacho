@@ -13,9 +13,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 	"github.com/PRO-Robotech/kacho/pkg/pagetoken"
-	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
@@ -57,57 +57,32 @@ func mapPgErr(err error, kind, id string) error {
 	if qerr := classifyQuotaErr(err); qerr != nil {
 		return qerr
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23505":
-			// Branch on the specific unique index so the client-facing message
-			// names the real conflict (audit: раньше ЛЮБОЙ 23505 → "name already
-			// exists", что вводило в заблуждение для port/protocol и VIP-коллизий).
-			switch pgErr.ConstraintName {
-			case "listeners_lb_port_proto_uniq":
-				return fmt.Errorf("%w: listener with this port and protocol already exists on the load balancer", kacho.ErrAlreadyExists)
-			case "targets_instance_id_uniq", "targets_nic_id_uniq",
-				"targets_ip_ref_uniq", "targets_external_ip_uniq":
-				return fmt.Errorf("%w: target with this identity already exists in the target group", kacho.ErrAlreadyExists)
-			}
-			// Name-uniqueness indexes (*_project_name_uniq / listeners_lb_name_uniq)
-			// and any other unmapped unique index → generic name message.
-			return fmt.Errorf("%w: %s with name already exists", kacho.ErrAlreadyExists, kind)
-		case "23503":
-			switch pgErr.ConstraintName {
-			case "listeners_target_group_fk":
-				// Direct composite FK
-				// listeners(default_target_group_id, project_id) →
-				// target_groups(id, project_id) ON DELETE RESTRICT (0018 existence,
-				// widened to same-project in 0023). Fires in three directions,
-				// disambiguated by the operating table (kind):
-				//   * TargetGroup delete while referenced by a listener → RESTRICT;
-				//   * listener wiring a non-existent TargetGroup → missing referent;
-				//   * listener wiring a TargetGroup of ANOTHER project → same
-				//     "requires an existing target group" tone on purpose: a distinct
-				//     message would confirm the foreign TG exists (existence-oracle,
-				//     security.md #6). The use-case precheck (listener/tg_ref.go)
-				//     normally answers first; this is the race backstop.
-				// All → stable contract tone (no pgx leak). See grind-note #3.
-				if kind == "TargetGroup" {
-					// Общая (не перечисляющая) форма того же контракта. Достижима
-					// только когда блокирующая строка исчезла между отказом БД и
-					// перечислением (см. mapRestrictBlocked); НАЧАЛО текста то же,
-					// что у перечисляющей формы, поэтому клиент, ключующийся на
-					// начало сообщения, читает обе как один контракт.
-					return fmt.Errorf("%w: target group is referenced by listeners", kacho.ErrFailedPrecondition)
-				}
-				return fmt.Errorf("%w: listener requires an existing target group", kacho.ErrFailedPrecondition)
-			}
-			return fmt.Errorf("%w: %s has dependent resources", kacho.ErrFailedPrecondition, kind)
-		case "23514":
-			return wrapCheckViolation(pgErr, kind)
-		case "23P01":
-			return fmt.Errorf("%w: %s value conflicts", kacho.ErrFailedPrecondition, kind)
-		case "22P02":
-			return fmt.Errorf("%w: invalid %s id '%s'", kacho.ErrInvalidArg, strings.ToLower(kind), id)
+	f := pgfault.Classify(err)
+	switch f.Class {
+	case pgfault.Unique:
+		switch f.Constraint {
+		case "listeners_lb_port_proto_uniq":
+			return fmt.Errorf("%w: listener with this port and protocol already exists on the load balancer", kacho.ErrAlreadyExists)
+		case "targets_instance_id_uniq", "targets_nic_id_uniq",
+			"targets_ip_ref_uniq", "targets_external_ip_uniq":
+			return fmt.Errorf("%w: target with this identity already exists in the target group", kacho.ErrAlreadyExists)
 		}
+		return fmt.Errorf("%w: %s with name already exists", kacho.ErrAlreadyExists, kind)
+	case pgfault.ForeignKey:
+		switch f.Constraint {
+		case "listeners_target_group_fk":
+			if kind == "TargetGroup" {
+				return fmt.Errorf("%w: target group is referenced by listeners", kacho.ErrFailedPrecondition)
+			}
+			return fmt.Errorf("%w: listener requires an existing target group", kacho.ErrFailedPrecondition)
+		}
+		return fmt.Errorf("%w: %s has dependent resources", kacho.ErrFailedPrecondition, kind)
+	case pgfault.Check:
+		return wrapCheckViolation(f, err, kind)
+	case pgfault.Exclusion:
+		return fmt.Errorf("%w: %s value conflicts", kacho.ErrFailedPrecondition, kind)
+	case pgfault.InvalidText:
+		return fmt.Errorf("%w: invalid %s id '%s'", kacho.ErrInvalidArg, strings.ToLower(kind), id)
 	}
 	return fmt.Errorf("%w: %v", kacho.ErrInternal, err)
 }
@@ -186,19 +161,15 @@ func pageSizeOrDefault(p int64) (int64, error) {
 // «violates check constraint» — формулировка Postgres, а не Kachō. Исходная
 // ошибка сохраняется в цепочке для журнала оператора; наружу её сворачивает
 // отображение в статус.
-func wrapCheckViolation(pgErr *pgconn.PgError, kind string) error {
-	if nameform.IsConstraint(pgErr.TableName, pgErr.ConstraintName) {
+func wrapCheckViolation(f pgfault.Fault, err error, kind string) error {
+	if pgfault.CheckLaneOf(f) == pgfault.LaneServiceDefect {
 		slog.Error("name form backstop fired: service admitted a name it validates itself",
-			"sqlstate", pgErr.Code,
-			"table", pgErr.TableName,
-			"constraint", pgErr.ConstraintName,
-			"kind", kind)
-		return fmt.Errorf("%w: %v", kacho.ErrInternal, pgErr)
+			append([]any{"kind", kind}, f.LogAttrs()...)...)
+		// Причина остаётся в цепочке для журнала оператора; наружу её не
+		// выпускает отображение, сворачивающее ErrInternal в фиксированный текст.
+		return fmt.Errorf("%w: %v", kacho.ErrInternal, err)
 	}
 	slog.Warn("check constraint rejected caller input",
-		"sqlstate", pgErr.Code,
-		"table", pgErr.TableName,
-		"constraint", pgErr.ConstraintName,
-		"kind", kind)
+		append([]any{"kind", kind}, f.LogAttrs()...)...)
 	return fmt.Errorf("%w: Illegal argument", kacho.ErrInvalidArg)
 }
