@@ -37,8 +37,46 @@ import { runTag, tenantWithProject, test } from "./fixtures";
  * изменении, которого не делала.
  */
 
-/** Владелец журнала и его дешёвый предмет — тот, что переводится задачей #1019. */
-const OWNER = "compute";
+/**
+ * Владелец журнала, вид его предмета и адрес потока.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ПОЧЕМУ ИМЕННО ЭТОТ ВЛАДЕЛЕЦ И ЭТОТ ВИД (#1426)
+ *
+ * Требований к предмету потока ДВА, и второе забывают:
+ *
+ *   1. вид принадлежит словарю владельца — иначе подписка отвергается
+ *      `INVALID_ARGUMENT` ещё до открытия потока;
+ *   2. предмет ДЕЙСТВИТЕЛЬНО ПОПАДАЕТ В ЖУРНАЛ — иначе поток откроется,
+ *      служебное сообщение придёт, и дальше будет молчание, неотличимое от
+ *      «изменений не было». Отказ этот тихий, и проба на нём висит до бюджета.
+ *
+ * Здесь прежде стояла группа размещения compute, не отвечавшая НИ ОДНОМУ:
+ * написание (`compute.placement_group`) не совпадало ни с одним живым, а её
+ * репозиторий в журнал не пишет вовсе — ни на одном пути.
+ *
+ * ПОЧЕМУ НЕ МАШИНА, хотя compute журналирует именно её. Единственный вид,
+ * который пишет репозиторий compute, — `Instance`, и создать её этой пробе
+ * нечем: `CreateInstance` требует `machineTypeId`, а тип машины заводится
+ * ТОЛЬКО административным глаголом (`InternalMachineTypeService`) — ни одна
+ * миграция и ни один посев стенда его не создают (прогон консоли поднимает
+ * `make dev-up` и посев адресных полей vpc, больше ничего). Сверх того нужен
+ * источник загрузки, а каталог блочного хранения поставляется пустым по
+ * решению. Проба на машине была бы красной на СОЗДАНИИ — то есть по причине,
+ * к предмету потока отношения не имеющей.
+ *
+ * Группа целей nlb отвечает обоим требованиям: её вид объявлен словарём
+ * владельца, её создание ПИШЕТ строку журнала, а нужны ей только проект,
+ * регион и проверка живости — всё это на стенде есть, и это не рассуждение:
+ * ровно так её создаёт ИСПОЛНЯЕМАЯ проба `specs/contract-branches.spec.ts`.
+ *
+ * Написание вида — ТИП ОБЪЕКТА модели прав, единственное на всё дерево
+ * (`docs/architecture/subscription-kind-vocabulary.md`, #1393). Слово, которым
+ * владелец записал строку в свой журнал, наружу не выходит; весь словарь
+ * приезжает полем `knownKinds` служебного сообщения открытия.
+ */
+const OWNER = "nlb";
+const KIND = "nlb_target_group";
 const STREAM = "/subscription/v1/events";
 
 /** Кадр потока в том виде, в каком его видит страница. */
@@ -144,10 +182,58 @@ async function frames(page: Page): Promise<Frame[]> {
   );
 }
 
-/** Создать предмет ОТ ИМЕНИ ДРУГОГО КЛИЕНТА — минуя открытую страницу. */
-async function createPlacementGroup(page: Page, projectId: string, name: string): Promise<string> {
-  const res = await page.request.post("/compute/v1/placementGroups", {
-    data: { projectId, name },
+/**
+ * Регион размещения — из общего справочника geo.
+ *
+ * Отказ и пустой справочник разделены намеренно: первое означает недоступную
+ * зависимость, второе — свежеподнятый стенд, на котором размещаемый ресурс
+ * создать негде. Оба — УСЛОВИЕ пробы, а не её предмет, и текст это говорит.
+ */
+async function anyRegionId(page: Page): Promise<string> {
+  const res = await page.request.get("/geo/v1/regions");
+  expect(
+    res.ok(),
+    "справочник регионов недоступен — условие пробы не создано: предмет потока " +
+      "разместить негде, и о потоке такой прогон не говорит ничего",
+  ).toBeTruthy();
+  const body = (await res.json()) as { regions?: Array<{ id: string }> };
+  const id = body.regions?.[0]?.id ?? "";
+  expect(id, "справочник регионов ПУСТ — стенд непригоден для размещаемых ресурсов").not.toBe("");
+  return id;
+}
+
+/**
+ * Создать предмет ОТ ИМЕНИ ДРУГОГО КЛИЕНТА — минуя открытую страницу.
+ *
+ * Запросом, а не формой: предмет пробы — что страница узнаёт об изменении,
+ * КОТОРОГО НЕ ДЕЛАЛА. Создание через открытую страницу это утверждение
+ * обнулило бы.
+ *
+ * Тело — наименьшее, которое край принимает: проект, регион, порт группы и
+ * проверка живости (она обязательна и обязана нести ровно одну ветвь протокола;
+ * величины взяты у эталона `services/nlb/internal/domain/health_check_test.go`,
+ * а не подобраны).
+ */
+async function createTargetGroup(
+  page: Page,
+  projectId: string,
+  regionId: string,
+  name: string,
+): Promise<string> {
+  const res = await page.request.post("/nlb/v1/targetGroups", {
+    data: {
+      projectId,
+      regionId,
+      name,
+      port: 8080,
+      healthCheck: {
+        interval: "2s",
+        timeout: "1s",
+        unhealthyThreshold: 2,
+        healthyThreshold: 2,
+        tcp: { port: 8080 },
+      },
+    },
   });
   const text = await res.text();
   expect(
@@ -156,8 +242,8 @@ async function createPlacementGroup(page: Page, projectId: string, name: string)
       `Это УСЛОВИЕ пробы, а не её предмет`,
   ).toBe(200);
   const body = JSON.parse(text) as { metadata?: Record<string, string> };
-  const id = body.metadata?.placementGroupId ?? "";
-  expect(id, "создание предмета потока: операция не назвала placementGroupId").not.toBe("");
+  const id = body.metadata?.targetGroupId ?? "";
+  expect(id, "создание предмета потока: операция не назвала targetGroupId").not.toBe("");
   return id;
 }
 
@@ -175,10 +261,11 @@ test("страница узнаёт об изменении, сделанном 
   page.on("load", () => {
     loads += 1;
   });
-  await page.goto("/compute/placementGroups");
+  const regionId = await anyRegionId(page);
+  await page.goto(`/projects/${projectId}/nlb/target-groups`, { waitUntil: "domcontentloaded" });
   const loadsAtStart = loads;
 
-  const url = `${STREAM}?owner=${OWNER}&projectId=${projectId}&kinds=compute.placement_group`;
+  const url = `${STREAM}?owner=${OWNER}&projectId=${projectId}&kinds=${KIND}`;
   await page.evaluate(
     (u) => (window as unknown as Record<string, (s: string) => void>).__kachoStreamOpen(u),
     url,
@@ -193,7 +280,7 @@ test("страница узнаёт об изменении, сделанном 
     })
     .toBe(1);
 
-  const created = await createPlacementGroup(page, projectId, `pg-stream-${runTag()}`);
+  const created = await createTargetGroup(page, projectId, regionId, `tg-stream-${runTag()}`);
 
   await expect
     .poll(
@@ -226,10 +313,11 @@ test("возобновление с позиции не теряет событ�
 
   await installStreamReader(page);
   const { projectId } = await tenantWithProject(page);
-  await page.goto("/compute/placementGroups");
+  const regionId = await anyRegionId(page);
+  await page.goto(`/projects/${projectId}/nlb/target-groups`, { waitUntil: "domcontentloaded" });
 
   const tag = runTag();
-  const url = `${STREAM}?owner=${OWNER}&projectId=${projectId}&kinds=compute.placement_group`;
+  const url = `${STREAM}?owner=${OWNER}&projectId=${projectId}&kinds=${KIND}`;
   await page.evaluate(
     (u) => (window as unknown as Record<string, (s: string) => void>).__kachoStreamOpen(u),
     url,
@@ -241,7 +329,7 @@ test("возобновление с позиции не теряет событ�
     })
     .toBe(1);
 
-  const first = await createPlacementGroup(page, projectId, `pg-resume-a-${tag}`);
+  const first = await createTargetGroup(page, projectId, regionId, `tg-resume-a-${tag}`);
   await expect
     .poll(
       async () =>
@@ -261,8 +349,8 @@ test("возобновление с позиции не теряет событ�
   await page.evaluate(() =>
     (window as unknown as Record<string, () => void>).__kachoStreamClose(),
   );
-  const second = await createPlacementGroup(page, projectId, `pg-resume-b-${tag}`);
-  const third = await createPlacementGroup(page, projectId, `pg-resume-c-${tag}`);
+  const second = await createTargetGroup(page, projectId, regionId, `tg-resume-b-${tag}`);
+  const third = await createTargetGroup(page, projectId, regionId, `tg-resume-c-${tag}`);
 
   const resumed = await page.evaluate(
     async ([u, id]) =>
