@@ -197,7 +197,7 @@ func AuditSubjectChangeFlushParity(
 	}
 
 	if log != nil {
-		fmt.Fprintf(log, "перепись: файлов Go прочитано %d · производителей очереди %d · самосброс покрывает %d · находок %d\n",
+		_, _ = fmt.Fprintf(log, "перепись: файлов Go прочитано %d · производителей очереди %d · самосброс покрывает %d · находок %d\n",
 			census.GoFiles, len(census.Producers), len(census.SelfFlushSet), len(findings))
 	}
 	return findings, census, nil

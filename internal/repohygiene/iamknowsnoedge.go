@@ -90,7 +90,15 @@ func AuditIamKnowsNoEdge(opts IamKnowsNoEdgeOptions, log io.Writer) ([]IamKnowsN
 		census   IamKnowsNoEdgeCensus
 	)
 
+	// Обход СОБИРАЕТ ПУТИ, а чтение идёт ПОСЛЕ него — не ради вкуса.
+	//
+	// Чтение внутри обхода берёт путь, который обход только что увидел, и между
+	// «увидел» и «прочитал» дерево может смениться: подменённая ссылка уводит
+	// чтение за пределы осматриваемого поддерева, и гейт выносит вердикт о чужом
+	// файле. Собрав пути и прочитав их отдельно, мы этого класса лишаемся by
+	// construction, а не оговоркой.
 	goDir := filepath.Join(opts.Root, opts.GoRoot)
+	var goFiles []string
 	err := filepath.WalkDir(goDir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -98,24 +106,32 @@ func AuditIamKnowsNoEdge(opts IamKnowsNoEdgeOptions, log io.Writer) ([]IamKnowsN
 		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
+		goFiles = append(goFiles, path)
+		return nil
+	})
+	if err != nil {
+		return nil, census, err
+	}
+
+	for _, path := range goFiles {
 		census.GoFiles++
 		fset := token.NewFileSet()
 		file, perr := parser.ParseFile(fset, path, nil, parser.ParseComments)
 		if perr != nil {
-			return fmt.Errorf("разбор %s: %w", path, perr)
+			return nil, census, fmt.Errorf("разбор %s: %w", path, perr)
 		}
 		rel, _ := filepath.Rel(opts.Root, path)
 
 		for _, imp := range file.Imports {
 			census.GoImports++
-			p, uerr := strconv.Unquote(imp.Path.Value)
+			ip, uerr := strconv.Unquote(imp.Path.Value)
 			if uerr != nil {
 				continue
 			}
-			if strings.Contains(p, edgeContractImportMarker) {
+			if strings.Contains(ip, edgeContractImportMarker) {
 				findings = append(findings, IamKnowsNoEdgeFinding{
 					Path: rel, Line: fset.Position(imp.Pos()).Line,
-					What: "импорт контракта края " + p + " — владелец прав типизирован своим потребителем",
+					What: "импорт контракта края " + ip + " — владелец прав типизирован своим потребителем",
 				})
 			}
 		}
@@ -138,12 +154,9 @@ func AuditIamKnowsNoEdge(opts IamKnowsNoEdgeOptions, log io.Writer) ([]IamKnowsN
 			}
 			return true
 		})
-		return nil
-	})
-	if err != nil {
-		return nil, census, err
 	}
 
+	var chartFiles []string
 	for _, chartRoot := range opts.ChartRoots {
 		dir := filepath.Join(opts.Root, chartRoot)
 		werr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, walkErr error) error {
@@ -153,26 +166,9 @@ func AuditIamKnowsNoEdge(opts IamKnowsNoEdgeOptions, log io.Writer) ([]IamKnowsN
 			if d.IsDir() {
 				return nil
 			}
-			ext := filepath.Ext(path)
-			if ext != ".yaml" && ext != ".yml" && ext != ".tpl" {
-				return nil
-			}
-			census.ChartFiles++
-			raw, rerr := os.ReadFile(path) // #nosec G304 -- путь производится обходом дерева
-			if rerr != nil {
-				return rerr
-			}
-			rel, _ := filepath.Rel(opts.Root, path)
-			for i, line := range strings.Split(string(raw), "\n") {
-				if idx := strings.Index(line, "#"); idx >= 0 {
-					line = line[:idx]
-				}
-				if strings.Contains(line, edgeAddressKnobPrefix) {
-					findings = append(findings, IamKnowsNoEdgeFinding{
-						Path: rel, Line: i + 1,
-						What: "чарт объявляет ручку адреса края — посадка обязывает владельца знать потребителя",
-					})
-				}
+			switch filepath.Ext(path) {
+			case ".yaml", ".yml", ".tpl":
+				chartFiles = append(chartFiles, path)
 			}
 			return nil
 		})
@@ -181,8 +177,28 @@ func AuditIamKnowsNoEdge(opts IamKnowsNoEdgeOptions, log io.Writer) ([]IamKnowsN
 		}
 	}
 
+	for _, path := range chartFiles {
+		census.ChartFiles++
+		raw, rerr := os.ReadFile(path) // #nosec G304 -- путь собран обходом объявленного поддерева
+		if rerr != nil {
+			return nil, census, rerr
+		}
+		rel, _ := filepath.Rel(opts.Root, path)
+		for i, line := range strings.Split(string(raw), "\n") {
+			if idx := strings.Index(line, "#"); idx >= 0 {
+				line = line[:idx]
+			}
+			if strings.Contains(line, edgeAddressKnobPrefix) {
+				findings = append(findings, IamKnowsNoEdgeFinding{
+					Path: rel, Line: i + 1,
+					What: "чарт объявляет ручку адреса края — посадка обязывает владельца знать потребителя",
+				})
+			}
+		}
+	}
+
 	if log != nil {
-		fmt.Fprintf(log, "перепись: файлов Go прочитано %d · импортов осмотрено %d · строковых литералов осмотрено %d · файлов чарта прочитано %d · находок %d\n",
+		_, _ = fmt.Fprintf(log, "перепись: файлов Go прочитано %d · импортов осмотрено %d · строковых литералов осмотрено %d · файлов чарта прочитано %d · находок %d\n",
 			census.GoFiles, census.GoImports, census.GoLiterals, census.ChartFiles, len(findings))
 	}
 	return findings, census, nil

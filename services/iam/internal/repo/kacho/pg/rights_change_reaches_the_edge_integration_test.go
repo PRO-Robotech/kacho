@@ -53,6 +53,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
@@ -91,7 +92,10 @@ func TestRightsChangeReachesTheEdgeAndTheVerdictIsRecomputed(t *testing.T) {
 	ctx := context.Background()
 	pool, err := coredb.NewPool(ctx, kachopg.NewTestPostgres(t))
 	require.NoError(t, err)
-	defer pool.Close()
+	// Закрытие ограничено сроком: отложенное ждёт соединение, которого проба,
+	// упавшая внутри открытой транзакции, не вернёт никогда, — и уносит вердикт
+	// всего пакета вместе с собой.
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	// ── СТОРОНА ВЛАДЕЛЬЦА ПРАВ ────────────────────────────────────────────────
 	abRepo := kachopg.New(pool, nil)
