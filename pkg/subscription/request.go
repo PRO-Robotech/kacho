@@ -4,6 +4,8 @@
 package subscription
 
 import (
+	"strings"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -57,10 +59,27 @@ func (j Journal) Accept(req *subscriptionv1.SubscriptionRequest) (Filter, error)
 	var f Filter
 
 	kinds := req.GetKinds()
-	for _, kind := range kinds {
-		if _, ok := j.Mapping.Kinds[kind]; !ok {
-			return Filter{}, status.Errorf(codes.InvalidArgument,
-				"kinds: %q is not a kind of this owner", kind)
+	if len(kinds) > 0 {
+		// Словарь берётся ТЕМ ЖЕ вызовом, каким сервер отвечает в служебном
+		// сообщении открытия: объявленное клиенту и то, чем сервер судит, — один
+		// объект, а не два похожих перечня.
+		known := j.KindDictionary()
+		index := make(map[string]struct{}, len(known))
+		for _, k := range known {
+			index[k] = struct{}{}
+		}
+		for _, kind := range kinds {
+			if _, ok := index[kind]; !ok {
+				// Отказ называет ГОДНЫЕ значения, а не только негодное: без них
+				// единственным путём узнать словарь остаётся перебор против
+				// этого самого отказа — то есть перебор по продуктовой
+				// поверхности вместо чтения. Словарь есть объявление ВЛАДЕЛЬЦА,
+				// не выборка по правам вызывающего, поэтому называть его здесь
+				// нечем оракулить: право видеть предмет решается построчно.
+				return Filter{}, status.Errorf(codes.InvalidArgument,
+					"kinds: %q is not a kind of this owner; known kinds: %s",
+					kind, strings.Join(known, ", "))
+			}
 		}
 	}
 	if len(kinds) > 0 {

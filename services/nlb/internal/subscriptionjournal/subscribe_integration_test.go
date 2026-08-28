@@ -177,9 +177,13 @@ func TestSubscribeAnswersOverTheWire(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	ev := recv(t, s.subscribe(t, ctx, []string{kachorepo.OutboxResourceLoadBalancer}))
+	ev := recv(t, s.subscribe(t, ctx, []string{authzfilter.ResourceTypeLoadBalancer}))
 
-	if ev.Kind != kachorepo.OutboxResourceLoadBalancer || ev.ResourceId != probeLB {
+	// На проводе — ТИП ОБЪЕКТА, а не слово журнала. У балансировщика они
+	// РАЗНЫЕ (`nlb_load_balancer` в колонке против `nlb_network_load_balancer` в
+	// модели), поэтому именно здесь утверждение различающее: у двух остальных
+	// видов nlb они совпадают, и на них проба зеленела бы при любом устройстве.
+	if ev.Kind != authzfilter.ResourceTypeLoadBalancer || ev.ResourceId != probeLB {
 		t.Fatalf("пришло не то событие: вид %q, предмет %q", ev.Kind, ev.ResourceId)
 	}
 	if ev.ProjectId != probeProject {
@@ -209,7 +213,7 @@ func TestVisibilityIsAskedAboutTheModelsTypeNotTheJournalWord(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	_ = recv(t, s.subscribe(t, ctx, []string{kachorepo.OutboxResourceLoadBalancer}))
+	_ = recv(t, s.subscribe(t, ctx, []string{authzfilter.ResourceTypeLoadBalancer}))
 
 	if s.peer.Checks == 0 {
 		t.Fatal("модель прав не спрашивали ВОВСЕ — событие ушло без пообъектной проверки")
@@ -242,7 +246,7 @@ func TestEventsCarryNoStateBecauseTheJournalCarriesNone(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	ev := recv(t, s.subscribe(t, ctx, []string{kachorepo.OutboxResourceLoadBalancer}))
+	ev := recv(t, s.subscribe(t, ctx, []string{authzfilter.ResourceTypeLoadBalancer}))
 
 	if ev.GetState() != nil {
 		t.Fatal("отдано состояние из МИНИМАЛЬНОГО снимка: подписчик прочёл бы его как " +
@@ -266,7 +270,7 @@ func TestProjectMoveArrivesAsAnUpdateNotARemoval(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	ev := recv(t, s.subscribe(t, ctx, []string{kachorepo.OutboxResourceLoadBalancer}))
+	ev := recv(t, s.subscribe(t, ctx, []string{authzfilter.ResourceTypeLoadBalancer}))
 
 	if ev.Change == subscriptionv1.SubscriptionEvent_DELETED {
 		t.Fatal("переезд доехал СНЯТИЕМ: подписчик убрал бы из своего состояния ресурс, который жив")

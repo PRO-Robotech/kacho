@@ -24,6 +24,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/pkg/outbox"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/subscriptionjournal"
 )
@@ -197,7 +198,7 @@ func TestSubscribeAnswersOverTheWire(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	stream, err := s.client.Subscribe(ctx, &subscriptionv1.SubscriptionRequest{
-		Kinds:     []string{"Instance"},
+		Kinds:     []string{authzfilter.ResourceTypeInstance},
 		ProjectId: probeProject,
 		// НАЧАЛО названо словом: незаданное начало по контракту означает «с
 		// текущего конца», и строки, записанные ДО открытия, не пришли бы вовсе.
@@ -211,7 +212,10 @@ func TestSubscribeAnswersOverTheWire(t *testing.T) {
 	}
 
 	ev := recv(t, stream)
-	if ev.Kind != "Instance" || ev.ResourceId != probeMachine {
+	// На проводе — ТИП ОБЪЕКТА (`compute_instance`), а не слово, которым
+	// репозиторий записал колонку (`Instance`). Здесь они различаются заметнее
+	// всего в дереве, и утверждение потому различающее.
+	if ev.Kind != authzfilter.ResourceTypeInstance || ev.ResourceId != probeMachine {
 		t.Fatalf("пришло не то событие: вид %q, предмет %q", ev.Kind, ev.ResourceId)
 	}
 	if ev.ProjectId != probeProject {
@@ -259,7 +263,7 @@ func TestRemovalReachesTheSubscriberWithItsProjectAnchor(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	stream, err := s.client.Subscribe(ctx, &subscriptionv1.SubscriptionRequest{
-		Kinds:     []string{"Instance"},
+		Kinds:     []string{authzfilter.ResourceTypeInstance},
 		ProjectId: probeProject,
 		// НАЧАЛО названо словом: незаданное начало по контракту означает «с
 		// текущего конца», и строки, записанные ДО открытия, не пришли бы вовсе.
@@ -312,7 +316,7 @@ func TestTheProjectAxisNarrowsByTheColumn(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	stream, err := s.client.Subscribe(ctx, &subscriptionv1.SubscriptionRequest{
-		Kinds:     []string{"Instance"},
+		Kinds:     []string{authzfilter.ResourceTypeInstance},
 		ProjectId: probeProject,
 		// НАЧАЛО названо словом: незаданное начало по контракту означает «с
 		// текущего конца», и строки, записанные ДО открытия, не пришли бы вовсе.
@@ -369,7 +373,7 @@ func TestRemovalReachesASubscriberWhoMayNoLongerSeeThePredmet(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	stream, err := s.client.Subscribe(ctx, &subscriptionv1.SubscriptionRequest{
-		Kinds:     []string{"Instance"},
+		Kinds:     []string{authzfilter.ResourceTypeInstance},
 		ProjectId: probeProject,
 		Start: &subscriptionv1.SubscriptionRequest_Anchor{
 			Anchor: subscriptionv1.SubscriptionAnchor_BEGINNING,
@@ -420,7 +424,7 @@ func TestRemovalIsWithheldFromASubscriberWhoMayNotSeeTheProject(t *testing.T) {
 	// Подписка БЕЗ оси проекта: с осью страж отверг бы открытие, и предмет пробы
 	// (суждение о СТРОКЕ) не наступил бы вовсе.
 	stream, err := s.client.Subscribe(ctx, &subscriptionv1.SubscriptionRequest{
-		Kinds: []string{"Instance"},
+		Kinds: []string{authzfilter.ResourceTypeInstance},
 		Start: &subscriptionv1.SubscriptionRequest_Anchor{
 			Anchor: subscriptionv1.SubscriptionAnchor_BEGINNING,
 		},

@@ -4,6 +4,8 @@
 package subscriptionjournal
 
 import (
+	"reflect"
+	"sort"
 	"testing"
 
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
@@ -142,5 +144,43 @@ func TestProjectGateTakesItsRefusalFromTheProducer(t *testing.T) {
 	if gate.NotFoundFormat != owner {
 		t.Fatalf("форма отказа стража %q расходится с формой промаха владельца %q",
 			gate.NotFoundFormat, owner)
+	}
+}
+
+// TestKindDictionaryIsWhatTheClientCanName — то, что nlb объявляет клиенту, есть
+// словарь ТИПОВ ОБЪЕКТА, а слова его журнала наружу не выходят.
+//
+// Утверждение различающее ровно на одном виде из трёх: у слушателя и группы
+// целей слово журнала и тип модели совпадают дословно, и на них проба была бы
+// зелена при любом устройстве. У балансировщика они РАЗНЫЕ, и именно он
+// показывает, какое из двух написаний едет клиенту.
+func TestKindDictionaryIsWhatTheClientCanName(t *testing.T) {
+	got := Journal().KindDictionary()
+	want := []string{
+		authzfilter.ResourceTypeListener,
+		authzfilter.ResourceTypeLoadBalancer,
+		authzfilter.ResourceTypeTargetGroup,
+	}
+	sort.Strings(want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("словарь видов nlb %q, ожидался %q (типы объекта, лексикографически)", got, want)
+	}
+	if got := Journal().KindDictionary(); len(got) != 3 {
+		t.Fatalf("видов в словаре %d, а журнал объявляет три", len(got))
+	}
+	for _, journalWord := range []string{
+		kachorepo.OutboxResourceLoadBalancer,
+		kachorepo.OutboxResourceListener,
+		kachorepo.OutboxResourceTargetGroup,
+	} {
+		if journalWord == kachorepo.OutboxResourceLoadBalancer {
+			// Слово журнала балансировщика типом объекта НЕ является — значит
+			// его присутствие в словаре было бы дефектом.
+			for _, k := range got {
+				if k == journalWord {
+					t.Fatalf("слово ЖУРНАЛА %q попало в словарь клиента", journalWord)
+				}
+			}
+		}
 	}
 }

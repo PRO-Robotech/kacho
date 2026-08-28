@@ -343,6 +343,14 @@ func (s *Server) serve(
 		Position:       pagetoken.EncodeSubscriptionPosition(pagetoken.SubscriptionPosition{Settled: cursor}),
 		CaughtUp:       cursor >= h.settled,
 		HonoredFilters: filter.Honored,
+		// Словарь видов — тем же вызовом, каким отвергается неизвестный вид
+		// (см. [Journal.Accept]). Второго перечня не существует, поэтому
+		// объявленное клиенту и то, чем сервер судит, разойтись не могут.
+		//
+		// Он приходит ВСЕГДА, в том числе подписке, назвавшей ось `kinds`: иначе
+		// прочесть словарь мог бы только тот, кто уже знает, что его не надо
+		// сужать, — то есть тот, кому он не нужен.
+		KnownKinds: s.cfg.Journal.KindDictionary(),
 	}
 	if storage.Retention == RetainsEverything {
 		opened.RetainsEverything = true

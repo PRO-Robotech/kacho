@@ -116,7 +116,12 @@ func (s *Server) read(
 	args := []any{cursor, settled}
 	var where strings.Builder
 	if len(filter.Kinds) > 0 {
-		args = append(args, filter.Kinds)
+		// Вид, названный вызывающим, — слово ПРОВОДА (тип объекта модели прав),
+		// а колонка хранит слово ВЛАДЕЛЬЦА. Перевод живёт в объявлении журнала:
+		// подставить сюда вид провода как есть значило бы отобрать по слову,
+		// которого в колонке нет, — и подписка молчала бы навсегда, выглядя
+		// исправной.
+		args = append(args, s.cfg.Journal.journalWords(filter.Kinds))
 		fmt.Fprintf(&where, " AND %s = ANY($%d)", st.KindColumn, len(args))
 	}
 	if len(filter.IDs) > 0 {
@@ -211,8 +216,13 @@ func (s *Server) mapRows(rows []Row, filter Filter) ([]*subscriptionv1.Subscript
 		}
 
 		ev := &subscriptionv1.SubscriptionEvent{
-			Position:   pagetoken.EncodeSubscriptionPosition(pagetoken.SubscriptionPosition{Settled: row.Position}),
-			Kind:       row.Kind,
+			Position: pagetoken.EncodeSubscriptionPosition(pagetoken.SubscriptionPosition{Settled: row.Position}),
+			// На провод едет ТИП ОБЪЕКТА, а не слово, которым владелец записал
+			// строку: написание вида одно на всё дерево, и берётся оно у того же
+			// производителя, которым сервер спрашивает модель прав о видимости
+			// этой самой строки. Отдать `row.Kind` значило бы завести третье
+			// написание — которого нет ни в словаре открытия, ни в оси отбора.
+			Kind:       m.Kinds[row.Kind].ObjectType,
 			ResourceId: row.ID,
 			ProjectId:  project,
 			Change:     change,
