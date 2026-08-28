@@ -1538,7 +1538,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('уборка: удалено либо уже отсутствует', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
+                  "pm.test('уборка best-effort (never fails the case): удалено либо уже отсутствует', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
                   "if (pm.response.code === 200) {   const j = pm.response.json(); if (j && j.id) pm.environment.set('opId', j.id); }"
                 ]
               }
