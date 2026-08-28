@@ -264,6 +264,27 @@ func eventWithState(t *testing.T, position string, state proto.Message) *subscri
 // в двоичном файле края. Контракт для него завёл своё значение, и проверяется
 // именно оно — что край подставляет признак владельца, а не сочиняет свой и не
 // роняет поток.
+// eventWithAbsentState — событие, у которого ВЛАДЕЛЕЦ назвал причину отсутствия
+// состояния. Край такое событие только везёт: разбирать в нём нечего.
+func eventWithAbsentState(
+	position string,
+	reason subscriptionv1.SubscriptionEvent_StateUnavailable_Reason,
+) *subscriptionv1.SubscriptionMessage {
+	return &subscriptionv1.SubscriptionMessage{
+		Message: &subscriptionv1.SubscriptionMessage_Event{
+			Event: &subscriptionv1.SubscriptionEvent{
+				Position: position, Kind: "elsewhere.thing", ResourceId: "thing-2",
+				ProjectId: "prj-probe", Change: subscriptionv1.SubscriptionEvent_UPDATED,
+				Carrier: &subscriptionv1.SubscriptionEvent_StateUnavailable_{
+					StateUnavailable: &subscriptionv1.SubscriptionEvent_StateUnavailable{
+						Reason: reason,
+					},
+				},
+			},
+		},
+	}
+}
+
 func eventWithUnresolvableState(position string) *subscriptionv1.SubscriptionMessage {
 	return &subscriptionv1.SubscriptionMessage{
 		Message: &subscriptionv1.SubscriptionMessage_Event{

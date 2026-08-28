@@ -157,6 +157,53 @@ func TestUnresolvableStateBecomesTheContractsOwnSignal(t *testing.T) {
 	}
 }
 
+// TestTheEdgeCarriesTheOwnersReasonThrough — край НЕ ПЕРЕПИСЫВАЕТ причину,
+// названную владельцем.
+//
+// # ПОЧЕМУ ЭТО ОТДЕЛЬНАЯ ПРОБА, А НЕ СЛЕДСТВИЕ ПРЕДЫДУЩЕЙ
+//
+// Предыдущая утверждает, что край подставляет СВОЁ значение там, где сам не смог
+// разобрать состояние. Здесь предмет обратный: причина пришла от владельца, край
+// её только везёт, и подменять её ему нечем и незачем.
+//
+// Разница наблюдаема у клиента и стоит ему действия. Клиенту предписано
+// ключеваться на `reason` (проза сообщений стабильна, но не разбираема), а
+// действия у двух причин ПРОТИВОПОЛОЖНЫЕ: `NOT_SERIALIZABLE` — сбой, перечитать;
+// `NOT_PRODUCED` — свойство журнала, идти за предметом и не перечитывать поток
+// никогда. Край, нормализующий одно в другое, отправил бы каждого подписчика
+// такого владельца в бесконечный повтор — и сделал бы это молча, потому что кадры
+// при этом полны и поток не рвётся.
+//
+// Сегодня подмена невозможна ПО ПОСТРОЕНИЮ (ветвь подстановки живёт только за
+// отказом сериализации, а у носителя-признака сериализовать нечему), и проба
+// стоит именно поэтому: свойство держится устройством, которое обычный рефактор
+// «приведём носители к одному виду» снимает не заметив.
+func TestTheEdgeCarriesTheOwnersReasonThrough(t *testing.T) {
+	owner := &ownerStub{script: []*subscriptionv1.SubscriptionMessage{
+		openedMessage("pos-0", true),
+		eventWithAbsentState("pos-1", subscriptionv1.SubscriptionEvent_StateUnavailable_NOT_PRODUCED),
+		// Положительный контроль ТОЙ ЖЕ полосы: без него утверждение ниже зеленело
+		// бы на крае, который называет NOT_PRODUCED всегда.
+		eventWithAbsentState("pos-2", subscriptionv1.SubscriptionEvent_StateUnavailable_WITHHELD),
+	}}
+	rec := serve(t, newHandler(t, owner), request("owner=probe"))
+
+	got := frames(t, rec.Body.String())
+	if len(got) != 3 {
+		t.Fatalf("кадров %d, ожидалось 3: %q", len(got), rec.Body.String())
+	}
+	for i, want := range []string{"NOT_PRODUCED", "WITHHELD"} {
+		body := got[i+1].data
+		if !strings.Contains(body, want) {
+			t.Errorf("край не довёз причину %s владельца: %q", want, body)
+		}
+		if strings.Contains(body, "NOT_SERIALIZABLE") {
+			t.Errorf("край переписал причину владельца в NOT_SERIALIZABLE (%q) — подписчик "+
+				"прочёл бы свойство журнала как сбой и ушёл бы в бесконечный повтор", body)
+		}
+	}
+}
+
 // TestClientGoingAwayReleasesTheStream — ушедший клиент освобождает слот.
 //
 // На записи в память это невыразимо: она не отсоединяется никогда. Между тем
