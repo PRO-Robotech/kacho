@@ -25,6 +25,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+	// Страж посадки — ДО выбора команды, а не внутри `serve`: конфигурацию читает
+	// весь бинарь, и второй процесс из неё (проба, обслуживающая утилита) обязан
+	// упереться в ту же проверку. Отказ — fail-closed: небезопасная посадка не
+	// стартует, а не рапортует о себе.
+	if verr := cfg.Validate(); verr != nil {
+		log.Fatalf("config: %v", verr)
+	}
 	switch os.Args[1] {
 	case "serve":
 		if err := runServe(cfg); err != nil {

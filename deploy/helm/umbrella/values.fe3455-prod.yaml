@@ -277,8 +277,10 @@ compute:
       storage: true
 kacho-geo:
   image: docker.io/prorobotech/kacho-geo:main-b622b388
-  # hardened geo defaults AUTH_MODE=production → validateSecurityConfig requires a
-  # non-empty trusted-forwarder allow-list. Bundled chart predates this env.
+  # hardened geo defaults AUTH_MODE=production → страж посадки требует непустой
+  # круг отправителей. Прежде здесь стояло имя `validateSecurityConfig` — такой
+  # функции у geo нет и не было (она резолвится только у registry); имя пережило
+  # свой предмет и посылало читателя искать защиту не туда.
   # Состав круга и почему он не «только шлюз» — см. values.prod.yaml (#916).
   env:
     KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute,spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb,spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage,spiffe://kacho.cloud/ns/kacho/sa/kacho-registry"
