@@ -10,7 +10,15 @@ module.exports = {
   testEnvironment: "jsdom",
   extensionsToTreatAsEsm: [".ts", ".tsx"],
   setupFilesAfterEnv: ["<rootDir>/../shared/src/test/setup.ts"],
-  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
+  // Суита ОБЩЕГО модуля гоняется и этим доменом — как у эталона vpc.
+  //
+  // Без этих двух строк правка в `../shared` не проверялась здесь ничем: домен
+  // импортирует общий код, а его пробы исполнял кто-то другой. Резолвится общий
+  // код у каждого модуля СВОИМ `moduleNameMapper`, поэтому «зелено у соседа» не
+  // означает «зелено здесь» — что и делает эту суиту предметом прогона домена, а
+  // не удвоением чужого.
+  roots: ["<rootDir>/src", "<rootDir>/../shared/src"],
+  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}", "<rootDir>/../shared/src/**/*.test.{ts,tsx}"],
   // У `ui-future/shared` собственных node_modules нет: его исходники — часть сборки
   // КАЖДОГО remote'а, и зависимости им даёт remote (так же это делает vite, для
   // которого `@shared/*` — обычный alias внутри одного графа). Без этой строки любой

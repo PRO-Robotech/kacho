@@ -24,12 +24,14 @@ import { registriesApi } from "@/api/resources";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { ResourceIcon } from "@/components/organisms/form/ResourceIcon";
 import { ErrorResult } from "@/components/molecules/ErrorResult";
-import { getByPath } from "@/lib/resource-registry";
+import { REGISTRY, getByPath } from "@/lib/resource-registry";
 import { useOperation } from "@/lib/use-operation";
 import { shortDigest } from "@/lib/short-digest";
 import { formatDateTime } from "@/lib/datetime";
 import { formatBytes } from "@/lib/bytes";
 import { toast } from "@/lib/toast";
+import { genderOfLabel } from "@shared/lib/mutation-signal";
+import { useSignalledMutation } from "@shared/lib/use-signalled-mutation";
 import { errorText } from "@shared/lib/error-presentation";
 
 // fmtLastPull — время последнего pull тега. Zero-time («1970-01-01T00:00:00Z»,
@@ -332,8 +334,24 @@ export const RepositoryTagsPanel: FC<{
   );
 };
 
-// TagDeleteAction — per-tag удаление (async Operation): иконка + Popconfirm →
-// deleteTag → extractOperationId → poll → invalidate. Ошибка → toast.
+// TagDeleteAction — per-tag удаление (async Operation).
+//
+// Исход читается ОБЩИМ разбором (`useSignalledMutation`), а не своим ключом.
+// Здесь стояло собственное чтение — `if (!pendingOpId || !op?.done) return;` —
+// и оно молчало в двух состояниях из четырёх:
+//
+//   • ОТКАЗ ОПРОСА операции. `op` при этом остаётся неопределённым, ветка
+//     выходит молча, кнопка вращается — навсегда. Исход не «ещё идёт», а
+//     НЕИЗВЕСТЕН: ответа не будет, ждать нечего, и сказать об этом обязаны.
+//   • ОТВЕТ БЕЗ ОПЕРАЦИИ. Контракт её обещает (`registry_service.proto`:
+//     `DeleteTag` → `operation.Operation`), поэтому такой ответ — нарушение
+//     контракта, а не «выполнено синхронно»: подтвердить выполнение нечем.
+//     Прежняя ветка печатала «удалён» — слово без свидетельства.
+//
+// Обещание контракта берётся из ОБЪЯВЛЕНИЯ ресурса, а не литералом рядом:
+// литерал разошёлся бы со спекой молча.
+const TAG_LABEL = REGISTRY.tags?.singular ?? "Тег";
+
 function TagDeleteAction({
   registryId,
   repository,
@@ -345,39 +363,15 @@ function TagDeleteAction({
   tag: string;
   onDone: () => void;
 }) {
-  const [pendingOpId, setPendingOpId] = useState<string | null>(null);
-  const { data: op } = useOperation(pendingOpId);
-
-  const mutation = useMutation({
+  const { run, pending } = useSignalledMutation({
+    verb: "delete",
+    // Подпись — из ОБЪЯВЛЕНИЯ ресурса, род — общим словарём склонений: литерал
+    // рядом с местом показа разошёлся бы со спекой молча («Тег … удалена»).
+    subject: { label: TAG_LABEL, gender: genderOfLabel(TAG_LABEL) ?? "m", name: tag },
+    expectOperation: REGISTRY.tags?.mutationsReturnOperation === true,
     mutationFn: () => registriesApi.deleteTag(registryId, repository, tag),
-    onSuccess: (resp) => {
-      const opId = extractOperationId(resp);
-      if (opId) {
-        setPendingOpId(opId);
-      } else {
-        toast.success(`Тег ${tag} удалён`);
-        onDone();
-      }
-    },
-    onError: (e) => {
-      const m = errorText(e);
-      toast.error(`Удалить тег ${tag}: ${m}`);
-    },
+    onSucceeded: onDone,
   });
-
-  useEffect(() => {
-    if (!pendingOpId || !op?.done) return;
-    if (op.error) {
-      toast.error(`Удалить тег ${tag}: ${op.error.message ?? "ошибка"}`);
-    } else {
-      toast.success(`Тег ${tag} удалён`);
-      onDone();
-    }
-    setPendingOpId(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [op?.done, op?.error?.code]);
-
-  const pending = mutation.isPending || pendingOpId !== null;
 
   return (
     <Popconfirm
@@ -390,7 +384,7 @@ function TagDeleteAction({
       okText="Удалить"
       okButtonProps={{ danger: true, loading: pending }}
       cancelText="Отмена"
-      onConfirm={() => mutation.mutate()}
+      onConfirm={() => run(undefined)}
     >
       <Button
         type="text"

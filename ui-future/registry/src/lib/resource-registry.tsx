@@ -15,6 +15,7 @@ import { LabelsCell } from "@/components/atoms/LabelsCell";
 import { ArtifactTypesTag } from "@/components/atoms/ArtifactTypeTag";
 import { LifecycleTag } from "@/components/atoms/LifecycleTag";
 import { VisibilityTag } from "@/components/atoms/VisibilityTag";
+import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
 // Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
 // литерал рядом с местом показа расходится молча, ссылка — нет.
@@ -116,7 +117,17 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
       // REG-1 F4: registry REGIONAL-anycast — регион размещения (placement-якорь).
-      { header: "Регион", path: "region_id", format: "text" },
+      //
+      // Ссылка, а не текст: регион — ЧУЖОЙ ресурс (глобальный каталог geo), и
+      // правило 2 канона консоли требует для него значок типа, имя и переход.
+      // Идентификатор человеку не адресован — им адресуется машина (ban #15).
+      // Каталог глобальный, поэтому `RefNameLink` спрашивает его БЕЗ `project_id`
+      // (он читает `scope` спеки) и ведёт на `/system/regions/<id>`.
+      {
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
       { header: "Статус", path: "status", format: "status" },
       { header: "Репозиториев", path: "repository_count", format: "text" },
       { header: "Адрес", path: "endpoint", format: "code" },
@@ -270,6 +281,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "project",
     // DeleteTag — единственная мутация (create/update нет: теги пишет docker push).
     ops: { create: false, update: false, delete: true },
+    // `DeleteTag` объявлен возвращающим `Operation` (registry_service.proto).
+    // Объявление читается разбором исхода: ответ БЕЗ операции есть нарушение
+    // контракта, а не «выполнено синхронно» — подтвердить выполнение нечем.
+    mutationsReturnOperation: true,
     columns: [
       { header: "Тег", path: "tag", format: "text" },
       { header: "Дайджест", path: "digest", format: "code" },
