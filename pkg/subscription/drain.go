@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
@@ -299,27 +300,10 @@ func (s *Server) mapRows(rows []Row, filter Filter) ([]*subscriptionv1.Subscript
 			ProjectId:  project,
 			Change:     change,
 		}
-		state, err := m.State(row)
-		switch {
-		case err != nil:
-			s.log.Warn("subscription: state is unavailable for this event",
-				"position", row.Position, "kind", row.Kind, "err", err)
-			ev.Carrier = &subscriptionv1.SubscriptionEvent_StateUnavailable_{
-				StateUnavailable: &subscriptionv1.SubscriptionEvent_StateUnavailable{
-					Reason: subscriptionv1.SubscriptionEvent_StateUnavailable_NOT_SERIALIZABLE,
-				},
-			}
-		case state == nil:
-			// Отображение вернуло отсутствие без ошибки. Пустое состояние не
-			// отдаётся НИКОГДА: подписчик вправе читать непустую нагрузку как
-			// ПОЛНОЕ состояние предмета, и пустой объект солгал бы ему.
-			ev.Carrier = &subscriptionv1.SubscriptionEvent_StateUnavailable_{
-				StateUnavailable: &subscriptionv1.SubscriptionEvent_StateUnavailable{
-					Reason: subscriptionv1.SubscriptionEvent_StateUnavailable_NOT_SERIALIZABLE,
-				},
-			}
-		default:
-			ev.Carrier = &subscriptionv1.SubscriptionEvent_State{State: state}
+		state, absence, err := m.State(row)
+		if complaint := setStateCarrier(ev, state, absence, err); complaint != "" {
+			s.log.Warn("subscription: "+complaint,
+				"position", row.Position, "kind", row.Kind, "change", row.Change, "err", err)
 		}
 		out[i] = ev
 	}
@@ -329,6 +313,77 @@ func (s *Server) mapRows(rows []Row, filter Filter) ([]*subscriptionv1.Subscript
 			"dropped", undeliverable, "table", s.cfg.Journal.Storage.Table)
 	}
 	return out, nil
+}
+
+// setStateCarrier выбирает НОСИТЕЛЬ НАГРУЗКИ события и возвращает жалобу в
+// журнал процесса («» — жаловаться не на что).
+//
+// Функция чистая и потому проверяема без базы, без сервера и без транспорта:
+// предмет здесь — таблица из четырёх исходов, а не путь события, и проверять её
+// поднятым стендом значило бы платить контейнером за утверждение об операторе
+// `switch`.
+//
+// # ЧЕТЫРЕ ИСХОДА, И НИ ОДИН НЕ СВОДИТСЯ К ДРУГОМУ
+//
+//   - ОТКАЗ СБОРКИ — состояние есть, собрать не удалось. `NOT_SERIALIZABLE`, и
+//     только здесь: слово означает неудавшуюся ПОПЫТКУ, и назвать им отсутствие
+//     попытки значит соврать подписчику о роде беды. Действие у него разумное —
+//     перечитать;
+//   - СОСТОЯНИЕ СОБРАНО — оно и едет;
+//   - ОТСУТСТВИЕ С НАЗВАННОЙ ПРИЧИНОЙ — едет причина владельца. Пустое состояние
+//     не отдаётся НИКОГДА: подписчик вправе читать непустую нагрузку как ПОЛНОЕ
+//     состояние предмета, и пустой объект солгал бы ему;
+//   - ОТСУТСТВИЕ БЕЗ ПРИЧИНЫ — `REASON_UNSPECIFIED` и ГРОМКО. Контракт держит
+//     это значение ровно для такого случая; подшить его к соседней записи
+//     означало бы завести корзину «прочее» под чужим именем.
+//
+// # ПОЧЕМУ ОТКАЗ СИЛЬНЕЕ НАЗВАННОЙ ПРИЧИНЫ
+//
+// Владелец, вернувший и отказ, и причину, противоречит сам себе, и сервер обязан
+// выбрать ту сторону, где потеря меньше. Отказ — наблюдение о СЛУЧИВШЕМСЯ, причина
+// — объявление о ЗАДУМАННОМ; отдать причину значило бы объявить свойством журнала
+// то, что на самом деле сломалось, и погасить единственный след поломки.
+//
+// # ПОЧЕМУ СОБРАННОЕ СОСТОЯНИЕ СИЛЬНЕЕ НАЗВАННОЙ ПРИЧИНЫ
+//
+// Причина при непустом состоянии — противоречие того же рода, и разрешается оно в
+// пользу состояния: подписчику нужен предмет, а не объяснение, почему его нет.
+// Жалоба при этом пишется — противоречие в объявлении владельца обязано быть
+// видно, а не проглочено.
+func setStateCarrier(
+	ev *subscriptionv1.SubscriptionEvent,
+	state *anypb.Any,
+	absence StateAbsence,
+	err error,
+) (complaint string) {
+	unavailable := func(r subscriptionv1.SubscriptionEvent_StateUnavailable_Reason) {
+		ev.Carrier = &subscriptionv1.SubscriptionEvent_StateUnavailable_{
+			StateUnavailable: &subscriptionv1.SubscriptionEvent_StateUnavailable{Reason: r},
+		}
+	}
+
+	switch {
+	case err != nil:
+		unavailable(subscriptionv1.SubscriptionEvent_StateUnavailable_NOT_SERIALIZABLE)
+		return "state could not be assembled for this event"
+	case state != nil:
+		ev.Carrier = &subscriptionv1.SubscriptionEvent_State{State: state}
+		if absence != StateAbsenceUnnamed {
+			return "the owner returned both a state and a reason for its absence — the state wins, but the declaration contradicts itself"
+		}
+		return ""
+	default:
+		word, named := absence.reason()
+		unavailable(word)
+		if !named {
+			// Сюда попадают ОБА негодных исхода — забытая причина и значение вне
+			// словаря, — и оба ГРОМКИЕ. Смолчать на втором значило бы вернуть
+			// корзину «прочее» под именем нулевого значения: дефект объявления
+			// владельца стал бы неотличим от законного исхода.
+			return "the owner returned no state and named no reason — the subscriber cannot tell a journal property from a failure"
+		}
+		return ""
+	}
 }
 
 // narrow оставляет только те события, которые вызывающий вправе видеть,

@@ -399,7 +399,9 @@ func TestProjectTheCallerCannotSeeIsRefusedAsAbsent(t *testing.T) {
 // даёт подписчику пустой нагрузки.
 func TestStateThatCannotBeSerializedIsNamed(t *testing.T) {
 	j := probeJournal()
-	j.Mapping.State = func(subscription.Row) (*anypb.Any, error) { return nil, errState }
+	j.Mapping.State = func(subscription.Row) (*anypb.Any, subscription.StateAbsence, error) {
+		return nil, subscription.StateAbsenceUnnamed, errState
+	}
 	s := newStand(t, standOpts{journal: &j})
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

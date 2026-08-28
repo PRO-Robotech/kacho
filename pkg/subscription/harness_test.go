@@ -62,16 +62,20 @@ func probeJournal() subscription.Journal {
 				p, _ := m["projectId"].(string)
 				return p, nil
 			},
-			State: func(r subscription.Row) (*anypb.Any, error) {
+			State: func(r subscription.Row) (*anypb.Any, subscription.StateAbsence, error) {
 				var m map[string]any
 				if err := json.Unmarshal(r.Payload, &m); err != nil {
-					return nil, err
+					return nil, subscription.StateAbsenceUnnamed, err
 				}
 				st, err := structpb.NewStruct(m)
 				if err != nil {
-					return nil, err
+					return nil, subscription.StateAbsenceUnnamed, err
 				}
-				return anypb.New(st)
+				packed, err := anypb.New(st)
+				if err != nil {
+					return nil, subscription.StateAbsenceUnnamed, err
+				}
+				return packed, subscription.StateAbsenceUnnamed, nil
 			},
 		},
 	}

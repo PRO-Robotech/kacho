@@ -299,6 +299,64 @@ func TestRemovalReachesTheSubscriberWithItsProjectAnchor(t *testing.T) {
 	if ev.GetStateUnavailable() == nil {
 		t.Fatal("носитель нагрузки не выбран вовсе — форма требует одну из двух ветвей")
 	}
+	// ПРИЧИНА названа, и названа ТА: у снятия собирать было нечего, попытки не
+	// было. «Не удалось сериализовать» здесь — утверждение о неудавшейся попытке,
+	// а действия у двух причин противоположны: на сбой разумно перечитать, на
+	// снятие — убрать предмет из своего состояния и не читать вовсе.
+	if got := ev.GetStateUnavailable().GetReason(); got != subscriptionv1.SubscriptionEvent_StateUnavailable_NOT_PRODUCED {
+		t.Fatalf("причина отсутствия состояния у снятия %v, ожидалась NOT_PRODUCED", got)
+	}
+}
+
+// TestSerializationFailureKeepsItsOwnReason — ВТОРАЯ ПОЛОСА той же развилки, и
+// без неё утверждение выше зеленело бы на сервере, который называет NOT_PRODUCED
+// ВСЕГДА.
+//
+// Нагрузка здесь заведомо не разбирается объявленным типом: отображение compute
+// читает её `encoding/json` в доменную машину, и строка вместо объекта даёт
+// отказ сборки. Это НАСТОЯЩИЙ сбой — состояние есть, собрать не удалось, — и
+// причина у него обязана остаться прежней.
+func TestSerializationFailureKeepsItsOwnReason(t *testing.T) {
+	s := newStand(t)
+
+	// Через прямой INSERT, а не через `emit`: тот принимает `map[string]any` и
+	// негодную нагрузку выразить не даёт by construction. Предмет пробы — именно
+	// негодная строка, и завести её надо там, где журнал её примет.
+	ctxEmit := context.Background()
+	if _, err := s.pool.Exec(ctxEmit, `
+		INSERT INTO compute_outbox (resource_kind, resource_id, project_id, event_type, payload)
+		VALUES ('Instance', $1, $2, 'UPDATED', '"не объект"'::jsonb)`,
+		probeMachine, probeProject); err != nil {
+		t.Fatalf("негодная строка журнала не записалась: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	stream, err := s.client.Subscribe(ctx, &subscriptionv1.SubscriptionRequest{
+		Kinds:     []string{authzfilter.ResourceTypeInstance},
+		ProjectId: probeProject,
+		Start: &subscriptionv1.SubscriptionRequest_Anchor{
+			Anchor: subscriptionv1.SubscriptionAnchor_BEGINNING,
+		},
+	})
+	if err != nil {
+		t.Fatalf("подписка не открылась: %v", err)
+	}
+
+	ev := recv(t, stream)
+	// Событие ДОСТАВЛЕНО: отказ сборки состояния его не отменяет — подписчик
+	// обязан узнать, что предмет менялся, даже когда состояние не доехало.
+	if ev.ResourceId != probeMachine {
+		t.Fatalf("предмет %q, ожидался %q", ev.ResourceId, probeMachine)
+	}
+	if ev.GetStateUnavailable() == nil {
+		t.Fatalf("носитель нагрузки не выбран вовсе (state=%v)", ev.GetState())
+	}
+	if got := ev.GetStateUnavailable().GetReason(); got != subscriptionv1.SubscriptionEvent_StateUnavailable_NOT_SERIALIZABLE {
+		t.Fatalf("причина отказа сборки %v, ожидалась NOT_SERIALIZABLE — состояние здесь "+
+			"ЕСТЬ, и собрать его не удалось; назови это свойством журнала — и клиент "+
+			"перестанет перечитывать там, где перечитать и надо", got)
+	}
 }
 
 // TestTheProjectAxisNarrowsByTheColumn — ось проекта ОТБИРАЕТ, а не украшает.

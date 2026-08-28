@@ -110,14 +110,15 @@ func TestChangeWordsCoverTheDatabaseConstraint(t *testing.T) {
 }
 
 // TestStateIsAbsentBecauseTheJournalCarriesNone — состояния нет НИ У ОДНОГО рода,
-// и это не сбой.
+// и это не сбой, а НАЗВАННОЕ свойство журнала.
 //
-// Отрицание здесь не вакуумно: оно утверждает конкретную пару — отсутствие БЕЗ
-// ошибки. Ошибка означала бы «состояние есть, но собрать не удалось», и следующий
-// читатель чинил бы несуществующую поломку.
+// Отрицание здесь не вакуумно: оно утверждает тройку — отсутствие, отсутствие
+// ошибки И названную причину. Ошибка означала бы «состояние есть, но собрать не
+// удалось», и следующий читатель чинил бы несуществующую поломку; неназванная
+// причина уехала бы клиенту как `REASON_UNSPECIFIED`, то есть «владелец забыл».
 func TestStateIsAbsentBecauseTheJournalCarriesNone(t *testing.T) {
 	for _, word := range []string{"CREATED", "UPDATED", "DELETED", "MOVED"} {
-		got, err := state(subscription.Row{
+		got, absence, err := state(subscription.Row{
 			Change:  word,
 			Payload: []byte(`{"id":"nlb-1234567890abcdefg","projectId":"prj-1234567890abcdefg"}`),
 		})
@@ -129,6 +130,11 @@ func TestStateIsAbsentBecauseTheJournalCarriesNone(t *testing.T) {
 			t.Errorf("род %q: отдано состояние из МИНИМАЛЬНОГО снимка. Подписчик вправе "+
 				"читать непустую нагрузку как ПОЛНОЕ состояние и записал бы как факт, "+
 				"что у ресурса нет ни меток, ни целей, ни адреса", word)
+		}
+		if absence != subscription.StateNotProduced {
+			t.Errorf("род %q: причина отсутствия %v, ожидалась StateNotProduced — "+
+				"неназванная причина доезжает клиенту как «владелец забыл назвать»",
+				word, absence)
 		}
 	}
 }
