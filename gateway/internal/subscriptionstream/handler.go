@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -197,6 +198,36 @@ func (h *Handler) CloseSubject(subject string) int {
 	return h.registry.closeSubject(subject)
 }
 
+// OpenCredentials — РАЗЛИЧНЫЕ удостоверения открытых сейчас потоков.
+//
+// Читает их сметатель отзыва удостоверения (`gateway/internal/credentialrevocation`,
+// kacho#1410). Дверь та же, что у отзыва прав: тот же реестр и то же закрытие,
+// другой лишь ключ — отзыв прав называет ПРИНЦИПАЛА, отзыв удостоверения
+// называет УДОСТОВЕРЕНИЕ, и радиусы у них разные не по вкусу, а по существу.
+func (h *Handler) OpenCredentials() []Credential { return h.registry.credentials() }
+
+// CloseCredential закрывает потоки, открытые ЭТИМ удостоверением, и возвращает
+// их число.
+//
+// Радиус — одно удостоверение, и это несущее: закрытие по субъекту здесь было бы
+// отказом в обслуживании своими руками, потому что выход из одной вкладки
+// выкидывал бы человека из всех остальных.
+//
+// # Неспрашиваемое удостоверение закрыть НЕЛЬЗЯ, и это не педантизм
+//
+// Удостоверение, про которое авторитету нечего задать ([Credential.Askable] =
+// false), вырождено: у всех таких потоков ключ ОДИН И ТОТ ЖЕ — пустой. Закрыть
+// по нему значило бы закрыть всех, кого не о чем было спросить, то есть получить
+// радиус «все служебные учётки сразу» из вызова, который выглядит поимённым.
+// Отсекается здесь, а не только у вызывающего: страж у одной двери переживает
+// появление второго вызывающего.
+func (h *Handler) CloseCredential(cred Credential) int {
+	if !cred.Askable() {
+		return 0
+	}
+	return h.registry.closeCredential(cred)
+}
+
 // CloseAll закрывает ВСЕ открытые потоки и возвращает их число.
 //
 // FAIL-CLOSED, и радиус у него намеренно широкий. Зовётся, когда край потерял
@@ -291,7 +322,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Предел субъекта — ДО общего слота: место в очереди за общим ресурсом не
 	// достаётся тому, кто своё уже выбрал. Обратный порядок дал бы субъекту
 	// возможность занимать и отпускать общий слот на каждом отказе.
-	entry, release, admitted := h.registry.tryAdd(subject, h.cfg.MaxStreamsPerSubject)
+	entry, release, admitted := h.registry.tryAdd(subject, credentialFromRequest(r), h.cfg.MaxStreamsPerSubject)
 	if !admitted {
 		h.refusedSubjectQuota.Add(1)
 		h.log.Warn("subscription stream refused: per-subject stream limit reached",
@@ -502,6 +533,55 @@ func (h *Handler) callerContext(r *http.Request) (subject string, ctx context.Co
 		return "", nil, false
 	}
 	return subject, metadata.NewOutgoingContext(r.Context(), md), true
+}
+
+// credentialFromRequest достаёт то, чем можно спросить авторитет отзыва ПРО
+// ПРЕДЪЯВЛЕННОЕ: идентификатор подписанного удостоверения и момент, в который
+// вызывающий аутентифицировался.
+//
+// # Почему это читается ЗДЕСЬ, а не приезжает вместе с личностью
+//
+// Строитель исходящих метаданных (`principalmeta.MetadataFromRequest`) кладёт
+// то, что нужно ВЛАДЕЛЬЦУ журнала, и идентификатора удостоверения там нет
+// намеренно: владелец про него ничего не решает. Здесь же вопрос свой — чем
+// назвать этот поток, если предъявленное отзовут, — и материал у него другой.
+//
+// # Формы заголовка
+//
+// Полоса аутентификации ставит идентификатор удостоверения в двух формах, голой
+// и мостовой; читаются обе, ровно как их читает строитель метаданных. У момента
+// аутентификации мостовой формы нет по решению (`principalmeta`.edgeOnlyKeys) —
+// поэтому он читается одной, и это не пропуск.
+//
+// Подделать их вызывающий не может: весь `x-kacho-` вычищается из входящего
+// запроса до того, как выберется полоса.
+//
+// # Что сюда НЕ попадает и почему это названо
+//
+// Предъявленный секрет базовой полосы. Вопрос о нём авторитету требует самого
+// секрета, а держать секрет живым весь срок потока значило бы завести
+// поверхность там, где её не было. Такое удостоверение остаётся неспрашиваемым
+// ([Credential.Askable] = false), и сметатель считает его отдельно.
+func credentialFromRequest(r *http.Request) Credential {
+	jti := r.Header.Get(principalmeta.HeaderTokenJti)
+	if jti == "" {
+		jti = r.Header.Get(principalmeta.HeaderGRPCMetaTokenJti)
+	}
+	cred := Credential{JTI: jti}
+	// Человеком удостоверение называется только тогда, когда принципал —
+	// человек: отсечка сессий ключуется людьми, и служебная учётка в её словаре
+	// не появляется вовсе.
+	if r.Header.Get(principalmeta.HeaderPrincipalType) == "user" ||
+		r.Header.Get(principalmeta.HeaderGRPCMetaPrincipalType) == "user" {
+		cred.UserID = r.Header.Get(principalmeta.HeaderPrincipalID)
+		if cred.UserID == "" {
+			cred.UserID = r.Header.Get(principalmeta.HeaderGRPCMetaPrincipalID)
+		}
+	}
+	if at, err := strconv.ParseInt(r.Header.Get(principalmeta.HeaderTokenMfaAt), 10, 64); err == nil && at > 0 {
+		cred.AuthAt = at
+	}
+	return cred
 }
 
 // ownerRefusal переводит отказ владельца в отказ края.

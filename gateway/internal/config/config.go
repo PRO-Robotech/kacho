@@ -623,6 +623,26 @@ type Config struct {
 	// Default 2s. Omit the env var (or set 0) to use the built-in default.
 	SubjectChangePollInterval time.Duration `envconfig:"KACHO_API_GATEWAY_SUBJECT_CHANGE_POLL_INTERVAL" default:"2s"`
 
+	// CredentialRevocationSweepInterval — как часто край перепрашивает состояние
+	// УДОСТОВЕРЕНИЙ, которыми открыты его длинные соединения (kacho#1410).
+	//
+	// # Почему это СВОЯ ручка, а не период соседнего перепроса
+	//
+	// Механизма два, и они читают разное у разных вопросов: смена субъекта —
+	// журнал прав, этот — авторитет отзыва удостоверения. Свести их в одно число
+	// значило бы, что смена периода одного молча меняет границу отзыва другого.
+	//
+	// # Почему 2s, а не «побольше»
+	//
+	// Граница отзыва удостоверения на пути ЗАПРОСА объявлена пятью секундами
+	// (`KACHO_INTROSPECTION_CACHE_TTL_SECONDS`, `middleware.BasicCredentialVerdictWindow`).
+	// Окно этого механизма — период плюс бюджет одного вопроса, то есть 2s + 1s =
+	// 3s: отозванное удостоверение не держит открытый поток дольше, чем оно
+	// держало бы обычный запрос. Период, при котором окно перерастает срок жизни
+	// потока, отвергается стражем старта: закрытие по собственному бюджету
+	// выглядело бы тогда закрытием по отзыву.
+	CredentialRevocationSweepInterval time.Duration `envconfig:"KACHO_API_GATEWAY_CREDENTIAL_REVOCATION_SWEEP_INTERVAL" default:"2s"`
+
 	// --- per-edge backend-dial mTLS ---
 	//
 	// Backward-compat default = OFF: all *_ENABLE false, cert/key/ca empty ⇒

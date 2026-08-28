@@ -15,6 +15,7 @@ import (
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
+	"github.com/PRO-Robotech/kacho/gateway/internal/credentialrevocation"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
 )
@@ -168,4 +169,65 @@ func buildSubjectChangeWatcher(
 		StaleAfter: staleAfter,
 		Logger:     logger,
 	})
+}
+
+// buildCredentialRevocationSweeper собирает читателя отзыва УДОСТОВЕРЕНИЯ и
+// связывает его с тем же реестром открытых потоков.
+//
+// # Почему это ВТОРОЙ читатель, а не ветка в первом
+//
+// Предметы разные и материал разный: смена субъекта приезжает журналом прав и
+// называет ПРИНЦИПАЛА, отзыв удостоверения спрашивается у авторитета отзыва и
+// называет УДОСТОВЕРЕНИЕ. Свести их в один цикл значило бы связать период
+// вопроса о правах с границей отзыва удостоверения — две величины безопасности,
+// у которых нет общего производителя.
+//
+// Дверь при этом ОДНА: закрывает обоих один и тот же реестр, отменой того же
+// контекста. Второго механизма закрытия не заводится.
+//
+// # Почему функция, а не десять строк в точке сборки
+//
+// Ровно по той причине, что у соседа: инъекция «передать ноль здесь» оставляла
+// бы весь корпус проб зелёным, потому что сквозные пробы зовут конструктор
+// напрямую и продовую точку сборки минуют.
+func buildCredentialRevocationSweeper(
+	cfg config.Config,
+	reader credentialrevocation.Reader,
+	streams *subscriptionstream.Handler,
+	logger *slog.Logger,
+) (*credentialrevocation.Sweeper, error) {
+	if streams == nil {
+		return nil, fmt.Errorf("credential-revocation sweeper: проекция потока не собрана — " +
+			"читателю отзыва нечего закрывать, и это ошибка порядка сборки, а не посадки")
+	}
+	staleAfter := revocationStaleAfter(cfg.CredentialRevocationSweepInterval)
+	if staleAfter >= cfg.SubscriptionStreamBudget {
+		return nil, fmt.Errorf(
+			"credential-revocation sweeper: срок неподтверждённого чтения %v не меньше срока жизни "+
+				"потока %v — fail-closed не наступит ни разу, а закрытие по собственному бюджету "+
+				"потока выглядело бы закрытием по отзыву",
+			staleAfter, cfg.SubscriptionStreamBudget)
+	}
+	sweeper, err := credentialrevocation.New(credentialrevocation.Config{
+		Reader:     reader,
+		Streams:    streams,
+		Interval:   cfg.CredentialRevocationSweepInterval,
+		StaleAfter: staleAfter,
+		Logger:     logger,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// ОКНО обязано быть достижимо внутри жизни потока, и это отдельное условие,
+	// а не следствие предыдущего: срок неподтверждённого чтения измеряет аварию
+	// читателя, окно — обычную работу. Окно, не меньшее бюджета, означало бы, что
+	// отозванное удостоверение НИ РАЗУ не будет спрошено на этом потоке, а его
+	// закрытие по сроку читалось бы как исполненный отзыв.
+	if sweeper.Window() >= cfg.SubscriptionStreamBudget {
+		return nil, fmt.Errorf(
+			"credential-revocation sweeper: окно отзыва %v не меньше срока жизни потока %v — "+
+				"отозванное удостоверение не будет спрошено на этом потоке ни разу",
+			sweeper.Window(), cfg.SubscriptionStreamBudget)
+	}
+	return sweeper, nil
 }

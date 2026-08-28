@@ -33,7 +33,7 @@ import (
 func TestClosingInsideTheArmingGapCancelsOnArm(t *testing.T) {
 	r := newRegistry()
 
-	entry, release, ok := r.tryAdd("user:usr-gap", 4)
+	entry, release, ok := r.tryAdd("user:usr-gap", Credential{JTI: "jti-gap"}, 4)
 	if !ok {
 		t.Fatal("поток не встал на учёт")
 	}
@@ -60,7 +60,7 @@ func TestClosingInsideTheArmingGapCancelsOnArm(t *testing.T) {
 func TestArmingWithoutClosingKeepsTheStream(t *testing.T) {
 	r := newRegistry()
 
-	entry, release, ok := r.tryAdd("user:usr-live", 4)
+	entry, release, ok := r.tryAdd("user:usr-live", Credential{JTI: "jti-live"}, 4)
 	if !ok {
 		t.Fatal("поток не встал на учёт")
 	}
