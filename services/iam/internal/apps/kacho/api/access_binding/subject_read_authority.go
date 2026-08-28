@@ -199,7 +199,7 @@ func subjectReadAuthority(
 	// только что ответил «нет». Все прочие получают ТОТ ЖЕ ответ, что и на
 	// субъекта в чужом аккаунте, — тождество ответов и закрывает оракул.
 	if !res.found {
-		return subjectReadDecision{resolved: res}, authzguard.PermissionDenied()
+		return subjectReadDecision{lane: subjectReadDenied, resolved: res}, authzguard.PermissionDenied()
 	}
 
 	// 7. Распорядитель ДОМАШНЕГО аккаунта субъекта. Единственная полоса, чью
@@ -209,7 +209,7 @@ func subjectReadAuthority(
 		return subjectReadDecision{}, aerr
 	}
 	if !ok {
-		return subjectReadDecision{resolved: res}, authzguard.PermissionDenied()
+		return subjectReadDecision{lane: subjectReadDenied, resolved: res}, authzguard.PermissionDenied()
 	}
 	return subjectReadDecision{lane: subjectReadAccountAdmin, resolved: res}, nil
 }

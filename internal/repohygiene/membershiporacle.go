@@ -703,7 +703,7 @@ func SurveyOracleQuenchProofs(tree *treecorpus.Tree) []OracleQuenchProof {
 // Нечитаемый и неразбираемый файл отвечают «нет»: доказательство, которое нельзя
 // прочитать, доказательством не является.
 func oracleFileCalls(path, name string) bool {
-	body, err := os.ReadFile(path)
+	body, err := os.ReadFile(path) // #nosec G304 -- путь собран из ведомости гейта, не из ввода
 	if err != nil {
 		return false
 	}
