@@ -87,7 +87,9 @@ func TestCarrierRaisesRegistryWithoutAStartRefusal(t *testing.T) {
 		func(reg grpc.ServiceRegistrar) {
 			registerPublic(reg, registryHandler, handler.NewQuotaHandler(nil), opHandler)
 		},
-		func(reg grpc.ServiceRegistrar) { registerInternal(reg, internalHandler, opHandler) },
+		func(reg grpc.ServiceRegistrar) {
+			registerInternal(reg, internalHandler, opHandler, stubSubscriptionServer{})
+		},
 	)
 	if serveErr != nil && strings.Contains(serveErr.Error(), "не поднимается") {
 		t.Fatalf("носитель ОТКАЗАЛ реестру в старте — на стенде процесс не поднялся бы:\n%v", serveErr)

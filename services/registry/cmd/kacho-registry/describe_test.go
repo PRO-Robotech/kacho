@@ -216,7 +216,9 @@ func servedMethods(t *testing.T) []string {
 		func(r grpc.ServiceRegistrar) {
 			registerPublic(r, registryHandler, handler.NewQuotaHandler(nil), opHandler)
 		},
-		func(r grpc.ServiceRegistrar) { registerInternal(r, internalHandler, opHandler) },
+		func(r grpc.ServiceRegistrar) {
+			registerInternal(r, internalHandler, opHandler, stubSubscriptionServer{})
+		},
 	} {
 		srv := grpc.NewServer()
 		reg(srv)
