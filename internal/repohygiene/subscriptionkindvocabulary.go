@@ -115,6 +115,10 @@ type SubscriptionKindOptions struct {
 	ProtoRoot string
 	// GoRoots — каталоги прод-кода, в которых ищутся объявления журналов.
 	GoRoots []string
+	// ClientPage — клиентская страница подписки от корня. Пусто означает, что
+	// вторая половина вердикта НЕ выносится, и перепись говорит это вслух:
+	// «не сверялось» обязано быть отличимо от «сошлось».
+	ClientPage string
 }
 
 // SubscriptionKindCensus — объём осмотренного. Печатается ВСЕГДА.
@@ -128,6 +132,8 @@ type SubscriptionKindCensus struct {
 	JournalMappings int
 	KindEntries     int
 	ObjectTypesUsed int
+	PageBytes       int
+	PageKinds       int
 }
 
 // SubscriptionKindFinding — одна находка.
@@ -179,23 +185,40 @@ func AuditSubscriptionKindVocabulary(
 	}
 	census.ObjectTypesUsed = len(used)
 
-	_, _ = fmt.Fprintf(log,
-		"осмотрено: файлов контракта %d · типов объекта объявлено %d · файлов прод-кода Go %d · объявлений журнала %d · записей вида %d · типов объекта в словарях %d\n",
-		census.ProtoFiles, census.DeclaredTypes, census.GoFiles,
-		census.JournalMappings, census.KindEntries, census.ObjectTypesUsed)
-
+	// Страница сверяется ПОСЛЕ переписи, но её находки — ПОСЛЕ проверки
+	// предпосылок: на пустом обходе словарь пуст, и всякий вид страницы
+	// объявился бы выдуманным. Порядок здесь несущий, а не оформительский.
 	switch {
 	case census.GoFiles == 0:
+		_, _ = fmt.Fprintf(log, "осмотрено: файлов прод-кода Go 0\n")
 		return nil, census, fmt.Errorf(
 			"обход пуст: файлов прод-кода Go 0 — «ноль находок» неотличимо от «ноль прочитанного»")
 	case census.DeclaredTypes == 0:
+		_, _ = fmt.Fprintf(log, "осмотрено: типов объекта объявлено 0\n")
 		return nil, census, fmt.Errorf(
 			"в контрактах не найдено ни одного объявления типа объекта — вторая половина вердикта беспредметна")
 	case census.JournalMappings == 0:
+		_, _ = fmt.Fprintf(log, "осмотрено: объявлений журнала 0 при %d файлах Go\n", census.GoFiles)
 		return nil, census, fmt.Errorf(
 			"объявлений журнала подписки 0 при %d прочитанных файлах Go — разбор сломан либо форма объявления сменилась",
 			census.GoFiles)
 	}
+
+	pageFindings, perr := auditClientPageKinds(o.Root, o.ClientPage, used, &census)
+	if perr != nil {
+		return nil, census, perr
+	}
+	findings = append(findings, pageFindings...)
+
+	pageNote := "не сверялась"
+	if o.ClientPage != "" {
+		pageNote = fmt.Sprintf("%d байт, видов названо %d", census.PageBytes, census.PageKinds)
+	}
+
+	_, _ = fmt.Fprintf(log,
+		"осмотрено: файлов контракта %d · типов объекта объявлено %d · файлов прод-кода Go %d · объявлений журнала %d · записей вида %d · типов объекта в словарях %d · клиентская страница: %s\n",
+		census.ProtoFiles, census.DeclaredTypes, census.GoFiles,
+		census.JournalMappings, census.KindEntries, census.ObjectTypesUsed, pageNote)
 
 	sort.Slice(findings, func(i, j int) bool {
 		if findings[i].Where != findings[j].Where {
@@ -540,4 +563,130 @@ func kindVocabularySelectorText(sel *ast.SelectorExpr) string {
 		return id.Name + "." + sel.Sel.Name
 	}
 	return "<выражение>"
+}
+
+// --- ВТОРАЯ ПОЛОВИНА: клиентская страница называет ТЕ ЖЕ виды ------------------
+//
+// Словарь видов уехал на провод (`SubscriptionOpened.known_kinds`), и клиент
+// теперь берёт его оттуда. Таблица владельцев на клиентской странице от этого не
+// стала лишней — она остаётся тем, по чему выбирают владельца, не открывая
+// потока, — но стала ВТОРЫМ МЕСТОМ ОБ ОДНОМ ПРЕДМЕТЕ. Разойтись ей ничего не
+// мешает: страница пишется руками, словарь объявляется кодом, а расхождение
+// наступает молча — клиент берёт вид со страницы и получает отказ.
+//
+// Сверяются МНОЖЕСТВА, обе стороны:
+//
+//	вид объявлен владельцем и не назван страницей — возможность, о которой клиент
+//	                                                 не узнает из документа;
+//	вид назван страницей и не объявлен никем       — обещание, которого нет:
+//	                                                 запрос с ним получит отказ.
+
+// KindPageOmits — вид объявлен владельцем, а страница о нём молчит.
+const KindPageOmits = "KIND-PAGE-OMITS"
+
+// KindPageInvents — страница называет вид, которого не объявляет ни один владелец.
+const KindPageInvents = "KIND-PAGE-INVENTS"
+
+// kindsHeading — заголовок раздела, чья таблица объявляет виды владельцев.
+//
+// Судится ИМЕННО его таблица, а не вся страница: виды встречаются на ней и в
+// примерах, и в прозе, и сверка по всей странице зеленела бы на упоминании.
+const kindsHeading = "## Словарь владельцев и видов"
+
+// kindsCellRe — ячейка `<code>…</code>` внутри строки таблицы.
+//
+// Заглавные допускаются НАРОЧНО: страница вправе быть неверной, и вид, написанный
+// не тем способом, обязан попасть в находку. Сужь регулярку до строчных — такая
+// страница читалась бы как «видов не названо», то есть дефект превращался бы в
+// отказ разбора и терялся.
+var kindsCellRe = regexp.MustCompile(`<code>([A-Za-z0-9_&#;]+)</code>`)
+
+// auditClientPageKinds сверяет виды страницы со словарями владельцев.
+func auditClientPageKinds(
+	root, page string, declared map[string]struct{}, census *SubscriptionKindCensus,
+) ([]SubscriptionKindFinding, error) {
+	if page == "" {
+		return nil, nil
+	}
+	path := filepath.Join(root, filepath.FromSlash(page))
+	// #nosec G304 -- путь получен из объявления вызывающего, обход своего дерева
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"клиентская страница %s не читается (%w) — сверять словарь не с чем, "+
+				"а молчание здесь означало бы «не читали», а не «сходится»", page, err)
+	}
+	text := string(raw)
+	census.PageBytes = len(text)
+
+	named, err := kindsNamedByPage(text, page)
+	if err != nil {
+		return nil, err
+	}
+	census.PageKinds = len(named)
+
+	var out []SubscriptionKindFinding
+	for kind := range declared {
+		if _, ok := named[kind]; !ok {
+			out = append(out, SubscriptionKindFinding{
+				Kind:  KindPageOmits,
+				Where: page,
+				What: fmt.Sprintf(
+					"вид %q объявлен владельцем, а таблица видов о нём молчит: возможность, "+
+						"о которой клиент из документа не узнает", kind),
+			})
+		}
+	}
+	for kind := range named {
+		if _, ok := declared[kind]; !ok {
+			out = append(out, SubscriptionKindFinding{
+				Kind:  KindPageInvents,
+				Where: page,
+				What: fmt.Sprintf(
+					"страница называет вид %q, которого не объявляет ни один владелец: "+
+						"обещание, которого нет — запрос с ним получит отказ", kind),
+			})
+		}
+	}
+	return out, nil
+}
+
+// kindsNamedByPage достаёт виды из таблицы раздела о словаре владельцев.
+//
+// Разбирается ТРЕТЬЯ колонка строк тела таблицы: первая — ключ владельца, вторая
+// — имя домена, четвёртая — проза о состоянии. Ключ владельца по форме от вида
+// неотличим (`compute`), поэтому колонка выбирается позицией, а не образцом.
+func kindsNamedByPage(text, page string) (map[string]struct{}, error) {
+	at := strings.Index(text, kindsHeading)
+	if at < 0 {
+		return nil, fmt.Errorf(
+			"на странице %s нет раздела %q — разбор судил бы пустоту, и «расхождений нет» "+
+				"получилось бы даром", page, kindsHeading)
+	}
+	rest := text[at+len(kindsHeading):]
+	if end := strings.Index(rest, "\n## "); end >= 0 {
+		rest = rest[:end]
+	}
+
+	out := map[string]struct{}{}
+	rows := 0
+	for _, row := range strings.Split(rest, "<tr>") {
+		cells := strings.Split(row, "<td>")
+		// Заголовок таблицы ячеек `<td>` не содержит вовсе; строка тела несёт
+		// четыре — значит третья существует тогда и только тогда, когда строка
+		// разобралась целиком.
+		if len(cells) < 4 {
+			continue
+		}
+		rows++
+		for _, m := range kindsCellRe.FindAllStringSubmatch(cells[3], -1) {
+			out[strings.ReplaceAll(m[1], "&#95;", "_")] = struct{}{}
+		}
+	}
+	if rows == 0 || len(out) == 0 {
+		return nil, fmt.Errorf(
+			"таблица видов на странице %s не разобралась (строк %d, видов %d): форма таблицы "+
+				"сменилась, и гейт судил бы пустоту", page, rows, len(out))
+	}
+	return out, nil
 }

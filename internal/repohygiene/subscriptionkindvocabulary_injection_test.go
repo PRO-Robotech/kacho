@@ -74,6 +74,8 @@ const (
 				"probe_balancr": {ObjectType: authzfilter.ResourceTypeBalancer, Action: authzfilter.ActionBalancerRead},
 			},`)
 
+	s.writePage(t, "<code>probe&#95;machine</code>", "<code>probe&#95;balancer</code>")
+
 	// ЗАКОННЫЙ БЛИЗНЕЦ ФАЙЛА: чужая структура с полем того же имени и литералом
 	// в нём. Она не про подписку — файл не импортирует общую форму, — и
 	// анализатор обязан её не замечать.
@@ -113,6 +115,45 @@ func Journal() subscription.Journal {
 `)
 }
 
+// writePage кладёт клиентскую страницу с заданными видами в таблице владельцев.
+//
+// Форма — та же, что у настоящей страницы: HTML-таблица в MDX, подчёркивание
+// экранировано. Виды стоят ТРЕТЬЕЙ ячейкой; первая — ключ владельца, и по форме
+// он от вида неотличим, поэтому колонка выбирается позицией.
+//
+// В прозе НАД таблицей нарочно назван вид, которого в таблице нет: разбор,
+// читающий всю страницу, объявил бы его названным, и находка о пропуске
+// потерялась бы.
+func (s *kindStand) writePage(t *testing.T, kindCells ...string) {
+	t.Helper()
+	rows := ""
+	owners := []string{"probe", "probe2"}
+	for i, cell := range kindCells {
+		rows += `
+    <tr>
+      <td><code>` + owners[i%len(owners)] + `</code></td><td>Probe</td>
+      <td>` + cell + `</td>
+      <td>проза о состоянии</td>
+    </tr>`
+	}
+	s.write(t, "gateway/docs/content/api/subscription.mdx", `# Подписка
+
+## Словарь владельцев и видов
+
+Проза, называющая `+"`probe_ghost`"+` вне таблицы.
+
+<table>
+  <thead><tr><th><code>owner</code></th><th>Домен</th><th>Допустимые <code>kinds</code></th><th>Состояние</th></tr></thead>
+  <tbody>`+rows+`
+  </tbody>
+</table>
+
+## Следующий раздел
+
+Проза.
+`)
+}
+
 func (s *kindStand) write(t *testing.T, rel, body string) {
 	t.Helper()
 	p := filepath.Join(s.root, filepath.FromSlash(rel))
@@ -128,9 +169,10 @@ func (s *kindStand) audit(t *testing.T) ([]SubscriptionKindFinding, Subscription
 	t.Helper()
 	var log strings.Builder
 	findings, census, err := AuditSubscriptionKindVocabulary(SubscriptionKindOptions{
-		Root:      s.root,
-		ProtoRoot: "proto",
-		GoRoots:   []string{"pkg", "services"},
+		Root:       s.root,
+		ProtoRoot:  "proto",
+		GoRoots:    []string{"pkg", "services"},
+		ClientPage: "gateway/docs/content/api/subscription.mdx",
 	}, &log)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v\n%s", err, log.String())
@@ -209,6 +251,10 @@ func TestKindVocabularyGateCatchesALiteral(t *testing.T) {
 // рядом расходится с производителем ровно так же молча.
 func TestKindVocabularyGateCatchesALocalName(t *testing.T) {
 	s := newKindStand(t)
+	// Страница называет только то, что разрешилось: у местного имени значение не
+	// добывается, и требовать его от страницы было бы требованием к тому, чего
+	// анализатор не прочитал.
+	s.writePage(t, "<code>probe&#95;balancer</code>")
 	s.write(t, "services/probe/internal/subscriptionjournal/journal.go", `package subscriptionjournal
 
 import (
@@ -240,7 +286,7 @@ func Journal() subscription.Journal {
 	}
 	// Инъекция обязана ронять ТОЛЬКО проверяемое: соседняя запись цела, значит
 	// прочие виды находок молчат, и красное пришло не от них.
-	for _, other := range []string{KindVocabularyLiteral, KindVocabularyUndeclared, KindVocabularyShape} {
+	for _, other := range []string{KindVocabularyLiteral, KindVocabularyUndeclared, KindVocabularyShape, KindPageOmits, KindPageInvents} {
 		if n := len(kindFindingsOf(findings, other)); n != 0 {
 			t.Errorf("инъекция задела соседнее свойство %s (%d находок): %v", other, n, findings)
 		}
@@ -255,6 +301,7 @@ func Journal() subscription.Journal {
 // бы сказано ничего.
 func TestKindVocabularyGateCatchesATypeThePlatformDoesNotDeclare(t *testing.T) {
 	s := newKindStand(t)
+	s.writePage(t, "<code>probe&#95;ghost</code>")
 	s.writeJournal(t, `
 			Kinds: map[string]subscription.Kind{
 				"Machine": {ObjectType: authzfilter.ResourceTypeGhost, Action: authzfilter.ActionMachineRead},
@@ -286,6 +333,7 @@ func TestKindVocabularyGateCatchesATypeThePlatformDoesNotDeclare(t *testing.T) {
 // производителя, поэтому первая половина вердикта не задета.
 func TestKindVocabularyGateCatchesAWordWrittenTheOtherWay(t *testing.T) {
 	s := newKindStand(t)
+	s.writePage(t, "<code>Probe&#95;Machine</code>")
 	s.writeJournal(t, `
 			Kinds: map[string]subscription.Kind{
 				"Machine": {ObjectType: authzfilter.ResourceTypeShouting, Action: authzfilter.ActionMachineRead},
@@ -323,9 +371,13 @@ const prefix = "probe_"
 
 const ResourceTypeDerived = prefix + "machine"
 `)
+	// Второй вид оставлен разрешимым: иначе словарь опустел бы, и сверка со
+	// страницей стала бы беспредметной — а тогда проба измеряла бы не то.
+	s.writePage(t, "<code>probe&#95;balancer</code>")
 	s.writeJournal(t, `
 			Kinds: map[string]subscription.Kind{
-				"Machine": {ObjectType: authzfilter.ResourceTypeDerived, Action: authzfilter.ActionMachineRead},
+				"Machine":       {ObjectType: authzfilter.ResourceTypeDerived, Action: authzfilter.ActionMachineRead},
+				"probe_balancr": {ObjectType: authzfilter.ResourceTypeBalancer, Action: authzfilter.ActionBalancerRead},
 			},`)
 
 	findings, census := s.audit(t)
@@ -336,15 +388,107 @@ const ResourceTypeDerived = prefix + "machine"
 	if !strings.Contains(got[0].What, "authzfilter.ResourceTypeDerived") {
 		t.Errorf("находка не называет, что именно не прочиталось: %q", got[0].What)
 	}
-	if census.ObjectTypesUsed != 0 {
-		t.Errorf("разрешённых типов %d — значение всё-таки добылось, и проба измеряет не то",
-			census.ObjectTypesUsed)
+	// Разрешённый тип ровно один — соседний. Два означали бы, что значение всё-таки
+	// добылось; ноль — что словарь опустел и сверка со страницей стала беспредметной.
+	if census.ObjectTypesUsed != 1 {
+		t.Errorf("разрешённых типов %d, ожидался один (соседний вид)", census.ObjectTypesUsed)
 	}
 	// Инъекция обязана ронять ТОЛЬКО проверяемое.
-	for _, other := range []string{KindVocabularyLiteral, KindVocabularyLocal, KindVocabularyUndeclared, KindVocabularyShape} {
+	for _, other := range []string{KindVocabularyLiteral, KindVocabularyLocal, KindVocabularyUndeclared, KindVocabularyShape, KindPageOmits, KindPageInvents} {
 		if n := len(kindFindingsOf(findings, other)); n != 0 {
 			t.Errorf("инъекция задела соседнее свойство %s (%d находок)", other, n)
 		}
+	}
+}
+
+// TestKindVocabularyGateCatchesAKindThePageOmits — вид объявлен владельцем, а
+// клиентская страница о нём молчит.
+//
+// Словарь уехал на провод, и клиент берёт его оттуда — но таблица владельцев на
+// странице осталась тем, по чему выбирают владельца, НЕ открывая потока. Значит
+// она второе место об одном предмете, и расходится оно молча.
+//
+// Журнал здесь НЕ трогается: инъекция вносится только в страницу, поэтому первая
+// половина вердикта заведомо цела, и красное не может прийти от неё.
+func TestKindVocabularyGateCatchesAKindThePageOmits(t *testing.T) {
+	s := newKindStand(t)
+	s.writePage(t, "<code>probe&#95;machine</code>")
+
+	findings, census := s.audit(t)
+	got := kindFindingsOf(findings, KindPageOmits)
+	if len(got) != 1 {
+		t.Fatalf("находок о пропуске на странице %d, ожидалась одна: %v", len(got), findings)
+	}
+	if !strings.Contains(got[0].What, "probe_balancer") {
+		t.Errorf("находка не называет пропущенный вид: %q", got[0].What)
+	}
+	if census.PageKinds != 1 || census.ObjectTypesUsed != 2 {
+		t.Errorf("перепись: видов на странице %d, в словарях %d — стенд собран не так, как задумано",
+			census.PageKinds, census.ObjectTypesUsed)
+	}
+	for _, other := range []string{KindVocabularyLiteral, KindVocabularyLocal, KindVocabularyUndeclared, KindVocabularyShape, KindPageInvents} {
+		if n := len(kindFindingsOf(findings, other)); n != 0 {
+			t.Errorf("инъекция задела соседнее свойство %s (%d находок)", other, n)
+		}
+	}
+}
+
+// TestKindVocabularyGateCatchesAKindThePageInvents — страница называет вид,
+// которого не объявляет ни один владелец.
+//
+// Зеркальная половина предыдущей, и без неё сверка была бы односторонней:
+// проверка «всё объявленное названо» зеленеет на странице, называющей ВСЁ на
+// свете. Клиент, взявший такой вид, получит отказ, а документ будет его
+// советовать.
+func TestKindVocabularyGateCatchesAKindThePageInvents(t *testing.T) {
+	s := newKindStand(t)
+	s.writePage(t,
+		"<code>probe&#95;machine</code>",
+		"<code>probe&#95;balancer</code>, <code>probe&#95;volume</code>")
+
+	findings, census := s.audit(t)
+	got := kindFindingsOf(findings, KindPageInvents)
+	if len(got) != 1 {
+		t.Fatalf("находок о выдуманном виде %d, ожидалась одна: %v", len(got), findings)
+	}
+	if !strings.Contains(got[0].What, "probe_volume") {
+		t.Errorf("находка не называет выдуманный вид: %q", got[0].What)
+	}
+	if census.PageKinds != 3 {
+		t.Errorf("видов на странице %d, ожидалось три — разбор ячейки с ДВУМЯ видами сломан",
+			census.PageKinds)
+	}
+	for _, other := range []string{KindVocabularyLiteral, KindVocabularyLocal, KindVocabularyUndeclared, KindVocabularyShape, KindPageOmits} {
+		if n := len(kindFindingsOf(findings, other)); n != 0 {
+			t.Errorf("инъекция задела соседнее свойство %s (%d находок)", other, n)
+		}
+	}
+}
+
+// TestKindVocabularyGateRefusesAPageItCannotParse — форма таблицы сменилась.
+//
+// Отказ, а не молчание: неразобранная таблица даёт ноль названных видов, и тогда
+// «страница называет ровно то же» было бы получено даром. Проверяются ОБА
+// способа лишиться предмета — нет раздела и нет строк таблицы.
+func TestKindVocabularyGateRefusesAPageItCannotParse(t *testing.T) {
+	for name, body := range map[string]string{
+		"нет раздела":       "# Подписка\n\n## Что-то другое\n\nПроза.\n",
+		"таблица без строк": "# Подписка\n\n## Словарь владельцев и видов\n\n<table><tbody></tbody></table>\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := newKindStand(t)
+			s.write(t, "gateway/docs/content/api/subscription.mdx", body)
+			var log strings.Builder
+			_, _, err := AuditSubscriptionKindVocabulary(SubscriptionKindOptions{
+				Root:       s.root,
+				ProtoRoot:  "proto",
+				GoRoots:    []string{"pkg", "services"},
+				ClientPage: "gateway/docs/content/api/subscription.mdx",
+			}, &log)
+			if err == nil {
+				t.Fatalf("неразобранная страница (%s) дала вердикт вместо отказа: %s", name, log.String())
+			}
+		})
 	}
 }
 

@@ -14,6 +14,9 @@ func subscriptionKindOptions(t *testing.T) SubscriptionKindOptions {
 		Root:      repoRoot(t),
 		ProtoRoot: "proto",
 		GoRoots:   []string{"pkg", "services", "gateway", "terraform", "internal", "cmd"},
+		// Клиентская страница подписки: второе место об одном предмете, и
+		// сверяется оно множествами в обе стороны.
+		ClientPage: "gateway/docs/content/api/subscription.mdx",
 	}
 }
 
@@ -41,6 +44,12 @@ func TestSubscriptionKindVocabularyHasOneWriting(t *testing.T) {
 	if census.ObjectTypesUsed == 0 {
 		t.Fatalf("записей вида %d, а разрешённых типов объекта 0: вторая половина вердикта не вынесена ни разу",
 			census.KindEntries)
+	}
+	// Страница сверена, а не пропущена: ноль прочитанных байт означал бы, что
+	// половина про клиентскую документацию не выносилась вовсе.
+	if census.PageBytes == 0 || census.PageKinds == 0 {
+		t.Fatalf("клиентская страница: прочитано %d байт, видов названо %d — сверка не состоялась",
+			census.PageBytes, census.PageKinds)
 	}
 
 	if len(findings) == 0 {
