@@ -178,10 +178,12 @@ func TestEveryContractReasonHasExactlyOneProducer(t *testing.T) {
 	// Запас намеренно велик относительно словаря (сегодня в нём четыре записи):
 	// проба обязана увидеть значение, заведённое следующим, а не только уже
 	// известные.
-	const absenceScanCeiling = 64
+	// Счётчик объявлен СВОИМ типом, а не целым с приведением: приведение здесь
+	// ничего не даёт, кроме находки анализатора и повода её подавить, — а
+	// подавление в диалекте, которого никто не читает, дерево ловит своим гейтом.
+	const absenceScanCeiling StateAbsence = 64
 	byWord := make(map[subscriptionv1.SubscriptionEvent_StateUnavailable_Reason][]StateAbsence)
-	for i := 0; i < absenceScanCeiling; i++ {
-		a := StateAbsence(i) //nolint:gosec // предел мал и постоянен
+	for a := StateAbsence(0); a < absenceScanCeiling; a++ {
 		if word, named := a.reason(); named {
 			byWord[word] = append(byWord[word], a)
 		}
