@@ -31,7 +31,7 @@ type fakePoller struct {
 }
 
 func (f *fakePoller) PollSubjectChanges(
-	_ context.Context, since int64,
+	_ context.Context, since int64, _ int32,
 ) (changes []watcher.SubjectChange, headID int64, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -78,7 +78,7 @@ type deadlinePoller struct {
 }
 
 func (d *deadlinePoller) PollSubjectChanges(
-	ctx context.Context, _ int64,
+	ctx context.Context, _ int64, _ int32,
 ) ([]watcher.SubjectChange, int64, error) {
 	_, ok := ctx.Deadline()
 	d.once.Do(func() { d.seen <- ok })
@@ -98,6 +98,7 @@ func TestSubjectChangeWatcher_PollHasPerCallDeadline(t *testing.T) {
 	// from the watcher's per-call context.WithTimeout.
 	w, err := watcher.New(watcher.Config{
 		Poller: p, Flush: func() {}, Interval: 5 * time.Millisecond, Logger: slog.Default(),
+		Closer: noStreams{}, StaleAfter: time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("сборка наблюдателя: %v", err)
@@ -129,6 +130,7 @@ func script(t *testing.T, batches [][]int64, errs []error) (*fakePoller, *int, f
 	var flushes int
 	w, err := watcher.New(watcher.Config{
 		Poller: p, Flush: func() { flushes++ }, Interval: time.Second, Logger: slog.Default(),
+		Closer: noStreams{}, StaleAfter: time.Minute,
 	})
 	if err != nil {
 		t.Fatalf("сборка наблюдателя: %v", err)
@@ -268,3 +270,12 @@ func TestSubjectChangeWatcher_ErrorOnFirstPollDoesNotPrime(t *testing.T) {
 		t.Fatalf("expected exactly 1 flush (error-first defers priming to tick1), got %d", *flushes)
 	}
 }
+
+// noStreams — реестр без открытых потоков.
+//
+// Не «закрывателя нет»: закрыватель ОБЯЗАТЕЛЕН, и ноль отвергается сборкой. Эти
+// пробы про курсор и сброс кэша, поэтому реестр пуст, а не отсутствует.
+type noStreams struct{}
+
+func (noStreams) CloseSubject(string) int { return 0 }
+func (noStreams) CloseAll() int           { return 0 }

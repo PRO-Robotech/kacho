@@ -47,8 +47,13 @@ type SubjectChange struct {
 }
 
 // Poller — узкий порт над RPC `PollSubjectChanges`.
+//
+// Предел порции задаёт ВЫЗЫВАЮЩИЙ, а не адаптер: по нему же вызывающий решает,
+// могла ли порция быть усечена. Оставь предел у адаптера — и решение об усечении
+// принималось бы здесь по числу, объявленному в другом месте, то есть двумя
+// местами об одном предмете.
 type Poller interface {
-	PollSubjectChanges(ctx context.Context, since int64) (changes []SubjectChange, headID int64, err error)
+	PollSubjectChanges(ctx context.Context, since int64, limit int32) (changes []SubjectChange, headID int64, err error)
 }
 
 // StreamCloser — реестр открытых длинных соединений края.
@@ -61,9 +66,25 @@ type StreamCloser interface {
 	CloseAll() int
 }
 
-// minPollTimeout — пол срока одного вызова `PollSubjectChanges`: частый перепрос
-// не вправе сделать срок неразумно тесным.
-const minPollTimeout = 5 * time.Second
+const (
+	// minPollTimeout — пол срока одного вызова `PollSubjectChanges`: частый
+	// перепрос не вправе сделать срок неразумно тесным.
+	minPollTimeout = 5 * time.Second
+
+	// pollBatchLimit — сколько строк просить за один вызов.
+	pollBatchLimit = 1000
+
+	// maxPassesPerTick — сколько порций подряд выбирается за ОДИН тик.
+	//
+	// Накопленный задел обязан выбираться целиком, а не по порции за тик:
+	// массовый отзыв (увольнение, разбор инцидента, снос группы) — ровно тот
+	// случай, ради которого механизм заведён, и растянуть его на десятки тиков
+	// значило бы растянуть окно отзыва на те же десятки интервалов.
+	//
+	// Предел сверху всё же нужен: тик синхронен, и неограниченный проход по
+	// огромному заделу занял бы петлю целиком, отложив и fail-closed.
+	maxPassesPerTick = 16
+)
 
 // Config — что приносит композиционный корень края.
 type Config struct {
@@ -74,8 +95,15 @@ type Config struct {
 	// Interval — период перепроса. Неположительный резолвится в 2s.
 	Interval time.Duration
 
-	// Closer — реестр открытых потоков. Ноль означает «на этой посадке длинных
-	// соединений нет»; тогда перепрос делает ровно то, что делал прежде.
+	// Closer — реестр открытых потоков. ОБЯЗАТЕЛЕН.
+	//
+	// Необязательным он быть не может, и это выяснилось инъекцией: передай в
+	// точке сборки ноль — и весь корпус проб края остаётся зелёным, код
+	// собирается, а отзыв перестаёт доезжать до потоков совсем. То есть
+	// несделанная провязка была бы НЕОТЛИЧИМА от сделанной, и неотличима именно
+	// тем механизмом, ради которого задача заведена.
+	//
+	// Край проекцию строит безусловно, поэтому законного нуля здесь нет.
 	Closer StreamCloser
 
 	// StaleAfter — сколько край вправе ДЕРЖАТЬ потоки, не подтвердив чтения
@@ -124,7 +152,11 @@ func New(cfg Config) (*SubjectChangeWatcher, error) {
 	if cfg.Interval <= 0 {
 		cfg.Interval = 2 * time.Second
 	}
-	if cfg.Closer != nil {
+	if cfg.Closer == nil {
+		return nil, fmt.Errorf("watcher: реестр открытых потоков не назван — отзыв не доезжал бы " +
+			"до длинных соединений вовсе, и несделанная провязка была бы неотличима от сделанной")
+	}
+	{
 		if cfg.StaleAfter <= 0 {
 			return nil, fmt.Errorf("watcher: провязан закрыватель потоков, но срок StaleAfter не объявлен — " +
 				"поток пережил бы аварию читателя отзыва целиком, то есть контроль отключался бы тем самым " +
@@ -175,37 +207,58 @@ func (w *SubjectChangeWatcher) tick(ctx context.Context) {
 	// Срок одного вызова: зависший обработчик iam не вправе заклинить петлю.
 	pollCtx, cancel := context.WithTimeout(ctx, w.pollTimeout)
 	defer cancel()
-	changes, headID, err := w.cfg.Poller.PollSubjectChanges(pollCtx, w.cursor)
-	if err != nil {
-		w.cfg.Logger.Warn("subject-change poll failed", "err", err)
-		w.failClosed()
-		return
-	}
-	w.lastRead = w.cfg.Now()
+	for pass := 0; pass < maxPassesPerTick; pass++ {
+		changes, headID, err := w.cfg.Poller.PollSubjectChanges(pollCtx, w.cursor, pollBatchLimit)
+		if err != nil {
+			w.cfg.Logger.Warn("subject-change poll failed", "err", err)
+			w.failClosed()
+			return
+		}
+		w.lastRead = w.cfg.Now()
 
-	// Первый удачный перепрос свежей реплики: курсор принимается, сброса нет.
-	// Кэш при старте пуст, а прыжок сразу на голову избавляет от проигрывания
-	// накопленной истории. Отзывом принятие курсора не является.
-	if !w.primed {
-		w.primed = true
-		w.cursor = headID
-		return
-	}
-	if len(changes) == 0 {
-		return
-	}
-	for _, c := range changes {
-		if c.ID > w.cursor {
-			w.cursor = c.ID
+		// Первый удачный перепрос свежей реплики: курсор принимается, сброса нет.
+		// Кэш при старте пуст, а прыжок сразу на голову избавляет от
+		// проигрывания накопленной истории. Отзывом принятие курсора не
+		// является.
+		if !w.primed {
+			w.primed = true
+			w.cursor = headID
+			return
+		}
+		if len(changes) == 0 {
+			return
+		}
+
+		// Курсор двигается ТОЛЬКО по ПРОЧИТАННЫМ строкам.
+		//
+		// Прежде он поднимался до общего максимума таблицы (`headID`) и
+		// поднимался БЕЗУСЛОВНО. Для сплошного сброса кэша это было безвредно —
+		// какие строки прочли, неважно. Для ПОИМЁННОГО закрытия потоков это
+		// потеря отзыва: при заделе больше порции курсор перепрыгивал через
+		// непрочитанные строки, и их субъекты не назывались бы НИКОГДА. Срабатывало
+		// бы ровно при массовом отзыве.
+		for _, c := range changes {
+			if c.ID > w.cursor {
+				w.cursor = c.ID
+			}
+		}
+		w.cfg.Flush()
+		closed, unaddressable := w.closeNamed(changes)
+		w.cfg.Logger.Info("authz decision-cache flushed by subject-change poll",
+			"cursor", w.cursor, "subjects", len(changes), "streams_closed", closed,
+			// Строка, чьего субъекта закрыть по имени нельзя (тип вне словаря
+			// потоков — например группа), считается ОТДЕЛЬНО: молчаливое
+			// выбрасывание сделало бы «закрывать было нечего» неотличимым от
+			// «закрыть было нечем».
+			"unaddressable", unaddressable)
+
+		if len(changes) < pollBatchLimit {
+			// Порция короче предела — задел выбран целиком.
+			return
 		}
 	}
-	if headID > w.cursor {
-		w.cursor = headID
-	}
-	w.cfg.Flush()
-	closed := w.closeNamed(changes)
-	w.cfg.Logger.Info("authz decision-cache flushed by subject-change poll",
-		"cursor", w.cursor, "subjects", len(changes), "streams_closed", closed)
+	w.cfg.Logger.Warn("subject-change backlog exceeds one tick; remainder follows next tick",
+		"cursor", w.cursor, "passes", maxPassesPerTick)
 }
 
 // closeNamed закрывает потоки НАЗВАННЫХ порцией субъектов, каждого по одному
@@ -213,14 +266,17 @@ func (w *SubjectChangeWatcher) tick(ctx context.Context) {
 //
 // Пустое имя отсекается безусловно: под ним не учтён ни один поток, а обход по
 // нему был бы вопросом ни о ком.
-func (w *SubjectChangeWatcher) closeNamed(changes []SubjectChange) int {
-	if w.cfg.Closer == nil {
-		return 0
-	}
+func (w *SubjectChangeWatcher) closeNamed(changes []SubjectChange) (closed, unaddressable int) {
 	seen := make(map[string]struct{}, len(changes))
-	closed := 0
 	for _, c := range changes {
 		if c.Subject == "" {
+			// Субъекта назвать не удалось: тип вне словаря потоков (группа) либо
+			// строка записана до того, как производители стали проставлять тип.
+			// Данные при этом не текут — страж проектной оси у владельца
+			// переспрашивается перед каждой уходящей порцией и разрешает
+			// членство группы наравне с прямой выдачей, — но СОЕДИНЕНИЕ живёт до
+			// своего бюджета. Величина названа, чтобы остаток был виден.
+			unaddressable++
 			continue
 		}
 		if _, dup := seen[c.Subject]; dup {
@@ -229,8 +285,18 @@ func (w *SubjectChangeWatcher) closeNamed(changes []SubjectChange) int {
 		seen[c.Subject] = struct{}{}
 		closed += w.cfg.Closer.CloseSubject(c.Subject)
 	}
-	return closed
+	return closed, unaddressable
 }
+
+// ClosesStreams — провязан ли реестр открытых потоков.
+//
+// Существует ради САМООТЧЁТА: он обязан печатать НАБЛЮДЕНИЕ, а не литерал.
+// Литерал продолжает утверждать «закрывает» при отключённом закрывателе — то
+// есть ровно тот класс, ради которого задача заведена.
+func (w *SubjectChangeWatcher) ClosesStreams() bool { return w.cfg.Closer != nil }
+
+// StaleAfter — объявленный срок неподтверждённого чтения отзыва. Для самоотчёта.
+func (w *SubjectChangeWatcher) StaleAfter() time.Duration { return w.cfg.StaleAfter }
 
 // failClosed закрывает ВСЕ потоки, когда читатель отзыва не подтверждался дольше
 // объявленного срока.
@@ -242,9 +308,6 @@ func (w *SubjectChangeWatcher) closeNamed(changes []SubjectChange) int {
 // Закрывает на КАЖДОМ отказе за сроком, а не однажды: клиент, переоткрывшийся в
 // середине аварии, обязан закрыться тоже. На пустом реестре это стоит нуля.
 func (w *SubjectChangeWatcher) failClosed() {
-	if w.cfg.Closer == nil {
-		return
-	}
 	stale := w.cfg.Now().Sub(w.lastRead)
 	if stale < w.cfg.StaleAfter {
 		return

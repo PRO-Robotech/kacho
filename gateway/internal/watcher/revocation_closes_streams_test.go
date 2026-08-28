@@ -55,13 +55,15 @@ type subjectPoller struct {
 	batches [][]watcher.SubjectChange
 	errs    []error
 	calls   int
+	limits  []int32
 }
 
 func (p *subjectPoller) PollSubjectChanges(
-	_ context.Context, _ int64,
+	_ context.Context, _ int64, limit int32,
 ) ([]watcher.SubjectChange, int64, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.limits = append(p.limits, limit)
 	i := p.calls
 	p.calls++
 	if i < len(p.errs) && p.errs[i] != nil {
@@ -208,25 +210,34 @@ func TestRecoveredReaderStopsSweeping(t *testing.T) {
 	}
 }
 
-// TestWatcherWithoutCloserStillFlushes — закрыватель необязателен, и его
-// отсутствие не отменяет первой полосы. Иначе провязка одного механизма
-// молча выключала бы другой.
-func TestWatcherWithoutCloserStillFlushes(t *testing.T) {
-	p := &subjectPoller{batches: [][]watcher.SubjectChange{
-		{{ID: 1, Subject: "user:usr-a"}},
-		{{ID: 2, Subject: "user:usr-b"}},
-	}}
-	var flushes int
-	w, err := watcher.New(watcher.Config{
-		Poller: p, Flush: func() { flushes++ }, Interval: time.Second, Logger: quietLogger(),
+// TestMissingCloserIsRefusedAtStartup — провязка закрывателя не бывает
+// необязательной.
+//
+// Инъекция показала, ПОЧЕМУ: передай в точке сборки ноль — и весь корпус проб
+// края остаётся зелёным, код собирается, а отзыв перестаёт доезжать до потоков
+// совсем. Несделанная провязка была бы неотличима от сделанной — и неотличима
+// именно тем механизмом, ради которого задача заведена.
+func TestMissingCloserIsRefusedAtStartup(t *testing.T) {
+	_, err := watcher.New(watcher.Config{
+		Poller: &subjectPoller{}, Flush: func() {}, Interval: time.Second,
+		Closer: nil, StaleAfter: 30 * time.Second, Logger: quietLogger(),
 	})
-	if err != nil {
-		t.Fatalf("сборка наблюдателя: %v", err)
+	if err == nil {
+		t.Fatal("наблюдатель без реестра открытых потоков собрался — отзыв не доезжал бы до них вовсе")
 	}
-	w.Tick(context.Background())
-	w.Tick(context.Background())
-	if flushes != 1 {
-		t.Fatalf("сбросов %d, ожидался 1", flushes)
+}
+
+// TestWiredCloserIsVisibleInTheSelfReport — самоотчёт ОБЯЗАН быть наблюдением.
+//
+// Литерал `true` продолжал бы утверждать «закрывает потоки» при отключённом
+// закрывателе, то есть был бы ровно тем классом, ради которого задача заведена.
+func TestWiredCloserIsVisibleInTheSelfReport(t *testing.T) {
+	w := newWatcherAt(t, &subjectPoller{}, func() {}, &closerStub{}, 30*time.Second, time.Now)
+	if !w.ClosesStreams() {
+		t.Fatal("провязанный закрыватель не виден в самоотчёте")
+	}
+	if got := w.StaleAfter(); got != 30*time.Second {
+		t.Fatalf("срок в самоотчёте %v, объявлено 30s", got)
 	}
 }
 
@@ -310,4 +321,86 @@ func newWatcherAt(
 		t.Fatalf("сборка наблюдателя: %v", err)
 	}
 	return w
+}
+
+// TestTruncatedBatchDoesNotSkipUnreadRevocations — B1.
+//
+// # Что здесь ловится
+//
+// Курсор поднимался до общего максимума ТАБЛИЦЫ (`headID`) и поднимался
+// безусловно. При заделе больше порции он перепрыгивал через непрочитанные
+// строки, и субъекты этих строк не назывались бы НИКОГДА. Для сплошного сброса
+// кэша это было безвредно; для поимённого закрытия потоков это потеря отзыва —
+// и срабатывает она ровно при массовом отзыве, то есть в том случае, ради
+// которого механизм заведён.
+//
+// Стенд отдаёт ПОЛНУЮ порцию (по объявленному пределу), а `headID` называет
+// строку далеко за ней. Утверждается исход: субъект непрочитанной строки закрыт.
+func TestTruncatedBatchDoesNotSkipUnreadRevocations(t *testing.T) {
+	full := func(base int64, n int) []watcher.SubjectChange {
+		out := make([]watcher.SubjectChange, 0, n)
+		for i := 0; i < n; i++ {
+			out = append(out, watcher.SubjectChange{ID: base + int64(i), Subject: "user:usr-bulk"})
+		}
+		return out
+	}
+	p := &truncatingPoller{
+		first:  full(1, 1000),
+		second: []watcher.SubjectChange{{ID: 1001, Subject: "user:usr-tail"}},
+		head:   1001,
+	}
+	closer := &closerStub{perClose: 1}
+	w := newWatcher(t, p, func() {}, closer)
+
+	w.Tick(context.Background()) // праймящий
+	w.Tick(context.Background()) // полная порция + добор хвоста
+
+	closed, _ := closer.snapshot()
+	var sawTail bool
+	for _, s := range closed {
+		if s == "user:usr-tail" {
+			sawTail = true
+		}
+	}
+	if !sawTail {
+		t.Fatalf("закрыты %v — субъект строки ЗА пределом порции не назван: "+
+			"курсор перепрыгнул через непрочитанное, и его отзыв потерян навсегда", closed)
+	}
+	if p.limits[0] != 1000 {
+		t.Errorf("предел порции запрошен как %d — решение об усечении принимается по нему", p.limits[0])
+	}
+}
+
+// truncatingPoller — первая порция ПОЛНАЯ (по пределу), вторая короткая.
+type truncatingPoller struct {
+	mu     sync.Mutex
+	first  []watcher.SubjectChange
+	second []watcher.SubjectChange
+	head   int64
+	calls  int
+	limits []int32
+}
+
+func (p *truncatingPoller) PollSubjectChanges(
+	_ context.Context, since int64, limit int32,
+) ([]watcher.SubjectChange, int64, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.limits = append(p.limits, limit)
+	i := p.calls
+	p.calls++
+	if i == 0 {
+		// Праймящий идёт по ПУСТОЙ таблице: строки появляются после него.
+		// Отдай здесь голову — курсор принял бы её, и проба мерила бы приём
+		// курсора, а не потерю непрочитанного.
+		return nil, 0, nil
+	}
+	switch {
+	case since < 1000:
+		return p.first, p.head, nil
+	case since < p.head:
+		return p.second, p.head, nil
+	default:
+		return nil, p.head, nil
+	}
 }

@@ -233,3 +233,53 @@ func TestProjectGateIsAskedAgainOnlyWhereThereIsAProjectAxis(t *testing.T) {
 		t.Fatal("пообъектное сужение не спрошено вовсе — проба зеленела бы на мёртвом потоке")
 	}
 }
+
+// TestRevokedGroupDerivedAccessStopsTheStreamToo — доступ, полученный ЧЕРЕЗ
+// ГРУППУ, снимается тем же переспросом стража.
+//
+// # Зачем проба, если механизм тот же
+//
+// Потому что по ИМЕНИ такой отзыв не закрывается ничем: строка журнала смены
+// субъекта называет группу, а субъекта `group:…` в реестре открытых потоков не
+// бывает — он учитывается по тому, кто предъявил удостоверение. Половина
+// «закрыть по имени» на этом входе не работает НИКОГДА, и без этой пробы
+// оставалось бы неизвестным, работает ли вторая.
+//
+// Модель разрешает доступ вызывающего членством в группе наравне с прямой
+// выдачей, поэтому предмет вопроса стража — право ВЫЗЫВАЮЩЕГО, а не то, чем оно
+// получено. Стенд снимает право у вызывающего: с точки зрения потока «сняли
+// группу» и «сняли прямую выдачу» — одно наблюдение.
+func TestRevokedGroupDerivedAccessStopsTheStreamToo(t *testing.T) {
+	peer := newRevocablePeer()
+	s := revocableStand(t, peer)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	s.emit(t, "Network", "net00000000000000001", "CREATED", "prj-a")
+	sb := s.open(t, ctx, &subscriptionv1.SubscriptionRequest{
+		ProjectId: "prj-a",
+		Start: &subscriptionv1.SubscriptionRequest_Anchor{
+			Anchor: subscriptionv1.SubscriptionAnchor_BEGINNING,
+		},
+	})
+	// Положительный контроль: право (полученное как угодно) есть — событие идёт.
+	recvEvents(t, sb, 1)
+
+	// Право снято. По имени этот отзыв закрыть было бы нечем.
+	peer.revokeProject()
+	s.emit(t, "Network", "net00000000000000002", "CREATED", "prj-a")
+
+	select {
+	case ev, ok := <-sb.events:
+		if ok {
+			t.Fatalf("после снятия права поток отдал событие %q — отзыв, который нельзя закрыть "+
+				"по имени, не закрывается и переспросом стража: у него нет читателя вовсе",
+				ev.GetResourceId())
+		}
+		assertProjectAbsentRefusal(t, <-sb.fail)
+	case err := <-sb.fail:
+		assertProjectAbsentRefusal(t, err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("исход не наступил вовсе")
+	}
+}

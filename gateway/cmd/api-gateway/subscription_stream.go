@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/watcher"
+
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
@@ -123,4 +125,48 @@ func revocationStaleAfter(pollInterval time.Duration) time.Duration {
 		return revocationStaleFloor
 	}
 	return stale
+}
+
+// buildSubjectChangeWatcher собирает читателя отзыва и связывает его с реестром
+// открытых потоков.
+//
+// # Почему это ФУНКЦИЯ, а не десять строк в точке сборки
+//
+// Провязку закрывателя нельзя доказать, пока она живёт в `main`: две
+// независимые инъекции — снять закрыватель у слушателя и передать ноль здесь —
+// оставляли ВЕСЬ корпус проб края зелёным и код собирающимся, потому что
+// сквозная проба зовёт конструктор ручки напрямую, минуя продовую точку
+// сборки. Вынесенная функция даёт пробе тот самый вход, который исполняется в
+// бою.
+//
+// Сам ноль закрывателя отвергает уже [watcher.New]; здесь проверяется ВТОРАЯ
+// половина того же предмета — что край передаёт туда именно СВОЙ реестр
+// открытых потоков, а не что-нибудь непустое.
+func buildSubjectChangeWatcher(
+	cfg config.Config,
+	poller watcher.Poller,
+	flush func(),
+	streams *subscriptionstream.Handler,
+	logger *slog.Logger,
+) (*watcher.SubjectChangeWatcher, error) {
+	if streams == nil {
+		return nil, fmt.Errorf("subject-change watcher: проекция потока не собрана — " +
+			"читателю отзыва нечего закрывать, и это ошибка порядка сборки, а не посадки")
+	}
+	staleAfter := revocationStaleAfter(cfg.SubjectChangePollInterval)
+	if staleAfter >= cfg.SubscriptionStreamBudget {
+		return nil, fmt.Errorf(
+			"subject-change watcher: срок неподтверждённого чтения отзыва %v не меньше срока жизни "+
+				"потока %v — fail-closed не наступит ни разу, а закрытие по собственному бюджету "+
+				"потока выглядело бы закрытием по отзыву",
+			staleAfter, cfg.SubscriptionStreamBudget)
+	}
+	return watcher.New(watcher.Config{
+		Poller:     poller,
+		Flush:      flush,
+		Interval:   cfg.SubjectChangePollInterval,
+		Closer:     streams,
+		StaleAfter: staleAfter,
+		Logger:     logger,
+	})
 }

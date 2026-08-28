@@ -251,10 +251,10 @@ func TestPolledRowWithoutSubjectTypeNamesNobody(t *testing.T) {
 	})
 	poller := clients.NewSubjectChangePoller(iamConn)
 
-	if _, _, err := poller.PollSubjectChanges(context.Background(), 0); err != nil {
+	if _, _, err := poller.PollSubjectChanges(context.Background(), 0, 256); err != nil {
 		t.Fatalf("первый перепрос: %v", err)
 	}
-	changes, _, err := poller.PollSubjectChanges(context.Background(), 1)
+	changes, _, err := poller.PollSubjectChanges(context.Background(), 1, 256)
 	if err != nil {
 		t.Fatalf("второй перепрос: %v", err)
 	}
@@ -289,10 +289,10 @@ func TestPolledSubjectIsNamedTheWayTheRegistryKeysIt(t *testing.T) {
 		iamv1.RegisterInternalIAMServiceServer(s, iamStub)
 	})
 	poller := clients.NewSubjectChangePoller(iamConn)
-	if _, _, err := poller.PollSubjectChanges(context.Background(), 0); err != nil {
+	if _, _, err := poller.PollSubjectChanges(context.Background(), 0, 256); err != nil {
 		t.Fatalf("первый перепрос: %v", err)
 	}
-	changes, _, err := poller.PollSubjectChanges(context.Background(), 1)
+	changes, _, err := poller.PollSubjectChanges(context.Background(), 1, 256)
 	if err != nil {
 		t.Fatalf("второй перепрос: %v", err)
 	}

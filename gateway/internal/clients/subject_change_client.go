@@ -28,7 +28,11 @@ func NewSubjectChangePoller(cc grpc.ClientConnInterface) *SubjectChangePoller {
 }
 
 // PollSubjectChanges calls InternalIAMService.PollSubjectChanges with cursor
-// since and limit 1000, returning the changes and the head cursor.
+// since and the limit its CALLER named, returning the changes and the head cursor.
+//
+// Предел не объявляется здесь: по нему вызывающий решает, могла ли порция быть
+// усечена, и объявить его в двух местах значило бы дать этому решению второе,
+// расходящееся основание.
 //
 // # Почему имя субъекта едет дальше, а не остаётся здесь
 //
@@ -38,11 +42,11 @@ func NewSubjectChangePoller(cc grpc.ClientConnInterface) *SubjectChangePoller {
 // реплика, до которой не дозвонился толчок iam, других имён не получает ниоткуда.
 // То есть отзыв на такой реплике не имел бы действия вовсе.
 func (p *SubjectChangePoller) PollSubjectChanges(
-	ctx context.Context, since int64,
+	ctx context.Context, since int64, limit int32,
 ) ([]watcher.SubjectChange, int64, error) {
 	resp, err := p.client.PollSubjectChanges(ctx, &iamv1.PollSubjectChangesRequest{
 		SinceId: since,
-		Limit:   1000,
+		Limit:   limit,
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("poll subject changes: %w", err)

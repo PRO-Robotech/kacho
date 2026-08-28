@@ -44,7 +44,6 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/restmux"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
-	"github.com/PRO-Robotech/kacho/gateway/internal/watcher"
 )
 
 func main() {
@@ -822,21 +821,8 @@ func main() {
 		// перепроса, потому что измеряет именно его отказ, и обязан быть заметно
 		// меньше срока жизни потока — иначе fail-closed не наступает никогда, а
 		// поток закрывается собственным бюджетом и выглядит закрытым по отзыву.
-		staleAfter := revocationStaleAfter(cfg.SubjectChangePollInterval)
-		if staleAfter >= cfg.SubscriptionStreamBudget {
-			log.Fatalf("subject-change watcher: срок неподтверждённого чтения отзыва %v "+
-				"не меньше срока жизни потока %v — fail-closed не наступит ни разу, "+
-				"а закрытие по собственному бюджету потока выглядело бы закрытием по отзыву",
-				staleAfter, cfg.SubscriptionStreamBudget)
-		}
-		scWatcher, wErr := watcher.New(watcher.Config{
-			Poller:     scPoller,
-			Flush:      authzMW.InvalidateCache,
-			Interval:   cfg.SubjectChangePollInterval,
-			Closer:     subscriptionStream,
-			StaleAfter: staleAfter,
-			Logger:     logger,
-		})
+		scWatcher, wErr := buildSubjectChangeWatcher(
+			cfg, scPoller, authzMW.InvalidateCache, subscriptionStream, logger)
 		if wErr != nil {
 			log.Fatalf("subject-change watcher: %v", wErr)
 		}
@@ -846,10 +832,13 @@ func main() {
 		// Самоотчёт называет ОБЕ величины: перепрос, которым отзыв доезжает, и
 		// срок, после которого его отсутствие само становится решением. Молчание
 		// о втором сделало бы «fail-closed провязан» неотличимым от «не провязан».
+		// Самоотчёт печатает НАБЛЮДЕНИЕ, а не литерал: `true` продолжал бы
+		// утверждать «закрывает» при отключённом закрывателе — то есть ровно тот
+		// класс, ради которого эта задача и заведена.
 		logger.Info("subject-change watcher started",
 			"interval", cfg.SubjectChangePollInterval,
-			"stale_after", staleAfter.String(),
-			"closes_streams", true)
+			"stale_after", scWatcher.StaleAfter().String(),
+			"closes_streams", scWatcher.ClosesStreams())
 	}
 
 	// --- gRPC server ---
