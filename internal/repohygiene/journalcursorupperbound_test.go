@@ -21,6 +21,19 @@ import (
 // Обе записи найдены ЗАМЕРОМ по дереву при закрытии kacho#1053, тело которой
 // утверждало обратное: «все прочие журналы читаются как очередь с клеймом».
 // Клейма нет ни у одного из двух.
+//
+// # ЧЕГО ЗДЕСЬ НЕ ЛЕЧАТ — и это главная ловушка ведомости
+//
+// Запись сюда прощает ЧТЕНИЕ ПО ГОЛОМУ НОМЕРУ — нарушение. Находку
+// `КОЛОНКА-НЕОПОЗНАНА` она НЕ лечит и лечить не должна: там нарушения нет, там
+// НЕПОЛНОТА НАБЛЮДЕНИЯ — анализатор не нашёл объявленного типа колонки. Чинится
+// она пополнением списка типов (`jcOpaqueTypes` / `jcCounterTypes`) либо
+// расширением корней схемы, и только так.
+//
+// Соблазн закрыть её послаблением велик, потому что это одна строка и прогон
+// зеленеет. Цена — наблюдение гаснет НАВСЕГДА и молча: послабление снимает
+// вопрос вместо того, чтобы на него ответить, а самоистечение его не поймает —
+// предмет-то у записи есть.
 var journalCursorAllowances = []JournalCursorAllowance{
 	{
 		File:   "services/iam/internal/repo/kacho/pg/limit_repo.go",
@@ -41,7 +54,7 @@ func journalCursorOptions(t *testing.T) JournalCursorOptions {
 	return JournalCursorOptions{
 		Root:     repoRoot(t),
 		GoRoots:  []string{"pkg", "services", "gateway", "terraform", "internal", "cmd"},
-		SQLRoots: []string{"pkg", "services"},
+		SQLRoots: []string{"pkg", "services", "gateway"},
 		Allow:    journalCursorAllowances,
 	}
 }

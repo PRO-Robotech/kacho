@@ -235,3 +235,98 @@ func TestJournalCursorGateFailsOnAnEmptyWalk(t *testing.T) {
 		t.Fatal("пустой обход выдан за успех: «ноль находок» стало неотличимо от «ноль прочитанного»")
 	}
 }
+
+// TestJournalCursorGateKnowsEveryLegalFormOfTheSameRead — ИНЪЕКЦИЯ ПО КАЖДОЙ
+// ФОРМЕ, а не одна на все.
+//
+// Все формы ниже — законная запись ОДНОГО И ТОГО ЖЕ запрещённого чтения, а не
+// края. Форма, о которой распознаватель не знает, даёт не красное и не зелёное:
+// она даёт МОЛЧАНИЕ, и перепись при этом не шелохнётся — то есть слепота не
+// наблюдаема ничем (`testing.md` §«Гейт на класс», п. 7).
+//
+// Поэтому каждый случай утверждает ДВЕ величины сразу: сдвинулась ли перепись и
+// появилась ли находка. Одной первой мало — она молчит ровно там, где гейт слеп.
+func TestJournalCursorGateKnowsEveryLegalFormOfTheSameRead(t *testing.T) {
+	const (
+		head = "package repo\n\nconst q = `SELECT sequence_no FROM journal WHERE "
+		tail = " LIMIT 200`\n"
+	)
+	cases := []struct {
+		name    string
+		where   string
+		caught  bool // ожидается ли находка
+		counted bool // опознано ли чтение возобновимым (сдвиг переписи)
+	}{
+		{"явное ASC — контроль", "sequence_no > $1 ORDER BY sequence_no ASC", true, true},
+		{"умолчание стандарта: направления нет", "sequence_no > $1 ORDER BY sequence_no", true, true},
+		{"включающий курсор >=", "sequence_no >= $1 ORDER BY sequence_no", true, true},
+		{"обратные операнды $1 < col", "$1 < sequence_no ORDER BY sequence_no", true, true},
+		{"обратные операнды, умолчание и включение", "$1 <= sequence_no ORDER BY sequence_no ASC", true, true},
+		// Отрицательные близнецы: форма похожа, предмета нет.
+		{"нисходящая выборка — курсора «дальше» не выражает", "sequence_no > $1 ORDER BY sequence_no DESC", false, false},
+		{"верхняя граница обратными операндами", "sequence_no > $1 AND $2 >= sequence_no ORDER BY sequence_no", false, true},
+		{"верхняя граница прямой записью", "sequence_no > $1 AND sequence_no <= $2 ORDER BY sequence_no ASC", false, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newJournalCursorStand(t)
+			base := 2 // близнецы стенда, опознанные возобновимыми
+			s.write(t, "services/probe/internal/repo/feed.go", head+tc.where+tail)
+
+			findings, census := s.audit(t)
+			bare := journalCursorKinds(findings, JournalCursorBareNumber)
+
+			want := base
+			if tc.counted {
+				want = base + 1
+			}
+			if census.ResumableReads != want {
+				t.Fatalf("возобновимых чтений %d, ожидалось %d — перепись не сдвинулась, значит форма не опознана вовсе",
+					census.ResumableReads, want)
+			}
+			switch {
+			case tc.caught && len(bare) != 1:
+				t.Fatalf("форма не поймана: находок %d, ожидалась 1 (%v)", len(bare), findings)
+			case tc.caught && !strings.Contains(bare[0].Where, "feed.go"):
+				t.Fatalf("находка не называет координату: %q", bare[0].Where)
+			case !tc.caught && len(bare) != 0:
+				t.Fatalf("законный близнец объявлен негодным: %v", bare)
+			}
+		})
+	}
+}
+
+// TestJournalCursorGateDeclaresItsBlindSpots — то, что распознаватель НЕ ловит,
+// названо здесь и в шапке пакета.
+//
+// Это не оправдание слепоты, а её ОБНАРУЖИВАЕМОСТЬ: пока форма не ловится, о ней
+// сказано вслух; как только кто-нибудь научит распознаватель — эта проба
+// покраснеет и заставит поправить шапку. Молчаливая слепота тем и опасна, что
+// неотличима от отсутствия предмета.
+func TestJournalCursorGateDeclaresItsBlindSpots(t *testing.T) {
+	blind := []struct{ name, body string }{
+		{
+			"склейка запроса из нескольких литералов",
+			"package repo\n\nconst (\n\ta = `SELECT sequence_no FROM journal WHERE sequence_no > $1 `\n" +
+				"\tb = `ORDER BY sequence_no LIMIT 200`\n)\n",
+		},
+		{
+			"порядок по номеру выражения в списке выборки",
+			"package repo\n\nconst q = `SELECT sequence_no FROM journal" +
+				" WHERE sequence_no > $1 ORDER BY 1 LIMIT 200`\n",
+		},
+	}
+	for _, tc := range blind {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newJournalCursorStand(t)
+			s.write(t, "services/probe/internal/repo/feed.go", tc.body)
+			findings, census := s.audit(t)
+			if census.ResumableReads != 2 || len(journalCursorKinds(findings, JournalCursorBareNumber)) != 0 {
+				t.Fatalf("форма СТАЛА опознаваться (чтений %d, находок %d) — распознаватель расширился, "+
+					"поправь шапку пакета и сними эту запись",
+					census.ResumableReads, len(journalCursorKinds(findings, JournalCursorBareNumber)))
+			}
+		})
+	}
+}
