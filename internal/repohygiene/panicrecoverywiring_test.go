@@ -130,10 +130,14 @@ func TestEveryGRPCListenerRecoversHandlerPanics(t *testing.T) {
 // panicRecoveryAudit — исход обхода: находки плюс объём осмотренного, чтобы
 // «ноль находок» было отличимо от «ноль прочитанного».
 type panicRecoveryAudit struct {
-	findings  []string
-	listeners int
-	covered   int
-	summary   string
+	// serviceBuilders — сколько мест формы `NewServer` отсеяно распознаванием как
+	// СБОРКА СЛУЖБЫ. Печатается и доступно пробам: «находок ноль» обязано быть
+	// отличимо от «ветвь не исполнялась».
+	serviceBuilders int
+	findings        []string
+	listeners       int
+	covered         int
+	summary         string
 }
 
 // auditPanicRecoveryWiring — ядро гейта, вынесенное отдельно, чтобы пробы
@@ -169,6 +173,10 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 		covered         int
 		withListeners   []string
 		compListeners   = map[string]int{}
+		// serviceBuilders — места формы `NewServer`, ОТСЕЯННЫЕ распознаванием как
+		// собираемые службы. Печатаются, а не проглатываются: иначе листенер,
+		// научившийся отказывать, исчез бы из наблюдения молча.
+		serviceBuilders int
 		compUsesCarrier = map[string]bool{}
 	)
 	for _, comp := range components {
@@ -199,7 +207,8 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 				}
 			}
 
-			sites := pkg.listenerSites()
+			sites, refusing := pkg.listenerSites()
+			serviceBuilders += refusing
 			if len(sites) == 0 {
 				continue
 			}
@@ -273,9 +282,10 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 	}
 
 	return panicRecoveryAudit{
-		findings:  findings,
-		listeners: listeners,
-		covered:   covered,
+		findings:        findings,
+		serviceBuilders: serviceBuilders,
+		listeners:       listeners,
+		covered:         covered,
 		summary: "осмотрено: компонентов " + strconv.Itoa(scannedServices) +
 			", композиционных пакетов " + strconv.Itoa(scannedPkgs) +
 			", файлов " + strconv.Itoa(scannedFiles) +
@@ -283,6 +293,7 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 			"; распознано звеньев восстановления паники " + strconv.Itoa(len(known)) +
 			"; листенеров " + strconv.Itoa(listeners) +
 			", из них со звеном " + strconv.Itoa(covered) +
+			"; отсеяно как собираемые службы (конструктор умеет отказать) " + strconv.Itoa(serviceBuilders) +
 			"; компонентов на носителе контура (своих листенеров нет) " + strconv.Itoa(carrierBorne) +
 			"; листенеры у: " + strings.Join(withListeners, ", "),
 	}
@@ -478,8 +489,9 @@ func loadPkgForChainScan(dir string) (*chainPkgInfo, error) {
 // (grpc.NewServer, grpcsrv.NewServer, proxy.NewServer — их объединяет предмет,
 // а не пакет). Опции цепочек, из скольких бы мест они ни пришли, сходятся
 // именно здесь, поэтому здесь и проверяются.
-func (p *chainPkgInfo) listenerSites() []listenerChainSite {
+func (p *chainPkgInfo) listenerSites() ([]listenerChainSite, int) {
 	var out []listenerChainSite
+	var refusing int
 	for i, f := range p.files {
 		path := p.paths[i]
 		for _, d := range f.Decls {
@@ -487,6 +499,10 @@ func (p *chainPkgInfo) listenerSites() []listenerChainSite {
 			if !ok || fn.Body == nil {
 				continue
 			}
+			// Вызовы, чей результат разбирается ПАРОЙ, собраны заранее: у
+			// `ast.Inspect` нет родителя узла, а решение принимается именно по
+			// нему.
+			pair := serviceBuilderCalls(fn.Body)
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
 				if !ok {
@@ -505,6 +521,26 @@ func (p *chainPkgInfo) listenerSites() []listenerChainSite {
 				if _, isPkg := p.imports[f][pkgIdent.Name]; !isPkg {
 					return true
 				}
+				// СОВПАДЕНИЕ ФОРМЫ, а не листенер: конструктор, УМЕЮЩИЙ
+				// ОТКАЗАТЬ, собирает службу, а не поднимает слушателя.
+				//
+				// Листенер в этом дереве поднимается тотально — ему нечем
+				// отказать, и все четыре его места разбирают результат одним
+				// значением. Конструктор, отдающий пару с ошибкой, судит
+				// объявление и вправе его отвергнуть; собранное им РЕГИСТРИРУЮТ
+				// НА уже поднятом слушателе, чья цепочка звеньев здесь и
+				// проверяется. Считать такое место листенером значит требовать
+				// звена от того, у кого цепочки нет вовсе.
+				//
+				// Список исключений тут не заводится намеренно (см. исход 2 в
+				// шапке гейта): уточняется РАСПОЗНАВАНИЕ. Цена уточнения названа
+				// и наблюдаема — пропущенные места печатает перепись, поэтому
+				// листенер, научившийся отказывать, не исчезнет из наблюдения
+				// молча: он появится в её счёте, а число листенеров не вырастет.
+				if pair[call] {
+					refusing++
+					return true
+				}
 				out = append(out, listenerChainSite{
 					file:  path,
 					line:  p.fset.Position(call.Pos()).Line,
@@ -516,6 +552,98 @@ func (p *chainPkgInfo) listenerSites() []listenerChainSite {
 			})
 		}
 	}
+	return out, refusing
+}
+
+// serviceBuilderCalls — вызовы формы `NewServer`, которые СЛУШАТЕЛЯ НЕ ПОДНИМАЮТ.
+//
+// Признаков ДВА, и оба обязательны — вместе, а не по отдельности:
+//
+//  1. результат разбирается ПАРОЙ (`v, err := f()`): конструктор, умеющий
+//     отказать, судит объявление, а листенер в этом дереве поднимается тотально;
+//  2. полученное значение НЕ ИСПОЛЬЗУЕТСЯ КАК СЛУШАТЕЛЬ: на нём не служат
+//     (`.Serve`, `.Stop`, `.GracefulStop`, `.GetServiceInfo`) и на нём ничего не
+//     регистрируют (`Register…(v, …)` первым аргументом).
+//
+// # Почему одного первого признака НЕДОСТАТОЧНО
+//
+// Он про ФОРМУ ПРИСВАИВАНИЯ, а не про предмет. Научись общий конструктор
+// слушателя отдавать пару со ошибкой — и настоящие листенеры отсеялись бы МОЛЧА,
+// а гейт остался бы зелёным ровно там, где обязан краснеть. Второй признак это
+// закрывает: слушатель узнаётся по тому, ЧТО С НИМ ДЕЛАЮТ, и остаётся под
+// наблюдением независимо от того, как объявлен его конструктор.
+//
+// Граница названа: слушатель, собранный здесь и переданный регистрировать в
+// ЧУЖУЮ функцию, обоими признаками не опознаётся. Это тот же предел, что у гейта
+// был и до уточнения (разрешение идёт по телу одной функции), и он не расширен.
+func serviceBuilderCalls(body *ast.BlockStmt) map[*ast.CallExpr]bool {
+	paired := map[*ast.CallExpr]string{}
+	ast.Inspect(body, func(n ast.Node) bool {
+		as, ok := n.(*ast.AssignStmt)
+		if !ok || len(as.Lhs) < 2 || len(as.Rhs) != 1 {
+			return true
+		}
+		call, ok := as.Rhs[0].(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if id, ok := as.Lhs[0].(*ast.Ident); ok && id.Name != "_" {
+			paired[call] = id.Name
+		}
+		return true
+	})
+	if len(paired) == 0 {
+		return map[*ast.CallExpr]bool{}
+	}
+
+	servedNames := servedAsListener(body)
+	out := make(map[*ast.CallExpr]bool, len(paired))
+	for call, name := range paired {
+		if !servedNames[name] {
+			out[call] = true
+		}
+	}
+	return out
+}
+
+// servedAsListener — имена значений, с которыми обращаются КАК СО СЛУШАТЕЛЕМ.
+func servedAsListener(body *ast.BlockStmt) map[string]bool {
+	out := map[string]bool{}
+	ast.Inspect(body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		// `v.Serve(…)` и родня: на слушателе служат и его останавливают.
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+			switch sel.Sel.Name {
+			case "Serve", "Stop", "GracefulStop", "GetServiceInfo":
+				if id, ok := sel.X.(*ast.Ident); ok {
+					out[id.Name] = true
+				}
+			}
+		}
+		// `RegisterXServer(v, impl)`: на слушателе РЕГИСТРИРУЮТ, и он стоит
+		// первым аргументом. Второй и далее — реализации, и они слушателями не
+		// являются: ровно так регистрируется общий сервер потока.
+		if len(call.Args) == 0 {
+			return true
+		}
+		name := ""
+		switch fn := call.Fun.(type) {
+		case *ast.Ident:
+			name = fn.Name
+		case *ast.SelectorExpr:
+			name = fn.Sel.Name
+		}
+		if !strings.HasPrefix(name, "Register") {
+			return true
+		}
+		if id, ok := call.Args[0].(*ast.Ident); ok {
+			out[id.Name] = true
+		}
+		return true
+	})
 	return out
 }
 
