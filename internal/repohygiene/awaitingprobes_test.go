@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // awaitingprobes_test.go — гейт «проба, ждущая своего условия, истекает ВМЕСТЕ С
@@ -59,34 +61,31 @@ func TestProbesAwaitingTheirConditionExpireWhenItArrives(t *testing.T) {
 	// ── половина первая: объявлен ли владелец журнала хоть где-нибудь ────────
 	chartsRead := 0
 	declared := map[string]string{}
-	walkErr := filepath.WalkDir(filepath.Join(root, "gateway", "deploy"),
-		func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() || !strings.HasSuffix(path, ".yaml") {
-				return nil
-			}
-			body, readErr := os.ReadFile(path) // #nosec G304 -- обход собственного дерева
-			if readErr != nil {
-				return readErr
-			}
-			text := string(body)
-			if !strings.Contains(text, "subscriptionStream:") {
-				return nil
-			}
-			chartsRead++
-			if m := ownersDeclarationRe.FindStringSubmatch(text); m != nil {
-				value := strings.Trim(strings.TrimSpace(m[1]), `"'`)
-				if value != "" {
-					rel, _ := filepath.Rel(root, path)
-					declared[rel] = value
-				}
-			}
-			return nil
-		})
+	// Состав берётся у indexed-корпуса, а не обходом диска: под gateway/deploy на
+	// машине, где поднимали стенд, лежат распаковки чартов и отчёты прогонов, и
+	// обход по диску прочитал бы их как объявления профиля. Требование дерева —
+	// TestTreeWalkersAskTheIndex; перечень исключений закрыт для пополнения.
+	profiles, walkErr := treecorpus.UnderWithSuffix(filepath.Join(root, "gateway", "deploy"), ".yaml")
 	if walkErr != nil {
-		t.Fatalf("обход профилей развёртывания: %v", walkErr)
+		t.Fatalf("состав профилей развёртывания у корпуса дерева: %v", walkErr)
+	}
+	for _, path := range profiles {
+		body, readErr := os.ReadFile(path) // #nosec G304 -- путь из индекса собственного дерева
+		if readErr != nil {
+			t.Fatalf("чтение профиля %s: %v", path, readErr)
+		}
+		text := string(body)
+		if !strings.Contains(text, "subscriptionStream:") {
+			continue
+		}
+		chartsRead++
+		if m := ownersDeclarationRe.FindStringSubmatch(text); m != nil {
+			value := strings.Trim(strings.TrimSpace(m[1]), `"'`)
+			if value != "" {
+				rel, _ := filepath.Rel(root, path)
+				declared[rel] = value
+			}
+		}
 	}
 
 	// ── половина вторая: что лежит в каталоге ожидания ───────────────────────
