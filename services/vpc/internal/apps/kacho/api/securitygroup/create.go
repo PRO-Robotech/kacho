@@ -261,7 +261,7 @@ func (u *CreateSecurityGroupUseCase) doCreate(ctx context.Context, sgID string, 
 		func(i int) string { return fmt.Sprintf("rule_specs[%d].cidr_group_id", i) }); verr != nil {
 		return nil, verr
 	}
-	if err := w.Outbox().Emit(ctx, "SecurityGroup", created.ID, "CREATED", helpers.DomainToMap(created)); err != nil {
+	if err := w.Outbox().Emit(ctx, "SecurityGroup", created.ID, created.ProjectID, "CREATED", helpers.DomainToMap(created)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	// Публикуем INTENT на vpc_security_group→project hierarchy-tuple в той же

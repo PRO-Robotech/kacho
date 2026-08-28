@@ -111,7 +111,7 @@ type RepositoryWriter interface {
 //
 // payload — произвольная map (snapshot resource'а после DML). nil → пустой JSON.
 type OutboxEmitter interface {
-	Emit(ctx context.Context, resource, id, action string, payload map[string]any) error
+	Emit(ctx context.Context, resource, id, projectID, action string, payload map[string]any) error
 }
 
 // FGARegisterEmitter — emit FGA owner-tuple intent в fga_register_outbox через

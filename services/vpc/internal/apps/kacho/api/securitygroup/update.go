@@ -143,7 +143,7 @@ func (u *UpdateSecurityGroupUseCase) doUpdate(ctx context.Context, in UpdateInpu
 		func(i int) string { return fmt.Sprintf("rule_specs[%d].cidr_group_id", i) }); verr != nil {
 		return nil, verr
 	}
-	if oerr := w.Outbox().Emit(ctx, "SecurityGroup", updated.ID, "UPDATED", helpers.DomainToMap(updated)); oerr != nil {
+	if oerr := w.Outbox().Emit(ctx, "SecurityGroup", updated.ID, updated.ProjectID, "UPDATED", helpers.DomainToMap(updated)); oerr != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 	}
 	// Если labels попали в update_mask (или это full-object PATCH) — повторно

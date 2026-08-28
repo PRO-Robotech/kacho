@@ -68,14 +68,16 @@ func (u *DeleteRouteTableUseCase) Execute(ctx context.Context, id string) (*oper
 
 		// Читаем projectID до удаления — он нужен как subject для unregister-tuple.
 		var unreg []fgaregister.Tuple
+		var projectID string
 		if cur, gerr := w.RouteTables().Get(ctx, id); gerr == nil {
+			projectID = cur.ProjectID
 			unreg = append(unreg, fgaregister.ProjectHierarchy(cur.ProjectID, "vpc_route_table", id))
 		}
 
 		if err := w.RouteTables().Delete(ctx, id); err != nil {
 			return nil, serviceerr.MapRepoErr(err)
 		}
-		if err := w.Outbox().Emit(ctx, "RouteTable", id, "DELETED", map[string]any{"id": id}); err != nil {
+		if err := w.Outbox().Emit(ctx, "RouteTable", id, projectID, "DELETED", map[string]any{"id": id}); err != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 		}
 		if len(unreg) > 0 {

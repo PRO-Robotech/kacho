@@ -111,7 +111,7 @@ func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6
 					"CidrGroup %s is in use (%s)", id, blockersText(held))
 			}
 		}
-		if err := w.Outbox().Emit(ctx, "CidrGroup", updated.ID, "UPDATED", helpers.DomainToMap(updated)); err != nil {
+		if err := w.Outbox().Emit(ctx, "CidrGroup", updated.ID, updated.ProjectID, "UPDATED", helpers.DomainToMap(updated)); err != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 		}
 		if err := w.Commit(); err != nil {

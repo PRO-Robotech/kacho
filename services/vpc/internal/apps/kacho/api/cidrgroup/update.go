@@ -128,7 +128,7 @@ func (u *UpdateCidrGroupUseCase) doUpdate(ctx context.Context, in UpdateInput) (
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "CidrGroup", updated.ID, "UPDATED", helpers.DomainToMap(updated)); err != nil {
+	if err := w.Outbox().Emit(ctx, "CidrGroup", updated.ID, updated.ProjectID, "UPDATED", helpers.DomainToMap(updated)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 

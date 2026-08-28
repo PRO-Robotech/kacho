@@ -190,7 +190,7 @@ func (u *CreateCidrGroupUseCase) doCreate(ctx context.Context, groupID string, g
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "CidrGroup", created.ID, "CREATED", helpers.DomainToMap(created)); err != nil {
+	if err := w.Outbox().Emit(ctx, "CidrGroup", created.ID, created.ProjectID, "CREATED", helpers.DomainToMap(created)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 

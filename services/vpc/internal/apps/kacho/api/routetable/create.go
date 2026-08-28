@@ -216,7 +216,7 @@ func (u *CreateRouteTableUseCase) doCreate(ctx context.Context, rtID string, rt 
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "RouteTable", created.ID, "CREATED", helpers.RouteTablePayload(created)); err != nil {
+	if err := w.Outbox().Emit(ctx, "RouteTable", created.ID, created.ProjectID, "CREATED", helpers.RouteTablePayload(created)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	// Записываем INTENT на owner-hierarchy-tuple vpc_route_table→project в той же

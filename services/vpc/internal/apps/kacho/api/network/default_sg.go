@@ -56,14 +56,14 @@ func (u *CreateDefaultSGUseCase) Execute(
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "SecurityGroup", sgRec.ID, "CREATED", helpers.DomainToMap(sgRec)); err != nil {
+	if err := w.Outbox().Emit(ctx, "SecurityGroup", sgRec.ID, sgRec.ProjectID, "CREATED", helpers.DomainToMap(sgRec)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	upd, err := w.Networks().SetDefaultSGID(ctx, network.ID, sgRec.ID)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "Network", upd.ID, "UPDATED", helpers.DomainToMap(upd)); err != nil {
+	if err := w.Outbox().Emit(ctx, "Network", upd.ID, upd.ProjectID, "UPDATED", helpers.DomainToMap(upd)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	return upd, nil

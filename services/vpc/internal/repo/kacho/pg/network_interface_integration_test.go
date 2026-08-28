@@ -69,7 +69,7 @@ func TestCQRS_NIC_InsertCommit_ReaderSees(t *testing.T) {
 	}
 	created, err := w.NetworkInterfaces().Insert(ctx, nic)
 	require.NoError(t, err)
-	require.NoError(t, w.Outbox().Emit(ctx, "NetworkInterface", created.ID, "CREATED", map[string]any{"id": created.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "NetworkInterface", created.ID, created.ProjectID, "CREATED", map[string]any{"id": created.ID}))
 	require.NoError(t, w.Commit())
 
 	rd, err := r.Reader(ctx)
@@ -129,7 +129,7 @@ func TestCQRS_NIC_SecurityGroupIDs_DanglingRefSilentlyAccepted(t *testing.T) {
 	require.NoError(t, err,
 		"NIC Create referencing a nonexistent security_group_id is silently accepted (G6, #27) — no FK/software-check")
 	require.Equal(t, []string{danglingSG}, created.SecurityGroupIDs)
-	require.NoError(t, w.Outbox().Emit(ctx, "NetworkInterface", created.ID, "CREATED", map[string]any{"id": created.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "NetworkInterface", created.ID, created.ProjectID, "CREATED", map[string]any{"id": created.ID}))
 	require.NoError(t, w.Commit())
 
 	rd, err := r.Reader(ctx)

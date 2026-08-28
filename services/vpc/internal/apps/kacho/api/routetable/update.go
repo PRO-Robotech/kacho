@@ -107,7 +107,7 @@ func (u *UpdateRouteTableUseCase) doUpdate(ctx context.Context, in UpdateInput) 
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "RouteTable", updated.ID, "UPDATED", helpers.RouteTablePayload(updated)); err != nil {
+	if err := w.Outbox().Emit(ctx, "RouteTable", updated.ID, updated.ProjectID, "UPDATED", helpers.RouteTablePayload(updated)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	// Если labels попали в update_mask (или это full-object PATCH), переэмитим
