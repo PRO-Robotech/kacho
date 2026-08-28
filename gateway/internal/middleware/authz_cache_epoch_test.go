@@ -77,7 +77,7 @@ func TestDecisionCache_PutIfGen_DroppedAfterFullFlush(t *testing.T) {
 
 // TestDecisionCache_RevocationWinsUnderConcurrency — the contested path under
 // -race: many goroutines interleave Check-driven putIfGen(allow) with
-// InvalidateSubject flushes. After the final flush no stale allow may remain
+// Invalidate flushes. After the final flush no stale allow may remain
 // for the revoked subject.
 func TestDecisionCache_RevocationWinsUnderConcurrency(t *testing.T) {
 	c := newDecisionCache(10000, 5*time.Second, time.Now)

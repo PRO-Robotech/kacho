@@ -29,7 +29,7 @@
 # `apigateway` — служебный сервис самого края: он не входит ни в публичный, ни в
 # доменный каталог прав и не выставляет tenant-facing REST-маршрутов, поэтому его
 # присутствие в стадии добавило бы в оба выхода записи, которых там быть не должно.
-KACHO_PROTO_STAGE_EXCLUDE=(apigateway)
+KACHO_PROTO_STAGE_EXCLUDE=()
 
 stage_proto_tree() {
   local proto_root=$1

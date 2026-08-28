@@ -1160,7 +1160,7 @@ func (m *AuthzMiddleware) phaseCheck(
 	traceID := traceFromContext(ctx, dr.HTTPReq, dr.GRPCMeta)
 	cacheKey := buildCacheKey(subj.FGA, entry.Permission, resourceType, resourceID.String(), contextMap)
 	// Snapshot the invalidation generation BEFORE reading the cache. Any
-	// Invalidate/InvalidateSubject that races the upcoming Check will move the
+	// Invalidate that races the upcoming Check will move the
 	// generation, and the put below is dropped so a grant revoked mid-Check is
 	// never re-cached (write-after-invalidate guard; CWE-362 + CWE-613).
 	cacheGen := m.cache.generation()
