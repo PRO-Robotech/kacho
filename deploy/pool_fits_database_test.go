@@ -15,6 +15,12 @@ package deploy_test
 // умбреллы. Их произведение не записано нигде, поэтому расхождение не видно ни в
 // одном файле по отдельности, и обзор изменения его не показывает.
 //
+// СЛАГАЕМЫХ В ПРОИЗВЕДЕНИИ ДВА, А НЕ ОДНО (kacho#1384). Кроме пула, реплика
+// держит соединения ВНЕ его: поток подписки, дренаж очереди, пробуждение
+// реконсиляции. Пул о них не знает и вычесть их из своей ширины не может.
+// Слагаемое выводится и проверяется на полноту в pool_out_of_pool_test.go; здесь
+// оно только складывается — второго изложения одного предмета не заводится.
+//
 // Загрузочный страж (`pkg/db.ConnBudget`) ловит то же расхождение, но ПОЗЖЕ —
 // когда посадка уже раскатана и под отказывается стартовать. Здесь оно ловится ДО
 // развёртывания и сразу на всех стеках, включая те, куда рука не доходит.
@@ -201,7 +207,25 @@ type poolLink struct {
 	hpaDeclared bool
 	hpaEnabled  bool
 	hpaMax      int
+
+	// outOfPool — соединения, которые реплика держит ВНЕ пула: поток подписки,
+	// дренаж очереди, пробуждение реконсиляции. Пул о них не знает и вычесть их
+	// из своей ширины не может, поэтому это ВТОРОЕ СЛАГАЕМОЕ произведения, а не
+	// часть первого. Как оно выводится и чем держится его полнота —
+	// pool_out_of_pool_test.go.
+	outOfPool int
+	// outOfPoolWhy — разбор слагаемого по видам; идёт в текст находки, чтобы
+	// правку не искали.
+	outOfPoolWhy []string
+	// outOfPoolUnknown — вид, чьё слагаемое ВЫВЕСТИ НЕ УДАЛОСЬ. Это находка, а не
+	// ноль: неизвестное слагаемое не бывает нулём, и молчание здесь вернуло бы
+	// ровно тот дефект, ради которого слагаемое заводится.
+	outOfPoolUnknown []string
 }
+
+// perReplica — сколько соединений реплика обещает базе: ширина пула плюс всё,
+// что она держит вне пула.
+func (l poolLink) perReplica() int { return l.pool + l.outOfPool }
 
 // ceiling — сколько подов посадка вправе поднять ОДНОВРЕМЕННО, и откуда это
 // известно. ok=false означает «потолок не объявлен» — это находка, а не единица.
@@ -229,7 +253,7 @@ type poolFacts struct {
 	links    []poolLink
 }
 
-func poolFactsFor(t *testing.T, name string, chain []string) poolFacts {
+func poolFactsFor(t *testing.T, name string, chain []string, tree *outOfPoolTree) poolFacts {
 	t.Helper()
 	vals := valuesWithSubchartDefaults(t, chain)
 
@@ -303,13 +327,14 @@ func poolFactsFor(t *testing.T, name string, chain []string) poolFacts {
 				l.hpaMax = n
 			}
 		}
+		l.outOfPool, l.outOfPoolWhy, l.outOfPoolUnknown = outOfPoolPerReplica(t, alias, tree)
 		f.links = append(f.links, l)
 	}
 	sort.Slice(f.links, func(i, j int) bool { return f.links[i].service < f.links[j].service })
 	return f
 }
 
-func allPoolFacts(t *testing.T) []poolFacts {
+func allPoolFacts(t *testing.T, tree *outOfPoolTree) []poolFacts {
 	t.Helper()
 	chains := deployStacks(t)
 	names := make([]string, 0, len(chains))
@@ -319,7 +344,7 @@ func allPoolFacts(t *testing.T) []poolFacts {
 	sort.Strings(names)
 	out := make([]poolFacts, 0, len(names))
 	for _, n := range names {
-		out = append(out, poolFactsFor(t, n, chains[n]))
+		out = append(out, poolFactsFor(t, n, chains[n], tree))
 	}
 	return out
 }
@@ -344,6 +369,7 @@ const (
 	kindPoolUndeclared    = "ширина пула не объявлена"
 	kindCeilingUndeclared = "потолок реплик не объявлен"
 	kindOverPromise       = "обещано больше принимаемого"
+	kindOutOfPoolUnknown  = "слагаемое вне пула не выведено"
 )
 
 // knownUnfitting — связки, чьё несоответствие ЭТОТ гейт нашёл и которые заведены
@@ -357,8 +383,29 @@ const (
 // исключать — и гейт падает на самой записи. Иначе исключение пережило бы свой
 // предмет, а следующий читатель принял бы его за действующее ограничение.
 //
-// ВЕДОМОСТЬ ПУСТА — и это её нормальное состояние, а не признак поломки.
-var knownUnfitting = map[string]string{}
+// ВЕДОМОСТЬ ПУСТА до тех пор, пока гейт не нашёл несоответствия. Сегодня она
+// несёт ОДИН предмет, размноженный по стекам: пять записей — это пять профилей,
+// наследующих одни и те же величины базы, а не пять разных дефектов.
+var knownUnfitting = map[string]string{
+	"a8f60d/pg-compute/" + kindOverPromise:      overPromiseComputeWhy,
+	"dev-prod/pg-compute/" + kindOverPromise:    overPromiseComputeWhy,
+	"fe3455/pg-compute/" + kindOverPromise:      overPromiseComputeWhy,
+	"prod/pg-compute/" + kindOverPromise:        overPromiseComputeWhy,
+	"prorobotech/pg-compute/" + kindOverPromise: overPromiseComputeWhy,
+}
+
+// overPromiseComputeWhy — причина и предикат снятия одной записи.
+//
+// Находка НАСТОЯЩАЯ и появилась ровно тогда, когда арифметика стала полной
+// (kacho#1384: слагаемых было одно, а мест, держащих соединение, несколько).
+// Чинится она ВЕЛИЧИНАМИ — предел базы, потолок потоков, ширина пула, потолок
+// подов, — и выбирать между ними должен владелец домена по замеру спроса, а не
+// автор гейта по тому, что дешевле правится. Поэтому предмет заведён своим
+// изменением, а не закрыт здесь же: смешение линий делает вердикт
+// непрослеживаемым.
+const overPromiseComputeWhy = "kacho#1451 — 15 (пул) + 16 (потолок потоков подписки) + " +
+	"1 (дренаж) = 32 на реплику × 5 подов = 160 при принимаемых 97; " +
+	"предикат снятия: связка помещается, и запись самоистекает"
 
 func scanPoolFits(facts []poolFacts) (findings []poolFinding, examined int, lines []string) {
 	for _, f := range facts {
@@ -384,6 +431,16 @@ func scanPoolFits(facts []poolFacts) (findings []poolFinding, examined int, line
 				})
 				continue
 			}
+			if len(l.outOfPoolUnknown) > 0 {
+				findings = append(findings, poolFinding{
+					stack: f.stack, subject: l.service, kind: kindOutOfPoolUnknown,
+					why: fmt.Sprintf("%s: %s. Слагаемое вне пула не выведено, а неизвестное "+
+						"слагаемое не бывает нулём: ноль в сумме проходит любую проверку и "+
+						"обращает её в форму без содержания",
+						l.service, strings.Join(l.outOfPoolUnknown, "; ")),
+				})
+				continue
+			}
 			if !ceilOK {
 				findings = append(findings, poolFinding{
 					stack: f.stack, subject: l.service, kind: kindCeilingUndeclared,
@@ -394,13 +451,17 @@ func scanPoolFits(facts []poolFacts) (findings []poolFinding, examined int, line
 			}
 
 			examined++
-			promised[l.pg] += l.pool * ceiling
+			promised[l.pg] += l.perReplica() * ceiling
+			outside := ""
+			if l.outOfPool > 0 {
+				outside = fmt.Sprintf(" + %d вне пула [%s]", l.outOfPool, strings.Join(l.outOfPoolWhy, "; "))
+			}
 			breakdown[l.pg] = append(breakdown[l.pg],
-				fmt.Sprintf("%s: %d (%s) × %d (%s) = %d",
-					l.service, l.pool, l.poolPath, ceiling, ceilWhy, l.pool*ceiling))
-			lines = append(lines, fmt.Sprintf("стек %s: %s → %s, пул %d на реплику × %d подов "+
-				"(потолок из %s) = %d", f.stack, l.service, l.pg, l.pool, ceiling, ceilWhy,
-				l.pool*ceiling))
+				fmt.Sprintf("%s: (%d (%s)%s) × %d (%s) = %d",
+					l.service, l.pool, l.poolPath, outside, ceiling, ceilWhy, l.perReplica()*ceiling))
+			lines = append(lines, fmt.Sprintf("стек %s: %s → %s, на реплику %d = пул %d (%s)%s, "+
+				"× %d подов (потолок из %s) = %d", f.stack, l.service, l.pg, l.perReplica(),
+				l.pool, l.poolPath, outside, ceiling, ceilWhy, l.perReplica()*ceiling))
 		}
 
 		pgs := make([]string, 0, len(promised))
@@ -485,8 +546,11 @@ func applyLedger(findings []poolFinding, ledger map[string]string) (fail, forgiv
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestDeclaredPoolFitsTheDatabaseItConnectsTo(t *testing.T) {
-	facts := allPoolFacts(t)
+	tree := readOutOfPoolTree(t)
+	facts := allPoolFacts(t, tree)
 	findings, examined, lines := scanPoolFits(facts)
+	findings = append(findings, unattributedCaptures(t, tree)...)
+	sort.Slice(findings, func(i, j int) bool { return findings[i].key() < findings[j].key() })
 
 	for _, l := range lines {
 		t.Log(l)
@@ -509,16 +573,28 @@ func TestDeclaredPoolFitsTheDatabaseItConnectsTo(t *testing.T) {
 	}
 
 	// ПЕРЕПИСЬ: «ноль находок» обязано быть отличимо от «ноль прочитанного».
+	//
+	// Захваты вне пула печатаются ДВУМЯ числами — сколько их и сколько из них
+	// НЕ ПРИПИСАНО. Одного первого мало ровно там, где проверка и слепа:
+	// разбор, переставший узнавать захват, даёт то же «неучтённых 0», что и
+	// полная арифметика.
 	t.Logf("осмотрено: стеков %d, связок служба→база с объявленными пулом и потолком %d, "+
-		"находок %d (%s %d, %s %d, %s %d), записей в ведомости %d",
-		len(facts), examined, len(findings),
+		"файлов прод-кода Go %d, захватов соединения вне пула %d (не приписано %d), "+
+		"находок %d (%s %d, %s %d, %s %d, %s %d), записей в ведомости %d",
+		len(facts), examined, tree.files, len(tree.captures), byKind[kindOutOfPoolUnattributed],
+		len(findings),
 		kindPoolUndeclared, byKind[kindPoolUndeclared],
 		kindCeilingUndeclared, byKind[kindCeilingUndeclared],
 		kindOverPromise, byKind[kindOverPromise],
+		kindOutOfPoolUnknown, byKind[kindOutOfPoolUnknown],
 		len(knownUnfitting))
 	if examined == 0 {
 		t.Fatal("ни одной связки служба→база не осмотрено — проверка ничего не утверждает, " +
 			"хотя выглядит зелёной")
+	}
+	if tree.files == 0 || len(tree.captures) == 0 {
+		t.Fatalf("файлов прод-кода %d, захватов вне пула %d — обход пуст: «слагаемых вне пула нет» "+
+			"стало неотличимо от «дерево не прочитано»", tree.files, len(tree.captures))
 	}
 }
 
