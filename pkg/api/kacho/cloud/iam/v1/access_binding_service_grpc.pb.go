@@ -111,6 +111,13 @@ type AccessBindingServiceClient interface {
 	// Existence is NEVER reported: a subject that does not resolve answers with an
 	// empty page to its own reader and PERMISSION_DENIED to everyone else — the
 	// same answer a subject in a foreign account gets.
+	//
+	// Consequences of narrowing, named rather than left to be discovered: on the
+	// administrator lane the page can be SHORTER than requested, and an empty
+	// `accessBindings` with a NON-EMPTY `next_page_token` means "nothing visible on
+	// THIS page", not "no bindings" — keep walking the cursor. The rights model
+	// unreachable → UNAVAILABLE; an unnarrowed reply is never produced by any
+	// failure.
 	ListBySubject(ctx context.Context, in *ListAccessBindingsBySubjectRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// Lists the privileges (enriched access bindings) attached to the specified
 	// subject (User or ServiceAccount). Sync read (NOT an Operation). It shares
@@ -466,6 +473,13 @@ type AccessBindingServiceServer interface {
 	// Existence is NEVER reported: a subject that does not resolve answers with an
 	// empty page to its own reader and PERMISSION_DENIED to everyone else — the
 	// same answer a subject in a foreign account gets.
+	//
+	// Consequences of narrowing, named rather than left to be discovered: on the
+	// administrator lane the page can be SHORTER than requested, and an empty
+	// `accessBindings` with a NON-EMPTY `next_page_token` means "nothing visible on
+	// THIS page", not "no bindings" — keep walking the cursor. The rights model
+	// unreachable → UNAVAILABLE; an unnarrowed reply is never produced by any
+	// failure.
 	ListBySubject(context.Context, *ListAccessBindingsBySubjectRequest) (*ListAccessBindingsResponse, error)
 	// Lists the privileges (enriched access bindings) attached to the specified
 	// subject (User or ServiceAccount). Sync read (NOT an Operation). It shares
