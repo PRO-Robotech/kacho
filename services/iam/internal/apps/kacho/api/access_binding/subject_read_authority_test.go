@@ -265,3 +265,142 @@ func TestSubjectReads_1352_SelfReadIsNotNarrowedOnBothVerbs(t *testing.T) {
 		}
 	}
 }
+
+// ── FAIL-CLOSED на НОВОЙ полосе сужения ListBySubject ───────────────────────
+//
+// Пробы ниже — про глагол, у которого сужения раньше не было вовсе. Их близнецы
+// для ListSubjectPrivileges стоят в list_subject_privileges_narrowing_test.go;
+// здесь они не наследуются, потому что наследовать нечего: полоса новая, и
+// проверять её обязана СВОЯ проба.
+
+// TestSubjectReads_1352_ListBySubject_UnwiredNarrowing_IsUnavailable —
+// непровязанный порт модели обязан ОТКАЗАТЬ, а не отдать несуженный перечень.
+//
+// Полоса края у этого чтения — `scope_filtered`: пообъектной проверки за ним нет,
+// откатиться не на что. Непровязанный порт — не «сужать нечем, отдадим как есть»,
+// а «вердикта нет».
+func TestSubjectReads_1352_ListBySubject_UnwiredNarrowing_IsUnavailable(t *testing.T) {
+	uc := NewListBySubjectUseCase(srRepo()).
+		WithRelationStore(&scopedFGA{allow: map[string]bool{"admin|account:" + spAccA: true}}, nil)
+	// порт сужения НЕ провязан
+
+	out, next, err := uc.Execute(userCtxAB(spAdminID),
+		domain.SubjectTypeUser, domain.SubjectID(spMemberID), repoab.PageFilter{PageSize: 100})
+
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("сужение непровязано — ожидался Unavailable, получено %v", err)
+	}
+	if len(out) != 0 || next != "" {
+		t.Fatalf("выдача не прервана: строк=%d, курсор=%q — несуженный перечень при отсутствующем "+
+			"вердикте есть та самая утечка, ради которой сужение и заведено", len(out), next)
+	}
+}
+
+// TestSubjectReads_1352_ListBySubject_NarrowingOutage_IsUnavailable —
+// неотвеченный вопрос сужения обязан ПРЕРВАТЬ выдачу, а не быть прочитан как
+// «нечего показать» и не как «показать всё».
+func TestSubjectReads_1352_ListBySubject_NarrowingOutage_IsUnavailable(t *testing.T) {
+	uc := NewListBySubjectUseCase(srRepo()).
+		WithRelationStore(&scopedFGA{allow: map[string]bool{"admin|account:" + spAccA: true}}, nil).
+		WithRelationQueries(&outageOnNarrowingQueries{})
+
+	out, next, err := uc.Execute(userCtxAB(spAdminID),
+		domain.SubjectTypeUser, domain.SubjectID(spMemberID), repoab.PageFilter{PageSize: 100})
+
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("модель прав не ответила на вопрос страницы — ожидался Unavailable, получено %v", err)
+	}
+	if len(out) != 0 || next != "" {
+		t.Fatalf("выдача не прервана: строк=%d, курсор=%q", len(out), next)
+	}
+}
+
+// TestSubjectReads_1352_ListBySubject_EmptyPrincipalSubject_Denied —
+// вызывающий, чью личность нечем назвать модели, отсекается БЕЗУСЛОВНО, а не
+// «сужается в пустоту»: пустой субъект `VisibleSet` не отвергает, он возвращает
+// пустой набор, и страница молча схлопнулась бы в `200`.
+func TestSubjectReads_1352_ListBySubject_EmptyPrincipalSubject_Denied(t *testing.T) {
+	uc := NewListBySubjectUseCase(srRepo()).
+		WithRelationStore(&denyingFGA{}, nil).
+		WithRelationQueries(newABQueriesStub())
+
+	out, _, err := uc.Execute(unnamableOwnerCtxSP(),
+		domain.SubjectTypeUser, domain.SubjectID(spMemberID), repoab.PageFilter{PageSize: 100})
+
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("принципал, которого нечем назвать модели, обязан быть отвергнут; получено %v", err)
+	}
+	if len(out) != 0 {
+		t.Fatalf("строки отданы вызывающему, которого нечем назвать модели: %v", srBindingIDs(out))
+	}
+}
+
+// ── СУБЪЕКТ-ГРУППА: та же полоса на обоих глаголах ──────────────────────────
+
+// TestSubjectReads_1352_GroupSubjectAdmitsMemberAndAccountAdminOnBothVerbs —
+// участник группы и распорядитель её домашнего аккаунта допускаются ОБОИМИ
+// глаголами, посторонний — ни одним.
+//
+// Раньше эти три вызывающих делились между глаголами: участника допускал только
+// ListBySubject, распорядителя — только ListSubjectPrivileges. Проба снимает
+// исход с обоих и требует совпадения; отрицательный вызывающий стоит рядом,
+// иначе «совпали» зеленело бы на глаголах, допускающих всех.
+func TestSubjectReads_1352_GroupSubjectAdmitsMemberAndAccountAdminOnBothVerbs(t *testing.T) {
+	rows := []struct {
+		name      string
+		callerID  string
+		member    bool
+		relations clients.RelationStore
+		admitted  bool
+	}{
+		{name: "участник группы", callerID: spMemberID, member: true,
+			relations: &denyingFGA{}, admitted: true},
+		{name: "распорядитель домашнего аккаунта группы", callerID: spAdminID,
+			relations: &scopedFGA{allow: map[string]bool{"admin|account:" + spAccA: true}},
+			admitted:  true},
+		{name: "посторонний, не состоящий в группе", callerID: spOtherID,
+			relations: &denyingFGA{}, admitted: false},
+	}
+	agreed, admittedSeen, deniedSeen := 0, 0, 0
+	for _, r := range rows {
+		mk := func() *abFakeRepo {
+			repo := srRepo()
+			if r.member {
+				repo.AddGroupMember(spGroupID, "user", r.callerID)
+			}
+			return repo
+		}
+		q := newABQueriesStub()
+		q.set("v_get", "user:"+r.callerID, []string{srBindHome})
+		ctx := userCtxAB(r.callerID)
+
+		_, _, errBySubject := NewListBySubjectUseCase(mk()).
+			WithRelationStore(r.relations, nil).WithRelationQueries(q).
+			Execute(ctx, domain.SubjectTypeGroup, domain.SubjectID(spGroupID), repoab.PageFilter{PageSize: 100})
+		_, _, errPriv := NewListSubjectPrivilegesUseCase(mk()).
+			WithRelationStore(r.relations, nil).WithRelationQueries(q).
+			Execute(ctx, domain.SubjectTypeGroup, domain.SubjectID(spGroupID), repoab.PageFilter{PageSize: 100})
+
+		gotBySubject, gotPriv := srAdmitted(t, errBySubject), srAdmitted(t, errPriv)
+		if gotBySubject != gotPriv {
+			t.Errorf("%s: полосы решают допуск к субъекту-группе ПО-РАЗНОМУ — "+
+				"ListBySubject=%v (%v), ListSubjectPrivileges=%v (%v)",
+				r.name, gotBySubject, errBySubject, gotPriv, errPriv)
+			continue
+		}
+		agreed++
+		if gotBySubject != r.admitted {
+			t.Errorf("%s: обе полосы решили %v, ожидалось %v", r.name, gotBySubject, r.admitted)
+		}
+		if gotBySubject {
+			admittedSeen++
+		} else {
+			deniedSeen++
+		}
+	}
+	t.Logf("перепись: вызывающих %d · полосы совпали на %d · допущено %d · отвергнуто %d",
+		len(rows), agreed, admittedSeen, deniedSeen)
+	if admittedSeen == 0 || deniedSeen == 0 {
+		t.Fatalf("КОНТРОЛЬ вырожден: допущено %d, отвергнуто %d", admittedSeen, deniedSeen)
+	}
+}
