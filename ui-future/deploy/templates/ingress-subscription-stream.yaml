@@ -1,0 +1,60 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# Внешний вход ДЛЯ ОДНОГО АДРЕСА — ручки потока изменений `/subscription/v1/events`.
+#
+# ЗАЧЕМ ОТДЕЛЬНЫЙ ВХОД, ЕСЛИ ОБЩИЙ УЖЕ ОБЪЯВЛЕН ПРЕФИКСОМ `/`
+#
+# Не ради маршрута — маршрут у адреса и так есть. Ради ВЕЛИЧИН: пометки входа
+# действуют на весь его маршрут целиком, поэтому объявить накопление снятым можно
+# либо всей консоли разом, либо своим входом на один адрес. Второе выбрано
+# намеренно: снимать накопление со всей консоли значило бы менять форму раздачи
+# статики ради одной ручки — то есть платить поведением того, что работает, за
+# то, что чинится.
+#
+# ТОЧНЫЙ маршрут, а не префикс `/subscription/`. Край держит на том же порту и
+# внутренние глаголы; префикс открыл бы наружу всё пространство имени разом,
+# включая то, чего в нём ещё нет (запрет #6). Точный маршрут открывает ровно один
+# адрес и не может открыть второго.
+#
+# Пометка накопления названа ЯВНО, хотя посредник и снимает его по умолчанию:
+# умолчание никто не выбирал, оно меняется вместе с посредником, а отказ от него
+# не виден ничем — коды, типы и события остаются теми же, они просто приходят все
+# сразу в конце.
+#
+# Профиль без входа (выставление наружу через балансировщик) не рендерит ни этот
+# вход, ни общий: там запрос приходит прямо в раздачу консоли, и его судьбу решает
+# её блок — `ui-future/deploy/templates/configmap-nginx.yaml`.
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "ui.hostName" . }}-subscription-stream
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ui.labels" . | nindent 4 }}
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "{{ .Values.subscriptionStream.proxyReadTimeout }}"
+spec:
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /subscription/v1/events
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "ui.hostName" . }}
+                port:
+                  number: {{ include "ui.hostPort" . }}
+{{- end }}
