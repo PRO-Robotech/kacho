@@ -39,6 +39,9 @@ package repohygiene
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -587,26 +590,54 @@ func oracleCamel(s string) string {
 
 // oracleQuench — чтение, гасящее условие «г» ДОКАЗАННО.
 //
-// Гасит его не звание, а СУЖЕНИЕ: у такого чтения ответ не «аккаунты этого
-// человека», а «те из них, что вам и так видны», потому что вызывающий обязан
-// БЫТЬ названным субъектом. Доказательство — координата в дереве и признак в
-// ней; гейт его проверяет, а не принимает на слово, и запись САМОИСТЕКАЕТ:
-// пропал признак — пропало и основание гасить.
+// Гасит его не звание, а СУЖЕНИЕ: страница такого чтения проходит пообъектный
+// вопрос к модели прав, поэтому ответ не «аккаунты этого человека», а «те из них,
+// что вам и так видны». Доказательство — координата в дереве и ВЫЗОВ в ней; гейт
+// его проверяет, а не принимает на слово, и запись САМОИСТЕКАЕТ: пропал вызов —
+// пропало и основание гасить.
+//
+// # Почему ВЫЗОВ, а не подстрока
+//
+// Оба файла, на которые указывают записи ниже, несут развёрнутый разбор сужения
+// прозой — и называют в нём то же имя. Подстрочный поиск находил бы КОММЕНТАРИЙ,
+// объясняющий сужение, и оставался бы зелёным при снятом сужении: гейт
+// удостоверял бы собственное объяснение (`testing.md` §«Гейт на класс», п.4).
+// Поэтому доказательство читается разбором и судится по узлу вызова.
 type oracleQuench struct {
-	FQN    string
-	File   string
+	FQN  string
+	File string
+	// Marker — ИМЯ ФУНКЦИИ, чей вызов доказывает сужение. Совпадение идёт по
+	// последнему сегменту (`pkg.Fn` и `Fn` равнозначны): предмет — вызвана ли
+	// функция, а не как записан её путь.
 	Marker string
 	Why    string
 }
+
+// oracleNarrowingCall — имя функции, чей вызов доказывает сужение страницы.
+//
+// Одно написание на обе записи: две копии имени разошлись бы при первом же
+// переименовании, и разошлись бы молча — запись, потерявшая доказательство,
+// краснеет, а запись, доказанная НЕ ТЕМ вызовом, нет.
+const oracleNarrowingCall = "visibleOnNarrowedPage"
 
 var oracleQuenchedByNarrowing = []oracleQuench{
 	{
 		FQN:    "AccessBindingService/ListBySubject",
 		File:   "services/iam/internal/apps/kacho/api/access_binding/list_by_subject.go",
-		Marker: "authzguard.IsSelf",
-		Why: "вызывающий обязан БЫТЬ названным субъектом (для субъекта-группы — состоять " +
-			"в ней), поэтому ответ не бывает шире того, что ему и так принадлежит: " +
-			"перечислив своё, он не узнаёт ничего нового",
+		Marker: oracleNarrowingCall,
+		Why: "страница полосы распорядителя аккаунта проходит пообъектный вопрос к модели " +
+			"прав, а полосы собственного чтения и надзора облака шире принадлежащего им не " +
+			"бывают — ответ поэтому не называет областей, к которым вызывающий отношения " +
+			"не имеет (#1352)",
+	},
+	{
+		FQN:    "AccessBindingService/ListSubjectPrivileges",
+		File:   "services/iam/internal/apps/kacho/api/access_binding/list_subject_privileges.go",
+		Marker: oracleNarrowingCall,
+		Why: "то же сужение и ТЕМ ЖЕ вызовом, что у соседнего чтения: допуск решается по " +
+			"домашнему аккаунту субъекта, а строки ответа проходят пообъектный вопрос по " +
+			"идентификатору выдачи, поэтому области в чужих аккаунтах на страницу не " +
+			"попадают (#1354)",
 	},
 }
 
@@ -621,19 +652,17 @@ type oracleAllowance struct {
 	Why   string
 }
 
-var oracleDeclaredAllowances = []oracleAllowance{
-	{
-		FQN:   "AccessBindingService/ListSubjectPrivileges",
-		Issue: 1354,
-		Why: "чтение ДОПУСКАЕТ по авторитету над домашним аккаунтом субъекта, но ответ " +
-			"после допуска не сужает — перечень отдаётся целиком, включая области в " +
-			"аккаунтах, к которым авторитет вызывающего отношения не имеет. Это НЕ " +
-			"гасящее условие и не второй близнец: допуск и сужение — разные вещи, и " +
-			"пятое условие полосы благословило бы ровно ту утечку, которую полоса " +
-			"стережёт. Признано находкой и заведено задачей; исключение стоит здесь, " +
-			"чтобы гейт мог сесть зелёным на неизменённом дереве, и печатается вслух",
-	},
-}
+// Ведомость ПУСТА, и это её цель, а не поломка. Единственная запись стояла на
+// AccessBindingService/ListSubjectPrivileges (#1354): чтение допускало по
+// авторитету над домашним аккаунтом субъекта и после допуска перечень не сужало.
+// Предмет снят — страница сужается построчно, — поэтому запись снята вместе с
+// ним: послабление без предмета переживает то, ради чего заведено, и следующий
+// читатель принимает его за действующее основание.
+//
+// Разведение послаблений с находками ниже на пустой ведомости остаётся
+// исполнимым и НЕ вырождается: перепись печатает «объявленных послаблений 0»,
+// а гейт падает на записи, которой больше нечего прощать.
+var oracleDeclaredAllowances = []oracleAllowance{}
 
 // oracleNarrowedByCallerRights — гасит ли условие «г» это чтение.
 func oracleNarrowedByCallerRights(fqn string) bool {
@@ -653,17 +682,58 @@ type OracleQuenchProof struct {
 }
 
 // SurveyOracleQuenchProofs проверяет предпосылку КАЖДОЙ гасящей записи.
+//
+// Доказательство читается РАЗБОРОМ: судится узел вызова, а не текст файла.
+// Прозу о сужении оба файла несут развёрнутую, и подстрочный поиск находил бы
+// её, оставаясь зелёным при снятом сужении.
 func SurveyOracleQuenchProofs(tree *treecorpus.Tree) []OracleQuenchProof {
 	out := make([]OracleQuenchProof, 0, len(oracleQuenchedByNarrowing))
 	for _, q := range oracleQuenchedByNarrowing {
-		body, err := os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(q.File)))
 		out = append(out, OracleQuenchProof{
 			FQN:   q.FQN,
 			File:  q.File,
-			Found: err == nil && strings.Contains(string(body), q.Marker),
+			Found: oracleFileCalls(filepath.Join(tree.Root(), filepath.FromSlash(q.File)), q.Marker),
 		})
 	}
 	return out
+}
+
+// oracleFileCalls — зовёт ли файл функцию с таким именем.
+//
+// Нечитаемый и неразбираемый файл отвечают «нет»: доказательство, которое нельзя
+// прочитать, доказательством не является.
+func oracleFileCalls(path, name string) bool {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), path, body, 0)
+	if err != nil {
+		return false
+	}
+	want := name
+	if i := strings.LastIndex(want, "."); i >= 0 {
+		want = want[i+1:]
+	}
+	found := false
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		switch fn := call.Fun.(type) {
+		case *ast.Ident:
+			if fn.Name == want {
+				found = true
+			}
+		case *ast.SelectorExpr:
+			if fn.Sel != nil && fn.Sel.Name == want {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
 }
 
 // OracleAllowanceNames — имена объявленных послаблений, для переписи.

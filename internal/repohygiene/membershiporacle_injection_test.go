@@ -142,8 +142,12 @@ service WidgetService {
 	if err := os.MkdirAll(adir, 0o750); err != nil {
 		t.Fatalf("каталог use-case: %v", err)
 	}
-	write(t, filepath.Join(adir, "list_by_subject.go"),
-		"package access_binding\n\nfunc e() { authzguard.IsSelf(nil) }\n")
+	// Доказательство читается РАЗБОРОМ, поэтому фикстура несёт настоящий ВЫЗОВ, а
+	// не строку с его именем: файл, где имя стоит только в комментарии, — предмет
+	// отдельного контроля ниже.
+	quench := "package access_binding\n\nfunc e() { visibleOnNarrowedPage(nil, nil, nil) }\n"
+	write(t, filepath.Join(adir, "list_by_subject.go"), quench)
+	write(t, filepath.Join(adir, "list_subject_privileges.go"), quench)
 
 	// Предпосылка полосы C.
 	migDir := filepath.Join(root, "services", "iam", "internal", "migrations")
@@ -334,18 +338,58 @@ func TestOracleGate_QuenchEntryExpiresWithItsProof(t *testing.T) {
 			t.Fatalf("КОНТРОЛЬ: доказательство %s обязано находиться на законном дереве", p.FQN)
 		}
 	}
-	// Снимаем признак сужения — запись обязана потерять основание.
+	// Снимаем сужение — КАЖДАЯ запись обязана потерять основание. Снимается
+	// по одной: гейт, замечающий только пропажу первой, неотличим от исправного,
+	// пока записей не станет две.
+	for _, q := range oracleQuenchedByNarrowing {
+		root := tree.Root()
+		write(t, filepath.Join(root, filepath.FromSlash(q.File)),
+			"package access_binding\n\nfunc e() {}\n")
+		tree2, err := treecorpus.SyntheticTree(root)
+		if err != nil {
+			t.Fatalf("состав дерева: %v", err)
+		}
+		expired := false
+		for _, p := range SurveyOracleQuenchProofs(tree2) {
+			if p.FQN == q.FQN && !p.Found {
+				expired = true
+			}
+			if p.FQN != q.FQN && !p.Found {
+				t.Fatalf("снят вызов у %s, а основание потеряла ЧУЖАЯ запись %s — "+
+					"доказательства перепутаны местами", q.FQN, p.FQN)
+			}
+		}
+		if !expired {
+			t.Fatalf("вызов сужения снят, а гасящая запись %s всё ещё считает себя "+
+				"доказанной — близнец пережил своё основание", q.FQN)
+		}
+		// Возвращаем, чтобы следующая итерация судила снятие ОДНОЙ записи.
+		write(t, filepath.Join(root, filepath.FromSlash(q.File)),
+			"package access_binding\n\nfunc e() { visibleOnNarrowedPage(nil, nil, nil) }\n")
+	}
+}
+
+// TestOracleGate_QuenchProofIsNotSatisfiedByProse — КОНТРОЛЬ обратной стороны:
+// имя сужения, стоящее ТОЛЬКО в комментарии, доказательством не является.
+//
+// Оба файла, на которые указывают записи, несут развёрнутый разбор сужения
+// прозой и называют в нём то же имя. Подстрочный поиск нашёл бы этот разбор и
+// остался бы зелёным при снятом сужении — гейт удостоверял бы собственное
+// объяснение.
+func TestOracleGate_QuenchProofIsNotSatisfiedByProse(t *testing.T) {
+	tree := oracleInjectionTree(t, oracleFixture{})
 	root := tree.Root()
-	write(t, filepath.Join(root, "services", "iam", "internal", "apps", "kacho", "api",
-		"access_binding", "list_by_subject.go"), "package access_binding\n\nfunc e() {}\n")
+	target := oracleQuenchedByNarrowing[0]
+	write(t, filepath.Join(root, filepath.FromSlash(target.File)),
+		"package access_binding\n\n// Страница сужается вызовом visibleOnNarrowedPage.\nfunc e() {}\n")
 	tree2, err := treecorpus.SyntheticTree(root)
 	if err != nil {
 		t.Fatalf("состав дерева: %v", err)
 	}
 	for _, p := range SurveyOracleQuenchProofs(tree2) {
-		if p.Found {
-			t.Fatalf("признак сужения снят, а гасящая запись %s всё ещё считает себя "+
-				"доказанной — близнец пережил своё основание", p.FQN)
+		if p.FQN == target.FQN && p.Found {
+			t.Fatalf("проза о сужении зачтена за сужение: запись %s считает себя "+
+				"доказанной комментарием, в котором названо имя вызова", p.FQN)
 		}
 	}
 }
