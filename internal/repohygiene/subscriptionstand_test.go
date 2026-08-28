@@ -63,6 +63,10 @@ func subscriptionStandOptions(root string, allow ...SubscriptionRequestAllowance
 // Комментарий внутри содержит слово `message` и открывающую скобку намеренно:
 // анализатор, считающий по сырому тексту, засчитает их за объявление и собьёт
 // глубину вложенности на весь остаток файла.
+// ВЫБОР НАЧАЛА стоит здесь ветвлением, как в настоящей форме, и это не
+// украшение: позиция общей формы лежит ВНУТРИ `oneof`, поэтому фикстура без него
+// не предъявляла бы разбору тела ту работу, ради которой он написан, — и ветвь
+// состава на стенде не наблюдала бы ничего.
 const standCommonForm = `syntax = "proto3";
 package kacho.cloud.subscription;
 // Здесь могло бы стоять слово message { в прозе — и оно стоит.
@@ -70,6 +74,10 @@ message SubscriptionRequest {
   repeated string kinds = 1;
   string project_id = 2;
   repeated string ids = 3;
+  oneof start {
+    string anchor = 10;
+    string position = 11;
+  }
   message NestedWatchRequest {
     string ignored = 1;
   }
@@ -109,5 +117,205 @@ message GetThingRequest {
 }
 message Thing {
   string id = 1;
+}
+`
+
+// ── содержимое стенда: ось «признак — свойство, а не имя» (задача #1072) ─────
+
+// standForeignNamedSubscription — ДЕФЕКТ ветви состава: запрос подписки под
+// именем, которого в семействе имён нет. Имя автор нового домена выбирает сам, и
+// `WatchNetworksRequest` ничем не хуже прочих; гейт, судивший по имени,
+// пропускал такое молча.
+const standForeignNamedSubscription = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message WatchNetworksRequest {
+  repeated string kinds = 1;
+  string project_id = 2;
+  int64 from_sequence_no = 3;
+}
+`
+
+// standTailEventsRequest — тот же дефект под третьим именем: ни `Watch`, ни
+// `Subscribe`, ни суффикса `SubscriptionRequest` в имени нет вовсе.
+const standTailEventsRequest = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message TailEventsRequest {
+  repeated string resource_types = 1;
+  string checkpoint = 2;
+}
+`
+
+// standFeedRequest — и под четвёртым, максимально далёким от семейства.
+const standFeedRequest = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message FeedRequest {
+  repeated string event_kinds = 1;
+  string resume_token = 2;
+  string project_id = 3;
+}
+`
+
+// standPagedListTwin — ЗАКОННЫЙ БЛИЗНЕЦ ветви состава, и он выбран САМЫМ
+// ТРУДНЫМ из возможных: страничный список несёт И ось видов, И поле позиции.
+// Разделяет их ровно одно — РАЗМЕР СТРАНИЦЫ, то есть утверждение о конечной
+// выдаче. Гейт, ключующийся на «позиция рядом с осью», здесь покраснеет.
+//
+// Форма не выдумана: `ListChangedLimitsRequest` (`internal_limit_service.proto`)
+// — тот же силуэт, непрозрачный курсор плюс размер страницы. Побайтовой копией
+// она здесь не является намеренно: у близнеца своя ось видов и своё имя поля
+// позиции, иначе проба утверждала бы про одну подстановку, а не про свойство.
+const standPagedListTwin = `syntax = "proto3";
+package kacho.cloud.other.v1;
+message ListThingsRequest {
+  repeated string kinds = 1;
+  string project_id = 2;
+  string page_token = 3;
+  int64 page_size = 4;
+}
+message ListThingsResponse {
+  repeated string ids = 1;
+  string next_page_token = 2;
+}
+`
+
+// standStreamingVerbOverPlainName — ДЕФЕКТ ветви употребления: сообщение не
+// названо по семейству и состава подписки не несёт, но стоит ВХОДОМ
+// серверно-потокового глагола. Поток и есть подписка: одиночный ответ так не
+// объявляют.
+const standStreamingVerbOverPlainName = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message DemoFeedInput {
+  string project_id = 1;
+}
+message DemoFeedChunk {
+  string payload = 1;
+}
+service DemoFeedService {
+  rpc Follow(DemoFeedInput) returns (stream DemoFeedChunk);
+}
+`
+
+// standClientStreamingTwin — ЗАКОННЫЙ БЛИЗНЕЦ ветви употребления: слово `stream`
+// в глаголе СТОИТ, но на стороне ЗАПРОСА. Это выгрузка, а не подписка, и гейт,
+// ищущий подстроку `stream` в объявлении глагола, здесь покраснеет.
+const standClientStreamingTwin = `syntax = "proto3";
+package kacho.cloud.other.v1;
+message UploadChunkRequest {
+  bytes chunk = 1;
+}
+message UploadResult {
+  string id = 1;
+}
+service UploadService {
+  rpc Upload(stream UploadChunkRequest) returns (UploadResult);
+}
+`
+
+// standNameOnlyRequest — ДЕФЕКТ ветви ИМЕНИ и только её: имя из семейства, а
+// состава подписки нет (ни оси видов, ни позиции). Нужен, чтобы доказать, что
+// прежняя ветвь жива: без него её молчание неотличимо от мёртвой.
+const standNameOnlyRequest = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message SubscribeRequest {
+  string project_id = 1;
+}
+`
+
+// standNestedShapeIsNotADeclaration — ЗАКОННЫЙ БЛИЗНЕЦ разбора тела: состав
+// подписки лежит во ВЛОЖЕННОМ сообщении, а владелец его не несёт. Гейт,
+// читающий поля построчно вместо разбора тела, засчитает вложенные поля
+// владельцу и покраснеет.
+const standNestedShapeIsNotADeclaration = `syntax = "proto3";
+package kacho.cloud.other.v1;
+message ThingHolder {
+  string id = 1;
+  message InnerFilter {
+    repeated string kinds = 1;
+    string position = 2;
+  }
+  InnerFilter filter = 2;
+}
+`
+
+// ── содержимое стенда: ЧЕТЫРЕ законные формы записи поля (замечание Б1) ──────
+//
+// Одна и та же подписка, записанная четырьмя способами. Все четыре законны;
+// прежний распознаватель знал первую. Инъекция идёт ПО КАЖДОЙ отдельно — п.7
+// требует доказательства по каждой названной форме, а не одной пробы на все.
+
+// standShapeFormPerLine — форма 1: каждое поле своей строкой.
+const standShapeFormPerLine = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message TailFleetRequest {
+  repeated string subject_types = 1;
+  string watermark = 2;
+}
+`
+
+// standShapeFormOptional — форма 2: модификатор `optional` перед типом.
+// Прежняя редакция здесь молчала; изолировано до ОДНОГО СЛОВА — те же байты без
+// `optional` она находила.
+const standShapeFormOptional = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message TailFleetRequest {
+  repeated string subject_types = 1;
+  optional string watermark = 2;
+}
+`
+
+// standShapeFormInlineOneof — форма 3: ветвление начала записано в одну строку.
+const standShapeFormInlineOneof = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message TailFleetRequest {
+  repeated string subject_types = 1;
+  oneof start { string watermark = 2; string anchor = 3; }
+}
+`
+
+// standShapeFormTwoOnOneLine — форма 4: два поля в одной строке.
+const standShapeFormTwoOnOneLine = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message TailFleetRequest {
+  repeated string subject_types = 1; string watermark = 2;
+}
+`
+
+// standPagedListOptionalSize — ЗАКОННЫЙ БЛИЗНЕЦ, ловящий ОБРАТНУЮ сторону
+// слепоты, и она хуже прямой: незнакомой формой исчезает не подписка, а
+// ДИСКРИМИНАТОР. Прежняя редакция объявляла этот список подпиской и дословно
+// утверждала «без размера страницы» при размере, стоящем третьей строкой.
+//
+// Гейт, краснеющий на верном коде, отключают первым, — поэтому близнец стоит
+// рядом с каждой инъекцией, а не отдельной пробой.
+const standPagedListOptionalSize = `syntax = "proto3";
+package kacho.cloud.other.v1;
+message ListRecordsRequest {
+  repeated string subject_types = 1;
+  string watermark = 2;
+  optional int32 page_size = 3;
+}
+`
+
+// standMapFieldTwin — законный близнец разбора: карта не является ни осью, ни
+// позицией, но ДОЛЖНА БЫТЬ ПРОЧИТАНА. Непрочитанное поле делает перепись лживой
+// («тело разобрано» при выброшенном поле), поэтому страж слепоты обязан на нём
+// молчать, а не падать.
+const standMapFieldTwin = `syntax = "proto3";
+package kacho.cloud.other.v1;
+message LabelledThing {
+  string id = 1;
+  map<string, string> labels = 2;
+  repeated string subject_types = 3;
+}
+`
+
+// standUnknownFieldForm — ДЕФЕКТ стража слепоты: поле, которое распознаватель
+// прочитать не может (имя с заглавной — форма, отвергаемая и линтом контракта).
+// Нужен, чтобы страж доказал способность падать: без него его молчание
+// неотличимо от мёртвого.
+const standUnknownFieldForm = `syntax = "proto3";
+package kacho.cloud.other.v1;
+message OddlyNamed {
+  string Ident = 1;
 }
 `
