@@ -28,29 +28,29 @@ import {
   PropertyRows,
   type DetailTab,
 } from "@/components/organisms/DetailShell";
-import { DetailHeaderProvider } from "@/components/molecules/PanelHeader";
-import { ResourceIcon } from "@/components/organisms/form/ResourceIcon";
-import { ResourceEmptyState } from "@/components/molecules/ResourceEmptyState";
-import { ResourceTable } from "@/components/organisms/ResourceTable";
-import { ErrorResult } from "@/components/molecules/ErrorResult";
+import { DetailHeaderProvider } from "@shared/components/molecules/PanelHeader";
+import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
+import { ResourceEmptyState } from "@shared/components/molecules/ResourceEmptyState";
+import { ResourceTable } from "@shared/components/organisms/ResourceTable";
+import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { MonoValue } from "@shared/components/atoms/CopyableId/MonoValue";
-import { LabelsCell } from "@/components/atoms/LabelsCell";
-import { formatDateTime } from "@/lib/datetime";
-import { RowActionsMenu, resourceHasRowActions } from "@/components/molecules/RowActionsMenu";
-import { JsonMonacoView } from "@/components/molecules/JsonMonacoView";
-import { OperationsTab } from "@/components/organisms/OperationsTab";
+import { LabelsCell } from "@shared/components/atoms/LabelsCell";
+import { formatDateTime } from "@shared/lib/datetime";
+import { RowActionsMenu, resourceHasRowActions } from "@shared/components/molecules/RowActionsMenu";
+import { JsonMonacoView } from "@shared/components/molecules/JsonMonacoView";
+import { OperationsTab } from "@shared/components/organisms/OperationsTab";
 import { operationsListPath } from "@shared/lib/operations-subroute";
-import { InlineResourceForm } from "@/components/organisms/InlineResourceForm";
-import { TableSearch, ColumnSettings, useHiddenColumns, type ToggleCol } from "@/components/molecules/TableToolbar";
-import { useBreadcrumb, useHeaderRight } from "@/components/molecules/PageHeaderSlot";
-import { detailExtension, type DescItem, type DetailExtCtx } from "@/components/organisms/ResourceDetailExtensions";
-import { api } from "@/api/client";
+import { InlineResourceForm } from "@shared/components/organisms/InlineResourceForm";
+import { TableSearch, ColumnSettings, useHiddenColumns, type ToggleCol } from "@shared/components/molecules/TableToolbar";
+import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
+import { detailExtension, type DescItem, type DetailExtCtx } from "@shared/components/organisms/ResourceDetailExtensions";
+import { api } from "@shared/api/client";
 import { REGISTRY, getByPath, resourceProjectPath, type ResourceSpec } from "@/lib/resource-registry";
-import { buildSpecColumns } from "@/lib/spec-columns";
-import { useResourceList } from "@/lib/use-resource-list";
+import { buildSpecColumns } from "@shared/lib/spec-columns";
+import { useResourceList } from "@shared/lib/use-resource-list";
 import { noMatchesText, rowsAreComplete, type NarrowingScope } from "@shared/lib/list-scope";
-import { useInvalidateResourceList } from "@/lib/use-operation";
-import { DetailOverviewActions } from "@/components/molecules/DetailOverviewActions";
+import { useInvalidateResourceList } from "@shared/lib/use-operation";
+import { DetailOverviewActions } from "@shared/components/molecules/DetailOverviewActions";
 
 export type ResourceShellMode = "edit" | "child-create";
 

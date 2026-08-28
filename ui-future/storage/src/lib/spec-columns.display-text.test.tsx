@@ -14,7 +14,7 @@
 import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 
-import { formatCellByFormat } from "./spec-columns";
+import { formatCellByFormat } from "@shared/lib/spec-columns";
 
 function textOf(node: ReactNode): string {
   return render(<div>{node}</div>).container.textContent ?? "";

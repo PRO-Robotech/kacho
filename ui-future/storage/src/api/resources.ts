@@ -7,7 +7,7 @@
 // spec.apiPath; эти helpers дают типизированные доменные вызовы (напр. снимок из
 // тома) для мест, где нужен явный контракт.
 
-import { api } from "./client";
+import { api } from "@shared/api/client";
 import type { Operation, VolumeList, SnapshotList, DiskTypeList, ImageList } from "./types";
 
 const VOLUMES = "/storage/v1/volumes";

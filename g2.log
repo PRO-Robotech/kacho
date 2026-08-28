@@ -1,0 +1,86 @@
+npm warn config ignoring workspace config at /tmp/claude-1000/w-407/ui-future/vpc/.npmrc
+
+> kacho-ui-future-vpc@0.1.0 test
+> node --no-warnings --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --silent --passWithNoTests --testTimeout=30000 --forceExit --ci module-reachability.test shared-organisms-single-source storage-status-vocabulary
+
+FAIL ../shared/src/test/module-reachability.test.ts
+  ● ведомость самоистекает › в ведомости нет записей про модули, которых в дереве нет
+
+    записей в ведомости, которым больше нечего исключать: 28
+          storage/src/App.tsx
+          storage/src/api/auth.ts
+          storage/src/api/iam.ts
+          storage/src/components/atoms/ContextBadge/index.ts
+          storage/src/components/atoms/ui/Button/index.ts
+          storage/src/components/atoms/ui/Dialog/index.ts
+          storage/src/components/atoms/ui/Input/index.ts
+          storage/src/components/molecules/EditableKVTable/index.ts
+          storage/src/components/molecules/JsonEditor/index.ts
+          storage/src/components/molecules/ProjectRequiredEmpty/index.ts
+          storage/src/components/organisms/ResourceFormModal/ResourceFormModal.tsx
+          storage/src/components/organisms/ResourceFormModal/index.ts
+          storage/src/components/organisms/form/FieldLabel/index.ts
+          storage/src/components/organisms/form/FormField/index.ts
+          storage/src/components/organisms/form/FormFooter/index.ts
+          storage/src/components/organisms/form/ImmutableField/index.ts
+          storage/src/components/organisms/form/LabelsEditor/index.ts
+          storage/src/contexts/AuthContext.tsx
+          storage/src/contexts/index.ts
+          storage/src/lib/api-client.ts
+          storage/src/lib/case.ts
+          storage/src/lib/config.ts
+          storage/src/lib/dpop.ts
+          storage/src/lib/kratos.ts
+          storage/src/lib/preset-fields.ts
+          storage/src/lib/theme.ts
+          storage/src/lib/use-operation-store.ts
+          storage/src/lib/utils.ts
+
+    Модуль снят, а послабление осталось. Такая запись переживает свой предмет и унесёт с собой следующую слепую зону — снимите её из shared/src/test/module-reachability-ledger.json
+
+      121 |     const stale = Object.keys(ledger.allowed).filter((k) => !moduleExists.has(k));
+      122 |     if (stale.length > 0) {
+    > 123 |       throw new Error(
+          |             ^
+      124 |         `записей в ведомости, которым больше нечего исключать: ${stale.length}\n` +
+      125 |           stale.map((k) => `      ${k}`).join("\n") +
+      126 |           `\n\nМодуль снят, а послабление осталось. Такая запись переживает свой предмет ` +
+
+      at Object.<anonymous> (../shared/src/test/module-reachability.test.ts:123:13)
+
+FAIL ../shared/src/test/shared-organisms-single-source.test.ts
+  ● единый источник: реализация в shared/, приложение берёт её оттуда › ведомость самоистекает: записи, которой нечего исключать, быть не должно
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 3
+
+    - Array []
+    + Array [
+    +   "storage/src/lib/api-client.ts: форка больше нет — снять запись",
+    + ]
+
+      242 |       }
+      243 |     }
+    > 244 |     expect(stale).toEqual([]);
+          |                   ^
+      245 |   });
+      246 |
+      247 |   it("новых форков нет: каждая копия вне shared/ названа в ведомости", () => {
+
+      at Object.<anonymous> (../shared/src/test/shared-organisms-single-source.test.ts:244:19)
+
+
+Test Suites: 2 failed, 1 passed, 3 total
+Tests:       2 failed, 86 passed, 88 total
+Snapshots:   0 total
+Time:        2.708 s
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /tmp/claude-1000/w-407/ui-future/vpc
+npm error workspace kacho-ui-future-vpc@0.1.0
+npm error location /tmp/claude-1000/w-407/ui-future/vpc
+npm error command failed
+npm error command sh -c node --no-warnings --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --silent --passWithNoTests --testTimeout=30000 --forceExit --ci module-reachability.test shared-organisms-single-source storage-status-vocabulary

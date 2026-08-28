@@ -1,0 +1,4 @@
+
+> kacho-ui-future-storage@0.1.0 typecheck
+> tsc -b --noEmit
+

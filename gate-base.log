@@ -1,0 +1,11 @@
+npm warn config ignoring workspace config at /tmp/claude-1000/w-407/ui-future/vpc/.npmrc
+
+> kacho-ui-future-vpc@0.1.0 test
+> node --no-warnings --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --silent --passWithNoTests --testTimeout=30000 --forceExit --ci shared-organisms-single-source
+
+
+Test Suites: 1 passed, 1 total
+Tests:       76 passed, 76 total
+Snapshots:   0 total
+Time:        1.73 s
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?

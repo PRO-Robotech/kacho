@@ -8,13 +8,13 @@
 import type { ReactNode } from "react";
 import { Tooltip, Typography } from "antd";
 import type { FormField } from "@shared/lib/form-schema";
-import { setByPath } from "./path";
-import { formatBytes } from "./bytes";
+import { setByPath } from "@shared/lib/path";
+import { formatBytes } from "@shared/lib/bytes";
 import { acceptsNewVolumes, lifecycleLabel, tierLabel, LIFECYCLE_HINT, TIER_HINT } from "./storage-enums";
-import { CopyableId } from "@/components/atoms/CopyableId";
-import { CopyableName } from "@/components/atoms/CopyableName";
-import { LabelsCell } from "@/components/atoms/LabelsCell";
-import { RefNameLink } from "@/components/molecules/RefNameLink";
+import { CopyableId } from "@shared/components/atoms/CopyableId";
+import { CopyableName } from "@shared/components/atoms/CopyableName";
+import { LabelsCell } from "@shared/components/atoms/LabelsCell";
+import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import type { ResourceColumn, ResourceSpec } from "@shared/lib/resource-spec";
 // Подписи сущностей и разделов — из единственного источника (@shared/lib/entity-names):
 // литерал рядом с местом показа расходится молча, ссылка — нет.

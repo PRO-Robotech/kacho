@@ -1,0 +1,338 @@
+
+> kacho-ui-future-storage@0.1.0 test
+> node --no-warnings --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --silent --passWithNoTests --forceExit --testTimeout=20000 --ci
+
+
+  латиница в именах: файлов TS прочитано 1240, имён осмотрено 161672, находок 0
+
+  отбор списка: файлов прочитано 868, решают об отборе 1, веток отбрасывания 3, не опирающихся на признак сужения 0
+FAIL ../shared/src/test/cross-module-copy-without-home.test.ts
+  ● копия, у которой дома в общем нет › новых копий без дома нет: каждая названа в ведомости
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 10
+
+    - Array []
+    + Array [
+    +   "lib/api-client.ts [compute,nlb,registry]: 3 копий по 230 строк, дома в shared/src нет",
+    +   "lib/dpop.ts [compute,nlb,registry]: 3 копий по 286 строк, дома в shared/src нет",
+    +   "main.tsx [iam,system]: 2 копий по 10 строк, дома в shared/src нет",
+    +   "test/style-mock.ts [compute,nlb,registry,storage]: 4 копий по 6 строк, дома в shared/src нет",
+    +   "test/style-mock.ts [iam,system]: 2 копий по 2 строк, дома в shared/src нет",
+    +   "utils/api-client.ts [dashboard,host]: 2 копий по 48 строк, дома в shared/src нет",
+    +   "utils/auth.ts [dashboard,host]: 2 копий по 26 строк, дома в shared/src нет",
+    +   "vite-env.d.ts [dashboard,host]: 2 копий по 2 строк, дома в shared/src нет",
+    + ]
+
+      89 |   it("новых копий без дома нет: каждая названа в ведомости", () => {
+      90 |     const findings = SWEEP.hits.filter((h) => !(keyOf(h) in LEDGER.allowed)).map(describeHit);
+    > 91 |     expect(findings).toEqual([]);
+         |                      ^
+      92 |   });
+      93 | });
+      94 |
+
+      at Object.<anonymous> (../shared/src/test/cross-module-copy-without-home.test.ts:91:22)
+
+
+[полоса личности] носителей церемонии 2 · рендерится продуктом 2 · НЕ рендерится 0 (прод-файлов прочитано 802)
+FAIL ../shared/src/test/module-reachability.test.ts
+  ● ведомость самоистекает › в ведомости нет записей про модули, которых в дереве нет
+
+    записей в ведомости, которым больше нечего исключать: 28
+          storage/src/App.tsx
+          storage/src/api/auth.ts
+          storage/src/api/iam.ts
+          storage/src/components/atoms/ContextBadge/index.ts
+          storage/src/components/atoms/ui/Button/index.ts
+          storage/src/components/atoms/ui/Dialog/index.ts
+          storage/src/components/atoms/ui/Input/index.ts
+          storage/src/components/molecules/EditableKVTable/index.ts
+          storage/src/components/molecules/JsonEditor/index.ts
+          storage/src/components/molecules/ProjectRequiredEmpty/index.ts
+          storage/src/components/organisms/ResourceFormModal/ResourceFormModal.tsx
+          storage/src/components/organisms/ResourceFormModal/index.ts
+          storage/src/components/organisms/form/FieldLabel/index.ts
+          storage/src/components/organisms/form/FormField/index.ts
+          storage/src/components/organisms/form/FormFooter/index.ts
+          storage/src/components/organisms/form/ImmutableField/index.ts
+          storage/src/components/organisms/form/LabelsEditor/index.ts
+          storage/src/contexts/AuthContext.tsx
+          storage/src/contexts/index.ts
+          storage/src/lib/api-client.ts
+          storage/src/lib/case.ts
+          storage/src/lib/config.ts
+          storage/src/lib/dpop.ts
+          storage/src/lib/kratos.ts
+          storage/src/lib/preset-fields.ts
+          storage/src/lib/theme.ts
+          storage/src/lib/use-operation-store.ts
+          storage/src/lib/utils.ts
+
+    Модуль снят, а послабление осталось. Такая запись переживает свой предмет и унесёт с собой следующую слепую зону — снимите её из shared/src/test/module-reachability-ledger.json
+
+      121 |     const stale = Object.keys(ledger.allowed).filter((k) => !moduleExists.has(k));
+      122 |     if (stale.length > 0) {
+    > 123 |       throw new Error(
+          |             ^
+      124 |         `записей в ведомости, которым больше нечего исключать: ${stale.length}\n` +
+      125 |           stale.map((k) => `      ${k}`).join("\n") +
+      126 |           `\n\nМодуль снят, а послабление осталось. Такая запись переживает свой предмет ` +
+
+      at Object.<anonymous> (../shared/src/test/module-reachability.test.ts:123:13)
+
+FAIL ../shared/src/test/shared-organisms-single-source.test.ts
+  ● единый источник: реализация в shared/, приложение берёт её оттуда › ведомость самоистекает: записи, которой нечего исключать, быть не должно
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 3
+
+    - Array []
+    + Array [
+    +   "storage/src/lib/api-client.ts: форка больше нет — снять запись",
+    + ]
+
+      242 |       }
+      243 |     }
+    > 244 |     expect(stale).toEqual([]);
+          |                   ^
+      245 |   });
+      246 |
+      247 |   it("новых форков нет: каждая копия вне shared/ названа в ведомости", () => {
+
+      at Object.<anonymous> (../shared/src/test/shared-organisms-single-source.test.ts:244:19)
+
+FAIL ../shared/src/test/storage-status-vocabulary.test.ts
+  ● значок состояния знает каждое состояние контракта storage › объём осмотренного: контракт прочитан, носители значка найдены (subjects=2)
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+        "app": "storage",
+    -   "tones": true,
+    +   "tones": false,
+      }
+
+      190 |     }
+      191 |     for (const s of SUBJECTS)
+    > 192 |       expect({ app: s.app, tones: s.tones.length > 0 }).toEqual({
+          |                                                         ^
+      193 |         app: s.app,
+      194 |         tones: true,
+      195 |       });
+
+      at Object.<anonymous> (../shared/src/test/storage-status-vocabulary.test.ts:192:57)
+
+  ● значок состояния знает каждое состояние контракта storage › storage — ни одного состояния мимо таблицы тонов
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 16
+
+      Object {
+        "app": "storage",
+    -   "missing": Array [],
+    +   "missing": Array [
+    +     "/storage/v1/volumes → CREATING",
+    +     "/storage/v1/volumes → AVAILABLE",
+    +     "/storage/v1/volumes → IN_USE",
+    +     "/storage/v1/volumes → DELETING",
+    +     "/storage/v1/volumes → ERROR",
+    +     "/storage/v1/volumes → MIGRATING",
+    +     "/storage/v1/snapshots → CREATING",
+    +     "/storage/v1/snapshots → READY",
+    +     "/storage/v1/snapshots → DELETING",
+    +     "/storage/v1/snapshots → ERROR",
+    +     "/storage/v1/images → CREATING",
+    +     "/storage/v1/images → READY",
+    +     "/storage/v1/images → DELETING",
+    +     "/storage/v1/images → ERROR",
+    +   ],
+      }
+
+      236 |       }
+      237 |       // Координаты, а не счётчик: красный гейт обязан сказать, ЧЕГО не хватает.
+    > 238 |       expect({ app, missing }).toEqual({ app, missing: [] });
+          |                                ^
+      239 |     },
+      240 |   );
+      241 | });
+
+      at ../shared/src/test/storage-status-vocabulary.test.ts:238:32
+
+
+Summary of all failing tests
+FAIL ../shared/src/test/cross-module-copy-without-home.test.ts
+  ● копия, у которой дома в общем нет › новых копий без дома нет: каждая названа в ведомости
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 10
+
+    - Array []
+    + Array [
+    +   "lib/api-client.ts [compute,nlb,registry]: 3 копий по 230 строк, дома в shared/src нет",
+    +   "lib/dpop.ts [compute,nlb,registry]: 3 копий по 286 строк, дома в shared/src нет",
+    +   "main.tsx [iam,system]: 2 копий по 10 строк, дома в shared/src нет",
+    +   "test/style-mock.ts [compute,nlb,registry,storage]: 4 копий по 6 строк, дома в shared/src нет",
+    +   "test/style-mock.ts [iam,system]: 2 копий по 2 строк, дома в shared/src нет",
+    +   "utils/api-client.ts [dashboard,host]: 2 копий по 48 строк, дома в shared/src нет",
+    +   "utils/auth.ts [dashboard,host]: 2 копий по 26 строк, дома в shared/src нет",
+    +   "vite-env.d.ts [dashboard,host]: 2 копий по 2 строк, дома в shared/src нет",
+    + ]
+
+      89 |   it("новых копий без дома нет: каждая названа в ведомости", () => {
+      90 |     const findings = SWEEP.hits.filter((h) => !(keyOf(h) in LEDGER.allowed)).map(describeHit);
+    > 91 |     expect(findings).toEqual([]);
+         |                      ^
+      92 |   });
+      93 | });
+      94 |
+
+      at Object.<anonymous> (../shared/src/test/cross-module-copy-without-home.test.ts:91:22)
+
+FAIL ../shared/src/test/module-reachability.test.ts
+  ● ведомость самоистекает › в ведомости нет записей про модули, которых в дереве нет
+
+    записей в ведомости, которым больше нечего исключать: 28
+          storage/src/App.tsx
+          storage/src/api/auth.ts
+          storage/src/api/iam.ts
+          storage/src/components/atoms/ContextBadge/index.ts
+          storage/src/components/atoms/ui/Button/index.ts
+          storage/src/components/atoms/ui/Dialog/index.ts
+          storage/src/components/atoms/ui/Input/index.ts
+          storage/src/components/molecules/EditableKVTable/index.ts
+          storage/src/components/molecules/JsonEditor/index.ts
+          storage/src/components/molecules/ProjectRequiredEmpty/index.ts
+          storage/src/components/organisms/ResourceFormModal/ResourceFormModal.tsx
+          storage/src/components/organisms/ResourceFormModal/index.ts
+          storage/src/components/organisms/form/FieldLabel/index.ts
+          storage/src/components/organisms/form/FormField/index.ts
+          storage/src/components/organisms/form/FormFooter/index.ts
+          storage/src/components/organisms/form/ImmutableField/index.ts
+          storage/src/components/organisms/form/LabelsEditor/index.ts
+          storage/src/contexts/AuthContext.tsx
+          storage/src/contexts/index.ts
+          storage/src/lib/api-client.ts
+          storage/src/lib/case.ts
+          storage/src/lib/config.ts
+          storage/src/lib/dpop.ts
+          storage/src/lib/kratos.ts
+          storage/src/lib/preset-fields.ts
+          storage/src/lib/theme.ts
+          storage/src/lib/use-operation-store.ts
+          storage/src/lib/utils.ts
+
+    Модуль снят, а послабление осталось. Такая запись переживает свой предмет и унесёт с собой следующую слепую зону — снимите её из shared/src/test/module-reachability-ledger.json
+
+      121 |     const stale = Object.keys(ledger.allowed).filter((k) => !moduleExists.has(k));
+      122 |     if (stale.length > 0) {
+    > 123 |       throw new Error(
+          |             ^
+      124 |         `записей в ведомости, которым больше нечего исключать: ${stale.length}\n` +
+      125 |           stale.map((k) => `      ${k}`).join("\n") +
+      126 |           `\n\nМодуль снят, а послабление осталось. Такая запись переживает свой предмет ` +
+
+      at Object.<anonymous> (../shared/src/test/module-reachability.test.ts:123:13)
+
+FAIL ../shared/src/test/shared-organisms-single-source.test.ts
+  ● единый источник: реализация в shared/, приложение берёт её оттуда › ведомость самоистекает: записи, которой нечего исключать, быть не должно
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 3
+
+    - Array []
+    + Array [
+    +   "storage/src/lib/api-client.ts: форка больше нет — снять запись",
+    + ]
+
+      242 |       }
+      243 |     }
+    > 244 |     expect(stale).toEqual([]);
+          |                   ^
+      245 |   });
+      246 |
+      247 |   it("новых форков нет: каждая копия вне shared/ названа в ведомости", () => {
+
+      at Object.<anonymous> (../shared/src/test/shared-organisms-single-source.test.ts:244:19)
+
+FAIL ../shared/src/test/storage-status-vocabulary.test.ts
+  ● значок состояния знает каждое состояние контракта storage › объём осмотренного: контракт прочитан, носители значка найдены (subjects=2)
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 1
+
+      Object {
+        "app": "storage",
+    -   "tones": true,
+    +   "tones": false,
+      }
+
+      190 |     }
+      191 |     for (const s of SUBJECTS)
+    > 192 |       expect({ app: s.app, tones: s.tones.length > 0 }).toEqual({
+          |                                                         ^
+      193 |         app: s.app,
+      194 |         tones: true,
+      195 |       });
+
+      at Object.<anonymous> (../shared/src/test/storage-status-vocabulary.test.ts:192:57)
+
+  ● значок состояния знает каждое состояние контракта storage › storage — ни одного состояния мимо таблицы тонов
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 16
+
+      Object {
+        "app": "storage",
+    -   "missing": Array [],
+    +   "missing": Array [
+    +     "/storage/v1/volumes → CREATING",
+    +     "/storage/v1/volumes → AVAILABLE",
+    +     "/storage/v1/volumes → IN_USE",
+    +     "/storage/v1/volumes → DELETING",
+    +     "/storage/v1/volumes → ERROR",
+    +     "/storage/v1/volumes → MIGRATING",
+    +     "/storage/v1/snapshots → CREATING",
+    +     "/storage/v1/snapshots → READY",
+    +     "/storage/v1/snapshots → DELETING",
+    +     "/storage/v1/snapshots → ERROR",
+    +     "/storage/v1/images → CREATING",
+    +     "/storage/v1/images → READY",
+    +     "/storage/v1/images → DELETING",
+    +     "/storage/v1/images → ERROR",
+    +   ],
+      }
+
+      236 |       }
+      237 |       // Координаты, а не счётчик: красный гейт обязан сказать, ЧЕГО не хватает.
+    > 238 |       expect({ app, missing }).toEqual({ app, missing: [] });
+          |                                ^
+      239 |     },
+      240 |   );
+      241 | });
+
+      at ../shared/src/test/storage-status-vocabulary.test.ts:238:32
+
+
+Test Suites: 4 failed, 251 passed, 255 total
+Tests:       5 failed, 2306 passed, 2311 total
+Snapshots:   0 total
+Time:        207.979 s
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?

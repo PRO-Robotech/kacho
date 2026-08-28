@@ -1,0 +1,47 @@
+npm warn config ignoring workspace config at /tmp/claude-1000/w-407/ui-future/vpc/.npmrc
+
+> kacho-ui-future-vpc@0.1.0 test
+> node --no-warnings --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --silent --passWithNoTests --testTimeout=30000 --forceExit --ci cross-module-copy-without-home.test
+
+FAIL ../shared/src/test/cross-module-copy-without-home.test.ts
+  ● копия, у которой дома в общем нет › новых копий без дома нет: каждая названа в ведомости
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 10
+
+    - Array []
+    + Array [
+    +   "lib/api-client.ts [compute,nlb,registry]: 3 копий по 230 строк, дома в shared/src нет",
+    +   "lib/dpop.ts [compute,nlb,registry]: 3 копий по 286 строк, дома в shared/src нет",
+    +   "main.tsx [iam,system]: 2 копий по 10 строк, дома в shared/src нет",
+    +   "test/style-mock.ts [compute,nlb,registry,storage]: 4 копий по 6 строк, дома в shared/src нет",
+    +   "test/style-mock.ts [iam,system]: 2 копий по 2 строк, дома в shared/src нет",
+    +   "utils/api-client.ts [dashboard,host]: 2 копий по 48 строк, дома в shared/src нет",
+    +   "utils/auth.ts [dashboard,host]: 2 копий по 26 строк, дома в shared/src нет",
+    +   "vite-env.d.ts [dashboard,host]: 2 копий по 2 строк, дома в shared/src нет",
+    + ]
+
+      89 |   it("новых копий без дома нет: каждая названа в ведомости", () => {
+      90 |     const findings = SWEEP.hits.filter((h) => !(keyOf(h) in LEDGER.allowed)).map(describeHit);
+    > 91 |     expect(findings).toEqual([]);
+         |                      ^
+      92 |   });
+      93 | });
+      94 |
+
+      at Object.<anonymous> (../shared/src/test/cross-module-copy-without-home.test.ts:91:22)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 3 passed, 4 total
+Snapshots:   0 total
+Time:        0.908 s
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /tmp/claude-1000/w-407/ui-future/vpc
+npm error workspace kacho-ui-future-vpc@0.1.0
+npm error location /tmp/claude-1000/w-407/ui-future/vpc
+npm error command failed
+npm error command sh -c node --no-warnings --experimental-vm-modules ../node_modules/jest/bin/jest.js --runInBand --silent --passWithNoTests --testTimeout=30000 --forceExit --ci cross-module-copy-without-home.test

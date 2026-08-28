@@ -9,8 +9,18 @@ module.exports = {
   preset: "ts-jest",
   testEnvironment: "jsdom",
   extensionsToTreatAsEsm: [".ts", ".tsx"],
+  // Суита общего модуля исполняется И ЗДЕСЬ, а не только у vpc/iam/system.
+  //
+  // Модуль больше не держит своих копий: всё, что он показывает, приезжает из
+  // `shared/`. Значит его вердикт о собственных пробах говорит о его РАЗРЕШЕНИИ
+  // ровно столько же, сколько о его коде, — а разрешение здесь СВОЁ: у пакета
+  // отдельный `package-lock`, отдельный `node_modules` и отображение
+  // singleton'ов (`singletonMappings`), которого у workspace-модулей нет.
+  // Прогон общей суиты под ЭТИМ отображением — единственное, что отличает
+  // «общий код исправен» от «общий код исправен там, где его уже гоняли».
+  roots: ["<rootDir>/src", "<rootDir>/../shared/src"],
   setupFilesAfterEnv: ["<rootDir>/../shared/src/test/setup.ts"],
-  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
+  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}", "<rootDir>/../shared/src/**/*.test.{ts,tsx}"],
   moduleNameMapper: {
     // @ant-design/icons → статический стаб (kacho#7): Proxy-мок в setup.ts не давал
     // статических named-экспортов → ESM-линкер `import { XOutlined }` висел под vm-modules.

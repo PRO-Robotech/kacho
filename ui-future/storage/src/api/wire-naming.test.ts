@@ -40,7 +40,7 @@ function stubFetch(reply: Record<string, unknown>) {
   }) as typeof globalThis.fetch;
 }
 
-const { api } = await import("./client");
+const { api } = await import("@shared/api/client");
 
 afterEach(() => {
   globalThis.fetch = realFetch;

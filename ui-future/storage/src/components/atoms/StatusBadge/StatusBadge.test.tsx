@@ -12,7 +12,7 @@
 // нарушение — и эта проба, ничего дурного не делавшая, числилась долгом.
 
 import { render, screen } from "@testing-library/react";
-import { StatusBadge } from ".";
+import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 
 /** Тон читаем из inline-style: TONE_STYLE задаёт цвет, класс у всех тонов один. */
 function toneOf(el: HTMLElement): string {

@@ -25,7 +25,7 @@
 // незнакомое значение показывается САМИМ значением и ничем больше (см. ниже).
 
 import type { DiskTypeSizeLimits } from "@/api/types";
-import { formatBytes } from "./bytes";
+import { formatBytes } from "@shared/lib/bytes";
 
 // Общий словарь типа диска — единственная реализация лежит в @shared.
 export {

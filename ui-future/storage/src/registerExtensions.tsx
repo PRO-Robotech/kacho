@@ -35,16 +35,16 @@ import {
   type DescItem,
 } from "@shared/components/organisms/ResourceDetailExtensions";
 import { DETAIL_CONTENT_WIDTH, DetailSurface, PropertyRows } from "@/components/organisms/DetailShell";
-import { BoolFact } from "@/components/atoms/BoolFact";
-import { StatusBadge } from "@/components/atoms/StatusBadge";
+import { BoolFact } from "@shared/components/atoms/BoolFact";
+import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { ConsumersFact } from "@shared/components/molecules/ConsumersFact";
 import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
-import { RefNameLink } from "@/components/molecules/RefNameLink";
+import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { ChangeDiskTypeDialog } from "@/components/organisms/storage/ChangeDiskTypeDialog";
 import { CopyToPlacementDialog } from "@/components/organisms/storage/CopyToPlacementDialog";
 import { imagesApi, snapshotsApi } from "@/api/resources";
 import { getByPath } from "@/lib/resource-registry";
-import { formatBytes } from "@/lib/bytes";
+import { formatBytes } from "@shared/lib/bytes";
 import {
   CAPABILITIES,
   LIFECYCLE_HINT,

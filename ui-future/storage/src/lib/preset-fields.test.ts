@@ -8,7 +8,7 @@
 // wire, where the edge would drop it in silence. Bound the preset to the schema
 // instead, so the guarantee holds by construction.
 
-import { presetFieldsForSpec } from "./preset-fields";
+import { presetFieldsForSpec } from "@shared/lib/preset-fields";
 import type { FormField } from "@shared/lib/form-schema";
 
 const str = (name: string): FormField => ({ name, label: name, type: "string" }) as FormField;

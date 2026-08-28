@@ -33,12 +33,12 @@ import { Button, Input, Modal, Space, Typography } from "antd";
 import { CopyOutlined } from "@ant-design/icons";
 
 import type { Operation } from "@/api/types";
-import { extractOperationId } from "@/components/molecules/OperationDialog";
-import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
-import { RefSelect } from "@/components/organisms/form/RefSelect";
-import { LabelsEditor, labelsFromEntries, type LabelEntry } from "@/components/organisms/LabelsEditor";
-import { useInvalidateResourceList } from "@/lib/use-operation";
-import { toast } from "@/lib/toast";
+import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { OperationToastWatcher } from "@shared/components/molecules/OperationToastWatcher";
+import { RefSelect } from "@shared/components/organisms/form/RefSelect";
+import { LabelsEditor, labelsFromEntries, type LabelEntry } from "@shared/components/organisms/LabelsEditor";
+import { useInvalidateResourceList } from "@shared/lib/use-operation";
+import { toast } from "@shared/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
 
 export interface CopyToPlacementDialogProps {

@@ -25,11 +25,11 @@ import { Alert, Button, Modal, Space, Typography } from "antd";
 import { SwapOutlined } from "@ant-design/icons";
 
 import { volumesApi } from "@/api/resources";
-import { extractOperationId } from "@/components/molecules/OperationDialog";
-import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
-import { RefSelect } from "@/components/organisms/form/RefSelect";
-import { useInvalidateResourceList } from "@/lib/use-operation";
-import { toast } from "@/lib/toast";
+import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { OperationToastWatcher } from "@shared/components/molecules/OperationToastWatcher";
+import { RefSelect } from "@shared/components/organisms/form/RefSelect";
+import { useInvalidateResourceList } from "@shared/lib/use-operation";
+import { toast } from "@shared/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
 
 /** Состояния тома, из которых край принимает смену типа диска. Перечень —

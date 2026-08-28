@@ -31,7 +31,7 @@ jest.unstable_mockModule("antd", () => ({
 const { REGISTRY } = await import("@/lib/resource-registry");
 // Адрес МОДУЛЯ, а не `@shared/…`: именно его резолвит `ResourceShell`, и именно
 // он был копией. Проба через `@shared/…` осталась бы зелёной при живом дефекте.
-const { RowActionsMenu, resourceHasRowActions } = await import("@/components/molecules/RowActionsMenu");
+const { RowActionsMenu, resourceHasRowActions } = await import("@shared/components/molecules/RowActionsMenu");
 
 /** Ресурс без правки/удаления/перемещения, у которого ЕДИНСТВЕННОЕ действие — глагол. */
 function specWithVerb() {

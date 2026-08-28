@@ -4,8 +4,8 @@ import { isValidElement, type ReactElement, type ReactNode } from "react";
 // же, как на старте бандла.
 import "./registerExtensions";
 import { detailExtension } from "@shared/components/organisms/ResourceDetailExtensions";
-import { RefNameLink } from "@/components/molecules/RefNameLink";
-import { BoolFact } from "@/components/atoms/BoolFact";
+import { RefNameLink } from "@shared/components/molecules/RefNameLink";
+import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { DetailSurface, PropertyRows } from "@/components/organisms/DetailShell";
 import { ConsumersFact } from "@shared/components/molecules/ConsumersFact";
 import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";

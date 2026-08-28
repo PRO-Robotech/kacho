@@ -3,15 +3,15 @@ import type { FC, ReactNode } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App as AntdApp } from "antd";
-import { ThemeProvider } from "@/lib/theme-context";
-import { HeaderRightSlot, PageHeaderSlotProvider } from "@/components/molecules/PageHeaderSlot";
-import { GlobalResourceFormModal } from "@/components/organisms/GlobalResourceFormModal";
-import { OperationBanner } from "@/components/molecules/OperationBanner";
-import { Toaster } from "@/components/molecules/Toaster";
-import { ResourceCreatePage } from "@/components/organisms/ResourceCreatePage";
-import { ResourceListPage } from "@/components/organisms/ResourceListPage";
+import { ThemeProvider } from "@shared/lib/theme-context";
+import { HeaderRightSlot, PageHeaderSlotProvider } from "@shared/components/molecules/PageHeaderSlot";
+import { GlobalResourceFormModal } from "@shared/components/organisms/GlobalResourceFormModal";
+import { OperationBanner } from "@shared/components/molecules/OperationBanner";
+import { Toaster } from "@shared/components/molecules/Toaster";
+import { ResourceCreatePage } from "@shared/components/organisms/ResourceCreatePage";
+import { ResourceListPage } from "@shared/components/organisms/ResourceListPage";
 import { ResourceShell } from "@/components/organisms/ResourceShell";
-import { contextApi } from "@/lib/context-store";
+import { contextApi } from "@shared/lib/context-store";
 import { REGISTRY, type ResourceSpec } from "@/lib/resource-registry";
 // Доменные расширения detail-страницы регистрируются в ОБЩЕМ реестре
 // (`@shared/components/organisms/ResourceDetailExtensions`) на старте бандла —

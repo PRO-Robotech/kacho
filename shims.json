@@ -1,0 +1,190 @@
+{
+ "contexts/AuthContext.tsx": [
+  "@shared/contexts/AuthContext"
+ ],
+ "lib/theme-context.tsx": [
+  "@shared/lib/theme-context"
+ ],
+ "lib/bytes.ts": [
+  "@shared/lib/bytes"
+ ],
+ "lib/use-resource-list.ts": [
+  "@shared/lib/use-resource-list"
+ ],
+ "lib/config.ts": [
+  "@shared/lib/config"
+ ],
+ "lib/context-store.ts": [
+  "@shared/lib/context-store"
+ ],
+ "lib/theme.ts": [
+  "@shared/lib/theme"
+ ],
+ "lib/use-operation-store.ts": [
+  "@shared/lib/use-operation-store"
+ ],
+ "lib/spec-columns.tsx": [
+  "@shared/lib/spec-columns"
+ ],
+ "lib/datetime.ts": [
+  "@shared/lib/datetime"
+ ],
+ "lib/utils.ts": [
+  "@shared/lib/utils"
+ ],
+ "lib/case.ts": [
+  "@shared/lib/case"
+ ],
+ "lib/kratos.ts": [
+  "@shared/lib/kratos"
+ ],
+ "lib/path.ts": [
+  "@shared/lib/path"
+ ],
+ "lib/toast.ts": [
+  "@shared/lib/toast"
+ ],
+ "lib/preset-fields.ts": [
+  "@shared/lib/preset-fields"
+ ],
+ "lib/use-operation.ts": [
+  "@shared/lib/use-operation"
+ ],
+ "components/molecules/JsonMonacoView/JsonMonacoView.tsx": [
+  "@shared/components/molecules/JsonMonacoView/JsonMonacoView"
+ ],
+ "components/molecules/EditableKVTable/index.ts": [
+  "@shared/components/molecules/EditableKVTable"
+ ],
+ "components/molecules/PageHeaderSlot/index.ts": [
+  "@shared/components/molecules/PageHeaderSlot"
+ ],
+ "components/molecules/OperationToastWatcher/OperationToastWatcher.tsx": [
+  "@shared/components/molecules/OperationToastWatcher/OperationToastWatcher"
+ ],
+ "components/molecules/ErrorResult/ErrorResult.tsx": [
+  "@shared/components/molecules/ErrorResult/ErrorResult"
+ ],
+ "components/molecules/PanelHeader/index.ts": [
+  "@shared/components/molecules/PanelHeader"
+ ],
+ "components/molecules/DetailOverviewActions/DetailOverviewActions.tsx": [
+  "@shared/components/molecules/DetailOverviewActions/DetailOverviewActions"
+ ],
+ "components/molecules/TableToolbar/index.ts": [
+  "@shared/components/molecules/TableToolbar"
+ ],
+ "components/molecules/OperationDialog/OperationDialog.tsx": [
+  "@shared/components/molecules/OperationDialog/OperationDialog"
+ ],
+ "components/molecules/RowActionsMenu/RowActionsMenu.tsx": [
+  "@shared/components/molecules/RowActionsMenu/RowActionsMenu"
+ ],
+ "components/molecules/JsonEditor/index.ts": [
+  "@shared/components/molecules/JsonEditor"
+ ],
+ "components/molecules/ResourceEmptyState/ResourceEmptyState.tsx": [
+  "@shared/components/molecules/ResourceEmptyState/ResourceEmptyState"
+ ],
+ "components/molecules/RefNameLink/RefNameLink.tsx": [
+  "@shared/components/molecules/RefNameLink"
+ ],
+ "components/molecules/Toaster/Toaster.tsx": [
+  "@shared/components/molecules/Toaster/Toaster"
+ ],
+ "components/molecules/OperationBanner/OperationBanner.tsx": [
+  "@shared/components/molecules/OperationBanner/OperationBanner"
+ ],
+ "components/molecules/ProjectRequiredEmpty/index.ts": [
+  "@shared/components/molecules/ProjectRequiredEmpty"
+ ],
+ "components/atoms/ContextBadge/index.ts": [
+  "@shared/components/atoms/ContextBadge"
+ ],
+ "components/atoms/LabelsCell/index.ts": [
+  "@shared/components/atoms/LabelsCell"
+ ],
+ "components/atoms/StatusBadge/index.ts": [
+  "@shared/components/atoms/StatusBadge"
+ ],
+ "components/atoms/CopyableId/index.ts": [
+  "@shared/components/atoms/CopyableId"
+ ],
+ "components/atoms/BoolFact/index.ts": [
+  "@shared/components/atoms/BoolFact"
+ ],
+ "components/atoms/CopyableName/index.ts": [
+  "@shared/components/atoms/CopyableName"
+ ],
+ "components/atoms/ui/Dialog/index.ts": [
+  "@shared/components/atoms/ui/Dialog"
+ ],
+ "components/atoms/ui/Input/index.ts": [
+  "@shared/components/atoms/ui/Input"
+ ],
+ "components/atoms/ui/Button/index.ts": [
+  "@shared/components/atoms/ui/Button"
+ ],
+ "components/organisms/GlobalResourceFormModal/index.ts": [
+  "@shared/components/organisms/GlobalResourceFormModal"
+ ],
+ "components/organisms/OperationsTab/OperationsTab.tsx": [
+  "@shared/components/organisms/OperationsTab/OperationsTab"
+ ],
+ "components/organisms/form/ImmutableField/index.ts": [
+  "@shared/components/organisms/form/ImmutableField"
+ ],
+ "components/organisms/form/ResourceIcon/ResourceIcon.tsx": [
+  "@shared/components/organisms/form/ResourceIcon/ResourceIcon"
+ ],
+ "components/organisms/form/FormFooter/index.ts": [
+  "@shared/components/organisms/form/FormFooter"
+ ],
+ "components/organisms/form/RefSelect/RefSelect.tsx": [
+  "@shared/components/organisms/form/RefSelect/RefSelect"
+ ],
+ "components/organisms/form/FormField/index.ts": [
+  "@shared/components/organisms/form/FormField"
+ ],
+ "components/organisms/form/LabelsEditor/index.ts": [
+  "@shared/components/organisms/form/LabelsEditor"
+ ],
+ "components/organisms/form/FieldLabel/index.ts": [
+  "@shared/components/organisms/form/FieldLabel"
+ ],
+ "components/organisms/ResourceFormModal/ResourceFormModal.tsx": [
+  "@shared/components/organisms/ResourceFormModal/ResourceFormModal"
+ ],
+ "components/organisms/ResourceListPage/index.ts": [
+  "@shared/components/organisms/ResourceListPage"
+ ],
+ "components/organisms/DetailShell/index.ts": [
+  "@shared/components/organisms/DetailShell/DetailShell",
+  "@shared/components/organisms/DetailShell/DetailSurface",
+  "@shared/components/organisms/DetailShell/PageHead"
+ ],
+ "components/organisms/ResourceDetailExtensions/index.ts": [
+  "@shared/components/organisms/ResourceDetailExtensions"
+ ],
+ "components/organisms/ResourceCreatePage/index.ts": [
+  "@shared/components/organisms/ResourceCreatePage"
+ ],
+ "components/organisms/ResourceTable/ResourceTable.tsx": [
+  "@shared/components/organisms/ResourceTable/ResourceTable"
+ ],
+ "components/organisms/InlineResourceForm/InlineResourceForm.tsx": [
+  "@shared/components/organisms/InlineResourceForm/InlineResourceForm"
+ ],
+ "components/organisms/LabelsEditor/index.ts": [
+  "@shared/components/organisms/LabelsEditor"
+ ],
+ "api/client.ts": [
+  "@shared/api/client"
+ ],
+ "api/iam.ts": [
+  "@shared/api/iam"
+ ],
+ "api/auth.ts": [
+  "@shared/api/auth"
+ ]
+}

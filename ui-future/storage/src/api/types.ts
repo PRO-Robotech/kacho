@@ -10,23 +10,12 @@
 // поверив, что имена совпадают, значит начать читать поля, которых в ответе нет.
 
 // ====== Operation ======
-
-export interface Operation {
-  id: string;
-  description?: string;
-  created_at?: string;
-  created_by?: string;
-  modified_at?: string;
-  done: boolean;
-  metadata?: { "@type": string; [key: string]: unknown };
-  error?: { code: number; message: string; details?: unknown[] };
-  response?: { "@type": string; [key: string]: unknown };
-}
-
-export interface OperationList {
-  operations: Operation[];
-  next_page_token?: string;
-}
+//
+// Конверт операции — ОДИН на всю платформу, и объявлять его здесь значило бы
+// держать второе место об одном предмете. Копия была байт-в-байт общей, то есть
+// расхождения ещё не случилось; но у двух объявлений одного контракта оно
+// случается молча и обнаруживается там, где его не видно.
+export type { Operation, OperationList } from "@shared/api/types";
 
 // ====== storage: StatusReason (kacho.cloud.storage.v1.StatusReason) ======
 //
@@ -50,6 +39,16 @@ export type StatusReason =
 // ====== reference (output-only used_by / kacho.cloud.reference.Reference) ======
 // referrer — {type,id,name°} dependency-handle; type — MANAGED_BY|USED_BY; owned —
 // живёт ли референт-биндинг под этим ресурсом (напр. auto_delete-вложение).
+//
+// ОСТАЁТСЯ У ДОМЕНА, и причина названа, а не подразумевается: одноимённый тип
+// общего модуля БЕДНЕЕ этого — у него нет ни `referrer.name`, ни `owned`, а
+// `type` объявлен свободной строкой вместо перечисления. Оба недостающих поля
+// объявлены контрактом (`reference.Referrer{type,id,name°}` и
+// `reference.Reference{…,owned}`), и карточка тома показывает оба: имя
+// референта — то, что читает человек, `owned` — отличает вложение, которое
+// уедет вместе с ресурсом, от постороннего потребителя. Свести это к общему
+// объявлению значило бы СНЯТЬ возможность молча.
+// Предмет заведён своей задачей: обогатить общий тип и свести оба сюда.
 export interface ResourceReference {
   referrer?: { type?: string; id?: string; name?: string };
   type?: "MANAGED_BY" | "USED_BY" | string;
