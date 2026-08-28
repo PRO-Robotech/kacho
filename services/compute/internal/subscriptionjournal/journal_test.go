@@ -5,6 +5,7 @@ package subscriptionjournal
 
 import (
 	"encoding/json"
+	"sort"
 	"testing"
 	"time"
 
@@ -186,5 +187,47 @@ func TestProjectGateTakesItsRefusalFromTheProducer(t *testing.T) {
 	cfgJournal.Storage.Project = subscription.ProjectInColumn
 	if err := cfgJournal.Validate(); err != nil {
 		t.Fatalf("объявление отвергнуто: %v", err)
+	}
+}
+
+// TestBackfillKeyMatchesWhatTheJournalActuallyWrites — ключ, по которому миграция
+// заполняет якорь у ИСТОРИЧЕСКИХ строк, совпадает с тем, что пишет репозиторий.
+//
+// Обратное заполнение читает `payload->>'ProjectID'`, и это имя ПОЛЯ Go, а не
+// принятое в контракте `projectId`: нагрузка пишется обходом `encoding/json` по
+// доменной структуре, у которой поле проекта объявлено без своего имени. Ошибись
+// здесь — миграция прошла бы успешно и не заполнила НИ ОДНОЙ строки, а заметить
+// это было бы нечем: у исторических строк пустой якорь законен и сам по себе.
+//
+// Проба пиннит именно ключ, потому что он живёт в ДВУХ местах — в SQL миграции и
+// в структуре Go, — и второе меняется обычным переименованием поля.
+func TestBackfillKeyMatchesWhatTheJournalActuallyWrites(t *testing.T) {
+	const backfillKey = "ProjectID" // дословно из `..._compute_outbox_project_anchor.sql`
+
+	raw, err := json.Marshal(&domain.Instance{
+		ID:        "epd-1234567890abcdefg",
+		ProjectID: "prj-1234567890abcdefg",
+	})
+	if err != nil {
+		t.Fatalf("подготовка нагрузки: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("подготовка нагрузки: %v", err)
+	}
+	got, ok := m[backfillKey].(string)
+	if !ok {
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		t.Fatalf("ключа %q в нагрузке НЕТ — обратное заполнение миграции прошло бы "+
+			"успехом и не заполнило ни одной строки, а заметить это нечем: у "+
+			"исторических строк пустой якорь законен сам по себе.\nКлючи нагрузки: %v",
+			backfillKey, keys)
+	}
+	if got != "prj-1234567890abcdefg" {
+		t.Fatalf("по ключу %q лежит %q", backfillKey, got)
 	}
 }
