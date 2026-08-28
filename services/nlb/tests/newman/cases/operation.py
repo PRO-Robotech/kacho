@@ -72,8 +72,9 @@ CASES.append(Case(
              test_script=[
                  *assert_status(400),
                  *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                 "pm.test('mentions invalid operation id', () => "
-                 "  pm.expect(pm.response.json().message.toLowerCase()).to.include('invalid operation id'));",
+                 "pm.test('сообщение дословно равно тексту края', () => "
+                 "  pm.expect(pm.response.json().message).to.eql("
+                 "'invalid operation id \"' + pm.environment.get('garbageInvalidOpId') + '\"'));",
              ]),
     ],
 ))
@@ -159,8 +160,9 @@ CASES.append(Case(
                  "if (pm.response.code === 400) {",
                  "  pm.test('grpc code 9 (FAILED_PRECONDITION)', () => "
                  "    pm.expect(pm.response.json().code).to.eql(9));",
-                 "  pm.test('mentions already completed', () => "
-                 "    pm.expect((pm.response.json().message||'').toLowerCase()).to.include('already'));",
+                 "  pm.test('сообщение дословно равно тексту владельца', () => "
+                 "    pm.expect(pm.response.json().message).to.eql("
+                 "'operation ' + pm.environment.get('opId') + ' already completed'));",
                  "}",
              ]),
         Step(name="cleanup", method="DELETE", path="/nlb/v1/networkLoadBalancers/{{nlbId}}",

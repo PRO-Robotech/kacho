@@ -76,7 +76,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message: invalid operation id', () => pm.expect(String(pm.response.json().message).toLowerCase()).to.include('invalid operation id'));"
+                  "pm.test('сообщение дословно равно тексту края', () =>   pm.expect(pm.response.json().message).to.eql('invalid operation id \"garbage-not-an-op-id\"'));"
                 ]
               }
             }

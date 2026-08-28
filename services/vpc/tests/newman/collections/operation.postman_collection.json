@@ -408,7 +408,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('mentions invalid operation id', () => pm.expect(pm.response.json().message).to.include('invalid operation id'));"
+                  "pm.test('сообщение дословно равно тексту края', () =>   pm.expect(pm.response.json().message).to.eql('invalid operation id \"' + pm.environment.get('garbageId') + '\"'));"
                 ]
               }
             }
@@ -1083,7 +1083,7 @@
       ]
     },
     {
-      "name": "OP-GET-CONF-NF-TEXT — Get несуществующего opId → текст владельца 'operation ... not found'",
+      "name": "OP-GET-CONF-NF-TEXT — Get несуществующего opId → сообщение ДОСЛОВНО 'operation <id> not found'",
       "description": "class:CONF | class:NEG | priority:P1",
       "item": [
         {
@@ -1118,7 +1118,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "pm.test('text matches', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('not found'));"
+                  "pm.test('сообщение дословно равно тексту владельца', () =>   pm.expect(pm.response.json().message).to.eql('operation ' + pm.environment.get('garbageVpcId') + ' not found'));"
                 ]
               }
             }
