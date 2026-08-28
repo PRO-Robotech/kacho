@@ -20,6 +20,7 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/pkg/outbox"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
@@ -47,6 +48,16 @@ type stand struct {
 
 func newStand(t *testing.T) *stand {
 	t.Helper()
+	return newStandWithNarrower(t, narrowtest.AllowingAll())
+}
+
+// newStandWithNarrower — тот же стенд с ЗАДАННЫМ сужателем.
+//
+// Отдельный вход нужен там, где предмет пробы — не «доезжает ли событие вообще»,
+// а «доезжает ли оно тому, чьи права изменились»: разрешающий всё сужатель по
+// построению не отличает эти два вопроса.
+func newStandWithNarrower(t *testing.T, narrower *listnarrow.Narrower) *stand {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("интеграционная проба: нужна настоящая база")
 	}
@@ -65,7 +76,7 @@ func newStand(t *testing.T) *stand {
 	srv, err := subscription.NewServer(subscription.Config{
 		Journal:      subscriptionjournal.Journal(),
 		DSN:          dsn,
-		Narrower:     narrowtest.AllowingAll(),
+		Narrower:     narrower,
 		ProjectGate:  gate,
 		MaxStreams:   4,
 		IdlePoll:     150 * time.Millisecond,
@@ -321,5 +332,110 @@ func TestTheProjectAxisNarrowsByTheColumn(t *testing.T) {
 	}
 	if ev.ResourceId != mine.ID {
 		t.Fatalf("отдан предмет %q, ожидался свой %q", ev.ResourceId, mine.ID)
+	}
+}
+
+// TestRemovalReachesASubscriberWhoMayNoLongerSeeThePredmet — событие снятия
+// доезжает до того, кто вправе видеть ПРОЕКТ, даже когда предмета он уже видеть
+// не вправе.
+//
+// # Почему это не край, а обычный ход событий
+//
+// Путь удаления коммитит в ОДНОЙ транзакции строку журнала о снятии и намерение
+// снять кортеж владения; кортеж снимает дренаж, асинхронно. Значит к моменту, когда
+// подписчик читает событие, предмета в модели прав уже нет — и построчный вопрос
+// «вправе ли он видеть эту машину» получает «нет» ЗАКОННО.
+//
+// Событие при этом не приходит вовсе: ни ошибки, ни пропуска в нумерации, поток
+// открыт и молчит. Это ровно тот исход, против которого заведён якорь проекта, —
+// «потребитель держал бы удалённую машину вечно», — только наступающий на шаг
+// позже: якорь спас событие от отбора ОСЬЮ, а построчное сужение отсеяло его
+// потом.
+//
+// Контракт формы называет оба негодных исхода прямо и выбирает между ними:
+// «Якорь внутри нагрузки означал бы выбор из двух негодных: спрашивать модель прав
+// про несуществующий объект либо не показывать удаления вовсе». Якорь стоит полем
+// ОБОЛОЧКИ именно затем, чтобы решение о показе снятия принималось ПО НЕМУ — без
+// обращения к предмету.
+//
+// Сужатель здесь разрешает ПРОЕКТ и не разрешает машину — то есть ровно то
+// состояние, в котором подписчик оказывается через доли секунды после всякого
+// удаления.
+func TestRemovalReachesASubscriberWhoMayNoLongerSeeThePredmet(t *testing.T) {
+	s := newStandWithNarrower(t, narrowtest.Allowing(probeProject))
+
+	s.emit(t, "Instance", probeMachine, probeProject, "DELETED", map[string]any{"id": probeMachine})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	stream, err := s.client.Subscribe(ctx, &subscriptionv1.SubscriptionRequest{
+		Kinds:     []string{"Instance"},
+		ProjectId: probeProject,
+		Start: &subscriptionv1.SubscriptionRequest_Anchor{
+			Anchor: subscriptionv1.SubscriptionAnchor_BEGINNING,
+		},
+	})
+	if err != nil {
+		t.Fatalf("подписка не открылась: %v", err)
+	}
+
+	ev := recv(t, stream)
+	if ev.Change != subscriptionv1.SubscriptionEvent_DELETED {
+		t.Fatalf("род изменения %v, ожидалось снятие", ev.Change)
+	}
+	if ev.ResourceId != probeMachine {
+		t.Fatalf("предмет %q, ожидался %q", ev.ResourceId, probeMachine)
+	}
+	if ev.ProjectId != probeProject {
+		t.Fatalf("якорь проекта %q, ожидался %q", ev.ProjectId, probeProject)
+	}
+}
+
+// TestRemovalIsWithheldFromASubscriberWhoMayNotSeeTheProject — ОТРИЦАНИЕ в паре с
+// пробой выше: суждение по якорю не выходит за проект.
+//
+// Без этой пробы предыдущая зеленела бы и на сервере, который отдаёт снятия
+// ВСЕМ: «событие пришло» выполняется и тогда, когда якорь не спрашивают вовсе.
+//
+// Положительный контроль внутри самой пробы обязателен и по второй причине:
+// подписка молчит и тогда, когда снятие законно отсеяно, и тогда, когда поток
+// сломан. Различает их видимое событие, пришедшее СЛЕДОМ, — по нему видно, что
+// поток жив, дочитал до конца окна и именно ОТСЕЯЛ снятие, а не отстал.
+func TestRemovalIsWithheldFromASubscriberWhoMayNotSeeTheProject(t *testing.T) {
+	const (
+		otherProject = "prj-000000000000000f"
+		mineMachine  = "epd-aaaaaaaaaaaaaaaa"
+	)
+	// Разрешены СВОЙ проект и своя машина; чужой проект — нет.
+	s := newStandWithNarrower(t, narrowtest.Allowing(probeProject, mineMachine))
+
+	// Снятие в ЧУЖОМ проекте — его вызывающий видеть не вправе.
+	s.emit(t, "Instance", probeMachine, otherProject, "DELETED", map[string]any{"id": probeMachine})
+	// Видимое событие следом — положительный контроль живости потока.
+	mine := &domain.Instance{ID: mineMachine, ProjectID: probeProject, Name: "mine"}
+	s.emit(t, "Instance", mineMachine, probeProject, "CREATED", instancePayload(mine))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// Подписка БЕЗ оси проекта: с осью страж отверг бы открытие, и предмет пробы
+	// (суждение о СТРОКЕ) не наступил бы вовсе.
+	stream, err := s.client.Subscribe(ctx, &subscriptionv1.SubscriptionRequest{
+		Kinds: []string{"Instance"},
+		Start: &subscriptionv1.SubscriptionRequest_Anchor{
+			Anchor: subscriptionv1.SubscriptionAnchor_BEGINNING,
+		},
+	})
+	if err != nil {
+		t.Fatalf("подписка не открылась: %v", err)
+	}
+
+	ev := recv(t, stream)
+	if ev.ResourceId == probeMachine {
+		t.Fatalf("отдано снятие в ЧУЖОМ проекте (%s): суждение по якорю вышло за проект, "+
+			"и подписчик узнал о существовании предмета, которого видеть не вправе",
+			ev.ProjectId)
+	}
+	if ev.ResourceId != mineMachine || ev.Change != subscriptionv1.SubscriptionEvent_CREATED {
+		t.Fatalf("пришло не ожидаемое видимое событие: предмет %q, род %v", ev.ResourceId, ev.Change)
 	}
 }

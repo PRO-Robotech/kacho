@@ -130,10 +130,14 @@ func TestEveryGRPCListenerRecoversHandlerPanics(t *testing.T) {
 // panicRecoveryAudit — исход обхода: находки плюс объём осмотренного, чтобы
 // «ноль находок» было отличимо от «ноль прочитанного».
 type panicRecoveryAudit struct {
-	findings  []string
-	listeners int
-	covered   int
-	summary   string
+	// serviceBuilders — сколько мест формы `NewServer` отсеяно распознаванием как
+	// СБОРКА СЛУЖБЫ. Печатается и доступно пробам: «находок ноль» обязано быть
+	// отличимо от «ветвь не исполнялась».
+	serviceBuilders int
+	findings        []string
+	listeners       int
+	covered         int
+	summary         string
 }
 
 // auditPanicRecoveryWiring — ядро гейта, вынесенное отдельно, чтобы пробы
@@ -278,9 +282,10 @@ func auditPanicRecoveryWiring(t *testing.T, root string) panicRecoveryAudit {
 	}
 
 	return panicRecoveryAudit{
-		findings:  findings,
-		listeners: listeners,
-		covered:   covered,
+		findings:        findings,
+		serviceBuilders: serviceBuilders,
+		listeners:       listeners,
+		covered:         covered,
 		summary: "осмотрено: компонентов " + strconv.Itoa(scannedServices) +
 			", композиционных пакетов " + strconv.Itoa(scannedPkgs) +
 			", файлов " + strconv.Itoa(scannedFiles) +
@@ -497,7 +502,7 @@ func (p *chainPkgInfo) listenerSites() ([]listenerChainSite, int) {
 			// Вызовы, чей результат разбирается ПАРОЙ, собраны заранее: у
 			// `ast.Inspect` нет родителя узла, а решение принимается именно по
 			// нему.
-			pair := pairAssignedCalls(fn.Body)
+			pair := serviceBuilderCalls(fn.Body)
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
 				if !ok {
@@ -550,20 +555,92 @@ func (p *chainPkgInfo) listenerSites() ([]listenerChainSite, int) {
 	return out, refusing
 }
 
-// pairAssignedCalls — вызовы, чей результат разбирается ПАРОЙ (`v, err := f()`).
+// serviceBuilderCalls — вызовы формы `NewServer`, которые СЛУШАТЕЛЯ НЕ ПОДНИМАЮТ.
 //
-// Собираются отдельным проходом, потому что `ast.Inspect` родителя узла не даёт,
-// а предмет решения — именно родитель: один и тот же вызов в однозначном
-// присваивании и в паре означает разное.
-func pairAssignedCalls(body *ast.BlockStmt) map[*ast.CallExpr]bool {
-	out := map[*ast.CallExpr]bool{}
+// Признаков ДВА, и оба обязательны — вместе, а не по отдельности:
+//
+//  1. результат разбирается ПАРОЙ (`v, err := f()`): конструктор, умеющий
+//     отказать, судит объявление, а листенер в этом дереве поднимается тотально;
+//  2. полученное значение НЕ ИСПОЛЬЗУЕТСЯ КАК СЛУШАТЕЛЬ: на нём не служат
+//     (`.Serve`, `.Stop`, `.GracefulStop`, `.GetServiceInfo`) и на нём ничего не
+//     регистрируют (`Register…(v, …)` первым аргументом).
+//
+// # Почему одного первого признака НЕДОСТАТОЧНО
+//
+// Он про ФОРМУ ПРИСВАИВАНИЯ, а не про предмет. Научись общий конструктор
+// слушателя отдавать пару со ошибкой — и настоящие листенеры отсеялись бы МОЛЧА,
+// а гейт остался бы зелёным ровно там, где обязан краснеть. Второй признак это
+// закрывает: слушатель узнаётся по тому, ЧТО С НИМ ДЕЛАЮТ, и остаётся под
+// наблюдением независимо от того, как объявлен его конструктор.
+//
+// Граница названа: слушатель, собранный здесь и переданный регистрировать в
+// ЧУЖУЮ функцию, обоими признаками не опознаётся. Это тот же предел, что у гейта
+// был и до уточнения (разрешение идёт по телу одной функции), и он не расширен.
+func serviceBuilderCalls(body *ast.BlockStmt) map[*ast.CallExpr]bool {
+	paired := map[*ast.CallExpr]string{}
 	ast.Inspect(body, func(n ast.Node) bool {
 		as, ok := n.(*ast.AssignStmt)
 		if !ok || len(as.Lhs) < 2 || len(as.Rhs) != 1 {
 			return true
 		}
-		if call, ok := as.Rhs[0].(*ast.CallExpr); ok {
+		call, ok := as.Rhs[0].(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if id, ok := as.Lhs[0].(*ast.Ident); ok && id.Name != "_" {
+			paired[call] = id.Name
+		}
+		return true
+	})
+	if len(paired) == 0 {
+		return map[*ast.CallExpr]bool{}
+	}
+
+	servedNames := servedAsListener(body)
+	out := make(map[*ast.CallExpr]bool, len(paired))
+	for call, name := range paired {
+		if !servedNames[name] {
 			out[call] = true
+		}
+	}
+	return out
+}
+
+// servedAsListener — имена значений, с которыми обращаются КАК СО СЛУШАТЕЛЕМ.
+func servedAsListener(body *ast.BlockStmt) map[string]bool {
+	out := map[string]bool{}
+	ast.Inspect(body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		// `v.Serve(…)` и родня: на слушателе служат и его останавливают.
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+			switch sel.Sel.Name {
+			case "Serve", "Stop", "GracefulStop", "GetServiceInfo":
+				if id, ok := sel.X.(*ast.Ident); ok {
+					out[id.Name] = true
+				}
+			}
+		}
+		// `RegisterXServer(v, impl)`: на слушателе РЕГИСТРИРУЮТ, и он стоит
+		// первым аргументом. Второй и далее — реализации, и они слушателями не
+		// являются: ровно так регистрируется общий сервер потока.
+		if len(call.Args) == 0 {
+			return true
+		}
+		name := ""
+		switch fn := call.Fun.(type) {
+		case *ast.Ident:
+			name = fn.Name
+		case *ast.SelectorExpr:
+			name = fn.Sel.Name
+		}
+		if !strings.HasPrefix(name, "Register") {
+			return true
+		}
+		if id, ok := call.Args[0].(*ast.Ident); ok {
+			out[id.Name] = true
 		}
 		return true
 	})
