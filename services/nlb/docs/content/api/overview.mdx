@@ -179,9 +179,14 @@ well-formed-но-несуществующий — `NOT_FOUND` через repo.
 
 Все `Create`/`Update`/`Delete` и `:verb`-действия **асинхронны**: RPC возвращает
 `operation.Operation`, а не ресурс. Клиент поллит `OperationService.Get(id)` до `done=true`;
-в `response` — итоговый ресурс, в `error` — `google.rpc.Status` при неудаче. Watch-RPC не
-существует — только полл. Синхронны только `Get`/`List`, `GetTargetStates` и `ListOperations`.
-Подробнее — [Операции](/api/operations).
+в `response` — итоговый ресурс, в `error` — `google.rpc.Status` при неудаче. Исход операции
+узнаётся только поллом — подписки на операции нет. Синхронны только `Get`/`List`,
+`GetTargetStates` и `ListOperations`. Подробнее — [Операции](/api/operations).
+
+Изменения самих ресурсов nlb отдаёт **потоком**: журнал сервиса — владелец подписки платформы,
+и край проецирует его ручкой `GET /subscription/v1/events?owner=loadbalancer` (Server-Sent
+Events). Опрос `List` остаётся штатным путём и работает всегда. Подробнее —
+[Операции](/api/operations) и документация api-gateway, страница «Подписка на изменения».
 
 ## Точность временных меток
 
