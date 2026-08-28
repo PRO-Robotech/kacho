@@ -212,22 +212,22 @@ api-gateway:
   # behaviour change — but it makes the posture legible instead of implicit.
   appEnv: production
   # ─── cluster-internal :9091 listener — mTLS + SPIFFE caller allow-list ──────
-  # BOOT REQUIREMENT, not hardening-extra. The internal listener hosts
-  # InternalAuthzCacheService.InvalidateSubject; in a production-class env
-  # validateProductionInternalListener REFUSES TO START unless mTLS is on here.
-  # With appEnv production-class and this left at the chart default (false), the
-  # gateway CrashLoopBackOffs — while `helm template` renders perfectly. This is
-  # the defect the gateway chart's own comment records as "a dev-masked gap that
-  # crash-looped the gateway under values.prod.yaml": the first-class knob was
-  # added to the chart, but the canonical profile was never taught to set it, so
-  # the only cluster that booted was the one patching it via extraEnv.
-  # Server cert reuses the already-mounted external TLS secret; incoming client
-  # certs verify against the internal CA (requires mtls.enable below — the chart
-  # hard-fails the render otherwise). The iam push-drainer is the only legitimate
-  # caller (allowedSpiffe chart default).
-  internalListener:
-    mtls:
-      enable: true
+  # Здесь стоял блок `internalListener.mtls.enable: true` — требование СТАРТА, а
+  # не необязательное усиление: без него край в боевой посадке не поднимался.
+  # Предмета у требования больше нет (#1024): внутреннего gRPC-листенера у края
+  # нет вовсе — его единственную службу (гашение кэша решений по запросу iam)
+  # сняли вместе с обратным ребром, а листенер без единственной службы был бы
+  # входной поверхностью без единого метода.
+  #
+  # Запись снята, а не выключена: значение, называющее снятую ручку, инертно и
+  # потому читается как принятое решение о защите периметра, ничего при этом не
+  # делая. Оператор поверил бы ему, а проверить смог бы только чтением шаблона,
+  # которого нет.
+  #
+  # Посадку края это НЕ ослабляет и молчанием не подменяет: гейт посадки
+  # (deploy/scripts/assert-production-posture.sh) по-прежнему судит измерение
+  # internal_mtls, и край обязан объявить его величиной "n/a" — «листенера нет
+  # вовсе». Величина "false" («листенер есть и не защищён») остаётся ОТКАЗОМ.
   # ─── Backend dial addresses ────────────────────────────────────────────────
   # Restated ONLY where the chart default does not resolve in this umbrella —
   # the same class as storage's db.host. Everything else keeps the chart default.

@@ -138,7 +138,7 @@
     "регистрация в прод-коде — домен войдёт в охват, и гейт покраснеет, пока его",
     "не возьмёт шард."
   ],
-  "core_ban6_domains": ["iam", "geo", "apigateway"],
+  "core_ban6_domains": ["iam", "geo"],
   "gate_ban6_domains": {
     "vpc": "vpc",
     "compute": "compute",
