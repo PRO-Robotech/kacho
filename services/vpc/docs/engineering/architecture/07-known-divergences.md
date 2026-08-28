@@ -98,7 +98,9 @@ immutable, а не generic «unknown field». Кейс `SUB-UPD-STATE-IMMUTABLE-
 
 ## 10. OperationService.Get/Cancel с bad id
 
-malformed id → `InvalidArgument "invalid operation id '<X>'"`; well-formed id (известный
+malformed id → `InvalidArgument` с текстом `invalid operation id "<X>"` (кавычки
+двойные: их ставит глагол `%q` производителя, и цитата с одинарными здесь стояла —
+она не совпадала с ответом края ни одним прогоном, #1400); well-formed id (известный
 prefix, но бэкенд не подключен) → `NotFound "operation <X> not found"`; id с prefix
 домена с подключенным бэкендом → роутится туда.
 
