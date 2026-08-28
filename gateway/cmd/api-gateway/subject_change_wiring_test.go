@@ -5,9 +5,17 @@ package main
 
 import (
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+// collapse сводит исходник к одной форме пробелов: продовый вызов записан
+// несколькими строками, и подстрока, набранная по текущей раскладке, краснела бы
+// на переносе аргумента — то есть судила бы форматирование, а не провязку.
+func collapse(src string) string {
+	return regexp.MustCompile(`\s+`).ReplaceAllString(src, " ")
+}
 
 // TestSubjectChangeReaderIsWiredToTheVerdictCache — ПОСЛЕДНЕЕ звено цепи,
 // которое сквозная проба владельца достать не может.
@@ -38,14 +46,25 @@ func TestSubjectChangeReaderIsWiredToTheVerdictCache(t *testing.T) {
 		t.Fatalf("чтение композиционного корня: %v", err)
 	}
 	root := string(src)
+	flat := collapse(root)
 
-	const wiring = "subjectchange.New(reader, authzMW.InvalidateCache,"
-	if !strings.Contains(root, wiring) {
-		t.Fatalf("читатель журнала смены субъекта не провязан к кэшу вердиктов.\n"+
-			"Ожидалось: %s\n\n"+
-			"Гасить он обязан ИМЕННО кэш решений слоя прав. Провязанный к чему-то "+
-			"другому, он оставит сквозную пробу владельца зелёной — она о читателе, "+
-			"а не о том, куда его подключили, — и отзыв перестанет доезжать молча.",
+	// Читатель собирается ПРОДОВОЙ функцией (`buildSubjectChangeWatcher`), а не
+	// конструктором напрямую: только так провязка закрывателя потоков попадает
+	// под пробу — сквозные пробы зовут конструктор и точку сборки минуют
+	// (kacho#1022, `subscription_revocation_wiring_test.go`).
+	//
+	// Судятся ОБА аргумента разом, одним вызовом: гасить читатель обязан ИМЕННО
+	// кэш решений слоя прав, а закрывать — ИМЕННО реестр открытых потоков этого
+	// края. Проверь их порознь — и вызов, взявший верный кэш и чужой реестр,
+	// остался бы зелёным.
+	const wiring = "buildSubjectChangeWatcher( cfg, reader, authzMW.InvalidateCache, subscriptionStream, logger)"
+	if !strings.Contains(flat, wiring) {
+		t.Fatalf("читатель журнала смены субъекта не провязан к кэшу вердиктов и реестру потоков.\n"+
+			"Ожидалось (с точностью до пробелов): %s\n\n"+
+			"Гасить он обязан ИМЕННО кэш решений слоя прав, а закрывать — ИМЕННО свой "+
+			"реестр открытых потоков. Провязанный к чему-то другому, он оставит сквозные "+
+			"пробы зелёными — они о читателе, а не о том, куда его подключили, — и отзыв "+
+			"перестанет доезжать молча.",
 			wiring)
 	}
 
@@ -53,7 +72,7 @@ func TestSubjectChangeReaderIsWiredToTheVerdictCache(t *testing.T) {
 	// владельца. Второе объявление того же адреса разошлось бы с первым молча:
 	// оба непусты, оба резолвятся, ведут в разные места.
 	const dial = `subjectchange.NewReader(backends["iamInternal"])`
-	if !strings.Contains(root, dial) {
+	if !strings.Contains(flat, dial) {
 		t.Fatalf("читатель открывает соединение не по объявленному адресу владельца.\n"+
 			"Ожидалось: %s", dial)
 	}
@@ -65,7 +84,7 @@ func TestSubjectChangeReaderIsWiredToTheVerdictCache(t *testing.T) {
 		"startInternalGRPCListener",
 		"AsInvalidator",
 	} {
-		if strings.Contains(root, gone) {
+		if strings.Contains(flat, gone) {
 			t.Errorf("композиционный корень снова знает %q: обратное ребро "+
 				"владелец→потребитель вернулось", gone)
 		}

@@ -8,13 +8,14 @@ import (
 	"fmt"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"google.golang.org/grpc"
 )
 
 // Reader — адаптер над порождённым клиентом, исполняющий [Poller].
 //
-// Единственное место пакета, говорящее по gRPC: остальное — курсор и решение
-// «гасить или нет», и оно не должно знать транспорта.
+// Единственное место пакета, говорящее по gRPC: остальное — курсор и решения
+// «гасить» и «кого закрыть», и они не должны знать транспорта.
 type Reader struct {
 	client iamv1.InternalIAMServiceClient
 }
@@ -27,19 +28,45 @@ func NewReader(cc grpc.ClientConnInterface) *Reader {
 	return &Reader{client: iamv1.NewInternalIAMServiceClient(cc)}
 }
 
-// PollSubjectChanges читает журнал владельца с позиции since, отдавая
-// идентификаторы строк и голову журнала.
-func (p *Reader) PollSubjectChanges(ctx context.Context, since int64) ([]int64, int64, error) {
+// PollSubjectChanges читает журнал владельца с позиции since с пределом, который
+// назвал ВЫЗЫВАЮЩИЙ, отдавая изменения и голову журнала.
+//
+// Предел не объявляется здесь: по нему вызывающий решает, могла ли порция быть
+// усечена, и объявить его в двух местах значило бы дать этому решению второе,
+// расходящееся основание.
+//
+// # Почему имя субъекта едет дальше, а не остаётся здесь
+//
+// Прежде адаптер оставлял от строки ОДИН номер и выбрасывал имя субъекта. Для
+// сброса кэша этого хватало: он и так сбрасывался целиком. Для закрытия
+// открытого потока (kacho#1022) — нет: закрыть можно только НАЗВАННОГО, а
+// голый идентификатор не совпадает с ключом реестра ни при каких условиях. То
+// есть отзыв не имел бы действия на длинных соединениях вовсе.
+func (p *Reader) PollSubjectChanges(
+	ctx context.Context, since int64, limit int32,
+) ([]SubjectChange, int64, error) {
 	resp, err := p.client.PollSubjectChanges(ctx, &iamv1.PollSubjectChangesRequest{
 		SinceId: since,
-		Limit:   1000,
+		Limit:   limit,
 	})
 	if err != nil {
 		return nil, 0, fmt.Errorf("poll subject changes: %w", err)
 	}
-	ids := make([]int64, 0, len(resp.GetChanges()))
+	changes := make([]SubjectChange, 0, len(resp.GetChanges()))
 	for _, c := range resp.GetChanges() {
-		ids = append(ids, c.GetId())
+		// Субъект собирается ТЕМ ЖЕ кодеком, которым его называет всякий, кто
+		// спрашивает право (`authz.TenantSubject`), — а не конкатенацией здесь.
+		// Ключ, под которым учтён открытый поток, обязан совпасть с именем
+		// отзыва ПО ПОСТРОЕНИЮ: две похожие сборки строки разошлись бы молча, и
+		// разошлись бы именно там, где расхождение не видно — обе непусты, обе
+		// выглядят субъектом, а закрыть по второй нельзя ничего.
+		//
+		// Строка, чьего типа мы не знаем (записана до того, как производители
+		// стали его проставлять), едет БЕЗ имени: она двигает курсор и никого не
+		// закрывает. Выводить тип из написания идентификатора запрещено — этот
+		// приём уже давал совпадение с тем, чего продукт не производит.
+		subject, _ := authz.TenantSubject(c.GetSubjectType(), c.GetSubjectId())
+		changes = append(changes, SubjectChange{ID: c.GetId(), Subject: subject})
 	}
-	return ids, resp.GetHeadId(), nil
+	return changes, resp.GetHeadId(), nil
 }

@@ -1016,10 +1016,28 @@ func (x *PollSubjectChangesRequest) GetLimit() int32 {
 
 // SubjectChange — one row from subject_change_outbox.
 type SubjectChange struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	SubjectId     string                 `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
-	Op            string                 `protobuf:"bytes,3,opt,name=op,proto3" json:"op,omitempty"` // binding_upsert | binding_delete | group_member_change
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	SubjectId string                 `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
+	Op        string                 `protobuf:"bytes,3,opt,name=op,proto3" json:"op,omitempty"` // binding_upsert | binding_delete | group_member_change
+	// subject_type — тип субъекта в словаре модели прав: `user` |
+	// `service_account` | `group`.
+	//
+	// ПОЧЕМУ ЭТО ПОЛЕ ЕСТЬ. `subject_id` — голый идентификатор (`usrXXXX`), а
+	// субъектом модели он становится только в паре с типом (`user:usrXXXX`).
+	// Толчок (`InternalAuthzCacheService.InvalidateSubject`) эту пару собирает,
+	// потому что читает `payload` строки; перепрос `payload` не возвращает, и
+	// вызывающий назвать субъекта не мог. Пока единственным потребителем перепроса
+	// был сплошной сброс кэша, это не было видно: сброс имени не спрашивает. Как
+	// только по этому же чтению понадобилось закрыть открытый поток НАЗВАННОГО
+	// субъекта (kacho#1022), полоса оказалась неисполнимой — не по ошибке
+	// вызывающего, а потому, что контракт не нёс половины имени.
+	//
+	// Пусто у строк, записанных до того, как производители начали проставлять тип.
+	// Вызывающий обязан считать такую строку НЕИМЕНОВАННОЙ и не собирать субъекта
+	// из префикса идентификатора: вывод типа из написания уже давал совпадение с
+	// тем, чего продукт не производит.
+	SubjectType   string `protobuf:"bytes,4,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1071,6 +1089,13 @@ func (x *SubjectChange) GetSubjectId() string {
 func (x *SubjectChange) GetOp() string {
 	if x != nil {
 		return x.Op
+	}
+	return ""
+}
+
+func (x *SubjectChange) GetSubjectType() string {
+	if x != nil {
+		return x.SubjectType
 	}
 	return ""
 }
@@ -1438,12 +1463,13 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\rrevoked_count\x18\x01 \x01(\x05R\frevokedCount\"L\n" +
 	"\x19PollSubjectChangesRequest\x12\x19\n" +
 	"\bsince_id\x18\x01 \x01(\x03R\asinceId\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"N\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"q\n" +
 	"\rSubjectChange\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1d\n" +
 	"\n" +
 	"subject_id\x18\x02 \x01(\tR\tsubjectId\x12\x0e\n" +
-	"\x02op\x18\x03 \x01(\tR\x02op\"r\n" +
+	"\x02op\x18\x03 \x01(\tR\x02op\x12!\n" +
+	"\fsubject_type\x18\x04 \x01(\tR\vsubjectType\"r\n" +
 	"\x1aPollSubjectChangesResponse\x12;\n" +
 	"\achanges\x18\x01 \x03(\v2!.kacho.cloud.iam.v1.SubjectChangeR\achanges\x12\x17\n" +
 	"\ahead_id\x18\x02 \x01(\x03R\x06headId\"1\n" +

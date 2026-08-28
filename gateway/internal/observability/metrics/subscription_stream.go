@@ -130,9 +130,14 @@ func (c *subscriptionStreamCollector) Collect(ch chan<- prometheus.Metric) {
 		float64(st.ClosedByOwner))
 
 	for lane, value := range map[string]uint64{
-		"input":         st.RefusedInput,
-		"no_owner":      st.RefusedNoOwner,
-		"identity":      st.RefusedAuthN,
+		"input":    st.RefusedInput,
+		"no_owner": st.RefusedNoOwner,
+		"identity": st.RefusedAuthN,
+		// Полоса отдельная, а не слитая с `identity`: «пришли без удостоверения»
+		// и «пришли с удостоверением вида, которому подписка не полагается» —
+		// разные наблюдения, и лечит их разное. Слей их — и решение о том, кому
+		// подписка положена, стало бы невидимо.
+		"subject_kind":  st.RefusedSubjectKind,
 		"limit_replica": st.RefusedSlot,
 		"limit_subject": st.RefusedSubjectQuota,
 		"owner_refusal": st.RefusedOwner,

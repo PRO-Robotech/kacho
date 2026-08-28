@@ -798,7 +798,17 @@ func main() {
 		log.Fatalf("диагностическая поверхность: %v", diagErr)
 	}
 
-	// --- чтение журнала смены субъекта: сходимость кэша решений между репликами ---
+	// --- проекция потока изменений в браузер ---
+	//
+	// Собирается ЗДЕСЬ, а не у своего монтирования ниже, потому что она же —
+	// реестр открытых потоков, который читает читатель отзыва (следующий блок).
+	// Провязать его можно только тем, что уже существует.
+	subscriptionStream, err := buildSubscriptionStreamHandler(cfg, backends, logger)
+	if err != nil {
+		log.Fatalf("subscription stream projection: %v", err)
+	}
+
+	// --- чтение журнала смены субъекта: отзыв доезжает до кэша решений И до потоков ---
 	//
 	// Соединение открывает ПОТРЕБИТЕЛЬ — то есть край. Владелец прав о крае не
 	// знает и знать ему нечем: толчок из него снят вместе с адресом края (задача
@@ -808,18 +818,33 @@ func main() {
 	// «смена прав доезжает до кэша решений» обязано держаться одной реализацией, и
 	// одной пробой — сквозь обе стороны, вместе с производителем журнала.
 	//
+	// Полос у отзыва ДВЕ, и вторая не выводится из первой: кэш решений отвечает на
+	// СЛЕДУЮЩИЙ запрос, а открытое соединение следующего запроса не делает (задача
+	// #1022). Поэтому читателю передаётся реестр открытых потоков, и передаётся
+	// он ОБЯЗАТЕЛЬНО — ноль отвергается сборкой.
+	//
 	// Работает только при включённом слое прав: гасить нечего, когда кэш —
 	// заглушка.
 	if authzMW != nil {
 		reader := subjectchange.NewReader(backends["iamInternal"])
-		sc := subjectchange.New(reader, authzMW.InvalidateCache,
-			cfg.SubjectChangePollInterval, logger)
+		sc, scErr := buildSubjectChangeWatcher(
+			cfg, reader, authzMW.InvalidateCache, subscriptionStream, logger)
+		if scErr != nil {
+			log.Fatalf("subject-change reader: %v", scErr)
+		}
 		// Уборки на остановке у читателя нет: он только читает и держит курсор в
 		// памяти. Выходит по отмене контекста (SIGTERM/SIGINT), догонять на выходе
 		// нечего.
 		go sc.Run(ctx)
+		// Самоотчёт называет ОБЕ величины: перепрос, которым отзыв доезжает, и
+		// срок, после которого его отсутствие само становится решением. Молчание
+		// о втором сделало бы «fail-closed провязан» неотличимым от «не провязан».
+		// Печатается НАБЛЮДЕНИЕ, а не литерал: `true` продолжал бы утверждать
+		// «закрывает» при отключённом закрывателе.
 		logger.Info("subject-change reader started",
-			"interval", cfg.SubjectChangePollInterval)
+			"interval", cfg.SubjectChangePollInterval,
+			"stale_after", sc.StaleAfter().String(),
+			"closes_streams", sc.ClosesStreams())
 	}
 
 	// --- gRPC server ---
@@ -989,10 +1014,6 @@ func main() {
 	// внешнего пути нет и не заводится (его нет в allowlist, его имя отсекает
 	// HasInternalSuffix, а `google.api.http` контракт не объявляет). Разбор —
 	// gateway/docs/engineering/architecture/subscription-stream-projection.md.
-	subscriptionStream, err := buildSubscriptionStreamHandler(cfg, backends, logger)
-	if err != nil {
-		log.Fatalf("subscription stream projection: %v", err)
-	}
 	httpMux.Handle(subscriptionstream.Path, subscriptionStream)
 	// Счётчики ручки провязываются в диагностическую поверхность ЗДЕСЬ, а не
 	// «когда-нибудь»: величина, которую никто не читает, не отличима от «этот

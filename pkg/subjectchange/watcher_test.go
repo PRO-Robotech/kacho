@@ -21,7 +21,7 @@ import (
 // signal from INSIDE the call, i.e. before the tick that made the call has
 // decided anything — so a case waiting on such a signal reads the flush counter
 // in a race with the flush. The cases below drive ticks synchronously instead
-// (Watcher.Poll), which makes the fake's own bookkeeping the only state there is.
+// (subjectchange.Tick), which makes the fake's own bookkeeping the only state there is.
 type fakePoller struct {
 	mu      sync.Mutex
 	batches [][]int64 // ids per call; nil / empty = empty batch
@@ -30,7 +30,9 @@ type fakePoller struct {
 	sinces  []int64 // records the `since` cursor observed on each call
 }
 
-func (f *fakePoller) PollSubjectChanges(ctx context.Context, since int64) (ids []int64, headID int64, err error) {
+func (f *fakePoller) PollSubjectChanges(
+	_ context.Context, since int64, _ int32,
+) (changes []subjectchange.SubjectChange, headID int64, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sinces = append(f.sinces, since)
@@ -49,12 +51,14 @@ func (f *fakePoller) PollSubjectChanges(ctx context.Context, since int64) (ids [
 	}
 	// compute headID as max(ids), or 0 for empty
 	var h int64
+	out := make([]subjectchange.SubjectChange, 0, len(b))
 	for _, id := range b {
 		if id > h {
 			h = id
 		}
+		out = append(out, subjectchange.SubjectChange{ID: id})
 	}
-	return b, h, nil
+	return out, h, nil
 }
 
 // sinceAt returns the `since` cursor observed on the (0-indexed) n-th poll call.
@@ -73,7 +77,9 @@ type deadlinePoller struct {
 	once sync.Once
 }
 
-func (d *deadlinePoller) PollSubjectChanges(ctx context.Context, since int64) ([]int64, int64, error) {
+func (d *deadlinePoller) PollSubjectChanges(
+	ctx context.Context, _ int64, _ int32,
+) ([]subjectchange.SubjectChange, int64, error) {
 	_, ok := ctx.Deadline()
 	d.once.Do(func() { d.seen <- ok })
 	return nil, 0, nil
@@ -90,7 +96,13 @@ func TestSubjectChangeWatcher_PollHasPerCallDeadline(t *testing.T) {
 	defer cancel()
 	// Parent ctx has NO deadline — any deadline observed by the poller must come
 	// from the watcher's per-call context.WithTimeout.
-	w := subjectchange.New(p, func() {}, 5*time.Millisecond, slog.Default())
+	w, err := subjectchange.New(subjectchange.Config{
+		Poller: p, Flush: func() {}, Interval: 5 * time.Millisecond, Logger: slog.Default(),
+		Closer: noStreams{}, StaleAfter: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("сборка наблюдателя: %v", err)
+	}
 	go w.Run(ctx)
 
 	select {
@@ -116,7 +128,13 @@ func script(t *testing.T, batches [][]int64, errs []error) (*fakePoller, *int, f
 	t.Helper()
 	p := &fakePoller{batches: batches, errs: errs}
 	var flushes int
-	w := subjectchange.New(p, func() { flushes++ }, time.Second, slog.Default())
+	w, err := subjectchange.New(subjectchange.Config{
+		Poller: p, Flush: func() { flushes++ }, Interval: time.Second, Logger: slog.Default(),
+		Closer: noStreams{}, StaleAfter: time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("сборка наблюдателя: %v", err)
+	}
 	return p, &flushes, func() { w.Poll(context.Background()) }
 }
 
@@ -252,3 +270,12 @@ func TestSubjectChangeWatcher_ErrorOnFirstPollDoesNotPrime(t *testing.T) {
 		t.Fatalf("expected exactly 1 flush (error-first defers priming to tick1), got %d", *flushes)
 	}
 }
+
+// noStreams — реестр без открытых потоков.
+//
+// Не «закрывателя нет»: закрыватель ОБЯЗАТЕЛЕН, и ноль отвергается сборкой. Эти
+// пробы про курсор и сброс кэша, поэтому реестр пуст, а не отсутствует.
+type noStreams struct{}
+
+func (noStreams) CloseSubject(string) int { return 0 }
+func (noStreams) CloseAll() int           { return 0 }
