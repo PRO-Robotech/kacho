@@ -10,11 +10,15 @@ import (
 	"testing"
 )
 
-// collapse сводит исходник к одной форме пробелов: продовый вызов записан
+// collapse ВЫБРАСЫВАЕТ пробелы, а не сводит их к одному: продовый вызов записан
 // несколькими строками, и подстрока, набранная по текущей раскладке, краснела бы
 // на переносе аргумента — то есть судила бы форматирование, а не провязку.
+//
+// Сведение к одному пробелу этого НЕ даёт, и это проверено законным близнецом:
+// перенос после открывающей скобки оставляет пробел там, где однострочная запись
+// его не имеет, поэтому та же самая провязка краснела бы от переформатирования.
 func collapse(src string) string {
-	return regexp.MustCompile(`\s+`).ReplaceAllString(src, " ")
+	return regexp.MustCompile(`\s+`).ReplaceAllString(src, "")
 }
 
 // TestSubjectChangeReaderIsWiredToTheVerdictCache — ПОСЛЕДНЕЕ звено цепи,
@@ -57,10 +61,10 @@ func TestSubjectChangeReaderIsWiredToTheVerdictCache(t *testing.T) {
 	// кэш решений слоя прав, а закрывать — ИМЕННО реестр открытых потоков этого
 	// края. Проверь их порознь — и вызов, взявший верный кэш и чужой реестр,
 	// остался бы зелёным.
-	const wiring = "buildSubjectChangeWatcher( cfg, reader, authzMW.InvalidateCache, subscriptionStream, logger)"
+	const wiring = "buildSubjectChangeWatcher(cfg,reader,authzMW.InvalidateCache,subscriptionStream,logger)"
 	if !strings.Contains(flat, wiring) {
 		t.Fatalf("читатель журнала смены субъекта не провязан к кэшу вердиктов и реестру потоков.\n"+
-			"Ожидалось (с точностью до пробелов): %s\n\n"+
+			"Ожидалось (пробелы не в счёт): %s\n\n"+
 			"Гасить он обязан ИМЕННО кэш решений слоя прав, а закрывать — ИМЕННО свой "+
 			"реестр открытых потоков. Провязанный к чему-то другому, он оставит сквозные "+
 			"пробы зелёными — они о читателе, а не о том, куда его подключили, — и отзыв "+
