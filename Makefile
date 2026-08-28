@@ -253,6 +253,7 @@ SERVICES ?= iam vpc compute geo nlb storage registry
 # целью, то есть `-race -p 1`, на этой машине. Джоба отдельная, критический путь
 # конвейера не удлиняется.
 PG_OUTSIDE_SELECTION_PKGS ?= \
+	./internal/dropguard \
 	./services/iam/internal/apps/kacho/api/bootstrap_token \
 	./services/nlb/internal/apps/kacho/jobs \
 	./services/iam/internal/scopesourcecensus \

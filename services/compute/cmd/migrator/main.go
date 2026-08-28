@@ -26,6 +26,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует "pgx" driver для sql.Open
 	"github.com/pressly/goose/v3"
 
+	"github.com/PRO-Robotech/kacho/internal/dropguard"
 	"github.com/PRO-Robotech/kacho/pkg/dbready"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
@@ -67,6 +68,19 @@ func main() {
 	var gooseErr error
 	switch direction {
 	case "up":
+		// ЖИВОЙ СЧЁТ ПЕРЕД СНОСОМ. Таблица, которую роняет ещё не применённая
+		// миграция, считается ЗДЕСЬ — пока строки ещё есть и пока отказ стоит одной
+		// выкатки. Down-миграция возвращает форму, а не данные, поэтому «восстановимо»
+		// про снос неверно: восстановима схема.
+		//
+		// Измеряющий гейт в internal/migrations отвечает на другой вопрос — сколько
+		// сеет наша собственная цепочка, проигранная в пустую базу. Что написал
+		// арендатор, не знает ни один контейнер, и узнать это можно только здесь.
+		//
+		// Недоступность базы — НЕ «ноль строк»: она отказ, а не разрешение.
+		if err := dropguard.Gate(context.Background(), db, "compute", migrations.FS, os.Stderr); err != nil {
+			log.Fatalf("%v", err)
+		}
 		// ПРОПУЩЕННЫЕ МИГРАЦИИ ПРИНИМАЮТСЯ, и это не послабление, а следствие схемы
 		// нумерации. Номер у нас — «задача × 1000 + порядок», и он НЕ хронологичен by
 		// construction: задача закрывается не по порядку номеров, и файл `708001` появляется в

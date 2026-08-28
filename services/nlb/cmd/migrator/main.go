@@ -176,6 +176,7 @@ func buildRunner(opts *rootOptions, migrationsFS fs.FS) (*migrator.Runner, error
 	}
 
 	return migrator.New(migrator.Config{
+		Service:       "nlb",
 		Dialect:       dialect,
 		DSN:           dsn,
 		FS:            migrationsFS,

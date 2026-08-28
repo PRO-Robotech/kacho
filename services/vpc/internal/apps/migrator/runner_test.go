@@ -23,11 +23,17 @@ func TestConfigValidate(t *testing.T) {
 		cfg     Config
 		wantErr string
 	}{
-		{name: "missing dialect", cfg: Config{DSN: "x", FS: fsys, MigrationsDir: "."}, wantErr: "dialect"},
-		{name: "missing dsn", cfg: Config{Dialect: pg, FS: fsys, MigrationsDir: "."}, wantErr: "dsn"},
-		{name: "missing fs", cfg: Config{Dialect: pg, DSN: "x", MigrationsDir: "."}, wantErr: "migrations FS"},
-		{name: "missing dir", cfg: Config{Dialect: pg, DSN: "x", FS: fsys}, wantErr: "migrations dir"},
-		{name: "ok", cfg: Config{Dialect: pg, DSN: "x", FS: fsys, MigrationsDir: "."}},
+		// Каждый случай опускает РОВНО ОДНО поле: иначе первая же проверка в
+		// Validate заслоняет остальные, и таблица перестаёт различать, какое
+		// именно поле она стережёт.
+		{name: "missing dialect", cfg: Config{Service: "vpc", DSN: "x", FS: fsys, MigrationsDir: "."}, wantErr: "dialect"},
+		{name: "missing dsn", cfg: Config{Service: "vpc", Dialect: pg, FS: fsys, MigrationsDir: "."}, wantErr: "dsn"},
+		{name: "missing fs", cfg: Config{Service: "vpc", Dialect: pg, DSN: "x", MigrationsDir: "."}, wantErr: "migrations FS"},
+		{name: "missing dir", cfg: Config{Service: "vpc", Dialect: pg, DSN: "x", FS: fsys}, wantErr: "migrations dir"},
+		// Безымянный сервис — отказ старта, а не умолчание: живой счёт строк перед
+		// сносом иначе не может назвать, что он стережёт.
+		{name: "missing service", cfg: Config{Dialect: pg, DSN: "x", FS: fsys, MigrationsDir: "."}, wantErr: "service is empty"},
+		{name: "ok", cfg: Config{Service: "vpc", Dialect: pg, DSN: "x", FS: fsys, MigrationsDir: "."}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
