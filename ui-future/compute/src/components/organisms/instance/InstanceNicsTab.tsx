@@ -13,9 +13,9 @@ import { ROW_ACTION_TRIGGER } from "@/components/molecules/RowActionsMenu";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
-import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { instancesApi } from "@/api/resources";
 import { getByPath } from "@/lib/resource-registry";
+import { applyMutationOutcome } from "./mutation-outcome";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
@@ -50,14 +50,20 @@ export function InstanceNicsTab({
       params.verb === "attach"
         ? instancesApi.attachNetworkInterface(instanceId, params.nicId)
         : instancesApi.detachNetworkInterface(instanceId, params.nicId),
-    onSuccess: (resp) => {
-      const id = extractOperationId(resp);
-      if (id) setOpId(id);
-      else {
-        setPendingId(null);
-        invalidate("compute-instances", projectId);
-      }
-    },
+    // attach/detach интерфейса объявлены возвращающими Operation — ответ без
+    // неё означает, что подтвердить выполнение нечем (см. mutation-outcome.ts).
+    onSuccess: (resp) =>
+      applyMutationOutcome(resp, true, {
+        onOperation: (id) => setOpId(id),
+        onSync: () => {
+          setPendingId(null);
+          invalidate("compute-instances", projectId);
+        },
+        onViolation: (message) => {
+          setPendingId(null);
+          toast.error(`Интерфейс: ${message}`);
+        },
+      }),
     onError: (e) => {
       toast.error(`Интерфейс: ${errorText(e)}`);
       setPendingId(null);

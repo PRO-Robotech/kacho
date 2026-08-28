@@ -27,13 +27,22 @@
 // The table is exhaustive by construction: a create-capable spec with no entry
 // fails, so adding one to the registry forces its contract to be stated here.
 //
-// This remote carries its own registry — a compute-domain one, not a copy of the
-// shared registry — so the lock lives here too: a fix landing in one registry and
-// not the other is the very class this sweep exists to catch. (The @shared alias
-// does resolve here, in the bundle and in jest alike; it is a shared *registry*
-// that this remote does not use, not a missing alias.)
+// ЧТО СЧИТАЕТСЯ — разделы, которые ЭТО приложение предлагает создать, а не все
+// спеки, которые его реестр резолвит. Прежде это было одно и то же: реестр нёс
+// собственные копии восьми спек. После сведения форка (#406) он стал ПРОЕКЦИЕЙ
+// общего, и в нём появились ref-цели чужих доменов (зона, том, образ, сетевой
+// интерфейс) — у них `ops.create` истинно, но маршрута создания в этом
+// приложении нет, и форму их создания оператору здесь никто не показывает.
+// Считать их значило бы требовать от compute контракта чужого раздела.
+//
+// Предмет счёта поэтому — `COMPUTE_SCOPED_IDS`: перечень смонтированных
+// разделов. Это сужение ОБЛАСТИ, а не ослабление утверждения — внутри области
+// проверка прежняя и число прежнее (3): спека без записи в таблице по-прежнему
+// роняет пробу, и добавление раздела по-прежнему заставляет объявить его
+// контракт здесь.
 
 import { REGISTRY } from "./resource-registry";
+import { COMPUTE_SCOPED_IDS } from "./scoped-resources";
 
 /** apiPath → the fields without which the edge refuses the Create call. */
 const REQUIRED_BY_API_PATH: Record<string, string[]> = {
@@ -79,8 +88,8 @@ function operatorSettableFields(specId: string): Set<string> {
   return new Set((spec.fields ?? []).filter((f) => !f.updateOnly).map((f) => f.name.split(".")[0]));
 }
 
-const createCapable = Object.entries(REGISTRY)
-  .filter(([, spec]) => spec.ops.create)
+const createCapable = COMPUTE_SCOPED_IDS.map((id) => [id, REGISTRY[id]] as const)
+  .filter(([, spec]) => spec?.ops.create)
   .map(([id, spec]) => [id, spec.apiPath] as const);
 
 describe("every create-capable spec can express what Create requires", () => {

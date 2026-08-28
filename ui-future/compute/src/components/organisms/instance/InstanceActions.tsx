@@ -7,7 +7,6 @@ import { useMutation } from "@tanstack/react-query";
 import { Button, Space } from "antd";
 import { CaretRightOutlined, PoweroffOutlined, ReloadOutlined } from "@ant-design/icons";
 import { instancesApi } from "@/api/resources";
-import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
@@ -16,6 +15,7 @@ import { toast } from "@/lib/toast";
 import { ENTITIES } from "@shared/lib/entity-names";
 import { errorText } from "@shared/lib/error-presentation";
 import { REGISTRY } from "@/lib/resource-registry";
+import { applyMutationOutcome } from "./mutation-outcome";
 
 // Подпись операции склоняется — «Запуск виртуальной машины», а не «Запуск
 // виртуальная машина», — поэтому берётся родительный падеж, объявленный реестром
@@ -41,11 +41,16 @@ export function InstanceActions({
 
   const mut = useMutation({
     mutationFn: (verb: Verb) => instancesApi[verb](instanceId),
-    onSuccess: (resp) => {
-      const id = extractOperationId(resp);
-      if (id) setOpId(id);
-      else invalidate("compute-instances", projectId);
-    },
+    // Глаголы :start/:stop/:restart объявлены возвращающими Operation
+    // (`api/resources.ts`), поэтому ответ без неё — нарушение контракта, а не
+    // синхронный успех: прежде он молча перечитывал список, и оператор уходил
+    // в уверенности, что машина запущена.
+    onSuccess: (resp) =>
+      applyMutationOutcome(resp, true, {
+        onOperation: (id) => setOpId(id),
+        onSync: () => invalidate("compute-instances", projectId),
+        onViolation: (message) => toast.error(`${ENTITIES.instances.singular}: ${message}`),
+      }),
     onError: (e) => toast.error(`${ENTITIES.instances.singular}: ${errorText(e)}`),
   });
   const busy = mut.isPending || opId !== null;

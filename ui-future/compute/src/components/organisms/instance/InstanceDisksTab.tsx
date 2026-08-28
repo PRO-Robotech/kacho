@@ -13,9 +13,9 @@ import { ROW_ACTION_TRIGGER } from "@/components/molecules/RowActionsMenu";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
-import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { instancesApi } from "@/api/resources";
 import { getByPath } from "@/lib/resource-registry";
+import { applyMutationOutcome } from "./mutation-outcome";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 import { BoolFact } from "@/components/atoms/BoolFact";
@@ -61,14 +61,20 @@ export function InstanceDisksTab({
       params.verb === "attach"
         ? instancesApi.attachDisk(instanceId, params.volumeId, deviceName || undefined, autoDelete)
         : instancesApi.detachDisk(instanceId, params.volumeId),
-    onSuccess: (resp) => {
-      const id = extractOperationId(resp);
-      if (id) setOpId(id);
-      else {
-        setPendingId(null);
-        invalidate("compute-instances", projectId);
-      }
-    },
+    // attach/detach диска объявлены возвращающими Operation — ответ без неё
+    // означает, что подтвердить выполнение нечем (см. mutation-outcome.ts).
+    onSuccess: (resp) =>
+      applyMutationOutcome(resp, true, {
+        onOperation: (id) => setOpId(id),
+        onSync: () => {
+          setPendingId(null);
+          invalidate("compute-instances", projectId);
+        },
+        onViolation: (message) => {
+          setPendingId(null);
+          toast.error(`Диск: ${message}`);
+        },
+      }),
     onError: (e) => {
       toast.error(`Диск: ${errorText(e)}`);
       setPendingId(null);

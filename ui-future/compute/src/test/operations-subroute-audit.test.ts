@@ -56,9 +56,19 @@ const PROTO_DIR = join(resolve(UI_ROOT, ".."), "proto");
 
 const protoBases = protoOperationBases(PROTO_DIR);
 const registryFiles = findRegistryFiles(UI_ROOT);
-const specsByApp = new Map<string, SpecEntry[]>(
+// Файл реестра и реестр, ОБЪЯВЛЯЮЩИЙ спеки, — разные множества, и различать их
+// обязательно. После сведения форка (#406) реестр compute стал ПРОЕКЦИЕЙ
+// общего: файл на месте, а собственных объявлений в нём нет — его спеки суть
+// спеки `shared` и осматриваются под именем `shared`. Считать такой файл
+// «прочитанным пустым» значило бы требовать вернуть копии ради зелёного, то
+// есть краснеть на достижении цели.
+//
+// Оба числа печатаются ниже: найдено файлов и из них объявляющих. Одно число
+// скрыло бы ровно тот случай, ради которого перепись и заведена.
+const declaredByApp = new Map<string, SpecEntry[]>(
   registryFiles.map((f) => [appOf(UI_ROOT, f), readRegistrySpecs(f, UI_ROOT)]),
 );
+const specsByApp = new Map<string, SpecEntry[]>([...declaredByApp].filter(([, specs]) => specs.length > 0));
 const allSpecs = [...specsByApp.values()].flat();
 const wiring = tabWiringAcrossTree(UI_ROOT);
 // Прочитанные исходники — отдельно от найденной провязки: обход `tabWiring…`
@@ -75,11 +85,22 @@ describe("объём осмотренного — «ноль находок» о
   it("реестры найдены обходом и названы поимённо", () => {
     // Перечень ВЫВЕДЕН из дерева, но утверждён: шестое приложение со своим
     // реестром обязано быть замечено здесь, а не молча попасть под гейт.
-    expect([...specsByApp.keys()].sort()).toEqual(["compute", "nlb", "registry", "shared", "storage"]);
-    // И каждый из них ПРОЧИТАН: пустой разбор дал бы «ноль спек без подмаршрута»
-    // и выглядел бы как чистое дерево.
+    // Найденные файлы — отдельным утверждением от объявляющих реестров: если
+    // обход перестанет находить файлы вовсе, перечень объявляющих окажется
+    // пустым, и «ноль спек без подмаршрута» выглядело бы как чистое дерево.
+    expect([...declaredByApp.keys()].sort()).toEqual(["compute", "nlb", "registry", "shared", "storage"]);
+    // Приложения, ОБЪЯВЛЯЮЩИЕ спеки. `compute` отсюда ушёл не потому, что его
+    // перестали читать, а потому, что он перестал объявлять: его реестр —
+    // проекция общего (#406), и те же спеки осмотрены под именем `shared`.
+    expect([...specsByApp.keys()].sort()).toEqual(["nlb", "registry", "shared", "storage"]);
+    // И каждый объявляющий ПРОЧИТАН: пустой разбор дал бы «ноль спек без
+    // подмаршрута» и выглядел бы как чистое дерево.
     const empty = [...specsByApp].filter(([, specs]) => specs.length < 4).map(([app]) => app);
     expect(empty).toEqual([]);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[подмаршрут операций] файлов реестра найдено: ${registryFiles.length}; из них объявляющих спеки: ${specsByApp.size}; спек всего: ${allSpecs.length}`,
+    );
   });
 
   it("исходники, причастные к вкладке, осмотрены", () => {
@@ -199,7 +220,9 @@ describe("согласие каждого реестра со стволом", (
         .sort();
     }
     expect(without).toEqual({
-      compute: ["machine-types", "zones"],
+      // `compute` отсюда ушёл вместе со своими объявлениями: его спеки —
+      // спеки `shared`, и `machine-types`/`zones` названы в строке `shared`
+      // ниже. Перечень сузился по факту дерева, а не по решению этого теста.
       nlb: ["compute-regions", "zones"],
       // Вложенные ресурсы реестра адресуются внутри `registries/{registryId}/…`,
       // и подмаршрута операций ствол им не объявляет — как и каталогу geo.

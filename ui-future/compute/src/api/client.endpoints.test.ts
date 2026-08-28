@@ -29,6 +29,7 @@ import ts from "typescript";
 
 import { hasDependencyResolver } from "@shared/lib/dependency-graph";
 import { REGISTRY } from "@/lib/resource-registry";
+import { ALL_SCOPED_IDS } from "@/lib/scoped-resources";
 
 const SRC_DIR = fileURLToPath(new URL("..", import.meta.url));
 const CLIENT_TS = join(SRC_DIR, "api", "client.ts");
@@ -170,6 +171,28 @@ describe("шапка client.ts перечисляет ровно те эндпо
     for (const token of addressedIn(readFileSync(f, "utf8"), f)) addressed.add(token);
   }
 
+  // Адресация приезжает и СПЕКОЙ, а не только литералом. После сведения форка
+  // (#406) реестр приложения — проекция общего: `useResourceList(spec)` зовёт
+  // `spec.apiPath`, то есть ЗНАЧЕНИЕ, а строки с этим путём в `compute/src`
+  // больше нет. Не учесть её — ровно та ошибка, которую здесь уже разбирали для
+  // прослоек: адресация никуда не делась, и равенство множеств пришлось бы
+  // чинить ВЫЧЁРКИВАНИЕМ строк из шапки, то есть заставляя документ лгать.
+  //
+  // Берутся пути ровно тех спек, которые приложение монтирует и на которые
+  // ссылается (`scoped-resources.ts`), а не весь общий реестр: чужой раздел
+  // этим приложением не адресуется, и зачесть его значило бы разрешить шапке
+  // объявлять что угодно.
+  const fromSpecs: string[] = [];
+  for (const id of ALL_SCOPED_IDS) {
+    const apiPath = REGISTRY[id]?.apiPath;
+    if (!apiPath) continue;
+    const c = canon(apiPath);
+    if (c) {
+      fromSpecs.push(c);
+      addressed.add(c);
+    }
+  }
+
   const declared = new Set(declaredIn(header(clientSource)));
 
   it("прочитан непустой объём: файлы, объявленные и адресуемые токены", () => {
@@ -182,11 +205,14 @@ describe("шапка client.ts перечисляет ровно те эндпо
     // же цели. Порог отвязан от размера и держит только непустоту обхода.
     expect(files.length).toBeGreaterThan(50);
     expect(behindShims.length).toBeGreaterThan(0);
+    // Адресация через спеки обязана быть НЕПУСТОЙ: пустой перечень означал бы,
+    // что проекция реестра перестала резолвиться, и её вклад исчез бы молча.
+    expect(fromSpecs.length).toBeGreaterThan(0);
     expect(declared.size).toBeGreaterThan(5);
     expect(addressed.size).toBeGreaterThan(5);
     // eslint-disable-next-line no-console
     console.log(
-      `[endpoints] файлов прочитано: ${files.length}; за шимами: ${behindShims.length}; объявлено: ${declared.size}; адресуется: ${addressed.size}`,
+      `[endpoints] файлов прочитано: ${files.length}; за шимами: ${behindShims.length}; спеками: ${fromSpecs.length}; объявлено: ${declared.size}; адресуется: ${addressed.size}`,
     );
   });
 

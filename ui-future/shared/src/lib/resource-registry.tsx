@@ -3487,6 +3487,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         ),
       },
       { header: "GPU", path: "effective_resources.gpus", format: "text" },
+      { header: "GPU-модель", path: "effective_resources.gpu_type", format: "code" },
       { header: "Зоны", path: "available_zones", format: "list" },
       { header: "Статус", path: "status", format: "status" },
     ],
