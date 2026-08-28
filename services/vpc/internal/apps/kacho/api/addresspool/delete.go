@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -56,7 +57,7 @@ func (u *DeleteAddressPoolUseCase) Execute(ctx context.Context, id string) error
 	if err := w.AddressPools().Delete(ctx, id); err != nil {
 		return err
 	}
-	if err := w.Outbox().Emit(ctx, "AddressPool", id, "DELETED", map[string]any{"id": id}); err != nil {
+	if err := w.Outbox().Emit(ctx, "AddressPool", id, helpers.NoProjectAnchor, "DELETED", map[string]any{"id": id}); err != nil {
 		return fmt.Errorf("%w: outbox emit: %v", serviceerr.ErrInternal, err)
 	}
 	return w.Commit()

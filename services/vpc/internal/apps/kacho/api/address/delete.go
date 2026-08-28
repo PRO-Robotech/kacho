@@ -124,7 +124,7 @@ func (u *DeleteAddressUseCase) Execute(ctx context.Context, id string) (*operati
 				return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: return ip to freelist: %v", repo.ErrInternal, rerr))
 			}
 		}
-		if err := w.Outbox().Emit(ctx, "Address", id, "DELETED", map[string]any{"id": id}); err != nil {
+		if err := w.Outbox().Emit(ctx, "Address", id, deleted.ProjectID, "DELETED", map[string]any{"id": id}); err != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 		}
 		// Снимаем owner-tuple vpc_address→project в той же

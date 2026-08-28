@@ -141,7 +141,7 @@ func (u *UpdateRuleUseCase) Execute(ctx context.Context, in UpdateRuleInput) (*o
 		if uerr != nil {
 			return nil, serviceerr.MapRepoErr(uerr)
 		}
-		if oerr := w.Outbox().Emit(ctx, "SecurityGroup", updated.ID, "UPDATED", helpers.DomainToMap(updated)); oerr != nil {
+		if oerr := w.Outbox().Emit(ctx, "SecurityGroup", updated.ID, updated.ProjectID, "UPDATED", helpers.DomainToMap(updated)); oerr != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 		}
 		if cerr := w.Commit(); cerr != nil {

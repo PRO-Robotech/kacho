@@ -62,7 +62,7 @@ func (a *NetworkAdapter) Update(ctx context.Context, n *domain.Network) (*kacho.
 	if err != nil {
 		return nil, err
 	}
-	if err := w.Outbox().Emit(ctx, "Network", rec.ID, "UPDATED", helpers.DomainToMap(rec)); err != nil {
+	if err := w.Outbox().Emit(ctx, "Network", rec.ID, rec.ProjectID, "UPDATED", helpers.DomainToMap(rec)); err != nil {
 		return nil, fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err)
 	}
 	if err := w.Commit(); err != nil {
@@ -85,7 +85,7 @@ func (a *NetworkAdapter) SetDefaultSGID(ctx context.Context, networkID, sgID str
 	if err != nil {
 		return nil, err
 	}
-	if err := w.Outbox().Emit(ctx, "Network", rec.ID, "UPDATED", helpers.DomainToMap(rec)); err != nil {
+	if err := w.Outbox().Emit(ctx, "Network", rec.ID, rec.ProjectID, "UPDATED", helpers.DomainToMap(rec)); err != nil {
 		return nil, fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err)
 	}
 	if err := w.Commit(); err != nil {
@@ -319,7 +319,7 @@ func (a *SecurityGroupAdapter) Insert(ctx context.Context, sg *domain.SecurityGr
 	if err != nil {
 		return nil, err
 	}
-	if err := w.Outbox().Emit(ctx, "SecurityGroup", rec.ID, "CREATED", helpers.DomainToMap(rec)); err != nil {
+	if err := w.Outbox().Emit(ctx, "SecurityGroup", rec.ID, rec.ProjectID, "CREATED", helpers.DomainToMap(rec)); err != nil {
 		return nil, fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err)
 	}
 	if err := w.Commit(); err != nil {
@@ -336,10 +336,19 @@ func (a *SecurityGroupAdapter) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	defer w.Abort()
+	// Проект читается ДО удаления и в той же транзакции: он нужен якорем события
+	// снятия, а после DML взять его будет неоткуда — нагрузка снятия несёт один
+	// идентификатор. Промах чтения не отменяет удаления: событие уедет с пустым
+	// якорем и не покажется подписчику с осью проекта, что честнее, чем якорь,
+	// выдуманный из родителя.
+	var projectID string
+	if rec, gerr := w.SecurityGroups().Get(ctx, id); gerr == nil {
+		projectID = rec.ProjectID
+	}
 	if err := w.SecurityGroups().Delete(ctx, id); err != nil {
 		return err
 	}
-	if err := w.Outbox().Emit(ctx, "SecurityGroup", id, "DELETED", map[string]any{"id": id}); err != nil {
+	if err := w.Outbox().Emit(ctx, "SecurityGroup", id, projectID, "DELETED", map[string]any{"id": id}); err != nil {
 		return fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err)
 	}
 	return w.Commit()

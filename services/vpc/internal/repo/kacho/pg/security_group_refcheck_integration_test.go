@@ -46,7 +46,7 @@ func makeSGWithOptionalNIC(
 	require.NoError(t, err)
 	defer w.Abort()
 	net := insertNetworkInTx(t, ctx, w, projectID, "net-sgref-"+suffix)
-	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, "CREATED", map[string]any{"id": net.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, net.ProjectID, "CREATED", map[string]any{"id": net.ID}))
 	sg := &domain.SecurityGroup{
 		ID:          ids.NewID(ids.PrefixSecurityGroup),
 		ProjectID:   projectID,
@@ -57,7 +57,7 @@ func makeSGWithOptionalNIC(
 	}
 	createdSG, err := w.SecurityGroups().Insert(ctx, sg)
 	require.NoError(t, err)
-	require.NoError(t, w.Outbox().Emit(ctx, "SecurityGroup", createdSG.ID, "CREATED", map[string]any{"id": createdSG.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "SecurityGroup", createdSG.ID, createdSG.ProjectID, "CREATED", map[string]any{"id": createdSG.ID}))
 	require.NoError(t, w.Commit())
 	sgID = createdSG.ID
 

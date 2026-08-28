@@ -121,7 +121,7 @@ func (u *UpdateRulesUseCase) Execute(ctx context.Context, in UpdateRulesInput) (
 			cgFieldFor); verr != nil {
 			return nil, verr
 		}
-		if oerr := w.Outbox().Emit(ctx, "SecurityGroup", updated.ID, "UPDATED", helpers.DomainToMap(updated)); oerr != nil {
+		if oerr := w.Outbox().Emit(ctx, "SecurityGroup", updated.ID, updated.ProjectID, "UPDATED", helpers.DomainToMap(updated)); oerr != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 		}
 		if cerr := w.Commit(); cerr != nil {

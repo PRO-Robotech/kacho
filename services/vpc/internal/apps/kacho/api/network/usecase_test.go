@@ -288,7 +288,7 @@ func TestCreateDefaultSGUseCase_Execute_Composes(t *testing.T) {
 	}
 	created, err := w.Networks().Insert(ctx, &net)
 	require.NoError(t, err)
-	require.NoError(t, w.Outbox().Emit(ctx, "Network", created.ID, "CREATED", map[string]any{}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Network", created.ID, created.ProjectID, "CREATED", map[string]any{}))
 
 	// Сам use-case под тестом.
 	uc := NewCreateDefaultSGUseCase()

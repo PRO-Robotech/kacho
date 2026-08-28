@@ -133,14 +133,16 @@ func (u *DeleteSubnetUseCase) doDelete(ctx context.Context, id string) (*anypb.A
 
 	// Читаем projectID до удаления — он нужен как subject в unregister-tuple.
 	var unreg []fgaregister.Tuple
+	var projectID string
 	if cur, gerr := w.Subnets().Get(ctx, id); gerr == nil {
+		projectID = string(cur.ProjectID)
 		unreg = append(unreg, fgaregister.ProjectHierarchy(string(cur.ProjectID), "vpc_subnet", id))
 	}
 
 	if err := w.Subnets().Delete(ctx, id); err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "Subnet", id, "DELETED", map[string]any{"id": id}); err != nil {
+	if err := w.Outbox().Emit(ctx, "Subnet", id, projectID, "DELETED", map[string]any{"id": id}); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	if len(unreg) > 0 {

@@ -89,7 +89,8 @@ func releaseGatewayAddress(ctx context.Context, w Writer, addressID string) erro
 			return serviceerr.MapRepoErr(fmt.Errorf("%w: return ip to freelist: %v", repo.ErrInternal, rerr))
 		}
 	}
-	if oerr := w.Outbox().Emit(ctx, "Address", addressID, "DELETED", map[string]any{"id": addressID}); oerr != nil {
+	if oerr := w.Outbox().Emit(ctx, "Address", addressID, deleted.ProjectID, "DELETED",
+		map[string]any{"id": addressID}); oerr != nil {
 		return serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 	}
 	return nil
@@ -107,10 +108,10 @@ func (u *DeleteGatewayUseCase) runWorker(ctx context.Context, op operations.Oper
 		// Оттуда же берём внешний адрес: после DELETE его будет негде прочитать,
 		// а аренду надо вернуть в пул.
 		var unreg []fgaregister.Tuple
-		var externalAddressID, addressProject string
+		var externalAddressID, gatewayProject string
 		if cur, gerr := w.Gateways().Get(ctx, id); gerr == nil {
 			unreg = append(unreg, fgaregister.ProjectHierarchy(cur.ProjectID, "vpc_gateway", id))
-			externalAddressID, addressProject = cur.ExternalAddressID, cur.ProjectID
+			externalAddressID, gatewayProject = cur.ExternalAddressID, cur.ProjectID
 		}
 
 		if derr := w.Gateways().Delete(ctx, id); derr != nil {
@@ -127,9 +128,10 @@ func (u *DeleteGatewayUseCase) runWorker(ctx context.Context, op operations.Oper
 			if rerr := releaseGatewayAddress(ctx, w, externalAddressID); rerr != nil {
 				return nil, rerr
 			}
-			unreg = append(unreg, fgaregister.ProjectHierarchy(addressProject, "vpc_address", externalAddressID))
+			unreg = append(unreg, fgaregister.ProjectHierarchy(gatewayProject, "vpc_address", externalAddressID))
 		}
-		if oerr := w.Outbox().Emit(ctx, "Gateway", id, "DELETED", map[string]any{"id": id}); oerr != nil {
+		if oerr := w.Outbox().Emit(ctx, "Gateway", id, gatewayProject, "DELETED",
+			map[string]any{"id": id}); oerr != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 		}
 		if len(unreg) > 0 {

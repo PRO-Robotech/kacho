@@ -87,7 +87,7 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 		if aerr != nil {
 			return nil, serviceerr.MapRepoErr(aerr)
 		}
-		if err := w.Outbox().Emit(ctx, "CidrGroup", updated.ID, "UPDATED", helpers.DomainToMap(updated)); err != nil {
+		if err := w.Outbox().Emit(ctx, "CidrGroup", updated.ID, updated.ProjectID, "UPDATED", helpers.DomainToMap(updated)); err != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 		}
 		if err := w.Commit(); err != nil {

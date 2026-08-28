@@ -41,8 +41,16 @@ import (
 type OutboxEvent struct {
 	Resource string
 	ID       string
-	Action   string
-	Payload  map[string]any
+	// ProjectID — якорь проекта, тот же, что боевой эмиттер кладёт КОЛОНКОЙ.
+	//
+	// Он записывается здесь, а не проглатывается, потому что якорь авторизующий:
+	// по нему сервер потока решает, кому показать событие. Подставной, принявший
+	// якорь и его потерявший, сделал бы невидимым ровно тот дефект, ради которого
+	// якорь заведён, — эмиссию снятия без проекта, — и проба осталась бы зелёной
+	// на сломанном.
+	ProjectID string
+	Action    string
+	Payload   map[string]any
 }
 
 // Repository — in-memory mock корневого CQRS-контракта. Потокобезопасный
@@ -789,7 +797,7 @@ type outboxEmitter struct {
 	w *writerImpl
 }
 
-func (e *outboxEmitter) Emit(_ context.Context, resource, id, action string, payload map[string]any) error {
+func (e *outboxEmitter) Emit(_ context.Context, resource, id, projectID, action string, payload map[string]any) error {
 	// Тест-хук: отказ ПОСЛЕ вставки и привязки, но ДО коммита — единственная
 	// точка, из которой проба может потребовать отката всей транзакции.
 	e.w.parent.mu.Lock()
@@ -804,7 +812,7 @@ func (e *outboxEmitter) Emit(_ context.Context, resource, id, action string, pay
 		cp[k] = v
 	}
 	e.w.localOutbox = append(e.w.localOutbox, OutboxEvent{
-		Resource: resource, ID: id, Action: action, Payload: cp,
+		Resource: resource, ID: id, ProjectID: projectID, Action: action, Payload: cp,
 	})
 	return nil
 }

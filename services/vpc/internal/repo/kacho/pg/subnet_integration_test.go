@@ -71,7 +71,7 @@ func TestCQRS_Subnet_WriterCommit_ReaderSees(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, sub.ID, created.ID)
 	assert.Equal(t, []string{"10.0.0.0/24"}, created.V4CidrBlocks)
-	require.NoError(t, w2.Outbox().Emit(ctx, "Subnet", created.ID, "CREATED", map[string]any{"id": created.ID}))
+	require.NoError(t, w2.Outbox().Emit(ctx, "Subnet", created.ID, created.ProjectID, "CREATED", map[string]any{"id": created.ID}))
 	require.NoError(t, w2.Commit())
 
 	// Параллельный Reader видит committed запись.
@@ -114,7 +114,7 @@ func TestCQRS_Subnet_OutboxAtomicityWithDML(t *testing.T) {
 	sub := newSubnet("project-atomic", "sub-abort", net.ID, "zone-a", []string{"10.10.0.0/24"})
 	_, err = w.Subnets().Insert(ctx, sub)
 	require.NoError(t, err)
-	require.NoError(t, w.Outbox().Emit(ctx, "Subnet", sub.ID, "CREATED", map[string]any{"id": sub.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Subnet", sub.ID, sub.ProjectID, "CREATED", map[string]any{"id": sub.ID}))
 	w.Abort()
 
 	// Проверки.

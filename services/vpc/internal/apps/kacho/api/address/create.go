@@ -637,7 +637,7 @@ func (u *CreateAddressUseCase) doCreate(ctx context.Context, addrID string, in C
 		}
 		created.Used = true
 	}
-	if err := w.Outbox().Emit(ctx, "Address", created.ID, "CREATED", helpers.DomainToMap(created)); err != nil {
+	if err := w.Outbox().Emit(ctx, "Address", created.ID, created.ProjectID, "CREATED", helpers.DomainToMap(created)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	// Публикуем INTENT на owner-tuple vpc_address→project в той же writer-TX
