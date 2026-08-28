@@ -130,7 +130,7 @@ func describe(
 		Mode:    mode,
 		Logger:  logger,
 
-		Forwarders: cfg.TrustedForwarders(),
+		Forwarders: servicecontract.Value(cfg.TrustedForwarders()),
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS",
 			TrustAny: "KACHO_COMPUTE_AUTHZ_TRUST_ANY_FORWARDER",
@@ -182,7 +182,7 @@ func describe(
 			"серверных стримов сервис не служит: подписка на журнал изменений снята вместе " +
 				"со своей поверхностью, других стримов у compute нет"),
 
-		DBSSLMode:     coredb.SSLModeFromDSN(cfg.DSN()),
+		DBSSLMode:     servicecontract.Value(coredb.SSLModeFromDSN(cfg.DSN())),
 		PublicAddr:    ":" + cfg.GrpcPort,
 		InternalAddr:  ":" + cfg.InternalGrpcPort,
 		PublicCreds:   publicCreds,

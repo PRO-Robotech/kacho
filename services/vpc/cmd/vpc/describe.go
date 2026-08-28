@@ -185,7 +185,7 @@ func describe(
 		Mode:    mode,
 		Logger:  logger,
 
-		Forwarders: cfg.TrustedForwarders(),
+		Forwarders: servicecontract.Value(cfg.TrustedForwarders()),
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "authz.trusted-forwarder-sans (env KACHO_VPC_AUTHZ__TRUSTED_FORWARDER_SANS)",
 			TrustAny: "authz.trust-any-forwarder (env KACHO_VPC_AUTHZ__TRUST_ANY_FORWARDER)",
@@ -257,7 +257,7 @@ func describe(
 		// Режим шифрования до своей БД читается из ТОЙ строки, что уходит в пул
 		// (`cfg.DSN()`): sslmode приезжает и из `repository.postgres.ssl-mode`, и
 		// из самого сырого URL. Сырое поле показало бы намерение, а не факт.
-		DBSSLMode:     coredb.SSLModeFromDSN(cfg.DSN()),
+		DBSSLMode:     servicecontract.Value(coredb.SSLModeFromDSN(cfg.DSN())),
 		PublicAddr:    cfg.APIServer.ListenAddress(),
 		InternalAddr:  cfg.APIServer.InternalListenAddress(),
 		PublicCreds:   publicCreds,
