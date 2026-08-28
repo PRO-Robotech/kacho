@@ -253,6 +253,28 @@ func (r *LimitRepo) StatedFor(ctx context.Context, scopeID string) ([]domain.Lim
 // Withdrawn rows travel here and nowhere else: a puller that only ever learns
 // about writes can never drop a projection row, so a withdrawn project override
 // would keep overriding forever.
+//
+// # Почему здесь НЕТ верхней границы, хотя у соседнего журнала она есть
+//
+// Обычно позиция, выданная счётчиком на вставке, ненадёжна: строка становится
+// видимой на фиксации, порядок номеров и порядок фиксаций независимы, и курсор,
+// ушедший за невыданное, к той строке не вернётся никогда. Так устроен журнал
+// изменений субъекта, и он ограничен сверху границей устоявшегося
+// (`subject_change_repo.go`, kacho#1374).
+//
+// Здесь класса НЕТ, и это ЗАМЕРЕНО, а не вычитано (kacho#1373). Ревизию штампует
+// триггер `limits_stamp_revision` (миграция 0092), берущий
+// `pg_advisory_xact_lock` ПЕРЕД `nextval` и держащий его до коммита. Значит
+// невыданными в каждый момент остаются номера ОДНОГО писателя, и все они старше
+// всякого видимого: порядок ревизий есть порядок коммитов by construction, а
+// курсор, продвинутый на ВИДИМУЮ ревизию, не теряет ничего.
+//
+// СВОЙСТВО ЧУЖОЕ И ДАЛЁКОЕ — его держит проба, а не эта строка.
+// `TestLimitRevisionOrderIsCommitOrder` требует, чтобы второй писатель ждал
+// первого, и краснеет, как только сериализацию выдачи снимут. Тогда чтению
+// понадобится верхняя граница по устоявшемуся ([subscription.Watermark]) —
+// ровно та, что стоит у соседа. Разбор гарантии и её цены:
+// `docs/architecture/journal-position-settled-watermark.md`.
 func (r *LimitRepo) ChangedSince(ctx context.Context, after int64, limit int) ([]domain.Limit, int64, error) {
 	const q = `SELECT ` + limitCols + ` FROM kacho_iam.limits
 		WHERE revision > $1
