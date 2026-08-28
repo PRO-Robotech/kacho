@@ -294,11 +294,15 @@ func TestUnnameableSubjectIsRefusedBeforeItIsRegistered(t *testing.T) {
 		principalID   string
 		wantStatus    int
 	}{
-		{name: "тип не назван", principalType: "", principalID: "usr-x", wantStatus: 401},
-		{name: "тип вне словаря модели", principalType: "workload", principalID: "wid-x", wantStatus: 401},
-		{name: "тип написан псевдонимом", principalType: "sva", principalID: "sva-x", wantStatus: 401},
-		{name: "идентификатор двигает границу типа", principalType: "user", principalID: "a:b", wantStatus: 401},
-		{name: "идентификатор ссылается на набор", principalType: "user", principalID: "a#member", wantStatus: 401},
+		// Безымянный — `401`. Названный, но не тенантный, — `403`: он
+		// аутентифицирован, и `401` посылал бы его аутентифицироваться заново,
+		// то есть отказ не восстанавливал бы следующий шаг.
+		{name: "вызывающий не назван вовсе", principalType: "user", principalID: "", wantStatus: 401},
+		{name: "тип не назван", principalType: "", principalID: "usr-x", wantStatus: 403},
+		{name: "тип вне словаря модели", principalType: "workload", principalID: "wid-x", wantStatus: 403},
+		{name: "тип написан псевдонимом", principalType: "sva", principalID: "sva-x", wantStatus: 403},
+		{name: "идентификатор двигает границу типа", principalType: "user", principalID: "a:b", wantStatus: 403},
+		{name: "идентификатор ссылается на набор", principalType: "user", principalID: "a#member", wantStatus: 403},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			held := &ownerStub{

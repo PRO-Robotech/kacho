@@ -13,7 +13,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/watcher"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 )
 
 // SubjectChangePoller wraps the generated gRPC client to satisfy watcher.Poller.
@@ -50,7 +50,7 @@ func (p *SubjectChangePoller) PollSubjectChanges(
 	changes := make([]watcher.SubjectChange, 0, len(resp.GetChanges()))
 	for _, c := range resp.GetChanges() {
 		// Субъект собирается ТЕМ ЖЕ кодеком, которым его называет всякий, кто
-		// спрашивает право (`listnarrow.Subject`), — а не конкатенацией здесь.
+		// спрашивает право (`authz.TenantSubject`), — а не конкатенацией здесь.
 		// Ключ, под которым учтён открытый поток, обязан совпасть с именем
 		// отзыва ПО ПОСТРОЕНИЮ: две похожие сборки строки разошлись бы молча, и
 		// разошлись бы именно там, где расхождение не видно — обе непусты, обе
@@ -60,7 +60,7 @@ func (p *SubjectChangePoller) PollSubjectChanges(
 		// стали его проставлять), едет БЕЗ имени: она двигает курсор и никого не
 		// закрывает. Выводить тип из написания идентификатора запрещено — этот
 		// приём уже давал совпадение с тем, чего продукт не производит.
-		subject, _ := listnarrow.Subject(c.GetSubjectType(), c.GetSubjectId())
+		subject, _ := authz.TenantSubject(c.GetSubjectType(), c.GetSubjectId())
 		changes = append(changes, watcher.SubjectChange{ID: c.GetId(), Subject: subject})
 	}
 	return changes, resp.GetHeadId(), nil

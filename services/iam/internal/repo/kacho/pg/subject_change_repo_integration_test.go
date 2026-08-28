@@ -17,6 +17,8 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
+
 	"github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
 	kachopg "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/pg"
 )
@@ -113,7 +115,10 @@ func TestSubjectChangeRepo_PollCarriesTheSubjectType(t *testing.T) {
 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	// Закрытие с пределом: отложенное ждало бы соединение, которое проба,
+	// упавшая внутри открытой транзакции, не вернёт никогда, — и унесло бы с
+	// собой вердикт всего пакета.
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	repo := kachopg.NewSubjectChangeRepo(pool)
 	abRepo := kachopg.New(pool, nil)

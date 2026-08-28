@@ -20,7 +20,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
-	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/safeconv"
 )
 
@@ -91,7 +91,16 @@ type Stats struct {
 	// есть от собственной ошибки развёртывания.
 	RefusedNoOwner uint64
 	RefusedAuthN   uint64
-	RefusedSlot    uint64
+	// RefusedSubjectKind — вызывающий НАЗВАН, но названным субъектом модели прав
+	// не является (служебный принципал, тип вне закрытого словаря, псевдоним,
+	// идентификатор с разделителями модели).
+	//
+	// Считается отдельно от [Stats.RefusedAuthN] намеренно: смешай их — и
+	// «пришли без удостоверения» стало бы неотличимо от «пришли с удостоверением
+	// вида, которому подписка не полагается». Первое лечит вызывающий, второе —
+	// решение о том, кому подписка положена.
+	RefusedSubjectKind uint64
+	RefusedSlot        uint64
 	// RefusedSubjectQuota — субъект исчерпал СВОЙ предел, а не предел реплики.
 	RefusedSubjectQuota uint64
 	RefusedOwner        uint64
@@ -111,6 +120,7 @@ type Handler struct {
 	refusedInput        atomic.Uint64
 	refusedNoOwner      atomic.Uint64
 	refusedAuthN        atomic.Uint64
+	refusedSubjectKind  atomic.Uint64
 	refusedSlot         atomic.Uint64
 	refusedSubjectQuota atomic.Uint64
 	refusedOwner        atomic.Uint64
@@ -162,6 +172,7 @@ func (h *Handler) Stats() Stats {
 		RefusedInput:        h.refusedInput.Load(),
 		RefusedNoOwner:      h.refusedNoOwner.Load(),
 		RefusedAuthN:        h.refusedAuthN.Load(),
+		RefusedSubjectKind:  h.refusedSubjectKind.Load(),
 		RefusedSlot:         h.refusedSlot.Load(),
 		RefusedSubjectQuota: h.refusedSubjectQuota.Load(),
 		RefusedOwner:        h.refusedOwner.Load(),
@@ -178,7 +189,7 @@ func (h *Handler) Stats() Stats {
 // толчок доходит до одной. Ручка отдаёт им ОДНУ дверь и обходит один ключ
 // реестра, а не ищет по горутинам.
 //
-// Ключ — субъект модели прав ([listnarrow.Subject]), тот же, которым отзыв
+// Ключ — субъект модели прав ([authz.TenantSubject]), тот же, которым отзыв
 // называет субъекта. Совпадение обеспечено кодеком, а не написанием.
 func (h *Handler) CloseSubject(subject string) int {
 	return h.registry.closeSubject(subject)
@@ -248,16 +259,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	subject, callCtx, ok := h.callerContext(r)
-	if !ok {
-		h.refusedAuthN.Add(1)
-		// Личность здесь уже проверена полосой прав (запись каталога объявлена
-		// `scope_filtered`, а это ТРЕБУЕТ названного принципала). Проверка
-		// повторена потому, что страж у одной двери переживает появление
-		// второго вызывающего: без личности владелец сузил бы поток по правам
-		// КРАЯ, и арендатор увидел бы чужое.
-		writeRefusal(w, refusal{status: http.StatusUnauthorized, code: 16,
-			msg: "subscription requires an authenticated caller"})
+	subject, callCtx, named := h.callerContext(r)
+	if !named {
+		// ДВА разных отказа, и различие обязано быть видно вызывающему.
+		//
+		// Безымянный получает `401`: личность здесь уже проверена полосой прав
+		// (запись каталога объявлена `scope_filtered`, а это ТРЕБУЕТ названного
+		// принципала), и проверка повторена потому, что страж у одной двери
+		// переживает появление второго вызывающего — без личности владелец сузил
+		// бы поток по правам КРАЯ, и арендатор увидел бы чужое.
+		//
+		// Названный, но не тенантный, получает `403`: он аутентифицирован, и
+		// `401` посылал бы его аутентифицироваться заново — то есть отказ не
+		// восстанавливал бы следующий шаг. Тот же код отдаёт на этот вход
+		// владелец потока, и расходиться с ним крайю незачем.
+		if r.Header.Get(principalmeta.HeaderPrincipalID) == "" &&
+			r.Header.Get(principalmeta.HeaderGRPCMetaPrincipalID) == "" {
+			h.refusedAuthN.Add(1)
+			writeRefusal(w, refusal{status: http.StatusUnauthorized, code: 16,
+				msg: "subscription requires an authenticated caller"})
+			return
+		}
+		h.refusedSubjectKind.Add(1)
+		writeRefusal(w, refusal{status: http.StatusForbidden, code: 7,
+			msg: "subscription is available to user and service-account principals only"})
 		return
 	}
 
@@ -452,7 +477,7 @@ func (h *Handler) pump(
 // # Субъектом признаётся ТОЛЬКО тот, кого способен назвать отзыв
 //
 // Ключ учёта потока — субъект модели прав, и строит его тот же кодек, что
-// спрашивает право у соседа ([listnarrow.Subject]). Это не аккуратность: поток,
+// спрашивает право у соседа ([authz.TenantSubject]). Это не аккуратность: поток,
 // учтённый под строкой, которой в словаре модели не существует
 // (`«:usr-x»`, `«workload:wid-x»`, `«sva:sva-x»`), закрыть по отзыву НЕЛЬЗЯ НИ
 // ПРИ КАКИХ УСЛОВИЯХ — iam говорит о субъектах, а не о том, что край собрал из
@@ -470,7 +495,7 @@ func (h *Handler) callerContext(r *http.Request) (subject string, ctx context.Co
 	if len(ids) == 0 || len(types) == 0 {
 		return "", nil, false
 	}
-	subject, named := listnarrow.Subject(types[0], ids[0])
+	subject, named := authz.TenantSubject(types[0], ids[0])
 	if !named {
 		return "", nil, false
 	}
