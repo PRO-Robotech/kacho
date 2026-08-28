@@ -33,23 +33,16 @@
 package main
 
 import (
-	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"net"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
-	apigatewayv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/apigateway/v1"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
@@ -63,21 +56,17 @@ import (
 // вовсе, и любой случай ниже краснел бы по причине, не имеющей отношения к его
 // заголовку.
 func TestAdmissionLimitsFallToThePlatformFloorWhenThePostureIsSilent(t *testing.T) {
-	var cfg config.Config // посадка молчит по обеим осям
+	var cfg config.Config // посадка молчит
 
 	require.True(t, cfg.AdmissionPublic.IsSilent())
-	require.True(t, cfg.AdmissionInternal.IsSilent())
 
-	public, internal, err := admissionLimits(cfg)
+	public, err := admissionLimits(cfg)
 	require.NoError(t, err)
 	require.Equal(t, grpcsrv.PlatformPublicAdmission(), public,
-		"внешний слушатель обязан взять пол платформы: арендатору обещан ОДИН пол на "+
+		"слушатель обязан взять пол платформы: арендатору обещан ОДИН пол на "+
 			"весь продукт, и он не должен зависеть от того, во что арендатор упёрся первым")
-	require.Equal(t, grpcsrv.PlatformInternalAdmission(), internal,
-		"внутренний слушатель обязан взять СВОЙ пол — заведомо более щедрый: запрос "+
-			"модуля несёт личности разных арендаторов")
-	require.True(t, public.IsDeclared() && internal.IsDeclared(),
-		"обе величины обязаны быть ОБЪЯВЛЕНЫ: необъявленный набор конструктор "+
+	require.True(t, public.IsDeclared(),
+		"величины обязаны быть ОБЪЯВЛЕНЫ: необъявленный набор конструктор "+
 			"ограничителя отвергает, и слушатель поднялся бы без потолка")
 }
 
@@ -85,31 +74,28 @@ func TestAdmissionLimitsFallToThePlatformFloorWhenThePostureIsSilent(t *testing.
 // ОТКАЗ, а не «часть защиты».
 //
 // Самый опасный вход: он выглядит настройкой и не ограничивает по незаполненной
-// оси, а оператор считает предел выставленным. Проверяются ОБЕ оси — иначе отказ
-// на одной был бы неотличим от отказа вообще на любом непустом наборе.
+// оси, а оператор считает предел выставленным.
+//
+// Слушатель ОДИН: внутренний снят вместе со своей единственной службой (задача
+// #1024), и его ветка ушла отсюда вместе с ним. Отрицательная величина
+// проверяется рядом — без неё отказ на частичном наборе был бы неотличим от
+// отказа на любом непустом.
 func TestAdmissionLimitsRefuseAPartiallyDeclaredPosture(t *testing.T) {
 	t.Run("внешний", func(t *testing.T) {
 		var cfg config.Config
 		cfg.AdmissionPublic.ReadPerSec = 50 // темп назван, одновременность забыта
-		_, _, err := admissionLimits(cfg)
+		_, err := admissionLimits(cfg)
 		require.Error(t, err, "частичный набор обязан ронять старт")
 		require.Contains(t, err.Error(), "KACHO_API_GATEWAY_ADMISSION_PUBLIC",
 			"отказ обязан назвать ГРУППУ ручек: искать её оператор пойдёт в файл, где, "+
 				"по его мнению, всё написано верно")
-	})
-	t.Run("внутренний", func(t *testing.T) {
-		var cfg config.Config
-		cfg.AdmissionInternal.InFlight = 8 // одновременность названа, темп забыт
-		_, _, err := admissionLimits(cfg)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "KACHO_API_GATEWAY_ADMISSION_INTERNAL")
 	})
 	t.Run("отрицательная величина отвергается в любом режиме", func(t *testing.T) {
 		var cfg config.Config
 		cfg.AdmissionPublic = grpcsrv.AdmissionKnobs{
 			ReadPerSec: -1, MutationPerSec: 20, BurstFactor: 5, InFlight: 16,
 		}
-		_, _, err := admissionLimits(cfg)
+		_, err := admissionLimits(cfg)
 		require.Error(t, err, "негодное объявление негодно вне зависимости от посадки")
 	})
 }
@@ -271,101 +257,15 @@ func TestExternalAdmissionSitsAfterIdentityAndBeforeAuthorization(t *testing.T) 
 
 // --- ИСХОД НА НАСТОЯЩЕМ ВНУТРЕННЕМ СЛУШАТЕЛЕ --------------------------------
 
-// TestInternalListenerRefusesOverTheDeclaredRate — внутренний слушатель края
-// исполняет потолок, а не объявляет его.
+// ПРОБ ВНУТРЕННЕГО СЛУШАТЕЛЯ ЗДЕСЬ НЕТ — снят сам слушатель (задача #1024).
 //
-// «Внутренний — значит доверенный» здесь запрещено ровно так же, как в вопросе о
-// правах: сюда ходит толкатель iam, и модуль, ушедший в петлю повторов, обнулял
-// бы кэш решений о доступе непрерывно — каждый следующий запрос арендатора снова
-// шёл бы в iam за решением, то есть отказ одного соседа превращался бы в
-// нагрузку на всех.
-func TestInternalListenerRefusesOverTheDeclaredRate(t *testing.T) {
-	inv := &fakeInvalidator{}
-	externalSrv := grpc.NewServer()
-	t.Cleanup(externalSrv.Stop)
-
-	// Крошечный бюджет: предмет — исход на проводе, а не числа посадки. Всплеск
-	// мутаций = 1 × 2 = 2, и InvalidateSubject мутация по конвенции имён.
-	tiny := grpcsrv.AdmissionLimits{ReadPerSec: 1, MutationPerSec: 1, BurstFactor: 2, InFlight: 4}
-	srv, lis, adm, err := startInternalGRPCListener(":0", inv,
-		externalSrv, internalListenerSecurity{}, tiny, probeLatency(t), nil)
-	require.NoError(t, err)
-	require.NotNil(t, adm, "помощник обязан вернуть ограничитель: без него счёт "+
-		"допущенных и отвергнутых печатать нечем, и мёртвый потолок был бы невидим")
-	require.Equal(t, "internal", adm.Listener())
-	require.Equal(t, tiny, adm.Limits())
-
-	ready := make(chan struct{})
-	go func() { close(ready); _ = srv.Serve(lis) }()
-	<-ready
-	t.Cleanup(func() {
-		srv.GracefulStop()
-		_ = lis.Close()
-	})
-
-	conn, err := grpc.NewClient(lis.Addr().String(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close() })
-	client := apigatewayv1.NewInternalAuthzCacheServiceClient(conn)
-
-	call := func(subject string) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		_, err := client.InvalidateSubject(ctx,
-			&apigatewayv1.InvalidateSubjectRequest{Subject: subject})
-		return err
-	}
-
-	// Первые два укладываются во всплеск и обязаны ДОЙТИ до обработчика: без
-	// этого положительного контроля отказ ниже неотличим от «потолок отвергает
-	// всё подряд».
-	for i := 0; i < 2; i++ {
-		require.NoError(t, call("usr-drainer"),
-			"вызов %d обязан дойти до обработчика", i+1)
-	}
-
-	err = call("usr-drainer")
-	require.Equal(t, codes.ResourceExhausted, status.Code(err),
-		"третий вызов сверх всплеска обязан быть отвергнут потолком")
-	require.Equal(t, grpcsrv.MsgMutationRateExceeded, status.Convert(err).Message(),
-		"текст отказа — часть контракта и обязан назвать исчерпанную ось")
-
-	st := adm.Stats()
-	require.EqualValues(t, 2, st.Admitted)
-	require.EqualValues(t, 1, st.RejectedRate)
-	require.EqualValues(t, 2, inv.calls,
-		"до обработчика обязаны дойти ровно допущенные: отвергнутый потолком вызов "+
-			"не должен трогать кэш решений о доступе")
-}
-
-// TestInternalListenerRefusesToStartOnUnusableLimits — негодные величины роняют
-// СБОРКУ слушателя, а не поднимают его без потолка.
+// Их было две: потолок темпа исполняется на проводе и негодные величины роняют
+// СБОРКУ, не оставляя занятым порт. Обе утверждали о слушателе, который жил ради
+// одной службы — той, которой iam гасил кэш решений края. Направление
+// развёрнуто, модулей, зовущих край, не осталось, и порт снят вместе с ними.
 //
-// Слушатель, поднявшийся с ограничителем-пустышкой, выглядит и отчитывается
-// ровно как защищённый. Отдельно проверяется, что сорванная сборка не оставляет
-// занятым порт: иначе следующая попытка старта падала бы на «адрес занят», и
-// причина отказа читалась бы не та.
-func TestInternalListenerRefusesToStartOnUnusableLimits(t *testing.T) {
-	externalSrv := grpc.NewServer()
-	t.Cleanup(externalSrv.Stop)
-
-	lis, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	addr := lis.Addr().String()
-	require.NoError(t, lis.Close())
-
-	srv, gotLis, adm, err := startInternalGRPCListener(addr, &fakeInvalidator{},
-		externalSrv, internalListenerSecurity{},
-		grpcsrv.AdmissionLimits{ReadPerSec: 10}, probeLatency(t), nil) // объявлена ОДНА ось из четырёх
-	require.Error(t, err, "негодный набор обязан ронять сборку слушателя")
-	require.Nil(t, srv)
-	require.Nil(t, gotLis)
-	require.Nil(t, adm)
-
-	// Порт свободен: сорванная сборка убрала за собой.
-	probe, err := net.Listen("tcp", addr)
-	require.NoError(t, err, "сорванная сборка оставила порт занятым — следующая "+
-		"попытка старта отказала бы по другой причине, и оператор искал бы не там")
-	require.NoError(t, probe.Close())
-}
+// Свойства, которые они держали, НЕ осиротели: то же самое о ВНЕШНЕМ слушателе
+// утверждают `TestExternalAdmissionSitsAfterIdentityAndBeforeAuthorization` и
+// `TestAdmissionLimitsRefuseAPartiallyDeclaredPosture` выше — первое про исход на
+// проводе, второе про отказ на негодном наборе величин. Пробы сняты вместе со
+// своим предметом, а не вместе со свойством.

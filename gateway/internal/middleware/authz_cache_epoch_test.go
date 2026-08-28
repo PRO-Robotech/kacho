@@ -5,14 +5,19 @@
 // write-after-invalidate guard (epoch/generation counter).
 //
 // Threat: a request whose Check() was computed against the OLD (pre-revocation)
-// grant can execute its put() AFTER an InvalidateSubject()/Invalidate() has
-// already run and found nothing to remove — re-populating a stale allow=true
-// entry that then services requests for the whole TTL, defeating the
-// near-immediate revocation SLA (CWE-362 + CWE-613).
+// grant can execute its put() AFTER an Invalidate() has already run and found
+// nothing to remove — re-populating a stale allow=true entry that then services
+// requests for the whole TTL, defeating the near-immediate revocation SLA
+// (CWE-362 + CWE-613).
 //
 // The fix is a monotonically-increasing generation counter bumped on every
-// Invalidate/InvalidateSubject; a request captures the generation at
-// get()-miss time and its put() is dropped when the generation has since moved.
+// Invalidate; a request captures the generation at get()-miss time and its put()
+// is dropped when the generation has since moved.
+//
+// СБРОСОВ ЗДЕСЬ ОДИН, а не два: пообъектный по субъекту снят вместе с портом,
+// которым его звали извне (задача #1024). Предмет пробы от этого не изменился —
+// он про ЭПОХУ, а не про то, чем её двигают, — поэтому проба переписана на
+// оставшийся сброс, а не снята.
 package middleware
 
 import (
@@ -36,7 +41,7 @@ func TestDecisionCache_PutIfGen_DroppedAfterInvalidate(t *testing.T) {
 	require.False(t, ok, "cold cache must miss")
 
 	// Meanwhile a revocation flushes the subject (bumps the generation).
-	c.InvalidateSubject("user:x")
+	c.Invalidate()
 
 	// The in-flight request now tries to cache its stale allow=true. It must be
 	// dropped because the generation moved since the snapshot.
@@ -44,7 +49,7 @@ func TestDecisionCache_PutIfGen_DroppedAfterInvalidate(t *testing.T) {
 
 	ok = c.allowed("user:x|act|project|p1|")
 	assert.False(t, ok,
-		"stale allow written after InvalidateSubject must NOT survive (epoch guard)")
+		"stale allow written after Invalidate must NOT survive (epoch guard)")
 }
 
 // TestDecisionCache_PutIfGen_KeptWhenNoInvalidate — the common path: no
@@ -105,7 +110,7 @@ func TestDecisionCache_RevocationWinsUnderConcurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 500; j++ {
-				c.InvalidateSubject(subject)
+				c.Invalidate()
 			}
 		}()
 	}
@@ -114,7 +119,7 @@ func TestDecisionCache_RevocationWinsUnderConcurrency(t *testing.T) {
 
 	// Final revocation — nothing computed before this instant may survive it.
 	finalGen := c.generation()
-	c.InvalidateSubject(subject)
+	c.Invalidate()
 	// A late writer that snapshotted finalGen-era state and tries to write now
 	// must be dropped.
 	c.putIfGen(key, finalGen)

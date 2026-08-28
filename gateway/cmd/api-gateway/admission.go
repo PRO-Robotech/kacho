@@ -52,8 +52,12 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
-// admissionLimits — величины ОБОИХ слушателей: ручки посадки там, где она их
+// admissionLimits — величины слушателя края: ручки посадки там, где она их
 // назвала, и ПОЛ ПЛАТФОРМЫ там, где молчит.
+//
+// Слушатель ОДИН. Внутренний gRPC-слушатель снят вместе со своей единственной
+// службой (задача #1024), и его величины ушли с ним: потолок темпа, который
+// некому исполнять, есть ровно тот класс, который мы ловим в чужом коде.
 //
 // Ноль здесь невозможен by construction: молчание разрешается полом, а не
 // пустотой, — иначе «величины не объявлены» означало бы «слушатель не
@@ -63,14 +67,11 @@ import (
 // Частичный набор — ОТКАЗ старта, а не дополнение полом: оператор, задавший темп
 // и забывший одновременность, получил бы наполовину свои, наполовину чужие
 // величины и считал бы предел выставленным.
-func admissionLimits(cfg config.Config) (public, internal grpcsrv.AdmissionLimits, err error) {
+func admissionLimits(cfg config.Config) (public grpcsrv.AdmissionLimits, err error) {
 	if public, err = cfg.AdmissionPublic.Resolve(grpcsrv.PlatformPublicAdmission()); err != nil {
-		return public, internal, fmt.Errorf("KACHO_API_GATEWAY_ADMISSION_PUBLIC_*: %w", err)
+		return public, fmt.Errorf("KACHO_API_GATEWAY_ADMISSION_PUBLIC_*: %w", err)
 	}
-	if internal, err = cfg.AdmissionInternal.Resolve(grpcsrv.PlatformInternalAdmission()); err != nil {
-		return public, internal, fmt.Errorf("KACHO_API_GATEWAY_ADMISSION_INTERNAL_*: %w", err)
-	}
-	return public, internal, nil
+	return public, nil
 }
 
 // armAdmission печатает объявленные величины слушателя.

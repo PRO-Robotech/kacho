@@ -821,7 +821,7 @@ func main() {
 	// разрешаются ОДНИМ вызовом и ДО первой сборки сервера: негодный набор — это
 	// отказ старта, а не предупреждение, и отказать он обязан раньше, чем
 	// процесс начнёт выглядеть поднявшимся.
-	publicAdmissionLimits, internalAdmissionLimits, admErr := admissionLimits(cfg)
+	publicAdmissionLimits, admErr := admissionLimits(cfg)
 	if admErr != nil {
 		log.Fatalf("request admission: %v", admErr)
 	}
@@ -1062,72 +1062,23 @@ func main() {
 		ConnContext: listenerorigin.InternalConnContext,
 	}
 
-	// --- internal-only gRPC listener for InternalAuthzCacheService ---
+	// ВНУТРЕННЕГО gRPC-СЛУШАТЕЛЯ У КРАЯ НЕТ — он снят вместе со своей
+	// единственной службой (задача #1024).
 	//
-	// Dedicated listener on KACHO_API_GATEWAY_INTERNAL_GRPC_ADDR (default :9091)
-	// for cluster-internal RPCs that MUST NOT be on the external TLS endpoint.
-	// iam's subject_change push-drainer
-	// dials this listener to invoke InvalidateSubject within ~1s of revoke;
-	// without it, the 30s subject-change poll-loop is the only convergence path.
+	// Слушатель существовал ради ОДНОГО метода: iam дозванивался до края и гасил
+	// его кэш решений. Направление развёрнуто — соединение открывает ПОТРЕБИТЕЛЬ,
+	// то есть сам край, — и модулей, зовущих край, не осталось ни одного. Порт без
+	// единого метода есть входная поверхность, у которой нет предмета: её mTLS,
+	// круг доверенных отправителей и потолок темпа сторожили бы пустоту.
 	//
-	// Wiring is unconditional — listener is always up. When authz is disabled
-	// (cfg.AuthZEnabled=false), authzMW.AsInvalidator() returns a nopAuthzInvalidator
-	// and the handler returns NotFound on every InvalidateSubject (idempotent
-	// miss; drainer marks the row as already applied).
+	// Что край продолжает выставлять внутрь кластера: ВНУТРЕННИЙ REST-мультиплексор
+	// (`internalRestPort`) с путями `Internal*`. Это другой предмет и другой порт;
+	// запрет #6 держится на нём по-прежнему.
 	//
-	// SECURITY: the listener enforces mTLS +
-	// a per-RPC SPIFFE allow-list (the iam push-drainer identity) when enabled, so
-	// an arbitrary in-cluster caller cannot flush the authz decision-cache
-	// (cache-flush DoS / IAM-amplification). Fail-fast on enabled-but-misconfigured
-	// mTLS; refuse an insecure listener under a production-class env.
-	internalSec, isecErr := buildInternalListenerSecurity(cfg)
-	if isecErr != nil {
-		log.Fatalf("internal grpc listener security: %v", isecErr)
-	}
-	if pgErr := validateProductionInternalListener(cfg.AppEnv, internalSec.mtlsEnabled); pgErr != nil {
-		log.Fatalf("internal grpc listener config: %v", pgErr)
-	}
-	// Boot security posture self-report: AFTER the boot guards
-	// (validateProductionAuthzConfig + validateProductionInternalListener, i.e. a
-	// configuration the process has accepted) and BEFORE any listener serves.
-	// internal_mtls comes from the RESOLVED listener security, not from the raw
-	// enable flag. The production-posture gate must assert on this observed fact
-	// rather than on stored configuration (see observability.BootPosture).
-	observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled, identityLane))
-	if !internalSec.mtlsEnabled {
-		logger.Warn("SECURITY: internal gRPC listener running INSECURE (no mTLS)",
-			"addr", cfg.InternalGRPCAddr,
-			"hint", "set KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE=true + cert material + KACHO_API_GATEWAY_INTERNAL_GRPC_ALLOWED_SPIFFE for any deployed environment",
-		)
-	}
-	internalGRPCAddr := cfg.InternalGRPCAddr
-	internalGrpcSrv, internalLis, internalAdmission, ierr := startInternalGRPCListener(
-		internalGRPCAddr, authzMW.AsInvalidator(), grpcSrv, internalSec,
-		internalAdmissionLimits, edgeLatency, logger)
-	if ierr != nil {
-		log.Fatalf("internal grpc listener: %v", ierr)
-	}
-	armAdmission(logger, internalAdmission, !cfg.AdmissionInternal.IsSilent())
-	// Счёт допущенных и отвергнутых по ОБОИМ слушателям плюс уборка вёдер
-	// простаивающих субъектов. Печатается всегда, включая нули: «ноль отказов за
-	// всю жизнь контроля» обязано быть заметно, иначе мёртвый ограничитель
-	// неотличим от живого, который просто не достигал предела.
-	//
-	// Задача живёт на КОНТЕКСТЕ ОСТАНОВКИ процесса, а не на своём: тогда итоговый
-	// счёт печатается по сигналу, а не теряется вместе с невыполненным `defer`,
-	// если процесс уйдёт через os.Exit.
-	go grpcsrv.ReportAdmission(ctx, logger, "api-gateway: ", externalAdmission, internalAdmission)
-	defer func() { _ = internalLis.Close() }()
-	go func() {
-		serveErr := internalGrpcSrv.Serve(internalLis)
-		// An unexpected death of the internal listener silently disables iam's
-		// push cache-invalidation; surface it and bring the process down so the
-		// orchestrator restarts a healthy replica (readiness alone can't see it).
-		if serveErr != nil && serveErr != grpc.ErrServerStopped && ctx.Err() == nil {
-			logger.Error("internal grpc listener died; shutting down", "error", serveErr)
-			cancel()
-		}
-	}()
+	// Самоотчёт посадки объявляет измерение внутреннего слушателя НЕПРИМЕНИМЫМ, а
+	// не ложным: «слушателя нет вовсе» и «слушатель есть и не защищён» — разные
+	// состояния, и схлопнуть их значило бы разрешить второе молчанием первого.
+	observability.LogBootPosture(logger, bootPosture(cfg, identityLane))
 
 	// --- cmux: HTTP/2 gRPC vs HTTP/1.1 REST на одном порту ---
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
@@ -1270,9 +1221,7 @@ func main() {
 		logger.Info("shutting down")
 		// Bound GracefulStop by the grace window, then force Stop(): a long-lived
 		// proxied stream must not block exit until the kubelet sends SIGKILL.
-		// The internal listener drains in-flight iam drainer InvalidateSubject RPCs.
 		stopGraceful(grpcSrv, 10*time.Second)
-		stopGraceful(internalGrpcSrv, 10*time.Second)
 		shutCtx, shutCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutCancel()
 		_ = httpSrv.Shutdown(shutCtx)

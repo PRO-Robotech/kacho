@@ -29,7 +29,6 @@ import (
 	// сверка с деревом внутри анализатора: новый домен без строки здесь роняет
 	// гейт с именем пакета, а не проходит молча.
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/apigateway/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"

@@ -247,10 +247,6 @@ type Config struct {
 	// the cluster-internal kratos-public Service.
 	KratosPublicURL string `envconfig:"KACHO_API_GATEWAY_KRATOS_PUBLIC_URL" default:"http://kacho-umbrella-kratos-public.kacho.svc:80"`
 
-	// InternalGRPCAddr — dedicated cluster-internal gRPC listener for RPCs that
-	// must not be on the external TLS endpoint (InternalAuthzCacheService).
-	InternalGRPCAddr string `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_ADDR" default:":9091"`
-
 	// MetricsAddr — адрес cluster-internal ДИАГНОСТИЧЕСКОЙ поверхности края
 	// (`GET /metrics`).
 	//
@@ -290,43 +286,17 @@ type Config struct {
 	// конечного пользователя: за краем сидит арендатор, и предел объявлен на него.
 	AdmissionPublic grpcsrv.AdmissionKnobs `envconfig:"KACHO_API_GATEWAY_ADMISSION_PUBLIC"`
 
-	// AdmissionInternal — величины CLUSTER-INTERNAL gRPC-слушателя. Ключ ведра —
-	// личность СЕРТИФИКАТА вызывающего модуля (сюда ходит толкатель iam), а не
-	// арендатора: запрос модуля несёт личности разных арендаторов, и ключ по
-	// арендатору дробил бы бюджет соседа на тысячу вёдер.
-	AdmissionInternal grpcsrv.AdmissionKnobs `envconfig:"KACHO_API_GATEWAY_ADMISSION_INTERNAL"`
-
-	// --- cluster-internal gRPC listener mTLS (InternalAuthzCacheService) ---
+	// ВНУТРЕННЕГО gRPC-СЛУШАТЕЛЯ У КРАЯ НЕТ — ручек его посадки тоже (задача #1024).
 	//
-	// The dedicated internal listener (InternalGRPCAddr) hosts
-	// InternalAuthzCacheService.InvalidateSubject, invoked by the kacho-iam
-	// subject_change push-drainer. The internal
-	// perimeter is NOT trusted: mTLS + per-RPC authorization are mandatory.
+	// Здесь стояли адрес слушателя, его величины допуска и четыре ручки mTLS с
+	// кругом доверенных отправителей. Всё это сторожило ОДНУ службу — ту, которой
+	// iam гасил кэш решений края. Направление развёрнуто: соединение открывает
+	// потребитель, и модулей, зовущих край, не осталось ни одного.
 	//
-	// Backward-compat default = OFF (insecure listener — local/dev stands only).
-	// When enabled the listener presents a server cert
-	// (InternalGRPCTLSCertFile/KeyFile), verifies the client cert against the
-	// internal CA (MTLSCAFile) with RequireAndVerifyClientCert, AND requires the
-	// verified client SPIFFE SAN to be on InternalGRPCAllowedSPIFFE (the iam
-	// push-drainer identity). enable=true with missing cert/key/CA or an empty
-	// allow-list ⇒ fail-fast at startup (never a silent insecure fallback). A
-	// production-class env with the listener insecure is refused at startup
-	// (validateProductionInternalListener) — secure-by-default (CWE-1188).
-	InternalGRPCMTLSEnable  bool   `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE"    default:"false"`
-	InternalGRPCTLSCertFile string `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_CERT_FILE"  default:""`
-	InternalGRPCTLSKeyFile  string `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_KEY_FILE"   default:""`
-
-	// InternalGRPCAllowedSPIFFE — comma-separated allow-list of verified client
-	// SPIFFE SANs authorised to invoke the internal listener's RPCs. Normally the
-	// single kacho-iam push-drainer identity
-	// (spiffe://kacho.cloud/ns/kacho-iam/sa/kacho-iam). Enforced only under mTLS.
-	InternalGRPCAllowedSPIFFE []string `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_ALLOWED_SPIFFE" default:""`
-
-	// (No reflection knob. Server-reflection on the internal listener follows
-	// InternalGRPCMTLSEnable directly — see internal_grpc_listener.go. A separate
-	// switch could only ever be set two ways: identically to the posture, in which
-	// case it is redundant, or on for a listener that mounts no interceptors, in
-	// which case it publishes a schema surface to anyone who can reach the port.)
+	// Ручка, сторожащая порт без единого метода, — не запас: она объявляет
+	// поверхность, которой нет, и первый же читатель профиля решит, что край
+	// принимает вызовы внутрь. Внутренний REST-мультиплексор края (`InternalRESTAddr`)
+	// — другой предмет и другой порт, и запрет #6 держится на нём по-прежнему.
 
 	// --- RESERVED: KACHO_API_GATEWAY_OIDC_* (снято с контракта) ---
 	// Пять ключей — _ISSUER, _EXTERNAL_ISSUER, _CLIENT_ID, _CLIENT_SECRET,
@@ -880,19 +850,6 @@ func (c Config) BackendAddrs() map[string]string {
 		"storage":              c.StorageAddr,
 		"storageInternal":      c.StorageInternalAddr,
 	}
-}
-
-// InternalGRPCAllowedSPIFFESet returns the internal-listener caller allow-list as
-// a set, dropping empty/blank entries. Empty set ⇒ no caller is authorised (the
-// mTLS wiring fails fast rather than authorising every verified peer).
-func (c Config) InternalGRPCAllowedSPIFFESet() map[string]struct{} {
-	set := make(map[string]struct{}, len(c.InternalGRPCAllowedSPIFFE))
-	for _, s := range c.InternalGRPCAllowedSPIFFE {
-		if s = strings.TrimSpace(s); s != "" {
-			set[s] = struct{}{}
-		}
-	}
-	return set
 }
 
 // EdgeTLSClient assembles the corelib grpcclient.TLSClient value-struct for a
