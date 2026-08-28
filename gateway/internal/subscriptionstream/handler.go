@@ -13,10 +13,12 @@ import (
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
@@ -250,8 +252,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.refusedSubjectQuota.Add(1)
 		h.log.Warn("subscription stream refused: per-subject stream limit reached",
 			"limit", h.cfg.MaxStreamsPerSubject)
-		writeRefusal(w, refusal{status: http.StatusTooManyRequests, code: 8,
-			msg: "too many concurrent subscription streams for this caller (limit reached)"})
+		writeRefusal(w, exhausted(reasonSubjectLimit,
+			"too many concurrent subscription streams for this caller (limit reached)"))
 		return
 	}
 	defer release()
@@ -263,8 +265,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.refusedSlot.Add(1)
 		h.log.Warn("subscription stream refused: concurrent stream limit reached",
 			"limit", h.cfg.MaxStreams)
-		writeRefusal(w, refusal{status: http.StatusTooManyRequests, code: 8,
-			msg: "too many concurrent subscription streams (limit reached)"})
+		writeRefusal(w, exhausted(reasonReplicaLimit,
+			"too many concurrent subscription streams (limit reached)"))
 		return
 	}
 
@@ -524,6 +526,52 @@ func withUnavailableState(msg *subscriptionv1.SubscriptionMessage) *subscription
 			},
 		},
 	}
+}
+
+// Признаки полос исчерпания — то, на что клиенту РАЗРЕШЕНО ключеваться.
+//
+// Оба потолка отвечают `429` и кодом 8 (`RESOURCE_EXHAUSTED`), и различить их по
+// коду нельзя by construction: код называет РОД отказа, а не его полосу. Между
+// тем действие клиента у них противоположное — «подожди, место освободится»
+// против «ты сам держишь свои потоки, закрой лишние», — и клиент, не умеющий их
+// отличить, выберет неверное. Проза сообщения для этого не годится: тон текстов
+// стабилен и является частью контракта, но разбирать его клиент не вправе.
+//
+// Та же дисциплина, что у полос резолва идентификаторов и у уже действующего
+// признака утраченной позиции: полоса называется токеном в `google.rpc.ErrorInfo`.
+const (
+	// reasonReplicaLimit — исчерпан потолок ОДНОЙ реплики края. Состояние общего
+	// ресурса: вызывающий не виноват, и повтор осмыслен.
+	reasonReplicaLimit = "SUBSCRIPTION_REPLICA_STREAM_LIMIT"
+
+	// reasonSubjectLimit — вызывающий выбрал СВОЙ предел. Повтор без закрытия
+	// собственных потоков не пройдёт никогда, сколько бы ни ждать.
+	reasonSubjectLimit = "SUBSCRIPTION_SUBJECT_STREAM_LIMIT"
+)
+
+// errorDomain — источник отказов этой поверхности.
+//
+// Тот же, что у отказов владельца, доезжающих сюда дословно
+// (`SUBSCRIPTION_POSITION_LOST`), и это выбор, а не совпадение: у ручки один
+// клиент, и заводить ему второй домен ради того, чтобы он различал край и
+// владельца, значило бы просить различать то, на что он всё равно не реагирует.
+// Полосу называет ТОКЕН; домен называет поверхность.
+const errorDomain = "subscription.kacho.cloud"
+
+// exhausted собирает отказ исчерпания с машинным признаком полосы.
+//
+// Признак ставится ЗДЕСЬ, а не у вызывающего: две полосы собираются в двух
+// местах, и признак, проставляемый вручную, разошёлся бы с сообщением молча —
+// ровно в том случае, когда полос станет три.
+func exhausted(reason, msg string) refusal {
+	r := refusal{status: http.StatusTooManyRequests, code: 8, msg: msg}
+	detail, err := anypb.New(&errdetails.ErrorInfo{Reason: reason, Domain: errorDomain})
+	if err != nil {
+		// Признак не собрался — код и текст важнее детали, отдаём отказ без неё.
+		return r
+	}
+	r.details = []*anypb.Any{detail}
+	return r
 }
 
 // writeRefusal отдаёт отказ в той же форме, что и всякий другой отказ края:
