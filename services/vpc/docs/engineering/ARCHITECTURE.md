@@ -43,7 +43,7 @@ SQL запрещён.
                            kacho-ui (SPA, REST/JSON)
                                    |
                                    v
-                         kacho-api-gateway
+                         gateway/         
                           /              \
                          v                v
               kacho-iam               kacho-vpc
@@ -62,7 +62,7 @@ IPAM-cascade. Никакой прямой доступ к чужой БД.
 
 | Сосед | Канал | Что делает |
 |---|---|---|
-| `kacho-api-gateway` | gRPC `:9090` → REST | Маршрутизирует публичные RPC, преобразует ошибки в HTTP-status |
+| `gateway/` | gRPC `:9090` → REST | Маршрутизирует публичные RPC, преобразует ошибки в HTTP-status |
 | `kacho-iam` | gRPC client | `ProjectClient.Exists(projectID)`, `ProjectClient.GetCloudIDFromProject(projectID)` (project existence + account-id lookup; `projectID` = id владельца-проекта) |
 | `kacho-compute`, прочие IP-потребители | gRPC `:9091` | `InternalAddressService.AllocateInternalIP` / `AllocateInternalIPv6` / `AllocateExternalIP` + referrer-tracking; валидация NIC-spec (Subnet/SG) |
 | `kacho-geo` (Geography owner, leaf) | gRPC client (исходящий) | `geo.v1.ZoneService.Get` — валидация `zone_id` (Region/Zone — leaf-домен geo) |
@@ -194,7 +194,7 @@ IPAM-allocate и default-SG creation выполняются inline в service-с
                         |
                         v
                 +-------+--------+
-                |     domain     |  (entities — только stdlib + kacho-proto)
+                |     domain     |  (entities — только stdlib + стабы)     
                 +----------------+
 ```
 
@@ -1063,7 +1063,7 @@ goose создает `goose_db_version` автоматически. Миграц
 ### 10.5 Деплой через Helm
 
 `deploy/` содержит свой Chart.yaml + templates + values.yaml. Используется
-umbrella-чартом `kacho-deploy` для dev-стенда (kind + Postgres + все сервисы).
+umbrella-чартом в `deploy/` для dev-стенда (kind + Postgres + все сервисы).
 
 ---
 

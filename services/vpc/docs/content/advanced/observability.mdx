@@ -12,7 +12,7 @@ import dedent from 'ts-dedent'
 
 Наблюдаемость (observability) Kachō VPC строится на трех классических столпах — **логи**,
 **метрики**, **трейсинг** — плюс **health/readiness-пробы** и **доменные сигналы** (backlog
-операций, лаг outbox). Cross-cutting-инфраструктура вынесена в `kacho-corelib/observability`
+операций, лаг outbox). Cross-cutting-инфраструктура вынесена в `pkg/observability`
 и переиспользуется всеми сервисами платформы, поэтому формат логов, имена сигналов и
 конвенции одинаковы в kacho-vpc, kacho-iam, kacho-geo, kacho-compute и api-gateway.
 

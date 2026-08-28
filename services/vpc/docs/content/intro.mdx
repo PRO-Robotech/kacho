@@ -68,7 +68,7 @@ Kachō VPC управляет **намерением и состоянием** �
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>⇄</span>
     <span className={hero.featureTitle}>gRPC + REST API</span>
-    <span className={hero.featureBody}>Единый контракт на Protocol Buffers (<code>kacho-proto</code>), REST-проекция через grpc-gateway.</span>
+    <span className={hero.featureBody}>Единый контракт на Protocol Buffers (каталог <code>proto/</code>), REST-проекция через grpc-gateway.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>⏱</span>
@@ -225,25 +225,38 @@ FK-ограничения (`RESTRICT`) требуют удалять детей 
   <thead><tr><th>Технология</th><th>Применение</th></tr></thead>
   <tbody>
     <tr><td>Go 1.25</td><td>Язык реализации</td></tr>
-    <tr><td>Protocol Buffers / Buf</td><td>Контракт API (<code>kacho-proto</code>), кодогенерация</td></tr>
+    <tr><td>Protocol Buffers / Buf</td><td>Контракт API (каталог <code>proto/</code>), кодогенерация</td></tr>
     <tr><td>PostgreSQL / pgx v5</td><td>Хранилище <code>kacho\_vpc</code></td></tr>
-    <tr><td>Goose</td><td>Версионирование схемы (применены миграции <code>0001</code>..<code>0009</code>; <code>0001</code> — squashed baseline)</td></tr>
+    <tr><td>Goose</td><td>Версионирование схемы (<code>0001</code> — squashed baseline, поверх неё — отдельные файлы)</td></tr>
     <tr><td>sqlc + handwritten pgx</td><td>SQL-доступ (без ORM)</td></tr>
     <tr><td>grpc-gateway</td><td>REST-проекция gRPC</td></tr>
   </tbody>
 </table>
 
-## Структура репозиториев
+## Где что лежит
+
+Разработка идёт в **одном** репозитории; всё перечисленное ниже — его каталоги, а не
+отдельные репозитории.
 
 <table>
-  <thead><tr><th>Репозиторий</th><th>Назначение</th></tr></thead>
+  <thead><tr><th>Каталог</th><th>Назначение</th></tr></thead>
   <tbody>
-    <tr><td><strong>kacho-vpc</strong></td><td>Этот сервис: control-plane VPC + IPAM</td></tr>
-    <tr><td><strong>kacho-proto</strong></td><td>Центральные <code>.proto</code> + сгенерированные Go-stubs</td></tr>
-    <tr><td><strong>kacho-corelib</strong></td><td>Общие пакеты (ids, operations, db, outbox, ...)</td></tr>
-    <tr><td><strong>kacho-api-gateway</strong></td><td>Edge: gRPC-proxy + REST mux</td></tr>
-    <tr><td><strong>kacho-iam</strong></td><td>Account / Project / авторизация (per-RPC Check)</td></tr>
-    <tr><td><strong>kacho-geo</strong></td><td>Geography (Region / Zone) — валидация <code>zoneId</code></td></tr>
-    <tr><td><strong>kacho-compute</strong></td><td>Instance / Disk / Image / Snapshot (peer-консумер VPC)</td></tr>
+    <tr><td><code>services/vpc/</code></td><td>Этот сервис: control-plane VPC + IPAM</td></tr>
+    <tr><td><code>proto/</code></td><td>Единственный дом всех <code>.proto</code>; сгенерированные Go-стабы — в <code>pkg/api/</code></td></tr>
+    <tr><td><code>pkg/</code></td><td>Общий фундамент (ids, operations, db, outbox, ...)</td></tr>
+    <tr><td><code>gateway/</code></td><td>Edge: gRPC-proxy + REST mux</td></tr>
+    <tr><td><code>services/iam/</code></td><td>Account / Project / авторизация (per-RPC Check)</td></tr>
+    <tr><td><code>services/geo/</code></td><td>Geography (Region / Zone) — валидация <code>zoneId</code></td></tr>
+    <tr><td><code>services/compute/</code></td><td>Instance / MachineType (peer-консумер VPC)</td></tr>
+    <tr><td><code>services/storage/</code></td><td>Volume / Snapshot / Image / DiskType — блочное хранение</td></tr>
   </tbody>
 </table>
+
+:::note Здесь стояла таблица репозиториев — топологии, которой нет
+Прежняя редакция называла `kacho-proto`, `kacho-corelib`, `kacho-api-gateway`
+действующими репозиториями. Разработка сведена в один репозиторий, и эти имена стали
+каталогами `proto/`, `pkg/`, `gateway/`. Предшествующие репозитории на GitHub
+существуют и не заархивированы, но разработка в них не ведётся — идти за кодом туда
+не нужно. Заголовок изменён с «структуры репозиториев» на «где что лежит»: так
+утверждение перестаёт зависеть от топологии репозиториев вовсе.
+:::
