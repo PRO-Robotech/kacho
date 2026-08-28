@@ -327,6 +327,14 @@ func runServe(configPath string) error {
 	if err != nil {
 		return err
 	}
+	// Общий сервер потока изменений. Строится ДО подъёма слушателей: его сборка
+	// умеет отказать (негодное объявление журнала, невыбранная величина посадки,
+	// неработающий сужатель), а отказ обязан случиться раньше первого принятого
+	// соединения, а не первым запросом в бою.
+	subscribeSrv, err := buildSubscriptionServer(cfg, peers.ListFilter, logger)
+	if err != nil {
+		return err
+	}
 	wiring := grpcWiring{
 		repo:          repo,
 		opsRepo:       opsRepo,
@@ -338,6 +346,9 @@ func runServe(configPath string) error {
 		// Учёт числа ресурсов: совещательная полоса. Собирается ЗДЕСЬ, до подъёма
 		// слушателей, потому что ей нужны репозиторий и оба соседа сразу.
 		quotaGuard: buildQuotaGuard(repo, peers),
+		// Поток изменений: собран выше, потому что его сборка умеет отказать, а
+		// регистратор носителя возврата ошибки не имеет — и не должен.
+		subscription: subscribeSrv,
 	}
 	logger.Info("quota_guard", "wired", wiring.quotaGuard != nil)
 

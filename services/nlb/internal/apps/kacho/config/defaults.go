@@ -36,6 +36,13 @@ func RegisterDefaults(v *viper.Viper) {
 	// живут в одном месте.
 	v.SetDefault("api-server.handling-budget", "30s")
 
+	// Величины подписки на журнал изменений. Срок жизни потока заметно
+	// превосходит границу обработки одиночного вызова — иначе поток закрывался бы
+	// раньше первого события догона; отношение судит носитель.
+	v.SetDefault("api-server.subscription-stream-budget", "1h")
+	v.SetDefault("api-server.subscription-max-streams", 16)
+	v.SetDefault("api-server.subscription-idle-poll", "2s")
+
 	// Metrics / Healthcheck. metrics.address — cluster-internal diagnostic
 	// HTTP-listener (metrics + /healthz + /readyz); :9101 совпадает с
 	// deploy ports.metrics + ServiceMonitor scrape-таргетом.
