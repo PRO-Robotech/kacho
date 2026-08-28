@@ -108,9 +108,13 @@ enforcement the function does not already provide — the invariant is fully
 enforced either way. The newtype refactor is a style-only follow-up (regime
 alignment), not a security/consistency gap.
 
-**Note (owner-scope, no admin bypass).** `OperationHandler.Get/Cancel` owner-scope
-strictly by creator-principal with **no** cluster-admin bypass (unlike
-`kacho-vpc`, which has a `tenant.Admin` cross-cut). geo has no tenant/admin ctx
+**Note (owner-scope, no admin bypass).** `operationspb.Handler.Get/Cancel`
+(общий слой `pkg/operations/operationspb`, куда полоса сведена из семи копий)
+owner-scope strictly by creator-principal with **no** cluster-admin bypass.
+Прежде здесь стояло «unlike `kacho-vpc`, which has a `tenant.Admin` cross-cut» —
+это было неверно И ДО сведения: комментарий снятого обработчика vpc гласил
+«admin-bypass тут не применяется». Расхождения не было, а противопоставление
+пережило свой предмет. geo has no tenant/admin ctx
 concept — every mutation already requires `system_admin`, and each operation
 belongs to the admin that created it — so a bypass would be dead surface. This is
 intentional, not a missing feature.

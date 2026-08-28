@@ -14,6 +14,7 @@ import (
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 )
 
 // Наблюдаемый контракт: запрос БЕЗ принципала не является владельцем ничего.
@@ -86,7 +87,7 @@ func systemOwnedRepo() *fakeOwnedRepo {
 // Get не должен получить операцию, записанную системным принципалом.
 func TestOperationGet_AnonymousContextGetsNotFound(t *testing.T) {
 	repo := systemOwnedRepo()
-	h := NewOperationHandler(repo)
+	h := operationspb.NewHandler(repo)
 
 	got, err := h.Get(context.Background(), &operationpb.GetOperationRequest{OperationId: repo.op.ID})
 	if err == nil {
@@ -104,7 +105,7 @@ func TestOperationGet_AnonymousContextGetsNotFound(t *testing.T) {
 // transport-слоем (scrub на недоверенном форвардере), тоже не владелец.
 func TestOperationGet_ExplicitlyClearedPrincipalGetsNotFound(t *testing.T) {
 	repo := systemOwnedRepo()
-	h := NewOperationHandler(repo)
+	h := operationspb.NewHandler(repo)
 
 	ctx := operations.WithoutPrincipal(operations.WithPrincipal(context.Background(), operations.SystemPrincipal()))
 	if _, err := h.Get(ctx, &operationpb.GetOperationRequest{OperationId: repo.op.ID}); status.Code(err) != codes.NotFound {
@@ -116,7 +117,7 @@ func TestOperationGet_ExplicitlyClearedPrincipalGetsNotFound(t *testing.T) {
 // принципала чужая in-flight операция не отменяется.
 func TestOperationCancel_AnonymousContextGetsNotFound(t *testing.T) {
 	repo := systemOwnedRepo()
-	h := NewOperationHandler(repo)
+	h := operationspb.NewHandler(repo)
 
 	if _, err := h.Cancel(context.Background(), &operationpb.CancelOperationRequest{OperationId: repo.op.ID}); status.Code(err) != codes.NotFound {
 		t.Fatalf("anonymous Cancel: got %v, want NotFound", status.Code(err))
@@ -134,7 +135,7 @@ func TestOperationGet_AuthenticatedOwnerStillServed(t *testing.T) {
 		op:    &operations.Operation{ID: "opq00000000000000002"},
 		owner: operations.Owner{PrincipalType: "user", PrincipalID: "usr-1"},
 	}
-	h := NewOperationHandler(repo)
+	h := operationspb.NewHandler(repo)
 
 	ctx := operations.WithPrincipal(context.Background(), operations.Principal{Type: "user", ID: "usr-1"})
 	got, err := h.Get(ctx, &operationpb.GetOperationRequest{OperationId: repo.op.ID})
@@ -151,7 +152,7 @@ func TestOperationGet_AuthenticatedOwnerStillServed(t *testing.T) {
 // системных операций: сужаем анонимность, а не ломаем bootstrap-путь.
 func TestOperationGet_ExplicitSystemPrincipalStillServed(t *testing.T) {
 	repo := systemOwnedRepo()
-	h := NewOperationHandler(repo)
+	h := operationspb.NewHandler(repo)
 
 	ctx := operations.WithPrincipal(context.Background(), operations.SystemPrincipal())
 	if _, err := h.Get(ctx, &operationpb.GetOperationRequest{OperationId: repo.op.ID}); err != nil {

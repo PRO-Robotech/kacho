@@ -121,7 +121,7 @@ mapper'а оставлены отдельными **осознанно**:
   на retry-логику вызывающего Compute, менять его в рамках чисто-рефакторинга
   нельзя. Дублирования switch'а нет — функция узкая (NotFound + passthrough +
   fallback).
-- **`handler.mapOpGetErr`** (`operation_handler.go`) — оперирует sentinel'ами
+- **отображение repo-ошибки операции в код** (`pkg/operations/operationspb/handler.go`, общий слой) — оперирует sentinel'ами
   **другого семейства**: `operations.ErrNotFound` / `operations.ErrAlreadyDone`
   из `pkg/operations`, а не `repo.Err*`. К repo-sentinel classifier'у
   отношения не имеет.

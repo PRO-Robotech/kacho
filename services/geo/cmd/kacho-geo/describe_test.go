@@ -32,13 +32,13 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	region "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/region"
 	zone "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/zone"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/config"
-	"github.com/PRO-Robotech/kacho/services/geo/internal/handler"
 )
 
 // bootConfig — конфигурация, загруженная ТЕМ ЖЕ вызовом, что и на старте
@@ -130,7 +130,7 @@ func TestDescribeProbeCanFail(t *testing.T) {
 func TestGeoServesNoGatedMutation(t *testing.T) {
 	regionUC := region.New(nil, nil, nil, nil)
 	zoneUC := zone.New(nil, nil, nil, nil)
-	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_geo"))
+	opHandler := operationspb.NewHandler(operations.NewRepo(nil, "kacho_geo"))
 
 	var served []string
 	for _, reg := range []func(grpc.ServiceRegistrar){
@@ -180,7 +180,7 @@ func TestGeoServesNoGatedMutation(t *testing.T) {
 func TestGeoServesNoServerStream(t *testing.T) {
 	regionUC := region.New(nil, nil, nil, nil)
 	zoneUC := zone.New(nil, nil, nil, nil)
-	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_geo"))
+	opHandler := operationspb.NewHandler(operations.NewRepo(nil, "kacho_geo"))
 
 	methods, streams := 0, []string{}
 	for _, reg := range []func(grpc.ServiceRegistrar){
