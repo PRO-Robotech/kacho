@@ -548,7 +548,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="AZD-OP-CANCEL-NON-CREATOR-DENIED",
-    title="OP.Cancel by non-creator → PERMISSION_DENIED 'only operation creator may cancel' (Verifies REQ-AZD-OP-CANCEL)",
+    title="OP.Cancel чужой операции → 404 NOT_FOUND 'operation <id> not found' (чтение операции сужено по владельцу; Verifies REQ-AZD-OP-CANCEL)",
     classes=["AZD"], priority="P0",
     steps=[
         # Create op as editor A
@@ -575,17 +575,39 @@ CASES.append(Case(
         # какая сработает, решает порядок проверок на крае.
         Step(name="cancel-as-B", method="POST", path="/operations/{{opId}}:cancel",
              auth="jwtProjectEditorB",
-             # non-creator cancel: 403 deny, 404 hide-existence (B cannot see A's op —
-             # чтение операции owner-scoped), or already-done 400 — all = rejected.
+             # ИСХОД ЗДЕСЬ ОДИН, И ОН УСТАНОВЛЕН ОПЫТОМ, А НЕ ЧТЕНИЕМ (#1403).
+             #
+             # Полоса: край читает операцию у владельца ПЕРВЫМ действием и под личностью
+             # вызывающего; чтение сужено по владельцу (`GetOwned`), поэтому чужому
+             # субъекту приходит `NOT_FOUND` — ДО проверки владения на крае и ДО самой
+             # отмены. Значит `PERMISSION_DENIED` (403) той проверки и
+             # `FAILED_PRECONDITION` (400) «уже завершена» на этом шаге производителя
+             # НЕ ИМЕЮТ, а допуск на исход без производителя не краснеет никогда
+             # (`e2e-flow.md` §3). Запись каталога прав для этой полосы — `<exempt>`
+             # («решает обработчик»), поэтому 403 не приходит и от края.
+             #
+             # Доказано пробой `gateway/internal/opsproxy`
+             # `TestCancelOfAnotherSubjectsOperationYieldsNotFoundOnly`: она собирает
+             # полосу целиком (край + общий обработчик + предикат владения) и вдобавок
+             # утверждает СЧЁТЧИКОМ, что до отмены дело не доходит — код ответа об этом
+             # не говорит ничего. Рядом положительный контроль: создатель ту же операцию
+             # отменяет успешно.
+             #
+             # Прежний заголовок обещал `PERMISSION_DENIED`, то есть называл не тот отказ,
+             # который полоса даёт: читатель искал бы причину 404 не там.
+             #
+             # Текст утверждается ДОСЛОВНО и без приведения регистра: он приходит из
+             # единственного производителя `pkg/operations.NotFoundStatus`, и тем же
+             # текстом отвечает край на своей ветке — различие хоть в байт отличало бы
+             # «нет доступа» от «не существует» (`security.md` §Hardening #6).
              test_script=[
-                 "pm.test('rejected (403 deny / 404 hide / already-done 400)', () => "
-                 "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));",
-                 "if (pm.response.code === 403) pm.test('grpc 7 (PERMISSION_DENIED)', () => "
-                 "  pm.expect(pm.response.json().code).to.eql(7));",
-                 "if (pm.response.code === 404) pm.test('grpc 5 (NOT_FOUND)', () => "
+                 "pm.test('отвергнуто 404 — чтение операции сужено по владельцу', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(404));",
+                 "pm.test('grpc 5 (NOT_FOUND)', () => "
                  "  pm.expect(pm.response.json().code).to.eql(5));",
-                 "if (pm.response.code === 400) pm.test('grpc 9 (FAILED_PRECONDITION)', () => "
-                 "  pm.expect(pm.response.json().code).to.eql(9));",
+                 "pm.test('сообщение дословно равно тексту владельца', () => "
+                 "  pm.expect(pm.response.json().message).to.eql("
+                 "'operation ' + pm.environment.get('opId') + ' not found'));",
              ]),
         # ОПРОС ИДЁТ ПОД СОЗДАТЕЛЕМ ОПЕРАЦИИ, А НЕ ПОД ТЕМ, КОМУ ТОЛЬКО ЧТО ОТКАЗАЛИ.
         #
