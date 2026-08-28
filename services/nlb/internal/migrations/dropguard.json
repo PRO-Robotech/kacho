@@ -6,6 +6,13 @@
       "table": "kacho_nlb.attached_target_groups",
       "kind": "retire",
       "expect_rows": 0
+    },
+    {
+      "version": 20260828114800,
+      "table": "kacho_nlb.nlb_watch_cursors",
+      "kind": "retire",
+      "expect_rows": 0,
+      "note": "Server-side subscription cursors, keyed by subscriber. Zero rows by construction: the table had no reader and no writer in its whole life, established by census over its COLUMNS rather than over its name — `subscriber_id` has zero occurrences outside migrations and documentation, `last_sequence_no` appears only in the migrations themselves, and no Go type for the row exists at all. The invitation here is stronger than the shape alone: 0001 carries a comment calling this a per-subscriber cursor for catchup semantics, so the schema states a purpose the code never performed, and the next author would reverse the decision by doing what the schema says about itself rather than by arguing with it. The position of a subscription belongs to the CLIENT, which is what lets a stream survive reconnecting to a different replica."
     }
   ]
 }

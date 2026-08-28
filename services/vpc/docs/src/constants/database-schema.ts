@@ -5,8 +5,8 @@ import { defineDbSchemaDiagramFromDbml } from '@site/src/utils/dbmlToDiagram'
 // для default-SG в 0005). Источник истины — `internal/migrations/*.sql`
 // репозитория kacho-vpc. Здесь отражены основные ресурсные таблицы + служебные (operations,
 // vpc_outbox) и admin-таблица IPAM (address_pools). Полные вспомогательные
-// IPAM/Watch-таблицы (address_pool_*, ipv6_*, cloud_pool_selector,
-// vpc_watch_cursors) опущены для читаемости — см. полный список в data-model.mdx.
+// IPAM-таблицы (address_pool_*, ipv6_*, cloud_pool_selector) опущены для
+// читаемости — см. полный список в data-model.mdx.
 const DATABASE_SCHEMA_DBML = `
 Table "kacho_vpc"."networks" {
   "id" text [pk, not null]
