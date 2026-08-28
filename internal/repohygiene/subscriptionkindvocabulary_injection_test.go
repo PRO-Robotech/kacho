@@ -304,6 +304,50 @@ func TestKindVocabularyGateCatchesAWordWrittenTheOtherWay(t *testing.T) {
 	}
 }
 
+// TestKindVocabularyGateSaysWhenItCouldNotRead — имя взято у производителя, но
+// значение разбором не добылось.
+//
+// Это ТРЕТИЙ исход, и он обязан быть отличим от двух других: «прочитал и чисто»
+// против «прочитать не смог». Молчание здесь означало бы, что вторая половина
+// вердикта не вынесена, а выглядело бы как её прохождение — ровно тот класс, из-за
+// которого анализатор и заведён.
+//
+// Форма реалистичная: константа, собранная из другой константы, а не литералом.
+// Такую пишут ради общего префикса, и она законна — незаконно молчать о том, что
+// её значение не прочитано.
+func TestKindVocabularyGateSaysWhenItCouldNotRead(t *testing.T) {
+	s := newKindStand(t)
+	s.write(t, "services/probe/internal/authzfilter/derived.go", `package authzfilter
+
+const prefix = "probe_"
+
+const ResourceTypeDerived = prefix + "machine"
+`)
+	s.writeJournal(t, `
+			Kinds: map[string]subscription.Kind{
+				"Machine": {ObjectType: authzfilter.ResourceTypeDerived, Action: authzfilter.ActionMachineRead},
+			},`)
+
+	findings, census := s.audit(t)
+	got := kindFindingsOf(findings, KindVocabularyUnresolved)
+	if len(got) != 1 {
+		t.Fatalf("находок о непрочитанном значении %d, ожидалась одна: %v", len(got), findings)
+	}
+	if !strings.Contains(got[0].What, "authzfilter.ResourceTypeDerived") {
+		t.Errorf("находка не называет, что именно не прочиталось: %q", got[0].What)
+	}
+	if census.ObjectTypesUsed != 0 {
+		t.Errorf("разрешённых типов %d — значение всё-таки добылось, и проба измеряет не то",
+			census.ObjectTypesUsed)
+	}
+	// Инъекция обязана ронять ТОЛЬКО проверяемое.
+	for _, other := range []string{KindVocabularyLiteral, KindVocabularyLocal, KindVocabularyUndeclared, KindVocabularyShape} {
+		if n := len(kindFindingsOf(findings, other)); n != 0 {
+			t.Errorf("инъекция задела соседнее свойство %s (%d находок)", other, n)
+		}
+	}
+}
+
 // TestKindVocabularyGateFailsOnAnEmptyWalk — «ноль находок» обязано быть отличимо
 // от «ноль прочитанного».
 //
