@@ -35,6 +35,12 @@
 //   - НИСХОДЯЩАЯ выборка — курсора «дальше позиции» не выражает;
 //   - ОЧЕРЕДЬ С КЛЕЙМОМ (`FOR UPDATE`) — курсор мимо строки не двигается,
 //     пропущенная незакоммиченная будет забрана следующим проходом;
+//   - ПОЗИЦИЯ, ВЫДАННАЯ В ПОРЯДКЕ ФИКСАЦИЙ, — номер штампует триггер писателя,
+//     берущий ТРАНЗАКЦИОННУЮ консультативную блокировку ПЕРЕД `nextval`.
+//     Блокировка держится до фиксации, поэтому порядок номеров совпадает с
+//     порядком фиксаций by construction, и «номер выдан до видимости» неверно.
+//     Эта закрытость лежит НА СТОРОНЕ ПИСАТЕЛЯ и в запросе читателя невидима —
+//     распознаватель выводит её из ТЕЛА ТРИГГЕРА в миграциях дерева;
 //   - ПОЗИЦИЯ, КОТОРУЮ НЕ ВЫДАЁТ БАЗА, — крокфордов `text`-идентификатор, метка
 //     времени, десятичное: счётчика на вставке у них нет вовсе, поэтому «номер
 //     выдан раньше видимости» к ним неприменимо. Тип берётся из СХЕМЫ ДЕРЕВА, а
@@ -46,6 +52,41 @@
 // Ветка написана как разграничение и проверена инъекцией, но предмета в дереве
 // у неё пока нет; читать «клейм разграничивается» как «клейм встречается»
 // нельзя.
+//
+// # Чем опознаётся ПОРЯДОК ФИКСАЦИЙ — четырьмя признаками, а не словом
+//
+// Одного вхождения `pg_advisory_xact_lock` в файле мало: судить по слову значило
+// бы принять за закрытость блокировку, взятую не там, не так и не тем. Требуются
+// все четыре признака сразу, и у каждого — своя инъекция:
+//
+//  1. тело функции присваивает `NEW.<колонка> := nextval(...)`;
+//  2. ТРАНЗАКЦИОННАЯ блокировка (`pg_advisory_xact_lock`) взята ДО этого
+//     присваивания — сеансовая (`pg_advisory_lock`) отпускается явно и до
+//     фиксации не держится, а взятая ПОСЛЕ не упорядочивает ничего;
+//  3. ключ блокировки НЕ ЗАВИСИТ ОТ СТРОКИ (в его аргументе нет `NEW.`/`OLD.`) —
+//     ключ, вычисленный из строки, даёт порядок в пределах своей группы, а
+//     читатель ведёт ОДИН курсор на всю таблицу;
+//  4. функция подвешена триггером `BEFORE` на ту же таблицу, и его перечень
+//     событий включает `INSERT` — `AFTER`-триггер `NEW` не меняет, а триггер без
+//     `INSERT` оставляет вставленным строкам умолчание колонки, выданное вне
+//     блокировки.
+//
+// Определения читаются В ПОРЯДКЕ МИГРАЦИЙ, и побеждает последнее: `CREATE OR
+// REPLACE FUNCTION` без блокировки и `DROP TRIGGER` закрытость СНИМАЮТ. Иначе
+// гейт судил бы о состоянии, отменённом более поздней миграцией.
+//
+// Читается ТОЛЬКО ВОСХОДЯЩАЯ ЧАСТЬ файла (до `-- +goose Down`). Нисходящая к
+// живой базе не применяется, а состоит ровно из отмен: миграция, заведшая
+// триггер, в своей нисходящей части его же и снимает — и распознаватель,
+// читающий файл целиком, объявил бы закрытость снятой. Это не мелочь разбора:
+// именно так первая редакция здесь и ошиблась, найдя ноль закрытых колонок при
+// живом триггере в дереве.
+//
+// Оговорка о границе, чтобы её не приняли за общее свойство: карту ТИПОВ колонок
+// анализатор по-прежнему собирает по файлу целиком, поэтому в ней остаются
+// колонки таблиц, восстановленных нисходящей частью (замер: 16 файлов из 336
+// несут `CREATE TABLE` в нисходящей). Это отдельный предмет — он меняет не
+// закрытость, а разрешение имён, — и здесь не чинится.
 //
 // # Чего распознаватель НЕ ЛОВИТ — названо, а не умолчано
 //
@@ -136,7 +177,16 @@ type JournalCursorCensus struct {
 	Claimed        int
 	CounterReads   int
 	Bounded        int
-	Allowances     int
+	// CommitOrdered — чтения по счётчику БЕЗ верхней границы, закрытые на стороне
+	// ПИСАТЕЛЯ: номер штампуется под транзакционной блокировкой, поэтому порядок
+	// номеров есть порядок фиксаций. Считается ОТДЕЛЬНЫМ числом: иначе прибавка к
+	// молчанию гейта была бы неотличима от расширения слепой зоны.
+	CommitOrdered int
+	// CommitOrderedColumns — сколько колонок дерева объявлено выдаваемыми в
+	// порядке фиксаций. Ноль при непустой схеме означает, что распознаватель
+	// триггеров ослеп, а не что таких колонок нет.
+	CommitOrderedColumns int
+	Allowances           int
 }
 
 // JournalCursorFinding — одна находка.
@@ -190,6 +240,10 @@ type jcResumableRead struct {
 	Counter bool
 	Known   bool
 	Claimed bool
+	// Ordered — позиция выдаётся в порядке фиксаций (закрытость на стороне
+	// писателя); Where — координата триггера, из которой это выведено.
+	Ordered      bool
+	OrderedWhere string
 }
 
 // AuditJournalCursorUpperBound судит дерево.
@@ -199,14 +253,15 @@ func AuditJournalCursorUpperBound(
 	var census JournalCursorCensus
 	census.Allowances = len(o.Allow)
 
-	schema, sqlFiles, err := jcCollectSchema(o.Root, o.SQLRoots)
+	schema, ordered, sqlFiles, err := jcCollectSchema(o.Root, o.SQLRoots)
 	if err != nil {
 		return nil, census, err
 	}
 	census.SQLFiles = sqlFiles
 	census.Columns = len(schema)
+	census.CommitOrderedColumns = len(ordered)
 
-	reads, goFiles, lits, err := jcCollectReads(o.Root, o.GoRoots, schema)
+	reads, goFiles, lits, err := jcCollectReads(o.Root, o.GoRoots, schema, ordered)
 	if err != nil {
 		return nil, census, err
 	}
@@ -220,17 +275,24 @@ func AuditJournalCursorUpperBound(
 		census.ResumableReads++
 		if r.Counter {
 			census.CounterReads++
-			if r.Bounded {
+			switch {
+			case r.Bounded:
 				census.Bounded++
+			case r.Ordered:
+				census.CommitOrdered++
 			}
 		}
 	}
 
 	_, _ = fmt.Fprintf(log,
-		"осмотрено: файлов схемы %d · колонок %d · файлов прод-кода Go %d · литералов %d · "+
-			"очередей с клеймом %d · возобновимых чтений %d (по счётчику %d, из них ограничено сверху %d) · послаблений %d\n",
-		census.SQLFiles, census.Columns, census.GoFiles, census.Literals,
-		census.Claimed, census.ResumableReads, census.CounterReads, census.Bounded, census.Allowances)
+		"осмотрено: файлов схемы %d · колонок %d (из них выдаются в порядке фиксаций %d) · "+
+			"файлов прод-кода Go %d · литералов %d · очередей с клеймом %d · "+
+			"возобновимых чтений %d (по счётчику %d, из них ограничено сверху %d, "+
+			"закрыто порядком фиксаций %d) · послаблений %d\n",
+		census.SQLFiles, census.Columns, census.CommitOrderedColumns,
+		census.GoFiles, census.Literals, census.Claimed,
+		census.ResumableReads, census.CounterReads, census.Bounded, census.CommitOrdered,
+		census.Allowances)
 
 	if census.GoFiles == 0 || census.Columns == 0 {
 		return nil, census, fmt.Errorf(
@@ -281,6 +343,12 @@ func AuditJournalCursorUpperBound(
 		if !r.Counter || r.Bounded {
 			continue
 		}
+		// Третья закрытость: номер выдан под транзакционной блокировкой, значит
+		// порядок номеров есть порядок фиксаций, и голый курсор безопасен. Она
+		// лежит на стороне ПИСАТЕЛЯ и выведена из тела триггера, а не из запроса.
+		if r.Ordered {
+			continue
+		}
 		if _, ok := allowed[key]; ok {
 			used[key] = true
 			continue
@@ -320,22 +388,36 @@ func AuditJournalCursorUpperBound(
 	return findings, census, nil
 }
 
-// jcCollectSchema собирает объявленные типы колонок из миграций.
-func jcCollectSchema(root string, sqlRoots []string) (map[string]string, int, error) {
-	schema := map[string]string{}
-	var files []string
+// jcCollectSchema собирает объявленные типы колонок из миграций И колонки,
+// позиция которых выдаётся в ПОРЯДКЕ ФИКСАЦИЙ.
+//
+// Второй результат — карта `таблица.колонка` → координата триггера, из которой
+// закрытость выведена. Координата идёт в перепись и в текст находки: «закрыто»
+// без указания, ЧЕМ закрыто, читатель проверить не может.
+func jcCollectSchema(
+	root string, sqlRoots []string,
+) (schema map[string]string, ordered map[string]string, files int, err error) {
+	schema = map[string]string{}
+	var paths []string
 	for _, r := range sqlRoots {
-		got, err := collectFiles(filepath.Join(root, r), ".sql")
-		if err != nil {
-			return nil, 0, err
+		got, gerr := collectFiles(filepath.Join(root, r), ".sql")
+		if gerr != nil {
+			return nil, nil, 0, gerr
 		}
-		files = append(files, got...)
+		paths = append(paths, got...)
 	}
-	for _, path := range files {
-		src, err := readFileString(path)
-		if err != nil {
-			return nil, 0, err
+	// Определения читаются В ПОРЯДКЕ МИГРАЦИЙ: `CREATE OR REPLACE FUNCTION` без
+	// блокировки и `DROP TRIGGER` закрытость СНИМАЮТ, а без сортировки победило
+	// бы то определение, которое обход встретил последним.
+	sort.Strings(paths)
+	state := jcNewOrderState()
+	for _, path := range paths {
+		src, rerr := readFileString(path)
+		if rerr != nil {
+			return nil, nil, 0, rerr
 		}
+		rel, _ := filepath.Rel(root, path)
+		state.apply(jcUpPart(src), filepath.ToSlash(rel))
 		for _, m := range jcCreate.FindAllStringSubmatch(src, -1) {
 			table := jcTableName(m[1])
 			for _, line := range strings.Split(m[2], "\n") {
@@ -356,12 +438,12 @@ func jcCollectSchema(root string, sqlRoots []string) (map[string]string, int, er
 			}
 		}
 	}
-	return schema, len(files), nil
+	return schema, state.resolve(), len(paths), nil
 }
 
 // jcCollectReads опознаёт возобновимые чтения в строковых литералах прод-кода.
 func jcCollectReads(
-	root string, goRoots []string, schema map[string]string,
+	root string, goRoots []string, schema, ordered map[string]string,
 ) ([]jcResumableRead, int, int, error) {
 	var files []string
 	for _, r := range goRoots {
@@ -383,7 +465,7 @@ func jcCollectReads(
 			continue
 		}
 		goFiles++
-		found, n, err := jcFileReads(path, rel, schema)
+		found, n, err := jcFileReads(path, rel, schema, ordered)
 		if err != nil {
 			return nil, 0, 0, err
 		}
@@ -399,7 +481,7 @@ func jcCollectReads(
 	return reads, goFiles, lits, nil
 }
 
-func jcFileReads(path, rel string, schema map[string]string) ([]jcResumableRead, int, error) {
+func jcFileReads(path, rel string, schema, ordered map[string]string) ([]jcResumableRead, int, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {
@@ -417,7 +499,7 @@ func jcFileReads(path, rel string, schema map[string]string) ([]jcResumableRead,
 		if uerr != nil {
 			text = lit.Value
 		}
-		r, ok := jcClassify(text, schema)
+		r, ok := jcClassify(text, schema, ordered)
 		if !ok {
 			return true
 		}
@@ -436,7 +518,7 @@ func jcFileReads(path, rel string, schema map[string]string) ([]jcResumableRead,
 // связанного параметра, и отсутствие клейма. Клейм (`FOR UPDATE`) выводит запрос
 // из предмета by construction: очередь с клеймом курсор мимо строки не двигает —
 // пропущенная незакоммиченная строка будет забрана следующим проходом.
-func jcClassify(text string, schema map[string]string) (jcResumableRead, bool) {
+func jcClassify(text string, schema, ordered map[string]string) (jcResumableRead, bool) {
 	om := jcOrderBy.FindStringSubmatch(text)
 	if om == nil {
 		return jcResumableRead{}, false
@@ -489,6 +571,9 @@ func jcClassify(text string, schema map[string]string) (jcResumableRead, bool) {
 	for _, t := range jcCounterTypes {
 		if head == t {
 			r.Counter = true
+			if where, yes := ordered[r.Table+"."+strings.ToLower(col)]; yes {
+				r.Ordered, r.OrderedWhere = true, where
+			}
 			return r, true
 		}
 	}
@@ -526,4 +611,231 @@ func jcTableName(raw string) string {
 		raw = raw[i+1:]
 	}
 	return strings.ToLower(raw)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ЗАКРЫТОСТЬ НА СТОРОНЕ ПИСАТЕЛЯ — позиция, выдаваемая в порядке фиксаций.
+//
+// Распознаватель судит СТРУКТУРУ объявления, а не встреченное слово: одно
+// вхождение `pg_advisory_xact_lock` в файле не говорит ни того, что блокировка
+// взята перед выдачей номера, ни того, что она вообще относится к этой колонке.
+// Четыре признака и их инъекции названы в шапке пакета.
+
+var (
+	jcFuncHead = regexp.MustCompile(`(?is)CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([A-Za-z0-9_."]+)\s*\(`)
+	jcDollar   = regexp.MustCompile(`\$[A-Za-z0-9_]*\$`)
+	// Присваивание позиции: `NEW.<колонка> := nextval(...)`. Знак `=` без
+	// двоеточия plpgsql в присваивании тоже принимает, поэтому двоеточие
+	// необязательно.
+	jcStamp = regexp.MustCompile(`(?is)\bNEW\s*\.\s*([a-z_][a-z0-9_]*)\s*:?=\s*nextval\s*\(`)
+	// Блокировка — ТОЛЬКО транзакционная и ТОЛЬКО безусловная. `pg_advisory_lock`
+	// сеансовая (до фиксации не держится), `pg_try_advisory_xact_lock` вправе не
+	// взять и пойти дальше — ни та, ни другая порядка не дают.
+	jcXactLock = regexp.MustCompile(`(?i)\bpg_advisory_xact_lock\s*\(`)
+	jcTrigger  = regexp.MustCompile(
+		`(?is)CREATE\s+(?:CONSTRAINT\s+)?TRIGGER\s+([A-Za-z0-9_."]+)\s+` +
+			`(BEFORE|AFTER|INSTEAD\s+OF)\s+(.*?)\s+ON\s+([A-Za-z0-9_."]+)\b(.*?)` +
+			`EXECUTE\s+(?:FUNCTION|PROCEDURE)\s+([A-Za-z0-9_."]+)\s*\(`)
+	jcTriggerDrop = regexp.MustCompile(
+		`(?is)DROP\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?([A-Za-z0-9_."]+)\s+ON\s+([A-Za-z0-9_."]+)`)
+)
+
+// jcStampedTrigger — подвешенный триггер, штампующий позицию.
+type jcStampedTrigger struct {
+	table    string
+	fn       string
+	before   bool
+	onInsert bool
+	where    string
+}
+
+// jcOrderState — состояние чтения миграций: последнее определение функции и
+// набор подвешенных триггеров. Читается ПОСЛЕДОВАТЕЛЬНО, потому что более
+// поздняя миграция вправе закрытость снять.
+type jcOrderState struct {
+	// stamps — имя функции → колонки, которые она штампует ПОД транзакционной
+	// блокировкой с ключом, не зависящим от строки. Пустое множество означает
+	// «функция известна и закрытости не даёт» — это НЕ то же, что «функции нет».
+	stamps map[string]map[string]bool
+	// triggers — (таблица, имя триггера) → подвешенный триггер.
+	triggers map[string]jcStampedTrigger
+}
+
+func jcNewOrderState() *jcOrderState {
+	return &jcOrderState{
+		stamps:   map[string]map[string]bool{},
+		triggers: map[string]jcStampedTrigger{},
+	}
+}
+
+// jcEvent — одно объявление с его смещением: порядок ВНУТРИ файла значим не
+// меньше порядка файлов (`DROP TRIGGER` и `CREATE TRIGGER` стоят подряд).
+type jcEvent struct {
+	at    int
+	apply func()
+}
+
+func (st *jcOrderState) apply(src, rel string) {
+	var events []jcEvent
+
+	for _, fn := range jcFunctionBodies(src) {
+		name, body := fn.name, fn.body
+		at := fn.at
+		events = append(events, jcEvent{at: at, apply: func() {
+			st.stamps[name] = jcLockedStamps(body)
+		}})
+	}
+
+	for _, m := range jcTrigger.FindAllStringSubmatchIndex(src, -1) {
+		grp := func(i int) string {
+			if m[2*i] < 0 {
+				return ""
+			}
+			return src[m[2*i]:m[2*i+1]]
+		}
+		trg := jcTableName(grp(1))
+		timing := strings.ToUpper(strings.Join(strings.Fields(grp(2)), " "))
+		events2 := strings.ToUpper(grp(3))
+		table := jcTableName(grp(4))
+		fn := jcTableName(grp(6))
+		at := m[0]
+		where := fmt.Sprintf("%s (триггер %s на %s)", rel, trg, table)
+		events = append(events, jcEvent{at: at, apply: func() {
+			st.triggers[table+"/"+trg] = jcStampedTrigger{
+				table:    table,
+				fn:       fn,
+				before:   timing == "BEFORE",
+				onInsert: strings.Contains(events2, "INSERT"),
+				where:    where,
+			}
+		}})
+	}
+
+	for _, m := range jcTriggerDrop.FindAllStringSubmatchIndex(src, -1) {
+		trg := jcTableName(src[m[2]:m[3]])
+		table := jcTableName(src[m[4]:m[5]])
+		at := m[0]
+		events = append(events, jcEvent{at: at, apply: func() {
+			delete(st.triggers, table+"/"+trg)
+		}})
+	}
+
+	sort.Slice(events, func(i, j int) bool { return events[i].at < events[j].at })
+	for _, e := range events {
+		e.apply()
+	}
+}
+
+// resolve — какие колонки выдаются в порядке фиксаций ПОСЛЕ всех миграций.
+func (st *jcOrderState) resolve() map[string]string {
+	out := map[string]string{}
+	for _, tr := range st.triggers {
+		if !tr.before || !tr.onInsert {
+			continue
+		}
+		for col := range st.stamps[tr.fn] {
+			out[tr.table+"."+col] = tr.where
+		}
+	}
+	return out
+}
+
+// jcUpPart — восходящая часть миграции. Нисходящая к живой базе не применяется,
+// а её отмены выглядят для линейного чтения как снятие того, что было заведено
+// парой строк выше.
+func jcUpPart(src string) string {
+	if loc := jcGooseDown.FindStringIndex(src); loc != nil {
+		return src[:loc[0]]
+	}
+	return src
+}
+
+var jcGooseDown = regexp.MustCompile(`(?i)--\s*\+goose\s+down\b`)
+
+type jcFuncDef struct {
+	name string
+	body string
+	at   int
+}
+
+// jcFunctionBodies вырезает тела функций по долларовым кавычкам.
+//
+// Регулярным выражением это не делается: закрывающий разделитель обязан
+// СОВПАДАТЬ с открывающим, а обратных ссылок в здешнем движке нет. Поиск
+// парного разделителя строкой честнее приблизительного шаблона: приблизительный
+// склеил бы две функции в одно тело и объявил бы закрытой ту, что блокировки не
+// берёт.
+func jcFunctionBodies(src string) []jcFuncDef {
+	var out []jcFuncDef
+	for _, m := range jcFuncHead.FindAllStringSubmatchIndex(src, -1) {
+		name := jcTableName(src[m[2]:m[3]])
+		rest := src[m[1]:]
+		d := jcDollar.FindStringIndex(rest)
+		if d == nil {
+			continue
+		}
+		tag := rest[d[0]:d[1]]
+		body := rest[d[1]:]
+		if end := strings.Index(body, tag); end >= 0 {
+			body = body[:end]
+		}
+		out = append(out, jcFuncDef{name: name, body: body, at: m[0]})
+	}
+	return out
+}
+
+// jcLockedStamps — колонки, которые тело функции штампует `nextval`-ом ПОСЛЕ
+// транзакционной блокировки с ключом, не зависящим от строки.
+//
+// Позиция блокировки сравнивается со смещением КАЖДОГО присваивания: блокировка,
+// взятая после выдачи номера, не упорядочивает ничего, и «в теле есть и то, и
+// другое» закрытостью не является.
+func jcLockedStamps(body string) map[string]bool {
+	out := map[string]bool{}
+	var locks []int
+	for _, m := range jcXactLock.FindAllStringIndex(body, -1) {
+		arg, ok := jcCallArg(body, m[1])
+		if !ok {
+			continue
+		}
+		// Ключ, вычисленный ИЗ СТРОКИ, упорядочивает лишь свою группу, а читатель
+		// ведёт один курсор на всю таблицу.
+		up := strings.ToUpper(arg)
+		if strings.Contains(up, "NEW.") || strings.Contains(up, "OLD.") {
+			continue
+		}
+		locks = append(locks, m[0])
+	}
+	if len(locks) == 0 {
+		return out
+	}
+	for _, m := range jcStamp.FindAllStringSubmatchIndex(body, -1) {
+		col := strings.ToLower(body[m[2]:m[3]])
+		for _, at := range locks {
+			if at < m[0] {
+				out[col] = true
+				break
+			}
+		}
+	}
+	return out
+}
+
+// jcCallArg — текст аргументов вызова, открывающая скобка которого стоит на
+// `open-1`. Скобки считаются, поэтому вложенный вызов (`hashtext(...)`) не
+// обрывает разбор на своей закрывающей.
+func jcCallArg(src string, open int) (string, bool) {
+	depth := 1
+	for i := open; i < len(src); i++ {
+		switch src[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return src[open:i], true
+			}
+		}
+	}
+	return "", false
 }
