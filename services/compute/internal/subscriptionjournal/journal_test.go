@@ -60,9 +60,9 @@ func TestKindsCarryTheProducersOwnAuthzWords(t *testing.T) {
 		t.Fatalf("видов в словаре %d, ожидался один — блочное хранение ушло из compute "+
 			"миграцией 0021, и его виды больше не принадлежат этому журналу", len(kinds))
 	}
-	got, ok := kinds[KindInstance]
+	got, ok := kinds[JournalWordInstance]
 	if !ok {
-		t.Fatalf("вида %q в словаре нет", KindInstance)
+		t.Fatalf("вида %q в словаре нет", JournalWordInstance)
 	}
 	if got.ObjectType != authzfilter.ResourceTypeInstance {
 		t.Fatalf("тип объекта %q расходится с производителем %q",

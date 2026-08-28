@@ -62,7 +62,7 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
 
 <CodeBlock language="bash">
   {dedent`
-    curl -N 'https://api.kacho.local/subscription/v1/events?owner=compute&projectId=prj7mfpj2my52k5a06kg&kinds=Instance' \\
+    curl -N 'https://api.kacho.local/subscription/v1/events?owner=compute&projectId=prj7mfpj2my52k5a06kg&kinds=compute_instance' \\
       -H "Authorization: Bearer $TOKEN"
   `}
 </CodeBlock>
@@ -142,12 +142,12 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
   <tbody>
     <tr>
       <td><code>compute</code></td><td>Compute</td>
-      <td><code>Instance</code></td>
+      <td><code>compute&#95;instance</code></td>
       <td><code>state</code> типа <code>kacho.cloud.compute.v1.Instance</code> — у создания и правки; у снятия состояния нет</td>
     </tr>
     <tr>
       <td><code>loadbalancer</code></td><td>Load Balancer</td>
-      <td><code>nlb&#95;load&#95;balancer</code>, <code>nlb&#95;listener</code>, <code>nlb&#95;target&#95;group</code></td>
+      <td><code>nlb&#95;network&#95;load&#95;balancer</code>, <code>nlb&#95;listener</code>, <code>nlb&#95;target&#95;group</code></td>
       <td>состояния нет ни у одного вида и ни у одного рода изменения — приходит только оболочка события</td>
     </tr>
   </tbody>
@@ -181,7 +181,7 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
   {dedent`
     id: c3ViMXwxMzM3
     event: opened
-    data: {"opened":{"position":"c3ViMXwxMzM3","caughtUp":true,"honoredFilters":["kinds","project_id"],"earliestResumablePosition":"","retainsEverything":true}}
+    data: {"opened":{"position":"c3ViMXwxMzM3","caughtUp":true,"honoredFilters":["kinds","project_id"],"earliestResumablePosition":"","retainsEverything":true,"knownKinds":["compute_instance"]}}
 
   `}
 </CodeBlock>
@@ -194,8 +194,19 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
     <tr><td><code>honoredFilters</code></td><td>Оси, которые этот владелец отобрал <strong>честно</strong>. Ось, которой здесь нет при заданном значении, владелец не отбирал — доотберите её у себя. Якорной оси (<code>project_id</code>) это не касается: владелец, не умеющий отобрать по ней, подписку отвергает, а не открывает с оговоркой.</td></tr>
     <tr><td><code>earliestResumablePosition</code></td><td>Самая ранняя позиция, с которой возобновление ещё возможно. При <code>retainsEverything: true</code> горизонта нет, и поле пусто.</td></tr>
     <tr><td><code>retainsEverything</code></td><td>Владелец удерживает журнал целиком — тогда отказ «позиция утрачена» не наступает никогда. Оба сегодняшних владельца объявляют <code>true</code>.</td></tr>
+    <tr><td><code>knownKinds</code></td><td>Закрытый словарь видов этого владельца целиком, по возрастанию. Это ответ на вопрос «что вообще можно назвать в <code>kinds</code>» — и он приходит <strong>по проводу</strong>, а не берётся из документа. Словарь есть объявление <strong>владельца</strong>, а не выборка по вашим правам: вид, на который у вас прав нет, из перечня не пропадает, а решение о показе принимается построчно.</td></tr>
   </tbody>
 </table>
+
+:::tip Словарь видов читается ОДНИМ открытием, а не подбором
+Откройте подписку, **не называя** `kinds`: незаданная ось не сужает, отказа не будет, а первое
+же сообщение принесёт `knownKinds` целиком. Вид вне словаря отвергается **до** открытия потока,
+поэтому подбором против отказа словарь не изучить — зато сам отказ его называет: сообщение
+`400` перечисляет известные виды вслед за отвергнутым значением.
+
+Таблица владельцев выше — **удобство для чтения**, а не источник: она описывает установку, на
+которой писалась. Источник — `knownKinds` вашей установки.
+:::
 
 :::note Значения `honoredFilters` — имена полей контракта, а не имена параметров запроса
 Там стоят `kinds`, `project_id`, `ids` — как оси объявлены в контракте подписки. Параметр
@@ -209,7 +220,7 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
   {dedent`
     id: c3ViMXwxMzQy
     event: event
-    data: {"event":{"position":"c3ViMXwxMzQy","kind":"Instance","resourceId":"ins-7t4w9e2x5h8mz0c3v","projectId":"prj7mfpj2my52k5a06kg","change":"UPDATED","state":{"@type":"type.googleapis.com/kacho.cloud.compute.v1.Instance","id":"ins-7t4w9e2x5h8mz0c3v","projectId":"prj7mfpj2my52k5a06kg","name":"web-1","zoneId":"ru-central1-a","status":"RUNNING"}}}
+    data: {"event":{"position":"c3ViMXwxMzQy","kind":"compute_instance","resourceId":"ins-7t4w9e2x5h8mz0c3v","projectId":"prj7mfpj2my52k5a06kg","change":"UPDATED","state":{"@type":"type.googleapis.com/kacho.cloud.compute.v1.Instance","id":"ins-7t4w9e2x5h8mz0c3v","projectId":"prj7mfpj2my52k5a06kg","name":"web-1","zoneId":"ru-central1-a","status":"RUNNING"}}}
 
   `}
 </CodeBlock>
@@ -221,7 +232,7 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
   <thead><tr><th>Поле</th><th>Что означает</th></tr></thead>
   <tbody>
     <tr><td><code>position</code></td><td>Позиция этого события — она же в поле <code>id:</code> кадра. С неё возобновляются.</td></tr>
-    <tr><td><code>kind</code></td><td>Вид предмета из словаря владельца.</td></tr>
+    <tr><td><code>kind</code></td><td>Вид предмета из словаря владельца — в том же написании, в каком его принимает <code>kinds</code> и в каком его перечисляет <code>knownKinds</code>. Написание одно на всё дерево: это имя типа в модели прав (<code>compute&#95;instance</code>, <code>nlb&#95;network&#95;load&#95;balancer</code>), а не слово, которым владелец записал строку в своём журнале.</td></tr>
     <tr><td><code>resourceId</code></td><td>Неизменяемый идентификатор предмета. Может быть пуст: не всякое событие относится к ресурсу.</td></tr>
     <tr><td><code>projectId</code></td><td>Проект предмета. Пусто означает «событие не принадлежит проекту» (предмет уровня аккаунта или кластера) — это законное состояние, а не пропуск.</td></tr>
     <tr><td><code>change</code></td><td><code>CREATED</code> · <code>UPDATED</code> · <code>DELETED</code>. Словарь платформенный: различать снос от правки обязан уметь всякий подписчик, не зная домена.</td></tr>
@@ -232,7 +243,7 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
 
 `state` и `stateUnavailable` — ветви одного выбора: в кадре стоит ровно одна из них.
 У сегодняшних владельцев состояние приходит только с событиями `CREATED` и `UPDATED` вида
-`Instance` (владелец `compute`); у снятия машины и у всех событий владельца `loadbalancer`
+`compute_instance` (владелец `compute`); у снятия машины и у всех событий владельца `loadbalancer`
 приходит `stateUnavailable`, и предмет восстанавливается чтением по `resourceId` — либо
 снимается из вашего состояния, если это `DELETED`.
 
@@ -274,7 +285,7 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
 <table>
   <thead><tr><th>HTTP</th><th><code>code</code></th><th>Когда</th><th>Что делать</th></tr></thead>
   <tbody>
-    <tr><td><code>400</code></td><td><code>INVALID&#95;ARGUMENT</code> (3)</td><td>Неизвестный параметр; не названный <code>owner</code>; неизвестный <code>owner</code>; неизвестное значение <code>start</code>; вид вне словаря владельца; значение <code>ids</code>, не являющееся идентификатором.</td><td>Править запрос: сообщение называет поле и значение. Повтор того же запроса пройти не может.</td></tr>
+    <tr><td><code>400</code></td><td><code>INVALID&#95;ARGUMENT</code> (3)</td><td>Неизвестный параметр; не названный <code>owner</code>; неизвестный <code>owner</code>; неизвестное значение <code>start</code>; вид вне словаря владельца (отказ перечисляет известные); значение <code>ids</code>, не являющееся идентификатором.</td><td>Править запрос: сообщение называет поле и значение. Повтор того же запроса пройти не может.</td></tr>
     <tr><td><code>400</code></td><td><code>OUT&#95;OF&#95;RANGE</code> (11)</td><td>Позиция больше не возобновима. В <code>details[]</code> — <code>ErrorInfo</code> с <code>reason: SUBSCRIPTION&#95;POSITION&#95;LOST</code>, доменом <code>subscription.kacho.cloud</code> и полем <code>earliest&#95;resumable&#95;position</code>.</td><td>Перечитать список и подписаться с названной позиции. Ключуйтесь на <code>reason</code>, а не на прозу сообщения.</td></tr>
     <tr><td><code>401</code></td><td><code>UNAUTHENTICATED</code> (16)</td><td>Вызывающий безымянен.</td><td>Предъявить токен или сессию. Обычно этот отказ производит полоса прав раньше — тогда придёт <code>403</code>.</td></tr>
     <tr><td><code>403</code></td><td><code>PERMISSION&#95;DENIED</code> (7)</td><td>Нет права <code>platform.subscription.subscribe</code>, либо на владельце нет работающего сужателя потока.</td><td>Запросить право. Пообъектного вопроса при открытии не задаётся — сужение идёт построчно.</td></tr>

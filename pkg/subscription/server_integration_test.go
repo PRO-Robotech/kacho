@@ -42,7 +42,7 @@ func TestConjunctionOfThreeAxesNarrows(t *testing.T) {
 
 	t.Run("три оси сужают вместе", func(t *testing.T) {
 		sb := s.open(t, ctx, &subscriptionv1.SubscriptionRequest{
-			Kinds:     []string{"Network"},
+			Kinds:     []string{"vpc_network"},
 			ProjectId: "prj-a",
 			Ids:       []string{"net00000000000000003"},
 			Start: &subscriptionv1.SubscriptionRequest_Anchor{
