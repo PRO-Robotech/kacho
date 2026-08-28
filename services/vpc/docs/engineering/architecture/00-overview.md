@@ -164,7 +164,10 @@ internal/
   по TEXT-id без FK, валидирует через `geo.v1.ZoneService.Get`.
 - Operations storage — таблица `operations` в схеме `kacho_vpc` (объявлена в `0001_initial.sql`),
   логика worker'а — в `pkg/operations`.
-- Compute/instances/disks — `kacho-compute`.
+- Instance / MachineType — `kacho-compute`.
+- Volume / Snapshot / Image / DiskType (блочное хранение) — `kacho-storage`.
+  Здесь стояло «Compute/instances/disks — kacho-compute»: раскол блочного хранения
+  завершён, контрактов диска, образа и снимка у вычислений нет вовсе.
 
 ## Quick links
 

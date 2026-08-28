@@ -80,12 +80,32 @@ data-plane прокси прикладного трафика. За физиче
   <tbody>
     <tr><td><strong>IAM</strong></td><td><code>kacho-iam</code></td><td>Account / Project / User / ServiceAccount / Group / Role / AccessBinding</td></tr>
     <tr><td><strong>VPC</strong></td><td><code>kacho-vpc</code></td><td>Network / Subnet / SecurityGroup / RouteTable / Address / Gateway / NetworkInterface</td></tr>
-    <tr><td><strong>Compute</strong></td><td><code>kacho-compute</code></td><td>Instance / Disk / Image / Snapshot / DiskType</td></tr>
+    <tr><td><strong>Compute</strong></td><td><code>kacho-compute</code></td><td>Instance / MachineType</td></tr>
+    <tr><td><strong>Storage</strong></td><td><code>kacho-storage</code></td><td>Volume / Snapshot / Image / DiskType</td></tr>
     <tr><td><strong>Geography</strong></td><td><code>kacho-geo</code></td><td>Region / Zone</td></tr>
     <tr><td><strong>Load Balancer</strong></td><td><code>kacho-nlb</code></td><td>NetworkLoadBalancer / Listener / TargetGroup</td></tr>
     <tr><td><strong>Registry</strong></td><td><code>kacho-registry</code></td><td>RegistryService (control-plane)</td></tr>
   </tbody>
 </table>
+
+:::note Здесь блочное хранение стояло у вычислений, а собственной строки у него не было
+Раскол блочного хранения в отдельный домен завершён: `Volume` / `Snapshot` / `Image` /
+`DiskType` служит **kacho-storage**, и контрактов этих ресурсов у вычислений нет вовсе
+(`ls proto/kacho/cloud/compute/v1/ | grep -iE 'disk|image|snapshot'` — пусто). Прежняя
+редакция называла их у вычислений и не называла хранения совсем.
+
+Это не косметика. **Имя домена — значение параметра, а не проза:** им адресуется
+[поток изменений](/api/subscription) (`?owner=…`), по нему выбирается REST-префикс и
+префикс идентификатора операции. Клиент, которому нужны изменения дисков, по прежней
+редакции пошёл бы в вычисления — где предмета нет.
+
+Строки приведены к [таблице REST-префиксов](/api/overview): два места об одном предмете
+на одном сайте расходятся молча, поэтому здесь и там теперь одно и то же написание.
+
+Снятые формы здесь не воспроизводятся строкой таблицы: строка этой таблицы читается как
+рабочий адрес. Сверено с деревом контрактов `proto/kacho/cloud/*/v1/`; расхождение теперь
+держит гейт `internal/repohygiene` `TestClientDocsAttributeResourcesToTheirOwner`.
+:::
 
 :::note Собственный gRPC-контракт гейтвея — минимален
 Гейтвей — прокси: почти весь его RPC-набор транслируется в домены. Собственные встроенные
