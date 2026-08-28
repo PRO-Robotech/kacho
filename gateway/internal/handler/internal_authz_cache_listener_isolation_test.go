@@ -39,7 +39,7 @@ func TestW1_2_14_InternalAuthzCacheService_RegisteredOnlyOnInternalServer(t *tes
 	externalSrv := grpc.NewServer()
 
 	inv := &noopInvalidator{}
-	handler.RegisterInternalAuthzCacheService(internalSrv, externalSrv, inv, nil)
+	handler.RegisterInternalAuthzCacheService(internalSrv, externalSrv, inv, nil, nil)
 
 	const fqn = "kacho.cloud.apigateway.v1.InternalAuthzCacheService"
 
@@ -62,7 +62,7 @@ func TestW1_2_14b_RegisterInternalAuthzCacheService_NilInternalSrv_Panics(t *tes
 	externalSrv := grpc.NewServer()
 	inv := &noopInvalidator{}
 	require.Panics(t, func() {
-		handler.RegisterInternalAuthzCacheService(nil, externalSrv, inv, nil)
+		handler.RegisterInternalAuthzCacheService(nil, externalSrv, inv, nil, nil)
 	}, "must panic on nil internal server (programmer error)")
 }
 

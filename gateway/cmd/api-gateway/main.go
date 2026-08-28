@@ -798,6 +798,17 @@ func main() {
 		log.Fatalf("диагностическая поверхность: %v", diagErr)
 	}
 
+	// --- проекция потока изменений в браузер ---
+	//
+	// Собирается ЗДЕСЬ, а не у своего монтирования ниже, потому что она же —
+	// реестр открытых потоков, который читают оба читателя отзыва: перепрос
+	// изменений субъекта (следующий блок) и внутренний слушатель. Провязать их
+	// можно только тем, что уже существует.
+	subscriptionStream, err := buildSubscriptionStreamHandler(cfg, backends, logger)
+	if err != nil {
+		log.Fatalf("subscription stream projection: %v", err)
+	}
+
 	// --- subject-change poll-loop for cross-replica authz cache invalidation ---
 	// Runs only when authz is enabled (authzMW != nil covers both enabled and
 	// disabled — InvalidateCache is nil-safe, but polling is pointless when the
@@ -805,13 +816,40 @@ func main() {
 	// in environments without authz.
 	if authzMW != nil {
 		scPoller := clients.NewSubjectChangePoller(backends["iamInternal"])
-		scWatcher := watcher.New(scPoller, authzMW.InvalidateCache,
-			cfg.SubjectChangePollInterval, logger)
+		// Срок неподтверждённого чтения отзыва — СЛЕДСТВИЕ РЕШЕНИЯ, а не срока
+		// жизни соединения: столько край вправе держать открытые потоки, ни разу
+		// не подтвердив, что права их владельцев целы. Выведен из периода
+		// перепроса, потому что измеряет именно его отказ, и обязан быть заметно
+		// меньше срока жизни потока — иначе fail-closed не наступает никогда, а
+		// поток закрывается собственным бюджетом и выглядит закрытым по отзыву.
+		staleAfter := revocationStaleAfter(cfg.SubjectChangePollInterval)
+		if staleAfter >= cfg.SubscriptionStreamBudget {
+			log.Fatalf("subject-change watcher: срок неподтверждённого чтения отзыва %v "+
+				"не меньше срока жизни потока %v — fail-closed не наступит ни разу, "+
+				"а закрытие по собственному бюджету потока выглядело бы закрытием по отзыву",
+				staleAfter, cfg.SubscriptionStreamBudget)
+		}
+		scWatcher, wErr := watcher.New(watcher.Config{
+			Poller:     scPoller,
+			Flush:      authzMW.InvalidateCache,
+			Interval:   cfg.SubjectChangePollInterval,
+			Closer:     subscriptionStream,
+			StaleAfter: staleAfter,
+			Logger:     logger,
+		})
+		if wErr != nil {
+			log.Fatalf("subject-change watcher: %v", wErr)
+		}
 		// The watcher is poll-only with no shutdown cleanup; it exits when ctx is
 		// cancelled (SIGTERM/SIGINT). No WaitGroup join needed — nothing to flush on exit.
 		go scWatcher.Run(ctx)
+		// Самоотчёт называет ОБЕ величины: перепрос, которым отзыв доезжает, и
+		// срок, после которого его отсутствие само становится решением. Молчание
+		// о втором сделало бы «fail-closed провязан» неотличимым от «не провязан».
 		logger.Info("subject-change watcher started",
-			"interval", cfg.SubjectChangePollInterval)
+			"interval", cfg.SubjectChangePollInterval,
+			"stale_after", staleAfter.String(),
+			"closes_streams", true)
 	}
 
 	// --- gRPC server ---
@@ -981,10 +1019,6 @@ func main() {
 	// внешнего пути нет и не заводится (его нет в allowlist, его имя отсекает
 	// HasInternalSuffix, а `google.api.http` контракт не объявляет). Разбор —
 	// gateway/docs/engineering/architecture/subscription-stream-projection.md.
-	subscriptionStream, err := buildSubscriptionStreamHandler(cfg, backends, logger)
-	if err != nil {
-		log.Fatalf("subscription stream projection: %v", err)
-	}
 	httpMux.Handle(subscriptionstream.Path, subscriptionStream)
 	// Счётчики ручки провязываются в диагностическую поверхность ЗДЕСЬ, а не
 	// «когда-нибудь»: величина, которую никто не читает, не отличима от «этот
@@ -1102,7 +1136,7 @@ func main() {
 	}
 	internalGRPCAddr := cfg.InternalGRPCAddr
 	internalGrpcSrv, internalLis, internalAdmission, ierr := startInternalGRPCListener(
-		internalGRPCAddr, authzMW.AsInvalidator(), grpcSrv, internalSec,
+		internalGRPCAddr, authzMW.AsInvalidator(), subscriptionStream, grpcSrv, internalSec,
 		internalAdmissionLimits, edgeLatency, logger)
 	if ierr != nil {
 		log.Fatalf("internal grpc listener: %v", ierr)

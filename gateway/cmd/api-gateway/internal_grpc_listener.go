@@ -53,7 +53,7 @@ import (
 // and they drift silently — one listener would end up on the platform floor and
 // the other on the operator's numbers with nothing red anywhere.
 func startInternalGRPCListener(
-	addr string, inv handler.Invalidator,
+	addr string, inv handler.Invalidator, streams handler.SubjectStreamCloser,
 	externalSrv *grpc.Server, sec internalListenerSecurity,
 	limits grpcsrv.AdmissionLimits, latency *grpcsrv.ServerLatency, logger *slog.Logger,
 ) (*grpc.Server, net.Listener, *grpcsrv.Admission, error) {
@@ -164,7 +164,10 @@ func startInternalGRPCListener(
 	// подставляет допуск МЕЖДУ цепочкой звеньев и обработчиком, то есть ПОСЛЕ
 	// того, как личность сертификата установлена. Забыть метод здесь не на чем —
 	// перечня методов у вызывающего нет.
-	handler.RegisterInternalAuthzCacheService(adm.Registrar(srv), externalSrv, inv, logger)
+	// Отзыв доезжает ОБОИМИ следствиями: записи кэша решений и открытые потоки
+	// этого субъекта. Второе — kacho#1022: длинное соединение следующего запроса
+	// не делает, поэтому сброс кэша его не касается вовсе.
+	handler.RegisterInternalAuthzCacheService(adm.Registrar(srv), externalSrv, inv, streams, logger)
 
 	// gRPC reflection — schema discovery for `grpcurl` and friends during
 	// incident response. This is the ONLY listener that serves it: the

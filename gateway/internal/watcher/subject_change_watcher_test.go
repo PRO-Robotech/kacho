@@ -30,7 +30,9 @@ type fakePoller struct {
 	sinces  []int64 // records the `since` cursor observed on each call
 }
 
-func (f *fakePoller) PollSubjectChanges(ctx context.Context, since int64) (ids []int64, headID int64, err error) {
+func (f *fakePoller) PollSubjectChanges(
+	_ context.Context, since int64,
+) (changes []watcher.SubjectChange, headID int64, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sinces = append(f.sinces, since)
@@ -49,12 +51,14 @@ func (f *fakePoller) PollSubjectChanges(ctx context.Context, since int64) (ids [
 	}
 	// compute headID as max(ids), or 0 for empty
 	var h int64
+	out := make([]watcher.SubjectChange, 0, len(b))
 	for _, id := range b {
 		if id > h {
 			h = id
 		}
+		out = append(out, watcher.SubjectChange{ID: id})
 	}
-	return b, h, nil
+	return out, h, nil
 }
 
 // sinceAt returns the `since` cursor observed on the (0-indexed) n-th poll call.
@@ -73,7 +77,9 @@ type deadlinePoller struct {
 	once sync.Once
 }
 
-func (d *deadlinePoller) PollSubjectChanges(ctx context.Context, since int64) ([]int64, int64, error) {
+func (d *deadlinePoller) PollSubjectChanges(
+	ctx context.Context, _ int64,
+) ([]watcher.SubjectChange, int64, error) {
 	_, ok := ctx.Deadline()
 	d.once.Do(func() { d.seen <- ok })
 	return nil, 0, nil
@@ -90,7 +96,12 @@ func TestSubjectChangeWatcher_PollHasPerCallDeadline(t *testing.T) {
 	defer cancel()
 	// Parent ctx has NO deadline — any deadline observed by the poller must come
 	// from the watcher's per-call context.WithTimeout.
-	w := watcher.New(p, func() {}, 5*time.Millisecond, slog.Default())
+	w, err := watcher.New(watcher.Config{
+		Poller: p, Flush: func() {}, Interval: 5 * time.Millisecond, Logger: slog.Default(),
+	})
+	if err != nil {
+		t.Fatalf("сборка наблюдателя: %v", err)
+	}
 	go w.Run(ctx)
 
 	select {
@@ -116,7 +127,12 @@ func script(t *testing.T, batches [][]int64, errs []error) (*fakePoller, *int, f
 	t.Helper()
 	p := &fakePoller{batches: batches, errs: errs}
 	var flushes int
-	w := watcher.New(p, func() { flushes++ }, time.Second, slog.Default())
+	w, err := watcher.New(watcher.Config{
+		Poller: p, Flush: func() { flushes++ }, Interval: time.Second, Logger: slog.Default(),
+	})
+	if err != nil {
+		t.Fatalf("сборка наблюдателя: %v", err)
+	}
 	return p, &flushes, func() { w.Tick(context.Background()) }
 }
 

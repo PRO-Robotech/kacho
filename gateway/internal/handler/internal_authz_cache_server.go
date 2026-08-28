@@ -38,12 +38,29 @@ type Invalidator interface {
 	Invalidate()
 }
 
+// SubjectStreamCloser — закрывает ОТКРЫТЫЕ потоки субъекта.
+//
+// Второй порт, а не расширение [Invalidator], и это не вкус. У них разные
+// предметы и разная полярность отказа: кэш решений хранит ответ, который просто
+// перестаёт быть верным, а поток — открытое соединение, по которому арендатор
+// продолжает получать данные. Слей их — и провязка одного молча включала бы
+// другой либо, что хуже, отсутствие одного выключало бы второй.
+//
+// Реализуется проекцией потока (`gateway/internal/subscriptionstream`.Handler).
+// Порт объявлен ЗДЕСЬ, у вызывающего, чтобы обработчик оставался проверяемым без
+// импорта проекции.
+type SubjectStreamCloser interface {
+	// CloseSubject закрывает потоки названного субъекта и возвращает их число.
+	CloseSubject(subject string) int
+}
+
 // InternalAuthzCacheServer implements
 // apigatewayv1.InternalAuthzCacheServiceServer.
 type InternalAuthzCacheServer struct {
 	apigatewayv1.UnimplementedInternalAuthzCacheServiceServer
-	inv    Invalidator
-	logger *slog.Logger
+	inv     Invalidator
+	streams SubjectStreamCloser
+	logger  *slog.Logger
 }
 
 // NewInternalAuthzCacheServer constructs the handler. logger may be nil
@@ -52,13 +69,43 @@ func NewInternalAuthzCacheServer(inv Invalidator, logger *slog.Logger) *Internal
 	return &InternalAuthzCacheServer{inv: inv, logger: logger}
 }
 
+// WithSubjectStreamCloser провязывает закрытие открытых потоков субъекта
+// (kacho#1022) и возвращает тот же обработчик.
+//
+// # Почему отзыв обязан доезжать сюда, а не только до кэша
+//
+// Кэш решений покрывает ЗАПРОСЫ: следующий запрос отозванного получит отказ.
+// Длинное соединение следующего запроса не делает — проверка на нём случилась
+// один раз, при открытии. Это класс «контроль, действующий на выдаче, но не на
+// предъявлении»: сброс кэша выглядит отзывом и потока не касается вовсе, а само
+// состояние не сходится — сходиться нечему.
+//
+// # Почему закрывается на ЛЮБОМ изменении субъекта, а не только на снятии права
+//
+// Вид события (`event_type`) контракт объявляет диагностическим и прямо говорит,
+// что на поведение сброса он не влияет. Строить на нём решение о доступе значило
+// бы завести второе, противоречащее первому чтение одного поля. Цена ошибки
+// несимметрична: закрытый на выдаче права поток стоит одного переподключения,
+// переживший снятие права — того, ради чего задача заведена.
+//
+// Ноль означает «не провязан»: обработчик тогда делает ровно то, что делал
+// прежде. Молчаливого включения не бывает — провязку видно в самоотчёте старта.
+func (s *InternalAuthzCacheServer) WithSubjectStreamCloser(c SubjectStreamCloser) *InternalAuthzCacheServer {
+	s.streams = c
+	return s
+}
+
 // InvalidateSubject — see apigatewayv1.InternalAuthzCacheServiceServer.
 //
 // Contract:
-//   - empty Subject       → codes.InvalidArgument
-//   - 0 entries dropped   → codes.NotFound (idempotent; drainer maps to
-//     drainer.ErrAlreadyApplied and marks sent_at)
-//   - >0 entries dropped  → OK + Empty{}
+//   - empty Subject                        → codes.InvalidArgument
+//   - 0 entries dropped AND 0 streams closed → codes.NotFound (idempotent;
+//     drainer maps to drainer.ErrAlreadyApplied and marks sent_at)
+//   - anything actually done                 → OK + Empty{}
+//
+// Закрытые потоки входят в «сделано» наравне со сброшенными записями: субъект
+// без записей кэша, но с открытым потоком получил бы `NotFound` — ответ
+// «делать было нечего» на вызов, который закрыл соединение.
 //
 // ResourceType / ResourceID are ignored — per-subject invalidate is the
 // safe upper bound. EventType — diagnostic only (logged).
@@ -69,6 +116,10 @@ func (s *InternalAuthzCacheServer) InvalidateSubject(
 		return nil, status.Error(codes.InvalidArgument, "subject required")
 	}
 	dropped := s.inv.InvalidateSubject(req.GetSubject())
+	closed := 0
+	if s.streams != nil {
+		closed = s.streams.CloseSubject(req.GetSubject())
+	}
 	if s.logger != nil {
 		s.logger.Info("authz cache invalidate (per-subject)",
 			slog.String("subject", req.GetSubject()),
@@ -76,9 +127,13 @@ func (s *InternalAuthzCacheServer) InvalidateSubject(
 			slog.String("resource_type", req.GetResourceType()),
 			slog.String("resource_id", req.GetResourceId()),
 			slog.Int("dropped", dropped),
+			// Закрытые потоки считаются ОТДЕЛЬНО от сброшенных записей: слей их
+			// — и «отзыв доехал до потоков» стало бы неотличимо от «сбросили
+			// кэш», то есть от состояния до этой задачи.
+			slog.Int("streams_closed", closed),
 		)
 	}
-	if dropped == 0 {
+	if dropped+closed == 0 {
 		// Idempotent miss — gateway has no cache entries for this subject.
 		// Drainer (kacho-iam side) maps NotFound → drainer.ErrAlreadyApplied
 		// and marks sent_at; row is not retried.
@@ -106,7 +161,8 @@ func (s *InternalAuthzCacheServer) InvalidateSubject(
 // not to receive a registration but to make the internal-only invariant a
 // checkable argument.
 func RegisterInternalAuthzCacheService(
-	internalSrv grpc.ServiceRegistrar, externalSrv *grpc.Server, inv Invalidator, logger *slog.Logger,
+	internalSrv grpc.ServiceRegistrar, externalSrv *grpc.Server, inv Invalidator,
+	streams SubjectStreamCloser, logger *slog.Logger,
 ) {
 	if internalSrv == nil {
 		panic("RegisterInternalAuthzCacheService: internalSrv is nil (programmer error)")
@@ -114,7 +170,7 @@ func RegisterInternalAuthzCacheService(
 	if externalSrv == nil {
 		panic("RegisterInternalAuthzCacheService: externalSrv is nil (programmer error — pass both servers to make the internal-only invariant explicit)")
 	}
-	srv := NewInternalAuthzCacheServer(inv, logger)
+	srv := NewInternalAuthzCacheServer(inv, logger).WithSubjectStreamCloser(streams)
 	apigatewayv1.RegisterInternalAuthzCacheServiceServer(internalSrv, srv)
 	// externalSrv intentionally NOT registered — see comment above.
 }

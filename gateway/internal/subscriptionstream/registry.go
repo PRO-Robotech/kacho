@@ -19,9 +19,9 @@ import (
 // список потребовал бы перебора всех открытых потоков на каждый отзыв, а их
 // столько, сколько вкладок у всех арендаторов сразу.
 //
-// Здесь реализовано ТОЛЬКО ведение реестра. Подписки на событие инвалидации нет
-// и в этой фазе не заводится: механизм без своего предмета — то же обещание,
-// только в коде.
+// Здесь реализовано ТОЛЬКО ведение реестра. Подписку на событие отзыва держат
+// его читатели ([Handler.CloseSubject], [Handler.CloseAll]), а провязывает их
+// композиционный корень края.
 type registry struct {
 	mu     sync.Mutex
 	next   uint64
@@ -94,6 +94,12 @@ func (s *stream) close() {
 // приходится хранить ключ, а значит и терять его. Снятие идемпотентно, поэтому
 // `defer` безопасен на любом пути выхода.
 func (r *registry) tryAdd(subject string, perSubject int) (*stream, func(), bool) {
+	if subject == "" {
+		// Безымянный поток закрыть нечем: у отзыва нет ключа, которым его
+		// назвать. Отсекается здесь, а не только у вызывающего, — страж у одной
+		// двери переживает появление второго вызывающего.
+		return nil, nil, false
+	}
 	r.mu.Lock()
 	streams, ok := r.bySubj[subject]
 	if ok && perSubject > 0 && len(streams) >= perSubject {
@@ -139,6 +145,26 @@ func (r *registry) closeSubject(subject string) int {
 	entries := make([]*stream, 0, len(streams))
 	for _, entry := range streams {
 		entries = append(entries, entry)
+	}
+	r.mu.Unlock()
+
+	for _, entry := range entries {
+		entry.close()
+	}
+	return len(entries)
+}
+
+// closeAll отменяет контексты ВСЕХ учтённых потоков и возвращает их число.
+//
+// Снятие с учёта, как и у [registry.closeSubject], делает сам поток, выходя:
+// отмена контекста его разбудит, и он снимется своим `defer`.
+func (r *registry) closeAll() int {
+	r.mu.Lock()
+	entries := make([]*stream, 0, len(r.bySubj))
+	for _, streams := range r.bySubj {
+		for _, entry := range streams {
+			entries = append(entries, entry)
+		}
 	}
 	r.mu.Unlock()
 

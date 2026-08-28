@@ -53,13 +53,37 @@ func SubjectFromContext(ctx context.Context) (string, error) {
 	if !ok || p.IsAnonymous() {
 		return "", ErrUnnamedCaller()
 	}
-	if p.Type != subjectTypeUser && p.Type != subjectTypeServiceAccount {
-		return "", ErrUnnamedCaller()
-	}
-	subject := authz.FormatSubject(p.Type, p.ID)
-	if subject != p.Type+":"+p.ID {
-		// Форматирование подменило идентификатор — субъект не назван, а сконструирован.
+	subject, named := Subject(p.Type, p.ID)
+	if !named {
 		return "", ErrUnnamedCaller()
 	}
 	return subject, nil
+}
+
+// Subject — субъект модели прав для НАЗВАННОЙ пары «тип, идентификатор», либо
+// отказ. Отдельная дверь того же предиката, что у [SubjectFromContext]: там
+// пара берётся из контекста, здесь — из заголовков полосы аутентификации.
+//
+// # Почему это ОДИН кодек, а не два похожих
+//
+// Субъект модели прав — предмет, о котором говорят двое: тот, кто СПРАШИВАЕТ
+// право (сужатель, страж оси), и тот, кто УЧИТЫВАЕТ открытые потоки, чтобы
+// закрыть их по отзыву (проекция потока на крае, kacho#1022). Ключ учёта обязан
+// совпасть с именем, которым субъекта назовёт отзыв, — и совпасть не случайно, а
+// ПО ПОСТРОЕНИЮ. Две похожие сборки строки разошлись бы молча: обе непусты, обе
+// выглядят субъектом, а поток под второй закрыть нечем ни при каких условиях.
+//
+// Псевдонимы типа (`usr`, `sva`, `serviceaccount`) здесь НЕ признаются
+// намеренно: словарь субъектов закрыт, и расширять его переписыванием входа
+// значит заводить второй словарь.
+func Subject(principalType, principalID string) (string, bool) {
+	if principalType != subjectTypeUser && principalType != subjectTypeServiceAccount {
+		return "", false
+	}
+	subject := authz.FormatSubject(principalType, principalID)
+	if subject != principalType+":"+principalID {
+		// Форматирование подменило идентификатор — субъект не назван, а сконструирован.
+		return "", false
+	}
+	return subject, true
 }

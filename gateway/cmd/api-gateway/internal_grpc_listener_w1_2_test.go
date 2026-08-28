@@ -112,7 +112,7 @@ func startSecuredInternalListener(t *testing.T, inv handler.Invalidator, sec int
 	// чтений в секунду на модуль), поэтому ни один из них в него не упрётся; а
 	// подать сюда крошечный набор значило бы завести второй предмет в чужом
 	// случае.
-	srv, lis, _, err := startInternalGRPCListener(":0", inv, externalSrv, sec,
+	srv, lis, _, err := startInternalGRPCListener(":0", inv, nil, externalSrv, sec,
 		grpcsrv.PlatformInternalAdmission(), probeLatency(t), nil)
 	require.NoError(t, err, "startInternalGRPCListener must succeed on :0")
 	require.NotNil(t, srv, "must return *grpc.Server")

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"time"
 
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
@@ -86,4 +87,40 @@ func buildSubscriptionStreamHandler(
 		"max_streams_per_subject", cfg.SubscriptionMaxStreamsPerSubject)
 
 	return handler, nil
+}
+
+// revocationStaleFactor / revocationStaleFloor — во сколько перепросов подряд
+// обходится срок, после которого край считает читателя отзыва потерянным.
+//
+// # Почему величина ВЫВОДИТСЯ, а не объявляется ручкой
+//
+// Она измеряет отказ ОДНОГО названного механизма — перепроса изменений
+// субъекта, — и всякий раз, когда его период меняют, должна меняться вместе с
+// ним. Ручка, объявленная отдельно, разошлась бы с периодом молча и разошлась бы
+// именно там, где расхождение не видно: обе непусты, обе выглядят разумно, а
+// fail-closed наступает либо на всякой заминке, либо никогда.
+//
+// # Почему пять, а не «побольше на всякий случай»
+//
+// Один пропущенный перепрос — заминка сети, а не потеря читателя; объявить её
+// аварией значит закрывать потоки всего флота на каждом чихе соседа. Пять подряд
+// заминкой уже не бывают. Пол в десять секунд держит нижнюю сторону: при частом
+// перепросе пять периодов складываются в срок, за который сосед не успевает
+// даже перезапуститься.
+//
+// Верхнюю сторону держит не эта константа, а страж старта: срок обязан быть
+// заметно меньше срока жизни потока, иначе fail-closed не наступает ни разу.
+const (
+	revocationStaleFactor = 5
+	revocationStaleFloor  = 10 * time.Second
+)
+
+// revocationStaleAfter — срок, после которого неподтверждённое чтение отзыва
+// само становится решением закрыть потоки.
+func revocationStaleAfter(pollInterval time.Duration) time.Duration {
+	stale := pollInterval * revocationStaleFactor
+	if stale < revocationStaleFloor {
+		return revocationStaleFloor
+	}
+	return stale
 }
