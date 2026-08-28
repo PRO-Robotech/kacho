@@ -23,13 +23,19 @@ binding, удаление из группы, revoke JIT/breakglass), он **то
 flowchart LR
   iam["kacho-iam<br/>SubjectChangeApplier<br/>(drainer subject_change_outbox)"] -->|"InvalidateSubject(subject)"| agw["api-gateway :9091<br/>InternalAuthzCacheService"]
   agw --> cache["decisionCache.InvalidateSubject(subject)<br/>(сброс только записей subject)"]
+  agw --> streams["subscriptionstream.CloseSubject(subject)<br/>(закрытие открытых потоков subject)"]
 ```
 
 - **Caller** — `kacho-iam` `SubjectChangeApplier` (applier push-drainer'а таблицы
   `subject_change_outbox`), по одному вызову на дренированную строку.
 - **Callee** — гейтвей на internal mTLS-listener `:9091` (не на внешнем endpoint).
-- **Эффект** — сброс только записей, привязанных к изменившемуся subject (не whole-cache flush).
-  Poll-цикл остаётся safety-net'ом на `≤ 30 с`.
+- **Эффект** — сброс только записей, привязанных к изменившемуся subject (не whole-cache flush),
+  **и** закрытие открытых потоков подписки этого subject. Второе — не подробность: проверка прав на
+  длинном соединении делается один раз, при открытии, поэтому сброс кэша решений его не касается
+  вовсе. Без закрытия отзыв не действовал бы на поток НИКОГДА, и состояние не сходилось бы само —
+  сходиться нечему (kacho#1022).
+  Poll-цикл остаётся safety-net'ом на `≤ 30 с` и закрывает потоки **тех же** субъектов: толчок
+  доходит до одной реплики, остальные узнают об отзыве только им.
 
 ## Обещание по сходимости
 
@@ -96,8 +102,10 @@ reflection не регистрирует вовсе. Отдельной ручк
 
 ## Идемпотентность
 
-`InvalidateSubject` идемпотентен: subject без записей в кэше возвращает `NotFound`, который
-drainer в iam маппит в «уже применено» — строка outbox помечается отправленной и не ретраится.
+`InvalidateSubject` идемпотентен: subject, у которого не оказалось ни записей в кэше, ни открытых
+потоков подписки, возвращает `NotFound`, который drainer в iam маппит в «уже применено» — строка
+outbox помечается отправленной и не ретраится. Закрытый поток входит в «сделано» наравне со
+сброшенной записью.
 Число затронутых записей отдаётся не в ответе (он пустой — `google.protobuf.Empty`), а метрикой
 `apigw.authz.cache.invalidate.entries`. Полный контракт запроса — на странице
 [Internal Authz Cache (API)](/api/internal-authz-cache).
