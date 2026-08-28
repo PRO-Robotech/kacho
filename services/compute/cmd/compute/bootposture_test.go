@@ -57,7 +57,7 @@ func TestBootPosture_Production(t *testing.T) {
 		"auth_mode":     "production",
 		"db_sslmode":    "require",
 		"public_mtls":   true,
-		"internal_mtls": true,
+		"internal_mtls": "true",
 		"authz_check":   true,
 	})
 }
@@ -74,7 +74,7 @@ func TestBootPosture_InsecureIsReportedHonestly(t *testing.T) {
 		"auth_mode":     "dev",
 		"db_sslmode":    "disable",
 		"public_mtls":   false,
-		"internal_mtls": true,
+		"internal_mtls": "true",
 		"authz_check":   false,
 	})
 }

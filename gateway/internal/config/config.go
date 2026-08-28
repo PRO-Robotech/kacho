@@ -41,11 +41,9 @@ import (
 //	KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC  — адрес backend kacho-storage internal-port (9091)
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
 //	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off)
-//	KACHO_API_GATEWAY_INTERNAL_GRPC_ADDR     — cluster-internal gRPC listener (default :9091)
 //	KACHO_API_GATEWAY_ADMISSION_PUBLIC_*     — потолок темпа/одновременности внешнего
 //	                                           слушателя (READ_PER_SEC, MUTATION_PER_SEC,
 //	                                           BURST_FACTOR, IN_FLIGHT; молчание — пол платформы)
-//	KACHO_API_GATEWAY_ADMISSION_INTERNAL_*   — то же для cluster-internal слушателя
 //	KACHO_API_GATEWAY_METRICS_ADDR           — cluster-internal диагностическая поверхность
 //	                                           (GET /metrics, default :9095; пустая строка —
 //	                                           объявленное выключение с причиной в журнале)

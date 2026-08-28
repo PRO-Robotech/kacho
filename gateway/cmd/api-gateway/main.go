@@ -30,6 +30,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 
 	// Обслуживается только нативный API kacho.cloud.*.
 
@@ -44,7 +45,6 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/restmux"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
-	"github.com/PRO-Robotech/kacho/gateway/internal/watcher"
 )
 
 func main() {
@@ -798,19 +798,27 @@ func main() {
 		log.Fatalf("диагностическая поверхность: %v", diagErr)
 	}
 
-	// --- subject-change poll-loop for cross-replica authz cache invalidation ---
-	// Runs only when authz is enabled (authzMW != nil covers both enabled and
-	// disabled — InvalidateCache is nil-safe, but polling is pointless when the
-	// cache is a no-op). Gate on cfg.AuthZEnabled to avoid spurious IAM polling
-	// in environments without authz.
+	// --- чтение журнала смены субъекта: сходимость кэша решений между репликами ---
+	//
+	// Соединение открывает ПОТРЕБИТЕЛЬ — то есть край. Владелец прав о крае не
+	// знает и знать ему нечем: толчок из него снят вместе с адресом края (задача
+	// #1024), а ребро осталось потребитель→владелец, как и всякое другое.
+	//
+	// Читатель живёт в ФУНДАМЕНТЕ (`pkg/subjectchange`), а не здесь: свойство
+	// «смена прав доезжает до кэша решений» обязано держаться одной реализацией, и
+	// одной пробой — сквозь обе стороны, вместе с производителем журнала.
+	//
+	// Работает только при включённом слое прав: гасить нечего, когда кэш —
+	// заглушка.
 	if authzMW != nil {
-		scPoller := clients.NewSubjectChangePoller(backends["iamInternal"])
-		scWatcher := watcher.New(scPoller, authzMW.InvalidateCache,
+		reader := subjectchange.NewReader(backends["iamInternal"])
+		sc := subjectchange.New(reader, authzMW.InvalidateCache,
 			cfg.SubjectChangePollInterval, logger)
-		// The watcher is poll-only with no shutdown cleanup; it exits when ctx is
-		// cancelled (SIGTERM/SIGINT). No WaitGroup join needed — nothing to flush on exit.
-		go scWatcher.Run(ctx)
-		logger.Info("subject-change watcher started",
+		// Уборки на остановке у читателя нет: он только читает и держит курсор в
+		// памяти. Выходит по отмене контекста (SIGTERM/SIGINT), догонять на выходе
+		// нечего.
+		go sc.Run(ctx)
+		logger.Info("subject-change reader started",
 			"interval", cfg.SubjectChangePollInterval)
 	}
 

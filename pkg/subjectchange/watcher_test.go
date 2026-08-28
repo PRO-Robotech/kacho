@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package watcher_test
+package subjectchange_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/gateway/internal/watcher"
+	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 )
 
 // fakePoller returns configured batches one per call, then empty slices.
@@ -21,7 +21,7 @@ import (
 // signal from INSIDE the call, i.e. before the tick that made the call has
 // decided anything — so a case waiting on such a signal reads the flush counter
 // in a race with the flush. The cases below drive ticks synchronously instead
-// (watcher.Tick), which makes the fake's own bookkeeping the only state there is.
+// (Watcher.Poll), which makes the fake's own bookkeeping the only state there is.
 type fakePoller struct {
 	mu      sync.Mutex
 	batches [][]int64 // ids per call; nil / empty = empty batch
@@ -90,7 +90,7 @@ func TestSubjectChangeWatcher_PollHasPerCallDeadline(t *testing.T) {
 	defer cancel()
 	// Parent ctx has NO deadline — any deadline observed by the poller must come
 	// from the watcher's per-call context.WithTimeout.
-	w := watcher.New(p, func() {}, 5*time.Millisecond, slog.Default())
+	w := subjectchange.New(p, func() {}, 5*time.Millisecond, slog.Default())
 	go w.Run(ctx)
 
 	select {
@@ -116,8 +116,8 @@ func script(t *testing.T, batches [][]int64, errs []error) (*fakePoller, *int, f
 	t.Helper()
 	p := &fakePoller{batches: batches, errs: errs}
 	var flushes int
-	w := watcher.New(p, func() { flushes++ }, time.Second, slog.Default())
-	return p, &flushes, func() { w.Tick(context.Background()) }
+	w := subjectchange.New(p, func() { flushes++ }, time.Second, slog.Default())
+	return p, &flushes, func() { w.Poll(context.Background()) }
 }
 
 // TestSubjectChangeWatcher_PrimingTickDoesNotFlush verifies:
