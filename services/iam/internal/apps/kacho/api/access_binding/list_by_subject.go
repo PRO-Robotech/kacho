@@ -7,21 +7,43 @@ package access_binding
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/shared"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/authzguard"
+	"github.com/PRO-Robotech/kacho/services/iam/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/domain"
 	repoab "github.com/PRO-Robotech/kacho/services/iam/internal/repo/kacho/access_binding"
 )
 
 type ListBySubjectUseCase struct {
 	repo Repo
+	// relations / queries — порты решения о личности. Провязаны ДО того, как ими
+	// начали пользоваться: иначе красное пробы было бы отказом сборки, а не
+	// поведением, и о предмете задачи не сказало бы ничего.
+	relations clients.RelationStore
+	queries   clients.RelationQueries
+	logger    *slog.Logger
 }
 
 func NewListBySubjectUseCase(r Repo) *ListBySubjectUseCase {
 	return &ListBySubjectUseCase{repo: r}
+}
+
+// WithRelationStore wires the rights model for the cluster-admin and delegated
+// account-admin admission lanes.
+func (u *ListBySubjectUseCase) WithRelationStore(relations clients.RelationStore, logger *slog.Logger) *ListBySubjectUseCase {
+	u.relations = relations
+	u.logger = logger
+	return u
+}
+
+// WithRelationQueries wires the per-object question the PAGE is narrowed with.
+func (u *ListBySubjectUseCase) WithRelationQueries(q clients.RelationQueries) *ListBySubjectUseCase {
+	u.queries = q
+	return u
 }
 
 func (u *ListBySubjectUseCase) Execute(ctx context.Context, subjectType domain.SubjectType, subjectID domain.SubjectID, f repoab.PageFilter) ([]domain.AccessBinding, string, error) {
