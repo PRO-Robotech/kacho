@@ -212,6 +212,34 @@ type Config struct {
 	// (KACHO_COMPUTE_WATCH_STREAM_BUDGET).
 	HandlingBudget time.Duration `envconfig:"KACHO_COMPUTE_HANDLING_BUDGET" default:"30s"`
 
+	// SubscriptionStreamBudget — СРОК ЖИЗНИ одного потока подписки.
+	//
+	// По истечении поток закрывается ЧИСТО, и клиент возобновляется со своей
+	// позиции: обрыв — штатное событие, а не отказ. Величина обязана заметно
+	// превосходить границу обработки одиночного вызова, иначе поток закрывался бы
+	// раньше, чем доезжает первое событие догона, и подписчик читал бы штатное
+	// закрытие как «изменений нет». Носитель судит это отношение сам и роняет
+	// старт на негодной величине.
+	SubscriptionStreamBudget time.Duration `envconfig:"KACHO_COMPUTE_SUBSCRIPTION_STREAM_BUDGET" default:"1h"`
+
+	// SubscriptionMaxStreams — потолок ОДНОВРЕМЕННЫХ потоков этого процесса.
+	//
+	// Это АРИФМЕТИКА СОЕДИНЕНИЙ, а не вкус: каждый поток держит выделенное
+	// соединение вне пула всё время своей жизни, поэтому «число реплик × потолок
+	// + непуловые соединения» обязано помещаться в предел базы. Превышение
+	// отвечает ОТКАЗОМ, а не молчаливой очередью: очередь превратила бы
+	// исчерпание в неограниченное ожидание, неотличимое для клиента от
+	// «событий нет».
+	SubscriptionMaxStreams int `envconfig:"KACHO_COMPUTE_SUBSCRIPTION_MAX_STREAMS" default:"64"`
+
+	// SubscriptionIdlePoll — холостой перепрос журнала.
+	//
+	// Он не «на всякий случай»: ОТКАТИВШИЙСЯ писатель уведомления не шлёт, и
+	// подтверждение границы устоявшегося приезжает именно этим перепросом. Ноль
+	// означал бы, что горизонт не подтверждается никогда, и общий сервер такую
+	// величину отвергает на подъёме.
+	SubscriptionIdlePoll time.Duration `envconfig:"KACHO_COMPUTE_SUBSCRIPTION_IDLE_POLL" default:"2s"`
+
 	// AuthZTrustedForwarderSANs — allow-list cert-identity SAN'ов, которым разрешено
 	// форвардить end-user principal в x-kacho-principal-* metadata (обычно
 	// единственный — api-gateway SA, SAN spiffe://kacho.cloud/ns/<ns>/sa/kacho-api-gateway).

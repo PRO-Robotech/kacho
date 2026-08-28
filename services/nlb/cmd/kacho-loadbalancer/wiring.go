@@ -26,6 +26,10 @@ import (
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/subscriptionjournal"
 
 	announceapi "github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/announce"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/listener"
@@ -69,6 +73,13 @@ type grpcWiring struct {
 	// означает «раннего отказа нет», а НЕ «предела нет»: место по-прежнему
 	// занимает триггер в writer-транзакции.
 	quotaGuard *quota.Guard
+	// subscription — ОБЩИЙ сервер потока изменений (`pkg/subscription`), по
+	// экземпляру на владельца журнала.
+	//
+	// Собирается в композиционном корне: ему нужны выделенное соединение вне
+	// пула, сужатель по правам и величины посадки, а его сборка умеет отказать —
+	// и отказать обязана раньше первого принятого соединения.
+	subscription subscriptionv1.InternalSubscriptionServiceServer
 }
 
 // buildQuotaGuard собирает совещательную полосу учёта.
@@ -180,7 +191,7 @@ func registerPublic(reg grpc.ServiceRegistrar, w grpcWiring) {
 // registerInternal регистрирует обработчики ВНУТРЕННЕГО слушателя :9091.
 //
 // `Internal.*` живёт ТОЛЬКО здесь — на внешнем endpoint эти службы не публикуются
-// (ban #6). Разделение проверяемо: носитель снимает служимый набор у самих
+// (запретом на публикацию внутренних служб наружу). Разделение проверяемо: носитель снимает служимый набор у самих
 // серверов (`grpc.Server.GetServiceInfo`), поэтому «зарегистрировали не туда»
 // видно наблюдением, а не обзором диффа.
 func registerInternal(reg grpc.ServiceRegistrar, w grpcWiring) {
@@ -189,6 +200,13 @@ func registerInternal(reg grpc.ServiceRegistrar, w grpcWiring) {
 	// поверхность не выходят.
 	announceHandler := announceapi.NewHandler(kachopg.NewAnnounceStore(w.pool), w.logger)
 	lbv1.RegisterInternalLoadBalancerAnnounceServiceServer(reg, announceHandler)
+
+	// Поток изменений — ОБЩИЙ сервер (`pkg/subscription`), а не своя обёртка
+	// вокруг него: владелец регистрирует его самого. Регистрация безусловна —
+	// собирает сервер композиционный корень, и его сборка умеет ОТКАЗАТЬ, поэтому
+	// до сюда нулевой указатель не доходит. Условная регистрация означала бы, что
+	// подписка тихо отсутствует у процесса, чей дескриптор объявил ей срок жизни.
+	subscriptionv1.RegisterInternalSubscriptionServiceServer(reg, w.subscription)
 
 	// Опроса операций здесь НЕТ намеренно: до перевода на носитель он жил только
 	// на публичном слушателе, и добавить его «за компанию» значило бы расширить
@@ -354,4 +372,44 @@ func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorke
 	}
 
 	return background, nil
+}
+
+// buildSubscriptionServer собирает ОБЩИЙ сервер потока изменений для журнала nlb.
+//
+// Владелец приносит сюда ЖУРНАЛ и величины ПОСАДКИ — и ничего больше: курсор,
+// граница устоявшегося, пределы, сужение по правам и порядок отказов принадлежат
+// общему серверу и владельцу не выдаются.
+//
+// Сужатель — ТОТ ЖЕ объект, что сужает страницы списков: за глаголом подписки нет
+// пообъектной проверки на крае (он `scope_filtered`), поэтому откатываться не на
+// что, а второй экземпляр означал бы, что поток сужается не тем, чем сужаются
+// списки.
+//
+// Отказ возвращается, а не логируется: величина посадки, о которой никто не
+// сказал, не должна обнаруживаться первым запросом в бою.
+func buildSubscriptionServer(
+	cfg *config.Config,
+	listFilter *listnarrow.Narrower,
+	logger *slog.Logger,
+) (subscriptionv1.InternalSubscriptionServiceServer, error) {
+	gate, err := subscriptionjournal.ProjectGate()
+	if err != nil {
+		return nil, err
+	}
+	srv, err := subscription.NewServer(subscription.Config{
+		Journal: subscriptionjournal.Journal(),
+		// Выделенное соединение вне пула: `LISTEN` требует своей сессии, а сессия
+		// из пула вернулась бы в него вместе с подпиской.
+		DSN:          cfg.Repository.Postgres.URL,
+		Narrower:     listFilter,
+		ProjectGate:  gate,
+		MaxStreams:   cfg.APIServer.SubscriptionMaxStreams,
+		StreamBudget: cfg.APIServer.SubscriptionStreamBudget,
+		IdlePoll:     cfg.APIServer.SubscriptionIdlePoll,
+		Logger:       logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("subscription server: %w", err)
+	}
+	return srv, nil
 }

@@ -86,7 +86,7 @@ func TestCarrierCensusIsNotEmptyForCompute(t *testing.T) {
 	var authzCacheReader func() authz.Metrics
 	observeAuthzCache := func(read func() authz.Metrics) { authzCacheReader = read }
 
-	desc, err := describe(cfg, logger,
+	desc, err := describe(cfg, logger, buildListFilter(cfg, nil, logger),
 		bootgate.New(bootgate.Config{RequireIAM: cfg.RequireIAM, Service: "kacho-compute"}), probeExistence{},
 		observeAuthzCache, prometheus.NewRegistry())
 	if err != nil {
