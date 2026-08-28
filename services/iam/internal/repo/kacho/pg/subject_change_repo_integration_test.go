@@ -22,10 +22,19 @@ import (
 )
 
 // TestSubjectChangeRepo_PollSubjectChanges verifies:
-// 1. Returns rows with id > since_id, ascending order.
-// 2. Honours limit (requests 2 of 3 → receives 2).
-// 3. headID = MAX(id) regardless of cursor position.
-// 4. Continuing cursor returns the remaining row.
+//  1. Returns rows with id > since_id, ascending order.
+//  2. Honours limit (requests 2 of 3 → receives 2).
+//  3. headID НЕ ПЕРЕПРЫГИВАЕТ непрочитанное: на ПОЛНОЙ странице это последняя
+//     отданная строка, на неполной — граница устоявшегося.
+//  4. Continuing cursor returns the remaining row.
+//
+// # Пункт 3 ПЕРЕПИСАН, и прежняя редакция была неверна (kacho#1374)
+//
+// Он требовал `headID = MAX(id)` «независимо от положения курсора» — то есть
+// закреплял ровно ту потерю, ради которой заведена задача: потребитель двигает
+// курсор на отданную позицию, а `MAX(id)` лежит ЗА непрочитанным хвостом полной
+// страницы и за номером всякого писателя в полёте. Утверждение усилено, а не
+// ослаблено: теперь проба требует, чтобы позиция НЕ обгоняла отданное.
 func TestSubjectChangeRepo_PollSubjectChanges(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test (requires Docker)")
@@ -69,7 +78,7 @@ func TestSubjectChangeRepo_PollSubjectChanges(t *testing.T) {
 	id2 := seed("usr_b", "binding_delete")
 	id3 := seed("usr_c", "binding_upsert")
 
-	// ── Poll 1: since=0, limit=2 → first 2 rows; headID=id3 ─────────────────
+	// ── Poll 1: since=0, limit=2 → first 2 rows; headID=id2 ─────────────────
 	changes, headID, err := repo.PollSubjectChanges(ctx, 0, 2)
 	require.NoError(t, err)
 	require.Len(t, changes, 2, "expected 2 changes (limit=2)")
@@ -79,9 +88,13 @@ func TestSubjectChangeRepo_PollSubjectChanges(t *testing.T) {
 	require.Equal(t, id2, changes[1].ID)
 	require.Equal(t, "usr_b", changes[1].SubjectID)
 	require.Equal(t, "binding_delete", changes[1].Op)
-	require.Equal(t, id3, headID, "headID should be MAX(id)=id3")
+	require.Equal(t, id2, headID,
+		"страница полна, значит за id2 остались непрочитанные: позиция обязана остановиться на id2, а не уйти на MAX(id)=id3")
+	require.Less(t, headID, id3, "позиция не вправе обгонять непрочитанное")
 
 	// ── Poll 2: since=id2, limit=256 → only third row; headID=id3 ────────────
+	//
+	// Страница НЕПОЛНАЯ — окно вычитано целиком, и позиция вправе назвать границу.
 	changes2, headID2, err := repo.PollSubjectChanges(ctx, id2, 256)
 	require.NoError(t, err)
 	require.Len(t, changes2, 1, "expected 1 remaining change")

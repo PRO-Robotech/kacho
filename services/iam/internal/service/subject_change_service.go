@@ -17,8 +17,13 @@ type SubjectChange struct {
 
 // SubjectChangeReader — port: read side of subject_change_outbox.
 type SubjectChangeReader interface {
-	// PollSubjectChanges returns rows with id > sinceID ordered ascending,
-	// at most limit rows, plus headID = current MAX(id) (0 when empty).
+	// PollSubjectChanges returns rows of the window `(sinceID, settled]` ordered
+	// ascending, at most limit rows, plus headID — the position the caller may
+	// adopt as its cursor.
+	//
+	// headID is NOT MAX(id): a number is issued on INSERT and becomes visible on
+	// COMMIT, so handing out the largest visible number would let the caller jump
+	// over a writer in flight, losing that row forever (kacho#1374).
 	PollSubjectChanges(ctx context.Context, sinceID int64, limit int32) (changes []SubjectChange, headID int64, err error)
 }
 
@@ -32,11 +37,15 @@ func NewSubjectChangeService(reader SubjectChangeReader) *SubjectChangeService {
 	return &SubjectChangeService{reader: reader}
 }
 
-// PollSubjectChanges returns up to `limit` rows from subject_change_outbox
-// where id > sinceID, ordered ascending. limit is clamped to [1, 1000];
-// zero or negative defaults to 256. Also returns headID = MAX(id) in the
-// table (0 when empty) so a freshly started caller can seed its cursor
-// without replaying history.
+// PollSubjectChanges returns up to `limit` rows of the window
+// `(sinceID, settled]`, ordered ascending. limit is clamped to [1, 1000]; zero
+// or negative defaults to 256. Also returns headID — the position a freshly
+// started caller may adopt to seed its cursor without replaying history.
+//
+// headID is bounded by the SETTLED boundary of the journal and, on a page cut by
+// `limit`, by the last delivered row. Neither is MAX(id): that number lies past
+// every writer still in flight and past the unread tail of a full page, and a
+// cursor moved there loses those rows forever (kacho#1374).
 func (s *SubjectChangeService) PollSubjectChanges(ctx context.Context, sinceID int64, limit int32) ([]SubjectChange, int64, error) {
 	if limit <= 0 {
 		limit = 256

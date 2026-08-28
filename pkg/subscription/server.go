@@ -327,8 +327,8 @@ func (s *Server) serve(
 	stream subscriptionv1.InternalSubscriptionService_SubscribeServer,
 ) error {
 	storage := s.cfg.Journal.Storage
-	h := newWatermark(storage, s.log, s.now)
-	if err := h.advance(ctx, conn, storage.Table); err != nil {
+	h := newWatermark(storage.Table, storage.PositionColumn, s.log, s.now)
+	if err := h.Advance(ctx, conn); err != nil {
 		return status.Error(codes.Unavailable, "subscription backend unavailable")
 	}
 
@@ -341,7 +341,7 @@ func (s *Server) serve(
 
 	opened := &subscriptionv1.SubscriptionOpened{
 		Position:       pagetoken.EncodeSubscriptionPosition(pagetoken.SubscriptionPosition{Settled: cursor}),
-		CaughtUp:       cursor >= h.settled,
+		CaughtUp:       cursor >= h.Settled(),
 		HonoredFilters: filter.Honored,
 	}
 	if storage.Retention == RetainsEverything {
@@ -370,7 +370,7 @@ func (s *Server) serve(
 			// сетевой сбой, которым он не является.
 			return nil
 		}
-		if err := h.advance(ctx, conn, storage.Table); err != nil {
+		if err := h.Advance(ctx, conn); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
@@ -381,7 +381,7 @@ func (s *Server) serve(
 
 // resolveCursor выбирает, с какого номера отдавать, и отвергает позицию, которую
 // владелец больше не удерживает.
-func (s *Server) resolveCursor(start Start, h *watermark, floor int64) (int64, error) {
+func (s *Server) resolveCursor(start Start, h *Watermark, floor int64) (int64, error) {
 	switch {
 	case start.FromBeginning:
 		return floor, nil
@@ -392,7 +392,7 @@ func (s *Server) resolveCursor(start Start, h *watermark, floor int64) (int64, e
 		}
 		return start.Position.Settled, nil
 	default:
-		return h.settled, nil
+		return h.Settled(), nil
 	}
 }
 

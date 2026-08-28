@@ -42,7 +42,7 @@ import (
 func (s *Server) drain(
 	ctx context.Context,
 	conn *pgx.Conn,
-	h *watermark,
+	h *Watermark,
 	cursor int64,
 	filter Filter,
 	stream subscriptionv1.InternalSubscriptionService_SubscribeServer,
@@ -51,11 +51,12 @@ func (s *Server) drain(
 		if ctx.Err() != nil {
 			return cursor, nil
 		}
-		if h.settled <= cursor {
+		settled := h.Settled()
+		if settled <= cursor {
 			return cursor, nil
 		}
 
-		rows, err := s.read(ctx, conn, cursor, h.settled, filter)
+		rows, err := s.read(ctx, conn, cursor, settled, filter)
 		if err != nil {
 			if ctx.Err() != nil {
 				return cursor, nil
@@ -65,7 +66,7 @@ func (s *Server) drain(
 			return cursor, status.Error(codes.Unavailable, "subscription backend unavailable")
 		}
 		if len(rows) == 0 {
-			return h.settled, nil
+			return settled, nil
 		}
 
 		scanned := rows[len(rows)-1].Position

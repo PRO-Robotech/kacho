@@ -65,7 +65,8 @@ type InternalIAMServiceClient interface {
 	// get notified. Async: returns Operation; the LISTEN/NOTIFY fan-out then
 	// updates every api-gateway pod's revocation cache ≤ 1s.
 	ForceLogout(ctx context.Context, in *ForceLogoutRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// PollSubjectChanges drains subject_change_outbox by ascending id cursor.
+	// PollSubjectChanges drains subject_change_outbox by ascending id cursor,
+	// over the window `(since_id, settled]` — never "everything above the cursor".
 	// Internal-only (cluster-internal listener) — drives api-gateway authz
 	// decision-cache invalidation.
 	PollSubjectChanges(ctx context.Context, in *PollSubjectChangesRequest, opts ...grpc.CallOption) (*PollSubjectChangesResponse, error)
@@ -248,7 +249,8 @@ type InternalIAMServiceServer interface {
 	// get notified. Async: returns Operation; the LISTEN/NOTIFY fan-out then
 	// updates every api-gateway pod's revocation cache ≤ 1s.
 	ForceLogout(context.Context, *ForceLogoutRequest) (*operation.Operation, error)
-	// PollSubjectChanges drains subject_change_outbox by ascending id cursor.
+	// PollSubjectChanges drains subject_change_outbox by ascending id cursor,
+	// over the window `(since_id, settled]` — never "everything above the cursor".
 	// Internal-only (cluster-internal listener) — drives api-gateway authz
 	// decision-cache invalidation.
 	PollSubjectChanges(context.Context, *PollSubjectChangesRequest) (*PollSubjectChangesResponse, error)
