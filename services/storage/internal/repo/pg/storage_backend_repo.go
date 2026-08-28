@@ -12,9 +12,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/storagebackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
@@ -260,11 +260,11 @@ func mapStorageBackendErr(err error, c sbErrCtx) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: StorageBackend %s not found", storageerr.ErrNotFound, c.backendID)
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23505": // unique_violation
-			switch pgErr.ConstraintName {
+	f := pgfault.Classify(err)
+	if f.FromDatabase() {
+		switch f.Class {
+		case pgfault.Unique:
+			switch f.Constraint {
 			case cnStorageBackendPK:
 				return fmt.Errorf("%w: StorageBackend %s already exists", storageerr.ErrAlreadyExists, c.backendID)
 			case cnStorageBackendNameUniq:
@@ -272,16 +272,16 @@ func mapStorageBackendErr(err error, c sbErrCtx) error {
 					storageerr.ErrAlreadyExists, c.backendName)
 			}
 			return fmt.Errorf("%w: storage backend already exists", storageerr.ErrAlreadyExists)
-		case "23503": // foreign_key_violation — ссылка ревизии привязки (RESTRICT)
-			if pgErr.ConstraintName == cnBindingBackendFK {
+		case pgfault.ForeignKey: // ссылка ревизии привязки (RESTRICT)
+			if f.Constraint == cnBindingBackendFK {
 				return fmt.Errorf("%w: StorageBackend %s is in use", storageerr.ErrFailedPrecondition, c.backendID)
 			}
 			return fmt.Errorf("%w: storage backend violates a reference constraint", storageerr.ErrFailedPrecondition)
-		case "23514": // check_violation — вид, состояние, обязательные координата и ссылка
+		case pgfault.Check: // вид, состояние, обязательные координата и ссылка
 			return fmt.Errorf("%w: Illegal argument", storageerr.ErrInvalidArg)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
-			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "storage_backend_id", c.backendID)
+			append([]any{"storage_backend_id", c.backendID}, f.LogAttrs()...)...)
 		return storageerr.ErrInternal
 	}
 	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "storage_backend_id", c.backendID)
