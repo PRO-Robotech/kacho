@@ -12,7 +12,9 @@ Covered RPCs:
 Не «работает ли чтение», а то, что оно НЕ РАЗЛИЧАЕТ положения, различать
 которые не вправе. Аккаунт приходит входом и стоит в условии отбора, поэтому:
 
-  * чужой аккаунт и НЕСУЩЕСТВУЮЩИЙ аккаунт отвечают ОДИНАКОВО — тело в тело;
+  * чужой аккаунт и НЕСУЩЕСТВУЮЩИЙ аккаунт отвечают ОДИНАКОВО — тела совпадают
+    дословно после нормализации ЭХА собственного ввода вызывающего и различаются
+    ровно им (см. `_same_body_modulo_scope`);
   * членство чужого аккаунта и членство, которого нет нигде, отвечают
     одинаково — тела различаются ровно подставленным идентификатором;
   * человек, состоящий ТОЛЬКО в чужом аккаунте, человек, не состоящий нигде, и
@@ -22,13 +24,36 @@ Covered RPCs:
 истинно и у поверхности, которая не отвечает никому, а «негодное отвергнуто» —
 у поверхности, которая отвергает всё.
 
-Байт-идентичность утверждается СРАВНЕНИЕМ ТЕЛ, а не только совпадением кодов:
-проба, сверяющая один код, зеленеет на любом расхождении текста.
+Неразличимость утверждается СРАВНЕНИЕМ ТЕЛ, а не только совпадением кодов: проба,
+сверяющая один код, зеленеет на любом расхождении текста.
+
+Что нормализуется и почему это НЕ ослабление. Отказ края несёт область запроса
+дословно — `account:<id>` в `violations[].subject` и в `metadata.resource`. Это эхо
+того, что вызывающий прислал САМ, и оракулом быть не может: два вызова несут два
+разных адреса, потому что он их и назвал. Побайтовое равенство таких тел невыполнимо
+by construction, поэтому сверяется равенство ПОСЛЕ подстановки `<ACCT>` вместо эха —
+и отдельным утверждением проверяется, что иных вхождений идентификатора в теле НЕТ.
+Замер, из которого это выведено: два тела отказа, отрендеренных одним и тем же кодом
+края на двух разных адресах, различаются РОВНО двумя вхождениями идентификатора;
+сообщение, тип нарушения, описание, субъект, действие и `reason` совпадают дословно.
 
 CRUD fixture dependency:
-  jwtAccountAdminA / accountAId / userAAAId — распорядитель аккаунта A и его владелец
-  jwtAccountAdminB / accountBId / userAABId — то же для аккаунта B
-  jwtNoBindings / userNOBId                 — аутентифицирован, прав нигде нет
+  jwtAccountAdminA / accountAId — распорядитель аккаунта A. ЭТО СЛУЖЕБНАЯ УЧЁТКА,
+      а НЕ человек `userAAAId`: в боевой посадке машинный посев чеканит только
+      `client_credentials`, то есть служебные учётки
+      (`tests/authz-fixtures/prodseed_matrix.py` → `subject()` = «Create an SA»).
+  userAAAId / userAABId / userNOBId — РЕАЛЬНЫЕ строки людей, но ТОЛЬКО ЦЕЛИ
+      ПРИВЯЗКИ: ни одному из них посев не выдаёт предъявителя и выдать не может
+      (`tests/authz-fixtures/principal_pairings.py`, врезка «NOT EVERY EMITTED ID
+      BELONGS HERE»). Связывать любой из них с каким-либо `jwt*` — объявленный
+      дефект фикстуры, а не пробел в перечне.
+  jwtAccountAdminB / accountBId — то же для аккаунта B (тоже служебная учётка)
+  jwtNoBindings                 — аутентифицирован, прав нигде нет
+  jwtHumanCeremonyStepUp / ceremonyUserId / ceremonyAccountId — ЧЕЛОВЕК и аккаунт,
+      которым он владеет. Единственный человеческий вызывающий набора; условие
+      создаётся волной церемонии (`scripts/run-ceremony.sh`, WAVE 4), а сама
+      коллекция попадает в неё ВЫВОДОМ ИЗ ДЕРЕВА — по тому, что шаг называет
+      предъявителя из `CEREMONY_ONLY_ENV` (`tests/authz-fixtures/ceremony_credentials.py`).
 
 verifies: IAM-ID-2-01, -02, -03, -04, -05, -12, -13.
 """
@@ -56,6 +81,32 @@ def _same_body_as(var, label):
     return [
         f"pm.test({_q(label)}, () => {{",
         f"  pm.expect(pm.response.text()).to.eql(pm.environment.get({_q(var)}));",
+        "});",
+    ]
+
+
+def _same_body_modulo_scope(var, saved_scope_js, this_scope_js, label):
+    """Сверка тел ПО СУЩЕСТВУ: нормализуется ЭХО СОБСТВЕННОГО ВВОДА вызывающего.
+
+    Отказ края несёт область запроса дословно — `account:<id>` в `violations[].subject`
+    и в `metadata.resource`. Это ЭХО ТОГО, ЧТО ВЫЗЫВАЮЩИЙ ПРИСЛАЛ САМ, и оракулом оно
+    быть не может: два вызова несут два разных адреса, потому что их назвал он.
+    Требовать от таких тел побайтового совпадения значит требовать невыполнимого от
+    любого ответа, который область запроса называет.
+
+    Поэтому оба тела приводятся к общему виду подстановкой `<ACCT>` вместо ЭХА — и
+    дальше сравниваются ДОСЛОВНО. Утверждение остаётся различающим: расхождение в коде,
+    в сообщении, в описании отказа, в типе нарушения, в наборе полей или лишнее
+    вхождение идентификатора помимо эха роняет его по-прежнему. Приём не новый и не
+    выдуман здесь — им же сверяется пара одиночного чтения ниже
+    (`IAM-ID2-ORACLE-GET-404`: «тела различаются РОВНО подставленным идентификатором»).
+    """
+    return [
+        f"pm.test({_q(label)}, () => {{",
+        "  const norm = (t, id) => (id ? t.split(id).join('<ACCT>') : t);",
+        f"  const saved = norm(pm.environment.get({_q(var)}) || '', {saved_scope_js});",
+        f"  const here = norm(pm.response.text(), {this_scope_js});",
+        "  pm.expect(here, 'saved=' + saved + ' | here=' + here).to.eql(saved);",
         "});",
     ]
 
@@ -138,10 +189,32 @@ CASES.append(Case(
 # Приглашение сеется САМИМ кейсом с `{{runId}}` в почте: общая фикстура
 # рассказала бы про состояние, которого никто не назначал этому кейсу, и
 # сорвалась бы вместе с чужим прогоном.
+#
+# ПРИГЛАШАЕТ ЧЕЛОВЕК, И ЭТО ТРЕБОВАНИЕ К ФОРМЕ ЗАПРОСА, А НЕ УДОБСТВО.
+# `users.invited_by` — внешний ключ в `users(id)`, поэтому НАЗВАТЬ там можно
+# только человека. Служебная учётка — законный приглашающий, но человеком она не
+# является, и продукт ОСОЗНАННО оставляет колонку пустой, унося актора на
+# `Operation` (`services/iam/internal/apps/kacho/api/user/invite.go`, врезка у
+# `invitedBy`). Значит под машинным вызывающим утверждение «след приглашения
+# назван» непроверяемо by construction: оно спрашивает про поле, которого при
+# таком вызывающем не бывает.
+#
+# Прежняя редакция шла под `jwtAccountAdminA`, считая его человеком `userAAAId`.
+# Посылка ложна (см. фикстурную шапку модуля), и красным это становилось ровно на
+# одном утверждении — `invitedBy`, — то есть выглядело дефектом продукта.
+# Отходных путей здесь ровно два, и маска в них не входит: волна, создающая
+# условие, либо открытый долг с числом. Условие СОЗДАНО: человек церемонии
+# существует, владеет своим аккаунтом (`owner` → `admin` → `editor` → `viewer` по
+# модели, `proto/kacho/cloud/iam/v1/fga_model.fga` §type account) и несёт
+# поднятый уровень входа, которого требует запись каталога у `UserService/Invite`
+# (`required_acr_min: "2"`).
+#
+# Положительный контроль состояния остаётся на аккаунте A: он утверждает, что
+# поле РАЗЛИЧАЕТ, и для этого ему довольно любого членства в состоянии «активно».
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="IAM-ID2-INVITED-PENDING-OK",
-    title="Приглашённый в мой аккаунт виден как PENDING с непустым invitedBy; активный сосед — ACTIVE",
+    title="Приглашённый ЧЕЛОВЕКОМ в его аккаунт виден как PENDING с непустым invitedBy; активный сосед — ACTIVE",
     classes=["CRUD", "STATE"],
     priority="P0",
     steps=[
@@ -150,11 +223,11 @@ CASES.append(Case(
             method="POST",
             path="/iam/v1/users:invite",
             body={
-                "accountId": "{{accountAId}}",
+                "accountId": "{{ceremonyAccountId}}",
                 "email": "mbr-pending-{{runId}}@kacho.local",
                 "displayName": "membership pending {{runId}}",
             },
-            auth="jwtAccountAdminA",
+            auth="jwtHumanCeremonyStepUp",
             test_script=[
                 *assert_status(200),
                 *save_from_response("j.id", "mbrInvOp"),
@@ -167,7 +240,7 @@ CASES.append(Case(
             name="invite-poll",
             method="GET",
             path="/operations/{{mbrInvOp}}",
-            auth="jwtAccountAdminA",
+            auth="jwtHumanCeremonyStepUp",
             op_var="mbrInvOp",
             test_script=[
                 "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
@@ -191,16 +264,17 @@ CASES.append(Case(
         Step(
             name="read-invited-membership",
             method="GET",
-            path='/iam/v1/accounts/{{accountAId}}/memberships?filter=userId%3D%22{{mbrInvUserId}}%22',
-            auth="jwtAccountAdminA",
+            path='/iam/v1/accounts/{{ceremonyAccountId}}/memberships?filter=userId%3D%22{{mbrInvUserId}}%22',
+            auth="jwtHumanCeremonyStepUp",
             test_script=[
                 *assert_status(200),
-                "pm.test('приглашённый виден как PENDING, и след приглашения назван', () => {",
+                "pm.test('приглашённый виден как PENDING, и след приглашения называет ПРИГЛАСИВШЕГО ЧЕЛОВЕКА', () => {",
                 "  const j = pm.response.json();",
                 "  pm.expect(j.memberships, JSON.stringify(j)).to.be.an('array').with.lengthOf(1);",
                 "  const m = j.memberships[0];",
+                "  pm.expect(m.accountId, JSON.stringify(m)).to.eql(pm.environment.get('ceremonyAccountId'));",
                 "  pm.expect(m.state, JSON.stringify(m)).to.eql('PENDING');",
-                "  pm.expect(m.invitedBy, JSON.stringify(m)).to.eql(pm.environment.get('userAAAId'));",
+                "  pm.expect(m.invitedBy, JSON.stringify(m)).to.eql(pm.environment.get('ceremonyUserId'));",
                 "  pm.expect(m.createdAt, JSON.stringify(m)).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/);",
                 "});",
             ],
@@ -212,8 +286,10 @@ CASES.append(Case(
             auth="jwtAccountAdminA",
             test_script=[
                 *assert_status(200),
-                "pm.test('ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: у активного соседа состояние ДРУГОЕ — "
-                "поле различает, а не отдаёт константу', () => {",
+                "pm.test('ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: у активного члена состояние ДРУГОЕ — "
+                "поле различает, а не отдаёт константу. Аккаунт здесь ДРУГОЙ намеренно: "
+                "контролируется свойство ПОЛЯ, а не соседство строк, и любого членства в "
+                "состоянии «активно» для этого довольно', () => {",
                 "  const m = pm.response.json().memberships[0];",
                 "  pm.expect(m.state, JSON.stringify(m)).to.eql('ACTIVE');",
                 "});",
@@ -224,12 +300,13 @@ CASES.append(Case(
 
 
 # ---------------------------------------------------------------------------
-# IAM-ID2-NEG-FOREIGN-ACCOUNT (IAM-ID-2-03) — чужой аккаунт и аккаунт,
-# которого НЕТ, отвечают ОДИНАКОВО, тело в тело.
+# IAM-ID2-NEG-FOREIGN-ACCOUNT (IAM-ID-2-03) — чужой аккаунт и аккаунт, которого
+# НЕТ, отвечают ОДИНАКОВО: тела совпадают дословно после нормализации эха
+# собственного ввода вызывающего и различаются ровно им.
 # ---------------------------------------------------------------------------
 CASES.append(Case(
     id="IAM-ID2-NEG-FOREIGN-ACCOUNT",
-    title="List по чужому аккаунту → 403; ответ БАЙТ В БАЙТ равен ответу по несуществующему аккаунту",
+    title="List по чужому аккаунту → 403; ответ неотличим от ответа по несуществующему аккаунту",
     classes=["NEG", "AUTHZ", "ORACLE"],
     priority="P0",
     steps=[
@@ -241,10 +318,23 @@ CASES.append(Case(
             test_script=[
                 *assert_status(403),
                 *_grpc_code(CODE_PERMISSION_DENIED, "код — PERMISSION_DENIED, а не скрывающий NOT_FOUND"),
-                "pm.test('текст отказа НЕ называет ни аккаунта, ни отношения, ни причины отказа модели', () => {",
+                "pm.test('отказ НЕ называет ни отношения, ни причины отказа модели — "
+                "край подменяет её неразглашающим описанием', () => {",
+                "  const raw = pm.response.text();",
+                "  const t = raw.toLowerCase();",
+                "  pm.expect(t, raw).to.not.include('viewer');",
+                "  pm.expect(t, raw).to.not.include('lacks relation');",
+                "  pm.expect(t, raw).to.not.include('direct relations');",
+                "  pm.expect(t, raw).to.not.include('deny_reasons');",
+                "});",
+                "pm.test('идентификатор аккаунта встречается ТОЛЬКО как ЭХО области, которую вызывающий "
+                "назвал сам — ни одного вхождения помимо неё', () => {",
                 "  const t = pm.response.text();",
-                "  pm.expect(t).to.not.include(pm.environment.get('accountBId'));",
-                "  pm.expect(t.toLowerCase()).to.not.include('viewer');",
+                "  const id = pm.environment.get('accountBId');",
+                "  const all = t.split(id).length - 1;",
+                "  const echoed = t.split('account:' + id).length - 1;",
+                "  pm.expect(all, 'вхождений ' + all + ', из них эхо области ' + echoed + ': ' + t)",
+                "    .to.eql(echoed);",
                 "});",
                 "pm.test('ответ не содержит ни одного поля, производного от содержимого чужого аккаунта', () => {",
                 "  const j = pm.response.json();",
@@ -261,10 +351,13 @@ CASES.append(Case(
             auth="jwtAccountAdminA",
             test_script=[
                 *assert_status(403),
-                *_same_body_as(
+                *_same_body_modulo_scope(
                     "mbrForeignAcctBody",
-                    "АНТИ-ОРАКУЛ: чужой аккаунт и несуществующий отвечают тело в тело — "
-                    "модель прав не знает понятия «существует»",
+                    "pm.environment.get('accountBId')",
+                    _q(ABSENT_ACCOUNT),
+                    "АНТИ-ОРАКУЛ: чужой аккаунт и несуществующий отвечают ОДИНАКОВО — тела "
+                    "совпадают дословно после нормализации эха собственного ввода, и "
+                    "различаются РОВНО им; модель прав не знает понятия «существует»",
                 ),
             ],
         ),
