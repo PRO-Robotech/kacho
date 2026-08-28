@@ -242,7 +242,7 @@
       ]
     },
     {
-      "name": "IAM-ID2-INVITED-PENDING-OK — Приглашённый в мой аккаунт виден как PENDING с непустым invitedBy; активный сосед — ACTIVE",
+      "name": "IAM-ID2-INVITED-PENDING-OK — Приглашённый ЧЕЛОВЕКОМ в его аккаунт виден как PENDING с непустым invitedBy; активный сосед — ACTIVE",
       "description": "class:CRUD | class:STATE | priority:P0",
       "item": [
         {
@@ -268,7 +268,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"accountId\": \"{{accountAId}}\", \"email\": \"mbr-pending-{{runId}}@kacho.local\", \"displayName\": \"membership pending {{runId}}\"}",
+              "raw": "{\"accountId\": \"{{ceremonyAccountId}}\", \"email\": \"mbr-pending-{{runId}}@kacho.local\", \"displayName\": \"membership pending {{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -282,13 +282,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
-                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "// per-step auth: bearer from env 'jwtHumanCeremonyStepUp'",
+                  "const __t = pm.environment.get('jwtHumanCeremonyStepUp') || pm.variables.get('jwtHumanCeremonyStepUp') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('harness config: jwtAccountAdminA is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtAccountAdminA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('harness config: jwtHumanCeremonyStepUp is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtHumanCeremonyStepUp is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
@@ -369,13 +369,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
-                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "// per-step auth: bearer from env 'jwtHumanCeremonyStepUp'",
+                  "const __t = pm.environment.get('jwtHumanCeremonyStepUp') || pm.variables.get('jwtHumanCeremonyStepUp') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('harness config: jwtAccountAdminA is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtAccountAdminA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('harness config: jwtHumanCeremonyStepUp is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtHumanCeremonyStepUp is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
@@ -438,7 +438,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/iam/v1/accounts/{{accountAId}}/memberships?filter=userId%3D%22{{mbrInvUserId}}%22",
+              "raw": "{{baseUrl}}/iam/v1/accounts/{{ceremonyAccountId}}/memberships?filter=userId%3D%22{{mbrInvUserId}}%22",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -446,7 +446,7 @@
                 "iam",
                 "v1",
                 "accounts",
-                "{{accountAId}}",
+                "{{ceremonyAccountId}}",
                 "memberships?filter=userId%3D%22{{mbrInvUserId}}%22"
               ]
             }
@@ -457,13 +457,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// per-step auth: bearer from env 'jwtAccountAdminA'",
-                  "const __t = pm.environment.get('jwtAccountAdminA') || pm.variables.get('jwtAccountAdminA') || '';",
+                  "// per-step auth: bearer from env 'jwtHumanCeremonyStepUp'",
+                  "const __t = pm.environment.get('jwtHumanCeremonyStepUp') || pm.variables.get('jwtHumanCeremonyStepUp') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('harness config: jwtAccountAdminA is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtAccountAdminA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('harness config: jwtHumanCeremonyStepUp is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtHumanCeremonyStepUp is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.execution.skipRequest();",
                   "}",
@@ -512,12 +512,13 @@
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('приглашённый виден как PENDING, и след приглашения назван', () => {",
+                  "pm.test('приглашённый виден как PENDING, и след приглашения называет ПРИГЛАСИВШЕГО ЧЕЛОВЕКА', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.memberships, JSON.stringify(j)).to.be.an('array').with.lengthOf(1);",
                   "  const m = j.memberships[0];",
+                  "  pm.expect(m.accountId, JSON.stringify(m)).to.eql(pm.environment.get('ceremonyAccountId'));",
                   "  pm.expect(m.state, JSON.stringify(m)).to.eql('PENDING');",
-                  "  pm.expect(m.invitedBy, JSON.stringify(m)).to.eql(pm.environment.get('userAAAId'));",
+                  "  pm.expect(m.invitedBy, JSON.stringify(m)).to.eql(pm.environment.get('ceremonyUserId'));",
                   "  pm.expect(m.createdAt, JSON.stringify(m)).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$/);",
                   "});"
                 ]
@@ -593,7 +594,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: у активного соседа состояние ДРУГОЕ — поле различает, а не отдаёт константу', () => {",
+                  "pm.test('ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: у активного члена состояние ДРУГОЕ — поле различает, а не отдаёт константу. Аккаунт здесь ДРУГОЙ намеренно: контролируется свойство ПОЛЯ, а не соседство строк, и любого членства в состоянии «активно» для этого довольно', () => {",
                   "  const m = pm.response.json().memberships[0];",
                   "  pm.expect(m.state, JSON.stringify(m)).to.eql('ACTIVE');",
                   "});"
@@ -605,7 +606,7 @@
       ]
     },
     {
-      "name": "IAM-ID2-NEG-FOREIGN-ACCOUNT — List по чужому аккаунту → 403; ответ БАЙТ В БАЙТ равен ответу по несуществующему аккаунту",
+      "name": "IAM-ID2-NEG-FOREIGN-ACCOUNT — List по чужому аккаунту → 403; ответ неотличим от ответа по несуществующему аккаунту",
       "description": "class:NEG | class:AUTHZ | class:ORACLE | priority:P0",
       "item": [
         {
@@ -680,10 +681,21 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
                   "});",
-                  "pm.test('текст отказа НЕ называет ни аккаунта, ни отношения, ни причины отказа модели', () => {",
+                  "pm.test('отказ НЕ называет ни отношения, ни причины отказа модели — край подменяет её неразглашающим описанием', () => {",
+                  "  const raw = pm.response.text();",
+                  "  const t = raw.toLowerCase();",
+                  "  pm.expect(t, raw).to.not.include('viewer');",
+                  "  pm.expect(t, raw).to.not.include('lacks relation');",
+                  "  pm.expect(t, raw).to.not.include('direct relations');",
+                  "  pm.expect(t, raw).to.not.include('deny_reasons');",
+                  "});",
+                  "pm.test('идентификатор аккаунта встречается ТОЛЬКО как ЭХО области, которую вызывающий назвал сам — ни одного вхождения помимо неё', () => {",
                   "  const t = pm.response.text();",
-                  "  pm.expect(t).to.not.include(pm.environment.get('accountBId'));",
-                  "  pm.expect(t.toLowerCase()).to.not.include('viewer');",
+                  "  const id = pm.environment.get('accountBId');",
+                  "  const all = t.split(id).length - 1;",
+                  "  const echoed = t.split('account:' + id).length - 1;",
+                  "  pm.expect(all, 'вхождений ' + all + ', из них эхо области ' + echoed + ': ' + t)",
+                  "    .to.eql(echoed);",
                   "});",
                   "pm.test('ответ не содержит ни одного поля, производного от содержимого чужого аккаунта', () => {",
                   "  const j = pm.response.json();",
@@ -764,8 +776,11 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 403', () => pm.expect(pm.response.code).to.eql(403));",
-                  "pm.test('АНТИ-ОРАКУЛ: чужой аккаунт и несуществующий отвечают тело в тело — модель прав не знает понятия «существует»', () => {",
-                  "  pm.expect(pm.response.text()).to.eql(pm.environment.get('mbrForeignAcctBody'));",
+                  "pm.test('АНТИ-ОРАКУЛ: чужой аккаунт и несуществующий отвечают ОДИНАКОВО — тела совпадают дословно после нормализации эха собственного ввода, и различаются РОВНО им; модель прав не знает понятия «существует»', () => {",
+                  "  const norm = (t, id) => (id ? t.split(id).join('<ACCT>') : t);",
+                  "  const saved = norm(pm.environment.get('mbrForeignAcctBody') || '', pm.environment.get('accountBId'));",
+                  "  const here = norm(pm.response.text(), 'acc00000000000000000');",
+                  "  pm.expect(here, 'saved=' + saved + ' | here=' + here).to.eql(saved);",
                   "});"
                 ]
               }
