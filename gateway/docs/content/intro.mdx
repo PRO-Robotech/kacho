@@ -90,9 +90,8 @@ data-plane прокси прикладного трафика. За физиче
 :::note Собственный gRPC-контракт гейтвея — минимален
 Гейтвей — прокси: почти весь его RPC-набор транслируется в домены. Собственные встроенные
 сервисы на его gRPC-поверхности — только `OperationService` (fan-out по prefix, см.
-[Operations](/api/operations)) и health. Единственный **native** proto гейтвея —
-`InternalAuthzCacheService` на cluster-internal listener (см.
-[Internal Authz Cache](/api/internal-authz-cache)).
+[Operations](/api/operations)) и health. Собственного proto-контракта у гейтвея **нет вовсе**:
+последний был снят вместе с cluster-internal gRPC-listener'ом, который его подавал.
 :::
 
 ## Модель API
@@ -170,7 +169,7 @@ per-RPC через `kacho-iam`, затем маршрутизирует в ну�
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>◷</span>
     <span className={hero.featureTitle}>Ограниченные кэши</span>
-    <span className={hero.featureBody}>JWKS, introspection, DPoP-replay, authz-decision — все LRU + TTL, с push-инвалидацией по subject.</span>
+    <span className={hero.featureBody}>JWKS, introspection, DPoP-replay, authz-decision — все LRU + TTL; кэш решений гейтвей гасит сам, читая журнал смены субъекта у kacho-iam.</span>
   </div>
 </div>
 
@@ -182,7 +181,7 @@ per-RPC через `kacho-iam`, затем маршрутизирует в ну�
     <tr><td>Go</td><td>Язык реализации (чистая архитектура; composition root — <code>cmd/api-gateway</code>)</td></tr>
     <tr><td>cmux</td><td>Мультиплексирование gRPC / REST на одном порту</td></tr>
     <tr><td>grpc-gateway</td><td>REST-проекция gRPC (split-mux public / internal)</td></tr>
-    <tr><td>Protocol Buffers / Buf</td><td>Контракт доменов (<code>kacho-proto</code>) + native <code>kacho.cloud.apigateway.v1</code></td></tr>
+    <tr><td>Protocol Buffers / Buf</td><td>Контракт доменов (<code>kacho-proto</code>); собственного пакета у гейтвея нет</td></tr>
     <tr><td>Ory Hydra / Kratos</td><td>OAuth2/OIDC (JWT-issuer + JWKS) и session-management SPA</td></tr>
     <tr><td>DPoP (RFC 9449)</td><td>Sender-constrained токены (proof-of-possession)</td></tr>
   </tbody>

@@ -160,6 +160,13 @@ opaque, передавать как есть.
   <tbody>
     <tr><td><code>OperationService</code></td><td>public</td><td><code>Get</code> / <code>Cancel</code> async-операций — fan-out по prefix id (<a href="/api/operations">Operations</a>)</td></tr>
     <tr><td>health (<code>/healthz</code>, <code>/readyz</code>)</td><td>public</td><td>Liveness / readiness</td></tr>
-    <tr><td><code>InternalAuthzCacheService</code></td><td>cluster-internal (:9091)</td><td>Push-инвалидация authz-кэша (<a href="/api/internal-authz-cache">Internal Authz Cache</a>)</td></tr>
   </tbody>
 </table>
+
+:::note Собственного proto-контракта у края больше нет
+Здесь стояла третья строка — служба сброса authz-кэша на отдельном cluster-internal
+gRPC-listener'е края. Её нет: контракт снят целиком вместе с listener'ом, который его подавал.
+Кэш решений теперь гасит сам край, читая журнал смены субъекта у `kacho-iam`, — см.
+[Авторизация](/architecture/authz). Публично край подаёт только `OperationService` и health;
+всё остальное на его поверхности — проекция контрактов доменов.
+:::

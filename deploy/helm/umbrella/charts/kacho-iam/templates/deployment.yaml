@@ -318,12 +318,15 @@ spec:
               value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- end }}
             {{- end }}
-            # subject-change push-drainer (W1.2): IAM нотифицирует api-gateway
-            # InternalAuthzCacheService об изменениях subject → инвалидация authz-кэша.
-            # REQUIRED в коде (cmd/kacho-iam/subject_change_wiring.go) — без него pod
-            # падает на старте. api-gateway internal gRPC = cmux-порт 8080 (cluster-internal).
-            - name: KACHO_IAM_GATEWAY_INTERNAL_ADDR
-              value: {{ .Values.gatewayInternalAddr | default "api-gateway.kacho.svc:8080" | quote }}
+            # АДРЕСА КРАЯ ЗДЕСЬ НЕТ — направление развёрнуто (задача продукта #1024).
+            #
+            # Стояла обязательная ручка адреса края: владелец прав дозванивался до
+            # него и гасил его кэш решений. Ручка была обязательной в коде, поэтому
+            # iam не поднимался там, где края нет вовсе, — и это, а не сам вызов,
+            # делало вынос iam отдельным продуктом невыразимым.
+            #
+            # Соединение открывает ПОТРЕБИТЕЛЬ: край сам читает журнал смены субъекта
+            # курсором. Владелец прав о крае не знает, и знать ему нечем.
             # ─── KAC-127 Phase 2 — AuthN core env vars ──────────────────
             # Hydra ↔ kacho-iam shared secret для token_hook / refresh_hook.
             # Создаётся отдельным Secret kacho-iam-hook-token (см. cluster overrides);

@@ -413,39 +413,29 @@ authz: {}
 # replacing the earlier generic extraEnv.KACHO_APP_ENV passthrough.
 appEnv: ""
 
-# ─── cluster-internal :9091 gRPC listener security (InternalAuthzCacheService) ──
-# The dedicated internal listener hosts InternalAuthzCacheService.InvalidateSubject,
-# dialed by the kacho-iam subject-change push-drainer. security.md invariant #1/#4:
-# the internal perimeter is NOT a trusted zone → mTLS transport (AuthN) + a per-RPC
-# SPIFFE caller allow-list (AuthZ) are mandatory. In a production-class env (appEnv
-# not dev/local/test) validateProductionInternalListener FATAL-fails the boot unless
-# mtls.enable=true here — before this first-class block the only way to wire it was
-# the generic extraEnv passthrough, a dev-masked gap that crash-looped the gateway
-# under values.prod.yaml.
+# ─── внутренний gRPC-листенер края СНЯТ (#1024) ──────────────────────────────
+# Здесь стоял блок `internalListener` (mtls.enable/certFile/keyFile + allowedSpiffe)
+# и его собственное надгробие про снятую ручку `internalListener.reflection`.
 #
-# Server cert: reuses the pod's already-mounted EXTERNAL TLS server secret (tls.*
-# above → /etc/api-gateway/tls) — cert-manager issues it from the internal CA on the
-# mTLS stands, so the iam push-drainer verifies it against the same internal CA it
-# dials with. Incoming client certs are verified against the internal CA
-# (KACHO_API_GATEWAY_MTLS_CA_FILE = mtls.mountPath/ca.crt), so this block REQUIRES
-# mtls.enable=true (which mounts the internal-CA bundle + sets MTLS_CA_FILE); the
-# deployment template hard-fails the render otherwise (fail-fast, not a silent
-# half-secured boot). allowedSpiffe = the verified client SANs authorised to invoke
-# the listener — the iam module identity is the ONLY legitimate caller.
-internalListener:
-  mtls:
-    enable: false
-    certFile: /etc/api-gateway/tls/tls.crt
-    keyFile: /etc/api-gateway/tls/tls.key
-  allowedSpiffe:
-    - spiffe://kacho.cloud/ns/kacho/sa/kacho-iam
-  # NOTE — `internalListener.reflection` was removed, not renamed. gRPC
-  # server-reflection is now served on this listener whenever mtls.enable=true,
-  # and never otherwise: with mTLS off the listener mounts no authorising
-  # interceptors, so a switch that turned reflection on independently could only
-  # expose schema discovery on an unauthenticated port. It is no longer served on
-  # the external listener at all. A stale `reflection:` left in an overlay is
-  # inert (the template no longer reads it, and envconfig ignores unknown vars).
+# Предмета у обоих больше нет: единственной службой этого листенера была
+# `InternalAuthzCacheService.InvalidateSubject`, которую набирал iam, — обратное
+# ребро «сервис гасит кэш решений края». Ребро снято, служба снята, листенер снят.
+# Оставшись без единственной службы, он был бы входной поверхностью без единого
+# метода: периметр, который надо защищать, объявлять в каждом профиле и доказывать
+# гейтом посадки — ради нуля обслуживаемых вызовов.
+#
+# Ручка снята, а не выключена по умолчанию. Выключенная ручка настраивает
+# поверхность, которой нет: значение в профиле читалось бы как принятое решение о
+# защите периметра, ничего при этом не делая.
+#
+# Край по-прежнему НАБИРАЕТ внутренние листенеры соседей (`backends.*Internal`
+# выше, `KACHO_API_GATEWAY_<ДОМЕН>_INTERNAL_GRPC`) — это другой предмет: там край
+# клиент, а не сервер, и ban #6 у соседей от этого не меняется.
+#
+# Держится парой: рендер не эмитит ни одной `KACHO_API_GATEWAY_INTERNAL_GRPC_*`
+# даже когда оверлей выставляет снятые значения (gateway/deploy/
+# render_internal_listener_retired_test.go), а объявлений ручки не осталось ни в
+# одном профиле (deploy/internal_listener_knob_retired_test.go).
 
 # ─── mTLS — per-edge backend-dial (cert-manager internal-CA) ─────────────────
 # api-gateway is a backend-dial CLIENT (it terminates EXTERNAL TLS separately via

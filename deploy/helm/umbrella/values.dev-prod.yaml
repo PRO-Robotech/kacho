@@ -110,46 +110,33 @@ api-gateway:
   # dev HMAC secret is present (CWE-347 symmetric-key principal forgery). Flip the
   # label to production and drop the dev path.
   #
-  # Internal :9091 gRPC listener (InternalAuthzCacheService.InvalidateSubject, dialed
-  # by the iam subject-change push-drainer) is ALWAYS up and validateProductionInternal
-  # Listener FATAL-fails in a production-class env unless it runs mTLS + a SPIFFE
-  # allow-list.
+  # ВНУТРЕННЕГО gRPC-ЛИСТЕНЕРА У КРАЯ БОЛЬШЕ НЕТ (#1024) — здесь стоял разбор
+  # того, как его настраивать, и он пережил свой предмет целиком.
   #
-  # Здесь стояло «у чарта нет первоклассной ручки для этого, провязываем через
-  # generic extraEnv» — и четыре переменные ниже действительно были объявлены
-  # пробросом. Ручка ЕСТЬ (api-gateway `internalListener.mtls` / `allowedSpiffe`,
-  # gateway/deploy/values.yaml), и утверждение пережило свой предмет. Цена была не
-  # косметическая, и она двойная:
-  #   • рядом с ручкой стоит её собственная проверка связности — блок шаблона
-  #     падает `fail`-ом, если internalListener.mtls.enable=true при mtls.enable=false
-  #     (листенеру нечем проверять клиентские сертификаты). Проброс её обходит:
-  #     переменные доезжают, а условие, при котором они осмысленны, не сверяется;
-  #   • на боевой цепочке, где ручка ВКЛЮЧЕНА, тот же проброс давал пять записей
-  #     с одним именем в контейнере края — шаблон зелёный, apiserver отвечает
-  #     «hides previous definition … may be dropped when using apply», и побеждает
-  #     та запись, которую выбрал порядок блоков шаблона.
-  # Теперь путь один — ручка. Сертификат переиспользуется уже смонтированный
-  # (/etc/api-gateway/tls, api-gateway-tls) + backend-dial CA
-  # (KACHO_API_GATEWAY_MTLS_CA_FILE); certFile/keyFile совпадают с умолчанием
-  # чарта и потому не повторяются.
+  # Разбор был про переезд четырёх переменных с родового проброса на
+  # первоклассную ручку чарта, и оба его довода остаются верными КАК КЛАСС —
+  # проброс обходит проверки связности, стоящие рядом с ручкой, и задваивает
+  # запись в контейнере, где побеждает порядок блоков шаблона. Довод переехал
+  # туда, где у него есть предмет: deploy/posture_parity_test.go судит это
+  # свойство по всем профилям и всем подчартам разом, а не одним абзацем про
+  # один листенер.
   #
-  # allowedSpiffe объявлен ЯВНО и НЕ равен умолчанию чарта
-  # (spiffe://kacho.cloud/ns/kacho/sa/kacho-iam): здесь стенд называет модуль iam
-  # в пространстве имён kacho-iam. Значение перенесено из проброса ДОСЛОВНО —
-  # смена круга законных отправителей на внутреннем листенере это отдельное
-  # решение со своим доказательством, а не побочный эффект переезда на ручку.
+  # Самого листенера нет: его единственную службу (гашение кэша решений края по
+  # запросу iam) сняли вместе с обратным ребром, а листенер без единственной
+  # службы был бы входной поверхностью без единого метода. Ни ручки, ни проброса
+  # здесь поэтому не осталось — настраивать нечего.
   #
+  # Круг законных отправителей, который этот профиль объявлял ЯВНО и НЕ равным
+  # умолчанию чарта (модуль iam в пространстве имён kacho-iam), снят вместе с
+  # листенером: круг сужает доступ к поверхности, а поверхности нет. Это НЕ смена
+  # круга — предмет сужения исчез.
+
   # appEnv (first-class knob → KACHO_APP_ENV) overrides values.dev.yaml's `dev`.
   # MUST NOT set KACHO_APP_ENV via extraEnv here: the chart already renders a
   # KACHO_APP_ENV env from the appEnv knob, so an extraEnv.KACHO_APP_ENV produces a
   # DUPLICATE list key → helm strategic-merge `$setElementOrder` patch failure on
   # `helm upgrade` (dev base appEnv=dev + extraEnv=production → two KACHO_APP_ENV).
   appEnv: production
-  internalListener:
-    mtls:
-      enable: true
-    allowedSpiffe:
-      - spiffe://kacho.cloud/ns/kacho-iam/sa/kacho-iam
   authn:
     # Bearer REQUIRED, verified by signature against published public material;
     # missing token → 401. The line that used to sit under this one blanked a

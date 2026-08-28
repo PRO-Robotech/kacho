@@ -358,7 +358,7 @@ type RelationTuple struct {
 type SubjectChangeEvent struct {
 	// SubjectID — raw (unprefixed) FGA subject id (e.g. "usr_alice",
 	// "sva_bot", "grp_admins"). The drainer applier maps to FGA-prefixed
-	// form before calling gateway InvalidateSubject.
+	// form; читателем журнала является КРАЙ, открывающий чтение сам (задача #1024).
 	SubjectID string `json:"subject_id"`
 
 	// SubjectType — FGA object type of the subject: user | service_account |

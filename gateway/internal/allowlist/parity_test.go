@@ -70,7 +70,6 @@ import (
 	// TestAllowlist_CensusCoversEveryProtoFile — новый домен без импорта тут
 	// краснеет там.
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/apigateway/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"

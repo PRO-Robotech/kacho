@@ -116,8 +116,8 @@ type Config struct {
 	// AuthZCacheTTL — TTL positive-кеша authz-Check gRPC-интерсептора (ОБА
 	// листенера). Ограничивает окно, в течение которого отозванный (revoked)
 	// субъект держит закешированный allow ПОСЛЕ удаления AccessBinding: registry НЕ
-	// подписан на IAM cache-invalidation (InternalAuthzCacheService.InvalidateSubject
-	// бьёт только api-gateway) и db-per-service ⇒ LISTEN/NOTIFY от iam сюда не доходит →
+	// читает журнал смены субъекта у iam (это делает ТОЛЬКО край, и делает он это
+	// для СВОЕГО кэша) и db-per-service ⇒ LISTEN/NOTIFY от iam сюда не доходит →
 	// revoke-окно = этот TTL + async fga-drain. Короткий дефолт (2s) держит окно
 	// узким; 0 → positive-кеш выключен (каждый gRPC-RPC — живой IAM Check,
 	// немедленный revoke). data-plane /v2/ (OCI-proxy) authz НЕ кеширует (прямой

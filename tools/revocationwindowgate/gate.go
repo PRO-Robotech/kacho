@@ -55,10 +55,13 @@
 // whose controls run in both directions.
 //
 // The edge differs from the services in one further respect worth keeping
-// straight: it is the only holder with a PROACTIVE drop (InvalidateSubject,
-// driven by the iam subject_change_outbox drainer, whose sender is real). Its
-// TTL is therefore a backstop rather than the primary path — and a backstop is
-// still a window, still owned by nobody until it is written down.
+// straight: it is the only holder with a PROACTIVE drop, and it has two lanes —
+// the replica that served the mutation flushes at once, and its siblings
+// converge by reading the iam subject_change journal, a read THE EDGE ITSELF
+// opens (kacho#1024 turned the direction around; the push that used to run from
+// the rights owner was an edge from a leaf back to its own consumer). Its TTL is
+// therefore a backstop rather than the primary path — and a backstop is still a
+// window, still owned by nobody until it is written down.
 //
 // # What it refuses
 //
@@ -181,9 +184,10 @@ var knobNames = map[string]string{
 	"KACHO_COMPUTE_LIST_FILTER_CACHE_TTL_MS": "list-filter",
 	"KACHO_STORAGE_LIST_FILTER_CACHE_TTL_MS": "list-filter",
 	// per-request decision cache at the EDGE (gateway/internal/middleware).
-	// The edge is the only site with a proactive drop (InvalidateSubject, driven
-	// by the iam subject_change_outbox drainer), so its TTL is the BACKSTOP
-	// window — what remains when that drain is behind or down. A backstop is
+	// The edge is the only site with a proactive drop (self-flush on the serving
+	// replica plus the edge's own cursor read of the iam subject_change journal),
+	// so its TTL is the BACKSTOP window — what remains when that read is behind
+	// or down. A backstop is
 	// still a window, and an undeclared backstop is still an unowned security
 	// parameter, which is why it belongs in the same census as the rest.
 	"KACHO_API_GATEWAY_AUTHZ_CACHE_TTL_SECONDS": "edge-decision",
