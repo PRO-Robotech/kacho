@@ -21,12 +21,15 @@ import (
 
 type ListBySubjectUseCase struct {
 	repo Repo
-	// relations / queries — порты решения о личности. Провязаны ДО того, как
-	// ими начали пользоваться: иначе красное пробы было бы отказом сборки, а не
-	// поведением.
+	// relations — модель прав для полос надзора облака и делегированного
+	// распорядителя; queries — пообъектный вопрос, которым сужается СТРАНИЦА.
+	// Оба обязательны: непровязанный порт это чтение ОТКАЗЫВАЕТ, а не отдаёт
+	// несуженный перечень.
 	relations clients.RelationStore
 	queries   clients.RelationQueries
-	logger    *slog.Logger
+	// logger — паритет формы провязки с соседними use-case'ами пакета; здесь не
+	// читается, потому что решения этого чтения ничего не логируют.
+	logger *slog.Logger
 }
 
 func NewListBySubjectUseCase(r Repo) *ListBySubjectUseCase {
