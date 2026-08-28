@@ -215,7 +215,7 @@
 | `ipv6_released_offsets (pool_id, offset)` PK | offset переиспользуется не более раза | PK ✅ + FK CASCADE | OK |
 | pop released offset под concurrency | atomic | `FOR UPDATE SKIP LOCKED` ✅ | OK |
 
-### 1.14 `vpc_outbox`, `fga_register_outbox`, `vpc_watch_cursors`, `operations`
+### 1.14 `vpc_outbox`, `fga_register_outbox`, `operations`
 
 | Table.field / invariant | Что гарантируется | DB constraint | Решение |
 |---|---|---|---|
@@ -224,7 +224,6 @@
 | outbox row atomicity с ресурс-row | в одной tx | все вызовы `helpers.EmitVPC` — в той же tx, что INSERT/UPDATE ресурса ✅ | OK |
 | `fga_register_outbox` exactly-once claim | атомарный claim drainer'ом | `UPDATE … WHERE sent_at IS NULL AND attempt_count < $max FOR UPDATE SKIP LOCKED RETURNING …` ✅ | OK |
 | `fga_register_outbox.event_type` | значение из enum | CHECK ✅ | OK |
-| `vpc_watch_cursors.subscriber_id` PK | один cursor на subscriber | PK ✅ | OK |
 | `operations.id` PK | уникальный | PK ✅ | OK |
 
 ---

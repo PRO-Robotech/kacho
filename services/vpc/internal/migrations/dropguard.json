@@ -33,6 +33,13 @@
       "kind": "retire",
       "expect_rows": 0,
       "note": "Zero is what the chain seeds, and it is derived from the backfill's source rather than assumed. 0032 fills this table from seven resource tables (networks, subnets, network_interfaces, security_groups, route_tables, gateways, addresses) and thereafter keeps it via AFTER-triggers on those same seven. No migration in the chain writes a row into any of them (predicate: for t in the seven; grep -icE \"INSERT[[:space:]]+INTO[[:space:]]+kacho_vpc\\.$t\\b\" *.sql -> 0 for all seven), so on a replayed chain the backfill selects from empty tables and no trigger ever fires. STATED PLAINLY, because expect_rows is an equality and this is its limit: on a tenant database this table is NOT empty — it holds one row per live resource plus a tombstone per deleted one. That number is unbounded and unknowable to any test container, which is why it cannot be written here; dropguard's own doc.go owns this gap and exports Observe so the same count can be put to a live database before a deploy applies the drop. Destroying those rows is admissible because the table is a derived projection: every non-tombstone row is reconstructible from the resource tables it was built from (0045's Down re-runs exactly that backfill), and its only reader was the executor stream, removed in this same change."
+    },
+    {
+      "version": 20260828114800,
+      "table": "kacho_vpc.vpc_watch_cursors",
+      "kind": "retire",
+      "expect_rows": 0,
+      "note": "Server-side subscription cursors, keyed by subscriber. Zero rows by construction: the table had no reader and no writer in its whole life, and that was established by census over its COLUMNS rather than over its name — `subscriber_id` has zero occurrences outside migrations and documentation, `last_sequence_no` appears only in the migrations themselves, and no Go type for the row exists at all. No surface on any listener could have created a row. It is dropped for what its shape says rather than for what it costs: the position of a subscription belongs to the CLIENT, which is what lets a stream survive reconnecting to a different replica, and a table of per-subscriber cursors reads as an instruction to hold it on the server instead. The service documentation already called it vestigial, which named the subject and left it standing; a reader of the schema sees the table, not the sentence in someone else's document."
     }
   ]
 }
