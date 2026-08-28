@@ -251,7 +251,11 @@ JQPROG="${JQPROG%\')\"}"
 # стенда, этот тест не решает и не проверяет.
 line() { # line <trusted_forwarders-фрагмент>
   printf '{"msg":"boot security posture","service":"iam","auth_mode":"production-strict",'
-  printf '"db_sslmode":"require","public_mtls":true,"internal_mtls":true,"authz_check":true,'
+  # internal_mtls — СТРОКОВОЕ измерение с задачи #1024 (три состояния:
+  # "true" | "false" | "n/a"), а не булево: у края внутреннего листенера больше
+  # нет вовсе, и «нет листенера» обязано быть отличимо от «листенер без mTLS».
+  # У ЭТОГО сервиса листенер есть, поэтому величина — "true".
+  printf '"db_sslmode":"require","public_mtls":true,"internal_mtls":"true","authz_check":true,'
   printf '"identity_provider":"own"%s}' "$1"
 }
 verdict() { echo "$1" | jq -r --argjson need_fwd "$2" "$JQPROG"; }
