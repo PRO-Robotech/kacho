@@ -136,8 +136,27 @@ func TestRightsChangeReachesTheEdgeAndTheVerdictIsRecomputed(t *testing.T) {
 	// Такт задан заведомо большим: шаги делает проба вызовом Poll, а не таймер.
 	// Ждать настоящего срока значило бы угадывать момент, когда чтение
 	// закончилось, — угадывание верное на свободной машине и неверное на занятой.
-	reader := subjectchange.New(subjectchange.NewReader(conn), cache.invalidate,
-		time.Hour, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	reader, err := subjectchange.New(subjectchange.Config{
+		Poller:   subjectchange.NewReader(conn),
+		Flush:    cache.invalidate,
+		Interval: time.Hour,
+		// Реестр открытых потоков у владельца отсутствует BY CONSTRUCTION:
+		// длинные соединения держит потребитель, и правило видимости `internal/`
+		// не пускает сюда его проекцию. Заменитель здесь законен и не ослабляет
+		// пробу: её предмет — доезжает ли ИЗМЕНЕНИЕ ПРАВ до кэша решений, а не
+		// что делает закрыватель. Что то же самое чтение закрывает настоящий
+		// открытый поток, утверждает сквозная проба у потребителя
+		// (`gateway/internal/subscriptionstream`,
+		// `TestPolledRevocationClosesTheOpenStreamEndToEnd`).
+		//
+		// Ноль здесь недопустим и отвергается сборкой: необязательный
+		// закрыватель делал бы несделанную провязку неотличимой от сделанной
+		// (kacho#1022).
+		Closer:     noStreamsHere{},
+		StaleAfter: 2 * time.Hour,
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	require.NoError(t, err)
 
 	// ── ШАГ 1. Первое чтение на холодном процессе НЕ гасит ────────────────────
 	//
@@ -190,3 +209,12 @@ func TestRightsChangeReachesTheEdgeAndTheVerdictIsRecomputed(t *testing.T) {
 			"продолжит проходить по закешированному вердикту")
 	require.Equal(t, 2, cache.flushes)
 }
+
+// noStreamsHere — реестр открытых потоков у владельца журнала: пуст всегда.
+//
+// Длинные соединения держит ПОТРЕБИТЕЛЬ; у владельца их нет и быть не может, и
+// сообщать об этом нулём нельзя — ноль означал бы «закрывателя не провязали».
+type noStreamsHere struct{}
+
+func (noStreamsHere) CloseSubject(string) int { return 0 }
+func (noStreamsHere) CloseAll() int           { return 0 }

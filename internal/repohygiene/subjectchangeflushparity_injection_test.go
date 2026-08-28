@@ -49,6 +49,16 @@ const producerBody = `package uc
 func run(w writer) error { return w.AccessBindingsW().EmitSubjectChangeEvent(nil, evt{}) }
 `
 
+// producerValueBody — ВТОРАЯ законная форма обращения: метод порта передан
+// ЗНАЧЕНИЕМ общему развёртывателю, который и делает вызов. Производителем
+// остаётся тот, кто метод отдал.
+const producerValueBody = `package uc
+
+func run(w writer) error {
+	return fanout(nil, w.AccessBindingsW().EmitSubjectChangeEvent, "binding_revoke")
+}
+`
+
 // законный близнец производителя: имя стоит ПРОЗОЙ, вызова нет.
 const producerTwin = `package uc
 
@@ -78,6 +88,37 @@ func TestFlushParityGateFallsWhenAProducerHasNoFlush(t *testing.T) {
 	findings := auditParity(t, opts)
 	if len(findings) != 1 || !strings.Contains(findings[0].What, "производителей очереди 2, самосброс покрывает 1") {
 		t.Fatalf("расхождение полос не названо числами обеих: %v", findings)
+	}
+}
+
+// TestFlushParityGateSeesTheValueForm — обращение, переданное ЗНАЧЕНИЕМ, есть
+// производитель наравне с вызовом на месте.
+//
+// Распознаватель, знавший только вызов, объявлял эту форму отсутствующей — не
+// нарушением, а НЕВИДИМОСТЬЮ: полоса пополнялась, перепись не менялась, и гейт
+// краснел ровно наоборот — на дереве, где полосы сошлись.
+func TestFlushParityGateSeesTheValueForm(t *testing.T) {
+	opts := flushParityTree(t,
+		[]string{producerValueBody, producerValueBody, producerTwin},
+		[]string{"kacho.cloud.iam.v1.GroupService/AddMember"})
+	findings := auditParity(t, opts)
+	if len(findings) != 1 || !strings.Contains(findings[0].What, "производителей очереди 2, самосброс покрывает 1") {
+		t.Fatalf("обращение значением не сочтено производителем: %v", findings)
+	}
+}
+
+// TestFlushParityGateCountsMixedFormsOnce — обе формы вперемешку, и ни одна не
+// сочтена дважды: вызов СОДЕРЖИТ узел обращения, поэтому наивное расширение дало
+// бы двойной счёт именно на первой форме.
+func TestFlushParityGateCountsMixedFormsOnce(t *testing.T) {
+	opts := flushParityTree(t,
+		[]string{producerBody, producerValueBody, producerTwin},
+		[]string{
+			"kacho.cloud.iam.v1.AccessBindingService/Create",
+			"kacho.cloud.iam.v1.AccessBindingService/Delete",
+		})
+	if findings := auditParity(t, opts); len(findings) != 0 {
+		t.Fatalf("две формы, два имени — полосы сошлись, а гейт нашёл: %v", findings)
 	}
 }
 
