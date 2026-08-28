@@ -154,9 +154,26 @@ service AccessBindingService {
   //
   // Lists access bindings assigned to the specified subject. Authorized by
   // kacho-iam against the subject NAMED IN THE REQUEST, which the edge cannot turn
-  // into an object of any type it knows: a user or service_account subject must BE
-  // the caller, and a group subject must be one the caller belongs to. There is no
-  // administrative override — this is the narrowest read on the service.
+  // into an object of any type it knows.
+  //
+  // Admission is the SAME predicate `ListSubjectPrivileges` uses — the two verbs
+  // answer one question and had answered it differently, so a delegated account
+  // administrator could read an employee's grants through one and not the other
+  // (task #1352). The lanes, and what each sees:
+  //
+  //   - the subject itself (for a group subject — a member of it) — all of its
+  //     own grants, unnarrowed;
+  //   - the owner or a delegated administrator of the subject's HOME account —
+  //     the subject's grants WITHIN THAT ACCOUNT only. The page is read by
+  //     cursor and then narrowed PER ROW on `v_get` on `iam_access_binding:<id>`
+  //     — the same relation that gates the single-object read — so the reply
+  //     never names a scope in an account the caller has nothing to do with
+  //     (task #1354, same class as the membership-listing decision in #1085);
+  //   - the cluster administrator — everything, unnarrowed.
+  //
+  // Existence is NEVER reported: a subject that does not resolve answers with an
+  // empty page to its own reader and PERMISSION_DENIED to everyone else — the
+  // same answer a subject in a foreign account gets.
   rpc ListBySubject (ListAccessBindingsBySubjectRequest) returns (ListAccessBindingsResponse) {
     option (google.api.http) = { get: "/iam/v1/accessBindings:listBySubject" };
     option (kacho.iam.authz.v1.permission)       = "iam.access_bindings_by_subjects.listBySubject";
@@ -165,24 +182,24 @@ service AccessBindingService {
   }
 
   // Lists the privileges (enriched access bindings) attached to the specified
-  // subject (User or ServiceAccount). Sync read (NOT an Operation). Unlike
-  // `ListBySubject` (strict self-list, raw bindings, no existence-check), this
-  // RPC:
+  // subject (User or ServiceAccount). Sync read (NOT an Operation). It shares
+  // admission with `ListBySubject` (one predicate, see there); unlike it — raw
+  // bindings, no existence-check — this RPC:
   //   - resolves the human-readable `role_name` server-side via a within-DB
   //     JOIN `access_bindings ⋈ roles` (no N+1 client round-trips);
-  //   - broadens authz to "self OR account-admin of the subject's home
-  //     account" — caller may view another member's privileges if they
-  //     own/admin the subject's home Account; cross-account reads → 403;
-  //   - returns NOT_FOUND for a well-formed-but-missing subject
-  //     (existence-resolve is required for authz);
+  //   - returns NOT_FOUND for a well-formed-but-missing subject to a caller who
+  //     may read it (existence-resolve is required for authz), where
+  //     `ListBySubject` reports nothing about existence at all;
   //   - is DIRECT-only in v1 (`derivation=DIRECT`); GROUP-derived (effective)
   //     roles are reserved forward-compat.
   //
-  // Authorized by kacho-iam: self, or `admin`/owner of the HOME ACCOUNT of the
-  // subject named in the request. That account is not a request field — it is
-  // resolved from the subject — so the edge has no object to check and declares
-  // `scope_filtered`. `subject_type ∈ {"user","service_account"}` for v1;
-  // malformed subject_id / prefix↔type mismatch → INVALID_ARGUMENT.
+  // Authorized by kacho-iam: self (for a group subject — a member of it), or
+  // `admin`/owner of the HOME ACCOUNT of the subject named in the request, or the
+  // cluster administrator — ONE predicate, shared with `ListBySubject`. That
+  // account is not a request field — it is resolved from the subject — so the edge
+  // has no object to check and declares `scope_filtered`. `subject_type ∈
+  // {"user","service_account","group"}`; malformed subject_id / prefix↔type
+  // mismatch → INVALID_ARGUMENT.
   //
   // ДОПУСК НЕ ЕСТЬ ПОЛНОТА ОТВЕТА. Допуск решается по ДОМАШНЕМУ аккаунту
   // субъекта, а строки называют ОБЛАСТЬ каждой выдачи, и области одного человека

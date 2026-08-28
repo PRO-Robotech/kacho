@@ -152,7 +152,7 @@ sequenceDiagram
 | `Delete`          | async      | Soft (status=REVOKED). После revoke re-grant дает новый id.         |
 | `Get`             | sync       | По id.                                                              |
 | `ListByScope`     | sync       | Все bindings на scope (resource_type, resource_id).                 |
-| `ListBySubject`   | sync       | Все bindings, где subject=(type, id).                               |
+| `ListBySubject`   | sync       | Bindings субъекта. Допуск общий с `ListSubjectPrivileges`; страница распорядителя аккаунта сужается построчно. |
 
 ### REST mapping
 
@@ -301,8 +301,12 @@ go test -short -count=1 -timeout 120s \
   строк прямой факт там же.
 - **Subject-change emit:** `subject_change_outbox` row для invalidate
   api-gateway authz cache на subject_id (см. [`29-relational-verdict.md`](29-relational-verdict.md)).
-- **Anti-leak guards:** ListBySubject анонимно → ничего не вернет; см.
-  `list_by_subject_anti_leak_test.go`.
+- **Anti-leak guards:** `ListBySubject` анонимно → ничего не вернёт
+  (`list_by_subject_anti_leak_test.go`). Допуск у него и у `ListSubjectPrivileges`
+  — ОДИН предикат (`subject_read_authority.go`, #1352), а страница полосы
+  распорядителя аккаунта сужается построчно по `v_get` на выдаче, поэтому области
+  в чужих аккаунтах в ответ не попадают (#1354). Сравнение полос между собой —
+  `subject_read_authority_test.go`.
 
 ## Gotchas / известные ограничения
 

@@ -515,7 +515,15 @@ func buildServices(pool, slavePool *pgxpool.Pool, opsRepo operations.FullRepo,
 		WithRelationQueries(relationStore).
 		WithClusterAdmins(kachopg.NewClusterAdminGrantReader(pool)).
 		WithListScanRecorder(listScanRec)
-	abListBySub := accessbindingapp.NewListBySubjectUseCase(kachoRepo)
+	// ListBySubject — тот же вопрос, что и у ListSubjectPrivileges («какие выдачи
+	// есть у этого субъекта»), поэтому и допуск у него ТОТ ЖЕ, единым предикатом
+	// (#1352). Оба порта обязательны: RelationStore решает полосы надзора облака
+	// и делегированного распорядителя, RelationQueries сужает СТРАНИЦУ полосы
+	// распорядителя построчно (#1354). Непровязанный порт этим чтением
+	// ОТКАЗЫВАЕТ — провязка здесь не удобство, а условие работоспособности полосы.
+	abListBySub := accessbindingapp.NewListBySubjectUseCase(kachoRepo).
+		WithRelationStore(relationStore, logger).
+		WithRelationQueries(relationStore)
 	abListByAcc := accessbindingapp.NewListByAccountUseCase(kachoRepo).
 		WithRelationStore(relationStore, logger).
 		WithRelationQueries(relationStore)
