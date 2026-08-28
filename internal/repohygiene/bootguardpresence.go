@@ -1325,10 +1325,50 @@ func assignedErrName(as *ast.AssignStmt) string {
 	return id.Name
 }
 
-// refusalReachesExit — доводится ли отказ, принятый в errName, до остановки
-// ПОСЛЕ позиции after.
+// ── ПЕРВОЕ СОБЫТИЕ ПОСЛЕ ВЫЗОВА, А НЕ ЛЮБОЕ НИЖЕ ПО ТЕЛУ ───────────────────
 //
-// ЗАКОННЫЕ ФОРМЫ, каждая встречается либо в дереве, либо в его фикстурах:
+// ПОЧЕМУ ПОРЯДОК НЕСУЩИЙ. Первая редакция этой оси искала ЛЮБУЮ развилку по
+// имени отказа где угодно ниже по телу и не спрашивала, не перезаписано ли к
+// тому моменту само имя. В композиционном корне на две-три сотни строк,
+// переиспользующем `err`, такая развилка есть ВСЕГДА — то есть ответ «доходит»
+// был тождественно истинным и от наличия проверки у стража не зависел.
+//
+// Замер, из-за которого редакция развёрнута: снятие блока проверки СРАЗУ ЗА
+// вызовом оставляло гейт зелёным у пяти живых компонентов из шести, при
+// неизменной переписи. Краснел единственный, у которого развилка по `err` после
+// вызова ровно одна. Перепись развилок (предикат — `err != nil` от строки
+// вызова до конца тела): 3 · 4 · 6 · 3 · 3 · 1.
+//
+// ПОЧЕМУ ИНЪЕКЦИЯ ЭТОГО НЕ ПОКАЗАЛА. Все её фикстуры были синтетические, на
+// пять-восемь строк, с ОДНИМ вызовом и одним упоминанием имени. Это
+// `testing.md` §«Гейт на класс», п.3 дословно: предпосылка верна ОТНОСИТЕЛЬНО
+// ПОПУЛЯЦИИ, на которой гейт писался, и ложна на настоящей. Узкая популяция
+// предпосылку не подтверждает — она её СКРЫВАЕТ. Поэтому у каждой стороны
+// инъекции теперь есть близнец из настоящей популяции: вызывающий, у которого
+// ниже по телу стоит ЕЩЁ ОДНА развилка по тому же имени.
+
+// Вид события, решающего судьбу принятого отказа.
+const (
+	// reachEventOverwrite — в имя отказа записали другое значение: то, что было
+	// принято от поставщика, до проверки уже не доживёт.
+	reachEventOverwrite = iota
+	// reachEventCheck — развилка по имени отказа, ведущая к остановке.
+	reachEventCheck
+)
+
+// reachEvent — событие с позицией: порядок здесь и есть предмет.
+type reachEvent struct {
+	pos  token.Pos
+	kind int
+}
+
+// refusalReachesExit — доводится ли отказ, принятый в errName, до остановки.
+//
+// РЕШАЕТ ПЕРВОЕ событие после вызова, а не наличие какого-нибудь события ниже:
+// проверка → доходит; перезапись имени → погашен. Событий после вызова нет
+// вовсе — тоже погашен.
+//
+// ЗАКОННЫЕ ФОРМЫ ПРОВЕРКИ, каждая встречается либо в дереве, либо в фикстурах:
 //
 //	if err != nil { return err }                 — проверка с выходом
 //	if err != nil { return fmt.Errorf("…: %w") } — она же с обёрткой
@@ -1337,26 +1377,186 @@ func assignedErrName(as *ast.AssignStmt) string {
 //	return err                                   — голая передача наверх
 //	return d, err                                — она же в паре
 func refusalReachesExit(body *ast.BlockStmt, errName string, after token.Pos) bool {
-	reached := false
-	ast.Inspect(body, func(n ast.Node) bool {
-		if reached || n == nil || n.Pos() <= after {
-			return !reached
+	var events []reachEvent
+	collectReachEvents(body, errName, after, false, &events)
+	sort.Slice(events, func(i, j int) bool { return events[i].pos < events[j].pos })
+	for _, e := range events {
+		if e.pos <= after {
+			continue
 		}
-		switch st := n.(type) {
-		case *ast.IfStmt:
-			if exprMentionsIdent(st.Cond, errName) && ifBranchTerminates(st) {
-				reached = true
+		return e.kind == reachEventCheck
+	}
+	return false
+}
+
+// collectReachEvents собирает события по телу с учётом ОБЛАСТИ ВИДИМОСТИ.
+//
+// ЧТО ЗДЕСЬ ЗНАЧИТ ПЕРЕКРЫТИЕ. `:=` во ВЛОЖЕННОЙ области объявляет ДРУГУЮ
+// переменную того же имени: развилка по ней о нашем отказе не говорит ничего и
+// за проверку не считается, а запись в неё нашего значения не трогает. `=` на
+// любой глубине пишет в нашу — это перезапись. `:=` в области, где наше имя и
+// объявлено (оператор, содержащий сам вызов), перекрытием НЕ является: это и
+// есть объявление нашей переменной.
+//
+// ТЕЛА ФУНКЦИОНАЛЬНЫХ ЛИТЕРАЛОВ НЕ ОБХОДЯТСЯ. Они исполняются не здесь и не в
+// этом порядке; считать запись внутри отложенного обработчика перезаписью,
+// случившейся до проверки, значило бы краснеть на исправном коде. Та же
+// граница, что у `blockTerminates`.
+func collectReachEvents(n ast.Node, errName string, after token.Pos, shadowed bool, out *[]reachEvent) {
+	switch st := n.(type) {
+	case nil:
+		return
+
+	case *ast.FuncLit:
+		return
+
+	case *ast.BlockStmt:
+		// НАША область — та, в чьём перечне операторов лежит присваивание,
+		// содержащее сам вызов. Только в ней `:=` по правилу языка пишет в уже
+		// объявленное имя; во всякой вложенной он объявляет ДРУГУЮ переменную.
+		own := false
+		for _, inner := range st.List {
+			if as, ok := inner.(*ast.AssignStmt); ok && as.Pos() <= after && after <= as.End() {
+				own = true
+				break
 			}
-		case *ast.ReturnStmt:
+		}
+		sh := shadowed
+		for _, inner := range st.List {
+			as, ok := inner.(*ast.AssignStmt)
+			if !ok || !assignWritesIdent(as, errName) {
+				collectReachEvents(inner, errName, after, sh, out)
+				continue
+			}
+			switch {
+			case as.Pos() <= after && after <= as.End():
+				// Это объявление нашей переменной — точка отсчёта, не событие.
+			case sh:
+				// Имя уже перекрыто: пишут в чужую переменную.
+			case as.Tok == token.DEFINE && !own:
+				// `:=` во вложенной области — перекрытие с этого места и ниже.
+				sh = true
+			default:
+				*out = append(*out, reachEvent{pos: as.Pos(), kind: reachEventOverwrite})
+			}
+		}
+		return
+
+	case *ast.IfStmt:
+		// РАЗВИЛКА, ЧЕЙ `Init` ПИШЕТ В ЭТО ЖЕ ИМЯ, ПРОВЕРКОЙ НЕ ЯВЛЯЕТСЯ — и это
+		// не тонкость, а живой случай. Форма `if err = f(); err != nil { … }`
+		// судит РЕЗУЛЬТАТ СВОЕГО вызова, а не принятый ранее отказ: к моменту
+		// вычисления условия наше значение уже затёрто. По позиции же `if`
+		// стоит ПЕРЕД своим `Init`, поэтому наивный порядок поставил бы проверку
+		// раньше перезаписи и объявил отказ дошедшим.
+		//
+		// Замер, из-за которого ветка заведена: сплошная проба по всем шести
+		// компонентам — снять блок проверки, посмотреть цвет — оставила один
+		// зелёным ровно на этой форме. Пять из шести ничего бы не показали.
+		inner := shadowed
+		initWrites := false
+		if as, ok := st.Init.(*ast.AssignStmt); ok && assignWritesIdent(as, errName) {
+			initWrites = true
+			if as.Tok == token.DEFINE {
+				// Объявление в собственной области развилки — перекрытие.
+				inner = true
+			} else if !shadowed {
+				// Перезапись отнесена к позиции САМОЙ развилки, а не её `Init`:
+				// иначе порядок между ними решался бы разметкой исходника.
+				*out = append(*out, reachEvent{pos: st.Pos(), kind: reachEventOverwrite})
+			}
+		}
+		if !inner && !initWrites && exprMentionsIdent(st.Cond, errName) && ifBranchTerminates(st) {
+			*out = append(*out, reachEvent{pos: st.Pos(), kind: reachEventCheck})
+		}
+		collectReachEvents(st.Body, errName, after, inner, out)
+		collectReachEvents(st.Else, errName, after, inner, out)
+		return
+
+	case *ast.SwitchStmt:
+		// Тот же класс у переключателя: `switch err = f(); { … }`.
+		inner := shadowed
+		if as, ok := st.Init.(*ast.AssignStmt); ok && assignWritesIdent(as, errName) {
+			if as.Tok == token.DEFINE {
+				inner = true
+			} else if !shadowed {
+				*out = append(*out, reachEvent{pos: st.Pos(), kind: reachEventOverwrite})
+			}
+		}
+		collectReachEvents(st.Body, errName, after, inner, out)
+		return
+
+	case *ast.ForStmt:
+		inner := shadowed
+		if as, ok := st.Init.(*ast.AssignStmt); ok && assignWritesIdent(as, errName) {
+			if as.Tok == token.DEFINE {
+				inner = true
+			} else if !shadowed {
+				*out = append(*out, reachEvent{pos: st.Pos(), kind: reachEventOverwrite})
+			}
+		}
+		collectReachEvents(st.Body, errName, after, inner, out)
+		return
+
+	case *ast.ReturnStmt:
+		if !shadowed {
 			for _, r := range st.Results {
 				if exprMentionsIdent(r, errName) {
-					reached = true
+					*out = append(*out, reachEvent{pos: st.Pos(), kind: reachEventCheck})
+					return
 				}
 			}
 		}
-		return !reached
-	})
-	return reached
+		return
+
+	case *ast.AssignStmt:
+		if assignWritesIdent(st, errName) && (st.Pos() > after || after > st.End()) {
+			if st.Tok == token.DEFINE && shadowed {
+				return
+			}
+			*out = append(*out, reachEvent{pos: st.Pos(), kind: reachEventOverwrite})
+		}
+		return
+
+	case *ast.DeclStmt:
+		// `var err error` во вложенной области — тоже перекрытие. Собственных
+		// событий не даёт; сам факт перекрытия учитывает обходчик блока выше
+		// через `shadowed`, поэтому здесь достаточно молчания.
+		return
+	}
+
+	// Прочие составные операторы — обход по вложенным телам с сохранением
+	// перекрытия. Перечень закрыт: узел, не названный здесь, событий не даёт, и
+	// это та же осторожность в сторону НАХОДКИ — отсутствие события означает
+	// «проверки не нашлось», то есть погашено.
+	switch st := n.(type) {
+	case *ast.RangeStmt:
+		collectReachEvents(st.Body, errName, after, shadowed, out)
+	case *ast.TypeSwitchStmt:
+		collectReachEvents(st.Body, errName, after, shadowed, out)
+	case *ast.SelectStmt:
+		collectReachEvents(st.Body, errName, after, shadowed, out)
+	case *ast.CaseClause:
+		for _, inner := range st.Body {
+			collectReachEvents(inner, errName, after, shadowed, out)
+		}
+	case *ast.CommClause:
+		for _, inner := range st.Body {
+			collectReachEvents(inner, errName, after, shadowed, out)
+		}
+	case *ast.LabeledStmt:
+		collectReachEvents(st.Stmt, errName, after, shadowed, out)
+	}
+}
+
+// assignWritesIdent — пишет ли присваивание в идентификатор с этим именем.
+func assignWritesIdent(as *ast.AssignStmt, name string) bool {
+	for _, l := range as.Lhs {
+		if id, ok := l.(*ast.Ident); ok && id.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // ifBranchTerminates — останавливает ли ХОТЬ ОДНА ветка развилки. Обе стороны

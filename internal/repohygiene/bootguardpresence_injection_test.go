@@ -1067,6 +1067,53 @@ func runServe(cfg Config) error {
 	}
 	return nil
 }`},
+		// ── БЛИЗНЕЦЫ ИЗ НАСТОЯЩЕЙ ПОПУЛЯЦИИ ───────────────────────────────────
+		//
+		// Синтетика на пять строк с ОДНИМ упоминанием имени предпосылку оси не
+		// подтверждает, а СКРЫВАЕТ (`testing.md` §«Гейт на класс», п.3): живой
+		// композиционный корень — две-три сотни строк, переиспользующих `err`,
+		// и развилок по нему после вызова там от одной до шести.
+		{"проверка на месте, НИЖЕ ещё развилки по тому же имени", 1, `func later() error { return nil }
+
+func runServe(cfg Config) error {
+	desc, err := describe(cfg)
+	if err != nil {
+		return err
+	}
+	_ = desc
+	if err = later(); err != nil {
+		return fmt.Errorf("later: %w", err)
+	}
+	if err = later(); err != nil {
+		return err
+	}
+	return nil
+}`},
+		{"имя перезаписано ПОСЛЕ проверки — проверка была первой", 1, `func later() error { return nil }
+
+func runServe(cfg Config) error {
+	desc, err := describe(cfg)
+	if err != nil {
+		return err
+	}
+	_ = desc
+	err = later()
+	_ = err
+	return nil
+}`},
+		{"ниже перекрытие имени во вложенной области — проверка стояла раньше", 1, `func later() error { return nil }
+
+func runServe(cfg Config) error {
+	desc, err := describe(cfg)
+	if err != nil {
+		return err
+	}
+	_ = desc
+	if err := later(); err != nil {
+		return err
+	}
+	return nil
+}`},
 	}
 	for _, f := range forms {
 		t.Run(f.name, func(t *testing.T) {
@@ -1191,6 +1238,72 @@ func runServe(cfg Config) error {
 	return nil
 }`,
 			says: "ПОГАШЕН",
+		},
+		// ── ФОРМЫ ИЗ НАСТОЯЩЕЙ ПОПУЛЯЦИИ ─────────────────────────────────────
+		//
+		// Каждая ниже проходила ПЕРВУЮ редакцию оси насквозь: та искала любую
+		// развилку по имени где угодно ниже по телу и не спрашивала, не затёрто
+		// ли к тому моменту само имя. На живом дереве такая развилка есть почти
+		// всегда — ответ «доходит» был тождественно истинным.
+		{
+			name: "проверка снята, ниже по телу есть ДРУГАЯ развилка по тому же имени",
+			caller: `func later() error { return nil }
+
+func runServe(cfg Config) error {
+	desc, err := describe(cfg)
+	_ = desc
+	if err = later(); err != nil {
+		return err
+	}
+	return nil
+}`,
+			says: "до ОСТАНОВКИ не доводится",
+		},
+		{
+			name: "имя затёрто раньше проверки — проверка судит чужой отказ",
+			caller: `func later() error { return nil }
+
+func runServe(cfg Config) error {
+	desc, err := describe(cfg)
+	_ = desc
+	err = later()
+	if err != nil {
+		return err
+	}
+	return nil
+}`,
+			says: "до ОСТАНОВКИ не доводится",
+		},
+		{
+			name: "развилка ПЕРЕКРЫВАЕТ имя своим объявлением — это другая переменная",
+			caller: `func later() error { return nil }
+
+func runServe(cfg Config) error {
+	desc, err := describe(cfg)
+	_ = desc
+	if err := later(); err != nil {
+		return err
+	}
+	return nil
+}`,
+			says: "до ОСТАНОВКИ не доводится",
+		},
+		{
+			name: "перекрытие во вложенной области — проверка там о нашем отказе молчит",
+			caller: `func later() error { return nil }
+
+func runServe(cfg Config) error {
+	desc, err := describe(cfg)
+	_ = desc
+	{
+		err := later()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}`,
+			says: "до ОСТАНОВКИ не доводится",
 		},
 		{
 			name: "форма распознавателю не известна — находка, а не тишина",
