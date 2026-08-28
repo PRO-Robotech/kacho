@@ -40,7 +40,7 @@ func bootPosture(cfg *config.Config) observability.BootPosture {
 		AuthMode:          cfg.Mode().String(),
 		DBSSLMode:         coredb.SSLModeFromDSN(cfg.Repository.Postgres.URL),
 		PublicMTLS:        cfg.MTLS.Server.Enable,
-		InternalMTLS: observability.InternalMTLSFrom(cfg.MTLS.Server.Enable),
+		InternalMTLS:      observability.InternalMTLSFrom(cfg.MTLS.Server.Enable),
 		AuthZCheck:        true,
 		TrustedForwarders: cfg.TrustedForwarders().IsNarrowed(),
 		// Личность человека этот сервис не проверяет — он принимает уже

@@ -4,12 +4,13 @@
 package main
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // ЗДЕСЬ СТОЯЛ СТРАЖ KEEPALIVE НА МЕЖСЛУЖЕБНОМ ДОЗВОНЕ — его предмет исчез вместе
@@ -52,21 +53,29 @@ var grpcDial = regexp.MustCompile(`grpc\.(NewClient|Dial)\(`)
 func TestIamIsALeafAndCallsNobodyByGRPC(t *testing.T) {
 	root := iamServiceRoot(t)
 
+	// Перечень файлов берётся у ИНДЕКСА git, а не обходом диска. Под корнем лежат
+	// каталоги, которых в репозитории нет — рабочие копии соседних сессий, отчёты
+	// прогонов, сборочные выходы, — и обход по диску сделал бы вердикт свойством
+	// ЧУЖОГО рабочего каталога, а не коммита. Ошибка при этом двусторонняя: красное
+	// на файле, которого в репозитории нет, и молчание в свежем клоне там, где гейт
+	// обязан говорить.
+	files, err := treecorpus.UnderWithSuffix(root, ".go")
+	if err != nil {
+		t.Fatalf("перечень файлов владельца прав: %v", err)
+	}
+
 	var (
 		filesRead int
 		dials     []string
 	)
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
+	for _, path := range files {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
 		}
 		filesRead++
-		b, rerr := os.ReadFile(path) // #nosec G304 -- путь производится обходом дерева
+		b, rerr := os.ReadFile(path) // #nosec G304 -- путь производится индексом git
 		if rerr != nil {
-			return rerr
+			t.Fatalf("чтение %s: %v", path, rerr)
 		}
 		for i, line := range strings.Split(string(b), "\n") {
 			// Комментарий не является дозвоном: разбор этого места уже написан
@@ -80,10 +89,6 @@ func TestIamIsALeafAndCallsNobodyByGRPC(t *testing.T) {
 				dials = append(dials, rel+":"+itoa(i+1))
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход дерева владельца прав: %v", err)
 	}
 
 	// Премиса: прочитано то, что заведомо есть. Без неё «ноль дозвонов» было бы
