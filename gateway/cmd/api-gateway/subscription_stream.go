@@ -62,11 +62,12 @@ func buildSubscriptionStreamHandler(
 	}
 
 	handler, err := subscriptionstream.NewHandler(subscriptionstream.Config{
-		Owners:       owners,
-		StreamBudget: cfg.SubscriptionStreamBudget,
-		Heartbeat:    cfg.SubscriptionHeartbeat,
-		MaxStreams:   cfg.SubscriptionMaxStreams,
-		Logger:       logger,
+		Owners:               owners,
+		StreamBudget:         cfg.SubscriptionStreamBudget,
+		Heartbeat:            cfg.SubscriptionHeartbeat,
+		MaxStreams:           cfg.SubscriptionMaxStreams,
+		MaxStreamsPerSubject: cfg.SubscriptionMaxStreamsPerSubject,
+		Logger:               logger,
 	})
 	if err != nil {
 		return nil, err
@@ -81,7 +82,8 @@ func buildSubscriptionStreamHandler(
 		"owner_count", len(owners),
 		"stream_budget", cfg.SubscriptionStreamBudget.String(),
 		"heartbeat", cfg.SubscriptionHeartbeat.String(),
-		"max_streams", cfg.SubscriptionMaxStreams)
+		"max_streams", cfg.SubscriptionMaxStreams,
+		"max_streams_per_subject", cfg.SubscriptionMaxStreamsPerSubject)
 
 	return handler, nil
 }

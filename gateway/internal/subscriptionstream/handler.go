@@ -61,6 +61,14 @@ type Config struct {
 	// «событий нет».
 	MaxStreams int
 
+	// MaxStreamsPerSubject — потолок потоков ОДНОГО субъекта на этой реплике.
+	//
+	// Потолок реплики защищает процесс, этот — арендаторов друг от друга: без
+	// него один субъект занимает [Config.MaxStreams] целиком, и остальные
+	// получают отказ, не имея ни одного собственного потока. Консоль открывает
+	// поток на вкладку, поэтому это не умозрительный случай.
+	MaxStreamsPerSubject int
+
 	// Logger — журнал процесса. Ноль резолвится в [slog.Default].
 	Logger *slog.Logger
 }
@@ -71,14 +79,23 @@ type Config struct {
 // который ни разу не сработал, и потолок, который не подключён, выглядят
 // одинаково — если их не считать.
 type Stats struct {
-	Open          int64
-	Opened        uint64
-	RefusedInput  uint64
-	RefusedAuthN  uint64
-	RefusedSlot   uint64
-	RefusedOwner  uint64
-	EventsSent    uint64
-	ClosedByOwner uint64
+	Open   int64
+	Opened uint64
+	// RefusedInput — отказ по ВИНЕ ВЫЗЫВАЮЩЕГО: негодная форма запроса.
+	RefusedInput uint64
+	// RefusedNoOwner — отказ по СОСТОЯНИЮ ПОСАДКИ: владелец не объявлен.
+	//
+	// Считается отдельно от предыдущего намеренно: смешай их — и «клиенты
+	// массово шлют мусор» стало бы неотличимо от «мы не объявили владельца», то
+	// есть от собственной ошибки развёртывания.
+	RefusedNoOwner uint64
+	RefusedAuthN   uint64
+	RefusedSlot    uint64
+	// RefusedSubjectQuota — субъект исчерпал СВОЙ предел, а не предел реплики.
+	RefusedSubjectQuota uint64
+	RefusedOwner        uint64
+	EventsSent          uint64
+	ClosedByOwner       uint64
 }
 
 // Handler — единственная проекция потока. Один экземпляр на процесс края.
@@ -88,14 +105,16 @@ type Handler struct {
 	slots    chan struct{}
 	registry *registry
 
-	open          atomic.Int64
-	opened        atomic.Uint64
-	refusedInput  atomic.Uint64
-	refusedAuthN  atomic.Uint64
-	refusedSlot   atomic.Uint64
-	refusedOwner  atomic.Uint64
-	eventsSent    atomic.Uint64
-	closedByOwner atomic.Uint64
+	open                atomic.Int64
+	opened              atomic.Uint64
+	refusedInput        atomic.Uint64
+	refusedNoOwner      atomic.Uint64
+	refusedAuthN        atomic.Uint64
+	refusedSlot         atomic.Uint64
+	refusedSubjectQuota atomic.Uint64
+	refusedOwner        atomic.Uint64
+	eventsSent          atomic.Uint64
+	closedByOwner       atomic.Uint64
 }
 
 // NewHandler собирает ручку и судит объявление посадки.
@@ -103,6 +122,16 @@ func NewHandler(cfg Config) (*Handler, error) {
 	if cfg.MaxStreams <= 0 {
 		return nil, fmt.Errorf("subscriptionstream: MaxStreams = %d — потолок одновременных потоков есть арифметика "+
 			"горутин края и слотов владельца, а не вкус; умолчания у него нет", cfg.MaxStreams)
+	}
+	if cfg.MaxStreamsPerSubject <= 0 {
+		return nil, fmt.Errorf("subscriptionstream: MaxStreamsPerSubject = %d — без предела на субъекта "+
+			"один арендатор занимает потолок реплики целиком, и остальные получают отказ, "+
+			"не имея ни одного собственного потока", cfg.MaxStreamsPerSubject)
+	}
+	if cfg.MaxStreamsPerSubject > cfg.MaxStreams {
+		return nil, fmt.Errorf("subscriptionstream: MaxStreamsPerSubject %d превосходит MaxStreams %d — "+
+			"предел, который не может быть достигнут, предела не ставит",
+			cfg.MaxStreamsPerSubject, cfg.MaxStreams)
 	}
 	if cfg.Heartbeat <= 0 {
 		return nil, fmt.Errorf("subscriptionstream: Heartbeat не объявлен — молчащая подписка обычный режим, " +
@@ -127,14 +156,16 @@ func NewHandler(cfg Config) (*Handler, error) {
 // Stats отдаёт снимок счётчиков.
 func (h *Handler) Stats() Stats {
 	return Stats{
-		Open:          h.open.Load(),
-		Opened:        h.opened.Load(),
-		RefusedInput:  h.refusedInput.Load(),
-		RefusedAuthN:  h.refusedAuthN.Load(),
-		RefusedSlot:   h.refusedSlot.Load(),
-		RefusedOwner:  h.refusedOwner.Load(),
-		EventsSent:    h.eventsSent.Load(),
-		ClosedByOwner: h.closedByOwner.Load(),
+		Open:                h.open.Load(),
+		Opened:              h.opened.Load(),
+		RefusedInput:        h.refusedInput.Load(),
+		RefusedNoOwner:      h.refusedNoOwner.Load(),
+		RefusedAuthN:        h.refusedAuthN.Load(),
+		RefusedSlot:         h.refusedSlot.Load(),
+		RefusedSubjectQuota: h.refusedSubjectQuota.Load(),
+		RefusedOwner:        h.refusedOwner.Load(),
+		EventsSent:          h.eventsSent.Load(),
+		ClosedByOwner:       h.closedByOwner.Load(),
 	}
 }
 
@@ -185,7 +216,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(h.cfg.Owners) == 0 {
-		h.refusedInput.Add(1)
+		h.refusedNoOwner.Add(1)
 		writeRefusal(w, refusal{status: http.StatusNotImplemented, code: 12,
 			msg: "no journal owner is declared for this edge"})
 		return
@@ -211,6 +242,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Предел субъекта — ДО общего слота: место в очереди за общим ресурсом не
+	// достаётся тому, кто своё уже выбрал. Обратный порядок дал бы субъекту
+	// возможность занимать и отпускать общий слот на каждом отказе.
+	entry, release, admitted := h.registry.tryAdd(subject, h.cfg.MaxStreamsPerSubject)
+	if !admitted {
+		h.refusedSubjectQuota.Add(1)
+		h.log.Warn("subscription stream refused: per-subject stream limit reached",
+			"limit", h.cfg.MaxStreamsPerSubject)
+		writeRefusal(w, refusal{status: http.StatusTooManyRequests, code: 8,
+			msg: "too many concurrent subscription streams for this caller (limit reached)"})
+		return
+	}
+	defer release()
+
 	select {
 	case h.slots <- struct{}{}:
 		defer func() { <-h.slots }()
@@ -225,8 +270,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	streamCtx, cancel := context.WithTimeout(callCtx, h.cfg.StreamBudget)
 	defer cancel()
-	release := h.registry.add(subject, cancel)
-	defer release()
+	entry.arm(cancel)
 
 	h.stream(streamCtx, sse, req, r)
 }

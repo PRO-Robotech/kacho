@@ -164,6 +164,8 @@ spec:
               value: {{ .Values.subscriptionStream.heartbeat | quote }}
             - name: KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS
               value: {{ .Values.subscriptionStream.maxStreams | quote }}
+            - name: KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT
+              value: {{ .Values.subscriptionStream.maxStreamsPerSubject | quote }}
             # Адрес провайдера личности для сессии SPA. Объявляется ВСЕГДА, и
             # умолчание выводится из ИМЕНИ РЕЛИЗА и ПРОСТРАНСТВА ИМЁН, а не
             # вписывается литералом: Service провайдера называется

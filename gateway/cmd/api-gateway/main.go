@@ -986,6 +986,12 @@ func main() {
 		log.Fatalf("subscription stream projection: %v", err)
 	}
 	httpMux.Handle(subscriptionstream.Path, subscriptionStream)
+	// Счётчики ручки провязываются в диагностическую поверхность ЗДЕСЬ, а не
+	// «когда-нибудь»: величина, которую никто не читает, не отличима от «этот
+	// код не исполнялся», и потолок, ни разу не сработавший, выглядит ровно как
+	// потолок, не подключённый вовсе.
+	diagMetrics.RegisterSubscriptionStream(subscriptionStream.Stats,
+		cfg.SubscriptionMaxStreams, cfg.SubscriptionMaxStreamsPerSubject)
 
 	httpMux.Handle("/", restHandler)
 

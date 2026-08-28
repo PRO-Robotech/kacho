@@ -4,6 +4,12 @@
 package middleware
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -121,5 +127,90 @@ func TestSubscriptionStreamIsNotOnThePreAuthAllowList(t *testing.T) {
 	// зеленело бы на предикате, отвечающем «нет» на всё.
 	if !isPublicHTTPPath("/healthz") {
 		t.Error("положительный контроль: /healthz обязан быть в списке")
+	}
+}
+
+// TestNobodyRegistersTheSubscriptionVerbOnAnyServeMux — ТРЕТИЙ механизм запрета
+// #6, и он гейт, а не свойство генерации.
+//
+// # Почему этот гейт вообще нужен
+//
+// Прежняя редакция решения объявляла проекцию глагола через `runtime.ServeMux`
+// «недоступной by construction, потому что контракт не объявляет
+// `google.api.http`». Утверждение ЛОЖНО в двух местах сразу:
+//
+//   - `runtime.ServeMux` не требует объявленного пути: `HandlePath` —
+//     документированная возможность;
+//   - `generate_unbound_methods=true` в `proto/buf.gen.yaml` УЖЕ породил для
+//     этого метода полноценный шлюзовой регистратор
+//     (`pkg/api/…/subscription_service.pb.gw.go`, `ForwardResponseStream`).
+//
+// То есть метод отделяет от внешнего пути не построение, а ОДНА НЕ СДЕЛАННАЯ
+// СТРОКА: регистратор никем не позван. Такое расстояние держится гейтом либо не
+// держится ничем — следующий, кому понадобится «просто отдать этот поток по
+// REST», найдёт готовый регистратор и позовёт его, не нарушив ни одной
+// проверки.
+//
+// Мера верна и на будущее: она судит ВЫЗОВ, а не имя файла, поэтому переезд
+// стабов её не обходит.
+func TestNobodyRegistersTheSubscriptionVerbOnAnyServeMux(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatalf("корень дерева края: %v", err)
+	}
+	registrar := regexp.MustCompile(`RegisterInternalSubscriptionServiceHandler\w*\s*\(`)
+
+	filesRead := 0
+	offenders := make([]string, 0, 1)
+	walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		// Разбор, а не сырой текст: имя регистратора стоит в шапке этой пробы и
+		// в разборе решения, и гейт по подстроке краснел бы на собственном
+		// объяснении.
+		file, parseErr := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if parseErr != nil {
+			return parseErr
+		}
+		filesRead++
+		rel, _ := filepath.Rel(root, path)
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			var name string
+			switch fn := call.Fun.(type) {
+			case *ast.Ident:
+				name = fn.Name
+			case *ast.SelectorExpr:
+				name = fn.Sel.Name
+			default:
+				return true
+			}
+			if registrar.MatchString(name + "(") {
+				offenders = append(offenders, rel)
+			}
+			return true
+		})
+		return nil
+	})
+	if walkErr != nil {
+		t.Fatalf("обход дерева края: %v", walkErr)
+	}
+
+	t.Logf("перепись: не-тестовых файлов Go края прочитано %d · вызовов шлюзового "+
+		"регистратора подписки %d", filesRead, len(offenders))
+	if filesRead == 0 {
+		t.Fatal("обход пуст — гейт ничего не читал")
+	}
+	if len(offenders) > 0 {
+		t.Errorf("шлюзовой регистратор глагола подписки позван в %v — метод получил внешний "+
+			"путь через grpc-gateway, то есть Internal-метод оказался на внешнем слушателе "+
+			"(запрет #6). Браузеру поток отдаёт СВОЯ ручка края, а не проекция метода", offenders)
 	}
 }

@@ -25,32 +25,93 @@ import (
 type registry struct {
 	mu     sync.Mutex
 	next   uint64
-	bySubj map[string]map[uint64]context.CancelFunc
+	bySubj map[string]map[uint64]*stream
 }
 
 func newRegistry() *registry {
-	return &registry{bySubj: make(map[string]map[uint64]context.CancelFunc)}
+	return &registry{bySubj: make(map[string]map[uint64]*stream)}
 }
 
-// add ставит поток на учёт и возвращает СНЯТИЕ С УЧЁТА.
+// stream — один учтённый поток.
 //
-// Возвращается замыкание, а не пара (субъект, номер): вызывающему не приходится
-// хранить ключ, а значит и терять его. Снятие идемпотентно — повторный вызов
-// ничего не делает, поэтому `defer` безопасен на любом пути выхода.
-func (r *registry) add(subject string, cancel context.CancelFunc) func() {
+// Отмена ставится ПОЗЖЕ учёта: место в реестре занимается до того, как заведён
+// контекст, — иначе проверка предела и постановка на учёт разъезжаются, и два
+// одновременных запроса одного субъекта оба увидят свободное место. Это
+// software check-then-act, и лечится он не аккуратностью, а тем, что решение и
+// его следствие происходят под одним замком.
+//
+// Из-за этого зазора появляется [stream.closed]: субъекта могут закрыть между
+// учётом и заведением контекста, и тогда отмена обязана сработать НЕМЕДЛЕННО
+// при постановке. Иначе поток, закрытый по отзыву прав, продолжил бы жить —
+// молча и ровно в том окне, где отзыв и происходит.
+type stream struct {
+	mu     sync.Mutex
+	cancel context.CancelFunc
+	closed bool
+}
+
+// arm ставит отмену уже учтённому потоку.
+func (s *stream) arm(cancel context.CancelFunc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		// Субъекта закрыли в зазоре между учётом и заведением контекста.
+		cancel()
+		return
+	}
+	s.cancel = cancel
+}
+
+// close отменяет поток и помечает его закрытым.
+func (s *stream) close() {
+	s.mu.Lock()
+	cancel := s.cancel
+	s.closed = true
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// tryAdd ставит поток на учёт, если субъект не исчерпал СВОЙ предел.
+//
+// # Почему предел на субъекта, а не только на реплику
+//
+// Потолок реплики один на всех, поэтому один арендатор занимает его целиком, и
+// остальные получают отказ, не имея НИ ОДНОГО собственного потока. Консоль
+// открывает поток на вкладку — десяток вкладок одного пользователя закрывал бы
+// подписку всем прочим. Предел реплики защищает ПРОЦЕСС, предел субъекта
+// защищает АРЕНДАТОРОВ ДРУГ ОТ ДРУГА, и одно другого не заменяет.
+//
+// # Почему проверка и постановка — под одним замком
+//
+// «Посмотреть, сколько занято, и занять ещё одно» есть software check-then-act:
+// два одновременных запроса одного субъекта оба увидят свободное место и оба
+// его займут. Предел, обходимый параллелизмом, — это предел ровно до той
+// нагрузки, ради которой он заведён.
+//
+// Возвращается замыкание снятия, а не пара (субъект, номер): вызывающему не
+// приходится хранить ключ, а значит и терять его. Снятие идемпотентно, поэтому
+// `defer` безопасен на любом пути выхода.
+func (r *registry) tryAdd(subject string, perSubject int) (*stream, func(), bool) {
 	r.mu.Lock()
+	streams, ok := r.bySubj[subject]
+	if ok && perSubject > 0 && len(streams) >= perSubject {
+		r.mu.Unlock()
+		return nil, nil, false
+	}
 	r.next++
 	id := r.next
-	streams, ok := r.bySubj[subject]
 	if !ok {
-		streams = make(map[uint64]context.CancelFunc)
+		streams = make(map[uint64]*stream)
 		r.bySubj[subject] = streams
 	}
-	streams[id] = cancel
+	entry := &stream{}
+	streams[id] = entry
 	r.mu.Unlock()
 
 	var once sync.Once
-	return func() {
+	return entry, func() {
 		once.Do(func() {
 			r.mu.Lock()
 			defer r.mu.Unlock()
@@ -64,7 +125,7 @@ func (r *registry) add(subject string, cancel context.CancelFunc) func() {
 				}
 			}
 		})
-	}
+	}, true
 }
 
 // closeSubject отменяет контексты всех потоков субъекта и возвращает их число.
@@ -75,14 +136,14 @@ func (r *registry) add(subject string, cancel context.CancelFunc) func() {
 func (r *registry) closeSubject(subject string) int {
 	r.mu.Lock()
 	streams := r.bySubj[subject]
-	cancels := make([]context.CancelFunc, 0, len(streams))
-	for _, cancel := range streams {
-		cancels = append(cancels, cancel)
+	entries := make([]*stream, 0, len(streams))
+	for _, entry := range streams {
+		entries = append(entries, entry)
 	}
 	r.mu.Unlock()
 
-	for _, cancel := range cancels {
-		cancel()
+	for _, entry := range entries {
+		entry.close()
 	}
-	return len(cancels)
+	return len(entries)
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -91,6 +92,18 @@ type parsed struct {
 func parseRequest(r *http.Request, owners Owners) (parsed, error) {
 	q := r.URL.Query()
 
+	if unknown := unknownParams(q); len(unknown) > 0 {
+		// НЕИЗВЕСТНЫЙ ПАРАМЕТР ОТВЕРГАЕТСЯ, а не принимается молча.
+		//
+		// Молча принятый параметр — обещание возможности, которой нет: клиент
+		// получает успех и уверен, что его отбор применён. Самый вероятный
+		// случай здесь даже не выдуманное имя, а ОПЕЧАТКА РЕГИСТРА (`projectid`
+		// вместо `projectId` — camelCase есть конвенция этого продукта): она
+		// давала бы поток, НЕ СУЖЕННЫЙ ПО ПРОЕКТУ, вместо отказа. То есть ось,
+		// по которой принимается решение о показе, снималась бы опечаткой.
+		return parsed{}, invalidArgument("unknown query parameter(s): %s", strings.Join(unknown, ", "))
+	}
+
 	owner := q.Get(paramOwner)
 	if owner == "" {
 		return parsed{}, invalidArgument(
@@ -141,6 +154,34 @@ func parseRequest(r *http.Request, owners Owners) (parsed, error) {
 	}
 
 	return parsed{owner: owner, req: req}, nil
+}
+
+// knownParams — ЗАКРЫТЫЙ набор имён параметров этой ручки.
+//
+// Набор, а не проверка на месте: перечень обязан быть один, и читатель отказа
+// обязан видеть его целиком рядом с разбором.
+var knownParams = map[string]bool{
+	paramOwner:     true,
+	paramKinds:     true,
+	paramProjectID: true,
+	paramIDs:       true,
+	paramStart:     true,
+}
+
+// unknownParams возвращает имена параметров, которых ручка не знает, в
+// устойчивом порядке.
+//
+// Порядок закреплён не ради красоты: отказ есть часть контракта, и текст,
+// меняющийся от обхода карты, нельзя ни утверждать пробой, ни сверять глазами.
+func unknownParams(q url.Values) []string {
+	unknown := make([]string, 0, 2)
+	for name := range q {
+		if !knownParams[name] {
+			unknown = append(unknown, name)
+		}
+	}
+	sort.Strings(unknown)
+	return unknown
 }
 
 // nonEmptyValues отбрасывает пустые повторы параметра.

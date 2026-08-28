@@ -254,7 +254,8 @@ func TestUnknownStartValueIsRefused(t *testing.T) {
 // который править не в чем.
 func TestEmptyOwnerDictionaryIsNotImplemented(t *testing.T) {
 	h, err := subscriptionstream.NewHandler(subscriptionstream.Config{
-		StreamBudget: time.Second, Heartbeat: 100 * time.Millisecond, MaxStreams: 1,
+		StreamBudget: time.Second, Heartbeat: 100 * time.Millisecond,
+		MaxStreams: 1, MaxStreamsPerSubject: 1,
 	})
 	if err != nil {
 		t.Fatalf("сборка ручки без владельцев обязана проходить: %v", err)
@@ -356,6 +357,7 @@ func TestConcurrentStreamLimitRefusesInsteadOfQueueing(t *testing.T) {
 	}
 	h := newHandler(t, held, func(c *subscriptionstream.Config) {
 		c.MaxStreams = 1
+		c.MaxStreamsPerSubject = 1
 		c.StreamBudget = 3 * time.Second
 		c.Heartbeat = time.Second
 	})
@@ -463,9 +465,14 @@ func TestRefusedConfigurationIsRefusedAtStartup(t *testing.T) {
 		cfg  subscriptionstream.Config
 	}{
 		{"без потолка потоков", subscriptionstream.Config{StreamBudget: time.Second, Heartbeat: time.Millisecond}},
-		{"без кадра поддержания связи", subscriptionstream.Config{StreamBudget: time.Second, MaxStreams: 1}},
+		{"без предела на субъекта", subscriptionstream.Config{
+			StreamBudget: time.Second, Heartbeat: time.Millisecond, MaxStreams: 4}},
+		{"предел субъекта выше потолка реплики", subscriptionstream.Config{
+			StreamBudget: time.Second, Heartbeat: time.Millisecond, MaxStreams: 2, MaxStreamsPerSubject: 3}},
+		{"без кадра поддержания связи", subscriptionstream.Config{
+			StreamBudget: time.Second, MaxStreams: 1, MaxStreamsPerSubject: 1}},
 		{"срок короче кадра", subscriptionstream.Config{
-			StreamBudget: time.Millisecond, Heartbeat: time.Second, MaxStreams: 1}},
+			StreamBudget: time.Millisecond, Heartbeat: time.Second, MaxStreams: 1, MaxStreamsPerSubject: 1}},
 	} {
 		if _, err := subscriptionstream.NewHandler(tc.cfg); err == nil {
 			t.Errorf("%s: сборка прошла — величина посадки, которую никто не выбирал, "+
@@ -495,5 +502,137 @@ func TestStatsCountRefusalsAndStreams(t *testing.T) {
 	}
 	if got.Open != 0 {
 		t.Errorf("после закрытия потоков на учёте %d", got.Open)
+	}
+}
+
+// TestUnknownQueryParameterIsRefusedByName — неизвестный параметр отвергается, а
+// не принимается молча.
+//
+// Самый вероятный случай здесь — не выдуманное имя, а ОПЕЧАТКА РЕГИСТРА
+// (`projectid` вместо `projectId`): молча принятая, она даёт поток, НЕ СУЖЕННЫЙ
+// ПО ПРОЕКТУ, вместо отказа — то есть опечатка снимает ось, по которой
+// принимается решение о показе. Рядом положительный контроль: все известные оси
+// вместе проходят.
+func TestUnknownQueryParameterIsRefusedByName(t *testing.T) {
+	h := newHandler(t, &ownerStub{script: []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)}})
+
+	for _, tc := range []struct{ name, query, names string }{
+		{"опечатка регистра якорной оси", "owner=probe&projectid=prj-1", "projectid"},
+		{"опечатка в имени оси", "owner=probe&kindz=compute.instance", "kindz"},
+		{"ось, которой в контракте нет", "owner=probe&labels=env%3Dprod", "labels"},
+		{"позиция параметром вместо заголовка", "owner=probe&position=pos-1", "position"},
+	} {
+		rec := serve(t, h, request(tc.query))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: код %d, ожидался 400 (тело %q)", tc.name, rec.Code, rec.Body.String())
+			continue
+		}
+		if !strings.Contains(rec.Body.String(), tc.names) {
+			t.Errorf("%s: отказ не называет параметра: %q", tc.name, rec.Body.String())
+		}
+	}
+
+	// Положительный контроль: без него отрицания зеленели бы на ручке,
+	// отвергающей любой запрос с параметрами.
+	rec := serve(t, h, request("owner=probe&kinds=a&projectId=prj-1&ids=res-1&start=beginning"))
+	if rec.Code != http.StatusOK {
+		t.Errorf("все известные оси вместе получили %d — положительный контроль обязан проходить: %q",
+			rec.Code, rec.Body.String())
+	}
+}
+
+// TestUnknownParametersAreNamedInAStableOrder — текст отказа устойчив.
+//
+// Отказ есть часть контракта: текст, меняющийся от обхода карты, нельзя ни
+// утверждать пробой, ни сверять глазами.
+func TestUnknownParametersAreNamedInAStableOrder(t *testing.T) {
+	h := newHandler(t, &ownerStub{script: []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)}})
+	first := serve(t, h, request("owner=probe&zeta=1&alpha=2&mu=3")).Body.String()
+	for i := 0; i < 5; i++ {
+		if got := serve(t, h, request("owner=probe&zeta=1&alpha=2&mu=3")).Body.String(); got != first {
+			t.Fatalf("текст отказа не устойчив:\n%q\n%q", first, got)
+		}
+	}
+	if !strings.Contains(first, "alpha, mu, zeta") {
+		t.Errorf("имена названы не в устойчивом порядке: %q", first)
+	}
+}
+
+// TestOneSubjectCannotTakeTheWholeReplica — предел субъекта защищает
+// АРЕНДАТОРОВ ДРУГ ОТ ДРУГА, а не процесс.
+//
+// Потолок реплики один на всех, поэтому без предела на субъекта один арендатор
+// занимает его целиком, и остальные получают отказ, не имея ни одного
+// собственного потока. Консоль открывает поток на вкладку — случай не
+// умозрительный.
+//
+// Утверждается ПАРА: свой упирается в свой предел, а чужой при этом проходит.
+// Без второй половины проба зеленела бы на ручке, отвергающей всех подряд.
+func TestOneSubjectCannotTakeTheWholeReplica(t *testing.T) {
+	held := &ownerStub{
+		script:  []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)},
+		hold:    true,
+		started: make(chan struct{}),
+	}
+	h := newHandler(t, held, func(c *subscriptionstream.Config) {
+		c.MaxStreams = 4
+		c.MaxStreamsPerSubject = 1
+		c.StreamBudget = 3 * time.Second
+		c.Heartbeat = time.Second
+	})
+
+	first := make(chan struct{})
+	go func() {
+		defer close(first)
+		serve(t, h, request("owner=probe"))
+	}()
+	select {
+	case <-held.started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("первый поток не открылся")
+	}
+
+	greedy := serve(t, h, request("owner=probe"))
+	if greedy.Code != http.StatusTooManyRequests {
+		t.Errorf("тот же субъект вторым потоком получил %d, ожидался 429", greedy.Code)
+	}
+
+	// ДРУГОЙ арендатор при свободных слотах реплики проходит.
+	other := request("owner=probe")
+	other.Header.Set(principalmeta.HeaderPrincipalID, "usr-other")
+	if rec := serve(t, h, other); rec.Code != http.StatusOK {
+		t.Errorf("другой арендатор получил %d — предел субъекта не вправе закрывать поток "+
+			"тому, кто своего не выбирал (тело %q)", rec.Code, rec.Body.String())
+	}
+
+	if got := h.Stats(); got.RefusedSubjectQuota != 1 || got.RefusedSlot != 0 {
+		t.Errorf("счётчики %+v — исчерпание субъекта и исчерпание реплики означают для "+
+			"дежурного разное и никогда не складываются", got)
+	}
+	<-first
+}
+
+// TestPostureRefusalIsCountedApartFromCallerFault — отказ по состоянию посадки
+// не смешивается с виной вызывающего.
+//
+// Сложи их — и «клиенты массово шлют мусор» станет неотличимо от «мы не
+// объявили владельца», то есть от собственной ошибки развёртывания. Первое не
+// требует действий, второе требует немедленных.
+func TestPostureRefusalIsCountedApartFromCallerFault(t *testing.T) {
+	h, err := subscriptionstream.NewHandler(subscriptionstream.Config{
+		StreamBudget: time.Second, Heartbeat: 100 * time.Millisecond,
+		MaxStreams: 1, MaxStreamsPerSubject: 1,
+	})
+	if err != nil {
+		t.Fatalf("сборка ручки без владельцев: %v", err)
+	}
+	serve(t, h, request("owner=probe"))
+
+	got := h.Stats()
+	if got.RefusedNoOwner != 1 {
+		t.Errorf("отказ по состоянию посадки не посчитан: %+v", got)
+	}
+	if got.RefusedInput != 0 {
+		t.Errorf("отказ посадки посчитан как вина вызывающего: %+v", got)
 	}
 }

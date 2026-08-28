@@ -185,6 +185,14 @@ type Config struct {
 	// есть у всех арендаторов сразу, а не у того, кто его вызвал.
 	SubscriptionMaxStreams int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS" default:"64"`
 
+	// SubscriptionMaxStreamsPerSubject — потолок потоков ОДНОГО субъекта.
+	//
+	// Потолок реплики защищает процесс, этот — арендаторов друг от друга: без
+	// него один субъект занимает потолок реплики целиком, и остальные получают
+	// отказ, не имея ни одного собственного потока. Консоль открывает поток на
+	// вкладку, поэтому случай не умозрительный.
+	SubscriptionMaxStreamsPerSubject int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT" default:"8"`
+
 	// AdvertisedEndpointAddr — host:port that the api-gateway advertises through
 	// the endpoint-discovery RPC. External clients dial this address. Defaults to
 	// api.kacho.local:443.

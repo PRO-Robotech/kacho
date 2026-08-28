@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +18,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
@@ -58,7 +61,11 @@ type ownerStub struct {
 	// Записанное. Читается пробой ТОЛЬКО после того, как поток закрыт.
 	gotRequest *subscriptionv1.SubscriptionRequest
 	gotMD      metadata.MD
-	started    chan struct{}
+	// started закрывается на ПЕРВОМ потоке: стенд обслуживает и второй, и
+	// закрытие канала дважды роняет процесс — то есть проба падала бы не на
+	// своём предмете, а на устройстве стенда.
+	started   chan struct{}
+	startOnce sync.Once
 }
 
 func (o *ownerStub) Subscribe(
@@ -68,7 +75,7 @@ func (o *ownerStub) Subscribe(
 	o.gotRequest = req
 	o.gotMD, _ = metadata.FromIncomingContext(stream.Context())
 	if o.started != nil {
-		close(o.started)
+		o.startOnce.Do(func() { close(o.started) })
 	}
 	if o.failFirst {
 		return o.failWith
@@ -115,11 +122,12 @@ func dialStub(t *testing.T, owner *ownerStub) subscriptionstream.OwnerConn {
 func newHandler(t *testing.T, owner *ownerStub, tune ...func(*subscriptionstream.Config)) *subscriptionstream.Handler {
 	t.Helper()
 	cfg := subscriptionstream.Config{
-		Owners:       subscriptionstream.Owners{"probe": dialStub(t, owner)},
-		StreamBudget: 5 * time.Second,
-		Heartbeat:    2 * time.Second,
-		MaxStreams:   4,
-		Logger:       slog.New(slog.NewTextHandler(&strings.Builder{}, nil)),
+		Owners:               subscriptionstream.Owners{"probe": dialStub(t, owner)},
+		StreamBudget:         5 * time.Second,
+		Heartbeat:            2 * time.Second,
+		MaxStreams:           4,
+		MaxStreamsPerSubject: 4,
+		Logger:               slog.New(slog.NewTextHandler(&strings.Builder{}, nil)),
 	}
 	for _, f := range tune {
 		f(&cfg)
@@ -226,4 +234,46 @@ func frames(t *testing.T, body string) []frame {
 // heartbeats считает служебные кадры поддержания связи.
 func heartbeats(body string) int {
 	return strings.Count(body, ": keep-alive\n\n")
+}
+
+// eventWithState — событие, несущее НАСТОЯЩЕЕ состояние на проводе.
+//
+// Ветвь состояния иначе не исполняется ни разу: без неё зелёными остаются и
+// разбор носителя, и подстановка признака недоступности, то есть ровно та
+// половина кадрирования, которая работает с полезной нагрузкой.
+func eventWithState(t *testing.T, position string, state proto.Message) *subscriptionv1.SubscriptionMessage {
+	t.Helper()
+	packed, err := anypb.New(state)
+	if err != nil {
+		t.Fatalf("упаковка состояния: %v", err)
+	}
+	return &subscriptionv1.SubscriptionMessage{
+		Message: &subscriptionv1.SubscriptionMessage_Event{
+			Event: &subscriptionv1.SubscriptionEvent{
+				Position: position, Kind: "vpc.network", ResourceId: "net-1",
+				ProjectId: "prj-probe", Change: subscriptionv1.SubscriptionEvent_UPDATED,
+				Carrier: &subscriptionv1.SubscriptionEvent_State{State: packed},
+			},
+		},
+	}
+}
+
+// eventWithUnresolvableState — событие, чьё состояние край РАЗОБРАТЬ НЕ МОЖЕТ.
+//
+// Это не выдуманный случай: владелец вправе класть в носитель тип, которого нет
+// в двоичном файле края. Контракт для него завёл своё значение, и проверяется
+// именно оно — что край подставляет признак владельца, а не сочиняет свой и не
+// роняет поток.
+func eventWithUnresolvableState(position string) *subscriptionv1.SubscriptionMessage {
+	return &subscriptionv1.SubscriptionMessage{
+		Message: &subscriptionv1.SubscriptionMessage_Event{
+			Event: &subscriptionv1.SubscriptionEvent{
+				Position: position, Kind: "elsewhere.thing", ResourceId: "thing-1",
+				ProjectId: "prj-probe", Change: subscriptionv1.SubscriptionEvent_CREATED,
+				Carrier: &subscriptionv1.SubscriptionEvent_State{
+					State: &anypb.Any{TypeUrl: "type.googleapis.com/kacho.nowhere.v1.Absent"},
+				},
+			},
+		},
+	}
 }
