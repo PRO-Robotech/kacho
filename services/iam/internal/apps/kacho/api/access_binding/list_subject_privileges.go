@@ -43,18 +43,13 @@ package access_binding
 //     не вправе. Хендлер судит СЫРОЙ запрос (до насыщающего сужения int64→int32),
 //     здесь судится уже разобранный фильтр — и судится в ТОЙ ЖЕ функции, которая
 //     ниже замыкается по правам.
-//  4. anti-anonymous guard    → PermissionDenied (catalog is cluster-floor;
-//     the precise self/account-admin policy is authoritative here).
-//  5. вызывающий обязан быть НАЗЫВАЕМ модели прав → PermissionDenied иначе.
-//     Безусловно: полоса края у этого чтения — `scope_filtered`, пообъектной
-//     проверки за ним нет, откатиться не на что.
-//  6. subject resolve (Users().Get / ServiceAccounts().Get / Groups().Get) —
-//     yields the home account_id the authz check needs. A subject that does not
-//     resolve does NOT answer here: its NotFound is HELD BACK (step 8).
-//  7. authz: IsSelf OR cluster-admin OR account-admin (owner of home Account OR
-//     FGA admin) → PermissionDenied otherwise. Decided BEFORE existence is
-//     allowed to shape the reply. Полоса, которой вызывающий допущен,
-//     ЗАПОМИНАЕТСЯ: от неё зависит шаг 10.
+//  4-7. допуск — ОДИН предикат, общий с ListBySubject
+//     (`subjectReadAuthority`, subject_read_authority.go). Он несёт: анти-анонимного
+//     стража; требование быть НАЗЫВАЕМЫМ модели прав (безусловно — полоса края у
+//     этого чтения `scope_filtered`, пообъектной проверки за ним нет, откатиться
+//     не на что); резолв субъекта, чей ответ об отсутствии ПРИДЕРЖИВАЕТСЯ до
+//     шага 8; и решение полосы — сам субъект / надзор облака / распорядитель
+//     домашнего аккаунта. Полоса ЗАПОМИНАЕТСЯ: от неё зависит шаг 10.
 //  8. only now, for a caller who may read the subject: a subject that did not
 //     resolve → NotFound.
 //  9. repo JOIN read (access_bindings ⋈ roles), keyset paginated.
