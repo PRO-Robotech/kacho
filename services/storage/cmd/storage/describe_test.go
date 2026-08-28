@@ -33,15 +33,19 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
@@ -431,7 +435,8 @@ func TestStorageBringsNoBootGateYet(t *testing.T) {
 // пакет намеренно: копия этой сборки в соседней пробе разошлась бы с первой
 // молча — ровно там, где расхождение не видно, потому что обе продолжали бы
 // возвращать непустой набор.
-func registrarsOfBothListeners() []func(grpc.ServiceRegistrar) {
+func registrarsOfBothListeners(t *testing.T) []func(grpc.ServiceRegistrar) {
+	t.Helper()
 	volumeUC := volume.New(nil, nil, nil, nil, nil, nil)
 	snapshotUC := snapshot.New(nil, nil, nil, nil)
 	imageUC := image.New(nil, nil, nil, nil, nil, nil)
@@ -449,29 +454,58 @@ func registrarsOfBothListeners() []func(grpc.ServiceRegistrar) {
 		},
 		func(r grpc.ServiceRegistrar) {
 			registerInternal(r, volumeUC, imageUC, diskTypeUC,
-				storagebackend.New(nil), disktypebinding.New(nil, nil), opHandler)
+				storagebackend.New(nil), disktypebinding.New(nil, nil), opHandler,
+				probeSubscriptionServer(t))
 		},
 	}
 }
 
-// TestStorageServesNoServerStream — САМОИСТЕЧЕНИЕ изъятия по сроку жизни
-// подписки.
+// probeSubscriptionServer — сервер потока, собранный БОЕВЫМ конструктором корня.
 //
-// Дескриптор объявляет ось `StreamBudget` неприменимой с причиной «серверных
-// стримов storage не служит». Утверждение проверяемое, и проверяется оно
-// СОСТАВОМ ЗАРЕГИСТРИРОВАННОГО, а не памятью автора: появится у storage первая
-// подписка — проба покраснеет и назовёт метод.
+// Не заглушка: перепись обслуживаемого обязана описывать стенд, а нулевой
+// указатель молча вывел бы подписку из-под каждой пробы, которая выводит
+// поверхность из этой сборки. Соединения конструктор не открывает — он судит
+// объявление, — поэтому строка соединения здесь законна и до базы дело не идёт.
+func probeSubscriptionServer(t *testing.T) subscriptionv1.InternalSubscriptionServiceServer {
+	t.Helper()
+	cfg := config.Config{
+		SubscriptionMaxStreams:   4,
+		SubscriptionStreamBudget: time.Hour,
+		SubscriptionIdlePoll:     2 * time.Second,
+	}
+	srv, err := buildSubscriptionServer(cfg, narrowtest.AllowingAll(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("сервер потока не собрался боевым конструктором: %v", err)
+	}
+	return srv
+}
+
+// TestStorageServesExactlyTheSubscriptionStream — служимый серверный стрим ОДИН,
+// и это подписка; дескриптор накрывает его величиной.
+//
+// # Здесь стояла проба ОБРАТНОГО утверждения, и она заменена, а не ослаблена
+//
+// До провязки подписки (`#1414`) дескриптор объявлял ось `StreamBudget`
+// НЕПРИМЕНИМОЙ с причиной «серверных стримов storage не служит», а эта проба
+// стерегла самоистечение изъятия: появится первый стрим — покраснеет и назовёт
+// метод. Изъятие истекло ровно так, как задумано. Ослабить пробу (снять
+// утверждение о стримах) значило бы снять наблюдение за осью целиком; поэтому она
+// утверждает ту же ось с ДРУГОЙ стороны.
+//
+// Утверждается ПАРА, и обе половины нужны:
+//
+//	стрим ровно один и это подписка — второй серверный стрим есть второй язык
+//	                                  потока у того же сервиса;
+//	величина объявлена               — «не применимо» при служимом стриме
+//	                                  означало бы поток без срока жизни.
 //
 // Источник признака назван честно: здесь читается самоописание сервера
 // (`grpc.ServiceInfo`), носитель на старте читает дескриптор метода. Оба
-// порождены одним `.proto`, поэтому для утверждения «стримов нет» годится любой;
-// расхождение между ними было бы дефектом генерации, а не этого изъятия.
-//
-// Носитель отказал бы и сам (О11), но на СТАРТЕ ПРОЦЕССА — то есть при
-// развёртывании. Проба переносит тот же отказ в прогон.
-func TestStorageServesNoServerStream(t *testing.T) {
+// порождены одним `.proto`; расхождение между ними было бы дефектом генерации.
+func TestStorageServesExactlyTheSubscriptionStream(t *testing.T) {
 	methods, streams := 0, []string{}
-	for _, reg := range registrarsOfBothListeners() {
+	for _, reg := range registrarsOfBothListeners(t) {
 		srv := grpc.NewServer()
 		reg(srv)
 		for name, info := range srv.GetServiceInfo() {
@@ -484,26 +518,32 @@ func TestStorageServesNoServerStream(t *testing.T) {
 		}
 	}
 	if methods == 0 {
-		t.Fatal("ни один метод не зарегистрирован — «серверных стримов нет» было бы верно и на " +
-			"пустом наборе, то есть проба не отличала бы исправное от сломанного")
+		t.Fatal("ни один метод не зарегистрирован — утверждение о составе стримов было бы " +
+			"верно и на пустом наборе, то есть проба не отличала бы исправное от сломанного")
 	}
-	if len(streams) != 0 {
-		t.Fatalf("storage служит серверный стрим: %v.\nИзъятие StreamBudget в describe() пережило "+
-			"свой предмет: объявите срок жизни подписки величиной (больше HandlingBudget) либо "+
-			"перепишите причину", streams)
+	const subscribeVerb = "/kacho.cloud.subscription.InternalSubscriptionService/Subscribe"
+	if len(streams) != 1 || streams[0] != subscribeVerb {
+		t.Fatalf("служимые серверные стримы: %v; ожидался ровно один — %s.\nВторой стрим "+
+			"означал бы второй язык потока у одного сервиса; ноль — что подписка не "+
+			"зарегистрирована, а дескриптор объявил ей срок жизни", streams, subscribeVerb)
 	}
-	// Вторая сторона той же оси, и на СВОЁМ дескрипторе: величина, объявленная
-	// процессом без единой подписки, — проводка без предмета. Носитель откажет в
-	// этом и сам (О11), но на старте процесса; проба переносит отказ в прогон.
+	// Вторая сторона той же оси, и на СВОЁМ дескрипторе: срок жизни объявлен
+	// величиной. Носитель откажет в несоответствии и сам (О11), но на СТАРТЕ
+	// ПРОЦЕССА — то есть при развёртывании; проба переносит отказ в прогон.
 	desc, err := describeWith(t, bootConfig(t, nil))
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
-	if budget, ok := desc.Spec().StreamBudget.Get(); ok && len(streams) == 0 {
-		t.Fatalf("дескриптор объявляет срок жизни подписки (%v), а служимых серверных стримов "+
-			"нет ни одного: величина утверждает решение про подписки там, где подписок нет", budget)
+	budget, ok := desc.Spec().StreamBudget.Get()
+	if !ok {
+		t.Fatalf("дескриптор объявляет срок жизни подписки НЕПРИМЕНИМЫМ, а служимый стрим %s "+
+			"есть: поток жил бы без срока, и обрыв перестал бы быть штатным событием", subscribeVerb)
 	}
-	t.Logf("осмотрено служимых методов: %d, серверных стримов среди них: 0", methods)
+	if budget <= 0 {
+		t.Fatalf("срок жизни подписки объявлен величиной %v", budget)
+	}
+	t.Logf("осмотрено служимых методов: %d, серверных стримов среди них: %d (%v), "+
+		"срок жизни потока: %v", methods, len(streams), streams, budget)
 }
 
 // probeExistence — порт сверки существования для проб композиционного корня.
