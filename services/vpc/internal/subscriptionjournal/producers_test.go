@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
 )
 
 // serviceRoot — корень сервиса относительно этого пакета.
@@ -333,3 +334,36 @@ func sortedKeys(m map[string]int) []string {
 	sort.Strings(out)
 	return out
 }
+
+// TestEveryDeclaredKindHasAStateBranch — словарь видов и разбор состояния не
+// расходятся.
+//
+// # Почему это не паранойя
+//
+// Словарь и `switch` в [state] — два места об одном предмете. Добавивший вид в
+// словарь и забывший ветку получит поток, который событие ДОСТАВЛЯЕТ (вид
+// авторизуем, строка проходит сужение), но состояния к нему не несёт: сервер
+// отдаст оболочку с признаком «состояния не будет». Подписчик, ведущий своё
+// состояние, увидит предмет без полей — и это не отказ, а тихая неполнота.
+//
+// Проба зовёт разбор по КАЖДОМУ объявленному виду и требует, чтобы ветка нашлась.
+// Нагрузка нарочно пустая: предмет здесь — наличие ветки, а не верность разбора,
+// и пустой объект законно разбирается в нулевую запись у любого из видов.
+func TestEveryDeclaredKindHasAStateBranch(t *testing.T) {
+	declared := Journal().Mapping.Kinds
+	if len(declared) == 0 {
+		t.Fatal("словарь видов пуст — судить не о чем")
+	}
+	for kind := range declared {
+		_, err := state(Row{Kind: kind, ID: "probe", Change: "CREATED", Payload: []byte(`{}`)})
+		if err != nil && strings.Contains(err.Error(), "вне словаря журнала vpc") {
+			t.Errorf("вид %q объявлен словарём, а ветки разбора состояния у него НЕТ: "+
+				"событие доедет оболочкой без состояния, и подписчик увидит предмет "+
+				"без полей — тихо, без отказа", kind)
+		}
+	}
+	t.Logf("перепись: видов объявлено %d, у каждого проверена ветка разбора", len(declared))
+}
+
+// Row — строка журнала, как её приносит общий сервер.
+type Row = subscription.Row
