@@ -25,7 +25,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'API',
       collapsed: false,
-      items: ['api/overview', 'api/operations'],
+      items: ['api/overview', 'api/operations', 'api/subscription'],
     },
   ],
 }

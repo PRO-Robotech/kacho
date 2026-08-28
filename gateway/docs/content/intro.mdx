@@ -100,7 +100,9 @@ data-plane прокси прикладного трафика. За физиче
 
 - **Ресурсы — плоские** (domain-поля на верхнем уровне; без `spec`/`status`/`metadata`-envelope).
 - **Чтение синхронно** (`Get` / `List`), **мутации асинхронны** и возвращают `Operation`;
-  клиент поллит `OperationService.Get(id)` до `done=true`. Watch-RPC нет.
+  клиент поллит `OperationService.Get(id)` до `done=true` — подписки на операции нет.
+- **Изменения ресурсов доступны потоком**: одна ручка края `GET /subscription/v1/events`
+  (SSE) — см. [Подписку на изменения](/api/subscription). Она не заменяет полл операции.
 - **REST** (grpc-gateway): путь `/<service>/v1/<resource>`, доп. действия — суффикс `:verb`;
   JSON — camelCase.
 

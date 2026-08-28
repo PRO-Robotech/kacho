@@ -99,7 +99,9 @@ REST построен на split-mux: один набор handler'ов на дв
 
 Мутации доменов асинхронны и возвращают `Operation`. `OperationService.Get/Cancel` обслуживается
 in-process (`internal/opsproxy`): по 3-символьному prefix id операция направляется во владеющий
-backend. Watch-RPC нет — клиент поллит. Подробнее — [Operations](/api/operations).
+backend. Исход операции клиент узнаёт поллом — подписки на операции нет. Подробнее —
+[Operations](/api/operations); поток изменений самих ресурсов край отдаёт отдельной ручкой, см.
+[Подписку на изменения](/api/subscription).
 
 ## Кэши безопасности
 
