@@ -99,8 +99,16 @@ immutable, а не generic «unknown field». Кейс `SUB-UPD-STATE-IMMUTABLE-
 ## 10. OperationService.Get/Cancel с bad id
 
 malformed id → `InvalidArgument "invalid operation id '<X>'"`; well-formed id (известный
-prefix, но бэкенд не подключен) → `NotFound "Operation <X> not found"`; id с prefix
-домена с подключенным бэкендом → роутится туда. Реализация — `gateway/internal/opsproxy/proxy.go`
+prefix, но бэкенд не подключен) → `NotFound "operation <X> not found"`; id с prefix
+домена с подключенным бэкендом → роутится туда.
+
+Текст второй полосы — не выбор края: он приходит из общего производителя
+`operations.NotFoundStatus`, которым отвечает и владелец операции. Обе полосы
+клиент видит на одном адресе, поэтому различие хоть в один байт отличало бы «нет
+доступа» от «не существует» и называло бы, какие бэкенды край держит
+подключёнными. Прежде край писал этот текст сам, с прописной буквы (#1370).
+
+Реализация — `gateway/internal/opsproxy/proxy.go`
 (каталог края в монорепо; прежнее имя отдельного репозитория края координатой не является
 и здесь не воспроизводится).
 

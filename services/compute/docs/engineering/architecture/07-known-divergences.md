@@ -415,7 +415,7 @@ compute), которое γ будет читать для selector-матчин
   первые 3 символа id и на любой нероутящийся отвечает `400 INVALID_ARGUMENT
   "operation_id has unknown prefix"`. По конвенции by-lane split
   well-formed-но-нерезолвящийся own-owned id — это direct-read lane, то есть
-  `404 NotFound "Operation <X> not found"`; malformed — `400 InvalidArgument`.
+  `404 NotFound "operation <X> not found"`; malformed — `400 InvalidArgument`.
   Сейчас различия нет, оба схлопнуты в 400 — отступление по коду. Предмет живёт
   **на крае**, не здесь, и общий для всех сервисов; парная запись —
   `services/vpc/docs/engineering/architecture/07-known-divergences.md`.

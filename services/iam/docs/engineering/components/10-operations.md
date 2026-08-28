@@ -198,7 +198,7 @@ curl "http://localhost:18080/iam/v1/accounts/$ACC_ID/operations:all?pageSize=20"
 
 | Сценарий                              | gRPC code             | HTTP | Текст                                          |
 |---------------------------------------|------------------------|------|------------------------------------------------|
-| operation_id не найден                | `NOT_FOUND`            | 404  | `Operation iop_xxx not found`                  |
+| operation_id не найден                | `NOT_FOUND`            | 404  | `operation iop_xxx not found`                  |
 | Anonymous Get на secret-operation     | `NOT_FOUND`            | 404  | (anti-leak — выглядит как not-found)           |
 | Operation.done=false, Cancel          | `OK`                   | 200  | no-op (IAM operations sync)                    |
 

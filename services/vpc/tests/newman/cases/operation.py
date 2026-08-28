@@ -94,7 +94,7 @@ CASES.append(Case(
 # Расширение: CONF text
 CASES.append(Case(
     id="OP-GET-CONF-NF-TEXT",
-    title="Get несуществующего opId → verbatim 'Operation ... not found'",
+    title="Get несуществующего opId → текст владельца 'operation ... not found'",
     classes=["CONF", "NEG"], priority="P1",
     steps=[
         Step(name="get-vpc-garbage", method="GET", path="/operations/{{garbageVpcId}}",
