@@ -455,3 +455,133 @@ func TestSubscriptionSingularity_SilentOnNestedShape(t *testing.T) {
 		t.Fatal("вложенных сообщений прочитано ноль — стенд не создал условия пробы")
 	}
 }
+
+// ── ось «распознаватель знает ВСЕ законные формы записи поля» (замечание Б1) ─
+
+// TestSubscriptionSingularity_CatchesShapeInEveryFieldForm — ИНЪЕКЦИЯ ПО КАЖДОЙ
+// ИЗ ЧЕТЫРЁХ ФОРМ, а не одной пробой на все.
+//
+// Одна и та же подписка, записанная четырьмя законными способами: гейт обязан
+// краснеть на каждом. Прежняя редакция знала одну форму из четырёх — форма, о
+// которой распознаватель не знает, не край и не редкость, и всё записанное в ней
+// уходит из-под наблюдения молча, не давая ни красного, ни зелёного.
+//
+// Рядом с КАЖДОЙ формой стоит страничный список, записанный ТОЙ ЖЕ формой:
+// иначе проба доказывала бы только прямую сторону слепоты, а обратная (исчез
+// дискриминатор ⇒ список объявлен подпиской) осталась бы непроверенной.
+func TestSubscriptionSingularity_CatchesShapeInEveryFieldForm(t *testing.T) {
+	for _, tc := range []struct {
+		form string
+		body string
+	}{
+		{"1: каждое поле своей строкой", standShapeFormPerLine},
+		{"2: модификатор optional перед типом", standShapeFormOptional},
+		{"3: ветвление начала в одну строку", standShapeFormInlineOneof},
+		{"4: два поля в одной строке", standShapeFormTwoOnOneLine},
+	} {
+		t.Run(tc.form, func(t *testing.T) {
+			root := subscriptionStand(t, map[string]string{
+				"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
+				"proto/kacho/cloud/demo/v1/tail.proto":              tc.body,
+				"proto/kacho/cloud/other/v1/paged.proto":            standPagedListOptionalSize,
+				"proto/kacho/cloud/other/v1/other.proto":            standFiller,
+			})
+
+			findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
+			if err != nil {
+				t.Fatalf("анализатор не отработал: %v", err)
+			}
+			if len(findings) != 1 {
+				t.Fatalf("подписка, записанная формой %q, не поймана: находок %d (%v); "+
+					"полей разобрано %d из %d номеров",
+					tc.form, len(findings), findings, census.FieldsParsed, census.FieldNumbersSeen)
+			}
+			if !strings.Contains(findings[0].String(), "kacho.cloud.demo.v1.TailFleetRequest") {
+				t.Errorf("находка не называет символ: %s", findings[0].String())
+			}
+			// ОБРАТНАЯ сторона: страничный список рядом НЕ объявлен подпиской.
+			// Его размер страницы записан модификатором, то есть ровно той формой,
+			// на которой прежний распознаватель терял дискриминатор.
+			if strings.Contains(findings[0].String(), "ListRecordsRequest") {
+				t.Errorf("страничный список объявлен подпиской — дискриминатор потерян: %s",
+					findings[0].String())
+			}
+			if census.ByShape != 2 {
+				t.Errorf("ветвью состава опознано %d, ожидалось 2 (общая форма + инъекция): "+
+					"либо форма не прочитана, либо близнец засчитан", census.ByShape)
+			}
+		})
+	}
+}
+
+// TestSubscriptionSingularity_SilentOnPagedListWithModifiedSize — ЗАКОННЫЙ
+// БЛИЗНЕЦ формы, предъявленный в одиночку: размер страницы записан с
+// модификатором. Прежняя редакция краснела здесь с ФАКТИЧЕСКИ НЕВЕРНЫМ текстом
+// («без размера страницы» при размере третьей строкой), а гейт, краснеющий на
+// верном коде, отключают первым.
+func TestSubscriptionSingularity_SilentOnPagedListWithModifiedSize(t *testing.T) {
+	root := subscriptionStand(t, map[string]string{
+		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/paged.proto":            standPagedListOptionalSize,
+	})
+
+	findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
+	if err != nil {
+		t.Fatalf("анализатор не отработал: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("страничный список с модифицированным размером объявлен подпиской: %s",
+			findings[0].String())
+	}
+	// Премиса: дискриминатор ПРОЧИТАН, а не пропущен вместе со всем телом.
+	if census.FieldsParsed != census.FieldNumbersSeen || census.FieldsParsed < 8 {
+		t.Fatalf("полей разобрано %d из %d номеров — молчание получено на непрочитанном теле",
+			census.FieldsParsed, census.FieldNumbersSeen)
+	}
+}
+
+// TestSubscriptionSingularity_BlindFieldFormIsAnError — ДЕФЕКТ стража слепоты:
+// тело, в котором разбор читает не все поля, обязано ронять прогон, а не молчать.
+//
+// Без этого утверждения слепота распознавателя ненаблюдаема: сообщение с одним
+// выброшенным полем по числу СООБЩЕНИЙ неотличимо от прочитанного целиком, и
+// «находок нет» у ветви состава означает «не читал».
+func TestSubscriptionSingularity_BlindFieldFormIsAnError(t *testing.T) {
+	root := subscriptionStand(t, map[string]string{
+		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/odd.proto":              standUnknownFieldForm,
+	})
+
+	_, _, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
+	if err == nil {
+		t.Fatal("тело с непрочитанным полем прошло молча — слепота распознавателя ненаблюдаема")
+	}
+	if !strings.Contains(err.Error(), "kacho.cloud.other.v1.OddlyNamed") {
+		t.Errorf("отказ не называет тело: %v", err)
+	}
+	if !strings.Contains(err.Error(), "odd.proto") {
+		t.Errorf("отказ не называет файл: %v", err)
+	}
+}
+
+// TestSubscriptionSingularity_SilentOnMapField — ЗАКОННЫЙ БЛИЗНЕЦ стража
+// слепоты: карта осью и позицией не является, но ПРОЧИТАНА быть обязана.
+// Страж, не знающий карт, падал бы на каждом втором контракте дерева — их 108.
+func TestSubscriptionSingularity_SilentOnMapField(t *testing.T) {
+	root := subscriptionStand(t, map[string]string{
+		"proto/kacho/cloud/subscription/subscription.proto": standCommonForm,
+		"proto/kacho/cloud/other/v1/labels.proto":           standMapFieldTwin,
+	})
+
+	findings, census, err := AuditSubscriptionFormSingularity(subscriptionStandOptions(root), nil)
+	if err != nil {
+		t.Fatalf("карта принята за непрочитанное поле — страж падает на законной форме: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("сообщение с картой объявлено подпиской: %s", findings[0].String())
+	}
+	if census.FieldsParsed != census.FieldNumbersSeen {
+		t.Fatalf("полей разобрано %d из %d номеров — карта не прочитана",
+			census.FieldsParsed, census.FieldNumbersSeen)
+	}
+}

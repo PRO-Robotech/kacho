@@ -236,3 +236,86 @@ message ThingHolder {
   InnerFilter filter = 2;
 }
 `
+
+// ── содержимое стенда: ЧЕТЫРЕ законные формы записи поля (замечание Б1) ──────
+//
+// Одна и та же подписка, записанная четырьмя способами. Все четыре законны;
+// прежний распознаватель знал первую. Инъекция идёт ПО КАЖДОЙ отдельно — п.7
+// требует доказательства по каждой названной форме, а не одной пробы на все.
+
+// standShapeFormPerLine — форма 1: каждое поле своей строкой.
+const standShapeFormPerLine = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message TailFleetRequest {
+  repeated string subject_types = 1;
+  string watermark = 2;
+}
+`
+
+// standShapeFormOptional — форма 2: модификатор `optional` перед типом.
+// Прежняя редакция здесь молчала; изолировано до ОДНОГО СЛОВА — те же байты без
+// `optional` она находила.
+const standShapeFormOptional = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message TailFleetRequest {
+  repeated string subject_types = 1;
+  optional string watermark = 2;
+}
+`
+
+// standShapeFormInlineOneof — форма 3: ветвление начала записано в одну строку.
+const standShapeFormInlineOneof = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message TailFleetRequest {
+  repeated string subject_types = 1;
+  oneof start { string watermark = 2; string anchor = 3; }
+}
+`
+
+// standShapeFormTwoOnOneLine — форма 4: два поля в одной строке.
+const standShapeFormTwoOnOneLine = `syntax = "proto3";
+package kacho.cloud.demo.v1;
+message TailFleetRequest {
+  repeated string subject_types = 1; string watermark = 2;
+}
+`
+
+// standPagedListOptionalSize — ЗАКОННЫЙ БЛИЗНЕЦ, ловящий ОБРАТНУЮ сторону
+// слепоты, и она хуже прямой: незнакомой формой исчезает не подписка, а
+// ДИСКРИМИНАТОР. Прежняя редакция объявляла этот список подпиской и дословно
+// утверждала «без размера страницы» при размере, стоящем третьей строкой.
+//
+// Гейт, краснеющий на верном коде, отключают первым, — поэтому близнец стоит
+// рядом с каждой инъекцией, а не отдельной пробой.
+const standPagedListOptionalSize = `syntax = "proto3";
+package kacho.cloud.other.v1;
+message ListRecordsRequest {
+  repeated string subject_types = 1;
+  string watermark = 2;
+  optional int32 page_size = 3;
+}
+`
+
+// standMapFieldTwin — законный близнец разбора: карта не является ни осью, ни
+// позицией, но ДОЛЖНА БЫТЬ ПРОЧИТАНА. Непрочитанное поле делает перепись лживой
+// («тело разобрано» при выброшенном поле), поэтому страж слепоты обязан на нём
+// молчать, а не падать.
+const standMapFieldTwin = `syntax = "proto3";
+package kacho.cloud.other.v1;
+message LabelledThing {
+  string id = 1;
+  map<string, string> labels = 2;
+  repeated string subject_types = 3;
+}
+`
+
+// standUnknownFieldForm — ДЕФЕКТ стража слепоты: поле, которое распознаватель
+// прочитать не может (имя с заглавной — форма, отвергаемая и линтом контракта).
+// Нужен, чтобы страж доказал способность падать: без него его молчание
+// неотличимо от мёртвого.
+const standUnknownFieldForm = `syntax = "proto3";
+package kacho.cloud.other.v1;
+message OddlyNamed {
+  string Ident = 1;
+}
+`
