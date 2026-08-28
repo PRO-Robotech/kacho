@@ -7,10 +7,11 @@ package access_binding
 // RPC AccessBindingService.ListSubjectPrivileges.
 //
 // Sync, enriched read of a subject's DIRECT privileges with server-resolved
-// role names (JOIN in the repo). Authz is BROADER than ListBySubject:
-// "self OR account-admin of the subject's home Account" — mirrors the
-// established requireGrantAuthority pattern but the scope object is the
-// SUBJECT's home Account (account:<subject.account_id>), not a binding's scope.
+// role names (JOIN in the repo). Допуск — ОДИН предикат с ListBySubject
+// (subject_read_authority.go): «сам субъект ИЛИ распорядитель его ДОМАШНЕГО
+// аккаунта ИЛИ администратор облака». Он зеркалит requireGrantAuthority, но
+// объектом области берёт домашний аккаунт СУБЪЕКТА (account:<subject.account_id>),
+// а не область выдачи.
 //
 // # ДОПУСК И СУЖЕНИЕ — РАЗНЫЕ ВЕЩИ, и раньше здесь стояло только первое (#1354)
 //
@@ -26,9 +27,10 @@ package access_binding
 // области выдач. Наблюдаемое следствие одно и то же — картирование состава
 // арендаторов, — поэтому и запрет один.
 //
-// Соседнее чтение того же сервиса, ListBySubject, сужения не требует: там
-// вызывающий обязан БЫТЬ названным субъектом, и ответ не шире того, что ему и
-// так принадлежит.
+// Соседнее чтение того же сервиса, ListBySubject, сужается ТЕМ ЖЕ вызовом и по
+// той же причине: допуск у них общий, значит и полоса распорядителя аккаунта у
+// него та же. Прежде оно допускало только самого субъекта — тогда сужать было
+// нечего, — и эта разница была не решением, а расхождением (#1352).
 //
 // Order of sync steps (api-conventions):
 //  1. subject_type whitelist  → InvalidArgument (user | service_account | group;
