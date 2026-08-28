@@ -88,6 +88,21 @@ type postureReach struct {
 	// literalFields — координаты посадочных полей, чьё значение НЕ выведено из
 	// конфигурации: `<компонент>` → перечень «поле (файл:строка) = <выражение>».
 	literalFields map[string][]string
+	// providersSeen — поставщиков дескриптора найдено (включая обёртки).
+	// callersSeen — их вызовов осмотрено.
+	// callersReach — из них таких, чей ОТКАЗ доезжает до остановки процесса.
+	//
+	// Величины печатаются ПОРОЗНЬ намеренно: одно число скрывает ровно тот
+	// случай, ради которого ось заведена, — вызов на месте, отказ погашен.
+	providersSeen int
+	callersSeen   int
+	callersReach  int
+	// providersUncalled — экспортированных поставщиков без единого вызова внутри
+	// компонента. Судить нечем: звать мог чужой модуль, а разбор без типов этого
+	// не знает. Говорится ЧИСЛОМ, а не молчанием.
+	providersUncalled int
+	// quenched — координаты, где отказ поставщика до остановки НЕ доходит.
+	quenched map[string][]string
 }
 
 // postureSpecFields — ЗАКРЫТЫЙ перечень посадочных полей `servicecontract.Spec`:
@@ -168,6 +183,7 @@ func scanPostureReach(root string) (postureReach, error) {
 		accepts:       map[string]string{},
 		discards:      map[string]string{},
 		literalFields: map[string][]string{},
+		quenched:      map[string][]string{},
 	}
 	seenComp := map[string]bool{}
 	seenKnob := map[string]map[string]bool{}
@@ -244,6 +260,7 @@ func scanPostureReach(root string) (postureReach, error) {
 		res.components = append(res.components, c)
 		sort.Strings(res.knobs[c])
 		sort.Strings(res.literalFields[c])
+		sort.Strings(res.quenched[c])
 	}
 	sort.Strings(res.components)
 	return res, nil
@@ -294,6 +311,22 @@ func auditComponentDescriptor(res *postureReach, comp string, files []parsedFile
 		return all[i].decl.Pos() < all[j].decl.Pos()
 	})
 
+	// seeds — функции, в чьём теле стоит ПРИНЯТЫЙ вызов дескриптора: их отказ и
+	// есть отказ посадки, и потому спрашивать надо с их вызывающих.
+	var seeds []descriptorProvider
+	seen := map[descriptorProvider]bool{}
+	addSeed := func(fn funcRec) {
+		if fn.decl.Recv != nil {
+			return
+		}
+		p := descriptorProvider{name: fn.decl.Name.Name, dir: funcDir(fn.rel)}
+		if seen[p] {
+			return
+		}
+		seen[p] = true
+		seeds = append(seeds, p)
+	}
+
 	for _, r := range all {
 		fn := r
 		ast.Inspect(fn.decl.Body, func(n ast.Node) bool {
@@ -305,6 +338,7 @@ func auditComponentDescriptor(res *postureReach, comp string, files []parsedFile
 					if isContractNewCall(e, true) {
 						markAccept(res, comp, fn.rel, fset, e.Pos())
 						auditSpecWiring(res, comp, fn, e, fset, byName, all)
+						addSeed(fn)
 					}
 				}
 			case *ast.AssignStmt:
@@ -320,11 +354,17 @@ func auditComponentDescriptor(res *postureReach, comp string, files []parsedFile
 					}
 					markAccept(res, comp, fn.rel, fset, rhs.Pos())
 					auditSpecWiring(res, comp, fn, rhs, fset, byName, all)
+					addSeed(fn)
 				}
 			}
 			return true
 		})
 	}
+
+	// Третья ось: отказ поставщика обязан доехать до ОСТАНОВКИ. Две предыдущие
+	// про неё не спрашивают — между ними и живёт форма, гасящая посадку одним
+	// символом у вызывающего.
+	auditDescriptorRefusalReach(res, comp, seeds, all, fset)
 }
 
 // paramNames — имена параметров по позициям (для резолва довода у вызывающего).
@@ -601,6 +641,15 @@ func adjudicatePostureReachFull(reach postureReach, ledger map[string]postureRea
 						"до стража доезжает подставленная величина — страж доволен "+
 						"всегда, ручка не действует никогда",
 					comp, at, strings.Join(lits, "; ")))
+			}
+			// Принять дескриптор и провязать ручки мало: ОТКАЗ стража обязан
+			// доехать до остановки процесса. Погашенный у вызывающего отказ
+			// оставляет вызов на месте, перепись — неизменной, а посадку —
+			// непроверенной.
+			if q := reach.quenched[comp]; len(q) > 0 {
+				v.findings = append(v.findings, fmt.Sprintf(
+					"%s — дескриптор принят (%s), но его ОТКАЗ до остановки процесса "+
+						"НЕ ДОХОДИТ: %s", comp, at, strings.Join(q, "; ")))
 			}
 			continue
 		}
@@ -936,4 +985,446 @@ func postureExprText(fset *token.FileSet, e ast.Expr) string {
 		return "<не восстановлено>"
 	}
 	return b.String()
+}
+
+// ── ось «ОТКАЗ ПОСТАВЩИКА ДЕСКРИПТОРА ДОХОДИТ ДО ВЫХОДА» ────────────────────
+//
+// ПРЕДМЕТ, И ОН ОТДЕЛЬНЫЙ ОТ ДВУХ ПРЕДЫДУЩИХ. Ось принятия спрашивает «стоит ли
+// вызов дескриптора в композиционном корне»; ось провязки — «доехало ли до него
+// значение ручки». Ни одна не спрашивает третьего: ДОШЁЛ ЛИ ОТКАЗ ДЕСКРИПТОРА ДО
+// ОСТАНОВКИ ПРОЦЕССА. Между ними живёт форма, гасящая посадку ОДНИМ символом.
+//
+// ФОРМА, ЖИВУЩАЯ В ЭТОМ ДЕРЕВЕ, — вызов у ВЫЗЫВАЮЩЕГО, а не в теле с `New`:
+//
+//	desc, err := describe(cfg, …)   // поставщик возвращает New(Spec{…})
+//	if err != nil { return err }    // ← вот это и есть достижение выхода
+//
+// Гашение тихо by construction: `desc, _ := describe(…)` собирается, `go vet`
+// молчит, `errcheck` присваивание в `_` по умолчанию не судит (`check-blank`
+// в настройках линта не объявлен). Проверено опытом на живом дереве.
+//
+// ЕЩЁ ТИШЕ — ГАШЕНИЕ ПРИ СОХРАНЁННОЙ ПРОВЕРКЕ. Там, где `err` объявлен выше по
+// телу, после гашения остаётся `if err != nil { return err }`, судящий
+// УСТАРЕВШУЮ переменную. Код собирается и ВЫГЛЯДИТ проверяющим отказ стража.
+//
+// НАПРАВЛЕНИЕ ОСТОРОЖНОСТИ ЗДЕСЬ ОБРАТНО ОСИ ПРОВЯЗКИ, и это сказано вслух.
+// Там незнакомая форма уходит в молчание (ложная находка отключила бы гейт);
+// здесь незнакомая форма обработки отказа даёт НАХОДКУ. Причина: молчание тут
+// означало бы «посадка проверена», а это неправда, и заметить её нечем.
+// Популяция мала (поставщиков единицы), поэтому цена ложной находки — одна
+// строка в распознавателе, а цена слепоты — незамеченный обход стража.
+
+// descriptorProvider — функция, ЧЕЙ ОТКАЗ И ЕСТЬ ОТКАЗ ПОСАДКИ: в её теле стоит
+// принятый вызов `servicecontract.New(Spec{…})`, либо она голым `return`
+// передаёт наверх результат другого поставщика.
+type descriptorProvider struct {
+	name string
+	dir  string
+}
+
+// providerCallVerdict — что установлено об ОДНОМ вызове поставщика.
+type providerCallVerdict int
+
+const (
+	// callReaches — отказ доезжает до выхода: проверен и ведёт к остановке,
+	// либо передан наверх целиком.
+	callReaches providerCallVerdict = iota
+	// callQuenched — отказ погашен либо не доводится до выхода.
+	callQuenched
+)
+
+// funcDir — каталог пакета, в котором лежит функция. Разрешение вызовов идёт ПО
+// КАТАЛОГУ, а не по компоненту: голый `describe(…)` в Go резолвится только
+// внутри своего пакета, и поиск по компоненту спутал бы одноимённые функции
+// разных пакетов. Экспортированное имя ищется шире — по всему компоненту.
+func funcDir(rel string) string {
+	i := strings.LastIndex(rel, "/")
+	if i < 0 {
+		return "."
+	}
+	return rel[:i]
+}
+
+func isExportedName(s string) bool {
+	return s != "" && s[0] >= 'A' && s[0] <= 'Z'
+}
+
+// collectDescriptorProviders — поставщики компонента, с замыканием по обёрткам.
+//
+// ЗАМЫКАНИЕ ОБЯЗАТЕЛЬНО, а не «на будущее»: без него обёртка
+// `func build() (D, error) { return describe() }` засчиталась бы достижением
+// (она честно передаёт отказ наверх), а её собственный вызывающий остался бы
+// вне наблюдения — то есть гашение уровнем выше стало бы невидимым.
+func collectDescriptorProviders(seeds []descriptorProvider, all []funcRec) map[descriptorProvider]bool {
+	set := map[descriptorProvider]bool{}
+	for _, p := range seeds {
+		set[p] = true
+	}
+	// Замыкание до неподвижной точки. Предел на число проходов — от длины
+	// перечня функций: цикл по построению конечен, но пусть это будет видно.
+	for grew, pass := true, 0; grew && pass <= len(all); pass++ {
+		grew = false
+		for _, fn := range all {
+			if fn.decl.Recv != nil {
+				continue
+			}
+			cand := descriptorProvider{name: fn.decl.Name.Name, dir: funcDir(fn.rel)}
+			if set[cand] {
+				continue
+			}
+			if funcBarePropagatesAnyProvider(fn, set) {
+				set[cand] = true
+				grew = true
+			}
+		}
+	}
+	return set
+}
+
+// funcBarePropagatesAnyProvider — есть ли в теле `return <поставщик>(…)`, где
+// результат уезжает наверх целиком.
+func funcBarePropagatesAnyProvider(fn funcRec, providers map[descriptorProvider]bool) bool {
+	hit := false
+	ast.Inspect(fn.decl.Body, func(n ast.Node) bool {
+		if hit {
+			return false
+		}
+		ret, ok := n.(*ast.ReturnStmt)
+		if !ok {
+			return true
+		}
+		for _, r := range ret.Results {
+			if providerCallName(r, providers, funcDir(fn.rel)) != "" {
+				hit = true
+			}
+		}
+		return true
+	})
+	return hit
+}
+
+// providerCallName — имя поставщика, если выражение есть вызов одного из них,
+// достижимый из каталога fromDir.
+func providerCallName(e ast.Expr, providers map[descriptorProvider]bool, fromDir string) string {
+	c, ok := e.(*ast.CallExpr)
+	if !ok {
+		return ""
+	}
+	id, ok := c.Fun.(*ast.Ident)
+	if !ok {
+		return ""
+	}
+	for p := range providers {
+		if p.name != id.Name {
+			continue
+		}
+		if p.dir == fromDir || isExportedName(p.name) {
+			return p.name
+		}
+	}
+	return ""
+}
+
+// auditDescriptorRefusalReach судит КАЖДЫЙ вызов КАЖДОГО поставщика: доезжает ли
+// его отказ до остановки процесса.
+//
+// РЕШАЕТ КАЖДЫЙ ВЫЗОВ, А НЕ ЛУЧШИЙ ИЗ НИХ — по той же причине, что и ось
+// провязки: один вызов с погашенным отказом и есть та дыра, ради которой ось
+// заведена.
+func auditDescriptorRefusalReach(res *postureReach, comp string, seeds []descriptorProvider,
+	all []funcRec, fset *token.FileSet) {
+	if len(seeds) == 0 {
+		return
+	}
+	providers := collectDescriptorProviders(seeds, all)
+	res.providersSeen += len(providers)
+
+	called := map[descriptorProvider]bool{}
+	for _, fn := range all {
+		auditCallerRefusalReach(res, comp, fn, providers, called, fset)
+	}
+
+	// Поставщик без единого вызова. Неэкспортированное имя из своего пакета
+	// вызвать больше неоткуда — значит страж не исполняется вовсе, и это
+	// НАХОДКА. Экспортированное мог позвать чужой модуль, чего разбор без типов
+	// не знает, — такое идёт в перепись отдельной величиной, а не в находку:
+	// молчание здесь означало бы «проверено», а это неправда.
+	var names []descriptorProvider
+	for p := range providers {
+		names = append(names, p)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		if names[i].dir != names[j].dir {
+			return names[i].dir < names[j].dir
+		}
+		return names[i].name < names[j].name
+	})
+	for _, p := range names {
+		if called[p] {
+			continue
+		}
+		if isExportedName(p.name) {
+			res.providersUncalled++
+			continue
+		}
+		res.quenched[comp] = append(res.quenched[comp], fmt.Sprintf(
+			"поставщик дескриптора %s (%s) не вызывается НИ РАЗУ в своём пакете — "+
+				"страж собран и не исполняется", p.name, p.dir))
+	}
+}
+
+// auditCallerRefusalReach — разбор одного тела: где в нём зовут поставщика и что
+// делают с его отказом.
+func auditCallerRefusalReach(res *postureReach, comp string, fn funcRec,
+	providers map[descriptorProvider]bool, called map[descriptorProvider]bool,
+	fset *token.FileSet) {
+	dir := funcDir(fn.rel)
+
+	// Все вызовы поставщиков в этом теле — ДО классификации. Разность множеств
+	// даёт форму, которую распознаватель не знает: она обязана стать находкой, а
+	// не тишиной.
+	allCalls := map[token.Pos]string{}
+	ast.Inspect(fn.decl.Body, func(n ast.Node) bool {
+		if e, ok := n.(ast.Expr); ok {
+			if name := providerCallName(e, providers, dir); name != "" {
+				allCalls[e.Pos()] = name
+			}
+		}
+		return true
+	})
+	if len(allCalls) == 0 {
+		return
+	}
+
+	classified := map[token.Pos]bool{}
+	mark := func(pos token.Pos, name string, verdict providerCallVerdict, why string) {
+		// Один вызов — одна запись переписи. Форма «единым выражением» приходит
+		// сюда ДВАЖДЫ: обход видит развилку, а следом её же присваивание внутри
+		// `Init`. Без этой отсечки перепись назвала бы два вызова там, где он
+		// один, — и число, ради которого ось заведена, перестало бы сходиться.
+		if classified[pos] {
+			return
+		}
+		classified[pos] = true
+		res.callersSeen++
+		// Вызванным помечается поставщик ИЗ ТОГО ЖЕ каталога (либо
+		// экспортированный): два одноимённых поставщика в разных пакетах одного
+		// компонента иначе засчитали бы друг другу чужой вызов.
+		for p := range providers {
+			if p.name == name && (p.dir == dir || isExportedName(p.name)) {
+				called[p] = true
+			}
+		}
+		if verdict == callReaches {
+			res.callersReach++
+			return
+		}
+		res.quenched[comp] = append(res.quenched[comp], fmt.Sprintf(
+			"%s:%d — %s", fn.rel, fset.Position(pos).Line, why))
+	}
+
+	ast.Inspect(fn.decl.Body, func(n ast.Node) bool {
+		switch st := n.(type) {
+		case *ast.ReturnStmt:
+			// `return <поставщик>(…)` — отказ уезжает наверх целиком.
+			for _, r := range st.Results {
+				if name := providerCallName(r, providers, dir); name != "" {
+					mark(r.Pos(), name, callReaches, "")
+				}
+			}
+		case *ast.ExprStmt:
+			// Голым выражением: результат отброшен весь, вместе с отказом.
+			if name := providerCallName(st.X, providers, dir); name != "" {
+				mark(st.X.Pos(), name, callQuenched,
+					"вызов поставщика дескриптора стоит голым выражением: отказ стража "+
+						"отброшен вместе с результатом")
+			}
+		case *ast.IfStmt:
+			// `if _, err := describe(…); err != nil { … }` — единым выражением.
+			as, ok := st.Init.(*ast.AssignStmt)
+			if !ok {
+				return true
+			}
+			for _, rhs := range as.Rhs {
+				name := providerCallName(rhs, providers, dir)
+				if name == "" {
+					continue
+				}
+				errName := assignedErrName(as)
+				if errName == "" {
+					mark(rhs.Pos(), name, callQuenched, quenchNoteBlank())
+					continue
+				}
+				if exprMentionsIdent(st.Cond, errName) && ifBranchTerminates(st) {
+					mark(rhs.Pos(), name, callReaches, "")
+					continue
+				}
+				mark(rhs.Pos(), name, callQuenched, quenchNoteNoExit(errName))
+			}
+		case *ast.AssignStmt:
+			for _, rhs := range st.Rhs {
+				name := providerCallName(rhs, providers, dir)
+				if name == "" {
+					continue
+				}
+				errName := assignedErrName(st)
+				if errName == "" {
+					mark(rhs.Pos(), name, callQuenched, quenchNoteBlank())
+					continue
+				}
+				if refusalReachesExit(fn.decl.Body, errName, rhs.Pos()) {
+					mark(rhs.Pos(), name, callReaches, "")
+					continue
+				}
+				mark(rhs.Pos(), name, callQuenched, quenchNoteNoExit(errName))
+			}
+		}
+		return true
+	})
+
+	// Форма, которую разбор не отнёс ни к одной ветке.
+	var rest []token.Pos
+	for pos := range allCalls {
+		if !classified[pos] {
+			rest = append(rest, pos)
+		}
+	}
+	sort.Slice(rest, func(i, j int) bool { return rest[i] < rest[j] })
+	for _, pos := range rest {
+		mark(pos, allCalls[pos], callQuenched,
+			"форма вызова поставщика дескриптора РАСПОЗНАВАТЕЛЮ НЕ ИЗВЕСТНА, поэтому "+
+				"судьба отказа не установлена. Если форма законна — расширьте "+
+				"распознаватель: молчание здесь означало бы «посадка проверена»")
+	}
+}
+
+func quenchNoteBlank() string {
+	return "отказ поставщика дескриптора ПОГАШЕН в `_`: страж собран, исполняется и " +
+		"не может ничего остановить. Стоящая рядом проверка `if err != nil` (если она " +
+		"есть) судит переменную, объявленную выше по телу, а не отказ стража"
+}
+
+func quenchNoteNoExit(errName string) string {
+	return fmt.Sprintf(
+		"отказ поставщика дескриптора принят в %q, но до ОСТАНОВКИ не доводится: ни "+
+			"проверки, ведущей к выходу (`return`/`log.Fatal`/`os.Exit`/`panic`), ни "+
+			"передачи наверх. Страж исполняется и не может ничего остановить", errName)
+}
+
+// assignedErrName — имя, в которое принят ОТКАЗ (последняя величина результата).
+// Пустая строка означает, что отказ никуда не принят: `_`, либо результат
+// разобран не полностью.
+func assignedErrName(as *ast.AssignStmt) string {
+	if len(as.Lhs) < 2 {
+		return ""
+	}
+	id, ok := as.Lhs[len(as.Lhs)-1].(*ast.Ident)
+	if !ok || id.Name == "_" {
+		return ""
+	}
+	return id.Name
+}
+
+// refusalReachesExit — доводится ли отказ, принятый в errName, до остановки
+// ПОСЛЕ позиции after.
+//
+// ЗАКОННЫЕ ФОРМЫ, каждая встречается либо в дереве, либо в его фикстурах:
+//
+//	if err != nil { return err }                 — проверка с выходом
+//	if err != nil { return fmt.Errorf("…: %w") } — она же с обёрткой
+//	if err != nil { log.Fatalf(…) }              — остановка процесса
+//	if err != nil { os.Exit(1) } / panic(err)    — она же другими словами
+//	return err                                   — голая передача наверх
+//	return d, err                                — она же в паре
+func refusalReachesExit(body *ast.BlockStmt, errName string, after token.Pos) bool {
+	reached := false
+	ast.Inspect(body, func(n ast.Node) bool {
+		if reached || n == nil || n.Pos() <= after {
+			return !reached
+		}
+		switch st := n.(type) {
+		case *ast.IfStmt:
+			if exprMentionsIdent(st.Cond, errName) && ifBranchTerminates(st) {
+				reached = true
+			}
+		case *ast.ReturnStmt:
+			for _, r := range st.Results {
+				if exprMentionsIdent(r, errName) {
+					reached = true
+				}
+			}
+		}
+		return !reached
+	})
+	return reached
+}
+
+// ifBranchTerminates — останавливает ли ХОТЬ ОДНА ветка развилки. Обе стороны
+// смотрятся намеренно: `if err == nil { … } else { return err }` законен.
+func ifBranchTerminates(st *ast.IfStmt) bool {
+	if blockTerminates(st.Body) {
+		return true
+	}
+	if st.Else == nil {
+		return false
+	}
+	return blockTerminates(st.Else)
+}
+
+// blockTerminates — есть ли в блоке остановка. Тела функциональных литералов
+// НЕ считаются: `return` внутри замыкания выходит из замыкания, а не из
+// процесса, и засчитывать его значило бы зеленеть на отложенном обработчике.
+func blockTerminates(n ast.Node) bool {
+	found := false
+	ast.Inspect(n, func(x ast.Node) bool {
+		if found || x == nil {
+			return false
+		}
+		if _, ok := x.(*ast.FuncLit); ok {
+			return false
+		}
+		switch s := x.(type) {
+		case *ast.ReturnStmt:
+			found = true
+		case *ast.ExprStmt:
+			if isProcessStoppingCall(s.X) {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
+// isProcessStoppingCall — вызов, останавливающий процесс: `panic`, `os.Exit`,
+// `log.Fatal*` и родня по имени.
+func isProcessStoppingCall(e ast.Expr) bool {
+	c, ok := e.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	switch fn := c.Fun.(type) {
+	case *ast.Ident:
+		return fn.Name == "panic"
+	case *ast.SelectorExpr:
+		n := fn.Sel.Name
+		return n == "Exit" || strings.HasPrefix(n, "Fatal")
+	default:
+		return false
+	}
+}
+
+// exprMentionsIdent — упоминает ли выражение идентификатор с этим именем.
+func exprMentionsIdent(e ast.Expr, name string) bool {
+	hit := false
+	ast.Inspect(e, func(n ast.Node) bool {
+		if hit {
+			return false
+		}
+		if id, ok := n.(*ast.Ident); ok && id.Name == name {
+			hit = true
+		}
+		return !hit
+	})
+	return hit
 }

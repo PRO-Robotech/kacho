@@ -54,10 +54,27 @@ func describe(cfg Config) (servicecontract.Descriptor, error) {
 }
 `
 
-// ЗАГЛУШКА, КОТОРАЯ СОБИРАЕТСЯ. Дескриптор принят, вызов на месте, импорты целы,
-// компилятор доволен — и отказ выброшен в `_`. Это и есть форма, которую поиск
-// подстроки не отличает от исправной: `servicecontract.New(servicecontract.Spec{`
-// встречается в обоих случаях дословно.
+// ЗАГЛУШКА, КОТОРАЯ СОБИРАЕТСЯ, — форма «гашение В ТЕЛЕ С `New`». Дескриптор
+// принят, вызов на месте, импорты целы, компилятор доволен, а отказ выброшен в
+// `_`. Поиск подстроки её не отличает от исправной:
+// `servicecontract.New(servicecontract.Spec{` встречается в обоих случаях
+// дословно.
+//
+// ЕЁ ПРОИЗВОДИТЕЛЯ В ДЕРЕВЕ СЕГОДНЯ НЕТ, и это сказано числом, а не умолчанием.
+// Все шесть живых вызовов дескриптора стоят формой `return New(Spec{…})`:
+//
+//	grep -rn 'servicecontract.New(' --include=*.go services/ gateway/ | grep -v _test.go
+//	grep -rn ', _ := servicecontract.New\|, _ = servicecontract.New' --include=*.go services/ gateway/
+//
+// Первый даёт шесть строк, все — `return`; второй пуст. Форма, гасящая посадку
+// НА ЖИВОМ дереве, живёт у ВЫЗЫВАЮЩЕГО поставщика (`desc, _ := describe(…)`), и
+// её сторожит ось достижения выхода ниже.
+//
+// ПОЧЕМУ ЭТА ФИКСТУРА ВСЁ ЖЕ ОСТАЁТСЯ. Ветка `markDiscard` в гейте есть, и
+// проверка без неё утверждала бы свойство, которого не проверяет. Но одна она
+// доказывала бы гейт на случае, которого не бывает, — то есть была бы допуском
+// на исход БЕЗ ПРОИЗВОДИТЕЛЯ, ровно тем классом, который эта линия устранила у
+// сквозных проб. Поэтому случаев ДВА, и живой стоит первым.
 const injDescriptorDiscardedSrc = `package main
 
 import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
@@ -143,25 +160,83 @@ func TestPostureReachGateSilentWhenTheDescriptorIsAccepted(t *testing.T) {
 	}
 }
 
-// ── ЗАГЛУШКА, КОТОРАЯ СОБИРАЕТСЯ: отказ дескриптора выброшен в `_` ─────────
+// Композиционный корень ЖИВОЙ формы: поставщик отдаёт дескриптор `return`-ом, а
+// гасит отказ ВЫЗЫВАЮЩИЙ. Именно так устроены все шесть компонентов дерева, и
+// именно эта форма гасит посадку одним символом.
+const injDescriptorQuenchedAtCallerSrc = `package main
 
-func TestPostureReachGateRedWhenTheDescriptorRefusalIsDiscarded(t *testing.T) {
-	root := synthCarrierTree(t, map[string]string{
-		"services/demo/internal/config/config.go": injPostureKnobsSrc,
-		"services/demo/cmd/demo/describe.go":      injDescriptorDiscardedSrc,
+import "github.com/PRO-Robotech/kacho/pkg/servicecontract"
+
+func describe(cfg Config) (servicecontract.Descriptor, error) {
+	return servicecontract.New(servicecontract.Spec{
+		Service:   "kacho-demo",
+		DBSSLMode: cfg.DBSSLMode,
 	})
-	reach, err := scanPostureReach(root)
-	if err != nil {
-		t.Fatalf("обход синтетического дерева: %v", err)
-	}
-	if reach.accepts["demo"] != "" {
-		t.Fatalf("выброшенный отказ засчитан за принятие: %q — гейт зеленеет на "+
-			"заглушке, которая собирается", reach.accepts["demo"])
-	}
-	if reach.discards["demo"] == "" {
-		t.Fatal("выброшенный в `_` отказ не распознан: находка потерялась бы целиком")
-	}
-	t.Logf("заглушка распознана: %s", reach.discards["demo"])
+}
+
+func runServe(cfg Config) error {
+	desc, _ := describe(cfg)
+	_ = desc
+	return nil
+}
+`
+
+// ── ЗАГЛУШКА, КОТОРАЯ СОБИРАЕТСЯ: отказ дескриптора не доходит до остановки ──
+//
+// СЛУЧАЕВ ДВА, И ПЕРВЫЙ — ЖИВОЙ. Прежняя редакция этой пробы знала только
+// второй — гашение в теле с `New`, — а его производителя в дереве НОЛЬ (предикат
+// назван у фикстуры). То есть проверка перечисляла случай, которого не бывает, и
+// потому ничего не говорила о форме, которая бывает: подделка у вызывающего
+// проходила и её, и весь набор `internal/repohygiene`.
+func TestPostureReachGateRedWhenTheDescriptorRefusalIsDiscarded(t *testing.T) {
+	t.Run("живая форма: гашение у ВЫЗЫВАЮЩЕГО поставщика", func(t *testing.T) {
+		root := synthCarrierTree(t, map[string]string{
+			"services/demo/internal/config/config.go": injPostureKnobsSrc,
+			"services/demo/cmd/demo/describe.go":      injDescriptorQuenchedAtCallerSrc,
+		})
+		reach, err := scanPostureReach(root)
+		if err != nil {
+			t.Fatalf("обход синтетического дерева: %v", err)
+		}
+		// Дескриптор здесь принят ЗАКОННО — и это существо случая: обе прежние
+		// оси зелены, а посадка не проверяется ничем.
+		if reach.accepts["demo"] == "" {
+			t.Fatal("законное принятие дескриптора не засчитано — проба проверяла бы " +
+				"не ту ось")
+		}
+		if reach.discards["demo"] != "" {
+			t.Fatalf("ветка гашения В ТЕЛЕ засчитана там, где гасит вызывающий: %q",
+				reach.discards["demo"])
+		}
+		if len(reach.quenched["demo"]) == 0 {
+			t.Fatal("гашение у вызывающего НЕ распознано: страж собран, исполняется и " +
+				"не может ничего остановить, а обе прежние оси при этом зелены")
+		}
+		if reach.callersSeen == 0 || reach.callersReach != 0 {
+			t.Fatalf("перепись не показала разрыв: осмотрено %d, доходит %d",
+				reach.callersSeen, reach.callersReach)
+		}
+		t.Logf("живая форма распознана: %s", strings.Join(reach.quenched["demo"], "; "))
+	})
+
+	t.Run("форма без производителя в дереве: гашение в теле с New", func(t *testing.T) {
+		root := synthCarrierTree(t, map[string]string{
+			"services/demo/internal/config/config.go": injPostureKnobsSrc,
+			"services/demo/cmd/demo/describe.go":      injDescriptorDiscardedSrc,
+		})
+		reach, err := scanPostureReach(root)
+		if err != nil {
+			t.Fatalf("обход синтетического дерева: %v", err)
+		}
+		if reach.accepts["demo"] != "" {
+			t.Fatalf("выброшенный отказ засчитан за принятие: %q — гейт зеленеет на "+
+				"заглушке, которая собирается", reach.accepts["demo"])
+		}
+		if reach.discards["demo"] == "" {
+			t.Fatal("выброшенный в `_` отказ не распознан: находка потерялась бы целиком")
+		}
+		t.Logf("заглушка распознана: %s", reach.discards["demo"])
+	})
 }
 
 // ── послабление, которому НЕЧЕГО ИСКЛЮЧАТЬ ────────────────────────────────
@@ -845,5 +920,344 @@ func TestSpecWiringStaysSilentOnKnobNamesWhichAreRightlyLiteral(t *testing.T) {
 		t.Fatalf("имя ручки объявлено находкой — перечень посадочных полей "+
 			"разошёлся со своим обоснованием:\n%s",
 			strings.Join(reach.literalFields["demo"], "\n"))
+	}
+}
+
+// ── ИНЪЕКЦИЯ ОСИ «ОТКАЗ ПОСТАВЩИКА ДОХОДИТ ДО ВЫХОДА» ──────────────────────
+//
+// ПОЧЕМУ ОСЬ ЗАВЕДЕНА ОТДЕЛЬНО ОТ ДВУХ ПРЕДЫДУЩИХ. Ось принятия судит, стоит ли
+// вызов дескриптора в корне; ось провязки — доехало ли до него значение ручки.
+// Между ними живёт форма, гасящая посадку ОДНИМ символом у ВЫЗЫВАЮЩЕГО:
+//
+//	desc, _ := describe(cfg, …)   // вместо `desc, err := …; if err != nil {…}`
+//
+// Она собирается, `go vet` на ней молчит, `errcheck` присваивание в `_` по
+// умолчанию не судит. Проверено опытом на живом дереве: до этой оси такая
+// подделка проходила ВЕСЬ набор `internal/repohygiene` (код возврата 0), а
+// перепись гейта не менялась ни на единицу.
+//
+// ФОРМ ЗАПИСИ ПРЕДМЕТА НЕСКОЛЬКО, И РАСПОЗНАВАТЕЛЬ ОБЯЗАН ЗНАТЬ ВСЕ
+// (`testing.md` §«Гейт на класс», п.7) — по инъекции на каждую, с законным
+// близнецом рядом. Форма, о которой он не знает, не даёт ни красного, ни
+// зелёного: она молчит.
+
+// injReachTmpl — шапка фикстуры: объявление ручек плюс ПОСТАВЩИК дескриптора.
+// `%s` — тело вызывающего, единственное, чем стороны инъекции различаются.
+const injReachTmpl = `package main
+
+import (
+	"fmt"
+	"log"
+	"os"
+
+	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
+)
+
+type Config struct {
+	AuthMode  string ` + "`envconfig:\"KACHO_DEMO_AUTH_MODE\"`" + `
+	DBSSLMode string ` + "`envconfig:\"KACHO_DEMO_DB_SSLMODE\"`" + `
+}
+
+func describe(cfg Config) (servicecontract.Descriptor, error) {
+	return servicecontract.New(servicecontract.Spec{
+		Service:   "kacho-demo",
+		DBSSLMode: cfg.DBSSLMode,
+	})
+}
+
+var _ = fmt.Sprintf
+var _ = log.Printf
+var _ = os.Exit
+
+%s
+`
+
+// scanReach — обход синтетического дерева с проверкой ПРЕДПОСЫЛКИ инъекции:
+// поставщик обязан быть найден, иначе всякая сторона ниже зеленела бы по
+// причине, не имеющей отношения к своему предмету.
+func scanReach(t *testing.T, caller string) postureReach {
+	t.Helper()
+	root := synthCarrierTree(t, map[string]string{
+		"services/demo/cmd/demo/d.go": fmt.Sprintf(injReachTmpl, caller),
+	})
+	reach, err := scanPostureReach(root)
+	if err != nil {
+		t.Fatalf("обход синтетического дерева: %v", err)
+	}
+	if reach.accepts["demo"] == "" {
+		t.Fatal("фикстура не принимает дескриптор — инъекция проверяла бы не ту ось")
+	}
+	if reach.providersSeen == 0 {
+		t.Fatal("поставщик дескриптора не распознан — «ноль находок» здесь не " +
+			"утверждает ничего")
+	}
+	return reach
+}
+
+// ЗАКОННЫЕ ФОРМЫ — гейт МОЛЧИТ. Стоят первыми намеренно: пока законный близнец
+// красный, каждая подделка ниже краснеет не по своему предмету.
+func TestRefusalReachKnowsEveryLawfulHandlingForm(t *testing.T) {
+	forms := []struct {
+		name   string
+		calls  int // вызовов поставщика в фикстуре — перепись обязана назвать РОВНО столько
+		caller string
+	}{
+		{"проверка с возвратом — форма, живущая в дереве", 1, `func runServe(cfg Config) error {
+	desc, err := describe(cfg)
+	if err != nil {
+		return err
+	}
+	_ = desc
+	return nil
+}`},
+		{"проверка с обёрткой ошибки", 1, `func runServe(cfg Config) error {
+	desc, err := describe(cfg)
+	if err != nil {
+		return fmt.Errorf("describe kacho-demo: %w", err)
+	}
+	_ = desc
+	return nil
+}`},
+		{"проверка единым выражением", 1, `func runServe(cfg Config) error {
+	if _, err := describe(cfg); err != nil {
+		return err
+	}
+	return nil
+}`},
+		{"остановка процесса через log.Fatalf", 1, `func runServe(cfg Config) {
+	desc, err := describe(cfg)
+	if err != nil {
+		log.Fatalf("describe: %v", err)
+	}
+	_ = desc
+}`},
+		{"остановка процесса через os.Exit", 1, `func runServe(cfg Config) {
+	desc, err := describe(cfg)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	_ = desc
+}`},
+		{"остановка процесса через panic", 1, `func runServe(cfg Config) {
+	desc, err := describe(cfg)
+	if err != nil {
+		panic(err)
+	}
+	_ = desc
+}`},
+		{"голая передача отказа наверх", 1, `func runServe(cfg Config) error {
+	_, err := describe(cfg)
+	return err
+}`},
+		{"передача результата целиком", 2, `func build(cfg Config) (servicecontract.Descriptor, error) {
+	return describe(cfg)
+}
+
+func runServe(cfg Config) error {
+	_, err := build(cfg)
+	return err
+}`},
+		{"выход в ветке else", 1, `func runServe(cfg Config) error {
+	desc, err := describe(cfg)
+	if err == nil {
+		_ = desc
+	} else {
+		return err
+	}
+	return nil
+}`},
+	}
+	for _, f := range forms {
+		t.Run(f.name, func(t *testing.T) {
+			reach := scanReach(t, f.caller)
+			if q := reach.quenched["demo"]; len(q) != 0 {
+				t.Fatalf("ЗАКОННАЯ форма %q объявлена находкой — гейт краснел бы на "+
+					"исправном дереве:\n%s", f.name, strings.Join(q, "\n"))
+			}
+			if reach.callersSeen == 0 {
+				t.Fatalf("вызовов поставщика не осмотрено — форма %q ушла в "+
+					"НЕВИДИМОСТЬ, а не в молчание", f.name)
+			}
+			if reach.callersReach != reach.callersSeen {
+				t.Fatalf("осмотрено %d, доходит %d — величины разошлись на законной "+
+					"форме %q", reach.callersSeen, reach.callersReach, f.name)
+			}
+			// Перепись обязана назвать РОВНО столько вызовов, сколько их в
+			// фикстуре. Двойной счёт одного вызова так же лжив, как пропуск:
+			// на нём разрыв «осмотрено/доходит» перестал бы сходиться.
+			if reach.callersSeen != f.calls {
+				t.Fatalf("перепись назвала %d вызовов, а в фикстуре их %d — форма %q "+
+					"считается не по разу", reach.callersSeen, f.calls, f.name)
+			}
+			t.Logf("законный близнец %q: осмотрено %d, доходит %d",
+				f.name, reach.callersSeen, reach.callersReach)
+		})
+	}
+}
+
+// ТИХИЕ ПОДДЕЛКИ — по одной на форму гашения. Каждая СОБИРАЕТСЯ и каждая
+// выглядит обычным кодом: громкая подделка (сломанная сборка, снятая переменная)
+// доказывала бы не то — она проверяла бы компилятор, а не гейт.
+func TestRefusalReachRedOnEveryQuenchingForm(t *testing.T) {
+	cases := []struct {
+		name   string
+		caller string
+		says   string
+	}{
+		{
+			name: "гашение в `_` — форма, гасящая посадку одним символом",
+			caller: `func runServe(cfg Config) error {
+	desc, _ := describe(cfg)
+	_ = desc
+	return nil
+}`,
+			says: "ПОГАШЕН",
+		},
+		{
+			name: "гашение при СОХРАНЁННОЙ проверке — она судит устаревшую переменную",
+			caller: `func runServe(cfg Config) error {
+	mode, err := servicecontract.ParseMode(cfg.AuthMode)
+	if err != nil {
+		return err
+	}
+	_ = mode
+	desc, _ := describe(cfg)
+	if err != nil {
+		return err
+	}
+	_ = desc
+	return nil
+}`,
+			says: "ПОГАШЕН",
+		},
+		{
+			name: "отказ принят и не проверен вовсе",
+			caller: `func runServe(cfg Config) error {
+	desc, derr := describe(cfg)
+	_ = derr
+	_ = desc
+	return nil
+}`,
+			says: "до ОСТАНОВКИ не доводится",
+		},
+		{
+			name: "проверяется ДРУГАЯ переменная",
+			caller: `func runServe(cfg Config) error {
+	mode, err := servicecontract.ParseMode(cfg.AuthMode)
+	if err != nil {
+		return err
+	}
+	_ = mode
+	desc, derr := describe(cfg)
+	if err != nil {
+		return err
+	}
+	_ = desc
+	_ = derr
+	return nil
+}`,
+			says: "до ОСТАНОВКИ не доводится",
+		},
+		{
+			name: "проверка есть, выхода нет",
+			caller: `func runServe(cfg Config) error {
+	desc, err := describe(cfg)
+	if err != nil {
+		log.Printf("посадка: %v", err)
+	}
+	_ = desc
+	return nil
+}`,
+			says: "до ОСТАНОВКИ не доводится",
+		},
+		{
+			name: "вызов голым выражением — результат отброшен весь",
+			caller: `func runServe(cfg Config) error {
+	describe(cfg)
+	return nil
+}`,
+			says: "голым выражением",
+		},
+		{
+			name: "гашение УРОВНЕМ ВЫШЕ — обёртка честно передаёт, вызывающий гасит",
+			caller: `func build(cfg Config) (servicecontract.Descriptor, error) {
+	return describe(cfg)
+}
+
+func runServe(cfg Config) error {
+	desc, _ := build(cfg)
+	_ = desc
+	return nil
+}`,
+			says: "ПОГАШЕН",
+		},
+		{
+			name: "форма распознавателю не известна — находка, а не тишина",
+			caller: `func use(servicecontract.Descriptor, error) {}
+
+func runServe(cfg Config) error {
+	use(describe(cfg))
+	return nil
+}`,
+			says: "НЕ ИЗВЕСТНА",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			reach := scanReach(t, c.caller)
+			q := strings.Join(reach.quenched["demo"], "\n")
+			if q == "" {
+				t.Fatalf("тихая подделка %q НЕ найдена: страж собран, исполняется и "+
+					"не может ничего остановить, а гейт этого не видит", c.name)
+			}
+			if !strings.Contains(q, c.says) {
+				t.Fatalf("находка не называет предмет (%q) — чинить будут не то:\n%s",
+					c.says, q)
+			}
+			if !strings.Contains(q, "services/demo/cmd/demo/d.go") {
+				t.Fatalf("находка не называет КООРДИНАТУ — по ней нечего чинить:\n%s", q)
+			}
+			if reach.callersReach >= reach.callersSeen {
+				t.Fatalf("перепись не показала разрыв: осмотрено %d, доходит %d",
+					reach.callersSeen, reach.callersReach)
+			}
+			t.Logf("подделка найдена: осмотрено %d, доходит %d\n%s",
+				reach.callersSeen, reach.callersReach, q)
+		})
+	}
+}
+
+// Находка обязана ДОЕХАТЬ ДО ВЕРДИКТА гейта, а не осесть в переписи. Проба
+// гоняет ТУ ЖЕ ветку решения, что и гейт, — иначе доказывала бы свойство копии.
+func TestRefusalReachSurfacesInTheGateVerdict(t *testing.T) {
+	reach := scanReach(t, `func runServe(cfg Config) error {
+	desc, _ := describe(cfg)
+	_ = desc
+	return nil
+}`)
+	findings := adjudicatePostureReach(reach, map[string]postureReachRelaxation{})
+	joined := strings.Join(findings, "\n")
+	if !strings.Contains(joined, "ОТКАЗ до остановки процесса НЕ ДОХОДИТ") {
+		t.Fatalf("погашенный отказ не стал находкой ГЕЙТА — он осел бы в переписи, "+
+			"которую никто не читает:\n%s", joined)
+	}
+	if !strings.Contains(joined, "demo") {
+		t.Fatalf("находка не называет компонент:\n%s", joined)
+	}
+}
+
+// Поставщик, которого никто не зовёт: страж собран и не исполняется. Имя
+// неэкспортированное — из своего пакета вызвать его больше неоткуда, поэтому
+// это НАХОДКА, а не «судить нечем».
+func TestRefusalReachRedWhenTheProviderIsNeverCalled(t *testing.T) {
+	reach := scanReach(t, ``)
+	q := strings.Join(reach.quenched["demo"], "\n")
+	if !strings.Contains(q, "не вызывается НИ РАЗУ") {
+		t.Fatalf("поставщик без вызовов не стал находкой — страж собран и не "+
+			"исполняется, а гейт молчит:\n%s", q)
+	}
+	if reach.callersSeen != 0 {
+		t.Fatalf("вызовов осмотрено %d там, где их нет", reach.callersSeen)
 	}
 }
