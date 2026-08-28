@@ -674,7 +674,6 @@ var debtFiles = map[string]string{
 	// Правка тех же слов рядом с чужими изменениями даёт конфликт на ровном
 	// месте, поэтому вынесено следующим шагом — запись истечёт сама, когда
 	// упоминание уйдёт.
-	"services/compute/tests/newman/cases/operation.py":         "prose comment; file is owned by concurrent newman work",
 	"services/nlb/tests/newman/cases/operation.py":             "prose comment; file is owned by concurrent newman work",
 	"services/compute/tests/newman/scripts/gen.py":             "prose comment in the suite generator; file is owned by concurrent newman work",
 	"services/storage/tests/newman/scripts/gen.py":             "prose comment in the suite generator; file is owned by concurrent newman work",

@@ -14,7 +14,7 @@ assert'ов. Закрытие пункта = решение владельца �
 | # | Что не закреплено | Где в кейсах | Текущая формулировка (placeholder) | Желаемое |
 |---|---|---|---|---|
 | PROBE-01 | Текст `NotFound` для Disk/Image/Snapshot/Instance/DiskType/Zone Get garbage id | `*-GET-CONF-NF-TEXT`, `DT/ZONE-GET-CONF-NF-TEXT` | substr `"not found"` | точная формулировка `^<Resource> <id> not found$` (как у kacho-vpc) → regex-assert |
-| PROBE-02 | Текст `NotFound` для Operation Get garbage epd-id | `OP-GET-CONF-NF-TEXT` | substr `"not found"` | `^Operation <id> not found$` (контракт-тон) |
+| PROBE-02 | Текст `NotFound` для Operation Get garbage epd-id | `OP-GET-CONF-NF-TEXT` | substr `"not found"` | `^operation <id> not found$` (текст владельца — `operations.NotFoundStatus`) |
 | PROBE-03 | Текст `ALREADY_EXISTS` для duplicate `(project, name)` | `*-CR-NEG-DUP-NAME` | только code 6 | закрепить текст → assert |
 | PROBE-04 | Текст `InvalidArgument` для unknown disk type_id (и: NotFound vs InvalidArgument?) | `DISK-CR-NEG-TYPE-UNKNOWN` | code 5, substr `"disk type"` | точный code + text |
 | PROBE-05 | unknown zone_id в Disk.Create / Disk.Relocate: сейчас `InvalidArgument`, а по конвенции by-lane split чужой id — peer-validate lane, то есть `FailedPrecondition` | `DISK-CR-NEG-ZONE-UNKNOWN`, `DISK-REL-NEG-DEST-ZONE-UNKNOWN` | allow code 3\|5 | привести к конвенции → single code |
