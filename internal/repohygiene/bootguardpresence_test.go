@@ -19,14 +19,15 @@ import (
 //
 // ПРЕДМЕТ — ban #16 дословно: «Каждый сервис ОБЯЗАН нести production boot-guard
 // (`Config.Validate()` fail-closed → refuse-to-start при insecure config)».
-// Запрет объявлен один, а исполняется семью разными способами, и один из семи —
-// нулевой.
+// Запрет объявлен один, а исполняется семью разными способами.
 //
-// ЧТО ИМЕННО НАЙДЕНО, И ЭТО НЕ ОПЕЧАТКА. geo объявляет `DBSSLMode` с умолчанием
-// `disable`, `AuthMode`, обе пары mTLS — каждую с комментарием про боевой
-// режим, — и не проверяет НИ ОДНУ. Есть самоотчёт о посадке (`bootPosture`) и
-// разбор режима, но самоотчёт сообщает, а не отказывает: процесс с
-// `sslmode=disable` в боевом режиме стартует и рапортует об этом.
+// ЧТО НАЙДЕНО ЗАВЕДЕНИЕМ ГЕЙТА, И ЭТО НЕ ОПЕЧАТКА. geo объявлял `DBSSLMode` с
+// умолчанием `disable`, `AuthMode`, обе пары mTLS — каждую с комментарием про
+// боевой режим, — и не проверял НИ ОДНУ. Самоотчёт о посадке (`bootPosture`) и
+// разбор режима были, но самоотчёт сообщает, а не отказывает: процесс с
+// `sslmode=disable` в боевом режиме стартовал и рапортовал об этом. Страж
+// заведён тем же изменением, что и гейт; число в переписи — ЕГО вывод на
+// сегодняшнем дереве, а не переписанное здесь утверждение.
 //
 // ПОЧЕМУ ГЕЙТ, А НЕ ОБЗОР. Отсутствие стража ничем не проявляется: сервис
 // собирается, поднимается, отвечает и печатает красивый самоотчёт. Заметить
@@ -38,13 +39,19 @@ import (
 // отдельный, со своей приёмкой. Здесь требуется одно: у объявленных посадочных
 // ручек есть читатель, который на небезопасном значении ОТКАЗЫВАЕТ.
 //
-// ГРАНИЦА ОХВАТА НАЗВАНА, И ОНА ЧЕСТНАЯ. Перепись печатает «объявляют посадочные
-// ручки: 4» из семи сервисов, и это не слепота распознавателя: у iam, nlb и vpc
-// таких ручек через `envconfig` РОВНО НОЛЬ — они читают настройки иначе
-// (`viper`/`koanf`, `os.Getenv`). То есть предмета у этого гейта там нет, а не
-// спрятан. Сведение трёх механизмов чтения к одному — предмет крупнее, со своей
-// приёмкой; пока он не сделан, гейт судит тех, у кого предмет есть, и говорит об
-// этом числом.
+// ГРАНИЦА ОХВАТА НАЗВАНА ЧИСЛОМ, А НЕ СЛОВОМ. Перепись печатает ДВЕ величины —
+// сколько сервисов осмотрено и сколько из них объявляют посадочные ручки, —
+// потому что одно число скрывает ровно тот случай, ради которого гейт заведён:
+// «ноль находок» становится неотличимо от «ноль прочитанного».
+//
+// Здесь стояло «объявляют посадочные ручки: 4 из семи; у iam, nlb и vpc их
+// РОВНО НОЛЬ». Это было верно для распознавателя, знавшего ОДНУ форму записи
+// (`envconfig`), и перестало быть верным, когда он научился второй
+// (`mapstructure`): три сервиса читают настройки через `viper`/`koanf`, и их
+// ручки не отсутствовали — они были ВНЕ НАБЛЮДЕНИЯ. Форма, о которой
+// распознаватель не знает, не даёт ни красного, ни зелёного; она молчит
+// (`testing.md` §«Гейт на класс», п.7). Число не переписывается сюда впредь:
+// его печатает прогон.
 //
 // ТРЕТЬЯ ФОРМА, КОТОРУЮ ГЕЙТ НЕ ЛОВИТ, И ПОЧЕМУ ЭТО НЕ ДЫРА. Страж может быть
 // позван, а результат проигнорирован — `_ = cfg.Validate()` либо вызов без
@@ -56,11 +63,20 @@ import (
 func TestServiceDeclaringPostureKnobsHasABootGuard(t *testing.T) {
 	root := repoRoot(t)
 
+	// ТРИ ОСИ СВЯЗАНЫ ОДНИМ ПАКЕТОМ, А НЕ СЧИТАЮТСЯ ПОРОЗНЬ. `Config.Validate()`
+	// в дереве объявляют и мигратор, и доменные пакеты: у iam таких объявлений
+	// три, у nlb и vpc по два. Гейт, берущий «первого попавшегося стража»,
+	// записывал бы каталог произвольно и требовал свидетеля не там — а зелёное
+	// держалось бы совпадением. Поэтому сервис считается защищённым, только если
+	// НАЙДЁТСЯ ОДИН пакет, в котором сходятся все три: объявлены посадочные
+	// ручки · объявлен страж · есть проба, доказывающая отказ.
 	type svc struct {
-		knobs    []string // объявленные посадочные ручки
-		guardAt  string   // где ОБЪЯВЛЕН отказ старта
-		calledAt string   // где он ПОЗВАН загрузочным путём
-		provenAt string   // где ДОКАЗАНО, что он отвергает
+		knobs    []string        // объявленные посадочные ручки (для переписи)
+		calledAt string          // где страж ПОЗВАН загрузочным путём
+		knobDirs map[string]bool // пакеты, объявляющие посадочные ручки
+		guards   map[string]bool // пакеты, объявляющие стража
+		proofs   map[string]bool // пакеты со свидетелем отказа
+		anyGuard string          // любое объявление стража — для внятной находки
 	}
 	found := map[string]*svc{}
 
@@ -87,7 +103,11 @@ func TestServiceDeclaringPostureKnobsHasABootGuard(t *testing.T) {
 		}
 		name := parts[1]
 		if found[name] == nil {
-			found[name] = &svc{}
+			found[name] = &svc{
+				knobDirs: map[string]bool{},
+				guards:   map[string]bool{},
+				proofs:   map[string]bool{},
+			}
 		}
 		b, err := os.ReadFile(abs) // #nosec G304 -- путь из индекса git этого модуля
 		if err != nil {
@@ -103,10 +123,14 @@ func TestServiceDeclaringPostureKnobsHasABootGuard(t *testing.T) {
 					k = m[2]
 				}
 				found[name].knobs = append(found[name].knobs, k)
+				found[name].knobDirs[filepath.Dir(rel)] = true
 			}
 		}
-		if !isTest && found[name].guardAt == "" && postureGuardRe.MatchString(src) {
-			found[name].guardAt = rel
+		if !isTest && postureGuardRe.MatchString(src) {
+			found[name].guards[filepath.Dir(rel)] = true
+			if found[name].anyGuard == "" {
+				found[name].anyGuard = rel
+			}
 		}
 		// ВЫЗОВ стража, а не только его объявление. Гейт, довольный объявлением,
 		// удостоверяет стража, который никогда не исполняется, — ровно та форма
@@ -124,9 +148,13 @@ func TestServiceDeclaringPostureKnobsHasABootGuard(t *testing.T) {
 		// Поэтому он требует СВИДЕТЕЛЯ: пробу, которая подаёт небезопасное
 		// значение и ждёт ошибки. Заглушка такую пробу не переживёт by
 		// construction, и подделать её нельзя, не написав настоящей проверки.
-		if found[name].provenAt == "" && isTest &&
-			postureGuardCallRe.MatchString(src) && postureRefusalProofRe.MatchString(src) {
-			found[name].provenAt = rel
+		// Свидетель обязан жить В ТОМ ЖЕ ПАКЕТЕ, что и страж. Это структурное
+		// требование, а не текстовое: проба в доменном пакете судит доменную
+		// проверку, и засчитывать её за доказательство посадки — то же самое, что
+		// принимать чужой отказ за свой. Граница слова выше закрывает совпадение
+		// по имени переменной; общий пакет — совпадение по смыслу.
+		if isTest && postureGuardCallRe.MatchString(src) && postureRefusalProofRe.MatchString(src) {
+			found[name].proofs[filepath.Dir(rel)] = true
 		}
 	}
 
@@ -144,18 +172,31 @@ func TestServiceDeclaringPostureKnobsHasABootGuard(t *testing.T) {
 			continue
 		}
 		withKnobs++
-		if s.guardAt != "" && s.calledAt != "" && s.provenAt != "" {
+		// Пакет, в котором сходятся ручки и страж, — единственный, чья проба
+		// является свидетельством ПОСАДКИ, а не доменной проверки.
+		guarded, guardedUnproven := false, false
+		for d := range s.knobDirs {
+			if !s.guards[d] {
+				continue
+			}
+			if s.proofs[d] {
+				guarded = true
+				break
+			}
+			guardedUnproven = true
+		}
+		if guarded && s.calledAt != "" {
 			withGuard++
 			continue
 		}
-		if s.guardAt != "" && s.calledAt != "" && s.provenAt == "" {
+		if guardedUnproven && s.calledAt != "" {
 			findings = append(findings, n+" — страж объявлен и позван, но НИ ОДНА проба не "+
 				"доказывает, что он отвергает: `Validate() error { return nil }` прошёл бы этот "+
 				"гейт насквозь")
 			continue
 		}
-		if s.guardAt != "" && s.calledAt == "" {
-			findings = append(findings, n+" — страж ОБЪЯВЛЕН ("+s.guardAt+
+		if (guarded || guardedUnproven) && s.calledAt == "" {
+			findings = append(findings, n+" — страж ОБЪЯВЛЕН ("+s.anyGuard+
 				"), но не позван ни одним загрузочным путём: он не исполняется никогда")
 			continue
 		}
@@ -206,7 +247,12 @@ var (
 	postureGuardRe = regexp.MustCompile(`(?m)^func \(c Config\) Validate\(\) error|ForwarderGate\{|refuses insecure config`)
 	// Вызов стража из загрузочного пути. Судится вызов, а не имя файла: у одних
 	// он стоит в `main`, у других в `serve`.
-	postureGuardCallRe = regexp.MustCompile(`(?:cfg|c|conf)\.Validate\(\)`)
+	// Граница слова обязательна: без неё образец совпадал с `hc.Validate()`,
+	// `svc.Validate()`, `loc.Validate()`, `rec.Validate()` — то есть с доменными
+	// проверками, к посадке отношения не имеющими. Ось доказательства при этом
+	// «держалась» у пяти сервисов из семи ЛОЖНЫМИ свидетелями: снятие настоящей
+	// пробы nlb гейт не заметил.
+	postureGuardCallRe = regexp.MustCompile(`\b(?:cfg|c|conf)\.Validate\(\)`)
 	// Свидетель отказа: проба ждёт ошибки от стража.
 	postureRefusalProofRe = regexp.MustCompile(`err == nil \{|require\.Error\(|assert\.Error\(`)
 )
