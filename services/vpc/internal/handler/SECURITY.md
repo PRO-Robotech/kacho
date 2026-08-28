@@ -114,7 +114,7 @@ hostname/db/query-fragment в тексте. Прямых `status.Errorf(codes.In
 > 2026-07-30.
 
 - ~~**`OperationService.Get(operation_id)` без project-ownership-check**~~ — **ЗАКРЫТО.**
-  Ownership энфорсится в хендлере: `OperationHandler.Get/Cancel` идут через
+  Ownership энфорсится в общем слое: `operationspb.Handler.Get/Cancel` идут через
   ownership-scoped `GetOwned`/`CancelOwned` (владелец — creator-principal из доверенного
   контекста), чужой id → `NotFound` без утечки существования. В карте разрешений оба RPC
   помечены `Public`, и это означает «ReBAC-exempt», а НЕ «без проверки»: в модели нет

@@ -415,7 +415,7 @@ compute), которое γ будет читать для selector-матчин
   первые 3 символа id и на любой нероутящийся отвечает `400 INVALID_ARGUMENT
   "operation_id has unknown prefix"`. По конвенции by-lane split
   well-formed-но-нерезолвящийся own-owned id — это direct-read lane, то есть
-  `404 NotFound "Operation <X> not found"`; malformed — `400 InvalidArgument`.
+  `404 NotFound "operation <X> not found"`; malformed — `400 InvalidArgument`.
   Сейчас различия нет, оба схлопнуты в 400 — отступление по коду. Предмет живёт
   **на крае**, не здесь, и общий для всех сервисов; парная запись —
   `services/vpc/docs/engineering/architecture/07-known-divergences.md`.
@@ -454,10 +454,10 @@ tuple'ов никто не эмитит, поэтому вопрос «viewer н
 > авторизация сводится к знанию непрозрачного id, а усиление — «поведенческое
 > изменение замороженного контракта, вне scope». Усиление **приземлилось**: доступ
 > привязан к принципалу, создавшему операцию, предикатом владельца **в самом SQL**
-> (`GetOwned` / `CancelOwned`, `internal/handler/operation_handler.go`); запрос без
+> (`GetOwned` / `CancelOwned`, `pkg/operations/operationspb/handler.go`); запрос без
 > опознанного принципала владельцем не считается; не-владелец и несуществующая
 > операция отвечают **одинаковым** `NotFound`, поэтому ответ не сообщает, существует
-> ли операция вообще. Замки: `operation_handler_test.go`,
+> ли операция вообще. Замки: `pkg/operations/operationspb/handler_test.go`,
 > `operation_ownership_forged_admin_test.go`.
 >
 > Оставлять запись в прежнем виде было опаснее, чем не иметь её вовсе: реестр

@@ -16,9 +16,9 @@ import (
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/lro"
-	"github.com/PRO-Robotech/kacho/services/geo/internal/handler"
 )
 
 // seedInFlightOwnedOp пишет незавершённую (done=false) LRO-строку через РЕАЛЬНЫЙ
@@ -41,7 +41,7 @@ func seedInFlightOwnedOp(t *testing.T, ops operations.Repo, owner operations.Pri
 func TestOperationOwnerScoping_pgRepo(t *testing.T) {
 	pool := newTestPool(t)
 	ops := operations.NewRepo(pool, "kacho_geo")
-	oh := handler.NewOperationHandler(ops)
+	oh := operationspb.NewHandler(ops)
 
 	adminA := operations.Principal{Type: "user", ID: "usr_owner_A"}
 	adminB := operations.Principal{Type: "user", ID: "usr_owner_B"}
@@ -76,7 +76,7 @@ func TestOperationOwnerScoping_pgRepo(t *testing.T) {
 func TestOperationCancel_TerminalSuccess_FailedPrecondition_pgRepo(t *testing.T) {
 	pool := newTestPool(t)
 	ops := operations.NewRepo(pool, "kacho_geo")
-	oh := handler.NewOperationHandler(ops)
+	oh := operationspb.NewHandler(ops)
 
 	owner := operations.Principal{Type: "user", ID: "usr_term_success"}
 	ctx := operations.WithPrincipal(context.Background(), owner)
@@ -104,7 +104,7 @@ func TestOperationCancel_TerminalSuccess_FailedPrecondition_pgRepo(t *testing.T)
 func TestOperationCancel_IdempotentReCancel_pgRepo(t *testing.T) {
 	pool := newTestPool(t)
 	ops := operations.NewRepo(pool, "kacho_geo")
-	oh := handler.NewOperationHandler(ops)
+	oh := operationspb.NewHandler(ops)
 
 	owner := operations.Principal{Type: "user", ID: "usr_idem"}
 	ctx := operations.WithPrincipal(context.Background(), owner)
@@ -130,7 +130,7 @@ func TestOperationCancel_IdempotentReCancel_pgRepo(t *testing.T) {
 func TestOperationCancelVsMarkDone_Race_ExactlyOneTerminal_pgRepo(t *testing.T) {
 	pool := newTestPool(t)
 	ops := operations.NewRepo(pool, "kacho_geo")
-	oh := handler.NewOperationHandler(ops)
+	oh := operationspb.NewHandler(ops)
 
 	owner := operations.Principal{Type: "user", ID: "usr_race"}
 	ctx := operations.WithPrincipal(context.Background(), owner)

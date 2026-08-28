@@ -22,10 +22,10 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
 	region "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/region"
 	zone "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/zone"
-	"github.com/PRO-Robotech/kacho/services/geo/internal/handler"
 )
 
 const (
@@ -47,7 +47,7 @@ func TestRegisterServices_InternalAdminNotOnPublic(t *testing.T) {
 	// дескрипторы (RPC не вызываются), DB не нужна.
 	regionUC := region.New(nil, nil, nil, nil)
 	zoneUC := zone.New(nil, nil, nil, nil)
-	opHandler := handler.NewOperationHandler(operations.Repo(nil))
+	opHandler := operationspb.NewHandler(operations.Repo(nil))
 
 	registerPublic(publicSrv, regionUC, zoneUC, opHandler)
 	registerInternal(internalSrv, regionUC, zoneUC, opHandler)
@@ -91,7 +91,7 @@ func TestRegisterServices_MethodsPresent(t *testing.T) {
 	internalSrv := grpc.NewServer()
 	regionUC := region.New(nil, nil, nil, nil)
 	zoneUC := zone.New(nil, nil, nil, nil)
-	opHandler := handler.NewOperationHandler(operations.Repo(nil))
+	opHandler := operationspb.NewHandler(operations.Repo(nil))
 	registerPublic(publicSrv, regionUC, zoneUC, opHandler)
 	registerInternal(internalSrv, regionUC, zoneUC, opHandler)
 

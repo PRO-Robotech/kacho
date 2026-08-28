@@ -24,6 +24,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
@@ -148,7 +149,7 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("диагностическая поверхность: %w", derr)
 	}
 
-	opHandler := handler.NewOperationHandler(opsRepo)
+	opHandler := operationspb.NewHandler(opsRepo)
 	serveErr := servicehost.Serve(ctx, desc,
 		func(reg grpc.ServiceRegistrar) { registerPublic(reg, regionUC, zoneUC, opHandler) },
 		func(reg grpc.ServiceRegistrar) { registerInternal(reg, regionUC, zoneUC, opHandler) },

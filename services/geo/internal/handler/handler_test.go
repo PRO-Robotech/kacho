@@ -13,6 +13,7 @@ import (
 
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
 	region "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/region"
 	zone "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/zone"
@@ -274,7 +275,7 @@ func TestZoneHandler_List_repoError_mapsToStatus(t *testing.T) {
 
 // TestOperationHandler_Get_notFound — несуществующий operation_id → NOT_FOUND.
 func TestOperationHandler_Get_notFound(t *testing.T) {
-	oh := handler.NewOperationHandler(repomock.NewOpsRepo())
+	oh := operationspb.NewHandler(repomock.NewOpsRepo())
 	_, err := oh.Get(context.Background(), &operationpb.GetOperationRequest{OperationId: "geo-absent"})
 	if status.Code(err) != codes.NotFound {
 		t.Fatalf("want NOT_FOUND, got %v", err)

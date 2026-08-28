@@ -25,6 +25,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
@@ -426,7 +427,7 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("диагностическая поверхность: %w", diagErr)
 	}
 
-	opHandler := handler.NewOperationHandler(opsRepo)
+	opHandler := operationspb.NewHandler(opsRepo)
 	serveErr := servicehost.Serve(ctx, desc,
 		func(reg grpc.ServiceRegistrar) {
 			registerPublic(reg, volumeUC, snapshotUC, imageUC, diskTypeUC, quotaHandler, opHandler)

@@ -1083,7 +1083,7 @@
       ]
     },
     {
-      "name": "OP-GET-CONF-NF-TEXT — Get несуществующего opId → verbatim 'Operation ... not found'",
+      "name": "OP-GET-CONF-NF-TEXT — Get несуществующего opId → текст владельца 'operation ... not found'",
       "description": "class:CONF | class:NEG | priority:P1",
       "item": [
         {
