@@ -330,3 +330,235 @@ func TestJournalCursorGateDeclaresItsBlindSpots(t *testing.T) {
 		})
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ТРЕТЬЯ ЗАКРЫТОСТЬ — позиция, выдаваемая в ПОРЯДКЕ ФИКСАЦИЙ (kacho#1387).
+//
+// Она лежит на стороне ПИСАТЕЛЯ и в запросе читателя невидима by construction,
+// поэтому доказывать её приходится не одним «покраснел/смолчал», а инъекцией ПО
+// КАЖДОМУ признаку: судить по слову `pg_advisory_xact_lock` значило бы принять за
+// закрытость блокировку, взятую не там, не так и не тем.
+//
+// Стенд ниже — законное состояние: таблица со счётчиком, триггер `BEFORE INSERT
+// OR UPDATE`, штампующий её под транзакционной блокировкой с ключом-константой, и
+// читатель БЕЗ верхней границы. Читатель тот же во всех случаях; меняется только
+// объявление писателя — инъекция роняет ТОЛЬКО проверяемое.
+
+// jcOrderedWriter — тело миграции писателя. Части вынесены в параметры, чтобы
+// каждый случай отличался от законного РОВНО одним признаком.
+func jcOrderedWriter(lock, stampBefore, stampAfter, timing, events, down string) string {
+	return `
+CREATE TABLE kacho_probe.limits (
+    revision bigint NOT NULL,
+    payload jsonb NOT NULL
+);
+-- +goose Up
+CREATE OR REPLACE FUNCTION kacho_probe.limits_stamp_revision() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+` + stampBefore + `
+    ` + lock + `
+` + stampAfter + `
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS limits_stamp_revision_trg ON kacho_probe.limits;
+CREATE TRIGGER limits_stamp_revision_trg
+    ` + timing + ` ` + events + ` ON kacho_probe.limits
+    FOR EACH ROW
+    EXECUTE FUNCTION kacho_probe.limits_stamp_revision();
+` + down
+}
+
+const (
+	jcXactLockCall  = `PERFORM pg_advisory_xact_lock(hashtext('kacho_probe.limits_revision'));`
+	jcStampCall     = `    NEW.revision := nextval('kacho_probe.limits_revision_seq');`
+	jcOrderedReader = "package repo\n\n" +
+		"const deltaSQL = `SELECT revision FROM limits" +
+		" WHERE revision > $1 ORDER BY revision ASC LIMIT 512`\n"
+)
+
+// jcOrderedStand — стенд с писателем и читателем. Возвращает находки и перепись.
+func jcOrderedStand(t *testing.T, writer string) ([]JournalCursorFinding, JournalCursorCensus) {
+	t.Helper()
+	s := newJournalCursorStand(t)
+	s.write(t, "services/probe/internal/migrations/0092_limits.sql", writer)
+	s.write(t, "services/probe/internal/repo/limit_repo.go", jcOrderedReader)
+	return s.audit(t)
+}
+
+// TestJournalCursorGateReadsClosednessOnTheWriterSide — КОНТРОЛЬ третьей
+// закрытости: законный писатель молчит, и перепись это ПОКАЗЫВАЕТ.
+//
+// Утверждаются обе величины сразу. Одного «находок нет» мало: ровно так же
+// молчит распознаватель, переставший читать триггеры вовсе, — и тогда молчание
+// означало бы не закрытость, а слепоту.
+func TestJournalCursorGateReadsClosednessOnTheWriterSide(t *testing.T) {
+	findings, census := jcOrderedStand(t,
+		jcOrderedWriter(jcXactLockCall, "", jcStampCall, "BEFORE", "INSERT OR UPDATE", ""))
+
+	if len(findings) != 0 {
+		t.Fatalf("законное чтение по колонке, выдаваемой в порядке фиксаций, объявлено находкой: %v", findings)
+	}
+	if census.CommitOrderedColumns != 1 {
+		t.Fatalf("колонок в порядке фиксаций %d, ожидалась 1: закрытость не выведена из тела триггера",
+			census.CommitOrderedColumns)
+	}
+	if census.CommitOrdered != 1 {
+		t.Fatalf("чтений, закрытых порядком фиксаций, %d, ожидалось 1: перепись не показывает, "+
+			"ЧЕМ закрыто — прибавка к молчанию неотличима от расширения слепой зоны", census.CommitOrdered)
+	}
+	// И читатель ПРОЧИТАН: молчание на непрочитанном не доказывает ничего.
+	if census.CounterReads != 2 {
+		t.Fatalf("чтений по счётчику %d, ожидалось 2 (ограниченное близнеца и закрытое порядком фиксаций)",
+			census.CounterReads)
+	}
+}
+
+// TestJournalCursorGateJudgesTheShapeNotTheWord — ИНЪЕКЦИЯ ПО КАЖДОМУ ПРИЗНАКУ.
+//
+// Каждый случай — законная запись писателя, у которого ОДИН признак закрытости
+// снят; текст `pg_advisory_xact_lock` при этом в большинстве случаев остаётся на
+// месте. Гейт, судящий по слову, прошёл бы их все.
+func TestJournalCursorGateJudgesTheShapeNotTheWord(t *testing.T) {
+	cases := []struct {
+		name   string
+		writer string
+	}{
+		{
+			"блокировки нет вовсе — номер выдан вне всякого порядка",
+			jcOrderedWriter("", "", jcStampCall, "BEFORE", "INSERT OR UPDATE", ""),
+		},
+		{
+			"блокировка ПОСЛЕ выдачи номера — не упорядочивает ничего",
+			jcOrderedWriter("", jcStampCall, "    "+jcXactLockCall, "BEFORE", "INSERT OR UPDATE", ""),
+		},
+		{
+			"блокировка СЕАНСОВАЯ — до фиксации не держится",
+			jcOrderedWriter(`PERFORM pg_advisory_lock(hashtext('kacho_probe.limits_revision'));`,
+				"", jcStampCall, "BEFORE", "INSERT OR UPDATE", ""),
+		},
+		{
+			"блокировка НЕОБЯЗАТЕЛЬНАЯ — вправе не взять и пойти дальше",
+			jcOrderedWriter(`PERFORM pg_try_advisory_xact_lock(hashtext('kacho_probe.limits_revision'));`,
+				"", jcStampCall, "BEFORE", "INSERT OR UPDATE", ""),
+		},
+		{
+			"ключ блокировки ЗАВИСИТ ОТ СТРОКИ — порядок лишь внутри своей группы",
+			jcOrderedWriter(`PERFORM pg_advisory_xact_lock(hashtext(NEW.scope_id));`,
+				"", jcStampCall, "BEFORE", "INSERT OR UPDATE", ""),
+		},
+		{
+			"триггер AFTER — NEW уже не меняет",
+			jcOrderedWriter(jcXactLockCall, "", jcStampCall, "AFTER", "INSERT OR UPDATE", ""),
+		},
+		{
+			"триггер без INSERT — вставленной строке достаётся умолчание колонки",
+			jcOrderedWriter(jcXactLockCall, "", jcStampCall, "BEFORE", "UPDATE", ""),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			findings, census := jcOrderedStand(t, tc.writer)
+			bare := journalCursorKinds(findings, JournalCursorBareNumber)
+			if census.CommitOrderedColumns != 0 {
+				t.Fatalf("колонок в порядке фиксаций %d, ожидалось 0: признак снят, а закрытость объявлена",
+					census.CommitOrderedColumns)
+			}
+			if len(bare) != 1 {
+				t.Fatalf("находок «курсор по голому номеру» %d, ожидалась 1: %v", len(bare), findings)
+			}
+			if !strings.Contains(bare[0].Where, "limit_repo.go") {
+				t.Fatalf("находка не называет координату чтения: %q", bare[0].Where)
+			}
+			if !strings.Contains(bare[0].What, "revision") {
+				t.Fatalf("находка не называет колонку позиции: %q", bare[0].What)
+			}
+		})
+	}
+}
+
+// TestJournalCursorGateHonoursTheOrderOfMigrations — более поздняя миграция
+// СНИМАЕТ закрытость, а нисходящая часть — НЕ снимает.
+//
+// Оба случая читаются одним линейным проходом и различаются только тем, к живой
+// ли базе применяется текст. Первая редакция распознавателя этого не различала и
+// нашла НОЛЬ закрытых колонок при живом триггере в дереве: миграция, заведшая
+// триггер, в своей нисходящей части его же и снимает.
+func TestJournalCursorGateHonoursTheOrderOfMigrations(t *testing.T) {
+	legit := jcOrderedWriter(jcXactLockCall, "", jcStampCall, "BEFORE", "INSERT OR UPDATE", "")
+
+	t.Run("нисходящая часть закрытость НЕ снимает", func(t *testing.T) {
+		_, census := jcOrderedStand(t, legit+
+			"\n-- +goose Down\nDROP TRIGGER IF EXISTS limits_stamp_revision_trg ON kacho_probe.limits;\n"+
+			"DROP FUNCTION IF EXISTS kacho_probe.limits_stamp_revision();\n")
+		if census.CommitOrderedColumns != 1 {
+			t.Fatalf("колонок в порядке фиксаций %d, ожидалась 1: нисходящая часть прочитана как "+
+				"применённая, хотя к живой базе она не применяется", census.CommitOrderedColumns)
+		}
+	})
+
+	t.Run("более поздняя миграция снимает триггер", func(t *testing.T) {
+		s := newJournalCursorStand(t)
+		s.write(t, "services/probe/internal/migrations/0092_limits.sql", legit)
+		s.write(t, "services/probe/internal/migrations/0093_retire.sql",
+			"-- +goose Up\nDROP TRIGGER IF EXISTS limits_stamp_revision_trg ON kacho_probe.limits;\n")
+		s.write(t, "services/probe/internal/repo/limit_repo.go", jcOrderedReader)
+		findings, census := s.audit(t)
+		if census.CommitOrderedColumns != 0 {
+			t.Fatalf("колонок в порядке фиксаций %d, ожидалось 0: закрытость пережила снявшую её миграцию",
+				census.CommitOrderedColumns)
+		}
+		if len(journalCursorKinds(findings, JournalCursorBareNumber)) != 1 {
+			t.Fatalf("снятие триггера не вернуло находку: %v", findings)
+		}
+	})
+
+	t.Run("более поздняя миграция заменяет функцию без блокировки", func(t *testing.T) {
+		s := newJournalCursorStand(t)
+		s.write(t, "services/probe/internal/migrations/0092_limits.sql", legit)
+		s.write(t, "services/probe/internal/migrations/0093_relax.sql",
+			"-- +goose Up\nCREATE OR REPLACE FUNCTION kacho_probe.limits_stamp_revision() RETURNS trigger\n"+
+				"    LANGUAGE plpgsql\n    AS $$\nBEGIN\n"+jcStampCall+"\n    RETURN NEW;\nEND;\n$$;\n")
+		s.write(t, "services/probe/internal/repo/limit_repo.go", jcOrderedReader)
+		findings, census := s.audit(t)
+		if census.CommitOrderedColumns != 0 {
+			t.Fatalf("колонок в порядке фиксаций %d, ожидалось 0: замена функции без блокировки "+
+				"закрытости не сняла", census.CommitOrderedColumns)
+		}
+		if len(journalCursorKinds(findings, JournalCursorBareNumber)) != 1 {
+			t.Fatalf("замена функции без блокировки не вернула находку: %v", findings)
+		}
+	})
+}
+
+// TestJournalCursorAllowanceExpiresOnClosednessBecomingVisible — послабление,
+// заведённое на ЗАКОННОЕ чтение, обязано истечь, как только гейт научился видеть
+// его закрытость.
+//
+// Ради этого свойства задача и заводилась: пока закрытость невидима, запись в
+// ведомости выглядит долгом, самоистечение по ней не сработает НИКОГДА (предмет
+// у неё есть и будет всегда), и следующий читатель ведомости не отличит «ещё не
+// починили» от «чинить нечего».
+func TestJournalCursorAllowanceExpiresOnClosednessBecomingVisible(t *testing.T) {
+	s := newJournalCursorStand(t)
+	s.write(t, "services/probe/internal/migrations/0092_limits.sql",
+		jcOrderedWriter(jcXactLockCall, "", jcStampCall, "BEFORE", "INSERT OR UPDATE", ""))
+	s.write(t, "services/probe/internal/repo/limit_repo.go", jcOrderedReader)
+
+	findings, _ := s.audit(t, JournalCursorAllowance{
+		File:    "services/probe/internal/repo/limit_repo.go",
+		Column:  "revision",
+		Because: "заведено, пока закрытость на стороне писателя была невидима",
+	})
+	stale := journalCursorKinds(findings, JournalCursorAllowanceStale)
+	if len(stale) != 1 {
+		t.Fatalf("послабление на законное чтение пережило свой предмет молча: %v", findings)
+	}
+	if !strings.Contains(stale[0].Where, "limit_repo.go") {
+		t.Fatalf("находка не называет истёкшую запись: %q", stale[0].Where)
+	}
+}
