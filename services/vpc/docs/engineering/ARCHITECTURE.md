@@ -619,7 +619,6 @@ api-gateway смотрит на первые 3 символа Operation.id и н
 |---|---|---|
 | `operations` | Long-running operations (синхронизирована с corelib) | `id` |
 | `vpc_outbox` | Транзакционный журнал доменных событий (in-cluster `LISTEN/NOTIFY`; Watch RPC не публикуется) | `sequence_no` |
-| `vpc_watch_cursors` | Vestigial-таблица из baseline-схемы; кодом не используется (Watch RPC удален) | `subscriber_id` |
 
 ### 5.5 Связи между ресурсами (FK contract)
 
@@ -694,7 +693,6 @@ Source of truth — `internal/migrations/*.sql`: `0001_initial.sql` (baseline-с
 | `address_pools` | `id`, `name`, `description`, `labels`, `v4_cidr_blocks text[]`, `v6_cidr_blocks text[]`, `kind smallint`, `is_default`, `zone_id text` (без FK — geography→**geo**), `selector_labels jsonb`, `selector_priority`, `modified_at`. Неперекрытие блоков внутри `kind` — child-таблица `address_pool_cidrs` + EXCLUDE (миграция 0004) |
 | `address_pool_network_default` | `network_id PK`, `pool_id`, `bound_at` |
 | `vpc_outbox` | `sequence_no bigserial PK`, `resource_kind`, `resource_id`, `event_type`, `payload jsonb`, `created_at`, `processed_at` |
-| `vpc_watch_cursors` | `subscriber_id PK`, `last_sequence_no`, `updated_at` |
 
 (`regions`/`zones` — таблиц в kacho-vpc нет; Geography — leaf-домен kacho-geo, ссылка по `zone_id` без FK.)
 

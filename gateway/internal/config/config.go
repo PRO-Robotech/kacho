@@ -147,6 +147,52 @@ type Config struct {
 	// port (mirrors iam/nlb/registry).
 	StorageInternalAddr string `envconfig:"KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC" default:"kacho-storage.kacho.svc:9091"`
 
+	// --- Проекция потока изменений в браузер (kacho#1020) ---
+
+	// SubscriptionOwners — ЗАКРЫТЫЙ перечень владельцев журналов, чей поток край
+	// проецирует. Имена — ключи домена, те же, что у карты внутренних адресов
+	// (`compute`, `loadbalancer`, `vpc`, …); разделитель — запятая.
+	//
+	// ПУСТО означает «владелец не объявлен», а НЕ «все домены». Пустое значение,
+	// прочитанное как «не сужаем», уже стоило этому дереву круга отправителей,
+	// который никого не сужал; здесь оно означает ровно то, что сказано: ручка
+	// отвечает `501` с названной причиной, а не открывает поток к домену,
+	// который глагола не служит.
+	//
+	// Первый владелец приезжает вместе с kacho#1019 (compute и nlb).
+	SubscriptionOwners string `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_OWNERS" default:""`
+
+	// SubscriptionStreamBudget — срок жизни ОДНОГО потока проекции.
+	//
+	// Обязан быть МЕНЬШЕ предела чтения посредника перед краем
+	// (`ingress.proxyReadTimeout`, сегодня 120 с): иначе поток рвёт посредник, и
+	// клиент читает это как сетевой сбой, а не как чистое закрытие по сроку,
+	// после которого он возобновляется со своей позиции. Согласие двух величин
+	// держит декларативная проба чарта, а не эта фраза.
+	SubscriptionStreamBudget time.Duration `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_STREAM_BUDGET" default:"90s"`
+
+	// SubscriptionHeartbeat — период служебного кадра поддержания связи.
+	//
+	// Молчащая подписка — обычный её режим, а посредник закрывает соединение, по
+	// которому дольше своего предела ничего не шло. Кадр заодно мешает
+	// буферизации ответа промежуточным звеном.
+	SubscriptionHeartbeat time.Duration `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_HEARTBEAT" default:"20s"`
+
+	// SubscriptionMaxStreams — потолок ОДНОВРЕМЕННЫХ потоков этой реплики.
+	//
+	// Арифметика, а не вкус: число реплик края × потолок обязано помещаться в
+	// потолок потоков владельца, иначе исчерпание наступает у владельца — то
+	// есть у всех арендаторов сразу, а не у того, кто его вызвал.
+	SubscriptionMaxStreams int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS" default:"64"`
+
+	// SubscriptionMaxStreamsPerSubject — потолок потоков ОДНОГО субъекта.
+	//
+	// Потолок реплики защищает процесс, этот — арендаторов друг от друга: без
+	// него один субъект занимает потолок реплики целиком, и остальные получают
+	// отказ, не имея ни одного собственного потока. Консоль открывает поток на
+	// вкладку, поэтому случай не умозрительный.
+	SubscriptionMaxStreamsPerSubject int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT" default:"8"`
+
 	// AdvertisedEndpointAddr — host:port that the api-gateway advertises through
 	// the endpoint-discovery RPC. External clients dial this address. Defaults to
 	// api.kacho.local:443.
@@ -937,4 +983,21 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// SubscriptionOwnerNames разбирает объявленный перечень владельцев журналов.
+//
+// Разделитель — запятая, пустые элементы отбрасываются. Отбрасывание не
+// косметика: вырожденное значение (одинокая запятая) даёт непустую строку и
+// НОЛЬ имён, и без него «объявлен» решалось бы по длине строки, а не по числу
+// имён — тот же разрыв, что однажды уже дал круг отправителей, непустой для
+// стража и пустой для транспорта.
+func (c Config) SubscriptionOwnerNames() []string {
+	names := make([]string, 0, 4)
+	for _, raw := range strings.Split(c.SubscriptionOwners, ",") {
+		if name := strings.TrimSpace(raw); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
 }

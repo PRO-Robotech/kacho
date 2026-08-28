@@ -145,6 +145,27 @@ spec:
             - name: KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC
               value: "{{ .Values.backends.storageInternal }}"
             {{- end }}
+            # Проекция потока изменений в браузер (kacho#1020).
+            #
+            # Перечень владельцев объявляется ВСЕГДА, в том числе пустым: пусто
+            # означает «владелец не объявлен», и ручка отвечает `501` с
+            # названной причиной. Это НЕ «все домены» — пустое значение,
+            # прочитанное как «не сужаем», уже стоило этому дереву круга
+            # отправителей, который никого не сужал.
+            - name: KACHO_API_GATEWAY_SUBSCRIPTION_OWNERS
+              value: {{ .Values.subscriptionStream.owners | quote }}
+            # Срок жизни потока обязан быть МЕНЬШЕ предела чтения посредника
+            # (ingress.proxyReadTimeout): иначе поток рвёт посредник, и клиент
+            # читает это как сетевой сбой, а не как чистое закрытие по сроку.
+            # Согласие двух величин держит проба gateway/deploy.
+            - name: KACHO_API_GATEWAY_SUBSCRIPTION_STREAM_BUDGET
+              value: {{ .Values.subscriptionStream.streamBudget | quote }}
+            - name: KACHO_API_GATEWAY_SUBSCRIPTION_HEARTBEAT
+              value: {{ .Values.subscriptionStream.heartbeat | quote }}
+            - name: KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS
+              value: {{ .Values.subscriptionStream.maxStreams | quote }}
+            - name: KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT
+              value: {{ .Values.subscriptionStream.maxStreamsPerSubject | quote }}
             # Адрес провайдера личности для сессии SPA. Объявляется ВСЕГДА, и
             # умолчание выводится из ИМЕНИ РЕЛИЗА и ПРОСТРАНСТВА ИМЁН, а не
             # вписывается литералом: Service провайдера называется

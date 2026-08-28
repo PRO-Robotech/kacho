@@ -231,12 +231,6 @@ erDiagram
     timestamptz processed_at
   }
 
-  VPC_WATCH_CURSORS {
-    text subscriber_id PK
-    bigint last_sequence_no
-    timestamptz updated_at
-  }
-
   NETWORKS ||--o{ SUBNETS : "subnets.network_id (RESTRICT)"
   NETWORKS ||--o{ ROUTE_TABLES : "route_tables.network_id (RESTRICT)"
   NETWORKS ||--o{ SECURITY_GROUPS : "security_groups.network_id (RESTRICT, обязателен)"
@@ -402,10 +396,6 @@ resource может быть удален до завершения op). `accoun
 от доменного `vpc_outbox`. Одна строка == одно намерение. LISTEN/NOTIFY-канал
 `kacho_vpc_fga_register_outbox` будит register-drainer на INSERT. Колонки `resource_kind` /
 `resource_id` (миграция 0008) нужны reconciler'у для адресации intent по ресурсу.
-
-#### `vpc_watch_cursors`
-Vestigial-таблица из baseline-схемы (`0001_initial.sql`); кодом не используется — Watch RPC
-в API Kachō нет. PK `subscriber_id`.
 
 ---
 

@@ -40,7 +40,10 @@ func NewRestRouter() *RestRouter {
 		byMethod:    make(map[string][]restRoute, 8),
 		fqnTemplate: make(map[string]string, len(generatedRestRoutes)),
 	}
-	for _, rt := range generatedRestRoutes {
+	// Сгенерённые маршруты контракта и собственные ручки края идут в ОДНУ
+	// таблицу: у полосы прав один вопрос («каким правом гейтится этот путь»), и
+	// два ответчика на него разошлись бы молча. См. rest_route_edge.go.
+	for _, rt := range append(append([]restRoute{}, generatedRestRoutes...), edgeRestRoutes...) {
 		r.byMethod[rt.Method] = append(r.byMethod[rt.Method], rt)
 		// First binding wins for the reverse map — the primary binding is
 		// emitted before additional_bindings by the extractor.
@@ -244,6 +247,23 @@ type ProofRoute struct {
 
 // RestRoutesForProof отдаёт таблицу маршрутов целиком. Только для проверок края:
 // решение о доступе принимается через Resolve + каталог прав, а не здесь.
+// EdgeRestRoutesForProof отдаёт маршруты СОБСТВЕННЫХ ручек края.
+//
+// Они существуют не из-за `google.api.http`, а потому что край обслуживает эти
+// пути сам, — и потому невидимы сканеру объявленных биндингов by construction.
+// Проверкам края нужно ОТЛИЧАТЬ их от маршрута, потерянного сканером: первое
+// законно, второе означает, что тела на пути не проверяются вовсе.
+//
+// Отдаётся перечень, а не признак «край ли это»: список коротких имён читается,
+// а предикат, спрятанный в функцию, — нет.
+func EdgeRestRoutesForProof() []ProofRoute {
+	out := make([]ProofRoute, 0, len(edgeRestRoutes))
+	for _, r := range edgeRestRoutes {
+		out = append(out, ProofRoute(r))
+	}
+	return out
+}
+
 func RestRoutesForProof() []ProofRoute {
 	out := make([]ProofRoute, 0, len(generatedRestRoutes))
 	for _, r := range generatedRestRoutes {

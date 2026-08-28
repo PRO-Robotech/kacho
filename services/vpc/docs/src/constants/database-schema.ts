@@ -5,8 +5,19 @@ import { defineDbSchemaDiagramFromDbml } from '@site/src/utils/dbmlToDiagram'
 // для default-SG в 0005). Источник истины — `internal/migrations/*.sql`
 // репозитория kacho-vpc. Здесь отражены основные ресурсные таблицы + служебные (operations,
 // vpc_outbox) и admin-таблица IPAM (address_pools). Полные вспомогательные
-// IPAM/Watch-таблицы (address_pool_*, ipv6_*, cloud_pool_selector,
-// vpc_watch_cursors) опущены для читаемости — см. полный список в data-model.mdx.
+// IPAM-таблицы (address_pool_*, ipv6_*) опущены для
+// читаемости — см. полный список в data-model.mdx.
+//
+// `cloud_pool_selector` в перечне выше не значится, и причина у неё другая: таблица
+// не скрыта с диаграммы, а СНЯТА — заведена базовой схемой `0001_initial.sql` и
+// дропнута миграцией `0002_drop_override_and_cloud_pool_selector.sql` вместе с
+// cloud-selector-шагом IPAM-каскада (`dropguard.json`: version 2, kind `retire`).
+// Применённую миграцию не правят, поэтому `0001` создаёт таблицу вечно, а до головы
+// цепочки она не доживает; в `data-model.mdx` её нет и быть не должно.
+//
+// `vpc_watch_cursors` — тот же случай: снята миграцией
+// `20260828114800_drop_watch_cursors.sql` (kacho#1148), позиция подписки принадлежит
+// клиенту, серверных курсоров по подписчику не существует.
 const DATABASE_SCHEMA_DBML = `
 Table "kacho_vpc"."networks" {
   "id" text [pk, not null]
