@@ -199,3 +199,84 @@ func TestMigratorCLISurfaceIsDeclared(t *testing.T) {
 		}
 	}
 }
+
+// TestMigratorRefusalTextsHaveOneProducer — тон отказа объявлен в ОДНОМ месте.
+//
+// До #1461 редакций было две: прямая форма говорила словами стандартной
+// библиотеки, делегирующая — словами cobra. На одном и том же входе оператор
+// получал разные строки, а скрипт, читающий отказ образцом, срабатывал на одном
+// сервисе и молчал на соседнем.
+//
+// Сведение держится не сверкой копий, а тем, что копия одна. Гейт судит
+// ОБЪЯВЛЕНИЕ текста: звать производителя точка наката вправе сколько угодно,
+// писать свою редакцию — нет.
+func TestMigratorRefusalTextsHaveOneProducer(t *testing.T) {
+	root := repoRoot(t)
+
+	var corpus []string
+	for _, dir := range []string{"services", "pkg"} {
+		found, err := treecorpus.UnderWithSuffix(filepath.Join(root, dir), ".go")
+		if err != nil {
+			t.Fatalf("корпус дерева (%s) не построен: %v", dir, err)
+		}
+		corpus = append(corpus, found...)
+	}
+
+	var (
+		filesRead   int
+		ownerDecls  int
+		findings    []string
+		entryPoints int
+	)
+	for _, p := range corpus {
+		rel, rerr := filepath.Rel(root, p)
+		if rerr != nil {
+			rel = p
+		}
+		rel = filepath.ToSlash(rel)
+		// Судятся точки наката и сам общий пакет: больше тексты отказа мигратора
+		// нигде не живут. Предпосылка проверяется переписью ниже — объявлений у
+		// владельца обязано быть НЕ НОЛЬ, иначе производитель исчез, а гейт
+		// продолжал бы молчать.
+		inOwner := strings.HasPrefix(rel, migratorCLIRefusalOwner)
+		isEntry := strings.Contains(rel, "/cmd/migrator/") && !strings.HasSuffix(rel, "_test.go")
+		if !inOwner && !isEntry {
+			continue
+		}
+		raw, rerr := os.ReadFile(p)
+		if rerr != nil {
+			t.Fatalf("%s: чтение не удалось: %v", rel, rerr)
+		}
+		filesRead++
+		if isEntry {
+			entryPoints++
+		}
+		decls, derr := migratorCLIRefusalDeclarations(rel, string(raw))
+		if derr != nil {
+			t.Fatalf("%v", derr)
+		}
+		if inOwner {
+			ownerDecls += len(decls)
+			continue
+		}
+		findings = append(findings, decls...)
+	}
+
+	t.Logf("перепись: файлов осмотрено %d (точек наката %d), объявлений текста отказа "+
+		"у производителя %d, вторых редакций %d", filesRead, entryPoints, ownerDecls, len(findings))
+
+	if filesRead == 0 {
+		t.Fatal("не прочитано ни одного файла — гейт ничего не осмотрел, и его молчание " +
+			"неотличимо от исправности")
+	}
+	if entryPoints == 0 {
+		t.Fatal("точек наката не найдено ни одной — сменилась раскладка каталогов")
+	}
+	if ownerDecls == 0 {
+		t.Fatalf("у производителя (%s) не объявлено ни одного текста отказа — предпосылка "+
+			"гейта отпала: он молчал бы, потому что искать стало нечего", migratorCLIRefusalOwner)
+	}
+	for _, f := range findings {
+		t.Errorf("%s", f)
+	}
+}

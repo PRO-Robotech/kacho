@@ -434,3 +434,64 @@ func migratorCLIParserFindings(parsers []migratorCLIParser) []string {
 	sort.Strings(out)
 	return out
 }
+
+// ── Производитель текстов отказа ОДИН ──────────────────────────────────────
+//
+// Тон отказа — часть контракта, и до #1461 у него было две редакции: прямая
+// форма говорила словами стандартной библиотеки, делегирующая — словами cobra.
+// Сведение держится не сверкой двух копий, а тем, что копия одна: текст
+// объявлен в общем пакете, обе формы берут его оттуда.
+//
+// Гейт судит ОБЪЯВЛЕНИЕ текста, а не его употребление: точка наката вправе
+// звать производителя сколько угодно раз, но не вправе написать свою редакцию.
+
+// migratorCLIRefusalPhrases — образцы, по которым узнаётся ОБЪЯВЛЕНИЕ текста
+// отказа. Взяты по форматной строке, а не по готовому предложению: своя
+// редакция отличается от общей именно словами вокруг подстановок.
+var migratorCLIRefusalPhrases = []string{
+	"unknown command %q for",
+	"unexpected argument %q for",
+	"unknown flag: --",
+	"no command given",
+}
+
+// migratorCLIRefusalOwner — единственный пакет, которому объявлять их можно.
+const migratorCLIRefusalOwner = "pkg/migratorcli/"
+
+// migratorCLIRefusalDeclarations находит объявления текстов отказа в одном
+// файле — РАЗБОРОМ, по строковым литералам.
+//
+// Именно по литералам, а не по тексту файла: те же слова стоят в комментариях,
+// объясняющих сведение, и гейт по подстроке краснел бы на собственном
+// объяснении. Комментарий, повторяющий образец, объявлением не является — он
+// ничего не производит.
+func migratorCLIRefusalDeclarations(rel, src string) ([]string, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, rel, src, 0)
+	if err != nil {
+		return nil, fmt.Errorf("%s: разбор не удался: %w", rel, err)
+	}
+	var out []string
+	ast.Inspect(file, func(n ast.Node) bool {
+		bl, ok := n.(*ast.BasicLit)
+		if !ok || bl.Kind != token.STRING {
+			return true
+		}
+		text, uerr := strconv.Unquote(bl.Value)
+		if uerr != nil {
+			return true
+		}
+		for _, phrase := range migratorCLIRefusalPhrases {
+			if strings.Contains(text, phrase) {
+				out = append(out, fmt.Sprintf("%s:%d — своя редакция текста отказа (%q). "+
+					"Производитель один и живёт в %s: две редакции одного отказа расходятся "+
+					"молча, и образец, написанный по одному сервису, на соседнем не срабатывает",
+					rel, fset.Position(bl.Pos()).Line, phrase, migratorCLIRefusalOwner))
+				break
+			}
+		}
+		return true
+	})
+	sort.Strings(out)
+	return out, nil
+}

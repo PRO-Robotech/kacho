@@ -34,7 +34,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -43,6 +42,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует "pgx" driver для sql.Open
 	"github.com/spf13/cobra"
 
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli/cobraargs"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/config"
@@ -96,7 +96,8 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 		Args: cobraargs.OnlyKnownCommands,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_ = cmd.Help()
-			return errors.New("no command given")
+			// Сентинел общий: своя редакция того же текста разошлась бы молча.
+			return migratorcli.ErrNoCommand
 		},
 	}
 	root.PersistentFlags().StringVar(&opts.dialect, "dialect", defaultDialect,

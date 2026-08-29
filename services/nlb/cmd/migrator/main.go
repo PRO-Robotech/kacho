@@ -44,7 +44,6 @@
 package main
 
 import (
-	"errors"
 	"io/fs"
 	"os"
 	"strings"
@@ -104,7 +103,8 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 		Args: cobraargs.OnlyKnownCommands,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_ = cmd.Help()
-			return errors.New("no command given")
+			// Сентинел общий: своя редакция того же текста разошлась бы молча.
+			return migratorcli.ErrNoCommand
 		},
 	}
 	root.PersistentFlags().StringVar(&opts.dialect, "dialect", defaultDialect,
