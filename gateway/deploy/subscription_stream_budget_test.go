@@ -159,8 +159,12 @@ func TestReplicaFanoutFitsUnderTheOwnerCeiling(t *testing.T) {
 			values.Replicas, values.SubscriptionStream.MaxStreams)
 	}
 	if len(owners) == 0 {
-		// Второй стороны у произведения нет. Это законное состояние фазы, а не
-		// пропуск: первого владельца заводит kacho#1019.
+		// Второй стороны у произведения нет — сравнивать не с чем.
+		//
+		// Профиль ВПРАВЕ не объявить владельцев, и тогда ручка отвечает `501`;
+		// требовать здесь непустоты значило бы судить поставку, а её предмет
+		// другой и держат его deploy/subscription_shipped_to_production_test.go
+		// (боевая посадка не беднее стенда) и проба посадки в пакете ручки.
 		return
 	}
 
@@ -180,16 +184,44 @@ func TestReplicaFanoutFitsUnderTheOwnerCeiling(t *testing.T) {
 	}
 }
 
+// ownerTreeDirAliases — КАТАЛОГ В ДЕРЕВЕ, если он зовётся не так, как владелец.
+//
+// Ключ — имя владельца, то есть ровно то написание, которое край ПРИНИМАЕТ в
+// `?owner=` и в `subscriptionStream.owners`. Значение — каталог сервиса под
+// `services/`, и только он: это путь в дереве, а НЕ второе имя владельца.
+//
+// # Почему псевдоним вообще нужен
+//
+// Имя владельца — ключ карты соединений края (`config.BackendAddrs`), и он
+// совпадает с пакетом контракта: балансировщик объявлен там `loadbalancer`
+// (`kacho.cloud.loadbalancer.v1`), а его каталог в дереве зовётся `nlb`. Оба
+// написания исторические и живут каждое в своём месте.
+//
+// # ОМОНИМИЯ, на которой уже спотыкались (kacho#1454)
+//
+// Слово `backends` означает в этом дереве ДВЕ РАЗНЫЕ вещи, и различать их
+// обязательно:
+//
+//   - `backends:` в объявлении чарта (`values.yaml`) — блок АДРЕСОВ, его ключи
+//     `nlb` / `nlbInternal`;
+//   - `proxy.Backends` в коде края — карта СОЕДИНЕНИЙ, её ключи `loadbalancer` /
+//     `loadbalancerInternal` (шаблон подаёт первый адрес во второй под другим
+//     именем, через переменную окружения).
+//
+// Владельца резолвит ВТОРАЯ (`backends[name+"Internal"]`), поэтому принимаемое
+// имя — `loadbalancer`; `nlb` не резолвится и дал бы отказ старта. Согласие этой
+// карты с картой соединений края держит не проза, а
+// [TestOwnerNameIsTheBackendKeyOfTheEdgeNotTheTreePath].
+var ownerTreeDirAliases = map[string][]string{"loadbalancer": {"nlb"}}
+
 // ownerStreamCeiling читает потолок потоков в объявлении ВЛАДЕЛЬЦА.
 //
-// Имя владельца — ключ домена края, и каталог сервиса не всегда зовётся так же
-// (край знает `loadbalancer`, дерево — `nlb`). Поэтому перебираются кандидаты, а
-// не строится один путь: несовпадение имени обязано давать НАЗВАННЫЙ отказ с
-// перечнем осмотренного, а не тихое «не найдено».
+// Перебираются кандидаты, а не строится один путь: каталог сервиса может не
+// совпадать с именем владельца (см. [ownerTreeDirAliases]), и несовпадение
+// обязано давать НАЗВАННЫЙ отказ с перечнем осмотренного, а не тихое «не найдено».
 func ownerStreamCeiling(t *testing.T, owner string) (int, string, bool) {
 	t.Helper()
-	aliases := map[string][]string{"loadbalancer": {"nlb"}}
-	candidates := append([]string{owner}, aliases[owner]...)
+	candidates := append([]string{owner}, ownerTreeDirAliases[owner]...)
 
 	looked := make([]string, 0, len(candidates))
 	for _, dir := range candidates {

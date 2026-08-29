@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -157,7 +158,8 @@ type Config struct {
 	// отвечает `501` с названной причиной, а не открывает поток к домену,
 	// который глагола не служит.
 	//
-	// Первый владелец приезжает вместе с kacho#1019 (compute и nlb).
+	// Умолчание чарта края называет всех владельцев, служащих глагол (kacho#1388);
+	// пустым значение остаётся только там, где профиль выключает возможность явно.
 	SubscriptionOwners string `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_OWNERS" default:""`
 
 	// SubscriptionStreamBudget — срок жизни ОДНОГО потока проекции.
@@ -810,6 +812,46 @@ func (c Config) ResolvedIAMAuthorizeURL() string {
 		return c.IAMAuthorizeURL
 	}
 	return c.IAMAddr
+}
+
+// internalBackendKeySuffix — как называется ключ ВНУТРЕННЕГО адреса домена в
+// карте соединений края.
+//
+// Объявлен ЗДЕСЬ, рядом с самой картой, а не у того, кто им пользуется: суффикс
+// есть свойство карты, и вторая его копия разошлась бы с ней молча — обе непусты,
+// обе выглядят действующими, а ведут в разные ключи.
+const internalBackendKeySuffix = "Internal"
+
+// InternalBackendKey — ключ внутреннего адреса домена в карте соединений.
+//
+// Единственный способ получить этот ключ. Подписка живёт только на внутреннем
+// слушателе владельца, поэтому край резолвит владельца именно им.
+func InternalBackendKey(domain string) string {
+	return domain + internalBackendKeySuffix
+}
+
+// DomainsWithInternalBackend — домены, у которых край ЗНАЕТ внутренний адрес.
+//
+// Это и есть множество имён, принимаемых в `KACHO_API_GATEWAY_SUBSCRIPTION_OWNERS`
+// и в параметре `owner` ручки потока: имя вне множества дозвониться не может, и
+// страж старта отвергает его.
+//
+// # Почему имя домена, а не каталог сервиса в дереве
+//
+// Ключ совпадает с пакетом контракта (`kacho.cloud.<домен>.v1`), по которому
+// маршрутизирует gRPC-роутер, — то есть с тем написанием, которое видит клиент.
+// Каталог сервиса в дереве может зваться иначе (`services/nlb` против домена
+// `loadbalancer`), и это написание наружу не выходит вовсе.
+func (c Config) DomainsWithInternalBackend() []string {
+	addrs := c.BackendAddrs()
+	names := make([]string, 0, len(addrs)/2)
+	for key := range addrs {
+		if _, ok := addrs[InternalBackendKey(key)]; ok {
+			names = append(names, key)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // BackendAddrs возвращает карту domain → адрес для инициализации Backends.

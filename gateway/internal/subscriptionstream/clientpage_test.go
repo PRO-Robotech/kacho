@@ -4,6 +4,8 @@
 package subscriptionstream
 
 import (
+	"github.com/PRO-Robotech/kacho/gateway/internal/config"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -215,5 +217,102 @@ func TestClientPageNamesTheValuesTheHandleProduces(t *testing.T) {
 
 	if len(page) == 0 {
 		t.Fatal("страница пуста — прочитано ноль")
+	}
+}
+
+// ownerDictHeading — заголовок раздела, чья таблица объявляет словарь владельцев.
+const ownerDictHeading = "## Словарь владельцев и видов"
+
+// ownerValueRe — написание владельца в позиции ЗНАЧЕНИЯ параметра `owner`.
+//
+// Ловит и пример вызова (`?owner=compute`), и прозу (`а owner=nlb`): в обоих
+// случаях читатель копирует ровно эту строку в свой запрос.
+var ownerValueRe = regexp.MustCompile(`owner=([a-z][a-z_]*)`)
+
+// ownerNamesAdvisedByPage — все написания, которые страница советует подставить
+// в `owner`.
+//
+// Два источника, и оба обязательны: перечень словаря владельцев (первая ячейка
+// строки его таблицы) и всякое `owner=…` на странице. Один без другого оставляет
+// слепую полосу — а расхождение между ними уже наблюдалось: пример звал одно
+// написание, абзац рядом советовал противоположное (kacho#1447).
+func ownerNamesAdvisedByPage(page string) (names map[string]bool, fromTable, fromInline int) {
+	names = map[string]bool{}
+
+	if idx := strings.Index(page, ownerDictHeading); idx >= 0 {
+		section := page[idx:]
+		if end := strings.Index(section, "</table>"); end >= 0 {
+			section = section[:end]
+		}
+		for _, m := range paramRowRe.FindAllStringSubmatch(section, -1) {
+			// Заголовочная ячейка таблицы называет сам параметр, а не значение.
+			if m[1] == "owner" {
+				continue
+			}
+			names[m[1]] = true
+			fromTable++
+		}
+	}
+
+	for _, m := range ownerValueRe.FindAllStringSubmatch(page, -1) {
+		names[m[1]] = true
+		fromInline++
+	}
+	return names, fromTable, fromInline
+}
+
+// TestClientPageAdvisesOnlyOwnerNamesTheEdgeAccepts — всякое написание владельца,
+// которое страница советует, край ПРИНИМАЕТ.
+//
+// # Предмет
+//
+// Домен адресуется в этом дереве двумя написаниями: каталог сервиса и REST-путь
+// зовут балансировщик `nlb`, контракт и карта соединений края — `loadbalancer`.
+// Принимает край только второе; первое отвечает `400 unknown owner`, и отказ
+// перечня известных значений не оглашает — намеренно, — поэтому подобрать верное
+// написание по нему нельзя.
+//
+// Цена уже наступала: страница советовала читателю ровно то написание, которое не
+// принимается, и делала это в абзаце, отдельно предупреждавшем не брать значение
+// из чужой таблицы (kacho#1447).
+//
+// # Почему сверка ОДНОСТОРОННЯЯ
+//
+// Обратное — «край принимает, а страница не называет» — находкой НЕ является:
+// край знает внутренний адрес и у доменов, журнала не имеющих (личность,
+// география), а владельцем объявляют только служащего глагол. Требовать от
+// страницы называть их значило бы требовать советовать неработающее.
+//
+// Пустой разбор при этом отказ: страница, с которой не считано ни одного
+// написания, оставила бы гейт зелёным навсегда.
+func TestClientPageAdvisesOnlyOwnerNamesTheEdgeAccepts(t *testing.T) {
+	page := readClientPage(t)
+	advised, fromTable, fromInline := ownerNamesAdvisedByPage(page)
+	accepted := config.Config{}.DomainsWithInternalBackend()
+
+	acceptedSet := make(map[string]bool, len(accepted))
+	for _, name := range accepted {
+		acceptedSet[name] = true
+	}
+
+	t.Logf("перепись: написаний советует страница %d %v (из таблицы словаря %d · из примеров и прозы %d) · "+
+		"принимает край %d %v", len(advised), sortedNames(advised), fromTable, fromInline, len(accepted), accepted)
+
+	if len(advised) == 0 {
+		t.Fatalf("со страницы %s не считано НИ ОДНОГО написания владельца — гейт ничего "+
+			"не сверял, и его молчание не было бы утверждением о согласии", clientPageRel)
+	}
+	if fromTable == 0 {
+		t.Fatalf("таблица раздела %q не разобрана — половина источника молчит, и написание, "+
+			"стоящее только в ней, гейт бы не увидел", ownerDictHeading)
+	}
+
+	for _, name := range sortedNames(advised) {
+		if acceptedSet[name] {
+			continue
+		}
+		t.Errorf("страница советует owner=%q, а край принимает только %v: читатель, честно "+
+			"исполнивший инструкцию, получит 400 unknown owner, и подобрать верное написание "+
+			"по отказу нельзя — он перечня не оглашает", name, accepted)
 	}
 }
