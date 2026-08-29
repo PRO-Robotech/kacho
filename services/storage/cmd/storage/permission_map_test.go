@@ -38,6 +38,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
@@ -645,7 +646,7 @@ func TestPublicListenerServesNoInternalService(t *testing.T) {
 	snapshotUC := snapshot.New(nil, nil, nil, nil)
 	imageUC := image.New(nil, nil, nil, nil, nil, nil)
 	diskTypeUC := disktype.New(nil)
-	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_storage"))
+	opHandler := operationspb.NewHandler(operations.NewRepo(nil, "kacho_storage"))
 
 	names := func(reg func(grpc.ServiceRegistrar)) []string {
 		srv := grpc.NewServer()

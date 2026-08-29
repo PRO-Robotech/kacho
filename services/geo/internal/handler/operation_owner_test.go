@@ -14,9 +14,9 @@ import (
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/lro"
-	"github.com/PRO-Robotech/kacho/services/geo/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/repo/kacho/repomock"
 )
 
@@ -108,7 +108,7 @@ var (
 func TestOperationHandler_Get_foreignPrincipal_NotFound(t *testing.T) {
 	ops := repomock.NewOpsRepo()
 	opID := seedOwnedOp(t, ops, adminA)
-	oh := handler.NewOperationHandler(ops)
+	oh := operationspb.NewHandler(ops)
 
 	ctxB := operations.WithPrincipal(context.Background(), adminB)
 	_, err := oh.Get(ctxB, &operationpb.GetOperationRequest{OperationId: opID})
@@ -121,7 +121,7 @@ func TestOperationHandler_Get_foreignPrincipal_NotFound(t *testing.T) {
 func TestOperationHandler_Get_owner_ok(t *testing.T) {
 	ops := repomock.NewOpsRepo()
 	opID := seedOwnedOp(t, ops, adminA)
-	oh := handler.NewOperationHandler(ops)
+	oh := operationspb.NewHandler(ops)
 
 	ctxA := operations.WithPrincipal(context.Background(), adminA)
 	op, err := oh.Get(ctxA, &operationpb.GetOperationRequest{OperationId: opID})
@@ -138,7 +138,7 @@ func TestOperationHandler_Get_owner_ok(t *testing.T) {
 func TestOperationHandler_Cancel_foreignPrincipal_NotFound(t *testing.T) {
 	ops := repomock.NewOpsRepo()
 	opID := seedOwnedOp(t, ops, adminA)
-	oh := handler.NewOperationHandler(ops)
+	oh := operationspb.NewHandler(ops)
 
 	ctxB := operations.WithPrincipal(context.Background(), adminB)
 	_, err := oh.Cancel(ctxB, &operationpb.CancelOperationRequest{OperationId: opID})
@@ -161,7 +161,7 @@ func TestOperationHandler_Cancel_foreignPrincipal_NotFound(t *testing.T) {
 func TestOperationHandler_Cancel_owner_ok(t *testing.T) {
 	ops := repomock.NewOpsRepo()
 	opID := seedOwnedOp(t, ops, adminA)
-	oh := handler.NewOperationHandler(ops)
+	oh := operationspb.NewHandler(ops)
 
 	ctxA := operations.WithPrincipal(context.Background(), adminA)
 	op, err := oh.Cancel(ctxA, &operationpb.CancelOperationRequest{OperationId: opID})
@@ -192,7 +192,7 @@ func TestOperationHandler_Cancel_terminalSuccess_FailedPrecondition(t *testing.T
 	}
 
 	ctxA := operations.WithPrincipal(context.Background(), adminA)
-	_, err = handler.NewOperationHandler(ops).Cancel(ctxA, &operationpb.CancelOperationRequest{OperationId: opID})
+	_, err = operationspb.NewHandler(ops).Cancel(ctxA, &operationpb.CancelOperationRequest{OperationId: opID})
 	if status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("Cancel on terminal-SUCCESS op: want FAILED_PRECONDITION, got %v", err)
 	}
@@ -217,7 +217,7 @@ func TestOperationHandler_Cancel_terminalSuccess_FailedPrecondition(t *testing.T
 func TestOperationHandler_Cancel_idempotentReCancel_ok(t *testing.T) {
 	ops := repomock.NewOpsRepo()
 	opID := seedOwnedOp(t, ops, adminA)
-	oh := handler.NewOperationHandler(ops)
+	oh := operationspb.NewHandler(ops)
 	ctxA := operations.WithPrincipal(context.Background(), adminA)
 
 	first, err := oh.Cancel(ctxA, &operationpb.CancelOperationRequest{OperationId: opID})
@@ -292,7 +292,7 @@ func TestOperationHandler_GetCancel_requestWithoutPrincipal_ownsNothing(t *testi
 			ops := repomock.NewOpsRepo()
 			opID := tc.seed(t, ops)
 			ctx := tc.ctx
-			oh := handler.NewOperationHandler(ops)
+			oh := operationspb.NewHandler(ops)
 
 			got, err := oh.Get(ctx, &operationpb.GetOperationRequest{OperationId: opID})
 			if status.Code(err) != codes.NotFound {
@@ -335,7 +335,7 @@ func TestOperationHandler_GetCancel_requestWithoutPrincipal_ownsNothing(t *testi
 func TestOperationHandler_GetCancel_explicitSystemPrincipal_ownsItsOperations(t *testing.T) {
 	ops := repomock.NewOpsRepo()
 	opID := systemRecordedOp(t, ops)
-	oh := handler.NewOperationHandler(ops)
+	oh := operationspb.NewHandler(ops)
 
 	ctxSys := operations.WithPrincipal(context.Background(), operations.SystemPrincipal())
 
@@ -364,7 +364,7 @@ type bareOpsRepo struct{ operations.Repo }
 // TestOperationHandler_Get_repoWithoutOwned_failClosed — если repo не
 // реализует OwnedOperationRepo → INTERNAL (не silent-bypass ownership).
 func TestOperationHandler_Get_repoWithoutOwned_failClosed(t *testing.T) {
-	oh := handler.NewOperationHandler(bareOpsRepo{Repo: repomock.NewOpsRepo()})
+	oh := operationspb.NewHandler(bareOpsRepo{Repo: repomock.NewOpsRepo()})
 	_, err := oh.Get(context.Background(), &operationpb.GetOperationRequest{OperationId: "x"})
 	if status.Code(err) != codes.Internal {
 		t.Fatalf("bare repo Get: want INTERNAL (fail-closed), got %v", err)

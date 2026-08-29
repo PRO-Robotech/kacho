@@ -34,6 +34,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
@@ -81,7 +82,7 @@ func TestCarrierRaisesRegistryWithoutAStartRefusal(t *testing.T) {
 
 	registryHandler := handler.NewRegistryHandler(nil, nil, 0)
 	internalHandler := handler.NewInternalRegistryHandler(nil)
-	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_registry"))
+	opHandler := operationspb.NewHandler(operations.NewRepo(nil, "kacho_registry"))
 
 	serveErr := servicehost.Serve(ctx, desc,
 		func(reg grpc.ServiceRegistrar) {

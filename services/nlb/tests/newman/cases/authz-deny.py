@@ -558,13 +558,34 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         # Try cancel as Editor B (different subject)
+        #
+        # 409 СНЯТ: производителя у него на этой полосе НЕТ. Отмена операции сведена
+        # в общий слой (`pkg/operations/operationspb/handler.go`) и эмитит ровно
+        # InvalidArgument / NotFound / FailedPrecondition / Internal; край
+        # (`gateway/internal/opsproxy`) добавляет к ним InvalidArgument / NotFound /
+        # PermissionDenied. По таблице края (`api-conventions.md` §«gRPC-код →
+        # HTTP-статус») это 400/404/400/500 и 400/404/403 — 409 не даёт ни один.
+        # Сам 409 приходит только от ALREADY_EXISTS и ABORTED, а их на всей полосе
+        # ноль вхождений. Допуск на исход, которого не бывает, не краснеет НИКОГДА:
+        # шаг зеленел на подставленном 409, то есть утверждал меньше, чем выглядел.
+        #
+        # И утверждается ПАРА, а не один HTTP-статус: каждая оставшаяся полоса
+        # называет свой код `google.rpc.Status`, иначе «отказано» не отличимо от
+        # отказа по любой посторонней причине. Пин условный — полос здесь ТРИ, и
+        # какая сработает, решает порядок проверок на крае.
         Step(name="cancel-as-B", method="POST", path="/operations/{{opId}}:cancel",
              auth="jwtProjectEditorB",
-             # non-creator cancel: 403 deny, 404 hide-existence (B cannot see A's op via
-             # scope_extractor target->project), or already-done 400/409 — all = rejected.
+             # non-creator cancel: 403 deny, 404 hide-existence (B cannot see A's op —
+             # чтение операции owner-scoped), or already-done 400 — all = rejected.
              test_script=[
-                 "pm.test('rejected (403 deny / 404 hide / already-done 400/409)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));",
+                 "pm.test('rejected (403 deny / 404 hide / already-done 400)', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));",
+                 "if (pm.response.code === 403) pm.test('grpc 7 (PERMISSION_DENIED)', () => "
+                 "  pm.expect(pm.response.json().code).to.eql(7));",
+                 "if (pm.response.code === 404) pm.test('grpc 5 (NOT_FOUND)', () => "
+                 "  pm.expect(pm.response.json().code).to.eql(5));",
+                 "if (pm.response.code === 400) pm.test('grpc 9 (FAILED_PRECONDITION)', () => "
+                 "  pm.expect(pm.response.json().code).to.eql(9));",
              ]),
         # ОПРОС ИДЁТ ПОД СОЗДАТЕЛЕМ ОПЕРАЦИИ, А НЕ ПОД ТЕМ, КОМУ ТОЛЬКО ЧТО ОТКАЗАЛИ.
         #

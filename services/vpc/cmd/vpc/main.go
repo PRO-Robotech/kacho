@@ -26,6 +26,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
@@ -1297,7 +1298,7 @@ func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo o
 	if svcs.quotaHandler != nil {
 		vpcv1.RegisterQuotaServiceServer(srv, svcs.quotaHandler)
 	}
-	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
+	operationpb.RegisterOperationServiceServer(srv, operationspb.NewHandler(opsRepo))
 }
 
 // registerInternalServices — kacho-only/admin RPC на internal listener.

@@ -59,7 +59,7 @@
 - **Description**: `GET /operations/garbage-id` сейчас возвращает 400 InvalidArgument
   "operation_id has unknown prefix". Это противоречит resource-Get convention
   ("garbage id → 404 NotFound"). Рассмотреть один из вариантов:
-  - **A**: OpsProxy конвертирует unknown-prefix → 404 NOT_FOUND `"Operation X not found"`.
+  - **A**: OpsProxy конвертирует unknown-prefix → 404 NOT_FOUND `"operation X not found"`.
   - **B**: Документировать как известное расхождение в `docs/architecture/06-conventions.md`.
 - **Rationale**: предсказуемость для клиентов (resource-Get-конвенция: garbage id → NOT_FOUND).
 - **Impact**: меньше user confusion.

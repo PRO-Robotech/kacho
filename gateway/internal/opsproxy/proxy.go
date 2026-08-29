@@ -130,16 +130,22 @@ func New(conns map[string]*grpc.ClientConn) *OpsProxy {
 // нужного backend, либо gRPC-ошибку:
 //
 //   - 20-символьный id с известным kacho-prefix → роутим в backend; его NotFound
-//     ("Operation X not found") пробрасываем как есть.
+//     пробрасываем как есть.
 //   - 20-символьный id с известным kacho-prefix, но backend не подключен (defensively;
-//     в prod не должно случаться) → NotFound "Operation X not found" (операции тут нет).
+//     в prod не должно случаться) → NotFound «нет такой операции» (операции тут нет).
+//     Текст берётся у ОБЩЕГО производителя `operations.NotFoundStatus` — того же,
+//     которым отвечает владелец: обе полосы приходят клиенту на один адрес, и
+//     различие хоть в один байт отличало бы «нет доступа» от «не существует» и
+//     называло бы, какие backend'ы подключены (`security.md` §Hardening #6).
+//     Своя запись этого текста здесь была, и она разошлась с владельцем
+//     регистром одной буквы (#1370).
 //   - legacy "<prefix>_<uuid>" с известным legacy-prefix → роутим.
 //   - все остальное (malformed, неизвестный prefix) → InvalidArgument
 //     "invalid operation id <X>" — валидные operation-id у Kachō имеют только
 //     известные domain-префиксы (enp…/e9b…/epd…/iop…/nlb…/rop…/sop…/geo…) и legacy-формы.
 func (p *OpsProxy) resolveBackend(id string) (operationpb.OperationServiceClient, error) {
 	invalid := status.Errorf(codes.InvalidArgument, "invalid operation id %q", id)
-	notFound := status.Errorf(codes.NotFound, "Operation %s not found", id)
+	notFound := operations.NotFoundStatus(id)
 
 	var domain string
 	switch {

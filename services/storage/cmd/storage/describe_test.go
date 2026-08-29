@@ -47,6 +47,7 @@ import (
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
@@ -441,7 +442,7 @@ func registrarsOfBothListeners(t *testing.T) []func(grpc.ServiceRegistrar) {
 	snapshotUC := snapshot.New(nil, nil, nil, nil)
 	imageUC := image.New(nil, nil, nil, nil, nil, nil)
 	diskTypeUC := disktype.New(nil)
-	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_storage"))
+	opHandler := operationspb.NewHandler(operations.NewRepo(nil, "kacho_storage"))
 	// Чтение квот — с НЕнулевым обработчиком: на поднятом стенде оно
 	// зарегистрировано, и перепись обслуживаемого обязана описывать стенд, а не
 	// вырожденную сборку. Нулевой указатель здесь молча вывел бы сервис из-под

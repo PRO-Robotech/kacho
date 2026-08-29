@@ -41,6 +41,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
@@ -1056,7 +1057,7 @@ func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo o
 	if svcs.quota != nil {
 		computev1.RegisterQuotaServiceServer(srv, svcs.quota)
 	}
-	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
+	operationpb.RegisterOperationServiceServer(srv, operationspb.NewHandler(opsRepo))
 }
 
 // buildListFilter собирает сужатель страницы (пообъектная видимость через iam

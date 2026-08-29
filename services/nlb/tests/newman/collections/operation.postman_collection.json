@@ -828,7 +828,7 @@
       ]
     },
     {
-      "name": "OP-CANCEL-STATE-ALREADY-DONE — Cancel an already-done op → 400/409 FailedPrecondition 'operation is already completed'",
+      "name": "OP-CANCEL-STATE-ALREADY-DONE — Cancel an already-done op → 400 FailedPrecondition 'operation is already completed'",
       "description": "class:STATE | class:NEG | priority:P1",
       "item": [
         {
@@ -1008,8 +1008,8 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected with FailedPrecondition', () =>   pm.expect(pm.response.code).to.be.oneOf([400, 409]));",
-                  "if (pm.response.code === 400 || pm.response.code === 409) {",
+                  "pm.test('rejected with FailedPrecondition', () =>   pm.expect(pm.response.code).to.eql(400));",
+                  "if (pm.response.code === 400) {",
                   "  pm.test('grpc code 9 (FAILED_PRECONDITION)', () =>     pm.expect(pm.response.json().code).to.eql(9));",
                   "  pm.test('mentions already completed', () =>     pm.expect((pm.response.json().message||'').toLowerCase()).to.include('already'));",
                   "}"
@@ -1148,6 +1148,398 @@
                   "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
                   "  });",
                   "})();"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "OP-CANCEL-IDEMPOTENT — Повторная отмена возвращает тот же исход, что первая (идемпотентность)",
+      "description": "class:IDM | class:STATE | priority:P1",
+      "item": [
+        {
+          "name": "create-for-idem",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"opidem-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.environment.set('opId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.networkLoadBalancerId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('nlbId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-7",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД, А НЕ ТОЛЬКО ЗАВЕРШЕНИЕ: операция несёт предвыделенный идентификатор",
+                  "// ресурса в metadata и тогда, когда завершилась ошибкой, — done у неё такой же",
+                  "// true. Опубликованный без этой проверки идентификатор уезжает дальше",
+                  "// координатой ресурса, которого нет, и падает уже не тот шаг, который ошибся.",
+                  "(function () {",
+                  "  var _po; try { _po = pm.response.json(); } catch (e) { return; }",
+                  "  if (_po.error) {",
+                  "    pm.environment.unset('nlbId');",
+                  "  }",
+                  "  pm.test('operation succeeded (no phantom nlbId)', function () {",
+                  "    pm.expect(_po.error && JSON.stringify(_po.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete-for-idem-rya7",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers",
+                "{{nlbId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "if ([403,404].includes(pm.response.code) && _arc >= 25) {",
+                  "  const _wbE = (parseInt(pm.environment.get('warmBudgetExhausted'), 10) || 0) + 1;",
+                  "  pm.environment.set('warmBudgetExhausted', String(_wbE));",
+                  "  const _wbL = pm.environment.get('warmBudgetExhaustedSteps') || '';",
+                  "  pm.environment.set('warmBudgetExhaustedSteps',",
+                  "    (_wbL ? _wbL + ' ' : '') + pm.info.requestName);",
+                  "} else if (_arc > 0) {",
+                  "  const _wbM = parseInt(pm.environment.get('warmRetryMaxAttempts'), 10) || 0;",
+                  "  if (_arc > _wbM) {",
+                  "    pm.environment.set('warmRetryMaxAttempts', String(_arc));",
+                  "  }",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.environment.set('idemOpId', '');",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('idemOpId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cancel-first-rya8",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{idemOpId}}:cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{idemOpId}}:cancel"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "if ([403,404].includes(pm.response.code) && _arc >= 25) {",
+                  "  const _wbE = (parseInt(pm.environment.get('warmBudgetExhausted'), 10) || 0) + 1;",
+                  "  pm.environment.set('warmBudgetExhausted', String(_wbE));",
+                  "  const _wbL = pm.environment.get('warmBudgetExhaustedSteps') || '';",
+                  "  pm.environment.set('warmBudgetExhaustedSteps',",
+                  "    (_wbL ? _wbL + ' ' : '') + pm.info.requestName);",
+                  "} else if (_arc > 0) {",
+                  "  const _wbM = parseInt(pm.environment.get('warmRetryMaxAttempts'), 10) || 0;",
+                  "  if (_arc > _wbM) {",
+                  "    pm.environment.set('warmRetryMaxAttempts', String(_arc));",
+                  "  }",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('исход первой отмены — законный', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                  "pm.environment.set('cancelFirstCode', String(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cancel-second-rya9",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{idemOpId}}:cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{idemOpId}}:cancel"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "if ([403].includes(pm.response.code) && _arc >= 25) {",
+                  "  const _wbE = (parseInt(pm.environment.get('warmBudgetExhausted'), 10) || 0) + 1;",
+                  "  pm.environment.set('warmBudgetExhausted', String(_wbE));",
+                  "  const _wbL = pm.environment.get('warmBudgetExhaustedSteps') || '';",
+                  "  pm.environment.set('warmBudgetExhaustedSteps',",
+                  "    (_wbL ? _wbL + ' ' : '') + pm.info.requestName);",
+                  "} else if (_arc > 0) {",
+                  "  const _wbM = parseInt(pm.environment.get('warmRetryMaxAttempts'), 10) || 0;",
+                  "  if (_arc > _wbM) {",
+                  "    pm.environment.set('warmRetryMaxAttempts', String(_arc));",
+                  "  }",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "const first = pm.environment.get('cancelFirstCode');",
+                  "pm.test('повторная отмена вернула тот же исход, что первая', () =>   pm.expect(String(pm.response.code)).to.eql(first));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('и ту же операцию', () =>     pm.expect(pm.response.json().id).to.eql(pm.environment.get('idemOpId')));",
+                  "}",
+                  "console.log(pm.response.code === 200   ? 'OP-CANCEL-IDEMPOTENT: достигнута ветвь ИДЕМПОТЕНТНОГО УСПЕХА (изменившаяся)'   : 'OP-CANCEL-IDEMPOTENT: достигнута ветвь ОТКАЗА «уже завершена» — изменившаяся ветвь НЕ проверена этим прогоном');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-idem-rya10",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers",
+                "{{nlbId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
+                  "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "if ([403].includes(pm.response.code) && _arc >= 25) {",
+                  "  const _wbE = (parseInt(pm.environment.get('warmBudgetExhausted'), 10) || 0) + 1;",
+                  "  pm.environment.set('warmBudgetExhausted', String(_wbE));",
+                  "  const _wbL = pm.environment.get('warmBudgetExhaustedSteps') || '';",
+                  "  pm.environment.set('warmBudgetExhaustedSteps',",
+                  "    (_wbL ? _wbL + ' ' : '') + pm.info.requestName);",
+                  "} else if (_arc > 0) {",
+                  "  const _wbM = parseInt(pm.environment.get('warmRetryMaxAttempts'), 10) || 0;",
+                  "  if (_arc > _wbM) {",
+                  "    pm.environment.set('warmRetryMaxAttempts', String(_arc));",
+                  "  }",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('уборка best-effort (never fails the case): удалено либо уже отсутствует', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
+                  "if (pm.response.code === 200) {   const j = pm.response.json(); if (j && j.id) pm.environment.set('opId', j.id); }"
                 ]
               }
             }

@@ -46,6 +46,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
@@ -209,7 +210,7 @@ func servedMethods(t *testing.T) []string {
 	t.Helper()
 	registryHandler := handler.NewRegistryHandler(nil, nil, 0)
 	internalHandler := handler.NewInternalRegistryHandler(nil)
-	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_registry"))
+	opHandler := operationspb.NewHandler(operations.NewRepo(nil, "kacho_registry"))
 
 	var served []string
 	for _, reg := range []func(grpc.ServiceRegistrar){

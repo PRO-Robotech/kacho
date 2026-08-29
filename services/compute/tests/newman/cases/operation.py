@@ -139,7 +139,7 @@ CASES.append(Case(
     classes=["CONF", "NEG"], priority="P1",
     steps=[Step(name="get-nx", method="GET", path="/operations/{{garbageComputeId}}",
                 test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                             # probe-needed: точный verbatim YC text — предполагаем "Operation <id> not found"
+                             # probe-needed: точный текст владельца — `operations.NotFoundStatus`, "operation <id> not found"
                              "pm.test('text mentions not found', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('not found'));"])],
 ))
 

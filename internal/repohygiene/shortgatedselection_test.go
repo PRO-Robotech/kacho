@@ -179,7 +179,6 @@ var shortGatedOutsideSelection = []string{
 	"services/iam/internal/apps/kacho/seed",
 	"services/iam/internal/migrations",
 	"services/nlb/internal/apps/kacho/api/loadbalancer",
-	"services/nlb/internal/apps/kacho/api/operation",
 	"services/nlb/internal/apps/kacho/api/targetgroup",
 	"services/nlb/internal/migrations",
 	"services/registry/internal/dataplane/e2e",

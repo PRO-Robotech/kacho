@@ -28,6 +28,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
@@ -420,7 +421,7 @@ func runServe(cfg config.Config) error {
 	// свойство ПОСТРОЕНИЯ, а не соглашение.
 	registryHandler := handler.NewRegistryHandler(registryUC, listAuthz, cfg.AuthZCacheTTL)
 	internalHandler := handler.NewInternalRegistryHandler(registryUC)
-	opHandler := handler.NewOperationHandler(opsRepo)
+	opHandler := operationspb.NewHandler(opsRepo)
 
 	// ── дескриптор процесса: ОБЪЯВЛЕНИЕ о себе. Порты (сверка существования и
 	// проводка сужателя) приезжают сюда уже собранными — их предмет живёт в этом

@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
@@ -34,7 +35,6 @@ import (
 	announceapi "github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/announce"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/listener"
 	lbhandler "github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/loadbalancer"
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/operation"
 	quotaapi "github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/quota"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/targetgroup"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
@@ -139,7 +139,7 @@ func buildSyncRegistrar(peers *peerClients) (iamclient.Registrar, error) {
 // at-least-once backstop'ом (ban #9).
 func registerPublic(reg grpc.ServiceRegistrar, w grpcWiring) {
 	// OperationService (exempt: op-id опакен, owner-scoped Get/Cancel).
-	operationpb.RegisterOperationServiceServer(reg, operation.NewHandler(w.opsRepo))
+	operationpb.RegisterOperationServiceServer(reg, operationspb.NewHandler(w.opsRepo))
 
 	// NetworkLoadBalancerService.
 	lbHandler := lbhandler.NewHandler(

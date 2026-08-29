@@ -3758,7 +3758,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected (403 deny / 404 hide / already-done 400/409)', () =>   pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));"
+                  "pm.test('rejected (403 deny / 404 hide / already-done 400)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));",
+                  "if (pm.response.code === 403) pm.test('grpc 7 (PERMISSION_DENIED)', () =>   pm.expect(pm.response.json().code).to.eql(7));",
+                  "if (pm.response.code === 404) pm.test('grpc 5 (NOT_FOUND)', () =>   pm.expect(pm.response.json().code).to.eql(5));",
+                  "if (pm.response.code === 400) pm.test('grpc 9 (FAILED_PRECONDITION)', () =>   pm.expect(pm.response.json().code).to.eql(9));"
                 ]
               }
             }

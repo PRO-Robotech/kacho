@@ -307,7 +307,7 @@ Cross-cutting и internal transport (`internal/handler/`):
 
 | Файл | Сервис / роль |
 |---|---|
-| `operation_handler.go` | `OperationService.Get` / `Cancel` |
+| — (сведён в `pkg/operations/operationspb`) | `OperationService.Get` / `Cancel` |
 | `internal_address_allocate_handler.go` | `InternalAddressService.AllocateInternalIP/IPv6/External` + referrer-tracking |
 | `internal_network_handler.go` | `InternalNetworkService` (`GetNetwork` — internal-only `vrf_id`; `SetDefaultSecurityGroupId`) |
 | `authn_interceptor.go` | `AuthNUnaryInterceptor`, `AuthNStreamInterceptor` (требуют предъявленного принципала в production-mode; решений о доступе не принимают) |
@@ -1107,7 +1107,7 @@ IAM sidecar — иначе anonymous = root.
 > - «`OperationService.Get` не делает AuthZ» — неверно: `Get` и `Cancel`
 >   энфорсят **владельца** операции, резолвя ключ исключительно из доверенного
 >   принципала контекста; отсутствие ключа — отказ, а не пропуск
->   (`internal/handler/operation_handler.go`).
+>   (`pkg/operations/operationspb/handler.go`).
 > - «mTLS на :9091 опционален, primary defense — NetworkPolicy» — неверно и опаснее
 >   прочего: `ValidateServerMTLS` требует server-mTLS на internal-листенере в **любом**
 >   production-режиме, и без него старт отказывает. Запись, объявляющая защиту
@@ -1296,7 +1296,7 @@ baseline в `tests/k6/results/BASELINE.md`.)
    требующие предъявленного принципала в production-mode.
 5. В `internal/handler/internal_address_allocate_handler.go` — обертка над
    `AddressService.Allocate*`.
-6. В `internal/handler/operation_handler.go` — `Get` / `Cancel` через `ops`.
+6. В `pkg/operations/operationspb/handler.go` — `Get` / `Cancel` через `ops`.
 7. Конвертация `Operation` в proto — пакет `internal/apps/kacho/shared/pbconv`
    (`OperationToProto`, с маппингом `CreatedBy`).
 8. В `internal/handler/internal_maperr.go` — generic info-leak-safe mapper.
@@ -1382,7 +1382,7 @@ kacho-vpc/
 │   ├── clients/
 │   │   └── iam_client.go (+ project_cache.go) — ProjectClient через gRPC к kacho-iam
 │   ├── handler/                   — cross-cutting / internal transport (см. §3.5)
-│   │   ├── operation_handler.go             — OperationService.Get/Cancel
+│   │   │   (OperationService.Get/Cancel сведён в pkg/operations/operationspb)
 │   │   ├── internal_address_allocate_handler.go — InternalAddressService (IPAM)
 │   │   ├── internal_network_handler.go     — InternalNetworkService (vrf_id / default-SG)
 │   │   ├── authn_interceptor.go   — AuthN-guard (принципал предъявлен?)

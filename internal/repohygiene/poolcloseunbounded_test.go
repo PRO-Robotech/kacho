@@ -95,7 +95,7 @@ var poolCloseDebt = map[string]int{
 	// кэша вердиктов — сам апплаер снят, потому что дозваниваться до края владельцу
 	// прав больше незачем.
 	"services/iam": 463,
-	"services/nlb": 26,
+	"services/nlb": 24, // 26 → 24: снят пакет api/operation вместе со своими пробами (#1369)
 }
 
 // TestPoolCloseInTestsIsBounded — гейт.
