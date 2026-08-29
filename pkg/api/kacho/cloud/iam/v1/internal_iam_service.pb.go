@@ -1110,8 +1110,19 @@ func (x *SubjectChange) GetSubjectType() string {
 type PollSubjectChangesResponse struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Changes []*SubjectChange       `protobuf:"bytes,1,rep,name=changes,proto3" json:"changes,omitempty"`
-	// head_id — current MAX(id) in the outbox (0 when empty). Lets a freshly
-	// started gateway initialise its cursor without replaying history.
+	// head_id — the position the caller may adopt as its cursor: the SETTLED
+	// boundary of the journal, narrowed to the last delivered row when the page
+	// was cut by `limit`. Lets a freshly started gateway initialise its cursor
+	// without replaying history.
+	//
+	// It is NOT `MAX(id)`. A journal number is issued by the counter on INSERT and
+	// becomes visible on COMMIT, so a caller that adopted the largest visible
+	// number would jump over a writer still in flight, and that row would never
+	// come back — re-reading is strictly "greater than the cursor". The same holds
+	// for a full page: beyond its last row the window still holds rows nobody read.
+	//
+	// The guarantee and its price are stated once:
+	// docs/architecture/journal-position-settled-watermark.md.
 	HeadId        int64 `protobuf:"varint,2,opt,name=head_id,json=headId,proto3" json:"head_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

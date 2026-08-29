@@ -40,8 +40,8 @@ func (h countingWarnHandler) Handle(_ context.Context, r slog.Record) error {
 func (h countingWarnHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
 func (h countingWarnHandler) WithGroup(string) slog.Handler      { return h }
 
-func newProbeWatermark() *watermark {
-	return &watermark{log: slog.Default(), now: time.Now}
+func newProbeWatermark() *Watermark {
+	return &Watermark{log: slog.Default(), now: time.Now}
 }
 
 // TestWatermarkEstablishedSeparatesNoPositionFromPositionZero — обе стороны.
