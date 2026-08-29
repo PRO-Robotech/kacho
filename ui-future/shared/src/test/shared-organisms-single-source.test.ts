@@ -148,6 +148,7 @@ const COMPONENTS: readonly Organism[] = [
   { dir: "organisms/form/FormFooter", file: "FormFooter", symbol: "FormFooter" },
   { dir: "organisms/form/FormShell", file: "FormShell", symbol: "FormShell" },
   { dir: "organisms/form/ImmutableField", file: "ImmutableField", symbol: "ImmutableField" },
+  { dir: "atoms/StatusBadge", file: "StatusBadge", symbol: "StatusBadge" },
 ] as const;
 
 /*
@@ -163,11 +164,6 @@ const COMPONENTS: readonly Organism[] = [
  *   требует «в каталоге только `index.ts`», то есть дало бы ложное красное на
  *   исправном дереве. Все они накрыты правилом дерева (символ объявлен
  *   `shared/`, копия по адресу тоже видна) — не наблюдением, а другим.
- *
- *   `StatusBadge` — рядом с прослойкой лежит ПРОБА (`StatusBadge.tone.test.tsx`
- *   у compute, `StatusBadge.test.tsx` у storage). Проба копией не является, но
- *   предикат «только index.ts» её не отличает; отличать он должен, и это
- *   отдельный предмет.
  *
  *   `LabelsEditor` — объявлен в `shared/` ДВАЖДЫ (`organisms/LabelsEditor` и
  *   `organisms/form/LabelsEditor`), поэтому «своя предпосылка» ниже, требующая
@@ -344,8 +340,22 @@ describe("ведомые компоненты: в приложении допу�
           hasIndex: true,
         });
         expect(readFileSync(indexFile, "utf8")).toContain("@shared/components/" + comp.dir);
-        // Anything besides the shim is a fork in disguise.
-        const stray = readdirSync(appDir).filter((f) => f !== "index.ts");
+        // Всё, кроме прослойки, — переодетый форк. Но ПРОБА рядом с прослойкой
+        // форком не является: она ничего не объявляет, в бандл не попадает и
+        // утверждает о том же общем компоненте, только с точки зрения этого
+        // модуля (тон полосы у compute, словарь состояний у storage). Прежний
+        // предикат «в каталоге только index.ts» её от копии не отличал, и цена
+        // слепоты была ровно один невидимый компонент: `StatusBadge` пришлось
+        // держать ВНЕ перечня наблюдаемых, потому что внесение дало бы красное
+        // на исправном дереве (#1506). Дальше она стоила бы по компоненту за
+        // каждого, у кого рядом с прослойкой захотят написать пробу.
+        //
+        // Признак — суффикс имени файла, и здесь это не «мерить соглашение об
+        // именовании»: `.test.`/`.spec.` — то, по чему ФАЙЛ ОТБИРАЕТ САМ jest
+        // (`testMatch` в `jest.config.cjs` каждого приложения). Файл с таким
+        // именем исполняется как проба by construction, а не по чьей-то
+        // договорённости.
+        const stray = readdirSync(appDir).filter((f) => f !== "index.ts" && !/\.(test|spec)\.tsx?$/.test(f));
         expect({ app, comp: comp.dir, stray }).toEqual({
           app,
           comp: comp.dir,
