@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect } from "@playwright/test";
-import { registerAndSignIn, test } from "./fixtures";
+import { STREAM_PATH, registerAndSignIn, test } from "./fixtures";
 
 /**
  * Отказ ручки потока обязан БЫТЬ ДОСТИЖИМ ОТТУДА, ОТКУДА ЕГО БУДУТ ЧИТАТЬ.
@@ -55,13 +55,11 @@ import { registerAndSignIn, test } from "./fixtures";
  * приехала из каталога ожидания, когда поставка объявила владельцев журнала.
  */
 
-const STREAM = "/subscription/v1/events";
-
 test("адрес потока приходит на край, а не в заглушку приложения", async ({ page }) => {
   // verifies #1394
   await registerAndSignIn(page);
 
-  const response = await page.request.get(STREAM, {
+  const response = await page.request.get(STREAM_PATH, {
     headers: { Accept: "text/event-stream" },
     // Отказ — законный исход этой пробы, а не сбой запроса.
     failOnStatusCode: false,
@@ -73,11 +71,11 @@ test("адрес потока приходит на край, а не в заг�
 
   // Положительный контроль стоит ПЕРВЫМ: без него отрицание ниже зеленело бы на
   // пустом ответе — а пустой ответ означает, что не сработал сам запрос.
-  expect(contentType, `ответ ${STREAM} без типа: status=${status}, тело=${body}`).not.toBe("");
+  expect(contentType, `ответ ${STREAM_PATH} без типа: status=${status}, тело=${body}`).not.toBe("");
 
   expect(
     contentType,
-    `адрес потока ${STREAM} вернул ${status} ${contentType} — это заглушка одностраничного ` +
+    `адрес потока ${STREAM_PATH} вернул ${status} ${contentType} — это заглушка одностраничного ` +
       "приложения, а не край. Приёмник событий браузера на таком типе закрывает соединение " +
       "навсегда и выдаёт ошибку без подробностей: со стороны это тишина, при том что в журнале " +
       "раздачи стоит успех. Маршрут держит блок раздачи консоли " +
@@ -87,7 +85,7 @@ test("адрес потока приходит на край, а не в заг�
 
   expect(
     contentType.includes("application/json") || contentType.includes("text/event-stream"),
-    `адрес потока ${STREAM} вернул тип ${contentType}, которого край не производит ни на одной ` +
+    `адрес потока ${STREAM_PATH} вернул тип ${contentType}, которого край не производит ни на одной ` +
       `своей полосе (отказ — application/json, поток — text/event-stream). status=${status}, тело=${body}`,
   ).toBe(true);
 
@@ -95,6 +93,6 @@ test("адрес потока приходит на край, а не в заг�
   // обязано быть отличимо от «ноль прочитанного» — здесь это читается прямо.
   test.info().annotations.push({
     type: "перепись",
-    description: `${STREAM}: status=${status}, content-type=${contentType}, тело=${body}`,
+    description: `${STREAM_PATH}: status=${status}, content-type=${contentType}, тело=${body}`,
   });
 });
