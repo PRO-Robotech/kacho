@@ -279,3 +279,168 @@ func TestStatusTailGateIsSilentOnTheLegitimateTwin(t *testing.T) {
 		}
 	}
 }
+
+// ─────────────── гейт третий: ПРИЗНАК, по которому принято решение ────────────
+
+// textFaultInjectedWordDecision — возвращённое решение по СЛОВАМ сервера.
+//
+// Форм записи здесь четыре, и все четыре законны в Go. Гейт, знающий одну,
+// давал бы не находку и не молчание, а НЕВИДИМОСТЬ: остальные три уехали бы вне
+// наблюдения (`testing.md` §«Гейт на класс», п.7).
+const textFaultInjectedWordDecision = `package address
+
+func isUniqueViolation(err error) bool {
+	msg := err.Error()
+	// (1) слова сервера подстрокой
+	if strings.Contains(msg, "duplicate key value") {
+		return true
+	}
+	// (2) код, добытый из форматирования драйвером
+	if strings.Contains(msg, "SQLSTATE 23505") {
+		return true
+	}
+	// (3) начало сообщения
+	if strings.HasPrefix(msg, "ERROR: violates foreign key constraint") {
+		return true
+	}
+	// (4) прямое сравнение с текстом драйвера
+	return msg == "no rows in result set"
+}
+`
+
+// textFaultInjectedLegitimateTwin — то же место, переведённое на сигнальную
+// ошибку, вместе с законными соседями. Каждый сосед — СВОЙ способ вызвать
+// ложную находку, и все четыре встречаются в этом дереве:
+//
+//   - те же слова в КОММЕНТАРИИ, объясняющем маршрут: самая частая форма, и
+//     проверка по подстроке краснела бы здесь на собственной шапке (в ней
+//     вокабуляр стоит весь до единой фразы);
+//   - те же слова в тексте СООБЩЕНИЯ, а не в решении;
+//   - сравнение строк по образцу, к отказу хранилища отношения не имеющему, —
+//     маршрутизация;
+//   - разбор текста МИГРАЦИИ (`drop constraint`): слово «constraint» есть, но
+//     это синтаксис DDL, а не слова отказа, и предмет здесь чужой. Живой сосед
+//     этого дерева — `keyalgorithmdictionary.go`.
+const textFaultInjectedLegitimateTwin = `package address
+
+// isUniqueViolation распознаёт конфликт уникальности. Слой repo разбирает отказ
+// по коду (23505 → ErrAlreadyExists) и отдаёт сигнальную ошибку; прежняя
+// редакция сверяла текст с "duplicate key value" и "SQLSTATE 23505", что на
+// русской локали не совпадало бы вовсе — "violates unique constraint" сервер
+// пишет только по-английски.
+func isUniqueViolation(err error) bool {
+	return errors.Is(err, repo.ErrAlreadyExists)
+}
+
+func explain(err error) string {
+	if errors.Is(err, repo.ErrAlreadyExists) {
+		return "duplicate key value: address already allocated"
+	}
+	return "allocation failed"
+}
+
+func routeOf(path string) string {
+	if strings.Contains(path, "/vpc/v1/addresses") {
+		return "address"
+	}
+	if strings.HasPrefix(path, "/iam/v1/") {
+		return "iam"
+	}
+	return ""
+}
+
+func droppedConstraintIn(migrationSQL string) int {
+	return strings.Index(strings.ToLower(migrationSQL), "drop constraint")
+}
+`
+
+func TestTextFaultGateCatchesADecisionMadeByWords(t *testing.T) {
+	sites, census, err := ScanTextFaultDecisions("injected/address/helpers.go", []byte(textFaultInjectedWordDecision))
+	if err != nil {
+		t.Fatalf("разбор инъекции: %v", err)
+	}
+	if census.Comparisons == 0 {
+		t.Fatal("инъекция не разобрана: сравнений строк ноль — доказательство беспредметно")
+	}
+	if len(sites) != 4 {
+		var got []string
+		for _, s := range sites {
+			got = append(got, s.How+" "+s.Needle)
+		}
+		t.Fatalf("решение по словам опознано %d раз, ожидалось 4 (подстрока, код в тексте, "+
+			"начало сообщения, прямое сравнение); поймано: %v.\n"+
+			"Форма, о которой распознаватель не знает, — не край и не редкость: всё, "+
+			"записанное в ней, оказывается ВНЕ НАБЛЮДЕНИЯ.", len(sites), got)
+	}
+	// Находка обязана НАЗЫВАТЬ КООРДИНАТУ — иначе на неё тратят прогон и снимают
+	// гейт как непонятный (`testing.md` §«Гейт на класс», п.8).
+	for _, s := range sites {
+		if s.Line == 0 || s.Func != "isUniqueViolation" || s.Needle == "" || s.Why == "" {
+			t.Fatalf("находка без координаты либо без объяснения: %+v — читателю негде искать", s)
+		}
+	}
+}
+
+func TestTextFaultGateIsSilentOnTheLegitimateTwin(t *testing.T) {
+	sites, census, err := ScanTextFaultDecisions("injected/address/helpers.go", []byte(textFaultInjectedLegitimateTwin))
+	if err != nil {
+		t.Fatalf("разбор близнеца: %v", err)
+	}
+	// Положительный контроль близнеца: он обязан НЕСТИ предмет наблюдения.
+	// Молчание над неразобранным входом сказано ни о чём.
+	if census.Comparisons == 0 {
+		t.Fatal("близнец не разобран: сравнений строк ноль — молчание сказано ни о чём")
+	}
+	if census.Literals == 0 {
+		t.Fatal("близнец не разобран: литералов ноль")
+	}
+	if len(sites) != 0 {
+		var got []string
+		for _, s := range sites {
+			got = append(got, s.How+" "+s.Needle)
+		}
+		t.Fatalf("гейт нашёл %d решений у законного близнеца (%s) — ложная находка. "+
+			"Первый же ложный срабат отключает гейт, а вместе с ним и настоящую находку.",
+			len(sites), strings.Join(got, ", "))
+	}
+}
+
+// TestTextFaultInjectionBreaksOnlyTheNewProperty — третий прогон пары, и он
+// обязателен (`testing.md` §«Гейт на класс», п.2в, 2026-08-24).
+//
+// Инъекция, попутно нарушающая СОСЕДНИЙ контроль, доказательством не является:
+// красное пришло бы от соседа, а новый гейт мог бы оказаться вакуумным, не
+// показав этого ничем. Здесь проверяется, что инъекция словами НЕ трогает
+// предмет соседей: ни места решения по коду, ни текста ветки по умолчанию.
+func TestTextFaultInjectionBreaksOnlyTheNewProperty(t *testing.T) {
+	src := []byte(textFaultInjectedWordDecision)
+
+	// Сосед первый — МЕСТО решения по коду. Литерал "SQLSTATE 23505" коду
+	// "23505" не равен, поэтому сосед обязан молчать: он о решении по тексту не
+	// утверждает ничего и никогда не утверждал.
+	codeSites, codeCensus, err := ScanSQLStateLiterals("injected/address/helpers.go", src)
+	if err != nil {
+		t.Fatalf("разбор соседа-по-коду: %v", err)
+	}
+	if codeCensus.Literals == 0 {
+		t.Fatal("сосед-по-коду не разобрал инъекцию: литералов ноль — его молчание беспредметно")
+	}
+	if len(codeSites) != 0 {
+		t.Fatalf("инъекция словами задела ЧУЖОЙ предмет: сосед-по-коду нашёл %d вхождений. "+
+			"Тогда красное приходило бы от него, и вакуумность нового гейта осталась бы невидимой.",
+			len(codeSites))
+	}
+
+	// Сосед второй — ТЕКСТ ветки по умолчанию. Инъекция не производит кодов
+	// gRPC вовсе, значит отображением не является и его предмета не касается.
+	mappers, _, err := ScanStatusMappers("injected/address/helpers.go", src)
+	if err != nil {
+		t.Fatalf("разбор соседа-по-тексту-хвоста: %v", err)
+	}
+	for _, m := range mappers {
+		if m.TailIsStatus && !m.TailFixed {
+			t.Fatalf("инъекция словами задела ЧУЖОЙ предмет: сосед-по-хвосту нашёл %s → %s",
+				m.Func, m.TailText)
+		}
+	}
+}

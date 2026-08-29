@@ -290,3 +290,152 @@ func TestErrorMappersTailReturnsAFixedText(t *testing.T) {
 			len(findings), strings.Join(findings, "\n  "))
 	}
 }
+
+// textFaultCensusFloor — порог осмотренных сравнений строк. Отдельное число от
+// переписи файлов: файлы можно прочитать и не разобрать, а ноль сравнений при
+// тысяче с лишним файлов означает сломанный разбор, а не чистое дерево.
+const textFaultCensusFloor = 200
+
+// textFaultException — место, которому позволено решать по словам сервера.
+//
+// Отступление называет ПРИЧИНУ и живёт, пока у него есть предмет. Запись,
+// которой больше нечего исключать, — находка: она унаследует следующую слепую
+// зону.
+type textFaultException struct {
+	File string
+	Func string
+	Why  string
+}
+
+// textFaultExceptions — ведомость отступлений.
+//
+// Пусто здесь — норма и ЦЕЛЬ, а не поломка: гейт на пустой ведомости проходит.
+// Мыслимое законное отступление — разбор чужого журнала, где кроме слов ничего
+// и нет; такого места в дереве сегодня не существует.
+var textFaultExceptions []textFaultException
+
+// TestStorageFaultKindIsNeverDecidedByDatabaseText — сторона третья: ПРИЗНАК, по
+// которому принято решение о роде отказа.
+//
+// # Предмет
+//
+// Текст сообщения сервера не является контрактом: он зависит от `lc_messages`
+// (на сервере с русской локалью «duplicate key value» не встречается вовсе) и от
+// выпуска сервера, который формулировки правит. Код отказа не зависит ни от
+// того, ни от другого — он и есть то, что сервер обещает.
+//
+// # Почему это НЕ ловится соседним гейтом
+//
+// `TestIntegritySQLStateIsDecidedInOnePlace` судит решение по КОДУ: он ищет
+// литералы из перечня `IntegritySQLStates`. Литерал `"SQLSTATE 23505"` в этот
+// перечень не входит — строка из восемнадцати знаков коду `"23505"` не равна, —
+// поэтому о решении по тексту сосед не утверждает ничего и молчит на нём by
+// construction.
+//
+// # Отчего этот класс особенно тих
+//
+// Предикат по подстроке не может ПОКРАСНЕТЬ. Он молча перестаёт совпадать, и
+// ветка, обязанная сработать, не срабатывает никогда: конфликт уникальности
+// уезжает в ветку «неклассифицированный отказ». Со стороны это выглядит как
+// внутренний сбой, а не как поломка классификации.
+func TestStorageFaultKindIsNeverDecidedByDatabaseText(t *testing.T) {
+	root := repoRoot(t)
+	tt := newTrackedTree(t, root)
+
+	var rels []string
+	for rel := range tt.files {
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+		if skipPath(rel) {
+			continue
+		}
+		rels = append(rels, rel)
+	}
+	sort.Strings(rels)
+
+	var (
+		parsed, funcs, literals, comparisons int
+		sites                                []TextFaultDecision
+	)
+	for _, rel := range rels {
+		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		ss, census, err := ScanTextFaultDecisions(rel, src)
+		if err != nil {
+			t.Fatalf("разбор %s: %v", rel, err)
+		}
+		parsed++
+		funcs += census.Funcs
+		literals += census.Literals
+		comparisons += census.Comparisons
+		sites = append(sites, ss...)
+	}
+
+	t.Logf("перепись: не-тестовых файлов Go разобрано %d, объявлений функций прочитано %d, "+
+		"строковых литералов осмотрено %d, сравнений строк по образцу осмотрено %d, "+
+		"вокабуляр отказа сервера — %d фраз, решений по словам найдено %d, отступлений объявлено %d",
+		parsed, funcs, literals, comparisons, len(DatabaseFaultPhrases), len(sites), len(textFaultExceptions))
+
+	// (1) Предпосылка: дерево вообще прочитано.
+	if parsed < sqlStateCensusFloor {
+		t.Fatalf("перепись обвалилась: разобрано %d файлов при пороге %d — на таком "+
+			"объёме «ноль находок» означало бы «ноль прочитанного»", parsed, sqlStateCensusFloor)
+	}
+	if literals < sqlStateLiteralFloor {
+		t.Fatalf("осмотрено %d строковых литералов при пороге %d — разбор перестал видеть "+
+			"предмет, и его молчание сказано ни о чём", literals, sqlStateLiteralFloor)
+	}
+
+	// (2) ПОЛОЖИТЕЛЬНЫЙ контроль: знаменатель предмета обязан находиться. Гейт,
+	// чей предмет — отсутствие, молчит одинаково и когда предмет исчез, и когда
+	// сломался он сам; эта проверка разводит два молчания.
+	if comparisons < textFaultCensusFloor {
+		t.Fatalf("сравнений строк по образцу осмотрено %d при пороге %d — распознаватель "+
+			"перестал видеть сравнения вообще, и его молчание о дереве не свидетельствует",
+			comparisons, textFaultCensusFloor)
+	}
+
+	// (3) Отступления: снимаем объявленные, остальное — находка.
+	allowed := map[string]textFaultException{}
+	for _, e := range textFaultExceptions {
+		allowed[e.File+"\x00"+e.Func] = e
+	}
+	used := map[string]bool{}
+	var findings []string
+	for _, s := range sites {
+		if e, ok := allowed[s.File+"\x00"+s.Func]; ok {
+			used[e.File+"\x00"+e.Func] = true
+			continue
+		}
+		if e, ok := allowed[s.File+"\x00"]; ok { // отступление, данное файлу целиком
+			used[e.File+"\x00"] = true
+			continue
+		}
+		findings = append(findings, fmt.Sprintf("%s:%d %s() решает %s по образцу %q (%s)",
+			s.File, s.Line, s.Func, s.How, s.Needle, s.Why))
+	}
+
+	// (4) Самоистечение: отступление, которому нечего исключать, — находка.
+	for _, e := range textFaultExceptions {
+		if !used[e.File+"\x00"+e.Func] {
+			findings = append(findings, fmt.Sprintf(
+				"отступление %s %s() потеряло предмет: решений по словам сервера там больше "+
+					"нет — снимите запись, иначе она унаследует следующую слепую зону",
+				e.File, e.Func))
+		}
+	}
+
+	if len(findings) > 0 {
+		sort.Strings(findings)
+		t.Fatalf("род отказа хранилища решается по СЛОВАМ сервера, а не по коду (находок %d):\n  %s\n\n"+
+			"Текст сообщения сервера не контракт: он зависит от `lc_messages` (на русской локали "+
+			"этих фраз не встречается ВОВСЕ) и от выпуска сервера. Предикат по подстроке при этом "+
+			"не может покраснеть — он молча перестаёт совпадать, и ветка, обязанная сработать, "+
+			"не срабатывает никогда. Решение о роде принимает слой repo через `pkg/db/pgfault`, "+
+			"а вызывающий читает СИГНАЛЬНУЮ ошибку (`errors.Is`), а не слова.",
+			len(findings), strings.Join(findings, "\n  "))
+	}
+}
