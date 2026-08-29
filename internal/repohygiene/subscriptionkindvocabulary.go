@@ -268,7 +268,7 @@ func auditOneFileForKindVocabulary(
 	if !ok {
 		return nil, nil
 	}
-	imports := importAliases(f)
+	imports := fileImportAliases(f)
 
 	var findings []SubscriptionKindFinding
 	var walkErr error
@@ -467,8 +467,14 @@ var kindObjectTypeForm = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // KindVocabularyShape — слово написано не как имя типа модели прав.
 const KindVocabularyShape = "KIND-VOCABULARY-SHAPE"
 
-// importAliases — карта «локальное имя пакета → путь импорта» для одного файла.
-func importAliases(f *ast.File) map[string]string {
+// fileImportAliases — карта «локальное имя пакета → путь импорта» для одного файла.
+//
+// Имя несёт «file», потому что в этом же пакете живёт узкий однофамилец
+// `importAliases` (`operationhandlersinglesource.go`), разрешающий три
+// ИМЕНОВАННЫХ пути операции. Свести их в одну функцию нельзя: узкий подставляет
+// имя ПАКЕТА (`operationv1`), а общий берёт последний сегмент пути и дал бы
+// `v1` — ровно ту слепую зону, о которой предупреждает комментарий узкого.
+func fileImportAliases(f *ast.File) map[string]string {
 	out := make(map[string]string, len(f.Imports))
 	for _, imp := range f.Imports {
 		p, err := strconv.Unquote(imp.Path.Value)
