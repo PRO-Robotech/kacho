@@ -226,7 +226,7 @@ func TestUISourceReadPredicateSeparatesDefectFromCensus(t *testing.T) {
 		censusPath:  synthProbeTreeCensus,
 		trunkPath:   synthProbeTrunkContract,
 		behavePath:  synthProbeBehaviour,
-	})
+	}, nil)
 
 	got := map[string]uiSourceFinding{}
 	for _, f := range findings {
@@ -312,7 +312,7 @@ func TestUISourceReadPredicateTellsCoordinateFromLabel(t *testing.T) {
 		labelPath:    synthProbeSyntheticLabels,
 		labelReadRel: synthProbeLabelThatIsReallyRead,
 		indirectRel:  synthProbeIndirectPath,
-	})
+	}, nil)
 
 	got := map[string]uiSourceFinding{}
 	for _, f := range findings {
@@ -380,7 +380,7 @@ it("показывает имя", () => {
   expect(screen.getByText("web")).toBeInTheDocument();
 });
 `
-		findings, reads, _ := auditUISourceReads(map[string]string{rel: src})
+		findings, reads, _ := auditUISourceReads(map[string]string{rel: src}, nil)
 		if len(findings) != 0 {
 			t.Errorf("гейт покраснел на собственном объяснении запрета: %v — такой гейт снимут первым", findings)
 		}
@@ -395,7 +395,7 @@ import { join } from "node:path";
 const source = readFileSync(join(__dirname, "Decoy.tsx"), "utf8");
 it("declares", () => { expect(source).toContain("Decoy"); });
 `
-		findings, _, _ := auditUISourceReads(map[string]string{rel: src})
+		findings, _, _ := auditUISourceReads(map[string]string{rel: src}, nil)
 		if len(findings) != 1 {
 			t.Fatalf("та же форма в коде НЕ поймана: %v", findings)
 		}
@@ -409,7 +409,7 @@ it("declares", () => { expect(source).toContain("Decoy"); });
 			"const raw = readFileSync(\"vite.config.ts\", \"utf8\");\n" +
 			"const keys = [...raw.matchAll(/\"(\\/[^\"]+)\":\\s*\\{/g)].map((m) => m[1]);\n" +
 			"it(\"proxied\", () => { expect(keys.length).toBeGreaterThan(0); });\n"
-		findings, reads, _ := auditUISourceReads(map[string]string{rel: src})
+		findings, reads, _ := auditUISourceReads(map[string]string{rel: src}, nil)
 		if reads != 1 {
 			t.Fatalf("чтение не распознано (reads=%d) — регулярный литерал сорвал разбор", reads)
 		}
@@ -606,5 +606,284 @@ func TestUISourceReadGateJudgesTheLiveTreeByDefault(t *testing.T) {
 	_, judged, log, _ := runTreeGate(t, module, "")
 	if judged != module {
 		t.Errorf("без явного входа гейт судит %s, а живой корень — %s:\n%s", judged, module, log)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Обход дерева, записанный ЧЕРЕЗ ПОМОЩНИКА (#1517).
+//
+// Прежний распознаватель знал у обхода ровно одну форму записи — прямой вызов
+// системной функции в теле самой пробы (`readdirSync(`). В этом дереве обход
+// записывают и второй, столь же законной формой: он вынесен в модуль-помощник,
+// а проба зовёт его экспорт. Форма не редкая и не краевая — помощников-обходчиков
+// в дереве пять, и через них обходят пять проб.
+//
+// Для распознавателя, знающего одну форму, эти пробы — не находка и не чистое
+// место: они ВНЕ НАБЛЮДЕНИЯ (`testing.md` §«Гейт на класс», п. 7). Ветка прощения
+// переписи до них не доходит, и перепись состава дерева объявляется тем самым
+// дефектом, ради которого гейт заведён.
+//
+// Инъекция держит обе стороны ОДНИМ помощником: он экспортирует и обходящий
+// `sourceFiles`, и НЕ обходящий `declaredSymbols`. Проба, зовущая первый, —
+// перепись (молчание); проба, взявшая у того же помощника второй и читающая
+// названный ею модуль, — находка. Разойдись эти вердикты в одну сторону, и гейт
+// мерил бы ИМПОРТ ПОМОЩНИКА, а не то, доходит ли проба до обхода: тогда одна
+// строка импорта снимала бы запрет с любой пробы.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ПОМОЩНИК. Форма снята с `shared/src/test/shared-symbol-sweep.ts`: один модуль
+// несёт и обходчик, и разбор, который дерева не касается вовсе.
+const synthWalkerHelperModule = `import { readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
+
+const DECLARATION = /^[ \t]*export[ \t]+(?:function|const)[ \t]+([A-Za-z_$][\w$]*)/gm;
+
+export function declaredSymbols(src: string): Set<string> {
+  const out = new Set<string>();
+  DECLARATION.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = DECLARATION.exec(src)) !== null) out.add(m[1]);
+  return out;
+}
+
+export function sourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (cur: string) => {
+    for (const entry of readdirSync(cur, { withFileTypes: true })) {
+      const full = path.join(cur, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.tsx?$/.test(entry.name)) out.push(full);
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+export function sweep(root: string): string[] {
+  return sourceFiles(root).filter((f) => statSync(f).size > 0);
+}
+
+export function isReExportOnly(src: string): boolean {
+  return /^\s*export \* from/m.test(src) && !readFileSync;
+}
+`
+
+// ЗАКОННЫЙ БЛИЗНЕЦ 5 — перепись состава дерева, обход у которой вынесен в
+// помощника. Названный ею модуль (`shared/src/api/types.ts`) — ЭТАЛОННЫЙ НАБОР
+// переписи, а не предмет самоподтверждения: утверждение делается о находках
+// обхода, и краснеет оно ровно тогда, когда в дереве заводят вторую копию.
+const synthProbeHelperCensus = `import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { declaredSymbols, sourceFiles } from "@shared/test/shared-symbol-sweep";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const platform = declaredSymbols(readFileSync(path.join(repoRoot, "shared/src/api/types.ts"), "utf8"));
+const files = sourceFiles(path.join(repoRoot, "compute/src"));
+
+describe("типы провода платформы объявлены один раз", () => {
+  it("перепись названа", () => {
+    expect(files.length).toBeGreaterThan(0);
+    expect(platform.size).toBeGreaterThan(0);
+  });
+
+  it("модуль не объявляет заново ни один символ платформы", () => {
+    const again = files.filter((f) => [...declaredSymbols(readFileSync(f, "utf8"))].some((s) => platform.has(s)));
+    expect(again).toEqual([]);
+  });
+});
+`
+
+// ДЕФЕКТ пятого вида — импорт ТОГО ЖЕ помощника, но взят НЕ обходящий экспорт.
+// Проба до обхода не доходит и подтверждает названный ею модуль его же текстом.
+// Без этого близнеца починка выродилась бы в маску: «есть импорт помощника —
+// прощаем», и одна строка импорта снимала бы запрет с любой пробы.
+const synthProbeHelperImportNoWalk = `import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { declaredSymbols } from "@shared/test/shared-symbol-sweep";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const declared = declaredSymbols(readFileSync(path.join(here, "HelperlessWidget.tsx"), "utf8"));
+
+describe("HelperlessWidget", () => {
+  it("объявляет свой публичный экспорт", () => {
+    expect(declared.has("HelperlessWidget")).toBe(true);
+  });
+});
+`
+
+// ДЕФЕКТ шестого вида — обход через помощника ЕСТЬ, и всё же проба читает СВОЙ
+// модуль. Обход такую форму не оправдывает и не оправдывал: ветка «свой модуль»
+// стоит до ветки прощения переписи, и починка не вправе её ослабить.
+const synthProbeHelperCensusReadsOwn = `import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { sourceFiles } from "@shared/test/shared-symbol-sweep";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const files = sourceFiles(path.resolve(here, ".."));
+const source = readFileSync(path.join(here, "OwnWidget.tsx"), "utf8");
+
+describe("OwnWidget", () => {
+  it("перепись названа", () => {
+    expect(files.length).toBeGreaterThan(0);
+  });
+
+  it("объявляет свой публичный экспорт", () => {
+    expect(source).toContain("OwnWidget");
+  });
+});
+`
+
+// TestUISourceReadPredicateSeesTreeWalkBehindAHelper — распознаватель знает ОБЕ
+// законные формы записи обхода, и различает их по тому, ДОХОДИТ ли проба до
+// обхода, а не по факту импорта помощника.
+func TestUISourceReadPredicateSeesTreeWalkBehindAHelper(t *testing.T) {
+	const (
+		helperPath = "ui-future/shared/src/test/shared-symbol-sweep.ts"
+		censusPath = "ui-future/compute/src/api/injected-helper-census.test.ts"
+		noWalkPath = "ui-future/compute/src/api/injected-helper-no-walk.test.ts"
+		readsOwn   = "ui-future/shared/src/components/organisms/OwnWidget/OwnWidget.test.tsx"
+		directWalk = "ui-future/shared/src/test/injected-single-source.test.ts"
+	)
+
+	helpers := map[string]string{helperPath: synthWalkerHelperModule}
+
+	findings, _, walks := auditUISourceReads(map[string]string{
+		censusPath: synthProbeHelperCensus,
+		noWalkPath: synthProbeHelperImportNoWalk,
+		readsOwn:   synthProbeHelperCensusReadsOwn,
+		directWalk: synthProbeTreeCensus,
+	}, helpers)
+
+	got := map[string]uiSourceFinding{}
+	for _, f := range findings {
+		got[f.File] = f
+	}
+
+	t.Run("перепись с обходом через помощника молчит", func(t *testing.T) {
+		if f, ok := got[censusPath]; ok {
+			t.Errorf("перепись состава дерева объявлена находкой (%s, %v).\n"+
+				"Обход записан второй законной формой — вынесен в помощника, — и распознаватель, "+
+				"знающий только прямой вызов, объявляет такую пробу дефектом. Это не находка и не "+
+				"чистое место: целый вид предмета вне наблюдения.", f.Why, f.Coords)
+		}
+	})
+
+	t.Run("тот же помощник без обхода запрета НЕ снимает", func(t *testing.T) {
+		f, ok := got[noWalkPath]
+		if !ok {
+			t.Fatal("проба, взявшая у помощника НЕ обходящий экспорт и подтверждающая названный " +
+				"ею модуль его же текстом, гейтом НЕ поймана — прощение выродилось в маску: " +
+				"одна строка импорта снимает запрет с любой пробы")
+		}
+		if !strings.Contains(strings.Join(f.Coords, ","), "HelperlessWidget.tsx") {
+			t.Errorf("координата не названа: %v", f.Coords)
+		}
+	})
+
+	t.Run("обход через помощника не оправдывает чтения СВОЕГО модуля", func(t *testing.T) {
+		f, ok := got[readsOwn]
+		if !ok {
+			t.Fatal("проба, читающая свой .tsx, прощена за обход через помощника — " +
+				"ветка «свой модуль» стоит ДО прощения переписи и ослаблена быть не может")
+		}
+		if !strings.Contains(f.Why, "СВОЙ модуль") {
+			t.Errorf("вид находки назван неверно: %q", f.Why)
+		}
+	})
+
+	t.Run("перепись считает обходом обе формы", func(t *testing.T) {
+		// Три пробы доходят до обхода: две через помощника, одна прямым вызовом.
+		// Схлопнись счётчик — молчание выше объяснялось бы сломанным разбором.
+		if walks != 3 {
+			t.Errorf("обходящих проб насчитано %d, ожидалось 3 — вторая форма записи обхода "+
+				"распознавателю невидима, и «обходят дерево» занижено молча", walks)
+		}
+	})
+}
+
+// ПОМОЩНИК второго вида — обход вынесен в МЕСТНУЮ, не экспортируемую функцию, а
+// экспорт зовёт её. Форма снята с `shared/src/test/identity-ceremony-carriers.ts`:
+// там обходчик `sourceFiles` объявлен местным, и `walkCeremonyCarriers` доходит
+// до обхода только через него.
+//
+// Замыкание, идущее лишь по ЭКСПОРТАМ, такой экспорт обходящим не признаёт —
+// то есть внутри самой починки остаётся слепая зона того же класса, ради
+// которого она делается.
+const synthWalkerHelperViaLocal = `import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+
+function collect(dir: string, acc: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) collect(full, acc);
+    else acc.push(full);
+  }
+  return acc;
+}
+
+export function carriers(uiRoot: string): string[] {
+  return collect(uiRoot).filter((f) => readFileSync(f, "utf8").includes("Provider"));
+}
+`
+
+// ЗАКОННЫЙ БЛИЗНЕЦ 6 — перепись, чей обход доезжает до системного вызова через
+// МЕСТНУЮ функцию помощника.
+const synthProbeCensusViaLocalWalker = `import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { carriers } from "@shared/test/identity-ceremony-carriers";
+
+const uiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const found = carriers(uiRoot);
+const reference = readFileSync(path.join(uiRoot, "shared/src/api/types.ts"), "utf8");
+
+describe("носители обряда объявлены один раз", () => {
+  it("перепись названа", () => {
+    expect(found.length).toBeGreaterThan(0);
+    expect(reference.length).toBeGreaterThan(0);
+  });
+
+  it("второй копии носителя нет", () => {
+    expect(found.filter((f) => f.includes("/legacy/"))).toEqual([]);
+  });
+});
+`
+
+// TestUISourceReadPredicateFollowsWalksThroughLocalHelpers — замыкание идёт по
+// ВСЕМ функциям модуля, а не только по экспортируемым.
+//
+// Иначе починка сама несёт слепую зону того же класса: экспорт, доходящий до
+// обхода через местную функцию, обходящим не признаётся, и перепись, записанная
+// этой формой, снова объявляется дефектом.
+func TestUISourceReadPredicateFollowsWalksThroughLocalHelpers(t *testing.T) {
+	const (
+		helperPath = "ui-future/shared/src/test/identity-ceremony-carriers.ts"
+		censusPath = "ui-future/shared/src/test/injected-ceremony-census.test.ts"
+	)
+
+	walking, _, _ := walkingHelperExports(map[string]string{helperPath: synthWalkerHelperViaLocal})
+	if !walking["carriers"] {
+		t.Errorf("экспорт, доходящий до обхода через МЕСТНУЮ функцию, обходящим не признан "+
+			"(признаны: %v).\nЗамыкание идёт только по экспортам — значит у починки та же "+
+			"слепая зона, ради которой она делается.", uiWalkNamesOf(walking))
+	}
+
+	findings, _, walks := auditUISourceReads(
+		map[string]string{censusPath: synthProbeCensusViaLocalWalker},
+		map[string]string{helperPath: synthWalkerHelperViaLocal},
+	)
+	if len(findings) != 0 {
+		t.Errorf("перепись объявлена находкой: %v", findings)
+	}
+	if walks != 1 {
+		t.Errorf("обходящих проб насчитано %d, ожидалось 1 — обход через местную функцию "+
+			"помощника распознавателю невидим", walks)
 	}
 }
