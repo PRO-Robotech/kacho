@@ -46,6 +46,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 )
 
 // SubjectChange — одна строка `subject_change_outbox` в том объёме, в каком её
@@ -60,6 +62,20 @@ type SubjectChange struct {
 	// владелец журнала его не назвал; такая строка двигает курсор и никого не
 	// закрывает.
 	Subject string
+	// Naming — ПОЧЕМУ [SubjectChange.Subject] пуст.
+	//
+	// Пустое имя приходит по двум несравнимым причинам, и наблюдение обязано
+	// их различать: выдача ГРУППЕ безымянна по устройству продукта (норма,
+	// при каждом снятии привязки в предпочтительной форме выдачи), а
+	// потерянный производителем тип означает, что отзыв по этой строке не
+	// доедет ни до кэша поимённо, ни до открытого потока (дефект). Величина, в
+	// которую сложены обе, ненулевая в штатной работе — тревогу на неё не
+	// повесить (kacho#1463).
+	//
+	// Читается ТОЛЬКО при пустом имени. Ноль значения —
+	// [authz.SubjectUnnameable]: строка, собранная без разбора, попадает в
+	// громкую корзину, а не в тихую.
+	Naming authz.SubjectNaming
 }
 
 // Poller — узкий порт над чтением журнала. Реализуется [Reader]; в пробах —
@@ -280,14 +296,28 @@ func (w *Watcher) Poll(ctx context.Context) {
 			}
 		}
 		w.cfg.Flush()
-		closed, unaddressable := w.closeNamed(changes)
+		closed, usersets, unnamed := w.closeNamed(changes)
 		w.cfg.Logger.Info("authz decision-cache flushed by subject-change poll",
 			"cursor", w.cursor, "subjects", len(changes), "streams_closed", closed,
-			// Строка, чьего субъекта закрыть по имени нельзя (тип вне словаря
-			// потоков — например группа), считается ОТДЕЛЬНО: молчаливое
-			// выбрасывание сделало бы «закрывать было нечего» неотличимым от
-			// «закрыть было нечем».
-			"unaddressable", unaddressable)
+			// Безымянные строки считаются ДВУМЯ величинами, а не одной.
+			//
+			// Прежде счётчик был один, и он делал «закрывать было нечего»
+			// отличимым от «закрыть было нечем» — ради этого и заводился. Но два
+			// повода «закрыть было нечем» он смешивал: выдачу ГРУППЕ (норма, при
+			// каждом снятии привязки в предпочтительной форме выдачи) и
+			// потерянное производителем имя (дефект). Смешанная величина
+			// ненулевая в штатной работе, поэтому по ней нельзя принять ни одного
+			// решения — форма наблюдения без содержания (kacho#1463).
+			"usersets_skipped", usersets,
+			"subjects_unnamed", unnamed)
+
+		// Тревога вешается на ДЕФЕКТ, и только на него: норма её не поднимает
+		// никогда, иначе жалоба звучала бы в штатной работе — и её перестали бы
+		// читать вместе с настоящей находкой.
+		if unnamed > 0 {
+			w.cfg.Logger.Warn("subject-change row carries no subject name",
+				"subjects_unnamed", unnamed, "cursor", w.cursor)
+		}
 
 		if len(changes) < pollBatchLimit {
 			// Порция короче предела — задел выбран целиком.
@@ -303,7 +333,7 @@ func (w *Watcher) Poll(ctx context.Context) {
 //
 // Пустое имя отсекается безусловно: под ним не учтён ни один поток, а обход по
 // нему был бы вопросом ни о ком.
-func (w *Watcher) closeNamed(changes []SubjectChange) (closed, unaddressable int) {
+func (w *Watcher) closeNamed(changes []SubjectChange) (closed, usersets, unnamed int) {
 	seen := make(map[string]struct{}, len(changes))
 	for _, c := range changes {
 		if c.Subject == "" {
@@ -320,7 +350,16 @@ func (w *Watcher) closeNamed(changes []SubjectChange) (closed, unaddressable int
 			// то есть строки перестают уходить в пределах окна вердиктов
 			// сужателя, а СОЕДИНЕНИЕ живёт до своего бюджета. Величина названа,
 			// чтобы этот остаток был виден, а не выведен.
-			unaddressable++
+			if c.Naming == authz.SubjectUserset {
+				// НОРМА: множество участников удостоверения не предъявляет, и
+				// потока под ним не учтено ни одного. Смена состава группы
+				// приезжает ОТДЕЛЬНОЙ строкой, называющей участника.
+				usersets++
+				continue
+			}
+			// ДЕФЕКТ: имя должно было быть и потеряно. Отзыв по этой строке не
+			// доедет ни до кэша поимённо, ни до открытого потока.
+			unnamed++
 			continue
 		}
 		if _, dup := seen[c.Subject]; dup {
@@ -329,7 +368,7 @@ func (w *Watcher) closeNamed(changes []SubjectChange) (closed, unaddressable int
 		seen[c.Subject] = struct{}{}
 		closed += w.cfg.Closer.CloseSubject(c.Subject)
 	}
-	return closed, unaddressable
+	return closed, usersets, unnamed
 }
 
 // ClosesStreams — провязан ли реестр открытых потоков.

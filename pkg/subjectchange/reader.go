@@ -65,8 +65,16 @@ func (p *Reader) PollSubjectChanges(
 		// стали его проставлять), едет БЕЗ имени: она двигает курсор и никого не
 		// закрывает. Выводить тип из написания идентификатора запрещено — этот
 		// приём уже давал совпадение с тем, чего продукт не производит.
-		subject, _ := authz.TenantSubject(c.GetSubjectType(), c.GetSubjectId())
-		changes = append(changes, SubjectChange{ID: c.GetId(), Subject: subject})
+		//
+		// Причина отказа НАЗЫВАЕТСЯ, а не выбрасывается: выдача группе и
+		// потерянный производителем тип обе дают пустое имя, но первое — норма
+		// устройства продукта, а второе — дефект, по которому отзыв не доедет.
+		// Сложенные в одно число, они дают величину, ненулевую в штатной работе,
+		// и повесить на неё тревогу нельзя (kacho#1463). Тип известен ЗДЕСЬ и
+		// больше нигде: дальше едет уже разобранный исход, а не строка, которую
+		// пришлось бы разбирать второй раз вторым словарём.
+		subject, naming := authz.NameTenantSubject(c.GetSubjectType(), c.GetSubjectId())
+		changes = append(changes, SubjectChange{ID: c.GetId(), Subject: subject, Naming: naming})
 	}
 	return changes, resp.GetHeadId(), nil
 }

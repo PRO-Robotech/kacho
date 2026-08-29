@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 )
 
@@ -185,6 +186,55 @@ func TestPolledSubjectIsNamedTheWayTheRegistryKeysIt(t *testing.T) {
 	for i, w := range want {
 		if changes[i].Subject != w {
 			t.Errorf("строка %d названа %q, ожидалось %q", i, changes[i].Subject, w)
+		}
+	}
+}
+
+// TestPolledRowCarriesWhyItHasNoName — читатель НАЗЫВАЕТ причину безымянности,
+// а не только оставляет имя пустым (kacho#1463).
+//
+// Проба идёт настоящим адаптером по настоящему gRPC намеренно: разбор исхода
+// живёт ровно здесь, и утверждение о нём на подставном источнике осталось бы
+// зелёным, если бы адаптер проставлял один и тот же исход всем строкам.
+func TestPolledRowCarriesWhyItHasNoName(t *testing.T) {
+	iamStub := &iamJournalStub{batches: [][]*iamv1.SubjectChange{
+		{{Id: 1, SubjectId: "usr00000000000000009", SubjectType: "user"}},
+		{
+			{Id: 2, SubjectId: "usr00000000000000001", SubjectType: "user"},
+			// НОРМА: потоков по множеству участников не заводится.
+			{Id: 3, SubjectId: "grp00000000000000001", SubjectType: "group"},
+			// ДЕФЕКТ: производитель не проставил тип — имя потеряно.
+			{Id: 4, SubjectId: "usr00000000000000002"},
+			// ДЕФЕКТ: тип вне словаря продукта. Считать его нормой значило бы
+			// вернуть дефект в тихую корзину, только под другим именем.
+			{Id: 5, SubjectId: "usr00000000000000003", SubjectType: "nonsense"},
+		},
+	}}
+	iamConn := dial(t, func(s *grpc.Server) {
+		iamv1.RegisterInternalIAMServiceServer(s, iamStub)
+	})
+	poller := subjectchange.NewReader(iamConn)
+	if _, _, err := poller.PollSubjectChanges(context.Background(), 0, 256); err != nil {
+		t.Fatalf("первый перепрос: %v", err)
+	}
+	changes, _, err := poller.PollSubjectChanges(context.Background(), 1, 256)
+	if err != nil {
+		t.Fatalf("второй перепрос: %v", err)
+	}
+
+	want := []authz.SubjectNaming{
+		authz.SubjectNamed,
+		authz.SubjectUserset,
+		authz.SubjectUnnameable,
+		authz.SubjectUnnameable,
+	}
+	if len(changes) != len(want) {
+		t.Fatalf("строк %d, ожидалось %d", len(changes), len(want))
+	}
+	for i, w := range want {
+		if changes[i].Naming != w {
+			t.Errorf("строка %d (номер %d): исход %v, ожидался %v",
+				i, changes[i].ID, changes[i].Naming, w)
 		}
 	}
 }
