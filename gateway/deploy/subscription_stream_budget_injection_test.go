@@ -245,3 +245,113 @@ func TestBudgetGateReadsTheWinningValueNotTheDefault(t *testing.T) {
 		}
 	})
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Сверка страниц с профилем: доказательство способности упасть.
+//
+// Дефект, ради которого утверждения ниже написаны, ЖИЛ (kacho#1528): инженерная
+// страница объявляла потолок вызывающего `8`, когда профиль поставлял `10`, и
+// расходилась при этом сама с собой — четыре места, два верных. Настоящее дерево
+// сегодня согласовано, поэтому вердикт о нём о способности гейта упасть не говорит
+// ничего; дефект вносится синтетической страницей.
+//
+// Каждое утверждение стоит ПАРОЙ: внесённый дефект краснеет и называет координату,
+// законный близнец той же формы — молчит.
+
+// pageWithDeclaration — инженерная страница той же формы, что настоящая: сперва
+// объявление действующих величин, затем ДАТИРОВАННАЯ таблица замера.
+//
+// Датированная часть здесь не для полноты: её `8` и есть законный близнец —
+// верная запись о прошлом, на которой гейт обязан молчать.
+func pageWithDeclaration(perSubject string) string {
+	return "## Решение\n" +
+		"\n" +
+		"| ключ профиля края | поставляется | предикат |\n" +
+		"|---|---:|---|\n" +
+		"| `subscriptionStream.maxStreamsPerSubject` — потолок вызывающего | `" + perSubject +
+		"` | `grep -n maxStreamsPerSubject gateway/deploy/values.yaml` |\n" +
+		"| `subscriptionStream.maxStreams` — потолок реплики | `16` | `grep -n 'maxStreams:' …` |\n" +
+		"\n" +
+		"## Замер, на котором решение стоит\n" +
+		"\n" +
+		"| величина | `ef68f94ec` | перемер `c40719694` | предикат |\n" +
+		"|---|---:|---:|---|\n" +
+		"| потолок реплики | 64 | **16** | `grep -n maxStreams gateway/deploy/values.yaml` |\n" +
+		"| потолок вызывающего | 8 | 8 | там же |\n" +
+		"\n" +
+		"Оба потолка отвечают `429` и кодом `8` — совпадение знака при другом референте.\n"
+}
+
+// shippedClaims — то, что страница обязана называть при поставляемых 10 и 16.
+func shippedClaims() []limitClaim {
+	return []limitClaim{
+		{"subscriptionStream.maxStreamsPerSubject", "10"},
+		{"subscriptionStream.maxStreams", "16"},
+	}
+}
+
+// TestLimitPageGateStaysSilentOnADatedEightBesideALiveTen — КОНТРОЛЬ и законный
+// близнец разом.
+//
+// Страница несёт `8` дважды в датированной таблице и ещё раз кодом
+// `RESOURCE_EXHAUSTED`, а объявляет `10`. Гейт, ловящий ЗНАК, покраснел бы здесь и
+// был бы отключён первым же читателем; гейт, читающий ОБЪЯВЛЕНИЕ, молчит.
+//
+// Без этого утверждения отрицания ниже зеленели бы на разборе, переставшем
+// что-либо узнавать: «расхождений нет» и «строк не нашли» дают один пустой список.
+func TestLimitPageGateStaysSilentOnADatedEightBesideALiveTen(t *testing.T) {
+	rows := engineeringLimitRows(pageWithDeclaration("10"))
+	if len(rows) != 2 {
+		t.Fatalf("строк объявления разобрано %d, ожидалось 2: %v — датированная таблица "+
+			"попала в объявление либо объявление не прочитано вовсе", len(rows), rows)
+	}
+	if got := rows["subscriptionStream.maxStreamsPerSubject"]; got != "10" {
+		t.Fatalf("из объявления взято %q вместо %q — разбор берёт не ту ячейку", got, "10")
+	}
+	if findings := streamLimitFindings(rows, shippedClaims()); len(findings) != 0 {
+		t.Fatalf("согласованная страница объявлена расходящейся: %v", findings)
+	}
+}
+
+// TestLimitPageGateFailsWhenTheDeclarationOutlivesTheChart — ИНЪЕКЦИЯ,
+// воспроизводящая РОВНО состояние kacho#1528.
+//
+// Ломается только НОВОЕ свойство: страница остаётся годной по форме — объявление
+// на месте, обе строки разбираются, датированная часть верна. Неверно одно число.
+func TestLimitPageGateFailsWhenTheDeclarationOutlivesTheChart(t *testing.T) {
+	rows := engineeringLimitRows(pageWithDeclaration("8"))
+	if len(rows) != 2 {
+		t.Fatalf("строк объявления разобрано %d, ожидалось 2: инъекция сломала не то, "+
+			"что проверяется", len(rows))
+	}
+	findings := streamLimitFindings(rows, shippedClaims())
+	if len(findings) != 1 {
+		t.Fatalf("пережившее свой предмет объявление принято молча: %v", findings)
+	}
+	for _, want := range []string{"subscriptionStream.maxStreamsPerSubject", `"8"`, `"10"`} {
+		if !strings.Contains(findings[0], want) {
+			t.Fatalf("находка не называет %s — читатель не узнает, что и на что править: %q",
+				want, findings[0])
+		}
+	}
+}
+
+// TestLimitPageGateFailsWhenTheDeclarationIsRemoved — объявление СНЯТО.
+//
+// Самый дешёвый способ заглушить сверку — убрать то, что сверяют. Пустой разбор
+// обязан быть отказом, иначе «ноль расхождений» становится неотличимо от «ноль
+// прочитанного», и страница уходит из-под наблюдения молча.
+func TestLimitPageGateFailsWhenTheDeclarationIsRemoved(t *testing.T) {
+	page := pageWithDeclaration("10")
+	stripped := page[strings.Index(page, "## Замер"):]
+	if rows := engineeringLimitRows(stripped); len(rows) != 0 {
+		t.Fatalf("после снятия объявления разобрано %d строк: %v — разбор берёт "+
+			"датированную таблицу за объявление", len(rows), rows)
+	}
+	// Утверждения при этом не исчезают: их назначает профиль, и каждое становится
+	// находкой «величина не названа вовсе».
+	findings := streamLimitFindings(map[string]string{}, shippedClaims())
+	if len(findings) != 2 {
+		t.Fatalf("снятое объявление дало %d находок, ожидалось 2: %v", len(findings), findings)
+	}
+}

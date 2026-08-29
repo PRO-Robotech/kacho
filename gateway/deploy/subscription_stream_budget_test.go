@@ -744,8 +744,59 @@ func subscriptionOwnerList(declared string) []string {
 	return owners
 }
 
-// TestPublishedStreamLimitsMatchTheChart — число, обещанное КЛИЕНТУ, есть то
-// самое, которое поставляется.
+// limitClaim — одно утверждение страницы: по какому ключу его искать и каким
+// числом оно обязано быть.
+type limitClaim struct{ key, value string }
+
+// streamLimitChart — величины, которые РЕШАЕТ профиль края.
+//
+// Читается профиль, а не умолчание сборки: умолчание перекрывается шаблоном пода
+// безусловно, поэтому сверять с ним значило бы сверять с мёртвой величиной.
+type streamLimitChart struct {
+	StreamBudget         string `yaml:"streamBudget"`
+	Heartbeat            string `yaml:"heartbeat"`
+	MaxStreams           int    `yaml:"maxStreams"`
+	MaxStreamsPerSubject int    `yaml:"maxStreamsPerSubject"`
+}
+
+// limitPage — документ, называющий ЧИТАТЕЛЮ поставляемый предел.
+type limitPage struct {
+	// Name — как страница называется в находке.
+	Name string
+	// Path — путь от каталога этого пакета.
+	Path string
+	// Rows — разбор страницы в пары «ключ → величина». Разметка у страниц разная
+	// (у клиентской таблица HTML, у инженерной — markdown), поэтому разбор
+	// принадлежит СТРАНИЦЕ, а не гейту.
+	Rows func(page string) map[string]string
+	// Want — что на этой странице обязано стоять при данных величинах профиля.
+	Want func(chart streamLimitChart) []limitClaim
+}
+
+// streamLimitFindings — расхождения одной страницы с профилем.
+//
+// Функция ЧИСТАЯ, и это не стиль: настоящее дерево нельзя ни сломать, ни вернуть,
+// а вердикт о нём о способности падать не говорит ничего. Способность доказывается
+// подачей синтетической страницы — subscription_stream_budget_injection_test.go.
+func streamLimitFindings(rows map[string]string, claims []limitClaim) []string {
+	findings := make([]string, 0, len(claims))
+	for _, c := range claims {
+		got, found := rows[c.key]
+		if !found {
+			findings = append(findings, fmt.Sprintf(
+				"величина %q не названа вовсе, а профиль поставляет %q", c.key, c.value))
+			continue
+		}
+		if got != c.value {
+			findings = append(findings, fmt.Sprintf(
+				"величина %q объявлена как %q, а профиль поставляет %q", c.key, got, c.value))
+		}
+	}
+	return findings
+}
+
+// TestPublishedStreamLimitsMatchTheChart — число, названное ЧИТАТЕЛЮ, есть то
+// самое, которое поставляется. Читателей два, и оба здесь.
 //
 // # Предмет — измеренный, а не предположенный
 //
@@ -755,65 +806,133 @@ func subscriptionOwnerList(declared string) []string {
 // одной установке 64 не действовало НИ ДНЯ, а арендатор, планирующий от него
 // нагрузку, получал бы отказы вчетверо раньше расчёта (kacho#1391).
 //
-// Оговорка страницы «умолчания приведены для ориентира» этого не спасает: ориентир,
-// которого нет ни на одной посадке, — не ориентир.
+// Инженерная страница под эту сверку не ходила, и там тот же класс повторился в
+// худшей форме: она разошлась САМА С СОБОЙ. Из четырёх мест, называвших потолок
+// вызывающего, два говорили `8` при поставляемых `10` — и обоими были строки,
+// которые читают не глядя: объявление решения и его итог (kacho#1528). Документ
+// при этом не устарел целиком, он устарел на четверть, поэтому чтение его
+// подряд дефекта не показывало.
 //
-// # Форма проверки
+// # Почему ОДИН гейт на две страницы, а не второй рядом
 //
-// Класс тот же, что у `internal/repohygiene/publishedinterfacelimits.go`: величина,
-// которую продукт ОБЕЩАЕТ арендатору, живёт одним объявлением, а документация
-// называет её тем же числом. Здесь объявление — профиль края (там величина и
-// РЕШАЕТСЯ), а не умолчание сборки: умолчание перекрывается шаблоном пода
-// безусловно, поэтому сверять с ним значило бы сверять с мёртвой величиной.
+// Предмет у них общий — «названное читателю равно поставляемому», — и опасен здесь
+// не разбор, а ПЕРЕЧЕНЬ: третья страница, заведённая мимо него, останется вне
+// наблюдения молча. Один перечень отвечает на вопрос «какие документы держатся
+// против профиля» одним местом; два гейта об одном предмете разошлись бы так же
+// тихо, как разошлись четыре строки одной страницы.
+//
+// # Чего этот гейт НЕ закрывает — сказано прямо
+//
+// Он держит ОБЪЯВЛЕНИЕ. Цифру, вписанную завтра в прозу мимо объявления, он не
+// увидит, и предиката на это нет: обе страницы законно несут числа-записи о
+// прошлом (`8 → 10`, `64` при `16`), а на той же странице `8` стоит ещё и кодом
+// `RESOURCE_EXHAUSTED` — совпадение знака при другом референте. Отличить живое
+// утверждение от датированного здесь может только человек; лексиконный разбор над
+// естественным языком этот корпус уже проверял, и он провалил контроль в обе
+// стороны. Поэтому объявление — единственное место страницы, где стоит
+// действующая величина, и держится оно машиной; дисциплина «проза цифру не
+// повторяет» держится обзором.
 func TestPublishedStreamLimitsMatchTheChart(t *testing.T) {
 	raw, err := os.ReadFile("values.yaml")
 	if err != nil {
 		t.Fatalf("чтение объявления чарта: %v", err)
 	}
 	var values struct {
-		SubscriptionStream struct {
-			StreamBudget         string `yaml:"streamBudget"`
-			Heartbeat            string `yaml:"heartbeat"`
-			MaxStreams           int    `yaml:"maxStreams"`
-			MaxStreamsPerSubject int    `yaml:"maxStreamsPerSubject"`
-		} `yaml:"subscriptionStream"`
+		SubscriptionStream streamLimitChart `yaml:"subscriptionStream"`
 	}
 	if err := yaml.Unmarshal(raw, &values); err != nil {
 		t.Fatalf("разбор объявления чарта: %v", err)
 	}
-	page, err := os.ReadFile(filepath.Join("..", "docs", "content", "api", "subscription.mdx"))
-	if err != nil {
-		t.Fatalf("чтение клиентской страницы подписки: %v", err)
-	}
-	rows := publishedLimitRows(string(page))
+	chart := values.SubscriptionStream
 
-	want := []struct{ caption, value string }{
-		{"срок жизни потока", humanSeconds(values.SubscriptionStream.StreamBudget)},
-		{"период служебного кадра", humanSeconds(values.SubscriptionStream.Heartbeat)},
-		{"потоков на одного вызывающего", strconv.Itoa(values.SubscriptionStream.MaxStreamsPerSubject)},
-		{"потоков на реплику края", strconv.Itoa(values.SubscriptionStream.MaxStreams)},
+	pages := []limitPage{
+		{
+			Name: "клиентская страница подписки",
+			Path: filepath.Join("..", "docs", "content", "api", "subscription.mdx"),
+			Rows: publishedLimitRows,
+			Want: func(c streamLimitChart) []limitClaim {
+				return []limitClaim{
+					{"срок жизни потока", humanSeconds(c.StreamBudget)},
+					{"период служебного кадра", humanSeconds(c.Heartbeat)},
+					{"потоков на одного вызывающего", strconv.Itoa(c.MaxStreamsPerSubject)},
+					{"потоков на реплику края", strconv.Itoa(c.MaxStreams)},
+				}
+			},
+		},
+		{
+			Name: "инженерная страница пределов",
+			Path: filepath.Join("..", "docs", "engineering", "architecture",
+				"subscription-stream-limits.md"),
+			Rows: engineeringLimitRows,
+			Want: func(c streamLimitChart) []limitClaim {
+				return []limitClaim{
+					{"subscriptionStream.maxStreamsPerSubject", strconv.Itoa(c.MaxStreamsPerSubject)},
+					{"subscriptionStream.maxStreams", strconv.Itoa(c.MaxStreams)},
+				}
+			},
+		},
 	}
-	t.Logf("перепись: строк таблицы пределов на клиентской странице %d · сверяемых величин %d",
-		len(rows), len(want))
-	if len(rows) == 0 {
-		t.Fatal("на клиентской странице не найдено ни одной строки таблицы пределов — " +
-			"сверять нечего, и зелёное здесь неотличимо от неосмотренной страницы")
-	}
-	for _, w := range want {
-		got, found := rows[w.caption]
-		if !found {
-			t.Errorf("клиентская страница не называет величину %q — арендатор не может "+
-				"посчитать свою потребность, а гейт не может сверить обещание с поставкой",
-				w.caption)
+
+	checked := 0
+	for _, page := range pages {
+		body, err := os.ReadFile(page.Path)
+		if err != nil {
+			t.Errorf("чтение страницы %q (%s): %v", page.Name, page.Path, err)
 			continue
 		}
-		if got != w.value {
-			t.Errorf("клиентская страница обещает %q = %q, а чарт поставляет %q. Обещание "+
-				"расходится с поставкой: арендатор планирует нагрузку от числа, которого "+
-				"нет ни на одной установке. Правится СТРАНИЦА — величина решается профилем.",
-				w.caption, got, w.value)
+		rows, claims := page.Rows(string(body)), page.Want(chart)
+		t.Logf("перепись: страница %q — строк с величиной %d · сверяется утверждений %d",
+			page.Name, len(rows), len(claims))
+		if len(rows) == 0 {
+			t.Errorf("страница %q (%s) не объявляет НИ ОДНОЙ величины — сверять нечего, и "+
+				"зелёное здесь неотличимо от неосмотренной страницы. Объявление снимать "+
+				"нельзя: им одним сверка и держится", page.Name, page.Path)
+			continue
+		}
+		for _, finding := range streamLimitFindings(rows, claims) {
+			t.Errorf("страница %q (%s): %s. Названное читателю расходится с поставкой — он "+
+				"планирует от числа, которого нет ни на одной установке. Правится СТРАНИЦА: "+
+				"величина решается профилем", page.Name, page.Path, finding)
+		}
+		checked += len(claims)
+	}
+	t.Logf("перепись: страниц осмотрено %d · утверждений сверено %d", len(pages), checked)
+	if checked == 0 {
+		t.Fatal("сверено ноль утверждений — гейт не прочитал ни одной страницы")
+	}
+}
+
+// engineeringLimitRows — ОБЪЯВЛЕНИЕ действующих величин на инженерной странице.
+//
+// Ключом служит имя ключа профиля в обратных кавычках (`subscriptionStream.…`), а
+// не подпись прозой: подпись переписывают, ключ — нет.
+//
+// Этим же признаком объявление отличается от ДАТИРОВАННЫХ таблиц замера на той же
+// странице: у их строк первая ячейка ключа профиля не несёт, поэтому историческое
+// «потолок вызывающего | 8 | 8» сюда не попадает. Различение проверено законным
+// близнецом в инъекции — без него гейт краснел бы на верной записи о прошлом, а
+// такой отключают первым.
+func engineeringLimitRows(page string) map[string]string {
+	rows := map[string]string{}
+	tick := regexp.MustCompile("`([^`]+)`")
+	for _, line := range strings.Split(page, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "|") {
+			continue
+		}
+		cells := strings.Split(strings.Trim(line, "|"), "|")
+		if len(cells) < 2 {
+			continue
+		}
+		key, value := tick.FindStringSubmatch(cells[0]), tick.FindStringSubmatch(cells[1])
+		if key == nil || value == nil || !strings.HasPrefix(key[1], "subscriptionStream.") {
+			continue
+		}
+		if _, seen := rows[key[1]]; !seen {
+			rows[key[1]] = value[1]
 		}
 	}
+	return rows
 }
 
 // publishedLimitRows разбирает таблицу пределов клиентской страницы в пары
