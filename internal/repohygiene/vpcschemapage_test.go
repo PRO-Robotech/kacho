@@ -75,7 +75,7 @@ func TestVpcSchemaPageAgreesWithTheTree(t *testing.T) {
 
 func readFileOrFail(t *testing.T, path string) string {
 	t.Helper()
-	b, err := os.ReadFile(path) //nolint:gosec // путь собран из констант пакета
+	b, err := os.ReadFile(path) // #nosec G304 -- путь собран из констант пакета
 	if err != nil {
 		t.Fatalf("чтение %s: %v", path, err)
 	}
