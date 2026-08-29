@@ -18,6 +18,7 @@ package deploy_test
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -260,7 +261,7 @@ func TestOutOfPoolCeilingIsReadInEveryLegalForm(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newOutOfPoolStand(t)
 			s.write(t, "services/probe/internal/config/config.go", tc.body)
-			got, where, err := subscriptionStreamCeiling(t, "services/probe", s.read(t))
+			got, where, err := subscriptionStreamCeiling(t, outOfPoolCtx{svcDir: "services/probe", tree: s.read(t)})
 			if err != nil {
 				t.Fatalf("форма не опознана: %v", err)
 			}
@@ -283,7 +284,7 @@ func TestOutOfPoolCeilingRefusesInsteadOfReturningZero(t *testing.T) {
 	t.Run("величины нет ни в одной форме", func(t *testing.T) {
 		s := newOutOfPoolStand(t)
 		s.write(t, "services/probe/internal/config/config.go", "package config\n\ntype Config struct{}\n")
-		if _, _, err := subscriptionStreamCeiling(t, "services/probe", s.read(t)); err == nil {
+		if _, _, err := subscriptionStreamCeiling(t, outOfPoolCtx{svcDir: "services/probe", tree: s.read(t)}); err == nil {
 			t.Fatal("необъявленный потолок принят за ноль — сумма стала меньше настоящей молча")
 		}
 	})
@@ -296,7 +297,7 @@ func TestOutOfPoolCeilingRefusesInsteadOfReturningZero(t *testing.T) {
 		s.write(t, "services/probe/internal/config/b.go",
 			"package config\n\ntype setter interface{ SetDefault(string, any) }\n\n"+
 				"func d(v setter) { v.SetDefault(\"subscription-max-streams\", 64) }\n")
-		_, _, err := subscriptionStreamCeiling(t, "services/probe", s.read(t))
+		_, _, err := subscriptionStreamCeiling(t, outOfPoolCtx{svcDir: "services/probe", tree: s.read(t)})
 		if err == nil {
 			t.Fatal("два объявления одной величины приняты молча: гейт выбрал бы одно из двух наугад")
 		}
@@ -310,25 +311,283 @@ func TestOutOfPoolCeilingRefusesInsteadOfReturningZero(t *testing.T) {
 		s.write(t, "services/probe/internal/config/config.go",
 			"package config\n\ntype C struct {\n"+
 				"\tN int `envconfig:\"KACHO_PROBE_SUBSCRIPTION_MAX_STREAMS\" default:\"0\"`\n}\n")
-		if _, _, err := subscriptionStreamCeiling(t, "services/probe", s.read(t)); err == nil {
+		if _, _, err := subscriptionStreamCeiling(t, outOfPoolCtx{svcDir: "services/probe", tree: s.read(t)}); err == nil {
 			t.Fatal("потолок 0 принят: неограниченное число потоков объявлено сходящимся")
 		}
 	})
 }
 
-// TestOutOfPoolCeilingIsNotSettableFromTheChart — ПРЕДПОСЫЛКА резолвера.
+// ─────────────────────────────────────────────────────────────────────────────
+// ПРОИСХОЖДЕНИЕ ВЕЛИЧИНЫ: ОБЪЯВЛЕНИЕ ЧАРТА ПОБЕЖДАЕТ УМОЛЧАНИЕ КОДА
+
+// probeCompiledDefault — служба с ВКОМПИЛИРОВАННЫМ умолчанием 16.
 //
-// Величина читается из кода ПОТОМУ, что оттуда её читает процесс: ни в значения
-// чарта, ни в переменные окружения шаблона она не выведена. Стань она объявляемой
-// — умолчание перестанет быть побеждающим значением, а гейт продолжит читать его,
-// то есть начнёт судить о посадке, которой нет.
+// Числа синтетики выбраны различающимися НАМЕРЕННО: чарт объявляет 32, код —
+// 16. Совпади они, резолвер, продолжающий читать исходник, отвечал бы верным
+// числом по неверному основанию — и вся эта пара молчала бы. Ровно так дефект
+// и жил: в настоящем дереве обе величины равны шестнадцати, поэтому сумма
+// сходилась, а читалась она не оттуда, где решается.
+const probeCompiledDefault = "package config\n\ntype Config struct {\n" +
+	"\tSubscriptionMaxStreams int `envconfig:\"KACHO_PROBE_SUBSCRIPTION_MAX_STREAMS\" default:\"16\"`\n}\n"
+
+// probeChartValues — значения подчарта, какими их получит helm.
+func probeChartValues(n int) map[string]any {
+	return map[string]any{"subscription": map[string]any{"maxStreams": n}}
+}
+
+func probeCtx(t *testing.T, s *outOfPoolStand, values map[string]any) outOfPoolCtx {
+	t.Helper()
+	return outOfPoolCtx{
+		svcDir:   "services/probe",
+		chartDir: filepath.Join(s.root, "services", "probe", "deploy"),
+		values:   values,
+		tree:     s.read(t),
+	}
+}
+
+// TestOutOfPoolCeilingPrefersTheChartOverTheCompiledDefault — ИНЪЕКЦИЯ в
+// происхождение величины.
 //
-// Предпосылка САМОИСТЕКАЕТ: появится ручка — покраснеет эта проба, а не вердикт.
-func TestOutOfPoolCeilingIsNotSettableFromTheChart(t *testing.T) {
+// Каждый случай стоит ПАРОЙ с законным близнецом: объявление чарта обязано
+// побеждать, а форма, объявлением НЕ являющаяся (комментарий, соседняя
+// величина, отсутствие чарта), обязана оставлять победу умолчанию кода.
+// Односторонняя проба зеленела бы на резолвере, который всегда читает чарт, —
+// и на том, который всегда читает исходник, тоже.
+func TestOutOfPoolCeilingPrefersTheChartOverTheCompiledDefault(t *testing.T) {
+	const (
+		envKey     = "            - name: KACHO_PROBE_SUBSCRIPTION_MAX_STREAMS\n"
+		envValue   = "              value: \"{{ .Values.subscription.maxStreams }}\"\n"
+		configKey  = "    api-server:\n      subscription-max-streams: {{ .Values.subscription.maxStreams }}\n"
+		perSubject = "            - name: KACHO_PROBE_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT\n" +
+			"              value: \"{{ .Values.subscription.maxStreamsPerSubject }}\"\n"
+	)
+
+	t.Run("ключ файла настроек — побеждает значение чарта", func(t *testing.T) {
+		s := newOutOfPoolStand(t)
+		s.write(t, "services/probe/internal/config/config.go", probeCompiledDefault)
+		s.write(t, "services/probe/deploy/templates/configmap.yaml", configKey)
+
+		got, where, err := subscriptionStreamCeiling(t, probeCtx(t, s, probeChartValues(32)))
+		if err != nil {
+			t.Fatalf("объявление чарта не прочитано: %v", err)
+		}
+		if got != 32 {
+			t.Fatalf("потолок %d, ожидался 32: величина взята не оттуда, где решается (%s)", got, where)
+		}
+		if !strings.Contains(where, "subscription.maxStreams") || !strings.Contains(where, "configmap.yaml") {
+			t.Fatalf("происхождение величины не названо: %q", where)
+		}
+	})
+
+	t.Run("переменная окружения — выражение строкой ниже ключа", func(t *testing.T) {
+		s := newOutOfPoolStand(t)
+		s.write(t, "services/probe/internal/config/config.go", probeCompiledDefault)
+		s.write(t, "services/probe/deploy/templates/deployment.yaml", envKey+envValue)
+
+		got, where, err := subscriptionStreamCeiling(t, probeCtx(t, s, probeChartValues(32)))
+		if err != nil {
+			t.Fatalf("вторая форма объявления не прочитана: %v", err)
+		}
+		if got != 32 {
+			t.Fatalf("потолок %d, ожидался 32 (%s): окно распознавателя не достаёт до выражения", got, where)
+		}
+	})
+
+	t.Run("ЗАКОННЫЙ БЛИЗНЕЦ: чарта нет — побеждает умолчание кода", func(t *testing.T) {
+		s := newOutOfPoolStand(t)
+		s.write(t, "services/probe/internal/config/config.go", probeCompiledDefault)
+
+		got, where, err := subscriptionStreamCeiling(t, outOfPoolCtx{
+			svcDir: "services/probe", tree: s.read(t),
+		})
+		if err != nil {
+			t.Fatalf("умолчание кода не прочитано: %v", err)
+		}
+		if got != 16 || !strings.Contains(where, ".go") {
+			t.Fatalf("потолок %d из %q, ожидалось 16 из исходника", got, where)
+		}
+	})
+
+	t.Run("ЗАКОННЫЙ БЛИЗНЕЦ: чарт есть, ключа не объявляет", func(t *testing.T) {
+		s := newOutOfPoolStand(t)
+		s.write(t, "services/probe/internal/config/config.go", probeCompiledDefault)
+		s.write(t, "services/probe/deploy/templates/deployment.yaml",
+			"            - name: KACHO_PROBE_LOG_LEVEL\n              value: \"{{ .Values.logger.level }}\"\n")
+
+		got, where, err := subscriptionStreamCeiling(t, probeCtx(t, s, probeChartValues(32)))
+		if err != nil {
+			t.Fatalf("умолчание кода не прочитано: %v", err)
+		}
+		if got != 16 || !strings.Contains(where, ".go") {
+			t.Fatalf("потолок %d из %q: чужая переменная принята за объявление потолка", got, where)
+		}
+	})
+
+	t.Run("ЗАКОННЫЙ БЛИЗНЕЦ: ключ назван КОММЕНТАРИЕМ, а не объявлен", func(t *testing.T) {
+		s := newOutOfPoolStand(t)
+		s.write(t, "services/probe/internal/config/config.go", probeCompiledDefault)
+		s.write(t, "services/probe/deploy/templates/deployment.yaml",
+			"            # KACHO_PROBE_SUBSCRIPTION_MAX_STREAMS выставляется профилем площадки\n")
+
+		got, where, err := subscriptionStreamCeiling(t, probeCtx(t, s, probeChartValues(32)))
+		if err != nil {
+			t.Fatalf("умолчание кода не прочитано: %v", err)
+		}
+		if got != 16 {
+			t.Fatalf("потолок %d (%s): комментарий принят за объявление — проверка судит текст, "+
+				"а не исполняемую часть", got, where)
+		}
+	})
+
+	t.Run("ЗАКОННЫЙ БЛИЗНЕЦ: соседняя величина — потолок на вызывающего", func(t *testing.T) {
+		s := newOutOfPoolStand(t)
+		s.write(t, "services/probe/internal/config/config.go", probeCompiledDefault)
+		s.write(t, "services/probe/deploy/templates/deployment.yaml", perSubject)
+
+		got, where, err := subscriptionStreamCeiling(t, probeCtx(t, s, map[string]any{
+			"subscription": map[string]any{"maxStreamsPerSubject": 8},
+		}))
+		if err != nil {
+			t.Fatalf("умолчание кода не прочитано: %v", err)
+		}
+		if got != 16 {
+			t.Fatalf("потолок %d (%s): потолок НА ВЫЗЫВАЮЩЕГО принят за потолок РЕПЛИКИ — "+
+				"слагаемое подменено соседней величиной", got, where)
+		}
+	})
+
+	t.Run("сосед стоит рядом с предметом — берётся предмет, а не отказ", func(t *testing.T) {
+		s := newOutOfPoolStand(t)
+		s.write(t, "services/probe/internal/config/config.go", probeCompiledDefault)
+		// Раскладка настоящего чарта края: обе величины подряд, из разных путей.
+		s.write(t, "services/probe/deploy/templates/deployment.yaml", envKey+envValue+perSubject)
+
+		got, where, err := subscriptionStreamCeiling(t, probeCtx(t, s, map[string]any{
+			"subscription": map[string]any{"maxStreams": 32, "maxStreamsPerSubject": 8},
+		}))
+		if err != nil {
+			t.Fatalf("объявление рядом с соседом дало отказ вместо величины: %v", err)
+		}
+		if got != 32 {
+			t.Fatalf("потолок %d, ожидался 32 (%s)", got, where)
+		}
+	})
+
+	t.Run("ОТКАЗ: чарт объявляет ключ НЕ из значений", func(t *testing.T) {
+		s := newOutOfPoolStand(t)
+		s.write(t, "services/probe/internal/config/config.go", probeCompiledDefault)
+		s.write(t, "services/probe/deploy/templates/configmap.yaml",
+			"    api-server:\n      subscription-max-streams: 64\n")
+
+		got, _, err := subscriptionStreamCeiling(t, probeCtx(t, s, probeChartValues(32)))
+		if err == nil {
+			t.Fatalf("литерал шаблона принят молча (потолок %d): резолвер откатился к умолчанию "+
+				"кода, которое этим объявлением уже перебито", got)
+		}
+		if !strings.Contains(err.Error(), "configmap.yaml") {
+			t.Fatalf("отказ не называет координату: %v", err)
+		}
+	})
+
+	t.Run("ОТКАЗ: значения не несут пути, который называет шаблон", func(t *testing.T) {
+		s := newOutOfPoolStand(t)
+		s.write(t, "services/probe/internal/config/config.go", probeCompiledDefault)
+		s.write(t, "services/probe/deploy/templates/configmap.yaml", configKey)
+
+		got, _, err := subscriptionStreamCeiling(t, probeCtx(t, s, map[string]any{}))
+		if err == nil {
+			t.Fatalf("пустые значения приняты молча (потолок %d): под получил бы пустую величину, "+
+				"а сумма сошлась бы по умолчанию кода", got)
+		}
+		if !strings.Contains(err.Error(), "subscription.maxStreams") {
+			t.Fatalf("отказ не называет путь: %v", err)
+		}
+	})
+
+	t.Run("ОТКАЗ: значение нулевое — величина посадки, а не вкус", func(t *testing.T) {
+		s := newOutOfPoolStand(t)
+		s.write(t, "services/probe/internal/config/config.go", probeCompiledDefault)
+		s.write(t, "services/probe/deploy/templates/configmap.yaml", configKey)
+
+		if got, _, err := subscriptionStreamCeiling(t, probeCtx(t, s, probeChartValues(0))); err == nil {
+			t.Fatalf("нулевой потолок принят (%d): неограниченное число потоков объявлено сходящимся", got)
+		}
+	})
+
+	t.Run("ОТКАЗ: ключ рендерится из НЕСКОЛЬКИХ путей значений", func(t *testing.T) {
+		s := newOutOfPoolStand(t)
+		s.write(t, "services/probe/internal/config/config.go", probeCompiledDefault)
+		s.write(t, "services/probe/deploy/templates/configmap.yaml", configKey)
+		s.write(t, "services/probe/deploy/templates/deployment.yaml",
+			"            - name: KACHO_PROBE_SUBSCRIPTION_MAX_STREAMS\n"+
+				"              value: \"{{ .Values.legacy.maxStreams }}\"\n")
+
+		_, _, err := subscriptionStreamCeiling(t, probeCtx(t, s, map[string]any{
+			"subscription": map[string]any{"maxStreams": 32},
+			"legacy":       map[string]any{"maxStreams": 64},
+		}))
+		if err == nil {
+			t.Fatal("два разных пути приняты молча: гейт выбрал бы один из двух наугад")
+		}
+		if !strings.Contains(err.Error(), "НЕСКОЛЬКИХ") {
+			t.Fatalf("отказ не называет причину: %v", err)
+		}
+	})
+}
+
+// TestOutOfPoolCeilingIsReadWhereItIsDecided — ПРЕДПОСЫЛКА резолвера,
+// ЗАМЕНИВШАЯ снятую (kacho#1384).
+//
+// # Что здесь стояло и почему снято
+//
+// Прежняя проба (`TestOutOfPoolCeilingIsNotSettableFromTheChart`) стерегла
+// предпосылку «потолок НЕ объявляем чартом, поэтому умолчание кода и есть
+// побеждающее значение». Предпосылка была верна в день записи и перестала быть
+// верной: величину объявили все ПЯТЬ служб, поднимающих сервер подписки —
+// `subscription.maxStreams` в их значениях, отрендеренная напрямую в ключ
+// настроек (vpc, nlb) либо в переменную окружения (compute, storage, registry).
+//
+// Проба сработала ровно как задумана: предпосылка самоистекла и покраснела. Это
+// НЕ повод её ослабить — её предмет исчез, а проба, чей предмет исчез,
+// ЗАМЕНЯЕТСЯ той, что стережёт новую предпосылку. Новая такая: величина
+// читается ОТТУДА, ГДЕ ОНА РЕШАЕТСЯ, — из значений, когда чарт рендерит ключ из
+// значений, и из умолчания кода, когда не рендерит.
+//
+// # Почему проба не вакуумна при ослепшем распознавателе
+//
+// Соблазн очевидный: распознаватель, переставший видеть объявление, дал бы
+// «чарт ключа не объявляет» — законный вход, на котором эта проба молчала бы.
+// Поэтому распознавателей ДВА, разной зернистости, и они сверяются между собой:
+// построчный (называет файл, строку и путь значений) и грубый по тексту файла
+// целиком — тот самый предикат, которым стерегла снятая проба. Грубый видит, а
+// построчный нет — НАХОДКА, и находка называет файл.
+//
+// # Что проба НЕ утверждает
+//
+// Она судит ПРОИСХОЖДЕНИЕ величины, а не её размер: «шестнадцать много» —
+// вопрос замера, и сходимость суммы считает соседний гейт арифметики по всем
+// стекам сразу.
+func TestOutOfPoolCeilingIsReadWhereItIsDecided(t *testing.T) {
 	dirs := subchartDirs(t)
 	tree := readOutOfPoolTree(t)
-	looked := 0
-	for alias, chartDir := range dirs {
+	stacks := deployStacks(t)
+
+	stackNames := make([]string, 0, len(stacks))
+	for n := range stacks {
+		stackNames = append(stackNames, n)
+	}
+	sort.Strings(stackNames)
+
+	aliases := make([]string, 0, len(dirs))
+	for alias := range dirs {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+
+	looked, coarse, fine, fromValues, fromSource := 0, 0, 0, 0, 0
+	wiredBy := map[string][]ceilingWiring{}
+
+	for _, alias := range aliases {
 		svcDir, ok := serviceSourceDir("..", alias)
 		if !ok {
 			continue
@@ -337,30 +596,106 @@ func TestOutOfPoolCeilingIsNotSettableFromTheChart(t *testing.T) {
 			continue
 		}
 		looked++
-		err := filepath.WalkDir(chartDir, func(path string, d os.DirEntry, werr error) error {
-			if werr != nil || d.IsDir() {
-				return werr
-			}
-			raw, rerr := os.ReadFile(path) // #nosec G304 -- обход собственного дерева
-			if rerr != nil {
-				return rerr
-			}
-			if subscriptionCeilingKey(string(raw)) {
-				t.Errorf("%s: потолок потоков подписки стал объявляемым в чарте (%s) — "+
-					"умолчание кода больше не является побеждающим значением, и слагаемое "+
-					"обязано читаться из значений, а не из исходника", alias, path)
-			}
-			return nil
-		})
+		chartDir := dirs[alias]
+
+		wirings, err := subscriptionCeilingWirings(chartDir)
 		if err != nil {
-			t.Fatalf("обход чарта %s: %v", alias, err)
+			t.Fatalf("%s: %v", alias, err)
+		}
+		rough, err := chartCarriesCeilingKeyCoarsely(chartDir)
+		if err != nil {
+			t.Fatalf("%s: %v", alias, err)
+		}
+		if len(rough) > 0 {
+			coarse++
+		}
+		if len(wirings) > 0 {
+			fine++
+		}
+		// ЗЕРКАЛО: два предиката об одном предмете обязаны сходиться. Расхождение
+		// в любую сторону — находка о ПРОВЕРКЕ, а не о дереве.
+		if len(rough) > 0 && len(wirings) == 0 {
+			t.Errorf("%s: ключ потолка несут файлы чарта %v, а построчный распознаватель не нашёл "+
+				"ни одного объявления. Причин ровно две, и различить их обязан человек: либо "+
+				"распознаватель ослеп (и «чарт ключа не объявляет» стало неотличимо от «форма "+
+				"записи перестала узнаваться»), либо чарт лишь УПОМИНАЕТ величину — в "+
+				"комментарии или соседним потолком на вызывающего — и тогда правится эта "+
+				"перепись, а не резолвер", alias, rough)
+			continue
+		}
+		if len(wirings) > 0 && len(rough) == 0 {
+			t.Errorf("%s: построчный распознаватель нашёл объявление (%v), а грубый предикат по "+
+				"тексту файла — нет: зеркало перестало быть зеркалом, и одно из двух чтений неверно",
+				alias, wirings)
+			continue
+		}
+		wiredBy[alias] = wirings
+	}
+
+	// Происхождение сверяется НА КАЖДОМ стеке, а не на одном выбранном: профиль
+	// вправе и снять объявление, и переобъявить его, и тогда побеждающее
+	// значение у стеков разное. Один выбранный стек делал бы вердикт о шести
+	// вердиктом об одном.
+	for _, stack := range stackNames {
+		vals := valuesWithSubchartDefaults(t, stacks[stack])
+		for _, alias := range aliases {
+			wirings, seen := wiredBy[alias]
+			if !seen {
+				continue
+			}
+			svcDir, _ := serviceSourceDir("..", alias)
+			sub, _ := vals[alias].(map[string]any)
+
+			got, where, err := subscriptionStreamCeiling(t, outOfPoolCtx{
+				svcDir: svcDir, chartDir: dirs[alias], values: sub, tree: tree,
+			})
+			if err != nil {
+				t.Errorf("стек %s, %s: потолок не выведен: %v", stack, alias, err)
+				continue
+			}
+			if got <= 0 {
+				t.Errorf("стек %s, %s: потолок выведен как %d (%s)", stack, alias, got, where)
+				continue
+			}
+
+			if len(wirings) == 0 {
+				fromSource++
+				if !strings.HasSuffix(strings.Fields(where)[0], ".go") {
+					t.Errorf("стек %s, %s: чарт ключа не объявляет, значит побеждает умолчание "+
+						"кода, а величина взята из %q", stack, alias, where)
+				}
+				continue
+			}
+			w := wirings[0]
+			if w.Path == "" {
+				t.Errorf("стек %s, %s: чарт объявляет ключ в %s (%q), но не из значений — "+
+					"побеждающее значение чтением значений не выводится, и резолвер обязан "+
+					"ОТКАЗАТЬ, а не откатываться к умолчанию кода", stack, alias, w, w.Text)
+				continue
+			}
+			if !strings.Contains(where, w.Path) {
+				t.Errorf("стек %s, %s: величина взята из %q, а решается она в значениях (%s "+
+					"рендерит её из %s) — читается не побеждающее значение, и вердикт о посадке "+
+					"относится к тому, чего под не увидит", stack, alias, where, w, w.Path)
+				continue
+			}
+			fromValues++
 		}
 	}
-	// Перепись: «ноль ручек» обязано быть отличимо от «ни одной службы не смотрели».
-	t.Logf("перепись: служб, поднимающих сервер подписки, осмотрено %d", looked)
+
+	// ПЕРЕПИСЬ печатает ПЯТЬ чисел, а не одно: «ноль объявлений» обязано быть
+	// отличимо и от «служб не смотрели», и от «распознаватель ослеп».
+	t.Logf("перепись: стеков %d · служб с сервером подписки осмотрено %d · ключ потолка несёт "+
+		"чарт (грубо, по тексту файла) %d · распознано построчно %d · пар стек×служба, где "+
+		"величина взята из значений %d, из умолчания кода %d",
+		len(stackNames), looked, coarse, fine, fromValues, fromSource)
 	if looked == 0 {
 		t.Fatal("ни одной службы с сервером подписки не осмотрено — предпосылка беспредметна, " +
 			"а не подтверждена")
+	}
+	if fromValues+fromSource == 0 {
+		t.Fatal("происхождение величины не сверено ни у одной пары стек×служба — проверка " +
+			"ничего не утверждает, хотя выглядит зелёной")
 	}
 }
 

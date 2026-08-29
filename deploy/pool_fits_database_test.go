@@ -20,6 +20,11 @@ package deploy_test
 // реконсиляции. Пул о них не знает и вычесть их из своей ширины не может.
 // Слагаемое выводится и проверяется на полноту в pool_out_of_pool_test.go; здесь
 // оно только складывается — второго изложения одного предмета не заводится.
+// Оттуда же приходит и ПРОИСХОЖДЕНИЕ каждой его величины: часть решается
+// объявлением чарта, часть — умолчанием кода, и перепись ниже печатает обе
+// доли. Одного числа «слагаемых столько-то» мало ровно там, где проверка и
+// слепа: резолвер, съехавший обратно на умолчание кода, даёт ту же сумму и тот
+// же вердикт.
 //
 // Загрузочный страж (`pkg/db.ConnBudget`) ловит то же расхождение, но ПОЗЖЕ —
 // когда посадка уже раскатана и под отказывается стартовать. Здесь оно ловится ДО
@@ -256,6 +261,11 @@ type poolFacts struct {
 func poolFactsFor(t *testing.T, name string, chain []string, tree *outOfPoolTree) poolFacts {
 	t.Helper()
 	vals := valuesWithSubchartDefaults(t, chain)
+	// Каталоги чартов нужны слагаемому вне пула: часть его величин объявляет
+	// ЧАРТ, и умолчание кода там уже перебито. Карта берётся у того же
+	// производителя, что и везде в этом каталоге, а не собирается по соглашению
+	// об именах: соглашение разошлось бы с деревом молча.
+	chartDirs := subchartDirs(t)
 
 	f := poolFacts{stack: name, ceilings: map[string]poolCeiling{}}
 
@@ -327,7 +337,8 @@ func poolFactsFor(t *testing.T, name string, chain []string, tree *outOfPoolTree
 				l.hpaMax = n
 			}
 		}
-		l.outOfPool, l.outOfPoolWhy, l.outOfPoolUnknown = outOfPoolPerReplica(t, alias, tree)
+		l.outOfPool, l.outOfPoolWhy, l.outOfPoolUnknown = outOfPoolPerReplica(
+			t, alias, chartDirs[alias], sub, tree)
 		f.links = append(f.links, l)
 	}
 	sort.Slice(f.links, func(i, j int) bool { return f.links[i].service < f.links[j].service })
@@ -555,6 +566,25 @@ func TestDeclaredPoolFitsTheDatabaseItConnectsTo(t *testing.T) {
 		byKind[f.kind]++
 	}
 
+	// ПРОИСХОЖДЕНИЕ слагаемых вне пула — отдельные числа переписи.
+	//
+	// Величину части слагаемых решает ЧАРТ, а не умолчание кода, и обратный
+	// съезд («резолвер снова читает исходник, хотя чарт объявляет») выглядит
+	// как исправная работа: сумма та же, вердикт тот же. Отличить его можно
+	// только по источнику, поэтому источник считается, а не подразумевается.
+	fromValues, fromTree := 0, 0
+	for _, f := range facts {
+		for _, l := range f.links {
+			for _, w := range l.outOfPoolWhy {
+				if strings.Contains(w, outOfPoolFromValues) {
+					fromValues++
+					continue
+				}
+				fromTree++
+			}
+		}
+	}
+
 	fail, forgiven, stale := applyLedger(findings, knownUnfitting)
 	for _, l := range forgiven {
 		t.Log(l)
@@ -574,8 +604,10 @@ func TestDeclaredPoolFitsTheDatabaseItConnectsTo(t *testing.T) {
 	// полная арифметика.
 	t.Logf("осмотрено: стеков %d, связок служба→база с объявленными пулом и потолком %d, "+
 		"файлов прод-кода Go %d, захватов соединения вне пула %d (не приписано %d), "+
+		"слагаемых вне пула %d (величина из значений стека %d, из дерева исходников %d), "+
 		"находок %d (%s %d, %s %d, %s %d, %s %d), записей в ведомости %d",
 		len(facts), examined, tree.files, len(tree.captures), byKind[kindOutOfPoolUnattributed],
+		fromValues+fromTree, fromValues, fromTree,
 		len(findings),
 		kindPoolUndeclared, byKind[kindPoolUndeclared],
 		kindCeilingUndeclared, byKind[kindCeilingUndeclared],

@@ -45,6 +45,32 @@ package deploy_test
 // обещанный: заведи кто-нибудь восьмой захват, перепись назовёт его файлом.
 //
 // ─────────────────────────────────────────────────────────────────────────────
+// ВЕЛИЧИНА СЛАГАЕМОГО БЕРЁТСЯ ОТТУДА, ГДЕ ОНА РЕШАЕТСЯ (kacho#1384, второй круг)
+//
+// Мало опознать вид захвата — надо назвать ЧИСЛО, и это число бывает объявлено
+// в двух разных местах сразу. Потолок одновременных потоков подписки живёт
+// умолчанием в коде службы И объявлением в её чарте
+// (`subscription.maxStreams`), а побеждает ВТОРОЕ: раскладчик настроек читает
+// то, что ему подставили, а не то, что вкомпилировано.
+//
+// Первая редакция читала умолчание кода — и была права ровно до того дня, когда
+// величину объявили все пять служб с сервером подписки. Заметить это чтением
+// суммы было нельзя: объявленное значение байт-в-байт равно вкомпилированному,
+// поэтому сумма сходилась, вердикт не менялся, а основание у него было ложным.
+// Заметила ПРОБА ПРЕДПОСЫЛКИ, стоявшая рядом, — она для того и стоит.
+//
+// Отсюда порядок резолва, повторяющий порядок процесса: объявление чарта
+// (значения стека: профиль → умбрелла → подчарт) → умолчание кода. Ключ,
+// объявленный чартом НЕ из значений, и значения, не несущие названного шаблоном
+// пути, дают ОТКАЗ, а не откат к умолчанию: откат вернул бы величину, которой
+// процесс не увидит, и сумма сошлась бы по неверному слагаемому.
+//
+// Предпосылку стережёт `TestOutOfPoolCeilingIsReadWhereItIsDecided`, а
+// происхождение каждого слагаемого печатает перепись соседнего гейта — иначе
+// обратный съезд («резолвер снова читает исходник») выглядел бы как исправная
+// работа: сумма та же, вердикт тот же.
+//
+// ─────────────────────────────────────────────────────────────────────────────
 // ПОЧЕМУ РОЛЬ, А НЕ СЛОВО
 //
 // `Hijack` есть и у перехватчика HTTP-соединения на крае — к базе он отношения не
@@ -115,7 +141,25 @@ type outOfPoolHolder struct {
 	// PerReplica — сколько соединений вид стоит службе на ОДНУ реплику.
 	// Возвращает величину, её происхождение и признак «величина не выведена» —
 	// последнее есть находка, а не ноль: неизвестное слагаемое не бывает нулём.
-	PerReplica func(t *testing.T, svcDir string, tree *outOfPoolTree) (int, string, error)
+	PerReplica func(t *testing.T, c outOfPoolCtx) (int, string, error)
+}
+
+// outOfPoolCtx — вход резолвера слагаемого.
+//
+// Несёт ОБЕ стороны, из которых складывается побеждающая величина: дерево
+// исходников (там живут умолчания кода) и посадку этого стека (там живут
+// объявления чарта под наложенными профилями). Резолвер, которому дают только
+// первую, обречён читать умолчание — даже когда его давно перебивают.
+type outOfPoolCtx struct {
+	// svcDir — каталог исходников службы: `services/<имя>`.
+	svcDir string
+	// chartDir — каталог её чарта. ПУСТОЙ означает «чарта нет», и это законный
+	// вход: тогда величину решает умолчание кода.
+	chartDir string
+	// values — значения ПОДЧАРТА после наложения профилей стека, то есть ровно
+	// то, что helm подставит в его шаблоны.
+	values map[string]any
+	tree   *outOfPoolTree
 }
 
 var outOfPoolHolders = []outOfPoolHolder{
@@ -338,7 +382,8 @@ func (tr *outOfPoolTree) callSites(prefix, key string) (int, []string) {
 // ─────────────────────────────────────────────────────────────────────────────
 // РЕЗОЛВЕРЫ СЛАГАЕМЫХ
 
-func drainerInstancesPerReplica(_ *testing.T, svcDir string, tr *outOfPoolTree) (int, string, error) {
+func drainerInstancesPerReplica(_ *testing.T, c outOfPoolCtx) (int, string, error) {
+	svcDir, tr := c.svcDir, c.tree
 	n, where := tr.callSites(svcDir+"/", drainerPkg+".New")
 	if n == 0 {
 		return 0, "", fmt.Errorf(
@@ -349,7 +394,8 @@ func drainerInstancesPerReplica(_ *testing.T, svcDir string, tr *outOfPoolTree) 
 	return n, fmt.Sprintf("заведений дренажа %d (%s)", n, strings.Join(where, ", ")), nil
 }
 
-func listenInvalidatorPerReplica(_ *testing.T, svcDir string, tr *outOfPoolTree) (int, string, error) {
+func listenInvalidatorPerReplica(_ *testing.T, c outOfPoolCtx) (int, string, error) {
+	svcDir, tr := c.svcDir, c.tree
 	n, where := tr.callSites(svcDir+"/", authzPkg+".ListenInvalidator")
 	if n == 0 {
 		// Импорт пакета есть (в нём живёт и перехватчик решений), а держателя
@@ -359,26 +405,114 @@ func listenInvalidatorPerReplica(_ *testing.T, svcDir string, tr *outOfPoolTree)
 	return n, fmt.Sprintf("заведений %d (%s)", n, strings.Join(where, ", ")), nil
 }
 
+// outOfPoolFromValues — приставка ПРОИСХОЖДЕНИЯ величины, взятой из значений
+// стека.
+//
+// Стоит константой, а не набирается текстом дважды, потому что её ЧИТАЕТ
+// перепись соседнего гейта: разойдись написание с чтением — перепись назвала бы
+// источником не то, что вернул резолвер, и разошлась бы молча.
+const outOfPoolFromValues = "значения стека: "
+
 // subscriptionStreamCeiling — потолок одновременных потоков подписки на реплику.
 //
-// # Почему величина читается из КОДА, а не из значений чарта
+// # Величина берётся ОТТУДА, ГДЕ ОНА РЕШАЕТСЯ
 //
-// Потому что оттуда её читает процесс. Ручка не выведена ни в одно значение
-// чарта и ни в одну переменную окружения шаблона, поэтому действует объявленное
-// умолчание — и оно есть ПОБЕЖДАЮЩЕЕ значение, а не «то, что стоит в исходнике».
-// Проверка этой предпосылки стоит рядом
-// (`TestOutOfPoolCeilingIsNotSettableFromTheChart`): станет величина объявляемой
-// — предпосылка покраснеет и заставит читать её из значений.
+// Порядок ровно тот, которым величину получает процесс при старте:
+//
+//  1. чарт рендерит ключ настроек ИЗ ЗНАЧЕНИЙ → побеждает значение стека
+//     (профиль поверх умолчаний умбреллы поверх умолчаний подчарта). Умолчание
+//     кода в этом случае не действует НИКОГДА: раскладчик читает то, что ему
+//     подставили;
+//  2. чарт ключа не рендерит вовсе → побеждает умолчание кода, и читать его
+//     разбором исходника — единственный способ его узнать.
+//
+// # Третьего исхода нет, а «ключ есть, значения нет» — ОТКАЗ
+//
+// Чарт, рендерящий ключ не из значений (литерал в шаблоне), и значения, не
+// несущие названного шаблоном пути, оба означают одно: побеждающее значение
+// чтением значений не выводится. Откат к умолчанию кода здесь был бы худшим из
+// ответов — он вернул бы величину, которой процесс НЕ УВИДИТ, и сумма посадки
+// сошлась бы по неверному слагаемому. Неизвестное слагаемое не бывает нулём и
+// не бывает чужим умолчанием.
 //
 // # Почему ключ настройки, а не слово
 //
 // Опознаётся не имя поля и не комментарий, а КЛЮЧ НАСТРОЙКИ — то, чем величина
-// названа снаружи процесса. Форм записи в дереве две, и обе законны: тег поля
-// (`envconfig`) и умолчание раскладчика (`SetDefault`). Форма, о которой
-// резолвер не знает, дала бы не ноль, а ОТКАЗ: неизвестное слагаемое не бывает
-// нулём.
-func subscriptionStreamCeiling(t *testing.T, svcDir string, tr *outOfPoolTree) (int, string, error) {
+// названа снаружи процесса. Форм записи в дереве по две с каждой стороны, и все
+// четыре законны: в коде — тег поля (`envconfig`) и умолчание раскладчика
+// (`SetDefault`); в чарте — ключ файла настроек и имя переменной окружения.
+// Форма, о которой резолвер не знает, даёт не ноль, а ОТКАЗ.
+//
+// Предпосылку этого порядка стережёт `TestOutOfPoolCeilingIsReadWhereItIsDecided`:
+// снимут объявление из чарта — величина обязана поехать обратно в умолчание
+// кода, и проба потребует именно этого.
+func subscriptionStreamCeiling(t *testing.T, c outOfPoolCtx) (int, string, error) {
 	t.Helper()
+	wirings, err := subscriptionCeilingWirings(c.chartDir)
+	if err != nil {
+		return 0, "", err
+	}
+	if len(wirings) == 0 {
+		return subscriptionCeilingFromSource(c.svcDir, c.tree)
+	}
+
+	paths := map[string]bool{}
+	var opaque []string
+	for _, w := range wirings {
+		if w.Path == "" {
+			opaque = append(opaque, fmt.Sprintf("%s (%q)", w, w.Text))
+			continue
+		}
+		paths[w.Path] = true
+	}
+	if len(opaque) > 0 {
+		return 0, "", fmt.Errorf(
+			"чарт объявляет ключ потолка процессу, но не из значений (%s): побеждающее значение "+
+				"не выводится чтением значений, а умолчание кода этим объявлением уже перебито. "+
+				"Слагаемое не выведено, и нулём оно не бывает",
+			strings.Join(opaque, ", "))
+	}
+	if len(paths) > 1 {
+		names := make([]string, 0, len(paths))
+		for p := range paths {
+			names = append(names, p)
+		}
+		sort.Strings(names)
+		return 0, "", fmt.Errorf(
+			"чарт рендерит ключ потолка из НЕСКОЛЬКИХ путей значений (%s): побеждающее значение "+
+				"неопределимо чтением", strings.Join(names, ", "))
+	}
+	var path string
+	for p := range paths {
+		path = p
+	}
+
+	raw, ok := lookup(c.values, strings.Split(path, ".")...)
+	if !ok {
+		return 0, "", fmt.Errorf(
+			"чарт рендерит ключ потолка из значений %s (%s), а такого ключа в значениях стека "+
+				"нет: шаблон подставит пустое, и величиной станет не умолчание кода, а пустота",
+			path, wirings[0])
+	}
+	n, ok := asInt(raw)
+	if !ok {
+		return 0, "", fmt.Errorf(
+			"значение %s = %v (%s) не читается числом: величина посадки обязана быть числом",
+			path, raw, wirings[0])
+	}
+	if n <= 0 {
+		return 0, "", fmt.Errorf(
+			"потолок потоков объявлен значениями как %d (%s = %d, рендерит %s) — величина "+
+				"посадки, а не вкус", n, path, n, wirings[0])
+	}
+	return n, fmt.Sprintf("%s%s = %d (рендерит %s)", outOfPoolFromValues, path, n, wirings[0]), nil
+}
+
+// subscriptionCeilingFromSource — умолчание, вкомпилированное в службу.
+//
+// Действует ТОЛЬКО когда чарт ключа не объявляет: иначе умолчание перебито
+// объявлением и побеждающим значением не является.
+func subscriptionCeilingFromSource(svcDir string, tr *outOfPoolTree) (int, string, error) {
 	var found []string
 	best, where := 0, ""
 	err := filepath.WalkDir(filepath.Join(tr.root, svcDir), func(path string, d os.DirEntry, err error) error {
@@ -456,11 +590,184 @@ func subscriptionStreamCeiling(t *testing.T, svcDir string, tr *outOfPoolTree) (
 	return best, where, nil
 }
 
-// subscriptionCeilingKey — ключ настройки потолка потоков в любом написании.
-// Разделители у двух раскладчиков разные (`_` и `-`), регистр тоже.
+// subscriptionCeilingKey — ключ настройки потолка потоков РЕПЛИКИ в любом
+// написании. Разделители у двух раскладчиков разные (`_` и `-`), регистр тоже,
+// поэтому написание нормализуется.
+//
+// # Соседняя величина отсекается ЯВНО, и она в дереве ЖИВАЯ
+//
+// Рядом с потолком реплики живёт потолок НА ВЫЗЫВАЮЩЕГО
+// (`…_MAX_STREAMS_PER_SUBJECT` — объявлен чартом края и его значениями, строкой
+// ниже потолка реплики). Он тоже «subscription» и тоже «max streams», но это
+// ДРУГАЯ величина: она ограничивает одного вызывающего, а соединений реплика
+// держит по ПЕРВОЙ. Не отсеки соседа — распознаватель взял бы его за предмет
+// там, где предмет объявлен строкой выше, и подменил бы слагаемое молча.
 func subscriptionCeilingKey(key string) bool {
 	k := strings.NewReplacer("-", "_", ".", "_").Replace(strings.ToLower(key))
+	if !strings.Contains(k, "subscription") || !strings.Contains(k, "max_streams") {
+		return false
+	}
+	return !strings.Contains(k, "per_subject")
+}
+
+// coarseCeilingText — ГРУБОЕ зеркало: текст несёт слова ключа потолка где
+// угодно, включая комментарии, и соседняя величина здесь НЕ отсекается.
+//
+// Грубость — предмет этого предиката, а не его недостаток. Он отвечает на
+// вопрос «есть ли в этом файле вообще что-нибудь про потолок потоков», и любое
+// сужение приблизило бы его к точному, то есть лишило бы роли зеркала: два
+// предиката, ослепшие одинаково, зеркалом друг другу не являются.
+func coarseCeilingText(text string) bool {
+	k := strings.NewReplacer("-", "_", ".", "_").Replace(strings.ToLower(text))
 	return strings.Contains(k, "subscription") && strings.Contains(k, "max_streams")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ГДЕ ВЕЛИЧИНА РЕШАЕТСЯ НА САМОМ ДЕЛЕ: ОБЪЯВЛЕНИЕ ЧАРТА ПОБЕЖДАЕТ УМОЛЧАНИЕ КОДА
+
+// ceilingWiring — одно место чарта, где потолок потоков объявляется ПРОЦЕССУ.
+//
+// «Объявляется процессу» — это ключ файла настроек либо имя переменной
+// окружения, то есть ровно то написание, которое читает раскладчик настроек
+// при старте. Путь в значениях (`subscription.maxStreams`) под это определение
+// НЕ подпадает и подпасть не может: предикат ключа требует разделителя между
+// `max` и `streams`, а в написании значений его нет. Совпадение не случайное —
+// оно и разделяет «чем величина названа СНАРУЖИ процесса» от «чем она названа
+// в значениях чарта».
+type ceilingWiring struct {
+	File string
+	Line int
+	// Path — путь в значениях, откуда шаблон берёт величину. ПУСТОЙ путь
+	// означает «ключ объявлен, но не из значений»: побеждающее значение тогда
+	// чтением значений не выводится, и это ОТКАЗ, а не откат к умолчанию кода.
+	// Откат был бы худшим из ответов — он вернул бы величину, которой процесс
+	// не увидит.
+	Path string
+	Text string
+}
+
+func (w ceilingWiring) String() string { return fmt.Sprintf("%s:%d", w.File, w.Line) }
+
+var (
+	// chartValuesRef — ссылка на значения в выражении шаблона.
+	chartValuesRef = regexp.MustCompile(`\.Values\.([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)`)
+	// chartKeyToken — отдельное слово строки шаблона. Ключ опознаётся по
+	// СЛОВУ, а не вхождением в строку целиком: вхождение в строку целиком
+	// засчитывало бы «subscription» из одного места и «max_streams» из
+	// другого, и находка называла бы файл вместо места.
+	chartKeyToken = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_.-]*`)
+)
+
+// ceilingWiringWindow — сколько строк НИЖЕ ключа осматривается в поисках
+// выражения.
+//
+// Форм записи в дереве две, и обе законны: ключ файла настроек несёт выражение
+// на СВОЕЙ строке (`subscription-max-streams: {{ … }}`), переменная окружения —
+// на СЛЕДУЮЩЕЙ (`- name: …` / `value: "{{ … }}"`). Окно ровно на эти две формы
+// и рассчитано: шире оно начало бы приписывать ключу чужое выражение соседней
+// переменной.
+const ceilingWiringWindow = 1
+
+// subscriptionCeilingWirings — места чарта, объявляющие потолок процессу.
+//
+// Пустой `chartDir` означает «чарта у этой службы нет», и это законный вход:
+// тогда величину решает умолчание кода. Нечитаемый непустой — ОТКАЗ: «чарт не
+// прочитан» обязано быть отличимо от «чарт ключа не объявляет».
+func subscriptionCeilingWirings(chartDir string) ([]ceilingWiring, error) {
+	if chartDir == "" {
+		return nil, nil
+	}
+	if st, err := os.Stat(chartDir); err != nil || !st.IsDir() {
+		return nil, fmt.Errorf("каталог чарта %s не читается (%v) — «ключ не объявлен» стало бы "+
+			"неотличимо от «чарт не прочитан»", chartDir, err)
+	}
+	var out []ceilingWiring
+	err := filepath.WalkDir(chartDir, func(path string, d os.DirEntry, werr error) error {
+		if werr != nil || d.IsDir() {
+			return werr
+		}
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".yaml", ".yml", ".tpl":
+		default:
+			return nil
+		}
+		raw, rerr := os.ReadFile(path) // #nosec G304 -- обход собственного дерева
+		if rerr != nil {
+			return rerr
+		}
+		lines := strings.Split(string(raw), "\n")
+		for i, line := range lines {
+			// Судится ИСПОЛНЯЕМАЯ часть: комментарий, называющий ту же
+			// переменную (а такие комментарии стоят прямо над каждым из пяти
+			// объявлений), объявлением не является.
+			code := strings.TrimSpace(line)
+			if code == "" || strings.HasPrefix(code, "#") {
+				continue
+			}
+			if !lineDeclaresCeilingKey(code) {
+				continue
+			}
+			w := ceilingWiring{File: filepath.ToSlash(path), Line: i + 1, Text: code}
+			for j := i; j < len(lines) && j <= i+ceilingWiringWindow; j++ {
+				if m := chartValuesRef.FindStringSubmatch(lines[j]); m != nil {
+					w.Path = m[1]
+					break
+				}
+			}
+			out = append(out, w)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].File != out[j].File {
+			return out[i].File < out[j].File
+		}
+		return out[i].Line < out[j].Line
+	})
+	return out, nil
+}
+
+// lineDeclaresCeilingKey — строка объявляет ключ потолка процессу.
+func lineDeclaresCeilingKey(line string) bool {
+	for _, tok := range chartKeyToken.FindAllString(line, -1) {
+		if subscriptionCeilingKey(tok) {
+			return true
+		}
+	}
+	return false
+}
+
+// chartCarriesCeilingKeyCoarsely — ГРУБЫЙ предикат по тексту файла целиком.
+//
+// Это ровно тот предикат, которым прежняя проба стерегла снятую теперь
+// предпосылку («ключ не объявляем чартом»). Он оставлен НЕ как второе изложение
+// одного предмета, а как ЗЕРКАЛО построчного распознавателя: они меряют одно
+// разной зернистостью, поэтому построчный, переставший что-либо узнавать, не
+// сможет молчать вместе с грубым. Без зеркала слепота распознавателя выглядела
+// бы как «чарт ключа не объявляет» — то есть как законный вход.
+func chartCarriesCeilingKeyCoarsely(chartDir string) ([]string, error) {
+	if chartDir == "" {
+		return nil, nil
+	}
+	var out []string
+	err := filepath.WalkDir(chartDir, func(path string, d os.DirEntry, werr error) error {
+		if werr != nil || d.IsDir() {
+			return werr
+		}
+		raw, rerr := os.ReadFile(path) // #nosec G304 -- обход собственного дерева
+		if rerr != nil {
+			return rerr
+		}
+		if coarseCeilingText(string(raw)) {
+			out = append(out, filepath.ToSlash(path))
+		}
+		return nil
+	})
+	sort.Strings(out)
+	return out, err
 }
 
 // packageNameOf — имя, под которым пакет виден в коде, по пути импорта.
@@ -527,7 +834,7 @@ func serviceSourceDir(root, alias string) (string, bool) {
 // Третий возврат — виды, чьё слагаемое вывести НЕ УДАЛОСЬ. Он отделён от нуля
 // намеренно: сумма с неизвестным слагаемым проходит любую проверку.
 func outOfPoolPerReplica(
-	t *testing.T, alias string, tree *outOfPoolTree,
+	t *testing.T, alias, chartDir string, values map[string]any, tree *outOfPoolTree,
 ) (total int, why, unknown []string) {
 	t.Helper()
 	svcDir, ok := serviceSourceDir(tree.root, alias)
@@ -554,7 +861,9 @@ func outOfPoolPerReplica(
 		if len(tree.importers(svcDir+"/", h.Pkg)) == 0 {
 			continue // держателя эта служба не поднимает
 		}
-		n, where, err := h.PerReplica(t, svcDir, tree)
+		n, where, err := h.PerReplica(t, outOfPoolCtx{
+			svcDir: svcDir, chartDir: chartDir, values: values, tree: tree,
+		})
 		if err != nil {
 			unknown = append(unknown, fmt.Sprintf("%s — %v", h.Kind, err))
 			continue
