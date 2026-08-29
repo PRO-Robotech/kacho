@@ -56,7 +56,9 @@ function setup(specId: string) {
       sources.push(s);
       return s;
     },
-    diagnose: async () => ({ status: 501, contentType: "application/json", body: "" }),
+    // Подставной разбор отказа отвечает ГОТОВЫМ обещанием: ждать ему нечего, а
+    // `async` без единого `await` объявлял ожидание, которого в теле нет.
+    diagnose: () => Promise.resolve({ status: 501, contentType: "application/json", body: "" }),
     log: () => undefined,
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

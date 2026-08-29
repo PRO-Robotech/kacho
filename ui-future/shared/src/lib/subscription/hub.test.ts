@@ -67,7 +67,10 @@ function makeHub(sources: FakeSource[]) {
     },
     // Разбор отказа — отдельный вход: приёмник событий браузера кода ответа не
     // отдаёт вовсе, и без него «владелец не объявлен» неотличимо от «край лёг».
-    diagnose: async () => ({ status: 501, contentType: "application/json", body: "no journal owner is declared for this edge" }),
+    // Подставной разбор отказа отвечает ГОТОВЫМ обещанием: ждать ему нечего, а
+    // `async` без единого `await` объявлял ожидание, которого в теле нет.
+    diagnose: () =>
+      Promise.resolve({ status: 501, contentType: "application/json", body: "no journal owner is declared for this edge" }),
     log: () => undefined,
   });
 }
@@ -218,7 +221,9 @@ describe("хаб подписки: один поток на владельца, 
         sources.push(s);
         return s;
       },
-      diagnose: async () => ({ status: 501, contentType: "application/json", body: "" }),
+      // Подставной разбор отказа отвечает ГОТОВЫМ обещанием: ждать ему нечего, а
+      // `async` без единого `await` объявлял ожидание, которого в теле нет.
+      diagnose: () => Promise.resolve({ status: 501, contentType: "application/json", body: "" }),
       log: () => undefined,
       now: () => clock,
       reopenAfterMs: 60_000,
@@ -247,9 +252,9 @@ describe("хаб подписки: один поток на владельца, 
         sources.push(s);
         return s;
       },
-      diagnose: async () => {
+      diagnose: () => {
         diagnosed += 1;
-        return { status: 501, contentType: "application/json", body: "no journal owner is declared for this edge" };
+        return Promise.resolve({ status: 501, contentType: "application/json", body: "no journal owner is declared for this edge" });
       },
       log: (m) => said.push(m),
     });
