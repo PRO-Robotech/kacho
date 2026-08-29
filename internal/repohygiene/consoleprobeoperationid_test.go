@@ -33,6 +33,10 @@
 //
 //	ПОДТВЕРЖДЕНИЕ  у каждого идентификатора, прочитанного из `metadata`, есть
 //	               ПОСЛЕДУЮЩЕЕ чтение по адресу, называющее эту переменную.
+//	АДРЕС РЕСУРСА  имя названо в ПУТИ, а не в строке запроса: список,
+//	               отфильтрованный по несуществующему идентификатору, отвечает
+//	               `200` и пустым массивом — ровно тем же, чем отвечает пустой
+//	               ресурс, поэтому фильтр не доказывает существования.
 //	ПОРЯДОК        подтверждение стоит ПОСЛЕ чтения: чтение чужого адреса выше
 //	               по файлу ничего не говорит о свежем идентификаторе.
 //	ОБЛАСТЬ        подтверждение стоит в области видимости ОБЪЯВЛЕНИЯ. За
@@ -167,7 +171,7 @@ func consoleProbeStripComments(src string) string {
 // Парность скобок считается по МАСКЕ (строки и регулярные литералы обнулены),
 // а текст берётся из версии со строками: скобка внутри строки не должна
 // закрывать вызов, но `${имя}` внутри неё — предмет вопроса.
-func consoleProbeArgSpan(mask []byte, text string, open int) (string, bool) {
+func consoleProbeArgSpan(mask []byte, text string, open int) (arg string, at int, ok bool) {
 	depth := 0
 	for j := open; j < len(mask); j++ {
 		switch mask[j] {
@@ -176,11 +180,37 @@ func consoleProbeArgSpan(mask []byte, text string, open int) (string, bool) {
 		case ')':
 			depth--
 			if depth == 0 {
-				return text[open+1 : j], true
+				return text[open+1 : j], open + 1, true
 			}
 		}
 	}
-	return "", false
+	return "", 0, false
+}
+
+// consoleProbePathPortion — часть аргумента ДО строки запроса адреса.
+//
+// Идентификатор, стоящий фильтром списка (`/vpc/v1/networks?projectId=…`),
+// существования ресурса НЕ доказывает: список, отфильтрованный по
+// несуществующему владельцу, отвечает `200` и пустым массивом — тем же, чем
+// отвечает пустой проект. Подтверждает только чтение по СОБСТВЕННОМУ адресу
+// ресурса, то есть упоминание в ПУТИ.
+//
+// Разделителем считается вопросительный знак, стоящий ВНУТРИ литерала адреса:
+// в маске тела литералов обнулены, поэтому такой знак отличим от `?.` и от
+// тернарного оператора, которые живут в исполняемой части и адрес не режут.
+// Литерала в аргументе нет вовсе (`addressOf(id)` — построитель адреса) —
+// резать нечего, аргумент берётся целиком.
+func consoleProbePathPortion(mask []byte, text string, at int, arg string) string {
+	for i := 0; i < len(arg); i++ {
+		g := at + i
+		if g >= len(mask) || g >= len(text) {
+			break
+		}
+		if text[g] == '?' && mask[g] != '?' {
+			return arg[:i]
+		}
+	}
+	return arg
 }
 
 // auditConsoleProbeOperationIDs — чистая функция над корпусом «путь → исходник».
@@ -252,8 +282,10 @@ func auditConsoleProbeOperationIDs(sources map[string]string) (consoleProbeOpera
 		var confirms []confirm
 		for _, loc := range consoleProbeResourceReadRe.FindAllStringIndex(text, -1) {
 			open := loc[1] - 1
-			if arg, ok := consoleProbeArgSpan(mask, text, open); ok {
-				confirms = append(confirms, confirm{arg: arg, at: open})
+			if arg, at, ok := consoleProbeArgSpan(mask, text, open); ok {
+				// Только путь: идентификатор в строке запроса — фильтр списка,
+				// а не адрес ресурса.
+				confirms = append(confirms, confirm{arg: consoleProbePathPortion(mask, text, at, arg), at: open})
 			}
 		}
 
@@ -334,7 +366,8 @@ func TestProbeIdentifiersFromOperationMetadataAreConfirmedByReading(t *testing.T
 			"предмете (ожидание события, чтение списка), а шаг, предмет не создавший, молчит. "+
 			"Разбирать будут механизм, которого дефект не касается.\n"+
 			"Подтверждением НЕ считается: чтение выше объявления; чтение за границей блока, "+
-			"где это имя принадлежит уже другой переменной.\n"+
+			"где это имя принадлежит уже другой переменной; идентификатор в СТРОКЕ ЗАПРОСА "+
+			"(фильтр списка отвечает `200` и пустым массивом на несуществующий ресурс).\n"+
 			"Исход: подтвердить ресурс чтением по его собственному адресу — этим занят "+
 			"`createdResourceId` в ui-future/e2e/specs/fixtures.ts. "+
 			"Норма: .claude/rules/testing.md §«Fixture-seed обязан проверять `op.error`».",

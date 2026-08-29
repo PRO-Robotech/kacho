@@ -359,3 +359,89 @@ func TestConsoleProbeOperationIDDeclaresItsOwnPremiseAboutVar(t *testing.T) {
 			"и путать их нельзя", findings)
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ЧТО СЧИТАЕТСЯ ЧТЕНИЕМ РЕСУРСА. Идентификатор в СТРОКЕ ЗАПРОСА адреса
+// существования ресурса не доказывает: список, отфильтрованный по
+// несуществующему владельцу, отвечает `200` и пустым массивом. Подтверждает
+// только чтение по СОБСТВЕННОМУ адресу — то есть упоминание в ПУТИ.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ДЕФЕКТ. Подтверждения нет: идентификатор стоит фильтром списка.
+const synthProbeConfirmedByQueryFilterOnly = `test("список вместо ресурса", async ({ page }) => {
+  const created = await page.request.post("/iam/v1/accounts", { data: {} });
+  const body = JSON.parse(await created.text());
+  const projectId = body.metadata?.defaultProjectId ?? "";
+  const res = await page.request.get(` + "`/vpc/v1/networks?projectId=${projectId}`" + `);
+  expect(res.status()).toBe(200);
+});
+`
+
+// ЗАКОННЫЙ БЛИЗНЕЦ. Тот же идентификатор, тот же вопросительный знак в адресе —
+// но упомянут он в ПУТИ, а строка запроса несёт постороннее. Гейт обязан
+// молчать: иначе он ловит наличие `?`, а не место упоминания.
+const synthProbeConfirmedByPathWithQuery = `test("путь с параметрами", async ({ page }) => {
+  const created = await page.request.post("/iam/v1/accounts", { data: {} });
+  const body = JSON.parse(await created.text());
+  const projectId = body.metadata?.defaultProjectId ?? "";
+  const res = await page.request.get(` + "`/iam/v1/projects/${projectId}?view=FULL`" + `);
+  expect(res.status()).toBe(200);
+});
+`
+
+// ЗАКОННЫЙ БЛИЗНЕЦ. Построитель адреса: литерала в аргументе нет вовсе, значит
+// нет и строки запроса, по которой можно было бы судить. Живая форма дерева.
+const synthProbeConfirmedByBuilderWithQuestionMarkNearby = `export async function createdResourceId(page, response, metadataField, addressOf) {
+  const body = JSON.parse(await response.text());
+  const id = body.metadata?.[metadataField] ?? "";
+  await expect.poll(async () => (await page.request.get(addressOf(id))).status()).toBe(200);
+  return id;
+}
+`
+
+// ДЕФЕКТ. Чужой ресурс читается по своему адресу, а наш идентификатор стоит в
+// строке запроса того же чтения: подтверждён подсеть, а не проект.
+const synthProbeQueryAlongsideForeignPath = `test("чужой путь, наш фильтр", async ({ page }) => {
+  const created = await page.request.post("/iam/v1/accounts", { data: {} });
+  const body = JSON.parse(await created.text());
+  const projectId = body.metadata?.defaultProjectId ?? "";
+  const res = await page.request.get(` + "`/vpc/v1/subnets/${subnetId}?projectId=${projectId}`" + `);
+  expect(res.status()).toBe(200);
+});
+`
+
+func TestConsoleProbeOperationIDDoesNotCountAListFilterAsAResourceRead(t *testing.T) {
+	// ── ДЕФЕКТ: идентификатор стоит фильтром, а не адресом ──────────────────
+	for name, src := range map[string]string{
+		"фильтр списка":            synthProbeConfirmedByQueryFilterOnly,
+		"фильтр при чужом ресурсе": synthProbeQueryAlongsideForeignPath,
+	} {
+		census, findings := auditConsoleProbeOperationIDs(map[string]string{"specs/x.spec.ts": src})
+		if len(findings) != 1 {
+			t.Errorf("%s — находок %d, ожидалась 1 (%v). Список, отфильтрованный по "+
+				"несуществующему идентификатору, отвечает `200` и пустым массивом: "+
+				"существования ресурса такое чтение не доказывает; перепись: чтений %d, подтверждено %d",
+				name, len(findings), findings, census.Reads, census.Confirmed)
+			continue
+		}
+		if findings[0].Name != "projectId" {
+			t.Errorf("%s — находка называет %q вместо \"projectId\"", name, findings[0].Name)
+		}
+	}
+
+	// ── ЗАКОННЫЕ БЛИЗНЕЦЫ: упоминание в ПУТИ остаётся подтверждением ───────
+	for name, src := range map[string]string{
+		"путь, а за ним строка запроса": synthProbeConfirmedByPathWithQuery,
+		"построитель адреса":            synthProbeConfirmedByBuilderWithQuestionMarkNearby,
+	} {
+		census, findings := auditConsoleProbeOperationIDs(map[string]string{"specs/x.spec.ts": src})
+		if len(findings) != 0 {
+			t.Errorf("%s — гейт краснеет на исправном: %v. Гейт, краснеющий на верном коде, "+
+				"отключают первым", name, findings)
+		}
+		if census.Reads != 1 || census.Confirmed != 1 {
+			t.Errorf("%s — молчание получено даром: чтений %d, подтверждено %d",
+				name, census.Reads, census.Confirmed)
+		}
+	}
+}
