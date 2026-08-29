@@ -150,7 +150,11 @@ interface Channel {
 }
 
 const defaultDeps: HubDeps = {
-  open: (url) => new EventSource(url, { withCredentials: true }) as unknown as EventSourceLike,
+  // Утверждения типа здесь нет: приёмник браузера объявленному подмножеству
+  // отвечает как есть, и компилятор это видит сам. Стоявшее прежде
+  // `as unknown as EventSourceLike` не сужало и не расширяло ничего — зато
+  // сняло бы проверку, начни объявление и браузер расходиться.
+  open: (url) => new EventSource(url, { withCredentials: true }),
   diagnose: async (url) => {
     const res = await fetch(url, { headers: { Accept: "text/event-stream" }, credentials: "same-origin" });
     const body = await res.text();
