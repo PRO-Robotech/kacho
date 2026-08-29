@@ -2967,7 +2967,22 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "zone_id",
         render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
       },
-      { header: "Тип машины", path: "machine_type_id", format: "code" },
+      {
+        // Тип машины — запись каталога размера со своей карточкой, значит
+        // ссылка, а не моноширинный идентификатор. Рядом в этой же строке зона
+        // ссылкой уже была: одна таблица, два поведения читались как «этот
+        // переход не сделали» (#406).
+        //
+        // Две оси, и они РАЗНЫЕ: читается каталог глобально (`scope: "global"`,
+        // запрос идёт без project_id), а РАЗДЕЛ его смонтирован внутри проекта,
+        // потому что рисует его модуль compute, — поэтому адрес карточки
+        // project-scoped.
+        header: "Тип машины",
+        path: "machine_type_id",
+        render: (row) => (
+          <RefNameLink specId="machine-types" refId={row.machine_type_id as string | undefined} maxChars={28} />
+        ),
+      },
       {
         header: "vCPU / RAM",
         path: "effective_resources",
