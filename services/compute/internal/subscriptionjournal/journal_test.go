@@ -108,12 +108,18 @@ func TestStateRoundTripsAFullInstance(t *testing.T) {
 		t.Fatalf("подготовка нагрузки: %v", err)
 	}
 
-	got, err := state(subscription.Row{Change: "UPDATED", Payload: payload})
+	got, absence, err := state(subscription.Row{Change: "UPDATED", Payload: payload})
 	if err != nil {
 		t.Fatalf("состояние не собралось: %v", err)
 	}
 	if got == nil {
 		t.Fatal("состояние отсутствует у события правки — подписчик остался бы без предмета")
+	}
+	// Причина отсутствия при СОБРАННОМ состоянии — противоречие в объявлении
+	// владельца: сервер пишет на него жалобу, и заводить его здесь незачем.
+	if absence != subscription.StateAbsenceUnnamed {
+		t.Fatalf("вместе с состоянием названа причина его отсутствия (%v) — объявление "+
+			"противоречит себе", absence)
 	}
 
 	var out computev1.Instance
@@ -134,7 +140,7 @@ func TestStateRoundTripsAFullInstance(t *testing.T) {
 // Отрицание в паре с положительным контролем выше: без него проба зеленела бы на
 // отображении, которое не отдаёт состояния НИКОГДА.
 func TestStateIsAbsentForRemoval(t *testing.T) {
-	got, err := state(subscription.Row{
+	got, absence, err := state(subscription.Row{
 		Change:  changeDeleted,
 		Payload: []byte(`{"id":"epd-1234567890abcdefg"}`),
 	})
@@ -146,6 +152,36 @@ func TestStateIsAbsentForRemoval(t *testing.T) {
 		t.Fatal("у снятия отдано состояние: подписчик вправе читать непустую нагрузку " +
 			"как ПОЛНОЕ состояние предмета и записал бы пустые поля как факт — " +
 			"имя исчезло, зона исчезла, метки исчезли")
+	}
+	if absence != subscription.StateNotProduced {
+		t.Fatalf("причина отсутствия у снятия %v, ожидалась StateNotProduced: собирать "+
+			"было нечего, попытки не было — «не удалось сериализовать» звало бы "+
+			"подписчика перечитать снятую машину", absence)
+	}
+}
+
+// TestAnUnreadablePayloadStaysAFailure — ВТОРАЯ ПОЛОСА той же развилки.
+//
+// Без неё утверждение выше зеленело бы на отображении, которое называет
+// StateNotProduced ВСЕГДА, — то есть на подмене одной неразличимости другой.
+// Здесь состояние ЕСТЬ и собрать его не удалось: причину такому исходу даёт
+// сервер, и владелец обязан оставить её неназванной, а не подшить к свойству
+// журнала.
+func TestAnUnreadablePayloadStaysAFailure(t *testing.T) {
+	got, absence, err := state(subscription.Row{
+		Change:  "UPDATED",
+		Payload: []byte(`"не объект"`),
+	})
+	if err == nil {
+		t.Fatal("негодная нагрузка прошла как успех — отказ сборки перестал быть отличим " +
+			"от свойства журнала")
+	}
+	if got != nil {
+		t.Fatal("при отказе сборки отдано состояние")
+	}
+	if absence != subscription.StateAbsenceUnnamed {
+		t.Fatalf("отказ сборки назван причиной %v — сбой объявлен свойством журнала, и "+
+			"подписчик перестал бы перечитывать там, где перечитать и надо", absence)
 	}
 }
 

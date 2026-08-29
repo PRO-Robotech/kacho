@@ -49,7 +49,9 @@ func dictionaryProbeJournal() subscription.Journal {
 			Changes: map[string]subscriptionv1.SubscriptionEvent_Change{
 				"CREATED": subscriptionv1.SubscriptionEvent_CREATED,
 			},
-			State: func(subscription.Row) (*anypb.Any, error) { return nil, nil },
+			State: func(subscription.Row) (*anypb.Any, subscription.StateAbsence, error) {
+				return nil, subscription.StateNotProduced, nil
+			},
 		},
 	}
 }

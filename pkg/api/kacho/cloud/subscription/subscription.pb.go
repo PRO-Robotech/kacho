@@ -151,6 +151,24 @@ const (
 	SubscriptionEvent_StateUnavailable_NOT_RETAINED SubscriptionEvent_StateUnavailable_Reason = 2
 	// Состояние есть, но вызывающему не показывается.
 	SubscriptionEvent_StateUnavailable_WITHHELD SubscriptionEvent_StateUnavailable_Reason = 3
+	// Состояние по этому предмету владельцем НЕ ПРОИЗВОДИТСЯ.
+	//
+	// Это СВОЙСТВО ЖУРНАЛА, а не сбой: собирать было нечего, попытки не было,
+	// и повтор ничего не изменит. Тем оно и отличается от `NOT_SERIALIZABLE`,
+	// где состояние есть, а собрать его не удалось: там разумное действие —
+	// перечитать, здесь — сразу идти за предметом по `resource_id` (либо снять
+	// его из своего состояния, если род изменения `DELETED`).
+	//
+	// Случая два, и оба живые: владелец, чей журнал не несёт состояния ни у
+	// одного вида, и событие снятия — предмета больше нет, собирать нечего
+	// by construction.
+	//
+	// Значение ДОБАВЛЕНО к закрытому словарю, а не заведено корзиной «прочее»:
+	// до него владелец, у которого состояния не бывает, был вынужден называть
+	// причиной соседнюю запись — то есть утверждать неудавшуюся попытку там,
+	// где попытки не было. Подписчик, не знающий этого значения, читает его
+	// как «состояния не будет» — ровно то, что означает ветвь.
+	SubscriptionEvent_StateUnavailable_NOT_PRODUCED SubscriptionEvent_StateUnavailable_Reason = 4
 )
 
 // Enum value maps for SubscriptionEvent_StateUnavailable_Reason.
@@ -160,12 +178,14 @@ var (
 		1: "NOT_SERIALIZABLE",
 		2: "NOT_RETAINED",
 		3: "WITHHELD",
+		4: "NOT_PRODUCED",
 	}
 	SubscriptionEvent_StateUnavailable_Reason_value = map[string]int32{
 		"REASON_UNSPECIFIED": 0,
 		"NOT_SERIALIZABLE":   1,
 		"NOT_RETAINED":       2,
 		"WITHHELD":           3,
+		"NOT_PRODUCED":       4,
 	}
 )
 
@@ -221,8 +241,17 @@ func (SubscriptionEvent_StateUnavailable_Reason) EnumDescriptor() ([]byte, []int
 //
 // МЕТКИ мутабельны, и ресурс входит в выборку и выходит из неё по их правке. Без
 // предыдущего состояния выход из выборки неотличим от удаления ресурса, то есть
-// подписчик принял бы правку метки за снос. Отбор по меткам делает КЛИЕНТ — он
-// может себе это позволить, потому что событие несёт полное состояние ресурса.
+// подписчик принял бы правку метки за снос. Отбор по меткам делает КЛИЕНТ.
+//
+// ЦЕНА ЭТОГО РЕШЕНИЯ НАЗВАНА, а не подразумевается: клиент отбирает по меткам
+// ровно там, где событие принесло состояние. Владелец, чей журнал состояния НЕ
+// ПРОИЗВОДИТ, источника для такого отбора не даёт — по его видам отбор по меткам
+// НЕИСПОЛНИМ, и подписчик, которому метки нужны, читает предмет по
+// `resource_id`. Это не пропуск и не временное состояние: производит владелец
+// состояние или нет, объявляется в потоке — причиной
+// `SubscriptionEvent.StateUnavailable.NOT_PRODUCED`, отличимой машинно от сбоя
+// сборки. Соврать здесь было бы дороже отказа: подписчик, поверивший обещанию,
+// молча отобрал бы по меткам, которых не получал.
 //
 // Отсутствие этих полей — решение, а не пропуск. Поле без записанной причины
 // отсутствия заводит следующий «для удобства», и он будет прав по-своему.
@@ -873,7 +902,7 @@ const file_kacho_cloud_subscription_subscription_proto_rawDesc = "" +
 	"\x1bearliest_resumable_position\x18\x04 \x01(\tR\x19earliestResumablePosition\x12-\n" +
 	"\x12retains_everything\x18\x05 \x01(\bR\x11retainsEverything\x12\x1f\n" +
 	"\vknown_kinds\x18\x06 \x03(\tR\n" +
-	"knownKinds\"\x88\x05\n" +
+	"knownKinds\"\x9a\x05\n" +
 	"\x11SubscriptionEvent\x12\x1a\n" +
 	"\bposition\x18\x01 \x01(\tR\bposition\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x1f\n" +
@@ -884,14 +913,15 @@ const file_kacho_cloud_subscription_subscription_proto_rawDesc = "" +
 	"\x06change\x18\x05 \x01(\x0e22.kacho.cloud.subscription.SubscriptionEvent.ChangeR\x06change\x12,\n" +
 	"\x05state\x18\n" +
 	" \x01(\v2\x14.google.protobuf.AnyH\x00R\x05state\x12k\n" +
-	"\x11state_unavailable\x18\v \x01(\v2<.kacho.cloud.subscription.SubscriptionEvent.StateUnavailableH\x00R\x10stateUnavailable\x1a\xc7\x01\n" +
+	"\x11state_unavailable\x18\v \x01(\v2<.kacho.cloud.subscription.SubscriptionEvent.StateUnavailableH\x00R\x10stateUnavailable\x1a\xd9\x01\n" +
 	"\x10StateUnavailable\x12[\n" +
-	"\x06reason\x18\x01 \x01(\x0e2C.kacho.cloud.subscription.SubscriptionEvent.StateUnavailable.ReasonR\x06reason\"V\n" +
+	"\x06reason\x18\x01 \x01(\x0e2C.kacho.cloud.subscription.SubscriptionEvent.StateUnavailable.ReasonR\x06reason\"h\n" +
 	"\x06Reason\x12\x16\n" +
 	"\x12REASON_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10NOT_SERIALIZABLE\x10\x01\x12\x10\n" +
 	"\fNOT_RETAINED\x10\x02\x12\f\n" +
-	"\bWITHHELD\x10\x03\"G\n" +
+	"\bWITHHELD\x10\x03\x12\x10\n" +
+	"\fNOT_PRODUCED\x10\x04\"G\n" +
 	"\x06Change\x12\x16\n" +
 	"\x12CHANGE_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aCREATED\x10\x01\x12\v\n" +

@@ -53,7 +53,7 @@ func TestEveryAcceptedKindTranslatesToAtLeastOneJournalWord(t *testing.T) {
 			Changes: map[string]subscriptionv1.SubscriptionEvent_Change{
 				"CREATED": subscriptionv1.SubscriptionEvent_CREATED,
 			},
-			State: func(Row) (*anypb.Any, error) { return nil, nil },
+			State: func(Row) (*anypb.Any, StateAbsence, error) { return nil, StateNotProduced, nil },
 		},
 	}
 	if err := j.Validate(); err != nil {

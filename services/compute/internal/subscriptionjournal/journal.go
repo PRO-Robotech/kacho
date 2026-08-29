@@ -178,9 +178,12 @@ func ProjectGate() (subscription.ProjectGate, error) {
 //
 // Для снятия подписчику довольно оболочки: вид, идентификатор, якорь проекта и
 // род изменения — этого хватает, чтобы убрать строку из своего состояния.
-func state(r subscription.Row) (*anypb.Any, error) {
+func state(r subscription.Row) (*anypb.Any, subscription.StateAbsence, error) {
 	if r.Change == changeDeleted {
-		return nil, nil
+		// Причина НАЗВАНА: предмета больше нет, собирать было нечего, попытки не
+		// было. «Не удалось сериализовать» здесь означало бы неудавшуюся попытку —
+		// и звало бы подписчика перечитать снятую машину.
+		return nil, subscription.StateNotProduced, nil
 	}
 
 	// Нагрузка записана тем же кодированием, каким читается (`domainToMap` —
@@ -188,12 +191,19 @@ func state(r subscription.Row) (*anypb.Any, error) {
 	// симметричен by construction. Проба этого не предполагает, а проверяет.
 	var in domain.Instance
 	if err := json.Unmarshal(r.Payload, &in); err != nil {
-		return nil, fmt.Errorf("разбор нагрузки журнала: %w", err)
+		// НАСТОЯЩИЙ отказ сборки: состояние есть, собрать не удалось. Причину ему
+		// даёт сервер (`NOT_SERIALIZABLE`), и она обязана остаться отличимой от
+		// «состояния не бывает» — действия у них противоположные.
+		return nil, subscription.StateAbsenceUnnamed, fmt.Errorf("разбор нагрузки журнала: %w", err)
 	}
 	// Тип НАЗВАН: `Any` несёт имя типа на проводе, и ключи нагрузки суть поля
 	// контракта владельца. Свободной структуры здесь нет намеренно — её ключи
 	// производились бы от имён идентификаторов Go, и обычный внутренний
 	// рефактор молча ломал бы публичную нагрузку, а `buf breaking` этого не
 	// увидел бы by construction.
-	return anypb.New(protoconv.Instance(&in))
+	packed, err := anypb.New(protoconv.Instance(&in))
+	if err != nil {
+		return nil, subscription.StateAbsenceUnnamed, err
+	}
+	return packed, subscription.StateAbsenceUnnamed, nil
 }
