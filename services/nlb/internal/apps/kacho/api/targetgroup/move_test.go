@@ -5,7 +5,6 @@ package targetgroup
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -236,19 +235,17 @@ func TestMove_DestCheckUnavailableFailsClosed(t *testing.T) {
 	require.Equal(t, domain.ProjectID("prj-src"), repo.tgs[string(tg.ID)].ProjectID)
 }
 
-// TestTgMovedPayload_OldProjectReachesConsumer — regression for outbox
-// payload-key drift (5th audit, HIGH). MOVED producer emits `old_project_id`
-// (canonical key the Subscribe consumer parses into
-// ResourceLifecycleEvent.OldProjectId), not the legacy `src_project_id`.
-func TestTgMovedPayload_OldProjectReachesConsumer(t *testing.T) {
+// TestTgMovedPayload_KeysOnTheWire — строитель переезда кладёт исходный и
+// целевой проекты под именами `old_project_id` / `new_project_id`, а не под
+// прежним `src_project_id`.
+//
+// Имена названы литералами: прежняя редакция сверяла их через разборщик,
+// собранный из тех же констант, и оставалась зелёной при переименовании ключа
+// (замер #1452). Разборщик снят вместе с этой круговой истинностью.
+func TestTgMovedPayload_KeysOnTheWire(t *testing.T) {
 	m := tgMovedPayload("nlb-tg-1", "prj-src", "prj-dst")
-	require.NotContains(t, m, "src_project_id", "legacy key must not be emitted")
-
-	raw, err := json.Marshal(m)
-	require.NoError(t, err)
-	parsed, err := kachorepo.ParseLifecyclePayload(raw)
-	require.NoError(t, err)
-	require.Equal(t, "prj-src", parsed.OldProjectID,
-		"consumer must recover source project from MOVED payload")
-	require.Equal(t, "prj-dst", parsed.NewProjectID)
+	require.NotContains(t, m, "src_project_id", "прежнее имя ключа не возвращается")
+	require.Equal(t, "nlb-tg-1", m["id"])
+	require.Equal(t, "prj-src", m["old_project_id"])
+	require.Equal(t, "prj-dst", m["new_project_id"])
 }

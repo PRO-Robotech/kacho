@@ -3,23 +3,57 @@
 
 package kacho
 
-import "encoding/json"
-
-// Canonical `nlb_outbox` JSON-payload key names — ЕДИНЫЙ источник истины,
-// разделяемый КАЖДЫМ producer'ом (mutation use-cases) И consumer'ом
-// (InternalResourceLifecycleService.Subscribe → kacho-iam FGA-sync).
+// Имена ключей JSON-нагрузки `nlb_outbox` — единый источник для тех
+// производителей, которые собирают её ТИПИЗИРОВАННО (шесть мест: два у
+// слушателя, два у балансировщика, два у целевой группы).
 //
-// Ранее каждый producer вручную собирал `map[string]any` с inline-строками, а
-// consumer (`extractPayloadFields`) читал ДРУГОЙ набор литералов
-// (`parent_resource_id` / `old_project_id`), который НИ ОДИН producer не писал:
-// listener-producer писал `load_balancer_id`, MOVED-producer — `src_project_id`.
-// Как следствие `ResourceLifecycleEvent.ParentResourceId` / `.OldProjectId`,
-// стримящиеся в kacho-iam, всегда были пустыми → iam не мог снести stale
-// owner/hierarchy-tuples на Move (stale-permission leak). Централизация ключей
-// здесь + типизированные builder (`LifecyclePayload.Map`) и parser
-// (`ParseLifecyclePayload`) устраняют дрейф: обе стороны используют одни и те же
-// имена ключей. Frozen-proto поля `ResourceLifecycleEvent` НЕ меняются — только
-// ранее всегда-пустые поля теперь заполняются.
+// # У НАГРУЗКИ НЕТ ЧИТАТЕЛЯ, и это сказано вслух (задача #1452)
+//
+// Прежняя редакция называла потребителя в настоящем времени —
+// «InternalResourceLifecycleService.Subscribe → kacho-iam FGA-sync», — и это
+// было неверно по трём независимым осям сразу:
+//
+//  1. названный контракт СНЯТ (задача #814, надгробие `retiredRPCSurface`;
+//     его читатель снят задачей #1043). Потребителей у него не было ни одного
+//     и до снятия;
+//  2. зеркало прав ходит ДРУГОЙ очередью — `fga_register_outbox` (миграция
+//     0002, где несовместимость схем с этой таблицей объявлена решением). К
+//     `nlb_outbox` оно не обращается;
+//  3. «разделяемый КАЖДЫМ producer'ом» тоже не выполнялось: из ДЕВЯТИ живых
+//     путей, пишущих сюда нагрузку, ТРИ собирают её мимо этого словаря — джоба
+//     освобождения адреса (`reason`), джоба слива целей (`reason`) и триггерная
+//     функция пересчёта статуса (`recomputed`).
+//
+// Цена ошибки была не в стиле. Задача #1381 (обогатить журнал состоянием)
+// упирается в вопрос «что сломается, если поменять форму нагрузки»; по этому
+// комментарию ответ был «зеркало прав у соседа» — довод против, — а по дереву
+// ответ «ничего».
+//
+// # Что читает нагрузку СЕГОДНЯ
+//
+// Ничего. Общий сервер потока (`pkg/subscription`) выбирает колонку запросом и
+// отдаёт её объявлению журнала владельца; объявление nlb
+// (`internal/subscriptionjournal`) состояния из неё НЕ собирает и параметр
+// строки не именует — по решению, названному там же. Разборщика нагрузки в
+// дереве больше нет: он был зеркалом собственного строителя (обе стороны брали
+// одни и те же константы), поэтому его проба круговым ходом не могла отличить
+// верное имя ключа от любого другого — переименование значения константы
+// оставляло её зелёной.
+//
+// Поэтому обе стороны утверждаются теперь ПО ПРОВОДУ: пробы производителей
+// называют строковые литералы ключей, а не константы, которыми эти ключи
+// собраны.
+//
+// # Почему нагрузка при этом ОСТАЁТСЯ
+//
+// Читатель у неё будет — это задача #1381, живая и в той же релизной линии;
+// решение о СОДЕРЖАНИИ нагрузки принадлежит ей, а не этой записи. Снять
+// нагрузку целиком нельзя и по второй причине: один из производителей — тело
+// триггерной функции в ПРИМЕНЁННОЙ миграции, и остановить его можно только новой
+// миграцией, переписывающей это тело, — работа с измеренной ценой и нулевым
+// измеренным выигрышем. Предикат появления потребителя и цена отвергнутых
+// исходов записаны решением в
+// `services/nlb/docs/engineering/architecture/08-known-divergences.md`.
 const (
 	PayloadKeyID               = "id"
 	PayloadKeyProjectID        = "project_id"
@@ -35,38 +69,39 @@ const (
 	PayloadKeyNewProjectID     = "new_project_id"
 )
 
-// LifecyclePayload — типизированный snapshot `nlb_outbox`-payload'а. Producer
-// заполняет релевантные поля и вызывает Map(); Subscribe-consumer вызывает
-// ParseLifecyclePayload, чтобы прочитать cross-cutting поля (ParentResourceID —
-// parent-link Listener→LB; OldProjectID — исходный project для MOVED). Пустые
-// поля в payload не сериализуются (минимальный snapshot; consumer при
-// необходимости делает Get(id)).
+// LifecyclePayload — типизированный снимок нагрузки `nlb_outbox`. Производитель
+// заполняет относящиеся к его виду поля и зовёт Map(); пустые поля в нагрузку не
+// попадают.
+//
+// Читателя у этих полей сегодня нет ни одного (см. запись выше). Поля не сняты
+// потому, что содержание нагрузки — предмет задачи #1381, а не этой; здесь
+// снята только ЛОЖНОСТЬ объявления и разборщик, у которого не было вызывающих.
 type LifecyclePayload struct {
-	// ID — resource id (LB / Listener / TargetGroup).
+	// ID — идентификатор ресурса (балансировщик / слушатель / целевая группа).
 	ID string
-	// ParentResourceID — id родительского ресурса (Listener → parent LB).
-	// Пусто для project-scoped ресурсов (LB / TargetGroup), у которых родителя нет.
+	// ParentResourceID — идентификатор родителя (слушатель → его балансировщик).
+	// Пусто у ресурсов проекта, у которых родителя нет.
 	ParentResourceID string
 	ProjectID        string
 	RegionID         string
 	Name             string
 	Status           string
-	// Type — LB-only (network_load_balancer type).
+	// Type — только у балансировщика.
 	Type string
-	// Protocol / Port — Listener-only.
+	// Protocol / Port — только у слушателя.
 	Protocol string
 	Port     int32
-	// Trigger — диагностический маркер cross-resource UPDATED-эмита
-	// (`listener_created` / `listener_deleted` / ...).
+	// Trigger — диагностический маркер перекрёстного эмита правки
+	// (`listener_created` / `listener_deleted` / …).
 	Trigger string
-	// OldProjectID — исходный project ресурса для MOVED-события.
+	// OldProjectID — исходный проект ресурса для события переезда.
 	OldProjectID string
-	// NewProjectID — целевой project ресурса для MOVED-события.
+	// NewProjectID — целевой проект ресурса для события переезда.
 	NewProjectID string
 }
 
-// Map — строит `map[string]any` для OutboxEmitter.Emit, включая только
-// непустые поля (минимальный snapshot). Ключи — из констант выше.
+// Map — строит `map[string]any` для OutboxEmitter.Emit, включая только непустые
+// поля (минимальный снимок). Ключи — из констант выше.
 func (p LifecyclePayload) Map() map[string]any {
 	m := make(map[string]any, 12)
 	putNonEmpty(m, PayloadKeyID, p.ID)
@@ -90,34 +125,4 @@ func putNonEmpty(m map[string]any, key, val string) {
 	if val != "" {
 		m[key] = val
 	}
-}
-
-// ParseLifecyclePayload — толерантный parser payload-JSON'а из `nlb_outbox`-row.
-// Неизвестные ключи игнорируются; поле неверного типа игнорируется (остаётся
-// пустым) — event должен дойти до подписчика даже с частично-битым payload'ом
-// (graceful degradation). Ошибку возвращает ТОЛЬКО на невалидный JSON.
-func ParseLifecyclePayload(raw []byte) (LifecyclePayload, error) {
-	var p LifecyclePayload
-	if len(raw) == 0 {
-		return p, nil
-	}
-	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return p, err
-	}
-	p.ID, _ = m[PayloadKeyID].(string)
-	p.ParentResourceID, _ = m[PayloadKeyParentResourceID].(string)
-	p.ProjectID, _ = m[PayloadKeyProjectID].(string)
-	p.RegionID, _ = m[PayloadKeyRegionID].(string)
-	p.Name, _ = m[PayloadKeyName].(string)
-	p.Status, _ = m[PayloadKeyStatus].(string)
-	p.Type, _ = m[PayloadKeyType].(string)
-	p.Protocol, _ = m[PayloadKeyProtocol].(string)
-	p.Trigger, _ = m[PayloadKeyTrigger].(string)
-	p.OldProjectID, _ = m[PayloadKeyOldProjectID].(string)
-	p.NewProjectID, _ = m[PayloadKeyNewProjectID].(string)
-	if f, ok := m[PayloadKeyPort].(float64); ok {
-		p.Port = int32(f)
-	}
-	return p, nil
 }

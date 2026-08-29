@@ -34,7 +34,7 @@ Control-plane (без data-plane sibling) для трёх публичных р�
 
 - **Async LRO**: каждая мутация возвращает `operation.Operation`.
 - **FGA REBAC** (KAC-108): per-RPC `iam.InternalIAMService.Check`.
-- **Outbox + LISTEN/NOTIFY** на канал `nlb_outbox` (D-13 lifecycle stream).
+- **Outbox + LISTEN/NOTIFY** на канал `nlb_outbox` — журнал изменений; поток над ним служит общая форма `InternalSubscriptionService.Subscribe` (`pkg/subscription`).
 - **Cross-service refs** (vpc / compute / iam) — soft sync precheck + graceful dangling.
 - **DB-уровень инварианты** (FK / partial UNIQUE / atomic CAS) — workspace CLAUDE.md §10.
 
