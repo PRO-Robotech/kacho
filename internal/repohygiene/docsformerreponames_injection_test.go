@@ -121,6 +121,43 @@ func TestFormerRepoGate_DoesNotAcceptTheDefectAsItsOwnJustification(t *testing.T
 	}
 }
 
+// То же самое НАСТОЯЩЕЙ формой дерева, а не сочинённой.
+//
+// Предыдущая проба берёт `kacho-proto/.../compute/v1` — форму, которой в дереве
+// НЕТ: многоточие вместо каталогов делает так, что после маскирования имени в
+// строке не остаётся `proto/`, и предикат срабатывает по чистой случайности.
+// Живой экземпляр пишется иначе — полным путём прежнего репозитория, чей ПЕРВЫЙ
+// сегмент после имени и есть `proto/`:
+//
+//   - `kacho-proto/proto/kacho/cloud/vpc/v1/*.proto` — контракт API;
+//
+// Здесь хвост дефектного пути сам содержит нынешнюю координату, и однословное
+// маскирование отдаёт дефекту оправдание. Маскируется поэтому имя ВМЕСТЕ с
+// путём, который за ним следует.
+func TestFormerRepoGate_DoesNotAcceptTheDefectAsItsOwnJustification_RealTreeForm(t *testing.T) {
+	corpus := injFormerCorpus{
+		"services/vpc/docs/README.md": "- `kacho-proto/proto/kacho/cloud/vpc/v1/*.proto` — контракт API;\n",
+	}
+	findings, census := injFormerScan(t, corpus)
+	if len(findings) != 1 {
+		t.Fatalf("настоящая форма дефекта закрыла предикат сама собой: находок %d, перепись %s "+
+			"— `proto/` в хвосте `kacho-proto/proto/...` координатой не является", len(findings), census)
+	}
+}
+
+// Зеркало предыдущего той же формы: путь, начинающийся с НЫНЕШНЕГО каталога,
+// обязан зачитываться. Без этой стороны маскирование пути ловило бы форму
+// «слэш после имени», а не существо.
+func TestFormerRepoGate_AcceptsAFullCurrentPathNextToTheFormerName(t *testing.T) {
+	corpus := injFormerCorpus{
+		"a.md": "- `proto/kacho/cloud/vpc/v1/*.proto` — контракт API (прежде `kacho-proto`);\n",
+	}
+	findings, census := injFormerScan(t, corpus)
+	if len(findings) != 0 {
+		t.Fatalf("полный нынешний путь не зачтён: %v (перепись: %s)", findings, census)
+	}
+}
+
 // Зеркало предыдущего: настоящая координата в той же форме обязана зачитываться.
 func TestFormerRepoGate_AcceptsARealPathNextToTheFormerName(t *testing.T) {
 	corpus := injFormerCorpus{
@@ -129,6 +166,21 @@ func TestFormerRepoGate_AcceptsARealPathNextToTheFormerName(t *testing.T) {
 	findings, census := injFormerScan(t, corpus)
 	if len(findings) != 0 {
 		t.Fatalf("настоящая координата не зачтена: %v (перепись: %s)", findings, census)
+	}
+}
+
+// Тот же класс на ВТОРОМ имени: доказывает, что маскирование выводится из
+// перечня имён, а не выписано под одно из них. `pkg/` в хвосте
+// `kacho-corelib/pkg/ids` — часть дефектной координаты, а не нынешнее место.
+func TestFormerRepoGate_MaskingCoversEveryNameInTheLedger(t *testing.T) {
+	corpus := injFormerCorpus{
+		"a.md": "- `kacho-corelib/pkg/ids` — генерация идентификаторов;\n",
+	}
+	findings, census := injFormerScan(t, corpus)
+	if len(findings) != 1 {
+		t.Fatalf("полный путь второго прежнего имени оправдал себя сам: находок %d, перепись %s "+
+			"— маскирование обязано выводиться из formerRepoNames, а не быть выписанным "+
+			"под одно имя", len(findings), census)
 	}
 }
 
