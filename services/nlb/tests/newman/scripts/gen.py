@@ -72,6 +72,8 @@ from gen_shared import (  # noqa: E402  — импорт после провяз
     _assert_delete_operation_outcome,
     assert_field_violation,
     assert_grpc_code,
+    assert_refusal_message,
+    assert_refusal_message_contains,
     _assert_published_id_outcome,
     assert_status,
     _asserts_done,
@@ -1050,6 +1052,7 @@ def retry_delete_until_released(step: Step, budget: int = 60, interval_ms: int =
 
 
 def conf_alreadyexists_block(prefix: str, create_path: str, name_template: str,
+                              refusal: str,
                               body_extra: Optional[Dict] = None,
                               id_field_pattern: str = "Id") -> Case:
     """CONF: duplicate (project_id, name) on Create returns ALREADY_EXISTS verbatim text.
@@ -1070,7 +1073,20 @@ def conf_alreadyexists_block(prefix: str, create_path: str, name_template: str,
     Вторая редакция это починила, потребовав ошибку в операции (`must_fail`), — но
     сохранила приём двух исходов там, где код даёт один, и тем оставляла кейс глухим к
     настоящему регрессу: перенос проверки из синхронной части в worker'а сменил бы полосу
-    отказа, а утверждение молчало бы. Теперь полоса заявлена: 409, код 6, текст."""
+    отказа, а утверждение молчало бы. Теперь полоса заявлена: 409, код 6, текст.
+
+    ТЕКСТ — ВЛАДЕЛЬЦА ЦЕЛИКОМ, А НЕ ОБЩАЯ ЧАСТЬ ТОНА (#1520). Заголовок кейса обещает
+    «verbatim text», а утверждение до этой правки читало
+    `message.toLowerCase()).to.include('already exists')` — общую часть, под которой
+    проходит отказ ЛЮБОГО ресурса nlb. Тексты владельцев при этом РАЗНЫЕ по форме
+    (`NetworkLoadBalancer with name %s already exists in project` против
+    `TargetGroup '%s' already exists in project %s`), то есть подмену одного отказа
+    другим кейс не различал ни при каком ответе — ровно то, что заголовок обещал ловить.
+
+    `refusal` — текст владельца дословно, с `{name}` на месте имени (слот подставляется ЗАМЕНОЙ, не `str.format`:
+    формат съел бы `{{…}}` подстановки окружения и превратил бы их в литерал). Обязателен и без
+    умолчания: умолчание вернуло бы прежнюю слабость молча, а отказ генерации на
+    незаданном тексте виден сразу и называет место."""
     body_extra = body_extra or {}
     return Case(
         id=f"{prefix}-CR-CONF-ALREADY-EXISTS",
@@ -1096,7 +1112,7 @@ def conf_alreadyexists_block(prefix: str, create_path: str, name_template: str,
                      "pm.environment.unset('opId');",
                      *assert_status(409),
                      *assert_grpc_code(6, "ALREADY_EXISTS"),
-                     "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));",
+                     *assert_refusal_message(refusal.replace("{name}", name_template)),
                  ]),
             Step(name="cleanup-first", method="DELETE", path=f"{create_path}/{{{{createdId}}}}",
                  test_script=[*save_from_response("j.id", "opId")]),
@@ -1290,6 +1306,8 @@ _INJECTED = {
     "Case": Case,
     "assert_status": assert_status,
     "assert_grpc_code": assert_grpc_code,
+    "assert_refusal_message": assert_refusal_message,
+    "assert_refusal_message_contains": assert_refusal_message_contains,
     "assert_unscoped_rejected": assert_unscoped_rejected,
     "assert_absent_id_rejected": assert_absent_id_rejected,
     "assert_field_violation": assert_field_violation,

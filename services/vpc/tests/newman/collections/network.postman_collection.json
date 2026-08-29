@@ -961,7 +961,10 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(6);",
                   "});",
-                  "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"
+                  "pm.test('refusal text is the owner\\'s verbatim tone', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql('Network with name net-dup-' + pm.environment.get('runId') + ' already exists');",
+                  "});"
                 ]
               }
             }
@@ -6503,7 +6506,10 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(6);",
                   "});",
-                  "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"
+                  "pm.test('refusal text is the owner\\'s verbatim tone', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql('Network with name net-idm-' + pm.environment.get('runId') + ' already exists');",
+                  "});"
                 ]
               }
             }
@@ -10019,7 +10025,10 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(6);",
                   "});",
-                  "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"
+                  "pm.test('refusal text is the owner\\'s verbatim tone', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql('Network with name net-dupck-' + pm.environment.get('runId') + ' already exists');",
+                  "});"
                 ]
               }
             }

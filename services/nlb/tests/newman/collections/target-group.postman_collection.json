@@ -4689,7 +4689,10 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(6);",
                   "});",
-                  "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"
+                  "pm.test('refusal text is the owner\\'s verbatim tone', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql('TargetGroup \\'tgr-dup-' + pm.environment.get('runId') + '\\' already exists in project ' + pm.environment.get('_suiteProjectId'));",
+                  "});"
                 ]
               }
             }

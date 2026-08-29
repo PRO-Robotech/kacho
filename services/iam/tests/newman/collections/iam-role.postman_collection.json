@@ -5718,9 +5718,9 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message: wildcard system-only', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect((j.message || '').toLowerCase(), JSON.stringify(j)).to.contain('system-only');",
+                  "pm.test('refusal text carries the owner\\'s verbatim wording', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.have.string('Illegal argument module (wildcard \\'*\\' is system-only)');",
                   "});"
                 ]
               }
@@ -6476,9 +6476,9 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message: mutually exclusive', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect((j.message || '').toLowerCase(), JSON.stringify(j)).to.contain('mutually exclusive');",
+                  "pm.test('refusal text carries the owner\\'s verbatim wording', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.have.string('Illegal argument: resourceNames and matchLabels are mutually exclusive');",
                   "});"
                 ]
               }

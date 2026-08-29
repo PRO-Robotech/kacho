@@ -537,7 +537,7 @@
                   "const j = pm.response.json();",
                   "if (pm.response.code === 400) {",
                   "  pm.test('grpc code 3 (INVALID_ARGUMENT)', () => pm.expect(j.code).to.eql(3));",
-                  "  pm.test('backend not-found text', () => pm.expect((j.message||'').toLowerCase()).to.include('not found'));",
+                  "  pm.test('backend not-found text', () => pm.expect(j.message||'', JSON.stringify(j)).to.have.string('project ' + pm.environment.get('garbageProjectId') + ' not found'));",
                   "} else {",
                   "  pm.test('grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j.code).to.eql(7));",
                   "}"
@@ -2658,7 +2658,10 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('invalid id text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('invalid'));"
+                  "pm.test('refusal text is the owner\\'s verbatim tone', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql('invalid resource id \\'not-an-id\\'');",
+                  "});"
                 ]
               }
             }

@@ -804,7 +804,10 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "pm.test('mentions network', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('network'));"
+                  "pm.test('refusal text is the owner\\'s verbatim tone', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql('Network ' + pm.environment.get('garbageVpcId') + ' not found');",
+                  "});"
                 ]
               }
             }
@@ -14316,7 +14319,10 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(6);",
                   "});",
-                  "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"
+                  "pm.test('refusal text is the owner\\'s verbatim tone', () => {",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
+                  "  pm.expect(j.message, JSON.stringify(j)).to.eql('RouteTable with name rt-dupck-' + pm.environment.get('runId') + ' already exists');",
+                  "});"
                 ]
               }
             }
