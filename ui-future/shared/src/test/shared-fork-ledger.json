@@ -225,18 +225,6 @@
       ]
     },
     {
-      "id": "storage:components",
-      "reason": "Осталась ОДНА оболочка карточки, и держит её ровно один недостающий ресурс. Реестр расширений detail-страницы сведён к общему: доменные строки storage подключаются ручкой `registerDetailExtension` из `storage/src/registerExtensions.tsx`. `ResourceShell` свести нельзя, пока реестр ресурсов модульный: общая оболочка резолвит спеку ПО МАРШРУТУ в `REGISTRY` из @shared (`specByRoute`), а там нет `snapshots` — замер 2026-08-21: своих у storage 6, отсутствует в общем ровно 1, `snapshots`. Прямая замена молча оставила бы карточку снимка без спеки, то есть без страницы. Предикат: сравнить ключи `id` в `storage/src/lib/resource-registry.tsx` и `shared/src/lib/resource-registry.tsx` — пустая разность снимает запись. Соседний модуль compute свою оболочку свёл именно потому, что у него эта разность пуста. Снимается вместе с объединением реестров (#402), не раньше.",
-      "entries": [
-        {
-          "file": "storage/src/components/organisms/ResourceShell/ResourceShell.tsx",
-          "symbols": [
-            "ResourceShell"
-          ]
-        }
-      ]
-    },
-    {
       "id": "storage:lib",
       "reason": "Библиотека модуля: реестр ресурсов и всё, что его читает. ПРИЧИНА ПЕРЕМЕРЕНА и сузилась. По СОСТАВУ расхождение осталось, но оно одно: разность ключей «реестр storage минус общий» = `snapshots` (у модуля 6 записей, пять из шести общий несёт; замер на `bfbd8c385`). Остальное держит СОДЕРЖАНИЕ: у трёх общих записей домен богаче — `volumes` (колонки `size_bytes`, `disk_type_id`, `used_by`, `labels`, `created_at`; поля `zone_id`, `size_gib`, `disk_type_id`, `_source_kind`, `source_image_id`, `source_snapshot_id`), `images` (колонки `region_id`, `size_bytes`, `source_snapshot_id`, `labels`, `created_at`; поля `region_id`, `_source_kind`, `source_volume_id`, `source_snapshot_id`) и `disk-types` (колонки `name`, `tier`, `lifecycle`). Прямая замена отняла бы их у списков и форм. Предикат снятия: разность ключей пуста И разность по `path:`/`name:` внутри каждой общей записи пуста.",
       "entries": [
@@ -244,16 +232,6 @@
           "file": "storage/src/lib/api-client.ts",
           "symbols": [
             "ApiError"
-          ]
-        },
-        {
-          "file": "storage/src/lib/resource-registry.tsx",
-          "symbols": [
-            "REGISTRY",
-            "applyFieldDefaults",
-            "getByPath",
-            "getResource",
-            "resourceProjectPath"
           ]
         }
       ]
