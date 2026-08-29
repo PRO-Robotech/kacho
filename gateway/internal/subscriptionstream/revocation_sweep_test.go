@@ -82,7 +82,7 @@ func TestClosingOneSubjectLeavesTheNeighbourAlone(t *testing.T) {
 	held := &ownerStub{
 		script:  []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)},
 		hold:    true,
-		started: make(chan struct{}),
+		started: make(chan struct{}, startedDepth),
 	}
 	h := newHandler(t, held, func(c *subscriptionstream.Config) {
 		c.StreamBudget = 60 * time.Second
@@ -90,11 +90,7 @@ func TestClosingOneSubjectLeavesTheNeighbourAlone(t *testing.T) {
 	})
 
 	revoked := openHeldStream(t, h, "user", "usr-revoked")
-	select {
-	case <-held.started:
-	case <-time.After(10 * time.Second):
-		t.Fatal("первый поток не открылся")
-	}
+	held.awaitStreams(t, 1)
 	neighbour := openHeldStream(t, h, "service_account", "sva-neighbour")
 	// Второй поток обязан ДОЙТИ до владельца прежде, чем придёт отзыв: иначе
 	// «сосед не задет» означало бы «соседа ещё не было».
@@ -156,7 +152,7 @@ func TestUnnameableSubjectIsRefusedBeforeItIsRegistered(t *testing.T) {
 			held := &ownerStub{
 				script:  []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)},
 				hold:    true,
-				started: make(chan struct{}),
+				started: make(chan struct{}, startedDepth),
 			}
 			h := newHandler(t, held)
 			r := request("owner=probe")
@@ -183,18 +179,14 @@ func TestNameableSubjectIsAdmitted(t *testing.T) {
 			held := &ownerStub{
 				script:  []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)},
 				hold:    true,
-				started: make(chan struct{}),
+				started: make(chan struct{}, startedDepth),
 			}
 			h := newHandler(t, held, func(c *subscriptionstream.Config) {
 				c.StreamBudget = 60 * time.Second
 				c.Heartbeat = 20 * time.Second
 			})
 			done := openHeldStream(t, h, principalType, "id-probe")
-			select {
-			case <-held.started:
-			case <-time.After(10 * time.Second):
-				t.Fatal("поток тенантного субъекта не открылся")
-			}
+			held.awaitStreams(t, 1)
 			// Ключ учёта — тот же субъект модели прав, которым назовёт его отзыв.
 			if n := h.CloseSubject(principalType + ":id-probe"); n != 1 {
 				t.Fatalf("закрыто %d потоков по ключу «%s:id-probe» — ключ учёта разошёлся с именем отзыва",

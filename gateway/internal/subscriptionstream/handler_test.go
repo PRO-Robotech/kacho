@@ -359,7 +359,7 @@ func TestConcurrentStreamLimitRefusesInsteadOfQueueing(t *testing.T) {
 	held := &ownerStub{
 		script:  []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)},
 		hold:    true,
-		started: make(chan struct{}),
+		started: make(chan struct{}, startedDepth),
 	}
 	h := newHandler(t, held, func(c *subscriptionstream.Config) {
 		c.MaxStreams = 1
@@ -373,11 +373,7 @@ func TestConcurrentStreamLimitRefusesInsteadOfQueueing(t *testing.T) {
 		defer close(first)
 		serve(t, h, request("owner=probe"))
 	}()
-	select {
-	case <-held.started:
-	case <-time.After(10 * time.Second):
-		t.Fatal("первый поток не открылся")
-	}
+	held.awaitStreams(t, 1)
 
 	rec := serve(t, h, request("owner=probe"))
 	if rec.Code != http.StatusTooManyRequests {
@@ -428,7 +424,7 @@ func TestCloseSubjectClosesOpenStreams(t *testing.T) {
 	held := &ownerStub{
 		script:  []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)},
 		hold:    true,
-		started: make(chan struct{}),
+		started: make(chan struct{}, startedDepth),
 	}
 	h := newHandler(t, held, func(c *subscriptionstream.Config) {
 		c.StreamBudget = 30 * time.Second
@@ -440,11 +436,7 @@ func TestCloseSubjectClosesOpenStreams(t *testing.T) {
 		defer close(done)
 		serve(t, h, request("owner=probe"))
 	}()
-	select {
-	case <-held.started:
-	case <-time.After(10 * time.Second):
-		t.Fatal("поток не открылся")
-	}
+	held.awaitStreams(t, 1)
 
 	// Ключ субъекта — пара «тип:идентификатор», та же, что едет владельцу.
 	if n := h.CloseSubject("user:usr-probe"); n != 1 {
@@ -578,7 +570,7 @@ func TestOneSubjectCannotTakeTheWholeReplica(t *testing.T) {
 	held := &ownerStub{
 		script:  []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)},
 		hold:    true,
-		started: make(chan struct{}),
+		started: make(chan struct{}, startedDepth),
 	}
 	h := newHandler(t, held, func(c *subscriptionstream.Config) {
 		c.MaxStreams = 4
@@ -592,11 +584,7 @@ func TestOneSubjectCannotTakeTheWholeReplica(t *testing.T) {
 		defer close(first)
 		serve(t, h, request("owner=probe"))
 	}()
-	select {
-	case <-held.started:
-	case <-time.After(10 * time.Second):
-		t.Fatal("первый поток не открылся")
-	}
+	held.awaitStreams(t, 1)
 
 	greedy := serve(t, h, request("owner=probe"))
 	if greedy.Code != http.StatusTooManyRequests {
@@ -658,8 +646,9 @@ func TestPostureRefusalIsCountedApartFromCallerFault(t *testing.T) {
 // тот же признак обоим.
 func TestTwoCeilingsAreDistinguishableByToken(t *testing.T) {
 	held := &ownerStub{
-		script: []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)},
-		hold:   true,
+		script:  []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)},
+		hold:    true,
+		started: make(chan struct{}, startedDepth),
 	}
 	// Оба потолка — двойка. Тогда ОДИН вызывающий, открыв два потока, исчерпывает
 	// РЕПЛИКУ и своё СРАЗУ, и обе полосы наблюдаемы на одном стенде: его третий
@@ -672,7 +661,6 @@ func TestTwoCeilingsAreDistinguishableByToken(t *testing.T) {
 		c.Heartbeat = time.Second
 	})
 
-	held.started = make(chan struct{}, 2)
 	done := make(chan struct{})
 	var holders sync.WaitGroup
 	for range 2 {
@@ -683,13 +671,11 @@ func TestTwoCeilingsAreDistinguishableByToken(t *testing.T) {
 		}()
 	}
 	go func() { holders.Wait(); close(done) }()
-	for range 2 {
-		select {
-		case <-held.started:
-		case <-time.After(10 * time.Second):
-			t.Fatal("удерживающие потоки не открылись")
-		}
-	}
+	// Ждём, пока ОБА удерживающих потока займут свои места, а не пока откроется
+	// первый: до фикса #1485 стенд закрывал канал на первом потоке, и это
+	// ожидание выполнялось тождественно — предел субъекта тогда ещё не был
+	// выбран, и «свой предел» отвечал 200 тем чаще, чем сильнее занята машина.
+	held.awaitStreams(t, 2)
 
 	// Свой предел: тот же субъект вторым потоком — место реплики ещё занято им
 	// же, но решение принимает предел субъекта, он проверяется первым.

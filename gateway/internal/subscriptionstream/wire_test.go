@@ -212,7 +212,7 @@ func TestClientGoingAwayReleasesTheStream(t *testing.T) {
 	owner := &ownerStub{
 		script:  []*subscriptionv1.SubscriptionMessage{openedMessage("pos-0", true)},
 		hold:    true,
-		started: make(chan struct{}),
+		started: make(chan struct{}, startedDepth),
 	}
 	h := newHandler(t, owner, func(c *subscriptionstream.Config) {
 		c.MaxStreams = 1
@@ -237,11 +237,7 @@ func TestClientGoingAwayReleasesTheStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("запрос: %v", err)
 	}
-	select {
-	case <-owner.started:
-	case <-time.After(10 * time.Second):
-		t.Fatal("поток не открылся")
-	}
+	owner.awaitStreams(t, 1)
 
 	// Клиент ушёл, не дожидаясь ни срока, ни закрытия владельцем.
 	cancel()
