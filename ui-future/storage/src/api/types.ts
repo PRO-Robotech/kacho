@@ -10,23 +10,12 @@
 // поверив, что имена совпадают, значит начать читать поля, которых в ответе нет.
 
 // ====== Operation ======
-
-export interface Operation {
-  id: string;
-  description?: string;
-  created_at?: string;
-  created_by?: string;
-  modified_at?: string;
-  done: boolean;
-  metadata?: { "@type": string; [key: string]: unknown };
-  error?: { code: number; message: string; details?: unknown[] };
-  response?: { "@type": string; [key: string]: unknown };
-}
-
-export interface OperationList {
-  operations: Operation[];
-  next_page_token?: string;
-}
+//
+// Конверт операции — ОДИН на всю платформу, поэтому берётся из общего
+// объявления. Копия здесь была байт-в-байт общей, то есть расхождения ещё не
+// случилось; но у двух объявлений одного контракта оно случается молча — и
+// обнаруживается там, где его не видно.
+export type { Operation, OperationList } from "@shared/api/types";
 
 // ====== storage: StatusReason (kacho.cloud.storage.v1.StatusReason) ======
 //
@@ -48,13 +37,13 @@ export type StatusReason =
   | string;
 
 // ====== reference (output-only used_by / kacho.cloud.reference.Reference) ======
-// referrer — {type,id,name°} dependency-handle; type — MANAGED_BY|USED_BY; owned —
-// живёт ли референт-биндинг под этим ресурсом (напр. auto_delete-вложение).
-export interface ResourceReference {
-  referrer?: { type?: string; id?: string; name?: string };
-  type?: "MANAGED_BY" | "USED_BY" | string;
-  owned?: boolean;
-}
+//
+// Своего объявления здесь больше нет. Домен держал его потому, что одноимённый
+// общий тип был БЕДНЕЕ контракта — без `referrer.name` и без `owned`, — и
+// прямая замена сняла бы у карточки тома оба поля молча. Общий тип обогащён до
+// контракта (#1467), поэтому остаётся ссылка.
+import type { ResourceReference } from "@shared/api/types";
+export type { ReferenceType, Referrer, ResourceReference } from "@shared/api/types";
 
 // ====== storage: Volume ======
 // proto: kacho.cloud.storage.v1.VolumeService (/storage/v1/volumes).

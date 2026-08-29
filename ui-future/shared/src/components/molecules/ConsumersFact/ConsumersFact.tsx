@@ -25,10 +25,13 @@ import { type ReactNode } from "react";
 import { Typography } from "antd";
 
 import { ReferrerLink } from "@shared/lib/spec-columns";
+import type { ResourceReference } from "@shared/api/types";
 
 export interface ConsumersFactProps {
-  /** `used_by` как он приехал с сервера. */
-  usedBy: { referrer?: { type?: string; id?: string; name?: string } }[] | undefined;
+  /** `used_by` как он приехал с сервера. Тип — ОБЩИЙ контрактный
+   *  (`kacho.cloud.reference.Reference`), а не своя выписка его полей: выписка
+   *  здесь уже стоила `owned`, который объявляла, но до разметки не доносила. */
+  usedBy: ResourceReference[] | undefined;
   projectId: string | null | undefined;
   /**
    * Сколько записей показывать. Не задан — показываются все полученные: у
@@ -48,7 +51,7 @@ export function ConsumersFact({ usedBy, projectId, limit }: ConsumersFactProps):
   return (
     <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
       {shown.map((u, i) => (
-        <ReferrerLink key={`${u.referrer?.id ?? i}`} projectId={projectId} referrer={u.referrer} />
+        <ReferrerLink key={`${u.referrer?.id ?? i}`} projectId={projectId} referrer={u.referrer} owned={u.owned} />
       ))}
       {truncated && (
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
