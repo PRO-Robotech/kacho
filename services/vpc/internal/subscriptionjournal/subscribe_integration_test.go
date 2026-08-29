@@ -23,6 +23,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/pkg/outbox"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/subscriptionjournal"
@@ -196,8 +197,15 @@ func TestSubscribeAnswersOverTheWire(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	// ДВА РАЗНЫХ СЛОВА ОБ ОДНОМ ПРЕДМЕТЕ, и подменять их местами нельзя.
+	//
+	// В `emit` выше стоит слово ХРАНИЛИЩА (`KindNetwork` = "Network") — им владелец
+	// записал строку в свою таблицу; оно частное и наружу не выходит. Здесь, на
+	// проводе, стоит ТИП ОБЪЕКТА модели прав — единственное платформенное имя
+	// предмета, и только его знает словарь владельца ([subscription.Journal.KindDictionary]).
+	// Подать сюда слово хранилища значит получить отказ на открытии.
 	stream := subscribe(t, s, ctx, &subscriptionv1.SubscriptionRequest{
-		Kinds:     []string{subscriptionjournal.KindNetwork},
+		Kinds:     []string{authzfilter.ResourceTypeNetwork},
 		ProjectId: probeProject,
 	})
 
@@ -231,7 +239,7 @@ func TestRemovalReachesTheSubscriberWithItsProjectAnchor(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	stream := subscribe(t, s, ctx, &subscriptionv1.SubscriptionRequest{
-		Kinds:     []string{subscriptionjournal.KindNetwork},
+		Kinds:     []string{authzfilter.ResourceTypeNetwork},
 		ProjectId: probeProject,
 	})
 
@@ -265,7 +273,7 @@ func TestTheProjectAxisNarrowsByTheColumn(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	stream := subscribe(t, s, ctx, &subscriptionv1.SubscriptionRequest{
-		Kinds:     []string{subscriptionjournal.KindNetwork},
+		Kinds:     []string{authzfilter.ResourceTypeNetwork},
 		ProjectId: probeProject,
 	})
 
@@ -307,7 +315,7 @@ func TestRemovalReachesASubscriberWhoMayNoLongerSeeThePredmet(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	stream := subscribe(t, s, ctx, &subscriptionv1.SubscriptionRequest{
-		Kinds:     []string{subscriptionjournal.KindNetwork},
+		Kinds:     []string{authzfilter.ResourceTypeNetwork},
 		ProjectId: probeProject,
 	})
 
@@ -351,7 +359,7 @@ func TestRemovalIsWithheldFromASubscriberWhoMayNotSeeTheProject(t *testing.T) {
 	// Подписка БЕЗ оси проекта: с осью страж отверг бы открытие, и предмет пробы
 	// (суждение о СТРОКЕ) не наступил бы вовсе.
 	stream := subscribe(t, s, ctx, &subscriptionv1.SubscriptionRequest{
-		Kinds: []string{subscriptionjournal.KindNetwork},
+		Kinds: []string{authzfilter.ResourceTypeNetwork},
 	})
 
 	ev := recv(t, stream)
