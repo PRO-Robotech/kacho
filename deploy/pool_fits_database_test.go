@@ -386,13 +386,7 @@ const (
 // ВЕДОМОСТЬ ПУСТА до тех пор, пока гейт не нашёл несоответствия. Сегодня она
 // несёт ОДИН предмет, размноженный по стекам: пять записей — это пять профилей,
 // наследующих одни и те же величины базы, а не пять разных дефектов.
-var knownUnfitting = map[string]string{
-	"a8f60d/pg-compute/" + kindOverPromise:      overPromiseComputeWhy,
-	"dev-prod/pg-compute/" + kindOverPromise:    overPromiseComputeWhy,
-	"fe3455/pg-compute/" + kindOverPromise:      overPromiseComputeWhy,
-	"prod/pg-compute/" + kindOverPromise:        overPromiseComputeWhy,
-	"prorobotech/pg-compute/" + kindOverPromise: overPromiseComputeWhy,
-}
+var knownUnfitting = map[string]string{}
 
 // overPromiseComputeWhy — причина и предикат снятия одной записи.
 //
