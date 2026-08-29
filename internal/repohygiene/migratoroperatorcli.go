@@ -313,13 +313,13 @@ func classifyMigratorCLIParser(rel, src string) (migratorCLIParser, error) {
 	sharedAlias := ""
 	for _, imp := range file.Imports {
 		value := strings.Trim(imp.Path.Value, `"`)
-		switch {
-		case value == migratorCLISharedParserImport:
+		switch value {
+		case migratorCLISharedParserImport:
 			sharedAlias = path.Base(value)
 			if imp.Name != nil {
 				sharedAlias = imp.Name.Name
 			}
-		case value == migratorCLICobraImport:
+		case migratorCLICobraImport:
 			p.Cobra = true
 		}
 	}
