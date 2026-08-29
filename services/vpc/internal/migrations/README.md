@@ -86,7 +86,7 @@ CREATE INDEX my_resource_parent_id_idx ON my_resource (parent_id);
 ## Правило 2 — parity с `domain.Validate`
 
 Каждое ограничение, выраженное в Go-domain (`internal/domain/types.go` +
-`kacho-corelib/validate`), **обязано** иметь DB-level CHECK поверх:
+`pkg/validate`), **обязано** иметь DB-level CHECK поверх:
 
 | Domain rule                              | DB CHECK                                                                        |
 | ---------------------------------------- | ------------------------------------------------------------------------------- |
@@ -206,7 +206,7 @@ Proto-ответ truncate'ит время до секунд — БД храни�
 ## Правило 6 — формат `id`
 
 Идентификаторы — `text PRIMARY KEY`, формат «3-char crockford-base32 prefix
-+ 17-char crockford-base32 random» (см. `kacho-corelib/ids`).
++ 17-char crockford-base32 random» (см. `pkg/ids`).
 
 Допустимы только `text` колонки для id — `uuid` не использовать
 (api-gateway маршрутизирует по prefix-у первых 3 символов; uuid-формат

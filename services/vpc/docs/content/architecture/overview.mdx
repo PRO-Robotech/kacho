@@ -31,7 +31,7 @@ NetworkInterface) и встроенным IPAM.
 flowchart TD
   handler["handler/<br/><small>тонкий transport: parse → service → format</small>"]
   service["apps/<br/><small>use-cases (бизнес-логика);<br/>определяет port-интерфейсы</small>"]
-  domain["domain/<br/><small>entities: чистый Go-тип,<br/>только stdlib + kacho-proto</small>"]
+  domain["domain/<br/><small>entities: чистый Go-тип,<br/>только stdlib + proto/</small>"]
   repo["repo/<br/><small>adapter: pgx + outbox</small>"]
   clients["clients/<br/><small>adapter: gRPC-stubs пиров</small>"]
 
@@ -52,7 +52,7 @@ flowchart TD
     <tr>
       <td><strong>domain</strong></td>
       <td><code>internal/domain/</code></td>
-      <td>только stdlib + <code>kacho-proto</code></td>
+      <td>только stdlib + <code>proto/</code></td>
       <td>Entities (плоские Go-структуры): <code>Network</code>, <code>Subnet</code>, <code>Address</code>, <code>NetworkInterface</code>, … Self-validating newtypes. Никаких <code>pgx</code> / grpc-stubs.</td>
     </tr>
     <tr>

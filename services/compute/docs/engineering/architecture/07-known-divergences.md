@@ -543,7 +543,7 @@ sentinel→code в отдельный слой (если когда-либо) �
 
 - **`Instance.host_id` / `host_group_id` — убраны из публичного контракта
   (resolved).** CLAUDE.md hard-rule относит физический хост к internal-only.
-  Публичный proto-контракт `computev1.Instance` был bump-нут (kacho-proto,
+  Публичный proto-контракт `computev1.Instance` был bump-нут (proto/,
   PR `PRO-Robotech/kacho-compute#76`) — оба placement-поля из него **удалены**, а
   `protoconv.Instance` больше их не мапит. Прежняя редакция утверждала, что доменные
   поля `domain.Instance.HostID`/`HostGroupID` и колонки БД «сохранены (internal-only,
@@ -568,7 +568,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   `mapRepoErr`/`invalidArg` дублируют kacho-vpc.** Пре-существующие структурные
   паттерны, намеренно зеркалящие kacho-vpc (cross-service консистентность).
   Разбиение на UseCase-per-RPC / CQRS-порты, вынос proto→domain конверсии в handler
-  и подъём error-mapping в `kacho-corelib` — **workspace-wide** согласованная
+  и подъём error-mapping в `pkg/` — **workspace-wide** согласованная
   правка (vpc+compute одновременно, иначе рассинхрон), не compute-only security-фикс.
 
 ## Security-hardening audit r6 2026-07-05 (branch `sec-hardening-r6-2026-07-05`)
@@ -583,7 +583,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   (`validateAuthMode`/`requireDBSSLMode`/`config.Config.Validate`/`RequireIAM`)
   реально взводились. `DB_SSLMODE` прокинут и в migrate-initContainer. Dev-стенд
   переключается явным `--set auth.mode=dev --set mtls.enable=false --set db.sslMode=disable`.
-  `helm template`/`helm lint` зелёные. **Propagation:** umbrella (`kacho-deploy`)
+  `helm template`/`helm lint` зелёные. **Propagation:** umbrella (`kacho-umbrella`, `deploy/helm/umbrella/`)
   `values.dev.yaml` должен добавить `compute.auth.mode=dev` + `db.sslMode=disable`
   при re-vendor'е чарта (иначе dev-стенд унаследует новый production-default и упадёт
   на `requireDBSSLMode`); `values.prod.yaml` — заменить `env.KACHO_COMPUTE_DB_SSLMODE`
@@ -687,7 +687,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   `domain.Instance/Disk/Image/Snapshot` — плоские структуры string/int; вся
   invariant/format-валидация в service-слое через `corevalidate`. Формально это
   отступление от `evgeniy`-регламента (self-validating domain newtypes). Dependency
-  rule НЕ нарушен (domain импортирует только stdlib + kacho-proto — разрешено
+  rule НЕ нарушен (domain импортирует только stdlib + proto/ — разрешено
   `architecture.md`); это modelling/robustness-gap, а не layering-leak. Паттерн
   зеркалит **все** kacho-* сервисы (cross-service консистентность). Введение
   `domain.ZoneID`/`NewInstance(...)` — **workspace-wide** согласованная правка
@@ -696,7 +696,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   Уже задокументировано в r3-секции («InstanceService — крупный god-struct»);
   разбиение на UseCase-per-RPC + Reader/Writer split — workspace-wide. (findings7 #8)
 - **`mapRepoErr`/`stripSentinel`/tenant-interceptor/JSONB-helpers/sentinel-set —
-  byte-for-byte копии kacho-vpc, не вынесены в `kacho-corelib`.** Файлы сами это
+  byte-for-byte копии kacho-vpc, не вынесены в `pkg/`.** Файлы сами это
   фиксируют («копия VPC» / «Зеркалит kacho-vpc»). Часть копий несёт security-фиксы
   (CWE-388 transient-mask, CWE-209 upstream-leak) → drift между копиями не ловится
   компилятором. Подъём generic-логики в corelib (`serviceerr`/`tenant`/`db`) —
@@ -790,7 +790,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   workspace-wide решения: см. секцию **r7b** (findings7 #1/#7/#8/#9) и **r3**
   («InstanceService — god-struct», «копии VPC»). Это не compute-only фиксы: разбиение
   на UseCase-per-RPC + Reader/Writer split, self-validating newtypes, viper/koanf-config
-  и подъём generic-helper'ов в `kacho-corelib` — координированные правки по всем kacho-*
+  и подъём generic-helper'ов в `pkg/` — координированные правки по всем kacho-*
   сервисам сразу (иначе cross-service рассинхрон). Здесь — только указатель, без
   дублирования. (findings8 #2–#6)
 

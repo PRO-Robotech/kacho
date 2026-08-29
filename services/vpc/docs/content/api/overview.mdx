@@ -19,7 +19,7 @@ suffix-actions, формат JSON, аутентификацию и автори�
 (см. [Network](/api/network), [Subnet](/api/subnet) и др.).
 
 :::info Единый контракт — gRPC, REST — проекция
-Источник истины — Protocol Buffers в `kacho-proto`. REST-поверхность строится через
+Источник истины — Protocol Buffers в `proto/`. REST-поверхность строится через
 **grpc-gateway**: каждый RPC аннотирован `google.api.http`. Семантика (коды ошибок, валидация,
 async) одинакова для gRPC и REST; примеры ниже — в REST-форме (через `api-gateway`).
 :::

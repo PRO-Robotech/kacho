@@ -26,7 +26,7 @@ import hero from '@site/src/css/hero.module.css'
     <a className={hero.btnPrimary} href="/getting-started">Быстрый старт →</a>
     <a className={hero.btnGhost} href="/api/overview">Обзор API</a>
     <a className={hero.btnGhost} href="/architecture/overview">Архитектура</a>
-    <a className={hero.btnGhost} href="https://github.com/PRO-Robotech/kacho-api-gateway">GitHub</a>
+    <a className={hero.btnGhost} href="https://github.com/PRO-Robotech/kacho/tree/main/gateway">GitHub</a>
   </div>
 </header>
 
@@ -183,21 +183,21 @@ per-RPC через `kacho-iam`, затем маршрутизирует в ну�
     <tr><td>Go</td><td>Язык реализации (чистая архитектура; composition root — <code>cmd/api-gateway</code>)</td></tr>
     <tr><td>cmux</td><td>Мультиплексирование gRPC / REST на одном порту</td></tr>
     <tr><td>grpc-gateway</td><td>REST-проекция gRPC (split-mux public / internal)</td></tr>
-    <tr><td>Protocol Buffers / Buf</td><td>Контракт доменов (<code>kacho-proto</code>); собственного пакета у гейтвея нет</td></tr>
+    <tr><td>Protocol Buffers / Buf</td><td>Контракт доменов (<code>proto/</code>); собственного пакета у гейтвея нет</td></tr>
     <tr><td>Ory Hydra / Kratos</td><td>OAuth2/OIDC (JWT-issuer + JWKS) и session-management SPA</td></tr>
     <tr><td>DPoP (RFC 9449)</td><td>Sender-constrained токены (proof-of-possession)</td></tr>
   </tbody>
 </table>
 
-## Структура репозиториев
+## Структура монорепо
 
 <table>
-  <thead><tr><th>Репозиторий</th><th>Назначение</th></tr></thead>
+  <thead><tr><th>Каталог</th><th>Назначение</th></tr></thead>
   <tbody>
-    <tr><td><strong>kacho-api-gateway</strong></td><td>Этот сервис: edge контрол-плейна (AuthN/AuthZ + routing)</td></tr>
-    <tr><td><strong>kacho-proto</strong></td><td>Центральные <code>.proto</code> всех доменов + сгенерированные Go-stubs</td></tr>
-    <tr><td><strong>kacho-corelib</strong></td><td>Общие пакеты (grpcclient, config, observability, ids, ...)</td></tr>
-    <tr><td><strong>kacho-iam</strong></td><td>AuthN/AuthZ backend: <code>AuthorizeService.Check</code>, subject/revocations</td></tr>
-    <tr><td><strong>kacho-vpc / -compute / -geo / -nlb / -registry</strong></td><td>Доменные backend-сервисы за гейтвеем</td></tr>
+    <tr><td><strong>gateway/</strong></td><td>Этот сервис: edge контрол-плейна (AuthN/AuthZ + routing)</td></tr>
+    <tr><td><strong>proto/</strong></td><td>Центральные <code>.proto</code> всех доменов + сгенерированные Go-stubs</td></tr>
+    <tr><td><strong>pkg/</strong></td><td>Общие пакеты (grpcclient, config, observability, ids, ...)</td></tr>
+    <tr><td><strong>services/iam/</strong></td><td>AuthN/AuthZ backend: <code>AuthorizeService.Check</code>, subject/revocations</td></tr>
+    <tr><td><strong>services/vpc/ · services/compute/ · services/geo/ · services/nlb/ · services/registry/</strong></td><td>Доменные backend-сервисы за гейтвеем</td></tr>
   </tbody>
 </table>

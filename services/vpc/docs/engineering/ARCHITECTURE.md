@@ -194,7 +194,7 @@ IPAM-allocate и default-SG creation выполняются inline в service-с
                         |
                         v
                 +-------+--------+
-                |     domain     |  (entities — только stdlib + kacho-proto)
+                |     domain     |  (entities — только stdlib + proto/)
                 +----------------+
 ```
 
@@ -1063,7 +1063,7 @@ goose создает `goose_db_version` автоматически. Миграц
 ### 10.5 Деплой через Helm
 
 `deploy/` содержит свой Chart.yaml + templates + values.yaml. Используется
-umbrella-чартом `kacho-deploy` для dev-стенда (kind + Postgres + все сервисы).
+umbrella-чартом `kacho-umbrella` (`deploy/helm/umbrella/`) для dev-стенда (kind + Postgres + все сервисы).
 
 ---
 

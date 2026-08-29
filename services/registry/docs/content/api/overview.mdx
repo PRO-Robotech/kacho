@@ -17,7 +17,7 @@ import dedent from 'ts-dedent'
 [Data-plane](/architecture/data-plane).
 
 :::info Единый контракт — gRPC, REST — проекция
-Источник истины control-plane — Protocol Buffers в `kacho-proto` (домен `kacho.cloud.registry.v1`).
+Источник истины control-plane — Protocol Buffers в `proto/` (домен `kacho.cloud.registry.v1`).
 REST строится через **grpc-gateway**: каждый RPC аннотирован `google.api.http`. Семантика (коды
 ошибок, валидация) одинакова для gRPC и REST; примеры ниже — в REST-форме (через `api-gateway`).
 :::
@@ -229,7 +229,7 @@ HTTP-статусу: ветка `if status == 409` на предусловие �
 
 ## Идентификаторы
 
-Идентификатор Registry генерирует сервер: префикс **`reg`** + crockford-base32 (`kacho-corelib/ids`).
+Идентификатор Registry генерирует сервер: префикс **`reg`** + crockford-base32 (`pkg/ids`).
 Идентификатор LRO — префикс **`rop`**. Тип ресурса читается по префиксу; malformed id (не тот
 префикс) → `INVALID_ARGUMENT` первым стейтментом RPC. Repository и Tag не имеют собственного id — они
 адресуются составным ключом (`registryId` + `name` / `repository` + `tag`).

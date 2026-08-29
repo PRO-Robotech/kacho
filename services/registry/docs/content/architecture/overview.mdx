@@ -51,7 +51,7 @@ flowchart TB
 ## Чистая архитектура (control-plane)
 
 Control-plane следует строгому правилу зависимостей: транспорт зависит от бизнес-логики, бизнес-логика
-— от домена, домен не зависит ни от чего, кроме stdlib и контракта `kacho-proto`.
+— от домена, домен не зависит ни от чего, кроме stdlib и контракта в `proto/`.
 
 ```mermaid
 flowchart TD
@@ -78,7 +78,7 @@ flowchart TD
 </table>
 
 Переиспользуемое (pgx-пул, grpc-сервер/клиент, config, ids, outbox/drainer, operations) приходит из
-`kacho-corelib` — не дублируется в сервисе.
+`pkg/` — не дублируется в сервисе.
 
 ## База данных — только метаданные namespace
 
@@ -164,7 +164,7 @@ cross-tenant leak. Подробнее — [Data-plane](/architecture/data-plane)
 
 ## Место в платформе
 
-Kachō Registry по сборке зависит только от `kacho-corelib` и `kacho-proto`. В runtime у него исходящие
+Kachō Registry по сборке зависит только от `pkg/` и `proto/`. В runtime у него исходящие
 рёбра в `kacho-iam` и в zot; **входящих** cross-service рёбер от других доменов нет. Циклов в графе нет.
 
 ```mermaid

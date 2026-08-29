@@ -44,7 +44,7 @@ tests/newman/
 ## Быстрый старт
 
 ```bash
-# 1. Поднять стенд + port-forward api-gateway → localhost:18080 (см. kacho-deploy)
+# 1. Поднять стенд + port-forward api-gateway → localhost:18080 (см. `deploy/`)
 # 2. Перегенерить коллекции из cases/*.py (если меняли cases или код)
 python3 scripts/gen.py            # все сервисы; или: python3 scripts/gen.py network
 # 3a. Прогнать все одним махом (быстро, но во время прогона создается много ресурсов разом)
