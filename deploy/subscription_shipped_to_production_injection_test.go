@@ -14,6 +14,11 @@ import "testing"
 func TestEffectiveOwnersFollowsTheOrderHelmApplies(t *testing.T) {
 	// Умолчание чарта края непусто — то состояние, в котором возможность
 	// поставлена. Различие между случаями обязано быть только в профилях.
+	//
+	// Имена слоёв СИНТЕТИЧЕСКИЕ и намеренно не совпадают с профилями умбреллы:
+	// пара реальных имён рядом читается как вторая копия цепочки стенда, а
+	// состав стенда объявляет только stacks.txt (TestNoSecondCopyOfAStackChain).
+	// Предмет здесь — порядок наложения, и он от имён не зависит.
 	const base = "compute,vpc"
 
 	cases := []struct {
@@ -36,8 +41,8 @@ func TestEffectiveOwnersFollowsTheOrderHelmApplies(t *testing.T) {
 		},
 		{
 			name:      "последний слой выигрывает у предыдущего",
-			chain:     []string{"values.dev.yaml", "values.dev-prod.yaml"},
-			declared:  map[string]string{"values.dev.yaml": "", "values.dev-prod.yaml": "vpc"},
+			chain:     []string{"layer-one.yaml", "layer-two.yaml"},
+			declared:  map[string]string{"layer-one.yaml": "", "layer-two.yaml": "vpc"},
 			wantCount: 1,
 		},
 		{
@@ -48,8 +53,8 @@ func TestEffectiveOwnersFollowsTheOrderHelmApplies(t *testing.T) {
 		},
 		{
 			name:      "необъявившийся хвост не отменяет объявившую голову",
-			chain:     []string{"values.prod.yaml", "values.fe3455.yaml"},
-			declared:  map[string]string{"values.prod.yaml": "vpc,compute,storage"},
+			chain:     []string{"layer-one.yaml", "layer-two.yaml"},
+			declared:  map[string]string{"layer-one.yaml": "vpc,compute,storage"},
 			wantCount: 3,
 		},
 	}
