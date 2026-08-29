@@ -159,6 +159,50 @@ func ParseApprovals(s string) ([]Approval, error) {
 	return out, nil
 }
 
+// Target says how far the run that is about to happen will apply the chain.
+//
+// A drop in a migration this run will not reach cannot destroy anything in this
+// run, so counting it can only produce a refusal for somebody else's drop. The
+// operator then clears it the one way there is — by naming that drop — and pays a
+// step for a table this deploy never touches.
+//
+// THE ZERO VALUE COUNTS EVERYTHING, and that is the whole design of this type.
+// A caller who forgets to say how far it goes gets the widest check, never the
+// narrowest: the mistake this type can still cause is an extra refusal, which an
+// approval clears, and never a silent pass, which nothing clears. There is
+// deliberately no "count nothing" — the same reason [Approval] names a version and
+// a table and no blanket override exists.
+//
+// It is not a way around the count either, and the reason is structural rather
+// than a promise: the target is the SAME number handed to goose. Narrowing it to
+// duck a refusal narrows what gets applied by exactly as much, so the drop that
+// was refused does not run.
+type Target struct {
+	upTo    int64
+	limited bool
+}
+
+// WholeChain is every pending drop: the run stops at the head.
+//
+// It is spelled out at call sites rather than left implicit so that "this run has
+// no target" is a statement somebody made, not a field nobody filled in.
+func WholeChain() Target { return Target{} }
+
+// UpTo stops at version, inclusive — the same boundary goose.UpTo applies.
+func UpTo(version int64) Target { return Target{upTo: version, limited: true} }
+
+// Reaches reports whether a run with this target will apply version.
+func (t Target) Reaches(version int64) bool { return !t.limited || version <= t.upTo }
+
+// String names the target for the census, so a reader can tell WHICH question the
+// numbers below it answered.
+func (t Target) String() string {
+	if !t.limited {
+		return "whole chain"
+	}
+	return fmt.Sprintf("up to %04d", t.upTo)
+}
+
 // PreflightReport is what a live check has to say for itself.
 //
 // Counted sits next to Pending for the same reason Measured sits next to
@@ -166,11 +210,23 @@ func ParseApprovals(s string) ([]Approval, error) {
 // failure this package exists to prevent, and it must not read as success.
 type PreflightReport struct {
 	Service string
+	// Target is how far this run applies. It is on the report because the numbers
+	// below are answers to a question it asked, and a census that hid which
+	// question it asked would be the same shape of silence this type prevents.
+	Target Target
 	// DropsInChain is every Up-section drop the migrations contain.
 	DropsInChain int
-	// Pending is how many of them have not run on THIS database yet — the only ones
-	// that can still destroy anything.
+	// Pending is how many of them have not run on THIS database yet AND lie within
+	// reach of this run — the only ones that can still destroy anything here.
 	Pending int
+	// Deferred lists drops the target puts OUT OF REACH of this run.
+	//
+	// Whether they have already run is deliberately NOT asked — see the loop — so
+	// this is not a list of pending drops and must not be read as one. It is on
+	// the record all the same: silence would make "the target narrowed the check"
+	// indistinguishable from "there was nothing else to check", and the run that
+	// widens the target is the one that answers for them.
+	Deferred []string
 	// Counted is how many pending drops were actually put to the database. An
 	// observed absence counts: it is an answer, not a failure to get one.
 	Counted int
@@ -203,8 +259,8 @@ func (r PreflightReport) Summary() string {
 		verdict = "NOTHING PENDING"
 	}
 	return fmt.Sprintf(
-		"drop-preflight %s: %s — %d drop(s) in chain, %d pending, counted %d of %d, %d observed absent, %d approved by operator, %d refusal(s)",
-		r.Service, verdict, r.DropsInChain, r.Pending, r.Counted, r.Pending,
+		"drop-preflight %s: %s — %d drop(s) in chain, %s, %d pending, %d deferred beyond the target, counted %d of %d, %d observed absent, %d approved by operator, %d refusal(s)",
+		r.Service, verdict, r.DropsInChain, r.Target, r.Pending, len(r.Deferred), r.Counted, r.Pending,
 		len(r.AbsentAt), len(r.Approved), len(r.Violations))
 }
 
@@ -223,6 +279,9 @@ func (r PreflightReport) WriteCensus(w io.Writer) {
 	for _, k := range r.AbsentAt {
 		_, _ = fmt.Fprintf(w, "  observed absent %s (nothing there to destroy)\n", k)
 	}
+	for _, k := range r.Deferred {
+		_, _ = fmt.Fprintf(w, "  not reached by this run %s (%s) — it is not executed here, so it destroys nothing here\n", k, r.Target)
+	}
 	for _, k := range r.Approved {
 		_, _ = fmt.Fprintf(w, "  APPROVED BY OPERATOR %s — rows will be destroyed\n", k)
 	}
@@ -235,7 +294,8 @@ func (r PreflightReport) WriteCensus(w io.Writer) {
 }
 
 // Preflight counts, on the database in front of it, every table that a migration
-// which has NOT YET RUN is going to drop.
+// which has NOT YET RUN — and which target puts within reach of this run — is going
+// to drop.
 //
 // The order is the whole point: this happens before the chain is applied, while the
 // rows still exist and while refusing still costs nothing but a deploy.
@@ -263,13 +323,20 @@ func (r PreflightReport) WriteCensus(w io.Writer) {
 //	cannot tell     NOT VERIFIED. If the applied set is unreadable we do not know
 //	                which drops are still ahead, and assuming "already applied"
 //	                would skip every check.
+//	beyond target   DEFERRED, and reported as such. A run that stops at 0007 does
+//	                not execute the drop in 0011, so counting that table can only
+//	                refuse this deploy over rows this deploy leaves alone. Whether
+//	                it has already run is not asked and the census does not claim
+//	                either way; the run that widens the target answers for it. See
+//	                [Target] for why the zero value counts everything and why
+//	                narrowing cannot be used as a bypass.
 //
 // The window it does not close, stated rather than implied: rows can arrive between
 // this count and the drop, because the old pods are still serving while the migrator
 // runs. This makes the answer seconds old instead of never taken; it does not make
 // it atomic, and nothing available here would.
-func Preflight(ctx context.Context, count Counter, inv Inv, applied AppliedSet, approvals []Approval) PreflightReport {
-	rep := PreflightReport{Service: inv.Service, DropsInChain: len(inv.Drops), Rows: map[string]int64{}}
+func Preflight(ctx context.Context, count Counter, inv Inv, applied AppliedSet, approvals []Approval, target Target) PreflightReport {
+	rep := PreflightReport{Service: inv.Service, Target: target, DropsInChain: len(inv.Drops), Rows: map[string]int64{}}
 
 	byKey := map[string]Approval{}
 	for _, a := range approvals {
@@ -279,6 +346,24 @@ func Preflight(ctx context.Context, count Counter, inv Inv, applied AppliedSet, 
 
 	for _, drop := range inv.Drops {
 		key := fmt.Sprintf("%04d/%s", drop.Version, drop.Table)
+
+		// The target is asked FIRST, before anything is asked of the database.
+		//
+		// It is our own parameter — the same number this run hands to goose — so
+		// the answer needs no lookup, and a drop out of reach must not be able to
+		// produce a violation of ANY kind, including "could not tell whether it
+		// already ran". Refusing a deploy because the bookkeeping was unreadable
+		// for a migration this run will not execute is the same defect in a
+		// different coat.
+		//
+		// The cost of that order, stated rather than hidden: a deferred drop may
+		// well have run already, and nothing here knows which. That is why the
+		// census says only that this run does not reach it — see [PreflightReport]
+		// Deferred — and why the report never calls these pending.
+		if !target.Reaches(drop.Version) {
+			rep.Deferred = append(rep.Deferred, key)
+			continue
+		}
 
 		done, err := applied(drop.Version)
 		if err != nil {
@@ -345,9 +430,15 @@ func Preflight(ctx context.Context, count Counter, inv Inv, applied AppliedSet, 
 // for itself would drift, and the one that drifted would be the one nobody looked
 // at.
 //
+// target is how far the caller is about to apply, and it is REQUIRED rather than
+// optional for that reason: a runner that stops at a version has to say so in the
+// same call, next to the goose call it mirrors, where the two can be read
+// together. It is not an off switch — [Target] says why the zero value counts
+// everything and why narrowing it narrows what runs by exactly as much.
+//
 // The census goes to out on every run, refused or not — what was read is as much of
 // the result as what was found. The returned error is what stops the deploy.
-func Gate(ctx context.Context, db Querier, service string, fsys fs.FS, out io.Writer) error {
+func Gate(ctx context.Context, db Querier, service string, fsys fs.FS, out io.Writer, target Target) error {
 	inv, err := Inventory(service, fsys)
 	if err != nil {
 		// Unreadable migrations mean the set of pending drops is unknown. That is
@@ -360,7 +451,7 @@ func Gate(ctx context.Context, db Querier, service string, fsys fs.FS, out io.Wr
 		return fmt.Errorf("drop-preflight %s: %s is set but unreadable: %w", service, ApprovalEnv, err)
 	}
 
-	rep := Preflight(ctx, Counting(db), inv, GooseApplied(ctx, db), approvals)
+	rep := Preflight(ctx, Counting(db), inv, GooseApplied(ctx, db), approvals, target)
 	rep.WriteCensus(out)
 
 	if !rep.OK() {
