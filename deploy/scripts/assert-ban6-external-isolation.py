@@ -172,10 +172,19 @@ INCONCLUSIVE = "INCONCLUSIVE"
 # самопроверка ниже сверяет карту в ОБЕ стороны, и домен с известным эндпоинтом,
 # не признанный провязанным, роняет её. То есть запись, пережившая свой предмет,
 # здесь не молчит — она краснеет.
+#
+# КЛЮЧ — НОСИТЕЛЬ, ТО ЕСТЬ КАТАЛОГ СЕРВИСА, А НЕ ДОМЕН. Листенером владеет
+# процесс, а не имя контракта, и различие это не педантское: домен
+# `subscription` (поток изменений ресурсов) служат ПЯТЬ носителей сразу, и
+# «своего» листенера у него нет ни одного. Ключуй карту доменом — и у такого
+# домена не окажется правильного значения ВООБЩЕ: любой выбранный носитель был
+# бы произволом, который ломается молча в день, когда именно он перестанет
+# монтировать службу. Носители домена ВЫВОДЯТСЯ из дерева
+# (`e2e-ban6-domains.py`, `hosts`), поэтому шестой носитель войдёт в перебор сам.
 INTERNAL_ENDPOINTS = {
     "iam": ("svc/kacho-iam-internal", 9091, "kacho-iam-internal.kacho.svc.cluster.local"),
     "geo": ("svc/kacho-geo-internal", 9091, "kacho-geo-internal.kacho.svc.cluster.local"),
-    "loadbalancer": ("svc/kacho-nlb-internal", 9091, "kacho-nlb-internal.kacho.svc.cluster.local"),
+    "nlb": ("svc/kacho-nlb-internal", 9091, "kacho-nlb-internal.kacho.svc.cluster.local"),
     "registry": ("svc/registry-internal", 9091, "registry-internal.kacho.svc.cluster.local"),
     "vpc": ("svc/vpc", 9091, "vpc.kacho.svc.cluster.local"),
     "compute": ("svc/compute", 9091, "compute.kacho.svc.cluster.local"),
@@ -308,6 +317,35 @@ def internal_rpcs(proto_glob: str = PROTO_GLOB) -> list[tuple[str, str, str]]:
 def domain_of(pkg: str) -> str:
     parts = pkg.split(".")
     return parts[2] if len(parts) > 2 else pkg
+
+
+def counterpart_candidates(dom: str, hosts_of: dict[str, list[str]],
+                           only: set[str]) -> list[str]:
+    """Носители домена, на чьём :9091 имеет смысл спрашивать встречный контроль.
+
+    Отбор из двух ступеней, и вторая существует ради ВРЕМЕНИ, а не строгости.
+
+    Ступень первая: у носителя обязан быть объявлен эндпоинт — иначе спрашивать
+    некуда.
+
+    Ступень вторая: когда стенд сужен (`--domains`), вперёд ставятся носители,
+    чей СОБСТВЕННЫЙ домен на этом стенде развёрнут. Собственный домен носителя —
+    тот, у кого этот носитель единственный (`vpc` у vpc, `loadbalancer` у nlb);
+    он и служит признаком «процесс здесь поднят». Без этой ступени проба на шарде
+    `edge` перебирала бы четырёх отсутствующих носителей по таймауту проброса,
+    прежде чем дойти до registry — то есть платила бы минутами за порядок списка.
+
+    Отфильтрованное НЕ выбрасывается: если ни один приоритетный не подошёл,
+    возвращаются все носители с эндпоинтом. Сужение здесь — подсказка о порядке,
+    а не вторая карта состава стенда: ошибись оно, проба обязана честно спросить
+    и честно ответить, а не объявить домен неизмеримым.
+    """
+    own = {h: d for d, hs in hosts_of.items() if len(hs) == 1 for h in hs}
+    known = [h for h in hosts_of.get(dom, []) if h in INTERNAL_ENDPOINTS]
+    if not only:
+        return known
+    deployed = [h for h in known if own.get(h) in only]
+    return deployed + [h for h in known if h not in deployed]
 
 
 def _ban6_module():
@@ -624,41 +662,57 @@ def main(argv: list[str]) -> int:
             v, d = counterpart_verdict(t)
             return v, d, "mTLS"
 
+        hosts_of = b6.get("hosts", {})
         for dom in domains:
-            ep = INTERNAL_ENDPOINTS.get(dom)
             rep = next(((p, s, mm) for p, s, mm in rows if domain_of(p) == dom), None)
-            # Заведомо ЧУЖОЙ Internal-метод — контроль предпосылки «до прав
-            # доходит только зарегистрированный метод». Берётся из другого домена,
-            # поэтому на этом листенере его заведомо нет.
-            sentinel = next((f"{p}.{s}/{m}" for p, s, m in rows if domain_of(p) != dom), None)
-            if not ep:
-                unconfirmed.append((dom, "не объявлен cluster-internal эндпоинт домена"))
-                print(f"  {dom:<14} — НЕ ПОДТВЕРЖДЁН: нет эндпоинта в INTERNAL_ENDPOINTS")
-                continue
-            if not rep or not sentinel:
+            candidates = counterpart_candidates(dom, hosts_of, only)
+            if not rep:
                 unconfirmed.append((dom, "не из чего собрать пробу"))
                 print(f"  {dom:<14} — НЕ ПОДТВЕРЖДЁН: не из чего собрать пробу")
                 continue
-            target, port, authority = ep
-            method = f"{rep[0]}.{rep[1]}/{rep[2]}"
-            v, d, mode = probe_internal(target, port, authority, method)
-            sv, sd, _ = probe_internal(target, port, authority, sentinel)
-
-            # Предпосылка: на ЭТОМ листенере незарегистрированный метод обязан
-            # получать отказ маршрутизации. Не получает — из «отказали в правах»
-            # нельзя вывести «метод зарегистрирован», и домен не засчитывается.
-            if sv != ABSENT:
-                unconfirmed.append(
-                    (dom, f"контроль предпосылки провален: чужой метод получил '{sv}' ({sd})"))
-                print(f"  {dom:<14} {method:<50} НЕ ПОДТВЕРЖДЁН — предпосылка не выполняется: "
-                      f"чужой метод на том же листенере ответил '{sv}'")
+            if not candidates:
+                unconfirmed.append((dom, "не объявлен cluster-internal эндпоинт носителя"))
+                print(f"  {dom:<14} — НЕ ПОДТВЕРЖДЁН: ни у одного носителя "
+                      f"({', '.join(hosts_of.get(dom, [])) or '—'}) нет эндпоинта "
+                      f"в INTERNAL_ENDPOINTS")
                 continue
-            if v == SERVED:
-                confirmed.add(dom)
-                print(f"  {dom:<14} {method:<50} ОБСЛУЖЕН [{mode}] (контроль: чужой метод → {ABSENT})")
+            method = f"{rep[0]}.{rep[1]}/{rep[2]}"
+            why: list[str] = []
+            for host in candidates:
+                target, port, authority = INTERNAL_ENDPOINTS[host]
+                # Заведомо ЧУЖОЙ Internal-метод — контроль предпосылки «до прав
+                # доходит только зарегистрированный метод». Берётся у домена,
+                # которого ЭТОТ НОСИТЕЛЬ не служит, а не просто у другого домена:
+                # на листенере vpc метод домена `vpc` зарегистрирован, и такой
+                # страж провалил бы предпосылку, ничего о ней не сказав.
+                sentinel = next((f"{p}.{s}/{m}" for p, s, m in rows
+                                 if host not in hosts_of.get(domain_of(p), [])), None)
+                if not sentinel:
+                    why.append(f"{host}: не из чего собрать стража предпосылки")
+                    continue
+                v, d, mode = probe_internal(target, port, authority, method)
+                sv, sd, _ = probe_internal(target, port, authority, sentinel)
+
+                # Предпосылка: на ЭТОМ листенере незарегистрированный метод обязан
+                # получать отказ маршрутизации. Не получает — из «отказали в правах»
+                # нельзя вывести «метод зарегистрирован», и носитель не засчитывается.
+                if sv != ABSENT:
+                    why.append(f"{host}: предпосылка не выполняется — чужой метод "
+                               f"получил '{sv}' ({sd})")
+                    continue
+                if v == SERVED:
+                    confirmed.add(dom)
+                    print(f"  {dom:<14} {method:<50} ОБСЛУЖЕН у носителя '{host}' [{mode}] "
+                          f"(контроль: чужой метод → {ABSENT})")
+                    break
+                why.append(f"{host}: {v} — {d}")
             else:
-                unconfirmed.append((dom, f"{v}: {d}"))
-                print(f"  {dom:<14} {method:<50} НЕ ПОДТВЕРЖДЁН: {v} — {d}")
+                # Ни один носитель не подтвердил. Перечисляются ВСЕ попытки: «домен
+                # не подтверждён» без разбора по носителям неотличимо от «носителя
+                # нет на стенде», а это разные беды с разной починкой.
+                unconfirmed.append((dom, "; ".join(why)))
+                print(f"  {dom:<14} {method:<50} НЕ ПОДТВЕРЖДЁН ни у одного носителя: "
+                      f"{'; '.join(why)}")
 
         # Непокрытый домен РОНЯЕТ прогон. Печатать покрытие числом и идти дальше
         # значит объявлять изолированными методы, про которые не установлено даже
@@ -865,10 +919,21 @@ def self_test() -> int:
     # в день, когда домен провяжут и его никто не возьмёт.
     subject, b6 = subject_rpcs()
     doms = {domain_of(p) for p, _, _ in subject}
-    gap = sorted(doms - set(INTERNAL_ENDPOINTS))
+    hosts_of = b6.get("hosts", {})
+    # Спрашивается не «есть ли эндпоинт у домена» — у поперечного домена своего
+    # листенера нет вовсе, — а «есть ли эндпоинт хоть у ОДНОГО его носителя».
+    gap = sorted(d for d in doms
+                 if not [h for h in hosts_of.get(d, []) if h in INTERNAL_ENDPOINTS])
     print(f"  доменов с Internal*-контрактом: {b6['domains_with_contract']}; "
-          f"из них провязано прод-кодом: {len(b6['served'])}; без эндпоинта: "
+          f"из них провязано прод-кодом: {len(b6['served'])}; носителей в карте: "
+          f"{len(INTERNAL_ENDPOINTS)}; без эндпоинта хотя бы у одного носителя: "
           f"{', '.join(gap) if gap else 'нет'} — {'ПРОВАЛ' if gap else 'ОК'}")
+    for d in sorted(doms):
+        hs = hosts_of.get(d, [])
+        if len(hs) > 1:
+            print(f"    поперечный домен: {d} служат {len(hs)} носителей "
+                  f"({', '.join(hs)}) — своего листенера у него нет, встречный "
+                  f"контроль идёт перебором")
     for dom, svcs in sorted(b6["unserved"].items()):
         print(f"    вне предмета: {dom} ({', '.join(svcs)}) — не провязан ни одним "
               f"композиционным корнем")
@@ -880,9 +945,10 @@ def self_test() -> int:
     # через обёртку), и сужение начало съедать настоящий предмет. Это находка
     # здесь, а не тихо уменьшившийся охват на живом стенде.
     known = set(INTERNAL_ENDPOINTS)
-    lost = sorted(known - set(b6["served"]))
-    print(f"  контроль в обратную сторону: доменов с известным эндпоинтом {len(known)}; "
-          f"не признаны провязанными: {', '.join(lost) if lost else 'нет'} — "
+    serving = {h for d in b6["served"] for h in hosts_of.get(d, [])}
+    lost = sorted(known - serving)
+    print(f"  контроль в обратную сторону: носителей с известным эндпоинтом {len(known)}; "
+          f"не служат НИ ОДНОГО провязанного домена: {', '.join(lost) if lost else 'нет'} — "
           f"{'ПРОВАЛ' if lost else 'ОК'}")
     rc |= 1 if lost else 0
 
