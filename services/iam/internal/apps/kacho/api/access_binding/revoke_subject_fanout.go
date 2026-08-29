@@ -55,12 +55,10 @@ func emitSubjectChangeForEverySubject(
 	}
 	for _, s := range subjects {
 		if err := emit(ctx, abrepo.SubjectChangeEvent{
-			SubjectID:    string(s.ID),
-			SubjectType:  string(s.Type),
-			EventType:    eventType,
-			Op:           op,
-			ResourceType: string(binding.ResourceType),
-			ResourceID:   string(binding.ResourceID),
+			SubjectID:   string(s.ID),
+			SubjectType: string(s.Type),
+			EventType:   eventType,
+			Op:          op,
 		}); err != nil {
 			return err
 		}
