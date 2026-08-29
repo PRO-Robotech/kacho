@@ -29,7 +29,7 @@ lateral movement — и они
 
 ## Per-RPC authz-гейт
 
-Авторизация реализована как **gRPC unary + stream interceptor** (из `kacho-corelib/authz`),
+Авторизация реализована как **gRPC unary + stream interceptor** (из `pkg/authz`),
 включенный в каждый доменный сервис. Перед вызовом бизнес-логики interceptor выясняет тройку
 **subject — relation — object** и делает один `Check` к `kacho-iam`.
 

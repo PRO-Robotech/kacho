@@ -126,7 +126,7 @@ internal/
 ## Зависимости
 
 **Inbound** (кто дергает kacho-vpc):
-- `kacho-api-gateway` — proxy для REST/gRPC клиентов.
+- `gateway/` — proxy для REST/gRPC клиентов.
 - admin-tooling (curl/REST через api-gateway internal mux) / web-UI на :9091 RPC.
 - `kacho-compute` — валидация NIC-spec (Subnet/SecurityGroup) + IPAM-аллокация Address.
 
