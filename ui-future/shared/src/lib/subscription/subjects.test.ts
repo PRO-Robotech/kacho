@@ -67,7 +67,12 @@ describe("подписка: спека консоли → владелец жу�
     // `Instance`). Догадка «раз домен compute, значит покрыто» дала бы `400` на
     // открытии и молчащий список.
     for (const specId of ["users", "projects", "volumes", "registries", "tags", "placement-groups", "machine-types", "zones"]) {
-      expect(`${specId}: ${String(streamSubject(specId))}`).toBe(`${specId}: null`);
+      // Сверяется ЗНАЧЕНИЕ, а не его строка. Прежняя запись приводила ответ
+      // `String()`-ом, чтобы назвать в отказе виновную спеку, — но объект
+      // приводится к «[object Object]», то есть ЛЮБОЙ непустой ответ выглядел
+      // бы в отказе одинаково, а два разных — одинаково же. Пара «спека +
+      // ответ» называет виновника лучше и ничего не приводит.
+      expect({ specId, subject: streamSubject(specId) }).toEqual({ specId, subject: null });
     }
   });
 
