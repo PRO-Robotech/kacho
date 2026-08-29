@@ -160,7 +160,12 @@ const defaultDeps: HubDeps = {
     const body = await res.text();
     return { status: res.status, contentType: res.headers.get("content-type") ?? "", body: body.slice(0, 300) };
   },
-  log: (message, detail) => console.info(`[подписка] ${message}`, detail ?? ""),
+  // Предупреждением, а не справкой: КАЖДОЕ сообщение этого входа означает
+  // деградацию — приёмника нет, кадр открытия не разобран, поток не открылся, —
+  // то есть списки остались на опросе, и знать об этом должен инженер. Тем же
+  // способом об этом говорит `resource-label.ts`; `console.error` держится за
+  // отказ раздела (`ModuleErrorBoundary`), а здесь страница работает.
+  log: (message, detail) => console.warn(`[подписка] ${message}`, detail ?? ""),
   available: () => typeof EventSource !== "undefined",
 };
 
