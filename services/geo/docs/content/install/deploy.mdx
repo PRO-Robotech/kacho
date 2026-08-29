@@ -89,12 +89,14 @@ flowchart LR
 
 ## Контейнерный образ
 
-Сервис собирается в контейнер (build-context — родительская директория, чтобы подтянуть
-sibling-репозитории по `replace ../`):
+Сервис собирается в контейнер из **корня репозитория**: дерево одно, зависимости
+резолвятся внутри него (`go.mod` без `replace`), поэтому Dockerfile копирует контекст
+целиком (`COPY . .`) и собирает по путям от корня.
 
 <CodeBlock language="bash">
   {dedent`
-    make docker          # cd .. && docker build -f kacho-geo/Dockerfile -t kacho-geo:dev .
+    # из корня репозитория
+    docker build -f services/geo/Dockerfile -t kacho-geo:dev .
   `}
 </CodeBlock>
 
