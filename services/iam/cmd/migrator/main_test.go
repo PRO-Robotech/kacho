@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 )
 
 func emptyFS() fs.FS { return fstest.MapFS{} }
@@ -119,5 +121,97 @@ func TestUnknownCommandIsStillNamed(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "upp") {
 		t.Fatalf("отказ не называет подкоманду: %v", err)
+	}
+}
+
+// TestRefusalTextsComeFromTheSharedProducer — форма отказа одна на семь (#1461).
+//
+// Опыт по собранным бинарям на одинаковом входе показал две редакции одного
+// отказа: делегирующая форма говорила «unknown command …» там, где прямая
+// говорила «unexpected argument … ; a version is given as --target …», и не
+// называла перечень известных подкоманд. Оператор читает эти строки глазами, а
+// скрипт — образцом: образец, написанный по одному сервису, на соседнем не
+// срабатывал.
+//
+// Утверждается РАВЕНСТВО наблюдаемого текста тому, что производит общий пакет,
+// а не совпадение с литералом: литерал был бы второй редакцией того же текста и
+// разошёлся бы с первой молча.
+func TestRefusalTextsComeFromTheSharedProducer(t *testing.T) {
+	const binary = "kacho-migrator"
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"upp"}, migratorcli.UnknownCommandError(binary, "upp").Error()},
+		{[]string{"up", "800001"}, migratorcli.UnexpectedArgumentError(binary+" up", "800001").Error()},
+		{[]string{"down", "800001"}, migratorcli.UnexpectedArgumentError(binary+" down", "800001").Error()},
+		{[]string{"status", "800001"}, migratorcli.UnexpectedArgumentError(binary+" status", "800001").Error()},
+		// Эту редакцию производит библиотека разбора; общий пакет её ЗАИМСТВУЕТ.
+		// Проба ловит расхождение с обеих сторон: и смену формулировки в
+		// библиотеке, и отход общего пакета от неё.
+		{[]string{"--nosuchflag", "up"}, migratorcli.UnknownFlagError("nosuchflag").Error()},
+		{[]string{"up", "--nosuchflag"}, migratorcli.UnknownFlagError("nosuchflag").Error()},
+		{[]string{"status", "--target", "1"}, migratorcli.UnknownFlagError("target").Error()},
+		{nil, migratorcli.ErrNoCommand.Error()},
+	} {
+		_, _, err := runCommand(t, tc.args, nil)
+		if err == nil {
+			t.Fatalf("%v: принято молча", tc.args)
+		}
+		if err.Error() != tc.want {
+			t.Errorf("%v: своя редакция отказа:\n  получено: %q\n  общая:    %q",
+				tc.args, err.Error(), tc.want)
+		}
+	}
+}
+
+// TestAvailableCommandsAreTheOnesSevenShare — перечень команд один на семь.
+//
+// Cobra доводила к дереву `completion` и `help`; прямая форма их не имела,
+// поэтому помощь у трёх сервисов из семи предлагала команды, которых на
+// остальных четырёх нет. Перечень читает оператор — значит он тоже поверхность.
+//
+// Равенство достигнуто с разных сторон, и это решение: `completion` снят (у
+// прямой формы дерева команд нет и дополнений оболочки не будет), а `help`
+// оставлен и понимается прямой формой — снять его из перечня cobra можно лишь
+// зарегистрировав скрытую команду под ЧУЖИМ именем, то есть разменяв одну
+// асимметрию на худшую.
+func TestAvailableCommandsAreTheOnesSevenShare(t *testing.T) {
+	stdout, _, err := runCommand(t, []string{"--help"}, nil)
+	if err != nil {
+		t.Fatalf("помощь объявлена отказом: %v", err)
+	}
+	block := stdout
+	i := strings.Index(block, "Available Commands:")
+	if i < 0 {
+		t.Fatalf("в помощи нет блока перечня команд: %q", stdout)
+	}
+	block = block[i:]
+	if j := strings.Index(block, "\nFlags:"); j >= 0 {
+		block = block[:j]
+	}
+	for _, want := range []string{"up", "down", "status"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("в перечне нет %q: %q", want, block)
+		}
+	}
+	if strings.Contains(block, "completion") {
+		t.Errorf("в перечне есть completion, которого нет у прямой формы: %q", block)
+	}
+	if !strings.Contains(block, "help") {
+		t.Errorf("help пропал из перечня, хотя равенство по нему достигнуто иначе: %q", block)
+	}
+}
+
+// TestHelpSubcommandWorks — `help` работает подкомандой у всех семи: у cobra он
+// свой, у прямой формы разбирается общим пакетом. Положительный контроль к
+// решению выше — без него «help остался в перечне» ничего бы не значило.
+func TestHelpSubcommandWorks(t *testing.T) {
+	stdout, _, err := runCommand(t, []string{"help"}, nil)
+	if err != nil {
+		t.Fatalf("help объявлен отказом: %v", err)
+	}
+	if !strings.Contains(stdout, "kacho-migrator") {
+		t.Fatalf("help не напечатал форму вызова: %q", stdout)
 	}
 }

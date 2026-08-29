@@ -34,7 +34,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -42,6 +41,9 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует "pgx" driver для sql.Open
 	"github.com/spf13/cobra"
+
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli/cobraargs"
 
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/iam/internal/apps/migrator"
@@ -87,12 +89,13 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 		// отказом. Скрипт или init-контейнер, потерявший аргумент, объявлялся бы
 		// выполнившим накат — успех на невыполненной работе.
 		//
-		// `NoArgs` при этом сохраняет отказ по неизвестной подкоманде дословно:
-		// её текст `unknown command "X" for "ИМЯ"` производит сама cobra.
-		Args: cobra.NoArgs,
+		// Отказ по неизвестной подкоманде производит общий пакет — тем же текстом,
+		// что и прямая форма, и с перечнем известных подкоманд.
+		Args: cobraargs.OnlyKnownCommands,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_ = cmd.Help()
-			return errors.New("no command given")
+			// Сентинел общий: своя редакция того же текста разошлась бы молча.
+			return migratorcli.ErrNoCommand
 		},
 	}
 	root.PersistentFlags().StringVar(&opts.dialect, "dialect", defaultDialect,
@@ -105,6 +108,9 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 		newDownCmd(opts, migrationsFS),
 		newStatusCmd(opts, migrationsFS),
 	)
+	// Дополнения оболочки cobra доводит сама; у прямой формы такой команды нет и
+	// не будет. Перечень команд читает оператор — значит он тоже поверхность.
+	cobraargs.HideShellCompletion(root)
 	return root
 }
 
@@ -115,7 +121,8 @@ func newUpCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 		// Лишний позиционный аргумент — отказ, а не молчаливый накат: у cobra
 		// умолчание Args принимает произвольные, и `up 800001` (догадка о том, как
 		// задать цель) уезжал накатывать до головы. Версия задаётся --target (#1461).
-		Args:  cobra.NoArgs,
+		// Текст отказа производит общий пакет — один на семь.
+		Args:  cobraargs.NoExtraArguments,
 		Short: "Apply migrations up to latest (or --target version)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r, err := buildRunner(opts, migrationsFS)
@@ -136,7 +143,8 @@ func newDownCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 		// Лишний позиционный аргумент — отказ, а не молчаливый накат: у cobra
 		// умолчание Args принимает произвольные, и `up 800001` (догадка о том, как
 		// задать цель) уезжал накатывать до головы. Версия задаётся --target (#1461).
-		Args:  cobra.NoArgs,
+		// Текст отказа производит общий пакет — один на семь.
+		Args:  cobraargs.NoExtraArguments,
 		Short: "Rollback the most recent migration (or down to --target)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r, err := buildRunner(opts, migrationsFS)
@@ -156,7 +164,8 @@ func newStatusCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 		// Лишний позиционный аргумент — отказ, а не молчаливый накат: у cobra
 		// умолчание Args принимает произвольные, и `up 800001` (догадка о том, как
 		// задать цель) уезжал накатывать до головы. Версия задаётся --target (#1461).
-		Args:  cobra.NoArgs,
+		// Текст отказа производит общий пакет — один на семь.
+		Args:  cobraargs.NoExtraArguments,
 		Short: "Show migration status (applied / pending)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r, err := buildRunner(opts, migrationsFS)

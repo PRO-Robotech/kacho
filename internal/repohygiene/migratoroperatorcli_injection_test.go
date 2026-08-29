@@ -587,3 +587,201 @@ func newHelpersCmd() *cobra.Command {
 		t.Fatalf("подкоманда объявлена находкой: %+v", parsed.RootsWithoutRun)
 	}
 }
+
+// ── производитель текстов отказа: гейт говорит и молчит ────────────────────
+
+func TestMigratorCLIRefusalGateSpeaksOnASecondEdition(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "своя редакция неизвестной подкоманды",
+			src: `package main
+
+import "fmt"
+
+func fail(name, given string) error {
+	return fmt.Errorf("unknown command %q for %q", given, name)
+}`,
+		},
+		{
+			name: "своя редакция лишнего аргумента",
+			src: `package main
+
+import "fmt"
+
+func fail(path, given string) error {
+	return fmt.Errorf("unexpected argument %q for %q; use --target", given, path)
+}`,
+		},
+		{
+			name: "своя редакция неизвестного флага",
+			src: `package main
+
+import "errors"
+
+var errFlag = errors.New("unknown flag: --nosuchflag")`,
+		},
+		{
+			name: "своя редакция пустой командной строки",
+			src: `package main
+
+import "errors"
+
+var errEmpty = errors.New("no command given")`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const rel = "services/x/cmd/migrator/main.go"
+			findings, err := migratorCLIRefusalDeclarations(rel, tc.src)
+			if err != nil {
+				t.Fatalf("разбор не удался: %v", err)
+			}
+			if len(findings) == 0 {
+				t.Fatal("вторая редакция текста отказа принята молча")
+			}
+			joined := strings.Join(findings, "\n")
+			if !strings.Contains(joined, rel) {
+				t.Errorf("находка не называет координату: %s", joined)
+			}
+			if !strings.Contains(joined, "pkg/migratorcli/") {
+				t.Errorf("находка не называет, где живёт производитель: %s", joined)
+			}
+		})
+	}
+}
+
+func TestMigratorCLIRefusalGateStaysSilentOnLegitimateTwins(t *testing.T) {
+	for _, tc := range []struct{ name, src string }{
+		{
+			// Точка наката ЗОВЁТ производителя — это и есть требуемое.
+			name: "вызов производителя",
+			src: `package main
+
+import "github.com/PRO-Robotech/kacho/pkg/migratorcli"
+
+func fail(path, given string) error {
+	return migratorcli.UnexpectedArgumentError(path, given)
+}`,
+		},
+		{
+			// Объяснение сведения повторяет образец дословно. Гейт по подстроке
+			// краснел бы здесь — то есть на собственном обосновании.
+			name: "образец в комментарии, а не в литерале",
+			src: `package main
+
+// До #1461 прямая форма писала свою редакцию: "unknown command %q for" —
+// а делегирующая говорила "unknown flag: --" словами cobra.
+func nothing() {}`,
+		},
+		{
+			// Посторонний текст того же файла редакцией отказа не является.
+			name: "чужой текст рядом",
+			src: `package main
+
+import "fmt"
+
+func note() string { return fmt.Sprintf("migrate %s: done", "up") }`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			findings, err := migratorCLIRefusalDeclarations("services/x/cmd/migrator/main.go", tc.src)
+			if err != nil {
+				t.Fatalf("разбор не удался: %v", err)
+			}
+			if len(findings) != 0 {
+				t.Fatalf("законная запись объявлена находкой: %v", findings)
+			}
+		})
+	}
+}
+
+// ── подача отказа: гейт говорит и молчит ───────────────────────────────────
+
+func TestMigratorCLIRefusalGateSpeaksOnAJournalledRefusal(t *testing.T) {
+	for _, tc := range []struct{ name, src string }{
+		{
+			name: "log.Fatal",
+			src: `package main
+
+import "log"
+
+func main() { log.Fatal("boom") }`,
+		},
+		{
+			name: "log.Fatalf",
+			src: `package main
+
+import "log"
+
+func main() { log.Fatalf("open db: %v", nil) }`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const rel = "services/x/cmd/migrator/main.go"
+			findings, err := migratorCLIJournalRefusals(rel, tc.src)
+			if err != nil {
+				t.Fatalf("разбор не удался: %v", err)
+			}
+			if len(findings) == 0 {
+				t.Fatal("подача отказа через журнал принята молча")
+			}
+			joined := strings.Join(findings, "\n")
+			if !strings.Contains(joined, rel) {
+				t.Errorf("находка не называет координату: %s", joined)
+			}
+			if !strings.Contains(joined, "метка времени") {
+				t.Errorf("находка не называет предмет: %s", joined)
+			}
+		})
+	}
+}
+
+func TestMigratorCLIRefusalGateStaysSilentOnLegitimateOutput(t *testing.T) {
+	for _, tc := range []struct{ name, src string }{
+		{
+			name: "общая форма подачи",
+			src: `package main
+
+import (
+	"os"
+
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+)
+
+func fail(err error) {
+	migratorcli.ReportError(os.Stderr, err)
+	os.Exit(1)
+}`,
+		},
+		{
+			// Журнал, не подающий отказ, законен: гейт судит ВЫЗОВ вида Fatal, а
+			// не импорт. Запрет импорта запрещал бы не то.
+			name: "журнал не для отказа",
+			src: `package main
+
+import "log"
+
+func note() { log.Printf("applied %d migrations", 3) }`,
+		},
+		{
+			// Слово в прозе о снятом механизме находкой не является.
+			name: "упоминание в комментарии",
+			src: `package main
+
+// Прежде мигратор падал через log.Fatalf и уходил в CrashLoopBackOff.
+func nothing() {}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			findings, err := migratorCLIJournalRefusals("services/x/cmd/migrator/main.go", tc.src)
+			if err != nil {
+				t.Fatalf("разбор не удался: %v", err)
+			}
+			if len(findings) != 0 {
+				t.Fatalf("законная запись объявлена находкой: %v", findings)
+			}
+		})
+	}
+}

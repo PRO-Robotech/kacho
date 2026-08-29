@@ -4,7 +4,9 @@
 package migratorcli_test
 
 import (
+	"bytes"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -40,8 +42,24 @@ func TestFlagIsAcceptedInBothPositions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("флаг ПОСЛЕ подкоманды отвергнут: %v", err)
 	}
+	// Отказ называет ПРИЧИНУ, а не симптом: два дампа структуры рядом заставляют
+	// читателя искать различие глазами, а найти надо ПОЛЕ, которое разошлось, и
+	// то, чем это оборачивается для оператора. Поля перебираются разбором типа,
+	// а не поимённо: поле, добавленное завтра, обязано попасть в отказ само.
 	if before != after {
-		t.Fatalf("порядок флага изменил разбор:\n  до  подкоманды: %+v\n  после подкоманды: %+v", before, after)
+		vBefore, vAfter := reflect.ValueOf(before), reflect.ValueOf(after)
+		for i := 0; i < vBefore.NumField(); i++ {
+			gotBefore := vBefore.Field(i).Interface()
+			gotAfter := vAfter.Field(i).Interface()
+			if reflect.DeepEqual(gotBefore, gotAfter) {
+				continue
+			}
+			t.Errorf("флаг ПОСЛЕ подкоманды отброшен молча: поле %s — до подкоманды %#v, "+
+				"после подкоманды %#v. Пустое значение уезжает в запасной путь (окружение, "+
+				"затем конфигурация сервиса), поэтому накат идёт на ЧУЖУЮ базу и выглядит "+
+				"успехом", vBefore.Type().Field(i).Name, gotBefore, gotAfter)
+		}
+		t.FailNow()
 	}
 	if after.DSN != dsn {
 		t.Fatalf("DSN потерян при разборе: %q", after.DSN)
@@ -138,15 +156,36 @@ func TestUnknownCommandNamesTheKnownOnes(t *testing.T) {
 	}
 }
 
-// TestNoCommandIsRejectedWithUsage — положительный контроль отрицаний выше:
-// без него все они зеленели бы на разборе, отвергающем вообще всё.
-func TestNoCommandIsRejectedWithUsage(t *testing.T) {
+// TestNoCommandIsRejectedAndUsageIsAvailable — положительный контроль отрицаний
+// выше: без него все они зеленели бы на разборе, отвергающем вообще всё.
+//
+// Форма вызова больше не вшита в текст отказа: делегирующая форма печатает
+// помощь отдельно, и вшитая усадка сделала бы первую строку отказа разной у
+// семи. Печатает её теперь вызывающий — ровно как cobra печатает Help().
+func TestNoCommandIsRejectedAndUsageIsAvailable(t *testing.T) {
 	_, err := migratorcli.Parse("kacho-migrator", nil)
 	if err == nil {
 		t.Fatal("пустая командная строка принята")
 	}
-	if !strings.Contains(err.Error(), "usage") {
-		t.Fatalf("отказ не показывает форму вызова: %v", err)
+	if !errors.Is(err, migratorcli.ErrNoCommand) {
+		t.Fatalf("отказ не опознаётся вызывающим: %v", err)
+	}
+	usage := migratorcli.Usage("kacho-migrator")
+	for _, want := range []string{"usage", "kacho-migrator", "up", "down", "status", "--target"} {
+		if !strings.Contains(usage, want) {
+			t.Errorf("форма вызова не называет %q: %s", want, usage)
+		}
+	}
+}
+
+// TestReportErrorPrintsTheSharedShape — отказ подаётся в одной форме на семь.
+// Прямая четвёрка печатала его через журнал, то есть с меткой времени впереди;
+// делегирующая тройка — строкой `Error: …`. Проба закрепляет вторую.
+func TestReportErrorPrintsTheSharedShape(t *testing.T) {
+	var buf bytes.Buffer
+	migratorcli.ReportError(&buf, migratorcli.UnknownFlagError("nosuchflag"))
+	if got, want := buf.String(), "Error: unknown flag: --nosuchflag\n"; got != want {
+		t.Fatalf("форма подачи отказа изменена:\n  получено: %q\n  контракт: %q", got, want)
 	}
 }
 
@@ -201,5 +240,170 @@ func TestResolveDSNPriority(t *testing.T) {
 	boom := func() (string, error) { return "", errors.New("config boom") }
 	if _, err := migratorcli.ResolveDSN("", boom); err == nil || !strings.Contains(err.Error(), "config boom") {
 		t.Fatalf("отказ конфигурации проглочен: %v", err)
+	}
+}
+
+// TestRefusalTextsAreProducedInOnePlace — тон отказа часть контракта, и
+// производитель у него ОДИН (#1461).
+//
+// Опыт по собранным бинарям на одинаковом входе показал, что предмет отказа
+// называют все семь, а ФОРМА у них разная:
+//
+//	--nosuchflag up  → «unknown flag: --nosuchflag»              (делегирующая тройка)
+//	                   «flag provided but not defined: -nosuchflag» (прямая четвёрка)
+//	up 800001        → «unknown command …»  против «unexpected argument …»
+//	любой отказ      → у прямой четвёрки впереди стояла метка времени
+//
+// Оператор читает эти строки глазами, а скрипт — образцом; две редакции одного
+// отказа означают, что образец, написанный по одному сервису, на соседнем не
+// срабатывает. Тексты сведены сюда, и делегирующая тройка берёт их ОТСЮДА —
+// поэтому байт-идентичность держится построением, а не сверкой двух копий.
+func TestRefusalTextsAreProducedInOnePlace(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		got  string
+		want string
+	}{
+		{
+			name: "неизвестная подкоманда",
+			got:  migratorcli.UnknownCommandError("kacho-migrator", "upp").Error(),
+			want: `unknown command "upp" for "kacho-migrator" (known: up, down, status)`,
+		},
+		{
+			name: "лишний позиционный аргумент",
+			got:  migratorcli.UnexpectedArgumentError("kacho-migrator up", "800001").Error(),
+			want: `unexpected argument "800001" for "kacho-migrator up"; a version is given as --target 800001`,
+		},
+		{
+			// Текст ЗАИМСТВОВАН у делегирующей формы дословно: её производит
+			// библиотека, переписать её нельзя, а два текста об одном предмете
+			// разошлись бы молча. Проба заодно ловит смену формулировки в
+			// библиотеке — тогда разойдутся семь, и это станет видно здесь.
+			name: "неизвестный флаг",
+			got:  migratorcli.UnknownFlagError("nosuchflag").Error(),
+			want: "unknown flag: --nosuchflag",
+		},
+		{
+			name: "пустая командная строка",
+			got:  migratorcli.ErrNoCommand.Error(),
+			want: "no command given",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.got != tc.want {
+				t.Fatalf("тон отказа изменён:\n  получено: %q\n  контракт: %q", tc.got, tc.want)
+			}
+		})
+	}
+}
+
+// TestParseSpeaksTheSharedRefusalTexts — разбор прямой формы отвечает ИМЕННО
+// этими текстами, а не своими. Без этой пробы производитель существовал бы, а
+// разбор продолжал бы печатать редакцию стандартной библиотеки.
+func TestParseSpeaksTheSharedRefusalTexts(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--nosuchflag", "up"}, migratorcli.UnknownFlagError("nosuchflag").Error()},
+		{[]string{"up", "--nosuchflag"}, migratorcli.UnknownFlagError("nosuchflag").Error()},
+		{[]string{"status", "--target", "1"}, migratorcli.UnknownFlagError("target").Error()},
+		{[]string{"upp"}, migratorcli.UnknownCommandError("kacho-migrator", "upp").Error()},
+		{[]string{"up", "800001"}, migratorcli.UnexpectedArgumentError("kacho-migrator up", "800001").Error()},
+		{nil, migratorcli.ErrNoCommand.Error()},
+	} {
+		_, err := migratorcli.Parse("kacho-migrator", tc.args)
+		if err == nil {
+			t.Fatalf("%v: принято молча", tc.args)
+		}
+		if err.Error() != tc.want {
+			t.Errorf("%v: разбор говорит своей редакцией:\n  получено: %q\n  общая:    %q",
+				tc.args, err.Error(), tc.want)
+		}
+	}
+}
+
+// TestHelpIsAlsoASubcommand — `help` понимается и прямой формой (#1461).
+//
+// Cobra доводит к дереву команду `help`, снять которую из перечня нельзя иначе
+// как зарегистрировав скрытую команду под чужим именем. Равенство семи поэтому
+// достигнуто с другой стороны: `kacho-migrator help` работает и там, где дерева
+// команд нет вовсе. Иначе `help` оставался бы командой трёх сервисов из семи.
+func TestHelpIsAlsoASubcommand(t *testing.T) {
+	for _, args := range [][]string{{"help"}, {"help", "up"}} {
+		if _, err := migratorcli.Parse("kacho-migrator", args); !errors.Is(err, migratorcli.ErrHelpRequested) {
+			t.Errorf("%v: помощь не запрошена, а получено: %v", args, err)
+		}
+	}
+	// Положительный контроль: `help` — не подкоманда наката, и остальные три
+	// по-прежнему разбираются как команды, а не как запрос помощи.
+	for _, cmd := range []string{"up", "down", "status"} {
+		got, err := migratorcli.Parse("kacho-migrator", []string{cmd})
+		if err != nil {
+			t.Fatalf("%s объявлен запросом помощи: %v", cmd, err)
+		}
+		if got.Command != cmd {
+			t.Fatalf("%s разобран как %q", cmd, got.Command)
+		}
+	}
+	// Форма вызова называет `help` — иначе возможность есть, а узнать о ней
+	// неоткуда.
+	if !strings.Contains(migratorcli.Usage("kacho-migrator"), "help") {
+		t.Errorf("форма вызова не называет help: %s", migratorcli.Usage("kacho-migrator"))
+	}
+}
+
+// TestParseTargetVersionRejectsATrailingTail — версия читается ЦЕЛИКОМ, а не до
+// первого негодного знака (#1461).
+//
+// Инъекция 5 приёмщика: возврат к разбору форматом (`fmt.Sscanf`) оставил все
+// пробы пакета зелёными, потому что проб у этой функции не было ни одной, а
+// зовут её четыре точки наката. Форматный разбор на «12abc» отдаёт 12 БЕЗ
+// ошибки — то есть накат идёт до версии, которой оператор не называл, и
+// выглядит успехом. Это тот же класс, ради которого заведён весь пакет.
+//
+// Замер инъекции: `ParseTargetVersion("12abc")` → v=12, err=<nil>.
+func TestParseTargetVersionRejectsATrailingTail(t *testing.T) {
+	for _, in := range []string{"12abc", "800001x", "12 34", "1,2", "0x10", "12.0", "+", "-", ""} {
+		got, err := migratorcli.ParseTargetVersion(in)
+		if err == nil {
+			t.Errorf("%q принято как версия %d — накат уехал бы не туда, куда просили", in, got)
+			continue
+		}
+		if !strings.Contains(err.Error(), "--target") {
+			t.Errorf("%q: отказ не называет флаг: %v", in, err)
+		}
+		if !strings.Contains(err.Error(), in) {
+			t.Errorf("%q: отказ не называет само значение: %v", in, err)
+		}
+	}
+}
+
+// TestParseTargetVersionAcceptsWhatMigrationFilesUse — положительный контроль к
+// пробе выше. Без него она зеленела бы на разборе, отвергающем вообще всё, — а
+// тогда `--target` перестал бы работать у четырёх сервисов сразу.
+//
+// Ведущие нули приняты намеренно: `0010_…sql` — законная запись имени миграции
+// в этом дереве, и оператор списывает версию с имени файла.
+func TestParseTargetVersionAcceptsWhatMigrationFilesUse(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want int64
+	}{
+		{"800001", 800001},
+		{"0010", 10},
+		{"0", 0},
+		{"20260829120000", 20260829120000},
+		{" 800001 ", 800001}, // окружающие пробелы — обычный след копирования
+		{"-1", -1},           // goose принимает отрицательную версию как «до нуля»
+	} {
+		got, err := migratorcli.ParseTargetVersion(tc.in)
+		if err != nil {
+			t.Errorf("%q отвергнуто, хотя это законная запись версии: %v", tc.in, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("%q разобрано как %d, ожидалось %d", tc.in, got, tc.want)
+		}
 	}
 }
