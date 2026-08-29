@@ -88,6 +88,11 @@ const (
 
 	// migratorCLICobraImport — разбор аргументов делегирующей формы.
 	migratorCLICobraImport = "github.com/spf13/cobra"
+
+	// migratorCLIParseFunc — вызов, которым общий разбор ИСПОЛНЯЕТСЯ. Импорт
+	// пакета сам по себе разбором не является: из него берут ещё имя бинаря и
+	// тексты отказа.
+	migratorCLIParseFunc = "Parse"
 )
 
 // migratorCLINameRe — имя, оканчивающееся на «migrator». Именно оканчивающееся:
@@ -275,9 +280,16 @@ type migratorCLIParser struct {
 // Recognised — разбор распознан ровно один.
 func (p migratorCLIParser) Recognised() bool { return p.Shared != p.Cobra }
 
-// classifyMigratorCLIParser читает ИМПОРТЫ и объявления команд разбором, а не
-// подстрокой: имя cobra встречается и в комментариях, и гейт по тексту засчитал
-// бы форму по объяснению, а не по вызову.
+// classifyMigratorCLIParser читает объявления и вызовы РАЗБОРОМ, а не подстрокой:
+// имя cobra встречается и в комментариях, и гейт по тексту засчитал бы форму по
+// объяснению, а не по вызову.
+//
+// Общий разбор засчитывается по ВЫЗОВУ `migratorcli.Parse`, а не по импорту
+// пакета: делегирующая форма импортирует тот же пакет ради ИМЕНИ бинаря и ради
+// ТЕКСТОВ отказа — то есть ради того самого сведения, которого гейт и требует.
+// Классификация по импорту объявляла бы это «двумя разборами сразу», запрещая
+// единственный источник величины. Cobra же засчитывается по импорту: она
+// разбирает не одним вызовом, а всем деревом команд.
 func classifyMigratorCLIParser(rel, src string) (migratorCLIParser, error) {
 	p := migratorCLIParser{Rel: rel}
 	fset := token.NewFileSet()
@@ -285,14 +297,35 @@ func classifyMigratorCLIParser(rel, src string) (migratorCLIParser, error) {
 	if err != nil {
 		return p, fmt.Errorf("%s: разбор не удался: %w", rel, err)
 	}
+	sharedAlias := ""
 	for _, imp := range file.Imports {
 		value := strings.Trim(imp.Path.Value, `"`)
 		switch {
 		case value == migratorCLISharedParserImport:
-			p.Shared = true
+			sharedAlias = path.Base(value)
+			if imp.Name != nil {
+				sharedAlias = imp.Name.Name
+			}
 		case value == migratorCLICobraImport:
 			p.Cobra = true
 		}
+	}
+	if sharedAlias != "" {
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != migratorCLIParseFunc {
+				return true
+			}
+			pkg, ok := sel.X.(*ast.Ident)
+			if ok && pkg.Name == sharedAlias {
+				p.Shared = true
+			}
+			return true
+		})
 	}
 	if !p.Cobra {
 		return p, nil
@@ -357,8 +390,9 @@ func migratorCLIParserFindings(parsers []migratorCLIParser) []string {
 				"%s — разбирает аргументы И общим пакетом, И cobra: по коду не сказать, какой исполняется", p.Rel))
 		case !p.Shared && !p.Cobra:
 			out = append(out, fmt.Sprintf(
-				"%s — третий разбор аргументов: ни общий пакет %q, ни cobra. Именно так различие и накапливалось",
-				p.Rel, migratorCLISharedParserImport))
+				"%s — третий разбор аргументов: не зовёт %s.%s и не строит дерево cobra. "+
+					"Именно так различие и накапливалось",
+				p.Rel, path.Base(migratorCLISharedParserImport), migratorCLIParseFunc))
 		}
 		for _, u := range p.Undecided {
 			out = append(out, fmt.Sprintf(

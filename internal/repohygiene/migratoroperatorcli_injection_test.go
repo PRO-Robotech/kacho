@@ -136,14 +136,22 @@ import "flag"
 
 func main() { flag.Parse() }`
 
+	// Оба разбора ИСПОЛНЯЮТСЯ в одной точке: общий зовётся, и рядом строится
+	// дерево cobra. Импорта мало — разбирает тот, кто зовёт.
 	cliSrcBothParsers = `package main
 
 import (
+	"os"
+
 	"github.com/spf13/cobra"
+
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 )
 
-func main() { _, _ = cobra.Command{}, migratorcli.Options{} }`
+func main() {
+	_, _ = migratorcli.Parse("kacho-migrator", os.Args[1:])
+	_ = (&cobra.Command{Use: "kacho-migrator"}).Execute()
+}`
 
 	cliSrcCobraWithoutArgs = `package main
 
@@ -193,12 +201,17 @@ const (
 	cliSrcSharedParser = `package main
 
 import (
+	"os"
+
 	"github.com/pressly/goose/v3"
 
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 )
 
-func main() { _, _ = goose.Up, migratorcli.Parse }`
+func main() {
+	_, _ = migratorcli.Parse("kacho-migrator", os.Args[1:])
+	_ = goose.Up
+}`
 
 	cliSrcCobraDecided = `package main
 
@@ -433,5 +446,75 @@ func newServeCmd() *cobra.Command {
 				t.Fatalf("законная запись объявлена находкой: %v", f)
 			}
 		})
+	}
+}
+
+// ── разбор определяется ВЫЗОВОМ, а не импортом ─────────────────────────────
+//
+// Импорт общего пакета ради ИМЕНИ или ради ТЕКСТА отказа вторым разбором не
+// является: разбирает тот, кто зовёт `migratorcli.Parse`. Пока классификация
+// шла по импорту, делегирующая форма не могла взять из общего пакета ни одной
+// величины, не став в глазах гейта «двумя разборами сразу», — то есть гейт
+// запрещал ровно то сведение, ради которого он заведён.
+
+func TestMigratorCLIParserGateJudgesTheCallNotTheImport(t *testing.T) {
+	const cobraBorrowingSharedConstants = `package main
+
+import (
+	"github.com/spf13/cobra"
+
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+)
+
+func newRootCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:  migratorcli.BinaryName,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error { return nil },
+	}
+}`
+	parsed, err := classifyMigratorCLIParser("services/x/cmd/migrator/main.go", cobraBorrowingSharedConstants)
+	if err != nil {
+		t.Fatalf("разбор не удался: %v", err)
+	}
+	if parsed.Shared {
+		t.Error("заимствование величины принято за второй разбор: разбирает тот, кто зовёт Parse")
+	}
+	if !parsed.Cobra {
+		t.Error("делегирующая форма не распознана")
+	}
+	if f := migratorCLIParserFindings([]migratorCLIParser{parsed}); len(f) != 0 {
+		t.Fatalf("законная запись объявлена находкой: %v", f)
+	}
+}
+
+func TestMigratorCLIParserGateStillSpeaksOnTwoRealParsers(t *testing.T) {
+	// Законный близнец предыдущей пробы: тот же импорт, но общий разбор ЗОВЁТСЯ
+	// рядом с деревом cobra. Вот это — действительно два разбора в одной точке,
+	// и по коду не сказать, какой исполняется.
+	const bothActuallyParse = `package main
+
+import (
+	"os"
+
+	"github.com/spf13/cobra"
+
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
+)
+
+func main() {
+	_, _ = migratorcli.Parse("kacho-migrator", os.Args[1:])
+	_ = (&cobra.Command{Use: "kacho-migrator"}).Execute()
+}`
+	parsed, err := classifyMigratorCLIParser("services/x/cmd/migrator/main.go", bothActuallyParse)
+	if err != nil {
+		t.Fatalf("разбор не удался: %v", err)
+	}
+	findings := migratorCLIParserFindings([]migratorCLIParser{parsed})
+	if len(findings) == 0 {
+		t.Fatalf("два настоящих разбора приняты молча: %+v", parsed)
+	}
+	if !strings.Contains(strings.Join(findings, "\n"), "по коду не сказать") {
+		t.Errorf("находка не называет предмет: %v", findings)
 	}
 }
