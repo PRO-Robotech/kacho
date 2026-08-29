@@ -926,7 +926,7 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		// «страж пропустил» ⟺ «круг реально сужен» по построению. Законный
 		// отправитель один — api-gateway, и он ходит на ОБА слушателя, поэтому круг
 		// общий: внутренний периметр не освобождён.
-		Forwarders: cfg.TrustedForwarders(),
+		Forwarders: servicecontract.Value(cfg.TrustedForwarders()),
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS",
 			TrustAny: "KACHO_REGISTRY_AUTHZ_TRUST_ANY_FORWARDER",
@@ -979,7 +979,7 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		// фикстуры, и на боевой посадке дескриптор его отвергает.
 		Admission: servicecontract.Value(admission),
 
-		DBSSLMode:     cfg.DBSSLMode,
+		DBSSLMode:     servicecontract.Value(cfg.DBSSLMode),
 		PublicAddr:    ":" + cfg.GrpcPort,
 		InternalAddr:  ":" + cfg.InternalGrpcPort,
 		PublicCreds:   publicCreds,

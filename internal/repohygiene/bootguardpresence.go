@@ -85,9 +85,22 @@ type postureReach struct {
 	// одного вызова этой функции в компоненте не нашлось. Судить нечем, и это
 	// говорится ЧИСЛОМ, а не молчанием: «не судится» и «провязано» — разное.
 	fieldsUnjudged int
+	// fieldsWithdrawn — посадочных полей, ОБЪЯВЛЕННЫХ НЕПРИМЕНИМЫМИ с причиной
+	// (`servicecontract.NotApplicable`). Третье состояние оси, и оно не сводится
+	// ни к «провязано», ни к «подставлена константа»: у процесса без своей базы
+	// или без входящей переданной личности ручки НЕТ, и выводить значение неоткуда.
+	//
+	// Величина печатается ОТДЕЛЬНО, а не прибавляется к провязанным: иначе
+	// «изъято» стало бы неотличимо от «выведено из настройки», и послабление
+	// растворилось бы в числе, которое читают как успех.
+	fieldsWithdrawn int
 	// literalFields — координаты посадочных полей, чьё значение НЕ выведено из
 	// конфигурации: `<компонент>` → перечень «поле (файл:строка) = <выражение>».
 	literalFields map[string][]string
+	// staleWithdrawals — изъятия, ПЕРЕЖИВШИЕ свой предмет: ось объявлена
+	// неприменимой, а ручку этой оси компонент объявляет. Это и есть
+	// самоистечение: пока предмета нет — молчим, появился — находка.
+	staleWithdrawals map[string][]string
 	// providersSeen — поставщиков дескриптора найдено (включая обёртки).
 	// callersSeen — их вызовов осмотрено.
 	// callersReach — из них таких, чей ОТКАЗ доезжает до остановки процесса.
@@ -179,11 +192,12 @@ func isContractNewCall(e ast.Expr, requireSpecLiteral bool) bool {
 // небезопасном значении ОТКАЗЫВАЕТ.
 func scanPostureReach(root string) (postureReach, error) {
 	res := postureReach{
-		knobs:         map[string][]string{},
-		accepts:       map[string]string{},
-		discards:      map[string]string{},
-		literalFields: map[string][]string{},
-		quenched:      map[string][]string{},
+		knobs:            map[string][]string{},
+		accepts:          map[string]string{},
+		discards:         map[string]string{},
+		literalFields:    map[string][]string{},
+		staleWithdrawals: map[string][]string{},
+		quenched:         map[string][]string{},
 	}
 	seenComp := map[string]bool{}
 	seenKnob := map[string]map[string]bool{}
@@ -260,6 +274,7 @@ func scanPostureReach(root string) (postureReach, error) {
 		res.components = append(res.components, c)
 		sort.Strings(res.knobs[c])
 		sort.Strings(res.literalFields[c])
+		sort.Strings(res.staleWithdrawals[c])
 		sort.Strings(res.quenched[c])
 	}
 	sort.Strings(res.components)
@@ -642,6 +657,17 @@ func adjudicatePostureReachFull(reach postureReach, ledger map[string]postureRea
 						"всегда, ручка не действует никогда",
 					comp, at, strings.Join(lits, "; ")))
 			}
+			// Изъятие оси ИСТЕКАЕТ САМО: пока у компонента нет ручки этой оси,
+			// «мне это не адресовано» — законный ответ; появилась ручка — ответ
+			// пережил свой предмет, и молчать здесь значило бы выдать слепую
+			// зону вперёд.
+			if st := reach.staleWithdrawals[comp]; len(st) > 0 {
+				v.findings = append(v.findings, fmt.Sprintf(
+					"%s — дескриптор принят (%s), но ИЗЪЯТИЕ ОСИ ПЕРЕЖИЛО СВОЙ ПРЕДМЕТ: %s. "+
+						"Ось объявлена неприменимой, а ручка у компонента есть — значит "+
+						"величина, которую оператор выставляет, до стража не доезжает вовсе",
+					comp, at, strings.Join(st, "; ")))
+			}
 			// Принять дескриптор и провязать ручки мало: ОТКАЗ стража обязан
 			// доехать до остановки процесса. Погашенный у вызывающего отказ
 			// оставляет вызов на месте, перепись — неизменной, а посадку —
@@ -896,6 +922,26 @@ func auditSpecWiring(res *postureReach, comp string, fn funcRec, newCall ast.Exp
 
 		if exprFromConfig(val, fn.carry) {
 			res.fieldsWired++
+			continue
+		}
+
+		// ТРЕТЬЕ состояние оси: изъятие с причиной. Оно не «литерал вместо
+		// значения» и не «выведено из настройки»: у процесса, которому эта ось
+		// не адресована, РУЧКИ НЕТ, и выводить значение неоткуда. Молчаливое
+		// заполнение правдоподобной константой исходом при этом не становится —
+		// её здесь и не бывает, потому что изъятие обязано нести причину, и
+		// конструктор дескриптора без причины его не принимает.
+		//
+		// Изъятие ИСТЕКАЕТ САМО: если ручка этой оси у компонента объявлена,
+		// изъятие пережило свой предмет — и это находка, а не тишина.
+		if because, ok := withdrawnAxis(val); ok {
+			if knob := postureKnobFor(path, res.knobs[comp]); knob != "" {
+				res.staleWithdrawals[comp] = append(res.staleWithdrawals[comp], fmt.Sprintf(
+					"%s (%s:%d) объявлено неприменимым (%q), а ручка %s компонентом ОБЪЯВЛЕНА",
+					path, fn.rel, fset.Position(val.Pos()).Line, because, knob))
+				continue
+			}
+			res.fieldsWithdrawn++
 			continue
 		}
 
@@ -1627,4 +1673,92 @@ func exprMentionsIdent(e ast.Expr, name string) bool {
 		return !hit
 	})
 	return hit
+}
+
+// withdrawnAxis — объявлена ли ось изъятой с причиной, и какой.
+//
+// Распознаётся форма `servicecontract.NotApplicable[T]("причина")` и её вариант
+// без явного параметра типа. Судится ВЫЗОВ, а не текст: имя `NotApplicable`
+// встречается и в комментариях, и в строках разбора — по подстроке проверка
+// краснела бы на собственном объяснении.
+func withdrawnAxis(e ast.Expr) (string, bool) {
+	call, ok := e.(*ast.CallExpr)
+	if !ok {
+		return "", false
+	}
+	fun := call.Fun
+	// `NotApplicable[T](...)` — параметр типа приезжает узлом индекса.
+	switch idx := fun.(type) {
+	case *ast.IndexExpr:
+		fun = idx.X
+	case *ast.IndexListExpr:
+		fun = idx.X
+	}
+	sel, ok := fun.(*ast.SelectorExpr)
+	if !ok {
+		return "", false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	if !ok || pkg.Name != "servicecontract" || sel.Sel.Name != "NotApplicable" {
+		return "", false
+	}
+	return firstStringOperand(call.Args), true
+}
+
+// firstStringOperand — начало причины, для текста находки. Причина обычно
+// собрана конкатенацией нескольких строк; целиком она в находке не нужна —
+// нужна узнаваемая голова.
+func firstStringOperand(args []ast.Expr) string {
+	if len(args) == 0 {
+		return ""
+	}
+	var walk func(ast.Expr) string
+	walk = func(e ast.Expr) string {
+		switch x := e.(type) {
+		case *ast.BasicLit:
+			if x.Kind == token.STRING {
+				return strings.Trim(x.Value, "`\"")
+			}
+		case *ast.BinaryExpr:
+			if head := walk(x.X); head != "" {
+				return head
+			}
+			return walk(x.Y)
+		case *ast.ParenExpr:
+			return walk(x.X)
+		}
+		return ""
+	}
+	head := walk(args[0])
+	if len(head) > 60 {
+		return head[:60] + "…"
+	}
+	return head
+}
+
+// postureAxisKnobPattern — по какому признаку узнаётся РУЧКА посадочной оси.
+//
+// Перечень закрыт и идёт от тех же имён, что знает распознаватель ручек
+// (`postureKnobRe`): изъятие оси истекает ровно тогда, когда компонент завёл
+// ручку, которую этот же обход уже видит. Разойтись с ним нельзя — иначе
+// самоистечение объявляло бы предмет там, где перепись его не считает.
+var postureAxisKnobPattern = map[string]*regexp.Regexp{
+	"DBSSLMode":            regexp.MustCompile(`(?i)DB_SSLMODE|ssl-?mode`),
+	"Forwarders":           regexp.MustCompile(`(?i)TRUSTED_FORWARDER_SANS|TRUST_ANY_FORWARDER|trusted-?forwarder|trust-any-forwarder`),
+	"ForwarderKnobs.OptIn": regexp.MustCompile(`(?i)TRUST_ANY_FORWARDER|trust-any-forwarder`),
+	"Mode":                 regexp.MustCompile(`(?i)AUTHN?_MODE|auth-?n?-?mode`),
+}
+
+// postureKnobFor — ручка этой оси, объявленная компонентом, либо пустая строка.
+func postureKnobFor(axis string, knobs []string) string {
+	re, ok := postureAxisKnobPattern[axis]
+	if !ok {
+		return ""
+	}
+	for _, k := range knobs {
+		if re.MatchString(k) {
+			return k
+		}
+	}
+	return ""
 }

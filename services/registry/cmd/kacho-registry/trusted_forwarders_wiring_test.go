@@ -115,7 +115,7 @@ func TestTheForwarderCircleReachesTheChainThroughTheAcceptedDescriptor(t *testin
 		if err != nil {
 			t.Fatalf("дескриптор отвергнут: %v", err)
 		}
-		circle := desc.Spec().Forwarders
+		circle, _ := desc.Spec().Forwarders.Get()
 		if !circle.IsNarrowed() {
 			t.Fatal("круг отправителей в дескрипторе НЕ сужен: по контракту общей библиотеки это " +
 				"означает не «никому», а «любому пиру с проверенным сертификатом» — то есть " +

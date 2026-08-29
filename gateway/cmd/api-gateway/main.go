@@ -56,6 +56,14 @@ func main() {
 		Level: slog.LevelInfo,
 	}))
 
+	// Посадка процесса — ЧЕРЕЗ ЦЕНТРАЛЬНЫЙ ДЕСКРИПТОР, и до первого исходящего
+	// соединения (задача продукта #1407). Раньше набора рёбер: страж, стоящий
+	// после дозвона до соседей, судит посадку, в которой процесс уже говорит.
+	posture, postureErr := describePosture(cfg, logger)
+	if postureErr != nil {
+		log.Fatalf("посадка процесса: %v", postureErr)
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 
@@ -781,7 +789,7 @@ func main() {
 		return snap
 	})
 	diagDesc, diagDescErr := describeDiagnosticSurface(
-		cfg.MetricsAddr, diagMetrics, surfaceMode(cfg.AuthNMode), logger)
+		cfg.MetricsAddr, diagMetrics, posture.Spec().Mode, logger)
 	if diagDescErr != nil {
 		log.Fatalf("профиль диагностической поверхности: %v", diagDescErr)
 	}

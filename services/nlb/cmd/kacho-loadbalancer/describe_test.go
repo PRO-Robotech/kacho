@@ -188,7 +188,7 @@ func TestDeclaredCircleIsTheOneTheProcessCarries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("дескриптор отвергнут: %v", err)
 	}
-	circle := desc.Spec().Forwarders
+	circle, _ := desc.Spec().Forwarders.Get()
 	if !circle.IsNarrowed() {
 		t.Fatal("объявленный круг отправителей не сужен: пустой круг означает «принимаем " +
 			"переданную личность от любого проверенного пира», а не «ни от кого»")
