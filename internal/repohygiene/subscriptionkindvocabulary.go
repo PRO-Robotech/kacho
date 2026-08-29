@@ -268,7 +268,7 @@ func auditOneFileForKindVocabulary(
 	if !ok {
 		return nil, nil
 	}
-	imports := importAliases(f)
+	imports := fileImportAliases(f)
 
 	var findings []SubscriptionKindFinding
 	var walkErr error
@@ -467,8 +467,14 @@ var kindObjectTypeForm = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // KindVocabularyShape — слово написано не как имя типа модели прав.
 const KindVocabularyShape = "KIND-VOCABULARY-SHAPE"
 
-// importAliases — карта «локальное имя пакета → путь импорта» для одного файла.
-func importAliases(f *ast.File) map[string]string {
+// fileImportAliases — карта «локальное имя пакета → путь импорта» для одного файла.
+//
+// Звалась `importAliases`, пока этот гейт жил отдельной линией. В стволе то же
+// имя уже занято гейтом единственного источника обработчиков операций, и после
+// слияния пакет перестал собираться ЦЕЛИКОМ — то есть ни один гейт дерева не
+// исполнялся. Уступает имя та сторона, которой в стволе ещё нет: там оно
+// названо у чужих вызывающих, здесь — у одного.
+func fileImportAliases(f *ast.File) map[string]string {
 	out := make(map[string]string, len(f.Imports))
 	for _, imp := range f.Imports {
 		p, err := strconv.Unquote(imp.Path.Value)
