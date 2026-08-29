@@ -196,9 +196,14 @@ flowchart LR
 :::note Owner-сервис на каждый тип ресурса
 Каждый тип ресурса хранится ровно у одного владельца: **Geography (Region/Zone)** → kacho-geo
 (leaf platform-topology домен); **Account / Project** → kacho-iam (leaf-owner); **Network /
-Subnet / SG / RouteTable / Address / Gateway / NetworkInterface** → kacho-vpc; **Instance / Disk /
-Image / Snapshot** → kacho-compute. Consumer ссылается по id и валидирует через API владельца —
-mirror-таблицы и cross-DB FK запрещены.
+Subnet / SG / RouteTable / Address / Gateway / NetworkInterface / CidrGroup** → kacho-vpc;
+**Instance / MachineType** → kacho-compute; **Volume / Snapshot / Image / DiskType** →
+kacho-storage. Consumer ссылается по id и валидирует через API владельца — mirror-таблицы и
+cross-DB FK запрещены.
+
+Здесь блочное хранение стояло у вычислений (`Disk / Image / Snapshot`). Раскол домена завершён,
+контрактов этих ресурсов у вычислений нет вовсе — а имя владельца сегодня и есть значение
+параметра, которым адресуются поток изменений, REST-префикс и префикс идентификатора операции.
 :::
 
 :::tip Циклов нет: vpc ⇄ compute — два независимых ребра

@@ -1,23 +1,42 @@
 import { defineDbSchemaDiagramFromDbml } from '@site/src/utils/dbmlToDiagram'
 
-// DBML-описание схемы `kacho_vpc` (squashed baseline `0001_initial.sql` +
-// инкрементные миграции 0002..0005: drop SG-status в 0003, FK + partial UNIQUE
-// для default-SG в 0005). Источник истины — `internal/migrations/*.sql`
-// репозитория kacho-vpc. Здесь отражены основные ресурсные таблицы + служебные (operations,
-// vpc_outbox) и admin-таблица IPAM (address_pools). Полные вспомогательные
-// IPAM-таблицы (address_pool_*, ipv6_*) опущены для
-// читаемости — см. полный список в data-model.mdx.
+// DBML-описание схемы `kacho_vpc`. Источник истины — `internal/migrations/*.sql`
+// этого сервиса.
 //
-// `cloud_pool_selector` в перечне выше не значится, и причина у неё другая: таблица
-// не скрыта с диаграммы, а СНЯТА — заведена базовой схемой `0001_initial.sql` и
-// дропнута миграцией `0002_drop_override_and_cloud_pool_selector.sql` вместе с
-// cloud-selector-шагом IPAM-каскада (`dropguard.json`: version 2, kind `retire`).
-// Применённую миграцию не правят, поэтому `0001` создаёт таблицу вечно, а до головы
-// цепочки она не доживает; в `data-model.mdx` её нет и быть не должно.
+// ГРАНИЦА ДИАГРАММЫ ЗАДАНА СВОЙСТВОМ, А НЕ НОМЕРОМ МИГРАЦИИ. Рисуются:
 //
-// `vpc_watch_cursors` — тот же случай: снята миграцией
-// `20260828114800_drop_watch_cursors.sql` (kacho#1148), позиция подписки принадлежит
-// клиенту, серверных курсоров по подписчику не существует.
+//   * таблица КАЖДОГО ресурса, которым домен управляет полным набором глаголов
+//     `Create/Get/List/Update/Delete` — их девять, по числу ресурсных служб
+//     контракта `kacho.cloud.vpc.v1` (`networks`, `subnets`, `addresses`,
+//     `route_tables`, `security_groups`, `gateways`, `network_interfaces`,
+//     `cidr_groups`, `address_pools`);
+//   * две инфраструктурные — `operations` и `vpc_outbox`.
+//
+// Итого одиннадцать из двадцати шести живых таблиц схемы. Остальные пятнадцать —
+// служебные: подтаблицы состава ресурса, внутренние структуры IPAM, очереди и
+// счётчики. Они не рисуются НАМЕРЕННО, и это не «отставание»: полный перечень
+// схемы, все двадцать шесть, стоит на странице модели данных — там же сказано,
+// какое из двух изображений чему подмножество.
+//
+// Прежняя редакция задавала границу иначе — «baseline `0001` плюс инкременты
+// 0002..0005», — и граница эта устарела молча: миграций в дереве уже пятьдесят
+// три, а последняя зовётся `912001_address_secondary_cursor_indexes.sql`. Номер
+// миграции не свойство схемы, поэтому такая граница не может ни выполняться, ни
+// нарушаться — она просто стареет. Свойство выше проверяемо: службы контракта
+// перечисляются `grep -hoP '^service \K\w+' proto/kacho/cloud/vpc/v1/*.proto`.
+//
+// ДВЕ ТАБЛИЦЫ, КОТОРЫХ ЗДЕСЬ НЕТ ПО ДРУГОЙ ПРИЧИНЕ — они СНЯТЫ, а не скрыты:
+//
+//   * `cloud_pool_selector` — заведена базовой схемой `0001_initial.sql` и
+//     дропнута `0002_drop_override_and_cloud_pool_selector.sql` вместе с
+//     cloud-selector-шагом IPAM-каскада (`dropguard.json`: version 2, kind
+//     `retire`). Применённую миграцию не правят, поэтому `0001` создаёт таблицу
+//     вечно, а до головы цепочки она не доживает;
+//   * `vpc_watch_cursors` — снята `20260828114800_drop_watch_cursors.sql`
+//     (kacho#1148): позиция подписки принадлежит клиенту, серверных курсоров по
+//     подписчику не существует.
+//
+// Ни той, ни другой нет и в перечне на странице модели данных — и быть не должно.
 const DATABASE_SCHEMA_DBML = `
 Table "kacho_vpc"."networks" {
   "id" text [pk, not null]
@@ -33,9 +52,9 @@ Table "kacho_vpc"."networks" {
 Table "kacho_vpc"."subnets" {
   "id" text [pk, not null]
   "project_id" text [not null]
-  "name" text [note: "partial UNIQUE WHERE name<>''"]
+  "name" text [not null, note: 'UNIQUE (project_id, name)']
   "network_id" text [not null, note: 'FK → networks (RESTRICT)']
-  "zone_id" text [note: 'cross-service ref → compute.zones (no FK)']
+  "zone_id" text [note: 'cross-service ref → geo.Zone (no FK); владелец каталога размещения — kacho-geo, не compute']
   "v4_cidr_blocks" text_array
   "v6_cidr_blocks" text_array
   "route_table_id" text [note: 'FK → route_tables (SET NULL)']
@@ -48,7 +67,7 @@ Table "kacho_vpc"."subnets" {
 Table "kacho_vpc"."addresses" {
   "id" text [pk, not null]
   "project_id" text [not null]
-  "name" text [note: "partial UNIQUE WHERE name<>''"]
+  "name" text [not null, note: 'UNIQUE (project_id, name)']
   "used" bool
   "deletion_protection" bool
   "external_ipv4" jsonb
@@ -62,7 +81,7 @@ Table "kacho_vpc"."addresses" {
 Table "kacho_vpc"."route_tables" {
   "id" text [pk, not null]
   "project_id" text [not null]
-  "name" text [note: "partial UNIQUE WHERE name<>''"]
+  "name" text [not null, note: 'UNIQUE (project_id, name)']
   "network_id" text [not null, note: 'FK → networks (NO ACTION)']
   "static_routes" jsonb
   "created_at" timestamptz [not null]
@@ -72,7 +91,7 @@ Table "kacho_vpc"."route_tables" {
 Table "kacho_vpc"."security_groups" {
   "id" text [pk, not null]
   "project_id" text [not null]
-  "name" text [note: "partial UNIQUE WHERE name<>''"]
+  "name" text [not null, note: 'UNIQUE (project_id, name)']
   "network_id" text [note: 'FK → networks (RESTRICT, nullable)']
   "default_for_network" bool
   "rules" jsonb
@@ -83,7 +102,7 @@ Table "kacho_vpc"."security_groups" {
 Table "kacho_vpc"."gateways" {
   "id" text [pk, not null]
   "project_id" text [not null]
-  "name" text [note: "partial UNIQUE WHERE name<>''"]
+  "name" text [not null, note: 'UNIQUE (project_id, name)']
   "gateway_type" text
   "created_at" timestamptz [not null]
   Note: 'Gateway — выход наружу. Вид (NAT / EGRESS_ONLY) и подсеть-якорь задаются при создании и неизменяемы; сеть и размещение наследуются от подсети.'
@@ -92,7 +111,7 @@ Table "kacho_vpc"."gateways" {
 Table "kacho_vpc"."network_interfaces" {
   "id" text [pk, not null]
   "project_id" text [not null]
-  "name" text [note: "partial UNIQUE WHERE name<>''"]
+  "name" text [not null, note: 'UNIQUE (project_id, name)']
   "subnet_id" text [not null, note: 'FK → subnets (RESTRICT)']
   "v4_address_ids" jsonb [note: 'soft-ref → addresses; CHECK len<=1']
   "v6_address_ids" jsonb [note: 'soft-ref → addresses; CHECK len<=1']
@@ -102,6 +121,18 @@ Table "kacho_vpc"."network_interfaces" {
   "status" text
   "created_at" timestamptz [not null]
   Note: 'NetworkInterface — самостоятельный сетевой интерфейс, отдельно от нагрузки. ≤1 v4 / ≤1 v6.'
+}
+
+Table "kacho_vpc"."cidr_groups" {
+  "id" text [pk, not null]
+  "project_id" text [not null, note: 'cross-service ref → project (no FK)']
+  "name" text [not null, note: 'UNIQUE (project_id, name)']
+  "description" text
+  "labels" jsonb
+  "v4_count" int [note: 'материализованная кардинальность состава: CHECK не умеет считать строки дочерней таблицы']
+  "v6_count" int [note: 'то же по второму семейству; инкремент берёт row-lock родителя и сериализует конкурентные вставки']
+  "created_at" timestamptz [not null]
+  Note: 'CidrGroup — именованный набор CIDR-блоков, на который ссылается правило SecurityGroup. Состав — в дочерней cidr_group_blocks (на диаграмме не рисуется).'
 }
 
 Table "kacho_vpc"."address_pools" {
@@ -166,6 +197,7 @@ const DATABASE_SCHEMA_TABLE_META = {
   gateways: { tone: 'resource', position: { column: 1, row: 3 } },
   network_interfaces: { tone: 'resource', position: { column: 2, row: 0 } },
   addresses: { tone: 'resource', position: { column: 2, row: 1 } },
+  cidr_groups: { tone: 'resource', position: { column: 0, row: 2 } },
   address_pools: { tone: 'binding', position: { column: 2, row: 3 } },
   operations: { tone: 'system', position: { column: 3, row: 0 } },
   vpc_outbox: { tone: 'system', position: { column: 3, row: 1 } },

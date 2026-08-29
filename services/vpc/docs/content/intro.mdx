@@ -244,6 +244,16 @@ FK-ограничения (`RESTRICT`) требуют удалять детей 
     <tr><td><strong>kacho-api-gateway</strong></td><td>Edge: gRPC-proxy + REST mux</td></tr>
     <tr><td><strong>kacho-iam</strong></td><td>Account / Project / авторизация (per-RPC Check)</td></tr>
     <tr><td><strong>kacho-geo</strong></td><td>Geography (Region / Zone) — валидация <code>zoneId</code></td></tr>
-    <tr><td><strong>kacho-compute</strong></td><td>Instance / Disk / Image / Snapshot (peer-консумер VPC)</td></tr>
+    <tr><td><strong>kacho-compute</strong></td><td>Instance / MachineType (peer-консумер VPC)</td></tr>
+    <tr><td><strong>kacho-storage</strong></td><td>Volume / Snapshot / Image / DiskType — блочное хранение</td></tr>
   </tbody>
 </table>
+
+:::note Блочное хранение стояло здесь у вычислений — оно у хранения
+`Volume` / `Snapshot` / `Image` / `DiskType` служит **kacho-storage**; раскол домена
+завершён, и контрактов этих ресурсов у вычислений нет вовсе
+(`ls proto/kacho/cloud/compute/v1/ | grep -iE 'disk|image|snapshot'` — пусто). Прежняя
+строка называла у вычислений `Disk` / `Image` / `Snapshot`. Имя домена — значение
+параметра (владелец потока изменений, REST-префикс, префикс идентификатора операции), и
+устаревшее имя ведёт вызывающего не туда, а не только вводит в заблуждение.
+:::
