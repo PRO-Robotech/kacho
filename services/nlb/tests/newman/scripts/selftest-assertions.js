@@ -56,6 +56,16 @@
 //       растущий безусловно, прошёл бы первое утверждение и лгал бы на каждом
 //       здоровом прогоне.                                            → ОТКАЗ
 //
+//   F (ведомость ожидания прочих видов) — то же требование к четырём остальным
+//       видам ожидания, ведущим ту же ведомость: видимость чужой ссылки, переезд
+//       операции, сходимость состояния, появление в списке. Расширить на них E
+//       нельзя — он выводит переходный ответ из полосы КОДОВ, а у этих видов
+//       переходность задаётся телом (замерено: 123 находки из 123, все ложные).
+//       Поэтому полоса объявляется ПО ВИДУ и проверяется исполнением: шаг обязан
+//       повториться на объявленном переходном и не повториться на объявленном
+//       спокойном, иначе полоса сменилась и судить нечем. Вид без описания —
+//       тоже отказ: иначе новая форма ожидания завела бы слепую зону.  → ОТКАЗ
+//
 // Плюс перепись осмотренного: «ноль находок» обязано быть отличимо от «ноль
 // прочитанного». И проверка собственной предпосылки: инъекция дефекта ловится,
 // законная конструкция той же формы пропускается.
@@ -701,6 +711,101 @@ function prove() {
     problems.push('предикат E не заметил, что полоса повтора из скрипта не читается');
   }
 
+  // --- предикат F: инъекция в обе стороны, ПО ВИДАМ ---
+  // Обёртки прочих видов воспроизводятся здесь в той форме, какую даёт генератор
+  // (та же вторая копия, что у E, и по той же причине: гейт на JS не импортирует
+  // генератор на python). Расхождение копии с оригиналом ловит не эта пара, а обход
+  // коллекций: он судит ПОРОЖДЁННОЕ, и на неопознанной полосе отказывает.
+  const kindOf = (key) => WAIT_KINDS.find((k) => k.key === key);
+  const ledgerTail = (guard) => [
+    `if (${guard}) {`,
+    "  const _wbE = (parseInt(pm.environment.get('warmBudgetExhausted'), 10) || 0) + 1;",
+    "  pm.environment.set('warmBudgetExhausted', String(_wbE));",
+    "  const _wbL = pm.environment.get('warmBudgetExhaustedSteps') || '';",
+    "  pm.environment.set('warmBudgetExhaustedSteps',",
+    "    (_wbL ? _wbL + ' ' : '') + pm.info.requestName);",
+    "}",
+  ];
+  const crGuard = (tail) => [
+    "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+    "  pm.environment.set('_crRetryCount', '0');",
+    "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+    "}",
+    "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+    "let _crNotFound = false;",
+    "try {",
+    "  const _crb = pm.response.json();",
+    "  _crNotFound = (_crb.details || []).some(d => d && d.reason === 'PEER_RESOURCE_MISSING');",
+    "} catch (e) {}",
+    "if (_crNotFound && _crc < 3) {",
+    "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+    "  pm.execution.setNextRequest(pm.info.requestName);",
+    "  return;",
+    "}",
+  ].concat(tail).concat([
+    "pm.environment.unset('_crRetryCount');",
+    "pm.environment.unset('_crRetryStarted');",
+    "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+  ]);
+  const stGuard = (tail) => [
+    "if (pm.environment.get('_stRetryStarted') !== pm.info.requestName) {",
+    "  pm.environment.set('_stRetryCount', '0');",
+    "  pm.environment.set('_stRetryStarted', pm.info.requestName);",
+    "}",
+    "const _stc = parseInt(pm.environment.get('_stRetryCount') || '0', 10);",
+    "let _converged = false;",
+    "try { _converged = !!(pm.response.json().converged === true); } catch (e) { _converged = false; }",
+    "const _stTransient = [403,404].includes(pm.response.code) || (pm.response.code === 200 && !_converged);",
+    "if (_stTransient && _stc < 3) {",
+    "  pm.environment.set('_stRetryCount', String(_stc + 1));",
+    "  pm.execution.setNextRequest(pm.info.requestName);",
+    "  return;",
+    "}",
+  ].concat(tail).concat([
+    "pm.environment.unset('_stRetryCount');",
+    "pm.environment.unset('_stRetryStarted');",
+  ]);
+
+  // F(а) дефект — концовка без ведомости: исчерпание бесследно.
+  if (checkStepF(mkStep('peer-wait-before-cr1', crGuard([])), kindOf('cr')).verdict !== 'finding') {
+    problems.push('предикат F не поймал возвращённый дефект (исчерпание бюджета прочего вида бесследно)');
+  }
+  // F(б) законная форма — ведомость ведётся: гейт обязан молчать.
+  if (checkStepF(mkStep('peer-wait-after-cr2', crGuard(ledgerTail('_crNotFound && _crc >= 3'))), kindOf('cr')).verdict !== 'ok') {
+    problems.push('предикат F ошибочно поймал законную форму прочего вида (ведомость ведётся)');
+  }
+  // F(в) счётчик, растущий БЕЗУСЛОВНО: первое утверждение F прошло бы его одно.
+  if (checkStepF(mkStep('peer-wait-always-cr3', crGuard(ledgerTail('true'))), kindOf('cr')).verdict !== 'finding') {
+    problems.push('предикат F не поймал безусловный счётчик прочего вида (растёт там, где ждать было нечего)');
+  }
+  // F(г) сменившаяся полоса: шаг не повторяется на объявленном переходном — судить
+  // вслепую нельзя, и молчать об этом тоже.
+  if (checkStepF(mkStep('peer-wait-shapeless-cr4', [
+    "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+  ]), kindOf('cr')).verdict !== 'unrecognised') {
+    problems.push('предикат F не заметил, что объявленная полоса повтора вида не та');
+  }
+  // F(д) ДРУГОЙ вид, судимый СВОИМ описанием: полоса у него иная (переходным
+  // считается и успешный ответ с несошедшимся телом) — и он обязан пройти.
+  if (checkStepF(mkStep('state-wait-after-st5', stGuard(ledgerTail('_stTransient && _stc >= 3'))), kindOf('st')).verdict !== 'ok') {
+    problems.push('предикат F не признал исправным ожидание сходимости состояния, судимое своим описанием');
+  }
+  // F(е) ТО ЖЕ исправное ожидание, судимое описанием ЧУЖОГО вида. Ровно из-за этого
+  // расширение предиката E на прочие виды дало 123 ложные находки. F обязан не
+  // обвинить, а ОТКАЗАТЬСЯ судить: смешать эти два исхода значило бы либо вернуть
+  // слепую зону, либо краснеть на исправном.
+  if (checkStepF(mkStep('state-wait-after-st6', stGuard(ledgerTail('_stTransient && _stc >= 3'))), kindOf('cr')).verdict !== 'unrecognised') {
+    problems.push('предикат F судил ожидание чужим описанием вида вместо отказа (обвинение исправного)');
+  }
+  // F(ж) разбор вида: имя ведёт к описанию, посторонняя форма — ни к какому.
+  for (const [nm, key] of [['x-cr7', 'cr'], ['poll-op-7', 'op'], ['x-st7', 'st'], ['x-lst7', 'lst']]) {
+    const got = waitKindOf({ name: nm });
+    if (!got || got.key !== key) problems.push(`разбор вида ожидания: '${nm}' не отнесён к виду '${key}'`);
+  }
+  if (waitKindOf({ name: 'wait-of-a-brand-new-shape-9' })) {
+    problems.push('разбор вида ожидания: посторонняя форма отнесена к известному виду — новая слепая зона прошла бы молча');
+  }
+
   return problems;
 }
 
@@ -898,6 +1003,132 @@ function checkStepE(step) {
   return null;
 }
 
+// --- предикат F: та же ведомость у ПРОЧИХ видов ожидания ----------------------
+//
+// ПРЕДМЕТ (задачи #1420, #1468). Предикат E полон относительно СВОЕГО предмета —
+// ожидания окна материализации прав. Но ту же ведомость `warmBudgetExhausted` ведут
+// ещё четыре вида ожидания, и свойство «исчерпание отличимо от ненадобности» у них
+// не проверялось ничем: гейт честно печатал «НЕ осмотрено», а «ноль находок» по ним
+// означало «не искали».
+//
+// ПОЧЕМУ НЕ РАСШИРЕНИЕ E — ЗАМЕРЕНО, А НЕ ПРЕДПОЛОЖЕНО. E выводит переходный ответ
+// из полосы КОДОВ, объявленной в скрипте. У прочих видов переходность задаётся не
+// кодом: у видимости чужой ссылки — машинным признаком промаха соседа в теле, у
+// сходимости состояния переходным считается и успешный ответ с несошедшимся телом,
+// у появления в списке — двухсотка без своего идентификатора. Прогон E с отбором,
+// расширенным на них, дал 123 находки из 123 осмотренных — все ложные: требование
+// одного вида, применённое к другому, краснеет на исправном.
+//
+// ПОЭТОМУ ПОЛОСА ОБЪЯВЛЯЕТСЯ ПО ВИДУ — И ПРОВЕРЯЕТСЯ ИСПОЛНЕНИЕМ. У каждого вида
+// свой подставной переходный ответ и свой ответ вне полосы повтора. Объявление не
+// принимается на веру: шаг обязан ПОВТОРИТЬСЯ на первом и НЕ повториться на втором,
+// иначе полоса сменилась — и это ОТКАЗ, а не тихое «ноль находок». Требование же,
+// собственно проверяемое, у всех видов одно и то же, и оно то же, что у E: бюджет,
+// исчерпанный на держащемся переходном ответе, обязан оставить в ведомости счёт И
+// имя шага; ответ вне полосы повтора обязан не оставить ничего.
+//
+// Вид, которому не нашлось описания, — тоже ОТКАЗ: иначе следующая форма ожидания
+// завела бы новую слепую зону ровно тем же способом, каким её завели эти четыре.
+const LEDGER_WRITE = "pm.environment.set('warmBudgetExhausted'";
+const OP_SELFTEST_ID = OP_OK.id;
+const DENY_BODY = { code: 7, message: 'permission denied', details: [] };
+const ABORTED_BODY = { code: 10, message: 'Aborted', details: [] };
+
+const WAIT_KINDS = [
+  {
+    key: 'cr',
+    label: 'видимость чужой ссылки',
+    name: /-cr\d+$/,
+    transient: { code: 400, body: PEER_MISS_BODY },
+    quiet: { code: 400, body: TERMINAL_BODY },
+  },
+  {
+    key: 'op',
+    label: 'переезд операции',
+    name: /^poll-op-/,
+    transient: { code: 200, body: { id: OP_SELFTEST_ID, done: true, error: { code: 9, message: 'subnet not found' } } },
+    quiet: { code: 200, body: OP_OK },
+    // Переезд снимает opId и уходит на шаг СОЗДАНИЯ; в настоящем прогоне тот ставит
+    // его заново. Без пересева петля обрывалась бы на первом круге, и «бюджет не
+    // исчерпан» читалось бы как дефект ведомости — обвинение исправного.
+    reseed: (env) => env.set('opId', OP_SELFTEST_ID),
+  },
+  {
+    key: 'st',
+    label: 'сходимость состояния',
+    name: /-st\d+$/,
+    transient: { code: 403, body: DENY_BODY },
+    quiet: { code: 409, body: ABORTED_BODY },
+  },
+  {
+    key: 'lst',
+    label: 'появление в списке',
+    name: /-lst\d+$/,
+    transient: { code: 200, body: {} },
+    quiet: { code: 403, body: DENY_BODY },
+  },
+];
+
+const waitKindOf = (step) => WAIT_KINDS.find((k) => k.name.test(step.name || ''));
+
+// ledgerAfter — доводит петлю ожидания до конца на ОДНОМ подставленном ответе и
+// возвращает след: повторился ли шаг с первого раза и что осталось в ведомости.
+function ledgerAfter(step, probe, kind) {
+  const exec = scriptOf(step, 'test');
+  const env = baseEnv();
+  let retriedFirst = null;
+  for (let i = 0; i < 400; i += 1) {
+    if (kind.reseed) kind.reseed(env);
+    const r = runScript(exec, { response: { code: probe.code, body: probe.body }, env, name: step.name });
+    if (retriedFirst === null) retriedFirst = r.retried;
+    if (!r.retried) break;
+  }
+  return {
+    retriedFirst,
+    count: parseInt(env.get('warmBudgetExhausted'), 10) || 0,
+    steps: env.get('warmBudgetExhaustedSteps') || '',
+  };
+}
+
+// checkStepF — три исхода, и различать их обязательно: `ok` (вид судим, свойство
+// держится), `finding` (вид судим, свойство нарушено), `unrecognised` (полоса не
+// та, что объявлена, — судить нечем). Слить последний с первым значило бы вернуть
+// слепую зону; слить со вторым — обвинить исправный шаг за смену формы обёртки.
+function checkStepF(step, kind) {
+  const exec = scriptOf(step, 'test');
+  if (!exec) {
+    return { verdict: 'unrecognised', message: `${step.name}: у шага нет test-скрипта, а ведомость он ведёт` };
+  }
+  const held = ledgerAfter(step, kind.transient, kind);
+  if (held.retriedFirst !== true) {
+    return { verdict: 'unrecognised', message:
+      `${step.name}: объявленный переходный ответ ${kind.transient.code} шаг НЕ повторяет — `
+      + `полоса повтора вида «${kind.label}» сменилась, и предикат F судил бы вслепую` };
+  }
+  if (held.count < 1) {
+    return { verdict: 'finding', message:
+      `${step.name}: переходный ответ ${kind.transient.code} (${kind.label}) держится всегда, бюджет исчерпан — `
+      + 'а следа нет: «прогреть не удалось» неотличимо от «прогрев не понадобился»' };
+  }
+  if (!held.steps.includes(step.name)) {
+    return { verdict: 'finding', message:
+      `${step.name}: исчерпание сосчитано, но шаг НЕ НАЗВАН — по величине не видно, `
+      + 'где именно бюджета не хватило, и разбор снова начинается с гипотезы' };
+  }
+  const calm = ledgerAfter(step, kind.quiet, kind);
+  if (calm.retriedFirst !== false) {
+    return { verdict: 'unrecognised', message:
+      `${step.name}: объявленный ответ вне полосы повтора ${kind.quiet.code} шаг ПОВТОРЯЕТ — `
+      + `полоса вида «${kind.label}» шире объявленной, и отрицательная половина F вакуумна` };
+  }
+  if (calm.count > 0) {
+    return { verdict: 'finding', message:
+      `${step.name}: ответ ${kind.quiet.code} вне полосы повтора — ждать было нечего, `
+      + 'а ведомость всё равно записала исчерпание: счётчик, растущий всегда, не величина' };
+  }
+  return { verdict: 'ok' };
+}
+
 const proveProblems = prove();
 if (proveProblems.length > 0) {
   console.error('SELFTEST FAIL: гейт не прошёл собственную проверку предпосылки:');
@@ -936,12 +1167,17 @@ const problemsB = [];
 const problemsC = [];
 const problemsD = [];
 const problemsE = [];
+const problemsF = [];
 let nCases = 0;
 let nSteps = 0;
 let nAuthedSteps = 0;   // перепись предмета предиката C: «ноль находок» != «ноль осмотренного»
 let nWrappedCreates = 0; // перепись предмета предиката D (то же требование)
 let nWarmSteps = 0;      // перепись предмета предиката E (осмотренные ожидания окна прав)
-let nOtherWaits = 0;     // ожидания ПРОЧИХ видов: предикат E их не судит — граница числом
+let nOtherWaits = 0;     // ожидания ПРОЧИХ видов — предмет предиката F
+// Перепись предиката F по видам: ДВЕ величины на вид. Одно число скрывает ровно
+// тот случай, ради которого F заведён: вид, чьи ожидания осмотрены, но не судятся.
+const waitTally = new Map(WAIT_KINDS.map((k) => [k.key, { label: k.label, seen: 0, judged: 0, found: 0 }]));
+let nWaitsOfUnknownKind = 0;
 
 for (const file of collections) {
   const label = file.replace('.postman_collection.json', '');
@@ -968,8 +1204,27 @@ for (const file of collections) {
       // «правильно ли ведут те, кто ведёт», и снятие ведомости с ОДНОГО шага прошло
       // бы мимо: он просто выпал бы из осмотренных. Проверено возвратом дефекта.
       if (!WRAPPED_WARM.test(st.name || '')) {
+        // Признак — ЗАПИСЬ в ведомость, а не упоминание её имени: имя стоит и в
+        // объясняющем комментарии рядом, и отбор по подстроке считал бы прозу.
         const ex = scriptOf(st, 'test');
-        if (ex && ex.join('\n').includes('warmBudgetExhausted')) nOtherWaits += 1;
+        if (!ex || !ex.join('\n').includes(LEDGER_WRITE)) continue;
+        nOtherWaits += 1;
+        const kind = waitKindOf(st);
+        if (!kind) {
+          nWaitsOfUnknownKind += 1;
+          problemsF.push(`${trail.join(' :: ')}: ${st.name}: вид ожидания не опознан — `
+            + 'ведомость ведётся, а описания полосы повтора для этого вида нет: '
+            + 'новая форма ожидания завела бы слепую зону тем же способом, каким её завели прежние');
+          continue;
+        }
+        const tally = waitTally.get(kind.key);
+        tally.seen += 1;
+        const f = checkStepF(st, kind);
+        if (f.verdict !== 'unrecognised') tally.judged += 1;
+        if (f.verdict !== 'ok') {
+          tally.found += 1;
+          problemsF.push(`${trail.join(' :: ')}: ${f.message}`);
+        }
         continue;
       }
       nWarmSteps += 1;
@@ -989,8 +1244,16 @@ console.log(`  предикат C (опрос ведёт не тот субъе�
   + `   [шагов с явным субъектом осмотрено: ${nAuthedSteps}]`);
 console.log(`  предикат D (ретрай peer-полосы: ловит переходное / не глотает терминальное): ${problemsD.length}`
   + `   [обёрнутых create-шагов осмотрено: ${nWrappedCreates}]`);
-console.log(`  предикат E (ведомость ожидания: исчерпание отличимо от ненадобности): ${problemsE.length}`
-  + `   [ожиданий окна прав осмотрено: ${nWarmSteps}; ожиданий прочих видов НЕ осмотрено: ${nOtherWaits}]`);
+console.log(`  предикат E (ведомость ожидания окна прав: исчерпание отличимо от ненадобности): ${problemsE.length}`
+  + `   [ожиданий ${nWarmSteps} · судятся ${nWarmSteps}]`);
+console.log(`  предикат F (та же ведомость у прочих видов; полоса объявлена по виду и проверена исполнением): ${problemsF.length}`
+  + `   [ожиданий ${nOtherWaits}]`);
+for (const t of waitTally.values()) {
+  console.log(`      ${(t.label + ':').padEnd(26)}ожиданий ${String(t.seen).padStart(3)}`
+    + ` · судятся ${String(t.judged).padStart(3)} · находок ${t.found}`);
+}
+console.log(`      ${'вид не опознан:'.padEnd(26)}ожиданий ${String(nWaitsOfUnknownKind).padStart(3)}`
+  + ` · судятся   0 · находок ${nWaitsOfUnknownKind}`);
 
 // --- шапка сверяется с ВЕРДИКТОМ ---------------------------------------------
 //
@@ -1033,7 +1296,7 @@ function headerAgainstVerdict(letters) {
 
 // Накопители, дающие вердикт. ЕДИНСТВЕННЫЙ источник и для `fatal`, и для сверки
 // шапки: перечень, выписанный вторым местом, разошёлся бы с первым молча.
-const VERDICT = { A: problemsA, B: problemsB, C: problemsC, D: problemsD, E: problemsE };
+const VERDICT = { A: problemsA, B: problemsB, C: problemsC, D: problemsD, E: problemsE, F: problemsF };
 const headerProblems = headerAgainstVerdict(Object.keys(VERDICT));
 console.log(`  шапка называет предикаты вердикта (${Object.keys(VERDICT).join('')}): ${headerProblems.length}`);
 
@@ -1062,6 +1325,13 @@ if (nWarmSteps === 0) {
   // бесследно), либо сменившийся суффикс обёртки; и то и другое обязано быть отказом,
   // а не тихим «ноль находок».
   console.error('SELFTEST FAIL: ни одного ожидания с ведомостью — предикату E нечего проверять');
+  process.exit(1);
+}
+if (nOtherWaits === 0) {
+  // Предпосылка предиката F: ожидания ПРОЧИХ видов в дереве ЕСТЬ и ведут ведомость.
+  // Их исчезновение — либо снятая ведомость (тогда исчерпание снова бесследно), либо
+  // сменившийся признак записи; и то и другое обязано быть отказом, а не тишиной.
+  console.error('SELFTEST FAIL: ни одного ожидания прочих видов — предикату F нечего проверять');
   process.exit(1);
 }
 if (nAuthedSteps === 0) {
