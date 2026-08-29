@@ -25,6 +25,7 @@ import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { InlineResourceEditForm } from "@shared/components/organisms/InlineResourceEditForm";
 import { OperationsTab } from "@shared/components/organisms/OperationsTab";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { MonoValue } from "@shared/components/atoms/CopyableId/MonoValue";
@@ -153,10 +154,20 @@ export function ResourceDetailPage({
   // inline-edit не используется → всегда false.
   const editing = false;
 
+  // Карточка узнаёт о своих изменениях ПОТОКОМ (#1021). Опрос выключается
+  // только на доказанном покрытии — то есть когда владелец журнала сам назвал
+  // этот вид в своём словаре; иначе он остаётся прежним.
+  const { streamed } = useResourceStream({
+    specId: spec.id,
+    projectId: params.projectId ?? project?.id ?? null,
+    invalidate: [spec.id, "detail", uid],
+    enabled: !!uid,
+  });
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [spec.id, "detail", uid],
     queryFn: () => api.get<Record<string, unknown>>(`${spec.apiPath}/${uid}`),
-    refetchInterval: 3_000,
+    refetchInterval: streamed ? false : 3_000,
     enabled: !!uid,
     staleTime: 0,
   });
@@ -722,6 +733,10 @@ function JsonIntTab({ path, queryKey }: { path: string; queryKey: unknown[] }) {
     queryFn: () => api.get<unknown>(path),
     // JSON-таб — read-only снимок; частый поллинг только гонял бы Monaco. Обновляем
     // существенно реже (перекормка редактора вместо реального обновления UX).
+    // поллинг остаётся: это ВНУТРЕННЯЯ проекция ресурса (`internalGetPath`,
+    // слушатель :9091), и в поток она не попадает — журнал несёт публичное
+    // состояние ресурса, а инфраструктурные поля живут только во внутреннем
+    // ответе (two-projection).
     refetchInterval: 30_000,
     staleTime: 10_000,
   });

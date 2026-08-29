@@ -20,6 +20,7 @@
 import { useMemo, useState } from "react";
 import { HeaderSlotPortal } from "@shared/components/organisms/DetailShell";
 import { useQuery } from "@tanstack/react-query";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 import { Space } from "antd";
 import { ResourceTable, type Column } from "@/components/organisms/ResourceTable";
 import { api } from "@/api/client";
@@ -41,6 +42,23 @@ const LISTENER_SPEC = REGISTRY["listeners"];
 export function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId: string | null }) {
   const [query, setQuery] = useState("");
 
+  // ЧТЕНИЕ ПО СОБЫТИЮ, ОПРОС — ПОКА СОБЫТИЙ НЕТ (#1021). Признак покрытия свой
+  // на КАЖДЫЙ вид: слушатели и группы целей — разные виды словаря владельца, и
+  // объявить их одним признаком значило бы снять опрос с того, что владелец не
+  // называл.
+  const { streamed: listenersStreamed } = useResourceStream({
+    specId: "listeners",
+    projectId: projectId ?? null,
+    invalidate: ["listeners", "by-lb", projectId, lbId],
+    enabled: !!projectId,
+  });
+  const { streamed: targetGroupsStreamed } = useResourceStream({
+    specId: "target-groups",
+    projectId: projectId ?? null,
+    invalidate: ["target-groups", "by-lb", projectId, lbId],
+    enabled: !!projectId,
+  });
+
   // Листенеры проекта → свои (фильтр по load_balancer_id, как у связанного
   // таба) → из них выводим привязанные группы.
   const listeners = useQuery({
@@ -51,7 +69,7 @@ export function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId
         pageSize: "500",
       }),
     enabled: !!projectId,
-    refetchInterval: 5000,
+    refetchInterval: listenersStreamed ? false : 5000,
   });
 
   // Полный список TG проекта — резолвим полные объекты для табличных колонок
@@ -64,7 +82,7 @@ export function LbTargetGroupsTab({ lbId, projectId }: { lbId: string; projectId
         pageSize: "500",
       }),
     enabled: !!projectId,
-    refetchInterval: 5000,
+    refetchInterval: targetGroupsStreamed ? false : 5000,
   });
 
   const wiring = useMemo<TargetGroupWiring[]>(() => {

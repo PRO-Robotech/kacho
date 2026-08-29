@@ -13,6 +13,7 @@ import { Button, Input, Space, Typography } from "antd";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { PlusOutlined } from "@ant-design/icons";
 import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailPage";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
 import { RowActionsMenu } from "@shared/components/molecules/RowActionsMenu";
 import { ResourceFormModal } from "@shared/components/organisms/ResourceFormModal";
@@ -80,6 +81,30 @@ export function NetworkDetailPage() {
     setSearchParams(params, { replace: true });
   }, [networkId, searchParams, setSearchParams]);
 
+  // ЧТЕНИЕ ПО СОБЫТИЮ, ОПРОС — ПОКА СОБЫТИЙ НЕТ (#1021).
+  //
+  // Эти списки — чужие ресурсы, показанные на карточке, и меняются они реже,
+  // чем опрашивались. Признак покрытия свой на КАЖДЫЙ вид: владелец объявляет
+  // словарь целиком, но покрытым считается ровно названный им вид, а не домен.
+  const { streamed: subnetsStreamed } = useResourceStream({
+    specId: "subnets",
+    projectId: projectId ?? null,
+    invalidate: ["subnets", "list", projectId],
+    enabled: !!projectId,
+  });
+  const { streamed: routeTablesStreamed } = useResourceStream({
+    specId: "route-tables",
+    projectId: projectId ?? null,
+    invalidate: ["route-tables", "list", projectId],
+    enabled: !!projectId,
+  });
+  const { streamed: securityGroupsStreamed } = useResourceStream({
+    specId: "security-groups",
+    projectId: projectId ?? null,
+    invalidate: ["security-groups", "list", projectId],
+    enabled: !!projectId,
+  });
+
   const { data: subnetData } = useQuery({
     queryKey: ["subnets", "list", projectId],
     queryFn: () =>
@@ -87,7 +112,7 @@ export function NetworkDetailPage() {
         project_id: projectId!,
         pageSize: "500",
       }),
-    refetchInterval: 5000,
+    refetchInterval: subnetsStreamed ? false : 5000,
     enabled: !!projectId,
   });
 
@@ -98,7 +123,7 @@ export function NetworkDetailPage() {
         project_id: projectId!,
         pageSize: "500",
       }),
-    refetchInterval: 5000,
+    refetchInterval: routeTablesStreamed ? false : 5000,
     enabled: !!projectId,
   });
 
@@ -109,7 +134,7 @@ export function NetworkDetailPage() {
         project_id: projectId!,
         pageSize: "500",
       }),
-    refetchInterval: 5000,
+    refetchInterval: securityGroupsStreamed ? false : 5000,
     enabled: !!projectId,
   });
 

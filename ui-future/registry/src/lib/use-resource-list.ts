@@ -38,6 +38,9 @@ export function useResourceList<T = Record<string, unknown>>(
   return useQuery({
     queryKey: [spec.id, "list", filterField, filterValue],
     queryFn: () => api.list<Record<string, T[]>>(path, q),
+    // поллинг остаётся: журнала у registry нет — глагол подписки служат три
+    // владельца (compute, nlb, vpc), и реестра среди них не значится.
+    // Подписаться не на что, поток отверг бы `owner` как неизвестного.
     refetchInterval: 3_000,
     enabled: (!filterField || !!filterValue) && resolved,
     staleTime: 0,
@@ -90,6 +93,7 @@ export function useResourceListAllPages<T = Record<string, unknown>>(spec: Resou
       const rows = await fetchAllPages<T>(spec.apiPath, spec.payloadKey);
       return { [spec.payloadKey]: rows } as Record<string, T[]>;
     },
+    // поллинг остаётся: журнала у registry нет, подписаться не на что.
     refetchInterval: 3_000,
     // Guard: не фетчим, пока apiPath несёт неразрешённый `{...}` (родитель неизвестен).
     enabled: opts.enabled && !UNRESOLVED_PLACEHOLDER.test(spec.apiPath),
