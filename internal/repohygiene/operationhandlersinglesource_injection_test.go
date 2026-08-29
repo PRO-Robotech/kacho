@@ -676,3 +676,160 @@ var errSomething error
 		t.Fatal("возврат с непустым вторым значением принят за прослойку — это уже не перевод")
 	}
 }
+
+// ─── ПРОКСИ ВЫВЕДЕН ИЗ ОСИ ОБРАБОТЧИКА — И ТОЛЬКО ПРОКСИ ────────────────────
+
+// opProxySrc — синтетический ПРОКСИ: вкладывает серверную заглушку контракта и
+// держит полем КЛИЕНТ того же контракта. `withClient=false` снимает ВТОРУЮ
+// половину пары и оставляет первую — то есть даёт законного близнеца-обработчика
+// той же формы.
+func opProxySrc(withClient bool) string {
+	client := ""
+	if withClient {
+		client = "\n\tbackends map[string]operationpb.OperationServiceClient"
+	}
+	return opSrc("operationpb", `
+type P struct {
+	operationpb.UnimplementedOperationServiceServer`+client+`
+}
+
+func (p *P) Get(ctx context.Context, req *operationpb.GetOperationRequest) (*operationpb.Operation, error) {
+	return nil, nil
+}
+`)
+}
+
+// ПРОКСИ — не форк обработчика, и выведен он ПО ПОСТРОЕНИЮ, а не ведомостью.
+//
+// Пара обязательна: молчание на прокси само по себе неотличимо от мёртвой оси
+// обработчика. Близнец отличается ОДНИМ полем — тем самым, которое и делает тип
+// прокси, — поэтому инъекция роняет ровно проверяемое и ничего кроме.
+func TestProxyIsDerivedOutOfTheHandlerAxisButOnlyProxy(t *testing.T) {
+	// Прокси: пара «серверная заглушка + клиент того же контракта» — молчит.
+	f, cen := opInjectAudit(t, map[string]string{"gateway/internal/x/p.go": opProxySrc(true)})
+	if len(f) != 0 {
+		t.Fatalf("прокси объявлен форком обработчика — ложная находка: %+v", f)
+	}
+	if cen.Proxies == 0 {
+		t.Fatalf("прокси не опознан вовсе: перепись обязана его НАЗВАТЬ, иначе «обработчиков 0» "+
+			"не отличить от «ось мертва»: %+v", cen)
+	}
+	if cen.Handlers != 0 {
+		t.Fatalf("прокси засчитан в ось обработчика: %+v", cen)
+	}
+
+	// Законный близнец: та же форма БЕЗ клиента — обычный форк обработчика,
+	// и он обязан находиться. Без этой половины «прокси молчит» доказывало бы
+	// только то, что ось перестала работать.
+	g, gcen := opInjectAudit(t, map[string]string{"gateway/internal/x/p.go": opProxySrc(false)})
+	if len(g) == 0 {
+		t.Fatalf("форк обработчика без клиента контракта НЕ найден — вывод прокси снял ось "+
+			"целиком, а не одного её участника: %+v", gcen)
+	}
+	if gcen.Proxies != 0 {
+		t.Fatalf("тип без клиента контракта опознан как прокси — дискриминатор вырожден: %+v", gcen)
+	}
+}
+
+// ─── ОСЬ ПРОЧИТАННОГО ВЛАДЕЛЬЦА ─────────────────────────────────────────────
+
+// opRecordedOwnerSrc — тело функции, читающей владельца с самой строки.
+func opRecordedOwnerSrc(body string) string {
+	return opSrc("operationpb", `
+type P struct {
+	operationpb.UnimplementedOperationServiceServer
+	backends map[string]operationpb.OperationServiceClient
+}
+`+body)
+}
+
+// Полоса, решающая по прочитанной строке САМА, — находка.
+func TestInjectionRecordedOwnerLaneDecidingItselfIsAFinding(t *testing.T) {
+	src := opRecordedOwnerSrc(`
+func check(callerID string, op *operationpb.Operation) error {
+	if callerID != op.GetPrincipalId() {
+		return errDenied
+	}
+	return nil
+}
+
+var errDenied error
+`)
+	f, cen := opInjectAudit(t, map[string]string{"gateway/internal/x/p.go": src})
+	if len(f) == 0 {
+		t.Fatalf("самодельная полоса владения по прочитанной строке НЕ найдена: %+v", cen)
+	}
+	if cen.RecordedOwnership == 0 {
+		t.Fatalf("перепись не назвала осмотренного по этой оси: %+v", cen)
+	}
+	if !strings.Contains(f[0].Why, "прочитанного владельца") {
+		t.Fatalf("находка не называет ось, по которой найдена: %+v", f[0])
+	}
+}
+
+// Законный близнец: та же функция ОТДАЁТ решение санкционированному глаголу.
+func TestRecordedOwnerLaneDelegatingIsSilent(t *testing.T) {
+	src := opRecordedOwnerSrc(`
+func check(callerType, callerID string, op *operationpb.Operation) error {
+	return operations.CheckRecordedOwnership(
+		operations.Principal{Type: callerType, ID: callerID},
+		operations.Principal{Type: op.GetPrincipalType(), ID: op.GetPrincipalId()},
+	)
+}
+`)
+	f, cen := opInjectAudit(t, map[string]string{"gateway/internal/x/p.go": src})
+	if len(f) != 0 {
+		t.Fatalf("делегирующая полоса объявлена находкой — ложное срабатывание: %+v", f)
+	}
+	if cen.RecordedOwnership == 0 {
+		t.Fatalf("делегирующая полоса не осмотрена вовсе — молчание пустое: %+v", cen)
+	}
+}
+
+// Обход «свой выход, потом общий глагол» — тоже находка: требуется КАЖДЫЙ выход.
+//
+// Присутствия вызова недостаточно, и это не педантизм: собственный ранний
+// возврат и есть та форма, ради которой полосы расходятся.
+func TestInjectionEarlyReturnBesideTheSanctionedVerbIsAFinding(t *testing.T) {
+	src := opRecordedOwnerSrc(`
+func check(callerType, callerID string, op *operationpb.Operation) error {
+	if callerType == "system" {
+		return nil
+	}
+	return operations.CheckRecordedOwnership(
+		operations.Principal{Type: callerType, ID: callerID},
+		operations.Principal{Type: op.GetPrincipalType(), ID: op.GetPrincipalId()},
+	)
+}
+`)
+	f, _ := opInjectAudit(t, map[string]string{"gateway/internal/x/p.go": src})
+	if len(f) == 0 {
+		t.Fatal("свой ранний выход рядом с санкционированным глаголом принят за делегирование — " +
+			"обход, ради которого ось и заведена, проезжает")
+	}
+}
+
+// Те же имена геттеров у ЧУЖОГО контракта — не предмет этой оси.
+//
+// Ответ фасада личности несёт `GetPrincipalType`/`GetPrincipalId` и к операциям
+// отношения не имеет. Без этого контроля ось краснела бы на соседнем предмете,
+// и её сняли бы первым же прочтением.
+func TestRecordedOwnerAxisIgnoresForeignContracts(t *testing.T) {
+	src := `package middleware
+
+import (
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+)
+
+func lane(resp *iamv1.ResolveSubjectResponse) (string, string) {
+	return resp.GetPrincipalType(), resp.GetPrincipalId()
+}
+`
+	f, cen := opInjectAudit(t, map[string]string{"gateway/internal/middleware/m.go": src})
+	if len(f) != 0 {
+		t.Fatalf("ось прочитанного владельца сработала на чужом контракте: %+v", f)
+	}
+	if cen.RecordedOwnership != 0 {
+		t.Fatalf("чужой контракт засчитан в перепись этой оси: %+v", cen)
+	}
+}
