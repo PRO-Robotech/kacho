@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, type Page, type Locator } from "@playwright/test";
-import { runTag, tenantWithProject, test } from "./fixtures";
+import { STREAM_PATH, runTag, tenantWithProject, test } from "./fixtures";
 import { dataRowSelector } from "../../shared/src/test/console-table-rows";
 
 /**
@@ -490,19 +490,6 @@ const LISTS = [
   { url: "nlb/load-balancers", edge: "/nlb/v1/networkLoadBalancers" },
 ];
 
-/**
- * Адрес потока изменений — вторая, наравне с опросом, механика самообновления.
- *
- * Литерал, а не импорт: алиаса на `shared` у проб нет, и тот же адрес выписан в
- * `subscription-stream.spec.ts`. Расхождение здесь ЗАКРЫТОЕ — см. предпосылку
- * ниже: перестанет совпадать, и ветвь потока не сработает, ужесточив предпосылку
- * до прежней. Ложно-зелёного такое расхождение дать не может.
- *
- * Что открытие приёмника событий вообще видно через `page.on("request")` —
- * ИЗМЕРЕНО, а не предположено: перехватываются два запроса, второй к этому пути.
- */
-const STREAM_PATH = "/subscription/v1/events";
-
 const LISTS_OUTSIDE_PROJECT = [
   { url: "/iam/roles", edge: "/iam/v1/roles" },
   { url: "/system/zones", edge: "/geo/v1/zones" },
@@ -554,6 +541,11 @@ test("список, который обновляется сам, не пред�
     //
     // Утверждение о кнопке ниже от этого НЕ слабеет: оно по-прежнему требует
     // нуля ручек и теперь доходит до ВСЕХ списков, а не только до опрашиваемых.
+    //
+    // Адрес потока (`STREAM_PATH` из `./fixtures`) — вторая, наравне с опросом,
+    // механика самообновления. Что открытие приёмника событий вообще ВИДНО через
+    // `page.on("request")` — ИЗМЕРЕНО, а не предположено: перехватываются два
+    // запроса, второй к этому пути.
     await expect
       .poll(
         () => {

@@ -6,7 +6,7 @@ import { expect, type Page } from "@playwright/test";
 // быть — вторая копия фикстур разошлась бы с первой молча. Проба приехала сюда из
 // каталога ожидания, когда её условие было создано поставкой, и путь помощников —
 // единственное, что переезд в ней изменил.
-import { createdResourceId, runTag, tenantWithProject, test } from "./fixtures";
+import { STREAM_PATH, createdResourceId, runTag, tenantWithProject, test } from "./fixtures";
 
 /**
  * Браузер читает поток изменений ЧЕРЕЗ КРАЙ.
@@ -64,7 +64,6 @@ import { createdResourceId, runTag, tenantWithProject, test } from "./fixtures";
  */
 const OWNER = "vpc";
 const KIND = "vpc_network";
-const STREAM = "/subscription/v1/events";
 
 /** Кадр потока в том виде, в каком его видит страница. */
 interface Frame {
@@ -222,7 +221,7 @@ test("страница узнаёт об изменении, сделанном 
   await page.goto(`/projects/${projectId}/vpc/networks`);
   const loadsAtStart = loads;
 
-  const url = `${STREAM}?owner=${OWNER}&projectId=${projectId}&kinds=${KIND}`;
+  const url = `${STREAM_PATH}?owner=${OWNER}&projectId=${projectId}&kinds=${KIND}`;
   await page.evaluate(
     (u) => (window as unknown as Record<string, (s: string) => void>).__kachoStreamOpen(u),
     url,
@@ -231,7 +230,7 @@ test("страница узнаёт об изменении, сделанном 
   await expect
     .poll(async () => (await frames(page)).filter((f) => f.event === "opened").length, {
       message:
-        `край не открыл поток на ${STREAM}: служебное сообщение открытия обязано ` +
+        `край не открыл поток на ${STREAM_PATH}: служебное сообщение открытия обязано ` +
         `прийти ПЕРВЫМ и ВСЕГДА, в том числе когда событий нет вовсе`,
       timeout: 30_000,
     })
@@ -273,14 +272,14 @@ test("возобновление с позиции не теряет событ�
   await page.goto(`/projects/${projectId}/vpc/networks`);
 
   const tag = runTag();
-  const url = `${STREAM}?owner=${OWNER}&projectId=${projectId}&kinds=${KIND}`;
+  const url = `${STREAM_PATH}?owner=${OWNER}&projectId=${projectId}&kinds=${KIND}`;
   await page.evaluate(
     (u) => (window as unknown as Record<string, (s: string) => void>).__kachoStreamOpen(u),
     url,
   );
   await expect
     .poll(async () => (await frames(page)).filter((f) => f.event === "opened").length, {
-      message: `край не открыл поток на ${STREAM}`,
+      message: `край не открыл поток на ${STREAM_PATH}`,
       timeout: 30_000,
     })
     .toBe(1);
