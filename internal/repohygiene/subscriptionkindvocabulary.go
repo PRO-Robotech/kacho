@@ -268,7 +268,7 @@ func auditOneFileForKindVocabulary(
 	if !ok {
 		return nil, nil
 	}
-	imports := importAliases(f)
+	imports := subscriptionKindImportAliases(f)
 
 	var findings []SubscriptionKindFinding
 	var walkErr error
@@ -467,8 +467,17 @@ var kindObjectTypeForm = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // KindVocabularyShape — слово написано не как имя типа модели прав.
 const KindVocabularyShape = "KIND-VOCABULARY-SHAPE"
 
-// importAliases — карта «локальное имя пакета → путь импорта» для одного файла.
-func importAliases(f *ast.File) map[string]string {
+// subscriptionKindImportAliases — карта «локальное имя пакета → путь импорта»
+// для одного файла.
+//
+// Имя несёт ПРЕДМЕТ гейта, а не только назначение помощника, и это соглашение
+// пакета, а не вкус: рядом по той же причине живёт `tokenCheckImportAliases` —
+// такой же обобщённый помощник, приписанный своему гейту. Безымянный по предмету
+// `importAliases` уже столкнулся здесь с одноимённым помощником соседнего гейта
+// (`operationhandlersinglesource.go`), у которого совсем другая подпись: каждая
+// половина собиралась в своей ветке, git расхождения не видел — файлы разные, —
+// а слияние перестало собираться. Приписка к предмету снимает класс by construction.
+func subscriptionKindImportAliases(f *ast.File) map[string]string {
 	out := make(map[string]string, len(f.Imports))
 	for _, imp := range f.Imports {
 		p, err := strconv.Unquote(imp.Path.Value)
