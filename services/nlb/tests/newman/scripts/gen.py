@@ -807,8 +807,12 @@ def _budget_ledger(transient_expr: str, count_var: str, budget: int) -> List[str
 # материализации у доменов разный, и одно число за всех было бы решением
 # за них. Здесь — у nlb окно замерено и НАМЕРЕННО не поднято (см. шапку `_budget_ledger`). Величина видна
 # на связывании, а не в прозе шапки: три копии из шести называли ЧУЖУЮ.
+# Голова полосы — общая (#1477). Шаг, чей адрес собран из НЕЗАХВАЧЕННОЙ переменной,
+# спрашивает не о ресурсе: окно видимости прав такой адрес не наполнит никогда, а
+# отказ по нему приходит кодом ИЗ полосы ожидания — то есть шаг выжигает весь бюджет
+# и падает, называя следствие вместо предмета.
 _rya = functools.partial(retry_until_authorized,
-                        budget=25, interval_ms=500, ledger=_budget_ledger)
+                        budget=25, interval_ms=500, ledger=_budget_ledger, lane_head=True)
 def warm_peer_fixture(base_path: str, id_var: str, suffix: str,
                       auth: Optional[str] = None) -> Step:
     """Прогреть ЧУЖОЙ свежий ресурс чтением — до того, как его идентификатор уедет в

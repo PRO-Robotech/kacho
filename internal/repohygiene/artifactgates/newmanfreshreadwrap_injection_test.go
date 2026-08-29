@@ -46,12 +46,15 @@ from gen_shared import (
 )
 
 
-def retry_until_authorized(step, budget=25, interval_ms=500):
+def retry_until_authorized(step, budget=25, interval_ms=500, lane_head=False):
     return step
 
 
+_rya = functools.partial(retry_until_authorized, budget=25, interval_ms=500, lane_head=True)
+
+
 def case_to_postman(case):
-    return [step_to_postman(s) for s in _wrap_own_fresh_reads(case.steps, retry_until_authorized)]
+    return [step_to_postman(s) for s in _wrap_own_fresh_reads(case.steps, _rya)]
 `
 
 func frwAudit(t *testing.T, shared, generator string) ([]string, freshReadWrapCensus) {
@@ -82,7 +85,7 @@ func TestFreshReadWrapInjectionUnwiredGeneratorIsFound(t *testing.T) {
 	// у набора есть, предикат доступен, а сериализация кейса его не применяет —
 	// значит обёртка ставится вручную, и пропуск неотличим от решения.
 	unwired := strings.Replace(frwWiredGenerator,
-		"_wrap_own_fresh_reads(case.steps, retry_until_authorized)", "case.steps", 1)
+		"_wrap_own_fresh_reads(case.steps, _rya)", "case.steps", 1)
 	findings, cen := frwAudit(t, frwShared, unwired)
 	if len(findings) == 0 {
 		t.Fatalf("гейт не увидел непровязанный предикат — он не способен упасть на своём\n"+
@@ -183,7 +186,7 @@ from gen_shared import (
     js_str,
 )
 
-_rya = functools.partial(retry_until_authorized, budget=25, interval_ms=500)
+_rya = functools.partial(retry_until_authorized, budget=25, interval_ms=500, lane_head=True)
 
 
 def case_to_postman(case):
@@ -218,5 +221,97 @@ func TestFreshReadWrapBoundLaneUnwiredIsFound(t *testing.T) {
 	if !strings.Contains(findings[0], "провязан в case_to_postman: нет") ||
 		!strings.Contains(findings[0], "services/x/tests/newman/scripts/gen.py") {
 		t.Fatalf("находка не называет ни предмета, ни координаты: %q", findings[0])
+	}
+}
+
+// ─── ОСЬ ГОЛОВЫ ПОЛОСЫ: ждать можно ПРАВА, а не появление имени ──────────────
+//
+// Инъекция снимает РОВНО новое свойство: полоса остаётся взятой из общего слоя и
+// провязанной в сериализацию, меняется только наличие головы. Красное от соседа
+// доказательством бы не было.
+
+func TestFreshReadWrapLaneWithoutHeadIsFound(t *testing.T) {
+	headless := strings.Replace(frwBoundLaneGenerator,
+		"budget=25, interval_ms=500, lane_head=True", "budget=25, interval_ms=500", 1)
+	findings, cen := frwAudit(t, frwShared, headless)
+	if len(findings) == 0 {
+		t.Fatalf("гейт не увидел полосу без головы — тогда шаг, адресующийся к\n"+
+			"незахваченной переменной, выжигает весь бюджет на вопрос ни о чём.\nперепись: %+v", cen)
+	}
+	if !strings.Contains(findings[0], "полоса несёт голову: нет") {
+		t.Fatalf("находка не называет, ЧЕГО не хватает: %q", findings[0])
+	}
+	if cen.withLane != 1 {
+		t.Fatalf("инъекция повредила соседнюю ось: с полосой %d вместо 1", cen.withLane)
+	}
+	if cen.withHead != 0 {
+		t.Fatalf("перепись «несёт голову» = %d при её отсутствии", cen.withHead)
+	}
+}
+
+// Проза о голове головой НЕ является: величина обязана стоять ВНУТРИ связывания.
+// Без этой ветви гейт зеленел бы на объяснении, которым набор рассказывает, чего
+// у него нет.
+func TestFreshReadWrapProseAboutHeadIsNotAHead(t *testing.T) {
+	prose := strings.Replace(frwBoundLaneGenerator,
+		"_rya = functools.partial(retry_until_authorized, budget=25, interval_ms=500, lane_head=True)",
+		"# голову полосы (lane_head=True) этот набор пока не несёт\n"+
+			"_rya = functools.partial(retry_until_authorized, budget=25, interval_ms=500)", 1)
+	findings, cen := frwAudit(t, frwShared, prose)
+	if len(findings) == 0 {
+		t.Fatalf("гейт принял ПРОЗУ о голове за саму голову — он судит слово, а не то,\n"+
+			"что код делает.\nперепись: %+v", cen)
+	}
+	if cen.withHead != 0 {
+		t.Fatalf("перепись засчитала комментарий: «несёт голову» = %d", cen.withHead)
+	}
+}
+
+// Набор, объявивший полосу СВОЕЙ копией, головы не имеет by construction: ручка
+// живёт в реализации общего слоя. Требовать её от копии значило бы судить
+// раскладку, а её судит соседний гейт.
+func TestFreshReadWrapOwnLaneCopyIsNotAskedForAHead(t *testing.T) {
+	local := `
+def retry_until_authorized(step):
+    return step
+
+
+def _wrap_own_fresh_reads(steps, rename=True):
+    return steps
+
+
+def case_to_postman(case):
+    return _wrap_own_fresh_reads(case.steps)
+`
+	findings, cen := frwAudit(t, frwSharedWithout, local)
+	if len(findings) != 0 {
+		t.Fatalf("гейт требует ручку общего слоя от набора, который берёт полосу СВОЕЙ\n"+
+			"копией — такой ручки у него нет вовсе: %v", findings)
+	}
+	if cen.withLane != 1 {
+		t.Fatalf("полоса своей копией не распознана: с полосой %d вместо 1", cen.withLane)
+	}
+}
+
+// Предпосылка распознавателя: он обязан дочитывать связывание до его собственной
+// закрывающей скобки. Обход, начатый не с той позиции, отвечает «головы нет» на
+// ЛЮБОМ входе — то есть гейт краснеет всегда и его отключают первым.
+func TestFreshReadWrapHeadRecognizerReadsTheWholeBinding(t *testing.T) {
+	multiline := "_rya = functools.partial(retry_until_authorized,\n" +
+		"                        budget=25, interval_ms=500, lane_head=True)\n"
+	bound, head := laneBindingHasHead(multiline)
+	if !bound || !head {
+		t.Fatalf("связывание в НЕСКОЛЬКО строк не прочитано целиком: связано=%v, голова=%v.\n"+
+			"Ровно в этой форме оно и записано во всех шести наборах", bound, head)
+	}
+	after := "_rya = functools.partial(retry_until_authorized, budget=25)\n" +
+		"# дальше по файлу слово lane_head=True встречается в объяснении\n"
+	_, headAfter := laneBindingHasHead(after)
+	if headAfter {
+		t.Fatalf("распознаватель прочитал ЗА пределами связывания — тогда любое упоминание\n" +
+			"ниже по файлу засчитывается головой")
+	}
+	if bound, _ := laneBindingHasHead("def case_to_postman(case):\n    return case.steps\n"); bound {
+		t.Fatalf("распознаватель нашёл связывание там, где его нет")
 	}
 }

@@ -361,8 +361,12 @@ def retry_until_present(step: Step, id_env_var: str, budget: int = 50,
 # материализации у доменов разный, и одно число за всех было бы решением
 # за них. Здесь — путь материализации compute. Величина видна
 # на связывании, а не в прозе шапки: три копии из шести называли ЧУЖУЮ.
+# Голова полосы — общая (#1477). Шаг, чей адрес собран из НЕЗАХВАЧЕННОЙ переменной,
+# спрашивает не о ресурсе: окно видимости прав такой адрес не наполнит никогда, а
+# отказ по нему приходит кодом ИЗ полосы ожидания — то есть шаг выжигает весь бюджет
+# и падает, называя следствие вместо предмета.
 _rya = functools.partial(retry_until_authorized,
-                        budget=40, interval_ms=600)
+                        budget=40, interval_ms=600, lane_head=True)
 def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
                        interval_ms: int = 500) -> Step:
     """Bounded retry a "must-be-ABSENT/empty" read over a read-your-writes-ON-REVOKE
