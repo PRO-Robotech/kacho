@@ -55,6 +55,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
+	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
@@ -733,15 +734,6 @@ func (d Descriptor) OwnContour() string {
 	return d.spec.OwnContour
 }
 
-// weakSSLModes — режимы, при которых до БД идёт открытый канал либо шифрование
-// не гарантировано. Перечисляем ДОПУСТИМЫЕ, а не запрещённые: перечень запретов
-// пропустил бы всякое значение, которого в нём нет, — то есть любую опечатку.
-var strongSSLModes = map[string]struct{}{
-	"require":     {},
-	"verify-ca":   {},
-	"verify-full": {},
-}
-
 // New принимает [Spec] или отказывает, НАЗЫВАЯ КАЖДУЮ незаполненную ось и
 // каждое несогласованное поле — все разом, а не первое попавшееся.
 //
@@ -1047,10 +1039,15 @@ func checkProductionPosture(f *findings, s Spec) {
 		f.add("InternalCreds", "боевая посадка с непроверенным транспортом внутреннего слушателя ("+
 			s.InternalCreds.Info().SecurityProtocol+"); внутренний периметр не доверенный")
 	}
+	// Перечень безопасных значений — НЕ свой: он приходит из дома семантики
+	// строки подключения (`pkg/db`), где объявлен один раз на всё дерево
+	// (задача продукта #1464). Свой перечень здесь был, и он был третьим:
+	// ещё четыре жили у сервисов, и разойтись им было нечем — копии не
+	// собираются вместе и друг друга не читают.
 	if mode, given := s.DBSSLMode.Get(); given {
-		if _, ok := strongSSLModes[mode]; !ok {
+		if !coredb.SSLModeSecure(mode) {
 			f.add("DBSSLMode", "боевая посадка с sslmode="+quote(mode)+
-				"; допустимы require, verify-ca, verify-full")
+				"; допустимы "+strings.Join(coredb.SecureSSLModes(), ", "))
 		}
 	}
 	// Транспорт ребра решения о доступе — тоже посадка, поэтому судится ЗДЕСЬ, а

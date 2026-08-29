@@ -653,16 +653,23 @@ func requireAuthzEdgeTransport(cfg config.Config) error {
 		"credentials silently degrade to insecure, so the process starts and reports authz as enabled")
 }
 
-// requireDBSSLMode — DB-канал в любом production-режиме обязан быть TLS
-// (require|verify-ca|verify-full). sslmode=disable гонит KACHO_COMPUTE_DB_PASSWORD
-// и все данные строк открытым текстом по сети (CWE-319) — допустимо только в dev.
+// requireDBSSLMode — DB-канал в любом production-режиме обязан быть TLS.
+// sslmode=disable гонит KACHO_COMPUTE_DB_PASSWORD и все данные строк открытым
+// текстом по сети (CWE-319) — допустимо только в dev.
+//
+// Перечень безопасных значений — НЕ свой: он приходит из дома семантики строки
+// подключения (`pkg/db`), где объявлен один раз на всё дерево (задача продукта
+// #1464). Судится ИСХОД — режим той строки, что уходит в пул: у compute он
+// деривится из ручки (`baseDSN` подставляет `disable` на пустой), поэтому
+// сегодня совпадает с ней, но спрашивать надо строку. Страж, читающий ручку,
+// расходится с пулом молча при первом же изменении сборки DSN — так и вышло у
+// двух соседних сервисов, где режим приходит ещё и из сырого URL.
 func requireDBSSLMode(cfg config.Config) error {
-	switch cfg.DBSSLMode {
-	case "require", "verify-ca", "verify-full":
+	if mode := coredb.SSLModeFromDSN(cfg.DSN()); coredb.SSLModeSecure(mode) {
 		return nil
-	default:
-		return fmt.Errorf("production mode: KACHO_COMPUTE_DB_SSLMODE must be one of require|verify-ca|verify-full (got %q)", cfg.DBSSLMode)
 	}
+	return fmt.Errorf("production mode: KACHO_COMPUTE_DB_SSLMODE must be one of %s (got %q)",
+		strings.Join(coredb.SecureSSLModes(), "|"), cfg.DBSSLMode)
 }
 
 // requireListFilter — в любом production-режиме per-object FGA-фильтр обязан быть

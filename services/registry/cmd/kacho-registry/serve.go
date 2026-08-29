@@ -759,10 +759,12 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) error {
 	case "production":
 		return nil
 	case "production-strict":
-		switch cfg.DBSSLMode {
-		case "require", "verify-ca", "verify-full":
-		default:
-			return fmt.Errorf("production-strict mode: KACHO_REGISTRY_DB_SSLMODE must be one of require|verify-ca|verify-full (got %q)", cfg.DBSSLMode)
+		// Перечень безопасных значений — НЕ свой: он приходит из дома семантики
+		// строки подключения (`pkg/db`), где объявлен один раз на всё дерево
+		// (задача продукта #1464). Судится ИСХОД — режим строки, уходящей в пул.
+		if mode := coredb.SSLModeFromDSN(cfg.DSN()); !coredb.SSLModeSecure(mode) {
+			return fmt.Errorf("production-strict mode: KACHO_REGISTRY_DB_SSLMODE must be one of %s (got %q)",
+				strings.Join(coredb.SecureSSLModes(), "|"), cfg.DBSSLMode)
 		}
 		logger.Warn("AuthMode=production-strict: DB SSL strictly validated")
 		return nil
