@@ -124,10 +124,61 @@ const COMPONENTS: readonly Organism[] = [
   // означала бы два вида одного предмета, а её не поймал бы ни признак по символу
   // (переименуют), ни признак по адресу (переименуют файл) — только это правило.
   { dir: "molecules/StatePanel", file: "StatePanel", symbol: "StatePanel" },
+  // ── Пополнение перечня (#406) ────────────────────────────────────────────
+  //
+  // Гейт наблюдал СЕМЬ компонентов при полусотне парных каталогов, и такой
+  // перечень читается как «форк закрыт», удостоверяя семь из пятидесяти. Ниже —
+  // все компоненты, которые сегодня УЖЕ сведены к прослойке во ВСЯКОМ
+  // приложении, где их каталог есть: добавление не краснит ни одного дерева, а
+  // запрещает вернуть копию завтра. Отбор механический и повторяемый: символ
+  // объявлен в `shared/` РОВНО ОДИН раз формой `export function`, каталог
+  // приложения содержит только `index.ts`, и тот ведёт в `@shared`.
+  { dir: "atoms/BoolFact", file: "BoolFact", symbol: "BoolFact" },
+  { dir: "atoms/ContextBadge", file: "ContextBadge", symbol: "ContextBadge" },
+  { dir: "atoms/CopyableId", file: "CopyableId", symbol: "CopyableId" },
+  { dir: "atoms/CopyableName", file: "CopyableName", symbol: "CopyableName" },
+  { dir: "atoms/LabelsCell", file: "LabelsCell", symbol: "LabelsCell" },
+  { dir: "molecules/EditableKVTable", file: "EditableKVTable", symbol: "EditableKVTable" },
+  { dir: "molecules/JsonEditor", file: "JsonEditor", symbol: "JsonEditor" },
+  { dir: "molecules/PanelHeader", file: "PanelHeader", symbol: "PanelHeader" },
+  { dir: "molecules/ProjectRequiredEmpty", file: "ProjectRequiredEmpty", symbol: "ProjectRequiredEmpty" },
+  { dir: "organisms/AdminLayout", file: "AdminLayout", symbol: "AdminLayout" },
+  { dir: "organisms/GlobalResourceFormModal", file: "GlobalResourceFormModal", symbol: "GlobalResourceFormModal" },
+  { dir: "organisms/form/FieldLabel", file: "FieldLabel", symbol: "FieldLabel" },
+  { dir: "organisms/form/FormFooter", file: "FormFooter", symbol: "FormFooter" },
+  { dir: "organisms/form/FormShell", file: "FormShell", symbol: "FormShell" },
+  { dir: "organisms/form/ImmutableField", file: "ImmutableField", symbol: "ImmutableField" },
 ] as const;
 
 /*
- * ЧЕТЫРЕ КОМПОНЕНТА СЕГОДНЯШНЕЙ СЕРИИ В ЭТОТ ПЕРЕЧЕНЬ НЕ ВОШЛИ — назвать причину
+ * ПОЧЕМУ В ПОПОЛНЕНИЕ (#406) ВОШЛИ НЕ ВСЕ, У КОГО КАТАЛОГ ПАРНЫЙ — назвать
+ * причину обязательно, иначе следующий читатель прочтёт пропуск как недосмотр:
+ *
+ *   `ResourceShell`, `ResourceTable`, `RefSelect`, `DetailShell`, `RefNameLink`,
+ *   `ResourceLink`, `Toaster`, `OperationDialog`, `OperationToastWatcher`,
+ *   `OperationBanner`, `ErrorResult`, `ResourceEmptyState`, `RowActionsMenu`,
+ *   `ResourceIcon`, `InlineResourceForm`, `OperationsTab`, `ResourceFormModal`,
+ *   `JsonMonacoView`, `DetailOverviewActions`, `IamRefLink`, `StepUpModal` —
+ *   у них рядом с `index.ts` лежит ЗАКОННАЯ прослойка `<Имя>.tsx`. Правило ниже
+ *   требует «в каталоге только `index.ts`», то есть дало бы ложное красное на
+ *   исправном дереве. Все они накрыты правилом дерева (символ объявлен
+ *   `shared/`, копия по адресу тоже видна) — не наблюдением, а другим.
+ *
+ *   `StatusBadge` — рядом с прослойкой лежит ПРОБА (`StatusBadge.tone.test.tsx`
+ *   у compute, `StatusBadge.test.tsx` у storage). Проба копией не является, но
+ *   предикат «только index.ts» её не отличает; отличать он должен, и это
+ *   отдельный предмет.
+ *
+ *   `LabelsEditor` — объявлен в `shared/` ДВАЖДЫ (`organisms/LabelsEditor` и
+ *   `organisms/form/LabelsEditor`), поэтому «своя предпосылка» ниже, требующая
+ *   единственного объявления, покраснела бы на самом ОБЩЕМ модуле. Это
+ *   настоящая находка, но её предмет — раздвоение внутри `shared/`, а не форк
+ *   приложения, и чинится она своей задачей.
+ *
+ *   `OperationsTable` — у nlb и registry каталог есть, а `index.ts` в нём нет
+ *   вовсе; правило требует его наличия. Тоже находка со своим предметом.
+ *
+ * ЧЕТЫРЕ КОМПОНЕНТА ПРЕЖНЕЙ СЕРИИ В ЭТОТ ПЕРЕЧЕНЬ НЕ ВОШЛИ — назвать причину
  * обязательно, иначе следующий читатель прочтёт пропуск как недосмотр и внесёт
  * их, получив красное на исправном дереве:
  *

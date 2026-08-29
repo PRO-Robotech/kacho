@@ -2967,7 +2967,22 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "zone_id",
         render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
       },
-      { header: "Тип машины", path: "machine_type_id", format: "code" },
+      {
+        // Тип машины — запись каталога размера со своей карточкой, значит
+        // ссылка, а не моноширинный идентификатор. Рядом в этой же строке зона
+        // ссылкой уже была: одна таблица, два поведения читались как «этот
+        // переход не сделали» (#406).
+        //
+        // Две оси, и они РАЗНЫЕ: читается каталог глобально (`scope: "global"`,
+        // запрос идёт без project_id), а РАЗДЕЛ его смонтирован внутри проекта,
+        // потому что рисует его модуль compute, — поэтому адрес карточки
+        // project-scoped.
+        header: "Тип машины",
+        path: "machine_type_id",
+        render: (row) => (
+          <RefNameLink specId="machine-types" refId={row.machine_type_id as string | undefined} maxChars={28} />
+        ),
+      },
       {
         header: "vCPU / RAM",
         path: "effective_resources",
@@ -3852,9 +3867,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ops: { create: false, update: false, delete: false },
     emptyState: {
       title: "Каталог типов машин пуст",
+      // Размер назван ЦЕЛИКОМ — включая ускорители: две редакции этого
+      // объяснения разошлись ровно там же, где разошлись колонки, и упоминала
+      // ускорители та, что стояла у форка модуля.
       body:
-        "Тип машины задаёт число процессоров и объём памяти для виртуальных машин. " +
-        "Записи каталога заводит администратор облака; обратитесь к нему, если список пуст.",
+        "Тип машины задаёт размер виртуальной машины — число ядер, объём памяти и графические ускорители. " +
+        "Каталог заводит администратор облака: обратитесь к нему, если ни одного типа не видно.",
       docs: ["Типы машин"],
     },
     columns: [
@@ -3880,6 +3898,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         ),
       },
       { header: "GPU", path: "effective_resources.gpus", format: "text" },
+      // Модель ускорителя — то, чем два типа с одинаковым числом GPU отличаются
+      // друг от друга: без неё выбор из каталога делается вслепую. Колонку
+      // показывал ТОЛЬКО форк реестра модуля compute, поэтому одна и та же
+      // запись каталога выглядела по-разному в двух местах продукта (#406).
+      // Держит `resource-registry.machine-type-parity.test.tsx` — он читает
+      // контракт, а не этот перечень.
+      { header: "GPU-модель", path: "effective_resources.gpu_type", format: "code" },
       { header: "Зоны", path: "available_zones", format: "list" },
       { header: "Статус", path: "status", format: "status" },
     ],
