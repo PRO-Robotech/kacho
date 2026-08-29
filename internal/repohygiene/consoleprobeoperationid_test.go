@@ -35,6 +35,10 @@
 //	               ПОСЛЕДУЮЩЕЕ чтение по адресу, называющее эту переменную.
 //	ПОРЯДОК        подтверждение стоит ПОСЛЕ чтения: чтение чужого адреса выше
 //	               по файлу ничего не говорит о свежем идентификаторе.
+//	ОБЛАСТЬ        подтверждение стоит в области видимости ОБЪЯВЛЕНИЯ. За
+//	               границей блока то же имя принадлежит другой переменной с
+//	               другим значением: два помощника, каждый со своим `id`,
+//	               сопоставлением по имени в пределах файла выглядят одним.
 //	ПЕРЕПИСЬ       файлов прочитано, идентификаторов найдено, подтверждено.
 //	               «Ноль находок» обязано быть отличимо от «ноль прочитанного».
 //
@@ -65,6 +69,13 @@ type consoleProbeOperationIDCensus struct {
 	Files     int // файлов пакета прочитано
 	Reads     int // чтений идентификатора из metadata найдено
 	Confirmed int // из них подтверждённых чтением ресурса
+
+	// WiderThanBlock — чтений, объявленных через `var`. Предпосылка разбора
+	// области видимости: она оценивается по БЛОКУ, что верно для `const`/`let`
+	// и уже языка для `var`. Ноль означает «предпосылка держится»; не ноль —
+	// «гейт судил бы по более узкому правилу, чем язык», и это объявляется, а
+	// не молчится.
+	WiderThanBlock int
 }
 
 // consoleProbeOperationIDFinding — идентификатор без подтверждения.
@@ -86,19 +97,42 @@ func (f consoleProbeOperationIDFinding) String() string {
 // красного, ни зелёного — она молчит, и записанное в ней оказывается вне
 // наблюдения (`testing.md` §«Гейт на класс», п. 7).
 var consoleProbeMetadataReadRe = regexp.MustCompile(
-	`(?s)\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]*)?=\s*[^;]{0,400}?\.metadata\s*\??\s*[.\[]`)
+	`(?s)\b(const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]*)?=\s*[^;]{0,400}?\.metadata\s*\??\s*[.\[]`)
 
 // consoleProbeMetadataDestructureRe — четвёртая форма: разбор объекта.
 // В дереве её сегодня нет; распознана она намеренно, потому что законна и
 // появится молча — а слепая зона распознавателя не объявляет о себе ничем.
 var consoleProbeMetadataDestructureRe = regexp.MustCompile(
-	`(?s)\b(?:const|let|var)\s*\{([^}]{1,200})\}\s*=\s*[^;]{0,200}?\.metadata\b`)
+	`(?s)\b(const|let|var)\s*\{([^}]{1,200})\}\s*=\s*[^;]{0,200}?\.metadata\b`)
 
 // consoleProbeResourceReadRe — подтверждение: чтение по адресу. Обе живые формы
 // аргумента — подстановка в шаблон (`/iam/v1/groups/${groupId}`) и построитель
 // адреса (`addressOf(id)`) — разбираются одинаково, потому что вопрос к
 // аргументу один: НАЗЫВАЕТ ли он этот идентификатор.
 var consoleProbeResourceReadRe = regexp.MustCompile(`\brequest\s*\.\s*get\s*\(`)
+
+// consoleProbeBlockEnd — смещение фигурной скобки, закрывающей ОБЪЕМЛЮЩИЙ блок
+// того места, где стоит `from`. По ней ограничивается область видимости
+// объявления: `const`/`let` живут до конца своего блока и ни строкой дальше.
+//
+// Считается по МАСКЕ, где тела строковых, шаблонных и регулярных литералов и
+// комментарии обнулены, — иначе скобка внутри адреса (`${id}`) или внутри
+// рассуждения о коде закрывала бы блок, которого не открывала.
+func consoleProbeBlockEnd(mask []byte, from int) int {
+	depth := 0
+	for j := from; j < len(mask); j++ {
+		switch mask[j] {
+		case '{':
+			depth++
+		case '}':
+			if depth == 0 {
+				return j
+			}
+			depth--
+		}
+	}
+	return len(mask)
+}
 
 // consoleProbeIdentRe — имя как отдельное слово: подстрока не годится, иначе
 // `id` нашлось бы внутри `projectId` и подтверждение приписалось бы чужому
@@ -172,19 +206,40 @@ func auditConsoleProbeOperationIDs(sources map[string]string) (consoleProbeOpera
 		type read struct {
 			name string
 			at   int
+			// scopeEnd — граница области видимости объявления. Подтверждение,
+			// стоящее за ней, относится к ДРУГОЙ переменной того же имени.
+			scopeEnd int
 		}
 		var reads []read
+
+		// scopeOf — граница видимости по ключевому слову объявления. Для `var`
+		// она шире блока, и разбор её не строит: такое объявление отмечается
+		// переписью как выход за предпосылку, а границей ему служит файл —
+		// узкая граница дала бы находку на исправном коде.
+		scopeOf := func(keyword string, at int) int {
+			if keyword == "var" {
+				census.WiderThanBlock++
+				return len(text)
+			}
+			return consoleProbeBlockEnd(mask, at)
+		}
+
 		for _, m := range consoleProbeMetadataReadRe.FindAllStringSubmatchIndex(text, -1) {
-			reads = append(reads, read{name: text[m[2]:m[3]], at: m[1]})
+			reads = append(reads, read{
+				name:     text[m[4]:m[5]],
+				at:       m[1],
+				scopeEnd: scopeOf(text[m[2]:m[3]], m[1]),
+			})
 		}
 		for _, m := range consoleProbeMetadataDestructureRe.FindAllStringSubmatchIndex(text, -1) {
-			for _, part := range strings.Split(text[m[2]:m[3]], ",") {
+			end := scopeOf(text[m[2]:m[3]], m[1])
+			for _, part := range strings.Split(text[m[4]:m[5]], ",") {
 				name := strings.TrimSpace(part)
 				if i := strings.Index(name, ":"); i >= 0 {
 					name = strings.TrimSpace(name[i+1:])
 				}
 				if name != "" {
-					reads = append(reads, read{name: name, at: m[1]})
+					reads = append(reads, read{name: name, at: m[1], scopeEnd: end})
 				}
 			}
 		}
@@ -206,9 +261,13 @@ func auditConsoleProbeOperationIDs(sources map[string]string) (consoleProbeOpera
 			census.Reads++
 			ok := false
 			for _, c := range confirms {
-				// Подтверждение обязано стоять ПОСЛЕ чтения: адрес, прочитанный
-				// выше по файлу, о свежем идентификаторе не говорит ничего.
-				if c.at > r.at && consoleProbeMentions(c.arg, r.name) {
+				// Подтверждение обязано стоять ПОСЛЕ чтения и В ЕГО ОБЛАСТИ
+				// ВИДИМОСТИ. Первое — потому что адрес, прочитанный выше по
+				// файлу, о свежем идентификаторе не говорит ничего. Второе —
+				// потому что за границей блока то же ИМЯ принадлежит другой
+				// переменной с другим значением, и зачесть его подтверждением
+				// значит объявить неподтверждённое чтение подтверждённым.
+				if c.at > r.at && c.at < r.scopeEnd && consoleProbeMentions(c.arg, r.name) {
 					ok = true
 					break
 				}
@@ -274,13 +333,26 @@ func TestProbeIdentifiersFromOperationMetadataAreConfirmedByReading(t *testing.T
 			"Цена — не фантом, а АТРИБУЦИЯ: падает шаг, сделавший положенное при отсутствующем "+
 			"предмете (ожидание события, чтение списка), а шаг, предмет не создавший, молчит. "+
 			"Разбирать будут механизм, которого дефект не касается.\n"+
+			"Подтверждением НЕ считается: чтение выше объявления; чтение за границей блока, "+
+			"где это имя принадлежит уже другой переменной.\n"+
 			"Исход: подтвердить ресурс чтением по его собственному адресу — этим занят "+
 			"`createdResourceId` в ui-future/e2e/specs/fixtures.ts. "+
 			"Норма: .claude/rules/testing.md §«Fixture-seed обязан проверять `op.error`».",
 			f.File, f.Line, f.Name)
 	}
 
+	// Предпосылка разбора области видимости, объявленная и проверенная: границу
+	// видимости гейт считает по БЛОКУ, и это верно для `const`/`let`. У `var`
+	// она шире, поэтому такому объявлению гейт границей не ограничивает вовсе —
+	// и говорит об этом, вместо того чтобы молча судить по узкому правилу.
+	if census.WiderThanBlock > 0 {
+		t.Errorf("%d чтений объявлены через `var`: область видимости у него шире блока, "+
+			"и разбор её не строит — подтверждение из другого блока гейт зачтёт. "+
+			"Исход: объявлять `const`/`let`, для которых граница блока и есть граница видимости",
+			census.WiderThanBlock)
+	}
+
 	t.Logf("перепись: файлов пакета %d · чтений идентификатора из metadata %d · "+
-		"из них подтверждено чтением ресурса %d · находок %d",
-		census.Files, census.Reads, census.Confirmed, len(findings))
+		"из них подтверждено чтением ресурса %d · объявлено через `var` (шире блока) %d · находок %d",
+		census.Files, census.Reads, census.Confirmed, census.WiderThanBlock, len(findings))
 }

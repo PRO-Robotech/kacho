@@ -9,6 +9,16 @@
 //	чтение без подтверждения        → находка с координатой и именем;
 //	подтверждение ВЫШЕ чтения       → находка: адрес, прочитанный до мутации,
 //	                                  о свежем идентификаторе не говорит ничего;
+//	подтверждение в ЧУЖОМ блоке     → находка: за границей области видимости то
+//	                                  же имя принадлежит другой переменной;
+//	каждый помощник подтверждает
+//	свой, имена совпадают           → молчание — иначе гейт ловит совпадение
+//	                                  имён, а не отсутствие подтверждения;
+//	подтверждение из вложенного
+//	блока (`expect.poll`)           → молчание: вложенный блок области не
+//	                                  покидает — это живая форма дерева;
+//	объявление через `var`          → предпосылка, а не находка кода: область у
+//	                                  него шире блока, и перепись это называет;
 //	подтверждение чужого имени      → находка, и подстрока чужим именем НЕ
 //	                                  считается (`id` внутри `projectId`);
 //	подтверждение закомментировано  → находка: рассуждение о проверке проверкой
@@ -202,5 +212,150 @@ func TestConsoleProbeOperationIDCountsOnlyWhatCodeDoes(t *testing.T) {
 	}
 	if census.Files != 1 {
 		t.Errorf("перепись прочитанного не ведётся: файлов %d", census.Files)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ОБЛАСТЬ ВИДИМОСТИ. Сопоставление «чтение ↔ подтверждение» по одному имени в
+// пределах ФАЙЛА маскирует предмет: два помощника, каждый со своей переменной
+// `id`, называют одно и то же имя, и подтверждение второго закрывает
+// неподтверждённое чтение первого. Имена совпадают, значения — разные.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ДЕФЕКТ. Первый помощник идентификатор не подтверждает; второй подтверждает
+// СВОЙ — переменной с тем же именем и НИЖЕ по файлу.
+const synthProbeMaskedByAnotherScope = `import { expect } from "@playwright/test";
+
+async function createPlacementGroup(page, projectId, name) {
+  const res = await page.request.post("/compute/v1/placementGroups", { data: { projectId, name } });
+  const body = JSON.parse(await res.text());
+  const id = body.metadata?.placementGroupId ?? "";
+  return id;
+}
+
+async function createSomethingElse(page, projectId) {
+  const res = await page.request.post("/vpc/v1/networks", { data: { projectId } });
+  const body = JSON.parse(await res.text());
+  const id = body.metadata?.networkId ?? "";
+  await expect.poll(async () => (await page.request.get(` + "`/vpc/v1/networks/${id}`" + `)).status()).toBe(200);
+  return id;
+}
+`
+
+// ЗАКОННЫЙ БЛИЗНЕЦ. Тот же файл с двумя помощниками и тем же именем `id` в
+// обоих — но КАЖДЫЙ подтверждает свой. Гейт обязан молчать: иначе он ловит
+// совпадение имён, а не отсутствие подтверждения.
+const synthProbeTwoScopesBothConfirmed = `import { expect } from "@playwright/test";
+
+async function createPlacementGroup(page, projectId, name) {
+  const res = await page.request.post("/compute/v1/placementGroups", { data: { projectId, name } });
+  const body = JSON.parse(await res.text());
+  const id = body.metadata?.placementGroupId ?? "";
+  await expect.poll(async () => (await page.request.get(` + "`/compute/v1/placementGroups/${id}`" + `)).status()).toBe(200);
+  return id;
+}
+
+async function createSomethingElse(page, projectId) {
+  const res = await page.request.post("/vpc/v1/networks", { data: { projectId } });
+  const body = JSON.parse(await res.text());
+  const id = body.metadata?.networkId ?? "";
+  await expect.poll(async () => (await page.request.get(` + "`/vpc/v1/networks/${id}`" + `)).status()).toBe(200);
+  return id;
+}
+`
+
+// ДЕФЕКТ. Тот же класс на канонической форме дерева: неподтверждённое чтение
+// стоит ВЫШЕ помощника, который подтверждает свой идентификатор построителем
+// адреса и называет переменную тем же именем.
+const synthProbeMaskedByCanonicalHelper = `async function unconfirmedThing(page, response) {
+  const body = JSON.parse(await response.text());
+  const id = body.metadata?.thingId ?? "";
+  return id;
+}
+
+export async function createdResourceId(page, response, metadataField, addressOf, subject) {
+  const body = JSON.parse(await response.text());
+  const id = body.metadata?.[metadataField] ?? "";
+  await expect.poll(async () => (await page.request.get(addressOf(id))).status()).toBe(200);
+  return id;
+}
+`
+
+// ЗАКОННЫЙ БЛИЗНЕЦ. Подтверждение стоит ГЛУБЖЕ объявления — внутри стрелочной
+// функции, вложенной в тот же блок. Это живая форма дерева (`expect.poll`), и
+// оценка по блоку обязана её принимать: вложенный блок области не покидает.
+const synthProbeConfirmedFromNestedBlock = `export async function createdResourceId(page, response, metadataField, addressOf) {
+  const body = JSON.parse(await response.text());
+  const id = body.metadata?.[metadataField] ?? "";
+  if (true) {
+    await expect.poll(async () => (await page.request.get(addressOf(id))).status()).toBe(200);
+  }
+  return id;
+}
+`
+
+// ПРЕДПОСЫЛКА. Оценка по блоку верна для `const`/`let`; у `var` область
+// видимости шире блока, и та же оценка была бы УЖЕ языка — то есть давала бы
+// находку на исправном коде. В пакете `var` сегодня нет (перепись — ноль), и
+// гейт обязан объявить это сам, а не молча судить по более узкому правилу.
+const synthProbeVarDeclaration = `async function outer(page, response) {
+  {
+    var id = (JSON.parse(await response.text())).metadata?.thingId ?? "";
+  }
+  await expect.poll(async () => (await page.request.get(` + "`/vpc/v1/networks/${id}`" + `)).status()).toBe(200);
+  return id;
+}
+`
+
+func TestConsoleProbeOperationIDRespectsScopeNotJustFileOrder(t *testing.T) {
+	// ── ДЕФЕКТ: подтверждение живёт в ЧУЖОЙ области видимости ───────────────
+	for name, src := range map[string]string{
+		"чужой помощник ниже по файлу": synthProbeMaskedByAnotherScope,
+		"канонический помощник ниже":   synthProbeMaskedByCanonicalHelper,
+	} {
+		census, findings := auditConsoleProbeOperationIDs(map[string]string{"specs/x.spec.ts": src})
+		if len(findings) != 1 {
+			t.Errorf("%s — находок %d, ожидалась 1 (%v). Совпадение ИМЕНИ переменной в чужой "+
+				"области видимости подтверждением не является: значения разные, "+
+				"а неподтверждённое чтение объявлено подтверждённым; перепись: чтений %d, подтверждено %d",
+				name, len(findings), findings, census.Reads, census.Confirmed)
+			continue
+		}
+		if findings[0].Name != "id" {
+			t.Errorf("%s — находка называет %q вместо \"id\": читатель пойдёт искать не там",
+				name, findings[0].Name)
+		}
+	}
+
+	// ── ЗАКОННЫЕ БЛИЗНЕЦЫ: молчание обязано быть заработанным ───────────────
+	for name, c := range map[string]struct {
+		src   string
+		reads int
+	}{
+		"каждый помощник подтверждает свой": {synthProbeTwoScopesBothConfirmed, 2},
+		"подтверждение из вложенного блока": {synthProbeConfirmedFromNestedBlock, 1},
+	} {
+		census, findings := auditConsoleProbeOperationIDs(map[string]string{"specs/x.spec.ts": c.src})
+		if len(findings) != 0 {
+			t.Errorf("%s — гейт краснеет на исправном: %v. Гейт, краснеющий на верном коде, "+
+				"отключают первым", name, findings)
+		}
+		if census.Reads != c.reads || census.Confirmed != c.reads {
+			t.Errorf("%s — молчание получено даром: чтений %d (ожидалось %d), подтверждено %d",
+				name, census.Reads, c.reads, census.Confirmed)
+		}
+	}
+}
+
+func TestConsoleProbeOperationIDDeclaresItsOwnPremiseAboutVar(t *testing.T) {
+	census, findings := auditConsoleProbeOperationIDs(map[string]string{"specs/x.spec.ts": synthProbeVarDeclaration})
+	if census.WiderThanBlock != 1 {
+		t.Errorf("объявление через `var` не отмечено: WiderThanBlock=%d. Оценка по блоку для него "+
+			"УЖЕ языка, и молча судить по ней значит давать находку на исправном коде",
+			census.WiderThanBlock)
+	}
+	if len(findings) != 0 {
+		t.Errorf("`var` выдан за находку кода: %v. Предпосылка гейта — не дефект пробы, "+
+			"и путать их нельзя", findings)
 	}
 }
