@@ -54,6 +54,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -64,6 +65,11 @@ const (
 	CommandDown   = "down"
 	CommandStatus = "status"
 )
+
+// CommandHelp — запрос формы вызова подкомандой. Cobra доводит эту команду к
+// дереву сама и снять её из перечня нельзя иначе как под чужим именем, поэтому
+// равенство семи достигнуто с этой стороны: прямая форма её тоже понимает.
+const CommandHelp = "help"
 
 // DialectPostgres — единственный поддерживаемый диалект. Продукт Postgres-only;
 // флаг существует ради равенства с делегирующей формой и ради того, чтобы
@@ -77,6 +83,58 @@ const EnvDSN = "KACHO_MIGRATOR_DSN"
 // ErrHelpRequested — оператор попросил форму вызова. Это не отказ: вызывающий
 // печатает [Usage] и выходит успехом, как это делает cobra у делегирующей тройки.
 var ErrHelpRequested = errors.New("migratorcli: help requested")
+
+// ErrNoCommand — командная строка пуста. Это ОТКАЗ, а не помощь: скрипт или
+// init-контейнер, потерявший аргумент, иначе объявляется выполнившим накат.
+var ErrNoCommand = errors.New("no command given")
+
+// ── Тексты отказа: производитель ОДИН на все семь точек наката ─────────────
+//
+// Тон сообщений — часть контракта (см. правила API продукта): оператор читает
+// их глазами, а скрипт — образцом. Пока каждая форма писала свою редакцию, они
+// разошлись: на одном и том же входе прямая четвёрка отвечала редакцией
+// стандартной библиотеки, делегирующая тройка — редакцией cobra. Образец,
+// написанный по одному сервису, на соседнем не срабатывал.
+//
+// Делегирующая форма берёт эти тексты ОТСЮДА (через своё поле Args), поэтому
+// байт-идентичность держится ПОСТРОЕНИЕМ, а не сверкой двух копий.
+
+// UnknownCommandError — подкоманда не из закрытого перечня. Перечень назван в
+// самом отказе: отказ обязан восстанавливать следующий шаг оператора.
+func UnknownCommandError(binary, given string) error {
+	return fmt.Errorf("unknown command %q for %q (known: %s, %s, %s)",
+		given, binary, CommandUp, CommandDown, CommandStatus)
+}
+
+// UnexpectedArgumentError — лишний позиционный аргумент. `up 800001` — обычная
+// догадка о том, как задать версию, и отказ называет верный способ.
+func UnexpectedArgumentError(commandPath, given string) error {
+	return fmt.Errorf("unexpected argument %q for %q; a version is given as --target %s",
+		given, commandPath, given)
+}
+
+// UnknownFlagError — флаг вне набора.
+//
+// Формулировка ЗАИМСТВОВАНА у делегирующей формы дословно: её производит
+// библиотека разбора, переписать её там нельзя, а два текста об одном предмете
+// разошлись бы молча. Стандартная библиотека говорит иначе («flag provided but
+// not defined: -X»), поэтому её формулировка здесь переводится в общую.
+func UnknownFlagError(name string) error {
+	return fmt.Errorf("unknown flag: --%s", strings.TrimLeft(name, "-"))
+}
+
+// ReportError печатает отказ в форме, одной на семь: `Error: <предмет>`.
+//
+// Форма взята у делегирующей тройки. Прямая четвёрка печатала отказ через
+// журнал, то есть с меткой времени впереди, — для однократного инструмента
+// командной строки это шум, и он же делал две редакции из одной.
+func ReportError(w io.Writer, err error) {
+	fmt.Fprintf(w, "Error: %v\n", err)
+}
+
+// unknownFlagName вытаскивает имя флага из отказа стандартной библиотеки.
+// Форма её сообщения — «flag provided but not defined: -<имя>».
+var unknownFlagName = regexp.MustCompile(`^flag provided but not defined: -+(.+)$`)
 
 // Options — разобранная командная строка.
 type Options struct {
@@ -95,6 +153,7 @@ type Options struct {
 // принимается параметром, потому что оно принадлежит вызывающему.
 func Usage(name string) string {
 	return fmt.Sprintf(`usage: %s [--dsn DSN] [--dialect %s] {%s|%s|%s} [--target VERSION]
+       %s {--help|%s}
 
   --dsn DSN         database DSN; if empty — read ENV %s,
                     then fall back to the service config
@@ -105,6 +164,7 @@ func Usage(name string) string {
 
 Flags are accepted both before and after the subcommand.`,
 		name, DialectPostgres, CommandUp, CommandDown, CommandStatus,
+		name, CommandHelp,
 		EnvDSN, DialectPostgres, CommandUp, CommandDown, CommandStatus)
 }
 
@@ -125,15 +185,16 @@ func Parse(name string, args []string) (Options, error) {
 		return Options{}, err
 	}
 	if len(rest) == 0 {
-		return Options{}, fmt.Errorf("no command given\n\n%s", Usage(name))
+		return Options{}, ErrNoCommand
 	}
 
 	opts.Command = rest[0]
 	switch opts.Command {
 	case CommandUp, CommandDown, CommandStatus:
+	case CommandHelp:
+		return Options{}, ErrHelpRequested
 	default:
-		return Options{}, fmt.Errorf("unknown command %q for %q (known: %s, %s, %s)",
-			opts.Command, name, CommandUp, CommandDown, CommandStatus)
+		return Options{}, UnknownCommandError(name, opts.Command)
 	}
 
 	// Проход 2 — после подкоманды. Умолчания глобальных флагов равны уже
@@ -150,9 +211,7 @@ func Parse(name string, args []string) (Options, error) {
 		return Options{}, err
 	}
 	if len(tail) > 0 {
-		return Options{}, fmt.Errorf(
-			"unexpected argument %q for %q; a version is given as --target %s",
-			tail[0], path, tail[0])
+		return Options{}, UnexpectedArgumentError(path, tail[0])
 	}
 
 	if opts.Dialect != DialectPostgres {
@@ -219,6 +278,11 @@ func parseWith(fs *flag.FlagSet, args []string) ([]string, error) {
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil, ErrHelpRequested
+		}
+		// Редакция стандартной библиотеки переводится в общую: иначе на одном и
+		// том же входе семь сервисов отвечают двумя разными фразами.
+		if m := unknownFlagName.FindStringSubmatch(err.Error()); m != nil {
+			return nil, UnknownFlagError(m[1])
 		}
 		return nil, err
 	}

@@ -22,7 +22,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует database/sql-драйвер "pgx"
@@ -40,12 +39,18 @@ const binaryName = "kacho-migrator"
 
 func main() {
 	opts, err := migratorcli.Parse(binaryName, os.Args[1:])
-	if errors.Is(err, migratorcli.ErrHelpRequested) {
+	switch {
+	case errors.Is(err, migratorcli.ErrHelpRequested):
 		fmt.Println(migratorcli.Usage(binaryName))
 		return
-	}
-	if err != nil {
-		log.Fatal(err)
+	case errors.Is(err, migratorcli.ErrNoCommand):
+		// Форма вызова печатается ОТДЕЛЬНО, а исход остаётся отказом: ровно так
+		// делегирующая форма печатает помощь и выходит кодом 1. Вшить форму
+		// вызова в текст отказа значило бы сделать первую строку разной у семи.
+		fmt.Println(migratorcli.Usage(binaryName))
+		fail(err)
+	case err != nil:
+		fail(err)
 	}
 
 	dsn, err := migratorcli.ResolveDSN(opts.DSN, func() (string, error) {
@@ -56,34 +61,43 @@ func main() {
 		return cfg.MigrateDSN(), nil
 	})
 	if err != nil {
-		log.Fatal(err)
+		fail(err)
 	}
 
 	goose.SetBaseFS(migrations.FS)
 	if err := goose.SetDialect(opts.Dialect); err != nil {
-		log.Fatalf("goose dialect: %v", err)
+		fail(fmt.Errorf("goose dialect: %w", err))
 	}
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
-		log.Fatalf("open db: %v", err)
+		fail(fmt.Errorf("open db: %w", err))
 	}
 	defer func() { _ = db.Close() }()
 
 	// Барьер готовности PG. sql.Open ЛЕНИВ (не дозванивается до сервера), поэтому
 	// гонка init-контейнера с подом Postgres проявлялась не здесь, а ниже — на
-	// goose: мигратор падал log.Fatalf'ом и уходил в CrashLoopBackOff до подъёма
+	// goose: мигратор падал отказом и уходил в CrashLoopBackOff до подъёма
 	// PG. Ждём ТОЛЬКО «БД не принимает соединения» и ТОЛЬКО в пределах бюджета;
 	// неверный пароль / несуществующая БД / сломанная миграция падают сразу.
 	if err := dbready.Wait(context.Background(), db, dbready.Options{}); err != nil {
 		// Текст нейтральный: сюда приходит И «не дождались» (ошибка уже несёт
 		// бюджет), И настоящая ошибка (пароль/DSN/БД) — второй случай называть
 		// «not ready» было бы враньём в логе.
-		log.Fatalf("database connection check failed: %v", err)
+		fail(fmt.Errorf("database connection check failed: %w", err))
 	}
 
 	if err := run(db, opts); err != nil {
-		log.Fatalf("migrate %s: %v", opts.Command, err)
+		fail(fmt.Errorf("migrate %s: %w", opts.Command, err))
 	}
+}
+
+// fail подаёт отказ в форме, одной на семь точек наката (`Error: <предмет>`), и
+// выходит кодом 1. Через журнал отказ больше не идёт: журнал ставит впереди
+// метку времени, и она делала из одного контракта две редакции — для скрипта,
+// читающего отказ образцом, это разные строки.
+func fail(err error) {
+	migratorcli.ReportError(os.Stderr, err)
+	os.Exit(1)
 }
 
 // run исполняет разобранную команду. Вынесено из main, чтобы порядок ветвления
