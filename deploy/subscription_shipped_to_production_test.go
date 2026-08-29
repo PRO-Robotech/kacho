@@ -118,56 +118,106 @@ func countOwners(raw string) int {
 	return n
 }
 
-// TestSubscriptionOwnersReachProductionAndNotOnlyAStand — если возможность
-// включена хоть в одном стеке, она включена и в боевом.
-func TestSubscriptionOwnersReachProductionAndNotOnlyAStand(t *testing.T) {
-	stacks := deployStacks(t)
-	base, _ := ownersDeclaredBy(t, edgeChartValuesRel, false)
+// shippingCensus — то, что гейт вычисляет по таблице стеков: какие стеки
+// возможность включили, какие из них боевые и какие боевые остались без неё.
+type shippingCensus struct {
+	// stacks — осмотренные стеки по возрастанию имени. Отдельным полем, чтобы
+	// «ноль находок» было отличимо от «ноль прочитанного».
+	stacks []string
+	// ownersByStack — сколько владельцев получит каждый стек после наложения.
+	ownersByStack map[string]int
+	// enabled — стеки, где возможность включена (владельцев больше нуля).
+	enabled []string
+	// production — стеки боевой посадки.
+	production []string
+	// dark — боевые стеки без единого владельца.
+	dark []string
+}
 
-	declaredBy := func(profile string) (string, bool) {
-		return ownersDeclaredBy(t, filepath.Join(umbrellaProfileDir, profile), true)
-	}
-
+// takeShippingCensus — ЕДИНСТВЕННОЕ место, где выносится суждение «этот стек
+// боевой» и «этот боевой стек затемнён».
+//
+// # Почему отдельной функцией
+//
+// Доказательство способности гейта упасть обязано прогонять ЭТУ функцию, а не её
+// пересказ. Прежняя редакция инъекции воспроизводила цикл суждения своей копией
+// и оставалась зелёной, когда судящую ветку настоящего гейта снимали
+// (`if owners == 0` → `if owners < 0`), — то есть доказывала свойство копии, а не
+// гейта. Найдено приёмкой 2026-08-29; опыт повторяется дословно и обязан теперь
+// давать красное.
+//
+// Боевым стек делается ПЕРВЫМ профилем цепочки, а не именем: словарь имён
+// разошёлся бы с таблицей стеков молча.
+func takeShippingCensus(
+	stacks map[string][]string,
+	base string,
+	declaredBy func(profile string) (string, bool),
+) shippingCensus {
 	names := make([]string, 0, len(stacks))
 	for name := range stacks {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 
-	enabled := make([]string, 0, len(stacks))
-	production := make([]string, 0, 2)
-	dark := make([]string, 0, 2)
+	census := shippingCensus{
+		stacks:        names,
+		ownersByStack: make(map[string]int, len(names)),
+		enabled:       make([]string, 0, len(names)),
+		production:    make([]string, 0, 2),
+		dark:          make([]string, 0, 2),
+	}
 
 	for _, name := range names {
 		chain := stacks[name]
 		owners := countOwners(effectiveOwners(base, chain, declaredBy))
-		isProduction := len(chain) > 0 && chain[0] == productionBaseProfile
-		t.Logf("перепись: стек %s (боевой: %v) → владельцев %d", name, isProduction, owners)
+		census.ownersByStack[name] = owners
 
 		if owners > 0 {
-			enabled = append(enabled, name)
+			census.enabled = append(census.enabled, name)
 		}
-		if !isProduction {
+		if len(chain) == 0 || chain[0] != productionBaseProfile {
 			continue
 		}
-		production = append(production, name)
+		census.production = append(census.production, name)
 		if owners == 0 {
-			dark = append(dark, name)
+			census.dark = append(census.dark, name)
 		}
 	}
+	return census
+}
 
+// shippingCensusOfTree — перепись по НАСТОЯЩЕМУ дереву: таблица стеков, умолчание
+// чарта края и профили умбреллы.
+func shippingCensusOfTree(t *testing.T) shippingCensus {
+	t.Helper()
+	base, _ := ownersDeclaredBy(t, edgeChartValuesRel, false)
+	return takeShippingCensus(deployStacks(t), base, func(profile string) (string, bool) {
+		return ownersDeclaredBy(t, filepath.Join(umbrellaProfileDir, profile), true)
+	})
+}
+
+// TestSubscriptionOwnersReachProductionAndNotOnlyAStand — если возможность
+// включена хоть в одном стеке, она включена и в боевом.
+func TestSubscriptionOwnersReachProductionAndNotOnlyAStand(t *testing.T) {
+	census := shippingCensusOfTree(t)
+	base, _ := ownersDeclaredBy(t, edgeChartValuesRel, false)
+
+	for _, name := range census.stacks {
+		t.Logf("перепись: стек %s → владельцев %d", name, census.ownersByStack[name])
+	}
 	t.Logf("перепись: стеков осмотрено %d · возможность включена в %d %v · боевых %d %v · "+
 		"боевых без возможности %d %v · умолчание чарта края несёт %d владельцев",
-		len(names), len(enabled), enabled, len(production), production, len(dark), dark, countOwners(base))
+		len(census.stacks), len(census.enabled), census.enabled,
+		len(census.production), census.production, len(census.dark), census.dark, countOwners(base))
 
-	if len(production) == 0 {
+	if len(census.production) == 0 {
 		t.Fatalf("ни один стек не начинается с %s — боевой посадки гейт не нашёл, и его "+
 			"молчание не было бы утверждением о поставке", productionBaseProfile)
 	}
-	if len(enabled) > 0 && len(dark) > 0 {
+	if len(census.enabled) > 0 && len(census.dark) > 0 {
 		t.Errorf("возможность включена в стеках %v, а в боевых %v перечень владельцев пуст: "+
 			"ручка отвечает там 501, то есть возможность существует ТОЛЬКО НА СТЕНДЕ — "+
-			"ни попробовать, ни купить", enabled, dark)
+			"ни попробовать, ни купить", census.enabled, census.dark)
 	}
 }
 
@@ -204,38 +254,17 @@ func TestProductionKeepsThePromiseTheClientPageMakes(t *testing.T) {
 			"и требовать его исполнения не от чего", clientPromiseRel, err)
 	}
 
-	stacks := deployStacks(t)
-	base, _ := ownersDeclaredBy(t, edgeChartValuesRel, false)
-	declaredBy := func(profile string) (string, bool) {
-		return ownersDeclaredBy(t, filepath.Join(umbrellaProfileDir, profile), true)
-	}
+	census := shippingCensusOfTree(t)
 
-	checked, dark := 0, make([]string, 0, 2)
-	names := make([]string, 0, len(stacks))
-	for name := range stacks {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	t.Logf("перепись: страница обещает поток · боевых стеков осмотрено %d %v · "+
+		"без единого владельца %d %v", len(census.production), census.production,
+		len(census.dark), census.dark)
 
-	for _, name := range names {
-		chain := stacks[name]
-		if len(chain) == 0 || chain[0] != productionBaseProfile {
-			continue
-		}
-		checked++
-		if countOwners(effectiveOwners(base, chain, declaredBy)) == 0 {
-			dark = append(dark, name)
-		}
-	}
-
-	t.Logf("перепись: страница обещает поток · боевых стеков осмотрено %d · "+
-		"без единого владельца %d %v", checked, len(dark), dark)
-
-	if checked == 0 {
+	if len(census.production) == 0 {
 		t.Fatalf("боевых стеков не найдено (профиль %s), — гейт ничего не проверял",
 			productionBaseProfile)
 	}
-	for _, name := range dark {
+	for _, name := range census.dark {
 		t.Errorf("боевой стек %s не называет НИ ОДНОГО владельца журнала, а страница %s "+
 			"обещает арендатору поток изменений: ручка ответит там 501 — обещание "+
 			"задокументировано и неисполнимо", name, clientPromiseRel)
