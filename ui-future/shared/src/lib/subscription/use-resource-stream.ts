@@ -74,7 +74,26 @@ export function useResourceStream(
   hub: SubscriptionHub = subscriptionHub(),
 ): ResourceStream {
   const queryClient = useQueryClient();
-  const [streamed, setStreamed] = useState(false);
+
+  const subject = specId ? streamSubject(specId) : null;
+  const owner = subject?.owner ?? null;
+  const kind = subject?.kind ?? null;
+
+  // КЛЮЧ ПРЕДМЕТА — он же признак «поток вообще открывается»: `null` означает
+  // «предмета нет», и тогда покрытия не бывает ПО ПОСТРОЕНИЮ, а не потому, что
+  // кто-то не забыл его снять. Разделитель — нулевой байт: он не встречается ни
+  // во владельце, ни в типе объекта, ни в идентификаторе проекта, поэтому две
+  // разные тройки не могут дать один ключ.
+  const targetKey = enabled && owner && kind ? `${owner}\u0000${kind}\u0000${projectId ?? ""}` : null;
+
+  // Покрытие хранится КЛЮЧОМ покрытого предмета, а не признаком «покрыто».
+  //
+  // Признак пришлось бы гасить самому — сбросом в эффекте на каждом переходе,
+  // где предмет исчез, — а сброс состояния прямо в теле эффекта запускает
+  // каскад перерисовок (`react-hooks/set-state-in-effect`). Ключ отвечает на
+  // тот же вопрос без сброса: покрытие, записанное для ПРЕЖНЕГО предмета, с
+  // новым не совпадает и прочитаться как его покрытие не может.
+  const [coveredKey, setCoveredKey] = useState<string | null>(null);
 
   // Ключ перечитывания — через ссылку: массив пересоздаётся на каждой
   // перерисовке, и попади он в зависимости эффекта, подписка снималась бы и
@@ -91,16 +110,8 @@ export function useResourceStream(
     invalidateRef.current = invalidate;
   });
 
-  const subject = specId ? streamSubject(specId) : null;
-  const owner = subject?.owner ?? null;
-  const kind = subject?.kind ?? null;
-  const on = enabled && !!owner && !!kind;
-
   useEffect(() => {
-    if (!on || !owner || !kind) {
-      setStreamed(false);
-      return;
-    }
+    if (targetKey === null || !owner || !kind) return;
     const target = { owner, kind, projectId };
 
     const handle = (_event: StreamEvent): void => {
@@ -113,13 +124,18 @@ export function useResourceStream(
     };
 
     const off = hub.subscribe(target, handle);
-    const offCoverage = hub.onCoverageChange(() => setStreamed(hub.covers(target)));
-    setStreamed(hub.covers(target));
+    const note = (): void => setCoveredKey(hub.covers(target) ? targetKey : null);
+    const offCoverage = hub.onCoverageChange(note);
+    // Спросить СРАЗУ: канал этого владельца мог быть открыт соседним списком, и
+    // тогда объявления покрытия уже не будет — оно прозвучало до подписки.
+    note();
     return () => {
       offCoverage();
       off();
     };
-  }, [hub, on, owner, kind, projectId, queryClient]);
+  }, [hub, targetKey, owner, kind, projectId, queryClient]);
 
-  return { streamed };
+  // Покрытие читается только для СВОЕГО предмета. Отсюда же и «предмета нет ⇒
+  // не покрыт»: опрос остаётся включённым без единого сброса состояния.
+  return { streamed: targetKey !== null && coveredKey === targetKey };
 }
