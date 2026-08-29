@@ -13,12 +13,12 @@ import { ROW_ACTION_TRIGGER } from "@/components/molecules/RowActionsMenu";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
-import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { instancesApi } from "@/api/resources";
-import { getByPath } from "@/lib/resource-registry";
+import { getByPath, REGISTRY } from "@/lib/resource-registry";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 import { errorText } from "@shared/lib/error-presentation";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 
 interface NicRow {
   index?: string;
@@ -51,9 +51,16 @@ export function InstanceNicsTab({
         ? instancesApi.attachNetworkInterface(instanceId, params.nicId)
         : instancesApi.detachNetworkInterface(instanceId, params.nicId),
     onSuccess: (resp) => {
-      const id = extractOperationId(resp);
-      if (id) setOpId(id);
-      else {
+      // Разбор ОБЩИЙ: ответ без операции у ресурса, который её обещал, — не
+      // синхронный успех, а нарушение контракта. Прежний свой ключ отвечал
+      // `string | null`, и такой ответ молча обновлял список — интерфейс
+      // выглядел подключённым, хотя подтвердить это было нечем.
+      const resolved = resolveMutationResponse(resp, REGISTRY["compute-instances"]?.mutationsReturnOperation !== false);
+      if (resolved.kind === "operation") setOpId(resolved.opId);
+      else if (resolved.kind === "violation") {
+        toast.error(`Интерфейс: ${resolved.message}`);
+        setPendingId(null);
+      } else {
         setPendingId(null);
         invalidate("compute-instances", projectId);
       }

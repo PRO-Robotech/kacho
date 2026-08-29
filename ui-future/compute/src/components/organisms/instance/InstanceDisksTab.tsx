@@ -13,13 +13,14 @@ import { ROW_ACTION_TRIGGER } from "@/components/molecules/RowActionsMenu";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
-import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { instancesApi } from "@/api/resources";
 import { getByPath } from "@/lib/resource-registry";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 import { BoolFact } from "@/components/atoms/BoolFact";
 import { errorText } from "@shared/lib/error-presentation";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
+import { REGISTRY } from "@/lib/resource-registry";
 
 interface DiskRow {
   volume_id?: string;
@@ -62,9 +63,16 @@ export function InstanceDisksTab({
         ? instancesApi.attachDisk(instanceId, params.volumeId, deviceName || undefined, autoDelete)
         : instancesApi.detachDisk(instanceId, params.volumeId),
     onSuccess: (resp) => {
-      const id = extractOperationId(resp);
-      if (id) setOpId(id);
-      else {
+      // Разбор ОБЩИЙ: ответ без операции у ресурса, который её обещал, — не
+      // синхронный успех, а нарушение контракта. Прежний свой ключ отвечал
+      // `string | null`, и такой ответ молча обновлял список — том выглядел
+      // подключённым, хотя подтвердить это было нечем.
+      const resolved = resolveMutationResponse(resp, REGISTRY["compute-instances"]?.mutationsReturnOperation !== false);
+      if (resolved.kind === "operation") setOpId(resolved.opId);
+      else if (resolved.kind === "violation") {
+        toast.error(`Диск: ${resolved.message}`);
+        setPendingId(null);
+      } else {
         setPendingId(null);
         invalidate("compute-instances", projectId);
       }

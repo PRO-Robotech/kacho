@@ -23,7 +23,11 @@
 //
 // Держит `platform-envelope.test.ts`: ни один символ `shared/src/api/types.ts`
 // не объявляется в `compute/src` заново.
-export type { Operation, OperationList, Referrer } from "@shared/api/types";
+// Импорт и ре-экспорт разделены намеренно: `export … from` в область
+// видимости файла имён НЕ вносит, а `Referrer` читают доменные типы ниже.
+import type { Operation, OperationList, Referrer } from "@shared/api/types";
+
+export type { Operation, OperationList, Referrer };
 
 // ====== compute: EffectiveResources (output-only authoritative size) ======
 // Разрешается из каталога MachineType и зеркалится в Instance. Память в МиБ (не байтах).
