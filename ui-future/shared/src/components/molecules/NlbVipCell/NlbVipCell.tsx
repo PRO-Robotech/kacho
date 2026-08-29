@@ -5,23 +5,21 @@
 // и рисует её единственный вид ссылки консоли — `ResourceLink` (канон §9:
 // «двух реализаций одного вида не бывает»).
 //
-// Здесь стояла своя: собственный `<Link>` с собственным набором классов,
-// собственной сборкой адреса `/projects/<id>/vpc/addresses/<id>` и без иконки
-// типа, значка копирования, подсказки с полным значением и признака «я в строке
-// свойств». В одной таблице из-за этого жили два поведения: у «Имени» отзывался
-// общий значок справа, у адреса — ничего.
-//
-// Что осталось своим и почему: РЕЗОЛВ САМОГО IP. `RefNameLink` показывает имя
+// Что остаётся своим и почему: РЕЗОЛВ САМОГО IP. `RefNameLink` показывает имя
 // ресурса, а здесь читателю нужен адрес, который лежит внутри одной из четырёх
 // ветвей ответа. Поэтому список адресов проекта запрашивается здесь, а рисуется
 // уже общим компонентом.
+//
+// Жил в модуле `nlb`. Здесь он потому, что запись реестра, которая его зовёт,
+// живёт здесь: копия компонента рядом с копией записи расходится с общей молча,
+// и пользователь читает разницу как другое место продукта (#1471).
 
 import type { FC } from "react";
 import { useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/api/client";
-import { ResourceLink } from "@/components/molecules/ResourceLink";
-import { getByPath } from "@/lib/resource-registry";
+import { api } from "@shared/api/client";
+import { ResourceLink } from "@shared/components/molecules/ResourceLink";
+import { getByPath } from "@shared/lib/path";
 import { MONO_FONT } from "@shared/components/organisms/form/editor-surface";
 
 export interface NlbVipCellProps {
@@ -29,15 +27,19 @@ export interface NlbVipCellProps {
   v6AddressId?: string;
 }
 
+/** Строковое значение по пути — либо пусто. */
+function textAt(data: Record<string, unknown> | undefined, path: string): string {
+  const v = data ? getByPath(data, path) : undefined;
+  return typeof v === "string" ? v : "";
+}
+
 // addressIp — вытаскивает сам IP из Address-ресурса (external/internal, v4/v6).
 function addressIp(data: Record<string, unknown> | undefined): string {
-  if (!data) return "";
   return (
-    getByPath<string>(data, "external_ipv4_address.address") ??
-    getByPath<string>(data, "external_ipv6_address.address") ??
-    getByPath<string>(data, "internal_ipv4_address.address") ??
-    getByPath<string>(data, "internal_ipv6_address.address") ??
-    ""
+    textAt(data, "external_ipv4_address.address") ||
+    textAt(data, "external_ipv6_address.address") ||
+    textAt(data, "internal_ipv4_address.address") ||
+    textAt(data, "internal_ipv6_address.address")
   );
 }
 

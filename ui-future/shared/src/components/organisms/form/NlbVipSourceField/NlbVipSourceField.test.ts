@@ -2,7 +2,13 @@ import { jest } from "@jest/globals";
 
 // NlbVipSourceField тянет RefSelect → весь form-движок; для чистого логического
 // теста хелперов мокаем RefSelect (в этом тесте компонент не рендерится).
-jest.unstable_mockModule("@/components/organisms/form/RefSelect", () => ({ RefSelect: () => null }));
+//
+// Псевдоним — `@shared`, а не `@/`: проба переехала сюда вместе со своим
+// предметом (#1471), а `@/` каждый модуль отображает НА СЕБЯ. В модуле, где он
+// объявлен, подмена молча промахнулась бы мимо файла, который компонент реально
+// импортирует; в модуле, где его нет вовсе (vpc/iam/system), суита не поднялась
+// бы целиком — и это единственный из двух исходов, который видно.
+jest.unstable_mockModule("@shared/components/organisms/form/RefSelect", () => ({ RefSelect: () => null }));
 
 const { effectiveVipMode, buildVipSourceOrNull, familyIpVersion, subnetPlacementMatches, linkAddressFilter } =
   await import("./NlbVipSourceField");

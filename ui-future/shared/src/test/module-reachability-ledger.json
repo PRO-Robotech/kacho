@@ -90,8 +90,6 @@
     "iam/src/pages/SubnetCreateRedirect/index.ts": "барабан вокруг компонента, взятого из @shared: снимается вместе со сведением форков — #591",
     "iam/src/pages/SubnetDetailPage/SubnetDetailPage.tsx": "недостижим от объявленных входов приложения; снятие идёт вместе с ответом «а где это теперь» — #591",
     "iam/src/pages/SubnetDetailPage/index.ts": "барабан вокруг компонента, взятого из @shared: снимается вместе со сведением форков — #591",
-    "iam/src/pages/TargetGroupDetailPage/TargetGroupDetailPage.tsx": "недостижим от объявленных входов приложения; снятие идёт вместе с ответом «а где это теперь» — #591",
-    "iam/src/pages/TargetGroupDetailPage/index.ts": "барабан вокруг компонента, взятого из @shared: снимается вместе со сведением форков — #591",
     "iam/src/pages/iam/index.ts": "барабан вокруг компонента, взятого из @shared: снимается вместе со сведением форков — #591",
     "iam/src/pages/index.ts": "барабан вокруг компонента, взятого из @shared: снимается вместе со сведением форков — #591",
     "nlb/src/App.tsx": "остаток дофедеративного скелета отдельного приложения — #591",

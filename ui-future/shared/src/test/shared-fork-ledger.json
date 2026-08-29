@@ -139,27 +139,6 @@
       ]
     },
     {
-      "id": "nlb:components",
-      "reason": "Осталась ровно та часть оснастки, которую нельзя заменить на @shared, пока реестр ресурсов модульный: эти компоненты резолвят спеку ПО ИДЕНТИФИКАТОРУ из реестра, а общий реестр несёт не все ресурсы модулей — замер на 007e3e99: в нём нет `snapshots` (storage) и `registries`/`repositories`/`tags` (registry), то есть прямая замена молча оставила бы эти ресурсы без ссылок. Предикат: сравнить ключи `REGISTRY` модуля и @shared. Снимается вместе с объединением реестров (#402), не раньше. Остальная оснастка модуля сведена к прослойкам. Сверх того — собственные компоненты домена (components/organisms/TargetsManager/TargetsManager.tsx, components/organisms/form/NlbVipSourceField/NlbVipSourceField.tsx), у общего модуля пары не имеющие.",
-      "entries": [
-        {
-          "file": "nlb/src/components/organisms/TargetsManager/TargetsManager.tsx",
-          "symbols": [
-            "buildTargetPayload",
-            "targetIdentity",
-            "targetIdentityOnly"
-          ]
-        },
-        {
-          "file": "nlb/src/components/organisms/form/NlbVipSourceField/NlbVipSourceField.tsx",
-          "symbols": [
-            "buildVipSourceOrNull",
-            "lbTypeFromPlacement"
-          ]
-        }
-      ]
-    },
-    {
       "id": "nlb:lib",
       "reason": "Библиотека модуля: реестр ресурсов и всё, что его читает. Реестр модульный намеренно (состав ресурсов у модулей разный), поэтому его потребители живут рядом с ним. Правило домена и сборки адреса из них ВЫВЕДЕНО в @shared/lib/service-prefix (#372) — сводится то, что от состава реестра не зависит.",
       "entries": [
@@ -167,16 +146,6 @@
           "file": "nlb/src/lib/api-client.ts",
           "symbols": [
             "ApiError"
-          ]
-        },
-        {
-          "file": "nlb/src/lib/resource-registry.tsx",
-          "symbols": [
-            "REGISTRY",
-            "applyFieldDefaults",
-            "getByPath",
-            "getResource",
-            "resourceProjectPath"
           ]
         }
       ]

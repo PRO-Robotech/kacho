@@ -10,7 +10,13 @@ module.exports = {
   testEnvironment: "jsdom",
   extensionsToTreatAsEsm: [".ts", ".tsx"],
   setupFilesAfterEnv: ["<rootDir>/../shared/src/test/setup.ts"],
-  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
+  // Суита общего модуля гоняется ЗДЕСЬ, а не только у vpc/iam/system: реестр
+  // ресурсов у консоли ОДИН (`@shared/lib/resource-registry`), и раздел `/nlb/*`
+  // рисует именно его (#408). Пока раздел нёс свою копию реестра, общая суита
+  // его не касалась и не гонять её было честно; теперь реестр один, и «зелёный
+  // прогон этого модуля» без неё не утверждал бы о том, что модуль исполняет.
+  roots: ["<rootDir>/src", "<rootDir>/../shared/src"],
+  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}", "<rootDir>/../shared/src/**/*.test.{ts,tsx}"],
   // У `ui-future/shared` собственных node_modules нет: его исходники — часть сборки
   // КАЖДОГО remote'а, и зависимости им даёт remote (так же это делает vite, для
   // которого `@shared/*` — обычный alias внутри одного графа). Без этой строки любой
