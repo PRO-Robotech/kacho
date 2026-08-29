@@ -592,7 +592,12 @@ func TestOutOfPoolCeilingIsReadWhereItIsDecided(t *testing.T) {
 		if !ok {
 			continue
 		}
-		if len(tree.importers(svcDir+"/", subscriptionPkg)) == 0 {
+		// Предпосылка эта — о службах, КОТОРЫЕ ПОДНИМАЮТ сервер потоков, поэтому
+		// отбор идёт по его конструктору, а не по импорту пакета. Пакет несёт и
+		// переиспользуемую часть (наблюдатель границы устоявшегося), и импортёр
+		// ради неё сервера не поднимает: посчитай его здесь — и от него
+		// потребовали бы объявить потолок тому, чего он не заводит (kacho#1374).
+		if n, _ := tree.callSites(svcDir+"/", subscriptionPkg+".NewServer"); n == 0 {
 			continue
 		}
 		looked++
