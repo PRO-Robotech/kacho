@@ -18,6 +18,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
+	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/streamrevocation"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
@@ -242,6 +243,23 @@ func buildStreamRevocationSweeper(
 				"fail-closed не наступит ни разу, а закрытие по собственному бюджету потока "+
 				"выглядело бы закрытием по отзыву",
 			staleAfter, cfg.SubscriptionStreamBudget)
+	}
+	// Окно обязано honorировать границу КАЖДОЙ полосы, за которую перепрос
+	// отвечает, а не только той, из которой выведено (kacho#1450). Полоса
+	// базового секрета объявляет свою границу константой; окно шире неё означало
+	// бы, что обещание «отозванное отвергается не позже N» действует на пути
+	// запроса и тихо не действует на открытом соединении.
+	//
+	// Отказ, а не минимум из двух: минимум прошёл бы молча и сделал бы
+	// объявленную оператором величину невидимой — посадка работала бы не так,
+	// как объявлена, и узнать об этом было бы неоткуда.
+	if interval > middleware.BasicCredentialVerdictWindow {
+		return nil, fmt.Errorf(
+			"streamrevocation: окно отзыва %v шире границы %v, объявленной полосой базового "+
+				"секрета — на открытом соединении её обещание перестало бы действовать, "+
+				"оставаясь верным на пути запроса. Сузьте KACHO_INTROSPECTION_CACHE_TTL_SECONDS "+
+				"либо решите расхождение величин осознанно",
+			interval, middleware.BasicCredentialVerdictWindow)
 	}
 	if interval >= cfg.SubscriptionStreamBudget {
 		return nil, fmt.Errorf(

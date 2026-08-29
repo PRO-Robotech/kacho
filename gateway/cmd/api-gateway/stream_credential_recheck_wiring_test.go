@@ -29,6 +29,7 @@ import (
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
+	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
 )
@@ -274,5 +275,55 @@ func TestShippedPostureAssemblesTheCredentialRecheck(t *testing.T) {
 	})
 	if _, err := buildStreamRevocationSweeper(cfg, iamConn, probeProjection(t), quietLog()); err != nil {
 		t.Fatalf("объявленная посадка не собирает перепрос: %v — тогда край не поднялся бы вовсе", err)
+	}
+}
+
+// TestRecheckWindowHonoursEveryLaneItSpeaksFor — окно перепроса не шире
+// объявленного окна ЛЮБОЙ полосы, за которую он отвечает (kacho#1450).
+//
+// # Предмет
+//
+// Перепрос один, а полос у него три, и у каждой ОБЪЯВЛЕНА своя граница отзыва.
+// Для полосы подписанного удостоверения границей служит срок кэша интроспекции —
+// из него окно и выводится. Полоса базового секрета объявляет свою границу
+// константой (`middleware.BasicCredentialVerdictWindow`), и это не пожелание:
+// «отозванное отвергается не позже N» — то, что продукт обещает.
+//
+// Разведи величины — и обещание полосы базового секрета тихо перестало бы
+// действовать на открытых соединениях, оставаясь верным на пути запроса. Один
+// механизм, две величины, и расхождение никто бы не решал.
+//
+// # Почему ОТКАЗ СБОРКИ, а не минимум из двух
+//
+// Минимум прошёл бы молча и сделал бы вторую величину невидимой: посадка,
+// которой оператор объявил широкий срок кэша, работала бы не так, как объявлена,
+// и узнать об этом было бы неоткуда. Отказ называет ОБЕ величины и требует
+// решения.
+func TestRecheckWindowHonoursEveryLaneItSpeaksFor(t *testing.T) {
+	iamConn := bufconnDial(t, func(s *grpc.Server) {
+		iamv1.RegisterInternalSessionRevocationsServiceServer(s, revokingAuthority{})
+	})
+
+	// Окно ШИРЕ объявленного полосой базового секрета; прочие стражи пройдены
+	// заведомо — иначе отказ пришёл бы от соседа, и проба утверждала бы о нём.
+	wide := config.Config{
+		IntrospectionCacheTTLSeconds: int(middleware.BasicCredentialVerdictWindow/time.Second) + 5,
+		SubscriptionStreamBudget:     10 * time.Minute,
+	}
+	if _, err := buildStreamRevocationSweeper(wide, iamConn, probeProjection(t), quietLog()); err == nil {
+		t.Fatal("точка сборки приняла окно шире границы, объявленной полосой базового секрета: " +
+			"обещание «отозванное отвергается не позже N» перестало бы действовать на открытых " +
+			"соединениях, оставаясь верным на пути запроса")
+	}
+
+	// ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ ТОЙ ЖЕ ОСИ: окно, равное объявленной границе,
+	// проходит. Без него отрицание зеленело бы на строителе, отвергающем всё.
+	exact := config.Config{
+		IntrospectionCacheTTLSeconds: int(middleware.BasicCredentialVerdictWindow / time.Second),
+		SubscriptionStreamBudget:     10 * time.Minute,
+	}
+	if _, err := buildStreamRevocationSweeper(exact, iamConn, probeProjection(t), quietLog()); err != nil {
+		t.Fatalf("окно, РАВНОЕ объявленной границе, отвергнуто: %v — тогда объявленная "+
+			"посадка не собралась бы вовсе", err)
 	}
 }

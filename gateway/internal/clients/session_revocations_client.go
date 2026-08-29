@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
+	"github.com/PRO-Robotech/kacho/gateway/internal/streamrevocation"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 )
@@ -26,6 +27,16 @@ import (
 // callers care only about success/failure of the synchronous DB write.
 type SessionRevocationsAdapter struct {
 	client iamv1.InternalSessionRevocationsServiceClient
+
+	// iam — ТОТ ЖЕ внутренний слушатель того же соседа, другой набор глаголов.
+	//
+	// Вопрос о живости базового удостоверения (kacho#1450) живёт в
+	// `InternalIAMService`, а не в службе отзыва сессий, — но задаёт его тот же
+	// спрашивающий тому же соседу по тому же соединению. Второй адаптер и второе
+	// поле в точке сборки означали бы половину, которую можно провязать
+	// отдельно, — то есть половину, которую можно ЗАБЫТЬ отдельно, и забытая
+	// выглядела бы исполняемым контролем ровно для той полосы, что осталась.
+	iam iamv1.InternalIAMServiceClient
 }
 
 // NewSessionRevocationsAdapter wires the adapter onto an existing gRPC
@@ -33,6 +44,42 @@ type SessionRevocationsAdapter struct {
 func NewSessionRevocationsAdapter(cc grpc.ClientConnInterface) *SessionRevocationsAdapter {
 	return &SessionRevocationsAdapter{
 		client: iamv1.NewInternalSessionRevocationsServiceClient(cc),
+		iam:    iamv1.NewInternalIAMServiceClient(cc),
+	}
+}
+
+// IsBasicCredentialLive спрашивает НАШ авторитет, живо ли базовое удостоверение,
+// названное идентификатором своей строки (kacho#1450).
+//
+// ЗАЧЕМ ОТДЕЛЬНЫЙ ВОПРОС, ЕСЛИ РЯДОМ ЕСТЬ РЕЗОЛВ. Тот отвечает ПРЕДЪЯВИТЕЛЮ и
+// потому требует предъявленной строки. Спрашивающий с открытого соединения
+// предъявителем не является: секрет он видел однажды, при открытии, и держать
+// его живым весь срок соединения значило бы завести поверхность хранения ради
+// контроля.
+//
+// ТРИ ИСХОДА ВЛАДЕЛЬЦА ПЕРЕВОДЯТСЯ ЗДЕСЬ, И НИ ОДИН НЕ СЛИВАЕТСЯ:
+//   - `OK` → живо;
+//   - `UNAUTHENTICATED` → НЕ живо, единым отказом полосы (различимого исхода у
+//     владельца нет намеренно — он был бы оракулом);
+//   - `UNIMPLEMENTED` → окно раската: служба прав ещё не докатилась до того же
+//     дерева. Знание о кодах транспорта принадлежит адаптеру, поэтому перевод в
+//     типизированный признак делается ЗДЕСЬ, а решение — на слое, который им
+//     пользуется;
+//   - прочее → «спросить не удалось».
+func (a *SessionRevocationsAdapter) IsBasicCredentialLive(
+	ctx context.Context, credentialID string,
+) (bool, error) {
+	_, err := a.iam.CheckBasicCredentialLive(ctx,
+		&iamv1.CheckBasicCredentialLiveRequest{CredentialId: credentialID})
+	switch {
+	case err == nil:
+		return true, nil
+	case status.Code(err) == codes.Unauthenticated:
+		return false, nil
+	case status.Code(err) == codes.Unimplemented:
+		return false, streamrevocation.ErrBasicCredentialLivenessUnsupported
+	default:
+		return false, err
 	}
 }
 

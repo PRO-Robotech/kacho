@@ -194,7 +194,10 @@ func TestSubjectChangeRepo_ZeroHeadMeansAnEmptyJournal(t *testing.T) {
 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	// Закрытие С ПРЕДЕЛОМ: отложенное ждёт соединение, которого упавшая внутри
+	// открытой транзакции проба не вернёт никогда, — и уносит вердикт всего
+	// пакета вместе с собой.
+	pgtest.ClosePoolAtEnd(t, pool)
 
 	repo := kachopg.NewSubjectChangeRepo(pool)
 
