@@ -208,7 +208,7 @@ func TestSubjectChangeRepo_ZeroHeadMeansAnEmptyJournal(t *testing.T) {
 	// пакета вместе с собой.
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	repo := kachopg.NewSubjectChangeRepo(pool)
+	repo := kachopg.NewSubjectChangeRepo(pool, nil)
 
 	// ── сторона 1: журнал пуст ─────────────────────────────────────────────
 	var rows int64
