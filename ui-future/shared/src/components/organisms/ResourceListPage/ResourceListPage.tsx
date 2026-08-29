@@ -5,7 +5,7 @@
 import { useMemo, useState } from "react";
 import { Link, useParams, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Checkbox, Segmented, Select, Typography } from "antd";
+import { Button, Checkbox, Input, Segmented, Select, Typography } from "antd";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { PlusOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
@@ -28,6 +28,7 @@ import {
 import { useResourceList } from "@shared/lib/use-resource-list";
 import { listViewState } from "@shared/lib/list-view-state";
 import { searchFilterExpression } from "@shared/lib/list-search-filter";
+import { labelFilterActive, parseLabelQuery, rowMatchesLabels } from "@shared/lib/list-label-filter";
 import { clientScope, scopeSuffix, type NarrowingScope } from "@shared/lib/list-scope";
 
 interface Props {
@@ -198,6 +199,34 @@ export function ResourceListPage({
   // client-side по is_system. Тот же паттерн, что hasZoneFilter (паритет kacho-ui).
   const hasSystemFilter = spec.id === "roles";
   const [roleKind, setRoleKind] = useState<"all" | "system" | "custom">("all");
+
+  // ОТБОР ПО МЕТКАМ — КЛИЕНТСКИЙ, И ЭТО РЕШЕНИЕ ПЛАТФОРМЫ, А НЕ УПУЩЕНИЕ (#1021).
+  //
+  // Оси подписки на поток изменений объявлены НЕИЗМЕНЯЕМЫМИ (`kinds` × `project`
+  // × `ids`), а метка мутабельна: ресурс входит в выборку и выходит из неё
+  // правкой метки. Сервер не может сказать «вышел из выборки» иначе как
+  // синтетическим снятием, а подписчик прочитал бы его как «ресурс удалён» и
+  // показал бы человеку снос при живом ресурсе. Поэтому судит тот, у кого есть
+  // ОБА состояния строки, — страница, перечитавшая список.
+  //
+  // Показывается там, где ресурс метки НЕСЁТ, и признак этого ВЫВОДИТСЯ из
+  // спеки, а не выписывается перечнем идентификаторов рядом (как `hasZoneFilter`
+  // выше): выписанный перечень разошёлся бы с реестром молча — завели бы метки
+  // четырнадцатому ресурсу, а ручку ему никто не дал. Ручка, сужающая по тому,
+  // чего у ресурса нет, отвечала бы «ничего не найдено» на любой ввод.
+  const hasLabelFilter = (spec.columns ?? []).some((c) => c.path === "labels");
+  const [labelQuery, setLabelQuery] = useState("");
+  // Отставания нет намеренно: спрашивать некого — отбор целиком в браузере.
+  const labelTerms = useMemo(
+    () => (hasLabelFilter ? parseLabelQuery(labelQuery) : []),
+    [hasLabelFilter, labelQuery],
+  );
+  // СУЖАЕТ ЛИ ОТБОР — ОДНО имя на оба употребления: ветку отбрасывания строки и
+  // признак `anyFilterActive`. Второе выражение того же предмета разошлось бы с
+  // первым молча, и разошлось бы именно там, где расхождение не видно: список
+  // выглядел бы отфильтрованным, а пустой его результат звал бы создать первый
+  // ресурс (`labelFilterActive`, дефект #927).
+  const labelNarrowing = hasLabelFilter && labelFilterActive(labelQuery);
   const zoneSpec = REGISTRY["zones"];
   const { data: zoneData } = useQuery({
     queryKey: ["zones", "list-for-filter"],
@@ -258,6 +287,12 @@ export function ResourceListPage({
       // которые отбор до него не допускал.
       //
       // Заодно ушёл спецслучай одного ресурса в общем компоненте.
+      // Метки — ПЕРВЫМИ: они сужают НАБОР строк, среди которых потом ищут, а не
+      // уточняют результат поиска. Предикат чистый и своего состояния не держит:
+      // держи он запомненный набор подходящих идентификаторов, строка, потерявшая
+      // метку, осталась бы в списке до перезагрузки — ровно тот дефект, ради
+      // которого отбор и пишется.
+      if (labelNarrowing && !rowMatchesLabels(row, labelTerms)) return false;
       if (hasZoneFilter && zone !== "all" && rowZone(row) !== zone) return false;
       if (hasSystemFilter && roleKind !== "all") {
         const isSystem = getByPath<boolean>(row, "is_system") === true || getByPath<boolean>(row, "isSystem") === true;
@@ -273,7 +308,7 @@ export function ResourceListPage({
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, query, serverSearch, serverSearchTerm, zone, hasZoneFilter, hasSystemFilter, roleKind, spec.id]);
+  }, [items, query, serverSearch, serverSearchTerm, zone, hasZoneFilter, hasSystemFilter, roleKind, spec.id, labelNarrowing, labelTerms]);
 
   // Заглушка «проект не выбран» — НИЖЕ всех хуков страницы, а не выше.
   // Scope приходит из context-store (аккаунтные списки IAM) или из параметра
@@ -323,7 +358,13 @@ export function ResourceListPage({
   // проваливаться в приглашение «создайте первый» — на 403 это сообщает
   // оператору, что список пуст, хотя ему просто отказали, а на 404 делает то же
   // поверх ответа, который равно может означать «скрыт от вас».
+  // ОТБОР ПО МЕТКАМ ОБЪЯВЛЕН СУЖЕНИЕМ. Ветка выше выбрасывает строку, значит она
+  // обязана попасть сюда: признак сужения выбирает, что человек увидит на пустом
+  // результате — «ничего не найдено» или приглашение «создайте первый». Второе —
+  // утверждение о ресурсах арендатора, и оно ложно, когда край ответил «есть», а
+  // строки спрятал отбор (правило 13 `ui.md`, дефект #927).
   const anyFilterActive =
+    labelNarrowing ||
     query.trim() !== "" ||
     (hasZoneFilter && zone !== "all") ||
     (hasSystemFilter && roleKind !== "all") ||
@@ -519,6 +560,30 @@ export function ResourceListPage({
                   поиска, оно читалось как уточнение к нему, хотя порядок
                   обратный. */}
               {hasZoneFilter && <Select value={zone} onChange={setZone} options={zoneOptions} style={{ width: 220 }} />}
+              {/* Отбор по МЕТКАМ. Стоит среди отборов, а не рядом с поиском, и это
+                  не раскладка, а разные вопросы: поиск сравнивает ПОДСТРОКУ имени,
+                  отбор метки — значение ЦЕЛИКОМ. Свести их в одно поле значило бы
+                  сделать точный вопрос незадаваемым.
+
+                  Область называется в самом плейсхолдере — тем же хвостом, что у
+                  строки поиска, и по той же причине: одна и та же ручка означает
+                  на разных страницах разное. Область здесь ВСЕГДА клиентская
+                  (`clientScope`), а не `searchScope`: сервер по меткам не сужает
+                  ни на одном ресурсе, и назвать этот отбор серверным на странице
+                  с серверным поиском значило бы соврать про него. */}
+              {hasLabelFilter && (
+                <Input
+                  value={labelQuery}
+                  onChange={(e) => setLabelQuery(e.target.value)}
+                  allowClear
+                  placeholder={`Метки: env=prod ${scopeSuffix(clientScope(hasMore))}`}
+                  title={
+                    "Условия через пробел, соединяются И. `ключ` — метка есть, значение любое; " +
+                    "`ключ=значение` — значение совпадает целиком; `ключ=` — значение пустое."
+                  }
+                  style={{ width: 260 }}
+                />
+              )}
               <TableSearch
                 value={query}
                 onChange={setQuery}
