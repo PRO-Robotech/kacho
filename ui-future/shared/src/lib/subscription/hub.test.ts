@@ -16,8 +16,8 @@ import { SubscriptionHub, type EventSourceLike } from "./hub";
  * Подставной приёмник доказывает РАЗБОР и УЧЁТ, и не доказывает, что браузер
  * вообще откроет поток: печенье сессии, тип ответа, возобновление заголовком —
  * ничего этого здесь нет by construction. Это утверждает проба браузером
- * (`ui-future/e2e/specs-awaiting-journal-owner/`), и она ждёт объявленного
- * владельца.
+ * (`ui-future/e2e/specs/subscription-stream.spec.ts`), и она исполняется: её
+ * условие создано поставкой, объявившей владельцев журнала.
  */
 
 class FakeSource implements EventSourceLike {
