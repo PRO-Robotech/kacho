@@ -20,12 +20,6 @@
       "reason": "Библиотека модуля: реестр ресурсов и всё, что его читает. ПРИЧИНА ЗДЕСЬ СМЕНИЛАСЬ — прежняя говорила о СОСТАВЕ («общий реестр несёт не все ресурсы модуля»), и для compute это уже неверно: разность ключей «реестр compute минус общий» ПУСТА (у модуля 7 записей, все семь общий несёт; замер на `bfbd8c385`, предикат — сравнить множества ключей верхнего уровня обоих `REGISTRY`). Держит форк СОДЕРЖАНИЕ: у двух записей домен богаче общего — `compute-instances` несёт колонки `effective_resources.v_cpu` и `effective_resources.memory_mib`, `machine-types` — `effective_resources.gpu_type`. Пока эти колонки не перенесены в общий реестр, прямая замена молча отняла бы их у списков. Снятие — тем же порядком, что у nlb: сперва обогатить общую проекцию (#1471), затем свести реестр (#408). Предикат снятия: та же разность плюс разность по `path:`/`name:` внутри каждой общей записи — обе пусты.",
       "entries": [
         {
-          "file": "compute/src/lib/api-client.ts",
-          "symbols": [
-            "ApiError"
-          ]
-        },
-        {
           "file": "compute/src/lib/resource-registry.tsx",
           "symbols": [
             "REGISTRY",
@@ -33,12 +27,6 @@
             "getByPath",
             "getResource",
             "resourceProjectPath"
-          ]
-        },
-        {
-          "file": "compute/src/lib/use-resource-list.ts",
-          "symbols": [
-            "useResourceList"
           ]
         }
       ]
