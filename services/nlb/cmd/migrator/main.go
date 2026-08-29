@@ -44,7 +44,6 @@
 package main
 
 import (
-	"fmt"
 	"io/fs"
 	"os"
 	"strings"
@@ -52,6 +51,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует "pgx" driver для sql.Open
 	"github.com/spf13/cobra"
 
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/migrator"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
@@ -95,7 +95,7 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 	root.PersistentFlags().StringVar(&opts.dialect, "dialect", defaultDialect,
 		"SQL dialect (postgres)")
 	root.PersistentFlags().StringVar(&opts.dsn, "dsn", "",
-		"database DSN; if empty — read ENV KACHO_NLB_REPOSITORY__POSTGRES__URL, then config.yaml")
+		"database DSN; if empty — read ENV "+migratorcli.EnvDSN+", then config.yaml")
 	root.PersistentFlags().StringVar(&opts.configPath, "config", "",
 		"path to kacho-nlb config.yaml (fallback DSN source)")
 
@@ -169,27 +169,26 @@ func newStatusCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 
 // buildRunner собирает migrator.Runner из persistent-флагов + ENV + config-fallback.
 //
-// DSN приоритет: --dsn > ENV KACHO_NLB_REPOSITORY__POSTGRES__URL > --config
-// (config.Load → cfg.Repository.Postgres.URL). config.Load умеет тот же ENV-key,
-// так что ENV-fallback гарантированно сработает даже если --config не задан.
+// Приоритет DSN один на семь сервисов и живёт в общем пакете:
+// --dsn > ENV KACHO_MIGRATOR_DSN > конфигурация сервиса (здесь — config.Load,
+// который сам читает `KACHO_NLB_REPOSITORY__POSTGRES__URL` и смонтированный
+// `--config`). Своей редакции порядка тут быть не должно: две редакции об одном
+// предмете расходятся молча — и разошлись, общей переменной nlb не читал вовсе.
 func buildRunner(opts *rootOptions, migrationsFS fs.FS) (*migrator.Runner, error) {
 	dialect, err := migrator.ResolveDialect(opts.dialect)
 	if err != nil {
 		return nil, err
 	}
 
-	dsn := strings.TrimSpace(opts.dsn)
-	if dsn == "" {
-		// config.Load сам ловит ENV KACHO_NLB_REPOSITORY__POSTGRES__URL,
-		// поэтому отдельно os.Getenv не зовём — config — единый source.
+	dsn, err := migratorcli.ResolveDSN(opts.dsn, func() (string, error) {
 		cfg, cerr := config.Load(opts.configPath)
 		if cerr != nil {
-			return nil, fmt.Errorf("dsn unset (--dsn) and config load failed: %w", cerr)
+			return "", cerr
 		}
-		dsn = strings.TrimSpace(cfg.Repository.Postgres.URL)
-		if dsn == "" {
-			return nil, fmt.Errorf("dsn unset: --dsn / KACHO_NLB_REPOSITORY__POSTGRES__URL / repository.postgres.url all empty")
-		}
+		return strings.TrimSpace(cfg.Repository.Postgres.URL), nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return migrator.New(migrator.Config{

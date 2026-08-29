@@ -205,3 +205,42 @@ func TestLegitimateFlagsSurviveTheArgumentCheck(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildRunner_SharedEnvDSNIsRead — переменная `KACHO_MIGRATOR_DSN` одна на
+// семь сервисов (#1461, docs/architecture/migrator-cli.md).
+//
+// nlb её не читал вовсе: он шёл своим путём `KACHO_NLB_REPOSITORY__POSTGRES__URL`
+// через config.Load. Оператор, задавший общую переменную и получивший УСПЕХ на
+// шести сервисах, на седьмом получал отказ загрузки конфигурации — то есть
+// знание об одном сервисе к соседнему не применялось.
+//
+// Опыт, которым это померено на собранных бинарях:
+//
+//	env -u KACHO_NLB_REPOSITORY__POSTGRES__URL KACHO_MIGRATOR_DSN='@@@не-dsn@@@' \
+//	  <s>-migrator status
+//
+// Шесть отвечали «cannot parse `@@@не-dsn@@@`» (переменная прочитана), nlb —
+// «dsn unset (--dsn) and config load failed». Утверждается ЧТЕНИЕ переменной, а
+// не успех соединения: значение заведомо негодное, и отказ обязан называть ЕГО.
+func TestBuildRunner_SharedEnvDSNIsRead(t *testing.T) {
+	t.Setenv("KACHO_MIGRATOR_DSN", "postgres://shared:env@h:5432/db?sslmode=disable")
+	opts := &rootOptions{dialect: "postgres" /* dsn пуст, --config не задан */}
+	r, err := buildRunner(opts, fstest.MapFS{"0001_x.sql": &fstest.MapFile{Data: []byte("-- empty")}})
+	if err != nil {
+		t.Fatalf("общая переменная не прочитана, отказ пришёл от запасного пути: %v", err)
+	}
+	if r == nil {
+		t.Fatal("nil runner")
+	}
+}
+
+// TestBuildRunner_FlagBeatsSharedEnvDSN — положительный контроль порядка к
+// пробе выше. Без него она зеленела бы на реализации, читающей ТОЛЬКО общую
+// переменную и игнорирующей явно переданный адрес.
+func TestBuildRunner_FlagBeatsSharedEnvDSN(t *testing.T) {
+	t.Setenv("KACHO_MIGRATOR_DSN", "@@@негодное@@@")
+	opts := &rootOptions{dialect: "postgres", dsn: "postgres://u:p@h:5432/db?sslmode=disable"}
+	if _, err := buildRunner(opts, emptyFS()); err != nil {
+		t.Fatalf("явный --dsn не перекрыл общую переменную: %v", err)
+	}
+}
