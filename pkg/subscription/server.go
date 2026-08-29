@@ -328,8 +328,15 @@ func (s *Server) serve(
 ) error {
 	storage := s.cfg.Journal.Storage
 	h := newWatermark(storage, s.log, s.now)
-	if err := h.advance(ctx, conn, storage.Table); err != nil {
-		return status.Error(codes.Unavailable, "subscription backend unavailable")
+	if err := s.settle(ctx, conn, h, storage.Table); err != nil {
+		return err
+	}
+	if !h.established {
+		// Срок потока истёк раньше, чем граница подтвердилась. Закрываем ЧИСТО:
+		// позиции клиент не получал, поэтому возобновляться ему не с чего — он
+		// откроет поток заново. Посадить его на неподтверждённый ноль нельзя
+		// (см. [Server.settle]).
+		return nil
 	}
 
 	floor := h.floor(storage.Retention)
@@ -383,6 +390,44 @@ func (s *Server) serve(
 				return nil
 			}
 			return status.Error(codes.Unavailable, "subscription backend unavailable")
+		}
+	}
+}
+
+// settle доводит наблюдение границы до ПОДТВЕРЖДЁННОГО — и только после этого
+// подписчика сажают.
+//
+// Неподтверждённая граница равна нулю, а ноль этот означает «позиции ещё нет».
+// Усвоив его как позицию, подписчик, пришедший БЕЗ позиции, садится в НАЧАЛО
+// журнала: ему уезжает вся накопленная история, которую он не просил, а
+// служебное сообщение объявляет его при этом догнавшим — `caught_up` сравнивает
+// курсор с той же нулевой границей. Строки журнала дренаж не удаляет, поэтому
+// хвост бывает длинным (kacho#1386).
+//
+// Ждём РОВНО того писателя, который держал журнал в момент наблюдения: его
+// завершение и есть подтверждение, а холостой перепрос закрывает случай отката,
+// о котором уведомления не будет. Это тот же размен, что объявлен у самой
+// границы, — «не потерять» против «доставить сейчас», — и удержание дольше
+// stallWarnAfter попадает в лог оттуда же, а не отдельной жалобой здесь.
+//
+// Пустого журнала это не задерживает: подтверждать в нём нечего, наблюдение
+// состоится первым же проходом.
+func (s *Server) settle(ctx context.Context, conn *pgx.Conn, h *watermark, table string) error {
+	for {
+		if err := h.advance(ctx, conn, table); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return status.Error(codes.Unavailable, "subscription backend unavailable")
+		}
+		if h.established {
+			return nil
+		}
+		if err := s.waitForWork(ctx, conn); err != nil {
+			return err
+		}
+		if ctx.Err() != nil {
+			return nil
 		}
 	}
 }
