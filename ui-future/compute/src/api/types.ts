@@ -8,33 +8,22 @@
 // vs registry.image), serviceAccount как reference.Referrer (F4). MachineType —
 // новый sync-каталог sizing'а (read-only public; admin-CRUD → Internal*, :9091).
 
-// ====== Operation ======
-
-export interface Operation {
-  id: string;
-  description?: string;
-  created_at?: string;
-  created_by?: string;
-  modified_at?: string;
-  done: boolean;
-  metadata?: { "@type": string; [key: string]: unknown };
-  error?: { code: number; message: string; details?: unknown[] };
-  response?: { "@type": string; [key: string]: unknown };
-}
-
-export interface OperationList {
-  operations: Operation[];
-  next_page_token?: string;
-}
-
-// ====== reference.Referrer (cross-owner dependency handle, F4) ======
-// Class-C graceful-dangling ссылка: {type,id,name°}. name° — output-only зеркало
-// на момент привязки.
-export interface Referrer {
-  type?: string;
-  id?: string;
-  name?: string;
-}
+// ====== Типы ПРОВОДА платформы — объявлены не здесь ======
+//
+// Конверт операции и дескриптор зависимости несёт КАЖДЫЙ сервис платформы, и
+// меняются они вместе с её контрактом, а не с доменом машин. Здесь стояли их
+// копии — структурно совпадавшие с общими и потому молчавшие: расхождение
+// началось бы в день, когда общий конверт что-нибудь приобретёт, и до этого
+// домена приобретение просто не доехало бы.
+//
+// Ре-экспорт, а не импорт «для себя»: потребители модуля берут эти имена из
+// `@/api/types` (`Referrer` читают поля машины), и менять их импорты заодно со
+// сведением значило бы смешать две правки. Тела у прослойки нет, поэтому
+// разойтись с источником она не может by construction.
+//
+// Держит `platform-envelope.test.ts`: ни один символ `shared/src/api/types.ts`
+// не объявляется в `compute/src` заново.
+export type { Operation, OperationList, Referrer } from "@shared/api/types";
 
 // ====== compute: EffectiveResources (output-only authoritative size) ======
 // Разрешается из каталога MachineType и зеркалится в Instance. Память в МиБ (не байтах).
