@@ -25,13 +25,14 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
+
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/subscriptionjournal"
-	"log/slog"
 )
 
 // buildSubscriptionServer собирает ОБЩИЙ сервер потока изменений для журнала
