@@ -66,7 +66,12 @@ const MOVE_INCAPABLE = [
 ];
 
 /**
- * Есть ли у ресурса хоть одно действие строки?
+ * Сколько у ресурса НАСТОЯЩИХ действий строки?
+ *
+ * Один счёт отвечает на два вопроса сразу — «нужен ли столбец действий» (больше
+ * нуля) и «прячется ли одиночное действие за кебабом» (ровно одно, #687).
+ * Раздельные предикаты об одном предмете разошлись бы молча: столбец появлялся
+ * бы от одного набора слагаемых, а форма кнопки решалась бы другим.
  *
  * Предикат ЗАКРЫТ: меню появляется от НАЛИЧИЯ действия, а не от отсутствия
  * имени в перечне. Слагаемое `!MOVE_INCAPABLE.includes(spec.id)` отсюда снято
@@ -85,21 +90,25 @@ const MOVE_INCAPABLE = [
  * повторяет ссылку в колонке идентичности, и столбец ради него был бы столбцом
  * без содержания.
  */
-export function resourceHasRowActions(spec: ResourceSpec): boolean {
+export function specRowActionCount(spec: ResourceSpec): number {
   return (
-    spec.ops.update ||
-    spec.ops.delete ||
+    (spec.ops.update ? 1 : 0) +
+    (spec.ops.delete ? 1 : 0) +
     // Объявленный глагол — такое же действие строки, как правка и удаление.
     // Без этого слагаемого ресурс, у которого ЕДИНСТВЕННОЕ действие — глагол,
     // не получил бы столбца действий вовсе, и объявление осталось бы формой
     // без содержания: спека его несёт, а на экране его нет.
-    (spec.rowVerbs?.length ?? 0) > 0 ||
+    (spec.rowVerbs?.length ?? 0) +
     // Названное исключение с причиной: меню сети несёт «Создать подсеть» —
     // пункт, которого нет ни в `ops`, ни в `rowVerbs`, он собирается из id
     // самим меню. Перечень исключений выписан в пробе поимённо и растёт
     // только вместе с причиной.
-    spec.id === "networks"
+    (spec.id === "networks" ? 1 : 0)
   );
+}
+
+export function resourceHasRowActions(spec: ResourceSpec): boolean {
+  return specRowActionCount(spec) > 0;
 }
 
 /**
@@ -123,6 +132,23 @@ export function resourceHasRowActions(spec: ResourceSpec): boolean {
  * Объявлен ОДНИМ объектом на модуль: одна форма для всех строк тогда не
  * обещание, а следствие — вида, зависящего от строки, взяться неоткуда.
  */
+/**
+ * Действие строки — ОДНО описание для обеих форм показа: пункта меню и кнопки с
+ * подписью. Общая форма нужна не ради краткости: пока описаний было два, «что
+ * показать» и «сколько их» решались разными выражениями и расходились молча.
+ */
+interface RowAction {
+  key: string;
+  icon: React.ReactNode;
+  /** Подпись — СТРОКА: она становится доступным именем инлайн-кнопки. */
+  label: string;
+  /** Необратимое либо отнимающее доступ действие — красный тон. */
+  danger?: boolean;
+  /** Действие к строке неприменимо, и это ПРИЧИНА — она показывается подсказкой. */
+  disabledReason?: string;
+  run: () => void;
+}
+
 export const ROW_ACTION_TRIGGER: React.CSSProperties = {
   width: 30,
   height: 30,
@@ -130,6 +156,23 @@ export const ROW_ACTION_TRIGGER: React.CSSProperties = {
   padding: 0,
   borderRadius: 6,
   color: "var(--kc-text-secondary)",
+};
+
+/**
+ * Кнопка ЕДИНСТВЕННОГО действия строки.
+ *
+ * Высота — та же 30, что у значка: столбец действий не вправе поднимать строку
+ * списка, каким бы способом он ни показан. Горизонтальные поля появляются
+ * оттого, что здесь есть подпись, а у значка её нет.
+ *
+ * Цвет НЕ задан намеренно: тон выбирает `danger` самого действия, а не строка.
+ * Заданный здесь цвет перебил бы красный у удаления — единственного действия,
+ * о цене которого стоит знать до нажатия (правило 6 канона консоли).
+ */
+export const ROW_ACTION_INLINE: React.CSSProperties = {
+  height: 30,
+  padding: "0 8px",
+  borderRadius: 6,
 };
 
 export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: Props) {
@@ -191,13 +234,11 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
       fn();
     };
 
-  const items: MenuProps["items"] = [
-    {
-      key: "open",
-      icon: drillIsChild ? <ArrowRightOutlined /> : <EyeOutlined />,
-      label: drillIsChild ? "Открыть" : "Просмотр",
-      onClick: stop(() => void navigate(drillTarget)),
-    },
+  // Действия строки собираются ОДНИМ перечнем, а вид выбирается по нему же.
+  // Иначе «сколько действий» и «что показать» стали бы двумя местами об одном
+  // предмете: пункт, добавленный в меню и забытый в счёте, вернул бы кебаб над
+  // единственным действием — то есть ровно дефект #687.
+  const realActions: RowAction[] = ([
     isNetwork && currentProjectId
       ? {
           key: "create-subnet",
@@ -205,13 +246,12 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
           label: "Создать подсеть",
           // editAsPanel: форма-панель в зоне 3 shell сети (child-create).
           // Иначе (legacy list-модалка): ?modal-флаг над текущей страницей.
-          onClick: stop(() =>
+          run: () =>
             void navigate(
               editAsPanel
                 ? `/projects/${currentProjectId}/vpc/networks/${id}/subnets/create`
                 : `/projects/${currentProjectId}/vpc/networks/${id}?modal=subnets-create&networkId=${id}`,
             ),
-          ),
         }
       : null,
     spec.ops.update
@@ -222,9 +262,8 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
           // editAsPanel (ResourceShell-контекст): форма-панель в зоне 3
           //   (`${basePath}/${id}/edit` → ResourceShell mode=edit), как создание.
           // Иначе (list-страница, KAC-70): модалка через ?modal-флаг.
-          onClick: stop(() =>
+          run: () =>
             void navigate(editAsPanel ? `${basePath}/${id}/edit` : `${basePath}?modal=${spec.id}-edit&id=${id}`),
-          ),
         }
       : null,
     // Действия-глаголы ресурса. Подпись выключенного пункта несёт ПРИЧИНУ
@@ -233,20 +272,57 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
     ...verbs.map(({ verb, state }) => ({
       key: `verb-${verb.key}`,
       icon: state.icon,
-      disabled: !!state.disabledReason,
-      label: state.disabledReason ? (
-        <Tooltip title={state.disabledReason}>
-          <span>{state.label}</span>
-        </Tooltip>
-      ) : (
-        state.label
-      ),
+      label: state.label,
       danger: state.danger,
-      onClick: stop(() => {
-        if (state.disabledReason) return;
-        setOpenVerb(verb.key);
-      }),
+      disabledReason: state.disabledReason,
+      run: () => setOpenVerb(verb.key),
     })),
+    showDelete
+      ? {
+          key: "delete",
+          icon: <DeleteOutlined />,
+          label: "Удалить",
+          danger: true,
+          run: () => setDeleteOpen(true),
+        }
+      : null,
+  ] as (RowAction | null)[]).filter((a): a is RowAction => a !== null);
+
+  /** Пункт меню из действия — подпись, значок, причина недоступности, тон. */
+  const toMenuItem = (action: RowAction) => ({
+    key: action.key,
+    icon: action.icon,
+    disabled: !!action.disabledReason,
+    label: action.disabledReason ? (
+      <Tooltip title={action.disabledReason}>
+        <span>{action.label}</span>
+      </Tooltip>
+    ) : (
+      action.label
+    ),
+    danger: action.danger,
+    onClick: stop(() => {
+      if (action.disabledReason) return;
+      action.run();
+    }),
+  });
+
+  const byKey = (key: string) => realActions.find((a) => a.key === key);
+  const verbItems = realActions.filter((a) => a.key.startsWith("verb-"));
+  const createSubnet = byKey("create-subnet");
+  const edit = byKey("edit");
+  const remove = byKey("delete");
+
+  const items: MenuProps["items"] = [
+    {
+      key: "open",
+      icon: drillIsChild ? <ArrowRightOutlined /> : <EyeOutlined />,
+      label: drillIsChild ? "Открыть" : "Просмотр",
+      onClick: stop(() => void navigate(drillTarget)),
+    },
+    createSubnet ? toMenuItem(createSubnet) : null,
+    edit ? toMenuItem(edit) : null,
+    ...verbItems.map(toMenuItem),
     moveCapable
       ? {
           key: "move",
@@ -255,29 +331,62 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
           onClick: stop(() => setMoveOpen(true)),
         }
       : null,
-    showDelete ? { type: "divider" as const } : null,
-    showDelete
-      ? {
-          key: "delete",
-          icon: <DeleteOutlined />,
-          label: "Удалить",
-          danger: true,
-          onClick: stop(() => setDeleteOpen(true)),
-        }
-      : null,
+    remove ? { type: "divider" as const } : null,
+    remove ? toMenuItem(remove) : null,
   ].filter(Boolean);
+
+  // Ровно одно настоящее действие — оно показывается кнопкой с подписью, и
+  // нажатие остаётся одно вместо двух (#687).
+  //
+  // Решает СПЕКА, а не строка. Столбец заводится спекой на всю таблицу, и
+  // «у одной строки кнопка, у соседней значок» читается как «действие есть не у
+  // всех» — тот дефект, против которого написан `RowActionsMenu.trigger.test`.
+  // Поэтому у группы безопасности по умолчанию (её строка теряет удаление)
+  // значок остаётся. Вторая половина условия — про саму строку: если
+  // единственное действие к ней не относится вовсе (глагол вернул `null`),
+  // рисовать инлайн нечего.
+  const inlineAction = specRowActionCount(spec) === 1 && realActions.length === 1 ? realActions[0] : null;
+
+  const inlineButton = inlineAction ? (
+    <Button
+      type="text"
+      icon={inlineAction.icon}
+      danger={inlineAction.danger}
+      disabled={!!inlineAction.disabledReason}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (inlineAction.disabledReason) return;
+        inlineAction.run();
+      }}
+      style={ROW_ACTION_INLINE}
+    >
+      {inlineAction.label}
+    </Button>
+  ) : null;
 
   return (
     <>
-      <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
-        <Button
-          type="text"
-          icon={<MoreOutlined />}
-          onClick={(e) => e.stopPropagation()}
-          aria-label="Действия"
-          style={ROW_ACTION_TRIGGER}
-        />
-      </Dropdown>
+      {inlineAction ? (
+        // Причина недоступности остаётся видимой: кнопка, выключенная молча,
+        // неотличима от возможности, которой нет.
+        inlineAction.disabledReason ? (
+          <Tooltip title={inlineAction.disabledReason}>
+            <span>{inlineButton}</span>
+          </Tooltip>
+        ) : (
+          inlineButton
+        )
+      ) : (
+        <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
+          <Button
+            type="text"
+            icon={<MoreOutlined />}
+            onClick={(e) => e.stopPropagation()}
+            aria-label="Действия"
+            style={ROW_ACTION_TRIGGER}
+          />
+        </Dropdown>
+      )}
 
       {showDelete && (
         <DeleteDialog
