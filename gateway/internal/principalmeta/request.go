@@ -37,16 +37,10 @@ import (
 // пустое значение backend прочитал бы как названную пустую личность.
 func MetadataFromRequest(r *http.Request) metadata.MD {
 	md := metadata.MD{}
-	get := func(canonical, fallback string) string {
-		if v := r.Header.Get(canonical); v != "" {
-			return v
-		}
-		return r.Header.Get(fallback)
-	}
-	principalType := get(HeaderGRPCMetaPrincipalType, HeaderPrincipalType)
-	principalID := get(HeaderGRPCMetaPrincipalID, HeaderPrincipalID)
-	displayName := get(HeaderGRPCMetaPrincipalDisplay, HeaderPrincipalDisplay)
-	acr := get(HeaderGRPCMetaTokenACR, HeaderTokenACR)
+	principalType := headerEither(r, HeaderGRPCMetaPrincipalType, HeaderPrincipalType)
+	principalID := headerEither(r, HeaderGRPCMetaPrincipalID, HeaderPrincipalID)
+	displayName := headerEither(r, HeaderGRPCMetaPrincipalDisplay, HeaderPrincipalDisplay)
+	acr := headerEither(r, HeaderGRPCMetaTokenACR, HeaderTokenACR)
 	if principalType != "" {
 		md.Append(MetaPrincipalType, principalType)
 	}
@@ -60,4 +54,16 @@ func MetadataFromRequest(r *http.Request) metadata.MD {
 		md.Append(MetaTokenACR, acr)
 	}
 	return md
+}
+
+// headerEither читает мостовую форму заголовка, а при её отсутствии — голую.
+//
+// Один читатель на весь пакет: полоса аутентификации ставит заголовки в обеих
+// формах, и второй порядок чтения разошёлся бы с первым молча — на обычном
+// запросе оба дают одно и то же, а различаются там, где выставлена лишь одна.
+func headerEither(r *http.Request, canonical, fallback string) string {
+	if v := r.Header.Get(canonical); v != "" {
+		return v
+	}
+	return r.Header.Get(fallback)
 }

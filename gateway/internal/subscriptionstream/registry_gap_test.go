@@ -28,12 +28,14 @@ package subscriptionstream
 
 import (
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
 
 func TestClosingInsideTheArmingGapCancelsOnArm(t *testing.T) {
 	r := newRegistry()
 
-	entry, release, ok := r.tryAdd("user:usr-gap", 4)
+	entry, release, ok := r.tryAdd("user:usr-gap", principalmeta.Credential{}, 4)
 	if !ok {
 		t.Fatal("поток не встал на учёт")
 	}
@@ -60,7 +62,7 @@ func TestClosingInsideTheArmingGapCancelsOnArm(t *testing.T) {
 func TestArmingWithoutClosingKeepsTheStream(t *testing.T) {
 	r := newRegistry()
 
-	entry, release, ok := r.tryAdd("user:usr-live", 4)
+	entry, release, ok := r.tryAdd("user:usr-live", principalmeta.Credential{}, 4)
 	if !ok {
 		t.Fatal("поток не встал на учёт")
 	}

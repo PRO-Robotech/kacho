@@ -10,12 +10,16 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/grpc"
+
 	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
+	"github.com/PRO-Robotech/kacho/gateway/internal/clients"
 	"github.com/PRO-Robotech/kacho/gateway/internal/config"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
+	"github.com/PRO-Robotech/kacho/gateway/internal/streamrevocation"
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
 )
 
@@ -96,11 +100,17 @@ func buildSubscriptionStreamHandler(
 //
 // # Почему величина ВЫВОДИТСЯ, а не объявляется ручкой
 //
-// Она измеряет отказ ОДНОГО названного механизма — перепроса изменений
-// субъекта, — и всякий раз, когда его период меняют, должна меняться вместе с
-// ним. Ручка, объявленная отдельно, разошлась бы с периодом молча и разошлась бы
-// именно там, где расхождение не видно: обе непусты, обе выглядят разумно, а
-// fail-closed наступает либо на всякой заминке, либо никогда.
+// Она измеряет отказ НАЗВАННОГО перепроса — и всякий раз, когда его период
+// меняют, должна меняться вместе с ним. Ручка, объявленная отдельно, разошлась
+// бы с периодом молча и разошлась бы именно там, где расхождение не видно: обе
+// непусты, обе выглядят разумно, а fail-closed наступает либо на всякой
+// заминке, либо никогда.
+//
+// Перепросов, отзыв которых доезжает до открытых соединений, ДВА, и величина у
+// них общая намеренно: изменения субъекта (kacho#1022) и состояние
+// удостоверения (kacho#1410). Их периоды разные — каждый выведен из СВОЕЙ
+// объявленной границы, — а правило «сколько подряд пропусков означает потерю
+// читателя» одно, и второе его написание разошлось бы с первым молча.
 //
 // # Почему пять, а не «побольше на всякий случай»
 //
@@ -165,6 +175,85 @@ func buildSubjectChangeWatcher(
 		Flush:      flush,
 		Interval:   cfg.SubjectChangePollInterval,
 		Closer:     streams,
+		StaleAfter: staleAfter,
+		Logger:     logger,
+	})
+}
+
+// credentialRecheckInterval — период перепроса состояния УДОСТОВЕРЕНИЯ на
+// открытых потоках, он же ОБЪЯВЛЕННОЕ ОКНО отзыва для длинного соединения.
+//
+// # Почему величина ВЫВОДИТСЯ из срока кэша интроспекции, а не объявляется своей ручкой
+//
+// Граница отзыва удостоверения на пути ЗАПРОСА и есть этот срок: каждый запрос
+// спрашивает состояние заново, а свежесть ответа ограничена кэшем. Открытое
+// соединение обязано honorировать ТУ ЖЕ границу — иначе у одного механизма две
+// величины, и вторая, объявленная отдельно, разошлась бы с первой молча: обе
+// непусты, обе выглядят разумно, а окно отзыва для потоков тихо становится в
+// разы шире объявленного.
+//
+// Именно это и было предметом kacho#1410: окно потока задавалось сроком жизни
+// соединения (`SubscriptionStreamBudget`), то есть было шире объявленной
+// границы во столько раз, во сколько бюджет больше срока кэша.
+func credentialRecheckInterval(cfg config.Config) time.Duration {
+	return time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second
+}
+
+// buildStreamRevocationSweeper собирает перепрос состояния удостоверения на
+// открытых потоках и связывает его с реестром.
+//
+// # Почему это ФУНКЦИЯ, а не десять строк в точке сборки
+//
+// По тому же доводу, что и у соседнего читателя: инъекция «передать ноль в
+// точке сборки» оставляет ВЕСЬ корпус проб края зелёным и код собирающимся,
+// потому что сквозные пробы зовут конструктор напрямую и продовую точку сборки
+// минуют. Вынесенная функция даёт пробе тот самый вход, который исполняется в
+// бою.
+func buildStreamRevocationSweeper(
+	cfg config.Config,
+	iamInternal *grpc.ClientConn,
+	streams *subscriptionstream.Handler,
+	logger *slog.Logger,
+) (*streamrevocation.Sweeper, error) {
+	if streams == nil {
+		return nil, fmt.Errorf("streamrevocation: проекция потока не собрана — " +
+			"перепросу нечего закрывать, и это ошибка порядка сборки, а не посадки")
+	}
+	if iamInternal == nil {
+		// Контроль, у которого нет МЕХАНИЗМА исполниться. Соседа, у которого
+		// спрашивают про отзыв, здесь не существует вовсе — а поднявшийся с этим
+		// край выглядел бы исправным и не отказал бы ни разу за всю свою жизнь.
+		return nil, fmt.Errorf("streamrevocation: внутренний адрес службы прав не объявлен — " +
+			"спросить про отзыв удостоверения открытого потока не у кого, и перепрос " +
+			"не отказал бы ни разу просто потому, что никуда не дозванивается")
+	}
+	interval := credentialRecheckInterval(cfg)
+	if interval <= 0 {
+		return nil, fmt.Errorf(
+			"streamrevocation: KACHO_INTROSPECTION_CACHE_TTL_SECONDS = %d — из него выводится "+
+				"объявленное окно отзыва для открытого соединения, и неположительное означает, "+
+				"что окна нет вовсе",
+			cfg.IntrospectionCacheTTLSeconds)
+	}
+	staleAfter := revocationStaleAfter(interval)
+	if staleAfter >= cfg.SubscriptionStreamBudget {
+		return nil, fmt.Errorf(
+			"streamrevocation: срок неподтверждённого перепроса %v не меньше срока жизни потока %v — "+
+				"fail-closed не наступит ни разу, а закрытие по собственному бюджету потока "+
+				"выглядело бы закрытием по отзыву",
+			staleAfter, cfg.SubscriptionStreamBudget)
+	}
+	if interval >= cfg.SubscriptionStreamBudget {
+		return nil, fmt.Errorf(
+			"streamrevocation: окно отзыва %v не меньше срока жизни потока %v — "+
+				"перепрос не состоялся бы на потоке НИ РАЗУ, и объявленное окно осталось бы "+
+				"объявленным",
+			interval, cfg.SubscriptionStreamBudget)
+	}
+	return streamrevocation.New(streamrevocation.Config{
+		Streams:    streams,
+		Authority:  clients.NewSessionRevocationsAdapter(iamInternal),
+		Interval:   interval,
 		StaleAfter: staleAfter,
 		Logger:     logger,
 	})

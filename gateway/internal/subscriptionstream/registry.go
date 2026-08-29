@@ -6,7 +6,34 @@ package subscriptionstream
 import (
 	"context"
 	"sync"
+
+	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
+
+// OpenStream — учтённый поток, каким его видит читатель отзыва УДОСТОВЕРЕНИЯ
+// (kacho#1410).
+//
+// # Почему закрытие едет ЗАМЫКАНИЕМ, а не номером
+//
+// Тем же доводом, что и снятие с учёта: вызывающему не приходится хранить ключ,
+// а значит и терять его. Замыкание идемпотентно — поток, закрытый дважды, стоит
+// нуля, — поэтому читатель вправе не сверяться с реестром между решением и
+// действием.
+//
+// # Почему удостоверение, а не только субъект
+//
+// Отзыв ПРАВ называет субъекта, и потоков у субъекта столько, сколько вкладок.
+// Отзыв УДОСТОВЕРЕНИЯ называет предъявленное — а два потока одного человека
+// могут быть открыты разными удостоверениями, и отозвано может быть одно.
+// Закрытие по субъекту здесь закрывало бы лишнее.
+type OpenStream struct {
+	// Subject — субъект модели прав, под которым поток учтён.
+	Subject string
+	// Credential — чем предъявитель назвал себя, открывая этот поток.
+	Credential principalmeta.Credential
+	// Close — отменить именно ЭТОТ поток. Идемпотентно.
+	Close func()
+}
 
 // registry — открытые потоки, сгруппированные по субъекту.
 //
@@ -45,6 +72,12 @@ func newRegistry() *registry {
 // при постановке. Иначе поток, закрытый по отзыву прав, продолжил бы жить —
 // молча и ровно в том окне, где отзыв и происходит.
 type stream struct {
+	// cred — удостоверение, которым поток открыт. Пишется ОДИН раз, при
+	// постановке на учёт, и не меняется: предъявленное потоком не обновляется —
+	// длинное соединение второго запроса не делает, и подменить своё
+	// удостоверение на живое вызывающий не может by construction.
+	cred principalmeta.Credential
+
 	mu     sync.Mutex
 	cancel context.CancelFunc
 	closed bool
@@ -93,7 +126,9 @@ func (s *stream) close() {
 // Возвращается замыкание снятия, а не пара (субъект, номер): вызывающему не
 // приходится хранить ключ, а значит и терять его. Снятие идемпотентно, поэтому
 // `defer` безопасен на любом пути выхода.
-func (r *registry) tryAdd(subject string, perSubject int) (*stream, func(), bool) {
+func (r *registry) tryAdd(
+	subject string, cred principalmeta.Credential, perSubject int,
+) (*stream, func(), bool) {
 	if subject == "" {
 		// Безымянный поток закрыть нечем: у отзыва нет ключа, которым его
 		// назвать. Отсекается здесь, а не только у вызывающего, — страж у одной
@@ -112,7 +147,7 @@ func (r *registry) tryAdd(subject string, perSubject int) (*stream, func(), bool
 		streams = make(map[uint64]*stream)
 		r.bySubj[subject] = streams
 	}
-	entry := &stream{}
+	entry := &stream{cred: cred}
 	streams[id] = entry
 	r.mu.Unlock()
 
@@ -132,6 +167,27 @@ func (r *registry) tryAdd(subject string, perSubject int) (*stream, func(), bool
 			}
 		})
 	}, true
+}
+
+// snapshot — открытые потоки вместе с удостоверением каждого.
+//
+// Снимок берётся ПОД ЗАМКОМ и отдаётся значениями: читатель отзыва спрашивает
+// авторитет по сети, и держать замок реестра всё это время значило бы
+// останавливать открытие новых потоков на время недоступности соседа — то есть
+// превращать заминку авторитета в отказ ручки.
+//
+// Поток, закрывшийся между снимком и решением, снимается с учёта сам, а
+// повторное закрытие стоит нуля: рассинхрон снимка безвреден by construction.
+func (r *registry) snapshot() []OpenStream {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]OpenStream, 0, len(r.bySubj))
+	for subject, streams := range r.bySubj {
+		for _, entry := range streams {
+			out = append(out, OpenStream{Subject: subject, Credential: entry.cred, Close: entry.close})
+		}
+	}
+	return out
 }
 
 // closeSubject отменяет контексты всех потоков субъекта и возвращает их число.
