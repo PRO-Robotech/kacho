@@ -1,6 +1,7 @@
 // Правила валидации полей — единый источник для компонента <Restrictions />.
-// Тексты и границы сверены с proto (kacho-proto/.../compute/v1) и
-// internal/service/validate.go kacho-compute.
+// Дом контракта — `proto/kacho/cloud/compute/v1`; дом общего валидатора —
+// `pkg/validate` (единая форма имени ресурса объявлена в `pkg/validate/nameform`).
+// Правя тексты ниже, сверяй их с этими двумя, а не с прежними полирепо.
 export const RESTRICTIONS = {
   name: [
     'regex ^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$',
