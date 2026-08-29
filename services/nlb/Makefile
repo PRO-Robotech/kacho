@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BUSL-1.1
 
 BINARY_API     := kacho-loadbalancer
-BINARY_MIG     := migrator
+BINARY_MIG     := kacho-migrator
 CMD_API        := ./cmd/kacho-loadbalancer
 CMD_MIG        := ./cmd/migrator
 IMAGE          := kacho-nlb:dev

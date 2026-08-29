@@ -44,12 +44,12 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     go list -deps ./services/nlb/cmd/kacho-loadbalancer ./services/nlb/cmd/migrator >/dev/null
 RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/kacho-loadbalancer ./services/nlb/cmd/kacho-loadbalancer
-RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/migrator           ./services/nlb/cmd/migrator
+RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/kacho-migrator           ./services/nlb/cmd/migrator
 
 FROM mirror.gcr.io/library/alpine:3.24
 RUN apk upgrade --no-cache && apk add --no-cache ca-certificates
 COPY --from=builder /out/kacho-loadbalancer /usr/local/bin/kacho-loadbalancer
-COPY --from=builder /out/migrator           /usr/local/bin/migrator
+COPY --from=builder /out/kacho-migrator     /usr/local/bin/kacho-migrator
 # ПРОВЕНАНС ОБРАЗА — из какого дерева он собран. Клеймо и файл берут величину из
 # ОДНОГО `ARG`, поэтому разойтись не могут. Файл нужен потому, что у РАБОТАЮЩЕГО
 # контейнера клеймо не прочесть ничем, кроме демона хоста или реестра, — а у
