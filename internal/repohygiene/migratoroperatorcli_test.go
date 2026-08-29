@@ -37,15 +37,22 @@ func migratorCLICorpus(t *testing.T) (root string, paths []string) {
 // шесть сервисов, на седьмом получал «executable file not found».
 //
 // Судятся ВСЕ места, где имя называется: путь установки, выход сборки,
-// переменная сборки, константа в самой точке наката. Одного места мало —
-// разойтись могут именно они между собой (в nlb расходились Dockerfile,
-// Makefile и манифест согласованно, а с шестью соседями — нет).
+// переменная сборки, константа в самой точке наката И имя, которым инструмент
+// представляется САМ (поля помощи cobra). Одного места мало — разойтись могут
+// именно они между собой (в nlb расходились Dockerfile, Makefile и манифест
+// согласованно, а с шестью соседями — нет).
+//
+// Последняя форма добавлена по инъекции приёмщика: подмена `Use:` оставляла
+// гейт зелёным с переписью «различных имён 1», хотя расхождение было живо
+// именно в ней — то есть молчание гейта читалось как «имя одно».
 func TestMigratorBinaryIsNamedTheSameEverywhere(t *testing.T) {
 	root, paths := migratorCLICorpus(t)
 
 	var (
-		filesRead int
-		mentions  []migratorCLIMention
+		filesRead   int
+		goParsed    int
+		mentions    []migratorCLIMention
+		selfNamedIn int
 	)
 	for _, p := range paths {
 		raw, err := os.ReadFile(p)
@@ -57,15 +64,34 @@ func TestMigratorBinaryIsNamedTheSameEverywhere(t *testing.T) {
 		if rerr != nil {
 			rel = p
 		}
-		mentions = append(mentions, migratorCLIMentions(filepath.ToSlash(rel), string(raw))...)
+		rel = filepath.ToSlash(rel)
+		content := string(raw)
+		mentions = append(mentions, migratorCLIMentions(rel, content)...)
+
+		// Формы 5-6 живут в полях помощи cobra и берутся РАЗБОРОМ. Предварительный
+		// отбор по подстроке здесь законен и не сужает предмет: имя, оканчивающееся
+		// на «migrator», не может стоять в файле, где этой подстроки нет вовсе.
+		if !strings.HasSuffix(rel, ".go") || !strings.Contains(content, "migrator") {
+			continue
+		}
+		goParsed++
+		self, perr := migratorCLIGoMentions(rel, content)
+		if perr != nil {
+			t.Fatalf("%v", perr)
+		}
+		if len(self) > 0 {
+			selfNamedIn++
+		}
+		mentions = append(mentions, self...)
 	}
 
 	names := map[string]int{}
 	for _, m := range mentions {
 		names[m.Name]++
 	}
-	t.Logf("перепись: файлов сборки и развёртывания прочитано %d, мест, называющих бинарь, %d, "+
-		"различных имён %d", filesRead, len(mentions), len(names))
+	t.Logf("перепись: файлов сборки и развёртывания прочитано %d (из них разобрано как Go %d, "+
+		"справку cobra с именем несут %d), мест, называющих бинарь, %d, различных имён %d",
+		filesRead, goParsed, selfNamedIn, len(mentions), len(names))
 
 	if filesRead == 0 {
 		t.Fatal("не прочитано ни одного файла — гейт ничего не осмотрел, и его молчание " +
@@ -104,6 +130,7 @@ func TestMigratorArgumentParsingIsOneOfTwoAndDecidesExtraArguments(t *testing.T)
 		parsers          []migratorCLIParser
 		shared, viaCobra int
 		withRun, decided int
+		roots, rootsRun  int
 	)
 	for _, p := range paths {
 		rel, rerr := filepath.Rel(root, p)
@@ -131,11 +158,14 @@ func TestMigratorArgumentParsingIsOneOfTwoAndDecidesExtraArguments(t *testing.T)
 		}
 		withRun += parsed.CommandsWithRun
 		decided += parsed.CommandsWithArgs
+		roots += parsed.Roots
+		rootsRun += parsed.Roots - len(parsed.RootsWithoutRun)
 	}
 
 	t.Logf("перепись: точек наката %d · на общем разборе %d · на cobra %d · "+
-		"команд с исполнением %d · из них решивших Args %d",
-		len(parsers), shared, viaCobra, withRun, decided)
+		"команд с исполнением %d · из них решивших Args %d · корневых команд %d · "+
+		"из них несущих исполнение %d",
+		len(parsers), shared, viaCobra, withRun, decided, roots, rootsRun)
 
 	if len(parsers) == 0 {
 		t.Fatal("точек наката не найдено ни одной — гейт ничего не осмотрел. Сменилась " +

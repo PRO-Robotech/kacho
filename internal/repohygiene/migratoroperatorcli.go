@@ -35,6 +35,13 @@
 //  3. У каждой команды cobra, несущей исполнение (Run/RunE), решено, что делать
 //     с лишним позиционным аргументом (поле Args). Умолчание принимает
 //     произвольные аргументы молча.
+//  4. Корневая команда cobra (та, чьё `Use` называет бинарь) несёт исполнение.
+//     Без него ПУСТАЯ командная строка печатает помощь и выходит УСПЕХОМ, тогда
+//     как прямая форма отвечает отказом: скрипт или init-контейнер, потерявший
+//     аргумент, объявлялся бы выполнившим накат на трёх сервисах из семи.
+//     Гейт держит ФОРМУ (исполнение есть); ИСХОД держит проба самого сервиса
+//     (`TestEmptyCommandLineIsRefused`) — статически «отказ» от «успеха» не
+//     отличить, и обещать это здесь значило бы обещать несуществующее.
 //
 // # Чего гейт НЕ утверждает, названо честно
 //
@@ -72,6 +79,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -87,6 +95,11 @@ const (
 
 	// migratorCLICobraImport — разбор аргументов делегирующей формы.
 	migratorCLICobraImport = "github.com/spf13/cobra"
+
+	// migratorCLIParseFunc — вызов, которым общий разбор ИСПОЛНЯЕТСЯ. Импорт
+	// пакета сам по себе разбором не является: из него берут ещё имя бинаря и
+	// тексты отказа.
+	migratorCLIParseFunc = "Parse"
 )
 
 // migratorCLINameRe — имя, оканчивающееся на «migrator». Именно оканчивающееся:
@@ -104,7 +117,23 @@ var (
 	migratorCLIMakeBinRe = regexp.MustCompile(`(?m)^\s*([A-Za-z0-9_]*(?:BIN[A-Za-z0-9_]*MIG|MIG[A-Za-z0-9_]*BIN)[A-Za-z0-9_]*)\s*:?\??=\s*(\S+)`)
 	// форма 4 — константа имени в самой точке наката.
 	migratorCLIGoConstRe = regexp.MustCompile(`binaryName\s*=\s*"(` + migratorCLINameRe + `)"`)
+	// формы 5-6 — имя, которым инструмент представляется САМ: поля помощи cobra.
+	// `\b` на конце обязателен: без него `migratorcli` (имя ПАКЕТА разбора)
+	// читалось бы как имя бинаря.
+	migratorCLIBareNameRe = regexp.MustCompile(migratorCLINameRe + `\b`)
 )
+
+// migratorCLIHelpFields — поля cobra, которые ЧИТАЕТ ОПЕРАТОР. Имя, названное
+// здесь, инструмент печатает о себе: в форме вызова (`Usage: ИМЯ [command]`) и
+// в тексте отказа (`unknown command "X" for "ИМЯ"`). Оно и есть имя бинаря с
+// точки зрения того, кто им пользуется, — поэтому судится наравне с путём
+// установки. Форма живая: расхождение сидело именно в ней.
+var migratorCLIHelpFields = map[string]string{
+	"Use":     "имя команды cobra",
+	"Short":   "краткая справка cobra",
+	"Long":    "справка cobra",
+	"Example": "пример вызова cobra",
+}
 
 // migratorCLIMention — одно место, называющее бинарь мигратора.
 type migratorCLIMention struct {
@@ -155,6 +184,78 @@ func migratorCLIMentions(rel, content string) []migratorCLIMention {
 	return out
 }
 
+// migratorCLIGoMentions находит имя бинаря в полях помощи cobra — РАЗБОРОМ.
+//
+// Разбором, а не подстрокой, по той же причине, что и классификация ниже: те же
+// слова стоят в комментариях, и гейт по тексту краснел бы на собственном
+// объяснении. Справка, собранная склейкой строк (`"a" + "b"`), обходится
+// целиком: имя бывает в любом слагаемом.
+func migratorCLIGoMentions(rel, src string) ([]migratorCLIMention, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, rel, src, 0)
+	if err != nil {
+		return nil, fmt.Errorf("%s: разбор не удался: %w", rel, err)
+	}
+	var out []migratorCLIMention
+	ast.Inspect(file, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok || !isCobraCommandType(lit.Type) {
+			return true
+		}
+		for _, elt := range lit.Elts {
+			kv, ok := elt.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			key, ok := kv.Key.(*ast.Ident)
+			if !ok {
+				continue
+			}
+			form, judged := migratorCLIHelpFields[key.Name]
+			if !judged {
+				continue
+			}
+			ast.Inspect(kv.Value, func(v ast.Node) bool {
+				bl, ok := v.(*ast.BasicLit)
+				if !ok || bl.Kind != token.STRING {
+					return true
+				}
+				text, uerr := strconv.Unquote(bl.Value)
+				if uerr != nil {
+					return true
+				}
+				for _, name := range migratorCLINamesOutsideAPath(text) {
+					out = append(out, migratorCLIMention{
+						Rel:  rel,
+						Line: fset.Position(bl.Pos()).Line,
+						Name: name,
+						Form: form,
+					})
+				}
+				return true
+			})
+		}
+		return true
+	})
+	return out, nil
+}
+
+// migratorCLINamesOutsideAPath — имена бинаря в строке справки, БЕЗ составляющих
+// пути. Токен, которому непосредственно предшествует «/», — это каталог
+// исходников (`services/vpc/cmd/migrator`) либо адрес документа, а не имя
+// бинаря; путь УСТАНОВКИ судит форма 1, и он живёт в манифесте, а не в справке.
+// Без этой границы гейт краснел бы на ссылке справки на собственное решение.
+func migratorCLINamesOutsideAPath(text string) []string {
+	var out []string
+	for _, loc := range migratorCLIBareNameRe.FindAllStringIndex(text, -1) {
+		if loc[0] > 0 && text[loc[0]-1] == '/' {
+			continue
+		}
+		out = append(out, text[loc[0]:loc[1]])
+	}
+	return out
+}
+
 // migratorCLINameFindings — места, называющие бинарь не тем именем.
 func migratorCLINameFindings(mentions []migratorCLIMention) []string {
 	var out []string
@@ -181,14 +282,27 @@ type migratorCLIParser struct {
 	CommandsWithArgs int
 	// Undecided — координаты команд, оставивших этот вопрос умолчанию.
 	Undecided []string
+	// Roots — команд, чьё `Use` называет бинарь, то есть корневых.
+	Roots int
+	// RootsWithoutRun — координаты корневых команд, не несущих исполнения. Такая
+	// команда на ПУСТОЙ командной строке печатает помощь и выходит УСПЕХОМ, и
+	// скрипт, потерявший аргумент, объявляется выполнившим накат.
+	RootsWithoutRun []string
 }
 
 // Recognised — разбор распознан ровно один.
 func (p migratorCLIParser) Recognised() bool { return p.Shared != p.Cobra }
 
-// classifyMigratorCLIParser читает ИМПОРТЫ и объявления команд разбором, а не
-// подстрокой: имя cobra встречается и в комментариях, и гейт по тексту засчитал
-// бы форму по объяснению, а не по вызову.
+// classifyMigratorCLIParser читает объявления и вызовы РАЗБОРОМ, а не подстрокой:
+// имя cobra встречается и в комментариях, и гейт по тексту засчитал бы форму по
+// объяснению, а не по вызову.
+//
+// Общий разбор засчитывается по ВЫЗОВУ `migratorcli.Parse`, а не по импорту
+// пакета: делегирующая форма импортирует тот же пакет ради ИМЕНИ бинаря и ради
+// ТЕКСТОВ отказа — то есть ради того самого сведения, которого гейт и требует.
+// Классификация по импорту объявляла бы это «двумя разборами сразу», запрещая
+// единственный источник величины. Cobra же засчитывается по импорту: она
+// разбирает не одним вызовом, а всем деревом команд.
 func classifyMigratorCLIParser(rel, src string) (migratorCLIParser, error) {
 	p := migratorCLIParser{Rel: rel}
 	fset := token.NewFileSet()
@@ -196,14 +310,35 @@ func classifyMigratorCLIParser(rel, src string) (migratorCLIParser, error) {
 	if err != nil {
 		return p, fmt.Errorf("%s: разбор не удался: %w", rel, err)
 	}
+	sharedAlias := ""
 	for _, imp := range file.Imports {
 		value := strings.Trim(imp.Path.Value, `"`)
 		switch {
 		case value == migratorCLISharedParserImport:
-			p.Shared = true
+			sharedAlias = path.Base(value)
+			if imp.Name != nil {
+				sharedAlias = imp.Name.Name
+			}
 		case value == migratorCLICobraImport:
 			p.Cobra = true
 		}
+	}
+	if sharedAlias != "" {
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != migratorCLIParseFunc {
+				return true
+			}
+			pkg, ok := sel.X.(*ast.Ident)
+			if ok && pkg.Name == sharedAlias {
+				p.Shared = true
+			}
+			return true
+		})
 	}
 	if !p.Cobra {
 		return p, nil
@@ -214,7 +349,7 @@ func classifyMigratorCLIParser(rel, src string) (migratorCLIParser, error) {
 		if !ok || !isCobraCommandType(lit.Type) {
 			return true
 		}
-		var hasRun, hasArgs bool
+		var hasRun, hasArgs, isRoot bool
 		for _, elt := range lit.Elts {
 			kv, ok := elt.(*ast.KeyValueExpr)
 			if !ok {
@@ -229,11 +364,24 @@ func classifyMigratorCLIParser(rel, src string) (migratorCLIParser, error) {
 				hasRun = true
 			case "Args":
 				hasArgs = true
+			case "Use":
+				if bl, ok := kv.Value.(*ast.BasicLit); ok && bl.Kind == token.STRING {
+					if text, uerr := strconv.Unquote(bl.Value); uerr == nil {
+						isRoot = len(migratorCLINamesOutsideAPath(text)) > 0
+					}
+				}
+			}
+		}
+		if isRoot {
+			p.Roots++
+			if !hasRun {
+				p.RootsWithoutRun = append(p.RootsWithoutRun,
+					fmt.Sprintf("%s:%d", rel, fset.Position(lit.Pos()).Line))
 			}
 		}
 		if !hasRun {
-			// Корневая команда исполнения не несёт: неизвестную подкоманду cobra
-			// и так называет. Судить её было бы требованием без предмета.
+			// Команда без исполнения решать нечего: лишний позиционный аргумент до
+			// неё не доходит. Судить её было бы требованием без предмета.
 			return true
 		}
 		p.CommandsWithRun++
@@ -268,8 +416,15 @@ func migratorCLIParserFindings(parsers []migratorCLIParser) []string {
 				"%s — разбирает аргументы И общим пакетом, И cobra: по коду не сказать, какой исполняется", p.Rel))
 		case !p.Shared && !p.Cobra:
 			out = append(out, fmt.Sprintf(
-				"%s — третий разбор аргументов: ни общий пакет %q, ни cobra. Именно так различие и накапливалось",
-				p.Rel, migratorCLISharedParserImport))
+				"%s — третий разбор аргументов: не зовёт %s.%s и не строит дерево cobra. "+
+					"Именно так различие и накапливалось",
+				p.Rel, path.Base(migratorCLISharedParserImport), migratorCLIParseFunc))
+		}
+		for _, r := range p.RootsWithoutRun {
+			out = append(out, fmt.Sprintf(
+				"%s — корневая команда cobra не несёт исполнения: на ПУСТОЙ командной строке "+
+					"она печатает помощь и выходит УСПЕХОМ, поэтому скрипт, потерявший аргумент, "+
+					"объявляется выполнившим накат", r))
 		}
 		for _, u := range p.Undecided {
 			out = append(out, fmt.Sprintf(

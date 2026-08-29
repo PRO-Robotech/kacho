@@ -38,8 +38,14 @@ func TestRootCmd_HelpDoesNotError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout, "kacho-nlb-migrator") {
-		t.Fatalf("expected help to mention kacho-nlb-migrator, got: %q", stdout)
+	// Имя одно на семь сервисов (#1461). Прежняя редакция этой пробы ЗАКРЕПЛЯЛА
+	// расхождение: она требовала, чтобы помощь называла `kacho-nlb-migrator`, —
+	// то есть удерживала ровно то различие, которое задача снимает.
+	if !strings.Contains(stdout, "kacho-migrator") {
+		t.Fatalf("помощь не называет общее имя kacho-migrator: %q", stdout)
+	}
+	if strings.Contains(stdout, "kacho-nlb-migrator") {
+		t.Fatalf("помощь снова называет своё имя вместо общего: %q", stdout)
 	}
 	// Перечень утверждается ПО БЛОКУ «Available Commands», а не подстрокой во
 	// всём выводе: пока проба искала слово «create» где угодно, её удовлетворяла
@@ -197,5 +203,87 @@ func TestLegitimateFlagsSurviveTheArgumentCheck(t *testing.T) {
 		if !strings.Contains(err.Error(), "dialect") {
 			t.Errorf("%v: отказ пришёл не от диалекта, значит проба утверждает не то: %v", args, err)
 		}
+	}
+}
+
+// TestBuildRunner_SharedEnvDSNIsRead — переменная `KACHO_MIGRATOR_DSN` одна на
+// семь сервисов (#1461, docs/architecture/migrator-cli.md).
+//
+// nlb её не читал вовсе: он шёл своим путём `KACHO_NLB_REPOSITORY__POSTGRES__URL`
+// через config.Load. Оператор, задавший общую переменную и получивший УСПЕХ на
+// шести сервисах, на седьмом получал отказ загрузки конфигурации — то есть
+// знание об одном сервисе к соседнему не применялось.
+//
+// Опыт, которым это померено на собранных бинарях:
+//
+//	env -u KACHO_NLB_REPOSITORY__POSTGRES__URL KACHO_MIGRATOR_DSN='@@@не-dsn@@@' \
+//	  <s>-migrator status
+//
+// Шесть отвечали «cannot parse `@@@не-dsn@@@`» (переменная прочитана), nlb —
+// «dsn unset (--dsn) and config load failed». Утверждается ЧТЕНИЕ переменной, а
+// не успех соединения: значение заведомо негодное, и отказ обязан называть ЕГО.
+func TestBuildRunner_SharedEnvDSNIsRead(t *testing.T) {
+	t.Setenv("KACHO_MIGRATOR_DSN", "postgres://shared:env@h:5432/db?sslmode=disable")
+	opts := &rootOptions{dialect: "postgres" /* dsn пуст, --config не задан */}
+	r, err := buildRunner(opts, fstest.MapFS{"0001_x.sql": &fstest.MapFile{Data: []byte("-- empty")}})
+	if err != nil {
+		t.Fatalf("общая переменная не прочитана, отказ пришёл от запасного пути: %v", err)
+	}
+	if r == nil {
+		t.Fatal("nil runner")
+	}
+}
+
+// TestBuildRunner_FlagBeatsSharedEnvDSN — положительный контроль порядка к
+// пробе выше. Без него она зеленела бы на реализации, читающей ТОЛЬКО общую
+// переменную и игнорирующей явно переданный адрес.
+func TestBuildRunner_FlagBeatsSharedEnvDSN(t *testing.T) {
+	t.Setenv("KACHO_MIGRATOR_DSN", "@@@негодное@@@")
+	opts := &rootOptions{dialect: "postgres", dsn: "postgres://u:p@h:5432/db?sslmode=disable"}
+	if _, err := buildRunner(opts, emptyFS()); err != nil {
+		t.Fatalf("явный --dsn не перекрыл общую переменную: %v", err)
+	}
+}
+
+// TestEmptyCommandLineIsRefused — пустая командная строка обязана быть ОТКАЗОМ,
+// а не успехом (#1461).
+//
+// Cobra при корне без исполнения печатает помощь и выходит УСПЕХОМ. Опыт по
+// собранным бинарям: `nlb-migrator; echo $?` давал 0 у трёх делегирующих
+// сервисов и 1 у четырёх прямых. Различие не решал никто, и цена у него не
+// косметическая: init-контейнер или скрипт, потерявший аргумент, на трёх
+// сервисах из семи объявляется УСПЕШНЫМ — то есть «миграции накатаны» там, где
+// не выполнено ничего.
+//
+// Выбран отказ, а не помощь-успех: успех на невыполненной работе есть тот же
+// класс, ради которого задача заведена.
+func TestEmptyCommandLineIsRefused(t *testing.T) {
+	_, _, err := runCommand(t, nil, nil)
+	if err == nil {
+		t.Fatal("пустая командная строка принята УСПЕХОМ: скрипт, потерявший аргумент, " +
+			"объявляется выполнившим накат")
+	}
+	if !strings.Contains(err.Error(), "no command given") {
+		t.Fatalf("отказ не называет свой предмет: %v", err)
+	}
+}
+
+// TestHelpIsStillASuccess — положительный контроль к пробе выше. Без него она
+// зеленела бы на дереве команд, объявляющем отказом и явный запрос помощи.
+func TestHelpIsStillASuccess(t *testing.T) {
+	if _, _, err := runCommand(t, []string{"--help"}, nil); err != nil {
+		t.Fatalf("явный запрос помощи объявлен отказом: %v", err)
+	}
+}
+
+// TestUnknownCommandIsStillNamed — второй положительный контроль: решение о
+// пустой строке не должно проглотить отказ по неизвестной подкоманде.
+func TestUnknownCommandIsStillNamed(t *testing.T) {
+	_, _, err := runCommand(t, []string{"upp"}, nil)
+	if err == nil {
+		t.Fatal("неизвестная подкоманда принята")
+	}
+	if !strings.Contains(err.Error(), "upp") {
+		t.Fatalf("отказ не называет подкоманду: %v", err)
 	}
 }
