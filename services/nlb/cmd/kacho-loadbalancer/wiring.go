@@ -12,6 +12,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"log/slog"
 
@@ -395,6 +396,16 @@ func buildSubscriptionServer(
 	gate, err := subscriptionjournal.ProjectGate()
 	if err != nil {
 		return nil, err
+	}
+	// Страж посадки: параметр ПУЛА в строке одиночного соединения означает отказ
+	// на подключении, а не на сборке, — и потому обязан быть пойман здесь, а не
+	// первой подпиской в бою. Сегодня строка берётся сырой и пуловых ключей не
+	// несёт; страж стоит затем, что это свойство ничем не удержано — ни от ключа
+	// в самой строке, ни от перевода этого места на пуловую форму.
+	if dsn := cfg.Repository.Postgres.URL; strings.Contains(dsn, "pool_") {
+		return nil, fmt.Errorf("поток изменений: строка подключения несёт параметр пула (%q): "+
+			"вне пула это неизвестный PG-параметр и FATAL при подключении, "+
+			"а отказ наступил бы не на сборке, а у каждой подписки в бою", dsn)
 	}
 	srv, err := subscription.NewServer(subscription.Config{
 		Journal: subscriptionjournal.Journal(),
