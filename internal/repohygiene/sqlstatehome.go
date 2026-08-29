@@ -13,7 +13,7 @@
 // разбор синтаксического дерева видит строковый литерал и не видит комментария
 // **by construction**.
 //
-// # Две стороны, и они РАЗНЫЕ
+// # Три стороны, и они РАЗНЫЕ
 //
 //  1. `ScanSQLStateLiterals` — где код целостности превращается в решение. Дом
 //     этого решения обязан быть один; всё остальное — либо перевод на дом, либо
@@ -21,10 +21,22 @@
 //  2. `ScanStatusMappers` — чем отвечает ветка по умолчанию отображения
 //     «род отказа → код gRPC». Она обязана давать ФИКСИРОВАННЫЙ текст, а не эхо
 //     ошибки хранилища (`security.md` §Hardening-инварианты, п.1).
+//  3. `ScanTextFaultDecisions` — где род отказа решается по СЛОВАМ сервера, а не
+//     по коду. Третья сторона заведена задачей #1455; до неё этот класс стоял
+//     здесь же в перечне невидимого, и запись честно называла его «другим
+//     классом» — но названная слепая зона остаётся слепой.
 //
 // Стороны разведены намеренно: первая говорит о МЕСТЕ решения, вторая — о ТЕКСТЕ
-// его исхода. Проверка, склеившая их в одну, отвечала бы одним ответом на два
-// вопроса и молчала бы, когда сломан ровно один.
+// его исхода, третья — о ПРИЗНАКЕ, по которому решение принято. Проверка,
+// склеившая их в одну, отвечала бы одним ответом на три вопроса и молчала бы,
+// когда сломан ровно один.
+//
+// # Почему третья сторона не покрывается первой
+//
+// Первая судит решение по КОДУ и о решении по ТЕКСТУ не утверждает ничего:
+// литерал `"SQLSTATE 23505"` коду `"23505"` НЕ равен — это строка из
+// восемнадцати знаков, которой в перечне кодов нет. Гейт места на ней молчит
+// by construction, и молчал ровно столько, сколько существовал.
 //
 // # Чего разбор НЕ видит — названо, а не спрятано
 //
@@ -32,9 +44,13 @@
 //     является, и восстанавливать значение вычислением разбор не берётся.
 //  2. **Код, пришедший переменной** (прочитанный из настройки, из таблицы) —
 //     разбор судит выражение по месту, а не по потоку значений.
-//  3. **Своя классификация БЕЗ кода** — по тексту сообщения СУБД
-//     (`strings.Contains(err.Error(), "duplicate key")`). Это другой класс:
-//     не «второе место решения», а решение по признаку, который СУБД не обещала.
+//  3. **Слова сервера, собранные из частей** — вокабуляр сверяется с ЛИТЕРАЛОМ;
+//     фраза, склеенная из переменных, литералом не является. Та же граница, что
+//     у первого пункта, и по той же причине.
+//
+// Прежде здесь стояла и четвёртая запись — «своя классификация по тексту
+// сообщения СУБД»; её предмет закрыт третьей стороной разбора, и запись снята
+// вместе с ним.
 package repohygiene
 
 import (
@@ -382,4 +398,224 @@ func carriesError(e ast.Expr, errNames map[string]bool) (bool, string) {
 		}
 	}
 	return false, ""
+}
+
+// ─────────────── сторона третья: ПРИЗНАК, по которому принято решение ──────────
+
+// DatabaseFaultPhrases — слова, которыми сервер СООБЩАЕТ о нарушенном
+// инварианте, и фрагмент, которым драйвер рендерит код в текст.
+//
+// Перечень — вокабуляр находки, а не контракт: он существует затем, чтобы
+// узнать решение, принятое по словам, и ни одно из этих значений продукт
+// производить не должен.
+//
+// # Почему решение по этим словам неверно всегда, а не «пока»
+//
+// Текст сообщения сервера зависит от `lc_messages`: на сервере с русской
+// локалью «duplicate key value» не встречается ВОВСЕ. Он зависит и от выпуска
+// сервера, который формулировки правит. Предикат по подстроке при этом не может
+// покраснеть — он молча перестаёт совпадать, и ветка, обязанная сработать, не
+// срабатывает никогда. Со стороны это выглядит как «отказ классифицирован как
+// внутренний», а не как поломка классификации.
+//
+// Фрагмент `SQLSTATE` — тот же класс с другой стороны: код в нём настоящий, но
+// добывается он разбором ФОРМАТИРОВАНИЯ ошибки драйвером, а не полем
+// `PgError.Code`. Формат вывода драйвер менять вправе, поле — нет.
+//
+// # Одной фразы здесь НЕТ намеренно — у неё другой владелец
+//
+// `violates check constraint` в перечень не входит, и вернуть её сюда значило бы
+// завести второе место об одном предмете — ровно тот класс, против которого этот
+// файл и написан. Фразой владеет `TestCheckViolationNeverSpeaksTheDBTone`
+// (задача #718), и его правило СТРОЖЕ здешнего: он запрещает такой литерал в
+// не-тестовом Go вообще, а не только в решении. Проверено опытом: решение по
+// этой фразе он роняет, называя файл и строку.
+//
+// Цена решения названа: его диагноз говорит о «тексте для вызывающего», тогда
+// как пойманное — решение по тексту. Формулировка уводит на соседний вопрос, но
+// место называет верно, и посадку такое место не проходит.
+var DatabaseFaultPhrases = map[string]string{
+	"duplicate key value":             "23505, слова сервера",
+	"violates unique constraint":      "23505, слова сервера",
+	"violates foreign key constraint": "23503, слова сервера",
+	"violates not-null constraint":    "23502, слова сервера",
+	"violates exclusion constraint":   "23P01, слова сервера",
+	"conflicting key value":           "23P01, слова сервера",
+	"deadlock detected":               "40P01, слова сервера",
+	"could not serialize access":      "40001, слова сервера",
+	"no rows in result set":           "отсутствие строки, слова драйвера",
+	"sqlstate":                        "код, добытый из форматирования драйвером",
+}
+
+// TextFaultDecision — координата решения о роде отказа, принятого по тексту.
+type TextFaultDecision struct {
+	File string
+	Line int
+	// Func — функция, в теле которой стоит решение. Гейт судит по функции, а не
+	// по файлу: у одного файла бывает и переведённая часть, и та, что законно
+	// осталась своей.
+	Func string
+	// Needle — литерал, по которому принято решение.
+	Needle string
+	// Why — чем этот литерал опознан (для текста находки).
+	Why string
+	// How — каким сравнением принято решение.
+	How string
+}
+
+// TextFaultCensus — объём осмотренного одним файлом.
+type TextFaultCensus struct {
+	// Funcs — объявлений функций прочитано.
+	Funcs int
+	// Literals — строковых литералов осмотрено. Печатается, чтобы «слов сервера
+	// не найдено» было отличимо от «литералов не читалось».
+	Literals int
+	// Comparisons — сравнений строк осмотрено (вызовы `strings.*` и `==`/`!=` со
+	// строковым литералом). Это ЗНАМЕНАТЕЛЬ предмета: ноль сравнений при тысяче
+	// файлов означает сломанный разбор, а не чистое дерево.
+	Comparisons int
+}
+
+// stringSearchFuncs — функции пакета `strings`, которыми принимают решение по
+// содержанию текста.
+//
+// `Split`, `TrimPrefix` и прочие преобразователи сюда НЕ входят намеренно: они
+// текст режут, а не судят, и решение на их исходе принимает уже другое место —
+// которое этот же разбор и увидит.
+var stringSearchFuncs = map[string]bool{
+	"Contains":    true,
+	"ContainsAny": true,
+	"HasPrefix":   true,
+	"HasSuffix":   true,
+	"Index":       true,
+	"LastIndex":   true,
+	"EqualFold":   true,
+	"Compare":     true,
+}
+
+// ScanTextFaultDecisions находит решения о роде отказа хранилища, принятые по
+// СЛОВАМ сервера, в одном файле.
+//
+// # Что здесь считается находкой
+//
+// Сравнение строк, чей ОБРАЗЕЦ принадлежит вокабуляру отказа сервера. Судится
+// образец, а не то, что обыскивают: провенанс обыскиваемого значения разбор по
+// месту не восстанавливает, а вокабуляр однозначен — ни одну из этих фраз
+// продукт не производит, и искать её можно ровно в одном случае.
+//
+// Комментарий, объясняющий маршрут теми же словами, находкой НЕ является и не
+// может ею стать: разбор видит строковый литерал и не видит комментария **by
+// construction**. Проверка по подстроке краснела бы здесь на собственной шапке —
+// в ней эти фразы стоят все до одной.
+func ScanTextFaultDecisions(path string, src []byte) (found []TextFaultDecision, census TextFaultCensus, err error) {
+	fset := token.NewFileSet()
+	f, perr := parser.ParseFile(fset, path, src, 0)
+	if perr != nil {
+		return nil, TextFaultCensus{}, perr
+	}
+
+	type span struct {
+		from, to int
+		name     string
+	}
+	var spans []span
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		census.Funcs++
+		spans = append(spans, span{
+			from: fset.Position(fn.Pos()).Line,
+			to:   fset.Position(fn.End()).Line,
+			name: fn.Name.Name,
+		})
+	}
+	funcAt := func(line int) string {
+		best := ""
+		bestWidth := 1 << 30
+		for _, s := range spans {
+			if line >= s.from && line <= s.to && s.to-s.from < bestWidth {
+				best, bestWidth = s.name, s.to-s.from
+			}
+		}
+		return best
+	}
+
+	// phraseOf — принадлежит ли литерал вокабуляру отказа. Сверка регистро-
+	// независима: тот же образец пишут и строчными, и как в сообщении сервера.
+	phraseOf := func(lit *ast.BasicLit) (needle, why string, ok bool) {
+		if lit.Kind != token.STRING {
+			return "", "", false
+		}
+		val := strings.Trim(lit.Value, "\"`")
+		low := strings.ToLower(val)
+		for phrase, what := range DatabaseFaultPhrases {
+			if strings.Contains(low, phrase) {
+				return val, what, true
+			}
+		}
+		return "", "", false
+	}
+
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.BasicLit:
+			if x.Kind == token.STRING {
+				census.Literals++
+			}
+		case *ast.CallExpr:
+			sel, isSel := x.Fun.(*ast.SelectorExpr)
+			if !isSel {
+				return true
+			}
+			pkg, isPkg := sel.X.(*ast.Ident)
+			if !isPkg || pkg.Name != "strings" || !stringSearchFuncs[sel.Sel.Name] {
+				return true
+			}
+			// Аргумент-литерал делает вызов СРАВНЕНИЕМ по образцу; вызов, чей
+			// образец приходит переменной, знаменателем не считается — судить о
+			// нём разбор всё равно не берётся.
+			for _, arg := range x.Args {
+				lit, isLit := arg.(*ast.BasicLit)
+				if !isLit || lit.Kind != token.STRING {
+					continue
+				}
+				census.Comparisons++
+				needle, why, ok := phraseOf(lit)
+				if !ok {
+					continue
+				}
+				line := fset.Position(lit.Pos()).Line
+				found = append(found, TextFaultDecision{
+					File: path, Line: line, Func: funcAt(line),
+					Needle: needle, Why: why, How: "strings." + sel.Sel.Name,
+				})
+			}
+		case *ast.BinaryExpr:
+			if x.Op != token.EQL && x.Op != token.NEQ {
+				return true
+			}
+			for _, side := range []ast.Expr{x.X, x.Y} {
+				lit, isLit := side.(*ast.BasicLit)
+				if !isLit || lit.Kind != token.STRING {
+					continue
+				}
+				census.Comparisons++
+				needle, why, ok := phraseOf(lit)
+				if !ok {
+					continue
+				}
+				line := fset.Position(lit.Pos()).Line
+				found = append(found, TextFaultDecision{
+					File: path, Line: line, Func: funcAt(line),
+					Needle: needle, Why: why, How: x.Op.String(),
+				})
+			}
+		}
+		return true
+	})
+
+	sort.Slice(found, func(i, j int) bool { return found[i].Line < found[j].Line })
+	return found, census, nil
 }
