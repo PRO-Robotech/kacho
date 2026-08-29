@@ -103,6 +103,14 @@ const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   "/storage/v1/volumes": ["project_id", "zone_id", "disk_type_id"],
   "/storage/v1/snapshots": ["project_id", "source_volume_id"],
   "/storage/v1/images": ["project_id", "region_id"],
+  // registry.v1 — CreateRegistry отвергает вход без проекта и без региона:
+  // `services/registry/internal/apps/kacho/api/registry/create.go` отвечает
+  // `InvalidArgument "projectId is required"` и `"regionId is required"` до
+  // любой записи. Копия этого прохода в модуле registry (снята вместе с #409)
+  // называла ПУСТОЙ набор со ссылкой на прежний источник истины — пометку
+  // `(required)` в контракте, — а та с поведением края разошлась: пометки в
+  // контракте нет, отказ есть. Набор здесь назван по ОТКАЗУ.
+  "/registry/v1/registries": ["project_id", "region_id"],
 };
 
 /**
@@ -147,7 +155,11 @@ describe("every create-capable spec can express what Create requires", () => {
     // and image are created from the console, and the floor is meant to notice
     // if they stop being. A floor is only worth its line while it is raised for
     // a stated reason and never nudged down to whatever the tree happens to hold.
-    expect(createCapable.length).toBeGreaterThanOrEqual(22);
+    // Raised to 23 when the registry section moved in (#409): a registry is
+    // created from the console, and its two sibling resources are not — the
+    // repository is materialised by `docker push` and the tag is written by the
+    // same push, so neither adds to this floor.
+    expect(createCapable.length).toBeGreaterThanOrEqual(23);
   });
 
   it.each(createCapable)("%s (%s)", (specId, apiPath) => {

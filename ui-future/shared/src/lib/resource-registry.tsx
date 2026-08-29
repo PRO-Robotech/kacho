@@ -27,6 +27,9 @@ import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { IamRefLink } from "@shared/components/molecules/IamRefLink";
 import { LabelsCell } from "@shared/components/atoms/LabelsCell";
+import { ArtifactTypesTag } from "@shared/components/atoms/ArtifactTypeTag";
+import { RepositoryLifecycleTag } from "@shared/components/atoms/RepositoryLifecycleTag";
+import { VisibilityTag } from "@shared/components/atoms/VisibilityTag";
 import { NicSpecFields } from "@shared/components/organisms/form/NicSpecFields";
 import { NlbVipCell } from "@shared/components/molecules/NlbVipCell";
 import {
@@ -333,6 +336,20 @@ const FIELD_NAME_COMPUTE: FormField = {
   description:
     "Строчные латинские буквы, цифры, «-» и «_». Должно начинаться с буквы, длина до 63 символов. Можно оставить пустым.",
   pattern: "^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$",
+};
+
+// Имя реестра — DNS-safe (строчные + цифры + дефисы). Mutable: сменить можно и
+// после создания — OCI-путь образа строится по ИДЕНТИФИКАТОРУ реестра, не по
+// имени (ban #15), поэтому переименование не ломает docker pull/push.
+const FIELD_NAME_REGISTRY: FormField = {
+  name: "name",
+  label: "Имя",
+  type: "string",
+  required: true,
+  placeholder: "my-registry",
+  description:
+    "Строчные латинские буквы, цифры и «-». Должно начинаться с буквы, длина до 63 символов. Можно изменить позже — имя не входит в OCI-путь (тот по идентификатору).",
+  pattern: "^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$",
 };
 
 const FIELD_DESCRIPTION: FormField = {
@@ -5124,6 +5141,236 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         if (Number.isFinite(n)) out["deregistration_delay"] = n;
       }
       return out;
+    },
+  },
+
+  // ====== registry (Container Registry) ======
+  //
+  // Записи перенесены сюда из модульного реестра `registry/src/lib` (#409). До
+  // переноса общий реестр их не нёс, а спеку по идентификатору резолвят ОБЩИЕ
+  // оболочка карточки, подборщик ссылок и `RefNameLink` — поэтому ссылка на
+  // реестр из соседнего раздела вырождалась в плоский идентификатор, а раздел
+  // `/registry/*` был обязан держать и свой реестр, и свою оболочку сразу.
+  //
+  // proto: kacho.cloud.registry.v1. Registry (реестр, tenant-facing) →
+  // Repository (появляется при docker push, read-only) → Tag (тег образа;
+  // единственная мутация — DeleteTag, async).
+
+  registries: {
+    id: "registries",
+    route: "registries",
+    apiPath: "/registry/v1/registries",
+    payloadKey: "registries",
+    singular: ENTITIES.registries.singular,
+    accusative: "реестр",
+    plural: ENTITIES.registries.plural,
+    genitive: "Реестра",
+    serviceTitle: SERVICES.registry.title,
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    // Репозитории — дочерний ресурс: появляются при docker push в реестр.
+    // Отдельный registry-driven таб (read-only список, без CTA «Создать»).
+    related: [{ childId: "repositories", filterField: "registry_id", label: "Репозитории" }],
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      {
+        header: "Идентификатор",
+        path: "id",
+        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
+      },
+      // REG-1 F4: реестр — REGIONAL-anycast, якорь размещения его региона.
+      //
+      // Правило 2 канона консоли: якорь рисует единственный `PlacementAnchor` —
+      // регион есть ресурс каталога geo со своей карточкой, поэтому показывается
+      // ссылкой (иконка типа + имя + переход). Плоский идентификатор, стоявший
+      // здесь, не давал ни имени, ни перехода, при том что соседняя колонка
+      // «Имя» ссылкой уже была.
+      {
+        header: "Размещение",
+        path: "region_id",
+        render: (row) => <PlacementAnchor row={row} maxChars={28} />,
+      },
+      { header: "Статус", path: "status", format: "status" },
+      { header: "Репозиториев", path: "repository_count", format: "text" },
+      { header: "Адрес", path: "endpoint", format: "code" },
+      COL_CREATED,
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+    ],
+    fields: [
+      FIELD_NAME_REGISTRY,
+      FIELD_DESCRIPTION,
+      // REG-1 F4: region_id — required + immutable, cross-service ref → geo.Region
+      // (REGIONAL-anycast placement, peer-validate fail-closed). Смена региона
+      // сломала бы storage-locality блобов → immutable после Create.
+      {
+        name: "region_id",
+        label: "Регион",
+        type: "ref",
+        refResource: "regions",
+        required: true,
+        immutable: true,
+        description: "Регион размещения реестра. Реестр доступен из всего региона; неизменяем после создания.",
+      },
+      // REG-1 F5: default_repository_visibility — видимость по умолчанию для
+      // новых репозиториев реестра. PUBLIC требует прав администратора реестра
+      // (проверяется на сервере: any-path-to-PUBLIC admin-gate).
+      {
+        name: "default_repository_visibility",
+        label: "Видимость репозиториев по умолчанию",
+        type: "enum",
+        // CreateRegistryRequest этого поля не несёт (только Update, тег 6) —
+        // выбранное при создании PUBLIC край выбрасывал, и реестр получался
+        // PRIVATE с успешным тостом.
+        updateOnly: true,
+        default: "PRIVATE",
+        options: [
+          { value: "PRIVATE", label: "PRIVATE — приватные (доступ по правам)" },
+          { value: "PUBLIC", label: "PUBLIC — публичные (anonymous pull; требует прав администратора)" },
+        ],
+        description:
+          "Видимость, наследуемая новыми репозиториями при создании. Переключение на PUBLIC требует прав администратора реестра.",
+      },
+      FIELD_LABELS,
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      name: "",
+      description: "",
+      region_id: "",
+      labels: {},
+    }),
+    emptyState: {
+      title: "Создайте первый реестр",
+      body: "Реестр хранит контейнерные образы проекта. После создания выполните docker login к endpoint реестра и docker push — репозитории появятся автоматически.",
+      docs: ["Реестры контейнеров", "Публикация образов (docker login / push)"],
+    },
+  },
+
+  // ====== repository (OCI-репозиторий) ======
+  // Репозиторий — read-only: репозитории НЕ создаются через API, они
+  // материализуются при первом docker push в реестр. Единственный вход —
+  // ListRepositories(registryId) (path-scoped под реестром). Мутаций нет.
+  // Tenant-facing термин — «репозиторий» (id/route/apiPath/payloadKey =
+  // repositories по OCI/REST-контракту).
+
+  repositories: {
+    id: "repositories",
+    route: "repositories",
+    // registryId подставляется из родителя (реестра); прямой fetch —
+    // registriesApi.listRepositories(registryId) (см. registry/src/api/resources.ts).
+    apiPath: "/registry/v1/registries/{registryId}/repositories",
+    payloadKey: "repositories",
+    singular: ENTITIES.repositories.singular,
+    accusative: "репозиторий",
+    plural: ENTITIES.repositories.plural,
+    genitive: "Репозитория",
+    serviceTitle: SERVICES.registry.title,
+    scope: "project",
+    // Read-only: репозиторий появляется через docker push, а не через UI.
+    ops: { create: false, update: false, delete: false },
+    // Теги — дочерний ресурс репозитория (ListTags(registryId, repository)).
+    related: [{ childId: "tags", filterField: ["registry_id", "repository"], label: "Теги" }],
+    // Facet-фильтр по типу артефакта: отделить docker-образы от helm-чартов.
+    // Фильтруем по массиву artifact_types (включение) — смешанный репозиторий
+    // (docker + helm) попадает в обе категории. Значения — enum-имена проекции.
+    facet: {
+      path: "artifact_types",
+      label: "Тип",
+      options: [
+        { value: "ARTIFACT_TYPE_CONTAINER_IMAGE", label: "Docker-образы" },
+        { value: "ARTIFACT_TYPE_HELM_CHART", label: "Helm-чарты" },
+        { value: "ARTIFACT_TYPE_OTHER", label: "Иные" },
+      ],
+    },
+    // Репозитории пагинируются на handler-слое (next_page_token) — грузим ВСЕ
+    // страницы, чтобы facet видел полный набор (helm-чарт со страницы 2+ не пропал).
+    loadAllPages: true,
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.name as string} />,
+      },
+      // Тип(ы) артефакта — цветные иконки (docker + helm рядом для смешанного
+      // репозитория); читаем массив artifact_types, fallback — primary artifact_type.
+      {
+        header: "Тип",
+        path: "artifact_types",
+        render: (row) => <ArtifactTypesTag value={row.artifact_types ?? row.artifact_type} />,
+      },
+      // REG-1 F7: класс исчезаемости (DURABLE survives-empty / EPHEMERAL push-materialized).
+      {
+        header: "Класс",
+        path: "lifecycle",
+        render: (row) => <RepositoryLifecycleTag value={row.lifecycle} />,
+      },
+      // REG-1 F5: видимость репозитория (PRIVATE / PUBLIC anonymous-pull).
+      { header: "Видимость", path: "visibility", render: (row) => <VisibilityTag value={row.visibility} /> },
+      { header: "Тегов", path: "tag_count", format: "text" },
+      // size_bytes — агрегат по репозиторию (int64 строкой) → человекочитаемо;
+      // 0/пусто → «—» (никогда «0 B»).
+      { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
+      // updated_at — время последнего push (last pushed) в репозиторий.
+      { header: "Обновлён", path: "updated_at", format: "datetime" },
+    ],
+    // Read-only ресурс — form-schema нет.
+    template: () => ({}),
+    emptyState: {
+      title: "Репозитории появляются автоматически",
+      body: "Репозиторий появляется при первом docker push в этот реестр. Пустой реестр не содержит репозиториев — выполните push, чтобы репозиторий появился здесь.",
+      docs: ["Публикация образов (docker login / push)"],
+    },
+  },
+
+  // ====== tag ======
+  // Tag — версия образа (тег/манифест). Read-в основном; единственная мутация —
+  // DeleteTag (async Operation). Создание/обновление тегов — через docker push,
+  // не через UI.
+
+  tags: {
+    id: "tags",
+    route: "tags",
+    // registryId + repository подставляются из родителей; прямой fetch —
+    // registriesApi.listTags(registryId, repository) (см. registry/src/api/resources.ts).
+    apiPath: "/registry/v1/registries/{registryId}/repositories/{repository}/tags",
+    payloadKey: "tags",
+    singular: ENTITIES.tags.singular,
+    accusative: "тег",
+    plural: ENTITIES.tags.plural,
+    genitive: "Тега",
+    serviceTitle: SERVICES.registry.title,
+    scope: "project",
+    // DeleteTag — единственная мутация (create/update нет: теги пишет docker push).
+    ops: { create: false, update: false, delete: true },
+    columns: [
+      { header: "Тег", path: "tag", format: "text" },
+      { header: "Дайджест", path: "digest", format: "code" },
+      // Размер тега остаётся сырым `int64` строкой — ТАК ЖЕ, как было до
+      // переноса. Соседний репозиторий тот же `size_bytes` показывает
+      // человекочитаемо, и это расхождение одного предмета (правило 3 канона
+      // консоли); чинится оно своей задачей, а не молча внутри переноса —
+      // иначе перенос перестаёт быть проверяемым сравнением.
+      { header: "Размер", path: "size_bytes", format: "text" },
+      { header: "Тип содержимого", path: "media_type", format: "text" },
+      COL_CREATED,
+    ],
+    // Мутаций create/update нет — form-schema не требуется.
+    template: () => ({}),
+    emptyState: {
+      title: "Теги появляются после docker push",
+      body:
+        "Тег — версия образа в репозитории: имя, за которым стоит манифест и его дайджест. " +
+        "В консоли теги не создаются — выполните docker push в этот репозиторий, и тег появится в списке.",
+      docs: ["Публикация образов (docker login / push)"],
     },
   },
 };

@@ -96,8 +96,15 @@ describe("реестр shared и таблица — согласованы по�
       .filter((s) => !hasOperationsSubroute(s.apiPath))
       .map((s) => s.id)
       .sort();
-    // Семь спек реестра адресуют пять путей: каталог размещения geo прочитан
+    // Девять спек реестра адресуют семь путей: каталог размещения geo прочитан
     // дважды (`regions`/`compute-regions`, `zones`/`compute-zones`).
+    //
+    // `repositories` и `tags` — дочерние ресурсы реестра, и подмаршрута операций
+    // у них НЕТ by construction: репозиторий материализует `docker push`, тег
+    // пишет он же, а единственная мутация домена (`DeleteTag`) адресуется путём
+    // тега, а не путём его списка. Записи добавлены сюда переносом раздела
+    // registry в общий реестр (#409); утверждение остаётся утверждением, а не
+    // умолчанием — заведут связывание, и это упадёт.
     expect(without).toEqual([
       "address-pools",
       "compute-regions",
@@ -105,9 +112,11 @@ describe("реестр shared и таблица — согласованы по�
       "disk-types",
       "machine-types",
       "regions",
+      "repositories",
+      "tags",
       "zones",
     ]);
-    expect(new Set(specs.filter((s) => !hasOperationsSubroute(s.apiPath)).map((s) => s.apiPath)).size).toBe(5);
+    expect(new Set(specs.filter((s) => !hasOperationsSubroute(s.apiPath)).map((s) => s.apiPath)).size).toBe(7);
   });
 });
 
