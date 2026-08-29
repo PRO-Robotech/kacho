@@ -3262,7 +3262,7 @@
                   "pm.test('операция завершена', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('операция отвергнута (есть error, а не response)', () => pm.expect(Boolean(j.error), JSON.stringify(j)).to.eql(true));",
                   "pm.test('код — отказ ВЛАДЕЛЬЦА, не транспорт (никогда 14/UNAVAILABLE)', () => { pm.expect(j.error.code, JSON.stringify(j)).to.not.eql(14); pm.expect(j.error.code, JSON.stringify(j)).to.eql(5); });",
-                  "pm.test('тон сообщения — контракт отсутствия у владельца', () => pm.expect((j.error.message||'').toLowerCase()).to.include('not found'));",
+                  "pm.test('тон сообщения — контракт отсутствия у владельца', () => pm.expect(j.error.message||'', JSON.stringify(j)).to.eql('Network interface nicabsent99999999999 not found'));",
                   "pm.test('сообщение называет запрошенный идентификатор', () => pm.expect(j.error.message||'').to.include('nicabsent99999999999'));"
                 ]
               }
@@ -6950,7 +6950,7 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 9 (FAILED_PRECONDITION)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
-                  "pm.test('error text includes \"Instance is not running or stopped\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('instance is not running or stopped'));"
+                  "pm.test('error text matches /^Instance is not running or stopped$/', () => pm.expect(j.error && j.error.message || '').to.match(/^Instance is not running or stopped$/));"
                 ]
               }
             }

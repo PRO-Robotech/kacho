@@ -2748,7 +2748,7 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 3 (INVALID_ARGUMENT)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(3));",
-                  "pm.test('error text includes \"Volume size can only be increased\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('volume size can only be increased'));"
+                  "pm.test('error text matches /Volume size can only be increased/', () => pm.expect(j.error && j.error.message || '').to.match(/Volume size can only be increased/));"
                 ]
               }
             }
@@ -3226,7 +3226,7 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 3 (INVALID_ARGUMENT)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(3));",
-                  "pm.test('error text includes \"Volume size can only be increased\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('volume size can only be increased'));"
+                  "pm.test('error text matches /Volume size can only be increased/', () => pm.expect(j.error && j.error.message || '').to.match(/Volume size can only be increased/));"
                 ]
               }
             }
@@ -4441,7 +4441,7 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 6 (ALREADY_EXISTS)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(6));",
-                  "pm.test('error text includes \"already exists in project\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('already exists in project'));"
+                  "pm.test('error text matches /volume with name [^ ]+ already exists in project/', () => pm.expect(j.error && j.error.message || '').to.match(/volume with name [^ ]+ already exists in project/));"
                 ]
               }
             }
@@ -5945,7 +5945,7 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 5 (NOT_FOUND)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('error text includes \"not found\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('not found'));"
+                  "pm.test('error text matches /Volume [^ ]+ not found/', () => pm.expect(j.error && j.error.message || '').to.match(/Volume [^ ]+ not found/));"
                 ]
               }
             }
@@ -6234,7 +6234,7 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 9 (FAILED_PRECONDITION)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
-                  "pm.test('error text includes \"DiskType block-unicorn not found\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('disktype block-unicorn not found'));"
+                  "pm.test('error text matches /DiskType block-unicorn not found/', () => pm.expect(j.error && j.error.message || '').to.match(/DiskType block-unicorn not found/));"
                 ]
               }
             }
@@ -6415,7 +6415,7 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 9 (FAILED_PRECONDITION)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
-                  "pm.test('error text includes \"Snapshot snp00000000000000000 not found\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('snapshot snp00000000000000000 not found'));"
+                  "pm.test('error text matches /Snapshot snp00000000000000000 not found/', () => pm.expect(j.error && j.error.message || '').to.match(/Snapshot snp00000000000000000 not found/));"
                 ]
               }
             }
@@ -11670,7 +11670,7 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 5 (NOT_FOUND)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));",
-                  "pm.test('error text includes \"Volume vol00000000000000000 not found\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('volume vol00000000000000000 not found'));"
+                  "pm.test('error text matches /Volume vol00000000000000000 not found/', () => pm.expect(j.error && j.error.message || '').to.match(/Volume vol00000000000000000 not found/));"
                 ]
               }
             }
@@ -12127,7 +12127,7 @@
                   "const j = pm.response.json();",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 9 (FAILED_PRECONDITION)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
-                  "pm.test('error text includes \"DiskType block-unicorn not found\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('disktype block-unicorn not found'));"
+                  "pm.test('error text matches /DiskType block-unicorn not found/', () => pm.expect(j.error && j.error.message || '').to.match(/DiskType block-unicorn not found/));"
                 ]
               }
             }

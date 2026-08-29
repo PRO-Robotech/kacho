@@ -3543,7 +3543,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('generic anti-oracle wording (no family/ownership disclosure)', () =>   pm.expect((pm.response.json().message || '').toLowerCase())    .to.include('illegal argument addressid'));"
+                  "pm.test('generic anti-oracle wording (no family/ownership disclosure)', () =>   pm.expect(pm.response.json().message || '', pm.response.text())    .to.eql('Illegal argument addressId'));"
                 ]
               }
             }
@@ -5671,7 +5671,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('securityGroupIds rejected on EXTERNAL (INTERNAL-only field)', () =>   pm.expect((pm.response.json().message || '').toLowerCase())    .to.include('security_group_ids is only valid for internal'));"
+                  "pm.test('securityGroupIds rejected on EXTERNAL (INTERNAL-only field)', () =>   pm.expect(pm.response.json().message || '', pm.response.text())    .to.eql('security_group_ids is only valid for INTERNAL load balancer'));"
                 ]
               }
             }

@@ -390,8 +390,11 @@ CASES.append(Case(
              body={"projectId": "{{_suiteProjectId}}", "name": "v1supbad-{{runId}}",
                    "ipv4CidrBlocks": ["10.20.0.0/33"]},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                          "pm.test('names invalid CIDR block', () => "
-                          "pm.expect(pm.response.json().message.toLowerCase()).to.include('invalid cidr block'));"]),
+                          # Дословно и с присланным блоком: владелец пишет `CIDR` заглавными
+                          # (`invalid CIDR block '<X>'`), и приведение регистра прятало это.
+                          "pm.test('names invalid CIDR block and the block sent', () => "
+                          "pm.expect(pm.response.json().message, pm.response.text())"
+                          "  .to.include(\"invalid CIDR block '10.20.0.0/33'\"));"]),
     ],
 ))
 
