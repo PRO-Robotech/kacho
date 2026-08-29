@@ -12,14 +12,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"strings"
-
 	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"google.golang.org/grpc"
 
+	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
@@ -402,10 +401,10 @@ func buildSubscriptionServer(
 	// первой подпиской в бою. Сегодня строка берётся сырой и пуловых ключей не
 	// несёт; страж стоит затем, что это свойство ничем не удержано — ни от ключа
 	// в самой строке, ни от перевода этого места на пуловую форму.
-	if dsn := cfg.Repository.Postgres.URL; strings.Contains(dsn, "pool_") {
-		return nil, fmt.Errorf("поток изменений: строка подключения несёт параметр пула (%q): "+
+	if key := coredb.PoolParamFromDSN(cfg.Repository.Postgres.URL); key != "" {
+		return nil, fmt.Errorf("поток изменений: строка подключения несёт параметр пула %q: "+
 			"вне пула это неизвестный PG-параметр и FATAL при подключении, "+
-			"а отказ наступил бы не на сборке, а у каждой подписки в бою", dsn)
+			"а отказ наступил бы не на сборке, а у каждой подписки в бою", key)
 	}
 	srv, err := subscription.NewServer(subscription.Config{
 		Journal: subscriptionjournal.Journal(),

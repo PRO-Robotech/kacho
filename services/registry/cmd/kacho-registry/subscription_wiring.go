@@ -25,14 +25,13 @@ package main
 
 import (
 	"fmt"
-	"log/slog"
-	"strings"
-
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/subscription"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/subscriptionjournal"
+	"log/slog"
 )
 
 // buildSubscriptionServer собирает ОБЩИЙ сервер потока изменений для журнала
@@ -69,12 +68,13 @@ func buildSubscriptionServer(cfg config.Config, narrower *listnarrow.Narrower,
 	}
 	// Страж посадки: параметр ПУЛА в строке одиночного соединения означает отказ
 	// на подключении, а не на сборке, — и потому обязан быть пойман здесь, а не
-	// первой подпиской в бою. Проверяется предмет, а не имя ручки: строку собирает
-	// конфигурация, и следующий, кто добавит туда пуловый ключ, споткнётся тут.
-	if strings.Contains(dsn, "pool_") {
-		return nil, fmt.Errorf("поток изменений: строка подключения несёт параметр пула (%q): "+
+	// первой подпиской в бою. Предикат один на дерево (coredb.PoolParamFromDSN):
+	// он отдаёт ИМЯ ключа, поэтому отказ называет ручку, а не строку подключения,
+	// которая несёт пароль базы.
+	if key := coredb.PoolParamFromDSN(dsn); key != "" {
+		return nil, fmt.Errorf("поток изменений: строка подключения несёт параметр пула %q: "+
 			"вне пула это неизвестный PG-параметр и FATAL при подключении, "+
-			"а отказ наступил бы не на сборке, а у каждой подписки в бою", dsn)
+			"а отказ наступил бы не на сборке, а у каждой подписки в бою", key)
 	}
 	gate, err := subscriptionjournal.ProjectGate()
 	if err != nil {
