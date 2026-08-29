@@ -21,7 +21,7 @@ import (
 const loadBalancerCols = `
     id, project_id, region_id, created_at, updated_at,
     name, description, labels, type, status, session_affinity,
-    deletion_protection, placement_type, disabled_announce_zones,
+    deletion_protection, placement_type, zone_id, disabled_announce_zones,
     ip_families, address_v4, address_v6, address_id_v4, address_id_v6,
     vip_origin_v4, vip_origin_v6, admin_state, placement, cross_zone_enabled,
     security_group_ids, xmin::text`
@@ -55,6 +55,7 @@ func scanLB(row pgx.Row) (*kacho.LoadBalancerRecord, error) {
 		projectIDs    string
 		idStr         string
 		placementStr  string
+		zoneIDStr     string
 		disabledZones []string
 		ipFamilies    []string
 		addrV4        string
@@ -71,7 +72,7 @@ func scanLB(row pgx.Row) (*kacho.LoadBalancerRecord, error) {
 	if err := row.Scan(
 		&idStr, &projectIDs, &regionIDs, &rec.CreatedAt, &rec.UpdatedAt,
 		&nameStr, &descStr, &labelsRaw, &typeStr, &statusStr, &affinStr,
-		&rec.DeletionProtection, &placementStr, &disabledZones,
+		&rec.DeletionProtection, &placementStr, &zoneIDStr, &disabledZones,
 		&ipFamilies, &addrV4, &addrV6, &addrIDV4, &addrIDV6,
 		&vipOriginV4, &vipOriginV6, &adminStateStr, &placementMode, &crossZone, &sgIDs, &rec.Xmin,
 	); err != nil {
@@ -85,6 +86,7 @@ func scanLB(row pgx.Row) (*kacho.LoadBalancerRecord, error) {
 	rec.ProjectID = domain.ProjectID(projectIDs)
 	rec.RegionID = domain.RegionID(regionIDs)
 	rec.PlacementType = domain.PlacementType(placementStr)
+	rec.ZoneID = domain.ZoneID(zoneIDStr)
 	rec.DisabledAnnounceZones = disabledZonesFromDB(disabledZones)
 	rec.IPFamilies = ipVersionsFromStrings(ipFamilies)
 	rec.AddressV4 = domain.IPAddress(addrV4)
@@ -271,19 +273,19 @@ func (w *loadBalancerWriter) Insert(ctx context.Context, lb *domain.LoadBalancer
         INSERT INTO kacho_nlb.load_balancers
             (id, project_id, region_id, name, description, labels,
              type, status, session_affinity, deletion_protection,
-             placement_type, disabled_announce_zones, ip_families,
+             placement_type, zone_id, disabled_announce_zones, ip_families,
              address_v4, address_v6, address_id_v4, address_id_v6,
              vip_origin_v4, vip_origin_v6, admin_state, placement, cross_zone_enabled,
              security_group_ids)
         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, $11, $12, $13,
-                $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
         RETURNING %s`, loadBalancerCols)
 	row := w.tx.QueryRow(ctx, q,
 		string(lb.ID), string(lb.ProjectID), string(lb.RegionID),
 		string(lb.Name), string(lb.Description), labelsJSON,
 		string(lb.Type), string(lb.Status), string(lb.SessionAffinity),
 		lb.DeletionProtection,
-		string(lb.PlacementType), disabledZonesParam(lb.DisabledAnnounceZones), ipFamiliesParam(lb.IPFamilies),
+		string(lb.PlacementType), string(lb.ZoneID), disabledZonesParam(lb.DisabledAnnounceZones), ipFamiliesParam(lb.IPFamilies),
 		string(lb.AddressV4), string(lb.AddressV6), string(lb.AddressIDV4), string(lb.AddressIDV6),
 		string(lb.VipOriginV4), string(lb.VipOriginV6), adminStateParam(lb.AdminState), string(lb.Placement),
 		lb.CrossZoneEnabled, securityGroupsParam(lb.SecurityGroupIDs),
@@ -378,8 +380,10 @@ func ipVersionsFromStrings(raw []string) []domain.IPVersion {
 
 // Update — мутирует name/description/labels/session_affinity/deletion_protection/
 // disabled_announce_zones/admin_state (NLB-1b EXPAND, LIVE-mutable). NB: type,
-// placement, placement_type, region_id, project_id, status, VIP-binding — НЕ
-// меняются тут (immutable / managed через отдельные методы).
+// placement, placement_type, zone_id, region_id, project_id, status,
+// VIP-binding — НЕ меняются тут (immutable / managed через отдельные методы).
+// Площадка (#1473) immutable by construction: её нет в этом SET, а сменить её
+// значило бы переставить балансировщик на другую площадку — это другой ресурс.
 func (w *loadBalancerWriter) Update(ctx context.Context, lb *domain.LoadBalancer, expectedXmin string) (*kacho.LoadBalancerRecord, error) {
 	labelsJSON, err := dto.LabelsToJSONB(lb.Labels)
 	if err != nil {

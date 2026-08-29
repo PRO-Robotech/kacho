@@ -305,6 +305,27 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
     },
   },
 
+  // Балансировщик нагрузки — площадка размещения (#1473).
+  //
+  // Обзор карточки состоит из пяти обязательных строк плюс доменных, и до этой
+  // записи балансировщик не показывал НИ ОДНОЙ координаты размещения: ни зоны,
+  // ни региона. «Размещение зональное» читалось из списка, а на какой площадке
+  // стоит балансировщик — не отвечал никто, при том что машина и балансировщик
+  // обязаны совпасть площадкой (data-integrity.md §Placement-coherence).
+  "load-balancers": {
+    overviewExtra: ({ data }) => [
+      {
+        // Ветку ZONAL/REGIONAL рисует тот же единственный `PlacementAnchor`,
+        // что и у подсети: якорь — ресурс geo, поэтому ссылка, а не
+        // моноширинный идентификатор.
+        label: "Размещение",
+        value: <PlacementAnchor row={data} maxChars={42} />,
+        // Копируется идентификатор якоря — зоны либо региона.
+        copy: getByPath<string>(data, "zone_id") || getByPath<string>(data, "region_id") || undefined,
+      },
+    ],
+  },
+
   "route-tables": {
     overviewExtra: ({ data }) => [
       {
