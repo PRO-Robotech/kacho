@@ -23,6 +23,15 @@
 //   под гейт само; их поимённый перечень утверждается, чтобы появление шестого
 //   было замечено, а не поглощено молча.
 //
+// Реестров ДВА ВИДА, и различать их обязательно (#406): объявляющий спеки и
+// ПРОЕКЦИЯ общего — тонкая прослойка, оставшаяся от сведения форка. У проекции
+// ноль своих спек by construction. Прежняя редакция требовала непустого разбора
+// от каждого найденного файла — верно, пока реестр был у каждого модуля свой, и
+// ложно по мере сведения: требование краснело на достижении цели и толкало
+// вернуть форк ради зелёного. Оба вида названы поимённо, и ноль спек у файла,
+// прослойкой НЕ являющегося, остаётся находкой — то есть слепоты разбора это
+// различение не вводит.
+//
 // Предпосылка гейта проверяется им же. Разбор идёт по узлам синтаксиса, потому
 // что комментарии в этом же дереве цитируют и `spec.apiPath`, и сам запрещённый
 // шаблон — объясняя запрет; текстовый предикат зачёл бы объяснение за нарушение.
@@ -32,10 +41,12 @@
 // умеющий только литералы, молчал бы на них, отчитываясь «ноль находок».
 // Поэтому неразрешённый `apiPath` — находка, а не пропуск.
 
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { OPERATIONS_LIST_PATHS, hasOperationsSubroute } from "@shared/lib/operations-subroute";
+import { isReExportOnly } from "@shared/test/shared-symbol-sweep";
 
 import {
   appOf,
@@ -60,6 +71,21 @@ const specsByApp = new Map<string, SpecEntry[]>(
   registryFiles.map((f) => [appOf(UI_ROOT, f), readRegistrySpecs(f, UI_ROOT)]),
 );
 const allSpecs = [...specsByApp.values()].flat();
+
+// Реестр бывает ДВУХ видов, и различать их обязательно (#406). Один ОБЪЯВЛЯЕТ
+// спеки; другой — ПРОЕКЦИЯ общего: тонкая прослойка `export * from
+// "@shared/lib/resource-registry"`, заведённая сведением форка. У проекции ноль
+// собственных спек by construction, и требовать от неё непустого разбора значит
+// требовать вернуть форк ради зелёного — то есть краснеть на достижении цели.
+//
+// Прослойка узнаётся ТЕМ ЖЕ предикатом, что и в переписи форков
+// (`isReExportOnly`): второй предикат об одном предмете разошёлся бы с первым
+// молча, и разошёлся бы ровно там, где расхождение не видно.
+const projections = registryFiles
+  .filter((f) => isReExportOnly(readFileSync(f, "utf8")))
+  .map((f) => appOf(UI_ROOT, f))
+  .sort();
+const declaring = [...specsByApp.keys()].filter((app) => !projections.includes(app)).sort();
 const wiring = tabWiringAcrossTree(UI_ROOT);
 // Прочитанные исходники — отдельно от найденной провязки: обход `tabWiring…`
 // отдаёт уже ОТФИЛЬТРОВАННЫЙ список, и по нему нельзя отличить «ничего не
@@ -72,14 +98,26 @@ describe("объём осмотренного — «ноль находок» о
     expect(protoBases.length).toBeGreaterThan(15);
   });
 
-  it("реестры найдены обходом и названы поимённо", () => {
+  it("реестры найдены обходом и названы поимённо — объявляющие отдельно от проекций", () => {
     // Перечень ВЫВЕДЕН из дерева, но утверждён: шестое приложение со своим
     // реестром обязано быть замечено здесь, а не молча попасть под гейт.
     expect([...specsByApp.keys()].sort()).toEqual(["compute", "nlb", "registry", "shared", "storage"]);
-    // И каждый из них ПРОЧИТАН: пустой разбор дал бы «ноль спек без подмаршрута»
-    // и выглядел бы как чистое дерево.
-    const empty = [...specsByApp].filter(([, specs]) => specs.length < 4).map(([app]) => app);
+    // Оба вида названы поимённо. Прежде здесь стояло требование непустого
+    // разбора от КАЖДОГО файла — верное, пока реестр был у каждого модуля свой,
+    // и ставшее ложным по мере сведения форков: проекция общего реестра спек не
+    // объявляет by construction, и требование краснело на достижении цели.
+    expect(projections).toEqual(["compute", "nlb", "storage"]);
+    expect(declaring).toEqual(["registry", "shared"]);
+    // Каждый ОБЪЯВЛЯЮЩИЙ прочитан: пустой разбор дал бы «ноль спек без
+    // подмаршрута» и выглядел бы как чистое дерево.
+    const empty = declaring.filter((app) => (specsByApp.get(app) ?? []).length < 4);
     expect(empty).toEqual([]);
+    // И каждая ПРОЕКЦИЯ прочитана как проекция, а не как сломанный разбор:
+    // ноль спек у файла, прослойкой НЕ являющегося, — находка.
+    const mute = [...specsByApp]
+      .filter(([app, specs]) => specs.length === 0 && !projections.includes(app))
+      .map(([app]) => app);
+    expect(mute).toEqual([]);
   });
 
   it("исходники, причастные к вкладке, осмотрены", () => {
@@ -191,26 +229,29 @@ describe("согласие каждого реестра со стволом", (
   });
 
   it("спеки без вкладки названы поимённо по приложениям — это утверждение, а не умолчание", () => {
+    // Перечисляются ОБЪЯВЛЯЮЩИЕ реестры. Проекция общего своих спек не несёт, и
+    // пустой список против её имени говорил бы не «у этого раздела нет спек без
+    // вкладки», а «здесь нечего было читать» — два разных утверждения под одной
+    // записью.
     const without: Record<string, string[]> = {};
-    for (const [app, specs] of [...specsByApp].sort((a, b) => a[0].localeCompare(b[0]))) {
+    for (const [app, specs] of [...specsByApp]
+      .filter(([app]) => declaring.includes(app))
+      .sort((a, b) => a[0].localeCompare(b[0]))) {
       without[app] = specs
         .filter((s) => s.apiPath !== null && !protoBases.includes(s.apiPath))
         .map((s) => s.id)
         .sort();
     }
     expect(without).toEqual({
-      compute: ["machine-types", "zones"],
-      nlb: ["compute-regions", "zones"],
       // Вложенные ресурсы реестра адресуются внутри `registries/{registryId}/…`,
       // и подмаршрута операций ствол им не объявляет — как и каталогу geo.
       registry: ["regions", "repositories", "tags"],
-      shared: ["address-pools", "compute-regions", "compute-zones", "disk-types", "machine-types", "regions", "zones"],
       // `snapshots` отсюда УШЁЛ: производственный контракт storage объявил
       // `GET /storage/v1/snapshots/{snapshot_id}/operations`, и вкладка у снимка
       // появилась — то есть перечень сузился по факту дерева, а не по решению
       // этого теста. Утверждение выше («консоль считает подмаршрут существующим
       // ровно там, где его несёт proto») подтверждает совпадение в обе стороны.
-      storage: ["disk-types", "regions", "zones"],
+      shared: ["address-pools", "compute-regions", "compute-zones", "disk-types", "machine-types", "regions", "zones"],
     });
   });
 });
