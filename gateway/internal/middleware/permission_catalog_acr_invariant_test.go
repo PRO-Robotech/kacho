@@ -696,9 +696,19 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// базовый секрет, а порог отсекал бы ровно тот вид удостоверения, ради
 	// которого глагол заведён. Числа ЗАМЕРЕНЫ прогоном, а не сложены в уме:
 	// 25→26 и 342→343.
+	//
+	// #1450 добавил ОДНУ запись — `InternalIAMService/CheckBasicCredentialLive`,
+	// тот же авторитет, спрошенный по ИДЕНТИФИКАТОРУ удостоверения, без
+	// предъявления секрета: длинному соединению предъявлять нечего, а держать
+	// секрет весь его срок значило бы завести поверхность хранения ради контроля.
+	// Основание освобождения то же (INTERNAL_LISTENER), и порога повышения она
+	// не несёт по той же причине, что соседний резолв: вопрос задаётся НА СЛОЕ
+	// АУТЕНТИФИКАЦИИ, где решённой личности ещё нет и порог требовать не у кого.
+	// Полоса «рутина» не двигается: запись освобождённая, а `n1` считает
+	// неосвобождённые. Числа ЗАМЕРЕНЫ прогоном: 26→27 и 343→344.
 	assert.Equal(t, 285, n1, "routine count")
-	assert.Equal(t, 26, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
-	assert.Equal(t, 343, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 27, nEmpty, "no-acr-requirement count (подмножество `<exempt>`, не равное ему)")
+	assert.Equal(t, 344, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()
