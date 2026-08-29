@@ -10,7 +10,13 @@ module.exports = {
   testEnvironment: "jsdom",
   extensionsToTreatAsEsm: [".ts", ".tsx"],
   setupFilesAfterEnv: ["<rootDir>/../shared/src/test/setup.ts"],
-  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
+  // Суита ОБЩЕГО модуля гоняется здесь наравне со своей (#407). Пока её не было,
+  // правка в `@shared` этим доменом не проверялась ничем: модуль импортирует
+  // оттуда реестр, оболочку карточки и почти все компоненты, но судил только то,
+  // что лежит под своим `src`. После сведения форка (#1466) это стало прямой
+  // дырой — собственных проб у сведённых файлов не осталось by construction.
+  roots: ["<rootDir>/src", "<rootDir>/../shared/src"],
+  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}", "<rootDir>/../shared/src/**/*.test.{ts,tsx}"],
   moduleNameMapper: {
     // @ant-design/icons → статический стаб (kacho#7): Proxy-мок в setup.ts не давал
     // статических named-экспортов → ESM-линкер `import { XOutlined }` висел под vm-modules.

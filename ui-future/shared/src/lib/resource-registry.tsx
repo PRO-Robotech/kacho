@@ -2851,7 +2851,32 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "lifecycle",
         render: (row) => <LifecycleCell value={row.lifecycle} />,
       },
-      { header: "Зоны", path: "zone_ids", format: "list" },
+      // Зоны — ССЫЛКИ, по одной на зону (правило 2 канона консоли: поле, значение
+      // которого есть идентификатор другого ресурса, показывается именем и ведёт
+      // на карточку). Множественность от правила не освобождает: это несколько
+      // ссылок, а не другой вид значения. До этого здесь стоял `format: "list"`,
+      // и в каталоге классов зона была строкой `zone-…`, тогда как у тома, у
+      // снимка и в форме выбора — именем: один ресурс, два прочтения на соседних
+      // экранах.
+      //
+      // `projectId` не передаётся намеренно: зона — глобальный справочник geo, у
+      // него нет измерения «проект», а страница каталога живёт под `/system/*`,
+      // где проекта в контексте нет вовсе.
+      {
+        header: "Зоны",
+        path: "zone_ids",
+        render: (row) => {
+          const ids = Array.isArray(row.zone_ids) ? (row.zone_ids as string[]).filter(Boolean) : [];
+          if (ids.length === 0) return <span className="text-muted-foreground">—</span>;
+          return (
+            <span style={{ display: "inline-flex", flexWrap: "wrap", gap: 6, minWidth: 0 }}>
+              {ids.map((id) => (
+                <RefNameLink key={id} specId="zones" refId={id} maxChars={28} />
+              ))}
+            </span>
+          );
+        },
+      },
     ],
     template: () => ({}),
     emptyState: {

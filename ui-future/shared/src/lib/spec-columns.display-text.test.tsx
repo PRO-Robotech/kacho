@@ -14,6 +14,11 @@
 import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 
+// Переехала сюда из модуля storage вместе со своим предметом (#407): реализация
+// `formatCellByFormat` живёт в `shared/` и раньше, а в модуле по этому адресу
+// лежал ре-экспорт — то есть проба ходила к общему коду через шим. Шим снят
+// вместе с последними его импортёрами, и проба зовёт предмет напрямую. Модуль
+// storage её не потерял: его прогон с этого же изменения несёт суиту `shared/`.
 import { formatCellByFormat } from "./spec-columns";
 
 function textOf(node: ReactNode): string {
