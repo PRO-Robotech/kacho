@@ -8,10 +8,10 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-interface ForkLedger {
+export interface ForkLedger {
   groups: { id: string; entries: { file: string }[] }[];
 }
-interface ReachabilityLedger {
+export interface ReachabilityLedger {
   allowed: Record<string, string>;
 }
 
@@ -34,12 +34,12 @@ export interface DoubleExcuse {
 /** Ключ ведомости — путь от корня дерева консоли: `<приложение>/src/…`. */
 const LEDGER_KEY = /^[a-z][\w-]*\/src\//;
 
-export function doubleExcused(repoRoot: string): DoubleExcuse {
-  const read = <T,>(rel: string): T => JSON.parse(readFileSync(path.join(repoRoot, rel), "utf8")) as T;
-
-  const forks = read<ForkLedger>("shared/src/test/shared-fork-ledger.json");
-  const reachability = read<ReachabilityLedger>("shared/src/test/module-reachability-ledger.json");
-
+/**
+ * Ядро правила — ЧИСТОЕ: принимает разобранные ведомости, файловой системы не
+ * касается. Так доказательство способности упасть обходится без синтетического
+ * дерева на диске, а значит и без записи, переживающей границу суиты.
+ */
+export function doubleExcusedFrom(forks: ForkLedger, reachability: ReachabilityLedger): DoubleExcuse {
   const excusedForks = forks.groups.flatMap((g) => g.entries.map((e) => e.file));
   const excusedDead = Object.keys(reachability.allowed);
   const deadSet = new Set(excusedDead);
@@ -54,4 +54,13 @@ export function doubleExcused(repoRoot: string): DoubleExcuse {
     excusedTwice: [...new Set(excusedForks.filter((f) => deadSet.has(f)))].sort(),
     forkGroups: forks.groups.length,
   };
+}
+
+/** То же правило над ведомостями РЕАЛЬНОГО дерева. */
+export function doubleExcused(repoRoot: string): DoubleExcuse {
+  const read = <T,>(rel: string): T => JSON.parse(readFileSync(path.join(repoRoot, rel), "utf8")) as T;
+  return doubleExcusedFrom(
+    read<ForkLedger>("shared/src/test/shared-fork-ledger.json"),
+    read<ReachabilityLedger>("shared/src/test/module-reachability-ledger.json"),
+  );
 }
