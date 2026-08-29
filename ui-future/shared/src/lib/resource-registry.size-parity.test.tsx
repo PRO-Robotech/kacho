@@ -36,7 +36,7 @@ function sizeCellText(specId: string, row: Record<string, unknown>): string {
   if (!spec) throw new Error(`в общем реестре нет спеки ${specId}`);
   const col = buildSpecColumns(spec).find((c) => c.header === HEADER);
   if (!col) throw new Error(`у спеки ${specId} нет колонки «${HEADER}» — предмет пробы исчез`);
-  const { container, unmount } = render(<>{col.cell(row, 0)}</>);
+  const { container, unmount } = render(<>{col.cell(row)}</>);
   const text = (container.textContent ?? "").trim();
   unmount();
   return text;
