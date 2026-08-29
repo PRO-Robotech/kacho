@@ -19,11 +19,6 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
 )
 
-// internalBackendSuffix — как называется ключ ВНУТРЕННЕГО адреса домена в карте
-// соединений. Подписка живёт только там: имя её службы начинается с `Internal`,
-// и на публичном порту владельца её нет вовсе.
-const internalBackendSuffix = "Internal"
-
 // buildSubscriptionStreamHandler собирает единственную проекцию потока.
 //
 // # Почему адрес НЕ отдельная ручка конфигурации
@@ -49,7 +44,9 @@ func buildSubscriptionStreamHandler(
 	missing := make([]string, 0, len(names))
 
 	for _, name := range names {
-		conn := backends[name+internalBackendSuffix]
+		// Ключ внутреннего адреса даёт config — карта соединений там же объявлена,
+		// и второе его написание разошлось бы с ней молча.
+		conn := backends[config.InternalBackendKey(name)]
 		if conn == nil {
 			missing = append(missing, name)
 			continue
