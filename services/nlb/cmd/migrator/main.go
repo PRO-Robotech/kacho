@@ -10,9 +10,9 @@
 //
 // Subcommands:
 //
-//	kacho-nlb-migrator up      [--target <version>]
-//	kacho-nlb-migrator down    [--target <version>]
-//	kacho-nlb-migrator status
+//	kacho-migrator up      [--target <version>]
+//	kacho-migrator down    [--target <version>]
+//	kacho-migrator status
 //
 // # Глагола `create` здесь НЕТ — и это решение, а не пропуск (#566)
 //
@@ -33,9 +33,14 @@
 //	--config  /etc/kacho-nlb/config.yaml      (если --dsn пуст — читает
 //	                                          repository.postgres.url из YAML)
 //
-// Источник DSN — приоритет: --dsn > ENV `KACHO_NLB_REPOSITORY__POSTGRES__URL`
-// > --config (config.Load). Так одна и та же `values.yaml` покрывает оба
-// бинаря (kacho-loadbalancer + migrator) без дублирования.
+// Источник DSN — приоритет: --dsn > ENV `KACHO_MIGRATOR_DSN` > --config
+// (config.Load, он же читает `KACHO_NLB_REPOSITORY__POSTGRES__URL`). Так одна и
+// та же `values.yaml` покрывает оба бинаря (kacho-loadbalancer + kacho-migrator)
+// без дублирования.
+//
+// Флаг `--config` есть ТОЛЬКО у этого сервиса, и это решение, а не остаток:
+// nlb читает конфигурацию из смонтированного файла, шесть соседей — из
+// окружения. Различие названо в docs/architecture/migrator-cli.md.
 package main
 
 import (
@@ -78,10 +83,10 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 	opts := &rootOptions{}
 
 	root := &cobra.Command{
-		Use:   "kacho-nlb-migrator",
-		Short: "Database migrations runner for kacho-nlb (KAC-160)",
-		Long: "kacho-nlb-migrator — отдельный CLI для управления миграциями БД сервиса kacho-nlb.\n" +
-			"Построено по pattern'у kacho-vpc/cmd/migrator (skill evgeniy §9 K.1–K.3).\n\n" +
+		Use:   "kacho-migrator",
+		Short: "Управление миграциями БД сервиса kacho-nlb",
+		Long: "kacho-migrator — отдельный CLI для управления миграциями БД сервиса kacho-nlb:\n" +
+			"применение (up), откат (down), статус (status).\n\n" +
 			"Новая миграция заводится РУКОЙ: internal/migrations/YYYYMMDDHHMMSS_<что>.sql\n" +
 			"(метка времени заведения: date -u +%Y%m%d%H%M%S).\n" +
 			"Подробности — docs/architecture/migration-version-namespace.md.",

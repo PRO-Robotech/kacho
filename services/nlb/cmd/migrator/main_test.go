@@ -38,8 +38,14 @@ func TestRootCmd_HelpDoesNotError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout, "kacho-nlb-migrator") {
-		t.Fatalf("expected help to mention kacho-nlb-migrator, got: %q", stdout)
+	// Имя одно на семь сервисов (#1461). Прежняя редакция этой пробы ЗАКРЕПЛЯЛА
+	// расхождение: она требовала, чтобы помощь называла `kacho-nlb-migrator`, —
+	// то есть удерживала ровно то различие, которое задача снимает.
+	if !strings.Contains(stdout, "kacho-migrator") {
+		t.Fatalf("помощь не называет общее имя kacho-migrator: %q", stdout)
+	}
+	if strings.Contains(stdout, "kacho-nlb-migrator") {
+		t.Fatalf("помощь снова называет своё имя вместо общего: %q", stdout)
 	}
 	// Перечень утверждается ПО БЛОКУ «Available Commands», а не подстрокой во
 	// всём выводе: пока проба искала слово «create» где угодно, её удовлетворяла
