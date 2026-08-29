@@ -26,12 +26,22 @@
 //
 // # Что спрашивается и у кого
 //
-// Спрашивается НАШ авторитет (`InternalSessionRevocationsService`) — тот, куда
-// пишут выход человека и принудительный выход администратора. Полос у вопроса
-// две, и они разделены ТАК ЖЕ, как на пути запроса: удостоверение с
-// идентификатором спрашивается по нему (`IsRevoked`), браузерная сессия — по
-// паре (человек, момент аутентификации) (`SessionCutoffOf`). Расхождение полос
-// здесь было бы расхождением одного механизма с самим собой.
+// Спрашивается НАШ авторитет — тот, куда пишут выход человека, принудительный
+// выход администратора и отзыв базового удостоверения. Полос у вопроса ТРИ, и
+// они разделены ТАК ЖЕ, как на пути запроса; расхождение полос здесь было бы
+// расхождением одного механизма с самим собой:
+//
+//   - удостоверение с идентификатором — по нему (`IsRevoked`);
+//   - браузерная сессия — по паре (человек, момент аутентификации)
+//     (`SessionCutoffOf`): идентификатора у неё нет вовсе;
+//   - базовый секрет — по идентификатору СТРОКИ удостоверения
+//     (`CheckBasicCredentialLive`, kacho#1450).
+//
+// Третья полоса появилась позже двух первых, и её отсутствие не было тихим:
+// такие потоки считались НЕСПРАШИВАЕМЫМИ и печатались числом. Вопроса о них не
+// существовало — задать его можно было только предъявленной строкой, а держать
+// секрет живым весь срок соединения значило бы завести поверхность хранения ради
+// контроля. Владелец завёл вопрос по идентификатору, и остаток закрылся.
 //
 // # Чего этот перепрос НЕ спрашивает, и это названо, а не подразумевается
 //
@@ -82,7 +92,45 @@ type Streams interface {
 type Authority interface {
 	middleware.SessionRevocationsReader
 	middleware.SessionCutoffReader
+	BasicCredentialLivenessReader
 }
+
+// BasicCredentialLivenessReader — ТРЕТИЙ вопрос: живо ли базовое удостоверение,
+// названное идентификатором своей строки (kacho#1450).
+//
+// # Почему он объявлен ЗДЕСЬ, а не взят у полосы запроса
+//
+// Первые два вопроса переиспользованы у `middleware` именно потому, что путь
+// запроса их уже задаёт. Этот — не задаёт: на пути запроса базовый секрет
+// предъявляется ЦЕЛИКОМ, и вердикт о нём выносит резолв по предъявленной строке.
+// Спрашивающий с открытого соединения предъявителем не является — строку он
+// видел однажды, при открытии, — поэтому вопрос у него СВОЙ, и это первое его
+// описание, а не третья копия чужого.
+//
+// # Почему НЕ хранить строку и спрашивать резолвом
+//
+// Это и был бы «отзыв ценой поверхности»: секрет каждого открытого соединения
+// жил бы в памяти края весь срок жизни потока. Владелец завёл вопрос по
+// идентификатору ровно затем, чтобы платить не пришлось.
+type BasicCredentialLivenessReader interface {
+	// IsBasicCredentialLive — живо ли удостоверение с этим идентификатором.
+	//
+	// ТРИ исхода парой значений, и слить их нельзя: `live=true` — живо;
+	// `live=false, err=nil` — НЕ живо (закрываем поток); `err != nil` —
+	// спросить не удалось (неполученный ответ не есть «да»).
+	IsBasicCredentialLive(ctx context.Context, credentialID string) (live bool, err error)
+}
+
+// ErrBasicCredentialLivenessUnsupported — авторитет ЖИВ и такого вопроса не
+// предлагает.
+//
+// Окно раската: реплика края поднимается раньше, чем докатится служба прав, и в
+// этом окне она отвечает «метода нет». Читать это как «не ответил» значило бы
+// закрывать потоки всего флота на всё окно; читать как «не живо» — закрывать их
+// немедленно. Ни то, ни другое: проходим, но ГРОМКО, той же посадкой, что у
+// соседнего вопроса об отсечке субъекта.
+var ErrBasicCredentialLivenessUnsupported = errors.New(
+	"streamrevocation: авторитет не предлагает вопроса о живости базового удостоверения")
 
 // verdict — что авторитет ответил про одно удостоверение.
 //
@@ -106,6 +154,14 @@ const (
 	// считать это отказом значило бы закрывать потоки всего флота на всё окно
 	// раската, при том что состояние сходится само.
 	verdictUnsupported
+	// verdictLivenessUnsupported — то же окно раската, но у ВОПРОСА О ЖИВОСТИ
+	// базового удостоверения.
+	//
+	// Держится ВРОЗЬ от соседнего, а не сливается с ним: оператору эти два
+	// состояния говорят разное — какая именно полоса сейчас без отзыва, — и
+	// смешанная величина не даёт принять ни одного решения. Лечатся они, к тому
+	// же, разными раскатами.
+	verdictLivenessUnsupported
 )
 
 // Config — что приносит композиционный корень края.
@@ -231,7 +287,7 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 		byCred[st.Credential] = append(byCred[st.Credential], st)
 	}
 
-	var closed, asked, unanswered, unaskable, unsupported int
+	var closed, asked, unanswered, unaskable, unsupported, livenessUnsupported int
 	for cred, streams := range byCred {
 		switch s.ask(ctx, cred) {
 		case verdictRevoked:
@@ -245,6 +301,9 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 		case verdictUnsupported:
 			asked++
 			unsupported += len(streams)
+		case verdictLivenessUnsupported:
+			asked++
+			livenessUnsupported += len(streams)
 		case verdictUnanswered:
 			unanswered++
 		case verdictUnaskable:
@@ -261,16 +320,19 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 		s.lastGood = s.cfg.Now()
 	}
 
-	if closed > 0 || unaskable > 0 || unsupported > 0 {
+	if closed > 0 || unaskable > 0 || unsupported > 0 || livenessUnsupported > 0 {
 		s.cfg.Logger.Info("subscription credential recheck",
 			"streams", len(open), "credentials", len(byCred),
 			"streams_closed", closed,
-			// Три величины держатся ВРОЗЬ: слитые в одну, они смешали бы
-			// исполненный контроль с двумя разными способами его не исполнить,
-			// и по смешанной величине нельзя принять ни одного решения.
+			// Величины держатся ВРОЗЬ: слитые в одну, они смешали бы
+			// исполненный контроль с разными способами его не исполнить, и по
+			// смешанной величине нельзя принять ни одного решения. Окна раската
+			// у двух вопросов тоже разные: они лечатся разными раскатами, и
+			// оператору надо знать, КАКАЯ полоса сейчас без отзыва.
 			"streams_unaskable", unaskable,
 			"credentials_unanswered", unanswered,
-			"streams_cutoff_unsupported", unsupported)
+			"streams_cutoff_unsupported", unsupported,
+			"streams_liveness_unsupported", livenessUnsupported)
 	}
 
 	if unaskable > 0 {
@@ -289,6 +351,12 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 			"streams_cutoff_unsupported", unsupported,
 			"predicate", "исчезает, когда служба прав докатится до того же дерева")
 	}
+	if livenessUnsupported > 0 {
+		s.cfg.Logger.Error("basic credential revocation not enforced on open subscription streams: "+
+			"the authority does not offer the liveness question (image skew)",
+			"streams_liveness_unsupported", livenessUnsupported,
+			"predicate", "исчезает, когда служба прав докатится до того же дерева")
+	}
 	if unanswered > 0 {
 		s.cfg.Logger.Warn("subscription credential recheck unanswered",
 			"credentials_unanswered", unanswered,
@@ -305,6 +373,26 @@ func (s *Sweeper) Sweep(ctx context.Context) {
 // расхождение никто.
 func (s *Sweeper) ask(ctx context.Context, c principalmeta.Credential) verdict {
 	switch {
+	// БАЗОВЫЙ СЕКРЕТ — ПЕРВЫМ, и порядок здесь несущий (kacho#1450).
+	//
+	// Владельцем базового удостоверения бывает человек, и тогда полоса приёма
+	// ставит его личность в заголовки. Спроси мы дальше по субъекту — задали бы
+	// вопрос ЧУЖОЙ полосы: браузерную отсечку пути запроса базовому секрету не
+	// задают вовсе, и потоки закрывались бы по условию, которого запрос не
+	// применяет. Расхождение двух полос одного механизма никто бы не решал.
+	case c.BasicCredentialID != "":
+		live, err := s.cfg.Authority.IsBasicCredentialLive(ctx, c.BasicCredentialID)
+		switch {
+		case errors.Is(err, ErrBasicCredentialLivenessUnsupported):
+			return verdictLivenessUnsupported
+		case err != nil:
+			return verdictUnanswered
+		case live:
+			return verdictLive
+		default:
+			return verdictRevoked
+		}
+
 	case c.JTI != "":
 		revoked, err := s.cfg.Authority.IsSessionRevoked(ctx, c.JTI)
 		if err != nil {

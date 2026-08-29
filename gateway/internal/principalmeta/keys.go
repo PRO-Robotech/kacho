@@ -51,6 +51,27 @@ const (
 	// ноль и не «давно»: ноль читался бы как подтверждение в 1970 году, то есть
 	// как величина, над которой можно считать. Довода нет ⇒ довода нет.
 	HeaderTokenMfaAt = "X-Kacho-Token-Mfa-At" // #nosec G101 -- HTTP header name (authentication instant), not a credential
+
+	// HeaderTokenBasicCredentialID — ИДЕНТИФИКАТОР СТРОКИ базового удостоверения,
+	// которым предъявитель открыл запрос (kacho#1450).
+	//
+	// ЗАЧЕМ ОН ЕСТЬ. Про две другие полосы отзыва наш авторитет спрашивается уже
+	// сегодня: удостоверение с идентификатором — по `jti`, браузерная сессия —
+	// по паре (человек, момент). Базовый секрет не спрашивался НИ ПО ЧЕМУ:
+	// вопрос о нём требовал самой предъявленной строки, а держать её живой весь
+	// срок открытого соединения значило бы завести поверхность хранения ради
+	// контроля. Владелец завёл вопрос ПО ИДЕНТИФИКАТОРУ
+	// (`InternalIAMService.CheckBasicCredentialLive`) — этот заголовок и есть то,
+	// чем спрашивающий его называет.
+	//
+	// ЗНАЧЕНИЕ СЕКРЕТА НЕ НЕСЁТ, и это утверждение о значении, а не о форме:
+	// сюда кладётся `credential_id` из ответа авторитета, а не предъявленная
+	// строка. Владелец энфорсит это на своей стороне — значение, разбираемое как
+	// предъявленная строка, отвергается им единым отказом до вопроса.
+	//
+	// ОСТАЁТСЯ НА КРАЮ (edgeOnlyKeys): за краем у него потребителя нет, а мост
+	// пропустил бы его наравне с прочими — префикс мост снимает сам.
+	HeaderTokenBasicCredentialID = "X-Kacho-Token-Basic-Credential-Id" // #nosec G101 -- HTTP header name (credential row id), not a credential
 )
 
 // Grpc-Metadata-prefixed HTTP header names (grpc-gateway → gRPC metadata bridge).
@@ -89,6 +110,12 @@ const (
 	MetaTokenScope          = "x-kacho-token-scope"  // #nosec G101 -- gRPC metadata key name (token scope claim), not a credential
 	MetaTokenAMR            = "x-kacho-token-amr"    // #nosec G101 -- gRPC metadata key name (authentication methods), not a credential
 	MetaTokenMfaAt          = "x-kacho-token-mfa-at" // #nosec G101 -- gRPC metadata key name (authentication instant), not a credential
+
+	// MetaTokenBasicCredentialID — нижнерегистровая форма
+	// [HeaderTokenBasicCredentialID]. Объявлена не ради потребителя за краем —
+	// его нет, — а ради ЗАПРЕТА: набор ключей края (edgeOnlyKeys) ведётся именно
+	// этими именами, и ключ, которого в нём нет, мост пропустил бы молча.
+	MetaTokenBasicCredentialID = "x-kacho-token-basic-credential-id" // #nosec G101 -- gRPC metadata key name (credential row id), not a credential
 )
 
 // Lowercase prefixes used to strip forgeable client-supplied identity
@@ -213,6 +240,12 @@ func IsAnnotatorProducedKey(name string) bool { return annotatorProducedKeys[nam
 var edgeOnlyKeys = map[string]bool{
 	MetaTokenAMR:   true,
 	MetaTokenMfaAt: true,
+	// Идентификатор базового удостоверения: край собирает его ДЛЯ СЕБЯ —
+	// перепрос отзыва на открытых соединениях спрашивает по нему нашего
+	// авторитета (kacho#1450). За краем читателя нет, и заводить его без
+	// мостовой формы значило бы отдать соседу вход решения, которого никто не
+	// производит.
+	MetaTokenBasicCredentialID: true,
 }
 
 // IsEdgeOnlyKey — остаётся ли этот ключ на краю (мост его не пропускает).
