@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import { expect, type Page } from "@playwright/test";
-import { runTag, tenantWithProject, test } from "./fixtures";
+// Помощники берутся из ИСПОЛНЯЕМОГО набора: своей копии здесь нет и не должно
+// быть — вторая копия фикстур разошлась бы с первой молча, а проба, ждущая
+// условия, обязана переехать в `specs/` без правки поведения. При переезде
+// путь становится `./fixtures`; пока проба лежит рядом с набором, он такой.
+import { runTag, tenantWithProject, test } from "../specs/fixtures";
 
 /**
  * Браузер читает поток изменений ЧЕРЕЗ КРАЙ.
