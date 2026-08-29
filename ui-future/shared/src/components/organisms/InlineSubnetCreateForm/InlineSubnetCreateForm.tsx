@@ -21,7 +21,7 @@ import { api } from "@shared/api/client";
 import { useDebouncedValue } from "@shared/lib/list-search";
 import { pickerScopeOfSpec } from "@shared/lib/picker-search";
 import { useKeptLabel } from "@shared/lib/kept-choice";
-import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { FORM_DIVIDER_STYLE, MONO_FONT  } from "@shared/components/organisms/form/editor-surface";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
@@ -191,9 +191,13 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
   const mutation = useMutation({
     mutationFn: (item: unknown) => api.create(subnetSpec.apiPath, item),
     onSuccess: (resp) => {
-      const id = extractOperationId(resp);
-      if (id) {
-        setPendingOpId(id);
+      const resolved = resolveMutationResponse(resp, subnetSpec.mutationsReturnOperation !== false);
+      if (resolved.kind === "operation") {
+        setPendingOpId(resolved.opId);
+      } else if (resolved.kind === "violation") {
+        // Ответ без операции у ресурса, который её объявил: подтверждать
+        // выполнение нечем, и закрыть форму как успех значит сказать неправду.
+        toast.error(`Создать подсеть: ${resolved.message}`);
       } else {
         invalidate(subnetSpec.id, projectId);
         onSuccess?.();

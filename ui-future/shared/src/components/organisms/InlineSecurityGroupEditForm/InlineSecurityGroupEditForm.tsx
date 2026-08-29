@@ -10,7 +10,7 @@ import { snakeToCamelPath } from "@shared/lib/update-mask";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Form, Input, Typography } from "antd";
 import { api } from "@shared/api/client";
-import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { LabelsFieldRenderer } from "@shared/components/organisms/form/LabelsEditor";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
@@ -73,10 +73,14 @@ export function InlineSecurityGroupEditForm({ projectId, sgId, onCancel }: Props
         labels: obj.labels ?? {},
         update_mask: mask.map(snakeToCamelPath).join(","),
       });
-      const opId = extractOperationId(resp);
-      if (opId) {
+      // Отказ уходит вызывающему через `throw`: он ловится ниже тем же
+      // `catch`, что и отказ края, и показывается тем же сообщением. Прежний
+      // ключ ветки «операции нет» не имел вовсе — форма закрывалась молча.
+      const resolved = resolveMutationResponse(resp, sgSpec.mutationsReturnOperation !== false);
+      if (resolved.kind === "violation") throw new Error(resolved.message);
+      if (resolved.kind === "operation") {
         operationStore.start({
-          id: opId,
+          id: resolved.opId,
           title: `Сохранение группы безопасности ${name}`,
           resourceId: sgSpec.id,
           projectId,

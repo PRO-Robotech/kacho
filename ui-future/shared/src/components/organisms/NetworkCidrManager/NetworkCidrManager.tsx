@@ -14,6 +14,7 @@
 // изменения. Снятие последнего блока, покрывающего живую подсеть, край
 // отвергает (`network CIDR block … still contains subnets`) — тогда блок
 // остаётся на месте и показывается отказ.
+import { REGISTRY } from "@shared/lib/resource-registry";
 import { CidrTableSection, IP_PREFIXED_BLOCK_FIELDS } from "@shared/components/organisms/CidrTableSection";
 
 const NETWORKS_API = "/vpc/v1/networks";
@@ -31,6 +32,7 @@ export function NetworkCidrManager({ networkId, v4Blocks, v6Blocks }: Props) {
         actionPath={(verb) => `${NETWORKS_API}/${networkId}:${verb}-cidr-blocks`}
         blockFields={IP_PREFIXED_BLOCK_FIELDS}
         invalidateKey="networks"
+        expectOperation={REGISTRY["networks"].mutationsReturnOperation !== false}
         kind="v4"
         blocks={v4Blocks}
         title="CIDR"
@@ -44,6 +46,7 @@ export function NetworkCidrManager({ networkId, v4Blocks, v6Blocks }: Props) {
         actionPath={(verb) => `${NETWORKS_API}/${networkId}:${verb}-cidr-blocks`}
         blockFields={IP_PREFIXED_BLOCK_FIELDS}
         invalidateKey="networks"
+        expectOperation={REGISTRY["networks"].mutationsReturnOperation !== false}
         kind="v6"
         blocks={v6Blocks}
         title="CIDR"
