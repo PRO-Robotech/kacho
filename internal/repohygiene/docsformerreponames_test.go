@@ -44,11 +44,25 @@
 // живое рантайм-употребление (SPIFFE-личность круга доверенных отправителей),
 // и слепая правка сломала бы документированный круг. Их адъюдикация — ручная.
 //
-// # Окно
+// # Окно — АБЗАЦ, а не расстояние в строках
 //
-// Строка вхождения плюс соседние сверху и снизу: проза жёстко переносится по
-// ширине, и предикат, привязанный к одной строке, объявлял бы находкой
-// координату, уехавшую переносом.
+// Единица соседства здесь — абзац: максимальный непрерывный блок непустых строк.
+// Прежде окном были строка вхождения и две соседние, и этого не хватило по
+// причине, названной в самом же обосновании окна: проза жёстко переносится по
+// ширине. Предложение «Прежняя редакция называла `kacho-proto` … и эти имена
+// стали каталогами `proto/`, `pkg/`, `gateway/`» переносится НА ТРИ строки, и
+// координата оказывается на третьей — вне окна ±1.
+//
+// Число в окне не увеличено с одного до двух намеренно: расстояние в строках
+// неограниченно сверху (четырёхстрочный перенос потребовал бы ±3) и, что важнее,
+// НЕУСТОЙЧИВО. Ответ такого предиката меняется от простого перепереноса абзаца,
+// которого никто не замечает и никто не поддерживает, — то есть он измеряет
+// перенос, а не соседство. Абзац переносом не меняется by construction.
+//
+// Цена расширения названа, а не умолчана: абзац шире окна ±1, и вхождение,
+// закрытое координатой из дальнего конца длинного списка, гейт пропустит.
+// Поэтому перепись печатает форму закрытия ОТДЕЛЬНО по каждой — своя строка ·
+// соседняя · тот же абзац, — и рост слабейшей виден на каждом прогоне.
 //
 // # Перепись
 //
@@ -98,13 +112,14 @@ type formerRepoCensus struct {
 	hits      map[string]int
 	sameLine  map[string]int
 	neighbour map[string]int
+	samePara  map[string]int
 }
 
 func (c formerRepoCensus) String() string {
 	var parts []string
 	for _, f := range formerRepoNames {
-		parts = append(parts, fmt.Sprintf("%s: вхождений %d (координата на своей строке %d, соседней %d)",
-			f.name, c.hits[f.name], c.sameLine[f.name], c.neighbour[f.name]))
+		parts = append(parts, fmt.Sprintf("%s: вхождений %d (координата на своей строке %d, соседней %d, тем же абзацем %d)",
+			f.name, c.hits[f.name], c.sameLine[f.name], c.neighbour[f.name], c.samePara[f.name]))
 	}
 	return fmt.Sprintf("документов %d, строк %d; %s", c.docs, c.lines, strings.Join(parts, "; "))
 }
@@ -129,14 +144,34 @@ func namesCurrentCoordinate(line string, current []string) bool {
 	return false
 }
 
-// scanFormerRepoNames судит каждое вхождение прежнего имени против окна из трёх
-// строк: своей и двух соседних.
+// paragraphBounds — границы абзаца, которому принадлежит строка i.
+//
+// Абзац — максимальный непрерывный блок непустых строк. Это единица ПРОЗЫ, и
+// именно она устойчива к переносу по ширине: перенос меняет, на какой строке
+// окажется координата, и НЕ меняет, в каком абзаце она стоит.
+func paragraphBounds(lines []string, i int) (from, to int) {
+	from = i
+	for from > 0 && strings.TrimSpace(lines[from-1]) != "" {
+		from--
+	}
+	to = i
+	for to+1 < len(lines) && strings.TrimSpace(lines[to+1]) != "" {
+		to++
+	}
+	return from, to
+}
+
+// scanFormerRepoNames судит каждое вхождение прежнего имени против АБЗАЦА, в
+// котором оно стоит, и различает три формы закрытия — своя строка, соседняя, тот
+// же абзац. Различение не украшение: слабейшая форма самая широкая, и её рост
+// обязан быть виден, а не растворён в общем «закрыто».
 func scanFormerRepoNames(docs []string, read func(rel string) ([]byte, error)) ([]formerRepoFinding, formerRepoCensus, error) {
 	census := formerRepoCensus{
 		docs:      len(docs),
 		hits:      map[string]int{},
 		sameLine:  map[string]int{},
 		neighbour: map[string]int{},
+		samePara:  map[string]int{},
 	}
 	var findings []formerRepoFinding
 	for _, rel := range docs {
@@ -166,6 +201,16 @@ func scanFormerRepoNames(docs []string, read func(rel string) ([]byte, error)) (
 				}
 				if closed {
 					census.neighbour[f.name]++
+					continue
+				}
+				from, to := paragraphBounds(lines, i)
+				for j := from; j <= to && !closed; j++ {
+					if j != i && namesCurrentCoordinate(lines[j], f.current) {
+						closed = true
+					}
+				}
+				if closed {
+					census.samePara[f.name]++
 					continue
 				}
 				findings = append(findings, formerRepoFinding{rel, i + 1, f.name, line})

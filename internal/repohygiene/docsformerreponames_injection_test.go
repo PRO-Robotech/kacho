@@ -104,6 +104,80 @@ func TestFormerRepoGate_SilentWhenTheCoordinateIsOnTheNeighbouringLine(t *testin
 	if census.neighbour["kacho-corelib"] != 1 {
 		t.Fatalf("перепись не отличила соседнюю строку от своей: %s", census)
 	}
+	// Ступени не схлопнулись: соседняя строка закрывается СОСЕДНЕЙ, а не самой
+	// широкой формой. Иначе перепись перестала бы показывать, сколько вхождений
+	// опирается на слабейшее соседство, — то есть цену расширения окна.
+	if census.samePara["kacho-corelib"] != 0 {
+		t.Fatalf("соседняя строка зачтена как «тот же абзац»: %s — рост слабейшей формы "+
+			"стал бы невидим", census)
+	}
+}
+
+// ── окно — абзац, и это проверяется в обе стороны ────────────────────────────
+
+// Жёсткий перенос разносит ОДНО предложение на три строки, и координата
+// оказывается на третьей. Прежнее окно (±1) объявляло такой текст находкой, хотя
+// он и есть эталон: имя названо историей, место названо рядом.
+func TestFormerRepoGate_SilentWhenTheCoordinateIsTwoLinesDownInTheSameParagraph(t *testing.T) {
+	corpus := injFormerCorpus{
+		"services/vpc/docs/content/intro.mdx": "" +
+			":::note Здесь стояла таблица репозиториев — топологии, которой нет\n" +
+			"Прежняя редакция называла `kacho-proto`, `kacho-corelib`, `kacho-api-gateway`\n" +
+			"действующими репозиториями. Разработка сведена в один репозиторий, и эти имена стали\n" +
+			"каталогами `proto/`, `pkg/`, `gateway/`. Предшествующие репозитории на GitHub\n" +
+			"существуют и не заархивированы.\n" +
+			":::\n",
+	}
+	findings, census := injFormerScan(t, corpus)
+	if len(findings) != 0 {
+		t.Fatalf("эталон объявлен находкой: %v — гейт, краснеющий на верном тексте, "+
+			"чинят перепереносом абзаца, то есть подгонкой документа под инструмент "+
+			"(перепись: %s)", findings, census)
+	}
+	if census.samePara["kacho-proto"] != 1 || census.samePara["kacho-corelib"] != 1 {
+		t.Fatalf("вхождения не дошли до предиката абзаца: %s — молчание тогда означает "+
+			"«не прочитано», а не «верно»", census)
+	}
+}
+
+// Обратная сторона того же расширения: окно НЕ протекает через границу абзаца.
+// Иначе координата из соседнего рассуждения оправдывала бы живое утверждение.
+func TestFormerRepoGate_WindowDoesNotLeakAcrossAParagraphBoundary(t *testing.T) {
+	corpus := injFormerCorpus{
+		"a.md": "" +
+			"Источник истины контрактов — `kacho-proto`, туда и ходить за схемой.\n" +
+			"\n" +
+			"Отдельным абзацем: общие пакеты лежат в `pkg/`, контракты в `proto/`.\n",
+	}
+	findings, census := injFormerScan(t, corpus)
+	if len(findings) != 1 {
+		t.Fatalf("координата из ЧУЖОГО абзаца зачтена за соседство: находок %d, перепись %s "+
+			"— живое утверждение «ходить за схемой туда» осталось бы неназванным",
+			len(findings), census)
+	}
+	if census.samePara["kacho-proto"] != 0 {
+		t.Fatalf("вхождение отнесено к «тому же абзацу», хотя абзац другой: %s", census)
+	}
+}
+
+// Расширение окна не сделало гейт вакуумным: вхождение без координаты ГДЕ БЫ ТО
+// НИ БЫЛО в своём абзаце по-прежнему находка, и она называет координату.
+func TestFormerRepoGate_StillRedsWhenTheParagraphNamesNoCoordinateAtAll(t *testing.T) {
+	corpus := injFormerCorpus{
+		"services/nlb/docs/content/intro.mdx": "" +
+			"Переиспользуемое приходит из `kacho-corelib` и не дублируется по сервисам.\n" +
+			"Ходить за ним следует именно туда, а не заводить копию рядом с кодом.\n" +
+			"Это правило действует для всех доменов без исключения.\n",
+	}
+	findings, census := injFormerScan(t, corpus)
+	if len(findings) != 1 {
+		t.Fatalf("абзац без единой координаты не покраснел: находок %d, перепись %s",
+			len(findings), census)
+	}
+	if !strings.Contains(findings[0].String(), "services/nlb/docs/content/intro.mdx") ||
+		!strings.Contains(findings[0].String(), ":1") {
+		t.Fatalf("находка не называет координату: %s", findings[0].String())
+	}
 }
 
 // ── документ не закрывает предикат СОБСТВЕННЫМ дефектом ──────────────────────
