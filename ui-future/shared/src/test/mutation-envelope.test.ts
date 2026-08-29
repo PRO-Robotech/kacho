@@ -28,15 +28,15 @@
 //
 // ПЕРЕЧЕНЬ МОДУЛЕЙ ВЫВОДИТСЯ обходом, а не выписывается.
 
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { mutationEnvelopeCensus, scanEnvelopes } from "./mutation-envelope";
+import { resourceApi } from "@shared/api/resources";
+
+import { ENVELOPE_VERBS, mutationEnvelopeCensus, scanEnvelopes } from "./mutation-envelope";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const census = mutationEnvelopeCensus(repoRoot);
-const FACTORY = path.join(repoRoot, "shared/src/api/resources.ts");
 
 describe("конверт мутации объявлен один раз — по всему дереву", () => {
   it(`перепись: приложений ${census.apps.length}, файлов прочитано ${census.filesRead}, литералов осмотрено ${census.literalsSeen}`, () => {
@@ -51,14 +51,32 @@ describe("конверт мутации объявлен один раз — п�
     );
   });
 
-  it("своя предпосылка: распознаватель узнаёт конверт в ОБЩЕЙ фабрике", () => {
-    // Положительный контроль на настоящем коде дерева, а не на синтетике: если
-    // распознаватель перестанет узнавать пятёрку (переезд на класс, на
-    // генерацию, на вычисляемые имена свойств), это всплывёт ЗДЕСЬ, а не
-    // превратит отрицание ниже в тихий no-op.
-    const scan = scanEnvelopes(readFileSync(FACTORY, "utf8"), FACTORY);
-    expect(scan.lines.length).toBe(1);
-    expect(scan.literals).toBeGreaterThan(1);
+  it("своя предпосылка: общая фабрика ПРОИЗВОДИТ ровно пять глаголов", () => {
+    // Фабрика ЗАГРУЖЕНА и вызвана, а не прочитана с диска как текст: правило
+    // осмысленно ровно пока общее умеет то, ради чего у модулей забрали их
+    // копии. Пропадёт глагол — правило запретит домену вернуть его себе, и
+    // ресурс останется без него вовсе; такую потерю проба текста не увидела бы.
+    expect(Object.keys(resourceApi<unknown>("/demo/v1/things")).sort()).toEqual([...ENVELOPE_VERBS].sort());
+  });
+
+  it("своя предпосылка: распознаватель узнаёт конверт в его КАНОНИЧЕСКОЙ форме", () => {
+    // Вход синтетический и лежит здесь же — то есть предикат проверяется на
+    // входе, который эта проба контролирует целиком. Перестанет распознаватель
+    // видеть пятёрку (сменится разбор, съедет форма имени свойства) — всплывёт
+    // ЗДЕСЬ, а не превратит отрицание ниже в тихий no-op.
+    const canonical = [
+      "export const thingsApi = {",
+      "  list: (q) => api.list(THINGS, q),",
+      "  get: (id) => api.get(`${THINGS}/${id}`),",
+      "  create: (body) => api.create(THINGS, body),",
+      "  update: (id, body) => api.update(`${THINGS}/${id}`, body),",
+      "  delete: (id) => api.delete(`${THINGS}/${id}`),",
+      "};",
+      "",
+    ].join("\n");
+    const scan = scanEnvelopes(canonical, "canonical.ts");
+    expect(scan.lines).toEqual([1]);
+    expect(scan.literals).toBe(1);
   });
 
   it("ни один модуль не объявляет конверт мутации сам", () => {
