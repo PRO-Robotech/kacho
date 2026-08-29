@@ -247,7 +247,9 @@ CASES.append(Case(
              body=_img_body("bsnap", sourceSnapshotId="{{garbageSnapshotId}}"),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="Snapshot snp00000000000000000 not found"),
+        # `msg_substr` приводит обе стороны к нижнему регистру и заглавную имени
+        # ресурса не различает; `msg_regex` сверяет текст владельца как есть.
+        assert_op_error(9, "FAILED_PRECONDITION", msg_regex="Snapshot snp00000000000000000 not found"),
     ],
 ))
 
@@ -261,7 +263,9 @@ CASES.append(Case(
              body=_img_body("bvol", sourceVolumeId="{{garbageStorageId}}"),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="Volume vol00000000000000000 not found"),
+        # `msg_substr` приводит обе стороны к нижнему регистру и заглавную имени
+        # ресурса не различает; `msg_regex` сверяет текст владельца как есть.
+        assert_op_error(9, "FAILED_PRECONDITION", msg_regex="Volume vol00000000000000000 not found"),
     ],
 ))
 
@@ -285,7 +289,8 @@ CASES.append(Case(
              body=_img_body("dup", sourceVolumeId="{{sourceVolumeId}}"),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(6, "ALREADY_EXISTS", msg_substr="already exists in project"),
+        # Целиком: подстрока без имени ресурса не отличает дубль образа от дубля тома.
+        assert_op_error(6, "ALREADY_EXISTS", msg_regex="image with name [^ ]+ already exists in project"),
         *_cleanup(f"{IMG}/{{{{imageId}}}}"),
         *_cleanup_source_volume(),
     ],
@@ -677,7 +682,9 @@ CASES.append(Case(
         Step(name="del-nx", method="DELETE", path=f"{IMG}/{{{{garbageImageId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(5, "NOT_FOUND", msg_substr="Image img00000000000000000 not found"),
+        # `msg_substr` приводит обе стороны к нижнему регистру и заглавную имени
+        # ресурса не различает; `msg_regex` сверяет текст владельца как есть.
+        assert_op_error(5, "NOT_FOUND", msg_regex="Image img00000000000000000 not found"),
     ],
 ))
 
@@ -745,7 +752,9 @@ CASES.append(Case(
                    "sizeBytes": _BOOT_SIZE, "sourceImageId": "{{garbageImageId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="Image img00000000000000000 not found"),
+        # `msg_substr` приводит обе стороны к нижнему регистру и заглавную имени
+        # ресурса не различает; `msg_regex` сверяет текст владельца как есть.
+        assert_op_error(9, "FAILED_PRECONDITION", msg_regex="Image img00000000000000000 not found"),
     ],
 ))
 
@@ -901,7 +910,9 @@ CASES.append(Case(
                    "sizeBytes": _BOOT_SIZE, "sourceImageId": "{{altImageId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="Volume and Image must be in the same region"),
+        # `msg_substr` приводит обе стороны к нижнему регистру и заглавную имени
+        # ресурса не различает; `msg_regex` сверяет текст владельца как есть.
+        assert_op_error(9, "FAILED_PRECONDITION", msg_regex="Volume and Image must be in the same region"),
         # …and the point of naming it: the image is the caller's own and readable.
         # Answering "not found" about THIS resource was the defect.
         retry_until_authorized(Step(name="alt-image-still-readable", method="GET",

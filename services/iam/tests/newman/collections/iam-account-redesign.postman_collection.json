@@ -2612,7 +2612,7 @@
                   "pm.environment.unset('_opErrStarted');",
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code 9 (FAILED_PRECONDITION)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
-                  "pm.test('error text includes \"contains projects\"', () => pm.expect((j.error && j.error.message || '').toLowerCase(), JSON.stringify(j)).to.include('contains projects'));"
+                  "pm.test('error text matches /Account [^ ]+ contains projects and cannot be deleted/', () => pm.expect(j.error && j.error.message || '', JSON.stringify(j)).to.match(/Account [^ ]+ contains projects and cannot be deleted/));"
                 ]
               }
             }

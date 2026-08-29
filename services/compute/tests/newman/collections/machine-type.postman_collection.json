@@ -1299,7 +1299,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "pm.test('text mentions not found', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));"
+                  "pm.test('text mentions not found', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('MachineType ' + pm.environment.get('garbageMachineTypeId') + ' not found'));"
                 ]
               }
             }

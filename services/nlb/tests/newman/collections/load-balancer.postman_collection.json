@@ -15971,7 +15971,7 @@
                   "const j = pm.response.json();",
                   "pm.test('operation failed', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
                   "pm.test('error code 9 FAILED_PRECONDITION (peer-validate lane)', () =>   pm.expect(j.error && j.error.code).to.eql(9));",
-                  "pm.test('message mentions region not found', () =>   pm.expect(((j.error && j.error.message) || '').toLowerCase()).to.include('not found'));"
+                  "pm.test('message names the region verbatim', () =>   pm.expect((j.error && j.error.message) || '', JSON.stringify(j))    .to.eql('Region ' + pm.environment.get('garbageRegionId') + ' not found'));"
                 ]
               }
             }
@@ -18329,7 +18329,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('mentions immutable', () =>   pm.expect((pm.response.json().message||'').toLowerCase()).to.include('immutable'));"
+                  "pm.test('mentions immutable', () =>   pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('type is immutable after NetworkLoadBalancer.Create'));"
                 ]
               }
             }
@@ -36331,7 +36331,7 @@
                   "} else {",
                   "  pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "  pm.test('grpc 3 INVALID_ARGUMENT', () => pm.expect(pm.response.json().code).to.eql(3));",
-                  "  pm.test('generic anti-oracle message (Illegal argument addressId)', () =>     pm.expect((pm.response.json().message || '').toLowerCase()).to.include('illegal argument addressid'));",
+                  "  pm.test('generic anti-oracle message (Illegal argument addressId)', () =>     pm.expect(pm.response.json().message || '', pm.response.text()).to.eql('Illegal argument addressId'));",
                   "}"
                 ]
               }
@@ -36537,7 +36537,7 @@
                   "  pm.test('cross-project address fixture unseeded → create still rejected (never accepted)', () =>     pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                   "} else {",
                   "  pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "  pm.test('generic anti-oracle message (no cross-tenant existence leak)', () =>     pm.expect((pm.response.json().message || '').toLowerCase()).to.include('illegal argument addressid'));",
+                  "  pm.test('generic anti-oracle message (no cross-tenant existence leak)', () =>     pm.expect(pm.response.json().message || '', pm.response.text()).to.eql('Illegal argument addressId'));",
                   "}"
                 ]
               }
@@ -36592,7 +36592,7 @@
                   "  pm.test('IPv6 address fixture unseeded → create still rejected', () =>     pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                   "} else {",
                   "  pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "  pm.test('generic anti-oracle message (family/slot)', () =>     pm.expect((pm.response.json().message || '').toLowerCase()).to.include('illegal argument addressid'));",
+                  "  pm.test('generic anti-oracle message (family/slot)', () =>     pm.expect(pm.response.json().message || '', pm.response.text()).to.eql('Illegal argument addressId'));",
                   "}"
                 ]
               }

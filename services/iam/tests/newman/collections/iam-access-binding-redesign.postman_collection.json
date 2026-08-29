@@ -3761,7 +3761,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('scopeType required text', () => pm.expect((pm.response.json().message||'').toLowerCase(), JSON.stringify(pm.response.json())).to.include('scopetype is required'));"
+                  "pm.test('scopeType required text', () => pm.expect(pm.response.json().message||'', JSON.stringify(pm.response.json())).to.eql('scopeType is required'));"
                 ]
               }
             }

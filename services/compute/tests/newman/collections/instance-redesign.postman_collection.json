@@ -1612,7 +1612,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: instanceKind is required', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instancekind is required'));"
+                  "pm.test('text: instanceKind is required', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('instanceKind is required'));"
                 ]
               }
             }
@@ -1666,7 +1666,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: containerSpec not allowed when VM', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('containerspec is not allowed when instancekind is vm'));"
+                  "pm.test('text: containerSpec not allowed when VM', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('containerSpec is not allowed when instanceKind is VM'));"
                 ]
               }
             }
@@ -1720,7 +1720,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: kind CONTAINER refused before the spec-arm check', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instancekind container is not creatable yet'));",
+                  "pm.test('text: kind CONTAINER refused before the spec-arm check', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('instanceKind CONTAINER is not creatable yet: a registry image has no durable address today'));",
                   "pm.test('деталь несёт имя поля вида', () => { const d=(pm.response.json().details||[])[0]||{}; const v=(d.fieldViolations||[])[0]||{}; pm.expect(v.field).to.eql('instance_kind'); });"
                 ]
               }
@@ -2624,7 +2624,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: machineTypeId is required', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('machinetypeid is required'));"
+                  "pm.test('text: machineTypeId is required', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('machineTypeId is required'));"
                 ]
               }
             }
@@ -2678,7 +2678,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: cpuGuaranteePercent 0..100', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('cpuguaranteepercent must be between 0 and 100'));"
+                  "pm.test('text: cpuGuaranteePercent 0..100', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('cpuGuaranteePercent must be between 0 and 100'));"
                 ]
               }
             }
@@ -2913,7 +2913,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: bootSource is required', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('bootsource is required'));"
+                  "pm.test('text: bootSource is required', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource is required'));"
                 ]
               }
             }
@@ -2967,7 +2967,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('текст называет ресурс и присланную строку', () => { const m=(pm.response.json().message||''); pm.expect(m.toLowerCase()).to.include('invalid image id'); });"
+                  "pm.test('текст называет ресурс и присланную строку', () => { const m=(pm.response.json().message||''); pm.expect(m, m).to.eql(\"invalid Image id 'не идентификатор'\"); });"
                 ]
               }
             }
@@ -3791,7 +3791,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: bootSource.type must be one of', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('bootsource.type must be one of'));"
+                  "pm.test('text: bootSource.type must be one of', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource.type must be one of storage.image, registry.image'));"
                 ]
               }
             }
@@ -3845,7 +3845,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: output-only must not be set on input', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('output-only'));"
+                  "pm.test('text: output-only must not be set on input', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource name/resolvedDigest/materializedVolume are output-only and must not be set on input'));"
                 ]
               }
             }
@@ -4802,7 +4802,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
-                  "pm.test('text mentions unreachable', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('unreachable'));"
+                  "pm.test('text mentions unreachable', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('VM will be RUNNING but unreachable (no external address); set acknowledgeUnreachable:true to proceed'));"
                 ]
               }
             }
@@ -5704,7 +5704,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
-                  "pm.test('text: needs an existing subnet+SG', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('needs an existing subnet'));"
+                  "pm.test('text: needs an existing subnet+SG', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('needs an existing subnet+SG in zone ' + pm.environment.get('existingZoneId') + '; discover via SubnetService.List / SecurityGroupService.List, create via SubnetService.Create — or set useDefaultNetwork:true'));"
                 ]
               }
             }
@@ -6606,7 +6606,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: sizeGiB must be > 0', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('sizegib must be > 0'));"
+                  "pm.test('text: sizeGiB must be > 0', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('secondaryVolumeSpecs[].sizeGiB must be > 0'));"
                 ]
               }
             }
@@ -8344,7 +8344,7 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('operation rejected (op-error present, not success)', () => pm.expect(Boolean(j.error), JSON.stringify(j)).to.eql(true));",
                   "pm.test('error code in [3, 9] (INVALID_ARGUMENT|FAILED_PRECONDITION)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.be.oneOf([3, 9]));",
-                  "pm.test('error text includes \"not found\"', () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include('not found'));"
+                  "pm.test('текст владельца дословно (Zone с заглавной)', () => pm.expect(j.error && j.error.message || '', JSON.stringify(j)).to.eql('Zone no-such-zone not found'));"
                 ]
               }
             }
@@ -10093,7 +10093,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: instanceKind is immutable', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instancekind is immutable after instance.create'));"
+                  "pm.test('text: instanceKind is immutable', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('instanceKind is immutable after Instance.Create'));"
                 ]
               }
             }
@@ -10178,7 +10178,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: zoneId is immutable', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('zoneid is immutable after instance.create'));"
+                  "pm.test('text: zoneId is immutable', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('zoneId is immutable after Instance.Create'));"
                 ]
               }
             }
@@ -10263,7 +10263,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: bootSource is immutable after Instance.Create', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('bootsource is immutable after instance.create'));"
+                  "pm.test('text: bootSource is immutable after Instance.Create', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('bootSource is immutable after Instance.Create'));"
                 ]
               }
             }
@@ -10432,7 +10432,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
-                  "pm.test('text: must be STOPPED to change sizing or placement', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instance must be stopped to change sizing or placement'));"
+                  "pm.test('text: must be STOPPED to change sizing or placement', () => pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('instance must be STOPPED to change sizing or placement'));"
                 ]
               }
             }

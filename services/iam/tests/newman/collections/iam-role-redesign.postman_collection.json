@@ -897,7 +897,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('XOR scope text', () => pm.expect((pm.response.json().message||'').toLowerCase(), JSON.stringify(pm.response.json())).to.include('exactly one of account_id'));"
+                  "pm.test('XOR scope text', () => pm.expect(pm.response.json().message||'', JSON.stringify(pm.response.json())).to.eql('Illegal argument: exactly one of account_id / project_id (a custom role is account- XOR project-scoped)'));"
                 ]
               }
             }
@@ -1654,7 +1654,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('Illegal argument permissions text', () => pm.expect((pm.response.json().message||'').toLowerCase(), JSON.stringify(pm.response.json())).to.include('illegal argument permissions'));"
+                  "pm.test('Illegal argument permissions text', () => pm.expect(pm.response.json().message||'', JSON.stringify(pm.response.json())).to.eql('Illegal argument permissions (compiled/output-only)'));"
                 ]
               }
             }
@@ -1745,7 +1745,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('rules must be non-empty text', () => pm.expect((pm.response.json().message||'').toLowerCase(), JSON.stringify(pm.response.json())).to.include('rules'));"
+                  "pm.test('rules must be non-empty text', () => pm.expect(pm.response.json().message||'', JSON.stringify(pm.response.json())).to.eql('Illegal argument rules (must be non-empty)'));"
                 ]
               }
             }
@@ -1941,7 +1941,7 @@
                   "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400);",
                   "  pm.expect(pm.response.json().code).to.eql(9);",
                   "});",
-                  "pm.test('read-only system role text', () => pm.expect((pm.response.json().message||'').toLowerCase(), JSON.stringify(pm.response.json())).to.include('system role is read-only'));"
+                  "pm.test('read-only system role text', () => pm.expect(pm.response.json().message||'', JSON.stringify(pm.response.json())).to.eql('System role is read-only and cannot be updated'));"
                 ]
               }
             }

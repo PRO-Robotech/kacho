@@ -4091,7 +4091,7 @@
                   "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('names invalid CIDR block', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('invalid cidr block'));"
+                  "pm.test('names invalid CIDR block and the block sent', () => pm.expect(pm.response.json().message, pm.response.text())  .to.include(\"invalid CIDR block '10.20.0.0/33'\"));"
                 ]
               }
             }
