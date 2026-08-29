@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 
+	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/tokenpolicy"
 
@@ -95,14 +96,20 @@ func (c Config) Validate() error {
 			fmt.Errorf("api-server.internal-endpoint is empty"))
 	}
 
-	switch strings.ToLower(c.Repository.Postgres.SSLMode) {
-	case "disable", "require", "verify-ca", "verify-full":
-	case "":
+	// Словарь принимаемых значений — НЕ свой: он приходит из дома семантики
+	// строки подключения (`pkg/db`), объявленный один раз на всё дерево (задача
+	// продукта #1464). Здесь судится ФОРМА значения, а не посадка: боевую ось
+	// («шифруется ли канал») забрал центральный дескриптор ещё в #1406, и
+	// возвращать её сюда нельзя — предмет у неё один.
+	switch {
+	case coredb.SSLModeConfigurable(c.Repository.Postgres.SSLMode):
+	case strings.TrimSpace(c.Repository.Postgres.SSLMode) == "":
 		// permitted — baseDSN will substitute "disable"
 	default:
 		errs = multierr.Append(errs,
-			fmt.Errorf("repository.postgres.ssl-mode=%q (allowed: disable, require, verify-ca, verify-full)",
-				c.Repository.Postgres.SSLMode))
+			fmt.Errorf("repository.postgres.ssl-mode=%q (allowed: %s)",
+				c.Repository.Postgres.SSLMode,
+				strings.Join(coredb.ConfigurableSSLModes(), ", ")))
 	}
 
 	if strings.TrimSpace(c.Repository.Postgres.URL) == "" {

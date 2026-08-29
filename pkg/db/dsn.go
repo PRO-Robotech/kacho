@@ -8,11 +8,6 @@ import (
 	"strings"
 )
 
-// DefaultSSLMode — режим, который применяет libpq/pgx, когда DSN вообще не несёт
-// `sslmode`. `prefer` допускает plaintext-fallback, поэтому отсутствие параметра
-// НЕЛЬЗЯ рапортовать как защищённое соединение.
-const DefaultSSLMode = "prefer"
-
 // SSLModeFromDSN возвращает sslmode, который реально доезжает до пула.
 //
 // Читать сырое config-поле недостаточно: часть сервисов держит sslmode прямо в
