@@ -624,35 +624,6 @@ def state_update_unknown_mask(prefix, update_path):
     )
 
 
-def authz_move_nf(prefix, move_base_path):
-    """Move несуществующего id → sync 404."""
-    return Case(
-        id=f"{prefix}-MV-AUTHZ-NF-SYNC",
-        title="Move несуществующего → sync 404 от AuthZ-Get",
-        classes=["NEG", "AUTHZ"], priority="P1",
-        steps=[Step(name="move-nx", method="POST",
-                    path=f"{move_base_path}/{{{{garbageVpcId}}}}:move",
-                    body={"destinationProjectId": "{{_suiteProjectId}}"},
-                    # :move по garbageVpcId: scope_extractor 403 (authz-first) ДО sync Get 404.
-                    test_script=[*assert_absent_id_rejected()])],
-    )
-
-
-def val_move_no_dest(prefix, move_base_path):
-    """Move без destinationProjectId → InvalidArgument."""
-    return Case(
-        id=f"{prefix}-MV-VAL-NO-DEST",
-        title="Move без destinationProjectId → InvalidArgument",
-        classes=["VAL"], priority="P1",
-        steps=[Step(name="move-no-dest", method="POST",
-                    path=f"{move_base_path}/{{{{garbageVpcId}}}}:move",
-                    body={},
-                    # :move по garbageVpcId без dest: scope_extractor 403 (authz-first)
-                    # ДО backend 400 (no dest) / sync Get 404.
-                    test_script=[*assert_absent_id_rejected()])],
-    )
-
-
 def state_immutable_project(prefix, update_base_path):
     """Update с mask=project_id → InvalidArgument (immutable)."""
     return Case(
@@ -1158,35 +1129,6 @@ def perf_baseline_block(prefix, list_path, get_path=None):
     return cases
 
 
-def move_same_project(prefix, resource_base_path, body_create):
-    """Move в текущий project → InvalidArgument
-    "Illegal argument Destination project is the same as the source" (400)."""
-    return Case(
-        id=f"{prefix}-MV-IDM-SAME-PROJECT",
-        title="Move в текущий project → 400 'Destination project is the same as the source'",
-        classes=["IDM", "NEG"], priority="P2",
-        steps=[
-            Step(name="create", method="POST", path=resource_base_path,
-                 body={**body_create, "name": f"{prefix.lower()}-mv-self-{{{{runId}}}}"},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-            poll_operation_until_done(capture_id_to="createdId"),
-            Step(name="move-self", method="POST",
-                 path=f"{resource_base_path}/{{{{createdId}}}}:move",
-                 body={"destinationProjectId": "{{_suiteProjectId}}"},
-                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                              "pm.test('verbatim text', () => pm.expect(pm.response.json().message).to.eql('Illegal argument Destination project is the same as the source'));"]),
-            Step(name="verify-unchanged", method="GET",
-                 path=f"{resource_base_path}/{{{{createdId}}}}",
-                 test_script=[*assert_status(200),
-                              "pm.test('projectId unchanged', () => pm.expect(pm.response.json().projectId).to.eql(pm.environment.get('_suiteProjectId')));"]),
-            Step(name="cleanup", method="DELETE",
-                 path=f"{resource_base_path}/{{{{createdId}}}}",
-                 test_script=[*save_from_response("j.id", "opId")]),
-            poll_operation_until_done(),
-        ],
-    )
-
-
 def verbatim_text_pack(prefix, resource_name, resource_path, text_template=None):
     """Snapshots стабильного текста для распространенных ошибок (Get/Update/Delete).
 
@@ -1617,34 +1559,6 @@ def immutable_fields_matrix(prefix, update_base_path, immutable_field_names):
                         test_script=[*assert_absent_id_rejected()])],
         ))
     return cases
-
-
-def mutable_field_accepts(prefix, create_path, update_base_path, body_create,
-                          mutable_field, mutable_value, assert_after):
-    """Создать ресурс, изменить mutable поле через mask, проверить применение."""
-    return Case(
-        id=f"{prefix}-UPD-CRUD-MUTABLE-{mutable_field.upper().replace('_','-')}",
-        title=f"Update mask='{mutable_field}' → mutable поле обновлено",
-        classes=["CRUD", "STATE"], priority="P2",
-        steps=[
-            Step(name="cr", method="POST", path=create_path,
-                 body={**body_create, "name": f"{prefix.lower()}-mut-{mutable_field[:5]}-{{{{runId}}}}"},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-            poll_operation_until_done(capture_id_to="createdId"),
-            _rya(Step(name="patch", method="PATCH",
-                 path=f"{update_base_path}/{{{{createdId}}}}",
-                 body={"updateMask": mutable_field, mutable_field: mutable_value},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-            poll_operation_until_done(),
-            Step(name="verify", method="GET",
-                 path=f"{update_base_path}/{{{{createdId}}}}",
-                 test_script=[*assert_status(200), *assert_after]),
-            Step(name="cleanup", method="DELETE",
-                 path=f"{update_base_path}/{{{{createdId}}}}",
-                 test_script=[*save_from_response("j.id", "opId")]),
-            poll_operation_until_done(),
-        ],
-    )
 
 
 def subnet_cidr_expand_shrink_pack():
@@ -2161,29 +2075,6 @@ def authz_caller_headers_block(prefix, list_path):
                         ])],
         ),
     ]
-
-
-def conf_alreadyexists_block(prefix, create_path, name_template, body_extra=None):
-    """CONF: sync 409 ALREADY_EXISTS text при duplicate name."""
-    body_extra = body_extra or {}
-    return Case(
-        id=f"{prefix}-CR-CONF-ALREADY-EXISTS",
-        title="Create duplicate name → sync 409, точный текст ALREADY_EXISTS",
-        classes=["CONF", "NEG"], priority="P1",
-        steps=[
-            Step(name="create-first", method="POST", path=create_path,
-                 body={"projectId": "{{_suiteProjectId}}", "name": name_template, **body_extra},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-            poll_operation_until_done(capture_id_to="createdId", id_expr="j.metadata && Object.values(j.metadata).find(v => typeof v === 'string' && v.length > 10)"),
-            Step(name="create-dup", method="POST", path=create_path,
-                 body={"projectId": "{{_suiteProjectId}}", "name": name_template, **body_extra},
-                 test_script=[*assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
-                              "pm.test('verbatim with name ... already exists', () => pm.expect(pm.response.json().message).to.match(/ with name .* already exists$/));"]),
-            Step(name="cleanup-first", method="DELETE", path=f"{create_path}/{{{{createdId}}}}",
-                 test_script=[*save_from_response("j.id", "opId")]),
-            poll_operation_until_done(),
-        ],
-    )
 
 
 _POLL_SEQ = [0]
@@ -3229,11 +3120,8 @@ _INJECTED = {
     "crud_list_bva_block": crud_list_bva_block,
     "conf_not_found_text": conf_not_found_text,
     "state_update_unknown_mask": state_update_unknown_mask,
-    "authz_move_nf": authz_move_nf,
-    "val_move_no_dest": val_move_no_dest,
     "state_immutable_project": state_immutable_project,
     "list_pagesize_1_bva": list_pagesize_1_bva,
-    "conf_alreadyexists_block": conf_alreadyexists_block,
     "ecp_name_block": ecp_name_block,
     "ecp_description_block": ecp_description_block,
     "ecp_labels_block": ecp_labels_block,
@@ -3243,7 +3131,6 @@ _INJECTED = {
     "idempotency_block": idempotency_block,
     "update_happy_per_field": update_happy_per_field,
     "perf_baseline_block": perf_baseline_block,
-    "move_same_project": move_same_project,
     "verbatim_text_pack": verbatim_text_pack,
     "authz_caller_headers_block": authz_caller_headers_block,
     "update_happy_multi_field": update_happy_multi_field,
@@ -3262,7 +3149,6 @@ _INJECTED = {
     "headers_content_type_block": headers_content_type_block,
     "required_fields_matrix": required_fields_matrix,
     "immutable_fields_matrix": immutable_fields_matrix,
-    "mutable_field_accepts": mutable_field_accepts,
     "subnet_cidr_expand_shrink_pack": subnet_cidr_expand_shrink_pack,
     "pairwise_subnet_pack": pairwise_subnet_pack,
     "security_injection_block": security_injection_block,

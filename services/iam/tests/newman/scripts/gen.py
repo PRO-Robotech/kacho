@@ -805,57 +805,6 @@ def require_env_url(var: str, path: str, why: str = "") -> List[str]:
 # на связывании, а не в прозе шапки: три копии из шести называли ЧУЖУЮ.
 _rya = functools.partial(retry_until_authorized,
                         budget=15, interval_ms=400)
-def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
-                       interval_ms: int = 500) -> Step:
-    """Bounded retry a "must-be-ABSENT/empty" read over a read-your-writes-ON-REVOKE
-    window — the MIRROR of retry_until_authorized for the deny/revoke side.
-
-    A grant the suite just REVOKED (or a residual account-A grant it just STRIPPED via a
-    pre-clean) can still be visible for a beat: the FGA tuple removal / list-authz
-    negative-cache lags a few seconds after the revoke Operation is done (Kachō is
-    eventually-consistent — api-conventions.md). So a "non-member sees EMPTY" /
-    "not-granted subject does NOT see the id" leak-guard flakes on the pre-convergence
-    window under parallel load (the serial run's timing hid it).
-
-    `still_present_expr` is a JS boolean that is TRUE while the thing that MUST become
-    absent is STILL present (e.g. `((pm.response.json().users)||[]).length > 0`, or the
-    leaked id is still in the array). Retries SELF while it is truthy, spacing attempts by
-    ~interval_ms (busy-wait — newman fires setNextRequest before any setTimeout).
-
-    Fail-OPEN at the budget: once spent, the wrapped step's real assertions run exactly
-    once on the terminal response — so a GENUINE over-grant / real leak (the thing NEVER
-    becomes absent) still FAILS the assertion. It is impossible to mask a persistent leak;
-    only a transient revoke/pre-clean-materialization window is absorbed. Use ONLY on a
-    negative "must be absent/empty" read whose emptiness is GUARANTEED once the suite's own
-    revoke/pre-clean materializes — NEVER to paper over a cross-account deny or a real hole.
-
-    The step name is preserved (not suffixed): these leak-guard steps are often the target
-    of a pre-clean `setNextRequest('<name>')` jump, and the self-loop uses the dynamic
-    pm.info.requestName so it self-resolves without a rename."""
-    guard = [
-        "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
-        "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
-        "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
-        "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
-        "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
-        "  pm.environment.set('_absRetryCount', '0');",
-        "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
-        "}",
-        "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
-        "let _stillPresent = false;",
-        f"try {{ _stillPresent = ({still_present_expr}); }} catch (e) {{ _stillPresent = false; }}",
-        f"if (pm.response.code === 200 && _stillPresent && _absc < {budget}) {{",
-        "  pm.environment.set('_absRetryCount', String(_absc + 1));",
-        f"  const _absd = Date.now(); while (Date.now() - _absd < {interval_ms}) {{ /* revoke-materialization wait */ }}",
-        "  pm.execution.setNextRequest(pm.info.requestName);",
-        "  return;",
-        "}",
-        "pm.environment.unset('_absRetryCount');",
-        "pm.environment.unset('_absRetryStarted');",
-    ]
-    return replace(step, test_script=guard + list(step.test_script))
-
-
 def _op_id_guard(op_var: str, required: bool) -> List[str]:
     """Pre-request guard: do not send the poll when `op_var` is empty.
 
@@ -1191,23 +1140,6 @@ def assert_op_success(auth: str = AUTH_INHERIT_OP, op_var: str = "opId") -> Step
 # ---------------------------------------------------------------------------
 # Переиспользуемые блоки кейсов (compute-specific, generic)
 # ---------------------------------------------------------------------------
-
-def malformed_body_block(prefix, create_path):
-    """Malformed JSON / empty body."""
-    return [
-        Case(id=f"{prefix}-CR-VAL-MALFORMED-JSON",
-             title="Create с malformed JSON → 400/415",
-             classes=["VAL", "NEG"], priority="P2",
-             steps=[Step(name="cr-malformed", method="POST", path=create_path, body=None,
-                         pre_script=["pm.request.body = { mode: 'raw', raw: '{invalid json---}' };"],
-                         test_script=["pm.test('400 or 415', () => pm.expect(pm.response.code).to.be.oneOf([400, 415]));"])]),
-        Case(id=f"{prefix}-CR-VAL-EMPTY-BODY",
-             title="Create с пустым body → 400 (project_id required)",
-             classes=["VAL", "NEG"], priority="P2",
-             steps=[Step(name="cr-empty-body", method="POST", path=create_path, body={},
-                         test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])]),
-    ]
-
 
 # ---------------------------------------------------------------------------
 # Сериализация в Postman v2.1
@@ -1821,14 +1753,12 @@ _INJECTED = {
     "require_env_url": require_env_url,
     "poll_operation_until_done": poll_operation_until_done,
     "retry_until_authorized": _rya,
-    "retry_until_absent": retry_until_absent,
     "get_until_gone": get_until_gone,
     "poll_request_until_status": poll_request_until_status,
     "reliable_delete": reliable_delete,
     "POLL_CAP": POLL_CAP,
     "assert_op_error": assert_op_error,
     "assert_op_success": assert_op_success,
-    "malformed_body_block": malformed_body_block,
     "js_regex_src": js_regex_src,
     "js_name": js_name,
     "credential_secret_pattern": credential_secret_pattern,

@@ -121,7 +121,7 @@ OUT_DIR = ROOT / "collections"
 # names are deterministic per collection.
 _poll_seq = 0
 
-# Monotonic counter for retry_until_authorized / retry_until_present wrapped steps.
+# Monotonic counter for retry_until_authorized wrapped steps.
 # Each wrapped step gets a globally-unique `-rya<n>`/`-lst<n>` suffix so its
 # setNextRequest(pm.info.requestName) self-retry always resolves to ITSELF (newman
 # resolves a name to the FIRST item bearing it) — same hazard poll_operation_until_done
@@ -463,40 +463,6 @@ def poll_operation_until_done() -> Step:
 # на связывании, а не в прозе шапки: три копии из шести называли ЧУЖУЮ.
 _rya = functools.partial(retry_until_authorized,
                         budget=80, interval_ms=600, lane_head=True)
-def retry_until_present(step: Step, id_env_var: str, budget: int = 40,
-                        interval_ms: int = 600) -> Step:
-    """Bounded retry a LIST step until the caller's OWN fresh resource id appears in
-    the returned array (read-your-writes over the list-authz visibility window —
-    owner-tuple eventual-consistency). The list returns 200 with the id ABSENT until
-    the tuple materialises, so retry_until_authorized (403/404) does not apply — we
-    retry while the id is missing. Fail-open after budget: the real assertion then runs
-    once and FAILS if still absent (never masked, never infinite). Use ONLY on a list
-    of the caller's OWN just-created resource."""
-    guard = [
-        "// bounded read-your-writes retry until own fresh id is present in the list",
-        "// (eventual-consistency); retries SELF while id absent.",
-        "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
-        "  pm.environment.set('_lstRetryCount', '0');",
-        "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
-        "}",
-        "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
-        "let _present = false;",
-        "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || [];"
-        " _present = _arr.map(x => x.id).includes(pm.environment.get('" + id_env_var + "')); } catch (e) {}",
-        f"if (pm.response.code === 200 && !_present && _lrc < {budget}) {{",
-        "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
-        f"  const _lrd = Date.now(); while (Date.now() - _lrd < {interval_ms}) {{ /* list-visibility wait */ }}",
-        "  pm.execution.setNextRequest(pm.info.requestName);",
-        "  return;",
-        "}",
-        "pm.environment.unset('_lstRetryCount');",
-        "pm.environment.unset('_lstRetryStarted');",
-    ]
-    _RYA_SEQ[0] += 1
-    return replace(step, name=f"{step.name}-lst{_RYA_SEQ[0]}",
-                   test_script=guard + list(step.test_script))
-
-
 # ---------------------------------------------------------------------------
 # Postman v2.1 serialization
 # ---------------------------------------------------------------------------
@@ -619,7 +585,6 @@ _INJECTED = {
     "save_operation_id": save_operation_id,
     "poll_operation_until_done": poll_operation_until_done,
     "retry_until_authorized": _rya,
-    "retry_until_present": retry_until_present,
     "js_regex_src": js_regex_src,
 }
 

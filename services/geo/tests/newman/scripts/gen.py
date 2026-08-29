@@ -334,14 +334,6 @@ def assert_operation_failed(code: int, code_name: str, message_substr: str = "")
     return lines
 
 
-def save_op_metadata_id(env_var: str) -> List[str]:
-    """Сохранить <resource>Id из Operation.metadata (regionId/zoneId) в env."""
-    return save_from_response(
-        "(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''",
-        env_var,
-    )
-
-
 _RETRY_SEQ = [0]
 
 
@@ -525,7 +517,6 @@ _INJECTED = {
     "assert_status": assert_status,
     "assert_grpc_code": assert_grpc_code,
     "save_from_response": save_from_response,
-    "save_op_metadata_id": save_op_metadata_id,
     "assert_operation_envelope": assert_operation_envelope,
     "assert_operation_failed": assert_operation_failed,
     "retry_get_until_found": retry_get_until_found,

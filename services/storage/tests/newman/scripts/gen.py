@@ -496,22 +496,12 @@ def poll_operation_until_done(auth: Optional[str] = None) -> Step:
     )
 
 
-def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
-                    msg_regex: Optional[str] = None) -> Step:
-    """Поллит /operations/{opId} и проверяет, что operation завершилась с error.code == code."""
-    body = [
-        "const j = pm.response.json();",
-        "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-        f"pm.test({js_str(f'error code {code} ({code_name})')}, () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql({code}));",
-    ]
-    if msg_substr is not None:
-        body.append(f"pm.test({js_str(f'error text includes \"{msg_substr}\"')}, () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include({js_str(msg_substr.lower())}));")
-    if msg_regex is not None:
-        body.append(f"pm.test({js_str(f'error text matches /{msg_regex}/')}, () => pm.expect(j.error && j.error.message || '').to.match(/{js_regex_src(msg_regex, where='storage/assert_op_error/msg_regex')}/));")
-    return Step(name="assert-op-error", method="GET", path="/operations/{{opId}}", test_script=body)
-
-
 def assert_op_error_oneof(codes: List[int], code_names: str,
+    # ВЫЗЫВАЮЩИЙ У НЕЁ ЕСТЬ, И ОН МЕЖНАБОРНЫЙ (#1478). Ни один модуль кейсов
+    # storage её не зовёт, и перепись «объявление без вызывающего» назвала её
+    # мёртвой — но её зовёт проба стойкости сериализатора, живущая в наборе iam
+    # и обходящая генераторы ВСЕХ наборов. Снятие уронило пробу: разбор не знал
+    # этой формы вызывающего. Оставлена намеренно; форма учтена переписью.
                           msg_substr: Optional[str] = None) -> Step:
     """Как assert_op_error, но допускает НАБОР gRPC-кодов (когда точный код —
     3 vs 5 / 3 vs 9 — не зафиксирован контрактом). Проверка БЕЗУСЛОВНА: операция
@@ -530,6 +520,21 @@ def assert_op_error_oneof(codes: List[int], code_names: str,
     return Step(name="assert-op-error", method="GET", path="/operations/{{opId}}", test_script=body)
 
 
+def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
+                    msg_regex: Optional[str] = None) -> Step:
+    """Поллит /operations/{opId} и проверяет, что operation завершилась с error.code == code."""
+    body = [
+        "const j = pm.response.json();",
+        "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+        f"pm.test({js_str(f'error code {code} ({code_name})')}, () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql({code}));",
+    ]
+    if msg_substr is not None:
+        body.append(f"pm.test({js_str(f'error text includes \"{msg_substr}\"')}, () => pm.expect((j.error && j.error.message || '').toLowerCase()).to.include({js_str(msg_substr.lower())}));")
+    if msg_regex is not None:
+        body.append(f"pm.test({js_str(f'error text matches /{msg_regex}/')}, () => pm.expect(j.error && j.error.message || '').to.match(/{js_regex_src(msg_regex, where='storage/assert_op_error/msg_regex')}/));")
+    return Step(name="assert-op-error", method="GET", path="/operations/{{opId}}", test_script=body)
+
+
 def assert_op_success(auth: Optional[str] = None) -> Step:
     # `auth`: single-GET op read; must run under the op's CREATOR (creator-only
     # OperationService.Get, анти-BOLA) when the create ran under an auth= override.
@@ -544,23 +549,6 @@ def assert_op_success(auth: Optional[str] = None) -> Step:
 # ---------------------------------------------------------------------------
 # Переиспользуемые блоки кейсов (compute-specific, generic)
 # ---------------------------------------------------------------------------
-
-def malformed_body_block(prefix, create_path):
-    """Malformed JSON / empty body."""
-    return [
-        Case(id=f"{prefix}-CR-VAL-MALFORMED-JSON",
-             title="Create с malformed JSON → 400/415",
-             classes=["VAL", "NEG"], priority="P2",
-             steps=[Step(name="cr-malformed", method="POST", path=create_path, body=None,
-                         pre_script=["pm.request.body = { mode: 'raw', raw: '{invalid json---}' };"],
-                         test_script=["pm.test('400 or 415', () => pm.expect(pm.response.code).to.be.oneOf([400, 415]));"])]),
-        Case(id=f"{prefix}-CR-VAL-EMPTY-BODY",
-             title="Create с пустым body → 400 (project_id required)",
-             classes=["VAL", "NEG"], priority="P2",
-             steps=[Step(name="cr-empty-body", method="POST", path=create_path, body={},
-                         test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])]),
-    ]
-
 
 # ---------------------------------------------------------------------------
 # Сериализация в Postman v2.1
@@ -685,7 +673,6 @@ _INJECTED = {
     "assert_op_error": assert_op_error,
     "assert_op_error_oneof": assert_op_error_oneof,
     "assert_op_success": assert_op_success,
-    "malformed_body_block": malformed_body_block,
     "js_regex_src": js_regex_src,
     "js_name": js_name,
 }

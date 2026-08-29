@@ -245,29 +245,6 @@ MT_INTERNAL_PATH = "/compute/v1/internal/machineTypes"
 # Утилиты-сниппеты pm.*
 # ---------------------------------------------------------------------------
 
-def assert_unscoped_rejected() -> List[str]:
-    """Unscoped create/list/get (без projectId, либо empty-body, либо method-mismatch
-    на collection-endpoint) — ОТВЕРГНУТ. Два защитимых исхода, оба = «отклонено»
-    (defense-in-depth, security.md «authz-first», parity с vpc 446e25b):
-      403 PERMISSION_DENIED (code 7) — gateway scope_extractor fail-closed
-        «no path: unscoped resource» ДО backend-валидации: нельзя авторизовать
-        запрос, у которого нет scope для anti-BOLA-проверки;
-      400 INVALID_ARGUMENT  (code 3) — backend «project_id required» при passthrough.
-    Толерантен к обоим — семантика негатива (rejected) сохранена, без ложного провала
-    на корректном authz-first 403 (реальный GATE-RUN #3: disk/image/snapshot unscoped
-    cr-nf/list-nf/glf-nf/cr-empty-body возвращали code 7, тест ждал 3). Techniques:
-    ECP (класс «unscoped запрос») + error-guessing (authz-vs-validation ordering)."""
-    return [
-        "pm.test('unscoped rejected (400 InvalidArgument or 403 authz-first)', () => {",
-        "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([400, 403]);",
-        "});",
-        "pm.test('grpc code 3 (INVALID_ARGUMENT) or 7 (PERMISSION_DENIED)', () => {",
-        "  const j = pm.response.json();",
-        "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([3, 7]);",
-        "});",
-    ]
-
-
 def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     """Сохранить значение из response в env.
 
@@ -381,55 +358,6 @@ def retry_until_present(step: Step, id_env_var: str, budget: int = 50,
 # на связывании, а не в прозе шапки: три копии из шести называли ЧУЖУЮ.
 _rya = functools.partial(retry_until_authorized,
                         budget=40, interval_ms=600)
-def retry_until_state(step: Step, converged_expr: str, budget: int = 40,
-                      interval_ms: int = 600, retry_on=(403, 404)) -> Step:
-    """Wrap the FIRST post-mutation / after-op VERIFY of the caller's OWN fresh resource
-    in a bounded read-your-writes retry until the OBSERVED STATE has CONVERGED.
-
-    Operation.done means the mutated resource is DURABLE (api-conventions.md), but a read
-    that verifies a specific post-mutation field value can be transient in TWO ways: (a)
-    the owner-tuple authz gate returns 403/404 before the tuple materialises, OR (b) the
-    read returns 200 but with a STALE value before the write is reflected on the read path
-    (e.g. GetLatestByFamily resolving the older image before the newer one is visible to
-    the family query). retry_until_authorized covers only (a); this covers BOTH — retries
-    SELF while the response is a transient 403/404 OR a 200 whose `converged_expr` (a JS
-    boolean, TRUE once the expected state is observed) is still false, spacing attempts by
-    ~interval_ms (busy-wait — newman fires setNextRequest before any setTimeout).
-
-    Fail-OPEN at the budget: once spent, the wrapped step's real asserts run exactly once
-    on the terminal response — a genuine never-converging state (a real product bug) STILL
-    FAILS (never masked, never infinite). Use ONLY on a POSITIVE verify of the caller's OWN
-    fresh resource — NEVER a negative / cross-account / absent-id read. Strict superset of
-    retry_until_authorized (never hides what the authz-retry caught, only ADDS the
-    state-convergence wait)."""
-    retry_set = ",".join(str(c) for c in retry_on)
-    guard = [
-        "// bounded read-your-writes retry until the caller's OWN post-mutation state converges",
-        "// (eventual-consistency): retries SELF on transient 403/404 OR a 200 whose state has",
-        "// not yet caught up. Fail-open at budget -> the real asserts run once and FAIL if",
-        "// still unconverged (a genuine never-converging state is never masked).",
-        "if (pm.environment.get('_stRetryStarted') !== pm.info.requestName) {",
-        "  pm.environment.set('_stRetryCount', '0');",
-        "  pm.environment.set('_stRetryStarted', pm.info.requestName);",
-        "}",
-        "const _stc = parseInt(pm.environment.get('_stRetryCount') || '0', 10);",
-        "let _converged = false;",
-        f"try {{ _converged = !!({converged_expr}); }} catch (e) {{ _converged = false; }}",
-        f"const _stTransient = [{retry_set}].includes(pm.response.code) || (pm.response.code === 200 && !_converged);",
-        f"if (_stTransient && _stc < {budget}) {{",
-        "  pm.environment.set('_stRetryCount', String(_stc + 1));",
-        f"  const _std = Date.now(); while (Date.now() - _std < {interval_ms}) {{ /* state-convergence wait */ }}",
-        "  pm.execution.setNextRequest(pm.info.requestName);",
-        "  return;",
-        "}",
-        "pm.environment.unset('_stRetryCount');",
-        "pm.environment.unset('_stRetryStarted');",
-    ]
-    _RYA_SEQ[0] += 1
-    return replace(step, name=f"{step.name}-st{_RYA_SEQ[0]}",
-                   test_script=guard + list(step.test_script))
-
-
 def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
                        interval_ms: int = 500) -> Step:
     """Bounded retry a "must-be-ABSENT/empty" read over a read-your-writes-ON-REVOKE
@@ -620,23 +548,6 @@ def list_page_block(prefix, list_path, project_param=True):
              classes=["PAGE", "VAL"], priority="P1",
              steps=[Step(name="bad-token", method="GET", path=f"{base}pageSize=10&pageToken=not-a-real-token",
                          test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])]),
-    ]
-
-
-def malformed_body_block(prefix, create_path):
-    """Malformed JSON / empty body."""
-    return [
-        Case(id=f"{prefix}-CR-VAL-MALFORMED-JSON",
-             title="Create с malformed JSON → 400/415",
-             classes=["VAL", "NEG"], priority="P2",
-             steps=[Step(name="cr-malformed", method="POST", path=create_path, body=None,
-                         pre_script=["pm.request.body = { mode: 'raw', raw: '{invalid json---}' };"],
-                         test_script=["pm.test('400 or 415', () => pm.expect(pm.response.code).to.be.oneOf([400, 415]));"])]),
-        Case(id=f"{prefix}-CR-VAL-EMPTY-BODY",
-             title="Create с пустым body → rejected (400 project_id required OR 403 authz-first, unscoped)",
-             classes=["VAL", "NEG"], priority="P2",
-             steps=[Step(name="cr-empty-body", method="POST", path=create_path, body={},
-                         test_script=[*assert_unscoped_rejected()])]),
     ]
 
 
@@ -871,7 +782,6 @@ _INJECTED = {
     "Case": Case,
     "assert_status": assert_status,
     "assert_grpc_code": assert_grpc_code,
-    "assert_unscoped_rejected": assert_unscoped_rejected,
     "assert_field_violation": assert_field_violation,
     "save_from_response": save_from_response,
     "assert_operation_envelope": assert_operation_envelope,
@@ -879,13 +789,11 @@ _INJECTED = {
     "poll_operation_until_done": poll_operation_until_done,
     "retry_until_authorized": _rya,
     "retry_until_present": retry_until_present,
-    "retry_until_state": retry_until_state,
     "retry_until_absent": retry_until_absent,
     "assert_op_error": assert_op_error,
     "assert_op_error_oneof": assert_op_error_oneof,
     "assert_op_success": assert_op_success,
     "list_page_block": list_page_block,
-    "malformed_body_block": malformed_body_block,
     "ADMIN_AUTH": ADMIN_AUTH,
     "MT_INTERNAL_PATH": MT_INTERNAL_PATH,
 }
