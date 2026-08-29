@@ -12,12 +12,18 @@ tests/newman/scripts/gen.py — генератор Postman collections из де
 Источник истины — модули в tests/newman/cases/<resource>.py, каждый экспортирует
 переменную CASES — список объектов Case (см. ниже).
 
-Структурно — копия `../kacho-compute/tests/newman/scripts/gen.py` (kacho-storage
-выделен из compute-Disk), адаптированная под storage: REST-префикс `/storage/v1/`,
-операции — `/operations/{id}` (общий OpsProxy api-gateway, prefix `sop` — op-root
-storage; opsproxy маршрутизирует Operation.Get по первым 3 символам id → backend
-`storage`), env-var `garbageStorageId`. LRO-poll helper (POST → Operation → poll
-GET /operations/{id} до done → assert response/error) сохранён 1-в-1.
+Специфика storage (домен выделен из блочного хранения compute): REST-префикс
+`/storage/v1/`, операции — `/operations/{id}` (общий OpsProxy api-gateway,
+prefix `sop` — op-root storage; opsproxy маршрутизирует Operation.Get по первым
+трём символам id → backend `storage`), env-var `garbageStorageId`.
+Форму коллекции и вспомогательный слой собирает ОБЩИЙ модуль
+`tests/newman/kacholib/gen_shared.py` — один на дерево (#1367, #1377, #1379,
+#1474). Здесь объявлено только то, чем ЭТОТ набор отличается: решения формы
+(дескриптор `Emit`), решения оркестрации (дескриптор `Run`), таблица впрыска
+и собственные помощники набора.
+
+Соседний генератор образцом НЕ является и сверяться с ним не надо: расхождение
+между копиями было предметом сведения, а не способом его проверить.
 """
 from __future__ import annotations
 

@@ -7,16 +7,21 @@ tests/newman/scripts/gen.py — генератор Postman collections из де
 
 Использование:
     python3 scripts/gen.py             # все ресурсы
-    python3 scripts/gen.py disk        # один ресурс
+    python3 scripts/gen.py operation   # один ресурс
 
 Источник истины — модули в tests/newman/cases/<resource>.py, каждый экспортирует
 переменную CASES — список объектов Case (см. ниже).
 
-Структурно — копия `../kacho-vpc/tests/newman/scripts/gen.py`, адаптированная под
-compute: REST-префикс `/compute/v1/`, операции — `/operations/{id}` (общий
-OpsProxy api-gateway, prefix `epd`), env-var `garbageComputeId`. LRO-poll helper
-(POST → Operation → poll GET /operations/{id} до done → assert response/error)
-сохранён 1-в-1.
+Специфика compute: REST-префикс `/compute/v1/`, операции — `/operations/{id}`
+(общий OpsProxy api-gateway, prefix `epd`), env-var `garbageComputeId`.
+Форму коллекции и вспомогательный слой собирает ОБЩИЙ модуль
+`tests/newman/kacholib/gen_shared.py` — один на дерево (#1367, #1377, #1379,
+#1474). Здесь объявлено только то, чем ЭТОТ набор отличается: решения формы
+(дескриптор `Emit`), решения оркестрации (дескриптор `Run`), таблица впрыска
+и собственные помощники набора.
+
+Соседний генератор образцом НЕ является и сверяться с ним не надо: расхождение
+между копиями было предметом сведения, а не способом его проверить.
 """
 from __future__ import annotations
 

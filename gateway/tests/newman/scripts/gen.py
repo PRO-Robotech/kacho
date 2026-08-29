@@ -12,8 +12,16 @@ Usage:
 Source of truth: tests/newman/cases/<name>.py modules, each exporting a CASES
 list of Case objects.
 
-Slim adaptation of services/iam/tests/newman/scripts/gen.py — only the helpers the
-api-gateway-owned cases need. This suite owns the cluster-RBAC admin surface
+Форму коллекции и вспомогательный слой собирает ОБЩИЙ модуль
+`tests/newman/kacholib/gen_shared.py` — один на дерево (#1367, #1377, #1379,
+#1474). Здесь объявлено только то, чем ЭТОТ набор отличается: решения формы
+(дескриптор `Emit`), решения оркестрации (дескриптор `Run`), таблица впрыска
+и собственные помощники набора.
+
+Соседний генератор образцом НЕ является и сверяться с ним не надо: расхождение
+между копиями было предметом сведения, а не способом его проверить.
+
+This suite owns the cluster-RBAC admin surface
 (`InternalClusterService`), which lives on the api-gateway CLUSTER-INTERNAL REST
 listener and therefore has no home in any per-service suite.
 

@@ -4,7 +4,7 @@
 
 """
 tests/newman/scripts/gen.py — генератор Postman collections для kacho-geo из
-декларативных case-файлов (Case/Step DSL, паритет с vpc/compute/iam suite'ами).
+декларативных case-файлов (Case/Step DSL).
 
 Использование:
     python3 scripts/gen.py             # все case-файлы
@@ -14,6 +14,15 @@ tests/newman/scripts/gen.py — генератор Postman collections для ka
 Источник истины — модули в tests/newman/cases/<name>.py, каждый экспортирует
 переменную CASES — список объектов Case. gen.py делает 1:1 коллекцию на каждый
 case-файл (collections/<name>.postman_collection.json).
+
+Форму коллекции и вспомогательный слой собирает ОБЩИЙ модуль
+`tests/newman/kacholib/gen_shared.py` — один на дерево (#1367, #1377, #1379,
+#1474). Здесь объявлено только то, чем ЭТОТ набор отличается: решения формы
+(дескриптор `Emit`), решения оркестрации (дескриптор `Run`), таблица впрыска
+и собственные помощники набора.
+
+Соседний генератор образцом НЕ является и сверяться с ним не надо: расхождение
+между копиями было предметом сведения, а не способом его проверить.
 
 Гео-специфика (в отличие от vpc/compute):
   * Region/Zone — ГЛОБАЛЬНЫЙ cluster-scoped каталог, НЕ project-scoped: у кейсов

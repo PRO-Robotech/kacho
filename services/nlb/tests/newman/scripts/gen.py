@@ -12,10 +12,16 @@ Usage:
     python3 scripts/gen.py load-balancer        # one module
     python3 scripts/gen.py --validate           # delegate to validate-cases.py (dup-id + CASES-INDEX coverage)
 
-The generator is intentionally a near-mirror of kacho-vpc/tests/newman/scripts/gen.py
-(KAC-VPC convention). NLB-specific helpers and the unified poll_operation_until_done
-step live here so case modules only import the high-level Case / Step / helpers via
-the module namespace (no `from gen import ...` because gen.py is loaded by path).
+NLB-specific helpers live here; case modules see them through the injection table
+(no `from gen import ...` — gen.py is loaded by path).
+Форму коллекции и вспомогательный слой собирает ОБЩИЙ модуль
+`tests/newman/kacholib/gen_shared.py` — один на дерево (#1367, #1377, #1379,
+#1474). Здесь объявлено только то, чем ЭТОТ набор отличается: решения формы
+(дескриптор `Emit`), решения оркестрации (дескриптор `Run`), таблица впрыска
+и собственные помощники набора.
+
+Соседний генератор образцом НЕ является и сверяться с ним не надо: расхождение
+между копиями было предметом сведения, а не способом его проверить.
 """
 from __future__ import annotations
 
