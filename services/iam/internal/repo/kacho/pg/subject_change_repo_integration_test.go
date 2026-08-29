@@ -24,10 +24,17 @@ import (
 )
 
 // TestSubjectChangeRepo_PollSubjectChanges verifies:
-// 1. Returns rows with id > since_id, ascending order.
-// 2. Honours limit (requests 2 of 3 → receives 2).
-// 3. headID = MAX(id) regardless of cursor position.
-// 4. Continuing cursor returns the remaining row.
+//  1. Returns rows with id > since_id, ascending order.
+//  2. Honours limit (requests 2 of 3 → receives 2).
+//  3. The position is the settled boundary, NARROWED to the last delivered row
+//     when the page was cut by limit.
+//  4. Continuing cursor returns the remaining row.
+//
+// Утверждение пункта 3 УСИЛЕНО, а не ослаблено (kacho#1374). Прежде здесь стояло
+// «позиция равна MAX(id) независимо от курсора» — это была запись самого дефекта:
+// курсор, усвоивший такую позицию, перепрыгивал через непрочитанный хвост
+// страницы, и его строки не возвращались никогда. Проба, закрепившая дефект,
+// зеленела бы ровно на нём.
 func TestSubjectChangeRepo_PollSubjectChanges(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test (requires Docker)")
@@ -40,7 +47,7 @@ func TestSubjectChangeRepo_PollSubjectChanges(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	repo := kachopg.NewSubjectChangeRepo(pool)
+	repo := kachopg.NewSubjectChangeRepo(pool, nil)
 
 	// Посев идёт ТЕМ ЖЕ путём, каким пишет прод (`EmitSubjectChangeEvent`), а не
 	// собственным INSERT'ом: фикстура не вправе быть снисходительнее продукта.
@@ -71,7 +78,7 @@ func TestSubjectChangeRepo_PollSubjectChanges(t *testing.T) {
 	id2 := seed("usr_b", "binding_delete")
 	id3 := seed("usr_c", "binding_upsert")
 
-	// ── Poll 1: since=0, limit=2 → first 2 rows; headID=id3 ─────────────────
+	// ── Poll 1: since=0, limit=2 → first 2 rows; позиция = id2 ──────────────
 	changes, headID, err := repo.PollSubjectChanges(ctx, 0, 2)
 	require.NoError(t, err)
 	require.Len(t, changes, 2, "expected 2 changes (limit=2)")
@@ -81,9 +88,11 @@ func TestSubjectChangeRepo_PollSubjectChanges(t *testing.T) {
 	require.Equal(t, id2, changes[1].ID)
 	require.Equal(t, "usr_b", changes[1].SubjectID)
 	require.Equal(t, "binding_delete", changes[1].Op)
-	require.Equal(t, id3, headID, "headID should be MAX(id)=id3")
+	require.Equal(t, id2, headID,
+		"страница урезана пределом, значит позиция обязана стоять на последней ОТДАННОЙ строке: "+
+			"назови она границу — курсор ушёл бы за непрочитанный хвост окна")
 
-	// ── Poll 2: since=id2, limit=256 → only third row; headID=id3 ────────────
+	// ── Poll 2: since=id2, limit=256 → only third row; позиция = граница = id3 ─
 	changes2, headID2, err := repo.PollSubjectChanges(ctx, id2, 256)
 	require.NoError(t, err)
 	require.Len(t, changes2, 1, "expected 1 remaining change")
@@ -120,7 +129,7 @@ func TestSubjectChangeRepo_PollCarriesTheSubjectType(t *testing.T) {
 	// собой вердикт всего пакета.
 	pgtest.ClosePoolAtEnd(t, pool)
 
-	repo := kachopg.NewSubjectChangeRepo(pool)
+	repo := kachopg.NewSubjectChangeRepo(pool, nil)
 	abRepo := kachopg.New(pool, nil)
 
 	seed := func(evt access_binding.SubjectChangeEvent) {

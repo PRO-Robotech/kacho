@@ -104,9 +104,14 @@ service InternalIAMService {
     option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
   }
 
-  // PollSubjectChanges drains subject_change_outbox by ascending id cursor.
+  // PollSubjectChanges drains subject_change_outbox by ascending id cursor,
+  // over the window `(since_id, settled]` — never "everything above the cursor".
   // Internal-only (cluster-internal listener) — drives api-gateway authz
   // decision-cache invalidation.
+  //
+  // UNAVAILABLE while the journal has no settled position yet (cold start): the
+  // caller retries on its next tick. This is a state, not a failure — the
+  // settled flag is monotone and never withdrawn once raised.
   rpc PollSubjectChanges (PollSubjectChangesRequest) returns (PollSubjectChangesResponse) {
     option (kacho.iam.authz.v1.permission) = "<exempt>";
     option (kacho.iam.authz.v1.exempt_reason)  = "INTERNAL_LISTENER";
@@ -503,8 +508,19 @@ message SubjectChange {
 // PollSubjectChangesResponse — result of PollSubjectChanges.
 message PollSubjectChangesResponse {
   repeated SubjectChange changes = 1;
-  // head_id — current MAX(id) in the outbox (0 when empty). Lets a freshly
-  // started gateway initialise its cursor without replaying history.
+  // head_id — the position the caller may adopt as its cursor: the SETTLED
+  // boundary of the journal, narrowed to the last delivered row when the page
+  // was cut by `limit`. Lets a freshly started gateway initialise its cursor
+  // without replaying history.
+  //
+  // It is NOT `MAX(id)`. A journal number is issued by the counter on INSERT and
+  // becomes visible on COMMIT, so a caller that adopted the largest visible
+  // number would jump over a writer still in flight, and that row would never
+  // come back — re-reading is strictly "greater than the cursor". The same holds
+  // for a full page: beyond its last row the window still holds rows nobody read.
+  //
+  // The guarantee and its price are stated once:
+  // docs/architecture/journal-position-settled-watermark.md.
   int64 head_id = 2;
 }
 

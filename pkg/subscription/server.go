@@ -327,11 +327,11 @@ func (s *Server) serve(
 	stream subscriptionv1.InternalSubscriptionService_SubscribeServer,
 ) error {
 	storage := s.cfg.Journal.Storage
-	h := newWatermark(storage, s.log, s.now)
+	h := newWatermark(storage.Table, storage.PositionColumn, s.log, s.now)
 	if err := s.settle(ctx, conn, h, storage.Table); err != nil {
 		return err
 	}
-	if !h.established {
+	if !h.Established() {
 		// Срок потока истёк раньше, чем граница подтвердилась. Посадить
 		// подписчика на неподтверждённый ноль нельзя (см. [Server.settle]), но и
 		// закрыть поток МОЛЧА нельзя тоже.
@@ -359,7 +359,7 @@ func (s *Server) serve(
 
 	opened := &subscriptionv1.SubscriptionOpened{
 		Position:       pagetoken.EncodeSubscriptionPosition(pagetoken.SubscriptionPosition{Settled: cursor}),
-		CaughtUp:       cursor >= h.settled,
+		CaughtUp:       cursor >= h.Settled(),
 		HonoredFilters: filter.Honored,
 		// Словарь видов — тем же вызовом, каким отвергается неизвестный вид
 		// (см. [Journal.Accept]). Второго перечня не существует, поэтому
@@ -396,7 +396,7 @@ func (s *Server) serve(
 			// сетевой сбой, которым он не является.
 			return nil
 		}
-		if err := h.advance(ctx, conn, storage.Table); err != nil {
+		if err := h.Advance(ctx, conn); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
@@ -434,15 +434,15 @@ func (s *Server) serve(
 //
 // Пустого журнала это не задерживает: подтверждать в нём нечего, наблюдение
 // состоится первым же проходом.
-func (s *Server) settle(ctx context.Context, conn *pgx.Conn, h *watermark, table string) error {
+func (s *Server) settle(ctx context.Context, conn *pgx.Conn, h *Watermark, table string) error {
 	for {
-		if err := h.advance(ctx, conn, table); err != nil {
+		if err := h.Advance(ctx, conn); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
 			return status.Error(codes.Unavailable, "subscription backend unavailable")
 		}
-		if h.established {
+		if h.Established() {
 			return nil
 		}
 		if err := s.waitForWork(ctx, conn); err != nil {
@@ -456,7 +456,7 @@ func (s *Server) settle(ctx context.Context, conn *pgx.Conn, h *watermark, table
 
 // resolveCursor выбирает, с какого номера отдавать, и отвергает позицию, которую
 // владелец больше не удерживает.
-func (s *Server) resolveCursor(start Start, h *watermark, floor int64) (int64, error) {
+func (s *Server) resolveCursor(start Start, h *Watermark, floor int64) (int64, error) {
 	switch {
 	case start.FromBeginning:
 		return floor, nil
@@ -467,7 +467,7 @@ func (s *Server) resolveCursor(start Start, h *watermark, floor int64) (int64, e
 		}
 		return start.Position.Settled, nil
 	default:
-		return h.settled, nil
+		return h.Settled(), nil
 	}
 }
 

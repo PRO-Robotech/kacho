@@ -66,9 +66,14 @@ type InternalIAMServiceClient interface {
 	// get notified. Async: returns Operation; the LISTEN/NOTIFY fan-out then
 	// updates every api-gateway pod's revocation cache ≤ 1s.
 	ForceLogout(ctx context.Context, in *ForceLogoutRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// PollSubjectChanges drains subject_change_outbox by ascending id cursor.
+	// PollSubjectChanges drains subject_change_outbox by ascending id cursor,
+	// over the window `(since_id, settled]` — never "everything above the cursor".
 	// Internal-only (cluster-internal listener) — drives api-gateway authz
 	// decision-cache invalidation.
+	//
+	// UNAVAILABLE while the journal has no settled position yet (cold start): the
+	// caller retries on its next tick. This is a state, not a failure — the
+	// settled flag is monotone and never withdrawn once raised.
 	PollSubjectChanges(ctx context.Context, in *PollSubjectChangesRequest, opts ...grpc.CallOption) (*PollSubjectChangesResponse, error)
 	// RegisterResource — Internal FGA-proxy: apply an owner-hierarchy tuple
 	// (subject holds `relation` on `object`) on behalf of the resource-owning
@@ -288,9 +293,14 @@ type InternalIAMServiceServer interface {
 	// get notified. Async: returns Operation; the LISTEN/NOTIFY fan-out then
 	// updates every api-gateway pod's revocation cache ≤ 1s.
 	ForceLogout(context.Context, *ForceLogoutRequest) (*operation.Operation, error)
-	// PollSubjectChanges drains subject_change_outbox by ascending id cursor.
+	// PollSubjectChanges drains subject_change_outbox by ascending id cursor,
+	// over the window `(since_id, settled]` — never "everything above the cursor".
 	// Internal-only (cluster-internal listener) — drives api-gateway authz
 	// decision-cache invalidation.
+	//
+	// UNAVAILABLE while the journal has no settled position yet (cold start): the
+	// caller retries on its next tick. This is a state, not a failure — the
+	// settled flag is monotone and never withdrawn once raised.
 	PollSubjectChanges(context.Context, *PollSubjectChangesRequest) (*PollSubjectChangesResponse, error)
 	// RegisterResource — Internal FGA-proxy: apply an owner-hierarchy tuple
 	// (subject holds `relation` on `object`) on behalf of the resource-owning
