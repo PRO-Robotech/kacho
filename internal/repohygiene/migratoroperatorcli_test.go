@@ -271,10 +271,20 @@ func TestMigratorRefusalTextsHaveOneProducer(t *testing.T) {
 			continue
 		}
 		findings = append(findings, decls...)
+
+		// Вторая половина того же предмета: не только ЧТО сказано, но и КАК
+		// подано. Журнал ставит впереди метку времени, и она делала из одного
+		// контракта две редакции.
+		journalled, jerr := migratorCLIJournalRefusals(rel, string(raw))
+		if jerr != nil {
+			t.Fatalf("%v", jerr)
+		}
+		findings = append(findings, journalled...)
 	}
 
 	t.Logf("перепись: файлов осмотрено %d (точек наката %d), объявлений текста отказа "+
-		"у производителя %d, вторых редакций %d", filesRead, entryPoints, ownerDecls, len(findings))
+		"у производителя %d, находок (вторая редакция либо подача через журнал) %d",
+		filesRead, entryPoints, ownerDecls, len(findings))
 
 	if filesRead == 0 {
 		t.Fatal("не прочитано ни одного файла — гейт ничего не осмотрел, и его молчание " +

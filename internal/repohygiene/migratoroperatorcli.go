@@ -495,3 +495,46 @@ func migratorCLIRefusalDeclarations(rel, src string) ([]string, error) {
 	sort.Strings(out)
 	return out, nil
 }
+
+// migratorCLIJournalRefusals — подача отказа через журнал в точке наката.
+//
+// Журнал ставит впереди метку времени. Для однократного инструмента командной
+// строки это шум, а главное — из одного контракта получаются две редакции: у
+// делегирующей формы отказ приходит строкой `Error: <предмет>`, у прямой
+// приходил с меткой. Скрипт читает отказ образцом, и это разные строки.
+//
+// Судятся ВЫЗОВЫ, а не импорт: журнал законен для того, что отказом не
+// является, — и такого в точке наката сегодня нет, но запрещать импорт значило
+// бы запрещать не то. Форма подачи объявлена в общем пакете.
+func migratorCLIJournalRefusals(rel, src string) ([]string, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, rel, src, 0)
+	if err != nil {
+		return nil, fmt.Errorf("%s: разбор не удался: %w", rel, err)
+	}
+	var out []string
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		pkg, ok := sel.X.(*ast.Ident)
+		if !ok || pkg.Name != "log" {
+			return true
+		}
+		if !strings.HasPrefix(sel.Sel.Name, "Fatal") && !strings.HasPrefix(sel.Sel.Name, "Panic") {
+			return true
+		}
+		out = append(out, fmt.Sprintf(
+			"%s:%d — отказ подаётся через журнал (log.%s): метка времени впереди делает из "+
+				"одного контракта две редакции. Форма подачи одна и объявлена в %s",
+			rel, fset.Position(call.Pos()).Line, sel.Sel.Name, migratorCLIRefusalOwner))
+		return true
+	})
+	sort.Strings(out)
+	return out, nil
+}
