@@ -425,3 +425,157 @@ func f(fieldName string) error {
 			"верно для КАЖДОГО утверждения дерева")
 	}
 }
+
+// ─── ось 4: объявление обобщено подстановкой, производитель — нет ────────────
+//
+// Ось заведена потому, что оси 1–3 её предмета не видят, и это МЕРЯЕТСЯ, а не
+// предполагается (#1520). Заголовок `'<Resource> <id> not found'` объявляет
+// постоянной частью «not found»: заглавных в ней нет — ось 2 нема; утверждение
+// совпадает с объявлением, не уступая ему, — ось 3 нема (`ll == lp` она
+// пропускает by construction). Слабость лежит в самом ОБЪЯВЛЕНИИ, обобщённом
+// подстановкой, и до этой оси её не ловило ничто.
+
+// rtGenericCorpus — владелец, у которого «not found» несут ДВА разных отказа, и
+// каждый называет, чей он. Именно два: на одном находка была бы суждением о
+// прозе, а не доказательством неразличимости.
+func rtGenericCorpus() rtCorpus {
+	return rtCorpusOf(
+		"MachineType %s not found",
+		"Network interface %s not found",
+		"permission denied",
+	)
+}
+
+const rtGenericTitle = "COMP-1-20: MachineType.Get well-formed-но-нет → 404 NOT_FOUND " +
+	"'<Resource> <id> not found' (через repo.Get; тон-контракт)"
+
+func TestRT_GenericDeclarationAssertedAsItsOwnConstPartIsAFinding(t *testing.T) {
+	step := nmStep("get-absent", "GET", rtURL,
+		"pm.test('text mentions not found', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));",
+	)
+	f, cen := rtAudit(t, rtGenericCorpus(), nmFolder(rtGenericTitle, step))
+	if cen.stepsWithDeclaredText != 1 {
+		t.Fatalf("гейт не признал заголовок объявлением текста: перепись %d", cen.stepsWithDeclaredText)
+	}
+	if cen.foldedAssertions != 1 {
+		t.Fatalf("гейт не увидел утверждения с приведением регистра: перепись %d", cen.foldedAssertions)
+	}
+	if len(f) == 0 {
+		t.Fatal("утверждение постоянной части ОБОБЩЁННОГО объявления не дало находки — " +
+			"ось 4 не способна упасть на своём предмете")
+	}
+	// Прибавка обязана менять ПЕРЕПИСЬ, а не только число находок: шаг ушёл из
+	// границы гейта в доказанное. Прибавка без этого — холостая (`testing.md`
+	// §«Гейт на класс», п. 7).
+	if cen.foldedWithoutProof != 0 {
+		t.Fatalf("шаг остался в переписи «БЕЗ доказательства расхождения» (%d) — "+
+			"находка есть, а граница гейта не уменьшилась", cen.foldedWithoutProof)
+	}
+	if !strings.Contains(f[0].why, "MachineType %s not found") {
+		t.Fatalf("находка не называет дословного текста производителя, по которому чинят: %s", f[0].why)
+	}
+}
+
+func TestRT_GenericDeclarationWithASingleRicherProducerIsSilent(t *testing.T) {
+	// ЗАКОННЫЙ БЛИЗНЕЦ по условию «два производителя»: у владельца «not found»
+	// несёт ОДИН отказ, поэтому утверждение однозначно в его пределах, и находка
+	// была бы суждением о прозе, а не доказательством.
+	step := nmStep("get-absent", "GET", rtURL,
+		"pm.test('text mentions not found', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));",
+	)
+	corpus := rtCorpusOf("MachineType %s not found", "permission denied")
+	f, cen := rtAudit(t, corpus, nmFolder(rtGenericTitle, step))
+	if cen.foldedAssertions != 1 {
+		t.Fatalf("шаг гейтом НЕ УВИДЕН (перепись %d) — молчание доказывало бы слепоту, а не законность",
+			cen.foldedAssertions)
+	}
+	if len(f) != 0 {
+		t.Fatalf("единственный производитель ошибочно признан доказательством неразличимости: %v", f)
+	}
+	if cen.foldedWithoutProof != 1 {
+		t.Fatalf("шаг не попал в перепись границы гейта (%d) — «ноль находок» стало бы "+
+			"неотличимо от «ноль осмотренного»", cen.foldedWithoutProof)
+	}
+}
+
+func TestRT_ConcreteDeclarationAssertedWhollyIsSilent(t *testing.T) {
+	// ЗАКОННЫЙ БЛИЗНЕЦ по условию «объявление обобщено»: заголовок называет текст
+	// ЦЕЛИКОМ, без подстановки, и шаг утверждает ровно его. Обобщать нечего —
+	// разница с объявлением отсутствует, и ось 4 обязана молчать даже при двух
+	// производителях с той же общей частью.
+	title := "VPC-NET-DEL-NEG-NOTEMPTY — Delete непустой сети → FailedPrecondition " +
+		"'network is not empty'"
+	step := nmStep("del-net", "DELETE", rtURL,
+		"pm.test('text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('network is not empty'));",
+	)
+	corpus := rtCorpusOf("network is not empty", "subnet is not empty", "permission denied")
+	f, cen := rtAudit(t, corpus, nmFolder(title, step))
+	if cen.foldedAssertions != 1 {
+		t.Fatalf("шаг гейтом НЕ УВИДЕН (перепись %d)", cen.foldedAssertions)
+	}
+	if len(f) != 0 {
+		t.Fatalf("конкретное объявление, утверждённое целиком, ошибочно признано находкой: %v", f)
+	}
+}
+
+// TestRT_GenericDeclarationRestoredOnARealTreeTitleIsAFinding — фикстура берётся
+// ИЗ ДЕРЕВА: настоящий заголовок закоммиченной коллекции плюс настоящие
+// производители её владельца. Синтетика доказывала бы свойство вчерашнего
+// дерева; смена формы записи заголовков обязана краснеть здесь, а не молчать.
+func TestRT_GenericDeclarationRestoredOnARealTreeTitleIsAFinding(t *testing.T) {
+	root := repoRoot(t)
+	tt := newTrackedTree(t, root)
+
+	byOwner, err := rtProducers(root, optGoFiles(tt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cols := optCollections(tt)
+	if len(cols) == 0 {
+		t.Fatal("в индексе git нет коллекций newman — фикстуре не на чем стоять")
+	}
+
+	title, part, owner := rtFindGenericDeclaringTitle(t, root, cols, byOwner)
+	step := nmStep("get-absent", "GET", rtURL,
+		"pm.test('text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('"+
+			strings.ToLower(part)+"'));",
+	)
+	f, cen := rtAudit(t, rtCorpusFor(byOwner, owner), nmFolder(title, step))
+	if cen.stepsWithDeclaredText != 1 {
+		t.Fatalf("настоящий заголовок %q гейт не признал объявлением текста", title)
+	}
+	if len(f) == 0 {
+		t.Fatalf("возвращённый дефект на НАСТОЯЩЕМ заголовке %q (объявляет обобщённо, "+
+			"постоянная часть %q) не дал находки", title, part)
+	}
+	if cen.foldedWithoutProof != 0 {
+		t.Fatalf("шаг остался в границе гейта (%d) при найденной находке", cen.foldedWithoutProof)
+	}
+}
+
+// rtFindGenericDeclaringTitle — первый заголовок дерева, чьё объявление ОБОБЩЕНО
+// подстановкой, а его постоянную часть несут не менее двух отказов владельца.
+func rtFindGenericDeclaringTitle(t *testing.T, root string, cols []string,
+	byOwner map[string]map[string]bool) (string, string, string) {
+	t.Helper()
+	for _, rel := range cols {
+		owner := rtOwner(rel)
+		corpus := rtCorpusFor(byOwner, owner)
+		for _, title := range rtCollectionTitles(t, root, rel) {
+			for _, d := range rtDeclaredTexts(title) {
+				if !rtTitleSubst.MatchString(d) {
+					continue
+				}
+				for _, p := range rtConstParts(d) {
+					if len(rtRicherProducers(corpus, strings.ToLower(p))) >= 2 {
+						return title, p, owner
+					}
+				}
+			}
+		}
+	}
+	t.Fatal("в закоммиченных коллекциях НЕТ ни одного заголовка, чьё объявление обобщено " +
+		"подстановкой при двух и более отказах владельца с той же постоянной частью — " +
+		"ось 4 не проверяется ни на чём, и это находка, а не повод выйти успехом")
+	return "", "", ""
+}
