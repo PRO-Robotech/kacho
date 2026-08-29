@@ -137,9 +137,18 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
 клиентский отбор по меткам **неисполним**, и метки берутся чтением ресурса по `resourceId`.
 
 Гадать не нужно и по документу сверяться тоже: такое событие приходит с
-`stateUnavailable.reason = NOT_PRODUCED` — машинно отличимым от сбоя. Сегодня это **весь**
-владелец `loadbalancer` (все виды, все роды изменения) и события `DELETED` у владельца
-`compute`; свежий ответ всегда даёт сам поток.
+`stateUnavailable.reason = NOT_PRODUCED` — машинно отличимым от сбоя. Свежий ответ всегда
+даёт сам поток, и он же остаётся единственным, на что стоит закладываться: перечень ниже
+верен на день правки страницы, а поток отвечает на день запроса.
+
+Сегодня состояния не производят **целиком** два владельца — `loadbalancer` и `storage` (все
+виды, все роды изменения). У остальных трёх — `compute`, `registry`, `vpc` — состояние есть у
+создания и правки, а у снятия его нет: предмета больше не существует, собирать было нечего.
+
+Владелец, чей журнал состояния не производит, не «отстал»: у обоих такой журнал наполняется
+не полной записью ресурса, а минимальным снимком, и отдать его как состояние нельзя — вы
+прочитали бы отсутствующие поля как факт («меток нет, целей нет»). Обогащение таких журналов
+заведено отдельно и на этой странице появится вместе с ним.
 :::
 
 ## Словарь владельцев и видов
@@ -181,7 +190,13 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
           <code>vpc&#95;gateway</code>, <code>vpc&#95;route&#95;table</code>,
           <code>vpc&#95;security&#95;group</code>, <code>vpc&#95;network&#95;interface</code>,
           <code>vpc&#95;cidr&#95;group</code></td>
-      <td>состояния нет — приходит только оболочка события</td>
+      <td><code>state</code> типа контракта своего вида — <code>kacho.cloud.vpc.v1.Network</code>,
+          <code>kacho.cloud.vpc.v1.Subnet</code>, <code>kacho.cloud.vpc.v1.Address</code>,
+          <code>kacho.cloud.vpc.v1.Gateway</code>, <code>kacho.cloud.vpc.v1.RouteTable</code>,
+          <code>kacho.cloud.vpc.v1.SecurityGroup</code>,
+          <code>kacho.cloud.vpc.v1.NetworkInterface</code>,
+          <code>kacho.cloud.vpc.v1.CidrGroup</code> — у создания и правки, у всех восьми видов;
+          у снятия состояния нет</td>
     </tr>
   </tbody>
 </table>
