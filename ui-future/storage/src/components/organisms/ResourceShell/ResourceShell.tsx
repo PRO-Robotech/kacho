@@ -237,6 +237,8 @@ export function ResourceShell({
     queryKey: [spec.id, "shell-detail", uid],
     queryFn: () => api.get<Record<string, unknown>>(`${spec.apiPath}/${uid}`),
     enabled: !!uid,
+    // поллинг остаётся: журнала у storage нет — глагол подписки служат
+    // compute, nlb и vpc; блочное хранение среди владельцев не значится.
     refetchInterval: 5_000,
     staleTime: 0,
   });

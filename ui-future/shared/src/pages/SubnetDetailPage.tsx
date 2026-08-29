@@ -6,6 +6,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 import { Plus } from "lucide-react";
 import { Button as AntButton, Input, Space, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
@@ -61,6 +62,16 @@ export function SubnetDetailPage() {
         : `/projects/${projectId}/vpc/subnets/${subnetId}/addresses`
       : null;
 
+  // ЧТЕНИЕ ПО СОБЫТИЮ, ОПРОС — ПОКА СОБЫТИЙ НЕТ (#1021). Признак покрытия свой
+  // на КАЖДЫЙ вид: владелец объявляет словарь целиком, но покрытым считается
+  // ровно названный им вид, а не домен.
+  const { streamed: addressesStreamed } = useResourceStream({
+    specId: "addresses",
+    projectId: projectId ?? null,
+    invalidate: ["addresses", "list", projectId],
+    enabled: !!projectId,
+  });
+
   // Address-ресурсы проекта — будем фильтровать по subnet_id client-side.
   const { data: addrList } = useQuery({
     queryKey: ["addresses", "list", projectId],
@@ -69,7 +80,7 @@ export function SubnetDetailPage() {
         project_id: projectId!,
         pageSize: "500",
       }),
-    refetchInterval: 5000,
+    refetchInterval: addressesStreamed ? false : 5000,
     enabled: !!projectId,
   });
 

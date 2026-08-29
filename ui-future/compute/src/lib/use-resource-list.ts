@@ -38,6 +38,10 @@ export function useResourceList<T = Record<string, unknown>>(
   return useQuery({
     queryKey: [spec.id, "list", filterField, filterValue],
     queryFn: () => api.list<Record<string, T[]>>(path, q),
+    // поллинг остаётся: форк без единого потребителя в прод-коде — этот хук
+    // не зовёт ни один компонент дерева (перепись — ведомость достижимости
+    // `shared/src/test/module-reachability-ledger.json`), поэтому подписка тут
+    // ничего не сняла бы, а сводится он вместе со всем модулем задачей #591.
     refetchInterval: 3_000,
     enabled: (!filterField || !!filterValue) && resolved,
     staleTime: 0,
@@ -93,6 +97,8 @@ export function useResourceListAllPages<T = Record<string, unknown>>(
       const rows = await fetchAllPages<T>(spec.apiPath, spec.payloadKey);
       return { [spec.payloadKey]: rows } as Record<string, T[]>;
     },
+    // поллинг остаётся: тот же недостижимый форк, что и выше — потребителей в
+    // прод-коде ноль, снимается вместе с модулем задачей #591.
     refetchInterval: 3_000,
     // Guard: не фетчим, пока apiPath несёт неразрешённый `{...}` (родитель неизвестен).
     enabled: opts.enabled && !UNRESOLVED_PLACEHOLDER.test(spec.apiPath),

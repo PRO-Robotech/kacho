@@ -88,6 +88,7 @@ export function AccessPage() {
         pageSize: "200",
       }),
     enabled: !!resourceId,
+    // поллинг остаётся: журнала у iam нет, подписаться не на что.
     refetchInterval: 5_000,
     staleTime: 0,
   });

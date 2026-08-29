@@ -48,6 +48,7 @@ export default function ClusterAdminsPage() {
       }
       return failureCount < 1;
     },
+    // поллинг остаётся: надзор кластера — предмет iam, а журнала у iam нет.
     refetchInterval: 10_000,
     staleTime: 5_000,
   });

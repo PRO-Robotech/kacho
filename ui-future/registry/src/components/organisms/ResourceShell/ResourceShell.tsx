@@ -323,6 +323,8 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
     queryKey: [spec.id, "shell-detail", detailPath],
     queryFn: () => api.get<Record<string, unknown>>(detailPath),
     enabled: !!uid && specAddressable,
+    // поллинг остаётся: журнала у registry нет — глагол подписки служат
+    // compute, nlb и vpc, реестра среди владельцев не значится.
     refetchInterval: 5_000,
     staleTime: 0,
   });

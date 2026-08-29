@@ -51,6 +51,7 @@ export function RolesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["iam", "roles", "list"],
     queryFn: () => iamApi.listRoles({ pageSize: "1000" }),
+    // поллинг остаётся: журнала у iam нет, подписаться не на что.
     refetchInterval: 5_000,
     staleTime: 0,
   });
