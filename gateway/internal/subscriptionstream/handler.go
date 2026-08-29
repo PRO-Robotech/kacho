@@ -197,6 +197,16 @@ func (h *Handler) CloseSubject(subject string) int {
 	return h.registry.closeSubject(subject)
 }
 
+// OpenStreams — открытые потоки этой реплики вместе с удостоверением каждого.
+//
+// Читателя у него один — перепрос состояния удостоверения на открытых
+// соединениях (`gateway/internal/streamrevocation`, kacho#1410). Отдаётся снимок
+// значениями, а не сам реестр: решение о закрытии принимает читатель, а
+// устройство учёта остаётся здесь.
+func (h *Handler) OpenStreams() []OpenStream {
+	return h.registry.snapshot()
+}
+
 // CloseAll закрывает ВСЕ открытые потоки и возвращает их число.
 //
 // FAIL-CLOSED, и радиус у него намеренно широкий. Зовётся, когда край потерял
@@ -288,10 +298,23 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Удостоверение снимается ЗДЕСЬ и запоминается вместе с потоком.
+	//
+	// Не «на всякий случай»: без него отзыв удостоверения до открытого
+	// соединения не доезжает НИ ПРИ КАКИХ УСЛОВИЯХ — спрашивать авторитет не о
+	// чем (kacho#1410). Субъекта для этого недостаточно: отзыв прав называет
+	// субъекта, а отзыв удостоверения — предъявленное, и два потока одного
+	// человека могут быть открыты разными удостоверениями.
+	//
+	// Снимается ОДИН раз, при постановке на учёт: длинное соединение второго
+	// запроса не делает, поэтому подменить своё удостоверение на живое
+	// вызывающий не может by construction.
+	cred := principalmeta.CredentialFromRequest(r)
+
 	// Предел субъекта — ДО общего слота: место в очереди за общим ресурсом не
 	// достаётся тому, кто своё уже выбрал. Обратный порядок дал бы субъекту
 	// возможность занимать и отпускать общий слот на каждом отказе.
-	entry, release, admitted := h.registry.tryAdd(subject, h.cfg.MaxStreamsPerSubject)
+	entry, release, admitted := h.registry.tryAdd(subject, cred, h.cfg.MaxStreamsPerSubject)
 	if !admitted {
 		h.refusedSubjectQuota.Add(1)
 		h.log.Warn("subscription stream refused: per-subject stream limit reached",
