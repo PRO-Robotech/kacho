@@ -62,6 +62,7 @@ def _kacholib_dir() -> Path:
 
 sys.path.insert(0, str(_kacholib_dir()))
 
+import gen_shared  # noqa: E402  — модуль нужен целиком: связывание опроса и его счётчик
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
     generate,
     Run,
@@ -125,7 +126,6 @@ OUT_DIR = ROOT / "collections"
 # unique name keeps the self-retry unambiguous so full linear traversal is
 # preserved. Reset to 0 at the start of every module load (load_cases_module) so
 # names are deterministic per collection.
-_poll_seq = 0
 
 # Monotonic counter for retry_until_authorized wrapped steps.
 # Each wrapped step gets a globally-unique `-rya<n>`/`-lst<n>` suffix so its
@@ -404,65 +404,6 @@ def assert_operation_envelope(prefix_regex: str = "^(nlb|tgr|lst)[a-z0-9]+$") ->
     ]
 
 
-def poll_operation_until_done() -> Step:
-    """Reusable poll step with up-to-30 setNextRequest retries spaced ~500ms apart;
-    guards on empty opId. Budget*interval ≈ 15s covers the async-op tail instead of
-    hammering back-to-back (~15ms/poll) which never waits for the op (Koren #1).
-
-    Each emitted step carries a unique name (`poll-op-<n>`) so the
-    setNextRequest self-retry is unambiguous under `newman run <collection>`
-    (see `_poll_seq` note): a duplicate "poll-op" name would make newman resolve
-    the retry jump to the first such step and skip intervening folders."""
-    global _poll_seq
-    _poll_seq += 1
-    return Step(
-        name=f"poll-op-{_poll_seq}",
-        method="GET",
-        path="/operations/{{opId}}",
-        test_script=[
-            # Nothing to poll: the preceding step was refused synchronously and minted no
-            # Operation. This is the ONLY case in which the step asserts nothing.
-            "if (!pm.environment.get('opId')) {",
-            "  pm.environment.unset('_pollCount');",
-            "  return;",
-            "}",
-            # A REFUSED OPERATION READ IS RED. The early return used to sit ABOVE this line,
-            # so the assertion could not fail by construction — only the responses it already
-            # accepts ever reached it. Any non-200 on GET /operations/{id} (403 on somebody
-            # else's operation, 404, 5xx) counted as a passed step while the outcome of the
-            # mutation the step exists for stayed UNKNOWN. Unknown is not the same as fine.
-            "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-            # The assertion above has already said no; leave before json() throws on an error
-            # body — a script exception would hide the very failure it reports (and lands in
-            # the fourth outcome category of assert-suites-green.sh, not in `failed`).
-            "if (pm.response.code !== 200) {",
-            "  pm.environment.unset('_pollCount');",
-            "  return;",
-            "}",
-            "const j = pm.response.json();",
-            "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            # Poll budget raised 6→30 to match the Koren-1 baseline of the other
-            # suites; with the ~500ms inter-poll delay below this covers ~15s.
-            "if (!j.done && pc < 60) {",
-            "  pm.environment.set('_pollCount', String(pc + 1));",
-            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
-            # synchronously and fires setNextRequest before any setTimeout callback, so a
-            # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
-            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
-            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
-            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-            "  pm.execution.setNextRequest(pm.info.requestName);",
-            "  return;",
-            "}",
-            "pm.environment.unset('_pollCount');",
-            "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-            "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-            "else pm.environment.unset('lastOpError');",
-            "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-        ],
-    )
-
-
 # Окно видимости прав — РЕШЕНИЕ НАБОРА, а не общего слоя (#1379): путь
 # материализации у доменов разный, и одно число за всех было бы решением
 # за них. Здесь — у registry путь длиннее прочих — окно самое широкое в дереве. Величина видна
@@ -535,8 +476,7 @@ def _reset_step_name_counters() -> None:
 
     Held by internal/repohygiene TestGeneratedStepNamesDoNotDependOnHowManyModulesRan.
     """
-    global _poll_seq
-    _poll_seq = 0
+    gen_shared._POLL_SEQ[0] = 0
     _RYA_SEQ[0] = 0
 # ─────────────────────────────────────────────────────────────────────────────
 # РЕШЕНИЯ НАБОРА, от которых зависит форма коллекции (#1379). Форму собирает
@@ -565,6 +505,14 @@ def _registry_item_hook(step, item):
     if step.insecure_tls:
         item["protocolProfileBehavior"] = {"strictSSL": False}
 
+
+# Опрос операции: тело общее (#1475), решения набора — здесь. БЮДЖЕТ ШИРЕ ПРОЧИХ
+# И ЭТО РЕШЕНО: путь registry длиннее (data-plane docker-полоса), поэтому его
+# полоса видимости тоже самая широкая в дереве. Прежний комментарий обещал «30
+# как у остальных» при 60 в коде — величина теперь видна на связывании, а не в
+# прозе, и разойтись ей не с чем.
+poll_operation_until_done = functools.partial(
+    gen_shared.op_poll_step, Step, budget=60, interval_ms=500)
 
 _EMIT = Emit(
     id_slug="kacho-registry",

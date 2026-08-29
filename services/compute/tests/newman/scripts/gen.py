@@ -62,6 +62,7 @@ def _kacholib_dir() -> Path:
 
 sys.path.insert(0, str(_kacholib_dir()))
 
+import gen_shared  # noqa: E402  — модуль нужен целиком: связывание опроса и его счётчик
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
     generate,
     Run,
@@ -302,7 +303,6 @@ def assert_operation_envelope() -> List[str]:
     ]
 
 
-_POLL_SEQ = [0]
 
 
 
@@ -424,50 +424,6 @@ def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
     _ABS_SEQ[0] += 1
     return replace(step, name=f"{step.name}-abs{_ABS_SEQ[0]}",
                    test_script=guard + list(step.test_script))
-
-
-def poll_operation_until_done(auth: Optional[str] = None) -> Step:
-    """Reusable poll step: до 30 попыток с ~500ms задержкой между ними (через setNextRequest),
-    потом fail если done остался false. Budget*interval ≈ 15s покрытия async-op tail (Koren #1).
-    Уникальное имя per-call (poll-op-<N>): setNextRequest(pm.info.requestName) ретраит СЕБЯ, а не
-    другой poll-op коллекции (иначе прыжок через кейсы → ложный fail). e2e-newman fullscope root A3.
-
-    auth: КОГДА мутация создана НЕ дефолтным cluster-admin Bearer'ом (например
-    jwtProjectAdminA1 в list-filter authz-суите), poll ОБЯЗАН нести ту же identity —
-    `OperationService.Get` энфорсит ownership (owner = principal, создавший op) и отдаёт
-    NotFound (no-leak) чужому caller'у. Без совпадения identity poll дефолтным bearer'ом
-    получает 404 на op, созданную project-admin'ом (ownership-mismatch, НЕ GC/routing).
-    Передавай auth=<тот же env-var, что у create-шага>; None → inherit collection Bearer."""
-    _POLL_SEQ[0] += 1
-    return Step(
-        name=f"poll-op-{_POLL_SEQ[0]}",
-        method="GET",
-        path="/operations/{{opId}}",
-        auth=auth,
-        test_script=[
-            "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-            "const j = pm.response.json();",
-            "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            # Poll budget raised 20→30 (Koren-1): cover the p99 async-op tail under
-            # suite load; the confirm-gate tail is cut by the HIGHER_CONSISTENCY read.
-            "if (!j.done && pc < 30) {",
-            "  pm.environment.set('_pollCount', String(pc + 1));",
-            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
-            # synchronously and fires setNextRequest before any setTimeout callback, so a
-            # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
-            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
-            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
-            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-            "  pm.execution.setNextRequest(pm.info.requestName);",
-            "  return;",
-            "}",
-            "pm.environment.unset('_pollCount');",
-            "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-            "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-            "else pm.environment.unset('lastOpError');",
-            "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-        ],
-    )
 
 
 def assert_op_error(code: int, code_name: str, msg_substr: Optional[str] = None,
@@ -632,7 +588,7 @@ def _reset_step_name_counters() -> None:
     Held by internal/repohygiene TestGeneratedStepNamesDoNotDependOnHowManyModulesRan.
     """
     _ABS_SEQ[0] = 0
-    _POLL_SEQ[0] = 0
+    gen_shared._POLL_SEQ[0] = 0
     _RYA_SEQ[0] = 0
 
 
@@ -771,6 +727,11 @@ def _case_steps(case):
         _reset_captured_operation_id(_assert_delete_operation_outcome(
             _wrap_own_fresh_reads(case.steps, _rya))))
 
+
+# Опрос операции: тело общее (#1475), решения набора — здесь. Величина бюджета и
+# паузы у compute те же, что были в его копии; актор опроса приходит вызовом.
+poll_operation_until_done = functools.partial(
+    gen_shared.op_poll_step, Step, budget=30, interval_ms=500)
 
 _EMIT = Emit(
     id_slug="kacho-compute",

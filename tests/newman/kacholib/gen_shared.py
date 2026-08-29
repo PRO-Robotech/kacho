@@ -1736,3 +1736,174 @@ def generate(run: "Run", argv: List[str]) -> int:
     if run.after_all is not None:
         return run.after_all(run.out_dir)
     return 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ОЖИДАНИЕ ОПЕРАЦИИ: тело одно на дерево, решения набора — параметрами (#1475)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# ШЕСТЬ КОПИЙ РАСХОДИЛИСЬ ПО ШЕСТИ ОСЯМ, и по каждой ниже принята сторона.
+# Объединять «суммой возможностей» было бы нельзя: одиннадцать параметров, из
+# которых набор пользуется двумя-тремя, — это унификация по самой ШИРОКОЙ
+# семантике, то есть выдача каждому поведения, которого он не просил. Поэтому
+# общим стало то, что у всех ОДНО, а различия названы параметрами с умолчанием,
+# сохраняющим прежнее поведение там, где оно было верным.
+#
+#   1. СТРАЖ ПУСТОГО ИДЕНТИФИКАТОРА — принят. Его несли registry, nlb и vpc;
+#      compute и storage не несли, iam нёс в другом месте (см. `pre_extra`).
+#      Без него шаг, следующий за синхронно отвергнутой мутацией, уходит на
+#      литеральный адрес `/operations/{{opId}}`, получает отказ и повторяет его
+#      весь бюджет — то есть выжигает окно на вопрос ни о чём.
+#   2. СТРОГИЙ 200 С ТЕЛОМ И РАННИМ ВЫХОДОМ — принят. Его несли registry, nlb и
+#      vpc. Без раннего выхода `pm.response.json()` бросает исключение на не-JSON
+#      теле отказа, а исключение скрипта НЕ считается упавшим утверждением: оно
+#      уходит в четвёртую категорию исхода и не вычитается из вердикта.
+#      Диагноз при этом ставится по тексту отказа — тело печатается.
+#   3. ВЕЛИЧИНА БЮДЖЕТА — решение набора: у registry путь длиннее прочих.
+#      Параметр без умолчания в вызове набора, видимый на связывании.
+#   4. ИМЯ ШАГА — уникальное `poll-op-<N>` у пяти наборов; у iam фиксированное,
+#      и это РЕШЕНО: его сериализация приписывает имени идентификатор кейса, так
+#      что уникальность приходит оттуда. Отсюда `unique_name`.
+#   5. ИСХОД ОПЕРАЦИИ (`must_fail`, `capture_id_to`) — общий словарь, а не
+#      полоса набора: захват идентификатора ПОСЛЕ доказанного отсутствия ошибки
+#      есть норма дерева (`testing.md` §«Fixture-seed обязан проверять op.error»),
+#      и держать её у одного набора значило бы оставить фантом остальным.
+#   6. ВОЗВРАТ К ПРЕДЫДУЩЕМУ ШАГУ и ПЕРЕЧЕНЬ ФИКСТУР — полоса nlb, и она
+#      приходит сюда готовыми строками через `tail`: общий слой не решает, когда
+#      набору перезапускать свою мутацию.
+
+# Счётчик уникальных имён шагов опроса. Список, а не число, намеренно: набор
+# сбрасывает его перед каждой коллекцией, и сброс обязан быть виден отсюда.
+_POLL_SEQ = [0]
+
+
+def op_poll_step(step_cls, *, auth=None, op_var: str = "opId",
+                              budget: int = 30, interval_ms: int = 500,
+                              unique_name: bool = True,
+                              pre_extra=(), step_extra=None,
+                              must_fail: bool = False, must_fail_code: int = 0,
+                              must_fail_message: str = "",
+                              capture_id_to: str = "", id_expr: str = "",
+                              tail=()):
+    """Шаг опроса операции до завершения — один на дерево.
+
+    `auth` — АКТОР ОПРОСА, и он обязан совпадать с тем, кто мутацию создал:
+    чтение операции owner-scoped по построению, и посторонний получает тот же
+    не-раскрывающий 404, что и на несуществующий идентификатор. Шаг, сделанный
+    под одной личностью, и опрос под умолчанием коллекции спрашивают об операции
+    РАЗНЫХ субъектов, и честный 404 читается как «операция исчезла».
+
+    `capture_id_to` — захват идентификатора созданного ресурса ЗДЕСЬ, а не из
+    ответа мутации: `Operation` несёт ПРЕДВАРИТЕЛЬНО ВЫДЕЛЕННЫЙ идентификатор в
+    `metadata` ещё до работы воркера, поэтому он есть и у операции, завершившейся
+    ОШИБКОЙ. Захват из синхронного ответа — это захват идентификатора ресурса,
+    которого может не существовать: дальше кейс правит, читает и убирает ФАНТОМ,
+    а край отвечает кодами, ни один из которых не называет настоящую причину.
+    Поэтому: опрос до завершения → утверждение об отсутствии ошибки → и только
+    тогда запись в переменную; на ошибке переменная СНИМАЕТСЯ.
+
+    `id_expr` без `capture_id_to` отвергается ЯВНО: выражение выбора читается
+    только при захвате, и принять его, не прочтя, значило бы пообещать
+    вызывающему поведение, которого нет.
+    """
+    if id_expr and not capture_id_to:
+        raise ValueError(
+            "id_expr без capture_id_to: выражение выбора id читается ТОЛЬКО при "
+            "захвате, поэтому принять его и не прочесть значило бы пообещать "
+            "вызывающему поведение, которого нет. Нужен другой опрос — назови "
+            "op_var; нужен захват — назови capture_id_to")
+    if capture_id_to and must_fail:
+        raise ValueError("capture_id_to несовместим с must_fail: у операции, "
+                         "предмет которой — отказ, нет созданного ресурса")
+    if (must_fail_code or must_fail_message) and not must_fail:
+        raise ValueError("must_fail_code/must_fail_message требуют must_fail=True: "
+                         "утверждать текст отказа у операции, от которой отказа не "
+                         "ждут, значит объявить проверку, которая не исполнится")
+
+    _POLL_SEQ[0] += 1
+    name = f"poll-op-{_POLL_SEQ[0]}" if unique_name else "poll-op"
+
+    script = [
+        # Опрашивать нечего: предыдущий шаг отвергнут синхронно и операции не
+        # создал. Это ЕДИНСТВЕННЫЙ случай, когда шаг не утверждает ничего.
+        f"if (!pm.environment.get({js_str(op_var)})) {{",
+        "  pm.environment.unset('_pollCount');",
+        "  return;",
+        "}",
+        # ОТКАЗ НА ЧТЕНИИ ОПЕРАЦИИ — КРАСНОЕ. Пока ранний выход стоял ВЫШЕ этой
+        # строки, утверждение не могло упасть by construction: до него доходили
+        # только те ответы, которые оно и так принимает.
+        "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+        # Утверждение выше уже сказало «нет»; уходим до того, как json() бросит
+        # на не-JSON теле отказа — исключение скрипта скрыло бы ровно то падение,
+        # о котором сообщает, и ушло бы в четвёртую категорию исхода.
+        "if (pm.response.code !== 200) {",
+        "  pm.environment.unset('_pollCount');",
+        "  return;",
+        "}",
+        "const j = pm.response.json();",
+        "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+        f"if (!j.done && pc < {budget}) {{",
+        "  pm.environment.set('_pollCount', String(pc + 1));",
+        # НАСТОЯЩАЯ ПАУЗА МЕЖДУ ПОЛЛАМИ. newman исполняет тест-скрипт синхронно и
+        # зовёт setNextRequest ДО любого setTimeout, поэтому занятое ожидание —
+        # единственный способ реально разнести опросы. Без него петля на 30
+        # итераций покрывает доли секунды, и «поллер сдался» читается как лаг
+        # сервиса при здоровом асинхронном хвосте.
+        f"  const _pd = Date.now(); while (Date.now() - _pd < {interval_ms}) {{ /* inter-poll delay */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_pollCount');",
+    ]
+    if not unique_name:
+        # Счётчик сбрасывается по имени шага, а имя здесь общее на коллекцию —
+        # значит и флаг входа обязан сниматься здесь же.
+        script.append("pm.environment.unset('_pollStarted');")
+    script += [
+        "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+        "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+        "else pm.environment.unset('lastOpError');",
+        "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+    ]
+    script += list(tail)
+
+    if must_fail:
+        script.append(
+            "pm.test('operation refused the request (carries an error)', () => "
+            "  pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));")
+        if must_fail_code:
+            script.append(
+                f"pm.test({js_str(f'refusal carries gRPC code {must_fail_code}')}, () => "
+                f"  pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql({must_fail_code}));")
+        if must_fail_message:
+            script.append(
+                "pm.test('refusal keeps the contract tone', () => "
+                "  pm.expect(j.error && j.error.message, JSON.stringify(j))"
+                f"    .to.eql({json.dumps(must_fail_message)}));")
+    if capture_id_to:
+        expr = id_expr or ("(j.metadata && Object.keys(j.metadata)"
+                           ".filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''")
+        script += [
+            "pm.test('operation succeeded (no phantom resource id)', () => "
+            "  pm.expect(j.error && JSON.stringify(j.error), 'operation.error')"
+            "    .to.eql(undefined));",
+            "if (j.error) {",
+            f"  pm.environment.unset({js_str(capture_id_to)});",
+            "} else {",
+            f"  const _cid = ({expr});",
+            f"  if (_cid) pm.environment.set({js_str(capture_id_to)}, String(_cid));",
+            f"  else pm.environment.unset({js_str(capture_id_to)});",
+            "}",
+        ]
+
+    kwargs = dict(step_extra or {})
+    return step_cls(
+        name=name,
+        method="GET",
+        path="/operations/{{" + op_var + "}}",
+        auth=auth or None,
+        pre_script=list(pre_extra),
+        test_script=script,
+        **kwargs,
+    )

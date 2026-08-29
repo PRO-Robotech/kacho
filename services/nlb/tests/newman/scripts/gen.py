@@ -62,6 +62,7 @@ def _kacholib_dir() -> Path:
 
 sys.path.insert(0, str(_kacholib_dir()))
 
+import gen_shared  # noqa: E402  — модуль нужен целиком: связывание опроса и его счётчик
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
     generate,
     Run,
@@ -126,7 +127,6 @@ OUT_DIR = ROOT / "collections"
 # unique name keeps the self-retry unambiguous so full linear traversal is
 # preserved. Reset to 0 at the start of every module load (load_cases_module) so
 # names are deterministic per collection.
-_poll_seq = 0
 
 
 # ---------------------------------------------------------------------------
@@ -1049,197 +1049,6 @@ def retry_delete_until_released(step: Step, budget: int = 60, interval_ms: int =
                    test_script=guard + list(step.test_script))
 
 
-def poll_operation_until_done(
-    fixture_ids: Optional[List[str]] = None,
-    must_succeed: bool = False,
-    must_fail: bool = False,
-    retry_from: Optional[str] = None,
-    retry_when: str = "not found",
-    retry_budget: int = 8,
-    retry_interval_ms: int = 700,
-    auth: Optional[str] = None,
-) -> Step:
-    """Reusable poll step with up-to-30 setNextRequest retries spaced ~500ms apart;
-    guards on empty opId. Budget*interval ≈ 15s covers the async-op tail instead of
-    hammering back-to-back (~15ms/poll) which never waits for the op (Koren #1).
-
-    Each emitted step carries a unique name (`poll-op-<n>`) so the
-    setNextRequest self-retry is unambiguous under `newman run <collection>`
-    (see `_poll_seq` note): a duplicate "poll-op" name would make newman resolve
-    the retry jump to the first such step and skip intervening folders.
-
-    `fixture_ids` — PHANTOM-ID GUARD (testing.md: «Fixture-seed обязан проверять
-    `op.error` перед извлечением resource-id из `metadata`»). A Kachō Operation
-    carries the PRE-ALLOCATED resource id in `metadata` even when it finishes
-    `done:true` WITH an `error` (the id is minted before the async worker runs), so
-    a create step that stores `metadata.<res>Id` unconditionally publishes the id of
-    a resource that does NOT exist. Downstream steps then address a phantom: the
-    gateway scope_extractor cannot resolve target→project and answers 403, or the
-    backend answers 404 — a cascade whose symptom (authz denial) has nothing to do
-    with its cause (a failed create). Naming the env vars a create step published
-    makes this poll UNSET them on `op.error` and FAIL right here, attributably.
-    Use ONLY for fixture creates that must succeed — never where an op error is the
-    asserted outcome.
-
-    БОЛЬШЕ НЕ ЕДИНСТВЕННЫЙ НОСИТЕЛЬ ЭТОЙ ЗАЩИТЫ И НЕ ОБЯЗАТЕЛЬНЫЙ. Ручная пометка
-    неотличима от решения не помечать, и класс возвращался ровно так — закрыт в
-    одном кейсе, через несколько часов проявился в соседнем. Теперь то же свойство
-    ставит ПО СВОЙСТВУ шага проход `_assert_published_id_outcome` (ниже), и держит
-    его по всему дереву гейт `internal/repohygiene`
-    `TestPublishedResourceIdIsGuardedByOperationOutcome`. Явное перечисление
-    остаётся законным — проход видит уже названный исход и ничего не дописывает, —
-    но забыть его теперь не значит остаться без защиты.
-
-    `must_succeed` — same statement WITHOUT the unset: assert this Operation finished
-    without an error, while leaving the env intact so the case's own cleanup still
-    addresses a real id. For the MUTATION UNDER TEST (a drain toggle, a label update)
-    there is no fixture id to withdraw, but the outcome still has to be stated: the
-    alternative that was in the tree is a downstream `if (!lastOpError)`, which converts
-    "the mutation failed" into "the assertion about it did not run" — the case then
-    greens on the miss. `fixture_ids` implies `must_succeed`.
-
-    `must_fail` — the MIRROR statement, for a case whose subject is a REFUSAL decided by
-    the worker rather than by the sync validator (a peer that does not resolve, a DB
-    constraint, a state guard). There the lawful shapes are `400` before the Operation
-    exists, or `200` and an Operation that finishes WITH an error — and `200` on its own is
-    neither. A bare `poll_operation_until_done()` after such a step asserts only `done`,
-    which a SUCCESSFUL operation satisfies just as well, so the refusal the case is named
-    for is never checked: the delete that was supposed to be blocked goes through and the
-    case still greens. This asserts the error is there. Never use it where acceptance is
-    legitimate — it would then fail on correct behaviour.
-
-    `retry_from` — bounded ASYNC-LANE read-your-writes re-drive. `retry_create_until_present`
-    only sees the SYNC response of a create, so it covers a peer miss that is rejected
-    before the Operation is minted. The very same cross-service window can instead land
-    on the WORKER (peer visible to the sync precheck, still stale to the worker's own
-    peer call) — the create then returns 200 and the Operation fails afterwards.
-    Re-drives the named create step while the op error message matches `retry_when`
-    (default `not found` — the peer-visibility discriminator, NOT capacity: an
-    exhausted pool answers with the opaque capacity text and is never retried).
-    Fail-open on budget: the `fixture_ids` assertion below then runs and FAILS.
-    """
-    global _poll_seq
-    _poll_seq += 1
-    ids = list(fixture_ids or [])
-    script = [
-        # Nothing to poll: the preceding step was refused synchronously and minted no
-        # Operation. This is the ONLY case in which the step asserts nothing.
-        "if (!pm.environment.get('opId')) {",
-        "  pm.environment.unset('_pollCount');",
-        "  return;",
-        "}",
-        # A REFUSED OPERATION READ IS RED. The early return used to sit ABOVE this line,
-        # so the assertion could not fail by construction — only the responses it already
-        # accepts ever reached it. Any non-200 on GET /operations/{id} (403 on somebody
-        # else's operation, 404, 5xx) counted as a passed step while the outcome of the
-        # mutation the step exists for stayed UNKNOWN. Unknown is not the same as fine.
-        "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-        # The assertion above has already said no; leave before json() throws on an error
-        # body — a script exception would hide the very failure it reports (and lands in
-        # the fourth outcome category of assert-suites-green.sh, not in `failed`).
-        "if (pm.response.code !== 200) {",
-        "  pm.environment.unset('_pollCount');",
-        "  return;",
-        "}",
-        "const j = pm.response.json();",
-        "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-        # Poll budget raised 6→30 to match the Koren-1 baseline of the other
-        # suites; with the ~500ms inter-poll delay below this covers ~15s.
-        "if (!j.done && pc < 30) {",
-        "  pm.environment.set('_pollCount', String(pc + 1));",
-        # Real inter-poll delay (~500ms) between retries. newman runs test scripts
-        # synchronously and fires setNextRequest before any setTimeout callback, so a
-        # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
-        # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
-        # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
-        "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-        "  pm.execution.setNextRequest(pm.info.requestName);",
-        "  return;",
-        "}",
-        "pm.environment.unset('_pollCount');",
-        "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-        "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-        "else pm.environment.unset('lastOpError');",
-        "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-    ]
-
-    if ids:
-        # Phantom-id guard: a pre-allocated metadata id whose op FAILED never
-        # reaches a downstream step.
-        script += [
-            "if (j.error) {",
-            *[f"  pm.environment.unset({js_str(v)});" for v in ids],
-            "}",
-        ]
-
-    if retry_from:
-        script += [
-            "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
-            "// peer was visible to the sync precheck but still stale to the worker's",
-            "// own peer call, so the failure surfaced on the Operation, not on the",
-            "// create response. Discriminated on the peer-miss text — a capacity",
-            "// refusal reads differently and is NEVER retried.",
-            "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
-            "  pm.environment.set('_opRedriveCount', '0');",
-            "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
-            "}",
-            "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
-            "let _opTransient = false;",
-            f"try {{ _opTransient = !!j.error && /{js_regex_src(retry_when, where='nlb/poll_operation_until_done/retry_when', flags='i')}/i.test(j.error.message || ''); }} catch (e) {{}}",
-            f"if (_opTransient && _orc < {retry_budget}) {{",
-            "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
-            # The create step's OWN sync-retry counter is keyed on its request name and
-            # only resets when the name changes; re-entering the same step would find a
-            # spent budget. Clear it so each re-drive gets a full sync-retry window.
-            "  pm.environment.unset('_crRetryStarted');",
-            "  pm.environment.unset('_crRetryCount');",
-            "  pm.environment.unset('opId');",
-            f"  const _ord = Date.now(); while (Date.now() - _ord < {retry_interval_ms}) {{ /* peer-visibility wait */ }}",
-            f"  pm.execution.setNextRequest({js_str(retry_from)});",
-            "  return;",
-            "}",
-            *_budget_ledger("_opTransient", "_orc", retry_budget),
-            "pm.environment.unset('_opRedriveCount');",
-            "pm.environment.unset('_opRedriveStarted');",
-        ]
-
-    if must_fail and (ids or must_succeed):
-        raise ValueError("poll_operation_until_done: must_fail contradicts must_succeed/fixture_ids")
-
-    if ids:
-        script += [
-            "pm.test('fixture operation succeeded (no phantom resource id)', () => "
-            "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);",
-        ]
-    elif must_succeed:
-        script += [
-            "pm.test('operation succeeded', () => "
-            "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);",
-        ]
-    elif must_fail:
-        script += [
-            "pm.test('operation refused the request (carries an error)', () => "
-            "  pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
-        ]
-
-    return Step(
-        name=f"poll-op-{_poll_seq}",
-        method="GET",
-        path="/operations/{{opId}}",
-        test_script=script,
-        # THE POLL MUST BE THE SAME PRINCIPAL AS THE MUTATION IT POLLS.
-        # Reading an Operation is owner-scoped by design: the predicate is the
-        # creator's (principal_type, principal_id) in SQL, and a stranger gets the
-        # same no-leak 404 as for an id that does not exist. So a step performed
-        # under `auth="<subject>"` followed by a poll left on the collection default
-        # asks a DIFFERENT subject about that operation, and the honest 404 reads as
-        # "the operation vanished". Measured 2026-07-30: a service account created a
-        # load balancer (200, Operation minted) and the two polls that followed came
-        # back 404 — the case looked like a product defect and was a mislaid identity.
-        auth=auth,
-    )
-
-
 def conf_alreadyexists_block(prefix: str, create_path: str, name_template: str,
                               body_extra: Optional[Dict] = None,
                               id_field_pattern: str = "Id") -> Case:
@@ -1365,8 +1174,7 @@ def _reset_step_name_counters() -> None:
     Held by internal/repohygiene TestGeneratedStepNamesDoNotDependOnHowManyModulesRan,
     which executes this generator in both modes and compares the bytes.
     """
-    global _poll_seq
-    _poll_seq = 0
+    gen_shared._POLL_SEQ[0] = 0
     _RYA_SEQ[0] = 0
 # ─────────────────────────────────────────────────────────────────────────────
 # РЕШЕНИЯ НАБОРА, от которых зависит форма коллекции (#1379). Форму собирает
@@ -1384,6 +1192,83 @@ def _case_steps(case):
     return _assert_published_id_outcome(
         _reset_captured_operation_id(_assert_delete_operation_outcome(
             _wrap_own_fresh_reads(case.steps, _rya))))
+
+
+# Опрос операции: тело общее (#1475), полоса ПЕРЕЗАПУСКА мутации — решение nlb.
+#
+# Общий слой не решает, когда набору перезапускать свою мутацию: сосед был виден
+# синхронной предпроверке и всё ещё не виден собственному вызову воркера, поэтому
+# отказ вышел НА ОПЕРАЦИИ, а не на ответе создания. Различается это по тексту
+# отказа соседа — отказ по ёмкости читается иначе и НЕ повторяется никогда.
+def poll_operation_until_done(
+    fixture_ids: Optional[List[str]] = None,
+    must_succeed: bool = False,
+    must_fail: bool = False,
+    retry_from: Optional[str] = None,
+    retry_when: str = "not found",
+    retry_budget: int = 8,
+    retry_interval_ms: int = 700,
+    auth: Optional[str] = None,
+) -> Step:
+    """Шаг опроса операции набора nlb — общее тело плюс его полоса перезапуска."""
+    ids = list(fixture_ids or [])
+    if must_fail and (ids or must_succeed):
+        raise ValueError("poll_operation_until_done: must_fail contradicts must_succeed/fixture_ids")
+
+    tail: List[str] = []
+    if ids:
+        # Страж фантома: предварительно выделенный идентификатор операции,
+        # завершившейся ОШИБКОЙ, не должен доехать до последующего шага.
+        tail += [
+            "if (j.error) {",
+            *[f"  pm.environment.unset({js_str(v)});" for v in ids],
+            "}",
+        ]
+    if retry_from:
+        tail += [
+            "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+            "// peer was visible to the sync precheck but still stale to the worker's",
+            "// own peer call, so the failure surfaced on the Operation, not on the",
+            "// create response. Discriminated on the peer-miss text — a capacity",
+            "// refusal reads differently and is NEVER retried.",
+            "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+            "  pm.environment.set('_opRedriveCount', '0');",
+            "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+            "}",
+            "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+            "let _opTransient = false;",
+            f"try {{ _opTransient = !!j.error && /{js_regex_src(retry_when, where='nlb/poll_operation_until_done/retry_when', flags='i')}/i.test(j.error.message || ''); }} catch (e) {{}}",
+            f"if (_opTransient && _orc < {retry_budget}) {{",
+            "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+            # У самого шага создания счётчик синхронного повтора привязан к имени
+            # запроса и сбрасывается только при смене имени; повторный вход в тот
+            # же шаг застал бы бюджет исчерпанным. Снимаем — каждый перезапуск
+            # получает своё полное окно.
+            "  pm.environment.unset('_crRetryStarted');",
+            "  pm.environment.unset('_crRetryCount');",
+            "  pm.environment.unset('opId');",
+            f"  const _ord = Date.now(); while (Date.now() - _ord < {retry_interval_ms}) {{ /* peer-visibility wait */ }}",
+            f"  pm.execution.setNextRequest({js_str(retry_from)});",
+            "  return;",
+            "}",
+            *_budget_ledger("_opTransient", "_orc", retry_budget),
+            "pm.environment.unset('_opRedriveCount');",
+            "pm.environment.unset('_opRedriveStarted');",
+        ]
+    if ids:
+        tail += [
+            "pm.test('fixture operation succeeded (no phantom resource id)', () => "
+            "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);",
+        ]
+    elif must_succeed:
+        tail += [
+            "pm.test('operation succeeded', () => "
+            "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);",
+        ]
+
+    return gen_shared.op_poll_step(
+        Step, auth=auth, budget=30, interval_ms=500,
+        must_fail=must_fail, tail=tail)
 
 
 _EMIT = Emit(

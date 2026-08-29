@@ -66,6 +66,7 @@ def _kacholib_dir() -> Path:
 
 sys.path.insert(0, str(_kacholib_dir()))
 
+import gen_shared  # noqa: E402  — модуль нужен целиком: связывание опроса и его счётчик
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
     generate,
     Run,
@@ -858,80 +859,6 @@ def _op_id_guard(op_var: str, required: bool) -> List[str]:
         "  pm.execution.skipRequest();",
         "}",
     ]
-
-
-def poll_operation_until_done(auth: str = AUTH_INHERIT_OP, required: bool = True) -> Step:
-    """Reusable poll step: до POLL_CAP попыток (через setNextRequest), потом fail если done остался false.
-
-    The auth parameter carries a valid Bearer token: without one the gateway exempts
-    OperationService/Get but the IAM service's anti-anonymous interceptor still
-    rejects unauthenticated callers with 401 UNAUTHENTICATED (code 16).
-
-    By DEFAULT it is AUTH_INHERIT_OP — the poll runs as whoever minted the operation
-    (see AUTH_INHERIT_OP). `OperationService.Get` hides a foreign operation as 404,
-    so a hard-coded principal 404s on every case that mutates as somebody else.
-    Pass an explicit principal only when the case deliberately polls as a different,
-    authorised caller.
-
-    The retry cap is POLL_CAP (single source of truth — see the constant above).
-    Between retries a ~500ms busy-wait spaces out the polls (see the test script),
-    so POLL_CAP polls cover ~POLL_CAP*0.5s of the async-op tail before giving up —
-    a real wait, not a back-to-back hammer, so a legitimately-slow worker finishes
-    in dev/CI instead of failing on premature exhaustion (Koren #1 latency).
-
-    Per-case counter reset: `_pollCount` is reset to 0 on FIRST entry via
-    the pre-request, guarded by a request-name-scoped `_pollStarted` flag so the
-    self-re-invoking loop (setNextRequest → same request) does NOT reset on every
-    iteration. Both env vars are cleared on terminal exit. This makes the iteration
-    count immune to bleed from a prior case (which previously could start this loop
-    mid-exhaustion → premature cap → non-deterministic assertion count).
-    """
-    return Step(
-        name="poll-op",
-        method="GET",
-        path="/operations/{{opId}}",
-        auth=auth,
-        op_var="opId",
-        pre_script=[
-            *_op_id_guard("opId", required),
-            "// poll-counter reset on first entry (request-name-scoped flag);",
-            "// re-invocations via setNextRequest skip the reset.",
-            "if (pm.environment.get('_pollStarted') !== pm.info.requestName) {",
-            "  pm.environment.set('_pollCount', '0');",
-            "  pm.environment.set('_pollStarted', pm.info.requestName);",
-            "}",
-        ],
-        test_script=[
-            "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-            "const j = pm.response.json();",
-            "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            f"if (!j.done && pc < {POLL_CAP}) {{",
-            "  pm.environment.set('_pollCount', String(pc + 1));",
-            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
-            # synchronously and fires setNextRequest before any setTimeout callback, so a
-            # busy-wait is the only way to actually space out polls; POLL_CAP*0.5s then
-            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
-            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
-            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-            "  pm.execution.setNextRequest(pm.info.requestName);",
-            "  return;",
-            "}",
-            "pm.environment.unset('_pollCount');",
-            "pm.environment.unset('_pollStarted');",
-            "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-            # СНЯТИЕ ФАНТОМА ЗДЕСЬ НЕ ДУБЛИРУЕТСЯ. Оно живёт на уровне коллекции
-            # (POST_GLOBAL) — там оно покрывает и рукописные поллеры, которых в дереве
-            # большинство. Копия в этом helper'е закрывала только его собственные шаги и,
-            # вклинившись между `if (j.error) …` и его `else`, ПЕРЕПРИВЯЗАЛА этот `else`
-            # к соседнему условию: `lastOpError` снимался ровно тогда, когда ошибка ЕСТЬ.
-            # Потребителей у переменной в этой суите нет (0 чтений), поэтому вреда не
-            # случилось — но ветка означала обратное написанному, а это ловушка для
-            # следующего читателя. Условие и его `else` снова стоят рядом.
-            "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-            "else pm.environment.unset('lastOpError');",
-            "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-        ],
-    )
 
 
 # Текст утверждения о снятии — ОДИН ИСТОЧНИК. Его же читает страж класса
@@ -1728,6 +1655,40 @@ def _iam_item_hook(step, item):
     """Ослабленная проверка сертификата — по свойству шага, а не по умолчанию."""
     if step.insecure_tls:
         item["protocolProfileBehavior"] = {"strictSSL": False}
+
+
+# Опрос операции: тело общее (#1475), решения набора — здесь. У iam их три, и
+# каждое РЕШЕНО, а не унаследовано копированием:
+#
+#   * ИМЯ ШАГА фиксированное. Сериализация этого набора приписывает имени
+#     идентификатор кейса, поэтому уникальность приходит оттуда, и суффикс-счётчик
+#     дал бы второе имя одному предмету;
+#   * СБРОС СЧЁТЧИКА В ПРЕДЗАПРОСЕ, по флагу с именем шага: при общем имени шага
+#     счётчик иначе перетекал бы МЕЖДУ кейсами, и следующий кейс начинал бы петлю
+#     в середине исчерпанного бюджета — число утверждений становилось бы
+#     недетерминированным;
+#   * СТРАЖ ПУСТОГО ИДЕНТИФИКАТОРА ДВУХ ФОРМ (`required`): у кейса под проверкой
+#     отсутствие операции — ДЕФЕКТ и называется вслух, у уборки best-effort —
+#     законный случай, и запрос просто не отправляется.
+def poll_operation_until_done(auth: str = AUTH_INHERIT_OP, required: bool = True) -> Step:
+    """Шаг опроса операции набора iam — общее тело плюс три его решения."""
+    return gen_shared.op_poll_step(
+        Step,
+        auth=auth,
+        budget=POLL_CAP,
+        interval_ms=500,
+        unique_name=False,
+        pre_extra=[
+            *_op_id_guard("opId", required),
+            "// poll-counter reset on first entry (request-name-scoped flag);",
+            "// re-invocations via setNextRequest skip the reset.",
+            "if (pm.environment.get('_pollStarted') !== pm.info.requestName) {",
+            "  pm.environment.set('_pollCount', '0');",
+            "  pm.environment.set('_pollStarted', pm.info.requestName);",
+            "}",
+        ],
+        step_extra={"op_var": "opId"},
+    )
 
 
 _EMIT = Emit(

@@ -59,6 +59,7 @@ def _kacholib_dir() -> Path:
 
 sys.path.insert(0, str(_kacholib_dir()))
 
+import gen_shared  # noqa: E402  — модуль нужен целиком: связывание опроса и его счётчик
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
     generate,
     Run,
@@ -2086,7 +2087,6 @@ def authz_caller_headers_block(prefix, list_path):
     ]
 
 
-_POLL_SEQ = [0]
 
 
 
@@ -2194,191 +2194,6 @@ def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
     _RYA_SEQ[0] += 1
     return replace(step, name=f"{step.name}-abs{_RYA_SEQ[0]}",
                    test_script=guard + list(step.test_script))
-
-
-def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
-                              id_expr: str = "", must_fail_code: int = 0,
-                              must_fail_message: str = "",
-                              op_var: str = "opId",
-                              auth: str = "") -> Step:
-    """Reusable poll step с retry-на-not-done через setNextRequest.
-    До 30 попыток с ~500ms задержкой между ними (≈15s покрытия async-op tail, Koren #1),
-    потом fail если done остался false.
-
-    КАЖДЫЙ poll-шаг получает УНИКАЛЬНОЕ имя (poll-op-<N>): setNextRequest(
-    pm.info.requestName) обязан ретраить СЕБЯ. При общем имени 'poll-op' newman
-    резолвит имя в ДРУГОЙ (последний) poll-op коллекции → прыжок через все кейсы и
-    пропуск их setup-шагов → массовый ложный fail (e2e-newman fullscope root A3).
-
-    Если opId пустой (предыдущий шаг был отклонён синхронно, напр. 403 bad-project),
-    операции не существует — поллить нечего, и это ЕДИНСТВЕННЫЙ случай, когда шаг
-    молчит.
-
-    ОТКАЗАННОЕ ЧТЕНИЕ ОПЕРАЦИИ = КРАСНОЕ. Раньше ранний выход стоял ВЫШЕ утверждения,
-    и утверждение с именем «poll status 200» не могло упасть by construction: до него
-    доходили только те ответы, которые оно проверяет. Любой не-200 на
-    `GET /operations/{id}` тихо засчитывался как пройденный шаг, а исход мутации, ради
-    которой шаг существует, оставался НЕИЗВЕСТНЫМ. Неизвестный исход — не то же самое,
-    что успешный.
-
-    `must_fail` — ЗЕРКАЛЬНОЕ утверждение для кейса, предмет которого — ОТКАЗ, решённый
-    воркером, а не синхронным валидатором. Там законные формы — `400` до появления
-    Operation либо `200` и Operation, завершившаяся С ОШИБКОЙ; `200` сам по себе не
-    является ни той, ни другой. Голый `poll_operation_until_done()` после такого шага
-    утверждает только `done`, чему УСПЕШНАЯ операция удовлетворяет ровно так же, поэтому
-    отказ, ради которого кейс назван, не проверяется вовсе. Ставится в паре с
-    `assert_refused_sync_or_async`. Никогда не применять там, где принятие законно — тогда
-    шаг падал бы на корректном поведении.
-
-    `capture_id_to` — ЗАХВАТ ID СОЗДАННОГО РЕСУРСА ЗДЕСЬ, А НЕ ИЗ ОТВЕТА МУТАЦИИ.
-    Operation Kachō несёт ПРЕДВАРИТЕЛЬНО ВЫДЕЛЕННЫЙ id в `metadata` ещё до того, как
-    воркер отработал, поэтому он присутствует и у операции, завершившейся С ОШИБКОЙ
-    (id выделяется до async-фейла). Захват из синхронного ответа POST — это захват id
-    ресурса, которого может не существовать: дальше кейс патчит, читает и убирает
-    ФАНТОМ, а край отвечает на него `403` (scope_extractor не резолвит несуществующий
-    объект) и `404` (hide-existence). Ни один из этих кодов не называет настоящую
-    причину, и кейс сообщает «expected 404 to deeply equal 200» вместо «create упал:
-    <ошибка операции>». Замер 2026-08-04 на живом стенде: 63 упавших утверждения suite
-    vpc, ВСЕ до одного — каскад ровно этой подмены; истинная причина
-    (`address pool ... exhausted`) не была названа НИ ОДНИМ из них.
-
-    Поэтому: поллим до `done` → УТВЕРЖДАЕМ отсутствие `error` → и только тогда кладём
-    id в переменную. На ошибке переменная СНИМАЕТСЯ (`unset`), и следующий шаг падает
-    стражем неразрешённого адреса, называя имя переменной, — вместо того чтобы уйти на
-    фантом. Это норма `testing.md` §«Fixture-seed обязан проверять `op.error` перед
-    извлечением resource-id из `metadata`», записанная в самом хелпере.
-
-    `id_expr` — необязательное выражение выбора поля id из `j.metadata` (по умолчанию
-    первое поле, чьё имя оканчивается на `Id`). ЧИТАЕТСЯ ТОЛЬКО ВМЕСТЕ С
-    `capture_id_to`: без него захватывать нечего, и молча принять выражение,
-    которое никто не прочтёт, — тот самый запрещённый исход «принято и
-    проигнорировано». Поэтому такая пара отвергается ЯВНО (см. ниже).
-
-    `auth` — актор опроса. По умолчанию ПУСТ и ВЫВОДИТСЯ из того, кто операцию
-    создал: `OperationService.Get` энфорсит владение и отвечает чужому
-    `NotFound`, поэтому актор опроса — следствие, а не решение автора кейса.
-    Задавать явно нужно ровно там, где предмет кейса — чтение ЧУЖОЙ операции.
-
-    `op_var` — имя переменной окружения, в которой лежит id ОПРОСА. По умолчанию
-    `opId` — общая переменная, которую захватывает `save_from_response('j.id',
-    'opId')`. Кейс, ведущий НЕСКОЛЬКО операций одновременно, захватывает их в свои
-    переменные (`adm1PoolOp`, `adm1DelOp`) и обязан назвать нужную здесь: адрес
-    опроса и ранний выход читают ОДНО И ТО ЖЕ имя, поэтому разойтись они не могут.
-    Прежде адрес был вшит литералом `{{opId}}`, и кейс со своими переменными
-    опрашивал переменную, которую никто не заполняет: страж неразрешённой
-    подстановки отказывался отправлять запрос, а до его появления шаг уходил на
-    литеральный адрес и молча не утверждал ничего.
-    """
-    if id_expr and not capture_id_to:
-        raise ValueError(
-            "id_expr без capture_id_to: выражение выбора id читается ТОЛЬКО при "
-            "захвате, поэтому принять его и не прочесть значило бы пообещать "
-            "вызывающему поведение, которого нет. Нужен другой опрос — назови "
-            "op_var; нужен захват — назови capture_id_to")
-    _POLL_SEQ[0] += 1
-    tail: List[str] = []
-    if must_fail:
-        tail = [
-            "pm.test('operation refused the request (carries an error)', () => "
-            "  pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
-        ]
-        # КОД И ТОН ОТКАЗА — ЧАСТЬ КОНТРАКТА, и утверждаются здесь, а не отдельным
-        # шагом. Отдельный шаг пришлось бы адресовать `{{opId}}`, который на
-        # синхронной полосе пуст: так и появляется опрос, уезжающий на
-        # `/operations/` без сегмента (мерка
-        # `deploy/scripts/assert-refusal-lane-has-a-reader.py`). Здесь же ранний
-        # выход по пустому имени уже стоит выше по скрипту, поэтому утверждение
-        # исполняется РОВНО тогда, когда Operation существует.
-        if must_fail_code:
-            tail.append(
-                f"pm.test({js_str(f'refusal carries gRPC code {must_fail_code}')}, () => "
-                f"  pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql({must_fail_code}));")
-        if must_fail_message:
-            tail.append(
-                f"pm.test('refusal keeps the contract tone', () => "
-                f"  pm.expect(j.error && j.error.message, JSON.stringify(j))"
-                f"    .to.eql({json.dumps(must_fail_message)}));")
-    elif must_fail_code or must_fail_message:
-        raise ValueError("must_fail_code/must_fail_message требуют must_fail=True: "
-                         "утверждать текст отказа у операции, от которой отказа не "
-                         "ждут, значит объявить проверку, которая не исполнится")
-    if capture_id_to:
-        if must_fail:
-            raise ValueError("capture_id_to несовместим с must_fail: у операции, "
-                             "предмет которой — отказ, нет созданного ресурса")
-        expr = id_expr or ("(j.metadata && Object.keys(j.metadata)"
-                           ".filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''")
-        tail = tail + [
-            "pm.test('operation succeeded (no phantom resource id)', () => "
-            "  pm.expect(j.error && JSON.stringify(j.error), 'operation.error')"
-            "    .to.eql(undefined));",
-            "if (j.error) {",
-            f"  pm.environment.unset({js_str(capture_id_to)});",
-            "} else {",
-            f"  const _cid = ({expr});",
-            f"  if (_cid) pm.environment.set({js_str(capture_id_to)}, String(_cid));",
-            f"  else pm.environment.unset({js_str(capture_id_to)});",
-            "}",
-        ]
-    return Step(
-        name=f"poll-op-{_POLL_SEQ[0]}",
-        method="GET",
-        path="/operations/{{" + op_var + "}}",
-        # Пусто — актор ВЫВОДИТСЯ из издателя операции
-        # (`_poll_reads_under_the_actor_that_published_it`). Задавать здесь
-        # что-либо нужно ровно тогда, когда предмет кейса — чтение ЧУЖОЙ
-        # операции: явный актор сильнее вывода.
-        auth=auth or None,
-        pre_script=[
-            # Note: cannot fully skip request in pre-script without aborting the suite.
-            # Instead the test_script guards on empty opId or non-200 response.
-        ],
-        test_script=[
-            # Guard: if opId was empty (prior step was sync-rejected e.g. 403) or
-            # response is non-200, skip all poll assertions cleanly.
-            # Nothing to poll: the preceding step was refused synchronously and minted no
-            # Operation. This is the ONLY case in which the step asserts nothing.
-            f"if (!pm.environment.get({js_str(op_var)})) {{",
-            "  pm.environment.unset('_pollCount');",
-            "  return;",
-            "}",
-            # A REFUSED OPERATION READ IS RED. The early return used to sit ABOVE this line,
-            # so the assertion could not fail by construction — only the responses it already
-            # accepts ever reached it. Any non-200 on GET /operations/{id} (403 on somebody
-            # else's operation, 404, 5xx) counted as a passed step while the outcome of the
-            # mutation the step exists for stayed UNKNOWN. Unknown is not the same as fine.
-            "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-            # The assertion above has already said no; leave before json() throws on an error
-            # body — a script exception would hide the very failure it reports (and lands in
-            # the fourth outcome category of assert-suites-green.sh, not in `failed`).
-            "if (pm.response.code !== 200) {",
-            "  pm.environment.unset('_pollCount');",
-            "  return;",
-            "}",
-            "const j = pm.response.json();",
-            "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            # Poll budget raised 20→30 (Koren-1): cover the p99 async-op tail under
-            # suite load; the confirm-gate tail is cut by the HIGHER_CONSISTENCY read.
-            "if (!j.done && pc < 30) {",
-            "  pm.environment.set('_pollCount', String(pc + 1));",
-            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
-            # synchronously and fires setNextRequest before any setTimeout callback, so a
-            # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
-            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
-            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
-            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-            "  // Postman async-friendly retry: re-invoke same request name",
-            "  pm.execution.setNextRequest(pm.info.requestName);",
-            "  return;",
-            "}",
-            "pm.environment.unset('_pollCount');",
-            "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-            "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-            "else pm.environment.unset('lastOpError');",
-            "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-            *tail,
-        ],
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -3011,7 +2826,7 @@ def _reset_step_name_counters() -> None:
 
     Held by internal/repohygiene TestGeneratedStepNamesDoNotDependOnHowManyModulesRan.
     """
-    _POLL_SEQ[0] = 0
+    gen_shared._POLL_SEQ[0] = 0
     _RYA_SEQ[0] = 0
 
 
@@ -3093,6 +2908,13 @@ def _vpc_prefix_items(service):
         items.append(_gw_anchor_setup_item())
     return items
 
+
+# Опрос операции: тело общее (#1475), решения набора — здесь. Весь словарь исхода
+# операции (`must_fail`, `capture_id_to`, `id_expr`, `op_var`) переехал в общий
+# слой вместе с телом: захват идентификатора ПОСЛЕ доказанного отсутствия ошибки
+# есть норма дерева, а не полоса vpc.
+poll_operation_until_done = functools.partial(
+    gen_shared.op_poll_step, Step, budget=30, interval_ms=500)
 
 _EMIT = Emit(
     id_slug="kacho-vpc",

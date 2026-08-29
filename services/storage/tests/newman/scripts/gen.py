@@ -64,6 +64,7 @@ def _kacholib_dir() -> Path:
 
 sys.path.insert(0, str(_kacholib_dir()))
 
+import gen_shared  # noqa: E402  — модуль нужен целиком: связывание опроса и его счётчик
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
     generate,
     Run,
@@ -459,51 +460,6 @@ def wait_until_ready_step(name: str, path: str, ready: str, subject: str,
         Step(name=name, method="GET", path=path, auth=auth), ready=ready, subject=subject)
 
 
-_poll_seq = [0]
-
-
-def poll_operation_until_done(auth: Optional[str] = None) -> Step:
-    """Reusable poll step: до 30 попыток с ~500ms задержкой между ними (через setNextRequest),
-    потом fail если done остался false. Budget*interval ≈ 15s покрытия async-op tail (Koren #1).
-
-    name уникален (`poll-op-<n>`) — setNextRequest(pm.info.requestName) резолвит self-retry
-    ОДНОЗНАЧНО (newman берёт ПЕРВЫЙ item с этим именем; фикс-имя ломало бы multi-poll кейс —
-    retry прыгал бы на первый poll-op коллекции с чужим auth/opId). `auth` — op-poll обязан
-    идти под тем же actor'ом, что создал операцию: OperationService.Get — creator-only
-    (checkOperationOwnership, анти-BOLA); async-op под `auth=`-override обязан поллиться под
-    тем же creator, иначе gateway денаит 404 (testing.md fixture-discipline)."""
-    _poll_seq[0] += 1
-    return Step(
-        name=f"poll-op-{_poll_seq[0]}",
-        method="GET",
-        path="/operations/{{opId}}",
-        auth=auth,
-        test_script=[
-            "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-            "const j = pm.response.json();",
-            "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-            # Poll budget raised 8→30 (Koren-1): an async Create-op legitimately
-            # takes seconds under suite load (owner-tuple confirm-gate + worker), so
-            # the poll window must cover the p99 tail — NOT mask latency. The confirm
-            # tail itself is cut by the HIGHER_CONSISTENCY read; this is the margin.
-            "if (!j.done && pc < 30) {",
-            "  pm.environment.set('_pollCount', String(pc + 1));",
-            # Real inter-poll delay (~500ms) between retries. newman runs test scripts
-            # synchronously and fires setNextRequest before any setTimeout callback, so a
-            # busy-wait is the only way to actually space out polls; 30*0.5s ≈ 15s then
-            # covers the async-op tail (p95 3s / max 10s) instead of hammering back-to-back
-            # (~15ms/poll via --delay-request 15) which never waits for the op (Koren #1).
-            "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-            "  pm.execution.setNextRequest(pm.info.requestName);",
-            "  return;",
-            "}",
-            "pm.environment.unset('_pollCount');",
-            "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-            "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-            "else pm.environment.unset('lastOpError');",
-            "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-        ],
-    )
 
 
 def assert_op_error_oneof(codes: List[int], code_names: str,
@@ -633,7 +589,7 @@ def _reset_step_name_counters() -> None:
     """
     _RDY_SEQ[0] = 0
     _RYA_SEQ[0] = 0
-    _poll_seq[0] = 0
+    gen_shared._POLL_SEQ[0] = 0
 # ─────────────────────────────────────────────────────────────────────────────
 # РЕШЕНИЯ НАБОРА, от которых зависит форма коллекции (#1379). Форму собирает
 # общий слой; здесь объявлено ТОЛЬКО то, чем этот набор от остальных отличается.
@@ -651,6 +607,11 @@ def _case_steps(case):
         _reset_captured_operation_id(_assert_delete_operation_outcome(
             _wrap_own_fresh_reads(case.steps, _rya))))
 
+
+# Опрос операции: тело общее (#1475), решения набора — здесь. Величины те же,
+# что были в копии storage; актор опроса приходит вызовом.
+poll_operation_until_done = functools.partial(
+    gen_shared.op_poll_step, Step, budget=30, interval_ms=500)
 
 _EMIT = Emit(
     id_slug="kacho-storage",
