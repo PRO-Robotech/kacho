@@ -91,7 +91,7 @@ software-проверками. Admin-мутации атомарно (в той 
 `geo_outbox` для аудита и публикации событий.
 
 **Место в платформе.** kacho-geo — **leaf-сервис**: по сборке зависит только от
-`kacho-proto` и `kacho-corelib`, ни от одного другого сервиса. В runtime обращается
+`proto/` и `pkg/`, ни от одного другого сервиса. В runtime обращается
 лишь к kacho-iam за авторизацией. Остальные сервисы ссылаются на `zoneId`/`regionId`
 по значению (без cross-service FK) и валидируют их через `ZoneService.Get` /
 `RegionService.Get`.

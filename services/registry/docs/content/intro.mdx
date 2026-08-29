@@ -27,7 +27,7 @@ import hero from '@site/src/css/hero.module.css'
     <a className={hero.btnPrimary} href="/getting-started">Быстрый старт →</a>
     <a className={hero.btnGhost} href="/api/overview">Обзор API</a>
     <a className={hero.btnGhost} href="/architecture/overview">Архитектура</a>
-    <a className={hero.btnGhost} href="https://github.com/PRO-Robotech/kacho-registry">GitHub</a>
+    <a className={hero.btnGhost} href="https://github.com/PRO-Robotech/kacho/tree/main/services/registry">GitHub</a>
   </div>
 </header>
 
@@ -80,7 +80,7 @@ Kachō Registry оперирует **тремя типами ресурсов**.
 </table>
 
 :::note Идентификаторы реестра — серверные, читаемы по префиксу
-Идентификатор Registry генерирует сервер (`kacho-corelib/ids`): 3-символьный префикс **`reg`** +
+Идентификатор Registry генерирует сервер (`pkg/ids`): 3-символьный префикс **`reg`** +
 crockford-base32 (например, `reg7h9x2k4m8p0q1r5`). Тип ресурса читается по префиксу. Идентификатор
 неизменяем (immutable PK) — смена имени реестра не затрагивает его id, endpoint и путь в хранилище.
 Операции реестра (LRO) несут префикс **`rop`**.
@@ -103,8 +103,8 @@ namespace живут репозитории, в репозиториях — т�
 
 ## Как с сервисом общаться
 
-Kachō Registry — доменный сервис платформы. По сборке он зависит только от `kacho-corelib` и
-`kacho-proto`; в runtime у него исходящие рёбра в `kacho-iam` (авторизация, валидация проекта,
+Kachō Registry — доменный сервис платформы. По сборке он зависит только от `pkg/` и
+`proto/`; в runtime у него исходящие рёбра в `kacho-iam` (авторизация, валидация проекта,
 регистрация владения) и в бэкенд хранилища образов (zot). Tenant-запросы control-plane идут
 через `api-gateway`; data-plane push/pull — на отдельный OCI-endpoint `registry.kacho.local`.
 
@@ -157,7 +157,7 @@ flowchart LR
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>⇄</span>
     <span className={hero.featureTitle}>gRPC + REST control-plane</span>
-    <span className={hero.featureBody}>Единый контракт на Protocol Buffers (<code>kacho-proto</code>), REST-проекция через grpc-gateway.</span>
+    <span className={hero.featureBody}>Единый контракт на Protocol Buffers (<code>proto/</code>), REST-проекция через grpc-gateway.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>▤</span>
@@ -182,7 +182,7 @@ flowchart LR
   <thead><tr><th>Технология</th><th>Применение</th></tr></thead>
   <tbody>
     <tr><td>Go</td><td>Язык реализации (чистая архитектура: handler → use-case → domain)</td></tr>
-    <tr><td>Protocol Buffers / Buf</td><td>Контракт control-plane API (<code>kacho-proto</code>, домен <code>kacho.cloud.registry.v1</code>)</td></tr>
+    <tr><td>Protocol Buffers / Buf</td><td>Контракт control-plane API (<code>proto/</code>, домен <code>kacho.cloud.registry.v1</code>)</td></tr>
     <tr><td>PostgreSQL / pgx v5</td><td>Хранилище метаданных namespace <code>kacho_registry</code></td></tr>
     <tr><td>zot</td><td>OCI-совместимый registry-бэкенд (блобы/манифесты, S3-backed) — source of truth образов</td></tr>
     <tr><td>OCI Distribution / Docker Registry v2</td><td>Data-plane push/pull (<code>registry.kacho.local</code>)</td></tr>
@@ -192,15 +192,15 @@ flowchart LR
   </tbody>
 </table>
 
-## Структура репозиториев
+## Структура монорепо
 
 <table>
-  <thead><tr><th>Репозиторий</th><th>Назначение</th></tr></thead>
+  <thead><tr><th>Каталог</th><th>Назначение</th></tr></thead>
   <tbody>
-    <tr><td><strong>kacho-registry</strong></td><td>Этот сервис: control-plane + data-plane реестра образов</td></tr>
-    <tr><td><strong>kacho-proto</strong></td><td>Центральные <code>.proto</code> + сгенерированные Go-stubs (домен <code>kacho.cloud.registry.v1</code>)</td></tr>
-    <tr><td><strong>kacho-corelib</strong></td><td>Общие пакеты (db, grpcsrv, grpcclient, config, ids, outbox, operations, ...)</td></tr>
-    <tr><td><strong>kacho-api-gateway</strong></td><td>Edge: gRPC-proxy + REST mux control-plane</td></tr>
-    <tr><td><strong>kacho-iam</strong></td><td>Авторизация (Check), валидация проекта (ProjectService.Get), fga-proxy (RegisterResource), token-shim</td></tr>
+    <tr><td><strong>services/registry/</strong></td><td>Этот сервис: control-plane + data-plane реестра образов</td></tr>
+    <tr><td><strong>proto/</strong></td><td>Центральные <code>.proto</code> + сгенерированные Go-stubs (домен <code>kacho.cloud.registry.v1</code>)</td></tr>
+    <tr><td><strong>pkg/</strong></td><td>Общие пакеты (db, grpcsrv, grpcclient, config, ids, outbox, operations, ...)</td></tr>
+    <tr><td><strong>gateway/</strong></td><td>Edge: gRPC-proxy + REST mux control-plane</td></tr>
+    <tr><td><strong>services/iam/</strong></td><td>Авторизация (Check), валидация проекта (ProjectService.Get), fga-proxy (RegisterResource), token-shim</td></tr>
   </tbody>
 </table>

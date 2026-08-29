@@ -43,7 +43,7 @@ prefix») **обе фактически неверны**: `sub` и `adr` — **�
 не наш словарь»: consumer не должен носить копию приватного словаря владельца,
 иначе владелец меняет/добавляет префикс, а consumer начинает отвергать валидные id.
 Здесь копии словаря нет: каталог живёт в общем платформенном пакете (`pkg/ids` →
-`pkg/validate`; в polyrepo-раскладке — тот же `kacho-corelib`), он **единый
+`pkg/validate`; в polyrepo-раскладке — тот же `pkg/`), он **единый
 источник истины** для prefix→type-роутера всех сервисов и расширяется конфигом без
 релиза. Локального утверждения о **типе** чужого ресурса тоже нет: id с чужим для
 подсети префиксом (`nlb…`) проверку **проходит** и уезжает к владельцу — тип и
@@ -251,7 +251,7 @@ adapter-пакета в любом случае. Осознанный trade-off 
 
 **Что.** Пул приложения (`coredb.NewPool` в `cmd/kacho-loadbalancer/main.go`)
 ставит `statement_timeout=30000` (30 s) как `RuntimeParam` на КАЖДОМ соединении —
-это делает `kacho-corelib/db.NewPool` (`cfg.ConnConfig.RuntimeParams["statement_timeout"]
+это делает `pkg/db.NewPool` (`cfg.ConnConfig.RuntimeParams["statement_timeout"]
 = "30000"`). Server-side верхняя граница на любой request-path и фоновый
 reconcile-запрос сверх gRPC-context-deadline. `lock_timeout` /
 `idle_in_transaction_session_timeout` намеренно не заданы.
@@ -265,7 +265,7 @@ Request-path И фоновые reconcile-джобы (`free_ip_runner`/`target_dr
 write-пути — короткие атомарные CAS/`FOR NO KEY UPDATE`/`SKIP LOCKED`, а read-пути
 keyset-клампятся (`pageSizeOrDefault` cap 1000, `ListTargets` — `MaxTargetsPerGroup`).
 NB: прежняя запись «нет `statement_timeout`» (r6) устарела после апгрейда
-`kacho-corelib` (pool теперь ставит 30 s) — факт исправлен как stale
+`pkg/` (pool теперь ставит 30 s) — факт исправлен как stale
 (sec-hardening r8b, DATA-finding «no statement_timeout» → resolved).
 
 ## update_mask known-set валидируется per-resource inline, не через corelib `validate.UpdateMask`
@@ -328,14 +328,14 @@ housekeeping-VIP-release/target-drain). Дрейф дублированных ou
 raw-SQL» vs. слой косвенности через Repository, без выигрыша в тестируемости
 (sec-hardening r8b, ARCH-finding «jobs bypass CQRS»).
 
-## `domain/` импортирует сторонние value-библиотеки (не только stdlib + kacho-proto)
+## `domain/` импортирует сторонние value-библиотеки (не только stdlib + proto/)
 
 **Что.** `architecture.md` предписывает `domain/` импортировать ТОЛЬКО stdlib +
-`kacho-proto`. Фактически `internal/domain/` импортирует
+`proto/`. Фактически `internal/domain/` импортирует
 `github.com/H-BF/corlib/pkg/{dict,option}` (`types.go`, `target.go`, `listener.go`),
 `go.uber.org/multierr` (`loadbalancer.go`, `target.go`, `health_check.go`,
 `target_group.go`, `listener.go`) и
-`github.com/PRO-Robotech/kacho-corelib/{errors,ids}` (`types.go`, `status.go`,
+`github.com/PRO-Robotech/kacho/pkg/{errors,ids}` (`types.go`, `status.go`,
 `builders.go`).
 
 **Почему by-design (а не заменять на stdlib).** Все три — чистые value-библиотеки

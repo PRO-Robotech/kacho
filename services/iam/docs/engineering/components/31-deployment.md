@@ -113,7 +113,7 @@ flowchart TB
 
 ## Helm-chart
 
-Chart лежит в `deploy/` (под-chart umbrella-релиза `kacho-deploy`). Шаблоны:
+Chart лежит в `deploy/` (под-chart umbrella-релиза `kacho-umbrella` (`deploy/helm/umbrella/`)). Шаблоны:
 `templates/deployment.yaml`, `templates/configmap.yaml`, `templates/service.yaml`.
 
 ```bash

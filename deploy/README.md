@@ -1,4 +1,4 @@
-# kacho-deploy
+# deploy/ — dev-стенд платформы
 
 Локальный dev-стенд Kachō: kind + Helm + Bitnami Postgres + ingress-nginx.
 

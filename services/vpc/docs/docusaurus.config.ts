@@ -88,7 +88,7 @@ const config: Config = {
           position: 'left',
         },
         {
-          href: 'https://github.com/PRO-Robotech/kacho-vpc',
+          href: 'https://github.com/PRO-Robotech/kacho/tree/main/services/vpc',
           label: 'GitHub',
           position: 'right',
         },

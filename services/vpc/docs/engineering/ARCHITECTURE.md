@@ -1063,7 +1063,7 @@ goose создает `goose_db_version` автоматически. Миграц
 ### 10.5 Деплой через Helm
 
 `deploy/` содержит свой Chart.yaml + templates + values.yaml. Используется
-umbrella-чартом в `deploy/` для dev-стенда (kind + Postgres + все сервисы).
+umbrella-чартом `kacho-umbrella` (`deploy/helm/umbrella/`) для dev-стенда (kind + Postgres + все сервисы).
 
 ---
 

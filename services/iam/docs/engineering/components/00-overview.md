@@ -267,10 +267,10 @@ sequenceDiagram
 
 **Build-зависимости (Go):**
 
-- `github.com/PRO-Robotech/kacho-corelib` — ids, operations (LRO table + worker),
+- `github.com/PRO-Robotech/kacho/pkg` — ids, operations (LRO table + worker),
   db (pgxpool), grpcsrv, observability, outbox/drainer, safeconv; а также shared-proto
   stubs (operation/validation/authz_options).
-- `github.com/PRO-Robotech/kacho-iam/proto/gen/go/kacho/cloud/iam/v1` — собственные
+- `github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1` — собственные
   доменные proto-stubs (генерируются локально из `proto/`).
 - `github.com/jackc/pgx/v5` — Postgres driver.
 - `github.com/spf13/viper` — конфиг.

@@ -81,7 +81,7 @@ flowchart LR
 
 ## Контейнерный образ
 
-Образ собирается как **single-repo**: зависимости (`kacho-corelib` + proto-stubs доменов) тянутся
+Образ собирается как **single-repo**: зависимости (`pkg/` + proto-stubs доменов) тянутся
 versioned-модулями из GitHub (`go.mod` без `replace`), build-context — сам репозиторий.
 
 <CodeBlock language="bash">
