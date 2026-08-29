@@ -93,7 +93,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -193,7 +193,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -234,7 +234,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const o=pm.response.json();",
                   "pm.test('setup registry op done', () => pm.expect(o.done, JSON.stringify(o)).to.eql(true));",
                   "pm.test('setup registry op succeeded (no error)', () => pm.expect(o.error||null, JSON.stringify(o.error||{})).to.eql(null));",
@@ -279,7 +279,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -320,7 +320,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -372,7 +372,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -413,7 +413,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -513,7 +513,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -554,7 +554,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                   "pm.test('visibility PRIVATE (inherited)', () => pm.expect(r.visibility).to.eql('PRIVATE'));",
@@ -598,7 +598,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -639,7 +639,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -690,9 +690,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('invalid name text', () => pm.expect((pm.response.json().message||'')).to.include('invalid repository name'));"
@@ -747,7 +747,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -788,7 +788,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -888,7 +888,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -929,7 +929,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -970,7 +970,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -1011,7 +1011,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -1049,7 +1049,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j=pm.response.json();",
                   "pm.test('name matches', () => pm.expect(j.name).to.eql('get/svc-'+pm.environment.get('runId')));",
                   "pm.test('visibility PRIVATE', () => pm.expect(j.visibility).to.eql('PRIVATE'));"
@@ -1096,9 +1096,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
                   "pm.test('grpc code 5 (NOT_FOUND)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
                   "pm.test('repository not found text', () => pm.expect(pm.response.json().message).to.eql('repository not found'));"
@@ -1153,7 +1153,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -1194,7 +1194,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -1294,7 +1294,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -1335,7 +1335,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -1376,7 +1376,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -1417,7 +1417,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -1464,7 +1464,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -1568,7 +1568,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('description updated', () => pm.expect(pm.response.json().description).to.eql('api images v2'));"
                 ]
               }
@@ -1621,7 +1621,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -1662,7 +1662,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -1762,7 +1762,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -1803,7 +1803,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -1844,7 +1844,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -1885,7 +1885,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -1932,9 +1932,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('name immutable text', () => pm.expect(pm.response.json().message).to.eql('name is immutable after Repository.Create'));"
@@ -1989,7 +1989,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -2030,7 +2030,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -2130,7 +2130,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -2171,7 +2171,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -2212,7 +2212,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -2253,7 +2253,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -2291,7 +2291,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -2404,9 +2404,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
                   "pm.test('grpc code 5 (NOT_FOUND)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});"
                 ]
@@ -2452,9 +2452,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
                   "pm.test('grpc code 5 (NOT_FOUND)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
                   "pm.test('repository not found text', () => pm.expect(pm.response.json().message).to.eql('repository not found'));"
@@ -2509,7 +2509,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -2550,7 +2550,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -2650,7 +2650,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -2691,7 +2691,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -2732,7 +2732,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -2773,7 +2773,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -2820,7 +2820,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -2924,7 +2924,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('new name', () => pm.expect(pm.response.json().name).to.eql('ren/new-'+pm.environment.get('runId')));"
                 ]
               }
@@ -2963,9 +2963,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
                   "pm.test('grpc code 5 (NOT_FOUND)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});"
                 ]
@@ -3019,7 +3019,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -3060,7 +3060,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -3160,7 +3160,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -3201,7 +3201,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -3242,7 +3242,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -3283,7 +3283,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -3330,9 +3330,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('differ text', () => pm.expect(pm.response.json().message).to.eql('new name must differ from current name'));"
@@ -3387,7 +3387,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -3428,7 +3428,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -3528,7 +3528,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -3569,7 +3569,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -3610,7 +3610,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -3651,7 +3651,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -3690,7 +3690,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('empty referrers []', () => pm.expect((pm.response.json().referrers||[]).length).to.eql(0));"
                 ]
               }
@@ -3743,7 +3743,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -3784,7 +3784,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -3884,7 +3884,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -3925,7 +3925,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -3966,7 +3966,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -4007,7 +4007,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -4046,9 +4046,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('invalid digest text', () => pm.expect(pm.response.json().message).to.include('invalid subject digest'));"
@@ -4103,7 +4103,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -4144,7 +4144,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -4244,7 +4244,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -4285,7 +4285,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -4326,7 +4326,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -4367,7 +4367,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -4412,9 +4412,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 409', () => pm.expect(pm.response.code).to.eql(409));",
+                  "pm.test('status 409', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(409));",
                   "pm.test('grpc code 6 (ALREADY_EXISTS)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(6);",
                   "});",
                   "pm.test('repository already exists text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('repository already exists'));"
@@ -4468,9 +4468,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('repository required text', () => pm.expect((pm.response.json().message||'')).to.include('repository is required'));"
@@ -4517,9 +4517,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('GetRepository invalid registry id', () => pm.expect((pm.response.json().message||'')).to.include('invalid registry id'));"
@@ -4567,9 +4567,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('CreateRepository invalid registry id', () => pm.expect((pm.response.json().message||'')).to.include('invalid registry id'));"
@@ -4619,9 +4619,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('UpdateRepository invalid registry id', () => pm.expect((pm.response.json().message||'')).to.include('invalid registry id'));"
@@ -4662,9 +4662,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('DeleteRepository invalid registry id', () => pm.expect((pm.response.json().message||'')).to.include('invalid registry id'));"
@@ -4714,9 +4714,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('RenameRepository invalid registry id', () => pm.expect((pm.response.json().message||'')).to.include('invalid registry id'));"
@@ -4758,9 +4758,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('ListReferrers invalid registry id', () => pm.expect((pm.response.json().message||'')).to.include('invalid registry id'));"
@@ -4815,7 +4815,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -4856,7 +4856,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -4956,7 +4956,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -4997,7 +4997,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -5038,7 +5038,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -5079,7 +5079,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -5126,9 +5126,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});"
                 ]
@@ -5182,7 +5182,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -5223,7 +5223,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -5323,7 +5323,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -5364,7 +5364,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -5405,7 +5405,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -5446,7 +5446,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -5492,7 +5492,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -5533,7 +5533,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -5633,7 +5633,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -5674,7 +5674,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -5715,7 +5715,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -5756,7 +5756,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -5803,7 +5803,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('200 — это конверт операции', () => pm.expect(pm.response.json().id, pm.response.text()).to.be.a('string').and.not.empty);",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -5898,7 +5898,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -5939,7 +5939,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('async op done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "pm.test('операция несёт ALREADY_EXISTS (код 6)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(6));",
@@ -5995,7 +5995,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -6036,7 +6036,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -6136,7 +6136,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -6177,7 +6177,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -6218,7 +6218,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -6259,7 +6259,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -6306,9 +6306,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('invalid repository name text', () => pm.expect((pm.response.json().message||'')).to.include('invalid repository name'));"
@@ -6363,7 +6363,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -6404,7 +6404,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -6504,7 +6504,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -6545,7 +6545,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -6586,7 +6586,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -6627,7 +6627,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -6674,7 +6674,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -6779,7 +6779,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('rename op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('renamed within SAME registry (smuggled registryId body-field ignored)', () => pm.expect(j.registryId).to.eql(pm.environment.get('repoRegId')));",
                   "pm.test('new name applied', () => pm.expect(j.name).to.eql('xreg/dst-'+pm.environment.get('runId')));"
@@ -6827,9 +6827,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
                   "pm.test('grpc code 5 (NOT_FOUND)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
                   "pm.test('repository not found text', () => pm.expect(pm.response.json().message).to.eql('repository not found'));"
@@ -6876,9 +6876,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
                   "pm.test('grpc code 5 (NOT_FOUND)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
                   "pm.environment.set('repoMissMsg', pm.response.json().message||'');",
@@ -6920,9 +6920,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
                   "pm.test('grpc code 5 (NOT_FOUND)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
                   "pm.test('Delete absent byte-identical to Get miss', () => pm.expect(pm.response.json().message).to.eql(pm.environment.get('repoMissMsg')));"
@@ -6964,9 +6964,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
                   "pm.test('grpc code 5 (NOT_FOUND)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
                   "pm.test('ListReferrers absent byte-identical to Get miss', () => pm.expect(pm.response.json().message).to.eql(pm.environment.get('repoMissMsg')));"
@@ -7021,7 +7021,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -7062,7 +7062,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id').to.match(/^(rop|reo)[a-z0-9]+$/);",
@@ -7162,7 +7162,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -7203,7 +7203,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const r=(pm.response.json().response)||{};",
                   "pm.test('op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));"
                 ]
@@ -7244,7 +7244,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -7285,7 +7285,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));"
                 ]
               }
             }
@@ -7323,7 +7323,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('no engineNamespace (Internal* only)', () => pm.expect(j).to.not.have.property('engineNamespace'));",
                   "pm.test('no bucketPrefix (Internal* only)', () => pm.expect(j).to.not.have.property('bucketPrefix'));",

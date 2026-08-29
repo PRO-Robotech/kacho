@@ -261,7 +261,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",
@@ -377,7 +377,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
                   "// ПОЛОСА — синхронный отказ ЭТОГО шага. У асинхронной мутации отказ ВЛАДЕЛЬЦА",
                   "// приезжает внутри Operation и сюда НЕ попадает: нужен прогрев чтением.",
                   "",

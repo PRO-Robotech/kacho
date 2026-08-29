@@ -187,7 +187,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -319,7 +319,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('ipv4CidrBlocks echoes supernet', () => pm.expect(j.ipv4CidrBlocks || []).to.include(pm.variables.replaceIn(\"10.{{vpc1oct}}.0.0/16\")));",
                   "pm.test('ipv6CidrBlocks echoes supernet', () => pm.expect(j.ipv6CidrBlocks || []).to.include(pm.variables.replaceIn(\"fd00:{{vpc1oct}}::/48\")));"
@@ -507,7 +507,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -586,7 +586,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('operation persists done:true', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));"
                 ]
               }
@@ -772,7 +772,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -904,7 +904,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('defaultSecurityGroupId populated', () => pm.expect(pm.response.json().defaultSecurityGroupId, JSON.stringify(pm.response.json())).to.be.a('string').and.not.empty);"
                 ]
               }
@@ -1090,7 +1090,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -1222,7 +1222,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('defaultRouteTableId populated', () => pm.expect(pm.response.json().defaultRouteTableId, JSON.stringify(pm.response.json())).to.be.a('string').and.not.empty);",
                   "try {",
                   "  const j = pm.response.json();",
@@ -1280,7 +1280,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('default RT belongs to the network', () => pm.expect(pm.response.json().networkId).to.eql(pm.environment.get('netId')));"
                 ]
               }
@@ -1466,7 +1466,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -1598,7 +1598,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.defaultRouteTableId);",
@@ -1663,7 +1663,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -1795,7 +1795,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('subnet inherits network defaultRouteTableId', () => pm.expect(pm.response.json().routeTableId, JSON.stringify(pm.response.json())).to.eql(pm.environment.get('defRtId')));"
                 ]
               }
@@ -2103,7 +2103,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -2244,9 +2244,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('immutable-text after Network.Create', () => pm.expect(pm.response.json().message).to.match(/is immutable after Network\\.Create$/));"
@@ -2434,7 +2434,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -2575,9 +2575,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('verbatim immutable text', () => pm.expect(pm.response.json().message).to.eql('project_id is immutable after Network.Create'));"
@@ -2765,7 +2765,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -2906,7 +2906,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -3020,7 +3020,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const c = pm.response.json().ipv4CidrBlocks || [];",
                   "pm.test('original supernet retained', () => pm.expect(c).to.include(pm.variables.replaceIn(\"10.{{vpc1oct}}.0.0/16\")));",
                   "pm.test('added block present', () => pm.expect(c).to.include('10.251.0.0/16'));"
@@ -3208,7 +3208,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -3349,7 +3349,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -3463,7 +3463,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const c = pm.response.json().ipv4CidrBlocks || [];",
                   "pm.test('removed block gone', () => pm.expect(c).to.not.include('10.252.0.0/16'));",
                   "pm.test('other supernet block retained', () => pm.expect(c).to.include(pm.variables.replaceIn(\"10.{{vpc1oct}}.0.0/16\")));"
@@ -3651,9 +3651,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('names invalid CIDR block', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('invalid cidr block'));"
@@ -3719,7 +3719,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -3859,7 +3859,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -4000,7 +4000,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op done:true with embedded error', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
@@ -4314,7 +4314,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -4437,9 +4437,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 409', () => pm.expect(pm.response.code).to.eql(409));",
+                  "pm.test('status 409', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(409));",
                   "pm.test('grpc code 6 (ALREADY_EXISTS)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(6);",
                   "});",
                   "pm.test('verbatim ALREADY_EXISTS text', () => pm.expect(pm.response.json().message).to.match(/^Network with name .* already exists$/));"
@@ -4627,7 +4627,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -4767,7 +4767,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -4899,9 +4899,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 9 (FAILED_PRECONDITION)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
                   "pm.test('отказ перечисляет мешающее: subnets: 1', () => pm.expect(pm.response.json().message, pm.response.text()).to.eql('Network ' + pm.environment.get('netId') + ' is not empty (subnets: 1)'));"
@@ -5211,7 +5211,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -5343,7 +5343,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('no vrfId on public Network', () => pm.expect(j).to.not.have.property('vrfId'));",
                   "pm.test('no routeDistinguisher on public Network', () => pm.expect(j).to.not.have.property('routeDistinguisher'));"
@@ -5531,7 +5531,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -5671,7 +5671,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -5803,7 +5803,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('placementType derived ZONAL (bare token)', () => pm.expect(j.placementType).to.eql('ZONAL'));",
                   "pm.test('zoneId echoed', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));",
@@ -6115,7 +6115,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -6229,7 +6229,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const rs = (pm.response.json().regions) || [];",
                   "pm.test('geo has >=1 region', () => pm.expect(rs.length).to.be.above(0));",
                   "if (rs.length) pm.environment.set('existingRegionId', rs[0].id);"
@@ -6292,7 +6292,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -6424,7 +6424,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('placementType derived REGIONAL', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
                   "pm.test('regionId echoed', () => pm.expect(j.regionId).to.eql(pm.environment.get('existingRegionId')));",
@@ -6735,7 +6735,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -6875,9 +6875,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('verbatim exactly-one text', () => pm.expect(pm.response.json().message).to.eql('exactly one of zone_id, region_id must be set'));"
@@ -7065,7 +7065,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -7205,9 +7205,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('verbatim exactly-one text', () => pm.expect(pm.response.json().message).to.eql('exactly one of zone_id, region_id must be set'));"
@@ -7395,7 +7395,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -7535,9 +7535,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('verbatim server-derived reject', () => pm.expect(pm.response.json().message).to.eql('placement_type is server-derived; set zone_id or region_id instead'));"
@@ -7725,7 +7725,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -7865,7 +7865,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -8006,9 +8006,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('verbatim immutable text', () => pm.expect(pm.response.json().message).to.eql('zone_id is immutable after Subnet.Create'));"
@@ -8318,7 +8318,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -8458,7 +8458,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -8599,9 +8599,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('verbatim immutable text', () => pm.expect(pm.response.json().message).to.eql('network_id is immutable after Subnet.Create'));"
@@ -8911,7 +8911,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -9051,9 +9051,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('names within-supernet violation', () => pm.expect(pm.response.json().message).to.match(/^subnet CIDR 192\\.168\\.0\\.0\\/24 is not within any network CIDR block$/));"
@@ -9241,7 +9241,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -9381,9 +9381,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('refusal names the family and the way forward', () => pm.expect(pm.response.json().message).to.match(/^network declares no IPv4 supernet: add blocks via :add-cidr-blocks \\(ipv4CidrBlocks\\) before creating an IPv4 subnet$/));"
@@ -9447,7 +9447,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
@@ -9568,7 +9568,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -9955,7 +9955,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -10095,7 +10095,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -10235,9 +10235,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 9 (FAILED_PRECONDITION)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
                   "pm.test('verbatim overlap text (capital S, AS-IS)', () => pm.expect(pm.response.json().message).to.eql('Subnet CIDRs can not overlap'));"
@@ -10547,7 +10547,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -10693,7 +10693,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -10816,7 +10816,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -10956,7 +10956,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.test('same CIDR in a DIFFERENT network accepted (no op error)', () => pm.expect(pm.response.json().error, JSON.stringify(pm.response.json())).to.be.undefined);",
                   "pm.environment.set('opId', '');",
@@ -11585,7 +11585,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -11725,7 +11725,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -11866,7 +11866,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -11980,7 +11980,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('added range present in ipv4CidrBlocks', () => pm.expect(j.ipv4CidrBlocks || []).to.include(pm.variables.replaceIn('10.{{vpc1oct}}.8.0/24')));",
                   "pm.test('primary anchor unchanged', () => pm.expect(j.ipv4CidrPrimary).to.eql(pm.variables.replaceIn('10.{{vpc1oct}}.0.0/24')));"
@@ -12290,7 +12290,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -12430,7 +12430,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -12571,7 +12571,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op done:true with embedded error', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
@@ -12885,7 +12885,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -13025,7 +13025,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -13166,7 +13166,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op done:true with embedded error', () => {",
                   "  const j = pm.response.json();",
                   "  pm.expect(j.done, JSON.stringify(j)).to.eql(true);",
@@ -13480,9 +13480,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
+                  "pm.test('status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(404));",
                   "pm.test('grpc code 5 (NOT_FOUND)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
                   "pm.test('verbatim Network-not-found text', () => pm.expect(pm.response.json().message).to.match(/^Network .* not found$/));"
@@ -13548,9 +13548,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('verbatim invalid-id text', () => pm.expect(pm.response.json().message).to.eql(\"invalid network id 'garbage!!'\"));"
@@ -13616,7 +13616,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -13756,7 +13756,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
@@ -13887,7 +13887,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('no dhcpOptions on public Subnet', () => pm.expect(pm.response.json()).to.not.have.property('dhcpOptions'));"
                 ]
               }
@@ -14195,7 +14195,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -14335,7 +14335,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -14467,7 +14467,7 @@
                   "}",
                   "pm.environment.unset('_lstRetryCount');",
                   "pm.environment.unset('_lstRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const ids = (Object.values(pm.response.json()).find(v => Array.isArray(v)) || []).map(x => x.id);",
                   "pm.test('zone-filtered list contains own subnet', () => pm.expect(ids).to.include(pm.environment.get('subId')));"
                 ]
@@ -14503,9 +14503,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});"
                 ]
@@ -14814,7 +14814,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -14954,7 +14954,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -15086,7 +15086,7 @@
                   "}",
                   "pm.environment.unset('_lstRetryCount');",
                   "pm.environment.unset('_lstRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const ids = (Object.values(pm.response.json()).find(v => Array.isArray(v)) || []).map(x => x.id);",
                   "pm.test('network-filtered list contains own subnet', () => pm.expect(ids).to.include(pm.environment.get('subId')));"
                 ]
@@ -15372,9 +15372,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});"
                 ]
@@ -15410,9 +15410,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
+                  "  let j; try { j = pm.response.json(); } catch (e) { j = {}; }",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});"
                 ]
@@ -15477,7 +15477,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -15617,7 +15617,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "pm.test('op-in-response: done:true immediately', () => pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -15749,7 +15749,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('placementType ZONAL', () => pm.expect(j.placementType).to.eql('ZONAL'));",
                   "pm.test('ipv6CidrPrimary echoed', () => pm.expect(j.ipv6CidrPrimary).to.eql(pm.variables.replaceIn('fd00:{{vpc1oct}}::/64')));",
