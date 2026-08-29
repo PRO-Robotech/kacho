@@ -38,20 +38,29 @@ func (networkLoadBalancer) toPb(rec kachorepo.LoadBalancerRecord) (*lbv1.Network
 		return nil, err
 	}
 	// Lean-проекция: связанный vpc Address (v4_address_id/v6_address_id) +
-	// placement + disabled_announce_zones. Сам VIP-IP, source, network,
-	// vip_origin, announce/route/VRF/per-zone — НЕ выходят (security.md).
+	// placement + zone_id (ZONAL) + disabled_announce_zones. Сам VIP-IP, source,
+	// network, vip_origin, announce/route/VRF — НЕ выходят (security.md).
+	//
+	// zone_id — не исключение из этого запрета, а его граница: наружу выходит
+	// зона СОБСТВЕННОЙ подсети арендатора, которую он же и назвал источником
+	// VIP и читает у vpc. Зона, которую платформа выбирает САМА (внешний
+	// public-VIP), остаётся скрытой — при EXTERNAL строка пуста.
 	return &lbv1.NetworkLoadBalancer{
-		Id:                    string(rec.ID),
-		ProjectId:             string(rec.ProjectID),
-		CreatedAt:             ts,
-		Name:                  string(rec.Name),
-		Description:           string(rec.Description),
-		Labels:                domain.LabelsToMap(rec.Labels),
-		RegionId:              string(rec.RegionID),
-		Status:                statusPb,
-		Type:                  typePb,
-		SessionAffinity:       affinityPb,
-		PlacementType:         placementPb,
+		Id:              string(rec.ID),
+		ProjectId:       string(rec.ProjectID),
+		CreatedAt:       ts,
+		Name:            string(rec.Name),
+		Description:     string(rec.Description),
+		Labels:          domain.LabelsToMap(rec.Labels),
+		RegionId:        string(rec.RegionID),
+		Status:          statusPb,
+		Type:            typePb,
+		SessionAffinity: affinityPb,
+		PlacementType:   placementPb,
+		// Площадка ZONAL-балансировщика (#1473). Непуста РОВНО при ZONAL —
+		// строка пуста при любом другом размещении, и исключительность держит
+		// DB-CHECK, поэтому здесь нет второй проверки того же предмета.
+		ZoneId:                string(rec.ZoneID),
 		DisabledAnnounceZones: append([]string(nil), rec.DisabledAnnounceZones...),
 		DeletionProtection:    rec.DeletionProtection,
 		V4AddressId:           string(rec.AddressIDV4),

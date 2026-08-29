@@ -24,7 +24,7 @@ import (
 
 // UpdateLoadBalancerUseCase — UpdateMask discipline + async update.
 // Mutable: name / description / labels / deletion_protection / session_affinity /
-// disabled_announce_zones (REGIONAL only). Immutable: type / placement_type /
+// disabled_announce_zones (REGIONAL only). Immutable: type / placement_type / zone_id /
 // v4_source / v6_source (→ bound address) / region_id / project_id.
 type UpdateLoadBalancerUseCase struct {
 	repo       Repo
@@ -99,12 +99,17 @@ var immutableUpdateFields = map[string]string{
 	// NLB-1b EXPAND (additive): merged placement is immutable, like type/placement_type.
 	"placement":      "placement is immutable after NetworkLoadBalancer.Create",
 	"placement_type": "placement_type is immutable after NetworkLoadBalancer.Create",
-	"region_id":      "region_id is immutable after NetworkLoadBalancer.Create",
-	"project_id":     "project_id is immutable; use NetworkLoadBalancerService.Move",
-	"v4_source":      "v4_source is immutable after NetworkLoadBalancer.Create",
-	"v6_source":      "v6_source is immutable after NetworkLoadBalancer.Create",
-	"v4_address_id":  "v4_address_id is immutable after NetworkLoadBalancer.Create",
-	"v6_address_id":  "v6_address_id is immutable after NetworkLoadBalancer.Create",
+	// Площадка (#1473): её смена — не правка поля, а перестановка балансировщика
+	// на другую площадку. Без записи здесь маска отвергала бы zone_id как
+	// «неизвестное поле», то есть говорила бы «такого поля нет» вместо «его
+	// нельзя менять».
+	"zone_id":       "zone_id is immutable after NetworkLoadBalancer.Create",
+	"region_id":     "region_id is immutable after NetworkLoadBalancer.Create",
+	"project_id":    "project_id is immutable; use NetworkLoadBalancerService.Move",
+	"v4_source":     "v4_source is immutable after NetworkLoadBalancer.Create",
+	"v6_source":     "v6_source is immutable after NetworkLoadBalancer.Create",
+	"v4_address_id": "v4_address_id is immutable after NetworkLoadBalancer.Create",
+	"v6_address_id": "v6_address_id is immutable after NetworkLoadBalancer.Create",
 }
 
 // Execute — sync mask validation + read existing → apply diff → ops insert → worker.
