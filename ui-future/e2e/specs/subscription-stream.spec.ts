@@ -41,8 +41,29 @@ import { createdResourceId, runTag, tenantWithProject, test } from "./fixtures";
  * изменении, которого не делала.
  */
 
-/** Владелец журнала и его дешёвый предмет — тот, что переводится задачей #1019. */
-const OWNER = "compute";
+/**
+ * Владелец журнала и его дешёвый предмет.
+ *
+ * Предмет выбран ЖУРНАЛИРУЕМЫЙ, а не просто дешёвый, и это различие стоило
+ * прогона. Прежде здесь стояли `compute` и вид `compute.placement_group` —
+ * группа размещения как «дешёвый предмет». Оба были неверны, и каждый по-своему:
+ *
+ *   — такого ВИДА нет: словарь compute закрыт в обе стороны и знает ровно
+ *     `compute_instance`, поэтому поток отвергался ПРИ ОТКРЫТИИ, до всякого
+ *     события («kinds: … is not a kind of this owner»);
+ *   — такого ПРЕДМЕТА в журнале нет тоже: в журнал compute пишет единственный
+ *     производитель (`instance_repo.go`, вид `Instance`), а группы размещения не
+ *     журналируются вовсе. То есть починка одного лишь имени вида увела бы пробу
+ *     из честного отказа в вечное ожидание события, которого никто не пишет, —
+ *     отказ хуже исходного, потому что молчит.
+ *
+ * `vpc` + `vpc_network` держатся обеими сторонами: вид объявлен словарём
+ * владельца, а строку журнала пишет создание сети (`network/create.go`, вид
+ * `Network`, род `CREATED`) в той же writer-транзакции. Сеть остаётся дешёвой —
+ * супернет ей для этого не нужен, поэтому соседние предметы не спорят за CIDR.
+ */
+const OWNER = "vpc";
+const KIND = "vpc_network";
 const STREAM = "/subscription/v1/events";
 
 /** Кадр потока в том виде, в каком его видит страница. */
@@ -167,15 +188,19 @@ async function frames(page: Page): Promise<Frame[]> {
  * говорит о ходе мутации, а чтение говорит о самом предмете — том единственном,
  * ради которого проба сюда пришла.
  */
-async function createPlacementGroup(page: Page, projectId: string, name: string): Promise<string> {
-  const res = await page.request.post("/compute/v1/placementGroups", {
+async function createNetwork(page: Page, projectId: string, name: string): Promise<string> {
+  // Супернет НЕ объявляется намеренно: подсети из этой сети никто не режет, а
+  // непересекающиеся блоки пришлось бы раздавать вручную каждому предмету —
+  // соседние создания в одном проекте спорили бы за CIDR и роняли пробу поводом,
+  // к потоку не относящимся.
+  const res = await page.request.post("/vpc/v1/networks", {
     data: { projectId, name },
   });
   return createdResourceId(
     page,
     res,
-    "placementGroupId",
-    (id) => `/compute/v1/placementGroups/${id}`,
+    "networkId",
+    (id) => `/vpc/v1/networks/${id}`,
     `создание предмета потока «${name}»`,
   );
 }
@@ -194,10 +219,10 @@ test("страница узнаёт об изменении, сделанном 
   page.on("load", () => {
     loads += 1;
   });
-  await page.goto("/compute/placementGroups");
+  await page.goto(`/projects/${projectId}/vpc/networks`);
   const loadsAtStart = loads;
 
-  const url = `${STREAM}?owner=${OWNER}&projectId=${projectId}&kinds=compute.placement_group`;
+  const url = `${STREAM}?owner=${OWNER}&projectId=${projectId}&kinds=${KIND}`;
   await page.evaluate(
     (u) => (window as unknown as Record<string, (s: string) => void>).__kachoStreamOpen(u),
     url,
@@ -212,7 +237,7 @@ test("страница узнаёт об изменении, сделанном 
     })
     .toBe(1);
 
-  const created = await createPlacementGroup(page, projectId, `pg-stream-${runTag()}`);
+  const created = await createNetwork(page, projectId, `net-stream-${runTag()}`);
 
   await expect
     .poll(
@@ -245,10 +270,10 @@ test("возобновление с позиции не теряет событ�
 
   await installStreamReader(page);
   const { projectId } = await tenantWithProject(page);
-  await page.goto("/compute/placementGroups");
+  await page.goto(`/projects/${projectId}/vpc/networks`);
 
   const tag = runTag();
-  const url = `${STREAM}?owner=${OWNER}&projectId=${projectId}&kinds=compute.placement_group`;
+  const url = `${STREAM}?owner=${OWNER}&projectId=${projectId}&kinds=${KIND}`;
   await page.evaluate(
     (u) => (window as unknown as Record<string, (s: string) => void>).__kachoStreamOpen(u),
     url,
@@ -260,7 +285,7 @@ test("возобновление с позиции не теряет событ�
     })
     .toBe(1);
 
-  const first = await createPlacementGroup(page, projectId, `pg-resume-a-${tag}`);
+  const first = await createNetwork(page, projectId, `net-resume-a-${tag}`);
   await expect
     .poll(
       async () =>
@@ -280,8 +305,8 @@ test("возобновление с позиции не теряет событ�
   await page.evaluate(() =>
     (window as unknown as Record<string, () => void>).__kachoStreamClose(),
   );
-  const second = await createPlacementGroup(page, projectId, `pg-resume-b-${tag}`);
-  const third = await createPlacementGroup(page, projectId, `pg-resume-c-${tag}`);
+  const second = await createNetwork(page, projectId, `net-resume-b-${tag}`);
+  const third = await createNetwork(page, projectId, `net-resume-c-${tag}`);
 
   const resumed = await page.evaluate(
     async ([u, id]) =>
