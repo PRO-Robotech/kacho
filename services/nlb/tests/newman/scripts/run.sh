@@ -48,9 +48,40 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+NEWMAN_DIR="$PWD"
 
-# COLLECTIONS — the suite's own expected set (gen.py emits 1:1 from cases/*.py).
-COLLECTIONS=(load-balancer listener target-group targets operation authz-deny cross-resource list-filter placement-coherence)
+# ОТБОР КОЛЛЕКЦИЙ — ИЗ ОБЩЕГО СЛОЯ, А НЕ РУКОПИСНЫМ МАССИВОМ.
+#
+# Здесь стоял массив `COLLECTIONS=(...)` — второе место об одном предмете.
+# Перечень коллекций объявлен деревом (`gen.py` эмитит коллекцию на каждый
+# `cases/<имя>.py`), и рукописная копия расходится с ним молча, ровно в одну
+# сторону: новый модуль кейсов появляется, коллекция генерируется, а массив о
+# ней не знает. У registry это уже случилось, и подхват печатал предупреждение
+# на КАЖДОМ штатном прогоне — а такое предупреждение перестают читать вместе с
+# настоящими.
+#
+# Общий слой ищется ВВЕРХ ОТ ЭТОГО ФАЙЛА, а не от cwd: прогонщик зовут из
+# каталога набора, и путь, выведенный из текущего каталога, был бы свойством
+# того, ОТКУДА позвали. Поиск — тот же бутстрап, что у `_kacholib_dir()` в
+# gen.py, и по той же причине неустраним: общий слой нельзя найти его же
+# средствами.
+_stems_lib() {
+  local d="$NEWMAN_DIR"
+  while [[ "$d" != "/" ]]; do
+    if [[ -f "$d/tests/newman/kacholib/stems.sh" ]]; then
+      printf '%s\n' "$d/tests/newman/kacholib/stems.sh"
+      return 0
+    fi
+    d="$(dirname "$d")"
+  done
+  echo "общий слой отбора не найден: ожидается <корень>/tests/newman/kacholib/stems.sh" >&2
+  echo "Это ОТКАЗ, а не пропуск: без него прогонщик выбрал бы коллекции молча и не те." >&2
+  return 1
+}
+_STEMS_LIB="$(_stems_lib)"
+# shellcheck source=/dev/null
+. "$_STEMS_LIB"
+
 
 SERVICE=""
 BAIL=""
@@ -250,16 +281,14 @@ if [[ -n "$SERVICE" ]]; then
   stems=("$SERVICE")
   run_one "$SERVICE"
 else
-  stems=("${COLLECTIONS[@]}")
-  for f in collections/*.postman_collection.json; do
-    [[ -e "$f" ]] || continue
-    extra_stem="$(basename "$f" .postman_collection.json)"
-    for known in "${COLLECTIONS[@]}"; do
-      if [[ "$known" == "$extra_stem" ]]; then continue 2; fi
-    done
-    echo "[drift] ${extra_stem} — generated but not in COLLECTIONS; running it anyway"
-    stems+=("$extra_stem")
-  done
+  while IFS= read -r s; do
+    [[ -n "$s" ]] && stems+=("$s")
+  done < <(newman_all_stems "$NEWMAN_DIR")
+  if [[ "${#stems[@]}" -eq 0 ]]; then
+    echo "FAIL: коллекций не найдено — прогон без предмета не может быть зелёным." >&2
+    exit 1
+  fi
+  echo "[stems] коллекций к прогону: ${#stems[@]} (выведены из дерева, не выписаны): ${stems[*]}"
   for svc in "${stems[@]}"; do
     while [[ "$(jobs -rp | wc -l)" -ge "$JOBS" ]]; do wait -n; done
     run_one "$svc" &

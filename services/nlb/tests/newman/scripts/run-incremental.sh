@@ -34,12 +34,40 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+NEWMAN_DIR="$PWD"
 
-# COLLECTIONS — the suite's own expected set (gen.py emits 1:1 from cases/*.py).
-# Deliberately identical to run.sh: a runner that walks a hand-picked subset reports
-# a green it never earned. cross-resource / list-filter / placement-coherence were
-# absent from this list while the header above claimed "all services".
-COLLECTIONS=(load-balancer listener target-group targets operation authz-deny cross-resource list-filter placement-coherence)
+# ОТБОР КОЛЛЕКЦИЙ — ИЗ ОБЩЕГО СЛОЯ, А НЕ РУКОПИСНЫМ МАССИВОМ.
+#
+# Здесь стоял массив `COLLECTIONS=(...)` — второе место об одном предмете.
+# Перечень коллекций объявлен деревом (`gen.py` эмитит коллекцию на каждый
+# `cases/<имя>.py`), и рукописная копия расходится с ним молча, ровно в одну
+# сторону: новый модуль кейсов появляется, коллекция генерируется, а массив о
+# ней не знает. У registry это уже случилось, и подхват печатал предупреждение
+# на КАЖДОМ штатном прогоне — а такое предупреждение перестают читать вместе с
+# настоящими.
+#
+# Общий слой ищется ВВЕРХ ОТ ЭТОГО ФАЙЛА, а не от cwd: прогонщик зовут из
+# каталога набора, и путь, выведенный из текущего каталога, был бы свойством
+# того, ОТКУДА позвали. Поиск — тот же бутстрап, что у `_kacholib_dir()` в
+# gen.py, и по той же причине неустраним: общий слой нельзя найти его же
+# средствами.
+_stems_lib() {
+  local d="$NEWMAN_DIR"
+  while [[ "$d" != "/" ]]; do
+    if [[ -f "$d/tests/newman/kacholib/stems.sh" ]]; then
+      printf '%s\n' "$d/tests/newman/kacholib/stems.sh"
+      return 0
+    fi
+    d="$(dirname "$d")"
+  done
+  echo "общий слой отбора не найден: ожидается <корень>/tests/newman/kacholib/stems.sh" >&2
+  echo "Это ОТКАЗ, а не пропуск: без него прогонщик выбрал бы коллекции молча и не те." >&2
+  return 1
+}
+_STEMS_LIB="$(_stems_lib)"
+# shellcheck source=/dev/null
+. "$_STEMS_LIB"
+
 
 SERVICE=""
 ENV_DEFAULT="environments/local.postman_environment.json"
@@ -105,23 +133,22 @@ list_folders() {
   jq -r '.item[].name' "$1"
 }
 
-# services_to_run — the explicit set, plus any generated collection missing from it
-# (drift guard, same as run.sh: a newly generated collection must not be skipped in
-# silence).
+# services_to_run — набор, ВЫВЕДЕННЫЙ из дерева общим слоем: объединение
+# ожидаемых коллекций (по модулю кейсов на каждую) и фактически сгенерированных.
+# Ни одна коллекция не пропускается молча, а ожидаемая-но-отсутствующая доезжает
+# до вердикта как MISSING (см. `expected` ниже).
 services_to_run=()
 if [[ -n "$SERVICE" ]]; then
   services_to_run+=("$SERVICE")
 else
-  services_to_run=("${COLLECTIONS[@]}")
-  for f in collections/*.postman_collection.json; do
-    [[ -e "$f" ]] || continue
-    extra_stem="$(basename "$f" .postman_collection.json)"
-    for known in "${COLLECTIONS[@]}"; do
-      if [[ "$known" == "$extra_stem" ]]; then continue 2; fi
-    done
-    echo "[drift] ${extra_stem} — generated but not in COLLECTIONS; running it anyway"
-    services_to_run+=("$extra_stem")
-  done
+  while IFS= read -r s; do
+    [[ -n "$s" ]] && services_to_run+=("$s")
+  done < <(newman_all_stems "$NEWMAN_DIR")
+  if [[ "${#services_to_run[@]}" -eq 0 ]]; then
+    echo "FAIL: коллекций не найдено — прогон без предмета не может быть зелёным." >&2
+    exit 1
+  fi
+  echo "[stems] коллекций к прогону: ${#services_to_run[@]} (выведены из дерева, не выписаны): ${services_to_run[*]}"
 fi
 
 # expected — every stem this run is accountable for. The verdict below reads THIS
