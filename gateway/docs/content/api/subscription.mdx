@@ -140,8 +140,7 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
 написание, которое ручка принимает; неизвестное написание отвечает `400`, и перечень
 известных отказ не оглашает.
 
-Глагол подписки служат сегодня пять владельцев; словарь видов ниже объявлен для трёх —
-`storage` и `registry` едут вместе со своим словарём (kacho#1393):
+Глагол подписки служат сегодня пять владельцев, и все пять названы ниже:
 
 <table>
   <thead><tr><th><code>owner</code></th><th>Домен</th><th>Допустимые <code>kinds</code></th><th>Состояние в событии</th></tr></thead>
@@ -154,6 +153,16 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
     <tr>
       <td><code>loadbalancer</code></td><td>Load Balancer</td>
       <td><code>nlb&#95;network&#95;load&#95;balancer</code>, <code>nlb&#95;listener</code>, <code>nlb&#95;target&#95;group</code></td>
+      <td>состояния нет ни у одного вида и ни у одного рода изменения — приходит только оболочка события</td>
+    </tr>
+    <tr>
+      <td><code>registry</code></td><td>Registry</td>
+      <td><code>registry&#95;registry</code></td>
+      <td><code>state</code> типа <code>kacho.cloud.registry.v1.Registry</code> — у создания и правки; у снятия состояния нет</td>
+    </tr>
+    <tr>
+      <td><code>storage</code></td><td>Storage</td>
+      <td><code>storage&#95;volume</code>, <code>storage&#95;snapshot</code>, <code>storage&#95;image</code></td>
       <td>состояния нет ни у одного вида и ни у одного рода изменения — приходит только оболочка события</td>
     </tr>
     <tr>
