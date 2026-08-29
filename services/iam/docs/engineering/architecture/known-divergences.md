@@ -671,6 +671,13 @@ Postgres у края нет ни одного файла, и завести ег
 > потребителе: `notify_channel_has_a_listener_integration_test.go`,
 > `TestIntegration_EveryProducedNotifyChannelIsNamedByAConsumer`. Прежняя проба того же
 > файла судила ТОЛЬКО производителя и потому осталась бы зелёной на обоих.
+>
+> Второй экземпляр с тех пор **тоже закрыт**: триггер `kacho_iam_fga_outbox` снят
+> миграцией `20260829123045_intent_journal_channel_retires_with_its_drainer.sql`, его
+> регрессия — `notify_channel_intent_journal_integration_test.go`. Поэтому ведомость
+> прощений гейта сегодня **пуста**, и это его цель, а не недосмотр: прощение снял сам
+> гейт, покраснев строкой «прощение потеряло предмет», — держать запись ради зелёного
+> он не даёт by construction.
 
 **Что НЕ снято.** Таблица `session_revocations` остаётся: у неё живой писатель
 (выход с края) и живые читатели (`IsRevoked`, `ListByUser`, `DeleteExpired`). Снято
