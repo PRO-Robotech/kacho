@@ -687,7 +687,8 @@ sentinel→code в отдельный слой (если когда-либо) �
   `domain.Instance/Disk/Image/Snapshot` — плоские структуры string/int; вся
   invariant/format-валидация в service-слое через `corevalidate`. Формально это
   отступление от `evgeniy`-регламента (self-validating domain newtypes). Dependency
-  rule НЕ нарушен (domain импортирует только stdlib + proto/ — разрешено
+  rule НЕ нарушен (domain импортирует только stdlib + сгенерённые стабы
+  `pkg/api/...` — разрешено
   `architecture.md`); это modelling/robustness-gap, а не layering-leak. Паттерн
   зеркалит **все** kacho-* сервисы (cross-service консистентность). Введение
   `domain.ZoneID`/`NewInstance(...)` — **workspace-wide** согласованная правка

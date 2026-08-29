@@ -86,11 +86,7 @@ type formerRepoFinding struct {
 }
 
 func (f formerRepoFinding) String() string {
-	t := strings.TrimSpace(f.text)
-	if len(t) > 96 {
-		t = t[:96] + "…"
-	}
-	return fmt.Sprintf("%s:%d — %s: %s", f.doc, f.line, f.name, t)
+	return fmt.Sprintf("%s:%d — %s: %s", f.doc, f.line, f.name, trimDocLineForFinding(f.text))
 }
 
 type formerRepoCensus struct {

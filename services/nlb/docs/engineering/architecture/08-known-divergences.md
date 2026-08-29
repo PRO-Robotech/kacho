@@ -328,10 +328,10 @@ housekeeping-VIP-release/target-drain). Дрейф дублированных ou
 raw-SQL» vs. слой косвенности через Repository, без выигрыша в тестируемости
 (sec-hardening r8b, ARCH-finding «jobs bypass CQRS»).
 
-## `domain/` импортирует сторонние value-библиотеки (не только stdlib + proto/)
+## `domain/` импортирует сторонние value-библиотеки (не только stdlib + стабы контракта)
 
 **Что.** `architecture.md` предписывает `domain/` импортировать ТОЛЬКО stdlib +
-`proto/`. Фактически `internal/domain/` импортирует
+сгенерённые стабы `pkg/api/...`. Фактически `internal/domain/` импортирует
 `github.com/H-BF/corlib/pkg/{dict,option}` (`types.go`, `target.go`, `listener.go`),
 `go.uber.org/multierr` (`loadbalancer.go`, `target.go`, `health_check.go`,
 `target_group.go`, `listener.go`) и
