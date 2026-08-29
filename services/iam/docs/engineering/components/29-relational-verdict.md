@@ -85,11 +85,15 @@
   колонок `user`/`relation`/`object` у таблицы нет. DDL — `0001_initial.sql`.
 - `kacho_iam.relation_fact` — проекция журнала, из которой форма читает прямой факт.
 - `kacho_iam.subject_change_outbox(id, subject_id, op, created_at, notified_at, event_type,
-  resource_type, resource_id, sent_at, attempt_count, payload)` — **журнал** смены субъекта,
+  sent_at, attempt_count, last_error, payload)` — **журнал** смены субъекта,
   который край читает курсором по возрастанию `id`; DDL — `0001_initial.sql`.
   Колонки `sent_at` / `attempt_count` / `last_error` остались от прежней формы (очередь с
   доставкой) и **не пишутся никем**: читатель на них не смотрит by construction. Считать по
   ним отставание нельзя — `WHERE sent_at IS NULL` вернёт весь журнал.
+  Величин предмета (`resource_type` / `resource_id`) у журнала **больше нет**: их писала
+  каждая мутация выдачи, а читателя у них не было ни одного — ни проекции чтения, ни
+  контракта, ни потребителя на крае. Сняты миграцией
+  `20260829124512_subject_change_journal_drops_the_unread_scope_hint.sql` (задача #1462).
 - `kacho_iam.resource_scope_edge` — представление цепи областей (см.
   [`../architecture/scope-chain-reaches-the-root.md`](../architecture/scope-chain-reaches-the-root.md)).
 
