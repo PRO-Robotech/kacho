@@ -215,10 +215,18 @@ func main() {
 
 	cliSrcCobraDecided = `package main
 
-import "github.com/spf13/cobra"
+import (
+	"errors"
+
+	"github.com/spf13/cobra"
+)
 
 func newRootCmd() *cobra.Command {
-	root := &cobra.Command{Use: "kacho-migrator"}
+	root := &cobra.Command{
+		Use:  "kacho-migrator",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error { return errors.New("no command given") },
+	}
 	root.AddCommand(&cobra.Command{
 		Use:  "up",
 		Args: cobra.NoArgs,
@@ -245,8 +253,8 @@ func TestMigratorCLIParserGateStaysSilentOnLegitimateTwins(t *testing.T) {
 		// Прямая форма и сегодня зовёт goose сама — импорт goose рядом с общим
 		// разбором законен и третьей формой НЕ является.
 		{"общий разбор рядом с goose", cliSrcSharedParser},
-		// Корневая команда исполнения не несёт, поэтому Args с неё не требуется.
-		{"корень без исполнения, подкоманда решила Args", cliSrcCobraDecided},
+		// Корень несёт исполнение и решил Args; подкоманда — тоже.
+		{"корень отвечает на пустую строку, подкоманда решила Args", cliSrcCobraDecided},
 		// Гейт судит, РЕШЁН ли вопрос, а не как именно.
 		{"Args решён не через NoArgs", cliSrcCobraDecidedOtherwise},
 	} {
@@ -516,5 +524,66 @@ func main() {
 	}
 	if !strings.Contains(strings.Join(findings, "\n"), "по коду не сказать") {
 		t.Errorf("находка не называет предмет: %v", findings)
+	}
+}
+
+// ── пустая командная строка: гейт говорит и молчит ─────────────────────────
+
+func TestMigratorCLIGateSpeaksOnARootThatSucceedsOnAnEmptyCommandLine(t *testing.T) {
+	// Инъекция ломает РОВНО ОДНО свойство: у корня снято исполнение, всё
+	// остальное (имя, Args подкоманды, разбор) на месте.
+	const rootWithoutRun = `package main
+
+import "github.com/spf13/cobra"
+
+func newRootCmd() *cobra.Command {
+	root := &cobra.Command{Use: "kacho-migrator", SilenceUsage: true}
+	root.AddCommand(&cobra.Command{
+		Use:  "up",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error { return nil },
+	})
+	return root
+}`
+	parsed, err := classifyMigratorCLIParser("services/x/cmd/migrator/main.go", rootWithoutRun)
+	if err != nil {
+		t.Fatalf("разбор не удался: %v", err)
+	}
+	if parsed.Roots != 1 {
+		t.Fatalf("корневая команда не распознана: %+v", parsed)
+	}
+	findings := migratorCLIParserFindings([]migratorCLIParser{parsed})
+	if len(findings) == 0 {
+		t.Fatalf("корень, выходящий успехом на пустой строке, принят молча: %+v", parsed)
+	}
+	joined := strings.Join(findings, "\n")
+	if !strings.Contains(joined, "services/x/cmd/migrator/main.go") {
+		t.Errorf("находка не называет координату: %s", joined)
+	}
+	if !strings.Contains(joined, "УСПЕХОМ") {
+		t.Errorf("находка не называет предмет: %s", joined)
+	}
+}
+
+func TestMigratorCLIGateDoesNotMistakeASubcommandForTheRoot(t *testing.T) {
+	// Законный близнец: подкоманда без исполнения (её `Use` бинаря не называет)
+	// корнем не является и требования не наследует. Без этой пробы гейт ловил бы
+	// форму «команда без Run», а не существо «корень выходит успехом».
+	const subcommandWithoutRun = `package main
+
+import "github.com/spf13/cobra"
+
+func newHelpersCmd() *cobra.Command {
+	return &cobra.Command{Use: "tools", Short: "grouping only"}
+}`
+	parsed, err := classifyMigratorCLIParser("services/x/cmd/migrator/main.go", subcommandWithoutRun)
+	if err != nil {
+		t.Fatalf("разбор не удался: %v", err)
+	}
+	if parsed.Roots != 0 {
+		t.Fatalf("подкоманда принята за корень: %+v", parsed)
+	}
+	if len(parsed.RootsWithoutRun) != 0 {
+		t.Fatalf("подкоманда объявлена находкой: %+v", parsed.RootsWithoutRun)
 	}
 }

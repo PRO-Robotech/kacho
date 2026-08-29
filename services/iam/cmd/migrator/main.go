@@ -34,6 +34,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -81,6 +82,18 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 			"(метка времени заведения: date -u +%Y%m%d%H%M%S).\n" +
 			"Подробности — docs/architecture/migration-version-namespace.md.",
 		SilenceUsage: true,
+		// Пустая командная строка — ОТКАЗ, а не успех (#1461). Cobra при корне без
+		// исполнения печатает помощь и выходит успехом; прямая форма отвечает
+		// отказом. Скрипт или init-контейнер, потерявший аргумент, объявлялся бы
+		// выполнившим накат — успех на невыполненной работе.
+		//
+		// `NoArgs` при этом сохраняет отказ по неизвестной подкоманде дословно:
+		// её текст `unknown command "X" for "ИМЯ"` производит сама cobra.
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_ = cmd.Help()
+			return errors.New("no command given")
+		},
 	}
 	root.PersistentFlags().StringVar(&opts.dialect, "dialect", defaultDialect,
 		"SQL dialect (postgres)")

@@ -130,6 +130,7 @@ func TestMigratorArgumentParsingIsOneOfTwoAndDecidesExtraArguments(t *testing.T)
 		parsers          []migratorCLIParser
 		shared, viaCobra int
 		withRun, decided int
+		roots, rootsRun  int
 	)
 	for _, p := range paths {
 		rel, rerr := filepath.Rel(root, p)
@@ -157,11 +158,14 @@ func TestMigratorArgumentParsingIsOneOfTwoAndDecidesExtraArguments(t *testing.T)
 		}
 		withRun += parsed.CommandsWithRun
 		decided += parsed.CommandsWithArgs
+		roots += parsed.Roots
+		rootsRun += parsed.Roots - len(parsed.RootsWithoutRun)
 	}
 
 	t.Logf("перепись: точек наката %d · на общем разборе %d · на cobra %d · "+
-		"команд с исполнением %d · из них решивших Args %d",
-		len(parsers), shared, viaCobra, withRun, decided)
+		"команд с исполнением %d · из них решивших Args %d · корневых команд %d · "+
+		"из них несущих исполнение %d",
+		len(parsers), shared, viaCobra, withRun, decided, roots, rootsRun)
 
 	if len(parsers) == 0 {
 		t.Fatal("точек наката не найдено ни одной — гейт ничего не осмотрел. Сменилась " +

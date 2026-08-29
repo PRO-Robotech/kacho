@@ -217,3 +217,46 @@ func TestLegitimateFlagsSurviveTheArgumentCheck(t *testing.T) {
 		}
 	}
 }
+
+// TestEmptyCommandLineIsRefused — пустая командная строка обязана быть ОТКАЗОМ,
+// а не успехом (#1461).
+//
+// Cobra при корне без исполнения печатает помощь и выходит УСПЕХОМ. Опыт по
+// собранным бинарям: `vpc-migrator; echo $?` давал 0 у трёх делегирующих
+// сервисов и 1 у четырёх прямых. Различие не решал никто, и цена у него не
+// косметическая: init-контейнер или скрипт, потерявший аргумент, на трёх
+// сервисах из семи объявляется УСПЕШНЫМ — то есть «миграции накатаны» там, где
+// не выполнено ничего.
+//
+// Выбран отказ, а не помощь-успех: успех на невыполненной работе есть тот же
+// класс, ради которого задача заведена.
+func TestEmptyCommandLineIsRefused(t *testing.T) {
+	_, _, err := runCommand(t, nil, nil)
+	if err == nil {
+		t.Fatal("пустая командная строка принята УСПЕХОМ: скрипт, потерявший аргумент, " +
+			"объявляется выполнившим накат")
+	}
+	if !strings.Contains(err.Error(), "no command given") {
+		t.Fatalf("отказ не называет свой предмет: %v", err)
+	}
+}
+
+// TestHelpIsStillASuccess — положительный контроль к пробе выше. Без него она
+// зеленела бы на дереве команд, объявляющем отказом и явный запрос помощи.
+func TestHelpIsStillASuccess(t *testing.T) {
+	if _, _, err := runCommand(t, []string{"--help"}, nil); err != nil {
+		t.Fatalf("явный запрос помощи объявлен отказом: %v", err)
+	}
+}
+
+// TestUnknownCommandIsStillNamed — второй положительный контроль: решение о
+// пустой строке не должно проглотить отказ по неизвестной подкоманде.
+func TestUnknownCommandIsStillNamed(t *testing.T) {
+	_, _, err := runCommand(t, []string{"upp"}, nil)
+	if err == nil {
+		t.Fatal("неизвестная подкоманда принята")
+	}
+	if !strings.Contains(err.Error(), "upp") {
+		t.Fatalf("отказ не называет подкоманду: %v", err)
+	}
+}

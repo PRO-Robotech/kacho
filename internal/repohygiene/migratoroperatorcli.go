@@ -35,6 +35,13 @@
 //  3. У каждой команды cobra, несущей исполнение (Run/RunE), решено, что делать
 //     с лишним позиционным аргументом (поле Args). Умолчание принимает
 //     произвольные аргументы молча.
+//  4. Корневая команда cobra (та, чьё `Use` называет бинарь) несёт исполнение.
+//     Без него ПУСТАЯ командная строка печатает помощь и выходит УСПЕХОМ, тогда
+//     как прямая форма отвечает отказом: скрипт или init-контейнер, потерявший
+//     аргумент, объявлялся бы выполнившим накат на трёх сервисах из семи.
+//     Гейт держит ФОРМУ (исполнение есть); ИСХОД держит проба самого сервиса
+//     (`TestEmptyCommandLineIsRefused`) — статически «отказ» от «успеха» не
+//     отличить, и обещать это здесь значило бы обещать несуществующее.
 //
 // # Чего гейт НЕ утверждает, названо честно
 //
@@ -275,6 +282,12 @@ type migratorCLIParser struct {
 	CommandsWithArgs int
 	// Undecided — координаты команд, оставивших этот вопрос умолчанию.
 	Undecided []string
+	// Roots — команд, чьё `Use` называет бинарь, то есть корневых.
+	Roots int
+	// RootsWithoutRun — координаты корневых команд, не несущих исполнения. Такая
+	// команда на ПУСТОЙ командной строке печатает помощь и выходит УСПЕХОМ, и
+	// скрипт, потерявший аргумент, объявляется выполнившим накат.
+	RootsWithoutRun []string
 }
 
 // Recognised — разбор распознан ровно один.
@@ -336,7 +349,7 @@ func classifyMigratorCLIParser(rel, src string) (migratorCLIParser, error) {
 		if !ok || !isCobraCommandType(lit.Type) {
 			return true
 		}
-		var hasRun, hasArgs bool
+		var hasRun, hasArgs, isRoot bool
 		for _, elt := range lit.Elts {
 			kv, ok := elt.(*ast.KeyValueExpr)
 			if !ok {
@@ -351,11 +364,24 @@ func classifyMigratorCLIParser(rel, src string) (migratorCLIParser, error) {
 				hasRun = true
 			case "Args":
 				hasArgs = true
+			case "Use":
+				if bl, ok := kv.Value.(*ast.BasicLit); ok && bl.Kind == token.STRING {
+					if text, uerr := strconv.Unquote(bl.Value); uerr == nil {
+						isRoot = len(migratorCLINamesOutsideAPath(text)) > 0
+					}
+				}
+			}
+		}
+		if isRoot {
+			p.Roots++
+			if !hasRun {
+				p.RootsWithoutRun = append(p.RootsWithoutRun,
+					fmt.Sprintf("%s:%d", rel, fset.Position(lit.Pos()).Line))
 			}
 		}
 		if !hasRun {
-			// Корневая команда исполнения не несёт: неизвестную подкоманду cobra
-			// и так называет. Судить её было бы требованием без предмета.
+			// Команда без исполнения решать нечего: лишний позиционный аргумент до
+			// неё не доходит. Судить её было бы требованием без предмета.
 			return true
 		}
 		p.CommandsWithRun++
@@ -393,6 +419,12 @@ func migratorCLIParserFindings(parsers []migratorCLIParser) []string {
 				"%s — третий разбор аргументов: не зовёт %s.%s и не строит дерево cobra. "+
 					"Именно так различие и накапливалось",
 				p.Rel, path.Base(migratorCLISharedParserImport), migratorCLIParseFunc))
+		}
+		for _, r := range p.RootsWithoutRun {
+			out = append(out, fmt.Sprintf(
+				"%s — корневая команда cobra не несёт исполнения: на ПУСТОЙ командной строке "+
+					"она печатает помощь и выходит УСПЕХОМ, поэтому скрипт, потерявший аргумент, "+
+					"объявляется выполнившим накат", r))
 		}
 		for _, u := range p.Undecided {
 			out = append(out, fmt.Sprintf(
