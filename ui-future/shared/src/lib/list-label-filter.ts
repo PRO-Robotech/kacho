@@ -69,6 +69,30 @@ export function labelFilterActive(raw: string): boolean {
 }
 
 /**
+ * Строковая форма значения метки — либо `null`, «сравнивать не с чем».
+ *
+ * Значение приезжает из `JSON.parse`, то есть как `unknown`: в контракте метки
+ * строковые, но верить в это на входе из сети нельзя. Приведение `String()`
+ * поверх `unknown` давало ЛОЖНОЕ РАВЕНСТВО — у значения без осмысленной
+ * строковой формы бралось умолчание языка, и разные значения становились равны.
+ *
+ * Достижимый случай — СПИСОК, и назвать его надо точно: `String([1, 2])` даёт
+ * «1,2», пробела не содержит, значит такое условие человек набрать может — и
+ * список сравнивался бы равным строке «1,2»; `String([])` даёт пустую строку и
+ * попадал в условие «ключ=», означающее метку с пустым значением. Объект
+ * недостижим: «[object Object]» несёт пробел, а условия режутся по пробелу.
+ *
+ * `null` и отсутствующее значение остаются пустой строкой — это документированный
+ * вопрос «ключ=», а не следствие приведения.
+ */
+function labelValueAsText(value: unknown): string | null {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return null;
+}
+
+/**
  * Подходит ли строка под все условия.
  *
  * Строка приезжает из `JSON.parse`, то есть как `unknown`: `labels`, не
@@ -84,6 +108,7 @@ export function rowMatchesLabels(row: unknown, terms: readonly LabelTerm[]): boo
   return terms.every((term) => {
     if (!Object.prototype.hasOwnProperty.call(map, term.key)) return false;
     if (term.value === undefined) return true;
-    return String(map[term.key] ?? "") === term.value;
+    const text = labelValueAsText(map[term.key]);
+    return text !== null && text === term.value;
   });
 }
