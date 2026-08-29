@@ -53,6 +53,15 @@ export default defineConfig({
         target: apiGateway,
         changeOrigin: true,
       },
+      // `/registry` — раздел Container Registry переехал в общий реестр спек
+      // (#409), и его `apiPath` теперь читают общие `RefSelect` /
+      // `GlobalResourceFormModal` / карточка ресурса, которые это приложение
+      // монтирует. Домен без правила отдаёт index.html вместо JSON: запрос
+      // формально успешен, а список пуст.
+      "/registry": {
+        target: apiGateway,
+        changeOrigin: true,
+      },
       "/iam/v1": {
         target: apiGateway,
         changeOrigin: true,
