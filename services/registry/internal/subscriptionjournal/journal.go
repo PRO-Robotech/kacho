@@ -256,18 +256,30 @@ type journalRow struct {
 //
 // Для снятия подписчику довольно оболочки: вид, идентификатор, якорь проекта и
 // род изменения — этого хватает, чтобы убрать строку из своего состояния.
-func stateWithEndpoint(endpointBase string) func(subscription.Row) (*anypb.Any, error) {
-	return func(r subscription.Row) (*anypb.Any, error) {
+//
+// # Почему причина отсутствия у снятия — «НЕ ПРОИЗВОДИТСЯ»
+//
+// Журнал реестра состояние НЕСЁТ: у единственного своего вида он собирает полный
+// контракт из нагрузки триггера. Значит отсутствие бывает ровно у одного рода — у
+// снятия, где предмета больше нет by construction: собирать было нечего, попытки не
+// было, повтор ничего не изменит. Это [subscription.StateNotProduced].
+//
+// Без названной причины сервер отдал бы `REASON_UNSPECIFIED` — «владелец забыл», —
+// и подписчик, ключующийся на причину, пошёл бы ПЕРЕЧИТЫВАТЬ реестр, которого нет.
+// Прежде он получал здесь «не удалось сериализовать», то есть объяснение снятия
+// неудавшейся попыткой, которой не было.
+func stateWithEndpoint(endpointBase string) func(subscription.Row) (*anypb.Any, subscription.StateAbsence, error) {
+	return func(r subscription.Row) (*anypb.Any, subscription.StateAbsence, error) {
 		if r.Change == changeDeleted {
-			return nil, nil
+			return nil, subscription.StateNotProduced, nil
 		}
 		var row journalRow
 		if err := json.Unmarshal(r.Payload, &row); err != nil {
-			return nil, fmt.Errorf("разбор нагрузки журнала: %w", err)
+			return nil, subscription.StateAbsenceUnnamed, fmt.Errorf("разбор нагрузки журнала: %w", err)
 		}
 		createdAt, err := parseJournalTime(row.CreatedAt)
 		if err != nil {
-			return nil, fmt.Errorf("отметка создания в нагрузке журнала: %w", err)
+			return nil, subscription.StateAbsenceUnnamed, fmt.Errorf("отметка создания в нагрузке журнала: %w", err)
 		}
 		// Тип НАЗВАН: `Any` несёт имя типа на проводе, и ключи нагрузки суть поля
 		// контракта владельца. Свободной структуры здесь нет намеренно — её ключи
@@ -283,7 +295,7 @@ func stateWithEndpoint(endpointBase string) func(subscription.Row) (*anypb.Any, 
 		// `TestTriggerPayloadDecodesIntoTheSameProjectionTheServiceServes`: она
 		// пишет строку настоящим репозиторием, читает её настоящим репозиторием и
 		// требует, чтобы событие дало то же, что отдаёт сервис.
-		return anypb.New(&registryv1.Registry{
+		return packed(anypb.New(&registryv1.Registry{
 			Id:        row.ID,
 			ProjectId: row.ProjectID,
 			// Усечение до секунд — то же, что делает штатное отображение:
@@ -298,8 +310,20 @@ func stateWithEndpoint(endpointBase string) func(subscription.Row) (*anypb.Any, 
 			DefaultRepositoryVisibility: registryv1.Visibility(domain.VisibilityFromString(row.DefaultVisibility)),
 			RegionId:                    row.RegionID,
 			PlacementType:               registryv1.PlacementType(domain.PlacementTypeFromString(row.PlacementType)),
-		})
+		}))
 	}
+}
+
+// packed переводит исход упаковки в тройку общей формы.
+//
+// Отказ упаковки — НАСТОЯЩИЙ отказ сборки: состояние есть, собрать не удалось.
+// Причину такому исходу даёт сервер (`NOT_SERIALIZABLE`), и владелец её не
+// называет: назвал бы — и свойство журнала стало бы неотличимо от поломки.
+func packed(a *anypb.Any, err error) (*anypb.Any, subscription.StateAbsence, error) {
+	if err != nil {
+		return nil, subscription.StateAbsenceUnnamed, err
+	}
+	return a, subscription.StateAbsenceUnnamed, nil
 }
 
 // journalTimeLayouts — формы отметки времени, которые разбор принимает.

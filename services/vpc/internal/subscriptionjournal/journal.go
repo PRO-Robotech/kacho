@@ -197,9 +197,21 @@ func ProjectGate() (subscription.ProjectGate, error) {
 //
 // Для снятия подписчику довольно оболочки: вид, идентификатор, якорь проекта и
 // род изменения — этого хватает, чтобы убрать строку из своего состояния.
-func state(r subscription.Row) (*anypb.Any, error) {
+//
+// # Почему причина отсутствия у снятия — «НЕ ПРОИЗВОДИТСЯ», а не «не удерживается»
+//
+// Журнал vpc состояние НЕСЁТ — у семи видов из восьми оно собирается полностью, и
+// именно поэтому причина обязана быть названа ПОСТРОЧНО, а не на весь журнал.
+// Снятие — единственный род, у которого предмета больше нет by construction:
+// попытки собрать не было, и повтор её не изменит. Это и есть [subscription.StateNotProduced].
+//
+// [subscription.StateNotRetained] («больше не удерживается») здесь неверна и была
+// бы не оттенком, а ложью: журнал объявляет [subscription.RetainsEverything] строкой
+// выше, то есть не чистится вовсе, и подписчик, прочитавший «не удерживается»,
+// заключил бы, что опоздал за состоянием, которое когда-то было доступно.
+func state(r subscription.Row) (*anypb.Any, subscription.StateAbsence, error) {
 	if r.Change == changeDeleted {
-		return nil, nil
+		return nil, subscription.StateNotProduced, nil
 	}
 
 	// Разбор и перенос выписаны ПОВИДОВО, а не сведены в один обобщённый вызов,
@@ -213,88 +225,100 @@ func state(r subscription.Row) (*anypb.Any, error) {
 		var rec kachorepo.NetworkRecord
 		var pb *vpcv1.Network
 		if err := decode(r, &rec); err != nil {
-			return nil, err
+			return nil, subscription.StateAbsenceUnnamed, err
 		}
 		if err := dto.Transfer(dto.FromTo(rec, &pb)); err != nil {
-			return nil, transferFailed(r, err)
+			return nil, subscription.StateAbsenceUnnamed, transferFailed(r, err)
 		}
-		return anypb.New(pb)
+		return packed(anypb.New(pb))
 	case KindSubnet:
 		var rec kachorepo.SubnetRecord
 		var pb *vpcv1.Subnet
 		if err := decode(r, &rec); err != nil {
-			return nil, err
+			return nil, subscription.StateAbsenceUnnamed, err
 		}
 		if err := dto.Transfer(dto.FromTo(rec, &pb)); err != nil {
-			return nil, transferFailed(r, err)
+			return nil, subscription.StateAbsenceUnnamed, transferFailed(r, err)
 		}
-		return anypb.New(pb)
+		return packed(anypb.New(pb))
 	case KindSecurityGroup:
 		var rec kachorepo.SecurityGroupRecord
 		var pb *vpcv1.SecurityGroup
 		if err := decode(r, &rec); err != nil {
-			return nil, err
+			return nil, subscription.StateAbsenceUnnamed, err
 		}
 		if err := dto.Transfer(dto.FromTo(rec, &pb)); err != nil {
-			return nil, transferFailed(r, err)
+			return nil, subscription.StateAbsenceUnnamed, transferFailed(r, err)
 		}
-		return anypb.New(pb)
+		return packed(anypb.New(pb))
 	case KindRouteTable:
 		var rec kachorepo.RouteTableRecord
 		var pb *vpcv1.RouteTable
 		if err := decode(r, &rec); err != nil {
-			return nil, err
+			return nil, subscription.StateAbsenceUnnamed, err
 		}
 		if err := dto.Transfer(dto.FromTo(rec, &pb)); err != nil {
-			return nil, transferFailed(r, err)
+			return nil, subscription.StateAbsenceUnnamed, transferFailed(r, err)
 		}
-		return anypb.New(pb)
+		return packed(anypb.New(pb))
 	case KindAddress:
 		var rec kachorepo.AddressRecord
 		var pb *vpcv1.Address
 		if err := decode(r, &rec); err != nil {
-			return nil, err
+			return nil, subscription.StateAbsenceUnnamed, err
 		}
 		if err := dto.Transfer(dto.FromTo(rec, &pb)); err != nil {
-			return nil, transferFailed(r, err)
+			return nil, subscription.StateAbsenceUnnamed, transferFailed(r, err)
 		}
-		return anypb.New(pb)
+		return packed(anypb.New(pb))
 	case KindGateway:
 		var rec kachorepo.GatewayRecord
 		var pb *vpcv1.Gateway
 		if err := decode(r, &rec); err != nil {
-			return nil, err
+			return nil, subscription.StateAbsenceUnnamed, err
 		}
 		if err := dto.Transfer(dto.FromTo(rec, &pb)); err != nil {
-			return nil, transferFailed(r, err)
+			return nil, subscription.StateAbsenceUnnamed, transferFailed(r, err)
 		}
-		return anypb.New(pb)
+		return packed(anypb.New(pb))
 	case KindNetworkInterface:
 		var rec kachorepo.NetworkInterfaceRecord
 		var pb *vpcv1.NetworkInterface
 		if err := decode(r, &rec); err != nil {
-			return nil, err
+			return nil, subscription.StateAbsenceUnnamed, err
 		}
 		if err := dto.Transfer(dto.FromTo(rec, &pb)); err != nil {
-			return nil, transferFailed(r, err)
+			return nil, subscription.StateAbsenceUnnamed, transferFailed(r, err)
 		}
-		return anypb.New(pb)
+		return packed(anypb.New(pb))
 	case KindCidrGroup:
 		var rec kachorepo.CidrGroupRecord
 		var pb *vpcv1.CidrGroup
 		if err := decode(r, &rec); err != nil {
-			return nil, err
+			return nil, subscription.StateAbsenceUnnamed, err
 		}
 		if err := dto.Transfer(dto.FromTo(rec, &pb)); err != nil {
-			return nil, transferFailed(r, err)
+			return nil, subscription.StateAbsenceUnnamed, transferFailed(r, err)
 		}
-		return anypb.New(pb)
+		return packed(anypb.New(pb))
 	}
 	// Вид вне словаря сюда не доходит — сервер отсеивает такую строку раньше,
 	// потому что авторизовать её нечем. Ветка оставлена как ОТКАЗ, а не как
 	// пустое состояние: молчаливый `nil` здесь означал бы «предмет снят», и
 	// подписчик убрал бы из своего состояния живую строку.
-	return nil, fmt.Errorf("вид %q вне словаря журнала vpc: состояние собрать не из чего", r.Kind)
+	return nil, subscription.StateAbsenceUnnamed, fmt.Errorf("вид %q вне словаря журнала vpc: состояние собрать не из чего", r.Kind)
+}
+
+// packed переводит исход упаковки в тройку общей формы.
+//
+// Отказ упаковки — НАСТОЯЩИЙ отказ сборки: состояние есть, собрать не удалось.
+// Причину такому исходу даёт сервер (`NOT_SERIALIZABLE`), и владелец её не
+// называет: назвал бы — и свойство журнала стало бы неотличимо от поломки.
+func packed(a *anypb.Any, err error) (*anypb.Any, subscription.StateAbsence, error) {
+	if err != nil {
+		return nil, subscription.StateAbsenceUnnamed, err
+	}
+	return a, subscription.StateAbsenceUnnamed, nil
 }
 
 // decode — разбор нагрузки в запись репозитория.

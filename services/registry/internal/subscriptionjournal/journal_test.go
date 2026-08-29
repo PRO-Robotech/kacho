@@ -111,7 +111,7 @@ func TestProjectGateTakesItsRefusalFromTheProducer(t *testing.T) {
 // Вывод «состояния нет, значит это снятие» сработал бы и на настоящем сбое
 // разбора, и два разных исхода стали бы неразличимы.
 func TestRemovalCarriesNoState(t *testing.T) {
-	st, err := Journal(probeEndpointBase).Mapping.State(subscription.Row{
+	st, absence, err := Journal(probeEndpointBase).Mapping.State(subscription.Row{
 		Kind:      JournalWordRegistry,
 		ID:        "reg-0000000000000001",
 		ProjectID: "prj-0000000000000001",
@@ -123,6 +123,70 @@ func TestRemovalCarriesNoState(t *testing.T) {
 	}
 	if st != nil {
 		t.Fatalf("снятие принесло состояние: подписчик прочитал бы почти пустой реестр как ПОЛНОЕ состояние предмета")
+	}
+	if absence != subscription.StateNotProduced {
+		t.Fatalf("причина отсутствия у снятия %v, ожидалась StateNotProduced: неназванная "+
+			"доезжает клиенту как REASON_UNSPECIFIED, и подписчик пошёл бы ПЕРЕЧИТЫВАТЬ "+
+			"реестр, которого больше нет", absence)
+	}
+}
+
+// TestStateAbsenceIsNamedByTheOwner — три исхода [stateWithEndpoint] различимы, и
+// причину отсутствия называет ВЛАДЕЛЕЦ.
+//
+// # Почему все три сразу
+//
+// Порознь каждое утверждение вакуумно: «причина названа» зеленеет на владельце,
+// который никогда не отдаёт состояния, «состояние собрано» — на владельце,
+// который никогда его не теряет. Различает только таблица.
+//
+// # Что различают причины у ПОДПИСЧИКА
+//
+// `NOT_PRODUCED` — идти за предметом не нужно, его нет. `NOT_SERIALIZABLE` —
+// разумно перечитать. Сведи их в одну, и половина подписчиков будет перечитывать
+// снятые реестры вечно, а другая — молча терять живые.
+func TestStateAbsenceIsNamedByTheOwner(t *testing.T) {
+	state := Journal(probeEndpointBase).Mapping.State
+	row := func(change, payload string) subscription.Row {
+		return subscription.Row{
+			Kind:      JournalWordRegistry,
+			ID:        "reg-0000000000000001",
+			ProjectID: "prj-0000000000000001",
+			Change:    change,
+			Payload:   []byte(payload),
+		}
+	}
+
+	// Сборка удалась: причина НЕ называется — иначе владелец противоречит сам
+	// себе, и общий сервер обязан на это пожаловаться.
+	const live = `{"id":"reg-0000000000000001","project_id":"prj-0000000000000001",` +
+		`"name":"probe","status":"ACTIVE","created_at":"2026-08-29T10:00:00Z",` +
+		`"default_visibility":"PRIVATE","region_id":"reg-ru-1","placement_type":"REGIONAL"}`
+	st, absence, err := state(row(changeCreated, live))
+	if err != nil {
+		t.Fatalf("законная нагрузка не собралась: %v — положительный контроль обязан "+
+			"проходить, иначе отрицания зеленеют на всём сломанном", err)
+	}
+	if st == nil {
+		t.Fatal("законная нагрузка дала пустое состояние без отказа")
+	}
+	if absence != subscription.StateAbsenceUnnamed {
+		t.Errorf("при СОБРАННОМ состоянии названа причина его отсутствия (%v): объявление "+
+			"владельца противоречит себе", absence)
+	}
+
+	// Настоящий отказ сборки: причину даёт СЕРВЕР (`NOT_SERIALIZABLE`). Назови её
+	// владелец — поломка объявилась бы свойством журнала, и единственный её след
+	// погас бы.
+	st, absence, err = state(row(changeCreated, `{`))
+	if err == nil {
+		t.Fatal("испорченная нагрузка разобралась без отказа — отрицание ниже было бы вакуумным")
+	}
+	if st != nil {
+		t.Error("при отказе сборки отдано состояние")
+	}
+	if absence != subscription.StateAbsenceUnnamed {
+		t.Errorf("отказ сборки назван причиной %v: настоящая поломка объявлена свойством журнала", absence)
 	}
 }
 
