@@ -164,9 +164,14 @@ func TestProbesAwaitingTheirConditionExpireWhenItArrives(t *testing.T) {
 			"проверить нечем, и молчание гейта означало бы «не читали»",
 			subscriptionClientPage, pageErr)
 	}
+	// Пустой словарь сюда не доходит by construction: разбор сам отвергает
+	// таблицу, из которой не считано ни одного вида. Поэтому отдельной ветки «видов
+	// ноль» здесь нет — она была бы недостижимой и лишь документировала бы то,
+	// чего код не производит.
 	servedKinds, kindsErr := kindsNamedByPage(string(pageBody), subscriptionClientPage)
 	if kindsErr != nil {
-		t.Fatalf("словарь видов страницы: %v", kindsErr)
+		t.Fatalf("словарь видов страницы %s: %v — вторую половину условия судить нечем, "+
+			"и всякая проба считалась бы ждущей навсегда", subscriptionClientPage, kindsErr)
 	}
 
 	bodies := map[string]string{}
@@ -198,11 +203,6 @@ func TestProbesAwaitingTheirConditionExpireWhenItArrives(t *testing.T) {
 		t.Fatal("ни один профиль не объявляет подписку — гейт ничего не читал, " +
 			"и его зелёное неотличимо от пустого обхода")
 	}
-	if len(servedKinds) == 0 {
-		t.Fatal("страница не назвала НИ ОДНОГО вида — вторая половина условия судилась бы " +
-			"пустотой, и всякая проба считалась бы ждущей навсегда")
-	}
-
 	for _, name := range unrecognized {
 		t.Errorf("в пробе %s не разобрано ни одного вида (ось `kinds` адреса потока): "+
 			"предикат перестал узнавать её форму, и «условие не создано» стало бы "+
