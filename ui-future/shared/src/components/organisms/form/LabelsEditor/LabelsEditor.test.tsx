@@ -10,12 +10,12 @@
 
 import { jest } from "@jest/globals";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { LabelsEditor } from "./LabelsEditor";
+import { LabelsFieldRenderer } from "./LabelsEditor";
 
 function renderEditor(value: Record<string, unknown>, path = "labels", label = "Метки") {
   const onChange = jest.fn<(next: Record<string, unknown>) => void>();
   const utils = render(
-    <LabelsEditor pathPrefix="" path={path} label={label} value={value} onChange={onChange} />,
+    <LabelsFieldRenderer pathPrefix="" path={path} label={label} value={value} onChange={onChange} />,
   );
   return { onChange, ...utils };
 }
@@ -48,7 +48,7 @@ describe("form/LabelsEditor", () => {
     const next = onChange.mock.calls.at(-1)![0];
     expect(next).toEqual({ labels: {} });
 
-    rerender(<LabelsEditor pathPrefix="" path="labels" label="Метки" value={next} onChange={onChange} />);
+    rerender(<LabelsFieldRenderer pathPrefix="" path="labels" label="Метки" value={next} onChange={onChange} />);
     expect(screen.getByPlaceholderText("ключ")).toBeInTheDocument();
   });
 
@@ -57,12 +57,12 @@ describe("form/LabelsEditor", () => {
     // обязана доехать до строк.
     const onChange = jest.fn<(next: Record<string, unknown>) => void>();
     const { rerender } = render(
-      <LabelsEditor pathPrefix="" path="labels" label="Метки" value={{ labels: {} }} onChange={onChange} />,
+      <LabelsFieldRenderer pathPrefix="" path="labels" label="Метки" value={{ labels: {} }} onChange={onChange} />,
     );
     expect(screen.queryByDisplayValue("env")).not.toBeInTheDocument();
 
     rerender(
-      <LabelsEditor pathPrefix="" path="labels" label="Метки" value={{ labels: { env: "prod" } }} onChange={onChange} />,
+      <LabelsFieldRenderer pathPrefix="" path="labels" label="Метки" value={{ labels: { env: "prod" } }} onChange={onChange} />,
     );
 
     expect(screen.getByDisplayValue("env")).toBeInTheDocument();

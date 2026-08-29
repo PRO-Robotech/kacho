@@ -1,5 +1,18 @@
-// LabelsEditor (form-wrapper) — адаптер общего controlled `LabelsEditor` для
-// generic FormFieldRenderer-схемы (storage = obj, в нашем UI — entries).
+// LabelsFieldRenderer — адаптер общего controlled `LabelsEditor` к схеме формы
+// (в схеме метки хранятся объектом, в нашем UI — списком пар).
+//
+// ИМЯ РАЗВЕДЕНО НАМЕРЕННО (#1504). Прежде адаптер и его основа назывались
+// ОДИНАКОВО — `LabelsEditor`, — и это не «две копии одного»: основа рисует
+// таблицу пар, адаптер кладёт результат по пути внутрь значения формы,
+// контракты у них разные, и один вызывает другой. Одинаковым было только имя,
+// и оно стоило дорого: `import { LabelsEditor }` не говорил, ЧТО именно
+// импортируют, пока не прочитан путь, а гейт единого источника не мог взять
+// компонент под наблюдение вовсе — его «своя предпосылка» требует одного
+// объявления на символ и покраснела бы на самом ОБЩЕМ модуле.
+//
+// Разведение, а не слияние, потому что сливать нечего: адаптер импортирует
+// основу и делегирует ей отрисовку. Соседний `FormFieldRenderer` (файл
+// `FormField.tsx`) назван по тому же правилу и по той же причине.
 //
 // Чтобы избежать feedback-loop при первом клике «Добавить метку»
 // (entries=[{"":""}] → obj={} → parent перерисует value без изменений →
@@ -29,7 +42,7 @@ interface Props {
   disabled?: boolean;
 }
 
-export function LabelsEditor({ path, label, description, value, onChange, disabled }: Props) {
+export function LabelsFieldRenderer({ path, label, description, value, onChange, disabled }: Props) {
   const curRaw = getByPath(value, path);
   const cur =
     curRaw && typeof curRaw === "object" && !Array.isArray(curRaw) ? (curRaw as Record<string, string>) : undefined;

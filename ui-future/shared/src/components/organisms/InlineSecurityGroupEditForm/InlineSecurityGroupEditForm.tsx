@@ -11,7 +11,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Form, Input, Typography } from "antd";
 import { api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
-import { LabelsEditor } from "@shared/components/organisms/form/LabelsEditor";
+import { LabelsFieldRenderer } from "@shared/components/organisms/form/LabelsEditor";
 import { FormGrid } from "@shared/components/organisms/form/FormGrid";
 import { FormShell } from "@shared/components/organisms/form/FormShell";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
@@ -110,7 +110,7 @@ export function InlineSecurityGroupEditForm({ projectId, sgId, onCancel }: Props
         </Form.Item>
 
         <Form.Item label="Метки">
-          <LabelsEditor pathPrefix="" path="labels" label="" value={obj} onChange={setObj} />
+          <LabelsFieldRenderer pathPrefix="" path="labels" label="" value={obj} onChange={setObj} />
         </Form.Item>
         <FormFooter submitLabel="Сохранить" submitting={updateMain.isPending} onSubmit={submit} onCancel={onCancel} />
       </FormGrid>

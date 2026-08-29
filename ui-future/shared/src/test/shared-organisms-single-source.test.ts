@@ -148,6 +148,8 @@ const COMPONENTS: readonly Organism[] = [
   { dir: "organisms/form/FormFooter", file: "FormFooter", symbol: "FormFooter" },
   { dir: "organisms/form/FormShell", file: "FormShell", symbol: "FormShell" },
   { dir: "organisms/form/ImmutableField", file: "ImmutableField", symbol: "ImmutableField" },
+  { dir: "organisms/LabelsEditor", file: "LabelsEditor", symbol: "LabelsEditor" },
+  { dir: "organisms/form/LabelsEditor", file: "LabelsEditor", symbol: "LabelsFieldRenderer" },
   { dir: "atoms/StatusBadge", file: "StatusBadge", symbol: "StatusBadge" },
   { dir: "molecules/OperationsTable", file: "OperationsTable", symbol: "OperationsTable" },
   // ── Пополнение перечня (#1505/#1506) ────────────────────────────────────
