@@ -14,13 +14,12 @@ import { RefSelect } from "@/components/organisms/form/RefSelect";
 import { RefNameLink } from "@/components/molecules/RefNameLink";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { instancesApi } from "@/api/resources";
-import { getByPath } from "@/lib/resource-registry";
+import { getByPath, REGISTRY } from "@/lib/resource-registry";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 import { BoolFact } from "@/components/atoms/BoolFact";
 import { errorText } from "@shared/lib/error-presentation";
 import { resolveMutationResponse } from "@shared/lib/operation-outcome";
-import { REGISTRY } from "@/lib/resource-registry";
 
 interface DiskRow {
   volume_id?: string;
