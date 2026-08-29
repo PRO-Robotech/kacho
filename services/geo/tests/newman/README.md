@@ -7,7 +7,7 @@ placement-axis catalog (Region/Zone), traversing the api-gateway REST mux. Mirro
 > Prior state: this suite did not exist (coverage gap tracked as
 > `PRO-Robotech/kacho-geo#10`). It is now authored (22 cases). It requires a deployed
 > stack (api-gateway + kacho-geo + Postgres) and is executed by CI against
-> `kacho-deploy`, not from this repo's `go test`.
+> `deploy/`, not from this repo's `go test`.
 
 ## Layout
 

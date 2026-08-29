@@ -71,18 +71,19 @@ func marshalListener(rec *kachorepo.ListenerRecord) (*anypb.Any, error) {
 	return any, nil
 }
 
-// listenerPayloadMap — outbox-payload snapshot (`map[string]any`) для
-// `nlb_outbox`. Минимальный набор полей для consumer'ов (kacho-iam reader,
-// metrics). Полный record не сериализуем — outbox-event это уведомление, а не
-// полный ресурс (consumer делает дополнительный Get(id) если нужно).
+// listenerPayloadMap — снимок нагрузки `nlb_outbox` для слушателя.
+//
+// ЧИТАТЕЛЯ у нагрузки сегодня нет ни одного (задача #1452): прежняя редакция
+// называла здесь «kacho-iam reader, metrics», а перепись даёт по обоим ноль —
+// зеркало прав ходит очередью `fga_register_outbox`, а счётчики nlb считают
+// строки журнала, но в нагрузку не заглядывают. Имена ключей — из словаря
+// `kachorepo.LifecyclePayload`; что нагрузка должна нести, решает задача #1381.
 func listenerPayloadMap(rec *kachorepo.ListenerRecord) map[string]any {
 	if rec == nil {
 		return nil
 	}
-	// ParentResourceID = parent LB id (canonical `parent_resource_id` key) — the
-	// Subscribe consumer reads it into ResourceLifecycleEvent.ParentResourceId for
-	// kacho-iam FGA-sync (listener→LB hierarchy). Single source of truth for the
-	// key names is kachorepo.LifecyclePayload.
+	// ParentResourceID — идентификатор родительского балансировщика, ключ
+	// `parent_resource_id` (прежние строители писали `load_balancer_id`).
 	return kachorepo.LifecyclePayload{
 		ID:               string(rec.ID),
 		ParentResourceID: string(rec.LoadBalancerID),
@@ -95,9 +96,9 @@ func listenerPayloadMap(rec *kachorepo.ListenerRecord) map[string]any {
 	}.Map()
 }
 
-// lbUpdatedPayloadMap — outbox-payload для cross-resource sync эмита
-// `nlb_load_balancer:<lb_id> UPDATED` после Listener.Create /.Delete
-// . Minimal — consumer резолвит full LB через Get.
+// lbUpdatedPayloadMap — нагрузка перекрёстного эмита правки
+// `nlb_load_balancer:<lb_id> UPDATED` после Listener.Create / .Delete.
+// Минимальная; читателя у неё сегодня нет (см. listenerPayloadMap).
 func lbUpdatedPayloadMap(lbID, projectID, regionID, trigger string) map[string]any {
 	return kachorepo.LifecyclePayload{
 		ID:        lbID,

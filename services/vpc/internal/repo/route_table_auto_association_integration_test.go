@@ -406,6 +406,28 @@ func TestIntegration_VPC_AutoAssociation_OutboxEmit_OnTriggeredUpdate(t *testing
 		"FK SET NULL: в payload уезжает уже обнулённая привязка")
 	require.Equal(t, true, payload["auto_association"],
 		"triggered emit ставит auto_association=true маркер")
+
+	// ЯКОРЬ ПРОЕКТА у строки, рождённой ТРИГГЕРОМ БАЗЫ, а не кодом.
+	//
+	// У журнала vpc два производителя, и второй — сама база: этот триггер пишет
+	// `Subnet`/`UPDATED` при авто-привязке. Подписка с осью `project_id`
+	// отбирает КОЛОНКОЙ, поэтому строка без якоря до подписчика не доедет —
+	// тихо, без отказа и без пропуска в нумерации. Обратное заполнение прошлого
+	// этого не закрывает: оно закрывает прошлое, а триггер рождает будущее.
+	var anchor string
+	require.NoError(t, pool.QueryRow(ctx, `
+		SELECT project_id
+		  FROM vpc_outbox
+		 WHERE sequence_no > $1
+		   AND resource_kind = 'Subnet'
+		   AND resource_id = $2
+		   AND event_type = 'UPDATED'
+		 ORDER BY sequence_no DESC
+		 LIMIT 1`, seqBefore, sub.ID).Scan(&anchor))
+	require.Equal(t, "f-assoc-d", anchor,
+		"строку рождает триггер базы, и якорь проекта обязан стоять колонкой: без него "+
+			"подписка с осью project_id это событие не пропустит, и потребитель, снявший "+
+			"опрос, не узнает о смене привязки")
 }
 
 func scanOutboxRow(row interface {

@@ -79,7 +79,7 @@
 | `Instance.AttachNetworkInterface/DetachNetworkInterface` happy path | Нужен 2-й subnet из kacho-vpc | `enhancement` (есть только NEG sync-NF) |
 | access-bindings RPC (`:setAccessBindings` и т.п.) | No-op skeleton под AAA | покрыть после AAA |
 | Performance / load | Не функциональная проверка | k6 (`tests/k6/`) |
-| Migration up/down | Operational, не product | `kacho-deploy` smoke |
+| Migration up/down | Operational, не product | `deploy/` smoke |
 
 ## Cross-service зависимости
 

@@ -58,8 +58,8 @@ import (
 // a malformed payload on some table. Здесь стояла ссылка на пробу iam, которая
 // это ограничение сторожила; ни ограничения, ни пробы нет — оба сняты вместе с
 // ключом (kacho#1033 и kacho#1042), поэтому охранять в iam больше нечего.
-// Also omitted: subject_change_outbox / fga_model_version / watch_cursors — not
-// used by the drainer.
+// Also omitted: subject_change_outbox / fga_model_version — not used by the
+// drainer.
 const fgaOutboxSchema = `
 CREATE SCHEMA IF NOT EXISTS kacho_iam;
 SET search_path TO kacho_iam, public;

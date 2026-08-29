@@ -246,14 +246,41 @@ func NewAuthzMiddleware(cfg AuthzMiddlewareConfig) (*AuthzMiddleware, error) {
 // остался и читался как объяснение, почему числа края смотреть негде.
 func (m *AuthzMiddleware) Metrics() *AuthzMetrics { return m.metrics }
 
-// subjectChangingFQNs — gRPC FQNs whose success changes a subject's grants.
-// On a 2xx response the gateway flushes its decision cache so the new grant
-// state takes effect immediately for this replica (self-flush). Sibling
-// replicas converge via the subject-change poll-loop.
-// It is read-only after package init — do not mutate at runtime.
+// subjectChangingFQNs — полные имена методов, чей успех меняет права субъекта.
+//
+// На ответе 2xx край гасит свой кэш решений НЕМЕДЛЕННО, поэтому реплика,
+// обслужившая мутацию, отвечает по новому состоянию уже на следующем запросе.
+// Соседние реплики сходятся отдельной полосой — чтением журнала смены субъекта
+// курсором, которое край открывает сам.
+//
+// # Перечень ОБЯЗАН совпадать с производителями журнала
+//
+// Полосы у механизма две, и перечни у них ведутся врозь: здесь — имена методов,
+// там — вызовы записи в очередь. Заведя шестого производителя, легко не вспомнить
+// об этом наборе; тогда соседние реплики сойдутся, а обслужившая мутацию
+// продолжит отвечать по закешированному вердикту — то есть по ОТОЗВАННОМУ праву,
+// и дольше всего именно там, где пользователь только что нажал «отозвать».
+//
+// Сходимость перечней держит гейт дерева `internal/repohygiene`
+// `TestSelfFlushCoversEveryProducerOfTheSubjectChangeQueue`: он считает ОБЕ
+// величины и печатает их обе. Одно число скрыло бы ровно тот случай, ради
+// которого он заведён.
+//
+// Каждому имени ниже отвечает вызов `EmitSubjectChangeEvent` в use-case владельца
+// прав. `AccessBindingService/Update` в набор НЕ входит намеренно: он правит метки
+// и защиту от удаления, прав не меняет и в журнал не пишет.
+//
+// Набор доступен только на чтение после инициализации пакета — не менять в рантайме.
 var subjectChangingFQNs = map[string]struct{}{
 	"kacho.cloud.iam.v1.AccessBindingService/Create": {},
 	"kacho.cloud.iam.v1.AccessBindingService/Delete": {},
+	// Мягкий отзыв: строка привязки остаётся, набор отношений снимается — для
+	// вердикта это то же, что удаление, и кэш обязан погаснуть так же.
+	"kacho.cloud.iam.v1.AccessBindingService/Revoke": {},
+	// Членство в группе меняет права, не трогая ни одной привязки: право выдано
+	// ГРУППЕ, а состав её здесь и меняется.
+	"kacho.cloud.iam.v1.GroupService/AddMember":    {},
+	"kacho.cloud.iam.v1.GroupService/RemoveMember": {},
 }
 
 // MaybeFlushOnMutation flushes the decision cache when fqn is a grant-changing
@@ -316,45 +343,18 @@ func (m *AuthzMiddleware) Reload() error {
 	return errors.Join(errs...)
 }
 
-// AsInvalidator returns a small port (Invalidator) over this middleware's
-// decision cache, used by the InternalAuthzCacheService
-// handler. Returns a non-nil no-op adapter when authz is disabled
-// (m.cache == nil) so the main.go wiring works on disabled-authz configs.
+// ПОРТА ИНВАЛИДАЦИИ ИЗВНЕ ЗДЕСЬ НЕТ — снят вместе со своим единственным
+// потребителем (задача #1024).
 //
-// The returned Invalidator exposes:
-//   - InvalidateSubject(subject) int — per-subject drop (push-drain path)
-//   - Invalidate() — whole-cache flush (safety net fallback)
-func (m *AuthzMiddleware) AsInvalidator() AuthzInvalidator {
-	if m == nil || m.cache == nil {
-		return nopAuthzInvalidator{}
-	}
-	return cacheInvalidatorAdapter{cache: m.cache}
-}
-
-// AuthzInvalidator — port consumed by the InternalAuthzCacheService handler
-// in internal/handler/internal_authz_cache_server.go. Lives here (not in
-// handler/) to keep middleware as the canonical owner of the decision cache.
-type AuthzInvalidator interface {
-	// InvalidateSubject drops decision-cache entries whose key is prefixed
-	// with the given FGA subject (e.g. "user:usr_abc"). Returns the count
-	// of entries dropped.
-	InvalidateSubject(subject string) int
-	// Invalidate flushes the whole decision cache (safety-net fallback).
-	Invalidate()
-}
-
-type cacheInvalidatorAdapter struct{ cache *decisionCache }
-
-func (a cacheInvalidatorAdapter) InvalidateSubject(subject string) int {
-	return a.cache.InvalidateSubject(subject)
-}
-
-func (a cacheInvalidatorAdapter) Invalidate() { a.cache.Invalidate() }
-
-type nopAuthzInvalidator struct{}
-
-func (nopAuthzInvalidator) InvalidateSubject(string) int { return 0 }
-func (nopAuthzInvalidator) Invalidate()                  {}
+// Он отдавал наружу две ручки кэша решений: пообъектный сброс по субъекту и
+// сброс целиком. Звала их ОДНА служба — та, которой iam гасил кэш края,
+// дозваниваясь до его внутреннего слушателя. Направление развёрнуто: край сам
+// читает журнал смены субъекта и гасит свой кэш сам, изнутри
+// (`InvalidateCache`), а модулей, зовущих край, не осталось ни одного.
+//
+// Порт, у которого нет вызывающего, не бесплатен: он объявляет способность,
+// которой никто не пользуется, и следующий читатель принимает её за живой
+// механизм отзыва.
 
 // Unary returns a gRPC UnaryServerInterceptor enforcing per-RPC authz.
 func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
@@ -1160,7 +1160,7 @@ func (m *AuthzMiddleware) phaseCheck(
 	traceID := traceFromContext(ctx, dr.HTTPReq, dr.GRPCMeta)
 	cacheKey := buildCacheKey(subj.FGA, entry.Permission, resourceType, resourceID.String(), contextMap)
 	// Snapshot the invalidation generation BEFORE reading the cache. Any
-	// Invalidate/InvalidateSubject that races the upcoming Check will move the
+	// Invalidate that races the upcoming Check will move the
 	// generation, and the put below is dropped so a grant revoked mid-Check is
 	// never re-cached (write-after-invalidate guard; CWE-362 + CWE-613).
 	cacheGen := m.cache.generation()

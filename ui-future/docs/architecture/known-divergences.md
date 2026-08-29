@@ -26,7 +26,7 @@ why removing the page cost no enforcement.
 
 **Where the control actually lives:** the authoritative breach
 rejection is enforced **server-side** by Kratos —
-`kacho-deploy/.../kratos-config-configmap.yaml` sets
+`deploy/.../kratos-config-configmap.yaml` sets
 `password.config.haveibeenpwned_enabled: true` (host `api.pwnedpasswords.com`).
 A breached password is rejected on submit and the Kratos flow message surfaces
 through the provider's own flow UI. The client check never was the enforcement

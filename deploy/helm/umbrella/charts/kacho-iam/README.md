@@ -4,7 +4,7 @@ Identity / Access Management control-plane service for Kachō Cloud.
 Account / Project / User / ServiceAccount / Group / Role / AccessBinding +
 WebAuthn/Passkey AuthN (Phase 2) + ReBAC + OPA AuthZ (Phase 3).
 
-This sub-chart is owned by the `kacho-deploy` umbrella and is not intended
+This sub-chart is owned by the `kacho-umbrella` chart (`deploy/helm/umbrella/`) and is not intended
 for standalone deployment. The umbrella manages cross-cutting Phase 3 concerns
 (OPA sidecar shared ConfigMap, NetworkPolicies) at the parent level; this
 sub-chart only declares the kacho-iam Deployment + its supporting

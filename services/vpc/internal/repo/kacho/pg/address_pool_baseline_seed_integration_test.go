@@ -250,7 +250,7 @@ func TestStandVpcPoolBaselineMatchesTheWriterPath(t *testing.T) {
 		created.V4CIDRBlocks, created.V6CIDRBlocks))
 	require.NoError(t, w.AddressPools().PopulateFreelistForPool(ctx, created.ID))
 	require.NoError(t, w.Addresses().InitIPv6PoolCursor(ctx, created.ID))
-	require.NoError(t, w.Outbox().Emit(ctx, "AddressPool", created.ID, "CREATED",
+	require.NoError(t, w.Outbox().Emit(ctx, "AddressPool", created.ID, helpers.NoProjectAnchor, "CREATED",
 		helpers.AddressPoolDomainPayload(&created.AddressPool)))
 	require.NoError(t, w.Commit())
 

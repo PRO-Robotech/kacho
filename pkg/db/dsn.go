@@ -48,3 +48,53 @@ func SSLModeFromDSN(dsn string) string {
 	}
 	return DefaultSSLMode
 }
+
+// PoolParamPrefix — префикс ключей, которые понимает ТОЛЬКО pgxpool. Вне пула
+// (`pgx.Connect`) такой ключ уезжает серверу как неизвестный runtime-параметр,
+// и отказ наступает на ПОДКЛЮЧЕНИИ, а не на сборке строки.
+const PoolParamPrefix = "pool_"
+
+// PoolParamFromDSN возвращает ИМЯ пулового параметра, найденного в строке
+// подключения, либо пустую строку.
+//
+// Возвращает ТОЛЬКО имя ключа — никогда саму строку и никакую её часть, кроме
+// имени. Довод тот же, что у SSLModeFromDSN выше: строка собирается через
+// url.UserPassword и НЕСЁТ ПАРОЛЬ БАЗЫ, а результат уходит в отказ старта, то
+// есть в журнал и оператору. Имя ключа отвечает на вопрос «что править», и
+// этого достаточно, чтобы поднять стенд.
+//
+// Читает КЛЮЧИ, а не подстроку. Подстрочная проверка совпадала бы и на пароле,
+// и на имени базы, где такая последовательность законна, — то есть отказывала
+// бы в старте по содержимому секрета.
+//
+// Разбирает обе формы, которыми строка приходит в это дерево: URL-форму
+// (`postgres://…?pool_max_conns=4`) и keyword-форму (`host=… pool_max_conns=4`).
+// Если URL не разбирается (спецсимвол в пароле), остаётся скан ключей по
+// разделителям — он судит левую часть токена, поэтому значение под предикат
+// по-прежнему не подпадает.
+func PoolParamFromDSN(dsn string) string {
+	dsn = strings.TrimSpace(dsn)
+	if dsn == "" {
+		return ""
+	}
+	if u, err := url.Parse(dsn); err == nil && u.Scheme != "" {
+		for key := range u.Query() {
+			if strings.HasPrefix(strings.ToLower(key), PoolParamPrefix) {
+				return key
+			}
+		}
+		return ""
+	}
+	for _, token := range strings.FieldsFunc(dsn, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '&' || r == '?'
+	}) {
+		eq := strings.IndexByte(token, '=')
+		if eq <= 0 {
+			continue
+		}
+		if key := token[:eq]; strings.HasPrefix(strings.ToLower(key), PoolParamPrefix) {
+			return key
+		}
+	}
+	return ""
+}

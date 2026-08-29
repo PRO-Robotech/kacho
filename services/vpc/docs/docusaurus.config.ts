@@ -88,7 +88,7 @@ const config: Config = {
           position: 'left',
         },
         {
-          href: 'https://github.com/PRO-Robotech/kacho-vpc',
+          href: 'https://github.com/PRO-Robotech/kacho/tree/main/services/vpc',
           label: 'GitHub',
           position: 'right',
         },
@@ -112,11 +112,15 @@ const config: Config = {
           ],
         },
         {
-          title: 'Репозитории',
+          // Разработка ведётся в ОДНОМ репозитории. Прежняя редакция вела тремя
+          // ссылками на kacho-vpc / kacho-proto / kacho-corelib: те репозитории
+          // существуют и не заархивированы, но разработка в них не ведётся —
+          // ссылка из подвала читается как «иди сюда за кодом» и указывала не туда.
+          title: 'Исходный код',
           items: [
-            { label: 'kacho-vpc', href: 'https://github.com/PRO-Robotech/kacho-vpc' },
-            { label: 'kacho-proto', href: 'https://github.com/PRO-Robotech/kacho-proto' },
-            { label: 'kacho-corelib', href: 'https://github.com/PRO-Robotech/kacho-corelib' },
+            { label: 'PRO-Robotech/kacho', href: 'https://github.com/PRO-Robotech/kacho' },
+            { label: 'services/vpc/', href: 'https://github.com/PRO-Robotech/kacho/tree/main/services/vpc' },
+            { label: 'proto/ — контракты', href: 'https://github.com/PRO-Robotech/kacho/tree/main/proto' },
           ],
         },
       ],

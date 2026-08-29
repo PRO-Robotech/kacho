@@ -13,12 +13,6 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
-// Типы принципалов, которые вправе быть субъектом тенантного списочного RPC.
-const (
-	subjectTypeUser           = "user"
-	subjectTypeServiceAccount = "service_account"
-)
-
 // ErrUnnamedCaller — запрос не назвал никого. Отдельный, ПЕРВЫЙ исход: это не «отказ
 // прав» и не «сосед недоступен», а отсутствие вызывающего.
 //
@@ -44,21 +38,19 @@ func ErrUnnamedCaller() error {
 //     проверять надо само слово: тип объявляет отправитель заголовков;
 //   - тип принципала не называет тенантного субъекта (служебный, неизвестный);
 //   - идентификатор пуст;
-//   - идентификатор содержит разделители модели прав. Форматирование в обоих
-//     последних случаях СОБЕРЁТ какую-то строку, и вызывающий получил бы субъекта,
-//     которым не является: `usr_a#member` стал бы ссылкой на набор, `usr_a:usr_b`
-//     сдвинул бы границу «тип:идентификатор».
+//   - идентификатор содержит разделители модели прав: `usr_a#member` стал бы
+//     ссылкой на набор, `usr_a:usr_b` сдвинул бы границу «тип:идентификатор».
+//
+// Последние три судит [authz.TenantSubject] — тот же кодек, которым субъекта
+// называет всякий, кто по его имени что-то находит. Своей проверки здесь нет
+// намеренно: она была бы вторым словарём об одном предмете.
 func SubjectFromContext(ctx context.Context) (string, error) {
 	p, ok := operations.PrincipalFromContextOK(ctx)
 	if !ok || p.IsAnonymous() {
 		return "", ErrUnnamedCaller()
 	}
-	if p.Type != subjectTypeUser && p.Type != subjectTypeServiceAccount {
-		return "", ErrUnnamedCaller()
-	}
-	subject := authz.FormatSubject(p.Type, p.ID)
-	if subject != p.Type+":"+p.ID {
-		// Форматирование подменило идентификатор — субъект не назван, а сконструирован.
+	subject, named := authz.TenantSubject(p.Type, p.ID)
+	if !named {
 		return "", ErrUnnamedCaller()
 	}
 	return subject, nil

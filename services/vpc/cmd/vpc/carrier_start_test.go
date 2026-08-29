@@ -44,6 +44,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
@@ -124,10 +125,14 @@ func TestCarrierRaisesVPCWithoutAStartRefusal(t *testing.T) {
 	cancel()
 
 	svcs := emptyServices()
+	subscribe, serr := buildSubscriptionServer(cfg, narrowtest.AllowingAll(), discardLogger())
+	if serr != nil {
+		t.Fatalf("сервер потока не собрался — процесс не поднялся бы: %v", serr)
+	}
 	opsRepo := operations.NewRepo(nil, "kacho_vpc")
 	serveErr := servicehost.Serve(ctx, desc,
 		func(reg grpc.ServiceRegistrar) { registerPublicServices(reg, svcs, opsRepo) },
-		func(reg grpc.ServiceRegistrar) { registerInternalServices(reg, svcs) },
+		func(reg grpc.ServiceRegistrar) { registerInternalServices(reg, svcs, subscribe) },
 	)
 	if serveErr != nil && strings.Contains(serveErr.Error(), "не поднимается") {
 		t.Fatalf("носитель ОТКАЗАЛ vpc в старте — на стенде процесс не поднялся бы:\n%v", serveErr)

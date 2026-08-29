@@ -38,7 +38,7 @@ func bootPosture(cfg config.Config, mtlsCfg config.MTLSConfig) observability.Boo
 		AuthMode:          cfg.AuthN.Mode.String(),
 		DBSSLMode:         coredb.SSLModeFromDSN(cfg.DSN()),
 		PublicMTLS:        mtlsCfg.PublicServerMTLS.Enable,
-		InternalMTLS:      mtlsCfg.InternalServerMTLS.Enable,
+		InternalMTLS:      observability.InternalMTLSFrom(mtlsCfg.InternalServerMTLS.Enable),
 		AuthZCheck:        cfg.AuthZ.IAMEndpoint != "",
 		TrustedForwarders: cfg.TrustedForwarders().IsNarrowed(),
 		// Личность человека этот сервис не проверяет — он принимает уже

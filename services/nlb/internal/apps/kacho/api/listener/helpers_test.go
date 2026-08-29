@@ -4,7 +4,6 @@
 package listener
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -99,14 +98,15 @@ func TestListenerPayloadMap_NilGuard(t *testing.T) {
 	require.Nil(t, listenerPayloadMap(nil))
 }
 
-// TestListenerPayloadMap_ParentResourceIDReachesConsumer — regression for the
-// outbox payload-key drift: listenerPayloadMap must emit the parent LB under the
-// canonical `parent_resource_id` key that the Subscribe consumer parses, so
-// ResourceLifecycleEvent.ParentResourceId is populated for kacho-iam FGA-sync
-// (previously it emitted `load_balancer_id`, which no consumer reads → parent
-// always empty). Producer helper → shared parser (the SAME parser the consumer
-// uses) round-trip proves both sides agree on the key name.
-func TestListenerPayloadMap_ParentResourceIDReachesConsumer(t *testing.T) {
+// TestListenerPayloadMap_KeysOnTheWire — строитель нагрузки слушателя кладёт
+// родителя под именем `parent_resource_id`, а не под прежним `load_balancer_id`.
+//
+// Утверждение сделано СТРОКОВЫМ ЛИТЕРАЛОМ, а не константой словаря. Прежняя
+// редакция гоняла нагрузку через разборщик, собранный из тех же констант, и
+// потому была истинна при любом их значении: замер задачи #1452 переименовал
+// значение ключа — проба осталась зелёной. Разборщик снят (прод-вызывающих у
+// него не было), утверждение переведено на провод.
+func TestListenerPayloadMap_KeysOnTheWire(t *testing.T) {
 	t.Parallel()
 	rec := &kachorepo.ListenerRecord{}
 	rec.ID = domain.ResourceID("nlb-listener-1")
@@ -114,15 +114,11 @@ func TestListenerPayloadMap_ParentResourceIDReachesConsumer(t *testing.T) {
 	rec.ProjectID = domain.ProjectID("prj-b")
 
 	m := listenerPayloadMap(rec)
-	// legacy key must be gone.
-	require.NotContains(t, m, "load_balancer_id", "legacy key must not be emitted")
-
-	raw, err := json.Marshal(m)
-	require.NoError(t, err)
-	parsed, err := kachorepo.ParseLifecyclePayload(raw)
-	require.NoError(t, err)
-	require.Equal(t, "nlb-1", parsed.ParentResourceID,
-		"consumer must recover parent LB id from listener payload")
+	require.NotContains(t, m, "load_balancer_id", "прежнее имя ключа не возвращается")
+	require.Equal(t, "nlb-1", m["parent_resource_id"],
+		"родитель слушателя лежит на проводе под именем parent_resource_id")
+	require.Equal(t, "nlb-listener-1", m["id"])
+	require.Equal(t, "prj-b", m["project_id"])
 }
 
 // TestListenerRecordToPb_NilGuard — nil → Internal.

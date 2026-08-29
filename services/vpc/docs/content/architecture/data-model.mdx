@@ -17,66 +17,105 @@ Kachō VPC хранит все состояние в PostgreSQL-схеме **`ka
 Все id-колонки — `TEXT` (3-символьный префикс типа ресурса + 17 символов crockford-base32).
 
 :::info Baseline + инкрементные миграции
-Базовая схема создается squashed-baseline `0001_initial.sql`: все таблицы, CHECK / FK / UNIQUE /
-EXCLUDE / generated-колонки / индексы / триггеры — inline в одном файле. Поверх применены
-инкременты:
+Базовая схема создаётся squashed-baseline `0001_initial.sql`: все таблицы, CHECK / FK / UNIQUE /
+EXCLUDE / generated-колонки / индексы / триггеры — inline в одном файле. Поверх него применены
+инкременты — на день правки этой страницы их **52** (`ls internal/migrations/*.sql | wc -l`
+даёт 53 вместе с baseline; последний файл — `912001_address_secondary_cursor_indexes.sql`).
 
-<table>
-  <thead><tr><th>Миграция</th><th>Что добавляет</th></tr></thead>
-  <tbody>
-    <tr><td><code>0001</code></td><td>squashed baseline — вся схема <code>kacho\_vpc</code></td></tr>
-    <tr><td><code>0002</code></td><td>drop неиспользуемых IPAM-таблиц (override + cloud-pool-selector)</td></tr>
-    <tr><td><code>0003</code></td><td>drop <code>SecurityGroup.status</code></td></tr>
-    <tr><td><code>0004</code></td><td><code>address\_pool\_cidrs</code> + EXCLUDE на пересечение CIDR пулов</td></tr>
-    <tr><td><code>0005</code></td><td>FK <code>default\_security\_group\_id</code> (ON DELETE SET NULL) + partial UNIQUE «≤ 1 default-SG на сеть»</td></tr>
-    <tr><td><code>0006</code></td><td><code>fga\_register\_outbox</code> — transactional-outbox для регистрации owner-tuple в FGA через kacho-iam</td></tr>
-    <tr><td><code>0007</code></td><td><code>networks.vrf\_id</code> — sequence-backed уникальный VRF id (инфра-чувствительный, отдается только через internal-поверхность)</td></tr>
-    <tr><td><code>0008</code></td><td>additive-колонки <code>resource\_kind</code> / <code>resource\_id</code> на <code>fga\_register\_outbox</code> (для reconciler/observability)</td></tr>
-    <tr><td><code>0009</code></td><td>additive nullable <code>operations.account\_id</code> (общий LRO-writer corelib)</td></tr>
-  </tbody>
-</table>
+Версионирование — Goose. Редактировать применённую миграцию запрещено: изменение схемы вносится
+**новым** файлом. Номер нового файла берётся больше всех существующих — сплошной нумерации у
+цепочки нет и не требуется (в дереве соседствуют формы `0001`…`0045`, `353002`, `912001` и метки
+времени вида `20260828114800`); порядок применения задаёт goose по возрастанию версии.
+:::
 
-Версионирование — Goose; новая миграция = новый файл с инкрементным номером
-(следующий — `0010_*`). Редактировать примененную миграцию запрещено.
+:::note Здесь стоял перечень миграций `0001`…`0009` и обещание «следующий — `0010_*`»
+Перечень был верен на девяти файлах и устарел молча на сорока четырёх: сплошной список миграций
+страница вести не может — он растёт с каждым изменением схемы, а его расхождение с деревом не
+производит ни конфликта при слиянии, ни красного в сборке. То, ради чего перечень читали, —
+«что сейчас в схеме» — отвечает таблица **Таблицы схемы** ниже: она о состоянии,
+а не о пути к нему. Пооперационная история — в самих файлах `internal/migrations/`.
 :::
 
 ## ER-диаграмма
 
-Ниже — все основные таблицы схемы `kacho_vpc` с PK / FK. Soft-ref-связи (по id, без FK —
-например `network_interfaces.v4_address_ids[]`) показаны пунктиром.
-
 <DbSchemaDiagram {...DATABASE_SCHEMA_DIAGRAM} />
+
+:::info Что диаграмма рисует, а что нет — граница задана СВОЙСТВОМ
+Диаграмма показывает **одиннадцать** таблиц из двадцати шести живых:
+
+- таблицу **каждого** ресурса, которым домен управляет полным набором глаголов
+  `Create` / `Get` / `List` / `Update` / `Delete` — их девять, по числу ресурсных служб
+  контракта <code>kacho.cloud.vpc.v1</code>;
+- две инфраструктурные — <code>operations</code> и <code>vpc\_outbox</code>.
+
+Остальные пятнадцать — служебные (подтаблицы состава ресурса, внутренние структуры IPAM,
+очереди и счётчики) — **не рисуются намеренно**: диаграмма отвечает на вопрос «как связаны
+ресурсы», а не «что лежит в схеме». На второй вопрос отвечает таблица ниже, и она полна.
+
+Отношение между двумя изображениями объявлено, а не подразумевается: **множество таблиц
+диаграммы — подмножество таблицы «Таблицы схемы»**, и признак принадлежности назван выше.
+Soft-ref-связи (по id, без FK — например <code>network\_interfaces.v4\_address\_ids&#91;&#93;</code>)
+показаны пунктиром.
+:::
 
 :::note Владелец ресурса — `projectId`
 Все ресурсы привязаны к проекту: в публичном API поле `projectId`, на уровне БД колонка
 `project_id`. Это id владельца ресурса — cross-service-ссылка на `kacho-iam` без FK (см. ниже).
-Иерархия владения — **Account → Project**; ресурс всегда живет в проекте.
+Иерархия владения — **Account → Project**; ресурс всегда живёт в проекте.
 :::
 
 ## Таблицы схемы
 
+Перечень **полный**: двадцать шесть таблиц, столько же, сколько создаёт цепочка миграций на
+её голове. Столбец «На диаграмме» называет, попала ли таблица в изображение выше, — чтобы
+отсутствие на картинке читалось как объявленное свойство, а не как расхождение.
+
 <table>
   <thead>
-    <tr><th>Таблица</th><th>Ресурс / назначение</th><th>PK</th><th>Уникальность</th></tr>
+    <tr><th>Таблица</th><th>Ресурс / назначение</th><th>PK</th><th>Уникальность</th><th>На диаграмме</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>networks</code></td><td>Network (VPC-контейнер)</td><td><code>id</code></td><td>partial <code>UNIQUE … WHERE name&lt;&gt;''</code></td></tr>
-    <tr><td><code>subnets</code></td><td>Subnet (подсеть в зоне)</td><td><code>id</code></td><td>partial <code>UNIQUE … WHERE name&lt;&gt;''</code></td></tr>
-    <tr><td><code>addresses</code></td><td>Address (internal / external IP)</td><td><code>id</code></td><td>partial <code>UNIQUE</code> + per-pool/subnet IP-dedup</td></tr>
-    <tr><td><code>address\_references</code></td><td>1↔1 backref «кто использует адрес»</td><td><code>address\_id</code></td><td>—</td></tr>
-    <tr><td><code>route\_tables</code></td><td>RouteTable</td><td><code>id</code></td><td>partial <code>UNIQUE</code></td></tr>
-    <tr><td><code>security\_groups</code></td><td>SecurityGroup + правила (jsonb)</td><td><code>id</code></td><td>partial <code>UNIQUE</code></td></tr>
-    <tr><td><code>gateways</code></td><td>Gateway (вид: NAT / EGRESS_ONLY; FK на подсеть-якорь)</td><td><code>id</code></td><td>partial <code>UNIQUE</code></td></tr>
-    <tr><td><code>network\_interfaces</code></td><td>NetworkInterface (first-class NIC, отдельно от Instance)</td><td><code>id</code></td><td>partial <code>UNIQUE</code> + <code>mac\_address</code> cloud-wide</td></tr>
-    <tr><td><code>address\_pools</code></td><td><em>(admin)</em> глобальный пул CIDR для IPAM</td><td><code>id</code></td><td>partial <code>UNIQUE</code> на default-pool</td></tr>
-    <tr><td><code>operations</code></td><td>Long-running async-операции (LRO)</td><td><code>id</code></td><td>—</td></tr>
-    <tr><td><code>vpc\_outbox</code></td><td>Доменный транзакционный журнал событий + <code>pg\_notify</code> (in-cluster <code>LISTEN/NOTIFY</code>; Watch RPC не публикуется)</td><td><code>sequence\_no</code></td><td>—</td></tr>
-    <tr><td><code>fga\_register\_outbox</code></td><td>Транзакционный outbox для регистрации owner-tuple в FGA (через kacho-iam)</td><td><code>id</code></td><td>—</td></tr>
+    <tr><td><code>networks</code></td><td>Network (VPC-контейнер)</td><td><code>id</code></td><td><code>UNIQUE (project\_id, name)</code></td><td>да</td></tr>
+    <tr><td><code>subnets</code></td><td>Subnet (подсеть в зоне)</td><td><code>id</code></td><td><code>UNIQUE (project\_id, name)</code></td><td>да</td></tr>
+    <tr><td><code>addresses</code></td><td>Address (internal / external IP)</td><td><code>id</code></td><td><code>UNIQUE (project\_id, name)</code> + per-pool/subnet IP-dedup</td><td>да</td></tr>
+    <tr><td><code>route\_tables</code></td><td>RouteTable</td><td><code>id</code></td><td><code>UNIQUE (project\_id, name)</code></td><td>да</td></tr>
+    <tr><td><code>security\_groups</code></td><td>SecurityGroup + правила (jsonb)</td><td><code>id</code></td><td><code>UNIQUE (project\_id, name)</code> + partial «≤ 1 default-SG на сеть»</td><td>да</td></tr>
+    <tr><td><code>gateways</code></td><td>Gateway (вид: NAT / EGRESS_ONLY; FK на подсеть-якорь)</td><td><code>id</code></td><td><code>UNIQUE (project\_id, name)</code></td><td>да</td></tr>
+    <tr><td><code>network\_interfaces</code></td><td>NetworkInterface (first-class NIC, отдельно от нагрузки)</td><td><code>id</code></td><td><code>UNIQUE (project\_id, name)</code> + <code>mac\_address</code> cloud-wide</td><td>да</td></tr>
+    <tr><td><code>cidr\_groups</code></td><td>CidrGroup (именованный набор CIDR для правил SG)</td><td><code>id</code></td><td><code>UNIQUE (project\_id, name)</code></td><td>да</td></tr>
+    <tr><td><code>address\_pools</code></td><td><em>(admin)</em> глобальный пул CIDR для IPAM</td><td><code>id</code></td><td>partial <code>UNIQUE</code> на default-pool</td><td>да</td></tr>
+    <tr><td><code>operations</code></td><td>Long-running async-операции (LRO)</td><td><code>id</code></td><td>—</td><td>да</td></tr>
+    <tr><td><code>vpc\_outbox</code></td><td>Доменный транзакционный журнал событий + <code>pg\_notify</code> (in-cluster <code>LISTEN/NOTIFY</code>; наружу журнал vpc сегодня не проецируется)</td><td><code>sequence\_no</code></td><td>—</td><td>да</td></tr>
+    <tr><td><code>subnet\_cidr\_blocks</code></td><td>Состав CIDR подсети, по блоку на строку (нормализация массива)</td><td><code>(subnet\_id, block)</code></td><td>PK</td><td>нет</td></tr>
+    <tr><td><code>cidr\_group\_blocks</code></td><td>Состав CidrGroup, по блоку на строку</td><td><code>(group\_id, block)</code></td><td>PK</td><td>нет</td></tr>
+    <tr><td><code>security\_group\_rule\_cidr\_group\_refs</code></td><td>Ссылки правил SG на CidrGroup (RESTRICT-удержание группы)</td><td><code>(security\_group\_id, rule\_id, cidr\_group\_id)</code></td><td>PK</td><td>нет</td></tr>
+    <tr><td><code>route\_table\_gateway\_refs</code></td><td>Ссылки маршрутов таблицы на Gateway, по маршруту на строку</td><td><code>(route\_table\_id, route\_index)</code></td><td>PK</td><td>нет</td></tr>
+    <tr><td><code>address\_references</code></td><td>1↔1 backref «кто использует адрес»</td><td><code>address\_id</code></td><td>PK</td><td>нет</td></tr>
+    <tr><td><code>address\_pool\_network\_default</code></td><td>Привязка пула как network-default</td><td><code>network\_id</code></td><td>PK</td><td>нет</td></tr>
+    <tr><td><code>address\_pool\_cidrs</code></td><td>CIDR-блоки пула; EXCLUDE против пересечения в пределах <code>kind</code></td><td><code>(pool\_id, block)</code></td><td>PK + EXCLUDE</td><td>нет</td></tr>
+    <tr><td><code>address\_pool\_free\_ips</code></td><td>Freelist IPv4 пула (аллокация через <code>FOR UPDATE SKIP LOCKED</code>)</td><td><code>(pool\_id, ip)</code></td><td>PK</td><td>нет</td></tr>
+    <tr><td><code>ipv6\_pool\_cursors</code></td><td>Курсор последовательной выдачи IPv6 по пулу</td><td><code>pool\_id</code></td><td>PK</td><td>нет</td></tr>
+    <tr><td><code>ipv6\_allocated\_ips</code></td><td>Выданные IPv6 пула</td><td><code>(pool\_id, ip)</code></td><td>PK + <code>UNIQUE (pool\_id, offset)</code></td><td>нет</td></tr>
+    <tr><td><code>ipv6\_released\_offsets</code></td><td>Освобождённые смещения IPv6 (возврат в оборот)</td><td><code>(pool\_id, offset)</code></td><td>PK</td><td>нет</td></tr>
+    <tr><td><code>fga\_register\_outbox</code></td><td>Транзакционный outbox для регистрации owner-tuple в FGA (через kacho-iam)</td><td><code>id</code></td><td>—</td><td>нет</td></tr>
+    <tr><td><code>project\_resource\_quotas</code></td><td>Списанные величины и потолки по видам ресурсов домена</td><td><code>(carrier\_type, carrier\_id, kind)</code></td><td>PK</td><td>нет</td></tr>
+    <tr><td><code>nested\_quota\_defaults</code></td><td>Умолчания потолков для вложенных носителей проекта</td><td><code>(project\_id, kind)</code></td><td>PK</td><td>нет</td></tr>
+    <tr><td><code>quota\_sync\_cursor</code></td><td>Позиция догоняющего чтения величин у владельца пределов</td><td><code>id</code></td><td>—</td><td>нет</td></tr>
   </tbody>
 </table>
 
-:::tip Полный список
-Помимо перечисленных, IPAM добавляет вспомогательные таблицы: <code>address\_pool\_network\_default</code>, <code>address\_pool\_cidrs</code>, <code>address\_pool\_free\_ips</code>, <code>ipv6\_pool\_cursors</code>, <code>ipv6\_allocated\_ips</code>, <code>ipv6\_released\_offsets</code>. Полная ER-схема — в <code>docs/architecture/er-diagram.md</code> репозитория.
+:::note Здесь стояла врезка «Полный список» — она полной не была
+Врезка называла восемнадцать таблиц из двадцати шести и объявляла перечень полным; восьми
+не было ни в ней, ни на диаграмме, ни где-либо ещё на странице (`cidr\_groups`,
+`cidr\_group\_blocks`, `subnet\_cidr\_blocks`, `route\_table\_gateway\_refs`,
+`security\_group\_rule\_cidr\_group\_refs`, `project\_resource\_quotas`,
+`nested\_quota\_defaults`, `quota\_sync\_cursor`). Она же отсылала за «полной ER-схемой» по
+адресу <code>docs/architecture/er-diagram.md</code>, которого в дереве нет: инженерная часть
+сайта живёт в <code>docs/engineering/architecture/</code>.
+
+Перечень выше — полный по построению: он ведётся по таблицам, которые цепочка миграций
+создаёт и не снимает. Снятые (<code>cloud\_pool\_selector</code>,
+<code>vpc\_watch\_cursors</code>) в него не входят и входить не должны.
 :::
 
 ## FK-контракт (within-service)
@@ -126,7 +165,7 @@ service-валидации.
   <tbody>
     <tr>
       <td>Имя уникально в проекте</td>
-      <td><code>UNIQUE (project\_id, name)</code> — partial <code>WHERE name&lt;&gt;''</code> у всех восьми ресурсов: пустое имя законно по контракту и слот не занимает</td>
+      <td>полный <code>UNIQUE (project\_id, name)</code> у восьми таблиц, несущих уникальное имя (<code>networks</code>, <code>subnets</code>, <code>addresses</code>, <code>route\_tables</code>, <code>security\_groups</code>, <code>gateways</code>, <code>network\_interfaces</code>, <code>cidr\_groups</code>; у <code>address\_pools</code> уникального индекса по имени нет). Частичный предикат <code>WHERE name&lt;&gt;''</code> снят миграцией <code>715001</code>: он существовал ради пустых имён, а пустого имени больше не бывает</td>
       <td><code>23505</code> → ALREADY_EXISTS</td>
     </tr>
     <tr>
@@ -202,13 +241,13 @@ RETURNING id;
 
 ## CHECK-constraints (DB — последний рубеж)
 
-Все 8 публичных ресурсов несут DB-level `CHECK` поверх `domain.Validate` (защита от внешних
+Все девять ресурсов домена несут DB-level `CHECK` поверх `domain.Validate` (защита от внешних
 writers / багов в app-коде):
 
 <table>
   <thead><tr><th>Поле</th><th>CHECK</th></tr></thead>
   <tbody>
-    <tr><td><code>name</code></td><td>regex <code>^(&#91;a-zA-Z&#93;(&#91;-\_a-zA-Z0-9&#93;&#123;0,61&#125;&#91;a-zA-Z0-9&#93;)?)?$</code> (0–63 байта; empty / uppercase / underscore разрешены)</td></tr>
+    <tr><td><code>name</code></td><td>regex <code>^&#91;a-z0-9&#93;(&#91;-a-z0-9&#93;&#123;0,61&#125;&#91;a-z0-9&#93;)?$</code> — DNS label по RFC 1123, одна форма на всё дерево (миграция <code>715001</code>). Заглавные, подчёркивание и пустая строка <strong>отвергаются</strong>: пустая остаётся законным входом создания, но ресурсом с пустым именем не становится — сервер проставляет имя, производное от <code>id</code></td></tr>
     <tr><td><code>description</code></td><td><code>length(description) &lt;= 256</code></td></tr>
     <tr><td><code>labels</code></td><td><code>kacho\_labels\_valid(labels)</code> — ≤ 64 пар, key-regex, value ≤ 63</td></tr>
     <tr><td><code>status</code> (NIC)</td><td>enum-проверка набора значений NetworkInterface; у SecurityGroup поля <code>status</code> нет (снято миграцией 0003)</td></tr>
@@ -240,7 +279,7 @@ writers / багов в app-коде):
   <thead><tr><th>Таблица</th><th>Роль</th></tr></thead>
   <tbody>
     <tr><td><code>operations</code></td><td>LRO-envelope: каждая мутация создает строку (<code>done=false</code>), worker-горутина переводит в <code>done=true</code> с <code>response</code> (созданный ресурс) либо <code>error</code> (<code>google.rpc.Status</code>). Без FK на ресурсы — <code>resource\_id</code> хранится как plain TEXT (ресурс может быть удален до завершения op). Подробнее — <a href="/architecture/operations">Операции</a>.</td></tr>
-    <tr><td><code>vpc\_outbox</code></td><td>Транзакционный outbox-журнал: каждая успешная мутация пишет событие в outbox <strong>в той же TX</strong>, что и сам ресурс. Триггер <code>vpc\_outbox\_notify\_trg</code> делает <code>pg\_notify('vpc\_outbox', sequence\_no::text)</code> — in-cluster <code>LISTEN/NOTIFY</code>-канал. Публичного Watch RPC в Kachō нет: клиенты наблюдают изменения через polling <code>List</code> / <code>OperationService.Get</code>.</td></tr>
+    <tr><td><code>vpc\_outbox</code></td><td>Транзакционный outbox-журнал: каждая успешная мутация пишет событие в outbox <strong>в той же TX</strong>, что и сам ресурс. Триггер <code>vpc\_outbox\_notify\_trg</code> делает <code>pg\_notify('vpc\_outbox', sequence\_no::text)</code> — in-cluster <code>LISTEN/NOTIFY</code>-канал. Наружу этот журнал сегодня не проецируется: подписка на изменения у платформы есть (одна ручка края поверх журналов владельцев), но vpc в число объявленных владельцев пока не входит, поэтому клиенты наблюдают изменения ресурсов vpc через polling <code>List</code> / <code>OperationService.Get</code>.</td></tr>
   </tbody>
 </table>
 
@@ -251,7 +290,7 @@ flowchart LR
   op -.->|"worker goroutine"| work["doCreate / doUpdate / doDelete"]
   work -->|"TX: INSERT resource + INSERT vpc_outbox"| res[("resource table")]
   work -->|"same TX"| ob[("vpc_outbox")]
-  ob -->|"trigger pg_notify"| notify["LISTEN/NOTIFY vpc_outbox<br/>(in-cluster, без Watch RPC)"]
+  ob -->|"trigger pg_notify"| notify["LISTEN/NOTIFY vpc_outbox<br/>(in-cluster, наружу не проецируется)"]
   work -->|"UPDATE operations SET done=true"| op
   op -.->|"poll OperationService.Get"| cli
 ```

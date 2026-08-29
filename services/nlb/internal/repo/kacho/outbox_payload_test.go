@@ -3,89 +3,104 @@
 
 package kacho
 
-import (
-	"encoding/json"
-	"testing"
-)
+import "testing"
 
-// TestLifecyclePayload_Map_CanonicalKeys — Map() эмитит ровно канонические
-// имена ключей (единый источник истины) и опускает пустые поля.
-func TestLifecyclePayload_Map_CanonicalKeys(t *testing.T) {
+// Пробы этого файла называют ключи СТРОКОВЫМИ ЛИТЕРАЛАМИ, а не константами,
+// которыми строитель их собирает, — и это не многословие, а единственная форма,
+// способная упасть.
+//
+// Прежняя редакция утверждала круговым ходом: строитель собирал нагрузку по
+// константе, разборщик читал её по ТОЙ ЖЕ константе, проба сверяла результат
+// снова по ней. Такое утверждение истинно by construction при любом значении
+// константы. Замер (задача #1452): значение `PayloadKeyOldProjectID` заменено на
+// `totally_wrong_key` — все четыре пробы обеих сторон остались ЗЕЛЁНЫМИ. То есть
+// имя ключа на проводе не удерживалось ничем.
+//
+// Разборщик при этом снят: вызывающих в прод-дереве у него не было, а как
+// зеркало собственного строителя он и создавал эту круговую истинность.
+
+// TestPayloadKeysAreAssertedOnTheWire — строитель эмитит ровно те имена, под
+// которыми нагрузка лежит в журнале, и опускает пустые поля.
+func TestPayloadKeysAreAssertedOnTheWire(t *testing.T) {
 	m := LifecyclePayload{
 		ID:               "nlb-listener-1",
 		ParentResourceID: "nlb-1",
 		ProjectID:        "prj-b",
 		RegionID:         "ru-1",
 		Name:             "l1",
+		Status:           "ACTIVE",
+		Type:             "EXTERNAL",
 		Protocol:         "TCP",
 		Port:             443,
-		Status:           "ACTIVE",
+		Trigger:          "listener_created",
+		OldProjectID:     "prj-a",
+		NewProjectID:     "prj-b",
 	}.Map()
 
-	if m[PayloadKeyParentResourceID] != "nlb-1" {
-		t.Fatalf("parent_resource_id = %v, want nlb-1", m[PayloadKeyParentResourceID])
+	// Провод целиком: имя слева — литерал, а не константа, которой оно собрано.
+	want := map[string]any{
+		"id":                 "nlb-listener-1",
+		"parent_resource_id": "nlb-1",
+		"project_id":         "prj-b",
+		"region_id":          "ru-1",
+		"name":               "l1",
+		"status":             "ACTIVE",
+		"type":               "EXTERNAL",
+		"protocol":           "TCP",
+		"port":               int32(443),
+		"trigger":            "listener_created",
+		"old_project_id":     "prj-a",
+		"new_project_id":     "prj-b",
 	}
-	// legacy-ключ load_balancer_id больше НЕ пишется.
-	if _, ok := m["load_balancer_id"]; ok {
-		t.Fatalf("legacy key load_balancer_id must not be emitted: %v", m)
+	for key, wantVal := range want {
+		got, ok := m[key]
+		if !ok {
+			t.Errorf("ключа %q нет на проводе: строитель собрал %v", key, m)
+			continue
+		}
+		if got != wantVal {
+			t.Errorf("ключ %q = %v, ожидалось %v", key, got, wantVal)
+		}
 	}
-	if m[PayloadKeyPort] != int32(443) {
-		t.Fatalf("port = %v, want 443", m[PayloadKeyPort])
-	}
-	// пустые поля опущены.
-	if _, ok := m[PayloadKeyOldProjectID]; ok {
-		t.Fatalf("empty old_project_id must be omitted: %v", m)
-	}
-}
-
-// TestLifecyclePayload_MovedKeys — MOVED-builder эмитит old_project_id/new_project_id
-// (не src_/dst_).
-func TestLifecyclePayload_MovedKeys(t *testing.T) {
-	m := LifecyclePayload{ID: "nlb-1", OldProjectID: "prj-a", NewProjectID: "prj-b"}.Map()
-	if m[PayloadKeyOldProjectID] != "prj-a" {
-		t.Fatalf("old_project_id = %v, want prj-a", m[PayloadKeyOldProjectID])
-	}
-	if m[PayloadKeyNewProjectID] != "prj-b" {
-		t.Fatalf("new_project_id = %v, want prj-b", m[PayloadKeyNewProjectID])
-	}
-	if _, ok := m["src_project_id"]; ok {
-		t.Fatalf("legacy key src_project_id must not be emitted: %v", m)
-	}
-}
-
-// TestParseLifecyclePayload_RoundTrip — producer Map() → JSON → consumer Parse
-// восстанавливает канонические поля.
-func TestParseLifecyclePayload_RoundTrip(t *testing.T) {
-	in := LifecyclePayload{ID: "x", ParentResourceID: "nlb-1", OldProjectID: "prj-a", Port: 80}
-	raw, err := json.Marshal(in.Map())
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := ParseLifecyclePayload(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.ParentResourceID != "nlb-1" || got.OldProjectID != "prj-a" || got.Port != 80 {
-		t.Fatalf("round-trip mismatch: %+v", got)
+	// Словарь закрыт в обратную сторону: лишний ключ так же тих, как
+	// отсутствующий, — подписчик его просто не увидит.
+	for key := range m {
+		if _, ok := want[key]; !ok {
+			t.Errorf("на проводе ключ %q, которого проба не называет", key)
+		}
 	}
 }
 
-// TestParseLifecyclePayload_Tolerant — bad JSON → error; wrong-typed field → пусто
-// (graceful), не роняет остальные поля.
-func TestParseLifecyclePayload_Tolerant(t *testing.T) {
-	if _, err := ParseLifecyclePayload([]byte("not-json")); err == nil {
-		t.Fatal("want error on bad JSON")
+// TestEmptyFieldsAreOmittedFromTheWire — пустое поле в нагрузку не попадает.
+//
+// Это не косметика: пустая строка на проводе означала бы «значение известно и
+// оно пусто», тогда как её отсутствие означает «этот вид ресурса такого поля не
+// несёт».
+func TestEmptyFieldsAreOmittedFromTheWire(t *testing.T) {
+	m := LifecyclePayload{ID: "nlb-1", ProjectID: "prj-b"}.Map()
+	for _, key := range []string{
+		"parent_resource_id", "region_id", "name", "status", "type",
+		"protocol", "trigger", "old_project_id", "new_project_id", "port",
+	} {
+		if _, ok := m[key]; ok {
+			t.Errorf("пустое поле уехало на провод ключом %q: %v", key, m)
+		}
 	}
-	// parent_resource_id неверного типа игнорируется, old_project_id валиден.
-	got, err := ParseLifecyclePayload([]byte(`{"parent_resource_id":42,"old_project_id":"prj-a"}`))
-	if err != nil {
-		t.Fatal(err)
+	if len(m) != 2 {
+		t.Errorf("на проводе %d ключей, ожидалось 2: %v", len(m), m)
 	}
-	if got.ParentResourceID != "" || got.OldProjectID != "prj-a" {
-		t.Fatalf("tolerant parse mismatch: %+v", got)
-	}
-	// empty payload → zero value, no error.
-	if got, err := ParseLifecyclePayload(nil); err != nil || got.ParentResourceID != "" {
-		t.Fatalf("empty payload: got %+v err %v", got, err)
+}
+
+// TestLegacyKeyNamesAreGone — имена, которые писали прежние строители
+// (`load_balancer_id`, `src_project_id`), на провод не возвращаются.
+func TestLegacyKeyNamesAreGone(t *testing.T) {
+	m := LifecyclePayload{
+		ID: "nlb-1", ParentResourceID: "nlb-parent",
+		OldProjectID: "prj-a", NewProjectID: "prj-b",
+	}.Map()
+	for _, legacy := range []string{"load_balancer_id", "src_project_id", "dst_project_id"} {
+		if _, ok := m[legacy]; ok {
+			t.Errorf("прежнее имя %q вернулось на провод: %v", legacy, m)
+		}
 	}
 }

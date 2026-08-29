@@ -26,7 +26,7 @@ import hero from '@site/src/css/hero.module.css'
     <a className={hero.btnPrimary} href="/getting-started">Быстрый старт →</a>
     <a className={hero.btnGhost} href="/api/overview">Обзор API</a>
     <a className={hero.btnGhost} href="/architecture/overview">Архитектура</a>
-    <a className={hero.btnGhost} href="https://github.com/PRO-Robotech/kacho-geo">GitHub</a>
+    <a className={hero.btnGhost} href="https://github.com/PRO-Robotech/kacho/tree/main/services/geo">GitHub</a>
   </div>
 </header>
 
@@ -81,7 +81,7 @@ Kachō Geo управляет **двумя типами ресурсов**. Об
 Идентификаторы Region и Zone **назначает администратор** явно (например, `region-1`,
 `region-1-a`), и они **неизменяемы** после создания (immutable PK). Это осознанное решение:
 топология — стабильный справочник, её ключи человекочитаемы и постоянны (тогда как у обычных
-ресурсов платформы id генерируется сервером через `kacho-corelib/ids`).
+ресурсов платформы id генерируется сервером через `pkg/ids`).
 :::
 
 ### Связи ресурсов
@@ -150,7 +150,7 @@ flowchart LR
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>⇄</span>
     <span className={hero.featureTitle}>gRPC + REST API</span>
-    <span className={hero.featureBody}>Единый контракт на Protocol Buffers (<code>kacho-proto</code>), REST-проекция через grpc-gateway.</span>
+    <span className={hero.featureBody}>Единый контракт на Protocol Buffers (<code>proto/</code>), REST-проекция через grpc-gateway.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>◎</span>
@@ -185,7 +185,7 @@ flowchart LR
   <thead><tr><th>Технология</th><th>Применение</th></tr></thead>
   <tbody>
     <tr><td>Go</td><td>Язык реализации (чистая архитектура: handler → use-case → domain)</td></tr>
-    <tr><td>Protocol Buffers / Buf</td><td>Контракт API (<code>kacho-proto</code>, домен <code>kacho.cloud.geo.v1</code>)</td></tr>
+    <tr><td>Protocol Buffers / Buf</td><td>Контракт API (<code>proto/</code>, домен <code>kacho.cloud.geo.v1</code>)</td></tr>
     <tr><td>PostgreSQL / pgx v5</td><td>Хранилище <code>kacho_geo</code></td></tr>
     <tr><td>Goose</td><td>Версионирование схемы (baseline-миграция <code>0001_initial</code>)</td></tr>
     <tr><td>sqlc + handwritten pgx</td><td>SQL-доступ (без ORM)</td></tr>
@@ -193,16 +193,16 @@ flowchart LR
   </tbody>
 </table>
 
-## Структура репозиториев
+## Структура монорепо
 
 <table>
-  <thead><tr><th>Репозиторий</th><th>Назначение</th></tr></thead>
+  <thead><tr><th>Каталог</th><th>Назначение</th></tr></thead>
   <tbody>
-    <tr><td><strong>kacho-geo</strong></td><td>Этот сервис: control-plane Geography (Region / Zone)</td></tr>
-    <tr><td><strong>kacho-proto</strong></td><td>Центральные <code>.proto</code> + сгенерированные Go-stubs</td></tr>
-    <tr><td><strong>kacho-corelib</strong></td><td>Общие пакеты (db, grpcsrv, grpcclient, config, observability, ...)</td></tr>
-    <tr><td><strong>kacho-api-gateway</strong></td><td>Edge: gRPC-proxy + REST mux</td></tr>
-    <tr><td><strong>kacho-iam</strong></td><td>Авторизация — per-RPC Check (ребро geo → iam)</td></tr>
-    <tr><td><strong>kacho-compute / kacho-vpc</strong></td><td>Peer-консумеры: валидируют <code>zoneId</code> / <code>regionId</code> через Kachō Geo</td></tr>
+    <tr><td><strong>services/geo/</strong></td><td>Этот сервис: control-plane Geography (Region / Zone)</td></tr>
+    <tr><td><strong>proto/</strong></td><td>Центральные <code>.proto</code> + сгенерированные Go-stubs</td></tr>
+    <tr><td><strong>pkg/</strong></td><td>Общие пакеты (db, grpcsrv, grpcclient, config, observability, ...)</td></tr>
+    <tr><td><strong>gateway/</strong></td><td>Edge: gRPC-proxy + REST mux</td></tr>
+    <tr><td><strong>services/iam/</strong></td><td>Авторизация — per-RPC Check (ребро geo → iam)</td></tr>
+    <tr><td><strong>services/compute/ · services/vpc/</strong></td><td>Peer-консумеры: валидируют <code>zoneId</code> / <code>regionId</code> через Kachō Geo</td></tr>
   </tbody>
 </table>

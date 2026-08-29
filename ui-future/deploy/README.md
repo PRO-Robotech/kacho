@@ -1,12 +1,12 @@
 # kacho-ui-future Helm chart
 
-This chart is intentionally named `ui` so `kacho-deploy/helm/umbrella` can use it
+This chart is intentionally named `ui` so `deploy/helm/umbrella` can use it
 as a drop-in replacement for the legacy `kacho-ui/deploy` dependency.
 
 It installs:
 
 - `ui` Deployment and Service: the module federation host and compatibility
-  entrypoint used by ingress, port-forwarding, and existing `kacho-deploy`
+  entrypoint used by ingress, port-forwarding, and existing umbrella
   values.
 - `ui-dashboard` Deployment and Service: the dashboard remote consumed at
   `/dashboard-remote/assets/remoteEntry.js`.
@@ -30,7 +30,7 @@ Standalone install:
 helm upgrade --install ui ./deploy -n kacho --create-namespace
 ```
 
-`kacho-deploy` compatibility:
+`deploy/helm/umbrella` compatibility:
 
 ```yaml
 ui:

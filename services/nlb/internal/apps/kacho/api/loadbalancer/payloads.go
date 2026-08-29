@@ -23,9 +23,9 @@ func lbAddressOwner(lbID, name string) vpcclient.AddressOwner {
 	return vpcclient.AddressOwner{Kind: lbAddressOwnerKind, ID: lbID, Name: name}
 }
 
-// lbOutboxPayload — JSON-payload для outbox. Минимальный snapshot.
-// Ключи — из единого источника истины kachorepo.LifecyclePayload (тот же
-// набор литералов, что читает Subscribe-consumer).
+// lbOutboxPayload — нагрузка журнала для балансировщика. Минимальный снимок.
+// Ключи — из словаря `kachorepo.LifecyclePayload`; читателя у нагрузки сегодня
+// нет ни одного (задача #1452, там же перепись и предикат его появления).
 func lbOutboxPayload(lb *kachorepo.LoadBalancerRecord) map[string]any {
 	if lb == nil {
 		return nil
@@ -40,11 +40,12 @@ func lbOutboxPayload(lb *kachorepo.LoadBalancerRecord) map[string]any {
 	}.Map()
 }
 
-// lbMovedPayload — MOVED-event outbox-payload. old_project_id — исходный project
-// (canonical-ключ, который Subscribe-consumer читает в
-// ResourceLifecycleEvent.OldProjectId для kacho-iam FGA-sync: снос stale
-// owner/hierarchy-tuples на старом project). Единый источник имён ключей —
-// kachorepo.LifecyclePayload.
+// lbMovedPayload — нагрузка события переезда. `old_project_id` — исходный
+// проект: единственное место журнала, где он вообще записан, потому что колонка
+// якоря несёт уже целевой. Читателя у него сегодня нет; названный прежде
+// потребитель (снос кортежей прав на старом проекте через снятый
+// `InternalResourceLifecycleService.Subscribe`) снят задачей #814, а зеркало
+// прав ходит очередью `fga_register_outbox`.
 func lbMovedPayload(id, srcProject, dstProject string) map[string]any {
 	return kachorepo.LifecyclePayload{
 		ID:           id,

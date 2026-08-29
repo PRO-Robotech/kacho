@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
@@ -68,13 +69,19 @@ func (s *Server) drain(
 			return h.settled, nil
 		}
 
+		// Право на ПРОЕКТ спрашивается заново — перед КАЖДОЙ порцией, которая
+		// собирается уйти. См. [Server.regate].
+		if err := s.regate(ctx, filter); err != nil {
+			return cursor, err
+		}
+
 		scanned := rows[len(rows)-1].Position
 
 		events, err := s.mapRows(rows, filter)
 		if err != nil {
 			return cursor, err
 		}
-		visible, err := s.narrow(ctx, rows, events)
+		visible, err := s.narrow(ctx, rows, events, filter)
 		if err != nil {
 			// Модель не ответила — это НЕ «да». Позиция не двигается, строки не
 			// уходят.
@@ -93,6 +100,73 @@ func (s *Server) drain(
 			return cursor, nil
 		}
 	}
+}
+
+// regate переспрашивает стража проектной оси ПЕРЕД отправкой порции.
+//
+// # Почему на живом потоке, а не только при открытии
+//
+// Страж спрашивался один раз — при открытии, — и дальше поток жил сам. Это
+// ровно тот класс, который корпус называет «контроль, действующий на выдаче, но
+// не на предъявлении»: механизм присутствует, выглядит исполненным и не
+// срабатывает никогда, потому что стоит не на том пути. От задержки
+// распространения он отличается тем, что сходиться тут нечему: отзыв не
+// приобретает читателя оттого, что прошло время.
+//
+// Пообъектное сужение ниже этой дыры НЕ закрывает, хотя выглядит так, будто
+// закрывает, — и различие НЕ в том, где живёт истина: внешнего движка прав в
+// дереве нет вовсе, обе стороны спрашивают одну живую таблицу. Различие в КЭШЕ:
+// постраничный путь держит окно ПОЛОЖИТЕЛЬНЫХ вердиктов
+// ([listnarrow.Config.CacheTTL]), поэтому строка, разрешённая до отзыва,
+// продолжает уходить всё это окно. Страж оси окна не держит и отрицателен с
+// первого же вопроса после отзыва.
+//
+// Окно это числом названо — там же, у сужателя, — но названо ОНО ЖЕ и для
+// строк: то есть без переспроса стража отзыв доезжал бы до потока не раньше
+// истечения окна вердиктов, а до СОЕДИНЕНИЯ не доезжал бы никогда.
+//
+// Отдельно и важно: страж оси спрашивает право ВЫЗЫВАЮЩЕГО на проект, и модель
+// разрешает его членством в группе наравне с прямой выдачей. Поэтому отзыв
+// привязки, субъектом которой была ГРУППА, эта проверка закрывает, хотя по
+// имени такую строку закрыть нельзя — субъекта `group:…` в реестре потоков не
+// бывает (см. `pkg/subjectchange`, счётчик `usersets_skipped` — он считает
+// ИМЕННО эту норму и отделён от счётчика потерянных имён, kacho#1463).
+//
+// # Почему ПЕРЕД порцией, а не по таймеру
+//
+// Окно тогда есть СЛЕДСТВИЕ РЕШЕНИЯ, а не срока: после отзыва не уходит НИ ОДНОЙ
+// порции, и величины, которую надо было бы выбрать и потом объяснять, здесь нет
+// вовсе. Молчащий поток при этом не платит ничего — расход пропорционален
+// объёму событий, а не числу открытых потоков.
+//
+// # Чего эта проверка НЕ делает
+//
+// Она не закрывает СОЕДИНЕНИЕ: поток остаётся открытым и перестаёт отдавать
+// события. Закрытие соединения принадлежит тому, кто его открыл, — у
+// сегодняшнего единственного потребителя это край (kacho#1022), и там оно
+// сделано чтением отзыва. Сказано вслух, чтобы следующий читатель не принял
+// «событий нет» за «потока нет».
+//
+// Fail-closed: неотвеченная модель НЕ есть «право есть» — отказ уходит наверх, и
+// порция не отправляется.
+func (s *Server) regate(ctx context.Context, filter Filter) error {
+	if filter.ProjectID == "" {
+		// Оси нет — сторожить нечего. Спрашивать здесь значило бы звать соседа с
+		// вопросом, которого вызывающий не задавал.
+		return nil
+	}
+	allowed, err := listnarrow.AllowedOnObject(ctx, s.cfg.Narrower,
+		s.cfg.ProjectGate.ObjectType, s.cfg.ProjectGate.Action,
+		s.cfg.ProjectGate.Relations, filter.ProjectID)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		// Та же форма, что при открытии, и дословно та же, что у отсутствия
+		// проекта: различимый текст выдал бы существование чужого проекта.
+		return status.Errorf(codes.NotFound, s.cfg.ProjectGate.NotFoundFormat, filter.ProjectID)
+	}
+	return nil
 }
 
 // read вычитывает одну порцию окна, применяя те оси, которые отбираются запросом.
@@ -116,7 +190,12 @@ func (s *Server) read(
 	args := []any{cursor, settled}
 	var where strings.Builder
 	if len(filter.Kinds) > 0 {
-		args = append(args, filter.Kinds)
+		// Вид, названный вызывающим, — слово ПРОВОДА (тип объекта модели прав),
+		// а колонка хранит слово ВЛАДЕЛЬЦА. Перевод живёт в объявлении журнала:
+		// подставить сюда вид провода как есть значило бы отобрать по слову,
+		// которого в колонке нет, — и подписка молчала бы навсегда, выглядя
+		// исправной.
+		args = append(args, s.cfg.Journal.journalWords(filter.Kinds))
 		fmt.Fprintf(&where, " AND %s = ANY($%d)", st.KindColumn, len(args))
 	}
 	if len(filter.IDs) > 0 {
@@ -211,33 +290,21 @@ func (s *Server) mapRows(rows []Row, filter Filter) ([]*subscriptionv1.Subscript
 		}
 
 		ev := &subscriptionv1.SubscriptionEvent{
-			Position:   pagetoken.EncodeSubscriptionPosition(pagetoken.SubscriptionPosition{Settled: row.Position}),
-			Kind:       row.Kind,
+			Position: pagetoken.EncodeSubscriptionPosition(pagetoken.SubscriptionPosition{Settled: row.Position}),
+			// На провод едет ТИП ОБЪЕКТА, а не слово, которым владелец записал
+			// строку: написание вида одно на всё дерево, и берётся оно у того же
+			// производителя, которым сервер спрашивает модель прав о видимости
+			// этой самой строки. Отдать `row.Kind` значило бы завести третье
+			// написание — которого нет ни в словаре открытия, ни в оси отбора.
+			Kind:       m.Kinds[row.Kind].ObjectType,
 			ResourceId: row.ID,
 			ProjectId:  project,
 			Change:     change,
 		}
-		state, err := m.State(row)
-		switch {
-		case err != nil:
-			s.log.Warn("subscription: state is unavailable for this event",
-				"position", row.Position, "kind", row.Kind, "err", err)
-			ev.Carrier = &subscriptionv1.SubscriptionEvent_StateUnavailable_{
-				StateUnavailable: &subscriptionv1.SubscriptionEvent_StateUnavailable{
-					Reason: subscriptionv1.SubscriptionEvent_StateUnavailable_NOT_SERIALIZABLE,
-				},
-			}
-		case state == nil:
-			// Отображение вернуло отсутствие без ошибки. Пустое состояние не
-			// отдаётся НИКОГДА: подписчик вправе читать непустую нагрузку как
-			// ПОЛНОЕ состояние предмета, и пустой объект солгал бы ему.
-			ev.Carrier = &subscriptionv1.SubscriptionEvent_StateUnavailable_{
-				StateUnavailable: &subscriptionv1.SubscriptionEvent_StateUnavailable{
-					Reason: subscriptionv1.SubscriptionEvent_StateUnavailable_NOT_SERIALIZABLE,
-				},
-			}
-		default:
-			ev.Carrier = &subscriptionv1.SubscriptionEvent_State{State: state}
+		state, absence, err := m.State(row)
+		if complaint := setStateCarrier(ev, state, absence, err); complaint != "" {
+			s.log.Warn("subscription: "+complaint,
+				"position", row.Position, "kind", row.Kind, "change", row.Change, "err", err)
 		}
 		out[i] = ev
 	}
@@ -249,6 +316,77 @@ func (s *Server) mapRows(rows []Row, filter Filter) ([]*subscriptionv1.Subscript
 	return out, nil
 }
 
+// setStateCarrier выбирает НОСИТЕЛЬ НАГРУЗКИ события и возвращает жалобу в
+// журнал процесса («» — жаловаться не на что).
+//
+// Функция чистая и потому проверяема без базы, без сервера и без транспорта:
+// предмет здесь — таблица из четырёх исходов, а не путь события, и проверять её
+// поднятым стендом значило бы платить контейнером за утверждение об операторе
+// `switch`.
+//
+// # ЧЕТЫРЕ ИСХОДА, И НИ ОДИН НЕ СВОДИТСЯ К ДРУГОМУ
+//
+//   - ОТКАЗ СБОРКИ — состояние есть, собрать не удалось. `NOT_SERIALIZABLE`, и
+//     только здесь: слово означает неудавшуюся ПОПЫТКУ, и назвать им отсутствие
+//     попытки значит соврать подписчику о роде беды. Действие у него разумное —
+//     перечитать;
+//   - СОСТОЯНИЕ СОБРАНО — оно и едет;
+//   - ОТСУТСТВИЕ С НАЗВАННОЙ ПРИЧИНОЙ — едет причина владельца. Пустое состояние
+//     не отдаётся НИКОГДА: подписчик вправе читать непустую нагрузку как ПОЛНОЕ
+//     состояние предмета, и пустой объект солгал бы ему;
+//   - ОТСУТСТВИЕ БЕЗ ПРИЧИНЫ — `REASON_UNSPECIFIED` и ГРОМКО. Контракт держит
+//     это значение ровно для такого случая; подшить его к соседней записи
+//     означало бы завести корзину «прочее» под чужим именем.
+//
+// # ПОЧЕМУ ОТКАЗ СИЛЬНЕЕ НАЗВАННОЙ ПРИЧИНЫ
+//
+// Владелец, вернувший и отказ, и причину, противоречит сам себе, и сервер обязан
+// выбрать ту сторону, где потеря меньше. Отказ — наблюдение о СЛУЧИВШЕМСЯ, причина
+// — объявление о ЗАДУМАННОМ; отдать причину значило бы объявить свойством журнала
+// то, что на самом деле сломалось, и погасить единственный след поломки.
+//
+// # ПОЧЕМУ СОБРАННОЕ СОСТОЯНИЕ СИЛЬНЕЕ НАЗВАННОЙ ПРИЧИНЫ
+//
+// Причина при непустом состоянии — противоречие того же рода, и разрешается оно в
+// пользу состояния: подписчику нужен предмет, а не объяснение, почему его нет.
+// Жалоба при этом пишется — противоречие в объявлении владельца обязано быть
+// видно, а не проглочено.
+func setStateCarrier(
+	ev *subscriptionv1.SubscriptionEvent,
+	state *anypb.Any,
+	absence StateAbsence,
+	err error,
+) (complaint string) {
+	unavailable := func(r subscriptionv1.SubscriptionEvent_StateUnavailable_Reason) {
+		ev.Carrier = &subscriptionv1.SubscriptionEvent_StateUnavailable_{
+			StateUnavailable: &subscriptionv1.SubscriptionEvent_StateUnavailable{Reason: r},
+		}
+	}
+
+	switch {
+	case err != nil:
+		unavailable(subscriptionv1.SubscriptionEvent_StateUnavailable_NOT_SERIALIZABLE)
+		return "state could not be assembled for this event"
+	case state != nil:
+		ev.Carrier = &subscriptionv1.SubscriptionEvent_State{State: state}
+		if absence != StateAbsenceUnnamed {
+			return "the owner returned both a state and a reason for its absence — the state wins, but the declaration contradicts itself"
+		}
+		return ""
+	default:
+		word, named := absence.reason()
+		unavailable(word)
+		if !named {
+			// Сюда попадают ОБА негодных исхода — забытая причина и значение вне
+			// словаря, — и оба ГРОМКИЕ. Смолчать на втором значило бы вернуть
+			// корзину «прочее» под именем нулевого значения: дефект объявления
+			// владельца стал бы неотличим от законного исхода.
+			return "the owner returned no state and named no reason — the subscriber cannot tell a journal property from a failure"
+		}
+		return ""
+	}
+}
+
 // narrow оставляет только те события, которые вызывающий вправе видеть,
 // СОХРАНЯЯ порядок: журнал упорядочен по номеру, и перестановка сломала бы
 // монотонность потока.
@@ -257,10 +395,52 @@ func (s *Server) mapRows(rows []Row, filter Filter) ([]*subscriptionv1.Subscript
 // объекта: у модели спрашивают про однотипные идентификаторы. Ошибка любой
 // партии прекращает обработку батча ЦЕЛИКОМ — частично сужённый батч отдавать
 // нельзя.
+//
+// # СНЯТИЕ судится ЯКОРЕМ, а не предметом, и это не послабление
+//
+// У события снятия предмета уже нет — ни в базе владельца, ни в модели прав:
+// путь удаления коммитит строку журнала и намерение снять кортеж владения ОДНОЙ
+// транзакцией, а кортеж снимает дренаж, асинхронно и обычно за доли секунды.
+// Значит построчный вопрос «вправе ли вызывающий видеть эту машину» получает
+// «нет» ЗАКОННО — и получает его практически всегда.
+//
+// Спрашивать так — один из двух негодных исходов, и контракт формы называет оба
+// прямо: «спрашивать модель прав про несуществующий объект либо не показывать
+// удаления вовсе. Второе наступает ТИХО, и цена его — та самая, ради которой
+// заводится подписка: потребитель, снявший поллинг, никогда не узнает об
+// удалении и будет держать удалённые строки вечно». Именно поэтому якорь проекта
+// стоит полем ОБОЛОЧКИ события и назван АВТОРИЗУЕМЫМ: решение о показе снятия
+// принимается по нему, БЕЗ обращения к предмету.
+//
+// Наблюдалось до этой ветки: подписчик, которому разрешён проект и уже не
+// разрешена машина, не получал события снятия ВОВСЕ — поток оставался открытым и
+// молчал до истечения срока. Ни ошибки, ни пропуска в нумерации.
+//
+// # Что это РАСШИРЯЕТ, сказано вслух
+//
+// Вызывающий, которому разрешён проект, но НЕ был разрешён предмет, узнаёт из
+// снятия, что предмет такого вида с таким идентификатором в проекте
+// существовал. Это цена, а не побочный эффект, и она осознанная: альтернатива —
+// не показывать удаления никому, то есть отказ от предмета подписки. Границы
+// расширения:
+//
+//   - оно касается ТОЛЬКО снятия. Создание и правка по-прежнему судятся
+//     пообъектно, и вызывающий без права на предмет не видит ни одного;
+//   - оно не выходит за проект: якорь пуст — судим пообъектно (ниже), и
+//     историческая строка без якоря остаётся невидимой;
+//   - у владельца без проектного измерения ([ProjectAbsent]) якоря нет вовсе,
+//     и снятие судится пообъектно — то есть остаётся при прежнем поведении.
+//
+// # Второго вопроса к модели обычно НЕ БУДЕТ
+//
+// Подписка, назвавшая ось проекта, уже прошла стража на открытии потока — тот же
+// объект, то же действие, те же отношения. Спрашивать второй раз про тот же
+// проект значило бы платить вызовом за ответ, который уже получен.
 func (s *Server) narrow(
 	ctx context.Context,
 	rows []Row,
 	events []*subscriptionv1.SubscriptionEvent,
+	filter Filter,
 ) ([]*subscriptionv1.SubscriptionEvent, error) {
 	// Требование заявляется ТАМ, ГДЕ строки используются, а не только у входа, и
 	// заявляется ЦЕЛИКОМ. Половина условия была бы хуже целого отсутствия
@@ -271,9 +451,17 @@ func (s *Server) narrow(
 			"subscription is unavailable without per-event authorization")
 	}
 
+	// Снятия отделяются ДО вопроса к модели: их судит якорь, и класть их в
+	// пообъектную партию значило бы задать про них вопрос, ответ на который
+	// заведомо «нет».
+	anchored, err := s.removalsAllowedByAnchor(ctx, events, filter)
+	if err != nil {
+		return nil, err
+	}
+
 	byKind := make(map[string][]string, len(s.cfg.Journal.Mapping.Kinds))
 	for i, ev := range events {
-		if ev == nil {
+		if ev == nil || anchored[i] != verdictUnjudged {
 			continue
 		}
 		byKind[rows[i].Kind] = append(byKind[rows[i].Kind], rows[i].ID)
@@ -308,8 +496,87 @@ func (s *Server) narrow(
 		if ev == nil {
 			continue
 		}
+		switch anchored[i] {
+		case verdictAllowed:
+			out = append(out, ev)
+			continue
+		case verdictRefused:
+			continue
+		}
 		if _, ok := allowed[rows[i].Kind][rows[i].ID]; ok {
 			out = append(out, ev)
+		}
+	}
+	return out, nil
+}
+
+// anchorVerdict — исход суждения ПО ЯКОРЮ. Состояния три, и «не судили» названо
+// отдельно от «отказано»: слить их значило бы отдать пообъектной ветке строку,
+// про которую решение уже принято, либо тихо потерять ту, про которую не
+// принято.
+type anchorVerdict uint8
+
+const (
+	verdictUnjudged anchorVerdict = iota
+	verdictAllowed
+	verdictRefused
+)
+
+// removalsAllowedByAnchor судит СНЯТИЯ по проектному якорю события.
+//
+// Возвращает вердикт на КАЖДУЮ позицию батча: соответствие позиционное, как и у
+// [Server.mapRows], потому что дальше вердикты сопоставляются со строками по
+// индексу.
+//
+// Не-снятия и строки без якоря остаются несуждёнными — их судит пообъектная
+// ветка. Отказ модели прекращает обработку батча целиком: недоступный вердикт
+// НЕ есть «да».
+func (s *Server) removalsAllowedByAnchor(
+	ctx context.Context,
+	events []*subscriptionv1.SubscriptionEvent,
+	filter Filter,
+) ([]anchorVerdict, error) {
+	out := make([]anchorVerdict, len(events))
+
+	// У владельца без проектного измерения якоря нет вовсе — судить нечем, и
+	// снятие остаётся при пообъектном суждении.
+	if s.cfg.Journal.Storage.Project == ProjectAbsent {
+		return out, nil
+	}
+
+	memo := make(map[string]bool, 2)
+	for i, ev := range events {
+		if ev == nil || ev.GetChange() != subscriptionv1.SubscriptionEvent_DELETED {
+			continue
+		}
+		project := ev.GetProjectId()
+		if project == "" {
+			// Якоря нет — судить по нему нельзя. Такая строка (историческая, до
+			// заведения якоря у владельца) остаётся пообъектной и невидимой; это
+			// названо в миграции владельца и здесь не смягчается.
+			continue
+		}
+		// Ось названа и уже одобрена стражем на открытии потока — тот же объект,
+		// то же действие, те же отношения.
+		if filter.ProjectID != "" && project == filter.ProjectID {
+			out[i] = verdictAllowed
+			continue
+		}
+		allowed, ok := memo[project]
+		if !ok {
+			var gerr error
+			allowed, gerr = listnarrow.AllowedOnObject(ctx, s.cfg.Narrower,
+				s.cfg.ProjectGate.ObjectType, s.cfg.ProjectGate.Action,
+				s.cfg.ProjectGate.Relations, project)
+			if gerr != nil {
+				return nil, gerr
+			}
+			memo[project] = allowed
+		}
+		if allowed {
+			out[i] = verdictAllowed
+		} else {
+			out[i] = verdictRefused
 		}
 	}
 	return out, nil

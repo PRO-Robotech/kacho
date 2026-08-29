@@ -43,7 +43,7 @@ SQL запрещён.
                            kacho-ui (SPA, REST/JSON)
                                    |
                                    v
-                         kacho-api-gateway
+                         gateway/         
                           /              \
                          v                v
               kacho-iam               kacho-vpc
@@ -62,7 +62,7 @@ IPAM-cascade. Никакой прямой доступ к чужой БД.
 
 | Сосед | Канал | Что делает |
 |---|---|---|
-| `kacho-api-gateway` | gRPC `:9090` → REST | Маршрутизирует публичные RPC, преобразует ошибки в HTTP-status |
+| `gateway/` | gRPC `:9090` → REST | Маршрутизирует публичные RPC, преобразует ошибки в HTTP-status |
 | `kacho-iam` | gRPC client | `ProjectClient.Exists(projectID)`, `ProjectClient.GetCloudIDFromProject(projectID)` (project existence + account-id lookup; `projectID` = id владельца-проекта) |
 | `kacho-compute`, прочие IP-потребители | gRPC `:9091` | `InternalAddressService.AllocateInternalIP` / `AllocateInternalIPv6` / `AllocateExternalIP` + referrer-tracking; валидация NIC-spec (Subnet/SG) |
 | `kacho-geo` (Geography owner, leaf) | gRPC client (исходящий) | `geo.v1.ZoneService.Get` — валидация `zone_id` (Region/Zone — leaf-домен geo) |
@@ -194,7 +194,7 @@ IPAM-allocate и default-SG creation выполняются inline в service-с
                         |
                         v
                 +-------+--------+
-                |     domain     |  (entities — только stdlib + kacho-proto)
+                |     domain     |  (entities — stdlib + стабы pkg/api/...)
                 +----------------+
 ```
 
@@ -619,7 +619,6 @@ api-gateway смотрит на первые 3 символа Operation.id и н
 |---|---|---|
 | `operations` | Long-running operations (синхронизирована с corelib) | `id` |
 | `vpc_outbox` | Транзакционный журнал доменных событий (in-cluster `LISTEN/NOTIFY`; Watch RPC не публикуется) | `sequence_no` |
-| `vpc_watch_cursors` | Vestigial-таблица из baseline-схемы; кодом не используется (Watch RPC удален) | `subscriber_id` |
 
 ### 5.5 Связи между ресурсами (FK contract)
 
@@ -694,7 +693,6 @@ Source of truth — `internal/migrations/*.sql`: `0001_initial.sql` (baseline-с
 | `address_pools` | `id`, `name`, `description`, `labels`, `v4_cidr_blocks text[]`, `v6_cidr_blocks text[]`, `kind smallint`, `is_default`, `zone_id text` (без FK — geography→**geo**), `selector_labels jsonb`, `selector_priority`, `modified_at`. Неперекрытие блоков внутри `kind` — child-таблица `address_pool_cidrs` + EXCLUDE (миграция 0004) |
 | `address_pool_network_default` | `network_id PK`, `pool_id`, `bound_at` |
 | `vpc_outbox` | `sequence_no bigserial PK`, `resource_kind`, `resource_id`, `event_type`, `payload jsonb`, `created_at`, `processed_at` |
-| `vpc_watch_cursors` | `subscriber_id PK`, `last_sequence_no`, `updated_at` |
 
 (`regions`/`zones` — таблиц в kacho-vpc нет; Geography — leaf-домен kacho-geo, ссылка по `zone_id` без FK.)
 
@@ -1065,7 +1063,7 @@ goose создает `goose_db_version` автоматически. Миграц
 ### 10.5 Деплой через Helm
 
 `deploy/` содержит свой Chart.yaml + templates + values.yaml. Используется
-umbrella-чартом `kacho-deploy` для dev-стенда (kind + Postgres + все сервисы).
+umbrella-чартом `kacho-umbrella` (`deploy/helm/umbrella/`) для dev-стенда (kind + Postgres + все сервисы).
 
 ---
 

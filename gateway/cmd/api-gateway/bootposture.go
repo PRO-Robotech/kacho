@@ -23,8 +23,11 @@ import (
 //     present) AND hybrid mTLS is enabled: without the TLS listener the hybrid
 //     flag verifies nothing, so reporting it alone would be a values-file wish
 //     rather than the wired listener state.
-//   - internal_mtls — the RESOLVED state of the internal gRPC listener
-//     (buildInternalListenerSecurity), not the raw enable flag.
+//   - internal_mtls — НЕПРИМЕНИМО: внутреннего gRPC-слушателя у края нет вовсе
+//     (задача #1024 сняла его вместе с единственной службой). Это НЕ «false»:
+//     «слушателя нет» и «слушатель есть и не защищён» — разные состояния, и
+//     схлопнуть их значило бы разрешить второе молчанием первого. Внутренний
+//     REST-мультиплексор края — другой предмет и другой порт.
 //   - authz_check   — whether the per-RPC authz middleware enforces. With
 //     KACHO_API_GATEWAY_AUTHZ_ENABLED=false it mounts as a pass-through, i.e. no
 //     per-RPC Check happens at all.
@@ -34,13 +37,13 @@ import (
 //     posture decides which start-up demands apply and a values map answers that
 //     question with intent: its knobs arrive through envFrom and are read once at
 //     start-up, so editing the map changes the map, not the process.
-func bootPosture(cfg config.Config, internalListenerMTLS bool, lane identityposture.Provider) observability.BootPosture {
+func bootPosture(cfg config.Config, lane identityposture.Provider) observability.BootPosture {
 	return observability.BootPosture{
 		Service:      "api-gateway",
 		AuthMode:     cfg.AuthNMode,
 		DBSSLMode:    observability.DBSSLModeNotApplicable,
 		PublicMTLS:   cfg.TLSEnabled() && cfg.HybridMTLSEnabled(),
-		InternalMTLS: internalListenerMTLS,
+		InternalMTLS: observability.InternalMTLSNotApplicable,
 		AuthZCheck:   cfg.AuthZEnabled,
 		// Посадка личности, ПРИНЯТАЯ процессом: незаданное и негодное значения
 		// до этой строки не доживают — страж старта на них не пускает. Значит

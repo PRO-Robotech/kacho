@@ -206,6 +206,12 @@ spec:
               value: {{ .Values.mtls.serverName.iam | quote }}
             {{- end }}
             {{- end }}
+            # Потолок ОДНОВРЕМЕННЫХ потоков подписки. Рендерится НАПРЯМУЮ, без
+            # умолчания в шаблоне: второе умолчание пережило бы снятие ключа из
+            # values.yaml, правка одного объявления не имела бы силы, а величина
+            # молча стала бы нулём — на нём страж старта отказывает, называя ручку.
+            - name: KACHO_STORAGE_SUBSCRIPTION_MAX_STREAMS
+              value: "{{ .Values.subscription.maxStreams }}"
           readinessProbe:
             httpGet:
               path: /healthz

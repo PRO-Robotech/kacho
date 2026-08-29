@@ -10,9 +10,9 @@
 //
 // Subcommands:
 //
-//	kacho-nlb-migrator up      [--target <version>]
-//	kacho-nlb-migrator down    [--target <version>]
-//	kacho-nlb-migrator status
+//	kacho-migrator up      [--target <version>]
+//	kacho-migrator down    [--target <version>]
+//	kacho-migrator status
 //
 // # Глагола `create` здесь НЕТ — и это решение, а не пропуск (#566)
 //
@@ -33,13 +33,17 @@
 //	--config  /etc/kacho-nlb/config.yaml      (если --dsn пуст — читает
 //	                                          repository.postgres.url из YAML)
 //
-// Источник DSN — приоритет: --dsn > ENV `KACHO_NLB_REPOSITORY__POSTGRES__URL`
-// > --config (config.Load). Так одна и та же `values.yaml` покрывает оба
-// бинаря (kacho-loadbalancer + migrator) без дублирования.
+// Источник DSN — приоритет: --dsn > ENV `KACHO_MIGRATOR_DSN` > --config
+// (config.Load, он же читает `KACHO_NLB_REPOSITORY__POSTGRES__URL`). Так одна и
+// та же `values.yaml` покрывает оба бинаря (kacho-loadbalancer + kacho-migrator)
+// без дублирования.
+//
+// Флаг `--config` есть ТОЛЬКО у этого сервиса, и это решение, а не остаток:
+// nlb читает конфигурацию из смонтированного файла, шесть соседей — из
+// окружения. Различие названо в docs/architecture/migrator-cli.md.
 package main
 
 import (
-	"fmt"
 	"io/fs"
 	"os"
 	"strings"
@@ -47,6 +51,9 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует "pgx" driver для sql.Open
 	"github.com/spf13/cobra"
 
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli/cobraargs"
+
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/migrator"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
@@ -78,19 +85,32 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 	opts := &rootOptions{}
 
 	root := &cobra.Command{
-		Use:   "kacho-nlb-migrator",
-		Short: "Database migrations runner for kacho-nlb (KAC-160)",
-		Long: "kacho-nlb-migrator — отдельный CLI для управления миграциями БД сервиса kacho-nlb.\n" +
-			"Построено по pattern'у kacho-vpc/cmd/migrator (skill evgeniy §9 K.1–K.3).\n\n" +
+		Use:   "kacho-migrator",
+		Short: "Управление миграциями БД сервиса kacho-nlb",
+		Long: "kacho-migrator — отдельный CLI для управления миграциями БД сервиса kacho-nlb:\n" +
+			"применение (up), откат (down), статус (status).\n\n" +
 			"Новая миграция заводится РУКОЙ: internal/migrations/YYYYMMDDHHMMSS_<что>.sql\n" +
 			"(метка времени заведения: date -u +%Y%m%d%H%M%S).\n" +
 			"Подробности — docs/architecture/migration-version-namespace.md.",
 		SilenceUsage: true,
+		// Пустая командная строка — ОТКАЗ, а не успех (#1461). Cobra при корне без
+		// исполнения печатает помощь и выходит успехом; прямая форма отвечает
+		// отказом. Скрипт или init-контейнер, потерявший аргумент, объявлялся бы
+		// выполнившим накат — успех на невыполненной работе.
+		//
+		// Отказ по неизвестной подкоманде производит общий пакет — тем же текстом,
+		// что и прямая форма, и с перечнем известных подкоманд.
+		Args: cobraargs.OnlyKnownCommands,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			_ = cmd.Help()
+			// Сентинел общий: своя редакция того же текста разошлась бы молча.
+			return migratorcli.ErrNoCommand
+		},
 	}
 	root.PersistentFlags().StringVar(&opts.dialect, "dialect", defaultDialect,
 		"SQL dialect (postgres)")
 	root.PersistentFlags().StringVar(&opts.dsn, "dsn", "",
-		"database DSN; if empty — read ENV KACHO_NLB_REPOSITORY__POSTGRES__URL, then config.yaml")
+		"database DSN; if empty — read ENV "+migratorcli.EnvDSN+", then config.yaml")
 	root.PersistentFlags().StringVar(&opts.configPath, "config", "",
 		"path to kacho-nlb config.yaml (fallback DSN source)")
 
@@ -99,13 +119,21 @@ func newRootCmd(migrationsFS fs.FS) *cobra.Command {
 		newDownCmd(opts, migrationsFS),
 		newStatusCmd(opts, migrationsFS),
 	)
+	// Дополнения оболочки cobra доводит сама; у прямой формы такой команды нет и
+	// не будет. Перечень команд читает оператор — значит он тоже поверхность.
+	cobraargs.HideShellCompletion(root)
 	return root
 }
 
 func newUpCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 	var target string
 	cmd := &cobra.Command{
-		Use:   "up",
+		Use: "up",
+		// Лишний позиционный аргумент — отказ, а не молчаливый накат: у cobra
+		// умолчание Args принимает произвольные, и `up 800001` (догадка о том, как
+		// задать цель) уезжал накатывать до головы. Версия задаётся --target (#1461).
+		// Текст отказа производит общий пакет — один на семь.
+		Args:  cobraargs.NoExtraArguments,
 		Short: "Apply migrations up to latest (or --target version)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r, err := buildRunner(opts, migrationsFS)
@@ -122,7 +150,12 @@ func newUpCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 func newDownCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 	var target string
 	cmd := &cobra.Command{
-		Use:   "down",
+		Use: "down",
+		// Лишний позиционный аргумент — отказ, а не молчаливый накат: у cobra
+		// умолчание Args принимает произвольные, и `up 800001` (догадка о том, как
+		// задать цель) уезжал накатывать до головы. Версия задаётся --target (#1461).
+		// Текст отказа производит общий пакет — один на семь.
+		Args:  cobraargs.NoExtraArguments,
 		Short: "Rollback the most recent migration (or down to --target)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r, err := buildRunner(opts, migrationsFS)
@@ -138,7 +171,12 @@ func newDownCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 
 func newStatusCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
+		Use: "status",
+		// Лишний позиционный аргумент — отказ, а не молчаливый накат: у cobra
+		// умолчание Args принимает произвольные, и `up 800001` (догадка о том, как
+		// задать цель) уезжал накатывать до головы. Версия задаётся --target (#1461).
+		// Текст отказа производит общий пакет — один на семь.
+		Args:  cobraargs.NoExtraArguments,
 		Short: "Show migration status (applied / pending)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r, err := buildRunner(opts, migrationsFS)
@@ -152,27 +190,26 @@ func newStatusCmd(opts *rootOptions, migrationsFS fs.FS) *cobra.Command {
 
 // buildRunner собирает migrator.Runner из persistent-флагов + ENV + config-fallback.
 //
-// DSN приоритет: --dsn > ENV KACHO_NLB_REPOSITORY__POSTGRES__URL > --config
-// (config.Load → cfg.Repository.Postgres.URL). config.Load умеет тот же ENV-key,
-// так что ENV-fallback гарантированно сработает даже если --config не задан.
+// Приоритет DSN один на семь сервисов и живёт в общем пакете:
+// --dsn > ENV KACHO_MIGRATOR_DSN > конфигурация сервиса (здесь — config.Load,
+// который сам читает `KACHO_NLB_REPOSITORY__POSTGRES__URL` и смонтированный
+// `--config`). Своей редакции порядка тут быть не должно: две редакции об одном
+// предмете расходятся молча — и разошлись, общей переменной nlb не читал вовсе.
 func buildRunner(opts *rootOptions, migrationsFS fs.FS) (*migrator.Runner, error) {
 	dialect, err := migrator.ResolveDialect(opts.dialect)
 	if err != nil {
 		return nil, err
 	}
 
-	dsn := strings.TrimSpace(opts.dsn)
-	if dsn == "" {
-		// config.Load сам ловит ENV KACHO_NLB_REPOSITORY__POSTGRES__URL,
-		// поэтому отдельно os.Getenv не зовём — config — единый source.
+	dsn, err := migratorcli.ResolveDSN(opts.dsn, func() (string, error) {
 		cfg, cerr := config.Load(opts.configPath)
 		if cerr != nil {
-			return nil, fmt.Errorf("dsn unset (--dsn) and config load failed: %w", cerr)
+			return "", cerr
 		}
-		dsn = strings.TrimSpace(cfg.Repository.Postgres.URL)
-		if dsn == "" {
-			return nil, fmt.Errorf("dsn unset: --dsn / KACHO_NLB_REPOSITORY__POSTGRES__URL / repository.postgres.url all empty")
-		}
+		return strings.TrimSpace(cfg.Repository.Postgres.URL), nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return migrator.New(migrator.Config{

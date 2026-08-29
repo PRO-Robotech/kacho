@@ -39,7 +39,9 @@ func vpcLikeJournal() subscription.Journal {
 				"DELETED": subscriptionv1.SubscriptionEvent_DELETED,
 			},
 			Anchor: func(subscription.Row) (string, error) { return "prj-1", nil },
-			State:  func(subscription.Row) (*anypb.Any, error) { return &anypb.Any{}, nil },
+			State: func(subscription.Row) (*anypb.Any, subscription.StateAbsence, error) {
+				return &anypb.Any{}, subscription.StateAbsenceUnnamed, nil
+			},
 		},
 	}
 }

@@ -86,6 +86,10 @@ func prodCfg(forwarders ...string) config.Config {
 		AuthZCheckTimeout:     2 * time.Second,
 		AuthZDenyBudgetPerSec: 100,
 		HandlingBudget:        30 * time.Second,
+		// Срок жизни потока подписки — тоже требуемая конструктором величина: с
+		// провязкой общего сервера потока (#1414) storage служит серверный стрим,
+		// и «не применимо» дескриптор больше не принимает.
+		SubscriptionStreamBudget: time.Hour,
 	}
 	// Ручки транспорта слушателей здесь НЕ взводятся намеренно: взведённая ручка
 	// без файлов сертификата роняет сборку креденшелов, и проба падала бы на

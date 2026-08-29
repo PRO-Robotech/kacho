@@ -172,9 +172,9 @@ func targetsFromPbForWrite(field string, pbs []*lbv1.Target) ([]domain.Target, e
 	return targetsFromPb(pbs), nil
 }
 
-// tgOutboxPayload — JSON-payload для outbox-emit. Минимальный snapshot (consumer
-// делает Get(id) если нужна полная картина). Ключи — из единого источника истины
-// kachorepo.LifecyclePayload (тот же набор литералов, что читает Subscribe-consumer).
+// tgOutboxPayload — нагрузка журнала для целевой группы. Минимальный снимок;
+// ключи — из словаря `kachorepo.LifecyclePayload`. Читателя у нагрузки сегодня
+// нет ни одного (задача #1452).
 func tgOutboxPayload(rec *kachorepo.TargetGroupRecord) map[string]any {
 	if rec == nil {
 		return nil
@@ -188,10 +188,9 @@ func tgOutboxPayload(rec *kachorepo.TargetGroupRecord) map[string]any {
 	}.Map()
 }
 
-// tgMovedPayload — MOVED-event outbox-payload. old_project_id — исходный project
-// (canonical-ключ, который Subscribe-consumer читает в
-// ResourceLifecycleEvent.OldProjectId для kacho-iam FGA-sync). Единый источник
-// имён ключей — kachorepo.LifecyclePayload.
+// tgMovedPayload — нагрузка события переезда целевой группы. `old_project_id` —
+// исходный проект: колонка якоря несёт уже целевой. Читателя нет; названный
+// прежде потребитель снят задачей #814 (см. lbMovedPayload у балансировщика).
 func tgMovedPayload(id, srcProject, dstProject string) map[string]any {
 	return kachorepo.LifecyclePayload{
 		ID:           id,

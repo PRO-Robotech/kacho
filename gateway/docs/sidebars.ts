@@ -13,7 +13,6 @@ const sidebars: SidebarsConfig = {
         'architecture/authn',
         'architecture/authz',
         'architecture/routing',
-        'architecture/internal-cache',
       ],
     },
     {
@@ -26,7 +25,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'API',
       collapsed: false,
-      items: ['api/overview', 'api/operations', 'api/internal-authz-cache'],
+      items: ['api/overview', 'api/operations', 'api/subscription'],
     },
   ],
 }

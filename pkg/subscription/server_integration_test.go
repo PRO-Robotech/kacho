@@ -42,7 +42,7 @@ func TestConjunctionOfThreeAxesNarrows(t *testing.T) {
 
 	t.Run("три оси сужают вместе", func(t *testing.T) {
 		sb := s.open(t, ctx, &subscriptionv1.SubscriptionRequest{
-			Kinds:     []string{"Network"},
+			Kinds:     []string{"vpc_network"},
 			ProjectId: "prj-a",
 			Ids:       []string{"net00000000000000003"},
 			Start: &subscriptionv1.SubscriptionRequest_Anchor{
@@ -399,7 +399,9 @@ func TestProjectTheCallerCannotSeeIsRefusedAsAbsent(t *testing.T) {
 // даёт подписчику пустой нагрузки.
 func TestStateThatCannotBeSerializedIsNamed(t *testing.T) {
 	j := probeJournal()
-	j.Mapping.State = func(subscription.Row) (*anypb.Any, error) { return nil, errState }
+	j.Mapping.State = func(subscription.Row) (*anypb.Any, subscription.StateAbsence, error) {
+		return nil, subscription.StateAbsenceUnnamed, errState
+	}
 	s := newStand(t, standOpts{journal: &j})
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

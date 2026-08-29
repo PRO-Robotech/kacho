@@ -145,6 +145,30 @@ spec:
             - name: KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC
               value: "{{ .Values.backends.storageInternal }}"
             {{- end }}
+            # Проекция потока изменений в браузер (kacho#1020).
+            #
+            # Перечень владельцев объявляется ВСЕГДА, в том числе пустым: пусто
+            # означает «владелец не объявлен», и ручка отвечает `501` с
+            # названной причиной. Это НЕ «все домены» — пустое значение,
+            # прочитанное как «не сужаем», уже стоило этому дереву круга
+            # отправителей, который никого не сужал.
+            - name: KACHO_API_GATEWAY_SUBSCRIPTION_OWNERS
+              value: {{ .Values.subscriptionStream.owners | quote }}
+            # Срок жизни потока обязан быть МЕНЬШЕ предела чтения посредника —
+            # КАЖДОГО на пути запроса. Их два, и они разные: собственный вход
+            # края (`ingress.proxyReadTimeout`) и раздача консоли с её входом,
+            # которыми ходит браузер (`ui-future/deploy/values.yaml` →
+            # `subscriptionStream.proxyReadTimeout`). Иначе поток рвёт посредник, и клиент
+            # читает это как сетевой сбой, а не как чистое закрытие по сроку.
+            # Согласие двух величин держит проба gateway/deploy.
+            - name: KACHO_API_GATEWAY_SUBSCRIPTION_STREAM_BUDGET
+              value: {{ .Values.subscriptionStream.streamBudget | quote }}
+            - name: KACHO_API_GATEWAY_SUBSCRIPTION_HEARTBEAT
+              value: {{ .Values.subscriptionStream.heartbeat | quote }}
+            - name: KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS
+              value: {{ .Values.subscriptionStream.maxStreams | quote }}
+            - name: KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT
+              value: {{ .Values.subscriptionStream.maxStreamsPerSubject | quote }}
             # Адрес провайдера личности для сессии SPA. Объявляется ВСЕГДА, и
             # умолчание выводится из ИМЕНИ РЕЛИЗА и ПРОСТРАНСТВА ИМЁН, а не
             # вписывается литералом: Service провайдера называется
@@ -433,25 +457,6 @@ spec:
             - name: KACHO_IDEMPOTENCY_DSN
               value: {{ .Values.idempotency.dsn | quote }}
             {{- end }}
-            {{- end }}
-            {{- if .Values.internalListener.mtls.enable }}
-            {{- if not .Values.mtls.enable }}
-            {{- fail "internalListener.mtls.enable=true requires mtls.enable=true — the internal :9091 listener verifies incoming client certs against the internal CA (KACHO_API_GATEWAY_MTLS_CA_FILE), which the mtls block mounts. Enable mtls.enable (backend-dial mTLS) alongside it." }}
-            {{- end }}
-            # cluster-internal :9091 gRPC listener mTLS + SPIFFE caller allow-list
-            # (InternalAuthzCacheService.InvalidateSubject; the iam push-drainer is
-            # the only authorised caller). security.md: the internal perimeter is
-            # NOT trusted. Server cert reuses the mounted external TLS secret; client
-            # certs are verified against the internal CA (KACHO_API_GATEWAY_MTLS_CA_FILE
-            # set by the mtls block above → REQUIRES mtls.enable, guarded above).
-            - name: KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE
-              value: "true"
-            - name: KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_CERT_FILE
-              value: {{ .Values.internalListener.mtls.certFile | quote }}
-            - name: KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_KEY_FILE
-              value: {{ .Values.internalListener.mtls.keyFile | quote }}
-            - name: KACHO_API_GATEWAY_INTERNAL_GRPC_ALLOWED_SPIFFE
-              value: {{ join "," .Values.internalListener.allowedSpiffe | quote }}
             {{- end }}
             {{- range $k, $v := .Values.extraEnv }}
             - name: {{ $k }}

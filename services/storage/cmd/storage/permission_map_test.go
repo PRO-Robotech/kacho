@@ -57,7 +57,7 @@ import (
 func servedMethods(t *testing.T) []string {
 	t.Helper()
 	var served []string
-	for _, reg := range registrarsOfBothListeners() {
+	for _, reg := range registrarsOfBothListeners(t) {
 		srv := grpc.NewServer()
 		reg(srv)
 		for name, info := range srv.GetServiceInfo() {
@@ -664,7 +664,8 @@ func TestPublicListenerServesNoInternalService(t *testing.T) {
 	})
 	internal := names(func(r grpc.ServiceRegistrar) {
 		registerInternal(r, volumeUC, imageUC, diskTypeUC,
-			storagebackend.New(nil), disktypebinding.New(nil, nil), opHandler)
+			storagebackend.New(nil), disktypebinding.New(nil, nil), opHandler,
+			probeSubscriptionServer(t))
 	})
 
 	if len(public) == 0 || len(internal) == 0 {

@@ -273,7 +273,28 @@ for row in $SERVICES; do
         (if ($all_dims | not) or ((.db_sslmode // "") | test("^(require|verify-ca|verify-full|n/a)$")) then empty
          else "db_sslmode=\(shown("db_sslmode"))" end),
         (if ($all_dims | not) or (.public_mtls   == true) then empty else "public_mtls=\(shown("public_mtls"))"   end),
-        (if ($all_dims | not) or (.internal_mtls == true) then empty else "internal_mtls=\(shown("internal_mtls"))" end),
+        # ВНУТРЕННИЙ ЛИСТЕНЕР — ТРИ СОСТОЯНИЯ, А НЕ ДВА (задача #1024).
+        #
+        # Измерение стало СТРОКОВЫМ, как соседние db_sslmode и identity_provider,
+        # потому что «листенера нет вовсе» обязано быть отличимо от «листенер есть
+        # и не защищён». Схлопнуть их значило бы разрешить незащищённый листенер
+        # молчанием — снять контроль, а не сузить его предмет.
+        #
+        #   "true" — листенер есть и проверяет клиентские сертификаты → проход;
+        #   "n/a"  — листенера НЕТ НИ ОДНОГО: входной поверхности не существует,
+        #            защищать нечего (край с задачи #1024) → проход;
+        #   "false"— листенер есть и работает без mTLS → ОТКАЗ, как и прежде;
+        #   ""     — величина не из трёх объявленных (нулевое значение структуры,
+        #            то есть процесс поле не заполнил) → ОТКАЗ;
+        #   ключа нет → ОТКАЗ: так выглядит СТАРЫЙ образ, и молчание тут читалось
+        #            бы как согласие.
+        #
+        # Сравнение РАВЕНСТВОМ, а не test(): (а) булево `true` старого образа не
+        # равно строке "true", поэтому наполовину перекатившийся флот виден, а не
+        # засчитан; (б) test() на булевом значении не вернул бы ложь, а УРОНИЛ бы
+        # программу вердикта целиком — гейт печатал бы ошибку jq вместо находки.
+        (if ($all_dims | not) or (.internal_mtls == "true") or (.internal_mtls == "n/a") then empty
+         else "internal_mtls=\(shown("internal_mtls"))" end),
         (if ($all_dims | not) or (.authz_check   == true) then empty else "authz_check=\(shown("authz_check"))"   end),
         (if ($need_fwd | not) or (.trusted_forwarders == true) then empty
          else "trusted_forwarders=\(shown("trusted_forwarders"))" end),

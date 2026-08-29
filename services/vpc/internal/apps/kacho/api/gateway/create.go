@@ -217,7 +217,7 @@ func (u *CreateGatewayUseCase) doCreate(ctx context.Context, gwID string, g doma
 			return nil, serviceerr.MapRepoErr(rerr)
 		}
 	}
-	if oerr := w.Outbox().Emit(ctx, "Gateway", created.ID, "CREATED", helpers.DomainToMap(created)); oerr != nil {
+	if oerr := w.Outbox().Emit(ctx, "Gateway", created.ID, created.ProjectID, "CREATED", helpers.DomainToMap(created)); oerr != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 	}
 	// Записываем INTENT hierarchy-tuple vpc_gateway→project в той же writer-TX,

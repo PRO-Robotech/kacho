@@ -443,9 +443,12 @@ jobs:
                   # проверить: у пробы ban #6 есть встречный контроль на внутреннем
                   # листенере домена, и не развёрнутый домен ответить не может.
                   # Полноту объединения по шардам утверждает assert-shard-coverage.py.
-                  "ban6": " ".join(sorted(set(m["core_ban6_domains"]) | {
-                      m["gate_ban6_domains"][c] for c in s["components"]
-                      if c in m["gate_ban6_domains"]})),
+                  # Значение карты — СПИСОК: один компонент способен дать больше
+                  # одного домена. `subscription` (поток изменений) служат пять
+                  # носителей сразу, и своего сервиса у него нет ни одного.
+                  "ban6": " ".join(sorted(set(m["core_ban6_domains"]).union(*(
+                      m["gate_ban6_domains"].get(c, []) for c in s["components"]
+                  ), set()))),
               })
           print("matrix=" + json.dumps({"shard": rows}, ensure_ascii=False))
           PY

@@ -113,12 +113,17 @@ api-gateway:
   # treats an EMPTY KACHO_APP_ENV as production-class and fails closed on a relaxed
   # posture (CWE-1188), so the label is never left to chance.
   #
-  # WHAT THIS LABEL STILL BUYS, now that the bearer posture no longer depends on it:
-  # only that validateProductionInternalListener tolerates the internal :9091 listener
-  # running without mTLS on this stand (internalListener.mtls stays off here; the
-  # first-class production block flips it, #57). It does NOT buy an exemption for a
-  # shared signing key — that clause is checked under every label, precisely because a
-  # label is chosen by whoever writes the profile.
+  # ЧТО ЭТА МЕТКА ПОКУПАЕТ СЕГОДНЯ — И ЭТО НАДО СКАЗАТЬ ЧИСЛОМ, А НЕ ПАМЯТЬЮ.
+  # Здесь стояло «она позволяет внутреннему :9091 листенеру края работать без
+  # mTLS на этом стенде». Предмета у послабления нет с задачи #1024: внутреннего
+  # листенера у края нет вовсе, страж старта, который его градуировал, снят
+  # вместе с ним. Послабление, которому нечего послаблять, читается как
+  # действующее и потому опаснее отсутствующего.
+  #
+  # Метка при этом НЕ бесполезна: её по-прежнему читает страж посадки прав
+  # (validateProductionAuthzConfig) — см. абзац выше. Исключения на общий ключ
+  # подписи она не покупает ни под каким значением: та проверка идёт под любой
+  # меткой именно потому, что метку выбирает тот, кто пишет профиль.
   #
   # First-class `appEnv` knob (chart values, KACHO_APP_ENV) — replaces the earlier generic
   # extraEnv.KACHO_APP_ENV passthrough. config.go binds it via `envconfig:"KACHO_APP_ENV"`
