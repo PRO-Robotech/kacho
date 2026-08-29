@@ -98,6 +98,28 @@ func (s *iamJournalStub) PollSubjectChanges(
 // journalOwnerStub — владелец журнала подписки: открывает поток и держит его.
 type journalOwnerStub struct {
 	subscriptionv1.UnimplementedInternalSubscriptionServiceServer
+
+	mu sync.Mutex
+	// served — сколько потоков стенд обслужил. Отвечает на вопрос, на который
+	// сигнал не отвечает: «дошло до стенда» и «дошло до ждущего» — разные факты,
+	// и [journalOwnerStub.awaitStreams] называет оба, когда истекает срок.
+	served int
+
+	// started получает по одному значению НА КАЖДЫЙ обслуженный поток.
+	//
+	// Прежняя редакция ЗАКРЫВАЛА канал, и цена этого названа задачей #1482.
+	// Во-первых, второе открытие роняло ПРОЦЕСС двойным закрытием — то есть
+	// отказ приходил не упавшим утверждением, а гибелью всего пакета, и
+	// читался бы как дефект продукта, а не стенда. Во-вторых, закрытый канал
+	// отдаёт ВСЕМ и СРАЗУ, поэтому ожидание n потоков выполнялось тождественно
+	// после первого; условие, выполняющееся тождественно, условием не является.
+	// Тот же приём и по тем же двум причинам снят у соседнего стенда пакета
+	// (`gateway/internal/subscriptionstream/harness_test.go`, #1485) — идиома
+	// здесь повторена, а не изобретена.
+	//
+	// Ждут через [journalOwnerStub.awaitStreams]; глубина буфера —
+	// [startedDepth], общая с соседним стендом: величина у них одна и та же —
+	// сколько потоков стенд обслужит за пробу.
 	started chan struct{}
 }
 
@@ -112,9 +134,47 @@ func (o *journalOwnerStub) Subscribe(
 	}); err != nil {
 		return err
 	}
-	close(o.started)
+	o.mu.Lock()
+	o.served++
+	o.mu.Unlock()
+	if o.started != nil {
+		// Отправка НЕБЛОКИРУЮЩАЯ: поток, которого проба не ждёт, обязан
+		// обслуживаться как обычно, а не замирать до чьего-то чтения — иначе
+		// стенд стал бы снисходительнее продукта в одну сторону и строже в
+		// другую. Значит буфер обязан вмещать все потоки пробы; переполнение
+		// теряет сигнал, и awaitStreams называет это числом, а не молчит.
+		select {
+		case o.started <- struct{}{}:
+		default:
+		}
+	}
 	<-stream.Context().Done()
 	return nil
+}
+
+// servedStreams — сколько потоков стенд обслужил на данный момент.
+func (o *journalOwnerStub) servedStreams() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.served
+}
+
+// awaitStreams ждёт, пока стенд не примет n потоков.
+//
+// Ждётся УСЛОВИЕ — приход n-го потока, — а не срок. Срок здесь страховочный, и
+// его истечение — падение С ЧИСЛАМИ: «ноль сигналов» обязано быть отличимо от
+// «ноль потоков», иначе разбор упавшей пробы начинается с догадки.
+func (o *journalOwnerStub) awaitStreams(t *testing.T, n int) {
+	t.Helper()
+	for got := 0; got < n; got++ {
+		select {
+		case <-o.started:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("стенд принял потоков %d из ожидавшихся %d (обслужено всего %d) — "+
+				"поток не открылся; если обслужено не меньше ожидаемого, мал буфер канала started",
+				got, n, o.servedStreams())
+		}
+	}
 }
 
 // dial поднимает названную службу на bufconn и отдаёт соединение.
@@ -146,7 +206,7 @@ func dial(t *testing.T, register func(*grpc.Server)) *grpc.ClientConn {
 func TestPolledRevocationClosesTheOpenStreamEndToEnd(t *testing.T) {
 	quiet := slog.New(slog.NewTextHandler(&strings.Builder{}, &slog.HandlerOptions{Level: slog.LevelError + 1}))
 
-	owner := &journalOwnerStub{started: make(chan struct{})}
+	owner := &journalOwnerStub{started: make(chan struct{}, startedDepth)}
 	ownerConn := dial(t, func(s *grpc.Server) {
 		subscriptionv1.RegisterInternalSubscriptionServiceServer(s, owner)
 	})
@@ -199,11 +259,7 @@ func TestPolledRevocationClosesTheOpenStreamEndToEnd(t *testing.T) {
 		defer close(done)
 		projection.ServeHTTP(httptest.NewRecorder(), r)
 	}()
-	select {
-	case <-owner.started:
-	case <-time.After(10 * time.Second):
-		t.Fatal("поток не открылся — предъявлять нечего")
-	}
+	owner.awaitStreams(t, 1)
 
 	runCtx, stopRun := context.WithCancel(context.Background())
 	defer stopRun()
@@ -227,5 +283,54 @@ func TestPolledRevocationClosesTheOpenStreamEndToEnd(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("поток пережил отзыв, приехавший перепросом — перепрос есть ЕДИНСТВЕННЫЙ путь " +
 			"отзыва к длинным соединениям, и не исполнив его, край не исполняет отзыв вовсе")
+	}
+}
+
+// TestJournalOwnerStubServesASecondStream — стенд обязан обслуживать КАЖДЫЙ
+// поток, а не только первый.
+//
+// Проба стенда, а не продукта, и она здесь по той же причине, по какой корпус
+// требует доказывать способность гейта упасть: подделка, ЛОМАЮЩАЯСЯ там, где
+// настоящий владелец работает, отравляет вердикт сильнее снисходительной. Её
+// отказ приходит паникой процесса — то есть не упавшим утверждением, а гибелью
+// всего пакета, — и читается как дефект продукта.
+//
+// Предмет соседней пробы этого файла — ПЕРЕОПРОС при отзыве, то есть повторное
+// открытие принадлежит природе вещей: первое же изменение, заводящее второй
+// поток, уронило бы её здесь, а не в продукте (#1482).
+func TestJournalOwnerStubServesASecondStream(t *testing.T) {
+	owner := &journalOwnerStub{started: make(chan struct{}, startedDepth)}
+	conn := dial(t, func(s *grpc.Server) {
+		subscriptionv1.RegisterInternalSubscriptionServiceServer(s, owner)
+	})
+	client := subscriptionv1.NewInternalSubscriptionServiceClient(conn)
+
+	// Два ПОСЛЕДОВАТЕЛЬНЫХ открытия к ОДНОМУ дублёру: второе — предмет пробы,
+	// первое — положительный контроль (без него утверждение о втором зеленело бы
+	// на стенде, не обслуживающем вовсе никого).
+	for i := 1; i <= 2; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		stream, err := client.Subscribe(ctx, &subscriptionv1.SubscriptionRequest{})
+		if err != nil {
+			cancel()
+			t.Fatalf("поток %d: открытие: %v", i, err)
+		}
+		if _, err := stream.Recv(); err != nil {
+			cancel()
+			t.Fatalf("поток %d: служебное сообщение открытия не пришло: %v", i, err)
+		}
+		cancel()
+	}
+
+	// Сигналит КАЖДЫЙ поток. Утверждать это ожиданием ДВУХ сигналов обязательно:
+	// прежняя редакция ЗАКРЫВАЛА канал, а закрытый отдаёт всем и сразу — то есть
+	// ожидание любого числа потоков выполнялось бы тождественно после первого.
+	owner.awaitStreams(t, 2)
+
+	// И независимо от сигналов — сколько потоков стенд на самом деле обслужил.
+	// Сигнал доказывает «дошло до нас», обслуженное — «дошло до стенда»; на
+	// тождественно истинном ожидании расходятся именно эти два числа.
+	if got := owner.servedStreams(); got != 2 {
+		t.Fatalf("стенд обслужил потоков %d, ожидалось 2", got)
 	}
 }

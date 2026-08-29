@@ -141,6 +141,71 @@ func (a *authorityStub) SessionCutoffOf(
 	return &iamv1.SessionCutoffOfResponse{Found: true, RevokeBefore: timestamppb.New(at)}, nil
 }
 
+// basicStub — НАСТОЯЩИЙ внутренний глагол iam о живости базового удостоверения
+// (kacho#1450), отвечающий заготовленным.
+//
+// Отдельным типом, а не вторым лицом соседнего: службы разные, и стенд обязан
+// уметь погасить одну, не трогая другую, — иначе «полоса без отзыва» и
+// «авторитет лежит целиком» стали бы одним наблюдением.
+type basicStub struct {
+	iamv1.UnimplementedInternalIAMServiceServer
+
+	mu sync.Mutex
+	// dead — идентификаторы удостоверений, которые авторитет объявляет неживыми.
+	// Умолчание — ЖИВО: неизвестное удостоверение здесь не предмет.
+	dead map[string]bool
+	// fail / unsupported — авторитет молчит / вопроса не предлагает (окно раската).
+	fail        bool
+	unsupported bool
+	// asked — про что РЕАЛЬНО спросили. Без этого «поток пережил отзыв»
+	// неотличимо от «про поток не спрашивали вовсе».
+	asked []string
+}
+
+func newBasicStub() *basicStub { return &basicStub{dead: map[string]bool{}} }
+
+func (b *basicStub) setDead(id string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.dead[id] = true
+}
+
+func (b *basicStub) goSilent() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.fail = true
+}
+
+func (b *basicStub) goUnsupported() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.unsupported = true
+}
+
+func (b *basicStub) askedIDs() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]string(nil), b.asked...)
+}
+
+func (b *basicStub) CheckBasicCredentialLive(
+	_ context.Context, in *iamv1.CheckBasicCredentialLiveRequest,
+) (*iamv1.CheckBasicCredentialLiveResponse, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.asked = append(b.asked, in.GetCredentialId())
+	if b.unsupported {
+		return nil, status.Error(codes.Unimplemented, "method CheckBasicCredentialLive not implemented")
+	}
+	if b.fail {
+		return nil, status.Error(codes.Unavailable, "authority is down")
+	}
+	if b.dead[in.GetCredentialId()] {
+		return nil, status.Error(codes.Unauthenticated, "credential refused")
+	}
+	return &iamv1.CheckBasicCredentialLiveResponse{}, nil
+}
+
 // journalOwnerStub — владелец журнала подписки: открывает поток и держит его.
 type journalOwnerStub struct {
 	subscriptionv1.UnimplementedInternalSubscriptionServiceServer
@@ -196,6 +261,7 @@ type stand struct {
 	sweeper    *streamrevocation.Sweeper
 	owner      *journalOwnerStub
 	authority  *authorityStub
+	basic      *basicStub
 }
 
 func newStand(t *testing.T, tune func(*streamrevocation.Config)) *stand {
@@ -223,8 +289,14 @@ func newStand(t *testing.T, tune func(*streamrevocation.Config)) *stand {
 	}
 
 	authority := newAuthorityStub()
+	basic := newBasicStub()
+	// ОБЕ службы — на одном соединении, ровно как в бою: спрашивающий один,
+	// сосед один, соединение одно. Разведи их по двум стендам — и проба
+	// перестала бы утверждать то единственное, ради чего адаптер держит оба
+	// набора глаголов вместе.
 	iamConn := dial(t, func(s *grpc.Server) {
 		iamv1.RegisterInternalSessionRevocationsServiceServer(s, authority)
+		iamv1.RegisterInternalIAMServiceServer(s, basic)
 	})
 
 	cfg := streamrevocation.Config{
@@ -246,7 +318,7 @@ func newStand(t *testing.T, tune func(*streamrevocation.Config)) *stand {
 	if err != nil {
 		t.Fatalf("сборка сметателя: %v", err)
 	}
-	return &stand{projection: projection, sweeper: sweeper, owner: owner, authority: authority}
+	return &stand{projection: projection, sweeper: sweeper, owner: owner, authority: authority, basic: basic}
 }
 
 // openStream открывает поток названного предъявителя и ждёт, пока владелец его
