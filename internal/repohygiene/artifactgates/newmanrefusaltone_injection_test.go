@@ -499,10 +499,16 @@ func TestRT_GenericDeclarationWithASingleRicherProducerIsSilent(t *testing.T) {
 }
 
 func TestRT_ConcreteDeclarationAssertedWhollyIsSilent(t *testing.T) {
-	// ЗАКОННЫЙ БЛИЗНЕЦ по условию «объявление обобщено»: заголовок называет текст
-	// ЦЕЛИКОМ, без подстановки, и шаг утверждает ровно его. Обобщать нечего —
-	// разница с объявлением отсутствует, и ось 4 обязана молчать даже при двух
-	// производителях с той же общей частью.
+	// ЗАКОННЫЙ БЛИЗНЕЦ по условию «есть отказ БОГАЧЕ утверждаемого»: шаг
+	// утверждает текст владельца ЦЕЛИКОМ, поэтому отказа, который нёс бы ту же
+	// часть и вдобавок называл, чей он, не существует — соседний
+	// `subnet is not empty` несёт лишь общий хвост, а не утверждаемое целиком.
+	//
+	// ОСЬ ЗДЕСЬ ПЕРЕИМЕНОВАНА ВМЕСТЕ С ВИДОМ (#1520): прежде близнец стоял под
+	// условием «объявление обобщено подстановкой», а этого условия у вида больше
+	// нет — мерка вида не объявление, а дерево. Молчание осталось верным, но его
+	// ПРИЧИНА стала другой, и оставить прежнее объяснение значило бы держать
+	// комментарий, противоречащий коду.
 	title := "VPC-NET-DEL-NEG-NOTEMPTY — Delete непустой сети → FailedPrecondition " +
 		"'network is not empty'"
 	step := nmStep("del-net", "DELETE", rtURL,
@@ -515,6 +521,65 @@ func TestRT_ConcreteDeclarationAssertedWhollyIsSilent(t *testing.T) {
 	}
 	if len(f) != 0 {
 		t.Fatalf("конкретное объявление, утверждённое целиком, ошибочно признано находкой: %v", f)
+	}
+}
+
+// ─── вид 4 ПОСЛЕ снятия требования объявления (#1520) ───────────────────────
+
+// TestRT_UndeclaredTitleWithTwoRicherProducersIsAFinding — красное там, где
+// заголовок текста в кавычках НЕ объявляет вовсе.
+//
+// Ровно тот класс, из-за которого требование объявления было снято: мерка вида —
+// два разных отказа владельца, несущие ту же часть и называющие, чей он, — от
+// заголовка не зависит НИ В ОДНУ сторону. Пока требование стояло, вид молчал на
+// 20 утверждениях в 19 шагах, из которых у девяти заголовок при этом обещал
+// «verbatim text».
+func TestRT_UndeclaredTitleWithTwoRicherProducersIsAFinding(t *testing.T) {
+	title := "SECD-DEL-NEG-NOT-FOUND — Delete несуществующего instance отвергнут"
+	step := nmStep("delete-missing", "DELETE", rtURL,
+		"pm.test('text mentions not found', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));",
+	)
+	corpus := rtCorpusOf("Instance %s not found", "GuestAccessKey %s not found", "permission denied")
+	f, cen := rtAudit(t, corpus, nmFolder(title, step))
+	if cen.stepsWithDeclaredText != 0 {
+		t.Fatalf("фикстура негодна: заголовок объявляет текст в кавычках (перепись %d), "+
+			"и проба измеряла бы не ту ось", cen.stepsWithDeclaredText)
+	}
+	if cen.foldedAssertions != 1 {
+		t.Fatalf("шаг гейтом НЕ УВИДЕН (перепись %d)", cen.foldedAssertions)
+	}
+	if len(f) == 0 {
+		t.Fatal("утверждение общей части тона БЕЗ объявления в заголовке не дало находки — " +
+			"снятие требования объявления оказалось холостым")
+	}
+	// Прибавка обязана менять ПЕРЕПИСЬ, а не только число находок.
+	if cen.foldedWithoutProof != 0 {
+		t.Fatalf("шаг остался в переписи границы гейта (%d) при найденной находке", cen.foldedWithoutProof)
+	}
+	if !strings.Contains(f[0].why, "Instance %s not found") {
+		t.Fatalf("находка не называет дословного текста производителя: %s", f[0].why)
+	}
+}
+
+// TestRT_UndeclaredTitleWithASingleRicherProducerIsSilent — ПАРНЫЙ ПОЛОЖИТЕЛЬНЫЙ
+// КОНТРОЛЬ к пробе выше: заголовок так же ничего не объявляет, но у владельца
+// часть несёт ОДИН отказ. Доказательства неразличимости нет, и снятие требования
+// объявления не должно было превратить вид в суждение о прозе.
+func TestRT_UndeclaredTitleWithASingleRicherProducerIsSilent(t *testing.T) {
+	title := "SECD-DEL-NEG-NOT-FOUND — Delete несуществующего instance отвергнут"
+	step := nmStep("delete-missing", "DELETE", rtURL,
+		"pm.test('text mentions not found', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('not found'));",
+	)
+	corpus := rtCorpusOf("Instance %s not found", "permission denied")
+	f, cen := rtAudit(t, corpus, nmFolder(title, step))
+	if cen.foldedAssertions != 1 {
+		t.Fatalf("шаг гейтом НЕ УВИДЕН (перепись %d) — молчание доказывало бы слепоту", cen.foldedAssertions)
+	}
+	if len(f) != 0 {
+		t.Fatalf("единственный производитель признан доказательством неразличимости: %v", f)
+	}
+	if cen.foldedWithoutProof != 1 {
+		t.Fatalf("шаг не попал в перепись границы гейта (%d)", cen.foldedWithoutProof)
 	}
 }
 

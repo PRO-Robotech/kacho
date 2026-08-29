@@ -1421,6 +1421,9 @@ CASES.append(conf_alreadyexists_block(
     prefix="NLB",
     create_path=_CREATE_BASE,
     name_template="conf-dup-{{runId}}",
+    # Текст владельца дословно: services/nlb/internal/apps/kacho/api/loadbalancer/create.go
+    # (обе точки отказа — предпроверка и вставка — пишут его побайтово одинаково).
+    refusal="NetworkLoadBalancer with name {name} already exists in project",
     body_extra={"regionId": "{{_suiteRegionId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
 ))
 

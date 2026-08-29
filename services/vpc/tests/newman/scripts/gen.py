@@ -70,6 +70,8 @@ from gen_shared import (  # noqa: E402  — импорт после провяз
     assert_field_violation,
     _ASSERT_FORMS,
     assert_grpc_code,
+    assert_refusal_message,
+    assert_refusal_message_contains,
     _assert_published_id_outcome,
     assert_status,
     _asserts_done,
@@ -1029,10 +1031,18 @@ def pagination_roundtrip(prefix, list_path):
     )
 
 
-def idempotency_block(prefix, create_path, name_template, body_extra=None):
+def idempotency_block(prefix, create_path, refusal, name_template, body_extra=None):
     """Повторный Create same name → 409 ALREADY_EXISTS (Create не идемпотентен).
 
     Первый Create OK, второй с тем же name → sync 409 ALREADY_EXISTS.
+
+    `refusal` — текст отказа ВЛАДЕЛЬЦА дословно, с `{name}` на месте имени (слот подставляется ЗАМЕНОЙ, не `str.format`:
+    формат съел бы `{{…}}` подстановки окружения и превратил бы их в литерал)
+    (`"Network with name {name} already exists"`). Обязателен и без умолчания:
+    прежде здесь стояло `message.toLowerCase()).to.include('already exists')`,
+    то есть проверялась ОБЩАЯ часть тона, под которой проходит отказ любого
+    ресурса этого сервиса. Умолчание вернуло бы ту же слабость молча, а отказ
+    генерации на незаданном тексте виден сразу и называет место (#1520).
     """
     body_extra = body_extra or {}
     return Case(
@@ -1049,7 +1059,7 @@ def idempotency_block(prefix, create_path, name_template, body_extra=None):
             Step(name="cr-2", method="POST", path=create_path,
                  body={"projectId": "{{_suiteProjectId}}", "name": name_template, **body_extra},
                  test_script=[*assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
-                              "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"]),
+                              *assert_refusal_message(refusal.replace("{name}", name_template))]),
             # cleanup DELETE is the caller's first *mutating* access of its OWN fresh
             # resource; the delete-relation owner-tuple is eventually-consistent (opgate
             # removed → at-least-once fgaproxy drainer), so under load the gateway authz
@@ -1339,21 +1349,28 @@ def malformed_body_block(prefix, create_path):
     ]
 
 
-def alreadyexists_dup_name_for(prefix, create_path, body_create):
-    """Создать дубль с тем же name → sync 409 ALREADY_EXISTS."""
+def alreadyexists_dup_name_for(prefix, create_path, refusal, body_create):
+    """Создать дубль с тем же name → sync 409 ALREADY_EXISTS.
+
+    `refusal` — текст отказа ВЛАДЕЛЬЦА дословно, с `{name}` на месте имени
+    (`"RouteTable with name {name} already exists"`). Обязателен и без
+    умолчания — по той же причине, что у `idempotency_block` выше: общая часть
+    тона не различает, ЧЕЙ это отказ, а умолчание вернуло бы слабость молча.
+    """
+    dup_name = f"{prefix.lower()}-dupck-{{{{runId}}}}"
     return Case(
         id=f"{prefix}-CR-NEG-DUP-NAME-CHECK",
         title="Создать дубль с тем же name → sync 409 ALREADY_EXISTS",
         classes=["NEG", "CONC"], priority="P1",
         steps=[
             Step(name="cr-first", method="POST", path=create_path,
-                 body={**body_create, "name": f"{prefix.lower()}-dupck-{{{{runId}}}}"},
+                 body={**body_create, "name": dup_name},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
             poll_operation_until_done(capture_id_to="firstId"),
             Step(name="cr-dup", method="POST", path=create_path,
-                 body={**body_create, "name": f"{prefix.lower()}-dupck-{{{{runId}}}}"},
+                 body={**body_create, "name": dup_name},
                  test_script=[*assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
-                              "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"]),
+                              *assert_refusal_message(refusal.replace("{name}", dup_name))]),
             Step(name="cleanup-first", method="DELETE", path=f"{create_path}/{{{{firstId}}}}",
                  test_script=[*save_from_response("j.id", "opId")]),
             poll_operation_until_done(),
@@ -2937,6 +2954,8 @@ _INJECTED = {
     "Case": Case,
     "assert_status": assert_status,
     "assert_grpc_code": assert_grpc_code,
+    "assert_refusal_message": assert_refusal_message,
+    "assert_refusal_message_contains": assert_refusal_message_contains,
     "assert_transcode_error": assert_transcode_error,
     "assert_field_violation": assert_field_violation,
     "assert_unscoped_rejected": assert_unscoped_rejected,

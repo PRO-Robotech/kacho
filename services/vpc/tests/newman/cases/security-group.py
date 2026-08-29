@@ -597,7 +597,9 @@ CASES.extend(malformed_body_block("SG", "/vpc/v1/securityGroups"))
 
 CASES.append(_sg_wrap("SG", "v9d",
     alreadyexists_dup_name_for("SG", "/vpc/v1/securityGroups",
-        {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "ruleSpecs": []})))
+        # Текст владельца дословно: services/vpc/internal/apps/kacho/api/securitygroup/create.go
+        refusal="SecurityGroup with name {name} already exists",
+        body_create={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "ruleSpecs": []})))
 for c in update_mask_partial_block("SG", "/vpc/v1/securityGroups", "/vpc/v1/securityGroups",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "ruleSpecs": []}):
     CASES.append(_sg_wrap("SG", "v9p", c))
