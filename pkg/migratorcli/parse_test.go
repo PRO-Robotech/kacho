@@ -335,3 +335,58 @@ func TestHelpIsAlsoASubcommand(t *testing.T) {
 		t.Errorf("форма вызова не называет help: %s", migratorcli.Usage("kacho-migrator"))
 	}
 }
+
+// TestParseTargetVersionRejectsATrailingTail — версия читается ЦЕЛИКОМ, а не до
+// первого негодного знака (#1461).
+//
+// Инъекция 5 приёмщика: возврат к разбору форматом (`fmt.Sscanf`) оставил все
+// пробы пакета зелёными, потому что проб у этой функции не было ни одной, а
+// зовут её четыре точки наката. Форматный разбор на «12abc» отдаёт 12 БЕЗ
+// ошибки — то есть накат идёт до версии, которой оператор не называл, и
+// выглядит успехом. Это тот же класс, ради которого заведён весь пакет.
+//
+// Замер инъекции: `ParseTargetVersion("12abc")` → v=12, err=<nil>.
+func TestParseTargetVersionRejectsATrailingTail(t *testing.T) {
+	for _, in := range []string{"12abc", "800001x", "12 34", "1,2", "0x10", "12.0", "+", "-", ""} {
+		got, err := migratorcli.ParseTargetVersion(in)
+		if err == nil {
+			t.Errorf("%q принято как версия %d — накат уехал бы не туда, куда просили", in, got)
+			continue
+		}
+		if !strings.Contains(err.Error(), "--target") {
+			t.Errorf("%q: отказ не называет флаг: %v", in, err)
+		}
+		if !strings.Contains(err.Error(), in) {
+			t.Errorf("%q: отказ не называет само значение: %v", in, err)
+		}
+	}
+}
+
+// TestParseTargetVersionAcceptsWhatMigrationFilesUse — положительный контроль к
+// пробе выше. Без него она зеленела бы на разборе, отвергающем вообще всё, — а
+// тогда `--target` перестал бы работать у четырёх сервисов сразу.
+//
+// Ведущие нули приняты намеренно: `0010_…sql` — законная запись имени миграции
+// в этом дереве, и оператор списывает версию с имени файла.
+func TestParseTargetVersionAcceptsWhatMigrationFilesUse(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want int64
+	}{
+		{"800001", 800001},
+		{"0010", 10},
+		{"0", 0},
+		{"20260829120000", 20260829120000},
+		{" 800001 ", 800001}, // окружающие пробелы — обычный след копирования
+		{"-1", -1},           // goose принимает отрицательную версию как «до нуля»
+	} {
+		got, err := migratorcli.ParseTargetVersion(tc.in)
+		if err != nil {
+			t.Errorf("%q отвергнуто, хотя это законная запись версии: %v", tc.in, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("%q разобрано как %d, ожидалось %d", tc.in, got, tc.want)
+		}
+	}
+}
