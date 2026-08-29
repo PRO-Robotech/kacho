@@ -56,11 +56,19 @@
 - **Type**: contract-clarification
 - **Priority**: P2
 - **Driver**: предсказуемость Get-конвенции для операций
-- **Description**: `GET /operations/garbage-id` сейчас возвращает 400 InvalidArgument
-  "operation_id has unknown prefix". Это противоречит resource-Get convention
+- **Description**: `GET /operations/garbage-id` сейчас возвращает 400 INVALID_ARGUMENT
+  с текстом `invalid operation id "<X>"` (кавычки двойные — глагол `%q`
+  производителя `gateway/internal/opsproxy`). Это противоречит resource-Get convention
   ("garbage id → 404 NotFound"). Рассмотреть один из вариантов:
-  - **A**: OpsProxy конвертирует unknown-prefix → 404 NOT_FOUND `"operation X not found"`.
-  - **B**: Документировать как известное расхождение в `docs/architecture/06-conventions.md`.
+  - **A**: OpsProxy конвертирует unknown-prefix → 404 NOT_FOUND `operation <X> not found`.
+  - **B**: Документировать как известное расхождение — **исполнено**: запись живёт в
+    `services/vpc/docs/engineering/architecture/07-known-divergences.md` §10 и в
+    парной записи compute.
+
+  > Здесь стояла другая цитата — текст, которого край не отдаёт: производителей у той
+  > строки в дереве было ноль. Дословно она не повторяется: цитата читается как
+  > утверждение о поведении, и разбор стал бы её повторением. Требование сверяли с ответом продукта,
+  > не находили совпадения и заключали, что предмет закрыт. Снято по #1400.
 - **Rationale**: предсказуемость для клиентов (resource-Get-конвенция: garbage id → NOT_FOUND).
 - **Impact**: меньше user confusion.
 - **Owner**: `kacho-api-gateway/internal/opsproxy/`.

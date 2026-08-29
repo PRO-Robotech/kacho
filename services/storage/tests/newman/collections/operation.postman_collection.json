@@ -518,7 +518,7 @@
       ]
     },
     {
-      "name": "OP-GET-CONF-NF-TEXT — Get well-formed-но-нет sop-opId → контракт-тон сообщения: 'operation <id> not found' (несёт сам id)",
+      "name": "OP-GET-CONF-NF-TEXT — Get well-formed-но-нет sop-opId → сообщение ДОСЛОВНО 'operation <id> not found'",
       "description": "class:CONF | class:NEG | priority:P1",
       "item": [
         {
@@ -553,9 +553,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "const m = (pm.response.json().message || '');",
-                  "pm.test('message carries the op id', () => pm.expect(m).to.include(pm.environment.get('garbageStorageOpId')));",
-                  "pm.test('message says not found', () => pm.expect(m.toLowerCase()).to.include('not found'));"
+                  "pm.test('сообщение дословно равно тексту владельца (и потому несёт сам id)', () =>   pm.expect(pm.response.json().message).to.eql('operation ' + pm.environment.get('garbageStorageOpId') + ' not found'));"
                 ]
               }
             }
@@ -599,7 +597,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message == invalid operation id', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('invalid operation id'));"
+                  "pm.test('сообщение дословно равно тексту края', () =>   pm.expect(pm.response.json().message).to.eql('invalid operation id \"' + pm.environment.get('garbageId') + '\"'));"
                 ]
               }
             }
@@ -821,9 +819,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
-                  "const m = (pm.response.json().message || '');",
-                  "pm.test('message carries the op id', () => pm.expect(m).to.include(pm.environment.get('opId')));",
-                  "pm.test('message says already completed', () => pm.expect(m.toLowerCase()).to.include('already completed'));"
+                  "pm.test('сообщение дословно равно тексту владельца (и потому несёт сам id)', () =>   pm.expect(pm.response.json().message).to.eql('operation ' + pm.environment.get('opId') + ' already completed'));"
                 ]
               }
             }
@@ -989,9 +985,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "const m = (pm.response.json().message || '');",
-                  "pm.test('message carries the op id', () => pm.expect(m).to.include(pm.environment.get('garbageStorageOpId')));",
-                  "pm.test('message says not found', () => pm.expect(m.toLowerCase()).to.include('not found'));"
+                  "pm.test('сообщение дословно равно тексту владельца (и потому несёт сам id)', () =>   pm.expect(pm.response.json().message).to.eql('operation ' + pm.environment.get('garbageStorageOpId') + ' not found'));"
                 ]
               }
             }
@@ -1044,7 +1038,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('message == invalid operation id', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('invalid operation id'));"
+                  "pm.test('сообщение дословно равно тексту края', () =>   pm.expect(pm.response.json().message).to.eql('invalid operation id \"' + pm.environment.get('garbageId') + '\"'));"
                 ]
               }
             }

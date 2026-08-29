@@ -93,16 +93,21 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="OP-GET-CONF-NF-TEXT",
-    title="Get well-formed-но-нет sop-opId → контракт-тон сообщения: 'operation <id> not found' (несёт сам id)",
+    title="Get well-formed-но-нет sop-opId → сообщение ДОСЛОВНО 'operation <id> not found'",
     classes=["CONF", "NEG"], priority="P1",
     # verifies §0.1 (тон сообщения — часть контракта, api-conventions «<Resource> %s not found»).
     #   Отдельным кейсом от кода: код и текст ломаются независимо, поэтому lock ставится на
     #   уровне обсервабла (сообщение), а не только на gRPC-коде.
+    # Утверждается РАВЕНСТВО вычисленному тексту, без приведения регистра: приведение
+    # НЕ РАЗЛИЧАЕТ регистр by construction, и расхождение тона края с тоном владельца
+    # не могло покраснеть ни в одном прогоне (#1370, #1401). Текст полосы известен
+    # целиком — производителей два на всё дерево, и они обязаны совпадать побайтово
+    # (`security.md` §Hardening #6).
     steps=[Step(name="get-nx-text", method="GET", path="/operations/{{garbageStorageOpId}}",
                 test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                             "const m = (pm.response.json().message || '');",
-                             "pm.test('message carries the op id', () => pm.expect(m).to.include(pm.environment.get('garbageStorageOpId')));",
-                             "pm.test('message says not found', () => pm.expect(m.toLowerCase()).to.include('not found'));"])],
+                             "pm.test('сообщение дословно равно тексту владельца (и потому несёт сам id)', () => "
+                             "  pm.expect(pm.response.json().message).to.eql("
+                             "'operation ' + pm.environment.get('garbageStorageOpId') + ' not found'));"])],
 ))
 
 CASES.append(Case(
@@ -112,8 +117,13 @@ CASES.append(Case(
     # verifies §0.1 (OpsProxy prefix-routing guard — неизвестный префикс отвергается;
     #   контракт-текст opsproxy/proxy.go: `invalid operation id %q`, не содержит слова "prefix")
     steps=[Step(name="get-garbage-prefix", method="GET", path="/operations/{{garbageId}}",
+                # Имя пробы обещало равенство («message ==»), а тело проверяло вхождение
+                # подстроки в нижнем регистре: имя и тело утверждали разное, и верным было
+                # имя. Теперь равенство и есть утверждение.
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('message == invalid operation id', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('invalid operation id'));"])],
+                             "pm.test('сообщение дословно равно тексту края', () => "
+                             "  pm.expect(pm.response.json().message).to.eql("
+                             "'invalid operation id \"' + pm.environment.get('garbageId') + '\"'));"])],
 ))
 
 # ---------------------------------------------------------------------------
@@ -139,9 +149,9 @@ CASES.append(Case(
         assert_op_success(),
         Step(name="cancel-done", method="POST", path="/operations/{{opId}}:cancel", body={},
              test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                          "const m = (pm.response.json().message || '');",
-                          "pm.test('message carries the op id', () => pm.expect(m).to.include(pm.environment.get('opId')));",
-                          "pm.test('message says already completed', () => pm.expect(m.toLowerCase()).to.include('already completed'));"]),
+                          "pm.test('сообщение дословно равно тексту владельца (и потому несёт сам id)', () => "
+                          "  pm.expect(pm.response.json().message).to.eql("
+                          "'operation ' + pm.environment.get('opId') + ' already completed'));"]),
         Step(name="cleanup", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -155,9 +165,9 @@ CASES.append(Case(
     # verifies §0.1 (Cancel по той же by-lane дисциплине, что Get: well-formed-но-нет → NotFound)
     steps=[Step(name="cancel-nx", method="POST", path="/operations/{{garbageStorageOpId}}:cancel", body={},
                 test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                             "const m = (pm.response.json().message || '');",
-                             "pm.test('message carries the op id', () => pm.expect(m).to.include(pm.environment.get('garbageStorageOpId')));",
-                             "pm.test('message says not found', () => pm.expect(m.toLowerCase()).to.include('not found'));"])],
+                             "pm.test('сообщение дословно равно тексту владельца (и потому несёт сам id)', () => "
+                             "  pm.expect(pm.response.json().message).to.eql("
+                             "'operation ' + pm.environment.get('garbageStorageOpId') + ' not found'));"])],
 ))
 
 CASES.append(Case(
@@ -168,5 +178,7 @@ CASES.append(Case(
     #   ops-поверхностях одинаково, иначе cancel стал бы дырой в prefix-guard)
     steps=[Step(name="cancel-garbage-prefix", method="POST", path="/operations/{{garbageId}}:cancel", body={},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('message == invalid operation id', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('invalid operation id'));"])],
+                             "pm.test('сообщение дословно равно тексту края', () => "
+                             "  pm.expect(pm.response.json().message).to.eql("
+                             "'invalid operation id \"' + pm.environment.get('garbageId') + '\"'));"])],
 ))

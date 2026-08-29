@@ -1191,7 +1191,7 @@
       ]
     },
     {
-      "name": "OP-GET-CONF-NF-TEXT — Get несуществующего epd-opId → текст содержит 'not found'",
+      "name": "OP-GET-CONF-NF-TEXT — Get несуществующего epd-opId → сообщение ДОСЛОВНО 'operation <id> not found'",
       "description": "class:CONF | class:NEG | priority:P1",
       "item": [
         {
@@ -1226,7 +1226,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(5);",
                   "});",
-                  "pm.test('text mentions not found', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('not found'));"
+                  "pm.test('сообщение дословно равно тексту владельца', () =>   pm.expect(pm.response.json().message).to.eql('operation ' + pm.environment.get('garbageComputeId') + ' not found'));"
                 ]
               }
             }
@@ -1270,7 +1270,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('mentions invalid operation id (malformed-id convention)', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('invalid operation id'));"
+                  "pm.test('сообщение дословно равно тексту края', () =>   pm.expect(pm.response.json().message).to.eql('invalid operation id \"' + pm.environment.get('garbageId') + '\"'));"
                 ]
               }
             }
@@ -1722,7 +1722,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
-                  "pm.test('текст называет причину — операция уже завершена', () =>   pm.expect((pm.response.json().message || '').toLowerCase()).to.include('already completed'));"
+                  "pm.test('сообщение дословно равно тексту владельца', () =>   pm.expect(pm.response.json().message).to.eql('operation ' + pm.environment.get('doneOpId') + ' already completed'));"
                 ]
               }
             }
