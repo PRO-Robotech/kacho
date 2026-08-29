@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 )
 
 // migratorCLICorpusSuffixes — что читается: сборка, развёртывание и сами точки
@@ -192,7 +193,17 @@ func TestMigratorCLISurfaceIsDeclared(t *testing.T) {
 	doc := string(raw)
 	t.Logf("перепись: решение прочитано, %d байт", len(raw))
 
-	for _, want := range []string{migratorCLIBinaryName, "--target", "--dsn"} {
+	// Величины берутся ИЗ ПРОДУКТА, а не выписываются литералом: выписанный
+	// литерал был бы вторым местом об одном предмете и разошёлся бы с первым
+	// молча — ровно тем способом, каким накопилось само различие.
+	for _, want := range []string{
+		migratorCLIBinaryName,
+		migratorcli.EnvDSN,
+		"--target",
+		"--dsn",
+		"--dialect " + migratorcli.DialectPostgres,
+		migratorcli.CommandHelp,
+	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("%s не называет %q — на него ссылаются ради этого утверждения",
 				migratorCLIDecisionDoc, want)
