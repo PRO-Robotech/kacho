@@ -167,7 +167,7 @@ describe("хаб подписки: один поток на владельца, 
     const sources: FakeSource[] = [];
     const hub = makeHub(sources);
     const seen: string[] = [];
-    hub.subscribe({ owner: "nlb", kind: "nlb_listener", projectId: "prj-1" }, (e) => seen.push(e.change));
+    hub.subscribe({ owner: "loadbalancer", kind: "nlb_listener", projectId: "prj-1" }, (e) => seen.push(e.change));
     sources[0].emit("opened", opened(["nlb_listener"]));
     sources[0].emit("event", event("nlb_listener", "lsn-1", "DELETED"));
     expect(seen).toEqual(["DELETED"]);

@@ -11,11 +11,19 @@ import { JOURNAL_OWNERS, STREAM_SUBJECTS, streamSubject } from "./subjects";
  */
 describe("подписка: спека консоли → владелец журнала и вид предмета", () => {
   // verifies #1021
-  it("владельцев ровно три, и это ключи бэкендов края, а не сегменты REST", () => {
-    // `nlb` против `loadbalancer` — тот самый разнобой, о котором предупреждает
-    // страница подписки: путь `/loadbalancer/v1/`, а ключ владельца `nlb`.
-    // Возьми здесь сегмент пути — ручка ответила бы `400 unknown owner`.
-    expect([...JOURNAL_OWNERS].sort()).toEqual(["compute", "nlb", "vpc"]);
+  it("владельцев ровно три, и это домены контракта, а не сегменты REST", () => {
+    // `loadbalancer` против `nlb` — тот самый разнобой, о котором предупреждает
+    // страница подписки: REST-путь `/nlb/v1/`, каталог в дереве `services/nlb`,
+    // а владелец `loadbalancer`. Возьми здесь сегмент пути или имя каталога —
+    // ручка ответила бы `400 unknown owner`.
+    //
+    // ЭТА ПРОБА ЗАКРЕПЛЯЛА ДЕФЕКТ (kacho#1440): она ждала `nlb` и была зелена,
+    // пока страница списка балансировщиков давала два отказа `400` на каждом
+    // открытии. Список копию перечня и не мог опровергнуть — обе стороны были
+    // тут, а край в этом файле не участвует. Согласие с краем держит теперь
+    // гейт `gateway/deploy/console_subscription_owner_test.go`: он берёт
+    // множество принимаемых имён ВЫЗОВОМ той функции, которой пользуется край.
+    expect([...JOURNAL_OWNERS].sort()).toEqual(["compute", "loadbalancer", "vpc"]);
   });
 
   it("названы ровно те двенадцать видов, что объявляют журналы трёх владельцев", () => {
@@ -45,8 +53,24 @@ describe("подписка: спека консоли → владелец жу�
   it("каждый вид назван при своём владельце", () => {
     // Вид, приписанный чужому владельцу, отвергается на открытии `400`, и
     // список молчал бы навсегда. Сверяется поимённо, а не количеством.
+    //
+    // ПРЕФИКС ВИДА НЕ ПРОИЗВОДИТСЯ ОТ ИМЕНИ ВЛАДЕЛЬЦА, и прежняя редакция
+    // выводила его именно так (`kind.startsWith(owner + "_")`). Вывод держался
+    // ровно потому, что у compute и vpc обе величины совпадают случайно; у
+    // балансировщика они разные по построению — владелец `loadbalancer` (домен
+    // контракта), вид `nlb_*` (тип объекта модели прав). То есть проверка
+    // требовала бы здесь ровно того написания владельца, которое край
+    // отвергает, — и толкала бы починку в сторону дефекта.
+    //
+    // Соответствие названо ЯВНО и повторяет первую колонку таблицы владельцев
+    // клиентской страницы подписки.
+    const kindPrefix: Record<string, string> = {
+      compute: "compute_",
+      loadbalancer: "nlb_",
+      vpc: "vpc_",
+    };
     const mismatched = Object.entries(STREAM_SUBJECTS)
-      .filter(([, s]) => !s.kind.startsWith(`${s.owner}_`))
+      .filter(([, s]) => !s.kind.startsWith(kindPrefix[s.owner] ?? "\u0000"))
       .map(([specId, s]) => `${specId}: вид ${s.kind} при владельце ${s.owner}`);
     expect(mismatched).toEqual([]);
   });
@@ -54,7 +78,10 @@ describe("подписка: спека консоли → владелец жу�
   it("покрытые спеки называют свой предмет", () => {
     expect(streamSubject("networks")).toEqual({ owner: "vpc", kind: "vpc_network" });
     expect(streamSubject("compute-instances")).toEqual({ owner: "compute", kind: "compute_instance" });
-    expect(streamSubject("load-balancers")).toEqual({ owner: "nlb", kind: "nlb_network_load_balancer" });
+    expect(streamSubject("load-balancers")).toEqual({
+      owner: "loadbalancer",
+      kind: "nlb_network_load_balancer",
+    });
   });
 
   it("непокрытая спека отвечает null, а не догадкой", () => {
