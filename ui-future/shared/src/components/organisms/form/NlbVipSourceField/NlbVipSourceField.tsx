@@ -39,12 +39,12 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Form, Segmented, Select, Typography } from "antd";
-import { api } from "@/api/client";
-import { RefSelect } from "@/components/organisms/form/RefSelect";
-import { AddressVpcCascader } from "@/components/organisms/form/AddressVpcCascader";
-import { ImmutableField } from "@/components/organisms/form/ImmutableField";
-import { useProjectStore } from "@/lib/context-store";
-import { getByPath, setByPath } from "@/lib/path";
+import { api } from "@shared/api/client";
+import { RefSelect } from "@shared/components/organisms/form/RefSelect";
+import { AddressVpcCascader } from "@shared/components/organisms/form/AddressVpcCascader";
+import { ImmutableField } from "@shared/components/organisms/form/ImmutableField";
+import { useProjectStore } from "@shared/lib/context-store";
+import { getByPath, setByPath } from "@shared/lib/path";
 import { pickerScope } from "@shared/lib/picker-search";
 
 type Family = "v4" | "v6";

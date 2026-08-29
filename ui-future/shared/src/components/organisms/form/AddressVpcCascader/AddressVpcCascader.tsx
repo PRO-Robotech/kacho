@@ -8,18 +8,18 @@
 // NlbVipSourceField). Значение — плоский address_id; каскадер резолвит его в путь
 // [networkKey, addressId] для controlled-режима.
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Cascader, Modal } from "antd";
 import { Plus } from "lucide-react";
-import { api } from "@/api/client";
-import { useProjectStore } from "@/lib/context-store";
-import { getResource } from "@/lib/resource-registry";
+import { api } from "@shared/api/client";
+import { useProjectStore } from "@shared/lib/context-store";
+import { getResource } from "@shared/lib/resource-registry";
 import { useDebouncedValue } from "@shared/lib/list-search";
 import { pickerScopeOfSpec } from "@shared/lib/picker-search";
-import { InlineResourceCreateForm } from "@/components/organisms/InlineResourceCreateForm";
-import { FormBareProvider } from "@/components/organisms/form/FormShell";
-import { addressInternalSubnetId } from "@/components/organisms/form/NlbVipSourceField/NlbVipSourceField";
+import { InlineResourceCreateForm } from "@shared/components/organisms/InlineResourceCreateForm";
+import { FormBareProvider } from "@shared/components/organisms/form/FormShell";
+import { addressInternalSubnetId } from "@shared/components/organisms/form/NlbVipSourceField/NlbVipSourceField";
 
 type Family = "v4" | "v6";
 const PUBLIC_KEY = "__public__";
@@ -38,6 +38,56 @@ interface Props {
 // сужение унесло его из ответа. Две копии этой строки разошлись бы молча.
 function groupLabelOf(key: string, netName: Map<string, string>): string {
   return key === PUBLIC_KEY ? "Публичные адреса" : `Сеть · ${netName.get(key) || key}`;
+}
+
+/** Запомненный выбор: адрес, его группа и подпись на момент, когда край его отдавал. */
+export interface KeptAddress {
+  id: string;
+  groupKey: string;
+  label: string;
+}
+
+export interface CascaderGroup {
+  value: string;
+  label: string;
+  children: { value: string; label: string }[];
+}
+
+/**
+ * Варианты каскадера с ВОЗВРАЩЁННЫМ выбором.
+ *
+ * Предмет — не косметика: край отвечает по ВВОДУ, и уже сделанный выбор в этот
+ * ответ попадать не обязан. Без возврата каскадер теряет и ветку, и подпись, а
+ * показывает сырой `adr-…` — ровно то, что канон консоли (правило 2) запрещает.
+ *
+ * Функция ЧИСТАЯ и вынесена наружу намеренно: решение «что видит человек, когда
+ * его выбора нет в ответе» проверяется само по себе, а не через рендер, где оно
+ * неотличимо от «запрос ещё не вернулся».
+ */
+export function optionsWithKept(
+  options: CascaderGroup[],
+  kept: KeptAddress | null,
+  netName: Map<string, string>,
+): CascaderGroup[] {
+  if (!kept) return options;
+  const child = { value: kept.id, label: kept.label };
+  const group = options.find((g) => g.value === kept.groupKey);
+  if (group) return options.map((g) => (g === group ? { ...g, children: [child, ...g.children] } : g));
+  return [{ value: kept.groupKey, label: groupLabelOf(kept.groupKey, netName), children: [child] }, ...options];
+}
+
+/**
+ * Что именно возвращать в список: запомненный выбор — и ТОЛЬКО когда край его
+ * потерял. Пока адрес есть в ответе, возвращать нечего: подпись берётся из
+ * свежего ответа, а не из памяти, иначе переименованный адрес показывался бы
+ * старым именем до перезагрузки страницы.
+ */
+export function keptOf(
+  value: string | undefined,
+  chosenMeta: { groupKey: string; label: string } | undefined,
+  chosen: KeptAddress | null,
+): KeptAddress | null {
+  return value && !chosenMeta && chosen?.id === value ? chosen : null;
 }
 
 // addressIp — tenant-адрес выбранного семейства для подписи опции (internal/external).
@@ -151,18 +201,24 @@ export function AddressVpcCascader({ family, type, addressFilter, value, onChang
   // потерял бы и ветку, и подпись — и показал бы сырой `adr-…` вместо имени,
   // ровно то, что канон консоли (правило 2) запрещает. Значение формы при этом
   // не меняется: от сужения СПИСКА выбор не зависит.
-  const chosenRef = useRef<{ id: string; groupKey: string; label: string } | null>(null);
+  //
+  // Запоминается СОСТОЯНИЕМ, а не ссылкой (`useRef`). Прежняя редакция писала и
+  // читала `ref.current` прямо в рендере, и это не стиль: значение ссылки не
+  // участвует в решении о перерисовке, поэтому подпись выбранного адреса могла
+  // остаться прежней после того, как ответ края сменился. Пока файл жил в
+  // модуле, правило `react-hooks/refs` до него не доезжало — линт `shared`
+  // строже, и переезд его обнажил.
+  const [chosen, setChosen] = useState<KeptAddress | null>(null);
   const chosenMeta = value ? metaOf.get(value) : undefined;
-  if (value && chosenMeta) chosenRef.current = { id: value, ...chosenMeta };
-  const kept = value && !chosenMeta && chosenRef.current?.id === value ? chosenRef.current : null;
-
-  const shownOptions = (() => {
-    if (!kept) return options;
-    const child = { value: kept.id, label: kept.label };
-    const group = options.find((g) => g.value === kept.groupKey);
-    if (group) return options.map((g) => (g === group ? { ...g, children: [child, ...g.children] } : g));
-    return [{ value: kept.groupKey, label: groupLabelOf(kept.groupKey, netName), children: [child] }, ...options];
-  })();
+  // Правка состояния ПРЯМО В РЕНДЕРЕ, а не в эффекте: React отрабатывает такую
+  // правку до отрисовки, поэтому промежуточный кадр с потерянной подписью не
+  // показывается вовсе. Условие — не украшение: без него правка повторялась бы
+  // на каждом рендере и дала бы бесконечный цикл.
+  if (value && chosenMeta && (chosen?.id !== value || chosen.label !== chosenMeta.label)) {
+    setChosen({ id: value, ...chosenMeta });
+  }
+  const kept = keptOf(value, chosenMeta, chosen);
+  const shownOptions = optionsWithKept(options, kept, netName);
 
   const cascaderValue = value ? (pathOf.get(value) ?? (kept ? [kept.groupKey, kept.id] : undefined)) : undefined;
 
@@ -171,7 +227,7 @@ export function AddressVpcCascader({ family, type, addressFilter, value, onChang
       <Cascader
         options={shownOptions}
         value={cascaderValue}
-        onChange={(val) => onChange((val?.[1] as string) || undefined)}
+        onChange={(val) => onChange(val?.[1] || undefined)}
         placeholder={placeholder ?? "Выберите сеть (VPC) → адрес"}
         // Сузил сервер — клиент НЕ пересеивает: подпись варианта склеена из
         // имени и IP, и повторное сужение по ней вычло бы из ответа края

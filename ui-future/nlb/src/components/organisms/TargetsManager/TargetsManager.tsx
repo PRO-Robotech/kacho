@@ -187,9 +187,22 @@ export function TargetsManager({ targetGroupId, projectId, targets }: Props) {
 
   const mutate = useMutation({
     mutationFn: (params: { verb: "add" | "remove"; target: Target }) =>
-      api.action(`${TARGET_GROUPS_API}/${targetGroupId}:${params.verb}Targets`, {
-        targets: [params.verb === "add" ? params.target : targetIdentityOnly(params.target)],
-      }),
+      // Глагол называется ЛИТЕРАЛОМ, а не собирается из дискриминатора
+      // (`:${verb}Targets`). Собранный адрес не виден надзору за глаголами
+      // (`shared/src/test/console-verb-routes-exist.test.ts`): он читает
+      // синтаксическое дерево и сверяет каждый адресуемый консолью глагол с
+      // контрактом. Пока сегмент склеивался, ОБА глагола группы целей были вне
+      // наблюдения — надзор их не видел и о них ничего не утверждал, а
+      // единственные видимые ему вхождения жили на странице, которую не
+      // рендерил ни один маршрут.
+      api.action(
+        params.verb === "add"
+          ? `${TARGET_GROUPS_API}/${targetGroupId}:addTargets`
+          : `${TARGET_GROUPS_API}/${targetGroupId}:removeTargets`,
+        {
+          targets: [params.verb === "add" ? params.target : targetIdentityOnly(params.target)],
+        },
+      ),
     onSuccess: (resp, vars) => {
       const id = extractOperationId(resp);
       if (id) {

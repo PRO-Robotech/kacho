@@ -28,6 +28,14 @@ import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { IamRefLink } from "@shared/components/molecules/IamRefLink";
 import { LabelsCell } from "@shared/components/atoms/LabelsCell";
 import { NicSpecFields } from "@shared/components/organisms/form/NicSpecFields";
+import { NlbVipCell } from "@shared/components/molecules/NlbVipCell";
+import {
+  NlbVipSourceField,
+  NlbDisabledZonesField,
+  buildVipSourceOrNull,
+  lbTypeFromPlacement,
+  lbPlacementTypeFromPlacement,
+} from "@shared/components/organisms/form/NlbVipSourceField";
 import { stripFormOnlyKeys } from "@shared/lib/update-mask";
 import {
   roleIsSystem,
@@ -369,87 +377,16 @@ const FIELD_LABELS: FormField = {
 //   • режим задаёт ЕДИНСТВЕННО `placement` — `type`/`placement_type` в запросе
 //     существуют лишь затем, чтобы выставивший их клиент получил явный отказ.
 //
-// Поэтому «авто» означает разное по обе стороны и нормализуется от placement, а
-// не от того, что осталось в виджете после смены режима: подсеть, выбранная в
-// INTERNAL-черновике, после переключения на EXTERNAL схлопывается в public, а не
-// уезжает телом, которое сервис отвергнет.
-
-export function lbTypeFromPlacement(placement: string | undefined): "EXTERNAL" | "INTERNAL" {
-  return placement === "EXTERNAL_REGIONAL" ? "EXTERNAL" : "INTERNAL";
-}
-
-/**
- * buildVipSourceOrNull — wire-ветвь oneof одного семейства, либо null, если
- * семейство не задано. Пустой subnet_id/address_id — это «не задано», а не
- * `{subnet_id: ""}`: выбранная ветвь oneof с пустой ссылкой возвращается с
- * сервиса как «required», то есть жалобой на поле, которого оператор не называл.
- */
-export function buildVipSourceOrNull(
-  placement: string | undefined,
-  obj: Record<string, unknown>,
-  family: "v4" | "v6",
-): Record<string, unknown> | null {
-  const mode = (obj[`_${family}_source`] as string | undefined) ?? "off";
-  if (mode === "off") return null;
-  const fam = (obj[`${family}_source`] as Record<string, unknown> | undefined) ?? {};
-  if (mode === "address") {
-    const id = (fam.address_id as string) || "";
-    return id ? { address_id: id } : null;
-  }
-  // Автоматические ветви — «public» и «subnet» — нормализуются под placement:
-  // выбранная в INTERNAL-черновике подсеть после переключения на EXTERNAL
-  // схлопывается в public, а не уезжает телом, которое сервис отвергнет.
-  if (lbTypeFromPlacement(placement) === "EXTERNAL") return { public: {} };
-  const subnetId = (fam.subnet_id as string) || "";
-  return subnetId ? { subnet_id: subnetId } : null;
-}
-
-/** Поля одного семейства: режим + ссылка активного режима. */
-function vipSourceFields(family: "v4" | "v6", label: string): FormField[] {
-  const mode = `_${family}_source`;
-  return [
-    {
-      name: mode,
-      label: `Источник VIP (${label})`,
-      type: "enum",
-      immutable: true,
-      default: family === "v4" ? "public" : "off",
-      options: [
-        { value: "public", label: "Публичный (авто) — VIP выделяет платформа (EXTERNAL-размещение)" },
-        { value: "subnet", label: "Из подсети (авто) — VIP выделяется из подсети (INTERNAL-размещение)" },
-        { value: "address", label: "Линк адреса — заранее созданный Address" },
-        { value: "off", label: "Не задавать это семейство" },
-      ],
-      description:
-        "Ветвь источника VIP этого семейства. Хотя бы одно семейство обязано нести источник. Подсеть допустима только для INTERNAL-размещения, публичный VIP — только для EXTERNAL.",
-    },
-    {
-      name: `${family}_source.subnet_id`,
-      label: `Подсеть (${label})`,
-      type: "ref",
-      refResource: "subnets",
-      refProjectScoped: true,
-      immutable: true,
-      visibleWhen: { field: mode, equals: "subnet" },
-      description:
-        "Подсеть, из которой выделяется адрес балансировщика при внутреннем размещении. Размещение подсети обязано совпадать с размещением балансировщика.",
-    },
-    {
-      name: `${family}_source.address_id`,
-      label: `Адрес (${label})`,
-      type: "ref",
-      refResource: "addresses",
-      refProjectScoped: true,
-      immutable: true,
-      visibleWhen: { field: mode, equals: "address" },
-      refFilter: (row) =>
-        family === "v4"
-          ? !!row.internal_ipv4_address || !!row.external_ipv4_address
-          : !!row.internal_ipv6_address || !!row.external_ipv6_address,
-      description: "Существующий Address, линкуемый как VIP. Сфера адреса обязана совпадать с режимом балансировщика.",
-    },
-  ];
-}
+// Здесь стояла ВТОРАЯ реализация этих правил — четыре объявленных поля на
+// семейство (`_v4_source`, `v4_source.subnet_id`, …) и свои `lbTypeFromPlacement`
+// / `buildVipSourceOrNull` с другой сигнатурой. Их близнец жил в модуле `nlb`, и
+// пользователь видел РАЗНЫЕ формы одного ресурса: маршрут `/nlb/*` рисует модуль,
+// а этот реестр — оболочку. Реализация теперь одна и та, что богаче: выбор
+// «сеть → адрес» деревом, отбор кандидатов по размещению и явный отказ от
+// семейства (#1471).
+//
+// Сами правила — в `@shared/components/organisms/form/NlbVipSourceField`, рядом с
+// виджетом, который их исполняет; отсюда они только зовутся.
 
 // VPC-1 Subnet cell: immutable primary CIDR anchor + "+N" additional-ranges
 // hint (additional ranges managed via :add/:remove-cidr-blocks, not shown inline).
@@ -4648,14 +4585,22 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     genitive: "Балансировщика нагрузки",
     serviceTitle: SERVICES.nlb.title,
     scope: "project",
+    // Действий-глаголов у балансировщика нет: `:start`/`:stop` сняты с контракта,
+    // административное включение/выключение выражается полем admin_state.
     ops: { create: true, update: true, delete: true },
     emptyState: {
-      title: "Создайте первый балансировщик",
+      title: "Создайте первый балансировщик нагрузки",
       body:
-        "Балансировщик распределяет входящие соединения по целям и снимает нагрузку с отказавших. " +
-        "Ему понадобятся слушатель на нужном порту и целевая группа с адресатами.",
-      docs: ["Балансировка нагрузки"],
+        "Балансировщик нагрузки принимает трафик на VIP-адрес и разносит его между целями внутри " +
+        "региона Kachō. Дальше к нему добавляют обработчики — они задают протокол и порт приёма.",
+      docs: ["Балансировщики нагрузки"],
     },
+    // Обработчики — связанный дочерний ресурс (within-service FK
+    // `load_balancer_id`): registry-driven вкладка карточки + призыв «создать».
+    // Без записи путь «завёл балансировщик → завёл обработчик» из консоли не
+    // проходится вовсе. Целевые группы одним `filterField` не выражаются (связь
+    // идёт ЧЕРЕЗ обработчик) — их вкладку подаёт расширение карточки.
+    related: [{ childId: "listeners", filterField: "load_balancer_id", label: ENTITIES.listeners.plural }],
     columns: [
       {
         header: "Имя",
@@ -4668,9 +4613,27 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
       },
       {
+        // Регион — ресурс каталога geo со своей карточкой, поэтому ссылка, а не
+        // плоский текст: соседние колонки той же таблицы («Имя», «Адрес») ссылкой
+        // уже были, и один предмет выглядел двумя (канон §9).
         header: "Регион",
         path: "region_id",
         render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
+      // Схема (`type`) — производная проекция размещения, и именно она отвечает
+      // на вопрос «внешний он или внутренний», с которого начинают чтение списка.
+      { header: "Схема", path: "type", format: "code" },
+      {
+        // VIP резолвится в связанный vpc Address; ячейка показывает САМ адрес и
+        // ведёт на его карточку. Без неё список молчит о том, куда идёт трафик.
+        header: "Адрес",
+        path: "v4_address_id",
+        render: (row) => (
+          <NlbVipCell
+            v4AddressId={row.v4_address_id as string | undefined}
+            v6AddressId={row.v6_address_id as string | undefined}
+          />
+        ),
       },
       { header: "Статус", path: "status", format: "status" },
       { header: "Дата создания", path: "created_at", format: "datetime" },
@@ -4710,10 +4673,101 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         type: "ref",
         refResource: "compute-regions",
         required: true,
-        description: "Регион размещения балансировщика.",
+        description: "Регион размещения балансировщика. Неизменяем после создания.",
       },
-      ...vipSourceFields("v4", "IPv4"),
-      ...vipSourceFields("v6", "IPv6"),
+      {
+        // Источник VIP (per-family oneof v4_source/v6_source) — интерактивный
+        // выбор: пофамильно (v4/v6) подсеть/адрес/публичный/не задавать; в правке
+        // источник неизменяем (read-only резолвнутый Address). sanitize собирает
+        // wire-oneof.
+        name: "vip_source",
+        label: "Источник VIP",
+        type: "custom",
+        immutable: true,
+        render: ({ value, onChange, editMode }) => (
+          <NlbVipSourceField value={value} onChange={onChange} editMode={editMode} />
+        ),
+      },
+      {
+        name: "disabled_announce_zones",
+        label: "Зоны без анонса",
+        type: "custom",
+        // Drain только для REGIONAL; mutable через Update. fullWidth:false — label
+        // слева (как обычное поле), multi-select зон справа.
+        fullWidth: false,
+        // Гейт по `placement` — единственному, что форма несёт. `placement_type`
+        // объект формы не содержит (write-reject проекция), поэтому условие по
+        // нему не выполнялось бы никогда и поле было бы недостижимо.
+        visibleWhen: { field: "placement", equals: ["EXTERNAL_REGIONAL", "INTERNAL_REGIONAL"] },
+        description:
+          "Зоны, из которых anycast-VIP не анонсируется (drain). Пусто — анонс из всех здоровых зон региона.",
+        render: ({ value, onChange }) => <NlbDisabledZonesField value={value} onChange={onChange} />,
+      },
+      {
+        name: "session_affinity",
+        label: "Привязка сессий",
+        type: "enum",
+        default: "FIVE_TUPLE",
+        options: [
+          { value: "FIVE_TUPLE", label: "По пяти полям (src ip+port, dst ip+port, proto)" },
+          { value: "CLIENT_IP_ONLY", label: "Только по адресу клиента" },
+        ],
+        description:
+          "Привязка соединений к цели: FIVE_TUPLE — по 5-tuple, CLIENT_IP_ONLY — только по IP клиента. Control-plane намерение (распределение трафика — data-plane).",
+      },
+      {
+        name: "admin_state",
+        label: "Административное состояние",
+        type: "enum",
+        default: "ENABLED",
+        options: [
+          { value: "ENABLED", label: "ENABLED — принимает трафик" },
+          { value: "DISABLED", label: "DISABLED — выключен администратором" },
+        ],
+        description:
+          "Желаемое административное состояние. Выключение — не удаление: ресурс и его VIP сохраняются, приём трафика прекращается.",
+      },
+      {
+        name: "cross_zone_enabled",
+        label: "Межзональная балансировка",
+        type: "bool",
+        default: false,
+        // REGIONAL-only: у ZONAL-балансировщика зона одна, и сервис отвечает на
+        // `true` явным InvalidArgument. Поле скрыто по тому же `placement`, что и
+        // зоны без анонса, а sanitize снимает его для ZONAL — чтобы скрытое поле
+        // не уезжало телом, которое сервис отвергнет.
+        visibleWhen: { field: "placement", equals: ["EXTERNAL_REGIONAL", "INTERNAL_REGIONAL"] },
+        description: "Разносить трафик по целям всех зон региона. Применимо только к региональному размещению.",
+      },
+      {
+        name: "security_group_ids",
+        label: "Группы безопасности",
+        type: "array",
+        itemLabel: "SG",
+        // INTERNAL-only: группы безопасности живут в сети, и сервис отвечает на
+        // набор при внешнем размещении явным InvalidArgument.
+        visibleWhen: { field: "placement", equals: ["INTERNAL_REGIONAL", "INTERNAL_ZONAL"] },
+        description:
+          "Опционально. Ограничивают доступ к VIP балансировщика. Только для внутреннего размещения; набор заменяется целиком.",
+        newItem: () => ({ value: "" }),
+        itemFields: [
+          {
+            name: "value",
+            label: "Группа безопасности",
+            type: "ref",
+            refResource: "security-groups",
+            refProjectScoped: true,
+            required: true,
+          },
+        ],
+      },
+      {
+        name: "deletion_protection",
+        label: "Защита от удаления",
+        type: "bool",
+        default: false,
+        description: "Если включена, балансировщик нельзя удалить, пока защита не снята.",
+      },
       FIELD_LABELS,
       FIELD_PROJECT_ID,
     ],
@@ -4723,40 +4777,111 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       description: "",
       region_id: "",
       placement: "EXTERNAL_REGIONAL",
-      // Источник VIP пофамильно. Хотя бы одно семейство обязательно, иначе
-      // resolveVipSources отвергает запрос целиком. IPv4 по умолчанию — «авто»
-      // (для EXTERNAL это платформенный public VIP, ничего выбирать не нужно),
-      // IPv6 выключен.
-      _v4_source: "public",
-      _v6_source: "off",
-      v4_source: { subnet_id: "", address_id: "" },
-      v6_source: { subnet_id: "", address_id: "" },
+      session_affinity: "FIVE_TUPLE",
+      admin_state: "ENABLED",
+      cross_zone_enabled: false,
+      security_group_ids: [],
+      deletion_protection: false,
+      disabled_announce_zones: [],
+      // vip_source — UI-представление источника VIP per-family (NlbVipSourceField).
+      //
+      // IPv4 — в авто-режиме своей схемы («из подсети» для INTERNAL,
+      // нормализуется в «публичный» для EXTERNAL). IPv6 — ЯВНО не задаётся:
+      // двойной стек включается по решению арендатора, а не по умолчанию.
+      //
+      // Прежде оба семейства стояли в режиме «из подсети». Для INTERNAL это
+      // означало «пусто → семейство опущено», а для EXTERNAL (умолчание
+      // размещения!) режим схлопывался в «публичный», который источник даёт
+      // ВСЕГДА, — то есть внешний балансировщик по умолчанию уезжал с ОБОИМИ
+      // семействами, и отказаться от одного было нечем.
+      vip_source: {
+        _v4_mode: "subnet",
+        v4: { subnet_id: "", address_id: "" },
+        _v6_mode: "off",
+        v6: { subnet_id: "", address_id: "" },
+      },
       labels: {},
     }),
-    // Хотя бы одно семейство должно нести источник — тот же инвариант, что
-    // resolveVipSources энфорсит на сервисе; ловим его до отправки.
+    // Клиент-валидация ДО submit: источник VIP должен быть задан хотя бы для
+    // одного семейства (IPv4/IPv6) — иначе backend отвергнет InvalidArgument.
     validate: (obj) => {
-      const placement = obj.placement as string | undefined;
-      if (!buildVipSourceOrNull(placement, obj, "v4") && !buildVipSourceOrNull(placement, obj, "v6")) {
+      const type = lbTypeFromPlacement(obj.placement as string | undefined);
+      const vs = (obj.vip_source as Record<string, unknown> | undefined) ?? {};
+      const v4 = buildVipSourceOrNull(
+        type,
+        vs._v4_mode as string | undefined,
+        vs.v4 as Record<string, unknown> | undefined,
+      );
+      const v6 = buildVipSourceOrNull(
+        type,
+        vs._v6_mode as string | undefined,
+        vs.v6 as Record<string, unknown> | undefined,
+      );
+      if (!v4 && !v6) {
         return "Укажите источник VIP хотя бы для одного семейства (IPv4 или IPv6).";
       }
       return null;
     },
+    // Собирает per-family oneof v4_source/v6_source из UI-представления
+    // (NlbVipSourceField): семейство эмитится, только если у активного режима
+    // есть значение (buildVipSourceOrNull ≠ null) — пустой addressId/subnetId
+    // никогда не уходит на бэкенд. Ветвь oneof нормализуется под РЕЖИМ, а не под
+    // то, что осталось в виджете: subnet_id валиден только для INTERNAL, public —
+    // только для EXTERNAL (validateSourceTypeMatrix на стороне сервиса), поэтому
+    // подсеть, выбранная в INTERNAL-черновике, после переключения на EXTERNAL
+    // схлопывается в public, а не уезжает отвергаемым телом.
+    //
+    // Поля, чьё применение сервис ограничивает размещением, снимаются здесь же —
+    // скрытое поле иначе уезжает телом, на которое приходит явный отказ:
+    // disabled_announce_zones и cross_zone_enabled — REGIONAL-only,
+    // security_group_ids — INTERNAL-only.
     sanitize: (obj) => {
       const out: Record<string, unknown> = { ...obj };
       const placement = out.placement as string | undefined;
-      const v4 = buildVipSourceOrNull(placement, out, "v4");
-      const v6 = buildVipSourceOrNull(placement, out, "v6");
-      delete out.v4_source;
-      delete out.v6_source;
-      delete out._v4_source;
-      delete out._v6_source;
+      const type = lbTypeFromPlacement(placement);
+
+      const vs = (out.vip_source as Record<string, unknown> | undefined) ?? {};
+      const v4 = buildVipSourceOrNull(
+        type,
+        vs._v4_mode as string | undefined,
+        vs.v4 as Record<string, unknown> | undefined,
+      );
+      const v6 = buildVipSourceOrNull(
+        type,
+        vs._v6_mode as string | undefined,
+        vs.v6 as Record<string, unknown> | undefined,
+      );
       if (v4) out.v4_source = v4;
       if (v6) out.v6_source = v6;
+      delete out.vip_source;
+
+      if (lbPlacementTypeFromPlacement(placement) !== "REGIONAL") {
+        delete out.disabled_announce_zones;
+        delete out.cross_zone_enabled;
+      }
+      // Набор SG на проводе — `repeated string`, а в форме элемент объектом
+      // (`{value}`): перевод один на всё дерево (`flatIdList`). Пустой набор в
+      // тело не уезжает — пустой массив утверждал бы «ни одной группы», тогда
+      // как арендатор чаще просто не дошёл до поля.
+      if (type !== "INTERNAL") {
+        delete out.security_group_ids;
+      } else {
+        const sgs = flatIdList(out.security_group_ids);
+        if (sgs) out.security_group_ids = sgs;
+        else delete out.security_group_ids;
+      }
+
+      return out;
+    },
+    // Обратное преобразование (провод → форма): сервис возвращает список строк,
+    // а `ArrayField` держит элемент объектом. Без него в правке список групп
+    // приезжает строками и `RefSelect` не показывает ни одного имени.
+    hydrate: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      hydrateStringListFields(out, ["security_group_ids"]);
       return out;
     },
   },
-
   listeners: {
     id: "listeners",
     route: "listeners",
@@ -4769,11 +4894,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "project",
     ops: { create: true, update: true, delete: true },
     emptyState: {
-      title: "Создайте первый слушатель",
+      title: "Создайте первый обработчик",
       body:
-        "Слушатель — порт и протокол, на которых балансировщик принимает соединения. " +
-        "Каждый слушатель направляет трафик в свою целевую группу, поэтому их заводят по числу служб.",
-      docs: ["Слушатели балансировщика"],
+        "Обработчик — точка приёма трафика балансировщика: протокол и порт, на которых он слушает. " +
+        "Обработчик указывает целевую группу, и с него начинается путь запроса к машинам.",
+      docs: ["Обработчики"],
     },
     columns: [
       {
@@ -4795,6 +4920,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       { header: "Протокол", path: "protocol", format: "code" },
       { header: "Порт", path: "port", format: "text" },
+      // `resolved_backend_port` — эхо порта привязанной группы целей. Без него
+      // список говорит, КУДА трафик приходит, и молчит о том, куда он уходит.
+      { header: "Порт на цели", path: "resolved_backend_port", format: "text" },
       { header: "Статус", path: "status", format: "status" },
       { header: "Дата создания", path: "created_at", format: "datetime" },
     ],
@@ -4806,9 +4934,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // Create-only: UpdateListenerRequest его не несёт.
         immutable: true,
         label: "Балансировщик",
-        type: "string",
+        type: "ref",
+        refResource: "load-balancers",
+        refProjectScoped: true,
         required: true,
-        description: "Балансировщик, которому принадлежит слушатель. Неизменяем после создания.",
+        description: "Балансировщик, которому принадлежит обработчик. Неизменяем после создания.",
       },
       {
         name: "protocol",
@@ -4830,7 +4960,19 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         label: "Порт",
         type: "int",
         required: true,
-        description: "Внешний порт (1..65535). Неизменяем после создания.",
+        min: 1,
+        max: 65535,
+        description: "Порт, на котором обработчик принимает входящий трафик (1..65535). Неизменяем после создания.",
+      },
+      {
+        name: "default_target_group_id",
+        label: "Целевая группа по умолчанию",
+        type: "ref",
+        refResource: "target-groups",
+        refProjectScoped: true,
+        required: false,
+        description:
+          "Целевая группа, принимающая трафик. Привязка живёт ЗДЕСЬ: у балансировщика собственной привязки к группе нет.",
       },
       FIELD_LABELS,
     ],
@@ -4839,6 +4981,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       description: "",
       load_balancer_id: "",
       protocol: "TCP",
+      // Порта на цели здесь нет: он живёт на группе целей и приходит обратно
+      // вычисляемым `resolved_backend_port`.
+      default_target_group_id: "",
       // `port` НЕ дефолтим: 0 вне диапазона [1,65535], который энфорсит
       // LbPort.Validate, поэтому засеянный ноль превращает «оператор не ввёл
       // порт» в тело, на которое сервис отвечает «port must be in range
