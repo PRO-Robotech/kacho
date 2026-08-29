@@ -3,9 +3,10 @@
 
 package config
 
-import "strings"
-
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestSingleConnDSNCarriesNoPoolParameter — строка ОДИНОЧНОГО соединения не несёт
 // параметров пула.
