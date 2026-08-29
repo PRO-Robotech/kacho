@@ -209,9 +209,65 @@ func (b *basicStub) CheckBasicCredentialLive(
 // journalOwnerStub — владелец журнала подписки: открывает поток и держит его.
 type journalOwnerStub struct {
 	subscriptionv1.UnimplementedInternalSubscriptionServiceServer
-	mu      sync.Mutex
+
+	mu sync.Mutex
+	// served — сколько потоков стенд обслужил. Отвечает на вопрос, на который
+	// сигнал не отвечает: «дошло до стенда» и «дошло до ждущего» — разные факты,
+	// и [journalOwnerStub.awaitStreams] называет оба, когда истекает срок.
+	served int
+
+	// started получает по одному значению НА КАЖДЫЙ обслуженный поток.
+	//
+	// Прежняя редакция ЗАКРЫВАЛА канал под [sync.Once]. Однократность снимала
+	// панику второго закрытия, но НЕ снимала главного: закрытый канал отдаёт
+	// ВСЕМ и СРАЗУ, поэтому ожидание потока выполнялось тождественно после
+	// первого, а [stand.openStream] — помощник, прямо заведённый для повторного
+	// вызова, — со второго раза не ждал бы ничего. Условие, истинное независимо
+	// от предмета, условием не является (#1513).
+	//
+	// Форма повторена, а не изобретена: тот же приём и по тем же причинам снят
+	// у двух стендов соседнего пакета
+	// (`gateway/internal/subscriptionstream/harness_test.go`, #1485 и
+	// `.../revocation_poll_sweep_test.go`, #1482).
+	//
+	// Ждут через [journalOwnerStub.awaitStreams]; глубина буфера — [startedDepth].
 	started chan struct{}
-	once    sync.Once
+}
+
+// startedDepth — глубина канала [journalOwnerStub.started].
+//
+// Отправка сигнала НЕБЛОКИРУЮЩАЯ: поток, которого проба не ждёт, обязан
+// обслуживаться как обычно, а не замирать до чьего-то чтения — иначе стенд стал
+// бы снисходительнее продукта в одну сторону и строже в другую. Значит буфер
+// обязан вмещать все потоки, которые стенд обслужит за пробу; переполнение
+// теряет сигнал, и [journalOwnerStub.awaitStreams] называет это числом, а не
+// молчит. Четыре — потолок проекции стенда ([subscriptionstream.Config.MaxStreams]
+// в [newStand]): больше потоков она не примет, поэтому больше сигналов не будет.
+const startedDepth = 4
+
+// servedStreams — сколько потоков стенд обслужил на данный момент.
+func (o *journalOwnerStub) servedStreams() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.served
+}
+
+// awaitStreams ждёт, пока стенд не примет n потоков.
+//
+// Ждётся УСЛОВИЕ — приход n-го потока, — а не срок. Срок здесь страховочный, и
+// его истечение — падение С ЧИСЛАМИ: «ноль сигналов» обязано быть отличимо от
+// «ноль потоков», иначе разбор упавшей пробы начинается с догадки.
+func (o *journalOwnerStub) awaitStreams(t *testing.T, n int) {
+	t.Helper()
+	for got := 0; got < n; got++ {
+		select {
+		case <-o.started:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("стенд принял потоков %d из ожидавшихся %d (обслужено всего %d) — "+
+				"поток не открылся; если обслужено не меньше ожидаемого, мал буфер канала started",
+				got, n, o.servedStreams())
+		}
+	}
 }
 
 func (o *journalOwnerStub) Subscribe(
@@ -226,8 +282,14 @@ func (o *journalOwnerStub) Subscribe(
 		return err
 	}
 	o.mu.Lock()
-	o.once.Do(func() { close(o.started) })
+	o.served++
 	o.mu.Unlock()
+	if o.started != nil {
+		select {
+		case o.started <- struct{}{}:
+		default:
+		}
+	}
 	<-stream.Context().Done()
 	return nil
 }
@@ -267,7 +329,7 @@ type stand struct {
 func newStand(t *testing.T, tune func(*streamrevocation.Config)) *stand {
 	t.Helper()
 
-	owner := &journalOwnerStub{started: make(chan struct{})}
+	owner := &journalOwnerStub{started: make(chan struct{}, startedDepth)}
 	ownerConn := dial(t, func(s *grpc.Server) {
 		subscriptionv1.RegisterInternalSubscriptionServiceServer(s, owner)
 	})
@@ -334,11 +396,7 @@ func (s *stand) openStream(t *testing.T, headers map[string]string) <-chan struc
 		defer close(done)
 		s.projection.ServeHTTP(httptest.NewRecorder(), r)
 	}()
-	select {
-	case <-s.owner.started:
-	case <-time.After(10 * time.Second):
-		t.Fatal("поток не открылся — предъявлять нечего")
-	}
+	s.owner.awaitStreams(t, 1)
 	return done
 }
 
@@ -382,3 +440,70 @@ func TestRevokedCredentialClosesTheOpenStreamEndToEnd(t *testing.T) {
 
 // itoa — секунды эпохи заголовком момента подтверждения.
 func itoa(v int64) string { return strconv.FormatInt(v, 10) }
+
+// TestStreamArrivalIsSignalledPerStreamNotBroadcast — предмет задачи #1513:
+// сигнал о приходе потока обязан быть ПЕР-ПОТОЧНЫМ, а не вещанием.
+//
+// Утверждение выбрано так, чтобы оно было НЕВЫПОЛНИМО при прежней форме и не
+// зависело от загрузки машины: открыт РОВНО один поток, значит второго прибытия
+// не случилось, и ожидание второго обязано не выполняться. Закрытие канала
+// делает его выполнимым тождественно — то есть ожидание перестаёт быть условием
+// и начинает быть тавтологией.
+//
+// Проверять это счётчиком обслуженных нельзя: «второй поток ещё не дошёл» и
+// «сигнал отдан всем сразу» дали бы одно наблюдение, и вердикт стал бы функцией
+// планировщика.
+func TestStreamArrivalIsSignalledPerStreamNotBroadcast(t *testing.T) {
+	s := newStand(t, nil)
+
+	_ = s.openStream(t, map[string]string{
+		principalmeta.HeaderPrincipalType: "user",
+		principalmeta.HeaderPrincipalID:   "usr00000000000000001",
+		principalmeta.HeaderTokenJti:      "jti-only-stream",
+	})
+
+	select {
+	case <-s.owner.started:
+		t.Fatalf("ожидание прихода потока выполнилось, когда открыт РОВНО один "+
+			"и он уже дождан (обслужено всего %d) — сигнал подан вещанием, "+
+			"поэтому ожидание n потоков истинно после первого; "+
+			"условие, истинное независимо от предмета, условием не является",
+			s.owner.servedStreams())
+	default:
+	}
+}
+
+// TestStandOpensTwoStreamsInSequence — ПРЕДИКАТ СНЯТИЯ задачи #1513 и
+// положительный контроль к пробе выше.
+//
+// Помощник [stand.openStream] заведён для повторного вызова, и до сих пор им
+// пользовались единожды. Здесь он зовётся дважды: второй поток обязан быть
+// дождан по-настоящему, а не «уже готов». Без этого контроля утверждение об
+// отсутствии лишнего сигнала зеленело бы и на стенде, который не сигналит вовсе.
+func TestStandOpensTwoStreamsInSequence(t *testing.T) {
+	s := newStand(t, nil)
+
+	first := s.openStream(t, map[string]string{
+		principalmeta.HeaderPrincipalType: "user",
+		principalmeta.HeaderPrincipalID:   "usr00000000000000001",
+		principalmeta.HeaderTokenJti:      "jti-first-stream",
+	})
+	second := s.openStream(t, map[string]string{
+		principalmeta.HeaderPrincipalType: "user",
+		principalmeta.HeaderPrincipalID:   "usr00000000000000002",
+		principalmeta.HeaderTokenJti:      "jti-second-stream",
+	})
+
+	if got := s.owner.servedStreams(); got != 2 {
+		t.Fatalf("стенд обслужил потоков %d, ожидалось 2 — возврат из ожидания "+
+			"не означает прихода потока", got)
+	}
+
+	for name, done := range map[string]<-chan struct{}{"первый": first, "второй": second} {
+		select {
+		case <-done:
+			t.Fatalf("%s поток закрылся сам, без отзыва — предъявлять отзыву нечего", name)
+		default:
+		}
+	}
+}
