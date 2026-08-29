@@ -18,10 +18,27 @@ package subscription
 // проба (`coldwatermark_integration_test.go`).
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
 )
+
+// countingWarnHandler считает записи уровня WARN. Жалоба на удержание — часть
+// объявленного размена («не потерять» против «доставить сейчас»), поэтому её
+// наличие утверждается, а не предполагается.
+type countingWarnHandler struct{ warns *int }
+
+func (h countingWarnHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h countingWarnHandler) Handle(_ context.Context, r slog.Record) error {
+	if r.Level == slog.LevelWarn {
+		*h.warns++
+	}
+	return nil
+}
+func (h countingWarnHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h countingWarnHandler) WithGroup(string) slog.Handler      { return h }
 
 func newProbeWatermark() *watermark {
 	return &watermark{log: slog.Default(), now: time.Now}
@@ -127,5 +144,89 @@ func TestResolveCursorSeatsFromNowOnTheSettledBoundary(t *testing.T) {
 	}
 	if got != 3 {
 		t.Errorf("курсор %d, ожидался 3 — «с начала» садится на пол удержанного", got)
+	}
+}
+
+// TestWatermarkSettlesUnderContinuousWriting — ПОДТВЕРЖДЕНИЕ НАСТУПАЕТ ПОД
+// НЕПРЕРЫВНОЙ ЗАПИСЬЮ.
+//
+// Признак дефекта: граница РАСТЁТ (каждый проход снимает прошлое ожидание), а
+// наблюдение так и не объявляется состоявшимся — потому что состоявшимся
+// считалось «ожидания не осталось», а новое ожидание берётся тем же проходом,
+// что снимает прошлое. Под сплошной записью пустого мига не бывает никогда, и
+// подписчик без позиции не садится НИКОГДА: расход лечится отказом в
+// обслуживании, причём немым.
+//
+// Подтверждает границу шаг 1, а не отсутствие очереди: снятое ожидание значит,
+// что писатели номера `pendingSeq` доистекли, — и это верно независимо от того,
+// взято ли следом ожидание для номера ВЫШЕ.
+func TestWatermarkSettlesUnderContinuousWriting(t *testing.T) {
+	var warns int
+	h := newProbeWatermark()
+	h.log = slog.New(countingWarnHandler{warns: &warns})
+	clock := time.Unix(0, 0)
+	h.now = func() time.Time { return clock }
+
+	const passes = 50
+	for i := 1; i <= passes; i++ {
+		// Каждый проход: журнал вырос, держит его НОВЫЙ писатель. Прошлый
+		// доистёк — значит прошлое наблюдение подтверждено.
+		//
+		// Часы двигаются так же, как у близнеца с УДЕРЖАНИЕМ, и на ту же
+		// величину: различие между пробами — ровно личность писателя, а не
+		// длительность прогона.
+		clock = clock.Add(2 * time.Second)
+		h.observe(int64(i), 1, []string{fmt.Sprintf("%d/%d", i, i)})
+	}
+	// Горизонт ДВИЖЕТСЯ, и жаловаться не на что: жалоба заведена на удержание,
+	// а не на занятость журнала. Пожалуйся она здесь — оператор получал бы её
+	// на штатной записи, перестал бы читать, и настоящее удержание уехало бы
+	// вместе с шумом.
+	if warns != 0 {
+		t.Errorf("движущийся горизонт дал %d жалоб(ы) на удержание: "+
+			"штатная запись — не застрявший писатель", warns)
+	}
+	if !h.established {
+		t.Errorf("за %d проходов наблюдение не состоялось ни разу при границе %d: "+
+			"подтверждённая граница ЕСТЬ и известна, а подписчика на неё не сажают",
+			passes, h.settled)
+	}
+	if h.settled != passes-1 {
+		t.Errorf("граница %d, ожидалась %d — подтверждается номер прошлого прохода",
+			h.settled, passes-1)
+	}
+}
+
+// TestHeldJournalNeitherSettlesNorGoesQuiet — ЗАКОННЫЙ БЛИЗНЕЦ предыдущей.
+//
+// Тот же поток проходов, но журнал держит ОДИН И ТОТ ЖЕ писатель. Здесь
+// подтверждать нечем по существу: невыпущенный номер этого писателя может
+// оказаться ниже наблюдаемого максимума, и посадка на максимум потеряла бы его.
+// Наблюдение обязано остаться несостоявшимся — иначе починка предыдущей пробы
+// была бы «объявить состоявшимся всё подряд».
+//
+// И ровно поэтому здесь обязана звучать жалоба: удержание — единственный
+// случай, когда поток честно ждёт, и немым это ожидание быть не вправе.
+func TestHeldJournalNeitherSettlesNorGoesQuiet(t *testing.T) {
+	var warns int
+	h := newProbeWatermark()
+	h.log = slog.New(countingWarnHandler{warns: &warns})
+	clock := time.Unix(0, 0)
+	h.now = func() time.Time { return clock }
+
+	for i := 1; i <= 50; i++ {
+		clock = clock.Add(2 * time.Second)
+		h.observe(int64(i), 1, []string{"7/7"})
+	}
+	if h.established {
+		t.Error("наблюдение объявлено состоявшимся, хотя журнал держит " +
+			"незавершённый писатель: его номер может быть ниже наблюдаемого максимума")
+	}
+	if h.settled != 0 {
+		t.Errorf("граница %d, ожидался 0 — подтверждать было нечем", h.settled)
+	}
+	if warns == 0 {
+		t.Error("удержание длиннее stallWarnAfter не дало ни одной жалобы: " +
+			"поток ждёт молча, и «писатель завис» неотличимо от «событий нет»")
 	}
 }
