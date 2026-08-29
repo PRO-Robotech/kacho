@@ -107,6 +107,21 @@ export interface HubDeps {
    * истекать само.
    */
   reopenAfterMs?: number;
+  /**
+   * Есть ли в этой среде приёмник событий ВООБЩЕ.
+   *
+   * Это не «край отказал», а «принимать нечем»: среда без `EventSource`
+   * (старый обозреватель, харнесс проб) не отличается от отказа края ничем,
+   * кроме того, что повтор ей не поможет НИКОГДА. Без этого входа хаб звал бы
+   * конструктор, которого нет, и страница падала бы целиком — вместо того
+   * чтобы остаться на опросе, ради чего мягкий возврат и заведён.
+   *
+   * Вход, а не обращение к глобальным: зависимости подставляются ЦЕЛИКОМ
+   * (см. конструктор), поэтому проба со своим приёмником не наследует эту
+   * проверку и не обязана её объявлять — умолчание `true` относится к тому,
+   * кто приёмник назвал сам.
+   */
+  available?: () => boolean;
 }
 
 interface Channel {
@@ -125,6 +140,7 @@ const defaultDeps: HubDeps = {
     return { status: res.status, contentType: res.headers.get("content-type") ?? "", body: body.slice(0, 300) };
   },
   log: (message, detail) => console.info(`[подписка] ${message}`, detail ?? ""),
+  available: () => typeof EventSource !== "undefined",
 };
 
 /** Умолчание окна молчания после отказа. */
@@ -222,6 +238,16 @@ export class SubscriptionHub {
     const failedAt = this.failedAt.get(key);
     const now = (this.deps.now ?? Date.now)();
     if (failedAt !== undefined && now - failedAt < (this.deps.reopenAfterMs ?? REOPEN_AFTER_MS)) return;
+    // Принимать нечем — остаёмся на опросе. Отмечается ТЕМ ЖЕ окном молчания,
+    // что и отказ края: оно конечно, поэтому среда, где приёмник появится,
+    // подхватится сама, а окно не даёт писать в журнал на каждый перерисов.
+    if (!(this.deps.available?.() ?? true)) {
+      if (failedAt === undefined) {
+        this.deps.log("приёмник событий недоступен — списки остаются на опросе", { owner });
+      }
+      this.failedAt.set(key, now);
+      return;
+    }
     this.failedAt.delete(key);
     const url = this.url(owner, projectId);
     const source = this.deps.open(url);
