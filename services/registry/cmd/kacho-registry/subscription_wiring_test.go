@@ -13,6 +13,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/handler"
 )
 
@@ -68,7 +69,9 @@ func TestRegistryStreamBudgetIsDeclaredWithItsSubject(t *testing.T) {
 func TestRegistryServesTheSubscriptionStreamOnTheInternalListenerOnly(t *testing.T) {
 	registryHandler := handler.NewRegistryHandler(nil, nil, 0)
 	internalHandler := handler.NewInternalRegistryHandler(nil)
-	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_registry"))
+	// Обработчик операций берётся из общего фундамента: посервисные копии сведены
+	// в одно место (#1434), и своя у registry больше не заводится.
+	opHandler := operationspb.NewHandler(operations.NewRepo(nil, "kacho_registry"))
 	// Сервер подписки — ЗАГЛУШКА: предмет пробы состав служимого набора, а
 	// настоящий потребовал бы базы, сужателя и объявления посадки. Что провязан
 	// настоящий, утверждает интеграционная проба журнала.

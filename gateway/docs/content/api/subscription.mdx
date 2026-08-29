@@ -137,7 +137,7 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
 `owner` — **ключ бэкенда посадки**, а не сегмент REST-пути. У большинства доменов они
 совпадают, у балансировщика — нет: путь `/loadbalancer/v1/`, а `owner=nlb`. Берите значение
 из таблицы ниже, а не из [таблицы REST-префиксов](/api/overview). Глагол подписки служат
-сегодня три владельца:
+сегодня пять владельцев:
 
 <table>
   <thead><tr><th><code>owner</code></th><th>Домен</th><th>Допустимые <code>kinds</code></th><th>Состояние в событии</th></tr></thead>
@@ -150,6 +150,17 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
     <tr>
       <td><code>nlb</code></td><td>Load Balancer</td>
       <td><code>nlb&#95;network&#95;load&#95;balancer</code>, <code>nlb&#95;listener</code>, <code>nlb&#95;target&#95;group</code></td>
+      <td>состояния нет ни у одного вида и ни у одного рода изменения — приходит только оболочка события</td>
+    </tr>
+    <tr>
+      <td><code>registry</code></td><td>Registry</td>
+      <td><code>registry&#95;registry</code></td>
+      <td><code>state</code> типа <code>kacho.cloud.registry.v1.Registry</code> — у создания и правки; у снятия состояния нет</td>
+    </tr>
+    <tr>
+      <td><code>storage</code></td><td>Storage</td>
+      <td><code>storage&#95;volume</code>, <code>storage&#95;snapshot</code>,
+          <code>storage&#95;image</code></td>
       <td>состояния нет ни у одного вида и ни у одного рода изменения — приходит только оболочка события</td>
     </tr>
     <tr>
