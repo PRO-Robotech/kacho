@@ -157,3 +157,75 @@ func TestSubjectChangeRepo_PollCarriesTheSubjectType(t *testing.T) {
 	require.Equal(t, "", got["usr_untyped"],
 		"строка без типа обязана приехать неназванной — иначе вызывающий соберёт субъекта, которого нет")
 }
+
+// TestSubjectChangeRepo_ZeroHeadMeansAnEmptyJournal — НОЛЬ В ГОЛОВЕ ОЗНАЧАЕТ
+// ПУСТОЙ ЖУРНАЛ, и ничего кроме (kacho#1386).
+//
+// # Зачем это утверждение отдельной пробой
+//
+// Голова журнала едет вызывающему ОДНИМ числом, и вызывающий садится на неё при
+// первом успешном перепросе: свежая реплика края принимает её курсором, чтобы не
+// проигрывать историю. Всё это верно ровно до тех пор, пока ноль означает ОДНО.
+//
+// Если бы у головы появился второй смысл — «позиции ещё нет», как у наблюдения
+// границы устоявшегося в общем сервере подписки (`pkg/subscription`, признак
+// `established`), — то ноль стал бы перегруженным: садящийся на него уезжал бы в
+// НАЧАЛО непустого журнала и вычитывал накопленный хвост, гася свой кэш решений
+// на каждом такте догона. Там этот класс реален и закрыт признаком; ЗДЕСЬ его
+// нет — и «нет» держится этой пробой, а не памятью.
+//
+// # Почему настоящей базой, а не подделкой
+//
+// Утверждение целиком про оператор `COALESCE(MAX(id), 0)` над реальной таблицей:
+// подделка вернула бы то, что в неё положили, и о смысле нуля не сказала бы
+// ничего.
+//
+// # Две стороны, обе обязательны
+//
+// Пустой журнал даёт ноль — иначе садиться было бы не на что. Непустой ноля НЕ
+// даёт — иначе первая сторона зеленела бы на голове, которая всегда ноль.
+func TestSubjectChangeRepo_ZeroHeadMeansAnEmptyJournal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test (requires Docker)")
+	}
+
+	ctx := context.Background()
+	dsn := kachopg.NewTestPostgres(t)
+
+	pool, err := coredb.NewPool(ctx, dsn)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	repo := kachopg.NewSubjectChangeRepo(pool)
+
+	// ── сторона 1: журнал пуст ─────────────────────────────────────────────
+	var rows int64
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT count(*) FROM kacho_iam.subject_change_outbox`).Scan(&rows))
+	require.Zero(t, rows, "журнал свежей базы не пуст — предпосылка пробы не выполнена, "+
+		"и «ноль в голове» было бы измерено не на том состоянии")
+
+	changes, headID, err := repo.PollSubjectChanges(ctx, 0, 256)
+	require.NoError(t, err)
+	require.Empty(t, changes, "пустой журнал вернул строки")
+	require.Zero(t, headID, "пустой журнал обязан давать ноль в голове: садящемуся "+
+		"на неё вызывающему иначе не на что сесть")
+
+	// ── сторона 2: непустой журнал ноля НЕ даёт ────────────────────────────
+	abRepo := kachopg.New(pool, nil)
+	w, err := abRepo.Writer(ctx)
+	require.NoError(t, err)
+	require.NoError(t, w.AccessBindingsW().EmitSubjectChangeEvent(ctx,
+		access_binding.SubjectChangeEvent{SubjectID: "usr_head", Op: "binding_upsert"}))
+	require.NoError(t, w.Commit(ctx))
+
+	changes2, headID2, err := repo.PollSubjectChanges(ctx, 0, 256)
+	require.NoError(t, err)
+	require.Len(t, changes2, 1, "записанная строка не прочиталась — измеряется не то состояние")
+	require.NotZero(t, headID2, "непустой журнал вернул ноль в голове: ноль стал бы "+
+		"перегруженным, и садящийся на него уехал бы в начало журнала")
+	require.Equal(t, changes2[0].ID, headID2, "голова обязана называть последнюю строку")
+
+	t.Logf("перепись: пустой журнал → строк %d, голова %d; после одной записи → строк %d, голова %d",
+		len(changes), headID, len(changes2), headID2)
+}
