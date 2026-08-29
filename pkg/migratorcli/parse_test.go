@@ -6,6 +6,7 @@ package migratorcli_test
 import (
 	"bytes"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -41,8 +42,24 @@ func TestFlagIsAcceptedInBothPositions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("флаг ПОСЛЕ подкоманды отвергнут: %v", err)
 	}
+	// Отказ называет ПРИЧИНУ, а не симптом: два дампа структуры рядом заставляют
+	// читателя искать различие глазами, а найти надо ПОЛЕ, которое разошлось, и
+	// то, чем это оборачивается для оператора. Поля перебираются разбором типа,
+	// а не поимённо: поле, добавленное завтра, обязано попасть в отказ само.
 	if before != after {
-		t.Fatalf("порядок флага изменил разбор:\n  до  подкоманды: %+v\n  после подкоманды: %+v", before, after)
+		vBefore, vAfter := reflect.ValueOf(before), reflect.ValueOf(after)
+		for i := 0; i < vBefore.NumField(); i++ {
+			gotBefore := vBefore.Field(i).Interface()
+			gotAfter := vAfter.Field(i).Interface()
+			if reflect.DeepEqual(gotBefore, gotAfter) {
+				continue
+			}
+			t.Errorf("флаг ПОСЛЕ подкоманды отброшен молча: поле %s — до подкоманды %#v, "+
+				"после подкоманды %#v. Пустое значение уезжает в запасной путь (окружение, "+
+				"затем конфигурация сервиса), поэтому накат идёт на ЧУЖУЮ базу и выглядит "+
+				"успехом", vBefore.Type().Field(i).Name, gotBefore, gotAfter)
+		}
+		t.FailNow()
 	}
 	if after.DSN != dsn {
 		t.Fatalf("DSN потерян при разборе: %q", after.DSN)
