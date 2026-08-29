@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -1341,9 +1342,19 @@ func buildSubscriptionServer(
 	if err != nil {
 		return nil, err
 	}
+	dsn := cfg.SingleConnDSN()
+	// Страж посадки: параметр ПУЛА в строке одиночного соединения означает отказ
+	// на подключении, а не на сборке, — и потому обязан быть пойман здесь, а не
+	// первой подпиской в бою. Проверяется предмет, а не имя ручки: строку собирает
+	// конфигурация, и следующий, кто добавит туда пуловый ключ, споткнётся тут.
+	if strings.Contains(dsn, "pool_") {
+		return nil, fmt.Errorf("поток изменений: строка подключения несёт параметр пула (%q): "+
+			"вне пула это неизвестный PG-параметр и FATAL при подключении, "+
+			"а отказ наступил бы не на сборке, а у каждой подписки в бою", dsn)
+	}
 	srv, err := subscription.NewServer(subscription.Config{
 		Journal:      subscriptionjournal.Journal(),
-		DSN:          cfg.DSN(),
+		DSN:          dsn,
 		Narrower:     listFilter,
 		ProjectGate:  gate,
 		MaxStreams:   cfg.APIServer.SubscriptionMaxStreams,
