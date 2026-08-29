@@ -183,7 +183,7 @@ def _all_cases() -> tuple[list[tuple[str, str]], list[tuple], list[tuple]]:
     for f in sorted(CASES_DIR.glob("*.py")):
         if f.name.startswith("_"):
             continue
-        mod = gen.load_cases_module(f)
+        mod = gen.load_cases(f)
         for c in getattr(mod, "CASES", []):
             census.append((c.id, f.stem))
             for st in c.steps:

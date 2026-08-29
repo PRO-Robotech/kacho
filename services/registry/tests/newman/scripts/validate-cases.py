@@ -76,7 +76,7 @@ def _all_cases() -> list[tuple[str, str]]:
     for f in sorted(CASES_DIR.glob("*.py")):
         if f.name.startswith("_"):
             continue
-        mod = gen.load_cases_module(f)
+        mod = gen.load_cases(f)
         for c in getattr(mod, "CASES", []):
             out.append((c.id, f.name))
     return out

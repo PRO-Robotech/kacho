@@ -123,7 +123,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('visSetAcctOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.accountId);",
@@ -331,7 +331,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.projectId);",
@@ -529,7 +529,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.projectId);",
@@ -727,7 +727,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.projectId);",
@@ -925,7 +925,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.projectId);",
@@ -1123,7 +1123,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.projectId);",
@@ -1321,7 +1321,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.projectId);",
@@ -1519,7 +1519,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.projectId);",
@@ -1717,7 +1717,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.projectId);",
@@ -1915,7 +1915,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -4601,7 +4601,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('visVlProjOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.projectId);",
@@ -4782,7 +4782,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('visVcProjOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.projectId);",
@@ -4954,7 +4954,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const c = parseInt(pm.environment.get('_visVlCount') || '0', 10);",
                   "const arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('svaInviteeId') && b.scopeType === 'iam.account' && b.scopeId === pm.environment.get('accountAId'));",
                   "if (arr.length > 0 && c < 12) {",
@@ -5226,7 +5226,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('visVlRoleOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -5607,7 +5607,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('visVcRoleOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -7366,7 +7366,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaPP1Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.serviceAccountId);",
@@ -7547,7 +7547,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaPP2Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.serviceAccountId);",
@@ -7728,7 +7728,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaPP3Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.serviceAccountId);",
@@ -7909,7 +7909,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaPM1Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.serviceAccountId);",
@@ -8090,7 +8090,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaPM2Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.serviceAccountId);",
@@ -8271,7 +8271,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaPM3Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.serviceAccountId);",
@@ -8452,7 +8452,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaBQ1Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.serviceAccountId);",
@@ -8633,7 +8633,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaBQ2Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.serviceAccountId);",
@@ -8805,7 +8805,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const c = parseInt(pm.environment.get('_setSvaSetCount') || '0', 10);",
                   "const arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('svaInviteeId') && b.scopeType === 'iam.account' && b.scopeId === pm.environment.get('accountAId'));",
                   "if (arr.length > 0 && c < 12) {",
@@ -9077,7 +9077,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaRoleOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -11388,7 +11388,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setRolPP1Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -11569,7 +11569,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setRolPP2Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -11750,7 +11750,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setRolPP3Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -11931,7 +11931,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setRolPM1Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -12112,7 +12112,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setRolPM2Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -12293,7 +12293,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setRolPM3Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -12474,7 +12474,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setRolBQ1Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -12655,7 +12655,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setRolBQ2Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -12827,7 +12827,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const c = parseInt(pm.environment.get('_setRolSetCount') || '0', 10);",
                   "const arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('svaInviteeId') && b.scopeType === 'iam.account' && b.scopeId === pm.environment.get('accountAId'));",
                   "if (arr.length > 0 && c < 12) {",
@@ -13099,7 +13099,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setRolRoleOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -15410,7 +15410,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpPP1Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.groupId);",
@@ -15591,7 +15591,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpPP2Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.groupId);",
@@ -15772,7 +15772,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpPP3Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.groupId);",
@@ -15953,7 +15953,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpPM1Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.groupId);",
@@ -16134,7 +16134,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpPM2Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.groupId);",
@@ -16315,7 +16315,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpPM3Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.groupId);",
@@ -16496,7 +16496,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpBQ1Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.groupId);",
@@ -16677,7 +16677,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpBQ2Op');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.groupId);",
@@ -16849,7 +16849,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const c = parseInt(pm.environment.get('_setGrpSetCount') || '0', 10);",
                   "const arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('svaInviteeId') && b.scopeType === 'iam.account' && b.scopeId === pm.environment.get('accountAId'));",
                   "if (arr.length > 0 && c < 12) {",
@@ -17121,7 +17121,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpRoleOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -19432,7 +19432,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaVlOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.serviceAccountId);",
@@ -19613,7 +19613,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaVlCtlOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.serviceAccountId);",
@@ -19785,7 +19785,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const c = parseInt(pm.environment.get('_setSvaVlCount') || '0', 10);",
                   "const arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('svaInviteeId') && b.scopeType === 'iam.account' && b.scopeId === pm.environment.get('accountAId'));",
                   "if (arr.length > 0 && c < 12) {",
@@ -20057,7 +20057,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaVlRoleOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -20438,7 +20438,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setSvaVcRoleOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -22197,7 +22197,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpVlOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.groupId);",
@@ -22378,7 +22378,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpVlCtlOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.groupId);",
@@ -22550,7 +22550,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "const c = parseInt(pm.environment.get('_setGrpVlCount') || '0', 10);",
                   "const arr = ((pm.response.json() || {}).accessBindings || []).filter(b => b.subjectId === pm.environment.get('svaInviteeId') && b.scopeType === 'iam.account' && b.scopeId === pm.environment.get('accountAId'));",
                   "if (arr.length > 0 && c < 12) {",
@@ -22822,7 +22822,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpVlRoleOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",
@@ -23203,7 +23203,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('setGrpVcRoleOp');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.metadata && j.metadata.roleId);",

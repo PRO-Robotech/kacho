@@ -74,7 +74,7 @@ def _all_cases() -> list[tuple[str, str]]:
 
     out: list[tuple[str, str]] = []
     for f in sorted(CASES_DIR.glob("*.py")):
-        mod = gen.load_cases_module(f)
+        mod = gen.load_cases(f)
         for c in getattr(mod, "CASES", []):
             out.append((c.id, f.name))
     return out

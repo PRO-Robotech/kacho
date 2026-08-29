@@ -59,7 +59,10 @@ def wrapped(step) -> bool:
 
 
 def steps_of(case: Case):
-    return gen._wrap_own_fresh_reads(case.steps)
+    # Полоса видимости передаётся ЯВНО: тело живёт в общем слое, а окно связывает
+    # набор (`gen._rya`). Самопроверка обязана звать ровно то, что зовёт генератор,
+    # — иначе она доказывала бы свойство своей копии, а не продукта.
+    return gen._wrap_own_fresh_reads(case.steps, gen._rya)
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +139,7 @@ manual = Case(
     steps=[
         Step(name="create", method="POST", path="/vpc/v1/gateways",
              test_script=[*gen.assert_status(200), *gen.save_from_response("j.metadata && j.metadata.gatewayId", "stGwId")]),
-        gen.retry_until_authorized(Step(name="get", method="GET", path="/vpc/v1/gateways/{{stGwId}}",
+        gen._rya(Step(name="get", method="GET", path="/vpc/v1/gateways/{{stGwId}}",
                                         test_script=[*gen.assert_status(200)])),
     ],
 )
@@ -277,7 +280,7 @@ check("близнец-grpc: числа gRPC-кодов не попали в на
 #     (`get-no-dhcp`, прогон 31044886565): 404 на первом обращении, ноль
 #     повторов. Чинится по построению в `retry_until_authorized`.
 # ---------------------------------------------------------------------------
-readlane = gen.retry_until_authorized(
+readlane = gen._rya(
     Step(name="get-own", method="GET", path="/vpc/v1/subnets/{{stSubId}}",
          test_script=[*gen.assert_status(200)]),
     retry_on=(403,))
@@ -290,7 +293,7 @@ check("инъекция-5: рукописное ожидание только 40
 #     («убедиться, что удалено»). Здесь 404 — предмет пробы, и добавлять его в
 #     ожидание нельзя: проба ждала бы ровно то, что проверяет.
 # ---------------------------------------------------------------------------
-confirmgone = gen.retry_until_authorized(
+confirmgone = gen._rya(
     Step(name="confirm-deleted", method="GET", path="/vpc/v1/subnets/{{stSubId}}",
          test_script=[*gen.assert_status(404)]),
     retry_on=(403,))
