@@ -194,7 +194,7 @@ IPAM-allocate и default-SG creation выполняются inline в service-с
                         |
                         v
                 +-------+--------+
-                |     domain     |  (entities — только stdlib + стабы)     
+                |     domain     |  (entities — stdlib + стабы pkg/api/...)
                 +----------------+
 ```
 

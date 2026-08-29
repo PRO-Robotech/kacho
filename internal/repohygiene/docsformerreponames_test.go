@@ -76,6 +76,7 @@ package repohygiene
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -99,11 +100,7 @@ type formerRepoFinding struct {
 }
 
 func (f formerRepoFinding) String() string {
-	t := strings.TrimSpace(f.text)
-	if len(t) > 96 {
-		t = t[:96] + "…"
-	}
-	return fmt.Sprintf("%s:%d — %s: %s", f.doc, f.line, f.name, t)
+	return fmt.Sprintf("%s:%d — %s: %s", f.doc, f.line, f.name, trimDocLineForFinding(f.text))
 }
 
 type formerRepoCensus struct {
@@ -124,14 +121,41 @@ func (c formerRepoCensus) String() string {
 	return fmt.Sprintf("документов %d, строк %d; %s", c.docs, c.lines, strings.Join(parts, "; "))
 }
 
-// maskFormerNames убирает из строки сами прежние имена, чтобы `proto/` внутри
-// `kacho-proto/...` не засчитывался за нынешнюю координату. Без этого документ
-// закрывал бы предикат собственным дефектом.
-func maskFormerNames(line string) string {
+// formerRepoPathRe — прежнее имя ВМЕСТЕ с путём, который за ним следует.
+//
+// Границей пути служит пробел либо любой знак, которым проза обрамляет
+// координату (обратная кавычка, кавычка, запятая, скобка). Всё, что до неё, —
+// часть дефектной координаты и нынешним местом быть не может.
+//
+// Перечень имён ВЫВОДИТСЯ из formerRepoNames, а не выписывается вторично: два
+// места об одном предмете разошлись бы молча — имя, добавленное в список,
+// осталось бы без маскирования хвоста, и первый же его полный путь оправдал бы
+// себя сам.
+var formerRepoPathRe = regexp.MustCompile(formerRepoPathPattern())
+
+func formerRepoPathPattern() string {
+	alts := make([]string, 0, len(formerRepoNames))
 	for _, f := range formerRepoNames {
-		line = strings.ReplaceAll(line, f.name, "«прежнее-имя»")
+		alts = append(alts, regexp.QuoteMeta(f.name))
 	}
-	return line
+	return "(?:" + strings.Join(alts, "|") + ")(?:/[^\\s`\"',;)\\]]*)?"
+}
+
+// maskFormerNames убирает из строки прежнее имя ВМЕСТЕ с его хвостом пути,
+// чтобы документ не закрывал предикат собственным дефектом.
+//
+// Одного имени недостаточно, и это измерено настоящей формой дерева: живой
+// экземпляр пишется полным путём прежнего репозитория —
+// `kacho-proto/proto/kacho/cloud/vpc/v1/*.proto`, — чей ПЕРВЫЙ сегмент после
+// имени и есть `proto/`. Сняв только имя, предикат видел бы в остатке нынешнюю
+// координату и зачитывал бы дефект за его же исправление. Сочинённая форма с
+// многоточием (`kacho-proto/.../compute/v1`) этого не показывает: в ней после
+// маскирования `proto/` не остаётся, и проба зеленела по случайности.
+//
+// Путь, начинающийся с НЫНЕШНЕГО каталога (`proto/kacho/...`), под регулярку не
+// подпадает и зачитывается — маскируется существо, а не форма «слэш после имени».
+func maskFormerNames(line string) string {
+	return formerRepoPathRe.ReplaceAllString(line, "«прежнее-имя»")
 }
 
 func namesCurrentCoordinate(line string, current []string) bool {

@@ -34,6 +34,6 @@ npm run serve      # отдать собранный build/
 ## Источники истины
 
 Контент выведен из:
-- `proto/kacho/cloud/vpc/v1/*.proto` — контракт API;
-- `kacho-vpc/docs/architecture/` — data-flows, conventions, ER-диаграмма;
+- `proto/kacho/cloud/vpc/v1/*.proto` — контракт API (прежде отдельный репозиторий `kacho-proto`);
+- `services/vpc/docs/engineering/architecture/` — data-flows, conventions, ER-диаграмма;
 - исходный код сервиса (`internal/`) — поведение, инварианты, error-тексты.
