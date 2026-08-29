@@ -1,4 +1,4 @@
-import { isValidElement, type ReactElement, type ReactNode } from "react";
+import { isValidElement, type ReactElement } from "react";
 
 import { REGISTRY } from "./resource-registry";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
@@ -48,7 +48,10 @@ function nodesOfType(node: unknown, type: unknown): ReactElement[] {
     }
     for (const value of Object.values(n as Record<string, unknown>)) walk(value);
   };
-  walk(node as ReactNode);
+  // Приведения здесь нет намеренно: `walk` принимает `unknown`, и `node` уже
+  // `unknown`. Приведение к `ReactNode` было не сужением, а лишним шагом —
+  // линт с разбором типов справедливо на нём краснел.
+  walk(node);
   return out;
 }
 
