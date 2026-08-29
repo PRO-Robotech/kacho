@@ -273,13 +273,13 @@ cluster-scoped админ-маршруте · Operation читает её соз
 
 | Техника | Реализация |
 |---|---|
-| §3.1 ECP | ✅ `name_validation_block`, `labels_validation_block`, `description_validation_block` |
+| §3.1 ECP | ✅ рукописными кейсами (`MT-CR-ADMIN-NEG-NO-NAME`, `INST-RD-CR-CRUD-MACHINETYPE-BYNAME`); три блока проверки имени, меток и описания, стоявшие здесь раньше, в наборе не вызывались ни разу и сняты — #1478 |
 | §3.2 BVA | ✅ disk size 4MiB/below/26TiB/above, name len 63/64, pageSize 0/1/1000/1001, labels 64/65, cores set, core_fraction set |
 | §3.3 Decision Tables | ✅ required-field matrix (Instance: zone/platform/resources/bootdisk/nic/project), UpdateMask (unknown/immutable/empty), error mapping |
 | §3.4 State Transition | ✅ Instance state-машина (Start/Stop/Restart preconditions, AttachDisk/DetachDisk/NAT), immutable fields, Disk-delete-while-attached |
 | §3.5 Pairwise | partial (Disk size × type × source — частично; full pairwise — backlog) |
 | §3.7 Use-case | ✅ `*-LIFECYCLE-CONF` (полный CRUD-цикл; Instance — с Stop/Start) |
-| §3.8 Error Guessing | ✅ `malformed_body_block`, empty body, HTTP-method, garbage prefix (Operation) |
+| §3.8 Error Guessing | ✅ рукописными кейсами (`INST-RD-CR-VAL-BOOTSOURCE-OUTPUT-FIELDS`, пустое тело, мусорный префикс Operation); блок негодного тела, стоявший здесь раньше, в наборе не вызывался ни разу и снят — #1478 |
 | §3.10 Property-Based | ✅ pagination roundtrip (ZONE), idempotent move-self semantics (через MV-кейсы) |
 | §3.11 Risk-Based | ✅ priority P0..P3 tagging — P0 на security/data-integrity/state-machine/Disk-delete-while-attached |
 | §4.1 Smoke | ✅ P0/P1 кейсы — фактический smoke |
@@ -287,7 +287,7 @@ cluster-scoped админ-маршруте · Operation читает её соз
 | §4.3 Conformance | ✅ CONF class: id-prefix, created_at до секунд, Operation.response=Empty, NF-text формат, BASIC-view metadata omission — против proto + acceptance-дока |
 | §4.4 Performance | → перенесено в k6 (`tests/k6/`) |
 | §4.5-4.8 Load/Stress/Soak/Spike | → k6 |
-| §4.10 Security | ✅ `security_injection_block` (SQLi/union/XSS/cmd/path/longpayload × name + filter) |
+| §4.10 Security | ❌ ПРОБЕЛ: блок инъекций (SQLi/union/XSS/cmd/path/longpayload × name + filter) был объявлен, но не вызывался ни разу — кейсов этого класса в наборе НЕТ (перемерено #1478: папок с признаком инъекции — ноль). Отметка ✅ стояла на непроизведённых кейсах |
 | §4.11 Compatibility | → backlog |
 | §4.12 Migration | covered внешними тестами (`kacho-deploy` smoke) |
 

@@ -25,6 +25,12 @@ type sharedHelperCensus struct {
 	sharedFuncs  int
 	sharedConsts int
 	forks        int
+	// crossKind — форки, у которых ФОРМА объявления у набора и в общем слое
+	// РАЗНАЯ: функция общего слоя затенена присваиванием набора либо наоборот.
+	// Считается отдельно намеренно: одно суммарное число скрыло бы ровно тот
+	// случай, ради которого распознаватель расширяли, — расширение обязано
+	// менять осмотренное, и это число печатается.
+	crossKind int
 }
 
 // auditSharedHelperForks — судящая функция гейта.
@@ -48,8 +54,16 @@ func auditSharedHelperForks(sharedSrc string, generators map[string]string) ([]s
 		ownFuncs, ownConsts := declaredNames(generators[rel])
 		var clash []string
 		for name := range ownFuncs {
-			if sharedFuncs[name] {
+			switch {
+			case sharedFuncs[name]:
 				clash = append(clash, name)
+			case sharedConsts[name]:
+				// ПЕРЕКРЁСТНОЕ ЗАТЕНЕНИЕ. Форма объявления разная, а имя одно —
+				// и Python разрешает имя по ПОСЛЕДНЕМУ связыванию в модуле,
+				// поэтому импорт из общего слоя оказывается перекрыт, а импорт
+				// при этом остаётся на месте и выглядит действующим.
+				clash = append(clash, name+" (функция набора затеняет константу общего слоя)")
+				cen.crossKind++
 			}
 		}
 		// Константа — та же форма форка, что и функция, и в этом дереве её
@@ -57,8 +71,17 @@ func auditSharedHelperForks(sharedSrc string, generators map[string]string) ([]s
 		// знающий только `def`, оставил бы одиннадцать переехавших констант ВНЕ
 		// наблюдения: не находкой и не молчанием, а невидимостью.
 		for name := range ownConsts {
-			if sharedConsts[name] {
+			switch {
+			case sharedConsts[name]:
 				clash = append(clash, name+" (константа)")
+			case sharedFuncs[name]:
+				// Та же ось с другой стороны, и она НЕ теоретическая: связывание
+				// общего помощника с умолчаниями набора (`имя = partial(…)`)
+				// записывается именно так. Пока распознаватель сверял форму с
+				// формой, такое связывание было для него невидимо — не находкой
+				// и не молчанием, а невидимостью.
+				clash = append(clash, name+" (присваивание набора затеняет функцию общего слоя)")
+				cen.crossKind++
 			}
 		}
 		if len(clash) == 0 {
@@ -143,8 +166,9 @@ func TestNewmanSharedHelperIsDeclaredOnce(t *testing.T) {
 			sharedHelperRel, cen.sharedFuncs, cen.sharedConsts)
 	}
 
-	t.Logf("осмотрено генераторов newman: %d; в общем слое функций %d, констант %d; собственных определений тех же имён: %d",
-		cen.generators, cen.sharedFuncs, cen.sharedConsts, cen.forks)
+	t.Logf("осмотрено генераторов newman: %d; в общем слое функций %d, констант %d; "+
+		"собственных определений тех же имён: %d, из них с РАЗНОЙ формой объявления: %d",
+		cen.generators, cen.sharedFuncs, cen.sharedConsts, cen.forks, cen.crossKind)
 
 	if len(findings) > 0 {
 		t.Fatalf("помощник, вынесенный в %s, объявлен вторично в генераторе набора.\n"+
