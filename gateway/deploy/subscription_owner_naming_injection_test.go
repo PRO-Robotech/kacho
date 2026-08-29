@@ -93,3 +93,76 @@ func TestOwnerNamingJudgeRefusesToBlessAnEmptyEdge(t *testing.T) {
 			"неотличимо от «сверять было нечем»")
 	}
 }
+
+// TestOwnersTheEdgeWillRefuseNamesEveryUnknownSpelling — судья
+// [ownersTheEdgeWillRefuse] способен упасть и способен смолчать.
+//
+// Функция вынесена из гейта именно ради этого доказательства, а доказательства
+// не было: гейт краснел только на настоящем дереве, то есть его способность
+// падать держалась ручным опытом, который никто не повторит. Класс тот же, что
+// приёмка нашла у гейта поставки (2026-08-29): проверка, о которой известно лишь
+// что она зелёная, неотличима от потерявшей способность краснеть.
+//
+// Множество принимаемых имён и состав объявленного различаются между случаями
+// РОВНО ОДНИМ свойством: остальные имена законны во всех.
+func TestOwnersTheEdgeWillRefuseNamesEveryUnknownSpelling(t *testing.T) {
+	accepted := []string{"compute", "loadbalancer", "vpc"}
+
+	cases := []struct {
+		name     string
+		declared []string
+		want     []string
+	}{
+		{
+			name:     "законный близнец: все написания принимаются",
+			declared: []string{"compute", "loadbalancer", "vpc"},
+			want:     []string{},
+		},
+		{
+			name:     "написание каталога сервиса вместо домена контракта",
+			declared: []string{"compute", "nlb", "vpc"},
+			want:     []string{"nlb"},
+		},
+		{
+			name:     "принимаемое имя с посторонним регистром — тоже не принимается",
+			declared: []string{"LoadBalancer"},
+			want:     []string{"LoadBalancer"},
+		},
+		{
+			name:     "объявлять нечего — судить нечего, и это НЕ поломка",
+			declared: []string{},
+			want:     []string{},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ownersTheEdgeWillRefuse(tc.declared, accepted)
+			t.Logf("перепись: объявлено %d %v · принимает край %d %v · не принимается %d %v",
+				len(tc.declared), tc.declared, len(accepted), accepted, len(got), got)
+			if len(got) != len(tc.want) {
+				t.Fatalf("не принимается %v, ожидалось %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("не принимается %v, ожидалось %v", got, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// TestOwnersTheEdgeWillRefuseRefusesToBlessAnEmptyEdge — предпосылка судьи.
+//
+// Пустое множество принимаемых имён означает «сверять было не с чем», а не
+// «сходится»: молчание на нём сделало бы зелёное гейта свойством пустоты. Сам
+// гейт отвергает такое состояние отдельным утверждением; здесь закрепляется, что
+// СУДЬЯ в этом состоянии называет каждое объявленное имя, а не молчит.
+func TestOwnersTheEdgeWillRefuseRefusesToBlessAnEmptyEdge(t *testing.T) {
+	got := ownersTheEdgeWillRefuse([]string{"compute", "vpc"}, nil)
+	t.Logf("перепись: имён края 0 · объявлено 2 · не принимается %d %v", len(got), got)
+	if len(got) != 2 {
+		t.Fatalf("судья назвал %d имён из 2 при ПУСТОМ множестве принимаемых: тогда его "+
+			"молчание неотличимо от согласия", len(got))
+	}
+}
