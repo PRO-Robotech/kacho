@@ -3,7 +3,7 @@
 // apiPath содержит полный путь с доменным префиксом (verbatim из proto google.api.http annotations).
 
 import type { ReactNode } from "react";
-import { Tag } from "antd";
+import { Tag, Tooltip, Typography } from "antd";
 import { StopOutlined, UnlockOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import type { FormField } from "./form-schema";
 import { setByPath, getByPath as getByPathImpl } from "./path";
@@ -40,6 +40,17 @@ import {
   type DefinitionTier,
 } from "@shared/api/iam";
 import { displayText } from "@shared/lib/display-text";
+import { formatBytes } from "@shared/lib/bytes";
+// Словарь класса диска — ЕДИНСТВЕННАЯ реализация, та же, что читают карточка
+// класса и подпись опции в подборщике. Реестр домена storage ходил в неё через
+// свой ре-экспорт; после сведения ходит напрямую.
+import {
+  LIFECYCLE_HINT,
+  TIER_HINT,
+  acceptsNewVolumes,
+  lifecycleLabel,
+  tierLabel,
+} from "@shared/lib/storage-disk-type";
 import { flatIdList } from "@shared/lib/id-list";
 import {
   GUEST_ACCESS_KEY_EMPTY_STATE,
@@ -286,6 +297,26 @@ const FIELD_NAME_VPC: FormField = {
 };
 
 // Compute name-regex — lowercase-only (kacho-compute/CLAUDE.md §5).
+// Имя тома / снимка / образа. ОТДЕЛЬНАЯ константа, а не общий `FIELD_NAME`, и
+// это не пропущенная унификация: у storage имя НЕ обязательно (пустое —
+// законный вход, сервер проставляет имя от `id`) и допускает подчёркивание.
+// Свести его к общему значило бы начать отвергать в форме вход, который край
+// принимает, — то есть снять возможность молча, ровно ради чего эти спеки и
+// переносились богатой стороной.
+//
+// Что здесь третья форма имени подряд — предмет ОТДЕЛЬНОЙ задачи продукта
+// (#715, «одна форма имени на дерево»); свести её сведением форка нельзя:
+// одна форма требует решения о том, какая именно, а не выбора из наличных.
+const FIELD_NAME_STORAGE: FormField = {
+  name: "name",
+  label: "Имя",
+  type: "string",
+  placeholder: "my-volume",
+  description:
+    "Строчные латинские буквы, цифры, «-» и «_». Должно начинаться с буквы, длина до 63 символов. Можно оставить пустым.",
+  pattern: "^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$",
+};
+
 const FIELD_NAME_COMPUTE: FormField = {
   name: "name",
   label: "Имя",
@@ -583,6 +614,33 @@ function hydrateStringListFields(out: Record<string, unknown>, keys: string[]): 
     if (!Array.isArray(raw)) continue;
     out[key] = (raw as unknown[]).map((item: unknown) => (typeof item === "string" ? { value: item } : item));
   }
+}
+
+// SizeCell — размер (байты int64 строкой) в человекочитаемом виде; пусто/0 → «—».
+function SizeCell({ value }: { value: unknown }): ReactNode {
+  const t = formatBytes(value);
+  return t === "—" ? <Typography.Text type="secondary">—</Typography.Text> : <>{t}</>;
+}
+
+// TierCell / LifecycleCell — закрытые словари класса диска СЛОВАМИ, а не
+// токенами перечисления. Подписи и пояснения живут в `@shared/lib/storage-disk-type`,
+// чтобы у текста было ОДНО место: тот же словарь читают карточка класса и
+// подпись опции в подборщике.
+function TierCell({ value }: { value: unknown }): ReactNode {
+  const label = tierLabel(value);
+  if (!label) return <Typography.Text type="secondary">—</Typography.Text>;
+  const hint = typeof value === "string" ? TIER_HINT[value] : undefined;
+  return hint ? <Tooltip title={hint}>{label}</Tooltip> : <>{label}</>;
+}
+
+function LifecycleCell({ value }: { value: unknown }): ReactNode {
+  const label = lifecycleLabel(value);
+  if (!label) return <Typography.Text type="secondary">—</Typography.Text>;
+  const hint = typeof value === "string" ? LIFECYCLE_HINT[value] : undefined;
+  // Цветом выделяется только то, о чём стоит знать: класс, который НЕ принимает
+  // новые тома. Красить и «принимает» значило бы не выделять ничего.
+  const body = acceptsNewVolumes(value) ? <>{label}</> : <Typography.Text type="warning">{label}</Typography.Text>;
+  return hint ? <Tooltip title={hint}>{body}</Tooltip> : body;
 }
 
 export const REGISTRY: Record<string, ResourceSpec> = {
@@ -2748,8 +2806,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   // proto: GET /compute/v1/instances. Name-regex lowercase-only
   // (kacho-compute/CLAUDE.md §5: `^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$`).
 
-  // disk-types — read-only справочник kacho-storage (владелец блочного хранения),
-  // используется как refResource в dropdown'ах.
+  // ====== storage: DiskType (read-only catalog) ======
+  //
+  // Спека ПОЛНАЯ (перенесена из реестра домена storage): ярус, состояние
+  // обращения и границы размера показываются словами закрытого словаря, а не
+  // токенами перечисления.
   "disk-types": {
     id: "disk-types",
     route: "disk-types",
@@ -2762,27 +2823,41 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     singular: ENTITIES["disk-types"].singular,
     accusative: "тип диска",
     plural: ENTITIES["disk-types"].plural,
-    serviceTitle: SERVICES.compute.title,
+    genitive: "Типа диска",
+    description:
+      "Класс хранилища, на котором создаётся том: ярус, состояние обращения, границы размера и способности. Каталог заводит администратор кластера; пустой каталог — законное состояние, пока класс не зарегистрирован, том не создаётся.",
+    serviceTitle: SERVICES.storage.title,
     scope: "global",
     ops: { create: false, update: false, delete: false },
-    emptyState: {
-      title: "Каталог типов дисков пуст",
-      body:
-        "Тип диска задаёт носитель и предел скорости для томов: его записи заводит администратор облака. " +
-        "Пока каталог пуст, создать том не получится — обратитесь к администратору.",
-      docs: ["Типы дисков"],
-    },
     columns: [
+      { header: "Имя", path: "name", format: "text", className: "font-medium" },
+      // Идентификатор — `uid-short`, а не `text`: этот формат и есть форма
+      // идентификатора в продукте (значение плюс копирование одним значком).
+      // Прежде здесь стоял `text` с моноширинным классом — идентификатор
+      // выглядел похоже и НЕ копировался, тогда как у тома, снимка и образа в
+      // том же модуле копировался. Один предмет, два вида (правило 9 канона).
+      { header: "Идентификатор", path: "id", format: "uid-short" },
       {
-        header: "Идентификатор",
-        path: "id",
-        format: "text",
-        className: "font-mono",
+        header: "Ярус",
+        path: "tier",
+        render: (row) => <TierCell value={row.tier} />,
       },
-      { header: "Описание", path: "description", format: "text" },
+      // Состояние обращения названо СЛЕДСТВИЕМ (правило 6): «Принимает новые
+      // тома» / «Новые тома не создаются». Токен `DEPRECATED` не говорит
+      // читателю ни того, что класс ещё работает, ни того, что на нём нельзя
+      // создать новый том, — а вопрос у этого поля ровно один.
+      {
+        header: "Обращение",
+        path: "lifecycle",
+        render: (row) => <LifecycleCell value={row.lifecycle} />,
+      },
       { header: "Зоны", path: "zone_ids", format: "list" },
     ],
     template: () => ({}),
+    emptyState: {
+      title: "Каталог типов дисков пуст",
+      body: "Класс диска описывает хранилище, на котором создаётся том: ярус, границы размера, способности. Каталог заводит администратор кластера — пока класс не зарегистрирован, том создать нельзя.",
+    },
   },
 
   // compute-zones / compute-regions — read-only проекции ТОГО ЖЕ каталога
@@ -3308,11 +3383,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     },
   },
 
-  // ====== storage: Volume (read-only ref target) ======
-  // proto: kacho.cloud.storage.v1.VolumeService (/storage/v1/volumes). Storage owns
-  // block storage; the instance attach/detach verbs are specified in terms of a
-  // Volume id ("vol"), so this is the picker they read. CRUD lives in the storage
-  // remote — here it is a ref target only.
+  // ====== storage: Volume ======
+  //
+  // Спека ПОЛНАЯ, и приехала она из реестра домена storage — не наоборот.
+  // Здесь стояла цель ссылки: без полей формы, без глаголов, с четырьмя
+  // колонками. Свести реестры «взяв общее» значило бы снять у арендатора
+  // создание тома, правку размера и смену класса, ничего об этом не сказав.
   volumes: {
     id: "volumes",
     route: "volumes",
@@ -3324,60 +3400,14 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     genitive: "Тома",
     serviceTitle: SERVICES.storage.title,
     scope: "project",
-    ops: { create: false, update: false, delete: false },
-    emptyState: {
-      title: "Создайте первый том",
-      body:
-        "Том — блочный диск, который подключается к машине и переживает её пересоздание. " +
-        "Том можно создать пустым, из образа или из снимка, а затем расширить без остановки машины.",
-      docs: ["Тома и снимки"],
-    },
-    columns: [
-      {
-        header: "Имя",
-        path: "name",
-        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
-      },
-      {
-        header: "Идентификатор",
-        path: "id",
-        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
-      },
-      { header: "Статус", path: "status", format: "status" },
-      {
-        header: "Зона",
-        path: "zone_id",
-        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
-      },
-    ],
-    template: () => ({}),
-  },
-
-  // ====== storage: Image (ref target) ======
-  // proto: kacho.cloud.storage.v1.ImageService (/storage/v1/images). Образ — вход
-  // в цепочку «образ → том → машина»: без него из пустого проекта загрузочный том
-  // не получить вовсе (том делается пустым или из снимка, снимок — из тома).
-  // Здесь ТОЛЬКО цель ссылки для подборщика образа в форме машины; CRUD живёт в
-  // разделе Storage.
-  images: {
-    id: "images",
-    route: "images",
-    apiPath: "/storage/v1/images",
-    payloadKey: "images",
-    singular: "Образ",
-    plural: "Образы",
-    genitive: "Образа",
-    accusative: "образ",
-    serviceTitle: "Storage",
-    scope: "project",
-    ops: { create: false, update: false, delete: false },
-    emptyState: {
-      title: "Создайте первый образ",
-      body:
-        "Образ — слепок диска, из которого разворачивают загрузочные тома машин. " +
-        "Один образ раскатывается на сколько угодно машин, поэтому им удобно фиксировать готовую сборку.",
-      docs: ["Образы дисков"],
-    },
+    ops: { create: true, update: true, delete: true },
+    // Здесь стояло объявление `docs` с адресами `href: "#"` — тем и снято.
+    // Адреса у документации в дереве нет ни одного, а ссылка, ведущая на ту же
+    // страницу, обещает переход, которого не существует, и обнаруживает это
+    // только кликом (правило 9 канона консоли). Читателя объявление не
+    // достигало вовсе: `spec.docs` не читает НИ ОДНО место продукта — темы
+    // показывает пустое состояние из `emptyState.docs`, и показывает их
+    // текстом. То есть объявление было обещанием без исполнителя.
     columns: [
       {
         header: "Имя",
@@ -3385,9 +3415,410 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
       },
       { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      // Зона и класс диска — ссылки на ЧУЖИЕ ресурсы, значит ссылки (правило 2):
+      // идентификатор вида `zone-…` пользователю не адресован, он работает с
+      // именем. Зона — глобальный каталог geo, и `RefNameLink` спрашивает её без
+      // `project_id`: измерения «проект» у каталога нет.
+      {
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
+      },
+      {
+        header: "Тип диска",
+        path: "disk_type_id",
+        render: (row) => (
+          <RefNameLink specId="disk-types" refId={row.disk_type_id as string | undefined} maxChars={28} />
+        ),
+      },
+      { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
       { header: "Статус", path: "status", format: "status" },
+      // used_by° — output-only зеркало attachments (кто использует том). Generic
+      // "references"-рендер (spec-columns): показывает первого потребителя + «+N».
+      { header: "Используется", path: "used_by", format: "references" },
+      { header: "Дата создания", path: "created_at", format: "datetime" },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
     ],
-    template: () => ({}),
+    fields: [
+      FIELD_NAME_STORAGE,
+      FIELD_DESCRIPTION,
+      {
+        name: "zone_id",
+        label: "Зона доступности",
+        type: "ref",
+        refResource: "zones",
+        required: true,
+        immutable: true,
+        description: "Зона размещения тома. Неизменяема после создания.",
+      },
+      {
+        name: "disk_type_id",
+        label: "Тип диска",
+        type: "ref",
+        refResource: "disk-types",
+        required: true,
+        immutable: true,
+        description:
+          "Класс хранилища тома. Правкой не меняется — для переезда на другой класс есть отдельное действие «Сменить класс диска» на карточке тома. Класс, выведенный из обращения, помечен в списке: новые тома он не принимает.",
+      },
+      {
+        // Размер тома. Wire-поле — size_bytes (int64). UI вводит в ГиБ, sanitize
+        // переводит в байты. Размер задаётся при Create; resize (increase-only)
+        // не выведен в форму редактирования (editHidden) — mask строится по имени
+        // поля, а size_gib не является wire-полем.
+        name: "size_gib",
+        label: "Размер, ГиБ",
+        type: "int",
+        required: true,
+        min: 1,
+        max: 4096,
+        default: 10,
+        editHidden: true,
+        description: "Размер тома в гибибайтах (ГиБ), задаётся при создании.",
+      },
+      {
+        // Дискриминатор источника (form-only). У контракта источников РОВНО три
+        // (`source_snapshot_id` и `source_image_id` взаимоисключающи, пусто в
+        // обоих = чистый том), поэтому форма выражает выбор, а не предлагает
+        // заполнить два поля, из которых сервер примет одно.
+        //
+        // Умолчание — «пустой том»: единственная ветка, которой не нужен предмет
+        // в проекте. Открывать форму на ветке, требующей уже существующий
+        // снимок, значит встречать свежий проект пустым списком.
+        name: "_source_kind",
+        label: "Источник данных",
+        type: "enum",
+        required: true,
+        createOnly: true,
+        default: "empty",
+        options: [
+          { value: "empty", label: "Пустой том — без данных" },
+          { value: "snapshot", label: "Из снимка" },
+          { value: "image", label: "Из образа (Image) — загрузочный том" },
+        ],
+        description:
+          "Чем наполняется том при создании: ничем (пустой), снимком другого тома или образом. Загрузочный том машины делается ИЗ ОБРАЗА — это и есть первый шаг из пустого проекта. Источник неизменяем после создания.",
+      },
+      {
+        name: "source_snapshot_id",
+        label: "Снимок-источник",
+        type: "ref",
+        refResource: "snapshots",
+        refProjectScoped: true,
+        required: true,
+        createOnly: true,
+        immutable: true,
+        visibleWhen: { field: "_source_kind", equals: "snapshot" },
+        description: "Снимок, из которого восстанавливается том. Задаётся при создании и потом не меняется.",
+      },
+      {
+        // Образ — вход в цепочку «образ → том → машина». Без него из свежего
+        // проекта загрузочный том не получить вовсе: снимок делается из тома, а
+        // образ — из тома или снимка, то есть круг замкнут сам на себя.
+        name: "source_image_id",
+        label: "Образ-источник",
+        type: "ref",
+        refResource: "images",
+        refProjectScoped: true,
+        required: true,
+        createOnly: true,
+        immutable: true,
+        visibleWhen: { field: "_source_kind", equals: "image" },
+          description: "Образ, из которого создаётся загрузочный том. Задаётся при создании и потом не меняется.",
+      },
+      FIELD_LABELS,
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      name: "",
+      description: "",
+      zone_id: "",
+      disk_type_id: "",
+      size_gib: 10,
+      _source_kind: "empty",
+      source_snapshot_id: "",
+      source_image_id: "",
+      labels: {},
+    }),
+    // size_gib (UI) → size_bytes (wire); ровно одна ветка источника по
+    // `_source_kind`, form-only дискриминатор срезаем.
+    //
+    // Неактивная ветка режется ПО ДИСКРИМИНАТОРУ, а не по пустоте значения:
+    // пользователь мог выбрать образ и затем переключиться на снимок, и тогда
+    // непустой `source_image_id` уехал бы вместе со снимком — сервер отверг бы
+    // взаимоисключающую пару, назвав поле, которого в форме уже не видно.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const gib = Number(out.size_gib);
+      if (Number.isFinite(gib) && gib > 0) out.size_bytes = String(Math.round(gib) * GIB);
+      delete out.size_gib;
+      const kind = out._source_kind;
+      delete out._source_kind;
+      if (kind === "snapshot") {
+        delete out.source_image_id;
+        if (!out.source_snapshot_id) delete out.source_snapshot_id;
+      } else if (kind === "image") {
+        delete out.source_snapshot_id;
+        if (!out.source_image_id) delete out.source_image_id;
+      } else {
+        delete out.source_snapshot_id;
+        delete out.source_image_id;
+      }
+      return out;
+    },
+    // Клиент-валидация ДО submit: активный источник должен быть выбран. Ветка
+    // «пустой том» предмета не имеет и проходит без выбора — иначе проверка
+    // отказывала бы всегда и её отрицание зеленело бы на чём угодно.
+    validate: (obj) => {
+      const kind = obj._source_kind;
+      if (kind === "image" && !obj.source_image_id) return "Выберите образ, из которого создаётся том.";
+      if (kind === "snapshot" && !obj.source_snapshot_id)
+        return "Выберите снимок, из которого восстанавливается том.";
+      return null;
+    },
+    // size_bytes (wire) → size_gib (UI) для edit-формы.
+    hydrate: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const bytes = typeof obj.size_bytes === "string" ? Number.parseInt(obj.size_bytes, 10) : Number(obj.size_bytes);
+      if (Number.isFinite(bytes) && bytes > 0) out.size_gib = Math.max(1, Math.round(bytes / GIB));
+      return out;
+    },
+    emptyState: {
+      title: "Создайте первый том",
+      body: "Том — это персистентный блочный диск. ОС инстанса доставляется из OCI-образа, а данные живут на подключённых томах. После создания том можно подключить к виртуальной машине в разделе Compute.",
+      docs: ["Тома (блочное хранение)"],
+    },
+  },
+
+  // ====== storage: Snapshot ======
+  //
+  // Спеки снимка в общем реестре не было ВОВСЕ, и это стоило двух форков сразу
+  // (#1466): оболочка карточки резолвит спеку по маршруту здесь, поэтому домен
+  // был обязан держать и свою оболочку, и свой реестр. Наблюдаемо было третье:
+  // колонка «Источник» на карточке образа ссылается на снимок либо на том — и
+  // на снимке ссылка вырождалась в плоский идентификатор, тогда как на томе в
+  // той же колонке работала.
+  snapshots: {
+    id: "snapshots",
+    route: "snapshots",
+    apiPath: "/storage/v1/snapshots",
+    payloadKey: "snapshots",
+    singular: ENTITIES.snapshots.singular,
+    accusative: "снимок",
+    plural: ENTITIES.snapshots.plural,
+    genitive: "Снимка",
+    serviceTitle: SERVICES.storage.title,
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      {
+        header: "Исходный том",
+        path: "source_volume_id",
+        render: (row) => (
+          <RefNameLink specId="volumes" refId={row.source_volume_id as string | undefined} maxChars={32} />
+        ),
+      },
+      {
+        header: "Зона",
+        path: "zone_id",
+        render: (row) => <RefNameLink specId="zones" refId={row.zone_id as string | undefined} maxChars={28} />,
+      },
+      { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
+      { header: "Статус", path: "status", format: "status" },
+      { header: "Дата создания", path: "created_at", format: "datetime" },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+    ],
+    fields: [
+      {
+        name: "source_volume_id",
+        label: "Исходный том",
+        type: "ref",
+        refResource: "volumes",
+        refProjectScoped: true,
+        required: true,
+        immutable: true,
+        description: "Том, с которого снимается копия на момент времени. Неизменяем после создания.",
+      },
+      FIELD_NAME_STORAGE,
+      FIELD_DESCRIPTION,
+      FIELD_LABELS,
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      source_volume_id: "",
+      name: "",
+      description: "",
+      labels: {},
+    }),
+    emptyState: {
+      title: "Создайте первый снимок",
+      body: "Снимок — это point-in-time копия тома. Выберите том-источник, чтобы создать снимок; из снимка позже можно восстановить новый том.",
+      docs: ["Снимки томов"],
+    },
+  },
+
+  // ====== storage: Image ======
+  //
+  // Спека ПОЛНАЯ (перенесена из реестра домена storage). Здесь стояла цель
+  // ссылки для подборщика образа в форме машины — без полей формы и без
+  // выбора источника.
+  images: {
+    id: "images",
+    route: "images",
+    apiPath: "/storage/v1/images",
+    payloadKey: "images",
+    singular: ENTITIES.images.singular,
+    accusative: "образ",
+    plural: ENTITIES.images.plural,
+    genitive: "Образа",
+    serviceTitle: SERVICES.storage.title,
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    // Здесь стояло объявление `docs` с адресами `href: "#"` — тем и снято.
+    // Адреса у документации в дереве нет ни одного, а ссылка, ведущая на ту же
+    // страницу, обещает переход, которого не существует, и обнаруживает это
+    // только кликом (правило 9 канона консоли). Читателя объявление не
+    // достигало вовсе: `spec.docs` не читает НИ ОДНО место продукта — темы
+    // показывает пустое состояние из `emptyState.docs`, и показывает их
+    // текстом. То есть объявление было обещанием без исполнителя.
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      { header: "Идентификатор", path: "id", render: (row) => <CopyableId id={(row.id as string) ?? ""} /> },
+      // Регион — глобальный каталог geo: ссылка (правило 2), запрос без
+      // `project_id`.
+      {
+        header: "Регион",
+        path: "region_id",
+        render: (row) => <RefNameLink specId="regions" refId={row.region_id as string | undefined} maxChars={28} />,
+      },
+      {
+        header: "Источник",
+        path: "source_snapshot_id",
+        render: (row) => {
+          const snap = row.source_snapshot_id as string | undefined;
+          const vol = row.source_volume_id as string | undefined;
+          if (snap) return <RefNameLink specId="snapshots" refId={snap} maxChars={28} />;
+          if (vol) return <RefNameLink specId="volumes" refId={vol} maxChars={28} />;
+          return <Typography.Text type="secondary">—</Typography.Text>;
+        },
+      },
+      { header: "Размер", path: "size_bytes", render: (row) => <SizeCell value={row.size_bytes} /> },
+      { header: "Статус", path: "status", format: "status" },
+      { header: "Дата создания", path: "created_at", format: "datetime" },
+      {
+        header: "Метки",
+        path: "labels",
+        render: (row) => <LabelsCell labels={row.labels as Record<string, string> | undefined} />,
+      },
+    ],
+    fields: [
+      FIELD_NAME_STORAGE,
+      FIELD_DESCRIPTION,
+      {
+        name: "region_id",
+        label: "Регион",
+        type: "ref",
+        refResource: "regions",
+        required: true,
+        immutable: true,
+        description: "Регион размещения образа. Образ доступен из всего региона; неизменяем после создания.",
+      },
+      {
+        // Дискриминатор источника (form-only): образ создаётся РОВНО из одного —
+        // снимок XOR том. sanitize срезает `_source_kind` и неактивную ветку.
+        name: "_source_kind",
+        label: "Источник образа",
+        type: "enum",
+        required: true,
+        createOnly: true,
+        default: "snapshot",
+        options: [
+          { value: "snapshot", label: "Из снимка" },
+          { value: "volume", label: "Из тома" },
+        ],
+        description: "Образ создаётся РОВНО из одного источника: снимок ИЛИ том (взаимоисключающе).",
+      },
+      {
+        name: "source_snapshot_id",
+        label: "Снимок-источник",
+        type: "ref",
+        refResource: "snapshots",
+        refProjectScoped: true,
+        required: true,
+        createOnly: true,
+        visibleWhen: { field: "_source_kind", equals: "snapshot" },
+        description: "Снимок, из которого создаётся образ. Неизменяем после создания.",
+      },
+      {
+        name: "source_volume_id",
+        label: "Том-источник",
+        type: "ref",
+        refResource: "volumes",
+        refProjectScoped: true,
+        required: true,
+        createOnly: true,
+        visibleWhen: { field: "_source_kind", equals: "volume" },
+        description: "Том, из которого создаётся образ. Неизменяем после создания.",
+      },
+      FIELD_LABELS,
+      FIELD_PROJECT_ID,
+    ],
+    template: ({ projectId }) => ({
+      project_id: projectId ?? "",
+      name: "",
+      description: "",
+      region_id: "",
+      _source_kind: "snapshot",
+      source_snapshot_id: "",
+      source_volume_id: "",
+      labels: {},
+    }),
+    // Ровно один источник по _source_kind; form-only дискриминатор срезаем.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const kind = out._source_kind;
+      delete out._source_kind;
+      if (kind === "volume") {
+        delete out.source_snapshot_id;
+        if (!out.source_volume_id) delete out.source_volume_id;
+      } else {
+        delete out.source_volume_id;
+        if (!out.source_snapshot_id) delete out.source_snapshot_id;
+      }
+      return out;
+    },
+    // Клиент-валидация ДО submit: активный источник должен быть выбран.
+    validate: (obj) => {
+      const kind = obj._source_kind;
+      const chosen = kind === "volume" ? obj.source_volume_id : obj.source_snapshot_id;
+      if (!chosen) return "Выберите источник образа (снимок или том).";
+      return null;
+    },
+    emptyState: {
+      title: "Создайте первый образ",
+      body: "Образ — это boot-seed для тома: том с указанным образом материализуется из него. Образ REGIONAL (anycast) и создаётся из снимка или тома проекта.",
+      docs: ["Образы (загрузочные)"],
+    },
   },
 
   // ====== compute: GuestAccessKey ======
