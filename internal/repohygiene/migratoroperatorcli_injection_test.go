@@ -275,3 +275,163 @@ func TestMigratorCLIGatesAreSilentOnAHealthyCorpus(t *testing.T) {
 	}
 	t.Logf("перепись контроля: мест с именем %d, находок 0", len(mentions))
 }
+
+// ── имя, которым инструмент представляется САМ (формы 5 и 6) ───────────────
+//
+// Инъекция 4 приёмщика: подмена `Use:` корневой команды на своё имя оставляла
+// гейт ЗЕЛЁНЫМ, а перепись печатала «различных имён 1». Распознаватель знал
+// четыре формы (путь установки, выход сборки, переменная сборки, константа) и
+// не знал ту, в которой расхождение было живо: имя, которое инструмент печатает
+// о себе — в форме вызова и в тексте `unknown command "X" for "ИМЯ"`.
+//
+// Форма, о которой распознаватель не знает, не даёт ни красного, ни зелёного —
+// она даёт НЕВИДИМОСТЬ, и молчание гейта читается как «имя одно».
+
+func TestMigratorCLINameGateSpeaksOnTheNameTheToolPrintsOfItself(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "Use корневой команды",
+			src: `package main
+
+import "github.com/spf13/cobra"
+
+func newRootCmd() *cobra.Command {
+	return &cobra.Command{Use: "kacho-nlb-migrator"}
+}`,
+		},
+		{
+			name: "имя в справке, собранной склейкой",
+			src: `package main
+
+import "github.com/spf13/cobra"
+
+func newRootCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:  "kacho-migrator",
+		Long: "kacho-nlb-migrator — отдельный CLI управления миграциями.\n" +
+			"Вторая строка.",
+	}
+}`,
+		},
+		{
+			name: "имя в краткой справке",
+			src: `package main
+
+import "github.com/spf13/cobra"
+
+func newRootCmd() *cobra.Command {
+	return &cobra.Command{Use: "kacho-migrator", Short: "runner kacho-nlb-migrator"}
+}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const rel = "services/x/cmd/migrator/main.go"
+			mentions, err := migratorCLIGoMentions(rel, tc.src)
+			if err != nil {
+				t.Fatalf("разбор не удался: %v", err)
+			}
+			if len(mentions) == 0 {
+				t.Fatalf("форма не распознана вовсе — она была бы не находкой, а НЕВИДИМОСТЬЮ")
+			}
+			findings := migratorCLINameFindings(mentions)
+			if len(findings) == 0 {
+				t.Fatalf("чужое имя принято молча: %+v", mentions)
+			}
+			joined := strings.Join(findings, "\n")
+			if !strings.Contains(joined, rel) {
+				t.Errorf("находка не называет координату: %s", joined)
+			}
+			if !strings.Contains(joined, `"kacho-nlb-migrator"`) {
+				t.Errorf("находка не называет само имя: %s", joined)
+			}
+		})
+	}
+}
+
+func TestMigratorCLINameGateStaysSilentOnLegitimateSelfNames(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		src         string
+		wantMention bool
+	}{
+		{
+			name: "общее имя в Use и в справке",
+			src: `package main
+
+import "github.com/spf13/cobra"
+
+func newRootCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "kacho-migrator",
+		Short: "Управление миграциями БД сервиса kacho-vpc",
+		Long:  "kacho-migrator — отдельный CLI управления миграциями.",
+	}
+}`,
+			wantMention: true,
+		},
+		{
+			name: "имя подкоманды именем бинаря не является",
+			src: `package main
+
+import "github.com/spf13/cobra"
+
+func newUpCmd() *cobra.Command {
+	return &cobra.Command{Use: "up", Short: "Apply migrations up to latest"}
+}`,
+			wantMention: false,
+		},
+		{
+			name: "каталог ИСХОДНИКОВ в справке — не имя бинаря",
+			src: `package main
+
+import "github.com/spf13/cobra"
+
+func newRootCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:  "kacho-migrator",
+		Long: "Построено по образцу services/vpc/cmd/migrator; см. docs/architecture/migrator-cli.md",
+	}
+}`,
+			wantMention: true, // ровно одно упоминание — само `Use`
+		},
+		{
+			name: "старое имя в ПРОЗЕ о нём, а не в справке",
+			src: `package main
+
+import "github.com/spf13/cobra"
+
+// До #1461 инструмент звался kacho-nlb-migrator.
+func newRootCmd() *cobra.Command {
+	return &cobra.Command{Use: "kacho-migrator"}
+}`,
+			wantMention: true, // только `Use`; комментарий не судится
+		},
+		{
+			name: "посторонний бинарь рядом",
+			src: `package main
+
+import "github.com/spf13/cobra"
+
+func newServeCmd() *cobra.Command {
+	return &cobra.Command{Use: "kacho-loadbalancer", Short: "serve"}
+}`,
+			wantMention: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mentions, err := migratorCLIGoMentions("services/x/cmd/migrator/main.go", tc.src)
+			if err != nil {
+				t.Fatalf("разбор не удался: %v", err)
+			}
+			if got := len(mentions) > 0; got != tc.wantMention {
+				t.Fatalf("распознано мест %d, ожидалось непусто=%v: %+v", len(mentions), tc.wantMention, mentions)
+			}
+			if f := migratorCLINameFindings(mentions); len(f) != 0 {
+				t.Fatalf("законная запись объявлена находкой: %v", f)
+			}
+		})
+	}
+}

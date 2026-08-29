@@ -72,6 +72,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -104,7 +105,23 @@ var (
 	migratorCLIMakeBinRe = regexp.MustCompile(`(?m)^\s*([A-Za-z0-9_]*(?:BIN[A-Za-z0-9_]*MIG|MIG[A-Za-z0-9_]*BIN)[A-Za-z0-9_]*)\s*:?\??=\s*(\S+)`)
 	// форма 4 — константа имени в самой точке наката.
 	migratorCLIGoConstRe = regexp.MustCompile(`binaryName\s*=\s*"(` + migratorCLINameRe + `)"`)
+	// формы 5-6 — имя, которым инструмент представляется САМ: поля помощи cobra.
+	// `\b` на конце обязателен: без него `migratorcli` (имя ПАКЕТА разбора)
+	// читалось бы как имя бинаря.
+	migratorCLIBareNameRe = regexp.MustCompile(migratorCLINameRe + `\b`)
 )
+
+// migratorCLIHelpFields — поля cobra, которые ЧИТАЕТ ОПЕРАТОР. Имя, названное
+// здесь, инструмент печатает о себе: в форме вызова (`Usage: ИМЯ [command]`) и
+// в тексте отказа (`unknown command "X" for "ИМЯ"`). Оно и есть имя бинаря с
+// точки зрения того, кто им пользуется, — поэтому судится наравне с путём
+// установки. Форма живая: расхождение сидело именно в ней.
+var migratorCLIHelpFields = map[string]string{
+	"Use":     "имя команды cobra",
+	"Short":   "краткая справка cobra",
+	"Long":    "справка cobra",
+	"Example": "пример вызова cobra",
+}
 
 // migratorCLIMention — одно место, называющее бинарь мигратора.
 type migratorCLIMention struct {
@@ -151,6 +168,78 @@ func migratorCLIMentions(rel, content string) []migratorCLIMention {
 		for _, m := range migratorCLIGoConstRe.FindAllStringSubmatch(raw, -1) {
 			add(line, m[1], "константа имени")
 		}
+	}
+	return out
+}
+
+// migratorCLIGoMentions находит имя бинаря в полях помощи cobra — РАЗБОРОМ.
+//
+// Разбором, а не подстрокой, по той же причине, что и классификация ниже: те же
+// слова стоят в комментариях, и гейт по тексту краснел бы на собственном
+// объяснении. Справка, собранная склейкой строк (`"a" + "b"`), обходится
+// целиком: имя бывает в любом слагаемом.
+func migratorCLIGoMentions(rel, src string) ([]migratorCLIMention, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, rel, src, 0)
+	if err != nil {
+		return nil, fmt.Errorf("%s: разбор не удался: %w", rel, err)
+	}
+	var out []migratorCLIMention
+	ast.Inspect(file, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok || !isCobraCommandType(lit.Type) {
+			return true
+		}
+		for _, elt := range lit.Elts {
+			kv, ok := elt.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			key, ok := kv.Key.(*ast.Ident)
+			if !ok {
+				continue
+			}
+			form, judged := migratorCLIHelpFields[key.Name]
+			if !judged {
+				continue
+			}
+			ast.Inspect(kv.Value, func(v ast.Node) bool {
+				bl, ok := v.(*ast.BasicLit)
+				if !ok || bl.Kind != token.STRING {
+					return true
+				}
+				text, uerr := strconv.Unquote(bl.Value)
+				if uerr != nil {
+					return true
+				}
+				for _, name := range migratorCLINamesOutsideAPath(text) {
+					out = append(out, migratorCLIMention{
+						Rel:  rel,
+						Line: fset.Position(bl.Pos()).Line,
+						Name: name,
+						Form: form,
+					})
+				}
+				return true
+			})
+		}
+		return true
+	})
+	return out, nil
+}
+
+// migratorCLINamesOutsideAPath — имена бинаря в строке справки, БЕЗ составляющих
+// пути. Токен, которому непосредственно предшествует «/», — это каталог
+// исходников (`services/vpc/cmd/migrator`) либо адрес документа, а не имя
+// бинаря; путь УСТАНОВКИ судит форма 1, и он живёт в манифесте, а не в справке.
+// Без этой границы гейт краснел бы на ссылке справки на собственное решение.
+func migratorCLINamesOutsideAPath(text string) []string {
+	var out []string
+	for _, loc := range migratorCLIBareNameRe.FindAllStringIndex(text, -1) {
+		if loc[0] > 0 && text[loc[0]-1] == '/' {
+			continue
+		}
+		out = append(out, text[loc[0]:loc[1]])
 	}
 	return out
 }
