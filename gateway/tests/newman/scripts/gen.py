@@ -38,6 +38,7 @@ absence is exactly why a direct run produced 54 requests, zero Authorization hea
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 import sys
@@ -76,6 +77,8 @@ def _kacholib_dir() -> Path:
 sys.path.insert(0, str(_kacholib_dir()))
 
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
+    generate,
+    Run,
     _assert_delete_operation_outcome,
     assert_grpc_code,
     _assert_published_id_outcome,
@@ -427,39 +430,6 @@ _INJECTED = {
     "POLL_CAP": POLL_CAP,
     "POLL_DELAY_MS": POLL_DELAY_MS,
 }
-
-
-def main(argv: List[str]) -> int:
-    want = set(argv[1:])
-    found = sorted(CASES_DIR.glob("*.py"))
-    if not found:
-        print(f"no case files in {CASES_DIR}", file=sys.stderr)
-        return 1
-    COLLECTIONS_DIR.mkdir(parents=True, exist_ok=True)
-    for f in found:
-        res = f.stem
-        if res.startswith("__"):
-            continue
-        if want and res not in want:
-            continue
-        mod = load_cases_module(f, _INJECTED)
-        cases = getattr(mod, "CASES", [])
-        bad = [type(c).__name__ for c in cases if not isinstance(c, Case)]
-        if bad:
-            sys.stderr.write(f"[{res}] FAIL — non-Case items in CASES ({bad[:3]}).\n")
-            return 1
-        ids = [c.id for c in cases]
-        dups = {x for x in ids if ids.count(x) > 1}
-        if dups:
-            sys.stderr.write(f"[{res}] FAIL — duplicate case-id: {sorted(dups)}\n")
-            return 1
-        col = build_collection(_EMIT, res, cases)
-        out = COLLECTIONS_DIR / f"{res}.postman_collection.json"
-        out.write_text(json.dumps(col, indent=2, ensure_ascii=False) + "\n")
-        print(f"[{res}] {len(cases)} cases → {out.relative_to(ROOT)}")
-    return 0
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # РЕШЕНИЯ НАБОРА, от которых зависит форма коллекции (#1379). Форму собирает
 # общий слой; здесь объявлено ТОЛЬКО то, чем этот набор от остальных отличается.
@@ -518,6 +488,27 @@ _EMIT = Emit(
     # Строка запроса в сегменты пути не входит: у края кейсы адресуются с ней.
     path_segments=lambda path: [p for p in path.split("?")[0].strip("/").split("/") if p],
 )
+
+
+_RUN = Run(
+    root=ROOT,
+    cases_dir=CASES_DIR,
+    out_dir=COLLECTIONS_DIR,
+    scripts_dir=Path(__file__).resolve().parent,
+    emit=_EMIT,
+    case_cls=Case,
+    injected=_INJECTED,
+    before=None,
+    stem_dashes_to_underscores=True,
+    per_collection=None,
+    after_all=None,
+)
+
+# Точка входа — связывание, а не своё тело (#1474). Оркестрация одна на дерево;
+# здесь набор связывает СВОИ решения. Имя `main` сохранено: его импортирует
+# тонкая обёртка края (`from gen import main`).
+main = functools.partial(generate, _RUN)
+
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

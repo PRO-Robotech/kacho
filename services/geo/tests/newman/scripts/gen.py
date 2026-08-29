@@ -45,10 +45,10 @@ case-файл (collections/<name>.postman_collection.json).
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 import sys
-import functools
 import uuid
 import importlib.util
 from pathlib import Path
@@ -82,6 +82,8 @@ def _kacholib_dir() -> Path:
 sys.path.insert(0, str(_kacholib_dir()))
 
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
+    generate,
+    Run,
     _assert_delete_operation_outcome,
     assert_grpc_code,
     _assert_published_id_outcome,
@@ -488,55 +490,6 @@ def _reset_step_name_counters() -> None:
     Held by internal/repohygiene TestGeneratedStepNamesDoNotDependOnHowManyModulesRan.
     """
     _RETRY_SEQ[0] = 0
-
-
-def _check_duplicate_ids() -> int:
-    """HARD-FAIL: case-id обязан быть уникален среди всех кейсов всех файлов."""
-    seen: Dict[str, str] = {}
-    dups: List[str] = []
-    for f in sorted(CASES_DIR.glob("*.py")):
-        mod = load_cases(f)
-        for c in getattr(mod, "CASES", []):
-            if c.id in seen:
-                dups.append(f"  - {c.id!r}: {seen[c.id]} и {f.name}")
-            else:
-                seen[c.id] = f.name
-    if dups:
-        sys.stderr.write("gen: FAIL — дубли case-id:\n")
-        sys.stderr.write("\n".join(dups) + "\n")
-        return 1
-    return 0
-
-
-def main(argv: List[str]) -> int:
-    args = argv[1:]
-    if "--validate" in args:
-        import runpy
-        sys.argv = [str(SCRIPTS_DIR / "validate-cases.py")]
-        runpy.run_path(str(SCRIPTS_DIR / "validate-cases.py"), run_name="__main__")
-        return 0
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    want = set(args)
-    found = sorted(CASES_DIR.glob("*.py"))
-    if not found:
-        print(f"no case files in {CASES_DIR}")
-        return 1
-    if _check_duplicate_ids() != 0:
-        return 1
-    for f in found:
-        svc = f.stem
-        if want and svc not in want:
-            continue
-        mod = load_cases(f)
-        cases = getattr(mod, "CASES", [])
-        col = build_collection(_EMIT, svc, cases)
-        out = OUT_DIR / f"{svc}.postman_collection.json"
-        out.write_text(json.dumps(col, indent=2, ensure_ascii=False))
-        print(f"[{svc}] {len(cases)} cases → {out.relative_to(ROOT)}")
-    return 0
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # РЕШЕНИЯ НАБОРА, от которых зависит форма коллекции (#1379). Форму собирает
 # общий слой; здесь объявлено ТОЛЬКО то, чем этот набор от остальных отличается.
@@ -580,12 +533,26 @@ _INJECTED = {
     "assert_no_infra_fields": assert_no_infra_fields,
 }
 
-# Загрузчик модулей кейсов, СВЯЗАННЫЙ решениями этого набора: перечень
-# впрыскиваемых имён, сброс счётчиков имён шагов и трактовка дефиса в имени
-# модуля. Отдельная проверка кейсов (`validate-cases.py`) обязана видеть ровно
-# то, что увидит генерация, поэтому зовёт ЭТО связывание, а не общий загрузчик
-# своими руками: иначе решения набора записаны дважды и расходятся молча.
-load_cases = functools.partial(load_cases_module, injected=_INJECTED, before=_reset_step_name_counters, stem_dashes_to_underscores=False)
+
+_RUN = Run(
+    root=ROOT,
+    cases_dir=CASES_DIR,
+    out_dir=OUT_DIR,
+    scripts_dir=SCRIPTS_DIR,
+    emit=_EMIT,
+    case_cls=Case,
+    injected=_INJECTED,
+    before=_reset_step_name_counters,
+    stem_dashes_to_underscores=False,
+    per_collection=None,
+    after_all=None,
+)
+
+# Точка входа — связывание, а не своё тело (#1474). Оркестрация одна на дерево;
+# здесь набор связывает СВОИ решения. Имя `main` сохранено: его импортирует
+# тонкая обёртка края (`from gen import main`).
+main = functools.partial(generate, _RUN)
+
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

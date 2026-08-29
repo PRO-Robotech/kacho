@@ -51,6 +51,8 @@ def _kacholib_dir() -> Path:
 sys.path.insert(0, str(_kacholib_dir()))
 
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
+    generate,
+    Run,
     retry_until_authorized,
     _RYA_SEQ,
     _accepted_http_codes,
@@ -3109,84 +3111,48 @@ def _reset_step_name_counters() -> None:
     _RYA_SEQ[0] = 0
 
 
-def _check_duplicate_ids() -> int:
-    """HARD-FAIL: case-id обязан быть уникален среди всех кейсов всех сервисов."""
-    seen: Dict[str, str] = {}
-    dups: List[str] = []
-    for f in sorted(CASES_DIR.glob("*.py")):
-        mod = load_cases(f)
-        for c in getattr(mod, "CASES", []):
-            if c.id in seen:
-                dups.append(f"  - {c.id!r}: {seen[c.id]} и {f.name}")
-            else:
-                seen[c.id] = f.name
-    if dups:
-        sys.stderr.write("gen: FAIL — дубли case-id (case-id должен быть уникален):\n")
-        sys.stderr.write("\n".join(dups) + "\n")
-        return 1
-    return 0
+# Накопитель разбора подзапросов — решение vpc (#1474). Свойство «исход шага
+# читает хоть кто-нибудь» проверяется ПО ВСЕМУ набору: читателем бывает
+# последующий шаг того же кейса, поэтому судить одну коллекцию рано.
+_SUBREQUEST_FINDINGS: List[str] = []
+_SUBREQUEST_CENSUS = {"cases": 0, "steps": 0, "subrequest": 0, "self": 0, "chained": 0}
 
 
-def main(argv: List[str]) -> int:
-    args = argv[1:]
-    if "--validate" in args:
-        # делегируем полную валидацию (dup-id + каталогизация в CASES-INDEX) в validate-cases.py
-        import runpy
-        sys.argv = [str(SCRIPTS_DIR / "validate-cases.py")]
-        runpy.run_path(str(SCRIPTS_DIR / "validate-cases.py"), run_name="__main__")
-        return 0  # validate-cases.py делает sys.exit сам
+def _audit_subrequest_before_write(svc: str, col: Dict) -> List[str]:
+    """Накопить находки и перепись по одной коллекции; вердикт — в конце.
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    want = set(args)
-    found = sorted(CASES_DIR.glob("*.py"))
-    if not found:
-        print(f"no case files in {CASES_DIR}")
-        return 1
-    if _check_duplicate_ids() != 0:
-        return 1
-    findings: List[str] = []
-    census = {"cases": 0, "steps": 0, "subrequest": 0, "self": 0, "chained": 0}
-    for f in found:
-        svc = f.stem
-        if want and svc not in want:
-            continue
-        mod = load_cases(f)
-        cases = getattr(mod, "CASES", [])
-        col = build_collection(_EMIT, svc, cases)
-        out = OUT_DIR / f"{svc}.postman_collection.json"
-        out.write_text(json.dumps(col, indent=2, ensure_ascii=False))
-        print(f"[{svc}] {len(cases)} cases → {out.relative_to(ROOT)}")
-        # Проверка идёт по СОБРАННОЙ коллекции, а не по объявлению кейса: утверждения
-        # дописывают проходы сериализации (`_assert_delete_operation_outcome`,
-        # автообёртки), и предикат по исходнику судил бы не то, что уезжает в дерево.
-        f_svc, c_svc = audit_subrequest_outcome_readers(svc, col)
-        findings += f_svc
-        for k in census:
-            census[k] += c_svc[k]
+    Возвращает ПУСТО намеренно: находка здесь не блокирует запись, потому что
+    вердикт выносится по всему набору (см. `_report_subrequest_census`). Порядок
+    сохранён тот же, что был у своей копии оркестрации.
+    """
+    f_svc, c_svc = audit_subrequest_outcome_readers(svc, col)
+    _SUBREQUEST_FINDINGS.extend(f_svc)
+    for k in _SUBREQUEST_CENSUS:
+        _SUBREQUEST_CENSUS[k] += c_svc[k]
+    return []
 
-    # Перепись печатается ВСЕГДА — «ноль находок» обязано быть отличимо от «ноль
-    # прочитанного»: предикат, переставший узнавать подзапрос, молча стал бы
-    # вечнозелёным.
+
+def _report_subrequest_census(_out_dir: Path) -> int:
+    """Перепись и вердикт по исходу подзапросов — решение vpc (#1474)."""
     print("[gen] исход подзапроса: кейсов %d, шагов %d, из них с подзапросом %d "
           "(утверждают сами %d, читаются по цепочке накопителей %d)"
-          % (census["cases"], census["steps"], census["subrequest"],
-             census["self"], census["chained"]))
-    if census["steps"] == 0:
+          % (_SUBREQUEST_CENSUS["cases"], _SUBREQUEST_CENSUS["steps"],
+             _SUBREQUEST_CENSUS["subrequest"], _SUBREQUEST_CENSUS["self"],
+             _SUBREQUEST_CENSUS["chained"]))
+    if _SUBREQUEST_CENSUS["steps"] == 0:
         sys.stderr.write("gen: FAIL — обход не узнал ни одного шага; перепись беспредметна\n")
         return 1
-    if findings:
+    if _SUBREQUEST_FINDINGS:
         sys.stderr.write(
-            "gen: FAIL — шаги, чей исход не прочтёт никто: %d\n\n" % len(findings))
+            "gen: FAIL — шаги, чей исход не прочтёт никто: %d\n\n" % len(_SUBREQUEST_FINDINGS))
         sys.stderr.write(
             "Шаг ходит на служебный путь, а предмет уезжает подзапросом, поэтому его\n"
             "ответ не судит ни одна проверка, читающая ответ ШАГА. Исход обязан быть\n"
             "назван: либо утверждением в самом шаге (в том числе внутри обработчика\n"
             "подзапроса), либо последующим шагом кейса, который читает его накопитель.\n\n")
-        sys.stderr.write("\n".join(findings) + "\n")
+        sys.stderr.write("\n".join(_SUBREQUEST_FINDINGS) + "\n")
         return 1
     return 0
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # РЕШЕНИЯ НАБОРА, от которых зависит форма коллекции (#1379). Форму собирает
 # общий слой; здесь объявлено ТОЛЬКО то, чем этот набор от остальных отличается.
@@ -3305,12 +3271,26 @@ _INJECTED = {
     "js_regex_literal_text": js_regex_literal_text,
 }
 
-# Загрузчик модулей кейсов, СВЯЗАННЫЙ решениями этого набора: перечень
-# впрыскиваемых имён, сброс счётчиков имён шагов и трактовка дефиса в имени
-# модуля. Отдельная проверка кейсов (`validate-cases.py`) обязана видеть ровно
-# то, что увидит генерация, поэтому зовёт ЭТО связывание, а не общий загрузчик
-# своими руками: иначе решения набора записаны дважды и расходятся молча.
-load_cases = functools.partial(load_cases_module, injected=_INJECTED, before=_reset_step_name_counters, stem_dashes_to_underscores=False)
+
+_RUN = Run(
+    root=ROOT,
+    cases_dir=CASES_DIR,
+    out_dir=OUT_DIR,
+    scripts_dir=SCRIPTS_DIR,
+    emit=_EMIT,
+    case_cls=Case,
+    injected=_INJECTED,
+    before=_reset_step_name_counters,
+    stem_dashes_to_underscores=False,
+    per_collection=_audit_subrequest_before_write,
+    after_all=_report_subrequest_census,
+)
+
+# Точка входа — связывание, а не своё тело (#1474). Оркестрация одна на дерево;
+# здесь набор связывает СВОИ решения. Имя `main` сохранено: его импортирует
+# тонкая обёртка края (`from gen import main`).
+main = functools.partial(generate, _RUN)
+
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

@@ -59,6 +59,8 @@ def _kacholib_dir() -> Path:
 sys.path.insert(0, str(_kacholib_dir()))
 
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
+    generate,
+    Run,
     retry_until_authorized,
     _RYA_SEQ,
     _accepted_http_codes,
@@ -634,35 +636,6 @@ def _reset_step_name_counters() -> None:
     _RDY_SEQ[0] = 0
     _RYA_SEQ[0] = 0
     _poll_seq[0] = 0
-
-
-def main(argv: List[str]) -> int:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    want = set(argv[1:])
-    found = sorted(CASES_DIR.glob("*.py"))
-    if not found:
-        print(f"no case files in {CASES_DIR}")
-        return 1
-    rc = 0
-    for f in found:
-        res = f.stem
-        if want and res not in want:
-            continue
-        mod = load_cases(f)
-        cases = getattr(mod, "CASES", [])
-        # детект дублей case-id — HARD-FAIL (case-id обязан быть уникален)
-        ids = [c.id for c in cases]
-        dups = {x for x in ids if ids.count(x) > 1}
-        if dups:
-            sys.stderr.write(f"[{res}] FAIL — duplicate case-id (должен быть уникален): {sorted(dups)}\n")
-            return 1
-        col = build_collection(_EMIT, res, cases)
-        out = OUT_DIR / f"{res}.postman_collection.json"
-        out.write_text(json.dumps(col, indent=2, ensure_ascii=False))
-        print(f"[{res}] {len(cases)} cases → {out.relative_to(ROOT)}")
-    return rc
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # РЕШЕНИЯ НАБОРА, от которых зависит форма коллекции (#1379). Форму собирает
 # общий слой; здесь объявлено ТОЛЬКО то, чем этот набор от остальных отличается.
@@ -717,12 +690,26 @@ _INJECTED = {
     "js_name": js_name,
 }
 
-# Загрузчик модулей кейсов, СВЯЗАННЫЙ решениями этого набора: перечень
-# впрыскиваемых имён, сброс счётчиков имён шагов и трактовка дефиса в имени
-# модуля. Отдельная проверка кейсов (`validate-cases.py`) обязана видеть ровно
-# то, что увидит генерация, поэтому зовёт ЭТО связывание, а не общий загрузчик
-# своими руками: иначе решения набора записаны дважды и расходятся молча.
-load_cases = functools.partial(load_cases_module, injected=_INJECTED, before=_reset_step_name_counters)
+
+_RUN = Run(
+    root=ROOT,
+    cases_dir=CASES_DIR,
+    out_dir=OUT_DIR,
+    scripts_dir=Path(__file__).resolve().parent,
+    emit=_EMIT,
+    case_cls=Case,
+    injected=_INJECTED,
+    before=_reset_step_name_counters,
+    stem_dashes_to_underscores=True,
+    per_collection=None,
+    after_all=None,
+)
+
+# Точка входа — связывание, а не своё тело (#1474). Оркестрация одна на дерево;
+# здесь набор связывает СВОИ решения. Имя `main` сохранено: его импортирует
+# тонкая обёртка края (`from gen import main`).
+main = functools.partial(generate, _RUN)
+
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

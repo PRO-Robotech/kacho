@@ -58,6 +58,8 @@ def _kacholib_dir() -> Path:
 sys.path.insert(0, str(_kacholib_dir()))
 
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
+    generate,
+    Run,
     retry_until_authorized,
     _RYA_SEQ,
     _accepted_http_codes,
@@ -797,42 +799,41 @@ def audit_jumps(collection: Dict) -> Tuple[List[str], int, int]:
     return findings, len(items), loops
 
 
-def main(argv: List[str]) -> int:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    want = set(argv[1:])
-    found = sorted(CASES_DIR.glob("*.py"))
-    if not found:
-        print(f"no case files in {CASES_DIR}")
+
+# Перепись разбора переходов — решение compute (#1474). Накапливается по всему
+# набору и печатается ОДИН раз: своя копия оркестрации печатала её на каждой
+# коллекции строкой рядом с именем файла.
+_JUMP_CENSUS = {"items": 0, "loops": 0}
+
+
+def _audit_jumps_before_write(res: str, col: Dict) -> List[str]:
+    """Разбор переходов ДО записи коллекции — решение compute (#1474).
+
+    Возвращает находки в форме, которую ждёт общая оркестрация. Коллекция с
+    негодным переходом на диск не попадает: прогон по ней МОЛЧА пропустил бы
+    запросы, а «не выполнилось» не вычитается из вердикта и не зачитывается в
+    успех.
+    """
+    findings, n_items, n_loops = audit_jumps(col)
+    _JUMP_CENSUS["items"] += n_items
+    _JUMP_CENSUS["loops"] += n_loops
+    return [f"  - {f}" for f in findings]
+
+
+def _report_jump_census(_out_dir: Path) -> int:
+    """Объём осмотренного разбором переходов — печатается ВСЕГДА.
+
+    Без него «негодных переходов не найдено» неотличимо от «разбор перестал
+    узнавать переход»: предикат, потерявший предмет, молча стал бы вечнозелёным.
+    Ноль осмотренных шагов — отказ, а не пустая работа.
+    """
+    print("[gen] разбор переходов: шагов %d, петель повтора %d — все состоятельны"
+          % (_JUMP_CENSUS["items"], _JUMP_CENSUS["loops"]))
+    if _JUMP_CENSUS["items"] == 0:
+        sys.stderr.write("gen: FAIL — разбор переходов не узнал ни одного шага; "
+                         "перепись беспредметна\n")
         return 1
-    rc = 0
-    for f in found:
-        res = f.stem
-        if want and res not in want:
-            continue
-        mod = load_cases(f)
-        cases = getattr(mod, "CASES", [])
-        # детект дублей case-id — HARD-FAIL (case-id обязан быть уникален)
-        ids = [c.id for c in cases]
-        dups = {x for x in ids if ids.count(x) > 1}
-        if dups:
-            sys.stderr.write(f"[{res}] FAIL — duplicate case-id (должен быть уникален): {sorted(dups)}\n")
-            return 1
-        col = build_collection(_EMIT, res, cases)
-        jump_findings, n_items, n_loops = audit_jumps(col)
-        if jump_findings:
-            sys.stderr.write(
-                f"[{res}] FAIL — unsound retry jump(s); a run would silently skip requests:\n"
-            )
-            for fnd in jump_findings:
-                sys.stderr.write(f"  - {fnd}\n")
-            return 1
-        out = OUT_DIR / f"{res}.postman_collection.json"
-        out.write_text(json.dumps(col, indent=2, ensure_ascii=False))
-        print(f"[{res}] {len(cases)} cases → {out.relative_to(ROOT)} "
-              f"(jump-audit: {n_loops} retry jump(s) over {n_items} steps, all sound)")
-    return rc
-
-
+    return 0
 # ─────────────────────────────────────────────────────────────────────────────
 # РЕШЕНИЯ НАБОРА, от которых зависит форма коллекции (#1379). Форму собирает
 # общий слой; здесь объявлено ТОЛЬКО то, чем этот набор от остальных отличается.
@@ -889,12 +890,26 @@ _INJECTED = {
     "MT_INTERNAL_PATH": MT_INTERNAL_PATH,
 }
 
-# Загрузчик модулей кейсов, СВЯЗАННЫЙ решениями этого набора: перечень
-# впрыскиваемых имён, сброс счётчиков имён шагов и трактовка дефиса в имени
-# модуля. Отдельная проверка кейсов (`validate-cases.py`) обязана видеть ровно
-# то, что увидит генерация, поэтому зовёт ЭТО связывание, а не общий загрузчик
-# своими руками: иначе решения набора записаны дважды и расходятся молча.
-load_cases = functools.partial(load_cases_module, injected=_INJECTED, before=_reset_step_name_counters)
+
+_RUN = Run(
+    root=ROOT,
+    cases_dir=CASES_DIR,
+    out_dir=OUT_DIR,
+    scripts_dir=Path(__file__).resolve().parent,
+    emit=_EMIT,
+    case_cls=Case,
+    injected=_INJECTED,
+    before=_reset_step_name_counters,
+    stem_dashes_to_underscores=True,
+    per_collection=_audit_jumps_before_write,
+    after_all=_report_jump_census,
+)
+
+# Точка входа — связывание, а не своё тело (#1474). Оркестрация одна на дерево;
+# здесь набор связывает СВОИ решения. Имя `main` сохранено: его импортирует
+# тонкая обёртка края (`from gen import main`).
+main = functools.partial(generate, _RUN)
+
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

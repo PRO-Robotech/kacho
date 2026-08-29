@@ -58,6 +58,8 @@ def _kacholib_dir() -> Path:
 sys.path.insert(0, str(_kacholib_dir()))
 
 from gen_shared import (  # noqa: E402  — импорт после провязки sys.path
+    generate,
+    Run,
     retry_until_authorized,
     _RYA_SEQ,
     _accepted_http_codes,
@@ -1651,49 +1653,21 @@ def _reset_step_name_counters() -> None:
     _RYA_SEQ[0] = 0
 
 
-def main(argv: List[str]) -> int:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    want = set(argv[1:])
-    found = sorted(CASES_DIR.glob("*.py"))
-    if not found:
-        print(f"no case files in {CASES_DIR}")
-        return 1
+
+def _assert_after_all(out_dir: Path) -> int:
+    """Проверки, которые нельзя решить по одной коллекции — решение iam (#1474).
+
+    Генерация предшествует каждому прогону, поэтому коллекция с непокрытым
+    классом и вакуумное утверждение о снятии принципала не доедут до прогона
+    незамеченными. Оба стража считаются: отказ первого не отменяет второго —
+    иначе вторая находка ждала бы починки первой.
+    """
     rc = 0
-    for f in found:
-        res = f.stem
-        if want and res not in want:
-            continue
-        mod = load_cases_module(f, _INJECTED, before=_reset_step_name_counters)
-        cases = getattr(mod, "CASES", [])
-        # Skip files where CASES has non-Case items (pseudo-code drafts
-        # с dict-based кейсами не должны падать всю генерацию).
-        bad = [type(c).__name__ for c in cases if not isinstance(c, Case)]
-        if bad:
-            sys.stderr.write(f"[{res}] SKIP — non-Case items in CASES ({bad[:3]}); convert to Case(...) constructors.\n")
-            continue
-        # детект дублей case-id — HARD-FAIL (case-id обязан быть уникален)
-        ids = [c.id for c in cases]
-        dups = {x for x in ids if ids.count(x) > 1}
-        if dups:
-            sys.stderr.write(f"[{res}] FAIL — duplicate case-id (должен быть уникален): {sorted(dups)}\n")
-            return 1
-        col = build_collection(_EMIT, res, cases)
-        out = OUT_DIR / f"{res}.postman_collection.json"
-        out.write_text(json.dumps(col, indent=2, ensure_ascii=False))
-        print(f"[{res}] {len(cases)} cases → {out.relative_to(ROOT)}")
-    # Страж класса исполняется ЗДЕСЬ, а не в отдельном тесте, который никто не зовёт:
-    # генерация предшествует КАЖДОМУ прогону (deploy/scripts/newman-parallel.sh), значит
-    # это единственное место, мимо которого нельзя пройти. Отказ роняет генерацию —
-    # коллекция с непокрытым классом не должна попадать в прогон.
-    if assert_phantom_drop(OUT_DIR) != 0:
+    if assert_phantom_drop(out_dir) != 0:
         rc = 1
-    # Тот же довод, что у стража выше: генерация предшествует каждому прогону, поэтому
-    # вакуумное утверждение о снятии не доедет до прогона незамеченным.
-    if assert_gone_principal(OUT_DIR) != 0:
+    if assert_gone_principal(out_dir) != 0:
         rc = 1
     return rc
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # РЕШЕНИЯ НАБОРА, от которых зависит форма коллекции (#1379). Форму собирает
 # общий слой; здесь объявлено ТОЛЬКО то, чем этот набор от остальных отличается.
@@ -1859,6 +1833,27 @@ _INJECTED = {
     "js_name": js_name,
     "credential_secret_pattern": credential_secret_pattern,
 }
+
+
+_RUN = Run(
+    root=ROOT,
+    cases_dir=CASES_DIR,
+    out_dir=OUT_DIR,
+    scripts_dir=Path(__file__).resolve().parent,
+    emit=_EMIT,
+    case_cls=Case,
+    injected=_INJECTED,
+    before=_reset_step_name_counters,
+    stem_dashes_to_underscores=True,
+    per_collection=None,
+    after_all=_assert_after_all,
+)
+
+# Точка входа — связывание, а не своё тело (#1474). Оркестрация одна на дерево;
+# здесь набор связывает СВОИ решения. Имя `main` сохранено: его импортирует
+# тонкая обёртка края (`from gen import main`).
+main = functools.partial(generate, _RUN)
+
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
