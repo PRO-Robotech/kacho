@@ -651,3 +651,198 @@ func lookupString(tree map[string]any, path ...string) (string, bool) {
 	}
 	return "", false
 }
+
+// promisedConsoleTabs — сколько ОДНОВРЕМЕННЫХ вкладок консоли продукт обещает
+// одному вызывающему.
+//
+// Величина здесь не вкус, а обещание, и она названа числом ровно затем, чтобы её
+// можно было оспорить. Две — минимум, ниже которого обещание перестаёт быть
+// обещанием: вторая вкладка есть у всякого, кто сравнивает два списка, и отказ на
+// ней читается как поломка продукта, а не как достигнутый предел.
+//
+// Клиент видит то же число формулой на своей странице; согласие этой константы с
+// ней держит TestPublishedStreamLimitsMatchTheChart ниже.
+const promisedConsoleTabs = 2
+
+// TestSubjectCeilingCoversEveryOwnerOnTwoTabs — потолок вызывающего покрывает
+// худший случай консоли: все объявленные владельцы на обещанном числе вкладок.
+//
+// # Предмет
+//
+// Консоль открывает ОДИН поток на пару «владелец × проект»
+// (`ui-future/shared/src/lib/subscription/hub.ts`), а вкладки браузера множатся
+// вне нашей власти — каждая несёт свой приёмник событий. Значит потребность
+// вызывающего есть `владельцы × вкладки`, и она растёт с каждым НОВЫМ ВЛАДЕЛЬЦЕМ,
+// не трогая ни одной строки этого чарта.
+//
+// Ровно так величина и устарела: 8 хватало на двух владельцев, поставка объявила
+// пять, и одна вкладка стала стоить 5 потоков, две — 10 при пределе 8. Арендатор
+// упирался в предел на штатной работе (kacho#1391). Заметить это чтением чарта
+// нельзя: обе величины непусты и обе выглядят действующими.
+//
+// # Почему гейт, а не число в документе
+//
+// Число, выписанное в документе, переживает свой предмет молча — этот корпус
+// измерил класс не раз. Здесь предмет ДВИЖЕТСЯ: `owners` пополняется по мере
+// того, как домены заводят журнал. Гейт краснеет на шестом владельце сам, и
+// красное называет требуемую величину, а не «посмотрите ещё раз».
+func TestSubjectCeilingCoversEveryOwnerOnTwoTabs(t *testing.T) {
+	raw, err := os.ReadFile("values.yaml")
+	if err != nil {
+		t.Fatalf("чтение объявления чарта: %v", err)
+	}
+	var values struct {
+		SubscriptionStream struct {
+			Owners               string `yaml:"owners"`
+			MaxStreams           int    `yaml:"maxStreams"`
+			MaxStreamsPerSubject int    `yaml:"maxStreamsPerSubject"`
+		} `yaml:"subscriptionStream"`
+	}
+	if err := yaml.Unmarshal(raw, &values); err != nil {
+		t.Fatalf("разбор объявления чарта: %v", err)
+	}
+	owners, perSubject, replica := subscriptionOwnerList(values.SubscriptionStream.Owners),
+		values.SubscriptionStream.MaxStreamsPerSubject, values.SubscriptionStream.MaxStreams
+
+	need := len(owners) * promisedConsoleTabs
+	t.Logf("перепись: владельцев объявлено %d %v · вкладок обещано %d · потребность %d · "+
+		"потолок вызывающего %d · потолок реплики %d · запас остальным %d",
+		len(owners), owners, promisedConsoleTabs, need, perSubject, replica, replica-perSubject)
+
+	if perSubject <= 0 || replica <= 0 {
+		t.Fatalf("потолок вызывающего %d, потолок реплики %d — гейт ничего не считал",
+			perSubject, replica)
+	}
+	if len(owners) == 0 {
+		// Владельцев нет — потребности нет: ручка отвечает `501`, и множителю
+		// не на что множиться. Судить поставку — предмет других проб.
+		return
+	}
+	if need > perSubject {
+		t.Errorf("владельцев объявлено %d, обещано вкладок %d ⇒ вызывающему нужно %d потоков, "+
+			"а потолок на вызывающего %d. Арендатор получит отказ по исчерпанию на ШТАТНОЙ "+
+			"работе — на второй вкладке, а не под нагрузкой. Исходы: поднять "+
+			"subscriptionStream.maxStreamsPerSubject до %d (потолком служит maxStreams = %d), "+
+			"либо снизить зернистость так, чтобы один поток покрывал нескольких владельцев. "+
+			"Оставить как есть — значит объявить возможность, которой у клиента нет.",
+			len(owners), promisedConsoleTabs, need, perSubject, need, replica)
+	}
+	if perSubject > replica {
+		t.Errorf("потолок вызывающего %d выше потолка реплики %d — предел, которого нельзя "+
+			"достичь; страж старта края такой посадки не поднимет", perSubject, replica)
+	}
+}
+
+// subscriptionOwnerList — владельцы, объявленные краю, из одной строки профиля.
+func subscriptionOwnerList(declared string) []string {
+	owners := make([]string, 0, 4)
+	for _, name := range strings.Split(declared, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			owners = append(owners, name)
+		}
+	}
+	return owners
+}
+
+// TestPublishedStreamLimitsMatchTheChart — число, обещанное КЛИЕНТУ, есть то
+// самое, которое поставляется.
+//
+// # Предмет — измеренный, а не предположенный
+//
+// Клиентская страница объявляла «потоков на реплику края — 64», тогда как чарт
+// поставляет 16: 64 было умолчанием сборки — тем самым значением, которое чарт
+// сознательно снизил вчетверо, потому что владелец больше не принимает. Ни на
+// одной установке 64 не действовало НИ ДНЯ, а арендатор, планирующий от него
+// нагрузку, получал бы отказы вчетверо раньше расчёта (kacho#1391).
+//
+// Оговорка страницы «умолчания приведены для ориентира» этого не спасает: ориентир,
+// которого нет ни на одной посадке, — не ориентир.
+//
+// # Форма проверки
+//
+// Класс тот же, что у `internal/repohygiene/publishedinterfacelimits.go`: величина,
+// которую продукт ОБЕЩАЕТ арендатору, живёт одним объявлением, а документация
+// называет её тем же числом. Здесь объявление — профиль края (там величина и
+// РЕШАЕТСЯ), а не умолчание сборки: умолчание перекрывается шаблоном пода
+// безусловно, поэтому сверять с ним значило бы сверять с мёртвой величиной.
+func TestPublishedStreamLimitsMatchTheChart(t *testing.T) {
+	raw, err := os.ReadFile("values.yaml")
+	if err != nil {
+		t.Fatalf("чтение объявления чарта: %v", err)
+	}
+	var values struct {
+		SubscriptionStream struct {
+			StreamBudget         string `yaml:"streamBudget"`
+			Heartbeat            string `yaml:"heartbeat"`
+			MaxStreams           int    `yaml:"maxStreams"`
+			MaxStreamsPerSubject int    `yaml:"maxStreamsPerSubject"`
+		} `yaml:"subscriptionStream"`
+	}
+	if err := yaml.Unmarshal(raw, &values); err != nil {
+		t.Fatalf("разбор объявления чарта: %v", err)
+	}
+	page, err := os.ReadFile(filepath.Join("..", "docs", "content", "api", "subscription.mdx"))
+	if err != nil {
+		t.Fatalf("чтение клиентской страницы подписки: %v", err)
+	}
+	rows := publishedLimitRows(string(page))
+
+	want := []struct{ caption, value string }{
+		{"срок жизни потока", humanSeconds(values.SubscriptionStream.StreamBudget)},
+		{"период служебного кадра", humanSeconds(values.SubscriptionStream.Heartbeat)},
+		{"потоков на одного вызывающего", strconv.Itoa(values.SubscriptionStream.MaxStreamsPerSubject)},
+		{"потоков на реплику края", strconv.Itoa(values.SubscriptionStream.MaxStreams)},
+	}
+	t.Logf("перепись: строк таблицы пределов на клиентской странице %d · сверяемых величин %d",
+		len(rows), len(want))
+	if len(rows) == 0 {
+		t.Fatal("на клиентской странице не найдено ни одной строки таблицы пределов — " +
+			"сверять нечего, и зелёное здесь неотличимо от неосмотренной страницы")
+	}
+	for _, w := range want {
+		got, found := rows[w.caption]
+		if !found {
+			t.Errorf("клиентская страница не называет величину %q — арендатор не может "+
+				"посчитать свою потребность, а гейт не может сверить обещание с поставкой",
+				w.caption)
+			continue
+		}
+		if got != w.value {
+			t.Errorf("клиентская страница обещает %q = %q, а чарт поставляет %q. Обещание "+
+				"расходится с поставкой: арендатор планирует нагрузку от числа, которого "+
+				"нет ни на одной установке. Правится СТРАНИЦА — величина решается профилем.",
+				w.caption, got, w.value)
+		}
+	}
+}
+
+// publishedLimitRows разбирает таблицу пределов клиентской страницы в пары
+// «подпись → умолчание».
+func publishedLimitRows(page string) map[string]string {
+	rows := map[string]string{}
+	cell := regexp.MustCompile(`<td>(.*?)</td>\s*<td>(.*?)</td>`)
+	for _, m := range cell.FindAllStringSubmatch(page, -1) {
+		caption := strings.TrimSpace(stripMarkup(m[1]))
+		value := strings.TrimSpace(stripMarkup(m[2]))
+		if caption == "" || value == "" {
+			continue
+		}
+		if _, seen := rows[caption]; !seen {
+			rows[caption] = value
+		}
+	}
+	return rows
+}
+
+func stripMarkup(s string) string {
+	return strings.TrimSpace(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(s, ""))
+}
+
+// humanSeconds — срок чарта в том виде, в каком его читает клиент («90 с»).
+func humanSeconds(d string) string {
+	parsed, err := time.ParseDuration(d)
+	if err != nil {
+		return d
+	}
+	return strconv.Itoa(int(parsed.Seconds())) + " с"
+}
