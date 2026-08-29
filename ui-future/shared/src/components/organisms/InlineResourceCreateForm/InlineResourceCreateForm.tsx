@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Alert } from "antd";
-import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
 import { api } from "@shared/api/client";
 import { applyFieldDefaults, type ResourceSpec } from "@shared/lib/resource-registry";
@@ -96,11 +96,18 @@ export function InlineResourceCreateForm({
   const mutation = useMutation({
     mutationFn: (item: unknown) => api.create(spec.apiPath, item),
     onSuccess: (resp) => {
-      const id = extractOperationId(resp);
-      if (id) {
-        setPendingOpId(id);
+      // Исходов ТРИ, а не два. Ответ без операции у ресурса, который её
+      // объявил, — не «выполнено синхронно», а нарушение контракта:
+      // подтверждать выполнение нечем. Тот же разбор и то же умолчание, что у
+      // страничной формы (`ResourceCreatePage`); прежний ключ отвечал
+      // `string | null` и закрывал форму как успех.
+      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation !== false);
+      if (resolved.kind === "operation") {
+        setPendingOpId(resolved.opId);
+      } else if (resolved.kind === "violation") {
+        toast.error(`${createActionLabel(spec)}: ${resolved.message}`);
       } else {
-        // Sync-ответ (admin RPC без Operation envelope) — закрываем сразу.
+        // Синхронный ответ ресурсом (admin-RPC без конверта операции).
         invalidate(spec.id, projectId);
         onSuccess?.();
         onCancel();

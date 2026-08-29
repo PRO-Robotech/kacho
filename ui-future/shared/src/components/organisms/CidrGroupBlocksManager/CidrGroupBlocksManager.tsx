@@ -13,6 +13,7 @@
 // (`v4_…` против `ipv4_…`), поэтому пара объявлена здесь, рядом со своим путём
 // глагола, а не взята умолчанием секции: край отбрасывает неизвестный ключ
 // молча, и действие вернуло бы успех, ничего не изменив.
+import { REGISTRY } from "@shared/lib/resource-registry";
 import { CidrTableSection, type CidrBlockFields } from "@shared/components/organisms/CidrTableSection";
 
 const CIDR_GROUPS_API = "/vpc/v1/cidrGroups";
@@ -32,6 +33,7 @@ export function CidrGroupBlocksManager({ cidrGroupId, v4Blocks, v6Blocks }: Prop
         actionPath={(verb) => `${CIDR_GROUPS_API}/${cidrGroupId}:${verb}-cidr-blocks`}
         blockFields={BLOCK_FIELDS}
         invalidateKey="cidr-groups"
+        expectOperation={REGISTRY["cidr-groups"].mutationsReturnOperation !== false}
         kind="v4"
         blocks={v4Blocks}
         title="Префиксы"
@@ -45,6 +47,7 @@ export function CidrGroupBlocksManager({ cidrGroupId, v4Blocks, v6Blocks }: Prop
         actionPath={(verb) => `${CIDR_GROUPS_API}/${cidrGroupId}:${verb}-cidr-blocks`}
         blockFields={BLOCK_FIELDS}
         invalidateKey="cidr-groups"
+        expectOperation={REGISTRY["cidr-groups"].mutationsReturnOperation !== false}
         kind="v6"
         blocks={v6Blocks}
         title="Префиксы"

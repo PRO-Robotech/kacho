@@ -30,7 +30,8 @@ import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { MonoValue } from "@shared/components/atoms/CopyableId/MonoValue";
 import { DeleteDialog } from "@shared/components/molecules/DeleteDialog";
 import { MoveStubDialog } from "@shared/components/molecules/MoveStubDialog";
-import { OperationDialog, extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { OperationDialog } from "@shared/components/molecules/OperationDialog";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import {
   DetailShell,
   DetailSurface,
@@ -174,8 +175,13 @@ export function ResourceDetailPage({
     mutationFn: (verb: string) => api.action(`${spec.apiPath}/${uid}:${verb}`),
     onSuccess: (resp) => {
       setActionErr(null);
-      const id = extractOperationId(resp);
-      if (id) setActionOpId(id);
+      // Действие-глагол отвечает операцией так же, как правка и удаление.
+      // Ответ без неё у ресурса, который её объявил, — нарушение контракта:
+      // оно уходит в ту же строку отказа, что и отказ края, а не читается как
+      // успех (прежний ключ третьего исхода не знал).
+      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation !== false);
+      if (resolved.kind === "operation") setActionOpId(resolved.opId);
+      else if (resolved.kind === "violation") setActionErr(resolved.message);
       else invalidate(spec.id, project?.id);
     },
     onError: (e) => {
