@@ -78,10 +78,11 @@ func TestLastEventIdBecomesTheSubscriptionPosition(t *testing.T) {
 
 	serve(t, h, request("owner=probe", "Last-Event-ID", "cursor-from-browser"))
 
-	position, ok := owner.gotRequest.GetStart().(*subscriptionv1.SubscriptionRequest_Position)
+	got := owner.receivedRequest(t)
+	position, ok := got.GetStart().(*subscriptionv1.SubscriptionRequest_Position)
 	if !ok {
 		t.Fatalf("владелец получил начало %T, ожидалась ВЕТВЬ ПОЗИЦИИ — иначе разрыв соединения "+
-			"начинает поток заново и теряет всё, что произошло за время разрыва", owner.gotRequest.GetStart())
+			"начинает поток заново и теряет всё, что произошло за время разрыва", got.GetStart())
 	}
 	if position.Position != "cursor-from-browser" {
 		t.Errorf("позиция доехала как %q, а браузер назвал \"cursor-from-browser\": "+
@@ -102,9 +103,10 @@ func TestLastEventIdOutranksStartAnchor(t *testing.T) {
 
 	serve(t, h, request("owner=probe&start=beginning", "Last-Event-ID", "cursor-2"))
 
-	position, ok := owner.gotRequest.GetStart().(*subscriptionv1.SubscriptionRequest_Position)
+	got := owner.receivedRequest(t)
+	position, ok := got.GetStart().(*subscriptionv1.SubscriptionRequest_Position)
 	if !ok || position.Position != "cursor-2" {
-		t.Fatalf("владелец получил %v — при названной позиции якорь не применяется", owner.gotRequest.GetStart())
+		t.Fatalf("владелец получил %v — при названной позиции якорь не применяется", got.GetStart())
 	}
 }
 
@@ -121,9 +123,10 @@ func TestStartAnchorReachesTheOwner(t *testing.T) {
 	} {
 		owner := &ownerStub{script: []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)}}
 		serve(t, newHandler(t, owner), request(tc.query))
-		anchor, ok := owner.gotRequest.GetStart().(*subscriptionv1.SubscriptionRequest_Anchor)
+		got := owner.receivedRequest(t)
+		anchor, ok := got.GetStart().(*subscriptionv1.SubscriptionRequest_Anchor)
 		if !ok || anchor.Anchor != tc.want {
-			t.Errorf("%s: владелец получил %v, ожидался якорь %v", tc.query, owner.gotRequest.GetStart(), tc.want)
+			t.Errorf("%s: владелец получил %v, ожидался якорь %v", tc.query, got.GetStart(), tc.want)
 		}
 	}
 }
@@ -137,7 +140,7 @@ func TestStartAnchorReachesTheOwner(t *testing.T) {
 func TestUnsetStartLeavesTheBranchUnchosen(t *testing.T) {
 	owner := &ownerStub{script: []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)}}
 	serve(t, newHandler(t, owner), request("owner=probe"))
-	if start := owner.gotRequest.GetStart(); start != nil {
+	if start := owner.receivedRequest(t).GetStart(); start != nil {
 		t.Errorf("владелец получил начало %v, ожидалась НЕВЫБРАННАЯ ветвь", start)
 	}
 }
@@ -151,7 +154,7 @@ func TestFilterAxesReachTheOwner(t *testing.T) {
 	serve(t, newHandler(t, owner),
 		request("owner=probe&kinds=a&kinds=b&projectId=prj-1&ids=res-1&ids=res-2"))
 
-	got := owner.gotRequest
+	got := owner.receivedRequest(t)
 	if len(got.GetKinds()) != 2 || got.GetKinds()[0] != "a" || got.GetKinds()[1] != "b" {
 		t.Errorf("виды доехали как %v", got.GetKinds())
 	}
@@ -173,10 +176,11 @@ func TestCallerIdentityReachesTheOwner(t *testing.T) {
 	owner := &ownerStub{script: []*subscriptionv1.SubscriptionMessage{openedMessage("p", false)}}
 	serve(t, newHandler(t, owner), request("owner=probe"))
 
-	if got := owner.gotMD.Get(principalmeta.MetaPrincipalID); len(got) != 1 || got[0] != "usr-probe" {
+	md := owner.receivedMD(t)
+	if got := md.Get(principalmeta.MetaPrincipalID); len(got) != 1 || got[0] != "usr-probe" {
 		t.Fatalf("владелец получил идентификатор вызывающего %v, ожидался usr-probe", got)
 	}
-	if got := owner.gotMD.Get(principalmeta.MetaPrincipalType); len(got) != 1 || got[0] != "user" {
+	if got := md.Get(principalmeta.MetaPrincipalType); len(got) != 1 || got[0] != "user" {
 		t.Errorf("владелец получил тип вызывающего %v", got)
 	}
 }

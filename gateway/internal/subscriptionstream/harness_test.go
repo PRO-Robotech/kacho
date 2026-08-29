@@ -58,9 +58,13 @@ type ownerStub struct {
 	// hold — держать поток открытым после сценария, пока не уйдёт вызывающий.
 	hold bool
 
-	// Записанное. Читается пробой ТОЛЬКО после того, как поток закрыт.
-	gotRequest *subscriptionv1.SubscriptionRequest
-	gotMD      metadata.MD
+	// Записанное. Пишется КАЖДЫМ обслуженным потоком, поэтому живёт под замком:
+	// ручка держит несколько потоков одновременно by design — иначе пределы
+	// реплики и субъекта не наблюдаемы вовсе, — и стенд обязан это выдерживать.
+	// Читается через receivedRequest/receivedMD.
+	mu       sync.Mutex
+	requests []*subscriptionv1.SubscriptionRequest
+	mds      []metadata.MD
 	// started закрывается на ПЕРВОМ потоке: стенд обслуживает и второй, и
 	// закрытие канала дважды роняет процесс — то есть проба падала бы не на
 	// своём предмете, а на устройстве стенда.
@@ -72,8 +76,11 @@ func (o *ownerStub) Subscribe(
 	req *subscriptionv1.SubscriptionRequest,
 	stream subscriptionv1.InternalSubscriptionService_SubscribeServer,
 ) error {
-	o.gotRequest = req
-	o.gotMD, _ = metadata.FromIncomingContext(stream.Context())
+	md, _ := metadata.FromIncomingContext(stream.Context())
+	o.mu.Lock()
+	o.requests = append(o.requests, req)
+	o.mds = append(o.mds, md)
+	o.mu.Unlock()
 	if o.started != nil {
 		o.startOnce.Do(func() { close(o.started) })
 	}
@@ -92,6 +99,34 @@ func (o *ownerStub) Subscribe(
 		<-stream.Context().Done()
 	}
 	return nil
+}
+
+// receivedRequest — запрос ЕДИНСТВЕННОГО обслуженного потока.
+//
+// «Взять последний» здесь не годится: при нескольких потоках у поля нет
+// определённого значения, и проба утверждала бы о произвольном из них.
+// Неоднозначность обязана быть падением с числом, а не молчаливым выбором.
+func (o *ownerStub) receivedRequest(t *testing.T) *subscriptionv1.SubscriptionRequest {
+	t.Helper()
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if len(o.requests) != 1 {
+		t.Fatalf("владелец обслужил потоков %d, ожидался ровно один — "+
+			"запрос «того самого» потока не определён", len(o.requests))
+	}
+	return o.requests[0]
+}
+
+// receivedMD — метаданные ЕДИНСТВЕННОГО обслуженного потока; см. receivedRequest.
+func (o *ownerStub) receivedMD(t *testing.T) metadata.MD {
+	t.Helper()
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if len(o.mds) != 1 {
+		t.Fatalf("владелец обслужил потоков %d, ожидался ровно один — "+
+			"метаданные «того самого» потока не определены", len(o.mds))
+	}
+	return o.mds[0]
 }
 
 // dialStub поднимает владельца на bufconn и отдаёт его клиента.
