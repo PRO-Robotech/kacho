@@ -1,52 +1,69 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package main — отдельный binary `kacho-migrator`: CLI управления миграциями
-// схемы БД compute (goose поверх embed `internal/migrations`).
+// Command kacho-migrator — накат миграций схемы БД kacho-compute (goose поверх
+// embed `internal/migrations`). Отдельная точка сборки: serve-бинарь схему не
+// меняет (least-privilege), миграции гоняет одноразовый init-контейнер.
 //
-//	kacho-migrator up      # прокатить все pending-миграции
-//	kacho-migrator down    # откатить последнюю миграцию
-//	kacho-migrator status  # показать применённые/pending
+//	kacho-migrator [--dsn DSN] [--dialect postgres] {up|down|status} [--target VERSION]
 //
-// Отдельная точка сборки (зеркалит kacho-vpc / kacho-iam): serve-binary
-// `kacho-compute` больше НЕ несёт embed-миграции и деструктивный `migrate down`
-// (least-privilege — runtime-образ не может менять схему live-БД). Миграции
-// гоняет отдельный one-shot init-container/Job с этим бинарём.
+// Разбор аргументов — общий на все точки наката прямой формы
+// (`pkg/migratorcli`), и это не украшение: собственный разбор МОЛЧА терял флаг,
+// написанный после подкоманды, поэтому `kacho-migrator up --dsn X` накатывал не
+// на ту базу и выглядел успехом. Поверхность CLI объявлена в
+// docs/architecture/migrator-cli.md, форма самой точки наката — в
+// docs/architecture/migrator-form.md.
 //
-// DSN берётся из того же config.Load() (viper/env), что и serve — одно
-// helm-values задаёт БД-параметры для обоих бинарей.
+// DSN: --dsn > ENV KACHO_MIGRATOR_DSN > конфигурация kacho-compute (KACHO_COMPUTE_*).
 package main
 
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"log"
 	"os"
 
-	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует "pgx" driver для sql.Open
+	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует database/sql-драйвер "pgx"
 	"github.com/pressly/goose/v3"
 
 	"github.com/PRO-Robotech/kacho/pkg/dbready"
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 )
 
-func main() {
-	if len(os.Args) < 2 {
-		log.Fatal("usage: kacho-migrator {up|down|status}")
-	}
-	direction := os.Args[1]
+// binaryName — имя бинаря одно на все семь сервисов; оно стоит в манифестах
+// развёртывания и в текстах отказа, поэтому названо здесь один раз.
+const binaryName = "kacho-migrator"
 
-	cfg, err := config.Load()
+func main() {
+	opts, err := migratorcli.Parse(binaryName, os.Args[1:])
+	if errors.Is(err, migratorcli.ErrHelpRequested) {
+		fmt.Println(migratorcli.Usage(binaryName))
+		return
+	}
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		log.Fatal(err)
+	}
+
+	dsn, err := migratorcli.ResolveDSN(opts.DSN, func() (string, error) {
+		cfg, cerr := config.Load()
+		if cerr != nil {
+			return "", cerr
+		}
+		return cfg.MigrateDSN(), nil
+	})
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	goose.SetBaseFS(migrations.FS)
-	if err := goose.SetDialect("postgres"); err != nil {
+	if err := goose.SetDialect(opts.Dialect); err != nil {
 		log.Fatalf("goose dialect: %v", err)
 	}
-	db, err := sql.Open("pgx", cfg.MigrateDSN())
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		log.Fatalf("open db: %v", err)
 	}
@@ -64,31 +81,51 @@ func main() {
 		log.Fatalf("database connection check failed: %v", err)
 	}
 
-	var gooseErr error
-	switch direction {
-	case "up":
+	if err := run(db, opts); err != nil {
+		log.Fatalf("migrate %s: %v", opts.Command, err)
+	}
+}
+
+// run исполняет разобранную команду. Вынесено из main, чтобы порядок ветвления
+// читался целиком и чтобы `--target` было видно рядом с его отсутствием.
+func run(db *sql.DB, opts migratorcli.Options) error {
+	const dir = "."
+
+	switch opts.Command {
+	case migratorcli.CommandUp:
 		// ПРОПУЩЕННЫЕ МИГРАЦИИ ПРИНИМАЮТСЯ, и это не послабление, а следствие схемы
 		// нумерации. Номер у нас — «задача × 1000 + порядок», и он НЕ хронологичен by
-		// construction: задача закрывается не по порядку номеров, и файл `708001` появляется в
-		// дереве позже, чем `800001`. База, накатившая больший номер раньше, при
-		// обновлении видит «пропущенную миграцию перед текущей версией» и отказывает —
-		// служба не стартует вовсе.
-		//
-		// Замер на момент правки: таких пар в дереве 22, во ВСЕХ семи сервисах.
-		// Конвейер их не видит by construction — он всегда поднимает чистую базу, где
-		// пропущенных нет; воспроизводится только на обновлении развёрнутой.
+		// construction: задача закрывается не по порядку номеров, поэтому файл с
+		// меньшим номером появляется в дереве позже. База, накатившая больший номер
+		// раньше, при обновлении видит «пропущенную миграцию перед текущей версией»
+		// и отказывает — служба не стартует вовсе.
 		//
 		// Приём пропущенной означает ПРИМЕНИТЬ её, а не пропустить; порядок внутри
 		// одной задачи (`NNN001` до `NNN002`) goose сохраняет независимо от опции.
-		gooseErr = goose.Up(db, ".", goose.WithAllowMissing())
-	case "down":
-		gooseErr = goose.Down(db, ".")
-	case "status":
-		gooseErr = goose.Status(db, ".")
-	default:
-		log.Fatalf("unknown command %q (usage: kacho-migrator {up|down|status})", direction)
+		if opts.Target == "" {
+			return goose.Up(db, dir, goose.WithAllowMissing())
+		}
+		version, err := migratorcli.ParseTargetVersion(opts.Target)
+		if err != nil {
+			return err
+		}
+		return goose.UpTo(db, dir, version, goose.WithAllowMissing())
+
+	case migratorcli.CommandDown:
+		if opts.Target == "" {
+			return goose.Down(db, dir)
+		}
+		version, err := migratorcli.ParseTargetVersion(opts.Target)
+		if err != nil {
+			return err
+		}
+		return goose.DownTo(db, dir, version)
+
+	case migratorcli.CommandStatus:
+		return goose.Status(db, dir)
 	}
-	if gooseErr != nil {
-		log.Fatalf("migrate %s: %v", direction, gooseErr)
-	}
+	// Недостижимо: перечень подкоманд закрыт разбором. Ветка существует, чтобы
+	// расширение перечня не проходило молча — молчаливый успех на неизвестной
+	// команде и есть тот класс, ради которого задача заведена.
+	return fmt.Errorf("unhandled command %q", opts.Command)
 }

@@ -1,20 +1,27 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Command kacho-migrator — раннер DB-миграций kacho-storage (схема kacho_storage).
-// Отдельный бинарь от API-сервера; запускается deploy-init-контейнером до старта
-// основного pod.
+// Command kacho-migrator — накат миграций схемы БД kacho-storage (goose поверх
+// embed `internal/migrations`). Отдельная точка сборки: serve-бинарь схему не
+// меняет (least-privilege), миграции гоняет одноразовый init-контейнер.
 //
-//	kacho-migrator up|down|status
+//	kacho-migrator [--dsn DSN] [--dialect postgres] {up|down|status} [--target VERSION]
 //
-// DSN: флаг --dsn, иначе KACHO_MIGRATOR_DSN, иначе config kacho-storage
-// (KACHO_STORAGE_*).
+// Разбор аргументов — общий на все точки наката прямой формы
+// (`pkg/migratorcli`), и это не украшение: собственный разбор МОЛЧА терял флаг,
+// написанный после подкоманды, поэтому `kacho-migrator up --dsn X` накатывал не
+// на ту базу и выглядел успехом. Поверхность CLI объявлена в
+// docs/architecture/migrator-cli.md, форма самой точки наката — в
+// docs/architecture/migrator-form.md.
+//
+// DSN: --dsn > ENV KACHO_MIGRATOR_DSN > конфигурация kacho-storage (KACHO_STORAGE_*).
 package main
 
 import (
 	"context"
 	"database/sql"
-	"flag"
+	"errors"
+	"fmt"
 	"log"
 	"os"
 
@@ -22,31 +29,45 @@ import (
 	"github.com/pressly/goose/v3"
 
 	"github.com/PRO-Robotech/kacho/pkg/dbready"
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/migrations"
 )
 
+// binaryName — имя бинаря одно на все семь сервисов; оно стоит в манифестах
+// развёртывания и в текстах отказа, поэтому названо здесь один раз.
+const binaryName = "kacho-migrator"
+
 func main() {
-	dsnFlag := flag.String("dsn", "", "database DSN (else KACHO_MIGRATOR_DSN, else KACHO_STORAGE_* config)")
-	flag.Parse()
-
-	args := flag.Args()
-	if len(args) < 1 {
-		log.Fatal("usage: kacho-migrator [--dsn <dsn>] {up|down|status}")
+	opts, err := migratorcli.Parse(binaryName, os.Args[1:])
+	if errors.Is(err, migratorcli.ErrHelpRequested) {
+		fmt.Println(migratorcli.Usage(binaryName))
+		return
 	}
-	direction := args[0]
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	dsn := resolveDSN(*dsnFlag)
+	dsn, err := migratorcli.ResolveDSN(opts.DSN, func() (string, error) {
+		cfg, cerr := config.Load()
+		if cerr != nil {
+			return "", cerr
+		}
+		return cfg.MigrateDSN(), nil
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	goose.SetBaseFS(migrations.FS)
-	if err := goose.SetDialect("postgres"); err != nil {
+	if err := goose.SetDialect(opts.Dialect); err != nil {
 		log.Fatalf("goose dialect: %v", err)
 	}
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		log.Fatalf("open db: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Барьер готовности PG. sql.Open ЛЕНИВ (не дозванивается до сервера), поэтому
 	// гонка init-контейнера с подом Postgres проявлялась не здесь, а ниже — на
@@ -60,46 +81,51 @@ func main() {
 		log.Fatalf("database connection check failed: %v", err)
 	}
 
-	var gerr error
-	switch direction {
-	case "up":
-		// ПРОПУЩЕННЫЕ МИГРАЦИИ ПРИНИМАЮТСЯ, и это не послабление, а следствие схемы
-		// нумерации. Номер у нас — «задача × 1000 + порядок», и он НЕ хронологичен by
-		// construction: задача #708 закрывается после #800, файл `708001` появляется в
-		// дереве позже, чем `800001`. База, накатившая больший номер раньше, при
-		// обновлении видит «пропущенную миграцию перед текущей версией» и отказывает —
-		// служба не стартует вовсе.
-		//
-		// Замер на момент правки: таких пар в дереве 22, во ВСЕХ семи сервисах.
-		// Конвейер их не видит by construction — он всегда поднимает чистую базу, где
-		// пропущенных нет; воспроизводится только на обновлении развёрнутой (#1012).
-		//
-		// Приём пропущенной означает ПРИМЕНИТЬ её, а не пропустить; порядок внутри
-		// одной задачи (`NNN001` до `NNN002`) goose сохраняет независимо от опции.
-		gerr = goose.Up(db, ".", goose.WithAllowMissing())
-	case "down":
-		gerr = goose.Down(db, ".")
-	case "status":
-		gerr = goose.Status(db, ".")
-	default:
-		log.Fatalf("unknown migrate direction: %s (up|down|status)", direction)
-	}
-	if gerr != nil {
-		log.Fatalf("migrate %s: %v", direction, gerr)
+	if err := run(db, opts); err != nil {
+		log.Fatalf("migrate %s: %v", opts.Command, err)
 	}
 }
 
-// resolveDSN выбирает DSN: флаг --dsn > env KACHO_MIGRATOR_DSN > config kacho-storage.
-func resolveDSN(flagDSN string) string {
-	if flagDSN != "" {
-		return flagDSN
+// run исполняет разобранную команду. Вынесено из main, чтобы порядок ветвления
+// читался целиком и чтобы `--target` было видно рядом с его отсутствием.
+func run(db *sql.DB, opts migratorcli.Options) error {
+	const dir = "."
+
+	switch opts.Command {
+	case migratorcli.CommandUp:
+		// ПРОПУЩЕННЫЕ МИГРАЦИИ ПРИНИМАЮТСЯ, и это не послабление, а следствие схемы
+		// нумерации. Номер у нас — «задача × 1000 + порядок», и он НЕ хронологичен by
+		// construction: задача закрывается не по порядку номеров, поэтому файл с
+		// меньшим номером появляется в дереве позже. База, накатившая больший номер
+		// раньше, при обновлении видит «пропущенную миграцию перед текущей версией»
+		// и отказывает — служба не стартует вовсе.
+		//
+		// Приём пропущенной означает ПРИМЕНИТЬ её, а не пропустить; порядок внутри
+		// одной задачи (`NNN001` до `NNN002`) goose сохраняет независимо от опции.
+		if opts.Target == "" {
+			return goose.Up(db, dir, goose.WithAllowMissing())
+		}
+		version, err := migratorcli.ParseTargetVersion(opts.Target)
+		if err != nil {
+			return err
+		}
+		return goose.UpTo(db, dir, version, goose.WithAllowMissing())
+
+	case migratorcli.CommandDown:
+		if opts.Target == "" {
+			return goose.Down(db, dir)
+		}
+		version, err := migratorcli.ParseTargetVersion(opts.Target)
+		if err != nil {
+			return err
+		}
+		return goose.DownTo(db, dir, version)
+
+	case migratorcli.CommandStatus:
+		return goose.Status(db, dir)
 	}
-	if env := os.Getenv("KACHO_MIGRATOR_DSN"); env != "" {
-		return env
-	}
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf("config (for DSN): %v", err)
-	}
-	return cfg.MigrateDSN()
+	// Недостижимо: перечень подкоманд закрыт разбором. Ветка существует, чтобы
+	// расширение перечня не проходило молча — молчаливый успех на неизвестной
+	// команде и есть тот класс, ради которого задача заведена.
+	return fmt.Errorf("unhandled command %q", opts.Command)
 }
