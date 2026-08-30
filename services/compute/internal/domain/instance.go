@@ -142,9 +142,14 @@ type MaterializedVolume struct {
 	VolumeTypeID string `json:"volume_type_id,omitempty"`
 }
 
-// BootSource — единый вход ОС (COMP-1 F3). На входе — только Type/ID (+ImageKind
-// роутинг); Name/ResolvedDigest/MaterializedVolume — output-only (resolve/materialize
-// сага COMP-2). tag/digest живут ВНУТРИ ID.
+// BootSource — единый вход ОС (COMP-1 F3). На входе принимаются ТОЛЬКО Type/ID;
+// Name/ResolvedDigest/MaterializedVolume/ImageKind — output-only и на входе
+// отвергаются (resolve/materialize сага COMP-2). tag/digest живут ВНУТРИ ID.
+//
+// ImageKind стоит в этом перечне четвёртым намеренно: прежняя редакция называла
+// его входом («+ImageKind роутинг»), тогда как значение выводит сервер из Type
+// (imageKindFor), а присланное отвергается синхронно. Два места об одном поле
+// расходились, и верным было второе — то, которое исполняется.
 type BootSource struct {
 	Type               string              `json:"type"`
 	ID                 string              `json:"id"`

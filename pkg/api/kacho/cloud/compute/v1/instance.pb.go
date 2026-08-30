@@ -855,8 +855,10 @@ func (*Instance_VmSpec) isInstance_Spec() {}
 func (*Instance_ContainerSpec) isInstance_Spec() {}
 
 // BootSource — the single OS entry (F3, B13). On INPUT only {type,id} are accepted;
-// name°/resolved_digest°/materialized_volume° are output-only (the resolve/materialize
-// saga is COMP-2). tag/digest live INSIDE id (one grammar for all inputs).
+// name°/resolved_digest°/materialized_volume°/image_kind° are output-only (the
+// resolve/materialize saga is COMP-2). tag/digest live INSIDE id (one grammar for
+// all inputs). A request that sets any of the four is refused synchronously with
+// INVALID_ARGUMENT naming all four — accepted-and-ignored is not a lawful outcome.
 type BootSource struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Owner discriminator: "storage.image" (OS/disk image, VM) or "registry.image"
@@ -872,7 +874,12 @@ type BootSource struct {
 	// Output-only materialized boot Volume (filled by the boot-Volume saga, COMP-2).
 	// Absent by construction for CONTAINER (ephemeral rootfs).
 	MaterializedVolume *MaterializedVolume `protobuf:"bytes,5,opt,name=materialized_volume,json=materializedVolume,proto3" json:"materialized_volume,omitempty"`
-	// Form-only imageKind discriminator (B13): storage.image vs registry.image.
+	// Output-only imageKind discriminator (B13): storage.image vs registry.image.
+	// DERIVED BY THE SERVER from `type`; NOT ACCEPTED ON INPUT — a set value is
+	// refused with INVALID_ARGUMENT. The marker is spelled out because the enum
+	// below publishes a value dictionary, which reads like an input: a caller who
+	// filled it in got a refusal that named the other three output-only fields and
+	// stayed silent about this one, so removing what the text named changed nothing.
 	ImageKind     ImageKind `protobuf:"varint,6,opt,name=image_kind,json=imageKind,proto3,enum=kacho.cloud.compute.v1.ImageKind" json:"image_kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
