@@ -29,6 +29,8 @@
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+import { mountsDisplay } from "../../../test/toaster-mount";
+
 /**
  * Корень консоли ищется ВВЕРХ от рабочего каталога, а не собирается из `__dirname`:
  * суита исполняется как ESM, где `__dirname` не определён, и прогон падал бы
@@ -39,12 +41,18 @@ import { dirname, join } from "node:path";
 function findUiRoot(): string {
   let dir = process.cwd();
   for (let i = 0; i < 6; i++) {
-    if (existsSync(join(dir, "shared", "src")) && existsSync(join(dir, "vpc", "src"))) return dir;
+    if (
+      existsSync(join(dir, "shared", "src")) &&
+      existsSync(join(dir, "vpc", "src"))
+    )
+      return dir;
     const up = dirname(dir);
     if (up === dir) break;
     dir = up;
   }
-  throw new Error(`корень консоли не найден вверх от ${process.cwd()} — проба не знает, что читать`);
+  throw new Error(
+    `корень консоли не найден вверх от ${process.cwd()} — проба не знает, что читать`,
+  );
 }
 
 const UI_ROOT = findUiRoot();
@@ -52,7 +60,15 @@ const UI_ROOT = findUiRoot();
 /**
  * Модули, которые мутируют и потому обязаны показывать сигнал.
  */
-const MUTATING_MODULES = ["vpc", "iam", "compute", "storage", "nlb", "registry", "system"] as const;
+const MUTATING_MODULES = [
+  "vpc",
+  "iam",
+  "compute",
+  "storage",
+  "nlb",
+  "registry",
+  "system",
+] as const;
 
 /**
  * Модули, показа НЕ несущие, — и это решение, а не пропуск: они собираются из
@@ -91,9 +107,21 @@ function sourceFilesOf(module: string): string[] {
   return out;
 }
 
-/** Рендерится ли `<Toaster` хотя бы в одном не-тестовом исходнике модуля. */
+/**
+ * Монтирует ли модуль показ хотя бы в одном не-тестовом исходнике.
+ *
+ * Решение принимает разбор (`mountsDisplay`), а не вхождение подстроки. Прежде
+ * здесь стояло `includes("<Toaster")`, и оно засчитывало сразу три вещи, показом
+ * не являющиеся: соседа с похожим именем, упоминание в комментарии и строковый
+ * литерал. Слепота эта тихая — она не даёт ни красного, ни зелёного, она молчит:
+ * сними показ, переименовав его в `<ToasterDISABLED`, и проба не заметит.
+ * Способность распознавателя различать эти случаи доказана инъекцией по каждой
+ * оси в `Toaster.mounted.injection.test.ts`.
+ */
 function rendersToaster(module: string): boolean {
-  return sourceFilesOf(module).some((f) => readFileSync(f, "utf8").includes("<Toaster"));
+  return sourceFilesOf(module).some((f) =>
+    mountsDisplay(f, readFileSync(f, "utf8")),
+  );
 }
 
 describe("показ уведомлений примонтирован в каждом мутирующем модуле", () => {
@@ -139,7 +167,10 @@ describe("показ уведомлений примонтирован в каж
    * решение принято по каждому: покажется показ у любого из них, и красное
    * назовёт, у кого именно, вместо общего «что-то изменилось».
    */
-  it.each([...NON_MUTATING_MODULES])("%s показа не несёт — иначе его место в перечне кончилось", (module) => {
-    expect(rendersToaster(module)).toBe(false);
-  });
+  it.each([...NON_MUTATING_MODULES])(
+    "%s показа не несёт — иначе его место в перечне кончилось",
+    (module) => {
+      expect(rendersToaster(module)).toBe(false);
+    },
+  );
 });
