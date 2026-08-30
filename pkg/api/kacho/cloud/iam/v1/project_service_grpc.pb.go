@@ -56,8 +56,29 @@ type ProjectServiceClient interface {
 	// Updates the specified project.
 	Update(ctx context.Context, in *UpdateProjectRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Deletes the specified project.
-	// Project still referenced by resources of other services (Network/Instance/...) — semantics
-	// ограничены: cross-service refcheck появится позже; Delete лишь удаляет row.
+	//
+	// NOT BLOCKED BY LIVE RESOURCES, and this is a consequence for the caller, not
+	// a detail of our implementation. Unlike Network.Delete — which refuses a
+	// non-empty network and lists what blocks it — this verb performs NO reference
+	// check across services. After it succeeds:
+	//
+	//   - resources of other services (Network, Instance, Volume, ...) keep
+	//     existing and keep consuming limits — there is no cross-service cascade;
+	//   - no NEW resource can be created in the project: consumers validate
+	//     project_id against IAM on the create path, and the id stops resolving;
+	//   - every access binding scoped to the project is revoked in the same
+	//     transaction as the row removal;
+	//   - there is no supported way left to enumerate what remains: the List verbs
+	//     of the owning services require project_id, and ProjectService.List no
+	//     longer returns this project.
+	//
+	// So: delete the project LAST. Remove the resources it holds first, or record
+	// their ids beforehand.
+	//
+	// Blocking a non-empty project is decided and specified — the live tally must
+	// reach IAM from the resource owners, because IAM is a leaf of the call graph
+	// and may not call them back. See docs/architecture/project-deletion-and-live-resources.md
+	// and PRO-Robotech/kacho#1594.
 	Delete(ctx context.Context, in *DeleteProjectRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Lists operations for the specified project.
 	ListOperations(ctx context.Context, in *ListProjectOperationsRequest, opts ...grpc.CallOption) (*ListProjectOperationsResponse, error)
@@ -156,8 +177,29 @@ type ProjectServiceServer interface {
 	// Updates the specified project.
 	Update(context.Context, *UpdateProjectRequest) (*operation.Operation, error)
 	// Deletes the specified project.
-	// Project still referenced by resources of other services (Network/Instance/...) — semantics
-	// ограничены: cross-service refcheck появится позже; Delete лишь удаляет row.
+	//
+	// NOT BLOCKED BY LIVE RESOURCES, and this is a consequence for the caller, not
+	// a detail of our implementation. Unlike Network.Delete — which refuses a
+	// non-empty network and lists what blocks it — this verb performs NO reference
+	// check across services. After it succeeds:
+	//
+	//   - resources of other services (Network, Instance, Volume, ...) keep
+	//     existing and keep consuming limits — there is no cross-service cascade;
+	//   - no NEW resource can be created in the project: consumers validate
+	//     project_id against IAM on the create path, and the id stops resolving;
+	//   - every access binding scoped to the project is revoked in the same
+	//     transaction as the row removal;
+	//   - there is no supported way left to enumerate what remains: the List verbs
+	//     of the owning services require project_id, and ProjectService.List no
+	//     longer returns this project.
+	//
+	// So: delete the project LAST. Remove the resources it holds first, or record
+	// their ids beforehand.
+	//
+	// Blocking a non-empty project is decided and specified — the live tally must
+	// reach IAM from the resource owners, because IAM is a leaf of the call graph
+	// and may not call them back. See docs/architecture/project-deletion-and-live-resources.md
+	// and PRO-Robotech/kacho#1594.
 	Delete(context.Context, *DeleteProjectRequest) (*operation.Operation, error)
 	// Lists operations for the specified project.
 	ListOperations(context.Context, *ListProjectOperationsRequest) (*ListProjectOperationsResponse, error)
