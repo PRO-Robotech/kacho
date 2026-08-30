@@ -16,7 +16,7 @@ import { MoveStubDialog } from "@shared/components/molecules/MoveStubDialog";
 import { RowVerbDialog } from "@shared/components/molecules/RowActionsMenu/RowVerbDialog";
 import { useSelfUserId } from "@shared/contexts/AuthContext";
 import { useContext } from "@shared/lib/context-store";
-import { getByPath, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { getByPath, mutationBasePath, REGISTRY, type ResourceSpec } from "@shared/lib/resource-registry";
 
 interface Props {
   spec: ResourceSpec;
@@ -42,7 +42,7 @@ interface Props {
  * file. One closed list means a resource cannot be movable in one app and not in
  * another.
  */
-const MOVE_INCAPABLE = [
+export const MOVE_INCAPABLE = [
   "accounts",
   "projects",
   // Пользователь — членство в аккаунте, а не проектный ресурс: глагола
@@ -64,6 +64,49 @@ const MOVE_INCAPABLE = [
   "repositories",
   "tags",
 ];
+
+/**
+ * Адреса коллекций, у которых глагола перемещения нет, — ВЫВЕДЕНЫ из перечня
+ * выше, а не выписаны вторым списком.
+ *
+ * Перечень назван именами ресурсов, потому что читать его так и надо; решается
+ * же по нему вопрос о ДОМЕННОМ ОБЪЕКТЕ — «есть ли у ЭТОЙ коллекции такой глагол
+ * на крае». Одно и то же не всегда представлено в реестре один раз: у каталога
+ * размещения geo записей две — каноническая (`regions`/`zones`, admin-CRUD) и
+ * читающая (`compute-regions`/`compute-zones`, на неё ссылаются подборщики), обе
+ * адресуют один и тот же публичный путь. Ключуясь идентификатором спеки,
+ * решение о ПРЕДМЕТЕ принималось по имени одного из двух его представлений — и
+ * второе обходило его целиком (#1532).
+ *
+ * Второй список путей завести было бы дешевле и хуже: он разошёлся бы с реестром
+ * молча при первой же смене пути. Здесь источник один — сам реестр.
+ *
+ * Вычисляется ЛЕНИВО. На верхнем уровне модуля это значило бы читать `REGISTRY`
+ * в момент разбора импортов; сегодня цикла нет (реестр про меню не знает), но
+ * отказ при его появлении был бы не находкой, а падением всей консоли на старте.
+ */
+let moveIncapablePaths: ReadonlySet<string> | null = null;
+function moveIncapableApiPaths(): ReadonlySet<string> {
+  if (moveIncapablePaths === null) {
+    moveIncapablePaths = new Set(
+      MOVE_INCAPABLE.map((id) => REGISTRY[id]?.apiPath).filter((path): path is string => path !== undefined),
+    );
+  }
+  return moveIncapablePaths;
+}
+
+/**
+ * Есть ли у ресурса глагол перемещения.
+ *
+ * Спрашивается о доменном объекте — по адресу его коллекции. Идентификатор
+ * спеки остаётся вторым слагаемым: запись перечня, которой сегодня не отвечает
+ * ни одна спека, не должна молча превращаться в разрешение. Что такой записи в
+ * перечне быть не должно вовсе, держит отдельным утверждением
+ * `moveCapable.test.ts` — исключение обязано истекать вместе со своим предметом.
+ */
+export function resourceIsMoveCapable(spec: ResourceSpec): boolean {
+  return !MOVE_INCAPABLE.includes(spec.id) && !moveIncapableApiPaths().has(spec.apiPath);
+}
 
 /**
  * Сколько у ресурса НАСТОЯЩИХ действий строки?
@@ -201,7 +244,7 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
   const isDefaultSg = spec.id === "security-groups" && Boolean(getByPath<boolean>(row, "default_for_network"));
   const showDelete = spec.ops.delete && !isDefaultSg;
 
-  const moveCapable = !MOVE_INCAPABLE.includes(spec.id);
+  const moveCapable = resourceIsMoveCapable(spec);
 
   const isNetwork = spec.id === "networks";
   const currentProjectId = params.projectId ?? projectId ?? null;

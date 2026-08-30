@@ -704,18 +704,15 @@ has_npm_script() { # has_npm_script <каталог> <скрипт>
 #
 # Перечень членов берётся из корневого package.json: выписанный список разошёлся
 # бы с деревом молча, как уже расходились три рукописных перечня репозиториев.
+#
+# ПРЕДИКАТ ЖИВЁТ В ОДНОМ МЕСТЕ — `ui-future/scripts/deps-ready.mjs`. Здесь стояла
+# его вторая копия на bash, и вторая она была не для красоты: тот же вопрос
+# задаёт `pretest` каждого пакета консоли, чтобы прямой `npm test` отвечал
+# «условие не создано», а не `MODULE_NOT_FOUND`, неотличимым от красного. Две
+# копии разошлись бы молча и именно там, где расхождение не видно: оба ответа
+# выглядят правдоподобно, а неверный объявляет готовым то, что не готово.
 npm_deps_ready() { # npm_deps_ready <каталог модуля>
-    local dir="$1" name root
-    name="$(basename "$dir")"
-    root="$ROOT/ui-future"
-    if node -e '
-        const ws = (require(process.argv[1]).workspaces) || [];
-        process.exit(ws.includes(process.argv[2]) ? 0 : 1)
-    ' "$root/package.json" "$name" 2> /dev/null; then
-        [ -d "$root/node_modules" ]
-    else
-        [ -d "$dir/node_modules" ]
-    fi
+    node "$ROOT/ui-future/scripts/deps-ready.mjs" "$1" > /dev/null 2>&1
 }
 
 # ui_types_group — ТОЛЬКО проверка типов консоли, без проб и сборки.
