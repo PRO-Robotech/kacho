@@ -101,8 +101,10 @@ flowchart LR
 
 В production сервис отказывается стартовать без секьюрной конфигурации:
 
-- **Control-plane**: без breakglass — per-RPC authz `Check` (адрес IAM) **и** mTLS на **обоих**
-  gRPC-listener'ах (`:9090`/`:9091`) обязательны, иначе процесс не поднимается.
+- **Control-plane**: per-RPC authz `Check` (адрес IAM) **и** mTLS на **обоих** gRPC-listener'ах
+  (`:9090`/`:9091`) обязательны, иначе процесс не поднимается. Обхода в боевом режиме нет:
+  `KACHO_REGISTRY_AUTHZ_BREAKGLASS=true` здесь сам по себе отказывает в старте (он работает только
+  при `AUTH_MODE=dev`).
 - **Data-plane**: при `AUTH_MODE=production[-strict]` обязательны https-JWKS URL, pinned issuer и
   подтверждённая внешняя TLS-терминация — иначе старт отклоняется (bearer identity-JWT не должны
   транзитить открытым текстом).
