@@ -114,7 +114,7 @@ function edgeServes(spec: ResourceSpec, verb: Verb): boolean {
   return routes.get("delete")!.has(item);
 }
 
-const specs = Object.entries(REGISTRY as Record<string, ResourceSpec>);
+const specs = Object.entries(REGISTRY);
 /** Спеки, чей адрес вообще встречается в контрактах, — только они и судятся. */
 const matched = specs.filter(([, s]) =>
   (["create", "update", "delete"] as Verb[]).some((v) => edgeServes(s, v)),
@@ -133,7 +133,7 @@ const gaps: Gap[] = matched
   .filter((g) => g.verbs.length > 0);
 
 const unexplained = gaps.filter(
-  ({ id }) => ((REGISTRY as Record<string, ResourceSpec>)[id].mutationsNotOffered ?? "").trim().length === 0,
+  ({ id }) => ((REGISTRY)[id].mutationsNotOffered ?? "").trim().length === 0,
 );
 
 process.stdout.write(
@@ -165,7 +165,7 @@ describe("«консоль не даёт» объявлено, а не умол�
   it("сравнение адресов работает — контроль на известной паре", () => {
     // Без этого контроля отрицание выше зеленело бы на сломанном сравнении:
     // «пар не найдено» верно и тогда, когда не найдено НИЧЕГО.
-    const network = (REGISTRY as Record<string, ResourceSpec>).networks;
+    const network = (REGISTRY).networks;
     expect(edgeServes(network, "create")).toBe(true);
     expect(edgeServes(network, "update")).toBe(true);
     expect(edgeServes(network, "delete")).toBe(true);
@@ -178,7 +178,7 @@ describe("«консоль не даёт» объявлено, а не умол�
     // Предпосылка: адрес репозитория ДОЛЖЕН находиться в контракте. Разойдись
     // он — гейт перестал бы судить ровно тот ресурс, ради которого заведён, и
     // остался бы зелёным.
-    const repositories = (REGISTRY as Record<string, ResourceSpec>).repositories;
+    const repositories = (REGISTRY).repositories;
     expect(edgeServes(repositories, "create")).toBe(true);
     expect(edgeServes(repositories, "update")).toBe(true);
     expect(edgeServes(repositories, "delete")).toBe(true);

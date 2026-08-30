@@ -473,7 +473,11 @@ func TestIntegration_CallerSuppliedSets_Bounded(t *testing.T) {
 	addUC := subnetapp.NewAddCidrBlocksUseCase(r, or)
 	_, err = addUC.Execute(ctx, subID, tooManyCidrs, nil)
 	require.Error(t, err, "набор диапазонов сверх потолка обязан быть отвергнут синхронно")
-	assert.Equal(t, "v4_cidr_blocks", badRequestField(t, err))
+	// Имя поля — то, которое клиент НАПИСАЛ в теле: страницы объявляют camelCase,
+	// а `v4_cidr_blocks` — имя доменного поля, которого нет ни в одном сообщении
+	// контракта. Проба ждала именно его и тем закрепляла отказ, называвший поле,
+	// которого отправитель не посылал; предмет стережётся прежний — синхронность.
+	assert.Equal(t, "ipv4CidrBlocks", badRequestField(t, err))
 
 	// База держит тот же потолок независимо от пути записи: создаём законный
 	// интерфейс и пробуем записать набор сверх потолка напрямую.

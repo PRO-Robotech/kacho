@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 import { GUEST_ACCESS_KEY_FIELDS } from "@shared/lib/guest-access-key-form";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import type { FormField } from "@shared/lib/form-schema";
-import type { ResourceSpec } from "@shared/lib/resource-spec";
 
 /**
  * Гейт: ФОРМА ИМЕНИ, ОБЪЯВЛЕННАЯ ФОРМОЙ СОЗДАНИЯ, — ЭТО ФОРМА ПЛАТФОРМЫ.
@@ -152,7 +151,7 @@ function nameFieldsOf(fields: readonly FormField[] | undefined, where: string, s
  */
 function allNameFields(): NameFieldSite[] {
   const sites: NameFieldSite[] = [];
-  for (const [id, spec] of Object.entries(REGISTRY as Record<string, ResourceSpec>)) {
+  for (const [id, spec] of Object.entries(REGISTRY)) {
     nameFieldsOf(spec.fields, `реестр ресурсов, спека «${id}»`, sites, id);
   }
   nameFieldsOf(GUEST_ACCESS_KEY_FIELDS, "форма гостевого ключа доступа", sites);
@@ -169,7 +168,7 @@ function allNameFields(): NameFieldSite[] {
  */
 function allNameSites(): NameFieldSite[] {
   const sites: NameFieldSite[] = [];
-  for (const [id, spec] of Object.entries(REGISTRY as Record<string, ResourceSpec>)) {
+  for (const [id, spec] of Object.entries(REGISTRY)) {
     nameFieldsOf(spec.fields, `реестр ресурсов, спека «${id}»`, sites, id);
   }
   return sites;

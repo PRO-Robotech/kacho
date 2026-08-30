@@ -4,7 +4,6 @@
 import { IRREVERSIBLE_DELETE, requiresNameConfirm } from "@shared/components/molecules/DeleteDialog";
 import { hasDependencyResolver } from "@shared/lib/dependency-graph";
 import { REGISTRY } from "@shared/lib/resource-registry";
-import type { ResourceSpec } from "@shared/lib/resource-spec";
 
 /**
  * Гейт: ТЯЖЕСТЬ ПОДТВЕРЖДЕНИЯ РАСТЁТ ВМЕСТЕ С НЕОБРАТИМОСТЬЮ (#1606).
@@ -48,7 +47,7 @@ import type { ResourceSpec } from "@shared/lib/resource-spec";
  * которому нечего терять.
  */
 
-const specs = REGISTRY as Record<string, ResourceSpec>;
+const specs = REGISTRY;
 
 /** Ресурсы, чьё удаление край отклоняет, пока есть дети (дерево зависимостей). */
 const restrictProtected = Object.keys(specs).filter((id) => hasDependencyResolver(id));

@@ -386,8 +386,10 @@ CIDR — используйте `:add-cidr-blocks` / `:remove-cidr-blocks`.
 Изменяет mutable-поля подсети (`name`, `description`, `labels`, `route_table_id`).
 Поля `network_id`, `placement_type`, `zone_id`, `region_id` —
 hard-immutable (явно в `update_mask` → `InvalidArgument "<field> is immutable after
-Диапазоны (`ipv4CidrPrimary`, `ipv6CidrPrimary`, `ipv4CidrBlocks`, `ipv6CidrBlocks`)
-названные в `updateMask` — тоже `InvalidArgument "<field> is immutable after
+Subnet.Create"`).
+
+Диапазоны (`ipv4CidrPrimary`, `ipv6CidrPrimary`, `ipv4CidrBlocks`, `ipv6CidrBlocks`),
+названные в `updateMask`, — тоже `InvalidArgument "<field> is immutable after
 Subnet.Create"`: набор меняется только парой `:add-cidr-blocks` / `:remove-cidr-blocks`.
 
 #### Тело запроса

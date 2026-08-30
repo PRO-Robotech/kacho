@@ -7,7 +7,23 @@
 // A 403, by contrast, is unambiguous and must stay a 403.
 
 import { ApiError } from "@shared/api/client";
-import { NOT_FOUND_IS_AMBIGUOUS, presentError } from "./error-presentation";
+import { NOT_FOUND_IS_AMBIGUOUS, presentError, QUOTA_SHOWCASE_HINT, errorText  } from "./error-presentation";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ОТКАЗ ПО ПРЕДЕЛУ (#1605)
+//
+// Отказ по исчерпанию предела попадал в общую ветку «прочий 4xx»: заголовок
+// «Внимание» и английская строка производителя дословно — `project prj-1 has
+// reached its limit of 5 vpc.network`. Вид назван машинным именем, кто задаёт
+// величины — не сказано, куда идти — не сказано. Следующего шага у клиента не
+// оставалось.
+//
+// ПОЧЕМУ КЛЮЧ — ТОКЕН ПРИЗНАКА, А НЕ HTTP-СТАТУС. Полос две, и они приходят
+// РАЗНЫМИ статусами: «место кончилось» — `RESOURCE_EXHAUSTED` (429), «потолок не
+// назван вовсе» — `FAILED_PRECONDITION` (400). Ключ по 429 потерял бы вторую
+// полосу целиком, а она и есть та, где действие администратора другое: не
+// поднять предел, а завести его.
+import { QUOTA_VALUES_SET_BY } from "./quota-view";
 
 describe("presentError", () => {
   it("keeps the backend message verbatim (it is the contract tone)", () => {
@@ -90,23 +106,6 @@ describe("отказ в правах не цитирует внутреннюю 
     expect(presentError(new ApiError(404, 5, null, "Network net-1 not found")).title).toBe("Не найдено");
   });
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ОТКАЗ ПО ПРЕДЕЛУ (#1605)
-//
-// Отказ по исчерпанию предела попадал в общую ветку «прочий 4xx»: заголовок
-// «Внимание» и английская строка производителя дословно — `project prj-1 has
-// reached its limit of 5 vpc.network`. Вид назван машинным именем, кто задаёт
-// величины — не сказано, куда идти — не сказано. Следующего шага у клиента не
-// оставалось.
-//
-// ПОЧЕМУ КЛЮЧ — ТОКЕН ПРИЗНАКА, А НЕ HTTP-СТАТУС. Полос две, и они приходят
-// РАЗНЫМИ статусами: «место кончилось» — `RESOURCE_EXHAUSTED` (429), «потолок не
-// назван вовсе» — `FAILED_PRECONDITION` (400). Ключ по 429 потерял бы вторую
-// полосу целиком, а она и есть та, где действие администратора другое: не
-// поднять предел, а завести его.
-import { QUOTA_VALUES_SET_BY } from "./quota-view";
-import { QUOTA_SHOWCASE_HINT, errorText } from "./error-presentation";
 
 /** Тело отказа в том виде, в каком его собирает край из `google.rpc.Status`. */
 function quotaDetails(reason: string, metadata?: Record<string, string>) {
