@@ -230,7 +230,9 @@ func validateSubnetCidrCardinality(field string, cidrs []string) error {
 }
 
 // checkCIDRDisjoint — sync-проверка, что массив CIDR не содержит пересекающихся.
-// fieldPrefix — имя поля для error-сообщений (например "v4_cidr_blocks").
+// fieldPrefix — имя поля КОНТРАКТА для error-сообщений; приезжает от глагола
+// (`cidr_fields.go`), а не выписывается здесь: у `Create` это `ipv4CidrPrimary`,
+// у `:addCidrBlocks` — `ipv4CidrBlocks`.
 func checkCIDRDisjoint(fieldPrefix string, cidrs []string) error {
 	prefixes := make([]netip.Prefix, 0, len(cidrs))
 	for i, c := range cidrs {

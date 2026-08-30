@@ -4,7 +4,6 @@
 package subnet
 
 import (
-	"fmt"
 	"net/netip"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
@@ -41,9 +40,9 @@ import (
 // стеку, но проверка, молча пропускающая то, чего не поняла, перестала бы отвечать
 // за свой предмет при первой же перестановке шагов. Тот же приём — у
 // `checkSubnetCIDROverlap`.
-func validateNotReserved(field string, reserved domain.ReservedPrefixes, cidrs []string) error {
+func validateNotReserved(slotOf func(int) string, reserved domain.ReservedPrefixes, cidrs []string) error {
 	for i, c := range cidrs {
-		slot := fmt.Sprintf("%s[%d]", field, i)
+		slot := slotOf(i)
 		prefix, err := netip.ParsePrefix(c)
 		if err != nil {
 			return serviceerr.InvalidArg(slot, slot+" must be a valid CIDR (e.g. 10.0.0.0/24)")
@@ -58,9 +57,9 @@ func validateNotReserved(field string, reserved domain.ReservedPrefixes, cidrs [
 // validateSubnetNotReserved — обе семьи одним вызовом: у глаголов, объявляющих
 // диапазоны подсети (`Create`, `:addCidrBlocks`), предмет один, и разное число
 // проверок у них означало бы, что одну из семей где-то забыли.
-func validateSubnetNotReserved(reserved domain.ReservedPrefixes, v4, v6 []string) error {
-	if err := validateNotReserved("v4_cidr_blocks", reserved, v4); err != nil {
+func validateSubnetNotReserved(fields cidrFields, reserved domain.ReservedPrefixes, v4, v6 []string) error {
+	if err := validateNotReserved(fields.V4Slot, reserved, v4); err != nil {
 		return err
 	}
-	return validateNotReserved("v6_cidr_blocks", reserved, v6)
+	return validateNotReserved(fields.V6Slot, reserved, v6)
 }

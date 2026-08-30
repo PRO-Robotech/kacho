@@ -71,36 +71,37 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
 	}
 	if len(v4) == 0 && len(v6) == 0 {
-		return nil, serviceerr.InvalidArg("v4_cidr_blocks", "v4_cidr_blocks or v6_cidr_blocks is required")
+		return nil, serviceerr.InvalidArg(blocksCidrFields.v4,
+			blocksCidrFields.v4+" or "+blocksCidrFields.v6+" is required")
 	}
 	// Потолок — ПЕРВЫМ, до поэлементной валидации и до квадратичной проверки
 	// пересечений: стоимость запроса не может задаваться вызывающим.
-	if err := validateSubnetCidrCardinality("v4_cidr_blocks", v4); err != nil {
+	if err := validateSubnetCidrCardinality(blocksCidrFields.v4, v4); err != nil {
 		return nil, err
 	}
-	if err := validateSubnetCidrCardinality("v6_cidr_blocks", v6); err != nil {
+	if err := validateSubnetCidrCardinality(blocksCidrFields.v6, v6); err != nil {
 		return nil, err
 	}
 	for i, c := range v4 {
-		if err := validateSubnetV4CIDR(fmt.Sprintf("v4_cidr_blocks[%d]", i), c); err != nil {
+		if err := validateSubnetV4CIDR(blocksCidrFields.V4Slot(i), c); err != nil {
 			return nil, err
 		}
 	}
 	for i, c := range v6 {
-		if err := validateSubnetV6CIDR(fmt.Sprintf("v6_cidr_blocks[%d]", i), c); err != nil {
+		if err := validateSubnetV6CIDR(blocksCidrFields.V6Slot(i), c); err != nil {
 			return nil, err
 		}
 	}
 	// Disjointness внутри переданного v6-списка (sync; mirror v4 — для v4 это
 	// проверяется ниже на merged-наборе, что покрывает и intra-request).
-	if err := checkCIDRDisjoint("v6_cidr_blocks", v6); err != nil {
+	if err := checkCIDRDisjoint(blocksCidrFields.v6, v6); err != nil {
 		return nil, err
 	}
 	// Служебное адресное пространство платформы (`dataplane.reserved-prefixes`) —
 	// синхронно, до создания операции. Проверяется ПРИСЛАННЫЙ набор, а не
 	// накопленный: уже записанные блоки этот запрос не объявляет, а отказ по ним
 	// заблокировал бы расширение подсети, созданной до объявления перечня.
-	if err := validateSubnetNotReserved(u.reserved, v4, v6); err != nil {
+	if err := validateSubnetNotReserved(blocksCidrFields, u.reserved, v4, v6); err != nil {
 		return nil, err
 	}
 
@@ -157,21 +158,21 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 		mergedV4 = append(mergedV4, v4...)
 		// Потолок на НАКОПЛЕННОМ наборе (под row-lock подсети): аддитивный
 		// глагол иначе растит набор серией законных запросов.
-		if err := validateSubnetCidrCardinality("v4_cidr_blocks", mergedV4); err != nil {
+		if err := validateSubnetCidrCardinality(blocksCidrFields.v4, mergedV4); err != nil {
 			return nil, err
 		}
 		// Проверка пересечений внутри объединенного набора (sync, host-bits уже OK).
 		// Покрывает overlap нового блока с уже существующим в этой же подсети.
-		if err := checkCIDRDisjoint("v4_cidr_blocks", mergedV4); err != nil {
+		if err := checkCIDRDisjoint(blocksCidrFields.v4, mergedV4); err != nil {
 			return nil, err
 		}
 		// v6: то же самое.
 		mergedV6 := append([]string{}, sub.V6CidrBlocks...)
 		mergedV6 = appendDedup(mergedV6, v6)
-		if err := validateSubnetCidrCardinality("v6_cidr_blocks", mergedV6); err != nil {
+		if err := validateSubnetCidrCardinality(blocksCidrFields.v6, mergedV6); err != nil {
 			return nil, err
 		}
-		if err := checkCIDRDisjoint("v6_cidr_blocks", mergedV6); err != nil {
+		if err := checkCIDRDisjoint(blocksCidrFields.v6, mergedV6); err != nil {
 			return nil, err
 		}
 		updated, uerr := w.Subnets().SetCidrBlocks(ctx, id, mergedV4, mergedV6)

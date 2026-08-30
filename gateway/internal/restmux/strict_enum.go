@@ -30,13 +30,22 @@ import (
 // прямо запрещает: поле запроса либо читается, либо отвергается явно, либо
 // снимается с контракта (api-conventions.md, «принято-и-проигнорировано»).
 //
-// ГРАНИЦА ПРАВКИ — РОВНО ОДНА. Отбрасывание неизвестного КЛЮЧА остаётся: на нём
-// стоит клауза маски обновления («mask пустой → immutable из тела silently
+// ГРАНИЦА ПРАВКИ. Отбрасывание НИКОГДА НЕ СУЩЕСТВОВАВШЕГО ключа остаётся: на
+// нём стоит клауза маски обновления («mask пустой → immutable из тела silently
 // игнорируются»), им же живёт диагностика immutable-полей (тело доходит до
 // хендлера и получает контракт-тон «<field> is immutable after <R>.Create»
 // вместо безликого «unknown field»). Перепутать два этих «неизвестных» — и есть
 // способ сломать конвенцию под видом строгости, поэтому граница проверяется
 // тестами наравне с самим отказом.
+//
+// ИЗ НЕЁ ВЫВЕДЕН РОВНО ОДИН СЛУЧАЙ — имя, объявленное сообщением `reserved`
+// (kacho#1628). Такое поле СУЩЕСТВОВАЛО и снято осознанно, поэтому отправитель
+// помнит его рабочим, а контракт про снятый слот прямо обещает: «запрос со
+// старым blockSize отвергается как неизвестное поле — а не принимается молча,
+// оставляя отправителя в уверенности, что размер блока задан им». Обещание
+// исполняется здесь. Случай узкий by construction: он опирается на объявление
+// контракта, а не на отсутствие поля, поэтому опечатка и поле будущей версии
+// под него не подпадают.
 //
 // ПОЧЕМУ ОТДЕЛЬНЫЙ ОБХОД, А НЕ ФЛАГ. У protojson один флаг на оба смысла:
 // выключить его — значит отвергать и ключи. Разделить их можно только своим
@@ -157,21 +166,133 @@ func rejectUnknownEnumNames(data []byte, v any) error {
 	if !ok {
 		return nil
 	}
-	var bad []string
-	walkEnumValueNames(msg.ProtoReflect().Descriptor(), obj, "", &bad)
-	if len(bad) == 0 {
+	var found bodyRefusals
+	walkEnumValueNames(msg.ProtoReflect().Descriptor(), obj, "", &found)
+
+	// СНЯТОЕ ПОЛЕ ДОКЛАДЫВАЕТСЯ ПЕРВЫМ. Тело, несущее снятый ключ, собрано по
+	// прежней версии контракта; значения перечислений в нём — того же возраста,
+	// и называть их «неизвестными» значило бы обвинять следствие вместо причины.
+	if len(found.retired) > 0 {
+		sort.Strings(found.retired) // порядок обхода карты в Go случаен
+		return fmt.Errorf("field %s has been retired and is no longer accepted: remove it from the request",
+			strings.Join(found.retired, "; "))
+	}
+	if len(found.enums) == 0 {
 		return nil
 	}
-	sort.Strings(bad) // порядок обхода карты в Go случаен — отказ обязан быть стабильным
-	return fmt.Errorf("invalid value for enum field %s", strings.Join(bad, "; "))
+	sort.Slice(found.enums, func(i, j int) bool { return found.enums[i].Path < found.enums[j].Path })
+	parts := make([]string, 0, len(found.enums))
+	for _, ev := range found.enums {
+		parts = append(parts, ev.String())
+	}
+	return fmt.Errorf("invalid value for enum field %s", strings.Join(parts, "; "))
+}
+
+// enumViolation — одно значение перечисления, которого в словаре поля нет.
+//
+// Хранится РАЗОБРАННЫМ, а не готовой строкой. Прежде обход отдавал уже
+// собранный текст `<путь>: "<значение>"`, и соседний гейт разбирал его обратно
+// своим `strings.LastIndex(": ")` — два места об одном формате, из которых
+// достаточно поправить одно, чтобы разошлись оба. Формат собирается ровно там,
+// где идёт наружу, — в [enumViolation.String].
+type enumViolation struct {
+	// Path — путь к полю в теле, в той же записи имён, что прислал клиент.
+	Path string
+	// Value — отвергнутое имя значения.
+	Value string
+	// Allowed — имена значений словаря В ПОРЯДКЕ ОБЪЯВЛЕНИЯ контракта.
+	//
+	// Перечень полный, включая нулевое значение: оно тоже принимается, и
+	// вычеркнуть его значило бы подменить факт контракта нашим суждением о
+	// полезности. Порядок — контрактный, а не алфавитный: нулевое значение
+	// стоит первым там же, где оно объявлено.
+	Allowed []string
+}
+
+// String — текст отказа по одному значению: что прислали и что принимается.
+//
+// Перечень допустимых здесь не украшение. Форму значения перечисления в этом
+// дереве нельзя узнать заранее — часть словарей пишется без префикса типа,
+// часть с полным, — а машинного описания API нет вовсе. Отказ, называющий
+// только отвергнутое, оставляет отправителю перебор (kacho#1622).
+func (e enumViolation) String() string {
+	return fmt.Sprintf("%s: %q (allowed: %s)", e.Path, e.Value, strings.Join(e.Allowed, ", "))
+}
+
+// bodyRefusals — находки одного обхода тела, РАЗДЕЛЁННЫЕ ПО ПРЕДМЕТУ.
+//
+// Две разные беды с разными текстами отказа: значение перечисления, которого
+// нет в словаре, и ключ поля, снятого с контракта. Складывать их в один список
+// значило бы объявить второе «неверным значением перечисления».
+type bodyRefusals struct {
+	enums   []enumViolation
+	retired []string
+}
+
+// foldFieldName приводит имя поля к форме, не зависящей от записи (`block_size`
+// и `blockSize` дают одно и то же).
+//
+// Своего преобразователя camelCase↔snake_case здесь намеренно НЕ заводится:
+// он был бы вторым местом об одном правиле рядом с protojson и разошёлся бы с
+// ним молча на первом же имени с цифрой (`ipv4_cidr_primary`). Свёртка
+// отвечает на более узкий вопрос — «одно ли это имя», — и для него достаточна.
+//
+// Столкнуть ДВА РАЗНЫХ имени свёртка не может во вред: живое поле резолвится
+// дескриптором ДО этой проверки, поэтому под неё попадает лишь ключ, которому
+// в сообщении не соответствует ничего.
+func foldFieldName(name string) string {
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, r := range name {
+		if r == '_' {
+			continue
+		}
+		if r >= 'A' && r <= 'Z' {
+			r += 'a' - 'A'
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// retiredNames — свёрнутые имена, снятые сообщением с контракта (`reserved`).
+//
+// Считается по дескриптору при каждом обращении: сообщений в теле единицы, а
+// кэш здесь был бы состоянием ради экономии, которой не измеряли.
+func retiredNames(md protoreflect.MessageDescriptor) map[string]string {
+	names := md.ReservedNames()
+	if names.Len() == 0 {
+		return nil
+	}
+	out := make(map[string]string, names.Len())
+	for i := 0; i < names.Len(); i++ {
+		n := string(names.Get(i))
+		out[foldFieldName(n)] = n
+	}
+	return out
 }
 
 // walkEnumValueNames обходит разобранное тело против дескриптора сообщения.
 //
 // Приём имени ключа зеркалит protojson: сначала json_name (camelCase), затем
-// оригинальное proto-имя. Ключ, которому поля нет, ПРОПУСКАЕТСЯ молча — это и
-// есть та граница, за которую правка не заходит.
-func walkEnumValueNames(md protoreflect.MessageDescriptor, obj map[string]any, prefix string, bad *[]string) {
+// оригинальное proto-имя.
+//
+// КЛЮЧ, КОТОРОМУ ПОЛЯ НЕТ, РАЗБИРАЕТСЯ НА ДВА СЛУЧАЯ, и это единственное, чем
+// граница правки шире прежней:
+//
+//   - имя объявлено сообщением `reserved` — поле СУЩЕСТВОВАЛО и снято осознанно.
+//     Отправитель помнит его рабочим, поэтому молчание оставляет его в
+//     уверенности, что настройка задана им. Контракт прямо обещает обратное
+//     («запрос со старым blockSize отвергается как неизвестное поле — а не
+//     принимается молча»), и обещание исполняется здесь (kacho#1628);
+//   - имя не встречалось никогда (опечатка, поле будущей версии) — ПРОПУСКАЕТСЯ
+//     МОЛЧА, ровно как прежде. На этом стоит клауза пустой маски обновления
+//     («mask пустой → immutable из тела silently игнорируются») и контракт-тон
+//     диагностики immutable-полей: тело обязано доехать до хендлера, чтобы он
+//     ответил «<field> is immutable after <R>.Create», а не безликим «unknown
+//     field». Расширить отказ на весь этот случай значило бы сломать конвенцию
+//     под видом строгости.
+func walkEnumValueNames(md protoreflect.MessageDescriptor, obj map[string]any, prefix string, found *bodyRefusals) {
 	// Well-known-типы принимают произвольные ключи и значения by design
 	// (Struct/Value/Any), а Timestamp/Duration/FieldMask и wrapper'ы на JSON —
 	// вообще скаляры. Спуск в них дал бы отказ на корректном теле.
@@ -179,12 +300,20 @@ func walkEnumValueNames(md protoreflect.MessageDescriptor, obj map[string]any, p
 		return
 	}
 	fields := md.Fields()
+	var retired map[string]string
+	retiredLoaded := false
 	for k, v := range obj {
 		fd := fields.ByJSONName(k)
 		if fd == nil {
 			fd = fields.ByTextName(k)
 		}
 		if fd == nil {
+			if !retiredLoaded {
+				retired, retiredLoaded = retiredNames(md), true
+			}
+			if _, ok := retired[foldFieldName(k)]; ok {
+				found.retired = append(found.retired, fmt.Sprintf("%q", prefix+k))
+			}
 			continue
 		}
 		path := prefix + k
@@ -196,7 +325,7 @@ func walkEnumValueNames(md protoreflect.MessageDescriptor, obj map[string]any, p
 			}
 			vd := fd.MapValue()
 			for mk, mv := range m {
-				checkEnumValue(vd, mv, fmt.Sprintf("%s[%s]", path, mk), bad)
+				checkEnumValue(vd, mv, fmt.Sprintf("%s[%s]", path, mk), found)
 			}
 		case fd.IsList():
 			list, ok := v.([]any)
@@ -204,17 +333,17 @@ func walkEnumValueNames(md protoreflect.MessageDescriptor, obj map[string]any, p
 				continue
 			}
 			for i, elem := range list {
-				checkEnumValue(fd, elem, fmt.Sprintf("%s[%d]", path, i), bad)
+				checkEnumValue(fd, elem, fmt.Sprintf("%s[%d]", path, i), found)
 			}
 		default:
-			checkEnumValue(fd, v, path, bad)
+			checkEnumValue(fd, v, path, found)
 		}
 	}
 }
 
 // checkEnumValue проверяет ОДНО значение: имя перечисления сверяет со словарём,
 // в сообщение спускается, всё прочее оставляет protojson.
-func checkEnumValue(fd protoreflect.FieldDescriptor, v any, path string, bad *[]string) {
+func checkEnumValue(fd protoreflect.FieldDescriptor, v any, path string, found *bodyRefusals) {
 	switch fd.Kind() {
 	case protoreflect.EnumKind:
 		s, ok := v.(string)
@@ -241,16 +370,23 @@ func checkEnumValue(fd protoreflect.FieldDescriptor, v any, path string, bad *[]
 			// (нераспознанный префикс идентификатора).
 			return
 		}
-		if fd.Enum().Values().ByName(protoreflect.Name(s)) == nil {
-			*bad = append(*bad, fmt.Sprintf("%s: %q", path, s))
+		ed := fd.Enum()
+		if ed.Values().ByName(protoreflect.Name(s)) != nil {
+			return
 		}
+		vals := ed.Values()
+		allowed := make([]string, 0, vals.Len())
+		for i := 0; i < vals.Len(); i++ {
+			allowed = append(allowed, string(vals.Get(i).Name()))
+		}
+		found.enums = append(found.enums, enumViolation{Path: path, Value: s, Allowed: allowed})
 	case protoreflect.MessageKind, protoreflect.GroupKind:
 		child, ok := v.(map[string]any)
 		if !ok {
 			return
 		}
 		if md := fd.Message(); md != nil {
-			walkEnumValueNames(md, child, path+".", bad)
+			walkEnumValueNames(md, child, path+".", found)
 		}
 	}
 }
