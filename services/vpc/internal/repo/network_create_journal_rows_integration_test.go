@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/network"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
@@ -71,7 +72,7 @@ func TestIntegration_NetworkCreate_OneJournalRowPerResource(t *testing.T) {
 	dsn := setupTestDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
-	defer pool.Close()
+	pgtest.ClosePoolAtEnd(t, pool)
 	r := kachopg.New(pool, nil)
 	defer r.Close()
 
