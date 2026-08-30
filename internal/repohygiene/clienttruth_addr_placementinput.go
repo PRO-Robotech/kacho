@@ -261,7 +261,7 @@ func AuditPlacementInput(
 	})
 
 	if log != nil {
-		fmt.Fprintf(log,
+		_, _ = fmt.Fprintf(log,
 			"перепись: файлов контракта %d · запросов создания %d · из них с дискриминатором %d "+
 				"(объявлен выводимым %d, снято послаблением %d)\n",
 			census.ProtoFiles, census.CreateMessages, census.WithField,

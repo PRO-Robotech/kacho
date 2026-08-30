@@ -247,7 +247,7 @@ func AuditVerbCanon(
 	})
 
 	if log != nil {
-		fmt.Fprintf(log,
+		_, _ = fmt.Fprintf(log,
 			"перепись: файлов контракта %d · адресов %d · из них с суффикс-действием %d "+
 				"(каноном %d, снято послаблением %d)\n",
 			census.ProtoFiles, census.Paths, census.WithVerb,

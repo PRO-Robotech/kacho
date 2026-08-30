@@ -374,7 +374,7 @@ func AuditNameFormClaims(
 	})
 
 	if log != nil {
-		fmt.Fprintf(log,
+		_, _ = fmt.Fprintf(log,
 			"перепись: файлов контракта %d · носителей сайта %d · утверждений о форме имени %d "+
 				"(совпало с применяемой %d, снято послаблением %d) · применяется %s\n",
 			census.ProtoFiles, census.DocsFiles, census.Claims,
