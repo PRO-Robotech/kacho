@@ -388,9 +388,11 @@ CASES.append(Case(
                  "pm.test('seeded IPv6 address fixture is present (precondition)', () => "
                  "  pm.expect(pm.environment.get('existingAddressIPv6Id') || '').to.match(/^adr[a-z0-9]+$/));",
                  *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 # Дословно: владелец пишет `Illegal argument addressId`. Приведение
+                 # регистра прятало и заглавную `I`, и заглавную `I` в `addressId`.
                  "pm.test('generic anti-oracle wording (no family/ownership disclosure)', () => "
-                 "  pm.expect((pm.response.json().message || '').toLowerCase())"
-                 "    .to.include('illegal argument addressid'));",
+                 "  pm.expect(pm.response.json().message || '', pm.response.text())"
+                 "    .to.eql('Illegal argument addressId'));",
              ]),
     ],
 ))
@@ -588,9 +590,11 @@ CASES.append(Case(
                    "placement": "EXTERNAL_REGIONAL", "name": "ext-sg-{{runId}}",
                    "securityGroupIds": ["{{garbageSecurityGroupId}}"], "v4Source": {"public": {}}},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          # Дословно: владелец пишет вид ЗАГЛАВНЫМИ (`only valid for INTERNAL`),
+                          # и приведение регистра не различало бы `INTERNAL` от `internal`.
                           "pm.test('securityGroupIds rejected on EXTERNAL (INTERNAL-only field)', () => "
-                          "  pm.expect((pm.response.json().message || '').toLowerCase())"
-                          "    .to.include('security_group_ids is only valid for internal'));"]),
+                          "  pm.expect(pm.response.json().message || '', pm.response.text())"
+                          "    .to.eql('security_group_ids is only valid for INTERNAL load balancer'));"]),
     ],
 ))
 

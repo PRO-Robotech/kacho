@@ -29,6 +29,16 @@ function formObject(specId: string, edits: Record<string, unknown> = {}): Record
   return { ...seeded, ...edits };
 }
 
+/**
+ * UI-представление источника VIP, как его держит форма: режим на семейство плюс
+ * ссылка активного режима. Собирается здесь, а не выписывается по месту, чтобы
+ * форма представления жила в тесте в одном экземпляре — второй разошёлся бы с
+ * первым молча.
+ */
+function vipSource(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return { _v4_mode: "public", v4: {}, _v6_mode: "off", v6: {}, ...over };
+}
+
 function createBody(specId: string, edits: Record<string, unknown> = {}): Record<string, unknown> {
   const spec = REGISTRY[specId];
   const obj = formObject(specId, edits);
@@ -50,7 +60,7 @@ describe("load balancer create can express the vip source the service requires",
   });
 
   it("sends the subnet arm only on an INTERNAL placement", () => {
-    const subnet = { _v4_source: "subnet", v4_source: { subnet_id: "sub-abcdefghijklmnopq" } };
+    const subnet = { vip_source: vipSource({ _v4_mode: "subnet", v4: { subnet_id: "sub-abcdefghijklmnopq" } }) };
     expect(createBody("load-balancers", { placement: "INTERNAL_ZONAL", ...subnet }).v4_source).toEqual({
       subnet_id: "sub-abcdefghijklmnopq",
     });
@@ -63,10 +73,12 @@ describe("load balancer create can express the vip source the service requires",
   it("omits a family with nothing chosen rather than sending an empty reference", () => {
     const body = createBody("load-balancers", {
       placement: "INTERNAL_REGIONAL",
-      _v4_source: "subnet",
-      v4_source: { subnet_id: "sub-abcdefghijklmnopq" },
-      _v6_source: "address",
-      v6_source: { address_id: "" },
+      vip_source: vipSource({
+        _v4_mode: "subnet",
+        v4: { subnet_id: "sub-abcdefghijklmnopq" },
+        _v6_mode: "address",
+        v6: { address_id: "" },
+      }),
     });
     expect(body).not.toHaveProperty("v6_source");
     // A blank id in a chosen oneof arm is a request the service answers with
@@ -74,15 +86,36 @@ describe("load balancer create can express the vip source the service requires",
     expect(body.v4_source).toEqual({ subnet_id: "sub-abcdefghijklmnopq" });
   });
 
+  it("declines a family outright rather than only by leaving its reference blank", () => {
+    // Отказ от семейства — отдельный режим, а не пустая ссылка. Для EXTERNAL это
+    // единственный способ отказаться вовсе: режим «публичный» источник даёт
+    // БЕЗУСЛОВНО, поэтому без него внешний балансировщик уезжал бы с обоими
+    // семействами и отказаться было бы нечем.
+    const body = createBody("load-balancers", {
+      placement: "EXTERNAL_REGIONAL",
+      vip_source: vipSource({ _v4_mode: "public", _v6_mode: "off" }),
+    });
+    expect(body.v4_source).toEqual({ public: {} });
+    expect(body).not.toHaveProperty("v6_source");
+  });
+
   it("refuses before submit when no family has a source", () => {
     const spec = REGISTRY["load-balancers"];
-    const msg = spec.validate?.(formObject("load-balancers", { placement: "INTERNAL_REGIONAL", _v4_source: "off" }));
+    const msg = spec.validate?.(
+      formObject("load-balancers", {
+        placement: "INTERNAL_REGIONAL",
+        vip_source: vipSource({ _v4_mode: "off", _v6_mode: "off" }),
+      }),
+    );
     expect(typeof msg).toBe("string");
   });
 
-  it("keeps the form-only mode discriminators off the wire", () => {
+  it("keeps the form-only vip representation off the wire", () => {
     const body = createBody("load-balancers");
+    // Дискриминаторы режима живут ВНУТРИ `vip_source`, а само оно — поле только
+    // формы: на провод уезжают лишь ветви `v4_source`/`v6_source`.
     expect(Object.keys(body).filter((k) => k.startsWith("_"))).toEqual([]);
+    expect(body).not.toHaveProperty("vip_source");
   });
 
   it("gates every conditional vip field on a field the form object carries", () => {

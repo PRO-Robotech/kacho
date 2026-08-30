@@ -14,6 +14,7 @@ import (
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports/portmock"
 )
@@ -22,7 +23,7 @@ func awaitOps(t *testing.T, ops *portmock.OpsRepo) { t.Helper(); portmock.AwaitA
 
 func TestOperationHandler(t *testing.T) {
 	ops := portmock.NewOpsRepo()
-	h := NewOperationHandler(ops)
+	h := operationspb.NewHandler(ops)
 	// Owner poll: op principal must match the caller principal in ctx.
 	owner := operations.Principal{Type: "user", ID: "usr-A", DisplayName: "test"}
 	ctx := operations.WithPrincipal(context.Background(), owner)

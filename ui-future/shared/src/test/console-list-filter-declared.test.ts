@@ -70,9 +70,36 @@ function analyse(source: ts.SourceFile): Analysis {
   const declared = new Set<string>();
   const drops: { line: number; names: string[] }[] = [];
 
+  /**
+   * Имена, на которые опирается выражение, — ИСТОЧНИКИ значений, а не всякий
+   * идентификатор в тексте.
+   *
+   * Имя ПОЛЯ в обращении именем не является: `row.addresses.length` говорит о
+   * полях `addresses` и `length` объекта `row`, а опирается ровно на `row`.
+   * Пока оба клались в набор наравне, признак сужения этого же компонента
+   * (`Object.keys(serverFilters).length > 0`) вносил в объявленные слово
+   * `length` — и ЛЮБАЯ ветка отбрасывания, где оно встречается, считалась
+   * объявленной. А `.length` в коде отбора встречается постоянно.
+   *
+   * Гейт становился вакуумным на этой полосе: форма проверки есть, содержания
+   * нет — ровно тот класс, который он и стережёт (#1496). Ловил он при этом
+   * только ветки БЕЗ `.length`, то есть работал, и потому слепота была тихой.
+   *
+   * Ключ объекта-литерала снимается по той же причине и с той же оговоркой:
+   * сокращённая запись (`{ zone }`) — настоящая ссылка на значение, и она
+   * остаётся.
+   */
   const namesOf = (node: ts.Node): string[] => {
     const found: string[] = [];
     const walk = (n: ts.Node): void => {
+      if (ts.isPropertyAccessExpression(n)) {
+        walk(n.expression); // `.name` — имя поля, а не источник значения
+        return;
+      }
+      if (ts.isPropertyAssignment(n) && ts.isIdentifier(n.name)) {
+        walk(n.initializer); // ключ — имя поля; значение остаётся
+        return;
+      }
       if (ts.isIdentifier(n)) found.push(n.text);
       ts.forEachChild(n, walk);
     };
@@ -130,6 +157,7 @@ const undeclared = inspected.flatMap((i) =>
 
 process.stdout.write(
   `\n  отбор списка: файлов прочитано ${filesRead}, решают об отборе ${inspected.length}, ` +
+    `ручек сужения объявлено ${inspected.reduce((n, i) => n + i.declared.length, 0)}, ` +
     `веток отбрасывания ${inspected.reduce((n, i) => n + i.drops.length, 0)}, ` +
     `не опирающихся на признак сужения ${undeclared.length}\n`,
 );
@@ -190,5 +218,49 @@ describe("предпосылка гейта: он различает объяв�
     const a = parse(withDefect);
     const bad = a.drops.filter((d) => !d.names.some((n) => a.declared.includes(n)));
     expect(bad).toHaveLength(1);
+  });
+
+  /*
+   * ИМЯ ПОЛЯ В ОБРАЩЕНИИ — НЕ ОБЪЯВЛЕННОЕ ИМЯ (#1496).
+   *
+   * Набор объявленных имён собирается из идентификаторов выражения. Пока в него
+   * попадало имя ПОЛЯ (`x.length` давало и `x`, и `length`), любая ветка со
+   * словом `length` считалась объявленной — а `Object.keys(serverFilters).length`
+   * стоит в признаке сужения этого самого компонента. Гейт становился вакуумным
+   * ровно на том слове, которое в коде отбора встречается постоянно.
+   *
+   * Это тот класс, который гейт и стережёт, этажом выше: форма проверки есть,
+   * содержания нет.
+   *
+   * Пара обязательна. Одна сторона зеленела бы на распознавателе, отвергающем
+   * всё: вторая фикстура несёт ТО ЖЕ `.length`, но опирается ещё и на настоящее
+   * объявленное имя — и обязана молчать.
+   */
+  const forgivenByPropertyName = `
+    const anyFilterActive = query.trim() !== "" || Object.keys(serverFilters).length > 0;
+    const filteredItems = items.filter((row) => {
+      if (row.addresses.length === 0) return false;
+      return true;
+    });
+  `;
+  const propertyNamePlusDeclaredHandle = `
+    const anyFilterActive = query.trim() !== "" || Object.keys(serverFilters).length > 0;
+    const filteredItems = items.filter((row) => {
+      if (query.trim() !== "" && row.tags.length === 0) return false;
+      return true;
+    });
+  `;
+
+  it("имя поля в обращении не считается объявленной ручкой", () => {
+    const a = parse(forgivenByPropertyName);
+    expect(a.declared).not.toContain("length");
+    const bad = a.drops.filter((d) => !d.names.some((n) => a.declared.includes(n)));
+    expect(bad).toHaveLength(1);
+  });
+
+  it("молчит, когда ветка опирается на НАСТОЯЩУЮ объявленную ручку рядом с полем", () => {
+    const a = parse(propertyNamePlusDeclaredHandle);
+    const bad = a.drops.filter((d) => !d.names.some((n) => a.declared.includes(n)));
+    expect(bad).toEqual([]);
   });
 });

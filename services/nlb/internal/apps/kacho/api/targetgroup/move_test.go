@@ -37,11 +37,15 @@ func TestMove_Happy(t *testing.T) {
 	final := awaitOpDone(t, opsRepo, op.ID)
 	require.Nil(t, final.Error)
 
+	// Здесь утверждалась ПАРА `MOVED` + `UPDATED` — то есть проба закрепляла
+	// дефект #1565: второе событие не добавляло получателей (подписки по роду
+	// изменения не бывает) и было неотличимо от первого. Утверждение ЗАМЕНЕНО, а
+	// не ослаблено: теперь оно про число строк, а не про их перечень.
 	events := repo.outboxEvents()
-	// MOVED + UPDATED
-	require.Len(t, events, 2)
-	assert.Equal(t, kachorepo.OutboxActionMoved, events[0].Action)
-	assert.Equal(t, kachorepo.OutboxActionUpdated, events[1].Action)
+	require.Len(t, events, 1,
+		"переезд объявляет о переехавшей группе РОВНО ОДНУ строку")
+	assert.Equal(t, kachorepo.OutboxActionMoved, events[0].Action,
+		"слово хранилища обязано называть сделанное — словарь отдаёт его правкой")
 
 	// project-rewrite = unregister(src) THEN register(dst) in the writer-tx.
 	// The order is the contract, not the style: both intents are about the same
@@ -236,19 +240,58 @@ func TestMove_DestCheckUnavailableFailsClosed(t *testing.T) {
 	require.Equal(t, domain.ProjectID("prj-src"), repo.tgs[string(tg.ID)].ProjectID)
 }
 
-// TestTgMovedPayload_OldProjectReachesConsumer — regression for outbox
-// payload-key drift (5th audit, HIGH). MOVED producer emits `old_project_id`
-// (canonical key the Subscribe consumer parses into
-// ResourceLifecycleEvent.OldProjectId), not the legacy `src_project_id`.
-func TestTgMovedPayload_OldProjectReachesConsumer(t *testing.T) {
-	m := tgMovedPayload("nlb-tg-1", "prj-src", "prj-dst")
-	require.NotContains(t, m, "src_project_id", "legacy key must not be emitted")
+// TestMovePayloadIsTheWholeGroupOnTheWire — нагрузка переезда несёт КОНВЕРТ
+// полного состояния и не несёт ключей прежнего минимального снимка.
+//
+// Здесь стояла проба `TestTgMovedPayload_KeysOnTheWire`: она сверяла, что
+// исходный и целевой проекты лежат под именами `old_project_id`/`new_project_id`.
+// Предмет её исчез вместе со строителем — форма нагрузки вида ЗАМЕНЕНА, а не
+// дополнена: вид `nlb_target_group` несёт теперь полное состояние, и строитель у
+// него один на все точки эмиссии. Ослабить пробу было нельзя, поэтому она
+// ЗАМЕНЕНА утверждением о новой форме.
+//
+// Утверждение сделано ПО ПРОВОДУ — через настоящий JSON, а не через разборщик,
+// собранный из тех же констант: круговой ход был бы истинен при любом их
+// значении.
+//
+// Отрицание («прежних ключей нет») стоит В ПАРЕ с положительным («состояние
+// есть»): одно без другого зеленело бы на пустой нагрузке.
+func TestMovePayloadIsTheWholeGroupOnTheWire(t *testing.T) {
+	repo := newFakeRepo()
+	tg := makeTG("prj-src", "moved-wire")
+	repo.seedTG(tg)
+	tgt := kachoTarget(string(tg.ID), domain.Target{
+		ExternalIP: &domain.TargetExternalIP{Address: "203.0.113.10"}, Weight: 100,
+	})
+	repo.seedTarget(string(tg.ID), &tgt)
 
-	raw, err := json.Marshal(m)
+	opsRepo := newFakeOpsRepo()
+	uc := NewMoveTargetGroupUseCase(repo, opsRepo, &fakeProjectClient{},
+		&fakeCheckClient{allowed: true}, nil)
+	op, err := uc.Execute(ctxWithUser("usr_owner"), &lbv1.MoveTargetGroupRequest{
+		TargetGroupId:        string(tg.ID),
+		DestinationProjectId: "prj-dst",
+	})
 	require.NoError(t, err)
-	parsed, err := kachorepo.ParseLifecyclePayload(raw)
+	require.Nil(t, awaitOpDone(t, opsRepo, op.ID).Error)
+
+	var movedRow *fakeOutboxEvent
+	for i, e := range repo.outboxEvents() {
+		if e.ResourceType == "nlb_target_group" && e.Action == "MOVED" {
+			ev := repo.outboxEvents()[i]
+			movedRow = &ev
+		}
+	}
+	require.NotNil(t, movedRow, "переезд не эмитил строки рода MOVED")
+
+	raw, err := json.Marshal(movedRow.Payload)
 	require.NoError(t, err)
-	require.Equal(t, "prj-src", parsed.OldProjectID,
-		"consumer must recover source project from MOVED payload")
-	require.Equal(t, "prj-dst", parsed.NewProjectID)
+	var wire map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &wire))
+
+	require.Contains(t, wire, "state",
+		"нагрузка переезда не несёт конверта полного состояния — одна частичная точка "+
+			"делает ложным ВЕСЬ вид, и делает это тихо")
+	require.NotContains(t, wire, "old_project_id", "ключ прежнего минимального снимка вернулся")
+	require.NotContains(t, wire, "new_project_id", "ключ прежнего минимального снимка вернулся")
 }

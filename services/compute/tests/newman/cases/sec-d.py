@@ -149,8 +149,14 @@ CASES.append(Case(
                  "pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
                  "if (pm.response.code === 404) {",
                  "  pm.test('grpc code 5 (NOT_FOUND)', () => pm.expect(pm.response.json().code).to.eql(5));",
-                 "  pm.test('text mentions not found', () => "
-                 "pm.expect((pm.response.json().message || '').toLowerCase()).to.include('not found'));",
+                 # Текст владельца целиком (services/compute/internal/repo/instance_repo.go),
+                 # а не общая часть «not found»: её несут 32 разных отказа compute — про
+                 # ключ доступа, про группу размещения, — и подмену одного отказа другим
+                 # шаг не различал (#1520). Ветка 403 текста не утверждает намеренно:
+                 # там отвечает край, и его отказ пинится своим утверждением ниже.
+                 "  pm.test('text carries the owner verbatim tone', () => "
+                 "pm.expect(pm.response.json().message || '', pm.response.text())"
+                 ".to.have.string('Instance ins-00000000000000000 not found'));",
                  "} else {",
                  "  pm.test('grpc code 7 (PERMISSION_DENIED)', () => pm.expect(pm.response.json().code).to.eql(7));",
                  "  pm.test('authz-first: no path to the resource', () => "

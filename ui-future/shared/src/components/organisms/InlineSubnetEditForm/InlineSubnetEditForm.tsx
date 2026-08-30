@@ -16,7 +16,7 @@ import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { FORM_DIVIDER_STYLE } from "@shared/components/organisms/form/editor-surface";
 import { LockOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
-import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { REGISTRY, getByPath } from "@shared/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
@@ -97,9 +97,11 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
   const mutation = useMutation({
     mutationFn: (item: unknown) => api.update(`${subnetSpec.apiPath}/${subnetId}`, item),
     onSuccess: (resp) => {
-      const opId = extractOperationId(resp);
-      if (opId) {
-        setPendingOpId(opId);
+      const resolved = resolveMutationResponse(resp, subnetSpec.mutationsReturnOperation !== false);
+      if (resolved.kind === "operation") {
+        setPendingOpId(resolved.opId);
+      } else if (resolved.kind === "violation") {
+        toast.error(`Сохранить подсеть: ${resolved.message}`);
       } else {
         invalidate(subnetSpec.id, projectId);
         onSuccess?.();

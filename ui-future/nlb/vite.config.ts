@@ -61,6 +61,24 @@ export default defineConfig({
         target: apiGateway,
         changeOrigin: true,
       },
+      // Блочное хранение — домен storage: реестр ресурсов у консоли ОДИН
+      // (@shared/lib/resource-registry), и ссылочные цели форм этого раздела
+      // резолвятся оттуда же, что и у остальных модулей. Без записи запрос
+      // уходит в index.html: ответ формально успешен, а список пуст — отказ
+      // выглядит как «ресурсов нет».
+      "/storage": {
+        target: apiGateway,
+        changeOrigin: true,
+      },
+      // `/registry` — раздел Container Registry переехал в общий реестр спек
+      // (#409), и его `apiPath` теперь читают общие `RefSelect` /
+      // `GlobalResourceFormModal` / карточка ресурса, которые это приложение
+      // монтирует. Домен без правила отдаёт index.html вместо JSON: запрос
+      // формально успешен, а список пуст.
+      "/registry": {
+        target: apiGateway,
+        changeOrigin: true,
+      },
       "/iam/v1": {
         target: apiGateway,
         changeOrigin: true,

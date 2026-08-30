@@ -66,6 +66,7 @@ import {
 import type { RelatedSpec } from "@shared/lib/resource-spec";
 import { buildSpecColumns } from "@shared/lib/spec-columns";
 import { useResourceList } from "@shared/lib/use-resource-list";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 import { clientScope, noMatchesText, rowsAreComplete } from "@shared/lib/list-scope";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { DetailOverviewActions } from "@shared/components/molecules/DetailOverviewActions";
@@ -364,6 +365,18 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
   const detailPath = fillPathFromParams(`${spec.apiPath}/${uid}`, routeParams);
   const detailAddressable = !hasUnresolvedPathSegment(detailPath);
 
+  // Карточка узнаёт о своих изменениях ПОТОКОМ (#1021): опрос остаётся ровно до
+  // тех пор, пока владелец журнала не назвал этот вид. Ключ перечитывания
+  // называется здесь, а не выводится из идентификатора спеки: у карточки на
+  // странице живут и другие чтения (лента операций, связанные вкладки), и
+  // поток их не покрывает.
+  const { streamed } = useResourceStream({
+    specId: spec.id,
+    projectId: projectId ?? null,
+    invalidate: [spec.id, "shell-detail", detailPath],
+    enabled: !!uid && detailAddressable,
+  });
+
   const { data, isLoading, isError, error } = useQuery({
     // Разрешённый путь — часть ключа: у ресурса под родителем имя уникально
     // только внутри родителя, и два одноимённых ребёнка разных родителей без
@@ -371,7 +384,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
     queryKey: [spec.id, "shell-detail", detailPath],
     queryFn: () => api.get<Record<string, unknown>>(detailPath),
     enabled: !!uid && detailAddressable,
-    refetchInterval: 5_000,
+    refetchInterval: streamed ? false : 5_000,
     staleTime: 0,
   });
 

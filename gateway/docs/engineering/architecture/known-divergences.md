@@ -19,11 +19,11 @@ variables via `corelib corecfg.Load` with `envconfig:` struct tags.
 convention**, not a gateway-specific choice: every kacho-* service uses
 `corelib corecfg.Load` with envconfig tags, and there is no YAML config
 infrastructure anywhere in the workspace. Config shape is a horizontal,
-cross-cutting concern owned by `kacho-corelib`, and 12-factor env-var config is
+cross-cutting concern owned by `pkg/`, and 12-factor env-var config is
 the deployment contract the Helm charts and the dev stack are built around.
 Migrating a single service to YAML in isolation would fragment the platform and
 break the shared `corecfg` loader. If the platform adopts the YAML regime, the
-migration is a workspace-wide change to `kacho-corelib`'s config loader (all
+migration is a workspace-wide change to `pkg/`'s config loader (all
 services move together) — tracked at the platform level, not here.
 
 **Mitigation for the "easy to mis-set a toggle" concern.** The loader is
@@ -97,7 +97,7 @@ still bounded by the primitive's hard cap (`kratosCacheMaxEntries`). The earlier
 value + `PutWithTTL` covers it, so the eviction/cap path is now tested exactly
 once in `internal/lrucache`.
 
-Rubric reference: kacho-corelib reuse principle. Contract impact: none —
+Rubric reference: pkg/ reuse principle. Contract impact: none —
 unexported, in-process, no wire/API/DB change.
 
 ## 3. DPoP-replay state is still per-pod; idempotency no longer is (#694 landed)

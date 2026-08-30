@@ -116,42 +116,29 @@ helm-values покрывает оба binary.
 
 ## Docker-образ
 
-Сборка — multi-stage (`Dockerfile`): build-stage на `golang:1.25-alpine` копирует
-сиблинг-репозитории (`kacho-corelib`, `kacho-proto`, `kacho-vpc`) и собирает **оба**
-binary; runtime-stage — минимальный `alpine` с non-root пользователем.
+Сборка — multi-stage (`services/vpc/Dockerfile`): build-stage компилирует **оба** binary
+одного модуля (`kacho-vpc` и `kacho-migrator`), runtime-stage — минимальный `alpine` с
+non-root пользователем и клеймом происхождения образа.
 
-<CodeBlock language="dockerfile">
-  {dedent`
-    FROM golang:1.25-alpine AS builder
-    WORKDIR /src
-    COPY kacho-corelib /src/kacho-corelib
-    COPY kacho-proto   /src/kacho-proto
-    COPY kacho-vpc     /src/kacho-vpc
-    WORKDIR /src/kacho-vpc
-    RUN go mod download
-    RUN CGO_ENABLED=0 go build -o /kacho-vpc       ./cmd/vpc \\
-     && CGO_ENABLED=0 go build -o /kacho-migrator  ./cmd/migrator
-
-    FROM alpine:3.20
-    RUN apk add --no-cache ca-certificates
-    COPY --from=builder /kacho-vpc       /usr/local/bin/kacho-vpc
-    COPY --from=builder /kacho-migrator  /usr/local/bin/kacho-migrator
-    USER 65532
-    ENTRYPOINT ["/usr/local/bin/kacho-vpc"]
-  `}
-</CodeBlock>
-
-:::note Build-context — родительская директория
-Поскольку Dockerfile копирует сиблинг-репозитории, образ собирается из **родительского**
-каталога (`project/`), а не из `kacho-vpc/`. Тег dev-образа — `kacho-vpc:dev`.
-:::
+Контекст сборки — **корень репозитория**. Дерево одно, зависимости резолвятся внутри него
+(`go.mod` без `replace`), поэтому Dockerfile копирует контекст целиком (`COPY . .`).
+Сборка кросс-платформенная (`TARGETOS`/`TARGETARCH`) и переиспользует общий кэш компиляции
+модуля — он принадлежит builder'у, а не образу, поэтому второй и далее образы того же
+дерева берут готовое.
 
 <CodeBlock language="bash">
   {dedent`
-    # из каталога project/ (где лежат kacho-vpc, kacho-corelib, kacho-proto)
-    docker build -f kacho-vpc/Dockerfile -t kacho-vpc:dev .
+    # из корня репозитория
+    docker build -f services/vpc/Dockerfile -t kacho-vpc:dev .
   `}
 </CodeBlock>
+
+:::note Рецепт живёт в одном месте
+Стадии, базовые образы и строки сборки здесь намеренно не воспроизводятся: копия разошлась
+бы с `services/vpc/Dockerfile` молча — у прозы нет ни конфликта при слиянии, ни красного в
+сборке. Что команда выше называет **существующий** файл, держит гейт
+`TestDocsBuildCommandsNameADockerfileTheTreeHas` в `internal/repohygiene`.
+:::
 
 ## Helm-чарт
 
@@ -254,7 +241,7 @@ kind-кластер + PostgreSQL + ingress + все сервисы umbrella-ча
   `}
 </CodeBlock>
 
-`reload-svc SVC=vpc` собирает `kacho-vpc:dev` из build-context родительского каталога,
+`reload-svc SVC=vpc` собирает `kacho-vpc:dev` из build-context корня репозитория,
 загружает образ в kind (`kind load docker-image`) и делает
 `kubectl rollout restart deployment/vpc` — init-container `migrate` при этом
 повторно прогоняет `kacho-migrator up` (миграции идемпотентны: уже примененные

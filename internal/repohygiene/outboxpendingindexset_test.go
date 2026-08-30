@@ -57,10 +57,18 @@ var partitionDrainedOutboxes = map[string]string{
 //
 // Запись обязана называть, чем эта очередь выбирается, а не «так исторически».
 var nonPartitionDrainedOutboxes = map[string]string{
-	// Здесь стояла запись про журнал намерений iam: индексы под клейм остались
-	// в схеме после снятия дренажа, и снятие было названо предметом задачи #917.
-	// Предмет закрыт — все четыре частичных индекса `WHERE sent_at IS NULL` сняты
-	// вместе с самой колонкой, — поэтому запись ушла вместе с ним.
+	// Здесь стояли записи про ДВА журнала iam, и обе ушли вместе со своим
+	// предметом, а не были вычеркнуты:
+	//
+	//   #917   журнал намерений — все четыре частичных индекса `WHERE sent_at IS
+	//          NULL` сняты вместе с самой колонкой;
+	//   #1396  журнал смены субъекта — `subject_change_pending_v2_idx` снят
+	//          миграцией 20260829181500 вместе с `sent_at`, задававшим его
+	//          предикат. Дренажа у журнала не было уже с #1024: направление
+	//          развёрнуто, потребитель читает курсором `id > $1`.
+	//
+	// Снятия обеих потребовал [TestNonPartitionOutboxExemptionsHaveSubject],
+	// покрасневший в тот же заход, что и миграция.
 	"resource_reconcile_outbox": "" +
 		"собственная выборка, не общий дренаж: `WHERE sent_at IS NULL ORDER BY id ASC LIMIT n " +
 		"FOR UPDATE SKIP LOCKED` (reconcile_outbox/outbox.go). Единственный частичный индекс (id) " +
@@ -73,12 +81,6 @@ var nonPartitionDrainedOutboxes = map[string]string{
 		"ключ партиции не задан — предмет записи в repohygiene.commutativeDrainExempt, и здесь " +
 		"он намеренно НЕ пересказывается: прежняя редакция его пересказывала и пересказ стал " +
 		"ложным вместе с оригиналом, когда миграция расширила словарь событий очереди.",
-	"subject_change_outbox": "" +
-		"общий дренаж БЕЗ ключа партиции (subject_change_wiring.go): выборка `ORDER BY " +
-		"attempt_count, id LIMIT n`, анти-соединения по партиции нет, поэтому механизм " +
-		"квадратичного роста к ней не относится и измерение, на котором построено правило выше, " +
-		"на неё не переносится. Её набор — предмет отдельного разбора со своим измерением; " +
-		"учтена здесь, чтобы не выпасть из поля зрения.",
 }
 
 // TestOutboxPendingIndexSetIsExactlyTwo — по каждой очереди с ключом партиции
@@ -98,7 +100,7 @@ var nonPartitionDrainedOutboxes = map[string]string{
 // одиночный (id) у очереди с собственной выборкой по id.
 func TestOutboxPendingIndexSetIsExactlyTwo(t *testing.T) {
 	root := repoRoot(t)
-	inv, files := pendingIndexInventory(t, root)
+	inv, files := pendingIndexInventory(t, root, trackedMigrationSQL)
 
 	// «Ноль находок» обязано быть отличимо от «ноль прочитанного».
 	if files == 0 {
@@ -178,7 +180,7 @@ func TestOutboxPendingIndexSetIsExactlyTwo(t *testing.T) {
 // слепую зону.
 func TestNonPartitionOutboxExemptionsHaveSubject(t *testing.T) {
 	root := repoRoot(t)
-	inv, _ := pendingIndexInventory(t, root)
+	inv, _ := pendingIndexInventory(t, root, trackedMigrationSQL)
 
 	present := map[string]bool{}
 	for key := range inv {
@@ -299,7 +301,7 @@ func indexOpsInTextOrder(up string) []sqlIndexOp {
 // живого экземпляра не было, но зона была латентной, а не отсутствующей.
 //
 // Down-секции намеренно игнорируются: они описывают откат, а не состояние схемы.
-func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]string, int) {
+func pendingIndexInventory(t *testing.T, root string, corpus migrationSQLCorpus) (map[string]map[string]string, int) {
 	t.Helper()
 
 	servicesDir := filepath.Join(root, "services")
@@ -316,9 +318,9 @@ func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]str
 		}
 		svc := e.Name()
 		dir := filepath.Join(servicesDir, svc, "internal", "migrations")
-		sqls, globErr := filepath.Glob(filepath.Join(dir, "*.sql"))
+		sqls, globErr := corpus(dir)
 		if globErr != nil {
-			t.Fatalf("обход %s: %v", dir, globErr)
+			t.Fatalf("состав %s: %v", dir, globErr)
 		}
 		sort.Strings(sqls) // имена миграций начинаются с версии — лексикографический порядок = порядок применения
 		svcKeys := map[string]bool{}

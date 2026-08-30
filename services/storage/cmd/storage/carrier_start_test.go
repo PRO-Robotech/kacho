@@ -69,7 +69,7 @@ func TestCarrierRaisesStorageWithoutAStartRefusal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	regs := registrarsOfBothListeners()
+	regs := registrarsOfBothListeners(t)
 	serveErr := servicehost.Serve(ctx, desc, regs[0], regs[1])
 	if serveErr != nil && strings.Contains(serveErr.Error(), "не поднимается") {
 		t.Fatalf("носитель ОТКАЗАЛ storage в старте — на стенде процесс не поднялся бы:\n%v", serveErr)

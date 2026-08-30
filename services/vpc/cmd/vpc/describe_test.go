@@ -25,6 +25,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
@@ -56,6 +57,12 @@ func describeCfg(t *testing.T) (config.Config, config.MTLSConfig) {
 	c.APIServer.Endpoint = "tcp://0.0.0.0:9090"
 	c.APIServer.InternalEndpoint = "tcp://0.0.0.0:9091"
 	c.APIServer.RequestTimeout = 30 * time.Second
+	// Величины подписки — те же, что ставит объявление умолчаний. Ноль здесь не
+	// умолчание, а «не объявлено»: общий сервер такую посадку отвергает на
+	// подъёме, и проба судила бы отказ конструктора вместо своего предмета.
+	c.APIServer.SubscriptionStreamBudget = time.Hour
+	c.APIServer.SubscriptionMaxStreams = 16
+	c.APIServer.SubscriptionIdlePoll = 2 * time.Second
 	c.Repository.Postgres.URL = "postgres://u@h:5432/db"
 	c.Repository.Postgres.SSLMode = "require"
 	c.AuthZ.IAMEndpoint = "kacho-iam-internal:9091"
@@ -176,46 +183,55 @@ func TestHiddenTypesAreResourcesNotHierarchyAnchors(t *testing.T) {
 		"скрывающие типы — ресурсы домена, и только они")
 }
 
-// Срок жизни подписки объявлен ИЗЪЯТИЕМ: серверных потоков vpc не служит.
+// Срок жизни подписки объявлен ВЕЛИЧИНОЙ, потому что поток служится.
 //
-// Ось меняла форму дважды, и оба раза — от появления и исчезновения ОДНОГО
-// предмета. Изъятие стояло здесь изначально; истекло, когда завели поток
-// намерения исполнителю датаплейна; вернулось, когда весь шов сняли целиком
-// вместе с этим потоком (kacho#400) — исполнителя не существует.
+// Проба — GREEN-половина пары, чья RED-половина сработала сама: ось стояла
+// изъятием («серверных потоков не служит»), и появление подписки сделало
+// предпосылку ложной. Изъятие истекло ОТ ПОЯВЛЕНИЯ ПРЕДМЕТА, назвав метод
+// поимённо, — ровно так, как обещало.
 //
-// Проверяется ровно то, что делает изъятие честным: (а) величины НЕТ — иначе
-// дескриптор утверждал бы срок подписки при нулевом наборе подписок; (б) причина
-// НЕПУСТА — пустая причина объявлением не является, и конструктор её отвергает;
-// (в) служимый набор действительно не несёт серверных потоков — это и есть
-// предпосылка изъятия, и судится она набором, а не памятью автора (О11).
+// Утверждается ТРОЙКА, и ни одно из трёх не выводится из другого:
 //
-// Появится поток снова — предпосылка станет ложной, и проба покраснеет ЗДЕСЬ, а
-// не на подъёме стенда.
-func TestStreamBudgetIsExemptBecauseNoServerStreamIsServed(t *testing.T) {
+//	(а) ось несёт величину, а не изъятие — иначе дескриптор молчал бы о сроке
+//	    потока, который служит;
+//	(б) величина заметно превосходит границу обработки одиночного вызова —
+//	    поток, закрывшийся раньше первого события догона, читался бы подписчиком
+//	    как «изменений нет»;
+//	(в) служимых потоков РОВНО ОДИН и это ИМЕННО подписка — перепись идёт по
+//	    ТЕМ ЖЕ регистраторам, что поднимают процесс, поэтому второй поток,
+//	    заведённый мимо этой оси, здесь покраснеет.
+//
+// «Ноль потоков» обязано быть отличимо от «ноль прочитанных дескрипторов»,
+// поэтому перепись называет и число осмотренных методов.
+func TestStreamBudgetIsAValueBecauseTheSubscriptionStreamIsServed(t *testing.T) {
 	cfg, mtls := describeCfg(t)
 	desc, err := describe(cfg, mtls, discardLogger(), buildListFilter(cfg, nil, discardLogger()),
 		bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-vpc"}), probeExistence{},
 		probeAuthzObserve, prometheus.NewRegistry())
 	require.NoError(t, err)
 
-	_, hasValue := desc.Spec().StreamBudget.Get()
-	assert.False(t, hasValue,
-		"величина при отсутствии служимых потоков — срок для подписки, которой нет")
+	budget, hasValue := desc.Spec().StreamBudget.Get()
+	require.True(t, hasValue,
+		"поток служится, а ось объявлена изъятием: дескриптор молчит о сроке жизни подписки")
+	assert.Equal(t, cfg.APIServer.SubscriptionStreamBudget, budget,
+		"величина обязана приезжать из объявления сервиса, а не зашиваться второй раз")
+	assert.Greater(t, budget, cfg.APIServer.RequestTimeout,
+		"срок потока не превосходит границы обработки одиночного вызова: поток закрылся бы "+
+			"раньше, чем доезжает первое событие догона, и подписчик прочёл бы штатное "+
+			"закрытие как «изменений нет»")
 
-	because, na := desc.Spec().StreamBudget.NotApplicableBecause()
-	require.True(t, na, "ось обязана быть объявлена изъятием")
-	assert.NotEmpty(t, because, "изъятие без причины объявлением не является")
+	_, na := desc.Spec().StreamBudget.NotApplicableBecause()
+	assert.False(t, na, "изъятие при служимом потоке — заявление, ложное по построению")
 
-	// Предпосылка изъятия — переписью по СЛУЖИМОМУ набору, а не утверждением о
-	// нём, и набор берётся у ТЕХ ЖЕ регистраторов, что поднимают процесс: своя
-	// копия перечня разошлась бы с боевой проводкой молча.
-	//
-	// «Ноль потоков» обязано быть отличимо от «ноль прочитанных дескрипторов»,
-	// поэтому перепись называет и число осмотренных методов.
+	// Предпосылка величины — переписью по СЛУЖИМОМУ набору, и набор берётся у ТЕХ
+	// ЖЕ регистраторов, что поднимают процесс: своя копия перечня разошлась бы с
+	// боевой проводкой молча.
 	svcs := emptyServices()
+	subscribe, serr := buildSubscriptionServer(cfg, narrowtest.AllowingAll(), discardLogger())
+	require.NoError(t, serr, "сервер потока не собрался — перепись судила бы неполный набор")
 	probe := grpc.NewServer()
 	registerPublicServices(probe, svcs, nil)
-	registerInternalServices(probe, svcs)
+	registerInternalServices(probe, svcs, subscribe)
 
 	var streams, methods int
 	var streaming []string
@@ -229,21 +245,36 @@ func TestStreamBudgetIsExemptBecauseNoServerStreamIsServed(t *testing.T) {
 		}
 	}
 	require.Positive(t, methods, "перепись прочла ноль методов — судить не о чем")
-	assert.Zero(t, streams,
-		"при объявленном изъятии служится потоков: %v. Заявление ложно — "+
-			"величину надо вернуть осознанно (осмотрено методов: %d)", streaming, methods)
+	assert.Equal(t, []string{"kacho.cloud.subscription.InternalSubscriptionService/Subscribe"}, streaming,
+		"служимые потоки разошлись с тем, ради чего объявлена величина "+
+			"(осмотрено методов: %d)", methods)
+	assert.Equal(t, 1, streams, "потоков служится %d: %v", streams, streaming)
 }
 
-// Проводка сужателя — ровно на тот метод, который каталог объявляет сужаемым.
+// Проводка сужателя — на КАЖДЫЙ метод, авторизуемый на уровне данных, и их два.
 //
 // Имя собирается из дескриптора службы, поэтому переименование службы ломает
 // сборку, а не расходится молча. Совпадение с каталогом сверяет носитель в обе
-// стороны (О3/О4); здесь — что проводка одна и что это ТОТ ЖЕ объект, который
+// стороны (О3/О4); здесь — что проводка полна и что это ТОТ ЖЕ объект, который
 // сужает страницу в use-case'ах.
-func TestNarrowerIsWiredToTheOneScopeFilteredMethod(t *testing.T) {
-	scopeFiltered := check.ScopeFilteredRPCs()
-	require.Len(t, scopeFiltered, 1, "у vpc ровно один метод, авторизуемый на уровне данных")
-	require.Equal(t, string(listByInstanceMethod), scopeFiltered[0])
+//
+// # Почему методов ДВА, а собственный у vpc по-прежнему один
+//
+// `check.ScopeFilteredRPCs()` читает СВОЙ контракт домена, и там сужаемый метод
+// один — списочный. Второй приходит из ОБЩЕГО контракта подписки: глагол
+// объявлен `scope_filtered` однажды на всю платформу, и каждый владелец журнала
+// монтирует ЕГО ЖЕ. Поэтому перечень домена остаётся единичным, а проводка —
+// двойной, и путать эти два числа нельзя.
+//
+// # Почему сужатель ОДИН объект на оба
+//
+// Видимость в потоке обязана быть равна видимости в списке. Два разных сужателя
+// об одном предмете разошлись бы молча — и разошлись бы именно там, где
+// расхождение означает выдачу строки тому, кто не вправе её видеть.
+func TestNarrowerIsWiredToEveryScopeFilteredMethod(t *testing.T) {
+	own := check.ScopeFilteredRPCs()
+	require.Len(t, own, 1, "у СОБСТВЕННОГО контракта vpc ровно один метод, авторизуемый на уровне данных")
+	require.Equal(t, string(listByInstanceMethod), own[0])
 
 	cfg, mtls := describeCfg(t)
 	narrower := buildListFilter(cfg, nil, discardLogger())
@@ -254,9 +285,15 @@ func TestNarrowerIsWiredToTheOneScopeFilteredMethod(t *testing.T) {
 
 	wired, ok := desc.Spec().Narrowers.Get()
 	require.True(t, ok)
-	require.Len(t, wired, 1)
+	require.Len(t, wired, 2,
+		"проводка обязана покрывать и свой списочный метод, и общий глагол подписки: "+
+			"за сужаемым методом пообъектной проверки на крае нет вовсе, поэтому "+
+			"непровязанный означает не «строже», а «без рубежа»")
 	assert.Same(t, narrower, wired[listByInstanceMethod],
 		"дескриптор обязан объявлять ТОТ ЖЕ объект, что сужает страницу на пути запроса")
+	assert.Same(t, narrower, wired[subscriptionSubscribeFQN],
+		"поток обязан сужаться ТЕМ ЖЕ объектом, что и список: иначе видимость в потоке "+
+			"расходится с видимостью в списке — молча")
 }
 
 // probeAuthzObserve — приёмник величин кеша вердиктов для проб КОНСТРУКТОРА.

@@ -44,7 +44,7 @@ func chainSpec() servicecontract.Spec {
 	return servicecontract.Spec{
 		Service:        "kacho-demo",
 		Logger:         slog.Default(),
-		Forwarders:     grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"),
+		Forwarders:     servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
 		HandlingBudget: 30 * time.Second,
 		StreamBudget:   servicecontract.Value(30 * time.Minute),
 	}
@@ -215,7 +215,8 @@ func TestChainBuilderIsDeterministic(t *testing.T) {
 // предмет `serverPair` и `TestBothListenersRefuseIdenticallyOnTheWire`.
 func TestForwarderCircleReachesTheChain(t *testing.T) {
 	spec := chainSpec()
-	pair := grpcsrv.PrincipalExtractUnary(spec.Forwarders)
+	circle, _ := spec.Forwarders.Get()
+	pair := grpcsrv.PrincipalExtractUnary(circle)
 	if len(pair) != 2 {
 		t.Fatalf("пара звеньев личности изменила состав: %d", len(pair))
 	}

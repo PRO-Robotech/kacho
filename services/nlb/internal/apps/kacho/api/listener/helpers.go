@@ -13,6 +13,7 @@ import (
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/dto"
@@ -32,10 +33,13 @@ func listenerRecordToPb(rec *kachorepo.ListenerRecord) (*lbv1.Listener, error) {
 	return dst, nil
 }
 
-// operationToProto — тонкий делегатор к единому `shared.OperationToProto`
-// (один источник истины для всех use-case пакетов).
+// operationToProto — прослойка к общему слою: перевод строки операции в контракт
+// объявлен в дереве ОДИН раз (`pkg/operations/operationspb`).
+//
+// Здесь стояло «делегатор к единому `shared.OperationToProto`» — звено, снятое
+// выпрямлением цепочки: комментарий пережил свой предмет ровно на одну правку.
 func operationToProto(op *operations.Operation) *operationpb.Operation {
-	return shared.OperationToProto(op)
+	return operationspb.ToProto(op)
 }
 
 // mapDomainErr — translate domain-sentinel error → gRPC status. Делегирует
@@ -67,41 +71,42 @@ func marshalListener(rec *kachorepo.ListenerRecord) (*anypb.Any, error) {
 	return any, nil
 }
 
-// listenerPayloadMap — outbox-payload snapshot (`map[string]any`) для
-// `nlb_outbox`. Минимальный набор полей для consumer'ов (kacho-iam reader,
-// metrics). Полный record не сериализуем — outbox-event это уведомление, а не
-// полный ресурс (consumer делает дополнительный Get(id) если нужно).
-func listenerPayloadMap(rec *kachorepo.ListenerRecord) map[string]any {
-	if rec == nil {
-		return nil
-	}
-	// ParentResourceID = parent LB id (canonical `parent_resource_id` key) — the
-	// Subscribe consumer reads it into ResourceLifecycleEvent.ParentResourceId for
-	// kacho-iam FGA-sync (listener→LB hierarchy). Single source of truth for the
-	// key names is kachorepo.LifecyclePayload.
-	return kachorepo.LifecyclePayload{
-		ID:               string(rec.ID),
-		ParentResourceID: string(rec.LoadBalancerID),
-		ProjectID:        string(rec.ProjectID),
-		RegionID:         string(rec.RegionID),
-		Name:             string(rec.Name),
-		Protocol:         string(rec.Protocol),
-		Port:             int32(rec.Port),
-		Status:           string(rec.Status),
-	}.Map()
-}
+// Строитель нагрузки вида `nlb_listener` живёт НЕ ЗДЕСЬ, а в repo-leaf —
+// `kachorepo.ListenerStatePayload`, рядом со своим читателем.
+//
+// # Почему он оттуда, а не отсюда
+//
+// Точки эмиссии этого вида лежат в ДВУХ пакетах use-case: правку и снятие
+// эмитит этот, а каскадный переезд — пакет балансировщика, который правит проект
+// слушателей вместе со своим (#1549). Строитель, спрятанный здесь, второму
+// пакету недоступен, и второй завёл бы свой — вторую форму нагрузки того же вида.
+// Контракт единой формы разрешает читать непустое состояние как ПОЛНОЕ, поэтому
+// одна частичная точка делает ложным ВЕСЬ вид, и делает тихо.
+//
+// Держит это разбор ДЕРЕВА use-case'ов
+// (`subscriptionjournal.TestEveryEmissionOfAStatefulKindBuildsTheSamePayload`), а
+// не внимание.
 
-// lbUpdatedPayloadMap — outbox-payload для cross-resource sync эмита
-// `nlb_load_balancer:<lb_id> UPDATED` после Listener.Create /.Delete
-// . Minimal — consumer резолвит full LB через Get.
-func lbUpdatedPayloadMap(lbID, projectID, regionID, trigger string) map[string]any {
-	return kachorepo.LifecyclePayload{
-		ID:        lbID,
-		ProjectID: projectID,
-		RegionID:  regionID,
-		Trigger:   trigger,
-	}.Map()
-}
+// Строитель нагрузки вида `nlb_load_balancer` тоже живёт в repo-leaf —
+// `kachorepo.LoadBalancerStatePayload`. Здесь стоял `lbUpdatedPayloadMap`:
+// минимальный снимок из четырёх полей плюс диагностический маркер
+// (`listener_created` / `listener_deleted`). Он снят вместе с минимальным
+// снимком — вид объявлен несущим ПОЛНОЕ состояние, и частичная нагрузка одной
+// точки делала бы ложным весь вид.
+//
+// # Запись балансировщика ПОСЛЕ мутации читается заново, и это не гонка
+//
+// Родительская запись, взятая до вставки (или снятия) слушателя, отвечает за
+// момент ДО пересчёта статуса: триггер `lb_status_recompute` срабатывает внутри
+// самого оператора и меняет `status`. Отдать её значило бы объявить прежнее
+// состояние на строке, которую этот же оператор только что сдвинул.
+//
+// `RETURNING` здесь недоступен by construction: возвращает он строку СЛУШАТЕЛЯ,
+// а нужна строка родителя. Поэтому она перечитывается — в ТОЙ ЖЕ транзакции,
+// сразу после оператора, чьи триггеры к этому моменту уже отработали. Ответ
+// авторитетен: транзакция видит свои записи и держит на строке замок, взятый
+// вставкой (`FOR NO KEY UPDATE OF lb`). Тем же доводом читается строка
+// слушателя на проигранной гонке снятия — этажом выше, в снятии слушателя.
 
 // loggerOrDiscard — defensive accessor для nil-loggers. Возвращает global
 // default slog (через slog.Default) если переданный logger == nil; иначе

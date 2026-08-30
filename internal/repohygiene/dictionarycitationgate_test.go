@@ -84,7 +84,7 @@ import (
 //     фразу в утверждение о полном наборе.
 func TestCommentCitingDictionaryConstraintQuotesItWhole(t *testing.T) {
 	root := repoRoot(t)
-	dicts := enumDictionaryInventory(t, root)
+	dicts := enumDictionaryInventory(t, root, trackedMigrationSQL)
 
 	if dicts.filesRead == 0 || len(dicts.byName) == 0 {
 		t.Fatalf("гейт не получил ни одного именованного словаря (прочитано миграций: %d, "+

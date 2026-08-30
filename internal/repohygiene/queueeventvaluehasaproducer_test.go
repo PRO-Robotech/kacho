@@ -75,7 +75,7 @@ var retiredQueueEventValues = map[string]string{
 // пишется хоть чем-то в прод-коде своего сервиса.
 func TestQueueEventValueHasAProducer(t *testing.T) {
 	root := repoRoot(t)
-	dicts := enumDictionaryInventory(t, root)
+	dicts := enumDictionaryInventory(t, root, trackedMigrationSQL)
 	wiring := outboxWiringInventory(t, root)
 
 	if dicts.filesRead == 0 {

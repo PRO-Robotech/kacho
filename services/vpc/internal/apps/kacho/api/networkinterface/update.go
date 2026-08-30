@@ -221,7 +221,7 @@ func (u *UpdateNetworkInterfaceUseCase) doUpdate(ctx context.Context, in UpdateI
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if oerr := w.Outbox().Emit(ctx, "NetworkInterface", updated.ID, "UPDATED", helpers.DomainToMap(updated)); oerr != nil {
+	if oerr := w.Outbox().Emit(ctx, "NetworkInterface", updated.ID, updated.ProjectID, "UPDATED", helpers.DomainToMap(updated)); oerr != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 	}
 	// Если labels попали в update_mask (или это full-object PATCH), переэмитим

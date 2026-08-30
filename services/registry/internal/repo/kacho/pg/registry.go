@@ -656,11 +656,12 @@ func statusString(s domain.RegistryStatus) string {
 	return "ACTIVE"
 }
 
+// Перевод живёт в домене: читателей у него два — это чтение и разбор нагрузки
+// ресурсного журнала, чьи ключи суть имена колонок. Своя копия разошлась бы
+// молча (неизвестное слово схлопывается в значение по умолчанию, то есть ошибка
+// выглядит как обычное состояние).
 func statusFromString(s string) domain.RegistryStatus {
-	if s == "DELETING" {
-		return domain.RegistryStatusDeleting
-	}
-	return domain.RegistryStatusActive
+	return domain.RegistryStatusFromString(s)
 }
 
 // placementTypeString / placementTypeFromString — маппинг domain-enum ↔ TEXT-колонка
@@ -672,10 +673,7 @@ func placementTypeString(p domain.PlacementType) string {
 }
 
 func placementTypeFromString(s string) domain.PlacementType {
-	if s == "REGIONAL" {
-		return domain.PlacementTypeRegional
-	}
-	return domain.PlacementTypeUnspecified
+	return domain.PlacementTypeFromString(s)
 }
 
 // invalidFilterErr оборачивает ошибку парсинга filter в domain-sentinel

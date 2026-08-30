@@ -108,9 +108,13 @@ enforcement the function does not already provide — the invariant is fully
 enforced either way. The newtype refactor is a style-only follow-up (regime
 alignment), not a security/consistency gap.
 
-**Note (owner-scope, no admin bypass).** `OperationHandler.Get/Cancel` owner-scope
-strictly by creator-principal with **no** cluster-admin bypass (unlike
-`kacho-vpc`, which has a `tenant.Admin` cross-cut). geo has no tenant/admin ctx
+**Note (owner-scope, no admin bypass).** `operationspb.Handler.Get/Cancel`
+(общий слой `pkg/operations/operationspb`, куда полоса сведена из семи копий)
+owner-scope strictly by creator-principal with **no** cluster-admin bypass.
+Прежде здесь стояло «unlike `kacho-vpc`, which has a `tenant.Admin` cross-cut» —
+это было неверно И ДО сведения: комментарий снятого обработчика vpc гласил
+«admin-bypass тут не применяется». Расхождения не было, а противопоставление
+пережило свой предмет. geo has no tenant/admin ctx
 concept — every mutation already requires `system_admin`, and each operation
 belongs to the admin that created it — so a bypass would be dead surface. This is
 intentional, not a missing feature.
@@ -254,3 +258,52 @@ have become false about already-written rows.
 refused, an empty-mask full PATCH leaves the stored `region_id` untouched, and a
 create whose id is not prefixed by its region is refused before any FK is consulted.
 `TestUpdate_immutableRegionId_invalidArg` (`services/geo/internal/apps/kacho/api/zone/zone_test.go`) pins the message.
+
+## 9. geo keeps a change feed but does **not** serve the platform subscription verb — narrowing has nothing to ask
+
+**What.** Every other domain that keeps a resource change feed serves
+`kacho.cloud.subscription.InternalSubscriptionService/Subscribe`, whose edge
+projection is `/subscription/v1/events`. geo keeps `geo_outbox` — a feed by shape
+(`sequence_no`, `resource_kind ∈ {Region, Zone}`, `resource_id`, `event_type`,
+`payload`) — and deliberately does not serve the verb. Reviewers who count
+"domains with a feed" against "domains that serve" will find geo missing; this is
+a decision, not an omission.
+
+**Why it is not merely unimplemented — the mechanism cannot accept this feed.**
+`subscription.Mapping.validate` (`pkg/subscription/journal.go`) requires a
+non-empty kind dictionary in which **every kind is an object type of the rights
+model**, and it says why in the refusal itself: without an object type there is
+no way to ask whether a given caller may see a given row. The rights model
+(`services/iam/internal/authzmodel/fga_model.fga`) declares 32 object types and
+**zero** of them are `geo_*`. So geo cannot name one legal kind, and a wired geo
+owner would refuse at start-up rather than serve an empty stream.
+
+**Why the missing types are themselves correct.** Region and Zone are the
+admin-curated global placement catalogue, and their public reads are a documented
+project-scope exemption: every authenticated tenant must be able to read them in
+order to place any resource at all. Per-row narrowing over that catalogue has a
+single answer for every caller — "yes". Introducing `geo_region`/`geo_zone` object
+types purely so that the mandatory narrower can answer "yes" to everyone would be
+a check with the form of a check and none of the substance, and it would put the
+catalogue back inside the per-object authz it was deliberately taken out of.
+
+**What the feed is actually for.** `geo_outbox` records admin mutations for
+attribution (see `authz-and-tuples.md`: audit-only) and is read by cursor. It is
+not a tenant-facing view of tenant-owned resources, which is what the subscription
+verb streams.
+
+**Consumers, measured.** There is no `geo` console module (`ls ui-future/` → the
+domain is absent), and no caller polls the catalogue on a loop: it is fetched once
+and cached, because admin-curated catalogues change on the order of months. Wiring
+the verb here would create the one thing the epic forbids — a surface with no
+consumer.
+
+**What would reverse this.** A `geo_*` object type appearing in the rights model:
+at that point narrowing becomes a real question and the decision must be re-taken.
+That reversal is not left to memory — `internal/repohygiene`
+`TestEveryDomainEitherServesSubscriptionOrRecordsWhyNot` pins the premise and
+fails the run if geo ever declares such a type, and equally if geo starts serving
+the verb while this entry still claims it does not.
+
+**Recorded for** kacho#1023, whose readiness predicate demanded seven owners out
+of seven and would otherwise stay red against a correct tree forever.

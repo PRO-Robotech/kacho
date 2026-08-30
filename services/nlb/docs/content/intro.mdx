@@ -27,7 +27,7 @@ import hero from '@site/src/css/hero.module.css'
     <a className={hero.btnPrimary} href="/getting-started">Быстрый старт →</a>
     <a className={hero.btnGhost} href="/api/overview">Обзор API</a>
     <a className={hero.btnGhost} href="/architecture/overview">Архитектура</a>
-    <a className={hero.btnGhost} href="https://github.com/PRO-Robotech/kacho-nlb">GitHub</a>
+    <a className={hero.btnGhost} href="https://github.com/PRO-Robotech/kacho/tree/main/services/nlb">GitHub</a>
   </div>
 </header>
 
@@ -82,7 +82,7 @@ Kachō NLB управляет **тремя типами ресурсов**. Вс
 </table>
 
 :::note Идентификаторы — серверные
-Идентификаторы ресурсов генерирует сервер (`kacho-corelib/ids`): 3-символьный префикс +
+Идентификаторы ресурсов генерирует сервер (`pkg/ids`): 3-символьный префикс +
 17-символьный crockford-base32. Тип ресурса читается по префиксу (`nlb` / `lst` / `tgr`).
 Идентификатор операции несёт тот же `nlb`-префикс — по нему api-gateway маршрутизирует опрос
 `OperationService.Get`.
@@ -156,7 +156,7 @@ API владельца на request-path. Подробнее — [Архитек
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>⇄</span>
     <span className={hero.featureTitle}>gRPC + REST API</span>
-    <span className={hero.featureBody}>Единый контракт на Protocol Buffers (<code>kacho-proto</code>, домен <code>kacho.cloud.loadbalancer.v1</code>), REST-проекция через grpc-gateway.</span>
+    <span className={hero.featureBody}>Единый контракт на Protocol Buffers (<code>proto/</code>, домен <code>kacho.cloud.loadbalancer.v1</code>), REST-проекция через grpc-gateway.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>◎</span>
@@ -191,7 +191,7 @@ API владельца на request-path. Подробнее — [Архитек
   <thead><tr><th>Технология</th><th>Применение</th></tr></thead>
   <tbody>
     <tr><td>Go</td><td>Язык реализации (чистая архитектура: handler → use-case → domain)</td></tr>
-    <tr><td>Protocol Buffers / Buf</td><td>Контракт API (<code>kacho-proto</code>, домен <code>kacho.cloud.loadbalancer.v1</code>)</td></tr>
+    <tr><td>Protocol Buffers / Buf</td><td>Контракт API (<code>proto/</code>, домен <code>kacho.cloud.loadbalancer.v1</code>)</td></tr>
     <tr><td>PostgreSQL / pgx v5</td><td>Хранилище <code>kacho_nlb</code></td></tr>
     <tr><td>Goose</td><td>Версионирование схемы (отдельный <code>cmd/migrator</code>)</td></tr>
     <tr><td>sqlc + handwritten pgx</td><td>SQL-доступ (без ORM)</td></tr>
@@ -199,16 +199,16 @@ API владельца на request-path. Подробнее — [Архитек
   </tbody>
 </table>
 
-## Структура репозиториев
+## Структура монорепо
 
 <table>
-  <thead><tr><th>Репозиторий</th><th>Назначение</th></tr></thead>
+  <thead><tr><th>Каталог</th><th>Назначение</th></tr></thead>
   <tbody>
-    <tr><td><strong>kacho-nlb</strong></td><td>Этот сервис: control-plane Load Balancing (NLB / Listener / TargetGroup)</td></tr>
-    <tr><td><strong>kacho-proto</strong></td><td>Центральные <code>.proto</code> + сгенерированные Go-stubs</td></tr>
-    <tr><td><strong>kacho-corelib</strong></td><td>Общие пакеты (db, grpcsrv, grpcclient, operations, outbox, config, ...)</td></tr>
-    <tr><td><strong>kacho-api-gateway</strong></td><td>Edge: gRPC-proxy + REST mux</td></tr>
-    <tr><td><strong>kacho-iam</strong></td><td>Авторизация (Check), ProjectService, регистрация владения ресурсами</td></tr>
-    <tr><td><strong>kacho-vpc / kacho-compute / kacho-geo</strong></td><td>Владельцы ссылок: Address/Subnet/NIC · Instance · Region</td></tr>
+    <tr><td><strong>services/nlb/</strong></td><td>Этот сервис: control-plane Load Balancing (NLB / Listener / TargetGroup)</td></tr>
+    <tr><td><strong>proto/</strong></td><td>Центральные <code>.proto</code> + сгенерированные Go-stubs</td></tr>
+    <tr><td><strong>pkg/</strong></td><td>Общие пакеты (db, grpcsrv, grpcclient, operations, outbox, config, ...)</td></tr>
+    <tr><td><strong>gateway/</strong></td><td>Edge: gRPC-proxy + REST mux</td></tr>
+    <tr><td><strong>services/iam/</strong></td><td>Авторизация (Check), ProjectService, регистрация владения ресурсами</td></tr>
+    <tr><td><strong>services/vpc/ · services/compute/ · services/geo/</strong></td><td>Владельцы ссылок: Address/Subnet/NIC · Instance · Region</td></tr>
   </tbody>
 </table>

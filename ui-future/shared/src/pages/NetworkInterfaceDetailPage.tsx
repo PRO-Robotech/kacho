@@ -19,6 +19,7 @@ import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailP
 import { ResourceFormModal } from "@shared/components/organisms/ResourceFormModal";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { api } from "@shared/api/client";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 
 type Address = Record<string, unknown> & { id: string };
 type SG = Record<string, unknown> & { id: string };
@@ -27,6 +28,22 @@ export function NetworkInterfaceDetailPage() {
   const { uid: nicId, projectId } = useParams();
   const navigate = useNavigate();
   const spec = REGISTRY["network-interfaces"];
+
+  // ЧТЕНИЕ ПО СОБЫТИЮ, ОПРОС — ПОКА СОБЫТИЙ НЕТ (#1021). Признак покрытия свой
+  // на КАЖДЫЙ вид: владелец объявляет словарь целиком, но покрытым считается
+  // ровно названный им вид, а не домен.
+  const { streamed: addressesStreamed } = useResourceStream({
+    specId: "addresses",
+    projectId: projectId ?? null,
+    invalidate: ["addresses", "list-for-nic", projectId],
+    enabled: !!projectId,
+  });
+  const { streamed: securityGroupsStreamed } = useResourceStream({
+    specId: "security-groups",
+    projectId: projectId ?? null,
+    invalidate: ["security-groups", "list-for-nic", projectId],
+    enabled: !!projectId,
+  });
 
   // Загружаем все Address-ресурсы проекта — потом client-side filter
   // по v4_address_ids ∪ v6_address_ids текущего NIC.
@@ -37,7 +54,7 @@ export function NetworkInterfaceDetailPage() {
         project_id: projectId!,
         pageSize: "500",
       }),
-    refetchInterval: 10000,
+    refetchInterval: addressesStreamed ? false : 10000,
     enabled: !!projectId,
   });
 
@@ -49,7 +66,7 @@ export function NetworkInterfaceDetailPage() {
         project_id: projectId!,
         pageSize: "500",
       }),
-    refetchInterval: 10000,
+    refetchInterval: securityGroupsStreamed ? false : 10000,
     enabled: !!projectId,
   });
 

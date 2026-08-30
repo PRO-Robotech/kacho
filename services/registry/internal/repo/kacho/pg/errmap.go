@@ -9,8 +9,8 @@ import (
 	"log/slog"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 
@@ -42,29 +42,20 @@ func wrapPgErr(err error, resource, id string) error {
 	if qerr := classifyQuotaErr(err); qerr != nil {
 		return qerr
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23505": // unique_violation
+	f := pgfault.Classify(err)
+	if f.FromDatabase() {
+		switch f.Class {
+		case pgfault.Unique:
 			return fmt.Errorf("%w: %s %s already exists", regerrors.ErrAlreadyExists, resource, id)
-		case "23503": // foreign_key_violation
+		case pgfault.ForeignKey:
 			return fmt.Errorf("%w: %s %s violates a reference constraint", regerrors.ErrFailedPrecondition, resource, id)
-		case "23514": // check_violation
+		case pgfault.Check:
 			return fmt.Errorf("%w: invalid %s", regerrors.ErrInvalidArg, resource)
 		}
-		// Неклассифицированный SQLSTATE (42P01 undefined_table после goose-divergence,
-		// 42703 undefined_column, 22P02 type-mismatch, …). Сырой pgx наружу НЕ отдаём
-		// (фиксированный INTERNAL), но ВНУТРЕННИЙ лог обязан нести причину — иначе живой
-		// сбой = «internal database error» без единой строки о SQLSTATE.
 		slog.Default().Error("registry repo: unclassified database error",
-			"sqlstate", pgErr.Code,
-			"pg_message", pgErr.Message,
-			"pg_detail", pgErr.Detail,
-			"resource", resource,
-			"resource_id", id)
+			append([]any{"resource", resource, "resource_id", id}, f.LogAttrs()...)...)
 		return regerrors.ErrInternal
 	}
-	// Non-pg неизвестная ошибка — тоже логируем сырой текст перед схлопом (не течёт наружу).
 	slog.Default().Error("registry repo: unclassified error",
 		"err", err.Error(), "resource", resource, "resource_id", id)
 	return regerrors.ErrInternal

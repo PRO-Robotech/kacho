@@ -142,16 +142,18 @@ describe("вид машины: каждая ветвь спецификации 
 describe("балансировщик: каждая ветвь источника VIP выразима формой", () => {
   const spec = REGISTRY["load-balancers"];
 
-  /** Тело создания при выбранном источнике семейства IPv4. */
+  /** Тело создания при выбранном источнике семейства IPv4.
+   *
+   *  Источник VIP форма держит ОДНИМ составным полем `vip_source` (режим на
+   *  семейство плюс ссылка активного режима), а ветви `v4_source`/`v6_source`
+   *  кладёт на провод `sanitize`. Поэтому вход здесь — представление формы, а
+   *  утверждение — про тело: перечень имён полей о ветвях не говорит ничего. */
   function makeBody(mode: string, placement: string, fam: Record<string, unknown> = {}): Record<string, unknown> {
     return spec.sanitize!({
       project_id: "prj-1",
       region_id: "reg-1",
       placement,
-      _v4_source: mode,
-      v4_source: fam,
-      _v6_source: "off",
-      v6_source: {},
+      vip_source: { _v4_mode: mode, v4: fam, _v6_mode: "off", v6: {} },
     });
   }
 
@@ -170,6 +172,19 @@ describe("балансировщик: каждая ветвь источника
     const body = makeBody("public", "EXTERNAL_REGIONAL");
     expect(body).toHaveProperty("v4_source");
     expect(body).not.toHaveProperty("v6_source");
+  });
+
+  it("режим «не задавать» опускает семейство и при внешнем размещении", () => {
+    // У EXTERNAL это единственный способ отказаться: «публичный» даёт источник
+    // БЕЗУСЛОВНО, поэтому пустой ссылкой семейство здесь не опустить.
+    const body = spec.sanitize!({
+      project_id: "prj-1",
+      region_id: "reg-1",
+      placement: "EXTERNAL_REGIONAL",
+      vip_source: { _v4_mode: "off", v4: {}, _v6_mode: "public", v6: {} },
+    });
+    expect(body).not.toHaveProperty("v4_source");
+    expect(body).toHaveProperty("v6_source");
   });
 });
 

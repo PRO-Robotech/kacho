@@ -14,8 +14,8 @@ import (
 	"log/slog"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	geoerrors "github.com/PRO-Robotech/kacho/services/geo/internal/errors"
 )
 
@@ -49,17 +49,17 @@ func Wrap(err error, resource, id string) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return geoerrors.ErrDeadlineExceeded
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23505": // unique_violation
+	f := pgfault.Classify(err)
+	if f.FromDatabase() {
+		switch f.Class {
+		case pgfault.Unique:
 			return fmt.Errorf("%w: %s %s already exists", geoerrors.ErrAlreadyExists, resource, id)
-		case "23503": // foreign_key_violation — direction-neutral: 23503 летит и на
+		case pgfault.ForeignKey: // direction-neutral: 23503 летит и на
 			// parent-delete (Region.Delete с зонами), и на child-insert/update (Zone
 			// с несуществующим region_id). Текст не привязан к направлению.
 			return fmt.Errorf("%w: %s %s violates a reference constraint", geoerrors.ErrFailedPrecondition, resource, id)
-		case "23514": // check_violation
-			return checkViolation(pgErr, resource, id)
+		case pgfault.Check:
+			return checkViolation(f, resource, id)
 		}
 		// Некатегоризированный SQLSTATE (deadlock 40P01, serialization 40001,
 		// insufficient_privilege 42501, …). Клиенту отдаём фиксированный sentinel
@@ -67,12 +67,10 @@ func Wrap(err error, resource, id string) error {
 		// root cause выбрасывается без следа (CWE-390) и оператор при разборе
 		// инцидента не имеет привязки к реальной причине БД.
 		slog.Error("uncategorized postgres error mapped to internal",
-			"sqlstate", pgErr.Code,
-			"pg_message", pgErr.Message,
-			"resource", resource,
-			"id", id)
+			append([]any{"resource", resource, "id", id}, f.LogAttrs()...)...)
 		return geoerrors.ErrInternal
 	}
+
 	// Не-pg ошибка (context deadline, conn reset, pool-exhaustion). Так же:
 	// клиенту — sentinel, но оригинал логируем для operator-trail.
 	slog.Error("uncategorized db error mapped to internal",
@@ -103,9 +101,8 @@ func Wrap(err error, resource, id string) error {
 //
 // Имя ограничения наружу не идёт: оно идёт в журнал, чтобы «ограничение ловит ввод
 // регулярно» было счётно.
-func checkViolation(pgErr *pgconn.PgError, resource, id string) error {
+func checkViolation(f pgfault.Fault, resource, id string) error {
 	slog.Warn("check constraint rejected caller input",
-		"sqlstate", pgErr.Code, "table", pgErr.TableName,
-		"constraint", pgErr.ConstraintName, "resource", resource, "id", id)
+		append([]any{"resource", resource, "id", id}, f.LogAttrs()...)...)
 	return fmt.Errorf("%w: invalid %s", geoerrors.ErrInvalidArg, resource)
 }

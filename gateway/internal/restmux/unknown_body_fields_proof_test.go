@@ -233,8 +233,31 @@ func TestHTTPBindingsMatchGeneratedRouteTable(t *testing.T) {
 	// бинарь края — тогда край и сам его не обслуживает (grpc-gateway отдаст
 	// 404), проверять там нечего. Любая другая — потеря маршрута сканером.
 	// Предикат, а не список имён: слинкуют сервис — проверка сработает.
+	// Собственные ручки края в этом направлении НЕ судятся, и предпосылка
+	// названа: они стоят в таблице маршрутов не из-за `google.api.http`, а
+	// потому что край обслуживает эти пути САМ. До grpc-gateway они не доходят
+	// вовсе, поэтому «тело не проверено» про них невыразимо.
+	//
+	// Послабление САМОИСТЕКАЕТ и не является маской: ниже требуется, чтобы у
+	// такой ручки биндинга в контракте НЕ БЫЛО. Появится — значит у одного
+	// метода стало два пути, и это находка, а не исключение.
+	edgeOwned := make(map[string]string, len(middleware.EdgeRestRoutesForProof()))
+	for _, r := range middleware.EdgeRestRoutesForProof() {
+		edgeOwned[r.FQN] = r.Method + " " + r.Template
+		if known[r.FQN] {
+			t.Errorf("%s: край обслуживает %s сам, и контракт объявил тому же методу HTTP-путь — "+
+				"у одного метода стало два пути наружу", r.FQN, r.Method+" "+r.Template)
+		}
+	}
+	t.Logf("перепись: маршрутов в таблице %d · из них собственных ручек края %d · "+
+		"объявленных биндингов контракта %d",
+		len(router.PathTemplates()), len(edgeOwned), len(bindings))
+
 	for fqn := range router.PathTemplates() {
 		if known[fqn] {
+			continue
+		}
+		if _, isEdgeOwned := edgeOwned[fqn]; isEdgeOwned {
 			continue
 		}
 		service := fqn

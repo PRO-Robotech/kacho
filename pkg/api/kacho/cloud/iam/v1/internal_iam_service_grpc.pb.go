@@ -23,14 +23,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	InternalIAMService_LookupSubject_FullMethodName          = "/kacho.cloud.iam.v1.InternalIAMService/LookupSubject"
-	InternalIAMService_Check_FullMethodName                  = "/kacho.cloud.iam.v1.InternalIAMService/Check"
-	InternalIAMService_ForceLogout_FullMethodName            = "/kacho.cloud.iam.v1.InternalIAMService/ForceLogout"
-	InternalIAMService_PollSubjectChanges_FullMethodName     = "/kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges"
-	InternalIAMService_RegisterResource_FullMethodName       = "/kacho.cloud.iam.v1.InternalIAMService/RegisterResource"
-	InternalIAMService_UnregisterResource_FullMethodName     = "/kacho.cloud.iam.v1.InternalIAMService/UnregisterResource"
-	InternalIAMService_ResolveBasicCredential_FullMethodName = "/kacho.cloud.iam.v1.InternalIAMService/ResolveBasicCredential"
-	InternalIAMService_GetRoleCompiled_FullMethodName        = "/kacho.cloud.iam.v1.InternalIAMService/GetRoleCompiled"
+	InternalIAMService_LookupSubject_FullMethodName            = "/kacho.cloud.iam.v1.InternalIAMService/LookupSubject"
+	InternalIAMService_Check_FullMethodName                    = "/kacho.cloud.iam.v1.InternalIAMService/Check"
+	InternalIAMService_ForceLogout_FullMethodName              = "/kacho.cloud.iam.v1.InternalIAMService/ForceLogout"
+	InternalIAMService_PollSubjectChanges_FullMethodName       = "/kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges"
+	InternalIAMService_RegisterResource_FullMethodName         = "/kacho.cloud.iam.v1.InternalIAMService/RegisterResource"
+	InternalIAMService_UnregisterResource_FullMethodName       = "/kacho.cloud.iam.v1.InternalIAMService/UnregisterResource"
+	InternalIAMService_ResolveBasicCredential_FullMethodName   = "/kacho.cloud.iam.v1.InternalIAMService/ResolveBasicCredential"
+	InternalIAMService_GetRoleCompiled_FullMethodName          = "/kacho.cloud.iam.v1.InternalIAMService/GetRoleCompiled"
+	InternalIAMService_CheckBasicCredentialLive_FullMethodName = "/kacho.cloud.iam.v1.InternalIAMService/CheckBasicCredentialLive"
 )
 
 // InternalIAMServiceClient is the client API for InternalIAMService service.
@@ -65,9 +66,14 @@ type InternalIAMServiceClient interface {
 	// get notified. Async: returns Operation; the LISTEN/NOTIFY fan-out then
 	// updates every api-gateway pod's revocation cache ≤ 1s.
 	ForceLogout(ctx context.Context, in *ForceLogoutRequest, opts ...grpc.CallOption) (*operation.Operation, error)
-	// PollSubjectChanges drains subject_change_outbox by ascending id cursor.
+	// PollSubjectChanges drains subject_change_outbox by ascending id cursor,
+	// over the window `(since_id, settled]` — never "everything above the cursor".
 	// Internal-only (cluster-internal listener) — drives api-gateway authz
 	// decision-cache invalidation.
+	//
+	// UNAVAILABLE while the journal has no settled position yet (cold start): the
+	// caller retries on its next tick. This is a state, not a failure — the
+	// settled flag is monotone and never withdrawn once raised.
 	PollSubjectChanges(ctx context.Context, in *PollSubjectChangesRequest, opts ...grpc.CallOption) (*PollSubjectChangesResponse, error)
 	// RegisterResource — Internal FGA-proxy: apply an owner-hierarchy tuple
 	// (subject holds `relation` on `object`) on behalf of the resource-owning
@@ -126,6 +132,35 @@ type InternalIAMServiceClient interface {
 	// REST exposed ONLY on the cluster-internal listener.
 	ResolveBasicCredential(ctx context.Context, in *ResolveBasicCredentialRequest, opts ...grpc.CallOption) (*ResolveBasicCredentialResponse, error)
 	GetRoleCompiled(ctx context.Context, in *GetRoleCompiledRequest, opts ...grpc.CallOption) (*GetRoleCompiledResponse, error)
+	// CheckBasicCredentialLive — ЖИВО ЛИ УДОСТОВЕРЕНИЕ, СПРОШЕННОЕ ПО ЕГО
+	// ИДЕНТИФИКАТОРУ, БЕЗ ПРЕДЪЯВЛЕНИЯ СЕКРЕТА (задача #1450).
+	//
+	// ЗАЧЕМ ВТОРОЙ ВОПРОС, ЕСЛИ РЯДОМ ЕСТЬ `ResolveBasicCredential`. Тот отвечает
+	// ПРЕДЪЯВИТЕЛЮ и потому требует самой предъявленной строки. Спрашивающий с
+	// ОТКРЫТОГО соединения предъявителем не является: секрет он видел однажды, при
+	// открытии, и держать его живым весь срок соединения значило бы завести
+	// поверхность хранения ради контроля — то есть платить за отзыв тем самым, что
+	// отзыв защищает.
+	//
+	// Поэтому вопрос задаётся по идентификатору СТРОКИ удостоверения. Предикат
+	// живости у него ТОТ ЖЕ, что у резолва: существование строки, вид `SECRET`,
+	// непросроченность и активность владельца. Разойтись они не могут — оператор
+	// один, и сверка хеша в нём не участвует by construction.
+	//
+	// ОТВЕТ — ОТКАЗ, А НЕ ПОЛЕ. Живое удостоверение даёт `OK`, неживое —
+	// `UNAUTHENTICATED` с тем же единым текстом, что у резолва; «спросить не
+	// удалось» — `UNAVAILABLE`. Поле-признак означало бы, что вызывающий вправе его
+	// не прочитать, и тогда контроль присутствует, провязан и не отказывает ни разу.
+	// Ровно тот довод, что записан у `ResolveBasicCredentialResponse`.
+	//
+	// ОТКАЗ ЕДИНЫЙ И ЗДЕСЬ. Неизвестный идентификатор, истёкший срок, отозванное
+	// удостоверение, неактивный владелец — один код и один текст: различимый
+	// отличал бы «нет такого» от «есть, но не действует».
+	//
+	// БЕЗ `google.api.http` НАМЕРЕННО — как у `GetRoleCompiled`. Вызывающий ходит
+	// gRPC; дружелюбного пути под этот вопрос не заводится, чтобы его нельзя было
+	// выставить наружу опечаткой в таблице маршрутов края.
+	CheckBasicCredentialLive(ctx context.Context, in *CheckBasicCredentialLiveRequest, opts ...grpc.CallOption) (*CheckBasicCredentialLiveResponse, error)
 }
 
 type internalIAMServiceClient struct {
@@ -216,6 +251,16 @@ func (c *internalIAMServiceClient) GetRoleCompiled(ctx context.Context, in *GetR
 	return out, nil
 }
 
+func (c *internalIAMServiceClient) CheckBasicCredentialLive(ctx context.Context, in *CheckBasicCredentialLiveRequest, opts ...grpc.CallOption) (*CheckBasicCredentialLiveResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CheckBasicCredentialLiveResponse)
+	err := c.cc.Invoke(ctx, InternalIAMService_CheckBasicCredentialLive_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // InternalIAMServiceServer is the server API for InternalIAMService service.
 // All implementations must embed UnimplementedInternalIAMServiceServer
 // for forward compatibility.
@@ -248,9 +293,14 @@ type InternalIAMServiceServer interface {
 	// get notified. Async: returns Operation; the LISTEN/NOTIFY fan-out then
 	// updates every api-gateway pod's revocation cache ≤ 1s.
 	ForceLogout(context.Context, *ForceLogoutRequest) (*operation.Operation, error)
-	// PollSubjectChanges drains subject_change_outbox by ascending id cursor.
+	// PollSubjectChanges drains subject_change_outbox by ascending id cursor,
+	// over the window `(since_id, settled]` — never "everything above the cursor".
 	// Internal-only (cluster-internal listener) — drives api-gateway authz
 	// decision-cache invalidation.
+	//
+	// UNAVAILABLE while the journal has no settled position yet (cold start): the
+	// caller retries on its next tick. This is a state, not a failure — the
+	// settled flag is monotone and never withdrawn once raised.
 	PollSubjectChanges(context.Context, *PollSubjectChangesRequest) (*PollSubjectChangesResponse, error)
 	// RegisterResource — Internal FGA-proxy: apply an owner-hierarchy tuple
 	// (subject holds `relation` on `object`) on behalf of the resource-owning
@@ -309,6 +359,35 @@ type InternalIAMServiceServer interface {
 	// REST exposed ONLY on the cluster-internal listener.
 	ResolveBasicCredential(context.Context, *ResolveBasicCredentialRequest) (*ResolveBasicCredentialResponse, error)
 	GetRoleCompiled(context.Context, *GetRoleCompiledRequest) (*GetRoleCompiledResponse, error)
+	// CheckBasicCredentialLive — ЖИВО ЛИ УДОСТОВЕРЕНИЕ, СПРОШЕННОЕ ПО ЕГО
+	// ИДЕНТИФИКАТОРУ, БЕЗ ПРЕДЪЯВЛЕНИЯ СЕКРЕТА (задача #1450).
+	//
+	// ЗАЧЕМ ВТОРОЙ ВОПРОС, ЕСЛИ РЯДОМ ЕСТЬ `ResolveBasicCredential`. Тот отвечает
+	// ПРЕДЪЯВИТЕЛЮ и потому требует самой предъявленной строки. Спрашивающий с
+	// ОТКРЫТОГО соединения предъявителем не является: секрет он видел однажды, при
+	// открытии, и держать его живым весь срок соединения значило бы завести
+	// поверхность хранения ради контроля — то есть платить за отзыв тем самым, что
+	// отзыв защищает.
+	//
+	// Поэтому вопрос задаётся по идентификатору СТРОКИ удостоверения. Предикат
+	// живости у него ТОТ ЖЕ, что у резолва: существование строки, вид `SECRET`,
+	// непросроченность и активность владельца. Разойтись они не могут — оператор
+	// один, и сверка хеша в нём не участвует by construction.
+	//
+	// ОТВЕТ — ОТКАЗ, А НЕ ПОЛЕ. Живое удостоверение даёт `OK`, неживое —
+	// `UNAUTHENTICATED` с тем же единым текстом, что у резолва; «спросить не
+	// удалось» — `UNAVAILABLE`. Поле-признак означало бы, что вызывающий вправе его
+	// не прочитать, и тогда контроль присутствует, провязан и не отказывает ни разу.
+	// Ровно тот довод, что записан у `ResolveBasicCredentialResponse`.
+	//
+	// ОТКАЗ ЕДИНЫЙ И ЗДЕСЬ. Неизвестный идентификатор, истёкший срок, отозванное
+	// удостоверение, неактивный владелец — один код и один текст: различимый
+	// отличал бы «нет такого» от «есть, но не действует».
+	//
+	// БЕЗ `google.api.http` НАМЕРЕННО — как у `GetRoleCompiled`. Вызывающий ходит
+	// gRPC; дружелюбного пути под этот вопрос не заводится, чтобы его нельзя было
+	// выставить наружу опечаткой в таблице маршрутов края.
+	CheckBasicCredentialLive(context.Context, *CheckBasicCredentialLiveRequest) (*CheckBasicCredentialLiveResponse, error)
 	mustEmbedUnimplementedInternalIAMServiceServer()
 }
 
@@ -342,6 +421,9 @@ func (UnimplementedInternalIAMServiceServer) ResolveBasicCredential(context.Cont
 }
 func (UnimplementedInternalIAMServiceServer) GetRoleCompiled(context.Context, *GetRoleCompiledRequest) (*GetRoleCompiledResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetRoleCompiled not implemented")
+}
+func (UnimplementedInternalIAMServiceServer) CheckBasicCredentialLive(context.Context, *CheckBasicCredentialLiveRequest) (*CheckBasicCredentialLiveResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CheckBasicCredentialLive not implemented")
 }
 func (UnimplementedInternalIAMServiceServer) mustEmbedUnimplementedInternalIAMServiceServer() {}
 func (UnimplementedInternalIAMServiceServer) testEmbeddedByValue()                            {}
@@ -508,6 +590,24 @@ func _InternalIAMService_GetRoleCompiled_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InternalIAMService_CheckBasicCredentialLive_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckBasicCredentialLiveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InternalIAMServiceServer).CheckBasicCredentialLive(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InternalIAMService_CheckBasicCredentialLive_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InternalIAMServiceServer).CheckBasicCredentialLive(ctx, req.(*CheckBasicCredentialLiveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InternalIAMService_ServiceDesc is the grpc.ServiceDesc for InternalIAMService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -546,6 +646,10 @@ var InternalIAMService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetRoleCompiled",
 			Handler:    _InternalIAMService_GetRoleCompiled_Handler,
+		},
+		{
+			MethodName: "CheckBasicCredentialLive",
+			Handler:    _InternalIAMService_CheckBasicCredentialLive_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

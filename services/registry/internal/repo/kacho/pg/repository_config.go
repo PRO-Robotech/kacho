@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
@@ -381,18 +381,17 @@ func mapConfigErr(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%w: repository not found", regerrors.ErrNotFound)
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case "23505": // unique_violation — PRIMARY KEY(registry_id, name)
+	f := pgfault.Classify(err)
+	if f.FromDatabase() {
+		switch f.Class {
+		case pgfault.Unique: // PRIMARY KEY(registry_id, name)
 			return fmt.Errorf("%w: repository already exists", regerrors.ErrAlreadyExists)
-		case "23503": // foreign_key_violation — registry_id → registries(id)
+		case pgfault.ForeignKey: // registry_id → registries(id)
 			return fmt.Errorf("%w: registry not found", regerrors.ErrFailedPrecondition)
-		case "23514": // check_violation — visibility / labels-object
+		case pgfault.Check: // visibility / labels-object
 			return fmt.Errorf("%w: invalid repository config", regerrors.ErrInvalidArg)
 		}
-		slog.Default().Error("registry repo: unclassified repository_configs error",
-			"sqlstate", pgErr.Code, "pg_message", pgErr.Message, "pg_detail", pgErr.Detail)
+		slog.Default().Error("registry repo: unclassified repository_configs error", f.LogAttrs()...)
 		return regerrors.ErrInternal
 	}
 	slog.Default().Error("registry repo: unclassified repository_configs error", "err", err.Error())

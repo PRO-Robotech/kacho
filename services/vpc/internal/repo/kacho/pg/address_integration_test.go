@@ -70,7 +70,7 @@ func TestCQRS_Address_WriterCommit_ReaderSees(t *testing.T) {
 	created, err := w.Addresses().Insert(ctx, a)
 	require.NoError(t, err)
 	assert.Equal(t, a.ID, created.ID)
-	require.NoError(t, w.Outbox().Emit(ctx, "Address", created.ID, "CREATED", map[string]any{"id": created.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Address", created.ID, created.ProjectID, "CREATED", map[string]any{"id": created.ID}))
 	require.NoError(t, w.Commit())
 
 	rd, err := r.Reader(ctx)

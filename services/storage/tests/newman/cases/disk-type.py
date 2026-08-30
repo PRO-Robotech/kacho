@@ -193,12 +193,30 @@ CASES.append(Case(
     id="DT-CR-NEG-EXTERNAL-ABSENT",
     title="POST /storage/v1/diskTypes empty-id на external → rejected (admin Create Internal-only, ban #6): 400/403/404 — НИКОГДА 200-mutation",
     classes=["SEC", "NEG", "AUTHZ"], priority="P0",
-    # verifies CS1-S2-04 (INV-7a). Non-destructive: empty id → нет insert даже если
-    #   route забриджен и authz прошёл (validation 400 до вставки).
+    # verifies CS1-S2-04 (INV-7a). Non-destructive: пустой id не даёт вставки даже
+    #   в том случае, если маршрут вдруг окажется забриджен на внешний край.
+    #
+    # ВЕТКА НА 400 СНЯТА (#1404), и снята она не как «лишняя проверка».
+    #
+    # Шаг нёс ДВА утверждения об одном исходе, противоречащих друг другу: допуск
+    # 400 не перечисляет, а ветка его пинила. Ветка исполнима только ВМЕСТЕ с
+    # падением допуска — то есть по отчёту нельзя было сказать, какое из двух
+    # выражает намерение автора (`e2e-flow.md` §3: утверждение, принимающее
+    # взаимоисключающие исходы, — отсутствие утверждения).
+    #
+    # Разрешается это не расширением допуска, а тем, ЧТО ЗНАЧИЛ БЫ здесь 400.
+    # `POST /storage/v1/diskTypes` — привязка admin-only `InternalDiskTypeService`
+    # (public по этому пути только `GET`), и край классифицирует её по ПАРЕ
+    # (метод, путь) как internal-маршрут: на внешнем слушателе он не резолвится.
+    # Значит до бэкенда запрос не доходит, а `INVALID_ARGUMENT` производит
+    # ВАЛИДАЦИЯ БЭКЕНДА — то есть 400 на этом шаге означал бы, что маршрут
+    # забриджен наружу и authz его пропустил, и от вставки спасла одна лишь
+    # пустота идентификатора. Это ровно тот исход, который кейс объявляет
+    # недопустимым (ban #6), а не «тоже отказ»: пинить его зелёным утверждением
+    # значило бы отчитываться об успехе на своей находке.
     steps=[Step(name="cr-external", method="POST", path=DT, body={"id": ""},
                 test_script=[
-                    "pm.test('admin Create not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));",
-                    "if (pm.response.code === 400) { pm.test('INVALID_ARGUMENT (id required)', () => pm.expect(pm.response.json().code).to.eql(3)); }"])],
+                    "pm.test('admin Create not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));"])],
 ))
 
 CASES.append(Case(

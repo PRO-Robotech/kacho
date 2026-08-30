@@ -107,7 +107,11 @@ function fieldViolation(fieldPath: string, description: string) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  update.mockResolvedValue({});
+  // Успешный ответ несёт ОПЕРАЦИЮ: правка правил — мутация группы
+  // безопасности, а мутации Kachō отвечают `Operation`. Пустой объект,
+  // стоявший здесь прежде, был ответом БЕЗ операции — то есть тем самым
+  // случаем, который подтвердить нечем, — и подавался как успех.
+  update.mockResolvedValue({ id: "opr-1", done: false });
 });
 
 describe("SgRulesPanel — отказ края при сохранении правила", () => {
@@ -181,6 +185,25 @@ describe("SgRulesPanel — отказ края при сохранении пр�
     // которая не закрывается никогда.
     await waitFor(() => expect(screen.getByText(EMPTY_LIST)).toBeInTheDocument());
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("ответ без операции оставляет форму открытой и называет причину", async () => {
+    // Третий исход: край ответил, но подтвердить выполнение нечем. Прежде он
+    // был неотличим от успеха — форма закрывалась, список показывал прежний
+    // набор, и оператор уходил уверенным, что правило добавлено.
+    update.mockResolvedValue({});
+    show();
+
+    openForm();
+    typeDescription();
+    submitForm();
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "сервер не вернул операцию — подтвердить выполнение невозможно",
+    );
+    formIsOpen();
+    typedValueSurvives();
   });
 
   it("повторная отправка после отказа убирает прежнюю причину", async () => {

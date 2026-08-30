@@ -231,12 +231,6 @@ erDiagram
     timestamptz processed_at
   }
 
-  VPC_WATCH_CURSORS {
-    text subscriber_id PK
-    bigint last_sequence_no
-    timestamptz updated_at
-  }
-
   NETWORKS ||--o{ SUBNETS : "subnets.network_id (RESTRICT)"
   NETWORKS ||--o{ ROUTE_TABLES : "route_tables.network_id (RESTRICT)"
   NETWORKS ||--o{ SECURITY_GROUPS : "security_groups.network_id (RESTRICT, обязателен)"
@@ -394,18 +388,15 @@ resource может быть удален до завершения op). `accoun
 Транзакционный outbox-журнал domain-событий. PK `sequence_no BIGINT` (DEFAULT
 `nextval(vpc_outbox_sequence_no_seq)`). Trigger `vpc_outbox_notify_trg` AFTER INSERT →
 `pg_notify('vpc_outbox', NEW.sequence_no::text)` — in-cluster `LISTEN/NOTIFY`-канал.
-Публичного Watch RPC в Kachō нет: клиенты наблюдают изменения через polling
-`List` / `OperationService.Get`.
+Он же — журнал платформенной подписки: vpc объявлен её владельцем, и край отдаёт эти
+строки арендатору потоком (`owner=vpc`). Опрос `List` / `OperationService.Get` остаётся
+законным путём, а исход операции узнаётся только им.
 
 #### `fga_register_outbox` (миграция 0006/0008)
 Отдельный transactional-outbox для регистрации владения через `kacho-iam`. Независим
 от доменного `vpc_outbox`. Одна строка == одно намерение. LISTEN/NOTIFY-канал
 `kacho_vpc_fga_register_outbox` будит register-drainer на INSERT. Колонки `resource_kind` /
 `resource_id` (миграция 0008) нужны reconciler'у для адресации intent по ресурсу.
-
-#### `vpc_watch_cursors`
-Vestigial-таблица из baseline-схемы (`0001_initial.sql`); кодом не используется — Watch RPC
-в API Kachō нет. PK `subscriber_id`.
 
 ---
 

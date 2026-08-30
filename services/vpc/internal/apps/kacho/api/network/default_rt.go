@@ -53,15 +53,23 @@ func (u *CreateDefaultRTUseCase) Execute(
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "RouteTable", rtRec.ID, "CREATED", helpers.DomainToMap(rtRec)); err != nil {
+	if err := w.Outbox().Emit(ctx, "RouteTable", rtRec.ID, rtRec.ProjectID, "CREATED", helpers.DomainToMap(rtRec)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	upd, err := w.Networks().SetDefaultRouteTableID(ctx, network.ID, rtRec.ID)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "Network", upd.ID, "UPDATED", helpers.DomainToMap(upd)); err != nil {
-		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
-	}
+	// Строки журнала о СЕТИ здесь нет намеренно (#1548).
+	//
+	// Она стояла и объявляла привязку таблицы маршрутов отдельным изменением сети. Для
+	// подписчика это было событие, которого арендатор не делал: он создавал сеть,
+	// а получал её создание плюс правку — с состоянием, верным только до
+	// следующего шага той же транзакции. Сеть объявляет ОДНОЙ строкой её
+	// создатель, собрав её целиком (`create.go`, эмиссия после этой композиции).
+	//
+	// Своя строка ресурса, который этот use-case ЗАВОДИТ, остаётся выше и
+	// обязательна: RouteTable — самостоятельный предмет, и его появление подписчик
+	// узнаёт отсюда.
 	return upd, nil
 }

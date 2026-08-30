@@ -77,6 +77,40 @@ const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   "/nlb/v1/networkLoadBalancers": ["project_id"],
   "/nlb/v1/listeners": ["load_balancer_id", "protocol"],
   "/nlb/v1/targetGroups": ["project_id", "health_check", "port"],
+  // storage.v1 — block storage, migrated into this registry with #1466. The
+  // refusing code is the domain validator each Create calls before anything
+  // else: `Volume.Validate` names project_id, zone_id and disk_type_id;
+  // `Snapshot.Validate` names project_id and an origin, which at Create can only
+  // be the volume (the snapshot origin is written by Copy, never by a caller);
+  // `Image.Validate` names project_id and region_id.
+  //
+  // TWO refusals of those validators are deliberately NOT listed here, and both
+  // omissions are adjudications rather than oversights:
+  //
+  //   * a volume of size zero is refused, but as an ILLEGAL SIZE, not an absent
+  //     field — the same class as an illegal name. This table holds presence
+  //     refusals, which is why no `name` appears in it either (an empty name is
+  //     a legal Create input platform-wide: the server derives one from the id).
+  //   * an image is refused without an origin, but its origin is exactly-one-of
+  //     snapshot / volume, and a set of names cannot say "either". Listing one
+  //     would assert the wrong thing, since the other satisfies the edge just as
+  //     well. Both are declared form fields, and the form picks between them with
+  //     its `_source_kind` discriminator.
+  //
+  // Same sets as the storage module's own copy of this sweep, which adjudicated
+  // them against the same code. That copy is gone with #407: storage now runs
+  // this suite itself, and two places about one subject diverge silently.
+  "/storage/v1/volumes": ["project_id", "zone_id", "disk_type_id"],
+  "/storage/v1/snapshots": ["project_id", "source_volume_id"],
+  "/storage/v1/images": ["project_id", "region_id"],
+  // registry.v1 — CreateRegistry отвергает вход без проекта и без региона:
+  // `services/registry/internal/apps/kacho/api/registry/create.go` отвечает
+  // `InvalidArgument "projectId is required"` и `"regionId is required"` до
+  // любой записи. Копия этого прохода в модуле registry (снята вместе с #409)
+  // называла ПУСТОЙ набор со ссылкой на прежний источник истины — пометку
+  // `(required)` в контракте, — а та с поведением края разошлась: пометки в
+  // контракте нет, отказ есть. Набор здесь назван по ОТКАЗУ.
+  "/registry/v1/registries": ["project_id", "region_id"],
 };
 
 /**
@@ -117,7 +151,15 @@ describe("every create-capable spec can express what Create requires", () => {
     // type catalogue now addresses its owner. Lowered deliberately, with the
     // reason recorded — a floor nudged down to whatever the code currently
     // produces stops guarding anything, which is the point of stating why.
-    expect(createCapable.length).toBeGreaterThanOrEqual(19);
+    // Raised from 19 to 22 when block storage moved in (#1466): volume, snapshot
+    // and image are created from the console, and the floor is meant to notice
+    // if they stop being. A floor is only worth its line while it is raised for
+    // a stated reason and never nudged down to whatever the tree happens to hold.
+    // Raised to 23 when the registry section moved in (#409): a registry is
+    // created from the console, and its two sibling resources are not — the
+    // repository is materialised by `docker push` and the tag is written by the
+    // same push, so neither adds to this floor.
+    expect(createCapable.length).toBeGreaterThanOrEqual(23);
   });
 
   it.each(createCapable)("%s (%s)", (specId, apiPath) => {

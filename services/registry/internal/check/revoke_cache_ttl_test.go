@@ -23,7 +23,7 @@ import (
 // revoke_cache_ttl_test.go — regression-lock для #33 (revoke не энфорсился
 // оперативно): positive authz-Check кеш gRPC-интерсептора был always-on 5s
 // (factory: authz.NewCache(0)), а registry НЕ подписан на IAM cache-invalidation
-// (InternalAuthzCacheService.InvalidateSubject бьёт только api-gateway) и
+// (журнал смены субъекта читает только край, и только для своего кэша) и
 // db-per-service ⇒ LISTEN/NOTIFY от iam сюда не доходит → отозванный субъект держал
 // allow ≥5s. Фикс — configurable KACHO_REGISTRY_AUTHZ_CACHE_TTL (default 2s;
 // 0 → positive-кеш выключен). Тесты локают ОБСЕРВАБЛ (окно ограничено TTL /

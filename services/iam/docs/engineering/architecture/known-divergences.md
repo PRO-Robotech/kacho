@@ -18,7 +18,7 @@ tags, so two config-parsing mechanisms coexist in the same package.
 
 **Why (by design, not a defect)**: the per-edge mTLS server credentials are
 carried by `grpcsrv.TLSServer`, a **horizontal value-struct owned by
-`kacho-corelib`**. That corelib type intentionally exposes no `mapstructure`
+`pkg/`**. That corelib type intentionally exposes no `mapstructure`
 tags (it is a plain cross-service value type), so it cannot be populated through
 the viper/`mapstructure` decoder without either (a) adding `mapstructure` tags to
 a corelib type — a workspace-wide change to a shared horizontal package, owned by
@@ -37,7 +37,7 @@ mTLS parameter uses the documented `KACHO_IAM_*_MTLS_*` env vars; these are not
 expressible under a YAML `config:` section by design.
 
 **Convergence path (deferred)**: give `grpcsrv.TLSServer` `mapstructure` tags
-upstream in `kacho-corelib` and load mTLS through the same viper path. This is a
+upstream in `pkg/` and load mTLS through the same viper path. This is a
 corelib-wide migration (touches every service embedding `grpcsrv.TLSServer`) and
 is intentionally **not** done as part of a single-service change. Tracked as a
 convergence item for the next corelib config pass; no runtime impact until then.
@@ -138,7 +138,7 @@ proves the emitter/catalog match the canonical `fga_model.fga` DSL.
 > их отвергнуть.
 
 **What was wrong**: both resolved the canonical DSL through a sibling `kacho-proto`
-checkout or the pinned `kacho-proto` Go-module directory — neither of which exists
+checkout or the pinned `kacho-proto` Go-module directory (today: `proto/`) — neither of which exists
 after the polyrepo→monorepo consolidation, and the `.fga` file itself was not
 carried over. The DSL was therefore unresolvable **on every run**, so both gates
 `t.Skip`-ed themselves while the package still reported `ok`. The only surviving
@@ -642,9 +642,42 @@ Postgres у края нет ни одного файла, и завести ег
 
 | звено | чем является |
 |---|---|
-| очередь `subject_change_outbox` | намерение, записанное в той же транзакции, что мутация |
-| её канал `kacho_iam_subject_outbox_added` | уведомление, **у которого слушатель есть** |
-| дренаж iam → `InternalAuthzCacheService.InvalidateSubject` | вызов края по gRPC, без чужой базы |
+| журнал `subject_change_outbox` | намерение, записанное в той же транзакции, что мутация |
+| `InternalIAMService.PollSubjectChanges` | край читает журнал **сам**, курсором по `id`, без чужой базы |
+
+> [!warning] Третье звено этой таблицы снято, и второе пережило своё основание
+> Здесь стоял дренаж `iam → InternalAuthzCacheService.InvalidateSubject` — вызов края со
+> стороны владельца прав. Ребро снято целиком (задача #1024): оно шло **из листа обратно к
+> потребителю**, а адрес края был у iam обязательной ручкой, из-за чего владелец прав не
+> поднимался там, где края нет. Направление развёрнуто: соединение открывает потребитель.
+>
+> Отсюда следствие для соседней строки, которую эта таблица утверждала: канал
+> `kacho_iam_subject_outbox_added` объявлялся уведомлением, **у которого слушатель есть**, —
+> и слушателем был именно снятый дренаж. Слушателя у него больше нет, а край слушать не
+> может по построению (нет драйвера Postgres; прямое чтение базы iam — ban #8). То есть
+> довод, которым здесь обосновывали снятие соседнего канала, оказался применим и к этому.
+>
+> **Предмет закрыт (задача #1398).** Канал снят вместе со своим триггером миграцией
+> `20260828114308_subject_change_channel_retires_with_its_drainer.sql`; журнал
+> `subject_change_outbox` остался целиком — его читает потребитель курсором, и он и есть
+> вторая строка этой таблицы.
+
+> [!note] Ради чего эта запись осталась после закрытия предмета
+> Ловится здесь не канал, а КЛАСС: механизм, у которого объявление есть, а производителя
+> эффекта нет. Экземпляров при перемере нашлось **два**, а не один: второй —
+> `kacho_iam_fga_outbox`, чей дренаж снят вместе с внешним движком отношений
+> (задача #1436). Поэтому вместо третьей записи «нашли и починили» заведён гейт, который
+> спрашивает ОБЕ стороны в одном прогоне — живую схему о производителе и дерево о
+> потребителе: `notify_channel_has_a_listener_integration_test.go`,
+> `TestIntegration_EveryProducedNotifyChannelIsNamedByAConsumer`. Прежняя проба того же
+> файла судила ТОЛЬКО производителя и потому осталась бы зелёной на обоих.
+>
+> Второй экземпляр с тех пор **тоже закрыт**: триггер `kacho_iam_fga_outbox` снят
+> миграцией `20260829123045_intent_journal_channel_retires_with_its_drainer.sql`, его
+> регрессия — `notify_channel_intent_journal_integration_test.go`. Поэтому ведомость
+> прощений гейта сегодня **пуста**, и это его цель, а не недосмотр: прощение снял сам
+> гейт, покраснев строкой «прощение потеряло предмет», — держать запись ради зелёного
+> он не даёт by construction.
 
 **Что НЕ снято.** Таблица `session_revocations` остаётся: у неё живой писатель
 (выход с края) и живые читатели (`IsRevoked`, `ListByUser`, `DeleteExpired`). Снято
@@ -801,3 +834,54 @@ git grep -nE "m\.state|memberships\.state|state[ ]*=[ ]*'(PENDING|ACTIVE)'" \
 **Отношение к §16.** Запись §16 опирается на то, что состояние членства не читает
 **цепь областей**, и это по-прежнему верно (`944001`, ветвь 4a). Читатель выше —
 не цепь, а ответ арендатору, поэтому размер объявленного там окна он не меняет.
+
+## 18. iam НЕ служит глагол подписки на изменения ресурсов — у него нет ленты изменений ресурсов
+
+**Состояние:** решение записано по задаче #1023. Отступления здесь нет: дерево
+ведёт себя верно, и запись существует затем, чтобы «решено не заводить»
+перестало быть неотличимым от «ещё не сделано».
+
+**Что.** Глагол `kacho.cloud.subscription.InternalSubscriptionService/Subscribe`
+(проекция края — `/subscription/v1/events`) служат пять доменов. iam среди них
+нет и не будет. Считающий домены по имени таблицы найдёт у iam **четыре**
+таблицы с суффиксом `_outbox` и заключит, что провязка просто не сделана. Это
+ошибка единицы счёта, а не находка о дереве.
+
+**Ни одна из четырёх лентой изменений ресурсов не является.** Лента изменений
+отвечает арендатору «что стало с твоими ресурсами»; у iam все четыре очереди
+отвечают на другие вопросы, и это видно по их собственной форме:
+
+| очередь | предмет | чем отличается от ленты |
+|---|---|---|
+| `fga_outbox` | кортежи прав к применению | очередь доставки (`sent_at`, `attempt_count`), а не лента |
+| `resource_reconcile_outbox` | «зеркало объекта изменилось, пересчитай членства» | вход реконсайлера; вида предмета в смысле подписки не несёт |
+| `subject_change_outbox` | смена субъекта (`binding_upsert`, `jit_revoke`, …) | колонки вида предмета нет: тип лежит в нагрузке, а `resource_type` — необязательная подсказка |
+| `audit_outbox` | аудит | не адресован арендатору |
+
+**Почему это не объём работы, а разные предметы.** У ресурсного потока
+построчное сужение по правам — **защита**. У журнала смены субъекта потребитель
+сам есть слой авторизации, и ему нужны ВСЕ строки: пропущенная означает
+непогашенный кэш вердикта, то есть край продолжает отвечать по отозванному
+праву. То же сужение здесь **fail-open** — оно снимает ровно тот эффект, ради
+которого журнал заведён. Плюс круг: чтобы отдать строку, владелец спросил бы
+модель прав, а предмет строки — обесценить ответы ровно на такие вопросы.
+
+**Развилка «чем читать» РЕШЕНА, и решается она не здесь.** Из трёх исходов —
+чтение курсором, полоса «системного потребителя» в общей форме, отдельный предмет
+со своей моделью доступа — выбран **первый**: журнал читается курсором через
+унарный `InternalIAMService.PollSubjectChanges`, а внутренний потребитель освобождён
+от построчного сужения. Решение принято 2026-08-29 задачей **#1397** и записано
+единственным местом — `docs/architecture/subject-change-journal-is-not-a-resource-stream.md`
+(там же цена выбранного, два отвергнутых исхода и внешний предикат пересмотра).
+Здесь оно **не пересказывается**: два места об одном предмете разошлись бы молча.
+
+Настоящая запись говорит только то, что от исхода той развилки не зависело и не
+зависит: журнал смены субъекта — не частный случай ресурсного потока, поэтому
+владельцем ресурсного потока iam не станет ни при одном из трёх исходов, включая
+выбранный.
+
+**Чем держится.** `internal/repohygiene`
+`TestEveryDomainEitherServesSubscriptionOrRecordsWhyNot`: каждый домен обязан
+либо служить глагол, либо нести запись решения с причиной, номером задачи и
+документом. Запись роняет прогон, когда переживает свой предмет — в том числе
+если iam начнёт служить глагол, а эта секция продолжит утверждать обратное.

@@ -53,10 +53,18 @@ function renderList(spec: (typeof REGISTRY)[string], panelForms: boolean, at: st
 describe("ResourceListPage — actions column", () => {
   it("is omitted for a resource with no row action", async () => {
     const spec = REGISTRY["disk-types"];
-    // disk-types has no name column — its first column is the id.
+    // The row is deliberately nameless: this catalogue is admin-curated, and a
+    // stub row without a name is what the name column falls back on — it renders
+    // the id, so "dt-1" reaches the DOM from more than one cell. Wait for ANY of
+    // them, the way the sibling case below already does; which cell rendered it
+    // is not what this case is about.
+    //
+    // The assertion is unchanged and still has a subject: disk-types declares
+    // create/update/delete all false, so a row action would be an offer the
+    // product cannot keep. It reds if one appears.
     stubList(spec.payloadKey, [{ id: "dt-1", description: "ssd" }]);
     renderList(spec, true, "/system/disk-types");
-    await screen.findByText("dt-1");
+    await screen.findAllByText("dt-1");
     expect(screen.queryByLabelText("Действия")).toBeNull();
   });
 

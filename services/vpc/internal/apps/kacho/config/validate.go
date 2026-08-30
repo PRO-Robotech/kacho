@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/multierr"
 
+	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 )
@@ -271,14 +272,19 @@ func (c Config) Validate() error {
 			fmt.Errorf("api-server.internal-endpoint is empty"))
 	}
 
-	switch strings.ToLower(c.Repository.Postgres.SSLMode) {
-	case "disable", "require", "verify-ca", "verify-full":
-	case "":
+	// Словарь принимаемых значений — НЕ свой: он приходит из дома семантики
+	// строки подключения (`pkg/db`), объявленный один раз на всё дерево (задача
+	// продукта #1464). Текст отказа собирается оттуда же, поэтому пополнение
+	// словаря не оставит здесь устаревшего перечисления.
+	switch {
+	case coredb.SSLModeConfigurable(c.Repository.Postgres.SSLMode):
+	case strings.TrimSpace(c.Repository.Postgres.SSLMode) == "":
 		// допускаем — baseDSN подставит "disable"
 	default:
 		errs = multierr.Append(errs,
-			fmt.Errorf("repository.postgres.ssl-mode=%q (allowed: disable, require, verify-ca, verify-full)",
-				c.Repository.Postgres.SSLMode))
+			fmt.Errorf("repository.postgres.ssl-mode=%q (allowed: %s)",
+				c.Repository.Postgres.SSLMode,
+				strings.Join(coredb.ConfigurableSSLModes(), ", ")))
 	}
 
 	if strings.TrimSpace(c.Repository.Postgres.URL) == "" {
@@ -318,14 +324,19 @@ func (c Config) Validate() error {
 	// strict (CWE-319). ssl-mode=disable в production → пароль KACHO_VPC_DB_PASSWORD
 	// и весь query-трафик идут открытым текстом; sniffer в DB-сегменте перехватывает
 	// креды. dev допускает disable (plaintext локально).
+	// Судится ИСХОД, а не намерение: в пул уходит строка, собранная `DSN()`, и
+	// `sslmode` приходит в неё ДВУМЯ путями — из поля настройки и из сырого URL,
+	// причём заданный в URL режим поле НЕ перетирает (`composeDSN`). Прежняя
+	// редакция читала поле, поэтому расходилась с пулом в обе стороны: стенд,
+	// задавший режим прямо в URL, она отвергала при исправной посадке, а
+	// `ssl-mode: require` при `sslmode=disable` в URL — пропускала, и открытый
+	// канал ловил уже центральный дескриптор — ПОСЛЕ открытия пула, то есть
+	// после того, как пароль по этому каналу ушёл (задача продукта #1464).
 	if c.AuthN.Mode.IsProduction() {
-		switch strings.ToLower(c.Repository.Postgres.SSLMode) {
-		case "require", "verify-ca", "verify-full":
-			// OK
-		default:
+		if mode := coredb.SSLModeFromDSN(c.DSN()); !coredb.SSLModeSecure(mode) {
 			errs = multierr.Append(errs,
-				fmt.Errorf("production mode (%s): repository.postgres.ssl-mode must be one of require|verify-ca|verify-full (got %q)",
-					c.AuthN.Mode, c.Repository.Postgres.SSLMode))
+				fmt.Errorf("production mode (%s): repository.postgres.ssl-mode must be one of %s (got %q)",
+					c.AuthN.Mode, strings.Join(coredb.SecureSSLModes(), "|"), mode))
 		}
 	}
 

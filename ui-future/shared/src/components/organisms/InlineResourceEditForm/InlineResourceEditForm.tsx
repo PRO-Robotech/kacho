@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Alert } from "antd";
-import { extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
 import { buildUpdateBody, computeUpdateMask } from "@shared/lib/update-mask";
 import { api } from "@shared/api/client";
@@ -65,9 +65,13 @@ export function InlineResourceEditForm({ spec, data, projectId, onCancel, onSucc
   const mutation = useMutation({
     mutationFn: (item: unknown) => api.update(`${spec.apiPath}/${id}`, item),
     onSuccess: (resp) => {
-      const opId = extractOperationId(resp);
-      if (opId) {
-        setPendingOpId(opId);
+      // Три исхода: операция · синхронный ответ ресурсом · нарушение
+      // контракта. Умолчание и разбор — те же, что у `ResourceEditPage`.
+      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation !== false);
+      if (resolved.kind === "operation") {
+        setPendingOpId(resolved.opId);
+      } else if (resolved.kind === "violation") {
+        toast.error(`${createActionLabel(spec, "Сохранить")}: ${resolved.message}`);
       } else {
         invalidate(spec.id, projectId);
         onSuccess?.();

@@ -56,12 +56,12 @@ func TestCQRS_SG_InsertCommit_ReaderSees(t *testing.T) {
 	require.NoError(t, err)
 	defer w.Abort()
 	net := insertNetworkInTx(t, ctx, w, "project-sg-1", "net-sg-1")
-	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, "CREATED", map[string]any{"id": net.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, net.ProjectID, "CREATED", map[string]any{"id": net.ID}))
 	sg := newDefaultSG(net.ProjectID, net.ID)
 	createdSG, err := w.SecurityGroups().Insert(ctx, sg)
 	require.NoError(t, err)
 	assert.Equal(t, sg.ID, createdSG.ID)
-	require.NoError(t, w.Outbox().Emit(ctx, "SecurityGroup", createdSG.ID, "CREATED", map[string]any{"id": createdSG.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "SecurityGroup", createdSG.ID, createdSG.ProjectID, "CREATED", map[string]any{"id": createdSG.ID}))
 	require.NoError(t, w.Commit())
 
 	// Reader видит SG.
@@ -94,11 +94,11 @@ func TestCQRS_SG_AbortRollback(t *testing.T) {
 	require.NoError(t, err)
 	defer w.Abort()
 	net := insertNetworkInTx(t, ctx, w, "project-sg-abort", "net-sg-abort")
-	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, "CREATED", map[string]any{"id": net.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, net.ProjectID, "CREATED", map[string]any{"id": net.ID}))
 	sg := newDefaultSG(net.ProjectID, net.ID)
 	_, err = w.SecurityGroups().Insert(ctx, sg)
 	require.NoError(t, err)
-	require.NoError(t, w.Outbox().Emit(ctx, "SecurityGroup", sg.ID, "CREATED", map[string]any{"id": sg.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "SecurityGroup", sg.ID, sg.ProjectID, "CREATED", map[string]any{"id": sg.ID}))
 	w.Abort()
 
 	// Ничего не должно быть видно: ни Network, ни SG, ни outbox-rows.
@@ -132,17 +132,17 @@ func TestCQRS_Network_AtomicDefaultSGCreate(t *testing.T) {
 	defer w.Abort()
 
 	net := insertNetworkInTx(t, ctx, w, "project-atomic", "net-atomic")
-	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, "CREATED", map[string]any{"id": net.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, net.ProjectID, "CREATED", map[string]any{"id": net.ID}))
 
 	sg := newDefaultSG(net.ProjectID, net.ID)
 	createdSG, err := w.SecurityGroups().Insert(ctx, sg)
 	require.NoError(t, err)
-	require.NoError(t, w.Outbox().Emit(ctx, "SecurityGroup", createdSG.ID, "CREATED", map[string]any{"id": createdSG.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "SecurityGroup", createdSG.ID, createdSG.ProjectID, "CREATED", map[string]any{"id": createdSG.ID}))
 
 	upd, err := w.Networks().SetDefaultSGID(ctx, net.ID, createdSG.ID)
 	require.NoError(t, err)
 	assert.Equal(t, createdSG.ID, upd.DefaultSecurityGroupID)
-	require.NoError(t, w.Outbox().Emit(ctx, "Network", upd.ID, "UPDATED", map[string]any{"id": upd.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Network", upd.ID, upd.ProjectID, "UPDATED", map[string]any{"id": upd.ID}))
 
 	require.NoError(t, w.Commit())
 
@@ -186,7 +186,7 @@ func TestCQRS_Network_AtomicDefaultSGCreate_AbortOnSG(t *testing.T) {
 	require.NoError(t, err)
 	defer w.Abort()
 	net := insertNetworkInTx(t, ctx, w, "project-abort", "net-abort")
-	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, "CREATED", map[string]any{"id": net.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Network", net.ID, net.ProjectID, "CREATED", map[string]any{"id": net.ID}))
 	sg := newDefaultSG(net.ProjectID, net.ID)
 	_, err = w.SecurityGroups().Insert(ctx, sg)
 	require.NoError(t, err)
@@ -218,11 +218,11 @@ func TestCQRS_SG_UpdateDelete(t *testing.T) {
 	require.NoError(t, err)
 	defer w1.Abort()
 	net := insertNetworkInTx(t, ctx, w1, "project-cycle", "net-cycle")
-	require.NoError(t, w1.Outbox().Emit(ctx, "Network", net.ID, "CREATED", map[string]any{"id": net.ID}))
+	require.NoError(t, w1.Outbox().Emit(ctx, "Network", net.ID, net.ProjectID, "CREATED", map[string]any{"id": net.ID}))
 	sg := newDefaultSG(net.ProjectID, net.ID)
 	created, err := w1.SecurityGroups().Insert(ctx, sg)
 	require.NoError(t, err)
-	require.NoError(t, w1.Outbox().Emit(ctx, "SecurityGroup", created.ID, "CREATED", map[string]any{"id": created.ID}))
+	require.NoError(t, w1.Outbox().Emit(ctx, "SecurityGroup", created.ID, created.ProjectID, "CREATED", map[string]any{"id": created.ID}))
 	require.NoError(t, w1.Commit())
 
 	// Update.
@@ -233,7 +233,7 @@ func TestCQRS_SG_UpdateDelete(t *testing.T) {
 	upd, err := w2.SecurityGroups().Update(ctx, &created.SecurityGroup)
 	require.NoError(t, err)
 	assert.Equal(t, domain.RcNameVPC("renamed-sg"), upd.Name)
-	require.NoError(t, w2.Outbox().Emit(ctx, "SecurityGroup", upd.ID, "UPDATED", map[string]any{"id": upd.ID}))
+	require.NoError(t, w2.Outbox().Emit(ctx, "SecurityGroup", upd.ID, upd.ProjectID, "UPDATED", map[string]any{"id": upd.ID}))
 	require.NoError(t, w2.Commit())
 
 	// Delete.
@@ -241,7 +241,7 @@ func TestCQRS_SG_UpdateDelete(t *testing.T) {
 	require.NoError(t, err)
 	defer w3.Abort()
 	require.NoError(t, w3.SecurityGroups().Delete(ctx, created.ID))
-	require.NoError(t, w3.Outbox().Emit(ctx, "SecurityGroup", created.ID, "DELETED", map[string]any{"id": created.ID}))
+	require.NoError(t, w3.Outbox().Emit(ctx, "SecurityGroup", created.ID, created.ProjectID, "DELETED", map[string]any{"id": created.ID}))
 	require.NoError(t, w3.Commit())
 
 	// Reader не видит SG.

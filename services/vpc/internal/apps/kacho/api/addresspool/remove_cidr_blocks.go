@@ -131,7 +131,7 @@ func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6
 	if err := w.AddressPools().DeleteCidrBlocks(ctx, id, v4, v6); err != nil {
 		return nil, err
 	}
-	if err := w.Outbox().Emit(ctx, "AddressPool", updated.ID, "UPDATED",
+	if err := w.Outbox().Emit(ctx, "AddressPool", updated.ID, helpers.NoProjectAnchor, "UPDATED",
 		helpers.AddressPoolDomainPayload(&updated.AddressPool)); err != nil {
 		return nil, fmt.Errorf("%w: outbox emit: %v", serviceerr.ErrInternal, err)
 	}

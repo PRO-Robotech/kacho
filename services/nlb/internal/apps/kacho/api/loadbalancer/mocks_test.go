@@ -388,20 +388,33 @@ func (q *fakeLBWriter) MarkDeleting(ctx context.Context, id string) (*kachorepo.
 	return &c, nil
 }
 
-func (q *fakeLBWriter) MoveProject(ctx context.Context, id, newProjectID string) (*kachorepo.LoadBalancerRecord, error) {
+// MoveProject — двойник каскада: правит проект у LB И У ЕГО СЛУШАТЕЛЕЙ, возвращая
+// переехавшие записи.
+//
+// Каскад воспроизведён намеренно. Прежде двойник правил один лишь LB — то есть был
+// СНИСХОДИТЕЛЬНЕЕ продукта ровно в том месте, где живёт дефект #1549: настоящий
+// каскад менял якорь проекта у чужого вида, а двойник этого не делал, поэтому
+// проба на молчание переезда о слушателях не могла быть написана вовсе.
+func (q *fakeLBWriter) MoveProject(ctx context.Context, id, newProjectID string) (*kachorepo.LoadBalancerRecord, []*kachorepo.ListenerRecord, error) {
 	if q.w.r.failOnMove != nil {
-		return nil, q.w.r.failOnMove
+		return nil, nil, q.w.r.failOnMove
 	}
 	q.w.r.mu.Lock()
 	defer q.w.r.mu.Unlock()
 	cur, ok := q.w.r.lbs[id]
 	if !ok {
-		return nil, fmt.Errorf("%w: NetworkLoadBalancer %s not found", kachorepo.ErrNotFound, id)
+		return nil, nil, fmt.Errorf("%w: NetworkLoadBalancer %s not found", kachorepo.ErrNotFound, id)
 	}
 	cur.ProjectID = domain.ProjectID(newProjectID)
 	c := *cur
 	q.w.pendingLBs = append(q.w.pendingLBs, &c)
-	return &c, nil
+	moved := make([]*kachorepo.ListenerRecord, 0, len(q.w.r.lists[id]))
+	for _, l := range q.w.r.lists[id] {
+		l.ProjectID = domain.ProjectID(newProjectID)
+		lc := *l
+		moved = append(moved, &lc)
+	}
+	return &c, moved, nil
 }
 
 func (q *fakeLBWriter) Delete(ctx context.Context, id string) error {
@@ -479,8 +492,8 @@ func (q *fakeListenerWriter) SetAllocatedAddress(ctx context.Context, id, addres
 func (q *fakeListenerWriter) SetVIP(ctx context.Context, id, addressID, allocatedAddress string) (*kachorepo.ListenerRecord, error) {
 	return nil, errors.New("not implemented in fake")
 }
-func (q *fakeListenerWriter) MoveProject(ctx context.Context, lbID, newProjectID string) (int64, error) {
-	return 0, nil
+func (q *fakeListenerWriter) MoveProject(ctx context.Context, lbID, newProjectID string) ([]*kachorepo.ListenerRecord, error) {
+	return nil, nil
 }
 func (q *fakeListenerWriter) Delete(ctx context.Context, id string) error {
 	return errors.New("not implemented in fake")
@@ -546,6 +559,12 @@ func (q *fakeTGWriter) Update(ctx context.Context, tg *domain.TargetGroup, _ str
 func (q *fakeTGWriter) SetStatusCAS(ctx context.Context, id string, expected, newStatus domain.TargetGroupStatus) (*kachorepo.TargetGroupRecord, error) {
 	return nil, errors.New("not implemented in fake")
 }
+
+// DeleteExpiredDrainingTargets — фаза B слива; в этом двойнике не используется.
+func (q *fakeTGWriter) DeleteExpiredDrainingTargets(context.Context) (int64, []string, error) {
+	return 0, nil, errors.New("not used")
+}
+
 func (q *fakeTGWriter) MoveProject(ctx context.Context, id, newProjectID string) (*kachorepo.TargetGroupRecord, error) {
 	return nil, errors.New("not implemented in fake")
 }

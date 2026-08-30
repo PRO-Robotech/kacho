@@ -133,8 +133,10 @@ var atomicObservableTypes = map[string]bool{
 // который поднимается в процессе платформы.
 var accumulatorRoots = []string{"services", "gateway", "pkg"}
 
-// modulePathPrefix — по нему путь импорта переводится в каталог дерева.
-const modulePathPrefix = "github.com/PRO-Robotech/kacho/"
+// modulePathPrefix объявлен ОДИН раз на пакет — в `subscriptionkindvocabulary.go`,
+// у второго его потребителя. Здесь стояло второе объявление того же значения; оно
+// снято, потому что два написания одного предмета расходятся молча — ровно тот
+// класс, который гейт-сосед и ловит.
 
 // openAccumulatorFinding — накопитель без читателя, найденный обходом и
 // оставленный ЧУЖОЙ полосе.

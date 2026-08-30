@@ -14,28 +14,28 @@
 - **Type**: testability
 - **Priority**: P0
 - **Driver**: Все Subnet/Address mutation-кейсы
-- **Description**: kacho-deploy init-job должен seed'ить регион `zone`
+- **Description**: `deploy/` init-job должен seed'ить регион `zone`
   + zones `zone-{a,b,c,d}` + default `AddressPool` на zone `a`
   для `EXTERNAL_PUBLIC` (например 198.51.100.0/24). Сейчас приходится seed'ить
   вручную через curl на api-gateway на каждом `make dev-up`.
 - **Rationale**: без правильных fixtures suite падает массово на sync-валидации
   `zone_id` и на Allocate external IP. Невозможно reproducible CI.
 - **Impact**: 100% suite автоматически зеленый после `make dev-up`.
-- **Owner**: `kacho-deploy` (Helm post-install Job).
+- **Owner**: `deploy/` (Helm post-install Job).
 
 ### REQ-002 — Pre-seeded projects с детерминированными ID
 
 - **Type**: testability
 - **Priority**: P0
 - **Driver**: Все mutation-кейсы (NET-CR-CRUD-OK, SUB-CR, ...)
-- **Description**: kacho-deploy init-job создает два Project с фиксированными
+- **Description**: `deploy/` init-job создает два Project с фиксированными
   ID или экспортирует actual IDs в ConfigMap. Newman читает env из ConfigMap
   при старте.
 - **Rationale**: после каждого `make dev-up` рабочий файл окружения суиты (копия
   отслеживаемого `environments/local.postman_environment.template.json`)
   устаревает — IDs новых projects случайны, env приходится править руками.
 - **Impact**: zero-touch repeatable runs.
-- **Owner**: `kacho-deploy` + `tests/newman/scripts/`.
+- **Owner**: `deploy/` + `tests/newman/scripts/`.
 
 ### REQ-003 — Документ REST endpoints map
 
@@ -56,11 +56,19 @@
 - **Type**: contract-clarification
 - **Priority**: P2
 - **Driver**: предсказуемость Get-конвенции для операций
-- **Description**: `GET /operations/garbage-id` сейчас возвращает 400 InvalidArgument
-  "operation_id has unknown prefix". Это противоречит resource-Get convention
+- **Description**: `GET /operations/garbage-id` сейчас возвращает 400 INVALID_ARGUMENT
+  с текстом `invalid operation id "<X>"` (кавычки двойные — глагол `%q`
+  производителя `gateway/internal/opsproxy`). Это противоречит resource-Get convention
   ("garbage id → 404 NotFound"). Рассмотреть один из вариантов:
-  - **A**: OpsProxy конвертирует unknown-prefix → 404 NOT_FOUND `"Operation X not found"`.
-  - **B**: Документировать как известное расхождение в `docs/architecture/06-conventions.md`.
+  - **A**: OpsProxy конвертирует unknown-prefix → 404 NOT_FOUND `operation <X> not found`.
+  - **B**: Документировать как известное расхождение — **исполнено**: запись живёт в
+    `services/vpc/docs/engineering/architecture/07-known-divergences.md` §10 и в
+    парной записи compute.
+
+  > Здесь стояла другая цитата — текст, которого край не отдаёт: производителей у той
+  > строки в дереве было ноль. Дословно она не повторяется: цитата читается как
+  > утверждение о поведении, и разбор стал бы её повторением. Требование сверяли с ответом продукта,
+  > не находили совпадения и заключали, что предмет закрыт. Снято по #1400.
 - **Rationale**: предсказуемость для клиентов (resource-Get-конвенция: garbage id → NOT_FOUND).
 - **Impact**: меньше user confusion.
 - **Owner**: `kacho-api-gateway/internal/opsproxy/`.

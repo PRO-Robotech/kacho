@@ -178,7 +178,7 @@ func TestListener_MoveProject_Cascade(t *testing.T) {
 	})
 
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
-		_, err := w.LoadBalancers().MoveProject(ctx, string(lb.ID), dstProject)
+		_, _, err := w.LoadBalancers().MoveProject(ctx, string(lb.ID), dstProject)
 		require.NoError(t, err)
 	})
 

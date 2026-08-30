@@ -249,21 +249,30 @@ func TestCreateUseCase_DefaultSGAtomic(t *testing.T) {
 	assert.Equal(t, nets[0].ID, rts[0].NetworkID)
 	assert.Equal(t, rts[0].ID, nets[0].DefaultRouteTableID)
 
-	// Пять outbox-событий в правильной последовательности: Network.CREATED →
-	// SecurityGroup.CREATED → Network.UPDATED → RouteTable.CREATED →
-	// Network.UPDATED. Все — в одной writer-TX (atomic).
+	// ТРИ события — по одному на каждый заведённый ресурс, все в одной writer-TX
+	// (atomic). Сеть объявляется ПОСЛЕДНЕЙ и ОДИН раз: к этой позиции она
+	// собрана, и подписчик, читающий непустую нагрузку как полное состояние
+	// предмета, получает правду с первой же строки (#1548).
+	//
+	// Прежде их было пять: `Network.CREATED` без умолчаний, затем два
+	// `Network.UPDATED` по мере того, как умолчания достраивались той же
+	// транзакцией. Проба закрепляла это как норму — то есть закрепляла дефект.
 	events := kr.Outbox()
-	require.Len(t, events, 5, "ожидаем 5 outbox-event в одной writer-TX")
-	assert.Equal(t, "Network", events[0].Resource)
+	require.Len(t, events, 3, "ожидаем 3 outbox-event в одной writer-TX — по одному на ресурс")
+	assert.Equal(t, "SecurityGroup", events[0].Resource)
 	assert.Equal(t, "CREATED", events[0].Action)
-	assert.Equal(t, "SecurityGroup", events[1].Resource)
+	assert.Equal(t, "RouteTable", events[1].Resource)
 	assert.Equal(t, "CREATED", events[1].Action)
 	assert.Equal(t, "Network", events[2].Resource)
-	assert.Equal(t, "UPDATED", events[2].Action)
-	assert.Equal(t, "RouteTable", events[3].Resource)
-	assert.Equal(t, "CREATED", events[3].Action)
-	assert.Equal(t, "Network", events[4].Resource)
-	assert.Equal(t, "UPDATED", events[4].Action)
+	assert.Equal(t, "CREATED", events[2].Action)
+
+	// Единственная строка о сети обязана нести УСТОЯВШЕЕСЯ состояние: иначе
+	// ложное состояние стало бы единственным, и подписчику неоткуда узнать
+	// умолчания вовсе.
+	assert.Equal(t, nets[0].DefaultSecurityGroupID, events[2].Payload["DefaultSecurityGroupID"],
+		"строка сети обязана нести группу по умолчанию")
+	assert.Equal(t, nets[0].DefaultRouteTableID, events[2].Payload["DefaultRouteTableID"],
+		"строка сети обязана нести таблицу маршрутов по умолчанию")
 }
 
 // TestCreateDefaultSGUseCase_Execute_Composes — фокус-тест выделенного
@@ -288,7 +297,7 @@ func TestCreateDefaultSGUseCase_Execute_Composes(t *testing.T) {
 	}
 	created, err := w.Networks().Insert(ctx, &net)
 	require.NoError(t, err)
-	require.NoError(t, w.Outbox().Emit(ctx, "Network", created.ID, "CREATED", map[string]any{}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Network", created.ID, created.ProjectID, "CREATED", map[string]any{}))
 
 	// Сам use-case под тестом.
 	uc := NewCreateDefaultSGUseCase()
@@ -303,8 +312,13 @@ func TestCreateDefaultSGUseCase_Execute_Composes(t *testing.T) {
 	require.NoError(t, w.Commit())
 
 	// Post-commit видимость: 1 Network (с заполненным default_sg_id), 1 SG,
-	// 3 outbox-event'а — Network.CREATED (от caller'а) → SecurityGroup.CREATED →
-	// Network.UPDATED (две последние эмитирует use-case под тестом).
+	// 2 outbox-event'а — Network.CREATED (от caller'а-аналога выше) →
+	// SecurityGroup.CREATED (её эмитирует use-case под тестом).
+	//
+	// Своей строки о СЕТИ этот use-case не пишет: привязка группы — шаг сборки
+	// сети, а не отдельное её изменение, и объявляет собранную сеть ОДНОЙ строкой
+	// её создатель (#1548). Проба ждала здесь третью строку и тем закрепляла
+	// дефект как норму.
 	nets := kr.Networks()
 	require.Len(t, nets, 1)
 	assert.Equal(t, upd.ID, nets[0].ID)
@@ -317,13 +331,11 @@ func TestCreateDefaultSGUseCase_Execute_Composes(t *testing.T) {
 	assert.Equal(t, sgs[0].ID, nets[0].DefaultSecurityGroupID)
 
 	events := kr.Outbox()
-	require.Len(t, events, 3)
+	require.Len(t, events, 2)
 	assert.Equal(t, "Network", events[0].Resource)
 	assert.Equal(t, "CREATED", events[0].Action)
 	assert.Equal(t, "SecurityGroup", events[1].Resource)
 	assert.Equal(t, "CREATED", events[1].Action)
-	assert.Equal(t, "Network", events[2].Resource)
-	assert.Equal(t, "UPDATED", events[2].Action)
 }
 
 // Прежде здесь стояла проба TestCreateUseCase_DefaultSGInline_OFF: «настройка

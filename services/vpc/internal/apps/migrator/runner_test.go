@@ -23,11 +23,17 @@ func TestConfigValidate(t *testing.T) {
 		cfg     Config
 		wantErr string
 	}{
-		{name: "missing dialect", cfg: Config{DSN: "x", FS: fsys, MigrationsDir: "."}, wantErr: "dialect"},
-		{name: "missing dsn", cfg: Config{Dialect: pg, FS: fsys, MigrationsDir: "."}, wantErr: "dsn"},
-		{name: "missing fs", cfg: Config{Dialect: pg, DSN: "x", MigrationsDir: "."}, wantErr: "migrations FS"},
-		{name: "missing dir", cfg: Config{Dialect: pg, DSN: "x", FS: fsys}, wantErr: "migrations dir"},
-		{name: "ok", cfg: Config{Dialect: pg, DSN: "x", FS: fsys, MigrationsDir: "."}},
+		// Каждый случай опускает РОВНО ОДНО поле: иначе первая же проверка в
+		// Validate заслоняет остальные, и таблица перестаёт различать, какое
+		// именно поле она стережёт.
+		{name: "missing dialect", cfg: Config{Service: "vpc", DSN: "x", FS: fsys, MigrationsDir: "."}, wantErr: "dialect"},
+		{name: "missing dsn", cfg: Config{Service: "vpc", Dialect: pg, FS: fsys, MigrationsDir: "."}, wantErr: "dsn"},
+		{name: "missing fs", cfg: Config{Service: "vpc", Dialect: pg, DSN: "x", MigrationsDir: "."}, wantErr: "migrations FS"},
+		{name: "missing dir", cfg: Config{Service: "vpc", Dialect: pg, DSN: "x", FS: fsys}, wantErr: "migrations dir"},
+		// Безымянный сервис — отказ старта, а не умолчание: живой счёт строк перед
+		// сносом иначе не может назвать, что он стережёт.
+		{name: "missing service", cfg: Config{Dialect: pg, DSN: "x", FS: fsys, MigrationsDir: "."}, wantErr: "service is empty"},
+		{name: "ok", cfg: Config{Service: "vpc", Dialect: pg, DSN: "x", FS: fsys, MigrationsDir: "."}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -55,34 +61,15 @@ func TestNew_RejectsInvalidConfig(t *testing.T) {
 	}
 }
 
-func TestParseTargetVersion(t *testing.T) {
-	cases := []struct {
-		in      string
-		want    int64
-		wantErr bool
-	}{
-		{in: "10", want: 10},
-		{in: "0010", want: 10}, // leading zeros — file-naming convention goose
-		{in: "12345", want: 12345},
-		{in: "abc", wantErr: true},
-		{in: "-5", wantErr: true},
-		{in: "", wantErr: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.in, func(t *testing.T) {
-			got, err := parseTargetVersion(tc.in)
-			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("expected error for %q, got %d", tc.in, got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error for %q: %v", tc.in, err)
-			}
-			if got != tc.want {
-				t.Fatalf("expected %d, got %d", tc.want, got)
-			}
-		})
-	}
-}
+// TestParseTargetVersion снят ВМЕСТЕ СО СВОИМ ПРЕДМЕТОМ (#1383): локальной
+// parseTargetVersion в пакете больше нет — разбор `--target` у всех семи точек
+// наката один, [migratorcli.ParseTargetVersion], и его пробы строго ШИРЕ снятой:
+// снятая утверждала «10», «0010», «12345», «abc»✗, «-5»✗, «""»✗ — все шесть
+// утверждений живы в `pkg/migratorcli/parse_test.go` и
+// `pkg/migratorcli/parsetarget_test.go`.
+//
+// Замечание, ради которого эта врезка оставлена, а не просто удалён код: снятая
+// проба «abc» проверяла, а «12abc» — НЕТ, и потому не ловила настоящую дыру
+// прежнего разбора: `fmt.Sscanf("12abc", "%d", &v)` возвращает 12 БЕЗ ошибки,
+// то есть накат уезжал к версии, которой оператор не называл. Проба была, и
+// была зелёной, и предмета не измеряла.

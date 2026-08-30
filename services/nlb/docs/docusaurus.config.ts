@@ -90,7 +90,7 @@ const config: Config = {
           position: 'left',
         },
         {
-          href: 'https://github.com/PRO-Robotech/kacho-nlb',
+          href: 'https://github.com/PRO-Robotech/kacho/tree/main/services/nlb',
           label: 'GitHub',
           position: 'right',
         },
@@ -114,11 +114,12 @@ const config: Config = {
           ],
         },
         {
-          title: 'Репозитории',
+          title: 'Исходный код',
           items: [
-            { label: 'kacho-nlb', href: 'https://github.com/PRO-Robotech/kacho-nlb' },
-            { label: 'kacho-proto', href: 'https://github.com/PRO-Robotech/kacho-proto' },
-            { label: 'kacho-corelib', href: 'https://github.com/PRO-Robotech/kacho-corelib' },
+            { label: 'Монорепозиторий kacho', href: 'https://github.com/PRO-Robotech/kacho' },
+            { label: 'services/nlb/', href: 'https://github.com/PRO-Robotech/kacho/tree/main/services/nlb' },
+            { label: 'proto/', href: 'https://github.com/PRO-Robotech/kacho/tree/main/proto' },
+            { label: 'pkg/', href: 'https://github.com/PRO-Robotech/kacho/tree/main/pkg' },
           ],
         },
       ],

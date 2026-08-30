@@ -14,7 +14,7 @@ assert'ов. Закрытие пункта = решение владельца �
 | # | Что не закреплено | Где в кейсах | Текущая формулировка (placeholder) | Желаемое |
 |---|---|---|---|---|
 | PROBE-01 | Текст `NotFound` для Disk/Image/Snapshot/Instance/DiskType/Zone Get garbage id | `*-GET-CONF-NF-TEXT`, `DT/ZONE-GET-CONF-NF-TEXT` | substr `"not found"` | точная формулировка `^<Resource> <id> not found$` (как у kacho-vpc) → regex-assert |
-| PROBE-02 | Текст `NotFound` для Operation Get garbage epd-id | `OP-GET-CONF-NF-TEXT` | substr `"not found"` | `^Operation <id> not found$` (контракт-тон) |
+| PROBE-02 | ~~Текст `NotFound` для Operation Get garbage epd-id~~ | `OP-GET-CONF-NF-TEXT` | — | закрыто (#1401): кейс утверждает РАВЕНСТВО `operation <id> not found` без приведения регистра; текст вычислен у единственного производителя `pkg/operations.NotFoundStatus`, свойство держит гейт `internal/repohygiene/artifactgates` `TestOperationLaneMessageIsAssertedVerbatim` |
 | PROBE-03 | Текст `ALREADY_EXISTS` для duplicate `(project, name)` | `*-CR-NEG-DUP-NAME` | только code 6 | закрепить текст → assert |
 | PROBE-04 | Текст `InvalidArgument` для unknown disk type_id (и: NotFound vs InvalidArgument?) | `DISK-CR-NEG-TYPE-UNKNOWN` | code 5, substr `"disk type"` | точный code + text |
 | PROBE-05 | unknown zone_id в Disk.Create / Disk.Relocate: сейчас `InvalidArgument`, а по конвенции by-lane split чужой id — peer-validate lane, то есть `FailedPrecondition` | `DISK-CR-NEG-ZONE-UNKNOWN`, `DISK-REL-NEG-DEST-ZONE-UNKNOWN` | allow code 3\|5 | привести к конвенции → single code |
@@ -38,7 +38,7 @@ assert'ов. Закрытие пункта = решение владельца �
 
 | # | Запрос | Зачем |
 |---|---|---|
-| TEST-01 | e2e-seed в `kacho-deploy` должен создавать (или env должен документировать) реальные `existingNetworkId`/`existingSubnetId`/`existingSgId` в той же зоне что `existingZoneId` (ru-central1-a) | без них Instance CRUD-кейсы краснеют (нет subnet → NIC-валидация fail) |
+| TEST-01 | e2e-seed в `deploy/` должен создавать (или env должен документировать) реальные `existingNetworkId`/`existingSubnetId`/`existingSgId` в той же зоне что `existingZoneId` (ru-central1-a) | без них Instance CRUD-кейсы краснеют (нет subnet → NIC-валидация fail) |
 | TEST-02 | Документировать в e2e-config: `KACHO_COMPUTE_SKIP_PEER_VALIDATION` (true в test-стенде без VPC/RM?) | от этого зависит, сработают ли `*-NEG-SUBNET-NOTFOUND` / `*-NEG-PROJECT-NOTFOUND` / `OP-GET-CRUD-FAILED-OP` |
 | TEST-03 | ~~`existingPlatformId` в seeded таблице платформ~~ — снято. Ни поля, ни таблицы, ни файла нет: поле объявлено `reserved` в `proto/kacho/cloud/compute/v1/instance_service.proto`, размер задаётся ссылкой `machineTypeId` на каталожную запись. Env должен нести валидный id типа машины, а не платформу | Instance.Create резолвит `machine_type_id` против каталога |
 | TEST-04 | `existingDiskTypeId=network-ssd` присутствует в seed (✓ — `0001_initial.sql`); проверить что доступен в `existingZoneId` | Disk/Instance boot-disk создаются с этим типом |

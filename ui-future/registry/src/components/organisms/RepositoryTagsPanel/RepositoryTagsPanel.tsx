@@ -21,7 +21,7 @@ import {
 } from "@ant-design/icons";
 import { ROW_ACTION_TRIGGER } from "@/components/molecules/RowActionsMenu";
 import { registriesApi } from "@/api/resources";
-import { extractOperationId } from "@/components/molecules/OperationDialog";
+import { operationOutcome, resolveMutationResponse } from "@shared/lib/operation-outcome";
 import { ResourceIcon } from "@/components/organisms/form/ResourceIcon";
 import { ErrorResult } from "@/components/molecules/ErrorResult";
 import { getByPath } from "@/lib/resource-registry";
@@ -67,6 +67,9 @@ export const RepositoryTagsPanel: FC<{
     queryKey: tagsKey,
     queryFn: () => registriesApi.listTags(registryId, repository),
     enabled: !!registryId && !!repository,
+    // поллинг остаётся: тег не ресурс платформы — он живёт в OCI-данных и в
+    // ресурсный журнал не пишется вовсе. Журнал у реестра ЕСТЬ (владелец
+    // `registry` объявлен краю), но ведёт он один вид — сами реестры.
     refetchInterval: 5_000,
     staleTime: 0,
   });
@@ -333,7 +336,10 @@ export const RepositoryTagsPanel: FC<{
 };
 
 // TagDeleteAction — per-tag удаление (async Operation): иконка + Popconfirm →
-// deleteTag → extractOperationId → poll → invalidate. Ошибка → toast.
+// deleteTag → опрос операции → invalidate. Исход читается ОБЩИМ разбором
+// (`@shared/lib/operation-outcome`), а не своим условием рядом: исходов три —
+// операция завершилась с ошибкой · её статус прочитать не удалось · выполнена, —
+// и своё условие читало первый и третий, оставляя второй молчаливым.
 function TagDeleteAction({
   registryId,
   repository,
@@ -346,14 +352,23 @@ function TagDeleteAction({
   onDone: () => void;
 }) {
   const [pendingOpId, setPendingOpId] = useState<string | null>(null);
-  const { data: op } = useOperation(pendingOpId);
+  // Опрос читается ЦЕЛИКОМ — и данные, и его собственный отказ. Взяв один `data`,
+  // вызывающий не отличает «ещё выполняется» от «прочитать статус не удалось», и
+  // второе оборачивается ожиданием, которое не кончится никогда.
+  const { data: op, isError: opFetchFailed, error: opFetchError } = useOperation(pendingOpId);
 
   const mutation = useMutation({
     mutationFn: () => registriesApi.deleteTag(registryId, repository, tag),
     onSuccess: (resp) => {
-      const opId = extractOperationId(resp);
-      if (opId) {
-        setPendingOpId(opId);
+      // `DeleteTag` объявлен возвращающим `Operation` (спека `tags`,
+      // `mutationsReturnOperation` не отменён), поэтому ответ БЕЗ неё —
+      // нарушение контракта, а не синхронный успех: подтвердить выполнение
+      // нечем, и объявлять тег удалённым не на чем.
+      const resolved = resolveMutationResponse(resp, true);
+      if (resolved.kind === "operation") {
+        setPendingOpId(resolved.opId);
+      } else if (resolved.kind === "violation") {
+        toast.error(`Удалить тег ${tag}: ${resolved.message}`);
       } else {
         toast.success(`Тег ${tag} удалён`);
         onDone();
@@ -365,19 +380,28 @@ function TagDeleteAction({
     },
   });
 
+  // Три состояния операции разобраны ОДИН раз на всё дерево. Своё условие здесь
+  // читало «завершилась с ошибкой» и «выполнена», а «статус не прочитан» выходил
+  // молча — и кнопка оставалась в состоянии «идёт» навсегда.
+  const outcome = operationOutcome({
+    opId: pendingOpId,
+    op,
+    fetchError: opFetchFailed ? (opFetchError ?? new Error("опрос операции не прошёл")) : null,
+  });
+
   useEffect(() => {
-    if (!pendingOpId || !op?.done) return;
-    if (op.error) {
-      toast.error(`Удалить тег ${tag}: ${op.error.message ?? "ошибка"}`);
+    if (outcome.kind === "idle" || outcome.kind === "pending") return;
+    if (outcome.kind === "failed") {
+      toast.error(`Удалить тег ${tag}: ${outcome.message}`);
     } else {
       toast.success(`Тег ${tag} удалён`);
       onDone();
     }
     setPendingOpId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [op?.done, op?.error?.code]);
+  }, [outcome.kind]);
 
-  const pending = mutation.isPending || pendingOpId !== null;
+  const pending = mutation.isPending || outcome.kind === "pending";
 
   return (
     <Popconfirm

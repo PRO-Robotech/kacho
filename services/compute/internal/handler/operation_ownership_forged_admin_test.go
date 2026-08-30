@@ -15,6 +15,7 @@ import (
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 )
 
 // Полная цепочка живой эскалации, локнутая на наблюдаемом уровне:
@@ -39,7 +40,7 @@ func opForgedAdminCtx(id string) context.Context {
 func TestOperationHandler_ForgedAdmin_CannotReadForeignOperation(t *testing.T) {
 	repo := newFakeOwnedOpsRepo()
 	victim := seedInFlight(repo, "user", "usr-A")
-	h := NewOperationHandler(repo)
+	h := operationspb.NewHandler(repo)
 
 	_, err := h.Get(opForgedAdminCtx("usr-B"),
 		&operationpb.GetOperationRequest{OperationId: victim.ID})
@@ -54,7 +55,7 @@ func TestOperationHandler_ForgedAdmin_CannotReadForeignOperation(t *testing.T) {
 func TestOperationHandler_ForgedAdmin_CannotCancelForeignOperation(t *testing.T) {
 	repo := newFakeOwnedOpsRepo()
 	victim := seedInFlight(repo, "user", "usr-A")
-	h := NewOperationHandler(repo)
+	h := operationspb.NewHandler(repo)
 
 	_, err := h.Cancel(opForgedAdminCtx("usr-B"),
 		&operationpb.CancelOperationRequest{OperationId: victim.ID})
@@ -75,7 +76,7 @@ func TestOperationHandler_ForgedAdmin_CannotCancelForeignOperation(t *testing.T)
 func TestOperationHandler_OwnerStillWorks(t *testing.T) {
 	repo := newFakeOwnedOpsRepo()
 	mine := seedInFlight(repo, "user", "usr-A")
-	h := NewOperationHandler(repo)
+	h := operationspb.NewHandler(repo)
 
 	got, err := h.Get(opUserCtx("usr-A"), &operationpb.GetOperationRequest{OperationId: mine.ID})
 	require.NoError(t, err)

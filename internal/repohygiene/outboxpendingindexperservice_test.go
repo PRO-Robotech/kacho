@@ -152,7 +152,7 @@ func pendingIndexKeysFor(inv map[string]map[string]string, table string) []strin
 // перестал что-либо находить.
 func Test_PendingIndexInventory_KeepsSameNamedQueuesOfServicesApart(t *testing.T) {
 	root := syntheticPendingIndexTree(t, false)
-	inv, files := pendingIndexInventory(t, root)
+	inv, files := pendingIndexInventory(t, root, syntheticMigrationSQL)
 
 	if files != 2 {
 		t.Fatalf("проба прочитала %d миграций вместо двух — синтетическое дерево собрано не так, "+
@@ -180,7 +180,7 @@ func Test_PendingIndexInventory_KeepsSameNamedQueuesOfServicesApart(t *testing.T
 // отсутствие ИМЕННО у этого сервиса и не тронуть соседа.
 func Test_PendingIndexInventory_SeesDropInEarlierWalkedService(t *testing.T) {
 	root := syntheticPendingIndexTree(t, true)
-	inv, files := pendingIndexInventory(t, root)
+	inv, files := pendingIndexInventory(t, root, syntheticMigrationSQL)
 
 	if files != 3 {
 		t.Fatalf("проба прочитала %d миграций вместо трёх — синтетическое дерево собрано не так", files)
@@ -266,7 +266,7 @@ SELECT 1;
 // (iam 0055/0056, nlb 0012/0021).
 func Test_PendingIndexInventory_ReplaysStatementsInTextOrder(t *testing.T) {
 	root := syntheticStatementOrderTree(t)
-	inv, files := pendingIndexInventory(t, root)
+	inv, files := pendingIndexInventory(t, root, syntheticMigrationSQL)
 
 	if files != 3 {
 		t.Fatalf("проба прочитала %d миграций вместо трёх — синтетическое дерево собрано не так, "+
@@ -321,7 +321,7 @@ CREATE UNIQUE INDEX q_outbox_all_rows_uniq
 -- +goose Down
 SELECT 1;
 `)
-	inv, files := pendingIndexInventory(t, root)
+	inv, files := pendingIndexInventory(t, root, syntheticMigrationSQL)
 	if files != 1 {
 		t.Fatalf("проба прочитала %d миграций вместо одной — синтетическое дерево собрано не так", files)
 	}

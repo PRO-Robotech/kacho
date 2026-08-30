@@ -85,8 +85,10 @@ CASES.append(Case(
         Step(name="create", method="POST", path="/vpc/v1/routeTables",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
                    "name": "rt-nn-{{runId}}", "staticRoutes": []},
+             # Текст владельца целиком (services/vpc/.../api/routetable/create.go), а не
+             # слово «network»: под ним проходили 27 разных отказов vpc (#1520).
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                          "pm.test('mentions network', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('network'));"]),
+                          *assert_refusal_message("Network {{garbageVpcId}} not found")]),
     ],
 ))
 
@@ -318,7 +320,9 @@ CASES.extend(malformed_body_block("RT", "/vpc/v1/routeTables"))
 
 CASES.append(_rt_wrap("RT", "v9d",
     alreadyexists_dup_name_for("RT", "/vpc/v1/routeTables",
-        {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "staticRoutes": []})))
+        # Текст владельца дословно: services/vpc/internal/apps/kacho/api/routetable/create.go
+        refusal="RouteTable with name {name} already exists",
+        body_create={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "staticRoutes": []})))
 for c in update_mask_partial_block("RT", "/vpc/v1/routeTables", "/vpc/v1/routeTables",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "staticRoutes": []}):
     CASES.append(_rt_wrap("RT", "v9p", c))

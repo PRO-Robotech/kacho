@@ -50,7 +50,7 @@ func TestListenerCreate_MoveFirst_ProjectConsistent(t *testing.T) {
 	// uncommitted).
 	wMove, err := repo.Writer(ctx)
 	require.NoError(t, err)
-	_, moveErr := wMove.LoadBalancers().MoveProject(ctx, string(lb.ID), dstPrj)
+	_, _, moveErr := wMove.LoadBalancers().MoveProject(ctx, string(lb.ID), dstPrj)
 
 	// TX-insert runs concurrently: the listener is built with the STALE
 	// (pre-move) project_id — exactly the value a sync-phase snapshot carries.

@@ -181,7 +181,7 @@ func (u *CreateAddressPoolUseCase) Persist(ctx context.Context, p *domain.Addres
 			return nil, fmt.Errorf("%w: init ipv6 cursor: %v", serviceerr.ErrInternal, err)
 		}
 	}
-	if err := w.Outbox().Emit(ctx, "AddressPool", created.ID, "CREATED",
+	if err := w.Outbox().Emit(ctx, "AddressPool", created.ID, helpers.NoProjectAnchor, "CREATED",
 		helpers.AddressPoolDomainPayload(&created.AddressPool)); err != nil {
 		return nil, fmt.Errorf("%w: outbox emit: %v", serviceerr.ErrInternal, err)
 	}

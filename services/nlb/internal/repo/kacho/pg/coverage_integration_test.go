@@ -148,9 +148,18 @@ func TestCoverage_ListenerUpdate_MoveProject(t *testing.T) {
 		require.NoError(t, err)
 	})
 	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
+		// Утверждение усилено вместе со сменой контракта: каскад отдаёт теперь
+		// ПЕРЕЕХАВШИЕ ЗАПИСИ, а не их число, и о новом якоре проекта прежний счётчик
+		// сказать не мог ничего. Записи нужны вызывающему затем, чтобы собрать
+		// строку журнала на каждый переехавший слушатель (#1549), — а строка с
+		// прежним проектом была бы ровно тем молчанием, ради снятия которого её и
+		// заводят.
 		rows, err := w.Listeners().MoveProject(ctx, string(lb.ID), dst)
 		require.NoError(t, err)
-		assert.Equal(t, int64(1), rows, "exactly one listener moved")
+		require.Len(t, rows, 1, "exactly one listener moved")
+		assert.Equal(t, dst, string(rows[0].ProjectID),
+			"запись каскада несёт СТАРЫЙ проект: строка журнала, собранная из неё, объявила бы "+
+				"подписчику ровно то состояние, которого переезд и не оставил")
 	})
 }
 

@@ -9,9 +9,10 @@
 //
 // Чарт умеет объявлять переменную окружения ДВУМЯ способами. Первый — своя
 // первоклассная ручка: блок шаблона под условием, который рядом с переменной
-// несёт и свои проверки связности (у api-gateway блок internalListener.mtls
-// прямо падает `fail`-ом, если не включена mtls.enable — без неё листенеру
-// нечем проверять клиентские сертификаты). Второй — родовой проброс
+// несёт и свои проверки связности (у api-gateway блок idempotency прямо падает
+// `fail`-ом, если хранилище объявлено общим, а адреса у него нет — выводить
+// адрес из соседнего запрещено, он никогда не пуст и потому ведёт в никуда).
+// Второй — родовой проброс
 // (`extraEnv` / `env`), который печатает пару «имя-значение» и не знает о ней
 // ничего.
 //
@@ -295,9 +296,14 @@ func TestChartOwnedEnvIsNeverSuppliedByAGenericPassthrough(t *testing.T) {
 // дерево.
 
 func TestScanCrossWiring_SelfTest(t *testing.T) {
+	// Имя переменной ЖИВОЕ, а не любое: синтетика тут описывает форму, но
+	// фикстура, названная снятой переменной, — утверждение, пережившее свой
+	// предмет (прежде здесь стояла KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE,
+	// снятая вместе с внутренним листенером края, #1024). KACHO_APP_ENV чарт
+	// объявляет сам, и это утверждает соседняя проба против НАСТОЯЩЕГО шаблона.
 	charts := map[string]chartFacts{
 		"api-gateway": {
-			ownEnv:       map[string]string{"KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE": "templates/deployment.yaml"},
+			ownEnv:       map[string]string{"KACHO_APP_ENV": "templates/deployment.yaml"},
 			passthroughs: map[string]bool{"extraEnv": true},
 		},
 	}
@@ -307,7 +313,7 @@ func TestScanCrossWiring_SelfTest(t *testing.T) {
 	broken := map[string]map[string]any{
 		"values.injected.yaml": {
 			"api-gateway": map[string]any{
-				"extraEnv": map[string]any{"KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE": "true"},
+				"extraEnv": map[string]any{"KACHO_APP_ENV": "production"},
 			},
 		},
 	}
@@ -316,7 +322,7 @@ func TestScanCrossWiring_SelfTest(t *testing.T) {
 		t.Fatalf("внесённое расхождение не поймано: находок %d, ждали 1", len(got))
 	}
 	if got[0].profile != "values.injected.yaml" || got[0].subchart != "api-gateway" ||
-		got[0].key != "extraEnv" || got[0].env != "KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE" {
+		got[0].key != "extraEnv" || got[0].env != "KACHO_APP_ENV" {
 		t.Fatalf("находка без координаты: %+v", got[0])
 	}
 
@@ -326,9 +332,9 @@ func TestScanCrossWiring_SelfTest(t *testing.T) {
 	legit := map[string]map[string]any{
 		"values.legit.yaml": {
 			"api-gateway": map[string]any{
-				"extraEnv":         map[string]any{"KACHO_API_GATEWAY_SOMETHING_THE_CHART_DOES_NOT_EMIT": "1"},
-				"internalListener": map[string]any{"mtls": map[string]any{"enable": true}},
-				"image":            map[string]any{"repository": "kacho-api-gateway", "tag": "dev"},
+				"extraEnv": map[string]any{"KACHO_API_GATEWAY_SOMETHING_THE_CHART_DOES_NOT_EMIT": "1"},
+				"appEnv":   "production",
+				"image":    map[string]any{"repository": "kacho-api-gateway", "tag": "dev"},
 			},
 		},
 	}

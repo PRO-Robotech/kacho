@@ -277,8 +277,10 @@ compute:
       storage: true
 kacho-geo:
   image: docker.io/prorobotech/kacho-geo:main-b622b388
-  # hardened geo defaults AUTH_MODE=production → validateSecurityConfig requires a
-  # non-empty trusted-forwarder allow-list. Bundled chart predates this env.
+  # hardened geo defaults AUTH_MODE=production → страж посадки требует непустой
+  # круг отправителей. Прежде здесь стояло имя `validateSecurityConfig` — такой
+  # функции у geo нет и не было (она резолвится только у registry); имя пережило
+  # свой предмет и посылало читателя искать защиту не туда.
   # Состав круга и почему он не «только шлюз» — см. values.prod.yaml (#916).
   env:
     KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute,spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb,spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage,spiffe://kacho.cloud/ns/kacho/sa/kacho-registry"
@@ -485,26 +487,20 @@ api-gateway:
   # AUTHZ_DENY the new registry RPCs ("catalog: no entry for method"); rolling both
   # together keeps iam(418)/gateway(418)/registry(af0eacae) catalog-coherent.
   image: docker.io/prorobotech/kacho-api-gateway:main-b622b388
-  # Internal :9091 listener hosts InternalAuthzCacheService.InvalidateSubject and
-  # (production invariant, security.md) MUST run mTLS + a caller allow-list — the
-  # hardened binary fail-fasts otherwise. Reuse the already-mounted cert-manager
-  # material: server cert = api-gateway-tls (/etc/api-gateway/tls), client-CA =
-  # /etc/api-gateway/mtls/ca.crt (chart-set KACHO_API_GATEWAY_MTLS_CA_FILE). The
-  # authorised caller is the iam push-drainer SPIFFE id.
+  # Здесь стоял разбор снятого отсюда блока extraEnv из пяти переменных: край
+  # объявлял их и пробросом, и ручками чарта, отчего в контейнере получалось по
+  # две записи на имя. `helm template` на это молчит, apiserver отвечает «hides
+  # previous definition … may be dropped when using apply», и побеждает та
+  # запись, которую выбрал порядок блоков шаблона, — то есть не тот, кто правил
+  # профиль. Класс остаётся нормой и держится не этим абзацем, а
+  # deploy/posture_parity_test.go, который судит его по всем профилям сразу.
   #
-  # Здесь стоял блок extraEnv из пяти переменных — и все пять чарт объявляет САМ:
-  # KACHO_APP_ENV из ручки appEnv (values.prod.yaml), остальные четыре из блока
-  # internalListener.mtls, включённого там же. В контейнере края получалось по две
-  # записи на имя. `helm template` на это молчит, поэтому шаблонный шаг сборки был
-  # зелёным; apiserver отвечает «hides previous definition … may be dropped when
-  # using apply», а побеждает та запись, которую выбрал порядок блоков шаблона, —
-  # то есть не тот, кто правил профиль.
-  #
-  # Значения удалены, а не перенесены: каждое из пяти уже совпадало с тем, что
-  # даёт ручка (appEnv=production; enable=true; certFile/keyFile — умолчание чарта
-  # /etc/api-gateway/tls/tls.{crt,key}; allowedSpiffe — умолчание
-  # spiffe://kacho.cloud/ns/kacho/sa/kacho-iam). Рендер этой цепочки после удаления
-  # отличается от прежнего ровно на пять исчезнувших дубликатов и ничем больше.
+  # Четыре из тех пяти переменных настраивали ВНУТРЕННИЙ gRPC-листенер края.
+  # Его больше нет (#1024): единственную службу сняли вместе с обратным ребром
+  # «сервис гасит кэш решений края», а листенер без единственной службы был бы
+  # входной поверхностью без единого метода. Ни проброса, ни ручки для него
+  # сегодня не существует. Пятая (метка окружения) приходит ручкой `appEnv` из
+  # values.prod.yaml и здесь не повторяется.
   # gateway→geo backend dial must be mTLS: geo's :9090 runs public_mtls=true, but
   # values.prod's mtls.edges predate the geo cutover (only vpc/compute/iam/nlb) → the
   # gateway dialed geo plaintext → 503 on /geo/v1/regions|zones (region/zone admin).

@@ -39,6 +39,24 @@ const (
 	RegistryStatusDeleting
 )
 
+// RegistryStatusFromString — состояние жизненного цикла из ТЕКСТОВОЙ КОЛОНКИ.
+//
+// Живёт в домене, а не у хранилища, потому что читателей у перевода стало два:
+// чтение строки репозиторием и разбор нагрузки ресурсного журнала, чьи ключи —
+// имена колонок. Две копии одного перевода разошлись бы молча: неизвестное слово
+// схлопывается в значение по умолчанию, то есть ошибка выглядит как обычное
+// состояние.
+//
+// Вывод по имени из сгенерённого словаря перечисления здесь НЕ работает: колонка
+// хранит короткое слово (`ACTIVE`), а перечисление контракта пишет его с
+// префиксом (`REGISTRY_STATUS_ACTIVE`).
+func RegistryStatusFromString(s string) RegistryStatus {
+	if s == "DELETING" {
+		return RegistryStatusDeleting
+	}
+	return RegistryStatusActive
+}
+
 // Validate проверяет, что статус — известное значение.
 func (s RegistryStatus) Validate() error {
 	switch s {
@@ -60,6 +78,17 @@ const (
 	PlacementTypeUnspecified PlacementType = iota // 0
 	PlacementTypeRegional                         // 1 — единственное валидное для Registry
 )
+
+// PlacementTypeFromString — якорь размещения из ТЕКСТОВОЙ КОЛОНКИ.
+//
+// Здесь по той же причине, что и перевод состояния выше: читателей два, и
+// расхождение между ними тихое.
+func PlacementTypeFromString(s string) PlacementType {
+	if s == "REGIONAL" {
+		return PlacementTypeRegional
+	}
+	return PlacementTypeUnspecified
+}
 
 // ValidateName проверяет имя реестра: непустое, в пределах длины, DNS-safe.
 // Выделено отдельно, чтобы partial-Update мог валидировать только заданное имя.

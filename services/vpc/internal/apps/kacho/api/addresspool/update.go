@@ -161,7 +161,7 @@ func (u *UpdateAddressPoolUseCase) Execute(ctx context.Context, req UpdatePoolRe
 	if err != nil {
 		return nil, err
 	}
-	if err := w.Outbox().Emit(ctx, "AddressPool", updated.ID, "UPDATED",
+	if err := w.Outbox().Emit(ctx, "AddressPool", updated.ID, helpers.NoProjectAnchor, "UPDATED",
 		helpers.AddressPoolDomainPayload(&updated.AddressPool)); err != nil {
 		return nil, fmt.Errorf("%w: outbox emit: %v", serviceerr.ErrInternal, err)
 	}

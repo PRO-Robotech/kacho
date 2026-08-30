@@ -30,6 +30,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/kacho/pkg/subjectchange"
 
 	// Обслуживается только нативный API kacho.cloud.*.
 
@@ -43,7 +44,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/opsproxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/proxy"
 	"github.com/PRO-Robotech/kacho/gateway/internal/restmux"
-	"github.com/PRO-Robotech/kacho/gateway/internal/watcher"
+	"github.com/PRO-Robotech/kacho/gateway/internal/subscriptionstream"
 )
 
 func main() {
@@ -55,6 +56,14 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
+
+	// Посадка процесса — ЧЕРЕЗ ЦЕНТРАЛЬНЫЙ ДЕСКРИПТОР, и до первого исходящего
+	// соединения (задача продукта #1407). Раньше набора рёбер: страж, стоящий
+	// после дозвона до соседей, судит посадку, в которой процесс уже говорит.
+	posture, postureErr := describePosture(cfg, logger)
+	if postureErr != nil {
+		log.Fatalf("посадка процесса: %v", postureErr)
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
@@ -781,7 +790,7 @@ func main() {
 		return snap
 	})
 	diagDesc, diagDescErr := describeDiagnosticSurface(
-		cfg.MetricsAddr, diagMetrics, surfaceMode(cfg.AuthNMode), logger)
+		cfg.MetricsAddr, diagMetrics, posture.Spec().Mode, logger)
 	if diagDescErr != nil {
 		log.Fatalf("профиль диагностической поверхности: %v", diagDescErr)
 	}
@@ -797,21 +806,84 @@ func main() {
 		log.Fatalf("диагностическая поверхность: %v", diagErr)
 	}
 
-	// --- subject-change poll-loop for cross-replica authz cache invalidation ---
-	// Runs only when authz is enabled (authzMW != nil covers both enabled and
-	// disabled — InvalidateCache is nil-safe, but polling is pointless when the
-	// cache is a no-op). Gate on cfg.AuthZEnabled to avoid spurious IAM polling
-	// in environments without authz.
-	if authzMW != nil {
-		scPoller := clients.NewSubjectChangePoller(backends["iamInternal"])
-		scWatcher := watcher.New(scPoller, authzMW.InvalidateCache,
-			cfg.SubjectChangePollInterval, logger)
-		// The watcher is poll-only with no shutdown cleanup; it exits when ctx is
-		// cancelled (SIGTERM/SIGINT). No WaitGroup join needed — nothing to flush on exit.
-		go scWatcher.Run(ctx)
-		logger.Info("subject-change watcher started",
-			"interval", cfg.SubjectChangePollInterval)
+	// --- проекция потока изменений в браузер ---
+	//
+	// Собирается ЗДЕСЬ, а не у своего монтирования ниже, потому что она же —
+	// реестр открытых потоков, который читает читатель отзыва (следующий блок).
+	// Провязать его можно только тем, что уже существует.
+	subscriptionStream, err := buildSubscriptionStreamHandler(cfg, backends, logger)
+	if err != nil {
+		log.Fatalf("subscription stream projection: %v", err)
 	}
+
+	// --- чтение журнала смены субъекта: отзыв доезжает до кэша решений И до потоков ---
+	//
+	// Соединение открывает ПОТРЕБИТЕЛЬ — то есть край. Владелец прав о крае не
+	// знает и знать ему нечем: толчок из него снят вместе с адресом края (задача
+	// #1024), а ребро осталось потребитель→владелец, как и всякое другое.
+	//
+	// Читатель живёт в ФУНДАМЕНТЕ (`pkg/subjectchange`), а не здесь: свойство
+	// «смена прав доезжает до кэша решений» обязано держаться одной реализацией, и
+	// одной пробой — сквозь обе стороны, вместе с производителем журнала.
+	//
+	// Полос у отзыва ДВЕ, и вторая не выводится из первой: кэш решений отвечает на
+	// СЛЕДУЮЩИЙ запрос, а открытое соединение следующего запроса не делает (задача
+	// #1022). Поэтому читателю передаётся реестр открытых потоков, и передаётся
+	// он ОБЯЗАТЕЛЬНО — ноль отвергается сборкой.
+	//
+	// Работает только при включённом слое прав: гасить нечего, когда кэш —
+	// заглушка.
+	if authzMW != nil {
+		reader := subjectchange.NewReader(backends["iamInternal"])
+		sc, scErr := buildSubjectChangeWatcher(
+			cfg, reader, authzMW.InvalidateCache, subscriptionStream, logger)
+		if scErr != nil {
+			log.Fatalf("subject-change reader: %v", scErr)
+		}
+		// Уборки на остановке у читателя нет: он только читает и держит курсор в
+		// памяти. Выходит по отмене контекста (SIGTERM/SIGINT), догонять на выходе
+		// нечего.
+		go sc.Run(ctx)
+		// Самоотчёт называет ОБЕ величины: перепрос, которым отзыв доезжает, и
+		// срок, после которого его отсутствие само становится решением. Молчание
+		// о втором сделало бы «fail-closed провязан» неотличимым от «не провязан».
+		// Печатается НАБЛЮДЕНИЕ, а не литерал: `true` продолжал бы утверждать
+		// «закрывает» при отключённом закрывателе.
+		logger.Info("subject-change reader started",
+			"interval", cfg.SubjectChangePollInterval,
+			"stale_after", sc.StaleAfter().String(),
+			"closes_streams", sc.ClosesStreams())
+	}
+
+	// --- перепрос состояния УДОСТОВЕРЕНИЯ на открытых потоках ---
+	//
+	// Вторая полоса отзыва, и она НЕ выводится из первой (задача #1410). Журнал
+	// смены субъекта несёт отзыв ПРАВ; выход человека и принудительный выход
+	// администратора отзывают САМО УДОСТОВЕРЕНИЕ и строк в тот журнал не пишут.
+	// Переиспользовать перепрос изменений субъекта поэтому нечем.
+	//
+	// Провязывается БЕЗУСЛОВНО, в отличие от соседа: тот гасит кэш решений и без
+	// включённого слоя прав гасить ему нечего, а здесь предмет — открытое
+	// соединение, которое существует независимо от того, чем гейтится запрос.
+	//
+	// Окно отзыва выводится из объявленной границы на пути запроса (срок кэша
+	// интроспекции), а не объявляется своей ручкой: две величины одного
+	// механизма разошлись бы молча — и разошлись бы именно там, где расхождение
+	// не видно.
+	credentialSweeper, csErr := buildStreamRevocationSweeper(
+		cfg, backends["iamInternal"], subscriptionStream, logger)
+	if csErr != nil {
+		log.Fatalf("subscription credential recheck: %v", csErr)
+	}
+	go credentialSweeper.Run(ctx)
+	// Самоотчёт называет ОБЕ величины: окно, в пределах которого отзыв доезжает
+	// до открытого соединения, и срок, после которого молчание авторитета само
+	// становится решением закрыть. Молчание о втором сделало бы «fail-closed
+	// провязан» неотличимым от «не провязан».
+	logger.Info("subscription credential recheck started",
+		"interval", credentialSweeper.Interval().String(),
+		"stale_after", credentialSweeper.StaleAfter().String(),
+		"stream_budget", cfg.SubscriptionStreamBudget.String())
 
 	// --- gRPC server ---
 	//
@@ -820,7 +892,7 @@ func main() {
 	// разрешаются ОДНИМ вызовом и ДО первой сборки сервера: негодный набор — это
 	// отказ старта, а не предупреждение, и отказать он обязан раньше, чем
 	// процесс начнёт выглядеть поднявшимся.
-	publicAdmissionLimits, internalAdmissionLimits, admErr := admissionLimits(cfg)
+	publicAdmissionLimits, admErr := admissionLimits(cfg)
 	if admErr != nil {
 		log.Fatalf("request admission: %v", admErr)
 	}
@@ -973,6 +1045,21 @@ func main() {
 	// to registered SPs).
 	httpMux.Handle("/oauth/logout", logoutHandler)
 
+	// GET /subscription/v1/events — ЕДИНСТВЕННАЯ проекция потока изменений в
+	// браузер. Монтируется ДО `/`, иначе её перебьёт общий обработчик REST.
+	//
+	// Наружу выставляется СВОЯ поверхность края, а не метод владельца: у метода
+	// внешнего пути нет и не заводится (его нет в allowlist, его имя отсекает
+	// HasInternalSuffix, а `google.api.http` контракт не объявляет). Разбор —
+	// gateway/docs/engineering/architecture/subscription-stream-projection.md.
+	httpMux.Handle(subscriptionstream.Path, subscriptionStream)
+	// Счётчики ручки провязываются в диагностическую поверхность ЗДЕСЬ, а не
+	// «когда-нибудь»: величина, которую никто не читает, не отличима от «этот
+	// код не исполнялся», и потолок, ни разу не сработавший, выглядит ровно как
+	// потолок, не подключённый вовсе.
+	diagMetrics.RegisterSubscriptionStream(subscriptionStream.Stats,
+		cfg.SubscriptionMaxStreams, cfg.SubscriptionMaxStreamsPerSubject)
+
 	httpMux.Handle("/", restHandler)
 
 	// Хранилище однократности `Idempotency-Key`.
@@ -1042,72 +1129,23 @@ func main() {
 		ConnContext: listenerorigin.InternalConnContext,
 	}
 
-	// --- internal-only gRPC listener for InternalAuthzCacheService ---
+	// ВНУТРЕННЕГО gRPC-СЛУШАТЕЛЯ У КРАЯ НЕТ — он снят вместе со своей
+	// единственной службой (задача #1024).
 	//
-	// Dedicated listener on KACHO_API_GATEWAY_INTERNAL_GRPC_ADDR (default :9091)
-	// for cluster-internal RPCs that MUST NOT be on the external TLS endpoint.
-	// iam's subject_change push-drainer
-	// dials this listener to invoke InvalidateSubject within ~1s of revoke;
-	// without it, the 30s subject-change poll-loop is the only convergence path.
+	// Слушатель существовал ради ОДНОГО метода: iam дозванивался до края и гасил
+	// его кэш решений. Направление развёрнуто — соединение открывает ПОТРЕБИТЕЛЬ,
+	// то есть сам край, — и модулей, зовущих край, не осталось ни одного. Порт без
+	// единого метода есть входная поверхность, у которой нет предмета: её mTLS,
+	// круг доверенных отправителей и потолок темпа сторожили бы пустоту.
 	//
-	// Wiring is unconditional — listener is always up. When authz is disabled
-	// (cfg.AuthZEnabled=false), authzMW.AsInvalidator() returns a nopAuthzInvalidator
-	// and the handler returns NotFound on every InvalidateSubject (idempotent
-	// miss; drainer marks the row as already applied).
+	// Что край продолжает выставлять внутрь кластера: ВНУТРЕННИЙ REST-мультиплексор
+	// (`internalRestPort`) с путями `Internal*`. Это другой предмет и другой порт;
+	// запрет #6 держится на нём по-прежнему.
 	//
-	// SECURITY: the listener enforces mTLS +
-	// a per-RPC SPIFFE allow-list (the iam push-drainer identity) when enabled, so
-	// an arbitrary in-cluster caller cannot flush the authz decision-cache
-	// (cache-flush DoS / IAM-amplification). Fail-fast on enabled-but-misconfigured
-	// mTLS; refuse an insecure listener under a production-class env.
-	internalSec, isecErr := buildInternalListenerSecurity(cfg)
-	if isecErr != nil {
-		log.Fatalf("internal grpc listener security: %v", isecErr)
-	}
-	if pgErr := validateProductionInternalListener(cfg.AppEnv, internalSec.mtlsEnabled); pgErr != nil {
-		log.Fatalf("internal grpc listener config: %v", pgErr)
-	}
-	// Boot security posture self-report: AFTER the boot guards
-	// (validateProductionAuthzConfig + validateProductionInternalListener, i.e. a
-	// configuration the process has accepted) and BEFORE any listener serves.
-	// internal_mtls comes from the RESOLVED listener security, not from the raw
-	// enable flag. The production-posture gate must assert on this observed fact
-	// rather than on stored configuration (see observability.BootPosture).
-	observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled, identityLane))
-	if !internalSec.mtlsEnabled {
-		logger.Warn("SECURITY: internal gRPC listener running INSECURE (no mTLS)",
-			"addr", cfg.InternalGRPCAddr,
-			"hint", "set KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE=true + cert material + KACHO_API_GATEWAY_INTERNAL_GRPC_ALLOWED_SPIFFE for any deployed environment",
-		)
-	}
-	internalGRPCAddr := cfg.InternalGRPCAddr
-	internalGrpcSrv, internalLis, internalAdmission, ierr := startInternalGRPCListener(
-		internalGRPCAddr, authzMW.AsInvalidator(), grpcSrv, internalSec,
-		internalAdmissionLimits, edgeLatency, logger)
-	if ierr != nil {
-		log.Fatalf("internal grpc listener: %v", ierr)
-	}
-	armAdmission(logger, internalAdmission, !cfg.AdmissionInternal.IsSilent())
-	// Счёт допущенных и отвергнутых по ОБОИМ слушателям плюс уборка вёдер
-	// простаивающих субъектов. Печатается всегда, включая нули: «ноль отказов за
-	// всю жизнь контроля» обязано быть заметно, иначе мёртвый ограничитель
-	// неотличим от живого, который просто не достигал предела.
-	//
-	// Задача живёт на КОНТЕКСТЕ ОСТАНОВКИ процесса, а не на своём: тогда итоговый
-	// счёт печатается по сигналу, а не теряется вместе с невыполненным `defer`,
-	// если процесс уйдёт через os.Exit.
-	go grpcsrv.ReportAdmission(ctx, logger, "api-gateway: ", externalAdmission, internalAdmission)
-	defer func() { _ = internalLis.Close() }()
-	go func() {
-		serveErr := internalGrpcSrv.Serve(internalLis)
-		// An unexpected death of the internal listener silently disables iam's
-		// push cache-invalidation; surface it and bring the process down so the
-		// orchestrator restarts a healthy replica (readiness alone can't see it).
-		if serveErr != nil && serveErr != grpc.ErrServerStopped && ctx.Err() == nil {
-			logger.Error("internal grpc listener died; shutting down", "error", serveErr)
-			cancel()
-		}
-	}()
+	// Самоотчёт посадки объявляет измерение внутреннего слушателя НЕПРИМЕНИМЫМ, а
+	// не ложным: «слушателя нет вовсе» и «слушатель есть и не защищён» — разные
+	// состояния, и схлопнуть их значило бы разрешить второе молчанием первого.
+	observability.LogBootPosture(logger, bootPosture(cfg, identityLane))
 
 	// --- cmux: HTTP/2 gRPC vs HTTP/1.1 REST на одном порту ---
 	listener, err := net.Listen("tcp", cfg.ListenAddr)
@@ -1250,9 +1288,7 @@ func main() {
 		logger.Info("shutting down")
 		// Bound GracefulStop by the grace window, then force Stop(): a long-lived
 		// proxied stream must not block exit until the kubelet sends SIGKILL.
-		// The internal listener drains in-flight iam drainer InvalidateSubject RPCs.
 		stopGraceful(grpcSrv, 10*time.Second)
-		stopGraceful(internalGrpcSrv, 10*time.Second)
 		shutCtx, shutCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutCancel()
 		_ = httpSrv.Shutdown(shutCtx)

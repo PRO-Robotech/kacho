@@ -55,13 +55,13 @@ func TestBootPosture_Production(t *testing.T) {
 		HybridMTLSExternal: true,
 	}
 
-	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, true, identityposture.External)), map[string]any{
+	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, identityposture.External)), map[string]any{
 		"msg":           observability.BootPostureMsg,
 		"service":       "api-gateway",
 		"auth_mode":     "production-strict",
 		"db_sslmode":    "n/a",
 		"public_mtls":   true,
-		"internal_mtls": true,
+		"internal_mtls": "n/a",
 		"authz_check":   true,
 	})
 }
@@ -76,30 +76,40 @@ func TestBootPosture_PublicMTLSNeedsTheTLSListener(t *testing.T) {
 		HybridMTLSExternal: true, // no cert/key/addr → TLS listener never starts
 	}
 
-	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, true, identityposture.External)), map[string]any{
+	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, identityposture.External)), map[string]any{
 		"public_mtls": false,
 	})
 }
 
-// TestBootPosture_InsecureIsReportedHonestly — dev authN + pass-through authz +
-// a plaintext internal listener must be visible as they are.
+// TestBootPosture_InsecureIsReportedHonestly — dev authN + pass-through authz
+// must be visible as they are.
+//
+// `internal_mtls` здесь «n/a» при ЛЮБОЙ посадке, и это утверждение о крае, а не
+// послабление: внутреннего gRPC-слушателя у него нет вовсе (задача #1024).
+// «Неприменимо» и «есть и не защищён» — разные состояния; второе у края
+// невыразимо, потому что сторожить нечего.
 func TestBootPosture_InsecureIsReportedHonestly(t *testing.T) {
 	cfg := config.Config{AuthNMode: "dev"}
 
-	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, false, identityposture.External)), map[string]any{
+	requireBootPostureFields(t, captureBootPosture(t, bootPosture(cfg, identityposture.External)), map[string]any{
 		"service":       "api-gateway",
 		"auth_mode":     "dev",
 		"db_sslmode":    "n/a",
 		"public_mtls":   false,
-		"internal_mtls": false,
+		"internal_mtls": "n/a",
 		"authz_check":   false,
 	})
 }
 
-// TestBootPosture_EmittedFromTheLiveBootPath — static placement guard: the line
-// must be emitted from the composition root with the real logger, AFTER the boot
-// guards, BEFORE any listener serves, and its internal_mtls must come from the
-// RESOLVED listener security rather than the raw config flag.
+// TestBootPosture_EmittedFromTheLiveBootPath — статический страж РАЗМЕЩЕНИЯ:
+// строка обязана печататься из композиционного корня настоящим журналом, ПОСЛЕ
+// стражей старта и ДО того, как хоть один слушатель начнёт служить.
+//
+// Якоря сменились вместе с предметом (задача #1024). Прежде страж держался за
+// внутренний gRPC-слушатель и за его страж старта; слушателя нет, и якорем
+// стали оставшийся страж прав и первая привязка порта. Свойство то же —
+// «самоотчёт печатается после решений и до обслуживания», — изменились точки, по
+// которым оно проверяется.
 func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	src, err := os.ReadFile("main.go")
 	if err != nil {
@@ -107,17 +117,19 @@ func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	}
 	root := string(src)
 
-	call := strings.Index(root, "observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled, identityLane))")
+	call := strings.Index(root, "observability.LogBootPosture(logger, bootPosture(cfg, identityLane))")
 	if call < 0 {
-		t.Fatal("composition root must emit the posture line with the RESOLVED internal-listener security: " +
-			"observability.LogBootPosture(logger, bootPosture(cfg, internalSec.mtlsEnabled, identityLane))")
+		t.Fatal("композиционный корень обязан печатать строку посадки настоящим журналом: " +
+			"observability.LogBootPosture(logger, bootPosture(cfg, identityLane))")
 	}
-	guard := strings.Index(root, "validateProductionInternalListener(")
+	guard := strings.Index(root, "validateProductionAuthzConfig(")
 	if guard < 0 || call < guard {
-		t.Fatal("posture line must be emitted AFTER the production internal-listener boot guard")
+		t.Fatal("строка посадки обязана печататься ПОСЛЕ боевого стража прав: посадка, " +
+			"о которой отчитываются, — это ПРИНЯТАЯ процессом, а не предложенная профилем")
 	}
-	listener := strings.Index(root, "startInternalGRPCListener(")
-	if listener < 0 || call > listener {
-		t.Fatal("posture line must be emitted BEFORE any listener starts serving")
+	serving := strings.Index(root, `net.Listen("tcp", cfg.ListenAddr)`)
+	if serving < 0 || call > serving {
+		t.Fatal("строка посадки обязана печататься ДО того, как слушатель начнёт служить: " +
+			"иначе первый запрос обслуживается раньше, чем посадка объявлена")
 	}
 }

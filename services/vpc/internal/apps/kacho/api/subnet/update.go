@@ -146,7 +146,7 @@ func (u *UpdateSubnetUseCase) doUpdate(ctx context.Context, in UpdateInput) (*an
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "Subnet", updated.ID, "UPDATED", helpers.DomainToMap(updated)); err != nil {
+	if err := w.Outbox().Emit(ctx, "Subnet", updated.ID, updated.ProjectID, "UPDATED", helpers.DomainToMap(updated)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	// Если labels были в update_mask (или это full-object PATCH), пере-эмитим

@@ -50,6 +50,11 @@ type laneOutcome struct {
 	principalID    string // личность, дошедшая до backend; "" = полоса её не установила
 	forwardedACR   string // X-Kacho-Token-Acr — вход ВТОРОГО замка (iam ACRFloor)
 	challenge      string
+	// cred — ПРЕДЪЯВЛЕННОЕ в том виде, в каком его соберёт перепрос отзыва на
+	// открытом соединении (`streamrevocation`). Собирается ИЗ ТОГО ЖЕ запроса,
+	// что дошёл до backend, и тем же строителем, что зовёт перепрос, — второй
+	// сборщик разошёлся бы с первым молча (см. lane_names_askable_credential_test.go).
+	cred principalmeta.Credential
 }
 
 // laneProbe — одна полоса, прогнанная по ОБОИМ глаголам: обычному (пол не
@@ -220,6 +225,7 @@ func driveLane(t *testing.T, rig *laneRig, method, treeMethod, url string,
 		out.backendReached = true
 		out.principalID = r.Header.Get(principalmeta.HeaderPrincipalID)
 		out.forwardedACR = r.Header.Get(principalmeta.HeaderTokenACR)
+		out.cred = principalmeta.CredentialFromRequest(r)
 		w.WriteHeader(http.StatusOK)
 	}))
 	req := httptest.NewRequest(method, url, nil)

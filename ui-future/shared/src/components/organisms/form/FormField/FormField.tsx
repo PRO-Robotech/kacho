@@ -4,7 +4,7 @@ import { DeleteOutlined, PlusOutlined, QuestionCircleOutlined } from "@ant-desig
 import { Label } from "@shared/components/atoms/ui/Input";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
 import { SgRulesEditor } from "@shared/components/organisms/form/SgRulesEditor";
-import { LabelsEditor } from "@shared/components/organisms/form/LabelsEditor";
+import { LabelsFieldRenderer } from "@shared/components/organisms/form/LabelsEditor";
 import { EditableKVTable } from "@shared/components/molecules/EditableKVTable";
 import { editorEmptyStyle, editorIconButtonStyle } from "@shared/components/organisms/form/editor-surface";
 import { FieldError, fieldErrorId } from "@shared/components/organisms/form/FieldError";
@@ -125,7 +125,7 @@ export function FormFieldRenderer({
   if (field.type === "labels") {
     const path = pathPrefix ? `${pathPrefix}.${field.name}` : field.name;
     return (
-      <LabelsEditor
+      <LabelsFieldRenderer
         pathPrefix={pathPrefix}
         value={value}
         onChange={onChange}

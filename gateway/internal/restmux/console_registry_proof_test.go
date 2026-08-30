@@ -16,8 +16,11 @@ package restmux
 //  3. конструкция, которую разбор не понимает, ЛОМАЕТ его, а не проходит молча:
 //     ссылка на неизвестную константу, `fields` не массивом, `template` не
 //     стрелкой с объектом;
-//  4. обход дерева действительно находит реестры, и их число утверждается —
-//     иначе «ноль нарушений» было бы неотличимо от «ноль прочитанных файлов».
+//  4. обход дерева действительно находит реестры, и их число утверждается ПО
+//     ФОРМАМ — иначе «ноль нарушений» было бы неотличимо от «ноль прочитанных
+//     файлов», а проекции общего реестра — от реестров со спеками;
+//  5. проекция ведёт К осматриваемому реестру, а не выводится из обхода: домен,
+//     чьи спеки переехали в общий реестр, обязан оставаться проверяемым — там.
 
 import (
 	"fmt"
@@ -26,6 +29,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // probeRegistry собирает синтетический файл реестра вокруг одного ресурса.
@@ -197,15 +202,131 @@ func TestConsoleScannerRefusesWhatItCannotRead(t *testing.T) {
 	}
 }
 
+// ── Проекция общего реестра ─────────────────────────────────────────────────
+//
+// Форм записи реестра в дереве ДВЕ, и вторая появилась вместе со сведением
+// форка: домен, чьи спеки переехали в общий реестр, держит не копию, а
+// ре-экспорт модуля целиком. Константы на верхнем уровне у такого файла нет —
+// и сканер, знающий одну форму, краснел на верном коде.
+
+// probeProjection — файл-проекция дословно той формы, что несёт дерево:
+// комментарий и ОДИН оператор — ре-экспорт модуля целиком.
+const probeProjection = "// Реестр ресурсов — ОДИН на всю консоль.\n" +
+	"//\n" +
+	"// Здесь стояла копия; содержание сведено, и остался указатель.\n" +
+	"export * from \"@shared/lib/resource-registry\";\n"
+
+// TestConsoleScannerReadsAProjectionOfTheSharedRegistry — вторая законная форма
+// читается, а не роняет разбор.
+func TestConsoleScannerReadsAProjectionOfTheSharedRegistry(t *testing.T) {
+	parsed, err := parseConsoleRegistry("probe.tsx", probeProjection, consoleExterns{})
+	if err != nil {
+		t.Fatalf("проекция общего реестра — законная форма записи, а разбор её отверг: %v", err)
+	}
+	if len(parsed.Specs) != 0 {
+		t.Fatalf("у проекции своих спек нет by construction, разбор дал %d", len(parsed.Specs))
+	}
+}
+
+// TestConsoleScannerRefusesAFileThatIsNeitherForm — требование не ослаблено:
+// файл, не объявляющий реестр и не проецирующий его, по-прежнему ломает разбор.
+//
+// Это вторая половина пары. Без неё «сканер научился читать проекцию»
+// неотличимо от «сканер перестал требовать хоть что-нибудь», а такое послабление
+// дало бы зелёное при непроверенных спеках — то есть маску.
+func TestConsoleScannerRefusesAFileThatIsNeitherForm(t *testing.T) {
+	for name, src := range map[string]string{
+		"пустой файл":                     "",
+		"одни комментарии":                "// реестр переехал\n// а куда — не сказано\n",
+		"копия без ре-экспорта":           "const REGISTRY_OLD = {};\n",
+		"ре-экспорт ИМЁН, не модуля":      "export { REGISTRY } from \"@shared/lib/resource-registry\";\n",
+		"ре-экспорт плюс своё объявление": "export * from \"@shared/lib/resource-registry\";\nexport const EXTRA = { a: \"b\" };\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseConsoleRegistry("probe.tsx", src, consoleExterns{}); err == nil {
+				t.Fatal("сканер принял файл, который не является ни реестром, ни проекцией: он тогда ничего не проверяет и ничего об этом не говорит")
+			}
+		})
+	}
+}
+
+// TestConsoleProjectionModuleResolves — спецификатор ре-экспорта разрешается в
+// путь файла, а неразрешимый остаётся ОТКАЗОМ.
+//
+// Алиас берётся из tsconfig приложения; здесь он подаётся тем же видом, что
+// собирает чтение дерева, — дублёр, собранный отдельно, принимал бы не то же
+// самое.
+func TestConsoleProjectionModuleResolves(t *testing.T) {
+	aliases := map[string]string{"@shared/": "/ui/shared/src", "@/": "/ui/compute/src"}
+	const dir = "/ui/compute/src/lib"
+
+	for name, tc := range map[string]struct{ spec, want string }{
+		"через алиас":     {"@shared/lib/resource-registry", "/ui/shared/src/lib/resource-registry.tsx"},
+		"через свой":      {"@/lib/resource-registry", "/ui/compute/src/lib/resource-registry.tsx"},
+		"относительный":   {"../../../shared/src/lib/resource-registry", "/ui/shared/src/lib/resource-registry.tsx"},
+		"соседним файлом": {"./resource-registry", "/ui/compute/src/lib/resource-registry.tsx"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := consoleResolveModule(dir, aliases, tc.spec)
+			if err != nil {
+				t.Fatalf("%q не разрешился, хотя форма законная: %v", tc.spec, err)
+			}
+			if got != tc.want {
+				t.Fatalf("%q разрешился в %q, ожидалось %q", tc.spec, got, tc.want)
+			}
+		})
+	}
+
+	// Обратная сторона: спецификатор, не покрытый ни одним алиасом, — отказ.
+	// Молчаливый пропуск дал бы проекцию, ведущую в никуда, при зелёном гейте.
+	if got, err := consoleResolveModule(dir, aliases, "@nowhere/lib/resource-registry"); err == nil {
+		t.Fatalf("спецификатор без алиаса разрешился в %q: проекция вела бы туда, куда сканер не смотрит", got)
+	}
+}
+
+// TestConsoleProjectionMustLeadToAScannedRegistry — проекция ведёт К РЕЕСТРУ,
+// который сканер читает, а не выводится из обхода.
+//
+// В этом и состоит различие между второй законной формой и маской. Исключить
+// проекцию из обхода было бы дёшево и дало бы зелёное — при том что спеки
+// домена, переехавшие в общий реестр, никто бы не проверял. Пара утверждений
+// ниже роняет ровно этот случай и молчит на законном.
+func TestConsoleProjectionMustLeadToAScannedRegistry(t *testing.T) {
+	declaring := map[string]bool{"ui-future/shared/src/lib/resource-registry.tsx": true}
+
+	good := map[string]string{"ui-future/compute/src/lib/resource-registry.tsx": "ui-future/shared/src/lib/resource-registry.tsx"}
+	if got := consoleProjectionsWithoutARegistry(good, declaring); len(got) != 0 {
+		t.Fatalf("проекция ведёт в осматриваемый реестр, а гейт нашёл %d: %v", len(got), got)
+	}
+
+	bad := map[string]string{"ui-future/compute/src/lib/resource-registry.tsx": "ui-future/shared/src/lib/registry-that-nobody-reads.tsx"}
+	got := consoleProjectionsWithoutARegistry(bad, declaring)
+	if len(got) != 1 {
+		t.Fatalf("проекция ведёт туда, где реестра нет, — обязана быть находка, получено %d: %v", len(got), got)
+	}
+	for _, want := range []string{"ui-future/compute/src/lib/resource-registry.tsx", "registry-that-nobody-reads.tsx"} {
+		if !strings.Contains(got[0], want) {
+			t.Fatalf("находка обязана называть и проекцию, и то, куда она ведёт; %q не содержит %q", got[0], want)
+		}
+	}
+}
+
 // TestConsoleScannerReadsEveryRegistryInTheTree — обход находит реестры, и их
-// количество утверждается.
+// количество утверждается ПО ФОРМАМ.
 //
 // Гейт, ничего не прочитавший, выглядит ровно как гейт, ничего не нашедший.
 // Поэтому здесь фиксируется, что обходом найден КАЖДЫЙ файл с этим именем и что
 // у каждого remote консоли, объявляющего ресурсы, реестр есть.
+//
+// Форм записи ДВЕ, и складывать их в одно число нельзя: пять проекций и ни
+// одного объявления дали бы «прочитано пять реестров» при нуле прочитанных
+// спек. Поэтому перепись печатает обе величины, а проекция обязана вести к
+// реестру, который сканер читает КАК РЕЕСТР, — исключить её из обхода значило
+// бы получить зелёное за непроверенный домен.
 func TestConsoleScannerReadsEveryRegistryInTheTree(t *testing.T) {
 	root := repoRoot(t)
-	files, err := consoleRegistryFiles(filepath.Join(root, "ui-future"))
+	consoleRoot := filepath.Join(root, "ui-future")
+	files, err := consoleRegistryFiles(consoleRoot)
 	if err != nil {
 		t.Fatalf("walk ui-future: %v", err)
 	}
@@ -214,7 +335,7 @@ func TestConsoleScannerReadsEveryRegistryInTheTree(t *testing.T) {
 	}
 	// Список путей был бы вторым источником истины и разошёлся бы с деревом;
 	// вместо него — независимая перепроверка тем же деревом, но по шаблону пути.
-	byGlob, err := filepath.Glob(filepath.Join(root, "ui-future", "*", "src", "lib", consoleRegistryFileName))
+	byGlob, err := treecorpus.Glob(filepath.Join(consoleRoot, "*", "src", "lib", consoleRegistryFileName))
 	if err != nil {
 		t.Fatalf("glob: %v", err)
 	}
@@ -223,10 +344,14 @@ func TestConsoleScannerReadsEveryRegistryInTheTree(t *testing.T) {
 			len(files), len(byGlob), files, byGlob)
 	}
 
-	ext, err := consoleTreeExterns(filepath.Join(root, "ui-future"))
+	ext, err := consoleTreeExterns(consoleRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	var forms consoleRegistryForms
+	declaring := map[string]bool{}
+	targets := map[string]string{}
 	for _, file := range files {
 		rel := mustRel(root, file)
 		blob, err := os.ReadFile(file)
@@ -237,10 +362,30 @@ func TestConsoleScannerReadsEveryRegistryInTheTree(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", rel, err)
 		}
+		forms.add(parsed)
+		if parsed.Projection != "" {
+			target, err := consoleProjectionTarget(consoleRoot, file, parsed.Projection)
+			if err != nil {
+				t.Errorf("%s:%d: %v", rel, parsed.ProjectionLine, err)
+				continue
+			}
+			targets[rel] = mustRel(root, target)
+			continue
+		}
+		declaring[rel] = true
 		if len(parsed.Specs) == 0 {
 			t.Errorf("%s: parsed without error, yet not one resource came out of it", rel)
 		}
 	}
+	for _, finding := range consoleProjectionsWithoutARegistry(targets, declaring) {
+		t.Error(finding)
+	}
+	// Ноль ОБЪЯВЛЯЮЩИХ — не «нарушений нет», а «спек не прочитано ни одной»:
+	// проекции сами по себе не несут ничего, что можно было бы проверить.
+	if forms.Declaring == 0 {
+		t.Fatal("every registry in the tree is a projection of another one: not a single resource was read, and a scan that read nothing is not a scan that found nothing")
+	}
+	t.Logf("перепись: %s", forms)
 }
 
 // TestConsoleMutationCallSeesARawFetch pins what counts as "this place sends a
@@ -458,6 +603,7 @@ func TestConsoleComposedSetsAreActuallyExpandedInTheTree(t *testing.T) {
 	}
 
 	expanded := 0
+	var forms consoleRegistryForms
 	var where []string
 	for _, file := range files {
 		blob, err := os.ReadFile(file)
@@ -469,6 +615,7 @@ func TestConsoleComposedSetsAreActuallyExpandedInTheTree(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", rel, err)
 		}
+		forms.add(parsed)
 		for _, spec := range parsed.Specs {
 			for _, f := range spec.Fields {
 				// Имя, оставшееся шаблоном, означало бы, что подстановка не
@@ -488,7 +635,7 @@ func TestConsoleComposedSetsAreActuallyExpandedInTheTree(t *testing.T) {
 		t.Fatal("not one resource in the tree composes its field set any more: this proof has lost its subject — remove it deliberately rather than let it pass on nothing")
 	}
 	sort.Strings(where)
-	t.Logf("%d field(s) reached the check through expansion of a helper: %v", expanded, where)
+	t.Logf("перепись: %s; %d field(s) reached the check through expansion of a helper: %v", forms, expanded, where)
 }
 
 // ── Набор полей, объявленный в ОБЩЕМ модуле ─────────────────────────────────
@@ -754,6 +901,7 @@ func TestConsoleSharedFieldHelpersAreReadFromTheTree(t *testing.T) {
 	without := consoleExterns{strings: ext.strings, values: ext.values}
 
 	externFields, consumers := 0, 0
+	var forms consoleRegistryForms
 	var blindWithout []string
 	for _, file := range files {
 		rel := mustRel(root, file)
@@ -765,6 +913,7 @@ func TestConsoleSharedFieldHelpersAreReadFromTheTree(t *testing.T) {
 		if perr != nil {
 			t.Fatalf("%s: %v", rel, perr)
 		}
+		forms.add(parsed)
 		uses := 0
 		for _, spec := range parsed.Specs {
 			uses += spec.ExternHelperFields
@@ -786,8 +935,8 @@ func TestConsoleSharedFieldHelpersAreReadFromTheTree(t *testing.T) {
 	}
 	sort.Strings(blindWithout)
 	// Перепись: «ноль находок» обязано быть отличимо от «ноль прочитанного».
-	t.Logf("перепись: реестров %d, помощников из общих модулей собрано %d, реестров-потребителей %d, полей пришло оттуда %d; без этой области нечитаемы %v",
-		len(files), len(ext.helpers), consumers, externFields, blindWithout)
+	t.Logf("перепись: %s, помощников из общих модулей собрано %d, реестров-потребителей %d, полей пришло оттуда %d; без этой области нечитаемы %v",
+		forms, len(ext.helpers), consumers, externFields, blindWithout)
 }
 
 // TestSanitizeReshapeIsNotRemoval — снятие ключа с последующим присваиванием
@@ -867,6 +1016,7 @@ func TestConsoleSharedRefsResolve(t *testing.T) {
 	// Что объявляет ОБЩИЙ реестр — цель всех ссылок.
 	sharedIDs := make(map[string]bool)
 	refs := 0
+	var forms consoleRegistryForms
 	type ref struct{ file, id string }
 	var found []ref
 
@@ -880,6 +1030,7 @@ func TestConsoleSharedRefsResolve(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", rel, err)
 		}
+		forms.add(parsed)
 		shared := strings.Contains(rel, "/shared/")
 		for _, spec := range parsed.Specs {
 			if shared {
@@ -898,5 +1049,5 @@ func TestConsoleSharedRefsResolve(t *testing.T) {
 		}
 	}
 	// Перепись: «ноль находок» обязано быть отличимо от «ноль прочитанного».
-	t.Logf("перепись: реестров %d, записей общего реестра %d, ссылок на них %d", len(files), len(sharedIDs), refs)
+	t.Logf("перепись: %s, записей общего реестра %d, ссылок на них %d", forms, len(sharedIDs), refs)
 }

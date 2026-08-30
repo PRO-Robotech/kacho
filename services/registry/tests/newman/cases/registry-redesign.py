@@ -253,9 +253,21 @@ CASES.append(Case(
                 body={"name": "badregion-{{runId}}", "projectId": "{{existingProjectId}}",
                       "regionId": "{{garbageRegionId}}", "description": "dangling region"},
                 test_script=[
-                    "pm.test('rejected 4xx (FAILED_PRECONDITION → 400)', () => pm.expect(pm.response.code).to.be.oneOf([400, 409]));",
+                    # 409 СНЯТ: производителя у него на этой полосе нет, и допуск был
+                    # ВНУТРЕННЕ ПРОТИВОРЕЧИВ. Строка ниже пинит `code == 9`
+                    # БЕЗУСЛОВНО, а 409 край отдаёт только для ALREADY_EXISTS (6) и
+                    # ABORTED (10) — то есть ветка «пришёл 409» не может быть
+                    # удовлетворена вместе с соседним утверждением ни при каком
+                    # состоянии продукта. Пока 409 стоял в допуске, подставленный
+                    # 409 проходил ЗДЕСЬ и ронял СОСЕДА, и разбор шёл к коду, а не к
+                    # статусу — то есть падение называло невиновного.
+                    "pm.test('rejected (FAILED_PRECONDITION → 400)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(400));",
                     "pm.test('grpc code 9 (FAILED_PRECONDITION, peer-validate lane)', () => pm.expect(pm.response.json().code).to.eql(9));",
-                    "pm.test('region not found text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('region').and.to.include('not found'));",
+                    # Текст владельца целиком (services/registry/.../api/registry/create.go,
+                    # `regionExistsErr`), а не два слова порознь: «region» несут пять
+                    # разных отказов registry, «not found» — тридцать два, и ни одно из
+                    # них не про эту полосу (#1520).
+                    *assert_refusal_message("region {{garbageRegionId}} not found"),
                 ])],
 ))
 

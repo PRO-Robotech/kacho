@@ -50,11 +50,40 @@ mtls:
 # pins BELOW are kept in sync with the live tags too so this file is not a stale
 # landmine, but values.fe3455-prod.yaml is authoritative for the render. The `uif:`
 # block (below) is carried ONLY here — no later file overrides it.
+# ── ПОТОЛОК ФЛОТА ЗДЕСЬ НИЖЕ — ТОТ ЖЕ РАЗМЕН, ЧТО И С БЮДЖЕТОМ БАЗ (#1451) ──
+#
+# Обе службы объявляют autoscaling.maxReplicas = 5 в своих значениях, и сюда
+# этот потолок наследовался неправленым — то есть для ЭТОГО кластера его никто
+# не выбирал, хотя весь профиль занят тем, что урезает посадку под 4 vCPU / 8 GB
+# на всё.
+#
+# Потолок подов — множитель обещания базе, и обещание считается по ТРЁМ числам,
+# а не по одному пулу: реплика держит ещё поток подписки (16) и дренаж очереди
+# (1), и вычесть их из ширины пула пул не может (#1384).
+#
+#     vpc      (40 + 16 + 1) × 5 = 285  при 207 отдаваемых pg-vpc
+#     compute  (15 + 16 + 1) × 5 = 160  при  97 отдаваемых умолчания сборки
+#
+# Боевой профиль решает это, поднимая пределы баз (300 и 180). Здесь тот же ход
+# был бы ложной точностью: база живёт в 1Gi, и 300 обслуживающих процессов в
+# такой предел не помещаются — объявленная формула бюджета считает сортировки, а
+# не память на соединение, и сама называет свою оценку грубой. Поэтому урезан
+# множитель, а не предел:
+#
+#     vpc      (40 + 16 + 1) × 2 = 114  ≤ 207
+#     compute  (15 + 16 + 1) × 2 = 64   ≤ 177 (предел приезжает из values.prod)
+#
+# Кластер этого и не потерял: внешнего входа здесь нет (доступ через
+# port-forward), нагрузки, поднимающей флот до пяти подов, тоже.
 vpc:
+  autoscaling:
+    maxReplicas: 2
   # Действующее переопределение — values.fe3455-prod.yaml (same tag).
   image: docker.io/prorobotech/kacho-vpc:main-b622b388
   imagePullPolicy: IfNotPresent
 compute:
+  autoscaling:
+    maxReplicas: 2
   # Действующее переопределение — values.fe3455-prod.yaml (same tag).
   image: docker.io/prorobotech/kacho-compute:main-b622b388
   imagePullPolicy: IfNotPresent

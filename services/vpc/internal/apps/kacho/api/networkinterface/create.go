@@ -346,7 +346,7 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 			}
 			return nil, serviceerr.MapRepoErr(insertErr)
 		}
-		if oerr := w.Outbox().Emit(ctx, "NetworkInterface", created.ID, "CREATED", helpers.DomainToMap(created)); oerr != nil {
+		if oerr := w.Outbox().Emit(ctx, "NetworkInterface", created.ID, created.ProjectID, "CREATED", helpers.DomainToMap(created)); oerr != nil {
 			w.Abort()
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, oerr))
 		}

@@ -11,8 +11,10 @@
 // диалект добавляется только когда станет реальным требованием (non-negotiable
 // #11 — без speculative-абстракций).
 //
-// CLI-метадата диалекта (имя, goose-имя, driver-имя) вынесена в [DialectSpec] —
-// внутренний descriptor, отдельный от runtime-поведения.
+// CLI-метадата диалекта живёт в общем пакете — [migratorcli.DialectSpec] и
+// [migratorcli.SpecPostgres]. Здесь она НЕ переобъявляется: она была объявлена
+// семь раз на дерево, и два текста отказа этого же шага успели разойтись
+// (#1383). Дом общего пакета назван в docs/architecture/migrator-form.md.
 package migrator
 
 import (
@@ -20,6 +22,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 )
 
 // Dialect — абстракция SQL-диалекта для миграций.
@@ -47,31 +51,7 @@ type Dialect interface {
 	// Spec возвращает CLI-метадату диалекта (имя, goose-имя, driver-имя для
 	// sql.Open). Используется CLI для help / validation; runtime-логика
 	// инкапсулирована в самих методах Up/Down/Status.
-	Spec() DialectSpec
-}
-
-// DialectSpec — описательная метадата диалекта для CLI-резолва и тестов.
-//
-// Это НЕ runtime-behaviour: реальная Up/Down/Status логика живет в
-// реализации [Dialect]-интерфейса. Spec нужен, чтобы:
-//   - CLI мог напечатать имя/driver диалекта в help;
-//   - тесты могли проверить, что `--dialect postgres` правильно резолвится.
-type DialectSpec struct {
-	// Name — имя диалекта для CLI (postgres).
-	Name string
-	// GooseDialect — строка, ожидаемая goose.SetDialect.
-	GooseDialect string
-	// SQLDriver — имя драйвера для sql.Open. Регистрируется через blank
-	// import в main.go отдельного бинаря (`_ "github.com/jackc/pgx/v5/stdlib"`
-	// регистрирует "pgx" driver).
-	SQLDriver string
-}
-
-// Built-in spec — exposed для тестов и diagnostics.
-var SpecPostgres = DialectSpec{
-	Name:         "postgres",
-	GooseDialect: "postgres",
-	SQLDriver:    "pgx",
+	Spec() migratorcli.DialectSpec
 }
 
 // NewDialect — фабрика, возвращает реализацию [Dialect] по имени. Поддерживается
@@ -80,8 +60,8 @@ var SpecPostgres = DialectSpec{
 // прямой веткой здесь, когда станет реальным требованием — без registry-таблицы /
 // factory-типа под единственный элемент (non-negotiable #11).
 func NewDialect(name string) (Dialect, error) {
-	if name == SpecPostgres.Name {
+	if name == migratorcli.SpecPostgres.Name {
 		return newPostgresDialect(), nil
 	}
-	return nil, fmt.Errorf("unknown dialect %q (supported: %s)", name, SpecPostgres.Name)
+	return nil, fmt.Errorf("unknown dialect %q (supported: %s)", name, migratorcli.SpecPostgres.Name)
 }

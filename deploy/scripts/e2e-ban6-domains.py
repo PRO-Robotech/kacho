@@ -75,6 +75,18 @@ REGISTER_CALL = re.compile(
     r"Register(Internal\w*)Server\s*\("
     r"|RegisterService\s*\(\s*&\s*[A-Za-z0-9_.]*(Internal\w+)_ServiceDesc")
 
+# Носитель Internal*-службы — КАТАЛОГ СЕРВИСА, чей композиционный корень её
+# регистрирует. Он, а не домен, владеет cluster-internal листенером: домен —
+# это имя контракта, листенер — свойство процесса.
+#
+# Различие завелось не теорией. Домен `subscription` (поток изменений ресурсов)
+# служится ПЯТЬЮ носителями сразу — vpc, compute, nlb, storage, registry, — и
+# «своего» листенера у него нет ни одного. Карта, ключуемая доменом, для такого
+# домена не имеет правильного значения ВООБЩЕ: любой выбранный носитель был бы
+# произволом, а произвол ломается молча в день, когда именно этот носитель
+# перестанет монтировать службу.
+SERVICE_DIR = re.compile(r"^services/([^/]+)/")
+
 _CACHE: dict[str, dict] = {}
 
 
@@ -133,12 +145,25 @@ def production_registrations(root: pathlib.Path) -> dict[str, list[str]]:
     return hits
 
 
+def carrier_of(path: str) -> str:
+    """Каталог сервиса-носителя по пути его композиционного корня.
+
+    Путь вне `services/` отдаёт свой первый сегмент (`gateway`): носителем может
+    оказаться и край, и тогда это обязано быть ВИДНО, а не отброшено.
+    """
+    m = SERVICE_DIR.match(path)
+    return m.group(1) if m else path.split("/", 1)[0]
+
+
 def census(root: pathlib.Path) -> dict:
     """Перепись популяции ban #6 — предмет, охват и объём осмотренного.
 
     Ключи:
       services       — домен → имена Internal*-служб его контракта;
       registrations  — имя службы → прод-файлы, её регистрирующие;
+      hosts          — домен → каталоги сервисов, чьи композиционные корни его
+                       служат. У поперечного домена их НЕСКОЛЬКО, и это факт о
+                       дереве, а не край: `subscription` служат пятеро;
       served         — домены, у ban #6 для которых ЕСТЬ предмет (хотя бы одна
                        служба провязана прод-кодом);
       unserved       — домен → службы, чей контракт приземлён, но не провязан:
@@ -160,9 +185,19 @@ def census(root: pathlib.Path) -> dict:
             served.add(dom)
         else:
             unserved[dom] = list(names)
+    # Носители — ВЫВОДЯТСЯ из путей регистраций, а не выписываются. Ведомость
+    # «домен → где его служат» разошлась бы с деревом молча ровно в тот день,
+    # когда службу смонтирует шестой носитель или разомонтирует один из пяти.
+    hosts: dict[str, list[str]] = {}
+    for dom, names in services.items():
+        h = {carrier_of(p) for n in names for p in regs.get(n, [])}
+        if h:
+            hosts[dom] = sorted(h)
+
     result = {
         "services": services,
         "registrations": regs,
+        "hosts": hosts,
         "served": served,
         "unserved": unserved,
         "proto_files_read": files_read,

@@ -130,16 +130,22 @@ func New(conns map[string]*grpc.ClientConn) *OpsProxy {
 // нужного backend, либо gRPC-ошибку:
 //
 //   - 20-символьный id с известным kacho-prefix → роутим в backend; его NotFound
-//     ("Operation X not found") пробрасываем как есть.
+//     пробрасываем как есть.
 //   - 20-символьный id с известным kacho-prefix, но backend не подключен (defensively;
-//     в prod не должно случаться) → NotFound "Operation X not found" (операции тут нет).
+//     в prod не должно случаться) → NotFound «нет такой операции» (операции тут нет).
+//     Текст берётся у ОБЩЕГО производителя `operations.NotFoundStatus` — того же,
+//     которым отвечает владелец: обе полосы приходят клиенту на один адрес, и
+//     различие хоть в один байт отличало бы «нет доступа» от «не существует» и
+//     называло бы, какие backend'ы подключены (`security.md` §Hardening #6).
+//     Своя запись этого текста здесь была, и она разошлась с владельцем
+//     регистром одной буквы (#1370).
 //   - legacy "<prefix>_<uuid>" с известным legacy-prefix → роутим.
 //   - все остальное (malformed, неизвестный prefix) → InvalidArgument
 //     "invalid operation id <X>" — валидные operation-id у Kachō имеют только
 //     известные domain-префиксы (enp…/e9b…/epd…/iop…/nlb…/rop…/sop…/geo…) и legacy-формы.
 func (p *OpsProxy) resolveBackend(id string) (operationpb.OperationServiceClient, error) {
 	invalid := status.Errorf(codes.InvalidArgument, "invalid operation id %q", id)
-	notFound := status.Errorf(codes.NotFound, "Operation %s not found", id)
+	notFound := operations.NotFoundStatus(id)
 
 	var domain string
 	switch {
@@ -236,66 +242,42 @@ func (p *OpsProxy) Cancel(ctx context.Context, req *operationpb.CancelOperationR
 	return op, nil
 }
 
-// checkOperationOwnership проверяет что principal в ctx совпадает с
-// principal_type/principal_id, записанными в Operation при создании.
+// checkOperationOwnership — вправе ли вызывающий видеть и отменять эту операцию.
 //
-// Логика (fail-closed на публичной поверхности — порядок важен: caller-identity
-// проверяется ПЕРЕД owner-полями операции, чтобы owner-less операция не стала
-// world-readable, минуя anonymous/tenant-гейты):
-//   - Если principal в ctx не извлекается — PermissionDenied. Сюда же относится
-//     ИМЕНОВАННАЯ анонимность (`{system, anonymous}`, ярлык запроса без
-//     credential'а): пара непуста, поэтому без явной проверки она проходила
-//     гейт «личность не извлеклась» и дальше СОВПАДАЛА САМА С СОБОЙ — один
-//     безымянный запрос читал и отменял операции другого. Ключ у безымянных
-//     общий по построению, поэтому «свой» здесь означает «любой».
-//     (Каталог уже требует аутентификацию для OperationService через <exempt>,
-//     поэтому этот case теоретически не должен дойти сюда, но мы fail-closed.)
-//   - Внутренний system/bootstrap caller (воркер) — пропускаем: он может читать
-//     любую операцию (cross-service polling / реконсайл), включая owner-less.
-//   - С этого места caller — tenant. Операция без ИМЕНУЕМОГО owner'а (nil op;
-//     пустой principal_id/principal_type — legacy pre-owner-tracking строка;
-//     принципал-ярлык анонима) НЕ world-readable — реальный owner неизвестен,
-//     поэтому tenant'у fail-closed (defense-in-depth против cross-tenant BOLA —
-//     CWE-639). Внутренний system-caller (обработан выше) её по-прежнему читает.
-//     Такая строка строго менее атрибутируема, чем system-owned, поэтому денаим
-//     её как минимум так же строго.
-//   - Операция, owner которой — system/bootstrap (backend без mounted
-//     UnaryPrincipalExtract записывает SystemPrincipal()={type:"system",
-//     id:"bootstrap"} для КАЖДОЙ Operation, т.к. corelib operations.Repo.Create
-//     fall-back'ается на SystemPrincipal при отсутствии ctx-Principal): реальный
-//     tenant-owner не известен, поэтому она НЕ world-readable — только внутренний
-//     system-caller (обработан выше) может её прочитать. Tenant-caller →
-//     PermissionDenied.
-//   - Tenant owner: и principal_id, И principal_type из ctx должны совпадать с
-//     записанными в Operation (type-match защищает от коллизии id между
-//     principal-типами, напр. user vs service_account — CWE-863).
+// РЕШЕНИЕ ЗДЕСЬ НЕ ПРИНИМАЕТСЯ. Край подаёт две личности — вызывающего и
+// записанную в строке — санкционированному глаголу владельца полосы
+// (`operations.CheckRecordedOwnership`) и возвращает его ответ. Там же
+// производится и отказ.
+//
+// # Почему решение живёт не здесь
+//
+// Полоса владения по ПРОЧИТАННОЙ строке — вторая в дереве (первая у владельца:
+// ключ из ctx в SQL `WHERE`). Пока правила были перечислены здесь, край был
+// вторым ИСТОЧНИКОМ решения: он перечислял их сам, включая имя внутренней
+// личности голыми строками — дважды, в двух соседних условиях. Сойтись двум
+// перечислениям нечем, они не собираются вместе и друг друга не читают, и
+// расхождение видит только тот, кто сравнит копии. Правила, отличия обеих полос
+// и порядок условий описаны в доме — `pkg/operations`, и здесь намеренно НЕ
+// пересказываются: два места об одном предмете расходятся молча (задача
+// продукта #1399).
+//
+// # Что остаётся ответственностью КРАЯ
+//
+// Не решение, а ВХОД: чью личность считать личностью вызывающего (метаданные
+// входящего запроса) и какую строку считать проверяемой. Нулевая строка —
+// законный вход: геттеры контракта на ней отдают пустую пару, а «неизвестно
+// чья» операция арендатору не читается — это решает дом, а не отдельный `if`
+// здесь.
+//
+// Проверка остаётся ВТОРЫМ СЛОЕМ: авторитет — владелец, чей предикат стоит в
+// SQL `WHERE` и применяется раньше. Радиус этой проверки и почему она
+// расположена именно так — `gateway/docs/engineering/architecture/operations-proxy-ownership.md`.
 func checkOperationOwnership(ctx context.Context, op *operationpb.Operation) error {
 	callerID, callerType := principalFromContext(ctx)
-	// Безымянный caller — не должен читать операции. Пустая пара и именованная
-	// анонимность здесь одно и то же: «неизвестно кто» не владеет ничем.
-	if (operations.Principal{Type: callerType, ID: callerID}).IsAnonymous() {
-		return status.Error(codes.PermissionDenied, "permission denied")
-	}
-	// system/bootstrap — внутренний воркер, не tenant. Пропускаем: он читает
-	// любую операцию, включая owner-less legacy-строки.
-	if callerType == "system" && callerID == "bootstrap" {
-		return nil
-	}
-	// Далее caller — tenant. Операция без записанного owner'а не world-readable:
-	// реальный owner неизвестен → fail-closed (CWE-639). Сюда же — строка,
-	// записанная безымянным запросом: её владелец не менее неизвестен.
-	if op == nil || (operations.Principal{Type: op.GetPrincipalType(), ID: op.GetPrincipalId()}).IsAnonymous() {
-		return status.Error(codes.PermissionDenied, "permission denied")
-	}
-	// Операция с system/bootstrap owner'ом читаема только внутренним
-	// system-caller'ом (обработан выше) — tenant'у fail-closed.
-	if op.GetPrincipalType() == "system" && op.GetPrincipalId() == "bootstrap" {
-		return status.Error(codes.PermissionDenied, "permission denied")
-	}
-	if callerID != op.GetPrincipalId() || callerType != op.GetPrincipalType() {
-		return status.Error(codes.PermissionDenied, "permission denied")
-	}
-	return nil
+	return operations.CheckRecordedOwnership(
+		operations.Principal{Type: callerType, ID: callerID},
+		operations.Principal{Type: op.GetPrincipalType(), ID: op.GetPrincipalId()},
+	)
 }
 
 // principalFromContext извлекает (id, type) calling principal из incoming

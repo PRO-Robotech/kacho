@@ -18,9 +18,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
@@ -77,34 +77,113 @@ func (r *VolumeRepo) WithProjectBytesLimit(limit int64) *VolumeRepo {
 }
 
 // volumeSelectCols — общий проекционный список для Get/List: колонки тома +
-// LEFT JOIN volume_attachments (0..1 строка, PK volume_id). Nullable attach-колонки
-// сканируются в указатели → nil == нет привязки (status derived AVAILABLE).
+// ПЕРЕЧЕНЬ его привязок, собранный в JSON ОДНОЙ ячейкой.
+//
+// # ПОЧЕМУ АГРЕГАЦИЯ, А НЕ СОЕДИНЕНИЕ
+//
+// Здесь стоял `LEFT JOIN volume_attachments` и комментарий «0..1 строка, PK
+// volume_id». Комментарий пережил свой предмет: миграция 0018 сменила ключ
+// привязки на ПАРУ `(volume_id, instance_id)`, и вторая привязка стала
+// представимой — а предикат вставки (`attachCASSQL`) её ещё и РАЗРЕШАЕТ, когда
+// действующая ревизия привязки класса объявляет способность множественной
+// привязки. Путь открывает не гонка, а штатная настройка каталога.
+//
+// Соединение без агрегации давало по строке на привязку, и оба чтения врали
+// по-своему, каждое молча:
+//
+//   - `Get` звал `QueryRow` — тот берёт ПЕРВУЮ строку соединения и остальные
+//     отбрасывает. Том, привязанный к двум машинам, отдавался с ОДНОЙ привязкой,
+//     и какой именно — не было определено ничем: порядка в запросе не было вовсе;
+//   - `List` клал в страницу по одному `domain.Volume` на строку СОЕДИНЕНИЯ. Том с
+//     двумя привязками попадал в страницу ДВАЖДЫ, `LIMIT` резал строки соединения,
+//     а не тома, и курсор `(created_at, id)` считался не по тому множеству. Клиент,
+//     ведущий состояние, прочитал бы дубль как два разных тома.
+//
+// Агрегация подзапросом возвращает РОВНО ОДНУ строку на том — тогда `QueryRow`
+// не может недобрать, `LIMIT` считает тома, а курсор указывает на следующий ТОМ.
+// Предмет закрыт задачей продукта #1559.
+//
+// # ПОЧЕМУ ФОРМА JSON — ТА ЖЕ, ЧТО У ЖУРНАЛА, И ЭТО НЕ СОВПАДЕНИЕ
+//
+// Строку конверта журнала собирает `storage_outbox_volume_state` (миграция
+// `20260830041500_storage_journal_volume_state.sql`) — тем же `jsonb_agg`, теми же
+// именами полей и тем же порядком. Совпадение сделано НАМЕРЕННО: обе стороны
+// разбирает ОДИН `decodeAttachments`, поэтому поле, добавленное привязке, не может
+// приехать в одну сторону и не приехать в другую — расхождение стало
+// непредставимым, а не «ловится пробой».
+//
+// ПОРЯДОК (`attached_at`, `instance_id`) — свойство РЕАЛИЗАЦИИ, не обещание
+// контракта: `storage/v1/volume.proto` объявляет `attachments` НАБОРОМ, и сверять
+// их клиент обязан по составу. Устойчивый порядок нужен нам самим — чтобы
+// одинаковое состояние давало одинаковую нагрузку и сравнение двух сторон не
+// считало изменением перестановку.
+//
+// # ЧТО ДОБАВЛЕНО К КОЛОНКАМ САМОЙ СТРОКИ
+//
+// `status_reason` и `used_bytes`. Их писал сверщик, а не читал НИ ОДИН путь чтения:
+// проекция их не выбирала, и арендатор получал пустую причину и отсутствующее
+// потребление ВСЕГДА — при живых значениях в базе. `status_reason` — единственное,
+// чем том объясняет своё `ERROR`; `used_bytes` объявлен необязательным именно
+// чтобы отличать «бэкенд не сказал» от «пусто», а неприезжающее поле делало эти
+// два состояния неразличимыми. Предмет закрыт задачей продукта #1557; соседние
+// ресурсы того же домена (`snapshot_repo.go`, `image_repo.go`) свой
+// `status_reason` читали всегда — три ресурса решали один вопрос по-разному.
 const volumeSelectCols = `
 	v.id, v.project_id, v.created_at, v.updated_at, v.name, v.description, v.labels,
 	v.zone_id, v.disk_type_id, v.size_bytes,
 	COALESCE(v.source_snapshot_id, ''), COALESCE(v.source_image_id, ''), v.state,
-	va.instance_id, va.instance_name, va.device_name, va.is_boot, va.mode, va.auto_delete, va.attached_at`
+	v.status_reason, v.used_bytes,
+	` + volumeAttachmentsJSON
+
+// volumeAttachmentsJSON — перечень привязок тома одной JSON-ячейкой.
+//
+// Имена полей и порядок обязаны совпадать с конвертом журнала (см. выше): обе
+// стороны читает один разборщик. Пустой перечень — `[]`, а не NULL: «привязок нет»
+// и «спросить не удалось» — разные факты, и первый обязан быть представим.
+const volumeAttachmentsJSON = `
+	COALESCE((SELECT jsonb_agg(jsonb_build_object(
+	              'instance_id',   a.instance_id,
+	              'instance_name', a.instance_name,
+	              'device_name',   a.device_name,
+	              'is_boot',       a.is_boot,
+	              'mode',          a.mode,
+	              'auto_delete',   a.auto_delete,
+	              'attached_at',   a.attached_at)
+	          ORDER BY a.attached_at, a.instance_id)
+	     FROM volume_attachments a
+	    WHERE a.volume_id = v.id), '[]'::jsonb)`
 
 // scanVolume читает одну строку проекции volumeSelectCols в domain.Volume, деривя
-// Status (§1.3) и заполняя Attachments (output-only) при наличии привязки.
+// Status (§1.3) и заполняя Attachments (output-only) ВСЕМИ привязками тома.
+//
+// Строка теперь одна на ТОМ, а не на привязку: перечень приезжает JSON-ячейкой
+// (см. volumeSelectCols). Поэтому `QueryRow` в `Get` больше не может недобрать, а
+// `LIMIT` в `List` считает тома.
+//
+// У этой сборки есть ВТОРАЯ сторона — `VolumeFromJournalPayload` в соседнем
+// journal_payload.go: она собирает тот же `domain.Volume` из строки журнала
+// подписки. Расходились они молча: колонка, добавленная в volumeSelectCols и в
+// домен, там просто не появлялась, а подписчик не отличал её отсутствие от пустого
+// значения. Привязки из-под этого риска ВЫВЕДЕНЫ — обе стороны разбирает один
+// `decodeAttachments`; колонки самой строки остаются под ним, и расхождение по ним
+// ловит интеграционная `TestJournalStateEqualsWhatTheReadPathAnswers`, читающая
+// один том обоими путями. Правишь колонку здесь — правь и там.
 func scanVolume(row pgx.Row) (*domain.Volume, error) {
 	var (
 		v          domain.Volume
 		labelsJSON []byte
 		state      string
-		// nullable attach-колонки (LEFT JOIN)
-		instanceID   *string
-		instanceName *string
-		deviceName   *string
-		isBoot       *bool
-		mode         *string
-		autoDelete   *bool
-		attachedAt   *time.Time
+		reason     string
+		// used_bytes допускает NULL: «бэкенд потребления не сообщил». Ноль на этом
+		// месте был бы утверждением о пустом томе, и поле контракта объявлено
+		// необязательным именно чтобы эти два факта не слиплись.
+		usedBytes       *int64
+		attachmentsJSON []byte
 	)
 	if err := row.Scan(
 		&v.ID, &v.ProjectID, &v.CreatedAt, &v.UpdatedAt, &v.Name, &v.Description, &labelsJSON,
 		&v.ZoneID, &v.DiskTypeID, &v.SizeBytes, &v.SourceSnapshot, &v.SourceImage, &state,
-		&instanceID, &instanceName, &deviceName, &isBoot, &mode, &autoDelete, &attachedAt,
+		&reason, &usedBytes, &attachmentsJSON,
 	); err != nil {
 		return nil, err
 	}
@@ -113,34 +192,26 @@ func scanVolume(row pgx.Row) (*domain.Volume, error) {
 			return nil, err
 		}
 	}
-	attached := instanceID != nil
-	v.Status = domain.DeriveStatus(state, attached)
-	if attached {
-		att := domain.VolumeAttachment{
-			VolumeID:   v.ID,
-			InstanceID: derefStr(instanceID),
-		}
-		att.InstanceName = derefStr(instanceName)
-		att.DeviceName = derefStr(deviceName)
-		if isBoot != nil {
-			att.IsBoot = *isBoot
-		}
-		att.Mode = attachModeFromDB(derefStr(mode))
-		if autoDelete != nil {
-			att.AutoDelete = *autoDelete
-		}
-		if attachedAt != nil {
-			att.AttachedAt = *attachedAt
-		}
-		v.Attachments = []domain.VolumeAttachment{att}
+	v.StatusReason = domain.StatusReason(reason)
+	if usedBytes != nil {
+		v.Observation.UsedBytes = *usedBytes
+		v.Observation.HasUsedBytes = true
 	}
+	atts, err := decodeAttachments(attachmentsJSON, v.ID, v.ProjectID, v.ZoneID)
+	if err != nil {
+		return nil, err
+	}
+	v.Attachments = atts
+	// Статус выводит ЕДИНСТВЕННАЯ деривация и от того же признака, что на стороне
+	// журнала: существует ли хоть одна привязка.
+	v.Status = domain.DeriveStatus(state, len(atts) > 0)
 	return &v, nil
 }
 
 // Get реализует volume.Reader: том по id + derive-on-read status/attachments.
 func (r *VolumeRepo) Get(ctx context.Context, id string) (*domain.Volume, error) {
 	q := `SELECT ` + volumeSelectCols + `
-		FROM volumes v LEFT JOIN volume_attachments va ON va.volume_id = v.id
+		FROM volumes v
 		WHERE v.id = $1`
 	v, err := scanVolume(r.pool.QueryRow(ctx, q, id))
 	if err != nil {
@@ -181,8 +252,12 @@ func (r *VolumeRepo) List(ctx context.Context, p volume.Pagination) ([]*domain.V
 		where = "WHERE " + strings.Join(conds, " AND ")
 	}
 	args = append(args, p.PageSize+1)
+	// Строка одна на ТОМ: привязки приезжают агрегатом (volumeSelectCols), а не
+	// соединением. Поэтому предел и курсор считаются по ТОМАМ — до этого они
+	// считались по строкам соединения, и многопривязочный том занимал в странице
+	// столько мест, сколько у него привязок.
 	q := fmt.Sprintf(`SELECT %s
-		FROM volumes v LEFT JOIN volume_attachments va ON va.volume_id = v.id
+		FROM volumes v
 		%s
 		ORDER BY v.created_at ASC, v.id ASC
 		LIMIT $%d`, volumeSelectCols, where, len(args))
@@ -716,8 +791,8 @@ func (r *VolumeRepo) attachOnce(ctx context.Context, a *domain.VolumeAttachment,
 // isDeviceCollision — сырая ошибка 23505 на UNIQUE(instance_id,device_name)? Только на
 // этот класс auto-путь ретраит (пересчитать имя); прочие ошибки — терминальны.
 func isDeviceCollision(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == cnAttachDeviceUniq
+	f := pgfault.Classify(err)
+	return f.Is(pgfault.Unique) && f.Constraint == cnAttachDeviceUniq
 }
 
 // disambiguateAttach разбирает 0-row исход CAS (§3.2, в той же tx): конфликт-строка

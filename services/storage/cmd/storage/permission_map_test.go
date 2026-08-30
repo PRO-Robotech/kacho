@@ -38,6 +38,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktypebinding"
@@ -56,7 +57,7 @@ import (
 func servedMethods(t *testing.T) []string {
 	t.Helper()
 	var served []string
-	for _, reg := range registrarsOfBothListeners() {
+	for _, reg := range registrarsOfBothListeners(t) {
 		srv := grpc.NewServer()
 		reg(srv)
 		for name, info := range srv.GetServiceInfo() {
@@ -645,7 +646,7 @@ func TestPublicListenerServesNoInternalService(t *testing.T) {
 	snapshotUC := snapshot.New(nil, nil, nil, nil)
 	imageUC := image.New(nil, nil, nil, nil, nil, nil)
 	diskTypeUC := disktype.New(nil)
-	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_storage"))
+	opHandler := operationspb.NewHandler(operations.NewRepo(nil, "kacho_storage"))
 
 	names := func(reg func(grpc.ServiceRegistrar)) []string {
 		srv := grpc.NewServer()
@@ -663,7 +664,8 @@ func TestPublicListenerServesNoInternalService(t *testing.T) {
 	})
 	internal := names(func(r grpc.ServiceRegistrar) {
 		registerInternal(r, volumeUC, imageUC, diskTypeUC,
-			storagebackend.New(nil), disktypebinding.New(nil, nil), opHandler)
+			storagebackend.New(nil), disktypebinding.New(nil, nil), opHandler,
+			probeSubscriptionServer(t))
 	})
 
 	if len(public) == 0 || len(internal) == 0 {

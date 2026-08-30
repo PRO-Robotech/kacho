@@ -10,6 +10,7 @@
 
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { api } from "@shared/api/client";
+import { useResourceStream } from "./subscription/use-resource-stream";
 import { hasMorePages, mergeCursorPages, type CursorPage } from "./cursor-pages";
 import { hasUnresolvedPathSegment, toPathCamel } from "./related-list-query";
 import type { ResourceSpec } from "./resource-registry";
@@ -126,8 +127,13 @@ export async function readAllPages(
 }
 
 /**
- * useResourceList — поллит GET <apiPath>?<filterField>=<filterValue> каждые 3 сек
- * и следует курсору по запросу.
+ * useResourceList — читает GET <apiPath>?<filterField>=<filterValue> и следует
+ * курсору по запросу.
+ *
+ * ЧИТАЕТ ПО СОБЫТИЮ, А ОПРАШИВАЕТ ТОЛЬКО ПОКА СОБЫТИЙ НЕТ (#1021). Владелец
+ * журнала объявил вид — опрос выключается, и список перечитывается на каждое
+ * изменение. Владельца нет (домены без журнала), поток не открылся (возможность
+ * не включена посадкой) или отказал — работает прежний опрос раз в три секунды.
  *
  * filterField + filterValue — параметр родителя (project_id / account_id).
  * Если оба null — список без фильтра (для cluster-scoped ресурсов).
@@ -162,6 +168,26 @@ export function useResourceList<T = Record<string, unknown>>(
   const target = resolveListPath(spec.apiPath, filterField, filterValue, opts?.pathParams);
   const readAll = opts?.loadAllPages === true;
 
+  // ПОТОК ВМЕСТО ОПРОСА — ТАМ, ГДЕ ВЛАДЕЛЕЦ САМ НАЗВАЛ ЭТОТ ВИД (#1021).
+  //
+  // Хук отдаёт один признак: покрыт ли вид потоком ПРЯМО СЕЙЧАС. Пока не
+  // покрыт — работает опрос, ровно как раньше; покрыт — опрос выключается, а
+  // страница перечитывает список ПО СОБЫТИЮ. Двух механизмов одновременно не
+  // бывает by construction: включает и выключает их ОДНО значение.
+  //
+  // Проект берётся из оси родителя, и только когда она и есть проект: у
+  // ресурса, адресованного другим родителем (теги репозитория, дети реестра),
+  // проект неизвестен, и подписка открывается без него — незаданная ось не
+  // сужает, а сужение по правам остаётся построчным у владельца.
+  const { streamed } = useResourceStream({
+    specId: spec.id,
+    projectId: filterField === "project_id" ? filterValue : null,
+    invalidate: [spec.id, "list"],
+    // Пока путь несёт незаполненную подстановку, чтения нет вовсе — значит и
+    // перечитывать нечего, и поток открывать не за чем.
+    enabled: target.resolved,
+  });
+
   const query = useInfiniteQuery({
     // Разрешённый путь — часть ключа: у детей, адресуемых путём, фильтр и его
     // значение одинаковы (их нет вовсе), и без пути две РАЗНЫЕ вкладки —
@@ -179,7 +205,7 @@ export function useResourceList<T = Record<string, unknown>>(
       return fetchPage(typeof pageParam === "string" ? pageParam : "");
     },
     getNextPageParam: (lastPage) => lastPage.next_page_token || undefined,
-    refetchInterval: 3_000,
+    refetchInterval: streamed ? false : 3_000,
     // An unfilled path placeholder means the parent is not known yet; issuing
     // the request would spend every poll on an InvalidArgument.
     enabled: (!filterField || !!filterValue) && target.resolved,

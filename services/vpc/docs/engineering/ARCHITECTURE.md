@@ -43,7 +43,7 @@ SQL запрещён.
                            kacho-ui (SPA, REST/JSON)
                                    |
                                    v
-                         kacho-api-gateway
+                         gateway/         
                           /              \
                          v                v
               kacho-iam               kacho-vpc
@@ -62,11 +62,12 @@ IPAM-cascade. Никакой прямой доступ к чужой БД.
 
 | Сосед | Канал | Что делает |
 |---|---|---|
-| `kacho-api-gateway` | gRPC `:9090` → REST | Маршрутизирует публичные RPC, преобразует ошибки в HTTP-status |
+| `gateway/` | gRPC `:9090` → REST | Маршрутизирует публичные RPC, преобразует ошибки в HTTP-status |
 | `kacho-iam` | gRPC client | `ProjectClient.Exists(projectID)`, `ProjectClient.GetCloudIDFromProject(projectID)` (project existence + account-id lookup; `projectID` = id владельца-проекта) |
 | `kacho-compute`, прочие IP-потребители | gRPC `:9091` | `InternalAddressService.AllocateInternalIP` / `AllocateInternalIPv6` / `AllocateExternalIP` + referrer-tracking; валидация NIC-spec (Subnet/SG) |
 | `kacho-geo` (Geography owner, leaf) | gRPC client (исходящий) | `geo.v1.ZoneService.Get` — валидация `zone_id` (Region/Zone — leaf-домен geo) |
-| Внутрикластерные потребители событий | Postgres `LISTEN/NOTIFY` (`vpc_outbox`) | Транзакционный outbox-журнал доменных мутаций; публичного Watch RPC нет — клиенты узнают об изменениях через polling `List` / `OperationService.Get` |
+| Внутрикластерные потребители событий | Postgres `LISTEN/NOTIFY` (`vpc_outbox`) | Транзакционный outbox-журнал доменных мутаций |
+| `gateway/` (проекция журнала наружу) | server-stream `InternalSubscriptionService/Subscribe` на `:9091` | Край читает журнал vpc и отдаёт его арендатору потоком SSE (`owner=vpc`, восемь видов). Соединение открывает КРАЙ — vpc его не зовёт, ацикличность держится |
 | Postgres (своя БД `kacho_vpc`) | pgx + LISTEN/NOTIFY | Источник истины |
 | Admin-инструменты (UI, curl/REST на api-gateway internal mux) | gRPC `:9091` через api-gateway internal listener | Управление AddressPool; admin-операции Network (default-SG setter) |
 
@@ -90,7 +91,7 @@ IPAM-cascade. Никакой прямой доступ к чужой БД.
 | Стабильность контракта | Фиксированные regex, status codes и error texts — часть контракта, меняются осознанно |
 | Graceful shutdown | До 30 секунд на drain LRO-worker'ов |
 | Latency бюджет | Не зафиксирован формально; sync-валидация в request-path, async-IO в worker |
-| Наблюдение состояния | Polling: `OperationService.Get` (результат мутации) + периодический `List` (Watch RPC не существует) |
+| Наблюдение состояния | Изменения ресурсов — поток подписки (`owner=vpc`) ИЛИ периодический `List`; результат мутации — только поллинг `OperationService.Get` |
 
 ---
 
@@ -194,7 +195,7 @@ IPAM-allocate и default-SG creation выполняются inline в service-с
                         |
                         v
                 +-------+--------+
-                |     domain     |  (entities — только stdlib + kacho-proto)
+                |     domain     |  (entities — stdlib + стабы pkg/api/...)
                 +----------------+
 ```
 
@@ -307,7 +308,7 @@ Cross-cutting и internal transport (`internal/handler/`):
 
 | Файл | Сервис / роль |
 |---|---|
-| `operation_handler.go` | `OperationService.Get` / `Cancel` |
+| — (сведён в `pkg/operations/operationspb`) | `OperationService.Get` / `Cancel` |
 | `internal_address_allocate_handler.go` | `InternalAddressService.AllocateInternalIP/IPv6/External` + referrer-tracking |
 | `internal_network_handler.go` | `InternalNetworkService` (`GetNetwork` — internal-only `vrf_id`; `SetDefaultSecurityGroupId`) |
 | `authn_interceptor.go` | `AuthNUnaryInterceptor`, `AuthNStreamInterceptor` (требуют предъявленного принципала в production-mode; решений о доступе не принимают) |
@@ -420,8 +421,10 @@ outbox-emit, формирование response).
 
 Триггер `vpc_outbox_notify_trg` на каждый INSERT выполняет
 `pg_notify('vpc_outbox', sequence_no::text)` — это in-cluster `LISTEN/NOTIFY`-канал
-доменных событий. Публичного per-resource Watch RPC в Kachō нет: клиенты узнают об
-изменениях через polling `List` / `OperationService.Get`.
+доменных событий. Он же — журнал платформенной подписки: vpc объявлен её владельцем,
+и край проецирует эти строки арендатору потоком. Отдельного per-resource Watch RPC
+(`<Resource>.Watch`) при этом нет: подписка — ОДИН глагол на всю платформу, и единственность
+этой формы держится гейтом дерева, а не обещанием. Читает этот глагол КРАЙ, а не клиент.
 
 **Транзакционная атомарность.** Repo-операции, эмитирующие outbox-событие,
 обязаны:
@@ -438,12 +441,16 @@ outbox-emit, формирование response).
 outbox, но notification отправляется в момент commit'а транзакции).
 Подписчик гарантированно увидит ресурс в БД к моменту обработки события.
 
-### 4.3 Наблюдение состояния — polling-модель (без Watch RPC)
+### 4.3 Наблюдение состояния — поток подписки ИЛИ polling
 
-Публичного per-resource Watch RPC в API Kachō нет — server-streaming-слежения за
-состоянием ресурса сервис не предоставляет. Клиенты узнают об изменениях двумя
-способами:
+Отдельного per-resource Watch RPC (`<Resource>.Watch`) в Kachō нет: подписка — ОДИН глагол
+на всю платформу, и единственность этой формы держится гейтом дерева, а не обещанием. Служит
+его КРАЙ поверх журнала владельца, а сам сервис server-streaming-ручки наружу не выставляет.
+Клиенты узнают об изменениях тремя способами:
 
+- **Изменения ресурсов потоком** — SSE-ручка края `GET /subscription/v1/events`
+  (`owner=vpc`, восемь видов); журнал не чистится, поэтому возобновление с названной
+  позиции не упирается в горизонт.
 - **Результат мутации** — поллинг `OperationService.Get(operationId)` до `done=true`
   (см. §6 — Operations LRO worker).
 - **Текущее состояние** — периодический `List<Resource>` (рекомендуемый интервал 2–5 c).
@@ -451,7 +458,7 @@ outbox, но notification отправляется в момент commit'а т�
 `vpc_outbox` остается транзакционным журналом доменных событий: каждая мутация в той
 же TX пишет строку (`resource_kind/resource_id/event_type/payload`), триггер
 `vpc_outbox_notify_trg` шлет `pg_notify('vpc_outbox', sequence_no)`. Это in-cluster
-`LISTEN/NOTIFY`-канал; наружу как Watch RPC он не публикуется.
+`LISTEN/NOTIFY`-канал; наружу он проецируется потоком подписки, который отдаёт КРАЙ, а не vpc.
 
 ### 4.4 Inline IPAM allocation
 
@@ -618,8 +625,7 @@ api-gateway смотрит на первые 3 символа Operation.id и н
 | Таблица | Назначение | PK |
 |---|---|---|
 | `operations` | Long-running operations (синхронизирована с corelib) | `id` |
-| `vpc_outbox` | Транзакционный журнал доменных событий (in-cluster `LISTEN/NOTIFY`; Watch RPC не публикуется) | `sequence_no` |
-| `vpc_watch_cursors` | Vestigial-таблица из baseline-схемы; кодом не используется (Watch RPC удален) | `subscriber_id` |
+| `vpc_outbox` | Транзакционный журнал доменных событий (in-cluster `LISTEN/NOTIFY`); он же журнал платформенной подписки, который край отдаёт потоком | `sequence_no` |
 
 ### 5.5 Связи между ресурсами (FK contract)
 
@@ -694,7 +700,6 @@ Source of truth — `internal/migrations/*.sql`: `0001_initial.sql` (baseline-с
 | `address_pools` | `id`, `name`, `description`, `labels`, `v4_cidr_blocks text[]`, `v6_cidr_blocks text[]`, `kind smallint`, `is_default`, `zone_id text` (без FK — geography→**geo**), `selector_labels jsonb`, `selector_priority`, `modified_at`. Неперекрытие блоков внутри `kind` — child-таблица `address_pool_cidrs` + EXCLUDE (миграция 0004) |
 | `address_pool_network_default` | `network_id PK`, `pool_id`, `bound_at` |
 | `vpc_outbox` | `sequence_no bigserial PK`, `resource_kind`, `resource_id`, `event_type`, `payload jsonb`, `created_at`, `processed_at` |
-| `vpc_watch_cursors` | `subscriber_id PK`, `last_sequence_no`, `updated_at` |
 
 (`regions`/`zones` — таблиц в kacho-vpc нет; Geography — leaf-домен kacho-geo, ссылка по `zone_id` без FK.)
 
@@ -917,9 +922,12 @@ client      api-gw    vpc.handler    vpc.service    projectClient    iam    netw
   |                                      |<--true                              |            |          |
   |                                      |--Insert(network)----------------->BEGIN          |          |
   |                                      |--Insert(default SG)------------------>           |          |
-  |                                      |--Network UPDATE default_sg_id---->                          |
-  |                                      |--emit outbox Network.CREATED-------------------->INSERT     |
   |                                      |--emit outbox SecurityGroup.CREATED-------------->INSERT     |
+  |                                      |--Network UPDATE default_sg_id---->                          |
+  |                                      |--Insert(default RT)------------------>           |          |
+  |                                      |--emit outbox RouteTable.CREATED----------------->INSERT     |
+  |                                      |--Network UPDATE default_rt_id----->                         |
+  |                                      |--emit outbox Network.CREATED (собрана)---------->INSERT     |
   |                                      |                                                COMMIT       |
   |                                      |--ops.SetDone------------------------------------>         |
   |                                                                                                    |
@@ -966,11 +974,12 @@ caller         addrSvc       poolSvc       addrPoolRepo    bindRepo    addrRepo 
   |<--AllocResult{ip, pool_id, already_allocated=false}                              |
 ```
 
-### 9.3 Наблюдение состояния (polling)
+### 9.3 Наблюдение состояния (поток подписки ИЛИ polling)
 
-Server-streaming Watch RPC в API Kachō нет. Клиент узнает о результате мутации
-поллингом `OperationService.Get(operationId)` до `done=true`, а текущее состояние —
-периодическим `List<Resource>`:
+О результате мутации клиент узнаёт ТОЛЬКО поллингом `OperationService.Get(operationId)`
+до `done=true` — подписки на операции нет ни у одного домена. Текущее состояние ресурсов
+берётся потоком подписки (`owner=vpc`) либо периодическим `List<Resource>`; ниже показан
+второй путь:
 
 ```
 client                      kacho-vpc                 pg
@@ -986,7 +995,7 @@ client                      kacho-vpc                 pg
 ```
 
 `vpc_outbox` остается транзакционным журналом доменных событий (`pg_notify`
-in-cluster); наружу как Watch RPC он не публикуется.
+in-cluster); он же проецируется наружу потоком подписки, который отдаёт край.
 
 ### 9.4 Subnet AddCidrBlocks (с EXCLUDE constraint защитой)
 
@@ -1065,7 +1074,7 @@ goose создает `goose_db_version` автоматически. Миграц
 ### 10.5 Деплой через Helm
 
 `deploy/` содержит свой Chart.yaml + templates + values.yaml. Используется
-umbrella-чартом `kacho-deploy` для dev-стенда (kind + Postgres + все сервисы).
+umbrella-чартом `kacho-umbrella` (`deploy/helm/umbrella/`) для dev-стенда (kind + Postgres + все сервисы).
 
 ---
 
@@ -1109,7 +1118,7 @@ IAM sidecar — иначе anonymous = root.
 > - «`OperationService.Get` не делает AuthZ» — неверно: `Get` и `Cancel`
 >   энфорсят **владельца** операции, резолвя ключ исключительно из доверенного
 >   принципала контекста; отсутствие ключа — отказ, а не пропуск
->   (`internal/handler/operation_handler.go`).
+>   (`pkg/operations/operationspb/handler.go`).
 > - «mTLS на :9091 опционален, primary defense — NetworkPolicy» — неверно и опаснее
 >   прочего: `ValidateServerMTLS` требует server-mTLS на internal-листенере в **любом**
 >   production-режиме, и без него старт отказывает. Запись, объявляющая защиту
@@ -1298,7 +1307,7 @@ baseline в `tests/k6/results/BASELINE.md`.)
    требующие предъявленного принципала в production-mode.
 5. В `internal/handler/internal_address_allocate_handler.go` — обертка над
    `AddressService.Allocate*`.
-6. В `internal/handler/operation_handler.go` — `Get` / `Cancel` через `ops`.
+6. В `pkg/operations/operationspb/handler.go` — `Get` / `Cancel` через `ops`.
 7. Конвертация `Operation` в proto — пакет `internal/apps/kacho/shared/pbconv`
    (`OperationToProto`, с маппингом `CreatedBy`).
 8. В `internal/handler/internal_maperr.go` — generic info-leak-safe mapper.
@@ -1334,7 +1343,7 @@ baseline в `tests/k6/results/BASELINE.md`.)
 | Линтер | `golangci-lint run` чистый |
 | Миграции | `bin/kacho-vpc migrate up` идемпотентен |
 | Service start | `bin/kacho-vpc serve` слушает 9090 и 9091 |
-| Polling-наблюдение | Создание Network → `OperationService.Get` доходит до `done=true`, ресурс виден в `List` (Watch RPC нет) |
+| Наблюдение | Создание Network → `OperationService.Get` доходит до `done=true`, ресурс виден в `List`; то же изменение приходит строкой журнала подписки (`vpc_network`) |
 | Allocate IP | `InternalAddressService.AllocateExternalIP` возвращает IP из настроенного pool'а |
 | Cascade | Изменение network-default binding / is_default-пула меняет выбираемый pool без рестарта |
 | Graceful shutdown | SIGTERM завершает процесс в пределах 30 секунд, in-flight LRO дорабатывают |
@@ -1384,7 +1393,7 @@ kacho-vpc/
 │   ├── clients/
 │   │   └── iam_client.go (+ project_cache.go) — ProjectClient через gRPC к kacho-iam
 │   ├── handler/                   — cross-cutting / internal transport (см. §3.5)
-│   │   ├── operation_handler.go             — OperationService.Get/Cancel
+│   │   │   (OperationService.Get/Cancel сведён в pkg/operations/operationspb)
 │   │   ├── internal_address_allocate_handler.go — InternalAddressService (IPAM)
 │   │   ├── internal_network_handler.go     — InternalNetworkService (vrf_id / default-SG)
 │   │   ├── authn_interceptor.go   — AuthN-guard (принципал предъявлен?)

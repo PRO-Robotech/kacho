@@ -639,7 +639,7 @@ func acceptableSpec() servicecontract.Spec {
 	return servicecontract.Spec{
 		Service:    "kacho-demo",
 		Mode:       servicecontract.ModeDev,
-		Forwarders: grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"),
+		Forwarders: servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS",
 			TrustAny: "KACHO_DEMO_AUTHZ_TRUST_ANY_FORWARDER",
@@ -648,7 +648,7 @@ func acceptableSpec() servicecontract.Spec {
 		SelfCheck:      denyingClient(),
 		HandlingBudget: 30 * time.Second,
 		Metrics:        prometheus.NewRegistry(),
-		DBSSLMode:      "disable",
+		DBSSLMode:      servicecontract.Value("disable"),
 		PublicAddr:     ":9090",
 		InternalAddr:   ":9091",
 		PublicCreds:    insecure.NewCredentials(),

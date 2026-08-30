@@ -497,6 +497,27 @@ type NetworkLoadBalancer struct {
 	// LIVE-mutable for REGIONAL. REGIONAL/anycast is excluded from the zonal check by
 	// construction.
 	CrossZoneEnabled bool `protobuf:"varint,42,opt,name=cross_zone_enabled,json=crossZoneEnabled,proto3" json:"cross_zone_enabled,omitempty"`
+	// zone_id — output-only availability zone of a ZONAL load balancer (#1473).
+	//
+	// Set IFF placement_type == ZONAL; empty for REGIONAL (anycast has no zonal
+	// coordinate by construction) and for EXTERNAL (whose underlying zone is
+	// derived by the platform and stays off the public surface — the very
+	// placement-leak that retired the former per-zone fields, `reserved 15, 18`).
+	// The exclusivity is a DB CHECK, not a comment.
+	//
+	// Not a Create input (write-reject): the value is the zone of the tenant's own
+	// VIP subnet, resolved from its owner on the request path
+	// (vpc.SubnetService.Get) and never derived by parsing a name — a string
+	// derivation silently yields "" on a REGIONAL subnet and turns the coherence
+	// check into a no-op.
+	//
+	// Why it exists: placement_type says the placement IS zonal without saying
+	// WHICH zone, so a caller could not tell whether an instance and a load
+	// balancer share a site — the invariant data-integrity.md §Placement-coherence
+	// requires them to satisfy. It is the same placement anchor the platform
+	// already carries on Subnet (placement_type + zone_id / region_id); a resource
+	// bearing one half of that discriminator contradicted the platform with itself.
+	ZoneId string `protobuf:"bytes,44,opt,name=zone_id,json=zoneId,proto3" json:"zone_id,omitempty"`
 	// security_group_ids — NLB-1b MIGRATE (revival, output + Create/Update input).
 	// vpc SecurityGroup refs firewalling the LB VIP (frontend access control), TEXT
 	// ids without FK; same-project existence is peer-validated via
@@ -662,6 +683,13 @@ func (x *NetworkLoadBalancer) GetCrossZoneEnabled() bool {
 		return x.CrossZoneEnabled
 	}
 	return false
+}
+
+func (x *NetworkLoadBalancer) GetZoneId() string {
+	if x != nil {
+		return x.ZoneId
+	}
+	return ""
 }
 
 func (x *NetworkLoadBalancer) GetSecurityGroupIds() []string {
@@ -887,7 +915,7 @@ var File_kacho_cloud_loadbalancer_v1_network_load_balancer_proto protoreflect.Fi
 
 const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" +
 	"\n" +
-	"7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x97\x0f\n" +
+	"7kacho/cloud/loadbalancer/v1/network_load_balancer.proto\x12\x1bkacho.cloud.loadbalancer.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb0\x0f\n" +
 	"\x13NetworkLoadBalancer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -910,7 +938,8 @@ const file_kacho_cloud_loadbalancer_v1_network_load_balancer_proto_rawDesc = "" 
 	"\tplacement\x18( \x01(\x0e2:.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.PlacementR\tplacement\x12\\\n" +
 	"\vadmin_state\x18) \x01(\x0e2;.kacho.cloud.loadbalancer.v1.NetworkLoadBalancer.AdminStateR\n" +
 	"adminState\x12,\n" +
-	"\x12cross_zone_enabled\x18* \x01(\bR\x10crossZoneEnabled\x12,\n" +
+	"\x12cross_zone_enabled\x18* \x01(\bR\x10crossZoneEnabled\x12\x17\n" +
+	"\azone_id\x18, \x01(\tR\x06zoneId\x12,\n" +
 	"\x12security_group_ids\x18+ \x03(\tR\x10securityGroupIds\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +

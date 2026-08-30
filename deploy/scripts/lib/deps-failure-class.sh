@@ -8,6 +8,18 @@
 # без helm, без сети и без подъёма стенда: проба подсовывает сюда вывод и
 # смотрит на вердикт (см. deps-failure-class-inject.sh рядом).
 
+# СЕТЕВАЯ ПРИЧИНА — ВТОРОЙ ПРИЗНАК ЧУЖОЙ НЕДОСТУПНОСТИ, и объявлена ОДИН раз.
+#
+# Её требуют все формы, кроме первой (там о транспорте говорит сама фраза helm).
+# Выписанная у каждой формы по отдельности, она разошлась бы с собой на первой же
+# новой причине — и разошлась бы молча: форма, потерявшая причину из перечня,
+# перестаёт признавать чужой отказ и объявляет его нашим.
+#
+# Чего в перечне НЕТ намеренно: `404 Not Found` и `403 Forbidden`. Хост, который
+# так ответил, ЖИВ и сообщает о нашем адресе или нашем доступе. Повтор их не
+# лечит, и послабление на них было бы маской.
+_DEPS_NET_CAUSE='connection reset by peer|i/o timeout|TLS handshake timeout|EOF|no route to host|network is unreachable|connection refused|502 Bad Gateway|503 Service'
+
 #   classify_deps_failure <файл-с-выводом-helm> → ours | external | transient
 classify_deps_failure() {
   local log="$1"
@@ -41,8 +53,58 @@ classify_deps_failure() {
   # чинится повтором и не перестаёт быть находкой оттого, что адрес выглядит
   # внешним.
   if grep -qE 'is not a valid chart repository or cannot be reached' "$log" \
-     && grep -qE 'connection reset by peer|i/o timeout|TLS handshake timeout|EOF|no route to host|network is unreachable|connection refused|502 Bad Gateway|503 Service' "$log"; then
+     && grep -qE "$_DEPS_NET_CAUSE" "$log"; then
+    echo external; return
+  fi
+  # Чужое, форма ТРЕТЬЯ: хост оборвал скачивание САМОГО АРХИВА. Ветка helm снова
+  # другая, и обе фразы выше в ней отсутствуют — она не утверждает ничего о
+  # репозитории, она называет неудавшийся файл:
+  #
+  #   Error: could not download https://charts.bitnami.com/bitnami/postgresql-13.4.4.tgz:
+  #   Get "…": read tcp 10.1.0.186:38644->13.225.47.67:443: read: connection reset by peer
+  #
+  # Пока форма не была известна, отказ падал в `transient` и кончался КРАСНЫМ —
+  # то есть вердиктом о дереве там, где дерево ни при чём (kacho#1525, четыре
+  # гейта покраснели каскадом).
+  #
+  # ОБА ПРИЗНАКА, как и у формы второй, и близнец здесь особенно нагляден: та же
+  # фраза выходит на `404 Not Found`, когда хост ЖИВ и честно отвечает, что архива
+  # по адресу нет. Это мёртвый пин либо опечатка — НАША находка, повтором не
+  # лечится; признать её чужой значило бы спрятать её навсегда.
+  #
+  # Схема адреса — часть признака, а не украшение: она и говорит, что источник
+  # УДАЛЁННЫЙ. Локальный сабчарт (`file://…`) этой ветки helm не достигает вовсе,
+  # и его отсутствие обязано остаться нашим отказом.
+  if grep -qE 'could not download (https?|oci)://' "$log" \
+     && grep -qE "$_DEPS_NET_CAUSE" "$log"; then
     echo external; return
   fi
   echo transient
 }
+
+# external_source_hint <файл-с-выводом-helm> → адрес источника либо ПУСТО
+#
+# ДИАГНОСТИКА, А НЕ ДОКАЗАТЕЛЬСТВО. Пустой ответ — законный исход и НЕ повод
+# понизить вердикт: класс уже назван выше, и исход читает класс.
+#
+# Разделение это не педантизм, а починка: пока исход читал результат ЭТОЙ
+# функции, знавшей одну форму, формы вторая и третья классифицировались чужими и
+# всё равно кончались красным. Два места об одном предмете — решало более узкое.
+external_source_hint() {
+  local log="$1" hint
+  # форма первая — репозиторий назван в кавычках самим helm
+  hint="$(grep -oE '[Uu]nable to get an update from the "https?://[^"]*"' "$log" \
+            | head -1 | sed 's/.*"\(.*\)"/\1/')"
+  [ -n "$hint" ] && { printf '%s\n' "$hint"; return; }
+  # форма вторая — репозиторий назван в кавычках после `looks like`
+  hint="$(grep -oE 'looks like "[^"]+" is not a valid chart repository' "$log" \
+            | head -1 | sed 's/^looks like "\(.*\)" is not a valid.*/\1/')"
+  [ -n "$hint" ] && { printf '%s\n' "$hint"; return; }
+  # форма третья — назван АРХИВ, а не репозиторий; так и печатаем, не достраивая
+  # адрес репозитория догадкой: для оператора неудавшийся файл точнее.
+  hint="$(grep -oE 'could not download (https?|oci)://[^ ]+' "$log" \
+            | head -1 | sed -e 's/^could not download //' -e 's/:$//')"
+  [ -n "$hint" ] && { printf '%s\n' "$hint"; return; }
+  printf ''
+}
+

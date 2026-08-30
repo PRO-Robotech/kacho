@@ -101,8 +101,10 @@ func (u *RemoveTargetsUseCase) doRemove(ctx context.Context, tgID string, target
 	if err != nil {
 		return nil, mapDomainErr(err)
 	}
-	tg, err := rd.TargetGroups().Get(ctx, tgID)
-	if err != nil {
+	// Чтение существования и статуса группы: сама запись дальше не нужна —
+	// состояние для события читается ЗАНОВО в writer-транзакции, после пометки
+	// слива, потому что до неё снятая цель ещё выглядит обычной.
+	if _, err := rd.TargetGroups().Get(ctx, tgID); err != nil {
 		_ = rd.Close()
 		return nil, mapDomainErr(err)
 	}
@@ -133,15 +135,17 @@ func (u *RemoveTargetsUseCase) doRemove(ctx context.Context, tgID string, target
 		affected = n
 	}
 	if affected > 0 {
+		// Состояние читается В ТОЙ ЖЕ транзакции, сразу за пометкой слива: событие
+		// несёт ПОЛНОЕ состояние группы, а снятая цель живёт в ней до истечения
+		// задержки — со статусом DRAINING. Запись, взятая ДО пометки, показала бы её
+		// обычной, то есть утверждала бы, что снятие не сработало.
+		state, gerr := w.TargetGroups().Get(ctx, tgID)
+		if gerr != nil {
+			return nil, mapDomainErr(gerr)
+		}
 		if err := w.Outbox().Emit(ctx,
-			kachorepo.OutboxResourceTargetGroup, tgID, string(tg.ProjectID),
-			kachorepo.OutboxActionUpdated, map[string]any{
-				"id":             tgID,
-				"project_id":     string(tg.ProjectID),
-				"region_id":      string(tg.RegionID),
-				"trigger":        "remove_targets_phase_a",
-				"draining_count": affected,
-			},
+			kachorepo.OutboxResourceTargetGroup, tgID, string(state.ProjectID),
+			kachorepo.OutboxActionUpdated, kachorepo.TargetGroupStatePayload(state),
 		); err != nil {
 			return nil, mapDomainErr(err)
 		}

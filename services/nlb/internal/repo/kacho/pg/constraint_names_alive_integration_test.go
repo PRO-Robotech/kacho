@@ -43,9 +43,21 @@ import (
 // «находок нет».
 //
 // ЧИТАЕТСЯ ИСПОЛНЯЕМАЯ ЧАСТЬ, А НЕ ТЕКСТ: имена берутся разбором синтаксиса
-// (`case`-литералы того `switch`, чей тег — `pgErr.ConstraintName`), поэтому имя
+// (`case`-литералы того `switch`, чей тег — поле имени ограничения), поэтому имя
 // в комментарии или в строке сообщения гейт не считает объявленным — и наоборот,
 // переносом ветки в другое место файла его не обмануть.
+//
+// РАСПОЗНАЮТСЯ ОБЕ ЗАКОННЫЕ ФОРМЫ ЗАПИСИ, и это не мелочь: форма, о которой
+// распознаватель не знает, даёт не находку и не молчание, а НЕВИДИМОСТЬ — всё
+// записанное в ней выпадает из наблюдения, и «имён найдено N» становится
+// утверждением о меньшем, чем кажется. Формы две:
+//
+//	switch pgErr.ConstraintName { case "…": }   — имя поля драйвера
+//	switch f.Constraint { case "…": }           — имя поля разобранного отказа
+//	if f.Constraint == "…"                      — сравнение вместо ветвления
+//
+// Вторая появилась вместе с домом `pkg/db/pgfault`, третья была законной и до
+// него — и до этой правки гейт не видел её вовсе.
 func TestGate_EveryMappedConstraintNameExistsInSchema(t *testing.T) {
 	mapped, files := constraintNamesSwitchedOn(t)
 	require.NotEmpty(t, mapped,
@@ -113,12 +125,38 @@ func constraintNamesSwitchedOn(t *testing.T) ([]string, int) {
 			files++
 		}
 		ast.Inspect(pkg, func(n ast.Node) bool {
+			// Форма «сравнение»: `f.Constraint == "имя"`.
+			if bin, ok := n.(*ast.BinaryExpr); ok && bin.Op == token.EQL {
+				for _, side := range []ast.Expr{bin.X, bin.Y} {
+					sel, isSel := side.(*ast.SelectorExpr)
+					if !isSel || !constraintNameField(sel.Sel.Name) {
+						continue
+					}
+					other := bin.Y
+					if side == bin.Y {
+						other = bin.X
+					}
+					lit, isLit := other.(*ast.BasicLit)
+					if !isLit || lit.Kind != token.STRING {
+						continue
+					}
+					v, uerr := strconv.Unquote(lit.Value)
+					if uerr != nil {
+						continue
+					}
+					if _, dup := seen[v]; !dup {
+						seen[v] = struct{}{}
+						names = append(names, v)
+					}
+				}
+				return true
+			}
 			sw, ok := n.(*ast.SwitchStmt)
 			if !ok || sw.Tag == nil {
 				return true
 			}
 			sel, ok := sw.Tag.(*ast.SelectorExpr)
-			if !ok || sel.Sel.Name != "ConstraintName" {
+			if !ok || !constraintNameField(sel.Sel.Name) {
 				return true
 			}
 			for _, stmt := range sw.Body.List {
@@ -146,4 +184,14 @@ func constraintNamesSwitchedOn(t *testing.T) ([]string, int) {
 	}
 	sort.Strings(names)
 	return names, files
+}
+
+// constraintNameField — имена полей, несущих имя нарушенного ограничения.
+//
+// Их два: `ConstraintName` у ошибки драйвера и `Constraint` у отказа,
+// разобранного домом `pkg/db/pgfault`. Перечень закрыт намеренно: распознаватель,
+// принимающий любое поле, начал бы засчитывать посторонние сравнения и завышать
+// перепись — то есть отвечал бы шире, чем знает.
+func constraintNameField(name string) bool {
+	return name == "ConstraintName" || name == "Constraint"
 }

@@ -32,6 +32,11 @@ function useModuleCounts(module: ServiceModule, scopeId: string | null, scopeKey
     queries: module.stats.map((stat) => ({
       queryKey: ["dash", module.key, stat.key, scopeKey, scopeId],
       enabled,
+      // поллинг остаётся: это СЧЁТЧИКИ по девяти видам сразу, и величины
+      // событие потока НЕ НЕСЁТ — оно говорит об одном предмете. Свести
+      // счётчик по нему нельзя без чтения списка целиком, то есть без того же
+      // запроса. Покрытие домена тут ни при чём: счётчик остался бы на опросе,
+      // будь покрыты все девять.
       refetchInterval: 15_000,
       queryFn: async () => {
         const query: Record<string, string> = { pageSize: "1000" };

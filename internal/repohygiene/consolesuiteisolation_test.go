@@ -100,6 +100,33 @@ var consoleFilesystemWriterAllowance = map[string]string{
 		"предмет пробы — обходчик реального дерева, и подмена node:fs сделала бы фикстуру снисходительнее продукта",
 	"ui-future/shared/src/test/identity-ceremony-carriers.injection.test.ts": "строит СИНТЕТИЧЕСКОЕ дерево носителей церемонии в своём mkdtemp-каталоге и снимает его в afterEach: " +
 		"предмет пробы — обходчик реального дерева, и подмена node:fs сделала бы фикстуру снисходительнее продукта",
+	"ui-future/shared/src/test/platform-envelope.injection.test.ts": "строит СИНТЕТИЧЕСКОЕ дерево приложений в своём mkdtemp-каталоге и снимает его в afterEach: " +
+		"предмет пробы — обходчик реального дерева (перечень приложений ВЫВОДИТСЯ наличием src/), и подмена node:fs сделала бы фикстуру снисходительнее продукта",
+	"ui-future/shared/src/test/mutation-envelope.injection.test.ts": "строит СИНТЕТИЧЕСКОЕ дерево приложений в своём mkdtemp-каталоге и снимает его в afterEach: " +
+		"предмет пробы — обходчик реального дерева (перечень приложений ВЫВОДИТСЯ наличием src/), и подмена node:fs сделала бы фикстуру снисходительнее продукта",
+}
+
+// callsByName — вызов ИМЕНИ, а не подстроки. Без границы слева `rm(` совпадает с
+// `byForm(`, `cp(` — с `lookup(`, и гейт объявляет находкой законное имя: ровно
+// тот класс «судить по слову, а не по предмету», который он сам и стережёт.
+// Наблюдалось 2026-08-30: тип `PollForm` в пробе опроса дал ложную находку `rm`.
+func callsByName(code, name string) bool {
+	for i := 0; ; {
+		j := strings.Index(code[i:], name+"(")
+		if j < 0 {
+			return false
+		}
+		at := i + j
+		if at == 0 || !isIdentRune(rune(code[at-1])) {
+			return true
+		}
+		i = at + 1
+	}
+}
+
+func isIdentRune(r rune) bool {
+	return r == '_' || r == '$' || (r >= '0' && r <= '9') ||
+		(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }
 
 type fsWriteFinding struct {
@@ -130,14 +157,14 @@ func auditConsoleFilesystemWrites(
 		fsAware++
 
 		for _, name := range fsReadCalls {
-			if strings.Contains(code, name+"(") {
+			if callsByName(code, name) {
 				readers++
 				break
 			}
 		}
 
 		for _, name := range fsWriteCalls {
-			if !strings.Contains(code, name+"(") {
+			if !callsByName(code, name) {
 				continue
 			}
 			writesSeen[rel] = true

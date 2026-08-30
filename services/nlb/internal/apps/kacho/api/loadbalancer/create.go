@@ -201,6 +201,17 @@ func (u *CreateLoadBalancerUseCase) Execute(
 		return nil, err
 	}
 
+	// Площадка ZONAL-балансировщика (#1473) — зона резолвнутой подсети VIP.
+	// Берётся ЗДЕСЬ, а не спрашивается заново: `resolveSources` только что
+	// прочитал её у владельца подсети и там же сверил согласие семейств, поэтому
+	// второй вызов дал бы то же значение ценой лишнего обращения к соседу — и
+	// разошёлся бы с проверкой, если бы подсеть между ними изменилась.
+	//
+	// Для REGIONAL и EXTERNAL остаётся пусто: у anycast зональной координаты нет
+	// by construction, а зона внешнего VIP деривится платформой и наружу не
+	// выходит (placement-leak). Исключительность держит DB-CHECK.
+	lb.ZoneID = domain.ZoneID(zoneOfSpecs(lb.PlacementType, specs))
+
 	// NLB-1b MIGRATE (F2/NLB-1-51/52): security_group_ids peer-validate (INTERNAL-only
 	// + same-project existence via vpc; fail-closed). No region-coherence check.
 	if err := validateSecurityGroups(ctx, u.sgClient, lb.Type, string(lb.ProjectID), lb.SecurityGroupIDs); err != nil {
@@ -306,6 +317,25 @@ func (u *CreateLoadBalancerUseCase) resolveSources(ctx context.Context, lb domai
 		}
 	}
 	return nil
+}
+
+// zoneOfSpecs — площадка ZONAL-балансировщика: зона резолвнутой подсети VIP.
+//
+// Семейства к этому моменту уже обязаны сойтись в ОДНОЙ зоне (это проверяет
+// `resolveSources`), поэтому первая непустая и есть общая. Не-ZONAL размещение
+// зональной координаты не имеет: у REGIONAL её нет by construction, у EXTERNAL
+// она скрыта намеренно, — и оба случая закрываются здесь, а не у вызывающего,
+// чтобы «когда зона пуста» решалось в одном месте.
+func zoneOfSpecs(placement domain.PlacementType, specs []familyVIPSpec) string {
+	if placement != domain.PlacementZonal {
+		return ""
+	}
+	for _, fs := range specs {
+		if fs.zoneID != "" {
+			return fs.zoneID
+		}
+	}
+	return ""
 }
 
 // resolveOneSource — резолв одного семейства.
@@ -696,7 +726,7 @@ func (u *CreateLoadBalancerUseCase) finalizeCreate(
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceLoadBalancer, string(created.ID), string(created.ProjectID),
-		kachorepo.OutboxActionCreated, lbOutboxPayload(created),
+		kachorepo.OutboxActionCreated, kachorepo.LoadBalancerStatePayload(created),
 	); err != nil {
 		return nil, domain.FGARegisterIntent{}, time.Time{}, err
 	}

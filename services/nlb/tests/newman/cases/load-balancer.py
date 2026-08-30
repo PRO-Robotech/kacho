@@ -1347,8 +1347,11 @@ CASES.append(Case(
                  "  pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
                  "pm.test('error code 9 FAILED_PRECONDITION (peer-validate lane)', () => "
                  "  pm.expect(j.error && j.error.code).to.eql(9));",
-                 "pm.test('message mentions region not found', () => "
-                 "  pm.expect(((j.error && j.error.message) || '').toLowerCase()).to.include('not found'));",
+                 # Дословно текст владельца: `not found` в нижнем регистре зеленело на
+                 # сообщении о ЛЮБОМ ресурсе и заглавной `R` не различало вовсе.
+                 "pm.test('message names the region verbatim', () => "
+                 "  pm.expect((j.error && j.error.message) || '', JSON.stringify(j))"
+                 "    .to.eql('Region ' + pm.environment.get('garbageRegionId') + ' not found'));",
              ]),
     ],
 ))
@@ -1418,6 +1421,9 @@ CASES.append(conf_alreadyexists_block(
     prefix="NLB",
     create_path=_CREATE_BASE,
     name_template="conf-dup-{{runId}}",
+    # Текст владельца дословно: services/nlb/internal/apps/kacho/api/loadbalancer/create.go
+    # (обе точки отказа — предпроверка и вставка — пишут его побайтово одинаково).
+    refusal="NetworkLoadBalancer with name {name} already exists in project",
     body_extra={"regionId": "{{_suiteRegionId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
 ))
 
@@ -1487,7 +1493,7 @@ CASES.append(Case(
              body={"updateMask": "type"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('mentions immutable', () => "
-                          "  pm.expect((pm.response.json().message||'').toLowerCase()).to.include('immutable'));"]),
+                          "  pm.expect(pm.response.json().message||'', pm.response.text()).to.eql('type is immutable after NetworkLoadBalancer.Create'));"]),
         *_cleanup_lb(),
     ],
 ))
@@ -2615,7 +2621,8 @@ CASES.append(Case(
                  "  pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
                  "  pm.test('grpc 3 INVALID_ARGUMENT', () => pm.expect(pm.response.json().code).to.eql(3));",
                  "  pm.test('generic anti-oracle message (Illegal argument addressId)', () => "
-                 "    pm.expect((pm.response.json().message || '').toLowerCase()).to.include('illegal argument addressid'));",
+                 # Дословно: владелец пишет `Illegal argument addressId`.
+                 "    pm.expect(pm.response.json().message || '', pm.response.text()).to.eql('Illegal argument addressId'));",
                  "}",
              ])),
         *_cleanup_vpc(_VPC_ADDRESSES, "vpcAddrId"),
@@ -2641,7 +2648,8 @@ CASES.append(Case(
                  "} else {",
                  "  pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
                  "  pm.test('generic anti-oracle message (no cross-tenant existence leak)', () => "
-                 "    pm.expect((pm.response.json().message || '').toLowerCase()).to.include('illegal argument addressid'));",
+                 # Дословно: владелец пишет `Illegal argument addressId`.
+                 "    pm.expect(pm.response.json().message || '', pm.response.text()).to.eql('Illegal argument addressId'));",
                  "}",
              ]),
     ],
@@ -2665,7 +2673,8 @@ CASES.append(Case(
                  "} else {",
                  "  pm.test('rejected 400', () => pm.expect(pm.response.code).to.eql(400));",
                  "  pm.test('generic anti-oracle message (family/slot)', () => "
-                 "    pm.expect((pm.response.json().message || '').toLowerCase()).to.include('illegal argument addressid'));",
+                 # Дословно: владелец пишет `Illegal argument addressId`.
+                 "    pm.expect(pm.response.json().message || '', pm.response.text()).to.eql('Illegal argument addressId'));",
                  "}",
              ]),
     ],

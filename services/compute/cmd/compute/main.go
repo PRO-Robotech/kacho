@@ -41,6 +41,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+	"github.com/PRO-Robotech/kacho/pkg/operations/operationspb"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
@@ -49,6 +50,9 @@ import (
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/subscriptionjournal"
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
@@ -246,6 +250,20 @@ func runServe(cfg config.Config) error {
 	// второй раз — носитель сверял бы с каталогом экземпляр, которого на пути
 	// запроса нет.
 	listFilter := buildListFilter(cfg, authzConn, logger)
+
+	// Общий сервер потока изменений. Строится ДО подъёма слушателей: его сборка
+	// умеет отказать (негодное объявление журнала, невыбранная величина посадки,
+	// неработающий сужатель), а отказ обязан случиться раньше первого принятого
+	// соединения, а не первым запросом в бою.
+	//
+	// Сужатель — ТОТ ЖЕ объект, что сужает строки в обработчиках списков: за этим
+	// методом нет пообъектной проверки на крае (он `scope_filtered`), поэтому
+	// откатываться не на что, и второй экземпляр сужателя означал бы, что поток
+	// сужается не тем, чем сужаются списки.
+	subscribeSrv, err := buildSubscriptionServer(cfg, listFilter, logger)
+	if err != nil {
+		return err
+	}
 	// Величины сужателя выходят из процесса ТОЛЬКО здесь. Полос четыре: одна
 	// положительная и три — страница, ушедшая БЕЗ пообъектной проверки. Снимите
 	// эту строку — и полосы исчезнут с поверхности, а не станут нулями; ровно это
@@ -273,7 +291,7 @@ func runServe(cfg config.Config) error {
 	// что порт сверки существования живёт НА пуле, и принести его раньше значило бы
 	// принести порт, отвечающий «соединения нет». Открытие пула обратимо (`defer`
 	// выше) и дешевле ложной сверки.
-	desc, err := describe(cfg, logger, bootGate, repo.NewExistenceProbe(pool), authzCache.Install, metricsAdapter.Registerer())
+	desc, err := describe(cfg, logger, listFilter, bootGate, repo.NewExistenceProbe(pool), authzCache.Install, metricsAdapter.Registerer())
 	if err != nil {
 		return err
 	}
@@ -487,7 +505,7 @@ func runServe(cfg config.Config) error {
 				registerPublicServices(handler.PublicRegistrar(reg, productionMode), svcs, opsRepo, listFilter)
 			},
 			func(reg grpc.ServiceRegistrar) {
-				registerInternalServices(handler.InternalRegistrar(reg, productionMode), svcs)
+				registerInternalServices(handler.InternalRegistrar(reg, productionMode), svcs, subscribeSrv)
 			},
 		)
 		if serr != nil {
@@ -652,16 +670,22 @@ func requireAuthzEdgeTransport(cfg config.Config) error {
 		"credentials silently degrade to insecure, so the process starts and reports authz as enabled")
 }
 
-// requireDBSSLMode — DB-канал в любом production-режиме обязан быть TLS
-// (require|verify-ca|verify-full). sslmode=disable гонит KACHO_COMPUTE_DB_PASSWORD
-// и все данные строк открытым текстом по сети (CWE-319) — допустимо только в dev.
+// requireDBSSLMode — DB-канал в любом production-режиме обязан быть TLS.
+// sslmode=disable гонит KACHO_COMPUTE_DB_PASSWORD и все данные строк открытым
+// текстом по сети (CWE-319) — допустимо только в dev.
+//
+// Перечень безопасных значений — НЕ свой: он приходит из дома семантики строки
+// подключения (`pkg/db`), где объявлен один раз на всё дерево. Судится ИСХОД — режим той строки, что уходит в пул: у compute он
+// деривится из ручки (`baseDSN` подставляет `disable` на пустой), поэтому
+// сегодня совпадает с ней, но спрашивать надо строку. Страж, читающий ручку,
+// расходится с пулом молча при первом же изменении сборки DSN — так и вышло у
+// двух соседних сервисов, где режим приходит ещё и из сырого URL.
 func requireDBSSLMode(cfg config.Config) error {
-	switch cfg.DBSSLMode {
-	case "require", "verify-ca", "verify-full":
+	if mode := coredb.SSLModeFromDSN(cfg.DSN()); coredb.SSLModeSecure(mode) {
 		return nil
-	default:
-		return fmt.Errorf("production mode: KACHO_COMPUTE_DB_SSLMODE must be one of require|verify-ca|verify-full (got %q)", cfg.DBSSLMode)
 	}
+	return fmt.Errorf("production mode: KACHO_COMPUTE_DB_SSLMODE must be one of %s (got %q)",
+		strings.Join(coredb.SecureSSLModes(), "|"), cfg.DBSSLMode)
 }
 
 // requireListFilter — в любом production-режиме per-object FGA-фильтр обязан быть
@@ -1039,7 +1063,7 @@ func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo o
 	if svcs.quota != nil {
 		computev1.RegisterQuotaServiceServer(srv, svcs.quota)
 	}
-	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
+	operationpb.RegisterOperationServiceServer(srv, operationspb.NewHandler(opsRepo))
 }
 
 // buildListFilter собирает сужатель страницы (пообъектная видимость через iam
@@ -1237,7 +1261,17 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*ownerregister.
 // (`internal/check/permission_map.go`), а для потока журнала изменений — сужение по
 // правам вызывающего на КАЖДУЮ отдаваемую строку. Сетевая политика была бы
 // эшелонированием поверх этого, а не заменой ему.
-func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services) {
+func registerInternalServices(
+	srv grpc.ServiceRegistrar,
+	svcs *services,
+	subscribe subscriptionv1.InternalSubscriptionServiceServer,
+) {
+	// Поток изменений — ОБЩИЙ сервер (`pkg/subscription`), а не своя обёртка
+	// вокруг него: владелец регистрирует его самого. Регистрация безусловна —
+	// собирает сервер композиционный корень, и его сборка умеет ОТКАЗАТЬ, поэтому
+	// до сюда нулевой указатель не доходит. Условная регистрация означала бы, что
+	// подписка тихо отсутствует у процесса, чей дескриптор объявил ей срок жизни.
+	subscriptionv1.RegisterInternalSubscriptionServiceServer(srv, subscribe)
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInternalRealizationServiceServer(srv, handler.NewInternalRealizationHandler(svcs.realization))
 	computev1.RegisterInternalNodeOwnershipServiceServer(srv, handler.NewInternalNodeOwnershipHandler(svcs.nodeOwnership))
@@ -1254,4 +1288,51 @@ func quotaHandlerOrNil(g *quota.Guard) *handler.QuotaHandler {
 		return nil
 	}
 	return handler.NewQuotaHandler(g)
+}
+
+// buildSubscriptionServer собирает ОБЩИЙ сервер потока изменений для журнала compute.
+//
+// Владелец приносит сюда ЖУРНАЛ и величины ПОСАДКИ — и ничего больше: курсор,
+// граница устоявшегося, пределы, сужение по правам и порядок отказов
+// принадлежат общему серверу. Появись здесь возможность принести своё вместо
+// любого из них, механизм перестал бы быть общим, оставшись общим по имени.
+//
+// Отказ возвращается, а не логируется: величина посадки, о которой никто не
+// сказал, не должна обнаруживаться первым запросом в бою.
+func buildSubscriptionServer(
+	cfg config.Config,
+	listFilter *listnarrow.Narrower,
+	logger *slog.Logger,
+) (subscriptionv1.InternalSubscriptionServiceServer, error) {
+	gate, err := subscriptionjournal.ProjectGate()
+	if err != nil {
+		return nil, err
+	}
+	dsn := cfg.SingleConnDSN()
+	// Страж посадки: параметр ПУЛА в строке одиночного соединения означает отказ
+	// на подключении, а не на сборке, — и потому обязан быть пойман здесь, а не
+	// первой подпиской в бою. Предикат один на дерево (coredb.PoolParamFromDSN):
+	// он отдаёт ИМЯ ключа, поэтому отказ называет ручку, а не строку подключения,
+	// которая несёт пароль базы.
+	if key := coredb.PoolParamFromDSN(dsn); key != "" {
+		return nil, fmt.Errorf("поток изменений: строка подключения несёт параметр пула %q: "+
+			"вне пула это неизвестный PG-параметр и FATAL при подключении, "+
+			"а отказ наступил бы не на сборке, а у каждой подписки в бою", key)
+	}
+	srv, err := subscription.NewServer(subscription.Config{
+		Journal: subscriptionjournal.Journal(),
+		// Выделенное соединение вне пула: `LISTEN` требует своей сессии, а сессия
+		// из пула вернулась бы в него вместе с подпиской.
+		DSN:          dsn,
+		Narrower:     listFilter,
+		ProjectGate:  gate,
+		MaxStreams:   cfg.SubscriptionMaxStreams,
+		StreamBudget: cfg.SubscriptionStreamBudget,
+		IdlePoll:     cfg.SubscriptionIdlePoll,
+		Logger:       logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("subscription server: %w", err)
+	}
+	return srv, nil
 }

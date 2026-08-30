@@ -13,8 +13,9 @@
 // (`Listener.target_group_id`). Ни один из четырёх маршрутов край не
 // обслуживает; звать их — гарантированный 404.
 
-import { api } from "./client";
-import type { Operation, NetworkLoadBalancerList, ListenerList, TargetGroupList } from "./types";
+import { resourceApi } from "@shared/api/resources";
+
+import type { NetworkLoadBalancerList, ListenerList, TargetGroupList } from "./types";
 
 const NLB_LB = "/nlb/v1/networkLoadBalancers";
 const NLB_LISTENERS = "/nlb/v1/listeners";
@@ -44,27 +45,10 @@ export function targetGroupWiring(listeners: Record<string, unknown>[] | undefin
   return [...byID.values()];
 }
 
-export const loadBalancersApi = {
-  list: (q?: Record<string, string>) => api.list<NetworkLoadBalancerList>(NLB_LB, q),
-  get: (id: string) => api.get<Record<string, unknown>>(`${NLB_LB}/${id}`),
-  create: (body: unknown): Promise<{ operation: Operation }> => api.create(NLB_LB, body),
-  update: (id: string, body: unknown): Promise<{ operation: Operation }> => api.update(`${NLB_LB}/${id}`, body),
-  delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${NLB_LB}/${id}`),
-};
+// Своих глаголов у балансировщика нет (см. шапку), поэтому все три набора —
+// чистый конверт платформы без единой доменной добавки.
+export const loadBalancersApi = resourceApi<NetworkLoadBalancerList>(NLB_LB);
 
-export const listenersApi = {
-  list: (q?: Record<string, string>) => api.list<ListenerList>(NLB_LISTENERS, q),
-  get: (id: string) => api.get<Record<string, unknown>>(`${NLB_LISTENERS}/${id}`),
-  create: (body: unknown): Promise<{ operation: Operation }> => api.create(NLB_LISTENERS, body),
-  update: (id: string, body: unknown): Promise<{ operation: Operation }> =>
-    api.update(`${NLB_LISTENERS}/${id}`, body),
-  delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${NLB_LISTENERS}/${id}`),
-};
+export const listenersApi = resourceApi<ListenerList>(NLB_LISTENERS);
 
-export const targetGroupsApi = {
-  list: (q?: Record<string, string>) => api.list<TargetGroupList>(NLB_TG, q),
-  get: (id: string) => api.get<Record<string, unknown>>(`${NLB_TG}/${id}`),
-  create: (body: unknown): Promise<{ operation: Operation }> => api.create(NLB_TG, body),
-  update: (id: string, body: unknown): Promise<{ operation: Operation }> => api.update(`${NLB_TG}/${id}`, body),
-  delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${NLB_TG}/${id}`),
-};
+export const targetGroupsApi = resourceApi<TargetGroupList>(NLB_TG);

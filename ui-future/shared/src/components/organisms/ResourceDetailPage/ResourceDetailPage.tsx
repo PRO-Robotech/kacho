@@ -25,12 +25,14 @@ import { PlacementAnchor } from "@shared/components/molecules/PlacementAnchor";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { InlineResourceEditForm } from "@shared/components/organisms/InlineResourceEditForm";
 import { OperationsTab } from "@shared/components/organisms/OperationsTab";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { MonoValue } from "@shared/components/atoms/CopyableId/MonoValue";
 import { DeleteDialog } from "@shared/components/molecules/DeleteDialog";
 import { MoveStubDialog } from "@shared/components/molecules/MoveStubDialog";
-import { OperationDialog, extractOperationId } from "@shared/components/molecules/OperationDialog";
+import { OperationDialog } from "@shared/components/molecules/OperationDialog";
+import { resolveMutationResponse } from "@shared/lib/operation-outcome";
 import {
   DetailShell,
   DetailSurface,
@@ -44,6 +46,7 @@ import { api, ApiError } from "@shared/api/client";
 import { useProjectStore } from "@shared/lib/context-store";
 import { operationsListPath } from "@shared/lib/operations-subroute";
 import { getByPath, mutationBasePath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { resourceIsMoveCapable } from "@shared/components/molecules/RowActionsMenu";
 import { ReferrerLink } from "@shared/lib/spec-columns";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { errorText } from "@shared/lib/error-presentation";
@@ -153,10 +156,20 @@ export function ResourceDetailPage({
   // inline-edit не используется → всегда false.
   const editing = false;
 
+  // Карточка узнаёт о своих изменениях ПОТОКОМ (#1021). Опрос выключается
+  // только на доказанном покрытии — то есть когда владелец журнала сам назвал
+  // этот вид в своём словаре; иначе он остаётся прежним.
+  const { streamed } = useResourceStream({
+    specId: spec.id,
+    projectId: params.projectId ?? project?.id ?? null,
+    invalidate: [spec.id, "detail", uid],
+    enabled: !!uid,
+  });
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [spec.id, "detail", uid],
     queryFn: () => api.get<Record<string, unknown>>(`${spec.apiPath}/${uid}`),
-    refetchInterval: 3_000,
+    refetchInterval: streamed ? false : 3_000,
     enabled: !!uid,
     staleTime: 0,
   });
@@ -174,8 +187,13 @@ export function ResourceDetailPage({
     mutationFn: (verb: string) => api.action(`${spec.apiPath}/${uid}:${verb}`),
     onSuccess: (resp) => {
       setActionErr(null);
-      const id = extractOperationId(resp);
-      if (id) setActionOpId(id);
+      // Действие-глагол отвечает операцией так же, как правка и удаление.
+      // Ответ без неё у ресурса, который её объявил, — нарушение контракта:
+      // оно уходит в ту же строку отказа, что и отказ края, а не читается как
+      // успех (прежний ключ третьего исхода не знал).
+      const resolved = resolveMutationResponse(resp, spec.mutationsReturnOperation !== false);
+      if (resolved.kind === "operation") setActionOpId(resolved.opId);
+      else if (resolved.kind === "violation") setActionErr(resolved.message);
       else invalidate(spec.id, project?.id);
     },
     onError: (e) => {
@@ -249,11 +267,19 @@ export function ResourceDetailPage({
   );
   useBreadcrumb(breadcrumb);
 
-  // Move-capable: те же ресурсы, что в RowActionsMenu (Account/Project/Region/Zone/AddressPool — нет).
-  const moveCapable = useMemo(
-    () => !["accounts", "projects", "regions", "zones", "address-pools"].includes(spec.id),
-    [spec.id],
-  );
+  // «Перемещать нечем» решает ОДИН предикат на консоль — тот же, что у меню
+  // строки списка.
+  //
+  // Здесь стоял СОБСТВЕННЫЙ перечень из пяти имён и комментарий «те же ресурсы,
+  // что в RowActionsMenu». Комментарий был ложен: в каноне имён тринадцать, и
+  // восьми — compute-instances, disk-types, registries, repositories, snapshots,
+  // tags, users, volumes — перечень не знал. На карточке этих восьми арендатору
+  // предлагалась заглушка, которую строка списка того же ресурса уже подавляла.
+  //
+  // Второго слагаемого канона — адреса коллекции — перечень не имел вовсе,
+  // поэтому читающие близнецы каталога размещения (две спеки об одном доменном
+  // объекте) обходили его целиком.
+  const moveCapable = resourceIsMoveCapable(spec);
 
   const overviewActions = useMemo(() => {
     const kebabItems: MenuProps["items"] = [
@@ -722,6 +748,10 @@ function JsonIntTab({ path, queryKey }: { path: string; queryKey: unknown[] }) {
     queryFn: () => api.get<unknown>(path),
     // JSON-таб — read-only снимок; частый поллинг только гонял бы Monaco. Обновляем
     // существенно реже (перекормка редактора вместо реального обновления UX).
+    // поллинг остаётся: это ВНУТРЕННЯЯ проекция ресурса (`internalGetPath`,
+    // слушатель :9091), и в поток она не попадает — журнал несёт публичное
+    // состояние ресурса, а инфраструктурные поля живут только во внутреннем
+    // ответе (two-projection).
     refetchInterval: 30_000,
     staleTime: 10_000,
   });

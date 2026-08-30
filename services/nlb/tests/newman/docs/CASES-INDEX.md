@@ -288,6 +288,7 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-GET-NEG-NF-VALID-PREFIX` — NEG/P1 — well-formed but missing → NotFound
 - `*-LST-NEG-UNROUTED-FAIL-CLOSED` — NEG,SEC/P1 — путь без записи в каталоге прав → 403 fail-closed (Verifies REQ-OP-LST-01)
 - `*-CANCEL-STATE-ALREADY-DONE` — STATE,NEG/P1 — Cancel already-done → FailedPrecondition (Verifies REQ-OP-CANCEL-DONE)
+- `*-CANCEL-IDEMPOTENT` — IDM,STATE/P1 — повторная отмена возвращает ТОТ ЖЕ исход, что первая; отмена идемпотентна на уже отменённой операции у всех доменов
 
 ---
 

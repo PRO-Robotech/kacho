@@ -411,14 +411,24 @@ compute), которое γ будет читать для selector-матчин
 
 ## Подтверждённые отступления, вынесенные в issues (здесь — указатель)
 
-- **`OperationService.Get`/`Cancel` с нероутящимся id** — opsproxy края парсит
-  первые 3 символа id и на любой нероутящийся отвечает `400 INVALID_ARGUMENT
-  "operation_id has unknown prefix"`. По конвенции by-lane split
-  well-formed-но-нерезолвящийся own-owned id — это direct-read lane, то есть
-  `404 NotFound "Operation <X> not found"`; malformed — `400 InvalidArgument`.
-  Сейчас различия нет, оба схлопнуты в 400 — отступление по коду. Предмет живёт
+- **`OperationService.Get`/`Cancel` с нероутящимся id** — opsproxy края читает
+  префикс id и на нераспознанный отвечает `400 INVALID_ARGUMENT` с текстом
+  `invalid operation id "<X>"` (кавычки двойные — их ставит глагол `%q`
+  производителя). По конвенции by-lane split well-formed-но-нерезолвящийся
+  own-owned id — это direct-read lane, то есть `404 NOT_FOUND` с текстом
+  `operation <X> not found`; malformed — `400 INVALID_ARGUMENT`. Предмет живёт
   **на крае**, не здесь, и общий для всех сервисов; парная запись —
   `services/vpc/docs/engineering/architecture/07-known-divergences.md`.
+
+  > Здесь стояла другая цитата — текст, которого край НЕ ОТДАЁТ: производителей у
+  > той строки в дереве было ноль. Дословно она здесь не повторяется: цитата в
+  > обратных кавычках читается как утверждение о поведении, и разбор ошибки стал бы
+  > её повторением. Запись известных
+  > расхождений — то место, куда идут именно за наблюдаемым поведением, поэтому
+  > читатель сверял ответ продукта с ней, совпадения не находил и заключал, что
+  > расхождение чинили; либо наоборот — правил текст под документ. Снято по #1400.
+  > Различие полос при этом остаётся отступлением по коду: край схлопывает обе
+  > в 400, и это его действующее, записанное решение (`gateway/internal/opsproxy`).
 
 > Первым пунктом здесь стоял формат own-owned id → `NotFound`. Снят вместе с §1:
 > расхождение закрыто кодом, а указатель на несуществующее расхождение ставит в
@@ -454,10 +464,10 @@ tuple'ов никто не эмитит, поэтому вопрос «viewer н
 > авторизация сводится к знанию непрозрачного id, а усиление — «поведенческое
 > изменение замороженного контракта, вне scope». Усиление **приземлилось**: доступ
 > привязан к принципалу, создавшему операцию, предикатом владельца **в самом SQL**
-> (`GetOwned` / `CancelOwned`, `internal/handler/operation_handler.go`); запрос без
+> (`GetOwned` / `CancelOwned`, `pkg/operations/operationspb/handler.go`); запрос без
 > опознанного принципала владельцем не считается; не-владелец и несуществующая
 > операция отвечают **одинаковым** `NotFound`, поэтому ответ не сообщает, существует
-> ли операция вообще. Замки: `operation_handler_test.go`,
+> ли операция вообще. Замки: `pkg/operations/operationspb/handler_test.go`,
 > `operation_ownership_forged_admin_test.go`.
 >
 > Оставлять запись в прежнем виде было опаснее, чем не иметь её вовсе: реестр
@@ -543,7 +553,7 @@ sentinel→code в отдельный слой (если когда-либо) �
 
 - **`Instance.host_id` / `host_group_id` — убраны из публичного контракта
   (resolved).** CLAUDE.md hard-rule относит физический хост к internal-only.
-  Публичный proto-контракт `computev1.Instance` был bump-нут (kacho-proto,
+  Публичный proto-контракт `computev1.Instance` был bump-нут (proto/,
   PR `PRO-Robotech/kacho-compute#76`) — оба placement-поля из него **удалены**, а
   `protoconv.Instance` больше их не мапит. Прежняя редакция утверждала, что доменные
   поля `domain.Instance.HostID`/`HostGroupID` и колонки БД «сохранены (internal-only,
@@ -568,7 +578,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   `mapRepoErr`/`invalidArg` дублируют kacho-vpc.** Пре-существующие структурные
   паттерны, намеренно зеркалящие kacho-vpc (cross-service консистентность).
   Разбиение на UseCase-per-RPC / CQRS-порты, вынос proto→domain конверсии в handler
-  и подъём error-mapping в `kacho-corelib` — **workspace-wide** согласованная
+  и подъём error-mapping в `pkg/` — **workspace-wide** согласованная
   правка (vpc+compute одновременно, иначе рассинхрон), не compute-only security-фикс.
 
 ## Security-hardening audit r6 2026-07-05 (branch `sec-hardening-r6-2026-07-05`)
@@ -583,7 +593,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   (`validateAuthMode`/`requireDBSSLMode`/`config.Config.Validate`/`RequireIAM`)
   реально взводились. `DB_SSLMODE` прокинут и в migrate-initContainer. Dev-стенд
   переключается явным `--set auth.mode=dev --set mtls.enable=false --set db.sslMode=disable`.
-  `helm template`/`helm lint` зелёные. **Propagation:** umbrella (`kacho-deploy`)
+  `helm template`/`helm lint` зелёные. **Propagation:** umbrella (`kacho-umbrella`, `deploy/helm/umbrella/`)
   `values.dev.yaml` должен добавить `compute.auth.mode=dev` + `db.sslMode=disable`
   при re-vendor'е чарта (иначе dev-стенд унаследует новый production-default и упадёт
   на `requireDBSSLMode`); `values.prod.yaml` — заменить `env.KACHO_COMPUTE_DB_SSLMODE`
@@ -687,7 +697,8 @@ sentinel→code в отдельный слой (если когда-либо) �
   `domain.Instance/Disk/Image/Snapshot` — плоские структуры string/int; вся
   invariant/format-валидация в service-слое через `corevalidate`. Формально это
   отступление от `evgeniy`-регламента (self-validating domain newtypes). Dependency
-  rule НЕ нарушен (domain импортирует только stdlib + kacho-proto — разрешено
+  rule НЕ нарушен (domain импортирует только stdlib + сгенерённые стабы
+  `pkg/api/...` — разрешено
   `architecture.md`); это modelling/robustness-gap, а не layering-leak. Паттерн
   зеркалит **все** kacho-* сервисы (cross-service консистентность). Введение
   `domain.ZoneID`/`NewInstance(...)` — **workspace-wide** согласованная правка
@@ -696,7 +707,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   Уже задокументировано в r3-секции («InstanceService — крупный god-struct»);
   разбиение на UseCase-per-RPC + Reader/Writer split — workspace-wide. (findings7 #8)
 - **`mapRepoErr`/`stripSentinel`/tenant-interceptor/JSONB-helpers/sentinel-set —
-  byte-for-byte копии kacho-vpc, не вынесены в `kacho-corelib`.** Файлы сами это
+  byte-for-byte копии kacho-vpc, не вынесены в `pkg/`.** Файлы сами это
   фиксируют («копия VPC» / «Зеркалит kacho-vpc»). Часть копий несёт security-фиксы
   (CWE-388 transient-mask, CWE-209 upstream-leak) → drift между копиями не ловится
   компилятором. Подъём generic-логики в corelib (`serviceerr`/`tenant`/`db`) —
@@ -790,7 +801,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   workspace-wide решения: см. секцию **r7b** (findings7 #1/#7/#8/#9) и **r3**
   («InstanceService — god-struct», «копии VPC»). Это не compute-only фиксы: разбиение
   на UseCase-per-RPC + Reader/Writer split, self-validating newtypes, viper/koanf-config
-  и подъём generic-helper'ов в `kacho-corelib` — координированные правки по всем kacho-*
+  и подъём generic-helper'ов в `pkg/` — координированные правки по всем kacho-*
   сервисам сразу (иначе cross-service рассинхрон). Здесь — только указатель, без
   дублирования. (findings8 #2–#6)
 
@@ -1000,9 +1011,20 @@ field: \"<field>\""`, и **никогда** не игнорируется мол
 
 **Чем закреплено, что имя не вернётся молча.** Оно стоит в надгробии
 `retiredRPCSurface` (`internal/repohygiene`), а снятие файла контракта объявлено в
-`proto/declared-breaks.yaml` с причиной и предметом. Ось срока жизни стрима у
-носителя объявлена **изъятием** с причиной «серверных стримов сервис не служит»:
-необъявленная ось роняет старт, поэтому молчание здесь невозможно by construction.
+`proto/declared-breaks.yaml` с причиной и предметом.
+
+**Что изменилось после снятия — сервис снова служит поток, но НЕ СВОЙ.** Ось срока
+жизни стрима у носителя была объявлена **изъятием** с причиной «серверных стримов
+сервис не служит»; с провязкой ОБЩЕГО для платформы потока
+(`InternalSubscriptionService.Subscribe`, реализация — `pkg/subscription`) изъятие
+стало бы ложью о дереве, и ось объявлена **величиной**. Необъявленная ось роняет
+старт, поэтому молчание здесь невозможно by construction — а обе стороны, изъятие и
+величина, обязаны меняться в тот же коммит, что и служимый набор.
+
+Это не возвращение снятого: форма объявлена ОДИН раз на платформу и реализована в
+фундаменте, а сервис приносит ей только объявление своего журнала. Ровно это
+различие и делало снятие правильным — снималась вторая форма, а не подписка как
+таковая.
 
 **Урок, ради которого запись не удалена целиком.** Поверхность была полной и
 качественной — сервер, сужение по правам на каждую отдаваемую строку, предел

@@ -17,7 +17,7 @@ search_path устанавливается через libpq-параметр `op
 | Partial UNIQUE index | `security_groups_one_default_per_network` | один default-SG на сеть |
 | Computed column | `subnets.v4_cidr_primary` / `v6_cidr_primary`, `addresses.internal_subnet_id` | для использования в EXCLUDE / UNIQUE / FK |
 | `jsonb_path_ops` GIN index | `address_pools_selector_labels_gin` | быстрые `@>` запросы |
-| `LISTEN/NOTIFY` | `vpc_outbox_notify_trg`, `fga_register_outbox_notify_trg` | in-cluster канал доменного outbox-журнала (Watch RPC не публикуется) + FGA register-drainer |
+| `LISTEN/NOTIFY` | `vpc_outbox_notify_trg`, `fga_register_outbox_notify_trg` | in-cluster канал доменного outbox-журнала (он же журнал подписки, проецируемый наружу краем) + FGA register-drainer |
 | `xmin::text` | optimistic locking (SecurityGroup.UpdateRules) | zero-overhead version-check |
 | `FOR UPDATE SKIP LOCKED` | IPv4 freelist / IPv6 released-offsets pop | contention-free аллокация из пула |
 
@@ -36,7 +36,7 @@ helper-функции). Дальше — обычные инкрементные
 
 | # | Файл | Что |
 |---|---|---|
-| 0001 | `0001_initial.sql` | базовая схема — 19 таблиц: `operations`, `networks`, `route_tables`, `subnets`, `addresses`, `address_references`, `security_groups`, `gateways`, `network_interfaces`, `address_pools`, `address_pool_network_default`, `address_pool_free_ips`, `ipv6_pool_cursors`, `ipv6_allocated_ips`, `ipv6_released_offsets`, `vpc_outbox`, `vpc_watch_cursors` и две, дропнутые следующей же миграцией (см. 0002); CHECK/FK/UNIQUE/EXCLUDE, generated columns, триггеры, `kacho_labels_valid`. Все id-колонки — `TEXT` |
+| 0001 | `0001_initial.sql` | базовая схема — 19 таблиц: `operations`, `networks`, `route_tables`, `subnets`, `addresses`, `address_references`, `security_groups`, `gateways`, `network_interfaces`, `address_pools`, `address_pool_network_default`, `address_pool_free_ips`, `ipv6_pool_cursors`, `ipv6_allocated_ips`, `ipv6_released_offsets`, `vpc_outbox`, `vpc_watch_cursors` (снята миграцией `20260828114800_drop_watch_cursors.sql`, kacho#1148 — позиция подписки принадлежит клиенту, серверных курсоров нет) и две, дропнутые следующей же миграцией (см. 0002); CHECK/FK/UNIQUE/EXCLUDE, generated columns, триггеры, `kacho_labels_valid`. Все id-колонки — `TEXT` |
 | 0002 | `0002_drop_override_and_cloud_pool_selector.sql` | DROP `address_pool_address_override` + `cloud_pool_selector` — per-address override RPC и cloud-selector-шаг IPAM cascade упразднены |
 | 0003 | `0003_drop_security_group_status.sql` | DROP `security_groups.status` — у SG нет provisioning-lifecycle, статус никем не наблюдался |
 | 0004 | `0004_address_pool_cidrs.sql` | нормализованная child-таблица `address_pool_cidrs` + EXCLUDE gist — CIDR пулов не пересекаются per `kind` (declarative, race-free) |

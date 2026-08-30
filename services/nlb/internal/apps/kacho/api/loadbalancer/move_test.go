@@ -5,7 +5,6 @@ package loadbalancer
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"testing"
 
@@ -213,24 +212,17 @@ func TestMove_DestCheckUnavailableFailsClosed(t *testing.T) {
 	require.Equal(t, domain.ProjectID("prj-src"), repo.lbs[lbID].ProjectID)
 }
 
-// TestLbMovedPayload_OldProjectReachesConsumer — regression for outbox
-// payload-key drift (5th audit, HIGH). The MOVED producer must emit the source
-// project under the canonical `old_project_id` key that the Subscribe consumer
-// parses into ResourceLifecycleEvent.OldProjectId (kacho-iam tears down stale
-// owner/hierarchy tuples on the OLD project). Previously it emitted
-// `src_project_id`, which no consumer reads → OldProjectId always empty.
-// Producer helper → shared parser (the SAME parser the consumer uses) proves both
-// sides agree on the key name.
-func TestLbMovedPayload_OldProjectReachesConsumer(t *testing.T) {
-	t.Parallel()
-	m := lbMovedPayload("nlb-1", "prj-src", "prj-dst")
-	require.NotContains(t, m, "src_project_id", "legacy key must not be emitted")
-
-	raw, err := json.Marshal(m)
-	require.NoError(t, err)
-	parsed, err := kachorepo.ParseLifecyclePayload(raw)
-	require.NoError(t, err)
-	require.Equal(t, "prj-src", parsed.OldProjectID,
-		"consumer must recover source project from MOVED payload")
-	require.Equal(t, "prj-dst", parsed.NewProjectID)
-}
+// Проба `TestLbMovedPayload_KeysOnTheWire` СНЯТА вместе со своим предметом
+// (#1551).
+//
+// Она утверждала имена ключей `old_project_id` / `new_project_id` у нагрузки
+// переезда — то есть у МИНИМАЛЬНОГО СНИМКА, которого больше нет: переезд кладёт
+// полное состояние тем же строителем, что и остальные шесть точек вида.
+//
+// `old_project_id` при этом СНЯТ осознанно, а не потерян: читателя у него не было
+// ни одного, а состояние события несёт проект ЦЕЛЕВОЙ — прежний у подписчика уже
+// есть, это то, что лежит в его собственном состоянии до применения события.
+// Разбор — в соседнем `payloads.go` этого пакета.
+//
+// Снято вместе с предметом, а не ослаблено: проба, у которой исчез вход, не
+// краснеет и не зеленеет — она молчит, продолжая считаться исполненной.

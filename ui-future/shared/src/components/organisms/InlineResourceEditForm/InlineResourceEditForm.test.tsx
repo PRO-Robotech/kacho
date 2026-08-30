@@ -151,8 +151,11 @@ describe("InlineResourceEditForm", () => {
     expect(toastSuccess).not.toHaveBeenCalled();
   });
 
-  it("синхронный ответ без операции закрывает форму и обновляет список", async () => {
-    const { onCancel, onSuccess } = show();
+  // Пара, а не одно утверждение: «ответ без операции» значит разное у ресурса,
+  // который её обещал, и у того, который не обещал, — и решает это объявление
+  // ресурса, а не форма.
+  it("синхронный ответ закрывает форму у ресурса, который операции не обещал", async () => {
+    const { onCancel, onSuccess } = show({ spec: spec({ mutationsReturnOperation: false }) });
 
     fireEvent.change(field("было"), { target: { value: "стало" } });
     save();
@@ -160,6 +163,23 @@ describe("InlineResourceEditForm", () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     expect(invalidate).toHaveBeenCalledWith("networks", "prj-1");
     expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("ответ без операции у ресурса, который её обещал, — отказ, а не успех", async () => {
+    const { onCancel, onSuccess } = show();
+
+    fireEvent.change(field("было"), { target: { value: "стало" } });
+    save();
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "Сохранить сеть: сервер не вернул операцию — подтвердить выполнение невозможно",
+      ),
+    );
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(invalidate).not.toHaveBeenCalled();
   });
 
   it("отказ края показан текстом сервера, без кода протокола, форма остаётся открытой", async () => {

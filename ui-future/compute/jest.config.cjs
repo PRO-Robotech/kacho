@@ -10,7 +10,26 @@ module.exports = {
   testEnvironment: "jsdom",
   extensionsToTreatAsEsm: [".ts", ".tsx"],
   setupFilesAfterEnv: ["<rootDir>/../shared/src/test/setup.ts"],
-  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
+  // Общая суита исполняется И ЗДЕСЬ. Модуль standalone: у него собственный
+  // `node_modules` и собственный замок версий, поэтому прогон общей суиты
+  // участниками рабочей области (vpc/iam/system) о ЕГО посадке не утверждает
+  // ничего — они разрешают зависимости из корневого дерева, а оно с этим
+  // расходится. Модуль при этом отгружает пользователю почти целиком общий код
+  // через тонкие прослойки, и до этой строки тот код ни разу не проверялся под
+  // теми версиями, с которыми едет. Тот же порядок уже у storage (#407) и nlb
+  // (#408). Держит `src/test/shared-suite-is-run-here.test.ts` — он спрашивает
+  // у самого jest, что тот НАХОДИТ, а не читает эти строки.
+  roots: ["<rootDir>/src", "<rootDir>/../shared/src"],
+  testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}", "<rootDir>/../shared/src/**/*.test.{ts,tsx}"],
+  // У `ui-future/shared` собственных node_modules нет: его исходники — часть
+  // сборки КАЖДОГО remote'а, и зависимости им даёт remote (так же это делает
+  // vite, для которого `@shared/*` — обычный alias внутри одного графа). Без
+  // этой строки импорт shared-файла из непрямой зависимости (`clsx`,
+  // `tailwind-merge`, …) роняет СУИТУ ЦЕЛИКОМ сообщением «Cannot find module …
+  // from ../shared/src/…», то есть не про свой предмет. Точечные отображения
+  // синглтонов ниже это НЕ покрывают — они прибивают перечисленные пакеты, а
+  // здесь речь о произвольной транзитивной зависимости общего кода.
+  moduleDirectories: ["node_modules", "<rootDir>/node_modules"],
   moduleNameMapper: {
     // @ant-design/icons → статический стаб (kacho#7): Proxy-мок в setup.ts не давал
     // статических named-экспортов → ESM-линкер `import { XOutlined }` висел под vm-modules.

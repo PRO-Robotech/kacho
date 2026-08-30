@@ -87,6 +87,10 @@ export function AccessBindingsPage() {
         include_revoked: includeRevoked,
       }),
     enabled: !!accountId,
+    // поллинг остаётся: журнала у iam нет — среди владельцев глагола подписки
+    // его не значится (владельцев называет карта предметов, `STREAM_SUBJECTS`).
+    // Подписаться не на что: ось `owner` приняла бы только объявленного
+    // посадкой владельца.
     refetchInterval: 5_000,
     staleTime: 0,
   });
