@@ -231,15 +231,19 @@ sequenceDiagram
 Поле `metadata` (`google.protobuf.Any`) заполняется **сразу** при постановке операции и несёт
 id целевого ресурса — так клиент узнаёт `id` ещё **до** завершения `Create`.
 
+Ниже — метадата операций **kacho-compute**. Блочное хранение (`Volume` / `Image` / `Snapshot`)
+принадлежит kacho-storage: его операции несут `sop`-префикс, метадату
+`kacho.cloud.storage.v1.*` и описаны документацией владельца.
+
 <table>
   <thead><tr><th>Тип метадаты (<code>@type</code>)</th><th>Поле(-я)</th></tr></thead>
   <tbody>
     <tr><td><code>CreateInstanceMetadata</code></td><td><code>instanceId</code></td></tr>
-    <tr><td><code>CreateDiskMetadata</code></td><td><code>diskId</code></td></tr>
-    <tr><td><code>CreateImageMetadata</code></td><td><code>imageId</code></td></tr>
-    <tr><td><code>CreateSnapshotMetadata</code></td><td><code>snapshotId</code>, <code>diskId</code></td></tr>
-    <tr><td><code>AttachInstanceDiskMetadata</code></td><td><code>instanceId</code>, <code>diskId</code></td></tr>
+    <tr><td><code>UpdateInstanceMetadata</code></td><td><code>instanceId</code></td></tr>
     <tr><td><code>DeleteInstanceMetadata</code></td><td><code>instanceId</code></td></tr>
+    <tr><td><code>StartInstanceMetadata</code> / <code>StopInstanceMetadata</code> / <code>RestartInstanceMetadata</code></td><td><code>instanceId</code></td></tr>
+    <tr><td><code>AttachInstanceDiskMetadata</code></td><td><code>instanceId</code>, <code>volumeId</code></td></tr>
+    <tr><td><code>DetachInstanceDiskMetadata</code></td><td><code>instanceId</code>, <code>volumeId</code></td></tr>
   </tbody>
 </table>
 
