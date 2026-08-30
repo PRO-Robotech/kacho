@@ -496,7 +496,7 @@ kacho-geo:
   env:
     KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute,spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb,spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage,spiffe://kacho.cloud/ns/kacho/sa/kacho-registry"
   db:
-    sslmode: require
+    sslMode: require
   mtls:
     enable: true
     edges:
@@ -509,7 +509,7 @@ kacho-geo:
   dataMigration:
     enabled: false
     source:
-      sslmode: require
+      sslMode: require
 
 # ─── kacho-iam (authz authority + identity tier) ────────────────────────────
 kacho-iam:
@@ -719,7 +719,7 @@ kacho-nlb:
     # because the correct host happened to come from the dev profile, which this
     # production layer does not inherit.
     host: kacho-umbrella-pg-nlb
-    sslmode: require
+    sslMode: require
     # No plaintext password in values — reference an existing Secret (key
     # `password`). Operator provisions kacho-umbrella-pg-nlb (or override the
     # name per cluster). Same Secret the pg-nlb instance is configured with below.
@@ -902,7 +902,7 @@ registry:
   db:
     # Chart default host (kacho-umbrella-pg-registry) and existingSecret are
     # already correct for this umbrella — only the ssl floor needs stating.
-    sslmode: require
+    sslMode: require
   authz:
     # Restated (they ARE the chart defaults) because all three are fail-closed:
     # an empty address does not degrade, it refuses to boot or refuses the call.

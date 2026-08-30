@@ -1605,7 +1605,7 @@ kacho-nlb:
     port: 5432
     user: kacho_nlb
     name: kacho_nlb
-    sslmode: disable
+    sslMode: disable
     existingSecret: kacho-umbrella-pg-nlb
     existingSecretKey: password
   peers:

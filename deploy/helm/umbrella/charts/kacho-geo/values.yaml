@@ -62,7 +62,7 @@ db:
   passwordSecretName: kacho-umbrella-pg-geo
   passwordSecretKey: password
   # sslmode for the DSN. dev → disable; prod profile overrides to require.
-  sslmode: disable
+  sslMode: disable
   # maxConns — ширина пула pgx на ОДНУ реплику (KACHO_GEO_DB_MAX_CONNS).
   #
   # Объявлена, а не унаследована умолчанием драйвера (#709). Умолчание —
@@ -183,7 +183,7 @@ dataMigration:
     name: kacho_compute
     passwordSecretName: kacho-umbrella-pg-compute
     passwordSecretKey: password
-    sslmode: disable
+    sslMode: disable
   # target = kacho_geo Postgres (this service's DB). Reuses db.* by default; the
   # template falls back to db.* when target.* is empty.
   resources:

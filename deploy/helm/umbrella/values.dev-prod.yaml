@@ -220,7 +220,7 @@ compute:
 kacho-geo:
   authMode: production           # anonymous fail-closed on BOTH listeners
   db:
-    sslmode: require
+    sslMode: require
   # ВТОРОЙ клиент базы у этого чарта — Job разовой работы переноса географии. Он
   # ходит НЕ в свою базу, а в pg-compute, и строку соединения собирает из
   # собственного блока `dataMigration.source`, а не из `db` выше. Умолчание чарта
@@ -238,7 +238,7 @@ kacho-geo:
   # (TestProductionStacks_DeclareEncryptedDatabaseChannel), а не этот комментарий.
   dataMigration:
     source:
-      sslmode: require
+      sslMode: require
   # trusted-forwarder-SANs (gateway SPIFFE) inherited from values.dev.yaml env.
 
 # ─── kacho-storage ──────────────────────────────────────────────────────────
@@ -471,7 +471,7 @@ kacho-nlb:
       trustedForwarderSANs:
         - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
   db:
-    sslmode: require
+    sslMode: require
 
 # ─── kacho-registry ─────────────────────────────────────────────────────────
 # production-strict: registry's DB-sslmode guard fires ONLY in production-strict (plain
@@ -483,7 +483,7 @@ kacho-nlb:
 registry:
   authMode: production-strict
   db:
-    sslmode: require
+    sslMode: require
   authz:
     breakglass: false
   # Data-plane proxy (KACHO_REGISTRY_DATAPLANE_ADDR is always a non-empty listen addr →

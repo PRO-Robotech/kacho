@@ -102,7 +102,7 @@ func up() error { return goose.Up(db, ".") }`,
 		},
 		{
 			name: "мигратор без стража вовсе — молчание",
-			src: head + `func up() error { return goose.UpContext(ctx, db, ".") }`,
+			src:  head + `func up() error { return goose.UpContext(ctx, db, ".") }`,
 			want: false,
 		},
 	}

@@ -532,7 +532,7 @@ registry:
     tag: main-b622b388
   authMode: production
   db:
-    sslmode: disable
+    sslMode: disable
   authz:
     iamGrpcAddr: kacho-iam-internal.kacho.svc:9091
     iamProjectGrpcAddr: kacho-iam.kacho.svc:9090
