@@ -11,9 +11,13 @@
 //     SetReference CAS on existing vpc.Address) ИЛИ auto-alloc via
 //     vpc.InternalAddressService.AllocateExternalIP/AllocateInternalIP.
 //   - Update              — async; mutable fields only (name/description/labels/
-//     default_target_group_id). Immutable load_balancer_id/
-//     protocol/port/ip_version/address_id rejected sync с текст ошибки по конвенции Kachō
-//     `"<field> is immutable after Listener.Create"`.
+//     default_target_group_id). Immutable load_balancer_id / protocol / port /
+//     project_id rejected sync с текстом по конвенции Kachō
+//     `"<field> is immutable after Listener.Create"`; у project_id к зачину
+//     добавлен следующий шаг — `NetworkLoadBalancerService.Move` на родителе
+//     (#1671). Здесь перечислялись ip_version/address_id — их в immutable-списке
+//     нет с тех пор, как VIP консолидирован на LoadBalancer: путь маски с таким
+//     именем НЕизвестен, а не неизменяем.
 //   - Delete              — async; free VIP back to pool (auto-alloc) либо
 //     clear used_by (BYO); DELETE listener row; emit DELETED + LB UPDATED.
 //   - ListOperations      — sync; per-resource history wrapper над

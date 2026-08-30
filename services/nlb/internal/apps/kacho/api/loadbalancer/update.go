@@ -103,9 +103,13 @@ var immutableUpdateFields = map[string]string{
 	// на другую площадку. Без записи здесь маска отвергала бы zone_id как
 	// «неизвестное поле», то есть говорила бы «такого поля нет» вместо «его
 	// нельзя менять».
-	"zone_id":       "zone_id is immutable after NetworkLoadBalancer.Create",
-	"region_id":     "region_id is immutable after NetworkLoadBalancer.Create",
-	"project_id":    "project_id is immutable; use NetworkLoadBalancerService.Move",
+	"zone_id":   "zone_id is immutable after NetworkLoadBalancer.Create",
+	"region_id": "region_id is immutable after NetworkLoadBalancer.Create",
+	// Область владения (#1671): отказ несёт зачин конвенции Kachō
+	// («<поле> is immutable after <R>.Create») И называет глагол переноса.
+	// Прежде здесь стоял зачин без «after …Create» — тот же запрет звучал у
+	// трёх ресурсов nlb по-разному, то есть продукт противоречил сам себе.
+	"project_id":    "project_id is immutable after NetworkLoadBalancer.Create; use NetworkLoadBalancerService.Move",
 	"v4_source":     "v4_source is immutable after NetworkLoadBalancer.Create",
 	"v6_source":     "v6_source is immutable after NetworkLoadBalancer.Create",
 	"v4_address_id": "v4_address_id is immutable after NetworkLoadBalancer.Create",

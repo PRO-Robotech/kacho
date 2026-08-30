@@ -34,8 +34,10 @@ import (
 //     immutable из тела silently игнорируются (parity с loadbalancer/targetgroup).
 //     - unknown field → InvalidArgument "field '<X>' is not recognised in update_mask".
 //     - immutable field (load_balancer_id / protocol / port / project_id)
-//     → InvalidArgument
-//     по конвенции Kachō `"<field> is immutable after Listener.Create"`.
+//     → InvalidArgument по конвенции Kachō
+//     `"<field> is immutable after Listener.Create"`; у project_id к зачину
+//     добавлен следующий шаг — переезд РОДИТЕЛЯ через
+//     NetworkLoadBalancerService.Move (#1671).
 //  4. Validate per-mask field (name regex, labels schema, etc).
 //  5. default_target_group_id same-region precheck  — async-soft
 //     либо sync; здесь делаем sync через kacho-nlb local TG.Get (same-DB
@@ -117,11 +119,20 @@ var listenerMutableMaskPaths = map[string]struct{}{
 // VIP консолидирован на LoadBalancer: address_id/ip_version/subnet_id/region_id
 // сняты с листенера (proto reserved), поэтому в immutable-списке их больше нет —
 // неизвестный путь → "field '<x>' is not recognised in update_mask".
-var listenerImmutableMaskPaths = map[string]struct{}{
-	"load_balancer_id": {},
-	"protocol":         {},
-	"port":             {},
-	"project_id":       {},
+// Форма — карта «поле → дословный текст», как у loadbalancer/targetgroup: у
+// области владения (#1671) следующий шаг ЕСТЬ, и назвать его общим шаблоном
+// нельзя. У остальных трёх полей глагола смены не существует вовсе, поэтому их
+// отказ следующего шага не называет — приписать его значило бы обещать путь,
+// которого нет.
+var listenerImmutableMaskPaths = map[string]string{
+	"load_balancer_id": "load_balancer_id is immutable after Listener.Create",
+	"protocol":         "protocol is immutable after Listener.Create",
+	"port":             "port is immutable after Listener.Create",
+	// project_id денормализован из родителя и синхронизируется каскадом
+	// NetworkLoadBalancerService.Move (listener.proto §project_id). Своего
+	// глагола переноса у листенера нет — отказ называет глагол РОДИТЕЛЯ.
+	"project_id": "project_id is immutable after Listener.Create; " +
+		"use NetworkLoadBalancerService.Move on the parent NetworkLoadBalancer",
 }
 
 // Run — sync validate + spawn worker. Errors mapped to gRPC codes inline.
@@ -308,9 +319,8 @@ func listenerLabelsInMask(mask []string) bool {
 // immutable + unknown.
 func validateListenerMask(paths []string) error {
 	for _, p := range paths {
-		if _, ok := listenerImmutableMaskPaths[p]; ok {
-			return status.Errorf(codes.InvalidArgument,
-				"%s is immutable after Listener.Create", p)
+		if msg, ok := listenerImmutableMaskPaths[p]; ok {
+			return status.Error(codes.InvalidArgument, msg)
 		}
 		if _, ok := listenerMutableMaskPaths[p]; ok {
 			continue

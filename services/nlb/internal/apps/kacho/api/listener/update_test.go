@@ -70,8 +70,18 @@ func TestUpdateListener_GWT_LST_019_ImmutableLoadBalancerID(t *testing.T) {
 // закреплено отдельно, в target_port_retired_test.go.
 func TestUpdateListener_GWT_LST_020_ImmutableFields(t *testing.T) {
 	t.Parallel()
-	immutable := []string{"protocol", "port", "project_id"}
-	for _, field := range immutable {
+	// #1671: текст утверждается ДОСЛОВНО и per-field. Общий шаблон
+	// `field + " is immutable after Listener.Create"` перестал описывать
+	// project_id: область владения у листенера денормализована из родителя, её
+	// переезд делает NetworkLoadBalancerService.Move, и отказ обязан назвать
+	// этот шаг. Contains на зачине потерю хвоста не заметил бы.
+	immutable := map[string]string{
+		"protocol": "protocol is immutable after Listener.Create",
+		"port":     "port is immutable after Listener.Create",
+		"project_id": "project_id is immutable after Listener.Create; " +
+			"use NetworkLoadBalancerService.Move on the parent NetworkLoadBalancer",
+	}
+	for field, wantMsg := range immutable {
 		t.Run(field, func(t *testing.T) {
 			t.Parallel()
 			suite := newUpdateSuite(t)
@@ -81,7 +91,7 @@ func TestUpdateListener_GWT_LST_020_ImmutableFields(t *testing.T) {
 			})
 			require.Error(t, err)
 			require.Equal(t, codes.InvalidArgument, status.Code(err))
-			require.Contains(t, err.Error(), field+" is immutable after Listener.Create")
+			require.Equal(t, wantMsg, status.Convert(err).Message())
 		})
 	}
 }

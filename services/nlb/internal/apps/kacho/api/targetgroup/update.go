@@ -104,7 +104,10 @@ var hcProbeSubFields = map[string]bool{
 
 // immutableUpdateFieldsTG — hard-immutable, с фиксированным текстом error text.
 var immutableUpdateFieldsTG = map[string]string{
-	"project_id": "project_id is immutable after TargetGroup.Create",
+	// Область владения (#1671): у группы целей есть свой глагол переноса
+	// (TargetGroupService.Move), и отказ обязан его назвать — «нельзя» без
+	// «делай так» оставляет клиента без следующего шага (core ban #18).
+	"project_id": "project_id is immutable after TargetGroup.Create; use TargetGroupService.Move",
 	"region_id":  "region_id is immutable after TargetGroup.Create",
 }
 

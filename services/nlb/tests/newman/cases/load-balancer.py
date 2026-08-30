@@ -1513,13 +1513,22 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NLB-UPD-STATE-IMMUTABLE-PROJECT",
-    title="Update with mask=project_id → InvalidArgument 'project_id is immutable; use Move'",
+    title="Update with mask=project_id → InvalidArgument 'project_id is immutable after "
+          "NetworkLoadBalancer.Create; use NetworkLoadBalancerService.Move' (#1671)",
     classes=["STATE", "VAL"], priority="P0",
     steps=[
         *_setup_lb("im-proj"),
+        # Текст утверждается ДОСЛОВНО, как у соседнего NLB-UPD-STATE-IMMUTABLE-TYPE.
+        # Прежде кейс закреплял только код, а текст стоял лишь в заголовке — то
+        # есть расхождение тона (#1671) он не ловил by construction: заголовок
+        # ничего не роняет.
         Step(name="upd-proj", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "projectId"},
-             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('verbatim immutable text names the next step', () => "
+                          "  pm.expect(pm.response.json().message||'', pm.response.text())"
+                          "   .to.eql('project_id is immutable after NetworkLoadBalancer.Create;"
+                          " use NetworkLoadBalancerService.Move'));"]),
         *_cleanup_lb(),
     ],
 ))
