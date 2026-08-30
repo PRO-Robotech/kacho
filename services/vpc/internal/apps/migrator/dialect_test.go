@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 )
 
 func TestNewDialect_Valid(t *testing.T) {
@@ -48,8 +50,8 @@ func TestNewDialect_Invalid(t *testing.T) {
 
 func TestPostgresDialect_Spec(t *testing.T) {
 	d, _ := NewDialect("postgres")
-	if d.Spec() != SpecPostgres {
-		t.Fatalf("postgres dialect spec mismatch: got %+v, want %+v", d.Spec(), SpecPostgres)
+	if d.Spec() != migratorcli.SpecPostgres {
+		t.Fatalf("postgres dialect spec mismatch: got %+v, want %+v", d.Spec(), migratorcli.SpecPostgres)
 	}
 }
 
