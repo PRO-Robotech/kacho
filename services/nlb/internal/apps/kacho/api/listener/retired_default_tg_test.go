@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/H-BF/corlib/pkg/option"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -172,4 +173,91 @@ func TestUpdateListener_TargetGroupIdStillRepoints(t *testing.T) {
 	v, ok := got.DefaultTargetGroupID.Maybe()
 	require.True(t, ok)
 	require.Equal(t, tgID, v)
+}
+
+// ПУСТАЯ МАСКА — отдельный путь, и на нём снятый вход опаснее всего.
+//
+// Пустая маска означает правку объекта целиком: применяются ВСЕ изменяемые поля.
+// Значит `target_group_id` применяется со своим значением из тела, а оно у
+// клиента, пишущего по старому справочнику, пустое — и привязка не «не
+// изменилась», а СНИМАЕТСЯ. То есть запрос, который прежде привязывал группу,
+// стал бы её отвязывать, и молча.
+//
+// Поэтому снятый вход отвергается по ПРИСУТСТВИЮ В ТЕЛЕ, а не только по пути в
+// маске. Молчаливое игнорирование, которое конвенция update_mask предписывает для
+// immutable-полей, здесь не годится: у immutable-поля игнорирование ничего не
+// меняет, а тут оно меняет ровно то, ради чего запрос слали.
+func TestUpdateListener_RetiredDefaultTargetGroupIdWithEmptyMask_RejectedNotSilentlyCleared(t *testing.T) {
+	t.Parallel()
+	suite := newUpdateSuite(t)
+	tgID := domain.ResourceID(ids.NewID(ids.PrefixTargetGroup))
+	suite.repo.seedTG(&kachorepo.TargetGroupRecord{
+		TargetGroup: domain.TargetGroup{
+			ID: tgID, ProjectID: suite.listener.ProjectID, RegionID: suite.listener.RegionID,
+			Name: domain.LbName("empty-mask-tg"), Status: domain.TargetGroupStatusActive,
+		},
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	})
+	// Привязка ЕСТЬ до запроса: иначе «снялась» было бы неотличимо от «и не было».
+	suite.listener.DefaultTargetGroupID = option.MustNewOption(tgID)
+	suite.repo.seedListener(suite.listener)
+
+	_, err := suite.uc.Run(contextWithSubject("user:test-actor"), &lbv1.UpdateListenerRequest{
+		ListenerId:           string(suite.listener.ID),
+		DefaultTargetGroupId: string(tgID), // маски нет вовсе
+	})
+
+	require.Equal(t, codes.InvalidArgument, status.Code(err),
+		"снятый вход в теле обязан отвергаться и без маски")
+	require.Contains(t, status.Convert(err).Message(), "target_group_id")
+
+	// И привязка обязана уцелеть: отказ наступает до записи.
+	got := suite.getListener(string(suite.listener.ID))
+	v, ok := got.DefaultTargetGroupID.Maybe()
+	require.True(t, ok, "привязка снята отказавшим запросом")
+	require.Equal(t, tgID, v)
+}
+
+// Путь МАСКИ остаётся достижимым — и это надо доказать, иначе ветка
+// listenerRetiredMaskPaths мертва (запрет vestigial-кода).
+//
+// Проверка тела ловит непустое значение; сюда попадает ПУСТОЕ — то есть клиент,
+// который пытается СНЯТЬ привязку прежним полем. Молчать здесь нельзя по той же
+// причине: снятие прошло бы, но не тем полем, которым клиент его назвал, и
+// следующий его запрос по `defaultTargetGroupId` снова ничего бы не значил.
+func TestUpdateListener_RetiredDefaultTargetGroupIdInMask_EmptyValue_StillRejected(t *testing.T) {
+	t.Parallel()
+	suite := newUpdateSuite(t)
+
+	_, err := suite.uc.Run(contextWithSubject("user:test-actor"), &lbv1.UpdateListenerRequest{
+		ListenerId:           string(suite.listener.ID),
+		UpdateMask:           &fieldmaskpb.FieldMask{Paths: []string{"default_target_group_id"}},
+		DefaultTargetGroupId: "", // тело пусто ⇒ проверку тела не задевает
+	})
+
+	require.Equal(t, codes.InvalidArgument, status.Code(err),
+		"путь маски снятого входа обязан отвергаться и при пустом значении")
+	msg := status.Convert(err).Message()
+	require.Contains(t, msg, "default_target_group_id")
+	require.Contains(t, msg, "target_group_id")
+}
+
+// ОБА производителя отказа дают ОДИН текст. Два места об одном предмете
+// разошлись бы молча, а тон отказа — часть контракта.
+func TestUpdateListener_RetiredDefaultTargetGroup_BothLanesSameMessage(t *testing.T) {
+	t.Parallel()
+	suite := newUpdateSuite(t)
+
+	_, viaBody := suite.uc.Run(contextWithSubject("user:test-actor"), &lbv1.UpdateListenerRequest{
+		ListenerId:           string(suite.listener.ID),
+		DefaultTargetGroupId: "tgr-someothergroup1",
+	})
+	_, viaMask := suite.uc.Run(contextWithSubject("user:test-actor"), &lbv1.UpdateListenerRequest{
+		ListenerId: string(suite.listener.ID),
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"default_target_group_id"}},
+	})
+
+	require.Equal(t, status.Code(viaBody), status.Code(viaMask))
+	require.Equal(t, status.Convert(viaBody).Message(), status.Convert(viaMask).Message(),
+		"тексты двух полос разошлись — у отказа появилось два разных тона")
 }

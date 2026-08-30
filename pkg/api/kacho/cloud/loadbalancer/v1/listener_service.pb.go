@@ -406,9 +406,14 @@ type UpdateListenerRequest struct {
 	// Resource labels as “ key:value “ pairs.
 	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// default_target_group_id — RETIRED AS AN INPUT (#1596). Retained only for the
-	// explicit reject; naming it in update_mask → InvalidArgument that names
-	// target_group_id as the replacement. See CreateListenerRequest for why the
-	// field is kept rather than removed.
+	// explicit reject: SETTING it, or naming it in update_mask, → InvalidArgument
+	// that names target_group_id as the replacement. See CreateListenerRequest for
+	// why the field is kept rather than removed.
+	//
+	// The reject keys on the BODY too, not just the mask, because an empty mask
+	// means a full-object PATCH: target_group_id would then be applied with its
+	// own (empty) body value, so a request that used to WIRE a target group would
+	// silently UNWIRE it instead.
 	DefaultTargetGroupId string `protobuf:"bytes,7,opt,name=default_target_group_id,json=defaultTargetGroupId,proto3" json:"default_target_group_id,omitempty"`
 	// target_group_id — repoint the listener to another target group. THE single
 	// input for the wiring: present in update_mask it rewires the listener, an

@@ -150,6 +150,20 @@ func (u *UpdateUseCase) Run(ctx context.Context, req *lbv1.UpdateListenerRequest
 		return nil, err
 	}
 
+	// Снятый вход отвергается по ПРИСУТСТВИЮ В ТЕЛЕ, а не только по пути в маске.
+	// Разница в пустой маске: она означает правку объекта целиком, поэтому
+	// `target_group_id` применяется со своим значением из тела — а у клиента,
+	// пишущего по прежнему справочнику, оно пустое. Без этой проверки запрос,
+	// который раньше ПРИВЯЗЫВАЛ группу, начал бы её СНИМАТЬ, и молча.
+	//
+	// Молчаливое игнорирование, предписанное конвенцией update_mask для
+	// immutable-полей на пустой маске, здесь не годится по той же причине: у
+	// immutable-поля игнорирование ничего не меняет, а тут оно меняет ровно то,
+	// ради чего запрос слали.
+	if req.GetDefaultTargetGroupId() != "" {
+		return nil, status.Error(codes.InvalidArgument, retiredDefaultTargetGroupMsg)
+	}
+
 	mask := req.GetUpdateMask().GetPaths()
 	if err := validateListenerMask(mask); err != nil {
 		return nil, err
