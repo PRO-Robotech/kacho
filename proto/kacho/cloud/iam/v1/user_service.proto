@@ -306,7 +306,23 @@ service UserService {
   //
   // A PENDING invitation cannot be blocked: it carries no external identity yet
   // (DB CHECK `users_invite_status_consistency`), so there is nothing to refuse
-  // — FAILED_PRECONDITION. Revoke the invitation instead.
+  // — FAILED_PRECONDITION.
+  //
+  // WHAT TO DO INSTEAD, said as the OUTCOME rather than as a verb name, because
+  // a name in prose goes stale silently while an outcome survives renaming: to
+  // keep an invited person from ever taking part in this Account, withdraw the
+  // membership his invitation created. That IS the revocation of an unaccepted
+  // invitation, and the path to it is RemoveFromAccount above — the counterpart
+  // of Invite and the Account's own right (`member_remover`). Invite writes the
+  // `memberships` row in PENDING state, removal drops it, and a later first
+  // login does not bring it back: the mirror trigger updates an existing
+  // membership and never inserts one on an edit of the identity row (migration
+  // 20260824010000).
+  //
+  // Delete is NOT that path. It erases the GLOBAL identity row — the person in
+  // every Account at once — and is not an Account-level right at all
+  // (`identity_remover` reaches the person himself or the cloud, never the
+  // Account that issued the invitation).
   //
   // Already-issued access tokens are NOT invalidated by this call; they expire
   // on their own schedule. What stops immediately is every path that mints a

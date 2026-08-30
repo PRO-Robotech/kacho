@@ -31,9 +31,17 @@ const (
 //
 // Строго два уровня аренды: Account → Project (Project — leaf-workspace, без
 // вложенности). Constraint: (account_id, name) — UNIQUE per-account.
-// `account_id` — hard-immutable после Create: НЕТ ProjectService.Move RPC
-// (cross-account перенос сломал бы scope-координату всех downstream-ресурсов,
-// держащих projectId) — Update отвергает account_id в update_mask.
+//
+// `account_id` — hard-immutable после Create, и переноса проекта между
+// аккаунтами не делает НИ ОДИН вызов. Это решение, а не пробел поверхности:
+// projectId — scope-координата, которую хранит у себя каждый downstream-ресурс,
+// поэтому смена родителя молча обесценила бы выдачи и ссылки, резолвящиеся
+// через неё. Update отвергает account_id в update_mask с
+// "accountId is immutable after Project.Create".
+//
+// Нужен проект в другом аккаунте — он там СОЗДАЁТСЯ: Create принимает целевой
+// account_id. За ним ничего не переносится, и это то же самое решение, а не
+// отдельное ограничение.
 //
 // Resource id prefix: `prj-`.
 type Project struct {
@@ -41,8 +49,11 @@ type Project struct {
 	// ID of the project.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// ID of the Account that this Project belongs to.
-	// Immutable after Project.Create (no Move RPC; Update rejects account_id in
-	// update_mask with "accountId is immutable after Project.Create").
+	//
+	// Immutable after Project.Create, and no call moves a Project between
+	// Accounts — the message doc above says why, and it is the single place that
+	// says it. Update rejects account_id in update_mask with "accountId is
+	// immutable after Project.Create".
 	AccountId string `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
 	// Name of the project. Unique within an Account. 3-63 characters long.
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
