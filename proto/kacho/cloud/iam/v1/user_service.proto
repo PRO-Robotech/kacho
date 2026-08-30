@@ -306,7 +306,28 @@ service UserService {
   //
   // A PENDING invitation cannot be blocked: it carries no external identity yet
   // (DB CHECK `users_invite_status_consistency`), so there is nothing to refuse
-  // — FAILED_PRECONDITION. Revoke the invitation instead.
+  // — FAILED_PRECONDITION. What the caller actually wants is that the invited
+  // person not take part in his Account, and the verb for that is
+  // `RemoveFromAccount` above: it drops the `memberships` row whatever its
+  // state — a PENDING one exactly like an ACTIVE one, the statement carries no
+  // predicate on it — and leaves the identity untouched. It is gated by
+  // `member_remover` on the ACCOUNT, i.e. the same circle that issued the
+  // invitation in the first place.
+  //
+  // If the invitation carried a grant (`Invite` with `project_id` + `role_id`
+  // mints an AccessBinding atomically with the row), withdraw the grant FIRST:
+  // the deferred trigger `membership_carrying_rights_is_kept` refuses ON COMMIT
+  // to drop a membership that still bears an ACTIVE binding, and names the
+  // grants in the refusal. `AccessBindingService/Revoke` is that step.
+  //
+  // THERE IS NO `UserService/Revoke`, and this paragraph used to send the reader
+  // to one (#1442). The advice was easy to write and hard to doubt, because
+  // `Revoke` IS a verb of this domain — on AccessBinding, SAKey, UserToken,
+  // session revocations and cluster admin — just never on this surface. Nor is
+  // it missing: on a PENDING membership a revoke verb would commit the state
+  // `RemoveFromAccount` already commits, and two verbs for one outcome is the
+  // product disagreeing with itself. Advice names an EXISTING verb, or it names
+  // an outcome — it may not name an action the contract does not carry.
   //
   // Already-issued access tokens are NOT invalidated by this call; they expire
   // on their own schedule. What stops immediately is every path that mints a
