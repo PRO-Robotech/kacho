@@ -946,9 +946,21 @@ kratos:
       selfservice:
         # Все browser-redirect URLs — relative. Браузер сам резолвит к текущему origin.
         default_browser_return_url: "/"
-        # Whitelist для return_to query — relative (`/`, `/dashboard`, ...) + любой
-        # localhost-port (для programmatic redirect через ?return_to=...).
-        # Kratos schema допускает relative URI в этом списке (uri-reference format).
+        # ─── ЭТОТ СПИСОК ДО ПРОЦЕССА НЕ ДОЕЗЖАЕТ (#1238) ─────────────────────
+        #
+        # Здесь стояло «whitelist для return_to query — relative + любой
+        # localhost-port», и это утверждение пережило свой предмет. Служба
+        # получает ДВА файла настроек и сливает их по порядку; наш идёт ВТОРЫМ, а
+        # список под общим ключом не дополняется — он ЗАМЕЩАЕТСЯ целиком. Значит
+        # действует ОДНА запись из тела продукта
+        # (charts/kacho-iam/templates/_kratos-identity.tpl), а эти десять —
+        # умолчание, которое к процессу не относится.
+        #
+        # Сужение решено и записано: решение и его цена — в ведомости
+        # `identityReplacedListDecisions`
+        # (deploy/identity_replaced_lists_are_decided_test.go). Правя список
+        # здесь, правьте объявление продукта: правка ТОЛЬКО этих строк не
+        # доезжает никуда, и это не видно ни в рендере, ни при старте.
         allowed_return_urls:
           - "/"
           - "/dashboard"
@@ -1015,39 +1027,23 @@ kratos:
           connection_uri: "smtp://mailhog.kacho.svc:1025/?disable_starttls=true"
           from_address: "noreply@kacho.local"
           from_name: "Kacho"
-  identitySchemas:
-    "identity.default.schema.json": |
-      {
-        "$id": "https://schemas.kacho.local/identity/v1.0.0/default.json",
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "title": "Person",
-        "type": "object",
-        "properties": {
-          "traits": {
-            "type": "object",
-            "properties": {
-              "email": {
-                "type": "string", "format": "email",
-                "title": "E-Mail",
-                "ory.sh/kratos": {
-                  "credentials": { "password": { "identifier": true } },
-                  "recovery": { "via": "email" },
-                  "verification": { "via": "email" }
-                }
-              },
-              "name": {
-                "type": "object",
-                "properties": {
-                  "first": { "type": "string", "title": "First Name" },
-                  "last":  { "type": "string", "title": "Last Name" }
-                }
-              }
-            },
-            "required": ["email"],
-            "additionalProperties": false
-          }
-        }
-      }
+  # ─── ТРЕТЬЕЙ КОПИИ ТЕЛА СХЕМЫ ЗДЕСЬ НЕТ (#1239) ───────────────────────────
+  #
+  # Здесь стояло `identitySchemas` с телом схемы, дословно совпадавшим с телом
+  # унаследованной схемы выше (совпадал и `$id`). Объявление было МЁРТВЫМ:
+  # подчарт поставщика читает `.Values.kratos.identitySchemas`, то есть уровнем
+  # НИЖЕ этого ключа, поэтому оно не резолвилось и в рендер не попадало — в
+  # карте настроек службы личности как был, так и остался единственный ключ
+  # `kratos.yaml` (сверено рендером до и после снятия: состав ключей тот же).
+  #
+  # Снято, а не перенесено под своего читателя: тело уже приезжает процессу
+  # ссылкой на якорь `kachoInheritedIdentitySchemas` (см. выше), отдельный файл
+  # схемы рядом с ним никому не нужен, а перенос дал бы ЧЕТВЁРТОЕ место об одном
+  # предмете. Мёртвое объявление хуже лишнего: следующий читатель принимает его
+  # за действующее и правит ЕГО вместо живого.
+  #
+  # Держит `deploy/identity_schema_body_single_node_test.go`: тело схемы
+  # объявляется ОДНИМ узлом, и узел этот обязан нести имя якоря.
 
 # KAC-127 Phase 2 — Hydra OAuth 2.1 + DPoP + mTLS-bound + JWT-strategy.
 # Acceptance §5.2: refresh rotation (force-rotate, 1s race window), PKCE mandatory,
