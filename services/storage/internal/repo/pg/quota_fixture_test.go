@@ -89,7 +89,7 @@ var fixtureProjects = []string{
 	// сокращение пробы и стал бы записью, которой нечего исключать.
 	"prj-cursor-0", "prj-cursor-1", "prj-cursor-2", "prj-cursor-3",
 	"prj-cursor-4", "prj-cursor-5", "prj-cursor-6", "prj-cursor-7",
-	"prj-fk", "prj-other",
+	"prj-fk", "prj-list-dup", "prj-observed", "prj-other",
 	"prj-relabel-c", "prj-relabel-i", "prj-relabel-ic", "prj-relabel-n",
 	"prj-relabel-s", "prj-relabel-sc", "prj-relabel-v",
 	"prj-victim", "prj-victim-zone", "project",

@@ -327,8 +327,22 @@ func TestJournalStateEqualsWhatTheReadPathAnswers(t *testing.T) {
 	repo := pg.NewVolumeRepo(s.pool)
 	ctx := context.Background()
 	v := s.createVolume(t, probeProject, "state-equals-read")
+	// Потребление объявляется сообщённым НАМЕРЕННО.
+	//
+	// Прежде подтверждение шло без него, и обе стороны отдавали по этому полю
+	// пусто — то есть равенство по нему выполнялось ТРИВИАЛЬНО, на двух пустотах.
+	// Проба тем самым была СЛЕПА к `used_bytes`: односторонняя починка (путь
+	// чтения выбирает колонку, разборщик журнала — нет) оставляла её зелёной.
+	// Проверено опытом при закрытии #1557, а не выведено чтением.
+	//
+	// Пустой полюс того же поля держит соседняя проба пути чтения
+	// (`TestReadPathAnswersStatusReasonAndUsedBytes`): «бэкенд не сказал» обязано
+	// остаться отличимым от нуля, и утверждать это здесь значило бы завести второе
+	// место об одном предмете.
 	if ok, err := reconciler.NewStore(s.pool).Confirm(ctx, reconciler.KindVolume, v.ID,
-		blockbackend.Observed{State: blockbackend.ObservedReady}); err != nil || !ok {
+		blockbackend.Observed{
+			State: blockbackend.ObservedReady, UsedBytes: 3 << 30, HasUsedBytes: true,
+		}); err != nil || !ok {
 		t.Fatalf("том не доведён до готовности (ok=%v, err=%v)", ok, err)
 	}
 	// Метки ставятся боевым путём правки: они — предмет решения, ради которого
@@ -384,13 +398,85 @@ func TestJournalStateEqualsWhatTheReadPathAnswers(t *testing.T) {
 		t.Fatalf("сторона чтения не наполнена (%v / %v / %d) — равенство ниже зеленело бы "+
 			"на двух пустотах", want.Status, want.Labels, len(want.Attachments))
 	}
+	// Тот же контроль по `used_bytes`: без него равенство по этому полю выполнялось
+	// бы на двух отсутствиях, и проба молчала бы ровно о том, ради чего расширена.
+	if want.UsedBytes == nil || *want.UsedBytes != 3<<30 {
+		t.Fatalf("сторона чтения не отдала потребление (%v) — равенство по нему "+
+			"зеленело бы на двух отсутствиях", want.UsedBytes)
+	}
 	if !proto.Equal(want, &got) {
 		t.Fatalf("состояние из журнала и ответ чтения РАЗОШЛИСЬ.\n  чтение: %v\n  журнал: %v\n"+
 			"Подписчик, снявший опрос, держал бы у себя не тот том, что отдаёт Get, и "+
 			"расхождение это ничем бы себя не выдало", want, &got)
 	}
-	t.Logf("совпало поле в поле: статус %v · меток %d · привязок %d · used_by %d",
-		got.Status, len(got.Labels), len(got.Attachments), len(got.UsedBy))
+	t.Logf("совпало поле в поле: статус %v · меток %d · привязок %d · used_by %d · потребление %d",
+		got.Status, len(got.Labels), len(got.Attachments), len(got.UsedBy), got.GetUsedBytes())
+}
+
+// TestJournalStateCarriesTheFailureReasonTheReadPathAnswers — вторая половина той
+// же пары: причина отказа.
+//
+// Отдельной пробой, а не строкой в соседней, по свойству ПРЕДМЕТА: непустой
+// `status_reason` живёт на томе в состоянии `ERROR`, а подтверждение готовности эту
+// колонку ОЧИЩАЕТ. Значит на томе `IN_USE` соседней пробы поле пусто ВСЕГДА, и
+// утверждать его там значило бы утверждать равенство двух пустот — ровно та
+// слепота, которую эта пара и закрывает.
+//
+// `status_reason` — единственное, чем том объясняет своё `ERROR`. Разойдись стороны
+// по нему, подписчик держал бы отказавший том без причины отказа и не отличил бы
+// это от тома, отказавшего без причины.
+func TestJournalStateCarriesTheFailureReasonTheReadPathAnswers(t *testing.T) {
+	s := newStand(t)
+	repo := pg.NewVolumeRepo(s.pool)
+	ctx := context.Background()
+	v := s.createVolume(t, probeProject, "state-equals-read-error")
+
+	// Отказ объявляется БОЕВЫМ путём сверщика — тем же, которым он объявляется на
+	// живом стенде, а не UPDATE'ом из пробы.
+	if err := reconciler.NewStore(s.pool).MarkError(ctx, reconciler.KindVolume, v.ID,
+		domain.ReasonBackendCapacityExhausted,
+		blockbackend.Observed{State: blockbackend.ObservedError}); err != nil {
+		t.Fatalf("отказ не объявлен: %v", err)
+	}
+
+	read, err := repo.Get(ctx, v.ID)
+	if err != nil {
+		t.Fatalf("том не прочитался: %v", err)
+	}
+	want := protoconv.Volume(read)
+
+	rows := forID(journalSince(t, s, 0), v.ID)
+	if len(rows) == 0 {
+		t.Fatal("журнал не дал ни одной строки по тому — сравнивать не с чем")
+	}
+	last := rows[len(rows)-1]
+	packed, absence, serr := subscriptionjournal.Journal().Mapping.State(subscription.Row{
+		Kind: last.kind, ID: last.id, Change: last.change, Payload: last.payload,
+	})
+	if serr != nil {
+		t.Fatalf("сборка состояния из строки журнала отказала: %v", serr)
+	}
+	if packed == nil {
+		t.Fatalf("строка журнала не дала состояния (причина %v)", absence)
+	}
+	var got storagev1.Volume
+	if err := packed.UnmarshalTo(&got); err != nil {
+		t.Fatalf("упаковано не состояние тома: %v", err)
+	}
+
+	// Положительный контроль ДО сравнения: обе величины на стороне чтения непусты,
+	// иначе равенство ниже выполнилось бы тривиально.
+	if want.Status != storagev1.Volume_ERROR ||
+		want.StatusReason != storagev1.StatusReason_BACKEND_CAPACITY_EXHAUSTED {
+		t.Fatalf("сторона чтения не наполнена (%v / %v) — равенство ниже зеленело бы "+
+			"на двух пустотах", want.Status, want.StatusReason)
+	}
+	if !proto.Equal(want, &got) {
+		t.Fatalf("состояние из журнала и ответ чтения РАЗОШЛИСЬ.\n  чтение: %v\n  журнал: %v\n"+
+			"Подписчик держал бы отказавший том без причины отказа и не отличил бы это "+
+			"от тома, отказавшего без причины", want, &got)
+	}
+	t.Logf("совпало поле в поле: статус %v · причина %v", got.Status, got.StatusReason)
 }
 
 // TestEnvelopeKeyIsNotAColumnOfTheSchema — имя конверта не совпадает НИ С ОДНОЙ
