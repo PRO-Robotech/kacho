@@ -48,12 +48,24 @@ type CheckClient = iamclient.CheckClient
 // FGA object-type strings live in `internal/domain` (single source of truth,
 // kacho-nlb-wide): `domain.FGAObjectTypeListener` / `domain.FGAObjectTypeLoadBalancer`.
 
-// outboxResourceTypeListener / outboxResourceTypeLoadBalancer — resource_type
-// в `nlb_outbox` (ограничено CHECK CONSTRAINT в миграции 0001).
-const (
-	outboxResourceTypeListener     = "nlb_listener"
-	outboxResourceTypeLoadBalancer = "nlb_load_balancer"
-)
+// Слово вида предмета журнала (`resource_type` в `nlb_outbox`) здесь БОЛЬШЕ НЕ
+// ОБЪЯВЛЯЕТСЯ: точки эмиссии этого пакета зовут общую константу
+// `kachorepo.OutboxResource{Listener,LoadBalancer}` — ту же, которую читает
+// объявление журнала подписки (`internal/subscriptionjournal`).
+//
+// # Почему копия была снята, хотя во время исполнения вреда не приносила
+//
+// Значения совпадали, и отказать копия не могла. Вред она приносила ПЕРЕПИСИ, и
+// он уже наступил дважды. Предикат «где эмитится этот вид», записанный по
+// канонической константе, отвечал по слушателю НОЛЬ при четырёх точках — и по
+// нему выходило, что обогащать у слушателя нечего. Тем же способом была занижена
+// цена обогащения балансировщика: шапка журнала называла ПЯТЬ точек Go при семи,
+// потому что две из них лежат здесь и звали копию (#1550).
+//
+// Держит это разбор дерева use-case'ов
+// (`subscriptionjournal.TestEveryEmissionNamesTheKindByTheCanonicalConstant`), а
+// не внимание: он судит УЗЕЛ аргумента вида, поэтому следующая копия не заведётся
+// молча.
 
 // Outbox action strings (CHECK constraint в nlb_outbox; см. миграцию 0001).
 // `FAILED` листенером больше не эмитится: его единственным источником была

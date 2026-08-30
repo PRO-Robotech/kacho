@@ -44,7 +44,7 @@ func TestUpdateListener_GWT_LST_018_MutableFields(t *testing.T) {
 	events := suite.repo.pendingOutbox()
 	require.Len(t, events, 1)
 	require.Equal(t, outboxActionUpdated, events[0].Action)
-	require.Equal(t, outboxResourceTypeListener, events[0].ResourceType)
+	require.Equal(t, "nlb_listener", events[0].ResourceType)
 }
 
 // TestUpdateListener_GWT_LST_019_ImmutableLoadBalancerID — immutable in mask

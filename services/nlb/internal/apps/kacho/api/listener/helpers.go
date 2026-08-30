@@ -87,7 +87,7 @@ func marshalListener(rec *kachorepo.ListenerRecord) (*anypb.Any, error) {
 // ВТОРОЕ: строитель у вида ОДИН. Контракт единой формы разрешает подписчику
 // читать непустое состояние как ПОЛНОЕ, поэтому одна точка эмиссии с частичным
 // снимком делает ложным весь вид — и делает тихо. Держит это разбор пакета
-// (`TestEveryListenerEmissionBuildsTheSamePayload`), а не внимание.
+// (`subscriptionjournal.TestEveryEmissionOfAStatefulKindBuildsTheSamePayload`), а не внимание.
 //
 // # Чего здесь БОЛЬШЕ НЕТ
 //

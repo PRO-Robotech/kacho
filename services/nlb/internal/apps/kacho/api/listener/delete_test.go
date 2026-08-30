@@ -39,7 +39,7 @@ func TestDeleteListener_LBUpdatedOutbox(t *testing.T) {
 	events := suite.repo.pendingOutbox()
 	hasLBUpd := false
 	for _, e := range events {
-		if e.ResourceType == outboxResourceTypeLoadBalancer && e.Action == outboxActionUpdated {
+		if e.ResourceType == "nlb_load_balancer" && e.Action == outboxActionUpdated {
 			hasLBUpd = true
 			break
 		}

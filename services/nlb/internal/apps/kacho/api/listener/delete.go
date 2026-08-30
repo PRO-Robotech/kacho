@@ -155,7 +155,7 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 		// идемпотентным.
 		if moved != nil {
 			if err := w.Outbox().Emit(ctx,
-				outboxResourceTypeListener, listenerID, projectID,
+				kachorepo.OutboxResourceListener, listenerID, projectID,
 				outboxActionUpdated, listenerPayloadMap(moved),
 			); err != nil {
 				return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener UPDATED: %v", domain.ErrInternal, err))
@@ -186,13 +186,13 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 		}
 	}
 	if err := w.Outbox().Emit(ctx,
-		outboxResourceTypeListener, listenerID, projectID,
+		kachorepo.OutboxResourceListener, listenerID, projectID,
 		outboxActionDeleted, listenerPayloadMap(cur),
 	); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener DELETED: %v", domain.ErrInternal, err))
 	}
 	if err := w.Outbox().Emit(ctx,
-		outboxResourceTypeLoadBalancer, lbID, projectID,
+		kachorepo.OutboxResourceLoadBalancer, lbID, projectID,
 		outboxActionUpdated, lbUpdatedPayloadMap(lbID, projectID, regionID, "listener_deleted"),
 	); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit lb UPDATED: %v", domain.ErrInternal, err))
