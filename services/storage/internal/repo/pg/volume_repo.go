@@ -87,6 +87,14 @@ const volumeSelectCols = `
 
 // scanVolume читает одну строку проекции volumeSelectCols в domain.Volume, деривя
 // Status (§1.3) и заполняя Attachments (output-only) при наличии привязки.
+//
+// У этой сборки есть ВТОРАЯ сторона — `VolumeFromJournalPayload` в соседнем
+// journal_payload.go: она собирает тот же `domain.Volume` из строки журнала
+// подписки. Источники разные (курсор pgx и JSON), собираемое одно, и расходятся
+// они молча: колонка, добавленная в volumeSelectCols и в домен, там просто не
+// появится, а подписчик не отличит её отсутствие от пустого значения. Правишь
+// здесь — правь и там; расхождение ловит интеграционная
+// `TestJournalStateEqualsWhatTheReadPathAnswers`, читающая один том обоими путями.
 func scanVolume(row pgx.Row) (*domain.Volume, error) {
 	var (
 		v          domain.Volume

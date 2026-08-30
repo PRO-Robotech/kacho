@@ -8,11 +8,16 @@ import (
 	"encoding/json"
 	"testing"
 
+	"google.golang.org/protobuf/proto"
+
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/blockbackend"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/subscriptionjournal"
 
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 )
@@ -243,9 +248,18 @@ func TestPayloadCarriesColumnNamesAndNoInfra(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("строк по созданному тому %d, ожидалась одна", len(rows))
 	}
-	var got map[string]any
-	if err := json.Unmarshal(rows[0].payload, &got); err != nil {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(rows[0].payload, &envelope); err != nil {
 		t.Fatalf("нагрузка не разбирается: %v", err)
+	}
+	body, ok := envelope[pg.JournalStateKey]
+	if !ok {
+		t.Fatalf("в нагрузке нет конверта %q: без него строка неотличима от прежней формы, "+
+			"и состояние по ней не собирается вовсе", pg.JournalStateKey)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("тело конверта не разбирается: %v", err)
 	}
 
 	// Положительный контроль: тенантские колонки на месте, и ключи их — ИМЕНА
@@ -277,66 +291,135 @@ func TestPayloadCarriesColumnNamesAndNoInfra(t *testing.T) {
 	}
 }
 
-// TestTheRowAloneCannotProduceThePublicProjection — ОСНОВАНИЕ решения «состояние
-// предмета журнал не несёт», проверенное вызовом, а не объявленное прозой.
+// TestJournalStateEqualsWhatTheReadPathAnswers — состояние из журнала и ответ
+// чтения — ОДИН И ТОТ ЖЕ том, поле в поле.
 //
-// Публичная проекция тома выводится ЧЕРЕЗ таблицы: `domain.DeriveStatus(state,
-// attached)` даёт `IN_USE` по существованию строки в `volume_attachments`, тогда
-// как сама строка `volumes` несёт `state = 'READY'` и различить `AVAILABLE` от
-// `IN_USE` не может. Собери мы состояние из нагрузки — привязанный том уезжал бы
-// подписчику как доступный и без единой привязки, а подписчик вправе читать
-// непустую нагрузку как ПОЛНОЕ состояние предмета.
+// # Что эта проба ЗАМЕНЯЕТ и почему заменяет, а не ослабляет
 //
-// Проба закрепляет РАСХОЖДЕНИЕ. Исчезнет оно — станет красной, и это верно: тогда
-// у решения не будет основания, и состояние надо вводить.
-func TestTheRowAloneCannotProduceThePublicProjection(t *testing.T) {
+// На её месте стояла `TestTheRowAloneCannotProduceThePublicProjection` —
+// ОСНОВАНИЕ прежнего решения «состояние предмета журнал не несёт»: она
+// закрепляла, что строка `volumes` статуса `IN_USE` не выражает, и честно
+// говорила про себя: «исчезнет расхождение — станет красной, и это верно: тогда
+// у решения не будет основания, и состояние надо вводить».
+//
+// Расхождение исчезло: конверт несёт привязки, и статус выводится той же
+// `domain.DeriveStatus`. Предмет прежней пробы отпал целиком. Ослабить её (снять
+// утверждение о привязках) значило бы оставить утверждение, которое больше ни на
+// что не смотрит; поэтому она заменена утверждением о ПОЛНОМ состоянии.
+//
+// # Что эта проба держит
+//
+// Проекция тома собирается ДВУМЯ разборщиками одной формы: `scanVolume` из строки
+// запроса чтения и `pg.VolumeFromJournalPayload` из строки журнала. Расходятся они
+// МОЛЧА и в одну сторону — колонка, добавленная в запрос чтения и в домен, во
+// втором разборщике просто не появится, и подписчик получит том без неё, не
+// отличив это от тома, у которого её значение пусто.
+//
+// Сравниваются КОНТРАКТЫ, а не структуры домена: контракт — то, что видит клиент,
+// и именно на нём расхождение становится его проблемой.
+//
+// Проба держит и ВТОРУЮ пару об одном предмете: имя конверта записано дважды —
+// литералом в миграции и константой `pg.JournalStateKey`. Разойдись они, состояние
+// не соберётся ни разу, и здесь это красное; в проверке разборщика по отдельности
+// оно невидимо, потому что обе стороны там берут одну константу.
+func TestJournalStateEqualsWhatTheReadPathAnswers(t *testing.T) {
 	s := newStand(t)
 	repo := pg.NewVolumeRepo(s.pool)
 	ctx := context.Background()
-	v := s.createVolume(t, probeProject, "derived-status")
+	v := s.createVolume(t, probeProject, "state-equals-read")
 	if ok, err := reconciler.NewStore(s.pool).Confirm(ctx, reconciler.KindVolume, v.ID,
 		blockbackend.Observed{State: blockbackend.ObservedReady}); err != nil || !ok {
 		t.Fatalf("том не доведён до готовности (ok=%v, err=%v)", ok, err)
 	}
+	// Метки ставятся боевым путём правки: они — предмет решения, ради которого
+	// состояние и вводится, и проба без них не отличила бы полное состояние от
+	// состояния без меток.
+	if _, _, err := repo.Update(ctx, v.ID, volume.VolumeUpdate{
+		LabelsSet: true, Labels: map[string]string{"env": "prod", "tier": "db"},
+	}); err != nil {
+		t.Fatalf("метки не проставились: %v", err)
+	}
 	if err := repo.Attach(ctx, &domain.VolumeAttachment{
 		VolumeID: v.ID, InstanceID: "epd-1234567890abcdef", InstanceName: "web-1",
-		ProjectID: probeProject, ZoneID: probeZone, DeviceName: "sdb",
+		ProjectID: probeProject, ZoneID: probeZone, DeviceName: "sdb", AutoDelete: true,
 	}); err != nil {
 		t.Fatalf("привязка отказала: %v", err)
 	}
 
-	// Публичная проекция, собранная боевым путём чтения.
-	got, err := repo.Get(ctx, v.ID)
+	// Сторона ЧТЕНИЯ — боевой путь целиком.
+	read, err := repo.Get(ctx, v.ID)
 	if err != nil {
 		t.Fatalf("том не прочитался: %v", err)
 	}
-	public := protoconv.Volume(got)
-	if public.Status != storagev1.Volume_IN_USE {
-		t.Fatalf("публичная проекция привязанного тома объявляет статус %v, ожидался IN_USE — "+
-			"предпосылка решения неверна, и его надо пересмотреть", public.Status)
+	want := protoconv.Volume(read)
+
+	// Сторона ЖУРНАЛА — последняя строка предмета, разобранная сборщиком владельца.
+	rows := forID(journalSince(t, s, 0), v.ID)
+	if len(rows) == 0 {
+		t.Fatal("журнал не дал ни одной строки по тому — сравнивать не с чем")
 	}
-	if len(public.Attachments) != 1 {
-		t.Fatalf("в публичной проекции привязок %d, ожидалась одна", len(public.Attachments))
+	last := rows[len(rows)-1]
+	if last.change != "UPDATED" {
+		t.Fatalf("последняя строка по тому — %q, ожидалась правка от привязки", last.change)
+	}
+	packed, absence, serr := subscriptionjournal.Journal().Mapping.State(subscription.Row{
+		Kind: last.kind, ID: last.id, Change: last.change, Payload: last.payload,
+	})
+	if serr != nil {
+		t.Fatalf("сборка состояния из строки журнала отказала: %v", serr)
+	}
+	if packed == nil {
+		t.Fatalf("строка журнала не дала состояния (причина %v): либо конверт не записан "+
+			"миграцией, либо его имя разошлось с константой разборщика — с этой стороны "+
+			"два написания одного ключа неотличимы ничем другим", absence)
+	}
+	var got storagev1.Volume
+	if err := packed.UnmarshalTo(&got); err != nil {
+		t.Fatalf("упаковано не состояние тома: %v", err)
 	}
 
-	// А вот что несёт строка таблицы — то есть ровно то, чем располагает триггер.
-	rows := journalSince(t, s, 0)
-	var last journalRow
-	for _, r := range forID(rows, v.ID) {
-		last = r
+	// Положительный контроль ДО сравнения: если обе стороны окажутся пустыми,
+	// равенство выполнится тривиально.
+	if want.Status != storagev1.Volume_IN_USE || len(want.Labels) != 2 || len(want.Attachments) != 1 {
+		t.Fatalf("сторона чтения не наполнена (%v / %v / %d) — равенство ниже зеленело бы "+
+			"на двух пустотах", want.Status, want.Labels, len(want.Attachments))
 	}
-	var payload map[string]any
-	if err := json.Unmarshal(last.payload, &payload); err != nil {
-		t.Fatalf("нагрузка не разбирается: %v", err)
+	if !proto.Equal(want, &got) {
+		t.Fatalf("состояние из журнала и ответ чтения РАЗОШЛИСЬ.\n  чтение: %v\n  журнал: %v\n"+
+			"Подписчик, снявший опрос, держал бы у себя не тот том, что отдаёт Get, и "+
+			"расхождение это ничем бы себя не выдало", want, &got)
 	}
-	if payload["state"] != "READY" {
-		t.Fatalf("строка таблицы несёт state=%v, ожидалось READY", payload["state"])
+	t.Logf("совпало поле в поле: статус %v · меток %d · привязок %d · used_by %d",
+		got.Status, len(got.Labels), len(got.Attachments), len(got.UsedBy))
+}
+
+// TestEnvelopeKeyIsNotAColumnOfTheSchema — имя конверта не совпадает НИ С ОДНОЙ
+// колонкой схемы.
+//
+// Именно на этом стоит различение прежней строки от новой: ключи прежней нагрузки
+// суть имена колонок, и конверт, названный как колонка, был бы неотличим от них.
+// Проба формы ключа (в наборе разборщика) утверждает, что имя колонкой БЫТЬ не
+// может; эта — что оно ею и НЕ ЯВЛЯЕТСЯ здесь и сейчас, по фактическому дереву
+// схемы, а не по правилу об идентификаторах.
+//
+// Перепись печатает объём осмотренного: «совпадений ноль» обязано быть отличимо от
+// «колонок прочитано ноль».
+func TestEnvelopeKeyIsNotAColumnOfTheSchema(t *testing.T) {
+	s := newStand(t)
+	var total, clashes int
+	if err := s.pool.QueryRow(context.Background(), `
+		SELECT count(*), count(*) FILTER (WHERE column_name = $1)
+		  FROM information_schema.columns
+		 WHERE table_schema = 'kacho_storage'`, pg.JournalStateKey).Scan(&total, &clashes); err != nil {
+		t.Fatalf("перепись колонок схемы не прочиталась: %v", err)
 	}
-	if _, ok := payload["attachments"]; ok {
-		t.Fatal("нагрузка внезапно несёт привязки: основание решения изменилось, и состояние " +
-			"предмета надлежит вводить, а не продолжать объявлять недоступным")
+	t.Logf("перепись: колонок схемы осмотрено %d · совпадений с именем конверта %d",
+		total, clashes)
+	if total == 0 {
+		t.Fatal("колонок не прочитано ни одной — зелёное здесь неотличимо от пустого обхода")
 	}
-	t.Logf("расхождение подтверждено: публичная проекция %v, строка таблицы state=%v, "+
-		"привязок в нагрузке нет — собрать проекцию в триггере можно было бы только второй "+
-		"реализацией protoconv на SQL", public.Status, payload["state"])
+	if clashes != 0 {
+		t.Fatalf("имя конверта %q совпало с колонкой схемы: `to_jsonb` её строки произведёт "+
+			"тот же ключ, и строка ПРЕЖНЕЙ формы станет неотличима от новой", pg.JournalStateKey)
+	}
 }

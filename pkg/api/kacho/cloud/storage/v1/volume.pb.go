@@ -225,9 +225,27 @@ type Volume struct {
 	// Immutable.
 	SourceImageId string `protobuf:"bytes,16,opt,name=source_image_id,json=sourceImageId,proto3" json:"source_image_id,omitempty"`
 	// Authoritative attach-state of the volume (public, lean projection).
+	//
+	// НАБОР, а не упорядоченное поле: порядок элементов не значим и не сохраняется,
+	// сверять их надо ПО СОСТАВУ, а не по индексу. Клиент, ведущий состояние,
+	// обязан моделировать это поле как множество — иначе перестановка прочитается
+	// как «первая привязка сменила инстанс, вторая сменила устройство».
+	//
+	// Сказано явно, потому что умолчание здесь лжёт в обе стороны: путь чтения
+	// порядка не задаёт вовсе, а поток изменений отдаёт привязки в устойчивом
+	// порядке ради того, чтобы одинаковые события давали одинаковую нагрузку.
+	// Устойчивость там — свойство реализации, а не обещание контракта; полагаться
+	// на неё нельзя.
+	//
+	// Заполняется КАЖДЫМ чтением ресурса (Get, List) и состоянием события в потоке
+	// изменений — то есть проекции, которая это поле не наполняет, у Volume нет.
 	Attachments []*VolumeAttachment `protobuf:"bytes,14,rep,name=attachments,proto3" json:"attachments,omitempty"`
 	// Output-only generic projection of `attachments` for uniform dependents/impact
 	// tooling. Same source of truth as `attachments`; not accepted on Create/Update.
+	//
+	// НАБОР — по тем же основаниям и с той же оговоркой, что у `attachments`:
+	// поле выводится из них один к одному, поэтому и порядок наследует их порядок,
+	// то есть никакой.
 	UsedBy        []*reference.Reference `protobuf:"bytes,15,rep,name=used_by,json=usedBy,proto3" json:"used_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
