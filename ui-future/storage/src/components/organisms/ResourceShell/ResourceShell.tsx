@@ -50,6 +50,7 @@ import { buildSpecColumns } from "@/lib/spec-columns";
 import { useResourceList } from "@/lib/use-resource-list";
 import { noMatchesText, rowsAreComplete, type NarrowingScope } from "@shared/lib/list-scope";
 import { useInvalidateResourceList } from "@/lib/use-operation";
+import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 import { DetailOverviewActions } from "@/components/molecules/DetailOverviewActions";
 
 export type ResourceShellMode = "edit" | "child-create";
@@ -233,13 +234,27 @@ export function ResourceShell({
       ? location.pathname.slice(0, mIdx + marker.length)
       : `${resourceProjectPath(spec.id, projectId) ?? `/${spec.route}`}/${uid}`;
 
+  // Карточка узнаёт о своих изменениях ПОТОКОМ (#1021): опрос остаётся ровно до
+  // тех пор, пока владелец журнала не назвал этот вид. Признак покрытия читается
+  // по проводу (`hub.covers`), а не выводится из имени домена: у блочного
+  // хранения журнал ведёт три вида из шести спек модуля, и тип диска, зона и
+  // регион остаются на опросе — сами, без второго решения здесь.
+  //
+  // Ключ перечитывания называется тут же, а не выводится из идентификатора
+  // спеки: на карточке живут и другие чтения (лента операций, вкладка
+  // связанного ресурса), и поток их не покрывает.
+  const { streamed } = useResourceStream({
+    specId: spec.id,
+    projectId: projectId ?? null,
+    invalidate: [spec.id, "shell-detail", uid],
+    enabled: !!uid,
+  });
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [spec.id, "shell-detail", uid],
     queryFn: () => api.get<Record<string, unknown>>(`${spec.apiPath}/${uid}`),
     enabled: !!uid,
-    // поллинг остаётся: журнала у storage нет — глагол подписки служат
-    // compute, nlb и vpc; блочное хранение среди владельцев не значится.
-    refetchInterval: 5_000,
+    refetchInterval: streamed ? false : 5_000,
     staleTime: 0,
   });
 
