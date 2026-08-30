@@ -82,6 +82,7 @@ func TestEveryEmissionNamesTheKindByTheCanonicalConstant(t *testing.T) {
 	sort.Strings(kinds)
 	t.Logf("перепись: файлов осмотрено %d · вызовов Emit журнала найдено %d · осей словаря %d · "+
 		"слов вида различных %d %v", res.filesRead, res.emitsSeen, len(axes), len(kinds), kinds)
+	logFormsNotJudgedHere(t)
 
 	if res.filesRead == 0 {
 		t.Fatal("не осмотрено ни одного файла — проверка беспредметна, а не пройдена")
@@ -128,10 +129,17 @@ func kindLiteralName(e ast.Expr) string {
 	return ""
 }
 
-// inspectEmissions обходит не-тестовое дерево use-case'ов nlb и зовёт visit на
-// КАЖДОМ вызове `Emit` журнала (шесть аргументов: ctx, вид, идентификатор,
-// проект, род, нагрузка). Очередь регистрации прав зовёт свой `Emit` с тремя
-// аргументами и под этот отбор не попадает by construction.
+// inspectEmissions обходит не-тестовое дерево СЕРВИСА и зовёт visit на КАЖДОМ
+// вызове `Emit` журнала (шесть аргументов: ctx, вид, идентификатор, проект, род,
+// нагрузка). Очередь регистрации прав зовёт свой `Emit` с тремя аргументами и под
+// этот отбор не попадает by construction.
+//
+// ОБХОД ИДЁТ ПО ВСЕМУ СЕРВИСУ, а не по двум каталогам use-case, как прежде.
+// Сужение по МЕСТУ — это исключение без срока: оно молчит о вызове, заведённом за
+// его границей, и молчание это неотличимо от «вызова нет». Расширение перепись
+// изменило и полосу находок — нет: файлов Go осмотрено 164 против 61, вызовов
+// найдено столько же. Значит прибавка была слепой зоной, а не регрессией дерева,
+// — и теперь её нет.
 func inspectEmissions(t *testing.T, visit func(emission)) emissionCensus {
 	t.Helper()
 
@@ -142,10 +150,7 @@ func inspectEmissions(t *testing.T, visit func(emission)) emissionCensus {
 		changeArgIdx = 4
 		payloadArg   = 5
 	)
-	roots := []string{
-		filepath.Join("..", "apps", "kacho", "api"),
-		filepath.Join("..", "apps", "kacho", "jobs"),
-	}
+	roots := []string{filepath.Join("..", "..")}
 
 	res := emissionCensus{byKind: map[string]int{}}
 	fset := token.NewFileSet()
