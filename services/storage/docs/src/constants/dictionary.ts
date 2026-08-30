@@ -3,7 +3,7 @@
 export const DICTIONARY = {
   id: { short: 'Идентификатор ресурса — TEXT: префикс + crockford-base32 (output-only, генерируется сервером, immutable)' },
   projectId: { short: 'Идентификатор проекта kacho-iam, которому принадлежит ресурс (обязателен при создании, immutable)' },
-  name: { short: 'Имя ресурса: lowercase, regex ^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$; пустая строка допустима. Уникально в паре (projectId, name), когда непусто' },
+  name: { short: 'Имя ресурса: DNS label по RFC 1123 — ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$ (строчные латинские буквы, цифры и дефис; 1..63; цифра первым знаком допустима). Уникально в паре (projectId, name). Пустая строка — законный вход Create: сервер проставит имя, производное от id; в Update отвергается' },
   description: { short: 'Описание ресурса (UTF-8, ≤256)' },
   labels: { short: 'Пользовательские метки key→value (≤64 пар) для поиска ресурса' },
   createdAt: { short: 'Время создания (output-only; truncate до секунд)' },
