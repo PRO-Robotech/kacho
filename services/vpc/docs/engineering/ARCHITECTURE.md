@@ -915,9 +915,12 @@ client      api-gw    vpc.handler    vpc.service    projectClient    iam    netw
   |                                      |<--true                              |            |          |
   |                                      |--Insert(network)----------------->BEGIN          |          |
   |                                      |--Insert(default SG)------------------>           |          |
-  |                                      |--Network UPDATE default_sg_id---->                          |
-  |                                      |--emit outbox Network.CREATED-------------------->INSERT     |
   |                                      |--emit outbox SecurityGroup.CREATED-------------->INSERT     |
+  |                                      |--Network UPDATE default_sg_id---->                          |
+  |                                      |--Insert(default RT)------------------>           |          |
+  |                                      |--emit outbox RouteTable.CREATED----------------->INSERT     |
+  |                                      |--Network UPDATE default_rt_id----->                         |
+  |                                      |--emit outbox Network.CREATED (собрана)---------->INSERT     |
   |                                      |                                                COMMIT       |
   |                                      |--ops.SetDone------------------------------------>         |
   |                                                                                                    |
