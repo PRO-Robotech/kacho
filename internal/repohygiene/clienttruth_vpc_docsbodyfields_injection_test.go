@@ -104,7 +104,7 @@ func (s *docsBodyStand) run(t *testing.T) ([]DocsBodyFieldFinding, DocsBodyField
 	t.Helper()
 	var log strings.Builder
 	f, c, err := AuditDocsBodyFields(DocsBodyFieldOptions{
-		Root:      s.root,
+		Tree:      clientTruthSyntheticTree(t, s.root),
 		ProtoRoot: "proto",
 		DocRoots:  []string{"services/probevpc/docs/content"},
 	}, &log)

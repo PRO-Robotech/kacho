@@ -116,8 +116,6 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -128,21 +126,25 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
+
 	// Регистрация дескрипторов домена: источник путей, методов и сообщений.
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 )
 
 // ClientTruthIAMRequestBodyOptions — вход анализатора.
 type ClientTruthIAMRequestBodyOptions struct {
-	// Root — корень дерева.
-	Root string
+	// Tree — СОСТАВ дерева, а не его корень: гейт берёт индекс git
+	// (`treecorpus.NewTree`), инъекционная проба — синтетическое дерево
+	// (`treecorpus.SyntheticTree`). Разбор — clienttruth_treefiles.go.
+	Tree *treecorpus.Tree
 	// ProtoPackage — пакет контрактов, чьи дескрипторы задают истину.
 	ProtoPackage string
-	// DocsDirs — каталоги клиентской документации (от Root).
+	// DocsDirs — каталоги клиентской документации (от корня дерева).
 	DocsDirs []string
 	// DocExts — расширения страниц.
 	DocExts []string
-	// UseCaseDirs — каталоги прод-кода use-case'ов (от Root), откуда выводится
+	// UseCaseDirs — каталоги прод-кода use-case'ов (от корня дерева), откуда выводится
 	// набор полей, отвергаемых на входе. Пусто — второй предикат не работает, и
 	// анализатор об этом отказывается молчать.
 	UseCaseDirs []string
@@ -235,7 +237,7 @@ func AuditClientTruthIAMRequestBody(
 				"судить примеры не по чему", opts.ProtoPackage)
 	}
 
-	rejected, rerr := collectRejectedInputFields(opts.Root, opts.UseCaseDirs)
+	rejected, rerr := collectRejectedInputFields(opts.Tree, opts.UseCaseDirs)
 	if rerr != nil {
 		return nil, census, rerr
 	}
@@ -248,26 +250,14 @@ func AuditClientTruthIAMRequestBody(
 
 	var findings []ClientTruthIAMRequestBodyFinding
 	for _, dir := range opts.DocsDirs {
-		root := filepath.Join(opts.Root, dir)
-		werr := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
-				return err
-			}
-			if !hasAnyExt(path, opts.DocExts) {
-				return nil
-			}
-			raw, rerr := os.ReadFile(path)
+		for _, rel := range clientTruthTreeFiles(opts.Tree, dir, true, opts.DocExts...) {
+			raw, rerr := clientTruthReadTreeFile(opts.Tree, rel)
 			if rerr != nil {
-				return rerr
+				return nil, census, fmt.Errorf("чтение %s: %w", rel, rerr)
 			}
 			census.DocFiles++
-			rel, _ := filepath.Rel(opts.Root, path)
 			findings = append(findings,
 				auditOneDoc(rel, string(raw), bindings, rejected, &census)...)
-			return nil
-		})
-		if werr != nil {
-			return nil, census, fmt.Errorf("обход %s: %w", dir, werr)
 		}
 	}
 
@@ -577,21 +567,24 @@ var nonInputMarkers = []string{"derived from caller", "output-only", "compiled/o
 // Разбор, а не поиск по образцу: те же имена стоят в комментариях рядом с самими
 // ветками (и в этом файле тоже), поэтому гейт по подстроке краснел бы на
 // собственном объяснении. Судится узел-вызов и его строковые аргументы.
-func collectRejectedInputFields(root string, dirs []string) (map[string]bool, error) {
+func collectRejectedInputFields(tree *treecorpus.Tree, dirs []string) (map[string]bool, error) {
 	out := map[string]bool{}
 	for _, dir := range dirs {
-		base := filepath.Join(root, dir)
-		err := filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
-				return err
+		for _, rel := range clientTruthTreeFiles(tree, dir, true, ".go") {
+			if strings.HasSuffix(rel, "_test.go") {
+				continue
 			}
-			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-				return nil
+			// Исходник подаётся разбору ТЕКСТОМ, а не именем файла: имя открыл бы
+			// файл сам разбор, то есть чтение вернулось бы в обход. Здесь оно
+			// одно и то же для всех — [clientTruthReadTreeFile].
+			src, rerr := clientTruthReadTreeFile(tree, rel)
+			if rerr != nil {
+				return nil, fmt.Errorf("чтение %s: %w", rel, rerr)
 			}
 			fset := token.NewFileSet()
-			file, perr := parser.ParseFile(fset, path, nil, 0)
+			file, perr := parser.ParseFile(fset, rel, src, 0)
 			if perr != nil {
-				return fmt.Errorf("разбор %s: %w", path, perr)
+				return nil, fmt.Errorf("разбор %s: %w", rel, perr)
 			}
 			ast.Inspect(file, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
@@ -615,10 +608,6 @@ func collectRejectedInputFields(root string, dirs []string) (map[string]bool, er
 				}
 				return true
 			})
-			return nil
-		})
-		if err != nil {
-			return nil, fmt.Errorf("обход %s: %w", dir, err)
 		}
 	}
 	return out, nil

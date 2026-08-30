@@ -67,7 +67,7 @@ func (s *moduleSetStand) run(t *testing.T) ([]ClientTruthIAMModuleSetFinding, Cl
 	t.Helper()
 	var log strings.Builder
 	f, c, err := AuditClientTruthIAMModuleSet(ClientTruthIAMModuleSetOptions{
-		Root:          s.root,
+		Tree:          clientTruthSyntheticTree(t, s.root),
 		ModuleSetFile: "svc/domain/module_set.go",
 		ModuleSetVar:  "knownModules",
 		Surfaces:      []string{"docs", "proto"},
@@ -182,7 +182,7 @@ func TestModuleSetGate_FailsOnEmptyTraversal(t *testing.T) {
 	}
 	var log strings.Builder
 	_, _, err := AuditClientTruthIAMModuleSet(ClientTruthIAMModuleSetOptions{
-		Root:          s.root,
+		Tree:          clientTruthSyntheticTree(t, s.root),
 		ModuleSetFile: "svc/domain/module_set.go",
 		ModuleSetVar:  "knownModules",
 		Surfaces:      []string{"docs", "proto"},
@@ -200,7 +200,7 @@ func TestModuleSetGate_FailsWhenVarNameIsWrong(t *testing.T) {
 	s := newModuleSetStand(t)
 	var log strings.Builder
 	_, _, err := AuditClientTruthIAMModuleSet(ClientTruthIAMModuleSetOptions{
-		Root:          s.root,
+		Tree:          clientTruthSyntheticTree(t, s.root),
 		ModuleSetFile: "svc/domain/module_set.go",
 		ModuleSetVar:  "renamedModules",
 		Surfaces:      []string{"docs", "proto"},

@@ -74,23 +74,25 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // ClientTruthIAMModuleSetOptions — вход анализатора.
 type ClientTruthIAMModuleSetOptions struct {
-	// Root — корень дерева.
-	Root string
-	// ModuleSetFile — путь (от Root) к объявлению закрытого набора.
+	// Tree — СОСТАВ дерева, а не его корень: гейт берёт индекс git
+	// (`treecorpus.NewTree`), инъекционная проба — синтетическое дерево
+	// (`treecorpus.SyntheticTree`). Разбор — clienttruth_treefiles.go.
+	Tree *treecorpus.Tree
+	// ModuleSetFile — путь (от корня дерева) к объявлению закрытого набора.
 	ModuleSetFile string
 	// ModuleSetVar — имя переменной, чей литерал и есть набор.
 	ModuleSetVar string
-	// Surfaces — каталоги клиентских поверхностей (от Root).
+	// Surfaces — каталоги клиентских поверхностей (от корня дерева).
 	Surfaces []string
 	// SurfaceExts — расширения файлов поверхности.
 	SurfaceExts []string
@@ -124,8 +126,17 @@ func (f ClientTruthIAMModuleSetFinding) String() string {
 		strings.Join(f.Missing, ", "), f.Span)
 }
 
-// codeToken — имя в код-форматировании: `имя` либо <code>имя</code>.
-const codeToken = "(?:`(%[1]s)`|<code>(%[1]s)</code>)"
+// codeSpanPattern — образец, которым распознаётся имя в код-форматировании:
+// `имя` либо <code>имя</code>. Подставляется через `%[1]s`.
+//
+// Имя ГОВОРИТ «образец», а не «лексема», и это не вкусовщина. Прежнее
+// `codeToken` понимало «token» в смысле «лексема», но сканер безопасности судит
+// имена констант по образцу `(?i)…|token|…` и объявлял находку «potential
+// hardcoded credentials» (G101) на регулярке, к учётным данным отношения не
+// имеющей. Подавление здесь было бы лечением экземпляра: имя, читающееся как
+// «учётные данные», читается так и человеком, бегло просматривающим файл.
+// Заодно оно стало точнее — это не сама лексема, а то, чем её находят.
+const codeSpanPattern = "(?:`(%[1]s)`|<code>(%[1]s)</code>)"
 
 // AuditClientTruthIAMModuleSet выводит закрытый набор модулей из его объявления и
 // требует, чтобы каждый перечень клиентской поверхности назвал набор целиком.
@@ -134,7 +145,7 @@ func AuditClientTruthIAMModuleSet(
 ) ([]ClientTruthIAMModuleSetFinding, ClientTruthIAMModuleSetCensus, error) {
 	var census ClientTruthIAMModuleSetCensus
 
-	modules, err := parseModuleSet(filepath.Join(opts.Root, opts.ModuleSetFile), opts.ModuleSetVar)
+	modules, err := parseModuleSet(opts.Tree, opts.ModuleSetFile, opts.ModuleSetVar)
 	if err != nil {
 		return nil, census, err
 	}
@@ -149,7 +160,7 @@ func AuditClientTruthIAMModuleSet(
 	for _, m := range modules {
 		alt = append(alt, regexp.QuoteMeta(m))
 	}
-	one := fmt.Sprintf(codeToken, "(?:"+strings.Join(alt, "|")+")")
+	one := fmt.Sprintf(codeSpanPattern, "(?:"+strings.Join(alt, "|")+")")
 	// Перечень — три и более имени подряд; пара ловится отдельно и НЕ судится.
 	enumRe := regexp.MustCompile(one + `(?:\s*/\s*` + one + `){2,}`)
 	pairRe := regexp.MustCompile(one + `\s*/\s*` + one)
@@ -162,20 +173,12 @@ func AuditClientTruthIAMModuleSet(
 
 	var findings []ClientTruthIAMModuleSetFinding
 	for _, surface := range opts.Surfaces {
-		root := filepath.Join(opts.Root, surface)
-		werr := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
-				return err
-			}
-			if !hasAnyExt(path, opts.SurfaceExts) {
-				return nil
-			}
-			raw, rerr := os.ReadFile(path)
+		for _, rel := range clientTruthTreeFiles(opts.Tree, surface, true, opts.SurfaceExts...) {
+			raw, rerr := clientTruthReadTreeFile(opts.Tree, rel)
 			if rerr != nil {
-				return rerr
+				return nil, census, fmt.Errorf("чтение %s: %w", rel, rerr)
 			}
 			census.SurfaceFiles++
-			rel, _ := filepath.Rel(opts.Root, path)
 			for i, line := range strings.Split(string(raw), "\n") {
 				enums := enumRe.FindAllString(line, -1)
 				for _, span := range enums {
@@ -209,10 +212,6 @@ func AuditClientTruthIAMModuleSet(
 					census.PairSpans += len(pairRe.FindAllString(line, -1))
 				}
 			}
-			return nil
-		})
-		if werr != nil {
-			return nil, census, fmt.Errorf("обход %s: %w", surface, werr)
 		}
 	}
 
@@ -233,11 +232,15 @@ func AuditClientTruthIAMModuleSet(
 
 // parseModuleSet выводит набор РАЗБОРОМ объявления, а не чтением текста: имена
 // модулей стоят и в комментариях рядом с ним.
-func parseModuleSet(path, varName string) ([]string, error) {
+func parseModuleSet(tree *treecorpus.Tree, rel, varName string) ([]string, error) {
+	src, rerr := clientTruthReadTreeFile(tree, rel)
+	if rerr != nil {
+		return nil, fmt.Errorf("чтение %s: %w", rel, rerr)
+	}
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, path, nil, 0)
+	file, err := parser.ParseFile(fset, rel, src, 0)
 	if err != nil {
-		return nil, fmt.Errorf("разбор %s: %w", path, err)
+		return nil, fmt.Errorf("разбор %s: %w", rel, err)
 	}
 	var out []string
 	ast.Inspect(file, func(n ast.Node) bool {
@@ -266,18 +269,9 @@ func parseModuleSet(path, varName string) ([]string, error) {
 		return true
 	})
 	if len(out) == 0 {
-		return nil, fmt.Errorf("в %s не найдено объявление %s со строковым литералом", path, varName)
+		return nil, fmt.Errorf("в %s не найдено объявление %s со строковым литералом", rel, varName)
 	}
 	return out, nil
-}
-
-func hasAnyExt(path string, exts []string) bool {
-	for _, e := range exts {
-		if strings.HasSuffix(path, e) {
-			return true
-		}
-	}
-	return false
 }
 
 func firstNonEmpty(ss []string) string {

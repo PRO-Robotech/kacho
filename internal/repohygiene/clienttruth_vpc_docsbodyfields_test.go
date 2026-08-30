@@ -24,7 +24,7 @@ import (
 func TestDocsRequestBodiesUseDeclaredFields(t *testing.T) {
 	var log strings.Builder
 	findings, census, err := AuditDocsBodyFields(DocsBodyFieldOptions{
-		Root:      repoRoot(t),
+		Tree:      clientTruthRepoTree(t),
 		ProtoRoot: "proto",
 		DocRoots:  []string{"services/vpc/docs/content"},
 	}, &log)
