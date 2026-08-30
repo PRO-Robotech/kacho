@@ -1172,7 +1172,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       title: "Нет привязок доступа",
       body:
         "Привязка доступа назначает субъекту (пользователю, сервисному аккаунту или группе) роль на ресурсе " +
-        "(Account, Project или кластер). Создайте привязку, чтобы выдать доступ.",
+        "(аккаунте, проекте или кластере). Создайте привязку, чтобы выдать доступ.",
       docs: ["Привязки доступа"],
     },
     // create — bespoke AccessBindingCreatePage (ops.create=false); template лишь
