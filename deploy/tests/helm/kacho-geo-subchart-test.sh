@@ -123,8 +123,8 @@ dam="$(env_val KACHO_GEO_AUTH_MODE "$DEVMODE")"
 [ "$dam" = "dev" ] || fail "явный opt-in KACHO_GEO_AUTH_MODE=$dam (ожидается dev)"; ok
 
 # ── 5. production override: AUTH_MODE=production + DB ssl require ──────────────
-render "kacho-geo (authMode=production, db.sslmode=require)" \
-  --set authMode=production --set db.sslmode=require
+render "kacho-geo (authMode=production, db.sslMode=require)" \
+  --set authMode=production --set db.sslMode=require
 PROD="$HELM_OUT"
 pam="$(env_val KACHO_GEO_AUTH_MODE "$PROD")"
 pssl="$(env_val KACHO_GEO_DB_SSLMODE "$PROD")"
