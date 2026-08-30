@@ -228,3 +228,49 @@ CREATE TABLE j (
 		t.Fatal("`REFERENCES q (sent_at)` не объявляет колонку этой таблицы")
 	}
 }
+
+// TestScanKnowsEveryLegalFormOfTheMarkerAction — РАСПОЗНАВАТЕЛЬ ЗНАЕТ ВСЕ ФОРМЫ.
+//
+// Форма, о которой разбор не знает, — не край и не редкость: всё записанное в
+// ней оказывается ВНЕ НАБЛЮДЕНИЯ, то есть не находкой и не молчанием, а
+// невидимостью. Поэтому каждая законная форма записи действия над колонкой
+// названа здесь поимённо и проверена, включая формы, которые обязаны НЕ
+// считаться действием над ней.
+func TestScanKnowsEveryLegalFormOfTheMarkerAction(t *testing.T) {
+	for _, tc := range []struct {
+		name, sql string
+		want      bool
+	}{
+		{"DROP без слова COLUMN — в Postgres оно необязательно", `-- +goose Up
+CREATE TABLE q (id INT, sent_at TIMESTAMPTZ);
+ALTER TABLE q DROP sent_at;`, false},
+		{"ADD с IF NOT EXISTS", `-- +goose Up
+CREATE TABLE q (id INT);
+ALTER TABLE q ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;`, true},
+		{"DROP с IF EXISTS", `-- +goose Up
+CREATE TABLE q (id INT, sent_at TIMESTAMPTZ);
+ALTER TABLE q DROP COLUMN IF EXISTS sent_at;`, false},
+		{"несколько действий одним оператором", `-- +goose Up
+CREATE TABLE q (id INT);
+ALTER TABLE q ADD COLUMN a INT, ADD COLUMN sent_at TIMESTAMPTZ;`, true},
+		{"DROP CONSTRAINT колонку не снимает", `-- +goose Up
+CREATE TABLE q (id INT, sent_at TIMESTAMPTZ);
+ALTER TABLE q DROP CONSTRAINT q_chk;`, true},
+		{"ALTER COLUMN не заводит и не снимает", `-- +goose Up
+CREATE TABLE q (id INT, sent_at TIMESTAMPTZ);
+ALTER TABLE q ALTER COLUMN sent_at SET NOT NULL;`, true},
+		{"схема в имени таблицы", `-- +goose Up
+CREATE TABLE kacho_x.q (id INT, sent_at TIMESTAMPTZ);`, true},
+		{"колонка с похожим именем не считается признаком", `-- +goose Up
+CREATE TABLE q (id INT);
+ALTER TABLE q ADD COLUMN address TEXT;`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ev, _ := ScanDeliveryMarker("services/x", "0001.sql", []byte(tc.sql))
+			got := FoldDeliveryMarker(ev)[TableRef{Owner: "services/x", Name: "q"}]
+			if got != tc.want {
+				t.Fatalf("форма %q: разбор ответил %v, ожидалось %v", tc.name, got, tc.want)
+			}
+		})
+	}
+}
