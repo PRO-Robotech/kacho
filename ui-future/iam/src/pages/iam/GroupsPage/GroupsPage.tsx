@@ -86,8 +86,8 @@ export function GroupsPage() {
     queryKey: ["iam", "groups", "list", accountId],
     queryFn: () => iamApi.listGroups({ account_id: accountId!, pageSize: "200" }),
     enabled: !!accountId,
-    // поллинг остаётся: журнала у iam нет — глагол подписки служат три
-    // владельца (compute, nlb, vpc), iam среди них не значится.
+    // поллинг остаётся: журнала у iam нет — среди владельцев глагола подписки
+    // его не значится (перечень выводится картой предметов, `JOURNAL_OWNERS`).
     refetchInterval: 5_000,
     staleTime: 0,
   });

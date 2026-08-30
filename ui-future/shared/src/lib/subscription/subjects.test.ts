@@ -11,7 +11,7 @@ import { JOURNAL_OWNERS, STREAM_SUBJECTS, streamSubject } from "./subjects";
  */
 describe("подписка: спека консоли → владелец журнала и вид предмета", () => {
   // verifies #1021
-  it("владельцев ровно три, и это домены контракта, а не сегменты REST", () => {
+  it("владельцы названы доменами контракта, а не сегментами REST", () => {
     // `loadbalancer` против `nlb` — тот самый разнобой, о котором предупреждает
     // страница подписки: REST-путь `/nlb/v1/`, каталог в дереве `services/nlb`,
     // а владелец `loadbalancer`. Возьми здесь сегмент пути или имя каталога —
@@ -23,10 +23,22 @@ describe("подписка: спека консоли → владелец жу�
     // тут, а край в этом файле не участвует. Согласие с краем держит теперь
     // гейт `gateway/deploy/console_subscription_owner_test.go`: он берёт
     // множество принимаемых имён ВЫЗОВОМ той функции, которой пользуется край.
-    expect([...JOURNAL_OWNERS].sort()).toEqual(["compute", "loadbalancer", "vpc"]);
+    //
+    // ЗДЕСЬ СТОЯЛИ ТРИ ИМЕНИ, а край объявлял пять: блочное хранение и реестр
+    // журналы ведут, а карта их не называла — и четыре места опроса объясняли
+    // себя утверждением «журнала у этого домена нет». Обратную сторону — что
+    // объявленный краю владелец обязан быть здесь назван — держит гейт
+    // `ui-future/deploy/console_stream_owner_coverage_test.go`.
+    expect([...JOURNAL_OWNERS].sort()).toEqual([
+      "compute",
+      "loadbalancer",
+      "registry",
+      "storage",
+      "vpc",
+    ]);
   });
 
-  it("названы ровно те двенадцать видов, что объявляют журналы трёх владельцев", () => {
+  it("названы ровно те виды, что объявляют журналы владельцев", () => {
     // Написание вида — тип объекта модели прав, одно на всё дерево.
     expect(
       Object.values(STREAM_SUBJECTS)
@@ -46,6 +58,10 @@ describe("подписка: спека консоли → владелец жу�
         "vpc_route_table",
         "vpc_security_group",
         "vpc_subnet",
+        "storage_volume",
+        "storage_snapshot",
+        "storage_image",
+        "registry_registry",
       ].sort(),
     );
   });
@@ -67,6 +83,8 @@ describe("подписка: спека консоли → владелец жу�
     const kindPrefix: Record<string, string> = {
       compute: "compute_",
       loadbalancer: "nlb_",
+      registry: "registry_",
+      storage: "storage_",
       vpc: "vpc_",
     };
     const mismatched = Object.entries(STREAM_SUBJECTS)
@@ -82,18 +100,32 @@ describe("подписка: спека консоли → владелец жу�
       owner: "loadbalancer",
       kind: "nlb_network_load_balancer",
     });
+    expect(streamSubject("volumes")).toEqual({ owner: "storage", kind: "storage_volume" });
+    expect(streamSubject("registries")).toEqual({ owner: "registry", kind: "registry_registry" });
   });
 
   it("непокрытая спека отвечает null, а не догадкой", () => {
     // ОТРИЦАНИЕ СТОИТ В ПАРЕ С ПОЛОЖИТЕЛЬНЫМ ВЫШЕ. Само по себе оно зеленело бы
     // на карте, отвечающей `null` вообще всем.
     //
-    // Каждое имя ниже — не выдумка, а живая спека дерева, чей домен журнала НЕ
-    // объявляет: iam и storage и registry владельцами не значатся вовсе, а
-    // группа размещения не значится в словаре compute (журнал пишет один вид —
-    // `Instance`). Догадка «раз домен compute, значит покрыто» дала бы `400` на
-    // открытии и молчащий список.
-    for (const specId of ["users", "projects", "volumes", "registries", "tags", "placement-groups", "machine-types", "zones"]) {
+    // Каждое имя ниже — не выдумка, а живая спека дерева, чей ВЛАДЕЛЕЦ этого
+    // вида не объявляет. Три разных основания, и все три реальны: у iam журнала
+    // нет вовсе (`users`, `projects`); у блочного хранения и реестра журнал ЕСТЬ,
+    // но ведёт не всякий свой предмет (`disk-types`, `repositories`, `tags`);
+    // у compute журнал пишет один вид, машины (`placement-groups`,
+    // `machine-types`). Догадка «раз домен покрыт, значит покрыт и этот вид»
+    // дала бы снятый опрос при молчащем потоке — то есть список, замерший
+    // навсегда.
+    for (const specId of [
+      "users",
+      "projects",
+      "disk-types",
+      "repositories",
+      "tags",
+      "placement-groups",
+      "machine-types",
+      "zones",
+    ]) {
       // Сверяется ЗНАЧЕНИЕ, а не его строка. Прежняя запись приводила ответ
       // `String()`-ом, чтобы назвать в отказе виновную спеку, — но объект
       // приводится к «[object Object]», то есть ЛЮБОЙ непустой ответ выглядел
