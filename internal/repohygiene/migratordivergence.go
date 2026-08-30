@@ -127,8 +127,9 @@ type migratorDivergence struct {
 // таблицей решения; каждая строка обязана иметь живой предмет.
 var migratorDeclaredDivergences = []migratorDivergence{
 	{
-		ID:   "dialect-empty-accepted",
-		What: "пустая строка диалекта принимается фабрикой",
+		ID:     "dialect-empty-accepted",
+		What:   "пустая строка диалекта принимается фабрикой",
+		Closed: "#1383 (общий накат), 2026-08-30",
 		Subject: func(facts []migratorServiceFacts) []string {
 			return migratorServicesWhere(facts, func(f migratorServiceFacts) bool {
 				return f.Wrapper.Present && f.Wrapper.DialectAcceptsEmptyName
@@ -136,8 +137,9 @@ var migratorDeclaredDivergences = []migratorDivergence{
 		},
 	},
 	{
-		ID:   "dialect-not-an-interface",
-		What: "Dialect — конкретный тип, а не интерфейс: подставить дублёра нельзя",
+		ID:     "dialect-not-an-interface",
+		What:   "Dialect — конкретный тип, а не интерфейс: подставить дублёра нельзя",
+		Closed: "#1383 (общий накат), 2026-08-30",
 		Subject: func(facts []migratorServiceFacts) []string {
 			return migratorServicesWhere(facts, func(f migratorServiceFacts) bool {
 				return f.Wrapper.Present && !f.Wrapper.DialectIsInterface

@@ -144,7 +144,7 @@ func manifestForms(t *testing.T, root string) (map[string][]invocationForm, int)
 				"с нулём покрытого", sub, err)
 		}
 		for _, abs := range files {
-			body, err := os.ReadFile(abs) //nolint:gosec // путь пришёл из индекса git
+			body, err := os.ReadFile(abs)
 			if err != nil {
 				t.Fatalf("манифест %s не прочитан: %v", abs, err)
 			}
@@ -386,7 +386,7 @@ func manifestNamesConfigPath(t *testing.T, service string) bool {
 			t.Fatalf("состав манифестов под %s не измерен: %v", sub, err)
 		}
 		for _, abs := range files {
-			body, err := os.ReadFile(abs) //nolint:gosec // путь пришёл из индекса git
+			body, err := os.ReadFile(abs)
 			if err != nil {
 				t.Fatalf("манифест %s не прочитан: %v", abs, err)
 			}
