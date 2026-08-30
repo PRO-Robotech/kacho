@@ -15,9 +15,17 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 //
 // Строго два уровня аренды: Account → Project (Project — leaf-workspace, без
 // вложенности). Constraint: (account_id, name) — UNIQUE per-account.
-// `account_id` — hard-immutable после Create: НЕТ ProjectService.Move RPC
-// (cross-account перенос сломал бы scope-координату всех downstream-ресурсов,
-// держащих projectId) — Update отвергает account_id в update_mask.
+//
+// `account_id` — hard-immutable после Create, и переноса проекта между
+// аккаунтами не делает НИ ОДИН вызов. Это решение, а не пробел поверхности:
+// projectId — scope-координата, которую хранит у себя каждый downstream-ресурс,
+// поэтому смена родителя молча обесценила бы выдачи и ссылки, резолвящиеся
+// через неё. Update отвергает account_id в update_mask с
+// "accountId is immutable after Project.Create".
+//
+// Нужен проект в другом аккаунте — он там СОЗДАЁТСЯ: Create принимает целевой
+// account_id. За ним ничего не переносится, и это то же самое решение, а не
+// отдельное ограничение.
 //
 // Resource id prefix: `prj-`.
 message Project {
@@ -25,8 +33,11 @@ message Project {
   string id = 1;
 
   // ID of the Account that this Project belongs to.
-  // Immutable after Project.Create (no Move RPC; Update rejects account_id in
-  // update_mask with "accountId is immutable after Project.Create").
+  //
+  // Immutable after Project.Create, and no call moves a Project between
+  // Accounts — the message doc above says why, and it is the single place that
+  // says it. Update rejects account_id in update_mask with "accountId is
+  // immutable after Project.Create".
   string account_id = 2;
 
   // Name of the project. Unique within an Account. 3-63 characters long.
