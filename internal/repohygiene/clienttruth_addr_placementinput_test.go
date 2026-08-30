@@ -23,7 +23,7 @@ import (
 func placementInputOptions(t *testing.T) PlacementInputOptions {
 	t.Helper()
 	return PlacementInputOptions{
-		Root:      repoRoot(t),
+		Tree:      clientTruthRepoTree(t),
 		ProtoRoot: "proto",
 		Exemptions: []PlacementInputExemption{
 			{

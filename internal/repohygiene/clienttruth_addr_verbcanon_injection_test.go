@@ -78,7 +78,7 @@ func (s *verbStand) run(
 	t.Helper()
 	var log strings.Builder
 	f, c, err := AuditVerbCanon(VerbCanonOptions{
-		Root: s.root, ProtoRoot: "proto", Exemptions: ex,
+		Tree: clientTruthSyntheticTree(t, s.root), ProtoRoot: "proto", Exemptions: ex,
 	}, &log)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
@@ -263,7 +263,8 @@ func TestVerbCanonInjection_EmptyWalkIsNotSilentSuccess(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	var log strings.Builder
-	findings, census, err := AuditVerbCanon(VerbCanonOptions{Root: root, ProtoRoot: "proto"}, &log)
+	findings, census, err := AuditVerbCanon(
+		VerbCanonOptions{Tree: clientTruthSyntheticTree(t, root), ProtoRoot: "proto"}, &log)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
 	}

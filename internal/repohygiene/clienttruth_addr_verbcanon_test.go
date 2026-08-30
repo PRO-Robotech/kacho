@@ -30,7 +30,7 @@ func verbCanonOptions(t *testing.T) VerbCanonOptions {
 	t.Helper()
 	const reason = "landed-путь; смена написания ломающая — переводится задачей kacho#1624"
 	return VerbCanonOptions{
-		Root:      repoRoot(t),
+		Tree:      clientTruthRepoTree(t),
 		ProtoRoot: "proto",
 		Exemptions: []VerbCanonExemption{
 			{

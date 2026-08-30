@@ -75,11 +75,11 @@ package repohygiene
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // NameFormSourceRel — единственный источник применяемой формы имени. Объявлен
@@ -89,19 +89,22 @@ const NameFormSourceRel = "pkg/validate/nameform/nameform.go"
 
 // NameFormClaimOptions — вход анализатора.
 type NameFormClaimOptions struct {
-	// Root — корень дерева.
-	Root string
+	// Tree — СОСТАВ дерева, а не его корень: гейт берёт индекс git
+	// (`treecorpus.NewTree`), инъекционная проба — синтетическое дерево
+	// (`treecorpus.SyntheticTree`). Разбор — clienttruth_treefiles.go.
+	Tree *treecorpus.Tree
 
-	// ProtoRoot — каталог контрактов относительно Root. Пустой — контракты не
-	// читаются (используется инъекцией).
+	// ProtoRoot — каталог контрактов относительно корня дерева. Пустой —
+	// контракты не читаются (используется инъекцией).
 	ProtoRoot string
 
-	// DocsRoots — каталоги сайтов документации относительно Root. Каждый
-	// обходится целиком; читаются носители видов, названных в [nameFormCarrier].
+	// DocsRoots — каталоги сайтов документации относительно корня дерева.
+	// Каждый читается целиком; берутся носители видов, названных в
+	// [nameFormCarrier].
 	DocsRoots []string
 
-	// FormSource — файл с объявлением применяемой формы относительно Root.
-	// Пустое значение означает [NameFormSourceRel].
+	// FormSource — файл с объявлением применяемой формы относительно корня
+	// дерева. Пустое значение означает [NameFormSourceRel].
 	FormSource string
 
 	// Exemptions — послабления. Каждое обязано истекать само: запись, которой
@@ -272,7 +275,7 @@ func AuditNameFormClaims(
 	if src == "" {
 		src = NameFormSourceRel
 	}
-	raw, err := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(src)))
+	raw, err := clientTruthReadTreeFile(opts.Tree, src)
 	if err != nil {
 		return nil, census, fmt.Errorf("источник применяемой формы %s: %w", src, err)
 	}
@@ -298,30 +301,18 @@ func AuditNameFormClaims(
 	var findings []NameFormClaimFinding
 	matched := map[string]bool{}
 
+	// Каталог сайта может отсутствовать у сервиса — это не находка: состав
+	// такого каталога в индексе пуст, и цикл ниже просто не сделает ни одного
+	// шага. Отдельная проверка существования была нужна обходу диска, который на
+	// отсутствующем каталоге отдавал ошибку; у индекса такого состояния нет.
 	for _, r := range roots {
-		abs := filepath.Join(opts.Root, filepath.FromSlash(r))
-		if _, serr := os.Stat(abs); serr != nil {
-			// Каталог сайта может отсутствовать у сервиса — это не находка.
-			continue
-		}
-		walkErr := filepath.Walk(abs, func(path string, info os.FileInfo, werr error) error {
-			if werr != nil {
-				return werr
-			}
-			if info.IsDir() {
-				return nil
-			}
-			rel, rerr := filepath.Rel(opts.Root, path)
-			if rerr != nil {
-				return rerr
-			}
-			rel = filepath.ToSlash(rel)
+		for _, rel := range clientTruthTreeFiles(opts.Tree, r, true) {
 			if !nameFormCarrier(rel) {
-				return nil
+				continue
 			}
-			body, rerr := os.ReadFile(path)
+			body, rerr := clientTruthReadTreeFile(opts.Tree, rel)
 			if rerr != nil {
-				return rerr
+				return nil, census, rerr
 			}
 			if strings.HasSuffix(rel, ".proto") {
 				census.ProtoFiles++
@@ -347,10 +338,6 @@ func AuditNameFormClaims(
 					findings = append(findings, f)
 				}
 			}
-			return nil
-		})
-		if walkErr != nil {
-			return nil, census, walkErr
 		}
 	}
 

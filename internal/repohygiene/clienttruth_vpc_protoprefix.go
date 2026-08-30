@@ -60,11 +60,11 @@ package repohygiene
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // PrefixSourceRel — единственный источник словаря префиксов. Объявлен здесь, а не
@@ -74,14 +74,16 @@ const PrefixSourceRel = "pkg/ids/ids.go"
 
 // ProtoPrefixClaimOptions — вход анализатора.
 type ProtoPrefixClaimOptions struct {
-	// Root — корень дерева.
-	Root string
+	// Tree — СОСТАВ дерева, а не его корень: гейт берёт индекс git
+	// (`treecorpus.NewTree`), инъекционная проба — синтетическое дерево
+	// (`treecorpus.SyntheticTree`). Разбор — clienttruth_treefiles.go.
+	Tree *treecorpus.Tree
 
-	// ProtoRoot — каталог контрактов относительно Root.
+	// ProtoRoot — каталог контрактов относительно корня дерева.
 	ProtoRoot string
 
-	// PrefixSource — файл с объявлениями констант префиксов относительно Root.
-	// Пустое значение означает [PrefixSourceRel].
+	// PrefixSource — файл с объявлениями констант префиксов относительно корня
+	// дерева. Пустое значение означает [PrefixSourceRel].
 	PrefixSource string
 
 	// Exemptions — послабления: утверждения, которые сегодня неверны и правятся
@@ -180,7 +182,7 @@ func AuditProtoPrefixClaims(
 	if src == "" {
 		src = PrefixSourceRel
 	}
-	raw, err := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(src)))
+	raw, err := clientTruthReadTreeFile(opts.Tree, src)
 	if err != nil {
 		return nil, census, fmt.Errorf("источник словаря префиксов %s: %w", src, err)
 	}
@@ -195,26 +197,13 @@ func AuditProtoPrefixClaims(
 
 	// Имена доменов — из каталогов дерева контрактов. Выводятся, а не
 	// выписываются: рукописный перечень разошёлся бы с деревом молча.
-	protoAbs := filepath.Join(opts.Root, filepath.FromSlash(opts.ProtoRoot))
-
 	var findings []ProtoPrefixClaimFinding
 	matched := map[string]bool{}
 
-	walkErr := filepath.Walk(protoAbs, func(path string, info os.FileInfo, werr error) error {
-		if werr != nil {
-			return werr
-		}
-		if info.IsDir() || !strings.HasSuffix(path, ".proto") {
-			return nil
-		}
-		rel, rerr := filepath.Rel(opts.Root, path)
+	for _, rel := range clientTruthTreeFiles(opts.Tree, opts.ProtoRoot, true, ".proto") {
+		body, rerr := clientTruthReadTreeFile(opts.Tree, rel)
 		if rerr != nil {
-			return rerr
-		}
-		rel = filepath.ToSlash(rel)
-		body, rerr := os.ReadFile(path)
-		if rerr != nil {
-			return rerr
+			return nil, census, rerr
 		}
 		census.ProtoFiles++
 		domain := protoDomainOf(rel)
@@ -265,10 +254,6 @@ func AuditProtoPrefixClaims(
 			}
 			findings = append(findings, f)
 		}
-		return nil
-	})
-	if walkErr != nil {
-		return nil, census, walkErr
 	}
 
 	// Послабление, которому больше нечего исключать, — находка: иначе слепая зона

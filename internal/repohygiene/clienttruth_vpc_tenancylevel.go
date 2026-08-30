@@ -103,18 +103,19 @@ package repohygiene
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // TenancyLevelOptions — вход анализатора.
 type TenancyLevelOptions struct {
-	// Root — корень дерева.
-	Root string
-	// ProtoRoot — каталог контрактов относительно Root.
+	// Tree — СОСТАВ дерева, а не его корень: гейт берёт индекс git
+	// (`treecorpus.NewTree`), инъекционная проба — синтетическое дерево
+	// (`treecorpus.SyntheticTree`). Разбор — clienttruth_treefiles.go.
+	Tree *treecorpus.Tree
+	// ProtoRoot — каталог контрактов относительно корня дерева.
 	ProtoRoot string
 }
 
@@ -213,7 +214,6 @@ func AuditTenancyLevels(
 ) ([]TenancyLevelFinding, TenancyLevelCensus, error) {
 	var census TenancyLevelCensus
 
-	protoAbs := filepath.Join(opts.Root, filepath.FromSlash(opts.ProtoRoot))
 	type claim struct {
 		file  string
 		line  int
@@ -225,31 +225,10 @@ func AuditTenancyLevels(
 		fields  = map[string]bool{}
 		msgs    = map[string]bool{}
 		pkgWord = map[string]bool{}
-		files   []string
 	)
 
-	walkErr := filepath.Walk(protoAbs, func(path string, info os.FileInfo, werr error) error {
-		if werr != nil {
-			return werr
-		}
-		if info.IsDir() || !strings.HasSuffix(path, ".proto") {
-			return nil
-		}
-		files = append(files, path)
-		return nil
-	})
-	if walkErr != nil {
-		return nil, census, walkErr
-	}
-	sort.Strings(files)
-
-	for _, path := range files {
-		rel, rerr := filepath.Rel(opts.Root, path)
-		if rerr != nil {
-			return nil, census, rerr
-		}
-		rel = filepath.ToSlash(rel)
-		body, rerr := os.ReadFile(path)
+	for _, rel := range clientTruthTreeFiles(opts.Tree, opts.ProtoRoot, true, ".proto") {
+		body, rerr := clientTruthReadTreeFile(opts.Tree, rel)
 		if rerr != nil {
 			return nil, census, rerr
 		}

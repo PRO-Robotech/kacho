@@ -5,7 +5,6 @@ package repohygiene
 
 import (
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -47,55 +46,6 @@ import (
 // ДВУЯЗЫЧНОСТЬ КОРПУСА УЧТЕНА НАМЕРЕННО (`testing.md` §«Предикат по ДВУЯЗЫЧНОМУ
 // корпусу»): предикат на одном языке недобирал бы молча, и недобор пришёлся бы
 // ровно на документацию — то есть на ту сторону, ради которой гейт заведён.
-
-// nlbTreeFiles — отслеживаемые файлы под каталогом dirRel с одним из суффиксов.
-//
-// СОСТАВ БЕРЁТСЯ У ИНДЕКСА, А НЕ У ДИСКА, и это не формальность. Под
-// `services/` и `proto/` на машине, где поднимали стенд или собирали фронтенд,
-// лежат распаковки чартов, сборочные каталоги и отчёты прогонов; обход файловой
-// системы прочитал бы их наравне с деревом, и вердикт стал бы свойством рабочего
-// каталога, а не коммита. Два соседних гейта уже разошлись ровно так — 342
-// против 341 на одной неотслеживаемой миграции.
-//
-// recursive=false повторяет семантику `filepath.Glob("dir/*.ext")` — ОДИН
-// уровень: перевод плоского каталога на рекурсивный обход сменил бы вместе с
-// источником состава и ВОПРОС, который проверка задаёт.
-//
-// Возвращаются ОТНОСИТЕЛЬНЫЕ пути (как их отдаёт индекс); читающая сторона
-// склеивает их с `tree.Root()`.
-func nlbTreeFiles(tree *treecorpus.Tree, dirRel string, recursive bool, suffixes ...string) []string {
-	prefix := strings.TrimSuffix(filepath.ToSlash(dirRel), "/") + "/"
-	var out []string
-	for _, rel := range tree.SortedFiles() {
-		if !strings.HasPrefix(rel, prefix) {
-			continue
-		}
-		if !recursive && strings.Contains(rel[len(prefix):], "/") {
-			continue
-		}
-		if len(suffixes) > 0 {
-			ok := false
-			for _, sfx := range suffixes {
-				if strings.HasSuffix(rel, sfx) {
-					ok = true
-					break
-				}
-			}
-			if !ok {
-				continue
-			}
-		}
-		out = append(out, rel)
-	}
-	return out
-}
-
-// nlbReadTreeFile — чтение файла состава. Путь склеивается ЗДЕСЬ, из корня
-// дерева и относительного имени, пришедшего из индекса: в таком виде он не
-// приходит извне ни одной своей частью.
-func nlbReadTreeFile(tree *treecorpus.Tree, rel string) ([]byte, error) {
-	return os.ReadFile(filepath.Join(tree.Root(), filepath.FromSlash(rel)))
-}
 
 // nlbNameScopeTable — таблица, чьё имя проверяется. Ключ — имя таблицы в схеме
 // `kacho_nlb`, значение — как этот ресурс называется в контракте и на странице.
@@ -214,10 +164,10 @@ func collectNlbNameScope(tree *treecorpus.Tree) (nlbNameScopeCensus, error) {
 	}
 
 	// ── 1. АВТОРИТЕТ: последний уникальный индекс имени по каждой таблице ──────
-	migs := nlbTreeFiles(tree, "services/nlb/internal/migrations", false, ".sql")
+	migs := clientTruthTreeFiles(tree, "services/nlb/internal/migrations", false, ".sql")
 	sort.Slice(migs, func(i, j int) bool { return gooseVersion(migs[i]) < gooseVersion(migs[j]) })
 	for _, m := range migs {
-		body, err := nlbReadTreeFile(tree, m)
+		body, err := clientTruthReadTreeFile(tree, m)
 		if err != nil {
 			return c, err
 		}
@@ -233,9 +183,9 @@ func collectNlbNameScope(tree *treecorpus.Tree) (nlbNameScopeCensus, error) {
 	}
 
 	// ── 2. УТВЕРЖДЕНИЯ КОНТРАКТА ──────────────────────────────────────────────
-	protos := nlbTreeFiles(tree, "proto/kacho/cloud/loadbalancer/v1", false, ".proto")
+	protos := clientTruthTreeFiles(tree, "proto/kacho/cloud/loadbalancer/v1", false, ".proto")
 	for _, rel := range protos {
-		body, err := nlbReadTreeFile(tree, rel)
+		body, err := clientTruthReadTreeFile(tree, rel)
 		if err != nil {
 			return c, err
 		}
@@ -288,8 +238,8 @@ func collectNlbNameScope(tree *treecorpus.Tree) (nlbNameScopeCensus, error) {
 	}
 
 	// ── 3. УТВЕРЖДЕНИЯ ДОКУМЕНТАЦИИ ───────────────────────────────────────────
-	for _, rel := range nlbTreeFiles(tree, "services/nlb/docs/content", true, ".mdx") {
-		body, rerr := nlbReadTreeFile(tree, rel)
+	for _, rel := range clientTruthTreeFiles(tree, "services/nlb/docs/content", true, ".mdx") {
+		body, rerr := clientTruthReadTreeFile(tree, rel)
 		if rerr != nil {
 			return c, rerr
 		}

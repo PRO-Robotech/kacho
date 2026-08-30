@@ -22,7 +22,7 @@ func protoPrefixClaimOptions(t *testing.T) ProtoPrefixClaimOptions {
 	const computeInstanceSvc = "proto/kacho/cloud/compute/v1/instance_service.proto"
 	const reason = "правится полосой compute той же линии, kacho#1601"
 	return ProtoPrefixClaimOptions{
-		Root:      repoRoot(t),
+		Tree:      clientTruthRepoTree(t),
 		ProtoRoot: "proto",
 		Exemptions: []ProtoPrefixClaimExemption{
 			{File: computeInstanceSvc, Name: "NetworkInterface", Prefix: "enp", Reason: reason},

@@ -15,7 +15,7 @@ import (
 func TestProtoCommentsNameContainersThatExist(t *testing.T) {
 	var log strings.Builder
 	findings, census, err := AuditTenancyLevels(TenancyLevelOptions{
-		Root:      repoRoot(t),
+		Tree:      clientTruthRepoTree(t),
 		ProtoRoot: "proto",
 	}, &log)
 	if err != nil {

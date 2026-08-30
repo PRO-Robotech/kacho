@@ -125,7 +125,9 @@ func (s *tenancyStand) write(t *testing.T, rel, body string) {
 func (s *tenancyStand) run(t *testing.T) ([]TenancyLevelFinding, TenancyLevelCensus) {
 	t.Helper()
 	var log strings.Builder
-	f, c, err := AuditTenancyLevels(TenancyLevelOptions{Root: s.root, ProtoRoot: "proto"}, &log)
+	f, c, err := AuditTenancyLevels(TenancyLevelOptions{
+		Tree: clientTruthSyntheticTree(t, s.root), ProtoRoot: "proto",
+	}, &log)
 	if err != nil {
 		t.Fatalf("анализатор не отработал: %v", err)
 	}

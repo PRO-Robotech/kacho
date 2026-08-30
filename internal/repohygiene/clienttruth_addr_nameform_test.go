@@ -15,7 +15,7 @@ import (
 func nameFormClaimOptions(t *testing.T) NameFormClaimOptions {
 	t.Helper()
 	return NameFormClaimOptions{
-		Root:      repoRoot(t),
+		Tree:      clientTruthRepoTree(t),
 		ProtoRoot: "proto",
 		DocsRoots: []string{"services"},
 	}
