@@ -265,8 +265,8 @@ func (w *fakeLBWriter) SetStatusCAS(context.Context, string, domain.LBStatus, do
 func (w *fakeLBWriter) MarkDeleting(context.Context, string) (*kachorepo.LoadBalancerRecord, error) {
 	return nil, errors.New("fakeLBWriter.MarkDeleting not implemented")
 }
-func (w *fakeLBWriter) MoveProject(context.Context, string, string) (*kachorepo.LoadBalancerRecord, error) {
-	return nil, errors.New("fakeLBWriter.MoveProject not implemented")
+func (w *fakeLBWriter) MoveProject(context.Context, string, string) (*kachorepo.LoadBalancerRecord, []*kachorepo.ListenerRecord, error) {
+	return nil, nil, errors.New("fakeLBWriter.MoveProject not implemented")
 }
 func (w *fakeLBWriter) Delete(context.Context, string) error {
 	return errors.New("fakeLBWriter.Delete not implemented")
@@ -389,17 +389,18 @@ func (lw *fakeListenerWriter) SetStatusCAS(_ context.Context, id string, expecte
 	return &rec, nil
 }
 
-func (lw *fakeListenerWriter) MoveProject(_ context.Context, lbID, newProjectID string) (int64, error) {
+func (lw *fakeListenerWriter) MoveProject(_ context.Context, lbID, newProjectID string) ([]*kachorepo.ListenerRecord, error) {
 	lw.r.mu.Lock()
 	defer lw.r.mu.Unlock()
-	var n int64
+	var moved []*kachorepo.ListenerRecord
 	for _, l := range lw.r.listeners {
 		if string(l.LoadBalancerID) == lbID {
 			l.ProjectID = domain.ProjectID(newProjectID)
-			n++
+			c := *l
+			moved = append(moved, &c)
 		}
 	}
-	return n, nil
+	return moved, nil
 }
 func (lw *fakeListenerWriter) Delete(_ context.Context, id string) error {
 	lw.r.mu.Lock()

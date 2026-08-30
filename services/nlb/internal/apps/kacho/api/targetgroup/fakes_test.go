@@ -546,8 +546,8 @@ func (fakeLBStub) SetStatusCAS(context.Context, string, domain.LBStatus, domain.
 func (fakeLBStub) MarkDeleting(context.Context, string) (*kachorepo.LoadBalancerRecord, error) {
 	return nil, errors.New("not used")
 }
-func (fakeLBStub) MoveProject(context.Context, string, string) (*kachorepo.LoadBalancerRecord, error) {
-	return nil, errors.New("not used")
+func (fakeLBStub) MoveProject(context.Context, string, string) (*kachorepo.LoadBalancerRecord, []*kachorepo.ListenerRecord, error) {
+	return nil, nil, errors.New("not used")
 }
 func (fakeLBStub) Delete(context.Context, string) error {
 	return errors.New("not used")
@@ -582,8 +582,8 @@ func (fakeListenerStub) SetAllocatedAddress(context.Context, string, string) (*k
 func (fakeListenerStub) SetVIP(context.Context, string, string, string) (*kachorepo.ListenerRecord, error) {
 	return nil, errors.New("not used")
 }
-func (fakeListenerStub) MoveProject(context.Context, string, string) (int64, error) {
-	return 0, nil
+func (fakeListenerStub) MoveProject(context.Context, string, string) ([]*kachorepo.ListenerRecord, error) {
+	return nil, nil
 }
 func (fakeListenerStub) Delete(context.Context, string) error {
 	return errors.New("not used")

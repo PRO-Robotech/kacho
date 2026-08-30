@@ -315,7 +315,7 @@ func (u *CreateUseCase) doCreate(ctx context.Context, in createInput) (*anypb.An
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceListener, string(created.ID), string(created.ProjectID),
-		outboxActionCreated, listenerPayloadMap(created),
+		outboxActionCreated, kachorepo.ListenerStatePayload(created),
 	); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener CREATED: %v", domain.ErrInternal, err))
 	}

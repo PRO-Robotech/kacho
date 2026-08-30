@@ -14,14 +14,20 @@ import (
 //
 // Ключ — константа общего словаря видов (см. соседний гейт: слово вида
 // объявлено один раз, поэтому здесь оно берётся именем константы, а не
-// литералом). Значение — имя функции пакета use-case, собирающей нагрузку.
+// литералом). Значение — имя функции, собирающей нагрузку, как оно записано в
+// вызове.
+//
+// Строитель квалифицирован пакетом (`kachorepo.…`) НЕ для красоты: точки эмиссии
+// одного вида лежат в РАЗНЫХ пакетах use-case, поэтому строитель обязан быть им
+// общим. Строитель, спрятанный в одном из пакетов, второй бы завёл заново — то
+// есть ровно вторую форму нагрузки того же вида (#1549).
 //
 // Вид, у которого состояния НЕТ, здесь не стоит — и это не пробел, а
 // объявление: его нагрузка остаётся минимальным снимком, а сборщик состояния
 // отвечает по нему «не производится». Появится состояние — вид обязан появиться
 // и здесь, иначе одна частичная точка сделает ложным весь вид.
 var statefulKinds = map[string]string{
-	"kachorepo.OutboxResourceListener": "listenerPayloadMap",
+	"kachorepo.OutboxResourceListener": "kachorepo.ListenerStatePayload",
 }
 
 // TestEveryEmissionOfAStatefulKindBuildsTheSamePayload — ВСЁ-ИЛИ-НИЧЕГО В ПРЕДЕЛАХ ВИДА.
@@ -71,7 +77,7 @@ func TestEveryEmissionOfAStatefulKindBuildsTheSamePayload(t *testing.T) {
 		}
 		seen[kind]++
 		if call, ok := e.payload.(*ast.CallExpr); ok {
-			if id, isIdent := call.Fun.(*ast.Ident); isIdent && id.Name == builder {
+			if kindLiteralName(call.Fun) == builder {
 				return
 			}
 		}

@@ -3,7 +3,14 @@
 
 package kacho
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
+)
 
 // Пробы этого файла называют ключи СТРОКОВЫМИ ЛИТЕРАЛАМИ, а не константами,
 // которыми строитель их собирает, — и это не многословие, а единственная форма,
@@ -103,4 +110,58 @@ func TestLegacyKeyNamesAreGone(t *testing.T) {
 			t.Errorf("прежнее имя %q вернулось на провод: %v", legacy, m)
 		}
 	}
+}
+
+// Пробы строителя нагрузки слушателя переехали сюда ВМЕСТЕ со своим предметом:
+// строитель живёт теперь в этом пакете, потому что его зовут ДВА пакета use-case
+// (#1549). Проба, оставленная там, где предмета больше нет, утверждала бы о
+// функции, которой в её пакете не осталось.
+// TestListenerStatePayload_NilGuard — nil input returns nil.
+func TestListenerStatePayload_NilGuard(t *testing.T) {
+	t.Parallel()
+	require.Nil(t, ListenerStatePayload(nil))
+}
+
+// TestListenerStatePayloadCarriesTheWholeRecordUnderTheEnvelope — строитель
+// нагрузки слушателя кладёт ЗАПИСЬ ЦЕЛИКОМ, под конвертом полного состояния.
+//
+// Здесь стояла проба про имя ключа `parent_resource_id` — предмет её исчез
+// вместе с минимальным снимком: форма нагрузки заменена, а не дополнена (задача
+// #1381). Ослабить её было нельзя, поэтому она ЗАМЕНЕНА утверждением о новой
+// форме, и утверждение сделано ПО ПРОВОДУ — через настоящий JSON, а не через
+// разборщик, собранный из тех же констант: круговой ход был бы истинен при любом
+// их значении.
+//
+// Метки названы отдельно: клиентский отбор по меткам берёт источник ровно
+// отсюда, и потеря их в кодировании оставила бы его без источника МОЛЧА.
+func TestListenerStatePayloadCarriesTheWholeRecordUnderTheEnvelope(t *testing.T) {
+	t.Parallel()
+	rec := &ListenerRecord{}
+	rec.ID = domain.ResourceID("nlb-listener-1")
+	rec.LoadBalancerID = domain.ResourceID("nlb-1")
+	rec.ProjectID = domain.ProjectID("prj-b")
+	rec.Name = domain.LbName("front")
+	rec.Labels = domain.LabelsFromMap(map[string]string{"env": "prod"})
+	rec.Protocol = domain.ProtoTCP
+	rec.Port = domain.LbPort(443)
+	rec.Status = domain.ListenerStatusActive
+
+	raw, err := json.Marshal(ListenerStatePayload(rec))
+	require.NoError(t, err)
+
+	var wire struct {
+		State *ListenerRecord `json:"state"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &wire))
+	require.NotNil(t, wire.State,
+		"нагрузка не несёт конверта полного состояния — сборщик журнала обязан отличать её "+
+			"от строк прежней, минимальной формы, а по удаче разбора этого не сделать")
+	require.Equal(t, "nlb-listener-1", string(wire.State.ID))
+	require.Equal(t, "prj-b", string(wire.State.ProjectID))
+	require.Equal(t, "nlb-1", string(wire.State.LoadBalancerID))
+	require.Equal(t, map[string]string{"env": "prod"}, domain.LabelsToMap(wire.State.Labels),
+		"метки не пережили круг — клиентский отбор по меткам остался бы без источника")
+	require.Equal(t, domain.ProtoTCP, wire.State.Protocol)
+	require.Equal(t, domain.LbPort(443), wire.State.Port)
+	require.Equal(t, domain.ListenerStatusActive, wire.State.Status)
 }

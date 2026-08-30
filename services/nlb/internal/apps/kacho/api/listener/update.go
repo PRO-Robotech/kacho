@@ -350,7 +350,7 @@ func (u *UpdateUseCase) doUpdate(ctx context.Context, next domain.Listener, expe
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceListener, string(updated.ID), string(updated.ProjectID),
-		outboxActionUpdated, listenerPayloadMap(updated),
+		outboxActionUpdated, kachorepo.ListenerStatePayload(updated),
 	); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener UPDATED: %v", domain.ErrInternal, err))
 	}
