@@ -229,7 +229,7 @@ func CensusJournalWriteForms(root string, files map[string]bool) (JournalWriteFo
 			if !isMigrationPath(rel) {
 				continue
 			}
-			body, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+			body, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel))) // #nosec G304 -- путь из индекса git этого дерева
 			if readErr != nil {
 				return res, fmt.Errorf("%s: %w", rel, readErr)
 			}
