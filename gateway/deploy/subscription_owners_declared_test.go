@@ -6,7 +6,6 @@ package deploy
 import (
 	"os"
 	"sort"
-	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -33,20 +32,7 @@ import (
 // судить ПОСТАВКУ, а его предмет — согласие написаний. Число объявленных при
 // этом печатается всегда, поэтому ноль виден и отличим от «не разобрали».
 func TestDeclaredSubscriptionOwnersAreNamesTheEdgeAccepts(t *testing.T) {
-	raw, err := os.ReadFile("values.yaml")
-	if err != nil {
-		t.Fatalf("чтение объявления чарта: %v", err)
-	}
-	var values struct {
-		SubscriptionStream struct {
-			Owners string `yaml:"owners"`
-		} `yaml:"subscriptionStream"`
-	}
-	if err := yaml.Unmarshal(raw, &values); err != nil {
-		t.Fatalf("разбор объявления чарта: %v", err)
-	}
-
-	declared := splitDeclaredOwners(values.SubscriptionStream.Owners)
+	declared := declaredSubscriptionOwners(t)
 	accepted := config.Config{}.DomainsWithInternalBackend()
 	unknown := ownersTheEdgeWillRefuse(declared, accepted)
 
@@ -64,21 +50,39 @@ func TestDeclaredSubscriptionOwnersAreNamesTheEdgeAccepts(t *testing.T) {
 	}
 }
 
-// splitDeclaredOwners разбирает перечень так же, как его разбирает край.
+// declaredSubscriptionOwners — владельцы, объявленные профилем края.
+//
+// ЕДИНСТВЕННОЕ место, где этот перечень читается в пакете, и разбирает он его
+// ПРОИЗВОДСТВЕННОЙ функцией `config.Config.SubscriptionOwnerNames` — той самой,
+// которой край строит словарь владельцев на старте. Здесь стоял свой разборщик,
+// повторявший её посимвольно: два места об одном предмете, из которых верно одно,
+// и разошлись бы они молча — оба непусты, оба выглядят действующими.
 //
 // Вырожденное значение (одинокая запятая) даёт непустую строку и НОЛЬ имён:
-// решать «объявлен ли владелец» по длине строки нельзя, и здесь это повторено не
-// из осторожности — тем же разрывом однажды разошлись круг отправителей у стража
-// и у транспорта.
-func splitDeclaredOwners(raw string) []string {
-	out := make([]string, 0, 4)
-	for _, part := range strings.Split(raw, ",") {
-		if name := strings.TrimSpace(part); name != "" {
-			out = append(out, name)
-		}
+// решать «объявлен ли владелец» по длине строки нельзя, и это свойство теперь не
+// повторено, а унаследовано — тем же разрывом однажды разошлись круг отправителей
+// у стража и у транспорта.
+//
+// Порядок наводится здесь: производственной функции он безразличен (словарь —
+// множество), а переписи и отказу нужен устойчивый.
+func declaredSubscriptionOwners(t *testing.T) []string {
+	t.Helper()
+	raw, err := os.ReadFile("values.yaml")
+	if err != nil {
+		t.Fatalf("чтение объявления чарта: %v", err)
 	}
-	sort.Strings(out)
-	return out
+	var values struct {
+		SubscriptionStream struct {
+			Owners string `yaml:"owners"`
+		} `yaml:"subscriptionStream"`
+	}
+	if err := yaml.Unmarshal(raw, &values); err != nil {
+		t.Fatalf("разбор объявления чарта: %v", err)
+	}
+	declared := config.Config{SubscriptionOwners: values.SubscriptionStream.Owners}.
+		SubscriptionOwnerNames()
+	sort.Strings(declared)
+	return declared
 }
 
 // ownersTheEdgeWillRefuse — объявленные имена, которых край не знает.
