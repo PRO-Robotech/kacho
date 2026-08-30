@@ -27,6 +27,7 @@ const sidebars: SidebarsConfig = {
         'api/tag',
         'api/operations',
         'api/internal',
+        'api/quotas',
       ],
     },
     {

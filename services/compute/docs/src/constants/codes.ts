@@ -20,7 +20,12 @@ export const CODES = {
   failedPrecondition: {
     grpc: 'FAILED_PRECONDITION',
     http: '400',
-    when: 'Состояние не позволяет операцию: «instance must be STOPPED to change sizing or placement», «Instance is not running», «Instance is not running or stopped», «machine type … is retired and cannot be used on Create»',
+    when: 'Состояние не позволяет операцию: «instance must be STOPPED to change sizing or placement», «Instance is not running», «Instance is not running or stopped», «machine type … is retired and cannot be used on Create»; потолок квоты на вид не назван ни на одной области видимости (признак QUOTA_NOT_PROVISIONED) — требуется завести предел',
+  },
+  resourceExhausted: {
+    grpc: 'RESOURCE_EXHAUSTED',
+    http: '429',
+    when: 'Исчерпана квота на число ресурсов вида: потолок назван и выбран полностью (признак QUOTA_EXCEEDED в ErrorInfo). Требуется поднять предел',
   },
   unavailable: {
     grpc: 'UNAVAILABLE',

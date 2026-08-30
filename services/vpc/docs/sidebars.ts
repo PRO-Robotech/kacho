@@ -39,6 +39,7 @@ const sidebars: SidebarsConfig = {
         'api/network-interface',
         'api/address-pool',
         'api/operations',
+        'api/quotas',
       ],
     },
     {
