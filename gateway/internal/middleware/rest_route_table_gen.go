@@ -92,6 +92,8 @@ var generatedRestRoutes = []restRoute{
 	{Method: "GET", Template: "/iam/v1/accounts/{account_id}", FQN: "kacho.cloud.iam.v1.AccountService/Get"},
 	{Method: "PATCH", Template: "/iam/v1/accounts/{account_id}", FQN: "kacho.cloud.iam.v1.AccountService/Update"},
 	{Method: "GET", Template: "/iam/v1/accounts/{account_id}/accessBindings", FQN: "kacho.cloud.iam.v1.AccessBindingService/ListByAccount"},
+	{Method: "GET", Template: "/iam/v1/accounts/{account_id}/memberships", FQN: "kacho.cloud.iam.v1.MembershipService/List"},
+	{Method: "GET", Template: "/iam/v1/accounts/{account_id}/memberships/{membership_id}", FQN: "kacho.cloud.iam.v1.MembershipService/Get"},
 	{Method: "GET", Template: "/iam/v1/accounts/{account_id}/operations", FQN: "kacho.cloud.iam.v1.AccountService/ListOperations"},
 	{Method: "GET", Template: "/iam/v1/accounts/{account_id}/operations:all", FQN: "kacho.cloud.iam.v1.AccountService/ListAllOperations"},
 	{Method: "POST", Template: "/iam/v1/authorize:batchCheck", FQN: "kacho.cloud.iam.v1.AuthorizeService/BatchCheck"},

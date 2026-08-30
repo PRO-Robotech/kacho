@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// migratorform_test.go — гейт: форм наката миграций в дереве ровно две, копий
+// migratorform_test.go — гейт: форма наката миграций в дереве ОДНА, копий
 // обёртки не больше потолка, решение существует и называет действующую форму.
 //
 // Предмет, требования и граница разобраны в шапке migratorform.go — здесь они
@@ -20,7 +20,7 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
-func TestMigratorFormIsOneOfTwoAndBothAreDeclared(t *testing.T) {
+func TestMigratorFormIsOneAndItIsDeclared(t *testing.T) {
 	root := repoRoot(t)
 
 	paths, err := treecorpus.UnderWithSuffix(filepath.Join(root, "services"), ".go")
@@ -43,8 +43,8 @@ func TestMigratorFormIsOneOfTwoAndBothAreDeclared(t *testing.T) {
 		// Копия обёртки считается по КАТАЛОГУ, а не по числу файлов: у vpc их
 		// пять (с пробами), у iam три — счёт файлов дал бы величину, которая
 		// меняется от добавления пробы и о числе копий не говорит ничего.
-		if i := strings.Index(rel, "/internal/apps/migrator/"); i >= 0 {
-			wrapper[rel[:i+len("/internal/apps/migrator")]] = struct{}{}
+		if i := strings.Index(rel, wrapperImportSuffix+"/"); i >= 0 {
+			wrapper[rel[:i+len(wrapperImportSuffix)]] = struct{}{}
 		}
 
 		if !strings.HasSuffix(rel, "/cmd/migrator/main.go") {
@@ -98,6 +98,6 @@ func TestMigratorFormIsOneOfTwoAndBothAreDeclared(t *testing.T) {
 
 	t.Logf("перепись: %s", census)
 	if len(findings) == 0 {
-		t.Logf("третьей формы и лишних копий обёртки нет")
+		t.Logf("второй формы и копий обёртки нет")
 	}
 }

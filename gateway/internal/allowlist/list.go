@@ -314,6 +314,11 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.iam.v1.GroupService/RemoveMember":   {},
 	"/kacho.cloud.iam.v1.GroupService/ListMembers":    {},
 	"/kacho.cloud.iam.v1.GroupService/ListOperations": {},
+
+	// iam.v1 — MembershipService: чтение членства на аккаунт-скоупных путях.
+	// Только два ЧТЕНИЯ: глаголов изменения у ресурса на этой поверхности нет.
+	"/kacho.cloud.iam.v1.MembershipService/Get":  {},
+	"/kacho.cloud.iam.v1.MembershipService/List": {},
 	// iam.v1 — RoleService
 	// Role.rules[].module — скалярная строка; REST Create/Update маршалят это
 	// поле; отдельной allowlist-записи не требуется (новых RPC нет).

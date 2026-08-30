@@ -724,6 +724,16 @@ func NewMux(
 			if err := iampb.RegisterRoleServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
 				return nil, fmt.Errorf("register iam RoleService: %w", err)
 			}
+			// MembershipService — чтение принадлежности человека аккаунту под
+			// `/iam/v1/accounts/{accountId}/memberships[/{membershipId}]`.
+			//
+			// Регистрируется на ПУБЛИЧНОМ бэкенде, и это несущее свойство, а не
+			// удобство: единственный гейт этих чтений — пообъектная проверка
+			// ЭТОГО края по `viewer` @ `account` из пути. На cluster-internal
+			// бэкенде края нет, поэтому туда служба не едет вовсе.
+			if err := iampb.RegisterMembershipServiceHandlerFromEndpoint(ctx, mux, iamAddr, optsFor("iam")); err != nil {
+				return nil, fmt.Errorf("register iam MembershipService: %w", err)
+			}
 			// PermissionCatalogService.ListPermissionCatalog — public read under
 			// GET /iam/v1/permissionCatalog: an authenticated-floor read (<exempt>
 			// in the permission catalog — no FGA Check) that the UI calls to build its
