@@ -45,7 +45,8 @@ flowchart TB
   dp --> iam
 ```
 
-- **Control-plane** управляет ресурсом Registry (CRUD в БД) и читает проекции Repository/Tag из zot.
+- **Control-plane** управляет ресурсом Registry и наложением на Repository (CRUD в БД), а содержимое
+  репозиториев и теги читает проекцией из zot.
 - **Data-plane** — reverse-proxy OCI-запросов в zot с authN (identity-JWT) + authz (per-request Check).
 
 ## Чистая архитектура (control-plane)
@@ -148,7 +149,8 @@ creator-tuple успешно материализуется.
 
 ## Связь с хранилищем (zot)
 
-Repository и Tag — read-only проекция из zot. Control-plane читает их через zot-клиент (GraphQL
+Содержимое Repository и Tag — проекция из zot (наложение на Repository живёт в БД
+kacho-registry, см. таблицу ресурсов). Control-plane читает проекцию через zot-клиент (GraphQL
 search-расширение для обогащённых метаданных: размеры, last-push/pull, download-count; Distribution
 API для базовых списков). Data-plane проксирует push/pull-запросы в zot как есть (namespace
 адресуется storage-path-префиксом `<registryId>/<repo>`). zot **никогда** не публично достижим —

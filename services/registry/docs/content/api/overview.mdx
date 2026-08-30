@@ -36,7 +36,7 @@ Kachō Registry управляет **тремя типами ресурсов**.
   <thead><tr><th>Ресурс</th><th>Бизнес-назначение</th><th>Природа</th></tr></thead>
   <tbody>
     <tr><td><strong>Registry</strong></td><td>Namespace-реестр в проекте — единица владения и авторизации. Хранит имя, метки, endpoint, статус</td><td>persisted (БД) · CRUD</td></tr>
-    <tr><td><strong>Repository</strong></td><td>OCI-репозиторий (образ) внутри namespace</td><td>проекция из zot · read-only</td></tr>
+    <tr><td><strong>Repository</strong></td><td>OCI-репозиторий (образ) внутри namespace</td><td>наложение (БД) · CRUD + <code>:rename</code> · содержимое — проекция из zot</td></tr>
     <tr><td><strong>Tag</strong></td><td>Тегированный образ (манифест)</td><td>проекция из zot · read + удаление</td></tr>
   </tbody>
 </table>
