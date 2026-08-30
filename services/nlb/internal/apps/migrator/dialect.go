@@ -10,6 +10,10 @@
 // Единственная поддерживаемая БД — PostgreSQL (`postgres.go`); [ResolveDialect]
 // выбирает реализацию по имени из CLI/конфига (неизвестное имя → ошибка). Это
 // держит per-dialect tweaks за интерфейсом, без if-ветвей внутри общего Runner'а.
+//
+// Метадата диалекта живёт в общем пакете — [migratorcli.DialectSpec] и
+// [migratorcli.SpecPostgres]; здесь она НЕ переобъявляется (#1383,
+// docs/architecture/migrator-form.md).
 package migrator
 
 import (
@@ -17,6 +21,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+
+	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 )
 
 // Dialect — абстракция SQL-диалекта для миграций.
@@ -36,30 +42,15 @@ type Dialect interface {
 	Status(ctx context.Context, dsn string, fsys fs.FS, dir string, out io.Writer) error
 
 	// Spec — описательная метадата для CLI / help / тестов.
-	Spec() DialectSpec
-}
-
-// DialectSpec — описательная метадата диалекта (CLI имя + goose-dialect +
-// sql driver-имя). Runtime-behaviour живёт в реализации Dialect-interface'а.
-type DialectSpec struct {
-	Name         string // CLI имя: postgres, cockroach,...
-	GooseDialect string // goose.SetDialect argument
-	SQLDriver    string // sql.Open driver-имя ("pgx")
-}
-
-// SpecPostgres — spec единственного поддерживаемого диалекта.
-var SpecPostgres = DialectSpec{
-	Name:         "postgres",
-	GooseDialect: "postgres",
-	SQLDriver:    "pgx",
+	Spec() migratorcli.DialectSpec
 }
 
 // ResolveDialect выбирает реализацию [Dialect] по имени из CLI/конфига.
 // postgres — единственный поддерживаемый диалект; любое другое имя → ошибка
 // (потребляется cmd/migrator: `--dialect <name>`).
 func ResolveDialect(name string) (Dialect, error) {
-	if name != SpecPostgres.Name {
-		return nil, fmt.Errorf("unknown dialect %q (supported: %s)", name, SpecPostgres.Name)
+	if name != migratorcli.SpecPostgres.Name {
+		return nil, fmt.Errorf("unknown dialect %q (supported: %s)", name, migratorcli.SpecPostgres.Name)
 	}
 	return newPostgresDialect(), nil
 }

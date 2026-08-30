@@ -16,24 +16,33 @@
 // ресурсов модуля) + реестр расширений (доменный React-контент: см.
 // `@/registerExtensions`).
 //
-// ПОЧЕМУ ЭТО ЕЩЁ КОПИЯ, А НЕ РЕ-ЭКСПОРТ ОБЩЕЙ ОБОЛОЧКИ. Различий с общей — 481
-// строка, и большинство из них ОТСТАВАНИЕ: у вкладки связанных нет продолжения
-// курсора и серверного сужения по родителю, поэтому она судит о наборе по первой
-// прочитанной странице. Сведение блокируют ДВА факта дерева, каждый проверяемый
-// одной командой:
+// ПОЧЕМУ ЭТО ЕЩЁ КОПИЯ, А НЕ РЕ-ЭКСПОРТ ОБЩЕЙ ОБОЛОЧКИ. Различий с общей — 461
+// строка. Держит форк ОДИН факт дерева, и он проверяется контрактом, а не
+// памятью: общая оболочка адресует ребёнка по `id`, а `message Repository` и
+// `message Tag` поля `id` не объявляют вовсе (первое поле обоих — `registry_id`,
+// см. `proto/kacho/cloud/registry/v1/registry.proto`). Натуральный ключ здесь —
+// имя внутри реестра и тег внутри репозитория; прямая замена сделала бы ключ
+// строки случайным, а имена перестали бы быть ссылками. Снятие — научить общую
+// оболочку ключу идентичности, объявленному спекой; это её предмет, а не предмет
+// раздела, и идёт своей задачей.
 //
-//   1) общий реестр ресурсов не несёт `registries`/`repositories`/`tags`
-//      (предикат: сравнить ключи `REGISTRY` модуля и `@shared`), а оболочка
-//      резолвит ребёнка ПО ИДЕНТИФИКАТОРУ и молча пропускает ненайденного
-//      (`if (!childSpec) return;`) — то есть прямая замена убрала бы вкладки
-//      «Репозитории» и «Теги», ничего не сообщив;
-//   2) общая оболочка адресует ребёнка по `id`, а у `Repository` и `Tag` его НЕТ
-//      by contract (натуральный ключ — имя внутри реестра, см. proto домена):
-//      имена перестали бы быть ссылками, а ключ строки стал бы случайным.
+// > Здесь стоял ВТОРОЙ держатель — «общий реестр ресурсов не несёт
+// > `registries`/`repositories`/`tags`». Он опровергнут: `@/lib/resource-registry`
+// > этого модуля — ре-экспорт общего (`export * from "@shared/lib/resource-registry"`),
+// > то есть разность ключей пуста, и все три записи резолвятся общей оболочкой.
+// > Утверждение пережило свой предмет и отговаривало от работы, которая уже стала
+// > возможной, — предикат назван выше, чтобы следующий читатель проверил его
+// > командой, а не поверил.
 //
-// Первое снимается объединением реестров (#402), второе — вместе с ним. До тех
-// пор копия остаётся, и своим в ней является ровно адресация по натуральному
-// ключу и боковая панель тегов; всё прочее сведено к общему.
+// > И здесь же стояло «у вкладки связанных нет продолжения курсора»: раздел держал
+// > свою копию чтения списка, бравшую ровно первую страницу. Копия сведена к общей
+// > реализации (см. `@/lib/use-resource-list`), продолжение курсора у вкладок есть.
+// > Отставанием остаётся серверное сужение дочернего списка по родителю
+// > (`spec.related[].serverFilterField`): здесь оно клиентское, поэтому ручки
+// > сужения честно называют область прочитанной частью.
+//
+// Своим в этой копии является ровно адресация по натуральному ключу и боковая
+// панель тегов; всё прочее сведено к общему.
 
 import { type ReactNode, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router";
@@ -67,8 +76,8 @@ import { detailExtension, type DescItem } from "@shared/components/organisms/Res
 import { api } from "@/api/client";
 import { REGISTRY, getByPath, resourceProjectPath, type ResourceSpec } from "@/lib/resource-registry";
 import { buildSpecColumns } from "@/lib/spec-columns";
-import { useResourceList, useResourceListAllPages } from "@/lib/use-resource-list";
-import { noMatchesText, rowsAreComplete, type NarrowingScope } from "@shared/lib/list-scope";
+import { useResourceList } from "@/lib/use-resource-list";
+import { clientScope, noMatchesText, rowsAreComplete } from "@shared/lib/list-scope";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { useResourceStream } from "@shared/lib/subscription/use-resource-stream";
 import { DetailOverviewActions } from "@/components/molecules/DetailOverviewActions";
@@ -123,26 +132,29 @@ function RelatedTable({
   // точно), затем поля родительской строки и его идентичность.
   const childFromRoute = fillPathFromParams(childSpec.apiPath, routeParams);
   const { pathParams, pathScoped } = childListPathScope(childFromRoute, filterFields, parentRow, parentId);
-  const childSpecResolved = pathScoped
-    ? { ...childSpec, apiPath: fillPathFromParams(childFromRoute, pathParams) }
-    : childSpec;
-  // loadAllPages (напр. образы): грузим ВСЕ страницы, чтобы facet видел полный
-  // набор. Оба хука зовём безусловно (стабильный порядок), гейтим через enabled.
-  const wantAll = pathScoped && !!childSpec.loadAllPages;
-  const singleQ = useResourceList(
-    childSpecResolved,
-    wantAll ? "__disabled__" : pathScoped ? null : "project_id",
-    wantAll ? null : pathScoped ? null : projectId,
+  // Фасетный отбор судит по НАБОРУ, поэтому набор обязан быть прочитан целиком:
+  // судить по первой странице значит отвечать «таких нет» про то, чего не читал.
+  // Дочитывание просится ПРИЗНАКОМ у того же хука, а не вторым хуком: два пути
+  // чтения одного списка расходятся молча.
+  const wantAll = pathScoped && childSpec.loadAllPages === true;
+  const { data, isLoading, isError, error, hasMore, fetchMore, isFetchingMore } = useResourceList(
+    childSpec,
+    pathScoped ? null : "project_id",
+    pathScoped ? null : projectId,
+    undefined,
+    undefined,
+    // Сегменты адреса — из ОБОИХ источников: что закрыл маршрут и что закрыла
+    // строка родителя. Отдать только вторые значило бы уронить первые: резолвер
+    // читает исходный `spec.apiPath`, и незакрытый сегмент запретил бы запрос —
+    // то есть охрана сработала бы против уже известного адреса.
+    { pathParams: { ...routeParams, ...pathParams }, loadAllPages: wantAll },
   );
-  const allQ = useResourceListAllPages(childSpecResolved, { enabled: wantAll });
-  const { data, isLoading, isError, error } = wantAll ? allQ : singleQ;
-  // Область, о которой судят ручки вкладки (#373). Чтение здесь двоякое:
-  // `allQ` дочитывает курсор до конца (facet обязан видеть весь набор) — его
-  // набор полон; `singleQ` этого модуля берёт РОВНО ОДНУ страницу и курсор
-  // ответа не читает вовсе (своя, отставшая копия хука), поэтому полноту он не
-  // может утверждать ни при каком ответе. Пока копия не сведена с общей, честный
-  // ответ один: «прочитанная часть».
-  const scope: NarrowingScope = wantAll ? "whole" : "loaded";
+  // Область, о которой судят ручки вкладки. Сужение здесь клиентское (поиск и
+  // фасет считаются в браузере), поэтому вопрос ровно один — дочитан ли курсор.
+  // Отвечает на него сам хук: дочитывание тоже сохраняет курсор последней
+  // страницы, если упёрлось в предел, и оборванное чтение не выдаёт себя за
+  // полное.
+  const scope = clientScope(hasMore);
   const all = (data?.[childSpec.payloadKey] as Record<string, unknown>[] | undefined) ?? [];
   // Фильтр по родителю (OR по нескольким полям — напр. subnet→addresses v4∪v6).
   // Ребёнок, сужённый АДРЕСОМ, клиентского фильтра не получает вовсе: страница
@@ -225,7 +237,12 @@ function RelatedTable({
   // Пустое состояние — welcome (только когда детей реально нет; промах поиска
   // показывается внутри таблицы). Подпись кнопки — короткое «Создать», её
   // ставит сам экран пустого состояния: предмет назван его же заголовком.
-  if (!isLoading && ownRows.length === 0) {
+  //
+  // «Создайте первый» — утверждение об ОТСУТСТВИИ детей, поэтому оно допустимо
+  // только когда список дочитан. Пока за курсором есть ещё, детей может не быть
+  // на прочитанных страницах и быть на следующих: приглашение создать поверх
+  // недочитанного списка сообщало бы об отсутствии, которого никто не проверял.
+  if (!isLoading && ownRows.length === 0 && !hasMore) {
     return <ResourceEmptyState spec={childSpec} onCreate={() => navigate(createPath)} />;
   }
 
@@ -288,6 +305,21 @@ function RelatedTable({
           </div>
         )}
       </div>
+      {/* Продолжение курсора — ТОТ ЖЕ вид, что на странице списка: общего числа
+          List не отдаёт, поэтому «ещё» — это наличие курсора, а не арифметика по
+          общему числу.
+
+          Догрузку НЕЛЬЗЯ вешать на эффект: эффект, зовущий продолжение на каждый
+          ответ, вызывает себя же — это бесконечный рендер, который в этой консоли
+          дважды убивал прогон по памяти, не оставив вердикта ни одной пробе.
+          Продолжение — по действию пользователя. */}
+      {hasMore && (
+        <div style={{ flexShrink: 0, marginTop: 12, textAlign: "center" }}>
+          <Button loading={isFetchingMore} onClick={() => void fetchMore()}>
+            Показать ещё
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

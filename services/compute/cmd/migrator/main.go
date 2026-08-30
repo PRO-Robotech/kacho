@@ -28,7 +28,6 @@ import (
 	"github.com/pressly/goose/v3"
 
 	"github.com/PRO-Robotech/kacho/internal/dropguard"
-	"github.com/PRO-Robotech/kacho/pkg/dbready"
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
@@ -65,27 +64,24 @@ func main() {
 		fail(err)
 	}
 
-	goose.SetBaseFS(migrations.FS)
-	if err := goose.SetDialect(opts.Dialect); err != nil {
-		fail(fmt.Errorf("goose dialect: %w", err))
+	// НАСТРОЙКА goose и ОТКРЫТИЕ базы с барьером готовности — общий шаг на все
+	// семь точек наката. Здесь он не переписывается: собственных
+	// объявлений было семь, и два текста отказа успели разойтись — прямая форма
+	// не называла оператору ни имя драйвера, ни имя диалекта. Обе строки теперь
+	// одни на дерево, и почему выбраны именно эти — сказано в шапке
+	// pkg/migratorcli/dialect.go.
+	//
+	// Диалект берётся из [migratorcli.SpecPostgres], а не из opts.Dialect, и это
+	// не игнорирование флага: чужое значение до сюда не доходит — его отвергает
+	// migratorcli.Parse выше, называя поддерживаемое.
+	if err := migratorcli.SetupGoose(migrations.FS, migratorcli.SpecPostgres); err != nil {
+		fail(err)
 	}
-	db, err := sql.Open("pgx", dsn)
+	db, err := migratorcli.OpenDB(context.Background(), dsn, migratorcli.SpecPostgres)
 	if err != nil {
-		fail(fmt.Errorf("open db: %w", err))
+		fail(err)
 	}
 	defer func() { _ = db.Close() }()
-
-	// Барьер готовности PG. sql.Open ЛЕНИВ (не дозванивается до сервера), поэтому
-	// гонка init-контейнера с подом Postgres проявлялась не здесь, а ниже — на
-	// goose: мигратор падал отказом и уходил в CrashLoopBackOff до подъёма
-	// PG. Ждём ТОЛЬКО «БД не принимает соединения» и ТОЛЬКО в пределах бюджета;
-	// неверный пароль / несуществующая БД / сломанная миграция падают сразу.
-	if err := dbready.Wait(context.Background(), db, dbready.Options{}); err != nil {
-		// Текст нейтральный: сюда приходит И «не дождались» (ошибка уже несёт
-		// бюджет), И настоящая ошибка (пароль/DSN/БД) — второй случай называть
-		// «not ready» было бы враньём в логе.
-		fail(fmt.Errorf("database connection check failed: %w", err))
-	}
 
 	if err := run(db, opts); err != nil {
 		fail(fmt.Errorf("migrate %s: %w", opts.Command, err))
