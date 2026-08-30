@@ -103,9 +103,13 @@ var immutableUpdateFields = map[string]string{
 	// на другую площадку. Без записи здесь маска отвергала бы zone_id как
 	// «неизвестное поле», то есть говорила бы «такого поля нет» вместо «его
 	// нельзя менять».
-	"zone_id":       "zone_id is immutable after NetworkLoadBalancer.Create",
-	"region_id":     "region_id is immutable after NetworkLoadBalancer.Create",
-	"project_id":    "project_id is immutable; use NetworkLoadBalancerService.Move",
+	"zone_id":   "zone_id is immutable after NetworkLoadBalancer.Create",
+	"region_id": "region_id is immutable after NetworkLoadBalancer.Create",
+	// Область владения: канонический тон неизменяемости ПЛЮС следующий шаг
+	// (#1671). До этого хвост «after <Resource>.Create» здесь терялся, а два
+	// соседних ресурса на тот же запрет следующего шага не называли вовсе —
+	// три ответа на один запрет, и различие никем не решалось.
+	"project_id":    "project_id is immutable after NetworkLoadBalancer.Create; use NetworkLoadBalancerService.Move",
 	"v4_source":     "v4_source is immutable after NetworkLoadBalancer.Create",
 	"v6_source":     "v6_source is immutable after NetworkLoadBalancer.Create",
 	"v4_address_id": "v4_address_id is immutable after NetworkLoadBalancer.Create",
