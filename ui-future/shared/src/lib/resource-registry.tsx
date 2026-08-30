@@ -620,10 +620,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       { childId: "groups", filterField: "account_id", label: "Группы" },
     ],
-    docs: [
-      { label: "Аккаунты и организации", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     emptyState: {
       title: "Создайте первый аккаунт",
       body:
@@ -686,10 +682,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ],
     // Клик по проекту в списке ведёт на его IAM-detail (/iam/projects/:id) —
     // без childRoute drill идёт на generic ResourceShell detail, а не на дашборд.
-    docs: [
-      { label: "Проекты", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     template: ({ accountId }) => ({
       name: "",
       account_id: accountId ?? "",
@@ -727,10 +719,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       COL_ID,
     ],
     fields: [FIELD_NAME, FIELD_ACCOUNT_ID, FIELD_DESCRIPTION],
-    docs: [
-      { label: "Сервисные аккаунты", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     template: ({ accountId }) => ({
       name: "",
       account_id: accountId ?? "",
@@ -932,10 +920,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         },
       },
     ],
-    docs: [
-      { label: "Пользователи и приглашения", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     template: () => ({}),
   },
 
@@ -972,10 +956,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [FIELD_NAME, FIELD_ACCOUNT_ID, FIELD_LABELS, FIELD_DESCRIPTION],
-    docs: [
-      { label: "Группы и членство", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     emptyState: {
       title: "Создайте первую группу",
       body:
@@ -1069,10 +1049,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // generic-поля create/edit — name/description/account_id; permissions —
     // доменная ветка, здесь его нет.
     fields: [FIELD_NAME, FIELD_ACCOUNT_ID, FIELD_DESCRIPTION],
-    docs: [
-      { label: "Роли и разрешения", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     emptyState: {
       title: "Создайте первую пользовательскую роль",
       body:
@@ -1192,10 +1168,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       COL_CREATED,
     ],
-    docs: [
-      { label: "Привязки доступа", href: "#" },
-      { label: "Управление доступом", href: "#" },
-    ],
     emptyState: {
       title: "Нет привязок доступа",
       body:
@@ -1262,12 +1234,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         serverFilterField: "network_id",
         label: "Группы безопасности",
       },
-    ],
-    docs: [
-      { label: "Облачные сети и подсети", href: "#" },
-      { label: "Таблицы маршрутов", href: "#" },
-      { label: "Группы безопасности", href: "#" },
-      { label: "Адреса облачных ресурсов", href: "#" },
     ],
     emptyState: {
       title: "Создайте вашу первую облачную сеть",
@@ -1436,11 +1402,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         serverParamField: "subnet_id",
         label: "IP-адреса",
       },
-    ],
-    docs: [
-      { label: "Облачные сети и подсети", href: "#" },
-      { label: "CIDR-блоки подсети", href: "#" },
-      { label: "Резервирование внутренних IP-адресов", href: "#" },
     ],
     emptyState: {
       title: "Создайте вашу первую подсеть",
@@ -1644,10 +1605,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
     // `lib/list-server-search-parity.test.ts`.
     serverSearchField: "name",
-    docs: [
-      { label: "Адреса облачных ресурсов", href: "#" },
-      { label: "Резервирование внутренних IP-адресов", href: "#" },
-    ],
     emptyState: {
       title: "Зарезервируйте первый IP-адрес",
       body:
@@ -1933,11 +1890,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
     // `lib/list-server-search-parity.test.ts`.
     serverSearchField: "name",
-    docs: [
-      { label: "Таблицы маршрутов", href: "#" },
-      { label: "Статическая маршрутизация", href: "#" },
-      { label: "Маршрутизация через NAT-инстанс", href: "#" },
-    ],
     emptyState: {
       title: "Создайте вашу первую таблицу маршрутов",
       body:
@@ -2391,10 +2343,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // сохраняет ОПЕРАТОР. Сходимость с деревом владельца по обоим условиям —
     // `lib/list-server-search-parity.test.ts`.
     serverSearchField: "name",
-    docs: [
-      { label: "Группы безопасности", href: "#" },
-      { label: "Правила групп безопасности", href: "#" },
-    ],
     emptyState: {
       title: "Создайте вашу первую группу безопасности",
       body:
@@ -2634,10 +2582,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // Мутации отвечают Operation (ban #9): ответ без operation-id — нарушение
     // контракта, а не синхронный успех.
     mutationsReturnOperation: true,
-    docs: [
-      { label: "Наборы префиксов", href: "#" },
-      { label: "Правила групп безопасности", href: "#" },
-    ],
     emptyState: {
       title: "Создайте ваш первый набор префиксов",
       body:
@@ -3960,7 +3904,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     scope: "project",
     ops: { create: true, update: true, delete: true },
     mutationsReturnOperation: true,
-    docs: [{ label: "Группы размещения", href: "#" }],
     emptyState: {
       title: "Создайте вашу первую группу размещения",
       body:

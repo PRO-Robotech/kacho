@@ -200,6 +200,15 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
   // утверждение, которого никто не проверял (та же причина, что у `navEmptyText`).
   const noAccounts = accountsLoaded && !accountsFailed && accounts.length === 0;
 
+  // Куда ведёт первый шаг — берётся у ТОГО ЖЕ объявления, что и плитка раздела,
+  // а не выписывается вторым адресом. Выписанный адрес был бы второй копией
+  // координаты, которую владелец раздела уже назвал: разойдись они — плитка
+  // вела бы в одно место, подсказка в другое, и заметить это можно только
+  // кликом. Заодно это единственная форма, при которой переход исполним:
+  // приложение, не обслуживающее `/iam`, открыть его само не может, и путь
+  // существует только потому, что раздел объявил свою посадочную страницу.
+  const firstStepTarget = SERVICE_MODULES.find((m) => m.segment === "iam")?.landing(null, null);
+
   // Подсказка под шапкой стоит ВСЕГДА и держит свою высоту (см. `.dashboard-hint`).
   // Пустая, она резервирует место: иначе выбор проекта поднимал бы всю витрину
   // на строку, и переход читался бы как прыжок.
@@ -279,15 +288,15 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
           {/* ХОД, А НЕ ТОЛЬКО СЛОВА. Назвать первый шаг и оставить клиента его
               искать — половина ответа: путь существует (раздел IAM открыт и без
               проекта), но с главной он назван не был. */}
-          {noAccounts && (
+          {noAccounts && firstStepTarget && (
             <>
               {" "}
               <a
                 data-testid="dashboard-first-step-action"
-                href="/iam/accounts"
+                href={firstStepTarget}
                 onClick={(e) => {
                   e.preventDefault();
-                  void navigate("/iam/accounts");
+                  void navigate(firstStepTarget);
                 }}
               >
                 Создать аккаунт
