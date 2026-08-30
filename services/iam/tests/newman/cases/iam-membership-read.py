@@ -265,7 +265,17 @@ CASES.append(Case(
             name="read-invited-membership",
             method="GET",
             path='/iam/v1/accounts/{{ceremonyAccountId}}/memberships?filter=userId%3D%22{{mbrInvUserId}}%22',
-            auth="jwtHumanCeremonyStepUp",
+            # ЧТЕНИЕ идёт ОБЫЧНЫМ входом того же человека, а не поднятым.
+            # `MembershipService/List` объявлен в каталоге без порога
+            # (`required_acr_min: "1"`), и шаг, идущий поднятым по маршруту, где
+            # порога нет, перестаёт проверять, что его здесь нет: он зеленел бы и
+            # тогда, когда порог завели бы молча. Поднятый вход нужен ровно двум
+            # шагам выше — `UserService/Invite` несёт `required_acr_min: "2"`.
+            # Личность та же: `jwtHumanCeremony` и `jwtHumanCeremonyStepUp` —
+            # один человек `ceremonyUserId`, различающийся только уровнем входа
+            # (`tests/authz-fixtures/prodseed_ceremony.py`, `lvl1`/`lvl2`),
+            # поэтому допуск `viewer` @ `account` у шага не меняется.
+            auth="jwtHumanCeremony",
             test_script=[
                 *assert_status(200),
                 "pm.test('приглашённый виден как PENDING, и след приглашения называет ПРИГЛАСИВШЕГО ЧЕЛОВЕКА', () => {",
