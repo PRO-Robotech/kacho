@@ -103,7 +103,7 @@ func collectDocsPageReach(tree *treecorpus.Tree) (docsReachCensus, error) {
 	for _, base := range names {
 		site := docsReachSite{Base: base}
 		contentDir := base + "/content"
-		for _, rel := range nlbTreeFiles(tree, contentDir, true, docsReachPageSuffixes...) {
+		for _, rel := range clientTruthTreeFiles(tree, contentDir, true, docsReachPageSuffixes...) {
 			id := strings.TrimPrefix(rel, contentDir+"/")
 			for _, sfx := range docsReachPageSuffixes {
 				id = strings.TrimSuffix(id, sfx)
@@ -114,7 +114,7 @@ func collectDocsPageReach(tree *treecorpus.Tree) (docsReachCensus, error) {
 		sidebarRel := base + "/sidebars.ts"
 		if tree.HasFile(sidebarRel) {
 			site.HasSidebar = true
-			body, err := nlbReadTreeFile(tree, sidebarRel)
+			body, err := clientTruthReadTreeFile(tree, sidebarRel)
 			if err != nil {
 				return c, err
 			}

@@ -166,11 +166,11 @@ func collectDocsQuotaRefusal(tree *treecorpus.Tree, owners []string) (docsQuotaC
 	// Пути чтения пределов — из контрактов квот, сгруппированные по первому
 	// сегменту пути.
 	byHead := map[string][]string{}
-	for _, rel := range nlbTreeFiles(tree, "proto/kacho/cloud", true, ".proto") {
+	for _, rel := range clientTruthTreeFiles(tree, "proto/kacho/cloud", true, ".proto") {
 		if !strings.Contains(strings.ToLower(rel), "quota") {
 			continue
 		}
-		body, err := nlbReadTreeFile(tree, rel)
+		body, err := clientTruthReadTreeFile(tree, rel)
 		if err != nil {
 			return c, err
 		}
@@ -229,7 +229,7 @@ func collectDocsQuotaRefusal(tree *treecorpus.Tree, owners []string) (docsQuotaC
 		// выписывается — имя ключа принадлежит автору словаря.
 		dictRel := "services/" + svc + "/docs/src/constants/codes.ts"
 		if tree.HasFile(dictRel) {
-			body, err := nlbReadTreeFile(tree, dictRel)
+			body, err := clientTruthReadTreeFile(tree, dictRel)
 			if err != nil {
 				return c, err
 			}
@@ -243,7 +243,7 @@ func collectDocsQuotaRefusal(tree *treecorpus.Tree, owners []string) (docsQuotaC
 		overviewRel := "services/" + svc + "/docs/content/api/overview.mdx"
 		if tree.HasFile(overviewRel) {
 			site.OverviewPath = overviewRel
-			body, err := nlbReadTreeFile(tree, overviewRel)
+			body, err := clientTruthReadTreeFile(tree, overviewRel)
 			if err != nil {
 				return c, err
 			}
@@ -280,8 +280,8 @@ func collectDocsQuotaRefusal(tree *treecorpus.Tree, owners []string) (docsQuotaC
 		}
 
 		// Страницы сайта: где путь чтения назван и чем домен без учёта обещает отказ.
-		for _, rel := range nlbTreeFiles(tree, "services/"+svc+"/docs/content", true, ".mdx", ".md") {
-			body, err := nlbReadTreeFile(tree, rel)
+		for _, rel := range clientTruthTreeFiles(tree, "services/"+svc+"/docs/content", true, ".mdx", ".md") {
+			body, err := clientTruthReadTreeFile(tree, rel)
 			if err != nil {
 				return c, err
 			}

@@ -411,29 +411,48 @@ func unreachableReconcilerBuilders(t *testing.T, cmdDir string) []string {
 		t.Fatalf("обход %s: %v", cmdDir, err)
 	}
 
+	// Вызванные имена берутся из УЗЛОВ ВЫЗОВА, а не подстрокой. Различие несущее и
+	// направление ошибки здесь опаснее обычного: `strings.Contains(src, имя+"(")`
+	// находит имя ХВОСТОМ чужого идентификатора (`newReconciler(` содержит
+	// `Reconciler(`), и лишнее совпадение объявляет мёртвого строителя ВЫЗВАННЫМ —
+	// он не попадает в перечень, гейт зелен, предмет жив. Ложное молчание себя не
+	// выдаёт ничем, тогда как ложная находка выдаёт себя сразу.
+	called := calledFuncNames(files)
+
 	var dead []string
 	for _, b := range builders {
-		called := false
-		for rel, src := range files {
-			if rel == b.file {
-				continue // вызов из собственного файла тоже считается, см. ниже
-			}
-			if strings.Contains(src, b.name+"(") {
-				called = true
-				break
-			}
-		}
-		if !called {
-			// Вызов из СОБСТВЕННОГО файла: считаем его только если это не само
-			// объявление (объявление тоже содержит «имя(»).
-			body := files[b.file]
-			if strings.Count(body, b.name+"(") > 1 {
-				called = true
-			}
-		}
-		if !called {
+		if !called[b.name] {
 			dead = append(dead, b.file+":"+b.name)
 		}
 	}
 	return dead
+}
+
+// calledFuncNames — имена, которые в корпусе где-нибудь ВЫЗЫВАЮТСЯ. Собственное
+// объявление вызовом не является by construction: узел объявления — не CallExpr.
+// Поэтому отдельная поправка «в своём файле имя встречается дважды», которая
+// стояла здесь раньше, больше не нужна — она компенсировала разбор текстом.
+func calledFuncNames(files map[string]string) map[string]bool {
+	called := map[string]bool{}
+	fset := token.NewFileSet()
+	for rel, src := range files {
+		file, err := parser.ParseFile(fset, rel, src, 0)
+		if err != nil {
+			continue // корпус уже разобран выше; нечитаемый файл сюда не доходит
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			switch fn := call.Fun.(type) {
+			case *ast.Ident:
+				called[fn.Name] = true
+			case *ast.SelectorExpr:
+				called[fn.Sel.Name] = true
+			}
+			return true
+		})
+	}
+	return called
 }

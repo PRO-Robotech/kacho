@@ -275,8 +275,8 @@ func collectDocsNameForm(tree *treecorpus.Tree) (docsNameFormCensus, error) {
 	sort.Slice(roots, func(i, j int) bool { return roots[i].dir < roots[j].dir })
 
 	for _, r := range roots {
-		for _, rel := range nlbTreeFiles(tree, r.dir, true, r.suffs...) {
-			body, err := nlbReadTreeFile(tree, rel)
+		for _, rel := range clientTruthTreeFiles(tree, r.dir, true, r.suffs...) {
+			body, err := clientTruthReadTreeFile(tree, rel)
 			if err != nil {
 				return c, err
 			}
