@@ -260,7 +260,7 @@ NIC автоматически. Сетевые интерфейсы (из дом
   {dedent`
     curl -s -X POST "$CMP/compute/v1/instances/$INST:attachDisk" "\${auth[@]}" \\
       -d '{
-        "attachedDiskSpec": { "diskId": "'"$VOL"'", "autoDelete": false }
+        "attachedDiskSpec": { "volumeId": "'"$VOL"'", "autoDelete": false }
       }'
   `}
 </CodeBlock>
@@ -348,7 +348,7 @@ NIC автоматически. Сетевые интерфейсы (из дом
 <CodeBlock language="bash">
   {dedent`
     # 1) отсоединить диск данных
-    curl -s -X POST "$CMP/compute/v1/instances/$INST:detachDisk" "\${auth[@]}" -d '{ "diskId": "'"$VOL"'" }'
+    curl -s -X POST "$CMP/compute/v1/instances/$INST:detachDisk" "\${auth[@]}" -d '{ "volumeId": "'"$VOL"'" }'
     poll <operationId>
 
     # 2) удалить инстанс (тома при этом только отвязываются, см. врезку ниже)
