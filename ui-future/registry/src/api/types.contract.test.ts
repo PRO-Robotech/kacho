@@ -38,7 +38,12 @@ describe("типы реестра образов против контракта
   });
 
   it("Repository несёт класс исчезаемости и собственную видимость", () => {
-    const repo: Repository = { name: "team/app", registry_id: "reg-000000000000000", lifecycle: "EPHEMERAL", visibility: "PRIVATE" };
+    const repo: Repository = {
+      name: "team/app",
+      registry_id: "reg-000000000000000",
+      lifecycle: "EPHEMERAL",
+      visibility: "PRIVATE",
+    };
     expect(repo.lifecycle).toBe("EPHEMERAL");
   });
 

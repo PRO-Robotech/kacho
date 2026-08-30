@@ -9,15 +9,48 @@
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import {
-  Activity, Cable, Camera, Cloud, Folder, GitBranch, Globe, HardDrive, KeyRound,
-  Layers, Lock, Network, Route, Scale, Server, Shield, Users,
+  Activity,
+  Cable,
+  Camera,
+  Cloud,
+  Folder,
+  GitBranch,
+  Globe,
+  HardDrive,
+  KeyRound,
+  Layers,
+  Lock,
+  Network,
+  Route,
+  Scale,
+  Server,
+  Shield,
+  Users,
 } from "lucide-react";
 import {
-  ApartmentOutlined, ApiOutlined, AppstoreOutlined, BankOutlined, CameraOutlined,
-  ClusterOutlined, ContainerOutlined, DesktopOutlined, FileImageOutlined,
-  GatewayOutlined, GlobalOutlined, HddOutlined, HistoryOutlined, KeyOutlined,
-  NodeIndexOutlined, ProductOutlined, ProjectOutlined, RobotOutlined,
-  SafetyCertificateOutlined, SafetyOutlined, TagsOutlined, TeamOutlined, UserOutlined,
+  ApartmentOutlined,
+  ApiOutlined,
+  AppstoreOutlined,
+  BankOutlined,
+  CameraOutlined,
+  ClusterOutlined,
+  ContainerOutlined,
+  DesktopOutlined,
+  FileImageOutlined,
+  GatewayOutlined,
+  GlobalOutlined,
+  HddOutlined,
+  HistoryOutlined,
+  KeyOutlined,
+  NodeIndexOutlined,
+  ProductOutlined,
+  ProjectOutlined,
+  RobotOutlined,
+  SafetyCertificateOutlined,
+  SafetyOutlined,
+  TagsOutlined,
+  TeamOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
 import { REMOTE_MODULES } from "../remotes/moduleCatalog";
 import type { RemoteIconName, RemoteNavItem, RemoteNavSection } from "dashboard/navigation";
@@ -142,7 +175,6 @@ export const antdIconBySpec: Record<string, ReactElement> = {
 export function specIdFromPath(path: string): string {
   return path.split("/").filter(Boolean).pop() ?? "";
 }
-
 
 /**
  * Раздел, которому принадлежит адрес, — по ПЕРВОМУ СЕГМЕНТУ, а не по перечню
@@ -307,7 +339,6 @@ export function matchesRemotePath(pathname: string, path: string) {
   }
   return new RegExp(`^/projects/[^/]+/${path.replace(/\//g, "\\/")}(?:/|$)`).test(pathname);
 }
-
 
 /**
  * Перечень секций модулей: грузится ОДИН раз на страницу и раздаётся обоим

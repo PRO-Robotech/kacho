@@ -383,9 +383,7 @@ export function AccessGrantPage() {
     <FormShell specId="access-bindings" mode="create" singular="Доступ" title="Выдача доступа">
       <Form form={form} layout="vertical">
         <Form.Item label="Ресурс">
-          <Tag color={scope === "cloud" ? "blue" : "geekblue"}>
-            {scope === "cloud" ? "Аккаунт" : "Проект"}
-          </Tag>
+          <Tag color={scope === "cloud" ? "blue" : "geekblue"}>{scope === "cloud" ? "Аккаунт" : "Проект"}</Tag>
           <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
             {scope === "cloud" ? accountId : projectId}
           </Typography.Text>

@@ -58,11 +58,7 @@ function consoleSources(): string[] {
  * буквенные сегменты.
  */
 export function mountedProjectSegments(source: string): string[] {
-  return [
-    ...new Set(
-      [...source.matchAll(MOUNT)].map((m) => m[1]).filter((seg) => seg && seg !== "dashboard"),
-    ),
-  ];
+  return [...new Set([...source.matchAll(MOUNT)].map((m) => m[1]).filter((seg) => seg && seg !== "dashboard"))];
 }
 
 const files = consoleSources();

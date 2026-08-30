@@ -999,8 +999,8 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
             </Form.Item>
           )}
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0, marginLeft: 200 }}>
-            Цель обязательна (минимально необходимые права): «Вся область» — явно выбранная широкая выдача;
-            «Точечно» — доступ только на перечисленные объекты (ResourceRef {"{type,id}"}, закрытый список типов).
+            Цель обязательна (минимально необходимые права): «Вся область» — явно выбранная широкая выдача; «Точечно» —
+            доступ только на перечисленные объекты (ResourceRef {"{type,id}"}, закрытый список типов).
           </Typography.Paragraph>
         </FormSection>
 

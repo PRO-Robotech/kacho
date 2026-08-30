@@ -30,10 +30,7 @@
 import { type ReactNode } from "react";
 import { Typography } from "antd";
 
-import {
-  registerDetailExtension,
-  type DescItem,
-} from "@shared/components/organisms/ResourceDetailExtensions";
+import { registerDetailExtension, type DescItem } from "@shared/components/organisms/ResourceDetailExtensions";
 import { DETAIL_CONTENT_WIDTH, DetailSurface, PropertyRows } from "@/components/organisms/DetailShell";
 import { BoolFact } from "@/components/atoms/BoolFact";
 import { StatusBadge } from "@/components/atoms/StatusBadge";
@@ -165,7 +162,12 @@ registerDetailExtension("volumes", {
       // карточка того же тома — плоский текст.
       {
         label: "Используется",
-        value: <ConsumersFact usedBy={getByPath(data, "used_by")} projectId={getByPath<string>(data, "project_id") ?? null} />,
+        value: (
+          <ConsumersFact
+            usedBy={getByPath(data, "used_by")}
+            projectId={getByPath<string>(data, "project_id") ?? null}
+          />
+        ),
       },
     ];
   },
@@ -333,10 +335,7 @@ registerDetailExtension("disk-types", {
       <>
         {limits.length > 0 && (
           <div style={{ maxWidth: DETAIL_CONTENT_WIDTH, marginTop: 20 }}>
-            <DetailSurface
-              title="Границы размера тома"
-              note="Проверяются при создании и изменении тома"
-            >
+            <DetailSurface title="Границы размера тома" note="Проверяются при создании и изменении тома">
               <PropertyRows items={limits.map((f) => ({ label: f.label, value: f.text }))} />
             </DetailSurface>
           </div>
@@ -354,15 +353,7 @@ registerDetailExtension("disk-types", {
                   // разный: способность есть — возможность открыта (`good`),
                   // способности нет — возможность ЗАКРЫТА, и это та сторона,
                   // о которой стоит знать до создания тома (`attention`).
-                  value: (
-                    <BoolFact
-                      value={caps[c.path]}
-                      yes={c.yes}
-                      no={c.no}
-                      yesTone="good"
-                      noTone="attention"
-                    />
-                  ),
+                  value: <BoolFact value={caps[c.path]} yes={c.yes} no={c.no} yesTone="good" noTone="attention" />,
                 }))}
               />
             </DetailSurface>

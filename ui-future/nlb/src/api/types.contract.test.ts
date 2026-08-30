@@ -18,12 +18,7 @@
 //     что тип принимает и что отвергает: такая проба переживала любую смену
 //     формы записи, не покраснев.
 
-import type {
-  Listener,
-  NetworkLoadBalancer,
-  NlbHealthCheck,
-  TargetGroup,
-} from "./types";
+import type { Listener, NetworkLoadBalancer, NlbHealthCheck, TargetGroup } from "./types";
 
 describe("типы домена балансировщика против контракта ствола", () => {
   it("NetworkLoadBalancer несёт placement, admin_state и разделяемые SG", () => {

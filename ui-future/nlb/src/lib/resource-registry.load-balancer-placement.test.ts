@@ -96,9 +96,9 @@ describe("load balancer create body follows the placement the operator chose", (
     // disabled_announce_zones is REGIONAL-only. It was being dropped unconditionally,
     // so the deny-list the operator picked never reached the server.
     const zones = ["ru-central1-a"];
-    expect(createBody({ placement: "EXTERNAL_REGIONAL", disabled_announce_zones: zones }).disabled_announce_zones).toEqual(
-      zones,
-    );
+    expect(
+      createBody({ placement: "EXTERNAL_REGIONAL", disabled_announce_zones: zones }).disabled_announce_zones,
+    ).toEqual(zones);
     expect(
       createBody({ placement: "INTERNAL_REGIONAL", disabled_announce_zones: zones }).disabled_announce_zones,
     ).toEqual(zones);

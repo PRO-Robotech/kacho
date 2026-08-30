@@ -58,10 +58,7 @@ describe("HostRail", () => {
     );
 
     // Активный модуль помечен...
-    expect(await screen.findByRole("button", { name: "Virtual Private Cloud" })).toHaveAttribute(
-      "data-active",
-      "true",
-    );
+    expect(await screen.findByRole("button", { name: "Virtual Private Cloud" })).toHaveAttribute("data-active", "true");
     // ...а соседние ОСТАЮТСЯ на месте: переход между сервисами не обязан идти
     // через дашборд. Прежде здесь утверждалось обратное.
     expect(screen.getByRole("button", { name: "Compute" })).toBeInTheDocument();
