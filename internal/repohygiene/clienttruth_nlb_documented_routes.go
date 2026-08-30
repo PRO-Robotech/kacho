@@ -5,11 +5,11 @@ package repohygiene
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // Маршрут, показанный клиенту, обязан существовать в контракте.
@@ -103,16 +103,15 @@ func normaliseNlbRoute(p string) string {
 }
 
 // collectNlbDocumentedRoutes — что производит контракт и что показывает документация.
-func collectNlbDocumentedRoutes(root string) (nlbRouteCensus, error) {
+//
+// Состав дерева приходит СОСТАВЛЕННЫМ (`treecorpus.Tree`), а не собирается здесь
+// обходом диска: конструктор выбирает вызывающий — гейт берёт индекс git, а
+// инъекционная проба `treecorpus.SyntheticTree`. Разбор — у nlbTreeFiles.
+func collectNlbDocumentedRoutes(tree *treecorpus.Tree) (nlbRouteCensus, error) {
 	c := nlbRouteCensus{ContractRoutes: map[string]struct{}{}}
 
-	protos, err := filepath.Glob(filepath.Join(root, "proto", "kacho", "cloud", "loadbalancer", "v1", "*.proto"))
-	if err != nil {
-		return c, err
-	}
-	sort.Strings(protos)
-	for _, p := range protos {
-		body, rerr := os.ReadFile(p) //nolint:gosec // путь из глоба под корнем репо
+	for _, rel := range nlbTreeFiles(tree, "proto/kacho/cloud/loadbalancer/v1", false, ".proto") {
+		body, rerr := nlbReadTreeFile(tree, rel)
 		if rerr != nil {
 			return c, rerr
 		}
@@ -122,23 +121,12 @@ func collectNlbDocumentedRoutes(root string) (nlbRouteCensus, error) {
 		}
 	}
 
-	docRoot := filepath.Join(root, "services", "nlb", "docs", "content")
-	err = filepath.WalkDir(docRoot, func(path string, d os.DirEntry, werr error) error {
-		if werr != nil {
-			if os.IsNotExist(werr) {
-				return nil
-			}
-			return werr
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".mdx") {
-			return nil
-		}
-		body, rerr := os.ReadFile(path) //nolint:gosec // путь из обхода под корнем репо
+	for _, rel := range nlbTreeFiles(tree, "services/nlb/docs/content", true, ".mdx") {
+		body, rerr := nlbReadTreeFile(tree, rel)
 		if rerr != nil {
-			return rerr
+			return c, rerr
 		}
 		c.DocFiles++
-		rel, _ := filepath.Rel(root, path)
 		for i, ln := range strings.Split(string(body), "\n") {
 			for _, raw := range nlbDocRouteRe.FindAllString(ln, -1) {
 				n := normaliseNlbRoute(raw)
@@ -148,10 +136,6 @@ func collectNlbDocumentedRoutes(root string) (nlbRouteCensus, error) {
 				c.Claims = append(c.Claims, nlbRouteClaim{file: rel, line: i + 1, raw: raw, norm: n})
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		return c, err
 	}
 	return c, nil
 }

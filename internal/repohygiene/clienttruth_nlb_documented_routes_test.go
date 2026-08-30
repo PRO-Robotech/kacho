@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // TestNlbDocumentedRoutesAreProducedByTheContract — всякий маршрут, показанный
@@ -19,7 +21,16 @@ import (
 func TestNlbDocumentedRoutesAreProducedByTheContract(t *testing.T) {
 	root := repoRoot(t)
 
-	c, err := collectNlbDocumentedRoutes(root)
+	// Состав дерева — ИНДЕКС git, а не обход диска: под services/ и proto/ на
+	// машине, где поднимали стенд, лежат игнорируемые каталоги, и вердикт,
+	// собранный обходом файловой системы, стал бы свойством рабочего каталога,
+	// а не коммита.
+	tree, err := treecorpus.NewTree(root)
+	if err != nil {
+		t.Fatalf("состав дерева: %v", err)
+	}
+
+	c, err := collectNlbDocumentedRoutes(tree)
 	if err != nil {
 		t.Fatalf("обход дерева: %v", err)
 	}
