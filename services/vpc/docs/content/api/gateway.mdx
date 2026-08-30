@@ -76,7 +76,7 @@ import dedent from 'ts-dedent'
   <tbody>
     <tr><td><code>id</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.id.short} (префикс <code>gtw</code>)</td></tr>
     <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
-    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>Имя шлюза (strict, lowercase; уникально в пределах проекта)</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>Имя шлюза — общая форма платформы (см. врезку выше); уникально в пределах проекта</td></tr>
     <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
@@ -261,7 +261,7 @@ use». Сначала снимите маршрут.
   <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
   <tbody>
     <tr><td><code>projectId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
-    <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Имя шлюза (strict, lowercase; уникально в проекте)</td></tr>
+    <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Имя шлюза — общая форма платформы (см. врезку выше); уникально в проекте</td></tr>
     <tr><td><code>description</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>subnetId</code></td><td><b>да</b></td><td><code>{TYPES.string}</code></td><td>Подсеть привязки и якорь размещения. Неизменяема</td></tr>
@@ -340,7 +340,7 @@ Gateway.Create». Возвращает `Operation` (async). Соблюдаетс
   <thead><tr><th>Параметр</th><th>Обязательность</th><th>Тип</th><th>Описание</th></tr></thead>
   <tbody>
     <tr><td><code>updateMask</code></td><td>нет</td><td><code>{TYPES.fieldMask}</code></td><td>{DICTIONARY.updateMask.short}</td></tr>
-    <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Новое имя шлюза (strict, lowercase; уникально в проекте)</td></tr>
+    <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Новое имя шлюза — общая форма платформы (см. врезку выше); уникально в проекте</td></tr>
     <tr><td><code>description</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
     <tr><td><code>labels</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short} (полная замена набора)</td></tr>
     <tr><td colSpan="4">Вида шлюза и подсети привязки в запросе изменения <b>нет</b>: оба неизменяемы после <code>Create</code>. Имя <code>natGateway</code> / <code>egressOnlyGateway</code> / <code>subnetId</code> в <code>updateMask</code> → <code>InvalidArgument</code> «&lt;field&gt; is immutable after Gateway.Create»</td></tr>
