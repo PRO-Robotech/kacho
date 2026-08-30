@@ -59,16 +59,36 @@ var identityPredicateVocabulary = map[string]string{
 		"пустая страница) и НЕ отличается требованием к порядку: ответ на " +
 		"некорректный формат не должен зависеть от того, что вызывающему выдано, " +
 		"поэтому проверка формата обязана стоять и перед ним.",
+	"narrowing-precheck-assigned": "" +
+		"`dec, err := subjectReadAuthority(ctx, …)` отдельным стейтментом, а " +
+		"`if err != nil { return … }` — следующим: та же полоса, что и форма выше, " +
+		"записанная РАЗНЕСЁННО. Форма обязательна там, где предусловие возвращает " +
+		"не только ошибку (полосу допуска, придержанный ответ об отсутствии): в " +
+		"`Init` инструкции `if` такое присваивание не убрать, не потеряв " +
+		"возвращённое значение. Пока распознавалась только слитная форма, оба " +
+		"чтения выдач субъекта iam стояли ВНЕ НАБЛЮДЕНИЯ — не нарушением, а " +
+		"невидимостью (#1437).",
 }
 
 // narrowingPrecheckNames — имена предусловий сужения: вызов, чей ненулевой
 // результат немедленно завершает списочный метод отказом по личности или по
 // посадке.
 //
+// Записываются такие вызовы ДВУМЯ формами, и распознаются обе (#1437): слитной
+// (`if err := Precheck(ctx, …); err != nil`) и разнесённой (`dec, err :=
+// subjectReadAuthority(ctx, …)` отдельным стейтментом, `if err != nil` —
+// следующим). Вторая обязательна там, где предусловие возвращает не только
+// ошибку: в `Init` инструкции `if` такое присваивание не убрать, не потеряв
+// возвращённое значение. Пока распознавалась одна форма, всё написанное второй
+// стояло ВНЕ НАБЛЮДЕНИЯ — не нарушением, а невидимостью.
+//
 // Проверяется предмет каждого имени (TestNarrowingPrecheckNamesHaveSubject):
 // имя, которого в дереве больше нет, создаёт впечатление покрытия, которого нет.
 var narrowingPrecheckNames = map[string]string{
 	"Precheck": "listnarrow.Precheck — личность вызывающего и провязанность модели, до чтения страницы",
+	"subjectReadAuthority": "iam access_binding — ЕДИНЫЙ предикат допуска обоих чтений выдач " +
+		"субъекта: анти-анонимный страж, требование быть называемым модели прав и три полосы " +
+		"допуска. Ненулевой результат немедленно завершает чтение отказом, до страницы.",
 }
 
 // paginationValidatorNames — имена функций, вызов которых считается проверкой
@@ -114,10 +134,18 @@ var listPaginationScanRoots = []string{"services", "gateway", "pkg"}
 //  3. замыкание не про личность вызывающего (например, порт не провязан) ->
 //     то же самое, уточнить распознавание предиката.
 //
-// Проверено инъекцией в обе стороны на синтетических исходниках
-// (TestGateRedOnInjectedDefect / TestGateSilentOnLawfulSameShape): возврат
-// дефекта красит гейт и печатает координату, законная конструкция той же формы
-// его не задевает.
+// Проверено инъекцией в обе стороны на синтетических исходниках, по каждой
+// распознаваемой форме отдельно: пустая страница по личности
+// (TestGateRedOnInjectedDefect), отказ по предусловию сужения в слитной форме
+// (TestGateRedOnInjectedRefusalBeforeFormat) и в разнесённой
+// (TestGateRedOnInjectedRefusalAssignedThenChecked), имя предусловия обоих чтений
+// выдач субъекта (TestGateRedOnInjectedSubjectReadAuthority). Каждой красной паре
+// отвечает законный близнец той же формы, на котором гейт молчит
+// (TestGateSilentOnLawfulSameShape, TestGateSilentOnLawfulRefusalAfterFormat,
+// TestGateSilentOnLawfulAssignedRefusalAfterFormat), и отрицательный контроль
+// распознавания, на котором обычный проброс ошибки замыканием НЕ считается
+// (TestGateIgnoresOrdinaryErrorReturnsThatAreNotPrechecks,
+// TestGateIgnoresAssignedCallThatIsNotAPrecheck).
 func TestEmptyPageNeverPrecedesPaginationValidation(t *testing.T) {
 	root := repoRoot(t)
 
@@ -503,6 +531,12 @@ func analyzeListPaginationOrder(t *testing.T, rel string, body []byte) paginatio
 func scanStmtsForShortCircuits(fset *token.FileSet, fnName string, stmts []ast.Stmt, inherited []token.Pos, out *paginationScan) {
 	running := append([]token.Pos(nil), inherited...)
 
+	// prevPrecheck — позиция вызова предусловия сужения в НЕПОСРЕДСТВЕННО
+	// предыдущем стейтменте списка. Разнесённая форма (`dec, err := Precheck(…)`
+	// отдельным стейтментом, `if err != nil` следующим) — не край: она
+	// обязательна там, где предусловие возвращает не только ошибку.
+	prevPrecheck := token.NoPos
+
 	for _, stmt := range stmts {
 		ifStmt, isIf := stmt.(*ast.IfStmt)
 		if !isIf {
@@ -512,6 +546,7 @@ func scanStmtsForShortCircuits(fset *token.FileSet, fnName string, stmts []ast.S
 				scanStmtsForShortCircuits(fset, fnName, nested, running, out)
 			}
 			running = append(running, validatorCallsIn(stmt)...)
+			prevPrecheck = narrowingPrecheckCallPos(stmt)
 			continue
 		}
 
@@ -519,13 +554,21 @@ func scanStmtsForShortCircuits(fset *token.FileSet, fnName string, stmts []ast.S
 		initValidators := validatorCallsIn(ifStmt.Init)
 		branchInherited := append(append([]token.Pos(nil), running...), initValidators...)
 
-		if ret := directRefusalReturn(ifStmt.Body); ret != nil && initIsNarrowingPrecheck(ifStmt.Init) {
+		// Предусловие сужения — в `Init` инструкции `if` ЛИБО в непосредственно
+		// предыдущем стейтменте. Обе формы законны и обе распространены; граница,
+		// раньше которой обязана стоять проверка формата, — позиция САМОГО вызова
+		// предусловия, а не возврата: между присваиванием и `if` проверке уже поздно.
+		precheckPos := narrowingPrecheckCallPos(ifStmt.Init)
+		if precheckPos == token.NoPos {
+			precheckPos = prevPrecheck
+		}
+		if ret := directRefusalReturn(ifStmt.Body); ret != nil && precheckPos != token.NoPos {
 			// Отказ по предусловию сужения — то же требование к порядку, что и у
 			// пустой страницы: проверка формата обязана стоять ПЕРЕД ним, иначе
 			// один и тот же мусорный курсор получает разный ответ в зависимости от
 			// того, опознан ли вызывающий.
 			out.shortCircuits++
-			if !anyValidatorBefore(running, ret.Pos()) {
+			if !anyValidatorBefore(running, precheckPos) {
 				out.hits = append(out.hits, paginationHit{
 					line: fset.Position(ifStmt.Pos()).Line,
 					fn:   fnName,
@@ -555,6 +598,12 @@ func scanStmtsForShortCircuits(fset *token.FileSet, fnName string, stmts []ast.S
 		}
 
 		running = append(running, initValidators...)
+		// Инструкция `if` НИКОГДА не является присваивающей половиной разнесённой
+		// формы: предусловие в её `Init` уже сопоставлено с её же возвратом здесь.
+		// Без этого сброса вызов из `Init` засчитывался бы второй раз — уже
+		// следующей инструкции `if`, — и любая проверка формата, стоящая после
+		// законного предусловия, объявлялась бы нарушением.
+		prevPrecheck = token.NoPos
 	}
 }
 
@@ -792,24 +841,35 @@ func directRefusalReturn(b *ast.BlockStmt) *ast.ReturnStmt {
 	return nil
 }
 
-// initIsNarrowingPrecheck — Init инструкции `if` есть вызов предусловия сужения.
-func initIsNarrowingPrecheck(init ast.Stmt) bool {
-	if init == nil {
-		return false
+// narrowingPrecheckCallPos — позиция вызова предусловия сужения внутри узла,
+// либо token.NoPos.
+//
+// Позиция, а не признак: она и есть граница, раньше которой обязана стоять
+// проверка формата. Возвращать булев признак значило бы сравнивать порядок с
+// возвратом инструкции `if`, а в разнесённой форме между вызовом предусловия и
+// возвратом лежит целый стейтмент.
+func narrowingPrecheckCallPos(n ast.Node) token.Pos {
+	if n == nil {
+		return token.NoPos
 	}
-	found := false
-	ast.Inspect(init, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
+	pos := token.NoPos
+	ast.Inspect(n, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
 		if _, named := narrowingPrecheckNames[calleeName(call)]; named {
-			found = true
+			pos = call.Pos()
 			return false
 		}
 		return true
 	})
-	return found
+	return pos
+}
+
+// initIsNarrowingPrecheck — Init инструкции `if` есть вызов предусловия сужения.
+func initIsNarrowingPrecheck(init ast.Stmt) bool {
+	return narrowingPrecheckCallPos(init) != token.NoPos
 }
 
 func isNilIdent(e ast.Expr) bool { return isIdentNamed(e, "nil") }
@@ -845,6 +905,32 @@ func countIdentityPredicateForms(t *testing.T, rel string, body []byte) map[stri
 		// предусловия сужения, а само условие — обычное `err != nil`.
 		if initIsNarrowingPrecheck(ifStmt.Init) {
 			out["narrowing-precheck-call"]++
+		}
+		return true
+	})
+	// Четвёртая форма видна только в СПИСКЕ стейтментов: вызов предусловия стоит
+	// отдельным присваиванием, а `if err != nil` — следующим. Отдельный обход, а
+	// не расширение предыдущего, потому что у одиночного узла `if` предшественника
+	// нет by construction.
+	ast.Inspect(file, func(n ast.Node) bool {
+		block, ok := n.(*ast.BlockStmt)
+		if !ok {
+			return true
+		}
+		for i := 1; i < len(block.List); i++ {
+			ifStmt, isIf := block.List[i].(*ast.IfStmt)
+			if !isIf || initIsNarrowingPrecheck(ifStmt.Init) {
+				continue
+			}
+			// Предшественник — НЕ инструкция `if`: предусловие в чужом `Init` уже
+			// посчитано формой выше, и зачесть его здесь значило бы посчитать один
+			// вызов дважды.
+			if _, prevIsIf := block.List[i-1].(*ast.IfStmt); prevIsIf {
+				continue
+			}
+			if narrowingPrecheckCallPos(block.List[i-1]) != token.NoPos {
+				out["narrowing-precheck-assigned"]++
+			}
 		}
 		return true
 	})
@@ -943,4 +1029,132 @@ func TestNarrowingPrecheckNamesHaveSubject(t *testing.T) {
 		}
 	}
 	t.Logf("вызовов предусловий сужения: %v (прод-файлов прочитано: %d)", counts, files)
+}
+
+// ---- разнесённая форма предусловия сужения (#1437) ----
+//
+// Форма, о которой распознаватель не знает, — не край и не редкость: она столь
+// же законна и обычно столь же распространена, а всё записанное в ней
+// оказывается ВНЕ НАБЛЮДЕНИЯ — не нарушением, а невидимостью (`testing.md`
+// §«Гейт на класс», п.7). Ниже — инъекция по КАЖДОЙ из двух осей слепоты,
+// найденных на #1437, порознь: имя и форма записи.
+
+// TestGateRedOnInjectedRefusalAssignedThenChecked — ОСЬ «ФОРМА ЗАПИСИ»: вызов
+// предусловия стоит ОТДЕЛЬНЫМ присваиванием, а `if err != nil` идёт следующим
+// стейтментом.
+//
+// Имя предусловия здесь заведомо известное (`Precheck`), поэтому красное может
+// прийти только от распознавания формы — ось изолирована.
+func TestGateRedOnInjectedRefusalAssignedThenChecked(t *testing.T) {
+	const src = `package x
+
+func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
+	dec, err := listnarrow.Precheck(ctx, u.narrower)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := ValidatePagination(p.PageToken, p.PageSize); err != nil {
+		return nil, "", err
+	}
+	return u.repo.List(ctx, f, p, dec)
+}
+`
+	got := analyzeListPaginationOrder(t, "injected_assigned.go", []byte(src))
+
+	if got.shortCircuits != 1 {
+		t.Fatalf("разнесённая форма предусловия не распознана: shortCircuits=%d. "+
+			"Вызов, стоящий отдельным присваиванием, — не край: именно так написаны оба "+
+			"чтения выдач субъекта в iam", got.shortCircuits)
+	}
+	if len(got.hits) != 1 {
+		t.Fatalf("дефект не найден: hits=%v", got.hits)
+	}
+	if got.hits[0].line != 5 {
+		t.Errorf("гейт обязан назвать координату отказа: ожидалась строка 5, получена %d", got.hits[0].line)
+	}
+}
+
+// TestGateRedOnInjectedSubjectReadAuthority — ОСЬ «ИМЯ»: предусловие названо
+// `subjectReadAuthority` (единый предикат допуска обоих чтений выдач субъекта).
+//
+// Форма записи здесь заведомо известная (вызов в `Init` инструкции `if`), поэтому
+// красное может прийти только от словаря имён — ось изолирована.
+func TestGateRedOnInjectedSubjectReadAuthority(t *testing.T) {
+	const src = `package x
+
+func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
+	if _, err := subjectReadAuthority(ctx, u.repo, u.relations, f.Type, f.ID); err != nil {
+		return nil, "", err
+	}
+	if err := ValidatePagination(p.PageToken, p.PageSize); err != nil {
+		return nil, "", err
+	}
+	return u.repo.List(ctx, f, p)
+}
+`
+	got := analyzeListPaginationOrder(t, "injected_authority.go", []byte(src))
+
+	if got.shortCircuits != 1 {
+		t.Fatalf("имя subjectReadAuthority не признано предусловием сужения: shortCircuits=%d", got.shortCircuits)
+	}
+	if len(got.hits) != 1 {
+		t.Fatalf("дефект не найден: hits=%v", got.hits)
+	}
+}
+
+// TestGateSilentOnLawfulAssignedRefusalAfterFormat — ЗАКОННЫЙ БЛИЗНЕЦ разнесённой
+// формы: то же предусловие, поставленное ПОСЛЕ проверки формата, гейта не задевает.
+//
+// Это ровно форма обоих чтений выдач субъекта после #1437. Без этой половины
+// расширение ловило бы форму, а не существо, и первый же ложный срабат его
+// отключил бы.
+func TestGateSilentOnLawfulAssignedRefusalAfterFormat(t *testing.T) {
+	const src = `package x
+
+func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
+	if err := ValidatePagination(p.PageToken, p.PageSize); err != nil {
+		return nil, "", err
+	}
+	dec, err := subjectReadAuthority(ctx, u.repo, u.relations, f.Type, f.ID)
+	if err != nil {
+		return nil, "", err
+	}
+	return u.repo.List(ctx, f, p, dec)
+}
+`
+	got := analyzeListPaginationOrder(t, "lawful_assigned.go", []byte(src))
+
+	if got.shortCircuits != 1 {
+		t.Fatalf("законная форма обязана оставаться ПОСЧИТАННОЙ, иначе молчание неотличимо "+
+			"от слепоты: shortCircuits=%d", got.shortCircuits)
+	}
+	if len(got.hits) != 0 {
+		t.Fatalf("законная конструкция той же формы не должна быть находкой: %v", got.hits)
+	}
+}
+
+// TestGateIgnoresAssignedCallThatIsNotAPrecheck — отрицательный контроль оси
+// «форма записи»: обычное присваивание с последующим пробросом ошибки
+// предусловием сужения НЕ является.
+//
+// Без него счётчик замыканий раздулся бы каждым проверенным вызовом — а он и есть
+// объём гейта, по которому судят об усадке словаря.
+func TestGateIgnoresAssignedCallThatIsNotAPrecheck(t *testing.T) {
+	const src = `package x
+
+func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
+	rd, err := u.repo.Reader(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	return rd.List(ctx, f, p)
+}
+`
+	got := analyzeListPaginationOrder(t, "ordinary_assigned.go", []byte(src))
+	if got.shortCircuits != 0 {
+		t.Fatalf("обычное присваивание засчитано предусловием сужения: shortCircuits=%d", got.shortCircuits)
+	}
+	if len(got.hits) != 0 {
+		t.Fatalf("обычное присваивание объявлено находкой: %v", got.hits)
+	}
 }
