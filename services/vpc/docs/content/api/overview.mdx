@@ -497,10 +497,12 @@ ephemeral Address по значению / подсети). REST использу
   </tbody>
 </table>
 
-:::note Имя Gateway — strict
-В отличие от остальных ресурсов (permissive-имя), `Gateway.name` подчиняется strict-контракту
-(lowercase, без uppercase/underscore). См. <code>RESTRICTIONS.nameGateway</code> на странице
-[Gateway](/api/gateway).
+:::note Имя Gateway — та же форма, что у остальных ресурсов
+Здесь стояло, что `Gateway.name` подчиняется отдельному strict-контракту «в отличие от
+остальных ресурсов». Отличия **нет** с #715: валидатор имени в дереве один
+(`pkg/validate/nameform`), и все ресурсы платформы подчиняются DNS label по RFC 1123 —
+`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`. Соглашение об именовании переносится между
+ресурсами без поправок.
 :::
 
 ### NetworkInterfaceService
