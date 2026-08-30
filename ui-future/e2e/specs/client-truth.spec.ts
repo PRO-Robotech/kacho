@@ -259,3 +259,47 @@ test("ресурс маршрутизации назван одинаково в
       "и поиск по консоли находит половину мест",
   ).toHaveCount(0);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("пустой реестр не учит клиента, что push — единственный путь", async ({ page }) => {
+  // verifies #1593
+  //
+  // Дефект: консоль объявляла репозиторий read-only — «репозитории НЕ создаются
+  // через API», «Репозитории появляются автоматически», — тогда как контракт
+  // несёт CreateRepository / UpdateRepository / DeleteRepository / Rename, все с
+  // публичной привязкой REST. Клиент читал выбор КОНСОЛИ как свойство
+  // ПЛАТФОРМЫ и строил на этом работу: путь «опубликовать образ» (visibility)
+  // оказывался тупиком.
+  //
+  // Консоль этих глаголов пока не даёт — препятствие названо в спеке и держится
+  // гейтом `console-ops-match-contract`. Здесь утверждается наблюдаемое: экран
+  // больше не сообщает клиенту неправду о ПЛАТФОРМЕ.
+  test.setTimeout(240_000);
+  const { projectId } = await tenantWithProject(page);
+  const tag = runTag();
+
+  await page.goto(`/projects/${projectId}/registry/registries/create`, { waitUntil: "domcontentloaded" });
+  const form = page.locator("form.ant-form");
+  await expect(form).toBeVisible({ timeout: 45_000 });
+  await form.locator("input#name, input[name=name]").first().fill(`reg-${tag}`);
+  await page.locator('button:has-text("Создать")').last().click();
+
+  await page.goto(`/projects/${projectId}/registry/registries`, { waitUntil: "domcontentloaded" });
+  const row = page.locator("tbody tr", { hasText: `reg-${tag}` }).first();
+  await expect(row, "созданный реестр не появился в списке — открывать нечего").toBeVisible({ timeout: 60_000 });
+  await row.getByText(`reg-${tag}`).click();
+
+  // ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: экран пустого списка репозиториев отрисовался.
+  // Без него отрицание ниже зеленело бы на странице, где нет вообще ничего.
+  await expect(
+    page.getByText(/пока нет репозиториев|Репозитории появляются/).first(),
+    "экран пустого списка репозиториев не отрисовался: утверждать о его словах нечего",
+  ).toBeVisible({ timeout: 45_000 });
+
+  await expect(
+    page.getByText("Репозитории появляются автоматически"),
+    "экран объявляет push единственным путём появления репозитория. Это утверждение о " +
+      "ПЛАТФОРМЕ, и оно неверно: контракт несёт создание, правку и удаление репозитория",
+  ).toHaveCount(0);
+});
