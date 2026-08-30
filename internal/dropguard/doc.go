@@ -55,11 +55,19 @@
 //
 // That half is [Preflight], reached through [Gate], and every migrator in the tree
 // calls it before it applies anything. It counts, on the database in front of it,
-// each table that a migration which has NOT YET RUN is going to drop. The question
-// there is narrower than equality with a declared number — that number was measured
-// on a different database, and matching it licenses nothing here. The question is
-// whether this drop destroys rows AT ALL, and a table that still holds any is
-// refused until an operator names that exact drop.
+// each table that a migration which has NOT YET RUN — and which THIS RUN WILL
+// REACH — is going to drop. The question there is narrower than equality with a
+// declared number twice over. That number was measured on a different database, and
+// matching it licenses nothing here; and a run that stops at a version cannot
+// destroy anything past it, so refusing over a drop it will not execute would cost
+// an operator an approval for somebody else's table. The question is whether this
+// drop destroys rows AT ALL, and a table that still holds any is refused until an
+// operator names that exact drop.
+//
+// How far the run goes arrives as [Target], whose ZERO VALUE is the whole chain:
+// the caller that forgets gets the widest check, and there is no "count nothing" to
+// reach for — the same reason [Approval] names a version and a table and no blanket
+// override exists.
 //
 // [Observe] is exported for exactly that reason: the same primitive, with the same
 // refusal to guess, serves both halves. Whichever half asks, an unreachable database
