@@ -193,12 +193,12 @@ sequenceDiagram
 `FAILED_PRECONDITION "Subnet CIDRs can not overlap"`. Часть адресного пространства
 платформа держит за собой: префикс, пересекающийся со служебным диапазоном, отвергается
 синхронно (`INVALID_ARGUMENT`, признак отказа — `SUBNET_CIDR_RESERVED`, см.
-[Subnet](api/subnet)).
+[Subnet](/api/subnet)).
 
 **Дополнительные** диапазоны добавляются уже после создания — действиями
 `:add-cidr-blocks` / `:remove-cidr-blocks`, а не через `Update`. В ответах подсеть несёт
-плоский набор `v4CidrBlocks` / `v6CidrBlocks`, чей нулевой элемент — первичный якорь;
-на **входе** создания этих полей нет.
+плоский набор `ipv4CidrBlocks` / `ipv6CidrBlocks`, чей нулевой элемент — первичный якорь;
+на **входе** создания списка нет вовсе.
 :::
 
 ## Шаг 3. Выделить Address

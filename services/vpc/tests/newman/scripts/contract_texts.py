@@ -92,8 +92,12 @@ class Census:
 CONTRACT_TEXTS: List[ContractText] = [
     ContractText(
         name="subnet-reserved-prefix-overlap",
-        declared_in="internal/apps/kacho/api/subnet/reserved_prefixes.go",
-        const_name="reservedOverlapMsg",
+        # Объявление переехало вместе с производителем отказа: текст и машинный
+        # признак полосы (`SUBNET_CIDR_RESERVED`) собирает одна функция, и текст
+        # живёт рядом с ней. Копии в use-case больше нет — иначе тон разошёлся бы
+        # с признаком молча, ровно там, где деталь читают машиной.
+        declared_in="internal/apps/kacho/shared/serviceerr/reservedcidr.go",
+        const_name="reservedOverlapFormat",
         quoted_by=(
             "docs/content/api/subnet.mdx",
             "tests/newman/cases/subnet.py",
