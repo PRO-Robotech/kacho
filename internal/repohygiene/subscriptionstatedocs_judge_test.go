@@ -52,6 +52,20 @@ type journalStateReport struct {
 	stateFunc string
 	// produces — доходит ли хоть один путь функции до упаковки состояния.
 	produces bool
+	// funcsWalked — сколько объявлений функций обойдено, пока это устанавливали.
+	//
+	// Печатается переписью, потому что расширение распознавателя обязано МЕНЯТЬ
+	// это число: расширение, его не изменившее, ничего нового не осмотрело и
+	// подлежит снятию, а не «оставлению на всякий случай».
+	funcsWalked int
+	// pkgFiles — не-тестовых файлов в пакете журнала.
+	//
+	// Предпосылка распознавателя: он обходит вызовы, объявленные в ОДНОМ файле
+	// (`journal.go`). Она верна, пока пакет журнала этим файлом и исчерпывается.
+	// Заведётся второй — помощник, до которого распознаватель не дойдёт, окажется
+	// НЕ ОСМОТРЕН, а ответ «не собирает» будет ложным. Число печатается и судится,
+	// чтобы предпосылка истекала сама, а не держалась памятью.
+	pkgFiles int
 	// parseErr — исходник не разобрался; молчание гейта по нему не утверждение.
 	parseErr error
 }
@@ -95,13 +109,14 @@ func subscriptionJournalStates(root string, list subscriptionDocsLister) (
 		if len(parts) < 2 || parts[0] != "services" {
 			continue
 		}
-		rep := journalStateReport{service: parts[1]}
+		rep := journalStateReport{service: parts[1], pkgFiles: countPkgFiles(files, path)}
 		file, parseErr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
 		if parseErr != nil {
 			rep.parseErr = parseErr
 			reports = append(reports, rep)
 			continue
 		}
+		local := localFuncs(file)
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok || fn.Recv != nil || fn.Name == nil {
@@ -114,7 +129,7 @@ func subscriptionJournalStates(root string, list subscriptionDocsLister) (
 				continue
 			}
 			rep.stateFunc = fn.Name.Name
-			rep.produces = reachesStatePacking(fn)
+			rep.produces, rep.funcsWalked = reachesStatePacking(fn, local)
 			break
 		}
 		reports = append(reports, rep)
@@ -123,11 +138,54 @@ func subscriptionJournalStates(root string, list subscriptionDocsLister) (
 	return reports, filesRead, nil
 }
 
-// reachesStatePacking — доходит ли тело функции до упаковки состояния.
+// localFuncs — объявления функций файла по имени (без методов).
+func localFuncs(file *ast.File) map[string]*ast.FuncDecl {
+	out := make(map[string]*ast.FuncDecl, len(file.Decls))
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil || fn.Name == nil {
+			continue
+		}
+		out[fn.Name.Name] = fn
+	}
+	return out
+}
+
+// journalCalleeName — имя вызываемой функции, если вызов адресован функции ПАКЕТА.
+//
+// Форм записи одного и того же вызова две, и обе законны: обычная (`f(x)`) и
+// явно инстанцированная у обобщённой функции (`f[T](x)`, `f[K, V](x)` — узлы
+// `IndexExpr`/`IndexListExpr`). Распознаватель, знающий лишь первую, на второй
+// не даёт ни красного, ни зелёного — он МОЛЧИТ, и записанное второй формой
+// оказывается не разрешённым, а не осмотренным.
+//
+// Пустая строка означает «вызов не к функции пакета» (метод, функция чужого
+// пакета, значение в переменной).
+func journalCalleeName(call *ast.CallExpr) string {
+	switch fun := call.Fun.(type) {
+	case *ast.Ident:
+		return fun.Name
+	case *ast.IndexExpr:
+		if id, ok := fun.X.(*ast.Ident); ok {
+			return id.Name
+		}
+	case *ast.IndexListExpr:
+		if id, ok := fun.X.(*ast.Ident); ok {
+			return id.Name
+		}
+	}
+	return ""
+}
+
+// packsDirectly — стоит ли упаковка состояния в теле самой функции.
 //
 // Упаковка — единственный способ отдать состояние общей форме: носитель события
 // объявлен как `*anypb.Any`, и заполнить его иначе, чем `anypb.New`, нельзя.
-func reachesStatePacking(fn *ast.FuncDecl) bool {
+//
+// Судится УЗЕЛ вызова, а не подстрока: имя `anypb.New` стоит и в комментариях
+// объявлений журналов — в том числе в объяснении, почему состояние НЕ
+// производится, — и сверка по тексту краснела бы на собственном объяснении.
+func packsDirectly(fn *ast.FuncDecl) bool {
 	found := false
 	ast.Inspect(fn, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
@@ -146,6 +204,89 @@ func reachesStatePacking(fn *ast.FuncDecl) bool {
 		return true
 	})
 	return found
+}
+
+// reachesStatePacking — доходит ли функция состояния до упаковки, СВОИМ телом
+// или через вызов функции своего пакета. Возвращает вердикт и число обойдённых
+// объявлений.
+//
+// # Почему обход, а не «упаковка стоит прямо в state»
+//
+// Форм у одного предмета в этом дереве ДВЕ, и обе законны:
+//
+//   - упаковка в теле самой функции состояния — так у compute, storage, vpc, а
+//     также у registry, где она стоит в замыкании, возвращаемом построителем
+//     (лексически это то же объявление, и обход в него заходит);
+//   - упаковка в ОБЩЕЙ полосе, которую функция состояния зовёт по видам — так у
+//     nlb: разбор конверта, перенос записи в контракт и упаковка вынесены в одну
+//     функцию, чтобы три её отказа классифицировались у всех видов одинаково.
+//
+// Распознаватель, знавший только первую, на второй молчал — и записанное ею
+// оказалось не «разрешено», а НЕ ОСМОТРЕНО: гейт объявил журнал nlb
+// непроизводящим при живом производителе и потребовал править ПРАВДИВУЮ
+// страницу. Это тот самый класс, ради которого правило требует называть все
+// законные формы записи предмета и доказывать инъекцией каждую.
+//
+// # Граница названа
+//
+// Обходятся вызовы, объявленные в ТОМ ЖЕ файле. Она держится предпосылкой, что
+// пакет журнала этим файлом и исчерпывается, — предпосылка проверяется отдельно
+// (`journalStateReport.pkgFiles`), а не подразумевается.
+func reachesStatePacking(fn *ast.FuncDecl, local map[string]*ast.FuncDecl) (bool, int) {
+	seen := map[string]bool{}
+	walked := 0
+	var walk func(*ast.FuncDecl) bool
+	walk = func(cur *ast.FuncDecl) bool {
+		walked++
+		if packsDirectly(cur) {
+			return true
+		}
+		reached := false
+		ast.Inspect(cur, func(n ast.Node) bool {
+			if reached {
+				return false
+			}
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			name := journalCalleeName(call)
+			if name == "" || seen[name] {
+				return true
+			}
+			next, ok := local[name]
+			if !ok {
+				return true
+			}
+			seen[name] = true
+			if walk(next) {
+				reached = true
+				return false
+			}
+			return true
+		})
+		return reached
+	}
+	if fn.Name != nil {
+		seen[fn.Name.Name] = true
+	}
+	return walk(fn), walked
+}
+
+// countPkgFiles — не-тестовых файлов в каталоге объявления журнала.
+func countPkgFiles(files []string, journalPath string) int {
+	dir := filepath.Dir(journalPath)
+	n := 0
+	for _, f := range files {
+		if filepath.Dir(f) != dir {
+			continue
+		}
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		n++
+	}
+	return n
 }
 
 // ownerTableHeading — заголовок раздела, в котором живёт таблица владельцев.
@@ -230,6 +371,24 @@ func subscriptionStateFindings(reports []journalStateReport, rows []ownerRowRepo
 				"объявление журнала services/%s не называет функции состояния — общая форма "+
 					"требует её у каждого владельца, и её отсутствие означает, что осмотрено "+
 					"не то место", rep.service))
+			continue
+		}
+		// ПРЕДПОСЫЛКА РАСПОЗНАВАТЕЛЯ, проверяемая, а не подразумеваемая.
+		//
+		// Он обходит вызовы, объявленные в `journal.go`. Пока пакет журнала этим
+		// файлом и исчерпывается, обход полон. Заведётся второй файл — помощник,
+		// в котором стоит упаковка, окажется НЕ ОСМОТРЕН, и вердикт «не собирает»
+		// станет ложным, оставаясь на вид исправным.
+		//
+		// Это ровно тот класс, что привёл сюда: распознаватель знал одну форму,
+		// вторая молчала. Поэтому предпосылка истекает сама.
+		if rep.pkgFiles > 1 {
+			out = append(out, fmt.Sprintf(
+				"пакет журнала services/%s несёт %d не-тестовых файла, а распознаватель "+
+					"обходит вызовы только в journal.go: упаковка, вынесенная в соседний файл, "+
+					"осталась бы НЕ ОСМОТРЕННОЙ, и вердикт «не собирает» был бы ложным. "+
+					"Расширьте обход на файлы пакета и докажите инъекцией",
+				rep.service, rep.pkgFiles))
 			continue
 		}
 		owner := subscriptionOwnerOfService[rep.service]
