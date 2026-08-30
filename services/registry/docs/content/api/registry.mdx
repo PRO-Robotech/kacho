@@ -34,6 +34,9 @@ namespace (имя, метки, статус), а сами образы живу�
     <tr><td><code>repositoryCount</code></td><td>int32</td><td>output-only</td><td>Число репозиториев (проекция из zot, не источник истины)</td></tr>
     <tr><td><code>status</code></td><td>enum</td><td>output-only</td><td>Состояние жизненного цикла (см. ниже)</td></tr>
     <tr><td><code>createdAt</code></td><td>timestamp</td><td>output-only</td><td>Момент создания (RFC 3339, усечён до секунд)</td></tr>
+    <tr><td><code>regionId</code></td><td>string</td><td>immutable</td><td><strong>Обязателен на Create.</strong> Регион размещения (<code>geo.Region</code>). Проверяется у владельца-домена: региона нет → <code>FAILED_PRECONDITION</code>, geo недоступен → <code>UNAVAILABLE</code>. Менять нельзя — перенос региона сломал бы локальность блобов</td></tr>
+    <tr><td><code>placementType</code></td><td>enum</td><td>immutable</td><td>Всегда <code>REGIONAL</code> — это не выбор, а свойство ресурса: реестр региональный (anycast), зоны не несёт. На входе Create не принимается</td></tr>
+    <tr><td><code>defaultRepositoryVisibility</code></td><td>enum</td><td>mutable</td><td><code>PRIVATE</code> (умолчание) · <code>PUBLIC</code>. <strong>Сид</strong> для <code>Repository.visibility</code> новых репозиториев, а не рычаг на существующие: смена НЕ перекрашивает уже заведённые — публичность каждого репозитория остаётся его собственной. Перевод в <code>PUBLIC</code> требует прав администратора реестра. У самого реестра поля <code>visibility</code> нет</td></tr>
   </tbody>
 </table>
 
@@ -84,7 +87,10 @@ authz-Check.
       "endpoint": "registry.kacho.local/reg7h9x2k4m8p0q1r5",
       "repositoryCount": 3,
       "status": "REGISTRY_STATUS_ACTIVE",
-      "createdAt": "2026-07-10T10:00:00Z"
+      "createdAt": "2026-07-10T10:00:00Z",
+      "regionId": "ru-central1",
+      "placementType": "REGIONAL",
+      "defaultRepositoryVisibility": "PRIVATE"
     }
   `}
 </CodeBlock>
@@ -132,6 +138,13 @@ authz-Check.
 эмитится в outbox (материализуется в kacho-iam). Ответ — `Operation`; `response` содержит созданный
 Registry.
 
+`regionId` **обязателен**: без него запрос отвергается синхронно —
+`INVALID_ARGUMENT` (`"regionId is required"`). Список доступных регионов — `GET /geo/v1/regions`.
+`placementType` на входе не принимается: у реестра он всегда `REGIONAL`.
+
+Поля `defaultRepositoryVisibility` у **создания** нет — оно есть только у изменения. Реестр с
+заданной по умолчанию публичностью заводится в два шага: создать, затем `PATCH`.
+
 <CodeBlock language="bash">
   {dedent`
     curl -X POST 'http://localhost:18080/registry/v1/registries' \\
@@ -141,7 +154,8 @@ Registry.
             "projectId": "prj-demo",
             "name": "team-images",
             "description": "образы команды",
-            "labels": { "env": "dev" }
+            "labels": { "env": "dev" },
+            "regionId": "ru-central1"
           }'
   `}
 </CodeBlock>
@@ -162,10 +176,30 @@ Registry.
 
 <ApiOperation method="PATCH" endpoint="/registry/v1/registries/{registryId}" async>
 
-Меняет изменяемые поля: `name`, `description`, `labels`. `projectId` — immutable: его наличие в
-`updateMask` → `INVALID_ARGUMENT` (`"projectId is immutable after Registry.Create"`). Пустой mask →
+Меняет изменяемые поля: `name`, `description`, `labels`, `defaultRepositoryVisibility`. Пустой mask →
 full-object PATCH (все mutable-поля). Неизвестное поле в mask → `INVALID_ARGUMENT`. Требует `v_update`.
 Конфликт имени → `ALREADY_EXISTS`. Ответ — `Operation`.
+
+Неизменяемые поля в `updateMask` отвергаются собственным текстом, а не как «неизвестное поле»:
+
+<table>
+  <thead><tr><th>Поле в маске</th><th>Ответ</th></tr></thead>
+  <tbody>
+    <tr><td><code>projectId</code></td><td><code>INVALID_ARGUMENT</code> — <code>"projectId is immutable after Registry.Create"</code></td></tr>
+    <tr><td><code>regionId</code></td><td><code>INVALID_ARGUMENT</code> — <code>"regionId is immutable after Registry.Create"</code></td></tr>
+    <tr><td><code>placementType</code></td><td><code>INVALID_ARGUMENT</code> — <code>"placementType is immutable after Registry.Create"</code></td></tr>
+  </tbody>
+</table>
+
+Перевод `defaultRepositoryVisibility` в `PUBLIC` требует прав администратора реестра. Смена
+**не перекрашивает** уже заведённые репозитории — она задаёт умолчание только для новых.
+
+:::note Имя реестра менять безопасно — но это НЕ переносится на репозиторий
+Путь загрузки строится по `id` реестра, а не по его имени, поэтому переименование реестра не
+задевает ни один `docker pull`. У **репозитория** ровно наоборот: его имя и есть второй сегмент
+пути, и смена имени (`RenameRepository`) обрывает все старые пути — см.
+[Repository](/api/repository), врезку «Переименование ломает каждый путь загрузки».
+:::
 
 <CodeBlock language="bash">
   {dedent`

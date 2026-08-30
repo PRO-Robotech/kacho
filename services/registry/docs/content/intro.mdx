@@ -47,7 +47,8 @@ registry со своей отдельной системой прав: кто м
 
 Registry — **тонкий namespace-слой над общим хранилищем блобов**: сами слои и манифесты живут в
 бэкенде хранилища (zot), а kacho-registry владеет метаданными namespace и правилами доступа.
-Образы и теги **не хранятся в БД** сервиса — это read-only проекция из хранилища.
+Слои, манифесты и теги **не хранятся в БД** сервиса — это проекция из хранилища. Поверх неё
+сервис держит собственное **наложение** на репозиторий: описание, метки и публичность.
 
 :::info Две поверхности: control-plane и data-plane
 Kachō Registry — это **два интерфейса** к одному namespace. **Control-plane** (gRPC + REST через
@@ -65,8 +66,9 @@ Kachō Registry — это **два интерфейса** к одному names
 ## Доменная модель
 
 Kachō Registry оперирует **тремя типами ресурсов**. Все — «плоские» (flat): domain-поля на верхнем
-уровне сообщения, без K8s-envelope. Registry — единственный ресурс, который сервис хранит в своей
-БД; Repository и Tag — read-only проекции из хранилища образов (source of truth — zot).
+уровне сообщения, без K8s-envelope. Registry сервис хранит целиком; у Repository он владеет
+**наложением** (описание, метки, публичность), а содержимое — теги, размеры, типы артефактов —
+читает проекцией из хранилища образов (source of truth — zot). Tag — проекция целиком.
 
 <table>
   <thead>
@@ -74,7 +76,7 @@ Kachō Registry оперирует **тремя типами ресурсов**.
   </thead>
   <tbody>
     <tr><td><strong>Registry</strong></td><td>Namespace-реестр в проекте: имя, метки, endpoint, статус жизненного цикла. Единица владения и авторизации</td><td>БД kacho-registry (метаданные)</td></tr>
-    <tr><td><strong>Repository</strong></td><td>OCI-репозиторий (образ) внутри namespace, напр. <code>backend/api</code>: число тегов, размер, тип артефакта</td><td>Проекция из zot (read-only)</td></tr>
+    <tr><td><strong>Repository</strong></td><td>OCI-репозиторий (образ) внутри namespace, напр. <code>backend/api</code>: число тегов, размер, тип артефакта — и наложенные описание, метки, публичность</td><td>Наложение — БД kacho-registry; содержимое — проекция из zot</td></tr>
     <tr><td><strong>Tag</strong></td><td>Тегированный образ (манифест): digest, размер, платформа, время создания, число скачиваний</td><td>Проекция из zot (read-only)</td></tr>
   </tbody>
 </table>
@@ -98,8 +100,9 @@ flowchart TD
 ```
 
 Registry принадлежит проекту IAM (`projectId` — cross-domain ссылка, TEXT, без FK). Внутри
-namespace живут репозитории, в репозиториях — теги; и репозитории, и теги материализуются
-хранилищем при `docker push` и читаются проекцией, а не хранятся в БД реестра.
+namespace живут репозитории, в репозиториях — теги. Содержимое материализуется хранилищем при
+`docker push` и читается проекцией; наложение на репозиторий (описание, метки, публичность)
+заводится control-plane-вызовом и живёт в БД реестра.
 
 ## Как с сервисом общаться
 
@@ -162,7 +165,7 @@ flowchart LR
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>▤</span>
     <span className={hero.featureTitle}>Проекция из хранилища</span>
-    <span className={hero.featureBody}>Репозитории и теги — read-only-проекция из zot (source of truth), не дублируются в БД реестра.</span>
+    <span className={hero.featureBody}>Содержимое репозиториев и теги — проекция из zot (source of truth); в БД реестра не дублируется, там живёт только наложение.</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>◨</span>
