@@ -39,8 +39,11 @@ type Account struct {
 	// ID of the account.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Name of the account.
-	// The name is unique within the IAM domain. 3-63 characters long.
-	// Value must match the regular expression `[a-z]([-a-z0-9]{0,61}[a-z0-9])?`.
+	// The name is unique within the IAM domain. 1-63 characters long.
+	// Value must match the regular expression `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?` —
+	// RFC 1123 DNS label: lowercase letters, digits and hyphens, 1..63 characters.
+	// Empty on Create means "server, name it": a name derived from the id is
+	// substituted. Empty on Update is rejected — a resource has no nameless state.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Optional description of the account. 0-256 characters long.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`

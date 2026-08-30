@@ -194,7 +194,7 @@ message CreateGroupRequest {
   // ID of the Account that the Group will belong to.
   string account_id = 1;
 
-  // Name of the group. 3-63 characters long, unique within an Account.
+  // Name of the group. 1-63 characters long, unique within an Account.
   string name = 2;
 
   // Description of the group.

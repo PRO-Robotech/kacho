@@ -219,7 +219,7 @@ func (x *ListInteractiveClientsResponse) GetNextPageToken() string {
 
 type CreateInteractiveClientRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Name of the client. Unique cluster-wide. 3-63 characters.
+	// Name of the client. Unique cluster-wide. 1-63 characters.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// Optional description.
 	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`

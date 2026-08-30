@@ -149,7 +149,7 @@ message CreateProjectRequest {
   // ID of the Account that the Project will belong to.
   string account_id = 1;
 
-  // Name of the project. Must be unique within an Account. 3-63 characters long.
+  // Name of the project. Must be unique within an Account. 1-63 characters long.
   string name = 2;
 
   // Description of the project.

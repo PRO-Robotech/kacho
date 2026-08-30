@@ -198,7 +198,7 @@ func (x *ListAccountsResponse) GetNextPageToken() string {
 
 type CreateAccountRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Name of the account. Must be unique within the IAM domain. 3-63 characters long.
+	// Name of the account. Must be unique within the IAM domain. 1-63 characters long.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// Description of the account.
 	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`

@@ -93,9 +93,13 @@ type ListAddressesRequest struct {
 	// A filter expression that filters Address listed in the response.
 	//
 	// The expression must specify:
-	// 1. The field name. Currently you can use filtering only on [Address.name] field.
-	// 2. An `=` operator.
-	// 3. The value in double quotes (`"`). Must be 3-63 characters long and match the regular expression `[a-z][-a-z0-9]{1,61}[a-z0-9]`.
+	//  1. The field name. Currently you can use filtering only on [Address.name] field.
+	//  2. An `=` operator.
+	//  3. The value in double quotes (`"`). The value is compared to the resource
+	//     name as-is, so only a value in the name form can match anything:
+	//     `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?`. The filter itself applies no
+	//     separate length or alphabet rule to the value.
+	//
 	// Example of a filter: `name=my-address`.
 	Filter string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	// Optional: list only addresses allocated from this subnet (internal_ipv4 /

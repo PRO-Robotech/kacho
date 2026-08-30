@@ -27,7 +27,10 @@ message NetworkInterface {
   string project_id = 2;
 
   // Имя интерфейса. Уникально в пределах фолдера.
-  // Value must match the regular expression ``\|[a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?``.
+  // Value must match the regular expression `[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?` —
+  // RFC 1123 DNS label: lowercase letters, digits and hyphens, 1..63 characters.
+  // Empty on Create means "server, name it": a name derived from the id is
+  // substituted. Empty on Update is rejected — a resource has no nameless state.
   string name = 4;
 
   // Описание интерфейса. 0-256 символов.

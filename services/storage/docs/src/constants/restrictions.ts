@@ -4,9 +4,11 @@
 // domain-слой сервиса.
 export const RESTRICTIONS = {
   name: [
-    'regex ^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$ (строгий lowercase, без uppercase и underscore)',
-    'длина 0..63; пустая строка допустима',
-    'уникально в паре (projectId, name), когда непусто — partial UNIQUE',
+    'regex ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$ — DNS label по RFC 1123',
+    'строчные латинские буквы, цифры и дефис; без uppercase и underscore',
+    'длина 1..63; цифра первым знаком допустима (`9lives` — валидное имя)',
+    'пустая строка при Create означает «назови сам»: сервер подставит имя, производное от id',
+    'уникально в паре (projectId, name) — полный UNIQUE: имени без значения не бывает',
   ],
   description: ['UTF-8 длина ≤ 256'],
   labels: [

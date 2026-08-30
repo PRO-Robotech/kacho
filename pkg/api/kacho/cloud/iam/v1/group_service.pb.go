@@ -204,7 +204,7 @@ type CreateGroupRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the Account that the Group will belong to.
 	AccountId string `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	// Name of the group. 3-63 characters long, unique within an Account.
+	// Name of the group. 1-63 characters long, unique within an Account.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Description of the group.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`

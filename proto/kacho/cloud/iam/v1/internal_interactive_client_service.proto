@@ -174,7 +174,7 @@ message ListInteractiveClientsResponse {
 }
 
 message CreateInteractiveClientRequest {
-  // Name of the client. Unique cluster-wide. 3-63 characters.
+  // Name of the client. Unique cluster-wide. 1-63 characters.
   string name = 1;
 
   // Optional description.
