@@ -248,3 +248,45 @@ func TestBodyGate_FailsWhenPackageYieldsNoMethods(t *testing.T) {
 		t.Fatal("методов не выведено ни одного, а анализатор вернул успех")
 	}
 }
+
+// TestBodyGate_RedOnGrpcurlBody — ВТОРАЯ форма команды. Заведена не для полноты:
+// без неё тринадцать блоков `grpcurl` дерева не наблюдались ничем, и в них жили
+// настоящие дефекты — включая тело метода `Internal*`, у которого HTTP-привязки
+// нет by construction и которого первый распознаватель не увидел бы никогда.
+func TestBodyGate_RedOnGrpcurlBody(t *testing.T) {
+	s := newBodyStand(t)
+	s.write(t, "docs/grpc.mdx",
+		"```bash\ngrpcurl -plaintext -d '{\"subject_id\":\"user:u\",\"чегоНет\":1}' \\\\\n"+
+			"  localhost:9091 kacho.cloud.iam.v1.InternalIAMService/Check\n```\n")
+	findings, census := s.run(t)
+	if len(findings) != 1 {
+		t.Fatalf("findings=%d, ожидался ровно 1: %v", len(findings), findings)
+	}
+	got := findings[0].String()
+	for _, want := range []string{"docs/grpc.mdx", "чегоНет", "CheckRequest", "gRPC"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("находка не называет %q: %s", want, got)
+		}
+	}
+	// Законное поле того же тела рассужено и НЕ объявлено находкой.
+	if census.KeysJudged < 4 {
+		t.Fatalf("ключей рассужено %d — законное поле рядом не рассуждено", census.KeysJudged)
+	}
+}
+
+// TestBodyGate_GrpcurlUnknownServiceIsNotAFinding — законный близнец: служба вне
+// регистра (соседний домен) находкой не является и уходит в перепись.
+func TestBodyGate_GrpcurlUnknownServiceIsNotAFinding(t *testing.T) {
+	s := newBodyStand(t)
+	s.write(t, "docs/grpc.mdx",
+		"```bash\ngrpcurl -plaintext -d '{\"чужое\":1}' \\\\\n"+
+			"  localhost:9091 kacho.cloud.чужойдомен.v1.SomeService/Do\n```\n")
+	findings, census := s.run(t)
+	if len(findings) != 0 {
+		t.Fatalf("чужая служба объявлена находкой: %v", findings)
+	}
+	if census.BodiesUnmatched != 1 {
+		t.Fatalf("несопоставленных тел %d, ожидалось 1 — слепая зона не посчитана",
+			census.BodiesUnmatched)
+	}
+}

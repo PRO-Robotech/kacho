@@ -73,7 +73,7 @@ sequenceDiagram
     participant DB as Postgres (kacho_iam)
     participant Out as fga_outbox (журнал намерений)
 
-    Cli->>GW: POST /iam/v1/accounts<br/>{"name":"acme","owner_user_id":"usr_..."}
+    Cli->>GW: POST /iam/v1/accounts<br/>{"name":"acme"}
     GW->>GW: Validate Bearer JWT (Ory Hydra JWKS)
     GW->>GW: PrincipalExtract
     GW->>IAM: gRPC AccountService.Create<br/>+ x-kacho-principal-*
@@ -171,7 +171,7 @@ curl -s "http://localhost:18080/iam/v1/accounts?owner_user_id=usr_xxx" -H "Autho
 ```bash
 grpcurl -plaintext \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"name":"acme","owner_user_id":"usr_xxx"}' \
+  -d '{"name":"acme"}' \
   localhost:9090 kacho.cloud.iam.v1.AccountService/Create
 ```
 

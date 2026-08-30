@@ -31,8 +31,14 @@
 // зарегистрированных дескрипторов пакета контрактов (`google.api.http`), поэтому
 // переименование поля или переезд пути доезжают сюда сами.
 //
-// В документации распознаётся команда `curl`: метод (`-X`, по умолчанию GET),
-// адрес и тело (`-d '{…}'`). Адрес сопоставляется с шаблоном пути метода
+// В документации распознаются ДВЕ формы команды. `curl`: метод (`-X`, по
+// умолчанию GET), адрес и тело (`-d '{…}'`). `grpcurl`: тело и ПОЛНОЕ имя
+// службы с методом (`kacho.cloud.iam.v1.AccountService/Create`) — его сопоставлять
+// с путём не надо вовсе, и вместе с ним под наблюдение попадают методы
+// `Internal*`, у которых HTTP-привязки нет by construction.
+//
+// Форм ровно столько, сколько нашлось замером; третья, найденная и НЕ покрытая,
+// названа в границах ниже. Адрес сопоставляется с шаблоном пути метода
 // (сегмент `{…}` матчит любой один сегмент), тело разбирается как JSON, и каждый
 // его ключ обязан быть полем сообщения — в любом из ДВУХ написаний, которые
 // принимает край: camelCase (`ownerUserId`) и proto (`owner_user_id`). Судится не
@@ -79,9 +85,14 @@
 //     (`labels`) ключи произвольны by construction, а у `google.protobuf.Struct`
 //     и `Any` — тем более. Рекурсия в них означала бы находки на законном.
 //
-//  4. ТЕЛА ВНЕ `curl` вне охвата: блок JSON, показывающий ОТВЕТ, инструкцией не
-//     является и судиться не должен — в ответе законны выходные поля, которых на
-//     входе нет (`ownerUserId` в ответе Create — верен).
+//  4. ТЕЛА ВНЕ КОМАНДЫ вне охвата, и здесь две разные причины. Блок JSON,
+//     показывающий ОТВЕТ, судиться НЕ ДОЛЖЕН: в ответе законны выходные поля,
+//     которых на входе нет (`ownerUserId` в ответе Create — верен). А вот тело,
+//     нарисованное узлом ДИАГРАММЫ последовательности
+//     (`Cli->>GW: POST /iam/v1/accounts<br/>{…}`), судиться должно бы — и не
+//     судится: таких мест в дереве пять, они правились руками, и распознаватель
+//     под них не заводился, потому что метка узла — свободный текст, а не
+//     команда. Это объявленная слепая зона, а не покрытие.
 //
 //  5. ПУТЬ, НЕ СОПОСТАВИВШИЙСЯ ни с одним методом, находкой НЕ считается, но
 //     СЧИТАЕТСЯ переписью отдельным числом: примеры ходят и к соседним доменам
@@ -188,7 +199,7 @@ type httpMethodBinding struct {
 }
 
 var (
-	curlLineRe = regexp.MustCompile(`\bcurl\b`)
+	curlLineRe = regexp.MustCompile(`\b(?:grpcurl|curl)\b`)
 	verbRe     = regexp.MustCompile(`-X\s+([A-Z]+)`)
 	// Адрес пишут ТРЕМЯ законными способами: в одинарных кавычках, в двойных и
 	// без кавычек вовсе. Первая редакция знала только кавычки — и не видела
@@ -198,6 +209,12 @@ var (
 	// законных форм, не даёт ни красного, ни зелёного — он молчит.
 	urlRe  = regexp.MustCompile(`['"](https?://[^'"\s]+)['"]|(https?://[^'"\s\\]+)`)
 	bodyRe = regexp.MustCompile(`(?s)-d\s+'(\{.*?\})'`)
+	// grpcurl называет метод ПОЛНЫМ именем прямо в команде, поэтому сопоставлять
+	// его с шаблоном пути не нужно вовсе — и заодно становятся судимы методы
+	// Internal*, у которых HTTP-привязки нет by construction и которые первым
+	// распознавателем не наблюдались никак.
+	grpcurlRe    = regexp.MustCompile(`\bgrpcurl\b`)
+	grpcMethodRe = regexp.MustCompile(`([a-z][\w.]*\.[A-Z]\w*)/(\w+)`)
 )
 
 // AuditClientTruthIAMRequestBody требует, чтобы каждый ключ тела запроса в
@@ -310,6 +327,7 @@ func auditOneDoc(
 		}
 		census.CurlBlocks++
 		i = j
+		isGRPC := grpcurlRe.MatchString(joined)
 
 		m := bodyRe.FindStringSubmatch(joined)
 		if m == nil {
@@ -321,6 +339,23 @@ func auditOneDoc(
 			continue
 		}
 		census.BodiesParsed++
+
+		if isGRPC {
+			gm := grpcMethodRe.FindStringSubmatch(joined)
+			if gm == nil {
+				census.BodiesUnmatched++
+				continue
+			}
+			input, ok := grpcInput(gm[1], gm[2])
+			if !ok {
+				census.BodiesUnmatched++
+				continue
+			}
+			census.BodiesMatched++
+			out = append(out, judgeObject(rel, i+1, "gRPC", gm[1]+"/"+gm[2],
+				input, "", body, rejected, census)...)
+			continue
+		}
 
 		verb := "GET"
 		if v := verbRe.FindStringSubmatch(joined); v != nil {
@@ -587,6 +622,25 @@ func collectRejectedInputFields(root string, dirs []string) (map[string]bool, er
 		}
 	}
 	return out, nil
+}
+
+// grpcInput резолвит сообщение входа по ПОЛНОМУ имени службы и метода — так,
+// как его называет сама команда. Служба вне регистра (соседний домен, опечатка)
+// находкой не считается: она уходит в «адрес не сопоставился».
+func grpcInput(service, method string) (protoreflect.MessageDescriptor, bool) {
+	d, err := protoregistry.GlobalFiles.FindDescriptorByName(protoreflect.FullName(service))
+	if err != nil {
+		return nil, false
+	}
+	sd, ok := d.(protoreflect.ServiceDescriptor)
+	if !ok {
+		return nil, false
+	}
+	md := sd.Methods().ByName(protoreflect.Name(method))
+	if md == nil {
+		return nil, false
+	}
+	return md.Input(), true
 }
 
 func clientTruthStringLit(e ast.Expr) (string, bool) {
