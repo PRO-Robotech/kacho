@@ -2,40 +2,61 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Command kacho-migrator — накат миграций схемы БД kacho-compute (goose поверх
-// embed `internal/migrations`). Отдельная точка сборки: serve-бинарь схему не
-// меняет (least-privilege), миграции гоняет одноразовый init-контейнер.
+// встроенной `internal/migrations`). Отдельная точка сборки: serve-бинарь схему
+// не меняет (least-privilege), миграции гоняет одноразовый init-контейнер.
 //
 //	kacho-migrator [--dsn DSN] [--dialect postgres] {up|down|status} [--target VERSION]
 //
-// Разбор аргументов — общий на все точки наката прямой формы
-// (`pkg/migratorcli`), и это не украшение: собственный разбор МОЛЧА терял флаг,
-// написанный после подкоманды, поэтому `kacho-migrator up --dsn X` накатывал не
-// на ту базу и выглядел успехом. Поверхность CLI объявлена в
-// docs/architecture/migrator-cli.md, форма самой точки наката — в
-// docs/architecture/migrator-form.md.
+// Разбор аргументов и САМ НАКАТ — общие на все семь точек наката
+// (`pkg/migratorcli` и `internal/migratorrun`), и это не украшение. Разбор:
+// собственный МОЛЧА терял флаг, написанный после подкоманды, поэтому
+// `kacho-migrator up --dsn X` накатывал не на ту базу и выглядел успехом.
+// Накат: форм было ДВЕ, и различие никем не решалось — оно завелось побочным
+// эффектом того, что службы заводились в разное время.
+//
+// Здесь остаётся ровно то, что у службы своё: её имя, её цепочка миграций и её
+// способ добыть DSN из собственной конфигурации.
+//
+// Поверхность CLI объявлена в docs/architecture/migrator-cli.md, форма самой
+// точки наката — в docs/architecture/migrator-form.md.
 //
 // DSN: --dsn > ENV KACHO_MIGRATOR_DSN > конфигурация kacho-compute (KACHO_COMPUTE_*).
 package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // регистрирует database/sql-драйвер "pgx"
-	"github.com/pressly/goose/v3"
 
-	"github.com/PRO-Robotech/kacho/internal/dropguard"
+	"github.com/PRO-Robotech/kacho/internal/migratorrun"
 	"github.com/PRO-Robotech/kacho/pkg/migratorcli"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/config"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 )
 
-// binaryName — имя бинаря одно на все семь сервисов; оно стоит в манифестах
-// развёртывания и в текстах отказа, поэтому названо здесь один раз.
-const binaryName = "kacho-migrator"
+const (
+	// binaryName — имя бинаря одно на все семь служб; оно стоит в манифестах
+	// развёртывания и в текстах отказа, поэтому названо здесь один раз.
+	binaryName = "kacho-migrator"
+
+	// serviceName — чью цепочку применяет эта точка наката. Живой счёт строк
+	// перед сносом называет им то, что стережёт, поэтому безымянной точки наката
+	// не бывает: предусловия отказывают ей в старте.
+	serviceName = "compute"
+
+	// migrationsDir — путь внутри встроенной файловой системы; её корень — ".".
+	migrationsDir = "."
+)
+
+// dsnExtraSources — чем ЭТА служба заполняет DSN СВЕРХ двух общих (`--dsn` и
+// KACHO_MIGRATOR_DSN), в порядке убывания приоритета. Два общих здесь НЕ
+// перечисляются намеренно: их печатает сам общий пакет, поэтому умолчать
+// источник, который перебивает названные, нельзя by construction. Ровно это и
+// случилось однажды — текст отказа называл третий источник и умалчивал второй.
+var dsnExtraSources = []string{"kacho-compute config (KACHO_COMPUTE_*)"}
 
 func main() {
 	opts, err := migratorcli.Parse(binaryName, os.Args[1:])
@@ -44,8 +65,7 @@ func main() {
 		fmt.Println(migratorcli.Usage(binaryName))
 		return
 	case errors.Is(err, migratorcli.ErrNoCommand):
-		// Форма вызова печатается ОТДЕЛЬНО, а исход остаётся отказом: ровно так
-		// делегирующая форма печатает помощь и выходит кодом 1. Вшить форму
+		// Форма вызова печатается ОТДЕЛЬНО, а исход остаётся отказом. Вшить форму
 		// вызова в текст отказа значило бы сделать первую строку разной у семи.
 		fmt.Println(migratorcli.Usage(binaryName))
 		fail(err)
@@ -64,114 +84,44 @@ func main() {
 		fail(err)
 	}
 
-	// НАСТРОЙКА goose и ОТКРЫТИЕ базы с барьером готовности — общий шаг на все
-	// семь точек наката. Здесь он не переписывается: собственных
-	// объявлений было семь, и два текста отказа успели разойтись — прямая форма
-	// не называла оператору ни имя драйвера, ни имя диалекта. Обе строки теперь
-	// одни на дерево, и почему выбраны именно эти — сказано в шапке
-	// pkg/migratorcli/dialect.go.
-	//
-	// Диалект берётся из [migratorcli.SpecPostgres], а не из opts.Dialect, и это
-	// не игнорирование флага: чужое значение до сюда не доходит — его отвергает
-	// migratorcli.Parse выше, называя поддерживаемое.
-	if err := migratorcli.SetupGoose(migrations.FS, migratorcli.SpecPostgres); err != nil {
-		fail(err)
-	}
-	db, err := migratorcli.OpenDB(context.Background(), dsn, migratorcli.SpecPostgres)
+	runner, err := migratorrun.New(migratorrun.Config{
+		Service:         serviceName,
+		Dialect:         opts.Dialect,
+		DSN:             dsn,
+		FS:              migrations.FS,
+		MigrationsDir:   migrationsDir,
+		DSNExtraSources: dsnExtraSources,
+	})
 	if err != nil {
 		fail(err)
 	}
-	defer func() { _ = db.Close() }()
 
-	if err := run(db, opts); err != nil {
+	if err := run(context.Background(), runner, opts); err != nil {
 		fail(fmt.Errorf("migrate %s: %w", opts.Command, err))
 	}
 }
 
 // fail подаёт отказ в форме, одной на семь точек наката (`Error: <предмет>`), и
-// выходит кодом 1. Через журнал отказ больше не идёт: журнал ставит впереди
-// метку времени, и она делала из одного контракта две редакции — для скрипта,
+// выходит кодом 1. Через журнал отказ не идёт: журнал ставит впереди метку
+// времени, и она делала из одного контракта две редакции — для скрипта,
 // читающего отказ образцом, это разные строки.
 func fail(err error) {
 	migratorcli.ReportError(os.Stderr, err)
 	os.Exit(1)
 }
 
-// run исполняет разобранную команду. Вынесено из main, чтобы порядок ветвления
-// читался целиком и чтобы `--target` было видно рядом с его отсутствием.
-func run(db *sql.DB, opts migratorcli.Options) error {
-	const dir = "."
-
+// run исполняет разобранную команду. Счёт строк перед сносом здесь НЕ ВИДЕН, и
+// это построение, а не пропуск: он живёт внутри [migratorrun.Runner.Up], откуда
+// его не обойти, не обойдя сам Up. Прежде он стоял отдельным оператором ровно
+// здесь — то есть шагом, который однажды могли не позвать.
+func run(ctx context.Context, r *migratorrun.Runner, opts migratorcli.Options) error {
 	switch opts.Command {
 	case migratorcli.CommandUp:
-		// ЖИВОЙ СЧЁТ ПЕРЕД СНОСОМ. Таблица, которую роняет ещё не применённая
-		// миграция ИЗ ЧИСЛА ТЕХ, ЧТО ЭТОТ ПРОГОН ПРИМЕНИТ, считается ЗДЕСЬ — пока
-		// строки ещё есть и пока отказ стоит одной выкатки. Down-миграция возвращает
-		// форму, а не данные, поэтому «восстановимо» про снос неверно: восстановима
-		// схема.
-		//
-		// Измеряющий гейт в internal/migrations отвечает на другой вопрос — сколько
-		// сеет наша собственная цепочка, проигранная в пустую базу. Что написал
-		// арендатор, не знает ни один контейнер, и узнать это можно только здесь.
-		//
-		// Недоступность базы — НЕ «ноль строк»: она отказ, а не разрешение.
-		//
-		// Счёт стоит ДО ОБЕИХ ветвей применения — и полной, и `--target`, — и
-		// считает РОВНО ТЕ сносы, которые этот прогон выполнит. Цель для этого
-		// разбирается здесь, одним разбором на оба употребления: стражу — чтобы
-		// знал границу, goose — чтобы её исполнил.
-		//
-		// Прежде страж считал все ещё не применённые сносы, включая те, до которых
-		// цель не докатится, и прицельный прогон мог быть отвергнут из-за сноса,
-		// которого он не сделает.
-		//
-		// Обойти счёт цель НЕ ДАЁТ, и это построение, а не обещание: незаданная
-		// цель — нулевое значение dropguard.Target, то есть «считать всё», а
-		// суженная сужает ровно настолько же и применяемое — снос, из-за которого
-		// пришёл бы отказ, при такой цели просто не исполняется. Глобального
-		// выключателя у гейта по-прежнему нет; лишний отказ снимается, как и всякий
-		// другой, — именем конкретного сноса (см. dropguard.ApprovalEnv).
-		//
-		// Отказ идёт наверх ошибкой, а не через журнал: журнал ставит впереди метку
-		// времени, и она делала из одного контракта две редакции (см. fail).
-		target := dropguard.WholeChain()
-		var version int64
-		if opts.Target != "" {
-			v, perr := migratorcli.ParseTargetVersion(opts.Target)
-			if perr != nil {
-				return perr
-			}
-			version, target = v, dropguard.UpTo(v)
-		}
-		if err := dropguard.Gate(context.Background(), db, "compute", migrations.FS, os.Stderr, target); err != nil {
-			return err
-		}
-		// ПРОПУЩЕННЫЕ МИГРАЦИИ ПРИНИМАЮТСЯ, и это не послабление, а следствие схемы
-		// нумерации. Номер у нас — «задача × 1000 + порядок», и он НЕ хронологичен by
-		// construction: задача закрывается не по порядку номеров, поэтому файл с
-		// меньшим номером появляется в дереве позже. База, накатившая больший номер
-		// раньше, при обновлении видит «пропущенную миграцию перед текущей версией»
-		// и отказывает — служба не стартует вовсе.
-		//
-		// Приём пропущенной означает ПРИМЕНИТЬ её, а не пропустить; порядок внутри
-		// одной задачи (`NNN001` до `NNN002`) goose сохраняет независимо от опции.
-		if opts.Target == "" {
-			return goose.Up(db, dir, goose.WithAllowMissing())
-		}
-		return goose.UpTo(db, dir, version, goose.WithAllowMissing())
-
+		return r.Up(ctx, opts.Target)
 	case migratorcli.CommandDown:
-		if opts.Target == "" {
-			return goose.Down(db, dir)
-		}
-		version, err := migratorcli.ParseTargetVersion(opts.Target)
-		if err != nil {
-			return err
-		}
-		return goose.DownTo(db, dir, version)
-
+		return r.Down(ctx, opts.Target)
 	case migratorcli.CommandStatus:
-		return goose.Status(db, dir)
+		return r.Status(ctx, os.Stdout)
 	}
 	// Недостижимо: перечень подкоманд закрыт разбором. Ветка существует, чтобы
 	// расширение перечня не проходило молча — молчаливый успех на неизвестной
