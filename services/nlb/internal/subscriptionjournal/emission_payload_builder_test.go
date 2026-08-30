@@ -27,8 +27,21 @@ import (
 // отвечает по нему «не производится». Появится состояние — вид обязан появиться
 // и здесь, иначе одна частичная точка сделает ложным весь вид.
 var statefulKinds = map[string]string{
-	"kachorepo.OutboxResourceListener": "kachorepo.ListenerStatePayload",
+	"kachorepo.OutboxResourceListener":    "kachorepo.ListenerStatePayload",
+	"kachorepo.OutboxResourceTargetGroup": "kachorepo.TargetGroupStatePayload",
 }
+
+// deletedAction — род «снятие»: у него состояния не бывает BY CONSTRUCTION.
+//
+// Исключение сделано по РОДУ, а не по месту, и это несущее. Строитель полного
+// состояния требуется от точки, которая состояние производит; у снятия предмета
+// больше нет, сборщик отвечает по нему `NOT_PRODUCED`, и требовать конверт от
+// такой точки значило бы требовать снимок несуществующего.
+//
+// Исключение по МЕСТУ («вот в этом файле можно») было бы послаблением без срока:
+// оно пережило бы свой предмет молча. Род читается из того же вызова, поэтому
+// исключение истекает вместе с самим вызовом.
+const deletedAction = "kachorepo.OutboxActionDeleted"
 
 // TestEveryEmissionOfAStatefulKindBuildsTheSamePayload — ВСЁ-ИЛИ-НИЧЕГО В ПРЕДЕЛАХ ВИДА.
 //
@@ -67,12 +80,17 @@ var statefulKinds = map[string]string{
 // что вторая, частичная форма не заведётся мимо первой.
 func TestEveryEmissionOfAStatefulKindBuildsTheSamePayload(t *testing.T) {
 	seen := map[string]int{}
+	deletions := map[string]int{}
 	var findings []string
 
 	res := inspectEmissions(t, func(e emission) {
 		kind := kindLiteralName(e.kind)
 		builder, stateful := statefulKinds[kind]
 		if !stateful {
+			return
+		}
+		if kindLiteralName(e.change) == deletedAction {
+			deletions[kind]++
 			return
 		}
 		seen[kind]++
@@ -92,7 +110,8 @@ func TestEveryEmissionOfAStatefulKindBuildsTheSamePayload(t *testing.T) {
 	t.Logf("перепись: файлов осмотрено %d · вызовов Emit найдено %d · видов с состоянием объявлено %d",
 		res.filesRead, res.emitsSeen, len(statefulKinds))
 	for _, k := range kinds {
-		t.Logf("  %s — точек эмиссии найдено %d, строитель %q", k, seen[k], statefulKinds[k])
+		t.Logf("  %s — точек эмиссии с состоянием %d, снятий %d, строитель %q",
+			k, seen[k], deletions[k], statefulKinds[k])
 	}
 
 	if res.filesRead == 0 {

@@ -67,15 +67,18 @@ type CheckClient = iamclient.CheckClient
 // не внимание: он судит УЗЕЛ аргумента вида, поэтому следующая копия не заведётся
 // молча.
 
-// Outbox action strings (CHECK constraint в nlb_outbox; см. миграцию 0001).
-// `FAILED` листенером больше не эмитится: его единственным источником была
+// Слово РОДА ИЗМЕНЕНИЯ здесь тоже больше не объявляется: точки эмиссии зовут
+// `kachorepo.OutboxAction{Created,Updated,Deleted}`.
+//
+// Копия рода снята тем же заходом и по той же причине, что копия вида (#1550), —
+// но нашла её не перепись, а ГЕЙТ, заведённый по виду: судя род по канонической
+// константе, он не узнал местную копию и посчитал точку снятия слушателя за
+// точку с состоянием. То есть слепая зона распознавателя воспроизвелась на
+// соседней оси немедленно, стоило завести проверку, которая эту ось читает.
+//
+// `FAILED` слушателем не эмитится: его единственным источником была
 // release-ветка VIP в Delete, снятая вместе с адресной моделью листенера
 // (миграция 0028) — адрес принадлежит родительскому LoadBalancer'у.
-const (
-	outboxActionCreated = "CREATED"
-	outboxActionUpdated = "UPDATED"
-	outboxActionDeleted = "DELETED"
-)
 
 // FGA relation strings live in `internal/domain`: `domain.FGARelationAdmin` is
 // named there because the AccessBinding flow writes it; it is not emitted in a

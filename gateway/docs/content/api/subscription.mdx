@@ -146,7 +146,8 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
 нет: предмета больше не существует, собирать было нечего.
 
 `loadbalancer` — **смешанный, и решать надо по виду, а не по владельцу**: состояние есть у
-`nlb_listener` (создание и правка), и нет у `nlb_network_load_balancer` и `nlb_target_group`.
+`nlb_listener` и `nlb_target_group` (создание, правка, переезд), и нет у
+`nlb_network_load_balancer` ни у одного рода изменения.
 Подписка сразу на несколько его видов законна, и часть событий в одном потоке придёт с
 состоянием, а часть — без; ветвиться по `stateUnavailable` надо на КАЖДОМ событии, а не один
 раз при открытии.
@@ -184,11 +185,14 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
     <tr>
       <td><code>loadbalancer</code></td><td>Load Balancer</td>
       <td><code>nlb&#95;network&#95;load&#95;balancer</code>, <code>nlb&#95;listener</code>, <code>nlb&#95;target&#95;group</code></td>
-      <td><code>state</code> типа <code>kacho.cloud.loadbalancer.v1.Listener</code> — только у вида
-          <code>nlb&#95;listener</code>, у создания и правки. У
-          <code>nlb&#95;network&#95;load&#95;balancer</code> и <code>nlb&#95;target&#95;group</code>
-          состояния нет ни у одного рода изменения: приходит оболочка события, предмет читается
-          по <code>resource_id</code>. Отсутствие доезжает причиной <code>NOT_PRODUCED</code></td>
+      <td><code>state</code> типа <code>kacho.cloud.loadbalancer.v1.Listener</code> у вида
+          <code>nlb&#95;listener</code> и типа <code>kacho.cloud.loadbalancer.v1.TargetGroup</code>
+          у вида <code>nlb&#95;target&#95;group</code> — у создания, правки и переезда. У
+          <code>nlb&#95;target&#95;group</code> состояние несёт и НАБОР ЦЕЛЕЙ с их
+          lifecycle-состоянием, поэтому сливающаяся цель отличима от обычной. У
+          <code>nlb&#95;network&#95;load&#95;balancer</code> состояния нет ни у одного рода
+          изменения: приходит оболочка события, предмет читается по <code>resource_id</code>.
+          Отсутствие доезжает причиной <code>NOT_PRODUCED</code></td>
     </tr>
     <tr>
       <td><code>registry</code></td><td>Registry</td>
@@ -335,10 +339,14 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
 </table>
 
 `state` и `stateUnavailable` — ветви одного выбора: в кадре стоит ровно одна из них.
-У сегодняшних владельцев состояние приходит только с событиями `CREATED` и `UPDATED` вида
-`compute_instance` (владелец `compute`); у снятия машины и у всех событий владельца `loadbalancer`
-приходит `stateUnavailable`, и предмет восстанавливается чтением по `resourceId` — либо
-снимается из вашего состояния, если это `DELETED`.
+Какие владельцы и виды производят состояние — сказано выше таблицей; здесь важно другое: у
+СНЯТИЯ состояния не бывает ни у одного вида ни у одного владельца, приходит
+`stateUnavailable`, и предмет снимается из вашего состояния по `resourceId`.
+
+Здесь стояло «у всех событий владельца `loadbalancer` приходит `stateUnavailable`» — это
+пережило свой предмет дважды подряд: сперва состояние появилось у `nlb_listener`, затем у
+`nlb_target_group`. Перечень видов живёт в ОДНОМ месте — в таблице выше; повторять его здесь
+значит заводить второе место об одном предмете, из которых верно одно.
 
 ### `stateUnavailable.reason` — почему состояния нет
 

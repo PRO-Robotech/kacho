@@ -44,21 +44,35 @@ import (
 // СЛОВАРЬ видов один, то есть что перепись по канонической константе видит все
 // точки эмиссии, а не часть.
 func TestEveryEmissionNamesTheKindByTheCanonicalConstant(t *testing.T) {
-	const (
-		vocabularyPkg    = "kachorepo"
-		vocabularyPrefix = "OutboxResource"
-	)
+	const vocabularyPkg = "kachorepo"
+	// ДВЕ оси, а не одна: вид предмета и род изменения — оба слова журнала, оба
+	// ограничены CHECK'ом миграции 0001, и копию заводили у обоих.
+	//
+	// Вторая ось добавлена не из симметрии, а по находке: гейт, судивший один лишь
+	// вид, не узнал местную копию РОДА в пакете слушателя и посчитал точку снятия
+	// за точку с состоянием. Распознаватель, знающий не все законные написания
+	// предмета, не даёт ни красного, ни зелёного — он молчит.
+	axes := []struct {
+		name   string
+		prefix string
+		arg    func(emission) ast.Expr
+	}{
+		{"вид предмета", "OutboxResource", func(e emission) ast.Expr { return e.kind }},
+		{"род изменения", "OutboxAction", func(e emission) ast.Expr { return e.change }},
+	}
 
 	var findings []string
 	res := inspectEmissions(t, func(e emission) {
-		sel, ok := e.kind.(*ast.SelectorExpr)
-		if ok {
-			pkg, isIdent := sel.X.(*ast.Ident)
-			if isIdent && pkg.Name == vocabularyPkg && strings.HasPrefix(sel.Sel.Name, vocabularyPrefix) {
-				return
+		for _, ax := range axes {
+			sel, ok := ax.arg(e).(*ast.SelectorExpr)
+			if ok {
+				pkg, isIdent := sel.X.(*ast.Ident)
+				if isIdent && pkg.Name == vocabularyPkg && strings.HasPrefix(sel.Sel.Name, ax.prefix) {
+					continue
+				}
 			}
+			findings = append(findings, e.pos+" ("+ax.name+")")
 		}
-		findings = append(findings, e.pos)
 	})
 
 	kinds := make([]string, 0, len(res.byKind))
@@ -66,8 +80,8 @@ func TestEveryEmissionNamesTheKindByTheCanonicalConstant(t *testing.T) {
 		kinds = append(kinds, k)
 	}
 	sort.Strings(kinds)
-	t.Logf("перепись: файлов осмотрено %d · вызовов Emit журнала найдено %d · слов вида различных %d %v",
-		res.filesRead, res.emitsSeen, len(kinds), kinds)
+	t.Logf("перепись: файлов осмотрено %d · вызовов Emit журнала найдено %d · осей словаря %d · "+
+		"слов вида различных %d %v", res.filesRead, res.emitsSeen, len(axes), len(kinds), kinds)
 
 	if res.filesRead == 0 {
 		t.Fatal("не осмотрено ни одного файла — проверка беспредметна, а не пройдена")
@@ -77,10 +91,11 @@ func TestEveryEmissionNamesTheKindByTheCanonicalConstant(t *testing.T) {
 			"эмиссия переехала, проверка обязана покраснеть, а не молча одобрить любое дерево")
 	}
 	for _, pos := range findings {
-		t.Errorf("%s: вид предмета назван НЕ канонической константой %s.%s*.\n"+
+		t.Errorf("%s: слово журнала названо НЕ канонической константой пакета %q.\n"+
 			"Второе объявление того же слова делает точку эмиссии невидимой переписи по канону: "+
-			"предикат «где эмитится этот вид» ответит «нигде» там, где точка есть, и цена "+
-			"обогащения будет занижена молча", pos, vocabularyPkg, vocabularyPrefix)
+			"предикат «где эмитится этот вид» ответит «нигде» там, где точка есть, цена "+
+			"обогащения будет занижена молча, а проверка, читающая эту ось, промолчит вместо "+
+			"того чтобы покраснеть", pos, vocabularyPkg)
 	}
 }
 
@@ -88,6 +103,7 @@ func TestEveryEmissionNamesTheKindByTheCanonicalConstant(t *testing.T) {
 type emission struct {
 	pos     string
 	kind    ast.Expr
+	change  ast.Expr
 	payload ast.Expr
 }
 
@@ -123,6 +139,7 @@ func inspectEmissions(t *testing.T, visit func(emission)) emissionCensus {
 		emitName     = "Emit"
 		emitArgCount = 6
 		kindArgIdx   = 1
+		changeArgIdx = 4
 		payloadArg   = 5
 	)
 	roots := []string{
@@ -161,6 +178,7 @@ func inspectEmissions(t *testing.T, visit func(emission)) emissionCensus {
 				visit(emission{
 					pos:     fset.Position(call.Pos()).String(),
 					kind:    call.Args[kindArgIdx],
+					change:  call.Args[changeArgIdx],
 					payload: call.Args[payloadArg],
 				})
 				return true

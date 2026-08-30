@@ -209,7 +209,7 @@ func (u *CreateTargetGroupUseCase) doCreate(
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceTargetGroup, string(created.ID), string(created.ProjectID),
-		kachorepo.OutboxActionCreated, tgOutboxPayload(created),
+		kachorepo.OutboxActionCreated, kachorepo.TargetGroupStatePayload(created),
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}

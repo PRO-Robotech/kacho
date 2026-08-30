@@ -173,15 +173,22 @@ func (u *AddTargetsUseCase) doAdd(ctx context.Context, tgID string, targets []do
 		return nil, mapDomainErr(err)
 	}
 	if inserted > 0 {
+		// Состояние читается В ТОЙ ЖЕ транзакции, сразу за вставкой: событие несёт
+		// ПОЛНОЕ состояние группы, а публичная проекция группы строится из набора
+		// целей С СОСТОЯНИЕМ — то есть из строк, которые эта же транзакция только
+		// что и добавила. Запись, взятая ДО вставки (`tg` выше), несла бы набор без
+		// них, и подписчик записал бы как факт, что добавленных целей нет.
+		//
+		// Перечитывание ПОСЛЕ фиксации (оно есть ниже, ради ответа операции) для
+		// события не годится: оно отвечает за момент чтения, а состояние обязано
+		// быть на момент СОБЫТИЯ.
+		state, gerr := w.TargetGroups().Get(ctx, tgID)
+		if gerr != nil {
+			return nil, mapDomainErr(gerr)
+		}
 		if err := w.Outbox().Emit(ctx,
-			kachorepo.OutboxResourceTargetGroup, tgID, string(tg.ProjectID),
-			kachorepo.OutboxActionUpdated, map[string]any{
-				"id":             tgID,
-				"project_id":     string(tg.ProjectID),
-				"region_id":      string(tg.RegionID),
-				"trigger":        "add_targets",
-				"inserted_count": inserted,
-			},
+			kachorepo.OutboxResourceTargetGroup, tgID, string(state.ProjectID),
+			kachorepo.OutboxActionUpdated, kachorepo.TargetGroupStatePayload(state),
 		); err != nil {
 			return nil, mapDomainErr(err)
 		}

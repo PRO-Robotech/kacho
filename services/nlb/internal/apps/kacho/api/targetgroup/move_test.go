@@ -5,6 +5,7 @@ package targetgroup
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -235,17 +236,58 @@ func TestMove_DestCheckUnavailableFailsClosed(t *testing.T) {
 	require.Equal(t, domain.ProjectID("prj-src"), repo.tgs[string(tg.ID)].ProjectID)
 }
 
-// TestTgMovedPayload_KeysOnTheWire — строитель переезда кладёт исходный и
-// целевой проекты под именами `old_project_id` / `new_project_id`, а не под
-// прежним `src_project_id`.
+// TestMovePayloadIsTheWholeGroupOnTheWire — нагрузка переезда несёт КОНВЕРТ
+// полного состояния и не несёт ключей прежнего минимального снимка.
 //
-// Имена названы литералами: прежняя редакция сверяла их через разборщик,
-// собранный из тех же констант, и оставалась зелёной при переименовании ключа
-// (замер #1452). Разборщик снят вместе с этой круговой истинностью.
-func TestTgMovedPayload_KeysOnTheWire(t *testing.T) {
-	m := tgMovedPayload("nlb-tg-1", "prj-src", "prj-dst")
-	require.NotContains(t, m, "src_project_id", "прежнее имя ключа не возвращается")
-	require.Equal(t, "nlb-tg-1", m["id"])
-	require.Equal(t, "prj-src", m["old_project_id"])
-	require.Equal(t, "prj-dst", m["new_project_id"])
+// Здесь стояла проба `TestTgMovedPayload_KeysOnTheWire`: она сверяла, что
+// исходный и целевой проекты лежат под именами `old_project_id`/`new_project_id`.
+// Предмет её исчез вместе со строителем — форма нагрузки вида ЗАМЕНЕНА, а не
+// дополнена: вид `nlb_target_group` несёт теперь полное состояние, и строитель у
+// него один на все точки эмиссии. Ослабить пробу было нельзя, поэтому она
+// ЗАМЕНЕНА утверждением о новой форме.
+//
+// Утверждение сделано ПО ПРОВОДУ — через настоящий JSON, а не через разборщик,
+// собранный из тех же констант: круговой ход был бы истинен при любом их
+// значении.
+//
+// Отрицание («прежних ключей нет») стоит В ПАРЕ с положительным («состояние
+// есть»): одно без другого зеленело бы на пустой нагрузке.
+func TestMovePayloadIsTheWholeGroupOnTheWire(t *testing.T) {
+	repo := newFakeRepo()
+	tg := makeTG("prj-src", "moved-wire")
+	repo.seedTG(tg)
+	tgt := kachoTarget(string(tg.ID), domain.Target{
+		ExternalIP: &domain.TargetExternalIP{Address: "203.0.113.10"}, Weight: 100,
+	})
+	repo.seedTarget(string(tg.ID), &tgt)
+
+	opsRepo := newFakeOpsRepo()
+	uc := NewMoveTargetGroupUseCase(repo, opsRepo, &fakeProjectClient{},
+		&fakeCheckClient{allowed: true}, nil)
+	op, err := uc.Execute(ctxWithUser("usr_owner"), &lbv1.MoveTargetGroupRequest{
+		TargetGroupId:        string(tg.ID),
+		DestinationProjectId: "prj-dst",
+	})
+	require.NoError(t, err)
+	require.Nil(t, awaitOpDone(t, opsRepo, op.ID).Error)
+
+	var movedRow *fakeOutboxEvent
+	for i, e := range repo.outboxEvents() {
+		if e.ResourceType == "nlb_target_group" && e.Action == "MOVED" {
+			ev := repo.outboxEvents()[i]
+			movedRow = &ev
+		}
+	}
+	require.NotNil(t, movedRow, "переезд не эмитил строки рода MOVED")
+
+	raw, err := json.Marshal(movedRow.Payload)
+	require.NoError(t, err)
+	var wire map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &wire))
+
+	require.Contains(t, wire, "state",
+		"нагрузка переезда не несёт конверта полного состояния — одна частичная точка "+
+			"делает ложным ВЕСЬ вид, и делает это тихо")
+	require.NotContains(t, wire, "old_project_id", "ключ прежнего минимального снимка вернулся")
+	require.NotContains(t, wire, "new_project_id", "ключ прежнего минимального снимка вернулся")
 }

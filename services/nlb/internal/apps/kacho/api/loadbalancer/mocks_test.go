@@ -559,6 +559,12 @@ func (q *fakeTGWriter) Update(ctx context.Context, tg *domain.TargetGroup, _ str
 func (q *fakeTGWriter) SetStatusCAS(ctx context.Context, id string, expected, newStatus domain.TargetGroupStatus) (*kachorepo.TargetGroupRecord, error) {
 	return nil, errors.New("not implemented in fake")
 }
+
+// DeleteExpiredDrainingTargets — фаза B слива; в этом двойнике не используется.
+func (q *fakeTGWriter) DeleteExpiredDrainingTargets(context.Context) (int64, []string, error) {
+	return 0, nil, errors.New("not used")
+}
+
 func (q *fakeTGWriter) MoveProject(ctx context.Context, id, newProjectID string) (*kachorepo.TargetGroupRecord, error) {
 	return nil, errors.New("not implemented in fake")
 }

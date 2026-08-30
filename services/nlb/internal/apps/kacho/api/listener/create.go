@@ -315,13 +315,13 @@ func (u *CreateUseCase) doCreate(ctx context.Context, in createInput) (*anypb.An
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceListener, string(created.ID), string(created.ProjectID),
-		outboxActionCreated, kachorepo.ListenerStatePayload(created),
+		kachorepo.OutboxActionCreated, kachorepo.ListenerStatePayload(created),
 	); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener CREATED: %v", domain.ErrInternal, err))
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceLoadBalancer, string(in.lb.ID), string(in.lb.ProjectID),
-		outboxActionUpdated, lbUpdatedPayloadMap(string(in.lb.ID), string(in.lb.ProjectID), string(in.lb.RegionID), "listener_created"),
+		kachorepo.OutboxActionUpdated, lbUpdatedPayloadMap(string(in.lb.ID), string(in.lb.ProjectID), string(in.lb.RegionID), "listener_created"),
 	); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit lb UPDATED: %v", domain.ErrInternal, err))
 	}
