@@ -21,6 +21,7 @@ package restmux
 // ноль находок должен быть отличим от нуля прочитанных файлов.
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -203,6 +204,7 @@ func TestConsoleFormsSendNoUnknownRequestFields(t *testing.T) {
 	}
 
 	var findings []consoleFinding
+	var forms consoleRegistryForms
 	specs, mutable, createBodies, updateBodies := 0, 0, 0, 0
 	sanitized, synthesized := 0, 0
 
@@ -220,6 +222,8 @@ func TestConsoleFormsSendNoUnknownRequestFields(t *testing.T) {
 			// «не смог» и промолчал, и есть тот самый ноль без содержания.
 			t.Fatalf("%s: the registry could not be read, so nothing in it was checked: %v", rel, err)
 		}
+
+		forms.add(parsed)
 
 		// Сверка с независимым счётом — до любых выводов о находках.
 		// Из счёта вычитается пришедшее ИЗВНЕ: ресурс, ссылающийся на общее
@@ -268,8 +272,8 @@ func TestConsoleFormsSendNoUnknownRequestFields(t *testing.T) {
 		return findings[i].Key < findings[j].Key
 	})
 
-	t.Logf("scanned %d console registries, %d resources (%d offer a mutation): %d create bodies, %d update bodies; sanitize removes %d key(s) and synthesises %d; %d finding(s)",
-		len(files), specs, mutable, createBodies, updateBodies, sanitized, synthesized, len(findings))
+	t.Logf("перепись: %s; %d resources (%d offer a mutation): %d create bodies, %d update bodies; sanitize removes %d key(s) and synthesises %d; %d finding(s)",
+		forms, specs, mutable, createBodies, updateBodies, sanitized, synthesized, len(findings))
 
 	// Количество осмотренного утверждается, а не только печатается: гейт,
 	// прочитавший ноль ресурсов, обязан быть отличим от гейта, не нашедшего
@@ -291,6 +295,121 @@ func TestConsoleFormsSendNoUnknownRequestFields(t *testing.T) {
 		fmt.Fprintf(&b, "  %s\n", f)
 	}
 	t.Fatal(b.String())
+}
+
+// ── Куда ведёт проекция ─────────────────────────────────────────────────────
+//
+// Реестр, сведённый к ре-экспорту, из обхода НЕ исключается. Исключить его
+// значило бы объявить непроверенным целый домен и получить за это зелёное:
+// спеки, которые он объявлял, никуда не делись — они переехали, и сканер обязан
+// видеть их там. Поэтому проекция обязана разрешаться в файл, который сканер
+// осматривает КАК РЕЕСТР; неразрешимая проекция — находка, а не пропуск.
+
+// consoleAppConfigFileName — tsconfig приложения консоли: там, и только там,
+// объявлены алиасы модулей.
+const consoleAppConfigFileName = "tsconfig.app.json"
+
+// consoleAppDir — ближайший предок файла, несущий tsconfig приложения.
+//
+// Глубина раскладки не выписывается: приложение — это то, у чего есть свой
+// tsconfig, и выписанное «два уровня вверх» разошлось бы с деревом молча.
+func consoleAppDir(consoleRoot, file string) (string, error) {
+	dir := filepath.Dir(file)
+	for {
+		if _, err := os.Stat(filepath.Join(dir, consoleAppConfigFileName)); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir || len(dir) <= len(consoleRoot) {
+			return "", fmt.Errorf("no %s above %s: the module aliases of this app are declared nowhere the scanner can read", consoleAppConfigFileName, file)
+		}
+		dir = parent
+	}
+}
+
+// consoleModuleAliases читает объявленные приложением алиасы модулей.
+//
+// Читаются из ДЕРЕВА, а не выписываются здесь: алиас — факт настройки сборки,
+// и вторая его копия в гейте разошлась бы с первой ровно тогда, когда её
+// поменяют. Нечитаемый tsconfig — отказ: алиас, которого гейт не разобрал, он
+// не вправе подставить наугад.
+func consoleModuleAliases(appDir string) (map[string]string, error) {
+	blob, err := os.ReadFile(filepath.Join(appDir, consoleAppConfigFileName))
+	if err != nil {
+		return nil, err
+	}
+	var cfg struct {
+		CompilerOptions struct {
+			Paths map[string][]string `json:"paths"`
+		} `json:"compilerOptions"`
+	}
+	if err := json.Unmarshal(blob, &cfg); err != nil {
+		return nil, fmt.Errorf("%s: %w", filepath.Join(appDir, consoleAppConfigFileName), err)
+	}
+	out := make(map[string]string, len(cfg.CompilerOptions.Paths))
+	for pattern, targets := range cfg.CompilerOptions.Paths {
+		// Моделируется одна форма — `<prefix>/*` в один каталог. Всё прочее
+		// остаётся неизвестным алиасом, то есть громким отказом при подстановке.
+		if !strings.HasSuffix(pattern, "/*") || len(targets) != 1 || !strings.HasSuffix(targets[0], "/*") {
+			continue
+		}
+		prefix := strings.TrimSuffix(pattern, "*")
+		out[prefix] = filepath.Join(appDir, strings.TrimSuffix(targets[0], "*"))
+	}
+	return out, nil
+}
+
+// consoleResolveModule разрешает спецификатор ре-экспорта в путь файла.
+//
+// Расширение приписывается одно — то же, что у самих реестров: цель проекции
+// обязана быть файлом, который обход И НАХОДИТ, а он ищет строго по имени.
+// Подбор расширений дал бы путь, которого в наборе осмотренного нет, и находка
+// назвала бы координату, никем не читаемую.
+func consoleResolveModule(fileDir string, aliases map[string]string, spec string) (string, error) {
+	if strings.HasPrefix(spec, "./") || strings.HasPrefix(spec, "../") {
+		return filepath.Join(fileDir, spec) + filepath.Ext(consoleRegistryFileName), nil
+	}
+	for prefix, dir := range aliases {
+		if !strings.HasPrefix(spec, prefix) {
+			continue
+		}
+		return filepath.Join(dir, strings.TrimPrefix(spec, prefix)) + filepath.Ext(consoleRegistryFileName), nil
+	}
+	return "", fmt.Errorf("%q resolves through no alias this app declares and is not a relative path: a projection that names a module the scanner cannot locate points nowhere", spec)
+}
+
+// consoleProjectionTarget — файл, чей реестр проецирует этот файл.
+//
+// Три шага собраны здесь, а не в цикле пробы, потому что отказать вправе каждый
+// из них, и вызывающему нужен один ответ: куда ведёт проекция либо почему это
+// установить нельзя. Молчаливого «никуда» среди исходов нет.
+func consoleProjectionTarget(consoleRoot, file, spec string) (string, error) {
+	appDir, err := consoleAppDir(consoleRoot, file)
+	if err != nil {
+		return "", err
+	}
+	aliases, err := consoleModuleAliases(appDir)
+	if err != nil {
+		return "", err
+	}
+	return consoleResolveModule(filepath.Dir(file), aliases, spec)
+}
+
+// consoleProjectionsWithoutARegistry — проекции, чей реестр никем не осматривается.
+//
+// Отдельной функцией, а не тремя строками в цикле пробы: свойство «проекция
+// ведёт К ОСМАТРИВАЕМОМУ реестру» и есть то, чем эта форма отличается от маски,
+// и его обязано быть можно уронить инъекцией без подъёма дерева.
+func consoleProjectionsWithoutARegistry(targets map[string]string, declaring map[string]bool) []string {
+	var out []string
+	for file, target := range targets {
+		if declaring[target] {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s: проекция ведёт в %s, который сканер реестром не читает — спеки домена не проверялись бы ни здесь, ни там", file, target))
+	}
+	sort.Strings(out)
+	return out
 }
 
 // consoleRegistryFiles ищет реестры ОБХОДОМ дерева, а не списком путей: новый
@@ -841,27 +960,26 @@ var bespokeConsoleMutationSites = map[string]string{
 	"shared/src/api/cluster.ts":              "тонкая обёртка над кластерным RPC, тело — аргумент вызывающего",
 	"shared/src/pages/system/LimitsPage.tsx": "правка предела: административный RPC с маской, тело из локального состояния",
 
-	// Транспорт. Он ВЫПОЛНЯЕТ запрос, который собрали типизированные обёртки, и
-	// тело получает аргументом (`opts.body`) — своего состава у него нет.
-	// Виден здесь только потому, что детектор теперь замечает и сырой fetch.
-	"compute/src/lib/api-client.ts":  "транспорт: выполняет запрос, тело — аргумент",
-	"nlb/src/lib/api-client.ts":      "транспорт: выполняет запрос, тело — аргумент",
-	"registry/src/lib/api-client.ts": "транспорт: выполняет запрос, тело — аргумент",
-	"storage/src/lib/api-client.ts":  "транспорт: выполняет запрос, тело — аргумент",
-
 	// Провайдер личности. Эти тела уезжают НЕ на наш REST-край, а в Kratos, и
 	// нашим контрактом не описаны — сверять их с нашими message нечем.
 	//
 	// Копий в модулях (compute/nlb/registry/storage) здесь больше нет: #405 свёл
 	// их к ре-экспорту из `shared/`, тела запроса они не собирают, и освобождать
 	// у них стало нечего. Реализация — одна, и она названа строкой ниже.
-	"shared/src/lib/kratos.ts":      "клиент провайдера личности, не наш край",
-	"shared/src/api/iam.ts":         "тонкая обёртка над RPC IAM, тело — аргумент вызывающего",
-	"shared/src/api/tokens.ts":      "тонкая обёртка над RPC токенов, тело — аргумент вызывающего",
-	"compute/src/api/resources.ts":  "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
-	"nlb/src/api/resources.ts":      "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
-	"registry/src/api/resources.ts": "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
-	"storage/src/api/resources.ts":  "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+	"shared/src/lib/kratos.ts": "клиент провайдера личности, не наш край",
+
+	// Обёртки над RPC: глагол принимает тело АРГУМЕНТОМ и своего состава не
+	// имеет — состав объявляет вызывающий, а вызывающие форм ресурса как раз и
+	// проверены охватом выше.
+	//
+	// Здесь стояли ЧЕТЫРЕ копии обёртки ресурса (по одной на домен) и четыре
+	// копии транспорта. Их больше нет: копии обёртки сведены к общей фабрике
+	// `resourceApi` (#1466, #409, #1471, #406), а транспорт модулей был мёртвой
+	// копией и снят вместе со своей пробой. Одна строка вместо восьми — не
+	// сокращение ведомости, а следствие того, что предмет у неё теперь один.
+	"shared/src/api/resources.ts": "фабрика глаголов ресурса, тело — аргумент вызывающего",
+	"shared/src/api/iam.ts":       "тонкая обёртка над RPC IAM, тело — аргумент вызывающего",
+	"shared/src/api/tokens.ts":    "тонкая обёртка над RPC токенов, тело — аргумент вызывающего",
 }
 
 // TestConsoleMutationSurfaceIsAccountedFor — каждая точка, из которой консоль
