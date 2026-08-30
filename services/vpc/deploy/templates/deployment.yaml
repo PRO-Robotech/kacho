@@ -132,6 +132,13 @@ spec:
               containerPort: {{ .Values.ports.grpc }}
             - name: grpc-internal
               containerPort: {{ .Values.ports.internalGrpc }}
+            # Диагностическая поверхность (/metrics, /healthz, /readyz). Порт
+            # объявляется здесь, потому что по нему идут пробы: без записи в
+            # `ports:` его нельзя назвать именем, и оператор, ищущий, куда
+            # постучаться за причиной неготовности, не находит его в описании
+            # пода вовсе.
+            - name: metrics
+              containerPort: {{ .Values.metricsScrape.port }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
@@ -238,14 +245,26 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
+          # ГОТОВНОСТЬ СПРАШИВАЕТСЯ ПО ТОМУ, ЧТО СЕРВИС СТРОИТ. `/readyz` собирает
+          # чекеры критичных зависимостей — коннект к базе, boot-gate дренера
+          # регистраций, канал к iam, живой LRO-worker (buildReadinessCheckers в
+          # cmd/vpc/observability.go). Прежде здесь стоял `tcpSocket: grpc`, то есть
+          # вопрос «открыт ли порт»; сокет открыт и у процесса, который отвергает
+          # каждую мутацию, поэтому под рапортовал Ready при недоступном iam, а
+          # kubelet не снимал его из ротации никогда.
+          #
+          # Живость НЕ включает зависимости намеренно: `/healthz` — чистая живость
+          # (agg.LiveHandler), иначе деградация соседа вызывала бы restart-storm.
           readinessProbe:
-            tcpSocket:
-              port: grpc
+            httpGet:
+              path: /readyz
+              port: metrics
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-            tcpSocket:
-              port: grpc
+            httpGet:
+              path: /healthz
+              port: metrics
             initialDelaySeconds: 10
             periodSeconds: 30
           resources:
