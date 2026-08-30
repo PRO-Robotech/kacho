@@ -115,8 +115,22 @@ const REASON_MARKER = "поллинг остаётся:";
 /** Сколько знаков обязано стоять ПОСЛЕ маркера. Пустая причина — не причина. */
 const REASON_MIN_CHARS = 20;
 
-/** Хук, объявляющий покрытие. Единственный источник признака на всё дерево. */
-const COVERAGE_HOOK = "useResourceStream";
+/**
+ * Хуки, объявляющие покрытие потоком.
+ *
+ * Их ДВА, и это не форк: предметы разные. `useResourceStream` перечитывает
+ * названный ключ запроса и потому неотделим от react-query; `useStreamCoverage`
+ * отдаёт только признак и годится вызывающему, у которого клиента запросов нет
+ * вовсе (витрина считает счётчики своим загрузчиком, #1632). Клиент потока при
+ * этом один на оба — `subscriptionHub()`, и единственность его дома держит
+ * братский гейт `console-stream-client-single`.
+ *
+ * Перечень закрыт и ИСТЕКАЕТ САМ: имя, у которого в дереве не осталось
+ * объявления, — находка, а не «про запас». Иначе распознаватель хранил бы
+ * мёртвое имя и молчал бы одинаково — и когда покрытия нет, и когда его
+ * перестали узнавать.
+ */
+const COVERAGE_HOOKS = ["useResourceStream", "useStreamCoverage"] as const;
 
 /** Повторитель браузера — вторая законная форма записи опроса. */
 const INTERVAL_SCHEDULER = "setInterval";
@@ -149,7 +163,12 @@ function coverageNames(src: ts.SourceFile): Set<string> {
     if (!node) return false;
     let found = false;
     const walk = (n: ts.Node): void => {
-      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === COVERAGE_HOOK) found = true;
+      if (
+        ts.isCallExpression(n) &&
+        ts.isIdentifier(n.expression) &&
+        (COVERAGE_HOOKS as readonly string[]).includes(n.expression.text)
+      )
+        found = true;
       ts.forEachChild(n, walk);
     };
     walk(node);
@@ -242,10 +261,15 @@ export function analysePolls(src: ts.SourceFile, raw: string): PollSite[] {
 }
 
 const inspected: { file: string; sites: PollSite[] }[] = [];
+/** Хуки покрытия, у которых в дереве НАШЛОСЬ объявление. */
+const declaredHooks = new Set<string>();
 let filesRead = 0;
 for (const file of sourceFiles(consoleRoot)) {
   const raw = readFileSync(file, "utf8");
   filesRead += 1;
+  for (const hook of COVERAGE_HOOKS) {
+    if (new RegExp(`export function ${hook}\\b`).test(raw)) declaredHooks.add(hook);
+  }
   if (!raw.includes("refetchInterval") && !raw.includes(INTERVAL_SCHEDULER)) continue;
   const src = ts.createSourceFile(file, raw, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const sites = analysePolls(src, raw);
@@ -272,7 +296,9 @@ process.stdout.write(
     `мест опроса ${all.length} — снято потоком ${streamGated.length}, ` +
     `объяснено ${reasoned.length}, без объяснения ${unexplained.length}\n` +
     `    по формам: свойство запроса ${tally("query")}\n` +
-    `               повторитель браузера ${tally("interval")}\n`,
+    `               повторитель браузера ${tally("interval")}\n` +
+    `    хуки покрытия: объявлено в дереве ${declaredHooks.size} из ${COVERAGE_HOOKS.length} ` +
+    `(${COVERAGE_HOOKS.map((h) => `${h}: ${declaredHooks.has(h) ? "есть" : "НЕТ"}`).join(", ")})\n`,
 );
 
 describe("опрос консоли: снят потоком либо объяснён", () => {
@@ -281,6 +307,21 @@ describe("опрос консоли: снят потоком либо объяс
     // ручку react-query — и гейт станет молча зелёным на любом опросе.
     expect(filesRead).toBeGreaterThan(300);
     expect(all.length).toBeGreaterThan(0);
+  });
+
+  it("предпосылка: у КАЖДОГО имени хука покрытия есть объявление в дереве", () => {
+    // Самоистечение перечня. Имя, чьё объявление из дерева ушло, распознаватель
+    // хранил бы молча — и молчал бы одинаково, когда покрытия нет и когда его
+    // перестали узнавать. Снимут хук — эта проба назовёт его по имени, а не
+    // оставит мёртвую ветку «про запас».
+    const missing = COVERAGE_HOOKS.filter((h) => !declaredHooks.has(h));
+    expect(
+      missing.length === 0
+        ? ""
+        : `имён хука покрытия без объявления в дереве ${missing.length}: ${missing.join(", ")}. ` +
+          `Либо хук сняли — тогда имя убирается из COVERAGE_HOOKS тем же изменением, ` +
+          `либо его перестали узнавать, и тогда каждый опрос, гасившийся им, стал молчаливым.`,
+    ).toBe("");
   });
 
   it("предпосылка: у КАЖДОЙ формы записи есть производитель в дереве", () => {
@@ -307,7 +348,8 @@ describe("опрос консоли: снят потоком либо объяс
       unexplained.length === 0
         ? ""
         : `мест опроса без объяснения ${unexplained.length}:\n${report}\n\n` +
-          `Каждое место обязано ЛИБО опираться на признак покрытия из ${COVERAGE_HOOK}() ` +
+          `Каждое место обязано ЛИБО опираться на признак покрытия из ` +
+          `${COVERAGE_HOOKS.map((h) => `${h}()`).join(" / ")} ` +
           `(тогда опрос выключается, как только поток доказанно покрыл вид), ЛИБО нести рядом ` +
           `причину, начинающуюся маркером «${REASON_MARKER}» и длиной не меньше ${REASON_MIN_CHARS} знаков. ` +
           `Молчаливый опрос — постоянная нагрузка, растущая с числом открытых вкладок и не зависящая ` +
@@ -394,6 +436,30 @@ describe("вторая форма: повторитель браузера су�
     const src = ts.createSourceFile("synthetic.tsx", code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     return analysePolls(src, code);
   };
+
+  it("узнаёт признак покрытия ВТОРОГО хука — того, что живёт без react-query", () => {
+    // Инъекция по второй форме объявления покрытия. Без неё расширение
+    // распознавателя было бы принято на веру: он молчал бы на этом опросе и
+    // тогда, когда узнаёт хук, и тогда, когда просто не видит места.
+    const sites = parse(`
+      const { streamed } = useStreamCoverage({ specIds: ["networks"], projectId, onChanged: reload });
+      const t = setInterval(() => { if (streamed) return; void reload(); }, 60_000);
+    `);
+    expect(sites).toHaveLength(1);
+    expect(sites[0].form).toBe("interval");
+    expect(sites[0].streamGated).toBe(true);
+  });
+
+  it("законный близнец: тот же повторитель БЕЗ признака покрытия остаётся находкой", () => {
+    // Контроль в обратную сторону к утверждению выше: узнаётся ПРОИСХОЖДЕНИЕ
+    // имени от вызова хука, а не форма записи повторителя.
+    const sites = parse(`
+      const streamed = someOtherThing();
+      const t = setInterval(() => { if (streamed) return; void reload(); }, 60_000);
+    `);
+    expect(sites[0].streamGated).toBe(false);
+    expect(sites[0].reasoned).toBe(false);
+  });
 
   it("находит молчаливый повторитель — голым именем", () => {
     const sites = parse(`const t = setInterval(() => { void reload(); }, 60_000);`);

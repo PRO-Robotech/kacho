@@ -67,8 +67,6 @@
     "iam/src/components/organisms/index.ts": "барабан вокруг компонента, взятого из @shared: снимается вместе со сведением форков — #591",
     "iam/src/pages/AddressDetailPage/AddressDetailPage.tsx": "недостижим от объявленных входов приложения; снятие идёт вместе с ответом «а где это теперь» — #591",
     "iam/src/pages/AddressDetailPage/index.ts": "барабан вокруг компонента, взятого из @shared: снимается вместе со сведением форков — #591",
-    "iam/src/pages/DashboardPage/DashboardPage.tsx": "недостижим от объявленных входов приложения; снятие идёт вместе с ответом «а где это теперь» — #591",
-    "iam/src/pages/DashboardPage/index.ts": "барабан вокруг компонента, взятого из @shared: снимается вместе со сведением форков — #591",
     "iam/src/pages/InstanceDetailPage/InstanceDetailPage.tsx": "недостижим от объявленных входов приложения; снятие идёт вместе с ответом «а где это теперь» — #591",
     "iam/src/pages/InstanceDetailPage/index.ts": "барабан вокруг компонента, взятого из @shared: снимается вместе со сведением форков — #591",
     "iam/src/pages/NetworkDetailPage/NetworkDetailPage.tsx": "недостижим от объявленных входов приложения; снятие идёт вместе с ответом «а где это теперь» — #591",
