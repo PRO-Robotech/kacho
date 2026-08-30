@@ -111,7 +111,6 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 	listenerID := string(cur.ID)
 	lbID := string(cur.LoadBalancerID)
 	projectID := string(cur.ProjectID)
-	regionID := string(cur.RegionID)
 
 	// Step 1: mark DELETING (atomic CAS — protects against parallel writers).
 	// We accept any non-DELETING current status. Mutex (CAS-style) writes
@@ -191,11 +190,28 @@ func (u *DeleteUseCase) doDelete(ctx context.Context, cur *kachorepo.ListenerRec
 	); err != nil {
 		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit listener DELETED: %v", domain.ErrInternal, err))
 	}
-	if err := w.Outbox().Emit(ctx,
-		kachorepo.OutboxResourceLoadBalancer, lbID, projectID,
-		kachorepo.OutboxActionUpdated, lbUpdatedPayloadMap(lbID, projectID, regionID, "listener_deleted"),
-	); err != nil {
-		return nil, mapDomainErr(fmt.Errorf("%w: outbox emit lb UPDATED: %v", domain.ErrInternal, err))
+	// Запись родителя читается ЗАНОВО, после снятия слушателя: триггер пересчёта
+	// статуса срабатывает внутри самого оператора, и снимок «до» объявлял бы
+	// прежний статус. Разбор — в соседнем `helpers.go` этого пакета.
+	//
+	// Промах здесь ЗАКОНЕН и молчанием не является: повторное снятие идёт по
+	// строке, которой уже нет, и родителя мог снять тот, кто выиграл гонку. Тогда
+	// правку не о чем объявлять — снятие балансировщика объявил он сам своей
+	// строкой, а выдуманное состояние уехало бы подписчику как факт.
+	lbAfter, err := w.LoadBalancers().Get(ctx, lbID)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		lbAfter = nil
+	case err != nil:
+		return nil, mapDomainErr(fmt.Errorf("%w: read parent load balancer after delete: %v", domain.ErrInternal, err))
+	}
+	if lbAfter != nil {
+		if err := w.Outbox().Emit(ctx,
+			kachorepo.OutboxResourceLoadBalancer, lbID, projectID,
+			kachorepo.OutboxActionUpdated, kachorepo.LoadBalancerStatePayload(lbAfter),
+		); err != nil {
+			return nil, mapDomainErr(fmt.Errorf("%w: outbox emit lb UPDATED: %v", domain.ErrInternal, err))
+		}
 	}
 	// FGA-unregister-intent (project-hierarchy) in the SAME tx as the Delete —
 	// register-drainer retracts the tuple AND the resource_mirror row via

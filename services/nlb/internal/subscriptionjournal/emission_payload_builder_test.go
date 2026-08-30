@@ -27,8 +27,9 @@ import (
 // отвечает по нему «не производится». Появится состояние — вид обязан появиться
 // и здесь, иначе одна частичная точка сделает ложным весь вид.
 var statefulKinds = map[string]string{
-	"kachorepo.OutboxResourceListener":    "kachorepo.ListenerStatePayload",
-	"kachorepo.OutboxResourceTargetGroup": "kachorepo.TargetGroupStatePayload",
+	"kachorepo.OutboxResourceLoadBalancer": "kachorepo.LoadBalancerStatePayload",
+	"kachorepo.OutboxResourceListener":     "kachorepo.ListenerStatePayload",
+	"kachorepo.OutboxResourceTargetGroup":  "kachorepo.TargetGroupStatePayload",
 }
 
 // deletedAction — род «снятие»: у него состояния не бывает BY CONSTRUCTION.

@@ -3,153 +3,51 @@
 
 package kacho
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
 
-// Имена ключей JSON-нагрузки `nlb_outbox` для вида, у которого состояния НЕТ, —
-// балансировщика.
-//
-// # У ЭТИХ ключей читателя по-прежнему нет, а у нагрузки в целом — ЕСТЬ
-//
-// Различать обязательно, иначе запись читается шире, чем верна.
-//
-// ЧИТАТЕЛЬ ПОЯВИЛСЯ (задача #1381): объявление журнала подписки
-// (`internal/subscriptionjournal`) собирает состояние события вида
-// `nlb_listener` из нагрузки его строк. Форма у слушателя ДРУГАЯ — запись
-// целиком под конвертом `PayloadKeyState` ниже, — и словарём ниже он больше не
-// пользуется.
-//
-// У ГРУППЫ ЦЕЛЕЙ читатель появился тем же днём (задача #1551), и форма у неё та
-// же — запись целиком под конвертом; словарём ниже она тоже больше не
-// пользуется.
-//
-// У ОСТАВШЕГОСЯ ВИДА — балансировщика — читателя нет: сборщик состояния отвечает
-// по нему «не производится», не заглядывая в нагрузку. Что он должен нести и чем
-// его случай ТРУДНЕЕ двух закрытых (у него восьмая точка эмиссии — триггер базы,
-// и у неё свой язык ключей) — измерено в шапке пакета
-// `internal/subscriptionjournal`.
-//
-// # Что было НЕВЕРНО в прежней редакции (задача #1452)
-//
-// Она называла потребителя нагрузки в настоящем времени —
-// «InternalResourceLifecycleService.Subscribe → kacho-iam FGA-sync», — и это
-// было неверно по трём независимым осям сразу:
-//
-//  1. названный контракт СНЯТ (задача #814, надгробие `retiredRPCSurface`;
-//     его читатель снят задачей #1043). Потребителей у него не было ни одного
-//     и до снятия;
-//  2. зеркало прав ходит ДРУГОЙ очередью — `fga_register_outbox` (миграция
-//     0002, где несовместимость схем с этой таблицей объявлена решением). К
-//     `nlb_outbox` оно не обращается;
-//  3. «разделяемый КАЖДЫМ producer'ом» тоже не выполнялось: из ДЕВЯТИ живых
-//     путей, пишущих сюда нагрузку, ТРИ собирают её мимо этого словаря — джоба
-//     освобождения адреса (`reason`), джоба слива целей (`reason`) и триггерная
-//     функция пересчёта статуса (`recomputed`).
-//
-// Цена ошибки была не в стиле. Задача #1381 (обогатить журнал состоянием)
-// упиралась в вопрос «что сломается, если поменять форму нагрузки»; по тому
-// комментарию ответ был «зеркало прав у соседа» — довод против, — а по дереву
-// ответ «ничего». Форму нагрузки слушателя #1381 и заменила.
-//
-// # Разборщик собственных ключей снят, и это остаётся нормой
-//
-// Прежний разборщик был зеркалом собственного строителя (обе стороны брали одни
-// и те же константы), поэтому его проба круговым ходом не могла отличить верное
-// имя ключа от любого другого — переименование значения константы оставляло её
-// зелёной. Поэтому обе стороны утверждаются ПО ПРОВОДУ: пробы производителей
-// называют строковые литералы ключей, а не константы, которыми эти ключи
-// собраны.
-//
-// Читатель конверта состояния (`ListenerStateFromPayload` ниже) этому не
-// противоречит: он не зеркалит строителя по полям, а берёт запись ЦЕЛИКОМ, и
-// проверяется сквозной пробой журнала — от строки в базе до контракта у клиента.
-const (
-	PayloadKeyID               = "id"
-	PayloadKeyProjectID        = "project_id"
-	PayloadKeyRegionID         = "region_id"
-	PayloadKeyName             = "name"
-	PayloadKeyStatus           = "status"
-	PayloadKeyType             = "type"
-	PayloadKeyProtocol         = "protocol"
-	PayloadKeyPort             = "port"
-	PayloadKeyTrigger          = "trigger"
-	PayloadKeyParentResourceID = "parent_resource_id"
-	PayloadKeyOldProjectID     = "old_project_id"
-	PayloadKeyNewProjectID     = "new_project_id"
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
-// LifecyclePayload — типизированный снимок нагрузки `nlb_outbox`. Производитель
-// заполняет относящиеся к его виду поля и зовёт Map(); пустые поля в нагрузку не
-// попадают.
+// Формы нагрузки `nlb_outbox` — по одной на вид, и у каждой ДВЕ стороны:
+// строитель и читатель. Они стоят рядом намеренно: разъехаться они могут только
+// молча.
 //
-// Читателя у этих полей сегодня нет ни одного (см. запись выше).
+// # Минимального снимка БОЛЬШЕ НЕ СУЩЕСТВУЕТ — и это перемерено, а не объявлено
 //
-// # ТРИ поля потеряли и ПИСАТЕЛЯ — названо числом, а не «когда-нибудь уберём»
+// Здесь стоял словарь ключей `LifecyclePayload` — типизированный минимальный
+// снимок, которым собирались нагрузки всех трёх видов. Его собственная запись
+// называла предикат снятия: «поля снимаются ВМЕСТЕ С ТИПОМ, когда состояние
+// появится у балансировщика». Оно появилось (#1551), и писателей у типа не
+// осталось НИ ОДНОГО:
 //
-// `Protocol`, `Port` и `ParentResourceID` не заполняет больше НИ ОДИН путь: их
-// единственным писателем была нагрузка слушателя, заменённая конвертом полного
-// состояния (#1381). Предикат, чтобы перемерить, а не поверить:
+//	git grep -n 'kachorepo\.LifecyclePayload{' -- 'services/nlb/**/*.go'
 //
-//	git grep -n 'LifecyclePayload{' -A 12 -- 'services/nlb/**/*.go' | grep -v _test
+// Предикат назван по ФОРМЕ ВЫЗОВА, а не по имени: имя стоит в этом же разборе и в
+// соседних, поэтому поиск по нему отвечал бы своими же объяснениями — «ноль
+// писателей» стало бы неотличимо от «три упоминания в прозе».
 //
-// Поля СНИМАЮТСЯ ВМЕСТЕ С ТИПОМ, а не по одному, и это решение, а не отсрочка:
-// у `LifecyclePayload` остался ровно один вид-потребитель — балансировщик, и
-// когда состояние появится у него, у типа не останется писателей вовсе. Снять
-// три поля сейчас и тип потом — два изменения там, где хватит одного, причём
-// первое из них трогает пробу ключей ради формы, которая всё равно исчезнет.
+// Поэтому тип снят целиком, а вместе с ним — три поля (`Protocol`, `Port`,
+// `ParentResourceID`), потерявшие писателя ещё на обогащении слушателя (#1381),
+// и пробы, называвшие его ключи по проводу: у них исчез предмет, а не строгость.
 //
-// Предмет закрытия назван: обогащение вида `nlb_load_balancer` (#1551). Пока оно
-// не сделано, три поля остаются мёртвыми — и это сказано здесь ЧИСЛОМ, а не
-// умолчанием.
-type LifecyclePayload struct {
-	// ID — идентификатор ресурса (балансировщик / слушатель / целевая группа).
-	ID string
-	// ParentResourceID — идентификатор родителя (слушатель → его балансировщик).
-	// Пусто у ресурсов проекта, у которых родителя нет.
-	ParentResourceID string
-	ProjectID        string
-	RegionID         string
-	Name             string
-	Status           string
-	// Type — только у балансировщика.
-	Type string
-	// Protocol / Port — только у слушателя.
-	Protocol string
-	Port     int32
-	// Trigger — диагностический маркер перекрёстного эмита правки
-	// (`listener_created` / `listener_deleted` / …).
-	Trigger string
-	// OldProjectID — исходный проект ресурса для события переезда.
-	OldProjectID string
-	// NewProjectID — целевой проект ресурса для события переезда.
-	NewProjectID string
-}
-
-// Map — строит `map[string]any` для OutboxEmitter.Emit, включая только непустые
-// поля (минимальный снимок). Ключи — из констант выше.
-func (p LifecyclePayload) Map() map[string]any {
-	m := make(map[string]any, 12)
-	putNonEmpty(m, PayloadKeyID, p.ID)
-	putNonEmpty(m, PayloadKeyParentResourceID, p.ParentResourceID)
-	putNonEmpty(m, PayloadKeyProjectID, p.ProjectID)
-	putNonEmpty(m, PayloadKeyRegionID, p.RegionID)
-	putNonEmpty(m, PayloadKeyName, p.Name)
-	putNonEmpty(m, PayloadKeyStatus, p.Status)
-	putNonEmpty(m, PayloadKeyType, p.Type)
-	putNonEmpty(m, PayloadKeyProtocol, p.Protocol)
-	putNonEmpty(m, PayloadKeyTrigger, p.Trigger)
-	putNonEmpty(m, PayloadKeyOldProjectID, p.OldProjectID)
-	putNonEmpty(m, PayloadKeyNewProjectID, p.NewProjectID)
-	if p.Port != 0 {
-		m[PayloadKeyPort] = p.Port
-	}
-	return m
-}
-
-func putNonEmpty(m map[string]any, key, val string) {
-	if val != "" {
-		m[key] = val
-	}
-}
+// СТРОКИ ПРЕЖНЕЙ ФОРМЫ ПРИ ЭТОМ ЖИВЫ. Журнал не чистится (`RetainsEverything` в
+// объявлении подписки), а подписчик вправе открыть поток с начала — значит
+// нагрузки минимального снимка доезжают до сборщика и сегодня. Отличать их
+// обязан КОНВЕРТ (`PayloadKeyState` ниже), а не удача разбора; читатели
+// конверта отвечают по таким строкам «состояние не производилось».
+//
+// # Стороны утверждаются ПО ПРОВОДУ, а не круговым ходом
+//
+// Прежний разборщик был зеркалом собственного строителя (обе стороны брали одни
+// и те же константы), поэтому его проба не могла отличить верное имя ключа от
+// любого другого: переименование значения константы оставляло её зелёной.
+// Читатели конверта этому не противоречат — они берут запись ЦЕЛИКОМ и
+// проверяются сквозными пробами журнала, от строки в базе до контракта у
+// клиента. У балансировщика вторая сторона вообще НЕ НАША: строку пишет ещё и
+// триггер базы, и его форма и есть внешний якорь имён (см.
+// `LoadBalancerJournalRow`).
 
 // PayloadKeyState — ключ КОНВЕРТА, под которым в нагрузке `nlb_outbox` лежит
 // ПОЛНОЕ состояние предмета.
@@ -280,5 +178,215 @@ func stateFromPayload[T any](raw []byte) (*T, error) {
 	if err := json.Unmarshal(body, &rec); err != nil {
 		return nil, err
 	}
+	return &rec, nil
+}
+
+// LoadBalancerJournalRow — нагрузка вида `nlb_load_balancer` в том виде, в каком
+// она лежит на проводе: СТРОКА ТАБЛИЦЫ `kacho_nlb.load_balancers`, ключи —
+// ИМЕНА КОЛОНОК.
+//
+// # Почему у этого вида СВОЙ тип на проводе, а у двух соседних — нет
+//
+// У слушателя и группы все точки эмиссии на Go, поэтому в конверт кладётся
+// запись репозитория как есть. У балансировщика точек ВОСЕМЬ, и одна из них —
+// ТРИГГЕР БАЗЫ (`lb_status_recompute`): он пишет строку целиком, `to_jsonb`, и
+// вторую проекцию ресурса на другом языке не заводит. Ключи у него получаются
+// ИМЁН КОЛОНОК, а у записи Go — имён полей Go. Форма на проводе обязана быть
+// ОДНА, поэтому за неё принята форма ТРИГГЕРА: имя колонки устойчивее — молчаливый
+// рефактор Go его не трогает, и авторитет у неё один, база.
+//
+// Своими тегами обойтись нельзя, и это измерено, а не предположено: `Labels` у
+// записи — `dict.HDict`, а его JSON есть МАССИВ ПАР (`[{"K":…,"V":…}]`), тогда
+// как `to_jsonb(labels)` даёт ОБЪЕКТ. Запись с тегами колонок разобрала бы
+// строку триггера всюду, кроме меток, — то есть ровно там, ради чего обогащение
+// и делается.
+//
+// # Что здесь НЕ является второй проекцией ресурса
+//
+// Соответствие «поле записи ↔ колонка» уже существует — им живёт разбор строки
+// на пути чтения (`pg.scanLB`). Здесь оно только НАЗВАНО, а не заведено заново.
+// Проекция в контракт по-прежнему ОДНА и общая с чтением (`dto/type2pb`): этот
+// тип до неё не доходит, он отдаёт запись.
+//
+// # Отметки времени
+//
+// `to_jsonb` рендерит `timestamptz` по часовому поясу СЕССИИ, поэтому триггер
+// перекрывает обе отметки явной формой RFC 3339 в UTC. Форма нагрузки не вправе
+// зависеть от настройки того, кто пишет.
+//
+// # Чего здесь нет и не будет
+//
+// `xmin` — снимок оптимистичной блокировки, а не состояние: `to_jsonb(строки)`
+// системных колонок не отдаёт, и класть его сюда со стороны Go значило бы
+// объявить полем то, чем следующий читатель попробует воспользоваться.
+type LoadBalancerJournalRow struct {
+	ID          string            `json:"id"`
+	ProjectID   string            `json:"project_id"`
+	RegionID    string            `json:"region_id"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Labels      map[string]string `json:"labels"`
+	Type        string            `json:"type"`
+	Status      string            `json:"status"`
+
+	SessionAffinity       string   `json:"session_affinity"`
+	DeletionProtection    bool     `json:"deletion_protection"`
+	PlacementType         string   `json:"placement_type"`
+	DisabledAnnounceZones []string `json:"disabled_announce_zones"`
+	IPFamilies            []string `json:"ip_families"`
+
+	AddressV4   string `json:"address_v4"`
+	AddressV6   string `json:"address_v6"`
+	AddressIDV4 string `json:"address_id_v4"`
+	AddressIDV6 string `json:"address_id_v6"`
+	VipOriginV4 string `json:"vip_origin_v4"`
+	VipOriginV6 string `json:"vip_origin_v6"`
+
+	AdminState       string   `json:"admin_state"`
+	Placement        string   `json:"placement"`
+	CrossZoneEnabled bool     `json:"cross_zone_enabled"`
+	SecurityGroupIDs []string `json:"security_group_ids"`
+}
+
+// loadBalancerJournalRowOf — запись → строка на проводе.
+func loadBalancerJournalRowOf(rec *LoadBalancerRecord) LoadBalancerJournalRow {
+	return LoadBalancerJournalRow{
+		ID:                    string(rec.ID),
+		ProjectID:             string(rec.ProjectID),
+		RegionID:              string(rec.RegionID),
+		CreatedAt:             rec.CreatedAt,
+		UpdatedAt:             rec.UpdatedAt,
+		Name:                  string(rec.Name),
+		Description:           string(rec.Description),
+		Labels:                domain.LabelsToMap(rec.Labels),
+		Type:                  string(rec.Type),
+		Status:                string(rec.Status),
+		SessionAffinity:       string(rec.SessionAffinity),
+		DeletionProtection:    rec.DeletionProtection,
+		PlacementType:         string(rec.PlacementType),
+		DisabledAnnounceZones: rec.DisabledAnnounceZones,
+		IPFamilies:            ipFamilyStrings(rec.IPFamilies),
+		AddressV4:             string(rec.AddressV4),
+		AddressV6:             string(rec.AddressV6),
+		AddressIDV4:           string(rec.AddressIDV4),
+		AddressIDV6:           string(rec.AddressIDV6),
+		VipOriginV4:           string(rec.VipOriginV4),
+		VipOriginV6:           string(rec.VipOriginV6),
+		AdminState:            string(rec.AdminState),
+		Placement:             string(rec.Placement),
+		CrossZoneEnabled:      rec.CrossZoneEnabled,
+		SecurityGroupIDs:      rec.SecurityGroupIDs,
+	}
+}
+
+// Record — строка на проводе → запись репозитория.
+//
+// Пустой набор становится `nil`, а не пустым срезом: ровно так его отдаёт разбор
+// строки на пути чтения, и различие наблюдаемо — публичная проекция копирует
+// набор как есть, а `nil` и пустой срез дают на проводе контракта разное.
+func (r LoadBalancerJournalRow) Record() LoadBalancerRecord {
+	var rec LoadBalancerRecord
+	rec.ID = domain.ResourceID(r.ID)
+	rec.ProjectID = domain.ProjectID(r.ProjectID)
+	rec.RegionID = domain.RegionID(r.RegionID)
+	rec.CreatedAt = r.CreatedAt
+	rec.UpdatedAt = r.UpdatedAt
+	rec.Name = domain.LbName(r.Name)
+	rec.Description = domain.LbDescription(r.Description)
+	rec.Labels = domain.LabelsFromMap(r.Labels)
+	rec.Type = domain.LBType(r.Type)
+	rec.Status = domain.LBStatus(r.Status)
+	rec.SessionAffinity = domain.SessionAffinity(r.SessionAffinity)
+	rec.DeletionProtection = r.DeletionProtection
+	rec.PlacementType = domain.PlacementType(r.PlacementType)
+	rec.DisabledAnnounceZones = nilIfEmpty(r.DisabledAnnounceZones)
+	rec.IPFamilies = ipFamiliesOf(r.IPFamilies)
+	rec.AddressV4 = domain.IPAddress(r.AddressV4)
+	rec.AddressV6 = domain.IPAddress(r.AddressV6)
+	rec.AddressIDV4 = domain.AddressID(r.AddressIDV4)
+	rec.AddressIDV6 = domain.AddressID(r.AddressIDV6)
+	rec.VipOriginV4 = domain.VipOrigin(r.VipOriginV4)
+	rec.VipOriginV6 = domain.VipOrigin(r.VipOriginV6)
+	rec.AdminState = domain.AdminState(r.AdminState)
+	rec.Placement = domain.Placement(r.Placement)
+	rec.CrossZoneEnabled = r.CrossZoneEnabled
+	rec.SecurityGroupIDs = nilIfEmpty(r.SecurityGroupIDs)
+	return rec
+}
+
+func nilIfEmpty(s []string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+	return append([]string(nil), s...)
+}
+
+func ipFamilyStrings(fams []domain.IPVersion) []string {
+	if len(fams) == 0 {
+		return nil
+	}
+	out := make([]string, len(fams))
+	for i, f := range fams {
+		out[i] = string(f)
+	}
+	return out
+}
+
+func ipFamiliesOf(raw []string) []domain.IPVersion {
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]domain.IPVersion, len(raw))
+	for i, s := range raw {
+		out[i] = domain.IPVersion(s)
+	}
+	return out
+}
+
+// LoadBalancerStatePayload — нагрузка строки `nlb_outbox` для вида
+// `nlb_load_balancer`: СТРОКА ТАБЛИЦЫ, под конвертом полного состояния.
+//
+// # Строитель у вида ОДИН, и живёт он ЗДЕСЬ
+//
+// Точки эмиссии этого вида лежат в ДВУХ пакетах use-case: пять — в собственном
+// (создание · правка · снятие · переезд, у которого их две), две — в пакете
+// СЛУШАТЕЛЯ (создание и снятие слушателя объявляют правку своего
+// балансировщика). Строитель, спрятанный в одном из них, второму недоступен, и
+// второй завёл бы свой — вторую форму нагрузки того же вида. Держит это разбор
+// дерева use-case'ов (`TestEveryEmissionOfAStatefulKindBuildsTheSamePayload`).
+//
+// # Восьмая точка — ТРИГГЕР, и разбор её не видит
+//
+// Пересчёт статуса пишет свою строку сам (`lb_status_recompute`), и никакой
+// разбор Go его не увидит. Согласие двух форм держит сквозная проба над
+// НАСТОЯЩЕЙ схемой (`TestLoadBalancerStateIsTheSameFromTheTriggerAndFromGo`):
+// она заставляет триггер сработать настоящим оператором и сверяет обе нагрузки
+// на ОДНОЙ строке. Гейт по тексту миграций судить триггер не может — живое тело
+// функции есть последнее из череды переопределений, а прежние лежат в
+// ПРИМЕНЁННЫХ миграциях, править которые нельзя (ban #5).
+//
+// Тип аргумента здесь несущий: строитель принимает `*LoadBalancerRecord`,
+// поэтому подать в конверт вида чужую запись нельзя by construction.
+func LoadBalancerStatePayload(rec *LoadBalancerRecord) map[string]any {
+	if rec == nil {
+		return nil
+	}
+	return StateEnvelope(loadBalancerJournalRowOf(rec))
+}
+
+// LoadBalancerStateFromPayload — ПОЛНОЕ состояние балансировщика из нагрузки
+// строки журнала, если строка его несёт.
+//
+// Возвращает `(nil, nil)`, когда конверта в нагрузке НЕТ: строка прежней,
+// минимальной формы состояния не производила, и назвать это сбоем значило бы
+// звать подписчика перечитать то, чего никто не терял.
+func LoadBalancerStateFromPayload(raw []byte) (*LoadBalancerRecord, error) {
+	row, err := stateFromPayload[LoadBalancerJournalRow](raw)
+	if err != nil || row == nil {
+		return nil, err
+	}
+	rec := row.Record()
 	return &rec, nil
 }
