@@ -11,9 +11,14 @@
 //     SetReference CAS on existing vpc.Address) ИЛИ auto-alloc via
 //     vpc.InternalAddressService.AllocateExternalIP/AllocateInternalIP.
 //   - Update              — async; mutable fields only (name/description/labels/
-//     default_target_group_id). Immutable load_balancer_id/
-//     protocol/port/ip_version/address_id rejected sync с текст ошибки по конвенции Kachō
-//     `"<field> is immutable after Listener.Create"`.
+//     default_target_group_id/target_group_id). Immutable load_balancer_id/
+//     protocol/port/project_id rejected sync с текстом по конвенции Kachō
+//     `"<field> is immutable after Listener.Create"`; у project_id к нему
+//     добавлен следующий шаг — глагол переноса ВЛАДЕЛЬЦА (#1671). Перечень
+//     называется таблицей путь→текст в update.go: здесь он не воспроизводится
+//     вторым перечнем, чтобы два места об одном предмете снова не разошлись —
+//     прежняя редакция называла среди неизменяемых ip_version/address_id, снятые
+//     с контракта листенера вместе с консолидацией VIP.
 //   - Delete              — async; free VIP back to pool (auto-alloc) либо
 //     clear used_by (BYO); DELETE listener row; emit DELETED + LB UPDATED.
 //   - ListOperations      — sync; per-resource history wrapper над

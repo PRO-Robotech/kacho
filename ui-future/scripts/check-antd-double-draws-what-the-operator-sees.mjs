@@ -15,7 +15,7 @@
  *
  * Замер в день заведения гейта: восемь имён, 31 употребление, 27 файлов.
  *
- * ЧТО ПРОВЕРЯЕТСЯ — ЧЕТЫРЕ ЧАСТИ ОДНОГО ПРЕДМЕТА.
+ * ЧТО ПРОВЕРЯЕТСЯ — ПЯТЬ ЧАСТЕЙ ОДНОГО ПРЕДМЕТА.
  *
  * ПЕРВАЯ (#570). Имя, подменённое пустым `<div>`, не должно употребляться в
  * продуктовом коде с пропом из списка «несёт видимое оператору». Исходов два:
@@ -60,6 +60,32 @@
  * своей форме либо НАЗВАТЬ подмену в перечне `ALIASED` с причиной — а перечень
  * истекает сам по двум осям (подмены больше нет; подменяет уже не тем видом).
  *
+ * ПЯТАЯ (#1670). Все четыре части выше спрашивают про НОСИТЕЛЯ — место, где
+ * продукт употребляет вид так, что нарисованное видно. Признак носителя был
+ * ОДИН на все виды (общий список пропов `VISIBLE_PROPS`), и в нём есть `title` —
+ * нативный атрибут DOM, который настоящий компонент, дублёр и проходной `<div>`
+ * отдают ОДИНАКОВО. Для вида, чья реализация `title` не читает и сливает в
+ * `...rest` поверх `<span>`, такое употребление носителем НЕ является.
+ *
+ * Ложный носитель молчит — ни красного, ни зелёного. И вредит активно: правило
+ * «проба обязана лежать рядом с носителем» гонит пробу к месту, где вид
+ * фактически не нарисован, а настоящий носитель остаётся непроверенным.
+ *
+ * Замер в день заведения (`origin/main` 06afd5780): у `Tag` носителями
+ * назывались ШЕСТЬ мест с `title` — все ложные, — а шесть настоящих (`closable`,
+ * крестик снятия) не видел никто; пересечение множеств ПУСТО. Следствие стояло
+ * прямо в выводе гейта: `Tag` числился в ДОЛГЕ с записанной причиной «проба тут
+ * утверждала бы истинное при любом заменителе», при том что ДВЕ пробы, роняющие
+ * прогон на возврате `Tag` в `<div>`, лежали в дереве.
+ *
+ * Поэтому признак носителя объявлен ПО ВИДАМ (`CARRIER_SIGN`), и предпосылка
+ * каждой записи проверяется разбором самой реализации, а не принимается на
+ * слово: объявленный проп обязан быть тем, который реализация ЧИТАЕТ, либо вид
+ * обязан сливать остаток пропов в элемент со своей доступной ролью. Перечень
+ * счётный, самоистекающий по трём осям и полный: вид, который заменитель рисует
+ * и продукт употребляет, обязан иметь СВОЙ признак — иначе он молча унаследует
+ * чужой.
+ *
  * ЗНАМЕНАТЕЛЬ (#1265). `PROBED_BY` — ведомость ПРИНЕСЁННОГО, а не покрытие: в
  * неё попадает то, что кто-то однажды внёс, а не то, что употребляется. Строка
  * «видов с пробой 9» читалась как «9 из 9», тогда как верное прочтение — «9 из
@@ -86,7 +112,9 @@
  * самую проверку, — в том числе в шапке этого файла.
  *
  * ОБЪЁМ ОСМОТРЕННОГО заявляется всегда: «ноль находок» обязано быть отличимо от
- * «ноль прочитанного». Пустой перечень исключений — не поломка, а ЦЕЛЬ, поэтому
+ * «ноль прочитанного». У пятой части он ДВОЙНОЙ — «рассмотрено употреблений» и
+ * «признано носителями»: сужение или расширение признака обязано менять второе
+ * при неизменном первом, а неподвижная перепись означает холостую правку. Пустой перечень исключений — не поломка, а ЦЕЛЬ, поэтому
  * на нём гейт проходит; способность упасть доказывается `--self-test`.
  *
  * Запуск из ui-future/:  node scripts/check-antd-double-draws-what-the-operator-sees.mjs
@@ -128,6 +156,150 @@ const VISIBLE_PROPS = new Set([
   "subTitle",
   "tip",
 ]);
+
+/**
+ * Элементы, у которых НЕТ собственной доступной роли: `<div>`, `<span>`,
+ * `<section>` без имени, фрагмент. Проп, доехавший до такого элемента,
+ * неотличим от того же пропа на проходном `<div>` — им нарисованное не
+ * наблюдается ничем, кроме чтения атрибутов дублёра.
+ *
+ * Список — свойство HTML, а не наших видов, поэтому он один на всё дерево.
+ */
+const GENERIC_ELEMENTS = new Set(["div", "span", "section", "React.Fragment"]);
+
+/**
+ * ПЯТАЯ ЧАСТЬ (#1670). ПРИЗНАК НОСИТЕЛЯ — ПО ВИДАМ, А НЕ ОДИН НА ВСЕ.
+ *
+ * ПРЕДМЕТ. Прежде носитель распознавался ОДНИМ на все виды перечнем
+ * `VISIBLE_PROPS`, и в нём есть `title` — нативный атрибут DOM, который
+ * настоящий компонент, дублёр и проходной `<div>` отдают ОДИНАКОВО. Для вида,
+ * чья реализация `title` не читает, а сливает в `...rest` поверх `<span>`,
+ * такое употребление носителем НЕ является: оператору там не нарисовано
+ * ничего сверх проходного элемента.
+ *
+ * Ложный носитель молчит — ни красного, ни зелёного, — и это худший исход для
+ * проверки. Вредит он активно: «проба обязана лежать рядом с носителем» гонит
+ * пробу к месту, где вид фактически не нарисован, и такая проба зеленеет при
+ * любом заменителе.
+ *
+ * ЗАМЕР В ДЕНЬ ЗАВЕДЕНИЯ (`origin/main` 06afd5780). У `Tag` носителями
+ * назывались ШЕСТЬ мест, и все шесть — `title` поверх `<span>`; шесть
+ * настоящих — те, что несут `closable` и рисуют крестик снятия, — не видел
+ * никто. Следствие наблюдалось прямо в выводе гейта: `Tag` стоял в ДОЛГЕ с
+ * записанной причиной «проба тут утверждала бы истинное при любом
+ * заменителе» — вывод верный про ложные носители и ложный про дерево: две
+ * пробы, утверждающие крестик на продуктовой поверхности
+ * (`ResourceRefChips`, `RefMultiSelect`), в дереве уже лежали.
+ *
+ * ФОРМА ЗАПИСИ. У каждого вида — свой перечень пропов, по которым ЕГО
+ * употребление отличимо от проходного элемента. Пустой перечень — законное
+ * объявление «отличить нечем»: заменитель для этого вида и есть проходной
+ * элемент.
+ *
+ * ПРЕДПОСЫЛКА КАЖДОЙ ЗАПИСИ ПРОВЕРЯЕТСЯ МАШИННО, а не принимается на слово.
+ * Проп считается ОБОСНОВАННЫМ, если реализация вида в заменителе:
+ *   (а) читает его по имени — деструктурирует И употребляет прочитанное
+ *       (`color: _color` у `Tag` не в счёт: он деструктурирован, чтобы быть
+ *       ВЫБРОШЕННЫМ, и нарисованного из него не выходит); либо
+ *   (б) сливает остаток пропов в элемент, у которого есть своя доступная роль
+ *       (`<input>`, `<button>`, `<select>`, `<table>`) — тогда до оператора
+ *       доезжает всякий проп, потому что доезжает сам виджет.
+ * Объявленный проп вне обоснованных — находка: ровно так `Tag: ["title"]`
+ * краснеет, а `Tag: ["closable"]` молчит.
+ *
+ * ГРАНИЦА ТОЧНОСТИ, названная честно. Правило (б) отвечает «до оператора
+ * доезжает виджет», а не «этот проп нарисован»: перечень для такого вида
+ * может оказаться УЖЕ истины (носителей меньше, чем есть). Недобор безопасен —
+ * он делает «проба рядом с носителем» строже, а не слабее; опасен перебор, и
+ * его закрывают оба правила. Обратная сторона правила (а): признак ловит
+ * ЧТЕНИЕ пропа, а не то, во что оно превращается, — `Tooltip` читает `title` и
+ * строковую подпись отдаёт нативным атрибутом, поэтому проба у его носителя
+ * обязана утверждать УЗЛОВУЮ ветвь (так она и написана, см. `PROBED_BY`).
+ *
+ * Перечень счётный и самоистекающий по трём осям: запись падает, если
+ * (а) заменитель вид больше не рисует, (б) продукт вид больше не употребляет и
+ * он не назван ни в `PROBED_BY`, ни в `AWAITING_CARRIER`, (в) объявленный проп
+ * перестал быть обоснованным. И в обратную сторону: вид, который заменитель
+ * рисует, а продукт употребляет, БЕЗ записи здесь — тоже находка, иначе новый
+ * вид молча унаследовал бы чужой признак.
+ */
+const CARRIER_SIGN = {
+  // Текст сообщения и пояснение под ним — то, ради чего рисуют полосу отказа.
+  Alert: { props: ["message", "description"] },
+  // Состав подсказок приходит `options`; выбранное — `value`.
+  AutoComplete: { props: ["options", "value"] },
+  // Число значка и точка-индикатор.
+  Badge: { props: ["count", "dot"] },
+  // Остаток пропов уезжает в `<button>` — виджет достижим ролью, поэтому
+  // носителем является ВСЯКОЕ его употребление; перечень назван по тому, что
+  // реализация читает сама, и потому уже истины (см. границу выше).
+  Button: { props: ["onClick", "loading", "disabled", "htmlType"] },
+  // Шапка карточки: заголовок и действие в ней.
+  Card: { props: ["title", "extra"] },
+  // Уровни дерева выбора и выбранный путь.
+  Cascader: { props: ["options", "value"] },
+  // Остаток уезжает в `<input type="checkbox">` внутри `<label>`.
+  Checkbox: { props: ["checked", "onChange", "indeterminate"] },
+  // Состав панелей.
+  Collapse: { props: ["items"] },
+  // Состав выпадающего меню.
+  Dropdown: { props: ["menu", "popupRender"] },
+  // Объяснение пустоты.
+  Empty: { props: ["description"] },
+  // Остаток уезжает в `<input>` — поле достижимо ролью и принимает ввод.
+  Input: { props: ["value", "onChange", "prefix", "suffix", "placeholder"] },
+  // То же поле, но числовое: `onChange` настоящего приходит ЧИСЛОМ.
+  InputNumber: { props: ["value", "onChange"] },
+  // Состав меню.
+  Menu: { props: ["items"] },
+  // Окно: заголовок, скрытие по `open`, кнопки согласия и отказа.
+  Modal: { props: ["title", "open", "footer", "okText", "cancelText"] },
+  // Вопрос подтверждения и его кнопки.
+  Popconfirm: { props: ["title", "description", "okText", "cancelText"] },
+  // Заголовок исхода, подзаголовок, действие и вид.
+  Result: { props: ["title", "subTitle", "extra", "status"] },
+  // Состав режимов и выбранный.
+  Segmented: { props: ["options", "value"] },
+  // Остаток уезжает в `<select>`; состав вариантов приходит `options`.
+  Select: { props: ["options", "value", "onChange"] },
+  // Подпись состояния ожидания.
+  Spin: { props: ["tip"] },
+  // Остаток уезжает в `<input role="switch">`; `onChange` настоящего приходит
+  // СОСТОЯНИЕМ, а не событием.
+  Switch: { props: ["checked", "onChange"] },
+  // Строки и столбцы таблицы, текст пустого состояния.
+  Table: { props: ["dataSource", "columns", "locale", "rowSelection"] },
+  // Состав вкладок.
+  Tabs: { props: ["items"] },
+  // ЕДИНСТВЕННОЕ, чем нарисованный тег отличается от проходного элемента, —
+  // крестик снятия, и появляется он только при `closable`. `title` здесь
+  // носителем НЕ является: реализация его не читает, остаток уезжает в
+  // `<span>`, у которого своей роли нет. Это и есть предмет #1670.
+  Tag: { props: ["closable"] },
+  // Узловая подсказка рисуется содержимым; строковая уезжает в нативный
+  // `title` — см. границу точности выше.
+  Tooltip: { props: ["title"] },
+  // Состав узлов дерева.
+  Tree: { props: ["treeData"] },
+  // Состав описи и её заголовок.
+  Descriptions: { props: ["items", "title"] },
+  // Состав списка и отрисовщик строки — ждёт возврата носителя.
+  List: { props: ["dataSource", "renderItem", "header", "footer"] },
+  // Подпись и величина показателя — ждёт возврата носителя.
+  Statistic: { props: ["title", "value", "prefix", "suffix"] },
+  // ── Отличить НЕЧЕМ: заменитель этих видов и есть проходной элемент ────────
+  // `Object.assign(Component, …)` — тот же `<div>{children}</div>`.
+  App: { props: [] },
+  Form: { props: [] },
+  Space: { props: [] },
+  // Фрагмент: своего элемента не создаёт вовсе.
+  ConfigProvider: { props: [] },
+  // Голая раскладка — `<section>` без имени, то есть без доступной роли.
+  // Ориентиры страницы (`banner`, `main`, `complementary`) рисуют её ЧЛЕНЫ
+  // (`Layout.Content` и прочие), а составные теги — предмет своих пространств
+  // имён и здесь намеренно не рассматриваются.
+  Layout: { props: [] },
+};
 
 /**
  * Имена, которые заменитель НАМЕРЕННО не рисует, — с причиной по каждому.
@@ -250,6 +422,18 @@ const PROBED_BY = {
   // отказа приходят пропами `dataSource`/`columns`, а не детьми.
   Table: "shared/src/components/molecules/OperationsTable/OperationsTable.test.tsx",
   Tabs: "iam/src/pages/iam/AccessPage/AccessPage.role-tabs.test.tsx",
+  // Заведена под #1670 вместе с пер-видовым признаком носителя. Проба лежала в
+  // дереве всё это время и утверждает переключатель РОЛЬЮ (`getByRole("switch")`),
+  // а не атрибутом дублёра: настоящий переключатель отдаёт в `onChange` состояние,
+  // а не событие DOM. Возврат `Switch` в проходной <div> роняет её и соседнюю
+  // (`NicSpecFields`) — «элемента с ролью switch не найдено».
+  Switch: "shared/src/components/organisms/InlineAddressPoolEditForm/InlineAddressPoolEditForm.test.tsx",
+  // Заведена под #1670. Держит КРЕСТИК СНЯТИЯ — единственное, чем нарисованный
+  // тег отличается от проходного элемента: проба жмёт его по доступному имени
+  // (`getByRole("button", { name: "close" })`) и требует, чтобы снялась ровно та
+  // фишка. Возврат `Tag` в проходной <div> роняет её и соседнюю
+  // (`RefMultiSelect`) — «элемента с ролью button и именем close не найдено».
+  Tag: "shared/src/components/molecules/ResourceRefChips/ResourceRefChips.test.tsx",
   // Заведена под #1285: УЗЛОВОЕ пояснение к полю формы. Строковая ветвь
   // намеренно не утверждается — заменитель отдаёт её нативным `title`,
   // которого настоящий antd не производит; узловая же рисуется содержимым,
@@ -259,19 +443,34 @@ const PROBED_BY = {
 };
 
 /**
- * ПОЧЕМУ ОДИН ВИД ОСТАЁТСЯ В ДОЛГЕ (#1285). Перечень выше пополнен по каждому
- * виду, у которого проба у носителя ВОЗМОЖНА. Одному она сегодня невозможна, и
- * причина записана здесь, чтобы её не выводили заново.
+ * ЗДЕСЬ СТОЯЛА ПРИЧИНА, ПО КОТОРОЙ `Tag` ОСТАВАЛСЯ В ДОЛГЕ, — она была ВЫВЕДЕНА
+ * ИЗ ЛОЖНЫХ НОСИТЕЛЕЙ (#1670).
  *
- * `Tag`. Единственное, чем нарисованный тег отличается от проходного <div>, —
- * крестик снятия, а он появляется только при `closable`. Ни один носитель,
- * попадающий в знаменатель, `closable` не несёт: употреблений <Tag> в дереве
- * 63, с видимым оператору пропом 6, с `closable` 6, и ТО И ДРУГОЕ — 0.
- * Проверено и прогоном: возврат `Tag` в <div> не роняет НИ ОДНОГО из 906
- * утверждений в 71 суите его каталогов-носителей. Проба там утверждала бы то,
- * что истинно при любом заменителе.
- * Предикат снятия: носитель с видимым пропом И `closable` — тогда крестик
- * становится наблюдаем, и место записи здесь, вместе с пробой рядом с ним.
+ * Прежняя редакция (#1285) говорила: «крестик снятия появляется только при
+ * `closable`; ни один носитель, попадающий в знаменатель, `closable` не несёт;
+ * проверено прогоном — возврат `Tag` в <div> не роняет ни одного из 906
+ * утверждений в 71 суите его каталогов-носителей». Каждое из трёх утверждений
+ * верно относительно того, что гейт тогда считал носителем, и ЛОЖНО
+ * относительно дерева:
+ *
+ *   • носителями назывались шесть употреблений с `title` — а `title` реализация
+ *     `Tag` не читает и сливает в `<span>`, то есть там не нарисовано ничего
+ *     сверх проходного элемента;
+ *   • шесть НАСТОЯЩИХ носителей (`closable` + `onClose`, крестик снятия) гейт не
+ *     видел вовсе, потому что `closable` в общий список не входил;
+ *   • прогон «906 утверждений в 71 суите» шёл по каталогам ЛОЖНЫХ носителей —
+ *     то есть измерял места, где `Tag` и правда неотличим от <div>.
+ *
+ * Замер после правки признака: возврат `Tag` в проходной <div> роняет ДВЕ пробы
+ * у настоящих носителей — «крестик на чипе снимает ровно его»
+ * (`ResourceRefChips`) и «снятие фишки убирает ровно её» (`RefMultiSelect`).
+ * Обе лежали в дереве всё это время. Долг был не долгом, а слепотой
+ * распознавателя.
+ *
+ * УРОК, ради которого абзац переписан, а не удалён: вывод «пробу здесь написать
+ * невозможно» опирается на то, ЧТО инструмент считает носителем. Прежде чем
+ * записывать такой вывод, спроси, чем именно распознан носитель, — и проверь,
+ * отличает ли этот признак вид от проходного элемента.
  */
 
 /**
@@ -413,6 +612,139 @@ function stubNames(stubSource) {
 }
 
 /**
+ * ФОРМА РЕАЛИЗАЦИИ КАЖДОГО ВИДА в заменителе — предпосылка перечня
+ * `CARRIER_SIGN`, взятая РАЗБОРОМ, а не со слов записи.
+ *
+ * По каждому виду отвечает на два вопроса:
+ *   `reads`  — какие пропы реализация читает по имени И употребляет
+ *              прочитанное. Деструктурированное-и-ни-разу-не-упомянутое
+ *              (`color: _color` у `Tag`) сюда НЕ попадает: его читают, чтобы
+ *              выбросить, и нарисованного из него не выходит.
+ *   `spread` — сливается ли остаток пропов в элемент со своей доступной ролью.
+ *              Тогда до оператора доезжает всякий проп, потому что доезжает
+ *              сам виджет.
+ *
+ * `parsed=false` означает «форму реализации разобрать не удалось». Это
+ * НАХОДКА, а не молчаливый пропуск: перечень, чью предпосылку нечем проверить,
+ * не отличается от перечня, написанного наугад.
+ */
+function implShapes(stubSource) {
+  const sf = ts.createSourceFile(STUB, stubSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const shapes = new Map();
+  let returned = null;
+  const findReturn = (node) => {
+    if (
+      returned === null &&
+      ts.isReturnStatement(node) &&
+      node.expression &&
+      ts.isObjectLiteralExpression(node.expression) &&
+      node.expression.properties.some(
+        (p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === "__esModule",
+      )
+    ) {
+      returned = node.expression;
+    }
+    ts.forEachChild(node, findReturn);
+  };
+  findReturn(sf);
+  if (returned === null) return shapes;
+
+  // Объявления верхнего уровня: реализация вида чаще названа именем
+  // (`Spin`, `Object.assign(ModalRoot, …)`), а не написана на месте.
+  const consts = new Map();
+  const collect = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      consts.set(node.name.text, node.initializer);
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(sf);
+
+  // `Object.assign(X, {…})` — пространство имён поверх реализации X; предмет
+  // здесь X, а её члены принадлежат своим составным тегам.
+  const unwrap = (node, seen = new Set()) => {
+    if (!node) return null;
+    if (ts.isCallExpression(node) && node.expression.getText(sf) === "Object.assign") {
+      return unwrap(node.arguments[0], seen);
+    }
+    if (ts.isIdentifier(node)) {
+      if (seen.has(node.text) || !consts.has(node.text)) return null;
+      seen.add(node.text);
+      return unwrap(consts.get(node.text), seen);
+    }
+    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isFunctionDeclaration(node)) return node;
+    return null;
+  };
+
+  const countIdent = (node, name) => {
+    let n = 0;
+    const walk = (x) => {
+      if (ts.isIdentifier(x) && x.text === name) n += 1;
+      ts.forEachChild(x, walk);
+    };
+    walk(node);
+    return n;
+  };
+
+  const shapeOf = (impl) => {
+    if (impl === null) return { reads: new Set(), spread: false, parsed: false };
+    const p0 = impl.parameters[0];
+    if (!p0 || !ts.isObjectBindingPattern(p0.name)) return { reads: new Set(), spread: false, parsed: false };
+    const reads = new Set();
+    let restName = null;
+    for (const el of p0.name.elements) {
+      if (el.dotDotDotToken) {
+        if (ts.isIdentifier(el.name)) restName = el.name.text;
+        continue;
+      }
+      const key = el.propertyName ?? el.name;
+      const keyText = ts.isIdentifier(key) || ts.isStringLiteral(key) ? key.text : null;
+      if (keyText === null || !ts.isIdentifier(el.name)) continue;
+      // `children` — не атрибут JSX, и читает его ВСЯКИЙ проходной элемент:
+      // считать его нарисованным значило бы объявить носителем каждое
+      // употребление каждого вида.
+      if (keyText === "children") continue;
+      // Употреблено ли прочитанное: одно вхождение — само связывание.
+      if (countIdent(impl, el.name.text) > 1) reads.add(keyText);
+    }
+    let spread = false;
+    if (restName !== null) {
+      const walk = (node) => {
+        if (
+          !spread &&
+          ts.isCallExpression(node) &&
+          node.expression.getText(sf) === "React.createElement" &&
+          node.arguments.length > 1 &&
+          ts.isStringLiteral(node.arguments[0]) &&
+          !GENERIC_ELEMENTS.has(node.arguments[0].text) &&
+          countIdent(node.arguments[1], restName) > 0
+        ) {
+          spread = true;
+        }
+        ts.forEachChild(node, walk);
+      };
+      walk(impl);
+    }
+    return { reads, spread, parsed: true };
+  };
+
+  for (const p of returned.properties) {
+    let kind = null;
+    let init = null;
+    if (ts.isShorthandPropertyAssignment(p)) {
+      kind = p.name.text;
+      init = consts.get(kind) ?? null;
+    } else if (ts.isPropertyAssignment(p) && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))) {
+      kind = p.name.text;
+      init = p.initializer;
+    }
+    if (kind === null) continue;
+    shapes.set(kind, shapeOf(unwrap(init)));
+  }
+  return shapes;
+}
+
+/**
  * Продуктовые `.tsx` из индекса git. Пробы и тестовая оснастка исключены: они и
  * есть потребитель заменителя, судить их им же — тавтология.
  */
@@ -426,14 +758,34 @@ function productFiles() {
 }
 
 /**
- * Употребления простых имён (без точки) с пропами из закрытого списка.
+ * Обход продуктовых `.tsx` ОДИН раз, с выдачей всех трёх величин сразу.
  * Составные теги (`List.Item`, `Typography.Text`) — предмет своих пространств
  * имён, и здесь намеренно не рассматриваются: перечень заменителя объявляет их
  * отдельно.
+ *
+ * ТРИ величины, и они РАЗНЫЕ, что и есть предмет #1670:
+ *   `found`      — имя с ПУСТЫМ заменителем и проп из общего списка
+ *                  `VISIBLE_PROPS`. Здесь общий список уместен: вопрос не «как
+ *                  рисует дублёр», а «несёт ли этот проп видимое оператору у
+ *                  НАСТОЯЩЕГО компонента», и ответ от вида не зависит.
+ *   `carriers`   — употребления НАРИСОВАННОГО вида, признанные носителями по
+ *                  ЕГО СОБСТВЕННОМУ признаку из `CARRIER_SIGN`. Общий список
+ *                  здесь давал ложных носителей: `title` доезжает до `<span>`
+ *                  ровно так же, как до проходного `<div>`.
+ *   `usedKinds`  — нарисованные виды, употреблённые продуктом ХОТЬ КАК, без
+ *                  оглядки на пропы: по ним проверяется полнота перечня.
+ *
+ * `scanned` — число рассмотренных употреблений нарисованных видов. Оно и есть
+ * объём осмотренного для пятой части: сужение или расширение признака обязано
+ * его менять, иначе правка холостая.
  */
-function usages(files, names, extraSources = []) {
+function scanUsages(files, { names, drawn, aliased }, sign, extraSources = []) {
   const found = [];
+  const carriers = [];
+  const usedKinds = new Set();
   let parsed = 0;
+  let scanned = 0;
+  const drawnKinds = new Set([...drawn, ...aliased.keys()]);
   const inputs = [...files.map((f) => [f, null]), ...extraSources];
   for (const [f, virtualSrc] of inputs) {
     const src = virtualSrc === null ? fs.readFileSync(path.join(uiRoot, f), "utf8") : virtualSrc;
@@ -442,14 +794,22 @@ function usages(files, names, extraSources = []) {
     const walk = (node) => {
       if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
         const tag = node.tagName;
-        if (ts.isIdentifier(tag) && names.has(tag.text)) {
+        if (ts.isIdentifier(tag)) {
+          const kind = tag.text;
           const props = node.attributes.properties
             .filter((p) => ts.isJsxAttribute(p) && ts.isIdentifier(p.name))
-            .map((p) => p.name.text)
-            .filter((n) => VISIBLE_PROPS.has(n));
-          if (props.length) {
-            const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
-            found.push({ name: tag.text, file: f, line: line + 1, props });
+            .map((p) => p.name.text);
+          const at = () => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+          if (names.has(kind)) {
+            const visible = props.filter((n) => VISIBLE_PROPS.has(n));
+            if (visible.length) found.push({ name: kind, file: f, line: at(), props: visible });
+          }
+          if (drawnKinds.has(kind)) {
+            scanned += 1;
+            usedKinds.add(kind);
+            const declared = sign[kind] === undefined ? null : sign[kind].props;
+            const carrying = declared === null ? [] : props.filter((n) => declared.includes(n));
+            if (carrying.length) carriers.push({ name: kind, file: f, line: at(), props: carrying });
           }
         }
       }
@@ -457,19 +817,22 @@ function usages(files, names, extraSources = []) {
     };
     walk(sf);
   }
-  return { found, parsed };
+  return { found, carriers, usedKinds, parsed, scanned };
 }
 
 /** Разбор одного состояния дерева. Чистая функция — её же зовёт `--self-test`. */
-function analyze(stubSource, files, extraSources = []) {
+function analyze(stubSource, files, extraSources = [], sign = CARRIER_SIGN) {
   const { names, drawn, aliased } = stubNames(stubSource);
-  const { found, parsed } = usages(files, names, extraSources);
-  // Употребления имён, которые заменитель рисует ХОТЬ ЧЕМ-ТО, с видимым пропом —
-  // предмет второй половины: именно у них обязана быть проба на продуктовой
-  // поверхности. Псевдоним сюда входит: носитель у него настоящий, а вопрос
-  // «своё ли он рисует» задаёт четвёртая часть, и задавать его дважды незачем.
-  const { found: drawnFound } = usages(files, new Set([...drawn, ...aliased.keys()]), extraSources);
-  return { names, drawn, aliased, found, drawnFound, parsed };
+  const shapes = implShapes(stubSource);
+  const { found, carriers, usedKinds, parsed, scanned } = scanUsages(
+    files,
+    { names, drawn, aliased },
+    sign,
+    extraSources,
+  );
+  // Имя `drawnFound` сохранено: под ним носителей знают вторая, третья части и
+  // знаменатель покрытия. Изменился ОТБОР — он теперь по признаку вида.
+  return { names, drawn, aliased, shapes, sign, found, drawnFound: carriers, usedKinds, parsed, scanned };
 }
 
 /**
@@ -642,6 +1005,90 @@ function awaitingFindings({ drawn, aliased, drawnFound }) {
   return out;
 }
 
+/**
+ * ПЯТАЯ ЧАСТЬ (#1670) как ЧИСТАЯ функция: её же зовёт `--self-test`, поэтому
+ * доказательство способности упасть относится к тому самому коду, который судит
+ * дерево, а не к его копии.
+ *
+ * Судит ПЕРЕЧЕНЬ ПРИЗНАКОВ, а не дерево: полнота, самоистечение и
+ * обоснованность каждой записи формой реализации в заменителе.
+ */
+function signFindings({ drawn, aliased, shapes, usedKinds }, sign) {
+  const out = [];
+  const drawnKinds = new Set([...drawn, ...aliased.keys()]);
+  const named = new Set([...Object.keys(PROBED_BY), ...Object.keys(AWAITING_CARRIER)]);
+
+  // ПОЛНОТА. Вид, который заменитель рисует и продукт употребляет, обязан иметь
+  // СВОЙ признак: без записи он молча унаследовал бы чужой — ровно тот класс,
+  // ради которого пятая часть заведена.
+  for (const kind of [...usedKinds].sort()) {
+    if (!drawnKinds.has(kind)) continue;
+    if (kind in sign) continue;
+    out.push(
+      `перечень CARRIER_SIGN не объявляет признака носителя для «${kind}», а заменитель его рисует и продукт ` +
+        `употребляет — без своего признака вид либо невидим для покрытия, либо унаследует чужой`,
+    );
+  }
+  // То же для видов, названных в других перечнях: у них носителя ищут (или ждут),
+  // и делать это без признака нечем. Ветвь РАЗВЕДЕНА с предыдущей по построению
+  // (`!usedKinds.has`): иначе один и тот же вид давал бы две находки, и снятие
+  // одной ветви было бы неотличимо от исправной работы — то есть самопроверка
+  // не смогла бы доказать способность каждой упасть по отдельности.
+  for (const kind of [...named].sort()) {
+    if (!drawnKinds.has(kind) || kind in sign || usedKinds.has(kind)) continue;
+    out.push(
+      `перечень CARRIER_SIGN не объявляет признака носителя для «${kind}», хотя его носителя ищут перечни ` +
+        `PROBED_BY/AWAITING_CARRIER — искать нечем`,
+    );
+  }
+
+  for (const [kind, record] of Object.entries(sign)) {
+    // САМОИСТЕЧЕНИЕ, ось (а): заменитель вид больше не рисует.
+    if (!drawnKinds.has(kind)) {
+      out.push(
+        `перечень CARRIER_SIGN держит признак носителя для «${kind}», а заменитель его НЕ рисует ` +
+          `(снова проходной <div> либо имя ушло) — признак описывать нечему, запись снять`,
+      );
+      continue;
+    }
+    // САМОИСТЕЧЕНИЕ, ось (б): продукт вид не употребляет и его носителя никто не ждёт.
+    if (!usedKinds.has(kind) && !named.has(kind)) {
+      out.push(
+        `перечень CARRIER_SIGN держит признак носителя для «${kind}», но продукт его не употребляет ` +
+          `и ни один перечень его носителя не ждёт — держать нечего, запись снять`,
+      );
+      continue;
+    }
+    // ПРЕДПОСЫЛКА, взятая разбором: форма реализации в заменителе.
+    const shape = shapes.get(kind);
+    if (shape === undefined || !shape.parsed) {
+      out.push(
+        `форму реализации «${kind}» в заменителе разобрать не удалось — предпосылку записи CARRIER_SIGN ` +
+          `нечем проверить, и перечень перестал отличаться от написанного наугад`,
+      );
+      continue;
+    }
+    // САМОИСТЕЧЕНИЕ, ось (в): объявленный проп перестал быть обоснованным.
+    for (const prop of record.props) {
+      if (shape.spread || shape.reads.has(prop)) continue;
+      out.push(
+        `признак носителя «${kind}» назван пропом \`${prop}\`, но реализация в заменителе его не читает ` +
+          `и остаток пропов сливает в элемент без своей доступной роли — такое употребление неотличимо от ` +
+          `проходного <div>, и объявленный по нему носитель ЛОЖЕН: проба у него истинна при любом заменителе`,
+      );
+    }
+    // Обратная сторона: пустой признак у вида, который рисует своё.
+    if (record.props.length === 0 && (shape.spread || shape.reads.size > 0)) {
+      out.push(
+        `признак носителя «${kind}» объявлен пустым («отличить нечем»), а заменитель рисует своё ` +
+          `(${shape.spread ? "сливает остаток пропов в элемент со своей ролью" : `читает ${[...shape.reads].map((r) => `\`${r}\``).join(", ")}`}) — ` +
+          `носителей этого вида не увидит никто, и покрытие о нём промолчит`,
+      );
+    }
+  }
+  return out;
+}
+
 /** Отслеживаемые пробы — из индекса git, а не с диска: файл, лежащий рядом, но
  *  не добавленный, до конвейера не доедет, и перечень утверждал бы о том, чего
  *  в дереве нет. */
@@ -744,9 +1191,20 @@ if (process.argv.includes("--self-test")) {
   const awaitKinds = Object.keys(AWAITING_CARRIER);
   if (awaitKinds.length) {
     const awaited = awaitKinds[0];
+    // Проп для инъекции берётся ИЗ ПРИЗНАКА вида (#1670), а не выписывается:
+    // выписанный молча перестал бы делать употребление носителем в день, когда
+    // признак сузится, и «дефект не пойман» означало бы «дефекта не вносили».
+    const awaitedProp = CARRIER_SIGN[awaited]?.props?.[0];
+    if (awaitedProp === undefined) {
+      console.error(
+        `::error::самопроверка третьей части не смогла внести дефект: у «${awaited}» нет объявленного признака ` +
+          "носителя в CARRIER_SIGN — употребление, которое считалось бы возвратом носителя, не построить",
+      );
+      process.exit(1);
+    }
     const carrier = [
       "__self-test__/CarrierReturned.tsx",
-      `export const CarrierReturned = () => <${awaited} dataSource={[]} renderItem={() => null} />;\n`,
+      `export const CarrierReturned = () => <${awaited} ${awaitedProp}={[]} />;\n`,
     ];
     const bystander = [
       "__self-test__/LawfulTwin.tsx",
@@ -932,6 +1390,174 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
 
+  // ── ПЯТАЯ ЧАСТЬ (#1670): ПРИЗНАК НОСИТЕЛЯ ПО ВИДАМ, инъекция по каждой оси ─
+  // Дефект вносится НАСТОЯЩИМ входом: тем самым признаком, по которому носитель
+  // распознавался ДО правки. `Tag` в дереве употребляется и с `title` (шесть
+  // мест, где он неотличим от проходного элемента), и с `closable` (шесть
+  // мест, где он рисует крестик снятия), — то есть обе стороны существуют, и
+  // молчание не может означать «дефекта не вносили».
+  //
+  // Предпосылки ВЫРАЖЕНЫ, а не подразумеваются: если вид перестанет быть
+  // объявленным пропом, самопроверка скажет это прямо.
+  const signKind = "Tag";
+  const bogusProp = "title";
+  const signRecord = CARRIER_SIGN[signKind];
+  if (signRecord === undefined || signRecord.props.length === 0) {
+    console.error(
+      `::error::самопроверка пятой части не смогла внести дефект: «${signKind}» не объявлен в CARRIER_SIGN ` +
+        "непустым признаком — вносить нечего; чинить надо самопроверку, а не гейт",
+    );
+    process.exit(1);
+  }
+  const greenShape = green.shapes.get(signKind);
+  if (greenShape === undefined || !greenShape.parsed || greenShape.spread || greenShape.reads.has(bogusProp)) {
+    console.error(
+      `::error::самопроверка пятой части не смогла внести дефект: реализация «${signKind}» в заменителе ` +
+        `изменилась — \`${bogusProp}\` перестал быть НЕобоснованным пропом, и его объявление больше не дефект; ` +
+        "взять для инъекции другой вид и другой проп",
+    );
+    process.exit(1);
+  }
+  // Для оси полноты нужны ДВА разных вида, по одному на каждую разведённую
+  // ветвь: употребляемый-и-неназванный и названный-но-неупотребляемый. Иначе
+  // один вид дал бы находку сразу от обеих, и снятие любой из них осталось бы
+  // незамеченным.
+  const usedUnnamed = [...green.usedKinds].sort().find(
+    (k) => k in CARRIER_SIGN && !(k in PROBED_BY) && !(k in AWAITING_CARRIER),
+  );
+  const awaitedUnused = Object.keys(AWAITING_CARRIER).find(
+    (k) => k in CARRIER_SIGN && !green.usedKinds.has(k),
+  );
+  if (usedUnnamed === undefined || awaitedUnused === undefined) {
+    console.error(
+      "::error::самопроверка пятой части не смогла внести дефект по оси полноты: не нашлось вида, который " +
+        "продукт употребляет и перечни не называют, либо вида, чьего носителя ждут при отсутствии употреблений — " +
+        "предпосылка исчезла, чинить надо самопроверку, а не гейт",
+    );
+    process.exit(1);
+  }
+  const withoutUsed = { ...CARRIER_SIGN };
+  delete withoutUsed[usedUnnamed];
+  const withoutAwaited = { ...CARRIER_SIGN };
+  delete withoutAwaited[awaitedUnused];
+  const signAxes = [
+    [
+      `необоснованный проп «${signKind}: [${bogusProp}]»`,
+      { ...CARRIER_SIGN, [signKind]: { props: [bogusProp] } },
+      stubSource,
+      (f) => f.includes(`«${signKind}»`) && f.includes(bogusProp) && f.includes("ЛОЖЕН"),
+    ],
+    [
+      `пустой признак у рисующего вида «${signKind}: []»`,
+      { ...CARRIER_SIGN, [signKind]: { props: [] } },
+      stubSource,
+      (f) => f.includes(`«${signKind}»`) && f.includes("объявлен пустым"),
+    ],
+    [
+      `употребляемый вид «${usedUnnamed}» без записи в CARRIER_SIGN`,
+      withoutUsed,
+      stubSource,
+      (f) => f.includes(`«${usedUnnamed}»`) && f.includes("унаследует чужой"),
+    ],
+    [
+      `ожидаемый носителем вид «${awaitedUnused}» без записи в CARRIER_SIGN`,
+      withoutAwaited,
+      stubSource,
+      (f) => f.includes(`«${awaitedUnused}»`) && f.includes("искать нечем"),
+    ],
+    [
+      `вид «${signKind}», возвращённый в проходной <div>`,
+      CARRIER_SIGN,
+      stubSource.replace(
+        /\n {4}Tag: \(\{ children, closable, onClose, color: _color, \.\.\.rest \}: TagProps\) =>/,
+        "\n    Tag: Component,\n    TagRetired: ({ children, closable, onClose, color: _color, ...rest }: TagProps) =>",
+      ),
+      (f) => f.includes(`«${signKind}»`) && f.includes("НЕ рисует"),
+    ],
+  ];
+  for (const [what, ledger, stub, matches] of signAxes) {
+    if (stub === stubSource && what.includes("проходной")) {
+      console.error(
+        "::error::самопроверка пятой части не смогла внести дефект: реализация «Tag» в заменителе записана " +
+          "не той формой, которую знает подстановка, — предпосылка исчезла вместе с формой файла, " +
+          "чинить надо самопроверку, а не гейт",
+      );
+      process.exit(1);
+    }
+    const hits = signFindings(analyze(stub, files, [], ledger), ledger).filter(matches);
+    if (hits.length === 0) {
+      console.error(
+        `::error::самопроверка: внесённый дефект «${what}» НЕ пойман пятой частью — она не способна упасть ` +
+          "по этой оси либо падает без имени вида и имени пропа",
+      );
+      process.exit(1);
+    }
+  }
+  // Ось самоистечения «продукт вид не употребляет»: признак объявлен для вида,
+  // который заменитель рисует, а продукт не берёт и ни один перечень не ждёт.
+  // Имя с заглавной буквы: в возвращаемом объекте есть и служебные ключи
+  // (`__esModule`, `theme`), видами они не являются, и находка про них читалась
+  // бы как дефект разбора, а не как самоистечение перечня.
+  const idleKind = [...green.drawn].sort().find(
+    (k) =>
+      /^[A-Z]/.test(k) &&
+      !green.usedKinds.has(k) &&
+      !(k in PROBED_BY) &&
+      !(k in AWAITING_CARRIER) &&
+      !(k in CARRIER_SIGN),
+  );
+  if (idleKind === undefined) {
+    console.error(
+      "::error::самопроверка пятой части не смогла внести дефект по оси «продукт вид не употребляет»: " +
+        "в заменителе не осталось ни одного нарисованного вида без употребления и без записей — " +
+        "предпосылка исчезла, чинить надо самопроверку",
+    );
+    process.exit(1);
+  }
+  const idleLedger = { ...CARRIER_SIGN, [idleKind]: { props: ["title"] } };
+  if (
+    !signFindings(analyze(stubSource, files, [], idleLedger), idleLedger).some(
+      (f) => f.includes(`«${idleKind}»`) && f.includes("не употребляет"),
+    )
+  ) {
+    console.error(
+      `::error::самопроверка: признак для неупотребляемого «${idleKind}» НЕ уронил свою запись — ` +
+        "перечень CARRIER_SIGN не истекает сам",
+    );
+    process.exit(1);
+  }
+  // ЗАКОННЫЙ БЛИЗНЕЦ: настоящий перечень на настоящем дереве молчит целиком.
+  const greenSign = signFindings(green, CARRIER_SIGN);
+  if (greenSign.length > 0) {
+    console.error(`::error::самопроверка: пятая часть краснеет на ЗАКОННОМ дереве: ${greenSign[0]}`);
+    process.exit(1);
+  }
+  // НЕСУЩЕЕ СЛЕДСТВИЕ, ради которого пятая часть заведена: признак меняет НЕ
+  // только вердикт перечня, но и то, ЧТО признано носителем. Прежний общий
+  // признак и нынешний пер-видовой обязаны давать РАЗНЫЕ места — иначе правка
+  // холостая, и её снимают, а не оставляют «на всякий случай».
+  const bogusLedger = { ...CARRIER_SIGN, [signKind]: { props: [bogusProp] } };
+  const bogusCarriers = analyze(stubSource, files, [], bogusLedger).drawnFound.filter((h) => h.name === signKind);
+  const trueCarriers = green.drawnFound.filter((h) => h.name === signKind);
+  if (trueCarriers.length === 0 || bogusCarriers.length === 0) {
+    console.error(
+      `::error::самопроверка: у «${signKind}» не нашлось носителей по одному из двух признаков ` +
+        `(по \`${bogusProp}\` ${bogusCarriers.length}, по объявленному ${trueCarriers.length}) — ` +
+        "сравнивать нечего, и «признак изменил отбор» доказано не будет",
+    );
+    process.exit(1);
+  }
+  const at = (h) => `${h.file}:${h.line}`;
+  const overlap = trueCarriers.filter((h) => bogusCarriers.some((b) => at(b) === at(h)));
+  if (overlap.length > 0) {
+    console.error(
+      `::error::самопроверка: множества носителей «${signKind}» по прежнему и нынешнему признаку пересекаются ` +
+        `в ${overlap.length} местах (${at(overlap[0])}) — предпосылка инъекции ослабла, ` +
+        "и «признак сменил отбор» перестало быть наблюдаемым",
+    );
+    process.exit(1);
+  }
+
   // ── ЗНАМЕНАТЕЛЬ ПОКРЫТИЯ (#1265), инъекция в обе стороны ───────────────────
   // Числитель без знаменателя читается как «9 из 9». Здесь доказывается, что
   // знаменатель считается ПО ДЕРЕВУ, что вид без пробы называется по имени и что
@@ -960,9 +1586,18 @@ if (process.argv.includes("--self-test")) {
     );
     process.exit(1);
   }
+  // Проп берётся ИЗ ПРИЗНАКА вида (#1670), а не выписывается.
+  const unprobedProp = CARRIER_SIGN[unprobedKind]?.props?.[0];
+  if (unprobedProp === undefined) {
+    console.error(
+      `::error::самопроверка знаменателя: у «${unprobedKind}» нет объявленного признака носителя в CARRIER_SIGN — ` +
+        "употребление, попадающее в знаменатель, не построить",
+    );
+    process.exit(1);
+  }
   const unprobedCarrier = [
     "__self-test__/UnprobedCarrier.tsx",
-    `export const UnprobedCarrier = () => <${unprobedKind} items={[]} />;\n`,
+    `export const UnprobedCarrier = () => <${unprobedKind} ${unprobedProp}={[]} />;\n`,
   ];
   const withCarrier = coverageCensus(analyze(stubSource, files, [unprobedCarrier]));
   if (!withCarrier.unprobed.includes(unprobedKind)) {
@@ -1015,6 +1650,10 @@ if (process.argv.includes("--self-test")) {
       `четвёртая часть: подмена «${aliasKind}: ${aliasTarget}» дала «${redAlias[0].slice(0, 60)}…», ` +
       `реализация под локальным именем «${aliasKind}: ${localImpl}» псевдонимом НЕ названа, ` +
       `обе оси ALIASED проверены на ${aliasLedger.length} записях, на законном дереве 0; ` +
+      `пятая часть: ${signAxes.length + 1} осей признака носителя внесены и пойманы (включая «${signKind}: [${bogusProp}]» — ` +
+      `тот самый признак, по которому носитель распознавался ДО #1670), на законном дереве 0; ` +
+      `носителей «${signKind}» по прежнему признаку ${bogusCarriers.length}, по нынешнему ${trueCarriers.length}, ` +
+      `пересечение ${overlap.length}; ` +
       `знаменатель покрытия проверен в обе стороны на «${unprobedKind}» (в долг попал, без видимого свойства — нет); ` +
       `осмотрено файлов ${green.parsed}, видов в PROBED_BY ${Object.keys(PROBED_BY).length}, ` +
       `в AWAITING_CARRIER ${awaitKinds.length}`,
@@ -1022,7 +1661,8 @@ if (process.argv.includes("--self-test")) {
   process.exit(0);
 }
 
-const { names, drawn, aliased, found, drawnFound, parsed } = analyze(stubSource, files);
+const { names, drawn, aliased, shapes, found, drawnFound, usedKinds, parsed, scanned } =
+  analyze(stubSource, files);
 
 const trackedProbes = trackedProbeSet();
 
@@ -1056,6 +1696,9 @@ findings.push(...probeFindings({ drawn, aliased, drawnFound }, trackedProbes));
 findings.push(...awaitingFindings({ drawn, aliased, drawnFound }));
 // ЧЕТВЁРТАЯ ЧАСТЬ (#1349): вид, отданный псевдонимом другого вида, назван.
 findings.push(...aliasFindings({ aliased }));
+// ПЯТАЯ ЧАСТЬ (#1670): признак носителя объявлен ПО ВИДАМ, и каждая запись
+// обоснована формой реализации в заменителе.
+findings.push(...signFindings({ drawn, aliased, shapes, usedKinds }, CARRIER_SIGN));
 
 const coverage = coverageCensus({ drawn, aliased, drawnFound });
 
@@ -1067,6 +1710,16 @@ console.log(
     `названо намеренно не рисующими ${Object.keys(NOT_DRAWN).length}; ` +
     `видов, ждущих возврата носителя ${Object.keys(AWAITING_CARRIER).length}, ` +
     `отслеживаемых проб в дереве ${trackedProbes.size}`,
+);
+
+// ОБЪЁМ ОСМОТРЕННОГО ПЯТОЙ ЧАСТИ (#1670). Обе величины, а не одна: сужение или
+// расширение признака обязано менять ВТОРУЮ при неизменной первой — неподвижная
+// перепись означает холостую правку, и её снимают, а не оставляют.
+console.log(
+  `признак носителя: объявлен по видам ${Object.keys(CARRIER_SIGN).length} ` +
+    `(из них «отличить нечем» ${Object.values(CARRIER_SIGN).filter((r) => r.props.length === 0).length}); ` +
+    `рассмотрено употреблений нарисованных видов ${scanned}, признано носителями ${drawnFound.length}; ` +
+    `нарисованных видов, употребляемых продуктом, ${usedKinds.size}`,
 );
 
 // ОБЕ ВЕЛИЧИНЫ, а не одна (#1265). Числитель без знаменателя читается как
@@ -1103,6 +1756,15 @@ if (parsed === 0 || names.size === 0) {
 if (Object.keys(PROBED_BY).length === 0) {
   console.error(
     "::error::предпосылка гейта не выполнена: перечень PROBED_BY пуст — вторая половина не судит ни об одном виде",
+  );
+  process.exit(1);
+}
+// Пустой CARRIER_SIGN либо нулевой обход нарисованных видов — та же предпосылка:
+// «ноль ложных носителей» тогда означало бы «ноль рассмотренных употреблений».
+if (Object.keys(CARRIER_SIGN).length === 0 || scanned === 0) {
+  console.error(
+    "::error::предпосылка гейта не выполнена: перечень CARRIER_SIGN пуст либо не рассмотрено ни одного " +
+      "употребления нарисованного вида — «ноль ложных носителей» здесь означало бы «ноль прочитанного»",
   );
   process.exit(1);
 }

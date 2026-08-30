@@ -76,7 +76,7 @@ existing pattern, no separate catalogue entry needed").
 ### State transitions (STATE)
 - `*-UPD-STATE-IMMUTABLE-TYPE` — STATE,VAL/P0 — type immutable after Create (Verifies REQ-NLB-IMMUTABLE-TYPE)
 - `*-UPD-STATE-IMMUTABLE-REGION` — STATE,VAL/P0 — region_id immutable
-- `*-UPD-STATE-IMMUTABLE-PROJECT` — STATE,VAL/P0 — project_id immutable (Move only)
+- `*-UPD-STATE-IMMUTABLE-PROJECT` — STATE,VAL/P0 — project_id immutable; текст утверждается дословно и называет `NetworkLoadBalancerService.Move` (#1671)
 - `*-UPD-STATE-MASK-UNKNOWN` — STATE,VAL/P1 — unknown field in mask → InvalidArgument
 - `*-UPD-STATE-MASK-EMPTY` — STATE,VAL/P1 — empty mask → InvalidArgument
 - `*-MV-NEG-ATTACHED-TG` — NEG,STATE/P0 — Move LB with a listener-wired TG → FailedPrecondition (Verifies REQ-NLB-MV-NEG)
@@ -217,7 +217,7 @@ Immutability + drain toggle + lean projection + delete-release:
 
 ### CONF / STATE / NEG
 - `*-CR-CONF-ALREADY-EXISTS` — CONF,IDEM,NEG/P1 — duplicate (project_id,name) → 409 ALREADY_EXISTS (Verifies REQ-DB-TGR-NAME-UNIQ)
-- `*-UPD-STATE-IMMUTABLE-PROJECT` — STATE,VAL/P0 — project_id immutable
+- `*-UPD-STATE-IMMUTABLE-PROJECT` — STATE,VAL/P0 — project_id immutable; текст владельца называет `TargetGroupService.Move` (#1671), но ЭТОТ кейс идёт по несуществующему id и до проверки не доходит — тон группы целей чёрным ящиком не наблюдается
 - `*-UPD-STATE-IMMUTABLE-REGION` — STATE,VAL/P0 — region_id immutable
 - `*-UPD-VAL-TARGETS-VIA-MASK` — VAL/P0 — update_mask=["targets"] rejected → use AddTargets/RemoveTargets
 - `*-DEL-NEG-HAS-ATTACHED-LB` — NEG,STATE/P0 — Delete TG referenced by a listener → FailedPrecondition (Verifies REQ-TGR-DEL-ATTACHED)
