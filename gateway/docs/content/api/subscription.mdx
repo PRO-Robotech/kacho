@@ -146,9 +146,15 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
 было нечего.
 
 `loadbalancer` и `storage` — **смешанные, и решать надо по виду, а не по владельцу**: у
-`loadbalancer` состояние есть у `nlb_listener` и `nlb_target_group` (создание, правка,
-переезд) и нет у `nlb_network_load_balancer` ни у одного рода изменения; у `storage` — есть
-у `storage_volume` и нет у `storage_snapshot` и `storage_image`.
+`loadbalancer` состояние есть у `nlb_listener` и `nlb_target_group` (создание и правка) и
+нет у `nlb_network_load_balancer` ни у одного рода изменения; у `storage` — есть у
+`storage_volume` и нет у `storage_snapshot` и `storage_image`.
+
+Переезд ресурса между проектами приходит у `loadbalancer` ОБЫЧНОЙ правкой (`UPDATED`) и
+несёт состояние с НОВЫМ якорем проекта: отдельного рода изменения для переезда в словаре
+нет — в нём три слова, `CREATED`, `UPDATED` и `DELETED`. Переезд балансировщика при этом
+объявляет и КАЖДЫЙ свой слушатель: его якорь проекта меняется тем же действием, и событие о
+нём приходит своё.
 Подписка сразу на несколько видов одного владельца законна, и часть событий в одном потоке
 придёт с состоянием, а часть — без; ветвиться по `stateUnavailable` надо на КАЖДОМ событии,
 а не один раз при открытии.
@@ -189,7 +195,8 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
       <td><code>nlb&#95;network&#95;load&#95;balancer</code>, <code>nlb&#95;listener</code>, <code>nlb&#95;target&#95;group</code></td>
       <td><code>state</code> типа <code>kacho.cloud.loadbalancer.v1.Listener</code> у вида
           <code>nlb&#95;listener</code> и типа <code>kacho.cloud.loadbalancer.v1.TargetGroup</code>
-          у вида <code>nlb&#95;target&#95;group</code> — у создания, правки и переезда. У
+          у вида <code>nlb&#95;target&#95;group</code> — у создания и правки; у снятия
+          состояния нет. Переезд между проектами приходит правкой. У
           <code>nlb&#95;target&#95;group</code> состояние несёт и НАБОР ЦЕЛЕЙ с их
           lifecycle-состоянием, поэтому сливающаяся цель отличима от обычной. У
           <code>nlb&#95;network&#95;load&#95;balancer</code> состояния нет ни у одного рода

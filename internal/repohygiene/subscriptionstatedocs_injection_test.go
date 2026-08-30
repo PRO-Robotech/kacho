@@ -251,3 +251,141 @@ func TestSubscriptionStateDocsReaderFindsNoRowsWhenTheSectionIsGone(t *testing.T
 			"целиком и принял бы соседнюю таблицу за таблицу владельцев", got)
 	}
 }
+
+// syntheticJournalPackingBehindACall кладёт объявление журнала, у которого
+// упаковка стоит НЕ в функции состояния, а в функции пакета, которую та зовёт.
+//
+// `generic` выбирает написание вызова: обычное (`packState(r)`) либо явно
+// инстанцированное у обобщённой функции (`packState[any](r)`). Написания два,
+// оба законны, и распознаватель обязан знать оба — иначе записанное вторым
+// окажется не разрешённым, а НЕ ОСМОТРЕННЫМ.
+//
+// `helperPacks` выключает упаковку в помощнике: законный близнец, на котором
+// гейт обязан по-прежнему говорить «не собирает». Без него ось доказывала бы
+// лишь, что гейт стал отвечать «собирает» чаще.
+func syntheticJournalPackingBehindACall(t *testing.T, root, service string, generic, helperPacks bool) {
+	t.Helper()
+	dir := filepath.Join(root, "services", service, "internal", "subscriptionjournal")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("синтетическое дерево: %v", err)
+	}
+	call := "packState(r)"
+	sig := "func packState(r any) (any, int, error) {"
+	if generic {
+		call = "packState[any](r)"
+		sig = "func packState[T any](r T) (any, int, error) {"
+	}
+	body := "package subscriptionjournal\n\n" +
+		"func state(r any) (any, int, error) {\n\treturn " + call + "\n}\n\n" + sig + "\n"
+	if helperPacks {
+		body += "\treturn anypb.New(r)\n"
+	}
+	body += "\treturn nil, 1, nil\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "journal.go"), []byte(body), 0o600); err != nil {
+		t.Fatalf("синтетическое дерево: %v", err)
+	}
+}
+
+// TestSubscriptionStateDocsGateFollowsPackingBehindAPackageCall — ось 7:
+// упаковка вынесена в функцию пакета, которую зовёт функция состояния.
+//
+// # Что это была за слепота
+//
+// Распознаватель искал `anypb.New` в теле самой функции состояния. Журнал nlb
+// вынес разбор конверта, перенос в контракт и упаковку в ОДНУ полосу, зовомую по
+// видам, — и гейт объявил его непроизводящим ПРИ ЖИВОМ ПРОИЗВОДИТЕЛЕ, потребовав
+// править правдивую страницу. Записанное новой формой оказалось не «разрешено», а
+// не осмотрено: ни красного, ни зелёного — молчание.
+//
+// # Что доказывается
+//
+// Обе стороны, и обе на КАЖДОМ из двух написаний вызова: помощник упаковывает —
+// «собирает» (страница, обещающая состояние, молчит; страница, отрицающая его,
+// краснеет); помощник не упаковывает — «не собирает» (наоборот). Без второй
+// половины ось доказывала бы лишь, что гейт стал сговорчивее.
+func TestSubscriptionStateDocsGateFollowsPackingBehindAPackageCall(t *testing.T) {
+	for _, form := range []struct {
+		name    string
+		generic bool
+	}{
+		{"обычный вызов", false},
+		{"инстанцированный обобщённый вызов", true},
+	} {
+		t.Run(form.name, func(t *testing.T) {
+			// Помощник УПАКОВЫВАЕТ: журнал производит состояние.
+			packing := t.TempDir()
+			syntheticJournalPackingBehindACall(t, packing, "vpc", form.generic, true)
+
+			denied := judgeSynthetic(t, packing, syntheticPage(
+				map[string]string{"vpc": claimStateless}, []string{"vpc"}))
+			if len(denied) == 0 {
+				t.Fatal("гейт смолчал на странице, отрицающей состояние, которое журнал " +
+					"собирает через вызов функции пакета: форма записи ему неизвестна, и " +
+					"записанное ею не осмотрено")
+			}
+			t.Logf("дефект найден: %s", denied[0])
+
+			legit := judgeSynthetic(t, packing, syntheticPage(
+				map[string]string{"vpc": claimStateful}, []string{"vpc"}))
+			if len(legit) != 0 {
+				t.Errorf("гейт краснеет на ЗАКОННОМ близнеце (страница называет тип, "+
+					"помощник упаковывает): %v", legit)
+			}
+
+			// Помощник НЕ упаковывает: журнал состояния не производит, и обход
+			// вызова не смеет этого изменить.
+			silent := t.TempDir()
+			syntheticJournalPackingBehindACall(t, silent, "vpc", form.generic, false)
+
+			overclaim := judgeSynthetic(t, silent, syntheticPage(
+				map[string]string{"vpc": claimStateful}, []string{"vpc"}))
+			if len(overclaim) == 0 {
+				t.Fatal("гейт счёл журнал производящим только потому, что функция состояния " +
+					"кого-то зовёт: обход стал отвечать «да» на любой вызов")
+			}
+			t.Logf("перерасширения нет: %s", overclaim[0])
+
+			quiet := judgeSynthetic(t, silent, syntheticPage(
+				map[string]string{"vpc": claimStateless}, []string{"vpc"}))
+			if len(quiet) != 0 {
+				t.Errorf("гейт краснеет на законном близнеце (страница состояния не "+
+					"обещает, помощник не упаковывает): %v", quiet)
+			}
+		})
+	}
+}
+
+// TestSubscriptionStateDocsGateSaysWhenItsOwnPremiseBreaks — ось 8: предпосылка
+// распознавателя перестала выполняться.
+//
+// Он обходит вызовы, объявленные в `journal.go`. Пока пакет журнала этим файлом
+// исчерпывается, обход полон. Заведётся второй не-тестовый файл — упаковка,
+// вынесенная туда, окажется НЕ ОСМОТРЕНА, а вердикт «не собирает» будет ложным и
+// на вид исправным. Это тот же класс, что привёл к этой правке, поэтому
+// предпосылка истекает сама, а не держится памятью.
+func TestSubscriptionStateDocsGateSaysWhenItsOwnPremiseBreaks(t *testing.T) {
+	root := t.TempDir()
+	syntheticJournal(t, root, "vpc", true, false)
+
+	// Контроль: одним файлом пакет исчерпан — гейт молчит.
+	legit := judgeSynthetic(t, root, syntheticPage(
+		map[string]string{"vpc": claimStateful}, []string{"vpc"}))
+	if len(legit) != 0 {
+		t.Fatalf("контроль: гейт краснеет на пакете из одного файла: %v", legit)
+	}
+
+	second := filepath.Join(root, "services", "vpc", "internal", "subscriptionjournal", "helpers.go")
+	if err := os.WriteFile(second, []byte("package subscriptionjournal\n"), 0o600); err != nil {
+		t.Fatalf("синтетическое дерево: %v", err)
+	}
+	findings := judgeSynthetic(t, root, syntheticPage(
+		map[string]string{"vpc": claimStateful}, []string{"vpc"}))
+	if len(findings) == 0 {
+		t.Fatal("гейт смолчал на пакете журнала из двух файлов — его собственная " +
+			"предпосылка сломалась незаметно, и он продолжил судить по неполному обходу")
+	}
+	if !strings.Contains(findings[0], "services/vpc") {
+		t.Errorf("находка не называет каталог: %q", findings[0])
+	}
+	t.Logf("предпосылка сломалась: %s", findings[0])
+}
