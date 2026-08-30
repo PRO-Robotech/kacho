@@ -57,6 +57,25 @@ func newRoot() *cobra.Command {
 	return root
 }`
 
+	// srcEntryCobraNoConfig — cobra БЕЗ `--config`: так живут vpc и iam. Фикстура
+	// заведена затем, чтобы `--config` в дереве был у ОДНОЙ службы, как и в
+	// действительности: пока его несли три, снятие флага у одной не лишало строку
+	// ведомости предмета, и инъекция «живая строка потеряла предмет» была
+	// неисполнима.
+	srcEntryCobraNoConfig = `package main
+
+import "github.com/spf13/cobra"
+
+func newRoot() *cobra.Command {
+	var dsn, target string
+	root := &cobra.Command{Use: "kacho-migrator"}
+	root.PersistentFlags().StringVar(&dsn, "dsn", "", "database DSN")
+	up := &cobra.Command{Use: "up"}
+	up.Flags().StringVar(&target, "target", "", "stop at this version")
+	root.AddCommand(up)
+	return root
+}`
+
 	// srcEntryStdlibFlag — форма ДО #1461: разбор стандартным flag на месте.
 	// Именно он терял флаг, написанный после подкоманды.
 	//
@@ -192,23 +211,27 @@ func wrapperFactsForProbe(t *testing.T, src string) migratorWrapperFacts {
 	return f
 }
 
-// factsAsInTree — состояние дерева на момент посадки: семь точек наката, из них
-// одна с `--config`, три обёртки, из них одна с конкретным типом диалекта.
+// factsAsInTree — состояние дерева: семь точек наката, из них одна с `--config`,
+// обёрток НОЛЬ.
+//
+// Фикстура переехала вместе с предметом (#1383). Прежде она несла три обёртки, из
+// них одну с конкретным типом диалекта, — то есть описывала дерево ДО сведения.
+// Оставь её как была, и гейт объявил бы снятые строки вернувшимися: фикстура
+// утверждала бы о дереве то, чего в нём нет, и краснела бы на исправном.
 func factsAsInTree(t *testing.T) []migratorServiceFacts {
 	t.Helper()
 	shared := entryFactsForProbe(t, srcEntryShared)
 	cobraCfg := entryFactsForProbe(t, srcEntryCobraWithConfig)
-	iamWrap := wrapperFactsForProbe(t, srcWrapperIamLike)
-	vpcWrap := wrapperFactsForProbe(t, srcWrapperVpcLike)
+	cobraPlain := entryFactsForProbe(t, srcEntryCobraNoConfig)
 
 	return []migratorServiceFacts{
 		{Service: "compute", Entry: shared},
 		{Service: "geo", Entry: shared},
-		{Service: "iam", Entry: cobraCfg, Wrapper: iamWrap},
-		{Service: "nlb", Entry: cobraCfg, Wrapper: vpcWrap},
+		{Service: "iam", Entry: cobraPlain},
+		{Service: "nlb", Entry: cobraCfg},
 		{Service: "registry", Entry: shared},
 		{Service: "storage", Entry: shared},
-		{Service: "vpc", Entry: cobraCfg, Wrapper: vpcWrap},
+		{Service: "vpc", Entry: cobraPlain},
 	}
 }
 
@@ -257,30 +280,66 @@ func TestMigratorDivergenceGateSpeaksOnADefect(t *testing.T) {
 	doc := docWithEveryKey()
 
 	t.Run("живая строка потеряла предмет", func(t *testing.T) {
-		// Обёртка iam сведена — единственный предмет двух живых строк исчез.
-		// Это и есть тот день, ради которого гейт заведён: строки обязаны быть
-		// помечены снятыми, а не остаться предъявлять снятое как действующее.
+		// `--config` есть только у nlb. Уберём его — единственный предмет
+		// единственной живой строки исчезнет. Это и есть тот день, ради которого
+		// гейт заведён: строка обязана быть помечена снятой, а не остаться
+		// предъявлять снятое как действующее.
 		facts := factsAsInTree(t)
+		plain := entryFactsForProbe(t, srcEntryCobraNoConfig)
 		for i := range facts {
-			if facts[i].Service == "iam" {
-				facts[i].Wrapper = migratorWrapperFacts{}
+			if facts[i].Service == "nlb" {
+				facts[i].Entry = plain
 			}
 		}
 		got := migratorDivergenceFindings(migratorDeclaredDivergences, facts, doc)
-		if len(got) != 2 {
-			t.Fatalf("находок %d, ожидалось две (обе строки про диалект): %v", len(got), got)
+		if len(got) != 1 {
+			t.Fatalf("находок %d, ожидалась одна (config-flag-only-here): %v", len(got), got)
 		}
-		joined := strings.Join(got, "\n")
-		for _, key := range []string{"dialect-empty-accepted", "dialect-not-an-interface"} {
-			if !strings.Contains(joined, key) {
-				t.Errorf("находка не называет ключ %q: %v", key, got)
-			}
-		}
-		if !strings.Contains(joined, "ПОТЕРЯЛО ПРЕДМЕТ") ||
-			!strings.Contains(joined, migratorFormDecisionDoc) {
-			t.Errorf("находка не называет ни предмет, ни документ, который правят: %v", got)
+		if !strings.Contains(got[0], "config-flag-only-here") ||
+			!strings.Contains(got[0], "ПОТЕРЯЛО ПРЕДМЕТ") ||
+			!strings.Contains(got[0], migratorFormDecisionDoc) {
+			t.Errorf("находка не называет ни ключ, ни предмет, ни документ: %v", got)
 		}
 	})
+
+	// Снятие двух строк про диалект (#1383) проверяется С ОБЕИХ сторон: молчание
+	// на сведённом дереве — ниже, в законных близнецах; возвращение — здесь.
+	// Односторонняя проверка зеленела бы на ведомости, которая ничего не ловит.
+	for _, tc := range []struct {
+		name, key, src string
+	}{
+		{"вернулась обёртка с конкретным типом диалекта", "dialect-not-an-interface", srcWrapperIamLike},
+		{"вернулась обёртка с интерфейсом", "dialect-empty-accepted", srcWrapperVpcLike},
+	} {
+		t.Run("снятое различие вернулось: "+tc.name, func(t *testing.T) {
+			facts := factsAsInTree(t)
+			wrap := wrapperFactsForProbe(t, tc.src)
+			for i := range facts {
+				if facts[i].Service == "iam" {
+					facts[i].Wrapper = wrap
+				}
+			}
+			got := migratorDivergenceFindings(migratorDeclaredDivergences, facts, doc)
+			joined := strings.Join(got, "\n")
+			// Обёртка с конкретным типом возвращает ОБЕ строки сразу (она же
+			// принимает пустое имя), обёртка с интерфейсом — ни одной: у неё
+			// предмета нет. Утверждается поэтому присутствие проверяемого ключа
+			// там, где он ожидается, и его отсутствие там, где нет.
+			if tc.key == "dialect-not-an-interface" {
+				if !strings.Contains(joined, tc.key) || !strings.Contains(joined, "ВЕРНУЛОСЬ") {
+					t.Fatalf("возвращение %s не поймано: %v", tc.key, got)
+				}
+				if !strings.Contains(joined, "#1383") {
+					t.Errorf("находка не называет, чем строка была снята: %v", got)
+				}
+				return
+			}
+			if len(got) != 0 {
+				t.Fatalf("обёртка с интерфейсом и строгим именем предмета снятых строк "+
+					"не даёт, а гейт краснеет: %v", got)
+			}
+		})
+	}
 
 	// По одной инъекции на КАЖДУЮ снятую строку, и каждая роняет ровно свою:
 	// иначе молчание соседних строк неотличимо от их отсутствия.
