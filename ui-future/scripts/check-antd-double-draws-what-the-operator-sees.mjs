@@ -246,7 +246,6 @@ const PROBED_BY = {
   // пропом `options`.
   Select: "shared/src/components/organisms/RoutesPanel/RoutesPanel.test.tsx",
   Spin: "shared/src/components/organisms/ResourceEditPage/ResourceEditPage.loading-caption.test.tsx",
-  Statistic: "shared/src/pages/DashboardPage.statistic.test.tsx",
   // Падает на семи утверждениях журнала операций: строки, столбцы и текст
   // отказа приходят пропами `dataSource`/`columns`, а не детьми.
   Table: "shared/src/components/molecules/OperationsTable/OperationsTable.test.tsx",
@@ -309,6 +308,23 @@ const AWAITING_CARRIER = {
   // продуктовом коде уронит прогон и потребует записи в `PROBED_BY`.
   List:
     "носитель (страница параметров личности) снят вместе с каталогом церемоний как не монтируемый ни одним маршрутом — a85792df0, #1225",
+  // Носителем была витрина `shared/src/pages/DashboardPage.tsx` — единственное
+  // место дерева, где рисовался `Statistic`. Её потреблял ровно один импортёр:
+  // барабан `iam/src/pages/DashboardPage`, сам объявленный недостижимым от
+  // входов приложения (#591). Витрину сняли вместе с барабаном (6e801e01e,
+  // #1636). Проба `DashboardPage.statistic.test.tsx` уехала вместе с ней — и
+  // правильно: она утверждала о странице, которой оператор не видел никогда.
+  //
+  // Заменитель `Statistic` при этом рисовать НЕ перестал (`title`, `value`,
+  // `prefix`, `suffix`), и снимать его не за что: форма верна и ждёт первого
+  // настоящего потребителя. Счётчики модуля витрины его не берут — они рисуют
+  // своё, и подменять им нечего.
+  //
+  // Предикат возврата — ловушка ниже: первое же `<Statistic>` с видимым пропом
+  // в продуктовом коде уронит прогон и потребует записи в `PROBED_BY` вместе с
+  // пробой РЯДОМ с носителем.
+  Statistic:
+    "носитель (витрина shared) снят вместе с недостижимым барабаном iam, который был её единственным импортёром — 6e801e01e, #1636",
 };
 
 const uiRoot = process.cwd();

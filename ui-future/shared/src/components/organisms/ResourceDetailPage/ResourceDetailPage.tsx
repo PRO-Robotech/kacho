@@ -46,6 +46,7 @@ import { api, ApiError } from "@shared/api/client";
 import { useProjectStore } from "@shared/lib/context-store";
 import { operationsListPath } from "@shared/lib/operations-subroute";
 import { getByPath, mutationBasePath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
+import { resourceIsMoveCapable } from "@shared/components/molecules/RowActionsMenu";
 import { ReferrerLink } from "@shared/lib/spec-columns";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
 import { errorText } from "@shared/lib/error-presentation";
@@ -266,11 +267,19 @@ export function ResourceDetailPage({
   );
   useBreadcrumb(breadcrumb);
 
-  // Move-capable: те же ресурсы, что в RowActionsMenu (Account/Project/Region/Zone/AddressPool — нет).
-  const moveCapable = useMemo(
-    () => !["accounts", "projects", "regions", "zones", "address-pools"].includes(spec.id),
-    [spec.id],
-  );
+  // «Перемещать нечем» решает ОДИН предикат на консоль — тот же, что у меню
+  // строки списка.
+  //
+  // Здесь стоял СОБСТВЕННЫЙ перечень из пяти имён и комментарий «те же ресурсы,
+  // что в RowActionsMenu». Комментарий был ложен: в каноне имён тринадцать, и
+  // восьми — compute-instances, disk-types, registries, repositories, snapshots,
+  // tags, users, volumes — перечень не знал. На карточке этих восьми арендатору
+  // предлагалась заглушка, которую строка списка того же ресурса уже подавляла.
+  //
+  // Второго слагаемого канона — адреса коллекции — перечень не имел вовсе,
+  // поэтому читающие близнецы каталога размещения (две спеки об одном доменном
+  // объекте) обходили его целиком.
+  const moveCapable = resourceIsMoveCapable(spec);
 
   const overviewActions = useMemo(() => {
     const kebabItems: MenuProps["items"] = [

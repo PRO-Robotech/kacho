@@ -135,9 +135,19 @@ authn:
   # (client identity терминируется до listener'а). Иначе production-старт без
   # public-mTLS отвергается (fail-closed, CWE-290). production-strict игнорирует.
   trustedForwarder: false
-# per-RPC Check через kacho-iam.InternalIAMService.Check (port 9091).
-# project-level list-filter тоже идет через InternalIAMService.Check на
-#   INTERNAL :9091 (iamEndpoint) — НЕ на public :9090.
+# per-RPC Check — kacho-iam.InternalIAMService.Check по адресу authz.iamEndpoint.
+#
+# Фильтр видимости (listFilter) идёт ОТДЕЛЬНЫМ соединением и ДРУГИМ глаголом —
+# AuthorizeService.BatchCheck. Его адрес задаёт listFilter.authorizeEndpoint, а
+# пустое значение означает «взять authz.iamEndpoint». На какой слушатель iam этот
+# адрес приходит, решает ПРОФИЛЬ, а не сервис: AuthorizeService зарегистрирована на
+# ОБОИХ слушателях iam. Состав слушателей описан в одном месте —
+# services/iam/cmd/kacho-iam/grpc_register.go, — и здесь не пересказывается.
+#
+# Здесь стояло «list-filter тоже идёт через InternalIAMService.Check на INTERNAL
+# :9091 — НЕ на public :9090»: неверно названы и глагол, и соединение. Снято потому,
+# что этим утверждением обосновывали вывод «публичных служб на внутреннем слушателе
+# нет», и вывод был неверен.
 #
 # listFilter.authorizeEndpoint КОД ЧИТАЕТ. Здесь стояло обратное («наследие старого
 # ListObjects-подхода, код их больше не читает»), и это было неверно: его читает
@@ -175,8 +185,10 @@ authz:
   # получать сужение, а не терять его молча. Страж старта (ValidateListFilter)
   # отказывает в старте при выключенном фильтре на ЛЮБОЙ посадке, включая dev.
   listFilter:
-    enabled: true            # Использует authz.iamEndpoint (:9091), если authorizeEndpoint пуст.
-    # Адрес iam AuthorizeService (публичный :9090). Пусто → берётся authz.iamEndpoint.
+    enabled: true
+    # Адрес iam AuthorizeService. Пусто → берётся authz.iamEndpoint, чьё умолчание —
+    # внутренний kacho-iam-internal:9091; публичный адрес тоже законен (служба стоит
+    # на обоих слушателях, см. шапку раздела).
     # Соединение поднимается ОТДЕЛЬНО от ребра per-RPC Check и требует проверяемого
     # транспорта: боевая посадка без authorizeTls.enable (или без общего с Check
     # client-cert'а KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE) НЕ СТАРТУЕТ.
