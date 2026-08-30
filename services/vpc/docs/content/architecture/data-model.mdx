@@ -89,7 +89,7 @@ Soft-ref-связи (по id, без FK — например <code>network\_inte
     <tr><td><code>cidr\_groups</code></td><td>CidrGroup (именованный набор CIDR для правил SG)</td><td><code>id</code></td><td><code>UNIQUE (project\_id, name)</code></td><td>да</td></tr>
     <tr><td><code>address\_pools</code></td><td><em>(admin)</em> глобальный пул CIDR для IPAM</td><td><code>id</code></td><td>partial <code>UNIQUE</code> на default-pool</td><td>да</td></tr>
     <tr><td><code>operations</code></td><td>Long-running async-операции (LRO)</td><td><code>id</code></td><td>—</td><td>да</td></tr>
-    <tr><td><code>vpc\_outbox</code></td><td>Доменный транзакционный журнал событий + <code>pg\_notify</code> (in-cluster <code>LISTEN/NOTIFY</code>; наружу журнал vpc сегодня не проецируется)</td><td><code>sequence\_no</code></td><td>—</td><td>да</td></tr>
+    <tr><td><code>vpc\_outbox</code></td><td>Доменный транзакционный журнал событий + <code>pg\_notify</code> (in-cluster <code>LISTEN/NOTIFY</code>); он же — журнал платформенной подписки, который край проецирует арендатору потоком</td><td><code>sequence\_no</code></td><td>—</td><td>да</td></tr>
     <tr><td><code>subnet\_cidr\_blocks</code></td><td>Состав CIDR подсети, по блоку на строку (нормализация массива)</td><td><code>(subnet\_id, block)</code></td><td>PK</td><td>нет</td></tr>
     <tr><td><code>cidr\_group\_blocks</code></td><td>Состав CidrGroup, по блоку на строку</td><td><code>(group\_id, block)</code></td><td>PK</td><td>нет</td></tr>
     <tr><td><code>security\_group\_rule\_cidr\_group\_refs</code></td><td>Ссылки правил SG на CidrGroup (RESTRICT-удержание группы)</td><td><code>(security\_group\_id, rule\_id, cidr\_group\_id)</code></td><td>PK</td><td>нет</td></tr>
@@ -283,7 +283,7 @@ writers / багов в app-коде):
   <thead><tr><th>Таблица</th><th>Роль</th></tr></thead>
   <tbody>
     <tr><td><code>operations</code></td><td>LRO-envelope: каждая мутация создает строку (<code>done=false</code>), worker-горутина переводит в <code>done=true</code> с <code>response</code> (созданный ресурс) либо <code>error</code> (<code>google.rpc.Status</code>). Без FK на ресурсы — <code>resource\_id</code> хранится как plain TEXT (ресурс может быть удален до завершения op). Подробнее — <a href="/architecture/operations">Операции</a>.</td></tr>
-    <tr><td><code>vpc\_outbox</code></td><td>Транзакционный outbox-журнал: каждая успешная мутация пишет событие в outbox <strong>в той же TX</strong>, что и сам ресурс. Триггер <code>vpc\_outbox\_notify\_trg</code> делает <code>pg\_notify('vpc\_outbox', sequence\_no::text)</code> — in-cluster <code>LISTEN/NOTIFY</code>-канал. Наружу этот журнал сегодня не проецируется: подписка на изменения у платформы есть (одна ручка края поверх журналов владельцев), но vpc в число объявленных владельцев пока не входит, поэтому клиенты наблюдают изменения ресурсов vpc через polling <code>List</code> / <code>OperationService.Get</code>.</td></tr>
+    <tr><td><code>vpc\_outbox</code></td><td>Транзакционный outbox-журнал: каждая успешная мутация пишет событие в outbox <strong>в той же TX</strong>, что и сам ресурс. Триггер <code>vpc\_outbox\_notify\_trg</code> делает <code>pg\_notify('vpc\_outbox', sequence\_no::text)</code> — in-cluster <code>LISTEN/NOTIFY</code>-канал. Этот же журнал <strong>проецируется наружу</strong>: vpc объявлен владельцем платформенной подписки, и край отдаёт его строки арендатору потоком (<code>GET /subscription/v1/events</code>, <code>owner=vpc</code>, восемь видов). Объявление словаря видов и удержания — <code>internal/subscriptionjournal/journal.go</code>. Опрос <code>List</code> / <code>OperationService.Get</code> при этом остаётся законным путём, а исход операции узнаётся только им.</td></tr>
   </tbody>
 </table>
 
@@ -294,7 +294,7 @@ flowchart LR
   op -.->|"worker goroutine"| work["doCreate / doUpdate / doDelete"]
   work -->|"TX: INSERT resource + INSERT vpc_outbox"| res[("resource table")]
   work -->|"same TX"| ob[("vpc_outbox")]
-  ob -->|"trigger pg_notify"| notify["LISTEN/NOTIFY vpc_outbox<br/>(in-cluster, наружу не проецируется)"]
+  ob -->|"trigger pg_notify"| notify["LISTEN/NOTIFY vpc_outbox<br/>(in-cluster; он же журнал подписки,<br/>который край отдаёт потоком)"]
   work -->|"UPDATE operations SET done=true"| op
   op -.->|"poll OperationService.Get"| cli
 ```
