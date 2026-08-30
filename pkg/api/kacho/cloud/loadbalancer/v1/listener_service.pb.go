@@ -216,8 +216,11 @@ type CreateListenerRequest struct {
 	// ID of the parent NetworkLoadBalancer. Immutable after Listener.Create.
 	LoadBalancerId string `protobuf:"bytes,1,opt,name=load_balancer_id,json=loadBalancerId,proto3" json:"load_balancer_id,omitempty"`
 	// Name of the Listener. Must be a DNS label (lowercase letters, digits and
-	// hyphens, 1-63 characters) and is unique within the project. Empty on Create
-	// makes the server derive the name from the assigned id.
+	// hyphens, 1-63 characters) and is unique within the PARENT LOAD BALANCER —
+	// NOT within the project. The scope is the one the database enforces:
+	// `listeners_lb_name_uniq (load_balancer_id, name)`, so `https` may be reused
+	// on every load balancer of a project. Empty on Create makes the server derive
+	// the name from the assigned id.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// Description of the Listener.
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
@@ -385,8 +388,11 @@ type UpdateListenerRequest struct {
 	// immutable-списка ушли вместе с переездом VIP на LoadBalancer.
 	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,2,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
 	// Name of the Listener. Must be a DNS label (lowercase letters, digits and
-	// hyphens, 1-63 characters) and is unique within the project. Empty on Create
-	// makes the server derive the name from the assigned id.
+	// hyphens, 1-63 characters) and is unique within the PARENT LOAD BALANCER —
+	// NOT within the project. The scope is the one the database enforces:
+	// `listeners_lb_name_uniq (load_balancer_id, name)`, so `https` may be reused
+	// on every load balancer of a project. Empty on Create makes the server derive
+	// the name from the assigned id.
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	// Description of the Listener.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`

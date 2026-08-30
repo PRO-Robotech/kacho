@@ -170,8 +170,11 @@ message CreateListenerRequest {
   string load_balancer_id = 1;
 
   // Name of the Listener. Must be a DNS label (lowercase letters, digits and
-  // hyphens, 1-63 characters) and is unique within the project. Empty on Create
-  // makes the server derive the name from the assigned id.
+  // hyphens, 1-63 characters) and is unique within the PARENT LOAD BALANCER —
+  // NOT within the project. The scope is the one the database enforces:
+  // `listeners_lb_name_uniq (load_balancer_id, name)`, so `https` may be reused
+  // on every load balancer of a project. Empty on Create makes the server derive
+  // the name from the assigned id.
   string name = 2;
   // Description of the Listener.
   string description = 3;
@@ -214,8 +217,11 @@ message UpdateListenerRequest {
   google.protobuf.FieldMask update_mask = 2;
 
   // Name of the Listener. Must be a DNS label (lowercase letters, digits and
-  // hyphens, 1-63 characters) and is unique within the project. Empty on Create
-  // makes the server derive the name from the assigned id.
+  // hyphens, 1-63 characters) and is unique within the PARENT LOAD BALANCER —
+  // NOT within the project. The scope is the one the database enforces:
+  // `listeners_lb_name_uniq (load_balancer_id, name)`, so `https` may be reused
+  // on every load balancer of a project. Empty on Create makes the server derive
+  // the name from the assigned id.
   string name = 3;
   // Description of the Listener.
   string description = 4;
