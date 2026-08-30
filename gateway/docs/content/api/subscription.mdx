@@ -145,10 +145,10 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
 состояние есть у создания и правки, а у снятия его нет: предмета больше не существует, собирать
 было нечего.
 
-`loadbalancer` и `storage` — **смешанные, и решать надо по виду, а не по владельцу**: у
-`loadbalancer` состояние есть у `nlb_listener` и `nlb_target_group` (создание и правка) и
-нет у `nlb_network_load_balancer` ни у одного рода изменения; у `storage` — есть у
-`storage_volume` и нет у `storage_snapshot` и `storage_image`.
+`loadbalancer` — **смешанный, и решать надо по виду, а не по владельцу**: состояние есть
+у `nlb_listener` и `nlb_target_group` (создание и правка) и нет у
+`nlb_network_load_balancer` ни у одного рода изменения. У `storage` состояние есть у всех
+трёх его видов.
 
 Переезд ресурса между проектами приходит у `loadbalancer` ОБЫЧНОЙ правкой (`UPDATED`) и
 несёт состояние с НОВЫМ якорем проекта: отдельного рода изменения для переезда в словаре
@@ -211,12 +211,13 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
     <tr>
       <td><code>storage</code></td><td>Storage</td>
       <td><code>storage&#95;volume</code>, <code>storage&#95;snapshot</code>, <code>storage&#95;image</code></td>
-      <td><code>state</code> типа <code>kacho.cloud.storage.v1.Volume</code> — только у вида
-          <code>storage&#95;volume</code>, у создания и правки. У
-          <code>storage&#95;snapshot</code> и <code>storage&#95;image</code> состояния нет ни
-          у одного рода изменения: их поле <code>usedBy</code> — перечень ТОМОВ, засеянных
-          этим источником, а мутация тома событий им не эмитирует, поэтому состояние
-          устаревало бы молча. Отсутствие доезжает причиной <code>NOT&#95;PRODUCED</code></td>
+      <td><code>state</code> типа контракта своего вида —
+          <code>kacho.cloud.storage.v1.Volume</code>,
+          <code>kacho.cloud.storage.v1.Snapshot</code>,
+          <code>kacho.cloud.storage.v1.Image</code> — у создания и правки; у снятия
+          состояния нет. Поле <code>usedBy</code> снимка и образа (перечень томов,
+          засеянных этим источником) остаётся свежим: появление и снятие такого тома
+          приходят правкой самого источника</td>
     </tr>
     <tr>
       <td><code>vpc</code></td><td>VPC</td>
