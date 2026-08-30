@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // newman_body_contract_test.go — гейт: ни один REST-запрос регрессионных
@@ -119,7 +121,7 @@ var absentRouteBodyWaiver = map[string]string{
 
 func TestNewmanCollectionsSendNoUnknownRequestFields(t *testing.T) {
 	root := repoRoot(t)
-	files, err := filepath.Glob(filepath.Join(root, "services", "*", "tests", "newman", "collections", "*.json"))
+	files, err := treecorpus.Glob(filepath.Join(root, "services", "*", "tests", "newman", "collections", "*.json"))
 	if err != nil {
 		t.Fatalf("glob collections: %v", err)
 	}
@@ -506,7 +508,7 @@ func mustRel(root, path string) string {
 // полного прогона стенда.
 func TestNewmanCollectionsDoNotDoublePrefixTheRoute(t *testing.T) {
 	root := repoRoot(t)
-	files, err := filepath.Glob(filepath.Join(root, "services", "*", "tests", "newman", "collections", "*.json"))
+	files, err := treecorpus.Glob(filepath.Join(root, "services", "*", "tests", "newman", "collections", "*.json"))
 	if err != nil {
 		t.Fatalf("glob collections: %v", err)
 	}

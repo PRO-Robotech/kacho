@@ -71,7 +71,7 @@ func TestPreflightPassesWhatItIsMeantToPass(t *testing.T) {
 	rep := dropguard.Preflight(context.Background(), counts(map[string]int64{
 		"widgets": 0,
 		"gadgets": 0,
-	}), preflightChain(t), allPending, nil)
+	}), preflightChain(t), allPending, nil, dropguard.WholeChain())
 
 	if !rep.OK() {
 		t.Fatalf("two empty tables must pass, got %+v", rep.Violations)
@@ -89,7 +89,7 @@ func TestPreflightRefusesATableThatStillHoldsRows(t *testing.T) {
 	rep := dropguard.Preflight(context.Background(), counts(map[string]int64{
 		"widgets": 17,
 		"gadgets": 0,
-	}), preflightChain(t), allPending, nil)
+	}), preflightChain(t), allPending, nil, dropguard.WholeChain())
 
 	if rep.OK() {
 		t.Fatal("a pending drop of a table holding 17 rows must be refused")
@@ -118,7 +118,7 @@ func TestUnreachableIsNotEmpty(t *testing.T) {
 	unreachable := func(_ context.Context, table string) (int64, error) {
 		return 0, fmt.Errorf("%w: ping before counting %q", dropguard.ErrNoConnection, table)
 	}
-	rep := dropguard.Preflight(context.Background(), unreachable, preflightChain(t), allPending, nil)
+	rep := dropguard.Preflight(context.Background(), unreachable, preflightChain(t), allPending, nil, dropguard.WholeChain())
 
 	if rep.OK() {
 		t.Fatal("an unreachable database is not a clean one")
@@ -135,7 +135,7 @@ func TestUnreachableIsNotEmpty(t *testing.T) {
 	// would also be green on a guard that refuses every outcome alike.
 	if clean := dropguard.Preflight(context.Background(), counts(map[string]int64{
 		"widgets": 0, "gadgets": 0,
-	}), preflightChain(t), allPending, nil); !clean.OK() {
+	}), preflightChain(t), allPending, nil, dropguard.WholeChain()); !clean.OK() {
 		t.Fatalf("a measured zero must pass where an unmeasured zero refuses, got %+v", clean.Violations)
 	}
 }
@@ -148,7 +148,7 @@ func TestUnreachableIsNotEmpty(t *testing.T) {
 func TestAbsentTableDestroysNothing(t *testing.T) {
 	rep := dropguard.Preflight(context.Background(), counts(map[string]int64{
 		"gadgets": 0, // widgets missing entirely
-	}), preflightChain(t), allPending, nil)
+	}), preflightChain(t), allPending, nil, dropguard.WholeChain())
 
 	if !rep.OK() {
 		t.Fatalf("an absent table holds nothing to destroy, got %+v", rep.Violations)
@@ -168,7 +168,7 @@ func TestAppliedVersionsAreNotPending(t *testing.T) {
 
 	rep := dropguard.Preflight(context.Background(), counts(map[string]int64{
 		"widgets": 500, "gadgets": 500,
-	}), preflightChain(t), appliedThrough9, nil)
+	}), preflightChain(t), appliedThrough9, nil, dropguard.WholeChain())
 
 	if !rep.OK() {
 		t.Fatalf("no drop is pending, so nothing can be destroyed: %+v", rep.Violations)
@@ -191,7 +191,7 @@ func TestCannotTellWhetherAppliedIsRefused(t *testing.T) {
 
 	rep := dropguard.Preflight(context.Background(), counts(map[string]int64{
 		"widgets": 0, "gadgets": 0,
-	}), preflightChain(t), broken, nil)
+	}), preflightChain(t), broken, nil, dropguard.WholeChain())
 
 	if rep.OK() {
 		t.Fatal("an unreadable applied-set must refuse, not silently skip every drop")
@@ -212,7 +212,7 @@ func TestApprovalReleasesExactlyOneDrop(t *testing.T) {
 	t.Run("named drop proceeds", func(t *testing.T) {
 		rep := dropguard.Preflight(context.Background(), counts(map[string]int64{
 			"widgets": 17, "gadgets": 0,
-		}), preflightChain(t), allPending, approvals)
+		}), preflightChain(t), allPending, approvals, dropguard.WholeChain())
 		if !rep.OK() {
 			t.Fatalf("the approved drop must proceed, got %+v", rep.Violations)
 		}
@@ -224,7 +224,7 @@ func TestApprovalReleasesExactlyOneDrop(t *testing.T) {
 	t.Run("an unnamed drop is still refused", func(t *testing.T) {
 		rep := dropguard.Preflight(context.Background(), counts(map[string]int64{
 			"widgets": 17, "gadgets": 4,
-		}), preflightChain(t), allPending, approvals)
+		}), preflightChain(t), allPending, approvals, dropguard.WholeChain())
 		if rep.OK() {
 			t.Fatal("approving one drop must not release another")
 		}
@@ -237,7 +237,7 @@ func TestApprovalReleasesExactlyOneDrop(t *testing.T) {
 		stale := []dropguard.Approval{{Version: 999, Table: "nothing"}}
 		rep := dropguard.Preflight(context.Background(), counts(map[string]int64{
 			"widgets": 17, "gadgets": 0,
-		}), preflightChain(t), allPending, stale)
+		}), preflightChain(t), allPending, stale, dropguard.WholeChain())
 		if rep.OK() {
 			t.Fatal("a stale approval releases nothing")
 		}
@@ -287,7 +287,7 @@ func TestParseApprovalsRefusesWhatItCannotUnderstand(t *testing.T) {
 func TestCensusSaysHowMuchWasLookedAt(t *testing.T) {
 	rep := dropguard.Preflight(context.Background(), counts(map[string]int64{
 		"widgets": 0, "gadgets": 0,
-	}), preflightChain(t), allPending, nil)
+	}), preflightChain(t), allPending, nil, dropguard.WholeChain())
 
 	var sb strings.Builder
 	rep.WriteCensus(&sb)
@@ -313,7 +313,7 @@ func TestGateRefusesBeforeItEverTouchesTheDatabase(t *testing.T) {
 		"-- +goose Up\nDROP TABLE widgets;\n-- +goose Down\nCREATE TABLE widgets (id TEXT);\n")}}
 
 	t.Run("migrations unreadable", func(t *testing.T) {
-		err := dropguard.Gate(context.Background(), nil, "demo", fstest.MapFS{}, io.Discard)
+		err := dropguard.Gate(context.Background(), nil, "demo", fstest.MapFS{}, io.Discard, dropguard.WholeChain())
 		if err == nil {
 			t.Fatal("migrations that cannot be read mean the pending drops are unknown, not absent")
 		}
@@ -321,12 +321,147 @@ func TestGateRefusesBeforeItEverTouchesTheDatabase(t *testing.T) {
 
 	t.Run("approval list malformed", func(t *testing.T) {
 		t.Setenv(dropguard.ApprovalEnv, "not-an-approval")
-		err := dropguard.Gate(context.Background(), nil, "demo", valid, io.Discard)
+		err := dropguard.Gate(context.Background(), nil, "demo", valid, io.Discard, dropguard.WholeChain())
 		if err == nil {
 			t.Fatal("an unreadable approval list must stop the deploy, not read as 'approve nothing'")
 		}
 		if !strings.Contains(err.Error(), dropguard.ApprovalEnv) {
 			t.Errorf("error %q does not name the variable the operator has to fix", err)
+		}
+	})
+}
+
+// TestTargetCountsOnlyWhatThisRunWillApply — the decision half of #1487.
+//
+// A run that stops at 0003 does not execute the drop in 0009, so counting that
+// table can only refuse the deploy over rows the deploy leaves alone; the operator
+// then clears it by naming somebody else's drop.
+//
+// The cases sit in ONE test because the proof is their contrast, not any one of
+// them. Cases (b) and (c) are the SAME database — identical counts, identical
+// applied set — and differ in the target alone, so an implementation that stopped
+// counting altogether would pass (b) and fail (c). Case (a) is the paired positive
+// without which "the narrowed run proceeded" would also be true of a guard that
+// refuses nothing at all.
+func TestTargetCountsOnlyWhatThisRunWillApply(t *testing.T) {
+	// widgets is dropped by 0003, gadgets by 0009 — see preflightChain.
+	onlyWidgets := map[string]int64{"widgets": 7, "gadgets": 0}
+	onlyGadgets := map[string]int64{"widgets": 0, "gadgets": 7}
+
+	t.Run("a: a drop WITHIN the target still refuses", func(t *testing.T) {
+		rep := dropguard.Preflight(context.Background(), counts(onlyWidgets),
+			preflightChain(t), allPending, nil, dropguard.UpTo(3))
+
+		if rep.OK() {
+			t.Fatal("0003 is inside a run that stops at 0003; its rows are destroyed and must be refused")
+		}
+		if rep.Violations[0].Table != "widgets" {
+			t.Errorf("refused %q, want widgets", rep.Violations[0].Table)
+		}
+	})
+
+	t.Run("b: a drop BEYOND the target is deferred, not refused", func(t *testing.T) {
+		rep := dropguard.Preflight(context.Background(), counts(onlyGadgets),
+			preflightChain(t), allPending, nil, dropguard.UpTo(3))
+
+		if !rep.OK() {
+			t.Fatalf("a run stopping at 0003 never executes the drop in 0009: %+v", rep.Violations)
+		}
+		// Deferred, not forgotten: the drop is still ahead of this database, and a
+		// census that dropped it would make "the target narrowed the check"
+		// indistinguishable from "there was nothing else to check".
+		if len(rep.Deferred) != 1 || !strings.Contains(rep.Deferred[0], "gadgets") {
+			t.Errorf("deferred %v, want the 0009 drop named", rep.Deferred)
+		}
+		if rep.Pending != 1 {
+			t.Errorf("pending %d, want 1 — only the reachable drop can destroy anything here", rep.Pending)
+		}
+		if rep.DropsInChain != 2 {
+			t.Errorf("chain census lost: %d, want 2", rep.DropsInChain)
+		}
+	})
+
+	t.Run("c: the SAME database with no target refuses — narrowing is not a bypass", func(t *testing.T) {
+		rep := dropguard.Preflight(context.Background(), counts(onlyGadgets),
+			preflightChain(t), allPending, nil, dropguard.WholeChain())
+
+		if rep.OK() {
+			t.Fatal("without a target the run reaches 0009, so its rows are destroyed and must be refused")
+		}
+		if rep.Violations[0].Table != "gadgets" {
+			t.Errorf("refused %q, want gadgets", rep.Violations[0].Table)
+		}
+		if len(rep.Deferred) != 0 {
+			t.Errorf("nothing is out of reach of a whole-chain run, deferred %v", rep.Deferred)
+		}
+	})
+
+	// The zero value is the ONE thing a caller gets by forgetting, so it is asserted
+	// rather than assumed: it has to be the widest check, never the narrowest. A
+	// migrator wired tomorrow that omits the target must over-count, not under-count.
+	t.Run("d: the ZERO VALUE counts everything, exactly as WholeChain does", func(t *testing.T) {
+		var forgotten dropguard.Target
+
+		rep := dropguard.Preflight(context.Background(), counts(onlyGadgets),
+			preflightChain(t), allPending, nil, forgotten)
+
+		if rep.OK() {
+			t.Fatal("an unset target must count the whole chain; anything else is a silent bypass")
+		}
+		explicit := dropguard.Preflight(context.Background(), counts(onlyGadgets),
+			preflightChain(t), allPending, nil, dropguard.WholeChain())
+		if rep.Pending != explicit.Pending || len(rep.Violations) != len(explicit.Violations) {
+			t.Errorf("zero value (pending %d, %d refusal(s)) differs from WholeChain (pending %d, %d refusal(s))",
+				rep.Pending, len(rep.Violations), explicit.Pending, len(explicit.Violations))
+		}
+	})
+
+	// A drop out of reach must produce NO violation of any kind — including the one
+	// raised when the bookkeeping cannot be read. Refusing a deploy because we could
+	// not tell whether a migration this run will not execute has already executed is
+	// the same defect wearing a different coat.
+	//
+	// It is also why the census never calls a deferred drop "pending": the question
+	// was not asked of it, and a report that answered anyway would be inventing.
+	t.Run("f: an unreadable applied-set beyond the target refuses nothing", func(t *testing.T) {
+		broken := func(v int64) (bool, error) {
+			if v > 3 {
+				return false, errors.New("permission denied for relation goose_db_version")
+			}
+			return false, nil
+		}
+
+		rep := dropguard.Preflight(context.Background(), counts(map[string]int64{
+			"widgets": 0, "gadgets": 7,
+		}), preflightChain(t), broken, nil, dropguard.UpTo(3))
+
+		if !rep.OK() {
+			t.Fatalf("0009 is out of reach; not knowing its applied state cannot stop this run: %+v", rep.Violations)
+		}
+		// The mirror, so this does not pass by the guard having stopped asking: the
+		// same unreadable set WITHIN reach must still refuse.
+		wide := dropguard.Preflight(context.Background(), counts(map[string]int64{
+			"widgets": 0, "gadgets": 7,
+		}), preflightChain(t), broken, nil, dropguard.WholeChain())
+		if wide.OK() {
+			t.Fatal("within reach an unreadable applied-set must still refuse")
+		}
+	})
+
+	// There is no "count nothing": every target counts at least what the run applies.
+	t.Run("e: a target that reaches nothing applies nothing either", func(t *testing.T) {
+		rep := dropguard.Preflight(context.Background(), counts(map[string]int64{
+			"widgets": 7, "gadgets": 7,
+		}), preflightChain(t), allPending, nil, dropguard.UpTo(1))
+
+		if !rep.OK() {
+			t.Fatalf("a run that applies no drop destroys nothing: %+v", rep.Violations)
+		}
+		if len(rep.Deferred) != 2 {
+			t.Errorf("deferred %v, want both drops on the record", rep.Deferred)
+		}
+		if !strings.Contains(rep.Summary(), "up to 0001") {
+			t.Errorf("the census must say WHICH question it answered: %q", rep.Summary())
 		}
 	})
 }

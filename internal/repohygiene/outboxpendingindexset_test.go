@@ -100,7 +100,7 @@ var nonPartitionDrainedOutboxes = map[string]string{
 // одиночный (id) у очереди с собственной выборкой по id.
 func TestOutboxPendingIndexSetIsExactlyTwo(t *testing.T) {
 	root := repoRoot(t)
-	inv, files := pendingIndexInventory(t, root)
+	inv, files := pendingIndexInventory(t, root, trackedMigrationSQL)
 
 	// «Ноль находок» обязано быть отличимо от «ноль прочитанного».
 	if files == 0 {
@@ -180,7 +180,7 @@ func TestOutboxPendingIndexSetIsExactlyTwo(t *testing.T) {
 // слепую зону.
 func TestNonPartitionOutboxExemptionsHaveSubject(t *testing.T) {
 	root := repoRoot(t)
-	inv, _ := pendingIndexInventory(t, root)
+	inv, _ := pendingIndexInventory(t, root, trackedMigrationSQL)
 
 	present := map[string]bool{}
 	for key := range inv {
@@ -301,7 +301,7 @@ func indexOpsInTextOrder(up string) []sqlIndexOp {
 // живого экземпляра не было, но зона была латентной, а не отсутствующей.
 //
 // Down-секции намеренно игнорируются: они описывают откат, а не состояние схемы.
-func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]string, int) {
+func pendingIndexInventory(t *testing.T, root string, corpus migrationSQLCorpus) (map[string]map[string]string, int) {
 	t.Helper()
 
 	servicesDir := filepath.Join(root, "services")
@@ -318,9 +318,9 @@ func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]str
 		}
 		svc := e.Name()
 		dir := filepath.Join(servicesDir, svc, "internal", "migrations")
-		sqls, globErr := filepath.Glob(filepath.Join(dir, "*.sql"))
+		sqls, globErr := corpus(dir)
 		if globErr != nil {
-			t.Fatalf("обход %s: %v", dir, globErr)
+			t.Fatalf("состав %s: %v", dir, globErr)
 		}
 		sort.Strings(sqls) // имена миграций начинаются с версии — лексикографический порядок = порядок применения
 		svcKeys := map[string]bool{}

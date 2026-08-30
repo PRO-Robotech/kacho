@@ -75,7 +75,7 @@ func TestIntegration_GateCountsTheLiveDatabase(t *testing.T) {
 	gate := func(t *testing.T) (string, error) {
 		t.Helper()
 		var sb strings.Builder
-		err := dropguard.Gate(ctx, db, "demo", liveChain, &sb)
+		err := dropguard.Gate(ctx, db, "demo", liveChain, &sb, dropguard.WholeChain())
 		t.Logf("%s", sb.String())
 		return sb.String(), err
 	}
@@ -209,7 +209,7 @@ func TestIntegration_DatabaseThatPredatesTheChain(t *testing.T) {
 	}
 
 	var sb strings.Builder
-	gerr := dropguard.Gate(ctx, db, "demo", liveChain, &sb)
+	gerr := dropguard.Gate(ctx, db, "demo", liveChain, &sb, dropguard.WholeChain())
 	t.Logf("%s", sb.String())
 
 	if gerr == nil {
@@ -275,6 +275,94 @@ func TestIntegration_NoBookkeepingIsNotUnreachable(t *testing.T) {
 		if aerr == nil {
 			t.Fatalf("an unreachable database returned (%v, nil) — a guess that looks safe "+
 				"is the whole failure mode this package exists to prevent", applied)
+		}
+	})
+}
+
+// TestIntegration_TargetedRunCountsOnlyWhatItWillApply — the live half of #1487.
+//
+// The decision logic is settled next door with a fake counter. What only a database
+// can show is that the narrowing rides on the SAME goose bookkeeping and the same
+// live counts as the unnarrowed run — that it is a question about this database,
+// not a branch that stopped asking.
+//
+// The pairing is the point, and both halves run against ONE database in ONE state:
+// the rows, the applied set and the migrations are identical across the subtests,
+// and the target is the only thing that differs.
+func TestIntegration_TargetedRunCountsOnlyWhatItWillApply(t *testing.T) {
+	if testing.Short() {
+		t.Skip("live drop preflight needs a database; -short leaves it unmeasured, which is not the same as clean")
+	}
+	ctx := context.Background()
+
+	db, err := sql.Open("pgx", pgtest.NewEmptyDB(t))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	goose.SetBaseFS(liveChain)
+	if serr := goose.SetDialect("postgres"); serr != nil {
+		t.Fatalf("goose dialect: %v", serr)
+	}
+	goose.SetLogger(goose.NopLogger())
+	if uerr := goose.UpTo(db, ".", 1); uerr != nil {
+		t.Fatalf("up to 0001: %v", uerr)
+	}
+
+	gate := func(t *testing.T, target dropguard.Target) (string, error) {
+		t.Helper()
+		var sb strings.Builder
+		gerr := dropguard.Gate(ctx, db, "demo", liveChain, &sb, target)
+		t.Logf("%s", sb.String())
+		return sb.String(), gerr
+	}
+
+	// A tenant row in gadgets, which 0009 drops. A run that stops at 0003 never
+	// executes that migration.
+	if _, ierr := db.ExecContext(ctx, `INSERT INTO gadgets (id) VALUES ('beyond-the-target')`); ierr != nil {
+		t.Fatalf("seed: %v", ierr)
+	}
+
+	t.Run("beyond the target: a run stopping at 0003 proceeds", func(t *testing.T) {
+		census, gerr := gate(t, dropguard.UpTo(3))
+		if gerr != nil {
+			t.Fatalf("this run never executes 0009, so it cannot destroy those rows: %v", gerr)
+		}
+		if !strings.Contains(census, "not reached by this run") || !strings.Contains(census, "gadgets") {
+			t.Errorf("a deferred drop must stay on the record, census was:\n%s", census)
+		}
+	})
+
+	t.Run("no target on the SAME database: refused", func(t *testing.T) {
+		census, gerr := gate(t, dropguard.WholeChain())
+		if gerr == nil {
+			t.Fatal("without a target the run reaches 0009; narrowing must not be a way past the count")
+		}
+		if !strings.Contains(census, "gadgets") {
+			t.Errorf("census does not name the refused table:\n%s", census)
+		}
+	})
+
+	t.Run("the ZERO VALUE behaves as the whole chain", func(t *testing.T) {
+		var forgotten dropguard.Target
+		if _, gerr := gate(t, forgotten); gerr == nil {
+			t.Fatal("a caller that omits the target must get the widest check, never the narrowest")
+		}
+	})
+
+	// The paired positive: without it, "the narrowed run proceeded" would also be
+	// true of a guard that stopped counting anything at all.
+	t.Run("within the target: still refused", func(t *testing.T) {
+		if _, ierr := db.ExecContext(ctx, `INSERT INTO widgets (id) VALUES ('inside-the-target')`); ierr != nil {
+			t.Fatalf("seed: %v", ierr)
+		}
+		census, gerr := gate(t, dropguard.UpTo(3))
+		if gerr == nil {
+			t.Fatal("0003 is inside a run that stops at 0003; its rows go the moment it runs")
+		}
+		if !strings.Contains(census, "widgets") {
+			t.Errorf("census does not name the refused table:\n%s", census)
 		}
 	})
 }

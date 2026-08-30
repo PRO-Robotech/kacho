@@ -468,22 +468,39 @@ func TestRefusesSSLMode(t *testing.T) {
 }
 `
 
-func synthWitnessDir(t *testing.T, files map[string]string) string {
+// synthWitnessDir отдаёт ПУТИ написанных файлов, а не каталог.
+//
+// Состав синтетического пакета известен здесь точно — он только что записан, —
+// поэтому спрашивать его повторно (у диска ли, у индекса ли) незачем: разбору
+// передаётся то, что создано. Индекса у временного каталога нет и быть не
+// может, а обход диска на этом месте пришлось бы отличать от обхода настоящего
+// дерева, где он запрещён.
+func synthWitnessDir(t *testing.T, files map[string]string) []string {
 	t.Helper()
 	dir := t.TempDir()
+	paths := make([]string, 0, len(files))
 	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+		full := filepath.Join(dir, name)
+		if err := os.WriteFile(full, []byte(body), 0o600); err != nil {
 			t.Fatalf("запись %s: %v", name, err)
 		}
+		// Отбор тот же, что делал образец `*_test.go` внутри разбора: не-проба
+		// (README пустого пакета) в состав не идёт. Без этой строки разбор
+		// получил бы файл, который Go не является, и пустой пакет перестал бы
+		// быть пустым — то есть фикстура «проб нет» проверяла бы не то.
+		if !strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		paths = append(paths, full)
 	}
-	return dir
+	return paths
 }
 
 // ── направление (а): свидетеля НЕТ, хотя файл выглядит как свидетельство ───
 
 func TestRefusalWitnessGateRedOnAFileLevelDecoy(t *testing.T) {
-	dir := synthWitnessDir(t, map[string]string{"decoy_test.go": injWitnessDecoySrc})
-	w, err := scanContractRefusalWitness(dir)
+	paths := synthWitnessDir(t, map[string]string{"decoy_test.go": injWitnessDecoySrc})
+	w, err := scanContractRefusalWitness(paths)
 	if err != nil {
 		t.Fatalf("разбор синтетического пакета: %v", err)
 	}
@@ -502,8 +519,8 @@ func TestRefusalWitnessGateRedOnAFileLevelDecoy(t *testing.T) {
 
 // Подделка в ОДНОМ теле: утверждение на чужой ошибке.
 func TestRefusalWitnessGateRedWhenTheAssertionRidesAnotherError(t *testing.T) {
-	dir := synthWitnessDir(t, map[string]string{"w_test.go": injWitnessWrongErrSrc})
-	w, err := scanContractRefusalWitness(dir)
+	paths := synthWitnessDir(t, map[string]string{"w_test.go": injWitnessWrongErrSrc})
+	w, err := scanContractRefusalWitness(paths)
 	if err != nil {
 		t.Fatalf("разбор синтетического пакета: %v", err)
 	}
@@ -532,8 +549,8 @@ func TestRefusalWitnessGateKnowsEveryLawfulForm(t *testing.T) {
 	}
 	for _, f := range forms {
 		t.Run(f.name, func(t *testing.T) {
-			dir := synthWitnessDir(t, map[string]string{"w_test.go": f.src})
-			w, err := scanContractRefusalWitness(dir)
+			paths := synthWitnessDir(t, map[string]string{"w_test.go": f.src})
+			w, err := scanContractRefusalWitness(paths)
 			if err != nil {
 				t.Fatalf("разбор: %v", err)
 			}
@@ -550,8 +567,8 @@ func TestRefusalWitnessGateKnowsEveryLawfulForm(t *testing.T) {
 
 // Делегация на один уровень — та форма, которой пользуется настоящий пакет.
 func TestRefusalWitnessGateFollowsOneLevelOfDelegation(t *testing.T) {
-	dir := synthWitnessDir(t, map[string]string{"w_test.go": injWitnessDelegatedSrc})
-	w, err := scanContractRefusalWitness(dir)
+	paths := synthWitnessDir(t, map[string]string{"w_test.go": injWitnessDelegatedSrc})
+	w, err := scanContractRefusalWitness(paths)
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
@@ -586,8 +603,8 @@ func TestLawfulIsAccepted(t *testing.T) {
 	}
 }
 `
-	dir := synthWitnessDir(t, map[string]string{"w_test.go": acceptOnly})
-	w, err := scanContractRefusalWitness(dir)
+	paths := synthWitnessDir(t, map[string]string{"w_test.go": acceptOnly})
+	w, err := scanContractRefusalWitness(paths)
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}
@@ -598,8 +615,8 @@ func TestLawfulIsAccepted(t *testing.T) {
 
 // ПУСТОЙ ПАКЕТ — перепись обязана это показать, а гейт выше — отказать.
 func TestRefusalWitnessRefusesAnEmptyPackage(t *testing.T) {
-	dir := synthWitnessDir(t, map[string]string{"README.md": "проб нет\n"})
-	w, err := scanContractRefusalWitness(dir)
+	paths := synthWitnessDir(t, map[string]string{"README.md": "проб нет\n"})
+	w, err := scanContractRefusalWitness(paths)
 	if err != nil {
 		t.Fatalf("разбор: %v", err)
 	}

@@ -48,11 +48,24 @@
 // владелец записал строку в своём журнале (у compute это `Instance` — с
 // заглавной и без домена).
 
-/** Владельцы журналов, служащие глагол подписки. */
-export type JournalOwner = "compute" | "loadbalancer" | "vpc";
-
-/** Перечень владельцев — выводится из карты, а не выписывается вторым списком. */
-export const JOURNAL_OWNERS: readonly JournalOwner[] = ["compute", "loadbalancer", "vpc"];
+/**
+ * Владельцы журналов, служащие глагол подписки.
+ *
+ * Множество задаёт КРАЙ, а не это объявление: перечень владельцев закрыт
+ * (`gateway/deploy/values.yaml` → `subscriptionStream.owners`), и имя вне его
+ * отвечает `501`. Согласие держат ДВА гейта, по одному на направление, — вторая
+ * копия перечня здесь была бы третьим местом об одном предмете:
+ *
+ * · имя, названное здесь, край обязан принимать —
+ *   `gateway/deploy/console_subscription_owner_test.go`;
+ * · владелец, объявленный краю, обязан быть назван здесь —
+ *   `ui-future/deploy/console_stream_owner_coverage_test.go`.
+ *
+ * Второй заведён по находке: край объявлял пятерых, карта называла троих, и
+ * молчание расхождения родило четыре места опроса, объяснённых утверждением
+ * «журнала у этого домена нет» — при живых журналах блочного хранения и реестра.
+ */
+export type JournalOwner = "compute" | "loadbalancer" | "registry" | "storage" | "vpc";
 
 export interface StreamSubject {
   owner: JournalOwner;
@@ -91,7 +104,32 @@ export const STREAM_SUBJECTS: Readonly<Record<string, StreamSubject>> = {
   "load-balancers": { owner: "loadbalancer", kind: "nlb_network_load_balancer" },
   listeners: { owner: "loadbalancer", kind: "nlb_listener" },
   "target-groups": { owner: "loadbalancer", kind: "nlb_target_group" },
+
+  // Блочное хранение — три вида из шести спек модуля. Тип диска, зона и регион
+  // журналом НЕ покрыты, и это решение владельца, а не пропуск: у их строк нет
+  // ни `project_id`, ни типа объекта модели прав, поэтому вопрос «вправе ли
+  // вызывающий это видеть» задать нечем, а строка без ответа на него не
+  // доставляется. Назови их здесь — поток молчал бы, а список замер бы навсегда.
+  volumes: { owner: "storage", kind: "storage_volume" },
+  snapshots: { owner: "storage", kind: "storage_snapshot" },
+  images: { owner: "storage", kind: "storage_image" },
+
+  // Реестр — один вид: журнал пишет только сами реестры. Репозиторий и тег сюда
+  // не попадают, и это тоже не пропуск — тег живёт в OCI-данных и ресурсом
+  // платформы не является вовсе, а репозиторий журнал не ведёт.
+  registries: { owner: "registry", kind: "registry_registry" },
 };
+
+/**
+ * Перечень владельцев — ВЫВОДИТСЯ из карты, а не выписывается вторым списком.
+ *
+ * Прежняя редакция объявляла ровно это и при том держала рукописный литерал:
+ * два места об одном предмете, из которых верно одно. Расхождение не наступило
+ * только потому, что перечень не рос.
+ */
+export const JOURNAL_OWNERS: readonly JournalOwner[] = [
+  ...new Set(Object.values(STREAM_SUBJECTS).map((subject) => subject.owner)),
+].sort();
 
 /**
  * Предмет потока для спеки — либо `null`, «журнала для этого ресурса нет».

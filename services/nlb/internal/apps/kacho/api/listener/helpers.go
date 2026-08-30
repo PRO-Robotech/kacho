@@ -71,29 +71,36 @@ func marshalListener(rec *kachorepo.ListenerRecord) (*anypb.Any, error) {
 	return any, nil
 }
 
-// listenerPayloadMap — снимок нагрузки `nlb_outbox` для слушателя.
+// listenerPayloadMap — нагрузка строки `nlb_outbox` для слушателя: ЗАПИСЬ
+// ЦЕЛИКОМ, под конвертом полного состояния.
 //
-// ЧИТАТЕЛЯ у нагрузки сегодня нет ни одного (задача #1452): прежняя редакция
-// называла здесь «kacho-iam reader, metrics», а перепись даёт по обоим ноль —
-// зеркало прав ходит очередью `fga_register_outbox`, а счётчики nlb считают
-// строки журнала, но в нагрузку не заглядывают. Имена ключей — из словаря
-// `kachorepo.LifecyclePayload`; что нагрузка должна нести, решает задача #1381.
+// # Читатель у неё ЕСТЬ, и он один
+//
+// Объявление журнала подписки (`internal/subscriptionjournal`) собирает из этой
+// нагрузки состояние события вида `nlb_listener`. Отсюда два требования, и оба
+// строгие.
+//
+// ПЕРВОЕ: запись кладётся целиком, а не пересобирается по полям. Пересборка
+// завела бы вторую проекцию ресурса рядом с той, которой отвечает `Get`, и
+// расходились бы они молча.
+//
+// ВТОРОЕ: строитель у вида ОДИН. Контракт единой формы разрешает подписчику
+// читать непустое состояние как ПОЛНОЕ, поэтому одна точка эмиссии с частичным
+// снимком делает ложным весь вид — и делает тихо. Держит это разбор пакета
+// (`TestEveryListenerEmissionBuildsTheSamePayload`), а не внимание.
+//
+// # Чего здесь БОЛЬШЕ НЕТ
+//
+// Прежняя нагрузка была минимальным снимком из словаря
+// `kachorepo.LifecyclePayload` (идентификатор, родитель, проект, регион, имя,
+// состояние, протокол, порт) и читателя не имела вовсе. Словарь остаётся: им
+// по-прежнему собирают нагрузку балансировщика и целевой группы, у которых
+// состояния нет (задача #1381 обогатила вид слушателя).
 func listenerPayloadMap(rec *kachorepo.ListenerRecord) map[string]any {
 	if rec == nil {
 		return nil
 	}
-	// ParentResourceID — идентификатор родительского балансировщика, ключ
-	// `parent_resource_id` (прежние строители писали `load_balancer_id`).
-	return kachorepo.LifecyclePayload{
-		ID:               string(rec.ID),
-		ParentResourceID: string(rec.LoadBalancerID),
-		ProjectID:        string(rec.ProjectID),
-		RegionID:         string(rec.RegionID),
-		Name:             string(rec.Name),
-		Protocol:         string(rec.Protocol),
-		Port:             int32(rec.Port),
-		Status:           string(rec.Status),
-	}.Map()
+	return kachorepo.StateEnvelope(rec)
 }
 
 // lbUpdatedPayloadMap — нагрузка перекрёстного эмита правки
