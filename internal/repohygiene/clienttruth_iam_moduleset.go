@@ -217,7 +217,7 @@ func AuditClientTruthIAMModuleSet(
 	}
 
 	if log != nil {
-		fmt.Fprintf(log, "перепись: модулей выведено %d (%s) · файлов поверхности %d · "+
+		_, _ = fmt.Fprintf(log, "перепись: модулей выведено %d (%s) · файлов поверхности %d · "+
 			"перечней рассужено %d · спанов из двух имён встречено %d (НЕ судятся — законная пара)\n",
 			census.Modules, strings.Join(modules, ", "),
 			census.SurfaceFiles, census.Enumerations, census.PairSpans)

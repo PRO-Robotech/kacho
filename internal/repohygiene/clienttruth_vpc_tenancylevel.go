@@ -312,7 +312,7 @@ func AuditTenancyLevels(
 	}
 
 	if log != nil {
-		fmt.Fprintf(log,
+		_, _ = fmt.Fprintf(log,
 			"перепись: файлов контракта %d · полей %d · сообщений %d · сегментов пакета %d · "+
 				"утверждений о контейнере %d (составных %d, со следом %d)\n",
 			census.ProtoFiles, census.Fields, census.Messages, census.PackageWords,

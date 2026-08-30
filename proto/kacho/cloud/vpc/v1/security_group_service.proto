@@ -255,7 +255,7 @@ message SecurityGroupRuleSpec {
     oneof target {
         // Target of the security rule.
 
-        // CIDR blocks to allow to recieve or send traffic.
+        // CIDR blocks to allow to receive or send traffic.
         CidrBlocks cidr_blocks = 7;
 
         // ID of the security group to add rule to.

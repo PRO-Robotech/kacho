@@ -482,7 +482,7 @@ type isSecurityGroupRuleSpec_Target interface {
 }
 
 type SecurityGroupRuleSpec_CidrBlocks struct {
-	// CIDR blocks to allow to recieve or send traffic.
+	// CIDR blocks to allow to receive or send traffic.
 	CidrBlocks *CidrBlocks `protobuf:"bytes,7,opt,name=cidr_blocks,json=cidrBlocks,proto3,oneof"`
 }
 

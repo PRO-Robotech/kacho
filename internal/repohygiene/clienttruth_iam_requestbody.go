@@ -277,7 +277,7 @@ func AuditClientTruthIAMRequestBody(
 			names = append(names, n)
 		}
 		sort.Strings(names)
-		fmt.Fprintf(log, "перепись: методов с телом %d · страниц %d · команд curl %d · "+
+		_, _ = fmt.Fprintf(log, "перепись: методов с телом %d · страниц %d · команд curl %d · "+
 			"тел разобрано %d · сопоставлено с методом %d · адрес не сопоставился %d (НЕ судятся) · "+
 			"ключей рассужено %d · невходных полей выведено %d (%s)\n",
 			census.Methods, census.DocFiles, census.CurlBlocks, census.BodiesParsed,

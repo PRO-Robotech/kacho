@@ -106,9 +106,9 @@ func (o ContractOperation) String() string {
 	return fmt.Sprintf("%s/%s (%s %s)", o.Service, o.RPC, o.Verb, o.Address)
 }
 
-// ApiSurfaceCensus — объём осмотренного. «Ноль находок» обязано отличаться от
+// APISurfaceCensus — объём осмотренного. «Ноль находок» обязано отличаться от
 // «ноль прочитанного», поэтому печатается всегда, включая успешный прогон.
-type ApiSurfaceCensus struct {
+type APISurfaceCensus struct {
 	Services        int // служб разобрано
 	RPCs            int // методов разобрано
 	RESTOperations  int // из них с REST-объявлением
@@ -119,7 +119,7 @@ type ApiSurfaceCensus struct {
 	UndocumentedRPC int // операций контракта, не найденных нигде
 }
 
-func (c ApiSurfaceCensus) String() string {
+func (c APISurfaceCensus) String() string {
 	return fmt.Sprintf("перепись: служб %d · методов %d (из них с REST-адресом %d) · "+
 		"страниц %d · тегов <ApiOperation %d (разобрано %d) · сошлось %d · не описано %d",
 		c.Services, c.RPCs, c.RESTOperations, c.Pages,
@@ -284,9 +284,9 @@ func ParseDocumentedOperations(page string) (keys []string, tags int) {
 // `pages` — содержимое клиентских страниц (ключ роли не играет: страница, на которой
 // операция описана, выбирает автор, и требовать конкретную значило бы судить раскладку
 // сайта вместо умолчания).
-func UndocumentedOperations(ops []ContractOperation, pages map[string]string) ([]ContractOperation, ApiSurfaceCensus) {
+func UndocumentedOperations(ops []ContractOperation, pages map[string]string) ([]ContractOperation, APISurfaceCensus) {
 	documented := map[string]struct{}{}
-	census := ApiSurfaceCensus{Pages: len(pages)}
+	census := APISurfaceCensus{Pages: len(pages)}
 	for _, body := range pages {
 		keys, tags := ParseDocumentedOperations(body)
 		census.OperationTags += tags

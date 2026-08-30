@@ -291,7 +291,7 @@ func AuditProtoPrefixClaims(
 	})
 
 	if log != nil {
-		fmt.Fprintf(log,
+		_, _ = fmt.Fprintf(log,
 			"перепись: файлов контракта %d · имён в словаре %d · утверждений о префиксе %d "+
 				"(рассужено %d, без имени %d, многоимённых %d) · резолвов по домену %d · снято послаблением %d\n",
 			census.ProtoFiles, census.KnownNames, census.Claims,
