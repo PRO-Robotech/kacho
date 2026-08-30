@@ -35,11 +35,16 @@ CASES.append(Case(
     steps=[
         Step(name="get-garbage", method="GET", path="/operations/{{garbageId}}",
              test_script=[
-                 # OpsProxy api-gateway отвергает синтаксически невалидный/нераспознанный operation id:
-                 # malformed id → 400 InvalidArgument "invalid operation id '<X>'".
+                 # OpsProxy края отвергает нераспознанный operation id: 400 INVALID_ARGUMENT
+                 # с текстом `invalid operation id "<X>"` — кавычки ДВОЙНЫЕ, их ставит глагол
+                 # `%q` производителя. Здесь стояли одинарные: комментарий называл текст,
+                 # которого край не отдаёт, а тело проверяло вхождение — то есть ни одна из
+                 # двух половин расхождение не поймала бы (#1400).
                  *assert_status(400),
                  *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                 "pm.test('mentions invalid operation id', () => pm.expect(pm.response.json().message).to.include('invalid operation id'));",
+                 "pm.test('сообщение дословно равно тексту края', () => "
+                 "  pm.expect(pm.response.json().message).to.eql("
+                 "'invalid operation id \"' + pm.environment.get('garbageId') + '\"'));",
              ]),
     ],
 ))
@@ -94,13 +99,27 @@ CASES.append(Case(
 # Расширение: CONF text
 CASES.append(Case(
     id="OP-GET-CONF-NF-TEXT",
-    title="Get несуществующего opId → текст владельца 'operation ... not found'",
+    title="Get несуществующего opId → сообщение ДОСЛОВНО 'operation <id> not found'",
     classes=["CONF", "NEG"], priority="P1",
+    # Утверждается РАВЕНСТВО, а не вхождение, и без приведения регистра.
+    #
+    # Здесь стояло `message.toLowerCase().to.include('not found')` под именем «text
+    # matches». Имя обещало совпадение, тело проверяло два слова в нижнем регистре —
+    # то есть зеленело на сообщении о любом другом ресурсе и НЕ МОГЛО отличить
+    # расхождение регистра by construction. Именно поэтому расхождение тона края с
+    # тоном владельца прожило всю жизнь этого кейса и не покраснело ни в одном
+    # прогоне (#1370, #1401).
+    #
+    # Текст берётся у ЕДИНСТВЕННОГО производителя `pkg/operations.NotFoundStatus`
+    # ("operation %s not found"); тот же текст отдаёт край на своей ветке, и их
+    # побайтовое совпадение — требование анти-оракула (`security.md` §Hardening #6).
     steps=[
         Step(name="get-vpc-garbage", method="GET", path="/operations/{{garbageVpcId}}",
              test_script=[
                  *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                 "pm.test('text matches', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('not found'));",
+                 "pm.test('сообщение дословно равно тексту владельца', () => "
+                 "  pm.expect(pm.response.json().message).to.eql("
+                 "'operation ' + pm.environment.get('garbageVpcId') + ' not found'));",
              ]),
     ],
 ))

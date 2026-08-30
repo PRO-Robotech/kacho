@@ -124,6 +124,10 @@ describe("InlineSecurityGroupEditForm", () => {
   });
 
   it("успех обновляет список и закрывает форму", async () => {
+    // Ответ несёт ОПЕРАЦИЮ: правка группы безопасности — мутация, а мутации
+    // Kachō отвечают `Operation`. Прежняя редакция подавала пустой ответ и тем
+    // закрепляла как успех то, что подтвердить нечем.
+    update.mockResolvedValue({ id: "opr-1", done: false });
     const { onCancel } = show();
 
     fireEvent.change(await screen.findByDisplayValue("было"), { target: { value: "стало" } });
@@ -131,6 +135,26 @@ describe("InlineSecurityGroupEditForm", () => {
 
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith("security-groups", "prj-1"));
     expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("ответ без операции — отказ той же строкой, что и отказ края", async () => {
+    // Группа безопасности операцию обещает, поэтому ответ без неё — нарушение
+    // контракта: подтвердить сохранение нечем, и закрыть форму значило бы
+    // сказать про ресурс неправду.
+    update.mockResolvedValue({});
+    const { onCancel } = show();
+
+    fireEvent.change(await screen.findByDisplayValue("было"), { target: { value: "стало" } });
+    save();
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "Сохранить группу безопасности: сервер не вернул операцию — подтвердить выполнение невозможно",
+      ),
+    );
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
   });
 
   it("отказ края показан текстом сервера, без кода протокола, форма остаётся открытой", async () => {

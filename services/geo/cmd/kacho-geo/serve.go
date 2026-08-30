@@ -212,7 +212,7 @@ func describe(cfg config.Config, logger *slog.Logger,
 		Mode:    mode,
 		Logger:  logger,
 
-		Forwarders: cfg.TrustedForwarders(),
+		Forwarders: servicecontract.Value(cfg.TrustedForwarders()),
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS",
 			TrustAny: "KACHO_GEO_AUTHZ_TRUST_ANY_FORWARDER",
@@ -266,7 +266,7 @@ func describe(cfg config.Config, logger *slog.Logger,
 		// фикстуры, и на боевой посадке дескриптор его отвергает.
 		Admission: servicecontract.Value(admission),
 
-		DBSSLMode:     cfg.DBSSLMode,
+		DBSSLMode:     servicecontract.Value(cfg.DBSSLMode),
 		PublicAddr:    ":" + cfg.GrpcPort,
 		InternalAddr:  ":" + cfg.InternalGrpcPort,
 		PublicCreds:   publicCreds,

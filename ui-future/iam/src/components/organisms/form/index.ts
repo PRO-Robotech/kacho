@@ -4,7 +4,7 @@ export { FormFieldRenderer } from "@shared/components/organisms/form/FormField";
 export { FormFooter } from "@shared/components/organisms/form/FormFooter";
 export { FormSection } from "./FormSection";
 export { ImmutableField } from "@shared/components/organisms/form/ImmutableField";
-export { LabelsEditor } from "@shared/components/organisms/form/LabelsEditor";
+export { LabelsFieldRenderer } from "@shared/components/organisms/form/LabelsEditor";
 export { NicSpecFields } from "@shared/components/organisms/form/NicSpecFields";
 export { RefSelect } from "@shared/components/organisms/form/RefSelect";
 export { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";

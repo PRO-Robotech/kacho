@@ -5,13 +5,12 @@ package pg
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
@@ -165,8 +164,8 @@ func blockersOf(fromWhere string) func(context.Context, pgx.Tx, string) (Restric
 // родителя, вставка ребёнка, переписывание ключа), и «любой 23503» смешал бы
 // их в один текст.
 func isFKViolation(err error, constraint string) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23503" && pgErr.ConstraintName == constraint
+	f := pgfault.Classify(err)
+	return f.Is(pgfault.ForeignKey) && f.Constraint == constraint
 }
 
 // tgMoveBlockedByListeners — контрактный текст отказа ПЕРЕНОСА группы целей.
@@ -232,11 +231,11 @@ func deleteParentRow(ctx context.Context, tx pgx.Tx, kind, id, deleteSQL string)
 // достижим только в окне «блокирующая строка исчезла между отказом БД и
 // перечислением», и заявлять про него большее было бы неправдой.
 func mapRestrictBlocked(ctx context.Context, tx pgx.Tx, kind, id string, execErr error) error {
-	var pgErr *pgconn.PgError
-	if !errors.As(execErr, &pgErr) || pgErr.Code != "23503" {
+	f := pgfault.Classify(execErr)
+	if !f.Is(pgfault.ForeignKey) {
 		return mapPgErr(execErr, kind, id)
 	}
-	c, ok := RestrictFKContracts[pgErr.ConstraintName]
+	c, ok := RestrictFKContracts[f.Constraint]
 	if !ok || c.ParentKind != kind {
 		return mapPgErr(execErr, kind, id)
 	}

@@ -122,14 +122,46 @@ export interface SubnetList {
   next_page_token?: string;
 }
 
-// Reference — minimal shape of kacho.cloud.reference.Reference as it appears on
-// the JSON wire (camelCase → snake_case adapter in api/client.ts strips the
-// envelope, so `referrer.type` / `referrer.id` come through as-is). `type` on
-// the outer object is the Reference.Type enum serialized as a string
-// ("USED_BY" / "MANAGED_BY" / "TYPE_UNSPECIFIED").
-export interface ResourceReference {
-  referrer?: { type?: string; id?: string };
+// Reference — форма kacho.cloud.reference.Reference на JSON-проводе (адаптер
+// camelCase → snake_case в api/client.ts снимает конверт, поэтому `referrer.type`
+// / `referrer.id` приезжают как есть).
+//
+// Объявлено ПО КОНТРАКТУ, а не по тому, что сегодня читает разметка. Прежняя
+// редакция несла только `{type, id}` и свободную строку вместо перечисления —
+// то есть была БЕДНЕЕ контракта на два поля, которые сервер уже шлёт:
+// `Referrer.name` (том отдаёт имя машины, адрес — имя балансировщика, группа
+// правил — имя сети) и `Reference.owned`. Значения приезжали на клиент и
+// выбрасывались на границе типа; из-за этого домен storage был вынужден держать
+// СВОЁ объявление того же контракта (#1467).
+//
+// `type` — перечисление `Reference.Type`, закрытое самим контрактом. Свободная
+// строка здесь не «на будущее»: новое значение перечисления есть правка
+// контракта, и она обязана приехать сюда вместе с ним, а не просочиться молча.
+export type ReferenceType = "TYPE_UNSPECIFIED" | "MANAGED_BY" | "USED_BY";
+
+// Referrer — дескриптор зависимости на чужой ресурс (class-C, graceful-dangling).
+// `name` — зеркало имени НА МОМЕНТ ПРИВЯЗКИ, output-only и best-effort: оно может
+// устареть, поэтому источником истины не является и во вход мутации не идёт.
+// Читает его человек — без него в строке «кем используется» стоит машинный
+// идентификатор, а для кросс-модульного потребителя резолвить имя запросом
+// нечем: чужого ресурса в реестре модуля нет by construction.
+export interface Referrer {
   type?: string;
+  id?: string;
+  name?: string;
+}
+
+export interface ResourceReference {
+  referrer?: Referrer;
+  type?: ReferenceType;
+  // owned — референт ВЛАДЕЕТ ресурсом (его жизненный цикл связан с референтом), а
+  // не просто ссылается: вложение, заказанное потребителем неявно, уедет вместе с
+  // ним. Отвечает на вопрос «что случится при удалении». Output-only.
+  //
+  // proto3 не отличает ложь от отсутствия (`false` не сериализуется), поэтому
+  // незаданное значение означает «не объявлено владение», а НЕ «точно не
+  // удалится»; читающая разметка вправе пометить только истину.
+  owned?: boolean;
 }
 
 export interface Address {

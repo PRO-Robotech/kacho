@@ -561,6 +561,9 @@ CASES.append(conf_alreadyexists_block(
     prefix="TGR",
     create_path=_TG_BASE,
     name_template="tgr-dup-{{runId}}",
+    # Текст владельца дословно: services/nlb/internal/apps/kacho/api/targetgroup/create.go.
+    # Форма ОТЛИЧАЕТСЯ от отказа балансировщика — именно её кейс и обязан различать.
+    refusal="TargetGroup '{name}' already exists in project {{_suiteProjectId}}",
     body_extra={"regionId": "{{_suiteRegionId}}", "port": 8080, "healthCheck": _HEALTH_CHECK_DEFAULT},
 ))
 

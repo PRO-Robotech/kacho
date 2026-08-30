@@ -12,21 +12,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/PRO-Robotech/kacho/pkg/validate/nameform"
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 )
 
 // IsUniqueViolation — Postgres unique-constraint violation (SQLSTATE 23505).
 // Используется в Create/Update для маппинга в gRPC AlreadyExists.
 func IsUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23505"
-	}
-	s := err.Error()
-	return strings.Contains(s, "23505") || strings.Contains(s, "duplicate key value")
+	return pgfault.Classify(err).Is(pgfault.Unique)
 }
 
 // NICMacUniqueConstraint — имя UNIQUE-индекса network_interfaces_mac_address_key
@@ -39,14 +31,8 @@ const NICMacUniqueConstraint = "network_interfaces_mac_address_key"
 // (internal/repo/kacho/pg) чтобы различить retry-able MAC-collision от
 // настоящего AlreadyExists по имени.
 func IsNICMacCollision(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23505" && pgErr.ConstraintName == NICMacUniqueConstraint
-	}
-	return strings.Contains(err.Error(), NICMacUniqueConstraint)
+	f := pgfault.Classify(err)
+	return f.Is(pgfault.Unique) && f.Constraint == NICMacUniqueConstraint
 }
 
 // NICUsedByIndexUniqueConstraint — имя partial-UNIQUE-индекса ni_used_by_index_uniq
@@ -60,14 +46,8 @@ const NICUsedByIndexUniqueConstraint = "ni_used_by_index_uniq"
 // retry-able slot-collision (auto-index пересчитывает свободный слот) от прочих
 // нарушений. Аналог IsNICMacCollision.
 func IsNICIndexCollision(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23505" && pgErr.ConstraintName == NICUsedByIndexUniqueConstraint
-	}
-	return strings.Contains(err.Error(), NICUsedByIndexUniqueConstraint)
+	f := pgfault.Classify(err)
+	return f.Is(pgfault.Unique) && f.Constraint == NICUsedByIndexUniqueConstraint
 }
 
 // GatewaySubnetFKConstraint — имя внешнего ключа `gateways.subnet_id →
@@ -106,29 +86,15 @@ const RouteRefGatewayFKConstraint = "route_table_gateway_refs_gateway_id_fkey"
 // когда ошибка пришла уже завёрнутой и типизированный pgconn.PgError из цепочки
 // не достаётся, — тот же приём, что у IsNICMacCollision.
 func IsFKViolationOn(err error, constraint string) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23503" && pgErr.ConstraintName == constraint
-	}
-	return IsFKViolation(err) && strings.Contains(err.Error(), constraint)
+	f := pgfault.Classify(err)
+	return f.Is(pgfault.ForeignKey) && f.Constraint == constraint
 }
 
 // IsFKViolation — Postgres foreign_key_violation (SQLSTATE 23503).
 // Возникает на Delete parent с зависимыми child-row (RESTRICT FK).
 // Маппится в gRPC FailedPrecondition ("Network is not empty").
 func IsFKViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23503"
-	}
-	s := err.Error()
-	return strings.Contains(s, "23503") || strings.Contains(s, "violates foreign key")
+	return pgfault.Classify(err).Is(pgfault.ForeignKey)
 }
 
 // IsExclusionViolation — PG SQLSTATE 23P01 (exclusion_violation), возникает
@@ -136,15 +102,7 @@ func IsFKViolation(err error) bool {
 // пересекающиеся v4 CIDR в одной VPC). Маппится на gRPC FailedPrecondition
 // ("Subnet CIDRs can not overlap").
 func IsExclusionViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23P01"
-	}
-	s := err.Error()
-	return strings.Contains(s, "23P01") || strings.Contains(s, "exclusion constraint")
+	return pgfault.Classify(err).Is(pgfault.Exclusion)
 }
 
 // IsCheckViolation — PG SQLSTATE 23514 (check_violation). Возникает при
@@ -152,15 +110,7 @@ func IsExclusionViolation(err error) bool {
 // массив v4_address_ids длиннее 1 на одном NIC). Маппится на gRPC
 // InvalidArgument через WrapPgErr.
 func IsCheckViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23514"
-	}
-	s := err.Error()
-	return strings.Contains(s, "23514") || strings.Contains(s, "check constraint")
+	return pgfault.Classify(err).Is(pgfault.Check)
 }
 
 // IsSerializationConflict — PG SQLSTATE 40001 (serialization_failure) или 40P01
@@ -170,16 +120,7 @@ func IsCheckViolation(err error) bool {
 // 23P01). Retryable-класс → маппится в gRPC Aborted (не INTERNAL): клиент по
 // контракту может безопасно повторить транзакцию.
 func IsSerializationConflict(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "40001" || pgErr.Code == "40P01"
-	}
-	s := err.Error()
-	return strings.Contains(s, "40001") || strings.Contains(s, "40P01") ||
-		strings.Contains(s, "deadlock detected") || strings.Contains(s, "could not serialize")
+	return pgfault.Classify(err).Is(pgfault.SerializationConflict)
 }
 
 // resourceKindText маппит camelCase Go-имя ресурса в текст для error-message
@@ -196,15 +137,7 @@ func resourceKindText(kind string) string {
 // IsInvalidUUID — PG SQLSTATE 22P02 (invalid_text_representation),
 // возникает когда в WHERE id=$1 передан non-UUID string.
 func IsInvalidUUID(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "22P02"
-	}
-	s := err.Error()
-	return strings.Contains(s, "22P02") || strings.Contains(s, "invalid input syntax for type uuid")
+	return pgfault.Classify(err).Is(pgfault.InvalidText)
 }
 
 // WrapPgErr классифицирует pgx-ошибку и возвращает sentinel-ошибку из
@@ -346,24 +279,18 @@ func classifyQuotaErr(err error) error {
 // ввода пишет WARN: ограничение, которое ловит ввод регулярно, — кандидат в
 // СИНХРОННУЮ проверку, и его частота обязана быть счётной.
 func wrapCheckViolation(err error, kind string) error {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && nameform.IsConstraint(pgErr.TableName, pgErr.ConstraintName) {
+	f := pgfault.Classify(err)
+	if pgfault.CheckLaneOf(f) == pgfault.LaneServiceDefect {
 		slog.Error("name form backstop fired: service admitted a name it validates itself",
-			"sqlstate", pgErr.Code,
-			"table", pgErr.TableName,
-			"constraint", pgErr.ConstraintName,
-			"kind", kind)
+			append([]any{"kind", kind}, f.LogAttrs()...)...)
 		// Причина сохраняется в цепочке (как в неклассифицированной ветке ниже):
 		// serviceerr сворачивает ErrInternal в фиксированный текст, поэтому
 		// наружу она не уходит, а в журнале оператора остаётся.
 		return fmt.Errorf("%w: %v", ErrInternal, err)
 	}
-	if pgErr != nil {
+	if f.FromDatabase() {
 		slog.Warn("check constraint rejected caller input",
-			"sqlstate", pgErr.Code,
-			"table", pgErr.TableName,
-			"constraint", pgErr.ConstraintName,
-			"kind", kind)
+			append([]any{"kind", kind}, f.LogAttrs()...)...)
 	}
 	return fmt.Errorf("%w: Illegal argument", ErrInvalidArg)
 }

@@ -436,8 +436,10 @@ CASES.append(Case(
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
                   "name": "sub-nf-{{runId}}", "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.204.0.0/24"},
+            # Текст владельца целиком (services/vpc/.../api/subnet/create.go), а не
+            # слово «network»: под ним проходили 27 разных отказов vpc (#1520).
             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                         "pm.test('mentions network', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('network'));"],
+                         *assert_refusal_message("Network {{garbageVpcId}} not found")],
         ),
     ],
 ))
@@ -796,8 +798,11 @@ CASES.append(Case(
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-dup-{{runId}}", "zoneId": "{{existingZoneId}}",
                    "ipv4CidrPrimary": "10.181.0.0/24"},  # другой CIDR — дубль только по name
+             # Текст владельца дословно (services/vpc/.../api/subnet/create.go), а не
+             # общая часть тона: под `include('already exists')` проходил отказ ЛЮБОГО
+             # ресурса vpc (#1520).
              test_script=[*assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
-                          "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"]),
+                          *assert_refusal_message("Subnet with name sub-dup-{{runId}} already exists")]),
         Step(name="cleanup-1", method="DELETE", path="/vpc/v1/subnets/{{subId1}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -1229,8 +1234,13 @@ CASES.append(Case(
         poll_operation_until_done(),
         # 5. delete network → blocked (not empty)
         Step(name="del-net-blocked", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+             # Текст владельца (services/vpc/.../api/network/delete.go) — ВХОЖДЕНИЕМ:
+             # он называет ПЕРЕЧЕНЬ помех (`(subnets: 1, …)`), а перечень зависит от
+             # того, что успело завестись к моменту шага. Утверждается всё, что от
+             # входа не зависит; слово «not empty» под собой пропускало отказ пула
+             # адресов и отказ группы (#1520).
              test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                          "pm.test('network not empty', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('not empty'));"]),
+                          *assert_refusal_message_contains("Network {{netId}} is not empty (")]),
         # 6. delete subnet → blocked: address check runs first (not the NIC)
         retry_until_authorized(Step(name="del-sub-blocked", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),

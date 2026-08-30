@@ -52,7 +52,7 @@ func lawful() servicecontract.Spec {
 	return servicecontract.Spec{
 		Service:    "kacho-demo",
 		Mode:       servicecontract.ModeProduction,
-		Forwarders: grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"),
+		Forwarders: servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
 		ForwarderKnobs: servicecontract.ForwarderKnobs{
 			SANs:     "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS",
 			TrustAny: "KACHO_DEMO_AUTHZ_TRUST_ANY_FORWARDER",
@@ -62,7 +62,7 @@ func lawful() servicecontract.Spec {
 		CacheWindow:    5 * time.Second,
 		ClientBudget:   5 * time.Second,
 		HandlingBudget: 30 * time.Second,
-		DBSSLMode:      "require",
+		DBSSLMode:      servicecontract.Value("require"),
 		PublicAddr:     ":9090",
 		InternalAddr:   ":9091",
 		PublicCreds:    tlsLike{},
@@ -114,7 +114,7 @@ func refuses(t *testing.T, s servicecontract.Spec, mustName ...string) string {
 
 func TestO1_UnnarrowedForwarderCircleRefusesStart(t *testing.T) {
 	s := lawful()
-	s.Forwarders = grpcsrv.TrustedForwarders{}
+	s.Forwarders = servicecontract.Value(grpcsrv.TrustedForwarders{})
 	msg := refuses(t, s, "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS")
 	t.Logf("О1 (а) красный: %s", msg)
 }
@@ -147,7 +147,7 @@ func TestO1_DegenerateValueIsEmptyForAllThree(t *testing.T) {
 		t.Fatalf("транспорт получил %d записей из вырожденного значения", len(f.SANs()))
 	}
 	s := lawful()
-	s.Forwarders = f
+	s.Forwarders = servicecontract.Value(f)
 	refuses(t, s, "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS")
 }
 
@@ -157,13 +157,13 @@ func TestO1_DegenerateValueIsEmptyForAllThree(t *testing.T) {
 // ЕДИНСТВЕННОМ способе его не получить.
 func TestO1_DevOptInIsNotHonouredInProduction(t *testing.T) {
 	s := lawful()
-	s.Forwarders = grpcsrv.TrustedForwarders{}
+	s.Forwarders = servicecontract.Value(grpcsrv.TrustedForwarders{})
 	s.ForwarderKnobs.OptIn = true
 	refuses(t, s, "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS")
 
 	// Законный близнец: тот же опт-ин ВНЕ боевого режима принимается.
 	s.Mode = servicecontract.ModeDev
-	s.DBSSLMode = "disable"
+	s.DBSSLMode = servicecontract.Value("disable")
 	if _, err := servicecontract.New(s); err != nil {
 		t.Fatalf("опт-ин вне боевого режима отвергнут — отказ ловит форму, а не существо: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestO8_CheckEdgeOnInsecureTransportRefusesProductionStart(t *testing.T) {
 	// установки — та, что поднимает стенд с выключенным mTLS раньше, чем
 	// выпущены сертификаты, — упёрлась бы в него навсегда.
 	s.Mode = servicecontract.ModeDev
-	s.DBSSLMode = "disable"
+	s.DBSSLMode = servicecontract.Value("disable")
 	if _, err := servicecontract.New(s); err != nil {
 		t.Fatalf("небоевая посадка отвергнута боевым правилом: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestO8_ProductionRefusesInsecureListener(t *testing.T) {
 func TestO8_ProductionRefusesWeakSSLMode(t *testing.T) {
 	for _, mode := range []string{"", "disable", "allow", "prefer"} {
 		s := lawful()
-		s.DBSSLMode = mode
+		s.DBSSLMode = servicecontract.Value(mode)
 		refuses(t, s, "DBSSLMode")
 	}
 }
@@ -273,7 +273,7 @@ func TestO8_ProductionRefusesWeakSSLMode(t *testing.T) {
 func TestO8_NonProductionAcceptsWhatProductionRefuses(t *testing.T) {
 	s := lawful()
 	s.Mode = servicecontract.ModeDev
-	s.DBSSLMode = "disable"
+	s.DBSSLMode = servicecontract.Value("disable")
 	s.InternalCreds = insecure.NewCredentials()
 	s.PublicCreds = insecure.NewCredentials()
 	if _, err := servicecontract.New(s); err != nil {
@@ -286,7 +286,7 @@ func TestO8_NonProductionAcceptsWhatProductionRefuses(t *testing.T) {
 func TestO8_ProductionAcceptsStrongSSLModes(t *testing.T) {
 	for _, mode := range []string{"require", "verify-ca", "verify-full"} {
 		s := lawful()
-		s.DBSSLMode = mode
+		s.DBSSLMode = servicecontract.Value(mode)
 		if _, err := servicecontract.New(s); err != nil {
 			t.Fatalf("боевой режим отверг законный sslmode %q: %v", mode, err)
 		}
@@ -546,4 +546,147 @@ func TestO13_LawfulDevSpecWithARegistryIsAccepted(t *testing.T) {
 	if _, err := servicecontract.New(s); err != nil {
 		t.Fatalf("законная dev-посадка с реестром отвергнута — отрицание выше вакуумно: %v", err)
 	}
+}
+
+// ── О14: посадка судится ВЕЗДЕ, проводка носителя — только там, где он есть ──
+//
+// Предмет этой группы — шов, разделивший [servicecontract.Spec] на две половины
+// (задачи продукта #1406 и #1407). До него принять дескриптор мог лишь тот, кто
+// приносит ОБЕ; процессы с собственным контуром — фасад личности и внешний
+// край — не проходили через единый источник вовсе.
+//
+// Каждая проба ниже утверждает ИСХОД конструктора, а не форму объявления.
+
+// ownContourSpec — законный дескриптор процесса, чей контур поднимает он сам:
+// посадка целиком, проводки носителя ни одного поля.
+func ownContourSpec() servicecontract.Spec {
+	return servicecontract.Spec{
+		Service:    "kacho-demo-own",
+		Mode:       servicecontract.ModeProduction,
+		OwnContour: "контур входящего пути демо собран в его композиционном корне",
+		Forwarders: servicecontract.Value(grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway")),
+		ForwarderKnobs: servicecontract.ForwarderKnobs{
+			SANs:     "KACHO_DEMO_AUTHZ_TRUSTED_FORWARDER_SANS",
+			TrustAny: "KACHO_DEMO_AUTHZ_TRUST_ANY_FORWARDER",
+		},
+		DBSSLMode: servicecontract.Value("require"),
+	}
+}
+
+// TestO14_OwnContourSpecIsAccepted — положительный контроль группы. Стоит первым:
+// пока он красный, каждое отрицание ниже отказывает по чужой причине.
+func TestO14_OwnContourSpecIsAccepted(t *testing.T) {
+	desc, err := servicecontract.New(ownContourSpec())
+	if err != nil {
+		t.Fatalf("процесс с собственным контуром не принят — все отрицания ниже вакуумны: %v", err)
+	}
+	if desc.OwnContour() == "" {
+		t.Fatal("дескриптор принят, но заявление о собственном контуре из него не читается: " +
+			"носитель тогда поднял бы контур по проводке, которой нет")
+	}
+}
+
+// TestO14_PostureIsJudgedWithTheCarrierGone — половина, ради которой шов и
+// заведён: посадка судится и без носителя. Иначе процесс с собственным контуром
+// проходил бы через единый источник, ничего в нём не проверяя.
+func TestO14_PostureIsJudgedWithTheCarrierGone(t *testing.T) {
+	weak := ownContourSpec()
+	weak.DBSSLMode = servicecontract.Value("disable")
+	refuses(t, weak, "DBSSLMode")
+
+	open := ownContourSpec()
+	open.Forwarders = servicecontract.Value(grpcsrv.TrustedForwarders{})
+	refuses(t, open, "Forwarders")
+
+	nameless := ownContourSpec()
+	nameless.Service = ""
+	refuses(t, nameless, "Service")
+
+	modeless := ownContourSpec()
+	modeless.Mode = servicecontract.Mode(0)
+	refuses(t, modeless, "Mode")
+}
+
+// TestO14_CarrierWiringBroughtWithoutACarrierIsRefused — вторая половина шва, и
+// без неё `OwnContour` был бы ручкой, снимающей проверки: объявляй что угодно,
+// никто не спросит. Принесённая и непрочитанная проводка — второе место об одном
+// предмете: рядом живёт ручная сборка, и разойтись они могут только молча.
+func TestO14_CarrierWiringBroughtWithoutACarrierIsRefused(t *testing.T) {
+	for _, c := range []struct {
+		field string
+		spoil func(*servicecontract.Spec)
+	}{
+		{"Authz", func(s *servicecontract.Spec) { s.Authz = servicecontract.AuthzSelf }},
+		{"PublicAddr", func(s *servicecontract.Spec) { s.PublicAddr = ":9090" }},
+		{"InternalCreds", func(s *servicecontract.Spec) { s.InternalCreds = tlsLike{} }},
+		{"HandlingBudget", func(s *servicecontract.Spec) { s.HandlingBudget = 30 * time.Second }},
+		{"Metrics", func(s *servicecontract.Spec) { s.Metrics = prometheus.NewRegistry() }},
+		{"Emits", func(s *servicecontract.Spec) {
+			s.Emits = servicecontract.NotApplicable[[]proxytuple.Relation]("нечего")
+		}},
+		{"Admission", func(s *servicecontract.Spec) {
+			s.Admission = servicecontract.Value(servicecontract.Admission{
+				Public:   grpcsrv.PlatformPublicAdmission(),
+				Internal: grpcsrv.PlatformInternalAdmission(),
+			})
+		}},
+	} {
+		t.Run(c.field, func(t *testing.T) {
+			s := ownContourSpec()
+			c.spoil(&s)
+			refuses(t, s, c.field, "СОБСТВЕННЫЙ")
+		})
+	}
+}
+
+// TestO14_ForwarderCircleCannotBeWithdrawnUnderTheCarrier — изъятие круга
+// законно ТОЛЬКО при собственном контуре, и это свойство носителя, а не вкус: он
+// ставит пару звеньев извлечения переданной личности ВСЕГДА и на обоих
+// слушателях. «Мне сужать нечего» означало бы там круг, не суженный ничем.
+func TestO14_ForwarderCircleCannotBeWithdrawnUnderTheCarrier(t *testing.T) {
+	s := lawful()
+	s.Forwarders = servicecontract.NotApplicable[grpcsrv.TrustedForwarders](
+		"переданную личность этот процесс не принимает")
+	refuses(t, s, "Forwarders", "носитель")
+
+	// Законный близнец: то же изъятие при собственном контуре — принимается.
+	own := ownContourSpec()
+	own.Forwarders = servicecontract.NotApplicable[grpcsrv.TrustedForwarders](
+		"переданную личность этот процесс не принимает, а отправляет")
+	if _, err := servicecontract.New(own); err != nil {
+		t.Fatalf("изъятие круга при собственном контуре отвергнуто — тогда край не смог бы "+
+			"объявить посадку вовсе: %v", err)
+	}
+}
+
+// TestO14_DBLinkCannotBeWithdrawnUnderTheCarrier — то же для шифрования до
+// собственной базы. Довод слабее, чем у круга, и потому назван прямо: своя база
+// есть у каждого носимого процесса этого дерева, а обход дерева судит изъятие по
+// НАЛИЧИЮ ручки — которой у одного из них нет вовсе (режим приходит из строки
+// подключения). Оставь изъятие открытым — оно стало бы молчаливым выходом из
+// боевой проверки.
+func TestO14_DBLinkCannotBeWithdrawnUnderTheCarrier(t *testing.T) {
+	s := lawful()
+	s.DBSSLMode = servicecontract.NotApplicable[string]("своей базы нет")
+	refuses(t, s, "DBSSLMode", "носитель")
+
+	own := ownContourSpec()
+	own.DBSSLMode = servicecontract.NotApplicable[string]("край не держит собственной базы")
+	if _, err := servicecontract.New(own); err != nil {
+		t.Fatalf("изъятие оси базы при собственном контуре отвергнуто — тогда край не смог бы "+
+			"объявить посадку вовсе: %v", err)
+	}
+}
+
+// TestO14_UndeclaredPostureAxesRefuseTheOwnContourToo — изъятие требует СЛОВ, а
+// не пустоты: незаявленная ось отказывает и здесь. Без этой пробы «у меня нет
+// базы» было бы неотличимо от «я про базу забыл».
+func TestO14_UndeclaredPostureAxesRefuseTheOwnContourToo(t *testing.T) {
+	noDB := ownContourSpec()
+	noDB.DBSSLMode = servicecontract.Axis[string]{}
+	refuses(t, noDB, "DBSSLMode")
+
+	noCircle := ownContourSpec()
+	noCircle.Forwarders = servicecontract.Axis[grpcsrv.TrustedForwarders]{}
+	refuses(t, noCircle, "Forwarders")
 }

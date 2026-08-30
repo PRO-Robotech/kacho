@@ -26,6 +26,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/lro"
+	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/syncop"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/domain"
 	geoerrors "github.com/PRO-Robotech/kacho/services/geo/internal/errors"
@@ -125,15 +126,40 @@ func (u *UseCase) Get(ctx context.Context, id string) (*domain.Region, error) {
 	if err := domain.ValidateID("region", id); err != nil {
 		return nil, invalidArg(err.Error())
 	}
-	return u.reader.Get(ctx, id)
+	r, err := u.reader.Get(ctx, id)
+	if err != nil {
+		return nil, directReadLane(err, id)
+	}
+	return r, nil
 }
 
 // GetInternal возвращает FULL Internal-проекцию (status + infra°). :9091-only.
+//
+// Полоса та же, что у публичного чтения: внутренний листенер от контракта полос
+// не освобождён — это тот же direct-read по own-owned id.
 func (u *UseCase) GetInternal(ctx context.Context, id string) (*domain.Region, error) {
 	if err := domain.ValidateID("region", id); err != nil {
 		return nil, invalidArg(err.Error())
 	}
-	return u.reader.GetInternal(ctx, id)
+	r, err := u.reader.GetInternal(ctx, id)
+	if err != nil {
+		return nil, directReadLane(err, id)
+	}
+	return r, nil
+}
+
+// directReadLane помечает промах ПРЯМОГО ЧТЕНИЯ машинным токеном полосы, не
+// трогая ни кода, ни прозы: тон `"Region <id> not found"` — часть контракта, и
+// собирается он здесь, где id известен (общий классификатор его не знает).
+//
+// Ошибка ИНОЙ природы проходит нетронутой: отказ без полосы не вправе
+// притворяться полосой контракта, иначе «полоса проставлена» означало бы
+// «проставлена всегда», то есть не означало бы ничего.
+func directReadLane(err error, id string) error {
+	if !errors.Is(err, geoerrors.ErrNotFound) {
+		return err
+	}
+	return serviceerr.NotFoundLane(serviceerr.RegionKind, "Region", id)
 }
 
 // List возвращает регионы (cursor-пагинация; garbage page_size → InvalidArgument).
@@ -235,7 +261,9 @@ func (u *UseCase) Update(ctx context.Context, in UpdateInput) (*operations.Opera
 
 	updated, derr := u.writer.Update(ctx, in.ID, p)
 	if derr != nil {
-		return syncop.Fail(ctx, u.ops, op, u.errStatus(derr))
+		// Промах СВОЕЙ строки — тот же direct-read, что и у чтения, поэтому
+		// полоса та же. Ошибка иной природы уходит в errStatus нетронутой.
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(directReadLane(derr, in.ID)))
 	}
 	resp, err := marshalRegion(updated)
 	if err != nil {
@@ -310,7 +338,7 @@ func (u *UseCase) Delete(ctx context.Context, id string) (*operations.Operation,
 		if errors.Is(derr, geoerrors.ErrFailedPrecondition) {
 			derr = failedPrecondition(fmt.Sprintf("region %s is not empty", id))
 		}
-		return syncop.Fail(ctx, u.ops, op, u.errStatus(derr))
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(directReadLane(derr, id)))
 	}
 	empty, err := anypb.New(&emptypb.Empty{})
 	if err != nil {

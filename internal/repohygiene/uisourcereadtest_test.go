@@ -36,7 +36,10 @@
 // Каждое из трёх условий несёт свой смысл:
 //
 //   - (1) без чтения предмета нет вовсе;
-//   - (2) обход = перепись состава дерева, законный предмет (см. выше);
+//   - (2) обход = перепись состава дерева, законный предмет (см. выше). Записывают
+//     его ДВУМЯ равно законными формами, и распознаватель обязан знать обе:
+//     прямым вызовом системной функции в теле пробы и вызовом экспорта
+//     модуля-помощника, который обходит сам (§«Обход, вынесенный в ПОМОЩНИКА»);
 //   - (3) читается **загружаемый** модуль. Контракт ствола (`.proto`), исходник
 //     другого языка (`.go`), объявление сборки (`.cjs`) проба исполнить не
 //     может — там чтение единственный доступный способ, и запрет был бы просто
@@ -96,6 +99,24 @@
 // «Ноль находок» обязано быть отличимо от «ноль прочитанного», а непустой
 // счётчик переписей доказывает, что дискриминатору есть что различать.
 //
+// # Вторая форма записи обхода (#1517)
+//
+// Прежний распознаватель знал у обхода одну форму — прямой системный вызов. По
+// второй он не давал ни красного, ни зелёного: он МОЛЧАЛ, и записанное ею
+// оказывалось вне наблюдения (`testing.md` §«Гейт на класс», п. 7). Выражалось
+// это прямо наоборот — ветка прощения переписи до таких проб не доходила, и
+// ТРИ переписи состава дерева объявлялись тем самым дефектом, ради которого гейт
+// заведён.
+//
+// Замер расширения (дерево `df/P1-gates`, 2026-08-29). Осмотренное НЕ изменилось,
+// изменилось узнанное — признак того, что прибавка была слепой зоной, а не
+// послаблением:
+//
+//	проб осмотрено      379 → 379
+//	читают с диска       59 →  59
+//	обходят дерево       40 →  48
+//	находок               3 →   0
+//
 // # Способность упасть
 //
 // Доказана инъекцией в четыре стороны — `uisourcereadtest_injection_test.go`:
@@ -104,6 +125,15 @@
 // ЭТОМ объём осмотренного растёт — иначе молчание означало бы «не прочитал»;
 // метка синтетического исходника молчит, а ТО ЖЕ ИМЯ, уехавшее в чтение,
 // краснеет — пара держит дискриминатор координаты с обеих сторон одним именем.
+//
+// Вторая форма обхода доказана своей парой, и обе стороны держит ОДИН помощник:
+// проба, зовущая его обходящий экспорт, молчит; проба, взявшая у него же НЕ
+// обходящий экспорт и подтверждающая названный ею модуль его же текстом,
+// краснеет. Разойдись эти вердикты в одну сторону — гейт мерил бы ИМПОРТ
+// помощника, и одна строка импорта снимала бы запрет с любой пробы. Отдельной
+// парой закреплено, что обход через помощника НЕ оправдывает чтения СВОЕГО
+// модуля, и что замыкание идёт по всем функциям помощника, а не только по
+// экспортируемым: обходчик бывает объявлен местным, а экспорт лишь зовёт его.
 //
 // Отслеживается PRO-Robotech/kacho#5.
 package repohygiene
@@ -371,6 +401,229 @@ func readCoordinates(code string, literals []string) []string {
 	return out
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Обход, вынесенный в ПОМОЩНИКА — вторая законная форма записи (#1517).
+//
+// Обход дерева в этом корпусе записывают ДВУМЯ формами, и обе законны: прямым
+// вызовом системной функции в теле пробы и вызовом экспорта модуля-помощника,
+// который обходит сам. Распознаватель, знающий одну форму, не даёт по второй ни
+// красного, ни зелёного — он МОЛЧИТ, и всё, записанное ею, оказывается вне
+// наблюдения (`testing.md` §«Гейт на класс», п. 7). Здесь это выражалось прямо
+// наоборот: ветка прощения переписи до таких проб не доходила, и перепись
+// состава дерева объявлялась тем самым дефектом, ради которого гейт заведён.
+//
+// Замер, ради которого форма заведена (дерево `df/P1-gates`, 2026-08-29):
+// помощников-обходчиков в `ui-future/` — 5, проб, обходящих ТОЛЬКО через них, —
+// 5, из них 3 объявлялись находками. Прямых обходов — 40.
+//
+// РАЗРЕШЕНИЕ ПОИМЁННОЕ, А НЕ ПОМОДУЛЬНОЕ, и это несущее различие. Один помощник
+// несёт и обходчик, и разбор, дерева не касающийся вовсе (`shared-symbol-sweep`
+// экспортирует `sourceFiles` рядом с `declaredSymbols`). Прощать за ИМПОРТ
+// помощника значило бы снимать запрет одной строкой импорта — то есть заменить
+// предикат маской. Поэтому прощает только имя, чьё тело ДОХОДИТ до обхода, и
+// только если проба это имя ИМПОРТИРОВАЛА: одноимённая местная функция чужого
+// свойства не наследует.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// topLevelFunctionHeader — заголовок функции верхнего уровня в ОЧИЩЕННОМ коде.
+// Экспортируемые и местные узнаются ОДНОЙ формой намеренно: обход бывает вынесен
+// в местную функцию, а экспорт лишь зовёт её (`identity-ceremony-carriers`).
+// Замыкание, идущее только по экспортам, такой экспорт обходящим не признаёт —
+// то есть несёт слепую зону того же класса, ради которого гейт и правится.
+var topLevelFunctionHeader = regexp.MustCompile(
+	`(?m)^[ \t]*(export[ \t]+)?(?:async[ \t]+)?function[ \t]+([A-Za-z_$][A-Za-z0-9_$]*)[ \t]*(?:<[^>]*>)?[ \t]*\(`)
+
+// exportCallableHeader — экспорт-ЗНАЧЕНИЕ, за которым стоит функция
+// (`export const f = (…) =>` / `= function`). Тела таких экспортов разбор ниже
+// не извлекает, поэтому в помощнике-обходчике они означают невыраженную границу:
+// гейт обязан сказать об этом вслух, а не промолчать.
+var exportCallableHeader = regexp.MustCompile(
+	`(?m)^[ \t]*export[ \t]+(?:const|let|var)[ \t]+([A-Za-z_$][A-Za-z0-9_$]*)[^=\n]*=[ \t]*(?:async[ \t]*)?(?:\(|function\b)`)
+
+// namedImportClause — именованные привязки импорта. Тело строки-спецификатора
+// `tsScan` уже вычистил, поэтому спрашивается ровно перечень имён.
+var namedImportClause = regexp.MustCompile(`(?s)import[ \t\n]*\{([^}]*)\}[ \t\n]*from`)
+
+// matchBrackets — индекс парной закрывающей скобки для открывающей в code[open].
+// Разбор идёт по ОЧИЩЕННОМУ коду: комментарии сняты, тела строковых, шаблонных и
+// регулярных литералов вычищены (`tsScan`), поэтому скобки здесь структурны.
+// Возвращает -1, если пары нет: незакрытая скобка — не повод молча съесть остаток.
+func matchBrackets(code string, open int, closing byte) int {
+	opening := code[open]
+	depth := 0
+	for i := open; i < len(code); i++ {
+		switch code[i] {
+		case opening:
+			depth++
+		case closing:
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// functionBodyAfterParams — тело функции, чей список параметров закрыт в
+// code[paramsEnd]. Между списком и телом законно стоит объявление типа
+// результата, и оно САМО бывает объектным (`: { a: string } {`), поэтому группы
+// `{…}` перебираются: телом является последняя перед продолжением кода.
+func functionBodyAfterParams(code string, paramsEnd int) string {
+	i := paramsEnd + 1
+	for i < len(code) {
+		switch {
+		case code[i] == ' ' || code[i] == '\t' || code[i] == '\n' || code[i] == '\r':
+			i++
+		case code[i] == '{':
+			end := matchBrackets(code, i, '}')
+			if end < 0 {
+				return ""
+			}
+			j := end + 1
+			for j < len(code) && (code[j] == ' ' || code[j] == '\t' || code[j] == '\n' || code[j] == '\r') {
+				j++
+			}
+			if j < len(code) && code[j] == '{' {
+				i = j // группа была объявлением типа результата — тело дальше
+				continue
+			}
+			return code[i : end+1]
+		case code[i] == ';':
+			return "" // объявление без тела (перегрузка)
+		default:
+			i++
+		}
+	}
+	return ""
+}
+
+// topLevelFunctionBodies — тела функций верхнего уровня модуля и признак того,
+// какие из них экспортированы. Замыкание идёт по ВСЕМ, а прощение — только по
+// экспортированным: позвать местную функцию чужого модуля проба не может.
+func topLevelFunctionBodies(code string) (bodies map[string]string, exported map[string]bool) {
+	bodies, exported = map[string]string{}, map[string]bool{}
+	for _, m := range topLevelFunctionHeader.FindAllStringSubmatchIndex(code, -1) {
+		name := code[m[4]:m[5]]
+		paramsOpen := m[1] - 1 // регулярка кончается на `(`
+		paramsEnd := matchBrackets(code, paramsOpen, ')')
+		if paramsEnd < 0 {
+			continue
+		}
+		bodies[name] = functionBodyAfterParams(code, paramsEnd)
+		if m[2] >= 0 { // группа `export ` совпала
+			exported[name] = true
+		}
+	}
+	return bodies, exported
+}
+
+// walkingHelperExports — экспорты помощников, ДОХОДЯЩИЕ до обхода дерева:
+// сами зовут системный обход либо зовут такой же экспорт своего модуля.
+//
+// `unresolved` — имена, за разрешение которых распознаватель не отвечает:
+// экспорт-значение с функцией внутри в модуле, который дерево обходит. Тела
+// таких форм здесь не извлекаются, поэтому вердикт по ним был бы догадкой.
+// Гейт называет их вслух — невыраженная граница обязана быть видимой, иначе
+// «ноль находок» снова станет неотличимо от «ноль прочитанного».
+//
+// `ambiguous` — имя, доходящее до обхода в одном модуле и не доходящее в другом.
+// Прощение идёт по имени, поэтому такое совпадение делает вердикт зависящим от
+// того, чей импорт разбирается, — предпосылка распознавателя нарушена.
+func walkingHelperExports(helpers map[string]string) (walking, ambiguous, unresolved map[string]bool) {
+	walking, ambiguous, unresolved = map[string]bool{}, map[string]bool{}, map[string]bool{}
+	plain := map[string]bool{}
+
+	for _, src := range helpers {
+		code, _ := tsScan(src)
+		if !containsAny(code, treeWalkCalls) {
+			continue // модуль дерева не обходит — его экспорты обхода не несут
+		}
+		bodies, exported := topLevelFunctionBodies(code)
+
+		reaches := map[string]bool{}
+		for name, body := range bodies {
+			reaches[name] = containsAny(body, treeWalkCalls)
+		}
+		// Замыкание внутри модуля: функция, зовущая обходящую функцию своего же
+		// модуля, обход тоже несёт — и неважно, экспортирована ли та
+		// (`sweep` → `sourceFiles`; `walkCeremonyCarriers` → местный обходчик).
+		for changed := true; changed; {
+			changed = false
+			for name, body := range bodies {
+				if reaches[name] {
+					continue
+				}
+				for peer, ok := range reaches {
+					if ok && peer != name && strings.Contains(body, peer+"(") {
+						reaches[name] = true
+						changed = true
+						break
+					}
+				}
+			}
+		}
+		// Наружу отдаются ТОЛЬКО экспортированные: местное имя проба позвать не
+		// может, и прощать за совпадение с ним значило бы мерить имя, а не вызов.
+		for name := range exported {
+			if reaches[name] {
+				walking[name] = true
+			} else {
+				plain[name] = true
+			}
+		}
+		for _, m := range exportCallableHeader.FindAllStringSubmatch(code, -1) {
+			unresolved[m[1]] = true
+		}
+	}
+
+	for name := range walking {
+		if plain[name] {
+			ambiguous[name] = true
+		}
+	}
+	return walking, ambiguous, unresolved
+}
+
+// namedImports — имена, которые проба ИМПОРТИРОВАЛА именованной привязкой.
+// Местное объявление с тем же именем сюда не попадает: свойство помощника ему
+// не наследуется.
+func namedImports(code string) map[string]bool {
+	out := map[string]bool{}
+	for _, m := range namedImportClause.FindAllStringSubmatch(code, -1) {
+		for _, raw := range strings.Split(m[1], ",") {
+			part := strings.TrimSpace(raw)
+			if part == "" {
+				continue
+			}
+			if i := strings.LastIndex(part, " as "); i >= 0 {
+				part = strings.TrimSpace(part[i+4:])
+			}
+			part = strings.TrimPrefix(part, "type ")
+			out[strings.TrimSpace(part)] = true
+		}
+	}
+	return out
+}
+
+// reachesTreeWalk — доходит ли проба до обхода дерева ЛЮБОЙ из двух законных
+// форм записи.
+func reachesTreeWalk(code string, walking map[string]bool) bool {
+	if containsAny(code, treeWalkCalls) {
+		return true
+	}
+	if len(walking) == 0 {
+		return false
+	}
+	imported := namedImports(code)
+	for name := range walking {
+		if imported[name] && strings.Contains(code, name+"(") {
+			return true
+		}
+	}
+	return false
+}
+
 type uiSourceFinding struct {
 	File   string
 	Why    string
@@ -380,12 +633,16 @@ type uiSourceFinding struct {
 // auditUISourceReads — предикат класса. Вход — соответствие «путь пробы → её
 // исходник», чтобы инъекция гоняла ТУ ЖЕ функцию, что и обход дерева, а не свою
 // копию логики.
-func auditUISourceReads(sources map[string]string) (findings []uiSourceFinding, reads, walks int) {
+func auditUISourceReads(sources, helpers map[string]string) (findings []uiSourceFinding, reads, walks int) {
+	// Обход дерева записывают ДВУМЯ законными формами; вторая живёт не в пробе,
+	// а в её помощнике, поэтому распознаватель обязан сперва прочитать помощников.
+	walkingExports, _, _ := walkingHelperExports(helpers)
+
 	for rel, src := range sources {
 		code, literals := tsScan(src)
 
 		readsFile := containsAny(code, contentReadCalls)
-		walksTree := containsAny(code, treeWalkCalls)
+		walksTree := reachesTreeWalk(code, walkingExports)
 		if readsFile {
 			reads++
 		}
@@ -464,6 +721,17 @@ func containsAny(hay string, needles []string) bool {
 	return false
 }
 
+// namesOf — имена множества в устойчивом порядке: вердикт, меняющий порядок от
+// прогона к прогону, читать нельзя.
+func uiWalkNamesOf(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func dedupSorted(in []string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -526,6 +794,34 @@ func uiProbeSources(t *testing.T, root string) map[string]string {
 	return out
 }
 
+// uiProbeHelperSources — НЕ-тестовые исходники консоли. Из них распознаватель
+// узнаёт вторую законную форму записи обхода: экспорт, который обходит дерево
+// сам. Перечень помощников ВЫВОДИТСЯ из дерева, а не выписывается: рукописный
+// список разошёлся бы с деревом молча — и разошёлся бы ровно там, где обход
+// перестал бы распознаваться, то есть в сторону ложной находки.
+func uiProbeHelperSources(t *testing.T, root string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, rel := range trackedPaths(t, root) {
+		if !strings.HasPrefix(rel, "ui-future/") {
+			continue
+		}
+		if !strings.HasSuffix(rel, ".ts") && !strings.HasSuffix(rel, ".tsx") {
+			continue
+		}
+		if strings.HasSuffix(rel, ".test.ts") || strings.HasSuffix(rel, ".test.tsx") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatalf("%s: %v — состав помощников неизвестен, и обход, вынесенный в них, "+
+				"остался бы нераспознанным: перепись объявлялась бы находкой", rel, err)
+		}
+		out[rel] = string(b)
+	}
+	return out
+}
+
 // TestUITestsDoNotReadTheirOwnSourceAsText — проба интерфейса не вправе
 // подтверждать себя чтением модуля консоли как текста.
 func TestUITestsDoNotReadTheirOwnSourceAsText(t *testing.T) {
@@ -534,6 +830,7 @@ func TestUITestsDoNotReadTheirOwnSourceAsText(t *testing.T) {
 	// открывал, иначе неотличимо от чистого дерева.
 	t.Logf("гейт судит дерево: %s", root)
 	sources := uiProbeSources(t, root)
+	helpers := uiProbeHelperSources(t, root)
 
 	if len(sources) == 0 {
 		t.Fatal("обход не нашёл ни одной пробы интерфейса — гейт беспредметен. " +
@@ -541,7 +838,29 @@ func TestUITestsDoNotReadTheirOwnSourceAsText(t *testing.T) {
 			"зелёный вердикт ниже был бы получен даром.")
 	}
 
-	findings, reads, walks := auditUISourceReads(sources)
+	findings, reads, walks := auditUISourceReads(sources, helpers)
+
+	// Предпосылки РАСПОЗНАВАНИЯ ВТОРОЙ ФОРМЫ. Прощение идёт по ИМЕНИ экспорта,
+	// поэтому обе величины ниже — условия, при которых имя вообще годится в
+	// признак. Невыраженная граница обязана быть названа: молчание о ней снова
+	// сделало бы «ноль находок» неотличимым от «ноль прочитанного».
+	walkingExports, ambiguous, unresolved := walkingHelperExports(helpers)
+	if len(helpers) > 0 && len(walkingExports) == 0 {
+		t.Error("ни один помощник консоли не обходит дерево — распознавание ВТОРОЙ формы " +
+			"записи обхода сломано. Пробы, обходящие через помощника, снова объявятся " +
+			"находками, а перепись «обходят дерево» занизится молча.")
+	}
+	if len(ambiguous) > 0 {
+		t.Errorf("имя экспорта доходит до обхода в одном помощнике и не доходит в другом: %s.\n"+
+			"Прощение идёт по имени, поэтому такое совпадение делает вердикт зависящим от того, "+
+			"чей импорт разбирается. Развести имена либо разрешать импорт по модулю.",
+			strings.Join(uiWalkNamesOf(ambiguous), ", "))
+	}
+	if len(unresolved) > 0 {
+		t.Logf("граница распознавателя: экспорт-значение с функцией внутри в обходящем помощнике "+
+			"(%s) — тело такой формы разбор не извлекает, обход через неё останется невидим",
+			strings.Join(uiWalkNamesOf(unresolved), ", "))
+	}
 
 	// Предпосылки дискриминатора. Он различает «читает свою координату» и
 	// «обходит дерево»; если в дереве нет ни того, ни другого вида, различать
@@ -567,5 +886,6 @@ func TestUITestsDoNotReadTheirOwnSourceAsText(t *testing.T) {
 	}
 
 	t.Logf("перепись: проб интерфейса осмотрено %d, читают с диска %d, обходят дерево %d, "+
-		"находок %d", len(sources), reads, walks, len(findings))
+		"находок %d; помощников прочитано %d, обходящих экспортов %d",
+		len(sources), reads, walks, len(findings), len(helpers), len(walkingExports))
 }

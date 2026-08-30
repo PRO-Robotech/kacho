@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/pkg/db/pgfault"
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
@@ -435,8 +435,8 @@ func (r *ImageRepo) Register(ctx context.Context, i *domain.Image) (*domain.Imag
 // нет. Разбор идёт здесь, а не в общем мэппере, потому что предмет знает только этот
 // путь: на прочих путях имя объекта в запросе не участвует.
 func imageBackendObjectTaken(err error, backendObject string) error {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == cnImageBackendObjectUniq {
+	f := pgfault.Classify(err)
+	if f.Is(pgfault.Unique) && f.Constraint == cnImageBackendObjectUniq {
 		return fmt.Errorf("%w: image with backend object %s already exists",
 			storageerr.ErrAlreadyExists, backendObject)
 	}

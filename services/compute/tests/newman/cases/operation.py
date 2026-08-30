@@ -135,12 +135,23 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="OP-GET-CONF-NF-TEXT",
-    title="Get несуществующего epd-opId → текст содержит 'not found'",
+    title="Get несуществующего epd-opId → сообщение ДОСЛОВНО 'operation <id> not found'",
     classes=["CONF", "NEG"], priority="P1",
+    # Утверждается РАВЕНСТВО вычисленному тексту, без приведения регистра.
+    #
+    # Приведение к нижнему регистру НЕ РАЗЛИЧАЕТ регистр by construction, поэтому
+    # расхождение тона края с тоном владельца не могло покраснеть ни в одном
+    # прогоне — и не покраснело за всю жизнь кейса (#1370, #1401). Текст полосы
+    # известен целиком: у него ДВА производителя на всё дерево — `pkg/operations`
+    # и `gateway/internal/opsproxy`, — и они обязаны совпадать побайтово
+    # (`security.md` §Hardening #6: различимый отказ есть оракул существования).
+    # Долг PROBE-02 из docs/REQUIREMENTS.md закрыт здесь: точный текст владельца
+    # больше не «probe-needed», он вычислен из единственного производителя.
     steps=[Step(name="get-nx", method="GET", path="/operations/{{garbageComputeId}}",
                 test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                             # probe-needed: точный текст владельца — `operations.NotFoundStatus`, "operation <id> not found"
-                             "pm.test('text mentions not found', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('not found'));"])],
+                             "pm.test('сообщение дословно равно тексту владельца', () => "
+                             "  pm.expect(pm.response.json().message).to.eql("
+                             "'operation ' + pm.environment.get('garbageComputeId') + ' not found'));"])],
 ))
 
 CASES.append(Case(
@@ -153,7 +164,9 @@ CASES.append(Case(
                 # message = `invalid operation id "<X>"` (не слово 'prefix' — это внутренняя причина,
                 # не текст ответа). Проверяем конвенциональный текст, а не термин реализации.
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('mentions invalid operation id (malformed-id convention)', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('invalid operation id'));"])],
+                             "pm.test('сообщение дословно равно тексту края', () => "
+                             "  pm.expect(pm.response.json().message).to.eql("
+                             "'invalid operation id \"' + pm.environment.get('garbageId') + '\"'));"])],
 ))
 
 # Отмена ЗАВЕРШЁННОЙ операции отвергается, и это ровно один исход — установлено по коду,
@@ -192,8 +205,9 @@ CASES.append(Case(
                           *save_from_response("j.id", "doneOpId")]),
         Step(name="cancel-done", method="POST", path="/operations/{{doneOpId}}:cancel", body={},
              test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                          "pm.test('текст называет причину — операция уже завершена', () => "
-                          "  pm.expect((pm.response.json().message || '').toLowerCase()).to.include('already completed'));"]),
+                          "pm.test('сообщение дословно равно тексту владельца', () => "
+                          "  pm.expect(pm.response.json().message).to.eql("
+                          "'operation ' + pm.environment.get('doneOpId') + ' already completed'));"]),
         Step(name="cleanup", method="DELETE", path=INSTANCES + "/{{instanceId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),

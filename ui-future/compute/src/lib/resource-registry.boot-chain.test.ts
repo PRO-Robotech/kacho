@@ -1,33 +1,29 @@
-// Путь пустого проекта: образ → том → машина, ни на одном шаге не набирая
-// идентификатор руками.
+// Ключ входа в гостя — РЕСУРС консоли, а не поле машины.
 //
-// Ground truth — три контракта:
+// Ground truth — два контракта:
 //   proto/kacho/cloud/compute/v1/guest_access_key.proto        (ресурс ключа)
 //   proto/kacho/cloud/compute/v1/guest_access_key_service.proto (/compute/v1/guestAccessKeys)
-//   proto/kacho/cloud/compute/v1/instance_service.proto         (CreateInstanceRequest)
 //
-// Что здесь закрепляется и почему именно это:
+// Контракт объясняет это прямым текстом: ключ, переданный полем, живёт ровно
+// столько, сколько машина, и его нельзя ни отозвать, ни заменить, ни узнать, где
+// ещё он используется. Сервер есть, провайдер инфраструктуры его знает — консоль
+// не знала вовсе (#377).
 //
-//  1. Ключ входа в гостя — РЕСУРС. Контракт объясняет это прямым текстом: ключ,
-//     переданный полем, живёт ровно столько, сколько машина, и его нельзя ни
-//     отозвать, ни заменить, ни узнать, где ещё он используется. Сервер есть,
-//     провайдер инфраструктуры его знает — консоль не знала вовсе.
+// ЗДЕСЬ ОСТАЛОСЬ ТО, ЧТО ПРИНАДЛЕЖИТ ЭТОМУ МОДУЛЮ: запись ресурса в реестре,
+// её форма создания и видимость в НАВИГАЦИИ раздела — последнее в общей суите
+// не проверить, навигация у каждого раздела своя.
 //
-//  2. `guest_access_key_ids` — ссылки по идентификатору, значит СПИСОК. Набор
-//     ключей руками означает, что арендатор идёт за идентификатором в другое
-//     место, которого в консоли до этой правки не было.
-//
-//  3. `boot_source.id` — тоже список. Сервер принимает ровно `img-<base32>` и
-//     ничего больше: `validateBootSource` зовёт `corevalidate.ResourceID("Image",
-//     "img", …)`. Свободная строка здесь означала «набери идентификатор образа
-//     по памяти», а её подсказка предлагала две формы, которые сервер отвергает.
+// Утверждения про форму машины (ключи и образ выбираются списком, ветка OCI
+// отвергается словами, пустой список не уезжает) отсюда СНЯТЫ: они стояли
+// второй копией того же лока при второй копии реестра. Реестр сведён к
+// единственному на всю консоль (#406), копия формы осталась одна, и лок теперь
+// один — `shared/src/lib/resource-registry.instance-boot-chain.test.ts`,
+// исполняемый в том числе прогоном этого модуля. Перепись копий по-прежнему
+// выводится из дерева гейтом `scripts/check-instance-boot-chain-parity.mjs`:
+// вторая копия, заведённая завтра, станет находкой, а не вторым расхождением.
 
 import { REGISTRY } from "./resource-registry";
 import { COMPUTE_NAVIGATION } from "@/navigation";
-import type { ArrayField, RefField } from "@shared/lib/form-schema";
-
-const instances = REGISTRY["compute-instances"];
-const instanceFields = new Map((instances.fields ?? []).map((f) => [f.name, f]));
 
 describe("ключ входа в гостя — ресурс консоли, а не поле машины", () => {
   it("объявлен с адресом, ключом полезной нагрузки и полным набором действий", () => {
@@ -51,72 +47,5 @@ describe("ключ входа в гостя — ресурс консоли, а 
   it("виден в навигации — иначе ресурс есть, а дойти до него нельзя", () => {
     const paths = COMPUTE_NAVIGATION.flatMap((s) => s.items.map((i) => i.path));
     expect(paths).toContain("compute/guest-access-keys");
-  });
-});
-
-describe("форма машины: ключи и образ выбираются, а не набираются", () => {
-  it("guest_access_key_ids — список ключей проекта", () => {
-    const f = instanceFields.get("guest_access_key_ids") as ArrayField | undefined;
-    expect(f).toBeDefined();
-    expect(f!.type).toBe("array");
-    const inner = f!.itemFields[0] as RefField;
-    expect(inner.type).toBe("ref");
-    expect(inner.refResource).toBe("guest-access-keys");
-    expect(inner.refProjectScoped).toBe(true);
-    // Предел держит константа домена MaxGuestAccessKeysPerInstance = 32
-    // (services/compute/internal/domain/constants.go); контракт называет её прозой.
-    expect(f!.maxItems).toBe(32);
-  });
-
-  it("boot_source.id — список образов, а не свободная строка", () => {
-    const f = instanceFields.get("boot_source.id") as RefField | undefined;
-    expect(f).toBeDefined();
-    expect(f!.type).toBe("ref");
-    expect(f!.refResource).toBe("images");
-    expect(f!.refProjectScoped).toBe(true);
-    // Список образов имеет смысл только для источника storage.image: OCI-ветка
-    // адресуется парой (реестр, имя), а не идентификатором образа хранилища.
-    expect(f!.visibleWhen).toEqual({ field: "boot_source.type", equals: "storage.image" });
-  });
-
-  it("образы объявлены целью ссылки — иначе список не из чего собрать", () => {
-    const images = REGISTRY["images"];
-    expect(images).toBeDefined();
-    expect(images.apiPath).toBe("/storage/v1/images");
-    expect(images.payloadKey).toBe("images");
-    // Здесь это ТОЛЬКО цель ссылки: CRUD образа живёт в своём домене.
-    expect(images.ops).toEqual({ create: false, update: false, delete: false });
-  });
-
-  it("ключи уезжают на провод плоским списком идентификаторов", () => {
-    const out = instances.sanitize!({
-      instance_kind: "VM",
-      machine_type_id: "mt-std2",
-      boot_source: { type: "storage.image", id: "img-9k2m4x7q1n8p" },
-      guest_access_key_ids: [{ value: "gak-1" }, { value: "gak-2" }],
-    });
-    expect(out.guest_access_key_ids).toEqual(["gak-1", "gak-2"]);
-  });
-
-  it("ветка OCI отвергается словами до отправки, storage-ветка проходит", () => {
-    // Отрицание: сервер эту ветку не принимает — `validateBootSource` отвечает
-    // «bootSource.type registry.image is not accepted yet: a registry image has
-    // no durable address today». Форма обязана сказать это словами, а не слать
-    // запрос, который не может пройти.
-    const refused = instances.validate!({ boot_source: { type: "registry.image", id: "" } });
-    expect(refused).toContain("registry.image");
-    // Положительный контроль: законная ветка проходит. Без него отрицание
-    // зеленело бы на проверке, которая просто всегда отказывает.
-    expect(instances.validate!({ boot_source: { type: "storage.image", id: "img-9k2m4x7q1n8p" } })).toBeNull();
-  });
-
-  it("пустой список ключей не уезжает вовсе", () => {
-    const out = instances.sanitize!({
-      instance_kind: "VM",
-      machine_type_id: "mt-std2",
-      boot_source: { type: "storage.image", id: "img-9k2m4x7q1n8p" },
-      guest_access_key_ids: [{ value: "" }],
-    });
-    expect(out.guest_access_key_ids).toBeUndefined();
   });
 });

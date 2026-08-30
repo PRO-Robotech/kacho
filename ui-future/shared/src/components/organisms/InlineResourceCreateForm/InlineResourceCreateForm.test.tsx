@@ -149,14 +149,37 @@ describe("InlineResourceCreateForm", () => {
     expect(Object.keys(body())).not.toContain("_address_kind");
   });
 
-  it("синхронный ответ без операции сразу закрывает форму и обновляет список", async () => {
-    const { onCancel, onSuccess } = show();
+  // Пара, а не одно утверждение. «Ответ без операции» значит РАЗНОЕ у разных
+  // ресурсов, и решает это объявление ресурса, а не форма: у того, кто операцию
+  // не обещал, такой ответ — законный синхронный успех; у того, кто обещал, —
+  // нарушение контракта, и подтверждать выполнение нечем. Прежняя редакция
+  // несла только первую половину и закрепляла второй случай как успех.
+  it("синхронный ответ закрывает форму у ресурса, который операции не обещал", async () => {
+    const { onCancel, onSuccess } = show({ spec: spec({ mutationsReturnOperation: false }) });
 
     submit();
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     expect(invalidate).toHaveBeenCalledWith("subnets", "prj-1");
     expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("ответ без операции у ресурса, который её обещал, — отказ, а не успех", async () => {
+    const { onCancel, onSuccess } = show();
+
+    submit();
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "Создать подсеть: сервер не вернул операцию — подтвердить выполнение невозможно",
+      ),
+    );
+    // Форма остаётся открытой и список не обновляется: показать созданное
+    // значило бы утверждать то, чего мы не знаем.
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(invalidate).not.toHaveBeenCalled();
   });
 
   it("пока операция не завершилась, форма занята и не закрывается", async () => {

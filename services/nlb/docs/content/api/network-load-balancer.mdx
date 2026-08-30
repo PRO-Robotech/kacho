@@ -34,6 +34,7 @@ import dedent from 'ts-dedent'
     <tr><td><code>labels</code></td><td>map&lt;string,string&gt;</td><td>mutable</td><td>Метки (≤64 пары)</td></tr>
     <tr><td><code>type</code></td><td>enum</td><td>immutable</td><td><code>EXTERNAL</code> / <code>INTERNAL</code></td></tr>
     <tr><td><code>placementType</code></td><td>enum</td><td>immutable</td><td>Только для INTERNAL: <code>ZONAL</code> / <code>REGIONAL</code>. Для EXTERNAL пуст</td></tr>
+    <tr><td><code>zoneId</code></td><td>string</td><td>output-only</td><td>Площадка балансировщика. Непуст РОВНО при <code>placementType=ZONAL</code>: у REGIONAL зональной координаты нет (anycast), у EXTERNAL зону подлежащего адреса выбирает платформа и наружу она не выходит. Значение — зона подсети VIP, резолвится у vpc на создании; менять его нельзя</td></tr>
     <tr><td><code>sessionAffinity</code></td><td>enum</td><td>mutable</td><td><code>FIVE_TUPLE</code> (дефолт) / <code>CLIENT_IP_ONLY</code></td></tr>
     <tr><td><code>deletionProtection</code></td><td>bool</td><td>mutable</td><td>Запрет удаления, пока не снят</td></tr>
     <tr><td><code>disabledAnnounceZones</code></td><td>string[]</td><td>mutable</td><td>Только для REGIONAL: зоны, из которых anycast-VIP не анонсируется (drain)</td></tr>
@@ -94,6 +95,7 @@ Create источник неизменяем; наружу выставляют�
       "name": "web-lb",
       "type": "INTERNAL",
       "placementType": "ZONAL",
+      "zoneId": "region-1-a",
       "sessionAffinity": "FIVE_TUPLE",
       "status": "ACTIVE",
       "v4AddressId": "adr...",
@@ -155,7 +157,7 @@ Create источник неизменяем; наружу выставляют�
 
 Меняет изменяемые поля (`name`, `description`, `labels`, `sessionAffinity`,
 `deletionProtection`, `disabledAnnounceZones`). Immutable-поля (`type`, `placementType`,
-`regionId`, источник и адреса VIP) в `updateMask` отклоняются по имени пути
+`zoneId`, `regionId`, источник и адреса VIP) в `updateMask` отклоняются по имени пути
 (`InvalidArgument`). Пустой mask → full-PATCH всех mutable-полей.
 
 <CodeBlock language="bash">

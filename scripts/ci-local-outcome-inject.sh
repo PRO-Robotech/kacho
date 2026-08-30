@@ -124,6 +124,22 @@ mk mem-goruntime "$(emit 'go test -short' 2 'fatal error: out of memory')"
 mk mem-node      "$(emit 'ui vpc: build' 134 'FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory')"
 mk mem-enomem    "$(emit 'golangci-lint' 1 'failed to load: open /tmp/x: cannot allocate memory')"
 
+# КЭШ СБОРКИ ИСЧЕЗ ИЗ-ПОД ИДУЩЕГО ПРОГОНА (#1431). На машине, где параллельно
+# работают несколько копий дерева, кэш общий, а решение его подрезать принимает
+# любая из копий: `go clean -cache` соседа — штатное событие, а не редкость.
+# Инструмент отвечает про ОТКРЫТИЕ файла, которого больше нет; предмета шаг не
+# достигает вовсе, поэтому его «отказ» вердиктом не является.
+mk cache-gone-open "$(emit 'go build' 1 \
+    'go: open /home/dk/.cache/go-build/3f/3fa1c0d7e1b2c3d4e5f60718293a4b5c6d7e8f90-d: no such file or directory')"
+mk cache-gone-test "$(emit 'go test -short' 1 \
+    'go: open /home/dk/.cache/go-build/trim.txt: no such file or directory')"
+# ТУЛЧЕЙН ЖИВЁТ В МОДКЭШЕ (`go.mod` называет toolchain, и Go кладёт его в
+# GOMODCACHE), поэтому чистка модкэша соседом уносит саму стандартную библиотеку.
+# Форма сообщения — про `std`, и путь в скобках указывает В МОДКЭШ: это и есть
+# якорь, разводящий её с настоящей находкой ниже.
+mk toolchain-gone "$(emit 'go build' 1 \
+    'main.go:5:2: package fmt is not in std (/home/dk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.13.linux-amd64/src/fmt)')"
+
 # ЗАКОННЫЕ БЛИЗНЕЦЫ — настоящие находки. Каждый обязан остаться КРАСНЫМ.
 mk finding-lint  "$(emit 'golangci-lint' 1 'internal/repohygiene/foo.go:12:3: ineffectual assignment to err (ineffassign)')"
 # Текст этой находки УПОМИНАЕТ исчерпание — и взят из дерева дословно
@@ -141,6 +157,18 @@ mk finding-prose "$(emit 'helm template' 1 'warning: disk space is low on this m
 mk finding-signal "$(emit 'go test -short' 1 \
     '--- FAIL: TestWorkerStopDrainsBacklog' \
     '    worker_test.go:88: ждали "signal: killed", получили ""')"
+# НЕВЕРНЫЙ ИМПОРТ — настоящая находка, и её форма ОТЛИЧАЕТСЯ ОТ ИСЧЕЗНУВШЕГО
+# ТУЛЧЕЙНА ТОЛЬКО ПУТЁМ В СКОБКАХ (замер: имя пакета различает их лишь тем, есть
+# ли такой пакет в stdlib, а grep этого не знает). Здесь путь указывает в
+# установленный GOROOT — значит стандартная библиотека на месте, и виноват код.
+mk finding-import "$(emit 'go build' 1 \
+    'main.go:2:8: package fmtx is not in std (/usr/lib/go-1.22/src/fmtx)')"
+# Проба, чей текст УПОМИНАЕТ каталог кэша сборки, но не в форме «файла нет»:
+# литералы `/tmp/go-build/...` живут в дереве (internal/treecorpus), и признак,
+# берущий их, глотал бы настоящее падение этой пробы.
+mk finding-gobuild-prose "$(emit 'go test -short' 1 \
+    '--- FAIL: TestCachedVerdictReadsTestlog' \
+    '    cachedverdict_test.go:33: argv[0] = /tmp/go-build/b001/probe.test, ждали иное')"
 
 # ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ обычного пропуска: «предмета нет» — это по-прежнему
 # третий исход, но прогон он НЕДЕЙСТВИТЕЛЬНЫМ не делает и кода не меняет.
@@ -203,6 +231,9 @@ assert_all() { # assert_all <копия> <метка> <файл для числ�
     want "$copy" "$tag" mem-goruntime 3 'НЕ выполнено 1' 'отказов 0' "$NEDEYST" '!красное:'
     want "$copy" "$tag" mem-node      3 'НЕ выполнено 1' 'отказов 0' "$NEDEYST" '!красное:'
     want "$copy" "$tag" mem-enomem    3 'НЕ выполнено 1' 'отказов 0' "$NEDEYST" '!красное:'
+    want "$copy" "$tag" cache-gone-open 3 'НЕ выполнено 1' 'отказов 0' "$NEDEYST" '!красное:'
+    want "$copy" "$tag" cache-gone-test 3 'НЕ выполнено 1' 'отказов 0' "$NEDEYST" '!красное:'
+    want "$copy" "$tag" toolchain-gone  3 'НЕ выполнено 1' 'отказов 0' "$NEDEYST" '!красное:'
 
     # Текст оператору обязан отличаться от «почините найденное»: находок нет.
     want "$copy" "$tag" space-compile 3 'условие не создано' 'повторите прогон'
@@ -213,6 +244,8 @@ assert_all() { # assert_all <копия> <метка> <файл для числ�
     want "$copy" "$tag" finding-empty 1 'отказов 1' 'НЕ выполнено 0' 'красное:' "!$NEDEYST"
     want "$copy" "$tag" finding-prose 1 'отказов 1' 'НЕ выполнено 0' 'красное:' "!$NEDEYST"
     want "$copy" "$tag" finding-signal 1 'отказов 1' 'НЕ выполнено 0' 'красное:' "!$NEDEYST"
+    want "$copy" "$tag" finding-import 1 'отказов 1' 'НЕ выполнено 0' 'красное:' "!$NEDEYST"
+    want "$copy" "$tag" finding-gobuild-prose 1 'отказов 1' 'НЕ выполнено 0' 'красное:' "!$NEDEYST"
 
     # Обычный пропуск кода не меняет — иначе всякий прогон группы ui стал бы
     # красным на исправном дереве.
@@ -254,6 +287,8 @@ corpus="$tmp/corpus.txt"
     printf '%s\n' 'fatal error: out of memory'
     printf '%s\n' 'FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory'
     printf '%s\n' 'failed to load: open /tmp/x: cannot allocate memory'
+    printf '%s\n' 'go: open /home/dk/.cache/go-build/3f/3fa1c0d7e1b2c3d4e5f60718293a4b5c6d7e8f90-d: no such file or directory'
+    printf '%s\n' 'main.go:5:2: package fmt is not in std (/home/dk/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.25.13.linux-amd64/src/fmt)'
 } > "$corpus"
 
 sig_fails=0

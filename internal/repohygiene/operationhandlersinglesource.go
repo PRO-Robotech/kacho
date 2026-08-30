@@ -53,8 +53,19 @@ type opSourceCensus struct {
 	Handlers   int
 	Converters int
 	Ownership  int
-	Exempted   int            // подавлено записями ведомости — отдельно от осей
-	Aliases    map[string]int // какие алиасы стабов встретились — перепись слепых зон
+	// Proxies — объявлений ПРОКСИ контракта: тип реализует серверную сторону и
+	// держит КЛИЕНТ того же контракта. Печатается отдельно, потому что от этого
+	// числа зависит смысл нуля по оси обработчика: прокси выведен из неё ПО
+	// ПОСТРОЕНИЮ, и «обработчиков 0» при нулевом числе прокси означает совсем не
+	// то же, что при ненулевом.
+	Proxies int
+	// RecordedOwnership — функций, читающих владельца С САМОЙ СТРОКИ ответа.
+	// Это ВТОРАЯ полоса владения, и до её заведения гейт не видел её вовсе:
+	// ось `Ownership` считает глаголы владельца строки, а эта полоса их не
+	// зовёт by construction — она получает владельца уже прочитанным.
+	RecordedOwnership int
+	Exempted          int            // подавлено записями ведомости — отдельно от осей
+	Aliases           map[string]int // какие алиасы стабов встретились — перепись слепых зон
 }
 
 // auditOperationSingleSource — судящая функция гейта.
@@ -87,6 +98,11 @@ func auditOperationSingleSource(root string, files []string, exempt map[string]s
 	// `stubs == ""`, и ВСЕ ТРИ оси пропускали его молча. Форк при этом вкладывал
 	// заглушку, реализовывал оба глагола и нёс своё тело преобразователя.
 	pkgAliases := map[string]map[string]string{} // каталог → местное имя → имя типа контракта
+	// pkgProxyTypes — каталог → имена типов-ПРОКСИ контракта. Собирается первым
+	// проходом по той же причине, что и псевдонимы: тип объявлен в одном файле
+	// пакета, а его методы лежат в другом, и пофайловая таблица разошлась бы с
+	// языком.
+	pkgProxyTypes := map[string]map[string]bool{}
 	parsed := map[string]*ast.File{}
 	fsets := map[string]*token.FileSet{}
 	for _, rel := range files {
@@ -154,6 +170,27 @@ func auditOperationSingleSource(root string, files []string, exempt map[string]s
 			}
 		}
 	}
+
+	// ПРОХОД ПОЛУТОРНЫЙ: типы-ПРОКСИ контракта.
+	//
+	// Считается ПОСЛЕ разрешения псевдонимов — иначе прокси, спрятавший заглушку
+	// за местным именем, в таблицу не попадёт и будет судим осью обработчика,
+	// то есть ровно тем судом, из-под которого прокси выведен по построению.
+	for _, rel := range files {
+		slashed := filepath.ToSlash(rel)
+		f := parsed[slashed]
+		if f == nil {
+			continue
+		}
+		stubs, _, _ := importAliases(f)
+		dir := filepath.ToSlash(filepath.Dir(slashed))
+		for _, name := range contractProxyTypes(f, stubs, pkgAliases[dir]) {
+			if pkgProxyTypes[dir] == nil {
+				pkgProxyTypes[dir] = map[string]bool{}
+			}
+			pkgProxyTypes[dir][name] = true
+		}
+	}
 	for _, rel := range files {
 		slashed := filepath.ToSlash(rel)
 		// Общий слой — ЦЕЛЬ свойства, а не его нарушитель, и выведен он по
@@ -219,17 +256,51 @@ func auditOperationSingleSource(root string, files []string, exempt map[string]s
 		// псевдонимы соседнего файла сводятся к одной форме.
 		aliases := pkgAliases[filepath.ToSlash(filepath.Dir(slashed))]
 
+		proxies := pkgProxyTypes[filepath.ToSlash(filepath.Dir(slashed))]
+
 		for _, decl := range f.Decls {
 			switch d := decl.(type) {
 			case *ast.GenDecl:
-				if (stubs != "" || len(aliases) > 0) && embedsServerStub(d, stubs, aliases) {
+				for _, name := range serverStubTypeNames(d, stubs, aliases) {
+					if proxies[name] {
+						// ПРОКСИ, а не форк обработчика: он реализует серверную
+						// сторону, потому что иначе его нечем зарегистрировать на
+						// мультиплексоре, и держит КЛИЕНТ того же контракта,
+						// потому что читает у владельца. Своей таблицы операций
+						// у него нет — сводить его к общему обработчику не к чему.
+						// Выведен ПО ПОСТРОЕНИЮ, а не записью ведомости: запись
+						// подразумевает, что предмет когда-нибудь исчезнет, а этот
+						// не исчезнет, пока у платформы один вход. Взамен прокси
+						// судится осью прочитанного владельца — см. ниже.
+						cen.Proxies++
+						continue
+					}
 					count(&cen.Handlers)
 					add("тип вкладывает серверную заглушку контракта", "обработчик")
 				}
 			case *ast.FuncDecl:
 				if (stubs != "" || len(aliases) > 0) && takesOperationRequest(d, stubs, aliases) {
-					count(&cen.Handlers)
-					add("метод принимает запрос контракта операции", "обработчик")
+					// Имя получателя берётся УЖЕ СУЩЕСТВУЮЩИМ в пакете
+					// помощником (`replicafanout.go`), а не своим: он читает все
+					// четыре формы получателя, включая обобщённые, и заводить
+					// рядом вторую копию значило бы делать ровно то, что этот
+					// гейт запрещает.
+					if d.Recv != nil && len(d.Recv.List) > 0 && proxies[receiverName(d.Recv.List[0].Type)] {
+						cen.Proxies++
+					} else {
+						count(&cen.Handlers)
+						add("метод принимает запрос контракта операции", "обработчик")
+					}
+				}
+				// ОСЬ ПРОЧИТАННОГО ВЛАДЕЛЬЦА. Полоса, получающая владельца уже
+				// прочитанным (из ответа соседа), — вторая в дереве, и глаголов
+				// владельца строки она не зовёт, поэтому ось `Ownership` её не
+				// видит by construction.
+				if stubs != "" && readsRecordedOwner(d) {
+					count(&cen.RecordedOwnership)
+					if !delegatesOwnershipDecision(d, ops) {
+						add("читает владельца с самой строки и решает по нему сама", "полоса прочитанного владельца")
+					}
 				}
 				if (stubs != "" || len(aliases) > 0) && ops != "" && convertsOperation(d, stubs, ops, aliases) {
 					count(&cen.Converters)
@@ -383,8 +454,16 @@ func isPtrToAlias(e ast.Expr, aliases map[string]string, want string) bool {
 	return okID && aliases[id.Name] == want
 }
 
-// embedsServerStub — тип вкладывает `<stubs>.UnimplementedOperationServiceServer`.
-func embedsServerStub(d *ast.GenDecl, stubs string, aliases map[string]string) bool {
+// serverStubTypeNames — ИМЕНА типов, вкладывающих
+// `<stubs>.UnimplementedOperationServiceServer`.
+//
+// Возвращает имена, а не «да/нет»: по имени вызывающий отличает форк обработчика
+// от ПРОКСИ, а без имени различить их нечем — оба вкладывают одну заглушку.
+func serverStubTypeNames(d *ast.GenDecl, stubs string, aliases map[string]string) []string {
+	if stubs == "" && len(aliases) == 0 {
+		return nil
+	}
+	var names []string
 	for _, spec := range d.Specs {
 		ts, ok := spec.(*ast.TypeSpec)
 		if !ok {
@@ -395,17 +474,183 @@ func embedsServerStub(d *ast.GenDecl, stubs string, aliases map[string]string) b
 			continue
 		}
 		for _, fld := range st.Fields.List {
-			if len(fld.Names) == 0 && isSel(fld.Type, stubs, "UnimplementedOperationServiceServer") {
-				return true
+			if len(fld.Names) != 0 {
+				continue // вкладывание — поле БЕЗ имени
 			}
-			if len(fld.Names) == 0 {
-				if id, okID := fld.Type.(*ast.Ident); okID && aliases[id.Name] == "UnimplementedOperationServiceServer" {
-					return true
+			if isSel(fld.Type, stubs, "UnimplementedOperationServiceServer") {
+				names = append(names, ts.Name.Name)
+				break
+			}
+			if id, okID := fld.Type.(*ast.Ident); okID && aliases[id.Name] == "UnimplementedOperationServiceServer" {
+				names = append(names, ts.Name.Name)
+				break
+			}
+		}
+	}
+	return names
+}
+
+// contractProxyTypes — имена типов, являющихся ПРОКСИ контракта операции.
+//
+// # Дискриминатор — СТРУКТУРНЫЙ, и это несущее свойство
+//
+// Прокси узнаётся по паре, которую нельзя получить случайно: тип вкладывает
+// СЕРВЕРНУЮ заглушку контракта и держит полем КЛИЕНТ ТОГО ЖЕ контракта. Первое
+// без второго — обработчик поверх своего хранилища (домены), второе без первого
+// — обычный клиент соседа (пакеты SDK, клиенты сервисов). Вместе они означают
+// ровно одно: точка, принимающая запрос и переспрашивающая его у владельца.
+//
+// Дискриминатор НЕ по пути и НЕ по имени намеренно. Прежде это место держала
+// запись ведомости на каталог края, и держала неверно дважды: она подавляла ось
+// ОБРАБОТЧИКА (форк тенантского обработчика), тогда как называла своей причиной
+// расхождение полосы ВЛАДЕНИЯ — оси, которой у гейта не было вовсе. То есть
+// послабление выдавалось не за то, что происходило, и предмета, который она
+// обещала стеречь, не касалось ничем.
+//
+// # Почему ПОЛЕ, а не «пакет где-то держит клиент»
+//
+// Пакетная проверка дала бы выход: домен, добавивший рядом клиент операции,
+// выводил бы СВОЙ форк обработчика из-под оси, ничего для этого не сделав.
+// Поле принадлежит типу, и получить его случайно нельзя.
+func contractProxyTypes(f *ast.File, stubs string, aliases map[string]string) []string {
+	if stubs == "" && len(aliases) == 0 {
+		return nil
+	}
+	var names []string
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.TYPE {
+			continue
+		}
+		embeds := map[string]bool{}
+		for _, n := range serverStubTypeNames(gd, stubs, aliases) {
+			embeds[n] = true
+		}
+		for _, spec := range gd.Specs {
+			ts, okSpec := spec.(*ast.TypeSpec)
+			if !okSpec || !embeds[ts.Name.Name] {
+				continue
+			}
+			st, okStruct := ts.Type.(*ast.StructType)
+			if !okStruct || st.Fields == nil {
+				continue
+			}
+			for _, fld := range st.Fields.List {
+				if len(fld.Names) == 0 {
+					continue // вкладывание — не хранение клиента
+				}
+				if mentionsContractClient(fld.Type, stubs, aliases) {
+					names = append(names, ts.Name.Name)
+					break
 				}
 			}
 		}
 	}
-	return false
+	return names
+}
+
+// mentionsContractClient — выражение типа поля упоминает клиент контракта.
+//
+// Обход, а не сравнение: клиент лежит и голым полем, и в карте
+// (`map[string]<stubs>.OperationServiceClient` — форма края), и в срезе. Судить
+// одну форму значило бы объявить остальные не-прокси и вернуть их под ось
+// обработчика.
+func mentionsContractClient(e ast.Expr, stubs string, aliases map[string]string) bool {
+	found := false
+	ast.Inspect(e, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.SelectorExpr:
+			if isSel(x, stubs, "OperationServiceClient") {
+				found = true
+				return false
+			}
+		case *ast.Ident:
+			if aliases[x.Name] == "OperationServiceClient" {
+				found = true
+				return false
+			}
+		}
+		return true
+	})
+	return found
+}
+
+// readsRecordedOwner — тело читает владельца У САМОЙ СТРОКИ ответа
+// (`GetPrincipalType`/`GetPrincipalId` контрактной операции).
+//
+// Это НАЧАЛО второй полосы владения. Первая (ось `Ownership`) сужает выдачу
+// предикатом хранилища и владельца из строки не читает вовсе; вторая получает
+// строку уже прочитанной — у соседа — и решает по её полям. Полосы разные,
+// и до заведения этой оси вторую не видел никто.
+//
+// Файл обязан импортировать стабы контракта: те же имена геттеров носят ответы
+// ДРУГИХ контрактов (у края — ответ фасада личности), и без этого условия ось
+// краснела бы на предмете, к операциям отношения не имеющем.
+func readsRecordedOwner(d *ast.FuncDecl) bool {
+	if d.Body == nil {
+		return false
+	}
+	found := false
+	ast.Inspect(d.Body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if sel.Sel.Name == "GetPrincipalType" || sel.Sel.Name == "GetPrincipalId" {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// ownershipDecisionVerb — санкционированный глагол решения о владении по
+// ПРОЧИТАННОЙ строке. Живёт у владельца полосы (`pkg/operations`); здесь стоит
+// его имя, потому что гейт судит форму вызова, а не тип.
+const ownershipDecisionVerb = "CheckRecordedOwnership"
+
+// delegatesOwnershipDecision — КАЖДЫЙ выход функции возвращает результат
+// санкционированного глагола владельца.
+//
+// Требуется именно «каждый», а не «хотя бы один»: форма «свой обход, потом
+// общий глагол» проходила бы проверку на присутствие вызова, и обход — ровно
+// то, ради чего полосы разошлись. Пустая строка отказа (`return nil`) выходом
+// через глагол тоже не является: это решение, принятое здесь.
+//
+// ГРАНИЦА НАЗВАНА: судится ФОРМА выхода, а не то, ЧТО подано глаголу на вход.
+// Функция, вычислившая не ту личность и честно отдавшая её общему решению,
+// этой осью не ловится — такой предикат судил бы намерение, и его ложные
+// находки начались бы на первом же журнале аудита. Что подано на вход, держат
+// пробы самой полосы.
+func delegatesOwnershipDecision(d *ast.FuncDecl, ops string) bool {
+	if d.Body == nil || ops == "" {
+		return false
+	}
+	exits, delegated := 0, 0
+	ast.Inspect(d.Body, func(n ast.Node) bool {
+		if _, isLit := n.(*ast.FuncLit); isLit {
+			return false // выход замыкания — не выход этой функции
+		}
+		ret, isRet := n.(*ast.ReturnStmt)
+		if !isRet {
+			return true
+		}
+		exits++
+		if len(ret.Results) != 1 {
+			return true
+		}
+		call, isCall := ret.Results[0].(*ast.CallExpr)
+		if isCall && isSel(call.Fun, ops, ownershipDecisionVerb) {
+			delegated++
+		}
+		return true
+	})
+	return exits > 0 && exits == delegated
 }
 
 // convertsOperation — функция ПЕРЕВОДИТ доменную строку операции в контракт:

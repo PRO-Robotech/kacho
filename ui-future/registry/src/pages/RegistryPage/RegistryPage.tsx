@@ -13,6 +13,7 @@ import { ResourceListPage } from "@/components/organisms/ResourceListPage";
 import { ResourceShell } from "@/components/organisms/ResourceShell";
 import { contextApi } from "@/lib/context-store";
 import { REGISTRY } from "@/lib/resource-registry";
+import { MODULE_SPEC_IDS } from "@/lib/module-specs";
 // Доменные расширения карточки — side-effect-импорт входной точки модуля: он
 // подключает их до первого рендера `ResourceShell`, которая читает их по
 // идентификатору спеки. Оболочка при этом остаётся app-agnostic.
@@ -34,7 +35,11 @@ export interface RegistryPageProps {
 }
 
 // Registry-домен: Registry / Repository / Tag через единый REGISTRY.
-const REGISTRY_SCOPED = ["registries", "repositories", "tags"].map((id) => REGISTRY[id]).filter(Boolean);
+// Перечень объявлен ОДИН раз — в `@/lib/module-specs`: его читает и эта
+// страница, и проба dev-прокси, которой нужно знать, к каким доменам
+// приложение обращается. Выписанный здесь второй раз, он разошёлся бы с ней
+// молча (#409).
+const REGISTRY_SCOPED = MODULE_SPEC_IDS.map((id) => REGISTRY[id]).filter(Boolean);
 
 export const RegistryPage: FC<RegistryPageProps> = ({ context }) => {
   const queryClient = useMemo(

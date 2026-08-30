@@ -1,10 +1,18 @@
 import { REGISTRY, getResource, resourceServicePrefix, resourceProjectPath } from "./resource-registry";
+import { MODULE_SPEC_IDS } from "./module-specs";
 
 describe("registry resource-registry", () => {
-  it("registers the registry resources + geo regions ref-target (REG-1)", () => {
-    // REG-1: registry становится REGIONAL — regions добавлен read-only ref-целью
-    // (owner geo) для Registry.region_id.
-    expect(Object.keys(REGISTRY).sort()).toEqual(["regions", "registries", "repositories", "tags"].sort());
+  it("раздел монтирует свои три записи, и все три общий реестр несёт (REG-1, #409)", () => {
+    // Прежде здесь стояло равенство «ключи реестра = четыре записи домена»: реестр
+    // был модульным, и «весь реестр» совпадало со «спеками этого раздела» by
+    // construction. После переезда в общий реестр (#409) равенство стало ложным —
+    // в реестре лежит вся платформа, — а утверждать надо не его, а ДВЕ вещи:
+    // что раздел монтирует именно свои три ресурса и что каждый из них в общем
+    // реестре есть. Ссылочная цель `regions` (владелец geo) в перечень монтируемых
+    // не входит: её резолвит `RefSelect` по идентификатору, маршрута у неё здесь нет.
+    expect([...MODULE_SPEC_IDS].sort()).toEqual(["registries", "repositories", "tags"]);
+    expect(MODULE_SPEC_IDS.filter((id) => !REGISTRY[id])).toEqual([]);
+    expect(REGISTRY.regions).toBeDefined();
   });
 
   it("registries spec — apiPath / payloadKey / full CRUD ops + репозитории child", () => {
@@ -74,8 +82,14 @@ describe("registry resource-registry", () => {
     expect(region.required).toBe(true);
     // regionId immutable после Create (перенос региона сломал бы storage-locality блобов).
     expect(region.immutable).toBe(true);
-    // Колонка «Регион» присутствует в списке реестров.
-    expect(reg.columns.some((c) => c.header === "Регион" && c.path === "region_id")).toBe(true);
+    // Колонка размещения присутствует в списке реестров и читает `region_id`.
+    // Заголовок — «Размещение», а не «Регион»: ветку ZONAL/REGIONAL рисует общий
+    // `PlacementAnchor`, и вид размещения он отдельным словом не называет — вид
+    // и есть тип ресурса, на который ведёт ссылка. Что там именно ССЫЛКА, а не
+    // плоский текст, утверждается деревом элементов в
+    // `@shared/lib/resource-registry.registry-domain.test.tsx`: проба по
+    // заголовку осталась бы зелёной на идентификаторе, из которого некуда пойти.
+    expect(reg.columns.some((c) => c.header === "Размещение" && c.path === "region_id")).toBe(true);
     // template несёт region_id (skeleton Create-формы).
     expect(reg.template({ projectId: "prj-1" })).toMatchObject({ region_id: "" });
   });
@@ -95,12 +109,20 @@ describe("registry resource-registry", () => {
     expect(reg.template({ projectId: "prj-1" })).not.toHaveProperty("default_repository_visibility");
   });
 
-  it("regions — read-only geo ref-цель (apiPath /geo/v1/regions), не навигируется как реестр", () => {
+  it("regions — ссылочная цель домена geo: путь и область те, по которым её резолвит RefSelect", () => {
     const regions = getResource("regions")!;
     expect(regions.apiPath).toBe("/geo/v1/regions");
     expect(regions.payloadKey).toBe("regions");
+    // Область — глобальная: каталог размещения спрашивается БЕЗ project_id.
     expect(regions.scope).toBe("global");
-    expect(regions.ops).toEqual({ create: false, update: false, delete: false });
+    // Глаголы здесь НЕ утверждаются, и это решение, а не пропуск. Прежде проба
+    // требовала `{create:false, update:false, delete:false}` — верно для копии
+    // раздела, где запись заводилась read-only ссылочной целью. Общая запись
+    // богаче: у неё есть админская плоскость каталога geo, и глаголы там живут
+    // по праву. Утверждать их отсюда значило бы держать раздел registry
+    // ответчиком за чужой домен; раздел не монтирует `regions` ни одним
+    // маршрутом (см. `MODULE_SPEC_IDS`) и читает её только как цель ссылки.
+    expect(MODULE_SPEC_IDS).not.toContain("regions");
   });
 
   it("service prefix + project path → сегмент /registry/", () => {

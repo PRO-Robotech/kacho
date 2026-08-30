@@ -20,7 +20,10 @@
 // reject this script for syntax". It says nothing about the script being correct.
 //
 // The premise this gate depends on, stated so it can be checked: it asserts over the
-// files it actually read, and prints that count. Zero findings across zero files is a
+// files it actually read, and prints the census in FOUR numbers — collections read,
+// steps walked, scripts parsed, unparseable. Two would leave the middle layer
+// unmeasured: a generator that stopped emitting step-level events keeps a non-zero
+// script count while every step lost its checks. Zero findings across zero files is a
 // silence, not a pass — so an empty file set is itself a failure.
 //
 // Usage:  node deploy/scripts/assert-generated-scripts-parse.js <glob-expanded files...>
@@ -37,6 +40,7 @@ const path = require('path');
 // something about the copy, not about the gate.
 function scanCollections(files) {
   let scanned = 0;   // scripts actually parsed
+  let steps = 0;     // steps walked (an item carrying a request)
   let filesRead = 0; // collections actually opened
   const findings = [];
 
@@ -58,6 +62,10 @@ function scanCollections(files) {
       if (!node || typeof node !== 'object') return;
 
       const name = node.name || owner;
+      // A STEP is an item that carries a request. Name alone will not do: a case
+      // folder and the collection itself carry names too, so counting names would
+      // report a number that is not the one the census is about.
+      if (node.request && typeof node.request === 'object') steps++;
       for (const ev of node.event || []) {
         let src = ev.script && ev.script.exec;
         if (Array.isArray(src)) src = src.join('\n');
@@ -76,7 +84,7 @@ function scanCollections(files) {
     };
     walk(doc, 'root');
   }
-  return { scanned, filesRead, findings };
+  return { scanned, steps, filesRead, findings };
 }
 
 // ── SELF-TEST: proof by injection, in both directions ────────────────────────
@@ -97,9 +105,14 @@ function selfTest() {
     fs.writeFileSync(p, JSON.stringify(doc, null, 2));
     return p;
   };
+  const request = { method: 'GET', url: { raw: '{{baseUrl}}/x', host: ['{{baseUrl}}'], path: ['x'] } };
   const collection = (stepName, source) => ({
     info: { name: 'synthetic' },
-    item: [{ name: stepName, event: [{ listen: 'test', script: { exec: source.split('\n') } }] }],
+    item: [{
+      name: stepName,
+      request,
+      event: [{ listen: 'test', script: { exec: source.split('\n') } }],
+    }],
   });
 
   console.log('=== assert-generated-scripts-parse --self-test: инъекции ===');
@@ -110,7 +123,8 @@ function selfTest() {
     collection("delete a user's key", "pm.test('delete a user\\'s key ok', () => {});"));
   const notJson = path.join(tmp, 'notjson.json');
   fs.writeFileSync(notJson, '{ this is not json');
-  const noScripts = write('noscripts.json', { info: { name: 'empty' }, item: [{ name: 'x' }] });
+  const noScripts = write('noscripts.json',
+    { info: { name: 'empty' }, item: [{ name: 'x', request }] });
 
   // 1. DEFECT — must be found, and must name the step, not just the file.
   {
@@ -147,12 +161,33 @@ function selfTest() {
   }
 
   // 4. The census must count what was READ, so "0 findings" differs from "0 read".
+  //    All four numbers are asserted: a layer left unasserted is a layer where the
+  //    census may lie without the self-test noticing.
   {
     const r = scanCollections([broken, legit, noScripts]);
-    if (r.filesRead === 3 && r.scanned === 2) {
-      console.log('  ОК  перепись считает прочитанное отдельно от находок (3 файла, 2 скрипта)');
+    if (r.filesRead === 3 && r.steps === 3 && r.scanned === 2 && r.findings.length === 1) {
+      console.log('  ОК  перепись считает прочитанное отдельно от находок '
+        + '(3 файла, 3 шага, 2 скрипта, 1 находка)');
     } else {
-      console.error(`  ПРОВАЛ перепись врёт: прочитано ${r.filesRead}, разобрано ${r.scanned}`);
+      console.error(`  ПРОВАЛ перепись врёт: прочитано ${r.filesRead}, шагов ${r.steps}, `
+        + `разобрано ${r.scanned}, находок ${r.findings.length}`);
+      rc = 1;
+    }
+  }
+
+  // 4a. The step count must be a count of STEPS, not of names: a case folder and the
+  //     collection itself carry names, and counting those would report a number that
+  //     looks like a census and is not one.
+  {
+    const nested = write('nested.json', {
+      info: { name: 'synthetic' },
+      item: [{ name: 'case folder', item: [{ name: 'one step', request }] }],
+    });
+    const r = scanCollections([nested]);
+    if (r.steps === 1) {
+      console.log('  ОК  папка кейса и сама коллекция шагами не считаются (1 шаг из трёх имён)');
+    } else {
+      console.error(`  ПРОВАЛ шагов насчитано ${r.steps} при единственном шаге — перепись считает имена`);
       rc = 1;
     }
   }
@@ -188,11 +223,17 @@ if (files.length === 0) {
   process.exit(2);
 }
 
-const { scanned, filesRead, findings } = scanCollections(files);
+const { scanned, steps, filesRead, findings } = scanCollections(files);
 
 // The census is a separate assertion from the verdict: "0 findings" must be
 // distinguishable from "0 scripts looked at".
-console.log(`assert-generated-scripts-parse: ${filesRead} collection(s) read, ${scanned} script(s) parsed`);
+// Four numbers, not two. Collections and scripts alone leave the middle layer
+// unmeasured: a generator that stopped emitting step-level events keeps a non-zero
+// script count (the collection-level ones remain) while every step lost its checks.
+// The step count makes that visible, and "0 findings" stays distinguishable from
+// "0 read" at every layer.
+console.log(`assert-generated-scripts-parse: ${filesRead} collection(s) read, `
+  + `${steps} step(s) walked, ${scanned} script(s) parsed, ${findings.length} unparseable`);
 
 // Findings are printed BEFORE the census check. Ordering these the other way round
 // cost a real diagnosis during this gate's own bring-up: an unreadable collection

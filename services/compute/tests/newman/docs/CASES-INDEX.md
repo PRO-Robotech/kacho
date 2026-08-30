@@ -14,16 +14,23 @@ kacho-storage, его suite живёт в `services/storage/tests/newman/`).
 
 ## Уникальные паттерны (generic-блоки в gen.py)
 
+> [!note] Здесь стояли семь блоков, которых в наборе НЕТ (перемерено, задача #1478)
+> Строки перечисляли блоки проверки имени, описания, меток, фильтра, HTTP-глагола,
+> негодного тела и инъекций как источник кейсов. Ни один из семи не вызывался НИ
+> РАЗУ — ни в генераторе, ни в модулях кейсов, — то есть перечисленных кейсов в
+> коллекции не существовало, а указатель обещал проверки, которых нет. Имена здесь
+> намеренно не воспроизводятся в обратных кавычках: мёртвая координата читается как
+> живое утверждение о дереве. Предикат: вызовов (`ast.Call`) по набору — ноль.
+>
+> Проверки, которые эти строки обещали, у набора **есть**, но производят их
+> рукописные кейсы, а не блоки: разбиение по классам эквивалентности несут
+> `MT-CR-ADMIN-NEG-NO-NAME` и `INST-RD-CR-CRUD-MACHINETYPE-BYNAME`, угадывание
+> ошибки — `INST-RD-CR-VAL-BOOTSOURCE-OUTPUT-FIELDS`. Держит перечень гейт
+> `TestNewmanInjectedHelperHasACallerInItsSuite`.
+
 | Блок | Что делает | Применён к |
 |---|---|---|
 | `list_page_block(prefix, path[, project_param])` | BVA для List: pageSize 0 / 1 / 1000 / 1001 / garbage token | INST |
-| `name_validation_block(prefix, path, extra[, wrap])` | compute name regex `\|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?` — empty→200, len63→200, len64→400, UPPERCASE→400, digit-start→400, hyphen-start→400, special→400 | INST |
-| `description_validation_block` | desc len 256→200, 257→400 | INST |
-| `labels_validation_block` | uppercase-key→400, bad-char-key→400, 64 labels→200, 65→400 | INST |
-| `filter_block` | filter name="X"→200, garbage→200\|400, unknown-field→200\|400 | INST |
-| `http_method_block` | PUT/DELETE-on-list → 404\|405\|501 | INST |
-| `malformed_body_block` | malformed JSON → 400\|415; empty body → 400 | INST |
-| `security_injection_block` | SQLi/union/XSS/cmd/path/longpayload в name + filter → не 500, без pgx/stack-leak | INST |
 | `poll_operation_until_done()` (LRO helper) | GET /operations/{opId} с `setNextRequest`-retry до 8 раз; assert `done==true` | каждая мутация машины: Create/Update/Delete/Start/Stop/Restart/AttachDisk/DetachDisk/AttachNetworkInterface/DetachNetworkInterface/SimulateMaintenanceEvent |
 | `assert_op_success()` / `assert_op_error(code,name[,substr])` | проверка `Operation.response` (success) или `Operation.error.code` (failed) | NEG-кейсы (async ошибки), CRUD-кейсы (после poll) |
 | `assert_created_at_seconds()` | CONF: created_at в proto-ответе без дробной секунды (конвенция Kachō) | INST CRUD-OK |

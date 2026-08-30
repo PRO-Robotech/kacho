@@ -14,6 +14,12 @@
 // Спека здесь синтетическая, и это осознанно: предмет — чтение поля `rowVerbs`
 // самим меню, а не состав реестра модуля. Реестр меняется своей задачей, и
 // проба, привязанная к его сегодняшнему составу, истекла бы вместе с ним.
+//
+// ФОРМА показа здесь НЕ утверждается — только то, что глагол доезжает до
+// экрана. У ресурса, чьё единственное действие — глагол, столбец показывает его
+// подписанной кнопкой, а не пунктом меню (#687): два нажатия там, где хватает
+// одного. Утверждение, прибитое к роли `menuitem`, закрепляло бы форму, а
+// предмет пробы — путь модуля.
 
 import { jest } from "@jest/globals";
 import React from "react";
@@ -59,8 +65,13 @@ function specWithVerb() {
   } as never;
 }
 
-function menuLabels(): string[] {
-  return screen.getAllByRole("menuitem").map((b) => b.textContent ?? "");
+/**
+ * Подписи ДЕЙСТВИЙ строки, в какой бы форме столбец их ни показывал: пунктом
+ * меню либо кнопкой единственного действия. Обе роли спрашиваются вместе —
+ * иначе проба закрепила бы форму вместо предмета.
+ */
+function actionLabels(): string[] {
+  return [...screen.queryAllByRole("menuitem"), ...screen.queryAllByRole("button")].map((b) => b.textContent ?? "");
 }
 
 describe("объявленный глагол доезжает до меню строки этого модуля (#560)", () => {
@@ -70,7 +81,7 @@ describe("объявленный глагол доезжает до меню с�
     expect(resourceHasRowActions(specWithVerb())).toBe(true);
   });
 
-  it("пункт глагола присутствует в меню строки", () => {
+  it("действие-глагол доезжает до столбца действий строки", () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
@@ -79,6 +90,6 @@ describe("объявленный глагол доезжает до меню с�
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    expect(menuLabels()).toContain("Запретить участие");
+    expect(actionLabels()).toContain("Запретить участие");
   });
 });

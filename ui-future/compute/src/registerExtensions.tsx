@@ -21,6 +21,7 @@ import type { DetailTab } from "@shared/components/organisms/DetailShell";
 import { MonoValue } from "@shared/components/atoms/CopyableId/MonoValue";
 import { StatusBadge } from "@shared/components/atoms/StatusBadge";
 import { RefNameLink } from "@shared/components/molecules/RefNameLink";
+import { IamRefLink } from "@shared/components/molecules/IamRefLink";
 import { getByPath } from "@shared/lib/resource-registry";
 import { displayText } from "@shared/lib/display-text";
 import { formatBytes } from "@shared/lib/bytes";
@@ -65,7 +66,15 @@ registerDetailExtension("compute-instances", {
       // `ResourceLink`), и своего значка копирования внутри строки свойств она
       // не рисует — там кнопка одна на строку и стоит справа столбцом.
       { label: "Зона доступности", value: <RefNameLink specId="zones" refId={getByPath<string>(data, "zone_id")} /> },
-      { label: "Тип машины", value: <MonoValue value={getByPath<string>(data, "machine_type_id") ?? ""} /> },
+      // Тип машины — навигируемая запись каталога размера со своей карточкой,
+      // значит ссылка. Моноширинный идентификатор рядом с кликабельной зоной
+      // в той же таблице читается как «этот переход не сделали», а самому
+      // человеку идентификатор не адресован: адресуется ресурс неизменяемым
+      // `id`, работает человек с именем.
+      {
+        label: "Тип машины",
+        value: <RefNameLink specId="machine-types" refId={getByPath<string>(data, "machine_type_id")} />,
+      },
       { label: "vCPU", value: text(getByPath<unknown>(data, "effective_resources.v_cpu")) },
       { label: "Память", value: formatBytes(memBytes) },
       { label: "Гарантия CPU, %", value: text(getByPath<unknown>(data, "cpu_guarantee_percent")) },
@@ -88,7 +97,14 @@ registerDetailExtension("compute-instances", {
       { label: "Дайджест образа", value: <MonoValue value={bootDigest} />, copy: bootDigest || undefined },
       // Загрузочный том — ресурс storage со своей карточкой.
       { label: "Загрузочный том", value: <RefNameLink specId="volumes" refId={bootVolume} /> },
-      { label: "Сервисный аккаунт", value: <MonoValue value={getByPath<string>(data, "service_account.id") ?? ""} /> },
+      // Сервисный аккаунт — ресурс IAM, и ссылку на него рисует `IamRefLink`, а
+      // не `RefNameLink`: ресурсы IAM проектом не сужаются, поэтому имя
+      // резолвится точечным чтением, а адрес карточки не project-scoped.
+      // Вид ссылки при этом один и тот же — обе ведут в общую `ResourceLink`.
+      {
+        label: "Сервисный аккаунт",
+        value: <IamRefLink specId="service-accounts" refId={getByPath<string>(data, "service_account.id")} />,
+      },
       { label: "Статус", value: <StatusBadge state={getByPath<string>(data, "status")} /> },
       ...(statusReason ? [{ label: "Причина статуса", value: text(statusReason) }] : []),
       // FQDN переносят в чужое поле (запись DNS, конфигурация клиента) — значит

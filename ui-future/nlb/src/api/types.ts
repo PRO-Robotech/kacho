@@ -23,23 +23,12 @@
 // опечаткой другого.
 
 // ====== Operation ======
-
-export interface Operation {
-  id: string;
-  description?: string;
-  created_at?: string;
-  created_by?: string;
-  modified_at?: string;
-  done: boolean;
-  metadata?: { "@type": string; [key: string]: unknown };
-  error?: { code: number; message: string; details?: unknown[] };
-  response?: { "@type": string; [key: string]: unknown };
-}
-
-export interface OperationList {
-  operations: Operation[];
-  next_page_token?: string;
-}
+//
+// Конверт операции — ОДИН на всю платформу, поэтому берётся из общего
+// объявления. Копия здесь была байт-в-байт общей, то есть расхождения ещё не
+// случилось; но у двух объявлений одного контракта оно случается молча — и
+// обнаруживается там, где его не видно.
+export type { Operation, OperationList } from "@shared/api/types";
 
 // ====== nlb (Network Load Balancer) ======
 // proto: kacho.cloud.loadbalancer.v1 (REST — /nlb/v1/...). Мутации async → Operation.
