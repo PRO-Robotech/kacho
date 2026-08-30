@@ -79,6 +79,13 @@ const deletedAction = "kachorepo.OutboxActionDeleted"
 // Она не утверждает, что нагрузка ПОЛНА: полноту утверждают пробы строителей и
 // сквозная проба журнала. Она утверждает, что строитель у вида ОДИН — то есть
 // что вторая, частичная форма не заведётся мимо первой.
+//
+// И она судит ОДНУ из трёх законных форм записи строки журнала — вызов на Go.
+// Оператор SQL на Go и триггер базы ей не видны by construction, поэтому её
+// перепись называет их отдельной строкой и отсылает к тем гейтам, которые их
+// судят (`emission_write_forms_test.go`). Прежде число найденных вызовов стояло
+// в переписи одно, и читалось оно как «столько точек у журнала», хотя означало
+// «столько точек ОДНОЙ формы» (#1568).
 func TestEveryEmissionOfAStatefulKindBuildsTheSamePayload(t *testing.T) {
 	seen := map[string]int{}
 	deletions := map[string]int{}
@@ -110,6 +117,7 @@ func TestEveryEmissionOfAStatefulKindBuildsTheSamePayload(t *testing.T) {
 	sort.Strings(kinds)
 	t.Logf("перепись: файлов осмотрено %d · вызовов Emit найдено %d · видов с состоянием объявлено %d",
 		res.filesRead, res.emitsSeen, len(statefulKinds))
+	logFormsNotJudgedHere(t)
 	for _, k := range kinds {
 		t.Logf("  %s — точек эмиссии с состоянием %d, снятий %d, строитель %q",
 			k, seen[k], deletions[k], statefulKinds[k])
