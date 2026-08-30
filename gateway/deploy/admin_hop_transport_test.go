@@ -77,7 +77,19 @@ func stackIsProductionClass(t *testing.T, stack []string) bool {
 	if label, ok := resolveStack(t, stack, "appEnv"); ok && !devClassEnvLabels[strings.ToLower(strings.TrimSpace(label))] {
 		return true
 	}
-	mode, ok := resolveStackAt(t, stack, "kacho-iam", "config", "authn", "mode")
+	// Посадка адресуется каноном `kacho-iam.authMode` в корне значений сервиса;
+	// прежний адрес (`config.authn.mode`) читается следом, потому что шаблон чарта
+	// его тоже пока принимает.
+	//
+	// Клауза стоит ВТОРОЙ и сегодня ничего не решает — классификацию несёт `appEnv`
+	// выше. Именно поэтому её и надо было чинить: отбор по переехавшему ключу не
+	// краснеет, он тихо перестаёт находить предмет, а прикрытый соседней клаузой —
+	// не краснеет даже переписью. Стек без `appEnv`, объявивший посадку, ушёл бы в
+	// Skip как dev-class.
+	mode, ok := resolveStackAt(t, stack, "kacho-iam", "authMode")
+	if !ok {
+		mode, ok = resolveStackAt(t, stack, "kacho-iam", "config", "authn", "mode")
+	}
 	return ok && strings.HasPrefix(strings.TrimSpace(mode), "production")
 }
 
