@@ -4,6 +4,7 @@
 package treecorpus_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -164,5 +165,143 @@ func TestUnder_RefusesAnEmptyCorpus(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "ни одного отслеживаемого файла") {
 		t.Fatalf("отказ не называет причины: %v", err)
+	}
+}
+
+// newGlobRepo — репозиторий, на котором различимы ВСЕ три свойства Glob сразу:
+// отслеживаемое против игнорируемого, один уровень против рекурсии, и
+// метасимвол в середине образца.
+func newGlobRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := gitenv.Command(dir, args...)
+		cmd.Env = append(cmd.Env,
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("init", "-q")
+	write(".gitignore", "ignored/\n")
+	write("mig/0001_a.sql", "-- a\n")
+	write("mig/0002_b.sql", "-- b\n")
+	write("mig/nested/0003_c.sql", "-- c\n") // глубже уровня — Glob его НЕ берёт
+	write("mig/readme.md", "not sql\n")
+	write("ignored/0009_x.sql", "-- ignored\n")
+	write("svc/one/m/0001.sql", "-- one\n")
+	write("svc/two/m/0001.sql", "-- two\n")
+	run("add", ".gitignore", "mig", "svc")
+	run("commit", "-qm", "seed")
+	return dir
+}
+
+func globNames(t *testing.T, repo string, got []string) []string {
+	t.Helper()
+	out := make([]string, 0, len(got))
+	for _, g := range got {
+		rel, err := filepath.Rel(repo, g)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, filepath.ToSlash(rel))
+	}
+	return out
+}
+
+// TestGlobTakesTrackedOneLevelAndSkipsIgnored — три утверждения в одной пробе,
+// потому что порознь каждое зеленеет на сломанном: «игнорируемого нет» верно и
+// для пустого ответа, «отслеживаемое есть» верно и для ответа со всем подряд, а
+// «рекурсии нет» верно и когда не вернулось ничего.
+func TestGlobTakesTrackedOneLevelAndSkipsIgnored(t *testing.T) {
+	repo := newGlobRepo(t)
+
+	// Неотслеживаемый файл нужной формы — тот самый вход, на котором обход диска
+	// и обход индекса расходятся. Кладётся ПОСЛЕ коммита и в индекс не идёт.
+	untracked := filepath.Join(repo, "mig", "0004_untracked.sql")
+	if err := os.WriteFile(untracked, []byte("-- untracked\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := treecorpus.Glob(filepath.Join(repo, "mig", "*.sql"))
+	if err != nil {
+		t.Fatalf("Glob: %v", err)
+	}
+	names := globNames(t, repo, got)
+	want := []string{"mig/0001_a.sql", "mig/0002_b.sql"}
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Errorf("Glob вернул %v, ожидалось %v", names, want)
+	}
+
+	// Контроль в обратную сторону: filepath.Glob на том же образце неотслеживаемый
+	// файл ВИДИТ. Без этой половины проба зеленела бы и на дереве, где такого
+	// файла нет вовсе, — то есть не различала бы предмет.
+	disk, derr := filepath.Glob(filepath.Join(repo, "mig", "*.sql"))
+	if derr != nil {
+		t.Fatal(derr)
+	}
+	if len(disk) != len(got)+1 {
+		t.Errorf("контроль негоден: обход диска дал %d, индекс %d — расхождения в один "+
+			"неотслеживаемый файл нет, значит проба не различает предмет", len(disk), len(got))
+	}
+}
+
+// TestGlobHonoursMetaInTheMiddle — метасимвол не только в последнем компоненте.
+// Без этой формы перевод сайтов вида `ui-future/*/Dockerfile` был бы невозможен,
+// и они остались бы на диске молча.
+func TestGlobHonoursMetaInTheMiddle(t *testing.T) {
+	repo := newGlobRepo(t)
+
+	got, err := treecorpus.Glob(filepath.Join(repo, "svc", "*", "m", "*.sql"))
+	if err != nil {
+		t.Fatalf("Glob: %v", err)
+	}
+	names := globNames(t, repo, got)
+	want := []string{"svc/one/m/0001.sql", "svc/two/m/0001.sql"}
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Errorf("Glob вернул %v, ожидалось %v", names, want)
+	}
+}
+
+// TestGlobRefusesAnAbsentBaseWithASentinel — отсутствующая база это ОТКАЗ, и
+// отказ ОПОЗНАВАЕМЫЙ.
+//
+// Две половины: filepath.Glob здесь молча отдаёт (nil, nil), поэтому «каталог
+// переехал» неотличимо от «ничего не подошло»; и вызывающий, для которого пустая
+// база законна, обязан уметь отличить её от недоступного git — иначе он сведёт
+// оба в `files = nil` и проглотит настоящий отказ.
+func TestGlobRefusesAnAbsentBaseWithASentinel(t *testing.T) {
+	repo := newGlobRepo(t)
+
+	_, err := treecorpus.Glob(filepath.Join(repo, "nosuchdir", "*.sql"))
+	if err == nil {
+		t.Fatal("Glob по отсутствующей базе обязан отказать: пустой успех неотличим " +
+			"от «ничего не подошло»")
+	}
+	if !errors.Is(err, treecorpus.ErrEmptyCorpus) {
+		t.Errorf("отказ по отсутствующей базе обязан нести ErrEmptyCorpus, иначе вызывающий "+
+			"не отличит его от недоступного git; получено: %v", err)
+	}
+
+	// Законный близнец: база ЕСТЬ, под образец ничего не подошло — это пустой
+	// ответ, а не отказ. Без этой половины годился бы Glob, отказывающий всегда.
+	got, err := treecorpus.Glob(filepath.Join(repo, "mig", "*.nomatch"))
+	if err != nil {
+		t.Errorf("непустая база без совпадений — законный пустой ответ, а не отказ: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("ожидался пустой ответ, получено %v", got)
 	}
 }

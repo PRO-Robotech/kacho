@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -141,25 +142,27 @@ func TestCIRunsEveryCaseCensusValidator(t *testing.T) {
 // не видит, и невидимая сюита выглядит проверенной.
 func TestEverySuiteValidatorIsCoveredByTheGlob(t *testing.T) {
 	root := repoRoot(t)
-	found, err := filepath.Glob(filepath.Join(root, "services", "*", "tests", "newman",
+	// ОБА состава — из индекса git, и это условие сопоставимости, а не стиль.
+	// Взяв один с диска, а другой из индекса, сверка расходилась бы на всяком
+	// неотслеживаемом файле: сверщик, положенный в рабочую копию и не
+	// закоммиченный, читался бы как «есть в дереве, но не покрыт образцом» —
+	// находка о рабочем каталоге, а не о коммите.
+	found, err := treecorpus.Glob(filepath.Join(root, "services", "*", "tests", "newman",
 		"scripts", "validate-cases.py"))
 	if err != nil {
-		t.Fatalf("glob: %v", err)
+		t.Fatalf("перечень по образцу шага: %v", err)
 	}
-	// Обход дерева НЕЗАВИСИМО от образца: если сверщик лежит не там, где его ищет шаг,
+	// Перечисление НЕЗАВИСИМО от образца: если сверщик лежит не там, где его ищет шаг,
 	// это находка, а не «его нет».
+	tracked, walkErr := treecorpus.Under(filepath.Join(root, "services"))
+	if walkErr != nil {
+		t.Fatalf("состав services/: %v", walkErr)
+	}
 	var all []string
-	walkErr := filepath.WalkDir(filepath.Join(root, "services"), func(p string, d os.DirEntry, e error) error {
-		if e != nil {
-			return e
-		}
-		if !d.IsDir() && d.Name() == "validate-cases.py" {
+	for _, p := range tracked {
+		if filepath.Base(p) == "validate-cases.py" {
 			all = append(all, p)
 		}
-		return nil
-	})
-	if walkErr != nil {
-		t.Fatalf("walk services/: %v", walkErr)
 	}
 	if len(all) == 0 {
 		t.Fatal("в дереве не найдено ни одного validate-cases.py — тест ничего не утверждает")

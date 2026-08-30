@@ -26,6 +26,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // probeRegistry собирает синтетический файл реестра вокруг одного ресурса.
@@ -214,7 +216,7 @@ func TestConsoleScannerReadsEveryRegistryInTheTree(t *testing.T) {
 	}
 	// Список путей был бы вторым источником истины и разошёлся бы с деревом;
 	// вместо него — независимая перепроверка тем же деревом, но по шаблону пути.
-	byGlob, err := filepath.Glob(filepath.Join(root, "ui-future", "*", "src", "lib", consoleRegistryFileName))
+	byGlob, err := treecorpus.Glob(filepath.Join(root, "ui-future", "*", "src", "lib", consoleRegistryFileName))
 	if err != nil {
 		t.Fatalf("glob: %v", err)
 	}
