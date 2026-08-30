@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { Tag, Tooltip, Typography } from "antd";
 import { StopOutlined, UnlockOutlined, UserDeleteOutlined } from "@ant-design/icons";
 import type { FormField } from "./form-schema";
+import { NAME_FORM, NAME_FORM_REGISTRY, NAME_HINT, NAME_HINT_OPTIONAL, NAME_HINT_REGISTRY } from "./name-form";
 import { setByPath, getByPath as getByPathImpl } from "./path";
 import { BoolFact } from "@shared/components/atoms/BoolFact";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
@@ -284,72 +285,46 @@ const COL_ID: ResourceColumn = {
   format: "uid-short",
 };
 
-// Strict — для IAM (Account, Project).
-// Совпадает с backend validate.Name (Kachō `/[a-z]([-a-z0-9]{0,61}[a-z0-9])?/`).
+// Форма имени и её подсказка — в `name-form.ts`, в единственном экземпляре.
+// Здесь только то, чем поля различаются между собой: обязательность и владелец
+// формы. Разбор, почему форм две и чем держится совпадение с платформой, — там.
+
+/** Имя обязательное (IAM). */
 const FIELD_NAME: FormField = {
   name: "name",
   label: "Имя",
   type: "string",
   required: true,
   placeholder: "my-resource",
-  description: "Строчные латинские буквы, цифры и дефисы. Должно начинаться с буквы, длина 2–63 символа.",
-  pattern: "^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$",
+  description: NAME_HINT,
+  pattern: NAME_FORM,
 };
 
-// Permissive — для VPC ресурсов (Network/Subnet/Address/RouteTable).
-const FIELD_NAME_VPC: FormField = {
+/**
+ * Имя необязательное — vpc · compute · storage · nlb.
+ *
+ * Отдельной константы на сервис больше нет: форма у них ОДНА, а разное
+ * объявление формы и есть предмет #1604. Различается только обязательность, и
+ * она здесь единственная ось различия.
+ */
+const FIELD_NAME_OPTIONAL: FormField = {
   name: "name",
   label: "Имя",
   type: "string",
-  placeholder: "my-network",
-  description:
-    "Латинские буквы (любой регистр), цифры, «-» и «_». Должно начинаться с буквы, длина до 63 символов. Можно оставить пустым.",
-  pattern: "^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$",
+  placeholder: "my-resource",
+  description: NAME_HINT_OPTIONAL,
+  pattern: NAME_FORM,
 };
 
-// Compute name-regex — lowercase-only (kacho-compute/CLAUDE.md §5).
-// Имя тома / снимка / образа. ОТДЕЛЬНАЯ константа, а не общий `FIELD_NAME`, и
-// это не пропущенная унификация: у storage имя НЕ обязательно (пустое —
-// законный вход, сервер проставляет имя от `id`) и допускает подчёркивание.
-// Свести его к общему значило бы начать отвергать в форме вход, который край
-// принимает, — то есть снять возможность молча, ровно ради чего эти спеки и
-// переносились богатой стороной.
-//
-// Что здесь третья форма имени подряд — предмет ОТДЕЛЬНОЙ задачи продукта
-// (#715, «одна форма имени на дерево»); свести её сведением форка нельзя:
-// одна форма требует решения о том, какая именно, а не выбора из наличных.
-const FIELD_NAME_STORAGE: FormField = {
-  name: "name",
-  label: "Имя",
-  type: "string",
-  placeholder: "my-volume",
-  description:
-    "Строчные латинские буквы, цифры, «-» и «_». Должно начинаться с буквы, длина до 63 символов. Можно оставить пустым.",
-  pattern: "^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$",
-};
-
-const FIELD_NAME_COMPUTE: FormField = {
-  name: "name",
-  label: "Имя",
-  type: "string",
-  placeholder: "my-disk",
-  description:
-    "Строчные латинские буквы, цифры, «-» и «_». Должно начинаться с буквы, длина до 63 символов. Можно оставить пустым.",
-  pattern: "^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$",
-};
-
-// Имя реестра — DNS-safe (строчные + цифры + дефисы). Mutable: сменить можно и
-// после создания — OCI-путь образа строится по ИДЕНТИФИКАТОРУ реестра, не по
-// имени (ban #15), поэтому переименование не ломает docker pull/push.
+// Имя реестра образов судится СВОЕЙ формой — почему, сказано в `name-form.ts`.
 const FIELD_NAME_REGISTRY: FormField = {
   name: "name",
   label: "Имя",
   type: "string",
   required: true,
   placeholder: "my-registry",
-  description:
-    "Строчные латинские буквы, цифры и «-». Должно начинаться с буквы, длина до 63 символов. Можно изменить позже — имя не входит в OCI-путь (тот по идентификатору).",
-  pattern: "^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$",
+  description: `${NAME_HINT_REGISTRY} Можно изменить позже — имя не входит в OCI-путь (тот по идентификатору).`,
+  pattern: NAME_FORM_REGISTRY,
 };
 
 const FIELD_DESCRIPTION: FormField = {
@@ -1354,7 +1329,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // on the detail page (editHidden). default-SG + default-RT are provisioned
     // unconditionally by the server (no opt-out flag).
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       {
         name: "ipv4_cidr_blocks",
         label: "CIDR IPv4",
@@ -1528,7 +1503,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // immutable placement anchor (one required); additional ranges live on the
     // detail page (verbs :add/:remove-cidr-blocks), not in this form.
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       {
         name: "network_id",
         label: "Облачная сеть",
@@ -1770,7 +1745,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       // Discriminator + spec'ы — create-only (Address spec иммутабелен, см.
       // CLAUDE.md kacho-vpc §4.4). Скрываем в edit-форме.
       {
@@ -2027,7 +2002,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       {
         name: "network_id",
         label: "Сеть",
@@ -2220,7 +2195,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       {
         name: "subnet_id",
         label: "Подсеть",
@@ -2446,7 +2421,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       COL_ID,
     ],
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       {
         name: "network_id",
         // Create-only: UpdateSecurityGroupRequest не несёт network_id.
@@ -2560,7 +2535,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       COL_CREATED,
     ],
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       FIELD_LABELS,
       FIELD_DESCRIPTION,
       // Вид шлюза — ВЕТВЬ oneof, а не значение поля, поэтому в форме он enum, а на
@@ -2697,7 +2672,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       COL_CREATED,
     ],
     fields: [
-      FIELD_NAME_VPC,
+      FIELD_NAME_OPTIONAL,
       FIELD_LABELS,
       FIELD_DESCRIPTION,
       {
@@ -3052,7 +3027,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
-      FIELD_NAME_COMPUTE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       {
         name: "zone_id",
@@ -3438,7 +3413,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
-      FIELD_NAME_STORAGE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       {
         name: "zone_id",
@@ -3648,7 +3623,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         immutable: true,
         description: "Том, с которого снимается копия на момент времени. Неизменяем после создания.",
       },
-      FIELD_NAME_STORAGE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       FIELD_LABELS,
       FIELD_PROJECT_ID,
@@ -3726,7 +3701,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
-      FIELD_NAME_STORAGE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       {
         name: "region_id",
@@ -4009,7 +3984,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       COL_CREATED,
     ],
     fields: [
-      FIELD_NAME_COMPUTE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       FIELD_LABELS,
       {
@@ -4487,7 +4462,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         name: "name",
         label: "Имя",
         type: "string",
-        placeholder: "<pool-name>",
+        placeholder: "my-resource",
+        description: NAME_HINT_OPTIONAL,
+        pattern: NAME_FORM,
       },
       { name: "description", label: "Описание", type: "text", rows: 2 },
       {
@@ -4711,7 +4688,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         ],
         description: "Режим балансировщика. Неизменяем после создания; сочетания «внешний + зональный» в наборе нет.",
       },
-      FIELD_NAME_COMPUTE, // DNS-1123 — lowercase + цифры + дефисы (как у NLB regex)
+      FIELD_NAME_OPTIONAL, // DNS-1123 — lowercase + цифры + дефисы (как у NLB regex)
       FIELD_DESCRIPTION,
       {
         name: "region_id",
@@ -4979,7 +4956,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       { header: "Дата создания", path: "created_at", format: "datetime" },
     ],
     fields: [
-      FIELD_NAME_COMPUTE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       {
         name: "load_balancer_id",
@@ -5101,7 +5078,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         default: 80,
         description: "Порт, на котором таргеты принимают перенаправленный трафик (1..65535).",
       },
-      FIELD_NAME_COMPUTE,
+      FIELD_NAME_OPTIONAL,
       FIELD_DESCRIPTION,
       {
         name: "region_id",
