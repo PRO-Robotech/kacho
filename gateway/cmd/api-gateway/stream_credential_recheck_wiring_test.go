@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -50,7 +51,70 @@ func (revokingAuthority) IsRevoked(
 // holdingOwner — владелец журнала: открывает поток и держит его.
 type holdingOwner struct {
 	subscriptionv1.UnimplementedInternalSubscriptionServiceServer
+
+	mu sync.Mutex
+	// served — сколько потоков дублёр обслужил. Отвечает на вопрос, на который
+	// сигнал не отвечает: «дошло до дублёра» и «дошло до ждущего» — разные
+	// факты, и [holdingOwner.awaitStreams] называет оба, когда истекает срок.
+	served int
+
+	// started получает по одному значению НА КАЖДЫЙ обслуженный поток.
+	//
+	// Прежняя редакция ЗАКРЫВАЛА канал БЕЗУСЛОВНО, и это давало сразу два
+	// дефекта, из которых второй прятал первый (#1513).
+	//
+	// Первый: второе открытие роняло ПРОЦЕСС паникой двойного закрытия — то
+	// есть отказ приходил не упавшим утверждением, а гибелью пакета, и читался
+	// бы как дефект продукта, а не дублёра (#1482).
+	//
+	// Второй: закрытый канал отдаёт ВСЕМ и СРАЗУ, поэтому ожидание потока было
+	// истинно после первого. Именно оно и прятало панику: проба возвращалась из
+	// ожидания раньше, чем второй поток доходил до дублёра, и завершалась
+	// зелёной ДО того, как он успевал упасть. Условие, истинное независимо от
+	// предмета, условием не является.
+	//
+	// Форма повторена, а не изобретена: тот же приём и по тем же причинам снят
+	// у двух стендов `gateway/internal/subscriptionstream` (#1485, #1482) и у
+	// стенда `gateway/internal/streamrevocation` (#1513).
+	//
+	// Ждут через [holdingOwner.awaitStreams]; глубина буфера — [startedDepth].
 	started chan struct{}
+}
+
+// startedDepth — глубина канала [holdingOwner.started].
+//
+// Отправка сигнала НЕБЛОКИРУЮЩАЯ: поток, которого проба не ждёт, обязан
+// обслуживаться как обычно, а не замирать до чьего-то чтения — иначе дублёр
+// стал бы снисходительнее продукта в одну сторону и строже в другую. Значит
+// буфер обязан вмещать все потоки, которые дублёр обслужит за пробу;
+// переполнение теряет сигнал, и [holdingOwner.awaitStreams] называет это
+// числом, а не молчит. Восемь взято с запасом: самая многопоточная проба
+// пакета держит два.
+const startedDepth = 8
+
+// servedStreams — сколько потоков дублёр обслужил на данный момент.
+func (o *holdingOwner) servedStreams() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.served
+}
+
+// awaitStreams ждёт, пока дублёр не примет n потоков.
+//
+// Ждётся УСЛОВИЕ — приход n-го потока, — а не срок. Срок здесь страховочный, и
+// его истечение — падение С ЧИСЛАМИ: «ноль сигналов» обязано быть отличимо от
+// «ноль потоков», иначе разбор упавшей пробы начинается с догадки.
+func (o *holdingOwner) awaitStreams(t *testing.T, n int) {
+	t.Helper()
+	for got := 0; got < n; got++ {
+		select {
+		case <-o.started:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("дублёр принял потоков %d из ожидавшихся %d (обслужено всего %d) — "+
+				"поток не открылся; если обслужено не меньше ожидаемого, мал буфер канала started",
+				got, n, o.servedStreams())
+		}
+	}
 }
 
 func (o *holdingOwner) Subscribe(
@@ -64,7 +128,15 @@ func (o *holdingOwner) Subscribe(
 	}); err != nil {
 		return err
 	}
-	close(o.started)
+	o.mu.Lock()
+	o.served++
+	o.mu.Unlock()
+	if o.started != nil {
+		select {
+		case o.started <- struct{}{}:
+		default:
+		}
+	}
 	<-stream.Context().Done()
 	return nil
 }
@@ -105,20 +177,7 @@ func recheckProbeConfig() config.Config {
 // Подделкой реестра здесь пользоваться нельзя: предмет — что край передаёт
 // перепросу СВОЙ реестр открытых потоков, а не что-нибудь непустое.
 func TestCompositionRootWiresTheStreamRegistryIntoTheCredentialRecheck(t *testing.T) {
-	owner := &holdingOwner{started: make(chan struct{})}
-	ownerConn := bufconnDial(t, func(s *grpc.Server) {
-		subscriptionv1.RegisterInternalSubscriptionServiceServer(s, owner)
-	})
-	projection, err := subscriptionstream.NewHandler(subscriptionstream.Config{
-		Owners: subscriptionstream.Owners{
-			"probe": subscriptionv1.NewInternalSubscriptionServiceClient(ownerConn),
-		},
-		StreamBudget: 90 * time.Second, Heartbeat: 20 * time.Second,
-		MaxStreams: 64, MaxStreamsPerSubject: 8, Logger: quietLog(),
-	})
-	if err != nil {
-		t.Fatalf("сборка проекции: %v", err)
-	}
+	owner, projection := newHeldStreamStand(t)
 	iamConn := bufconnDial(t, func(s *grpc.Server) {
 		iamv1.RegisterInternalSessionRevocationsServiceServer(s, revokingAuthority{})
 	})
@@ -137,11 +196,7 @@ func TestCompositionRootWiresTheStreamRegistryIntoTheCredentialRecheck(t *testin
 		defer close(done)
 		projection.ServeHTTP(httptest.NewRecorder(), r)
 	}()
-	select {
-	case <-owner.started:
-	case <-time.After(10 * time.Second):
-		t.Fatal("поток не открылся — предъявлять нечего")
-	}
+	owner.awaitStreams(t, 1)
 
 	sweeper.Sweep(context.Background())
 	select {
@@ -325,5 +380,93 @@ func TestRecheckWindowHonoursEveryLaneItSpeaksFor(t *testing.T) {
 	if _, err := buildStreamRevocationSweeper(exact, iamConn, probeProjection(t), quietLog()); err != nil {
 		t.Fatalf("окно, РАВНОЕ объявленной границе, отвергнуто: %v — тогда объявленная "+
 			"посадка не собралась бы вовсе", err)
+	}
+}
+
+// newHeldStreamStand — дублёр владельца и проекция над ним. Величины те же, что
+// у несущей пробы файла: предмет — поведение дублёра, и различие в посадке
+// сделало бы пробы несравнимыми.
+func newHeldStreamStand(t *testing.T) (*holdingOwner, *subscriptionstream.Handler) {
+	t.Helper()
+	owner := &holdingOwner{started: make(chan struct{}, startedDepth)}
+	ownerConn := bufconnDial(t, func(s *grpc.Server) {
+		subscriptionv1.RegisterInternalSubscriptionServiceServer(s, owner)
+	})
+	projection, err := subscriptionstream.NewHandler(subscriptionstream.Config{
+		Owners: subscriptionstream.Owners{
+			"probe": subscriptionv1.NewInternalSubscriptionServiceClient(ownerConn),
+		},
+		StreamBudget: 90 * time.Second, Heartbeat: 20 * time.Second,
+		MaxStreams: 64, MaxStreamsPerSubject: 8, Logger: quietLog(),
+	})
+	if err != nil {
+		t.Fatalf("сборка проекции: %v", err)
+	}
+	return owner, projection
+}
+
+// openHeldStream открывает поток названного предъявителя и ждёт, пока дублёр его
+// примет. Возвращает канал, закрывающийся вместе с потоком.
+func openHeldStream(
+	t *testing.T, owner *holdingOwner, projection *subscriptionstream.Handler, id, jti string,
+) <-chan struct{} {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodGet, subscriptionstream.Path+"?owner=probe", nil)
+	r.Header.Set(principalmeta.HeaderPrincipalType, "user")
+	r.Header.Set(principalmeta.HeaderPrincipalID, id)
+	r.Header.Set(principalmeta.HeaderTokenJti, jti)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		projection.ServeHTTP(httptest.NewRecorder(), r)
+	}()
+	owner.awaitStreams(t, 1)
+	return done
+}
+
+// TestWiringOwnerServesASecondStream — ПРЕДИКАТ СНЯТИЯ задачи #1513: дублёр
+// владельца обслуживает ВТОРОЕ открытие так же, как первое.
+//
+// Прежняя редакция роняла на нём ПРОЦЕСС паникой двойного закрытия, и увидеть
+// это удавалось не всегда: ожидание было истинно после первого потока, поэтому
+// проба успевала завершиться зелёной раньше, чем второй поток доходил до
+// дублёра и падал. Отсюда утверждение о ЧИСЛЕ обслуженных, а не только об
+// отсутствии паники: «дошло до дублёра» и «дошло до ждущего» — разные факты.
+func TestWiringOwnerServesASecondStream(t *testing.T) {
+	owner, projection := newHeldStreamStand(t)
+
+	first := openHeldStream(t, owner, projection, "usr00000000000000001", "jti-first")
+	second := openHeldStream(t, owner, projection, "usr00000000000000002", "jti-second")
+
+	if got := owner.servedStreams(); got != 2 {
+		t.Fatalf("дублёр обслужил потоков %d, ожидалось 2 — возврат из ожидания "+
+			"не означает прихода потока", got)
+	}
+	for name, done := range map[string]<-chan struct{}{"первый": first, "второй": second} {
+		select {
+		case <-done:
+			t.Fatalf("%s поток закрылся сам — дублёр обязан держать его открытым", name)
+		default:
+		}
+	}
+}
+
+// TestWiringStreamArrivalIsSignalledPerStreamNotBroadcast — тот же предмет с
+// другой стороны и БЕЗ зависимости от планировщика: открыт РОВНО один поток,
+// значит второго прибытия не случилось, и ожидание второго обязано не
+// выполняться. Закрытие канала делает его выполнимым тождественно.
+func TestWiringStreamArrivalIsSignalledPerStreamNotBroadcast(t *testing.T) {
+	owner, projection := newHeldStreamStand(t)
+
+	_ = openHeldStream(t, owner, projection, "usr00000000000000001", "jti-only")
+
+	select {
+	case <-owner.started:
+		t.Fatalf("ожидание прихода потока выполнилось, когда открыт РОВНО один "+
+			"и он уже дождан (обслужено всего %d) — сигнал подан вещанием, "+
+			"поэтому ожидание n потоков истинно после первого; "+
+			"условие, истинное независимо от предмета, условием не является",
+			owner.servedStreams())
+	default:
 	}
 }
