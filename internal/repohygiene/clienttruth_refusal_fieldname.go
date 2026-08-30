@@ -309,7 +309,7 @@ func AuditRefusalFieldNames(opts RefusalFieldNameOptions, log io.Writer) ([]Refu
 		return findings[i].Line < findings[j].Line
 	})
 	if log != nil {
-		fmt.Fprintf(log, "перепись: пакетов ресурса %d · со словарём %d · файлов %d · "+
+		_, _ = fmt.Fprintf(log, "перепись: пакетов ресурса %d · со словарём %d · файлов %d · "+
 			"вызовов производителя %d · рассужено имён %d · не судимо (имя не литерал) %d · "+
 			"имён в словарях %d · находок %d\n",
 			census.Packages, census.PackagesWithVocabulary, census.Files, census.Calls,
