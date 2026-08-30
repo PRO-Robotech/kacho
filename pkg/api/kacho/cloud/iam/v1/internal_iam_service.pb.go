@@ -1016,10 +1016,34 @@ func (x *PollSubjectChangesRequest) GetLimit() int32 {
 
 // SubjectChange — one row from subject_change_outbox.
 type SubjectChange struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	SubjectId     string                 `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
-	Op            string                 `protobuf:"bytes,3,opt,name=op,proto3" json:"op,omitempty"` // binding_upsert | binding_delete | group_member_change
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	SubjectId string                 `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
+	Op        string                 `protobuf:"bytes,3,opt,name=op,proto3" json:"op,omitempty"` // binding_upsert | binding_delete | group_member_change
+	// subject_type — тип субъекта в словаре модели прав: `user` |
+	// `service_account` | `group`.
+	//
+	// ПОЧЕМУ ЭТО ПОЛЕ ЕСТЬ. `subject_id` — голый идентификатор (`usrXXXX`), а
+	// субъектом модели он становится только в паре с типом (`user:usrXXXX`).
+	// Пару обязан собрать ЧИТАЮЩИЙ, и собрать её ему больше нечем: перепрос
+	// `payload` строки не возвращает, поэтому без этого поля вызывающий назвать
+	// субъекта не может. Пока единственным потребителем перепроса был сплошной
+	// сброс кэша, это не было видно: сброс имени не спрашивает. Как только по
+	// этому же чтению понадобилось закрыть открытый поток НАЗВАННОГО субъекта
+	// (kacho#1022), полоса оказалась неисполнимой — не по ошибке вызывающего, а
+	// потому, что контракт не нёс половины имени.
+	//
+	// Прежде пару собирал ТОЛЧОК из iam в край, потому что читал `payload`
+	// напрямую. Толчок снят вместе со своим пакетом контракта (задача #1024):
+	// соединение открывает потребитель, и край читает этот журнал курсором сам.
+	// Поле осталось потому, что предмет его пережил механизм — имя субъекта
+	// нужно ЧИТАЮЩЕМУ, кем бы он ни был.
+	//
+	// Пусто у строк, записанных до того, как производители начали проставлять тип.
+	// Вызывающий обязан считать такую строку НЕИМЕНОВАННОЙ и не собирать субъекта
+	// из префикса идентификатора: вывод типа из написания уже давал совпадение с
+	// тем, чего продукт не производит.
+	SubjectType   string `protobuf:"bytes,4,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1075,12 +1099,30 @@ func (x *SubjectChange) GetOp() string {
 	return ""
 }
 
+func (x *SubjectChange) GetSubjectType() string {
+	if x != nil {
+		return x.SubjectType
+	}
+	return ""
+}
+
 // PollSubjectChangesResponse — result of PollSubjectChanges.
 type PollSubjectChangesResponse struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Changes []*SubjectChange       `protobuf:"bytes,1,rep,name=changes,proto3" json:"changes,omitempty"`
-	// head_id — current MAX(id) in the outbox (0 when empty). Lets a freshly
-	// started gateway initialise its cursor without replaying history.
+	// head_id — the position the caller may adopt as its cursor: the SETTLED
+	// boundary of the journal, narrowed to the last delivered row when the page
+	// was cut by `limit`. Lets a freshly started gateway initialise its cursor
+	// without replaying history.
+	//
+	// It is NOT `MAX(id)`. A journal number is issued by the counter on INSERT and
+	// becomes visible on COMMIT, so a caller that adopted the largest visible
+	// number would jump over a writer still in flight, and that row would never
+	// come back — re-reading is strictly "greater than the cursor". The same holds
+	// for a full page: beyond its last row the window still holds rows nobody read.
+	//
+	// The guarantee and its price are stated once:
+	// docs/architecture/journal-position-settled-watermark.md.
 	HeadId        int64 `protobuf:"varint,2,opt,name=head_id,json=headId,proto3" json:"head_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1370,6 +1412,101 @@ func (x *ResolveBasicCredentialResponse) GetExpiresAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// CheckBasicCredentialLiveRequest — идентификатор СТРОКИ удостоверения.
+type CheckBasicCredentialLiveRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Идентификатор удостоверения — тот самый, который резолв вернул в
+	// `ResolveBasicCredentialResponse.credential_id`. Секрет сюда не кладётся и
+	// класться не может: весь смысл вопроса в том, что спрашивающий секрета не
+	// хранит. Поэтому поле НЕ помечено носителем секрета — и это утверждение о
+	// значении, а не о форме.
+	CredentialId  string `protobuf:"bytes,1,opt,name=credential_id,json=credentialId,proto3" json:"credential_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckBasicCredentialLiveRequest) Reset() {
+	*x = CheckBasicCredentialLiveRequest{}
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckBasicCredentialLiveRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckBasicCredentialLiveRequest) ProtoMessage() {}
+
+func (x *CheckBasicCredentialLiveRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckBasicCredentialLiveRequest.ProtoReflect.Descriptor instead.
+func (*CheckBasicCredentialLiveRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *CheckBasicCredentialLiveRequest) GetCredentialId() string {
+	if x != nil {
+		return x.CredentialId
+	}
+	return ""
+}
+
+// CheckBasicCredentialLiveResponse — ПУСТО, и это решение, а не заготовка.
+//
+// Вопрос один и ответ на него бинарен: `OK` означает «живо», отказ — всё
+// остальное. Любое поле здесь было бы сведениями, добытыми ПО ИДЕНТИФИКАТОРУ,
+// без предъявления секрета, — то есть оракулом: спрашивающий узнавал бы про
+// чужое удостоверение больше, чем знал до вопроса.
+//
+// Спрашивающему сверх этого ничего не нужно by construction: чей это поток, он
+// знает — он его и открыл.
+type CheckBasicCredentialLiveResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckBasicCredentialLiveResponse) Reset() {
+	*x = CheckBasicCredentialLiveResponse{}
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckBasicCredentialLiveResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckBasicCredentialLiveResponse) ProtoMessage() {}
+
+func (x *CheckBasicCredentialLiveResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckBasicCredentialLiveResponse.ProtoReflect.Descriptor instead.
+func (*CheckBasicCredentialLiveResponse) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP(), []int{19}
+}
+
 var File_kacho_cloud_iam_v1_internal_iam_service_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
@@ -1438,12 +1575,13 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\rrevoked_count\x18\x01 \x01(\x05R\frevokedCount\"L\n" +
 	"\x19PollSubjectChangesRequest\x12\x19\n" +
 	"\bsince_id\x18\x01 \x01(\x03R\asinceId\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"N\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"q\n" +
 	"\rSubjectChange\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1d\n" +
 	"\n" +
 	"subject_id\x18\x02 \x01(\tR\tsubjectId\x12\x0e\n" +
-	"\x02op\x18\x03 \x01(\tR\x02op\"r\n" +
+	"\x02op\x18\x03 \x01(\tR\x02op\x12!\n" +
+	"\fsubject_type\x18\x04 \x01(\tR\vsubjectType\"r\n" +
 	"\x1aPollSubjectChangesResponse\x12;\n" +
 	"\achanges\x18\x01 \x03(\v2!.kacho.cloud.iam.v1.SubjectChangeR\achanges\x12\x17\n" +
 	"\ahead_id\x18\x02 \x01(\x03R\x06headId\"1\n" +
@@ -1460,8 +1598,10 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12#\n" +
 	"\rcredential_id\x18\x04 \x01(\tR\fcredentialId\x129\n" +
 	"\n" +
-	"expires_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt2\xbb\n" +
-	"\n" +
+	"expires_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"F\n" +
+	"\x1fCheckBasicCredentialLiveRequest\x12#\n" +
+	"\rcredential_id\x18\x01 \x01(\tR\fcredentialId\"\"\n" +
+	" CheckBasicCredentialLiveResponse2\xe6\v\n" +
 	"\x12InternalIAMService\x12\xb4\x01\n" +
 	"\rLookupSubject\x12(.kacho.cloud.iam.v1.LookupSubjectRequest\x1a).kacho.cloud.iam.v1.LookupSubjectResponse\"N\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\x82\xd3\xe4\x93\x02':\x01*\"\"/iam/v1/internal/iam:lookupSubject\x12\x94\x01\n" +
 	"\x05Check\x12 .kacho.cloud.iam.v1.CheckRequest\x1a!.kacho.cloud.iam.v1.CheckResponse\"F\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/iam/v1/internal/iam:check\x12\xa6\x01\n" +
@@ -1471,7 +1611,8 @@ const file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc = "" +
 	"\x10RegisterResource\x12+.kacho.cloud.iam.v1.RegisterResourceRequest\x1a,.kacho.cloud.iam.v1.RegisterResourceResponse\"!\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\x12\x96\x01\n" +
 	"\x12UnregisterResource\x12-.kacho.cloud.iam.v1.UnregisterResourceRequest\x1a..kacho.cloud.iam.v1.UnregisterResourceResponse\"!\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\x12\xd8\x01\n" +
 	"\x16ResolveBasicCredential\x121.kacho.cloud.iam.v1.ResolveBasicCredentialRequest\x1a2.kacho.cloud.iam.v1.ResolveBasicCredentialResponse\"W\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\x82\xd3\xe4\x93\x020:\x01*\"+/iam/v1/internal/iam:resolveBasicCredential\x12\x8d\x01\n" +
-	"\x0fGetRoleCompiled\x12*.kacho.cloud.iam.v1.GetRoleCompiledRequest\x1a+.kacho.cloud.iam.v1.GetRoleCompiledResponse\"!\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENERB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
+	"\x0fGetRoleCompiled\x12*.kacho.cloud.iam.v1.GetRoleCompiledRequest\x1a+.kacho.cloud.iam.v1.GetRoleCompiledResponse\"!\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENER\x12\xa8\x01\n" +
+	"\x18CheckBasicCredentialLive\x123.kacho.cloud.iam.v1.CheckBasicCredentialLiveRequest\x1a4.kacho.cloud.iam.v1.CheckBasicCredentialLiveResponse\"!\x8a\xb5\x18\b<exempt>\xba\xb5\x18\x11INTERNAL_LISTENERB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
 	file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescOnce sync.Once
@@ -1486,44 +1627,46 @@ func file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_iam_v1_internal_iam_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_kacho_cloud_iam_v1_internal_iam_service_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_kacho_cloud_iam_v1_internal_iam_service_proto_goTypes = []any{
-	(CheckRequest_Consistency)(0),          // 0: kacho.cloud.iam.v1.CheckRequest.Consistency
-	(*LookupSubjectRequest)(nil),           // 1: kacho.cloud.iam.v1.LookupSubjectRequest
-	(*LookupSubjectResponse)(nil),          // 2: kacho.cloud.iam.v1.LookupSubjectResponse
-	(*CheckRequest)(nil),                   // 3: kacho.cloud.iam.v1.CheckRequest
-	(*CheckResponse)(nil),                  // 4: kacho.cloud.iam.v1.CheckResponse
-	(*RegisterResourceRequest)(nil),        // 5: kacho.cloud.iam.v1.RegisterResourceRequest
-	(*RegisterResourceResponse)(nil),       // 6: kacho.cloud.iam.v1.RegisterResourceResponse
-	(*UnregisterResourceRequest)(nil),      // 7: kacho.cloud.iam.v1.UnregisterResourceRequest
-	(*UnregisterResourceResponse)(nil),     // 8: kacho.cloud.iam.v1.UnregisterResourceResponse
-	(*ForceLogoutRequest)(nil),             // 9: kacho.cloud.iam.v1.ForceLogoutRequest
-	(*ForceLogoutMetadata)(nil),            // 10: kacho.cloud.iam.v1.ForceLogoutMetadata
-	(*ForceLogoutResult)(nil),              // 11: kacho.cloud.iam.v1.ForceLogoutResult
-	(*PollSubjectChangesRequest)(nil),      // 12: kacho.cloud.iam.v1.PollSubjectChangesRequest
-	(*SubjectChange)(nil),                  // 13: kacho.cloud.iam.v1.SubjectChange
-	(*PollSubjectChangesResponse)(nil),     // 14: kacho.cloud.iam.v1.PollSubjectChangesResponse
-	(*GetRoleCompiledRequest)(nil),         // 15: kacho.cloud.iam.v1.GetRoleCompiledRequest
-	(*GetRoleCompiledResponse)(nil),        // 16: kacho.cloud.iam.v1.GetRoleCompiledResponse
-	(*ResolveBasicCredentialRequest)(nil),  // 17: kacho.cloud.iam.v1.ResolveBasicCredentialRequest
-	(*ResolveBasicCredentialResponse)(nil), // 18: kacho.cloud.iam.v1.ResolveBasicCredentialResponse
-	nil,                                    // 19: kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
-	nil,                                    // 20: kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
-	(*User)(nil),                           // 21: kacho.cloud.iam.v1.User
-	(*ServiceAccount)(nil),                 // 22: kacho.cloud.iam.v1.ServiceAccount
-	(*timestamppb.Timestamp)(nil),          // 23: google.protobuf.Timestamp
-	(*operation.Operation)(nil),            // 24: kacho.cloud.operation.Operation
+	(CheckRequest_Consistency)(0),            // 0: kacho.cloud.iam.v1.CheckRequest.Consistency
+	(*LookupSubjectRequest)(nil),             // 1: kacho.cloud.iam.v1.LookupSubjectRequest
+	(*LookupSubjectResponse)(nil),            // 2: kacho.cloud.iam.v1.LookupSubjectResponse
+	(*CheckRequest)(nil),                     // 3: kacho.cloud.iam.v1.CheckRequest
+	(*CheckResponse)(nil),                    // 4: kacho.cloud.iam.v1.CheckResponse
+	(*RegisterResourceRequest)(nil),          // 5: kacho.cloud.iam.v1.RegisterResourceRequest
+	(*RegisterResourceResponse)(nil),         // 6: kacho.cloud.iam.v1.RegisterResourceResponse
+	(*UnregisterResourceRequest)(nil),        // 7: kacho.cloud.iam.v1.UnregisterResourceRequest
+	(*UnregisterResourceResponse)(nil),       // 8: kacho.cloud.iam.v1.UnregisterResourceResponse
+	(*ForceLogoutRequest)(nil),               // 9: kacho.cloud.iam.v1.ForceLogoutRequest
+	(*ForceLogoutMetadata)(nil),              // 10: kacho.cloud.iam.v1.ForceLogoutMetadata
+	(*ForceLogoutResult)(nil),                // 11: kacho.cloud.iam.v1.ForceLogoutResult
+	(*PollSubjectChangesRequest)(nil),        // 12: kacho.cloud.iam.v1.PollSubjectChangesRequest
+	(*SubjectChange)(nil),                    // 13: kacho.cloud.iam.v1.SubjectChange
+	(*PollSubjectChangesResponse)(nil),       // 14: kacho.cloud.iam.v1.PollSubjectChangesResponse
+	(*GetRoleCompiledRequest)(nil),           // 15: kacho.cloud.iam.v1.GetRoleCompiledRequest
+	(*GetRoleCompiledResponse)(nil),          // 16: kacho.cloud.iam.v1.GetRoleCompiledResponse
+	(*ResolveBasicCredentialRequest)(nil),    // 17: kacho.cloud.iam.v1.ResolveBasicCredentialRequest
+	(*ResolveBasicCredentialResponse)(nil),   // 18: kacho.cloud.iam.v1.ResolveBasicCredentialResponse
+	(*CheckBasicCredentialLiveRequest)(nil),  // 19: kacho.cloud.iam.v1.CheckBasicCredentialLiveRequest
+	(*CheckBasicCredentialLiveResponse)(nil), // 20: kacho.cloud.iam.v1.CheckBasicCredentialLiveResponse
+	nil,                                      // 21: kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
+	nil,                                      // 22: kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
+	(*User)(nil),                             // 23: kacho.cloud.iam.v1.User
+	(*ServiceAccount)(nil),                   // 24: kacho.cloud.iam.v1.ServiceAccount
+	(*timestamppb.Timestamp)(nil),            // 25: google.protobuf.Timestamp
+	(*operation.Operation)(nil),              // 26: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_iam_v1_internal_iam_service_proto_depIdxs = []int32{
-	21, // 0: kacho.cloud.iam.v1.LookupSubjectResponse.user:type_name -> kacho.cloud.iam.v1.User
-	22, // 1: kacho.cloud.iam.v1.LookupSubjectResponse.service_account:type_name -> kacho.cloud.iam.v1.ServiceAccount
+	23, // 0: kacho.cloud.iam.v1.LookupSubjectResponse.user:type_name -> kacho.cloud.iam.v1.User
+	24, // 1: kacho.cloud.iam.v1.LookupSubjectResponse.service_account:type_name -> kacho.cloud.iam.v1.ServiceAccount
 	0,  // 2: kacho.cloud.iam.v1.CheckRequest.consistency:type_name -> kacho.cloud.iam.v1.CheckRequest.Consistency
-	19, // 3: kacho.cloud.iam.v1.RegisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
-	23, // 4: kacho.cloud.iam.v1.RegisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
-	20, // 5: kacho.cloud.iam.v1.UnregisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
-	23, // 6: kacho.cloud.iam.v1.UnregisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
+	21, // 3: kacho.cloud.iam.v1.RegisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.RegisterResourceRequest.LabelsEntry
+	25, // 4: kacho.cloud.iam.v1.RegisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
+	22, // 5: kacho.cloud.iam.v1.UnregisterResourceRequest.labels:type_name -> kacho.cloud.iam.v1.UnregisterResourceRequest.LabelsEntry
+	25, // 6: kacho.cloud.iam.v1.UnregisterResourceRequest.source_version:type_name -> google.protobuf.Timestamp
 	13, // 7: kacho.cloud.iam.v1.PollSubjectChangesResponse.changes:type_name -> kacho.cloud.iam.v1.SubjectChange
-	23, // 8: kacho.cloud.iam.v1.ResolveBasicCredentialResponse.expires_at:type_name -> google.protobuf.Timestamp
+	25, // 8: kacho.cloud.iam.v1.ResolveBasicCredentialResponse.expires_at:type_name -> google.protobuf.Timestamp
 	1,  // 9: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:input_type -> kacho.cloud.iam.v1.LookupSubjectRequest
 	3,  // 10: kacho.cloud.iam.v1.InternalIAMService.Check:input_type -> kacho.cloud.iam.v1.CheckRequest
 	9,  // 11: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:input_type -> kacho.cloud.iam.v1.ForceLogoutRequest
@@ -1532,16 +1675,18 @@ var file_kacho_cloud_iam_v1_internal_iam_service_proto_depIdxs = []int32{
 	7,  // 14: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:input_type -> kacho.cloud.iam.v1.UnregisterResourceRequest
 	17, // 15: kacho.cloud.iam.v1.InternalIAMService.ResolveBasicCredential:input_type -> kacho.cloud.iam.v1.ResolveBasicCredentialRequest
 	15, // 16: kacho.cloud.iam.v1.InternalIAMService.GetRoleCompiled:input_type -> kacho.cloud.iam.v1.GetRoleCompiledRequest
-	2,  // 17: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:output_type -> kacho.cloud.iam.v1.LookupSubjectResponse
-	4,  // 18: kacho.cloud.iam.v1.InternalIAMService.Check:output_type -> kacho.cloud.iam.v1.CheckResponse
-	24, // 19: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:output_type -> kacho.cloud.operation.Operation
-	14, // 20: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:output_type -> kacho.cloud.iam.v1.PollSubjectChangesResponse
-	6,  // 21: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:output_type -> kacho.cloud.iam.v1.RegisterResourceResponse
-	8,  // 22: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:output_type -> kacho.cloud.iam.v1.UnregisterResourceResponse
-	18, // 23: kacho.cloud.iam.v1.InternalIAMService.ResolveBasicCredential:output_type -> kacho.cloud.iam.v1.ResolveBasicCredentialResponse
-	16, // 24: kacho.cloud.iam.v1.InternalIAMService.GetRoleCompiled:output_type -> kacho.cloud.iam.v1.GetRoleCompiledResponse
-	17, // [17:25] is the sub-list for method output_type
-	9,  // [9:17] is the sub-list for method input_type
+	19, // 17: kacho.cloud.iam.v1.InternalIAMService.CheckBasicCredentialLive:input_type -> kacho.cloud.iam.v1.CheckBasicCredentialLiveRequest
+	2,  // 18: kacho.cloud.iam.v1.InternalIAMService.LookupSubject:output_type -> kacho.cloud.iam.v1.LookupSubjectResponse
+	4,  // 19: kacho.cloud.iam.v1.InternalIAMService.Check:output_type -> kacho.cloud.iam.v1.CheckResponse
+	26, // 20: kacho.cloud.iam.v1.InternalIAMService.ForceLogout:output_type -> kacho.cloud.operation.Operation
+	14, // 21: kacho.cloud.iam.v1.InternalIAMService.PollSubjectChanges:output_type -> kacho.cloud.iam.v1.PollSubjectChangesResponse
+	6,  // 22: kacho.cloud.iam.v1.InternalIAMService.RegisterResource:output_type -> kacho.cloud.iam.v1.RegisterResourceResponse
+	8,  // 23: kacho.cloud.iam.v1.InternalIAMService.UnregisterResource:output_type -> kacho.cloud.iam.v1.UnregisterResourceResponse
+	18, // 24: kacho.cloud.iam.v1.InternalIAMService.ResolveBasicCredential:output_type -> kacho.cloud.iam.v1.ResolveBasicCredentialResponse
+	16, // 25: kacho.cloud.iam.v1.InternalIAMService.GetRoleCompiled:output_type -> kacho.cloud.iam.v1.GetRoleCompiledResponse
+	20, // 26: kacho.cloud.iam.v1.InternalIAMService.CheckBasicCredentialLive:output_type -> kacho.cloud.iam.v1.CheckBasicCredentialLiveResponse
+	18, // [18:27] is the sub-list for method output_type
+	9,  // [9:18] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
 	9,  // [9:9] is the sub-list for extension extendee
 	0,  // [0:9] is the sub-list for field type_name
@@ -1569,7 +1714,7 @@ func file_kacho_cloud_iam_v1_internal_iam_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc), len(file_kacho_cloud_iam_v1_internal_iam_service_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   20,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

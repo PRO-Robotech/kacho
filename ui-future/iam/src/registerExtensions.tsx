@@ -364,6 +364,8 @@ function SubjectPrivilegesSubjectTable({
     queryKey: ["iam", "subject-privileges", mode.subjectType, mode.subjectId],
     queryFn: () => iamApi.listSubjectPrivileges(mode.subjectType, mode.subjectId, { page_size: "200" }),
     enabled: !!mode.subjectId,
+    // поллинг остаётся: привилегии субъекта — предмет iam, а журнала у iam
+    // нет: подписаться не на что.
     refetchInterval: 5_000,
     staleTime: 0,
   });
@@ -436,6 +438,8 @@ function SubjectPrivilegesResourceTable({
     queryKey: ["iam", "access-bindings", "by-resource", mode.resourceType, mode.resourceId],
     queryFn: () => iamApi.listAccessBindingsByResource(mode.resourceType, mode.resourceId, { pageSize: "200" }),
     enabled: !!mode.resourceId,
+    // поллинг остаётся: привязки на ресурс-скоуп — предмет iam, журнала у
+    // iam нет.
     refetchInterval: 5_000,
     staleTime: 0,
   });

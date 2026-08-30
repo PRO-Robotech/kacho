@@ -206,7 +206,7 @@ INTEGRATION_TIMEOUT ?= 25m
 SERVICES ?= iam vpc compute geo nlb storage registry
 
 # PG_OUTSIDE_SELECTION_PKGS — пакеты, которым нужен НАСТОЯЩИЙ Postgres, но
-# которых отбор интеграционной джобы (`/internal/(repo|clients|reconciler)` внутри
+# которых отбор интеграционной джобы (`/internal/(repo|clients|reconciler|subscriptionjournal)` внутри
 # services/) не достаёт. Единственный источник перечня; конвейер, человек и гейт
 # провязки читают его отсюда.
 #
@@ -253,6 +253,7 @@ SERVICES ?= iam vpc compute geo nlb storage registry
 # целью, то есть `-race -p 1`, на этой машине. Джоба отдельная, критический путь
 # конвейера не удлиняется.
 PG_OUTSIDE_SELECTION_PKGS ?= \
+	./internal/dropguard \
 	./services/iam/internal/apps/kacho/api/bootstrap_token \
 	./services/nlb/internal/apps/kacho/jobs \
 	./services/iam/internal/scopesourcecensus \
@@ -369,8 +370,9 @@ test-unit: $(HOOKS_NOTICE)
 ## объявленного прогона. Копии отбора у гейта нет — он читает эти строки, поэтому
 ## правка регулярного выражения ниже меняет и предикат гейта. Прежде свойство
 ## «каждый пакет с признаком попадает в отбор» не проверял никто и выполнялось
-## оно случайно: первый же `//go:build integration` вне `internal/(repo|clients|
-## reconciler)` стал бы невидим всем прогонам молча.
+## оно случайно: первый же `//go:build integration` вне
+## `internal/(repo|clients|reconciler|subscriptionjournal)` стал бы невидим всем
+## прогонам молча.
 test-integration: $(HOOKS_NOTICE)
 ifdef SVC
 	@set -o pipefail; \
@@ -379,7 +381,7 @@ ifdef SVC
 	  echo "Это отказ, а не «нечего запускать»: пустой список здесь означал бы" >&2; \
 	  echo "зелёную джобу с нулём выполненных тестов." >&2; exit 1; }; \
 	if [ -z "$$all" ]; then echo "у $(SVC) не найдено НИ ОДНОГО пакета — обход пуст, это отказ" >&2; exit 1; fi; \
-	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler)(/|$$)'); \
+	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients|reconciler|subscriptionjournal)(/|$$)'); \
 	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) — пропуск (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l))"; exit 0; fi; \
 	echo "пакетов: $$(echo "$$pkgs" | wc -l) (из осмотренных $$(printf '%s\n' "$$all" | wc -l))"; \
 	log=$$(mktemp); rc=0; \
@@ -404,7 +406,7 @@ endif
 ## #747). Их пробы гонялись отдельной целью на настоящем движке; движка нет,
 ## харнесс к нему снят, а сами пробы переписаны на реляционную форму и требуют
 ## теперь Postgres. Отбор интеграционной джобы идёт по пути
-## `/internal/(repo|clients|reconciler)` внутри services/ и ни один из семи не
+## `/internal/(repo|clients|reconciler|subscriptionjournal)` внутри services/ и ни один из семи не
 ## достаёт — то есть без этой цели они не исполнялись бы НИГДЕ. `-short` не передаётся;
 ## `-p 1` сериализует пакеты (контейнерным пробам параллель противопоказана —
 ## см. шапку файла); вердикт выносится ПО ЧИСЛАМ.

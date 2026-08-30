@@ -63,14 +63,16 @@ func TestAcceptsSubscriptionWithoutAnyAxis(t *testing.T) {
 // владельца есть ОТКАЗ, а не пустой поток (WATCH-1-03).
 func TestKindOutsideTheOwnersDictionaryIsRefused(t *testing.T) {
 	_, err := vpcLikeJournal().Accept(&subscriptionv1.SubscriptionRequest{
-		Kinds: []string{"Network", "Черепаха"},
+		Kinds: []string{"vpc_network", "Черепаха"},
 	})
 	requireCode(t, err, codes.InvalidArgument, "kinds")
 	if st, _ := status.FromError(err); !contains(st.Message(), "Черепаха") {
 		t.Fatalf("отказ не называет отвергнутое значение: %s", st.Message())
 	}
-	// Положительный контроль: вид ИЗ словаря проходит.
-	f, err := vpcLikeJournal().Accept(&subscriptionv1.SubscriptionRequest{Kinds: []string{"Network"}})
+	// Положительный контроль: вид ИЗ словаря проходит. Словарь — типы объекта
+	// (`vpc_network`), а `Network` есть слово ХРАНИЛИЩА этого владельца, и
+	// клиенту оно не адресовано вовсе.
+	f, err := vpcLikeJournal().Accept(&subscriptionv1.SubscriptionRequest{Kinds: []string{"vpc_network"}})
 	if err != nil {
 		t.Fatalf("вид из словаря отвергнут: %v", err)
 	}
@@ -142,7 +144,7 @@ func TestProjectAxisAgainstAnOwnerWithoutProjectDimension(t *testing.T) {
 // запроса, как они объявлены контрактом, а не второй словарь осей рядом.
 func TestHonoredFiltersNameFieldsOfTheContract(t *testing.T) {
 	f, err := nlbLikeJournal().Accept(&subscriptionv1.SubscriptionRequest{
-		Kinds:     []string{"Network"},
+		Kinds:     []string{"vpc_network"},
 		ProjectId: "prj-1",
 		Ids:       []string{"net00000000000000000"},
 	})

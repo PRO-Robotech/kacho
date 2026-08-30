@@ -15,7 +15,7 @@ REST-пути, формат JSON, аутентификацию и авториз
 поэтому конкретные поля и методы ресурса ищите в документации соответствующего сервиса.
 
 :::info Единый контракт — gRPC, REST — проекция
-Источник истины — Protocol Buffers в `kacho-proto` (домены `kacho.cloud.<domain>.v1`). REST-
+Источник истины — Protocol Buffers в `proto/` (домены `kacho.cloud.<domain>.v1`). REST-
 поверхность строится через **grpc-gateway**: каждый RPC аннотирован `google.api.http`. Семантика
 (коды ошибок, валидация) одинакова для gRPC и REST; примеры ниже — в REST-форме через гейтвей.
 :::
@@ -41,6 +41,7 @@ REST-пути, формат JSON, аутентификацию и авториз
     <tr><td>Load Balancer</td><td><code>/nlb/v1/</code></td><td><code>kacho.cloud.loadbalancer.v1</code></td><td>NetworkLoadBalancer / Listener / TargetGroup</td></tr>
     <tr><td>Registry</td><td><code>/registry/v1/</code></td><td><code>kacho.cloud.registry.v1</code></td><td>RegistryService (control-plane)</td></tr>
     <tr><td>Operations</td><td><code>/operations</code></td><td><code>kacho.cloud.operation</code></td><td><code>OperationService</code> (fan-out, native)</td></tr>
+    <tr><td>Подписка на изменения</td><td><code>/subscription/v1/events</code></td><td><code>kacho.cloud.subscription</code></td><td>поток изменений ресурсов, SSE (<a href="/api/subscription">Подписка</a>) — ручка края, gRPC-метод наружу не публикуется</td></tr>
   </tbody>
 </table>
 
@@ -105,8 +106,14 @@ deny-by-default, fail-closed. Нет права → `PERMISSION_DENIED` (HTTP `4
 
 Мутации возвращают `Operation` (`kacho.cloud.operation.v1`): `id`, `description`, `createdAt`,
 `done`, `metadata`, и `oneof result { error | response }`. Клиент **поллит**
-`OperationService.Get(id)` до `done=true` — Watch-RPC нет. Гейтвей направляет поллинг во владеющий
-backend по prefix id. Подробнее — [Operations](/api/operations).
+`OperationService.Get(id)` до `done=true`. Гейтвей направляет поллинг во владеющий backend по
+prefix id. Подробнее — [Operations](/api/operations).
+
+**Подписки на операции нет, и поток изменений её не заменяет:** событие пишется в той же
+транзакции, что и строка ресурса, поэтому у провалившейся мутации события нет вовсе, и
+наблюдатель ресурсов не отличит «ещё делается» от «упало». Исход операции узнаётся поллом —
+всегда. Изменения самих ресурсов при этом можно получать потоком, см.
+[Подписку на изменения](/api/subscription).
 
 ## Формат ошибок
 
@@ -159,7 +166,15 @@ opaque, передавать как есть.
   <thead><tr><th>Сервис</th><th>Поверхность</th><th>Назначение</th></tr></thead>
   <tbody>
     <tr><td><code>OperationService</code></td><td>public</td><td><code>Get</code> / <code>Cancel</code> async-операций — fan-out по prefix id (<a href="/api/operations">Operations</a>)</td></tr>
+    <tr><td>поток изменений (<code>/subscription/v1/events</code>)</td><td>public</td><td>SSE-проекция подписки на изменения ресурсов: край — gRPC-клиент общего глагола на внутреннем слушателе владельца журнала, наружу отдаёт кадры (<a href="/api/subscription">Подписка</a>)</td></tr>
     <tr><td>health (<code>/healthz</code>, <code>/readyz</code>)</td><td>public</td><td>Liveness / readiness</td></tr>
-    <tr><td><code>InternalAuthzCacheService</code></td><td>cluster-internal (:9091)</td><td>Push-инвалидация authz-кэша (<a href="/api/internal-authz-cache">Internal Authz Cache</a>)</td></tr>
   </tbody>
 </table>
+
+:::note Собственного proto-контракта у края больше нет
+Здесь стояла третья строка — служба сброса authz-кэша на отдельном cluster-internal
+gRPC-listener'е края. Её нет: контракт снят целиком вместе с listener'ом, который его подавал.
+Кэш решений теперь гасит сам край, читая журнал смены субъекта у `kacho-iam`, — см.
+[Авторизация](/architecture/authz). Публично край подаёт только `OperationService` и health;
+всё остальное на его поверхности — проекция контрактов доменов.
+:::

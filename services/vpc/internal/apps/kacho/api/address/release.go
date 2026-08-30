@@ -147,7 +147,7 @@ func (u *ReleaseOwnedAddressUseCase) finishRelease(
 			return serviceerr.MapRepoErr(fmt.Errorf("%w: return ip to freelist: %v", repo.ErrInternal, rerr))
 		}
 	}
-	if err := w.Outbox().Emit(ctx, "Address", addressID, "DELETED", map[string]any{"id": addressID}); err != nil {
+	if err := w.Outbox().Emit(ctx, "Address", addressID, deleted.ProjectID, "DELETED", map[string]any{"id": addressID}); err != nil {
 		return serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	if rerr := w.FGARegister().EmitUnregister(ctx, fgaregister.RegisterIntent(

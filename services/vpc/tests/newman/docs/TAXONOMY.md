@@ -71,7 +71,7 @@
 | Internal RPC (`:9091`) | Не публичный API | Отдельная suite `internal/` (вне scope newman) |
 | Performance / load | Не функциональная проверка | Отдельный k6 setup |
 | UI behaviour | Backend test, не frontend | `kacho-ui` E2E |
-| Migration up/down | Operational, не product | `kacho-deploy` smoke |
+| Migration up/down | Operational, не product | `deploy/` smoke |
 | Disaster recovery | Operational | Quarterly drill |
 
 ## Test data lifecycle

@@ -86,6 +86,8 @@ export function GroupsPage() {
     queryKey: ["iam", "groups", "list", accountId],
     queryFn: () => iamApi.listGroups({ account_id: accountId!, pageSize: "200" }),
     enabled: !!accountId,
+    // поллинг остаётся: журнала у iam нет — глагол подписки служат три
+    // владельца (compute, nlb, vpc), iam среди них не значится.
     refetchInterval: 5_000,
     staleTime: 0,
   });
@@ -367,6 +369,7 @@ export function GroupMembersPanel({ group, accountId }: { group: Group; accountI
   const members = useQuery({
     queryKey: ["iam", "groups", group.id, "members"],
     queryFn: () => iamApi.listGroupMembers(group.id, { pageSize: "200" }),
+    // поллинг остаётся: состав группы — предмет iam, а журнала у iam нет.
     refetchInterval: 5_000,
     staleTime: 0,
   });

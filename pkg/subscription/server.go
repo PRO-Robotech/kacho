@@ -327,9 +327,27 @@ func (s *Server) serve(
 	stream subscriptionv1.InternalSubscriptionService_SubscribeServer,
 ) error {
 	storage := s.cfg.Journal.Storage
-	h := newWatermark(storage, s.log, s.now)
-	if err := h.advance(ctx, conn, storage.Table); err != nil {
-		return status.Error(codes.Unavailable, "subscription backend unavailable")
+	h := newWatermark(storage.Table, storage.PositionColumn, s.log, s.now)
+	if err := s.settle(ctx, conn, h, storage.Table); err != nil {
+		return err
+	}
+	if !h.Established() {
+		// Срок потока истёк раньше, чем граница подтвердилась. Посадить
+		// подписчика на неподтверждённый ноль нельзя (см. [Server.settle]), но и
+		// закрыть поток МОЛЧА нельзя тоже.
+		//
+		// До служебного сообщения клиент не получал НИЧЕГО: ни позиции, с
+		// которой возобновляться, ни кода. Чистый конец он читает как «событий
+		// нет» и переоткрывает поток в тишине сколько угодно долго — немой
+		// отказ, у которого нет ни клиентского, ни операторского признака.
+		// Названный отказ восстанавливает следующий шаг: повторить.
+		//
+		// Исключение — ушедший КЛИЕНТ: адресата у отказа нет, и `Canceled`
+		// сервером не производится, он лишь отражает чужое решение.
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return nil
+		}
+		return status.Error(codes.Unavailable, "subscription position not settled")
 	}
 
 	floor := h.floor(storage.Retention)
@@ -341,8 +359,16 @@ func (s *Server) serve(
 
 	opened := &subscriptionv1.SubscriptionOpened{
 		Position:       pagetoken.EncodeSubscriptionPosition(pagetoken.SubscriptionPosition{Settled: cursor}),
-		CaughtUp:       cursor >= h.settled,
+		CaughtUp:       cursor >= h.Settled(),
 		HonoredFilters: filter.Honored,
+		// Словарь видов — тем же вызовом, каким отвергается неизвестный вид
+		// (см. [Journal.Accept]). Второго перечня не существует, поэтому
+		// объявленное клиенту и то, чем сервер судит, разойтись не могут.
+		//
+		// Он приходит ВСЕГДА, в том числе подписке, назвавшей ось `kinds`: иначе
+		// прочесть словарь мог бы только тот, кто уже знает, что его не надо
+		// сужать, — то есть тот, кому он не нужен.
+		KnownKinds: s.cfg.Journal.KindDictionary(),
 	}
 	if storage.Retention == RetainsEverything {
 		opened.RetainsEverything = true
@@ -370,7 +396,7 @@ func (s *Server) serve(
 			// сетевой сбой, которым он не является.
 			return nil
 		}
-		if err := h.advance(ctx, conn, storage.Table); err != nil {
+		if err := h.Advance(ctx, conn); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
@@ -379,9 +405,58 @@ func (s *Server) serve(
 	}
 }
 
+// settle доводит наблюдение границы до ПОДТВЕРЖДЁННОГО — и только после этого
+// подписчика сажают.
+//
+// Неподтверждённая граница равна нулю, а ноль этот означает «позиции ещё нет».
+// Усвоив его как позицию, подписчик, пришедший БЕЗ позиции, садится в НАЧАЛО
+// журнала: ему уезжает вся накопленная история, которую он не просил, а
+// служебное сообщение объявляет его при этом догнавшим — `caught_up` сравнивает
+// курсор с той же нулевой границей. Строки журнала дренаж не удаляет, поэтому
+// хвост бывает длинным (kacho#1386).
+//
+// Ждём РОВНО того писателя, который держал журнал в момент наблюдения: его
+// завершение и есть подтверждение, а холостой перепрос закрывает случай отката,
+// о котором уведомления не будет. Это тот же размен, что объявлен у самой
+// границы, — «не потерять» против «доставить сейчас».
+//
+// Ждать приходится ОДИН проход, а не пока журнал опустеет: подтверждает границу
+// уход писателей НАБЛЮДЁННОГО номера, и появление новых писателей выше него
+// подтверждения не отзывает. Под сплошной записью пустого мига не бывает вовсе,
+// и требование такого мига означало бы «поток не открывается никогда» (kacho#1386).
+//
+// В лог попадает УДЕРЖАНИЕ — горизонт, стоящий на одном и том же писателе
+// дольше stallWarnAfter (жалоба живёт у самой границы, отдельной здесь нет).
+// Движущийся горизонт жалобы не даёт и не должен: он не застрял. Единственный
+// случай, когда подтверждения не будет вовсе, — незавершающийся писатель, и он
+// назван обоим: оператору жалобой, клиенту отказом [codes.Unavailable] вместо
+// чистого конца (см. [Server.serve]).
+//
+// Пустого журнала это не задерживает: подтверждать в нём нечего, наблюдение
+// состоится первым же проходом.
+func (s *Server) settle(ctx context.Context, conn *pgx.Conn, h *Watermark, table string) error {
+	for {
+		if err := h.Advance(ctx, conn); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return status.Error(codes.Unavailable, "subscription backend unavailable")
+		}
+		if h.Established() {
+			return nil
+		}
+		if err := s.waitForWork(ctx, conn); err != nil {
+			return err
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+	}
+}
+
 // resolveCursor выбирает, с какого номера отдавать, и отвергает позицию, которую
 // владелец больше не удерживает.
-func (s *Server) resolveCursor(start Start, h *watermark, floor int64) (int64, error) {
+func (s *Server) resolveCursor(start Start, h *Watermark, floor int64) (int64, error) {
 	switch {
 	case start.FromBeginning:
 		return floor, nil
@@ -392,7 +467,7 @@ func (s *Server) resolveCursor(start Start, h *watermark, floor int64) (int64, e
 		}
 		return start.Position.Settled, nil
 	default:
-		return h.settled, nil
+		return h.Settled(), nil
 	}
 }
 

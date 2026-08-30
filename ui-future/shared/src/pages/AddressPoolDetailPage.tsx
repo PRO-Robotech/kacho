@@ -44,6 +44,9 @@ export function AddressPoolDetailPage() {
         used_percent: number;
         cidrs: { cidr: string; total: string | number; used: string | number }[];
       }>(`/vpc/v1/addressPools/${poolId}/utilization`),
+    // поллинг остаётся: занятость пула — СВОДНАЯ величина, а не ресурс; в
+    // словаре видов vpc адресного пула нет вовсе (восемь видов, пула среди
+    // них не значится), и подписаться на неё не на что.
     refetchInterval: 5000,
     enabled: !!poolId,
   });
@@ -51,6 +54,9 @@ export function AddressPoolDetailPage() {
   const { data: addresses } = useQuery({
     queryKey: ["pool-addresses", poolId],
     queryFn: () => api.get<{ addresses: PoolAddrEntry[] }>(`/vpc/v1/addressPools/${poolId}/addresses?pageSize=200`),
+    // поллинг остаётся: адреса пула читаются подресурсом самого пула, а пул
+    // в словаре видов vpc не значится; событие вида `vpc_address` про
+    // занятость слотов пула ничего не сообщает.
     refetchInterval: 5000,
     enabled: !!poolId,
   });

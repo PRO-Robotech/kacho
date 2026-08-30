@@ -148,7 +148,7 @@ python3 scripts/gen.py
 > `placementType` REGIONAL const (F4), `defaultRepositoryVisibility` seed + admin-gate (F5),
 > `Repository.lifecycle` DURABLE/EPHEMERAL output-only (F7), and identity-lock (id immutable,
 > rename-name-preserves-id, field-absence). Requires geo seeded with `existingRegionId`
-> (kacho-deploy geo fixture, shared with nlb/compute). Acceptance:
+> (`deploy/` geo fixture, shared with nlb/compute). Acceptance:
 > `docs/specs/sub-phase-REG-1-registry-repository-acceptance.md`.
 
 `run.sh` writes `out/<service>.json` (newman JSON reporter), `out/<service>.cli`, and

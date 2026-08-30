@@ -20,7 +20,6 @@ package main
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"log/slog"
 
@@ -35,6 +34,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
@@ -153,19 +153,18 @@ func describe(
 		// занять сервис чтением.
 		Admission: servicecontract.Value(admission),
 
-		// Срок жизни подписки — ИЗЪЯТИЕ, и это следствие снятия предмета.
+		// Срок жизни подписки — ВЕЛИЧИНА, и предмет у неё снова есть.
 		//
-		// Здесь стояла величина в час, обоснованная тем, что сервис служит
-		// серверный стрим. Стрим снят вместе со своим контрактом (#814): у него
-		// не было ни одного потребителя. Серверных стримов у сервиса больше нет
-		// НИ ОДНОГО, поэтому величина стала осью без предмета — а такая ось у
-		// носителя роняет старт так же, как и пропущенная.
+		// Здесь стояло ИЗЪЯТИЕ, и оно было верным: собственный стрим сервиса снят
+		// вместе со своим контрактом, потребителя у него не было. Сервис
+		// служит поток снова — но уже ОБЩИЙ (`pkg/subscription`), один
+		// на платформу, а не свой. Изъятие стало бы ложью о дереве ровно в тот
+		// момент, когда глагол зарегистрирован, поэтому меняется вместе с ним.
 		//
-		// Изъятие называет причину, а не умалчивает: появится следующий стрим —
-		// носитель потребует величину снова, и «забыли» не спутается с «нечего
-		// ограничивать».
-		StreamBudget: servicecontract.NotApplicable[time.Duration](
-			"серверных стримов у сервиса нет: единственный снят вместе со своим контрактом (#814)"),
+		// Величина принадлежит ПОСАДКЕ и приезжает ручкой: срок жизни потока —
+		// то, что оператор обязан уметь подрезать, не пересобирая образ. Носитель
+		// сам судит её отношение к границе обработки одиночного вызова.
+		StreamBudget: servicecontract.Value(cfg.APIServer.SubscriptionStreamBudget),
 
 		DBSSLMode:     servicecontract.Value(coredb.SSLModeFromDSN(cfg.Repository.Postgres.URL)),
 		PublicAddr:    hostPort(cfg.APIServer.Endpoint),
@@ -199,6 +198,16 @@ func describe(
 			listMethod(lbv1.NetworkLoadBalancerService_ServiceDesc.ServiceName): narrower,
 			listMethod(lbv1.ListenerService_ServiceDesc.ServiceName):            narrower,
 			listMethod(lbv1.TargetGroupService_ServiceDesc.ServiceName):         narrower,
+			// Общий поток изменений (`pkg/subscription`). Имя собрано
+			// из дескриптора ОБЩЕЙ службы тем же способом, что и остальные три:
+			// переименуют — не соберётся, а не разойдётся молча.
+			//
+			// Сужатель — ТОТ ЖЕ, что у списков, и это несущее: за глаголом потока
+			// пообъектной проверки на крае нет вовсе (`scope_filtered`), поэтому
+			// отсутствующая или чужая проводка означает не «строже», а «без
+			// рубежа».
+			servicecontract.MethodFQN("/" + subscriptionv1.InternalSubscriptionService_ServiceDesc.ServiceName +
+				"/Subscribe"): narrower,
 		}),
 
 		// Скрытие существования у nlb не объявлено НИ НА ОДНОМ методе: в каталоге

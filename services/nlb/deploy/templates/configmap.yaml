@@ -19,6 +19,11 @@ data:
       endpoint: tcp://0.0.0.0:{{ .Values.ports.grpc }}
       internal-endpoint: tcp://0.0.0.0:{{ .Values.ports.internalGrpc }}
       graceful-shutdown: {{ .Values.config.apiServer.gracefulShutdown }}
+      # Потолок ОДНОВРЕМЕННЫХ потоков подписки. Рендерится НАПРЯМУЮ, без
+      # умолчания в шаблоне: второе умолчание пережило бы снятие ключа из
+      # values.yaml, правка одного объявления не имела бы силы, а величина молча
+      # стала бы нулём — на нём страж старта отказывает, называя ручку.
+      subscription-max-streams: {{ .Values.subscription.maxStreams }}
       handling-budget: {{ .Values.config.apiServer.handlingBudget }}
       grpc-gw-enable: {{ .Values.config.apiServer.grpcGwEnable }}
 

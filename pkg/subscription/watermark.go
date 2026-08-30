@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -21,7 +22,22 @@ import (
 // дренажах.
 const stallWarnAfter = 30 * time.Second
 
-// watermark — ВОДЯНОЙ ЗНАК: граница устоявшегося в журнале одного потока.
+// Querier — то, чем наблюдение задаёт свой единственный вопрос.
+//
+// Соединение и пул отвечают ему ОБА, и это не удобство, а условие
+// переиспользуемости: у механизма подписки наблюдение живёт на выделенном
+// соединении потока, а у возобновимого чтения, отвечающего на запрос
+// (`InternalIAMService.PollSubjectChanges`), своего соединения нет вовсе — есть
+// пул.
+//
+// Исключение СЕБЯ по идентификатору обслуживающего процесса остаётся верным и на
+// пуле: наблюдатель в журнал не пишет, поэтому его собственная блокировка — не
+// та, которую наблюдение ищет.
+type Querier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// Watermark — ВОДЯНОЙ ЗНАК: граница устоявшегося в журнале одного потока.
 //
 // Имя взято у источника намеренно. Приёмка фазы Ф1 назначила предикатом переноса
 // техники именно его: «`watermark` в дереве — не ноль ВНЕ `services/nlb`». Пока
@@ -68,13 +84,45 @@ const stallWarnAfter = 30 * time.Second
 // быть сколь угодно малый невыпущенный номер, и никакое наблюдение этого не
 // опровергнет. Выбор в пользу «не потерять» против «доставить сейчас»;
 // удержание дольше [stallWarnAfter] — в лог.
-type watermark struct {
+// # Наблюдатель ОДИН на дерево, и это держится гейтом
+//
+// Экземпляров у него столько, сколько журналов; РЕАЛИЗАЦИЯ одна, и второй такой
+// файл — находка гейта `settledwatermarksingularity` ГДЕ БЫ ОН НИ ЛЕЖАЛ, включая
+// сам `pkg/`. Поэтому потребитель вне механизма подписки берёт этот тип, а не
+// пишет своё наблюдение: два наблюдения одного класса расходятся молча.
+//
+// # Тип ЗАЩИЩЁН ОТ СОВМЕСТНОГО ДОСТУПА
+//
+// У механизма подписки наблюдатель свой на каждый поток, и состязания нет. У
+// чтения, отвечающего на запрос, экземпляр один на процесс, а проходов столько,
+// сколько реплик потребителя поллит эту реплику владельца. Замок неоспариваемый
+// в первом случае и несущий во втором.
+type Watermark struct {
+	mu sync.Mutex
+
 	log   *slog.Logger
 	query string
+	table string
 
 	// settled — граница устоявшегося: каждый номер ≤ settled либо уже видим,
 	// либо не появится никогда (писатель откатился).
 	settled int64
+
+	// established — состоялось ли наблюдение хоть раз.
+	//
+	// Граница начинает жизнь нулём, и ноль этот означает «позиции ЕЩЁ НЕТ», а
+	// не «позиция ноль»: подтверждать её нечем, пока держащий журнал писатель
+	// не доистёк. Различать эти два значения обязан всякий, кто на границу
+	// САДИТСЯ, — иначе подписчик, попросивший «с текущего места», садится в
+	// НАЧАЛО журнала и вычитывает всю накопленную историю (kacho#1386).
+	//
+	// У пустого журнала ноль — настоящая позиция: пропускать в нём нечего, и
+	// наблюдение состоялось сразу. Свести эти случаи в один значило бы либо
+	// вернуть историю подписчику, либо не открыть ему поток никогда.
+	//
+	// Признак МОНОТОНЕН: граница только растёт, поэтому появление нового
+	// писателя состоявшегося наблюдения не отзывает.
+	established bool
 
 	// earliest — самая ранняя удержанная строка журнала (0, если журнал пуст).
 	earliest int64
@@ -90,15 +138,26 @@ type watermark struct {
 	now           func() time.Time
 }
 
-// newWatermark собирает наблюдателя для одной таблицы.
+// NewWatermark собирает наблюдателя для одной таблицы.
 //
-// Имя таблицы и колонки попадают в текст запроса, поэтому они обязаны быть уже
-// осуждены [Journal.Validate]: негодного имени сюда не доходит by construction,
-// а не потому, что здесь его экранируют.
-func newWatermark(s Storage, log *slog.Logger, now func() time.Time) *watermark {
-	return &watermark{
-		log: log,
-		now: now,
+// Имя таблицы и колонки попадают в текст запроса, поэтому вызывающий обязан
+// подавать сюда СВОИ имена, а не пришедшие снаружи: наблюдение их не
+// экранирует. У механизма подписки за это отвечает [Journal.Validate]; у
+// прямого потребителя — то, что оба имени объявлены константами его же пакета.
+func NewWatermark(table, positionColumn string, log *slog.Logger) *Watermark {
+	if log == nil {
+		log = slog.Default()
+	}
+	return newWatermark(table, positionColumn, log, time.Now)
+}
+
+// newWatermark — та же сборка с УПРАВЛЯЕМЫМИ часами: [stallWarnAfter]
+// измеряется временем, и проба обязана двигать его сама, а не ждать.
+func newWatermark(table, positionColumn string, log *slog.Logger, now func() time.Time) *Watermark {
+	return &Watermark{
+		log:   log,
+		now:   now,
+		table: table,
 		query: fmt.Sprintf(`
 			SELECT COALESCE((SELECT max(%[1]s) FROM %[2]s), 0),
 			       COALESCE((SELECT min(%[1]s) FROM %[2]s), 0),
@@ -110,7 +169,7 @@ func newWatermark(s Storage, log *slog.Logger, now func() time.Time) *watermark 
 			                    AND l.pid <> pg_backend_pid()
 			                    AND l.database = (SELECT oid FROM pg_database
 			                                       WHERE datname = current_database())),
-			                '{}'::text[])`, s.PositionColumn, s.Table),
+			                '{}'::text[])`, positionColumn, table),
 	}
 }
 
@@ -129,23 +188,44 @@ func newWatermark(s Storage, log *slog.Logger, now func() time.Time) *watermark 
 // Дыра от отката закрывается тем же правилом: номер отменённой транзакции не
 // появится никогда, а её блокировка снята — значит граница переносится ЗА дыру,
 // и поток не залипает.
-func (h *watermark) advance(ctx context.Context, conn *pgx.Conn, table string) error {
+func (h *Watermark) Advance(ctx context.Context, q Querier) error {
 	var (
 		maxSeq  int64
 		minSeq  int64
 		writers []string
 	)
-	if err := conn.QueryRow(ctx, h.query, table).Scan(&maxSeq, &minSeq, &writers); err != nil {
+	// Запрос идёт ВНЕ замка: держать замок на время обращения к базе значило бы
+	// сериализовать параллельные проходы на времени сети, а не на состоянии.
+	if err := q.QueryRow(ctx, h.query, h.table).Scan(&maxSeq, &minSeq, &writers); err != nil {
 		return err
 	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.observe(maxSeq, minSeq, writers)
+	return nil
+}
+
+// observe — ЧИСТЫЙ переход состояния по одному наблюдению.
+//
+// Зовётся ПОД ЗАМКОМ ([Watermark.Advance]) либо из пробы, ведущей наблюдателя в
+// одну горутину; сам замка не берёт, иначе [Watermark.Advance] взял бы его
+// дважды.
+//
+// Отделён от запроса затем, чтобы холодное наблюдение можно было ПОДАТЬ:
+// состояние «граница ещё не подтверждена» производится писателем, держащим
+// журнал, и утверждение о нём иначе пришлось бы делать чтением кода.
+func (h *Watermark) observe(maxSeq, minSeq int64, writers []string) {
 	h.earliest = minSeq
 
 	// 1. Подтвердить прошлое наблюдение: его писатели доистекли.
+	confirmed := false
 	if len(h.pendingWriters) > 0 && !anyStillWriting(h.pendingWriters, writers) {
 		if h.pendingSeq > h.settled {
 			h.settled = h.pendingSeq
 		}
 		h.pendingSeq, h.pendingWriters, h.pendingSince = 0, nil, time.Time{}
+		confirmed = true
 	}
 
 	// 2. Новое наблюдение берём только когда прошлое снято — иначе под
@@ -159,7 +239,52 @@ func (h *watermark) advance(ctx context.Context, conn *pgx.Conn, table string) e
 	}
 
 	h.warnIfStalled()
-	return nil
+
+	// Наблюдение состоялось, когда граница ПОДТВЕРЖДЕНА хотя бы однажды. Два
+	// арма, и первый несущий:
+	//
+	//   - ожидание СНЯТО этим проходом (шаг 1). Писатели номера `pendingSeq`
+	//     доистекли — значит он устоялся, и это верно независимо от того, взято
+	//     ли следом ожидание для номера ВЫШЕ;
+	//   - ожидания не осталось: писателей не было (шаг 2 перенёс границу
+	//     сразу), либо максимум уже под границей, либо журнал пуст.
+	//
+	// Читать это как «ожидания не осталось» — и только — нельзя: под сплошной
+	// записью шаг 2 берёт новое ожидание тем же проходом, каким шаг 1 снял
+	// прошлое, поэтому пустого мига не бывает НИКОГДА. Тогда граница растёт, а
+	// подписчика на неё не сажают: расход лечился бы отказом в обслуживании, и
+	// притом немым (kacho#1386, возражение приёмки — 50 проходов дают
+	// `settled=49` при `established=false`).
+	if confirmed || len(h.pendingWriters) == 0 {
+		h.established = true
+	}
+}
+
+// Settled — граница устоявшегося на момент последнего наблюдения.
+//
+// Каждый номер ≤ этой границы либо уже видим, либо не появится НИКОГДА (писатель
+// откатился). Окно возобновимого чтения — `(курсор, Settled]`, и никогда «всё,
+// что больше курсора»: позиция, выданная за неустоявшийся номер, теряет его
+// молча и навсегда.
+//
+// Ноль читать как «журнал пуст» НЕЛЬЗЯ — спрашивай [Watermark.Established]: у
+// холодного наблюдателя первое наблюдение лишь ЗАПОМИНАЕТ писателей, и до
+// подтверждения ноль означает «позиции ещё нет».
+func (h *Watermark) Settled() int64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.settled
+}
+
+// Established — подтверждена ли граница хоть однажды.
+//
+// Признак МОНОТОНЕН: подтвердившись, он не отзывается появлением нового
+// писателя. Поэтому отказ вызывающего, читающий его, есть состояние ХОЛОДНОГО
+// СТАРТА, а не режим работы.
+func (h *Watermark) Established() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.established
 }
 
 // floor — нижняя возобновимая позиция.
@@ -172,7 +297,10 @@ func (h *watermark) advance(ctx context.Context, conn *pgx.Conn, table string) e
 // Пустой журнал у чистящего владельца означает, что удержано ноль строк, и
 // возобновиться можно только с текущей границы: всё, что было до неё, уже
 // снято.
-func (h *watermark) floor(r Retention) int64 {
+func (h *Watermark) floor(r Retention) int64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	if r == RetainsEverything {
 		return 0
 	}
@@ -199,7 +327,7 @@ func anyStillWriting(pending, current []string) bool {
 // warnIfStalled жалуется, когда горизонт удерживается дольше [stallWarnAfter].
 // Троттлинг — не чаще одной записи за тот же интервал: под потоком пробуждений
 // проходов много, а событие ровно одно.
-func (h *watermark) warnIfStalled() {
+func (h *Watermark) warnIfStalled() {
 	if len(h.pendingWriters) == 0 {
 		h.lastStallWarn = time.Time{}
 		return

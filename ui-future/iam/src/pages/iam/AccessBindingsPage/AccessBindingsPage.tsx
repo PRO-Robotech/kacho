@@ -87,6 +87,9 @@ export function AccessBindingsPage() {
         include_revoked: includeRevoked,
       }),
     enabled: !!accountId,
+    // поллинг остаётся: журнала у iam нет — глагол подписки служат три
+    // владельца (compute, nlb, vpc), iam среди них не значится. Подписаться не
+    // на что: ось `owner` приняла бы только объявленного посадкой владельца.
     refetchInterval: 5_000,
     staleTime: 0,
   });

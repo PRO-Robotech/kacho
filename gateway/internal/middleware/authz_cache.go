@@ -61,7 +61,7 @@ func (c *decisionCache) generation() uint64 { return c.c.Generation() }
 
 // putIfGen stores the allow only when the cache generation still equals the
 // snapshot the caller captured at get()-miss time. If an
-// Invalidate/InvalidateSubject ran in between, the (potentially stale,
+// Invalidate ran in between, the (potentially stale,
 // pre-revocation) write is discarded — closing the write-after-invalidate race
 // where a Check computed against a pre-revocation grant would otherwise
 // re-populate a just-flushed entry and survive for the whole TTL
@@ -74,20 +74,14 @@ func (c *decisionCache) putIfGen(key string, gen uint64) {
 // session_revocations push safety-net. Bumps the generation.
 func (c *decisionCache) Invalidate() { c.c.Invalidate() }
 
-// InvalidateSubject removes cache entries for the given FGA subject prefix
-// ("user:usr_abc"). Subject is matched exactly against the key prefix used at
-// insert time. Bumps the generation so an in-flight Check for this subject that
-// snapshotted the pre-revocation generation has its putIfGen dropped even when
-// zero entries currently match.
-func (c *decisionCache) InvalidateSubject(subject string) int {
-	if subject == "" {
-		return 0
-	}
-	prefix := subject + "|"
-	return c.c.InvalidateWhere(func(key string) bool {
-		return strings.HasPrefix(key, prefix)
-	})
-}
+// ПООБЪЕКТНОГО СБРОСА ПО СУБЪЕКТУ ЗДЕСЬ НЕТ — снят вместе с портом, который его
+// отдавал (задача #1024). Единственным вызывающим была служба, которой iam гасил
+// кэш края; направление развёрнуто, и сброс остался один — целиком.
+//
+// Вместе с ним снята и ПРИСТАВКА КЛЮЧА: ключ несёт субъект открытым текстом
+// только затем, чтобы сброс мог отобрать записи по началу строки. Оставить
+// приставку значило бы держать форму ради отбора, которого больше нет, — и
+// объяснять её комментарием, указывающим на снятое.
 
 // Size returns the number of live cache entries.
 func (c *decisionCache) Size() int { return c.c.Len() }
@@ -125,8 +119,10 @@ func buildCacheKey(subject, action, resourceType, resourceID string, contextMap 
 	raw := strings.Join(parts, "|")
 	// Compress with sha256 for stable length (the cache map handles
 	// collisions naturally — sha256 collision probability is negligible).
+	//
+	// Ключ — ТОЛЬКО дайджест. Прежде он нёс субъект открытой приставкой, чтобы
+	// пообъектный сброс отбирал записи по началу строки; сброса нет, и приставки
+	// тоже — форма, пережившая свой отбор, читалась бы как живая возможность.
 	sum := sha256.Sum256([]byte(raw))
-	// Encode prefix + subject-prefix so InvalidateSubject can match.
-	// Format: "<subject>|<sha256-hex>".
-	return subject + "|" + hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:])
 }

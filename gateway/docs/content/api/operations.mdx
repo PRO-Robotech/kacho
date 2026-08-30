@@ -37,7 +37,9 @@ import dedent from 'ts-dedent'
   </tbody>
 </table>
 
-Watch-RPC не существует — статус узнаётся только поллингом `Get`.
+Исход операции узнаётся **только поллингом** `Get`: подписки на операции у платформы нет, и
+[поток изменений ресурсов](/api/subscription) её не заменяет — у провалившейся мутации события
+нет вовсе, потому что событие пишется в той же транзакции, что и строка ресурса.
 
 ## Маршрутизация по prefix id
 
@@ -49,12 +51,28 @@ Id операции несёт 3-символьный prefix домена-вла
   <tbody>
     <tr><td><code>enp</code></td><td>vpc</td><td>Network / RouteTable / SecurityGroup (vpc op-root)</td></tr>
     <tr><td><code>e9b</code></td><td>vpc</td><td>Subnet / Address (вторичный vpc-prefix)</td></tr>
-    <tr><td><code>epd</code></td><td>compute</td><td>Instance / Disk / Image / Snapshot</td></tr>
-    <tr><td><code>iop</code></td><td>iam</td><td>Account / Project / User / SA / Group / Role / AccessBinding</td></tr>
+    <tr><td><code>epd</code></td><td>compute</td><td>все операции домена вычислений (Instance / MachineType — общий op-префикс)</td></tr>
+    <tr><td><code>sop</code></td><td>storage</td><td>все операции блочного хранения (Volume / Snapshot / Image; у DiskType мутации синхронны)</td></tr>
+    <tr><td><code>iop</code></td><td>iam</td><td>Account / Project / User / ServiceAccount / Group / Role / AccessBinding</td></tr>
     <tr><td><code>nlb</code></td><td>loadbalancer</td><td>NetworkLoadBalancer / Listener / TargetGroup</td></tr>
-    <tr><td><code>rop</code></td><td>registry</td><td>Registry / DeleteTag</td></tr>
+    <tr><td><code>rop</code></td><td>registry</td><td>все операции реестра (Registry, снятие тега)</td></tr>
+    <tr><td><code>geo</code></td><td>geo</td><td>admin-CRUD каталога размещения (Region / Zone)</td></tr>
   </tbody>
 </table>
+
+:::note Двух строк здесь не было, а одна называла чужой домен
+Таблица перечисляла шесть префиксов из восьми: не было `sop` (блочное хранение) и `geo`
+(каталог размещения). Клиент, получивший `sop…` в ответ на создание тома, читал таблицу,
+не находил своего префикса и заключал, что операция не опрашивается, — при том что край
+её маршрутизирует. Пропуск в такой таблице дороже опечатки: рядом сказано «неизвестный
+prefix → `INVALID_ARGUMENT`», и отсутствие строки читается как отсутствие маршрута.
+
+Строка `epd` при этом называла `Disk` / `Image` / `Snapshot`. Это блочное хранение, и
+служит его **kacho-storage** со своим префиксом `sop`; у вычислений контрактов этих
+ресурсов нет вовсе. Перечень сверен с картой маршрутизации края
+(`gateway/internal/opsproxy/proxy.go`, `prefixToBackend`) — она и есть источник, а её
+состав уже держит `TestPrefixToBackend_*`.
+:::
 
 :::note Единый источник истины по prefix
 Таблица prefix → backend в гейтвее биндится на константы `pkg/ids` и защищена тестом:

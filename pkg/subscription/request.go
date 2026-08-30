@@ -4,6 +4,8 @@
 package subscription
 
 import (
+	"strings"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -26,7 +28,14 @@ const (
 // Заданные оси сужают ВМЕСТЕ (конъюнкция); незаданная не сужает ничем — и это её
 // ЕДИНСТВЕННОЕ значение.
 type Filter struct {
-	// Kinds — виды предметов. Пусто означает «все виды словаря владельца».
+	// Kinds — виды предметов В НАПИСАНИИ ПРОВОДА (типы объекта модели прав),
+	// ровно как их назвал вызывающий. Пусто означает «все виды словаря
+	// владельца».
+	//
+	// Слова хранилища здесь НЕТ намеренно: перевод в них принадлежит объявлению
+	// журнала и делается на пути чтения ([Journal.journalWords]). Положи мы сюда
+	// переведённое, принятое сужение перестало бы совпадать с тем, что назвал
+	// вызывающий, — и перечень честно отобранных осей рядом говорил бы о другом.
 	Kinds []string
 	// ProjectID — проектный якорь. Пусто означает «проектом не сужаем».
 	ProjectID string
@@ -57,10 +66,27 @@ func (j Journal) Accept(req *subscriptionv1.SubscriptionRequest) (Filter, error)
 	var f Filter
 
 	kinds := req.GetKinds()
-	for _, kind := range kinds {
-		if _, ok := j.Mapping.Kinds[kind]; !ok {
-			return Filter{}, status.Errorf(codes.InvalidArgument,
-				"kinds: %q is not a kind of this owner", kind)
+	if len(kinds) > 0 {
+		// Словарь берётся ТЕМ ЖЕ вызовом, каким сервер отвечает в служебном
+		// сообщении открытия: объявленное клиенту и то, чем сервер судит, — один
+		// объект, а не два похожих перечня.
+		known := j.KindDictionary()
+		index := make(map[string]struct{}, len(known))
+		for _, k := range known {
+			index[k] = struct{}{}
+		}
+		for _, kind := range kinds {
+			if _, ok := index[kind]; !ok {
+				// Отказ называет ГОДНЫЕ значения, а не только негодное: без них
+				// единственным путём узнать словарь остаётся перебор против
+				// этого самого отказа — то есть перебор по продуктовой
+				// поверхности вместо чтения. Словарь есть объявление ВЛАДЕЛЬЦА,
+				// не выборка по правам вызывающего, поэтому называть его здесь
+				// нечем оракулить: право видеть предмет решается построчно.
+				return Filter{}, status.Errorf(codes.InvalidArgument,
+					"kinds: %q is not a kind of this owner; known kinds: %s",
+					kind, strings.Join(known, ", "))
+			}
 		}
 	}
 	if len(kinds) > 0 {

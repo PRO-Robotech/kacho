@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -41,11 +42,9 @@ import (
 //	KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC  — адрес backend kacho-storage internal-port (9091)
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
 //	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off)
-//	KACHO_API_GATEWAY_INTERNAL_GRPC_ADDR     — cluster-internal gRPC listener (default :9091)
 //	KACHO_API_GATEWAY_ADMISSION_PUBLIC_*     — потолок темпа/одновременности внешнего
 //	                                           слушателя (READ_PER_SEC, MUTATION_PER_SEC,
 //	                                           BURST_FACTOR, IN_FLIGHT; молчание — пол платформы)
-//	KACHO_API_GATEWAY_ADMISSION_INTERNAL_*   — то же для cluster-internal слушателя
 //	KACHO_API_GATEWAY_METRICS_ADDR           — cluster-internal диагностическая поверхность
 //	                                           (GET /metrics, default :9095; пустая строка —
 //	                                           объявленное выключение с причиной в журнале)
@@ -147,6 +146,53 @@ type Config struct {
 	// port (mirrors iam/nlb/registry).
 	StorageInternalAddr string `envconfig:"KACHO_API_GATEWAY_STORAGE_INTERNAL_GRPC" default:"kacho-storage.kacho.svc:9091"`
 
+	// --- Проекция потока изменений в браузер (kacho#1020) ---
+
+	// SubscriptionOwners — ЗАКРЫТЫЙ перечень владельцев журналов, чей поток край
+	// проецирует. Имена — ключи домена, те же, что у карты внутренних адресов
+	// (`compute`, `loadbalancer`, `vpc`, …); разделитель — запятая.
+	//
+	// ПУСТО означает «владелец не объявлен», а НЕ «все домены». Пустое значение,
+	// прочитанное как «не сужаем», уже стоило этому дереву круга отправителей,
+	// который никого не сужал; здесь оно означает ровно то, что сказано: ручка
+	// отвечает `501` с названной причиной, а не открывает поток к домену,
+	// который глагола не служит.
+	//
+	// Умолчание чарта края называет всех владельцев, служащих глагол (kacho#1388);
+	// пустым значение остаётся только там, где профиль выключает возможность явно.
+	SubscriptionOwners string `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_OWNERS" default:""`
+
+	// SubscriptionStreamBudget — срок жизни ОДНОГО потока проекции.
+	//
+	// Обязан быть МЕНЬШЕ предела чтения посредника перед краем
+	// (`ingress.proxyReadTimeout`, сегодня 120 с): иначе поток рвёт посредник, и
+	// клиент читает это как сетевой сбой, а не как чистое закрытие по сроку,
+	// после которого он возобновляется со своей позиции. Согласие двух величин
+	// держит декларативная проба чарта, а не эта фраза.
+	SubscriptionStreamBudget time.Duration `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_STREAM_BUDGET" default:"90s"`
+
+	// SubscriptionHeartbeat — период служебного кадра поддержания связи.
+	//
+	// Молчащая подписка — обычный её режим, а посредник закрывает соединение, по
+	// которому дольше своего предела ничего не шло. Кадр заодно мешает
+	// буферизации ответа промежуточным звеном.
+	SubscriptionHeartbeat time.Duration `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_HEARTBEAT" default:"20s"`
+
+	// SubscriptionMaxStreams — потолок ОДНОВРЕМЕННЫХ потоков этой реплики.
+	//
+	// Арифметика, а не вкус: число реплик края × потолок обязано помещаться в
+	// потолок потоков владельца, иначе исчерпание наступает у владельца — то
+	// есть у всех арендаторов сразу, а не у того, кто его вызвал.
+	SubscriptionMaxStreams int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS" default:"64"`
+
+	// SubscriptionMaxStreamsPerSubject — потолок потоков ОДНОГО субъекта.
+	//
+	// Потолок реплики защищает процесс, этот — арендаторов друг от друга: без
+	// него один субъект занимает потолок реплики целиком, и остальные получают
+	// отказ, не имея ни одного собственного потока. Консоль открывает поток на
+	// вкладку, поэтому случай не умозрительный.
+	SubscriptionMaxStreamsPerSubject int `envconfig:"KACHO_API_GATEWAY_SUBSCRIPTION_MAX_STREAMS_PER_SUBJECT" default:"8"`
+
 	// AdvertisedEndpointAddr — host:port that the api-gateway advertises through
 	// the endpoint-discovery RPC. External clients dial this address. Defaults to
 	// api.kacho.local:443.
@@ -201,10 +247,6 @@ type Config struct {
 	// the cluster-internal kratos-public Service.
 	KratosPublicURL string `envconfig:"KACHO_API_GATEWAY_KRATOS_PUBLIC_URL" default:"http://kacho-umbrella-kratos-public.kacho.svc:80"`
 
-	// InternalGRPCAddr — dedicated cluster-internal gRPC listener for RPCs that
-	// must not be on the external TLS endpoint (InternalAuthzCacheService).
-	InternalGRPCAddr string `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_ADDR" default:":9091"`
-
 	// MetricsAddr — адрес cluster-internal ДИАГНОСТИЧЕСКОЙ поверхности края
 	// (`GET /metrics`).
 	//
@@ -244,43 +286,17 @@ type Config struct {
 	// конечного пользователя: за краем сидит арендатор, и предел объявлен на него.
 	AdmissionPublic grpcsrv.AdmissionKnobs `envconfig:"KACHO_API_GATEWAY_ADMISSION_PUBLIC"`
 
-	// AdmissionInternal — величины CLUSTER-INTERNAL gRPC-слушателя. Ключ ведра —
-	// личность СЕРТИФИКАТА вызывающего модуля (сюда ходит толкатель iam), а не
-	// арендатора: запрос модуля несёт личности разных арендаторов, и ключ по
-	// арендатору дробил бы бюджет соседа на тысячу вёдер.
-	AdmissionInternal grpcsrv.AdmissionKnobs `envconfig:"KACHO_API_GATEWAY_ADMISSION_INTERNAL"`
-
-	// --- cluster-internal gRPC listener mTLS (InternalAuthzCacheService) ---
+	// ВНУТРЕННЕГО gRPC-СЛУШАТЕЛЯ У КРАЯ НЕТ — ручек его посадки тоже (задача #1024).
 	//
-	// The dedicated internal listener (InternalGRPCAddr) hosts
-	// InternalAuthzCacheService.InvalidateSubject, invoked by the kacho-iam
-	// subject_change push-drainer. The internal
-	// perimeter is NOT trusted: mTLS + per-RPC authorization are mandatory.
+	// Здесь стояли адрес слушателя, его величины допуска и четыре ручки mTLS с
+	// кругом доверенных отправителей. Всё это сторожило ОДНУ службу — ту, которой
+	// iam гасил кэш решений края. Направление развёрнуто: соединение открывает
+	// потребитель, и модулей, зовущих край, не осталось ни одного.
 	//
-	// Backward-compat default = OFF (insecure listener — local/dev stands only).
-	// When enabled the listener presents a server cert
-	// (InternalGRPCTLSCertFile/KeyFile), verifies the client cert against the
-	// internal CA (MTLSCAFile) with RequireAndVerifyClientCert, AND requires the
-	// verified client SPIFFE SAN to be on InternalGRPCAllowedSPIFFE (the iam
-	// push-drainer identity). enable=true with missing cert/key/CA or an empty
-	// allow-list ⇒ fail-fast at startup (never a silent insecure fallback). A
-	// production-class env with the listener insecure is refused at startup
-	// (validateProductionInternalListener) — secure-by-default (CWE-1188).
-	InternalGRPCMTLSEnable  bool   `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE"    default:"false"`
-	InternalGRPCTLSCertFile string `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_CERT_FILE"  default:""`
-	InternalGRPCTLSKeyFile  string `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_KEY_FILE"   default:""`
-
-	// InternalGRPCAllowedSPIFFE — comma-separated allow-list of verified client
-	// SPIFFE SANs authorised to invoke the internal listener's RPCs. Normally the
-	// single kacho-iam push-drainer identity
-	// (spiffe://kacho.cloud/ns/kacho-iam/sa/kacho-iam). Enforced only under mTLS.
-	InternalGRPCAllowedSPIFFE []string `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_ALLOWED_SPIFFE" default:""`
-
-	// (No reflection knob. Server-reflection on the internal listener follows
-	// InternalGRPCMTLSEnable directly — see internal_grpc_listener.go. A separate
-	// switch could only ever be set two ways: identically to the posture, in which
-	// case it is redundant, or on for a listener that mounts no interceptors, in
-	// which case it publishes a schema surface to anyone who can reach the port.)
+	// Ручка, сторожащая порт без единого метода, — не запас: она объявляет
+	// поверхность, которой нет, и первый же читатель профиля решит, что край
+	// принимает вызовы внутрь. Внутренний REST-мультиплексор края (`InternalRESTAddr`)
+	// — другой предмет и другой порт, и запрет #6 держится на нём по-прежнему.
 
 	// --- RESERVED: KACHO_API_GATEWAY_OIDC_* (снято с контракта) ---
 	// Пять ключей — _ISSUER, _EXTERNAL_ISSUER, _CLIENT_ID, _CLIENT_SECRET,
@@ -798,6 +814,46 @@ func (c Config) ResolvedIAMAuthorizeURL() string {
 	return c.IAMAddr
 }
 
+// internalBackendKeySuffix — как называется ключ ВНУТРЕННЕГО адреса домена в
+// карте соединений края.
+//
+// Объявлен ЗДЕСЬ, рядом с самой картой, а не у того, кто им пользуется: суффикс
+// есть свойство карты, и вторая его копия разошлась бы с ней молча — обе непусты,
+// обе выглядят действующими, а ведут в разные ключи.
+const internalBackendKeySuffix = "Internal"
+
+// InternalBackendKey — ключ внутреннего адреса домена в карте соединений.
+//
+// Единственный способ получить этот ключ. Подписка живёт только на внутреннем
+// слушателе владельца, поэтому край резолвит владельца именно им.
+func InternalBackendKey(domain string) string {
+	return domain + internalBackendKeySuffix
+}
+
+// DomainsWithInternalBackend — домены, у которых край ЗНАЕТ внутренний адрес.
+//
+// Это и есть множество имён, принимаемых в `KACHO_API_GATEWAY_SUBSCRIPTION_OWNERS`
+// и в параметре `owner` ручки потока: имя вне множества дозвониться не может, и
+// страж старта отвергает его.
+//
+// # Почему имя домена, а не каталог сервиса в дереве
+//
+// Ключ совпадает с пакетом контракта (`kacho.cloud.<домен>.v1`), по которому
+// маршрутизирует gRPC-роутер, — то есть с тем написанием, которое видит клиент.
+// Каталог сервиса в дереве может зваться иначе (`services/nlb` против домена
+// `loadbalancer`), и это написание наружу не выходит вовсе.
+func (c Config) DomainsWithInternalBackend() []string {
+	addrs := c.BackendAddrs()
+	names := make([]string, 0, len(addrs)/2)
+	for key := range addrs {
+		if _, ok := addrs[InternalBackendKey(key)]; ok {
+			names = append(names, key)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
 // BackendAddrs возвращает карту domain → адрес для инициализации Backends.
 // "iam" / "iamInternal" — kacho-iam public (9090) / internal (9091) endpoints.
 // "loadbalancer" / "loadbalancerInternal" — kacho-nlb public / internal endpoints.
@@ -834,19 +890,6 @@ func (c Config) BackendAddrs() map[string]string {
 		"storage":              c.StorageAddr,
 		"storageInternal":      c.StorageInternalAddr,
 	}
-}
-
-// InternalGRPCAllowedSPIFFESet returns the internal-listener caller allow-list as
-// a set, dropping empty/blank entries. Empty set ⇒ no caller is authorised (the
-// mTLS wiring fails fast rather than authorising every verified peer).
-func (c Config) InternalGRPCAllowedSPIFFESet() map[string]struct{} {
-	set := make(map[string]struct{}, len(c.InternalGRPCAllowedSPIFFE))
-	for _, s := range c.InternalGRPCAllowedSPIFFE {
-		if s = strings.TrimSpace(s); s != "" {
-			set[s] = struct{}{}
-		}
-	}
-	return set
 }
 
 // EdgeTLSClient assembles the corelib grpcclient.TLSClient value-struct for a
@@ -937,4 +980,21 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// SubscriptionOwnerNames разбирает объявленный перечень владельцев журналов.
+//
+// Разделитель — запятая, пустые элементы отбрасываются. Отбрасывание не
+// косметика: вырожденное значение (одинокая запятая) даёт непустую строку и
+// НОЛЬ имён, и без него «объявлен» решалось бы по длине строки, а не по числу
+// имён — тот же разрыв, что однажды уже дал круг отправителей, непустой для
+// стража и пустой для транспорта.
+func (c Config) SubscriptionOwnerNames() []string {
+	names := make([]string, 0, 4)
+	for _, raw := range strings.Split(c.SubscriptionOwners, ",") {
+		if name := strings.TrimSpace(raw); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
 }

@@ -34,6 +34,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
 	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
@@ -447,6 +448,22 @@ func runServe(cfg config.Config) error {
 		authzmetrics.LaneNarrow: pageNarrower.CacheStats,
 	}, authzCache.Read)
 
+	// Поток изменений. Сужатель — тот же объект, что сужает страницы списков; его
+	// отсутствие (аварийный режим) оставляет глагол невыставленным, а не
+	// выставленным и не сужающим.
+	var pageNarrowerImpl *listnarrow.Narrower
+	if c, ok := listAuthz.(*check.IAMCheckClient); ok {
+		pageNarrowerImpl = c.Narrower()
+	}
+	subscribeSrv, err := buildSubscriptionServer(cfg, pageNarrowerImpl, logger)
+	if err != nil {
+		return err
+	}
+	if subscribeSrv == nil {
+		logger.Warn("поток изменений не поднят: сужателя списков нет на этой посадке — " +
+			"глагол подписки не выставляется, чтобы не отдавать журнал без сужения")
+	}
+
 	desc, err := describe(cfg, mode, logger, servePorts{
 		existence:    pg.NewExistenceProbe(pool),
 		narrower:     pageNarrower,
@@ -582,7 +599,7 @@ func runServe(cfg config.Config) error {
 
 	serveErr := servicehost.Serve(ctx, desc,
 		func(reg grpc.ServiceRegistrar) { registerPublic(reg, registryHandler, quotaHandler, opHandler) },
-		func(reg grpc.ServiceRegistrar) { registerInternal(reg, internalHandler, opHandler) },
+		func(reg grpc.ServiceRegistrar) { registerInternal(reg, internalHandler, opHandler, subscribeSrv) },
 	)
 	cancel()
 	<-shutdownDone
@@ -612,9 +629,20 @@ func registerPublic(reg grpc.ServiceRegistrar, h registryv1.RegistryServiceServe
 // `grpc.Server.GetServiceInfo` — регрессия «Internal* уехал на публичный» ловится,
 // а не остаётся на совести обзора.
 func registerInternal(reg grpc.ServiceRegistrar, h registryv1.InternalRegistryServiceServer,
-	opHandler operationpb.OperationServiceServer) {
+	opHandler operationpb.OperationServiceServer,
+	subscribe subscriptionv1.InternalSubscriptionServiceServer) {
 	registryv1.RegisterInternalRegistryServiceServer(reg, h)
 	operationpb.RegisterOperationServiceServer(reg, opHandler)
+	// Поток изменений — тоже Internal-глагол, и служится он ТОЛЬКО здесь.
+	//
+	// Ноль означает, что сужателя на этой посадке нет вовсе (аварийный режим), и
+	// тогда глагол НЕ выставляется: за ним нет пообъектной проверки на крае, и
+	// сервер без сужателя отдал бы весь журнал целиком. Незарегистрированный
+	// метод отвечает `Unimplemented`, и это честно — возможности здесь
+	// действительно нет; выставленный и не сужающий выглядел бы работающим.
+	if subscribe != nil {
+		subscriptionv1.RegisterInternalSubscriptionServiceServer(reg, subscribe)
+	}
 }
 
 // buildDataplaneHandler собирает data-plane OCI auth-proxy (fail-closed). Штатно:
@@ -964,9 +992,13 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 		// контур не входит вовсе (её берёт отдельный профиль). Заявление
 		// самоистекает: появится первая подписка — носитель уронит старт поимённо
 		// по её методу, а проба ниже назовёт её раньше.
-		StreamBudget: servicecontract.NotApplicable[time.Duration](
-			"серверных стримов registry не служит: gRPC-поверхность реестра — одиночные вызовы, " +
-				"а долгоживущее лежит на HTTP-поверхности OCI, которая в контур не входит"),
+		// Срок жизни одного потока подписки. Прежде ось стояла ИЗЪЯТИЕМ
+		// («серверных стримов registry не служит»), и изъятие самоистекло ровно
+		// так, как обещал его собственный комментарий: реестр стал владельцем
+		// журнала изменений и служит поток на внутреннем слушателе. Изъятие есть
+		// заявление о дереве, и появившийся стрим сделал бы его ложью, оставив
+		// срок жизни потока неназванным никем.
+		StreamBudget: servicecontract.Value(cfg.SubscriptionStreamBudget),
 
 		// Бюджет отказов объявляется ВЕЛИЧИНОЙ, а не изъятием: решение о доступе
 		// реестр принимает не у себя, а вопросом к kacho-iam, — то есть сетевой
@@ -1030,6 +1062,12 @@ func describe(cfg config.Config, mode servicecontract.Mode, logger *slog.Logger,
 			"/kacho.cloud.registry.v1.RegistryService/ListTags":         ports.narrower,
 			"/kacho.cloud.registry.v1.RegistryService/DeleteTag":        ports.narrower,
 			"/kacho.cloud.registry.v1.RegistryService/ListReferrers":    ports.narrower,
+			// Поток изменений объявлен каталогом СУЖАЕМЫМ, и проводка ему нужна
+			// та же: пообъектной проверки на крае за ним нет вовсе, поэтому
+			// отсутствующий сужатель означает не «строже», а «без рубежа». Носитель
+			// сверяет это в обе стороны и роняет старт поимённо по методу — что он
+			// и сделал, когда проводки здесь ещё не было.
+			"/kacho.cloud.subscription.InternalSubscriptionService/Subscribe": ports.narrower,
 		}),
 
 		// Форма отказа для типа, чьё существование скрывается. Каталог называет

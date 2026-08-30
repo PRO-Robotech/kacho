@@ -101,7 +101,7 @@ func TestCQRS_Gateway_WriterCommit_ReaderSees(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, g.ID, created.ID)
 	// outbox emit в той же TX.
-	require.NoError(t, w.Outbox().Emit(ctx, "Gateway", created.ID, "CREATED", map[string]any{"id": created.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Gateway", created.ID, created.ProjectID, "CREATED", map[string]any{"id": created.ID}))
 	require.NoError(t, w.Commit())
 
 	// Параллельный Reader видит committed запись.
@@ -169,7 +169,7 @@ func TestCQRS_Gateway_OutboxAtomicityWithDML(t *testing.T) {
 	g := newGateway("project-1", "gw-outbox-commit", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-outbox-commit"))
 	_, err = w.Gateways().Insert(ctx, g)
 	require.NoError(t, err)
-	require.NoError(t, w.Outbox().Emit(ctx, "Gateway", g.ID, "CREATED", map[string]any{"id": g.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Gateway", g.ID, g.ProjectID, "CREATED", map[string]any{"id": g.ID}))
 	require.NoError(t, w.Commit())
 
 	var count1 int
@@ -184,7 +184,7 @@ func TestCQRS_Gateway_OutboxAtomicityWithDML(t *testing.T) {
 	g2 := newGateway("project-1", "gw-outbox-abort", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-outbox-abort"))
 	_, err = w2.Gateways().Insert(ctx, g2)
 	require.NoError(t, err)
-	require.NoError(t, w2.Outbox().Emit(ctx, "Gateway", g2.ID, "CREATED", map[string]any{"id": g2.ID}))
+	require.NoError(t, w2.Outbox().Emit(ctx, "Gateway", g2.ID, g2.ProjectID, "CREATED", map[string]any{"id": g2.ID}))
 	w2.Abort()
 
 	var count2 int
@@ -220,7 +220,7 @@ func TestCQRS_Gateway_UpdateDelete_FullCycle(t *testing.T) {
 	g := newGateway("project-1", "gw-cycle", anchor, externalAddressFor(ctx, t, r, "project-1", "gw-cycle"))
 	created, err := w1.Gateways().Insert(ctx, g)
 	require.NoError(t, err)
-	require.NoError(t, w1.Outbox().Emit(ctx, "Gateway", created.ID, "CREATED", map[string]any{"id": created.ID}))
+	require.NoError(t, w1.Outbox().Emit(ctx, "Gateway", created.ID, created.ProjectID, "CREATED", map[string]any{"id": created.ID}))
 	require.NoError(t, w1.Commit())
 
 	// Update.
@@ -231,7 +231,7 @@ func TestCQRS_Gateway_UpdateDelete_FullCycle(t *testing.T) {
 	updated, err := w2.Gateways().Update(ctx, &created.Gateway)
 	require.NoError(t, err)
 	assert.Equal(t, domain.RcNameVPC("gw-cycle-updated"), updated.Name)
-	require.NoError(t, w2.Outbox().Emit(ctx, "Gateway", updated.ID, "UPDATED", map[string]any{"id": updated.ID}))
+	require.NoError(t, w2.Outbox().Emit(ctx, "Gateway", updated.ID, updated.ProjectID, "UPDATED", map[string]any{"id": updated.ID}))
 	require.NoError(t, w2.Commit())
 
 	// Delete.
@@ -239,7 +239,7 @@ func TestCQRS_Gateway_UpdateDelete_FullCycle(t *testing.T) {
 	require.NoError(t, err)
 	defer w3.Abort()
 	require.NoError(t, w3.Gateways().Delete(ctx, g.ID))
-	require.NoError(t, w3.Outbox().Emit(ctx, "Gateway", g.ID, "DELETED", map[string]any{"id": g.ID}))
+	require.NoError(t, w3.Outbox().Emit(ctx, "Gateway", g.ID, g.ProjectID, "DELETED", map[string]any{"id": g.ID}))
 	require.NoError(t, w3.Commit())
 
 	// Reader не видит запись после Delete.

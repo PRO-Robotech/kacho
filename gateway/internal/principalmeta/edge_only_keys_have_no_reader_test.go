@@ -55,7 +55,11 @@ import (
 // сразу (запись, для которой IsEdgeOnlyKey ложен, роняет пробу соседнего файла),
 // а обход дерева получает конкретные имена для сравнения.
 func edgeOnlyKeyNames() []string {
-	return []string{principalmeta.MetaTokenAMR, principalmeta.MetaTokenMfaAt}
+	return []string{
+		principalmeta.MetaTokenAMR,
+		principalmeta.MetaTokenMfaAt,
+		principalmeta.MetaTokenBasicCredentialID,
+	}
 }
 
 func gateRepoRoot(t *testing.T) string {

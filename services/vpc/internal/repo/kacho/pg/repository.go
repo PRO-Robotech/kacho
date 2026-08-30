@@ -313,8 +313,8 @@ type outboxEmitter struct {
 
 // Emit добавляет outbox-row в той же tx, что и DML resource'а.
 // payload nil → пустой JSON-объект (поведение helpers.EmitVPC).
-func (e *outboxEmitter) Emit(ctx context.Context, resource, id, action string, payload map[string]any) error {
-	return helpers.EmitVPC(ctx, e.tx, resource, id, action, payload)
+func (e *outboxEmitter) Emit(ctx context.Context, resource, id, projectID, action string, payload map[string]any) error {
+	return helpers.EmitVPC(ctx, e.tx, resource, id, projectID, action, payload)
 }
 
 // fgaRegisterEmitter — emit FGA-register-intent в `kacho_vpc.fga_register_outbox`

@@ -138,7 +138,7 @@ Production-инкремент REG-1 поверх уже id-based `Registry`: **F
 name НЕ ломает id/endpoint/pull-URL, field-absence globalSlug/displayName/top-level visibility)
 и **F8** hardening (empty-mask immutable-ignored, pageSize BVA). Acceptance source of truth:
 `docs/specs/sub-phase-REG-1-registry-repository-acceptance.md` (REG-1-01..32). Self-contained
-setup/cleanup, `-{{runId}}`-изоляция, `regionId={{existingRegionId}}` (geo-фикстура kacho-deploy).
+setup/cleanup, `-{{runId}}`-изоляция, `regionId={{existingRegionId}}` (geo-фикстура `deploy/`).
 
 | Case id | Classes | Prio | Meaning | Verifies |
 |---|---|---|---|---|

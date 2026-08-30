@@ -14,6 +14,22 @@ ingress:
   annotations: {}
   tls: []
 
+# Проекция потока изменений в браузер — ручка края `/subscription/v1/events`
+# (kacho#1020). Консоль ходит на тот же источник, что и страница, поэтому запрос
+# потока идёт ЧЕРЕЗ раздачу консоли и через внешний вход. Оба посредника
+# перечислены здесь одной величиной намеренно: две копии одного числа разошлись
+# бы молча — обе непусты, обе выглядят действующими, и ни одна не знает о другой.
+subscriptionStream:
+  # proxyReadTimeout — сколько посредник ждёт следующей порции, СЕКУНДЫ.
+  #
+  # ОБЯЗАН быть больше срока жизни потока, который объявляет край
+  # (`gateway/deploy/values.yaml` → `subscriptionStream.streamBudget`, сегодня
+  # 90 с): иначе поток рвёт посредник, и клиент читает это сетевым сбоем вместо
+  # чистого закрытия по сроку, после которого он возобновляется со своей позиции.
+  # Сверяет ui-future/deploy/subscription_stream_serving_test.go — он читает срок
+  # У КРАЯ, а не выписывает его копию здесь.
+  proxyReadTimeout: "120"
+
 # Response security headers emitted by every nginx UI server (host + remotes).
 # Internal serving config only - no API/proto/wire contract surface.
 # Everything the console talks to (api-gateway, kratos, hydra) is reached

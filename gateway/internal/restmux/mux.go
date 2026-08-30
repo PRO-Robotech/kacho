@@ -137,49 +137,16 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/principalmeta"
 )
 
-// buildPrincipalMetadata собирает outgoing gRPC-metadata из HTTP middleware-set
-// headers для re-dial в backend (public ИЛИ internal mux):
-//   - x-kacho-principal-{type,id,display-name} — forwarded end-user principal,
-//     который backend trust-aware extract заносит в ctx.
-//   - x-kacho-token-acr — validated JWT acr. Public DPoP-middleware уже выставляет
-//     `X-Kacho-Token-Acr` (downstream audit); здесь он пробрасывается на :9091
-//     re-dial, чтобы iam internal acr-floor мог энфорсить `required_acr_min` на
-//     gateway-fronted privileged RPC (иначе acr обрывался бы на internal re-dial).
-//     Forward-only on the mTLS-verified gateway→iam edge; iam доверяет acr только
-//     на этом проверенном ребре.
+// buildPrincipalMetadata собирает outgoing gRPC-metadata личности для
+// передозвона в backend (public ИЛИ internal mux).
 //
-// HTTP middleware (`auth.HTTP` / DPoP) ставит headers с `Grpc-Metadata-` префиксом
-// (canonical в r.Header); читаем оба варианта (с/без префикса) чтобы быть robust.
-// Отсутствующий header → ключ не добавляется (никаких пустых значений).
+// Строитель ОДИН на край и живёт в `principalmeta`: личность отправляют двое —
+// этот мост и проекция потока подписки, которая дозванивается сама. Вторая
+// копия разошлась бы с первой молча, потому что на обычном запросе обе кладут
+// одно и то же, а различаются на кириллическом имени и на мостовой форме
+// заголовка.
 func buildPrincipalMetadata(r *http.Request) metadata.MD {
-	md := metadata.MD{}
-	get := func(canonical, fallback string) string {
-		if v := r.Header.Get(canonical); v != "" {
-			return v
-		}
-		return r.Header.Get(fallback)
-	}
-	pt := get(principalmeta.HeaderGRPCMetaPrincipalType, principalmeta.HeaderPrincipalType)
-	pi := get(principalmeta.HeaderGRPCMetaPrincipalID, principalmeta.HeaderPrincipalID)
-	pd := get(principalmeta.HeaderGRPCMetaPrincipalDisplay, principalmeta.HeaderPrincipalDisplay)
-	acr := get(principalmeta.HeaderGRPCMetaTokenACR, principalmeta.HeaderTokenACR)
-	if pt != "" {
-		md.Append(principalmeta.MetaPrincipalType, pt)
-	}
-	if pi != "" {
-		md.Append(principalmeta.MetaPrincipalID, pi)
-	}
-	if pd != "" {
-		// Имя кладётся ДВОИЧНЫМ ключом: значение обычного роняет вызов на
-		// первом же не-латинском символе, и падает он не здесь, а на любом
-		// последующем запросе арендатора — то есть выглядит как «продукт не
-		// работает», а не как дефект передачи имени.
-		md.Append(principalmeta.MetaPrincipalDisplayBin, pd)
-	}
-	if acr != "" {
-		md.Append(principalmeta.MetaTokenACR, acr)
-	}
-	return md
+	return principalmeta.MetadataFromRequest(r)
 }
 
 // principalHeaderMatcher — grpc-gateway IncomingHeaderMatcher: решает, какой

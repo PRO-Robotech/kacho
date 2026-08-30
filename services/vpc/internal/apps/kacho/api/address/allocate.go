@@ -250,7 +250,7 @@ func (u *AllocateUseCase) AllocateExternalIPv6(ctx context.Context, addressID st
 // finishAllocate — общий эпилог: outbox-emit Address.UPDATED + Commit.
 // Атомарно с Set/Allocate в той же writer-TX.
 func (u *AllocateUseCase) finishAllocate(ctx context.Context, w Writer, rec *kachorepo.AddressRecord, res *domain.AllocateResult) (*domain.AllocateResult, error) {
-	if err := w.Outbox().Emit(ctx, "Address", rec.ID, "UPDATED", helpers.DomainToMap(rec)); err != nil {
+	if err := w.Outbox().Emit(ctx, "Address", rec.ID, rec.ProjectID, "UPDATED", helpers.DomainToMap(rec)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	if err := w.Commit(); err != nil {

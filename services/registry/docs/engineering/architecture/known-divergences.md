@@ -126,11 +126,11 @@ struct-tags.
 **Why accepted.** This is the **platform-wide** corelib convention
 (`corecfg.LoadPrefixed` is used identically by every `kacho-*` service). It is a
 regime-conformance choice made once at the corelib layer, not a registry-local defect;
-changing it is a workspace-wide migration of `kacho-corelib/config` under a dedicated
+changing it is a workspace-wide migration of `pkg/config` under a dedicated
 release phase, out of scope for a single-service hardening pass. No runtime defect —
 only the layered-profile / hot-reload affordances of viper/koanf are unavailable.
 
-**What would revisit this.** A platform decision to migrate `kacho-corelib/config` to
+**What would revisit this.** A platform decision to migrate `pkg/config` to
 viper/koanf YAML with env override; then every service (including this one) follows.
 
 ## 5. Authenticated-deny → 404 existence-hiding: live e2e assertion blocked on test infra

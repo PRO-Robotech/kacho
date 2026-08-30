@@ -192,7 +192,7 @@ func (r *InstanceRepo) Insert(ctx context.Context, in *domain.Instance) (*domain
 	if created.GuestAccessKeyIDs, err = guestKeyIDsOf(ctx, tx, created.ID); err != nil {
 		return nil, nil, err
 	}
-	if err := emitCompute(ctx, tx, "Instance", created.ID, "CREATED", instancePayload(created)); err != nil {
+	if err := emitCompute(ctx, tx, "Instance", created.ID, created.ProjectID, "CREATED", instancePayload(created)); err != nil {
 		return nil, nil, ports.ErrInternal
 	}
 	// Журнал — В ТОЙ ЖЕ транзакции. Провайдер про наши принадлежности не знает,
@@ -336,7 +336,7 @@ func (r *InstanceRepo) Update(ctx context.Context, in *domain.Instance, emitLabe
 		}
 	}
 
-	if err := emitCompute(ctx, tx, "Instance", updated.ID, "UPDATED", instancePayload(updated)); err != nil {
+	if err := emitCompute(ctx, tx, "Instance", updated.ID, updated.ProjectID, "UPDATED", instancePayload(updated)); err != nil {
 		return nil, nil, ports.ErrInternal
 	}
 	var reg ownerregister.Registration
@@ -381,7 +381,7 @@ func (r *InstanceRepo) SetStatusCAS(ctx context.Context, id string, expected, ne
 	if err != nil {
 		return nil, wrapPgErr(err, "Instance", id)
 	}
-	if err := emitCompute(ctx, tx, "Instance", in.ID, "UPDATED", instancePayload(in)); err != nil {
+	if err := emitCompute(ctx, tx, "Instance", in.ID, in.ProjectID, "UPDATED", instancePayload(in)); err != nil {
 		return nil, ports.ErrInternal
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -487,7 +487,7 @@ func (r *InstanceRepo) MarkDeleting(ctx context.Context, id string) (*domain.Ins
 	}
 	if tag.RowsAffected() > 0 {
 		// эмитим UPDATED только на фактическом переходе (не на идемпотентном повторе).
-		if err := emitCompute(ctx, tx, "Instance", in.ID, "UPDATED", instancePayload(in)); err != nil {
+		if err := emitCompute(ctx, tx, "Instance", in.ID, in.ProjectID, "UPDATED", instancePayload(in)); err != nil {
 			return nil, ports.ErrInternal
 		}
 	}
@@ -607,7 +607,7 @@ func (r *InstanceRepo) Delete(ctx context.Context, id string) error {
 	}); err != nil {
 		return ports.ErrInternal
 	}
-	if err := emitCompute(ctx, tx, "Instance", id, "DELETED", map[string]any{"id": id}); err != nil {
+	if err := emitCompute(ctx, tx, "Instance", id, projectID, "DELETED", map[string]any{"id": id}); err != nil {
 		return ports.ErrInternal
 	}
 	if _, err := emitFGARegisterIntent(ctx, tx, fgaintent.EventUnregister, "Instance", id, projectID, nil); err != nil {

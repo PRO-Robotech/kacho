@@ -98,7 +98,7 @@ func TestCQRS_Network_WriterCommit_ReaderSees(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, n.ID, created.ID)
 	// outbox emit в той же TX.
-	require.NoError(t, w.Outbox().Emit(ctx, "Network", created.ID, "CREATED", map[string]any{"id": created.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Network", created.ID, created.ProjectID, "CREATED", map[string]any{"id": created.ID}))
 	require.NoError(t, w.Commit())
 
 	// Параллельный Reader видит committed запись.
@@ -202,7 +202,7 @@ func TestCQRS_Network_OutboxAtomicityWithDML(t *testing.T) {
 	n := newNetwork("project-1", "net-outbox-commit")
 	_, err = w.Networks().Insert(ctx, n)
 	require.NoError(t, err)
-	require.NoError(t, w.Outbox().Emit(ctx, "Network", n.ID, "CREATED", map[string]any{"id": n.ID}))
+	require.NoError(t, w.Outbox().Emit(ctx, "Network", n.ID, n.ProjectID, "CREATED", map[string]any{"id": n.ID}))
 	require.NoError(t, w.Commit())
 
 	// Проверяем outbox через прямой SQL — pkg pg/network.go не экспортирует
@@ -219,7 +219,7 @@ func TestCQRS_Network_OutboxAtomicityWithDML(t *testing.T) {
 	n2 := newNetwork("project-1", "net-outbox-abort")
 	_, err = w2.Networks().Insert(ctx, n2)
 	require.NoError(t, err)
-	require.NoError(t, w2.Outbox().Emit(ctx, "Network", n2.ID, "CREATED", map[string]any{"id": n2.ID}))
+	require.NoError(t, w2.Outbox().Emit(ctx, "Network", n2.ID, n2.ProjectID, "CREATED", map[string]any{"id": n2.ID}))
 	w2.Abort()
 
 	var count2 int
@@ -255,7 +255,7 @@ func TestCQRS_Network_UpdateDelete_FullCycle(t *testing.T) {
 	n := newNetwork("project-1", "net-cycle")
 	created, err := w1.Networks().Insert(ctx, n)
 	require.NoError(t, err)
-	require.NoError(t, w1.Outbox().Emit(ctx, "Network", created.ID, "CREATED", map[string]any{"id": created.ID}))
+	require.NoError(t, w1.Outbox().Emit(ctx, "Network", created.ID, created.ProjectID, "CREATED", map[string]any{"id": created.ID}))
 	require.NoError(t, w1.Commit())
 
 	// Update.
@@ -266,7 +266,7 @@ func TestCQRS_Network_UpdateDelete_FullCycle(t *testing.T) {
 	updated, err := w2.Networks().Update(ctx, &created.Network)
 	require.NoError(t, err)
 	assert.Equal(t, domain.RcNameVPC("net-cycle-updated"), updated.Name)
-	require.NoError(t, w2.Outbox().Emit(ctx, "Network", updated.ID, "UPDATED", map[string]any{"id": updated.ID}))
+	require.NoError(t, w2.Outbox().Emit(ctx, "Network", updated.ID, updated.ProjectID, "UPDATED", map[string]any{"id": updated.ID}))
 	require.NoError(t, w2.Commit())
 
 	// Delete.
@@ -274,7 +274,7 @@ func TestCQRS_Network_UpdateDelete_FullCycle(t *testing.T) {
 	require.NoError(t, err)
 	defer w3.Abort()
 	require.NoError(t, w3.Networks().Delete(ctx, n.ID))
-	require.NoError(t, w3.Outbox().Emit(ctx, "Network", n.ID, "DELETED", map[string]any{"id": n.ID}))
+	require.NoError(t, w3.Outbox().Emit(ctx, "Network", n.ID, n.ProjectID, "DELETED", map[string]any{"id": n.ID}))
 	require.NoError(t, w3.Commit())
 
 	// Reader не видит запись после Delete.

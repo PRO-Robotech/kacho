@@ -29,10 +29,12 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 	"github.com/PRO-Robotech/kacho/pkg/servicehost"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 
 	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
@@ -51,6 +53,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/operationresolver"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/reconciler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/subscriptionjournal"
 )
 
 // lroDrainTimeout — граница graceful-дренажа in-flight LRO-worker'ов на SIGTERM
@@ -67,6 +70,13 @@ const lroDrainTimeout = 30 * time.Second
 // проводку с ним в обе стороны (О3/О4) — потерянная проводка и лишняя одинаково
 // роняют старт.
 const listAttachmentsMethod servicecontract.MethodFQN = "/kacho.cloud.storage.v1.InternalVolumeService/ListAttachments"
+
+// subscriptionSubscribeFQN — полное имя общего глагола подписки.
+//
+// Оно записано строкой, а не выведено из сгенерённого дескриптора служб: носитель
+// сверяет проводку с КАТАЛОГОМ ПРАВ, где ключ — та же строка, и вывод её из
+// другого источника сделал бы сверку тождественно истинной при расхождении.
+const subscriptionSubscribeFQN servicecontract.MethodFQN = "/kacho.cloud.subscription.InternalSubscriptionService/Subscribe"
 
 // runServe — composition root.
 //
@@ -147,6 +157,17 @@ func runServe(cfg config.Config) error {
 	// интерфейсе не равен nil, и проверки вида `filter == nil` у потребителей молча
 	// перестали бы срабатывать.
 	narrower := buildListFilter(cfg, authzConn, logger)
+
+	// Сервер потока изменений собирается ЗДЕСЬ — до подъёма любой поверхности.
+	//
+	// Раньше, а не рядом с регистрацией: его сборка умеет ОТКАЗАТЬ (величина
+	// посадки, о которой никто не сказал), и отказ обязан наступить прежде, чем
+	// процесс займёт порты и объявит себя поднявшимся. Отказ возвращается, а не
+	// логируется: молчаливое умолчание обнаружилось бы первым запросом в бою.
+	subscribeSrv, err := buildSubscriptionServer(cfg, narrower, logger)
+	if err != nil {
+		return err
+	}
 
 	// Самоотчёт о посадке — ПОСЛЕ приёма дескриптора и ДО подъёма слушателей.
 	// Гейт посадки обязан утверждать на этом наблюдаемом факте, а не на хранимом
@@ -433,7 +454,8 @@ func runServe(cfg config.Config) error {
 			registerPublic(reg, volumeUC, snapshotUC, imageUC, diskTypeUC, quotaHandler, opHandler)
 		},
 		func(reg grpc.ServiceRegistrar) {
-			registerInternal(reg, volumeUC, imageUC, diskTypeUC, storageBackendUC, diskTypeBindingUC, opHandler)
+			registerInternal(reg, volumeUC, imageUC, diskTypeUC, storageBackendUC,
+				diskTypeBindingUC, opHandler, subscribeSrv)
 		},
 	)
 
@@ -569,18 +591,18 @@ func describe(
 		// Величина и её обоснование — у ручки конфигурации.
 		HandlingBudget: cfg.HandlingBudget,
 
-		// Срок жизни подписки — изъятие: storage не служит НИ ОДНОГО серверного
-		// стрима. Все его RPC (тенантские Volume/Snapshot/Image/DiskType, опрос
-		// операций, внутренняя привязка тома) отдают единичный ответ, поэтому
-		// накрывать сроком нечего.
+		// Срок жизни подписки — ВЕЛИЧИНА.
 		//
-		// Заявление судится СЛУЖИМЫМ набором, а не памятью автора: носитель
-		// снимает признак стрима с дескрипторов методов у самих серверов (О11).
-		// Появится у storage первая подписка — процесс не поднимется и назовёт
-		// её метод.
-		StreamBudget: servicecontract.NotApplicable[time.Duration](
-			"серверных стримов storage не служит: ни один его метод не отдаёт поток событий, " +
-				"все ответы единичные"),
+		// Здесь стояло изъятие «серверных стримов storage не служит», и оно было
+		// верным ровно до этой правки: подписка на изменения ресурсов
+		// (`pkg/subscription`, внутренний слушатель) отдаёт поток событий. Изъятие
+		// самоистекает намеренно — заявление судится СЛУЖИМЫМ набором, а не
+		// памятью автора: носитель снимает признак стрима с дескрипторов методов у
+		// самих серверов (О11) и уронил бы старт, назвав метод подписки поимённо.
+		//
+		// Величина и почему она обязана превосходить границу обработки одиночного
+		// вызова — у ручки конфигурации.
+		StreamBudget: servicecontract.Value(cfg.SubscriptionStreamBudget),
 
 		// Бюджет отказов объявляется ВЕЛИЧИНОЙ, а не изъятием: решение о доступе
 		// storage принимает не у себя, а вопросом к kacho-iam, — то есть сетевой
@@ -624,8 +646,13 @@ func describe(
 		// Проводка сужателя — ровно на тот метод, который каталог объявляет
 		// сужаемым. Перечень сужаемых методов здесь НЕ объявляется: его даёт
 		// каталог, и носитель сверяет проводку с ним в обе стороны.
+		// Сужателей ДВА, и объект у них ОДИН И ТОТ ЖЕ: за глаголом подписки, как и
+		// за перечнем привязок, нет пообъектной проверки на крае, поэтому
+		// откатываться не на что, а второй экземпляр означал бы, что поток сужается
+		// не тем, чем сужаются списки.
 		Narrowers: servicecontract.Value(map[servicecontract.MethodFQN]servicecontract.ListNarrower{
-			listAttachmentsMethod: narrower,
+			listAttachmentsMethod:    narrower,
+			subscriptionSubscribeFQN: narrower,
 		}),
 
 		// Скрытия существования у storage нет: ни одна строка каталога его домена
@@ -723,6 +750,7 @@ func registerInternal(
 	storageBackendUC *storagebackend.UseCase,
 	diskTypeBindingUC *disktypebinding.UseCase,
 	opHandler operationpb.OperationServiceServer,
+	subscribe subscriptionv1.InternalSubscriptionServiceServer,
 ) {
 	storagev1.RegisterInternalVolumeServiceServer(reg, handler.NewInternalVolumeHandler(volumeUC))
 	storagev1.RegisterInternalImageServiceServer(reg, handler.NewInternalImageHandler(imageUC))
@@ -732,6 +760,69 @@ func registerInternal(
 	storagev1.RegisterInternalDiskTypeBindingServiceServer(reg,
 		handler.NewInternalDiskTypeBindingHandler(diskTypeBindingUC))
 	operationpb.RegisterOperationServiceServer(reg, opHandler)
+
+	// Поток изменений — ОБЩИЙ сервер (`pkg/subscription`), а не своя обёртка
+	// вокруг него: владелец регистрирует его самого. Регистрация безусловна —
+	// собирает сервер композиционный корень, и его сборка умеет ОТКАЗАТЬ, поэтому
+	// до сюда нулевой указатель не доходит. Условная регистрация означала бы, что
+	// подписка тихо отсутствует у процесса, чей дескриптор объявил ей срок жизни.
+	//
+	// ТОЛЬКО на внутреннем слушателе (ban #6): наружу поток проецирует край, у
+	// которого своя ручка и свой периметр.
+	subscriptionv1.RegisterInternalSubscriptionServiceServer(reg, subscribe)
+}
+
+// buildSubscriptionServer собирает ОБЩИЙ сервер потока изменений для журнала
+// storage.
+//
+// Владелец приносит сюда ЖУРНАЛ и величины ПОСАДКИ — и ничего больше: курсор,
+// граница устоявшегося, пределы, сужение по правам и порядок отказов принадлежат
+// общему серверу. Появись здесь возможность принести своё вместо любого из них,
+// механизм перестал бы быть общим, оставшись общим по имени.
+//
+// Сужатель — ТОТ ЖЕ объект, что сужает страницы списков: за глаголом подписки нет
+// пообъектной проверки на крае (он `scope_filtered`), поэтому откатываться не на
+// что, а второй экземпляр означал бы, что поток сужается не тем, чем сужаются
+// списки.
+//
+// Отказ возвращается, а не логируется: величина посадки, о которой никто не
+// сказал, не должна обнаруживаться первым запросом в бою.
+func buildSubscriptionServer(
+	cfg config.Config,
+	listFilter *authzfilter.Narrower,
+	logger *slog.Logger,
+) (subscriptionv1.InternalSubscriptionServiceServer, error) {
+	gate, err := subscriptionjournal.ProjectGate()
+	if err != nil {
+		return nil, err
+	}
+	dsn := cfg.SingleConnDSN()
+	// Страж посадки: параметр ПУЛА в строке одиночного соединения означает отказ
+	// на подключении, а не на сборке, — и потому обязан быть пойман здесь, а не
+	// первой подпиской в бою. Предикат один на дерево (coredb.PoolParamFromDSN):
+	// он отдаёт ИМЯ ключа, поэтому отказ называет ручку, а не строку подключения,
+	// которая несёт пароль базы.
+	if key := coredb.PoolParamFromDSN(dsn); key != "" {
+		return nil, fmt.Errorf("поток изменений: строка подключения несёт параметр пула %q: "+
+			"вне пула это неизвестный PG-параметр и FATAL при подключении, "+
+			"а отказ наступил бы не на сборке, а у каждой подписки в бою", key)
+	}
+	srv, err := subscription.NewServer(subscription.Config{
+		Journal: subscriptionjournal.Journal(),
+		// Выделенное соединение вне пула: `LISTEN` требует своей сессии, а сессия
+		// из пула вернулась бы в него вместе с подпиской.
+		DSN:          dsn,
+		Narrower:     listFilter,
+		ProjectGate:  gate,
+		MaxStreams:   cfg.SubscriptionMaxStreams,
+		StreamBudget: cfg.SubscriptionStreamBudget,
+		IdlePoll:     cfg.SubscriptionIdlePoll,
+		Logger:       logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("subscription server: %w", err)
+	}
+	return srv, nil
 }
 
 // dialPeer лениво создаёт *grpc.ClientConn к peer-сервису (per-edge mTLS). Пустой

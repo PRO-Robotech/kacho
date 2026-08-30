@@ -35,7 +35,10 @@ import (
 
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/subscriptionjournal"
 
 	addressapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	addresspoolapp "github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
@@ -471,6 +474,16 @@ func runServe(cfg config.Config) error {
 
 	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, quotaLimits, projectClient, cfg, logger)
 
+	// Сервер потока изменений — ОБЩИЙ (`pkg/subscription`), а не свой. Форма
+	// подписки объявлена однажды на всю платформу, и владелец журнала приносит
+	// сюда только объявление СВОЕГО журнала: где он лежит, каким каналом будит,
+	// как его строка становится событием. Курсор, граница устоявшегося, пределы,
+	// сужение по правам и порядок отказов принадлежат серверу.
+	subscribe, subErr := buildSubscriptionServer(cfg, listFilter, logger)
+	if subErr != nil {
+		return subErr
+	}
+
 	// Fail-closed boot-gate: при KACHO_VPC_REQUIRE_IAM мутирующий Create отвергается,
 	// а readiness = NotReady, пока register-drainer не подключен к IAM. Стартует
 	// неподключенным; SetConnected(true) срабатывает ниже, как только dial drainer'а
@@ -669,7 +682,7 @@ func runServe(cfg config.Config) error {
 					registerPublicServices(reg, svcs, opsRepo)
 				},
 				func(reg grpc.ServiceRegistrar) {
-					registerInternalServices(reg, svcs)
+					registerInternalServices(reg, svcs, subscribe)
 				},
 			)
 			close(serveDone)
@@ -1289,7 +1302,7 @@ func registerPublicServices(srv grpc.ServiceRegistrar, svcs *services, opsRepo o
 }
 
 // registerInternalServices — kacho-only/admin RPC на internal listener.
-func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services) {
+func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services, subscribe subscriptionv1.InternalSubscriptionServiceServer) {
 	// `WithOwnedCreator` — путь `CreateOwnedAddress`: создание адреса, СРАЗУ
 	// привязанного к владельцу, одной writer-TX. Реализуется публичным
 	// транспортным handler'ом адреса, чтобы разбор тела создания оставался
@@ -1309,6 +1322,50 @@ func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services) {
 	// external mux (INV-2). Регистрируется на internalSrv → та же authz-Check-цепочка
 	// интерсепторов (internalUnary + authzIntr), что и прочие internal RPC (INV-2a).
 	vpcv1.RegisterInternalNetworkInterfaceServiceServer(srv, handler.NewInternalNetworkInterfaceHandler(svcs.networkInterfaceInternal))
+	// Поток изменений — ТОЛЬКО на внутреннем слушателе (:9091, ban #6). Глагол
+	// объявлен сужаемым по правам вызывающего, то есть за ним нет пообъектной
+	// проверки на крае: сужение делает сам владелец на каждой строке. Выставить
+	// его наружу значило бы отдать журнал домена внешнему периметру.
+	subscriptionv1.RegisterInternalSubscriptionServiceServer(srv, subscribe)
+}
+
+// buildSubscriptionServer — общий сервер потока над журналом vpc.
+//
+// Соединение он держит ВНЕ пула: `LISTEN` требует своей сессии, а сессия из пула
+// вернулась бы в него вместе с подпиской. Поэтому сюда едет строка соединения, а
+// не пул.
+func buildSubscriptionServer(
+	cfg config.Config, listFilter *authzfilter.Narrower, logger *slog.Logger,
+) (subscriptionv1.InternalSubscriptionServiceServer, error) {
+	gate, err := subscriptionjournal.ProjectGate()
+	if err != nil {
+		return nil, err
+	}
+	dsn := cfg.SingleConnDSN()
+	// Страж посадки: параметр ПУЛА в строке одиночного соединения означает отказ
+	// на подключении, а не на сборке, — и потому обязан быть пойман здесь, а не
+	// первой подпиской в бою. Предикат один на дерево (coredb.PoolParamFromDSN):
+	// он отдаёт ИМЯ ключа, поэтому отказ называет ручку, а не строку подключения,
+	// которая несёт пароль базы.
+	if key := coredb.PoolParamFromDSN(dsn); key != "" {
+		return nil, fmt.Errorf("поток изменений: строка подключения несёт параметр пула %q: "+
+			"вне пула это неизвестный PG-параметр и FATAL при подключении, "+
+			"а отказ наступил бы не на сборке, а у каждой подписки в бою", key)
+	}
+	srv, err := subscription.NewServer(subscription.Config{
+		Journal:      subscriptionjournal.Journal(),
+		DSN:          dsn,
+		Narrower:     listFilter,
+		ProjectGate:  gate,
+		MaxStreams:   cfg.APIServer.SubscriptionMaxStreams,
+		StreamBudget: cfg.APIServer.SubscriptionStreamBudget,
+		IdlePoll:     cfg.APIServer.SubscriptionIdlePoll,
+		Logger:       logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("subscription server: %w", err)
+	}
+	return srv, nil
 }
 
 // maskDSN отдает DSN с замаскированным паролем — для безопасного логирования

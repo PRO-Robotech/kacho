@@ -83,7 +83,7 @@ spec:
         - name: migrate
           image: {{ include "kacho-nlb.migratorImage" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["/usr/local/bin/migrator"]
+          command: ["/usr/local/bin/kacho-migrator"]
           args: ["--config", "/etc/kacho-nlb/config.yaml", "up"]
           env:
             - name: KACHO_NLB_DB_PASSWORD

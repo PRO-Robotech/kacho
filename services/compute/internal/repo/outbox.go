@@ -23,17 +23,33 @@ const computeOutboxTable = "compute_outbox"
 // fgaRegisterOutboxTable — таблица FGA-register-intent (миграция 0010).
 const fgaRegisterOutboxTable = "compute_fga_register_outbox"
 
-// emitCompute — обёртка над outbox.Emit с фиксированной таблицей compute_outbox.
+// emitCompute — обёртка над outbox.EmitAnchored с фиксированной таблицей compute_outbox.
 // Должна вызываться внутри той же tx, что и INSERT/UPDATE/DELETE на ресурсной
 // таблице (атомарность). Trigger compute_outbox_notify_trg на каждый INSERT
 // шлёт pg_notify('compute_outbox', sequence_no::text). kind ∈ {Instance} — блочное
 // хранение из compute снято (миграция 0021 дропнула disks/images/snapshots), и Disk /
 // Image / Snapshot в этом перечислении больше не значатся.
-func emitCompute(ctx context.Context, tx pgx.Tx, kind, id, eventType string, payload map[string]any) error {
+//
+// # projectID — ЯКОРЬ, а не украшение
+//
+// Он уезжает в СВОЮ колонку, а не в нагрузку, потому что по нему подписка
+// решает, кому показать событие, не обращаясь к предмету. Для снятия это
+// несущее: обращаться не к чему, а нагрузка снятия несёт один идентификатор.
+// Оставь якорь только в нагрузке — и события удаления машины уходили бы с пустым
+// якорем, то есть с утверждением «предмет уровня аккаунта»; подписчик, снявший
+// опрос, об удалении не узнавал бы НИКОГДА. Разбор — у миграции
+// `..._compute_outbox_project_anchor` и в объявлении журнала
+// (`internal/subscriptionjournal`).
+//
+// Пустой якорь остаётся ЗАКОННЫМ входом и здесь не отвергается: отвергать его
+// значило бы решать за вызывающего судьбу его транзакции ради поля, которого у
+// исторических строк и так нет. Наблюдаемость этого — на стороне подписки: строка
+// без якоря не отбирается осью проекта, и это сказано в миграции вслух.
+func emitCompute(ctx context.Context, tx pgx.Tx, kind, id, projectID, eventType string, payload map[string]any) error {
 	if payload == nil {
 		payload = map[string]any{}
 	}
-	return outbox.Emit(ctx, tx, computeOutboxTable, kind, id, eventType, payload)
+	return outbox.EmitAnchored(ctx, tx, computeOutboxTable, kind, id, projectID, eventType, payload)
 }
 
 // domainToMap конвертирует произвольный domain-объект в map[string]any через

@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 )
 
 // BindAsNetworkDefaultUseCase — назначить pool как default для Network.
@@ -42,7 +43,7 @@ func (u *BindAsNetworkDefaultUseCase) Execute(ctx context.Context, networkID, po
 	if err := w.AddressPoolBindings().SetNetworkDefault(ctx, networkID, poolID); err != nil {
 		return err
 	}
-	if err := w.Outbox().Emit(ctx, "AddressPoolNetworkDefault", networkID, "UPDATED",
+	if err := w.Outbox().Emit(ctx, "AddressPoolNetworkDefault", networkID, helpers.NoProjectAnchor, "UPDATED",
 		map[string]any{"network_id": networkID, "pool_id": poolID}); err != nil {
 		return fmt.Errorf("%w: outbox emit: %v", serviceerr.ErrInternal, err)
 	}
@@ -70,7 +71,7 @@ func (u *UnbindNetworkDefaultUseCase) Execute(ctx context.Context, networkID str
 	if err := w.AddressPoolBindings().UnsetNetworkDefault(ctx, networkID); err != nil {
 		return err
 	}
-	if err := w.Outbox().Emit(ctx, "AddressPoolNetworkDefault", networkID, "DELETED",
+	if err := w.Outbox().Emit(ctx, "AddressPoolNetworkDefault", networkID, helpers.NoProjectAnchor, "DELETED",
 		map[string]any{"network_id": networkID}); err != nil {
 		return fmt.Errorf("%w: outbox emit: %v", serviceerr.ErrInternal, err)
 	}

@@ -360,7 +360,7 @@ func (u *CreateSubnetUseCase) doCreate(ctx context.Context, subID string, s doma
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "Subnet", created.ID, "CREATED", helpers.DomainToMap(created)); err != nil {
+	if err := w.Outbox().Emit(ctx, "Subnet", created.ID, created.ProjectID, "CREATED", helpers.DomainToMap(created)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	// Публикуем intent на vpc_subnet→project hierarchy-tuple в той же writer-TX

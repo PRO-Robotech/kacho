@@ -1,7 +1,8 @@
 # Kachō — monorepo
 
 Единый репозиторий платформы **Kachō** (cloud control-plane). Заменяет polyrepo
-`kacho-proto` / `kacho-corelib` / `kacho-<svc>` / `kacho-api-gateway` / `kacho-deploy`.
+`kacho-proto` / `kacho-corelib` / `kacho-<svc>` / `kacho-api-gateway` / `kacho-deploy` —
+сегодня это каталоги `proto/`, `pkg/`, `services/<svc>/`, `gateway/`, `deploy/` одного дерева.
 Старые репозитории остаются **архивом** (история туда и не переносилась).
 
 ## Раскладка

@@ -122,7 +122,7 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 	}
 	// v6-дельта (newV6) уже нормализована в address_pool_cidrs выше; отдельной
 	// freelist-materialization не требует (sparse counter, см. InitIPv6PoolCursor).
-	if err := w.Outbox().Emit(ctx, "AddressPool", updated.ID, "UPDATED",
+	if err := w.Outbox().Emit(ctx, "AddressPool", updated.ID, helpers.NoProjectAnchor, "UPDATED",
 		helpers.AddressPoolDomainPayload(&updated.AddressPool)); err != nil {
 		return nil, fmt.Errorf("%w: outbox emit: %v", serviceerr.ErrInternal, err)
 	}

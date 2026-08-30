@@ -22,6 +22,10 @@ export function useOperation(opId: string | null) {
   return useQuery({
     queryKey: ["operation", opId],
     queryFn: () => api.get<Operation>(`/operations/${opId}`),
+  // поллинг остаётся: это чтение ОДНОЙ операции до `done`, и подписки на
+  // операции нет намеренно (решение 4 эпика #1016) — поток дал бы подписку,
+  // которую надо закрывать после первого события, а `metadata` упавшей
+  // операции несёт идентификатор несуществующего ресурса.
     refetchInterval: (query) => (query.state.data?.done ? false : 1_000),
     enabled: !!opId,
     staleTime: 0,

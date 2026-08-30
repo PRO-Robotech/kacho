@@ -14,28 +14,28 @@
 - **Type**: testability
 - **Priority**: P0
 - **Driver**: Все Subnet/Address mutation-кейсы
-- **Description**: kacho-deploy init-job должен seed'ить регион `zone`
+- **Description**: `deploy/` init-job должен seed'ить регион `zone`
   + zones `zone-{a,b,c,d}` + default `AddressPool` на zone `a`
   для `EXTERNAL_PUBLIC` (например 198.51.100.0/24). Сейчас приходится seed'ить
   вручную через curl на api-gateway на каждом `make dev-up`.
 - **Rationale**: без правильных fixtures suite падает массово на sync-валидации
   `zone_id` и на Allocate external IP. Невозможно reproducible CI.
 - **Impact**: 100% suite автоматически зеленый после `make dev-up`.
-- **Owner**: `kacho-deploy` (Helm post-install Job).
+- **Owner**: `deploy/` (Helm post-install Job).
 
 ### REQ-002 — Pre-seeded projects с детерминированными ID
 
 - **Type**: testability
 - **Priority**: P0
 - **Driver**: Все mutation-кейсы (NET-CR-CRUD-OK, SUB-CR, ...)
-- **Description**: kacho-deploy init-job создает два Project с фиксированными
+- **Description**: `deploy/` init-job создает два Project с фиксированными
   ID или экспортирует actual IDs в ConfigMap. Newman читает env из ConfigMap
   при старте.
 - **Rationale**: после каждого `make dev-up` рабочий файл окружения суиты (копия
   отслеживаемого `environments/local.postman_environment.template.json`)
   устаревает — IDs новых projects случайны, env приходится править руками.
 - **Impact**: zero-touch repeatable runs.
-- **Owner**: `kacho-deploy` + `tests/newman/scripts/`.
+- **Owner**: `deploy/` + `tests/newman/scripts/`.
 
 ### REQ-003 — Документ REST endpoints map
 

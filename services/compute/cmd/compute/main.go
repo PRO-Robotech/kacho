@@ -50,6 +50,9 @@ import (
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
+	subscriptionv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/subscription"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/subscriptionjournal"
 
 	"github.com/PRO-Robotech/kacho/pkg/ownerregister"
 	corequota "github.com/PRO-Robotech/kacho/pkg/quota"
@@ -247,6 +250,20 @@ func runServe(cfg config.Config) error {
 	// второй раз — носитель сверял бы с каталогом экземпляр, которого на пути
 	// запроса нет.
 	listFilter := buildListFilter(cfg, authzConn, logger)
+
+	// Общий сервер потока изменений. Строится ДО подъёма слушателей: его сборка
+	// умеет отказать (негодное объявление журнала, невыбранная величина посадки,
+	// неработающий сужатель), а отказ обязан случиться раньше первого принятого
+	// соединения, а не первым запросом в бою.
+	//
+	// Сужатель — ТОТ ЖЕ объект, что сужает строки в обработчиках списков: за этим
+	// методом нет пообъектной проверки на крае (он `scope_filtered`), поэтому
+	// откатываться не на что, и второй экземпляр сужателя означал бы, что поток
+	// сужается не тем, чем сужаются списки.
+	subscribeSrv, err := buildSubscriptionServer(cfg, listFilter, logger)
+	if err != nil {
+		return err
+	}
 	// Величины сужателя выходят из процесса ТОЛЬКО здесь. Полос четыре: одна
 	// положительная и три — страница, ушедшая БЕЗ пообъектной проверки. Снимите
 	// эту строку — и полосы исчезнут с поверхности, а не станут нулями; ровно это
@@ -274,7 +291,7 @@ func runServe(cfg config.Config) error {
 	// что порт сверки существования живёт НА пуле, и принести его раньше значило бы
 	// принести порт, отвечающий «соединения нет». Открытие пула обратимо (`defer`
 	// выше) и дешевле ложной сверки.
-	desc, err := describe(cfg, logger, bootGate, repo.NewExistenceProbe(pool), authzCache.Install, metricsAdapter.Registerer())
+	desc, err := describe(cfg, logger, listFilter, bootGate, repo.NewExistenceProbe(pool), authzCache.Install, metricsAdapter.Registerer())
 	if err != nil {
 		return err
 	}
@@ -488,7 +505,7 @@ func runServe(cfg config.Config) error {
 				registerPublicServices(handler.PublicRegistrar(reg, productionMode), svcs, opsRepo, listFilter)
 			},
 			func(reg grpc.ServiceRegistrar) {
-				registerInternalServices(handler.InternalRegistrar(reg, productionMode), svcs)
+				registerInternalServices(handler.InternalRegistrar(reg, productionMode), svcs, subscribeSrv)
 			},
 		)
 		if serr != nil {
@@ -1245,7 +1262,17 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*ownerregister.
 // (`internal/check/permission_map.go`), а для потока журнала изменений — сужение по
 // правам вызывающего на КАЖДУЮ отдаваемую строку. Сетевая политика была бы
 // эшелонированием поверх этого, а не заменой ему.
-func registerInternalServices(srv grpc.ServiceRegistrar, svcs *services) {
+func registerInternalServices(
+	srv grpc.ServiceRegistrar,
+	svcs *services,
+	subscribe subscriptionv1.InternalSubscriptionServiceServer,
+) {
+	// Поток изменений — ОБЩИЙ сервер (`pkg/subscription`), а не своя обёртка
+	// вокруг него: владелец регистрирует его самого. Регистрация безусловна —
+	// собирает сервер композиционный корень, и его сборка умеет ОТКАЗАТЬ, поэтому
+	// до сюда нулевой указатель не доходит. Условная регистрация означала бы, что
+	// подписка тихо отсутствует у процесса, чей дескриптор объявил ей срок жизни.
+	subscriptionv1.RegisterInternalSubscriptionServiceServer(srv, subscribe)
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInternalRealizationServiceServer(srv, handler.NewInternalRealizationHandler(svcs.realization))
 	computev1.RegisterInternalNodeOwnershipServiceServer(srv, handler.NewInternalNodeOwnershipHandler(svcs.nodeOwnership))
@@ -1262,4 +1289,51 @@ func quotaHandlerOrNil(g *quota.Guard) *handler.QuotaHandler {
 		return nil
 	}
 	return handler.NewQuotaHandler(g)
+}
+
+// buildSubscriptionServer собирает ОБЩИЙ сервер потока изменений для журнала compute.
+//
+// Владелец приносит сюда ЖУРНАЛ и величины ПОСАДКИ — и ничего больше: курсор,
+// граница устоявшегося, пределы, сужение по правам и порядок отказов
+// принадлежат общему серверу. Появись здесь возможность принести своё вместо
+// любого из них, механизм перестал бы быть общим, оставшись общим по имени.
+//
+// Отказ возвращается, а не логируется: величина посадки, о которой никто не
+// сказал, не должна обнаруживаться первым запросом в бою.
+func buildSubscriptionServer(
+	cfg config.Config,
+	listFilter *listnarrow.Narrower,
+	logger *slog.Logger,
+) (subscriptionv1.InternalSubscriptionServiceServer, error) {
+	gate, err := subscriptionjournal.ProjectGate()
+	if err != nil {
+		return nil, err
+	}
+	dsn := cfg.SingleConnDSN()
+	// Страж посадки: параметр ПУЛА в строке одиночного соединения означает отказ
+	// на подключении, а не на сборке, — и потому обязан быть пойман здесь, а не
+	// первой подпиской в бою. Предикат один на дерево (coredb.PoolParamFromDSN):
+	// он отдаёт ИМЯ ключа, поэтому отказ называет ручку, а не строку подключения,
+	// которая несёт пароль базы.
+	if key := coredb.PoolParamFromDSN(dsn); key != "" {
+		return nil, fmt.Errorf("поток изменений: строка подключения несёт параметр пула %q: "+
+			"вне пула это неизвестный PG-параметр и FATAL при подключении, "+
+			"а отказ наступил бы не на сборке, а у каждой подписки в бою", key)
+	}
+	srv, err := subscription.NewServer(subscription.Config{
+		Journal: subscriptionjournal.Journal(),
+		// Выделенное соединение вне пула: `LISTEN` требует своей сессии, а сессия
+		// из пула вернулась бы в него вместе с подпиской.
+		DSN:          dsn,
+		Narrower:     listFilter,
+		ProjectGate:  gate,
+		MaxStreams:   cfg.SubscriptionMaxStreams,
+		StreamBudget: cfg.SubscriptionStreamBudget,
+		IdlePoll:     cfg.SubscriptionIdlePoll,
+		Logger:       logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("subscription server: %w", err)
+	}
+	return srv, nil
 }

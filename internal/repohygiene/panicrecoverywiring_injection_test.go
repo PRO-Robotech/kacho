@@ -329,3 +329,107 @@ func TestPanicRecoveryGateRefusesAComponentThatServesNothing(t *testing.T) {
 		t.Fatalf("компонент на носителе объявлен находкой (%v) либо не сосчитан (%d)", got, borne)
 	}
 }
+
+// synthServiceBuilder — СБОРКА СЛУЖБЫ рядом с провязанным слушателем.
+//
+// Форма та же — вызов `NewServer` пакетным именем, — но конструктор УМЕЕТ
+// ОТКАЗАТЬ, а полученное значение регистрируется НА слушателе вторым аргументом,
+// то есть само слушателем не является. Ровно так композиционные корни владельцев
+// журналов поднимают общий сервер потока.
+const synthServiceBuilder = `package main
+
+import (
+	"google.golang.org/grpc"
+
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+	"github.com/PRO-Robotech/kacho/pkg/subscription"
+)
+
+func buildStream() {
+	srv, err := subscription.NewServer(subscription.Config{})
+	if err != nil {
+		return
+	}
+	_ = srv
+	_ = grpcsrv.NewServer(
+		grpc.ChainUnaryInterceptor(grpcsrv.UnaryPanicRecovery()),
+		grpc.ChainStreamInterceptor(grpcsrv.StreamPanicRecovery()),
+	)
+}
+`
+
+// synthPairAssignedListener — НАСТОЯЩИЙ слушатель, чей конструктор отдаёт ПАРУ.
+//
+// Это самый неудобный для гейта случай и предмет отдельной пробы: форма
+// присваивания у него ровно такая же, как у сборки службы выше, а звена
+// восстановления паники нет. Отличает их ОДНО — на нём регистрируют, то есть с
+// ним обращаются как со слушателем.
+const synthPairAssignedListener = `package main
+
+import (
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+)
+
+func serve() {
+	srv, err := grpcsrv.NewServer()
+	if err != nil {
+		return
+	}
+	RegisterDemoServiceServer(srv, nil)
+}
+
+func RegisterDemoServiceServer(srv interface{}, impl interface{}) {}
+`
+
+// TestPanicRecoveryGateSkipsAServiceBuilderNextToAWiredListener — направление (б)
+// НОВОЙ ветви распознавания: сборка службы рядом с провязанным слушателем гейт не
+// задевает, и она ВИДНА в переписи.
+//
+// Перепись здесь — не украшение, а половина утверждения: без неё «находок ноль»
+// не отличить от «ветвь не исполнялась ни разу». Прежде так и было — во всех
+// пробах этого файла перепись печатала «отсеяно 0», то есть новая ветвь не
+// исполнялась ни в одну сторону.
+func TestPanicRecoveryGateSkipsAServiceBuilderNextToAWiredListener(t *testing.T) {
+	root := synthTree(t, synthServiceBuilder, nil)
+	res := auditPanicRecoveryWiring(t, root)
+	t.Log(res.summary)
+
+	if len(res.findings) != 0 {
+		t.Fatalf("сборка службы объявлена слушателем без звена — гейт требует цепочку "+
+			"от того, у кого её нет вовсе:\n%s", strings.Join(res.findings, "\n"))
+	}
+	if res.serviceBuilders == 0 {
+		t.Fatal("перепись отсеяла НОЛЬ мест: новая ветвь распознавания не исполнилась, " +
+			"и молчание гейта получено по другой причине")
+	}
+	if res.covered == 0 {
+		t.Fatalf("настоящий слушатель рядом не засчитан — молчание означает «не нашёл»:\n%s", res.summary)
+	}
+	t.Logf("направление (б): отсеяно сборок службы %d, засчитано слушателей %d",
+		res.serviceBuilders, res.covered)
+}
+
+// TestPanicRecoveryGateStillSeesAListenerWhoseConstructorReturnsAPair —
+// направление (а) той же ветви, и оно СТРОЖЕ первого.
+//
+// Дискриминатор «конструктор умеет отказать» сам по себе был бы про ФОРМУ
+// ПРИСВАИВАНИЯ, а не про предмет: научись общий конструктор слушателя отдавать
+// пару — настоящие слушатели отсеялись бы МОЛЧА, и гейт остался бы зелёным ровно
+// там, где обязан краснеть. Проба подаёт именно этот вход: пара со ошибкой,
+// звена нет, но на значении РЕГИСТРИРУЮТ.
+func TestPanicRecoveryGateStillSeesAListenerWhoseConstructorReturnsAPair(t *testing.T) {
+	root := synthTree(t, synthPairAssignedListener, nil)
+	res := auditPanicRecoveryWiring(t, root)
+	t.Log(res.summary)
+
+	if len(res.findings) == 0 {
+		t.Fatalf("слушатель с парным конструктором ОТСЕЯН как сборка службы: гейт судит "+
+			"форму присваивания вместо предмета, и слушатель без звена прошёл бы "+
+			"молча.\n%s", res.summary)
+	}
+	if res.serviceBuilders != 0 {
+		t.Fatalf("тот же вход одновременно засчитан отсеянным (%d) — вердикт неоднозначен",
+			res.serviceBuilders)
+	}
+	t.Logf("направление (а): %s", strings.Join(res.findings, "\n"))
+}

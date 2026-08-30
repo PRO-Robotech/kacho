@@ -83,7 +83,9 @@ func (u *DeleteCidrGroupUseCase) doDelete(ctx context.Context, id string) (*anyp
 	// projectID читается ДО удаления: он нужен как субъект снимаемого кортежа
 	// иерархии. Ресурс исчезает — его место в иерархии прав тоже.
 	var unregTuples []fgaregister.Tuple
+	var projectID string
 	if rec, gerr := w.CidrGroups().Get(ctx, id); gerr == nil {
+		projectID = rec.ProjectID
 		unregTuples = append(unregTuples,
 			fgaregister.ProjectHierarchy(rec.ProjectID, "vpc_cidr_group", id))
 	}
@@ -91,7 +93,7 @@ func (u *DeleteCidrGroupUseCase) doDelete(ctx context.Context, id string) (*anyp
 	if err := w.CidrGroups().Delete(ctx, id); err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
-	if err := w.Outbox().Emit(ctx, "CidrGroup", id, "DELETED", map[string]any{"id": id}); err != nil {
+	if err := w.Outbox().Emit(ctx, "CidrGroup", id, projectID, "DELETED", map[string]any{"id": id}); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}
 	if len(unregTuples) > 0 {

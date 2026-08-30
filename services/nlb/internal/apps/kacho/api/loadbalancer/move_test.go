@@ -5,7 +5,6 @@ package loadbalancer
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"testing"
 
@@ -213,24 +212,18 @@ func TestMove_DestCheckUnavailableFailsClosed(t *testing.T) {
 	require.Equal(t, domain.ProjectID("prj-src"), repo.lbs[lbID].ProjectID)
 }
 
-// TestLbMovedPayload_OldProjectReachesConsumer — regression for outbox
-// payload-key drift (5th audit, HIGH). The MOVED producer must emit the source
-// project under the canonical `old_project_id` key that the Subscribe consumer
-// parses into ResourceLifecycleEvent.OldProjectId (kacho-iam tears down stale
-// owner/hierarchy tuples on the OLD project). Previously it emitted
-// `src_project_id`, which no consumer reads → OldProjectId always empty.
-// Producer helper → shared parser (the SAME parser the consumer uses) proves both
-// sides agree on the key name.
-func TestLbMovedPayload_OldProjectReachesConsumer(t *testing.T) {
+// TestLbMovedPayload_KeysOnTheWire — строитель переезда балансировщика кладёт
+// исходный и целевой проекты под именами `old_project_id` / `new_project_id`, а
+// не под прежним `src_project_id`.
+//
+// Имена названы литералами: прежняя редакция сверяла их через разборщик,
+// собранный из тех же констант, и оставалась зелёной при переименовании ключа
+// (замер #1452). Разборщик снят вместе с этой круговой истинностью.
+func TestLbMovedPayload_KeysOnTheWire(t *testing.T) {
 	t.Parallel()
 	m := lbMovedPayload("nlb-1", "prj-src", "prj-dst")
-	require.NotContains(t, m, "src_project_id", "legacy key must not be emitted")
-
-	raw, err := json.Marshal(m)
-	require.NoError(t, err)
-	parsed, err := kachorepo.ParseLifecyclePayload(raw)
-	require.NoError(t, err)
-	require.Equal(t, "prj-src", parsed.OldProjectID,
-		"consumer must recover source project from MOVED payload")
-	require.Equal(t, "prj-dst", parsed.NewProjectID)
+	require.NotContains(t, m, "src_project_id", "прежнее имя ключа не возвращается")
+	require.Equal(t, "nlb-1", m["id"])
+	require.Equal(t, "prj-src", m["old_project_id"])
+	require.Equal(t, "prj-dst", m["new_project_id"])
 }

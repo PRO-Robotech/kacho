@@ -38,7 +38,7 @@ assert'ов. Закрытие пункта = решение владельца �
 
 | # | Запрос | Зачем |
 |---|---|---|
-| TEST-01 | e2e-seed в `kacho-deploy` должен создавать (или env должен документировать) реальные `existingNetworkId`/`existingSubnetId`/`existingSgId` в той же зоне что `existingZoneId` (ru-central1-a) | без них Instance CRUD-кейсы краснеют (нет subnet → NIC-валидация fail) |
+| TEST-01 | e2e-seed в `deploy/` должен создавать (или env должен документировать) реальные `existingNetworkId`/`existingSubnetId`/`existingSgId` в той же зоне что `existingZoneId` (ru-central1-a) | без них Instance CRUD-кейсы краснеют (нет subnet → NIC-валидация fail) |
 | TEST-02 | Документировать в e2e-config: `KACHO_COMPUTE_SKIP_PEER_VALIDATION` (true в test-стенде без VPC/RM?) | от этого зависит, сработают ли `*-NEG-SUBNET-NOTFOUND` / `*-NEG-PROJECT-NOTFOUND` / `OP-GET-CRUD-FAILED-OP` |
 | TEST-03 | ~~`existingPlatformId` в seeded таблице платформ~~ — снято. Ни поля, ни таблицы, ни файла нет: поле объявлено `reserved` в `proto/kacho/cloud/compute/v1/instance_service.proto`, размер задаётся ссылкой `machineTypeId` на каталожную запись. Env должен нести валидный id типа машины, а не платформу | Instance.Create резолвит `machine_type_id` против каталога |
 | TEST-04 | `existingDiskTypeId=network-ssd` присутствует в seed (✓ — `0001_initial.sql`); проверить что доступен в `existingZoneId` | Disk/Instance boot-disk создаются с этим типом |
