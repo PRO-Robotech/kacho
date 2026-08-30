@@ -248,7 +248,7 @@ func (u *UpdateLoadBalancerUseCase) doUpdate(ctx context.Context, lb domain.Load
 	}
 	if err := w.Outbox().Emit(ctx,
 		kachorepo.OutboxResourceLoadBalancer, string(updated.ID), string(updated.ProjectID),
-		kachorepo.OutboxActionUpdated, lbOutboxPayload(updated),
+		kachorepo.OutboxActionUpdated, kachorepo.LoadBalancerStatePayload(updated),
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}

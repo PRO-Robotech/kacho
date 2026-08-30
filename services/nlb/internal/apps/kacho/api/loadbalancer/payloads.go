@@ -23,36 +23,31 @@ func lbAddressOwner(lbID, name string) vpcclient.AddressOwner {
 	return vpcclient.AddressOwner{Kind: lbAddressOwnerKind, ID: lbID, Name: name}
 }
 
-// lbOutboxPayload — нагрузка журнала для балансировщика. Минимальный снимок.
-// Ключи — из словаря `kachorepo.LifecyclePayload`; читателя у нагрузки сегодня
-// нет ни одного (задача #1452, там же перепись и предикат его появления).
-func lbOutboxPayload(lb *kachorepo.LoadBalancerRecord) map[string]any {
-	if lb == nil {
-		return nil
-	}
-	return kachorepo.LifecyclePayload{
-		ID:        string(lb.ID),
-		ProjectID: string(lb.ProjectID),
-		RegionID:  string(lb.RegionID),
-		Name:      string(lb.Name),
-		Status:    string(lb.Status),
-		Type:      string(lb.Type),
-	}.Map()
-}
-
-// lbMovedPayload — нагрузка события переезда. `old_project_id` — исходный
-// проект: единственное место журнала, где он вообще записан, потому что колонка
-// якоря несёт уже целевой. Читателя у него сегодня нет; названный прежде
-// потребитель (снос кортежей прав на старом проекте через снятый
-// `InternalResourceLifecycleService.Subscribe`) снят задачей #814, а зеркало
-// прав ходит очередью `fga_register_outbox`.
-func lbMovedPayload(id, srcProject, dstProject string) map[string]any {
-	return kachorepo.LifecyclePayload{
-		ID:           id,
-		OldProjectID: srcProject,
-		NewProjectID: dstProject,
-	}.Map()
-}
+// Строитель нагрузки вида `nlb_load_balancer` живёт НЕ ЗДЕСЬ, а в repo-leaf —
+// `kachorepo.LoadBalancerStatePayload`, рядом со своим читателем.
+//
+// # Почему оттуда, а не отсюда
+//
+// Точки эмиссии этого вида лежат в ДВУХ пакетах use-case: пять в этом
+// (создание · правка · снятие · переезд, у которого их две) и две — в пакете
+// СЛУШАТЕЛЯ, где создание и снятие слушателя объявляют правку своего
+// балансировщика. Строитель, спрятанный здесь, второму пакету недоступен, и
+// второй завёл бы свой — вторую форму нагрузки того же вида.
+//
+// Здесь стояли ДВА строителя: `lbOutboxPayload` (пять полей строки) и
+// `lbMovedPayload` (идентификатор плюс исходный и целевой проекты). Оба сняты
+// вместе с минимальным снимком: вид объявлен несущим ПОЛНОЕ состояние, а
+// контракт формы разрешает читать непустое состояние как полное — значит одна
+// частичная нагрузка делает ложным весь вид, и делает тихо.
+//
+// # `old_project_id` СНЯТ, и это решение, а не потеря по дороге
+//
+// Он был единственным местом журнала, где записан исходный проект переезда.
+// Читателя у него не было ни одного (названный прежде потребитель — снятый
+// задачей #814 контракт), а состояние события несёт проект ЦЕЛЕВОЙ, то есть
+// ровно то, ради чего подписчик событие и читает: прежний проект у него уже
+// есть — это то, что лежит в его собственном состоянии до применения события.
+// Тот же выбор сделан у соседнего вида на его переезде (#1551).
 
 // lbRegisterIntent — FGA-register-intent свежесозданного LB (project-hierarchy).
 //

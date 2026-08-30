@@ -17,10 +17,12 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
 
-func TestLBOutboxPayload_Nil(t *testing.T) {
-	t.Parallel()
-	require.Nil(t, lbOutboxPayload(nil))
-}
+// Проба `TestLBOutboxPayload_Nil` СНЯТА вместе со своим предметом (#1551):
+// строитель минимального снимка `lbOutboxPayload` больше не существует — форма
+// нагрузки вида заменена конвертом полного состояния, а строитель переехал в
+// repo-leaf, где его и зовут ОБА пакета use-case. Проба нулевого входа уехала
+// туда же (`TestLoadBalancerStatePayload_NilGuard`), к своей функции: оставленная
+// здесь, она утверждала бы о том, чего в этом пакете нет.
 
 func TestAddressOfTarget_AllVariants(t *testing.T) {
 	t.Parallel()

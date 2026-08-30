@@ -145,10 +145,9 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
 состояние есть у создания и правки, а у снятия его нет: предмета больше не существует, собирать
 было нечего.
 
-`loadbalancer` и `storage` — **смешанные, и решать надо по виду, а не по владельцу**: у
-`loadbalancer` состояние есть у `nlb_listener` и `nlb_target_group` (создание и правка) и
-нет у `nlb_network_load_balancer` ни у одного рода изменения; у `storage` — есть у
-`storage_volume` и нет у `storage_snapshot` и `storage_image`.
+`storage` — **смешанный, и решать надо по виду, а не по владельцу**: состояние есть у
+`storage_volume` и нет у `storage_snapshot` и `storage_image`. У `loadbalancer` смешанным
+он был до 2026-08-30 — теперь состояние есть у всех трёх его видов, у создания и правки.
 
 Переезд ресурса между проектами приходит у `loadbalancer` ОБЫЧНОЙ правкой (`UPDATED`) и
 несёт состояние с НОВЫМ якорем проекта: отдельного рода изменения для переезда в словаре
@@ -193,15 +192,17 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
     <tr>
       <td><code>loadbalancer</code></td><td>Load Balancer</td>
       <td><code>nlb&#95;network&#95;load&#95;balancer</code>, <code>nlb&#95;listener</code>, <code>nlb&#95;target&#95;group</code></td>
-      <td><code>state</code> типа <code>kacho.cloud.loadbalancer.v1.Listener</code> у вида
-          <code>nlb&#95;listener</code> и типа <code>kacho.cloud.loadbalancer.v1.TargetGroup</code>
-          у вида <code>nlb&#95;target&#95;group</code> — у создания и правки; у снятия
-          состояния нет. Переезд между проектами приходит правкой. У
-          <code>nlb&#95;target&#95;group</code> состояние несёт и НАБОР ЦЕЛЕЙ с их
-          lifecycle-состоянием, поэтому сливающаяся цель отличима от обычной. У
-          <code>nlb&#95;network&#95;load&#95;balancer</code> состояния нет ни у одного рода
-          изменения: приходит оболочка события, предмет читается по <code>resource_id</code>.
-          Отсутствие доезжает причиной <code>NOT_PRODUCED</code></td>
+      <td><code>state</code> у ВСЕХ ТРЁХ видов — у создания и правки; у снятия состояния нет.
+          Тип по виду: <code>kacho.cloud.loadbalancer.v1.NetworkLoadBalancer</code> у
+          <code>nlb&#95;network&#95;load&#95;balancer</code>,
+          <code>kacho.cloud.loadbalancer.v1.Listener</code> у <code>nlb&#95;listener</code>,
+          <code>kacho.cloud.loadbalancer.v1.TargetGroup</code> у
+          <code>nlb&#95;target&#95;group</code>. Переезд между проектами приходит правкой и
+          несёт состояние с НОВЫМ якорем проекта. У <code>nlb&#95;target&#95;group</code>
+          состояние несёт и НАБОР ЦЕЛЕЙ с их lifecycle-состоянием, поэтому сливающаяся цель
+          отличима от обычной. Событий у балансировщика на одно изменение может прийти
+          НЕСКОЛЬКО (пересчёт статуса объявляет себя своей строкой) — повтор идемпотентен:
+          состояние в них одно и то же</td>
     </tr>
     <tr>
       <td><code>registry</code></td><td>Registry</td>
@@ -358,9 +359,10 @@ Server-Sent Events (`text/event-stream`) — изменения ресурсов
 `stateUnavailable`, и предмет снимается из вашего состояния по `resourceId`.
 
 Здесь стояло «у всех событий владельца `loadbalancer` приходит `stateUnavailable`» — это
-пережило свой предмет дважды подряд: сперва состояние появилось у `nlb_listener`, затем у
-`nlb_target_group`. Перечень видов живёт в ОДНОМ месте — в таблице выше; повторять его здесь
-значит заводить второе место об одном предмете, из которых верно одно.
+пережило свой предмет ТРИЖДЫ подряд: состояние появилось сперва у `nlb_listener`, затем у
+`nlb_target_group`, затем у `nlb_network_load_balancer`. Перечень видов живёт в ОДНОМ месте —
+в таблице выше; повторять его здесь значит заводить второе место об одном предмете, из
+которых верно одно.
 
 ### `stateUnavailable.reason` — почему состояния нет
 
