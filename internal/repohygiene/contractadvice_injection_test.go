@@ -248,6 +248,71 @@ func TestContractAdviceTellsAMessageFromAVerb(t *testing.T) {
 	}
 }
 
+// Имя выделяют ДВУМЯ способами, и распознаватель обязан знать оба.
+//
+// Форма записи ИМЕНИ ортогональна форме записи СОВЕТА: один и тот же оборот
+// «use X» пишут с обратными кавычками, с квадратными скобками и голым. Скобочная
+// форма — соглашение о перекрёстных ссылках в комментариях контрактов, и в этом
+// дереве она ЧАСТОТНЕЕ кавычек.
+//
+// Цена незнания измерена, а не предположена: пока распознаватель скобок не знал,
+// вне наблюдения оставались 25 советов при 22 наблюдаемых — слепая зона БОЛЬШЕ
+// всей видимой полосы. Ни красного, ни зелёного она не давала: только молчание
+// (`testing.md` §«Гейт на класс», п.7).
+//
+// Проверяется КАЖДОЕ обрамление в обе стороны: дефект — находка, законный
+// близнец того же обрамления — молчание. Односторонняя проба зеленела бы на
+// распознавателе, который скобки просто выбрасывает.
+func TestContractAdviceReadsBothWaysOfDelimitingAName(t *testing.T) {
+	cases := []struct {
+		delim string
+		bad   string // совет на глагол, которого у SubjectService нет
+		good  string // тот же оборот на объявленном глаголе
+	}{
+		{"обратные кавычки", "Use `Revoke` on this service.", "Use `Unblock` on this service."},
+		{"квадратные скобки", "Use [Revoke] on this service.", "Use [Unblock] on this service."},
+		{"без обрамления", "Use Revoke on this service.", "Use Unblock on this service."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.delim, func(t *testing.T) {
+			bad := adviceRun(t, tc.bad)
+			if len(bad.Findings) != 1 || bad.Findings[0].Named != "Revoke" {
+				t.Fatalf("обрамление %q: дефект внесён, находок %d %v — имя в этом "+
+					"обрамлении не читается, и всё записанное так вне наблюдения",
+					tc.delim, len(bad.Findings), bad.Findings)
+			}
+			good := adviceRun(t, tc.good)
+			if len(good.Findings) != 0 {
+				t.Fatalf("обрамление %q: законный близнец объявлен находкой: %s",
+					tc.delim, good.Findings[0].Describe())
+			}
+			if good.Checked == 0 {
+				t.Fatalf("обрамление %q: близнец молчит, но и не осмотрен — это не "+
+					"доказательство", tc.delim)
+			}
+		})
+	}
+
+	// Совет на соседа в скобочной форме — законен и обязан молчать; он же
+	// обязан быть ЗАЧТЁН как совет на соседа, иначе ось переписи ничего не
+	// измеряет.
+	near := adviceRun(t, "To get the id, use a [NeighbourService.ListMembers] request.")
+	if len(near.Findings) != 0 {
+		t.Fatalf("совет на соседа в скобках объявлен находкой: %s",
+			near.Findings[0].Describe())
+	}
+	if near.CrossService != 1 {
+		t.Fatalf("совет на соседа в скобках не зачтён осью переписи (CrossService=%d) "+
+			"— ось молчала бы и на дереве, где такой формы нет вовсе", near.CrossService)
+	}
+	// Зеркало оси: тот же оборот на СВОЕЙ службе соседним советом не является.
+	own := adviceRun(t, "To unblock it, use a [SubjectService.Unblock] request.")
+	if own.CrossService != 0 {
+		t.Fatalf("совет на СВОЮ службу зачтён как совет на соседа (CrossService=%d) — "+
+			"ось не различает своё и чужое", own.CrossService)
+	}
+}
+
 // Тот же вердикт — по НАСТОЯЩЕМУ дереву, а не только по корпусу в памяти.
 //
 // Инъекция в память доказывает суждение; она ничего не говорит о том, читает ли
